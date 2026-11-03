@@ -17,9 +17,11 @@ expect editor.page is 3
 pentap panel pages
 tap panel pages.graph
 expect editor.map is graph
+# (the Graph is every notebook's: there is no Notebook choice, the owner's ruling of 2026-11-03)
+expect editor.map.scope is all
 expect editor.map.list is 0
 expect editor.index_rows is 0
-expect editor.map.nodes is 3
+expect editor.map.nodes is 0
 shot 01-unnamed-graph
 tap panel map.back
 # Name the open page through its shortcut; Done returns to the notebook.
@@ -94,6 +96,11 @@ expect editor.page is 1
 pentap panel pages
 expect editor.modal is pages
 tap panel pages.new
+expect editor.modal is pages
+expect editor.page is 1
+expect editor.tile.2 is Page 2 (new)
+tap panel pages.page.2
+tap panel pages.page.2
 expect editor.page is 2
 expect editor.page_name is
 expect editor.index_rows is 2
@@ -130,8 +137,10 @@ expect editor.strokes is 1
 rotate 1
 pentap panel pages
 tap panel pages.graph
+# (the Graph is every notebook's: there is no Notebook choice, the owner's ruling of 2026-11-03)
+expect editor.map.scope is all
 expect editor.map is graph
-expect editor.map.nodes is 3
+expect editor.map.nodes is 0
 shot 05-graph-landscape
 tap panel map.back
 rotate 0

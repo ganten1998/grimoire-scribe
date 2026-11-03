@@ -9,8 +9,10 @@ tap panel pages
 tap panel pages.graph
 wait 200
 expect editor.map is graph
+# (the Graph is every notebook's: there is no Notebook choice, the owner's ruling of 2026-11-03)
+expect editor.map.scope is all
 expect editor.modal is map
-expect editor.map.nodes is 5
+expect editor.map.nodes is 3
 expect editor.map.layout is done
 expect editor.strokes is 0
 shot 01-all
@@ -33,15 +35,15 @@ shot 02-around
 tap panel map.view
 expect editor.map.mode is all
 expect editor.map.view is all
-# A panned view: View first fits All again (its label says Fit), then goes on to Around.
+# A panned view: View still says All, and goes on to Adjacent at once, fitted (no "Fit:" first).
 drag pen 900 900 1300 1200 20
-expect editor.map.view is fit all
+expect editor.map.view is all
+expect editor.map.touched is 1
 shot 02b-panned
 tap panel map.view
-expect editor.map.view is all
-expect editor.map.mode is all
-tap panel map.view
+expect editor.map.view is adjacent
 expect editor.map.mode is around
+expect editor.map.touched is 0
 tap panel map.view
 expect editor.map.mode is all
 rotate 1

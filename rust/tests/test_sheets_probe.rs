@@ -15,7 +15,6 @@
 #![allow(clippy::needless_range_loop, clippy::too_many_arguments)] // (the C probe's index loops and its pen helper, kept)
 mod testlib;
 use grimoire::prelude::*;
-use std::ffi::CString;
 use testlib::*;
 
 const H0: u64 = 14695981039346656037;
@@ -45,10 +44,13 @@ fn fold(h: u64, c: &Canvas) -> u64 {
     fnv_u32(fnv_u32(h, x as u32), (x >> 32) as u32)
 }
 
-fn system(cmd: &str) -> i32 {
-    let c = CString::new(cmd).unwrap();
-    // SAFETY: system reads the NUL-terminated command we own.
-    unsafe { libc::system(c.as_ptr()) }
+/// `rm -rf '<dir>'`, without a shell: 0 once it is gone.
+fn rm_rf(dir: &str) -> i32 {
+    match std::fs::remove_dir_all(dir) {
+        Ok(()) => 0,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => 0,
+        Err(_) => 1,
+    }
 }
 fn usleep(us: u64) {
     std::thread::sleep(std::time::Duration::from_micros(us));
@@ -323,7 +325,7 @@ fn ts_hit(s: &TplSheet, id: i32, arg: i32) -> Option<Hit> {
 
 fn templates(p: &mut Probe) {
     let root = p.root.clone();
-    assert_eq!(system(&format!("rm -rf '{}/templates'", root)), 0);
+    assert_eq!(rm_rf(&format!("{}/templates", root)), 0);
     templates_init();
     // An empty folder, then with files that are no pictures, in every language (the empty state's
     // paragraphs wrap differently in each), then the Photos sheet's.
@@ -365,7 +367,7 @@ fn templates(p: &mut Probe) {
         drain_jobs();
     }
     // Pictures: waiting tiles, then their previews, one of them the paper now, a broken one crossed out.
-    assert_eq!(system(&format!("rm -rf '{}/templates'", root)), 0);
+    assert_eq!(rm_rf(&format!("{}/templates", root)), 0);
     templates_init();
     for n in 1..=30 {
         put_template(&root, n, &format!("page-{}.png", n));
@@ -790,7 +792,16 @@ fn pages_taps(p: &mut Probe) {
         [PG_JUMP, 0],
     ];
     for s in steps.iter() {
-        let r = pv_tap(p, &mut v, s[0], s[1]);
+        let mut r = pv_tap(p, &mut v, s[0], s[1]);
+        // A tap on New page is a batch of one since 2.0.0-beta.2 (owner, 2026-11-03: the page is not opened):
+        // PV_ADD_PAGES (17) with add_count 1, where the C said PV_NEW (4), for the same target. Checked here,
+        // then printed as the C's so the rest of the line still compares with its recording.
+        if s[0] == PG_NEW {
+            check!(r == 17 && v.add_count == 1);
+            if r == 17 && v.add_count == 1 {
+                r = 4;
+            }
+        }
         let label = cformat!(
             "pages tap %d %d -> %d target %d tab %d screen %d idx %d ticked %d kb %d",
             s[0],

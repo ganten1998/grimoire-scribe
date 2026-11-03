@@ -3,6 +3,8 @@
 # Cancelling a peek: X returns to the page the bar began on with one Ui, or one Full after three peeks (GL16
 # ghosting builds up); the back chip returns to it with the bar kept.
 # root: z_bar_0_make
+# (the clock corner held still: its minute's refresh would land among the counted ones)
+clock 1700000000
 wait 3700
 tap 200 400
 wait 300

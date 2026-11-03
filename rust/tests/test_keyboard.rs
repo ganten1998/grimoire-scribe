@@ -587,7 +587,7 @@ fn japanese_kana_page() {
     open_kb(&mut kb, b"");
     let mut r = Rect::default();
     check!(keyboard_key_rect(&kb, KB_KEY_KANA, &mut r) && !keyboard_key_rect(&kb, KB_KEY_PAGE, &mut r));
-    check!(press(&mut kb, KB_KEY_KANA) && kb.page == 4);
+    check!(press(&mut kb, KB_KEY_KANA) && kb.page == KANA_PAGE);
     check!(!keyboard_key_rect(&kb, 'a' as u32, &mut r)); // no Latin letters on the kana page
     check!(press(&mut kb, KB_KEY_FLICK) && kb.text.as_str() == "\u{3042}"); // あ: a tap
     check!(flick_key(&mut kb, KB_KEY_FLICK + 1, -80.0, 0.0) && kb.text.as_str() == "\u{3042}\u{304d}"); // か, left: き
@@ -664,6 +664,46 @@ fn setup() {
     ui_set_theme(UiTheme::Gothic);
 }
 
+// keyboard_area (the toolbar's count pad composes the page under it by it, before and after it draws): where
+// keyboard_draw puts the keyboard, the count pad's taller modal and a docked one included.
+fn keyboard_area_is_where_it_draws() {
+    for dock in [0, 150] {
+        let mut kb = Keyboard::default();
+        keyboard_open(&mut kb, "Name", b"");
+        keyboard_set_dock(&mut kb, dock);
+        let before = keyboard_area(&kb, K_SCREEN);
+        draw(&mut kb);
+        check!(kb.area == before);
+        keyboard_open_count(&mut kb, "Pages to add", 10, |n| n.to_string());
+        keyboard_set_dock(&mut kb, dock);
+        let pad = keyboard_area(&kb, K_SCREEN);
+        check!(pad.h == before.h + ui_px(170.0));
+        draw(&mut kb);
+        check!(kb.area == pad);
+        if dock == 0 {
+            check!(pad.y + pad.h == K_SCREEN.h - ui_px(20.0));
+        }
+        // (closed, it still says where it was: the caller composes that area as it closes)
+        keyboard_close(&mut kb);
+        check!(keyboard_area(&kb, K_SCREEN) == pad);
+    }
+}
+
+// count_pad_key: a hardware keyboard's keys on a count pad (the Pages view's and the toolbar's): the digits of
+// the top row and the keypad, Backspace, - and + (the keypad's too), Enter (both) and Esc; nothing else (Up and
+// Down no longer step it: 2.0.0-beta.2).
+fn count_pad_keys_from_a_keyboard() {
+    check!(count_pad_key(2) == Some('1' as u32) && count_pad_key(10) == Some('9' as u32) && count_pad_key(11) == Some('0' as u32));
+    check!(count_pad_key(79) == Some('1' as u32) && count_pad_key(75) == Some('4' as u32) && count_pad_key(73) == Some('9' as u32));
+    check!(count_pad_key(82) == Some('0' as u32));
+    check!(count_pad_key(14) == Some(KB_KEY_BKSP) && count_pad_key(28) == Some(KB_KEY_DONE) && count_pad_key(96) == Some(KB_KEY_DONE));
+    check!(count_pad_key(1) == Some(KB_KEY_CANCEL));
+    check!([12, 74].iter().all(|&c| count_pad_key(c) == Some(KB_KEY_DEC)));
+    check!([13, 78].iter().all(|&c| count_pad_key(c) == Some(KB_KEY_INC)));
+    // letters, Shift, Tab, the space bar, Up and Down are none of its keys
+    check!([16, 30, 42, 15, 57, 49, 103, 108].iter().all(|&c| count_pad_key(c).is_none()));
+}
+
 #[test]
 fn test_keyboard() {
     setup();
@@ -683,6 +723,8 @@ fn test_keyboard() {
     run!(kana_in_every_face);
     run!(typed_name_is_stored_whole);
     run!(modal_rect_takes_the_dock);
+    run!(keyboard_area_is_where_it_draws);
+    run!(count_pad_keys_from_a_keyboard);
     G_C.with(|c| canvas_free(&mut c.borrow_mut()));
     done();
 }

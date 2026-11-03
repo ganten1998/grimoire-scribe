@@ -32,9 +32,13 @@ tap panel undo
 expect editor.links is 2 2
 tap panel redo
 expect editor.links is 3 3
+# (the library index's first check, on idle ticks: the Graph is every notebook's, B's page 2 among them)
+wait 1500
 tap panel pages
 tap panel pages.graph
-expect editor.map.foreign is 2
+# (the Graph is every notebook's: there is no Notebook choice, the owner's ruling of 2026-11-03)
+expect editor.map.scope is all
+expect editor.map.visible.ids is A:1 A:2 B:2 C:2
 shot 03-notebook-groups
 tap panel map.list
 shot 04-grouped-links
@@ -75,11 +79,18 @@ wait 1100
 tap 1200 1200
 expect editor.notebook_id is A
 expect editor.links is 3 3
+# (2.0.0-beta.2) A link whose page was deleted opens its card at once, to change where it goes or delete it.
+expect editor.link_card.links is 1
+expect editor.link_card.rows is retarget redraw delete
 expect toast not
+key 45 0
+expect editor.link_card.links is 0
 tap panel pages
 tap panel pages.graph
-expect editor.map.foreign is 1
-expect editor.map.stats is 3 0 2 2 6
+# (the Graph is every notebook's: there is no Notebook choice, the owner's ruling of 2026-11-03)
+expect editor.map.scope is all
+expect editor.map.visible.ids is A:1 A:2 C:2
+expect editor.map.stats is 3 3 2 2 6
 shot 05-deleted-destination
 tap panel map.back
 quit

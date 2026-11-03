@@ -83,8 +83,16 @@ A desktop simulator (SDL3) and an SDL-free headless script runner exist for deve
   pen samples becomes one refresh.
 - Refresh modes: `REFRESH_FAST` (DU, black/white, for live ink, ~188 ms measured, 294 ms cold), `REFRESH_UI`
   (GL16 partial, no flash, for UI and to settle the grays of a finished stroke),
-  `REFRESH_FULL` (GC16 flashing, page turns / screen changes / every 30 UI refreshes).
-  Accumulating different modes keeps the strongest (FULL > UI > FAST).
+  `REFRESH_FULL` (GC16 flashing, page turns / screen changes / every 30 UI refreshes), and in the
+  Rust build `RefreshMode::Clean` (GC16 flashing over the given rect alone).
+  Accumulating different modes keeps the strongest (FULL > CLEAN > UI > FAST).
+- DU wear (issue #11, display.rs `DuWear`): DU turning a pixel from black to white leaves a faint trace
+  of the black, and the GL16 settle after it does not reach that pixel (a partial update drives only the
+  pixels whose value changed, and DU already wrote its final white). The toolbar drag's release cleans
+  its whole trail with one Clean; the erasers and a dragged selection add the area they turned back to
+  paper, and past a quarter of the screen the editor's tick sends one Clean of where it was at the next
+  pause (as the settle waits: never under a stroke). Writing adds nothing (DU turning paper black leaves
+  no trace that matters), and neither do pinch zoom frames, which settle without a flash by design.
 - Live stroke: each pen sample batch renders new dabs into page_canvas, recomposes the dirty
   rect, FAST refresh. On pen-up: UI refresh of the stroke bbox so pencil grays come back. A
   press on the panel before that settle settles first, so Undo and Clear answer at once.
@@ -574,7 +582,7 @@ announcements: goingToScreenSaver draws the sleep screen, outOfScreenSaver is th
   go into its settings.ini, and a `# pdfs: N` line wants exactly N PDFs in its root's PDFs/ folder.
   The rule unsets the test hooks first, so nothing else of the caller's reaches them, and runs
   every scenario in English (`GRIMOIRE_LANG=en`, which ranks first) unless its `# env:` line names
-  another language. With GRIMOIRE_TEST_PORT set every scenario's share server uses that port.
+  another language. Every scenario's share server gets a port of its own: GRIMOIRE_TEST_PORT (else 8765) plus its job's slot.
   tests/selftest/pass.qs and fail.qs check the runner itself.
 - `make l10n` (for the maintainer, with GNU gettext): xgettext collects every marked string of
   src/*.c, with the TRANSLATORS comment above it, and web/studio.js's (`t`, `tPages`, `N_`) under
@@ -940,12 +948,34 @@ announcements: goingToScreenSaver draws the sleep screen, outOfScreenSaver is th
    the JavaScript, and draws nothing: animation frames, size and pixel ratio follow that window,
    which renders 1:1 at its own device pixels. Closing it returns the same picture. Video PiP
    (Safari, Chromium on plain http; Firefox there through its own button on the video) floats a
-   video of a canvas of its own sized to the PiP window's pixels: the picture averaged into it,
-   the quick ink and the dot drawn over it, and `captureStream(0)` with `requestFrame` only when
+   video of a canvas of its own sized to the PiP window's pixels: the picture averaged into it, the
+   quick ink and the dot drawn over it, and `captureStream(0)` with `requestFrame` only when
    something changed. The page's view is off meanwhile and frames come from a Worker's timer as
-   well as animation frames, since a hidden tab has none; the held eraser's lease renewals use
-   that timer too. No second client, stream or watcher is made in any tier. A recording keeps its
-   own size independently.
+   well as animation frames, since a hidden tab has none; the held eraser's lease renewals use that
+   timer too. While the tab is hidden (behind the floating window, or another tab in front) a frame
+   is also drawn as soon as a network read asks for it, in a microtask, since Firefox Nightly 161
+   slows every timer of a hidden tab, a Worker's too, to once a second (measured in headless
+   Nightly: the picture changed once a second and the ink came 0.45 s late at the median, 0.9 s at
+   p90; now 1 ms and 2 ms, and the video shows 59 frames a second instead of 1, with
+   `tests/live_pip_bench.js`). A tile batch, a new stroke or a change of the pen's state draws at
+   once; the pen merely moving on draws once 8 ms at most and waits for its next packet otherwise
+   (it keeps sending while it is near). Those frames draw all the ink that has come and the dot at
+   the newest sample, not the playout's paced clock, as there are no frames between packets to
+   pace. A frame never asks for the next this way, so it cannot spin. With the tab shown, animation
+   frames draw video PiP as they draw the page, and the ticker stands in only when none has come
+   for 30 ms (it fires after 34): before 2.0.0-beta.2 it added a frame between every two, so PiP
+   drew and captured about 120 frames a second to the page's 60. Each frame draws again only what
+   changed (where the last frame laid the quick ink and the dot, what of the picture changed since,
+   where they go now; all of it after a refit or a new window) and asks the capture for a frame
+   only then; out, base and the see-through ink's scratch canvas are in memory
+   (willReadFrequently), so a captured frame is never read back from the GPU. The owner measured
+   the pen 15 to 23 ms later in a large PiP window than on the page, growing with the window: at
+   the Kindle's 1860 x 2480 every frame filled 4.6 million pixels and the capture took them all,
+   120 times a second. Headless Firefox draws canvases in software, where that cost 2 ms a frame
+   (now under 1, at 60 a second), and there PiP's pen age at paint is within 2 ms of the page's at
+   every size; a piecemeal frame matches the same picture drawn whole pixel for pixel
+   (`tests/live_pip_bench.js`). No second client, stream or watcher is made in any tier. A
+   recording keeps its own size independently.
 
    Monitor mode (M, or its button) fits the page, fades the controls rail until the pointer moves
    or keyboard focus reaches it, and asks for full screen when chosen; the browser remembers it (storage that
@@ -1051,7 +1081,30 @@ after the open page or the last selected page, using the notebook's paper. Copy 
 the one selected page after itself, with a new page id and the original bytes. Image-paper copies
 share their picture. Both keep the first page in place. A failed notebook-list save rolls the
 insertion back and removes the new file. Book-page labels come from `source.ini`; a copy is a note
-page and does not get the original's book-page mapping. The browser reader similarly
+page and does not get the original's book-page mapping. Since 2.0.0-beta.2 a held page's card and the
+bottom row (with pages ticked) also have Move to... and Copy to notebook.... Move to... reuses the number
+pad (`PagesView.moving`): the number typed is the page the ticked pages go before, one past the last (or
+an empty pad) the end; `store_move_pages` rewrites only `notebook.ini`'s order, and the editor follows the
+open page by id. A move is one undo step of the notebook's own, not the page history's (history stays per page,
+so the editor's Undo button never undoes a move): `store_move_pages_undo` gives a `PageMoveUndo` (the order
+before and after), kept in `PagesView.move_undo` and dropped as the notebook closes. While it applies (the
+same notebook, its pages still in the order the move left: an add, delete, copy or another move changes
+that; a rename does not) and nothing is ticked, the bottom row's Undo stands in Move to...'s place, and
+`store_undo_move_pages` writes the order back through the same `reorder_pages` path (notebook.ini only).
+A tile held until its card opens and moved past the slop is dragged (`PageDrag`): the view as drawn is kept,
+a hollow outline of the tile (two frames for several pages) and a bar in the gap (`drop_at`: the half of the
+tile under the contact says before or after it; past the last tile, the end) are drawn over it inside the
+grid's band and refreshed fast, only where they were and are; 700 ms over the top bar or the bottom row
+turns the screen (the band alone refreshed). The lift asks `store_move_order` whether the gap changes the
+order: then the carried pages are ticked and it is Move to...'s path (one undo step, one Full redraw);
+else, and for a lift over the bars or a cancel, one Ui redraw and no undo step. Copy to
+notebook... opens `NotebookPicker::start_copy` over the Pages view, without the open notebook; a page tile
+there (the copies go before it) or At the end gives `NotebookPick::Place`. `store_copy_pages_to` copies the
+files (docs/FORMAT.md, Moving and copying pages), then `nav_copy_pages_across` the names and links, every
+target through `nav_target_across`, the one rule for a link crossing notebooks (lasso paste shares it).
+The destination's compaction stops first (`bg_cancel_notebook`), as when a notebook opens; its card is
+drawn again when the copies come first, its PDF mirror is queued, and so is its compaction when a copy
+holds erase strokes. The browser reader similarly
 uses one image at a time and a GET page field at the top (`?p=N`), clamped to the notebook's range.
 
 `src/koreader.c` discovers the hosted directory or three common installations and manages the
@@ -1149,6 +1202,28 @@ unmodified page viewport. Defaults are on, small, top left. Loading legacy Bar s
 those defaults; legacy Off stays off. Display has no title-row mode button, and no Status display
 assignment is advertised. `status-mode` remains a compatibility alias for the corner toggle.
 
+## Links between notebooks: backlinks, anchors, broken links (2.0.0-beta.2)
+
+What links INTO a notebook is spread over every other notebook's `links.ini`, so `backlinks.rs` keeps
+it turned around in `root/backlinks.ini` (docs/FORMAT.md, Backlinks cache): a cache, rebuilt by stamps.
+A save of `links.ini` (nav_save_links) updates its notebook in memory at once; opening a notebook asks
+for a check of every notebook, which the editor's idle ticks do a few stamps at a time with at most one
+`links.ini` read a tick (512 KiB at most), so the page is never held up; the file itself is read on the first
+idle tick, never by a draw (a query sees what is in memory). Other notebooks' page names, for the Linked
+from rows and the anchors, come from `backlinks_book`: their `notebook.ini` and `nav.ini` only (never their
+`links.ini`), kept between builds for the 16 most recently used and read again only when one of the two
+files changed. The Links bar lists Linked from
+after the page's own entries (its own notebook's sources from the open Nav, always current, then the
+cache's); a bar that is up is built again only when its rows changed. A Linked from row has no hold: a
+long press on it is its tap. The Graph boxes other notebooks'
+pages beside the plot (anchors), never as layout nodes, so the map keeps its shape and `graph.ini` its
+`gen`. Each line is solid where that page links out to the box and dashed where it only has links in from
+it, and an arrow at the box's start says which way its links go (two arrows: both ways); a page linked only from elsewhere stays hidden there (its box names it). A target whose page or
+notebook was deleted (`nav_target_state`: a notebook folder that is not there is gone; one whose
+`notebook.ini` does not read is only unavailable) is broken: dashed wherever it shows, and a tap opens
+its link's card, which leads with what is gone. Following a link into another notebook pushes the
+origin's page, view (zoom and offset, for its screen size) and back list; Back restores all three.
+
 ## Links without ink and the long-press card (2.0.0-beta.6, Index phase 2)
 
 A link is (page, seed, target, area) in `links.ini` (docs/FORMAT.md). The area is screen-only: the eye
@@ -1228,9 +1303,11 @@ keeps the layout. On opening, kept dots stay put, a few new pages go beside thei
 a new link between far pages moves only its two ends and their neighbours (graph_relax_stressed);
 a map that changed a lot (over 10% new pages, or too many stretched links) is laid out again from
 where its dots were (graph_layout_warm), so it keeps its shape. The relaxation stops once the
-map's shape settles, usually well before its 300 steps. View cycles All (the whole linked map,
-fitted) and Around; after a pan or pinch its label reads Fit and the next press fits the current
-mode again, so a press always changes the view. Only All and Around are saved.
+map's shape settles, usually well before its 300 steps. The view button reads View: All (the whole
+linked map) or View: Adjacent (the rings around a page), the view it shows now, and a press always
+switches to the other one, fitted (2.0.0-beta.2: there is no "Fit:" label any more; the fit-page key
+fits again). Only All and Adjacent are saved (graph.ini still writes
+mode=around for Adjacent).
 
 Nested Library folders are logical slash-separated paths stored in notebook metadata and
 folders.ini. Notebook IDs and physical directories stay fixed. A subtree rename validates all
@@ -1335,3 +1412,74 @@ Clear page saves removal of the current page's links before touching its ink, th
 `ActKind::Clear` carrying the removed strokes and `LinkEdit`. A link-only page still gets this
 step. Undo/Redo applies both parts; a failed link save reverses the tentative ink operation and
 keeps the Clear step for retry. Initial Clear save failure leaves ink and history unchanged.
+
+## Lasso select and scoped erasing (2.0.0-beta.2)
+
+The binding design is docs/beta2/LASSO-DESIGN.md; this is where it lives in the code.
+
+- `rust/src/lasso.rs` (pure): the lasso as a crossing table with non-zero winding; enclosure judged by
+  each ink stroke's visible spine (samples no later erase stroke in scope covers with its hard core): half
+  of what shows inside, or the middle of what shows for strokes under 1.5 mm; links that come along; the
+  erase strokes that go with selected ink (after it, in scope, meeting its tiles); the group, with each
+  distinct floor of those erase strokes encoded as a marker; seeds; where a paste goes; `lasso_place`,
+  which appends a group at the end of a page drawing it onto the page canvas as it goes and decides each
+  floor plain (its snapshot is the paper under its strokes' tiles: no marker, exact in older versions) or
+  scoped (a free layer).
+- `rust/src/page.rs` `render_from`: the renderer's floors. A page with no marker takes the old path
+  unchanged; at a marker the canvas over the union of its scoped strokes' boxes is copied, and those
+  strokes restore toward it. `page_render_from` draws appended strokes onto a canvas of the page before
+  them (a paste or a move draws only the group).
+- `rust/src/clipboard.rs`: `root/clipboard.qpg` (FORMAT.md, The clipboard).
+- `rust/src/history.rs` `ActKind::Lasso`: the ink taken off plus an Add of the strokes appended, with
+  the carried links' records, one step; undo and redo swap the step's canvas patch (instant on dense
+  pages). `undo_redo_link` swaps the patch for lasso steps with links, and rolls the ink back if
+  links.ini cannot be saved.
+- `rust/src/editor/select.rs`: Select mode (`SelState` Off, Armed, Lasso, Selected, Dragging), its bar,
+  the gestures (Move, Copy, Cut, Delete, Paste) and the scripts' probes (`editor.select`, `selected`,
+  `sel_links`, `sel_box`, `clipboard`, `layered`, `page_links`, `lasso_ms`; `tap panel select.<button>`,
+  `tap panel picker.select`). Moved ink goes to the end of the stroke order, on top of what is there.
+  While Select mode is on the panel's tool button shows the lasso, selected (no pen is), and the early
+  Live ink hook draws nothing (`editor_pen_not_ink`). `sel_hold` is `select` held on a pen button's hold
+  or drag (`pb_out`: the drag's contact is not claimed, so it reaches `sel_down` as the lasso);
+  `sel_tick` and `sel_finger_hold` paste on a long press (PASTE_HOLD_MS, the link card's hold). Cut
+  copies, then deletes; a delete refused after the copy puts the clipboard back (`clipboard_snapshot`,
+  `clipboard_restore`). A lasso step's dirty rect leaves out floor markers (history.rs `bbox_of`), so its
+  undo refreshes only the group's place.
+- `rust/src/lasso_live.rs` (pure): the live selection preview (docs/beta2/PIXEL-LASSO.md 2). Each sample a
+  stroke is judged by (`judged_samples`, shared with the lift; lengths in fixed point, 1/64 px) keeps its
+  winding as the integer sum of the lasso's edges' contributions, computed with the one crossing expression
+  `Lasso::new` uses (`edge_rows`, `edge_cross`). Folding points pn+1..pm subtracts the old closing edge's
+  contributions and adds the new stretch's and closing edge's: only samples between the first and last
+  crossing of that small polygon in their row can change, found through a 64 px grid of the ink's boxes
+  and 32-sample chunks. A full lasso (every other point dropped) and one taller than the table's 8192 rows
+  answer from a fresh crossing table. The lift takes the preview's answer (`lasso_select_from`) when the
+  page is unchanged (`holds`), and debug builds assert it equals `lasso_enclosed`. select.rs folds a batch
+  PREVIEW_MS (120 ms of input time) after the first point waiting, or at once when the pen pauses 50 ms
+  (`preview_tick`); the strokes whose halo flipped are drawn again in at most 6 merged fast refreshes
+  (DU wear counted), and the lift's Ui redraw covers every one. The halo (`sel_draw_halo`, in compose
+  under the panel) is a dither band 3 ui px wider than the ink each side with the page's pixels put back
+  over it by a min, so ink stays on top; it stays on the selection. Probes: `editor.halo`,
+  `preview_batches`, `preview_refreshes`, `preview_reused`, `preview_rect`, `lift_rect`,
+  `lift_covers_preview`.
+- Exact area (docs/beta2/PIXEL-LASSO.md 1): `stroke_dabs` runs a stroke's brush dry with
+  `BrushState.dab_log` (brush.rs: the dry branch pushes each dab's sample, radius and calligraphy nib) and
+  `stroke_cut` splits it into runs of dabs on one side of the lasso: a later piece starts at its first
+  dab's own sample (its spacing from there walks the stroke's line), an earlier one ends half a spacing
+  past its last dab, new points stored as the file stores them (`sample_as_stored`). A calligraphy piece
+  starts with a point leaning so its nib starts at the stroke's smoothed nib (`brush_tilt_for_nib`) and a
+  second point at the same place with the pen's tilt; one whose tilt widens or lightens it is not cut
+  (`stroke_cuttable`). `lasso_cut_plan` takes ink whole when its box is inside (`Lasso::rect_inside`) or
+  every dab is, cuts what crosses, judges beta.5 linked ink and short strokes (under `LASSO_SHORT_MM` of
+  what shows, as the preview's halo shows them) by the whole-strokes rule, and areas on the cut view. select.rs keeps the plan (crossing strokes by identity, their pieces) in `SelMode.plan` and the
+  lifted lasso in `kept` (the mode button, `SelBtn::Mode`, judges it again); Move, Cut and Delete splice it
+  in inside their step (`plan_splice`, the outside pieces at the original's place, so floors and erase
+  strokes keep their order), and the step is `history_push_lasso_at` (the originals and the whole ink
+  removed, the outside pieces and the placed group added, not contiguous); the old place is drawn again in
+  the tiles of the ink taken and of the outside pieces. Copy splices in and out at once (`plan_unsplice`).
+  The mode is a static for this run (`EXACT`); Shift or Alt held as a lasso begins (`hidkeys_mods_held`,
+  which input_evdev.rs keeps as every attached keyboard's modifiers together, after each of their key
+  events, resyncs and detaches) flips it for that lasso; `select-exact` (85) enters
+  Select mode in it or toggles it. The live preview in exact mode (`LassoLive::set_exact`, `halo_list`)
+  shows a crossing stroke's inside runs of judged samples and a solid tick halfway between an inside and an
+  outside sample. Probes: `editor.sel_exact`, `sel_cut`, `page_sig_keep`, `page_sig_same`;
+  `tap panel select.mode`.

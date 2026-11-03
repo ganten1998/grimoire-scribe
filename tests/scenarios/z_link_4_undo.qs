@@ -4,6 +4,8 @@
 # goes where it went), Redo takes it again; link steps and ink come off one stack in order; a save that fails
 # changes nothing and pushes no step, and an undo whose save fails is dropped; with the eye on, an undo shows in
 # the boxes (one GL16) and says nothing.
+# (the clock corner held still: its minute's refresh would land among the counted ones)
+clock 1700000000
 wait 300
 tap 200 400
 wait 300

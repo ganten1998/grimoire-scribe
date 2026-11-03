@@ -1,6 +1,7 @@
 # settings: status_mode=1
 # New page and Copy page in the Pages view. New page adds a blank page of the current page's paper
-# after the open page, or after the last page ticked, and opens it; Copy page copies the one page
+# after the open page, or after the last page ticked, and the view stays (owner, 2026-11-03: a tap no
+# longer opens it), its tile marked "(new)" and a toast saying which page it is; Copy page copies the one page
 # ticked, its ink and its paper, right after it, and opens the copy. Neither ever makes a page the
 # first. Then the same sideways, and all of it still there once the notebook opens again.
 # rust-only
@@ -41,9 +42,18 @@ expect editor.tile.2 is Page 2 (open)
 shot 01-pages-new-copy-off
 tap panel pages.new
 wait 300
+expect editor.modal is pages
+expect editor.page is 2
+expect editor.pages is 4
+expect toast is Added 1 page: it is page 3.
+expect editor.tile.2 is Page 2 (open)
+expect editor.tile.3 is Page 3 (new)
+expect editor.tile.4 is Page 4
+tap panel pages.page.3
+tap panel pages.page.3
+wait 300
 expect editor.modal is none
 expect editor.page is 3
-expect editor.pages is 4
 expect editor.strokes is 0
 expect editor.paper is 3
 # The page that was third is fourth now, with its ink.
@@ -67,9 +77,19 @@ expect editor.modal is pages
 expect editor.pages is 4
 tap panel pages.new
 wait 300
-expect editor.modal is none
-expect editor.page is 3
+expect editor.modal is pages
+expect editor.page is 5
 expect editor.pages is 5
+expect editor.ticked is 0
+expect toast is Added 1 page: it is page 3.
+tap panel pages.back
+wait 300
+expect editor.modal is none
+expect editor.page is 5
+pentap panel previous
+pentap panel previous
+wait 200
+expect editor.page is 3
 expect editor.strokes is 0
 # Copy page: page 2 (ink on sheet music) ticked alone is copied right after it, as page 3.
 pentap panel pages
@@ -113,9 +133,15 @@ expect editor.modal is pages
 shot 04-pages-landscape
 tap panel pages.new
 wait 300
+expect editor.modal is pages
+expect editor.page is 1
+expect editor.pages is 7
+expect editor.tile.2 is Page 2 (new)
+tap panel pages.page.2
+tap panel pages.page.2
+wait 300
 expect editor.modal is none
 expect editor.page is 2
-expect editor.pages is 7
 expect editor.strokes is 0
 pentap panel pages
 wait 300

@@ -13,8 +13,8 @@ expect library.ui_at.930.749 is gestures.group.editing
 tap 930 749
 wait 100
 expect library.gestures_group is editing
-expect library.ui_at.930.920 is gestures.row.4
-tap 930 920
+expect library.ui_at.930.840 is gestures.row.4
+tap 930 840
 wait 100
 expect library.gestures.learning is hold-eraser
 expect library.record is wait
@@ -38,8 +38,8 @@ wait 100
 expect library.record is 0
 expect gestures.hold-eraser is pen.Button.hold
 pen leave
-expect library.ui_at.930.2030 is done
-tap 930 2030
+expect library.ui_at.930.2120 is done
+tap 930 2120
 wait 100
 expect library.ui_at.930.2030 is done
 tap 930 2030

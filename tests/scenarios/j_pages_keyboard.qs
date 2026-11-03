@@ -14,6 +14,8 @@
 # count from their last check: a "not -1" check only starts the count.)
 # (past the two repaints just after the start, main.c, so the checks see only what the keys send)
 # rust-only
+# (the clock corner held still: its minute's refresh would land among the counted ones)
+clock 1700000000
 wait 3600
 # The Library's keyboard (New folder): a with the pen, resting on it for eight samples
 tap 1155 95
@@ -99,7 +101,7 @@ expect editor.modal is none
 expect editor.keyboard is
 expect editor.page_name is as
 expect editor.index_rows is 1
-# Go to page... is the Find sheet now (a page number or a name): the view closes and Find opens over the page; a
+# Go to page... is the Find sheet now (a page number or a name): Find opens over the view; a
 # key costs what it does on every keyboard (the text line, then the key, each its own fast refresh) and, when the
 # rows it offers change, the card of rows between the two; a number the notebook does not have is a line that is
 # not a button, and Done leaves the sheet as it is

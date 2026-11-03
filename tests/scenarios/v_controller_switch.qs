@@ -1,7 +1,8 @@
 # settings: status_mode=1
 # settings: shortcuts_enabled=1
 # copy: tests/fixtures/shortcuts-1.2 .
-# 1.2.0's shortcuts.ini, as a Kindle that had shortcuts on keeps it: it binds no D-pad direction, so
+# 1.2.0's shortcuts.ini, as a Kindle that had shortcuts on keeps it, with a note the owner added (unedited, it
+# would become the new starter map at the start: k_keys_3_upgrade_penfeel.qs): it binds no D-pad direction, so
 # the D-pad's starter lines come with it (the file is not changed) and the D-pad turns pages and
 # tools as with a new file. A Switch-mode controller ("Pro Controller": Linux's generic driver
 # numbers its buttons in the Pro Controller's order) has them named in the Buttons sheet as printed

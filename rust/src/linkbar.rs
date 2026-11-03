@@ -133,6 +133,25 @@ pub struct LbEntry {
     pub first_box: Rect,
 }
 
+/// A row of the bar's Linked from (2.0.0-beta.2): a page whose links go to the origin page, in this notebook
+/// or another (the backlinks cache).
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct LbFrom {
+    /// where a tap goes: "p<page id>" here, "n:<notebook id>:p<page id>" in another notebook
+    pub target: FixedStr<NAV_TARGET_LEN>,
+    /// the page's index here, -1 for another notebook's page
+    pub page: i32,
+    /// links from that page to the origin
+    pub count: i32,
+    /// what the chip says: the page's Index name or "Page 3", after "Notebook / " for another notebook's
+    pub label: String,
+    /// the label is an Index name (drawn bold)
+    pub named: bool,
+}
+
+/// The most Linked from rows a bar lists.
+pub const LB_FROM_MAX: usize = LB_MAX;
+
 /// The links of one page (each with its box, page px) grouped by where they go: entries in the reading
 /// order of each entry's first box, numbered from 1; `box_entry[i]` is the number of links[i]'s entry.
 /// Boxes whose tops are within 10 mm count as one line, read left to right. Returns how many entries.
@@ -181,11 +200,34 @@ pub fn linkbar_group(
     count
 }
 
-/// The entries the pager shows now: the screenful.
+/// The entries the pager shows now: the screenful (its Linked from rows: linkbar_visible_from).
 pub fn linkbar_visible(lb: &LinkBar) -> &[LbEntry] {
     let first = ((lb.screen * lb.per).max(0) as usize).min(lb.n);
     let end = (first + lb.per.max(0) as usize).min(lb.n);
     &lb.entries[first..end]
+}
+
+/// The Linked from rows the pager shows now.
+pub fn linkbar_visible_from(lb: &LinkBar) -> &[LbFrom] {
+    let first = (lb.screen * lb.per).max(0) as usize;
+    let end = first + lb.per.max(0) as usize;
+    let (a, b) = (first.max(lb.n) - lb.n, end.max(lb.n) - lb.n);
+    &lb.from[a.min(lb.from.len())..b.min(lb.from.len())]
+}
+
+/// Every chip the bar has: the page's entries, then its Linked from rows.
+pub fn linkbar_chips(lb: &LinkBar) -> usize {
+    lb.n + lb.from.len()
+}
+
+/// Chip i's Linked from row, None for one of the page's own entries.
+pub fn linkbar_from_row(lb: &LinkBar, i: i32) -> Option<&LbFrom> {
+    (i >= lb.n as i32).then(|| lb.from.get(i as usize - lb.n)).flatten()
+}
+
+/// Chip i's rect on the screen as last drawn (None when it is not on the screenful shown).
+pub fn linkbar_chip_rect(lb: &LinkBar, i: i32) -> Option<Rect> {
+    lb.hits.h.iter().find(|h| h.id == LB_CHIP && h.arg == i).map(|h| h.r)
 }
 
 /// The bar's state while it is open (memory only).
@@ -219,6 +261,9 @@ pub struct LinkBar {
     pub back_label: i32,
     /// where the back list's newest page is, named ("Back to %s"), "" while it is empty
     pub back_to: FixedStr<NAV_NAME_LEN>,
+    /// with nothing in back_to, the back chip goes to the Library's Graph, which opened this notebook ("Back to
+    /// Graph", its own words: the shared "Back to %s" does not read well with a common noun in every language)
+    pub back_graph: bool,
     /// a press that began on the grip or the header: a drag down from it closes the bar
     drag: bool,
     // The layout (linkbar_layout)
@@ -248,8 +293,12 @@ pub struct LinkBar {
     pub held: i32,
     /// when the press on the bar began (now_ms, the editor's clock: its tick times the hold)
     pub down_at: u32,
-    /// another notebook's targets as labelled at this open (their notebook.ini read once, not at every draw)
-    foreign: Vec<(FixedStr<NAV_TARGET_LEN>, String)>,
+    /// another notebook's targets as found at this open (their notebook.ini read once, not at every draw)
+    foreign: Vec<(FixedStr<NAV_TARGET_LEN>, NavTarget)>,
+    /// Linked from (2.0.0-beta.2): the pages whose links go to the origin, its own first (linkbar_set_from)
+    pub from: Vec<LbFrom>,
+    /// the backlinks cache's generation the rows were made at (the editor builds the bar again past it)
+    pub from_gen: u32,
 }
 
 // (Arrays derive Default only up to 32 elements: written by hand, as EditorState's LinkBoxes.)
@@ -274,6 +323,7 @@ impl Default for LinkBar {
             header_hint: false,
             back_label: 0,
             back_to: FixedStr::default(),
+            back_graph: false,
             drag: false,
             cols: 2,
             per: 6,
@@ -291,6 +341,8 @@ impl Default for LinkBar {
             held: -1,
             down_at: 0,
             foreign: Vec::new(),
+            from: Vec::new(),
+            from_gen: 0,
         }
     }
 }
@@ -305,15 +357,6 @@ pub fn linkbar_build(lb: &mut LinkBar, nb: &NotebookInfo, nav: &Nav, page: &Page
         return;
     }
     let pid = nb.page_ids[origin as usize];
-    // Nav is sorted by source; repeated links from one page count once, as in the graph.
-    let target = format!("p{}", pid);
-    let mut last = 0;
-    for l in &nav.links {
-        if l.pid != pid && l.target == target.as_str() && l.pid != last && nb.page_ids.contains(&l.pid) {
-            lb.incoming += 1;
-            last = l.pid;
-        }
-    }
     let mut links = [NavLink::default(); LB_MAX];
     let mut areas = [RECT_EMPTY; LB_MAX];
     let n = nav_link_areas(nav, page, pid, NAV_LINK_MIN_MM * dpi / 25.4, &mut links, &mut areas) as usize;
@@ -335,15 +378,25 @@ fn grid_of(aw: i32, ah: i32) -> (i32, i32) {
     }
 }
 
+/// The Linked from rows (the pages whose links go to the origin, at most LB_FROM_MAX): chips after the page's
+/// own entries. `incoming` is how many. Set before linkbar_layout.
+pub fn linkbar_set_from(lb: &mut LinkBar, mut rows: Vec<LbFrom>, generation: u32) {
+    rows.truncate(LB_FROM_MAX);
+    lb.incoming = rows.len() as i32;
+    lb.from = rows;
+    lb.from_gen = generation;
+}
+
 /// The card on an aw x ah screen: its width, its height from how many rows its entries need (the most
 /// any screenful has, so it does not change size as the pager turns), 20 px above the screen's edge.
 pub fn linkbar_layout(lb: &mut LinkBar, aw: i32, ah: i32) {
     let (cols, max_rows) = grid_of(aw, ah);
     lb.cols = cols;
     lb.per = cols * max_rows;
-    lb.screens = ((lb.n as i32 + lb.per - 1) / lb.per).max(1);
+    let n = linkbar_chips(lb) as i32;
+    lb.screens = ((n + lb.per - 1) / lb.per).max(1);
     lb.screen = clampi(lb.screen, 0, lb.screens - 1);
-    lb.rows = clampi((lb.n as i32 + cols - 1) / cols, 1, max_rows);
+    lb.rows = clampi((n + cols - 1) / cols, 1, max_rows);
     let h = u(316.0 + 140.0 * lb.rows as f32) + if lb.header_hint { u(60.0) } else { 0 };
     lb.rect = Rect { x: u(20.0), y: ah - u(20.0) - h, w: aw - 2 * u(20.0), h };
     let top = lb.rect.y + u(16.0) + u(36.0);
@@ -369,17 +422,9 @@ fn entry_name<'a>(nb: &NotebookInfo, nav: &'a Nav, e: &LbEntry) -> &'a str {
 
 /// What an entry is called: its Index name (and true), "Page %d" for a page with none (false), "The Index"
 /// (false); "" for a page that is not here.
-fn entry_label(foreign: &mut Vec<(FixedStr<NAV_TARGET_LEN>, String)>, nb: &NotebookInfo, nav: &Nav, e: &LbEntry) -> (String, bool) {
-    if nav_external_target(e.target.as_str()).is_some() {
-        if let Some((_, label)) = foreign.iter().find(|(t, _)| *t == e.target) {
-            return (label.clone(), true);
-        }
-        if let Some(label) = nav_target_label(e.target.as_str()) {
-            if foreign.try_reserve(1).is_ok() {
-                foreign.push((e.target, label.clone()));
-            }
-            return (label, true);
-        }
+fn entry_label(foreign: &mut Vec<(FixedStr<NAV_TARGET_LEN>, NavTarget)>, nb: &NotebookInfo, nav: &Nav, e: &LbEntry) -> (String, bool) {
+    if let Some(t) = foreign_state(foreign, e.target) {
+        return (nav_target_state_label(&t), true);
     }
     if e.page == NAV_TO_INDEX {
         // TRANSLATORS: the notebook's Index (the list of named pages) as a place a link goes: a Links bar row, a
@@ -395,6 +440,26 @@ fn entry_label(foreign: &mut Vec<(FixedStr<NAV_TARGET_LEN>, String)>, nb: &Noteb
     } else {
         (name.to_string(), true)
     }
+}
+
+/// What another notebook's target finds there, read once per open bar (None for a target of this notebook).
+fn foreign_state(foreign: &mut Vec<(FixedStr<NAV_TARGET_LEN>, NavTarget)>, target: FixedStr<NAV_TARGET_LEN>) -> Option<NavTarget> {
+    nav_external_target(target.as_str())?;
+    if let Some((_, t)) = foreign.iter().find(|(k, _)| *k == target) {
+        return Some(t.clone());
+    }
+    let t = nav_target_state(target.as_str())?;
+    if foreign.try_reserve(1).is_ok() {
+        foreign.push((target, t.clone()));
+    }
+    Some(t)
+}
+
+/// Entry i's link goes to a page or a notebook that was deleted (a broken link: its chip is dashed, a tap
+/// opens its card to change where it goes or delete it). Reads the notebook once per open bar.
+pub fn linkbar_entry_broken(lb: &mut LinkBar, i: i32) -> bool {
+    let Some(e) = lb.entries.get(i as usize).filter(|_| i >= 0 && (i as usize) < lb.n).copied() else { return false };
+    foreign_state(&mut lb.foreign, e.target).is_some_and(|t| nav_target_broken(&t))
 }
 
 // The icon above a button's label, drawn dimmer: every other pixel of its dark ones cleared (a 50% ordered
@@ -414,9 +479,14 @@ fn dim(c: &mut Canvas, r: Rect) {
 
 // A chip: the entry's name, and at the right where it goes and how many links (no number: the page's link
 // areas have none to match).
-fn draw_chip(c: &mut Canvas, r: Rect, e: &LbEntry, label: &str, named: bool, selected: bool) {
+fn draw_chip(c: &mut Canvas, r: Rect, e: &LbEntry, label: &str, named: bool, selected: bool, broken: bool) {
     ui_frame(c, r, u(16.0), 255, true, 0);
-    ui_frame(c, r, u(16.0), 0, false, if selected { u(8.0) } else { u(3.0) });
+    if broken {
+        // A link to a page or notebook that was deleted: a dashed frame, and its label says so.
+        canvas_dash_rect(c, rect_inflate(r, -u(2.0)), if selected { u(8.0) } else { u(4.0) }, u(18.0), u(12.0), 0);
+    } else {
+        ui_frame(c, r, u(16.0), 0, false, if selected { u(8.0) } else { u(3.0) });
+    }
     let col_w = u(150.0);
     let name = Rect { x: r.x + u(18.0), y: r.y, w: r.w - u(18.0) - col_w - u(14.0), h: r.h };
     let ts = ui_text_size();
@@ -427,6 +497,9 @@ fn draw_chip(c: &mut Canvas, r: Rect, e: &LbEntry, label: &str, named: bool, sel
         font_draw_left(c, FontFace::Regular, ts, Rect { x: name.x + ih + u(10.0), y: name.y, w: name.w - ih - u(10.0), h: name.h }, tr("The Index"), 0);
     } else if nav_external_target(e.target.as_str()).is_some() {
         font_draw_left_name(c,FontFace::Bold,ts,name,label,0);
+        if broken {
+            dim(c, name);
+        }
     } else if e.page < 0 {
         // A page that is not here: 50% dithered.
         // TRANSLATORS: a chip of the Links bar whose link goes to a page that is gone (about 700 px at 44 px).
@@ -437,18 +510,23 @@ fn draw_chip(c: &mut Canvas, r: Rect, e: &LbEntry, label: &str, named: bool, sel
     } else {
         font_draw_left_name(c, FontFace::Bold, ts, name, label, 0);
     }
-    // The right column: "p. 3", and under it "x2" when two links go there.
+    chip_column(c, r, e.page, e.count);
+}
+
+// A chip's right column: "p. 3", and under it "x2" when two links go there.
+fn chip_column(c: &mut Canvas, r: Rect, page: i32, count: i32) {
+    let col_w = u(150.0);
     let col = Rect { x: r.x + r.w - col_w - u(8.0), y: r.y, w: col_w, h: r.h };
     let mut lines: Vec<String> = Vec::new();
-    if e.page >= 0 {
+    if page >= 0 {
         // TRANSLATORS: a chip of the Links bar, in its right column at 34 px (about 150 px): the page a link goes
         // to, %d its number ("p. 12").
-        lines.push(cformat!(c_("bar", "p. %d"), e.page + 1));
+        lines.push(cformat!(c_("bar", "p. %d"), page + 1));
     }
-    if e.count > 1 {
+    if count > 1 {
         // TRANSLATORS: a chip of the Links bar, under the page's number in its right column: how many links go
         // to that page (a multiplication sign and the count, "x2").
-        lines.push(cformat!(tr("×%d"), e.count));
+        lines.push(cformat!(tr("×%d"), count));
     }
     // (centred as a block: one line over the chip's middle, two close together about it)
     let lh = u(46.0);
@@ -456,6 +534,23 @@ fn draw_chip(c: &mut Canvas, r: Rect, e: &LbEntry, label: &str, named: bool, sel
     for (k, l) in lines.iter().enumerate() {
         font_draw_centered(c, FontFace::Regular, ui_small_size(), Rect { x: col.x, y: top + k as i32 * lh, w: col.w, h: lh }, l, 0);
     }
+}
+
+// A Linked from chip: "Linked from" small over the page's name, its number here at the right (none for another
+// notebook's page), and "x2" when two of its links come here.
+fn draw_from_chip(c: &mut Canvas, r: Rect, f: &LbFrom, selected: bool) {
+    ui_frame(c, r, u(16.0), 255, true, 0);
+    ui_frame(c, r, u(16.0), 0, false, if selected { u(8.0) } else { u(3.0) });
+    let col_w = u(150.0);
+    let x = r.x + u(18.0);
+    let w = r.w - u(18.0) - col_w - u(14.0);
+    // TRANSLATORS: the caption over a Links bar chip for a page whose links come TO the open page (in this
+    // notebook or another), in small type over that page's name (about 600 px at 34 px).
+    font_draw_left(c, FontFace::Regular, ui_small_size(), Rect::new(x, r.y + u(6.0), w, u(48.0)), tr("Linked from"), 0);
+    let name = Rect::new(x, r.y + u(50.0), w, r.h - u(56.0));
+    let face = if f.named { FontFace::Bold } else { FontFace::Regular };
+    font_draw_left_name(c, face, ui_text_size(), name, &f.label, 0);
+    chip_column(c, r, f.page, f.count);
 }
 
 /// Draws the bar into a.screen and registers its hits; returns its card (its rect). `peek` is the page number
@@ -503,7 +598,7 @@ pub fn linkbar_draw(lb: &mut LinkBar, a: &mut App, nb: &NotebookInfo, nav: &Nav,
     }
     let ts=ui_text_size();
     let page=if peek>0 {peek}else{lb.origin+1};let mut left=head.x;
-    let back_text=if peek>0 {cformat!(tr("‹ Page %d"),lb.back_label)}else if !lb.back_to.is_empty(){cformat!(tr("Back to %s"),lb.back_to.as_str())}else{String::new()};
+    let back_text=linkbar_back_text(lb,peek);
     if !back_text.is_empty(){let bw=ui_chip_w(FontFace::Bold,ts,&back_text,bh,u(200.0),u(380.0));let back=Rect::new(left,hy,bw,bh);ui_button(c,back,IconKind::None,&back_text,ButtonStyle::Plain);hits_add(&mut lb.hits,back,LB_BACK,0);left+=bw+u(20.0);}
     let count=Rect::new(right-u(230.0),hy,u(230.0),bh);
     font_draw_centered(c,FontFace::Bold,ts,count,&format!("{} / {}",page,nb.npages()),0);
@@ -516,7 +611,7 @@ pub fn linkbar_draw(lb: &mut LinkBar, a: &mut App, nb: &NotebookInfo, nav: &Nav,
     let ch = u(124.0);
     let gap = u(24.0);
     let cw = (inn.w - (lb.cols - 1) * gap) / lb.cols;
-    if lb.n == 0 {
+    if lb.n == 0 && lb.from.is_empty() {
         // TRANSLATORS: the Links bar's chip area when the open page has no links (about 1300 px at 44 px).
         let none = tr("No links on this page yet.");
         // TRANSLATORS: the same when links.ini cannot be read, so the bar lists none (about 1300 px at 44 px).
@@ -527,13 +622,18 @@ pub fn linkbar_draw(lb: &mut LinkBar, a: &mut App, nb: &NotebookInfo, nav: &Nav,
     let first = lb.screen * lb.per;
     for k in 0..lb.per {
         let i = first + k;
-        if i as usize >= lb.n {
+        if i as usize >= linkbar_chips(lb) {
             break;
         }
         let r = Rect { x: inn.x + (k % lb.cols) * (cw + gap), y: cy + (k / lb.cols) * (ch + u(16.0)), w: cw, h: ch };
-        let e = lb.entries[i as usize];
-        let (label, named) = entry_label(&mut lb.foreign, nb, nav, &e);
-        draw_chip(c, r, &e, &label, named, i == lb.selected);
+        if let Some(f) = linkbar_from_row(lb, i) {
+            draw_from_chip(c, r, f, i == lb.selected);
+        } else {
+            let e = lb.entries[i as usize];
+            let (label, named) = entry_label(&mut lb.foreign, nb, nav, &e);
+            let broken = foreign_state(&mut lb.foreign, e.target).is_some_and(|t| nav_target_broken(&t));
+            draw_chip(c, r, &e, &label, named, i == lb.selected, broken);
+        }
         hits_add(&mut lb.hits, r, LB_CHIP, i);
     }
     let ty=card.y+card.h-u(160.0);let gap=u(20.0);let width=(inn.w-2*gap)/3;
@@ -590,8 +690,10 @@ pub fn linkbar_pointer(lb: &mut LinkBar, a: &mut App, ph: i32, ev: &InEvent, dir
     // The press is let go: drawn as it was, and refreshed whatever the tap did.
     canvas_invert(&mut a.screen, h.r);
     *dirty = h.r;
-    // (only a List chip has a hold, the long-press card: a slow press on anything else is its tap)
-    let held = h.id == LB_CHIP && lb.mode == LbMode::List && ev.t_ms.wrapping_sub(lb.press.t0) > HOLD_MS;
+    // (only a List chip of the page's own links has a hold, the long-press card: a slow press on anything else,
+    // a Linked from row included, is its tap)
+    let held = h.id == LB_CHIP && lb.mode == LbMode::List && linkbar_from_row(lb, h.arg).is_none()
+        && ev.t_ms.wrapping_sub(lb.press.t0) > HOLD_MS;
     if held || !press_is_tap(&lb.press, h.r) {
         return LbResult::None;
     }
@@ -630,9 +732,11 @@ pub fn linkbar_pointer(lb: &mut LinkBar, a: &mut App, ph: i32, ev: &InEvent, dir
 }
 
 /// The chip a press is on now in List mode, unmoved (entry index and the chip's rect): what a hold opens the
-/// long-press card for. None for any other press.
+/// long-press card for. None for any other press, and for a Linked from row (no link of this page to show:
+/// its lift is its tap, held or not).
 pub fn linkbar_pressed_chip(lb: &LinkBar) -> Option<(i32, Rect)> {
-    if !lb.open || lb.mode != LbMode::List || !lb.has_pressed || lb.pressed.id != LB_CHIP || lb.press.moved || lb.held >= 0 {
+    if !lb.open || lb.mode != LbMode::List || !lb.has_pressed || lb.pressed.id != LB_CHIP || lb.press.moved || lb.held >= 0
+        || linkbar_from_row(lb, lb.pressed.arg).is_some() {
         return None;
     }
     Some((lb.pressed.arg, lb.pressed.r))
@@ -667,14 +771,47 @@ pub fn linkbar_cancel_press(lb: &mut LinkBar, a: &mut App) -> Rect {
 /// (entry N from 1: `p3` then ` x2` when two links go there, `index` or `missing`; empty past the last),
 /// "pager" (`2/3`, empty with one screenful) and "rect" (the card, `x y w h`, empty while closed). false for
 /// another key.
+/// The header's back chip as it reads: "‹ Page %d" while the bar looks at page `peek` (from 1), else "Back to"
+/// where the back list goes, "" for none.
+pub fn linkbar_back_text(lb: &LinkBar, peek: i32) -> String {
+    if peek > 0 {
+        cformat!(tr("‹ Page %d"), lb.back_label)
+    } else if !lb.back_to.is_empty() {
+        cformat!(tr("Back to %s"), lb.back_to.as_str())
+    } else if lb.back_graph {
+        // TRANSLATORS: the Links bar's chip back to the Graph (the Library's Graph of all notebooks, which opened
+        // this notebook); a chip of at most about 18 characters.
+        tr("Back to Graph").to_string()
+    } else {
+        String::new()
+    }
+}
+
 pub fn linkbar_probe(lb: &LinkBar, key: &str, out: &mut String, cap: usize) -> bool {
     if lb.mode == LbMode::Pick {
         return linkbar_probe_pick(lb, key, out, cap);
     }
     if key == "entries" {
         csnprintf!(out, cap, "%d", if lb.open { lb.n as i32 } else { 0 });
+    } else if key == "back" {
+        // The back chip as it reads on the open page ("Back to ..."), empty for none or closed.
+        csnprintf!(out, cap, "%s", &if lb.open { linkbar_back_text(lb, 0) } else { String::new() });
     } else if key == "incoming" {
         csnprintf!(out, cap, "%d", lb.incoming);
+    } else if let Some(k) = key.strip_prefix("from.") {
+        // Linked from row K (from 1): `p3` for a page here, `n:<notebook>:p<page id>` for another notebook's,
+        // then ` x2` for two links; empty past the last.
+        let f = k.parse::<usize>().ok().and_then(|k| k.checked_sub(1)).and_then(|k| lb.from.get(k)).filter(|_| lb.open);
+        let v = match f {
+            Some(f) if f.page >= 0 => format!("p{}", f.page + 1),
+            Some(f) => f.target.as_str().to_string(),
+            None => String::new(),
+        };
+        let v = match f {
+            Some(f) if f.count > 1 => format!("{v} x{}", f.count),
+            _ => v,
+        };
+        csnprintf!(out, cap, "%s", &v);
     } else if key == "pager" {
         // The pager's screenful, "2/3"; empty with one screenful or closed.
         if lb.open && lb.screens > 1 {
@@ -694,6 +831,9 @@ pub fn linkbar_probe(lb: &LinkBar, key: &str, out: &mut String, cap: usize) -> b
             let e = &lb.entries[i as usize];
             if e.page == NAV_TO_INDEX {
                 csnprintf!(out, cap, "%s", "index");
+            } else if let Some(t) = lb.foreign.iter().find(|(k, _)| *k == e.target).map(|(_, t)| t) {
+                // (another notebook's page, as the bar found it: `elsewhere`, or `gone` for a broken link)
+                csnprintf!(out, cap, "%s", if nav_target_broken(t) { "gone" } else { "elsewhere" });
             } else if e.page < 0 {
                 csnprintf!(out, cap, "%s", "missing");
             } else if e.count > 1 {
@@ -808,7 +948,7 @@ pub fn linkbar_layout_pick(lb: &mut LinkBar, aw: i32, ah: i32, top: bool, top_y:
 
 /// A chip's label in Link to...: the page's Index name (bold, and true), "Page %d" for a page with none, "New
 /// page...", "The Index".
-fn pick_label(foreign: &mut Vec<(FixedStr<NAV_TARGET_LEN>, String)>, nb: &NotebookInfo, nav: &Nav, p: &LbPick) -> (String, bool) {
+fn pick_label(foreign: &mut Vec<(FixedStr<NAV_TARGET_LEN>, NavTarget)>, nb: &NotebookInfo, nav: &Nav, p: &LbPick) -> (String, bool) {
     match p.kind {
         // TRANSLATORS: the first chip of Link to..., which adds a page at the end of the notebook and links to
         // it (about 700 px at 44 px in bold upright, 600 sideways).

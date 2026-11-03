@@ -6,11 +6,15 @@ tap library folder.Void
 tap library notebook.A
 expect screen is editor
 expect editor.notebook_id is A
+# (the library index's first check, on idle ticks: the Graph is every notebook's)
+wait 1500
 tap panel pages
 tap panel pages.graph
 expect editor.map is graph
+# (the Graph is every notebook's: there is no Notebook choice, the owner's ruling of 2026-11-03)
+expect editor.map.scope is all
 expect editor.map.list is 0
-expect editor.map.foreign is 1
+expect editor.map.visible.ids is A:1 A:2 C:2
 shot 01-graph
 tap panel map.list
 expect editor.map.list is 1

@@ -11,6 +11,152 @@ refuses a notebook's own PDF from `grimoire/PDFs`. Those last two fixes have aut
 but have not been confirmed on a Kindle. The candidates 1.1.0-rc.1 to rc.3 were never published;
 their results are below, newest first.
 
+## The automated checks: make check and CI
+
+`make check` runs the same checks as before; what changed in 2.0.0-beta.2 is how they are run.
+
+**The scenario runner.** `tests/scenario_runner.py` runs `make scenarios` (and `make scenarios-late`
+and the language runs of `make l10n-check`): every `tests/scenarios/*.qs` against its own data root
+(`build/scen/NAME`) and shots folder, as the old loop in the Makefile did, but `SCEN_JOBS` at a time
+(default: the number of CPUs; `SCEN_JOBS=1` runs them one after another). A scenario with a
+`# root: NAME` line starts once NAME has finished (from what it left, passed or not, as before). Each
+run of a batch gets a port of its own for the share server: `GRIMOIRE_TEST_PORT` (else 8765) plus its
+slot, so `make scenarios` and `make l10n-check` use the ports from `GRIMOIRE_TEST_PORT` to
+`GRIMOIRE_TEST_PORT + SCEN_JOBS - 1`. `make rust-check` (and so `make check`) runs `make host-checks`
+beside the languages, SCEN_JOBS ports further on: the late scenarios on `GRIMOIRE_TEST_PORT + SCEN_JOBS`
+and `+ SCEN_JOBS + 1`, the share server's and Live view's checks on the first of those. A worktree's
+gate therefore uses the ports from `GRIMOIRE_TEST_PORT` to `GRIMOIRE_TEST_PORT + SCEN_JOBS + 1`, and
+two worktrees' gates never collide when their `GRIMOIRE_TEST_PORT` values are at least `SCEN_JOBS + 2`
+apart (17 at 15 jobs: 8861, 8878, 8895 and so on). `SCEN_JOBS` defaults to the number of CPUs.
+Each run's output goes to `build/scen-logs/NAME.log` (the languages' to `build/scen-logs/l10n/`); one
+line per run is printed as it ends, the failed runs' logs whole at the end in the order the scenarios
+were named, then `SCENARIOS FAILED: ...` and a failing status, as before. `SCENARIOS=`, `SCEN_ENV`,
+`SCEN_SKIP_RUST_ONLY` and `SCEN_NO_SELFTEST` work as they did.
+
+**The timing table.** `tests/scenario-times.txt` holds each scenario's seconds from a full parallel
+run on the maintainer's Mac. The runner starts the longest chains first (a root counts its
+dependants), so the long scenarios never start last; the CI shards are balanced by it. A scenario
+missing from it counts 5 s. `make scenario-times` runs the scenarios and rewrites it (commit the
+result after adding or slowing down scenarios; `build/scen-times.txt` has the last run's times).
+
+**The serial list.** `SCEN_SERIAL` in the Makefile names scenarios that must run alone, after the
+parallel batch, because they depend on an idle machine and cannot be fixed yet, each with its reason.
+It is empty: the whole set passed in parallel at 3 jobs, five times at 15 and at 32. The one failure the parallel runs
+found was not load but a clock: 23 scenarios count the screen's refreshes, and a minute turning over
+during the count added the clock corner's refresh; they now hold the corner's clock still
+(`clock 1700000000`), as the refresh scenarios already did.
+
+**Fewer long runs.** The handwriting replay (z_shape_writing, 85 s in real time) is four scenarios,
+z_shape_writing_1 to _4, a quarter of the strokes each, which run side by side; the replay stays real
+time, since the hold that the test is about fires on the real clock, also inside strokes, and with its
+700 ms hold no stroke is part of a writing burst, so no part depends on the strokes before it.
+y_all_screens.qs runs once in English and Gothic, in `make scenarios`; when that run was among its
+scenarios (`SCENARIOS` names y_all_screens.qs and no `SCEN_SHARD` is set), `make rust-check` passes
+`L10N_SKIP=en-gothic` to `make l10n-check`, whose English Gothic run was the same run (same script,
+same `GRIMOIRE_CHECK_FIT=1` and address; the scenario's one `# settings:` line, status_mode=1, is what
+every settings file reads as anyway). `make l10n-check` alone still makes all four.
+
+**Times on the maintainer's Mac** (15 cores, no other gate running): the scenarios took 118 s at 15
+jobs (the same set took about 30 minutes one after another), 592 s at 3 jobs (the CI runner's cores).
+`make l10n-check`'s 41 runs (the Index and Wi-Fi language checks are among them now) took 78 s
+instead of 175 s. `make rust-check` runs the unit tests beside the scripted checks, and l10n-check
+beside `make host-checks` (on ports apart), so `make -j15 check` took 4 min 41 s instead of 44 min.
+
+**CI** (`.github/workflows/release.yml`) splits `make check` into jobs that run at once:
+
+| Job | Runner | What it runs (the make check part it replaces) |
+|---|---|---|
+| changes | Linux | Decides what runs: a pull request that changes only `*.md` and `docs/` (not `docs/WHATSNEW.md`, which the app compiles in) runs the docs job alone; a file moved into `docs/` counts its old path too |
+| docs | Linux | `git diff --check` on a docs-only pull request, from where it branched off |
+| build-host | macOS | `make headless tools`, uploaded for the jobs below |
+| unit (host, sim) | macOS | `make test-host`, `make test-sim`: the two halves of `make test` |
+| scenarios (1 to 6) | macOS | `make scenarios SCEN_SHARD=N/6`: whole `# root:` chains, balanced by the timing table (a big tree's root goes with each part); the selftest with shard 1 |
+| l10n | macOS | `make l10n-check L10N_SKIP=en-gothic` (a shard made that run) |
+| host-checks | macOS | b_library and s_shape_1_record, then `make host-checks`: the late-timer scenarios, the pages cache, mirror cleanup, the share server, Live view, Bluetooth, the exporter |
+| package | macOS | `make package-contents-check launcher-check dev-check kpm-check kopatch-check wifi-check usb-stage-check runner-check dist` (the Kindle build, the zip and its launchers, KPM, the KOReader patches, the scenario runner's own tests); on pushes to main and releases also `make repro-check` (two clean builds) and the release files |
+| gate | Linux | The one required check: every job above passed (docs-only: the docs job did); it also runs, and fails, in a cancelled run |
+| publish | Linux | Releases only, after gate |
+
+Pull requests skip `make repro-check` and the release files: they are never published, and the clean
+builds take two Kindle builds' time; pushes to main and releases run them, so `main` and every
+release keep the whole of `make check`. A newer push to a pull request cancels its older run; a
+release run is never cancelled. The repository variable `GRIMOIRE_CI_LINUX=true` moves build-host,
+unit, the shards and l10n to Linux runners, which start sooner and of which a free plan runs far more
+at once (macOS: 5); it stays off until a run passes there (docs/BACKLOG.md).
+
+**The required check.** Branch protection on `main` must require the `gate` job, and only it (one
+setting, made once on GitHub: Settings, Branches, the rule for `main`, Require status checks, `gate`).
+Before this split the only job was `package`; a rule that still requires `package` lets a pull request
+merge with a failed unit, scenario, l10n or host-checks job. A skipped required check counts as passed
+on GitHub, so `gate` runs even in a cancelled run and fails there.
+
+**The runner's own tests.** `make runner-check` (tests/test_scenario_runner.py, part of `make check`
+and of CI's package job) checks that the CI shards' split ends and keeps each scenario beside its
+roots at any shard count (`SCENARIO_SHARDS` can go up safely), that a scenario under a skipped
+rust-only root is skipped whatever the order, and that a failed run says why.
+
+## 2.0.0-beta.2, Live view picture in picture in Firefox Nightly (browser checks pending)
+
+Automated: tests/live_browser_check.js (in `make check`, through live_check.sh) checks that in video
+PiP with the tab hidden a batch and a pen packet are each a frame at once, with no timer or animation
+frame run, all the ink drawn and the dot at the newest sample; that a frame never asks for the next;
+that the pen merely moving on draws once 8 ms at most, the next packet drawing what waited; and that a
+lift draws at once; with the tab shown, that the ticker stands in for animation frames only after 34 ms
+and draws nothing when one has just come, and that a frame draws only the box that changed. Measured,
+not in `make check` (it needs the browsers and an idle machine):
+`node tests/live_pip_bench.js` serves the page with a stand-in Kindle writing at a realistic pace (a
+sample every 4 ms, sent as it comes, tile batches every 33 ms), opens it in headless Firefox
+Nightly, Firefox and Chrome (each found in /Applications; `--browsers` picks), and prints, windowed and in
+video PiP with the tab hidden and visible: our time per frame (averageInto, vpipDraw, the quick ink),
+the time from a batch's arrival to its frame being handed to the capture, frames handed per second and
+the gaps between them, and which frames the video itself shows (read back every 4 ms). `--budget`
+fails when a hidden tab's PiP hands batches later than 50 ms at p90 or fewer than 30 frames a second
+while writing. It also reads the page's own Latency meter (pen age at paint, p50/p90/p99/max, with the
+playout delay and the time from a sample's arrival to its paint), checks that a frame drawn piecemeal
+matches the same picture drawn whole pixel for pixel, and takes `--pip-size WxH` (the PiP window in CSS
+pixels at 2x; 930x1240 is the Kindle's 1:1), `--fps` (Firefox's refresh rate, 60), `--pen-ms` (how
+often the pen stream sends, 4), `--capture-ms` (main-thread ms per million pixels each captured frame
+costs, emulated) and `--prefs name=value,...`. Headless Firefox draws canvases in software, so a GPU's
+cost per pixel does not show there. In a real browser: open Live view in Firefox Nightly over plain http, press the rail's
+Picture in picture, switch to another tab or app and write: the floating picture follows the pen
+smoothly, as the page itself does. Then make the PiP window large and compare the Latency readout's pen
+age at paint with the page's (Live view Settings, Diagnostics): within a couple of milliseconds.
+
+## 2.0.0-beta.2, lasso (device checks pending)
+
+Automated: tests/test_lasso.rs, tests/test_lasso_render.rs, the editor's unit tests
+select_held_on_a_pen_drag and select_held_on_a_pen_hold, and the scenarios z_lasso_1_select_move (undo of
+a scoped paste refreshes only its place), z_lasso_2_link_copy, z_lasso_3_dense_timing (a generated
+1,000-stroke page; the move and paste times are in grimoire.log as `lasso: move ... src_ms=... dst_ms=...`),
+z_lasso_4_cut_paste (a generated pair of notebooks: Cut then Paste in place, Copy then Paste 3 mm off, pen
+and finger long-press paste, cut and paste across pages, the read-only page's refusals, scale-to-fit into
+a smaller page size) and z_lasso_5_link_follow (a tap on a link pasted into another notebook opens the
+first notebook's page 3). The live preview (docs/beta2/PIXEL-LASSO.md 2): tests/test_lasso_live.rs (the
+preview folded in batches of any size equals the lift on 500 random lassos, a removed edge subtracts exactly
+what it added, ties decided alike; its cost on the dense page, printed with `--nocapture`, the owner's page
+with GRIMOIRE_DENSE_PAGE=a copy of p72.qpg), z_lasso_10_preview_presents (the halo follows the lasso, one
+small fast refresh per word that flips, counted, the lift covers them in one Ui refresh) and
+z_lasso_11_preview_leave (a word taken in and left out again; a finger's lasso shows the halo too). On the
+Kindle: draw a lasso slowly round a paragraph and watch the halo follow it; lift and check the selection is
+what the halo showed. The exact-area lasso (docs/beta2/PIXEL-LASSO.md 1): tests/test_lasso_cut.rs (the dab
+log is the real draw's; for every tool and tip a cut stroke's pieces draw what it drew, the counted rare
+one-level pixel aside, jitter tools and calligraphy pinned; pieces round-trip through the file; rect_inside
+against brute force; the plan's rules; splice and back; an exact move undone and redone; the dense page's
+plan time with `--nocapture`), z_lasso_12_exact_move (cut a line, move and delete its right part, undo and
+redo), z_lasso_13_exact_erased_copy (a white-ink gap travels with the cut part, Copy leaves the page byte
+for byte, Paste) and z_lasso_14_exact_toggle (`select-exact` on a key, the preview's cut tick, the mode
+button and the key judge the same lasso again, Alt held as a lasso begins; the `mods` script line), z_lasso_16_exact_shift_key (Shift
+and Alt held on a paired keyboard flip one lasso's mode), and
+z_lasso_15_exact_es_gothic and _classic (the bar in Spanish with the fit check on: y_all_screens does not
+open Select mode; the bar keeps beside the panel, its plain buttons narrower when six do not fit). On
+the Kindle: Exact area on the bar, lasso through the middle of a written line and drag the part out; check
+the part left behind and the ends; undo. On the Kindle: open the tool picker,
+Select, lasso a word and its i-dots, drag it; erase part of a word with the precise eraser, lasso and move
+it, then paste a copy over other ink (the ink under it must not lighten); copy a linked item into another
+notebook and tap it there. Bind `select` to the pen button's drag (Settings > Controller > Buttons): hold the
+button and lasso, let go, drag the selection, tap outside it and write; hold the pen still on empty page in
+Select mode to paste. Time a move on the 1,090-stroke page (October-2026-02, page 72).
+
 ## 2.0.0-beta.1
 
 The same app as 2.0.0-beta.0. Checked by the owner on the Kindle Scribe 2024 (firmware 5.20.1.0.2), from the
@@ -144,7 +290,8 @@ network is lost. This candidate does not claim these physical transitions have b
 
 Check October-2026-02: unlinked pages 13/14 and deleted pages must not appear as graph nodes.
 There is no Unlinked tray, zoom-button pair or Tidy up button. The compact footer's View button
-cycles All, Around and Fit; pinch zoom remains available. Node counts describe the displayed
+reads View: All or View: Adjacent and a tap always switches to the other one, fitted (2.0.0-beta.2;
+in rc.5 it cycled All, Around and Fit); pinch zoom remains available. Node counts describe the displayed
 local and external nodes, orphans are current-notebook pages without valid links, links count
 valid outgoing links, and page totals distinguish this notebook from all notebooks.
 
@@ -276,6 +423,31 @@ Then run [the two-finger study](KINDLE.md#the-two-finger-study), blocks A–L wi
 and send the trace/log. [TOUCH-STUDY.md](index-hook/TOUCH-STUDY.md) records the pending thresholds,
 acceptance targets and shape freeze gate. Owner blocks J/K must have zero pattern and shape
 fires, and L must establish shape acceptance; synthetic negative traces cannot substitute.
+
+## Links between notebooks, polish (2.0.0-beta.2 lane C, not yet on a Kindle)
+
+Not yet on a Kindle. `make check` covers the backlinks cache (cargo tests in backlinks.rs: a save updates it
+at once, a lazy check finds what another version wrote and drops deleted notebooks, a cache that does not
+read is built again, 4000 links from one notebook fit and the overall limit holds), the Graph's anchors
+never moving a dot or changing graph.ini's gen (mapview.rs), and the scenarios z_links_1_backlinks (Linked
+from rows, the Pages card count, following a row and Back to the same page and zoom, anchors in both
+languages through make l10n-check) and z_links_2_broken (a gone page and a gone notebook, from the bar, the
+page and the Graph; Delete link and Undo), z_links_3_bar_learns (a bar opened before the first check is
+through gets its Linked from rows by itself; a long press on a row follows it) and z_links_4_back_list (Back
+across notebooks brings back that notebook's own back list). It cannot say how long the first check takes on a Kindle with
+many notebooks, or whether a bar redrawn when the check finds more is noticed.
+
+1. **Linked from.** In notebook B, link a page to a page of notebook A (Link to... > Somewhere Else). Open A
+   at that page and the Links bar: "Linked from B / Page N" is listed (wait a second after opening A the
+   first time: the check runs while nothing is touched). Tap it: B opens at that page.
+2. **Back keeps the zoom.** Zoom in on a page of A, open the bar, tap a Linked from row into B, press Back
+   (your go-back key, or the bar's Back to): A comes back at the same page, zoomed and panned as it was.
+3. **Pages card.** In A's Pages, hold that page: its card says "Linked from 1 page".
+4. **Graph anchors.** A's Graph shows B's page in a box at the right, with a dashed line (links that come
+   here) or a solid one (links that go there); tap it to open it. No dot moved.
+5. **Broken links.** Delete B's page (or B): in A, a link to it is a dashed "Page gone" chip; a tap on it,
+   on the page or in the Graph opens its card: Change where it goes, Delete link. Undo brings a deleted
+   link back. Restore B from trash/ by hand: the link works again.
 
 ## Index phase 2: links without ink and the long-press card (2.0.0-beta.6 candidate, not yet on a Kindle)
 

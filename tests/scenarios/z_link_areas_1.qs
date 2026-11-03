@@ -7,6 +7,8 @@
 # first time it comes on a toast says what the boxes are. (The bar's Areas button, which does the same,
 # is in z_bar_1_list.)
 # root: z_bar_0_make
+# (the clock corner held still: its minute's refresh would land among the counted ones)
+clock 1700000000
 wait 300
 tap 200 400
 wait 300

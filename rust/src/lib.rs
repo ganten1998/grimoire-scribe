@@ -59,6 +59,8 @@ pub use util as common;
 
 // ---- wave 2: the model ----
 pub mod annotate;
+pub mod backlinks; // which pages of other notebooks link here: root/backlinks.ini, a cache (Rust only, 2.0.0-beta.2)
+pub mod libindex; // every notebook's pages, names and links for the Graph of all notebooks: root/graph-index.ini (Rust only, 2.0.0-beta.2)
 pub mod bgimage;
 pub mod bgjob;
 pub mod bgwork_compact; // compact.h + bg_compact_pages
@@ -67,6 +69,9 @@ pub mod brush;
 pub mod compact; // compact.h's surface (bodies in bgwork_compact.rs)
 pub mod export;
 pub mod history;
+pub mod lasso; // lasso select, copy, cut, paste, move (the pure part)
+pub mod lasso_live; // the lasso's live selection preview (the pure part)
+pub mod clipboard; // root/clipboard.qpg
 pub mod shape;
 pub mod graph;
 pub mod musicbuild;
@@ -128,6 +133,8 @@ pub mod prelude {
     pub use crate::actions::*;
     pub use crate::annotate::*;
     pub use crate::app::*;
+    pub use crate::backlinks::*;
+    pub use crate::libindex::*;
     pub use crate::bat::*;
     pub use crate::bgimage::*;
     pub use crate::bgjob::*;
@@ -160,6 +167,9 @@ pub mod prelude {
     pub use crate::keyboard::*;
     pub use crate::koreader::*;
     pub use crate::latency::*;
+    pub use crate::lasso::*;
+    pub use crate::lasso_live::*;
+    pub use crate::clipboard::*;
     pub use crate::linkoutline::*;
     pub use crate::light::*;
     pub use crate::linkbar::*;

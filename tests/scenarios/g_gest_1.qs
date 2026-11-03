@@ -5,6 +5,8 @@
 # (g_gest_10_new_page has the default, which adds one).
 # settings: mirror_pdf=0
 # settings: gesture_new_page=0
+# (the clock corner held still: its minute's refresh would land among the counted ones)
+clock 1700000000
 wait 300
 tap 965 95
 wait 100

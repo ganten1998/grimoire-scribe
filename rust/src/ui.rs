@@ -84,10 +84,12 @@ pub enum IconKind {
     Bubbles = 57,
 /// Recorded touch gestures in Settings (Rust only).
     Gestures = 58,
+    /// Select mode's lasso (Rust only)
+    Lasso = 59,
 }
 impl IconKind {
     /// ICON_COUNT
-    pub const COUNT: usize = 59;
+    pub const COUNT: usize = 60;
 }
 
 #[derive(Clone, Copy, Debug, Default)]
@@ -300,6 +302,7 @@ const K_ICON_CP: [u32; IconKind::COUNT] = {
     k[IconKind::Eye as usize] = 0xF0208; // md-eye
     k[IconKind::LinkPlus as usize] = 0xF0C94; // md-link_plus
     k[IconKind::Bubbles as usize] = 0xF05E3; // md-chart_bubble
+    k[IconKind::Lasso as usize] = 0xF0F03; // md-lasso
     k
 };
 

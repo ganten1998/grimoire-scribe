@@ -121,14 +121,43 @@ your notebooks and settings from `quire/` to `grimoire/` and removes the old Qui
     45 degree italic, thick going down to the right and hairline going up; lean toward the bottom
     left (a left hand) and the nib mirrors. Hold the pen upright and it keeps the 45 degree nib.
 - **The floating toolbar** holds tools, undo/redo, clear page, pages, paper and the Library. Drag
-  it anywhere; tap the corner arrows to fold it into a small box.
+  it anywhere; tap the corner arrows to fold it into a small box. On the last page its next-page arrow is a
+  **+**: tap it for a new page, which opens (as swiping past the last page does). Hold it (or, with a keyboard
+  attached, tap it with Shift, Ctrl, Alt or Cmd held) for the number pad Pages uses (at 1 at first): the pages are added
+  after the page you are on, on its paper, which stays open, and the Undo in Pages takes them back while they
+  are still blank. The `new-pages` shortcut opens the same pad on any page.
 - **Pen button**: hold the button while drawing to highlight (or erase; Settings). Hold it while
   hovering to clear the page. Clear removes ink and outgoing links together; Undo restores both.
 - **The Index**: swipe down with two fingers for Graph, or tap the page counter for Pages. **Graph**, **List** and
-  **Pages** share one navigation bar; Back returns to the notebook. Graph groups destinations by
-  notebook, with View at the bottom: All fits the whole linked map, Around the rings around a page,
-  and after a pan or pinch the button first fits the view again. List shows existing links. Pages has small
-  cached previews and controls for adding, copying, selecting and deleting pages.
+  **Pages** share one navigation bar; Back returns to the notebook. Graph always shows every linked page of
+  every notebook, each notebook's pages an island with its name over it (a library with too many linked pages
+  to draw at once shows this notebook alone, and says so), with the view button at the bottom: **View: All** fits
+  the whole linked map, **View: Adjacent** the pages around one (linked to it, and theirs); a tap switches to the
+  other view, fitted, after a pan or pinch too. With a keyboard the arrows pan the Graph, - and + zoom it, Ctrl+0
+  fits it, V switches its view, Ctrl+A selects every page drawn and Enter opens the selected page. List shows
+  existing links. Pages has small
+  cached previews and controls for adding, copying, selecting and deleting pages. Hold a page for its card
+  (Move to..., Copy to notebook..., Rename, Delete), or hold and drag it to a gap between two pages to move it
+  (a black bar shows the gap it goes into); right after a move, the bottom row's Undo puts the pages back, and
+  then its Redo beside it moves them again. Tap **+** (New page) for one blank page at
+  once, after the open page (or the last one ticked), on that page's paper: Pages stays open, the new page's tile says "(new)" and a
+  toast says which page it is (tap the tile to open it). Hold it (or, with a keyboard attached, tap it with
+  Shift, Ctrl, Alt or Cmd held) for a number pad that asks how many: it starts at 1, so **Add 1 page** at once
+  adds one; type the count (the first digit replaces the 1) or use - and + under the digits, and press
+  **Add N pages**. **Go to page...** opens the page-number-or-name sheet over Pages, which stays behind it:
+  Cancel gives Pages back as it was, a row picked opens that page. With a keyboard, Ctrl+A ticks every page and
+  Ctrl+N opens the number pad. The Undo button then takes that page or batch back while its pages are
+  still blank, and Redo adds the same pages again. While Pages is open, the `undo` and `redo` keys, controller
+  buttons and gestures are these Undo and Redo (one step each); on the page they stay the page's own, so a
+  page's writing is never undone from Pages, nor a page move from the page. A large batch takes a while (a
+  toast says so; taps meanwhile are ignored).
+  **The Graph from the Library**: swipe down with two fingers over the Library (or press the key bound to
+  `index-map`) for the Graph of all notebooks with no notebook open: tap a page twice to open it, and Back from there, even from another notebook a link led to, or
+  the Links bar's **Back to Graph**, comes back to the Graph. Spread two fingers to zoom it. A library with too
+  many linked pages to draw at once opens the notebooks' browser instead, to pick one notebook's Graph.
+  A notebook's or a folder's menu (its **...** button)
+  has **Leave out of the Graph**: its pages are not drawn in the Graph of all notebooks (a folder's covers
+  everything in it); **Show in the Graph** brings them back.
   Swipe up with two fingers for the page-status panel: notebook name, page count, link areas and
   **Name page** and **Go to page** over the notebook. Page names stay attached when pages move and appear in the PDF table of contents.
   The toolbar's settings cog opens the main Settings menu; Done returns to the notebook.
@@ -444,7 +473,11 @@ tools, undoes and redoes, toggles white ink and turns pages in a notebook. **But
 which controller button does what (tap a row, press the button). For a Bluetooth controller, unpack
 the kindle-hid-passthrough helper into `grimoire/bluetooth` (only its files, never its installer),
 turn on **Bluetooth controller** and **Pair a controller...**; Grimoire runs the helper only while
-it runs. `grimoire/shortcuts.ini` holds the keyboard's mappings. Shortcuts start disabled. See
+it runs. `grimoire/shortcuts.ini` holds the keyboard's mappings. Shortcuts start disabled. A
+keyboard paired with the Kindle has one scheme (2.0.0-beta.2): in the Library Ctrl+N a notebook, Ctrl+F
+a folder, S Share, O Settings, Esc "Exit Grimoire?"; on a page 1 to 0 the tools, Ctrl+L a link, R the
+page's name, Space what two fingers up do, - and + zoom, Ctrl+S saves, Esc closes what is in front or
+goes back to the Library (an Apple keyboard's Cmd works as Ctrl). See
 [the setup, the mappings and the limits](docs/SHORTCUTS.md).
 
 ## Uninstall

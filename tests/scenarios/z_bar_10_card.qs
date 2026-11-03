@@ -6,6 +6,8 @@
 # of them in one step: Delete 2 links (one Undo brings both back), Change where they go... (both to page 5,
 # one Undo). While the bar looks at another page, the hold looks at the bar's own page again first, in the page
 # area's GL16 (no DU strips). Two fingers down close the card and the bar together.
+# (the clock corner held still: its minute's refresh would land among the counted ones)
+clock 1700000000
 wait 3700
 tap 200 400
 wait 300

@@ -315,60 +315,191 @@ struct Pieces<'a> {
     pc: Vec<Option<Vec<Piece>>>,
 }
 
+// ---- floors: scoped erase strokes (docs/FORMAT.md, Scoped erase strokes and floor markers) ----
+//
+// An erase stroke restores toward the paper. One whose layer byte (ext[1]) is g, after the first floor
+// marker of layer g, restores instead toward that layer's floor: the canvas as drawn just before the
+// marker. Over paper the floor is the paper, so it draws what an ordinary one draws; over earlier ink it
+// takes away only the ink drawn after the floor. The lasso writes them (lasso.rs) so that a moved or
+// pasted group's erasing never lightens the ink under it. No page any version before 2.0.0-beta.2 wrote
+// has one (no version wrote ext[1] != 0), and render_layers draws a page with no marker exactly as before.
+
+/// Where a floor marker's one point is: off every page (at most 1986 x 2648) and inside every reader's
+/// -10000..30000 clamp, so it draws nothing in any version.
+pub const FLOOR_MARK_AT: f32 = -8192.0;
+/// Pasting or moving allocates a layer 1 to 255; 0 is the page.
+pub const FLOOR_LAYERS: usize = 256;
+
+/// Whether s is a floor marker: an erase stroke of one point at x <= -5000 and y <= -5000 (its layer
+/// byte names the layer; with 0 it is a dead stroke, as a 1.0.0-beta re-save leaves it).
+pub fn is_floor_marker(s: &Stroke) -> bool {
+    s.tool == TOOL_ERASER && s.pts.len() == 1 && s.pts[0].x <= -5000.0 && s.pts[0].y <= -5000.0
+}
+/// A stroke's layer byte (ext[1]): on an erase stroke 0 = the page, 1 to 255 = scoped to that layer's
+/// floor; on ink always 0.
+#[inline]
+pub fn stroke_layer(s: &Stroke) -> u8 {
+    s.ext[1]
+}
+/// A floor marker of layer g: the precise eraser's default parameters, seed 0 (the round tip), one point
+/// at (FLOOR_MARK_AT, FLOOR_MARK_AT), pressure, tilt and time 0.
+pub fn floor_marker_new(g: u8) -> Box<Stroke> {
+    let mut prm = ToolParams::default();
+    tool_params_default(TOOL_ERASER, &mut prm);
+    let mut s = stroke_new(TOOL_ERASER, &prm, 0);
+    s.ext[1] = g;
+    stroke_append(&mut s, &PenSample { x: FLOOR_MARK_AT, y: FLOOR_MARK_AT, ..Default::default() }, 300.0);
+    s
+}
+/// Each layer's floor: the index of its first marker, or -1.
+pub struct FloorTable {
+    pub at: [i32; FLOOR_LAYERS],
+}
+/// The page's floors, or None for a page with no marker of a layer other than 0 (every page the lasso
+/// never touched: it renders exactly as before). One byte test per stroke.
+pub fn page_floors(p: &Page) -> Option<Box<FloorTable>> {
+    let mut t: Option<Box<FloorTable>> = None;
+    for (i, s) in p.strokes.iter().enumerate() {
+        if s.ext[1] != 0 && is_floor_marker(s) {
+            let t = t.get_or_insert_with(|| Box::new(FloorTable { at: [-1; FLOOR_LAYERS] }));
+            let g = s.ext[1] as usize;
+            if t.at[g] < 0 {
+                t.at[g] = i as i32; // (a later duplicate is ignored)
+            }
+        }
+    }
+    t
+}
+/// Whether the page has floors (page_floors would give some).
+pub fn page_layered(p: &Page) -> bool {
+    p.strokes.iter().any(|s| s.ext[1] != 0 && is_floor_marker(s))
+}
+/// The layer whose floor stroke i restores toward, or 0: the paper (ink, ordinary erase strokes, markers,
+/// and a scoped stroke with no marker of its layer before it).
+pub fn floor_of(p: &Page, f: Option<&FloorTable>, i: usize) -> u8 {
+    let Some(f) = f else { return 0 };
+    let s = &p.strokes[i];
+    if s.ext[1] == 0 || !stroke_is_erase(s) || is_floor_marker(s) {
+        return 0;
+    }
+    let m = f.at[s.ext[1] as usize];
+    if m >= 0 && (m as usize) < i {
+        s.ext[1]
+    } else {
+        0
+    }
+}
+
 // page_render_layers, leaving out the strokes marked in skip and stroke left_out, drawing each stroke
 // from its pieces if ps is given (compaction), and only the tiles of r that mask marks if it is given
 // (page_render_tiles).
-fn render_layers(c: &mut Canvas, p: &Page, region: Rect, dpi: f32, layers: i32, skip: Option<&[bool]>, left_out: i32, mut ps: Option<&mut Pieces>, mask: Option<&Rc<TileMask>>) {
+fn render_layers(c: &mut Canvas, p: &Page, region: Rect, dpi: f32, layers: i32, skip: Option<&[bool]>, left_out: i32, ps: Option<&mut Pieces>, mask: Option<&Rc<TileMask>>) {
+    render_from(c, p, region, dpi, layers, skip, left_out, ps, mask, 0, None);
+}
+
+/// Draws strokes `first..` of p over region onto c, a canvas of the page that already holds it as drawn up
+/// to them (its paper and strokes 0..first): what a paste or a move appended, without drawing the page
+/// again. Erase strokes that restore toward the paper take it from `paper` (the page's paper at page size,
+/// with its row stride; None: white). False, drawing nothing, when a scoped erase stroke from `first` on
+/// has its floor before `first` (only a whole drawing knows that floor): draw the region again instead.
+pub fn page_render_from(c: &mut Canvas, p: &Page, region: Rect, dpi: f32, first: usize, paper: Option<(&Rc<Vec<u8>>, i32)>) -> bool {
+    render_from(c, p, region, dpi, PAGE_LAYER_ALL, None, -1, None, None, first.min(p.strokes.len()), paper)
+}
+
+// A floor's snapshot: its room (taken before the paper is drawn), then the canvas over its rect.
+enum FloorBuf {
+    None,
+    Room(Vec<u8>),
+    Ready(Rc<Vec<u8>>),
+}
+
+// render_layers from stroke `first` (page_render_from); first = 0 is render_layers itself.
+fn render_from(c: &mut Canvas, p: &Page, region: Rect, dpi: f32, layers: i32, skip: Option<&[bool]>, left_out: i32, mut ps: Option<&mut Pieces>, mask: Option<&Rc<TileMask>>, first: usize, paper: Option<(&Rc<Vec<u8>>, i32)>) -> bool {
     let saved = c.clip;
     let r = rect_intersect(region, saved);
     if rect_is_empty(r) {
-        return;
+        return true;
     }
     let n = p.strokes.len();
     // (with a mask, a stroke that draws in none of its tiles there draws nothing)
     let meets = |s: &Stroke| mask.is_none_or(|m| tile_mask_hits(m, rect_intersect(s.bbox, r)));
+    // Floors: None on every page with no marker, which then draws exactly as it always has.
+    let floors = page_floors(p);
+    let fl = floors.as_deref();
+    if let Some(f) = fl {
+        if first > 0 && (first..n).any(|i| floor_of(p, fl, i) != 0 && (f.at[p.strokes[i].ext[1] as usize] as usize) < first) {
+            return false;
+        }
+    }
     // Erase strokes restore the paper under them: with the paper layer, a copy of the paper drawn
-    // here, of the part of r their bboxes reach (u); without it, white.
+    // here, of the part of r their bboxes reach (u); without it, white. (Scoped ones restore toward
+    // their floor instead: a copy of the canvas at its marker, of the part of r theirs reach, ug.)
     let mut u = RECT_EMPTY;
-    if (layers & PAGE_LAYER_PAPER) != 0 && (layers & PAGE_LAYER_INK) != 0 {
+    if first == 0 && (layers & PAGE_LAYER_PAPER) != 0 && (layers & PAGE_LAYER_INK) != 0 {
         for i in 0..n {
-            if drawn(skip, left_out, i) && stroke_is_erase(&p.strokes[i]) && meets(&p.strokes[i]) {
+            if drawn(skip, left_out, i) && stroke_is_erase(&p.strokes[i]) && meets(&p.strokes[i]) && floor_of(p, fl, i) == 0 {
                 u = rect_union(u, rect_intersect(p.strokes[i].bbox, r));
             }
         }
     }
-    // (the room for the copy, taken now and filled after the paper is drawn)
+    let mut ug: Vec<Rect> = Vec::new();
+    let mut fbuf: Vec<FloorBuf> = Vec::new();
+    if fl.is_some() && (layers & PAGE_LAYER_INK) != 0 {
+        ug = vec![RECT_EMPTY; FLOOR_LAYERS];
+        for i in first..n {
+            let g = floor_of(p, fl, i) as usize;
+            if g != 0 && drawn(skip, left_out, i) && meets(&p.strokes[i]) {
+                ug[g] = rect_union(ug[g], rect_intersect(p.strokes[i].bbox, r));
+            }
+        }
+        fbuf = (0..FLOOR_LAYERS).map(|_| FloorBuf::None).collect();
+    }
+    // (the rooms for the copies, taken now and filled after the paper is drawn, and at the markers)
     let mut copy: Option<Vec<u8>> = None;
+    let mut short = false;
     if !rect_is_empty(u) {
         let mut room = Vec::new();
         if room.try_reserve_exact(u.w as usize * u.h as usize).is_ok() {
             copy = Some(room);
         } else {
-            if r.w > 1 || r.h > 1 {
-                // Out of memory: the same pixels in two halves, each with a smaller copy.
-                let mut a = r;
-                let mut b = r;
-                if r.h >= r.w {
-                    a.h = r.h / 2;
-                    b.y += a.h;
-                    b.h -= a.h;
-                } else {
-                    a.w = r.w / 2;
-                    b.x += a.w;
-                    b.w -= a.w;
-                }
-                render_layers(c, p, a, dpi, layers, skip, left_out, ps.as_deref_mut(), mask);
-                render_layers(c, p, b, dpi, layers, skip, left_out, ps.as_deref_mut(), mask);
-                return;
-            }
-            static LOGGED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
-            if !LOGGED.load(std::sync::atomic::Ordering::Relaxed) {
-                qlog!("page: out of memory, erase strokes restore toward white");
-            }
-            LOGGED.store(true, std::sync::atomic::Ordering::Relaxed);
+            short = true;
         }
     }
-    if (layers & PAGE_LAYER_PAPER) != 0 {
+    for g in 1..ug.len() {
+        if !short && !rect_is_empty(ug[g]) {
+            let mut room = Vec::new();
+            if room.try_reserve_exact(ug[g].w as usize * ug[g].h as usize).is_ok() {
+                fbuf[g] = FloorBuf::Room(room);
+            } else {
+                short = true;
+            }
+        }
+    }
+    if short {
+        if r.w > 1 || r.h > 1 {
+            // Out of memory: the same pixels in two halves, each with smaller copies.
+            drop((copy, fbuf));
+            let mut a = r;
+            let mut b = r;
+            if r.h >= r.w {
+                a.h = r.h / 2;
+                b.y += a.h;
+                b.h -= a.h;
+            } else {
+                a.w = r.w / 2;
+                b.x += a.w;
+                b.w -= a.w;
+            }
+            let ok = render_from(c, p, a, dpi, layers, skip, left_out, ps.as_deref_mut(), mask, first, paper);
+            return render_from(c, p, b, dpi, layers, skip, left_out, ps.as_deref_mut(), mask, first, paper) && ok;
+        }
+        static LOGGED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+        if !LOGGED.load(std::sync::atomic::Ordering::Relaxed) {
+            qlog!("page: out of memory, erase strokes restore toward white");
+        }
+        LOGGED.store(true, std::sync::atomic::Ordering::Relaxed);
+    }
+    if first == 0 && (layers & PAGE_LAYER_PAPER) != 0 {
         match mask {
             None => page_paper_render(c, p, r, dpi),
             // Each tile row's runs of marked tiles. (The copy below then holds the paper only there,
@@ -389,7 +520,7 @@ fn render_layers(c: &mut Canvas, p: &Page, region: Rect, dpi: f32, layers: i32, 
         }
     }
     if (layers & PAGE_LAYER_INK) == 0 {
-        return;
+        return true;
     }
     // (shared with each erase stroke's brush: the C hands them all the one buffer)
     let copy: Option<Rc<Vec<u8>>> = copy.map(|mut room| {
@@ -400,14 +531,43 @@ fn render_layers(c: &mut Canvas, p: &Page, region: Rect, dpi: f32, layers: i32, 
         Rc::new(room)
     });
     let mut b = BrushState::default();
-    for i in 0..n {
+    for i in first..n {
         let s: &Stroke = &p.strokes[i];
+        // A floor's snapshot is taken at its marker, drawn or not.
+        if let Some(f) = fl {
+            let g = s.ext[1] as usize;
+            if g != 0 && f.at[g] == i as i32 && !fbuf.is_empty() {
+                if let FloorBuf::Room(mut room) = std::mem::replace(&mut fbuf[g], FloorBuf::None) {
+                    let q = ug[g];
+                    for y in 0..q.h {
+                        let at = ((q.y + y) * c.stride + q.x) as usize;
+                        room.extend_from_slice(&c.px[at..at + q.w as usize]);
+                    }
+                    fbuf[g] = FloorBuf::Ready(Rc::new(room));
+                }
+            }
+        }
         if !drawn(skip, left_out, i) || (s.tool.0 as u32) >= TOOL_COUNT as u32 || !rect_overlaps(s.bbox, r) || !meets(s) {
             continue;
         }
-        // An erase stroke stays inside its bbox, which u covers where it meets r: clipped to u it
-        // draws the same pixels, and it never reads past the copy.
-        canvas_set_clip(c, if copy.is_some() && stroke_is_erase(s) { u } else { r });
+        // What an erase stroke restores toward, and the clip it draws in: its floor's snapshot over ug;
+        // from `first` on, the paper given; else the copy over u. An erase stroke stays inside its bbox,
+        // which its rect covers where it meets r: clipped to it it draws the same pixels, and it never
+        // reads past the copy.
+        let g = floor_of(p, fl, i) as usize;
+        let (clip, rest, rx, ry, rstride) = if g != 0 {
+            let q = ug[g];
+            let buf = match &fbuf[g] {
+                FloorBuf::Ready(b) => Some(b.clone()),
+                _ => None, // (no memory for it: toward white)
+            };
+            (q, buf, q.x, q.y, q.w)
+        } else if first > 0 {
+            (r, paper.map(|(b, _)| b.clone()), 0, 0, paper.map_or(0, |(_, st)| st))
+        } else {
+            (if copy.is_some() && stroke_is_erase(s) { u } else { r }, copy.clone(), u.x, u.y, u.w)
+        };
+        canvas_set_clip(c, clip);
         let pcs: Option<&[Piece]> = match ps.as_deref_mut() {
             Some(ps) => pieces_of(ps, i),
             None => None,
@@ -416,7 +576,7 @@ fn render_layers(c: &mut Canvas, p: &Page, region: Rect, dpi: f32, layers: i32, 
         // Every 128 points is 3-15 ms there, depending on the tool.
         let Some(pcs) = pcs else {
             // whole (also when there was no memory to cut it)
-            stroke_brush_begin(&mut b, s, dpi, copy.clone(), u.x, u.y, u.w);
+            stroke_brush_begin(&mut b, s, dpi, rest, rx, ry, rstride);
             b.mask = mask.cloned();
             for k in 0..s.pts.len() {
                 brush_add(&mut b, c, &s.pts[k]);
@@ -435,7 +595,7 @@ fn render_layers(c: &mut Canvas, p: &Page, region: Rect, dpi: f32, layers: i32, 
             if pc.first != next {
                 b = pc.b.clone();
                 if stroke_is_erase(s) {
-                    brush_set_erase(&mut b, copy.clone(), u.x, u.y, u.w);
+                    brush_set_erase(&mut b, rest.clone(), rx, ry, rstride);
                 }
                 b.mask = mask.cloned();
             }
@@ -450,6 +610,7 @@ fn render_layers(c: &mut Canvas, p: &Page, region: Rect, dpi: f32, layers: i32, 
         work_pump();
     }
     c.clip = saved;
+    true
 }
 
 /// The renderer's own fingerprint: a small fixed page with a stroke of every tool (ink and white),

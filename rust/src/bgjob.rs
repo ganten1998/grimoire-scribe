@@ -24,6 +24,9 @@ pub enum BgKind {
     GraphLayout = 4,
     /// id: notebook, path: "first:last" page indexes; writes the missing small previews.
     PagePreviews = 5,
+    /// id: none, path: root/graph-all.ini; the Graph of all notebooks laid out from the library index
+    /// (libindex) and saved by the child (2.0.0-beta.2).
+    GraphLayoutAll = 6,
 }
 
 /// Queues a job (a queued duplicate, same kind, id and path, is merged). notify: report the result
@@ -147,7 +150,7 @@ pub fn bg_poll_job(done_kind:Option<&mut i32>,mut done_id:Option<&mut FixedStr<S
             let (kind, notify, id) = with(|s| (s.running.kind, s.running_notify,s.running.id));
             if let Some(done)=done_id.as_deref_mut(){*done=id;}
             qlog!("bg: %s pid %d %s", K_KIND_NAMES[kind as usize], pid, if ok { "done" } else { "FAILED" });
-            if notify || kind == BgKind::GraphLayout {
+            if notify || kind == BgKind::GraphLayout || kind == BgKind::GraphLayoutAll {
                 result = if ok { 1 } else { -1 };
             }
             if let Some(d) = done_kind.as_mut() {
@@ -173,7 +176,7 @@ pub fn bg_detach_rest() {
         let mut left = Vec::new();
         let mut i = 0;
         while i < s.q.len() {
-            if matches!(s.q[i].kind, BgKind::CompactPages | BgKind::GraphLayout | BgKind::PagePreviews) {
+            if matches!(s.q[i].kind, BgKind::CompactPages | BgKind::GraphLayout | BgKind::GraphLayoutAll | BgKind::PagePreviews) {
                 left.push(take(&mut s.q, i));
             } else {
                 i += 1;
@@ -231,7 +234,7 @@ struct Job {
     notify: bool,
 }
 
-const K_KIND_NAMES: [&str; 6] = ["export", "compaction", "template", "import", "map layout", "page previews"];
+const K_KIND_NAMES: [&str; 7] = ["export", "compaction", "template", "import", "map layout", "page previews", "library map layout"];
 
 /// bgjob.c's g_q, g_n, g_pid, g_running_notify and g_running.
 struct State {
@@ -277,10 +280,23 @@ fn run_graph(j: &Job) -> i32 {
     graph_layout_job(&mut graph,&mut ini,j.dir.as_str())
 }
 
+// The Graph of all notebooks: the model built from the library index as the parent had it when it forked
+// (it flushed it to graph-index.ini first; read from there if this process never loaded it), the open page
+// left out (it is not kept), then graph_all_layout_job.
+fn run_graph_all(j: &Job) -> i32 {
+    libindex_load();
+    let mut graph = GraphModel::default();
+    if libindex_graph(&mut graph, None, None) != 0 {return -1;}
+    let mut ini = GraphAllIni::default();
+    if graph_all_ini_read_path(j.dir.as_str(),&mut ini) != 0 {return -1;}
+    graph_all_layout_job(&mut graph,&mut ini,j.dir.as_str())
+}
+
 fn run_job(j: &Job) -> i32 {
     match j.kind {
         BgKind::MirrorPdf => run_mirror(j),
         BgKind::GraphLayout => run_graph(j),
+        BgKind::GraphLayoutAll => run_graph_all(j),
         BgKind::PagePreviews => store_build_page_previews(j.id.as_str(),j.dir.as_str(),j.dpi),
         BgKind::CompactPages => bg_compact_pages(j.id.as_str(), j.dpi),
         BgKind::Template => bg_template(j.id.as_str(), j.dir.as_str(), j.dpi),
@@ -334,7 +350,7 @@ fn rank(j: &Job) -> i32 {
         return 0;
     }
     match j.kind {
-        BgKind::GraphLayout => 1,
+        BgKind::GraphLayout | BgKind::GraphLayoutAll => 1,
         BgKind::MirrorPdf => 2,
         BgKind::ImportFolder => 3,
         // (an idle warm-up of the Pages view's previews: after anything asked for, with compaction)

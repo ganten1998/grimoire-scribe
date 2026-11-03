@@ -565,6 +565,21 @@
         const f = (t - a.t) / (b.t - a.t);
         return {x: a.x + (b.x - a.x) * f, y: a.y + (b.y - a.y) * f, state: a.state};
     };
+    // The box the quick ink covers as far as until, in a canvas with k of its pixels to each of the
+    // screen's ({x, y, w, h}, whole pixels, a pixel more each side for the antialiasing), or null.
+    FastInk.prototype.box = function (k, until) {
+        let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+        for (const seg of this.segments) {
+            const s = played(seg, until);
+            if (!s) continue;
+            const r = Math.max(s.from.width, s.to.width) / 2;
+            x0 = Math.min(x0, s.from.x - r, s.to.x - r); y0 = Math.min(y0, s.from.y - r, s.to.y - r);
+            x1 = Math.max(x1, s.from.x + r, s.to.x + r); y1 = Math.max(y1, s.from.y + r, s.to.y + r);
+        }
+        if (x1 < x0) return null;
+        const bx = Math.floor(x0 * k) - 2, by = Math.floor(y0 * k) - 2;
+        return {x: bx, y: by, w: Math.ceil(x1 * k) + 2 - bx, h: Math.ceil(y1 * k) + 2 - by};
+    };
     // Whether anything is still to play after time t (another animation frame is wanted).
     FastInk.prototype.pending = function (t) {
         return this.trail.length > 0 && this.trail[this.trail.length - 1].t > t;
@@ -971,9 +986,10 @@
     }
     // Which picture in picture this browser has: 'document' (Document Picture-in-Picture: the page's
     // own canvases in a window that floats, drawn at its pixels; a secure page only), 'video' (a
-    // video of the picture that the browser floats: Safari, and Chromium on plain http), 'firefox'
-    // (no API, but Firefox floats a video from its own button on it), else 'popout' (a window of
-    // its own, which does not float), or '' for none.
+    // video of the picture that the browser floats: Safari, Chromium on plain http, and Firefox 159
+    // on, which has the API too), 'firefox' (an older Firefox: no API, but Firefox floats a video
+    // from its own button on it), else 'popout' (a window of its own, which does not float), or ''
+    // for none.
     function pipTier(win) {
         if (win.documentPictureInPicture && win.documentPictureInPicture.requestWindow) return 'document';
         const canvas = win.HTMLCanvasElement && win.HTMLCanvasElement.prototype.captureStream;
@@ -981,6 +997,14 @@
             win.HTMLVideoElement.prototype.requestPictureInPicture) return 'video';
         if (canvas && win.navigator && /Firefox\//.test(win.navigator.userAgent || '')) return 'firefox';
         return win.open ? 'popout' : '';
+    }
+    // What asks a canvas capture for its next frame: the track's requestFrame (Chromium, Safari),
+    // else the stream's (Firefox has it on the CanvasCaptureMediaStream, not on the track), else
+    // null: such a browser gets a capture that takes frames by itself (captureStream(30)).
+    function frameRequester(stream, track) {
+        if (track && typeof track.requestFrame === 'function') return () => track.requestFrame();
+        if (stream && typeof stream.requestFrame === 'function') return () => stream.requestFrame();
+        return null;
     }
 
     // A pop-out (or a Document Picture-in-Picture window) adopts the live picture alone (root: its
@@ -1040,7 +1064,7 @@
             filmFit, recordType, H264, filmConfig, filmChoices, annexbNals, annexbSample, avcCOf, mp4Boxes, MP4_SCALE,
             CodecRecorder, readStyle, readSamples, FastInk, Playout, Timeline, inkWidth, PaintAges, shade, INK_LEVEL, areaAverage, DOT_SIZES, DOT_COLORS,
             dotColor, dotSize, liveKeyCode, liveKeyMods, keyEditing, LiveKeyboard, LivePopout, ZOOMS, liveSize, sizeValue,
-            viewSize, zoomStep, anchorScroll, pipTier};
+            viewSize, zoomStep, anchorScroll, pipTier, frameRequester};
         return;
     }
 
@@ -1172,26 +1196,62 @@
     // composeSoon).
     // vpip: video picture in picture's parts and state (vpipMake).
     const vpip = {made: false, on: false, firefox: false, video: null, track: null, out: null, outCtx: null,
-        base: null, baseCtx: null, unit: 1, win: null, away: null, refit: false, keep: 0};
+        base: null, baseCtx: null, unit: 1, win: null, away: null, refit: false, keep: 0, frame: null,
+        over: null, changed: null, whole: true, scratch: null, scratchCtx: null};
     // (rafAsked, tickAsked: a frame asked of each clock and not come yet, so a hidden tab, whose
-    // animation frames wait, piles up no requests.)
+    // animation frames wait, piles up no requests. nowAsked, nowFraming, nowAt, nowHeavy: the same
+    // for a hidden tab's video PiP, below.)
     let frameQueued = false, framing = false, layoutQueued = false, layoutApprox = false, stale = null, dirty = null;
-    let rafAsked = false, tickAsked = false;
-    function frameSoon() {
+    let frameAt = -Infinity, rafAsked = false, tickAsked = false, nowAsked = false, nowFraming = false, nowAt = -Infinity, nowHeavy = false;
+    const NOW_GAP = 8;  // (ms: a hidden PiP's frames for the pen moving on, at most one this often)
+    // light: only the pen moved on (the same state, no new stroke), which may wait for the next.
+    function frameSoon(light) {
         if (framing) return;
         frameQueued = true;
+        // Video PiP while this tab is hidden (behind the floating window, or another tab in front):
+        // no animation frames, and Firefox Nightly 161 slows a hidden tab's timers to once a second,
+        // a Worker's too (measured: the picture changed once a second, its ink up to a second late).
+        // What the streams bring is still read at once, so the frame is drawn as soon as what asked
+        // for it is done: one per network read at most, never one asked by a frame itself. The pen
+        // only moving on draws once NOW_GAP at most (a sample can come every 4 ms); it is never the
+        // last word, as the pen keeps sending while it is near, and leaving is a change of state.
+        if (!light) nowHeavy = true;
+        if (vpip.on && !nowAsked && !nowFraming && activeDocument().hidden) {
+            nowAsked = true;
+            Promise.resolve().then(() => {
+                nowAsked = false;
+                const now = performance.now();
+                if (!nowHeavy && now - nowAt < NOW_GAP) return;  // (still queued: the next read draws it)
+                nowAt = now;
+                nowHeavy = false;
+                nowFraming = true;
+                try { frame(); } finally { nowFraming = false; }
+            });
+        }
         if (!rafAsked) {
             rafAsked = true;
             animationFrame(() => { rafAsked = false; frame(); });
         }
-        if (vpip.on && !tickAsked) {  // (video PiP goes on while this tab is hidden)
+        // (video PiP goes on while this tab is hidden: the ticker's frames then, every 16 ms; while
+        // it shows, animation frames draw it as they draw the page, and the ticker only stands in for
+        // them after two 60 Hz frames, or it drew a second frame between every two, each a capture)
+        if (vpip.on && !tickAsked) {
             tickAsked = true;
-            ticker.after(16, () => { tickAsked = false; frame(); });
+            ticker.after(activeDocument().hidden ? 16 : 34, tick);
+        }
+    }
+    function tick() {
+        tickAsked = false;
+        if (activeDocument().hidden || performance.now() - frameAt >= 30) { frame(); return; }
+        if (frameQueued) {  // (animation frames come: one will draw it; the ticker waits behind it)
+            tickAsked = true;
+            ticker.after(34, tick);
         }
     }
     function frame() {
         if (!frameQueued) return;  // (the other clock came first)
         frameQueued = false;
+        frameAt = performance.now();
         framing = true;
         try {
             if (layoutQueued) layout(layoutApprox);
@@ -1823,23 +1883,27 @@
             presentSoon(0, 0, raw.width, raw.height);
         }
     }
-    function penSoon() {
+    function penSoon(light) {
         penQueued = true;
-        frameSoon();
+        frameSoon(light);
     }
     // The quick ink and the dot as far as the playout has reached (until), and again at the next frame
     // while samples are still to play. A sample's age counts as it shows. On the page, on inkLayer
     // and penLayer over view; in video PiP, on its film over its picture, sent as one video frame.
+    // In a hidden tab's video PiP the frames come only as the samples do (frameSoon), so there is
+    // nothing to pace and nothing to come back for: all that has come is drawn (until undefined),
+    // the dot where the newest sample is. The playout's clock still runs, for when the tab shows.
     function drawPen() {
         penQueued = false;
-        const now = performance.now(), until = fastConnected ? playout.clock(now) : undefined;
+        const now = performance.now(), clock = fastConnected ? playout.clock(now) : undefined;
+        const until = vpip.on && activeDocument().hidden ? undefined : clock;
         let i = 0;
         while (i < paintSamples.length && !(until < paintSamples[i].t)) i++;
         if (debug) for (const s of paintSamples.slice(0, i)) ages.add(ages.samples, now, s.ms);
         paintSamples.splice(0, i);
         showAges();
         if (fastConnected) {
-            const at = dotShown() && until !== undefined ? ink.penAt(until) : null;
+            const at = !dotShown() ? null : until === undefined ? ink.pen : ink.penAt(until);
             if (!samePen(at, pen)) placePen(at);
             if (ink.pending(until)) penSoon();
         }
@@ -1859,16 +1923,40 @@
         penShown = m && m.box;
         if (m) drawMark(penCtx, m);
     }
-    // Video PiP's frame: its picture, the quick ink and the dot laid in out, sent as one frame.
+    // Video PiP's frame: its picture, the quick ink and the dot laid in out, sent as one frame. Only
+    // what changed is drawn again: where the last frame laid the quick ink and the dot (vpip.over),
+    // what of the picture changed since (vpip.changed, from present) and where they go now; all of
+    // it after a refit, a new look or a new window (vpip.whole). At a large PiP window out has
+    // millions of pixels; while every frame drew them all (before 2.0.0-beta.2) the owner measured
+    // the pen 15 to 23 ms later there than on the page, more the larger the window.
     function vpipDraw(until) {
         const c = vpip.outCtx, w = vpip.out.width, h = vpip.out.height, k = w / raw.width;
-        c.fillStyle = 'rgb(' + (inverted() ? [0, 0, 0] : light).join(',') + ')';  // (a video has no transparency)
-        c.fillRect(0, 0, w, h);
-        c.drawImage(vpip.base, 0, 0);
-        if (drawable()) ink.draw(c, k, {invert: inverted(), clear, light, exclude: layerOn[0]}, inkScratch(w, h), until);
+        const inkBox = drawable() ? ink.box(k, until) : null;
         const m = showPen ? penMark(pen, k, vpip.unit) : null;
-        if (m) drawMark(c, m);
-        if (vpip.track && vpip.track.requestFrame) vpip.track.requestFrame();
+        const over = [inkBox, m && m.box].reduce((a, b) => !b ? a : a ? union(a, b) : b, null);
+        let box = vpip.whole ? {x: 0, y: 0, w, h} : [vpip.over, vpip.changed, over].reduce((a, b) => !b ? a : a ? union(a, b) : b, null);
+        vpip.whole = false;
+        vpip.changed = null;
+        vpip.over = over;
+        if (box) {
+            const x0 = Math.max(0, box.x), y0 = Math.max(0, box.y);
+            const x1 = Math.min(w, box.x + box.w), y1 = Math.min(h, box.y + box.h);
+            box = x1 > x0 && y1 > y0 ? {x: x0, y: y0, w: x1 - x0, h: y1 - y0} : null;
+        }
+        if (box) {
+            c.save();
+            c.beginPath();
+            c.rect(box.x, box.y, box.w, box.h);
+            c.clip();
+            c.fillStyle = 'rgb(' + (inverted() ? [0, 0, 0] : light).join(',') + ')';  // (a video has no transparency)
+            c.fillRect(box.x, box.y, box.w, box.h);
+            c.drawImage(vpip.base, box.x, box.y, box.w, box.h, box.x, box.y, box.w, box.h);
+            if (vpip.scratch.width !== w || vpip.scratch.height !== h) { vpip.scratch.width = w; vpip.scratch.height = h; }
+            if (inkBox) ink.draw(c, k, {invert: inverted(), clear, light, exclude: layerOn[0]}, {canvas: vpip.scratch, ctx: vpip.scratchCtx}, until);
+            if (m) drawMark(c, m);
+            c.restore();
+            if (vpip.frame) vpip.frame();
+        }
     }
     function samePen(a, b) { return a === b || (!!a && !!b && a.x === b.x && a.y === b.y && a.state === b.state); }
     // The pen moved, came, went, or was switched off: on the page at the next frame, in film now (it
@@ -2024,8 +2112,12 @@
         const d = dirty;
         dirty = null;
         if (!raw.width || !d) return;
-        if (vpip.on) averageInto(vpip.baseCtx, vpip.base, d);
-        else averageInto(viewCtx, view, d);
+        if (vpip.on) {
+            averageInto(vpip.baseCtx, vpip.base, d);
+            const k = vpip.out.width / raw.width, x = Math.floor(d.x * k) - 1, y = Math.floor(d.y * k) - 1;
+            const r = {x, y, w: Math.ceil((d.x + d.w) * k) + 1 - x, h: Math.ceil((d.y + d.h) * k) + 1 - y};
+            vpip.changed = vpip.changed ? union(vpip.changed, r) : r;
+        } else averageInto(viewCtx, view, d);
     }
     // A rect of shown into a canvas of its size or smaller: each pixel the mean of what it covers
     // (areaAverage), only those the rect reaches; one of the Kindle's pixels each, a copy of the rect.
@@ -2128,15 +2220,26 @@
     function vpipMake() {
         if (vpip.made || (tier !== 'video' && tier !== 'firefox') || !raw.width) return;
         vpip.made = true;
+        // (In memory, as shown is: the capture takes each frame from out, which on the GPU can mean
+        // reading all its pixels back at every frame; base is written from memory, putImageData.)
         vpip.base = document.createElement('canvas');
-        vpip.baseCtx = vpip.base.getContext('2d');
+        vpip.baseCtx = vpip.base.getContext('2d', cpu);
         vpip.out = document.createElement('canvas');
-        vpip.outCtx = vpip.out.getContext('2d', {alpha: false});
+        vpip.outCtx = vpip.out.getContext('2d', {alpha: false, willReadFrequently: true});
+        vpip.scratch = document.createElement('canvas');
+        vpip.scratchCtx = vpip.scratch.getContext('2d', cpu);
         try {
             // (Firefox floats only a video that is playing: frames as the canvas changes, at most 30 a
             // second, plus the keepalive below; elsewhere frames only when vpipDraw asks for one.)
-            const stream = vpip.out.captureStream(tier === 'firefox' ? 30 : 0);
-            vpip.track = stream.getVideoTracks()[0];
+            let stream = vpip.out.captureStream(tier === 'firefox' ? 30 : 0);
+            let track = stream.getVideoTracks()[0];
+            vpip.frame = frameRequester(stream, track);
+            if (!vpip.frame && tier !== 'firefox') {  // (no way to ask for frames: one that takes them)
+                if (track && track.stop) track.stop();
+                stream = vpip.out.captureStream(30);
+                track = stream.getVideoTracks()[0];
+            }
+            vpip.track = track;
             const v = vpip.video = document.createElement('video');
             v.className = 'pipvideo';
             v.muted = true;
@@ -2165,13 +2268,20 @@
         vpip.out.width = vpip.base.width = ow;
         vpip.out.height = vpip.base.height = oh;
         averageInto(vpip.baseCtx, vpip.base, {x: 0, y: 0, w: raw.width, h: raw.height});
+        vpip.whole = true;
     }
     function vpipOpen() {
         vpipMake();
         if (!vpip.video) return;
         let asked;
-        try { asked = vpip.video.requestPictureInPicture(); } catch (e) { return; }
-        asked.then(w => vpipOn(w), () => {});
+        try { asked = vpip.video.requestPictureInPicture(); } catch (e) { vpipRefused(e); return; }
+        asked.then(w => vpipOn(w), vpipRefused);
+    }
+    // The browser would not float the video. Firefox still floats it from its own button (the
+    // video in the page, as an older Firefox does); elsewhere nothing changes, as before.
+    function vpipRefused(e) {
+        if (vpip.on || (e && e.name === 'AbortError')) return;
+        if (/Firefox\//.test((window.navigator && window.navigator.userAgent) || '')) vpipFirefox();
     }
     // Firefox: the video in the page in the picture's place, for its own picture-in-picture button
     // (shown while the pointer is on it, or in its context menu); Bring back ends it.
@@ -2203,9 +2313,10 @@
         vpip.keep = setInterval(() => {
             if (!vpip.on || !vpip.track) return;
             vpip.outCtx.drawImage(vpip.out, 0, 0);
-            if (vpip.track.requestFrame) vpip.track.requestFrame();
+            if (vpip.frame) vpip.frame();
         }, 1000);
         averageInto(vpip.baseCtx, vpip.base, {x: 0, y: 0, w: raw.width, h: raw.height});
+        vpip.whole = true;
         if (vpip.video.paused && vpip.video.play) {  // (a browser may have paused it, unseen in the page)
             const played = vpip.video.play();
             if (played && played.catch) played.catch(() => {});
@@ -2465,7 +2576,7 @@
     // The pen stream until it ends: 'bye' when Live view was turned off on the Kindle.
     async function readFast(reader) {
         const frames = new Frames();
-        let style = null;
+        let style = null, penState = -1;  // (penState: the last sample's, for penSoon's light)
         for (;;) {
             const {value, done} = await reader.read();
             if (done) return null;
@@ -2492,7 +2603,10 @@
                         if (paintedInk === penEpoch) ink.reconcile(paintedAck, paintedAckMs);
                     }
                     const now = performance.now();
+                    let turned = false;  // (a new stroke, a gap, or the pen came, touched, lifted or went)
                     for (const sample of packet.samples) {
+                        if (sample.state !== penState || (sample.flags & 12)) turned = true;
+                        penState = sample.state;
                         if (ink.heard(now, sample.ms)) {
                             playout.reset();
                             paintSamples = [];
@@ -2509,7 +2623,7 @@
                     // The dot plays out at the next frames (drawPen); a hidden tab has none, so a
                     // recording takes the newest place at once.
                     if (activeDocument().hidden) placePen(dotShown() ? ink.pen : null);
-                    penSoon();
+                    penSoon(!turned);
                 } else if (type === 5 && body[0] !== 0) {
                     ink.reset();
                     paintSamples = [];

@@ -25,6 +25,10 @@ pub enum ActKind {
     Link = 4,
     /// A stroke replaced by a snapped shape; owns the version off the page.
     Replace = 5,
+    /// A lasso gesture (Move, Paste, Cut, Delete): the selected ink taken off (`indices`/`ids`/`owned`,
+    /// owned while the step is done), the group put at the end (`added`, owned while undone), and the
+    /// carried links' records (`link`), one step for all of it.
+    Lasso = 6,
 }
 
 /// One link as an undo step keeps it: what nav_link_put needs to restore it exactly (its page is the
@@ -65,6 +69,9 @@ pub struct Action {
     /// The page pixels this step changed (Patch), when the editor took them: undo and redo swap them
     /// with the page canvas instead of drawing the region again.
     pub patch: Option<Box<Patch>>,
+    /// ActKind::Lasso: the strokes it put on the page, as an Add of them all (on the page while the
+    /// step is done, owned while it is undone).
+    pub added: Option<Box<Action>>,
 }
 
 /// Page pixels a step changed, kept in square tiles of the page canvas: the ones under it while it is
@@ -313,6 +320,63 @@ pub fn history_push_replace(h: &mut History, page: &mut Page, index: i32, shape:
     dirty
 }
 
+/// Records a lasso gesture ALREADY applied to the page: the ink taken off (`indices` ascending, their
+/// places before the gesture, `removed` the strokes, now owned by the step), and the strokes appended
+/// (`added`: they are the page's last `added` strokes now), with the carried links' records (already in
+/// the Nav and saved). Nothing taken off and nothing added: no step.
+pub fn history_push_lasso(h: &mut History, p: &Page, indices: &[i32], removed: Vec<Box<Stroke>>, added: usize, links: Option<LinkEdit>) {
+    let added = added.min(p.strokes.len());
+    let at: Vec<usize> = (p.strokes.len() - added..p.strokes.len()).collect();
+    history_push_lasso_at(h, p, indices, removed, &at, links);
+}
+
+/// history_push_lasso for strokes added anywhere (ascending page indices `added_at`, after the gesture):
+/// an exact-area move or delete leaves a cut stroke's outside pieces at its place, and only those and
+/// the placed group are added; `removed` are the cut originals and the ink taken whole, at their indices
+/// before the gesture (ascending). Undo takes the added strokes off and puts the removed back; redo the
+/// reverse; one step, its canvas patch swapped.
+pub fn history_push_lasso_at(h: &mut History, p: &Page, indices: &[i32], removed: Vec<Box<Stroke>>, added_at: &[usize], links: Option<LinkEdit>) {
+    debug_assert_eq!(indices.len(), removed.len(), "one index for each stroke removed");
+    debug_assert!(added_at.windows(2).all(|w| w[0] < w[1]), "added indices ascending");
+    let added_at: Vec<usize> = added_at.iter().copied().filter(|&k| k < p.strokes.len()).collect();
+    if indices.is_empty() && added_at.is_empty() && links.as_ref().is_none_or(|e| e.records.is_empty()) {
+        return;
+    }
+    let add = Action {
+        kind: ActKind::Add,
+        indices: added_at.iter().map(|&k| k as i32).collect(),
+        ids: added_at.iter().map(|&k| stroke_id(&p.strokes[k])).collect(),
+        ..Default::default()
+    };
+    let a = Action {
+        kind: ActKind::Lasso,
+        indices: indices.to_vec(),
+        ids: removed.iter().map(|s| stroke_id(s)).collect(),
+        owns: !removed.is_empty(),
+        owned: removed,
+        link: links.filter(|e| !e.records.is_empty()).map(Box::new),
+        added: Some(Box::new(add)),
+        ..Default::default()
+    };
+    push_undo(h, a);
+}
+
+/// Marks in `used` the layers (ext[1]) of the strokes h's steps own, off the page: a paste or a move never
+/// gives a floor a layer that an undo or a redo could bring back.
+pub fn history_layers_in_use(h: &History, used: &mut [bool; FLOOR_LAYERS]) {
+    fn mark(a: &Action, used: &mut [bool; FLOOR_LAYERS]) {
+        for s in &a.owned {
+            used[s.ext[1] as usize] = true;
+        }
+        if let Some(b) = a.added.as_deref() {
+            mark(b, used);
+        }
+    }
+    for a in h.undo.iter().chain(h.redo.iter()) {
+        mark(a, used);
+    }
+}
+
 /// Records a link step ALREADY applied to the Nav and saved (push only after nav_save_links returned
 /// 0). No records: no step. Like every push it clears redo, and the limit drops the oldest step,
 /// a link step's records with it.
@@ -371,14 +435,19 @@ fn find_stroke(p: &Page, id: StrokeId, hint: i32) -> i32 {
 // The boxes of the action's strokes, wherever they are: in the action, or on the page (the C reads
 // them through the pointers, which are good either way). A stroke that was dropped (id 0: put_back's
 // insert failed and freed it) or is nowhere is left out.
+// (A floor marker (page.rs) draws nothing and sits off the page at FLOOR_MARK_AT: its box is left out,
+// as lasso::strokes_box does, so a lasso step's dirty rect is its ink's, not a page-sized rect that
+// would take a full refresh and a whole-page redraw.)
 fn bbox_of(a: &Action, p: &Page) -> Rect {
-    let mut r = RECT_EMPTY;
+    let mut r = a.added.as_deref().map_or(RECT_EMPTY, |b| bbox_of(b, p));
     if a.owns {
         let mut owned = a.owned.iter();
         for i in 0..a.ids.len() {
             if a.ids[i] != 0 {
                 if let Some(s) = owned.next() {
-                    r = rect_union(r, s.bbox);
+                    if !is_floor_marker(s) {
+                        r = rect_union(r, s.bbox);
+                    }
                 }
             }
         }
@@ -389,7 +458,7 @@ fn bbox_of(a: &Action, p: &Page) -> Rect {
             continue;
         }
         let at = find_stroke(p, a.ids[i], a.indices[i]);
-        if at >= 0 {
+        if at >= 0 && !is_floor_marker(&p.strokes[at as usize]) {
             r = rect_union(r, p.strokes[at as usize].bbox);
         }
     }
@@ -478,6 +547,22 @@ fn apply(a: &mut Action, p: &mut Page, dirty: &mut Rect, undo: bool) -> bool {
         ActKind::Link => {
             // (the page is untouched: the editor applies the records to the Nav)
             *dirty = RECT_EMPTY;
+        }
+        ActKind::Lasso => {
+            *dirty = bbox_of(a, p);
+            let mut add = a.added.take();
+            if undo {
+                if let Some(b) = add.as_deref_mut() {
+                    take_off(b, p);
+                }
+                put_back(a, p);
+            } else {
+                take_off(a, p);
+                if let Some(b) = add.as_deref_mut() {
+                    put_back(b, p);
+                }
+            }
+            a.added = add;
         }
     }
     true

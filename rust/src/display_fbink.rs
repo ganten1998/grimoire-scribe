@@ -6,6 +6,7 @@
 //!   FAST -> DU   (in pen mode on MTK: the driver's path for handwriting, see below)
 //!   UI   -> GL16 (partial, no flash)
 //!   FULL -> GC16 + flash
+//!   CLEAN -> GC16 + flash of the rect alone (wipes DU's traces there, issue #11)
 //! "Fast mode" (no automatic REAGL promotion) is enabled for the session like KOReader does on
 //! the Scribe, so large partial refreshes keep the waveform we ask for.
 //!
@@ -101,7 +102,7 @@ struct State {
     // same conditions: the same pages, the same hand).
     g_ab: bool,
     g_strokes: u32,
-    g_count: [i32; 3],
+    g_count: [i32; 4],
     g_fail: i32,
     g_ok: i32,
     g_stats_at: u32,
@@ -173,7 +174,7 @@ impl State {
             g_pen_busy_noted: false,
             g_ab: false,
             g_strokes: 0,
-            g_count: [0; 3],
+            g_count: [0; 4],
             g_fail: 0,
             g_ok: 0,
             g_stats_at: 0,
@@ -908,6 +909,10 @@ pub fn display_open(w: &mut i32, h: &mut i32, dpi: &mut f32) -> i32 {
             if have_v { v.height } else { 0 },
             &mut from,
         );
+        // Seyes paper is drawn true to size at the panel's own density (paper_set_panel_ppi).
+        let panel = if have_v { fbcheck_panel_ppi(v.xres, v.yres, v.width, v.height) } else { 0.0 };
+        let k = crate::paper::paper_set_panel_ppi(panel, d);
+        qlog!("display: the panel is %.1f dpi by its size; Seyes paper drawn at x%.4f", panel as f64, k as f64);
         if from == DpiSource::PanelSize {
             qlog!(
                 concat!(
@@ -1026,10 +1031,11 @@ fn send_refresh(s: &mut State, r: Rect, mode: RefreshMode, wfm: i32, flashing: b
     if now_ms().wrapping_sub(s.g_stats_at) > 30000 {
         s.g_stats_at = now_ms();
         qlog!(
-            "display: refreshes so far: fast %d, ui %d, full %d, failed %d",
+            "display: refreshes so far: fast %d, ui %d, full %d, clean %d, failed %d",
             s.g_count[0],
             s.g_count[1],
             s.g_count[2],
+            s.g_count[3],
             s.g_fail
         );
     }
@@ -1088,11 +1094,13 @@ pub fn display_present(screen: &Canvas, r: Rect, mode: RefreshMode) {
         } else if mode == RefreshMode::Full || rect_contains_rect(r, s.g_live_area) {
             s.g_live_area = RECT_EMPTY;
         }
-        let flashing = mode == RefreshMode::Full;
+        // (Clean: a flashing GC16 update of the rect alone, every pixel in it driven, as KOReader's
+        // "flashui" refreshes are; Full flashes the whole panel)
+        let flashing = mode == RefreshMode::Full || mode == RefreshMode::Clean;
         let wfm = match mode {
             RefreshMode::Fast => ffi::GRIM_WFM_DU,
             RefreshMode::Ui => ffi::GRIM_WFM_GL16,
-            RefreshMode::Full => ffi::GRIM_WFM_GC16,
+            RefreshMode::Full | RefreshMode::Clean => ffi::GRIM_WFM_GC16,
         };
         let whole_frame = rect_contains_rect(r, Rect { x: 0, y: 0, w: s.LW, h: s.LH });
         let mut r = if mode == RefreshMode::Full { Rect { x: 0, y: 0, w: s.PW, h: s.PH } } else { fb_rect(s, r) };

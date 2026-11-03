@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: Grimoire 2.0.0-beta.1\n"
 "Report-Msgid-Bugs-To: https://github.com/ganten1998/grimoire-scribe/issues\n"
-"POT-Creation-Date: 2026-10-31 17:00-0500\n"
+"POT-Creation-Date: 2026-11-03 15:47-0600\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -436,6 +436,104 @@ msgstr ""
 msgid "Zoom with the pen"
 msgstr ""
 
+#. TRANSLATORS: (Buttons sheet) Select mode on or off: the pen draws a lasso around ink to copy, cut,
+#. paste or move it.
+#: rust/src/actions.rs
+msgid "Select (lasso)"
+msgstr ""
+
+#. TRANSLATORS: (Gestures and shortcuts lists, about 1100 px at 44 px in bold) Select mode with a lasso
+#. that cuts strokes along its line (exact area); with Select mode on, it switches between whole
+#. strokes and exact area.
+#: rust/src/actions.rs
+msgid "Select exact area"
+msgstr ""
+
+#. TRANSLATORS: (Gestures and shortcuts lists, about 1100 px at 44 px in bold) opens the count pad that
+#. adds several blank pages at once after the open page, which stays open.
+#: rust/src/actions.rs
+msgid "New pages..."
+msgstr ""
+
+#. TRANSLATORS: (the keyboard shortcuts lists, about 1100 px at 44 px in bold) Ctrl+S: the open page and
+#. its notebook written now (in the Library, any setting waiting), with a toast "Saved".
+#: rust/src/actions.rs
+msgid "Save now"
+msgstr ""
+
+#. TRANSLATORS: (the keyboard shortcuts lists, about 1100 px at 44 px in bold) Esc: what is in front closes
+#. (a dialog, a menu, a selection), else back to the Library, and there "Exit Grimoire?".
+#: rust/src/actions.rs
+msgid "Back or close"
+msgstr ""
+
+#. TRANSLATORS: (the keyboard shortcuts lists, about 1100 px at 44 px in bold) Space on a page: does what
+#. two fingers swiped up do (at first, the Links bar). (No gesture does it: it is a gesture's own.)
+#: rust/src/actions.rs
+msgid "What two fingers up do"
+msgstr ""
+
+#. TRANSLATORS: (the keyboard shortcuts lists, about 1100 px at 44 px in bold) Ctrl+N in the Library: the
+#. New notebook sheet, as the top bar's New button.
+#. TRANSLATORS: the title of the sheet that makes a notebook, and its heading over the papers.
+#: rust/src/actions.rs rust/src/library.rs
+msgid "New notebook"
+msgstr ""
+
+#. TRANSLATORS: (the keyboard shortcuts lists, about 1100 px at 44 px in bold) Ctrl+F in the Library: a new
+#. folder's name keyboard, as the top bar's Folder button.
+#: rust/src/actions.rs
+msgid "New folder"
+msgstr ""
+
+#. TRANSLATORS: (the keyboard shortcuts lists, about 1100 px at 44 px in bold) S in the Library: the
+#. Share screen, as the top bar's Share button.
+#: rust/src/actions.rs rust/src/library.rs
+msgid "Share"
+msgstr ""
+
+#. TRANSLATORS: (the keyboard shortcuts lists, about 1100 px at 44 px in bold) O in the Library: the
+#. Settings sheet, as the top bar's Settings button.
+#: rust/src/actions.rs rust/src/library.rs
+msgid "Settings"
+msgstr ""
+
+#. TRANSLATORS: (the Keyboard shortcuts list, about 1100 px at 44 px in bold) ticks every page in the Pages
+#. view (and selects every node in the Graph): the same words as the Pages view's Select all button.
+#: rust/src/actions.rs rust/src/pagesview.rs
+msgid "Select all"
+msgstr ""
+
+#. TRANSLATORS: (shortcuts lists, about 1100 px at 44 px in bold) in the Graph, its view button's action:
+#. View: All and View: Adjacent in turn (all notebooks' pages, or the pages around one).
+#: rust/src/actions.rs
+msgid "Graph view: All or Adjacent"
+msgstr ""
+
+#. TRANSLATORS: (shortcuts lists, about 1100 px at 44 px in bold) in the Graph, the left arrow: the view moves
+#. left (the map slides the other way). Right, up and down follow.
+#: rust/src/actions.rs
+msgid "Move the Graph left"
+msgstr ""
+
+#. TRANSLATORS: (shortcuts lists, about 1100 px at 44 px in bold) in the Graph, the right arrow: the view moves
+#. right (the map slides the other way).
+#: rust/src/actions.rs
+msgid "Move the Graph right"
+msgstr ""
+
+#. TRANSLATORS: (shortcuts lists, about 1100 px at 44 px in bold) in the Graph, the up arrow: the view moves
+#. up (the map slides the other way).
+#: rust/src/actions.rs
+msgid "Move the Graph up"
+msgstr ""
+
+#. TRANSLATORS: (shortcuts lists, about 1100 px at 44 px in bold) in the Graph, the down arrow: the view moves
+#. down (the map slides the other way).
+#: rust/src/actions.rs
+msgid "Move the Graph down"
+msgstr ""
+
 #. TRANSLATORS: the name of a notebook that has none (it is saved with it, as a name given).
 #: rust/src/annotate.rs rust/src/store.rs rust/src/ui.rs
 msgid "Untitled"
@@ -594,6 +692,13 @@ msgstr[1] ""
 #: rust/src/app.rs
 #, c-format
 msgid "Could not import a folder of pages (see %s)."
+msgstr ""
+
+#. TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines) once, at the first start of a new
+#. version, when shortcuts.ini was the starter map an earlier version wrote (nobody had edited it): it has
+#. this version's keys now.
+#: rust/src/app.rs
+msgid "Keyboard shortcuts: the new starter keys are in shortcuts.ini."
 msgstr ""
 
 #. TRANSLATORS: a PDF saved in the background, and where (the Kindle's folder of them).
@@ -1141,6 +1246,13 @@ msgctxt "panel"
 msgid "Pin"
 msgstr ""
 
+#. TRANSLATORS: the tool picker's button beside Pin that starts Select mode (the lasso that selects
+#. ink to copy, cut, paste or move); 116 px at 34 px, the button widens for a longer word.
+#: rust/src/editor.rs
+msgctxt "panel"
+msgid "Select"
+msgstr ""
+
 #. TRANSLATORS: the tool picker's title while it chooses the pens pinned to the toolbar under the
 #. tool button: a tap pins a pen or unpins it; %d is how many can be (3). About 700 px at 44 px
 #. in bold, or two lines at 34 px. Normally the title is Tools.
@@ -1309,6 +1421,154 @@ msgstr ""
 #, c-format
 msgid "This page is a copy of page %d."
 msgstr ""
+
+#. TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): Move to... could not save
+#. the notebook's new page order (the storage is full).
+#: rust/src/editor.rs
+msgid "Could not move those pages."
+msgstr ""
+
+#. TRANSLATORS: a toast as Move to... is done (about 1700 px at 44 px in bold, or two lines): %d pages
+#. moved; they now start at page %d.
+#: rust/src/editor.rs
+#, c-format
+msgid "Moved %d page: it is page %d now."
+msgid_plural "Moved %d pages: they start at page %d now."
+msgstr[0] ""
+msgstr[1] ""
+
+#. TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): the Pages view's Undo could
+#. not put the moved pages back (the storage is full).
+#: rust/src/editor.rs
+msgid "Could not undo the move."
+msgstr ""
+
+#. TRANSLATORS: a toast as the Pages view's Undo put moved pages back where they were (about 1700 px
+#. at 44 px in bold).
+#: rust/src/editor.rs
+msgid "Move undone: the pages are back in their order."
+msgstr ""
+
+#. TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): New page held, in a notebook
+#. that already has the most pages a notebook can have (%d).
+#: rust/src/editor.rs rust/src/pagesview.rs
+#, c-format
+msgid "This notebook is full: it has %d pages."
+msgstr ""
+
+#. TRANSLATORS: a toast while New page's batch is being written (about 1700 px at 44 px in bold, or
+#. two lines): %d blank pages are being added; it can take a minute for many.
+#: rust/src/editor.rs
+#, c-format
+msgid "Adding %d page..."
+msgid_plural "Adding %d pages..."
+msgstr[0] ""
+msgstr[1] ""
+
+#. TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): New page's batch could not
+#. add the pages (the storage is full); none was added.
+#: rust/src/editor.rs
+msgid "Could not add those pages: none was added."
+msgstr ""
+
+#. TRANSLATORS: a toast as New page's batch is done (about 1700 px at 44 px in bold, or two lines): %d
+#. blank pages added; the first of them is page %d.
+#: rust/src/editor.rs
+#, c-format
+msgid "Added %d page: it is page %d."
+msgid_plural "Added %d pages: they start at page %d."
+msgstr[0] ""
+msgstr[1] ""
+
+#. TRANSLATORS: the title in New page's count pad (bold, 44 px, about 700 px): how many blank pages to
+#. add at once, typed on the number pad or changed by one with its - and + keys.
+#: rust/src/editor.rs rust/src/pagesview.rs
+msgid "Pages to add"
+msgstr ""
+
+#. TRANSLATORS: a toast over New page's count pad (about 1700 px at 44 px in bold, or two
+#. lines): the count typed (or +) went past what the notebook can still take (a notebook
+#. holds 2000 pages at most), so the count stays at that; %d is how many more it takes.
+#: rust/src/editor.rs rust/src/pagesview.rs
+#, c-format
+msgid "This notebook has room for %d more page."
+msgid_plural "This notebook has room for %d more pages."
+msgstr[0] ""
+msgstr[1] ""
+
+#. TRANSLATORS: a toast as the toolbar's batch of new pages is done (about 1700 px at 44 px in bold, or two
+#. lines): %d blank pages added right after the page that stays open; the first of them is page %d. The
+#. Pages view (its bottom row's Undo) takes them back while they are still blank.
+#: rust/src/editor.rs
+#, c-format
+msgid "Added %d page after this one: page %d. Undo it in Pages."
+msgid_plural "Added %d pages after this one, from page %d. Undo them in Pages."
+msgstr[0] ""
+msgstr[1] ""
+
+#. TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): the Pages view's Undo could
+#. not take back the pages a batch added (one was written on, linked or named since, or the storage
+#. is full).
+#: rust/src/editor.rs
+msgid "Could not undo: those pages are in use."
+msgstr ""
+
+#. TRANSLATORS: a toast as the Pages view's Undo took back the blank pages a batch added (about 1700 px
+#. at 44 px in bold): %d of them.
+#: rust/src/editor.rs
+#, c-format
+msgid "Undone: %d new page taken back."
+msgid_plural "Undone: %d new pages taken back."
+msgstr[0] ""
+msgstr[1] ""
+
+#. TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): the Pages view's Redo could not
+#. do the page move or the new pages again (the storage is full).
+#: rust/src/editor.rs
+msgid "Could not redo that."
+msgstr ""
+
+#. TRANSLATORS: a toast as the Pages view's Redo moved pages again as the undone move had (about
+#. 1700 px at 44 px in bold).
+#: rust/src/editor.rs
+msgid "Move redone: the pages are where you moved them."
+msgstr ""
+
+#. TRANSLATORS: a toast as the Pages view's Redo added again the blank pages its Undo took back (about
+#. 1700 px at 44 px in bold, or two lines): %d of them; the first is page %d.
+#: rust/src/editor.rs
+#, c-format
+msgid "Redone: %d new page again, page %d."
+msgid_plural "Redone: %d new pages again, from page %d."
+msgstr[0] ""
+msgstr[1] ""
+
+#: rust/src/editor.rs
+msgid "Could not read the notebooks."
+msgstr ""
+
+#. TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): Copy to notebook... copied
+#. nothing (the storage is full, a page does not read, or that notebook has 2000 pages).
+#: rust/src/editor.rs
+msgid "Could not copy those pages."
+msgstr ""
+
+#. TRANSLATORS: a toast as Copy to notebook... is done (about 1700 px at 44 px in bold, or two
+#. lines): %d pages copied into the notebook named %s.
+#: rust/src/editor.rs
+#, c-format
+msgid "Copied %d page to %s."
+msgid_plural "Copied %d pages to %s."
+msgstr[0] ""
+msgstr[1] ""
+
+#. TRANSLATORS: the same toast when the page names and links could not be saved there.
+#: rust/src/editor.rs
+#, c-format
+msgid "Copied %d page to %s, without its names and links."
+msgid_plural "Copied %d pages to %s, without their names and links."
+msgstr[0] ""
+msgstr[1] ""
 
 #. TRANSLATORS: the same strip for the long-press card's Redraw the area (about 1400 px at 44 px in
 #. bold): the next pen stroke draws the link's new area, and leaves no ink.
@@ -1512,7 +1772,7 @@ msgstr ""
 msgid "Saving..."
 msgstr ""
 
-#: rust/src/editor.rs
+#: rust/src/editor.rs rust/src/library.rs rust/src/pensettings.rs
 msgid "Saved"
 msgstr ""
 
@@ -1608,10 +1868,6 @@ msgid ""
 msgstr ""
 
 #: rust/src/editor.rs
-msgid "Could not read the notebooks."
-msgstr ""
-
-#: rust/src/editor.rs
 msgid "That notebook or page is no longer available."
 msgstr ""
 
@@ -1621,6 +1877,131 @@ msgstr ""
 
 #: rust/src/editor.rs
 msgid "Could not open that page."
+msgstr ""
+
+#. TRANSLATORS: Select mode's bar under a selection (a button, about 220 px at 44 px): copies the
+#. selected ink to the clipboard.
+#: rust/src/editor/select.rs
+msgctxt "select"
+msgid "Copy"
+msgstr ""
+
+#. TRANSLATORS: Select mode's bar: copies the selection to the clipboard and takes it off the page.
+#: rust/src/editor/select.rs
+msgctxt "select"
+msgid "Cut"
+msgstr ""
+
+#. TRANSLATORS: Select mode's bar: takes the selection off the page (not to the clipboard).
+#: rust/src/editor/select.rs
+msgctxt "select"
+msgid "Delete"
+msgstr ""
+
+#. TRANSLATORS: Select mode's bar: puts what was copied or cut on this page.
+#: rust/src/editor/select.rs
+msgctxt "select"
+msgid "Paste"
+msgstr ""
+
+#. TRANSLATORS: Select mode's bar: leaves Select mode.
+#: rust/src/editor/select.rs
+msgctxt "select"
+msgid "Done"
+msgstr ""
+
+#. TRANSLATORS: Select mode's bar (a button, about 360 px at 44 px): the lasso cuts the strokes it
+#. crosses along its line and takes only the ink inside it. Tapped, it goes back to whole strokes.
+#: rust/src/editor/select.rs
+msgctxt "select"
+msgid "Exact area"
+msgstr ""
+
+#. TRANSLATORS: Select mode's bar (a button, about 360 px at 44 px): the lasso takes whole strokes
+#. (those mostly inside it). Tapped, it cuts strokes along the lasso instead (exact area).
+#: rust/src/editor/select.rs
+msgctxt "select"
+msgid "Whole strokes"
+msgstr ""
+
+#. TRANSLATORS: Select mode's Copy button when the selection carries links: %d is how many
+#. (shown so the writer sees the links go along before acting).
+#: rust/src/editor/select.rs
+#, c-format
+msgid "%d link"
+msgid_plural "%d links"
+msgstr[0] ""
+msgstr[1] ""
+
+#. TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines) as Select mode starts.
+#: rust/src/editor/select.rs
+msgid "Select: draw around ink with the pen."
+msgstr ""
+
+#. TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines) as Select mode starts in exact
+#. area: the lasso will cut strokes along its line.
+#: rust/src/editor/select.rs
+msgid "Select, exact area: draw around ink with the pen."
+msgstr ""
+
+#. TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): a lasso in Select mode went
+#. around only white ink or eraser marks, which are not objects: they move with the ink they cover.
+#: rust/src/editor/select.rs
+msgid ""
+"Nothing to select here: white ink and eraser marks move with the ink they "
+"cover."
+msgstr ""
+
+#. TRANSLATORS: a toast: a lasso in Select mode went around no ink.
+#: rust/src/editor/select.rs
+msgid "Nothing to select here."
+msgstr ""
+
+#: rust/src/editor/select.rs
+msgid "This page holds too many moved groups: paste on another page."
+msgstr ""
+
+#. TRANSLATORS: a toast: a move in Select mode could not save the links it carries.
+#: rust/src/editor/select.rs
+msgid "Could not save the links: nothing was moved."
+msgstr ""
+
+#. TRANSLATORS: a toast: Cut in Select mode could not save the links the selection carries (links.ini), so
+#. nothing was cut and the clipboard is as it was.
+#: rust/src/editor/select.rs
+msgid "Could not save the links: nothing was cut."
+msgstr ""
+
+#. TRANSLATORS: a toast: Copy or Cut in Select mode could not write the clipboard file.
+#: rust/src/editor/select.rs
+msgid "Could not copy: the clipboard could not be written."
+msgstr ""
+
+#. TRANSLATORS: a toast: Copy in Select mode put the selection on the clipboard.
+#: rust/src/editor/select.rs
+msgid "Copied."
+msgstr ""
+
+#. TRANSLATORS: a toast: Cut in Select mode put the selection on the clipboard and took it off the page.
+#: rust/src/editor/select.rs
+msgid "Cut."
+msgstr ""
+
+#. TRANSLATORS: a toast: Paste found no clipboard it could read.
+#: rust/src/editor/select.rs
+msgid "The clipboard could not be read."
+msgstr ""
+
+#. TRANSLATORS: a toast: Paste was refused whole because its links do not fit (64 on a page,
+#. 4000 in a notebook) or links.ini cannot be written.
+#: rust/src/editor/select.rs
+msgid "Could not paste: its links do not fit on this page."
+msgstr ""
+
+#. TRANSLATORS: a toast: a pasted link to the Index was left out, as it cannot point to another
+#. notebook's Index.
+#: rust/src/editor/select.rs
+msgid "A link to the Index stays in its notebook."
 msgstr ""
 
 #. TRANSLATORS: the title of the keyboard of the Find sheet, in its text line (about 560 px at 44 px in bold):
@@ -1660,6 +2041,7 @@ msgstr ""
 #. TRANSLATORS: a chip of the Links bar, in its right column at 34 px (about 150 px): the page a link goes
 #. to, %d its number ("p. 12").
 #: rust/src/findsheet.rs rust/src/linkbar.rs rust/src/linkcard.rs
+#: rust/src/mapview.rs
 #, c-format
 msgctxt "bar"
 msgid "p. %d"
@@ -2176,14 +2558,6 @@ msgstr[1] ""
 msgid "Exit"
 msgstr ""
 
-#: rust/src/library.rs
-msgid "Settings"
-msgstr ""
-
-#: rust/src/library.rs
-msgid "Share"
-msgstr ""
-
 #. TRANSLATORS: the Library's top bar (see Exit): makes a new folder.
 #: rust/src/library.rs
 msgid "Folder"
@@ -2212,11 +2586,6 @@ msgstr ""
 msgid "Page %d of %d"
 msgstr ""
 
-#. TRANSLATORS: the title of the sheet that makes a notebook, and its heading over the papers.
-#: rust/src/library.rs
-msgid "New notebook"
-msgstr ""
-
 #. TRANSLATORS: the new notebook's name, then its Rename button (268 px at 29 px, under its
 #. icon, inside Gothic's carved line), then the folder it goes in, or the Library itself.
 #: rust/src/library.rs
@@ -2241,6 +2610,22 @@ msgstr ""
 
 #: rust/src/library.rs
 msgid "Create"
+msgstr ""
+
+#. TRANSLATORS: a notebook's and a folder's menu (rows of 1470 px at 44 px in bold): its pages are not shown
+#. in the Graph of all notebooks (the Graph: the Index's map of linked pages), or are shown there again.
+#: rust/src/library.rs
+msgid "Show in the Graph"
+msgstr ""
+
+#: rust/src/library.rs
+msgid "Leave out of the Graph"
+msgstr ""
+
+#. TRANSLATORS: a notebook's or a folder's menu row, greyed out (1470 px at 44 px in bold): a folder it is in is
+#. left out of the Graph, which leaves it out too; that folder's menu shows it again.
+#: rust/src/library.rs
+msgid "Left out of the Graph with its folder"
 msgstr ""
 
 #: rust/src/library.rs
@@ -2975,6 +3360,20 @@ msgstr ""
 msgid "Move to"
 msgstr ""
 
+#. TRANSLATORS: Exit Grimoire?'s answers (1470 px at 44 px in bold): leave Grimoire, or stay.
+#: rust/src/library.rs
+msgid "Yes"
+msgstr ""
+
+#: rust/src/library.rs
+msgid "No"
+msgstr ""
+
+#. TRANSLATORS: the question Esc asks at the Library's top level (a keyboard's), before Grimoire leaves.
+#: rust/src/library.rs
+msgid "Exit Grimoire?"
+msgstr ""
+
 #. TRANSLATORS: the title of the question before a notebook is deleted, with its name.
 #: rust/src/library.rs
 #, c-format
@@ -3046,6 +3445,21 @@ msgstr ""
 msgid "Saving the PDF in the background..."
 msgstr ""
 
+#. TRANSLATORS: toasts (about 1700 px at 44 px in bold) after a notebook's or a folder's menu row: its
+#. pages are left out of the Graph of all notebooks now, or shown there again; or the change could not
+#. be saved.
+#: rust/src/library.rs
+msgid "Could not save that change."
+msgstr ""
+
+#: rust/src/library.rs
+msgid "Left out of the Graph."
+msgstr ""
+
+#: rust/src/library.rs
+msgid "Shown in the Graph again."
+msgstr ""
+
 #. TRANSLATORS: a deleted notebook went to the trash folder on the Kindle's storage (%s).
 #: rust/src/library.rs
 #, c-format
@@ -3070,14 +3484,10 @@ msgstr ""
 msgid "×%d"
 msgstr ""
 
+#. TRANSLATORS: the caption over a Links bar chip for a page whose links come TO the open page (in this
+#. notebook or another), in small type over that page's name (about 600 px at 34 px).
 #: rust/src/linkbar.rs
-#, c-format
-msgid "‹ Page %d"
-msgstr ""
-
-#: rust/src/linkbar.rs
-#, c-format
-msgid "Back to %s"
+msgid "Linked from"
 msgstr ""
 
 #: rust/src/linkbar.rs
@@ -3095,6 +3505,22 @@ msgstr ""
 
 #: rust/src/linkbar.rs
 msgid "Areas"
+msgstr ""
+
+#: rust/src/linkbar.rs
+#, c-format
+msgid "‹ Page %d"
+msgstr ""
+
+#: rust/src/linkbar.rs
+#, c-format
+msgid "Back to %s"
+msgstr ""
+
+#. TRANSLATORS: the Links bar's chip back to the Graph (the Library's Graph of all notebooks, which opened
+#. this notebook); a chip of at most about 18 characters.
+#: rust/src/linkbar.rs
+msgid "Back to Graph"
 msgstr ""
 
 #. TRANSLATORS: the first chip of Link to..., which adds a page at the end of the notebook and links to
@@ -3123,6 +3549,12 @@ msgstr ""
 #. caps at 34 px under its icon: about 540 px, or two lines).
 #: rust/src/linkbar.rs
 msgid "Choose from the pages..."
+msgstr ""
+
+#. TRANSLATORS: a link to a page of another notebook whose page was deleted: after the notebook's
+#. name and " / " (a Links bar chip, the long-press card's title, the Graph; about 400 px at 44 px).
+#: rust/src/linkcard.rs rust/src/mapview.rs rust/src/nav.rs
+msgid "Page gone"
 msgstr ""
 
 #. TRANSLATORS: a row of the card a finger held on a link opens, for a link to a page with no name:
@@ -3177,12 +3609,32 @@ msgstr ""
 msgid "To change one, hold it on the page."
 msgstr ""
 
+#. TRANSLATORS: the Graph's view button says which view it shows, "View: All" or "View: Adjacent" (with
+#. "View: %s"): every page, or the pages adjacent to one (linked to it, and theirs). Also the selected page's
+#. card button that shows its adjacent pages, a third of the card (up to 360 px at 34 px).
+#: rust/src/mapview.rs
+msgid "Adjacent"
+msgstr ""
+
+#: rust/src/mapview.rs
+msgid "All"
+msgstr ""
+
 #: rust/src/mapview.rs
 msgid "Not enough memory for the graph."
 msgstr ""
 
-#: rust/src/mapview.rs rust/src/nav.rs
-msgid "Page unavailable"
+#. TRANSLATORS: the Graph opened from the Library cannot draw every notebook: the library has more
+#. linked pages or links than it can draw at once; the notebooks' browser opens under it to show
+#. one (a toast, 2 lines at most).
+#: rust/src/mapview.rs
+msgid "Too many linked pages to draw all notebooks."
+msgstr ""
+
+#. TRANSLATORS: the Graph (Index, Graph tab) opens on the notebook instead of every notebook: the
+#. library has more linked pages or links than it can draw at once (a toast, 2 lines at most).
+#: rust/src/mapview.rs
+msgid "Too many linked pages for All notebooks: showing this notebook."
 msgstr ""
 
 #: rust/src/mapview.rs rust/src/nav.rs
@@ -3197,19 +3649,6 @@ msgid "p. %d"
 msgstr ""
 
 #: rust/src/mapview.rs
-msgid "Around"
-msgstr ""
-
-#: rust/src/mapview.rs
-msgid "All"
-msgstr ""
-
-#: rust/src/mapview.rs
-#, c-format
-msgid "Fit: %s"
-msgstr ""
-
-#: rust/src/mapview.rs
 #, c-format
 msgid "View: %s"
 msgstr ""
@@ -3217,6 +3656,29 @@ msgstr ""
 #: rust/src/mapview.rs
 #, c-format
 msgid "Nodes: %d · Orphans: %d · Links: %d"
+msgstr ""
+
+#. TRANSLATORS: after the Graph's counts (Nodes, Orphans, Links), the links in all notebooks that go to a
+#. page or notebook that is gone; also the card of a page that has such links (small text).
+#: rust/src/mapview.rs
+#, c-format
+msgid "%d broken link"
+msgid_plural "%d broken links"
+msgstr[0] ""
+msgstr[1] ""
+
+#. TRANSLATORS: after the Graph's counts (Nodes, Orphans, Links) while the Graph of all notebooks reads
+#. every notebook for the first time: how many it has read (small text, about 500 px).
+#: rust/src/mapview.rs
+#, c-format
+msgid "Reading notebooks: %d of %d"
+msgstr ""
+
+#. TRANSLATORS: the Graph opened from the Library (no notebook open): every page of the notebooks it
+#. shows, and how many notebooks (small text, about 1000 px at 30 px).
+#: rust/src/mapview.rs
+#, c-format
+msgid "Pages: %d across %d notebooks"
 msgstr ""
 
 #: rust/src/mapview.rs
@@ -3229,13 +3691,25 @@ msgstr ""
 msgid "Pages in this notebook: %d"
 msgstr ""
 
+#. TRANSLATORS: after the Graph's page counts: notebooks the Graph of all notebooks could not take in (its
+#. limit of links), shown when there are some (small text).
 #: rust/src/mapview.rs
 #, c-format
-msgid "Page %d. Links to %d, linked from %d."
+msgid "%d notebook left out"
+msgid_plural "%d notebooks left out"
+msgstr[0] ""
+msgstr[1] ""
+
+#. TRANSLATORS: the Graph of all notebooks' card for a page of another notebook than the open one: its
+#. notebook's name, its page number there, then its links (small text, the screen's width).
+#: rust/src/mapview.rs
+#, c-format
+msgid "%s, page %d. Links to %d, linked from %d."
 msgstr ""
 
 #: rust/src/mapview.rs
-msgid "Around it"
+#, c-format
+msgid "Page %d. Links to %d, linked from %d."
 msgstr ""
 
 #: rust/src/mapview.rs
@@ -3293,8 +3767,30 @@ msgstr ""
 msgid "Use layout"
 msgstr ""
 
+#. TRANSLATORS: a link to a page of a notebook that was deleted (a Links bar chip, the long-press card's
+#. title, the Graph; about 700 px at 44 px).
+#: rust/src/nav.rs
+msgid "Notebook gone"
+msgstr ""
+
 #: rust/src/notebookpicker.rs
 msgid "Notebooks"
+msgstr ""
+
+#. TRANSLATORS: Copy to notebook...'s button over the picked notebook's pages (about 400 px,
+#. 44 px text): the copies go after its last page.
+#: rust/src/notebookpicker.rs
+msgid "At the end"
+msgstr ""
+
+#. TRANSLATORS: Copy to notebook...'s line under its title (small text, nearly the screen's width):
+#. first while picking the notebook, then over its pages.
+#: rust/src/notebookpicker.rs
+msgid "Tap a page: the copies go before it."
+msgstr ""
+
+#: rust/src/notebookpicker.rs
+msgid "Pick the notebook to copy into."
 msgstr ""
 
 #: rust/src/notebookpicker.rs
@@ -3306,6 +3802,13 @@ msgstr ""
 #: rust/src/pagesview.rs
 #, c-format
 msgid "Page %d (open)"
+msgstr ""
+
+#. TRANSLATORS: under a page's picture in the Pages view (436 px at 44 px sideways): a page New page
+#. (or its batch) just added, which the bottom row's Undo would take back.
+#: rust/src/pagesview.rs
+#, c-format
+msgid "Page %d (new)"
 msgstr ""
 
 #: rust/src/pagesview.rs
@@ -3342,10 +3845,6 @@ msgstr ""
 msgid "Select none"
 msgstr ""
 
-#: rust/src/pagesview.rs
-msgid "Select all"
-msgstr ""
-
 #. TRANSLATORS: Pages tab, with the notebook's page count (about 400 px wide, 44 px text).
 #: rust/src/pagesview.rs
 #, c-format
@@ -3376,9 +3875,66 @@ msgstr ""
 msgid "Multi-select"
 msgstr ""
 
+#. TRANSLATORS: under a held page's title in the Pages view (about 900 px at 34 px): how many pages, in this
+#. notebook or others, have links to it.
+#: rust/src/pagesview.rs
+#, c-format
+msgid "Linked from %d page"
+msgid_plural "Linked from %d pages"
+msgstr[0] ""
+msgstr[1] ""
+
+#. TRANSLATORS: a held page's card in the Pages view, under its icon (950 px at 34 px): move the page
+#. (or the ticked pages, with how many) to another place in the notebook, on the Go to page number pad.
+#: rust/src/pagesview.rs
+#, c-format
+msgid "Move %d page to..."
+msgid_plural "Move %d pages to..."
+msgstr[0] ""
+msgstr[1] ""
+
+#: rust/src/pagesview.rs
+msgid "Move to..."
+msgstr ""
+
+#. TRANSLATORS: the same card: copy the page (or the ticked pages) into another notebook, picked from
+#. the notebooks and folders.
+#: rust/src/pagesview.rs
+#, c-format
+msgid "Copy %d page to notebook..."
+msgid_plural "Copy %d pages to notebook..."
+msgstr[0] ""
+msgstr[1] ""
+
+#: rust/src/pagesview.rs
+msgid "Copy to notebook..."
+msgstr ""
+
 #: rust/src/pagesview.rs
 msgid "Enter a page number in this notebook."
 msgstr ""
+
+#. TRANSLATORS: the title in Move to...'s number-pad field (bold, 44 px, about 700 px): the page
+#. number typed is the page the moved pages go before.
+#: rust/src/pagesview.rs
+msgid "Move before page"
+msgstr ""
+
+#. TRANSLATORS: a toast over Move to...'s number pad (about 1700 px at 44 px in bold, or two lines):
+#. the first %d is the notebook's page count, the second one more, which puts the pages at the end.
+#: rust/src/pagesview.rs
+#, c-format
+msgid "Enter a page from 1 to %d, or %d for the end."
+msgstr ""
+
+#. TRANSLATORS: the confirm button at the bottom of New page's count pad (bold, 44 px, about 1700 px):
+#. %d is how many blank pages it adds at once.
+#: rust/src/pagesview.rs
+#, c-format
+msgid "Add %d page"
+msgid_plural "Add %d pages"
+msgstr[0] ""
+msgstr[1] ""
 
 #. TRANSLATORS: papers that are pictures: a template copied into grimoire/templates, and a page
 #. of a document imported as pictures (named as the other papers are, below).

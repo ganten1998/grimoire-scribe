@@ -21,6 +21,83 @@ pub enum RefreshMode {
     Ui = 1,  // REFRESH_UI
     /// GC16 full flash
     Full = 2,  // REFRESH_FULL
+    /// GC16 flash of the rect alone (KOReader's "flashui"): every pixel in it driven, so what fast DU
+    /// refreshes left there is wiped, which a GL16 partial cannot do (it drives only the pixels
+    /// whose value changed). The Rust build only: the C tree has no such mode.
+    Clean = 3,
+}
+
+impl RefreshMode {
+    /// Which of two modes asked for one rect wins (app_invalidate keeps the strongest): Fast, Ui,
+    /// Clean, then Full, which flashes the whole screen anyway.
+    pub fn strength(self) -> i32 {
+        match self {
+            RefreshMode::Fast => 0,
+            RefreshMode::Ui => 1,
+            RefreshMode::Clean => 2,
+            RefreshMode::Full => 3,
+        }
+    }
+}
+
+// ---- DU wear (issue #11) ----
+//
+// A fast (DU) refresh drives a pixel to black or white in one short waveform, and one it turns from
+// black to white keeps a faint trace of the black (DU ghosting). The grayscale settle that follows
+// (GL16, a partial update) does not reach it: a partial update drives only the pixels whose value
+// changed, and DU already wrote that pixel's final white. So the traces of erased ink and of the
+// toolbar's old places stay until a flashing refresh (a page turn, the Library and back). DuWear
+// counts the screen area fast refreshes turned back toward the paper (the eraser's, a dragged
+// selection's); past a quarter of the screen the editor cleans where they were with one Clean
+// refresh, at a pause. Writing is not counted: DU turning white paper black leaves no trace.
+
+/// The share of the screen past which DU wear is cleaned: a quarter (issue #11's figure). A
+/// handwritten word is about 1 % of the Scribe's screen, so small erases add up to a clean only
+/// after twenty-odd words, and one erase of a quarter page cleans at once.
+pub const DU_WEAR_QUARTERS: i64 = 1;
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct DuWear {
+    /// screen px fast refreshes turned toward the paper since the last clean, counted each time
+    pub area: i64,
+    /// where they were (screen px): the rect a clean refreshes
+    pub rect: Rect,
+    /// a clean is owed whatever the area (a toolbar drag that could not clean at its release)
+    pub owed: bool,
+    /// when the last was added (ms), so a clean waits for a pause in what added it
+    pub at: u32,
+}
+
+/// `area` screen px of `r` were turned toward the paper by a fast refresh (area at most r's).
+pub fn du_wear_add(w: &mut DuWear, r: Rect, area: i64, now: u32) {
+    if rect_is_empty(r) || area <= 0 {
+        return;
+    }
+    w.area = w.area.saturating_add(area.min(r.w as i64 * r.h as i64));
+    w.rect = rect_union(w.rect, r);
+    w.at = now;
+}
+
+/// A clean of r is owed whatever the area.
+pub fn du_wear_owe(w: &mut DuWear, r: Rect, now: u32) {
+    if rect_is_empty(r) {
+        return;
+    }
+    w.rect = rect_union(w.rect, r);
+    w.owed = true;
+    w.at = now;
+}
+
+/// Whether a clean is due on a screen of sw x sh: owed, or more than a quarter of it worn.
+pub fn du_wear_due(w: &DuWear, sw: i32, sh: i32) -> bool {
+    !rect_is_empty(w.rect) && (w.owed || w.area * 4 > DU_WEAR_QUARTERS * sw as i64 * sh as i64)
+}
+
+/// A refresh of r in mode m went out: a Full wipes every trace, a Clean wipes those it covers.
+pub fn du_wear_presented(w: &mut DuWear, r: Rect, m: RefreshMode) {
+    if m == RefreshMode::Full || (m == RefreshMode::Clean && rect_contains_rect(r, w.rect)) {
+        *w = DuWear::default();
+    }
 }
 
 /// Fills portrait width/height and dpi of the panel. 0 on success.
@@ -158,4 +235,85 @@ pub fn display_last_fast_waiting() -> bool {
     { crate::display_fbink::display_last_fast_waiting() }
     #[cfg(not(feature = "kindle"))]
     { false }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const W: i32 = 1860;
+    const H: i32 = 2480;
+
+    fn r(x: i32, y: i32, w: i32, h: i32) -> Rect {
+        Rect { x, y, w, h }
+    }
+
+    #[test]
+    fn strength_orders_the_modes() {
+        assert!(RefreshMode::Fast.strength() < RefreshMode::Ui.strength());
+        assert!(RefreshMode::Ui.strength() < RefreshMode::Clean.strength());
+        assert!(RefreshMode::Clean.strength() < RefreshMode::Full.strength());
+    }
+
+    #[test]
+    fn small_erases_never_make_a_clean() {
+        let mut w = DuWear::default();
+        // nineteen word-sized erases (400 x 150 px, 1.3 % of the screen each) stay under a quarter;
+        // the twentieth passes it
+        for k in 0..19 {
+            du_wear_add(&mut w, r(100, 100 + k * 110, 400, 150), 400 * 150, k as u32);
+            assert!(!du_wear_due(&w, W, H), "erase {k}");
+        }
+        assert_eq!(w.rect, r(100, 100, 400, 18 * 110 + 150));
+        assert_eq!(w.at, 18);
+        du_wear_add(&mut w, r(100, 2200, 400, 150), 400 * 150, 19);
+        assert!(du_wear_due(&w, W, H));
+    }
+
+    #[test]
+    fn a_quarter_of_the_screen_makes_a_clean() {
+        let mut w = DuWear::default();
+        let quarter = W as i64 * H as i64 / 4;
+        du_wear_add(&mut w, r(0, 0, W, H / 4), quarter, 5);
+        assert!(!du_wear_due(&w, W, H), "a quarter exactly is not more than one");
+        du_wear_add(&mut w, r(0, H / 4, 10, 10), 100, 6);
+        assert!(du_wear_due(&w, W, H));
+        // the area counted is never more than the rect's (a long thin erase's bbox)
+        let mut v = DuWear::default();
+        du_wear_add(&mut v, r(0, 0, 10, 10), 1_000_000_000, 1);
+        assert_eq!(v.area, 100);
+        // nothing for an empty rect or no area
+        du_wear_add(&mut v, RECT_EMPTY, 50, 2);
+        du_wear_add(&mut v, r(0, 0, 5, 5), 0, 3);
+        assert_eq!((v.area, v.at), (100, 1));
+    }
+
+    #[test]
+    fn a_clean_that_covers_it_starts_again() {
+        let mut w = DuWear::default();
+        du_wear_add(&mut w, r(100, 100, W / 2, H), W as i64 * H as i64 / 2, 1);
+        assert!(du_wear_due(&w, W, H));
+        // a grayscale refresh does not reach DU's traces, nor a clean of part of them
+        du_wear_presented(&mut w, r(0, 0, W, H), RefreshMode::Ui);
+        du_wear_presented(&mut w, r(100, 100, 10, 10), RefreshMode::Clean);
+        assert!(du_wear_due(&w, W, H));
+        du_wear_presented(&mut w, r(100, 100, W / 2, H), RefreshMode::Clean);
+        assert_eq!(w, DuWear::default());
+        assert!(!du_wear_due(&w, W, H));
+        // a Full wipes it wherever it was
+        du_wear_add(&mut w, r(0, 0, W, H), W as i64 * H as i64, 2);
+        du_wear_presented(&mut w, r(5, 5, 1, 1), RefreshMode::Full);
+        assert_eq!(w, DuWear::default());
+    }
+
+    #[test]
+    fn an_owed_clean_is_due_whatever_the_area() {
+        let mut w = DuWear::default();
+        du_wear_owe(&mut w, RECT_EMPTY, 1);
+        assert!(!du_wear_due(&w, W, H));
+        du_wear_owe(&mut w, r(1700, 200, 128, 1700), 4);
+        assert!(du_wear_due(&w, W, H) && w.area == 0 && w.at == 4);
+        du_wear_presented(&mut w, r(1600, 0, 260, 2480), RefreshMode::Clean);
+        assert!(!du_wear_due(&w, W, H));
+    }
 }

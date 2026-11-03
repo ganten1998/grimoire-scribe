@@ -2,6 +2,8 @@
 # settings: status_mode=1
 # settings: mirror_pdf=0
 # root: s_shape_1_record
+# (the clock corner held still: its minute's refresh would land among the counted ones)
+clock 1700000000
 wait 200
 tap 965 95
 wait 100

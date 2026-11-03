@@ -106,6 +106,21 @@ keys `status_on`, `status_size` and `status_corner` (docs/FORMAT.md), the action
 `status.*` probes, and `editor_page_in_front` and `editor_control_at` (it shows on the notebook page only).
 The C tree has none of these; `make c-check` cannot run tests/scenarios/y_status_*.qs.
 
+`backlinks.rs` (the backlinks cache, root/backlinks.ini, 2.0.0-beta.2) is Rust only too, with what reaches
+it: `nav_load_links`, `nav_target_state` and the call to `backlinks_note_saved` at the end of a successful
+`nav_save_links` in nav.rs (src/nav.c has none of them: the C tree never writes backlinks.ini, and a
+notebook it changes is read again at the next check by stamp), the Links bar's Linked from rows and the
+Graph's anchors.
+
+The Graph of all notebooks (2.0.0-beta.2, docs/beta2/GRAPH-ALL.md) is Rust only too: `libindex.rs` (the
+library index, root/graph-index.ini) and the calls that keep it (`libindex_note_info` after a successful
+notebook.ini write in store.rs, `libindex_note_gone` in `store_delete`, `libindex_note_names` in `nav_save`,
+`libindex_note_links` in `nav_save_links`), graph.rs's `GraphNode.key`, `book`, `number` and `broken`, the
+`GraphBook` input, `graph_build_all`, the islands and `place_new_components`, graph-all.ini, bgjob's
+`BgKind::GraphLayoutAll`, mapview's Notebook chip and scopes, the picker's `start_notebook`, and the runner's
+`map-node <notebook id>:<page id>` form. The C tree's Graph stays one notebook's; a notebook it changes is
+read again at the next check by its three stamps.
+
 Live view's version 3 (2.0.0-beta.5) is Rust only too: the pen viewers' own reader of the raw
 digitizer (`input_raw_pen`, `live_set_raw_map`, `live_set_capture`, `live_set_blocked`, the
 `live_raw_*` functions), samples known by the kernel's microseconds (`InEvent.k_us`), the editor's

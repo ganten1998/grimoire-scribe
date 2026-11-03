@@ -26,26 +26,21 @@ wait 1100
 fpath 1768 900 1400 900 1400 1200 1000 1200 600
 expect fshape.fired is 0
 expect fshape.trail is
-# A second finger after 200 ms cancels the existing trail.
+# A second finger after 200 ms cancels the existing trail. (Frames timed by their offsets alone, no
+# waits between them: a slow machine cannot space them into a late start or a pause.)
 wait 1100
 finger 1 down 600 900
 frame 20
-wait 20
 finger 1 move 650 900
 frame 40
-wait 40
 finger 1 move 700 900
 frame 40
-wait 40
 finger 1 move 750 900
 frame 40
-wait 40
 finger 1 move 800 900
 frame 40
-wait 40
 finger 1 move 850 900
 frame 20
-wait 20
 expect fshape.state is drawing
 expect fshape.trail not
 finger 2 down 1100 900
@@ -66,68 +61,56 @@ frame 30
 finger 1 up 1100 900
 frame
 expect fshape.fired is 0
-# Stay in motion for over three seconds; the trail thins while the contact is still down.
+# Stay in motion past the 2.5 s limit; the trail thins while the contact is still down. The frames
+# are timed by their offsets alone (no waits between them): the time a slow machine takes to read
+# them never spaces them out, so it cannot end the shape early (a 500 ms gap is a pause, and a late
+# timer on a loaded runner stretched them). Real time then runs out the limit with the finger still
+# down, as the wall tick decides it on the Kindle.
 wait 1100
 expect display.presents not clear
 finger 1 down 600 900
 frame 20
-wait 20
 finger 1 move 850 900
 frame 200
-wait 200
 finger 1 move 850 1150
 frame 200
-wait 200
 finger 1 move 600 1150
 frame 200
-wait 200
 finger 1 move 600 900
 frame 200
-wait 200
 finger 1 move 850 900
 frame 200
-wait 200
 expect display.presents has fast
 finger 1 move 850 1150
 frame 200
-wait 200
 finger 1 move 600 1150
 frame 200
-wait 200
 finger 1 move 600 900
 frame 200
-wait 200
 finger 1 move 850 900
 frame 200
-wait 200
 finger 1 move 850 1150
 frame 200
-wait 200
 expect display.presents has fast
 finger 1 move 600 1150
 frame 200
-wait 200
 finger 1 move 600 900
 frame 200
-wait 200
 finger 1 move 850 900
 frame 200
-wait 200
 finger 1 move 850 1150
 frame 200
-wait 200
 finger 1 move 600 1150
 frame 200
-wait 200
 finger 1 move 600 900
 frame 200
-wait 200
 finger 1 move 850 900
 frame 200
-wait 200
+wait 3000
 expect fshape.state is dead
 expect fshape.trail not
-expect display.presents has fast
+# the thinning: the whole trail redrawn with one fast refresh
+expect display.presents has fast 593 893 265 265
 finger 1 up 850 900
 frame
 wait 1100

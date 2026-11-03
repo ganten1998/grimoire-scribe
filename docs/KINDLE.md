@@ -673,7 +673,9 @@ checks above. Synthetic tests cannot establish real-hand acceptance or accidenta
   add `http://<address>:<port>` under "Insecure origins treated as secure" in chrome://flags (edge://flags,
   brave://flags) and relaunch. Without that, Chromium and Safari float a video of the page, Firefox offers its own
   Picture-in-Picture button on a video of it, and other browsers open a separate window. View
-  settings repeats these steps whenever Document Picture-in-Picture is missing.
+  settings repeats these steps whenever Document Picture-in-Picture is missing. The floating video
+  keeps up while the Live view tab is hidden behind it or behind another tab (before 2.0.0-beta.2,
+  Firefox Nightly showed it once a second there).
 - **Switches** (empty files in the `grimoire` folder): `screen-flip` / `screen-noflip` force the
   180 degree framebuffer correction on/off, `pen-mode` turns on the MTK low-latency pen mode for
   live ink (off by default; small odd-rotation refreshes are padded as described in
@@ -866,8 +868,9 @@ is off, rotation keeps the previous toolbar placement behavior.
 
 The Links bar's Index button opens the Index map. Tap a dot to see its page card, and tap it again
 to open the page. The List switch returns to named pages; Graph on that list reopens the map.
-Drag to pan, pinch to zoom, and choose Around for nearby links. Rename on a page card edits its Index
-name. A Links-bar incoming-pages chip opens Around for the current page.
+Drag to pan, pinch to zoom, and choose View: Adjacent for nearby links (a page card's Adjacent shows
+that page's). Rename on a page card edits its Index name. A Links-bar incoming-pages chip opens View:
+Adjacent for the current page.
 
 Folders may contain subfolders. Open a folder and use Folder to create one inside it; Back goes up
 one level. Renaming a folder also renames its descendants. Move to folder lists full destinations,
@@ -882,9 +885,10 @@ The selection stroke disappears; a visible border is ordinary ink drawn separate
 ## Unified Index and links between notebooks
 
 Tap the notebook page counter or swipe down with two fingers for the Index. Its header is Back,
-Graph, List and Pages. Back returns to the notebook. Graph's View button at the bottom switches
-between All (the whole linked map, fitted) and Around (the rings around a page); after a pan or
-pinch it reads Fit and first fits the current view again;
+Graph, List and Pages. Back returns to the notebook. Graph's View button at the bottom reads View: All
+(the whole linked map) or View: Adjacent (the rings around a page), the view it shows now; a tap
+always switches to the other one, fitted. To fit the current view again after a pan or pinch, tap it
+twice (the other view and back);
 List contains existing links grouped by destination notebook and scrolls without footer options.
 Pages manages the current notebook's pages and shows small cached previews as they are generated.
 
@@ -931,8 +935,8 @@ Retry checks again. Physical airplane-mode transitions remain a device acceptanc
 `make dev` builds the Kindle zip and copies a separate `Grimoire (dev).sh` into the Kindle's
 documents folder over MTP; `make dev-ssh` patches the same copy over SSH and starts it, so a dev
 loop is one command with no copying by hand (`tools/kindle-dev --mount/--zip/--name/--root`,
-`tools/kindle-dev-ssh --release/--logs`). The patch roots the copy at `/mnt/us/grimoire-dev` —
-its own notebooks, settings and app cache — and gives the launcher `GRIMOIRE_DEV=1`, which turns
+`tools/kindle-dev-ssh --release/--logs`). The patch roots the copy at `/mnt/us/grimoire-dev`
+(its own notebooks, settings and app cache) and gives the launcher `GRIMOIRE_DEV=1`, which turns
 Settings > Updates off inside the copy: an update from it would run KPM over the release. The
 release's `documents/Grimoire.sh` and `/mnt/us/grimoire` are never touched;
 `tools/kindle-dev-ssh --release` is the explicit way to put a build on the release launcher: it

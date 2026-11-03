@@ -334,6 +334,18 @@ fn nib_target(p: &ToolParams, tx: f32, ty: f32) -> (f32, f32) {
     }
     (a2.cos(), a2.sin())
 }
+/// Calligraphy: a tilt (degrees, as a pen sample holds it) whose nib target is the orientation (c2, s2)
+/// (twice the edge angle, as BrushState.nib_c and nib_s), leaning far enough that the lean is trusted
+/// whole (brush_tilt 1). The exact-area lasso starts a cut piece of a broad-edge stroke with it, so the
+/// piece's nib starts where the stroke's smoothed nib was.
+pub fn brush_tilt_for_nib(p: &ToolParams, c2: f32, s2: f32) -> (f32, f32) {
+    let hi = sane(p.tilt_max_deg, 5.0, 90.0, 70.0).max(sane(p.tilt_min_deg, 0.0, 85.0, 30.0) + 1.0);
+    let lean_deg = (hi + 1.0).min(88.0);
+    let l = (lean_deg * PI / 180.0).tan();
+    let th = 0.5 * (s2.atan2(c2) - PI);
+    let (lx, ly) = (l * th.cos(), l * th.sin());
+    (lx.atan() * 180.0 / PI, ly.atan() * 180.0 / PI)
+}
 /// Calligraphy: the nib's pen angle for a pen tilted (tilt_x, tilt_y), in degrees above the
 /// horizontal (45 = the edge rises to the right at 45 degrees). The broad edge sits at 90
 /// degrees to the pen's lean; a pen held nearly upright gets the default 45 (leaning bottom right).
@@ -394,6 +406,10 @@ pub struct BrushState {
     /// clip as ever), each as without it, and the brush moves on exactly as when it draws them all.
     /// page_render_tiles draws so. None = every pixel.
     pub mask: Option<std::rc::Rc<TileMask>>,
+    /// Set by hand after begin, with `dry`: each dab's sample, radius and calligraphy nib (nib_c, nib_s
+    /// after the dab) are pushed here (the exact-area lasso cuts a stroke at its own dabs, lasso.rs
+    /// stroke_dabs). None = nothing kept (every draw).
+    pub dab_log: Option<Vec<(PenSample, f32, f32, f32)>>,
 }
 
 /// Tip variants (a stroke's ext[2], low 4 bits; docs/FORMAT.md): 0 is a tool's first tip, the one
@@ -451,6 +467,12 @@ struct ToolLook {
     dust: f32,
     /// half-width of the tooth threshold's soft step (wider = grayer, less speckle)
     band: f32,
+}
+
+/// The fraction of a dab's radius that fades out for tool t (its first tip): what is left inside it
+/// is the dab's hard core. For estimates only (the lasso's visible spine); drawing uses look_of.
+pub fn brush_rim(t: ToolKind) -> f32 {
+    look_of(t, 0).rim
 }
 
 fn look_of(t: ToolKind, tip: u8) -> ToolLook {
@@ -1005,7 +1027,12 @@ fn stamp_as<const ERASE: bool, const DRY: bool>(b: &mut BrushState, c: &mut Canv
 
 fn stamp(b: &mut BrushState, c: &mut Canvas, s: &PenSample) -> (Rect, f32) {
     if b.dry {
-        return stamp_as::<false, true>(b, c, s);
+        let out = stamp_as::<false, true>(b, c, s);
+        let (nc, ns) = (b.nib_c, b.nib_s);
+        if let Some(log) = b.dab_log.as_mut() {
+            log.push((*s, out.1, nc, ns));
+        }
+        return out;
     }
     if b.erase {
         stamp_as::<true, false>(b, c, s)

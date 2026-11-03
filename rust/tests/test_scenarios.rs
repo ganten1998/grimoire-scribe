@@ -94,6 +94,25 @@ fn version() -> String {
     std::fs::read_to_string(top().join("VERSION")).unwrap().trim().to_string()
 }
 
+// Every script line the runner reads (sim_sdl.rs: its `a == b"..."` words) has its row in docs/SIM.md's
+// table (a backquoted word there), so someone writing a scenario finds it.
+#[test]
+fn every_script_line_is_in_sim_md() {
+    let src = std::fs::read_to_string(top().join("rust/src/sim_sdl.rs")).unwrap();
+    let doc = std::fs::read_to_string(top().join("docs/SIM.md")).unwrap();
+    let mut missing = Vec::new();
+    for part in src.split("a == b\"").skip(1) {
+        let word: String = part.chars().take_while(|c| c.is_ascii_alphanumeric() || *c == '_' || *c == '-').collect();
+        if !part[word.len()..].starts_with('"') || word.is_empty() {
+            continue;
+        }
+        if !doc.contains(&format!("`{word} ")) && !doc.contains(&format!("`{word}`")) && !missing.contains(&word) {
+            missing.push(word);
+        }
+    }
+    assert!(missing.is_empty(), "script lines missing from docs/SIM.md: {missing:?}");
+}
+
 // grimoire-headless with no script (display_open): it says what it needs and ends with status 1,
 // before any App, as the C runner does.
 #[test]

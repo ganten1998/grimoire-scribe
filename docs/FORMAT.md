@@ -35,6 +35,11 @@ root/notebooks/<id>/bg/pages.ini        the image paper of each page that has on
 root/notebooks/<id>/source.ini          the book a notebook annotates, page by page (1.1; Annotated pages)
 root/notebooks/<id>/nav.ini             its named sections (1.2.0; Named sections)
 root/notebooks/<id>/links.ini           links drawn on its pages (2.0; Links)
+root/backlinks.ini                      links between notebooks, turned around (2.0.0-beta.2; a cache: Backlinks cache)
+root/graph-index.ini                    every notebook's pages, names and links, for the Graph (2.0.0-beta.2; a cache: Library index)
+root/graph-all.ini                      the Graph of all notebooks' layout (2.0.0-beta.2; a cache: Library index)
+root/graph-omit.ini                     folders left out of the Graph of all notebooks (2.0.0-beta.2; Library index)
+root/clipboard.qpg                      the lasso's clipboard: what Copy or Cut took (2.0.0-beta.2; The clipboard)
 root/shortcuts.ini                      keyboard and controller mappings the owner edits (2.0; settings.ini)
 root/controller.ini                     controller buttons learned in Settings (2.0; settings.ini)
 root/gestures.ini                       touch, pen-button bindings and recorded finger shapes, over the built-ins (2.0; settings.ini)
@@ -184,6 +189,59 @@ with the erase strokes over it.
 The editor never keeps an erase stroke that changed no pixel of the page as it was drawn (over
 blank paper, or over ink taken away already): such a stroke is not stored and is no undo step.
 
+### Scoped erase strokes and floor markers (2.0.0-beta.2)
+
+The lasso (Select mode) moves and pastes ink with the erase strokes that took parts of it away, so a
+partly erased word looks the same at its new place. Over ink already there, such an erase stroke must
+take away only the moved ink, never the ink under it. So an erase stroke may restore toward its
+**floor** instead of the paper: the page as drawn just before a marked point in the stroke order. Same
+brush, blend, texture byte and hash bits; only what it restores toward differs. Over paper the floor is
+the paper, so a scoped erase stroke draws exactly what an ordinary one draws.
+
+- **Floor marker.** A tool-3 stroke with exactly one point at (-8192, -8192), pressure 0, tilt 0, t_ms 0,
+  the precise eraser's default parameters, seed 0 (the round tip) and ext[1] = g, the layer it marks.
+  It is off every page (pages are at most 1986 x 2648) and inside every reader's -10000..30000 clamp, so
+  it draws nothing in any version. A reader recognises one as a tool-3 stroke with one point at
+  x <= -5000 and y <= -5000. Scaling a page to another size (Page size) leaves a marker's point where it is.
+- **Floor of layer g:** the canvas as drawn up to, not including, the first marker with ext[1] = g, at its
+  place in the stroke order. A later marker of the same layer is ignored.
+- **Scoped erase stroke:** an erase stroke with ext[1] = g after layer g's first marker restores toward the
+  floor of g instead of the paper. With no marker of g before it, it is an ordinary erase stroke. Since
+  it restores never past its target, a scoped erase stroke never lightens a pixel past its floor.
+- Ink always keeps ext[1] = 0, so deleting ink never moves a floor. Markers are never selected, and the
+  stroke eraser never removes an erase stroke (1.1 on).
+- A writer takes a layer no stroke of the page uses (nor any stroke an undo or redo could bring back).
+  All 255 in use: the paste or move is refused ("This page holds too many moved groups").
+- Each scoped erase stroke names its own floor, so groups pasted inside groups need no table: a group
+  lifted with two floors gets two markers and two layers.
+- Scoping is written only when it is needed: when the floor is not the paper under the tiles the group's
+  erase strokes draw in (ink lies under the group's erasure at its new place). A group pasted over empty
+  paper is written with ordinary erase strokes and no marker, and looks the same in every version from
+  1.1 on.
+- No version before 2.0.0-beta.2 writes ext[1] != 0, so every page they wrote has no floor, and
+  2.0.0-beta.2 draws it exactly as they do (tests/test_lasso_render.rs: a frozen copy of the renderer
+  before floors). A drawing kept of a page with floors (`.page-previews/p<id>.full`) is tagged `|L` and
+  only such a tag is trusted for it, since 2.0.0-beta.1 keeps drawings under the same fingerprint.
+- Moved and pasted ink keeps its seed when no other ink stroke and no link on the page has it, else it
+  gets a fresh one; erase strokes and markers keep theirs (the texture byte). A carried link gets a fresh
+  seed on a paste (its 2.0.0-beta.5 ink takes it too) and keeps its seed on a move.
+
+What older versions do with a page the lasso wrote (Moving between versions has the rows):
+
+| the lasso wrote | 1.0.0-beta, rc.1 | 1.1, 1.2.0, 2.0.0-beta.1 | 2.0.0-beta.2 |
+|---|---|---|---|
+| ink moved, pasted or cut, no erasure carried | ordinary strokes | exact | exact |
+| carried erasure, plain (pasted over empty paper) | erase strokes not drawn (as on every page); kept on a re-save | exact | exact |
+| carried erasure, scoped (layer byte and marker) | not drawn; a re-save zeroes the layer bytes, so back in 2.0.0-beta.2 that erasure is ordinary and also lightens the ink under the group's gaps | drawn flat: the erasure also lightens the ink under its gaps, on their screen only; layer bytes and marker kept byte for byte on a re-save; their compaction leaves the page alone | exact |
+| a floor marker | draws nothing; kept with ext zeroed (then a dead stroke) | draws nothing; kept | draws nothing |
+| a page the lasso never touched | as today | as today | as today |
+| an exact-area lasso's cut (the pieces of a cut stroke) | ordinary strokes | ordinary strokes | ordinary strokes |
+
+An exact-area lasso writes ordinary strokes: a stroke it cuts becomes its pieces, ink strokes of the same
+tool, parameters, ext and seed, whose points are the stroke's own and new ones stored at the file's
+precision; no header, tool id, chunk or settings key changes, and every version from 1.0.0-beta reads,
+draws and re-saves them.
+
 ### Compaction
 
 Until it is left out, erased ink is in the page file: a zip of the notebook, a copy made with
@@ -211,6 +269,9 @@ zip, a `grimoire-pull` copy or an older version.
   that data may draw the page otherwise (a colour, a layer, a texture that covers less than the
   round tip), so how 1.1 draws the page cannot tell what may be left out of it. A version that
   adds such data can count on 1.1 never rewriting a page that carries it.
+- A page with floors (Scoped erase strokes, 2.0.0-beta.2) has ext[1] != 0, so every version, 2.0.0-beta.2
+  included for now, leaves it as it is (teaching compaction floors is in docs/BACKLOG.md). A move or cut
+  lists the source page when the original erase strokes stay behind there.
 - A page that is done goes off the list: compacted, with nothing to leave out, missing (there is
   no ink in it), or no longer in the notebook. A page compaction cannot judge stays listed, for a
   later pass or for the version that can: one that does not read, one of another size than its
@@ -293,12 +354,13 @@ plus 1 (0 = a round tip), and a version that draws erase strokes hashes only the
 
 **ext[3]** (the three spare bytes of the stroke record). 1.0.0-beta writes 0 0 0 on a re-save, and
 from 1.0.0-beta.2 on a version reads, keeps and writes them back. Since 2.0.0-beta.5 a version
-reads ext[2]'s low 4 bits, the tip variant; nothing else in them is interpreted yet.
+reads ext[2]'s low 4 bits, the tip variant. Since 2.0.0-beta.2 a version reads ext[1] on erase strokes
+(the layer, below and Scoped erase strokes); nothing else in them is interpreted yet.
 
 | byte | meaning | 0 means |
 |---|---|---|
 | ext[0] | colour: an index into one append-only palette (never reordered) | the tool's own gray |
-| ext[1] | layer | the base layer |
+| ext[1] | layer. On an erase stroke: 0 = the page (it restores toward the paper); 1 to 255 = scoped to that layer's floor (2.0.0-beta.2, Scoped erase strokes). On ink: always 0; other values reserved | the base layer |
 | ext[2] | bits 0 to 3: the tip variant (below); bits 4 to 7: flags, every bit's meaning reserved | the tool's first tip; nothing |
 
 **Tip variants.** A tool's tip, the shape of its dabs, changes only by a new variant, which strokes
@@ -348,11 +410,11 @@ with a part it lacks, an image paper with role 2 or 3 or a colour bit set, a fix
 later) is drawn as blank paper and called "Newer paper" from 1.0.0-beta.2 on, and the page keeps
 the value and writes it back (version 2).
 
-**Chunk tags.** None are defined yet.
+**Chunk tags.**
 
 | tag | kind | meaning | since |
 |---|---|---|---|
-| | | | |
+| `CLIP` | critical | the clipboard's source and its carried links; only in `root/clipboard.qpg`, never in a notebook's page | 2.0.0-beta.2 |
 
 ### Frozen invariants
 
@@ -368,6 +430,7 @@ the value and writes it back (version 2).
 - Tool ids, fixed paper kinds and music parts are never renumbered or reordered.
 - How an erase stroke draws (Erase strokes: the texture byte, the hash bits, the blend), from 1.1
   on: a page with erase strokes must look the same in every later version, as any page does.
+- From 2.0.0-beta.2: the floor rule and the floor marker's shape (Scoped erase strokes and floor markers).
 - A page with no new data is written byte for byte as 1.0.0-beta writes it.
 - The limits of `settings.ini` and `notebook.ini` given in their own sections below.
 
@@ -823,6 +886,35 @@ and a notebook can have more links than that holds. They never read `links.ini`.
 include it as `raw/links.ini`, and the notebook's PDF has each link to a page as a link on its page
 (a link to the Index has nowhere to go there).
 
+### The clipboard: `root/clipboard.qpg` (2.0.0-beta.2)
+
+What the lasso's Copy or Cut took: one file in the data root, so it survives page turns, notebook
+switches, Grimoire leaving for KOReader and a restart. Written atomically (`.tmp`, fsync, rename) and
+replaced whole by each Copy and Cut; if writing it fails during Cut, nothing is cut.
+
+- A version-1 page file: w and h the size of the page the group came from, paper 4 (Blank), its strokes
+  the group in page order at that page's coordinates (selected ink, with entirely erased ink left out, and
+  the erase strokes that took parts of it away), floors encoded as on a page with layers numbered from 1
+  in the group (Scoped erase strokes; every carried erase stroke is scoped there, the first floor at the
+  group's start).
+- After the strokes, exactly one critical chunk `CLIP`: a format byte (1); the source notebook's id (u8
+  length, then its bytes); the source page id (u32); the group's box x, y, w, h (i32 each, source page px,
+  link areas included); then the carried links (u32 length, then UTF-8 text) as `link.`, `area.` and
+  `outline.` lines in links.ini's syntax, keyed by their number from 1 instead of a page id, at the
+  source's coordinates with their own seeds and targets.
+- A clipboard that is missing, does not read as a page, has no `CLIP` chunk or one cut off, malformed or
+  followed by other bytes, links that do not parse, more than 20,000 strokes or more than 16 MiB: Paste
+  says "The clipboard could not be read." and changes nothing.
+- Paste puts the group 1:1 in page pixels where it was if that spot is on screen and on the page (3 mm
+  right and down on the page it was copied from), else in the middle of the view, clamped onto the page;
+  only a group larger than the page is scaled down (points, areas and outlines; widths stay in mm).
+  Pasted into another notebook, a link's target is rewritten: `p<id>` becomes `n:<source id>:p<id>`,
+  `n:<this notebook>:p<id>` becomes `p<id>` while this notebook still has that page (a link to one it
+  deleted keeps its `n:` form, so it stays a broken link to repair, not one a save drops); a link to
+  `index` is left out (it cannot name another notebook's Index). Pasted in the notebook it came from,
+  every link is kept exactly, `index` included. A paste that would pass 64 links on the page or 4000 in the notebook, or carries
+  links while links.ini cannot be written, is refused whole.
+
 ## `settings.ini`
 
 `key=value` lines; `#` starts a comment line. Readers strip one carriage return at the end of a
@@ -1080,6 +1172,7 @@ Frozen while 1.0.0-beta is in use:
 | `next_page_id` | the id the next new page gets |
 | `pages` | the page ids in order, comma-separated |
 | `page_w`, `page_h` | the size of the notebook's pages in pixels, 100 to 6000 each: the screen it was made on (since 1.1; see Page size) |
+| `graph` | `0`: the notebook is left out of the Graph of all notebooks (the Library's notebook menu, Leave out of the Graph; 2.0.0-beta.2). No line, or `1`: it is in it. Written only as `graph=0`. Older versions keep the line as one they do not know (below); another value is such a line here too |
 | `source` | the book the notebook annotates: KOReader's partial MD5 of the book's file, 1 to 63 letters, digits, `-` or `_` (since 1.1; Annotated pages). A value of another form is a line this version does not know (kept, as below). 1.0.0-beta drops the line on its next save; `source.ini` names the book too, and 1.1 writes the line back when it next adds or opens a page for that book |
 
 A `notebook.ini` without a page size (written before 1.1, or saved by 1.0.0-beta, which drops the
@@ -1108,6 +1201,58 @@ Frozen while 1.0.0-beta is in use:
   what it writes stays valid UTF-8 (a name becomes the mirror PDF's file name).
 - A notebook has at most 2000 pages: both versions keep only the first 2000 ids of `pages` and
   drop the rest from the list on their next save (those page files stay, in no page list).
+
+## Moving and copying pages (2.0.0-beta.2 on)
+
+Neither adds a file kind, a key or a byte to a page: they use the files above as they are.
+
+**Move to...** changes only the order of `pages` in `notebook.ini` (and `last_page`, which follows the
+page it named). Links, names, book pages (`source.ini`), the map cache, `bg/pages.ini`, `erased.txt`
+and the page previews all name pages by id, so none of them is written. Every version reads the new
+order as it is. In an annotated notebook a page may be moved anywhere; a book page sent later still
+goes just before the first page, in the order as it is then, that holds a later book page (Annotated
+pages), so pages kept in book order behave as before and a moved page counts where it now stands.
+Undoing a move (the Pages view's Undo, while its notebook stays open) writes the order before it back the
+same way: only `pages` and `last_page`. A drag to a gap is a Move to... like any other.
+
+**New page's batch** (New page held in the Pages view) writes N blank page files as New page writes one
+(new ids from `next_page_id`, never over a file already there), then, on a picture paper, `bg/pages.ini`
+once, listing them all, then `notebook.ini` once, listing them all; a failure removes the files it wrote
+(and unlists them from `bg/pages.ini` in one write), so no page is added. Undoing it (while its notebook stays open
+and those pages are byte for byte as written) writes `notebook.ini` without them first, then removes
+their files. No new file kind or key: every version reads such a notebook as it reads one built page by
+page.
+
+**Copy to notebook...** adds pages to another notebook as new pages there (new ids from its
+`next_page_id`, never over a page file already there, listed last in its `notebook.ini`):
+
+- Each page file is the source file byte for byte, a read-only page's too. A missing source file
+  becomes an empty page of the destination's size on the source notebook's paper (as Copy page does);
+  a file that does not read refuses the whole copy, and a failure takes back every file it wrote.
+- A page of another size than the destination's keeps its own size in its file: the destination opens
+  and exports it scaled to its own size (Page size), and writes it at that size after an edit.
+- A page on an image paper (a template, a photo, an imported or book page) takes its picture into the
+  destination's `bg/`, under the key the source's `bg/index.ini` gives it (else a key of the picture's
+  bytes): the same id when the destination has it free or holds the same picture there, else the next
+  free id, and then the copy's paper value (bytes 16 to 19 of the version 2 page) is the only change to
+  its bytes. A read-only page whose picture would need another id is refused. The copies are listed in
+  the destination's `bg/pages.ini` as any picture page is. A picture still waiting to be fitted
+  (`bg/<pic>.source.png`) is not copied: that copy draws white paper.
+- Its section name goes into the destination's `nav.ini` under the copy's id, and its links into its
+  `links.ini`, with their seeds, areas (scaled when the page sizes differ) and outlines. A target `p<id>`
+  of a page copied in the same operation points at that page's copy; any other `p<id>` becomes
+  `n:<source notebook id>:p<id>`; `n:<destination id>:p<id>` becomes `p<id>` if the destination still has that page (else it keeps its
+  `n:` form and stays a broken link, Page gone, to repair); `index` is left out (the
+  Index of which notebook?); other notebook targets and targets this version does not know are kept as
+  they are. A copy holding erase strokes is listed in the destination's `erased.txt`.
+
+What older versions do with a copied page: it is an ordinary page of its notebook. 1.0.0-beta draws an
+image paper blank and `bg/pages.ini` brings it back in 1.1 on (Image papers); 1.0.0-beta and 1.0.0-rc.1
+scale every page to their screen, as they always did. 1.1, 1.2.0 and the October builds 2.0.0-beta.1 to
+beta.4 show the page and its picture and never read `links.ini`; 2.0.0-beta.5 to rc.1 carry an `n:` target
+as a target they do not know (it does nothing there). The released 2.0.0-beta.1 (2026-11-01) follows `n:`
+targets into the other notebook, as every build since 2.0.0-rc.2 does. Moving pages needs nothing of any
+version: each reads the `pages` order it finds.
 
 ## Where new data goes
 
@@ -1146,6 +1291,10 @@ marked 1.1 shipped in 1.1.0-beta.1 together with those rules, so for it the last
 | `templates/`, `import/` in the data root (and `import/.attempts`, 1.1) | never read | read |
 | `photos/` in the data root (2.0) | never read | never read; a page on a photo is drawn as any picture page |
 | `links.ini` (links drawn on pages, 2.0) | never read or written: the ink around a link shows as ink, and a tap on it does nothing; a page it deletes leaves its links for 2.0 to drop | the same; 1.2.0 to 2.0.0-beta.4 never read it either (Links) |
+| `backlinks.ini` in the data root (2.0.0-beta.2, a cache) | never read or written | the same; 1.2.0 to 2.0.0-beta.1 never read it either (Backlinks cache) |
+| `graph-index.ini` and `graph-all.ini` (and `graph-all.ini.lock`) in the data root (2.0.0-beta.2, caches) | never read or written | the same; 1.2.0 to 2.0.0-beta.1 never read them either; a notebook another version changes is read again at the next check (Library index) |
+| `graph-omit.ini` in the data root (2.0.0-beta.2) | never read or written | the same; 1.2.0 to 2.0.0-beta.1 never read it either: every notebook is in their Graph. A folder another version renames keeps its old line, which then names no folder and leaves nothing out (Library index) |
+| `graph=0` in `notebook.ini` (2.0.0-beta.2) | dropped on its next save of `notebook.ini` (the notebook is back in the Graph) | kept, as a key it does not know: the notebook stays left out when 2.0.0-beta.2 reads it again |
 | `area.` lines in `links.ini` (a link's area, 2.0.0-beta.6) | never read or written, as the file | the same; 2.0.0-beta.5 carries them as unknown lines within its limits, and a link with an area but no ink does nothing there (Links) |
 | page version 3 to 255 | set aside as `.damaged-<time>`, a blank page in its place | read-only, shown blank; copies set aside earlier come back if the page is still in the notebook |
 | a tool id of 10 or more | set aside, as above | read-only; the strokes it knows are shown |
@@ -1176,6 +1325,8 @@ marked 1.1 shipped in 1.1.0-beta.1 together with those rules, so for it the last
 | `controller.ini`, `bluetooth/` (2.0) | never read | never read; a helper someone else starts still makes its controllers into input devices, which 1.2.0 and 2.0.0-beta.1 to beta.4 read through `shortcuts.ini` |
 | `gestures.ini` (2.0) | never read | never read: 1.2.0 to 2.0.0-beta.4 have no touch gestures (two fingers only pinch) |
 | the `settings.ini` keys `gestures`, `landscape_fit`, `hints` and `link_areas` (2.0) | unknown lines: dropped on the next save | unknown lines: kept, so turning back to a build before them and forward again keeps what was set |
+| an erase stroke's layer byte and a floor marker (ext[1], 2.0.0-beta.2: Scoped erase strokes) | the marker draws nothing (off the page); a re-save zeroes ext, so a scoped group's erasure becomes ordinary there for good | kept; 1.1 to 2.0.0-beta.1 draw a scoped erasure flat (also over the ink under it, on their screen only) and keep the bytes |
+| `root/clipboard.qpg` (2.0.0-beta.2) | never read | never read (versions before 2.0.0-beta.2 look for no file in the data root) |
 | a page with none of the above | written byte for byte the same | written byte for byte the same |
 
 ## Highlighter rendering in 1.2.0
@@ -1203,7 +1354,7 @@ rename or move. Older versions display a nested logical name as a flat folder.
 ### Index map cache: graph.ini
 
 `notebooks/<id>/graph.ini` is disposable layout state. It carries the sorted graph generation
-hash, All/Around mode, whether unlinked pages are shown, and integer world positions keyed by
+hash, the view (mode=all, or mode=around for View: Adjacent), whether unlinked pages are shown, and integer world positions keyed by
 page ID. Reserved pin entries and unknown bounded lines are retained. A file that cannot be read
 safely is ignored and never overwritten that session. Raw notebook ZIPs exclude this cache.
 Deleting it loses no ink, names, links or notebook content.
@@ -1211,6 +1362,120 @@ Deleting it loses no ink, names, links or notebook content.
 `graph.ini.lock` is an empty advisory-lock sidecar for map-cache transactions. It has no notebook
 content, is excluded from raw exports with the map cache, and may be removed while Grimoire is
 closed. It keeps an atomic replacement of graph.ini from invalidating the writer's lock.
+
+The Graph's anchors (2.0.0-beta.2: other notebooks' pages linked to or from this notebook, boxed beside
+the plot) are never in graph.ini and never layout nodes: they change no position and no `gen`.
+
+### Backlinks cache: backlinks.ini (2.0.0-beta.2)
+
+`root/backlinks.ini` says which pages of each notebook link to pages of other notebooks: every
+notebook's `links.ini` turned around, so a page's Links bar, its Pages card and the Graph can list
+what links to it from elsewhere without reading every notebook. It is a cache, never data: deleting
+it, or a file that does not read, loses nothing (it is built again from the notebooks' `links.ini`
+files on the editor's idle ticks), it is never exported, and no other version reads it.
+
+```
+# Grimoire: links between notebooks (a cache: deleting it loses nothing)
+src=A,9f3c22d05b1e4471
+to=1,B,2
+src=C,0000000000000001
+```
+
+`src=<notebook id>,<stamp>` starts a notebook's lines: the stamp is 1 to 16 hex digits, a hash of its
+`links.ini`'s inode, size and times when it was read (an odd number; a notebook with no links to other
+notebooks keeps its `src` line so its file is not read again). A stamp of 0, with no `to` lines,
+is a notebook left out because the cache already holds 40000 links: every check reads it again, and
+a check runs again as soon as another notebook's links make room for it. Each `to=<page id>,<notebook id>,<page
+id>` line after it is one of its pages with a link to a page of another notebook, once per pair of
+pages (page ids as in `links.ini`, decimal without leading zeros; never a link to its own notebook).
+Links from a page the notebook no longer lists are left out. A line of any other kind, a `to` line
+before any `src`, a notebook listed twice, more than 40000 `to` lines or a file over 2 MiB make the
+file not read (then it is built again). Grimoire updates a notebook's lines in memory each time it
+writes that notebook's `links.ini` (once the file has been read: it is read on the first idle tick,
+never while a screen is drawn), checks every notebook's stamp a few a tick after a notebook opens
+(reading again, one a tick, each `links.ini` that changed, and dropping notebooks that are gone), and
+writes the file after such a check or as a notebook closes, only when it changed. Older versions never
+read or write it, and leave it alone; a notebook they change is read again at the next check.
+
+A link to a page or a notebook that is gone (deleted, so in `trash/`) is never changed or dropped for
+it: it shows as broken (Page gone, Notebook gone) until it is changed or deleted, and works again if
+the notebook comes back from the trash.
+
+### Library index and the Graph of all notebooks: graph-index.ini, graph-all.ini (2.0.0-beta.2)
+
+The Graph opens on every notebook (the Graph of all notebooks; one notebook's Graph and its `graph.ini` are
+what it shows past its caps). Two caches in the data root serve it. Both are disposable: deleting
+either, or a file that does not read, loses nothing (they are built again), they are never exported, and no
+other version reads them.
+
+`root/graph-index.ini` keeps what every notebook's `notebook.ini`, `nav.ini` and `links.ini` say, so the
+Graph never reads every notebook's files when it opens:
+
+```
+# Grimoire: every notebook's pages, names and links, for the Graph (a cache: deleting it loses nothing)
+nb=20261010-143205-a3f1,9f3c22d05b1e4471,1b2c3d4e5f607182,77aa66bb55cc44dd
+name=Lecture notes
+folder=School/2026
+omit=1
+pages=1,2,5,7,8
+pname=5,Thermodynamics
+link=5,p7
+link=7,n:20261012-090000-b2c4:p3
+link=8,index
+```
+
+`nb=<notebook id>,<stamp>,<stamp>,<stamp>` starts a notebook's lines: the stamps of its `notebook.ini`,
+`nav.ini` and `links.ini` when they were read (as backlinks.ini's, 1 to 16 hex digits; 0 for a file that is
+not there). Then its name, folder, `omit=1` when its `notebook.ini` says `graph=0` (no line otherwise), page order, its named pages (`pname=<page id>,<name>`, the name the rest
+of the line) and its links (`link=<page id>,<target>`, targets as `links.ini` writes them; links from pages
+not in `pages`, and targets this version does not know, left out). `nb=<id>,0,0,0` alone is a notebook whose
+`notebook.ini` does not read, or one left out because the index already holds 40000 links: every check reads
+it again. A line of any other kind, a line before any `nb`, a line under an `nb=<id>,0,0,0`, a notebook
+listed twice, more than 40000 links or a file over 4 MiB make the file not read. Grimoire keeps it as it
+keeps backlinks.ini: a notebook's entry is updated in memory when this version writes its `notebook.ini`,
+`nav.ini` or `links.ini` (or moves it to the trash), and on the editor's idle ticks every notebook's three
+stamps are checked (eight notebooks a tick), a notebook whose files changed read again, one a tick; the file
+is written after such a check, or as a notebook closes, only when it changed.
+
+`root/graph-all.ini` keeps the Graph of all notebooks' layout, by notebook id and page id (never by place or
+name: moving a page or renaming a notebook moves no dot), with View: All or Adjacent (written `mode=around`,
+as before the button said Adjacent):
+
+```
+# Grimoire: the Graph of all notebooks (a cache: deleting it loses nothing)
+gen=5f3a9c21
+mode=all
+pos.20261010-143205-a3f1.5=-310,442
+```
+
+`gen` is graph.ini's gen over the Graph of all notebooks' node keys (a mix of each page's notebook id and
+page id). `pos.<notebook id>.<page id>=<x>,<y>` lines are sorted by notebook id, then page id (notebook ids
+have no `.`); the last line for a page wins. `orphans=` lines and `pos.<notebook id>.0` lines, which only a
+beta.2 build that drew unlinked pages wrote (the owner ruled them out of the Graph), are dropped when read
+and never written back. Other lines it does not read are carried, as graph.ini's are; a file
+over 1 MiB, with a NUL, with more than 8000 positions or past the carried lines' limits is ignored and never
+overwritten that session. `graph-all.ini.lock` is its empty advisory-lock sidecar, as `graph.ini.lock` is.
+
+`root/graph-omit.ini` lists the folders left out of the Graph of all notebooks (a folder's menu in the
+Library, Leave out of the Graph). It is data, not a cache, but losing it only brings those folders back into
+the Graph:
+
+```
+# Grimoire: folders left out of the Graph of all notebooks
+folder=School/2025
+```
+
+One `folder=<path>` line a folder, its logical path as `notebook.ini`'s `folder` writes it, sorted, each
+once. A folder left out leaves out everything inside it at any depth: the notebooks in it and in the folders
+inside it, and those moved in later. A notebook is left out when its own `notebook.ini` says `graph=0` or a
+folder it is in is listed. Lines of another kind, and paths that are no valid folder, are ignored; a file over
+64 KiB leaves nothing out. Renaming or moving a folder moves its line and those of the folders inside it;
+removing an (empty) folder drops its line, and so does a folder that lived only through its notebooks'
+`folder` paths (no `folders.ini` line) going when its last notebook moves out or goes to the trash. With no
+folder left out the file is removed. It is kept apart from
+`folders.ini`, whose every line older versions read as a folder's name. A left-out notebook's pages are no
+nodes in the Graph of all notebooks and links to or from them no edges; `graph-all.ini` keeps their positions
+as it keeps any notebook the model lacks, so a notebook shown again comes back where it was.
 
 Smart-shape settings: `shapes` (on by default), `shape_hold_ms` (550; menu choices 400/550/900),
 `shape_quads` (0 uneven allowed, 1 rectangles/default, 2 squares only), `shape_round` (0 as drawn,

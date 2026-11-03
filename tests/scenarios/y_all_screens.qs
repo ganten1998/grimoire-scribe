@@ -742,6 +742,20 @@ tap panel pages.delete
 wait 150
 shot 30-pages-deleted
 expect editor.pages is 1
+# New page, its Undo, then the bottom row's Redo beside the Undo's place (2.0.0-beta.2), and Undo again
+tap panel pages.new
+wait 200
+expect editor.pages is 2
+tap panel pages.undo-add
+wait 200
+expect editor.pages.redo is 1
+shot 30b-pages-redo
+tap panel pages.redo
+wait 200
+expect editor.pages is 2
+tap panel pages.undo-add
+wait 200
+expect editor.pages is 1
 tap panel pages.back
 expect editor.modal is none
 pen curve 300 600 40 70 0.7 4
@@ -785,13 +799,13 @@ tap 548 1052
 wait 50
 expect library.sheet is more
 shot 34-more
-tap 930 1155
+tap library more.pdf
 wait 50
 expect library.sheet is none
 shot 35-saving-pdf
 tap 548 1052
 wait 50
-tap 930 1315
+tap library more.delete
 wait 50
 expect library.sheet is delete
 shot 37-delete
@@ -811,7 +825,7 @@ expect library.items is 2
 tap 1151 1052
 wait 50
 expect library.sheet is more
-tap 930 995
+tap library more.move
 wait 50
 expect library.sheet is move
 shot 38-move
@@ -853,7 +867,7 @@ tap 1151 1052
 wait 50
 expect library.sheet is folder-more
 shot 42-folder-more-empty
-tap 930 835
+tap library fmore.rename
 wait 50
 expect library.sheet is keyboard
 shot 43-rename-folder
@@ -1076,7 +1090,7 @@ tap 431 896
 wait 50
 expect library.sheet is more
 shot 50-more-landscape
-tap 1240 1110
+tap library more.delete
 wait 50
 expect library.sheet is delete
 shot 51-delete-landscape
@@ -1086,7 +1100,7 @@ expect library.sheet is none
 expect library.items is 1
 tap 431 896
 wait 50
-tap 1240 790
+tap library more.move
 wait 50
 expect library.sheet is move
 shot 52-move-landscape
@@ -1100,8 +1114,9 @@ tap 431 896
 wait 50
 expect library.sheet is folder-more
 shot 53-folder-more-landscape
-expect library.ui_at.1240.790 is fmore.move
-expect library.ui_at.1240.1110 is done
+expect library.ui_at.1240.690 is fmore.move
+expect library.ui_at.1240.850 is fmore.graph
+expect library.ui_at.1240.1170 is done
 tap library done
 wait 50
 expect library.sheet is none
@@ -1376,6 +1391,11 @@ shot 68-find-landscape
 tap 279 1745
 wait 300
 expect editor.find is 0
+# (opened from the Pages view: the view again, as it was; its Back closes it)
+expect editor.modal is pages
+tap panel pages.back
+wait 300
+expect editor.modal is none
 # the bar sideways (three chips across), its peek, and on a page with no links
 pen leave
 wait 1100
@@ -1466,6 +1486,9 @@ expect editor.map is graph
 wait 100
 expect editor.map.mode is all
 shot 72-index-map
+expect editor.map.scope is all
+# No Notebook chip (the owner's ruling of 2026-11-03, "remove it"): the Graph is every notebook's.
+expect editor.map.ui_at.400.215 is
 tap editor map.current
 shot 73-map-card
 rotate 1

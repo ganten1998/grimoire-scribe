@@ -26,6 +26,9 @@ enum Modal {
     Updates = 16,   // MOD_UPDATES
     Gestures = 17,  // MOD_GESTURES
     About = 18,     // (Rust only: the bat's What's new)
+    /// Esc at the top level, "Exit Grimoire?" (Rust only; numbered from 300, past the C's sheets: the probe
+    /// names it apart from SHEETS)
+    Exit = 300,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -126,6 +129,12 @@ const H_ABOUT_PREV: i32 = 74;
 const H_ABOUT_NEXT: i32 = 75;
 const H_ABOUT_MORE: i32 = 76;
 const H_FMORE_MOVE: i32 = 77;
+// 2.0.0-beta.2: a notebook's or a folder's Leave out of the Graph / Show in the Graph.
+const H_MORE_GRAPH: i32 = 78;
+const H_FMORE_GRAPH: i32 = 79;
+// 2.0.0-beta.2: the Exit Grimoire? dialog's Yes and No.
+const H_EXIT_YES: i32 = 82;
+const H_EXIT_NO: i32 = 83;
 
 #[derive(Clone, Copy, Default)]
 struct Item {
@@ -142,6 +151,8 @@ struct Item {
 /// Its fields are the translator's, from the C struct, by the rules of PORTING.md.
 #[derive(Default)]
 pub struct LibraryState {
+    /// Exit Grimoire?'s highlight is on No (Left and Right move it; Enter presses it)
+    exit_no: bool,
     settings_return_editor: bool,
     settings_painting: bool,
     settings_editor_fit: bool,
@@ -266,6 +277,14 @@ pub struct LibraryState {
     pressed: Option<Hit>,
     /// when the finger went down on it (a Buttons row held ROW_HOLD_MS: forget_row)
     pressed_at: u32,
+    /// The Graph as a place of its own (2.0.0-beta.2, the owner's ruling of 2026-11-03): opened from the
+    /// Library (two fingers down, the index-map key) on every notebook, with no notebook
+    /// open. Its notebooks' browser (past the caps); what it keeps while a notebook it opened is in front; and whether
+    /// the Library comes back to it as it enters (Back from that notebook).
+    map: MapView,
+    map_picker: NotebookPicker,
+    map_keep: Option<MapKeep>,
+    map_return: bool,
 }
 
 /// The C's S (a->lib).
@@ -640,15 +659,15 @@ fn draw_base(a: &mut App) {
         // KOReader (a name, not translated), using the same button width as its neighbors.
         btns[0].label = "KOReader";
     }
-    const NBTNS: usize = 5;
+    const NBTNS: usize = 6;
     // A word too long for its button (a translation) widens all five alike, as far as leaves the
     // app's name room in the bar (beyond that a word is cut, and the fit check hears of it).
-    for (i, b) in btns.iter().enumerate() {
+    for b in btns.iter() {
         let need = ui_button_need_w(
             bh,
             b.icon,
             b.label,
-            if i == 4 {
+            if b.id == H_NEW {
                 ButtonStyle::Primary
             } else {
                 ButtonStyle::Plain
@@ -659,7 +678,7 @@ fn draw_base(a: &mut App) {
         }
     }
     let mut rx = aw - m;
-    for (i, b) in btns.iter().enumerate().take(NBTNS) {
+    for b in btns.iter().take(NBTNS) {
         if !b.show {
             continue;
         }
@@ -671,7 +690,7 @@ fn draw_base(a: &mut App) {
             r,
             b.icon,
             b.label,
-            if i == 4 {
+            if b.id == H_NEW {
                 ButtonStyle::Primary
             } else {
                 ButtonStyle::Plain
@@ -969,6 +988,37 @@ struct MenuRow {
     id: i32,
     arg: i32,
     st: ButtonStyle,
+}
+
+// A notebook's menu row for the Graph of all notebooks (2.0.0-beta.2, the owner's ruling of 2026-11-03):
+// Leave out of the Graph, or Show in the Graph when it is left out; greyed out, saying so, when a folder it
+// is in is left out (that folder's own row shows it again).
+fn graph_omit_row(nb: &NotebookInfo, id: i32) -> MenuRow {
+    let folders = store_graph_omit_folders();
+    if store_folder_graph_omitted(&folders, nb.folder.as_str()) {
+        return menu_row(IconKind::Grid, graph_omit_with_folder(), id, 0, ButtonStyle::Disabled);
+    }
+    graph_toggle_row(nb.graph_omit, id)
+}
+// The same for a folder: it covers everything in it, folders inside it and notebooks moved in later included.
+fn graph_omit_folder_row(path: &str) -> MenuRow {
+    let folders = store_graph_omit_folders();
+    let own = folders.iter().any(|f| f == path);
+    if !own && store_folder_graph_omitted(&folders, path) {
+        return menu_row(IconKind::Grid, graph_omit_with_folder(), H_FMORE_GRAPH, 0, ButtonStyle::Disabled);
+    }
+    graph_toggle_row(own, H_FMORE_GRAPH)
+}
+fn graph_toggle_row(omitted: bool, id: i32) -> MenuRow {
+    // TRANSLATORS: a notebook's and a folder's menu (rows of 1470 px at 44 px in bold): its pages are not shown
+    // in the Graph of all notebooks (the Graph: the Index's map of linked pages), or are shown there again.
+    let label = if omitted { tr("Show in the Graph") } else { tr("Leave out of the Graph") };
+    menu_row(IconKind::Grid, label, id, if omitted { 0 } else { 1 }, ButtonStyle::Plain)
+}
+fn graph_omit_with_folder() -> &'static str {
+    // TRANSLATORS: a notebook's or a folder's menu row, greyed out (1470 px at 44 px in bold): a folder it is in is
+    // left out of the Graph, which leaves it out too; that folder's menu shows it again.
+    tr("Left out of the Graph with its folder")
 }
 
 fn menu_row(icon: IconKind, label: &str, id: i32, arg: i32, st: ButtonStyle) -> MenuRow {
@@ -2113,7 +2163,7 @@ fn hid_status(a: &mut App, out: &mut String, cap: usize) {
             out,
             cap,
             "%s",
-            if a.settings.shortcuts_enabled {
+            if app_shortcuts_on(a) {
                 tr("No controller or keyboard connected")
             } else {
                 ""
@@ -2344,7 +2394,8 @@ fn upd_poll(a: &mut App) {
 }
 
 // A vertical list of full-width buttons inside a sheet.
-fn draw_menu(a: &mut App, title: &str, rows: &[MenuRow]) {
+/// The sheet with its rows; returns where each row is.
+fn draw_menu(a: &mut App, title: &str, rows: &[MenuRow]) -> Vec<Rect> {
     let n = rows.len() as i32;
     let mut rh = ui_px(140.0);
     let mut gap = ui_px(20.0);
@@ -2361,8 +2412,10 @@ fn draw_menu(a: &mut App, title: &str, rows: &[MenuRow]) {
     let App { screen: c, lib, .. } = a;
     let s = lib.as_deref_mut().unwrap();
     let in_ = ui_sheet(c, card, title);
+    let mut rects = Vec::with_capacity(rows.len());
     for (i, row) in rows.iter().enumerate() {
         let r = Rect::new(in_.x, in_.y + i as i32 * (rh + gap), in_.w, rh);
+        rects.push(r);
         ui_frame(
             c,
             r,
@@ -2421,6 +2474,7 @@ fn draw_menu(a: &mut App, title: &str, rows: &[MenuRow]) {
             hits_add(&mut s.hits, r, row.id, row.arg);
         }
     }
+    rects
 }
 
 fn bind_group(kind: BindKind, s: &LibraryState) -> i32 {
@@ -3294,6 +3348,7 @@ fn draw_settings(a: &mut App) {
     hits_add(&mut s.hits, upd, H_UPDATES, 0);
 }
 
+
 // The item MORE, MOVE and DELETE act on (S->target), if it is one.
 fn target_item(s: &LibraryState) -> Option<Item> {
     if s.target >= 0 && (s.target as usize) < s.items.len() {
@@ -3589,7 +3644,7 @@ fn draw_modal(a: &mut App) {
                     tr("Bluetooth did not start (see grimoire.log)")
                 );
             }
-            let on = a.settings.shortcuts_enabled;
+            let on = app_shortcuts_on(a);
             let present = bt_present();
             let bt_up = bs == BtState::Owned || bs == BtState::External;
             let mut reload = String::new();
@@ -3769,6 +3824,7 @@ fn draw_modal(a: &mut App) {
                     ButtonStyle::Plain,
                 ),
                 menu_row(IconKind::Download, &pdf, H_MORE_PDF, 0, ButtonStyle::Plain),
+                graph_omit_row(&lib(a).books[it.nb], H_MORE_GRAPH),
                 menu_row(
                     IconKind::Trash,
                     tr("Delete"),
@@ -3801,6 +3857,7 @@ fn draw_modal(a: &mut App) {
                 // TRANSLATORS: a folder's menu (see Rename folder): to another folder or the top level,
                 // with everything in it.
                 menu_row(IconKind::FolderMove, tr("Move folder"), H_FMORE_MOVE, 0, ButtonStyle::Plain),
+                graph_omit_folder_row(it.folder.as_str()),
                 menu_row(
                     IconKind::Trash,
                     if it.count != 0 || it.has_children { tr("Remove folder (move its notebooks out first)") } else { tr("Remove folder") },
@@ -3848,6 +3905,18 @@ fn draw_modal(a: &mut App) {
             rows.push(menu_row(IconKind::Close, tr("Cancel"), H_CANCEL, 0, ButtonStyle::Plain));
             // TRANSLATORS: the title of the list of folders a notebook (or a folder) can be moved to.
             draw_menu(a, tr("Move to"), &rows);
+        }
+        Modal::Exit => {
+            // Esc at the Library's top level (4.2): Yes leaves as the Exit button does, No stays; the highlighted
+            // one is Enter's (Yes at first), Left and Right move it.
+            let no = lib(a).exit_no;
+            let rows = [
+                // TRANSLATORS: Exit Grimoire?'s answers (1470 px at 44 px in bold): leave Grimoire, or stay.
+                menu_row(IconKind::Exit, tr("Yes"), H_EXIT_YES, 0, if no { ButtonStyle::Plain } else { ButtonStyle::Selected }),
+                menu_row(IconKind::Close, tr("No"), H_EXIT_NO, 0, if no { ButtonStyle::Selected } else { ButtonStyle::Plain }),
+            ];
+            // TRANSLATORS: the question Esc asks at the Library's top level (a keyboard's), before Grimoire leaves.
+            draw_menu(a, tr("Exit Grimoire?"), &rows);
         }
         Modal::Delete => {
             let Some(it) = it else { return };
@@ -3995,6 +4064,12 @@ fn toast_floor(a: &App) -> i32 {
 }
 
 fn redraw(a: &mut App, m: RefreshMode) {
+    if graph_shown(a) {
+        graph_draw(a);
+        a.toast_floor = 0;
+        app_invalidate_all(a, m);
+        return;
+    }
     if lib(a).settings_return_editor && a.scr==ScreenId::Editor {
         lib(a).settings_painting=true;
         crate::editor::editor_settings_background(a);
@@ -4246,6 +4321,11 @@ fn act(a: &mut App, h: &Hit) {
         H_SHARE => share_open(a),
         H_SETTINGS => open_modal(a, Modal::Settings),
         H_EXIT => a.running = false,
+        H_EXIT_YES => {
+            lib(a).modal = Modal::None;
+            a.running = false;
+        }
+        H_EXIT_NO => close_modal(a),
         H_ABOUT => {
             let s = lib(a);
             s.about_page = 0;
@@ -4266,16 +4346,7 @@ fn act(a: &mut App, h: &Hit) {
             lib(a).about_full = true;
             redraw(a, RefreshMode::Ui);
         }
-        H_PREV | H_NEXT => {
-            let s = lib(a);
-            // Only the visible page's thumbnails stay in memory (each is ~0.5 MB).
-            for i in 0..s.books.len() {
-                canvas_free(&mut s.thumbs[i]);
-                s.thumb_tried[i] = false;
-            }
-            s.page += if h.id == H_NEXT { 1 } else { -1 };
-            redraw(a, RefreshMode::Ui);
-        }
+        H_PREV | H_NEXT => turn(a, h.id == H_NEXT),
         H_CARD => {
             let s = lib(a);
             if h.arg >= s.items.len() as i32 {
@@ -4654,6 +4725,23 @@ fn act(a: &mut App, h: &Hit) {
             }
         }
         H_MORE_DELETE => open_modal(a, Modal::Delete),
+        H_MORE_GRAPH | H_FMORE_GRAPH => {
+            // (arg: 1 leaves it out, 0 shows it again)
+            let omit = h.arg != 0;
+            let rc = match it {
+                Some(it) if it.is_folder && h.id == H_FMORE_GRAPH => store_set_folder_graph_omit(it.folder.as_str(), omit),
+                Some(it) if !it.is_folder && h.id == H_MORE_GRAPH => store_set_graph_omit(lib(a).books[it.nb].id.as_str(), omit),
+                _ => -1,
+            };
+            lib(a).modal = Modal::None;
+            reload(a);
+            redraw(a, RefreshMode::Ui);
+            // TRANSLATORS: toasts (about 1700 px at 44 px in bold) after a notebook's or a folder's menu row: its
+            // pages are left out of the Graph of all notebooks now, or shown there again; or the change could not
+            // be saved.
+            let msg = if rc != 0 { tr("Could not save that change.") } else if omit { tr("Left out of the Graph.") } else { tr("Shown in the Graph again.") };
+            app_toast(a, msg, 2500);
+        }
         H_DELETE_YES => {
             if let Some(it) = it.filter(|it| !it.is_folder) {
                 let mut nb_path = String::new();
@@ -4720,6 +4808,388 @@ fn act(a: &mut App, h: &Hit) {
     }
 }
 
+// ---- the Graph as a place of its own (2.0.0-beta.2, docs/beta2/GRAPH-ALL.md section 10) ----
+//
+// The owner (2026-11-03): "the graph view is now its own entity and way of managing pages (interlinked ones)
+// It needs to be accessible from the main menu through the swipe down with the pages view taken out if
+// summoned from the main menu". The Library hosts its own MapView, opened with no notebook (an empty
+// NotebookInfo and Nav: mapview_no_notebook): no List or Pages tab. A node's Open goes
+// to that notebook at that page in the editor (editor_open_from_graph), and Back from there comes back here
+// (map_keep, map_return); Back here returns to the Library.
+
+/// The Library's Graph itself is up (not the notebooks' browser past its caps): its keys are the Graph's.
+pub fn library_graph_up(a: &App) -> bool {
+    a.scr == ScreenId::Library && a.lib.as_deref().is_some_and(|s| s.map.open && !s.map_picker.open)
+}
+// The Graph is up, or the notebooks' browser alone (a library past the Graph of all notebooks' caps:
+// graph_show).
+fn graph_shown(a: &App) -> bool {
+    a.scr == ScreenId::Library && a.lib.as_deref().is_some_and(|s| s.map.open || s.map_picker.open)
+}
+
+fn with_graph<R>(a: &mut App, f: impl FnOnce(&mut MapView, &mut App) -> R) -> R {
+    let mut m = std::mem::take(&mut lib(a).map);
+    let r = f(&mut m, a);
+    lib(a).map = m;
+    r
+}
+
+// The Graph opened (every notebook, or keep's pick as keep left it), drawn whole, the Library's toast gone.
+// False when it could not be built: it has said why, and the Library stays.
+fn graph_open(a: &mut App, keep: Option<MapKeep>) -> bool {
+    app_toast(a, "", 0);
+    graph_show(a, keep)
+}
+
+// graph_open keeping the toast up (a node's notebook that did not open has said so).
+fn graph_show(a: &mut App, keep: Option<MapKeep>) -> bool {
+    let s = lib(a);
+    s.modal = Modal::None;
+    s.pressed = None;
+    s.map_picker.open = false;
+    let (nb, nav) = (NotebookInfo::default(), Nav::default());
+    let pick = keep.and_then(|k| k.pick);
+    let ok = with_graph(a, |m, a| mapview_open_scoped(m, a, &nb, &nav, 0, false, pick.as_ref().map(|p| p.as_str())));
+    if !ok {
+        let too_big = lib(a).map.too_big;
+        mapview_close(&mut lib(a).map);
+        // Too many linked pages for every notebook (it has said so): the notebooks' browser opens, to show one
+        // (the only notebook choice left: the owner removed the Notebook chip, 2026-11-03); Back from it is the
+        // Library.
+        if too_big && pick.is_none() && lib(a).map_picker.start_notebook("") {
+            a.toast_floor = 0;
+            redraw(a, RefreshMode::Full);
+            input_touch_context(library_touch_view(a));
+            return true;
+        }
+        redraw(a, RefreshMode::Full);
+        return false;
+    }
+    if let Some(k) = keep {
+        with_graph(a, |m, a| mapview_restore(m, a, &nav, &k));
+    }
+    a.toast_floor = 0;
+    input_touch_context(library_touch_view(a));
+    true
+}
+
+// Back (or two fingers down again): the Library, as it was.
+fn graph_close(a: &mut App) {
+    let s = lib(a);
+    mapview_close(&mut s.map);
+    s.map_picker.open = false;
+    s.map_keep = None;
+    redraw(a, RefreshMode::Full);
+}
+
+fn graph_draw(a: &mut App) {
+    if lib(a).map_picker.open {
+        let mut p = std::mem::take(&mut lib(a).map_picker);
+        p.draw(a);
+        lib(a).map_picker = p;
+        return;
+    }
+    let full = Rect::new(0, 0, a.w, a.h);
+    with_graph(a, |m, a| mapview_draw(m, a, &Nav::default(), full));
+}
+
+// A notebook picked in the browser past the caps (graph_show): the Graph opens on it, or the Library stays.
+fn graph_pick(a: &mut App, pick: &str) {
+    let mut keep = mapview_keep(&lib(a).map);
+    keep.pick = Some(FixedStr::from_str(pick));
+    if !graph_open(a, Some(keep)) {
+        graph_close(a);
+    }
+}
+
+fn graph_result(a: &mut App, r: MapResult) {
+    match r {
+        MapResult::Close => graph_close(a),
+        MapResult::Target(t) => {
+            // A node's Open: that notebook at that page, the Graph kept for Back.
+            let Some((id, pid)) = nav_external_target(t.as_str()) else { return };
+            let (id, keep) = (id.to_string(), mapview_keep(&lib(a).map));
+            mapview_close(&mut lib(a).map);
+            lib(a).map_keep = Some(keep);
+            crate::editor::editor_open_from_graph(a, &id, pid);
+            if a.scr == ScreenId::Library {
+                // (it did not open, and has said so: the Graph again, its toast kept)
+                lib(a).map_keep = None;
+                graph_show(a, Some(keep));
+            }
+        }
+        // (no notebook is open: nothing here names, renames or repairs its pages, and there is no List or
+        // Pages tab to ask for them)
+        MapResult::Open(_) | MapResult::Repair(..) | MapResult::Rename(_) | MapResult::Pages | MapResult::List
+        | MapResult::None => {}
+    }
+}
+
+fn graph_event(a: &mut App, ev: &InEvent) {
+    let ph = app_pointer_phase(ev);
+    if lib(a).map_picker.open {
+        if ph < 0 {
+            return;
+        }
+        let mut p = std::mem::take(&mut lib(a).map_picker);
+        let r = p.pointer(a, ph, ev);
+        lib(a).map_picker = p;
+        match r {
+            NotebookPick::Notebook(id) => graph_pick(a, &id),
+            NotebookPick::Cancel => redraw(a, RefreshMode::Full),
+            _ => {}
+        }
+        return;
+    }
+    if ev.type_ == InType::Gesture {
+        // The Graph's own gesture (two fingers down, or the way back up) closes it, as over a notebook.
+        let Some(key) = gesturemap_key_of_id(ev.value) else { return };
+        let m = &a.gestures;
+        if gesturemap_action(m, key) == SHORTCUT_INDEX_MAP || gesturemap_action(m, gesturemap_mirror(key)) == SHORTCUT_INDEX_MAP {
+            graph_close(a);
+        }
+        return;
+    }
+    if matches!(ev.type_, InType::PinchBegin | InType::PinchMove | InType::PinchEnd) {
+        with_graph(a, |m, a| mapview_pinch(m, a, ev));
+        return;
+    }
+    if ph < 0 {
+        return;
+    }
+    let r = with_graph(a, |m, a| mapview_pointer(m, a, &Nav::default(), ph, ev));
+    graph_result(a, r);
+}
+
+// Two fingers down over the Library (or whatever gestures.ini binds to index-map) open the Graph; no other
+// gesture does anything here.
+fn library_gesture(a: &mut App, ev: &InEvent) {
+    if lib(a).modal != Modal::None {
+        return;
+    }
+    let Some(key) = gesturemap_key_of_id(ev.value) else { return };
+    if gesturemap_action(&a.gestures, key) == SHORTCUT_INDEX_MAP {
+        graph_open(a, None);
+    }
+}
+
+/// A key's or a controller's action on the Library (app.rs, before the global actions): index-map opens the
+/// Graph, or closes it; over the Graph, go-back and close-menu go back (from its notebooks' browser past the caps
+/// to the Library, from the Graph to the Library). True when it was taken.
+pub fn library_shortcut(a: &mut App, action: i32) -> bool {
+    if a.scr != ScreenId::Library || a.lib.is_none() {
+        return false;
+    }
+    if action == SHORTCUT_SAVE {
+        library_save(a);
+        return true;
+    }
+    if graph_shown(a) {
+        // The Graph's own keys first: pans, zoom, Fit, its view, Select all, Enter, and Esc's selection.
+        if lib(a).map.open && !lib(a).map_picker.open {
+            if let Some(r) = with_graph(a, |m, a| mapview_action(m, a, &Nav::default(), action)) {
+                graph_result(a, r);
+                return true;
+            }
+        }
+        if !matches!(action, SHORTCUT_INDEX_MAP | SHORTCUT_GO_BACK | SHORTCUT_CLOSE_MENU | SHORTCUT_BACK) {
+            return false;
+        }
+        if lib(a).map_picker.open && action != SHORTCUT_INDEX_MAP {
+            lib(a).map_picker.open = false;
+            redraw(a, RefreshMode::Full);
+        } else {
+            graph_close(a);
+        }
+        return true;
+    }
+    if action == SHORTCUT_BACK {
+        return library_back(a);
+    }
+    if lib(a).modal != Modal::None {
+        return false;
+    }
+    match action {
+        SHORTCUT_INDEX_MAP => {
+            graph_open(a, None);
+        }
+        // The top bar's buttons, from the keyboard: Ctrl+N, Ctrl+F, S and O.
+        SHORTCUT_NEW_NOTEBOOK => act(a, &Hit { id: H_NEW, ..Default::default() }),
+        SHORTCUT_NEW_FOLDER => act(a, &Hit { id: H_NEWFOLDER, ..Default::default() }),
+        SHORTCUT_SETTINGS => act(a, &Hit { id: H_SETTINGS, ..Default::default() }),
+        SHORTCUT_SHARE => act(a, &Hit { id: H_SHARE, ..Default::default() }),
+        // Left and Right: the list's previous and next screen, as its arrows (while there is one).
+        SHORTCUT_PREV_PAGE | SHORTCUT_NEXT_PAGE => {
+            let want = if action == SHORTCUT_NEXT_PAGE { H_NEXT } else { H_PREV };
+            if lib(a).hits.h.iter().any(|h| h.id == want) {
+                turn(a, want == H_NEXT);
+            }
+        }
+        _ => return false,
+    }
+    true
+}
+
+/// Whether the Graph (or its notebooks' browser) is up over the Library: a key pressed now is the Graph's.
+pub fn library_graph_shown(a: &App) -> bool {
+    graph_shown(a)
+}
+
+/// Ctrl+S in the Library: anything waiting is written (the settings), and a toast says so.
+fn library_save(a: &mut App) {
+    settings_save(&a.settings);
+    app_toast(a, tr("Saved"), 1200);
+}
+
+/// Esc (`back`) on the Library, or on its Settings over a notebook: the first
+/// layer in front eats it. A name being typed is cancelled; a dialog or card is answered No (Cancel); a sheet
+/// goes back one level (each Settings sheet back to Settings, then Settings closed; New notebook's Templates
+/// and Custom music back to New notebook); with nothing open, a folder goes up to the top level, and the top
+/// level asks "Exit Grimoire?". False when there was nothing to do.
+pub fn library_back(a: &mut App) -> bool {
+    if a.lib.is_none() {
+        return false;
+    }
+    let tap = |a: &mut App, id: i32| act(a, &Hit { id, ..Default::default() });
+    if library_record_active(a) {
+        tap(a, H_RECORD_CANCEL);
+        return true;
+    }
+    let (modal, in_folder, reset_asked) = {
+        let s = lib(a);
+        (s.modal, !s.cur_folder.is_empty(), s.gestures_reset_confirm)
+    };
+    match modal {
+        Modal::Kb => {
+            if !app_type_text(a, KbInput::Cancel) {
+                keyboard_close(&mut lib(a).kb);
+                kb_finished(a, false);
+            }
+        }
+        Modal::None if a.scr != ScreenId::Library => return false,
+        Modal::None if in_folder => tap(a, H_BACK),
+        Modal::None => {
+            lib(a).exit_no = false;
+            open_modal(a, Modal::Exit);
+        }
+        Modal::Templates => {
+            tplsheet_close(&mut lib(a).ts);
+            lib(a).modal = Modal::New;
+            redraw(a, RefreshMode::Ui);
+        }
+        Modal::Music => {
+            musicbuild_free(&mut lib(a).mb);
+            lib(a).modal = Modal::New;
+            redraw(a, RefreshMode::Ui);
+        }
+        Modal::Display => {
+            lib(a).dm.open = false;
+            lib(a).modal = Modal::Settings;
+            redraw(a, RefreshMode::Ui);
+        }
+        Modal::Language | Modal::Koreader | Modal::Shortcuts | Modal::Updates => {
+            lib(a).modal = Modal::Settings;
+            redraw(a, RefreshMode::Ui);
+        }
+        Modal::Pair | Modal::Buttons => tap(a, H_BUTTONS_DONE),
+        Modal::Gestures if reset_asked => tap(a, H_GESTURES_RESET_CANCEL),
+        Modal::Gestures => tap(a, H_GESTURES_DONE),
+        Modal::New | Modal::Settings | Modal::More | Modal::FolderMore | Modal::Move | Modal::Delete
+        | Modal::About | Modal::Exit => close_modal(a),
+    }
+    true
+}
+
+/// A keyboard's key while a Library dialog takes keys of its own (section 9), before any shortcut: Exit
+/// Grimoire?'s Enter (the highlighted answer), Left and Right (the highlight) and Esc (No), and New notebook's
+/// Enter (Create). True when it took the key; Exit Grimoire? takes every key (nothing behind it acts).
+pub fn library_modal_key(a: &mut App, code: i32) -> bool {
+    if a.scr != ScreenId::Library || graph_shown(a) || library_record_active(a) {
+        return false;
+    }
+    let Some(s) = a.lib.as_deref_mut() else { return false };
+    const ENTER: i32 = 28;
+    const KP_ENTER: i32 = 96;
+    match s.modal {
+        Modal::Exit => {
+            match code {
+                ENTER | KP_ENTER => {
+                    let id = if s.exit_no { H_EXIT_NO } else { H_EXIT_YES };
+                    act(a, &Hit { id, ..Default::default() });
+                }
+                105 | 106 => {
+                    s.exit_no = !s.exit_no;
+                    redraw(a, RefreshMode::Ui);
+                }
+                1 => close_modal(a),
+                _ => {}
+            }
+            true
+        }
+        Modal::New if code == ENTER || code == KP_ENTER => {
+            act(a, &Hit { id: H_NEW_CREATE, ..Default::default() });
+            true
+        }
+        _ => false,
+    }
+}
+
+fn graph_tick(a: &mut App, now: u32) {
+    if lib(a).map_picker.open {
+        return;
+    }
+    let (nb, nav) = (NotebookInfo::default(), Nav::default());
+    with_graph(a, |m, a| {
+        mapview_tick(m, a, now);
+        // (another notebook picked: other notebooks' links to it, as the editor's Graph refreshes them)
+        mapview_anchors_refresh(m, &nb, &nav);
+        // what the library index learned since: new nodes placed beside the kept ones
+        mapview_library_refresh(m, a, &nb, &nav, now);
+    });
+    // The caches the Graph reads, kept on quiet ticks as the editor keeps them (no notebook may have been
+    // opened since Grimoire started: the index's first check runs here then).
+    if a.input_drained && now.wrapping_sub(a.last_input) > 250 && !backlinks_step() {
+        libindex_step();
+    }
+    if lib(a).map.needs_redraw {
+        redraw(a, RefreshMode::Ui);
+    }
+}
+
+/// A notebook the Graph opened is closing back to it (editor.rs: Back with nothing before it, or the Library
+/// button): the Library shows the Graph again as it enters.
+pub fn library_return_to_graph(a: &mut App) {
+    if let Some(s) = a.lib.as_deref_mut() {
+        s.map_return = s.map_keep.is_some();
+    }
+}
+
+/// A layout child for the Graph opened here ended (app.rs routes it here first): adopted at its next quiet
+/// tick. False when this Graph is not open (the editor's then).
+pub fn library_map_done(a: &mut App, id: &str, ok: bool) -> bool {
+    match a.lib.as_deref_mut().filter(|s| s.map.open) {
+        Some(s) => {
+            mapview_background_done(&mut s.map, id, ok);
+            true
+        }
+        None => false,
+    }
+}
+/// The same for the Graph of all notebooks' child.
+pub fn library_map_all_done(a: &mut App, ok: bool) -> bool {
+    match a.lib.as_deref_mut().filter(|s| s.map.open) {
+        Some(s) => {
+            mapview_all_background_done(&mut s.map, ok);
+            true
+        }
+        None => false,
+    }
+}
+/// A node of the Graph opened here, for the runner's `tap map-node`.
+pub fn library_map_point(a: &App, spec: &str) -> Option<(f32, f32)> {
+    a.lib.as_deref().filter(|s| s.map.open).and_then(|s| mapview_node_point(&s.map, spec))
+}
+
 // ---- the screen interface (app.h, DECLARE_SCREEN) ----
 
 pub fn library_init(a: &mut App) {
@@ -4768,11 +5238,23 @@ pub fn library_enter(a: &mut App) {
         s.modal = Modal::About;
     }
     reload(a);
+    // (Back from a notebook the Graph opened: the Graph again, as it was left)
+    if !relayout && std::mem::take(&mut lib(a).map_return) {
+        if let Some(keep) = lib(a).map_keep.take() {
+            graph_open(a, Some(keep));
+        }
+    }
     input_touch_context(library_touch_view(a));
     redraw(a, RefreshMode::Full);
 }
 
 pub fn library_leave(a: &mut App) {
+    if !a.relayout && a.lib.as_deref().is_some_and(|s| s.map.open || s.map_picker.open) {
+        // (the Graph saves its layout as it closes; a notebook it opened has kept what Back needs)
+        let s = lib(a);
+        mapview_close(&mut s.map);
+        s.map_picker.open = false;
+    }
     let s = lib(a);
     s.pressed = None;
     s.record_touch_active = false;
@@ -4787,11 +5269,21 @@ pub fn library_leave(a: &mut App) {
 }
 
 /// What touchgest needs of the Library (input_touch_context): whether gestures are on, whether one is
-/// recorded, and whether the keyboard is up (its keys take two fingers rolling over one another).
+/// recorded, whether the keyboard is up (its keys take two fingers rolling over one another), and whether a
+/// spread zooms: over the Graph (its notebooks' browser aside), with Pinch zoom on, as over the
+/// editor's Graph.
 pub fn library_touch_view(a: &App) -> TgView {
     let record = library_record_active(a);
     let kb = a.lib.as_deref().filter(|s| s.modal == Modal::Kb).map(|s| s.kb.area);
-    TgView { gestures_on: record || a.settings.gestures, record, keyboard_open: kb.is_some(), keys: kb.unwrap_or(RECT_EMPTY), ..TgView::default() }
+    let graph = graph_shown(a) && a.lib.as_deref().is_some_and(|s| !s.map_picker.open);
+    TgView {
+        gestures_on: record || a.settings.gestures,
+        record,
+        keyboard_open: kb.is_some(),
+        keys: kb.unwrap_or(RECT_EMPTY),
+        zoom_ok: graph && a.settings.pinch_zoom,
+        ..TgView::default()
+    }
 }
 
 pub fn library_event(a: &mut App, ev: &InEvent) {
@@ -4804,6 +5296,14 @@ pub fn library_event(a: &mut App, ev: &InEvent) {
 
 fn library_event_in(a: &mut App, ev: &InEvent) {
     if library_record_active(a) && record_event(a, ev) {
+        return;
+    }
+    if graph_shown(a) {
+        graph_event(a, ev);
+        return;
+    }
+    if ev.type_ == InType::Gesture {
+        library_gesture(a, ev);
         return;
     }
     let ph = app_pointer_phase(ev);
@@ -4925,6 +5425,10 @@ fn library_event_in(a: &mut App, ev: &InEvent) {
 }
 
 pub fn library_tick(a: &mut App, now: u32) {
+    if graph_shown(a) {
+        graph_tick(a, now);
+        return;
+    }
     if library_record_active(a) {
         // A queued release/contact must reach the model before a wall-clock tick.
         if a.input_drained {
@@ -5178,9 +5682,51 @@ pub fn library_probe(a: &mut App, key: &str, out: &mut String, cap: usize) -> i3
     if a.lib.is_none() {
         return -1;
     }
+    // The Graph opened from the Library (2.0.0-beta.2): the editor's map.* keys (docs/SIM.md), map.picker its
+    // notebooks' browser (past the caps), map.keep 1 while a notebook it opened is in front; graph.omitted the
+    // Library's notebooks the Graph of all notebooks leaves out (by their own setting or a folder's).
+    if key == "map" || key.starts_with("map.") {
+        let s = lib(a);
+        match key {
+            "map.picker" => {
+                csnprintf!(out, cap, "%d", s.map_picker.open as i32);
+            }
+            "map.keep" => {
+                csnprintf!(out, cap, "%d", s.map_keep.is_some() as i32);
+            }
+            _ => {
+                let mut text = String::new();
+                if !mapview_probe(&s.map, key.strip_prefix("map.").unwrap_or(""), &mut text) {
+                    return -1;
+                }
+                csnprintf!(out, cap, "%s", &text);
+            }
+        }
+        return 0;
+    }
+    if key == "graph.omitted" {
+        let mut ids: Vec<String> = Vec::new();
+        let mut books = Vec::new();
+        store_list(&mut books);
+        for nb in &books {
+            if libindex_omits(&graph_book_of(nb, &Nav::default())) {
+                ids.push(nb.id.as_str().to_string());
+            }
+        }
+        ids.sort();
+        csnprintf!(out, cap, "%s", &ids.join(" "));
+        return 0;
+    }
     let pp = per_page(a);
     let s = lib(a);
-    if key == "sheet" {
+    if key == "exit" {
+        // Exit Grimoire?'s highlighted answer ("yes" or "no"), "" while it is not up.
+        csnprintf!(out, cap, "%s", if s.modal != Modal::Exit { "" } else if s.exit_no { "no" } else { "yes" });
+        return 0;
+    }
+    if key == "sheet" && s.modal == Modal::Exit {
+        csnprintf!(out, cap, "exit");
+    } else if key == "sheet" {
         match SHEETS.get(s.modal as usize) {
             Some(m) => csnprintf!(out, cap, "%s", *m),
             None => csnprintf!(out, cap, "%d", s.modal as i32),
@@ -5245,12 +5791,17 @@ pub fn library_probe(a: &mut App, key: &str, out: &mut String, cap: usize) -> i3
         if let Some(hit) = hit {
             name.push_str(match hit.id {
                 H_NEW=>"new",H_NEWFOLDER=>"new-folder",H_SETTINGS=>"settings",H_SHARE=>"share",H_EXIT=>"exit",
+                H_MORE_OPEN=>"more.open",H_MORE_RENAME=>"more.rename",H_MORE_PDF=>"more.pdf",H_MORE_DELETE=>"more.delete",
+                H_MORE_GRAPH=>"more.graph",H_FMORE_GRAPH=>"fmore.graph",
                 H_SET_THEME=>"theme",H_NEW_CREATE=>"create",H_MORE_MOVE=>"more.move",
                 H_FMORE_RENAME=>"fmore.rename",H_FMORE_MOVE=>"fmore.move",H_FMORE_REMOVE=>"fmore.remove",
                 H_MOVE_TOP=>"move.top",H_MOVE_TO=>"move.to.",H_MOVE_NEW=>"move.new",H_MOVE_PREV=>"move.prev",H_MOVE_NEXT=>"move.next",
                 H_SET_PENS => "pen-feel", H_SET_CALIB => "calibrate", H_SET_DISPLAY => "display",
                 H_KOREADER => "ko", H_SHORTCUTS => "controller", H_GESTURES => "gestures",
                 H_UPDATES => "updates", H_CANCEL => "done", H_GESTURES_MASTER => "gestures.master",
+                H_UPD_CHANNEL => "updates.channel", H_UPD_CHECK => "updates.check", H_UPD_NOW => "updates.now",
+                H_SET_ROTATE => "rotate", H_SHORTCUT_ENABLE => "shortcuts.enable", H_BT_TOGGLE => "bluetooth",
+                H_PAIR => "pair", H_BUTTONS => "buttons",
                 H_GESTURES_RESET => "gestures.reset", H_GESTURES_DONE => "done",
                 H_GESTURES_RESET_CONFIRM => "gestures.reset.confirm",
                 H_GESTURES_RESET_CANCEL => "gestures.reset.cancel",
@@ -5259,6 +5810,7 @@ pub fn library_probe(a: &mut App, key: &str, out: &mut String, cap: usize) -> i3
                 H_BUTTON_GROUP => "buttons.group.", H_BUTTON_ROW => "buttons.row.",
                 H_BUTTONS_DONE => "done", H_BUTTONS_RESET => "buttons.reset",
                 H_PAPER => "paper.", H_PAPER_CUSTOM => "paper.custom", H_PAPER_MORE => "paper.more", H_NEW_RENAME => "new.rename",
+                H_EXIT_YES => "exit.yes", H_EXIT_NO => "exit.no",
                 H_BACK => "back", H_ABOUT => "about", H_ABOUT_CLOSE => "about.close", H_ABOUT_HIDE => "about.hide",
                 H_ABOUT_PREV => "about.prev", H_ABOUT_NEXT => "about.next", H_ABOUT_MORE => "about.more",
                 _ => "",
@@ -5272,6 +5824,10 @@ pub fn library_probe(a: &mut App, key: &str, out: &mut String, cap: usize) -> i3
             }
         }
         csnprintf!(out, cap, "%s", &name);
+    } else if let Some(name) = key.strip_prefix("ui_has.") {
+        // 1 when a control of that name (as ui_at names them) is on the Library or its sheet now, else 0.
+        let found = library_control_point(a, name).is_some();
+        csnprintf!(out, cap, "%d", found as i32);
     } else if key == "learning" {
         // The action the Buttons sheet waits for a press for ("undo", "next-page"), else empty.
         let n = if s.modal == Modal::Buttons && s.buttons_group >= 0 && s.learn_row >= 0 {
@@ -5434,6 +5990,41 @@ pub fn library_probe(a: &mut App, key: &str, out: &mut String, cap: usize) -> i3
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // Every control id (H_*) is its own: two changes once both took 78, and the Updates sheet's switch
+    // answered as a notebook menu's Graph row.
+    #[test]
+    fn control_ids_are_distinct() {
+        let src = include_str!("library.rs");
+        let mut seen: Vec<(i64, &str)> = Vec::new();
+        for line in src.lines() {
+            let Some(rest) = line.strip_prefix("const H_") else { continue };
+            let Some((name, value)) = rest.split_once(": i32 = ") else { continue };
+            let Ok(v) = value.trim_end_matches(';').trim().parse::<i64>() else { continue };
+            if let Some((_, other)) = seen.iter().find(|(w, _)| *w == v) {
+                panic!("H_{name} and H_{other} are both {v}");
+            }
+            seen.push((v, name));
+        }
+        assert!(seen.len() > 50);
+    }
+
+    // A sheet past the C's (0 to 18) takes a number from 300 on, never the next free number after the C's;
+    // each number is its own.
+    #[test]
+    fn sheet_numbers_past_the_c_ones_are_lane_blocks() {
+        let src = include_str!("library.rs");
+        let body = src.split_once("enum Modal {").unwrap().1.split_once("\n}").unwrap().0;
+        let mut seen: Vec<i64> = Vec::new();
+        for line in body.lines() {
+            let Some((name, value)) = line.split_once(" = ") else { continue };
+            let Ok(v) = value.split(',').next().unwrap().trim().parse::<i64>() else { continue };
+            assert!(v <= 18 || (300..400).contains(&v), "Modal::{} = {v}", name.trim());
+            assert!(!seen.contains(&v), "Modal = {v} twice");
+            seen.push(v);
+        }
+        assert!(seen.len() >= 20 && seen.contains(&300));
+    }
 
     fn probe(a: &mut App, key: &str) -> String {
         let mut out = String::new();
@@ -5603,6 +6194,112 @@ mod tests {
         assert_eq!(probe(&mut a, "record"), "wait");
         library_free(&mut a);
         canvas_free(&mut a.screen);
+    }
+
+    // A node whose notebook does not open (its notebook.ini gone since the index read it): the Graph again,
+    // and the editor's "Could not open that notebook" stays up (graph_open used to clear it at once).
+    #[test]
+    fn a_node_that_does_not_open_keeps_its_toast_over_the_graph() {
+        let root = std::env::temp_dir().join(format!("grimoire-graph-toast-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        assert_eq!(store_init(root.to_str().unwrap()), 0);
+        let (mut x, mut y) = (NotebookInfo::default(), NotebookInfo::default());
+        assert_eq!(store_create("X", "", PAPER_BLANK, &mut x), 0);
+        assert_eq!(store_create("Y", "", PAPER_BLANK, &mut y), 0);
+        let mut nav = Nav::default();
+        nav_init(&mut nav);
+        nav_load(x.id.as_str(), &mut nav);
+        let target = format!("n:{}:p{}", y.id.as_str(), y.page_ids[0]);
+        assert_eq!(nav_link_set(&mut nav, x.page_ids[0], 1, &target), 0);
+        assert_eq!(nav_save_links(x.id.as_str(), &mut nav, &x), 0);
+        let mut n = 0;
+        while libindex_step() {
+            n += 1;
+            assert!(n < 10_000);
+        }
+        let mut a = pen_record_app();
+        editor_init(&mut a);
+        lib(&mut a).modal = Modal::None;
+        a.scr = ScreenId::Library;
+        assert!(graph_open(&mut a, None));
+        std::fs::remove_file(root.join("notebooks").join(y.id.as_str()).join("notebook.ini")).unwrap();
+        graph_result(&mut a, MapResult::Target(FixedStr::from_str(&target)));
+        assert_eq!(a.scr, ScreenId::Library);
+        assert!(graph_shown(&a), "the Graph again");
+        assert!(a.toast_visible);
+        assert_eq!(a.toast.as_str(), "Could not open that notebook");
+        library_free(&mut a);
+        canvas_free(&mut a.screen);
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    // A library past the Graph of all notebooks' caps (here 10000 linked pages): the Graph from the Library says
+    // so and opens the notebooks' browser, a notebook picked there is its Graph, and Back from the browser alone
+    // is the Library (before, the Graph closed at once and showed nothing).
+    #[test]
+    fn past_the_caps_the_librarys_graph_opens_the_browser() {
+        let root = std::env::temp_dir().join(format!("grimoire-graph-caps-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        assert_eq!(store_init(root.to_str().unwrap()), 0);
+        mapview_forget_all_ini();
+        for k in 0..5 {
+            let dir = root.join(format!("notebooks/cap{k}"));
+            std::fs::create_dir_all(&dir).unwrap();
+            let pages = (1..=2000).map(|p| p.to_string()).collect::<Vec<_>>().join(",");
+            std::fs::write(dir.join("notebook.ini"), format!("name=Cap {k}\nfolder=\npaper=4\ncreated=1\nmodified=1\nlast_page=0\nnext_page_id=2001\npage_w=1860\npage_h=2480\npages={pages}\n")).unwrap();
+            let links: String = (1..2000).map(|p| format!("link.{p}=00000001,p{}\n", p + 1)).collect();
+            std::fs::write(dir.join("links.ini"), links).unwrap();
+        }
+        let mut n = 0;
+        while libindex_step() {
+            n += 1;
+            assert!(n < 10_000);
+        }
+        let mut a = pen_record_app();
+        lib(&mut a).modal = Modal::None;
+        a.scr = ScreenId::Library;
+        assert!(graph_open(&mut a, None), "the browser opens");
+        assert_eq!(a.toast.as_str(), "Too many linked pages to draw all notebooks.");
+        assert!(lib(&mut a).map_picker.open && !lib(&mut a).map.open);
+        assert!(graph_shown(&a) && !library_touch_view(&a).zoom_ok);
+        // A notebook picked: its own Graph.
+        graph_pick(&mut a, "cap1");
+        assert!(lib(&mut a).map.open && !lib(&mut a).map_picker.open);
+        assert_eq!(mapview_pick(&lib(&mut a).map).map(|p| p.as_str().to_string()).as_deref(), Some("cap1"));
+        // Back from the Graph is the Library; open again and Back from the browser alone is the Library too.
+        assert!(library_shortcut(&mut a, SHORTCUT_GO_BACK));
+        assert!(!graph_shown(&a));
+        assert!(graph_open(&mut a, None));
+        assert!(library_shortcut(&mut a, SHORTCUT_GO_BACK));
+        assert!(!graph_shown(&a));
+        while bg_busy() {
+            let mut k = -1;
+            bg_poll_job(Some(&mut k), None);
+            sleep_ms(2);
+        }
+        mapview_forget_all_ini();
+        library_free(&mut a);
+        canvas_free(&mut a.screen);
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    // Two fingers spread over the Library's Graph zoom it, as over the editor's (touchgest needs zoom_ok, or it
+    // calls the spread a swipe): with Pinch zoom on, never over the Library's cards or the notebooks'
+    // browser.
+    #[test]
+    fn a_spread_over_the_librarys_graph_is_a_zoom() {
+        let mut a = App { scr: ScreenId::Library, ..App::default() };
+        a.settings.pinch_zoom = true;
+        a.lib = Some(Box::default());
+        assert!(!library_touch_view(&a).zoom_ok, "the cards do not zoom");
+        lib(&mut a).map.open = true;
+        assert!(library_touch_view(&a).zoom_ok, "the Graph zooms");
+        lib(&mut a).map_picker.open = true;
+        assert!(!library_touch_view(&a).zoom_ok, "the browser over it does not");
+        lib(&mut a).map_picker.open = false;
+        a.settings.pinch_zoom = false;
+        assert!(!library_touch_view(&a).zoom_ok, "Pinch zoom off");
+        a.lib = None;
     }
 
     #[test]
@@ -5841,7 +6538,7 @@ mod tests {
     #[test]
     fn the_buttons_groups_rows() {
         assert_eq!(N_GROUPS, 7);
-        assert_eq!(group_row_count(0), 10);
+        assert_eq!(group_row_count(0), 11); // (Select, 2.0.0-beta.2)
         assert_eq!(group_row_count(1), TOOL_PENS as usize + 2);
         // Zoom and scrolling are Pages rows; Index owns links and naming.
         assert_eq!(group_row_count(2), 11);
@@ -5858,7 +6555,7 @@ mod tests {
         assert_eq!(group_row_count(5), 10);
         assert_eq!(group_row_count(6), 6);
         assert_eq!(binding_row_count(BUTTONS, 6), 4);
-        assert_eq!(binding_row_count(GESTURES, 0), 10); // Hold eraser is pen-only here.
+        assert_eq!(binding_row_count(GESTURES, 0), 11); // Hold eraser is pen-only here; Select is there.
         assert_eq!(binding_row_at(BUTTONS, 6, 1).unwrap().act, [SHORTCUT_LANGUAGE, 0]);
         assert_eq!(learn_row_at(1, 0).unwrap().act, [SHORTCUT_TOOL_BASE + TOOL_ORDER[0].0, 0]);
         assert_eq!(learn_row_at(1, TOOL_PENS as usize).unwrap().act, [SHORTCUT_PREV_TOOL, SHORTCUT_NEXT_TOOL]);
@@ -5972,6 +6669,17 @@ mod tests {
 /// Resolve a runner tap through the same hit names used by ui_at probes.
 pub fn library_control_point(a:&mut App,name:&str)->Option<(f32,f32)> {
     if name.starts_with("music.") {return musicbuild_control_point(&a.lib.as_deref()?.mb,name);}
+    if name.starts_with("ui_has.") {return None;}
+    // The Display sheet's controls while it is open ("display.done", "display.fit").
+    if let Some(n)=name.strip_prefix("display.") {return dispmenu_control_point(&a.lib.as_deref()?.dm,n);}
+    // The Graph opened from the Library: its controls (map.back, map.view, ...) and its notebooks' browser's
+    // past the caps (elsewhere.book.ID, elsewhere.folder.PATH, elsewhere.back), as the editor's panel names them.
+    if graph_shown(a) {
+        let s=a.lib.as_deref()?;
+        if let Some(n)=name.strip_prefix("elsewhere.") {return s.map_picker.open.then(||s.map_picker.point(n)).flatten();}
+        if let Some(n)=name.strip_prefix("map.") {return mapview_control_point(&s.map,n);}
+        return None;
+    }
     // A card ("notebook.ID", "folder.PATH"), or its menu button ("notebook-menu.ID", "folder-menu.PATH").
     let card=match name.split_once('.') {
         Some(("notebook",rest))=>Some((false,rest,H_CARD)),
@@ -5995,6 +6703,25 @@ pub fn library_control_point(a:&mut App,name:&str)->Option<(f32,f32)> {
 pub fn library_settings_from_notebook(a:&mut App) {
     let fit=a.settings.landscape_fit;let s=lib(a);s.pressed=None;s.settings_return_editor=true;s.settings_editor_fit=fit;
     open_modal(a,Modal::Settings);
+}
+
+/// The list's next or previous page (its arrows).
+fn turn(a: &mut App, next: bool) {
+    let s = lib(a);
+    // Only the visible page's thumbnails stay in memory (each is ~0.5 MB).
+    for i in 0..s.books.len() {
+        canvas_free(&mut s.thumbs[i]);
+        s.thumb_tried[i] = false;
+    }
+    s.page += if next { 1 } else { -1 };
+    redraw(a, RefreshMode::Ui);
+}
+
+/// The Library's open on-screen keyboard (a name being typed), None for none: where a hardware key's
+/// input goes (app_type_text).
+pub fn library_keyboard_area(a: &App) -> Option<Rect> {
+    let s = a.lib.as_deref()?;
+    (s.modal == Modal::Kb && s.kb.open && !rect_is_empty(s.kb.area)).then_some(s.kb.area)
 }
 
 /// The notebook hosts a settings dialog and all its nested sheets without changing screens.

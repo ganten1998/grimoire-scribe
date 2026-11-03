@@ -542,6 +542,15 @@ pub fn errno() -> i32 {
     std::io::Error::last_os_error().raw_os_error().unwrap_or(0)
 }
 
+/// Random bytes from the system (notebook ids, pairing codes and tokens), the only place that asks
+/// for them: /dev/urandom. False when it failed, and buf is then as it was.
+pub fn random_fill(buf: &mut [u8]) -> bool {
+    use std::io::Read;
+    // (std opens it close-on-exec, as the C asks with O_CLOEXEC; read_exact retries EINTR and fails
+    // on a short read or an error, as the C's loop does.)
+    std::fs::File::open("/dev/urandom").is_ok_and(|mut f| f.read_exact(buf).is_ok())
+}
+
 /// strerror(e): the C library's text, which log lines quote ("No such file or directory"), never
 /// Rust's io::Error text (which adds " (os error 2)").
 pub fn strerror(e: i32) -> String {
@@ -647,6 +656,17 @@ impl<const N: usize> PartialEq for FixedStr<N> {
     }
 }
 impl<const N: usize> Eq for FixedStr<N> {}
+// (byte order: what sorted lists of ids are kept in)
+impl<const N: usize> PartialOrd for FixedStr<N> {
+    fn partial_cmp(&self, o: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(o))
+    }
+}
+impl<const N: usize> Ord for FixedStr<N> {
+    fn cmp(&self, o: &Self) -> std::cmp::Ordering {
+        self.as_bytes().cmp(o.as_bytes())
+    }
+}
 impl<const N: usize> std::hash::Hash for FixedStr<N> {
     fn hash<H: std::hash::Hasher>(&self, h: &mut H) {
         self.as_bytes().hash(h)
@@ -716,5 +736,55 @@ mod tests {
             assert_eq!(fmla(x, y, z), x * y + z);
         }
         assert_eq!(lerpf(2.0, 10.0, 0.25), 4.0);
+    }
+
+    // The system's generator answers, fills the whole buffer, and two draws differ.
+    #[test]
+    fn random_fill_draws_from_the_system() {
+        assert!(random_fill(&mut []));
+        let (mut a, mut b) = ([0u8; 32], [0u8; 32]);
+        assert!(random_fill(&mut a) && random_fill(&mut b));
+        assert_ne!(a, b);
+        assert_ne!(a, [0u8; 32]);
+        // (every byte position is written: 64 draws leave none of the 32 at zero in all of them)
+        let mut seen = [0u8; 32];
+        for _ in 0..64 {
+            let mut c = [0u8; 32];
+            assert!(random_fill(&mut c));
+            seen.iter_mut().zip(c).for_each(|(s, v)| *s |= v);
+        }
+        assert!(seen.iter().all(|&v| v != 0), "{seen:?}");
+    }
+
+    // Randomness comes from random_fill alone: no other module opens the system's generator itself.
+    #[test]
+    fn only_random_fill_reads_the_systems_generator() {
+        fn walk(dir: &std::path::Path, out: &mut Vec<std::path::PathBuf>) {
+            for e in std::fs::read_dir(dir).unwrap() {
+                let p = e.unwrap().path();
+                if p.is_dir() {
+                    walk(&p, out);
+                } else if p.extension().is_some_and(|x| x == "rs") {
+                    out.push(p);
+                }
+            }
+        }
+        let src = std::path::Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/src"));
+        let mut files = Vec::new();
+        walk(src, &mut files);
+        assert!(files.len() > 50, "{} sources under {}", files.len(), src.display());
+        let mut found = Vec::new();
+        for f in &files {
+            if f.file_name().is_some_and(|n| n == "util.rs") {
+                continue;
+            }
+            let text = std::fs::read_to_string(f).unwrap();
+            for (i, line) in text.lines().enumerate() {
+                if line.contains("\"/dev/urandom\"") || line.contains("\"/dev/random\"") {
+                    found.push(format!("{}:{}", f.display(), i + 1));
+                }
+            }
+        }
+        assert!(found.is_empty(), "use crate::util::random_fill instead: {found:?}");
     }
 }

@@ -4,6 +4,8 @@
 # legacy pinch, a palm (tool 2) keeps every contact quiet until all lift, and a pen coming near ends a
 # finger without a tap or a link follow.
 # settings: mirror_pdf=0
+# (the clock corner held still: its minute's refresh would land among the counted ones)
+clock 1700000000
 wait 300
 tap 965 95
 wait 100

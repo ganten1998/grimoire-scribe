@@ -747,14 +747,48 @@ fn hex(c: &mut Canvas, dpi: f32) {
 }
 
 // Seyes (French) ruling: a strong line every 8 mm with three faint ones between, a vertical line
-// every 8 mm, and a margin line.
+// every 8 mm, and a margin line. (2.0.0-beta.2, the owner's asks, so the inner lines read on e-ink:
+// the faint lines 205, 190, 170, 153, now 136; the verticals 185, 175, 160, 136, now 119; the strong
+// lines 160, 150, 119, now 68; the margin 120, 102, now 34. Each is one of the panel's 16 grays (a multiple
+// of 17): a gray between two is shown as the one below, so 160 looked the same as 170. And thicker, as the
+// owner found them still light, soft and shallow: a 1 px gray line never reads sharp on e-ink, so the faint
+// lines and verticals are 2 px (the ruled papers' weight) and the strong lines and the margin 3 px.)
+// Seyes is drawn true to size (the owner, 2026-11-02: "each line as close as possible to a real
+// Seyes notebook"): its millimetres are laid out at the panel's own density, which the driver's size
+// gives (display_open, paper_set_panel_ppi), not at the layout's 300. On the Scribe 2 that is 302.9
+// dpi: without it a 2 mm line pitch shows as 1.98 mm and the ruling is 2 mm short down the page. The
+// factor is panel / layout dpi, kept between 0.97 and 1.03 (a driver's odd size is ignored); 1 in the
+// simulator, the tests and the host exporter, which have no panel. Only Seyes uses it: the other
+// papers stay at the layout's millimetres.
+static SEYES_SCALE_BITS: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0x3f80_0000); // 1.0
+
+/// The panel's density (fbcheck_panel_ppi; 0 for unknown) against the layout's dpi: what Seyes is drawn
+/// at from then on. Returns the factor taken (1 when refused).
+pub fn paper_set_panel_ppi(panel_ppi: f32, dpi: f32) -> f32 {
+    let k = if panel_ppi > 0.0 && dpi > 0.0 { panel_ppi / dpi } else { 1.0 };
+    let k = if (0.97..=1.03).contains(&k) { k } else { 1.0 };
+    SEYES_SCALE_BITS.store(k.to_bits(), std::sync::atomic::Ordering::Relaxed);
+    k
+}
+
+fn seyes_scale() -> f32 {
+    f32::from_bits(SEYES_SCALE_BITS.load(std::sync::atomic::Ordering::Relaxed))
+}
+
+const SEYES_STRONG: u8 = 68;
+const SEYES_FAINT: u8 = 136;
+const SEYES_VERTICAL: u8 = 119;
+// the margin line, darkest of all (it was 120, shown as 119: as dark as the strong lines now are)
+const SEYES_MARGIN: u8 = 34;
+
 fn seyes(c: &mut Canvas, dpi: f32) {
+    let dpi = dpi * seyes_scale();
     let (w, h) = (c.w, c.h);
     let step = mm_to_px(2.0, dpi);
     let first = mm_to_px(20.0, dpi);
     let bottom = h - px_mm(10.0, dpi);
-    let faint = thick(1.0, dpi);
-    let strong = thick(2.0, dpi);
+    let faint = thick(2.0, dpi);
+    let strong = thick(3.0, dpi);
     let margin = px_mm(30.0, dpi);
     let mut i = 0;
     let mut last = lrintf(first);
@@ -764,10 +798,10 @@ fn seyes(c: &mut Canvas, dpi: f32) {
             break;
         }
         if i % 4 == 0 {
-            canvas_hline(c, 0, w, y, strong, 160);
+            canvas_hline(c, 0, w, y, strong, SEYES_STRONG);
             last = y;
         } else {
-            canvas_hline(c, 0, w, y, faint, 205);
+            canvas_hline(c, 0, w, y, faint, SEYES_FAINT);
         }
         i += 1;
     }
@@ -779,10 +813,10 @@ fn seyes(c: &mut Canvas, dpi: f32) {
         if x >= w {
             break;
         }
-        canvas_vline(c, x, top, last + 1, faint, 185);
+        canvas_vline(c, x, top, last + 1, faint, SEYES_VERTICAL);
         k += 1;
     }
-    canvas_vline(c, margin, 0, h, strong, 120);
+    canvas_vline(c, margin, 0, h, strong, SEYES_MARGIN);
 }
 
 // Cornell notes: medium rule, a cue column on the left, a summary block at the bottom.
@@ -978,5 +1012,54 @@ mod tests {
         paper_render(&mut c, paper_image(PAPER_ROLE_TEMPLATE, 1), Rect::new(5, 5, 0, 0), 300.0);
         assert_eq!(paper_take_image_blank_count(), 0);
         assert_eq!(c.clip, Rect::new(0, 0, 100, 100));
+    }
+
+    #[test]
+    fn seyes_inner_lines_are_darker_than_before_and_lighter_than_the_strong_ones() {
+        let dpi = 300.0;
+        let (w, h) = (lrintf(mm_to_px(80.0, dpi)), lrintf(mm_to_px(60.0, dpi)));
+        let mut c = Canvas::default();
+        assert_eq!(canvas_init(&mut c, w, h), 0);
+        canvas_fill(&mut c, Rect::new(0, 0, w, h), 255);
+        seyes(&mut c, dpi);
+        // the darkest value down a column between the verticals, in each 2 mm row band from the first line
+        let x = (px_mm(30.0, dpi) + lrintf(mm_to_px(4.0, dpi))) as usize;
+        let first = mm_to_px(20.0, dpi);
+        let band = |i: i32| -> u8 {
+            let y0 = lrintf(first + mm_to_px(2.0, dpi) * i as f32 - mm_to_px(0.5, dpi));
+            let y1 = lrintf(first + mm_to_px(2.0, dpi) * i as f32 + mm_to_px(0.5, dpi));
+            (y0..=y1).map(|y| c.px[y as usize * c.w as usize + x]).min().unwrap()
+        };
+        let (strong, faint) = (band(0), band(1));
+        assert!(faint <= SEYES_FAINT && faint > strong, "faint {faint}, strong {strong}");
+        assert!(SEYES_FAINT <= 136 && SEYES_STRONG < SEYES_VERTICAL && SEYES_VERTICAL < SEYES_FAINT);
+        // (each one of the panel's 16 grays, so none is shown as a neighbour's)
+        assert!([SEYES_FAINT, SEYES_VERTICAL, SEYES_STRONG, SEYES_MARGIN].iter().all(|g| g % 17 == 0) && SEYES_MARGIN < SEYES_STRONG);
+    }
+
+    #[test]
+    fn seyes_is_laid_out_at_the_panels_density() {
+        // (the scale is process state: this test sets it and puts it back)
+        assert_eq!(paper_set_panel_ppi(0.0, 300.0), 1.0);
+        assert_eq!(paper_set_panel_ppi(400.0, 300.0), 1.0); // an odd driver size is ignored
+        // the first row that is mostly strong-line gray (the verticals cross it here and there)
+        let first_strong = |c: &Canvas| -> i32 {
+            let w = c.w as usize;
+            (0..c.h).find(|&y| c.px[y as usize * w..(y as usize + 1) * w].iter().filter(|&&g| g <= SEYES_STRONG).count() > w / 2).unwrap()
+        };
+        let render = || {
+            let mut c = Canvas::default();
+            assert_eq!(canvas_init(&mut c, 1860, 2480), 0);
+            canvas_fill(&mut c, Rect::new(0, 0, 1860, 2480), 255);
+            seyes(&mut c, 300.0);
+            c
+        };
+        let plain = first_strong(&render());
+        let k = paper_set_panel_ppi(fbcheck_panel_ppi(1860, 2480, 156, 208), 300.0);
+        let scaled = first_strong(&render());
+        paper_set_panel_ppi(0.0, 300.0);
+        assert!((k - 302.85 / 300.0).abs() < 0.001, "k {k}");
+        // the first strong line, 20 mm down: 236.2 px at 300, 238.5 at 302.9
+        assert!(scaled > plain && (scaled - plain) <= 3, "{plain} -> {scaled}");
     }
 }

@@ -1,12 +1,11 @@
 # Grimoire in Japanese
 # This file is distributed under the same license as Grimoire: GPL-3.0-or-later.
 # Translations contributed to it are under that license too. po/ja-glossary.md lists the
-
 msgid ""
 msgstr ""
 "Project-Id-Version: Grimoire 2.0.0-beta.1\n"
 "Report-Msgid-Bugs-To: https://github.com/ganten1998/grimoire-scribe/issues\n"
-"POT-Creation-Date: 2026-10-31 17:00-0500\n"
+"POT-Creation-Date: 2026-11-03 15:47-0600\n"
 "PO-Revision-Date: 2026-11-01 00:00+0000\n"
 "Last-Translator: draft\n"
 "Language-Team: Japanese\n"
@@ -434,6 +433,113 @@ msgstr "ペンでパンする"
 msgid "Zoom with the pen"
 msgstr "ペンでズームする"
 
+#. TRANSLATORS: (Buttons sheet) Select mode on or off: the pen draws a lasso around ink to copy, cut,
+#. paste or move it.
+#: rust/src/actions.rs
+#, fuzzy
+msgid "Select (lasso)"
+msgstr "すべて選択"
+
+#. TRANSLATORS: (Gestures and shortcuts lists, about 1100 px at 44 px in bold) Select mode with a lasso
+#. that cuts strokes along its line (exact area); with Select mode on, it switches between whole
+#. strokes and exact area.
+#: rust/src/actions.rs
+msgid "Select exact area"
+msgstr ""
+
+#. TRANSLATORS: (Gestures and shortcuts lists, about 1100 px at 44 px in bold) opens the count pad that
+#. adds several blank pages at once after the open page, which stays open.
+#: rust/src/actions.rs
+#, fuzzy
+msgid "New pages..."
+msgstr "新しいページ..."
+
+#. TRANSLATORS: (the keyboard shortcuts lists, about 1100 px at 44 px in bold) Ctrl+S: the open page and
+#. its notebook written now (in the Library, any setting waiting), with a toast "Saved".
+#: rust/src/actions.rs
+#, fuzzy
+msgid "Save now"
+msgstr "もう寝てください"
+
+#. TRANSLATORS: (the keyboard shortcuts lists, about 1100 px at 44 px in bold) Esc: what is in front closes
+#. (a dialog, a menu, a selection), else back to the Library, and there "Exit Grimoire?".
+#: rust/src/actions.rs
+#, fuzzy
+msgid "Back or close"
+msgstr "%sに戻る"
+
+#. TRANSLATORS: (the keyboard shortcuts lists, about 1100 px at 44 px in bold) Space on a page: does what
+#. two fingers swiped up do (at first, the Links bar). (No gesture does it: it is a gesture's own.)
+#: rust/src/actions.rs
+#, fuzzy
+msgid "What two fingers up do"
+msgstr "2 本の指でピンチしてズームします"
+
+#. TRANSLATORS: (the keyboard shortcuts lists, about 1100 px at 44 px in bold) Ctrl+N in the Library: the
+#. New notebook sheet, as the top bar's New button.
+#. TRANSLATORS: the title of the sheet that makes a notebook, and its heading over the papers.
+#: rust/src/actions.rs rust/src/library.rs
+msgid "New notebook"
+msgstr "新しいノート"
+
+#. TRANSLATORS: (the keyboard shortcuts lists, about 1100 px at 44 px in bold) Ctrl+F in the Library: a new
+#. folder's name keyboard, as the top bar's Folder button.
+#: rust/src/actions.rs
+#, fuzzy
+msgid "New folder"
+msgstr "新しいフォルダ..."
+
+#. TRANSLATORS: (the keyboard shortcuts lists, about 1100 px at 44 px in bold) S in the Library: the
+#. Share screen, as the top bar's Share button.
+#: rust/src/actions.rs rust/src/library.rs
+msgid "Share"
+msgstr "共有"
+
+#. TRANSLATORS: (the keyboard shortcuts lists, about 1100 px at 44 px in bold) O in the Library: the
+#. Settings sheet, as the top bar's Settings button.
+#: rust/src/actions.rs rust/src/library.rs
+msgid "Settings"
+msgstr "設定"
+
+#. TRANSLATORS: (the Keyboard shortcuts list, about 1100 px at 44 px in bold) ticks every page in the Pages
+#. view (and selects every node in the Graph): the same words as the Pages view's Select all button.
+#: rust/src/actions.rs rust/src/pagesview.rs
+msgid "Select all"
+msgstr "すべて選択"
+
+#. TRANSLATORS: (shortcuts lists, about 1100 px at 44 px in bold) in the Graph, its view button's action:
+#. View: All and View: Adjacent in turn (all notebooks' pages, or the pages around one).
+#: rust/src/actions.rs
+msgid "Graph view: All or Adjacent"
+msgstr ""
+
+#. TRANSLATORS: (shortcuts lists, about 1100 px at 44 px in bold) in the Graph, the left arrow: the view moves
+#. left (the map slides the other way). Right, up and down follow.
+#: rust/src/actions.rs
+#, fuzzy
+msgid "Move the Graph left"
+msgstr "リンクエリアを表示"
+
+#. TRANSLATORS: (shortcuts lists, about 1100 px at 44 px in bold) in the Graph, the right arrow: the view moves
+#. right (the map slides the other way).
+#: rust/src/actions.rs
+msgid "Move the Graph right"
+msgstr ""
+
+#. TRANSLATORS: (shortcuts lists, about 1100 px at 44 px in bold) in the Graph, the up arrow: the view moves
+#. up (the map slides the other way).
+#: rust/src/actions.rs
+#, fuzzy
+msgid "Move the Graph up"
+msgstr "リンクエリアを表示"
+
+#. TRANSLATORS: (shortcuts lists, about 1100 px at 44 px in bold) in the Graph, the down arrow: the view moves
+#. down (the map slides the other way).
+#: rust/src/actions.rs
+#, fuzzy
+msgid "Move the Graph down"
+msgstr "リンクエリアを表示"
+
 #. TRANSLATORS: the name of a notebook that has none (it is saved with it, as a name given).
 #: rust/src/annotate.rs rust/src/store.rs rust/src/ui.rs
 msgid "Untitled"
@@ -598,6 +704,13 @@ msgstr[0] "%dページのノートブックをインポートしました。"
 #, c-format
 msgid "Could not import a folder of pages (see %s)."
 msgstr "ページのフォルダーをインポートできませんでした (%s を参照)。"
+
+#. TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines) once, at the first start of a new
+#. version, when shortcuts.ini was the starter map an earlier version wrote (nobody had edited it): it has
+#. this version's keys now.
+#: rust/src/app.rs
+msgid "Keyboard shortcuts: the new starter keys are in shortcuts.ini."
+msgstr ""
 
 #. TRANSLATORS: a PDF saved in the background, and where (the Kindle's folder of them).
 #: rust/src/app.rs
@@ -766,9 +879,10 @@ msgid ""
 "the shape of a Kindle Scribe page (3:4). 1860 x 2480 pixels is best. Light "
 "lines on white work best on e-ink: dark areas hide your writing."
 msgstr ""
-"紙として書き込む画像をここにコピーします。PNG または JPG の画像を、Kindle Scribe"
-"のページと同じ縦長（3:4）で入れてください。1860 x 2480"
-"ピクセルが最適です。電子ペーパーでは白地に薄い線が最も見やすく、濃い部分は書き込みを隠します。"
+"紙として書き込む画像をここにコピーします。PNG または JPG の画像を、Kindle "
+"Scribeのページと同じ縦長（3:4）で入れてください。1860 x 2480ピクセルが最適で"
+"す。電子ペーパーでは白地に薄い線が最も見やすく、濃い部分は書き込みを隠しま"
+"す。"
 
 #: rust/src/bgwork_template.rs
 msgid ""
@@ -777,9 +891,10 @@ msgid ""
 "changes pages already written on it. Grimoire keeps its previews of these "
 "files in the .cache folder."
 msgstr ""
-"Grimoire を閉じている間に USB 経由でコピーしてください。ノートは使用する各テンプレートのコピーを独自に保持するため、ここで"
-"ファイルを変更または削除しても、すでに書き込んだページは変わりません。Grimoire はこれらのファイルのプレビューを .cache"
-"フォルダーに保存します。"
+"Grimoire を閉じている間に USB 経由でコピーしてください。ノートは使用する各テ"
+"ンプレートのコピーを独自に保持するため、ここでファイルを変更または削除して"
+"も、すでに書き込んだページは変わりません。Grimoire はこれらのファイルのプレ"
+"ビューを .cacheフォルダーに保存します。"
 
 #: rust/src/bgwork_template.rs
 msgid "Photos for Grimoire"
@@ -792,9 +907,11 @@ msgid ""
 "the open page's paper, fitted to the page and turned upright. For a page of "
 "its own, add a new page in Pages first."
 msgstr ""
-"書き込む写真をここにコピーします。スマートフォンやカメラで保存したままの JPG または PNG ファイルを入れてください。ノート内で「"
-"紙」を開き、「写真...」を選ぶと、その写真が開いているページの紙になり、ページに合わせて縦向きに調整されます。写真だけのページにする場"
-"合は、先に「ページ」で新しいページを追加してください。"
+"書き込む写真をここにコピーします。スマートフォンやカメラで保存したままの JPG "
+"または PNG ファイルを入れてください。ノート内で「紙」を開き、「写真...」を選"
+"ぶと、その写真が開いているページの紙になり、ページに合わせて縦向きに調整され"
+"ます。写真だけのページにする場合は、先に「ページ」で新しいページを追加してく"
+"ださい。"
 
 #: rust/src/bgwork_template.rs
 msgid ""
@@ -803,9 +920,10 @@ msgid ""
 "changes pages already written on it. Grimoire keeps its previews of these "
 "files in the .cache folder."
 msgstr ""
-"Grimoire を閉じている間に USB 経由でコピーしてください。ノートは使用する各写真のコピーを独自に保持するため、ここでファイル"
-"を変更または削除しても、すでに書き込んだページは変わりません。Grimoire はこれらのファイルのプレビューを .cache"
-"フォルダーに保存します。"
+"Grimoire を閉じている間に USB 経由でコピーしてください。ノートは使用する各写"
+"真のコピーを独自に保持するため、ここでファイルを変更または削除しても、すでに"
+"書き込んだページは変わりません。Grimoire はこれらのファイルのプレビュー"
+"を .cacheフォルダーに保存します。"
 
 #: rust/src/bgwork_template.rs
 msgid "Importing pages into Grimoire"
@@ -819,18 +937,20 @@ msgid ""
 "names in order (page-2 comes before page-10). Gray pictures import faster "
 "and take less room than colour ones."
 msgstr ""
-"すでにあるページ（画像として保存した PDF など）に書き込むには、PNG または JPG ファイルを 1 ページに 1"
-"枚ずつ入れたフォルダーをここに置き、Grimoire"
-"を起動します。フォルダー名がノート名になり、ページはファイル名の順に並びます（page-2 は page-10"
-"より前）。グレースケール画像はカラー画像より速く読み込め、容量も少なくて済みます。"
+"すでにあるページ（画像として保存した PDF など）に書き込むには、PNG または "
+"JPG ファイルを 1 ページに 1枚ずつ入れたフォルダーをここに置き、Grimoireを起動"
+"します。フォルダー名がノート名になり、ページはファイル名の順に並びます"
+"（page-2 は page-10より前）。グレースケール画像はカラー画像より速く読み込め、"
+"容量も少なくて済みます。"
 
 #: rust/src/bgwork_template.rs
 msgid ""
 "Grimoire imports each folder in the background and then moves it into the "
 "done folder. Copy folders in over USB while Grimoire is closed."
 msgstr ""
-"Grimoire は各フォルダーをバックグラウンドで読み込み、その後 done フォルダーへ移動します。フォルダーは Grimoire"
-"を閉じている間に USB 経由でコピーしてください。"
+"Grimoire は各フォルダーをバックグラウンドで読み込み、その後 done フォルダーへ"
+"移動します。フォルダーは Grimoireを閉じている間に USB 経由でコピーしてくださ"
+"い。"
 
 #: rust/src/brush.rs
 msgctxt "tool"
@@ -1164,6 +1284,14 @@ msgctxt "panel"
 msgid "Pin"
 msgstr "固定"
 
+#. TRANSLATORS: the tool picker's button beside Pin that starts Select mode (the lasso that selects
+#. ink to copy, cut, paste or move); 116 px at 34 px, the button widens for a longer word.
+#: rust/src/editor.rs
+#, fuzzy
+msgctxt "panel"
+msgid "Select"
+msgstr "すべて選択"
+
 #. TRANSLATORS: the tool picker's title while it chooses the pens pinned to the toolbar under the
 #. tool button: a tap pins a pen or unpins it; %d is how many can be (3). About 700 px at 44 px
 #. in bold, or two lines at 34 px. Normally the title is Tools.
@@ -1253,7 +1381,9 @@ msgstr "%d%%"
 #: rust/src/editor.rs
 msgid ""
 "Dotted outlines show where a finger tap follows a link. They never print."
-msgstr "点線の枠は、指でタップするとリンクをたどれる場所を示します。印刷されることはありません。"
+msgstr ""
+"点線の枠は、指でタップするとリンクをたどれる場所を示します。印刷されることは"
+"ありません。"
 
 #: rust/src/editor.rs
 msgid "Could not save this page. Is the storage full?"
@@ -1286,7 +1416,9 @@ msgstr "そのノートを開けませんでした"
 #: rust/src/editor.rs
 msgid ""
 "New: two fingers up show this page's links. Two fingers down open the Graph."
-msgstr "新機能: 2 本指を上に動かすと、このページのリンクが表示されます。2 本指を下に動かすとグラフが開きます。"
+msgstr ""
+"新機能: 2 本指を上に動かすと、このページのリンクが表示されます。2 本指を下に"
+"動かすとグラフが開きます。"
 
 #: rust/src/editor.rs
 msgid "This page is already empty"
@@ -1333,6 +1465,152 @@ msgstr "コピーにはリンクがありません。保存できませんでし
 #, c-format
 msgid "This page is a copy of page %d."
 msgstr "このページは %d ページのコピーです。"
+
+#. TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): Move to... could not save
+#. the notebook's new page order (the storage is full).
+#: rust/src/editor.rs
+#, fuzzy
+msgid "Could not move those pages."
+msgstr "それらのページを削除できませんでした"
+
+#. TRANSLATORS: a toast as Move to... is done (about 1700 px at 44 px in bold, or two lines): %d pages
+#. moved; they now start at page %d.
+#: rust/src/editor.rs
+#, c-format
+msgid "Moved %d page: it is page %d now."
+msgid_plural "Moved %d pages: they start at page %d now."
+msgstr[0] ""
+
+#. TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): the Pages view's Undo could
+#. not put the moved pages back (the storage is full).
+#: rust/src/editor.rs
+#, fuzzy
+msgid "Could not undo the move."
+msgstr "ノートブックを移動できませんでした。"
+
+#. TRANSLATORS: a toast as the Pages view's Undo put moved pages back where they were (about 1700 px
+#. at 44 px in bold).
+#: rust/src/editor.rs
+msgid "Move undone: the pages are back in their order."
+msgstr ""
+
+#. TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): New page held, in a notebook
+#. that already has the most pages a notebook can have (%d).
+#: rust/src/editor.rs rust/src/pagesview.rs
+#, c-format
+msgid "This notebook is full: it has %d pages."
+msgstr ""
+
+#. TRANSLATORS: a toast while New page's batch is being written (about 1700 px at 44 px in bold, or
+#. two lines): %d blank pages are being added; it can take a minute for many.
+#: rust/src/editor.rs
+#, fuzzy, c-format
+msgid "Adding %d page..."
+msgid_plural "Adding %d pages..."
+msgstr[0] "ページ %d を読み込み中..."
+
+#. TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): New page's batch could not
+#. add the pages (the storage is full); none was added.
+#: rust/src/editor.rs
+#, fuzzy
+msgid "Could not add those pages: none was added."
+msgstr "ページ名を保存できませんでした。"
+
+#. TRANSLATORS: a toast as New page's batch is done (about 1700 px at 44 px in bold, or two lines): %d
+#. blank pages added; the first of them is page %d.
+#: rust/src/editor.rs
+#, fuzzy, c-format
+msgid "Added %d page: it is page %d."
+msgid_plural "Added %d pages: they start at page %d."
+msgstr[0] "本の%dページを追加しました。"
+
+#. TRANSLATORS: the title in New page's count pad (bold, 44 px, about 700 px): how many blank pages to
+#. add at once, typed on the number pad or changed by one with its - and + keys.
+#: rust/src/editor.rs rust/src/pagesview.rs
+#, fuzzy
+msgid "Pages to add"
+msgstr "%s/%dのページ"
+
+#. TRANSLATORS: a toast over New page's count pad (about 1700 px at 44 px in bold, or two
+#. lines): the count typed (or +) went past what the notebook can still take (a notebook
+#. holds 2000 pages at most), so the count stays at that; %d is how many more it takes.
+#: rust/src/editor.rs rust/src/pagesview.rs
+#, c-format
+msgid "This notebook has room for %d more page."
+msgid_plural "This notebook has room for %d more pages."
+msgstr[0] ""
+
+#. TRANSLATORS: a toast as the toolbar's batch of new pages is done (about 1700 px at 44 px in bold, or two
+#. lines): %d blank pages added right after the page that stays open; the first of them is page %d. The
+#. Pages view (its bottom row's Undo) takes them back while they are still blank.
+#: rust/src/editor.rs
+#, c-format
+msgid "Added %d page after this one: page %d. Undo it in Pages."
+msgid_plural "Added %d pages after this one, from page %d. Undo them in Pages."
+msgstr[0] ""
+
+#. TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): the Pages view's Undo could
+#. not take back the pages a batch added (one was written on, linked or named since, or the storage
+#. is full).
+#: rust/src/editor.rs
+#, fuzzy
+msgid "Could not undo: those pages are in use."
+msgstr "それらのページを削除できませんでした"
+
+#. TRANSLATORS: a toast as the Pages view's Undo took back the blank pages a batch added (about 1700 px
+#. at 44 px in bold): %d of them.
+#: rust/src/editor.rs
+#, c-format
+msgid "Undone: %d new page taken back."
+msgid_plural "Undone: %d new pages taken back."
+msgstr[0] ""
+
+#. TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): the Pages view's Redo could not
+#. do the page move or the new pages again (the storage is full).
+#: rust/src/editor.rs
+#, fuzzy
+msgid "Could not redo that."
+msgstr "そのページを開けませんでした。"
+
+#. TRANSLATORS: a toast as the Pages view's Redo moved pages again as the undone move had (about
+#. 1700 px at 44 px in bold).
+#: rust/src/editor.rs
+msgid "Move redone: the pages are where you moved them."
+msgstr ""
+
+#. TRANSLATORS: a toast as the Pages view's Redo added again the blank pages its Undo took back (about
+#. 1700 px at 44 px in bold, or two lines): %d of them; the first is page %d.
+#: rust/src/editor.rs
+#, c-format
+msgid "Redone: %d new page again, page %d."
+msgid_plural "Redone: %d new pages again, from page %d."
+msgstr[0] ""
+
+#: rust/src/editor.rs
+msgid "Could not read the notebooks."
+msgstr "ノートを読むことができませんでした。"
+
+#. TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): Copy to notebook... copied
+#. nothing (the storage is full, a page does not read, or that notebook has 2000 pages).
+#: rust/src/editor.rs
+#, fuzzy
+msgid "Could not copy those pages."
+msgstr "そのページをコピーできませんでした"
+
+#. TRANSLATORS: a toast as Copy to notebook... is done (about 1700 px at 44 px in bold, or two
+#. lines): %d pages copied into the notebook named %s.
+#: rust/src/editor.rs
+#, fuzzy, c-format
+msgid "Copied %d page to %s."
+msgid_plural "Copied %d pages to %s."
+msgstr[0] "%dページ、%s"
+
+#. TRANSLATORS: the same toast when the page names and links could not be saved there.
+#: rust/src/editor.rs
+#, c-format
+msgid "Copied %d page to %s, without its names and links."
+msgid_plural "Copied %d pages to %s, without their names and links."
+msgstr[0] ""
 
 #. TRANSLATORS: the same strip for the long-press card's Redraw the area (about 1400 px at 44 px in
 #. bold): the next pen stroke draws the link's new area, and leaves no ink.
@@ -1539,7 +1817,7 @@ msgstr "リンクを読み取れませんでした。"
 msgid "Saving..."
 msgstr "保存中..."
 
-#: rust/src/editor.rs
+#: rust/src/editor.rs rust/src/library.rs rust/src/pensettings.rs
 msgid "Saved"
 msgstr "保存されました"
 
@@ -1615,7 +1893,9 @@ msgstr "その写真は使用できませんでした (%s を参照)。"
 msgid ""
 "Sideways now shows the whole page, so two-finger swipes work. Pinch to zoom "
 "in; Display changes this."
-msgstr "横向きではページ全体が表示されるようになり、2 本指のスワイプが使えます。ピンチで拡大できます。表示は「画面」で変更できます。"
+msgstr ""
+"横向きではページ全体が表示されるようになり、2 本指のスワイプが使えます。ピン"
+"チで拡大できます。表示は「画面」で変更できます。"
 
 #. TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines), shown once: two
 #. fingers dragged the zoomed page, where two fingers up and down would open Links and Pages.
@@ -1636,11 +1916,9 @@ msgstr ""
 #: rust/src/editor.rs
 msgid ""
 "Shape made. Undo takes it away; the toolbar's Shapes menu has the options."
-msgstr "図形を作成しました。元に戻すと取り消せます。ツールバーの「図形」メニューにオプションがあります。"
-
-#: rust/src/editor.rs
-msgid "Could not read the notebooks."
-msgstr "ノートを読むことができませんでした。"
+msgstr ""
+"図形を作成しました。元に戻すと取り消せます。ツールバーの「図形」メニューにオ"
+"プションがあります。"
 
 #: rust/src/editor.rs
 msgid "That notebook or page is no longer available."
@@ -1653,6 +1931,140 @@ msgstr "リンクを保存できませんでした。"
 #: rust/src/editor.rs
 msgid "Could not open that page."
 msgstr "そのページを開けませんでした。"
+
+#. TRANSLATORS: Select mode's bar under a selection (a button, about 220 px at 44 px): copies the
+#. selected ink to the clipboard.
+#: rust/src/editor/select.rs
+#, fuzzy
+msgctxt "select"
+msgid "Copy"
+msgstr "ページをコピーする"
+
+#. TRANSLATORS: Select mode's bar: copies the selection to the clipboard and takes it off the page.
+#: rust/src/editor/select.rs
+msgctxt "select"
+msgid "Cut"
+msgstr ""
+
+#. TRANSLATORS: Select mode's bar: takes the selection off the page (not to the clipboard).
+#: rust/src/editor/select.rs
+#, fuzzy
+msgctxt "select"
+msgid "Delete"
+msgstr "削除"
+
+#. TRANSLATORS: Select mode's bar: puts what was copied or cut on this page.
+#: rust/src/editor/select.rs
+msgctxt "select"
+msgid "Paste"
+msgstr ""
+
+#. TRANSLATORS: Select mode's bar: leaves Select mode.
+#: rust/src/editor/select.rs
+#, fuzzy
+msgctxt "select"
+msgid "Done"
+msgstr "完了"
+
+#. TRANSLATORS: Select mode's bar (a button, about 360 px at 44 px): the lasso cuts the strokes it
+#. crosses along its line and takes only the ink inside it. Tapped, it goes back to whole strokes.
+#: rust/src/editor/select.rs
+msgctxt "select"
+msgid "Exact area"
+msgstr ""
+
+#. TRANSLATORS: Select mode's bar (a button, about 360 px at 44 px): the lasso takes whole strokes
+#. (those mostly inside it). Tapped, it cuts strokes along the lasso instead (exact area).
+#: rust/src/editor/select.rs
+#, fuzzy
+msgctxt "select"
+msgid "Whole strokes"
+msgstr "ストローク全体"
+
+#. TRANSLATORS: Select mode's Copy button when the selection carries links: %d is how many
+#. (shown so the writer sees the links go along before acting).
+#: rust/src/editor/select.rs
+#, fuzzy, c-format
+msgid "%d link"
+msgid_plural "%d links"
+msgstr[0] "%dリンクはこちら"
+
+#. TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines) as Select mode starts.
+#: rust/src/editor/select.rs
+msgid "Select: draw around ink with the pen."
+msgstr ""
+
+#. TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines) as Select mode starts in exact
+#. area: the lasso will cut strokes along its line.
+#: rust/src/editor/select.rs
+msgid "Select, exact area: draw around ink with the pen."
+msgstr ""
+
+#. TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): a lasso in Select mode went
+#. around only white ink or eraser marks, which are not objects: they move with the ink they cover.
+#: rust/src/editor/select.rs
+msgid ""
+"Nothing to select here: white ink and eraser marks move with the ink they "
+"cover."
+msgstr ""
+
+#. TRANSLATORS: a toast: a lasso in Select mode went around no ink.
+#: rust/src/editor/select.rs
+#, fuzzy
+msgid "Nothing to select here."
+msgstr "戻るものは何もありません。"
+
+#: rust/src/editor/select.rs
+msgid "This page holds too many moved groups: paste on another page."
+msgstr ""
+
+#. TRANSLATORS: a toast: a move in Select mode could not save the links it carries.
+#: rust/src/editor/select.rs
+#, fuzzy
+msgid "Could not save the links: nothing was moved."
+msgstr "リンクを保存できませんでした。その変更はやり直されませんでした。"
+
+#. TRANSLATORS: a toast: Cut in Select mode could not save the links the selection carries (links.ini), so
+#. nothing was cut and the clipboard is as it was.
+#: rust/src/editor/select.rs
+#, fuzzy
+msgid "Could not save the links: nothing was cut."
+msgstr "リンクを保存できませんでした。その変更は元に戻されませんでした。"
+
+#. TRANSLATORS: a toast: Copy or Cut in Select mode could not write the clipboard file.
+#: rust/src/editor/select.rs
+msgid "Could not copy: the clipboard could not be written."
+msgstr ""
+
+#. TRANSLATORS: a toast: Copy in Select mode put the selection on the clipboard.
+#: rust/src/editor/select.rs
+#, fuzzy
+msgid "Copied."
+msgstr "コピーされました"
+
+#. TRANSLATORS: a toast: Cut in Select mode put the selection on the clipboard and took it off the page.
+#: rust/src/editor/select.rs
+msgid "Cut."
+msgstr ""
+
+#. TRANSLATORS: a toast: Paste found no clipboard it could read.
+#: rust/src/editor/select.rs
+#, fuzzy
+msgid "The clipboard could not be read."
+msgstr "ページ名を読み取れませんでした。"
+
+#. TRANSLATORS: a toast: Paste was refused whole because its links do not fit (64 on a page,
+#. 4000 in a notebook) or links.ini cannot be written.
+#: rust/src/editor/select.rs
+msgid "Could not paste: its links do not fit on this page."
+msgstr ""
+
+#. TRANSLATORS: a toast: a pasted link to the Index was left out, as it cannot point to another
+#. notebook's Index.
+#: rust/src/editor/select.rs
+#, fuzzy
+msgid "A link to the Index stays in its notebook."
+msgstr "このノートブックではリンクを読み取ることができませんでした。"
 
 #. TRANSLATORS: the title of the keyboard of the Find sheet, in its text line (about 560 px at 44 px in bold):
 #. go to a page by typing its number or a name of the Index.
@@ -1690,6 +2102,7 @@ msgstr "一致するページ名はありません。"
 #. TRANSLATORS: a chip of the Links bar, in its right column at 34 px (about 150 px): the page a link goes
 #. to, %d its number ("p. 12").
 #: rust/src/findsheet.rs rust/src/linkbar.rs rust/src/linkcard.rs
+#: rust/src/mapview.rs
 #, c-format
 msgctxt "bar"
 msgid "p. %d"
@@ -1744,7 +2157,9 @@ msgstr "PDFのダウンロードに失敗しました。もう一度試してく
 msgid ""
 "Download status unavailable. Check your browser's Downloads and the Kindle's "
 "Wi-Fi."
-msgstr "ダウンロードの状態を確認できません。ブラウザーのダウンロードと Kindle の Wi-Fi を確認してください。"
+msgstr ""
+"ダウンロードの状態を確認できません。ブラウザーのダウンロードと Kindle の Wi-"
+"Fi を確認してください。"
 
 #: rust/src/httpd.rs
 msgid "Dismiss"
@@ -2016,8 +2431,8 @@ msgid ""
 "Shortcuts control Grimoire while this page has focus. Edit live-keys.ini, "
 "then restart Live view."
 msgstr ""
-"このページにフォーカスがある間は、ショートカットで Grimoire を操作できます。live-keys.ini"
-"を編集してから、ライブビューを再起動してください。"
+"このページにフォーカスがある間は、ショートカットで Grimoire を操作できます。"
+"live-keys.iniを編集してから、ライブビューを再起動してください。"
 
 #: rust/src/httpd.rs
 msgid "No Live view keys are assigned."
@@ -2086,8 +2501,8 @@ msgid ""
 "Point at the picture and click Firefox's Picture-in-Picture button, or right-"
 "click it and choose Picture-in-Picture."
 msgstr ""
-"画像をポイントして Firefox"
-"のピクチャーインピクチャーボタンをクリックするか、右クリックして「ピクチャーインピクチャー」を選びます。"
+"画像をポイントして Firefoxのピクチャーインピクチャーボタンをクリックするか、"
+"右クリックして「ピクチャーインピクチャー」を選びます。"
 
 #. TRANSLATORS: Live view's help in the browser on how to get the sharpest picture in picture,
 #. which browsers give only to pages they treat as secure (the Kindle's page is plain HTTP).
@@ -2098,7 +2513,9 @@ msgstr ""
 msgid ""
 "For the sharpest picture in picture, let your browser treat this address as "
 "secure:"
-msgstr "最も鮮明なピクチャーインピクチャーにするには、ブラウザーにこのアドレスを安全なものとして扱わせてください:"
+msgstr ""
+"最も鮮明なピクチャーインピクチャーにするには、ブラウザーにこのアドレスを安全"
+"なものとして扱わせてください:"
 
 #: rust/src/httpd.rs
 #, c-format
@@ -2106,8 +2523,8 @@ msgid ""
 "Firefox: open about:config, add %s to dom.securecontext.allowlist (separate "
 "several with commas), then reload this page."
 msgstr ""
-"Firefox: about:config を開き、dom.securecontext.allowlist に %s"
-"を追加して（複数はカンマで区切ります）、このページを再読み込みします。"
+"Firefox: about:config を開き、dom.securecontext.allowlist に %sを追加して（複"
+"数はカンマで区切ります）、このページを再読み込みします。"
 
 #: rust/src/httpd.rs
 #, c-format
@@ -2116,15 +2533,17 @@ msgid ""
 "flags), find \"Insecure origins treated as secure\", add %s, enable it and "
 "relaunch the browser."
 msgstr ""
-"Chrome、Edge、Brave、Arc:"
-"chrome://flags（edge://flags、brave://flags）を開き、「Insecure origins"
-"treated as secure」を見つけて %s を追加し、有効にしてブラウザーを再起動します。"
+"Chrome、Edge、Brave、Arc:chrome://flags（edge://flags、brave://flags）を開"
+"き、「Insecure originstreated as secure」を見つけて %s を追加し、有効にしてブ"
+"ラウザーを再起動します。"
 
 #: rust/src/httpd.rs
 msgid ""
 "Safari floats a video of the page instead, which works on this address as it "
 "is."
-msgstr "Safari は代わりにページの動画をフローティング表示します。これはこのアドレスのままで動作します。"
+msgstr ""
+"Safari は代わりにページの動画をフローティング表示します。これはこのアドレスの"
+"ままで動作します。"
 
 #: rust/src/httpd.rs
 msgid "This browser cannot show Live view."
@@ -2214,14 +2633,6 @@ msgstr[0] "%dページ、%s"
 msgid "Exit"
 msgstr "終了"
 
-#: rust/src/library.rs
-msgid "Settings"
-msgstr "設定"
-
-#: rust/src/library.rs
-msgid "Share"
-msgstr "共有"
-
 #. TRANSLATORS: the Library's top bar (see Exit): makes a new folder.
 #: rust/src/library.rs
 msgid "Folder"
@@ -2250,11 +2661,6 @@ msgstr "「新規」をタップして開始します。"
 msgid "Page %d of %d"
 msgstr "%d/%dのページ"
 
-#. TRANSLATORS: the title of the sheet that makes a notebook, and its heading over the papers.
-#: rust/src/library.rs
-msgid "New notebook"
-msgstr "新しいノート"
-
 #. TRANSLATORS: the new notebook's name, then its Rename button (268 px at 29 px, under its
 #. icon, inside Gothic's carved line), then the folder it goes in, or the Library itself.
 #: rust/src/library.rs
@@ -2280,6 +2686,23 @@ msgstr "ライブラリ（最上位）"
 #: rust/src/library.rs
 msgid "Create"
 msgstr "作成"
+
+#. TRANSLATORS: a notebook's and a folder's menu (rows of 1470 px at 44 px in bold): its pages are not shown
+#. in the Graph of all notebooks (the Graph: the Index's map of linked pages), or are shown there again.
+#: rust/src/library.rs
+#, fuzzy
+msgid "Show in the Graph"
+msgstr "リンクエリアを表示"
+
+#: rust/src/library.rs
+msgid "Leave out of the Graph"
+msgstr ""
+
+#. TRANSLATORS: a notebook's or a folder's menu row, greyed out (1470 px at 44 px in bold): a folder it is in is
+#. left out of the Graph, which leaves it out too; that folder's menu shows it again.
+#: rust/src/library.rs
+msgid "Left out of the Graph with its folder"
+msgstr ""
 
 #: rust/src/library.rs
 msgid "Controller buttons"
@@ -2687,7 +3110,9 @@ msgstr "リセット"
 msgid ""
 "Draw a shape with one finger, swipe or tap with two fingers, or use the "
 "pen's button."
-msgstr "1 本指で図形を描く、2 本指でスワイプまたはタップする、ペンのボタンを使う、のいずれかで描けます。"
+msgstr ""
+"1 本指で図形を描く、2 本指でスワイプまたはタップする、ペンのボタンを使う、の"
+"いずれかで描けます。"
 
 #: rust/src/library.rs
 msgid "One stroke, without lifting. Two turns or a loop."
@@ -3015,6 +3440,22 @@ msgstr "新しいフォルダ..."
 msgid "Move to"
 msgstr "移動先"
 
+#. TRANSLATORS: Exit Grimoire?'s answers (1470 px at 44 px in bold): leave Grimoire, or stay.
+#: rust/src/library.rs
+msgid "Yes"
+msgstr ""
+
+#: rust/src/library.rs
+#, fuzzy
+msgid "No"
+msgstr "11月"
+
+#. TRANSLATORS: the question Esc asks at the Library's top level (a keyboard's), before Grimoire leaves.
+#: rust/src/library.rs
+#, fuzzy
+msgid "Exit Grimoire?"
+msgstr "Grimoireの写真"
+
 #. TRANSLATORS: the title of the question before a notebook is deleted, with its name.
 #: rust/src/library.rs
 #, c-format
@@ -3091,6 +3532,23 @@ msgstr ""
 msgid "Saving the PDF in the background..."
 msgstr "PDF をバックグラウンドで保存しています..."
 
+#. TRANSLATORS: toasts (about 1700 px at 44 px in bold) after a notebook's or a folder's menu row: its
+#. pages are left out of the Graph of all notebooks now, or shown there again; or the change could not
+#. be saved.
+#: rust/src/library.rs
+#, fuzzy
+msgid "Could not save that change."
+msgstr "そのページを開けませんでした。"
+
+#: rust/src/library.rs
+#, fuzzy
+msgid "Left out of the Graph."
+msgstr "グラフを作成するためのメモリが不足しています。"
+
+#: rust/src/library.rs
+msgid "Shown in the Graph again."
+msgstr ""
+
 #. TRANSLATORS: a deleted notebook went to the trash folder on the Kindle's storage (%s).
 #: rust/src/library.rs
 #, c-format
@@ -3115,15 +3573,12 @@ msgstr "ここにないページ"
 msgid "×%d"
 msgstr "×%d"
 
+#. TRANSLATORS: the caption over a Links bar chip for a page whose links come TO the open page (in this
+#. notebook or another), in small type over that page's name (about 600 px at 34 px).
 #: rust/src/linkbar.rs
-#, c-format
-msgid "‹ Page %d"
-msgstr "‹ ページ %d"
-
-#: rust/src/linkbar.rs
-#, c-format
-msgid "Back to %s"
-msgstr "%sに戻る"
+#, fuzzy
+msgid "Linked from"
+msgstr "%s からのリンク"
 
 #: rust/src/linkbar.rs
 msgid "Tap a link to look. Tap the page to stay."
@@ -3141,6 +3596,23 @@ msgstr "名前ページ"
 #: rust/src/linkbar.rs
 msgid "Areas"
 msgstr "エリア"
+
+#: rust/src/linkbar.rs
+#, c-format
+msgid "‹ Page %d"
+msgstr "‹ ページ %d"
+
+#: rust/src/linkbar.rs
+#, c-format
+msgid "Back to %s"
+msgstr "%sに戻る"
+
+#. TRANSLATORS: the Links bar's chip back to the Graph (the Library's Graph of all notebooks, which opened
+#. this notebook); a chip of at most about 18 characters.
+#: rust/src/linkbar.rs
+#, fuzzy
+msgid "Back to Graph"
+msgstr "%sに戻る"
 
 #. TRANSLATORS: the first chip of Link to..., which adds a page at the end of the notebook and links to
 #. it (about 700 px at 44 px in bold upright, 600 sideways).
@@ -3169,6 +3641,13 @@ msgstr "検索"
 #: rust/src/linkbar.rs
 msgid "Choose from the pages..."
 msgstr "ページから選択してください..."
+
+#. TRANSLATORS: a link to a page of another notebook whose page was deleted: after the notebook's
+#. name and " / " (a Links bar chip, the long-press card's title, the Graph; about 400 px at 44 px).
+#: rust/src/linkcard.rs rust/src/mapview.rs rust/src/nav.rs
+#, fuzzy
+msgid "Page gone"
+msgstr "ページ名"
 
 #. TRANSLATORS: a row of the card a finger held on a link opens, for a link to a page with no name:
 #. %d is that page's number; the row names it (about 700 px at 44 px).
@@ -3221,13 +3700,35 @@ msgstr "リンクを削除"
 msgid "To change one, hold it on the page."
 msgstr "変更するには、ページ上でそれを押し続けます。"
 
+#. TRANSLATORS: the Graph's view button says which view it shows, "View: All" or "View: Adjacent" (with
+#. "View: %s"): every page, or the pages adjacent to one (linked to it, and theirs). Also the selected page's
+#. card button that shows its adjacent pages, a third of the card (up to 360 px at 34 px).
+#: rust/src/mapview.rs
+msgid "Adjacent"
+msgstr ""
+
+#: rust/src/mapview.rs
+msgid "All"
+msgstr "すべて"
+
 #: rust/src/mapview.rs
 msgid "Not enough memory for the graph."
 msgstr "グラフを作成するためのメモリが不足しています。"
 
-#: rust/src/mapview.rs rust/src/nav.rs
-msgid "Page unavailable"
-msgstr "ページが利用できません"
+#. TRANSLATORS: the Graph opened from the Library cannot draw every notebook: the library has more
+#. linked pages or links than it can draw at once; the notebooks' browser opens under it to show
+#. one (a toast, 2 lines at most).
+#: rust/src/mapview.rs
+#, fuzzy
+msgid "Too many linked pages to draw all notebooks."
+msgstr "そのリンクのページはこのノートブックにはありません。"
+
+#. TRANSLATORS: the Graph (Index, Graph tab) opens on the notebook instead of every notebook: the
+#. library has more linked pages or links than it can draw at once (a toast, 2 lines at most).
+#: rust/src/mapview.rs
+#, fuzzy
+msgid "Too many linked pages for All notebooks: showing this notebook."
+msgstr "そのリンクのページはこのノートブックにはありません。"
 
 #: rust/src/mapview.rs rust/src/nav.rs
 msgid "Notebook unavailable"
@@ -3241,19 +3742,6 @@ msgid "p. %d"
 msgstr "p. %d"
 
 #: rust/src/mapview.rs
-msgid "Around"
-msgstr "周り"
-
-#: rust/src/mapview.rs
-msgid "All"
-msgstr "すべて"
-
-#: rust/src/mapview.rs
-#, c-format
-msgid "Fit: %s"
-msgstr "適合: %s"
-
-#: rust/src/mapview.rs
 #, c-format
 msgid "View: %s"
 msgstr "ビュー: %s"
@@ -3262,6 +3750,28 @@ msgstr "ビュー: %s"
 #, c-format
 msgid "Nodes: %d · Orphans: %d · Links: %d"
 msgstr "ノード: %d · オーファン: %d · リンク: %d"
+
+#. TRANSLATORS: after the Graph's counts (Nodes, Orphans, Links), the links in all notebooks that go to a
+#. page or notebook that is gone; also the card of a page that has such links (small text).
+#: rust/src/mapview.rs
+#, c-format
+msgid "%d broken link"
+msgid_plural "%d broken links"
+msgstr[0] ""
+
+#. TRANSLATORS: after the Graph's counts (Nodes, Orphans, Links) while the Graph of all notebooks reads
+#. every notebook for the first time: how many it has read (small text, about 500 px).
+#: rust/src/mapview.rs
+#, fuzzy, c-format
+msgid "Reading notebooks: %d of %d"
+msgstr "本のページの追加: %d の %d"
+
+#. TRANSLATORS: the Graph opened from the Library (no notebook open): every page of the notebooks it
+#. shows, and how many notebooks (small text, about 1000 px at 30 px).
+#: rust/src/mapview.rs
+#, fuzzy, c-format
+msgid "Pages: %d across %d notebooks"
+msgstr "ページ: ここに %d · %d ノートブック全体の %d"
 
 #: rust/src/mapview.rs
 #, c-format
@@ -3273,14 +3783,25 @@ msgstr "ページ: ここに %d · %d ノートブック全体の %d"
 msgid "Pages in this notebook: %d"
 msgstr "このノートブックのページ: %d"
 
+#. TRANSLATORS: after the Graph's page counts: notebooks the Graph of all notebooks could not take in (its
+#. limit of links), shown when there are some (small text).
+#: rust/src/mapview.rs
+#, fuzzy, c-format
+msgid "%d notebook left out"
+msgid_plural "%d notebooks left out"
+msgstr[0] "%dノート"
+
+#. TRANSLATORS: the Graph of all notebooks' card for a page of another notebook than the open one: its
+#. notebook's name, its page number there, then its links (small text, the screen's width).
+#: rust/src/mapview.rs
+#, fuzzy, c-format
+msgid "%s, page %d. Links to %d, linked from %d."
+msgstr "%dページ。 %dへのリンク、%dからのリンク。"
+
 #: rust/src/mapview.rs
 #, c-format
 msgid "Page %d. Links to %d, linked from %d."
 msgstr "%dページ。 %dへのリンク、%dからのリンク。"
-
-#: rust/src/mapview.rs
-msgid "Around it"
-msgstr "その周り"
 
 #: rust/src/mapview.rs
 msgid "List"
@@ -3337,9 +3858,33 @@ msgstr "から開始"
 msgid "Use layout"
 msgstr "レイアウトを使用する"
 
+#. TRANSLATORS: a link to a page of a notebook that was deleted (a Links bar chip, the long-press card's
+#. title, the Graph; about 700 px at 44 px).
+#: rust/src/nav.rs
+#, fuzzy
+msgid "Notebook gone"
+msgstr "ノート %s"
+
 #: rust/src/notebookpicker.rs
 msgid "Notebooks"
 msgstr "ノート"
+
+#. TRANSLATORS: Copy to notebook...'s button over the picked notebook's pages (about 400 px,
+#. 44 px text): the copies go after its last page.
+#: rust/src/notebookpicker.rs
+#, fuzzy
+msgid "At the end"
+msgstr "ペンでパンする"
+
+#. TRANSLATORS: Copy to notebook...'s line under its title (small text, nearly the screen's width):
+#. first while picking the notebook, then over its pages.
+#: rust/src/notebookpicker.rs
+msgid "Tap a page: the copies go before it."
+msgstr ""
+
+#: rust/src/notebookpicker.rs
+msgid "Pick the notebook to copy into."
+msgstr ""
 
 #: rust/src/notebookpicker.rs
 msgid "No notebooks here."
@@ -3350,6 +3895,13 @@ msgstr "ここにはノートはありません。"
 #: rust/src/pagesview.rs
 #, c-format
 msgid "Page %d (open)"
+msgstr "ページ %d (開く)"
+
+#. TRANSLATORS: under a page's picture in the Pages view (436 px at 44 px sideways): a page New page
+#. (or its batch) just added, which the bottom row's Undo would take back.
+#: rust/src/pagesview.rs
+#, fuzzy, c-format
+msgid "Page %d (new)"
 msgstr "ページ %d (開く)"
 
 #: rust/src/pagesview.rs
@@ -3385,10 +3937,6 @@ msgstr "このページに名前を付ける"
 msgid "Select none"
 msgstr "何も選択しない"
 
-#: rust/src/pagesview.rs
-msgid "Select all"
-msgstr "すべて選択"
-
 #. TRANSLATORS: Pages tab, with the notebook's page count (about 400 px wide, 44 px text).
 #: rust/src/pagesview.rs
 #, c-format
@@ -3419,9 +3967,65 @@ msgstr "ページをコピーする"
 msgid "Multi-select"
 msgstr "複数選択"
 
+#. TRANSLATORS: under a held page's title in the Pages view (about 900 px at 34 px): how many pages, in this
+#. notebook or others, have links to it.
+#: rust/src/pagesview.rs
+#, fuzzy, c-format
+msgid "Linked from %d page"
+msgid_plural "Linked from %d pages"
+msgstr[0] "%d ページにリンクされています。"
+
+#. TRANSLATORS: a held page's card in the Pages view, under its icon (950 px at 34 px): move the page
+#. (or the ticked pages, with how many) to another place in the notebook, on the Go to page number pad.
+#: rust/src/pagesview.rs
+#, fuzzy, c-format
+msgid "Move %d page to..."
+msgid_plural "Move %d pages to..."
+msgstr[0] "ページに移動..."
+
+#: rust/src/pagesview.rs
+#, fuzzy
+msgid "Move to..."
+msgstr "移動先"
+
+#. TRANSLATORS: the same card: copy the page (or the ticked pages) into another notebook, picked from
+#. the notebooks and folders.
+#: rust/src/pagesview.rs
+#, fuzzy, c-format
+msgid "Copy %d page to notebook..."
+msgid_plural "Copy %d pages to notebook..."
+msgstr[0] "本の%dページを追加しました。"
+
+#: rust/src/pagesview.rs
+#, fuzzy
+msgid "Copy to notebook..."
+msgstr "ノートブックを移動できませんでした。"
+
 #: rust/src/pagesview.rs
 msgid "Enter a page number in this notebook."
 msgstr "このノートブックにページ番号を入力します。"
+
+#. TRANSLATORS: the title in Move to...'s number-pad field (bold, 44 px, about 700 px): the page
+#. number typed is the page the moved pages go before.
+#: rust/src/pagesview.rs
+#, fuzzy
+msgid "Move before page"
+msgstr "ページ全体にわたって"
+
+#. TRANSLATORS: a toast over Move to...'s number pad (about 1700 px at 44 px in bold, or two lines):
+#. the first %d is the notebook's page count, the second one more, which puts the pages at the end.
+#: rust/src/pagesview.rs
+#, c-format
+msgid "Enter a page from 1 to %d, or %d for the end."
+msgstr ""
+
+#. TRANSLATORS: the confirm button at the bottom of New page's count pad (bold, 44 px, about 1700 px):
+#. %d is how many blank pages it adds at once.
+#: rust/src/pagesview.rs
+#, fuzzy, c-format
+msgid "Add %d page"
+msgid_plural "Add %d pages"
+msgstr[0] "%dページ"
 
 #. TRANSLATORS: papers that are pictures: a template copied into grimoire/templates, and a page
 #. of a document imported as pictures (named as the other papers are, below).
@@ -3736,7 +4340,8 @@ msgstr ""
 #: rust/src/pensettings.rs
 msgid ""
 "The eraser takes away only what it touches; harder pressure = bigger reach."
-msgstr "消しゴムは触れた部分だけを消します。強く押すほど、消える範囲が広がります。"
+msgstr ""
+"消しゴムは触れた部分だけを消します。強く押すほど、消える範囲が広がります。"
 
 #: rust/src/pensettings.rs
 msgid "Reset to defaults"
@@ -3960,7 +4565,9 @@ msgstr "写真はまだありません"
 #, c-format
 msgid ""
 "Copy JPG or PNG photos into the %s folder over USB while Grimoire is closed."
-msgstr "Grimoire を閉じている間に、JPG または PNG の写真を USB 経由で %s フォルダーにコピーしてください。"
+msgstr ""
+"Grimoire を閉じている間に、JPG または PNG の写真を USB 経由で %s フォルダーに"
+"コピーしてください。"
 
 #. TRANSLATORS: under it, what to do, centred (up to 4 lines of 1560 px at 44 px, sideways
 #. 2180); %s is the folder on the Kindle's storage.
@@ -3969,7 +4576,9 @@ msgstr "Grimoire を閉じている間に、JPG または PNG の写真を USB �
 msgid ""
 "Copy PNG or JPG pictures into the %s folder over USB while Grimoire is "
 "closed."
-msgstr "Grimoire を閉じている間に、PNG または JPG の画像を USB 経由で %s フォルダーにコピーしてください。"
+msgstr ""
+"Grimoire を閉じている間に、PNG または JPG の画像を USB 経由で %s フォルダーに"
+"コピーしてください。"
 
 #. TRANSLATORS: the paragraph after it, centred too (up to 4 lines of 1560 px at 44 px, sideways
 #. 2180); README.txt is the file Grimoire wrote in that folder.
@@ -3978,16 +4587,16 @@ msgid ""
 "Upright pictures in the shape of a page (3:4) work best, ideally 1860 x 2480 "
 "pixels. The README.txt there says more."
 msgstr ""
-"ページと同じ縦長（3:4）の画像が最適で、1860 x 2480 ピクセルが理想です。詳しくはそこの README.txt"
-"に書かれています。"
+"ページと同じ縦長（3:4）の画像が最適で、1860 x 2480 ピクセルが理想です。詳しく"
+"はそこの README.txtに書かれています。"
 
 #: rust/src/tplsheet.rs
 msgid ""
 "A photo becomes the open page's paper, upright and fitted to the page. For a "
 "page of its own, add a new page in Pages first."
 msgstr ""
-"写真は開いているページの紙になり、ページに合わせて縦向きに調整されます。写真だけのページにする場合は、先に「ページ」で新しいページを追加"
-"してください。"
+"写真は開いているページの紙になり、ページに合わせて縦向きに調整されます。写真"
+"だけのページにする場合は、先に「ページ」で新しいページを追加してください。"
 
 #. TRANSLATORS: under them, when the folder holds files Grimoire cannot use (a picture that
 #. does not read, or too big): how many; %s is the log file, which says which (by number). Up
@@ -4429,8 +5038,9 @@ msgid ""
 "The same picture from the page’s two layers, with ImageMagick 7 in a macOS "
 "or Linux terminal. Download the layers into one folder and run it there:"
 msgstr ""
-"macOS または Linux のターミナルで ImageMagick 7 を使い、ページの 2"
-"つのレイヤー（インクと紙）から同じ画像を作るコマンドです。レイヤーを 1 つのフォルダーにダウンロードし、そこで実行してください:"
+"macOS または Linux のターミナルで ImageMagick 7 を使い、ページの 2つのレイ"
+"ヤー（インクと紙）から同じ画像を作るコマンドです。レイヤーを 1 つのフォルダー"
+"にダウンロードし、そこで実行してください:"
 
 #: web/studio.js
 msgctxt "studio"
@@ -4500,3 +5110,16 @@ msgstr "選択済み: Cmd/Ctrl+C を押します"
 msgctxt "studio"
 msgid "Copied"
 msgstr "コピーされました"
+
+#~ msgid "Around"
+#~ msgstr "周り"
+
+#, c-format
+#~ msgid "Fit: %s"
+#~ msgstr "適合: %s"
+
+#~ msgid "Around it"
+#~ msgstr "その周り"
+
+#~ msgid "Page unavailable"
+#~ msgstr "ページが利用できません"

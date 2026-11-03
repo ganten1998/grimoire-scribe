@@ -125,9 +125,9 @@ struct State {
     sim_invert: bool,
     /// what the simulated panel shows
     eink: Vec<u8>,
-    stats: [i32; 3],
+    stats: [i32; 4],
     ink_frames: i32,
-    area: [i64; 3],
+    area: [i64; 4],
     // Live ink as display_fbink.c keeps it, for the script's display.* checks: whether a colour panel
     // would wait after the last fast refresh, and whether the app asks for the pen mode.
     ink: LiveInk,
@@ -165,6 +165,24 @@ struct State {
     script_hold: bool,
     /// waitbg: the wait ends early once no background job is queued or running
     wait_bg: bool,
+    /// GRIMOIRE_SIM_LATE_MS: every `wait` ends this much late, as on a loaded machine whose timers
+    /// wake late (the release runner's did, by 60 ms and more): what a script times by its waits
+    /// must hold all the same
+    late_ms: u32,
+    /// `mods N`: the KEYMOD_* bits every pen and touch event carries from then on (a paired keyboard's
+    /// Shift held while tapping, say), 0 for none
+    ptr_mods: u32,
+    /// The modifier keys a script's `key` holds (29, 42, 54, 56, 97, 100, 125, 126) until its `keyup`:
+    /// as input_evdev.rs, a modifier alone is no event, and every pen and touch event and key carries them
+    mod_keys: HidKeys,
+    /// Where the script's own clock is in a held legacy `touch` contact: its `touch down`'s time,
+    /// then on by each `wait`'s MS. A `touch move` or `touch up` is stamped with it (never later
+    /// than now), as the Kindle's kernel stamps a sample when the finger moved, not when the app got
+    /// to it. The real time between two lines is the waits plus whatever the machine took besides:
+    /// stamped with that, a 700 ms press read as more than 800 on a slow runner. None: no contact
+    /// held, or a `waitbg` or `hold` since (their time is the machine's, so the next touch line
+    /// reads the real clock).
+    touch_at: Option<u32>,
     pending_shot: FixedStr<128>,
     script_done: bool,
     /// last pen position
@@ -239,9 +257,9 @@ impl Default for State {
             presented: false,
             sim_invert: false,
             eink: Vec::new(),
-            stats: [0; 3],
+            stats: [0; 4],
             ink_frames: 0,
-            area: [0; 3],
+            area: [0; 4],
             ink: LiveInk::default(),
             last_fast: -1,
             last_fast_rect: RECT_EMPTY,
@@ -257,6 +275,10 @@ impl Default for State {
             battery: Battery { percent: 100, charging: false },
             script: None,
             wait_until: 0,
+            late_ms: 0,
+            ptr_mods: 0,
+            mod_keys: HidKeys::default(),
+            touch_at: None,
             hold_file: FixedStr::new(),
             script_hold: false,
             wait_bg: false,
@@ -330,6 +352,9 @@ impl State {
             return; // full: drop
         }
         let t = e.type_ as i32;
+        if t >= InType::PenDown as i32 && t <= InType::TouchUp as i32 {
+            e.key_mods = self.ptr_mods | hidkeys_pointer_mods(e.type_, [&self.mod_keys]);
+        }
         if let Some(f) = self.sample_fn {
             if t >= InType::PenDown as i32 && t <= InType::PenLeave as i32 {
                 f(&mut e);
@@ -770,7 +795,15 @@ impl State {
     }
 
     fn touch_ev(&mut self, t: InType, x: f32, y: f32) {
-        let e = self.make_ev(t, x, y, false);
+        let mut e = self.make_ev(t, x, y, false);
+        if t != InType::TouchDown {
+            if let Some(at) = self.touch_at {
+                if (e.t_ms.wrapping_sub(at) as i32) >= 0 {
+                    e.t_ms = at;
+                }
+            }
+        }
+        self.touch_at = if t == InType::TouchUp { None } else { Some(e.t_ms) };
         self.q_push(e);
     }
 
@@ -1139,14 +1172,17 @@ fn wait_for_exports() {
 pub fn display_close() {
     let (headless, stats, area) = with(|st| (st.headless, st.stats, st.area));
     if headless || std::env::var_os("GRIMOIRE_SIM_STATS").is_some() {
+        // (the C's line, and the Rust build's Clean refreshes after it only when there were some)
+        let clean = if stats[3] > 0 { cformat!(", clean %d (%.1f MP)", stats[3], area[3] as f64 / 1e6) } else { String::new() };
         err(cformat!(
-            "refreshes: fast %d (%.1f MP), ui %d (%.1f MP), full %d (%.1f MP)\n",
+            "refreshes: fast %d (%.1f MP), ui %d (%.1f MP), full %d (%.1f MP)%s\n",
             stats[0],
             area[0] as f64 / 1e6,
             stats[1],
             area[1] as f64 / 1e6,
             stats[2],
-            area[2] as f64 / 1e6
+            area[2] as f64 / 1e6,
+            &clean
         )
         .as_bytes());
     }
@@ -1199,12 +1235,12 @@ impl State {
     // "display.last_fast" "ink" when the last fast refresh was live ink, "wait" when a colour panel
     // would have waited for the driver's read after it (display_fbink.c), empty before any;
     // "display.last_fast_rect" where that refresh was, "x y w h", empty before any; "display.presents"
-    // the refreshes sent since this key was last checked, each "fast", "ui" or "full" and its "x y w h",
+    // the refreshes sent since this key was last checked, each "fast", "ui", "full" or "clean" and its "x y w h",
     // joined by ", " ("fast 50 1510 1760 120, fast 138 1970 167 150"), with ", and N more" past the
     // eighth, empty for none; the check starts the count again, so a first one only clears it.
     fn display_probe(&mut self, key: &[u8], out: &mut String, cap: usize) -> bool {
         if key == b"display.presents" {
-            const NAMES: [&str; 3] = ["fast", "ui", "full"];
+            const NAMES: [&str; 4] = ["fast", "ui", "full", "clean"];
             let mut n = 0usize;
             out.clear();
             let mut piece = String::new();
@@ -1313,6 +1349,40 @@ fn power_probe(key: &[u8], out: &mut String, cap: usize) -> bool {
     true
 }
 
+/// "display.stale.X.Y.W.H": how many pixels of that screen rect the simulated panel shows other than
+/// the app's screen holds them now, as a grayscale refresh would show them (fast refreshes leave
+/// grays dithered, and a rect no refresh reached keeps what was there). 0 where every change went
+/// out and was settled. The rect should keep clear of the toast and the clock corner, which the
+/// panel shows over the screen. -1 (unknown key) before there is an App or a panel, or for a key
+/// that is not four numbers.
+fn display_stale(a: Option<&mut App>, key: &[u8], out: &mut String, cap: usize) -> bool {
+    let Some(rest) = key.strip_prefix(b"display.stale.") else { return false };
+    let Some(a) = a else { return false };
+    let v: Vec<i32> = std::str::from_utf8(rest).unwrap_or("").split('.').filter_map(|t| t.parse().ok()).collect();
+    if v.len() != 4 {
+        return false;
+    }
+    with(|st| {
+        let ew = st.w;
+        if st.eink.is_empty() || a.screen.w != ew || a.screen.h != st.h {
+            return false;
+        }
+        let r = rect_intersect(Rect { x: v[0], y: v[1], w: v[2], h: v[3] }, Rect { x: 0, y: 0, w: ew, h: st.h });
+        let mut n = 0i64;
+        for y in r.y..r.y + r.h {
+            for x in r.x..r.x + r.w {
+                let want = a.screen.px[y as usize * a.screen.stride as usize + x as usize];
+                let want = if st.sim_invert { 255 - want } else { want };
+                if st.eink[y as usize * ew as usize + x as usize] != want {
+                    n += 1;
+                }
+            }
+        }
+        csnprintf!(out, cap, "%lld", n);
+        true
+    })
+}
+
 /// app_probe, which the C reaches through g_probe_app: the App the main loop handed the poll, none
 /// before there is one (the C's NULL g_probe_app: -1). Every key app_probe answers is ASCII, so a
 /// key in bytes that are not UTF-8 is unknown there too.
@@ -1325,7 +1395,7 @@ fn probe_app(a: Option<&mut App>, key: &[u8], out: &mut String, cap: usize) -> i
 
 // Checks the expect just read. gone: the app quit before the script got to it, so only "running"
 // has an answer (0); any other key fails as not run.
-fn expect_check_as(gone: bool, a: Option<&mut App>) {
+fn expect_check_as(gone: bool, mut a: Option<&mut App>) {
     let (bad, line, op, key, value, watch_fd) = with(|st| {
         st.expect.pending = false;
         st.expect_total += 1;
@@ -1341,6 +1411,7 @@ fn expect_check_as(gone: bool, a: Option<&mut App>) {
     } else if !running
         && !watching
         && !with(|st| st.display_probe(&key, &mut got, GOT_CAP))
+        && !display_stale(a.as_deref_mut(), &key, &mut got, GOT_CAP)
         && !power_probe(&key, &mut got, GOT_CAP)
         && probe_app(a, &key, &mut got, GOT_CAP) != 0
     {
@@ -1457,11 +1528,11 @@ enum Step {
     /// `tap panel NAME` / `pentap panel NAME` (true: the pen): the panel's button NAME is found where the
     /// App is (script_step), then tapped like `tap` and `pentap` do, and the batch ends
     Panel(FixedStr<32>, bool),
-    MapNode(u32, bool),
+    MapNode(FixedStr<48>, bool),
     Library(FixedStr<96>,bool),
     Share(FixedStr<96>,bool),
     LibraryContact(FixedStr<96>,InType),
-    Strokes(FixedStr<512>,usize,u32),
+    Strokes(FixedStr<512>,usize,u32,usize),
 }
 
 // Reads script lines until a batch boundary (wait/shot/end). Returns false at EOF.
@@ -1558,7 +1629,8 @@ fn script_step_in(st: &mut State) -> Step {
                 if st.qh!=st.qt {st.unread=Some(line.clone());st.line_no-=1;return Step::Batch;}
                 let mut path=FixedStr::new();path.set_bytes(sc.word(511).unwrap_or(b""));
                 let n=sc.float().unwrap_or(usize::MAX as f32) as usize;let hold=sc.float().unwrap_or(0.0) as u32;
-                return Step::Strokes(path,n,hold);
+                let from=sc.float().unwrap_or(0.0).max(0.0) as usize;
+                return Step::Strokes(path,n,hold,from);
             }
             st.eraser = a == b"eraser";
             let k = scan_floats(s, 2, &mut v);
@@ -1620,13 +1692,36 @@ fn script_step_in(st: &mut State) -> Step {
                 st.pen_ev(InType::PenUp, px, py, 0.0, 0.0, 0.0, ((steps + 1) as u32).wrapping_mul(5));
             }
             st.eraser = false;
+        } else if a == b"mods" {
+            // mods N: the keyboard's modifiers held now (KEYMOD_*: 1 Ctrl, 2 Shift, 4 Alt, 8 Meta), as a
+            // modifier key's press or release leaves them (hidkeys_mods_held); 0 lets go. In order with the
+            // events before it: they reach the app first.
+            if st.qh != st.qt {
+                st.unread = Some(line.clone());
+                st.line_no -= 1;
+                return Step::Batch;
+            }
+            let mut iv = [0i32; 1];
+            scan_ints(s, 1, &mut iv);
+            // (both readers: what Select's lasso reads as it begins, hidkeys_mods_held, and what every pen
+            // and touch event carries from here on, as a paired keyboard's Shift held while tapping)
+            hidkeys_set_mods_held(iv[0]);
+            st.ptr_mods = iv[0].max(0) as u32;
         } else if a == b"key" || a == b"keyup" {
             let mut iv = [0i32; 3]; // code, mods, pad
             scan_ints(s, 1, &mut iv);
+            if iv[2] == 0 && hidkeys_modifier(iv[0]) {
+                // A modifier is held (key) or let go (keyup), no event of its own (input_evdev.rs).
+                let mut none = [HidPress::default(); 2];
+                hidkeys_event(&mut st.mod_keys, HidKind::Keyboard, 1, iv[0], (a.len() == 3) as i32, &mut none);
+                // (and what the keyboards hold, as input_evdev.rs sets it after each key event)
+                hidkeys_set_mods_held(hidkeys_mods(&st.mod_keys) | (st.ptr_mods as i32));
+                continue;
+            }
             let e = InEvent {
                 type_: if a.len() > 3 { InType::KeyUp } else { InType::Key },
                 value: iv[0],
-                key_mods: iv[1] as u32,
+                key_mods: iv[1] as u32 | hidkeys_mods(&st.mod_keys) as u32,
                 gamepad: iv[2] != 0,
                 t_ms: now_ms(),
                 ..Default::default()
@@ -1788,8 +1883,11 @@ fn script_step_in(st: &mut State) -> Step {
                     st.line_no -= 1;
                     return Step::Batch;
                 }
-                let pid = std::str::from_utf8(sc.word(15).unwrap_or(b"0")).ok().and_then(|s| s.parse().ok()).unwrap_or(0);
-                return Step::MapNode(pid, a == b"pentap");
+                // (a page of the notebook shown, or of the editor's in the Graph of all notebooks: <page id>; any
+                // notebook's: <notebook id>:<page id>)
+                let mut spec = FixedStr::<48>::new();
+                spec.set_bytes(sc.word(47).unwrap_or(b"0"));
+                return Step::MapNode(spec, a == b"pentap");
             }
             if b == b"panel" || b==b"editor" {
                 // The buttons are those the app drew from what is queued ahead of this line (a stroke
@@ -1840,10 +1938,13 @@ fn script_step_in(st: &mut State) -> Step {
             }
             return Step::Batch;
         } else if a == b"wait" {
-            st.wait_until = now_ms().wrapping_add(atoi(b) as u32);
+            let ms = atoi(b).max(0) as u32;
+            st.wait_until = now_ms().wrapping_add(ms).wrapping_add(st.late_ms);
             st.wait_bg = false;
+            st.touch_at = st.touch_at.map(|at| at.wrapping_add(ms));
             return Step::Batch;
         } else if a == b"hold" {
+            st.touch_at = None;
             st.script_hold = true;
             st.hold_file.set_bytes(b);
             return Step::Batch;
@@ -1852,6 +1953,7 @@ fn script_step_in(st: &mut State) -> Step {
             // lets it: wait for it to end, not a time that holds on a quiet machine only.
             st.wait_until = now_ms().wrapping_add((if !b.is_empty() { atoi(b) } else { 60000 }) as u32);
             st.wait_bg = true;
+            st.touch_at = None;
             return Step::Batch;
         } else if a == b"shot" {
             st.pending_shot.set_bytes(b);
@@ -2048,7 +2150,7 @@ fn script_step(mut a: Option<&mut App>) {
                 });
                 break;
             }
-            Step::Strokes(path,n,hold)=>{
+            Step::Strokes(path,n,hold,from)=>{
                 let mut page=None;
                 let data=read_file(path.as_str());
                 if data.is_none() || page_deserialize(data.as_deref().unwrap_or(&[]),&mut page)!=0 || page.as_ref().is_none_or(|p|p.readonly) || a.as_ref().is_none_or(|a|a.scr!=ScreenId::Editor) {
@@ -2056,7 +2158,7 @@ fn script_step(mut a: Option<&mut App>) {
                     continue;
                 }
                 let page=page.unwrap();let mut lines=std::collections::VecDeque::new();
-                for stroke in page.strokes.iter().take(n) {
+                for stroke in page.strokes.iter().skip(from).take(n) {
                     for (i,p) in stroke.pts.iter().enumerate() {
                         let (x,y)=crate::editor::editor_replay_point(a.as_deref().unwrap(),p.x,p.y);
                         if i>0 {let dt=p.t_ms.wrapping_sub(stroke.pts[i-1].t_ms).min(1000);if dt>0 {lines.push_back(format!("wait {}",dt).into_bytes());}}
@@ -2090,12 +2192,12 @@ fn script_step(mut a: Option<&mut App>) {
                     err(format!("expect failed (line {}): no library control {}\n",st.line_no,name.as_str()).as_bytes());st.expect_total+=1;st.expect_failed+=1;
                 }});break;
             }
-            Step::MapNode(pid, pen) => {
-                let at = a.as_deref_mut().and_then(|a| crate::editor::editor_map_point(a, pid));
+            Step::MapNode(spec, pen) => {
+                let at = a.as_deref_mut().and_then(|a| crate::editor::editor_map_point(a, spec.as_str()));
                 with(|st| match at {
                     Some((x, y)) => st.tap_events(x, y, pen),
                     None => {
-                        err(format!("expect failed (line {}): no map node {}\n", st.line_no, pid).as_bytes());
+                        err(format!("expect failed (line {}): no map node {}\n", st.line_no, spec.as_str()).as_bytes());
                         st.expect_total += 1;
                         st.expect_failed += 1;
                     }
@@ -2163,6 +2265,10 @@ pub fn input_open(screen_w: i32, screen_h: i32, dpi: f32, pen: Option<&InputCali
         }
         let stall = std::env::var_os("GRIMOIRE_SIM_STALL_MS").map_or(0, |v| atoi(v.as_bytes()));
         with(|st| st.raw_stall_ms = stall.max(0));
+    }
+    if let Some(late) = std::env::var_os("GRIMOIRE_SIM_LATE_MS") {
+        let late = atoi(late.as_bytes()).max(0) as u32;
+        with(|st| st.late_ms = late);
     }
     if let Some(sp) = std::env::var_os("GRIMOIRE_SIM_PRESSURE") {
         let p = clampf(atof(sp.as_bytes()) as f32, 0.0, 1.0);
@@ -2441,6 +2547,17 @@ fn poll_in(ev: &mut InEvent, timeout_ms: i32, mut a: Option<&mut App>) -> i32 {
 
 pub fn input_poll(ev: &mut InEvent, timeout_ms: i32) -> i32 {
     poll(ev, timeout_ms, None)
+}
+
+/// Whether the main loop's batch is the script's (docs/SIM.md: the lines up to the next tap, wait,
+/// shot... are one batch), which it then never ends at its 8 ms: a loaded machine (a CI runner) took
+/// longer than that over a tap's press and handed its lift to the next batch, a refresh of its own
+/// the scenarios do not count on an idle one (the pressed key or button refreshed, then again). The
+/// 64 events still end a batch (tests/scenarios/y_ink_backlog.qs), and input from the stand-in raw
+/// digitizer (GRIMOIRE_SIM_RAWPEN_MAIN) comes in its own time, as the Kindle's, so its batches keep
+/// the 8 ms.
+pub fn input_script_batch() -> bool {
+    with(|st| st.headless && st.raw_fd < 0)
 }
 
 // access(path, F_OK) == 0
@@ -3227,8 +3344,13 @@ mod tests {
         with(|st| st.display_probe(b"display.ink_frames", &mut got, GOT_CAP));
         assert_eq!(got, "9");
         assert!(!with(|st| st.display_probe(b"display.nonsense", &mut got, GOT_CAP)));
-        assert_eq!(with(|st| st.stats), [9, 1, 0]);
+        assert_eq!(with(|st| st.stats), [9, 1, 0, 0]);
         assert_eq!(with(|st| st.area[1]), 500);
+        // a Clean (a flash of its rect alone) is named and counted apart
+        display_present(&c, Rect { x: 5, y: 6, w: 7, h: 8 }, RefreshMode::Clean);
+        assert!(with(|st| st.display_probe(b"display.presents", &mut got, GOT_CAP)));
+        assert_eq!(got, "clean 5 6 7 8");
+        assert_eq!(with(|st| (st.stats[3], st.area[3])), (1, 56));
     }
 
     #[test]

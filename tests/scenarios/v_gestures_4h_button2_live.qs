@@ -17,8 +17,8 @@ wait 100
 expect library.gestures_group is editing
 expect library.gestures.1 is Undo: second pen button double-click
 expect library.gestures.2 is Redo: no gesture
-expect library.ui_at.930.600 is gestures.row.2
-tap 930 600
+expect library.ui_at.930.520 is gestures.row.2
+tap 930 520
 wait 100
 expect library.gestures.learning is redo
 expect library.record is wait
@@ -31,8 +31,8 @@ pentap 500 1650
 wait 100
 expect library.record is 0
 pen leave
-expect library.ui_at.930.2030 is done
-tap 930 2030
+expect library.ui_at.930.2120 is done
+tap 930 2120
 wait 100
 expect library.ui_at.930.2030 is done
 tap 930 2030

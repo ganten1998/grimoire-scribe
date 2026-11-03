@@ -5,7 +5,7 @@
 # settings: before_eraser=7
 # settings: draw_tool=5
 # copy: tests/fixtures/tool-steps .
-# Next and previous tool (R1 311, L1 310; PageDown and PageUp) go through the pens on the panel
+# Next and previous tool (R1 311, L1 310; ] and [, which took PageDown's and PageUp's place in 2.0.0-beta.2) go through the pens on the panel
 # alone: the tool button's (the fountain pen) and the pinned ones (highlighter, fineliner), top to
 # bottom and round again, so pressed again and again the highlight never leaves the panel. The
 # eraser is not one of them: from it they step from the pen it goes back to, its pen from before (a
@@ -54,10 +54,10 @@ expect editor.tool is fineliner
 key 310 0 1
 wait 60
 expect editor.tool is highlighter
-key 109 0
+key 27 0
 wait 60
 expect editor.tool is fineliner
-key 104 0
+key 26 0
 wait 60
 expect editor.tool is highlighter
 # The highlighter's pin, the eraser (East), next: the fineliner; the fineliner, the eraser, previous:

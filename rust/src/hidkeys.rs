@@ -176,17 +176,49 @@ pub fn hidkeys_sync(state: &mut HidKeys, held: Option<&[u8; HID_KEY_BYTES]>, hat
     state.hat[0] = if (-1..=1).contains(&hat_x) { hat_x } else { 0 };
     state.hat[1] = if (-1..=1).contains(&hat_y) { hat_y } else { 0 };
 }
+/// The modifier keys (KEYMOD_*) held on this device now (a key's press carries them: hidkeys_event).
+pub fn hidkeys_mods(state: &HidKeys) -> i32 {
+    mods(state)
+}
+/// The KEYMOD_* bits an event of type t carries from the keyboards given (those open): the modifier keys
+/// held on any of them for a pen or touch event, as a modifier alone is no event (hidkeys_event); 0 for
+/// any other event. Shift held on a keyboard while the pen or a finger taps New page opens its count pad.
+pub fn hidkeys_pointer_mods<'a>(t: InType, keyboards: impl IntoIterator<Item = &'a HidKeys>) -> u32 {
+    if !(InType::PenDown as i32..=InType::TouchUp as i32).contains(&(t as i32)) {
+        return 0;
+    }
+    keyboards.into_iter().fold(0, |m, k| m | mods(k) as u32)
+}
 fn mods(state: &HidKeys) -> i32 {
     (if bit(&state.held, 29) || bit(&state.held, 97) { KEYMOD_CTRL } else { 0 })
         | (if bit(&state.held, 42) || bit(&state.held, 54) { KEYMOD_SHIFT } else { 0 })
         | (if bit(&state.held, 56) || bit(&state.held, 100) { KEYMOD_ALT } else { 0 })
         | (if bit(&state.held, 125) || bit(&state.held, 126) { KEYMOD_META } else { 0 })
 }
+/// Ctrl, Shift, Alt or Meta, left or right (evdev codes): held, never an event of its own.
+pub fn hidkeys_modifier(code: i32) -> bool {
+    modifier(code)
+}
+/// The modifiers (KEYMOD_*) the keyboards hold down now: modifiers alone make no key event on the Kindle,
+/// so whatever wants one held at a moment (the exact-area lasso's Shift or Alt as it begins,
+/// editor/select.rs) reads it here. input_evdev.rs sets it to every attached device's modifiers together
+/// (hidkeys_mods) after each of their events, resyncs and detaches; the simulator's script `mods` line
+/// sets it directly.
+static MODS_HELD: std::sync::atomic::AtomicI32 = std::sync::atomic::AtomicI32::new(0);
+
+pub fn hidkeys_mods_held() -> i32 {
+    MODS_HELD.load(std::sync::atomic::Ordering::Relaxed)
+}
+
+pub fn hidkeys_set_mods_held(m: i32) {
+    MODS_HELD.store(m, std::sync::atomic::Ordering::Relaxed);
+}
+
 fn modifier(code: i32) -> bool {
     code == 29 || code == 97 || code == 42 || code == 54 || code == 56 || code == 100 || code == 125 || code == 126
 }
 fn key(state: &HidKeys, kind: HidKind, code: i32, up: bool) -> HidPress {
-    HidPress { code, mods: mods(state), gamepad: kind == HidKind::Gamepad && code >= 256, up }
+    HidPress { code, mods: hidkeys_mods(state), gamepad: kind == HidKind::Gamepad && code >= 256, up }
 }
 /// A hat direction as the digital D-pads' evdev codes: UP/DOWN/LEFT/RIGHT.
 fn hat(axis: i32, value: i32, up: bool) -> HidPress {

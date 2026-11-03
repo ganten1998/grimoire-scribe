@@ -141,7 +141,7 @@ $(CBUILD)/host/grimoire-headless: $(CORE_SRC) $(UI_SRC) $(APP_SRC) $(SIM_PLAT) $
 	  $(CORE_SRC) $(UI_SRC) $(APP_SRC) $(SIM_PLAT) $(GEN_SRC) $(WEB_GEN) -o $@ -lm
 
 # Every tests/scenarios/*.qs against a fresh data root (a script with a "# root: NAME" line starts
-# from a copy of scenario NAME's data, so NAME must sort before it; a run ends only once the PDF
+# from a copy of scenario NAME's data, once NAME has run; a run ends only once the PDF
 # exports it started are written, so that data is whole); screenshots in build/shots/<name>/. A
 # failed expect makes a run exit with status 3, and a run that leaves a file half-written (*.tmp)
 # fails too, as does one whose "# pdfs: N" line does not match the PDFs left in its root's PDFs/
@@ -158,73 +158,55 @@ $(CBUILD)/host/grimoire-headless: $(CORE_SRC) $(UI_SRC) $(APP_SRC) $(SIM_PLAT) $
 # x_turn_calibrated start from, and z_import_1_startup);
 # one whose "# root:" was skipped is skipped with it (it would copy a data root that was never made); and so
 # are the two rust selftests.
+# tests/scenario_runner.py runs them, SCEN_JOBS at a time (default: the number of CPUs; SCEN_JOBS=1 is
+# one after another), each with a port of its own for the share server (GRIMOIRE_TEST_PORT, else
+# 8765, plus the job's slot), the longest first by tests/scenario-times.txt; a dependant starts once
+# its root has finished. Each run's output is in build/scen-logs/NAME.log; one line per run is
+# printed as it ends, the failed runs' logs whole at the end, then "SCENARIOS FAILED: ..." as before.
 SIM_HOOKS := GRIMOIRE_WIFI_SCRIPT GRIMOIRE_HOST GRIMOIRE_PASSCODE GRIMOIRE_SIM_ADDRS GRIMOIRE_HTTPD_DELAY_MS GRIMOIRE_BG_DELAY_MS GRIMOIRE_SIM_PRESSURE \
              GRIMOIRE_SIM_PEN_BUTTON2 GRIMOIRE_SIM_TOUCH_SLOTS GRIMOIRE_TOUCH_TUNE SIM_TOUCH_SLOTS TOUCH_TUNE \
              GRIMOIRE_BT_API GRIMOIRE_UPDATE_SCRIPT GRIMOIRE_UPDATE_REQUEST FAKE_UPDATE_PREVIEW FAKE_UPDATE_STABLE FAKE_UPDATE_FAIL \
              GRIMOIRE_SIM_STATS GRIMOIRE_SIM_SIZE GRIMOIRE_CHECK_FIT GRIMOIRE_LANG GRIMOIRE_L10N_DIR GRIMOIRE_ANNOTATE \
              GRIMOIRE_SLEEP_MINUTE_MS GRIMOIRE_SIM_RAWPEN GRIMOIRE_SIM_RAWPEN_MAIN GRIMOIRE_SIM_STALL_MS \
-             GRIMOIRE_LIVE_PEN_SOURCE GRIMOIRE_SIM_MAP_NOMEM GRIMOIRE_KEEP_RENDER_MS
+             GRIMOIRE_LIVE_PEN_SOURCE GRIMOIRE_SIM_MAP_NOMEM GRIMOIRE_KEEP_RENDER_MS GRIMOIRE_SIM_LATE_MS
 # The scenarios tap by coordinates and check English text: they run in English whatever the
 # caller's LANG says (GRIMOIRE_LANG ranks first), unless a scenario's "# env:" line sets another.
 SCEN_LANG := GRIMOIRE_LANG=en
-SELFTEST_PASS = $(if $(SCEN_SKIP_RUST_ONLY),tests/selftest/pass-c.qs,tests/selftest/pass.qs)
+# SCENARIOS: the scripts the rule runs (all of them); SCEN_ENV: test hooks every run gets on top of
+# its own "# env:" lines; SCEN_NO_SELFTEST: leave out the runner's self-check (scenarios-late does);
+# SCEN_JOBS: runs at once; SCEN_SHARD=I/N: only CI shard I of N (whole # root: chains, balanced by
+# the timing table; the selftest goes with shard 1); SCEN_TIMES: where the run's times are written
+# (make scenario-times reads them).
+SCENARIOS ?= tests/scenarios/*.qs
+SCEN_RUN  := python3 -I tests/scenario_runner.py
+SCEN_JOBS ?=
+SCEN_SHARD ?=
+SCEN_TIMES ?= $(BUILD)/scen-times.txt
+# The scenarios that run alone, after the parallel batch, because they depend on an idle machine and
+# cannot be made not to yet (each with its reason; none today).
+SCEN_SERIAL ?=
 scenarios: $(BUILD)/host/grimoire-headless
-	@unset $(SIM_HOOKS); \
-	failed=; skipped=; for s in tests/scenarios/*.qs; do n=$$(basename $$s .qs); note=; \
-	  if [ -n "$(SCEN_SKIP_RUST_ONLY)" ] && grep -q '^# rust-only' $$s; then \
-	    if [ -f tests/c-scenarios/$$n.qs ]; then s=tests/c-scenarios/$$n.qs; note=" (the C build's variant)"; \
-	    else echo "== $$n (rust-only: skipped)"; skipped="$$skipped $$n "; continue; fi; fi; \
-	  from=$$(sed -n 's/^# root: *//p' $$s | head -n 1); \
-	  if [ -n "$(SCEN_SKIP_RUST_ONLY)" ] && [ -n "$$from" ] && case "$$skipped" in *" $$from "*) true;; *) false;; esac; then \
-	    echo "== $$n (its root $$from is rust-only: skipped)"; skipped="$$skipped $$n "; continue; fi; \
-	  rm -rf $(BUILD)/scen/$$n $(BUILD)/shots/$$n; \
-	  echo "== $$n$$note"; \
-	  if [ -n "$$from" ] && ! cp -R $(BUILD)/scen/$$from $(BUILD)/scen/$$n; then failed="$$failed $$n"; continue; fi; \
-	  if [ -n "$$GRIMOIRE_TEST_PORT" ]; then r=$(BUILD)/scen/$$n; mkdir -p $$r; \
-	    { grep -v '^http_port=' $$r/settings.ini 2>/dev/null; echo "http_port=$$GRIMOIRE_TEST_PORT"; } > $$r/settings.ini.port; \
-	    mv $$r/settings.ini.port $$r/settings.ini; fi; \
-	  if grep -q '^# settings: ' $$s; then r=$(BUILD)/scen/$$n; mkdir -p $$r; sed -n 's/^# settings: *//p' $$s >> $$r/settings.ini; fi; \
-	  if grep -q '^# copy: ' $$s; then r=$(BUILD)/scen/$$n; mkdir -p $$r; \
-	    if ! sed -n 's/^# copy: *//p' $$s | while read -r src dst; do \
-	      mkdir -p "$$r/$$dst" && cp -R "$$src/." "$$r/$$dst/" || exit 1; done; then \
-	      echo "$$n: a # copy: line failed"; failed="$$failed $$n"; continue; fi; fi; \
-	  generator=$$(sed -n 's/^# generate: *//p' $$s | head -n 1); \
-	  if [ -n "$$generator" ] && ! python3 $$generator $(BUILD)/scen/$$n; then failed="$$failed $$n"; continue; fi; \
-	  envs=$$(sed -n 's/^# env: *//p' $$s | tr '\n' ' '); \
-	  env $(SCEN_LANG) $$envs GRIMOIRE_ROOT=$(BUILD)/scen/$$n GRIMOIRE_SCRIPT=$$s GRIMOIRE_SHOTS=$(BUILD)/shots/$$n \
-	    $(BUILD)/host/grimoire-headless || failed="$$failed $$n"; \
-	  if [ -n "$$(find $(BUILD)/scen/$$n -name '*.tmp' 2>/dev/null)" ]; then \
-	    echo "$$n left a file half-written"; failed="$$failed $$n"; fi; \
-	  pdfs=$$(sed -n 's/^# pdfs: *//p' $$s | head -n 1); \
-	  if [ -n "$$pdfs" ]; then got=$$(find $(BUILD)/scen/$$n/PDFs -name '*.pdf' 2>/dev/null | wc -l | tr -d ' '); \
-	    if [ "$$got" != "$$pdfs" ]; then echo "$$n left $$got PDFs in PDFs/, wanted $$pdfs"; failed="$$failed $$n"; fi; fi; \
-	done; \
-	d=$(BUILD)/selftest; rm -rf $$d; mkdir -p $$d; \
-	echo "== selftest pass (every expect holds: exit 0, and the PDF export is done)"; \
-	$(SCEN_LANG) GRIMOIRE_ROOT=$$d/pass GRIMOIRE_SCRIPT=$(SELFTEST_PASS) GRIMOIRE_SHOTS=$$d/shots \
-	  $(BUILD)/host/grimoire-headless || failed="$$failed selftest/pass"; \
-	if ! ls $$d/pass/PDFs/*.pdf >/dev/null 2>&1; then \
-	  echo "selftest pass: the run ended before its PDF export"; failed="$$failed selftest/pass"; fi; \
-	echo "== selftest fail (each line meant to fail is reported: exit 3; log in $$d/fail.log)"; rc=0; \
-	$(SCEN_LANG) GRIMOIRE_ROOT=$$d/fail GRIMOIRE_SCRIPT=tests/selftest/fail.qs GRIMOIRE_SHOTS=$$d/shots \
-	  $(BUILD)/host/grimoire-headless 2>$$d/fail.log || rc=$$?; \
-	want=$$(awk '!/^[[:space:]]*(#|$$)/ && $$1 != "wait" && $$1 != "tap" { printf " %d", NR }' tests/selftest/fail.qs); \
-	got=$$(sed -n 's/^expect failed (line \([0-9]*\)).*/ \1/p' $$d/fail.log | tr -d '\n'); \
-	if [ $$rc -ne 3 ] || [ "$$got" != "$$want" ]; then cat $$d/fail.log; \
-	  echo "selftest fail: exit $$rc with lines$$got failed, wanted exit 3 with lines$$want"; failed="$$failed selftest/fail"; fi; \
-	if [ -z "$(SCEN_SKIP_RUST_ONLY)" ]; then \
-	  echo "== selftest pass-rust (the Rust build's own commands and probes: exit 0)"; \
-	  $(SCEN_LANG) GRIMOIRE_ROOT=$$d/pass-rust GRIMOIRE_SCRIPT=tests/selftest/pass-rust.qs GRIMOIRE_SHOTS=$$d/shots \
-	    $(BUILD)/host/grimoire-headless || failed="$$failed selftest/pass-rust"; \
-	  echo "== selftest fail-rust (each line meant to fail is reported: exit 3; log in $$d/fail-rust.log)"; rc=0; \
-	  $(SCEN_LANG) GRIMOIRE_ROOT=$$d/fail-rust GRIMOIRE_SCRIPT=tests/selftest/fail-rust.qs GRIMOIRE_SHOTS=$$d/shots \
-	    $(BUILD)/host/grimoire-headless 2>$$d/fail-rust.log || rc=$$?; \
-	  want=$$(awk '!/^[[:space:]]*(#|$$)/ && $$1 != "wait" && $$1 != "tap" { printf " %d", NR }' tests/selftest/fail-rust.qs); \
-	  got=$$(sed -n 's/^expect failed (line \([0-9]*\)).*/ \1/p' $$d/fail-rust.log | tr -d '\n'); \
-	  if [ $$rc -ne 3 ] || [ "$$got" != "$$want" ]; then cat $$d/fail-rust.log; \
-	    echo "selftest fail-rust: exit $$rc with lines$$got failed, wanted exit 3 with lines$$want"; failed="$$failed selftest/fail-rust"; fi; \
-	fi; \
-	if [ -n "$$failed" ]; then echo "SCENARIOS FAILED:$$failed"; exit 1; fi
+	@$(SCEN_RUN) run --build $(BUILD) --jobs "$(SCEN_JOBS)" --unset "$(SIM_HOOKS)" --env "$(SCEN_ENV)" \
+	  --serial "$(SCEN_SERIAL)" $(if $(SCEN_SKIP_RUST_ONLY),--skip-rust-only) $(if $(SCEN_NO_SELFTEST),--no-selftest) \
+	  $(if $(SCEN_SHARD),--shard $(SCEN_SHARD)) $(if $(SCEN_TIMES),--times-out $(SCEN_TIMES)) $(SCENARIOS)
+
+# The timing table the runner starts the longest scenarios first by, and the CI shards are balanced
+# by (tests/scenario-times.txt), from a full run of the scenarios: make scenario-times, then commit it.
+.PHONY: scenario-times
+scenario-times: scenarios
+	$(SCEN_RUN) times --build $(BUILD)
+
+# The scenarios that time a press or a finger shape by their waits, run again with every wait ending
+# 400 ms late (GRIMOIRE_SIM_LATE_MS), as a loaded machine's timers wake: the release runner's did, and
+# these two failed there on every release while passing here. A script times a contact by the
+# script's own clock (docs/SIM.md), so they hold however late the machine is. After the scenarios
+# (s_shape_4_guards starts from s_shape_1_record's data).
+LATE_SCENARIOS := y_status_press s_shape_4_guards
+.PHONY: scenarios-late
+scenarios-late: $(BUILD)/host/grimoire-headless
+	@echo "== the scenarios again with every wait 400 ms late: $(LATE_SCENARIOS)"
+	@$(MAKE) --no-print-directory -o $(BUILD)/host/grimoire-headless scenarios SCEN_NO_SELFTEST=1 SCEN_TIMES= \
+	  SCEN_SHARD= SCENARIOS="$(LATE_SCENARIOS:%=tests/scenarios/%.qs)" SCEN_ENV=GRIMOIRE_SIM_LATE_MS=400
 
 # ---- languages ----
 # For the maintainer, with GNU gettext installed: xgettext collects every marked string of
@@ -252,7 +234,7 @@ XGETTEXT_JS_FLAGS := --from-code=UTF-8 --language=JavaScript --add-comments=TRAN
 MSGFMT_FLAGS := --check --no-hash --endianness=little
 l10n:
 	@mkdir -p $(BUILD)/l10n
-	xgettext $(XGETTEXT_FLAGS) -o $(BUILD)/l10n/app.pot $(sort $(wildcard rust/src/*.rs))
+	xgettext $(XGETTEXT_FLAGS) -o $(BUILD)/l10n/app.pot $(sort $(wildcard rust/src/*.rs rust/src/editor/*.rs))
 	xgettext $(XGETTEXT_JS_FLAGS) -o $(BUILD)/l10n/studio.pot web/studio.js
 	awk '/^msgid / { if (n++) print "msgctxt \"studio\"" } { print }' $(BUILD)/l10n/studio.pot > $(BUILD)/l10n/studio-ctx.pot
 	msgcat --use-first -o po/grimoire.pot $(BUILD)/l10n/app.pot $(BUILD)/l10n/studio-ctx.pot
@@ -271,67 +253,26 @@ l10n:
 # language and style: the Library's top bar as KOReader opens it (Back to KOReader in Exit's place,
 # the one button that takes the width it needs). Then tests/l10n/templates.qs, in every language and
 # style: the Templates sheet with templates in it, over New notebook and the editor's page, on a
-# data root its "# copy:" line fills first, as make scenarios does. Under make check it waits for
-# the scenarios: both open the share server on the same port. With SCEN_SKIP_RUST_ONLY set (make
+# data root its "# copy:" line fills first, as make scenarios does. Then (Rust build only) the
+# unified Index, the notebook links selector, page management and backlinks scenarios from their
+# fixtures, and z_wifi.qs with and without an address, in every language and style. Under make check
+# it waits for
+# the scenarios: both give their runs the same ports. With SCEN_SKIP_RUST_ONLY set (make
 # c-check), y_all_screens.qs is skipped: it visits screens only the Rust build has.
+# The runs go through tests/scenario_runner.py, SCEN_JOBS at a time, as the scenarios do (logs in
+# build/scen-logs/l10n/). L10N_SKIP names language runs of y_all_screens.qs to leave out: make
+# rust-check (and CI) skip en-gothic, the run make scenarios already made (the same script in English
+# and Gothic, the default style, with the same GRIMOIRE_CHECK_FIT=1 and GRIMOIRE_SIM_ADDRS from its
+# "# env:" lines; its "# settings:" line, status_mode=1, is what every settings.ini reads as anyway).
+L10N_SKIP ?=
 L10N_SCENARIO := tests/scenarios/y_all_screens.qs
 # (the Rust build's panel has a button more, so its Paper button is elsewhere: it runs templates-rust.qs)
 L10N_TEMPLATES := $(if $(SCEN_SKIP_RUST_ONLY),tests/l10n/templates.qs,tests/l10n/templates-rust.qs)
 L10N_LANGS := en $(basename $(notdir $(L10N_MO)))
 l10n-check: $(BUILD)/host/grimoire-headless $(if $(filter check,$(MAKECMDGOALS)),scenarios)
-	@unset $(SIM_HOOKS); failed=; \
-	if command -v msgfmt >/dev/null 2>&1; then \
-	  mkdir -p $(BUILD)/l10n; for p in po/*.po; do [ -f "$$p" ] || continue; m=$${p%.po}.mo; t=$(BUILD)/l10n/$${m##*/}; \
-	    if ! msgfmt $(MSGFMT_FLAGS) -o $$t $$p; then echo "l10n: $$p does not compile"; failed="$$failed $$p"; \
-	    elif ! cmp -s $$t $$m; then echo "l10n: $$m is not what msgfmt makes of $$p now (run make l10n)"; \
-	      failed="$$failed $$m"; else echo "l10n: $$m is what msgfmt makes of $$p"; fi; \
-	  done; \
-	else echo "l10n: skipped the check that po/*.mo match po/*.po (msgfmt is not installed)"; fi; \
-	if [ -z "$(SCEN_SKIP_RUST_ONLY)" ]; then \
-	for lang in $(L10N_LANGS); do for style in gothic classic; do n=$$lang-$$style; r=$(BUILD)/scen/l10n/$$n; \
-	  rm -rf $$r $(BUILD)/shots/l10n/$$n; mkdir -p $$r; echo "== l10n $$n"; \
-	  echo "theme=$$style" > $$r/settings.ini; \
-	  if [ -n "$$GRIMOIRE_TEST_PORT" ]; then echo "http_port=$$GRIMOIRE_TEST_PORT" >> $$r/settings.ini; fi; \
-	  GRIMOIRE_LANG=$$lang GRIMOIRE_CHECK_FIT=1 GRIMOIRE_SIM_ADDRS=wlan0=192.168.0.20 GRIMOIRE_ROOT=$$r \
-	    GRIMOIRE_SCRIPT=$(L10N_SCENARIO) GRIMOIRE_SHOTS=$(BUILD)/shots/l10n/$$n \
-	    $(BUILD)/host/grimoire-headless || failed="$$failed $$n"; \
-	done; done; \
-	for lang in $(L10N_LANGS); do for style in gothic classic; do n=shapes-$$lang-$$style; r=$(BUILD)/scen/l10n/$$n; \
-	  rm -rf $$r $(BUILD)/shots/l10n/$$n; mkdir -p $$r; echo "== l10n $$n"; \
-	  echo "theme=$$style" > $$r/settings.ini; \
-	  GRIMOIRE_LANG=$$lang GRIMOIRE_CHECK_FIT=1 GRIMOIRE_ROOT=$$r GRIMOIRE_SCRIPT=tests/l10n/shapes.qs \
-	    GRIMOIRE_SHOTS=$(BUILD)/shots/l10n/$$n $(BUILD)/host/grimoire-headless || failed="$$failed $$n"; \
-	done; done; \
-	else echo "l10n: skipped $(L10N_SCENARIO) (rust-only: it visits the Rust build's screens)"; fi; \
-	for lang in $(L10N_LANGS); do r=$(BUILD)/scen/l10n/long-root/$$(printf 'a-long-data-root-%.0s' 1 2 3 4 5 6 7 8)$$lang; \
-	  rm -rf $(BUILD)/scen/l10n/long-root $(BUILD)/shots/l10n/long-root-$$lang; mkdir -p $$r; \
-	  echo "== l10n $$lang, a long data root"; \
-	  if [ -n "$$GRIMOIRE_TEST_PORT" ]; then echo "http_port=$$GRIMOIRE_TEST_PORT" > $$r/settings.ini; fi; \
-	  GRIMOIRE_LANG=$$lang GRIMOIRE_CHECK_FIT=1 GRIMOIRE_ROOT=$$r GRIMOIRE_SCRIPT=tests/l10n/long_root.qs \
-	    GRIMOIRE_SHOTS=$(BUILD)/shots/l10n/long-root-$$lang $(BUILD)/host/grimoire-headless || failed="$$failed long-root-$$lang"; \
-	done; \
-	for lang in $(L10N_LANGS); do for style in gothic classic; do n=hosted-$$lang-$$style; r=$(BUILD)/scen/l10n/$$n; \
-	  rm -rf $$r $(BUILD)/shots/l10n/$$n; mkdir -p $$r; echo "== l10n $$n, opened from KOReader"; \
-	  echo "theme=$$style" > $$r/settings.ini; \
-	  if [ -n "$$GRIMOIRE_TEST_PORT" ]; then echo "http_port=$$GRIMOIRE_TEST_PORT" >> $$r/settings.ini; fi; \
-	  GRIMOIRE_LANG=$$lang GRIMOIRE_CHECK_FIT=1 GRIMOIRE_HOST=koreader GRIMOIRE_ROOT=$$r \
-	    GRIMOIRE_SCRIPT=tests/l10n/hosted.qs GRIMOIRE_SHOTS=$(BUILD)/shots/l10n/$$n \
-	    $(BUILD)/host/grimoire-headless || failed="$$failed $$n"; \
-	done; done; \
-	for lang in $(L10N_LANGS); do for style in gothic classic; do n=templates-$$lang-$$style; r=$(BUILD)/scen/l10n/$$n; \
-	  rm -rf $$r $(BUILD)/shots/l10n/$$n; mkdir -p $$r; echo "== l10n $$n, with templates"; \
-	  echo "theme=$$style" > $$r/settings.ini; \
-	  if [ -n "$$GRIMOIRE_TEST_PORT" ]; then echo "http_port=$$GRIMOIRE_TEST_PORT" >> $$r/settings.ini; fi; \
-	  if ! sed -n 's/^# copy: *//p' $(L10N_TEMPLATES) | while read -r src dst; do \
-	    mkdir -p "$$r/$$dst" && cp -R "$$src/." "$$r/$$dst/" || exit 1; done; then \
-	    echo "$$n: a # copy: line failed"; failed="$$failed $$n"; continue; fi; \
-	  GRIMOIRE_LANG=$$lang GRIMOIRE_CHECK_FIT=1 GRIMOIRE_ROOT=$$r GRIMOIRE_SCRIPT=$(L10N_TEMPLATES) \
-	    GRIMOIRE_SHOTS=$(BUILD)/shots/l10n/$$n $(BUILD)/host/grimoire-headless || failed="$$failed $$n"; \
-	done; done; \
-	if [ -n "$$failed" ]; then echo "L10N CHECK FAILED:$$failed"; exit 1; fi; \
-	echo "l10n-check: every language fits ($(L10N_LANGS))"
-	@if [ -z "$(SCEN_SKIP_RUST_ONLY)" ]; then BUILD=$(BUILD) python3 tests/index_l10n_check.py; fi
-	@if [ -z "$(SCEN_SKIP_RUST_ONLY)" ]; then BUILD=$(BUILD) python3 tests/wifi_l10n_check.py; fi
+	@$(SCEN_RUN) l10n --build $(BUILD) --jobs "$(SCEN_JOBS)" --unset "$(SIM_HOOKS)" --langs "$(L10N_LANGS)" \
+	  --scenario $(L10N_SCENARIO) --templates $(L10N_TEMPLATES) --msgfmt-flags "$(MSGFMT_FLAGS)" \
+	  --skip "$(L10N_SKIP)" $(if $(SCEN_SKIP_RUST_ONLY),--skip-rust-only)
 
 # ---- host tools (rust/src/bin: tools/*.c's ports) ----
 tools: $(BUILD)/host/grimoire-export $(BUILD)/host/tgstudy
@@ -405,11 +346,18 @@ $(CBUILD)/host/mklogo: tools/mklogo.c $(CORE_SRC) $(GEN_SRC) $(HDRS)
 # language), as each C test binary runs its tests in order. Twice: on the host's platform, then in
 # the headless build (--features sim), whose tests check the runner itself, the Share screen and
 # the pen that reports tilt.
+# (test-host and test-sim are the two halves, which CI runs as two jobs.)
+.PHONY: test-host test-sim
 test:
+	@$(MAKE) --no-print-directory test-host
+	@$(MAKE) --no-print-directory test-sim
+	@echo "ALL TESTS PASSED"
+test-host:
 	@mkdir -p $(BUILD)/test/tmp
 	$(call RCARGO,GRIMOIRE_TEST_TMP="$(abspath $(BUILD))/test/tmp") test -- --test-threads=1
+test-sim:
+	@mkdir -p $(BUILD)/test/tmp
 	$(call RCARGO,GRIMOIRE_TEST_TMP="$(abspath $(BUILD))/test/tmp") test --features sim -- --test-threads=1
-	@echo "ALL TESTS PASSED"
 
 # The C tree's unit tests (core + ui only; no platform).
 TESTS := $(patsubst tests/%.c,$(CBUILD)/test/%,$(wildcard tests/test_*.c))
@@ -602,43 +550,77 @@ kpm-check: kpm-package
 # host exporter, the ARM build), and the zip people install: what it holds, that two clean builds
 # make the same bytes, and its launchers run against stand-ins for the Kindle's tools; then the KPM
 # package and the KOReader patches.
-.PHONY: package-check launcher-check mirror-cleanup-check usb-stage-check
+# package-check is package-contents-check (what the zip holds, tools/archive.py's tests) and
+# repro-check (two clean builds make the same bytes): pull requests' CI runs only the first, pushes
+# to main and releases both.
+.PHONY: package-check package-contents-check repro-check launcher-check mirror-cleanup-check usb-stage-check
 mirror-cleanup-check: $(BUILD)/host/grimoire-headless
 	BUILD=$(BUILD) python3 -m unittest discover -s tests -p 'test_mirror_cleanup.py' -v
-package-check: package
+package-check: package-contents-check repro-check
+package-contents-check: package
 	tests/package_check.sh $(BUILD)/dist/Grimoire.zip
 	python3 -m unittest discover -s tests -p 'test_archive.py' -v
+repro-check: package
 	ZIG="$(ZIG)" tests/repro_check.sh $(BUILD)
 launcher-check: package
 	tests/launcher_check.sh $(BUILD)/dist/Grimoire.zip
 usb-stage-check:
 	python3 -m unittest discover -s tests -p 'test_usb_stage.py' -v
-check: rust-check package-check launcher-check dev-check kpm-check kopatch-check wifi-check usb-stage-check dist
+# The scenario runner's own checks (tests/test_scenario_runner.py): the CI shards' split at any
+# shard count, the skipped scenarios' order, what a failed run reports.
+.PHONY: runner-check
+runner-check:
+	python3 -m unittest discover -s tests -p 'test_scenario_runner.py' -v
+check: rust-check package-check launcher-check dev-check kpm-check kopatch-check wifi-check usb-stage-check runner-check dist
 	@echo "CHECK PASSED"
 
 clean:
 	rm -rf $(BUILD)/host $(BUILD)/test $(BUILD)/kindle $(BUILD)/dist $(BUILD)/gen $(CBUILD)
 
 # ---- the app's gate, and the C tree's ----
-# make check's checks of the app, one after another (the scenarios, the languages and the share
-# checks open the share server on the same port), against the binaries test, headless, tools and
-# kindle made (the sub-makes take the runner as it is: -o).
+# make check's checks of the app, against the binaries test, headless, tools and kindle made (the
+# sub-makes take the runner as it is: -o): the unit tests beside the scripted checks, and those in
+# order (the scenarios first: the host checks read two of their data roots).
 #   make rust-check   unit tests, scenarios, the languages, mirror cleanup, the share server, Live
 #                     view, Bluetooth, the exporter, the ARM build
 # The port's first rule names stay: rust-headless, rust-tools, rust-kindle, rust-test,
 # rust-scenarios, rust-l10n-check and rust-package are headless, tools, kindle, test, scenarios,
 # l10n-check and package.
 .PHONY: rust-headless rust-tools rust-kindle rust-test rust-scenarios rust-l10n-check rust-check rust-package
-rust-check: test headless tools kindle
+rust-check: test kindle rust-scripted
+	@echo "RUST CHECK PASSED"
+# The scripted checks, beside the unit tests (make -j): the scenarios, then the languages and the
+# host checks, which run at once under make -j on ports apart (the languages' runs from
+# GRIMOIRE_TEST_PORT, the host checks' from SCEN_JOBS ports further on: on the sub-make's command
+# line, which a GRIMOIRE_TEST_PORT given to make's own command line would otherwise override).
+.PHONY: rust-scripted rust-after-scenarios rust-l10n rust-host
+SCEN_NJOBS = $(or $(SCEN_JOBS),$(shell getconf _NPROCESSORS_ONLN 2>/dev/null || echo 8))
+rust-scripted: headless tools
 	$(MAKE) -o $(BUILD)/host/grimoire-headless scenarios
+	$(MAKE) -o $(BUILD)/host/grimoire-headless rust-after-scenarios
+rust-after-scenarios: rust-l10n rust-host
+# The English Gothic language run of y_all_screens.qs is the run make scenarios made, when it ran
+# that scenario (all of them, not one CI shard).
+rust-l10n:
+	$(MAKE) -o $(BUILD)/host/grimoire-headless l10n-check \
+	  $(if $(and $(filter %/y_all_screens.qs,$(wildcard $(SCENARIOS))),$(if $(SCEN_SHARD),,1)),L10N_SKIP=en-gothic)
+# (The runner takes SCEN_JOBS=0 as 1, so the shift is at least 1.)
+rust-host:
+	n=$(SCEN_NJOBS); [ "$$n" -ge 1 ] 2>/dev/null || n=1; \
+	$(MAKE) -o $(BUILD)/host/grimoire-headless host-checks GRIMOIRE_TEST_PORT=$$(( $${GRIMOIRE_TEST_PORT:-8765} + n ))
+# What make rust-check runs after the scenarios and the languages, against the binaries already
+# built (CI's host-checks job runs it on its own, after the two scenarios whose data it uses:
+# b_library, which the share server's and the exporter's checks read, and s_shape_1_record, which
+# s_shape_4_guards starts from).
+.PHONY: host-checks
+host-checks:
+	$(MAKE) -o $(BUILD)/host/grimoire-headless scenarios-late
 	python3 -I tests/pages_cache_check.py $(BUILD)/host/grimoire-headless $(BUILD)/pages-cache-check
-	$(MAKE) -o $(BUILD)/host/grimoire-headless l10n-check
 	$(MAKE) -o $(BUILD)/host/grimoire-headless mirror-cleanup-check
 	BUILD=$(BUILD) $(SCEN_LANG) tests/share_check.sh $(BUILD)/scen/b_library
 	BUILD=$(BUILD) tests/live_check.sh
 	BUILD=$(BUILD) tests/bt_check.sh
 	$(BUILD)/host/grimoire-export --force $(BUILD)/scen/b_library $(BUILD)/export-check
-	@echo "RUST CHECK PASSED"
 rust-headless: headless
 rust-tools: tools
 rust-kindle: kindle

@@ -29,25 +29,43 @@ pub(crate) struct LiveKeys {
     clock: u32,
 }
 
+/// live-keys.ini's starter text: a header, then the keyboard lines of a starter map, in its order.
+fn live_keys_text(defaults: &Shortcuts) -> String {
+    let mut text = String::from("# Live view keyboard. Reload by stopping and starting Live view.\n");
+    for b in defaults.bindings.iter().take(defaults.count as usize).filter(|b| b.src == ActionSrc::Key) {
+        text.push_str(&format!("key.{}{}{}{}{}={}\n",
+            if b.mods & KEYMOD_CTRL != 0 { "Ctrl+" } else { "" },
+            if b.mods & KEYMOD_SHIFT != 0 { "Shift+" } else { "" },
+            if b.mods & KEYMOD_ALT != 0 { "Alt+" } else { "" },
+            if b.mods & KEYMOD_META != 0 { "Meta+" } else { "" },
+            live_key_name(b.code), shortcut_action_name(b.action).unwrap_or("")));
+    }
+    text
+}
+
+/// Whether text is live-keys.ini as an earlier Grimoire wrote it (from the Kindle's starter map of 2.0.0-beta.1
+/// on; a CRLF copy counts), which nobody edited.
+fn live_keys_old_starter(text: &[u8]) -> bool {
+    let old = live_keys_text(&shortcuts_parse_text(OLD_KINDLE_STARTER_2_0));
+    String::from_utf8_lossy(text).replace("\r\n", "\n") == old
+}
+
 /// Built-in keyboard defaults only, independent of the owner's physical keyboard/controller map.
-/// Reuse the existing parser and its built-in defaults so their actions cannot drift apart.
+/// Reuse the existing parser and its built-in defaults so their actions cannot drift apart. A file as an
+/// earlier Grimoire wrote it, unedited, becomes this build's.
 pub fn live_keys_load(path: &str) -> Shortcuts {
+    let mut defaults = Shortcuts::default();
+    shortcuts_load(&mut defaults, "/nonexistent/live-keys-defaults.ini");
     if !std::path::Path::new(path).exists() {
-        let mut defaults = Shortcuts::default();
-        shortcuts_load(&mut defaults, path);
-        let mut text = String::from("# Live view keyboard. Reload by stopping and starting Live view.\n");
-        for b in defaults.bindings.iter().take(defaults.count as usize).filter(|b| b.src == ActionSrc::Key) {
-            text.push_str(&format!("key.{}{}{}{}{}={}\n",
-                if b.mods & KEYMOD_CTRL != 0 { "Ctrl+" } else { "" },
-                if b.mods & KEYMOD_SHIFT != 0 { "Shift+" } else { "" },
-                if b.mods & KEYMOD_ALT != 0 { "Alt+" } else { "" },
-                if b.mods & KEYMOD_META != 0 { "Meta+" } else { "" },
-                live_key_name(b.code), shortcut_action_name(b.action).unwrap_or("")));
-        }
+        let text = live_keys_text(&defaults);
         // create_new preserves an existing file, including an intentionally empty one.
         use std::io::Write;
         if let Ok(mut f) = std::fs::OpenOptions::new().write(true).create_new(true).open(path) {
             if f.write_all(text.as_bytes()).is_err() { qlog!("live: could not write keyboard defaults"); }
+        }
+    } else if let Ok(Some(old)) = crate::shortcuts::ini_read_bounded(path, 65536) {
+        if live_keys_old_starter(&old) && write_file_atomic(path, live_keys_text(&defaults).as_bytes()) == 0 {
+            qlog!("live: live-keys.ini was an earlier starter; it is this build's now");
         }
     }
     let mut map = Shortcuts::default();
@@ -184,7 +202,8 @@ mod tests {
     #[test]
     fn live_keys_eraser_lease_release_and_lost_release() {
         let mut q = queue();
-        q.map.bindings[0].action = SHORTCUT_HOLD_ERASER;
+        let one = q.map.bindings.iter().position(|b| b.src == ActionSrc::Key && b.code == 2).unwrap(); // key 1
+        q.map.bindings[one].action = SHORTCUT_HOLD_ERASER;
         let cookie = session(PAIR_LIVE);
         assert_eq!(q.submit(cookie.clone(), 2, 0, 1, 0), 200);
         let key = q.pop(0).unwrap();
@@ -217,17 +236,47 @@ mod tests {
         shortcuts_load(&mut defaults, "/nonexistent/defaults-test.ini");
         assert_eq!(keys.bindings[..keys.count as usize], defaults.bindings[..keys.count as usize]);
         std::fs::write(dir.join("shortcuts.ini"), b"key.1=redo\n").unwrap();
-        assert_eq!(live_keys_load(path).bindings[0].action, SHORTCUT_TOOL_BASE);
+        assert_eq!(shortcuts_lookup(&live_keys_load(path), ActionSrc::Key, 2, 0), SHORTCUT_TOOL_BASE);
         std::fs::write(path, b"key.1=redo\npad.304=undo\nkey.1=undo\n").unwrap();
         let custom = live_keys_load(path);
-        assert_eq!(custom.count, 1);
-        assert_eq!(custom.bindings[0].action, SHORTCUT_UNDO);
+        // (both key lines are kept, one key having an action in each place; the later decides in a place both act)
+        assert_eq!(custom.count, 2);
+        assert_eq!(shortcuts_lookup_at(&custom, ActionSrc::Key, 2, 0, PL_PAGE), SHORTCUT_UNDO);
         std::fs::write(path, b"").unwrap();
         assert_eq!(live_keys_load(path).count, 0);
         assert_eq!(std::fs::read(path).unwrap(), b"");
         std::fs::write(path, vec![b'x'; 65537]).unwrap();
         let oversized = live_keys_load(path);
         assert_eq!((oversized.count, oversized.rejected), (0, 1));
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+    #[test]
+    fn an_earlier_live_keys_starter_becomes_this_builds() {
+        let dir = std::env::temp_dir().join(format!("grimoire-live-keys-old-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("live-keys.ini");
+        let path = path.to_str().unwrap();
+        // The file 2.0.0-beta.1 wrote, byte for byte (its Kindle starter's keys)
+        let old = concat!(
+            "# Live view keyboard. Reload by stopping and starting Live view.\n",
+            "key.1=tool:pencil\nkey.2=tool:mech\nkey.3=tool:charcoal\nkey.4=tool:ballpoint\nkey.5=tool:fineliner\n",
+            "key.6=tool:marker\nkey.7=tool:fountain\nkey.8=tool:calligraphy\nkey.9=tool:highlighter\nkey.e=tool:eraser\n",
+            "key.w=white\nkey.Ctrl+z=undo\nkey.Ctrl+y=redo\nkey.Left=previous-page\nkey.Right=next-page\n",
+            "key.PageUp=previous-tool\nkey.PageDown=next-tool\n",
+        );
+        assert!(live_keys_old_starter(old.as_bytes()));
+        std::fs::write(path, old.replace('\n', "\r\n")).unwrap();
+        let keys = live_keys_load(path);
+        let text = std::fs::read_to_string(path).unwrap();
+        assert!(text.contains("key.Escape=back\n") && text.contains("key.PageDown=next-page\n"), "{text}");
+        assert_eq!(shortcuts_lookup_at(&keys, ActionSrc::Key, 109, 0, PL_PAGE), SHORTCUT_NEXT_PAGE);
+        // One edited (a line more) is kept as it is
+        let edited = format!("{old}key.q=undo\n");
+        std::fs::write(path, &edited).unwrap();
+        let keys = live_keys_load(path);
+        assert_eq!(std::fs::read_to_string(path).unwrap(), edited);
+        assert_eq!(shortcuts_lookup_at(&keys, ActionSrc::Key, 109, 0, PL_PAGE), SHORTCUT_NEXT_TOOL);
         std::fs::remove_dir_all(dir).unwrap();
     }
 }

@@ -26,8 +26,8 @@ wait 100
 shot p6-editing-sideways
 rotate 0
 wait 100
-expect library.ui_at.930.920 is gestures.row.4
-tap 930 920
+expect library.ui_at.930.840 is gestures.row.4
+tap 930 840
 wait 100
 expect library.gestures.learning is hold-eraser
 expect library.record is wait
@@ -51,8 +51,8 @@ wait 100
 expect library.ui_at.1360.1650 is record.cancel
 pentap 1360 1650
 wait 100
-expect library.ui_at.930.440 is gestures.row.1
-tap 930 440
+expect library.ui_at.930.360 is gestures.row.1
+tap 930 360
 wait 100
 expect library.gestures.learning is undo
 expect library.record is wait
@@ -69,8 +69,8 @@ wait 100
 expect library.ui_at.1360.1650 is record.cancel
 pentap 1360 1650
 wait 100
-expect library.ui_at.930.2030 is done
-pentap 930 2030
+expect library.ui_at.930.2120 is done
+pentap 930 2120
 wait 100
 expect library.ui_at.930.1229 is gestures.group.index
 pentap 930 1229

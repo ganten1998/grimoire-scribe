@@ -1312,6 +1312,20 @@ fn import_leftovers(act: bool) -> bool {
     any
 }
 
+// A fresh id for an import folder, never one this run has queued or a notebook already has: two
+// folders given the same id would become one notebook, the second folder moved to import/done
+// unimported ("made by an earlier run").
+fn fresh_import_id(id: &mut String) {
+    let mut dir = String::new();
+    for _ in 0..8 {
+        store_make_id(id);
+        let queued = with(|s| s.pending.iter().any(|p| p.as_str() == id.as_str()));
+        if !queued && !(store_notebook_dir(id, &mut dir, 600) == 0 && exists(&dir)) {
+            return;
+        }
+    }
+}
+
 /// At startup: every folder in grimoire/import/ (but done/ and dot-folders) holding page pictures
 /// is queued to become a notebook (BG_IMPORT_FOLDER), at most 8 a start. What an import that was cut
 /// off left in notebooks/ (.import-<id>/) is put in place when it was whole, else removed. A folder
@@ -1388,7 +1402,7 @@ pub fn import_scan(dpi: f32) -> i32 {
         // A mark left by a run that was cut off names the notebook the folder was becoming: that id
         // again, so a notebook it made (its folder not moved yet) is finished, never made twice.
         if !have {
-            store_make_id(&mut id);
+            fresh_import_id(&mut id);
             let text = cformat!("%s\n", &id);
             if !write_mark(&src, &text) {
                 qlog!("import: an import folder cannot be written to; left as it is");
@@ -1736,6 +1750,33 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         dir.to_str().unwrap().to_string()
+    }
+
+    // Two folders of one scan never share an id, even when the random part repeats in one second.
+    #[test]
+    fn an_import_id_is_never_one_already_queued() {
+        let r = scratch("ids");
+        assert_eq!(store_init(&r), 0);
+        let mut ok = false;
+        for _ in 0..10 {
+            crate::store::store_force_random_hex(&["aaaa"]);
+            let mut first = String::new();
+            fresh_import_id(&mut first);
+            with(|s| s.pending.push(FixedStr::from_str(&first)));
+            crate::store::store_force_random_hex(&["aaaa", "bbbb"]);
+            let mut second = String::new();
+            fresh_import_id(&mut second);
+            crate::store::store_force_random_hex(&[]);
+            with(|s| s.pending.clear());
+            assert_ne!(first, second);
+            if second[..second.len() - 4] == first[..first.len() - 4] {
+                assert!(second.ends_with("bbbb"), "{second}");
+                ok = true;
+                break;
+            }
+        }
+        assert!(ok);
+        let _ = std::fs::remove_dir_all(&r);
     }
 
     #[test]

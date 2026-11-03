@@ -9,8 +9,10 @@ expect editor.page is 3
 tap panel pages
 tap panel pages.graph
 expect editor.map is graph
-expect editor.map.nodes is 40
-# Only the 23 linked pages are laid out: the unlinked ones have no tray and take no room.
+# (the Graph is every notebook's: there is no Notebook choice, the owner's ruling of 2026-11-03)
+expect editor.map.scope is all
+# Only the 23 linked pages are nodes, and laid out: the unlinked ones have no tray and take no room.
+expect editor.map.nodes is 23
 expect editor.map.force is 23
 expect editor.map.tray is 0
 expect editor.map.layout is done

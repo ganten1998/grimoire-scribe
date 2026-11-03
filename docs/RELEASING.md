@@ -134,8 +134,11 @@ gh run list -R ganten1998/grimoire-scribe --workflow release.yml --limit 3
 gh run watch RUN -R ganten1998/grimoire-scribe --exit-status
 ```
 
-(A draft pull request into `main` runs it too, on the pull request's commit.) Then compare what CI
-built with what the owner tested, byte for byte:
+(A pull request runs the checks too, split over parallel jobs, but neither the two clean builds nor
+the `grimoire-release` artifact: the dry run is this manual run, which does everything a push to
+`main` does; docs/TESTING.md, The automated checks, has the jobs. Branch protection on `main` must
+require the `gate` job, the one that sums them up, not `package`: docs/TESTING.md, The required check.) Then compare what CI built with
+what the owner tested, byte for byte:
 
 ```sh
 (
@@ -161,7 +164,7 @@ looks for the last kind). Fix the cause, gate, test again.
 
 The Rust workflow was written on a Mac and had not run on a GitHub runner when this was written.
 The first dry run is where its mistakes show: the toolchain steps, the time (the C workflow took
-about 28 minutes, `timeout-minutes` is 120), the disk on the runner. Delete this paragraph once it
+about 28 minutes; each job now has its own `timeout-minutes`, the package job's 90), the disk on the runner. Delete this paragraph once it
 has passed.
 
 ## Tag and publish

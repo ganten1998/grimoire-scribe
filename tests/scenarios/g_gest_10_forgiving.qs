@@ -3,6 +3,8 @@
 # settings: mirror_pdf=0
 # settings: shortcuts_enabled=1
 # copy: tests/fixtures/index-keys .
+# (the clock corner held still: its minute's refresh would land among the counted ones)
+clock 1700000000
 wait 200
 tap 965 95
 wait 100

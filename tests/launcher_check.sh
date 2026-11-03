@@ -225,7 +225,7 @@ suite() {
 
     # The dev copy (GRIMOIRE_DEV=1, which the dev launcher exports) has updates off: the app is
     # told there is no update script, so Settings > Updates reports that KPM is not here, and a
-    # request left behind is not handed to KPM either — an update from the dev copy would
+    # request left behind is not handed to KPM either: an update from the dev copy would
     # install over the release.
     : >"$SHIM_LOG"
     : >"$LOGF"

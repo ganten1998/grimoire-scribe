@@ -6,6 +6,8 @@
 # page above stays there, with one Full, and does nothing else (the link under it is not followed); Back to the
 # page before returns, and a back list of one is left behind.
 # root: z_bar_0_make
+# (the clock corner held still: its minute's refresh would land among the counted ones)
+clock 1700000000
 wait 3700
 tap 200 400
 wait 300

@@ -402,8 +402,9 @@ pub fn httpd_live_keys_load(path: &str) {
 pub fn httpd_live_key_pop() -> Option<LiveKey> {
     with(|s| s.live_keys.pop(now_ms()))
 }
-pub fn httpd_live_key_action(key: &LiveKey) -> i32 {
-    with(|s| shortcuts_lookup(&s.live_keys.map, false, key.code, key.mods))
+/// The action of a key from Live view's browser, pressed in place (app_place).
+pub fn httpd_live_key_action(key: &LiveKey, place: u8) -> i32 {
+    with(|s| shortcuts_lookup_at(&s.live_keys.map, false, key.code, key.mods, place))
 }
 pub fn httpd_live_key_held(key: &LiveKey) -> bool {
     live_on() && owners() & HTTPD_LIVE != 0 && with(|s| s.live_keys.is_held(key, now_ms()))

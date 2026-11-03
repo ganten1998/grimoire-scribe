@@ -66,7 +66,7 @@ tap 1151 1052
 wait 200
 shot 04-more-menu
 expect library.sheet is more
-tap 930 988
+tap library more.move
 wait 200
 shot 05-move-menu
 expect library.sheet is move

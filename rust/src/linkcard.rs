@@ -121,7 +121,13 @@ pub fn linkcard_set(c: &mut LinkCard, pid: u32, seeds: &[u32], nb: &NotebookInfo
         c.page = -1;
     }
     let name = if c.page >= 0 && (c.page as usize) < nb.page_ids.len() { nav_name(nav, nb.page_ids[c.page as usize]) } else { "" };
-    c.title = if let Some(label)=nav_target_label(c.target.as_str()){label} else if c.page == NAV_TO_INDEX {
+    c.title = if let Some(t)=nav_target_state(c.target.as_str()){
+        // (a broken link's title says what is gone first: the card's title row cuts a long one at its end)
+        match t {
+            NavTarget::PageGone(name) => format!("{} · {}", tr("Page gone"), name),
+            t => nav_target_state_label(&t),
+        }
+    } else if c.page == NAV_TO_INDEX {
         tr("The Index").to_string()
     } else if c.page < 0 {
         tr("Page not here").to_string()

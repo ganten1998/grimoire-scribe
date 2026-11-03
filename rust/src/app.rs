@@ -46,6 +46,8 @@ pub struct App {
     /// A bound pen drag defers non-Fast presents and toasts until the nib lifts.
     pub pen_action_down: bool,
     pub pen_toast_pending: Option<(FixedStr<256>, i32)>,
+    /// shortcuts.ini was an earlier starter map, replaced by this build's at the start: a toast says so once
+    pub shortcuts_upgraded: bool,
     pub last_shortcut_code: i32,
     pub last_shortcut_mods: i32,
     pub last_shortcut_gamepad: bool,
@@ -74,6 +76,9 @@ pub struct App {
     pub dirty_mode: RefreshMode,
     /// promote to FULL every 30
     pub ui_refreshes_since_full: i32,
+    /// what fast refreshes left on the panel that only a flash wipes (display.rs, issue #11): the
+    /// editor adds to it and cleans it; every Full, and a Clean over it, wipes it here at the flush
+    pub du_wear: DuWear,
     /// applied device rotation (quarter turns clockwise)
     pub rotation: i32,
     /// reported by the sensor, applied when it is safe; -1 none
@@ -139,6 +144,9 @@ pub struct App {
     /// the main loop's last batch ended because no event was left queued (not at its 64 events or
     /// 8 ms): the editor's prefetch and the Links bar's hold timer wait for this
     pub input_drained: bool,
+    /// What a hardware key does to the open on-screen keyboard (Esc: its Cancel), taken by
+    /// app_keyboard_pointer at the release app_type_text sends (None the rest of the time).
+    pub kb_inject: Option<KbInput>,
 }
 
 
@@ -161,7 +169,7 @@ pub use crate::share::{share_enter, share_event, share_free, share_init, share_l
 // Cross-screen entry points: the screens' (documented at their definitions), and app.c's own.
 pub use crate::calibrate::calibrate_open;
 pub use crate::editor::{
-    editor_busy, editor_control_at, editor_fit_changed, editor_fit_toast, editor_hold_eraser, editor_live_chip, editor_live_hole, editor_live_panel, editor_live_style, editor_live_under_panel, editor_open_notebook,
+    editor_busy, editor_control_at, editor_fit_changed, editor_fit_toast, editor_hold_eraser, editor_modal_key, editor_live_chip, editor_live_hole, editor_live_panel, editor_live_style, editor_live_under_panel, editor_open_notebook,
     editor_open_notebook_at, editor_page_canvas, editor_page_in_front, editor_panel_point, editor_picture_made, editor_pin_sleep_page, editor_probe, editor_save_now,
     editor_shortcut, editor_shortcut_at, editor_suspend,
 };
@@ -561,6 +569,11 @@ pub fn app_init(a: &mut App, w: i32, h: i32, dpi: f32) -> i32 {
     let mut controller_path = String::new();
     csnprintf!(&mut shortcuts_path, 600, "%s/shortcuts.ini", &store_root());
     csnprintf!(&mut controller_path, 1024, "%s/controller.ini", &store_root());
+    // A starter map nobody edited becomes this build's; edited files stay.
+    if shortcuts_upgrade_starter(&shortcuts_path) {
+        qlog!("shortcuts: %s was an earlier starter map; it is this build's now", &shortcuts_path);
+        a.shortcuts_upgraded = true;
+    }
     shortcuts_load_all(&mut a.shortcuts, &shortcuts_path, &controller_path);
     app_gestures_load(a);
     // The owner's touch trace (docs/KINDLE.md): an empty <root>/touch-trace asks for
@@ -570,7 +583,7 @@ pub fn app_init(a: &mut App, w: i32, h: i32, dpi: f32) -> i32 {
     if std::fs::metadata(&switch).is_ok() {
         input_touch_trace(Some(&cformat!("%s/touch-trace.txt", &store_root())));
     }
-    input_shortcuts_enable(a.settings.shortcuts_enabled);
+    input_shortcuts_enable(app_shortcuts_on(a));
     // The Bluetooth helper (bluetooth.h): the launcher says where its script is; in the simulator a
     // test may stand a helper in. It starts a moment after the first frame, if it is wanted.
     #[cfg(feature = "sim")]
@@ -747,6 +760,52 @@ pub fn app_event(a: &mut App, ev: &InEvent) {
     live_cap_sync(a);
 }
 
+/// The Graph is in front (the Library's, or a notebook's): its keys are its own.
+pub fn app_graph_up(a: &App) -> bool {
+    match a.scr {
+        ScreenId::Library => crate::library::library_graph_up(a),
+        ScreenId::Editor => crate::editor::editor_graph_up(a),
+        _ => false,
+    }
+}
+
+/// Whether keys and a controller's buttons are shortcuts now: Settings > Controller's Enable shortcuts.
+pub fn app_shortcuts_on(a: &App) -> bool {
+    a.settings.shortcuts_enabled
+}
+
+/// The open on-screen keyboard's area, None when no keyboard is open.
+pub fn app_keyboard_area(a: &App) -> Option<Rect> {
+    match a.scr {
+        ScreenId::Library => crate::library::library_keyboard_area(a),
+        ScreenId::Editor => crate::editor::editor_keyboard_area(a),
+        _ => None,
+    }
+}
+
+/// A hardware key on the open on-screen keyboard (Esc: its Cancel): a contact on its text line, where
+/// no key is, reaches the keyboard's owner as a tap on it would, and at the lift app_keyboard_pointer
+/// applies input instead of a key (keyboard_input). So every keyboard (a name, a page number, Find, New
+/// page...) takes it with its own Done and Cancel, and draws and refreshes exactly as for a key. False
+/// when no keyboard is open, or its owner did not take it.
+pub fn app_type_text(a: &mut App, input: KbInput) -> bool {
+    let Some(area) = app_keyboard_area(a) else { return false };
+    let field = keyboard_field_rect(area);
+    let (x, y) = ((field.x + field.w / 2) as f32, (field.y + field.h / 2) as f32);
+    let t = now_ms();
+    let mut ev = InEvent { type_: InType::TouchDown, x, y, t_ms: t, k_ms: t, ..Default::default() };
+    a.kb_inject = None;
+    (ops(a.scr).event)(a, &ev);
+    ev.type_ = InType::TouchUp;
+    a.kb_inject = Some(input);
+    (ops(a.scr).event)(a, &ev);
+    if a.kb_inject.take().is_some() {
+        qlog!("keys: a key found no keyboard to take it");
+        return false;
+    }
+    true
+}
+
 /// Shared keyboard/controller/Live view dispatch. Callers own enablement, wake gating and
 /// press/release identity; the editor owns modal/stroke guards. Status actions work on every screen.
 fn app_shortcut_action(a: &mut App, action: i32, src: ActionSrc) -> bool {
@@ -766,7 +825,15 @@ fn app_shortcut_action(a: &mut App, action: i32, src: ActionSrc) -> bool {
         pensettings_shortcut(a, action);
         return false;
     }
-    if a.scr == ScreenId::Library { return app_global_action(a, action, src); }
+    if a.scr == ScreenId::Share {
+        // (only Esc acts there: back to where Share was opened from)
+        return action == SHORTCUT_BACK && crate::share::share_back(a);
+    }
+    if a.scr == ScreenId::Library {
+        // (the Graph as a place of its own: index-map opens it from the Library, go-back closes it)
+        if crate::library::library_shortcut(a, action) { return true; }
+        return app_global_action(a, action, src);
+    }
     a.scr == ScreenId::Editor && editor_shortcut_at(a, action, a.w as f32 * 0.5, a.h as f32 * 0.5, src)
 }
 
@@ -781,7 +848,7 @@ fn live_keys_tick(a: &mut App) {
         if !key.down {
             a.live_holds.retain(|h| h.code != key.code || h.cookie != key.cookie);
         } else if !a.asleep && live_on() {
-            let action = httpd_live_key_action(&key);
+            let action = httpd_live_key_action(&key, app_place(a));
             note_input(a);
             if app_shortcut_action(a, action, ActionSrc::Key) && action == SHORTCUT_HOLD_ERASER {
                 had_holds = true;
@@ -806,7 +873,17 @@ fn app_event_screens(a: &mut App, ev: &InEvent) {
         return;
     }
     if ev.type_ == InType::Key {
-        if !a.asleep && a.settings.shortcuts_enabled {
+        // A pad that types (the Pages view's count pad) takes a keyboard's keys first, shortcuts on or off.
+        if !a.asleep && !ev.gamepad && editor_modal_key(a, ev) {
+            note_input(a);
+            return;
+        }
+        // A Library dialog with keys of its own (Exit Grimoire?, New notebook's Enter) takes them first.
+        if !a.asleep && !ev.gamepad && crate::library::library_modal_key(a, ev.value) {
+            note_input(a);
+            return;
+        }
+        if !a.asleep && app_shortcuts_on(a) {
             // A key or a controller button counts as pen and touch do: paging with them alone
             // must not let "Sleep after" run out.
             note_input(a);
@@ -816,8 +893,16 @@ fn app_event_screens(a: &mut App, ev: &InEvent) {
             if (a.scr == ScreenId::Library || crate::library::library_settings_active(a)) && library_learn_key(a, ev.value, ev.gamepad) {
                 return;
             }
-            let action = shortcuts_lookup(&a.shortcuts, ActionSrc::from(ev.gamepad), ev.value, ev.key_mods as i32,
-            );
+            // (one key may do one thing in each place: the Library, a page, the Pages view, the Graph, Pen feel)
+            let mut action = shortcuts_lookup_at(&a.shortcuts, ActionSrc::from(ev.gamepad), ev.value, ev.key_mods as i32, app_place(a));
+            if app_graph_up(a) {
+                // The Graph's keys: an older edited file with none of its actions has the arrows and V
+                // there too (shortcuts_lookup_graph); Enter opens the selected page.
+                action = shortcuts_lookup_graph(&a.shortcuts, ActionSrc::from(ev.gamepad), ev.value, ev.key_mods as i32);
+                if action == SHORTCUT_NONE && !ev.gamepad && matches!(ev.value, 28 | 96) && ev.key_mods == 0 {
+                    action = GRAPH_KEY_ENTER;
+                }
+            }
             if app_shortcut_action(a, action, if ev.gamepad { ActionSrc::Pad } else { ActionSrc::Key },
             )
                 && action == SHORTCUT_HOLD_ERASER
@@ -1020,6 +1105,11 @@ fn toast_hide(a: &mut App) {
     a.toast_visible = false;
     let r = a.toast_rect;
     with(|s| s.self_dirty = rect_union(s.self_dirty, r));
+}
+
+/// Takes the toast down now (a hint whose sheet closed before it timed out).
+pub fn app_toast_dismiss(a: &mut App) {
+    toast_hide(a);
 }
 
 // Where the toast goes: its usual place near the bottom, or, when the screen keeps the bottom
@@ -1536,6 +1626,10 @@ fn poll_jobs(a: &mut App) -> i32 {
         crate::editor::editor_map_done(a,done_id.as_str(), r > 0);
         return 0;
     }
+    if done == BgKind::GraphLayoutAll as i32 {
+        crate::editor::editor_map_all_done(a, r > 0);
+        return 0;
+    }
     if done == BgKind::Template as i32 {
         store_invalidate_page_previews(done_id.as_str());
         bgimage_retry_missing();
@@ -1612,6 +1706,13 @@ fn app_tick_screens(a: &mut App, now: u32) {
     }
     wifi_tick();
     book_tick(a);
+    if a.shortcuts_upgraded && !a.asleep {
+        a.shortcuts_upgraded = false;
+        // TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines) once, at the first start of a new
+        // version, when shortcuts.ini was the starter map an earlier version wrote (nobody had edited it): it has
+        // this version's keys now.
+        app_toast(a, tr("Keyboard shortcuts: the new starter keys are in shortcuts.ini."), 4000);
+    }
     let bg = poll_jobs(a);
     if bg != 0 {
         let mut msg = String::new();
@@ -1716,7 +1817,7 @@ pub fn app_invalidate(a: &mut App, r: Rect, m: RefreshMode) {
         return;
     }
     // Keep the strongest mode requested since the last flush.
-    if rect_is_empty(a.dirty) || m as i32 > a.dirty_mode as i32 {
+    if rect_is_empty(a.dirty) || m.strength() > a.dirty_mode.strength() {
         a.dirty_mode = m;
     }
     a.dirty = rect_union(a.dirty, r);
@@ -1751,7 +1852,7 @@ fn app_flush_in(a: &mut App) {
     let mut m = a.dirty_mode;
     let self_dirty = with(|s| s.self_dirty);
     if !rect_is_empty(self_dirty) {
-        if rect_is_empty(a.dirty) || (m as i32) < RefreshMode::Ui as i32 {
+        if rect_is_empty(a.dirty) || m.strength() < RefreshMode::Ui.strength() {
             m = RefreshMode::Ui;
         }
         a.dirty = rect_union(a.dirty, self_dirty);
@@ -1798,6 +1899,7 @@ fn app_flush_in(a: &mut App) {
         }
     }
     display_present(&a.screen, a.dirty, m);
+    du_wear_presented(&mut a.du_wear, a.dirty, m);
     if overlay {
         canvas_blit(&mut a.screen, &a.toast_under, Rect { x: 0, y: 0, w: a.toast_rect.w, h: a.toast_rect.h ,
             }, a.toast_rect.x, a.toast_rect.y,
@@ -1875,7 +1977,11 @@ pub fn app_keyboard_pointer(a: &mut App, kb: &mut Keyboard, phase: i32, ev: &InE
 pub fn app_keyboard_pointer_split(a: &mut App, kb: &mut Keyboard, phase: i32, ev: &InEvent,
 ) -> (KbResult, Rect) {
     let mut d = RECT_EMPTY;
-    let r = keyboard_pointer(kb, phase, ev.x, ev.y, ev.t_ms, &mut d);
+    // (a hardware key's input, app_type_text: at the lift, instead of a key)
+    let r = match a.kb_inject.take() {
+        Some(input) if phase == 2 => keyboard_input(kb, &input, &mut d),
+        _ => keyboard_pointer(kb, phase, ev.x, ev.y, ev.t_ms, &mut d),
+    };
     if r == KbResult::Done || r == KbResult::Cancel {
         return (r, RECT_EMPTY);
     }
@@ -1896,11 +2002,36 @@ pub fn app_keyboard_pointer_split(a: &mut App, kb: &mut Keyboard, phase: i32, ev
         app_invalidate(a, kb.field_dirty, RefreshMode::Fast);
         app_flush(a);
     }
+    // (the count pad's Done, whose label shows the count: on its own too, never one span with the text)
+    if !rect_is_empty(kb.also_dirty) {
+        app_invalidate(a, kb.also_dirty, RefreshMode::Fast);
+        app_flush(a);
+    }
     kb.settle_at = now_ms().wrapping_add(KB_SETTLE_MS);
     if kb.settle_at == 0 {
         kb.settle_at = 1;
     }
     (r, d)
+}
+
+/// A key of a hardware keyboard on an on-screen keyboard (keyboard_press: the key with that code, as if
+/// tapped), drawn and refreshed as a tap's is, the text line and then the count pad's Done each on its
+/// own (no on-screen key was pressed, so none is refreshed). On KB_DONE and KB_CANCEL nothing is drawn.
+pub fn app_keyboard_press(a: &mut App, kb: &mut Keyboard, code: u32) -> KbResult {
+    let mut d = RECT_EMPTY;
+    let r = keyboard_press(kb, code, &mut d);
+    if r == KbResult::Done || r == KbResult::Cancel || r == KbResult::None {
+        return r;
+    }
+    keyboard_draw(kb, &mut a.screen, Rect { x: 0, y: 0, w: a.w, h: a.h });
+    for dirty in [kb.field_dirty, kb.also_dirty, d] {
+        if !rect_is_empty(dirty) {
+            app_invalidate(a, dirty, RefreshMode::Fast);
+            app_flush(a);
+        }
+    }
+    kb.settle_at = now_ms().wrapping_add(KB_SETTLE_MS).max(1);
+    r
 }
 
 /// From the screen's tick while its keyboard is up: once typing pauses, one grayscale refresh of the

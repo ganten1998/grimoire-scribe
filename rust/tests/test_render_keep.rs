@@ -29,16 +29,23 @@ fn kept_drawings_are_exact_and_only_current() {
     let mut drawn = Canvas::default();
     check!(canvas_init(&mut drawn, w, h) == 0);
     page_render(&mut drawn, &p, Rect { x: 0, y: 0, w, h }, 300.0);
-    check!(!store_page_render_kept(&nb, pid, w, h));
-    check!(store_save_page_render(&nb, pid, &drawn));
-    check!(store_page_render_kept(&nb, pid, w, h));
+    check!(!store_page_render_kept(&nb, pid, w, h, false));
+    check!(store_save_page_render(&nb, pid, &drawn, false));
+    check!(store_page_render_kept(&nb, pid, w, h, false));
     // Read back byte for byte, into a canvas of the page's size only.
     let mut back = Canvas::default();
     check!(canvas_init(&mut back, w, h) == 0);
-    check!(store_load_page_render(&nb, pid, w, h, &mut back) && back.px == drawn.px);
+    check!(store_load_page_render(&nb, pid, w, h, &mut back, false) && back.px == drawn.px);
     let mut other = Canvas::default();
     check!(canvas_init(&mut other, w, h + 1) == 0);
-    check!(!store_load_page_render(&nb, pid, w, h + 1, &mut other));
+    check!(!store_load_page_render(&nb, pid, w, h + 1, &mut other, false));
+    // A drawing kept with an unlayered tag (as 2.0.0-beta.1 keeps every page's) is not trusted for a
+    // layered page, and a layered one ("|L") not for an unlayered page.
+    check!(!store_page_render_kept(&nb, pid, w, h, true));
+    check!(!store_load_page_render(&nb, pid, w, h, &mut other, true));
+    check!(store_save_page_render(&nb, pid, &drawn, true));
+    check!(store_page_render_kept(&nb, pid, w, h, true) && !store_page_render_kept(&nb, pid, w, h, false));
+    check!(store_save_page_render(&nb, pid, &drawn, false));
     // The page file written again (new ink): the kept drawing no longer counts.
     let mut p2 = page_with_ink(w, h);
     let mut prm = ToolParams::default();
@@ -48,10 +55,10 @@ fn kept_drawings_are_exact_and_only_current() {
     page_add(&mut p2, s);
     std::thread::sleep(std::time::Duration::from_millis(20));
     check!(store_save_page(&nb, 0, &p2) == 0);
-    check!(!store_page_render_kept(&nb, pid, w, h));
+    check!(!store_page_render_kept(&nb, pid, w, h, false));
     let mut stale = Canvas::default();
     check!(canvas_init(&mut stale, w, h) == 0);
-    check!(!store_load_page_render(&nb, pid, w, h, &mut stale));
+    check!(!store_load_page_render(&nb, pid, w, h, &mut stale, false));
     // The fingerprint is stable within a process.
     check!(page_render_fingerprint() == page_render_fingerprint() && page_render_fingerprint() != 0);
 }

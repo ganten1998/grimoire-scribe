@@ -38,6 +38,9 @@ pub const KB_KEY_FLICK: u32 = 16;
 pub const KB_KEY_BKSP: u32 = 8;
 pub const KB_KEY_DONE: u32 = 13;
 pub const KB_KEY_CANCEL: u32 = 27;
+/// The count pad's (page 4) - and +: the count one less, one more.
+pub const KB_KEY_DEC: u32 = 14;
+pub const KB_KEY_INC: u32 = 15;
 
 #[derive(Clone, Copy, Debug, Default)]
 pub struct Keyboard {
@@ -47,7 +50,7 @@ pub struct Keyboard {
     pub shift: bool,
     /// the kana page in katakana (カ toggles it): the pad types カ キ ク, not か き く
     pub kata: bool,
-    /// 0 letters, 1 accents, 2 number pad, 3 symbols
+    /// 0 letters, 1 accents, 2 number pad, 3 symbols, 4 count pad (keyboard_open_count), 5 kana
     pub page: i32,
     /// where it was last drawn (whole modal)
     pub area: Rect,
@@ -68,6 +71,16 @@ pub struct Keyboard {
     /// otherwise the modal's top y on the screen, for a keyboard that must keep clear of something low on
     /// the page (a link's area being given a target)
     pub dock_y: i32,
+    /// The count pad's (page 4): the most it takes (a digit or + past it leaves the count there and sets
+    /// `clamped`), and its Done's label for a count (Done disabled at 0)
+    pub count_max: i32,
+    pub count_label: Option<fn(i32) -> String>,
+    /// set by the count pad when a digit or + met count_max (the caller says so, a toast)
+    pub clamped: bool,
+    /// set with field_dirty on the count pad: its Done, whose label shows the count (refreshed on its own)
+    pub also_dirty: Rect,
+    /// The count pad's count is still the 1 it opened with (the owner: "1 will be the default"): drawn highlighted, and the first digit typed replaces it rather than following it.
+    pub count_fresh: bool,
 }
 
 // keyboard.c: on-screen keyboard modal. Layout is computed from the area it was drawn in,
@@ -446,9 +459,20 @@ pub fn keyboard_modal_rect_docked(screen: Rect, dock_y: i32) -> Rect {
 }
 
 fn modal_rect(screen: Rect, dock_y: i32) -> Rect {
-    let h = ui_px(170.0) + 5 * ui_px(150.0) + ui_px(60.0);
+    modal_rect_page(screen, dock_y, 0)
+}
+
+// The count pad (page 4) has a row more than the others: its - and +.
+fn modal_rect_page(screen: Rect, dock_y: i32, page: i32) -> Rect {
+    let h = ui_px(170.0) + 5 * ui_px(150.0) + ui_px(60.0) + if page == 4 { ui_px(170.0) } else { 0 };
     let y = if dock_y > 0 { screen.y + dock_y } else { screen.y + screen.h - h - ui_px(20.0) };
     Rect { x: screen.x + ui_px(20.0), y, w: screen.w - ui_px(40.0), h }
+}
+
+/// Where keyboard_draw puts this keyboard on this screen (its page and dock: the count pad is a row taller),
+/// for a caller that composes the screen under it before it is drawn.
+pub fn keyboard_area(kb: &Keyboard, screen: Rect) -> Rect {
+    modal_rect_page(screen, kb.dock_y, kb.page)
 }
 
 /// Docks an open keyboard: top_y 0 keeps it at the bottom; otherwise the modal's top is at top_y (a caller
@@ -462,8 +486,55 @@ fn field_rect(area: Rect) -> Rect {
     Rect { x: area.x + ui_px(30.0), y: area.y + ui_px(30.0), w: area.w - ui_px(60.0), h: ui_px(120.0) }
 }
 
+/// The text line of a keyboard drawn in area: no key is there, so a contact on it presses nothing
+/// (a hardware key's input taps it to reach the keyboard's owner, app_type_text).
+pub fn keyboard_field_rect(area: Rect) -> Rect {
+    field_rect(area)
+}
+
+/// What a hardware key does to an open on-screen keyboard (app_type_text): Esc is its Cancel.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum KbInput {
+    Cancel,
+}
+
+// Backspace: a whole character, back over its continuation bytes to its first byte.
+fn backspace(kb: &mut Keyboard) {
+    let b = kb.text.as_bytes();
+    let mut len = b.len();
+    while len > 1 && (b[len - 1] & 0xC0) == 0x80 {
+        len -= 1;
+    }
+    if len != 0 {
+        let mut buf = [0u8; KB_TEXT_MAX];
+        buf[..len - 1].copy_from_slice(&b[..len - 1]);
+        kb.text.set_bytes(&buf[..len - 1]);
+    }
+}
+
+/// A hardware key on an open on-screen keyboard: the result a tap on the same key would give (Cancel closes it;
+/// the count pad's Cancel as keyboard_press does it), with *dirty as keyboard_pointer sets it.
+pub fn keyboard_input(kb: &mut Keyboard, input: &KbInput, dirty: &mut Rect) -> KbResult {
+    *dirty = RECT_EMPTY;
+    if !kb.open {
+        return KbResult::None;
+    }
+    kb.field_dirty = RECT_EMPTY;
+    match input {
+        KbInput::Cancel if kb.page == 4 => keyboard_press(kb, KB_KEY_CANCEL, dirty),
+        KbInput::Cancel => {
+            kb.open = false;
+            *dirty = kb.area;
+            KbResult::Cancel
+        }
+    }
+}
+
+/// The kana pad's page (Japanese): 4 is the count pad's (keyboard_open_count), so the kana pad is 5.
+pub const KANA_PAGE: i32 = 5;
+
 fn layout(area: Rect, page: i32, keys: &mut [Key; MAX_KEYS]) -> usize {
-    if page == 2 {
+    if page == 2 || page == 4 {
         let mut n = 0;
         let gap = ui_px(16.0);
         let h = ui_px(150.0);
@@ -481,11 +552,20 @@ fn layout(area: Rect, page: i32, keys: &mut [Key; MAX_KEYS]) -> usize {
         n += 1;
         keys[n] = Key { r: Rect { x: x + 2 * (w + gap), y, w, h }, code: KB_KEY_BKSP };
         n += 1;
+        if page == 4 {
+            // The count pad: - and + under the digits, each half the row.
+            y += h + gap;
+            let half = (area.w - ui_px(60.0) - gap) / 2;
+            keys[n] = Key { r: Rect { x, y, w: half, h }, code: KB_KEY_DEC };
+            n += 1;
+            keys[n] = Key { r: Rect { x: x + half + gap, y, w: area.w - ui_px(60.0) - half - gap, h }, code: KB_KEY_INC };
+            n += 1;
+        }
         keys[n] = Key { r: Rect { x, y: y + h + gap, w: area.w - ui_px(60.0), h }, code: KB_KEY_DONE };
         n += 1;
         return n;
     }
-    if page == 4 {
+    if page == KANA_PAGE {
         // The kana pad: three columns of four keys, あ か さ / た な は / ま や ら / わ ゛小 ー,
         // then cancel, カ, 、, abc, space, delete and done.
         let mut n = 0;
@@ -605,6 +685,37 @@ pub fn keyboard_open(kb: &mut Keyboard, title: &str, initial: &[u8]) {
     copy_text(&mut kb.text, initial);
 }
 
+/// The count pad (page 4): the number pad's digits, Cancel and del, then a row with - and + (the count
+/// one less, down to 1, or one more), and Done, whose label `label` gives for the count (disabled at 0).
+/// The text is the count in digits (empty for 0); a digit or + never takes it past `max`: it stays at
+/// `max` and `clamped` is set, for the caller to say why. It opens at 1, highlighted (`count_fresh`), so
+/// Done (or Enter) at once adds one; the first digit typed replaces that 1, del clears it, and - and +
+/// count from it.
+pub fn keyboard_open_count(kb: &mut Keyboard, title: &str, max: i32, label: fn(i32) -> String) {
+    let max = max.max(0);
+    keyboard_open(kb, title, if max >= 1 { b"1" } else { b"" });
+    kb.page = 4;
+    kb.count_max = max;
+    kb.count_label = Some(label);
+    kb.count_fresh = max >= 1;
+}
+
+/// The count pad's count: its digits as a number (0 for none).
+pub fn keyboard_count(kb: &Keyboard) -> i32 {
+    kb.text.as_str().bytes().filter(u8::is_ascii_digit).fold(0i32, |v, d| v.saturating_mul(10).saturating_add((d - b'0') as i32))
+}
+
+fn set_count(kb: &mut Keyboard, n: i32) {
+    let n = if n > kb.count_max {
+        kb.clamped = true;
+        kb.count_max
+    } else {
+        n.max(0)
+    };
+    let digits = if n > 0 { n.to_string() } else { String::new() };
+    kb.text.set_bytes(digits.as_bytes());
+}
+
 pub fn keyboard_close(kb: &mut Keyboard) {
     kb.open = false;
 }
@@ -618,6 +729,8 @@ fn key_label<'a>(kb: &Keyboard, code: u32, ch: &'a mut [u8; 8]) -> &'a str {
         KB_KEY_SHIFT => c_("key", "shift"),
         KB_KEY_BKSP => c_("key", "del"),
         KB_KEY_DONE => tr("Done"),
+        KB_KEY_DEC => "\u{2212}", // minus sign
+        KB_KEY_INC => "+",
         KB_KEY_CANCEL => tr("Cancel"),
         // TRANSLATORS: the kana page's named keys, in bold at 44 px: ゛小 (one tenth of the
         // modal wide), カ, 、, the space bar, and あ, the letters page's way to the kana page (as
@@ -688,7 +801,7 @@ pub fn keyboard_draws_take() -> u32 {
 /// Returns the rect it covered (to invalidate).
 pub fn keyboard_draw(kb: &mut Keyboard, c: &mut Canvas, screen: Rect) -> Rect {
     G_DRAWS.with(|g| g.set(g.get().wrapping_add(1)));
-    let area = modal_rect(screen, kb.dock_y);
+    let area = modal_rect_page(screen, kb.dock_y, kb.page);
     kb.area = area;
     ui_frame(c, area, ui_px(24.0), 255, true, 0);
     ui_frame(c, area, ui_px(24.0), 0, false, ui_px(6.0));
@@ -704,19 +817,40 @@ pub fn keyboard_draw(kb: &mut Keyboard, c: &mut Canvas, screen: Rect) -> Rect {
     // Show the tail of long text so the caret stays visible.
     let tr = Rect { x: f.x + ui_px(24.0) + tw, y: f.y, w: f.w - ui_px(48.0) - tw, h: f.h };
     let text = kb.text.as_str();
+    // (the count pad's count large, in bold)
+    let (face, size) = if kb.page == 4 { (FontFace::Bold, ui_title_size()) } else { (FontFace::Regular, ts * 1.1) };
     let mut at = 0;
-    while at < text.len() && font_measure(FontFace::Regular, ts * 1.1, &text[at..]) > tr.w - ui_px(20.0) {
+    while at < text.len() && font_measure(face, size, &text[at..]) > tr.w - ui_px(20.0) {
         at = utf8_next(text.as_bytes(), at);
     }
     let shown = &text[at..];
-    let w = font_measure(FontFace::Regular, ts * 1.1, shown);
-    font_draw_left(c, FontFace::Regular, ts * 1.1, tr, shown, 0);
-    canvas_fill(c, Rect { x: tr.x + w + ui_px(4.0), y: f.y + ui_px(24.0), w: ui_px(5.0), h: f.h - ui_px(48.0) }, 0);
+    let w = font_measure(face, size, shown);
+    if kb.page == 4 && kb.count_fresh && !shown.is_empty() {
+        // The count it opened with, highlighted as selected text is: what the first digit typed replaces.
+        let pad = ui_px(18.0);
+        ui_frame(c, Rect { x: tr.x - pad / 2, y: f.y + ui_px(14.0), w: w + 2 * pad, h: f.h - ui_px(28.0) }, ui_px(8.0), 0, true, 0);
+        let tr = Rect { x: tr.x + pad / 2, ..tr };
+        font_draw_left(c, face, size, tr, shown, 255);
+    } else {
+        font_draw_left(c, face, size, tr, shown, 0);
+        canvas_fill(c, Rect { x: tr.x + w + ui_px(4.0), y: f.y + ui_px(24.0), w: ui_px(5.0), h: f.h - ui_px(48.0) }, 0);
+    }
     let mut keys = [Key::default(); MAX_KEYS];
     let n = layout(area, kb.page, &mut keys);
     for (i, key) in keys.iter().enumerate().take(n) {
         let mut ch = [0u8; 8];
-        let lab = key_label(kb, key.code, &mut ch);
+        let counted;
+        let lab = match kb.count_label {
+            Some(f) if kb.page == 4 && key.code == KB_KEY_DONE => {
+                counted = f(keyboard_count(kb));
+                counted.as_str()
+            }
+            _ => key_label(kb, key.code, &mut ch),
+        };
+        if count_done_off(kb, key.code) {
+            ui_button(c, key.r, IconKind::None, lab, ButtonStyle::Disabled);
+            continue;
+        }
         let st = if i as i32 == kb.pressed_key || (key.code == KB_KEY_SHIFT && kb.shift) {
             ButtonStyle::Selected
         } else if key.code == KB_KEY_DONE {
@@ -730,6 +864,11 @@ pub fn keyboard_draw(kb: &mut Keyboard, c: &mut Canvas, screen: Rect) -> Rect {
         font_draw_centered(c, FontFace::Bold, ks, key.r, lab, if st == ButtonStyle::Selected { 255 } else { 0 });
     }
     area
+}
+
+// The count pad's Done at a count of 0: drawn disabled, and it does nothing.
+fn count_done_off(kb: &Keyboard, code: u32) -> bool {
+    kb.page == 4 && code == KB_KEY_DONE && keyboard_count(kb) < 1
 }
 
 fn key_at(kb: &Keyboard, x: f32, y: f32) -> i32 {
@@ -786,6 +925,7 @@ pub fn keyboard_pointer(kb: &mut Keyboard, phase: i32, x: f32, y: f32, t: u32, d
         return KbResult::None;
     }
     kb.field_dirty = RECT_EMPTY;
+    kb.also_dirty = RECT_EMPTY;
     let mut keys = [Key::default(); MAX_KEYS];
     let n = layout(kb.area, kb.page, &mut keys) as i32;
     if phase == 0 {
@@ -856,8 +996,45 @@ pub fn keyboard_pointer(kb: &mut Keyboard, phase: i32, x: f32, y: f32, t: u32, d
     if k < 0 || k >= n {
         return KbResult::None;
     }
-    let mut len = kb.text.len();
-    match keys[k as usize].code {
+    keyboard_press(kb, keys[k as usize].code, dirty)
+}
+
+/// What a key of the page showing does, as keyboard_pointer does it for a tap on that key (a keyboard's
+/// key typed, or a test's): `code` a character or a KB_KEY_* code. *dirty and field_dirty as there; on
+/// the count pad also_dirty is its Done when the count changed.
+pub fn keyboard_press(kb: &mut Keyboard, code: u32, dirty: &mut Rect) -> KbResult {
+    kb.field_dirty = RECT_EMPTY;
+    kb.also_dirty = RECT_EMPTY;
+    if !kb.open || count_done_off(kb, code) {
+        return KbResult::None;
+    }
+    if kb.page == 4 && code != KB_KEY_CANCEL && code != KB_KEY_DONE {
+        // The count pad: digits, del, - and + change the count; it stays a number from 0 to count_max. While
+        // the count is the 1 it opened with (count_fresh), a digit replaces it and del clears it.
+        let n = keyboard_count(kb);
+        let fresh = kb.count_fresh;
+        let to = match code {
+            KB_KEY_DEC => if n > 1 { n - 1 } else { n },
+            KB_KEY_INC => n.saturating_add(1),
+            KB_KEY_BKSP if fresh => 0,
+            KB_KEY_BKSP => n / 10,
+            c if (b'0' as u32..=b'9' as u32).contains(&c) && fresh => (c - b'0' as u32) as i32,
+            c if (b'0' as u32..=b'9' as u32).contains(&c) => n.saturating_mul(10).saturating_add((c - b'0' as u32) as i32),
+            _ => return KbResult::None,
+        };
+        kb.count_fresh = false;
+        set_count(kb, to);
+        if keyboard_count(kb) == n && !fresh {
+            return KbResult::None; // (as it was: nothing to draw)
+        }
+        let mut r = RECT_EMPTY;
+        if keyboard_key_rect(kb, KB_KEY_DONE, &mut r) {
+            kb.also_dirty = r;
+        }
+        kb.field_dirty = field_rect(kb.area);
+        return KbResult::Changed;
+    }
+    match code {
         KB_KEY_CANCEL => {
             kb.open = false;
             *dirty = kb.area;
@@ -876,12 +1053,12 @@ pub fn keyboard_pointer(kb: &mut Keyboard, phase: i32, x: f32, y: f32, t: u32, d
         KB_KEY_PAGE | KB_KEY_SYMBOLS | KB_KEY_KANA => {
             // abc is the way back from the accents and kana pages; áé goes to the accents page
             // (the symbols page's page key goes there too).
-            kb.page = match keys[k as usize].code {
+            kb.page = match code {
                 KB_KEY_PAGE => {
-                    if kb.page == 1 || kb.page == 4 { 0 } else { 1 }
+                    if kb.page == 1 || kb.page == KANA_PAGE { 0 } else { 1 }
                 }
                 KB_KEY_KANA => {
-                    if kb.page == 4 { 0 } else { 4 }
+                    if kb.page == KANA_PAGE { 0 } else { KANA_PAGE }
                 }
                 _ => {
                     if kb.page == 3 { 0 } else { 3 }
@@ -896,18 +1073,7 @@ pub fn keyboard_pointer(kb: &mut Keyboard, phase: i32, x: f32, y: f32, t: u32, d
             *dirty = kb.area;
             return KbResult::Changed;
         }
-        KB_KEY_BKSP => {
-            // A whole character: back over its continuation bytes to its first byte.
-            let b = kb.text.as_bytes();
-            while len > 1 && (b[len - 1] & 0xC0) == 0x80 {
-                len -= 1;
-            }
-            if len != 0 {
-                let mut buf = [0u8; KB_TEXT_MAX];
-                buf[..len - 1].copy_from_slice(&b[..len - 1]);
-                kb.text.set_bytes(&buf[..len - 1]);
-            }
-        }
+        KB_KEY_BKSP => backspace(kb),
         code => type_key(kb, code, dirty),
     }
     kb.field_dirty = field_rect(kb.area);
@@ -917,6 +1083,28 @@ pub fn keyboard_pointer(kb: &mut Keyboard, phase: i32, x: f32, y: f32, t: u32, d
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // Every named key's code is its own: the kana pad's ゛小 and the count pad's minus once both took 5,
+    // so the kana key showed a minus sign.
+    #[test]
+    fn named_key_codes_are_distinct() {
+        let src = include_str!("keyboard.rs");
+        let mut seen: Vec<(String, String)> = Vec::new();
+        for line in src.lines() {
+            let Some(rest) = line.strip_prefix("pub const KB_KEY_") else { continue };
+            let Some((name, value)) = rest.split_once(": u32 = ") else { continue };
+            let v = value.trim_end_matches(';').trim().to_string();
+            if let Some((_, other)) = seen.iter().find(|(w, _)| *w == v) {
+                panic!("KB_KEY_{name} and KB_KEY_{other} are both {v}");
+            }
+            seen.push((v, name.to_string()));
+        }
+        let flick: Vec<u32> = (KB_KEY_FLICK..KB_KEY_FLICK + 11).collect();
+        for c in [KB_KEY_SHIFT, KB_KEY_PAGE, KB_KEY_SYMBOLS, KB_KEY_KANA, KB_KEY_KANA_MOD, KB_KEY_KATA, KB_KEY_BKSP, KB_KEY_DONE, KB_KEY_CANCEL, KB_KEY_DEC, KB_KEY_INC] {
+            assert!(!flick.contains(&c), "a named key inside the flick keys: {c}");
+            assert!(c < 32, "a named key code that a typed character can take: {c}");
+        }
+    }
 
     fn opened(initial: &[u8]) -> Keyboard {
         let mut kb = Keyboard::default();
@@ -987,6 +1175,16 @@ mod tests {
     }
 
     #[test]
+    fn a_hardware_key_cancels_an_open_keyboard() {
+        let mut d = RECT_EMPTY;
+        let mut kb = opened(b"ab");
+        kb.area = Rect { x: 0, y: 1000, w: 1800, h: 1200 };
+        assert_eq!(keyboard_input(&mut kb, &KbInput::Cancel, &mut d), KbResult::Cancel);
+        assert!(!kb.open && d == kb.area);
+        assert_eq!(keyboard_input(&mut kb, &KbInput::Cancel, &mut d), KbResult::None);
+    }
+
+    #[test]
     fn utf8_helpers() {
         assert_eq!(utf8_get(b"a"), Some((1, 0x61)));
         assert_eq!(utf8_get("\u{20ac}".as_bytes()), Some((3, 0x20AC)));
@@ -998,5 +1196,83 @@ mod tests {
         assert_eq!(&buf, "\u{1f600}".as_bytes());
         assert_eq!(utf8_next("a\u{e9}b".as_bytes(), 1), 3);
         assert_eq!(utf8_count("a\u{e9}\u{20ac}"), 3);
+    }
+
+    fn label(n: i32) -> String {
+        format!("Add {n}")
+    }
+
+    /// New page's count pad (2.0.0-beta.2): digits, del, - and + keep a count from 0 to its most, a count past
+    /// it stays at the most and says so, - stops at 1, and Done does nothing at 0.
+    #[test]
+    fn the_count_pad_keeps_its_count_in_bounds() {
+        let mut kb = Keyboard::default();
+        keyboard_open_count(&mut kb, "Pages to add", 25, label);
+        let mut c = Canvas::default();
+        canvas_init(&mut c, 600, 1600);
+        keyboard_draw(&mut kb, &mut c, Rect { x: 0, y: 0, w: 600, h: 1600 });
+        let mut d = RECT_EMPTY;
+        let mut press = |kb: &mut Keyboard, code: u32| keyboard_press(kb, code, &mut d);
+        // It opens at 1, highlighted; del clears that 1 (the count 0: Done off).
+        assert_eq!((kb.page, keyboard_count(&kb), kb.count_fresh), (4, 1, true));
+        assert_eq!(press(&mut kb, KB_KEY_BKSP), KbResult::Changed);
+        assert_eq!((keyboard_count(&kb), kb.count_fresh), (0, false));
+        assert_eq!(press(&mut kb, KB_KEY_DONE), KbResult::None, "Done is off at 0");
+        assert!(kb.open);
+        assert_eq!(press(&mut kb, KB_KEY_DEC), KbResult::None);
+        assert_eq!(press(&mut kb, '0' as u32), KbResult::None, "no leading zero");
+        assert_eq!(press(&mut kb, '1' as u32), KbResult::Changed);
+        assert!(!rect_is_empty(kb.field_dirty) && !rect_is_empty(kb.also_dirty), "the count line and Done");
+        assert_eq!(press(&mut kb, '2' as u32), KbResult::Changed);
+        assert_eq!((kb.text.as_str(), kb.clamped), ("12", false));
+        assert_eq!(press(&mut kb, '0' as u32), KbResult::Changed);
+        assert_eq!((kb.text.as_str(), std::mem::take(&mut kb.clamped)), ("25", true), "120 is past 25: 25");
+        assert_eq!(press(&mut kb, KB_KEY_INC), KbResult::None);
+        assert!(kb.clamped);
+        assert_eq!(press(&mut kb, KB_KEY_BKSP), KbResult::Changed);
+        assert_eq!(kb.text.as_str(), "2");
+        assert_eq!(press(&mut kb, KB_KEY_DEC), KbResult::Changed);
+        assert_eq!(press(&mut kb, KB_KEY_DEC), KbResult::None, "- stops at 1");
+        assert_eq!(kb.text.as_str(), "1");
+        assert_eq!(press(&mut kb, KB_KEY_INC), KbResult::Changed);
+        assert_eq!(press(&mut kb, KB_KEY_DONE), KbResult::Done);
+        assert_eq!((keyboard_count(&kb), kb.open), (2, false));
+        // The pad has a row more than the number pad, and its Done is under - and +.
+        let (mut done, mut dec) = (RECT_EMPTY, RECT_EMPTY);
+        assert!(keyboard_key_rect(&kb, KB_KEY_DONE, &mut done) && keyboard_key_rect(&kb, KB_KEY_DEC, &mut dec));
+        assert!(done.y > dec.y + dec.h);
+        assert!(kb.area.y + kb.area.h <= 1600 && done.y + done.h <= kb.area.y + kb.area.h);
+    }
+
+    /// The count pad opens at 1 (the owner: "if enter is pressed or confirm via touch, 1 will be the default"): Done at once is 1; the first digit replaces the 1, the next ones follow it; - and +
+    /// count from it; a typed 1 still takes the highlight away (a change to draw). A notebook with no room opens
+    /// it empty.
+    #[test]
+    fn the_count_pad_opens_at_one_and_the_first_digit_replaces_it() {
+        let mut d = RECT_EMPTY;
+        let mut kb = Keyboard::default();
+        keyboard_open_count(&mut kb, "Pages to add", 25, label);
+        assert_eq!((kb.text.as_str(), kb.count_fresh), ("1", true));
+        assert_eq!(keyboard_press(&mut kb, KB_KEY_DONE, &mut d), KbResult::Done);
+        assert_eq!(keyboard_count(&kb), 1, "Done at once adds one");
+        keyboard_open_count(&mut kb, "Pages to add", 25, label);
+        assert_eq!(keyboard_press(&mut kb, '7' as u32, &mut d), KbResult::Changed);
+        assert_eq!((kb.text.as_str(), kb.count_fresh), ("7", false), "7, not 17");
+        assert_eq!(keyboard_press(&mut kb, '2' as u32, &mut d), KbResult::Changed);
+        assert_eq!(kb.text.as_str(), "25", "72 is past 25: 25");
+        keyboard_open_count(&mut kb, "Pages to add", 25, label);
+        assert_eq!(keyboard_press(&mut kb, '1' as u32, &mut d), KbResult::Changed, "the highlight goes");
+        assert_eq!((kb.text.as_str(), kb.count_fresh), ("1", false));
+        assert_eq!(keyboard_press(&mut kb, '2' as u32, &mut d), KbResult::Changed);
+        assert_eq!(kb.text.as_str(), "12");
+        keyboard_open_count(&mut kb, "Pages to add", 25, label);
+        assert_eq!(keyboard_press(&mut kb, KB_KEY_INC, &mut d), KbResult::Changed);
+        assert_eq!((kb.text.as_str(), kb.count_fresh), ("2", false), "+ from 1");
+        keyboard_open_count(&mut kb, "Pages to add", 25, label);
+        assert_eq!(keyboard_press(&mut kb, KB_KEY_DEC, &mut d), KbResult::Changed, "- stays at 1, the highlight goes");
+        assert_eq!((kb.text.as_str(), kb.count_fresh), ("1", false));
+        assert_eq!(keyboard_press(&mut kb, KB_KEY_DEC, &mut d), KbResult::None);
+        keyboard_open_count(&mut kb, "Pages to add", 0, label);
+        assert_eq!((kb.text.as_str(), kb.count_fresh), ("", false), "no room: empty");
     }
 }

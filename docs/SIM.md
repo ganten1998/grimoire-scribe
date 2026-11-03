@@ -33,6 +33,14 @@ brought frames, as an expensive ink frame holds it on the Kindle. `GRIMOIRE_LIVE
 (any build) makes the pen viewers take the samples from the main loop's ring even where a raw
 digitizer is: the measurement's "before".
 
+`GRIMOIRE_SIM_LATE_MS=N` (headless runner only) makes every `wait` end N ms late, as on a loaded
+machine whose timers wake late: GitHub's macOS runner did, by 60 ms and more, and two scenarios that
+timed a press or a finger shape by the real time between their lines failed there on every release
+while passing here. `make scenarios-late` runs those again with every wait 400 ms late (make check
+runs it after the scenarios). A script that times a contact keeps passing however late the machine
+is when it times it by the script's own clock: `touch` lines are stamped by their waits (below), and
+`finger`/`frame` lines by their frame offsets with no `wait` between the frames.
+
 Four more:
 
 - `GRIMOIRE_LANG=es` (or `en`, or a locale name such as `es_MX.UTF-8`) picks the language that
@@ -68,13 +76,14 @@ GRIMOIRE_ROOT=/tmp/q GRIMOIRE_SCRIPT=tests/scenarios/a_notebook.qs GRIMOIRE_SHOT
 | `side on` / `side off` | hold/release the first side button; existing event sequence is unchanged |
 | `side click N [GAP_MS] [PRESS_MS]` | N hovering button clicks; defaults: 150 ms release-to-next-press gap, 80 ms press |
 | `side2 on` / `side2 off`, `side2 click N [GAP_MS] [PRESS_MS]` | the second button, enabled by `GRIMOIRE_SIM_PEN_BUTTON2=1` |
-| `key CODE MODS [PAD]` | a key press (Linux evdev code, KEYMOD_* bits), a controller's when PAD is 1 |
-| `keyup CODE MODS [PAD]` | its release, as input_evdev.c reports one (a key or button let go, or no longer held after a resync) |
+| `mods N` | the modifier keys held from here on (KEYMOD_* bits: 1 Ctrl, 2 Shift, 4 Alt, 8 Meta; `mods 0` lets go), in order with the events before it: every pen and touch event carries them, as a paired keyboard's Shift held while tapping (z_pages_add_1_batch), and `hidkeys_mods_held` reads them, as Shift or Alt held as a lasso begins (z_lasso_14_exact_toggle) |
+| `key CODE MODS [PAD]` | a key press (Linux evdev code, KEYMOD_* bits), a controller's when PAD is 1. A modifier (29, 97 Ctrl; 42, 54 Shift; 56, 100 Alt; 125, 126 Meta) is held instead, no event of its own, as input_evdev.rs reads a keyboard: every key, pen and touch event carries it until its `keyup`; `hidkeys_mods_held` follows it too (z_lasso_16_exact_shift_key) |
+| `keyup CODE MODS [PAD]` | its release, as input_evdev.c reports one (a key or button let go, or no longer held after a resync); a modifier's lets it go |
 | `axis CODE VALUE` | an axis of a controller as Linux's generic driver reports an Xbox One S's (X, Y, RX and RY 0 to 65535, its triggers ABS_Z 2 and ABS_RZ 5 0 to 1023), decided and decoded as input_evdev.c does: a trigger pulled past half its travel is a press of LT (or RT), let back to a quarter or under its release, once each way; the sticks do nothing |
 | `hid attach pad\|key\|held NAME`, `hid detach NAME` | a controller (held: one another app holds), or a keyboard or page turner, connects or goes, as input_evdev.c reports it; announced while shortcuts are on. A controller has sixteen buttons from BTN_A, as Linux's generic driver gives one, so one named `Pro Controller` is a Switch-mode one (the Buttons sheet names its buttons B, A, ZL...) |
 | `pentap X Y`, `tap X Y` | pen tap / finger tap |
 | `pentap panel NAME`, `tap panel NAME` | the same at the centre of the editor panel's button NAME (the panel's names, below), where the panel draws it now. A stroke queued ahead of the line is handled first (the line ends the batch before it looks), and a stale panel is settled as a human tap settles it. NAME not a button now, or no notebook open, fails the line like a failed check: `expect failed (line N): no panel button NAME` (exit 3). Ends the batch, like `tap` |
-| `touch down/move/up X Y` | raw finger events |
+| `touch down/move/up X Y` | raw finger events. A `touch move` or `touch up` is stamped with the script's own clock: its contact's `touch down` time plus the `wait`s read since (never later than now; a `waitbg` or `hold` reads the real clock again), as the Kindle's kernel stamps a sample when the finger moved, not when the app got to it. So `touch down`, `wait 700`, `touch up` is a 700 ms press however long the machine took besides |
 | `drag pen\|touch X0 Y0 X1 Y1 STEPS` | a slow drag (100 ms per step) |
 | `pinch CX CY D0 D1 STEPS [DX DY]` | two fingers around (CX, CY), D0 apart, spreading to D1 while the midpoint drifts by (DX, DY) |
 | `finger ID down X Y [MAJOR] [TOOL]`, `finger ID move X Y [MAJOR] [TOOL]`, `finger ID up X Y` | contact ID (1 to 16) of the frame being built: down adds it, move moves it, up lifts it (the next `frame` no longer has it). MAJOR is its TOUCH_MAJOR (default 0), TOOL 0 a finger, 1 a pen, 2 a palm (default 0). Does not end a batch |
@@ -83,7 +92,7 @@ GRIMOIRE_ROOT=/tmp/q GRIMOIRE_SCRIPT=tests/scenarios/a_notebook.qs GRIMOIRE_SHOT
 | `tapn N X Y [SEP] [MS]` | N fingers (fingers 1 to N) in a row centred on (X, Y), SEP px apart (default 150), each kept on the screen, landing one frame each 10 ms apart, still for MS (default 80), lifting one frame each 10 ms apart: `tapn 2 100 100` puts them at x 25 and 175, their midpoint at 100; one batch |
 | `rotate N` | the Kindle now turned N quarter turns clockwise (0..3) |
 | `sleep`, `wake` | the power service announcing the sleep screen, and its end |
-| `wait MS` | let timers run (autosave, toasts, the share server) |
+| `wait MS` | let timers run (autosave, toasts, the share server); at least MS of real time (more on a busy machine, or with `GRIMOIRE_SIM_LATE_MS`) |
 | `hold [PATH]` | keep timers and the server running until the external test driver stops the process, or resumes the script by creating PATH (no spaces, at most 63 bytes); used to attach Live view's readers before drawing in tests |
 | `waitbg [MS]` | let timers run until no background job is queued or running (an import, a template's picture, a PDF), at most MS (60000 if not given): what it waited for took as long as the machine let it, so it ends with that job's toast up |
 | `shot NAME` | write what the panel shows to `$GRIMOIRE_SHOTS/NAME.png` |
@@ -131,8 +140,11 @@ Coordinates are screen pixels: portrait 1860x2480 (or the size `GRIMOIRE_SIM_SIZ
 the digitizer to the upright panel, so one made upright stays right sideways). The lines up to and
 including the next `wait`, `shot`, tap, drag, `pinch`, `rotate`, `sleep`, `wake`, `powerhold` or
 `quit` are delivered as one batch, like a burst of digitizer samples between two screen refreshes
-on the device; a check after pen, touch, side, eraser or power lines ends a batch too. A drag or a
-pinch is all one batch, so its frames go out as one refresh at its end: to see a fast refresh
+on the device; a check after pen, touch, side, eraser or power lines ends a batch too. The main
+loop ends a batch of the script's at its 64th event only, never at its 8 ms (sim_sdl.rs
+input_script_batch): a loaded CI runner took longer than that over a tap's press and handed the lift
+to a batch of its own, one refresh more than an idle machine counts (`GRIMOIRE_SIM_RAWPEN_MAIN`'s
+frames keep the 8 ms, as they come in their own time). A drag or a pinch is all one batch, so its frames go out as one refresh at its end: to see a fast refresh
 (`display.last_fast`), use `touch down` and `touch move` lines, as tests/scenarios/y_live_ink.qs
 does. A line the runner does not know fails the run like a failed check (a misspelt `expect` would
 otherwise be skipped).
@@ -187,10 +199,9 @@ fineliner, marker, fountain pen, calligraphy pen, highlighter, eraser. Sideways 
 top bar has New at 1585 95, Share 1965 95 and Settings 2155 95; Settings' rows are at x 1240: Pen
 sensitivity y 260, Calibrate 425, Display 590, Language 1385; the Display sheet's sleep screen row
 is 1240 1099 and its Done 1770 1419; the Language list has 日本語 at 1240 1009 and Cancel
-1240 1169. The first card's menu
-button is 431 896; in a notebook's menu Move to folder is 1240 790 and Delete 1240 1110, Delete's
-Keep it 1240 845, Move to's Cancel 1240 1055, and a folder's menu has Move folder at 1240 790
-and Cancel at 1240 1110. Share's
+1240 1169. The first card's menu button is 431 896 (a notebook's or a folder's menu rows are tapped
+by name, `tap library more.delete`, never by place: they move when the menu gains a row), Delete's
+Keep it 1240 845 and Move to's Cancel 1240 1055. Share's
 Done is 2160 1485. In New notebook, Rename is 1950 1424 and the Custom music tile 1800 1115 (its
 sheet's Cancel 598 1693); the keyboard's bottom row is at y 1745: Cancel 221, `-` 517, the
 symbols key 756, the accents key 995 (928 is on it too), space 1360, `'` 1723, `.` 1962 and Done
@@ -217,7 +228,10 @@ The editor's last gesture and pending count are `pen.gesture` / `pen.clicks`; re
 change the editor's last gesture. `gestures.ACTION` includes pen keys after saving.
 
 `GRIMOIRE_SIM_PEN_BUTTON2=1` adds BTN_STYLUS2 capability and enables `side2` commands. Leave it
-unset to check that Button2 lines are carried without live rows. Eraser lines are always carried.
+unset to check that Button2 lines are carried without live rows.
+
+In the Graph a second `pentap` on a node within 450 ms of the first is a stylus bounce
+(z_map_pen_select); later, it opens the node (z_graph_lib_2_keys). Eraser lines are always carried.
 The main scenario owner owns Phase 6 scenarios and the `pass-rust.qs` / `fail-rust.qs` probe checks;
 this document does not claim they have run. These helpers test event routing and timing, not
 physical button bounce, e-ink appearance or owner success rates.
@@ -340,6 +354,8 @@ shows what the app holds.
 | `light.intensity`, `light.warmth` | the front light (the simulator starts at 12 and 8) |
 | `editor.page`, `editor.pages` | the open page (from 1) and the page count, 0 with no notebook open |
 | `editor.tool` | the pen's tool by its settings.ini name: `pencil`, `mech`, `ballpoint`, `eraser`, `highlighter`, `fountain`, `fineliner`, `marker`, `charcoal` or `calligraphy` |
+| `editor.view` | the view: the zoom as `editor.zoom`, then the page point at the screen's top left, `2.25 517 667` (2.0.0-beta.2) |
+| `editor.notebook_back` | how many notebooks Back returns through (links followed into another notebook) and the newest one's id, `1 A`; `0` for none (2.0.0-beta.2) |
 | `editor.zoom` | the zoom with two decimals: `1.00` is the usual view (the page's width fitting the screen's: 100% upright for a notebook of this screen's size; sideways the whole page while `landscape_fit` is on, its default) |
 | `editor.zoomed` | `1` while the view is zoomed or panned, else `0` |
 | `editor.back` | the back list (Back to the page before): `DEPTH TOP`, how many pages it holds and the page number of the newest (`2 3`), `0 0` when it is empty or no notebook is open. Pages deleted since are not counted |
@@ -349,8 +365,10 @@ shows what the app holds.
 | `editor.find.rows` | how many rows its card shows now (five upright at most, three sideways), 0 with nothing typed or while it is closed |
 | `editor.find.N` | row N of the card as drawn, from 1: `Go to page 3`, a name (`Árbol`), `There is no page 9 (5 pages).` or `No page names match.` (the last two are lines, not buttons); empty past the last |
 | `editor.bar` | the Links bar: `0` while it is closed, `open` while it is up, `peek` while it shows another page above itself (an entry tapped, or "Back to ..."): the open page, its history and `notebook.last_page` stay the page the bar began on until that page is stayed on |
+| `editor.bar.back` | the bar's back chip as it reads on the open page (`Back to` the page or notebook the back list goes to, or `Back to Graph`, in the language shown), empty when there is none or the bar is closed (2.0.0-beta.2) |
 | `editor.bar.entries` | how many entries the bar lists (one per place the open page's links go; two to one page are one entry, counted), 0 while it is closed |
-| `editor.bar.N` | entry N of the bar (from 1, in reading order): `p3` for page 3, `p3 x2` when two links go there, `index` for the Index, `missing` for a page that is gone; empty past the last |
+| `editor.bar.N` | entry N of the bar (from 1, in reading order): `p3` for page 3, `p3 x2` when two links go there, `index` for the Index, `missing` for a page that is gone; for a page of another notebook (once the bar has drawn its chip) `elsewhere`, or `gone` when that page or notebook was deleted; empty past the last |
+| `editor.bar.from.N` | Linked from row N (from 1; the rows follow the entries, as chips `chip.E` with E counting on from the entries): `p3` for page 3 of this notebook, `n:<notebook id>:p<page id>` for another notebook's page, then ` x2` when two of its links come here; empty past the last (2.0.0-beta.2) |
 | `editor.bar.pager` | the bar's screenful out of how many (`2/3`), six entries a screen; empty with one screenful or while it is closed |
 | `editor.bar.peek` | the page number the bar shows above itself, `0` when it shows none (also while it is closed) |
 | `editor.canvas_cache` | what the bar's page canvas cache did since the bar opened, `HITS MISSES ENTRIES`: taps that found their page drawn already, taps that did not (it was read and drawn then, or only partly drawn ahead), and the pages it holds now (the pages the entries go to are got ready, a 160-row band a tick, while nothing touches the screen: `1 0 2`) |
@@ -360,8 +378,9 @@ shows what the app holds.
 | `editor.stroke_start` | where the open page's newest stroke starts, in page px rounded, `x y`; empty with no stroke |
 | `editor.stroke_points` | sample count of the newest stored stroke, zero with no stroke |
 | `editor.stroke_tip` | the newest stroke's tip variant (src/brush.h: 0 its tool's first tip, 1 the vertical highlighter); empty with no stroke |
-| `editor.modal` | what is in front of the page: `none`, `find` (the Find sheet), `card` (the long-press card, or Rename's keyboard over it), `linkto` (Link to..., or New page...'s keyboard over it), `links` (the Links bar), `tools` (the tool picker), `paper` (Paper for this page), `music` (Custom music), `display` (the Display sheet) or `pages` (the Pages view) |
+| `editor.modal` | what is in front of the page: `none`, `add-pad` (the toolbar's count pad), `find` (the Find sheet), `card` (the long-press card, or Rename's keyboard over it), `linkto` (Link to..., or New page...'s keyboard over it), `links` (the Links bar), `tools` (the tool picker), `paper` (Paper for this page), `music` (Custom music), `display` (the Display sheet) or `pages` (the Pages view) |
 | `editor.layers` | whether the screen is what its layers make of it: `ok`, or `X Y`, the first pixel that differs from the screen composed again whole (the page, the panel and then each menu that is up in its order) by more than 64 gray levels (the edges of a frame drawn again over itself differ by a little). A panel drawn over a sheet, the Find sheet's keyboard or the Links bar shows here. The check leaves the screen as it composed it, so it says what was wrong once |
+| `editor.wear` | the DU wear not cleaned yet (display.rs `DuWear`, issue #11): the screen area fast refreshes turned back to paper (the erasers, a dragged selection), in thousandths of the screen, with ` owed` while a toolbar drag owes a clean; past 250 the next pause cleans it with one `clean` refresh, then `0` |
 | `editor.panel_at.X.Y` | the name of the panel's button at screen point (X, Y) (the panel's names, above; between two buttons or in the frame's margin beside one, the nearest, as a finger there takes it), empty for none (a greyed-out button), after settling a stale panel as a tap would: the way to check what a raw coordinate hits. Empty while no notebook is open |
 | `editor.strokes` | strokes on the open page (a stroke counts once the pen lifts) |
 | `editor.erase_tiles` | `DRAWN BOXED`: the 16 px tiles the stroke eraser drew the page again in since the editor began (only those the strokes it took off drew into, page_render_tiles), and the tiles of those strokes' boxes, all it drew before 2.0.0-rc.12 (`391 11011`) |
@@ -375,11 +394,25 @@ shows what the app holds.
 | `editor.pages.grid` | actual column and row counts of the current Pages geometry |
 | `editor.pages.screen` | the Pages view's screen in front, from 1 (the Index list's in its tab), `0` while it is closed; one finger flicked sideways (12 mm within 800 ms, mostly sideways) or the page-turn actions turn it (no arrows since 2.0.0-rc.12) |
 | `editor.pages.context` | held page number while its context menu is open, else `0`; its rows are `tap panel pages.open`, `pages.link`, `pages.rename` (Page name for that page, over the grid), `pages.delete` (the ticked pages when the held one is ticked, else that page alone) and `pages.cancel` |
+| `editor.pages.drag` | while a held tile is dragged (2.0.0-beta.2): the pages it carries, from 1 and joined by `,`, then where a lift drops them: `before N`, `end`, or `off` (over the top bar or the bottom row, where a lift moves nothing and a stay turns the screen); empty with no drag |
+| `editor.pages.undo` | `1` while the bottom row offers Undo, in Move to...'s place with nothing ticked: for the notebook's last page move (`tap panel pages.undo-move`: no page added, deleted, copied or moved since) or its last batch of new pages (`tap panel pages.undo-add`: no page changed since, none of the batch saved, named or linked, the open page not one of them), else `0` |
+| `editor.pages.undo.kind` | which Undo that is: `add`, `move`, or empty (2.0.0-beta.2) |
+| `editor.pages.redo` | `1` while there is a Redo of what the Pages view's last Undo took back (a move or a batch of new pages; the `redo` action does it, and with nothing ticked the bottom row shows it in Copy to notebook...'s place: `tap panel pages.redo`), until the pages change otherwise, else `0` (2.0.0-beta.2) |
+| `editor.pages.redo.kind` | which Redo that is: `add`, `move`, or empty (2.0.0-beta.2) |
+| `editor.pages.ticks` | the ticked pages, from 1 and joined by `,`; empty for none |
+| `editor.pages.card` | the held tile's card, `x y w h` (centred after a hold); empty while none is up |
+| `editor.pages.adding` | `1` while New page's count pad is up (New page held, or tapped with a modifier held: `key 42`, or `mods`; it opens at 1), else `0`; its keys are `tap panel pages.key.0` to `key.9`, `key.del`, `key.dec` (-), `key.inc` (+), `key.done` and `key.cancel` |
+| `editor.pages.add.done`, `editor.pages.add.done.on` | the count pad's Done as labelled ("Add 12 pages"), and `1` when it can be pressed (a count of 1 or more); empty while the pad is not up |
+| `editor.addpad` | `1` while the toolbar's count pad is up over the page (the + on the last page held 600 ms, or tapped with a modifier held, or the `new-pages` action), else `0`; its keys are `tap panel addpad.key.0` to `key.9`, `key.del`, `key.dec` (-), `key.inc` (+), `key.done` and `key.cancel`, and `editor.keyboard` and `editor.text` read it |
+| `editor.addpad.done`, `editor.addpad.done.on` | its Done as labelled ("Add 3 pages"), and `1` when it can be pressed; empty while the pad is not up |
+| `editor.at.NAME` | where `tap panel NAME` taps now, `X Y` (empty for none): a script holds the toolbar's + there (`editor.at.next`, then `touch down`, `wait 700`, `touch up`) |
+| `editor.pages.at.NAME` | where `tap panel pages.NAME` would tap, `X Y`, empty for none: a script holds a button there with `touch down` |
+| `editor.pages.context.from` | how many pages (this notebook's and other notebooks') link to the held page, as its card says; `0` while no card is open (2.0.0-beta.2) |
 | `editor.pages.cached`, `editor.destination.cached` | how many decoded page previews the Pages view, or Link to...'s notebook picker, keeps for the screenful on show |
 | `editor.screen_composed` | whether the current screen matches a fresh complete composition, without repairing stale pixels |
 | `editor.map.visible` | sorted page IDs actually shown in the current graph view |
 | `editor.map.view` | `all` or `around`, after `fit ` when a pan or pinch has moved the view (the next View press fits it again) |
-| `editor.map.stats` | graph nodes (All), current notebook orphans, valid links, current notebook pages, library page total |
+| `editor.map.stats` | graph nodes (All), orphans (the notebook's, or in All notebooks the library's), valid links, current notebook pages, library page total (from the library index: 0 until its first check) |
 | `editor.page_name`, `editor.index_rows` | the open page's section name (empty if unnamed), and the notebook's named-section count |
 | `editor.pages_tab` | `pages` or `index`, the Pages view's selected tab |
 | `editor.tile.N` | the label under page N in the open Pages view, with its book-page label separated by a vertical bar when present; empty while Pages is closed |
@@ -412,7 +445,8 @@ shows what the app holds.
 | `editor.hold_eraser` | `1` while a controller's Erase while held is down (from its press to its release), else `0` |
 | `editor.music` | the Custom music layout on the Custom music sheet while it is open, else the page's if its paper is custom, else empty: the systems per page, a colon, then the parts top to bottom (`treble`, `bass`, `alto`, `tenor`, `drums`, `plain`, `tab4` to `tab7`, `lyrics`), e.g. `4: treble tab6 bass` |
 | `editor.music_max` | while the editor's Custom music sheet is open, the most systems its layout fits on the page it is for (that page's height), else empty |
-| `library.sheet` | what is open over the cards: `none`, `new` (New notebook), `settings`, `more` (a notebook's menu), `folder-more` (a folder's menu), `move` (Move to), `delete`, `keyboard`, `display`, `music`, `koreader`, `language` (Settings > Language's list), `shortcuts` (Settings > Controller), `buttons` (its Buttons sheet), `pair` (its Pair sheet), `updates`, `gestures` or `about` (What's new, Rust only) |
+| `library.sheet` | what is open over the cards: `none`, `new` (New notebook), `settings`, `more` (a notebook's menu), `folder-more` (a folder's menu), `move` (Move to), `delete`, `keyboard`, `display`, `music`, `koreader`, `language` (Settings > Language's list), `shortcuts` (Settings > Controller), `buttons` (its Buttons sheet), `pair` (its Pair sheet), `updates`, `gestures`, `about` (What's new, Rust only) or `exit` (Exit Grimoire?, Esc at the top level: 2.0.0-beta.2) |
+| `library.exit` | Exit Grimoire?'s highlighted answer, `yes` or `no`; empty while it is not up |
 | `library.learning` | the action the Buttons sheet waits for a press for (`undo`, `next-page`), else empty |
 | `library.buttons.ACTION` | the Buttons sheet's buttons for ACTION (`library.buttons.undo`): as the files name them (`South, Up`), or as printed while the first controller connected is a Switch-mode one (`B, Up`); `none` for none |
 | `library.buttons_group` | the Buttons sheet's group open: `editing`, `tools`, `pages`, `index` (the Index's actions, Rust only) `menus`, `screen` or `system`; empty on its list (or with no Buttons sheet) |
@@ -429,7 +463,9 @@ shows what the app holds.
 | `library.gestures.learning` | action being recorded, or `0` |
 | `library.record` | `0`, `wait`, `pattern touch.N.KIND`, `shape K` (sample count), `checking` or `ready` |
 | `library.record.line` | record card's progress/refusal line, empty without a card |
-| `library.ui_at.X.Y` | semantic name of the Library hit at screen pixel X,Y, empty for none; see recording workflow. A notebook's menu has `more.move`; a folder's `fmore.rename`, `fmore.move` and `fmore.remove` (Cancel is `done` in both); Move to `move.top`, `move.to.PATH` (a folder by its path, `move.to.School/Math`), `move.new`, `move.prev` and `move.next` |
+| `library.ui_at.X.Y` | semantic name of the Library hit at screen pixel X,Y, empty for none; see recording workflow. The top bar has five buttons (`exit`, `settings`, `share`, `new-folder`, `new`; beta.2's Graph button was taken out again, the owner's ruling of 2026-11-03). A notebook's menu has `more.open`, `more.rename`, `more.move`, `more.pdf`, `more.graph` (Leave out of the Graph, or Show in the Graph) and `more.delete`; a folder's `fmore.rename`, `fmore.move`, `fmore.graph` and `fmore.remove` (Cancel is `done` in both); Move to `move.top`, `move.to.PATH` (a folder by its path, `move.to.School/Math`), `move.new`, `move.prev` and `move.next` |
+| `library.map`, `library.map.KEY` | the Graph opened from the Library (2.0.0-beta.2: two fingers down over it, or the `index-map` key): `graph` while it shows, else `0`, and every `editor.map.KEY` (below) of it. `library.map.no_notebook` is `1` for it (no notebook open), `library.map.tabs` the tabs drawn (`graph` alone here; `graph list pages` for the editor's). `library.map.picker` is `1` while its notebooks' browser (past the caps) is up, `library.map.keep` `1` while a notebook it opened is in front (Back there comes back to it). `tap library map.NAME` taps its controls (`map.back`, `map.open`, `map.view`), `tap library elsewhere.NAME` its browser's (`elsewhere.folder.PATH`, `elsewhere.book.ID`, `elsewhere.back`), and `tap map-node ID:PID` its nodes |
+| `library.graph.omitted` | the Library's notebooks the Graph of all notebooks leaves out (by their own Leave out of the Graph or a folder's), by id, sorted, space-separated (2.0.0-beta.2) |
 | `library.about.page`, `library.about.pages`, `library.about.full` | What's new while it is open (else `0`): the page shown (from 1) and the pages the notes take on the sheet, and `1` once Read all shows the whole notes (the card: `0`). Its hits: `about` (the bat and the name beside it, at the top level; in a folder `back` is where the bat is), `about.close`, `about.hide`, `about.more` (Read all), `about.prev`, `about.next` |
 | `settings.whatsnew_hide` | `1` while What's new's Don't show this again is ticked |
 | `settings.rotation_lock` | `0` follows the sensor, `1..4` locks rotation to stored value minus 1 |
@@ -467,7 +503,8 @@ shows what the app holds.
 | `display.pen_mode` | `1` while the app asks for MTK pen mode (the editor's ink strokes only), else `0` |
 | `display.last_fast` | `ink` if the last fast refresh was live ink, `wait` if a color panel would have waited for the driver's read after it (docs/DESIGN.md), empty before any |
 | `display.last_fast_rect` | where the last fast refresh was, `x y w h` in screen pixels, empty before any |
-| `display.presents` | the refreshes sent since this key was last checked, in order, each its mode (`fast`, `ui` or `full`) and `x y w h`, joined by `, ` (`fast 50 1510 1760 120, fast 138 1970 167 150`), with `, and N more` past the eighth; empty for none. The check starts the count again, so `expect display.presents not -1` only starts it |
+| `display.presents` | the refreshes sent since this key was last checked, in order, each its mode (`fast`, `ui`, `full`, or `clean`: a flash of that rect alone, display.rs) and `x y w h`, joined by `, ` (`fast 50 1510 1760 120, fast 138 1970 167 150`), with `, and N more` past the eighth; empty for none. The check starts the count again, so `expect display.presents not -1` only starts it |
+| `display.stale.X.Y.W.H` | how many pixels of that screen rect the simulated panel shows other than the app's screen holds them now: grays a fast refresh left dithered, or a change never sent. `0` where every change went out and settled. Keep the rect clear of the toast and the clock corner, which the panel shows over the screen |
 
 The `editor.` and `library.` keys answer on any screen: the editor's describe the open notebook,
 also while pen feel is in front. The `display.` keys are the simulated panel's (the runner answers
@@ -510,12 +547,15 @@ and a made-up `GRIMOIRE_SIM_ADDRS`). The rule first unsets `GRIMOIRE_HOST`, `GRI
 `# env:` line names another language: the scenarios tap by coordinates and check English text. A
 `# pdfs: N` line wants the run to leave exactly N PDFs in its root's PDFs/ folder
 (v_leave_from_editor: 2, y_koreader_hosted: 1).
-With `GRIMOIRE_TEST_PORT` set, the rule writes
-`http_port=` that port into every scenario's settings.ini before the run (over a copied root's
-too), so the share servers of checks running in several worktrees never collide on 8765.
+The rule runs the scenarios `SCEN_JOBS` at a time (tests/scenario_runner.py; docs/TESTING.md, The
+automated checks) and writes `http_port=` into every scenario's settings.ini before the run (over a
+copied root's too): `GRIMOIRE_TEST_PORT` (else 8765) plus the job's slot, so the share servers of
+scenarios running at once never collide, nor those of checks in several worktrees whose
+`GRIMOIRE_TEST_PORT` values are at least `SCEN_JOBS + 2` apart (docs/TESTING.md, The automated checks,
+has the ports a gate uses).
 `# settings: key=value` lines are appended to the scenario's settings.ini before the run (after
 the port), for settings that have no control on screen yet. These header lines are read by the
-Makefile rule only: running `grimoire-headless` by hand skips them like any comment. A run that
+runner only: running `grimoire-headless` by hand skips them like any comment. A run that
 leaves a file half-written (`*.tmp`) fails. Every scenario runs, then the rule fails naming those
 that did not pass. Last it checks the runner itself: `tests/selftest/pass.qs` must pass every
 check (exit 0) with its notebook's PDF written, and in `tests/selftest/fail.qs` every line but the
@@ -651,6 +691,7 @@ is the maintainer's embedded handwriting; the runtime does not open a user noteb
 indicates a value waiting for the throttled repaint. `z_9_slider_fine.qs` uses pen and touch to
 hold, move away from the track, select 0.30, catch up and track directly within the knob-height
 band, resume fine control on either side, release without a jump and check the saved value.
+`penset.tab` is the tab shown (`pencil`, `eraser`, ... as `editor.tool` names them).
 
 ### Smart-shape probes
 
@@ -677,25 +718,47 @@ The Index map is a full-screen menu (`editor.map` is `graph`, otherwise `0`). It
 `nodes`, `edges`, `force`, `satellites`, `tray`, `orphans`, `selected` (page number), `mode`, `layout`,
 `labels`, `zoom`, `node.PID` (tier, radius, screen x/y, visible), and `ui_at.X.Y`.
 `tap map-node PID` resolves the current host's layout before tapping; scenarios never assume saved
-coordinates from another machine. Header controls occupy y=20..170: Back x=20..170, List632..832,
+coordinates from another machine. The Graph opens on All notebooks (2.0.0-beta.2): there `PID` is a page of
+the open notebook, and `tap map-node ID:PID` (and the probe `node.ID:PID`) names a page of notebook ID.
+`editor.map.scope` is `all`, or `one` past the caps (one notebook's view), `scope.id` the notebook that view
+shows, `books` the notebooks in All, `captions` the island captions drawn, `broken`
+the broken links in All, `building` 1 while the library index is first being built, `selected.id` the
+selected page's notebook, and `visible.ids` the drawn dots as `ID:PID`, sorted (`map.adjacent`, also
+`map.around`, is the card's Adjacent). `view` is the view button's word, `all` or `adjacent` (a tap always
+switches, fitted), and `touched` 1 when the view was panned, pinched or zoomed since it was fitted. The
+selection: `selection` how many nodes are selected, `selection.pages` their page numbers in order. There is no Notebook chip (removed by the owner's ruling of 2026-11-03): scenarios check that
+nothing answers where it was with `editor.map.ui_at.400.215` empty. Header controls occupy y=20..170: Back x=20..170, List632..832,
 All848..1148, Around1160..1460; the selection card's buttons occupy the bottom155pixels.
 `GRIMOIRE_SIM_MAP_NOMEM=1` refuses map allocation and checks the Index-list fallback.
-`editor.bar.incoming` counts distinct other pages linking to the open page.
+`editor.bar.incoming` counts the open page's Linked from rows: distinct other pages linking to it, in
+this notebook and (from the backlinks cache) in others. `editor.map.foreign` counts the Graph's anchors
+whose page is there (other notebooks' pages linked to or from this one, beside the plot); `editor.map.anchors`
+counts every anchor, `editor.map.anchors.in` those that link here and `editor.map.anchors.broken` those
+whose page or notebook was deleted; `editor.map.anchor.N` is anchor N (from 1): `out`, `in` or `both`,
+` gone` for a broken one, then its target (`out gone n:C:p2`). `tap panel map.anchor.N` taps it: a live
+one opens its page, a broken one the link's card on its page. `editor.map.stats` counts live anchors as
+nodes, never broken ones.
 
 Library folders are logical paths. `library.folder` reports the full current path; folder cards show
 only their last component. `z_subfolders` checks child creation and parent navigation; storage tests
 check subtree rename, empty descendants and refusing overlong destinations before any metadata changes.
 
-`pen strokes FILE.qpg [N] [HOLD_MS]` replays the first N strokes (all by default) through the
-current page viewport, preserving pressure/tilt and point spacing, and pausing before each lift.
+`pen strokes FILE.qpg [N] [HOLD_MS] [FROM]` replays N strokes (all by default) through the
+current page viewport, from stroke FROM (counted from 0; 0 by default), preserving pressure/tilt and
+point spacing, and pausing before each lift.
 Timestamp gaps within a stroke are capped at one second in the runner. An unreadable or read-only
 file fails the run. `editor.shape_snaps` counts committed snaps and shape-last replacements in the
-editor session; `z_shape_writing` holds every one of the bundled handwriting asset's32strokes
-for700ms and requires this counter to remain zero. `z_shape_last` checks one Replace undo step
+editor session; `z_shape_writing_1` to `_4` hold every one of the bundled handwriting asset's 32
+strokes for 700 ms (a quarter of them each, so that the four run at once: the replay is real time)
+and require this counter to remain zero. `z_shape_last` checks one Replace undo step
 and both new action families. The test runner ticks during an explicit `wait` with the nib down.
 
 `tap library NAME` and `touch down|move|up library NAME` resolve the Library control by its
 `library.ui_at` name, including a binding row or a record-card button; `notebook.ID` and
 `folder.PATH` are a card, `notebook-menu.ID` and `folder-menu.PATH` its menu button. They fail
 if that control is not currently reachable. These commands make recording and controller tests
-independent of menu spacing; unit checks still verify separate, on-screen hit targets.
+independent of menu spacing; unit checks still verify separate, on-screen hit targets. A
+scenario taps a row of a notebook's or folder's menu by its name (`tap library more.rename`,
+`tap library fmore.remove`, `tap library done` for Cancel; the names under `library.ui_at.X.Y`),
+never by its place, so that it does not break when the menu gains a row (2.0.0-beta.2 added
+Leave out of the Graph above Delete and Remove folder).

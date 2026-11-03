@@ -660,6 +660,26 @@ pub fn share_event(a: &mut App, ev: &InEvent) {
     }
 }
 
+/// Esc (`back`) on the Share screen: its Wi-Fi card closes, else back to where Share was opened from (its
+/// Done). True when it did either.
+pub fn share_back(a: &mut App) -> bool {
+    if a.scr != ScreenId::Share {
+        return false;
+    }
+    if s(a).wifi_open {
+        s(a).wifi_open = false;
+        if !s(a).started {
+            start(a);
+        }
+        draw(a);
+        app_invalidate_all(a, RefreshMode::Ui);
+        return true;
+    }
+    let ret = s(a).ret;
+    app_switch(a, if ret == ScreenId::Share { ScreenId::Library } else { ret });
+    true
+}
+
 pub fn share_tick(a: &mut App, now: u32) {
     httpd_poll();
     if s(a).wifi_open {

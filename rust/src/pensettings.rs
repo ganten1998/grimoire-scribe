@@ -693,17 +693,43 @@ fn pad_sample(a: &mut App, ev: &InEvent, first: bool) {
 
 /// Pen feel's own button and Close menu: Back
 /// A controller's Pen feel button (the editor's opened it) or Close menu: Back, while nothing is held.
+// A keyboard's 1 to 9, 0 and E (2.0.0-beta.2): that pen's tab, the picker's order as on a page; Esc (back) as
+// Back. Ctrl+S writes the settings now.
 pub fn pensettings_shortcut(a: &mut App, action: i32) -> bool {
-    if action != SHORTCUT_PEN_FEEL && action != SHORTCUT_CLOSE_MENU {
+    let tool = (SHORTCUT_TOOL_BASE..SHORTCUT_TOOL_BASE + TOOL_COUNT as i32).contains(&action);
+    if !tool && !matches!(action, SHORTCUT_PEN_FEEL | SHORTCUT_CLOSE_MENU | SHORTCUT_BACK | SHORTCUT_SAVE) {
         return false;
     }
     let s = st(a);
     if s.has_pressed || s.drawing || s.erasing || s.whiting || s.wiping || s.active >= 0 {
         return false;
     }
+    if action == SHORTCUT_SAVE {
+        settings_save(&a.settings);
+        app_toast(a, tr("Saved"), 1200);
+        return true;
+    }
+    if tool {
+        let t = ToolKind(action - SHORTCUT_TOOL_BASE);
+        if st(a).tab != t {
+            show_tab(a, t);
+        }
+        return true;
+    }
     let to = if s.ret == ScreenId::Penset { ScreenId::Library } else { s.ret };
     app_switch(a, to);
     true
+}
+
+// A tab picked (its button, or its key): the screen drawn for that tool.
+fn show_tab(a: &mut App, t: ToolKind) {
+    {
+        let s = st(a);
+        s.tab = t;
+        s.live_raw = -1.0;
+    }
+    draw_all(a);
+    app_invalidate_all(a, RefreshMode::Ui);
 }
 
 pub fn pensettings_event(a: &mut App, ev: &InEvent) {
@@ -837,15 +863,7 @@ pub fn pensettings_event(a: &mut App, ev: &InEvent) {
             let to = if s.ret == ScreenId::Penset { ScreenId::Library } else { s.ret };
             app_switch(a, to);
         }
-        H_TAB => {
-            {
-                let s = st(a);
-                s.tab = ToolKind(h.arg);
-                s.live_raw = -1.0;
-            }
-            draw_all(a);
-            app_invalidate_all(a, RefreshMode::Ui);
-        }
+        H_TAB => show_tab(a, ToolKind(h.arg)),
         H_RESET => {
             let tab = st(a).tab;
             tool_params_default(tab, &mut a.settings.tools[tab.0 as usize]);
@@ -925,6 +943,10 @@ pub fn pensettings_probe(a: &mut App, key: &str, out: &mut String, cap: usize) -
     let App { screen, settings, ps, .. } = &mut *a;
     let s = ps.as_deref();
     if let Some(s) = s {
+        if key == "tab" {
+            csnprintf!(out, cap, "%s", app_probe_tool(s.tab).unwrap_or(""));
+            return 0;
+        }
         if key == "slider_pending" {
             csnprintf!(out, cap, "%d", s.slider_dirty);
             return 0;

@@ -5,6 +5,8 @@
 # offers "Go to page 3" (a tap on the row goes there, one Full, the page left on the back list), or says the
 # notebook has no such page; the go-to-page key again closes it.
 # root: z_bar_0_make
+# (the clock corner held still: its minute's refresh would land among the counted ones)
+clock 1700000000
 wait 3700
 tap 200 400
 wait 300
@@ -38,7 +40,7 @@ expect display.presents is fast 36 1328 1788 124, full 0 0 1860 2480
 key 48 0
 wait 300
 expect editor.page is 1
-# from the Pages view: the view closes and Find opens over the page, in one Full
+# from the Pages view: Find opens over the view, which stays behind it: one Ui of what the sheet covers
 pentap panel pages
 wait 400
 expect editor.modal is pages
@@ -47,7 +49,7 @@ tap panel pages.goto
 wait 300
 expect editor.find is go
 expect editor.modal is find
-expect display.presents is fast 730 2325 120 140, full 0 0 1860 2480
+expect display.presents is fast 862 2325 120 140, ui 20 1480 1820 985
 # a number the notebook does not have
 tap 1549 1725
 expect editor.find.1 is There is no page 9 (5 pages).
@@ -57,12 +59,15 @@ shot 03-find-no-page-9
 tap 1643 2365
 expect editor.find is go
 expect editor.text is 9
-# the key closes it and opens it again
+# the key closes it, the Pages view still there behind it; its Back, and the key opens it again over the page
 key 34 0
 wait 300
 expect editor.find is 0
-expect editor.modal is none
+expect editor.modal is pages
 expect editor.page is 1
+tap panel pages.back
+wait 300
+expect editor.modal is none
 key 34 0
 wait 300
 expect editor.find is go

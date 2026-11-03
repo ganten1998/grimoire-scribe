@@ -80,6 +80,14 @@ fn broken_panel() {
 
 fn dpi_choice() {
     let mut from = DpiSource::default();
+    // The panel's own density, for true-size paper: the Scribe 2's driver says 156 x 208 mm (302.9),
+    // rotated the same; no size, a 0 side or a nonsense size gives 0.
+    check_near!(fbcheck_panel_ppi(1860, 2480, 156, 208), 302.85, 0.05);
+    check_near!(fbcheck_panel_ppi(2480, 1860, 208, 156), 302.85, 0.05);
+    check!(fbcheck_panel_ppi(1860, 2480, 0, 0) == 0.0);
+    check!(fbcheck_panel_ppi(1860, 0, 156, 208) == 0.0);
+    check!(fbcheck_panel_ppi(1860, 2480, 4294967295, 4294967295) == 0.0);
+    check!(fbcheck_panel_ppi(1860, 2480, 10, 10) == 0.0);
     // A device FBInk knows: its own value, whatever the driver says (old 167 dpi panels included).
     check!(fbcheck_dpi("Scribe 2", 300, 1860, 2480, 0, 0, &mut from) == 300.0);
     check!(from == DpiSource::Fbink);

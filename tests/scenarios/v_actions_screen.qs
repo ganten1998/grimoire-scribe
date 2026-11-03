@@ -4,6 +4,8 @@
 # settings: shortcuts_enabled=1
 # copy: tests/fixtures/gestures/actions .
 # Startup cached light 10 and warmth 6; unknown-cache refusal is covered by test_actions.
+# (the clock corner held still: its minute's refresh would land among the counted ones)
+clock 1700000000
 key 7 0
 expect toast is Light 11 of 24
 key 8 0

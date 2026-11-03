@@ -43,9 +43,9 @@ fn registry_names_groups_and_labels() {
         "status-corner",
         "gesture-new-page",
     ];
-    let expected_group_rows = [10usize, 11, 11, 7, 9, 10, 6];
+    let expected_group_rows = [11usize, 11, 11, 7, 9, 10, 6];
     check!(ACTION_GROUPS.len() == N_GROUPS && N_GROUPS == expected_group_rows.len());
-    check!(SHORTCUT_LAST == 83 && SHORTCUT_GESTURE_NEW_PAGE == 54 && SHORTCUT_STATUS_MODE == 55);
+    check!(SHORTCUT_LAST == SHORTCUT_PAN_DOWN && SHORTCUT_PAN_DOWN == 104 && SHORTCUT_GRAPH_VIEW == 100 && SHORTCUT_SELECT_ALL == 95 && SHORTCUT_SAVE == 87 && SHORTCUT_BACK == 88 && SHORTCUT_TWO_FINGER_UP == 89 && SHORTCUT_NEW_NOTEBOOK == 90 && SHORTCUT_NEW_FOLDER == 91 && SHORTCUT_SHARE == 92 && SHORTCUT_SETTINGS == 93 && SHORTCUT_SELECT == 84 && SHORTCUT_SELECT_EXACT == 85 && SHORTCUT_NEW_PAGES == 86 && SHORTCUT_GESTURE_NEW_PAGE == 54 && SHORTCUT_STATUS_MODE == 55);
     let mut ids = HashSet::new();
     let mut names = HashSet::new();
     let mut all = Vec::new();
@@ -54,13 +54,15 @@ fn registry_names_groups_and_labels() {
     }
     for &(name, id) in K_ACTIONS.iter() {
         check!(action_by_name(name) == id);
+        // (the loops over 1..=SHORTCUT_LAST reach every action)
+        check!(id >= 1 && id <= SHORTCUT_LAST);
         all.push(id);
     }
-    check!(K_ACTIONS.len() == old_names.len() + 26);
+    check!(K_ACTIONS.len() == old_names.len() + 42);
     for name in old_names {
         check!(action_by_name(name) != SHORTCUT_NONE);
     }
-    check!(all.len() == 72);
+    check!(all.len() == 88);
     check!(i18n_set("en"));
     for id in all.iter().copied() {
         let info = action_info(id);
@@ -76,7 +78,7 @@ fn registry_names_groups_and_labels() {
             check!(other.is_some_and(|p| p.pair == id && p.group == info.group));
         }
     }
-    check!(ids.len() == 72 && names.len() == 72);
+    check!(ids.len() == 88 && names.len() == 88);
     for (g, want) in expected_group_rows.iter().enumerate() {
         check!(
             group_row_count(g) == *want
@@ -119,6 +121,10 @@ fn registry_sources_and_pair_rows() {
             SHORTCUT_HOLD_ERASER => {}
             SHORTCUT_PEN_PAN | SHORTCUT_PEN_ZOOM => check!(action_sources(id) == SRC_PEN),
             SHORTCUT_SHORTCUTS | SHORTCUT_BLUETOOTH_CONTROLLER => {}
+            // (Space's: what two fingers up do, so no gesture or shape does it)
+            SHORTCUT_TWO_FINGER_UP => check!(action_sources(id) == key_pad),
+            // (the Graph's keys: keys, a controller's buttons and the pen's, never touch)
+            SHORTCUT_GRAPH_VIEW..=SHORTCUT_PAN_DOWN => check!(action_sources(id) == key_pad),
             _ => check!(action_sources(id) == (SRC_KEY | SRC_PAD | SRC_TOUCH | SRC_SHAPE | SRC_PEN)),
         }
     }
@@ -167,10 +173,25 @@ fn cached_light_actions_do_not_read_unknown_levels() {
     check!(std::fs::remove_dir_all(root).is_ok());
 }
 
+/// The lasso actions' TRANSLATORS comments reach translators: xgettext keeps a comment only on the line
+/// right above the one with n_(...), so in po/grimoire.pot (make l10n) each such name carries its comment.
+fn lasso_action_names_carry_their_translator_comments() {
+    let pot = std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/../po/grimoire.pot")).unwrap_or_default();
+    check!(!pot.is_empty());
+    for id in ["Select (lasso)", "Select exact area"] {
+        // the entry: the comment and reference lines just above its msgid
+        let at = pot.find(&format!("\nmsgid \"{id}\"\n"));
+        let head = at.map(|at| pot[..at].rsplit("\n\n").next().unwrap_or("")).unwrap_or("");
+        check!(at.is_some());
+        check!(head.contains("#. TRANSLATORS:"));
+    }
+}
+
 #[test]
 fn test_actions() {
     run!(cached_light_actions_do_not_read_unknown_levels);
     run!(registry_names_groups_and_labels);
     run!(registry_sources_and_pair_rows);
+    run!(lasso_action_names_carry_their_translator_comments);
     done();
 }

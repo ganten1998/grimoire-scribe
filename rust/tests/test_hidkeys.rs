@@ -76,6 +76,31 @@ fn presses_and_modifiers() {
     check!(hidkeys_event(&mut s, HidKind::Gamepad, 1, 304, 1, &mut p) == 1 && p[0].gamepad && !p[0].up);
     check!(hidkeys_event(&mut s, HidKind::Gamepad, 1, 304, 0, &mut p) == 1 && p[0].code == 304 && p[0].gamepad && p[0].up);
 }
+// A modifier held on a keyboard rides on each pen and touch event (input_evdev's queue), as a modifier
+// alone is no event: Shift held while + is tapped opens the Pages view's count pad.
+fn pointer_events_carry_held_modifiers() {
+    let mut kb = HidKeys::default();
+    let mut other = HidKeys::default();
+    let mut p = [HidPress::default(); 2];
+    check!(hidkeys_pointer_mods(InType::TouchUp, [&kb, &other]) == 0);
+    check!(hidkeys_event(&mut kb, HidKind::Keyboard, 1, 42, 1, &mut p) == 0); // Shift down: no event
+    for t in [InType::PenDown, InType::PenMove, InType::PenUp, InType::PenHover, InType::PenLeave,
+        InType::TouchDown, InType::TouchMove, InType::TouchUp] {
+        check!(hidkeys_pointer_mods(t, [&kb, &other]) == KEYMOD_SHIFT as u32);
+    }
+    // Not on keys (they carry their own device's), the power key or a pinch.
+    for t in [InType::Key, InType::KeyUp, InType::Power, InType::PinchBegin, InType::PenButton] {
+        check!(hidkeys_pointer_mods(t, [&kb, &other]) == 0);
+    }
+    // Two keyboards: both keyboards' modifiers.
+    check!(hidkeys_event(&mut other, HidKind::Keyboard, 1, 125, 1, &mut p) == 0);
+    check!(hidkeys_pointer_mods(InType::TouchUp, [&kb, &other]) == (KEYMOD_SHIFT | KEYMOD_META) as u32);
+    // Let go: none.
+    check!(hidkeys_event(&mut kb, HidKind::Keyboard, 1, 42, 0, &mut p) == 0);
+    check!(hidkeys_event(&mut other, HidKind::Keyboard, 1, 125, 0, &mut p) == 0);
+    check!(hidkeys_pointer_mods(InType::PenUp, [&kb, &other]) == 0);
+    check!(hidkeys_modifier(54) && hidkeys_modifier(100) && !hidkeys_modifier(44));
+}
 fn hats_drop_and_pin_resync() {
     let mut s = HidKeys::default();
     let mut p = [HidPress::default(); 2];
@@ -527,6 +552,7 @@ fn a_right_stick_is_no_trigger() {
 fn test_hidkeys() {
     run!(capabilities);
     run!(presses_and_modifiers);
+    run!(pointer_events_carry_held_modifiers);
     run!(hats_drop_and_pin_resync);
     run!(resync_releases_what_went);
     run!(power_key_on_firmware_5_20);

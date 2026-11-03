@@ -40,7 +40,7 @@ use std::mem::{size_of, size_of_val};
 use std::os::unix::ffi::OsStrExt;
 use std::sync::atomic::{AtomicI32, Ordering};
 
-use libc::{c_int, c_ulong, c_void};
+use ::libc::{c_int, c_ulong, c_void};
 
 // ---- linux/input.h ----
 //
@@ -822,6 +822,9 @@ impl State {
         let t = e.type_ as i32;
         let pen = t >= InType::PenDown as i32 && t <= InType::PenLeave as i32;
         let touch = t >= InType::TouchDown as i32 && t <= InType::TouchUp as i32;
+        // The modifier keys held on any keyboard ride on each pen and touch event (a modifier alone is
+        // no event): Shift held while + is tapped opens the Pages view's count pad (pagesview, ADD_MODS).
+        e.key_mods |= hidkeys_pointer_mods(e.type_, self.keys.iter().filter(|k| k.fd >= 0 && k.kind == HidKind::Keyboard).map(|k| &k.keys));
         if (pen && e.type_ != InType::PenHover && post_inc(&mut self.logged_pen) < 120)
             || (touch && post_inc(&mut self.logged_touch) < 120)
         {
@@ -1917,6 +1920,13 @@ impl State {
         for u in &ups[..n as usize] {
             self.key_push(u);
         }
+        self.mods_sync();
+    }
+    // The modifiers held now (hidkeys_mods_held): every attached device's together, so one device's
+    // event or resync never lets go of another's, and a device that went away holds none.
+    fn mods_sync(&self) {
+        let m = self.keys.iter().filter(|k| k.fd >= 0).fold(0, |m, k| m | hidkeys_mods(&k.keys));
+        hidkeys_set_mods_held(m);
     }
     fn key_resync(&mut self, i: usize) -> bool {
         let fd = self.keys[i].fd;
@@ -1985,6 +1995,7 @@ impl State {
     fn key_detach(&mut self, i: usize) {
         close_fd(self.keys[i].fd);
         self.keys[i].fd = -1;
+        self.mods_sync();
         qlog!("input: optional input at %s went away", &self.keys[i].path);
         self.key_announce(i, InType::HidDetach);
     }
@@ -2160,6 +2171,7 @@ impl State {
                 }
                 k.fd = -1;
             }
+            self.mods_sync();
         }
     }
     fn hids(&self, out: &mut [InputHid]) -> i32 {
@@ -2222,6 +2234,9 @@ impl State {
         }
         for p in &out[..n as usize] {
             self.key_push(p);
+        }
+        if ev.type_ == EV_KEY {
+            self.mods_sync();
         }
         None
     }
@@ -3529,6 +3544,49 @@ mod tests {
         unsafe { libc::close(pipe[0]) };
     }
 
+    #[test]
+    fn modifiers_held_are_every_keyboards_together_and_go_with_their_device() {
+        let mut pipes = [[-1; 2]; 2];
+        for p in pipes.iter_mut() {
+            // SAFETY: pipe initializes this local descriptor pair; the writers are closed below, the
+            // readers by key_detach or at the end.
+            assert_eq!(unsafe { libc::pipe(p.as_mut_ptr()) }, 0);
+            // SAFETY: the writer is this test's.
+            unsafe { libc::close(p[1]) };
+        }
+        let mut s = State::default();
+        s.input_grabbed = true;
+        s.keys_init = true;
+        for (i, k) in s.keys.iter_mut().enumerate() {
+            k.fd = if i < 2 { pipes[i][0] } else { -1 };
+            k.kind = HidKind::Keyboard;
+        }
+        let key = |s: &mut State, i: usize, code: u16, value: i32| {
+            s.key_read = i;
+            s.handle_key(&InputEvent { type_: EV_KEY, code, value, ..Default::default() });
+            s.handle_key(&InputEvent { type_: EV_SYN, code: SYN_REPORT, ..Default::default() });
+        };
+        // Alt held on the keyboard; the page turner (the other device) resyncs with nothing held, then
+        // presses and lets go of a key: Alt is still held
+        key(&mut s, 0, 56, 1);
+        assert_eq!(hidkeys_mods_held(), KEYMOD_ALT);
+        s.key_ups(1, None, 0, 0);
+        assert_eq!(hidkeys_mods_held(), KEYMOD_ALT);
+        key(&mut s, 1, 106, 1);
+        key(&mut s, 1, 106, 0);
+        assert_eq!(hidkeys_mods_held(), KEYMOD_ALT);
+        // Shift on the other device too, then let go there: Alt alone again
+        key(&mut s, 1, 42, 1);
+        assert_eq!(hidkeys_mods_held(), KEYMOD_ALT | KEYMOD_SHIFT);
+        key(&mut s, 1, 42, 0);
+        assert_eq!(hidkeys_mods_held(), KEYMOD_ALT);
+        // the keyboard goes out of range with Alt down: nothing is held any more
+        s.key_detach(0);
+        assert_eq!(hidkeys_mods_held(), 0);
+        s.key_detach(1);
+        hidkeys_set_mods_held(0);
+    }
+
     fn event(type_: u16, code: u16, value: i32, t_us: u64) -> PenEv {
         PenEv { type_, code, value, t_us }
     }
@@ -3553,6 +3611,36 @@ mod tests {
         s.q_push(InEvent { type_: InType::PenDown, ..Default::default() });
         assert_eq!((s.q_dropped, s.q_lifts_dropped), (0, 0));
         assert_eq!((s.qt + QN - s.qh) % QN, QN - 1);
+    }
+
+    #[test]
+    fn pen_and_touch_events_carry_the_modifier_keys_held_on_a_keyboard() {
+        let mut s = State::default();
+        s.input_grabbed = true;
+        s.logged_pen = 1000;
+        s.logged_touch = 1000;
+        // Shift held on a keyboard (its held bits, as hidkeys_event leaves them: a modifier alone is no event).
+        let mut shift = [HidPress::default(); 2];
+        s.keys[0].fd = 99;
+        s.keys[0].kind = HidKind::Keyboard;
+        assert_eq!(hidkeys_event(&mut s.keys[0].keys, HidKind::Keyboard, 1, 42, 1, &mut shift), 0);
+        // A keyboard gone away (its slot closed) adds nothing, though its bits say Ctrl.
+        s.keys[1].fd = -1;
+        s.keys[1].kind = HidKind::Keyboard;
+        s.keys[1].keys.held[29 / 8] |= 1 << (29 % 8);
+        for type_ in [InType::TouchDown, InType::TouchUp, InType::PenDown, InType::PenUp, InType::Key] {
+            s.q_push(InEvent { type_, ..Default::default() });
+        }
+        let mut e = InEvent::default();
+        let mut got = Vec::new();
+        while s.q_pop(&mut e) { got.push((e.type_, e.key_mods)); }
+        let sh = KEYMOD_SHIFT as u32;
+        assert_eq!(got, [(InType::TouchDown, sh), (InType::TouchUp, sh), (InType::PenDown, sh), (InType::PenUp, sh), (InType::Key, 0)]);
+        // Let go: the next tap carries none.
+        hidkeys_event(&mut s.keys[0].keys, HidKind::Keyboard, 1, 42, 0, &mut shift);
+        s.q_push(InEvent { type_: InType::TouchUp, ..Default::default() });
+        assert!(s.q_pop(&mut e));
+        assert_eq!(e.key_mods, 0);
     }
 
     #[test]

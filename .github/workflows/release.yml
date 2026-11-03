@@ -8,9 +8,11 @@ on:
     types: [published]
 permissions:
   contents: read
+# A pull request's newer push cancels its older run (only its result matters); a push to main queues
+# behind the one running; a release is never cancelled, and two releases never run at once.
 concurrency:
-  group: grimoire-release-${{ github.event_name == 'release' && 'publish' || github.ref }}
-  cancel-in-progress: false
+  group: grimoire-${{ github.event_name == 'release' && 'publish' || (github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || github.ref) }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 env:
   # The toolchain the Kindle binary is built with. A local build with the same three versions makes
   # the same bytes (tests/repro_check.sh holds the build to that), so these are the versions the
@@ -21,12 +23,259 @@ env:
   CARGO_ZIGBUILD_VERSION: '0.23.0'
   # Retry a crate download before failing the job over a network blip.
   CARGO_NET_RETRY: '5'
+  # The scenario shards (the scenarios job's matrix lists 1 to this; keep the two in step).
+  SCENARIO_SHARDS: '6'
+# make check, spread over jobs that run at once (docs/TESTING.md, Continuous integration, maps each
+# job to the make targets it replaces):
+#   changes      what the pull request touches: only docs (*.md, docs/, but not docs/WHATSNEW.md,
+#                which the app compiles in) runs the docs job alone
+#   build-host   the headless runner and the host tools, once, for the jobs below
+#   unit         make test, its two halves at once
+#   scenarios    make scenarios in SCENARIO_SHARDS shards (whole # root: chains, balanced by
+#                tests/scenario-times.txt), each running its scenarios several at once
+#   l10n         make l10n-check
+#   host-checks  make host-checks: the late-timer scenarios, the share server, Live view, Bluetooth,
+#                mirror cleanup, the pages cache, the exporter
+#   package      the Kindle build, the zip and every check of it, the KPM package, the KOReader
+#                patches; pushes to main and releases also build it twice from clean
+#                (tests/repro_check.sh) and keep the release files
+#   gate         the one check branch protection requires: every job above passed (or, for a
+#                docs-only pull request, the docs job did)
+#   publish      releases: uploads the package job's release files and publishes the KPM channel
+# The host jobs run on macOS, where the gate has always run. Setting the repository variable
+# GRIMOIRE_CI_LINUX to true moves build-host, unit, scenarios and l10n to Linux runners (they start
+# sooner, and many more run at once than macOS ones); it is off until a run shows them passing there.
 jobs:
-  package:
+  changes:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      code: ${{ steps.filter.outputs.code }}
+      host: ${{ steps.filter.outputs.host }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ github.event.release.tag_name || github.event.pull_request.head.sha || github.sha }}
+      - name: Decide what runs
+        id: filter
+        env:
+          EVENT: ${{ github.event_name }}
+          BASE: ${{ github.event.pull_request.base.sha }}
+          LINUX: ${{ vars.GRIMOIRE_CI_LINUX }}
+        run: |
+          code=true
+          if [ "$EVENT" = pull_request ]; then
+            git fetch --no-tags --depth=1 origin "$BASE"
+            # Against the base branch's tip (a later change on it counts too: never too little).
+            # --no-renames: a file moved into docs/ (or renamed to *.md) lists its old path too, so
+            # moving code there is a code change.
+            git diff --no-renames --name-only "$BASE" HEAD > "$RUNNER_TEMP/changed.txt"
+            echo "Changed files:"; cat "$RUNNER_TEMP/changed.txt"
+            if [ -s "$RUNNER_TEMP/changed.txt" ] &&
+               ! grep -Ev '(\.md$|^docs/)' "$RUNNER_TEMP/changed.txt" | grep -q . &&
+               ! grep -qx 'docs/WHATSNEW.md' "$RUNNER_TEMP/changed.txt"; then
+              code=false
+            fi
+          fi
+          if [ "$LINUX" = true ]; then host=ubuntu-24.04; else host=macos-15; fi
+          echo "code=$code" >> "$GITHUB_OUTPUT"
+          echo "host=$host" >> "$GITHUB_OUTPUT"
+          echo "code jobs: $code; host jobs on $host"
+
+  docs:
+    # A pull request that changes only documentation: no build, no test; its diff must be clean.
+    needs: changes
+    if: needs.changes.outputs.code == 'false'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          # The whole history: the diff starts where the pull request branched off (BASE...HEAD),
+          # so lines the base branch changed since are not the pull request's.
+          fetch-depth: 0
+      - name: No whitespace errors in the changed lines
+        env:
+          BASE: ${{ github.event.pull_request.base.sha }}
+        run: |
+          git fetch --no-tags origin "$BASE"
+          git diff --check "$BASE"...HEAD
+
+  build-host:
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
+    runs-on: ${{ needs.changes.outputs.host }}
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ github.event.release.tag_name || github.event.pull_request.head.sha || github.sha }}
+      - name: Install Rust
+        # rustc and cargo, exactly RUST_VERSION. The Makefile finds them through RUST_BIN (the Mac
+        # has a Homebrew rustc that shadows rustup's).
+        run: |
+          rustup toolchain install "$RUST_VERSION" --profile minimal --no-self-update
+          rustup default "$RUST_VERSION"
+          echo "RUST_BIN=$(dirname "$(rustup which --toolchain "$RUST_VERSION" rustc)")" >> "$GITHUB_ENV"
+      - name: Build the headless runner and the host tools
+        # make headless tools (make rust-check's headless and tools)
+        run: |
+          (cd rust && PATH="$RUST_BIN:$PATH" cargo fetch --locked)
+          make headless tools
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: host-binaries
+          path: |
+            build/host/grimoire-headless
+            build/host/grimoire-export
+          if-no-files-found: error
+          retention-days: 3
+          overwrite: true
+
+  unit:
+    # make test, its two halves (the host build's tests, the headless build's) as two jobs.
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
+    runs-on: ${{ needs.changes.outputs.host }}
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        half: [host, sim]
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ github.event.release.tag_name || github.event.pull_request.head.sha || github.sha }}
+      - name: Install Rust
+        run: |
+          rustup toolchain install "$RUST_VERSION" --profile minimal --no-self-update
+          rustup default "$RUST_VERSION"
+          echo "RUST_BIN=$(dirname "$(rustup which --toolchain "$RUST_VERSION" rustc)")" >> "$GITHUB_ENV"
+      - name: Unit tests (make test-${{ matrix.half }})
+        run: |
+          (cd rust && PATH="$RUST_BIN:$PATH" cargo fetch --locked)
+          make test-${{ matrix.half }}
+
+  scenarios:
+    # make scenarios, shard N of SCENARIO_SHARDS (the selftest runs in shard 1).
+    needs: [changes, build-host]
+    if: needs.changes.outputs.code == 'true'
+    runs-on: ${{ needs.changes.outputs.host }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4, 5, 6]
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ github.event.release.tag_name || github.event.pull_request.head.sha || github.sha }}
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: '3.12'
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: host-binaries
+          path: build/host/
+      - name: Scenarios, shard ${{ matrix.shard }}
+        # -o: the runner as build-host made it (artifacts do not keep the executable bit).
+        run: |
+          chmod +x build/host/*
+          make -o build/host/grimoire-headless scenarios SCEN_SHARD="${{ matrix.shard }}/$SCENARIO_SHARDS"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: failure()
+        with:
+          name: scenario-logs-${{ matrix.shard }}
+          path: |
+            build/scen-logs/
+            build/scen-times.txt
+          retention-days: 7
+          overwrite: true
+
+  l10n:
+    # make l10n-check, without the English Gothic run of y_all_screens.qs, which a shard made.
+    needs: [changes, build-host]
+    if: needs.changes.outputs.code == 'true'
+    runs-on: ${{ needs.changes.outputs.host }}
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ github.event.release.tag_name || github.event.pull_request.head.sha || github.sha }}
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: '3.12'
+      - name: Install msgfmt
+        run: |
+          if [ "$(uname)" = Darwin ]; then
+            brew install gettext
+            echo "$(brew --prefix gettext)/bin" >> "$GITHUB_PATH"
+          else
+            sudo apt-get update -q && sudo apt-get install -y -q gettext
+          fi
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: host-binaries
+          path: build/host/
+      - name: The languages
+        run: |
+          chmod +x build/host/*
+          make -o build/host/grimoire-headless l10n-check L10N_SKIP=en-gothic
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: failure()
+        with:
+          name: l10n-logs
+          path: build/scen-logs/
+          retention-days: 7
+          overwrite: true
+
+  host-checks:
+    # make host-checks, from the two scenarios whose data it reads. Always on macOS: the studio
+    # picture check needs ImageMagick 7's magick, which Ubuntu's packages do not have (it would be
+    # skipped). With GRIMOIRE_CI_LINUX on, build-host's binaries are Linux ones: it builds its own.
+    needs: [changes, build-host]
+    if: needs.changes.outputs.code == 'true'
     runs-on: macos-15
-    # Two clean builds of the Kindle binary (tests/repro_check.sh) and the whole gate, on a runner
-    # with three cores: the first Rust run decides whether this is enough.
-    timeout-minutes: 120
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ github.event.release.tag_name || github.event.pull_request.head.sha || github.sha }}
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: '3.12'
+      - name: Install test tools
+        # ImageMagick for the studio picture (tests/share_check.sh); node is the runner image's.
+        run: brew install imagemagick
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        if: needs.changes.outputs.host == 'macos-15'
+        with:
+          name: host-binaries
+          path: build/host/
+      - name: Build the headless runner and the host tools (build-host's are Linux ones)
+        if: needs.changes.outputs.host != 'macos-15'
+        run: |
+          rustup toolchain install "$RUST_VERSION" --profile minimal --no-self-update
+          rustup default "$RUST_VERSION"
+          RUST_BIN=$(dirname "$(rustup which --toolchain "$RUST_VERSION" rustc)")
+          export RUST_BIN
+          (cd rust && PATH="$RUST_BIN:$PATH" cargo fetch --locked)
+          make headless tools
+      - name: Share server, Live view, Bluetooth, late timers, exporter
+        run: |
+          chmod +x build/host/*
+          make -o build/host/grimoire-headless scenarios SCEN_NO_SELFTEST=1 SCEN_TIMES= \
+            SCENARIOS="tests/scenarios/b_library.qs tests/scenarios/s_shape_1_record.qs"
+          make -o build/host/grimoire-headless host-checks
+
+  package:
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
+    runs-on: macos-15
+    # The Kindle build, the zip and its checks; for pushes to main and releases also two clean builds
+    # of every release file (tests/repro_check.sh), on a runner with three cores.
+    timeout-minutes: 90
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
@@ -46,12 +295,9 @@ jobs:
         with:
           python-version: '3.12'
       - name: Install test tools
-        # Tools the checks run (msgfmt for the languages, luajit and luacheck for the KOReader
-        # plugin, shellcheck for the launchers, ImageMagick for the studio picture); none of them
-        # makes a byte of a release file. Node is the runner image's.
-        run: |
-          brew install gettext luajit imagemagick shellcheck luacheck
-          echo "$(brew --prefix gettext)/bin" >> "$GITHUB_PATH"
+        # Tools the checks run (luajit and luacheck for the KOReader plugin and patches, shellcheck
+        # for the launchers); none of them makes a byte of a release file.
+        run: brew install luajit shellcheck luacheck
       - name: Install Rust
         # rustc, cargo and the Kindle's standard library, exactly RUST_VERSION. The Makefile finds
         # them through RUST_BIN (the Mac has a Homebrew rustc that shadows rustup's).
@@ -91,14 +337,17 @@ jobs:
           "$RUST_BIN/rustc" -vV
           zig version
           (cd rust && PATH="$RUST_BIN:$PATH" cargo fetch --locked)
-      - name: Run release checks and build KPM package
-        # make check: the app's gate (make rust-check: unit tests, scenarios, languages, share
-        # server, Live view, Bluetooth, exporter, the ARM build), the zip and its launchers, two
-        # clean builds of every release file compared byte for byte, the KPM package and the
-        # KOReader patches. One make, not -j: the scenarios, the languages and the share checks
-        # open the share server on the same port, and the clean builds should not compete with them.
-        run: make check
+      - name: Build and check the package
+        # make check's kindle, package-contents-check, launcher-check, dev-check, kpm-check,
+        # kopatch-check, wifi-check, usb-stage-check, runner-check and dist.
+        run: make package-contents-check launcher-check dev-check kpm-check kopatch-check wifi-check usb-stage-check runner-check dist
+      - name: Build every release file twice from clean
+        # make repro-check (tests/repro_check.sh): not for pull requests, whose files are never
+        # published; pushes to main and releases.
+        if: github.event_name != 'pull_request'
+        run: make repro-check
       - name: Collect release files
+        if: github.event_name != 'pull_request'
         run: |
           cp build/dist/Grimoire-"$(cat VERSION)".zip build/dist/KOReader-patches.zip build/kpm/
           cd build/kpm
@@ -110,14 +359,44 @@ jobs:
           # In the log, to compare with a local make dist (its folder's SHA256SUMS.txt).
           cat SHA256SUMS.txt
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: github.event_name != 'pull_request'
         with:
           name: grimoire-release
           path: build/kpm/
           if-no-files-found: error
           # A rerun of this job replaces the artifact its first attempt uploaded.
           overwrite: true
+
+  gate:
+    # The one required check: every job of this run passed (a docs-only pull request: the docs job).
+    # Branch protection on main must require this job (and no other: docs/TESTING.md, The required
+    # check). It runs even in a cancelled run and fails there: a skipped required check counts as
+    # passed, so a cancelled run of a pull request's newest commit must not leave it mergeable (a
+    # run superseded by a newer push only marks its old commit red).
+    if: ${{ always() }}
+    needs: [changes, docs, build-host, unit, scenarios, l10n, host-checks, package]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Every job passed
+        env:
+          NEEDS: ${{ toJSON(needs) }}
+          CODE: ${{ needs.changes.outputs.code }}
+        run: |
+          printf '%s\n' "$NEEDS" | jq -r 'to_entries[] | "\(.key) \(.value.result)"' | tee "$RUNNER_TEMP/results.txt"
+          fail=0
+          while read -r job result; do
+            case "$job" in
+              changes) want=success ;;
+              docs) if [ "$CODE" = false ]; then want=success; else want=skipped; fi ;;
+              *) if [ "$CODE" = true ]; then want=success; else want=skipped; fi ;;
+            esac
+            if [ "$result" != "$want" ]; then echo "$job: $result, wanted $want"; fail=1; fi
+          done < "$RUNNER_TEMP/results.txt"
+          exit "$fail"
+
   publish:
-    needs: package
+    needs: [gate, package]
     if: github.event_name == 'release'
     runs-on: ubuntu-24.04
     permissions:
@@ -137,8 +416,9 @@ jobs:
           GH_REPO: ${{ github.repository }}
         run: |
           set -eu
-          # The artifact arrived whole: every file SHA256SUMS.txt names, with those bytes.
-          (cd build/kpm && shasum -a 256 -c SHA256SUMS.txt)
+          # The artifact arrived whole: every file SHA256SUMS.txt names, with those bytes (the
+          # Kindle's three).
+          (cd build/kpm && shasum -a 256 -c SHA256SUMS.txt && test "$(wc -l < SHA256SUMS.txt)" -eq 3)
           # Idempotent when rerunning publication: existing assets must have identical bytes.
           for file in build/kpm/*.zip build/kpm/*.kpkg build/kpm/SHA256SUMS.txt; do
             name=$(basename "$file")

@@ -2,7 +2,8 @@
 
 use crate::prelude::*;
 
-pub const SHORTCUT_MAX: usize = 192;
+/// 2.0.0-beta.2: one key may have one action in each place, so a file keeps every line (192 before).
+pub const SHORTCUT_MAX: usize = 256;
 pub const KEYMOD_CTRL: i32 = 1;
 pub const KEYMOD_SHIFT: i32 = 2;
 pub const KEYMOD_ALT: i32 = 4;
@@ -60,7 +61,9 @@ pub const SHORTCUT_STATUS_CORNER: i32 = 53;
 /// Two fingers left on the last page add a page, or do not (settings.ini gesture_new_page; Rust only).
 pub const SHORTCUT_GESTURE_NEW_PAGE: i32 = 54;
 pub const SHORTCUT_STATUS_MODE: i32 = 55;
-pub const SHORTCUT_LAST: i32 = SHORTCUT_PEN_ZOOM;
+/// The highest action id in use (it follows the highest; ids between with no action have no name, which the
+/// loops over 1..=SHORTCUT_LAST skip).
+pub const SHORTCUT_LAST: i32 = SHORTCUT_PAN_DOWN;
 /// Where an action came from: a key, a controller's button, a touch gesture (gestures.ini), and
 /// later a finger shape or the pen's button. A page turned by a gesture adds a page on the last one unless settings.ini gesture_new_page is off.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -120,7 +123,102 @@ macro_rules! dpad_lines {
     };
 }
 const DPAD_LINES: &str = dpad_lines!();
+
+// The keyboard scheme of 2.0.0-beta.2, for a keyboard paired with the Kindle: in pieces, as concat! reads only
+// literals.
+macro_rules! scheme_everywhere {
+    () => {
+        "# Everywhere\nkey.Escape=back\nkey.Ctrl+s=save\n"
+    };
+}
+macro_rules! scheme_library_and_page {
+    () => {
+        concat!(
+            "# The Library\n",
+            "key.Ctrl+n=new-notebook\nkey.Ctrl+f=new-folder\nkey.s=share\nkey.o=settings\n",
+            "# A notebook page. 1 to 9: the tool picker's pens in its order, left to right and down; 0 and E: the eraser.\n",
+            "key.1=tool:pencil\nkey.2=tool:mech\nkey.3=tool:charcoal\nkey.4=tool:ballpoint\n",
+            "key.5=tool:fineliner\nkey.6=tool:marker\nkey.7=tool:fountain\nkey.8=tool:calligraphy\n",
+            "key.9=tool:highlighter\nkey.0=tool:eraser\nkey.e=tool:eraser\nkey.w=white\n",
+            "key.Ctrl+z=undo\nkey.Ctrl+Shift+z=redo\nkey.Ctrl+y=redo\n",
+            "key.Left=previous-page\nkey.Right=next-page\nkey.PageUp=previous-page\nkey.PageDown=next-page\n",
+            "key.Home=first-page\nkey.End=last-page\n",
+            "# [ and ]: the previous and the next tool.\n",
+            "key.code26=previous-tool\nkey.code27=next-tool\n",
+            "key.Ctrl+n=new-page\nkey.Ctrl+f=go-to-page\nkey.Ctrl+l=add-link\nkey.r=name-page\nkey.Space=two-finger-up\n",
+            "key.g=index-map\nkey.l=links\nkey.p=pages\nkey.t=tool-picker\nkey.s=select\nkey.x=hold-eraser\n",
+        )
+    };
+}
+macro_rules! scheme_zoom_pages_graph {
+    () => {
+        concat!(
+            "# - and = (+), Shift+=, the keypad's - and +, and with Ctrl: zoom out and in; Ctrl+0 the whole page.\n",
+            "key.code12=zoom-out\nkey.code13=zoom-in\nkey.Shift+code13=zoom-in\nkey.code74=zoom-out\nkey.code78=zoom-in\n",
+            "key.Ctrl+code12=zoom-out\nkey.Ctrl+code13=zoom-in\nkey.Ctrl+0=fit-page\n",
+            "# The Pages view and the Graph\n",
+            "key.Ctrl+a=select-all\n",
+            "# The Graph: the arrows move it; V its view.\n",
+            "key.Left=pan-left\nkey.Right=pan-right\nkey.Up=pan-up\nkey.Down=pan-down\nkey.v=graph-view\n",
+        )
+    };
+}
+/// The Kindle's starter shortcuts.ini (written when shortcuts are first enabled, and read in memory with no
+/// file): the scheme for a paired keyboard, and the controller's lines.
 const DEFAULTS: &str = concat!(
+    "# Grimoire shortcuts. Enable in Settings > Controller and keys; after editing, Reload shortcuts.ini there.\n",
+    "# key.NAME or key.Ctrl+NAME=ACTION (an Apple keyboard's Cmd is Ctrl here); codeN is a Linux evdev key code;\n",
+    "# pad.NUMBER is a Linux evdev gamepad button code.\n",
+    "# A key may have one action in each place (the Library, a notebook page, the Pages view, the Graph,\n",
+    "# Pen feel): each action acts in its own places (docs/SHORTCUTS.md).\n",
+    scheme_everywhere!(),
+    scheme_library_and_page!(),
+    scheme_zoom_pages_graph!(),
+    "# Generic evdev gamepad defaults; controllers may report different codes.\n",
+    "pad.304=undo\npad.305=tool:eraser\npad.307=redo\npad.308=white\n",
+    "pad.310=previous-tool\npad.311=next-tool\npad.314=previous-page\npad.315=next-page\n",
+    "# Digital D-pad buttons and standard HAT0 directions share these bindings.\n",
+    dpad_lines!(),
+);
+
+/// The starter map: what a missing shortcuts.ini reads as, and what Enable shortcuts writes.
+pub fn shortcuts_starter() -> &'static str {
+    DEFAULTS
+}
+
+/// Every starter shortcuts.ini an earlier Grimoire wrote, byte for byte (from the history of src/shortcuts.c
+/// and rust/src/shortcuts.rs): the Kindle's of 1.1.0, of 1.2.0 (the D-pad) and of 2.0.0 (Settings >
+/// Controller, the picker's order). Such a file nobody edited is replaced by this build's starter map at the
+/// next start (shortcuts_upgrade_starter); any other is kept.
+const OLD_STARTERS: [&str; 3] = [
+    concat!(
+        "# Grimoire shortcuts. Enable in Settings > Shortcuts. Reload there after editing.\n",
+        "# key.NAME or key.Ctrl+NAME; pad.NUMBER is a Linux evdev gamepad button code.\n",
+        "key.1=tool:pencil\nkey.2=tool:mech\nkey.3=tool:ballpoint\nkey.4=tool:fountain\n",
+        "key.5=tool:fineliner\nkey.6=tool:marker\nkey.7=tool:charcoal\nkey.8=tool:calligraphy\n",
+        "key.9=tool:highlighter\nkey.e=tool:eraser\nkey.w=white\nkey.Ctrl+z=undo\nkey.Ctrl+y=redo\n",
+        "key.Left=previous-page\nkey.Right=next-page\nkey.PageUp=previous-tool\nkey.PageDown=next-tool\n",
+        "# Generic evdev gamepad defaults; controllers may report different codes.\n",
+        "pad.304=undo\npad.305=tool:eraser\npad.307=redo\npad.308=white\n",
+        "pad.310=previous-tool\npad.311=next-tool\npad.314=previous-page\npad.315=next-page\n",
+    ),
+    concat!(
+        "# Grimoire shortcuts. Enable in Settings > Shortcuts. Reload there after editing.\n",
+        "# key.NAME or key.Ctrl+NAME; pad.NUMBER is a Linux evdev gamepad button code.\n",
+        "key.1=tool:pencil\nkey.2=tool:mech\nkey.3=tool:ballpoint\nkey.4=tool:fountain\n",
+        "key.5=tool:fineliner\nkey.6=tool:marker\nkey.7=tool:charcoal\nkey.8=tool:calligraphy\n",
+        "key.9=tool:highlighter\nkey.e=tool:eraser\nkey.w=white\nkey.Ctrl+z=undo\nkey.Ctrl+y=redo\n",
+        "key.Left=previous-page\nkey.Right=next-page\nkey.PageUp=previous-tool\nkey.PageDown=next-tool\n",
+        "# Generic evdev gamepad defaults; controllers may report different codes.\n",
+        "pad.304=undo\npad.305=tool:eraser\npad.307=redo\npad.308=white\n",
+        "pad.310=previous-tool\npad.311=next-tool\npad.314=previous-page\npad.315=next-page\n",
+        "# Digital D-pad buttons and standard HAT0 directions share these bindings.\n",
+        dpad_lines!(),
+    ),
+    OLD_KINDLE_STARTER_2_0,
+];
+/// The Kindle's starter map from 2.0.0-beta.1 until this build (live-keys.ini's earlier starter came from it).
+pub(crate) const OLD_KINDLE_STARTER_2_0: &str = concat!(
     "# Grimoire shortcuts. Enable in Settings > Controller. Reload there after editing.\n",
     "# key.NAME or key.Ctrl+NAME; pad.NUMBER is a Linux evdev gamepad button code.\n",
     "# 1 to 9: the tool picker's pens in its order, left to right and down.\n",
@@ -134,6 +232,34 @@ const DEFAULTS: &str = concat!(
     "# Digital D-pad buttons and standard HAT0 directions share these bindings.\n",
     dpad_lines!(),
 );
+
+/// Whether text is a starter map some Grimoire wrote (byte for byte; a copy with CRLF line ends counts),
+/// earlier ones and this build's.
+pub fn shortcuts_is_starter(text: &[u8]) -> bool {
+    let lf: Vec<u8>;
+    let text = if text.contains(&b'\r') {
+        lf = String::from_utf8_lossy(text).replace("\r\n", "\n").into_bytes();
+        if lf.contains(&b'\r') {
+            return false;
+        }
+        &lf[..]
+    } else {
+        text
+    };
+    OLD_STARTERS.iter().chain([DEFAULTS].iter()).any(|t| t.as_bytes() == text)
+}
+
+/// At the start: a shortcuts.ini that is byte for byte a starter map
+/// some Grimoire wrote, and not this build's, is replaced by this build's starter map, atomically. True when
+/// it was (the caller says so once: a log line and a toast). A file someone edited, a missing one, or one that
+/// cannot be read is left as it is.
+pub fn shortcuts_upgrade_starter(path: &str) -> bool {
+    let Ok(Some(text)) = ini_read_bounded(path, 65536) else { return false };
+    if text == shortcuts_starter().as_bytes() || !shortcuts_is_starter(&text) {
+        return false;
+    }
+    write_file_atomic(path, shortcuts_starter().as_bytes()) == 0
+}
 
 /// isspace() in the C locale: space, \t, \n, \v, \f, \r (u8::is_ascii_whitespace leaves out \v).
 fn isspace(c: u8) -> bool {
@@ -164,19 +290,20 @@ fn strtol10(s: &[u8]) -> (i64, usize) {
     (if neg { -v } else { v }, i)
 }
 
+// Linux input-event-codes.h, not SDL's unrelated USB scan code numbering.
+const KEY_NAMES: [(&str, i32); 54] = [
+    ("1", 2), ("2", 3), ("3", 4), ("4", 5), ("5", 6), ("6", 7), ("7", 8), ("8", 9), ("9", 10), ("0", 11),
+    ("q", 16), ("w", 17), ("e", 18), ("r", 19), ("t", 20), ("y", 21), ("u", 22), ("i", 23), ("o", 24), ("p", 25),
+    ("a", 30), ("s", 31), ("d", 32), ("f", 33), ("g", 34), ("h", 35), ("j", 36), ("k", 37), ("l", 38),
+    ("z", 44), ("x", 45), ("c", 46), ("v", 47), ("b", 48), ("n", 49), ("m", 50),
+    ("Left", 105), ("Right", 106), ("Up", 103), ("Down", 108), ("PageUp", 104), ("PageDown", 109),
+    ("Space", 57), ("Enter", 28), ("Tab", 15), ("Escape", 1),
+    ("VolumeUp", 115), ("VolumeDown", 114), ("PlayPause", 164), ("NextSong", 163), ("PreviousSong", 165),
+    ("Home", 102), ("End", 107), ("Back", 158),
+];
+
 pub fn shortcut_keycode(name: &str) -> i32 {
-    // Linux input-event-codes.h, not SDL's unrelated USB scan code numbering.
-    const KEYS: [(&str, i32); 54] = [
-        ("1", 2), ("2", 3), ("3", 4), ("4", 5), ("5", 6), ("6", 7), ("7", 8), ("8", 9), ("9", 10), ("0", 11),
-        ("q", 16), ("w", 17), ("e", 18), ("r", 19), ("t", 20), ("y", 21), ("u", 22), ("i", 23), ("o", 24), ("p", 25),
-        ("a", 30), ("s", 31), ("d", 32), ("f", 33), ("g", 34), ("h", 35), ("j", 36), ("k", 37), ("l", 38),
-        ("z", 44), ("x", 45), ("c", 46), ("v", 47), ("b", 48), ("n", 49), ("m", 50),
-        ("Left", 105), ("Right", 106), ("Up", 103), ("Down", 108), ("PageUp", 104), ("PageDown", 109),
-        ("Space", 57), ("Enter", 28), ("Tab", 15), ("Escape", 1),
-        ("VolumeUp", 115), ("VolumeDown", 114), ("PlayPause", 164), ("NextSong", 163), ("PreviousSong", 165),
-        ("Home", 102), ("End", 107), ("Back", 158),
-    ];
-    for (key, code) in KEYS {
+    for (key, code) in KEY_NAMES {
         if name.eq_ignore_ascii_case(key) {
             return code;
         }
@@ -253,12 +380,15 @@ fn binding(m: &mut Shortcuts, key: &[u8], value: &[u8], allow_key: bool, allow_p
         m.rejected += 1;
         return false;
     }
-    for i in 0..m.count as usize {
-        let old = &mut m.bindings[i];
-        if old.code == b.code && old.mods == b.mods && old.src == b.src {
-            *old = b;
-            return true;
-        }
+    // Every line is kept (one key may have an action in each place: shortcuts_lookup_at); the same key with
+    // the same action again moves to the end, so a later line still decides, as before.
+    if let Some(i) = (0..m.count as usize).find(|&i| {
+        let o = &m.bindings[i];
+        o.code == b.code && o.mods == b.mods && o.src == b.src && o.action == b.action
+    }) {
+        m.bindings.copy_within(i + 1..m.count as usize, i);
+        m.bindings[m.count as usize - 1] = b;
+        return true;
     }
     if m.count == SHORTCUT_MAX as i32 {
         m.rejected += 1;
@@ -342,19 +472,40 @@ fn shortcuts_load_sources(map: &mut Shortcuts, path: &str, allow_key: bool, allo
     parse(map, &text, allow_key, allow_pad);
 }
 
+/// A starter map's text read as shortcuts.ini is (live-keys.ini's starter is made from it).
+pub(crate) fn shortcuts_parse_text(text: &str) -> Shortcuts {
+    let mut m = Shortcuts::default();
+    parse(&mut m, text.as_bytes(), true, true);
+    m
+}
+
 /// access(path, F_OK) == 0
 fn access_ok(path: &str) -> bool {
     std::fs::metadata(path).is_ok()
 }
+/// The action of a key (or a controller's button) in any place: the last line for it whose action acts
+/// somewhere on this build; SHORTCUT_NONE for none.
 pub fn shortcuts_lookup(map: &Shortcuts, src: impl Into<ActionSrc>, code: i32, mods: i32) -> i32 {
+    shortcuts_lookup_at(map, src, code, mods, PL_ALL)
+}
+
+/// The action of a key (or a controller's button) pressed in place (app_place's PL_* bit): the last line for
+/// it whose action acts there; SHORTCUT_NONE for none. An Apple keyboard's Cmd reports as Meta: a key with Meta
+/// held and no line for it is looked up again with Ctrl in Meta's place, so Cmd+Z is Undo too.
+pub fn shortcuts_lookup_at(map: &Shortcuts, src: impl Into<ActionSrc>, code: i32, mods: i32, place: u8) -> i32 {
     let src = src.into();
-    for i in 0..map.count as usize {
-        let b = &map.bindings[i];
-        if b.src == src && b.code == code && b.mods == mods {
-            return b.action;
-        }
+    let find = |mods: i32| {
+        map.bindings[..map.count as usize]
+            .iter()
+            .rev()
+            .find(|b| b.src == src && b.code == code && b.mods == mods && action_places(b.action) & place != 0)
+            .map_or(SHORTCUT_NONE, |b| b.action)
+    };
+    let action = find(mods);
+    if action == SHORTCUT_NONE && src == ActionSrc::Key && mods & KEYMOD_META != 0 {
+        return find((mods & !KEYMOD_META) | KEYMOD_CTRL);
     }
-    SHORTCUT_NONE
+    action
 }
 /// creates only if absent
 pub fn shortcuts_write_defaults(path: &str) -> i32 {
@@ -382,6 +533,27 @@ fn add_dpad(map: &mut Shortcuts) {
         map.count += 1;
         i += 1;
     }
+}
+/// The Graph's starter keys: Left, Right, Up and Down pan, V switches its view.
+const GRAPH_KEYS: [(i32, i32); 5] = [
+    (105, SHORTCUT_PAN_LEFT), (106, SHORTCUT_PAN_RIGHT), (103, SHORTCUT_PAN_UP), (108, SHORTCUT_PAN_DOWN), (47, SHORTCUT_GRAPH_VIEW),
+];
+/// The key's action in the Graph: the last line for it whose action acts there
+/// (shortcuts_lookup_at with PL_GRAPH). The Graph's actions (graph-view and the four pans) came after every
+/// shortcuts.ini written before 2.0.0-beta.2: a starter map nobody edited becomes this build's at the start
+/// (shortcuts_upgrade_starter), and an edited one that binds none of the five, and is not empty, has GRAPH_KEYS
+/// there too for a key with no line in the Graph, as an old file has the D-pad's lines (add_dpad): its own lines
+/// keep their meaning everywhere, nothing is added to the map or the file, and a file that binds any of the five
+/// is taken as written.
+pub fn shortcuts_lookup_graph(map: &Shortcuts, src: impl Into<ActionSrc>, code: i32, mods: i32) -> i32 {
+    let src = src.into();
+    let action = shortcuts_lookup_at(map, src, code, mods, PL_GRAPH);
+    let graph = |id: i32| (SHORTCUT_GRAPH_VIEW..=SHORTCUT_PAN_DOWN).contains(&id);
+    if action != SHORTCUT_NONE || src != ActionSrc::Key || mods != 0 || map.count == 0
+        || map.bindings[..map.count as usize].iter().any(|b| graph(b.action)) {
+        return action;
+    }
+    GRAPH_KEYS.iter().find(|k| k.0 == code).map_or(SHORTCUT_NONE, |k| k.1)
 }
 /// controller.ini (Settings > Controller > Buttons): the gamepad buttons learned there. While it is
 /// there they come from it alone (shortcuts.ini's pad.* lines are set aside); key.* lines are
@@ -587,3 +759,81 @@ pub fn shortcut_pad_label(code: i32, switch_layout: bool, out: &mut String, cap:
 /// An action's name in the files ("undo", "tool:eraser"), or None.
 pub fn shortcut_action_name(action: i32) -> Option<&'static str> {
     action_info(action ) .map(|a| a .name)}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn load(name: &str, text: Option<&str>) -> Shortcuts {
+        let dir = std::env::temp_dir().join(format!("grimoire-shortcuts-{}-{name}", std::process::id()));
+        let _ = std::fs::create_dir_all(&dir);
+        let path = dir.join("shortcuts.ini");
+        let _ = std::fs::remove_file(&path);
+        if let Some(text) = text {
+            std::fs::write(&path, text).unwrap();
+        }
+        let mut map = Shortcuts::default();
+        shortcuts_load_all(&mut map, path.to_str().unwrap(), dir.join("none.ini").to_str().unwrap());
+        let _ = std::fs::remove_dir_all(&dir);
+        map
+    }
+    const LEFT: i32 = 105;
+    const UP: i32 = 103;
+    const V: i32 = 47;
+
+    // The Graph's actions are names the files can use, by keys and by a controller's buttons.
+    #[test]
+    fn the_graphs_actions_have_names() {
+        for (name, id) in [("graph-view", SHORTCUT_GRAPH_VIEW), ("pan-left", SHORTCUT_PAN_LEFT), ("pan-right", SHORTCUT_PAN_RIGHT),
+            ("pan-up", SHORTCUT_PAN_UP), ("pan-down", SHORTCUT_PAN_DOWN)] {
+            assert_eq!(shortcut_action(name), id);
+            assert_eq!(shortcut_action_name(id), Some(name));
+            assert_eq!(action_sources(id), SRC_KEY | SRC_PAD | SRC_PEN);
+            assert!(!action_label(id).is_empty() && action_label(id) != "?");
+        }
+        assert!(SHORTCUT_LAST >= SHORTCUT_PAN_DOWN, "the loops over 1..=SHORTCUT_LAST reach them");
+    }
+
+    // The Graph's keys by place: the starter map's arrows turn pages on a page and pan in
+    // the Graph, V switches its view. A file written before the Graph's actions and edited (so never upgraded)
+    // that binds none of them has the arrows and V in the Graph too, its own lines keeping their meaning; a file
+    // that binds any of them is taken as written; an empty file keeps nothing. Nothing is added to the map.
+    #[test]
+    fn an_older_file_has_the_graphs_keys_in_the_graph_only() {
+        let look = |m: &Shortcuts, src: ActionSrc, code: i32, mods: i32| shortcuts_lookup_graph(m, src, code, mods);
+        let map = load("defaults", None);
+        assert_eq!(map.rejected, 0);
+        assert_eq!(shortcuts_lookup_at(&map, ActionSrc::Key, LEFT, 0, PL_PAGE), SHORTCUT_PREV_PAGE);
+        assert_eq!(look(&map, ActionSrc::Key, LEFT, 0), SHORTCUT_PAN_LEFT);
+        assert_eq!(look(&map, ActionSrc::Key, UP, 0), SHORTCUT_PAN_UP);
+        assert_eq!(look(&map, ActionSrc::Key, V, 0), SHORTCUT_GRAPH_VIEW);
+        assert_eq!(look(&map, ActionSrc::Key, V, KEYMOD_CTRL), SHORTCUT_NONE);
+        // Ctrl+= and Ctrl+A act in the Graph as written.
+        assert_eq!(look(&map, ActionSrc::Key, 13, KEYMOD_CTRL), SHORTCUT_ZOOM_IN);
+        assert_eq!(look(&map, ActionSrc::Key, 30, KEYMOD_CTRL), SHORTCUT_SELECT_ALL);
+        // An older file someone edited: its lines keep their meaning on a page, and the Graph has its keys.
+        let old = load("old", Some("key.Left=previous-page\nkey.Up=previous-tool\nkey.Ctrl+z=undo\n"));
+        assert_eq!(old.rejected, 0);
+        assert_eq!(shortcuts_lookup_at(&old, ActionSrc::Key, LEFT, 0, PL_PAGE), SHORTCUT_PREV_PAGE);
+        assert_eq!(shortcuts_lookup_at(&old, ActionSrc::Key, UP, 0, PL_PAGE), SHORTCUT_PREV_TOOL);
+        assert_eq!(look(&old, ActionSrc::Key, LEFT, 0), SHORTCUT_PAN_LEFT);
+        assert_eq!(look(&old, ActionSrc::Key, UP, 0), SHORTCUT_PAN_UP);
+        assert_eq!(look(&old, ActionSrc::Key, V, 0), SHORTCUT_GRAPH_VIEW);
+        // (a controller's D-pad is not the keyboard: it keeps its page turns, which act on a page)
+        assert_eq!(look(&old, ActionSrc::Pad, 546, 0), SHORTCUT_NONE);
+        // A file naming one of them: no starter key.
+        let own = load("own", Some("key.Left=previous-page\nkey.g=graph-view\n"));
+        assert_eq!(look(&own, ActionSrc::Key, LEFT, 0), SHORTCUT_NONE);
+        assert_eq!(look(&own, ActionSrc::Key, V, 0), SHORTCUT_NONE);
+        assert_eq!(look(&own, ActionSrc::Key, 34, 0), SHORTCUT_GRAPH_VIEW);
+        let empty = load("empty", Some(""));
+        assert_eq!(look(&empty, ActionSrc::Key, LEFT, 0), SHORTCUT_NONE);
+        // The last line for the key that acts in the Graph wins there.
+        let both = load("both", Some("key.Left=pan-right\nkey.Left=pan-left\n"));
+        assert_eq!(look(&both, ActionSrc::Key, LEFT, 0), SHORTCUT_PAN_LEFT);
+        // One action in each place: a page turn then a pan for Left both act, each in its own place.
+        let turn_then_pan = load("turn-then-pan", Some("key.Left=previous-page\nkey.Left=pan-left\n"));
+        assert_eq!(shortcuts_lookup_at(&turn_then_pan, ActionSrc::Key, LEFT, 0, PL_PAGE), SHORTCUT_PREV_PAGE);
+        assert_eq!(look(&turn_then_pan, ActionSrc::Key, LEFT, 0), SHORTCUT_PAN_LEFT);
+    }
+}

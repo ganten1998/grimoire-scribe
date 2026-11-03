@@ -2,7 +2,10 @@
 """kindle/app/bluetooth.sh on the host, with the Kindle's commands faked: the stock Bluetooth jobs
 (status/start/initctl), the helper (a script that answers /health while it runs) and curl. Checks
 that it starts only a helper of its own, never one someone else runs, records and restores the stock
-jobs, stops only what it started, and keeps the media remote off in Grimoire's own folder."""
+jobs, stops what it started and whatever runs from Grimoire's own folder (recorded or not) but never a
+helper someone else runs elsewhere, and keeps the media remote off in Grimoire's own folder. The fake
+helper runs as the real one does: its program execs a loader in dist/, so its command line names its
+folder and never kindle-hid-passthrough."""
 import os
 import signal
 import stat
@@ -44,9 +47,15 @@ class BluetoothScript(unittest.TestCase):
         # curl: /health answers while the fake helper's "up" file is there.
         write(os.path.join(self.bin, 'curl'), '#!/bin/sh\nif [ -e "%s/up" ]; then echo \'{"ok": true}\'; '
               'else exit 7; fi\n' % self.tmp)
-        write(os.path.join(self.bin, 'pgrep'), '#!/bin/sh\nexit 1\n')
+        # pgrep, blind to every process whose command line does not name this test's folder: another
+        # run's helpers (a gate in another worktree runs these tests too) are never seen.
+        write(os.path.join(self.bin, 'pgrep'),
+              '#!/bin/sh\nfound=1\nfor p in $(/usr/bin/pgrep "$@"); do\n'
+              '  if ps -o command= -p "$p" 2>/dev/null | grep -qF "%s"; then echo "$p"; found=0; fi\n'
+              'done\nexit $found\n' % self.tmp)
         self.env = dict(os.environ, PATH=self.bin + ':/usr/bin:/bin', GRIMOIRE_ROOT=self.root,
                         BT_STATE=os.path.join(self.tmp, 'state'), BT_NO_PROC='1')
+        self.launched = []
 
     def tearDown(self):
         pid_file = os.path.join(self.tmp, 'state', 'pid')
@@ -55,15 +64,38 @@ class BluetoothScript(unittest.TestCase):
                 os.kill(int(read(pid_file)), signal.SIGKILL)
             except (OSError, ValueError):
                 pass
+        for pid in self.launched:
+            try:
+                os.kill(pid, signal.SIGKILL)
+            except OSError:
+                pass
+        cursor = os.path.join(self.tmp, 'cursor.pid')
+        if os.path.exists(cursor):
+            try:
+                os.kill(int(read(cursor)), signal.SIGKILL)
+            except (OSError, ValueError):
+                pass
         subprocess.run(['rm', '-rf', self.tmp])
+
+    def program(self, d, body):
+        # As the helper's release ships it: kindle-hid-passthrough is a wrapper that execs the loader
+        # in dist/ with dist/main.bin (here the loader is the helper's body), so the helper's command
+        # line is "<d>/dist/ld-linux-armhf.so.3 --library-path <d>/dist <d>/dist/main.bin --daemon".
+        write(os.path.join(d, 'kindle-hid-passthrough'),
+              '#!/bin/sh\nd=$(cd "$(dirname "$0")" && pwd)\n'
+              'exec "$d/dist/ld-linux-armhf.so.3" --library-path "$d/dist" "$d/dist/main.bin" "$@"\n')
+        write(os.path.join(d, 'dist', 'ld-linux-armhf.so.3'), '#!/bin/sh\n' + body)
+        write(os.path.join(d, 'dist', 'main.bin'), '', 0o644)
+
+    def serving(self, up):
+        # --daemon makes the file "up" and runs until TERM (which takes it away).
+        return 'touch "%s"\ntrap \'rm -f "%s"; exit 0\' TERM\nwhile :; do sleep 0.1; done\n' % (up, up)
 
     def helper(self, behaviour='serve'):
         # The helper: --daemon makes "up" and runs until TERM (which takes "up" away), or dies at once.
         d = os.path.join(self.root, 'bluetooth')
-        body = {'serve': 'touch "%s/up"\ntrap \'rm -f "%s/up"; exit 0\' TERM\nwhile :; do sleep 0.1; done\n'
-                         % (self.tmp, self.tmp),
-                'die': 'exit 3\n'}[behaviour]
-        write(os.path.join(d, 'kindle-hid-passthrough'), '#!/bin/sh\n' + body)
+        body = {'serve': self.serving(os.path.join(self.tmp, 'up')), 'die': 'exit 3\n'}[behaviour]
+        self.program(d, body)
         # As the helper's release ships it (3.18), shortened.
         write(os.path.join(d, 'config.ini'),
               '# BLE/Classic HID Host Configuration\n\n[paths]\ncache_dir = /mnt/us/kindle_hid_passthrough/cache\n'
@@ -72,11 +104,17 @@ class BluetoothScript(unittest.TestCase):
               'log_file = /var/log/hid_passthrough.log\n', 0o644)
         return d
 
-    def stubborn_helper(self):
+    def stubborn_helper(self, cursor=False):
         # A helper that ignores TERM (stuck detaching a device): stop-owned waits its 12 s, then KILLs.
+        # With cursor, it first starts its mouse cursor overlay (scripts/mousecursor), which it would
+        # take down on a clean exit and cannot once killed.
         d = os.path.join(self.root, 'bluetooth')
-        write(os.path.join(d, 'kindle-hid-passthrough'),
-              '#!/bin/sh\ntrap "" TERM\ntouch "%s/up"\nwhile :; do /bin/sleep 0.1; done\n' % self.tmp)
+        start = ''
+        if cursor:
+            write(os.path.join(d, 'scripts', 'mousecursor'),
+                  '#!/bin/sh\necho $$ > "%s/cursor.pid"\nwhile :; do /bin/sleep 0.1; done\n' % self.tmp)
+            start = '"%s/scripts/mousecursor" &\n' % d
+        self.program(d, 'trap "" TERM\n%stouch "%s/up"\nwhile :; do /bin/sleep 0.1; done\n' % (start, self.tmp))
         return d
 
     def busybox_env(self, with_usleep):
@@ -94,6 +132,34 @@ class BluetoothScript(unittest.TestCase):
     def run_script(self, *args):
         p = subprocess.run(['sh', SCRIPT, *args], env=self.env, capture_output=True, text=True, timeout=30)
         return p.returncode, p.stdout.strip(), p.stderr
+
+    def launch(self, d):
+        # The helper in d started by someone, not by the script (as the helper's own scripts or a
+        # restart would), from a shell that leaves at once, as the helper's own start script does: its
+        # pid. (Not a child of this test, which would keep it a zombie, alive to kill -0, once stopped.)
+        p = subprocess.run(['sh', '-c', '"$1" --daemon </dev/null >/dev/null 2>&1 & echo $!', 'sh',
+                            os.path.join(d, 'kindle-hid-passthrough')], capture_output=True, text=True, timeout=10)
+        pid = int(p.stdout)
+        self.launched.append(pid)
+        return pid
+
+    def wait_for(self, what, timeout=10.0):
+        end = time.time() + timeout
+        while time.time() < end:
+            if what():
+                return True
+            time.sleep(0.05)
+        return what()
+
+    @staticmethod
+    def alive(pid):
+        try:
+            os.kill(pid, 0)
+        except OSError:
+            return False
+        # (a zombie of ours, not yet reaped, is gone too)
+        out = subprocess.run(['ps', '-o', 'stat=', '-p', str(pid)], capture_output=True, text=True).stdout
+        return out.strip() != '' and not out.strip().startswith('Z')
 
     def test_missing_helper(self):
         self.assertEqual(self.run_script('status')[1], 'missing')
@@ -153,9 +219,16 @@ class BluetoothScript(unittest.TestCase):
             p = subprocess.run(['sh', SCRIPT, 'stop-owned'], env=env, capture_output=True, text=True, timeout=30)
             self.assertEqual(p.stdout.strip(), 'stopped')
             self.assertIsNone(other.poll())  # still running
+            # (The helper itself runs from Grimoire's folder: Grimoire's, recorded or not, so it is
+            # stopped all the same.)
+            self.assertFalse(self.alive(int(real)))
         finally:
             other.kill()
-            os.kill(int(real), signal.SIGKILL)
+            other.wait()
+            try:
+                os.kill(int(real), signal.SIGKILL)
+            except OSError:
+                pass
 
 
     def stop_with_busybox(self, with_usleep):
@@ -175,6 +248,84 @@ class BluetoothScript(unittest.TestCase):
     def test_the_stop_grace_waits_whole_seconds_without_usleep(self):
         # No usleep and no fractions: twelve whole seconds, the same 12 s.
         self.assertEqual(self.stop_with_busybox(False), ['sleep 1'] * 12)
+
+    def test_a_helper_whose_record_was_lost_is_still_stopped(self):
+        # The record goes (a pid file removed, /tmp/grimoire-bt cleaned) while the helper runs: the
+        # stop used to know the helper by that record alone and left it running, with the Kindle's own
+        # jobs started again beside it. It runs from Grimoire's folder, so it is stopped.
+        self.helper()
+        open(os.path.join(self.jobs, 'btmanagerd'), 'w').close()
+        self.assertEqual(self.run_script('start')[1], 'owned')
+        pid = int(read(os.path.join(self.tmp, 'state', 'pid')))
+        os.remove(os.path.join(self.jobs, 'btmanagerd'))  # the helper stopped it
+        os.remove(os.path.join(self.tmp, 'state', 'pid'))
+        os.remove(os.path.join(self.tmp, 'state', 'dir'))
+        rc, out, err = self.run_script('stop-owned')
+        self.assertEqual((rc, out), (0, 'stopped'), err)
+        self.assertTrue(self.wait_for(lambda: not self.alive(pid)))
+        self.assertFalse(os.path.exists(os.path.join(self.tmp, 'up')))
+        self.assertEqual(read(os.path.join(self.tmp, 'started')).split(), ['btmanagerd'])
+
+    def test_a_helper_restarted_outside_the_script_is_stopped(self):
+        # The recorded helper ended and the same program was started again by someone else (the
+        # helper's own scripts, say): the record names a pid that is gone.
+        d = self.helper()
+        self.assertEqual(self.run_script('start')[1], 'owned')
+        first = int(read(os.path.join(self.tmp, 'state', 'pid')))
+        os.kill(first, signal.SIGTERM)
+        self.assertTrue(self.wait_for(lambda: not os.path.exists(os.path.join(self.tmp, 'up'))))
+        again = self.launch(d)
+        self.assertTrue(self.wait_for(lambda: os.path.exists(os.path.join(self.tmp, 'up'))))
+        rc, out, err = self.run_script('stop-owned')
+        self.assertEqual((rc, out), (0, 'stopped'), err)
+        self.assertNotIn('killing it', err)  # TERM, and it left as it does
+        self.assertFalse(self.alive(again))
+        self.assertFalse(os.path.exists(os.path.join(self.tmp, 'up')))
+
+    def test_start_takes_back_a_helper_of_its_own_folder(self):
+        # One runs from Grimoire's folder with no record: start takes it back as its own instead of
+        # calling it someone else's (whose helper Grimoire never stops) or starting a second one.
+        d = self.helper()
+        running = self.launch(d)
+        self.assertTrue(self.wait_for(lambda: os.path.exists(os.path.join(self.tmp, 'up'))))
+        rc, out, err = self.run_script('start')
+        self.assertEqual((rc, out), (0, 'owned'), err)
+        self.assertIn('taking it back', err)
+        self.assertEqual(int(read(os.path.join(self.tmp, 'state', 'pid'))), running)
+        self.assertFalse(os.path.exists(os.path.join(self.tmp, 'state', 'helper.log')))  # none started
+        self.assertEqual(self.run_script('status')[1], 'owned')
+        rc, out, err = self.run_script('stop-owned')
+        self.assertEqual((rc, out), (0, 'stopped'), err)
+        self.assertNotIn('killing it', err)
+        self.assertFalse(self.alive(running))
+
+    def test_someone_elses_running_helper_is_never_stopped(self):
+        # A helper unpacked elsewhere and started by someone else, before its API answers: its command
+        # line names neither kindle-hid-passthrough nor Grimoire's folder, only its loader and program.
+        self.helper()
+        other = os.path.join(self.tmp, 'elsewhere', 'khp')
+        self.program(other, self.serving(os.path.join(self.tmp, 'other-up')))
+        p = self.launch(other)
+        self.assertTrue(self.wait_for(lambda: os.path.exists(os.path.join(self.tmp, 'other-up'))))
+        self.assertEqual(self.run_script('start')[1], 'external')  # not a second helper
+        self.assertFalse(os.path.exists(os.path.join(self.tmp, 'state', 'pid')))
+        self.assertEqual(self.run_script('stop-owned')[1], 'stopped')
+        self.assertTrue(self.alive(p))  # still running
+        self.assertTrue(os.path.exists(os.path.join(self.tmp, 'other-up')))
+
+    def test_a_killed_helper_leaves_no_cursor_overlay(self):
+        # The helper takes its mouse cursor overlay down as it leaves; one that has to be killed
+        # cannot, and the overlay stayed on the screen. It runs from the helper's folder: it goes too.
+        self.stubborn_helper(cursor=True)
+        self.assertEqual(self.run_script('start')[1], 'owned')
+        cursor = os.path.join(self.tmp, 'cursor.pid')
+        self.assertTrue(self.wait_for(lambda: os.path.exists(cursor) and read(cursor).strip() != ''))
+        overlay = int(read(cursor))
+        env, _ = self.busybox_env(True)
+        p = subprocess.run(['sh', SCRIPT, 'stop-owned'], env=env, capture_output=True, text=True, timeout=30)
+        self.assertEqual(p.stdout.strip(), 'stopped')
+        self.assertIn('the helper did not stop: killing it', p.stderr)
+        self.assertTrue(self.wait_for(lambda: not self.alive(overlay)))
 
     def test_a_stale_lock_is_taken_after_its_wait(self):
         env, log = self.busybox_env(True)

@@ -41,6 +41,9 @@ pub struct NotebookInfo {
     /// notebook.ini lines this build does not know ("key=value\n"
     /// each), written back as they were
     pub extra: FixedStr<STORE_EXTRA_LEN>,
+    /// left out of the Graph of all notebooks (notebook.ini graph=0, 2.0.0-beta.2; the Library's notebook
+    /// menu): its pages are no nodes there, links to it no edges. Older versions carry the line as it is.
+    pub graph_omit: bool,
 }
 
 impl NotebookInfo {
@@ -206,6 +209,8 @@ struct State {
     /// unknown lines past the bound, logged once per load
     g_set_dropped: i32,
     g_kept: Vec<Kept>,
+    /// how many notebook.ini files store_load_info has read (store_info_reads)
+    g_info_reads: u32,
 }
 
 impl State {
@@ -223,6 +228,7 @@ impl State {
             g_set_unknown: Vec::new(),
             g_set_dropped: 0,
             g_kept: Vec::new(),
+            g_info_reads: 0,
         }
     }
 }
@@ -802,6 +808,7 @@ fn info_cb(nb: &mut NotebookInfo, k: &[u8], v: &[u8]) -> bool {
         b"page_w" => nb.page_w = size_value(v).0,
         b"page_h" => nb.page_h = size_value(v).0,
         // The book it annotates (1.1 on, annotate.h); a value of another form is a newer version's.
+        b"graph" if v == b"0" || v == b"1" => nb.graph_omit = v == b"0",
         b"source" if source_ok(v) => {
             nb.source.set_bytes(v);
         }
@@ -905,6 +912,12 @@ fn notebook_size_from_pages(dir: &str, nb: &mut NotebookInfo) {
     nb.page_h = sh[best];
 }
 
+/// How many notebook.ini files this thread has read (store_load_info): what a test counts to show a
+/// screen reads each notebook once.
+pub fn store_info_reads() -> u32 {
+    with(|s| s.g_info_reads)
+}
+
 /// A notebook.ini with no page size (versions before 1.1 write none, and 1.0.0-beta drops it on a
 /// save) takes the size of its first page file that has one, else the device's.
 pub fn store_load_info(id_in: &str, out: &mut NotebookInfo) -> i32 {
@@ -915,7 +928,10 @@ pub fn store_load_info(id_in: &str, out: &mut NotebookInfo) -> i32 {
     *out = NotebookInfo::default();
     out.id.set_bytes(id.as_bytes());
     let path = cformat!("%s/notebook.ini", &dir);
-    with(|s| s.g_info_dropped = 0);
+    with(|s| {
+        s.g_info_dropped = 0;
+        s.g_info_reads = s.g_info_reads.wrapping_add(1);
+    });
     if ini_parse_file(&path, &mut |k, v| {
         if !info_cb(out, k, v) {
             info_unknown(out, k, v);
@@ -966,7 +982,11 @@ pub fn store_load_info(id_in: &str, out: &mut NotebookInfo) -> i32 {
 fn write_info(nb: &NotebookInfo) -> i32 {
     let Some(dir) = notebook_dir(nb.id.as_bytes()) else { return -1 ;
     };
-    write_info_at(&dir, nb)
+    let rc = write_info_at(&dir, nb);
+    if rc == 0 {
+        libindex_note_info(nb); // (the Graph of all notebooks' index: its pages, name and folder now)
+    }
+    rc
 }
 
 /// A notebook built in a folder of its own before it becomes one (an import, in a dot-folder that
@@ -1010,6 +1030,9 @@ fn write_info_at(dir: &str, nb: &NotebookInfo) -> i32 {
     sb_printf(&mut b, "page_w=%d\npage_h=%d\n", &[val(pw), val(ph)]);
     if source_ok(nb.source.as_bytes()) {
         sb_printf(&mut b, "source=%s\n", &[raw(nb.source.as_bytes())]);
+    }
+    if nb.graph_omit {
+        b.extend_from_slice(b"graph=0\n"); // (2.0.0-beta.2; no line: in the Graph)
     }
     b.extend_from_slice(nb.extra.as_bytes()); // keys a newer version wrote, as they were
     write_file_atomic(&path, &b)
@@ -1310,12 +1333,38 @@ pub fn store_start_on(nb: &mut NotebookInfo, paper: PaperKind) -> i32 {
     store_save_info(nb)
 }
 
+#[cfg(test)]
+thread_local! {
+    /// tests: the next random suffixes, in order (a collision made on purpose)
+    static FORCED_HEX: std::cell::RefCell<std::collections::VecDeque<String>> = const { std::cell::RefCell::new(std::collections::VecDeque::new()) };
+}
+
+/// Tests: the next ids' random suffixes (each 4 hex digits), in order; an empty list clears them.
+#[cfg(test)]
+pub(crate) fn store_force_random_hex(next: &[&str]) {
+    FORCED_HEX.with(|f| {
+        let mut f = f.borrow_mut();
+        if next.is_empty() {
+            f.clear();
+        }
+        f.extend(next.iter().map(|h| h.to_string()));
+    });
+}
+
 fn random_hex(n: usize) -> String {
+    #[cfg(test)]
+    if let Some(h) = FORCED_HEX.with(|f| f.borrow_mut().pop_front()) {
+        return h;
+    }
     let mut b = [0u8; 8];
-    let ok = std::fs::File::open("/dev/urandom").is_ok_and(|mut f| matches!(f.read(&mut b), Ok(8)));
-    if !ok {
-        let x: u32 = now_ms() ^ (std::process::id()).wrapping_mul(2654435761u32);
+    if !crate::util::random_fill(&mut b) {
+        // (no system randomness: the clock, the writer and a count, so two ids made in the same
+        // millisecond on the same thread still differ)
+        static COUNT: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
+        let k = COUNT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        let x: u32 = now_ms() ^ (std::process::id()).wrapping_mul(2654435761u32) ^ k.wrapping_mul(0x9e37_79b9).rotate_left(16);
         b[..4].copy_from_slice(&x.to_ne_bytes());
+        b[4..].copy_from_slice(&k.to_ne_bytes());
     }
     const HX: &[u8; 16] = b"0123456789abcdef";
     (0..n)
@@ -1412,6 +1461,21 @@ pub fn store_rename(id: &str, name: &str) -> i32 {
     rc
 }
 
+/// Notebook id left out of the Graph of all notebooks, or shown there again (notebook.ini graph=0): its
+/// notebook.ini written with nothing else changed (not even modified: the Library's order stays).
+pub fn store_set_graph_omit(id: &str, omit: bool) -> i32 {
+    let mut nb = NotebookInfo::default();
+    let rc = store_load_info(id, &mut nb);
+    if rc != 0 {
+        return rc;
+    }
+    if nb.graph_omit == omit {
+        return 0;
+    }
+    nb.graph_omit = omit;
+    write_info(&nb)
+}
+
 pub fn store_set_folder(id: &str, folder: &str) -> i32 {
     // Preserve the historic UTF-8 truncation of flat names. Nested destinations must never
     // silently become a different path; the Library validates all new joins before calling us.
@@ -1423,6 +1487,9 @@ pub fn store_set_folder(id: &str, folder: &str) -> i32 {
     if rc == 0 {
         clean_line(&mut nb.folder, folder.as_bytes());
         rc = store_save_info(&mut nb);
+    }
+    if rc == 0 {
+        graph_omit_prune(); // (the folder it left may be gone)
     }
     rc
 }
@@ -1453,7 +1520,12 @@ pub fn store_delete(id: &str) -> i32 {
     let Some(dir) = notebook_dir(id.as_bytes()) else {
         return -1;
     };
-    move_to_trash(&dir, id)
+    let rc = move_to_trash(&dir, id);
+    if rc == 0 {
+        libindex_note_gone(id);
+        graph_omit_prune(); // (its folder may be gone with it)
+    }
+    rc
 }
 
 fn cmp_modified(x: &NotebookInfo, y: &NotebookInfo) -> Ordering {
@@ -1550,6 +1622,128 @@ fn save_folders_ini(f: &[FolderName]) -> i32 {
         buf.push(b'\n');
     }
     write_file_atomic(&path, &buf)
+}
+
+// ---- folders left out of the Graph (root/graph-omit.ini, 2.0.0-beta.2) ----
+//
+// # Grimoire: folders left out of the Graph of all notebooks
+// folder=School/2025
+//
+// One line a folder (its logical path, as notebook.ini's folder= writes it); everything inside it, nested
+// folders and notebooks moved in later included, is left out. Kept apart from folders.ini, whose every line
+// older versions read as a folder's name. No other version reads it; one that renames or removes a folder
+// leaves a stale line, which names no folder and so leaves nothing out.
+
+const GRAPH_OMIT_HEADER: &[u8] = b"# Grimoire: folders left out of the Graph of all notebooks\n";
+/// graph-omit.ini is read up to this size; a bigger one is not this version's and leaves nothing out.
+pub const GRAPH_OMIT_FILE_MAX: usize = 64 * 1024;
+
+fn graph_omit_path() -> String {
+    cformat!("%s/graph-omit.ini", &g_root())
+}
+
+/// The folders left out of the Graph of all notebooks (graph-omit.ini), as written; none when there is no
+/// such file or it does not read.
+pub fn store_graph_omit_folders() -> Vec<String> {
+    let mut out = Vec::new();
+    let path = graph_omit_path();
+    if std::fs::metadata(&path).map_or(true, |m| !m.is_file() || m.len() as usize > GRAPH_OMIT_FILE_MAX) {
+        return out;
+    }
+    let Some(txt) = read_file(&path) else { return out };
+    for line in txt.split(|&c| c == b'\n') {
+        let line = line.strip_suffix(b"\r").unwrap_or(line);
+        let Some(v) = line.strip_prefix(b"folder=") else { continue };
+        let Ok(f) = std::str::from_utf8(v) else { continue };
+        if store_folder_valid(f) && !out.iter().any(|o: &String| o == f) {
+            out.push(f.to_string());
+        }
+    }
+    out
+}
+
+fn save_graph_omit(folders: &[String]) -> i32 {
+    let path = graph_omit_path();
+    if folders.is_empty() {
+        return match std::fs::remove_file(&path) {
+            Err(e) if e.kind() != std::io::ErrorKind::NotFound => -1,
+            _ => 0,
+        };
+    }
+    let mut b = GRAPH_OMIT_HEADER.to_vec();
+    for f in folders {
+        b.extend_from_slice(b"folder=");
+        b.extend_from_slice(f.as_bytes());
+        b.push(b'\n');
+    }
+    write_file_atomic(&path, &b)
+}
+
+/// Folder `path` (and everything in it) left out of the Graph of all notebooks, or shown there again.
+/// Showing a folder that is left out only because a folder around it is changes nothing.
+pub fn store_set_folder_graph_omit(path: &str, omit: bool) -> i32 {
+    if !store_folder_valid(path) {
+        return -1;
+    }
+    let mut f = store_graph_omit_folders();
+    let had = f.iter().any(|x| x == path);
+    if had == omit {
+        return 0;
+    }
+    if omit {
+        f.push(path.to_string());
+        f.sort();
+    } else {
+        f.retain(|x| x != path);
+    }
+    let rc = save_graph_omit(&f);
+    if rc == 0 {
+        libindex_note_omit();
+    }
+    rc
+}
+
+/// Whether folder `path` is left out of the Graph of all notebooks, by its own line or a folder around it.
+pub fn store_folder_graph_omitted(folders: &[String], path: &str) -> bool {
+    !path.is_empty() && folders.iter().any(|f| store_folder_contains(f, path))
+}
+
+// A folder renamed or moved (old to new, a subtree): its lines and those of the folders inside it follow.
+fn graph_omit_renamed(old: &str, new: &str) {
+    let f = store_graph_omit_folders();
+    if !f.iter().any(|x| store_folder_contains(old, x)) {
+        return;
+    }
+    let mut moved: Vec<String> = f.into_iter().map(|x| if store_folder_contains(old, &x) { format!("{}{}", new, &x[old.len()..]) } else { x }).filter(|x| store_folder_valid(x)).collect();
+    moved.sort();
+    moved.dedup();
+    if save_graph_omit(&moved) != 0 {
+        qlog!("store: graph-omit.ini not updated for a folder renamed");
+    }
+    libindex_note_omit();
+}
+
+// A folder that lived only through its notebooks' folder= paths (no folders.ini line: older builds, imports)
+// goes when its last notebook moves out or goes to the trash, with no removal: its graph-omit.ini lines go
+// with it, so a folder made later with that path starts in the Graph. (Lists the folders, which reads every
+// notebook.ini, only while some folder is left out.)
+fn graph_omit_prune() {
+    let f = store_graph_omit_folders();
+    if f.is_empty() {
+        return;
+    }
+    let mut all = Vec::new();
+    if store_list_folders(&mut all) != 0 {
+        return;
+    }
+    let kept: Vec<String> = f.iter().filter(|x| all.iter().any(|a| a == *x)).cloned().collect();
+    if kept.len() == f.len() {
+        return;
+    }
+    if save_graph_omit(&kept) != 0 {
+        qlog!("store: graph-omit.ini not updated for a folder gone");
+    }
+    libindex_note_omit();
 }
 
 /// Logical folder ancestry, with a component boundary (School does not contain Schoolwork).
@@ -1654,6 +1848,7 @@ pub fn store_rename_folder(old: &str, new: &str) -> i32 {
         }
         return -1;
     }
+    graph_omit_renamed(old, new);
     0
 }
 
@@ -1661,7 +1856,12 @@ pub fn store_rename_folder(old: &str, new: &str) -> i32 {
 pub fn store_remove_folder(name: &str) -> i32 {
     let mut f = load_folders_ini();
     f.retain(|x| x.as_bytes() != name.as_bytes());
-    save_folders_ini(&f)
+    let rc = save_folders_ini(&f);
+    if rc == 0 && store_graph_omit_folders().iter().any(|x| x == name) {
+        // (an empty folder gone: its Graph line too, so a new folder of that name starts in the Graph)
+        store_set_folder_graph_omit(name, false);
+    }
+    rc
 }
 
 // Folder names in the order a reader expects, accents or not: each letter compared as its base
@@ -1922,6 +2122,249 @@ pub fn store_add_page(nb: &mut NotebookInfo, at_index: i32, paper: PaperKind) ->
     0
 }
 
+/// Blank pages a batch added at once (the Pages view's held +, 2.0.0-beta.2), to take them back: the
+/// notebook's order before and after, the ids added (in order), and the bytes each was written with
+/// (one blank page, the same for all), and their paper (bg/pages.ini lists an image paper's pages). Kept by the
+/// Pages view, never written to disk; it goes with the notebook's closing. Its Redo (store_redo_add_pages)
+/// writes the same pages again from it.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct PageAddUndo {
+    pub notebook: String,
+    pub before: Vec<u32>,
+    pub after: Vec<u32>,
+    pub added: Vec<u32>,
+    pub blank: Vec<u8>,
+    pub paper: PaperKind,
+}
+
+impl PageAddUndo {
+    /// Whether it still undoes the newest change to nb's pages: the same notebook, its pages still the
+    /// list the batch left (a page added, deleted, copied or moved since changed it).
+    pub fn applies(&self, nb: &NotebookInfo) -> bool {
+        self.notebook.as_str() == nb.id.as_str() && self.after == nb.page_ids
+    }
+}
+
+/// How many more pages notebook nb can take (STORE_MAX_PAGES in all).
+pub fn store_room_for_pages(nb: &NotebookInfo) -> i32 {
+    STORE_MAX_PAGES.saturating_sub(nb.page_ids.len()) as i32
+}
+
+/// `n` blank pages at once at index `at_index` (clamped as store_add_page clamps it), each as
+/// store_add_page writes one (the notebook's page size, paper store_new_page_paper(nb, paper), an id
+/// whose file is not there already): the page files first, then bg/pages.ini once when the paper is an
+/// image paper, then notebook.ini once, which lists them all. A failure takes back every file it wrote
+/// and leaves nb as it was: no page is added (never some of them). -1 for n < 1, more pages than
+/// store_room_for_pages, or a file that cannot be written; 0 with `undo` the record that takes them
+/// back (store_undo_add_pages).
+pub fn store_add_pages(nb: &mut NotebookInfo, at_index: i32, n: i32, paper: PaperKind, undo: &mut Option<PageAddUndo>) -> i32 {
+    if n < 1 || n > store_room_for_pages(nb) {
+        return -1;
+    }
+    let at = clampi(at_index, 0, nb.npages()) as usize;
+    let (mut w, mut h) = (0, 0);
+    store_notebook_page_size(nb, &mut w, &mut h);
+    let paper = store_new_page_paper(nb, paper); // never another page's document picture
+    let mut p = page_new(w, h, paper);
+    p.nb.set_bytes(nb.id.as_bytes());
+    let mut blank = Vec::new();
+    if page_serialize(&p, &mut blank) != 0 {
+        return -1;
+    }
+    drop(p);
+    let mut added: Vec<u32> = Vec::new();
+    // (a failure takes back every page file this batch wrote, and says nothing was added)
+    macro_rules! bail {
+        () => {{
+            for &pid in &added {
+                let _ = std::fs::remove_file(page_path(nb, pid));
+            }
+            return -1;
+        }};
+    }
+    if added.try_reserve(n as usize).is_err() {
+        return -1;
+    }
+    let mut next = nb.next_page_id;
+    for _ in 0..n {
+        // (each page is an fsync'd write: a long batch keeps the pens read and the launcher's heartbeat
+        // going, as Copy to notebook... does)
+        work_pump();
+        // The next free id from `next` on (take_page_id's rule, without touching nb until the end).
+        let saved = nb.next_page_id;
+        nb.next_page_id = next;
+        let pid = take_page_id(nb);
+        nb.next_page_id = saved;
+        if pid == 0 || write_file_atomic(&page_path(nb, pid), &blank) != 0 {
+            bail!();
+        }
+        added.push(pid);
+        next = pid + 1;
+    }
+    let mut bgdir = String::new();
+    if paper_is_image(paper)
+        && (bgimage_dir(nb.id.as_str(), &mut bgdir, 700) != 0 || store_note_papers_in(&bgdir, &added, &vec![paper; added.len()]) != 0)
+    {
+        bail!();
+    }
+    let was = nb.clone();
+    nb.page_ids.splice(at..at, added.iter().copied());
+    nb.next_page_id = next;
+    if store_save_info(nb) != 0 {
+        *nb = was;
+        // Unlisted again (those pages are not there), in one write of bg/pages.ini as they were listed.
+        if paper_is_image(paper) && store_note_papers_in(&bgdir, &added, &vec![PAPER_BLANK; added.len()]) != 0 {
+            qlog!("store: %s: bg/pages.ini still lists the %d pages a failed batch took back", &nb.id, added.len() as i32);
+        }
+        bail!();
+    }
+    *undo = Some(PageAddUndo { notebook: nb.id.as_str().to_string(), before: was.page_ids, after: nb.page_ids.clone(), added, blank, paper });
+    0
+}
+
+/// Redoes a batch store_undo_add_pages took back (2.0.0-beta.2, the owner's ruling of 2026-11-03): the same
+/// pages again, with the same ids, at the same places (`u.after`), each file written with the bytes it had
+/// (the blank page the batch wrote: the undo took them back only while they were still that), an image
+/// paper listed again in bg/pages.ini, then notebook.ini once. last_page follows its page. -1 with nb as it
+/// was (and no file left behind) when `u` is not for nb as it is now (another notebook, or its pages are
+/// not the list from before the batch: a change since), one of its ids is listed or has a file that is
+/// not that blank page, or a file cannot be written.
+pub fn store_redo_add_pages(nb: &mut NotebookInfo, u: &PageAddUndo) -> i32 {
+    if u.notebook.as_str() != nb.id.as_str() || nb.page_ids != u.before || u.added.is_empty() {
+        return -1;
+    }
+    if u.added.len() > store_room_for_pages(nb) as usize || u.added.iter().any(|p| nb.page_ids.contains(p)) {
+        return -1;
+    }
+    let rest: Vec<u32> = u.after.iter().copied().filter(|p| !u.added.contains(p)).collect();
+    if rest != u.before || u.after.len() != u.before.len() + u.added.len() {
+        return -1; // (not the batch's lists: never from a batch)
+    }
+    // A file left where one of them was (its removal failed) is used only when it is still that blank page.
+    let mut written: Vec<u32> = Vec::new();
+    macro_rules! bail {
+        () => {{
+            for &pid in &written {
+                let _ = std::fs::remove_file(page_path(nb, pid));
+            }
+            return -1;
+        }};
+    }
+    for &pid in &u.added {
+        work_pump(); // (each page is an fsync'd write, as the batch's were)
+        let path = page_path(nb, pid);
+        match std::fs::read(&path) {
+            Ok(d) if d == u.blank => continue,
+            Ok(_) => bail!(),
+            Err(e) if e.raw_os_error() != Some(libc::ENOENT) => bail!(),
+            Err(_) => {}
+        }
+        if write_file_atomic(&path, &u.blank) != 0 {
+            bail!();
+        }
+        written.push(pid);
+    }
+    let mut bgdir = String::new();
+    if paper_is_image(u.paper)
+        && (bgimage_dir(nb.id.as_str(), &mut bgdir, 700) != 0 || store_note_papers_in(&bgdir, &u.added, &vec![u.paper; u.added.len()]) != 0)
+    {
+        bail!();
+    }
+    let was = nb.clone();
+    let open = nb.page_ids.get(nb.last_page.max(0) as usize).copied();
+    nb.page_ids = u.after.clone();
+    if let Some(i) = open.and_then(|pid| nb.page_ids.iter().position(|&p| p == pid)) {
+        nb.last_page = i as i32;
+    }
+    let past = u.added.iter().copied().max().unwrap_or(0).saturating_add(1);
+    nb.next_page_id = nb.next_page_id.max(past);
+    if store_save_info(nb) != 0 {
+        *nb = was;
+        if paper_is_image(u.paper) && store_note_papers_in(&bgdir, &u.added, &vec![PAPER_BLANK; u.added.len()]) != 0 {
+            qlog!("store: %s: bg/pages.ini still lists the %d pages a failed redo took back", &nb.id, u.added.len() as i32);
+        }
+        bail!();
+    }
+    0
+}
+
+/// The paper of page `index` as a page added after it takes it (store_new_page_paper does the rest): its
+/// file's paper read from the file's start, without its strokes (a dense page is seconds of reading on a
+/// Kindle), an image paper an older version saved as Blank given back from bg/pages.ini as an open gives it
+/// back; the notebook's paper for a page whose file is missing, does not read or is from a newer version
+/// (shown blank, its paper unknown), as an open shows it.
+pub fn store_page_paper(nb: &NotebookInfo, index: i32) -> PaperKind {
+    let Some(&pid) = nb.page_ids.get(index.max(0) as usize).filter(|_| index >= 0) else { return nb.paper };
+    let mut b = [0u8; 20];
+    let Ok(mut f) = std::fs::File::open(page_path(nb, pid)) else { return nb.paper };
+    let mut got = 0;
+    while got < b.len() {
+        match f.read(&mut b[got..]) {
+            Ok(0) | Err(_) => break,
+            Ok(n) => got += n,
+        }
+    }
+    if got < 16 || &b[..4] != b"QPG1" {
+        return nb.paper;
+    }
+    let ver = u16::from_le_bytes([b[4], b[5]]);
+    let paper = match ver {
+        1 => u16::from_le_bytes([b[6], b[7]]) as u32,
+        2 if got >= 20 => u32::from_le_bytes([b[16], b[17], b[18], b[19]]),
+        _ => return nb.paper,
+    };
+    let mut p = page_new(1, 1, PaperKind(paper));
+    side_restore(nb, pid, &mut p);
+    p.paper
+}
+
+/// Whether the pages a batch added are still as it wrote them: each file byte for byte the blank page
+/// it was (or not there at all, which holds nothing either). One page drawn on, even with the ink erased
+/// again, is not.
+pub fn store_added_pages_untouched(nb: &NotebookInfo, u: &PageAddUndo) -> bool {
+    u.added.iter().all(|&pid| match std::fs::read(page_path(nb, pid)) {
+        Ok(d) => d == u.blank,
+        Err(e) => e.raw_os_error() == Some(libc::ENOENT),
+    })
+}
+
+/// Takes back the pages a batch added (store_add_pages): notebook.ini written with the list as it was
+/// before the batch, last_page following its page (the page before the batch when it named one of
+/// them), then their files removed (a file that stays is never listed again: take_page_id passes it).
+/// -1 with nb as it was when `u` no longer applies (PageAddUndo::applies), a page it added is no longer
+/// blank (store_added_pages_untouched), or notebook.ini could not be written.
+pub fn store_undo_add_pages(nb: &mut NotebookInfo, u: &PageAddUndo) -> i32 {
+    if !u.applies(nb) || !store_added_pages_untouched(nb, u) {
+        return -1;
+    }
+    let rest: Vec<u32> = nb.page_ids.iter().copied().filter(|p| !u.added.contains(p)).collect();
+    if rest != u.before {
+        return -1; // (not the batch's list: never from a batch)
+    }
+    let was = std::mem::replace(&mut nb.page_ids, rest);
+    let (last, modified) = (nb.last_page, nb.modified);
+    let open = was.get(nb.last_page.max(0) as usize).copied().unwrap_or(0);
+    nb.last_page = match nb.page_ids.iter().position(|&p| p == open) {
+        Some(i) => i as i32,
+        None => {
+            // one of the pages taken back: the page before them
+            let first = was.iter().position(|p| u.added.contains(p)).unwrap_or(0) as i32;
+            clampi(first - 1, 0, nb.npages() - 1)
+        }
+    };
+    if store_save_info(nb) != 0 {
+        nb.page_ids = was;
+        nb.last_page = last;
+        nb.modified = modified;
+        return -1;
+    }
+    for &pid in &u.added {
+        let _ = std::fs::remove_file(page_path(nb, pid));
+        side_note(nb, pid, PAPER_BLANK); // (an image paper's line goes with its page)
+    }
+    0
+}
+
 /// A copy of page `index` as a new page at `at` (an id as store_add_page takes one): the page file's
 /// bytes as they are, ink and paper (a read-only page's too), or for a page whose file is missing,
 /// an empty page of the notebook's paper, as it shows. An unreadable or damaged file refuses the
@@ -2011,6 +2454,335 @@ pub fn store_delete_page(nb: &mut NotebookInfo, index: i32) -> i32 {
     store_save_info(nb)
 }
 
+/// Where `store_move_pages` puts the pages moved: `to` names a place in the order before the move
+/// (before page `to`, or `npages` for the end). The list without the moved pages, and the index in
+/// it they go to: before the first page from `to` on that is not moved, else at the end.
+fn move_order(ids: &[u32], moved: &[bool], to: usize) -> (Vec<u32>, usize) {
+    let rest: Vec<u32> = ids.iter().zip(moved).filter(|(_, &m)| !m).map(|(&p, _)| p).collect();
+    let at = (0..ids.len()).filter(|&i| !moved[i]).position(|i| i >= to).unwrap_or(rest.len());
+    (rest, at)
+}
+
+/// The order `store_move_pages` makes of `ids`: pages `indices` (positions in ids, any order, each once)
+/// together, in the order they had, before page `to` (`to` == ids.len(): at the end). None for bad
+/// input. The Pages view asks it whether a drop changes anything before it asks for the move.
+pub fn store_move_order(ids: &[u32], indices: &[i32], to: i32) -> Option<Vec<u32>> {
+    let n = ids.len();
+    if indices.is_empty() || to < 0 || to as usize > n {
+        return None;
+    }
+    let mut moved = vec![false; n];
+    for &i in indices {
+        if i < 0 || i as usize >= n || moved[i as usize] {
+            return None;
+        }
+        moved[i as usize] = true;
+    }
+    let (mut order, at) = move_order(ids, &moved, to as usize);
+    let block: Vec<u32> = (0..n).filter(|&i| moved[i]).map(|i| ids[i]).collect();
+    order.splice(at..at, block);
+    Some(order)
+}
+
+// nb's pages put in `order` (the same ids in another order) and notebook.ini written: the one path a
+// move and its undo share. last_page follows the page it named. 0, or -1 with nb as it was.
+fn reorder_pages(nb: &mut NotebookInfo, order: Vec<u32>) -> i32 {
+    let was = std::mem::replace(&mut nb.page_ids, order);
+    let (last, modified) = (nb.last_page, nb.modified);
+    let open = was.get(nb.last_page.max(0) as usize).copied();
+    if let Some(i) = open.and_then(|pid| nb.page_ids.iter().position(|&p| p == pid)) {
+        nb.last_page = i as i32;
+    }
+    if store_save_info(nb) != 0 {
+        nb.page_ids = was;
+        nb.last_page = last;
+        nb.modified = modified;
+        return -1;
+    }
+    0
+}
+
+/// Moves pages `indices` (positions in nb.page_ids, any order, each once) so that they stand together,
+/// in the order they had, before page `to` as the pages are now (`to` == npages: at the end). A `to`
+/// that is one of the pages moved means the first page after it that is not moved. Only the page list
+/// changes: links, names, book pages, the map and bg/pages.ini name pages by id, never by place, so no
+/// other file is written (docs/FORMAT.md, notebook.ini). last_page follows the page it named. 0, or -1
+/// (bad indices, or notebook.ini could not be written: then nb is as it was). No change (the pages
+/// already stand there) writes nothing and returns 0.
+pub fn store_move_pages(nb: &mut NotebookInfo, indices: &[i32], to: i32) -> i32 {
+    let mut undo = None;
+    store_move_pages_undo(nb, indices, to, &mut undo)
+}
+
+/// The last page move of a notebook, to undo it (2.0.0-beta.2): its order before and after. Kept by the
+/// Pages view, never written to disk; it goes with the notebook's closing.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct PageMoveUndo {
+    pub notebook: String,
+    pub before: Vec<u32>,
+    pub after: Vec<u32>,
+}
+
+impl PageMoveUndo {
+    /// Whether it still undoes the newest change to nb's pages: the same notebook, its pages still in
+    /// the order the move left (a page added, deleted or copied since, or another move, changed it).
+    pub fn applies(&self, nb: &NotebookInfo) -> bool {
+        self.notebook.as_str() == nb.id.as_str() && self.after == nb.page_ids
+    }
+}
+
+/// store_move_pages, and when the order changed, `undo` the record that takes it back
+/// (store_undo_move_pages). No change, or a failure, leaves `undo` as it was.
+pub fn store_move_pages_undo(nb: &mut NotebookInfo, indices: &[i32], to: i32, undo: &mut Option<PageMoveUndo>) -> i32 {
+    let Some(order) = store_move_order(&nb.page_ids, indices, to) else { return -1 };
+    if order == nb.page_ids {
+        return 0;
+    }
+    let before = nb.page_ids.clone();
+    if reorder_pages(nb, order) != 0 {
+        return -1;
+    }
+    *undo = Some(PageMoveUndo { notebook: nb.id.as_str().to_string(), before, after: nb.page_ids.clone() });
+    0
+}
+
+/// Undoes a page move: nb's pages back in the order `u` had before it, through the same path as the
+/// move (notebook.ini; nothing else names pages by place), last_page following its page. -1 with nb as
+/// it was when `u` no longer applies (PageMoveUndo::applies: another notebook, or its pages changed
+/// since) or notebook.ini could not be written.
+pub fn store_undo_move_pages(nb: &mut NotebookInfo, u: &PageMoveUndo) -> i32 {
+    if !u.applies(nb) {
+        return -1;
+    }
+    let mut a = u.before.clone();
+    let mut b = nb.page_ids.clone();
+    a.sort_unstable();
+    b.sort_unstable();
+    if a != b {
+        return -1; // (not the same pages: never from a move)
+    }
+    reorder_pages(nb, u.before.clone())
+}
+
+/// Redoes a page move store_undo_move_pages took back (2.0.0-beta.2, the owner's ruling of 2026-11-03): nb's
+/// pages in the exact order the move left (`u.after`), through the same path, last_page following its page.
+/// -1 with nb as it was when nb is not as the undo left it (another notebook, or its pages changed since) or
+/// notebook.ini could not be written.
+pub fn store_redo_move_pages(nb: &mut NotebookInfo, u: &PageMoveUndo) -> i32 {
+    if u.notebook.as_str() != nb.id.as_str() || nb.page_ids != u.before {
+        return -1;
+    }
+    let mut a = u.after.clone();
+    let mut b = nb.page_ids.clone();
+    a.sort_unstable();
+    b.sort_unstable();
+    if a != b {
+        return -1; // (not the same pages: never from a move)
+    }
+    reorder_pages(nb, u.after.clone())
+}
+
+/// A page Copy to notebook... made: the source page's id, its copy's in the other notebook, and
+/// whether the copy holds erase strokes (to list for compaction there).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct PageCopy {
+    pub from: u32,
+    pub to: u32,
+    pub erased: bool,
+}
+
+// A picture copied into another notebook's bg/: the source's key when its index.ini names one, else a
+// key of the picture's bytes of a kind of its own (or, for a picture that is not there, of the
+// notebook and id it was), so copying the same picture twice gives one file there.
+fn copied_picture_key(src_ix: &BgIndex, src_id: &str, pic: u32, data: Option<&[u8]>) -> u64 {
+    if let Some(e) = src_ix.e.iter().find(|e| e.id == pic) {
+        return e.key;
+    }
+    let mut h: u64 = 0xc0f1_ed00_9a9e_5eed;
+    match data {
+        Some(d) => h ^= bgimage_content_hash(d).rotate_left(17) ^ d.len() as u64,
+        None => {
+            for &b in src_id.as_bytes() {
+                h = (h ^ b as u64).wrapping_mul(0x100000001b3);
+            }
+            h ^= pic as u64;
+        }
+    }
+    h.wrapping_mul(0x9e37_79b9_7f4a_7c15)
+}
+
+/// Copy to notebook...: pages `pids` of notebook `src` (in that order, each once) copied into notebook
+/// `dst` (another notebook, its info as read) before its page `at` (dst.npages: at the end), each a new
+/// page there with an id of its own. A page file is copied byte for byte, a read-only one too, as
+/// store_duplicate_page copies (a missing file: an empty page of the source's paper; one that does not
+/// read refuses the copy). A page of another size than dst's keeps its own size in its file and is
+/// scaled when dst opens it (scale_page, docs/FORMAT.md Page size). A page on an image paper (a
+/// template, a photo, an imported or book page) takes its picture along into dst's bg/: under the
+/// same id when dst has it free (or holds the same picture there), else under a new one, and then the
+/// copy's paper value (bytes 16 to 19) is the only change to its bytes. A read-only page whose picture
+/// would need a new id is refused. Then dst's bg/index.ini and bg/pages.ini, and last its notebook.ini,
+/// which lists the copies. 0 with `out` (one PageCopy per page, in order) and dst updated; -1 with dst
+/// as it was and no page file left behind.
+pub fn store_copy_pages_to(src: &NotebookInfo, pids: &[u32], dst: &mut NotebookInfo, at: i32, out: &mut Vec<PageCopy>) -> i32 {
+    out.clear();
+    if pids.is_empty() || src.id == dst.id || at < 0 || at > dst.npages() || dst.page_ids.len() + pids.len() > STORE_MAX_PAGES {
+        return -1;
+    }
+    if pids.iter().enumerate().any(|(i, p)| !src.page_ids.contains(p) || pids[..i].contains(p)) {
+        return -1;
+    }
+    let (mut src_bg, mut dst_bg) = (String::new(), String::new());
+    if bgimage_dir(src.id.as_str(), &mut src_bg, 700) != 0 || bgimage_dir(dst.id.as_str(), &mut dst_bg, 700) != 0 {
+        return -1;
+    }
+    let (mut dw, mut dh) = (0, 0);
+    store_notebook_page_size(dst, &mut dw, &mut dh);
+    let mut src_ix = BgIndex::default();
+    let mut dst_ix = BgIndex::default();
+    let mut dst_ix_read: Option<bool> = None; // read once, when a picture first needs it
+    let mut ix_changed = false;
+    let mut written: Vec<String> = Vec::new(); // page files and pictures this copy made, for a failure
+    let mut papers: Vec<PaperKind> = Vec::new();
+    let mut next = dst.next_page_id;
+    // (a failure takes back every file this copy wrote, and says nothing was copied)
+    macro_rules! bail {
+        () => {{
+            out.clear();
+            for f in &written {
+                let _ = std::fs::remove_file(f);
+            }
+            return -1;
+        }};
+    }
+    let src_ix_ok = bgindex_load(&src_bg, &mut src_ix) == 0;
+    if !src_ix_ok {
+        src_ix = BgIndex::default();
+    }
+    for &pid in pids {
+        // (each page is a read, a parse and an fsync'd write: a long copy keeps the pens read and the
+        // launcher's heartbeat going, which waits 15 s)
+        work_pump();
+        let path = page_path(src, pid);
+        let st = std::fs::metadata(&path);
+        let missing = matches!(&st, Err(e) if e.raw_os_error() == Some(libc::ENOENT));
+        if st.as_ref().is_err() && !missing || st.as_ref().is_ok_and(|m| !m.is_file()) {
+            bail!();
+        }
+        let mut data: Option<Vec<u8>> = if missing { None } else { read_file(&path) };
+        let mut p: Option<Box<Page>> = None;
+        if !missing {
+            let whole = matches!((&data, &st), (Some(d), Ok(m)) if m.size() == d.len() as u64);
+            if !whole || page_deserialize(data.as_deref().unwrap_or(&[]), &mut p) != 0 {
+                bail!();
+            }
+        }
+        if data.is_none() {
+            p = Some(page_new(dw, dh, store_new_page_paper(src, src.paper)));
+        } else if let Some(pg) = p.as_deref_mut() {
+            if side_restore(src, pid, pg) {
+                data = None; // its picture, which an older version's save left out: the copy written with it
+            }
+        }
+        let Some(mut pg) = p else { bail!() };
+        let erased = pg.strokes.iter().any(|s| stroke_is_erase(s));
+        let mut paper = pg.paper;
+        if paper_is_image(paper) {
+            if dst_ix_read.is_none() {
+                dst_ix_read = Some(bgindex_load(&dst_bg, &mut dst_ix) == 0);
+            }
+            if dst_ix_read != Some(true) {
+                qlog!("store: %s: bg/index.ini does not read; no picture page copied there", &dst.id);
+                bail!();
+            }
+            let pic = paper_image_id(paper);
+            let mut from = String::new();
+            bgimage_file(&src_bg, pic, &mut from, 700);
+            let bytes = read_file(&from);
+            let key = copied_picture_key(&src_ix, src.id.as_str(), pic, bytes.as_deref());
+            let (mut id, mut added) = (0u32, false);
+            if bgindex_claim(&mut dst_ix, &dst_bg, key, &mut id, &mut added) != 0 {
+                bail!();
+            }
+            ix_changed |= added;
+            let mut to = String::new();
+            bgimage_file(&dst_bg, id, &mut to, 700);
+            if let Some(b) = &bytes {
+                if !access_ok(&to) {
+                    if mkdir_p(&dst_bg) != 0 || write_file_atomic(&to, b) != 0 {
+                        bail!();
+                    }
+                    written.push(to);
+                }
+            }
+            let role = if paper_is_document(paper) { PAPER_ROLE_DOCUMENT } else { PAPER_ROLE_TEMPLATE };
+            let want = paper_image(role, id);
+            if want != paper {
+                if pg.readonly {
+                    qlog!("store: p%u.qpg of %s is read-only and its picture needs another id in %s; not copied", pid, &src.id, &dst.id);
+                    bail!();
+                }
+                // Version 2 keeps the whole paper value at bytes 16 to 19: only those change.
+                match data.as_mut() {
+                    Some(d) if d.len() >= 20 && d[4..6] == [2, 0] && d[16..20] == paper.0.to_le_bytes() => {
+                        d[16..20].copy_from_slice(&want.0.to_le_bytes());
+                    }
+                    _ => data = None,
+                }
+                pg.paper = want;
+                paper = want;
+            }
+        }
+        // The copy's id: dst's next, never one whose file is there already (as take_page_id).
+        let mut tries = 0;
+        let to = loop {
+            if next == 0 || next == u32::MAX || tries > 64 {
+                break 0;
+            }
+            let path = cformat!("%s/notebooks/%s/p%u.qpg", &g_root(), &dst.id, next);
+            match std::fs::symlink_metadata(&path) {
+                Err(e) if e.raw_os_error() == Some(libc::ENOENT) => break next,
+                Err(_) => break 0,
+                Ok(_) => {
+                    tries += 1;
+                    next += 1;
+                }
+            }
+        };
+        if to == 0 {
+            bail!();
+        }
+        let copy = cformat!("%s/notebooks/%s/p%u.qpg", &g_root(), &dst.id, to);
+        let rc = match &data {
+            Some(d) => write_file_atomic(&copy, d),
+            None => write_page_at(&copy, &pg),
+        };
+        if rc != 0 {
+            bail!();
+        }
+        written.push(copy);
+        next = to + 1;
+        papers.push(paper);
+        out.push(PageCopy { from: pid, to, erased });
+    }
+    let new_ids: Vec<u32> = out.iter().map(|c| c.to).collect();
+    if ix_changed && bgindex_save(&dst_bg, &dst_ix) != 0 {
+        bail!();
+    }
+    if papers.iter().any(|&k| paper_is_image(k)) && store_note_papers_in(&dst_bg, &new_ids, &papers) != 0 {
+        bail!();
+    }
+    let was = dst.clone();
+    for (k, &pid) in new_ids.iter().enumerate() {
+        dst.page_ids.insert(at as usize + k, pid);
+    }
+    dst.next_page_id = next;
+    if store_save_info(dst) != 0 {
+        *dst = was;
+        bail!();
+    }
+    0
+}
+
 /// A page file of another size than its notebook's: an older version opened it on a screen of
 /// another size (versions before 1.1 scale every page to the screen) and wrote it so after an edit.
 /// Its points go back to the notebook's size. Rules and stroke widths are in mm, the same on every
@@ -2023,11 +2795,15 @@ fn scale_page(p: &mut Page, w: i32, h: i32) {
     let sy = h as f32 / p.h as f32;
     let dpi = g_dpi();
     for s in p.strokes.iter_mut() {
+        // A floor marker stays where it is, off every page (docs/FORMAT.md, Scoped erase strokes).
+        let marker = is_floor_marker(s);
         let pts = std::mem::take(&mut s.pts);
         s.bbox = RECT_EMPTY;
         for mut q in pts {
-            q.x *= sx;
-            q.y *= sy;
+            if !marker {
+                q.x *= sx;
+                q.y *= sy;
+            }
             stroke_append(s, &q, dpi);
         }
     }
@@ -2935,8 +3711,12 @@ fn page_render_files(nb: &NotebookInfo, pid: u32) -> Option<(String, String, Str
     let base = image.strip_suffix(".pgm")?.to_string();
     Some((source, format!("{base}.full"), format!("{base}.full.stamp")))
 }
-fn render_tag(stamp: &str, w: i32, h: i32) -> String {
-    format!("{stamp}|{w}x{h}|{:016x}", page_render_fingerprint())
+// A layered page (page_layered: floors, 2.0.0-beta.2 on) is tagged with a "|L" suffix and only such a
+// tag is trusted for it: 2.0.0-beta.1 keeps drawings under the same fingerprint, and would keep a flat
+// drawing of a layered page (its scoped erasure lightening the ink under it). Unlayered pages keep
+// their tags exactly, so no kept drawing is retired.
+fn render_tag(stamp: &str, w: i32, h: i32, layered: bool) -> String {
+    format!("{stamp}|{w}x{h}|{:016x}{}", page_render_fingerprint(), if layered { "|L" } else { "" })
 }
 // Runs of one byte (most of a page is paper, much of the rest one ink level) as (count - 1) | 0x80
 // then the byte; anything else as count - 1 then that many bytes. A dense page shrank 3 to 6 times.
@@ -2995,7 +3775,7 @@ fn rle_decode(data: &[u8], px: &mut [u8]) -> bool {
 }
 /// Keeps page pid's drawing (its whole canvas, as drawn from the page file now on disk): a cache file,
 /// written without waiting on the disk. False if it was not kept.
-pub fn store_save_page_render(nb: &NotebookInfo, pid: u32, canvas: &Canvas) -> bool {
+pub fn store_save_page_render(nb: &NotebookInfo, pid: u32, canvas: &Canvas, layered: bool) -> bool {
     let Some((source, image, stamp)) = page_render_files(nb, pid) else { return false };
     let Some(was) = preview_stamp(&source) else { return false };
     let Some(parent) = std::path::Path::new(&image).parent() else { return false };
@@ -3012,7 +3792,7 @@ pub fn store_save_page_render(nb: &NotebookInfo, pid: u32, canvas: &Canvas) -> b
     let mut saved = false;
     if write_cache_file(&mine, &bytes) == 0 && preview_stamp(&source).as_deref() == Some(was.as_str())
         && std::fs::rename(&mine, &image).is_ok() {
-        saved = write_cache_file(&tag, render_tag(&was, canvas.w, canvas.h).as_bytes()) == 0 && std::fs::rename(&tag, &stamp).is_ok();
+        saved = write_cache_file(&tag, render_tag(&was, canvas.w, canvas.h, layered).as_bytes()) == 0 && std::fs::rename(&tag, &stamp).is_ok();
     }
     let _ = std::fs::remove_file(mine);
     let _ = std::fs::remove_file(tag);
@@ -3020,10 +3800,10 @@ pub fn store_save_page_render(nb: &NotebookInfo, pid: u32, canvas: &Canvas) -> b
 }
 /// Page pid's kept drawing into out (a canvas of the page's size, w x h), when it is current: drawn
 /// from the page file now on disk, by this renderer, at this size. False otherwise (out unchanged).
-pub fn store_load_page_render(nb: &NotebookInfo, pid: u32, w: i32, h: i32, out: &mut Canvas) -> bool {
+pub fn store_load_page_render(nb: &NotebookInfo, pid: u32, w: i32, h: i32, out: &mut Canvas, layered: bool) -> bool {
     let Some((source, image, stamp)) = page_render_files(nb, pid) else { return false };
     let Some(now) = preview_stamp(&source) else { return false };
-    if preview_tag(&stamp).as_deref() != Some(render_tag(&now, w, h).as_str()) {
+    if preview_tag(&stamp).as_deref() != Some(render_tag(&now, w, h, layered).as_str()) {
         return false;
     }
     if out.w != w || out.h != h || out.stride != w {
@@ -3044,10 +3824,10 @@ pub fn store_load_page_render(nb: &NotebookInfo, pid: u32, w: i32, h: i32, out: 
     true
 }
 /// Whether page pid has a current kept drawing (it is kept fresh from then on, at every save).
-pub fn store_page_render_kept(nb: &NotebookInfo, pid: u32, w: i32, h: i32) -> bool {
+pub fn store_page_render_kept(nb: &NotebookInfo, pid: u32, w: i32, h: i32, layered: bool) -> bool {
     let Some((source, _, stamp)) = page_render_files(nb, pid) else { return false };
     let Some(now) = preview_stamp(&source) else { return false };
-    preview_tag(&stamp).as_deref() == Some(render_tag(&now, w, h).as_str())
+    preview_tag(&stamp).as_deref() == Some(render_tag(&now, w, h, layered).as_str())
 }
 // One page's preview written, without telling an open view: a batch tells it once, at its end.
 fn save_page_preview(nb: &NotebookInfo, pid: u32, canvas: &Canvas) -> bool {
@@ -3929,6 +4709,50 @@ pub fn settings_save(s: &Settings) -> i32 {
 mod tests {
     use super::*;
 
+    // Notebook ids' random part comes from the system: ids made back to back on one thread, in the same
+    // millisecond, differ.
+    #[test]
+    fn ids_made_back_to_back_differ() {
+        let ids: Vec<String> = (0..256).map(|_| random_hex(16)).collect();
+        let mut sorted = ids.clone();
+        sorted.sort();
+        sorted.dedup();
+        assert_eq!(sorted.len(), ids.len(), "{ids:?}");
+        assert!(ids.iter().all(|h| h.len() == 16 && h.bytes().all(|c| c.is_ascii_hexdigit())));
+    }
+
+    // Two notebooks given the same id: the second takes a fresh suffix, never "cannot create".
+    #[test]
+    fn a_taken_id_is_made_again() {
+        let base = std::env::var("GRIMOIRE_TEST_TMP").map(std::path::PathBuf::from).unwrap_or_else(|_| std::env::temp_dir());
+        let r = base.join(format!("grimoire-store-taken-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&r);
+        let r = r.to_string_lossy().into_owned();
+        assert_eq!(store_init(&r), 0);
+        store_set_device(300.0, 600, 800);
+        assert_eq!(mkdir_p(&format!("{r}/notebooks")), 0);
+        let mut collided = false;
+        for _ in 0..10 {
+            store_force_random_hex(&["aaaa"]);
+            let mut taken = String::new();
+            store_make_id(&mut taken);
+            let _ = std::fs::create_dir(notebook_dir(taken.as_bytes()).unwrap());
+            store_force_random_hex(&["aaaa", "bbbb"]);
+            let mut nb = NotebookInfo::default();
+            assert_eq!(store_create("Second", "", PAPER_BLANK, &mut nb), 0, "a taken id failed the notebook");
+            store_force_random_hex(&[]);
+            let id = nb.id.as_str();
+            if id[..id.len() - 4] == taken[..taken.len() - 4] {
+                assert!(id.ends_with("bbbb"), "{id}");
+                collided = true;
+                break;
+            }
+            // (the second turned over between the two: no collision; again)
+        }
+        assert!(collided);
+        let _ = std::fs::remove_dir_all(&r);
+    }
+
     #[test]
     fn numbers_as_libc_reads_them() {
         assert_eq!(c_atoi(b"  -42abc"), -42);
@@ -3980,6 +4804,41 @@ mod tests {
         assert_eq!(f.as_bytes(), "ab cdé".as_bytes());
         clean_line(&mut f, "abcdef\u{e9}".as_bytes()); // the limit falls inside é: it goes
         assert_eq!(f.as_bytes(), b"abcdef");
+    }
+
+    // A folder left out of the Graph that lived only through its notebooks' paths (no folders.ini line) goes
+    // when its last notebook moves out or is trashed: its graph-omit.ini line goes too, so the same path made
+    // again later starts in the Graph. One with a folders.ini line, or still holding a notebook, keeps it.
+    #[test]
+    fn an_implicit_folder_gone_takes_its_graph_line() {
+        let base = std::env::var("GRIMOIRE_TEST_TMP").map(std::path::PathBuf::from).unwrap_or_else(|_| std::env::temp_dir());
+        let r = base.join(format!("grimoire-store-omit-prune-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&r);
+        assert_eq!(store_init(r.to_str().unwrap()), 0);
+        let (mut a, mut b, mut c) = (NotebookInfo::default(), NotebookInfo::default(), NotebookInfo::default());
+        assert_eq!(store_create("A", "", PAPER_BLANK, &mut a), 0);
+        assert_eq!(store_create("B", "", PAPER_BLANK, &mut b), 0);
+        assert_eq!(store_create("C", "", PAPER_BLANK, &mut c), 0);
+        assert_eq!(store_set_folder(a.id.as_str(), "School/2025"), 0);
+        assert_eq!(store_set_folder(b.id.as_str(), "Work"), 0);
+        assert_eq!(store_add_folder("Kept"), 0);
+        for f in ["School/2025", "Work", "Kept"] {
+            assert_eq!(store_set_folder_graph_omit(f, true), 0);
+        }
+        // Work still holds B when C moves through it and out again.
+        assert_eq!(store_set_folder(c.id.as_str(), "Work"), 0);
+        assert_eq!(store_set_folder(c.id.as_str(), ""), 0);
+        assert_eq!(store_graph_omit_folders(), vec!["Kept".to_string(), "School/2025".to_string(), "Work".to_string()]);
+        // School/2025's only notebook moves to the top level: the folder and its line are gone.
+        assert_eq!(store_set_folder(a.id.as_str(), ""), 0);
+        assert_eq!(store_graph_omit_folders(), vec!["Kept".to_string(), "Work".to_string()]);
+        // Work's only notebook goes to the trash: the same.
+        assert_eq!(store_delete(b.id.as_str()), 0);
+        assert_eq!(store_graph_omit_folders(), vec!["Kept".to_string()]);
+        // Made again later: in the Graph.
+        assert_eq!(store_set_folder(c.id.as_str(), "School/2025"), 0);
+        assert!(!store_folder_graph_omitted(&store_graph_omit_folders(), "School/2025"));
+        let _ = std::fs::remove_dir_all(&r);
     }
 
     #[test]

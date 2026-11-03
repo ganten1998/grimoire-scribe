@@ -5,7 +5,6 @@
 #![allow(clippy::needless_range_loop)] // (the C's index loops, kept)
 mod testlib;
 use grimoire::prelude::*;
-use std::ffi::CString;
 use std::sync::OnceLock;
 use testlib::*;
 
@@ -17,12 +16,15 @@ const DPI: f32 = 300.0;
 
 // ---- the system, as the C test calls it ----
 
-fn system(cmd: &str) -> i32 {
-    let c = CString::new(cmd).unwrap();
-    // SAFETY: system reads the NUL-terminated command we own.
-    unsafe { libc::system(c.as_ptr()) }
-}
 
+/// `rm -rf '<dir>'`, without a shell: 0 once it is gone.
+fn rm_rf(dir: &str) -> i32 {
+    match std::fs::remove_dir_all(dir) {
+        Ok(()) => 0,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => 0,
+        Err(_) => 1,
+    }
+}
 fn usleep(us: u64) {
     std::thread::sleep(std::time::Duration::from_micros(us));
 }
@@ -318,8 +320,7 @@ fn page_paper_selected() {
 
 // No templates at all (and no folder): the sheet says how to add some, with only Back to tap.
 fn empty_sheet() {
-    let cmd = format!("rm -rf '{}/templates'", root());
-    check!(system(&cmd) == 0);
+    check!(rm_rf(&format!("{}/templates", root())) == 0);
     let mut a = new_app();
     screen(&mut a, 2480, 1860);
     let mut s = TplSheet::default();
@@ -337,8 +338,7 @@ fn empty_sheet() {
 // A file the previews job finds it cannot use, sorted before the page shown: the tiles on that page
 // stay where they were (it keeps its tile, crossed out, until the sheet opens again).
 fn bad_file_keeps_its_place() {
-    let cmd = format!("rm -rf '{}/templates'", root());
-    check!(system(&cmd) == 0);
+    check!(rm_rf(&format!("{}/templates", root())) == 0);
     templates_init();
     let path = format!("{}/templates/0 broken.png", root());
     check!(write_file_atomic(&path, b"no picture") == 0);
@@ -500,8 +500,7 @@ fn labels_keep_to_their_tiles() {
 // before it whatever their numbers of lines, never as close as a line of it, nor far under the
 // heading. In every language and style, upright and sideways.
 fn empty_state_paragraphs() {
-    let cmd = format!("rm -rf '{}/templates'", root());
-    check!(system(&cmd) == 0);
+    check!(rm_rf(&format!("{}/templates", root())) == 0);
     templates_init();
     let mut path = format!("{}/templates/Scan.png", root());
     check!(write_file_atomic(&path, b"no picture") == 0);

@@ -14,15 +14,15 @@ tap 930 749
 wait 100
 expect library.gestures_group is editing
 expect library.gestures.7 is Clear page: pen button hold
-expect library.ui_at.930.1400 is gestures.row.7
-touch down 930 1400
+expect library.ui_at.930.1320 is gestures.row.7
+touch down 930 1320
 wait 700
-touch up 930 1400
+touch up 930 1320
 expect gestures.clear-page is
 expect library.gestures.7 is Clear page: no gesture
 expect toast is No gestures for Clear page now.
-expect library.ui_at.930.2030 is done
-tap 930 2030
+expect library.ui_at.930.2120 is done
+tap 930 2120
 wait 100
 expect library.ui_at.930.2030 is done
 tap 930 2030

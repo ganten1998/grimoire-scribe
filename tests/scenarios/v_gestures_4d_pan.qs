@@ -1,6 +1,8 @@
 # rust-only
 # settings: status_mode=1
 # settings: mirror_pdf=0
+# (the clock corner held still: its minute's refresh would land among the counted ones)
+clock 1700000000
 wait 200
 expect pen.gesture is
 tap 1535 95

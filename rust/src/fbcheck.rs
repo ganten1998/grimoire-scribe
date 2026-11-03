@@ -38,6 +38,18 @@ pub enum DpiSource {
     PanelSize = 1,  // DPI_PANEL_SIZE
     Default = 2,  // DPI_DEFAULT
 }
+/// The panel's own density from the driver's physical size (the diagonal, so a rotated framebuffer
+/// reads the same), or 0 when the driver gives no usable size or the result is outside 100..600.
+/// fbcheck_dpi prefers FBInk's figure for the layout (300 on every Scribe, a round number); this one is
+/// for drawing true to size (the Scribe 2's driver says 156x208 mm for 1860x2480 px: 302.9).
+pub fn fbcheck_panel_ppi(xres: u32, yres: u32, width_mm: u32, height_mm: u32) -> f32 {
+    if xres == 0 || yres == 0 || width_mm == 0 || height_mm == 0 || width_mm >= 1000 || height_mm >= 1000 {
+        return 0.0;
+    }
+    let d = (xres as f64).hypot(yres as f64) * 25.4 / (width_mm as f64).hypot(height_mm as f64);
+    if (100.0..=600.0).contains(&d) { d as f32 } else { 0.0 }
+}
+
 /// The density to lay the UI out for. FBInk's own value when it identified the device. For a device
 /// it does not know (it names it "Unidentified!" or "Unknown!", or nothing, and guesses 167 dpi, a
 /// value for early Pearl screens), the panel's physical size as the driver reports it (pixels over

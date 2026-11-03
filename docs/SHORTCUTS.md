@@ -12,6 +12,57 @@ The sheet shows the controller or keyboard Grimoire reads now (its own name), or
 holds it (see below), and the last key or controller button code. Disable shortcuts to close the
 optional input devices again.
 
+## The keyboard scheme (2.0.0-beta.2)
+
+One scheme for a keyboard paired with the Kindle (the owner's "the same default shortcuts if a bluetooth
+keyboard is connected"). An Apple keyboard's Cmd reports as Meta on the Kindle, and a key with Meta held and
+no line for it is looked up again with Ctrl in Meta's place, so Cmd+Z is Undo there too. Shortcuts stay opt-in
+(Enable shortcuts, below).
+
+**Places.** A key may mean one thing in each place: **the Library** (and the Share screen, where only Esc
+acts), **a notebook page** (whatever menu is over it), **the Pages view**, **the Graph** (from the Library or a
+notebook) and **Pen feel**. Each action acts in its own places (`rust/src/actions.rs` `K_PLACES`: an action not
+listed acts on a page). `shortcuts.ini` keeps every line; a key pressed is looked up for the place it was
+pressed in, and the last line for it whose action acts there wins, so a later line still replaces an earlier
+one in the same place, and `key.Left=new-folder` added at the end changes Left in the Library only. The same
+key and action twice is one line. Up and Down do nothing but in the Graph.
+
+| place | keys |
+|---|---|
+| everywhere | Esc `back`, Ctrl+S `save` |
+| the Library | Ctrl+N `new-notebook`, Ctrl+F `new-folder`, S `share`, O `settings`, Left/Right its screens (`previous-page`/`next-page`, as its arrows), G the Graph |
+| a notebook page | 1 to 9 the pens (the tool picker's order), 0 and E the eraser, W white ink, Ctrl+Z, Ctrl+Shift+Z and Ctrl+Y, Left/Right and PageUp/PageDown pages, Home/End, [ and ] tools, Ctrl+N `new-page`, Ctrl+F `go-to-page`, Ctrl+L `add-link`, R `name-page`, Space `two-finger-up`, - and = (+), Shift+=, the keypad's - and + zoom (with Ctrl too), Ctrl+0 the whole page, G L P T S, X held erases |
+| the Pages view | Left/Right its screens, Ctrl+N, Ctrl+F, Ctrl+A `select-all`, Ctrl+Z and Ctrl+Shift+Z its own Undo and Redo, P, G |
+| the Graph | the arrows `pan-*`, - and +, Ctrl+0, V `graph-view`, Ctrl+A, G |
+| Pen feel | 1 to 9 that pen's tab, 0 and E the eraser's |
+
+**Esc** (`back`) eats one layer a press, the first there is: a field or pad (its Cancel), a dialog or card
+(its No or Cancel), a drag, a selection (the lasso's, then Select mode; the Pages view's ticks; the Graph's), a
+menu or sheet (one level a press: the Templates sheet back to Paper, each Settings sheet back to Settings),
+a link being placed, then back to the Library from a notebook (saving, as the toolbar's Library button; to the
+Graph a notebook was opened from), back from Pen feel and Share, up to the top from a folder, and at the
+Library's top **Exit Grimoire?** (Yes and No; Enter the highlighted one, Yes at first; Left and Right move it;
+Esc is No). The Exit button leaves at once, as before. A file that binds
+`key.Escape=close-menu` keeps that.
+
+**Space** (`two-finger-up`) does what two fingers swiped up do there (gestures.ini `touch.2.up`, built in the
+Links bar; with gestures off, the Links bar), and nothing while a keyboard is up (Find, a name). **Ctrl+S**
+writes the page and
+its notebook now (in the Library, a setting waiting) and says "Saved". **R** opens the page's naming keyboard,
+back to the page after.
+
+**The starter map** (`DEFAULTS`, `rust/src/shortcuts.rs`) is the scheme above with the controller's lines. On a
+Kindle keyboard
+PageUp and PageDown now turn pages (they stepped tools: [ and ] do that), and Up and Down are not bound (the
+D-pad's Up and Down still step tools). A `shortcuts.ini` that is byte for byte a starter map some Grimoire wrote
+(1.1.0's, 1.2.0's or 2.0.0's; a CRLF copy counts) becomes this
+build's at the next start, with a toast once ("Keyboard shortcuts: the new starter keys are in
+shortcuts.ini."); a file someone edited is never touched and keeps meaning what it meant. live-keys.ini follows
+the same rule. To get the new keys into an edited file, delete it and Reload.
+
+Older versions refuse the new action names (`save`, `back`, `two-finger-up`, `new-notebook`, `new-folder`,
+`share`, `settings`, and the other 2.0.0-beta.2 ones), one line each.
+
 ## Controller buttons
 
 **Settings > Controller > Buttons...** shows what each button does and learns new ones. Its list
@@ -52,10 +103,11 @@ row learns them.
 
 ## shortcuts.ini
 
-The default keyboard uses 1–9 for the nine drawing tools in the tool picker's order (left to right,
-then down: pencil, mechanical pencil, charcoal, ballpoint, fineliner, marker, fountain pen,
-calligraphy pen, highlighter), E for eraser, W for white ink,
-Ctrl+Z / Ctrl+Y for undo/redo, left/right for pages, and PageUp/PageDown for tool cycling.
+The default keyboard is the scheme above: 1–9 for the nine drawing tools in the tool picker's order
+(left to right, then down: pencil, mechanical pencil, charcoal, ballpoint, fineliner, marker, fountain pen,
+calligraphy pen, highlighter), 0 and E for the eraser, W for white ink, Ctrl+Z / Ctrl+Shift+Z / Ctrl+Y for
+undo/redo, left/right and PageUp/PageDown for pages, and [ and ] for tool cycling (before 2.0.0-beta.2
+PageUp/PageDown cycled tools).
 Gamepad defaults use the Linux gamepad convention: South undo, East eraser, North redo, West white,
 L1/R1 previous/next tool, Select/Start previous/next page, and the D-pad (a hat or four buttons,
 both read the same) Left/Right for pages and Up/Down for tools. These are starting points:
@@ -88,7 +140,12 @@ Actions, in the Buttons sheet's groups:
   `tool:marker`, `tool:fountain`, `tool:calligraphy`, `tool:highlighter`, `previous-tool`,
   `next-tool`, `picker-previous`, `picker-next` (the Buttons sheet's Previous / next in the picker).
 - **Pages**: `previous-page`, `next-page`, `first-page`, `last-page`, `new-page` (a page on the
-  notebook's own paper right after the open one, which opens, as the Pages view's New page does),
+  notebook's own paper right after the open one, which opens; the Pages view's New page adds one there too, but
+  leaves the view up), `new-pages` (the count pad the toolbar's + opens when held: how many blank pages to add
+  right after the open page, which stays open; their Undo is in Pages; 2.0.0-beta.2, no row in the Buttons sheet,
+  bind it in shortcuts.ini, for example `key.n=new-pages`; with the Pages view up, `new-page` and `new-pages` open
+  that view's count pad, at 1), `select-all` (every page ticked in the Pages view, as its Select all; no row in the
+  Buttons sheet),
   `fit-page` (the page's whole width again after a pinch), `pages` (the Index on its Pages view, as
   the toolbar's page count opens it), `landscape-fit` (sideways, the whole page or the page's width, in turn:
   the Display sheet's "Sideways, show the whole page" row, with a toast; upright only the toast, as it
@@ -102,8 +159,12 @@ Actions, in the Buttons sheet's groups:
   `go-to-page` (Go to page or name: a keyboard over the page, the same sheet the Pages view's and the
   Links bar's Go to page open, closed again by its own button), `go-back` (Back to the page before: the page a link, the Pages
   view or Find left, the newest first, up to 32, forgotten when the notebook closes; a page turn leaves
-  nothing on that list, the page on show is never the one it goes back to, and with none a toast says so) and `link-areas` (dotted outlines over the page where a
+  nothing on that list, the page on show is never the one it goes back to, and with none a toast says so; with none left after a link into another notebook it returns to the notebook the link was followed from, at the same page and zoom, with that notebook's own list as it was, from 2.0.0-beta.2) and `link-areas` (dotted outlines over the page where a
   finger tap follows a link, on and off, remembered; the Links bar's Areas button does the same).
+- **The Graph** (2.0.0-beta.2): `graph-view` (View: All
+  and View: Adjacent in turn, fitted, as the view button) and `pan-left`, `pan-right`, `pan-up`, `pan-down`
+  (the view moves a sixth of the plot that way). They act only in the Graph, from the Library or a notebook, and
+  are in no Buttons sheet group (bind them in shortcuts.ini). See "The Graph's keys" below.
 - **Menus**: `tool-picker`, `paper`, `display`, `pen-feel`, `fold-panel` (folds the toolbar, or
   unfolds it), `library` (saves and closes the notebook), `close-menu`, `status-toggle` (the
   small clock and battery on a notebook page on and off, as a finger tap in its corner does) and
@@ -148,11 +209,17 @@ starter mappings give them no key or button.
 A menu's button opens its menu as the toolbar's button does, and closes it when pressed again; with
 another menu in front it closes that one and opens its own. `pages` opens the Index on its Pages
 view and `index-map` on its Graph. Over the Index's Graph or List, `pages` turns it to Pages; on
-Pages it closes it. `index-map` closes the Index from any of its views. `close-menu` closes whatever menu is in front: a link
+Pages it closes it. `index-map` closes the Index from any of its views. Over the Library, `index-map` (and two fingers down,
+or whatever `gestures.ini` binds to it) opens the Graph of all notebooks with no notebook open, and closes it
+again; over that Graph `go-back` and `close-menu` go back to the Library (from its Other notebook... browser,
+to the Graph) (2.0.0-beta.2). With the Pages view's grid in front, `undo` and `redo` are its own Undo and Redo of
+the last page move or batch of new pages (one step each; nothing to undo or redo does nothing), never the open
+page's history; on the page they are the page's own (2.0.0-beta.2). `close-menu` closes whatever menu is in front: a link
 being placed is not made, as Back there does, nor one still waiting for its box. `paper` owns the
 paper sheet, its Templates and Photos sheet and Custom music. On Pen feel, `pen-feel` and
 `close-menu` go back. No menu button acts while the Pages view's keyboard is open, so typing is
-never lost. Existing shortcut files are never rewritten. Versions 1.2.0 and 2.0.0-beta.1 to beta.4
+never lost; nor while the toolbar's count pad (`new-pages`, or the + held) is up, which `close-menu` and
+`go-back` close with nothing added. Existing shortcut files are never rewritten. Versions 1.2.0 and 2.0.0-beta.1 to beta.4
 refuse the actions added in 2.0.0-beta.5 (`hold-eraser`, `eraser-mode`, `clear-page`, `first-page`,
 `last-page`, `new-page`, `fit-page`, `pages`, `tool-picker`, `paper`, `display`, `pen-feel`,
 `fold-panel`, `library`, `close-menu`, `picker-previous`, `picker-next`, `add-link`,
@@ -280,7 +347,9 @@ Controller sheet say so. Analog sticks are not read; analog triggers are, as LT 
 `rust/src/actions.rs` is the shared registry for parsing, dispatch and both learning sheets.
 Names below are the persistent INI values; numeric ids are internal. The new actions use ids
 56..77, preserving 54 (`gesture-new-page`) and 55 (`status-mode`); later actions retain 78..81,
-and pen pan/zoom use 82/83. Groups are Editing, Tools,
+pen pan/zoom use 82/83, `select` 84, `select-exact` 85, `new-pages` 86, `save` to `settings` 87 to 93,
+`select-all` 95, and the Graph's `graph-view` 100 and `pan-left`, `pan-right`, `pan-up`, `pan-down` 101 to 104.
+Groups are Editing, Tools,
 Pages, Index, Menus, Screen and System. `tool:pencil` remains a compatibility entry even though
 the current Tools learning list starts with the mechanical pencil.
 
@@ -367,6 +436,29 @@ Every registered action accepts PEN. Pan and zoom accept only a pen drag.
 | `index-map` | Menu | Index | Key, pad, touch, shape, pen |
 | `pan` | Momentary | Pages | Pen (drag only) |
 | `zoom` | Momentary | Pages | Pen (drag only) |
+| `select` | Toggle | Editing | Key, pad, touch, shape, pen |
+| `select-exact` | Toggle | Editing | Key, pad, touch, shape, pen |
+| `new-pages` | OneShot | Pages | Key, pad, touch, shape, pen |
+| `select-all` | OneShot | Pages | Key, pad, touch, shape, pen |
+| `graph-view` | Cycle | Index (no Buttons row) | Key, pad, pen |
+| `pan-left`, `pan-right`, `pan-up`, `pan-down` | Step | Index (no Buttons row) | Key, pad, pen |
+
+### The Graph's keys
+
+In the Graph (from the Library or from a notebook) a key does the last line for it whose action acts there (its
+places, above). The Graph takes `pan-left`, `pan-right`, `pan-up`, `pan-down` and `graph-view` (the Graph alone),
+`zoom-in` and `zoom-out` (by 1.25 about the plot's centre, within the pinch's limits), `fit-page` (the current
+view fitted again) and `select-all` (every node drawn selected). The starter maps give it the arrows and V
+(`key.Left=pan-left` beside `key.Left=previous-page`: each acts in its own place). Enter opens the selected page
+when one page is selected (a fixed key). Esc's `back` clears the selection, then closes the Graph; `close-menu`
+closes the Graph. One press is one step, a refresh of the Graph's
+picture at most (one Ui refresh, as a pan by finger), and nothing is an undo step.
+
+A shortcuts.ini that binds none of `graph-view` and the four pans (a file written before them and edited, so not
+upgraded at the start) gets the Graph's starter keys too, in memory, as an old file gets the D-pad: the arrows pan
+and V switches the view in the Graph, and every line of the file keeps its meaning elsewhere. The file is not
+changed; a file that binds any of the five is taken as written. (Reload's count is the file's own lines: these
+keys are not counted.)
 
 Gestures do not need Enable shortcuts. `settings.gestures` gates touch patterns and finger
 shapes; pinch/pan retain their own setting. Recording preserves unrelated key and pad bindings.
@@ -417,7 +509,11 @@ Grimoire can run it for you, only while Grimoire runs:
 Grimoire stops the helper when Bluetooth controller (or shortcuts) is turned off, starts it again
 when shortcuts come back on, and the launcher stops it as
 Grimoire leaves, crash or not; the Kindle's own Bluetooth jobs that ran before are started again.
-A helper that someone else started (KOReader's, say) is used as it is and never stopped. Grimoire
+A helper that someone else started (KOReader's, say) is used as it is and never stopped. The copy in
+`grimoire/bluetooth` is Grimoire's alone: one running from there is stopped as Grimoire leaves, and
+taken back when Bluetooth controller starts, even when it was started again outside Grimoire or
+Grimoire lost its record of it (the helper runs as its own loader, so it is found by its folder, not
+by the name kindle-hid-passthrough). Grimoire
 never installs anything for it, never turns on its start at boot, and turns off its media remote
 (a phone pairing with the Kindle as a speaker) in `grimoire/bluetooth`. Pairing accepts any device
 in pairing mode without a code (what the helper does): pair where nobody else is pairing.
@@ -426,19 +522,37 @@ The helper keeps its paired devices and their keys in its own folder, visible ov
 releases change often; this was written against 3.18. Tested setup: none yet on firmware
 5.20.1.0.2 (an 8BitDo Arcade Stick in Switch mode paired and reported its buttons on 5.19.6).
 
-## In the simulator
+## Select mode (2.0.0-beta.2)
 
-In the SDL simulator, enabling shortcuts repurposes the number/arrows/E keys from pressure/tilt/
-eraser simulation. P and S remain reserved for simulated power/pen-side-button; Escape quits.
-Scripts inject presses (`key CODE MODS PAD`), releases (`keyup CODE MODS PAD`), an Xbox-layout
-controller's axes (`axis CODE VALUE`, its triggers read as LT and RT) and devices (`hid attach pad|key|held NAME`,
-`hid detach NAME`), and `tests/bt_check.sh` runs the pairing sheet against a stand-in for the
-helper's API (`tests/fake_bthelper.py`). None of this proves Bluetooth, controller discovery or
-real button numbering on a Kindle.
-
-`status-mode` is kept as an alias of `status-toggle`.
-
-Smart-shape actions are `shapes` (toggle recognition), `shape-hold` (cycle400/550/900ms) and
-`shape-last` (replace the last drawn stroke with its recognized shape, with one undo step).
+`select` (2.0.0-beta.2) turns Select mode on or off, as the tool picker's Select does: the pen then draws
+a dashed lasso, and what it goes around is selected with the erasing that belongs to it and its links. A
+bar under the selection has Copy, Cut, Delete, Paste (when the clipboard holds something) and Done; a drag
+inside the selection's box moves it, one undo step at the release. Choosing a pen also leaves Select mode.
+On a pen button's hold or drag, `select` is held instead of toggled: Select mode while the button is down
+(on a drag, the contact made with it is the lasso). Let go with nothing selected and the pen draws again;
+with a selection, Select mode stays for the bar and a drag of it with the pen alone, until a tap outside
+the selection (which draws nothing), Done or a pen. A click bound to `select` still toggles. A pen held
+still on empty page in Select mode (0.6 s) pastes the clipboard centred there.
+There is no Select button on the panel; a finger is the quick way in, Select mode on or not. Hold a finger
+still on the page, off a link, for 0.6 s (the link card's hold) until a small dashed ring shows at it, then
+without lifting draw around what to select: lifting selects it with the same rules and the same bar as the
+pen's lasso; a Select mode the hold turned on stays while the selection does (a tap outside it, Done or
+a page turn ends both). Lift the finger without moving instead and it pastes the clipboard centred there, refused on a
+read-only page as the pen's paste is, and does nothing when the clipboard is empty. A finger held on a
+link still opens the link's card, and a finger that moves before the 0.6 s turns pages and follows links
+as it always did. A palm, or a finger held while the pen is in range (hovering or writing, or gone less
+than half a second before), never arms the lasso; the pen coming after the ring shows drops it, and that
+finger's lift neither selects nor pastes. With a selection up, a finger outside it ends the selection (and does nothing more
+unless it is held, when it starts a new lasso).
+Versions before 2.0.0-beta.2 do not know `select` and count it in Reload shortcuts.ini as an action
+they refuse.
+`select-exact` (2.0.0-beta.2) starts Select mode in exact area (the lasso cuts the strokes it crosses
+along its line and takes only the ink inside it); with Select mode on, it switches between whole strokes
+and exact area as the bar's mode button does, judging a selection's lasso again at once. The mode lasts
+until Grimoire restarts; whole strokes is the default. Shift held on a paired
+keyboard as a lasso begins flips the mode for that lasso alone; Alt (Option on an Apple keyboard) does too.
+It has no row in the Buttons sheet yet (its Editing list is
+full): bind it in shortcuts.ini, for example `key.e=select-exact`. Versions before 2.0.0-beta.2 refuse
+it as they refuse `select`.
 `index-map` opens/closes the Index on its Graph; `index` is read as `index-map`. All four may be
 assigned to keyboard, controller, touch-pattern or recorded finger-shape input.

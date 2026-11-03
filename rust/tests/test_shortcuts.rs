@@ -18,10 +18,18 @@ fn has(text: &[u8], needle: &str) -> bool {
     text.windows(n.len()).any(|w| w == n)
 }
 
+// The lines of a starter map that name an action this build has (2.0.0-beta.2: one key may have an action in each
+// place, so every such line is kept): of the starter map, which a missing file reads as.
+fn lines_of(text: &str) -> i32 {
+    text.lines().filter(|l| l.contains('=') && shortcut_action(l.split('=').nth(1).unwrap()) != 0).count() as i32
+}
+fn starter_lines() -> i32 {
+    lines_of(shortcuts_starter())
+}
 fn defaults_and_exact_modifiers() {
     let mut m = Shortcuts::default();
     shortcuts_load(&mut m, "/nonexistent/grimoire-shortcuts.ini");
-    check!(m.count == 29 && m.rejected == 0);
+    check!(m.count == starter_lines() && m.rejected == 0);
     check!(shortcuts_lookup(&m, false, 2, 0) == SHORTCUT_TOOL_BASE + TOOL_PENCIL.0);
     // 1 to 9 in the tool picker's order: 3 the charcoal, 4 the ballpoint, 7 the fountain pen.
     for i in 0..TOOL_PENS {
@@ -32,7 +40,8 @@ fn defaults_and_exact_modifiers() {
     check!(shortcuts_lookup(&m, false, 4, 0) == SHORTCUT_TOOL_BASE + TOOL_CHARCOAL.0);
     check!(shortcuts_lookup(&m, false, 8, 0) == SHORTCUT_TOOL_BASE + TOOL_FOUNTAIN.0);
     check!(shortcuts_lookup(&m, false, 44, KEYMOD_CTRL) == SHORTCUT_UNDO);
-    check!(shortcuts_lookup(&m, false, 44, KEYMOD_CTRL | KEYMOD_SHIFT) == SHORTCUT_NONE);
+    check!(shortcuts_lookup(&m, false, 44, KEYMOD_CTRL | KEYMOD_SHIFT) == SHORTCUT_REDO);
+    check!(shortcuts_lookup(&m, false, 44, KEYMOD_ALT) == SHORTCUT_NONE);
     check!(shortcuts_lookup(&m, true, 304, 0) == SHORTCUT_UNDO);
     check!(shortcuts_lookup(&m, false, 304, 0) == SHORTCUT_NONE);
     check!(shortcut_keycode("code767") == 767 && shortcut_keycode("code768") == -1);
@@ -48,12 +57,13 @@ fn custom_mappings_and_limits() {
     check!(write_file_atomic(&path, text.as_bytes()) == 0);
     let mut m = Shortcuts::default();
     shortcuts_load(&mut m, &path);
-    check!(m.count == 3 && m.rejected == 4);
+    // (both e lines are kept, one key having an action in each place; in a place both act in, the later decides)
+    check!(m.count == 4 && m.rejected == 4);
     check!(shortcuts_lookup(&m, false, 44, KEYMOD_CTRL | KEYMOD_SHIFT) == SHORTCUT_REDO);
     check!(shortcuts_lookup(&m, false, 18, 0) == SHORTCUT_TOOL_BASE + TOOL_MARKER.0);
     check!(shortcuts_write_defaults(&path) == 0);
     shortcuts_load(&mut m, &path);
-    check!(m.count == 3); // enabling or reloading never overwrites user choices
+    check!(m.count == 4); // enabling or reloading never overwrites user choices
     check!(write_file_atomic(&path, b"") == 0);
     shortcuts_load(&mut m, &path);
     check!(m.count == 0);
@@ -64,7 +74,7 @@ fn custom_mappings_and_limits() {
     unlink(&path);
     check!(shortcuts_write_defaults(&path) == 0);
     shortcuts_load(&mut m, &path);
-    check!(m.count == 29);
+    check!(m.count == starter_lines());
     unlink(&path);
 }
 fn settings_are_opt_in() {
@@ -88,7 +98,7 @@ fn controller_ini_learns_one_button_per_action() {
     unlink(&cp);
     let mut m = Shortcuts::default();
     shortcuts_load_all(&mut m, &sp, &cp); // neither file: the defaults
-    check!(m.count == 29 && shortcuts_lookup(&m, true, 304, 0) == SHORTCUT_UNDO);
+    check!(m.count == starter_lines() && shortcuts_lookup(&m, true, 304, 0) == SHORTCUT_UNDO);
     let mut codes = [0i32; 4];
     check!(shortcuts_pads_for(&m, ActionSrc::Pad, SHORTCUT_PREV_PAGE, &mut codes) == 2); // Select and the D-pad's Left
                                                                                          // Learn: East is Undo now; South loses it (it was Undo's), and the eraser loses East.
@@ -163,7 +173,7 @@ fn every_action_by_name() {
         named += 1;
         check!(shortcut_action(name) == a);
     }
-    check!(named == 10 + 8 + 27 + 22 + 4 + 2 - 1); // the tools, the first actions, and 2.0.0-beta.5 (the clock corner two, the Index five, the swipe-adds-a-page toggle; Rust only); 2.0.0-rc.8 reads "index" only as another name for the Graph (index-map)
+    check!(named == 10 + 8 + 27 + 22 + 4 + 2 - 1 + 3 + 7 + 1 + 5); // (+7: save, back, two-finger-up, new-notebook, new-folder, share and settings, 2.0.0-beta.2's keyboard scheme; +1: select-all; +5: the Graph's graph-view and four pans) (+3: select, select-exact and new-pages, 2.0.0-beta.2) the tools, the first actions, and 2.0.0-beta.5 (the clock corner two, the Index five, the swipe-adds-a-page toggle; Rust only); 2.0.0-rc.8 reads "index" only as another name for the Graph (index-map)
     let path = format!("{}/shortcuts-new.ini", tl_tmp());
     let text = "pad.L2=hold-eraser\npad.R2=eraser-mode\npad.600=clear-page\npad.601=first-page\n\
                 pad.602=last-page\npad.603=new-page\npad.604=fit-page\npad.605=pages\n\
@@ -210,7 +220,7 @@ fn every_action_by_name() {
     );
     check!(
         shortcut_action_name(SHORTCUT_STATUS) == Some("status-toggle")
-            && SHORTCUT_STATUS + 8 == SHORTCUT_STATUS_MODE && SHORTCUT_STATUS_MODE + 28 == SHORTCUT_LAST
+            && SHORTCUT_STATUS + 8 == SHORTCUT_STATUS_MODE && SHORTCUT_STATUS_MODE + 31 == SHORTCUT_NEW_PAGES && SHORTCUT_PAN_DOWN == SHORTCUT_LAST
     );
     // The Index's actions: by their names, in the files and the Buttons sheet.
     for (name, id) in [
@@ -227,7 +237,7 @@ fn every_action_by_name() {
             && SHORTCUT_LANDSCAPE_FIT + 1 == SHORTCUT_STATUS_CORNER
             && SHORTCUT_STATUS_CORNER + 1 == SHORTCUT_GESTURE_NEW_PAGE
             && SHORTCUT_GESTURE_NEW_PAGE + 1 == SHORTCUT_STATUS_MODE
-            && SHORTCUT_STATUS_MODE + 1 == SHORTCUT_ZOOM_OUT && SHORTCUT_INDEX_MAP == 81 && SHORTCUT_PEN_PAN == 82 && SHORTCUT_PEN_ZOOM == SHORTCUT_LAST
+            && SHORTCUT_STATUS_MODE + 1 == SHORTCUT_ZOOM_OUT && SHORTCUT_INDEX_MAP == 81 && SHORTCUT_PEN_PAN == 82 && SHORTCUT_PEN_ZOOM + 21 == SHORTCUT_LAST
     );
     check!(
         shortcut_action("status-mode") == SHORTCUT_STATUS
@@ -272,7 +282,10 @@ fn every_action_by_name() {
             && has(t, "=tool:calligraphy\n")));
     let mut back = Shortcuts::default();
     shortcuts_load_all(&mut back, &sp, &cp);
-    check!(back.rejected == 0 && back.count == 17 + named - 4); // the default keys, and a button each
+    let mut fresh = Shortcuts::default();
+    shortcuts_load(&mut fresh, "/nonexistent/grimoire-shortcuts.ini");
+    let keys = fresh.bindings[..fresh.count as usize].iter().filter(|b| b.src == ActionSrc::Key).count() as i32;
+    check!(back.rejected == 0 && back.count == keys + named - 4); // the default keys, and a button each
     for a in 1..=SHORTCUT_LAST {
         if shortcut_action_name(a).is_some() && action_sources(a) & SRC_PAD != 0 {
             check!(shortcuts_pads_for(&back, ActionSrc::Pad, a, &mut []) == 1);
@@ -471,6 +484,82 @@ fn a_row_held_forgets_its_buttons() {
     unlink(&sp);
     unlink(&cp);
 }
+
+// 2.0.0-beta.2: a key may have one action in each place. Every line is kept;
+// a press is looked up for the place it was pressed in, the last line for the key whose action acts there
+// winning, so a later line still replaces an earlier one in the same place.
+fn keys_by_place() {
+    let path = format!("{}/shortcuts-places.ini", tl_tmp());
+    let text = "key.Ctrl+n=new-page\nkey.Ctrl+n=new-notebook\nkey.Left=previous-page\nkey.Left=new-folder\n\
+                key.e=tool:pencil\nkey.e=tool:marker\nkey.e=tool:marker\nkey.Escape=close-menu\n\
+                key.v=graph-view\nkey.y=pan-up\n";
+    check!(write_file_atomic(&path, text.as_bytes()) == 0);
+    let mut m = Shortcuts::default();
+    shortcuts_load(&mut m, &path);
+    // (the same key and action again is one line)
+    check!(m.rejected == 0);
+    let at = |code, mods, place| shortcuts_lookup_at(&m, ActionSrc::Key, code, mods, place);
+    check!(at(49, KEYMOD_CTRL, PL_PAGE) == SHORTCUT_NEW_PAGE && at(49, KEYMOD_CTRL, PL_PAGES) == SHORTCUT_NEW_PAGE);
+    check!(at(49, KEYMOD_CTRL, PL_LIBRARY) == SHORTCUT_NEW_NOTEBOOK && at(49, KEYMOD_CTRL, PL_GRAPH) == SHORTCUT_NONE);
+    // key.Left=new-folder added at the end changes Left in the Library only
+    check!(at(105, 0, PL_LIBRARY) == SHORTCUT_NEW_FOLDER && at(105, 0, PL_PAGE) == SHORTCUT_PREV_PAGE);
+    check!(at(18, 0, PL_PAGE) == SHORTCUT_TOOL_BASE + TOOL_MARKER.0 && at(18, 0, PL_PENFEEL) == SHORTCUT_TOOL_BASE + TOOL_MARKER.0);
+    check!(at(18, 0, PL_LIBRARY) == SHORTCUT_NONE);
+    // An old file's Esc stays Close menu, everywhere
+    check!(at(1, 0, PL_LIBRARY) == SHORTCUT_CLOSE_MENU && at(1, 0, PL_PAGE) == SHORTCUT_CLOSE_MENU);
+    // Any place: the last line for the key
+    check!(shortcuts_lookup(&m, false, 105, 0) == SHORTCUT_NEW_FOLDER);
+    // An Apple keyboard's Cmd is Meta: with no Meta line, Ctrl's
+    check!(at(49, KEYMOD_META, PL_LIBRARY) == SHORTCUT_NEW_NOTEBOOK);
+    check!(at(49, KEYMOD_META | KEYMOD_SHIFT, PL_LIBRARY) == SHORTCUT_NONE);
+    check!(write_file_atomic(&path, b"key.Meta+n=undo\nkey.Ctrl+n=redo\n") == 0);
+    shortcuts_load(&mut m, &path);
+    check!(shortcuts_lookup_at(&m, ActionSrc::Key, 49, KEYMOD_META, PL_PAGE) == SHORTCUT_UNDO);
+    check!(shortcuts_lookup_at(&m, false, 49, KEYMOD_CTRL, PL_PAGE) == SHORTCUT_REDO);
+    // Room for every line: 256
+    let mut many = String::new();
+    for code in 1..=300 {
+        many.push_str(&format!("key.code{code}=undo\n"));
+    }
+    check!(write_file_atomic(&path, many.as_bytes()) == 0);
+    shortcuts_load(&mut m, &path);
+    check!(m.count == SHORTCUT_MAX as i32 && SHORTCUT_MAX == 256 && m.rejected == 300 - 256);
+    unlink(&path);
+}
+
+// The starter map: the keyboard scheme with the controller's lines; a file that is byte for byte an earlier
+// starter (a CRLF copy too) becomes this build's at the start, one someone edited never.
+fn starter_maps_and_their_upgrade() {
+    let k = shortcuts_starter();
+    check!(k.contains("pad.304=undo\n"));
+    check!(k.contains("key.Escape=back\n") && k.contains("key.PageDown=next-page\n") && !k.contains("key.Up=scroll-up"));
+    check!(shortcuts_is_starter(k.as_bytes()));
+    let path = format!("{}/shortcuts-upgrade.ini", tl_tmp());
+    let kindle_1_1 = "# Grimoire shortcuts. Enable in Settings > Shortcuts. Reload there after editing.\n\
+               # key.NAME or key.Ctrl+NAME; pad.NUMBER is a Linux evdev gamepad button code.\n\
+               key.1=tool:pencil\nkey.2=tool:mech\nkey.3=tool:ballpoint\nkey.4=tool:fountain\n\
+               key.5=tool:fineliner\nkey.6=tool:marker\nkey.7=tool:charcoal\nkey.8=tool:calligraphy\n\
+               key.9=tool:highlighter\nkey.e=tool:eraser\nkey.w=white\nkey.Ctrl+z=undo\nkey.Ctrl+y=redo\n\
+               key.Left=previous-page\nkey.Right=next-page\nkey.PageUp=previous-tool\nkey.PageDown=next-tool\n\
+               # Generic evdev gamepad defaults; controllers may report different codes.\n\
+               pad.304=undo\npad.305=tool:eraser\npad.307=redo\npad.308=white\n\
+               pad.310=previous-tool\npad.311=next-tool\npad.314=previous-page\npad.315=next-page\n";
+    for text in [kindle_1_1.to_string(), kindle_1_1.replace('\n', "\r\n")] {
+        check!(write_file_atomic(&path, text.as_bytes()) == 0);
+        check!(shortcuts_upgrade_starter(&path));
+        check!(read_file(&path).as_deref() == Some(k.as_bytes()));
+        check!(!shortcuts_upgrade_starter(&path)); // (this build's: nothing to do)
+    }
+    // Edited (a line more, a line less, a comment changed): kept as it is
+    for text in [format!("{kindle_1_1}key.q=undo\n"), kindle_1_1.replace("key.w=white\n", ""), kindle_1_1.replace("Reload there", "reload there")] {
+        check!(write_file_atomic(&path, text.as_bytes()) == 0);
+        check!(!shortcuts_upgrade_starter(&path));
+        check!(read_file(&path).as_deref() == Some(text.as_bytes()));
+    }
+    unlink(&path);
+    check!(!shortcuts_upgrade_starter(&path)); // (no file: nothing)
+}
+
 #[test]
 fn test_shortcuts() {
     run!(defaults_and_exact_modifiers);
@@ -481,5 +570,7 @@ fn test_shortcuts() {
     run!(dpad_for_files_written_before);
     run!(switch_labels);
     run!(a_row_held_forgets_its_buttons);
+    run!(keys_by_place);
+    run!(starter_maps_and_their_upgrade);
     done();
 }

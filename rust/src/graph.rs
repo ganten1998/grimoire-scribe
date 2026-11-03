@@ -44,8 +44,9 @@ use std::f32::consts::{PI, TAU};
 
 // ---- the model (plan.graph_view, DATA and NODES) ----
 
-/// The page-id table's slots: a power of two, a little over twice STORE_MAX_PAGES, so a lookup
-/// probes about one slot and always finds an empty one to stop at.
+/// The page-id table's slots in a one-notebook model: a power of two, a little over twice
+/// STORE_MAX_PAGES, so a lookup probes about one slot and always finds an empty one to stop at. The
+/// Graph of all notebooks sizes its table the same way from its node count (graph_slots_for).
 pub const GRAPH_SLOTS: usize = 4096;
 
 /// GraphEdge.dir: the page with the lower id (a) links to the other (b), and b links to a.
@@ -155,8 +156,14 @@ const SALT_SAT: u32 = 4;
 const SALT_APART: u32 = 5;
 const SALT_SPOT: u32 = 6;
 const SALT_TURN: u32 = 7;
+const SALT_KEY: u32 = 8;
 
 // ---- graph.ini (plan.data_and_formats) ----
+
+/// The Graph of all notebooks holds linked pages only, at most this many, with at most this many
+/// links between them (backlinks' BL_LINKS_MAX); past either it opens on the editor's notebook.
+pub const GRAPH_ALL_NODES_MAX: usize = 8000;
+pub const GRAPH_ALL_EDGES_MAX: usize = 40_000;
 
 /// graph.ini is read up to this size; a bigger file is not one this version wrote.
 pub const GRAPH_FILE_MAX: usize = 256 * 1024;
@@ -218,6 +225,17 @@ pub enum GraphMode {
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct GraphNode {
     pub pid: u32,
+    /// what the layout hashes, orders and breaks ties by: the page id in a one-notebook model (so its
+    /// layouts are what they were before keys), a mix of the notebook's id and the page id in the
+    /// Graph of all notebooks (graph_build_all), where page ids repeat between notebooks
+    pub key: u32,
+    /// the node's notebook: an index into GraphModel.books (0 in a one-notebook model)
+    pub book: u16,
+    /// its page's number in its notebook, from 1 (a page listed twice: its first place's)
+    pub number: u32,
+    /// its links to a page or notebook that is gone (graph_build_all; a notebook's own Graph shows
+    /// them as anchors at its edge instead)
+    pub broken: i32,
     pub tier: GraphTier,
     /// has an Index name (nav.ini)
     pub named: bool,
@@ -289,7 +307,10 @@ pub struct GraphModel {
     pub laid: GraphLaid,
     /// the steps the last relaxation ran (it stops early once settled: graph_layout's probe)
     pub relaxed: i32,
-    // The page-id table: node + 1 in each used slot, 0 in an empty one.
+    /// the notebooks of the Graph of all notebooks, by id (GraphNode.book indexes it); empty in a
+    /// one-notebook model
+    pub books: Vec<FixedStr<STORE_ID_LEN>>,
+    // The page-id table: node + 1 in each used slot, 0 in an empty one (graph_slots_for slots).
     slots: Vec<u16>,
     // Each node's place in page-id order: what ties are broken by.
     rank: Vec<u32>,
@@ -370,6 +391,131 @@ impl Default for GraphIni {
     }
 }
 
+// ---- the Graph of all notebooks: its input (docs/beta2/GRAPH-ALL.md) ----
+
+/// Where a link goes, as the Graph of all notebooks reads it (graph_build_all).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub enum GraphTo {
+    /// the notebook's Index: a badge on the page, never an edge
+    Index,
+    /// a page of the same notebook, by id
+    Page(u32),
+    /// a page of another notebook: its notebook's id and the page id
+    Other(FixedStr<STORE_ID_LEN>, u32),
+}
+
+/// One link: from page `src` of its notebook.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub struct GraphLink {
+    pub src: u32,
+    pub to: GraphTo,
+}
+
+/// One notebook as the Graph of all notebooks sees it: its name and folder, its page order, its page
+/// names and its links. libindex keeps one for every notebook; the editor's own is made from its live
+/// NotebookInfo and Nav (graph_book_of).
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct GraphBook {
+    pub id: FixedStr<STORE_ID_LEN>,
+    pub name: String,
+    pub folder: String,
+    /// the page order (notebook.ini's pages)
+    pub pages: Vec<u32>,
+    /// the named pages, sorted by page id, one each
+    pub names: Vec<(u32, String)>,
+    /// sorted, one per link (links from pages not in `pages` left out, as targets this version does not
+    /// know are)
+    pub links: Vec<GraphLink>,
+    /// left out of the Graph of all notebooks by its own setting (notebook.ini graph=0)
+    pub omit: bool,
+}
+
+/// Whether the Graph of all notebooks leaves notebook `book` out (2.0.0-beta.2, the owner's ruling of
+/// 2026-11-03): its own setting (notebook.ini graph=0), or a folder it is in, at any depth, left out
+/// (`folders`, graph-omit.ini's; a notebook moved into such a folder is left out with it). A left-out
+/// notebook's pages are no nodes, and links to or from them no edges: a page linked only with it is not
+/// linked in All. Its own Graph (past the caps of the Graph of all notebooks) still shows it.
+pub fn graph_omits(book: &GraphBook, folders: &[String]) -> bool {
+    book.omit || store_folder_graph_omitted(folders, &book.folder)
+}
+
+/// A links.ini target as the Graph of all notebooks reads it, from notebook `own`: None for a target
+/// this version does not know. A link to a page of its own notebook written as another notebook's
+/// (n:<own id>:p<id>) is a page of the same notebook.
+pub fn graph_to_of(own: &str, target: &str) -> Option<GraphTo> {
+    if target == "index" {
+        return Some(GraphTo::Index);
+    }
+    let pid = target_pid(target.as_bytes());
+    if pid != 0 {
+        return Some(GraphTo::Page(pid));
+    }
+    let (id, pid) = nav_external_target(target)?;
+    if id == own {
+        return Some(GraphTo::Page(pid));
+    }
+    Some(GraphTo::Other(FixedStr::from_str(id), pid))
+}
+
+/// The target text of a link (links.ini's): "index", "p<id>" or "n:<notebook>:p<id>".
+pub fn graph_to_text(to: &GraphTo) -> String {
+    match to {
+        GraphTo::Index => "index".to_string(),
+        GraphTo::Page(p) => format!("p{p}"),
+        GraphTo::Other(id, p) => format!("n:{}:p{p}", id.as_str()),
+    }
+}
+
+/// The links of a notebook (nav.links) as GraphLinks: from pages in `pages` only, targets this version
+/// knows only, sorted, one each.
+pub fn graph_links_of(own: &str, links: &[NavLink], pages: &[u32]) -> Vec<GraphLink> {
+    let mut listed: Vec<u32> = pages.to_vec();
+    listed.sort_unstable();
+    let mut out: Vec<GraphLink> = Vec::new();
+    if out.try_reserve_exact(links.len()).is_err() {
+        return out;
+    }
+    for l in links {
+        if listed.binary_search(&l.pid).is_err() {
+            continue;
+        }
+        if let Some(to) = graph_to_of(own, l.target.as_str()) {
+            out.push(GraphLink { src: l.pid, to });
+        }
+    }
+    out.sort_unstable();
+    out.dedup();
+    out
+}
+
+/// The page names of a notebook (nav.names) for a GraphBook: the non-empty ones of pages in `pages`.
+pub fn graph_names_of(names: &[NavName], pages: &[u32]) -> Vec<(u32, String)> {
+    let mut listed: Vec<u32> = pages.to_vec();
+    listed.sort_unstable();
+    let mut out: Vec<(u32, String)> = names
+        .iter()
+        .filter(|n| !n.text.is_empty() && listed.binary_search(&n.pid).is_ok())
+        .map(|n| (n.pid, n.text.as_str().to_string()))
+        .collect();
+    out.sort_by_key(|n| n.0);
+    out.dedup_by_key(|n| n.0);
+    out
+}
+
+/// A notebook as the Graph of all notebooks sees it, from its NotebookInfo and its Nav (names and
+/// links): the editor's own, unsaved links included, in place of what libindex has for it.
+pub fn graph_book_of(nb: &NotebookInfo, nav: &Nav) -> GraphBook {
+    GraphBook {
+        id: nb.id,
+        name: nb.name.as_str().to_string(),
+        folder: nb.folder.as_str().to_string(),
+        pages: nb.page_ids.clone(),
+        names: graph_names_of(&nav.names, &nb.page_ids),
+        links: graph_links_of(nb.id.as_str(), &nav.links, &nb.page_ids),
+        omit: nb.graph_omit,
+    }
+}
+
 // ---- the page-id hash: jitter and tie-breaking ----
 
 // A page id mixed with a salt (the murmur3 finalizer). The seed's jitter, the free spots and the
@@ -396,15 +542,24 @@ fn pid_jitter(pid: u32, salt: u32) -> f32 {
 
 // ---- the page-id table ----
 
-// Fibonacci hashing: the top 12 bits of the id times 2^32 / phi spread a notebook's consecutive
-// ids evenly over the table.
-fn slot_of(pid: u32) -> usize {
-    (pid.wrapping_mul(0x9E37_79B1) >> 20) as usize & (GRAPH_SLOTS - 1)
+/// The slots for a table of n nodes: the next power of two at least twice n, and never fewer than
+/// GRAPH_SLOTS (a one-notebook model's, whatever its size).
+pub fn graph_slots_for(n: usize) -> usize {
+    n.saturating_mul(2).next_power_of_two().max(GRAPH_SLOTS)
+}
+
+// Fibonacci hashing: the top bits of the id times 2^32 / phi spread a notebook's consecutive ids
+// evenly over the table (its top 12 bits in a 4096-slot table). The notebook (book) is mixed in
+// first; book 0, a one-notebook model's, leaves the id as it is.
+fn slot_of(book: u16, pid: u32, len: usize) -> usize {
+    let h = pid ^ (book as u32).wrapping_mul(0x85EB_CA6B);
+    (h.wrapping_mul(0x9E37_79B1) >> (32 - len.trailing_zeros())) as usize & (len - 1)
 }
 
 fn slot_put(slots: &mut [u16], nodes: &[GraphNode], i: usize) {
-    let pid = nodes[i].pid;
-    let mut s = slot_of(pid);
+    let (book, pid) = (nodes[i].book, nodes[i].pid);
+    let len = slots.len();
+    let mut s = slot_of(book, pid, len);
     loop {
         let v = slots[s] as usize;
         if v == 0 {
@@ -412,28 +567,36 @@ fn slot_put(slots: &mut [u16], nodes: &[GraphNode], i: usize) {
             return;
         }
         // A page listed twice: its first place answers, as nav_link_page's search of the order does.
-        if nodes[v - 1].pid == pid {
+        if nodes[v - 1].pid == pid && nodes[v - 1].book == book {
             return;
         }
-        s = (s + 1) & (GRAPH_SLOTS - 1);
+        s = (s + 1) & (len - 1);
     }
 }
 
-/// The node of page pid, -1 when the notebook has no such page.
+/// The node of page pid, -1 when the notebook has no such page (in the Graph of all notebooks, the
+/// page of book 0: graph_node_in names the notebook).
 pub fn graph_node_of(g: &GraphModel, pid: u32) -> i32 {
-    if pid == 0 || g.slots.len() != GRAPH_SLOTS {
+    graph_node_in(g, 0, pid)
+}
+
+/// The node of page pid of notebook `book` (an index into g.books; 0 in a one-notebook model), -1
+/// when there is none.
+pub fn graph_node_in(g: &GraphModel, book: u16, pid: u32) -> i32 {
+    let len = g.slots.len();
+    if pid == 0 || len < GRAPH_SLOTS || !len.is_power_of_two() {
         return -1;
     }
-    let mut s = slot_of(pid);
+    let mut s = slot_of(book, pid, len);
     loop {
         let v = g.slots[s] as usize;
         if v == 0 {
             return -1;
         }
-        if g.nodes[v - 1].pid == pid {
+        if g.nodes[v - 1].pid == pid && g.nodes[v - 1].book == book {
             return (v - 1) as i32;
         }
-        s = (s + 1) & (GRAPH_SLOTS - 1);
+        s = (s + 1) & (len - 1);
     }
 }
 
@@ -514,8 +677,8 @@ fn graph_filled<T: Clone>(n: usize, value: T) -> Option<Vec<T>> {
     Some(v)
 }
 
-// The nodes in page-id order: a stable radix sort, 8 bits a pass, O(n). It never looks at the
-// notebook order, which is what keeps the layout independent of it.
+// The nodes in key order (page-id order in a one-notebook model): a stable radix sort, 8 bits a pass,
+// O(n). It never looks at the notebook order, which is what keeps the layout independent of it.
 fn pid_order(nodes: &[GraphNode]) -> Option<Vec<u32>> {
     let n = nodes.len();
     let mut a = graph_buffer(n)?;
@@ -524,13 +687,13 @@ fn pid_order(nodes: &[GraphNode]) -> Option<Vec<u32>> {
     for shift in [0u32, 8, 16, 24] {
         let mut count = [0usize; 257];
         for &i in &a {
-            count[((nodes[i as usize].pid >> shift) & 255) as usize + 1] += 1;
+            count[((nodes[i as usize].key >> shift) & 255) as usize + 1] += 1;
         }
         for k in 0..256 {
             count[k + 1] += count[k];
         }
         for &i in &a {
-            let k = ((nodes[i as usize].pid >> shift) & 255) as usize;
+            let k = ((nodes[i as usize].key >> shift) & 255) as usize;
             b[count[k]] = i;
             count[k] += 1;
         }
@@ -621,12 +784,16 @@ pub fn graph_build(g: &mut GraphModel, nb: &NotebookInfo, nav: &Nav, open_pid: u
     let built = (|| -> Option<()> {
     let blank = GraphNode { section: -1, sat_rank: -1, comp: -1, ..GraphNode::default() };
     g.nodes = graph_buffer(n)?;
-    g.nodes.extend(nb.page_ids.iter().map(|&pid| GraphNode { pid, ..blank }));
+    g.nodes.extend(nb.page_ids.iter().map(|&pid| GraphNode { pid, key: pid, ..blank }));
     g.slots = graph_filled(GRAPH_SLOTS, 0u16)?;
     for i in 0..n {
         if g.nodes[i].pid != 0 {
             slot_put(&mut g.slots, &g.nodes, i);
         }
+    }
+    for i in 0..n {
+        let first = graph_node_of(g, g.nodes[i].pid);
+        g.nodes[i].number = if first >= 0 { first as u32 + 1 } else { i as u32 + 1 };
     }
     let order = pid_order(&g.nodes)?;
     g.rank = graph_filled(n, 0u32)?;
@@ -698,9 +865,53 @@ pub fn graph_build(g: &mut GraphModel, nb: &NotebookInfo, nav: &Nav, open_pid: u
     for &(src, _) in &external {
         g.nodes[src].links_to += 1;
     }
+    link_pairs(g, &mut pairs, &order)?;
+    // The bands, in notebook order: a section runs from a named page to the next. Every unnamed,
+    // unlinked page after a named page takes the next slot on its section's spiral, the open page
+    // too: its slot stays empty while it is a force node, so opening the map from another page of
+    // the section moves no satellite.
+    let mut head: i32 = -1;
+    for i in 0..n {
+        if g.nodes[i].named {
+            head = i as i32;
+        }
+        g.nodes[i].section = head;
+        let nd = g.nodes[i];
+        if linked_only {
+            g.nodes[i].tier = if nd.linked { GraphTier::Force } else { GraphTier::Hidden };
+            continue;
+        }
+        let plain = !nd.named && !nd.linked;
+        if plain && head >= 0 {
+            let h = head as usize;
+            g.nodes[i].sat_rank = g.nodes[h].sats;
+            g.nodes[h].sats += 1;
+        }
+        if !plain || nd.open {
+            g.nodes[i].tier = GraphTier::Force;
+        } else if head >= 0 {
+            g.nodes[i].tier = GraphTier::Satellite;
+        } else {
+            g.nodes[i].tier = GraphTier::Tray;
+            g.tray.push(i as i32);
+        }
+    }
+    finish_force(g, &order)?;
+    Some(())
+    })();
+    if built.is_none() {
+        *g = GraphModel { open: -1, ..GraphModel::default() };
+        -1
+    } else { 0 }
+}
+
+// The edges of a model from its directed links (low rank, high rank, direction): one edge per pair,
+// the degrees and the link counts, and the neighbour lists. Shared by graph_build and graph_build_all.
+fn link_pairs(g: &mut GraphModel, pairs: &mut Vec<(u32, u32, u8)>, order: &[u32]) -> Option<()> {
+    let n = g.nodes.len();
     // One edge per pair: the pair's links side by side once sorted.
-    sort_pairs(&mut pairs, n)?;
-    for &(lo, hi, dir) in &pairs {
+    sort_pairs(pairs, n)?;
+    for &(lo, hi, dir) in pairs.iter() {
         let (a, b) = (order[lo as usize] as i32, order[hi as usize] as i32);
         match g.edges.last_mut() {
             Some(e) if e.a == a && e.b == b => {
@@ -740,37 +951,14 @@ pub fn graph_build(g: &mut GraphModel, nb: &NotebookInfo, nav: &Nav, open_pid: u
         g.adj[fill[b] as usize] = e.a;
         fill[b] += 1;
     }
-    // The bands, in notebook order: a section runs from a named page to the next. Every unnamed,
-    // unlinked page after a named page takes the next slot on its section's spiral, the open page
-    // too: its slot stays empty while it is a force node, so opening the map from another page of
-    // the section moves no satellite.
-    let mut head: i32 = -1;
-    for i in 0..n {
-        if g.nodes[i].named {
-            head = i as i32;
-        }
-        g.nodes[i].section = head;
-        let nd = g.nodes[i];
-        if linked_only {
-            g.nodes[i].tier = if nd.linked { GraphTier::Force } else { GraphTier::Hidden };
-            continue;
-        }
-        let plain = !nd.named && !nd.linked;
-        if plain && head >= 0 {
-            let h = head as usize;
-            g.nodes[i].sat_rank = g.nodes[h].sats;
-            g.nodes[h].sats += 1;
-        }
-        if !plain || nd.open {
-            g.nodes[i].tier = GraphTier::Force;
-        } else if head >= 0 {
-            g.nodes[i].tier = GraphTier::Satellite;
-        } else {
-            g.nodes[i].tier = GraphTier::Tray;
-            g.tray.push(i as i32);
-        }
-    }
-    for &i in &order {
+    Some(())
+}
+
+// The force nodes in key order, the top degree, each node's radius and the components. Shared by
+// graph_build and graph_build_all.
+fn finish_force(g: &mut GraphModel, order: &[u32]) -> Option<()> {
+    let n = g.nodes.len();
+    for &i in order {
         if g.nodes[i as usize].tier == GraphTier::Force {
             g.force.push(i as i32);
         }
@@ -807,11 +995,514 @@ pub fn graph_build(g: &mut GraphModel, nb: &NotebookInfo, nav: &Nav, open_pid: u
     }
     g.ncomp = nc;
     Some(())
+}
+
+// ---- the Graph of all notebooks: its model (docs/beta2/GRAPH-ALL.md, sections 1 and 3) ----
+
+// A node's key in the Graph of all notebooks: its notebook id's FNV-1a (book_h) and its page id mixed
+// (the murmur3 finalizer), again with the next salt while it is taken or 0.
+#[cfg(test)]
+std::thread_local! { static KEY_MASK: std::cell::Cell<u32> = const { std::cell::Cell::new(u32::MAX) }; }
+fn all_key(book_h: u32, pid: u32, salt: u32) -> u32 {
+    let k = pid_hash(book_h ^ pid_hash(pid, SALT_KEY.wrapping_add(salt)), SALT_KEY);
+    // (the tests force collisions on the first try: graph_build_all must resolve them)
+    #[cfg(test)]
+    let k = if salt == 0 { k & KEY_MASK.with(|m| m.get()) } else { k };
+    k
+}
+
+/// What graph_build_all says when a library is past GRAPH_ALL_NODES_MAX linked pages or
+/// GRAPH_ALL_EDGES_MAX links between pages (the view opens the editor's notebook instead).
+pub const GRAPH_ALL_TOO_BIG: i32 = -2;
+
+/// Builds the Graph of all notebooks from what each notebook says (libindex's entries, the editor's
+/// own made from its live NotebookInfo and Nav: graph_book_of), with the open page (its notebook's id
+/// and page id). `skip` names notebooks that are there but not read (their notebook.ini does not
+/// read, or the index left them out): links to them are neither edges nor broken.
+///
+/// Its nodes are the linked pages of every notebook, and only those (node i is not page i): a page is
+/// linked when it has a link out (to a page of its notebook, to its Index, to itself, or to a page of
+/// another notebook that is there) or a link in from any page of any notebook. Its edges are one per
+/// pair of linked pages, as graph_build makes them, across notebooks too. A link to the Index is a
+/// badge; a link to a page or notebook that is gone is no node and no edge, and counts on its page as
+/// broken. Each node's key mixes its notebook's id and its page id (all_key), nodes visited in
+/// (notebook id, page id) order, a taken key mixed again, so the layout is deterministic for a given
+/// library and the same page id in two notebooks is two nodes. g.books lists the notebooks by id.
+///
+/// 0; -1 when out of memory and GRAPH_ALL_TOO_BIG past the caps, with g left empty.
+pub fn graph_build_all(g: &mut GraphModel, books: &[&GraphBook], skip: &[FixedStr<STORE_ID_LEN>], open: Option<(&str, u32)>) -> i32 {
+    *g = GraphModel { open: -1, ..GraphModel::default() };
+    let mut too_big = false;
+    let built = (|| -> Option<()> {
+    // The notebooks by id, one each (the first of an id given twice).
+    let mut bk: Vec<&GraphBook> = graph_copy(books)?;
+    bk.sort_by(|a, b| a.id.as_bytes().cmp(b.id.as_bytes()));
+    bk.dedup_by(|a, b| a.id == b.id);
+    if bk.len() > u16::MAX as usize {
+        too_big = true;
+        return None;
+    }
+    let book_of = |id: &str| bk.binary_search_by(|b| b.id.as_bytes().cmp(id.as_bytes())).ok();
+    let skipped = |id: &str| skip.iter().any(|s| s.as_str() == id);
+    // Each notebook's pages by id, with their numbers (a page listed twice: its first place's).
+    let mut places: Vec<Vec<(u32, u32)>> = graph_buffer(bk.len())?;
+    for b in &bk {
+        let mut p: Vec<(u32, u32)> = graph_collect(b.pages.iter().enumerate().map(|(i, &pid)| (pid, i as u32 + 1)), b.pages.len())?;
+        p.sort_unstable();
+        p.dedup_by_key(|e| e.0);
+        places.push(p);
+    }
+    let number = |b: usize, pid: u32| -> u32 {
+        places[b].binary_search_by_key(&pid, |e| e.0).map_or(0, |at| places[b][at].1)
+    };
+    // Every link once: (source notebook, source page, what it is). Targets resolved to a notebook.
+    #[derive(Clone, Copy)]
+    enum Res {
+        Index,
+        Loop,
+        Page(u16, u32),
+        Broken,
+    }
+    let nlinks: usize = bk.iter().map(|b| b.links.len()).sum();
+    let mut res: Vec<(u16, u32, Res)> = graph_buffer(nlinks)?;
+    let mut cand: Vec<(u16, u32)> = graph_buffer(2 * nlinks)?;
+    let mut between = 0usize;
+    for (bi, b) in bk.iter().enumerate() {
+        let bi16 = bi as u16;
+        for l in &b.links {
+            if number(bi, l.src) == 0 {
+                continue;
+            }
+            let r = match l.to {
+                GraphTo::Index => Res::Index,
+                GraphTo::Page(p) if p == l.src => Res::Loop,
+                GraphTo::Page(p) => {
+                    if number(bi, p) == 0 {
+                        continue; // (a page of its own notebook that is not there: links.ini drops these)
+                    }
+                    Res::Page(bi16, p)
+                }
+                GraphTo::Other(id, p) => match book_of(id.as_str()) {
+                    Some(bj) if bj == bi && p == l.src => Res::Loop,
+                    Some(bj) if number(bj, p) != 0 => Res::Page(bj as u16, p),
+                    _ if skipped(id.as_str()) => continue,
+                    _ => Res::Broken,
+                },
+            };
+            match r {
+                Res::Broken => {}
+                Res::Page(bj, p) => {
+                    between += 1;
+                    cand.push((bi16, l.src));
+                    cand.push((bj, p));
+                }
+                _ => cand.push((bi16, l.src)),
+            }
+            res.push((bi16, l.src, r));
+        }
+    }
+    cand.sort_unstable();
+    cand.dedup();
+    if cand.len() > GRAPH_ALL_NODES_MAX || between > GRAPH_ALL_EDGES_MAX {
+        too_big = true;
+        return None;
+    }
+    let n = cand.len();
+    g.books = graph_collect(bk.iter().map(|b| b.id), bk.len())?;
+    // The nodes in (notebook id, page id) order, each keyed: a key that is taken is mixed again.
+    let mut used: std::collections::HashSet<u32> = std::collections::HashSet::new();
+    used.try_reserve(n).ok()?;
+    let mut book_h = 0u32;
+    let mut last_book = usize::MAX;
+    g.nodes = graph_buffer(n)?;
+    for &(b, pid) in &cand {
+        let b = b as usize;
+        if b != last_book {
+            book_h = fnv(0x811C_9DC5, bk[b].id.as_bytes());
+            last_book = b;
+        }
+        let mut salt = 0;
+        let key = loop {
+            let k = all_key(book_h, pid, salt);
+            if k != 0 && used.insert(k) {
+                break k;
+            }
+            salt += 1;
+        };
+        let named = bk[b].names.binary_search_by_key(&pid, |e| e.0).is_ok();
+        g.nodes.push(GraphNode {
+            pid,
+            key,
+            book: b as u16,
+            number: number(b, pid),
+            named,
+            linked: true,
+            section: -1,
+            sat_rank: -1,
+            comp: -1,
+            ..GraphNode::default()
+        });
+    }
+    g.slots = graph_filled(graph_slots_for(n), 0u16)?;
+    for i in 0..n {
+        slot_put(&mut g.slots, &g.nodes, i);
+    }
+    let order = pid_order(&g.nodes)?;
+    g.rank = graph_filled(n, 0u32)?;
+    for (k, &i) in order.iter().enumerate() {
+        g.rank[i as usize] = k as u32;
+    }
+    if let Some((id, pid)) = open {
+        if let Some(b) = book_of(id) {
+            g.open = graph_node_in(g, b as u16, pid);
+            if g.open >= 0 {
+                g.nodes[g.open as usize].open = true;
+            }
+        }
+    }
+    let mut pairs: Vec<(u32, u32, u8)> = graph_buffer(between)?;
+    g.edges = graph_buffer(between)?;
+    g.force = graph_buffer(n)?;
+    for &(b, src, r) in &res {
+        let s = graph_node_in(g, b, src);
+        if s < 0 {
+            // (a broken link on a page with no other link: it has no node)
+            continue;
+        }
+        let s = s as usize;
+        match r {
+            Res::Index => g.nodes[s].index_links += 1,
+            Res::Loop => g.nodes[s].self_links += 1,
+            Res::Broken => g.nodes[s].broken += 1,
+            Res::Page(bj, p) => {
+                let d = graph_node_in(g, bj, p) as usize;
+                if g.rank[s] < g.rank[d] {
+                    pairs.push((g.rank[s], g.rank[d], GRAPH_DIR_AB));
+                } else {
+                    pairs.push((g.rank[d], g.rank[s], GRAPH_DIR_BA));
+                }
+            }
+        }
+    }
+    link_pairs(g, &mut pairs, &order)?;
+    finish_force(g, &order)?;
+    Some(())
     })();
     if built.is_none() {
         *g = GraphModel { open: -1, ..GraphModel::default() };
-        -1
-    } else { 0 }
+        if too_big { GRAPH_ALL_TOO_BIG } else { -1 }
+    } else {
+        0
+    }
+}
+
+/// A model of the Graph of all notebooks (graph_build_all), not one notebook's.
+pub fn graph_is_all(g: &GraphModel) -> bool {
+    !g.books.is_empty()
+}
+
+// Each component's home notebook: the one most of its pages are in, ties to the lower notebook id.
+fn comp_homes(g: &GraphModel, cs: &Comps) -> Option<Vec<u16>> {
+    let nc = cs.hub.len();
+    let mut homes = graph_filled(nc, 0u16)?;
+    let mut books: Vec<u16> = Vec::new();
+    for c in 0..nc {
+        books.clear();
+        books.try_reserve(cs.members(c).len()).ok()?;
+        books.extend(cs.members(c).iter().map(|&v| g.nodes[v as usize].book));
+        books.sort_unstable();
+        let (mut best, mut best_n, mut k) = (0u16, 0usize, 0usize);
+        while k < books.len() {
+            let mut j = k;
+            while j < books.len() && books[j] == books[k] {
+                j += 1;
+            }
+            if j - k > best_n {
+                best = books[k];
+                best_n = j - k;
+            }
+            k = j;
+        }
+        homes[c] = best;
+    }
+    Some(homes)
+}
+
+// The Graph of all notebooks' pack: each notebook's components packed into one island (pack_slots),
+// then the islands packed the same way, the largest in the middle. Links alone shape an island; a
+// component linked across notebooks sits in the island of its home notebook (comp_homes).
+fn pack_islands(g: &mut GraphModel, lay: &Lay, cs: &Comps) -> Option<()> {
+    let nc = cs.hub.len();
+    let homes = comp_homes(g, cs)?;
+    let nb = g.books.len();
+    let mut at = graph_filled(nb + 1, 0usize)?;
+    for &h in &homes {
+        at[h as usize + 1] += 1;
+    }
+    for b in 0..nb {
+        at[b + 1] += at[b];
+    }
+    let mut fill: Vec<usize> = graph_copy(&at[..nb])?;
+    let mut by_home = graph_filled(nc, 0usize)?;
+    for c in 0..nc {
+        let h = homes[c] as usize;
+        by_home[fill[h]] = c;
+        fill[h] += 1;
+    }
+    let mut islands: Vec<(usize, f32, f32, f32)> = graph_buffer(nb)?;
+    let mut members: Vec<u32> = graph_buffer(g.force.len())?;
+    for b in 0..nb {
+        let comps = &by_home[at[b]..at[b + 1]];
+        if comps.is_empty() {
+            continue;
+        }
+        let mut discs: Vec<(usize, f32, f32, f32)> = graph_buffer(comps.len())?;
+        for &c in comps {
+            let (cx, cy, r) = group_disc(g, lay, cs.members(c));
+            discs.push((c, cx, cy, r));
+        }
+        discs.sort_unstable_by(|a, b| b.3.total_cmp(&a.3).then(a.0.cmp(&b.0)));
+        let slots = pack_slots(&discs)?;
+        members.clear();
+        for (k, &(c, cx, cy, _)) in discs.iter().enumerate() {
+            let (ox, oy) = (slots[k].0 - cx, slots[k].1 - cy);
+            for &v in cs.members(c) {
+                g.nodes[v as usize].x += ox;
+                g.nodes[v as usize].y += oy;
+                members.push(v);
+            }
+        }
+        let (cx, cy, r) = group_disc(g, lay, &members);
+        islands.push((b, cx, cy, r));
+    }
+    islands.sort_unstable_by(|a, b| b.3.total_cmp(&a.3).then(a.0.cmp(&b.0)));
+    let slots = pack_slots(&islands)?;
+    let mut shift = graph_filled(nb, (0.0f32, 0.0f32))?;
+    for (k, &(b, cx, cy, _)) in islands.iter().enumerate() {
+        shift[b] = (slots[k].0 - cx, slots[k].1 - cy);
+    }
+    for c in 0..nc {
+        let (ox, oy) = shift[homes[c] as usize];
+        for &v in cs.members(c) {
+            g.nodes[v as usize].x += ox;
+            g.nodes[v as usize].y += oy;
+        }
+    }
+    Some(())
+}
+
+// pack for a full layout: islands in the Graph of all notebooks, components side by side in one
+// notebook's.
+fn pack_any(g: &mut GraphModel, lay: &Lay, cs: &Comps) -> Option<()> {
+    if graph_is_all(g) { pack_islands(g, lay, cs) } else { pack(g, lay, cs) }
+}
+
+// The Graph of all notebooks: each component with no placed member (a new notebook's linked pages,
+// pages copied in with their links) laid out on its own (its seed, then relaxed when it is small
+// enough to relax in the app's process and `relax_it`), and put beside its home notebook's island
+// (or outside everything placed), clear of every placed component: no placed node moves. Components
+// are taken in order (of their lowest key), each one placed before the next. How many it placed.
+fn place_new_components(g: &mut GraphModel, lay: &mut Lay, cs: &Comps, relax_it: bool, pump: &mut dyn FnMut()) -> Option<usize> {
+    if !graph_is_all(g) {
+        return Some(0);
+    }
+    let nc = cs.hub.len();
+    let fresh: Vec<usize> = graph_collect((0..nc).filter(|&c| cs.members(c).iter().all(|&v| !g.nodes[v as usize].placed)), nc)?;
+    if fresh.is_empty() || fresh.len() == nc {
+        // (nothing new, or nothing placed at all: a full layout's work)
+        return Some(0);
+    }
+    let homes = comp_homes(g, cs)?;
+    let n = g.nodes.len();
+    let nb = g.books.len();
+    let mut depth = graph_filled(n, -1i32)?;
+    let mut parent = graph_filled(n, 0u32)?;
+    let mut angle = graph_filled(n, 0.0f32)?;
+    // What is placed, kept as it grows (each component placed joins it), so placing one costs what is near
+    // it and not the whole library again: the placed components' discs, each notebook's placed nodes (its
+    // island) and every placed node, with the islands' discs worked out again only when they grew.
+    let mut discs: Vec<(f32, f32, f32)> = graph_buffer(nc)?;
+    let mut home_members: Vec<Vec<u32>> = graph_collect((0..nb).map(|_| Vec::new()), nb)?;
+    let mut all_members: Vec<u32> = graph_buffer(n)?;
+    for k in 0..nc {
+        let placed: Vec<u32> = graph_collect(cs.members(k).iter().copied().filter(|&v| g.nodes[v as usize].placed), cs.members(k).len())?;
+        if placed.is_empty() {
+            continue;
+        }
+        let (x, y, rr) = group_disc(g, lay, &placed);
+        discs.push((x, y, rr));
+        let h = &mut home_members[homes[k] as usize];
+        h.try_reserve(placed.len()).ok()?;
+        h.extend_from_slice(&placed);
+        all_members.extend_from_slice(&placed);
+    }
+    let mut island: Vec<Option<(f32, f32, f32)>> = graph_filled(nb, None)?;
+    let mut everything: Option<(f32, f32, f32)> = None;
+    let mut corridor: Vec<(u32, f32)> = graph_buffer(nc)?;
+    for &c in &fresh {
+        let m = cs.members(c);
+        seed_component(g, lay, cs.hub[c] as usize, &mut depth, &mut parent, &mut angle)?;
+        for &v in m {
+            g.nodes[v as usize].placed = true;
+        }
+        if relax_it && m.len() as i32 <= GRAPH_INPROC_MAX {
+            // (it alone moves: its nodes and its edges, found from its nodes' neighbours, in g.edges' order)
+            let movers: Vec<i32> = graph_collect(m.iter().map(|&v| v as i32), m.len())?;
+            let mut springs: Vec<usize> = Vec::new();
+            for &v in m {
+                let v = v as usize;
+                for j in g.adj_at[v] as usize..g.adj_at[v + 1] as usize {
+                    let e = graph_edge_between(g, v as i32, g.adj[j]);
+                    if e >= 0 {
+                        springs.try_reserve(1).ok()?;
+                        springs.push(e as usize);
+                    }
+                }
+            }
+            springs.sort_unstable();
+            springs.dedup();
+            let saved: Vec<bool> = graph_collect(m.iter().map(|&v| lay.movable[v as usize]), m.len())?;
+            for &v in m {
+                lay.movable[v as usize] = true;
+            }
+            let ran = relax_set(g, lay, cs, &[c], &movers, &springs, GRAPH_STEPS, MAX_MOVE, pump);
+            for (k, &v) in m.iter().enumerate() {
+                lay.movable[v as usize] = saved[k];
+            }
+            ran?;
+        }
+        pump();
+        let (cx, cy, r) = group_disc(g, lay, m);
+        // The island of its home (its placed nodes' disc), or of everything placed when its home has none.
+        let h = homes[c] as usize;
+        let (ix, iy, ir) = if !home_members[h].is_empty() {
+            *island[h].get_or_insert_with(|| group_disc(g, lay, &home_members[h]))
+        } else if !all_members.is_empty() {
+            *everything.get_or_insert_with(|| group_disc(g, lay, &all_members))
+        } else {
+            (0.0, 0.0, 0.0)
+        };
+        // The nearest clear spot to the island over 16 directions (the first turned by the hub's key),
+        // each walked outward from touching the island until clear of every placed component. Along a
+        // direction only the discs that reach its line can be in the way, and a step that lands in one
+        // goes on from where that disc ends; a direction is given up once it is no nearer than the best.
+        let a0 = pid_unit(g.nodes[cs.hub[c] as usize].key, SALT_SPOT) * TAU;
+        let step = fmla(r, 0.5, COMP_GAP * 0.5);
+        let mut best: Option<(f32, f32, f32)> = None;
+        for k in 0..16 {
+            let a = fmla(TAU / 16.0, k as f32, a0);
+            let (ux, uy) = (a.cos(), a.sin());
+            let start = if ir > 0.0 { ir + r + COMP_GAP } else { 0.0 };
+            // (the discs that reach the line: their index, and where along it each stops covering it)
+            corridor.clear();
+            for (q, d) in discs.iter().enumerate() {
+                let reach = d.2 + r + COMP_GAP - SLACK_EPS;
+                let (ox, oy) = (d.0 - ix, d.1 - iy);
+                let side = fmla(ox, -uy, oy * ux);
+                if side.abs() < reach + 1.0 {
+                    let along = fmla(ox, ux, oy * uy);
+                    corridor.push((q as u32, along + (reach * reach - side * side).max(0.0).sqrt()));
+                }
+            }
+            let mut j = 0u32;
+            let spot = loop {
+                let dist = fmla(step, j as f32, start);
+                if best.is_some_and(|b| dist >= b.0) {
+                    break None;
+                }
+                let (tx, ty) = (fmla(dist, ux, ix), fmla(dist, uy, iy));
+                let blocked = corridor.iter().find(|&&(q, _)| {
+                    let d = discs[q as usize];
+                    (tx - d.0).hypot(ty - d.1) < d.2 + r + COMP_GAP - SLACK_EPS
+                });
+                match blocked {
+                    None => break Some((dist, tx, ty)),
+                    Some(_) if j >= 10_000 => break Some((dist, tx, ty)),
+                    Some(&(_, end)) => {
+                        // (on to the last step before that disc stops covering the line, at least one on)
+                        let to = ((end - start) / step).floor();
+                        j = if to.is_finite() && to > j as f32 { (to as u32).min(10_000) } else { j + 1 };
+                    }
+                }
+            };
+            if let Some(spot) = spot {
+                if best.is_none_or(|b| spot.0 < b.0) {
+                    best = Some(spot);
+                }
+            }
+            if ir <= 0.0 && discs.is_empty() {
+                break;
+            }
+        }
+        let (_, tx, ty) = best.unwrap_or((0.0, ix, iy));
+        let (ox, oy) = (tx - cx, ty - cy);
+        for &v in m {
+            g.nodes[v as usize].x += ox;
+            g.nodes[v as usize].y += oy;
+        }
+        // Placed: one disc more, and its home's island and everything placed grow.
+        discs.push(group_disc(g, lay, m));
+        home_members[h].try_reserve(m.len()).ok()?;
+        home_members[h].extend_from_slice(m);
+        all_members.extend_from_slice(m);
+        island[h] = None;
+        everything = None;
+    }
+    Some(fresh.len())
+}
+
+/// A notebook's island in the Graph of all notebooks, as placed now: the disc of the components at
+/// home there (their placed nodes' centroid, and how far they reach from it, radii included). The view
+/// captions it with the notebook's name.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct GraphIsland {
+    pub book: u16,
+    pub x: f32,
+    pub y: f32,
+    pub r: f32,
+}
+
+/// The islands of the Graph of all notebooks, by notebook (empty for one notebook's model).
+pub fn graph_islands(g: &GraphModel) -> Vec<GraphIsland> {
+    let mut out = Vec::new();
+    if !graph_is_all(g) {
+        return out;
+    }
+    let Some(cs) = comps_of(g) else { return out };
+    let Some(homes) = comp_homes(g, &cs) else { return out };
+    let nb = g.books.len();
+    let mut sums = vec![(0f64, 0f64, 0usize); nb];
+    for c in 0..cs.hub.len() {
+        for &v in cs.members(c) {
+            let nd = &g.nodes[v as usize];
+            if nd.placed {
+                let s = &mut sums[homes[c] as usize];
+                s.0 += nd.x as f64;
+                s.1 += nd.y as f64;
+                s.2 += 1;
+            }
+        }
+    }
+    let mut reach = vec![0.0f32; nb];
+    for c in 0..cs.hub.len() {
+        let h = homes[c] as usize;
+        if sums[h].2 == 0 {
+            continue;
+        }
+        let (cx, cy) = ((sums[h].0 / sums[h].2 as f64) as f32, (sums[h].1 / sums[h].2 as f64) as f32);
+        for &v in cs.members(c) {
+            let nd = &g.nodes[v as usize];
+            if nd.placed {
+                reach[h] = reach[h].max((nd.x - cx).hypot(nd.y - cy) + nd.r);
+            }
+        }
+    }
+    for b in 0..nb {
+        if sums[b].2 > 0 {
+            out.push(GraphIsland { book: b as u16, x: (sums[b].0 / sums[b].2 as f64) as f32, y: (sums[b].1 / sums[b].2 as f64) as f32, r: reach[b] });
+        }
+    }
+    out
 }
 
 // ---- graph.ini's gen ----
@@ -832,6 +1523,9 @@ fn fnv(mut h: u32, bytes: &[u8]) -> u32 {
 /// - for each edge, in increasing (lower page id, higher page id): 'e' (0x65), the lower page id,
 ///   then the higher, 4 bytes each, least significant first.
 ///
+/// (The page id is the node's key: in the Graph of all notebooks, graph-all.ini's gen is the same
+/// over the keys graph_build_all gives, in key order.)
+///
 /// Names, directions, multiplicities and Index badges are left out: they change no position. An
 /// empty graph's gen is FNV's offset basis, 811c9dc5.
 pub fn graph_gen(g: &GraphModel) -> u32 {
@@ -840,13 +1534,38 @@ pub fn graph_gen(g: &GraphModel) -> u32 {
         let nd = &g.nodes[v as usize];
         if graph_persisted(nd) {
             h = fnv(h, b"n");
-            h = fnv(h, &nd.pid.to_le_bytes());
+            h = fnv(h, &nd.key.to_le_bytes());
         }
     }
     for e in &g.edges {
         h = fnv(h, b"e");
-        h = fnv(h, &g.nodes[e.a as usize].pid.to_le_bytes());
-        h = fnv(h, &g.nodes[e.b as usize].pid.to_le_bytes());
+        h = fnv(h, &g.nodes[e.a as usize].key.to_le_bytes());
+        h = fnv(h, &g.nodes[e.b as usize].key.to_le_bytes());
+    }
+    h
+}
+
+/// graph_gen over the nodes `keep` says and the edges between two of them: after graph_all_apply_ini, the
+/// placed nodes' (the kept ones). When it is the kept file's gen, nothing changed between the pages that kept
+/// their places (only new pages and new notebooks came, with their links): no edge among them can have been
+/// stretched, so graph_relax_stressed has nothing to do (the Graph of all notebooks skips it, and adding a
+/// notebook moves no kept dot).
+pub fn graph_gen_of(g: &GraphModel, keep: impl Fn(&GraphNode) -> bool) -> u32 {
+    let mut h: u32 = 0x811C_9DC5;
+    for &v in &g.force {
+        let nd = &g.nodes[v as usize];
+        if graph_persisted(nd) && keep(nd) {
+            h = fnv(h, b"n");
+            h = fnv(h, &nd.key.to_le_bytes());
+        }
+    }
+    for e in &g.edges {
+        let (a, b) = (&g.nodes[e.a as usize], &g.nodes[e.b as usize]);
+        if keep(a) && keep(b) {
+            h = fnv(h, b"e");
+            h = fnv(h, &a.key.to_le_bytes());
+            h = fnv(h, &b.key.to_le_bytes());
+        }
     }
     h
 }
@@ -925,7 +1644,7 @@ fn place_satellites(g: &mut GraphModel) {
             continue;
         }
         let h = g.nodes[s as usize];
-        let (dx, dy) = sat_offset(h.sats, g.nodes[i].sat_rank, pid_unit(h.pid, SALT_SAT) * TAU);
+        let (dx, dy) = sat_offset(h.sats, g.nodes[i].sat_rank, pid_unit(h.key, SALT_SAT) * TAU);
         g.nodes[i].x = h.x + dx;
         g.nodes[i].y = h.y + dy;
         g.nodes[i].placed = true;
@@ -1252,7 +1971,7 @@ fn seed_component(g: &mut GraphModel, lay: &Lay, hub: usize, depth: &mut [i32], 
         radius = (radius + GRAPH_SPRING_L).max(radius + prev_big + big + GRAPH_KNOCKOUT + SLACK).max(around / TAU);
         let slot = TAU / next.len() as f32;
         for (k, &v) in next.iter().enumerate() {
-            let pid = g.nodes[v as usize].pid;
+            let pid = g.nodes[v as usize].key;
             let a = fmla(pid_jitter(pid, SALT_ANGLE), slot * 0.5, ang[k]);
             let rr = fmla(pid_jitter(pid, SALT_RADIUS), GRAPH_SPRING_L * 0.16, radius);
             angle[v as usize] = a;
@@ -1300,22 +2019,34 @@ fn relax(g: &mut GraphModel, lay: &mut Lay, cs: &Comps, steps: i32, max_move: f3
         if lay.movable[v] {
             active[g.nodes[v].comp as usize] = true;
         }
-        lay.vx[v] = 0.0;
-        lay.vy[v] = 0.0;
     }
-    let mut moving: Vec<Vec<u32>> = graph_collect((0..nc).map(|_| Vec::new()), nc)?;
-    let mut still: Vec<Option<Tree>> = graph_collect((0..nc).map(|_| None), nc)?;
-    for c in 0..nc {
+    let comps: Vec<usize> = graph_collect((0..nc).filter(|&c| active[c]), nc)?;
+    let movers: Vec<i32> = graph_collect(g.force.iter().copied().filter(|&v| lay.movable[v as usize]), g.force.len())?;
+    let springs: Vec<usize> = graph_collect((0..g.edges.len()).filter(|&k| lay.movable[g.edges[k].a as usize] || lay.movable[g.edges[k].b as usize]), g.edges.len())?;
+    relax_set(g, lay, cs, &comps, &movers, &springs, steps, max_move, pump)
+}
+
+// relax over what moves, as its caller found it: the components with a movable node (in increasing order),
+// the movable force nodes and the edges with a movable end (in g.edges' order). Each step goes over these
+// alone, never the whole model, so a new component of a few pages placed among thousands of placed ones
+// costs its own size (place_new_components hands over its own component's).
+#[allow(clippy::too_many_arguments)]
+fn relax_set(g: &mut GraphModel, lay: &mut Lay, cs: &Comps, comps: &[usize], movers: &[i32], springs: &[usize], steps: i32, max_move: f32, pump: &mut dyn FnMut()) -> Option<()> {
+    for &v in movers {
+        lay.vx[v as usize] = 0.0;
+        lay.vy[v as usize] = 0.0;
+    }
+    let busy: Vec<usize> = graph_collect(comps.iter().copied().filter(|&c| cs.members(c).len() >= 2), comps.len())?;
+    let mut moving: Vec<Vec<u32>> = graph_collect(busy.iter().map(|_| Vec::new()), busy.len())?;
+    let mut still: Vec<Option<Tree>> = graph_collect(busy.iter().map(|_| None), busy.len())?;
+    for (k, &c) in busy.iter().enumerate() {
         let m = cs.members(c);
-        if !active[c] || m.len() < 2 {
-            continue;
-        }
-        moving[c] = graph_collect(m.iter().copied().filter(|&v| lay.movable[v as usize]), m.len())?;
-        if moving[c].len() <= FEW_MOVING && moving[c].len() < m.len() {
+        moving[k] = graph_collect(m.iter().copied().filter(|&v| lay.movable[v as usize]), m.len())?;
+        if moving[k].len() <= FEW_MOVING && moving[k].len() < m.len() {
             let fixed: Vec<u32> = graph_collect(m.iter().copied().filter(|&v| !lay.movable[v as usize]), m.len())?;
             let mut t = Tree::default();
             t.build(g, &fixed)?;
-            still[c] = Some(t);
+            still[k] = Some(t);
         }
     }
     let n_moving: usize = moving.iter().map(|m| m.len()).sum();
@@ -1330,15 +2061,19 @@ fn relax(g: &mut GraphModel, lay: &mut Lay, cs: &Comps, steps: i32, max_move: f3
     g.relaxed = 0;
     for step in 0..steps {
         g.relaxed = step + 1;
-        for &v in &g.force {
+        // (an edge's spring writes both its ends' forces; only a movable end's is read)
+        for &k in springs {
+            for v in [g.edges[k].a as usize, g.edges[k].b as usize] {
+                lay.fx[v] = 0.0;
+                lay.fy[v] = 0.0;
+            }
+        }
+        for &v in movers {
             lay.fx[v as usize] = 0.0;
             lay.fy[v as usize] = 0.0;
         }
-        for c in 0..nc {
+        for (k, &c) in busy.iter().enumerate() {
             let m = cs.members(c);
-            if !active[c] || m.len() < 2 {
-                continue;
-            }
             let (mut sx, mut sy) = (0f64, 0f64);
             for &v in m {
                 sx += g.nodes[v as usize].x as f64;
@@ -1346,17 +2081,17 @@ fn relax(g: &mut GraphModel, lay: &mut Lay, cs: &Comps, steps: i32, max_move: f3
             }
             let cx = (sx / m.len() as f64) as f32;
             let cy = (sy / m.len() as f64) as f32;
-            if still[c].is_none() {
+            if still[k].is_none() {
                 lay.tree.build(g, m)?;
             }
-            for &v in &moving[c] {
+            for &v in &moving[k] {
                 let (x, y) = (g.nodes[v as usize].x, g.nodes[v as usize].y);
-                let (mut rx, mut ry) = match still[c].as_mut() {
+                let (mut rx, mut ry) = match still[k].as_mut() {
                     Some(t) => t.push_at(x, y, u32::MAX),
                     None => lay.tree.push_at(x, y, v),
                 };
-                if still[c].is_some() {
-                    for &u in &moving[c] {
+                if still[k].is_some() {
+                    for &u in &moving[k] {
                         if u != v {
                             repel(x, y, g.nodes[u as usize].x, g.nodes[u as usize].y, 1.0, &mut rx, &mut ry);
                         }
@@ -1367,11 +2102,9 @@ fn relax(g: &mut GraphModel, lay: &mut Lay, cs: &Comps, steps: i32, max_move: f3
                 lay.fy[v] = fmla(-GRAPH_GRAVITY, y - cy, ry);
             }
         }
-        for e in &g.edges {
+        for &k in springs {
+            let e = &g.edges[k];
             let (a, b) = (e.a as usize, e.b as usize);
-            if !lay.movable[a] && !lay.movable[b] {
-                continue;
-            }
             let dx = g.nodes[b].x - g.nodes[a].x;
             let dy = g.nodes[b].y - g.nodes[a].y;
             let d2 = fmla(dx, dx, dy * dy);
@@ -1385,11 +2118,8 @@ fn relax(g: &mut GraphModel, lay: &mut Lay, cs: &Comps, steps: i32, max_move: f3
             lay.fx[b] = fmla(-dx, f, lay.fx[b]);
             lay.fy[b] = fmla(-dy, f, lay.fy[b]);
         }
-        for &v in &g.force {
+        for &v in movers {
             let v = v as usize;
-            if !lay.movable[v] {
-                continue;
-            }
             let mut vx = (lay.vx[v] + lay.fx[v]) * GRAPH_DAMPING;
             let mut vy = (lay.vy[v] + lay.fy[v]) * GRAPH_DAMPING;
             let s2 = fmla(vx, vx, vy * vy);
@@ -1487,7 +2217,7 @@ fn push_apart(g: &mut GraphModel, lay: &Lay, i: usize, j: usize, check: f32) -> 
     } else {
         // On top of each other: apart along an angle of the two page ids, the lower id one way and
         // the higher the other, whichever of them came first.
-        let (pi, pj) = (g.nodes[i].pid, g.nodes[j].pid);
+        let (pi, pj) = (g.nodes[i].key, g.nodes[j].key);
         let (lo, hi, sign) = if pi <= pj { (pi, pj, 1.0f32) } else { (pj, pi, -1.0f32) };
         let a = pid_unit(lo ^ hi.rotate_left(16), SALT_APART) * TAU;
         (sign * a.cos(), sign * a.sin())
@@ -1620,37 +2350,34 @@ fn spread(g: &mut GraphModel, lay: &Lay, cs: &Comps, pump: &mut dyn FnMut()) -> 
     Some(())
 }
 
-// Puts the components side by side: the widest in the middle, the others on rings around it, each
-// ring as deep as its first (widest) disc, each disc in its own slice of the ring with half a gap on
-// either side. Discs are each component's centroid and reach (lay.eff included), so no component
-// touches another.
-fn pack(g: &mut GraphModel, lay: &Lay, cs: &Comps) -> Option<()> {
-    let nc = cs.hub.len();
-    let mut discs: Vec<(usize, f32, f32, f32)> = graph_buffer(nc)?;
-    for c in 0..nc {
-        let m = cs.members(c);
-        let (mut sx, mut sy) = (0f64, 0f64);
-        for &v in m {
-            sx += g.nodes[v as usize].x as f64;
-            sy += g.nodes[v as usize].y as f64;
-        }
-        let cx = (sx / m.len() as f64) as f32;
-        let cy = (sy / m.len() as f64) as f32;
-        let mut r = 0.0f32;
-        for &v in m {
-            let nd = &g.nodes[v as usize];
-            let (dx, dy) = (nd.x - cx, nd.y - cy);
-            r = r.max(fmla(dx, dx, dy * dy).sqrt() + lay.eff[v as usize]);
-        }
-        discs.push((c, cx, cy, r));
+// A group of nodes as a disc: their centroid, and how far they reach from it (lay.eff included).
+fn group_disc(g: &GraphModel, lay: &Lay, m: &[u32]) -> (f32, f32, f32) {
+    let (mut sx, mut sy) = (0f64, 0f64);
+    for &v in m {
+        sx += g.nodes[v as usize].x as f64;
+        sy += g.nodes[v as usize].y as f64;
     }
-    // (components are numbered from their lowest page id, so equal discs keep a page-id order)
-    discs.sort_unstable_by(|a, b| b.3.total_cmp(&a.3).then(a.0.cmp(&b.0)));
+    let cx = (sx / m.len() as f64) as f32;
+    let cy = (sy / m.len() as f64) as f32;
+    let mut r = 0.0f32;
+    for &v in m {
+        let nd = &g.nodes[v as usize];
+        let (dx, dy) = (nd.x - cx, nd.y - cy);
+        r = r.max(fmla(dx, dx, dy * dy).sqrt() + lay.eff[v as usize]);
+    }
+    (cx, cy, r)
+}
+
+// Where each disc goes (discs as (id, cx, cy, r), widest first): the first in the middle, the others
+// on rings around it, each ring as deep as its first (widest) disc, each disc in its own slice of the
+// ring with half a gap on either side. The centres, in the discs' order.
+fn pack_slots(discs: &[(usize, f32, f32, f32)]) -> Option<Vec<(f32, f32)>> {
+    let mut out: Vec<(f32, f32)> = graph_buffer(discs.len())?;
     let mut inner = 0.0f32;
     let mut band = 0.0f32;
     let mut ang = 0.0f32;
     let mut open = false;
-    for (k, &(c, cx, cy, r)) in discs.iter().enumerate() {
+    for (k, &(_, _, _, r)) in discs.iter().enumerate() {
         let (tx, ty) = if k == 0 {
             inner = r + COMP_GAP;
             (0.0, 0.0)
@@ -1673,6 +2400,25 @@ fn pack(g: &mut GraphModel, lay: &Lay, cs: &Comps) -> Option<()> {
                 open = false;
             }
         };
+        out.push((tx, ty));
+    }
+    Some(out)
+}
+
+// Puts the components side by side (pack_slots): discs are each component's centroid and reach, so
+// no component touches another.
+fn pack(g: &mut GraphModel, lay: &Lay, cs: &Comps) -> Option<()> {
+    let nc = cs.hub.len();
+    let mut discs: Vec<(usize, f32, f32, f32)> = graph_buffer(nc)?;
+    for c in 0..nc {
+        let (cx, cy, r) = group_disc(g, lay, cs.members(c));
+        discs.push((c, cx, cy, r));
+    }
+    // (components are numbered from their lowest page id, so equal discs keep a page-id order)
+    discs.sort_unstable_by(|a, b| b.3.total_cmp(&a.3).then(a.0.cmp(&b.0)));
+    let slots = pack_slots(&discs)?;
+    for (k, &(c, cx, cy, _)) in discs.iter().enumerate() {
+        let (tx, ty) = slots[k];
         let (ox, oy) = (tx - cx, ty - cy);
         for &v in cs.members(c) {
             g.nodes[v as usize].x += ox;
@@ -1690,20 +2436,7 @@ fn pack_warm(g: &mut GraphModel, lay: &Lay, cs: &Comps) -> Option<()> {
     let nc = cs.hub.len();
     let mut discs: Vec<(usize, f32, f32, f32)> = graph_buffer(nc)?;
     for c in 0..nc {
-        let m = cs.members(c);
-        let (mut sx, mut sy) = (0f64, 0f64);
-        for &v in m {
-            sx += g.nodes[v as usize].x as f64;
-            sy += g.nodes[v as usize].y as f64;
-        }
-        let cx = (sx / m.len() as f64) as f32;
-        let cy = (sy / m.len() as f64) as f32;
-        let mut r = 0.0f32;
-        for &v in m {
-            let nd = &g.nodes[v as usize];
-            let (dx, dy) = (nd.x - cx, nd.y - cy);
-            r = r.max(fmla(dx, dx, dy * dy).sqrt() + lay.eff[v as usize]);
-        }
+        let (cx, cy, r) = group_disc(g, lay, cs.members(c));
         discs.push((c, cx, cy, r));
     }
     discs.sort_unstable_by(|a, b| b.3.total_cmp(&a.3).then(a.0.cmp(&b.0)));
@@ -1723,8 +2456,8 @@ fn pack_warm(g: &mut GraphModel, lay: &Lay, cs: &Comps) -> Option<()> {
                 let (ux, uy) = if d > 1e-3 {
                     (dx / d, dy / d)
                 } else {
-                    let pa = g.nodes[cs.hub[ca] as usize].pid;
-                    let pb = g.nodes[cs.hub[cb] as usize].pid;
+                    let pa = g.nodes[cs.hub[ca] as usize].key;
+                    let pb = g.nodes[cs.hub[cb] as usize].key;
                     let t = pid_unit(pa ^ pb.rotate_left(16), SALT_APART) * TAU;
                     (t.cos(), t.sin())
                 };
@@ -1789,7 +2522,7 @@ pub fn graph_seed(g: &mut GraphModel, pump: &mut dyn FnMut()) -> bool {
     }
     seed_all(g, &lay, &cs)?;
     pump();
-    pack(g, &lay, &cs)?;
+    pack_any(g, &lay, &cs)?;
     collide(g, &lay, SLACK, pump)?;
     snap(g, &lay);
     place_satellites(g);
@@ -1811,7 +2544,7 @@ pub fn graph_layout(g: &mut GraphModel, pump: &mut dyn FnMut()) -> bool {
     seed_all(g, &lay, &cs)?;
     relax(g, &mut lay, &cs, GRAPH_STEPS, MAX_MOVE, pump)?;
     spread(g, &lay, &cs, pump)?;
-    pack(g, &lay, &cs)?;
+    pack_any(g, &lay, &cs)?;
     collide(g, &lay, SLACK, pump)?;
     snap(g, &lay);
     place_satellites(g);
@@ -1834,6 +2567,7 @@ pub fn graph_layout_warm(g: &mut GraphModel, pump: &mut dyn FnMut()) -> bool {
     graph_layout_attempt(g, |g| {
     let cs = comps_of(g)?;
     let mut lay = Lay::new(g)?;
+    place_new_components(g, &mut lay, &cs, true, pump)?;
     let fresh: Vec<usize> = graph_collect(g.force.iter().map(|&v| v as usize).filter(|&v| !g.nodes[v].placed), g.force.len())?;
     place_fresh(g, &lay, &fresh);
     for &v in &g.force {
@@ -1856,6 +2590,10 @@ pub fn graph_layout_warm(g: &mut GraphModel, pump: &mut dyn FnMut()) -> bool {
 pub fn graph_seed_kept(g: &mut GraphModel, pump: &mut dyn FnMut()) -> bool {
     graph_layout_attempt(g, |g| {
     let mut lay = Lay::new(g)?;
+    if graph_is_all(g) {
+        let cs = comps_of(g)?;
+        place_new_components(g, &mut lay, &cs, false, pump)?;
+    }
     let fresh: Vec<usize> = graph_collect(g.force.iter().map(|&v| v as usize).filter(|&v| !g.nodes[v].placed), g.force.len())?;
     place_fresh(g, &lay, &fresh);
     for &v in &fresh {
@@ -1924,7 +2662,7 @@ fn place_fresh(g: &mut GraphModel, lay: &Lay, fresh: &[usize]) {
                     continue;
                 }
                 let (nx, ny) = ((sx / k as f64) as f32, (sy / k as f64) as f32);
-                let pid = g.nodes[v].pid;
+                let pid = g.nodes[v].key;
                 let (dx, dy) = (nx - cx, ny - cy);
                 let base = if fmla(dx, dx, dy * dy) >= 1.0 { dy.atan2(dx) } else { fmla(pid_unit(pid, SALT_SPOT), TAU, -PI) };
                 let a = fmla(pid_jitter(pid, SALT_TURN), 0.6, base);
@@ -1948,7 +2686,7 @@ fn place_fresh(g: &mut GraphModel, lay: &Lay, fresh: &[usize]) {
         } else {
             s
         };
-        let pid = g.nodes[v].pid;
+        let pid = g.nodes[v].key;
         let a = pid_unit(pid, SALT_SPOT) * TAU;
         if head >= 0 && g.nodes[head as usize].placed {
             let h = head as usize;
@@ -1978,6 +2716,7 @@ pub fn graph_place_new(g: &mut GraphModel, pump: &mut dyn FnMut()) -> i32 {
     let ok = graph_layout_attempt(g, |g| {
     let cs = comps_of(g)?;
     let mut lay = Lay::new(g)?;
+    place_new_components(g, &mut lay, &cs, true, pump)?;
     let fresh: Vec<usize> = graph_collect(g.force.iter().map(|&v| v as usize).filter(|&v| !g.nodes[v].placed), g.force.len())?;
     if !fresh.is_empty() {
         place_fresh(g, &lay, &fresh);
@@ -2138,8 +2877,8 @@ fn cache_lock(path:&str)->Option<GraphCacheLock> {
     let file=std::fs::OpenOptions::new().read(true).write(true).create(true).mode(0o600)
         .custom_flags(libc::O_NOFOLLOW|libc::O_CLOEXEC|libc::O_NONBLOCK).open(format!("{path}.lock")).ok()?;
     if !file.metadata().ok()?.is_file(){return None;}
-    // SAFETY: the live File owns this descriptor. The critical section contains only a bounded
-    // cache read and atomic write; the worker computes its layout before taking this lock.
+    // The critical section contains only a bounded cache read and atomic write; the worker computes
+    // its layout before taking this lock.
     if unsafe {libc::flock(file.as_raw_fd(),libc::LOCK_EX)}!=0{return None;}
     Some(GraphCacheLock{_file:file}) // closing the descriptor releases its advisory lock
 }
@@ -2220,7 +2959,7 @@ pub fn graph_around(g: &GraphModel, centre: i32, depth: i32, out: &mut Vec<Graph
         let ideal = if cn.placed && nd.placed && fmla(dx, dx, dy * dy) > 0.0 {
             dy.atan2(dx)
         } else {
-            fmla(pid_unit(nd.pid, SALT_AROUND), TAU, -PI)
+            fmla(pid_unit(nd.key, SALT_AROUND), TAU, -PI)
         };
         ring1.push((ideal, g.rank[v], v));
     }
@@ -2292,6 +3031,11 @@ pub fn graph_ini_path(id: &str, out: &mut String) -> i32 {
 // cannot be opened or read, it is a symlink or not a regular file, it is over GRAPH_FILE_MAX, or it
 // holds a NUL), as nav.rs reads its sidecars.
 fn read_text(path: &str) -> Result<Option<Vec<u8>>, ()> {
+    read_text_max(path, GRAPH_FILE_MAX)
+}
+
+// read_text up to `max` bytes.
+fn read_text_max(path: &str, max: usize) -> Result<Option<Vec<u8>>, ()> {
     use std::io::Read;
     use std::os::unix::fs::OpenOptionsExt;
     let f = std::fs::OpenOptions::new().read(true).custom_flags(libc::O_NONBLOCK | libc::O_NOFOLLOW).open(path);
@@ -2305,15 +3049,15 @@ fn read_text(path: &str) -> Result<Option<Vec<u8>>, ()> {
         }
     };
     let meta = f.metadata().map_err(|_| ())?;
-    if !meta.file_type().is_file() || meta.len() > GRAPH_FILE_MAX as u64 {
+    if !meta.file_type().is_file() || meta.len() > max as u64 {
         return Err(());
     }
     let mut buf: Vec<u8> = Vec::new();
     if buf.try_reserve_exact(meta.len() as usize + 1).is_err() {
         return Err(());
     }
-    f.take(GRAPH_FILE_MAX as u64 + 1).read_to_end(&mut buf).map_err(|_| ())?;
-    if buf.len() > GRAPH_FILE_MAX || buf.contains(&0) {
+    f.take(max as u64 + 1).read_to_end(&mut buf).map_err(|_| ())?;
+    if buf.len() > max || buf.contains(&0) {
         return Err(()); // never rewrite a file with a hidden binary tail
     }
     Ok(Some(buf))
@@ -2626,6 +3370,359 @@ pub fn graph_ini_write(id: &str, ini: &mut GraphIni) -> i32 {
     graph_ini_write_path(&path, ini)
 }
 
+// ---- graph-all.ini: the Graph of all notebooks' layout (docs/beta2/GRAPH-ALL.md, section 4) ----
+
+/// graph-all.ini is read up to this size (GRAPH_ALL_NODES_MAX positions are about 300 KB).
+pub const GRAPH_ALL_FILE_MAX: usize = 1024 * 1024;
+
+const ALL_INI_HEADER: &[u8] = b"# Grimoire: the Graph of all notebooks (a cache: deleting it loses nothing)\n";
+
+/// A kept position in the Graph of all notebooks: pos.<notebook id>.<page id>=<x>,<y>.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct GraphAllPos {
+    pub id: FixedStr<STORE_ID_LEN>,
+    pub pid: u32,
+    pub x: i32,
+    pub y: i32,
+}
+
+/// root/graph-all.ini, the Graph of all notebooks' layout, kept by notebook id and page id (never by
+/// place or name, so moving a page or renaming a notebook moves no dot):
+///
+/// ```text
+/// # Grimoire: the Graph of all notebooks (a cache: deleting it loses nothing)
+/// gen=5f3a9c21
+/// mode=all
+/// pos.20261010-143205-a3f1.5=-310,442
+/// ```
+///
+/// Read and written as graph.ini is (graph_ini_read_path): lines it does not read are carried, a file
+/// that does not read is refused and never overwritten that session. No other version reads it.
+#[derive(Clone, Debug, PartialEq)]
+pub struct GraphAllIni {
+    /// graph_gen of the model the positions belong to (over its nodes' keys)
+    pub gen: u32,
+    pub has_gen: bool,
+    /// View: All or Around, remembered for the Graph of all notebooks
+    pub mode: GraphMode,
+    /// sorted by (notebook id, page id), one each (the last line for a page wins)
+    pub pos: Vec<GraphAllPos>,
+    pub unknown: Vec<u8>,
+    pub writable: bool,
+    pub file: bool,
+}
+
+impl Default for GraphAllIni {
+    fn default() -> Self {
+        GraphAllIni { gen: 0, has_gen: false, mode: GraphMode::All, pos: Vec::new(), unknown: Vec::new(), writable: true, file: false }
+    }
+}
+
+/// root/graph-all.ini's path.
+pub fn graph_all_ini_path() -> String {
+    format!("{}/graph-all.ini", store_root())
+}
+
+fn all_key_of(p: &GraphAllPos) -> (&[u8], u32) {
+    (p.id.as_bytes(), p.pid)
+}
+
+// pos.<notebook id>.<page id>=<x>,<y>, nothing after (notebook ids have no '.')
+fn all_pos_parse(line: &[u8]) -> Option<GraphAllPos> {
+    let rest = line.strip_prefix(b"pos.")?;
+    let dot = rest.iter().position(|&c| c == b'.')?;
+    let id = std::str::from_utf8(&rest[..dot]).ok()?;
+    if id.is_empty() || id.len() >= STORE_ID_LEN || !id.bytes().all(|c| c.is_ascii_alphanumeric() || c == b'-' || c == b'_') {
+        return None;
+    }
+    let rest = &rest[dot + 1..];
+    let (pid, used) = dec_u32(rest)?;
+    let rest = rest[used..].strip_prefix(b"=")?;
+    let (x, used) = dec_coord(rest)?;
+    let rest = rest[used..].strip_prefix(b",")?;
+    let (y, used) = dec_coord(rest)?;
+    if pid == 0 || used != rest.len() {
+        return None;
+    }
+    Some(GraphAllPos { id: FixedStr::from_str(id), pid, x, y })
+}
+
+// A line only the beta.2 build that drew unlinked pages (orphans) wrote: orphans=<0|1>, and
+// pos.<notebook id>.0=<x>,<y>, its notebook's orphan block. They are dropped when read, never carried:
+// one block line a notebook would soon pass GRAPH_UNKNOWN_MAX and get the whole file refused.
+fn all_orphan_line(line: &[u8]) -> bool {
+    if line.starts_with(b"orphans=") {
+        return true;
+    }
+    let Some(rest) = line.strip_prefix(b"pos.") else { return false };
+    let Some(dot) = rest.iter().position(|&c| c == b'.') else { return false };
+    dot > 0 && rest[dot + 1..].starts_with(b"0=") && all_pos_parse(&[&line[..4 + dot + 1], b"1", &rest[dot + 2..]].concat()).is_some()
+}
+
+fn all_ini_parse(text: &[u8], ini: &mut GraphAllIni) -> i32 {
+    let mut pos: Vec<GraphAllPos> = Vec::new();
+    for raw in text.split(|&c| c == b'\n') {
+        let line = raw.strip_suffix(b"\r").unwrap_or(raw);
+        if line.is_empty() || line[0] == b'#' {
+            continue;
+        }
+        if let Some(h) = line.strip_prefix(b"gen=").and_then(hex8) {
+            ini.gen = h;
+            ini.has_gen = true;
+        } else if line == b"mode=all" {
+            ini.mode = GraphMode::All;
+        } else if line == b"mode=around" {
+            ini.mode = GraphMode::Around;
+        } else if let Some(p) = all_pos_parse(line) {
+            if pos.try_reserve(1).is_err() {
+                return -1;
+            }
+            pos.push(p);
+        } else if all_orphan_line(line) {
+            // (dropped: an orphan build's line; the owner ruled the unlinked pages out of the Graph)
+        } else if carry(&mut ini.unknown, line) != 0 {
+            return -1;
+        }
+    }
+    // The last line for a page wins (a stable sort keeps the lines' order among equals).
+    let mut ordered: Vec<(usize, GraphAllPos)> = pos.into_iter().enumerate().collect();
+    ordered.sort_by(|a, b| all_key_of(&a.1).cmp(&all_key_of(&b.1)).then(a.0.cmp(&b.0)));
+    let mut one: Vec<GraphAllPos> = Vec::new();
+    for (_, p) in ordered {
+        match one.last_mut() {
+            Some(l) if l.id == p.id && l.pid == p.pid => *l = p,
+            _ => one.push(p),
+        }
+    }
+    if one.len() > GRAPH_ALL_NODES_MAX {
+        return -1;
+    }
+    ini.pos = one;
+    0
+}
+
+fn all_refuse(ini: &mut GraphAllIni) -> i32 {
+    *ini = GraphAllIni { writable: false, file: true, ..GraphAllIni::default() };
+    qlog!("graph: graph-all.ini could not be read; left unchanged");
+    -1
+}
+
+/// Reads graph-all.ini at path, as graph_ini_read_path reads graph.ini: a missing file is a fresh cache
+/// (0), a file that does not read is refused (-1, writable false). It does not read past
+/// GRAPH_ALL_FILE_MAX, with a NUL, past the carried lines' limits, or with more than
+/// GRAPH_ALL_NODES_MAX positions.
+pub fn graph_all_ini_read_path(path: &str, ini: &mut GraphAllIni) -> i32 {
+    match read_text_max(path, GRAPH_ALL_FILE_MAX) {
+        Ok(None) => {
+            *ini = GraphAllIni::default();
+            0
+        }
+        Ok(Some(text)) => {
+            let mut fresh = GraphAllIni { file: true, ..GraphAllIni::default() };
+            if all_ini_parse(&text, &mut fresh) != 0 {
+                return all_refuse(ini);
+            }
+            *ini = fresh;
+            0
+        }
+        Err(()) => all_refuse(ini),
+    }
+}
+
+/// Writes graph-all.ini at path, whole and atomically: the header, gen, mode, the positions in
+/// (notebook id, page id) order, then the carried lines but those whose key it writes. -1, writing
+/// nothing, when it is not writable or would pass GRAPH_ALL_FILE_MAX, or when the write fails.
+pub fn graph_all_ini_write_path(path: &str, ini: &mut GraphAllIni) -> i32 {
+    if !ini.writable {
+        return -1;
+    }
+    let mut keep: Vec<u8> = Vec::new();
+    if !ini.unknown.is_empty() {
+        if ini.unknown.last() != Some(&b'\n') || ini.unknown.contains(&0) {
+            return -1;
+        }
+        for line in ini.unknown[..ini.unknown.len() - 1].split(|&c| c == b'\n') {
+            let content = line.strip_suffix(b"\r").unwrap_or(line);
+            if content.len() > GRAPH_LINE_MAX {
+                return -1;
+            }
+            let key = &content[..content.iter().position(|&c| c == b'=').unwrap_or(content.len())];
+            let mine = key == b"gen" || key == b"mode" || {
+                let as_pos = [key, b"=0,0"].concat();
+                all_pos_parse(&as_pos).is_some_and(|p| ini.pos.binary_search_by(|q| all_key_of(q).cmp(&all_key_of(&p))).is_ok())
+            };
+            if !mine {
+                keep.extend_from_slice(line);
+                keep.push(b'\n');
+            }
+        }
+        if keep.len() > GRAPH_UNKNOWN_MAX {
+            return -1;
+        }
+    }
+    let mut t: Vec<u8> = ALL_INI_HEADER.to_vec();
+    if ini.has_gen {
+        t.extend_from_slice(cformat!("gen=%08x\n", ini.gen).as_bytes());
+    }
+    t.extend_from_slice(if ini.mode == GraphMode::Around { b"mode=around\n" } else { b"mode=all\n" });
+    for p in &ini.pos {
+        t.extend_from_slice(format!("pos.{}.{}={},{}\n", p.id.as_str(), p.pid, p.x, p.y).as_bytes());
+    }
+    t.extend_from_slice(&keep);
+    if t.len() > GRAPH_ALL_FILE_MAX {
+        return -1;
+    }
+    let rc = write_file_atomic(path, &t);
+    if rc == 0 {
+        ini.file = true;
+        ini.unknown = keep;
+    }
+    rc
+}
+
+/// graph_all_ini_write_path at root/graph-all.ini, under its lock (graph-all.ini.lock).
+pub fn graph_all_ini_write(ini: &mut GraphAllIni) -> i32 {
+    let path = graph_all_ini_path();
+    let Some(_lock) = cache_lock(&path) else { return -1 };
+    graph_all_ini_write_path(&path, ini)
+}
+
+/// Only View: All or Around changed while a background layout of the Graph of all notebooks may be
+/// finishing: the latest file's positions kept.
+pub fn graph_all_ini_update_mode(mode: GraphMode) -> i32 {
+    let path = graph_all_ini_path();
+    let Some(_lock) = cache_lock(&path) else { return -1 };
+    let mut latest = GraphAllIni::default();
+    if graph_all_ini_read_path(&path, &mut latest) != 0 || !latest.writable {
+        return -1;
+    }
+    latest.mode = mode;
+    graph_all_ini_write_path(&path, &mut latest)
+}
+
+/// Puts graph-all.ini's kept positions on the Graph of all notebooks' nodes (by notebook id and page
+/// id), and says what is left to do. The 10% rule counts only the new pages of components that
+/// already have a placed page: a whole new component (a new notebook's linked pages) is placed as a
+/// block beside its notebook's island (graph_place_new), so adding a notebook never lays the library
+/// out again. Full when nothing is kept.
+pub fn graph_all_apply_ini(g: &mut GraphModel, ini: &GraphAllIni) -> GraphPlan {
+    let mut kept = 0;
+    let mut fresh = 0;
+    for k in 0..g.force.len() {
+        let v = g.force[k] as usize;
+        let nd = g.nodes[v];
+        if !graph_persisted(&nd) {
+            g.nodes[v].placed = false;
+            continue;
+        }
+        kept += 1;
+        let id = g.books.get(nd.book as usize).copied().unwrap_or_default();
+        match ini.pos.binary_search_by(|p| all_key_of(p).cmp(&(id.as_bytes(), nd.pid))) {
+            Ok(at) => {
+                g.nodes[v].x = ini.pos[at].x as f32;
+                g.nodes[v].y = ini.pos[at].y as f32;
+                g.nodes[v].placed = true;
+            }
+            Err(_) => {
+                g.nodes[v].placed = false;
+                fresh += 1;
+            }
+        }
+    }
+    if fresh == 0 {
+        return GraphPlan::Ready;
+    }
+    if fresh == kept {
+        return GraphPlan::Full;
+    }
+    // The new pages in components that have a placed page.
+    let nc = g.ncomp.max(0) as usize;
+    let mut has_placed = vec![false; nc];
+    for &v in &g.force {
+        let nd = &g.nodes[v as usize];
+        if nd.placed && nd.comp >= 0 {
+            has_placed[nd.comp as usize] = true;
+        }
+    }
+    let attached = g.force.iter().filter(|&&v| {
+        let nd = &g.nodes[v as usize];
+        graph_persisted(nd) && !nd.placed && nd.comp >= 0 && has_placed[nd.comp as usize]
+    }).count() as i32;
+    if graph_relayout_needed(attached, kept) {
+        GraphPlan::Full
+    } else {
+        GraphPlan::Incremental
+    }
+}
+
+/// The Graph of all notebooks' positions and gen into ini, to write (graph_ini_store's). The model's
+/// notebooks are written as they are now; a notebook the model lacks (the index being built again, a
+/// notebook.ini that did not read at a check, a notebook left out at the link cap) keeps the positions ini
+/// had for it, so it comes back where it was, as many as fit under GRAPH_ALL_NODES_MAX with the model's.
+/// (A notebook that went to the trash is forgotten by the caller: graph_all_ini_forget.) True when
+/// anything changed.
+pub fn graph_all_ini_store(ini: &mut GraphAllIni, g: &GraphModel) -> bool {
+    let gen = graph_gen(g);
+    let mut pos: Vec<GraphAllPos> = Vec::new();
+    let books: Option<Vec<&[u8]>> = graph_collect(g.books.iter().map(|b| b.as_bytes()), g.books.len());
+    let Some(mut books) = books.filter(|_| pos.try_reserve_exact(GRAPH_ALL_NODES_MAX.max(g.force.len()).min(g.force.len() + ini.pos.len())).is_ok()) else {
+        ini.writable = false;
+        return false;
+    };
+    for &v in &g.force {
+        let nd = &g.nodes[v as usize];
+        if graph_persisted(nd) && nd.placed {
+            let id = g.books.get(nd.book as usize).copied().unwrap_or_default();
+            pos.push(GraphAllPos { id, pid: nd.pid, x: snap1(nd.x) as i32, y: snap1(nd.y) as i32 });
+        }
+    }
+    books.sort_unstable();
+    for p in &ini.pos {
+        if pos.len() >= GRAPH_ALL_NODES_MAX {
+            break;
+        }
+        if books.binary_search(&p.id.as_bytes()).is_err() {
+            pos.push(*p);
+        }
+    }
+    pos.sort_by(|a, b| all_key_of(a).cmp(&all_key_of(b)));
+    let changed = !ini.has_gen || ini.gen != gen || ini.pos != pos;
+    ini.gen = gen;
+    ini.has_gen = true;
+    ini.pos = pos;
+    changed
+}
+
+/// The kept positions of the notebooks `keep` says no to (gone to the trash) taken out of ini, once a
+/// check of every notebook says which are left. True when any was.
+pub fn graph_all_ini_forget(ini: &mut GraphAllIni, keep: impl Fn(&str) -> bool) -> bool {
+    let before = ini.pos.len();
+    ini.pos.retain(|p| keep(p.id.as_str()));
+    ini.pos.len() != before
+}
+
+/// A bgjob child's work for the Graph of all notebooks (BgKind::GraphLayoutAll), on the model it built
+/// from the index: the full layout from the kept positions (graph_layout_warm: new components placed
+/// as blocks first), unpumped, then graph-all.ini written whole under its lock, the latest file's mode
+/// and carried lines kept. 0, or -1.
+pub fn graph_all_layout_job(g: &mut GraphModel, ini: &mut GraphAllIni, path: &str) -> i32 {
+    graph_all_apply_ini(g, ini);
+    if !graph_layout_warm(g, &mut || {}) {
+        return -1;
+    }
+    graph_all_ini_store(ini, g);
+    let Some(_lock) = cache_lock(path) else { return -1 };
+    let mut latest = GraphAllIni::default();
+    if graph_all_ini_read_path(path, &mut latest) != 0 {
+        return -1;
+    }
+    if latest.file {
+        ini.mode = latest.mode;
+        ini.unknown = latest.unknown;
+    }
+    graph_all_ini_write_path(path, ini)
+}
+
 #[cfg(test)]
 mod allocation_tests {
     use super::*;
@@ -2677,6 +3774,40 @@ mod allocation_tests {
             }
             assert!(succeeded);
         }
+    }
+    // Two nodes whose first keys are equal (forced: every first key masked to one bit) still get keys of
+    // their own, and the layout stays deterministic.
+    #[test]
+    fn equal_keys_are_mixed_again() {
+        let book = |id: &str| {
+            let mut b = GraphBook { id: FixedStr::from_str(id), pages: (1..=30).collect(), ..GraphBook::default() };
+            for p in 1..30 {
+                b.links.push(GraphLink { src: p, to: GraphTo::Page(p + 1) });
+            }
+            b.links.push(GraphLink { src: 30, to: GraphTo::Other(FixedStr::from_str(if id == "A" { "B" } else { "A" }), 1) });
+            b
+        };
+        let (a, b) = (book("A"), book("B"));
+        let run = || {
+            let mut g = GraphModel::default();
+            assert_eq!(graph_build_all(&mut g, &[&a, &b], &[], None), 0);
+            assert!(graph_layout(&mut g, &mut || {}));
+            g
+        };
+        let plain = run();
+        KEY_MASK.with(|m| m.set(1));
+        let (first, second) = (run(), run());
+        KEY_MASK.with(|m| m.set(u32::MAX));
+        assert_eq!(first.nodes.len(), 60);
+        let mut keys: Vec<u32> = first.nodes.iter().map(|n| n.key).collect();
+        keys.sort_unstable();
+        keys.dedup();
+        assert_eq!(keys.len(), 60);
+        assert!(keys[0] != 0);
+        // (at most one node keeps a masked first key: 1; the others were mixed again)
+        assert!(first.nodes.iter().filter(|n| n.key <= 1).count() <= 1);
+        assert_eq!(first.nodes, second.nodes);
+        assert_eq!(first.edges.len(), plain.edges.len());
     }
     #[test]
     fn impossible_buffer_capacity_is_refused() {

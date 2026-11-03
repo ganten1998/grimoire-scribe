@@ -67,15 +67,9 @@ fn with<R>(f: impl FnOnce(&mut State) -> R) -> R {
     S.with(|s| f(&mut s.borrow_mut()))
 }
 
-/// Fills out from /dev/urandom; false if it cannot (nothing is used then).
+/// Fills out from /dev/urandom (util::random_fill); false if it cannot (nothing is used then).
 fn random_bytes(out: &mut [u8]) -> bool {
-    use std::io::Read;
-    // (std opens it close-on-exec, as the C asks with O_CLOEXEC; read_exact retries EINTR and
-    // fails on a short read or an error, as the C's loop does.)
-    match std::fs::File::open("/dev/urandom") {
-        Ok(mut f) => f.read_exact(out).is_ok(),
-        Err(_) => false,
-    }
+    crate::util::random_fill(out)
 }
 
 fn random_token(out: &mut [u8; PAIR_TOKEN_LEN + 1]) -> bool {
@@ -321,4 +315,27 @@ pub fn pair_forget_invitation() {
 
 pub fn pair_reset() {
     with(|s| *s = State::default())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // An invitation draws its code and QR token from the system's generator, and a new one rotates the
+    // code.
+    #[test]
+    fn an_invitation_draws_from_the_system() {
+        pair_reset();
+        assert_eq!(pair_begin(PAIR_LIVE, 0), PAIR_OK);
+        let (code, qr) = (pair_code(), pair_qr_token());
+        assert!(code.len() == 6 && code.bytes().all(|c| c.is_ascii_digit()), "{code:?}");
+        assert!(qr.len() == PAIR_TOKEN_LEN && token_ok(qr.as_bytes()), "{qr:?}");
+        assert_eq!(pair_begin(PAIR_LIVE | PAIR_SEND, 1), PAIR_OK);
+        assert_ne!(pair_code(), code);
+        assert_ne!(pair_qr_token(), qr);
+        let mut tok = String::new();
+        assert_eq!(pair_redeem(&pair_code(), 2, &mut tok), PAIR_OK);
+        assert!(token_ok(tok.as_bytes()), "{tok:?}");
+        pair_reset();
+    }
 }

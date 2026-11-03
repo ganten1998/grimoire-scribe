@@ -5,9 +5,13 @@ wait 300
 tap library folder.Void
 tap library notebook.A
 swipe 2 930 900 0 400
-expect editor.map.visible is 1 2
-expect editor.map.foreign is 1
-expect editor.map.stats is 3 13 3 15 20
+# (the Graph is every notebook's: there is no Notebook choice, the owner's ruling of 2026-11-03)
+expect editor.map.scope is all
+# (the library's page count, and the other notebooks' pages, come from the Graph's library index, filled on
+# idle ticks: its first check)
+wait 1500
+expect editor.map.visible.ids is A:1 A:2 C:2
+expect editor.map.stats is 3 17 3 15 20
 expect editor.screen_composed is 1
 shot 01-compact-graph
 tap panel map.view

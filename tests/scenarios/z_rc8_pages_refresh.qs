@@ -6,6 +6,8 @@
 # same previews); a tap that selects a tile refreshes that tile (and the bottom row when its buttons
 # change), and the second tap of a double tap still opens the page.
 # (past the two launch repaints, at 1.2 s and 3.5 s, which refresh the whole screen)
+# (the clock corner held still: its minute's refresh would land among the counted ones)
+clock 1700000000
 wait 3600
 tap library folder.Void
 tap library notebook.A

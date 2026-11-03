@@ -6,6 +6,8 @@
 use grimoire::prelude::*;
 use std::collections::HashSet;
 
+pub mod library;
+
 pub struct Book {
     pub nb: NotebookInfo,
     pub nav: Nav,

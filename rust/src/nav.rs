@@ -390,6 +390,10 @@ fn area_parse(line: &[u8]) -> Option<(u32, u32, Rect)> {
     (fields.next().is_none() && area_valid(r)).then_some((pid, seed, r))
 }
 
+/// Whether r is a link area links.ini can hold (on the page side of NAV_AREA_MAX, not empty).
+pub fn nav_area_valid(r: Rect) -> bool {
+    area_valid(r)
+}
 fn area_valid(r: Rect) -> bool {
     r.x >= 0 && r.y >= 0 && r.w > 0 && r.h > 0
         && r.x as i64 + r.w as i64 <= NAV_AREA_MAX as i64
@@ -401,6 +405,52 @@ fn outline_parse(line:&[u8])->Option<(u32,u32,LinkOutline)> {
     let mut key=b"link.".to_vec();key.extend_from_slice(&rest[..comma]);key.extend_from_slice(b",index");
     let (pid,seed,_)=link_parse(&key)?;
     Some((pid,seed,LinkOutline::parse(std::str::from_utf8(&rest[comma+1..]).ok()?)?))
+}
+
+/// Links as links.ini lines (`link.`, then `area.` and `outline.` when it has them), each keyed by its
+/// own pid: the clipboard's carried links (clipboard.rs), keyed there by their number from 1.
+pub fn nav_links_lines(links: &[NavLink]) -> String {
+    let mut text = String::new();
+    for l in links {
+        text.push_str(&format!("link.{}={:08x},{}\n", l.pid, l.seed, l.target.as_str()));
+        if l.has_area {
+            let r = l.area;
+            text.push_str(&format!("area.{}={:08x},{},{},{},{}\n", l.pid, l.seed, r.x, r.y, r.w, r.h));
+            if l.outline.n > 0 {
+                text.push_str(&format!("outline.{}={:08x},{}\n", l.pid, l.seed, l.outline.text()));
+            }
+        }
+    }
+    text
+}
+/// nav_links_lines read back, strictly: None if any line does not parse, an area or outline has no
+/// link before it, or an outline is not within its area.
+pub fn nav_links_from_lines(text: &str) -> Option<Vec<NavLink>> {
+    let mut out: Vec<NavLink> = Vec::new();
+    for line in text.lines() {
+        let b = line.as_bytes();
+        if line.is_empty() {
+            continue;
+        }
+        if let Some((pid, seed, target)) = link_parse(b) {
+            let mut l = NavLink { pid, seed, ..Default::default() };
+            l.target.set(target);
+            out.push(l);
+        } else if let Some((pid, seed, r)) = area_parse(b) {
+            let l = out.iter_mut().rev().find(|l| l.pid == pid && l.seed == seed)?;
+            l.area = r;
+            l.has_area = true;
+        } else if let Some((pid, seed, o)) = outline_parse(b) {
+            let l = out.iter_mut().rev().find(|l| l.pid == pid && l.seed == seed && l.has_area)?;
+            if !o.within(l.area) {
+                return None;
+            }
+            l.outline = o;
+        } else {
+            return None;
+        }
+    }
+    Some(out)
 }
 
 fn link_line(n: &mut Nav, line: &[u8], areas: &mut usize, outlines:&mut usize) -> i32 {
@@ -424,36 +474,17 @@ fn link_line(n: &mut Nav, line: &[u8], areas: &mut usize, outlines:&mut usize) -
     0
 }
 
-/// nav must be initialized. Missing is an empty writable index; other read failures hide the
-/// names and refuse edits. links.ini the same, on its own: either can fail with the other read.
-/// Unknown lines of both are kept. -1 when either failed.
-pub fn nav_load(id: &str, nav: &mut Nav) -> i32 {
-    let mut fresh = Nav::default();
-    nav_init(&mut fresh);
+// links.ini into fresh (a Nav from nav_init): its links, carried lines and links_file. False when it
+// does not read, then fresh has no links and refuses edits (links_writable false), as nav_load says.
+fn links_into(id: &str, fresh: &mut Nav) -> bool {
     let mut text: Option<Vec<u8>> = None;
-    let names_ok = (|| {
-        let path = path_for(id, "nav.ini")?;
-        text = read_sidecar(&path, NAV_FILE_MAX).ok()?;
-        match &text {
-            Some(t) => (each_line(t, name_line, &mut fresh) == 0).then_some(()),
-            None => Some(()),
-        }
-    })()
-    .is_some();
-    text = None;
-    if !names_ok {
-        fresh.names = Vec::new();
-        fresh.unknown = Vec::new();
-        fresh.writable = false;
-        qlog!("index: page names could not be read; left unchanged");
-    }
     let mut areas = 0;
     let mut outlines = 0;
     let mut links_ok = (|| {
         let path = path_for(id, "links.ini")?;
         text = read_sidecar(&path, NAV_LINKS_FILE_MAX).ok()?;
         match &text {
-            Some(t) => (each_line(t, |n, line| link_line(n, line, &mut areas,&mut outlines), &mut fresh) == 0).then_some(()),
+            Some(t) => (each_line(t, |n, line| link_line(n, line, &mut areas,&mut outlines), fresh) == 0).then_some(()),
             None => Some(()),
         }
     })()
@@ -474,7 +505,7 @@ pub fn nav_load(id: &str, nav: &mut Nav) -> i32 {
                 n.areas_dropped += 1;
             }
             0
-        }, &mut fresh) == 0;
+        }, fresh) == 0;
         if links_ok {
             links_ok=each_line(t,|n,line| {
                 let Some((pid,seed,outline))=outline_parse(line)else{return 0};
@@ -486,7 +517,7 @@ pub fn nav_load(id: &str, nav: &mut Nav) -> i32 {
                     return carry(&mut n.links_unknown,line);
                 } else {n.areas_dropped+=1;}
                 0
-            },&mut fresh)==0;
+            },fresh)==0;
         }
     }
     if !links_ok {
@@ -497,6 +528,17 @@ pub fn nav_load(id: &str, nav: &mut Nav) -> i32 {
         fresh.links_file = true;
         qlog!("index: links could not be read; left unchanged");
     }
+    links_ok
+}
+
+/// nav must be initialized. Missing is an empty writable index; other read failures hide the
+/// names and refuse edits. links.ini the same, on its own: either can fail with the other read.
+/// Unknown lines of both are kept. -1 when either failed.
+pub fn nav_load(id: &str, nav: &mut Nav) -> i32 {
+    let mut fresh = Nav::default();
+    nav_init(&mut fresh);
+    let names_ok = names_into(id, &mut fresh);
+    let links_ok = links_into(id, &mut fresh);
     nav_free(nav);
     *nav = fresh;
     if names_ok && links_ok {
@@ -504,6 +546,51 @@ pub fn nav_load(id: &str, nav: &mut Nav) -> i32 {
     } else {
         -1
     }
+}
+
+/// nav.ini alone (links.ini is not read: nav's links stay empty and not writable), as nav_load reads it:
+/// what labels another notebook's pages (the Links bar's Linked from rows, the Graph's anchors). -1 when it
+/// does not read.
+pub fn nav_load_names(id: &str, nav: &mut Nav) -> i32 {
+    let mut fresh = Nav::default();
+    nav_init(&mut fresh);
+    let ok = names_into(id, &mut fresh);
+    fresh.links_writable = false;
+    nav_free(nav);
+    *nav = fresh;
+    if ok { 0 } else { -1 }
+}
+
+// nav.ini read into fresh (its names and unknown lines); false (and nothing kept) when it does not read.
+fn names_into(id: &str, fresh: &mut Nav) -> bool {
+    let mut text: Option<Vec<u8>> = None;
+    let names_ok = (|| {
+        let path = path_for(id, "nav.ini")?;
+        text = read_sidecar(&path, NAV_FILE_MAX).ok()?;
+        match &text {
+            Some(t) => (each_line(t, name_line, fresh) == 0).then_some(()),
+            None => Some(()),
+        }
+    })()
+    .is_some();
+    drop(text);
+    if !names_ok {
+        fresh.names = Vec::new();
+        fresh.unknown = Vec::new();
+        fresh.writable = false;
+        qlog!("index: page names could not be read; left unchanged");
+    }
+    names_ok
+}
+
+/// links.ini alone (nav.ini is not read: nav's names stay empty), as nav_load reads it: what the
+/// backlinks cache reads of another notebook. -1 when it does not read.
+pub fn nav_load_links(id: &str, nav: &mut Nav) -> i32 {
+    let mut fresh = Nav::default();
+    nav_init(&mut fresh);
+    let ok = links_into(id, &mut fresh);
+    *nav = fresh;
+    if ok { 0 } else { -1 }
 }
 
 fn has_page(nb: &NotebookInfo, pid: u32) -> bool {
@@ -538,6 +625,7 @@ pub fn nav_save(id: &str, nav: &mut Nav, nb: &NotebookInfo) -> i32 {
     let rc = write_file_atomic(&path, &text);
     if rc == 0 {
         nav.names.retain(|n| has_page(nb, n.pid));
+        libindex_note_names(nb, nav);
     }
     rc
 }
@@ -640,15 +728,204 @@ pub fn nav_notebook_target(id: &str, pid: u32) -> Option<String> {
     nav_external_target(&target)?;
     Some(target)
 }
-pub fn nav_target_label(target: &str) -> Option<String> {
-    let (id, pid) = nav_external_target(target)?;
+/// What a link to another notebook's page finds there now (nav_target_state). A link is never
+/// changed or dropped for what it finds: a notebook brought back from the trash works again.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum NavTarget {
+    /// the page is there: its notebook's name and the page's index
+    Here(String, i32),
+    /// the notebook is there and the page is not (deleted): the notebook's name
+    PageGone(String),
+    /// there is no notebook by that id (deleted: moved to the trash)
+    NotebookGone,
+    /// the notebook's folder is there and its notebook.ini does not read: not called gone
+    Unreadable,
+}
+
+/// Where an `n:<notebook>:p<page>` target goes now; None for any other target. Reads that
+/// notebook's notebook.ini (callers keep what it says for as long as they show it).
+pub fn nav_target_state(target: &str) -> Option<NavTarget> {
+    let (id, _) = nav_external_target(target)?;
     let mut nb = NotebookInfo::default();
-    if store_load_info(id, &mut nb) != 0 { return Some(tr("Notebook unavailable").to_string()); }
-    let page = nb.page_ids.iter().position(|&p| p == pid);
-    Some(match page {
-        Some(i) => format!("{} / {}", nb.name.as_str(), cformat!(tr("Page %d"), i as i32 + 1)),
-        None => format!("{} / {}", nb.name.as_str(), tr("Page unavailable")),
+    let read = store_load_info(id, &mut nb) == 0;
+    nav_target_state_in(target, read.then_some(&nb))
+}
+
+/// nav_target_state from that notebook's notebook.ini as already read (None: it did not read), so a caller
+/// that holds it reads nothing again; only a notebook.ini that did not read has its folder looked for.
+pub fn nav_target_state_in(target: &str, info: Option<&NotebookInfo>) -> Option<NavTarget> {
+    let (id, pid) = nav_external_target(target)?;
+    let Some(nb) = info else {
+        let mut dir = String::new();
+        let gone = store_notebook_dir(id, &mut dir, 600) != 0
+            || std::fs::symlink_metadata(&dir).is_err_and(|e| e.kind() == std::io::ErrorKind::NotFound);
+        return Some(if gone { NavTarget::NotebookGone } else { NavTarget::Unreadable });
+    };
+    let name = nb.name.as_str().to_string();
+    Some(match nb.page_ids.iter().position(|&p| p == pid) {
+        Some(i) => NavTarget::Here(name, i as i32),
+        None => NavTarget::PageGone(name),
     })
+}
+
+/// A link's target as it reads from notebook `dst_nb` when the link goes there from notebook `src_nb`
+/// (a page copied, ink pasted): "p<id>" (a page of the source) becomes "n:<src_nb>:p<id>",
+/// "n:<dst_nb>:p<id>" becomes "p<id>", and "index" has nowhere to go: None (the link is left out).
+/// Any other target (another notebook's page, a target this version does not know) stays as it is.
+/// Copy to notebook... first points the targets of pages copied together at their copies (the caller
+/// knows them); everything else goes through here. With src_nb == dst_nb nothing changes, a link to
+/// the Index included (a linked item copied within its notebook keeps its link exactly).
+pub fn nav_target_across(target: &str, src_nb: &str, dst_nb: &str) -> Option<String> {
+    if src_nb == dst_nb {
+        return Some(target.to_string());
+    }
+    if target == "index" {
+        return None;
+    }
+    let page = target_page(target.as_bytes());
+    if page != 0 {
+        return nav_notebook_target(src_nb, page);
+    }
+    if let Some((id, pid)) = nav_external_target(target) {
+        if id == dst_nb {
+            return Some(cformat!("p%u", pid));
+        }
+    }
+    Some(target.to_string())
+}
+
+/// nav_target_across into the notebook `dst` itself: a link to one of dst's pages that was deleted keeps the
+/// form that names dst ("n:<dst>:p<id>"), so it stays a broken link that shows as Page gone and can be
+/// repaired, as it was in the source, instead of becoming "p<id>", which a save leaves out unseen.
+pub fn nav_target_into(target: &str, src_nb: &str, dst: &NotebookInfo) -> Option<String> {
+    let t = nav_target_across(target, src_nb, dst.id.as_str())?;
+    if src_nb != dst.id.as_str() {
+        if let Some((id, pid)) = nav_external_target(target) {
+            if id == dst.id.as_str() && !dst.page_ids.contains(&pid) {
+                return Some(target.to_string());
+            }
+        }
+    }
+    Some(t)
+}
+
+// A link's area (and outline) on a page of w0 x h0 as it lands on one of w1 x h1: the rectangle grown to
+// whole pixels around the scaled one, the outline's points rounded inside it (dropped if they no longer
+// make one).
+fn scale_area(l: &mut NavLink, sx: f32, sy: f32) {
+    if !l.has_area || (sx == 1.0 && sy == 1.0) {
+        return;
+    }
+    let r = l.area;
+    let x0 = ((r.x as f32 * sx).floor() as i32).clamp(0, NAV_AREA_MAX - 1);
+    let y0 = ((r.y as f32 * sy).floor() as i32).clamp(0, NAV_AREA_MAX - 1);
+    let x1 = (((r.x + r.w) as f32 * sx).ceil() as i32).clamp(x0 + 1, NAV_AREA_MAX);
+    let y1 = (((r.y + r.h) as f32 * sy).ceil() as i32).clamp(y0 + 1, NAV_AREA_MAX);
+    l.area = Rect::new(x0, y0, x1 - x0, y1 - y0);
+    let mut o = l.outline;
+    for q in o.xy[..o.n as usize].iter_mut() {
+        q.0 = ((q.0 as f32 * sx).round() as i32).clamp(0, NAV_AREA_MAX) as i16;
+        q.1 = ((q.1 as f32 * sy).round() as i32).clamp(0, NAV_AREA_MAX) as i16;
+    }
+    l.outline = if o.within(l.area) { o } else { LinkOutline::default() };
+}
+
+/// What Copy to notebook... could not carry: links left out (to the Index, or past a limit).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct NavCopyResult {
+    pub names: i32,
+    pub links: i32,
+    pub links_dropped: i32,
+}
+
+/// The names (nav.ini) and links (links.ini) of the pages Copy to notebook... copied (`copies`, from
+/// store_copy_pages_to) written into notebook `dst` (its info with the copies listed). A link keeps its
+/// seed and area; its target points at the copy of a page copied in the same operation, else goes
+/// through nav_target_across (a link to the Index is left out). The area is scaled by sx, sy when the
+/// two notebooks' pages differ in size. 0, or -1 when dst's nav.ini or links.ini does not read or could not
+/// be written (the copies are there without what it holds: the other file is still written).
+pub fn nav_copy_pages_across(src: &Nav, src_id: &str, copies: &[PageCopy], dst: &NotebookInfo, sx: f32, sy: f32, out: &mut NavCopyResult) -> i32 {
+    *out = NavCopyResult::default();
+    let mut names: Vec<(u32, String)> = Vec::new();
+    let mut links: Vec<NavLink> = Vec::new();
+    for c in copies {
+        let name = nav_name(src, c.from);
+        if !name.is_empty() {
+            names.push((c.to, name.to_string()));
+        }
+        let mut first = 0;
+        let count = nav_links_of(src, c.from, &mut first);
+        for l in &src.links[first as usize..(first + count) as usize] {
+            let page = target_page(l.target.as_bytes());
+            let target = match copies.iter().find(|x| page != 0 && x.from == page) {
+                Some(x) => Some(cformat!("p%u", x.to)),
+                None => nav_target_into(l.target.as_str(), src_id, dst),
+            };
+            match target {
+                Some(t) if t.len() < NAV_TARGET_LEN => {
+                    let mut copy = NavLink { pid: c.to, ..*l };
+                    copy.target.set(&t);
+                    scale_area(&mut copy, sx, sy);
+                    links.push(copy);
+                }
+                _ => out.links_dropped += 1,
+            }
+        }
+    }
+    if names.is_empty() && links.is_empty() {
+        return 0;
+    }
+    let mut nav = Nav::default();
+    nav_init(&mut nav);
+    nav_load(dst.id.as_str(), &mut nav); // (a file that does not read is never written: below)
+    let mut rc = 0;
+    if !names.is_empty() {
+        if nav.writable && names.iter().all(|(pid, name)| nav_set_name(&mut nav, *pid, name) == 0)
+            && nav_save(dst.id.as_str(), &mut nav, dst) == 0 {
+            out.names = names.len() as i32;
+        } else {
+            rc = -1;
+        }
+    }
+    if !links.is_empty() {
+        if !nav.links_writable {
+            return -1;
+        }
+        for l in &links {
+            // (past a limit, 64 on a page or 4000 in the notebook: left out)
+            if nav_link_put(&mut nav, l) != 0 {
+                out.links_dropped += 1;
+            }
+        }
+        if nav_save_links(dst.id.as_str(), &mut nav, dst) != 0 {
+            return -1;
+        }
+        out.links = copies.iter().map(|c| nav_links_of(&nav, c.to, &mut 0)).sum();
+    }
+    rc
+}
+
+/// A target's state is a broken link's: its page or its notebook was deleted.
+pub fn nav_target_broken(t: &NavTarget) -> bool {
+    matches!(t, NavTarget::PageGone(_) | NavTarget::NotebookGone)
+}
+
+/// How a target's state is labelled: "Notebook / Page 3", "Notebook / Page gone", "Notebook gone".
+pub fn nav_target_state_label(t: &NavTarget) -> String {
+    match t {
+        NavTarget::Here(name, i) => format!("{} / {}", name, cformat!(tr("Page %d"), *i + 1)),
+        // TRANSLATORS: a link to a page of another notebook whose page was deleted: after the notebook's
+        // name and " / " (a Links bar chip, the long-press card's title, the Graph; about 400 px at 44 px).
+        NavTarget::PageGone(name) => format!("{} / {}", name, tr("Page gone")),
+        // TRANSLATORS: a link to a page of a notebook that was deleted (a Links bar chip, the long-press card's
+        // title, the Graph; about 700 px at 44 px).
+        NavTarget::NotebookGone => tr("Notebook gone").to_string(),
+        NavTarget::Unreadable => tr("Notebook unavailable").to_string(),
+    }
+}
+
+pub fn nav_target_label(target: &str) -> Option<String> {
+    nav_target_state(target).map(|t| nav_target_state_label(&t))
 }
 
 /// Adds the link of the strokes with `seed` on page pid, or changes its target. target: "index" or
@@ -1058,6 +1335,8 @@ pub fn nav_save_links(id: &str, nav: &mut Nav, nb: &NotebookInfo) -> i32 {
         }
         nav.links_file = true;
         nav.links.retain(|l| link_kept(l, nb));
+        backlinks_note_saved(id, &nav.links);
+        libindex_note_links(id, &nav.links);
     }
     rc
 }

@@ -6,6 +6,8 @@
 # root: z_bar_0_make
 # settings: shortcuts_enabled=1
 # copy: tests/fixtures/index-keys .
+# (the clock corner held still: its minute's refresh would land among the counted ones)
+clock 1700000000
 wait 300
 tap 200 400
 wait 300

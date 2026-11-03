@@ -5,8 +5,8 @@
 #   tools/kindle-dev-ssh --host 192.168.1.40 --logs
 #
 # By default it builds build/dist/Grimoire.zip (make package), patches its documents/Grimoire.sh
-# into a separate "Grimoire (dev)" — its own data root, updates off, the same copy
-# tools/kindle-dev makes over MTP — copies it to the Kindle's documents folder as
+# into a separate "Grimoire (dev)" (its own data root, updates off, the same copy
+# tools/kindle-dev makes over MTP), copies it to the Kindle's documents folder as
 # "Grimoire (dev).sh", stops a running Grimoire and starts the dev one. The released Grimoire
 # and its notebooks in /mnt/us/grimoire are never touched.
 #

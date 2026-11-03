@@ -1,4 +1,6 @@
 //! A link destination browser. Selecting a notebook never replaces the editor's unsaved origin.
+//! Copy to notebook... uses it too (start_copy): then the open notebook is not listed, and a page tile
+//! (the copies go before it) or At the end says where the pages go.
 use crate::prelude::*;
 
 #[derive(Default)]
@@ -14,13 +16,34 @@ pub struct NotebookPicker {
     press: Press,
     previews: PagePreviewRequests,
     cache: PreviewCache,
+    /// picking where Copy to notebook... puts pages, not a link's page
+    pub copying: bool,
+    /// the notebook left out of the list (the one the pages come from)
+    exclude: String,
+    /// picking a notebook alone, no page (the Library's Graph past its caps): a tap on a notebook picks it
+    pub notebook_only: bool,
 }
-pub enum NotebookPick { None, Cancel, Target(String) }
+/// What a tap said: nothing yet, Back from the top, a link target, or (copying) a notebook id and the
+/// page index the copies go before (its page count: at the end).
+pub enum NotebookPick { None, Cancel, Target(String), Place(String, i32), Notebook(String) }
 impl NotebookPicker {
     pub fn start(&mut self, folder:&str) -> bool {
         *self=Self::default();
         if store_list(&mut self.books)!=0 || store_list_folders(&mut self.folders)!=0 {return false;}
         self.folder=folder.to_string();self.open=true;true
+    }
+    /// The same for the Library's Graph past its caps (2.0.0-beta.2): a tap on a notebook picks it, with no page step.
+    pub fn start_notebook(&mut self, folder:&str) -> bool {
+        if !self.start(folder) {return false;}
+        self.notebook_only=true;
+        true
+    }
+    /// The same for Copy to notebook...: notebook `exclude` (the open one) is not listed.
+    pub fn start_copy(&mut self, folder:&str, exclude:&str) -> bool {
+        if !self.start(folder) {return false;}
+        self.copying=true;self.exclude=exclude.to_string();
+        self.books.retain(|nb|nb.id!=exclude);
+        true
     }
     pub fn draw(&mut self,a:&mut App) {
         hits_clear(&mut self.hits);
@@ -30,7 +53,22 @@ impl NotebookPicker {
         ui_button(&mut a.screen,back,IconKind::Back,"",ButtonStyle::Plain);
         hits_add(&mut self.hits,back,1,0);
         let title=self.selected.as_ref().map_or_else(||if self.folder.is_empty(){tr("Notebooks").to_string()}else{self.folder.clone()},|nb|nb.name.as_str().to_string());
-        font_draw_left_name(&mut a.screen,FontFace::Bold,ui_title_size(),Rect::new(u(210.0),u(20.0),w-u(250.0),u(150.0)),&title,0);
+        let end_button=self.copying && self.selected.is_some();
+        let tw=if end_button {w-u(250.0)-u(450.0)} else {w-u(250.0)};
+        font_draw_left_name(&mut a.screen,FontFace::Bold,ui_title_size(),Rect::new(u(210.0),u(20.0),tw,u(150.0)),&title,0);
+        if self.copying {
+            if end_button {
+                let r=Rect::new(w-u(30.0)-u(420.0),u(20.0),u(420.0),u(150.0));
+                // TRANSLATORS: Copy to notebook...'s button over the picked notebook's pages (about 400 px,
+                // 44 px text): the copies go after its last page.
+                ui_button(&mut a.screen,r,IconKind::None,tr("At the end"),ButtonStyle::Plain);
+                hits_add(&mut self.hits,r,8,0);
+            }
+            // TRANSLATORS: Copy to notebook...'s line under its title (small text, nearly the screen's width):
+            // first while picking the notebook, then over its pages.
+            let hint=if end_button {tr("Tap a page: the copies go before it.")} else {tr("Pick the notebook to copy into.")};
+            font_draw_left(&mut a.screen,FontFace::Regular,ui_small_size(),Rect::new(u(50.0),u(165.0),w-u(100.0),u(55.0)),hint,0);
+        }
         let per;
         let total;
         if let Some(nb)=self.selected.take() {
@@ -116,14 +154,17 @@ impl NotebookPicker {
             1=>{if self.selected.take().is_some(){self.screen=0;}else{self.open=false;return NotebookPick::Cancel;}},
             2=>{self.folder=store_folder_parent(&self.folder).to_string();self.screen=0;},
             3=>{let dirs:Vec<_>=self.folders.iter().filter(|s|store_folder_parent(s)==self.folder).collect();if let Some(dir)=dirs.get(hit.arg as usize){self.folder=(*dir).clone();self.screen=0;}},
+            4 if self.notebook_only=>{if let Some(nb)=self.books.get(hit.arg as usize){self.open=false;return NotebookPick::Notebook(nb.id.as_str().to_string());}},
             4=>{if let Some(nb)=self.books.get(hit.arg as usize){self.selected=Some(nb.clone());nav_load(nb.id.as_str(),&mut self.nav);self.screen=0;}},
+            5 if self.copying=>{if let Some(nb)=&self.selected {if hit.arg>=0 && hit.arg<nb.npages(){self.open=false;return NotebookPick::Place(nb.id.as_str().to_string(),hit.arg);}}},
+            8=>{if let Some(nb)=&self.selected {self.open=false;return NotebookPick::Place(nb.id.as_str().to_string(),nb.npages());}},
             5=>{if let Some(nb)=&self.selected {if let Some(&pid)=nb.page_ids.get(hit.arg as usize){if let Some(t)=nav_notebook_target(nb.id.as_str(),pid){self.open=false;return NotebookPick::Target(t);}}}},
             6=>self.screen=self.screen.saturating_sub(1),7=>self.screen+=1,_=>{}
         }
         self.draw(a);app_invalidate_all(a,RefreshMode::Ui);NotebookPick::None
     }
     pub fn point(&self,name:&str)->Option<(f32,f32)> {
-        let (id,arg)=if name=="back"{(1,0)}else if name=="up"{(2,0)}else if name=="next"{(7,0)}else if name=="previous"{(6,0)}
+        let (id,arg)=if name=="back"{(1,0)}else if name=="up"{(2,0)}else if name=="next"{(7,0)}else if name=="previous"{(6,0)}else if name=="end"{(8,0)}
         else if let Some(n)=name.strip_prefix("page."){(5,n.parse::<i32>().ok()?-1)}
         else if let Some(n)=name.strip_prefix("folder."){(3,self.folders.iter().filter(|s|store_folder_parent(s)==self.folder).position(|s|s==n)? as i32)}
         else if let Some(n)=name.strip_prefix("book."){(4,self.books.iter().position(|b|b.id==n)? as i32)}

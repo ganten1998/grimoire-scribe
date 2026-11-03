@@ -793,7 +793,7 @@ ok('fast: disconnected tile transport cannot grow memory indefinitely', fastInk.
 }
 // The size engine's pure parts.
 {
-    const {liveSize, sizeValue, viewSize, zoomStep, anchorScroll, ZOOMS, pipTier} = require('../web/live.js');
+    const {liveSize, sizeValue, viewSize, zoomStep, anchorScroll, ZOOMS, pipTier, frameRequester} = require('../web/live.js');
     ok('size: what the browser remembers: Fit for anything else, kept to 25%..200%',
        liveSize(null).mode === 'fit' && liveSize('fit').mode === 'fit' && liveSize('junk').mode === 'fit' && liveSize('-1').mode === 'fit' &&
        liveSize('width').mode === 'width' && liveSize('0.5').k === 0.5 && liveSize('9').k === 2 && liveSize('0.01').k === 0.25 &&
@@ -823,6 +823,19 @@ ok('fast: disconnected tile transport cannot grow memory indefinitely', fastInk.
        pipTier(win(Object.assign({document: {pictureInPictureEnabled: true}, HTMLVideoElement: {prototype: {requestPictureInPicture() {}}}}, capture))) === 'video' &&
        pipTier(win(Object.assign({navigator: {userAgent: 'Mozilla/5.0 (Macintosh) Gecko/20100101 Firefox/152.0'}}, capture))) === 'firefox' &&
        pipTier(win({})) === 'popout' && pipTier({document: {}}) === '');
+    // Firefox 159 on has the video PiP API: it takes the video tier, like Chromium and Safari.
+    ok('pip: a Firefox with the API takes the video tier',
+       pipTier(win(Object.assign({document: {pictureInPictureEnabled: true}, HTMLVideoElement: {prototype: {requestPictureInPicture() {}}},
+           navigator: {userAgent: 'Mozilla/5.0 (Macintosh) Gecko/20100101 Firefox/161.0'}}, capture))) === 'video');
+    {
+        // Firefox has requestFrame on the capture stream, not on its track (measured on 159 and 161).
+        const calls = [];
+        const viaTrack = frameRequester({requestFrame() { calls.push('stream'); }}, {requestFrame() { calls.push('track'); }});
+        const viaStream = frameRequester({requestFrame() { calls.push('stream'); }}, {});
+        viaTrack(); viaStream();
+        ok('pip: frames asked of the track, else of the stream (Firefox), else none',
+           calls.join(',') === 'track,stream' && frameRequester({}, {}) === null && frameRequester(null, null) === null);
+    }
 }
 const clock = new PaintAges();
 clock.sync(1000, 1020, 0xfffffffa);

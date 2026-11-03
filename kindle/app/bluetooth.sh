@@ -1,7 +1,9 @@
 #!/bin/sh
 # bluetooth.sh: the Bluetooth helper (kindle-hid-passthrough, docs/SHORTCUTS.md) as Grimoire runs it.
-#   start       start the helper for Grimoire, unless one runs already (then it is someone else's)
-#   stop-owned  stop the helper this script started, and give the Kindle its own Bluetooth back
+#   start       start the helper for Grimoire, unless one runs already (then it is someone else's,
+#               or, running from Grimoire's own folder, Grimoire's: taken back)
+#   stop-owned  stop the helper this script started, and any running from Grimoire's own folder,
+#               and give the Kindle its own Bluetooth back
 #   status      owned, external, stopped or missing
 # The helper is the one unpacked in grimoire/bluetooth/ (only its program and its own data: never
 # its installer, whose boot-time button mapper grabs controllers away from Grimoire), else an
@@ -71,6 +73,27 @@ owned_pid() {
     echo "$pid"
 }
 
+# The helper's processes that run from the folder $1, one pid a line; with $2 "main", the helper
+# itself only. Its program is a small wrapper that execs the folder's own loader, so the helper runs
+# as "$1/dist/ld-linux-armhf.so.3 --library-path $1/dist $1/dist/main.bin --daemon" (the helper's
+# own scripts find it by "ld-linux-armhf."): its command line names its folder and never
+# kindle-hid-passthrough, so "pgrep -f kindle-hid-passthrough" finds no helper of Grimoire's. Its
+# mouse cursor overlay runs from $1/scripts. The match is the folder and one of those names after it
+# (pgrep -f takes a regular expression: the folder's own characters are escaped), so this script's
+# shell (sh .../app/bluetooth.sh) never matches, and it is left out besides.
+folder_pids() {
+    re=$(printf '%s' "$1" | sed 's/[][\\.*^$+?(){}|]/\\&/g')
+    if [ "${2:-}" = main ]; then re="$re/(kindle-hid-passthrough|dist/)"
+    else re="$re/(kindle-hid-passthrough|dist/|scripts/)"; fi
+    pgrep -f "$re" 2>/dev/null | while read -r p; do
+        [ "$p" != "$$" ] && echo "$p"
+    done
+}
+
+# A helper unpacked anywhere else, by the same signature (its loader and program in a dist folder),
+# or named by its usual folder or program.
+EXTERNAL='kindle-hid-passthrough|kindle_hid_passthrough|ld-linux-armhf\.so\.3 --library-path [^ ]*/dist [^ ]*/dist/main\.bin'
+
 job_running() { status "$1" 2>/dev/null | grep -q 'start/running'; }
 
 # The helper in Grimoire's folder keeps its paired devices and keys there too (its config.ini as
@@ -98,7 +121,19 @@ bt_start() {
         echo owned
         return 0
     fi
-    if api_up || pgrep -f 'kindle-hid-passthrough|kindle_hid_passthrough' >/dev/null 2>&1; then
+    # One from Grimoire's own folder runs with no record of it here (the record was lost, or it was
+    # started again outside this script): it is Grimoire's all the same, so take it back, and turning
+    # Bluetooth off or the launcher's stop ends it. (Which stock jobs ran before it, if that record
+    # is lost too, is not known: those stay as they are.)
+    pid=$(folder_pids "$ROOT/bluetooth" main | head -n 1)
+    if [ -n "$pid" ]; then
+        echo "$ROOT/bluetooth" > "$STATE/dir"
+        echo "$pid" > "$STATE/pid"
+        say "the helper runs from $ROOT/bluetooth with no record of it (pid $pid): taking it back"
+        echo owned
+        return 0
+    fi
+    if api_up || pgrep -f "$EXTERNAL" >/dev/null 2>&1; then
         echo external
         return 0
     fi
@@ -146,18 +181,40 @@ restore_jobs() {
 
 start_job() { start "$1" >/dev/null 2>&1 || initctl start "$1" >/dev/null 2>&1 || true; }
 
+any_alive() {
+    for p in "$@"; do
+        if kill -0 "$p" 2>/dev/null; then return 0; fi
+    done
+    return 1
+}
+
+# The recorded helper, and whatever runs from Grimoire's own folder, recorded or not: Grimoire runs
+# that copy only while Grimoire runs (docs/SHORTCUTS.md, Bluetooth). A helper restarted outside this
+# script, or one whose record was lost, used to be left running: it kept the radio while the stock
+# jobs were started again beside it, and every later start took it for someone else's. Its cursor
+# overlay goes too: a helper that has to be killed cannot take it down itself. A helper anywhere
+# else that this script did not start is someone else's and is never stopped.
 bt_stop_owned() {
-    if pid=$(owned_pid); then
-        kill -TERM "$pid" 2>/dev/null
+    pids=$(owned_pid)
+    for p in $(folder_pids "$ROOT/bluetooth"); do
+        case " $pids " in *" $p "*) ;; *) pids="$pids $p" ;; esac
+    done
+    if [ -n "$pids" ]; then
+        # (Unquoted on purpose: one pid a word.)
+        # shellcheck disable=SC2086
+        kill -TERM $pids 2>/dev/null
         # The helper detaches its devices on the way out (it gives that 10 s): wait 12, then insist.
         i=0
-        while kill -0 "$pid" 2>/dev/null && [ $i -lt 60 ]; do
+        # shellcheck disable=SC2086
+        while any_alive $pids && [ $i -lt 60 ]; do
             nap
             i=$((i + STEP))
         done
-        if kill -0 "$pid" 2>/dev/null; then
+        # shellcheck disable=SC2086
+        if any_alive $pids; then
             say "the helper did not stop: killing it"
-            kill -KILL "$pid" 2>/dev/null
+            # shellcheck disable=SC2086
+            kill -KILL $pids 2>/dev/null
         fi
     fi
     rm -f "$STATE/pid" "$STATE/dir"
@@ -166,7 +223,7 @@ bt_stop_owned() {
 }
 
 status_of() {
-    if owned_pid >/dev/null; then echo owned
+    if owned_pid >/dev/null || [ -n "$(folder_pids "$ROOT/bluetooth" main)" ]; then echo owned
     elif api_up; then echo external
     elif helper_dir >/dev/null; then echo stopped
     else echo missing

@@ -33,6 +33,33 @@ pub const SHORTCUT_INDEX_MAP:i32=81;
 
 pub const SHORTCUT_PEN_PAN: i32 = 82;
 pub const SHORTCUT_PEN_ZOOM: i32 = 83;
+/// Select mode on or off (the lasso: copy, cut, paste, move; editor/select.rs).
+pub const SHORTCUT_SELECT: i32 = 84;
+/// Select mode in exact area (the lasso cuts strokes along its line), or with Select mode on, whole
+/// strokes or exact area in turn (docs/beta2/PIXEL-LASSO.md 1.10).
+pub const SHORTCUT_SELECT_EXACT: i32 = 85;
+/// The toolbar's count pad (2.0.0-beta.2): how many blank pages to add after the open page, which stays
+/// open (editor.rs add_pad_open; the + held does the same).
+pub const SHORTCUT_NEW_PAGES: i32 = 86;
+/// The keyboard scheme of 2.0.0-beta.2 (ids 87 to 94): save now (Ctrl+S), back (Esc: one layering for every
+/// place), what two fingers up do (Space), and the Library's New notebook, New folder, Share and Settings.
+pub const SHORTCUT_SAVE: i32 = 87;
+pub const SHORTCUT_BACK: i32 = 88;
+pub const SHORTCUT_TWO_FINGER_UP: i32 = 89;
+pub const SHORTCUT_NEW_NOTEBOOK: i32 = 90;
+pub const SHORTCUT_NEW_FOLDER: i32 = 91;
+pub const SHORTCUT_SHARE: i32 = 92;
+pub const SHORTCUT_SETTINGS: i32 = 93;
+/// Every page ticked in the Pages view (Ctrl+A); the Graph selects every node with it.
+pub const SHORTCUT_SELECT_ALL: i32 = 95;
+/// The Graph's own keys (ids 100 to 104): its view
+/// (View: All and View: Adjacent in turn, fitted) and the arrows' pans (the view moves a sixth of the plot
+/// that way). They act only in the Graph (mapview.rs mapview_action).
+pub const SHORTCUT_GRAPH_VIEW: i32 = 100;
+pub const SHORTCUT_PAN_LEFT: i32 = 101;
+pub const SHORTCUT_PAN_RIGHT: i32 = 102;
+pub const SHORTCUT_PAN_UP: i32 = 103;
+pub const SHORTCUT_PAN_DOWN: i32 = 104;
 
 pub const SRC_KEY: u8 = 1;
 pub const SRC_PAD: u8 = 2;
@@ -157,7 +184,7 @@ const fn lr(label: Option<&'static str>, act: [i32; 2], icon: IconKind) -> Learn
     LearnRow { label, act, icon }
 }
 
-static K_EDITING: [LearnRow; 10] = [
+static K_EDITING: [LearnRow; 11] = [
     lr(None, [SHORTCUT_UNDO, 0], IconKind::Undo),
     lr(None, [SHORTCUT_REDO, 0], IconKind::Redo),
     lr(
@@ -172,6 +199,7 @@ static K_EDITING: [LearnRow; 10] = [
     lr(None,[SHORTCUT_SHAPES,0],IconKind::Grid),
     lr(None,[SHORTCUT_SHAPE_HOLD,0],IconKind::Clock),
     lr(None,[SHORTCUT_SHAPE_LAST,0],IconKind::Grid),
+    lr(None, [SHORTCUT_SELECT, 0], IconKind::Lasso),
 ];
 
 // TRANSLATORS: (Buttons sheet) the previous and next tool's buttons, in that order (as the other
@@ -384,7 +412,7 @@ pub const ACTION_GROUPS: [ActionGroup; N_GROUPS] = K_GROUPS;
 // ---- action names and metadata ----
 
 /// The old names stay in their original lookup order; new phase 3 names follow the old set.
-pub static K_ACTIONS: [(&str, i32); 62] = [
+pub static K_ACTIONS: [(&str, i32); 78] = [
     ("undo", SHORTCUT_UNDO),
     ("redo", SHORTCUT_REDO),
     ("previous-page", SHORTCUT_PREV_PAGE),
@@ -444,6 +472,22 @@ pub static K_ACTIONS: [(&str, i32); 62] = [
     ("shapes",SHORTCUT_SHAPES),("shape-hold",SHORTCUT_SHAPE_HOLD),
     ("shape-last",SHORTCUT_SHAPE_LAST),("index-map",SHORTCUT_INDEX_MAP),
     ("pan", SHORTCUT_PEN_PAN), ("zoom", SHORTCUT_PEN_ZOOM),
+    ("select", SHORTCUT_SELECT),
+    ("select-exact", SHORTCUT_SELECT_EXACT),
+    ("new-pages", SHORTCUT_NEW_PAGES),
+    ("save", SHORTCUT_SAVE),
+    ("back", SHORTCUT_BACK),
+    ("two-finger-up", SHORTCUT_TWO_FINGER_UP),
+    ("new-notebook", SHORTCUT_NEW_NOTEBOOK),
+    ("new-folder", SHORTCUT_NEW_FOLDER),
+    ("share", SHORTCUT_SHARE),
+    ("settings", SHORTCUT_SETTINGS),
+    ("select-all", SHORTCUT_SELECT_ALL),
+    ("graph-view", SHORTCUT_GRAPH_VIEW),
+    ("pan-left", SHORTCUT_PAN_LEFT),
+    ("pan-right", SHORTCUT_PAN_RIGHT),
+    ("pan-up", SHORTCUT_PAN_UP),
+    ("pan-down", SHORTCUT_PAN_DOWN),
 ];
 
 const TOOL_NAMES: [(&str, i32); TOOL_COUNT] = [
@@ -459,7 +503,7 @@ const TOOL_NAMES: [(&str, i32); TOOL_COUNT] = [
     ("tool:calligraphy", SHORTCUT_TOOL_BASE + 9),
 ];
 
-static ACTIONS: [ActionInfo; 72] = [
+static ACTIONS: [ActionInfo; 88] = [
     // Tools are action ids too, even though the tool-specific labels retain msgctxt "tool".
     ai(
         SHORTCUT_TOOL_BASE,
@@ -1061,6 +1105,108 @@ static ACTIONS: [ActionInfo; 72] = [
         SHORTCUT_PEN_ZOOM, "zoom", n_("Zoom with the pen"), None, IconKind::Expand,
         GROUP_PAGES, 0, ActionKind::Momentary, SRC_PEN,
     ),
+    ai(
+        // TRANSLATORS: (Buttons sheet) Select mode on or off: the pen draws a lasso around ink to copy, cut,
+        // paste or move it.
+        SHORTCUT_SELECT, "select", n_("Select (lasso)"), None, IconKind::Lasso,
+        GROUP_EDITING, 0, ActionKind::Toggle, SRC_ALL,
+    ),
+    ai(
+        // TRANSLATORS: (Gestures and shortcuts lists, about 1100 px at 44 px in bold) Select mode with a lasso
+        // that cuts strokes along its line (exact area); with Select mode on, it switches between whole
+        // strokes and exact area.
+        SHORTCUT_SELECT_EXACT, "select-exact", n_("Select exact area"), None, IconKind::Lasso,
+        GROUP_EDITING, 0, ActionKind::Toggle, SRC_ALL,
+    ),
+    ai(
+        // TRANSLATORS: (Gestures and shortcuts lists, about 1100 px at 44 px in bold) opens the count pad that
+        // adds several blank pages at once after the open page, which stays open.
+        SHORTCUT_NEW_PAGES, "new-pages", n_("New pages..."), None, IconKind::Plus,
+        GROUP_PAGES, 0, ActionKind::OneShot, SRC_ALL,
+    ),
+    // The keyboard scheme of 2.0.0-beta.2 (ids 87 to 93). None is in a Buttons sheet group (those learn a
+    // controller's buttons, and are full): they are bound in shortcuts.ini.
+    ai(
+        // TRANSLATORS: (the keyboard shortcuts lists, about 1100 px at 44 px in bold) Ctrl+S: the open page and
+        // its notebook written now (in the Library, any setting waiting), with a toast "Saved".
+        SHORTCUT_SAVE, "save", n_("Save now"), None, IconKind::Check,
+        GROUP_MENUS, 0, ActionKind::OneShot, SRC_ALL,
+    ),
+    ai(
+        // TRANSLATORS: (the keyboard shortcuts lists, about 1100 px at 44 px in bold) Esc: what is in front closes
+        // (a dialog, a menu, a selection), else back to the Library, and there "Exit Grimoire?".
+        SHORTCUT_BACK, "back", n_("Back or close"), None, IconKind::Back,
+        GROUP_MENUS, 0, ActionKind::OneShot, SRC_ALL,
+    ),
+    ai(
+        // TRANSLATORS: (the keyboard shortcuts lists, about 1100 px at 44 px in bold) Space on a page: does what
+        // two fingers swiped up do (at first, the Links bar). (No gesture does it: it is a gesture's own.)
+        SHORTCUT_TWO_FINGER_UP, "two-finger-up", n_("What two fingers up do"), None, IconKind::Link,
+        GROUP_INDEX, 0, ActionKind::OneShot, SRC_BUTTONS_PEN,
+    ),
+    ai(
+        // TRANSLATORS: (the keyboard shortcuts lists, about 1100 px at 44 px in bold) Ctrl+N in the Library: the
+        // New notebook sheet, as the top bar's New button.
+        SHORTCUT_NEW_NOTEBOOK, "new-notebook", n_("New notebook"), None, IconKind::Plus,
+        GROUP_MENUS, 0, ActionKind::Menu, SRC_ALL,
+    ),
+    ai(
+        // TRANSLATORS: (the keyboard shortcuts lists, about 1100 px at 44 px in bold) Ctrl+F in the Library: a new
+        // folder's name keyboard, as the top bar's Folder button.
+        SHORTCUT_NEW_FOLDER, "new-folder", n_("New folder"), None, IconKind::FolderPlus,
+        GROUP_MENUS, 0, ActionKind::Menu, SRC_ALL,
+    ),
+    ai(
+        // TRANSLATORS: (the keyboard shortcuts lists, about 1100 px at 44 px in bold) S in the Library: the
+        // Share screen, as the top bar's Share button.
+        SHORTCUT_SHARE, "share", n_("Share"), None, IconKind::Share,
+        GROUP_MENUS, 0, ActionKind::Menu, SRC_ALL,
+    ),
+    ai(
+        // TRANSLATORS: (the keyboard shortcuts lists, about 1100 px at 44 px in bold) O in the Library: the
+        // Settings sheet, as the top bar's Settings button.
+        SHORTCUT_SETTINGS, "settings", n_("Settings"), None, IconKind::Gear,
+        GROUP_MENUS, 0, ActionKind::Menu, SRC_ALL,
+    ),
+    // select-all acts in the Pages view and the Graph (its K_PLACES row); not on a page.
+    ai(
+        // TRANSLATORS: (the Keyboard shortcuts list, about 1100 px at 44 px in bold) ticks every page in the Pages
+        // view (and selects every node in the Graph): the same words as the Pages view's Select all button.
+        SHORTCUT_SELECT_ALL, "select-all", n_("Select all"), None, IconKind::Check,
+        GROUP_PAGES, 0, ActionKind::OneShot, SRC_ALL,
+    ),
+    // The Graph's keys: in no Buttons sheet group (those learn controller buttons); bound in
+    // shortcuts.ini (keys and a controller's buttons; the pen's, as every action).
+    ai(
+        // TRANSLATORS: (shortcuts lists, about 1100 px at 44 px in bold) in the Graph, its view button's action:
+        // View: All and View: Adjacent in turn (all notebooks' pages, or the pages around one).
+        SHORTCUT_GRAPH_VIEW, "graph-view", n_("Graph view: All or Adjacent"), None, IconKind::Grid,
+        GROUP_INDEX, 0, ActionKind::Cycle, SRC_BUTTONS_PEN,
+    ),
+    ai(
+        // TRANSLATORS: (shortcuts lists, about 1100 px at 44 px in bold) in the Graph, the left arrow: the view moves
+        // left (the map slides the other way). Right, up and down follow.
+        SHORTCUT_PAN_LEFT, "pan-left", n_("Move the Graph left"), None, IconKind::Next,
+        GROUP_INDEX, SHORTCUT_PAN_RIGHT, ActionKind::Step, SRC_BUTTONS_PEN,
+    ),
+    ai(
+        // TRANSLATORS: (shortcuts lists, about 1100 px at 44 px in bold) in the Graph, the right arrow: the view moves
+        // right (the map slides the other way).
+        SHORTCUT_PAN_RIGHT, "pan-right", n_("Move the Graph right"), None, IconKind::Next,
+        GROUP_INDEX, SHORTCUT_PAN_LEFT, ActionKind::Step, SRC_BUTTONS_PEN,
+    ),
+    ai(
+        // TRANSLATORS: (shortcuts lists, about 1100 px at 44 px in bold) in the Graph, the up arrow: the view moves
+        // up (the map slides the other way).
+        SHORTCUT_PAN_UP, "pan-up", n_("Move the Graph up"), None, IconKind::Next,
+        GROUP_INDEX, SHORTCUT_PAN_DOWN, ActionKind::Step, SRC_BUTTONS_PEN,
+    ),
+    ai(
+        // TRANSLATORS: (shortcuts lists, about 1100 px at 44 px in bold) in the Graph, the down arrow: the view moves
+        // down (the map slides the other way).
+        SHORTCUT_PAN_DOWN, "pan-down", n_("Move the Graph down"), None, IconKind::Next,
+        GROUP_INDEX, SHORTCUT_PAN_UP, ActionKind::Step, SRC_BUTTONS_PEN,
+    ),
 ];
 
 pub fn action_info(id: i32) -> Option<&'static ActionInfo> {
@@ -1098,6 +1244,114 @@ pub fn action_sources(id: i32) -> u8 {
     action_info(id).map_or(0, |a| a.sources)
 }
 
+// ---- places ----
+//
+// A key can mean one thing in one place and another elsewhere (Ctrl+N: New notebook in the Library, New page on a
+// notebook page). Each action acts in its places; a key press is looked up for the place it was pressed in
+// (app_place), the last line for that key whose action acts there winning (shortcuts_lookup_at).
+
+/// The Library (and the Share screen, where only `back` acts).
+pub const PL_LIBRARY: u8 = 1;
+/// A notebook page in the editor, menus over it included.
+pub const PL_PAGE: u8 = 2;
+/// The Pages view (the unified Index's tabs included).
+pub const PL_PAGES: u8 = 4;
+/// The Graph, from the Library or from a notebook.
+pub const PL_GRAPH: u8 = 8;
+pub const PL_PENFEEL: u8 = 16;
+pub const PL_ALL: u8 = 31;
+
+/// Every action's places but those that act on a page alone (an action not here: PL_PAGE). New actions add
+/// their rows at the end, in id order.
+static K_PLACES: &[(i32, u8)] = &[
+    (SHORTCUT_TOOL_BASE, PL_PAGE | PL_PENFEEL),
+    (SHORTCUT_TOOL_BASE + 1, PL_PAGE | PL_PENFEEL),
+    (SHORTCUT_TOOL_BASE + 2, PL_PAGE | PL_PENFEEL),
+    (SHORTCUT_TOOL_BASE + 3, PL_PAGE | PL_PENFEEL),
+    (SHORTCUT_TOOL_BASE + 4, PL_PAGE | PL_PENFEEL),
+    (SHORTCUT_TOOL_BASE + 5, PL_PAGE | PL_PENFEEL),
+    (SHORTCUT_TOOL_BASE + 6, PL_PAGE | PL_PENFEEL),
+    (SHORTCUT_TOOL_BASE + 7, PL_PAGE | PL_PENFEEL),
+    (SHORTCUT_TOOL_BASE + 8, PL_PAGE | PL_PENFEEL),
+    (SHORTCUT_TOOL_BASE + 9, PL_PAGE | PL_PENFEEL),
+    (SHORTCUT_UNDO, PL_PAGE | PL_PAGES),
+    (SHORTCUT_REDO, PL_PAGE | PL_PAGES),
+    (SHORTCUT_PREV_PAGE, PL_PAGE | PL_PAGES | PL_LIBRARY),
+    (SHORTCUT_NEXT_PAGE, PL_PAGE | PL_PAGES | PL_LIBRARY),
+    (SHORTCUT_NEW_PAGE, PL_PAGE | PL_PAGES),
+    (SHORTCUT_FIT_PAGE, PL_PAGE | PL_GRAPH),
+    // The editor's menus' buttons reach its Pages view and its Graph too, which are menus over the page: there
+    // each closes the one in front and opens its own, as a controller's did before places (Pages over the
+    // Graph turns it to Pages; Library leaves). A controller's Pen feel button closes Pen feel, and Close menu
+    // closes what each place has, as before.
+    (SHORTCUT_PAGES, PL_PAGE | PL_PAGES | PL_GRAPH),
+    (SHORTCUT_TOOL_PICKER, PL_PAGE | PL_PAGES | PL_GRAPH),
+    (SHORTCUT_PAPER, PL_PAGE | PL_PAGES | PL_GRAPH),
+    (SHORTCUT_DISPLAY, PL_PAGE | PL_PAGES | PL_GRAPH),
+    (SHORTCUT_PEN_FEEL, PL_PAGE | PL_PAGES | PL_GRAPH | PL_PENFEEL),
+    (SHORTCUT_LIBRARY, PL_PAGE | PL_PAGES | PL_GRAPH),
+    (SHORTCUT_LINKS, PL_PAGE | PL_PAGES | PL_GRAPH),
+    (SHORTCUT_CLOSE_MENU, PL_ALL),
+    (SHORTCUT_STATUS, PL_ALL),
+    (SHORTCUT_GO_TO_PAGE, PL_PAGE | PL_PAGES | PL_GRAPH),
+    (SHORTCUT_GO_BACK, PL_PAGE | PL_GRAPH),
+    (SHORTCUT_STATUS_CORNER, PL_ALL),
+    (SHORTCUT_ZOOM_OUT, PL_PAGE | PL_GRAPH),
+    (SHORTCUT_ZOOM_IN, PL_PAGE | PL_GRAPH),
+    (SHORTCUT_INVERT, PL_ALL),
+    (SHORTCUT_LIGHT_DOWN, PL_ALL),
+    (SHORTCUT_LIGHT_UP, PL_ALL),
+    (SHORTCUT_WARMTH_DOWN, PL_ALL),
+    (SHORTCUT_WARMTH_UP, PL_ALL),
+    (SHORTCUT_ROTATION_LOCK, PL_ALL),
+    (SHORTCUT_PINCH_ZOOM, PL_ALL),
+    (SHORTCUT_THEME, PL_ALL),
+    (SHORTCUT_SIDE_BUTTON, PL_ALL),
+    (SHORTCUT_MIRROR_PDF, PL_ALL),
+    (SHORTCUT_SLEEP_SCREEN, PL_ALL),
+    (SHORTCUT_SLEEP, PL_ALL),
+    (SHORTCUT_GESTURES, PL_ALL),
+    (SHORTCUT_SHORTCUTS, PL_ALL),
+    (SHORTCUT_BLUETOOTH_CONTROLLER, PL_ALL),
+    (SHORTCUT_LANGUAGE, PL_ALL),
+    (SHORTCUT_SLEEP_AFTER, PL_ALL),
+    (SHORTCUT_UPDATE_CHANNEL, PL_ALL),
+    (SHORTCUT_INDEX_MAP, PL_PAGE | PL_PAGES | PL_LIBRARY | PL_GRAPH),
+    // The Pages view takes New pages too (Ctrl+N's count pad, as new-page).
+    (SHORTCUT_NEW_PAGES, PL_PAGE | PL_PAGES),
+    (SHORTCUT_SAVE, PL_ALL),
+    (SHORTCUT_BACK, PL_ALL),
+    (SHORTCUT_TWO_FINGER_UP, PL_PAGE),
+    (SHORTCUT_NEW_NOTEBOOK, PL_LIBRARY),
+    (SHORTCUT_NEW_FOLDER, PL_LIBRARY),
+    (SHORTCUT_SHARE, PL_LIBRARY),
+    (SHORTCUT_SETTINGS, PL_LIBRARY),
+    (SHORTCUT_SELECT_ALL, PL_PAGES | PL_GRAPH),
+    (SHORTCUT_GRAPH_VIEW, PL_GRAPH),
+    (SHORTCUT_PAN_LEFT, PL_GRAPH),
+    (SHORTCUT_PAN_RIGHT, PL_GRAPH),
+    (SHORTCUT_PAN_UP, PL_GRAPH),
+    (SHORTCUT_PAN_DOWN, PL_GRAPH),
+];
+
+/// The places an action acts in (PL_* bits): K_PLACES's, else a notebook page alone.
+pub fn action_places(id: i32) -> u8 {
+    K_PLACES.iter().find(|&&(a, _)| a == id).map_or(PL_PAGE, |&(_, p)| p)
+}
+
+/// Where a key press is now, one PL_* bit: the Library (with its Graph shown, the Graph; the Share and Calibrate
+/// screens count as the Library), a notebook (its Graph, its Pages view, else the page, whatever menu is over
+/// it), or Pen feel.
+pub fn app_place(a: &App) -> u8 {
+    match a.scr {
+        ScreenId::Library if crate::library::library_graph_shown(a) => PL_GRAPH,
+        ScreenId::Library | ScreenId::Share | ScreenId::Calib => PL_LIBRARY,
+        ScreenId::Penset => PL_PENFEEL,
+        ScreenId::Editor if crate::library::library_settings_active(a) => PL_PAGE,
+        ScreenId::Editor => crate::editor::editor_place(a),
+    }
+}
+
 pub fn group_row_count(group: usize) -> usize {
     ACTION_GROUPS.get(group).map_or(0, |g| g.rows.len())
 }
@@ -1115,3 +1369,75 @@ const _: () = {
     assert!(K_SCREEN.len() <= GROUP_ROWS_MAX);
     assert!(K_SYSTEM.len() <= GROUP_ROWS_MAX);
 };
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Every action label from the keyboard scheme of 2.0.0-beta.2 on (ids from 87) has a TRANSLATORS comment
+    /// above it in ACTIONS: the label's width budget in the keyboard shortcuts lists, and what it does.
+    #[test]
+    fn new_action_labels_have_translators_comments() {
+        let src = include_str!("actions.rs");
+        let table = src.split_once("static ACTIONS").unwrap().1.split_once("\n];").unwrap().0;
+        let mut checked = 0;
+        for entry in table.split("    ai(").skip(1) {
+            let code = entry.lines().filter(|l| !l.trim_start().starts_with("//")).collect::<Vec<_>>().join("\n");
+            let Some(name) = code.split('"').nth(1) else { continue };
+            if action_by_name(name) >= 87 {
+                assert!(entry.contains("// TRANSLATORS: ("), "{name}: no TRANSLATORS comment with its budget");
+                checked += 1;
+            }
+        }
+        assert!(checked >= 7, "{checked}");
+    }
+
+    /// Ids are added to these tables in several places (merges have collided before): no id and no name twice
+    /// across ACTIONS, K_ACTIONS and TOOL_NAMES, every name naming its own id, every action in K_PLACES once.
+    #[test]
+    fn no_action_id_or_name_twice() {
+        let mut ids: Vec<i32> = ACTIONS.iter().map(|a| a.id).collect();
+        ids.sort_unstable();
+        let n = ids.len();
+        ids.dedup();
+        assert_eq!(ids.len(), n, "an action id is in ACTIONS twice");
+        let mut names: Vec<&str> = ACTIONS.iter().map(|a| a.name).collect();
+        names.sort_unstable();
+        names.dedup();
+        assert_eq!(names.len(), n, "an action name is in ACTIONS twice");
+        let mut listed: Vec<(&str, i32)> = K_ACTIONS.iter().chain(TOOL_NAMES.iter()).copied().collect();
+        let m = listed.len();
+        listed.sort_unstable();
+        listed.dedup_by(|a, b| a.0 == b.0);
+        assert_eq!(listed.len(), m, "a name is in K_ACTIONS or TOOL_NAMES twice");
+        let mut by_id: Vec<i32> = listed.iter().map(|&(_, id)| id).collect();
+        by_id.sort_unstable();
+        by_id.dedup();
+        assert_eq!(by_id.len(), m, "two names in K_ACTIONS or TOOL_NAMES give one id");
+        assert_eq!(m, n, "ACTIONS and K_ACTIONS with TOOL_NAMES list different actions");
+        for (name, id) in listed {
+            let info = action_info(id).unwrap_or_else(|| panic!("{name}: id {id} is not in ACTIONS"));
+            assert_eq!(info.name, name, "id {id}");
+            assert_eq!(action_by_name(name), id, "{name}");
+        }
+        let mut placed: Vec<i32> = K_PLACES.iter().map(|&(id, _)| id).collect();
+        placed.sort_unstable();
+        let k = placed.len();
+        placed.dedup();
+        assert_eq!(placed.len(), k, "an action is in K_PLACES twice");
+        for id in placed {
+            assert!(action_info(id).is_some(), "K_PLACES names id {id}, no action");
+        }
+    }
+
+    #[test]
+    fn places_of_the_scheme() {
+        assert_eq!(action_places(SHORTCUT_NEW_NOTEBOOK), PL_LIBRARY);
+        assert_eq!(action_places(SHORTCUT_NEW_PAGE), PL_PAGE | PL_PAGES);
+        assert_eq!(action_places(SHORTCUT_BACK), PL_ALL);
+        assert_eq!(action_places(SHORTCUT_SELECT), PL_PAGE); // (not listed: a page's)
+        assert_eq!(action_places(SHORTCUT_TOOL_BASE + TOOL_ERASER.0) & PL_PENFEEL, PL_PENFEEL);
+        assert_eq!(action_places(SHORTCUT_INVERT), PL_ALL);
+        assert_eq!(action_places(SHORTCUT_INDEX_MAP), PL_ALL & !PL_PENFEEL);
+    }
+}

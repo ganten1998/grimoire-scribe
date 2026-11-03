@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 2.0.0-beta.2 (unreleased)
 
 - Add Japanese: every screen, the share pages and the Effects studio, with a DotGothic16 pixel fallback for kana and kanji (subset to the kana and the common kanji, `assets/README.md`). `po/ja.po`, `po/ja.mo` and `po/ja-glossary.md`; the KOReader plugin's own words follow KOReader's Japanese setting.
 - A Japanese keyboard, as a phone has it: with Grimoire in Japanese the keyboard's accents key is
@@ -11,6 +11,134 @@
   so dakuten, handakuten and the small kana are one key. カ types the pad in katakana (ノート,
   メモ) and あ back in hiragana; 、 holds 、。？！・ on its flicks. Every keyboard has it, so
   notebook, folder, page and link names all take kana. Every other language keeps áé there.
+- One keyboard scheme for a keyboard paired with the Kindle (the owner's scheme; docs/SHORTCUTS.md). A key
+  may do one thing in each place (the Library, a notebook page, the Pages view, the Graph, Pen feel): in the
+  Library Ctrl+N a new notebook, Ctrl+F a new folder, S Share, O Settings, Left and Right its screens; on a page
+  0 and E the eraser, Ctrl+L Add a link, R the page's name, Space what two fingers up do (the Links bar), - and
+  = (+) zoom, Ctrl+S saves now everywhere. Esc is one action, `back`, eating one layer a press (a field's
+  Cancel, a dialog, a selection, a menu one level at a time, a link being placed, then back to the Library, up
+  from a folder), and at the Library's top it asks "Exit Grimoire?" (Enter the highlighted answer, Yes at
+  first; Left and Right move it; Esc No). Up and Down do nothing but in the Graph; the count pad no longer
+  takes them. PageUp and PageDown turn pages (they stepped tools; [ and ] do that), and an Apple keyboard's
+  Cmd works as Ctrl. A shortcuts.ini (or live-keys.ini) that is byte for byte a starter map an earlier
+  version wrote gets the new keys at the next start, with a toast; one someone edited is kept and means what
+  it meant. Older versions refuse the new action names one line each.
+- Pen feel on a keyboard: 1 to 9, 0 and E pick that pen's tab.
+- The Pages view on a keyboard: Ctrl+A ticks every page (the new `select-all` action), Ctrl+N opens the number
+  pad for new pages, Esc closes a held page's card alone (Pages staying open, also with a shortcuts file that
+  keeps Esc as `close-menu`), and Esc stops a drag with nothing moved.
+- The number pad for new pages (New page held in Pages, the toolbar's + held, Ctrl+N) starts at 1, shown
+  selected: Add 1 page (or Enter) at once adds one page, the first digit typed replaces the 1, and - and + count
+  from it. A keyboard's Up and Down keys no longer change the count (- and + do).
+- Go to page... in Pages (and the `go-to-page` key there) opens the page number or name sheet over Pages,
+  which stays behind it, instead of closing Pages first: Cancel, a tap outside it or the key again give Pages
+  back as it was, on the same screen with the same pages ticked (with the page previews made while it was open,
+  on every page shown), and a row picked opens that page.
+- The Graph's view button reads **View: All** or **View: Adjacent** (it said "Around", and "Fit: ..." after a
+  pan), on the Kindle too: a tap always switches to the other view, fitted, and the selected page's card says
+  **Adjacent** where it said "Around it" (the owner's "View: All and View: Adjacent ... so the wording isn't
+  jumbled"). graph.ini still writes `mode=around`.
+- The Graph's keys, on a keyboard paired with the Kindle: the arrows pan it (a sixth of the view a press; the
+  only place Up and Down do anything), - and + (and Ctrl with them) zoom by 1.25 about its centre, Ctrl+0 fits
+  the view again, V switches View: All and View: Adjacent, Ctrl+A selects every page drawn (each drawn
+  selected), Enter opens the selected page, and Esc clears the selection, then closes it. New actions
+  `graph-view`, `pan-left`, `pan-right`, `pan-up`, `pan-down` (docs/SHORTCUTS.md); a shortcuts.ini that binds
+  none of them gets the arrows and V for the Graph in memory, its own lines unchanged.
+
+- Live view's picture in picture no longer costs more the larger its window. In a large PiP window the
+  pen showed 15 to 23 ms later than on the page (the Latency readout's pen age at paint): every frame
+  redrew the whole picture, up to the Kindle's 4.6 million pixels, the capture copied them all, and with
+  the tab shown it did so about 120 times a second against the page's 60. Now a frame draws only what
+  changed, into a picture kept in memory (no copy back from the GPU), and animation frames pace it as
+  they pace the page (the background timer stands in only when they stop). The picture is the same,
+  pixel for pixel; in headless Firefox Nightly PiP's pen age is within 2 ms of the page's at every size.
+- Live view's picture in picture keeps up in Firefox Nightly. With the Live view tab hidden behind
+  the floating picture (or behind another tab), Nightly 161 runs a hidden tab's timers once a second,
+  so the floating video changed once a second and the ink came up to a second late. Its frames are
+  now drawn as the Kindle's data arrives: in headless Nightly a batch of ink is handed to the video 1 ms
+  after it arrives at the median and 2 ms at p90 (it was 0.45 s and 0.9 s), and the video changes 59
+  times a second while you write instead of once. Visible tabs, other browsers and the pop-out work
+  as before (Chrome's hidden PiP gets the same quicker frames).
+- New page in the Pages view adds pages in a batch: tap + for one page at once; hold it (or, with a
+  keyboard attached, tap it with Shift held) for a number pad that asks how many, with - and + under the
+  digits and an "Add N pages" button. The pages are added in one go where New page puts one, and the bottom
+  row's Undo takes the batch back while those pages are still blank. A batch of 25 pages or more shows
+  "Adding N pages..." while it is written (about a minute for the most), and taps made meanwhile are ignored.
+  A tap on + no longer opens the new page: Pages stays open, the page's tile says "(new)", a toast says which
+  page it is, and Undo takes it back as a batch of one. New pages take the paper of the page they go after:
+  the last page ticked, else the open page.
+- The toolbar's + (its next-page arrow on the last page) held, or tapped with a keyboard's modifier key held, opens the
+  same number pad over the page: the pages go after the page you are on, on its paper, which stays open, and a toast says
+  how many were added, from which page, and that the Undo in Pages takes them back. A tap on it still adds one
+  page and opens it, as swiping past the last page does. The new `new-pages` action opens the pad from a key
+  or a controller button.
+- Seyes rule paper is true to size: it is drawn at the panel's own density (302.9 dpi on the Scribe 2,
+  from the display driver's size) instead of the round 300, so a line pitch measures 2 mm and a square
+  8 mm, as in a French school notebook. Pages already on Seyes get the corrected lines too (up to about
+  2 mm lower at the bottom of the page). Its lines are darker and heavier, so they read sharp on the Scribe's
+  screen: the faint lines and the 8 mm verticals 2 px (the ruled papers' weight), the strong lines and the
+  margin 3 px, each in one of the panel's 16 grays so none shows as its neighbour.
+- Lasso select, copy, cut, paste and move. Select (in the tool picker, or the `select` action on a key,
+  controller button, gesture or pen button) turns the pen into a dashed lasso; what it goes around is
+  selected, with the erasing that belongs to it and its links. A bar under it has Copy, Cut, Delete, Paste
+  and Done; drag inside its box to move it (only the outline moves until you lift, then it is one undo
+  step). The clipboard is a file, so it survives page turns, other notebooks, KOReader and a restart.
+  While Select is on, the toolbar's tool button shows the lasso. Hold the pen still on empty page to paste
+  there. There is no Select button on the panel: hold a finger still on the page (off a link) until a small
+  dashed ring shows, about 0.6 s, then draw around ink without lifting to select it, with the same bar; or
+  lift it without moving to paste the clipboard there. A finger held on a link still opens its card, and
+  swipes, taps and links work as before. A palm, or a thumb resting on the page while the pen is in range,
+  never selects or pastes: the pen coming drops the lasso. Bound to a pen button's hold or drag, `select` works while the button is held:
+  draw the lasso with the button down; let go with nothing selected and the pen writes again, or keep the
+  selection for the bar until you tap outside it. A paste on the page it came from lands 3 mm off only
+  while the originals are still there, so Cut and Paste puts it back where it was.
+- The lasso shows what it selects while you draw it, not only when you lift: ink the lasso would take if
+  you lifted now gets a dotted halo, which comes and goes as the lasso goes round (pen or finger
+  alike), and what you lift with is exactly what the halo showed. The halo stays on the selection after
+  the lift. It refreshes a few small areas at most about eight times a second, and the lift redraws them
+  all in grays once; on the 1,090-stroke stress page it costs well under a millisecond a step on a Mac.
+- Exact-area lasso ("pixel lassoing"): the bar has a mode button, **Whole strokes** (the default) or
+  **Exact area**. In exact area the lasso cuts the strokes it crosses along its line and takes only the
+  ink inside it: the halo covers just the inside part while you draw, with a short tick where each cut
+  will be, and the selection is the inside parts. A short mark (an i-dot, an accent, under 1.5 mm) is
+  never cut: it is taken whole when its middle is inside, as its halo shows. Nothing changes on the page until you move, cut or
+  delete; then the parts left behind stay exactly as they were drawn (the cut ends are the pen's own
+  round ends), and one undo puts the strokes back whole. Copy leaves the page untouched. Tapping the
+  mode button with a selection up judges the same lasso again in the other mode. With a keyboard paired
+  with the Kindle: hold Shift (or Alt) as you start a lasso to use the other mode for it, or bind
+  `select-exact` to a key. The mode lasts until Grimoire restarts. Pencil, mechanical pencil and charcoal grain is drawn
+  afresh on the moved part (it differs slightly in single pixels); a calligraphy stroke whose tilt
+  widens or lightens it, and ink carrying a link of 2.0.0-beta.5, are taken whole as before. The pieces
+  are ordinary strokes every older version reads.
+- Erasing travels with the ink it erased: a word partly erased with the precise eraser or white ink moves
+  and pastes with the same gaps, and never lightens the ink it lands on (scoped erase strokes; the eraser
+  itself works exactly as before). White ink lassoed alone selects nothing: it moves with the ink it covers.
+- A linked item copies with its link: the same target, area and outline, a new link where it is pasted;
+  in another notebook its target points back to the first notebook's page. A move takes the link along.
+- Links between notebooks, polished. A page's Links bar lists **Linked from**: the pages of this notebook and of other notebooks whose links come to it (tap one to look at it, or to follow it into its notebook). A held page's card in Pages says how many pages link to it. What other notebooks link to is kept in a small cache, `backlinks.ini`, rebuilt a little at a time while nothing is touched, never holding up the page; deleting it loses nothing.
+- When the Graph shows one notebook alone (a library with too many linked pages to draw at once), other notebooks' pages that it links to, or that link here, are boxes at its edge, grouped by notebook, with an arrow for each way the links go; a tap opens that page. No dot moves for them.
+- The Graph opens on **All notebooks**: every linked page of every notebook, links within and across notebooks its lines, each notebook's pages gathered in an island with the notebook's name over it, as Obsidian's global graph and org-roam-ui draw a library. A tap on another notebook's page shows its notebook in the card; Open goes there, and Back comes back. There is no notebook picker: the Graph is always every notebook's (the owner's ruling; View: All / Around is as before). What every notebook says is kept in a small cache, `graph-index.ini`, filled a little at a time while nothing is touched (the panel says "Reading notebooks" the first time), and the library's layout in `graph-all.ini`; a new notebook joins beside the others without moving them. Deleting either loses nothing. Pages with no link are never drawn there (the owner's ruling); the panel counts them.
+- The Graph is a place of its own: two fingers down over the Library (or the key bound to `index-map`, for a keyboard) open the Graph of all notebooks with no notebook open. It has no List or Pages tab; tapping a page twice opens its notebook there, Back (or the Library button) from that notebook comes back to the Graph as it was left, and Back from the Graph returns to the Library. A notebook's or a folder's menu in the Library has **Leave out of the Graph** (and **Show in the Graph**): a notebook left out has no page in the Graph of all notebooks, links to it are not drawn, and a folder's setting covers everything inside it, folders and notebooks moved in later included. Kept in `notebook.ini` (`graph=0`) and `graph-omit.ini`; older versions keep the first and ignore the second.
+- The Graph from the Library, the reviewer's fixes (2.0.0-beta.2 graph lane): two fingers spreading over it zoom it as over the editor's Graph (a spread that was not a clean swipe did nothing); a notebook that does not open says so instead of the Graph coming back silently; a library with too many linked pages for every notebook opens the notebooks' browser to pick one instead of nothing; Leave out of the Graph (or a move, or the trash) right after Grimoire starts shows in the first Graph opened; a left-out folder that vanished with its last notebook does not leave the next folder of that name out; and the Links bar's chip reads "Volver al grafo" in Spanish.
+- A link to a page or notebook that was deleted shows as such: a dashed chip that says Page gone or Notebook gone, a dashed mark on its page in the Graph (which counts them), and a tap on it (on the page, the bar or the Graph's List) opens the link's card to change where it goes or delete it, instead of a toast and nothing.
+- Back out of another notebook returns to the page the link was followed from at the zoom and place it had, and that notebook's own Back goes on where it left off.
+- Pages: move pages. Hold a page (or tick pages and use the bottom row) and pick Move to...: type the page they go before, or one past the last page for the end. Ticked pages stay together in their order, the open page stays open, and links, names and book pages follow their pages.
+- Pages: a move can be undone. Right after Move to... (or a drag), with nothing ticked, the bottom row's Undo (in Move to...'s place) puts the pages back in the order they had. It stays until the notebook's pages change again (a page added, deleted, copied or moved; a rename keeps it) or the notebook closes. The Undo on the page still undoes only that page's writing.
+- Pages: Redo, and the undo and redo keys. Right after the bottom row's Undo of a move or a batch of new pages, Redo (beside it, in Copy to notebook...'s place, nothing ticked) does it again: the pages in the exact order the move left, or the same blank pages back at the same places. One step each, until the notebook's pages change otherwise. While Pages is open, the `undo` and `redo` actions (keys, controller buttons, gestures) are Pages' Undo and Redo; on the page they stay the page's own. The two histories never mix.
+- Pages: drag to reorder. Hold a page until its card opens, then move without lifting: a black bar shows the gap the page (or the ticked pages, when it is one of them) goes into, and nothing else moves on the screen; lift to drop it there. Hold it over the top bar or the bottom row to turn to the previous or next screen. Lifting it back in its own place, or over the bars, moves nothing. Held and lifted without moving still opens the card.
+- Pages: Copy to notebook... copies a page, or the ticked pages, into another notebook: pick it among your folders, then a page there (the copies go before it) or At the end. The copies keep their ink byte for byte, their picture paper (templates, photos, book pages), their names and their links: a link between two pages copied together joins the two copies, a link to a page left behind leads back into the first notebook, and links to the Index are left out. Pages from a Scribe of the other size are scaled as they open there.
+- Bluetooth controllers: the helper in `grimoire/bluetooth` is stopped as Grimoire leaves even when it was started again outside Grimoire or Grimoire lost its record of it (before, such a helper kept running, holding the radio, while the Kindle's own Bluetooth started again beside it). Its mouse cursor overlay goes with it when the helper has to be killed, and turning Bluetooth controller on takes such a helper back instead of calling it someone else's. A helper someone else started elsewhere is still never stopped, and one unpacked in another folder is now recognised while it starts, so Grimoire does not start a second one.
+- Fewer leftovers on the screen after moving the toolbar or erasing (issue #11, reported by nebuff). Moving the toolbar ends with one quick flash of just the strip it passed through, which wipes the faint copies of it that the fast refresh used while dragging leaves behind (and a drag that went round no longer leaves the page between its ends speckled). Erasing (either eraser) and moving a selection keep count of how much they wiped with the fast refresh; small erases never flash, but once more than a quarter of the screen has been wiped, the screen flashes once where the erasing was, after the pen leaves, instead of waiting for a page turn or a trip to the Library. A selection dragged round and back also no longer leaves the page it crossed speckled.
+- The release checks no longer fail on GitHub's macOS runner: two scenarios timed a press and a finger shape by the real time between their lines, which a loaded machine stretches. The test runner now stamps a scripted touch by the script's own clock, and `make check` runs those scenarios again with every wait 400 ms late.
+- Tests and CI only: the scenarios run several at once (tests/scenario_runner.py; `SCEN_JOBS`, longest first by
+  tests/scenario-times.txt), and so do the language runs: the scripted checks take about two minutes on the
+  maintainer's Mac instead of half an hour. The handwriting replay is four scenarios that run side by side, the
+  English Gothic run of the all-screens tour is made once instead of twice, and 23 scenarios that count
+  refreshes hold the clock corner still (a minute turning over mid-count failed them). Pull requests' CI is
+  split into jobs that run at once (a build, the unit tests' two halves, six scenario shards, the languages, the
+  host checks, the package) behind one `gate` check, skips the two clean release builds, and runs only a short
+  check for a documentation-only change.
+- Fix Live view's picture in picture in Firefox 159 and later (and Nightly): Firefox now has the video picture-in-picture API, so Live view took the path for Chromium and Safari, whose frame requests Firefox does not have (it asks the capture stream, not its track). The floated picture stayed on its first frame and a refusal did nothing. Frames are now asked of whichever has them, and if Firefox will not float the video, it goes in the page for Firefox's own Picture-in-Picture button as before.
 
 ## 2.0.0-beta.1 (2026-11-01)
 

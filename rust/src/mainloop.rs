@@ -360,6 +360,17 @@ fn poll(ev: &mut InEvent, timeout_ms: i32, a: &mut App) -> i32 {
     input_poll(ev, timeout_ms)
 }
 
+// The headless runner's script batch is one batch however long it takes (sim_sdl::input_script_batch):
+// a scenario counts the same refreshes on a loaded machine as on an idle one.
+#[cfg(feature = "sim")]
+fn script_batch() -> bool {
+    crate::sim_sdl::input_script_batch()
+}
+#[cfg(not(feature = "sim"))]
+fn script_batch() -> bool {
+    false
+}
+
 // Everything after the command line: the data root, the language, the display and input, the App,
 // and the loop (main.c's main from getenv("GRIMOIRE_ROOT") on). In the headless build the loop's
 // poll is sim_sdl::input_poll_app, which the App is handed for the runner's expect checks.
@@ -451,6 +462,7 @@ fn run() -> i32 {
         // queue empties. Leave remaining events queued, in order, for the next iteration.
         // (input_drained: the batch ended because nothing more was queued, not at its 64 events or
         // 8 ms: the prefetch and the Links bar's hold timer wait for a quiet moment.)
+        // (The headless runner's script batch never ends at the 8 ms: script_batch.)
         if poll(&mut ev, 30, &mut app) != 0 {
             phase!("reading input", &mut phase, 30);
             let batch_at = now_ms();
@@ -459,7 +471,7 @@ fn run() -> i32 {
             loop {
                 event_timed(&mut app, &ev, &mut slow);
                 count += 1;
-                if !(app.running && count < 64 && now_ms().wrapping_sub(batch_at) < 8) {
+                if !(app.running && count < 64 && (now_ms().wrapping_sub(batch_at) < 8 || script_batch())) {
                     app.input_drained = false;
                     break;
                 }

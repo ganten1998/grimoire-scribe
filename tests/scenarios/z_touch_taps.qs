@@ -6,6 +6,8 @@
 # Buttons are not wrongly rejected: a tap is a tap however the fingertip rolled while it stayed on
 # what it pressed, a slow press on a button with no hold is its tap, a press shows pressed at once
 # where it did not, and a finger landing between the panel's buttons takes the nearest one.
+# (the clock corner held still: its minute's refresh would land among the counted ones)
+clock 1700000000
 wait 300
 tap 200 400
 wait 300
