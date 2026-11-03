@@ -1,0 +1,291 @@
+#!/bin/sh
+# kindle-dev: build a separate "Grimoire (dev)" and copy it to a Kindle over MTP.
+#
+#   make dev
+#   tools/kindle-dev --mount /run/user/1000/gvfs/mtp:host=...
+#
+# It builds build/dist/Grimoire.zip (make package), takes its self-contained
+# documents/Grimoire.sh, renames the Library entry to "Grimoire (dev)" and gives it its own data
+# root (/mnt/us/grimoire-dev/grimoire), then copies it to the Kindle's documents folder as
+# "Grimoire (dev).sh" over MTP. The released Grimoire and its notebooks in /mnt/us/grimoire are
+# never touched, so both Library items can coexist. The copy runs with GRIMOIRE_DEV=1, which
+# turns Settings > Updates off in it (kindle/app/grimoire.sh): an update from the dev copy would
+# run KPM over the release.
+#
+# MTP cannot start the app: close Grimoire (dev) if it is open, then tap it in the Library.
+#
+# On Linux the mount goes through GVFS: the volume's own activation root (a bare
+# "gio mount mtp://" is refused by newer gvfs), releasing KDE's kmtpd5 first when it holds the
+# Kindle's MTP interface (see gvfs_mount below).
+#
+# Environment:
+#   GRIMOIRE_MTP_MOUNT  mounted Kindle folder holding documents, if auto-detection misses it
+#   ZIG                 Zig 0.16.0 for make package (default: zig on PATH)
+#   BUILD               make's build folder (default: build)
+set -eu
+
+HERE=$(cd "$(dirname "$0")" && pwd)
+ROOT=$(cd "$HERE/.." && pwd)
+. "$HERE/kindle-dev-lib.sh"
+MOUNT=${GRIMOIRE_MTP_MOUNT:-}
+NAME=$KINDLE_DEV_NAME
+DEV_ROOT=$KINDLE_DEV_ROOT
+BUILD_IT=1
+ZIP=
+
+usage() {
+    cat <<'EOF'
+kindle-dev: build a separate Grimoire (dev) and copy it to a Kindle over MTP.
+
+  make dev                 build and copy with the defaults
+
+Options:
+  --mount PATH   the mounted Kindle folder that holds documents
+  --name NAME    the Library entry and launcher name (default: "Grimoire (dev)")
+  --root PATH    the dev data root on the Kindle (default: /mnt/us/grimoire-dev)
+  --no-build     use the existing build/dist/Grimoire.zip
+  --zip PATH     use another installer zip (make dist, or a release download)
+  -h, --help     this text
+
+The Scribe must be in USB file transfer (MTP) mode, unlocked, with Allow tapped if it asks.
+On Linux the script uses a mounted MTP volume if there is one, and asks GVFS to mount it if
+not; pass --mount or set GRIMOIRE_MTP_MOUNT to point at the folder holding documents yourself.
+If another desktop daemon (KDE's kmtpd5) holds the Kindle's MTP interface, the script stops it
+for the session and mounts through GVFS. macOS does not mount MTP devices itself: use a
+third-party MTP mount and --mount, or make dev-ssh. The release's documents/Grimoire.sh and
+/mnt/us/grimoire are never touched.
+
+MTP cannot launch an app: close Grimoire (dev) if it is open, then tap "Grimoire (dev)" in the
+Library. Its first launch unpacks into the dev data root; notebooks and settings there are
+separate from the release's, and updates are off in it.
+EOF
+}
+
+while [ $# -gt 0 ]; do
+    case "$1" in
+    --mount) MOUNT=${2:?--mount needs a path}; shift ;;
+    --name) NAME=${2:?--name needs a name}; shift ;;
+    --root) DEV_ROOT=${2:?--root needs a path}; shift ;;
+    --no-build) BUILD_IT=0 ;;
+    --zip) ZIP=${2:?--zip needs a path}; BUILD_IT=0; shift ;;
+    -h | --help) usage; exit 0 ;;
+    *) echo "kindle-dev: unknown option $1" >&2; usage >&2; exit 2 ;;
+    esac
+    shift
+done
+
+command -v python3 >/dev/null 2>&1 || { echo "kindle-dev: needs python3" >&2; exit 1; }
+command -v make >/dev/null 2>&1 || { echo "kindle-dev: needs make" >&2; exit 1; }
+
+# Values that end up in a shell line or a path in the launcher, checked before anything is
+# mounted or built (tools/kindle-dev-lib.sh: the release's own launchers are off limits).
+kindle_dev_validate kindle-dev "$NAME" "$DEV_ROOT" || exit 2
+
+mount_docs() {
+    for cand in "$1" "$1"/* "$1"/*/*; do
+        if [ -d "$cand/documents" ]; then printf '%s\n' "$cand"; return 0; fi
+    done
+    return 1
+}
+
+find_mount() {
+    for root in \
+        "${MOUNT:-}" \
+        "/run/user/$(id -u)"/gvfs/mtp* \
+        "/run/media/$(id -un)"/Kindle* \
+        "/run/media/$(id -un)"/KINDLE* \
+        "/media/$(id -un)"/Kindle* \
+        "/media/$(id -un)"/KINDLE* \
+        /mnt/kindle; do
+        [ -n "$root" ] || continue
+        [ -d "$root" ] || continue
+        if found=$(mount_docs "$root"); then printf '%s\n' "$found"; return 0; fi
+    done
+    return 1
+}
+
+# mtp_holders DEV: the pids with DEV (the Kindle's usbfs node) open.
+mtp_holders() {
+    ls -l /proc/[0-9]*/fd 2>/dev/null | awk -v d="$1" '
+        /^\/proc\/[0-9]+\/fd:$/ { pid = $0; sub(/^\/proc\//, "", pid); sub(/\/fd:$/, "", pid) }
+        $NF == d || $NF == d " (deleted)" { print pid }' | sort -u
+}
+
+# release_mtp_holder DEV: another daemon holds the Kindle's MTP interface open, so GVFS cannot
+# claim it (journalctl --user says "device is busy"). Stop the one known holder, KDE's kmtpd5,
+# named by the holder's own cgroup; systemd starts it again the next time a KDE application asks
+# for MTP. True when something was released.
+release_mtp_holder() {
+    released=0
+    for p in $(mtp_holders "$1"); do
+        unit=$(sed -n 's|.*/\(dbus-[^/ ]*kmtpd5[^/ ]*\.service\)$|\1|p' "/proc/$p/cgroup" 2>/dev/null | head -n 1)
+        [ -n "$unit" ] || continue
+        if command -v systemctl >/dev/null 2>&1 && systemctl --user stop "$unit" 2>/dev/null; then
+            echo "kindle-dev: stopped $unit (pid $p), which had the Kindle's MTP interface"
+            released=1
+        fi
+    done
+    [ "$released" = 1 ]
+}
+
+# gvfs_mount: mount the MTP volume gvfs detected. Newer gvfs refuses a bare "gio mount mtp://"
+# ("No device specified"), so the volume's own activation root from "gio mount -l -i" is used;
+# when the device is claimed by another daemon the holder is released and the mount retried
+# once. On failure MTP_ERR holds what gio said; it is printed only if nothing mounted after all.
+gvfs_mount() {
+    MTP_ERR=
+    info=$(gio mount -l -i 2>/dev/null | awk '
+        /^(Volume|Drive)\(/ { d = "" }
+        /^[ \t]*unix-device:/ { d = $0; sub(/^[^:]*:[ \t]*/, "", d) }
+        /^[ \t]*activation_root=mtp:/ { a = $0; sub(/^[ \t]*activation_root=/, "", a); print a "\t" d; exit }')
+    uri=$(printf '%s\n' "$info" | cut -f1)
+    dev=$(printf '%s\n' "$info" | cut -f2- | tr -d "'")
+    if [ -n "$uri" ]; then
+        err=$(gio mount "$uri" 2>&1) && return 0
+    else
+        err=$(gio mount mtp:// 2>&1) && return 0
+    fi
+    if [ -n "$dev" ] && release_mtp_holder "$dev"; then
+        err=$(gio mount "${uri:-mtp://}" 2>&1) && return 0
+    fi
+    MTP_ERR=${err:-GVFS could not mount the Kindle}
+}
+
+DEST=
+MTP_ERR=
+if [ -n "$MOUNT" ]; then
+    DEST=$(mount_docs "$MOUNT") || {
+        echo "kindle-dev: $MOUNT does not hold a documents folder." >&2
+        exit 1
+    }
+else
+    DEST=$(find_mount) || DEST=
+    if [ -z "$DEST" ] && command -v gio >/dev/null 2>&1; then
+        echo "kindle-dev: asking GVFS to mount the Kindle over MTP"
+        gvfs_mount
+        DEST=$(find_mount) || DEST=
+    fi
+fi
+if [ -z "$DEST" ]; then
+    [ -n "$MTP_ERR" ] && echo "kindle-dev: $MTP_ERR" >&2
+    if command -v lsusb >/dev/null 2>&1 && lsusb 2>/dev/null | grep -qi 'RNDIS/Ethernet Gadget'; then
+        echo "kindle-dev: the Kindle is in USB networking (RNDIS) mode, not USB file transfer (MTP)." >&2
+    fi
+    cat >&2 <<'EOF'
+kindle-dev: no mounted Kindle found over MTP.
+  1. On the Scribe, choose USB file transfer (MTP) and unlock it; tap Allow if it asks.
+  2. On Linux, open the Kindle once in your file manager.
+  3. If it is mounted somewhere unusual, pass --mount (the folder holding documents).
+  4. If gio says the device could not be opened, another program has it: journalctl --user |
+     grep -i mtp names it (the script stops KDE's kmtpd5 itself when it is the holder).
+EOF
+    exit 1
+fi
+[ -w "$DEST/documents" ] || { echo "kindle-dev: $DEST/documents is not writable." >&2; exit 1; }
+
+if [ "$BUILD_IT" = 1 ]; then
+    zig_bin=${ZIG:-zig}
+    if ! command -v "$zig_bin" >/dev/null 2>&1 && [ ! -x "$zig_bin" ]; then
+        echo "kindle-dev: Zig 0.16.0 is not on PATH." >&2
+        echo "kindle-dev: put zig on PATH, or set ZIG to the zig binary itself" >&2
+        echo "kindle-dev: (ZIG=/absolute/path/to/zig make dev), not to its folder." >&2
+        exit 1
+    fi
+    cargo zigbuild --help >/dev/null 2>&1 || {
+        echo "kindle-dev: cargo-zigbuild is not installed (cargo install cargo-zigbuild --version 0.23.0 --locked)." >&2
+        exit 1
+    }
+    echo "kindle-dev: building the dev installer"
+    make -C "$ROOT" package
+fi
+
+if [ -z "$ZIP" ]; then
+    ZIP=$(kindle_dev_zip "$ROOT" "${BUILD:-build}")
+fi
+[ -f "$ZIP" ] || { echo "kindle-dev: $ZIP is not there (run make package, or drop --no-build)" >&2; exit 1; }
+
+TMP=$(mktemp -d /tmp/grimoire-dev.XXXXXX) || { echo "kindle-dev: could not make a temporary folder" >&2; exit 1; }
+TMP_FILE=
+cleanup() {
+    [ -n "$TMP_FILE" ] && rm -f "$TMP_FILE" 2>/dev/null || true
+    rm -rf "$TMP"
+}
+trap cleanup EXIT
+trap 'exit 1' HUP INT TERM
+
+LAUNCHER=$TMP/$NAME.sh
+if ! kindle_dev_patch "$ZIP" "$LAUNCHER" "$NAME" "$DEV_ROOT"; then
+    echo "kindle-dev: could not make a dev launcher from $ZIP." >&2
+    exit 1
+fi
+
+is_gvfs_mtp() {
+    case "$DEST" in
+    */gvfs/mtp:host=*) return 0 ;;
+    *) return 1 ;;
+    esac
+}
+
+# The MTP URI of the same place as the GVFS FUSE path. The FUSE view is read-only for creating
+# files, while the GVFS MTP backend behind it writes fine through gio.
+gvfs_uri() {
+    tail=${DEST#*/gvfs/}
+    mount=${tail%%/*}
+    rel=${tail#"$mount"}
+    host=${mount#mtp:host=}
+    python3 -I - "$host" "$rel" "$NAME.sh" <<'PY'
+import sys
+import urllib.parse
+
+host, rel, name = sys.argv[1:4]
+base = "mtp://" + host + "/" + urllib.parse.quote(
+    (rel.strip("/") + "/documents/").strip("/") + "/", safe="/")
+print(base + urllib.parse.quote(name, safe=""))
+PY
+}
+
+DEST_FILE=$DEST/documents/$NAME.sh
+SIZE=$(wc -c <"$LAUNCHER" | tr -d ' ')
+echo "kindle-dev: copying \"$NAME\" to $DEST/documents"
+if is_gvfs_mtp; then
+    command -v gio >/dev/null 2>&1 || { echo "kindle-dev: gio is needed for a GVFS MTP mount." >&2; exit 1; }
+    MTP_FILE=$(gvfs_uri)
+    if [ -z "$MTP_FILE" ]; then
+        echo "kindle-dev: could not work out the MTP destination for $DEST." >&2
+        exit 1
+    fi
+    # A direct copy replaces the file cleanly; the FUSE path cannot create one at all.
+    if ! gio copy "$LAUNCHER" "$MTP_FILE"; then
+        gio remove "$MTP_FILE" 2>/dev/null || true
+        gio copy "$LAUNCHER" "$MTP_FILE" || { echo "kindle-dev: the MTP copy failed (gio)." >&2; exit 1; }
+    fi
+    sleep 1
+    # Read it back through the MTP backend too: the FUSE view can be stale.
+    gio copy "$MTP_FILE" "$TMP/readback" || { echo "kindle-dev: could not read the launcher back over MTP." >&2; exit 1; }
+    if ! cmp -s "$LAUNCHER" "$TMP/readback"; then
+        echo "kindle-dev: $DEST_FILE does not read back as the built launcher." >&2
+        exit 1
+    fi
+else
+    TMP_FILE=$DEST/documents/$NAME.sh.new
+    cp "$LAUNCHER" "$TMP_FILE" || { echo "kindle-dev: the MTP copy failed." >&2; exit 1; }
+    sync 2>/dev/null || true
+    GOT=$(wc -c <"$TMP_FILE" | tr -d ' ')
+    if [ "$GOT" != "$SIZE" ]; then
+        echo "kindle-dev: the MTP copy is $GOT bytes, wanted $SIZE." >&2
+        exit 1
+    fi
+    if ! mv -f "$TMP_FILE" "$DEST_FILE" 2>/dev/null; then
+        cp -f "$TMP_FILE" "$DEST_FILE" || { echo "kindle-dev: could not replace $DEST_FILE." >&2; exit 1; }
+        rm -f "$TMP_FILE"
+    fi
+    if ! cmp -s "$LAUNCHER" "$DEST_FILE"; then
+        echo "kindle-dev: $DEST_FILE does not read back as the built launcher." >&2
+        exit 1
+    fi
+fi
+TMP_FILE=
+
+echo "kindle-dev: installed \"$NAME\" ($(cat "$ROOT/VERSION" 2>/dev/null || echo dev))."
+echo "kindle-dev: close Grimoire (dev) if it is open, then tap \"$NAME\" in the Library."
+echo "kindle-dev: its notebooks and settings go to $DEV_ROOT/grimoire; the release is untouched."

@@ -18,7 +18,7 @@ W=$(cd "$(dirname "$ZIP")/.." && pwd)/launcher-check
 SHIMS=$REPO/tests/shims
 export LC_ALL=C  # Grimoire.sh ends in a binary archive
 unset KOREADER_DIR FAKE_MODE FAKE_EXIT_STATE SHIM_HOLD SHIM_NICE GRIMOIRE_WD_TICK GRIMOIRE_WD_FIRST GRIMOIRE_WD_STALE GRIMOIRE_KPM \
-    STOP_FRAMEWORK AWESOME_STOPPED PILLOW_HARD_DISABLED FAKE_KO_PARENT FAKE_KO_HOLDS GRIMOIRE_ANNOTATE
+    STOP_FRAMEWORK AWESOME_STOPPED PILLOW_HARD_DISABLED FAKE_KO_PARENT FAKE_KO_HOLDS GRIMOIRE_ANNOTATE GRIMOIRE_DEV
 rm -rf "$W" && mkdir -p "$W"
 fail=0
 check() {  # check NAME COMMAND...: ok when the command succeeds
@@ -42,7 +42,8 @@ wait_until() {  # wait_until TENTHS COMMAND...: polls the command until it succe
 
 # Every script parses, with each shell at hand.
 for f in kindle/Grimoire.sh kindle/app/grimoire.sh kindle/app/bluetooth.sh kindle/app/wifi.sh kindle/app/update.sh "kindle/Grimoire - reset pen calibration.sh" \
-    kindle/kpm/*.sh tests/launcher_check.sh tests/package_check.sh tests/koplugin_check.sh tests/shims/*; do
+    kindle/kpm/*.sh tools/kindle-dev tools/kindle-dev-ssh tools/kindle-dev-lib.sh tests/launcher_check.sh tests/package_check.sh \
+    tests/koplugin_check.sh tests/kindle_dev_check.sh tests/shims/*; do
     check "sh -n $f" sh -n "$f"
     if command -v dash >/dev/null 2>&1; then check "dash -n $f" dash -n "$f"; fi
 done
@@ -221,6 +222,19 @@ suite() {
     check "$s update: a plain run finishes" finish $! 150
     sleep 0.5
     check "$s update: an old request starts nothing" lacks "$SHIM_LOG" "kpm "
+
+    # The dev copy (GRIMOIRE_DEV=1, which the dev launcher exports) has updates off: the app is
+    # told there is no update script, so Settings > Updates reports that KPM is not here, and a
+    # request left behind is not handed to KPM either — an update from the dev copy would
+    # install over the release.
+    : >"$SHIM_LOG"
+    : >"$LOGF"
+    GRIMOIRE_DEV=1 FAKE_MODE=update GRIMOIRE_KPM="$SHIMS/fake-kpm" GRIMOIRE_WD_TICK=0.2 sh "$APP/grimoire.sh" &
+    check "$s dev update: the launcher finishes" finish $! 150
+    check "$s dev update: no update script" sh -c 'grep -qFx "grimoire update script=" "$1"' sh "$SHIM_LOG"
+    sleep 0.5
+    check "$s dev update: the request starts no KPM" lacks "$SHIM_LOG" "kpm "
+    check "$s dev update: nothing is handed on" lacks "$LOGF" "an update was asked for"
 
     # First run on a fresh Kindle: unpacks, then starts app/grimoire.sh detached. The setsid
     # stand-in holds the launch until the fake binary is in place.
