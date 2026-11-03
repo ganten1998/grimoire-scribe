@@ -579,7 +579,8 @@ fn modal_rect_takes_the_dock() {
 
 // Japanese: the letters page's accents key is the kana key, and the page it opens is a mobile
 // phone's kana pad — a tap types the row's first kana, a swipe left, up, right or down the rest —
-// with ゛, 小 and ー beside it. Its abc goes back to the letters, and there the kana key waits.
+// with ー beside it, one modifier that cycles the kana before it, カ for katakana and 、 for
+// 、。？！. Its abc goes back to the letters, and there the kana key waits.
 fn japanese_kana_page() {
     i18n_set("ja");
     let mut kb = Keyboard::default();
@@ -593,23 +594,36 @@ fn japanese_kana_page() {
     check!(flick_key(&mut kb, KB_KEY_FLICK + 1, 0.0, -80.0) && kb.text.as_str() == "\u{3042}\u{304d}\u{304f}"); // up: く
     check!(flick_key(&mut kb, KB_KEY_FLICK + 1, 0.0, 80.0) && kb.text.as_str() == "\u{3042}\u{304d}\u{304f}\u{3053}"); // down: こ
     check!(flick_key(&mut kb, KB_KEY_FLICK + 3, 80.0, 0.0) && kb.text.as_str() == "\u{3042}\u{304d}\u{304f}\u{3053}\u{3066}"); // た, right: て
-    // A row with nothing that way (や to the right) types the row's first, as a phone does.
-    check!(flick_key(&mut kb, KB_KEY_FLICK + 7, 80.0, 0.0) && kb.text.as_str().ends_with('\u{3084}'));
+    // や keeps a phone's brackets on its sides, ゆ above it and よ below.
+    check!(flick_key(&mut kb, KB_KEY_FLICK + 7, 0.0, -80.0) && kb.text.as_str().ends_with('\u{3086}')); // up: ゆ
+    check!(flick_key(&mut kb, KB_KEY_FLICK + 7, 0.0, 80.0) && kb.text.as_str().ends_with('\u{3088}')); // down: よ
+    check!(flick_key(&mut kb, KB_KEY_FLICK + 7, -80.0, 0.0) && kb.text.as_str().ends_with('\u{300c}')); // left: 「
     check!(flick_key(&mut kb, KB_KEY_FLICK + 9, 0.0, -80.0) && kb.text.as_str().ends_with('\u{3093}')); // わ, up: ん
     check!(flick_key(&mut kb, KB_KEY_FLICK + 9, -80.0, 0.0) && kb.text.as_str().ends_with('\u{3092}')); // left: を
-    // ゛ voices the kana before it, 小 makes it small, and ー types straight.
+    // One modifier key cycles the kana before it (か が か; た だ っ た), and ー types straight.
     open_kb(&mut kb, b"");
     press(&mut kb, KB_KEY_KANA);
     check!(press(&mut kb, KB_KEY_FLICK + 1) && kb.text.as_str() == "\u{304b}");
-    check!(press(&mut kb, KB_KEY_DAKU) && kb.text.as_str() == "\u{304c}");
-    check!(press(&mut kb, KB_KEY_DAKU) && kb.text.as_str() == "\u{304c}"); // (already voiced)
-    check!(press(&mut kb, KB_KEY_FLICK + 3) && press(&mut kb, KB_KEY_DAKU) && kb.text.as_str() == "\u{304c}\u{3060}");
-    check!(flick_key(&mut kb, KB_KEY_FLICK + 3, 0.0, -80.0) && press(&mut kb, KB_KEY_SMALL) && kb.text.as_str() == "\u{304c}\u{3060}\u{3063}");
-    check!(press(&mut kb, 0x30FC) && kb.text.as_str() == "\u{304c}\u{3060}\u{3063}\u{30fc}");
-    // ゛ and 小 with nothing before them change nothing, and backspace takes a whole kana.
+    check!(press(&mut kb, KB_KEY_KANA_MOD) && kb.text.as_str() == "\u{304c}");
+    check!(press(&mut kb, KB_KEY_KANA_MOD) && kb.text.as_str() == "\u{304b}"); // round again
+    check!(flick_key(&mut kb, KB_KEY_FLICK + 3, 0.0, -80.0) && kb.text.as_str() == "\u{304b}\u{3064}"); // た, up: つ
+    check!(press(&mut kb, KB_KEY_KANA_MOD) && kb.text.as_str() == "\u{304b}\u{3065}"); // づ
+    check!(press(&mut kb, KB_KEY_KANA_MOD) && kb.text.as_str() == "\u{304b}\u{3063}"); // っ
+    check!(press(&mut kb, KB_KEY_KANA_MOD) && kb.text.as_str() == "\u{304b}\u{3064}"); // and round again
+    check!(press(&mut kb, KB_KEY_FLICK + 5) && press(&mut kb, KB_KEY_KANA_MOD) && press(&mut kb, KB_KEY_KANA_MOD)
+        && kb.text.as_str().ends_with("\u{3071}")); // は, twice: ぱ
+    check!(press(&mut kb, 0x30FC) && kb.text.as_str().ends_with("\u{30fc}"));
+    // カ types the pad in katakana, the modifier keeping to katakana; 、 holds 、。？！.
+    check!(press(&mut kb, KB_KEY_KATA) && kb.kata);
+    check!(press(&mut kb, KB_KEY_FLICK) && kb.text.as_str().ends_with('\u{30a2}')); // ア
+    check!(press(&mut kb, KB_KEY_KANA_MOD) && kb.text.as_str().ends_with('\u{30a1}')); // ァ
+    check!(press(&mut kb, KB_KEY_PUNCT) && kb.text.as_str().ends_with('\u{3001}')); // 、
+    check!(flick_key(&mut kb, KB_KEY_PUNCT, 0.0, -80.0) && kb.text.as_str().ends_with('\u{ff1f}')); // up: ？
+    check!(press(&mut kb, KB_KEY_KATA) && !kb.kata); // あ: back to hiragana
+    // The modifier with nothing before it changes nothing, and backspace takes a whole kana.
     open_kb(&mut kb, b"");
     press(&mut kb, KB_KEY_KANA);
-    check!(press(&mut kb, KB_KEY_DAKU) && press(&mut kb, KB_KEY_SMALL) && kb.text.is_empty());
+    check!(press(&mut kb, KB_KEY_KANA_MOD) && press(&mut kb, KB_KEY_KANA_MOD) && kb.text.is_empty());
     check!(press(&mut kb, KB_KEY_FLICK + 1) && press(&mut kb, KB_KEY_BKSP) && kb.text.is_empty());
     // abc goes back to the letters.
     check!(press(&mut kb, KB_KEY_PAGE) && kb.page == 0 && keyboard_key_rect(&kb, KB_KEY_KANA, &mut r));
@@ -621,7 +635,7 @@ fn japanese_kana_page() {
 // Every kana on the page, and the keys beside it, is drawn in every theme and at both key sizes:
 // DotGothic16's fallback covers what the pixel and Terminess faces lack.
 fn kana_in_every_face() {
-    const ALL: &str = "\u{3042}\u{3044}\u{3046}\u{3048}\u{304a}\u{304b}\u{304d}\u{304f}\u{3051}\u{3053}\u{3055}\u{3057}\u{3059}\u{305b}\u{305d}\u{305f}\u{3061}\u{3064}\u{3066}\u{3068}\u{306a}\u{306b}\u{306c}\u{306d}\u{306e}\u{306f}\u{3072}\u{3075}\u{3078}\u{307b}\u{307e}\u{307f}\u{3080}\u{3081}\u{3082}\u{3084}\u{3086}\u{3088}\u{3089}\u{308a}\u{308b}\u{308c}\u{308d}\u{308f}\u{3092}\u{3093}\u{30fc}\u{309b}\u{5c0f}";
+    const ALL: &str = "\u{3042}\u{3044}\u{3046}\u{3048}\u{304a}\u{304b}\u{304d}\u{304f}\u{3051}\u{3053}\u{3055}\u{3057}\u{3059}\u{305b}\u{305d}\u{305f}\u{3061}\u{3063}\u{3064}\u{3065}\u{3066}\u{3068}\u{306a}\u{306b}\u{306c}\u{306d}\u{306e}\u{306f}\u{3071}\u{3072}\u{3075}\u{3078}\u{307b}\u{307e}\u{307f}\u{3080}\u{3081}\u{3082}\u{3083}\u{3084}\u{3086}\u{3088}\u{3089}\u{308a}\u{308b}\u{308c}\u{308d}\u{308f}\u{3092}\u{3093}\u{3094}\u{309b}\u{30a1}\u{30a2}\u{30ab}\u{30fc}\u{3001}\u{3002}\u{300c}\u{300d}\u{30fb}\u{ff1f}\u{ff01}\u{5c0f}";
     for (theme, th) in [UiTheme::Gothic, UiTheme::Classic].into_iter().enumerate() {
         ui_set_theme(th);
         for ch in ALL.chars() {

@@ -100,7 +100,10 @@ your notebooks and settings from `quire/` to `grimoire/` and removes the old Qui
 - **Names** can have accents: the keyboard's **áé** key opens a page of accented letters (enough
   for Spanish, Portuguese, French, Italian, German, Dutch, Catalan, Danish, Norwegian, Swedish and
   Finnish). Shift gives capitals and **abc** returns to the letters. With Grimoire in Spanish, the
-  letters page has **ñ** too, after l.
+  letters page has **ñ** too, after l. In Japanese that key is **あ**, a phone's flick pad: a tap
+  types the row's first kana and a swipe left, up, right or down the rest, **゛小** cycles the
+  kana typed last (か to が, は to ば to ぱ, つ to づ to っ), **カ** switches to katakana and **、**
+  holds 、。？！ on its flicks.
 - **Paper**: narrow, medium and wide rule (without or with a margin), Cornell, dot grid, graph,
   sheet music, guitar tab, blank, cross grid, isometric, hexagon, Seyes rule, and **Custom
   music**: stack treble, bass, alto, tenor, drum and plain staves, 4 to 8 line tabs and lyric
@@ -504,8 +507,9 @@ Grimoire is free software: GPL-3.0-or-later (see `LICENSE`), the same license as
 Much of what Grimoire knows about the Kindle comes from [KOReader](https://koreader.rocks) and
 [kindlemodding.org](https://kindlemodding.org).
 
-- Terminess Nerd Font, Jacquard 24 and Jersey 10: SIL Open Font License 1.1
-  (`assets/*-OFL-1.1.txt`)
+- Terminess Nerd Font, Jacquard 24, Jersey 10 and DotGothic16 (the Japanese fallback, subset to
+  the kana, the punctuation and the common kanji to keep the app small: see `assets/README.md`):
+  SIL Open Font License 1.1 (`assets/*-OFL-1.1.txt`)
 - stb_truetype and stb_image_write by Sean Barrett: public domain / MIT
 - QR Code generator by Project Nayuki: MIT, vendored unmodified in `third_party/qrcodegen`
   (upstream commit 3c6d0b3)

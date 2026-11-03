@@ -263,7 +263,8 @@ TEST(spanish_letters_have_enye) {
 
 // Japanese: the letters page's accents key is the kana key, and the page it opens is a mobile
 // phone's kana pad — a tap types the row's first kana, a swipe left, up, right or down the rest —
-// with ゛, 小 and ー beside it. Its abc goes back to the letters, and there the kana key waits.
+// with ー beside it, one modifier that cycles the kana before it, カ for katakana and 、 for
+// 、。？！. Its abc goes back to the letters, and there the kana key waits.
 TEST(japanese_kana_page) {
     i18n_set("ja");
     Keyboard kb;
@@ -278,24 +279,36 @@ TEST(japanese_kana_page) {
     CHECK(flick_key(&kb, KB_KEY_FLICK + 1, 0.f, -80.f) && !strcmp(kb.text, "\xe3\x81\x82\xe3\x81\x8d\xe3\x81\x8f"));
     CHECK(flick_key(&kb, KB_KEY_FLICK + 1, 0.f, 80.f) && !strcmp(kb.text, "\xe3\x81\x82\xe3\x81\x8d\xe3\x81\x8f\xe3\x81\x93"));
     CHECK(flick_key(&kb, KB_KEY_FLICK + 3, 80.f, 0.f) && !strcmp(kb.text, "\xe3\x81\x82\xe3\x81\x8d\xe3\x81\x8f\xe3\x81\x93\xe3\x81\xa6"));
-    // A row with nothing that way (や to the right) types the row's first, as a phone does.
-    CHECK(flick_key(&kb, KB_KEY_FLICK + 7, 80.f, 0.f) && !strcmp(kb.text + strlen(kb.text) - 3, "\xe3\x82\x84"));
+    // や keeps a phone's brackets on its sides, ゆ above it and よ below.
+    CHECK(flick_key(&kb, KB_KEY_FLICK + 7, 0.f, -80.f) && !strcmp(kb.text + strlen(kb.text) - 3, "\xe3\x82\x86"));
+    CHECK(flick_key(&kb, KB_KEY_FLICK + 7, 0.f, 80.f) && !strcmp(kb.text + strlen(kb.text) - 3, "\xe3\x82\x88"));
+    CHECK(flick_key(&kb, KB_KEY_FLICK + 7, -80.f, 0.f) && !strcmp(kb.text + strlen(kb.text) - 3, "\xe3\x80\x8c"));
     CHECK(flick_key(&kb, KB_KEY_FLICK + 9, 0.f, -80.f) && !strcmp(kb.text + strlen(kb.text) - 3, "\xe3\x82\x93"));
     CHECK(flick_key(&kb, KB_KEY_FLICK + 9, -80.f, 0.f) && !strcmp(kb.text + strlen(kb.text) - 3, "\xe3\x82\x92"));
-    // ゛ voices the kana before it, 小 makes it small, and ー types straight.
+    // One modifier key cycles the kana before it (か が か; た だ っ た), and ー types straight.
     open_kb(&kb, "");
     press(&kb, KB_KEY_KANA);
     CHECK(press(&kb, KB_KEY_FLICK + 1) && !strcmp(kb.text, "\xe3\x81\x8b"));
-    CHECK(press(&kb, KB_KEY_DAKU) && !strcmp(kb.text, "\xe3\x81\x8c"));
-    CHECK(press(&kb, KB_KEY_DAKU) && !strcmp(kb.text, "\xe3\x81\x8c"));  // (already voiced)
-    CHECK(press(&kb, KB_KEY_FLICK + 3) && press(&kb, KB_KEY_DAKU) && !strcmp(kb.text, "\xe3\x81\x8c\xe3\x81\xa0"));
-    CHECK(flick_key(&kb, KB_KEY_FLICK + 3, 0.f, -80.f) && press(&kb, KB_KEY_SMALL) &&
-          !strcmp(kb.text, "\xe3\x81\x8c\xe3\x81\xa0\xe3\x81\xa3"));
-    CHECK(press(&kb, 0x30FC) && !strcmp(kb.text, "\xe3\x81\x8c\xe3\x81\xa0\xe3\x81\xa3\xe3\x83\xbc"));
-    // ゛ and 小 with nothing before them change nothing, and backspace takes a whole kana.
+    CHECK(press(&kb, KB_KEY_KANA_MOD) && !strcmp(kb.text, "\xe3\x81\x8c"));
+    CHECK(press(&kb, KB_KEY_KANA_MOD) && !strcmp(kb.text, "\xe3\x81\x8b"));  // round again
+    CHECK(flick_key(&kb, KB_KEY_FLICK + 3, 0.f, -80.f) && !strcmp(kb.text, "\xe3\x81\x8b\xe3\x81\xa4"));  // た, up: つ
+    CHECK(press(&kb, KB_KEY_KANA_MOD) && !strcmp(kb.text, "\xe3\x81\x8b\xe3\x81\xa5"));  // づ
+    CHECK(press(&kb, KB_KEY_KANA_MOD) && !strcmp(kb.text, "\xe3\x81\x8b\xe3\x81\xa3"));  // っ
+    CHECK(press(&kb, KB_KEY_KANA_MOD) && !strcmp(kb.text, "\xe3\x81\x8b\xe3\x81\xa4"));  // and round again
+    CHECK(press(&kb, KB_KEY_FLICK + 5) && press(&kb, KB_KEY_KANA_MOD) && press(&kb, KB_KEY_KANA_MOD) &&
+          !strcmp(kb.text + strlen(kb.text) - 3, "\xe3\x81\xb1"));  // は, twice: ぱ
+    CHECK(press(&kb, 0x30FC) && !strcmp(kb.text + strlen(kb.text) - 3, "\xe3\x83\xbc"));
+    // カ types the pad in katakana, the modifier keeping to katakana; 、 holds 、。？！.
+    CHECK(press(&kb, KB_KEY_KATA) && kb.kata);
+    CHECK(press(&kb, KB_KEY_FLICK) && !strcmp(kb.text + strlen(kb.text) - 3, "\xe3\x82\xa2"));
+    CHECK(press(&kb, KB_KEY_KANA_MOD) && !strcmp(kb.text + strlen(kb.text) - 3, "\xe3\x82\xa1"));
+    CHECK(press(&kb, KB_KEY_PUNCT) && !strcmp(kb.text + strlen(kb.text) - 3, "\xe3\x80\x81"));
+    CHECK(flick_key(&kb, KB_KEY_PUNCT, 0.f, -80.f) && !strcmp(kb.text + strlen(kb.text) - 3, "\xef\xbc\x9f"));
+    CHECK(press(&kb, KB_KEY_KATA) && !kb.kata);  // あ: back to hiragana
+    // The modifier with nothing before it changes nothing, and backspace takes a whole kana.
     open_kb(&kb, "");
     press(&kb, KB_KEY_KANA);
-    CHECK(press(&kb, KB_KEY_DAKU) && press(&kb, KB_KEY_SMALL) && kb.text[0] == 0);
+    CHECK(press(&kb, KB_KEY_KANA_MOD) && press(&kb, KB_KEY_KANA_MOD) && kb.text[0] == 0);
     CHECK(press(&kb, KB_KEY_FLICK + 1) && press(&kb, KB_KEY_BKSP) && kb.text[0] == 0);
     // abc goes back to the letters.
     CHECK(press(&kb, KB_KEY_PAGE) && kb.page == 0 && keyboard_key_rect(&kb, KB_KEY_KANA, &r));

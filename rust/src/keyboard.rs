@@ -3,7 +3,9 @@
 //! a key each to a page of symbols and a page of accented letters (and back). Pen or finger taps. The text is UTF-8: a key types a whole character and
 //! backspace takes a whole character away. In Japanese the accents key is a kana key: a flick
 //! keypad, twelve keys in three columns, where a tap types the row's first kana and a swipe left,
-//! up, right or down the rest of the row (a mobile phone's kana pad), with ゛, 小 and ー beside it.
+//! up, right or down the rest of the row (a mobile phone's kana pad), with ー beside it, one
+//! modifier that cycles the kana typed last (゛小: か to が, は to ば to ぱ, つ to づ to っ), カ for
+//! katakana and 、 for 、。？！.
 
 use crate::prelude::*;
 
@@ -26,10 +28,11 @@ pub const KB_KEY_PAGE: u32 = 2;
 pub const KB_KEY_SYMBOLS: u32 = 3;
 /// the kana page (Japanese: the letters page's accents key becomes this)
 pub const KB_KEY_KANA: u32 = 4;
-/// ゛: voices the kana typed last (か to が, は to ば)
-pub const KB_KEY_DAKU: u32 = 5;
-/// 小: the kana typed last in its small form (つ to っ, や to ゃ)
-pub const KB_KEY_SMALL: u32 = 6;
+/// ゛小: the kana typed last in its next form, cycling (か to が and back; は to ば to ぱ to は;
+/// つ to づ to っ to つ; や to ゃ to や)
+pub const KB_KEY_KANA_MOD: u32 = 5;
+/// カ: the kana page in katakana (カ キ ク), or back to hiragana
+pub const KB_KEY_KATA: u32 = 7;
 /// + row: the kana page's own keys, whose swipe picks one of the row's five kana
 pub const KB_KEY_FLICK: u32 = 16;
 pub const KB_KEY_BKSP: u32 = 8;
@@ -42,6 +45,8 @@ pub struct Keyboard {
     pub title: FixedStr<64>,
     pub text: FixedStr<KB_TEXT_MAX>,
     pub shift: bool,
+    /// the kana page in katakana (カ toggles it): the pad types カ キ ク, not か き く
+    pub kata: bool,
     /// 0 letters, 1 accents, 2 number pad, 3 symbols
     pub page: i32,
     /// where it was last drawn (whole modal)
@@ -129,14 +134,17 @@ const K_ROWS: [[[u16; 11]; 4]; 3] = [
 /// of l): a letter of the alphabet there, not an accent to fetch from the other page.
 const K_ROW_ES: [u16; 11] = row(&['a' as u16, 's' as u16, 'd' as u16, 'f' as u16, 'g' as u16, 'h' as u16, 'j' as u16, 'k' as u16, 'l' as u16, 0xF1]);
 
-/// The kana page's twelve keys, row by row: the ten rows of the gojuon that have a key of their
-/// own, then ゛ and ー.
-const K_KANA_DAKU_CELL: usize = 10;
+/// The kana page's eleventh and twelfth cells: the modifier and ー, after the ten kana rows.
+const K_KANA_MOD_CELL: usize = 10;
 const KANA_CHOON: u32 = 0x30FC; // ー, the long vowel mark
+/// The punctuation key, which the bottom row holds: K_KANA's last row.
+pub const KB_KEY_PUNCT: u32 = KB_KEY_FLICK + 10;
 
 /// What each kana key types, in the order a finger swipes it: tap, left, up, right, down (0 where
-/// the row has no such kana). あ is the gojuon's first row, わ its last; ゛ and ー are no kana.
-const K_KANA: [[u16; 5]; 10] = [
+/// the row has no such kana). あ is the gojuon's first row, わ its last; the last row is the
+/// punctuation key's. A phone's kana pad puts や with its brackets on the sides and ゆ above, よ
+/// below; 、。？！ are on the punctuation key's flicks.
+const K_KANA: [[u16; 5]; 11] = [
     [0x3042, 0x3044, 0x3046, 0x3048, 0x304A], // あ い う え お
     [0x304B, 0x304D, 0x304F, 0x3051, 0x3053], // か き く け こ
     [0x3055, 0x3057, 0x3059, 0x305B, 0x305D], // さ し す せ そ
@@ -144,25 +152,55 @@ const K_KANA: [[u16; 5]; 10] = [
     [0x306A, 0x306B, 0x306C, 0x306D, 0x306E], // な に ぬ ね の
     [0x306F, 0x3072, 0x3075, 0x3078, 0x307B], // は ひ ふ へ ほ
     [0x307E, 0x307F, 0x3080, 0x3081, 0x3082], // ま み む め も
-    [0x3084, 0x3086, 0x3088, 0, 0], // や ゆ よ
+    [0x3084, 0x300C, 0x3086, 0x300D, 0x3088], // や 「 ゆ 」 よ
     [0x3089, 0x308A, 0x308B, 0x308C, 0x308D], // ら り る れ ろ
     [0x308F, 0x3092, 0x3093, 0, 0], // わ を ん
+    [0x3001, 0x3002, 0xFF1F, 0xFF01, 0x30FB], // 、 。 ？ ！ ・
 ];
 
 fn is_flick(code: u32) -> bool {
-    (KB_KEY_FLICK..KB_KEY_FLICK + 10).contains(&code)
+    (KB_KEY_FLICK..KB_KEY_FLICK + 11).contains(&code)
 }
 
-/// The voiced kana of one that has a voiced form (か to が, さ to ざ, た to だ, は to ば); anything
+/// The voiced kana of one that has a voiced form (か to が, う to ゔ, つ to づ, は to ば); anything
 /// else comes back as it is.
 fn kana_dakuten(cp: u32) -> u32 {
     match cp {
+        0x3046 => 0x3094, // う to ゔ
         0x304B | 0x304D | 0x304F | 0x3051 | 0x3053 // か row
         | 0x3055 | 0x3057 | 0x3059 | 0x305B | 0x305D // さ row
         | 0x305F | 0x3061 | 0x3064 | 0x3066 | 0x3068 // た row
         | 0x306F | 0x3072 | 0x3075 | 0x3078 | 0x307B => cp + 1, // は row
         _ => cp,
     }
+}
+
+/// The half-voiced kana of one that has that form (は to ぱ); anything else comes back as it is.
+fn kana_handakuten(cp: u32) -> u32 {
+    match cp {
+        0x306F | 0x3072 | 0x3075 | 0x3078 | 0x307B => cp + 2, // は row to ぱ row
+        _ => cp,
+    }
+}
+
+/// The voiced or half-voiced kana an unvoiced one becomes it (が to か, ぱ to は, ゔ to う), or cp
+/// when it has neither form: the kana a cycle starts from.
+fn kana_unvoice(cp: u32) -> u32 {
+    if cp == 0x3094 {
+        return 0x3046; // ゔ
+    }
+    if kana_small(cp + 1) == cp {
+        return cp + 1; // っ to つ, ゃ to や, ぁ to あ
+    }
+    for back in [1u32, 2] {
+        if cp > back {
+            let b = cp - back;
+            if kana_dakuten(b) == cp || kana_handakuten(b) == cp {
+                return b;
+            }
+        }
+    }
+    cp
 }
 
 /// The small form of a kana that has one (あ to ぁ, つ to っ, や to ゃ, わ to ゎ); anything else
@@ -174,6 +212,44 @@ fn kana_small(cp: u32) -> u32 {
         | 0x3084 | 0x3086 | 0x3088 // や ゆ よ
         | 0x308F => cp - 1, // わ
         _ => cp,
+    }
+}
+
+/// The katakana of a hiragana, and anything else (ー, 、, Latin) as it is: the kana page in
+/// katakana types the same rows as katakana.
+fn kana_katakana(cp: u32) -> u32 {
+    if (0x3041..=0x3096).contains(&cp) {
+        cp + 0x60
+    } else {
+        cp
+    }
+}
+
+/// The next form of a kana, for the pad's one modifier key: its unvoiced form, then voiced, then
+/// half-voiced, then small, then round again (か が か; は ば ぱ は; つ づ っ つ; や ゃ や). ー and
+/// the punctuation stay as they are; katakana cycles in its own script.
+fn kana_cycle(cp: u32) -> u32 {
+    let kata = (0x30A1..=0x30F6).contains(&cp);
+    let h = if kata { cp - 0x60 } else { cp };
+    let base = kana_unvoice(h);
+    let mut forms = [base; 4];
+    let mut n = 1;
+    for f in [kana_dakuten(base), kana_handakuten(base), kana_small(base)] {
+        if f != base && !forms[..n].contains(&f) {
+            forms[n] = f;
+            n += 1;
+        }
+    }
+    let mut next = h;
+    for i in 0..n {
+        if forms[i] == h {
+            next = forms[(i + 1) % n];
+        }
+    }
+    if kata {
+        next + 0x60
+    } else {
+        next
     }
 }
 
@@ -194,8 +270,8 @@ fn flick_dir(x0: f32, y0: f32, x: f32, y: f32) -> i32 {
     }
 }
 
-/// Replaces the last character of the text with f(that character): ゛ voices it, 小 makes it small.
-/// No character, or one with no such form, leaves the text as it is.
+/// Replaces the last character of the text with f(that character): the kana page's modifier takes
+/// it to its next form. No character, or one with no such form, leaves the text as it is.
 fn change_last(kb: &mut Keyboard, f: fn(u32) -> u32) {
     let b = kb.text.as_bytes();
     let mut start = b.len();
@@ -410,8 +486,8 @@ fn layout(area: Rect, page: i32, keys: &mut [Key; MAX_KEYS]) -> usize {
         return n;
     }
     if page == 4 {
-        // The kana pad: three columns of four keys, あ か さ / た な は / ま や ら / わ ゛ ー, then
-        // cancel, 小, abc, space, delete and done.
+        // The kana pad: three columns of four keys, あ か さ / た な は / ま や ら / わ ゛小 ー,
+        // then cancel, カ, 、, abc, space, delete and done.
         let mut n = 0;
         let kh = ui_px(150.0);
         let gap = ui_px(10.0);
@@ -420,10 +496,10 @@ fn layout(area: Rect, page: i32, keys: &mut [Key; MAX_KEYS]) -> usize {
         let inner_w = area.w - ui_px(60.0);
         let kw = (inner_w - 2 * gap) / 3;
         for i in 0..12 {
-            let code = if i < K_KANA_DAKU_CELL as i32 {
+            let code = if i < K_KANA_MOD_CELL as i32 {
                 KB_KEY_FLICK + i as u32
-            } else if i as usize == K_KANA_DAKU_CELL {
-                KB_KEY_DAKU
+            } else if i as usize == K_KANA_MOD_CELL {
+                KB_KEY_KANA_MOD
             } else {
                 KANA_CHOON
             };
@@ -438,7 +514,7 @@ fn layout(area: Rect, page: i32, keys: &mut [Key; MAX_KEYS]) -> usize {
         keys[n] = Key { r: Rect { x: inner_x, y, w: wide, h: kh }, code: KB_KEY_CANCEL };
         n += 1;
         let mut x = inner_x + wide + gap;
-        for code in [KB_KEY_SMALL, KB_KEY_PAGE] {
+        for code in [KB_KEY_KATA, KB_KEY_PUNCT, KB_KEY_PAGE] {
             keys[n] = Key { r: Rect { x, y, w: sk, h: kh }, code };
             n += 1;
             x += sk + gap;
@@ -543,17 +619,24 @@ fn key_label<'a>(kb: &Keyboard, code: u32, ch: &'a mut [u8; 8]) -> &'a str {
         KB_KEY_BKSP => c_("key", "del"),
         KB_KEY_DONE => tr("Done"),
         KB_KEY_CANCEL => tr("Cancel"),
-        // TRANSLATORS: the kana page's named keys, in bold at 44 px: 小 (kw wide), the space bar,
-        // and あ, the letters page's way to the kana page (250 px wide).
-        KB_KEY_KANA => "\u{3042}",          // あ
-        KB_KEY_DAKU => "\u{309B}",          // ゛
-        KB_KEY_SMALL => "\u{5C0F}",         // 小
-        // The two page keys: each to its page, and on it back to the letters.
-        KB_KEY_PAGE => {
-            if kb.page == 1 {
-                "abc"
+        // TRANSLATORS: the kana page's named keys, in bold at 44 px: ゛小 (one tenth of the
+        // modal wide), カ, 、, the space bar, and あ, the letters page's way to the kana page (as
+        // wide as shift).
+        KB_KEY_KANA => "\u{3042}",              // あ
+        KB_KEY_KANA_MOD => "\u{309B}\u{5C0F}",  // ゛小: the kana typed last, in its next form
+        KB_KEY_KATA => {
+            if kb.kata {
+                "\u{3042}" // あ: back to hiragana
             } else {
+                "\u{30AB}" // カ: katakana
+            }
+        }
+        // The page keys: each to its page, and on it back to the letters.
+        KB_KEY_PAGE => {
+            if kb.page == 0 {
                 "\u{e1}\u{e9}" // a and e acute
+            } else {
+                "abc"
             }
         }
         KB_KEY_SYMBOLS => {
@@ -570,7 +653,12 @@ fn key_label<'a>(kb: &Keyboard, code: u32, ch: &'a mut [u8; 8]) -> &'a str {
             let code = if is_flick(code) {
                 let row = &K_KANA[(code - KB_KEY_FLICK) as usize];
                 let at = if kb.flick > 0 { kb.flick as usize } else { 0 };
-                if row[at] != 0 { row[at] as u32 } else { row[0] as u32 }
+                let kana = if row[at] != 0 { row[at] as u32 } else { row[0] as u32 };
+                if kb.kata {
+                    kana_katakana(kana)
+                } else {
+                    kana
+                }
             } else {
                 code
             };
@@ -710,16 +798,16 @@ pub fn keyboard_pointer(kb: &mut Keyboard, phase: i32, x: f32, y: f32, t: u32, d
         *dirty = keys[kb.pressed_key as usize].r;
         kb.flick = 0;
         let c = keys[kb.pressed_key as usize].code;
-        // (a kana key waits for the lift: which kana it types is the swipe, and ゛ and 小 act on
-        // the character before them)
+        // (a kana key waits for the lift: which kana it types is the swipe, and the modifier and
+        // カ act on the character before them, or on the page)
         if c == KB_KEY_SHIFT
             || c == KB_KEY_PAGE
             || c == KB_KEY_SYMBOLS
             || c == KB_KEY_KANA
             || c == KB_KEY_DONE
             || c == KB_KEY_CANCEL
-            || c == KB_KEY_DAKU
-            || c == KB_KEY_SMALL
+            || c == KB_KEY_KANA_MOD
+            || c == KB_KEY_KATA
             || is_flick(c)
         {
             return KbResult::None;
@@ -749,6 +837,7 @@ pub fn keyboard_pointer(kb: &mut Keyboard, phase: i32, x: f32, y: f32, t: u32, d
             let row = &K_KANA[(keys[k as usize].code - KB_KEY_FLICK) as usize];
             let at = if kb.flick > 0 { kb.flick as usize } else { 0 };
             let kana = if row[at] != 0 { row[at] as u32 } else { row[0] as u32 };
+            let kana = if kb.kata { kana_katakana(kana) } else { kana };
             kb.flick = 0;
             *dirty = keys[k as usize].r;
             type_key(kb, kana, dirty);
@@ -801,8 +890,12 @@ pub fn keyboard_pointer(kb: &mut Keyboard, phase: i32, x: f32, y: f32, t: u32, d
             *dirty = kb.area;
             return KbResult::Changed;
         }
-        KB_KEY_DAKU => change_last(kb, kana_dakuten),
-        KB_KEY_SMALL => change_last(kb, kana_small),
+        KB_KEY_KANA_MOD => change_last(kb, kana_cycle),
+        KB_KEY_KATA => {
+            kb.kata = !kb.kata;
+            *dirty = kb.area;
+            return KbResult::Changed;
+        }
         KB_KEY_BKSP => {
             // A whole character: back over its continuation bytes to its first byte.
             let b = kb.text.as_bytes();

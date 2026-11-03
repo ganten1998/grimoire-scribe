@@ -1,8 +1,8 @@
 # Japanese glossary (po/ja.po)
 
-Grimoire's Japanese is one `ja`, This page lists the choices worth confirming; `make l10n-check` shows every screen in
-`build/shots/l10n/ja-gothic/` and `ja-classic/`, and lists any text that no longer fits as
-`fit[ja]: ...`.
+Grimoire's Japanese is one `ja`. This page lists the choices it made; `make l10n-check` shows
+every screen in `build/shots/l10n/ja-gothic/` and `ja-classic/`, and lists any text that no longer
+fits as `fit[ja]: ...`.
 
 ## The pen and the drawing tools
 

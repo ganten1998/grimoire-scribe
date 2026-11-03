@@ -3,7 +3,9 @@
 // letters (and back). Pen or finger taps. The text is UTF-8: a key types a whole character and
 // backspace takes a whole character away. In Japanese the accents key is a kana key: a flick
 // keypad, twelve keys in three columns, where a tap types the row's first kana and a swipe left,
-// up, right or down the rest of the row (a mobile phone's kana pad), with ゛, 小 and ー beside it.
+// up, right or down the rest of the row (a mobile phone's kana pad), with ー beside it, one
+// modifier that cycles the kana typed last (゛小: か to が, は to ば to ぱ, つ to づ to っ), カ for
+// katakana and 、 for 、。？！.
 #pragma once
 #include "ui.h"
 #include "input.h"
@@ -18,19 +20,24 @@ enum {
     KB_KEY_SHIFT = 1,
     KB_KEY_PAGE = 2,
     KB_KEY_KANA = 4,    // the kana page (Japanese: the letters page's accents key becomes this)
-    KB_KEY_DAKU = 5,    // ゛: voices the kana typed last (か to が, は to ば)
-    KB_KEY_SMALL = 6,   // 小: the kana typed last in its small form (つ to っ, や to ゃ)
+    KB_KEY_KANA_MOD = 5, // ゛小: the kana typed last in its next form, cycling (か が か; は ば ぱ;
+                         // つ づ っ; や ゃ)
+    KB_KEY_KATA = 7,     // カ: the kana page in katakana (カ キ ク), or back to hiragana
     KB_KEY_BKSP = 8,
     KB_KEY_DONE = 13,
     KB_KEY_FLICK = 16,  // + row: the kana page's own keys, whose swipe picks one of five kana
     KB_KEY_CANCEL = 27,
 };
 
+// The punctuation key, which the kana page's bottom row holds: 、。？！・ on its flicks.
+#define KB_KEY_PUNCT (KB_KEY_FLICK + 10)
+
 typedef struct {
     bool open;
     char title[64];
     char text[KB_TEXT_MAX];
     bool shift;
+    bool kata;       // the kana page in katakana (カ toggles it): the pad types カ キ ク, not か き く
     int page;        // 0 letters, 1 accents, 2 number pad
     Rect area;       // where it was last drawn (whole modal)
     Press press;

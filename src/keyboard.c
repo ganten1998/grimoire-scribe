@@ -37,8 +37,10 @@ static const uint16_t k_rows[2][4][11] = {
 static const uint16_t k_row_es[11] = {'a', 's', 'd', 'f', 'g', 'h', 'j', 'k', 'l', 0xF1};
 
 // What each kana key types, in the order a finger swipes it: tap, left, up, right, down (0 where
-// the row has no such kana). あ is the gojuon's first row, わ its last; ゛ and ー are no kana.
-static const uint16_t k_kana[10][5] = {
+// the row has no such kana). あ is the gojuon's first row, わ its last; the last row is the
+// punctuation key's. A phone's kana pad puts や with its brackets on the sides and ゆ above, よ
+// below; 、。？！ are on the punctuation key's flicks.
+static const uint16_t k_kana[11][5] = {
     {0x3042, 0x3044, 0x3046, 0x3048, 0x304A},  // あ い う え お
     {0x304B, 0x304D, 0x304F, 0x3051, 0x3053},  // か き く け こ
     {0x3055, 0x3057, 0x3059, 0x305B, 0x305D},  // さ し す せ そ
@@ -46,19 +48,23 @@ static const uint16_t k_kana[10][5] = {
     {0x306A, 0x306B, 0x306C, 0x306D, 0x306E},  // な に ぬ ね の
     {0x306F, 0x3072, 0x3075, 0x3078, 0x307B},  // は ひ ふ へ ほ
     {0x307E, 0x307F, 0x3080, 0x3081, 0x3082},  // ま み む め も
-    {0x3084, 0x3086, 0x3088, 0, 0},              // や ゆ よ
+    {0x3084, 0x300C, 0x3086, 0x300D, 0x3088},  // や 「 ゆ 」 よ
     {0x3089, 0x308A, 0x308B, 0x308C, 0x308D},  // ら り る れ ろ
     {0x308F, 0x3092, 0x3093, 0, 0},              // わ を ん
+    {0x3001, 0x3002, 0xFF1F, 0xFF01, 0x30FB},  // 、 。 ？ ！ ・
 };
 
+// The kana pad's eleventh and twelfth cells: the modifier and ー, after the ten kana rows.
+#define K_KANA_MOD_CELL 10
 #define KANA_CHOON 0x30FCu  // ー, the long vowel mark
 
-static bool is_flick(uint32_t code) { return code >= KB_KEY_FLICK && code < KB_KEY_FLICK + 10; }
+static bool is_flick(uint32_t code) { return code >= KB_KEY_FLICK && code < KB_KEY_FLICK + 11; }
 
-// The voiced kana of one that has a voiced form (か to が, さ to ざ, た to だ, は to ば); anything
+// The voiced kana of one that has a voiced form (か to が, う to ゔ, つ to づ, は to ば); anything
 // else comes back as it is.
 static uint32_t kana_dakuten(uint32_t cp) {
     switch (cp) {
+    case 0x3046: return 0x3094;                                       // う to ゔ
     case 0x304B: case 0x304D: case 0x304F: case 0x3051: case 0x3053:  // か row
     case 0x3055: case 0x3057: case 0x3059: case 0x305B: case 0x305D:  // さ row
     case 0x305F: case 0x3061: case 0x3064: case 0x3066: case 0x3068:  // た row
@@ -66,6 +72,30 @@ static uint32_t kana_dakuten(uint32_t cp) {
         return cp + 1;
     default: return cp;
     }
+}
+
+// The half-voiced kana of one that has that form (は to ぱ); anything else comes back as it is.
+static uint32_t kana_handakuten(uint32_t cp) {
+    switch (cp) {
+    case 0x306F: case 0x3072: case 0x3075: case 0x3078: case 0x307B: return cp + 2;  // は row to ぱ row
+    default: return cp;
+    }
+}
+
+static uint32_t kana_small(uint32_t cp);  // (below: the cycle asks it what a small kana's base is)
+
+// The unvoiced kana a voiced or half-voiced one comes from (が to か, ぱ to は, ゔ to う), or cp when
+// it has neither form: the kana a cycle starts from.
+static uint32_t kana_unvoice(uint32_t cp) {
+    if (cp == 0x3094) return 0x3046;          // ゔ
+    if (kana_small(cp + 1) == cp) return cp + 1;  // っ to つ, ゃ to や, ぁ to あ
+    for (uint32_t back = 1; back <= 2; back++) {
+        if (cp > back) {
+            uint32_t b = cp - back;
+            if (kana_dakuten(b) == cp || kana_handakuten(b) == cp) return b;
+        }
+    }
+    return cp;
 }
 
 // The small form of a kana that has one (あ to ぁ, つ to っ, や to ゃ, わ to ゎ); anything else
@@ -78,6 +108,32 @@ static uint32_t kana_small(uint32_t cp) {
     case 0x308F: return cp - 1;                                      // わ
     default: return cp;
     }
+}
+
+// The katakana of a hiragana, and anything else (ー, 、, Latin) as it is: the kana page in katakana
+// types the same rows as katakana.
+static uint32_t kana_katakana(uint32_t cp) {
+    return cp >= 0x3041 && cp <= 0x3096 ? cp + 0x60 : cp;
+}
+
+// The next form of a kana, for the pad's one modifier key: its unvoiced form, then voiced, then
+// half-voiced, then small, then round again (か が か; は ば ぱ は; つ づ っ つ; や ゃ や). ー and
+// the punctuation stay as they are; katakana cycles in its own script.
+static uint32_t kana_cycle(uint32_t cp) {
+    bool kata = cp >= 0x30A1 && cp <= 0x30F6;
+    uint32_t h = kata ? cp - 0x60 : cp, base = kana_unvoice(h);
+    uint32_t forms[4] = {base, 0, 0, 0};
+    int n = 1;
+    const uint32_t more[3] = {kana_dakuten(base), kana_handakuten(base), kana_small(base)};
+    for (int i = 0; i < 3; i++) {
+        bool seen = false;
+        for (int j = 0; j < n && !seen; j++) seen = forms[j] == more[i];
+        if (more[i] != base && !seen) forms[n++] = more[i];
+    }
+    uint32_t next = h;
+    for (int i = 0; i < n; i++)
+        if (forms[i] == h) next = forms[(i + 1) % n];
+    return kata ? next + 0x60 : next;
 }
 
 // Which way a finger was swiped from where it went down: 0 for none (a tap, or a wobble no bigger
@@ -178,8 +234,8 @@ static void copy_text(char *dst, const char *src, size_t cap) {
     dst[n] = 0;
 }
 
-// Replaces the last character of the text with f(that character): ゛ voices it, 小 makes it small.
-// No character, or one with no such form, leaves the text as it is.
+// Replaces the last character of the text with f(that character): the kana page's modifier takes
+// it to its next form. No character, or one with no such form, leaves the text as it is.
 static void change_last(Keyboard *kb, uint32_t (*f)(uint32_t)) {
     size_t start = strlen(kb->text);
     while (start > 0 && ((unsigned char)kb->text[start - 1] & 0xC0) == 0x80) start--;
@@ -234,14 +290,14 @@ static int layout(Rect area, int page, Key *keys) {
         return n;
     }
     if (page == 4) {
-        // The kana pad: three columns of four keys, あ か さ / た な は / ま や ら / わ ゛ ー, then
-        // cancel, 小, abc, space, delete and done.
+        // The kana pad: three columns of four keys, あ か さ / た な は / ま や ら / わ ゛小 ー, then
+        // cancel, カ, 、, abc, space, delete and done.
         int n = 0, kh = ui_px(150), gap = ui_px(10);
         int top = area.y + ui_px(170);
         int inner_x = area.x + ui_px(30), inner_w = area.w - ui_px(60);
         int kw = (inner_w - 2 * gap) / 3;
         for (int i = 0; i < 12; i++) {
-            uint32_t code = i < 10 ? (uint32_t)(KB_KEY_FLICK + i) : i == 10 ? (uint32_t)KB_KEY_DAKU : KANA_CHOON;
+            uint32_t code = i < K_KANA_MOD_CELL ? (uint32_t)(KB_KEY_FLICK + i) : i == K_KANA_MOD_CELL ? (uint32_t)KB_KEY_KANA_MOD : KANA_CHOON;
             keys[n++] = (Key){{inner_x + (i % 3) * (kw + gap), top + (i / 3) * (kh + gap), kw, kh}, code};
         }
         // (the bottom row's keys are the letters page's sizes, one tenth of the width each, as
@@ -250,10 +306,11 @@ static int layout(Rect area, int page, Key *keys) {
         int y = top + 4 * (kh + gap);
         keys[n++] = (Key){{inner_x, y, wide, kh}, KB_KEY_CANCEL};
         int x = inner_x + wide + gap;
-        keys[n++] = (Key){{x, y, sk, kh}, KB_KEY_SMALL};
-        x += sk + gap;
-        keys[n++] = (Key){{x, y, sk, kh}, KB_KEY_PAGE};
-        x += sk + gap;
+        const uint32_t small_keys[3] = {KB_KEY_KATA, KB_KEY_PUNCT, KB_KEY_PAGE};
+        for (int i = 0; i < 3; i++) {
+            keys[n++] = (Key){{x, y, sk, kh}, small_keys[i]};
+            x += sk + gap;
+        }
         int done_x = inner_x + inner_w - wide, bx = done_x - sk - gap;
         keys[n++] = (Key){{x, y, bx - gap - x, kh}, ' '};
         keys[n++] = (Key){{bx, y, sk, kh}, KB_KEY_BKSP};
@@ -322,11 +379,12 @@ static const char *key_label(const Keyboard *kb, uint32_t code, char *ch) {
     case KB_KEY_DONE: return _("Done");
     case KB_KEY_CANCEL: return _("Cancel");
     case KB_KEY_PAGE: return kb->page ? "abc" : "\xc3\xa1\xc3\xa9";  // a and e acute
-    // TRANSLATORS: the kana page's named keys, in bold at 44 px: 小 (one tenth of the modal wide),
-    // the space bar, and あ, the letters page's way to the kana page (as wide as shift).
-    case KB_KEY_KANA: return "\xe3\x81\x82";   // あ
-    case KB_KEY_DAKU: return "\xe3\x82\x9b";   // ゛
-    case KB_KEY_SMALL: return "\xe5\xb0\x8f";  // 小
+    // TRANSLATORS: the kana page's named keys, in bold at 44 px: ゛小 (one tenth of the modal
+    // wide), カ, 、, the space bar, and あ, the letters page's way to the kana page (as wide as
+    // shift).
+    case KB_KEY_KANA: return "\xe3\x81\x82";          // あ
+    case KB_KEY_KANA_MOD: return "\xe3\x82\x9b\xe5\xb0\x8f";  // ゛小: the kana typed last, in its next form
+    case KB_KEY_KATA: return kb->kata ? "\xe3\x81\x82" : "\xe3\x82\xab";  // あ back to hiragana, カ to katakana
     case ' ': return C_("key", "space");
     default: {
         // A kana key shows the kana the swipe would type (its first while the finger is still on
@@ -336,6 +394,7 @@ static const char *key_label(const Keyboard *kb, uint32_t code, char *ch) {
             const uint16_t *row = k_kana[code - KB_KEY_FLICK];
             int at = kb->flick > 0 ? kb->flick : 0;
             cp = row[at] ? row[at] : row[0];
+            if (kb->kata) cp = kana_katakana(cp);
         }
         ch[utf8_put(kb->shift ? keyboard_upper(cp) : cp, ch)] = 0;
         return ch;
@@ -434,10 +493,10 @@ KbResult keyboard_pointer(Keyboard *kb, int phase, float x, float y, uint32_t t,
         *dirty = keys[kb->pressed_key].r;
         uint32_t c = keys[kb->pressed_key].code;
         kb->flick = 0;
-        // (a kana key waits for the lift: which kana it types is the swipe, and ゛ and 小 act on
-        // the character before them)
+        // (a kana key waits for the lift: which kana it types is the swipe, and the modifier and
+        // カ act on the character before them, or on the page)
         if (c == KB_KEY_SHIFT || c == KB_KEY_PAGE || c == KB_KEY_KANA || c == KB_KEY_DONE ||
-            c == KB_KEY_CANCEL || c == KB_KEY_DAKU || c == KB_KEY_SMALL || is_flick(c))
+            c == KB_KEY_CANCEL || c == KB_KEY_KANA_MOD || c == KB_KEY_KATA || is_flick(c))
             return KB_NONE;
         kb->typed = true;  // type now: the lift only releases the key
     } else if (phase == 1) {
@@ -464,6 +523,7 @@ KbResult keyboard_pointer(Keyboard *kb, int phase, float x, float y, uint32_t t,
             const uint16_t *row = k_kana[keys[k].code - KB_KEY_FLICK];
             int at = kb->flick > 0 ? kb->flick : 0;
             uint32_t kana = row[at] ? row[at] : row[0];
+            if (kb->kata) kana = kana_katakana(kana);
             kb->flick = 0;
             *dirty = keys[k].r;
             type_key(kb, kana, dirty);
@@ -493,8 +553,11 @@ KbResult keyboard_pointer(Keyboard *kb, int phase, float x, float y, uint32_t t,
             kb->page = kb->page ? 0 : 1;
         *dirty = kb->area;
         return KB_CHANGED;
-    case KB_KEY_DAKU: change_last(kb, kana_dakuten); break;
-    case KB_KEY_SMALL: change_last(kb, kana_small); break;
+    case KB_KEY_KANA_MOD: change_last(kb, kana_cycle); break;
+    case KB_KEY_KATA:
+        kb->kata = !kb->kata;
+        *dirty = kb->area;
+        return KB_CHANGED;
     case KB_KEY_BKSP:
         // A whole character: back over its continuation bytes to its first byte.
         while (len > 1 && ((unsigned char)kb->text[len - 1] & 0xC0) == 0x80) len--;

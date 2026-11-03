@@ -302,23 +302,16 @@ fn brush_matches_the_c_build() {
     smoothing(&mut out);
     odd(&mut out);
     let dpis = [300.0f32, 226.0];
-    // (BRUSH_PROBE_REPS=n and BRUSH_PROBE_FIXTURE=<file the C probe printed with -DREPS=n>: a
-    // wider sweep than the committed fixture, to look for a float operation the fixture's few
-    // strokes do not reach)
-    let reps: u32 = std::env::var("BRUSH_PROBE_REPS").ok().and_then(|v| v.parse().ok()).unwrap_or(1);
-    for rep in 0..reps {
-        for ti in 0..TOOLS.len() {
-            for var in 0..3 {
-                for di in 0..2 {
-                    for mode in 0..8 {
-                        scenario(&mut out, ti, var, dpis[di], mode, rep);
-                    }
+    for ti in 0..TOOLS.len() {
+        for var in 0..3 {
+            for di in 0..2 {
+                for mode in 0..8 {
+                    scenario(&mut out, ti, var, dpis[di], mode, 0);
                 }
             }
         }
     }
-    let wide = std::env::var("BRUSH_PROBE_FIXTURE").ok().map(|f| std::fs::read_to_string(f).expect("BRUSH_PROBE_FIXTURE"));
-    let want: &str = wide.as_deref().unwrap_or(include_str!("fixtures/brush_probe_c.txt"));
+    let want: &str = include_str!("fixtures/brush_probe_c.txt");
     let (got_lines, want_lines): (Vec<&str>, Vec<&str>) = (out.lines().collect(), want.lines().collect());
     check!(got_lines.len() == want_lines.len());
     let mut bad = 0;

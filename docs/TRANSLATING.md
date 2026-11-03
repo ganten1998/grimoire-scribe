@@ -36,10 +36,11 @@ confirm, with the alternatives weighed: start there.
 ## Improving the Japanese
 
 The Japanese is one `ja`, speaking to the reader in the polite です・ます form for sentences and
-noun labels for buttons, and a draft until a native speaker reviews it. `po/ja-glossary.md` lists
-the main choices and the date and counter conventions: start there. Its kana and kanji come from
-DotGothic16, a pixel font embedded as the Japanese fallback, so the Gothic style survives; the
-checks still require every character to be in that font or the Latin faces.
+noun labels for buttons. `po/ja-glossary.md` lists the main choices and the date and counter
+conventions: start there. Its kana and kanji come from DotGothic16, a pixel font embedded as the
+Japanese fallback (subset to the kana and the common kanji: `assets/README.md` says how to make
+it again when a string needs a new one), so the Gothic style survives; the checks still require
+every character to be in that font or the Latin faces.
 
 1. Edit `po/es.po` in a .po editor or a text editor. Change a `msgstr`, never a `msgid`: that is
    the English, and the code finds the translation by it. Take off a `#, fuzzy` flag once you have

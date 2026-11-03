@@ -3469,13 +3469,7 @@ mod tests {
             .env_remove("GRIMOIRE_SIM_PRESSURE")
             .output()
             .unwrap();
-        // SIM_PROBE_FIXTURE names a recording made with this machine's own C probe (the recipe in
-        // that file), for a machine whose libm differs from the recording Mac's: test_brush's
-        // BRUSH_PROBE_FIXTURE the same way. Unset, the committed recording is compared.
-        let local = std::env::var("SIM_PROBE_FIXTURE")
-            .ok()
-            .map(|path| std::fs::read(&path).unwrap_or_else(|e| panic!("SIM_PROBE_FIXTURE: {path}: {e}")));
-        let want: &[u8] = local.as_deref().unwrap_or(include_bytes!("../tests/fixtures/sim_probe_c.txt"));
+        let want: &[u8] = include_bytes!("../tests/fixtures/sim_probe_c.txt");
         if out.stderr != want {
             let (g, w) = (String::from_utf8_lossy(&out.stderr), String::from_utf8_lossy(want));
             for (i, (a, b)) in g.lines().zip(w.lines()).enumerate() {

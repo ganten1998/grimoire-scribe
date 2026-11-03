@@ -2,13 +2,15 @@
 
 ## Unreleased
 
-- Add Japanese: every screen, the share pages and the Effects studio, with a DotGothic16 pixel fallback for kana and kanji. `po/ja.po`, `po/ja.mo` and `po/ja-glossary.md`; the KOReader plugin's own words follow KOReader's Japanese setting.
+- Add Japanese: every screen, the share pages and the Effects studio, with a DotGothic16 pixel fallback for kana and kanji (subset to the kana and the common kanji, `assets/README.md`). `po/ja.po`, `po/ja.mo` and `po/ja-glossary.md`; the KOReader plugin's own words follow KOReader's Japanese setting.
 - A Japanese keyboard, as a phone has it: with Grimoire in Japanese the keyboard's accents key is
   あ, and it opens a flick kana pad, twelve keys in three columns (あ か さ / た な は / ま や ら /
-  わ ゛ ー). Tap a key for its row's first kana, swipe left, up, right or down for the rest; ゛
-  voices the kana before it (か to が), 小 makes it small (つ to っ), ー types straight, and abc
-  goes back to the letters. Every keyboard has it, so notebook, folder, page and link names all
-  take kana. Every other language keeps áé there.
+  わ ゛小 ー). Tap a key for its row's first kana, swipe left, up, right or down for the rest (や
+  keeps 「 and 」 on its sides, ゆ above and よ below), ー types straight, and abc goes back to the
+  letters. One modifier key cycles the kana typed last: か が か, は ば ぱ は, つ づ っ つ, や ゃ や,
+  so dakuten, handakuten and the small kana are one key. カ types the pad in katakana (ノート,
+  メモ) and あ back in hiragana; 、 holds 、。？！・ on its flicks. Every keyboard has it, so
+  notebook, folder, page and link names all take kana. Every other language keeps áé there.
 
 ## 2.0.0-beta.1 (2026-11-01)
 
@@ -673,8 +675,7 @@ The quality release: what is new since 1.1.0-beta.2. The release candidates 1.1.
   "Automatic (English)"), English and Español. Automatic, the default, follows the language of the
   Kindle's own Settings, so a Kindle set to Spanish shows Grimoire in Spanish from the first start
   after the update; Ajustes > Idioma > English (Settings > Language, in Spanish) switches back. A
-  choice applies at once and is kept in `settings.ini` (`language=`). The Spanish is a draft until
-  a native speaker reviews it: `po/es-glossary.md` lists the words to confirm. In Spanish the
+  choice applies at once and is kept in `settings.ini` (`language=`). In Spanish the
   keyboard's letters page has ñ after l, and a new notebook is named "Cuaderno 20 oct". Pages never
   change with the language: paper looks the same in every one (Cornell notes keep their English
   headings), and so do PDFs, PNGs and thumbnails. grimoire.log stays in English and says which
