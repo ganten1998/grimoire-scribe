@@ -596,6 +596,7 @@ penset lc tab 3 mode 1 ce1a48163b1d08b2
 penset lc tab 3 mode 2 ce157dcb2401a8fb
 penset lang en d6f5c021ba39a2f7
 penset lang es 745327701bea11c2
+penset lang ja 3b2685766d0d8a87
 == penset events
 penset pad tool 0 930beefadda64f6b
 penset pad tool 0 again 5cdd16b7a51199f8
