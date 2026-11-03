@@ -924,3 +924,35 @@ the properties again afterward, and reports failed or partial changes. A parent 
 helper to 12 seconds and kills only its own helper process group if it stalls. Status polling is
 limited to the visible Wi-Fi dialog, and stops after connecting, switching off or 45 seconds;
 Retry checks again. Physical airplane-mode transitions remain a device acceptance check.
+
+
+## Developing on the device
+
+`make dev` builds the Kindle zip and copies a separate `Grimoire (dev).sh` into the Kindle's
+documents folder over MTP; `make dev-ssh` patches the same copy over SSH and starts it, so a dev
+loop is one command with no copying by hand (`tools/kindle-dev --mount/--zip/--name/--root`,
+`tools/kindle-dev-ssh --release/--logs`). The patch roots the copy at `/mnt/us/grimoire-dev` —
+its own notebooks, settings and app cache — and gives the launcher `GRIMOIRE_DEV=1`, which turns
+Settings > Updates off inside the copy: an update from it would run KPM over the release. The
+release's `documents/Grimoire.sh` and `/mnt/us/grimoire` are never touched;
+`tools/kindle-dev-ssh --release` is the explicit way to put a build on the release launcher: it
+warns and keeps the launcher it replaces as `documents/Grimoire.sh.bak`.
+
+Limits of the dev copy:
+
+- It starts uncalibrated: pen and touch calibration live in its own settings, so calibrate it
+  once (the release keeps its own).
+- It cannot be opened from KOReader: KOReader's Grimoire plugin runs the release's
+  `documents/Grimoire.sh`. Tap the dev copy in the Library instead.
+- A tap on either copy does nothing while the other runs: both share `/tmp/grimoire.launcher.pid`,
+  so only one Grimoire runs at a time. Close the open one first.
+- On macOS, `--mount` needs a third-party MTP mount (macOS does not mount MTP devices itself);
+  `make dev-ssh` needs no mount at all.
+- On Linux the copy goes over GVFS; when another desktop daemon holds the Kindle's MTP
+  interface (KDE's kmtpd5 does this on every plug), the script stops it for the session and
+  mounts through GVFS itself.
+
+`make dev` needs the Scribe in USB file transfer (MTP) mode, unlocked, with Allow tapped if it
+asks; MTP cannot start the app, so the first launch is a tap in the Library. When the patched
+launcher starts it reads `GRIMOIRE_DEV_US` before its default root, so a test can point the dev
+copy at a scratch tree.

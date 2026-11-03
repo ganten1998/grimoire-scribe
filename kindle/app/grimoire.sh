@@ -502,9 +502,15 @@ if [ -n "$HOSTED" ] && [ "$KO_OWN_UI" = no ] && [ "$PASSCODE_NOTE" = enabled ]; 
     APP_AWESOME=$KO_AWESOME_STOPPED
     APP_PILLOW=$PILLOW_HARD_DISABLED
 fi
+# The dev copy kindle-dev installs (its launcher exports GRIMOIRE_DEV=1) has updates off: an
+# empty GRIMOIRE_UPDATE_SCRIPT makes update_available() false, so Settings > Updates says KPM is
+# not here, no channel check runs update.sh (which edits KPM's global feed list), and no update
+# request is written for the block at the end of this file.
+UPDATE_SCRIPT=$DIR/update.sh
+if [ "${GRIMOIRE_DEV:-}" = 1 ]; then UPDATE_SCRIPT=""; fi
 GRIMOIRE_AWESOME_STOPPED="$APP_AWESOME" GRIMOIRE_PILLOW_DISABLED="$APP_PILLOW" GRIMOIRE_PASSCODE="$PASSCODE_NOTE" GRIMOIRE_HOST="$HOSTED" \
     GRIMOIRE_ANNOTATE="$ANNOTATE" GRIMOIRE_BOOK="$BOOK" GRIMOIRE_ROOT="$ROOT" GRIMOIRE_WIFI_SCRIPT="$DIR/wifi.sh" GRIMOIRE_BT_SCRIPT="$DIR/bluetooth.sh" \
-    GRIMOIRE_UPDATE_SCRIPT="$DIR/update.sh" GRIMOIRE_UPDATE_REQUEST="$TMP/grimoire-update" \
+    GRIMOIRE_UPDATE_SCRIPT="$UPDATE_SCRIPT" GRIMOIRE_UPDATE_REQUEST="$TMP/grimoire-update" \
     "$DIR/grimoire" >>"$LOG" 2>&1 &
 QPID=$!
 log "Grimoire running as pid $QPID"
@@ -547,8 +553,10 @@ log "Grimoire exited with status $RC"
 rm -f "$BEAT"
 # Settings > Updates asked for the newest Grimoire (it wrote the request and left): update.sh
 # installs it with KPM once this launcher is gone (KPM's hooks refuse while it runs), from a copy
-# in $TMP (the update replaces the app's own), and starts Grimoire again.
-if [ -f "$TMP/grimoire-update" ]; then
+# in $TMP (the update replaces the app's own), and starts Grimoire again. Never in the dev copy
+# (GRIMOIRE_DEV=1): an update from it would install over the release, so the request is not
+# honoured even if one were left behind.
+if [ -f "$TMP/grimoire-update" ] && [ "${GRIMOIRE_DEV:-}" != 1 ]; then
     rm -f "$TMP/grimoire-update"
     if cp "$DIR/update.sh" "$TMP/grimoire-update.sh" 2>/dev/null; then
         log "an update was asked for: KPM installs it once this launcher has finished"

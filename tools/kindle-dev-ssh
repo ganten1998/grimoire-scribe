@@ -4,10 +4,15 @@
 #   make dev-ssh
 #   tools/kindle-dev-ssh --host 192.168.1.40 --logs
 #
-# It builds build/dist/Grimoire.zip (make package), copies its self-contained
-# documents/Grimoire.sh to the Kindle, stops a running Grimoire, replaces the launcher (same
-# directory, as the Kindle refuses cross-directory moves into documents) and starts it. No MTP,
-# no tapping Grimoire in the Library.
+# By default it builds build/dist/Grimoire.zip (make package), patches its documents/Grimoire.sh
+# into a separate "Grimoire (dev)" — its own data root, updates off, the same copy
+# tools/kindle-dev makes over MTP — copies it to the Kindle's documents folder as
+# "Grimoire (dev).sh", stops a running Grimoire and starts the dev one. The released Grimoire
+# and its notebooks in /mnt/us/grimoire are never touched.
+#
+# --release is the explicit way to put a build on the release instead: it warns, keeps the
+# launcher it replaces as documents/Grimoire.sh.bak, and deploys the zip's own
+# documents/Grimoire.sh over documents/Grimoire.sh.
 #
 # The Kindle needs an SSH server that stays up while Grimoire runs (dropbear / USBNetwork, or
 # KOReader's while a session is up), and a normal Library start: quit KOReader first, and leave
@@ -17,31 +22,42 @@
 # Environment:
 #   GRIMOIRE_HOST      ssh host of the Kindle (default: kindle)
 #   GRIMOIRE_SSH_PORT  ssh port (default: the host's, usually 22)
+#   BUILD              make's build folder for the zip (default: build)
 set -eu
 
 HERE=$(cd "$(dirname "$0")" && pwd)
 ROOT=$(cd "$HERE/.." && pwd)
+. "$HERE/kindle-dev-lib.sh"
 HOST=${GRIMOIRE_HOST:-kindle}
 PORT=${GRIMOIRE_SSH_PORT:-}
-BUILD=1
+BUILD_IT=1
 LOGS=0
-ZIP=$ROOT/build/dist/Grimoire.zip
+RELEASE=0
+ZIP=
+NAME=$KINDLE_DEV_NAME
+DEV_ROOT=$KINDLE_DEV_ROOT
 
 usage() {
     cat <<'EOF'
 kindle-dev-ssh: build Grimoire and start it on a Kindle over SSH.
 
-  make dev-ssh                     build and deploy with the defaults
+  make dev-ssh                     build and deploy a separate "Grimoire (dev)" with the defaults
+  tools/kindle-dev-ssh --release   replace the release launcher instead (warns, keeps a backup)
   tools/kindle-dev-ssh --logs      build, deploy, start, then follow grimoire.log
 
 Options:
   --host HOST    ssh host of the Kindle (default: $GRIMOIRE_HOST or "kindle")
-  --port PORT    ssh port (default: $GRIMOIRE_SSH_PORT or the host's)
-  --no-build     use build/dist/Grimoire.zip as it is
-  --zip PATH     deploy another installer zip (make dist, or a release download)
-  --logs         follow grimoire/grimoire.log after the start
+  --port PORT    ssh port (default: $GRIMOIRE_SSH_PORT or the host's; a number)
+  --release      deploy the zip's release launcher over documents/Grimoire.sh, replacing it.
+                 The launcher that is there is kept as documents/Grimoire.sh.bak. Without it
+                 the deploy is a separate "Grimoire (dev).sh" rooted at /mnt/us/grimoire-dev,
+                 like make dev: the release launcher and its notebooks are never touched.
+  --no-build     use the zip as it is (build/dist/Grimoire.zip, or BUILD's folder)
+  --zip PATH     deploy another installer zip (make dist, or a release download); builds nothing
+  --logs         follow grimoire.log after the start
   -h, --help     this text
 
+Only one Grimoire runs at a time: whatever is running is stopped before the new one starts.
 The Kindle needs an SSH server that stays up while Grimoire runs (dropbear / USBNetwork).
 Quit KOReader first and leave the Kindle awake and unlocked: the start is a normal Library
 start, which the launcher refuses while KOReader holds the pen and the touch screen.
@@ -52,8 +68,9 @@ while [ $# -gt 0 ]; do
     case "$1" in
     --host) HOST=${2:?--host needs a host}; shift ;;
     --port) PORT=${2:?--port needs a port}; shift ;;
-    --no-build) BUILD=0 ;;
-    --zip) ZIP=${2:?--zip needs a path}; shift ;;
+    --release) RELEASE=1 ;;
+    --no-build) BUILD_IT=0 ;;
+    --zip) ZIP=${2:?--zip needs a path}; BUILD_IT=0; shift ;;
     --logs) LOGS=1 ;;
     -h | --help) usage; exit 0 ;;
     *) echo "kindle-dev-ssh: unknown option $1" >&2; usage >&2; exit 2 ;;
@@ -61,12 +78,34 @@ while [ $# -gt 0 ]; do
     shift
 done
 
+# An empty port is the host's own; anything given must be a number.
+case "$PORT" in
+*[!0-9]*)
+    echo "kindle-dev-ssh: the ssh port must be a number (--port or GRIMOIRE_SSH_PORT)." >&2
+    exit 2
+    ;;
+esac
+
+# The two shapes of deploy: the dev copy (the default, as make dev makes it) or, with --release,
+# the release launcher itself, replaced with a warning and a backup of the one that is there.
+if [ "$RELEASE" = 1 ]; then
+    NAME=Grimoire
+    US=/mnt/us
+    echo "kindle-dev-ssh: --release replaces the release launcher (documents/Grimoire.sh); the one that is there is kept as documents/Grimoire.sh.bak"
+else
+    US=$DEV_ROOT
+    kindle_dev_validate kindle-dev-ssh "$NAME" "$DEV_ROOT" || exit 2
+fi
+
 command -v ssh >/dev/null 2>&1 || { echo "kindle-dev-ssh: needs ssh" >&2; exit 1; }
 command -v python3 >/dev/null 2>&1 || { echo "kindle-dev-ssh: needs python3 (to read the installer zip)" >&2; exit 1; }
 
-if [ "$BUILD" = 1 ]; then
+if [ "$BUILD_IT" = 1 ]; then
     echo "kindle-dev-ssh: building the installer"
     make -C "$ROOT" package
+fi
+if [ -z "$ZIP" ]; then
+    ZIP=$(kindle_dev_zip "$ROOT" "${BUILD:-build}")
 fi
 [ -f "$ZIP" ] || { echo "kindle-dev-ssh: $ZIP is not there (run make package, or drop --no-build)" >&2; exit 1; }
 
@@ -74,9 +113,9 @@ TMP=$(mktemp -d /tmp/grimoire-dev.XXXXXX) || { echo "kindle-dev-ssh: could not m
 CTL=$TMP/ssh
 cleanup() {
     if [ -n "$PORT" ]; then
-        ssh -o ControlPath="$CTL" -O exit -p "$PORT" "$HOST" >/dev/null 2>&1 || true
+        ssh -o ControlPath="$CTL" -O exit -p "$PORT" -- "$HOST" >/dev/null 2>&1 || true
     else
-        ssh -o ControlPath="$CTL" -O exit "$HOST" >/dev/null 2>&1 || true
+        ssh -o ControlPath="$CTL" -O exit -- "$HOST" >/dev/null 2>&1 || true
     fi
     rm -rf "$TMP"
 }
@@ -87,10 +126,10 @@ trap 'exit 1' HUP INT TERM
 ssh_host() {
     if [ -n "$PORT" ]; then
         ssh -o ConnectTimeout=10 -o ControlMaster=auto -o ControlPath="$CTL" -o ControlPersist=30 \
-            -p "$PORT" "$HOST" "$@"
+            -p "$PORT" -- "$HOST" "$@"
     else
         ssh -o ConnectTimeout=10 -o ControlMaster=auto -o ControlPath="$CTL" -o ControlPersist=30 \
-            "$HOST" "$@"
+            -- "$HOST" "$@"
     fi
 }
 
@@ -100,8 +139,9 @@ if ! ssh_host 'test -d /mnt/us/documents'; then
     exit 1
 fi
 
-LAUNCHER=$TMP/Grimoire.sh
-if ! python3 -I - "$ZIP" >"$LAUNCHER" <<'PY'
+LAUNCHER=$TMP/$NAME.sh
+if [ "$RELEASE" = 1 ]; then
+    if ! python3 -I - "$ZIP" >"$LAUNCHER" <<'PY'
 import sys, zipfile
 
 with zipfile.ZipFile(sys.argv[1]) as archive:
@@ -110,27 +150,45 @@ if not launcher.startswith(b"#!/bin/sh\n") or b"\n__GRIMOIRE_APP_ARCHIVE__\n" no
     raise SystemExit("documents/Grimoire.sh is not a self-contained Grimoire launcher")
 sys.stdout.buffer.write(launcher)
 PY
-then
-    echo "kindle-dev-ssh: could not read a self-contained launcher from $ZIP (is it an installer zip?)" >&2
+    then
+        echo "kindle-dev-ssh: could not read a self-contained launcher from $ZIP (is it an installer zip?)" >&2
+        exit 1
+    fi
+elif ! kindle_dev_patch "$ZIP" "$LAUNCHER" "$NAME" "$DEV_ROOT"; then
+    echo "kindle-dev-ssh: could not make a dev launcher from $ZIP." >&2
     exit 1
 fi
 
+# The paths as the Kindle's shell must see them: "Grimoire (dev).sh" holds spaces, so they go to
+# the remote sh already quoted.
+shq() { python3 -I -c 'import shlex, sys; print(shlex.quote(sys.argv[1]))' "$1"; }
+NEW=/mnt/us/documents/.$NAME.sh.new
+FIN=/mnt/us/documents/$NAME.sh
+if [ "$RELEASE" = 1 ]; then BAK=/mnt/us/documents/Grimoire.sh.bak; else BAK=; fi
+NEW_Q=$(shq "$NEW")
+FIN_Q=$(shq "$FIN")
+BAK_Q=$(shq "$BAK")
+LOG_F=$US/grimoire/grimoire.log
+LOG_Q=$(shq "$LOG_F")
+
 SIZE=$(wc -c <"$LAUNCHER" | tr -d ' ')
-echo "kindle-dev-ssh: copying the launcher to $HOST"
-if ! ssh_host 'cat > /mnt/us/documents/.Grimoire.sh.new' <"$LAUNCHER"; then
-    echo "kindle-dev-ssh: copying Grimoire.sh to $HOST failed." >&2
+echo "kindle-dev-ssh: copying \"$NAME\" to $HOST"
+if ! ssh_host "cat > $NEW_Q" <"$LAUNCHER"; then
+    echo "kindle-dev-ssh: copying $NAME.sh to $HOST failed." >&2
     exit 1
 fi
-GOT=$(ssh_host 'wc -c < /mnt/us/documents/.Grimoire.sh.new' | tr -d ' ')
+GOT=$(ssh_host "wc -c < $NEW_Q" | tr -d ' ')
 if [ "$GOT" != "$SIZE" ]; then
-    ssh_host 'rm -f /mnt/us/documents/.Grimoire.sh.new' || true
+    ssh_host "rm -f $NEW_Q" || true
     echo "kindle-dev-ssh: the copy is $GOT bytes, wanted $SIZE; the Kindle's storage may be full." >&2
     exit 1
 fi
 
-echo "kindle-dev-ssh: stopping a running Grimoire, installing and starting the new one"
-rc=0
-ssh_host 'sh -s' <<'REMOTE' || rc=$?
+# Stop whatever Grimoire runs (both copies share the launcher pid), put the new launcher in with
+# a same-directory rename, and start it. Written here so its paths reach the remote shell quoted.
+{
+    printf 'NEW=%s\nFIN=%s\nBAK=%s\n' "$NEW_Q" "$FIN_Q" "$BAK_Q"
+    cat <<'REMOTE'
 set -e
 P=/tmp/grimoire.launcher.pid
 p=$(cat "$P" 2>/dev/null || true)
@@ -145,7 +203,7 @@ case "$p" in
         while kill -0 "$p" 2>/dev/null; do
             n=$((n + 1))
             if [ "$n" -ge 20 ]; then
-                rm -f /mnt/us/documents/.Grimoire.sh.new
+                rm -f "$NEW"
                 echo "kindle-dev-ssh: Grimoire did not stop within 20 s; exit it on the Kindle and run this again." >&2
                 exit 1
             fi
@@ -155,11 +213,21 @@ case "$p" in
     ;;
 esac
 rm -f "$P" 2>/dev/null || true
-mv -f /mnt/us/documents/.Grimoire.sh.new /mnt/us/documents/Grimoire.sh
-chmod +x /mnt/us/documents/Grimoire.sh 2>/dev/null || true
+# --release keeps the launcher it replaces, once: a repeated run must not back up its own
+# replacement.
+if [ -n "$BAK" ] && [ -f "$FIN" ] && [ ! -f "$BAK" ]; then
+    cp -f "$FIN" "$BAK" 2>/dev/null || true
+fi
+mv -f "$NEW" "$FIN"
+chmod +x "$FIN" 2>/dev/null || true
 sync 2>/dev/null || true
-sh /mnt/us/documents/Grimoire.sh
+sh "$FIN"
 REMOTE
+} >"$TMP/install.sh"
+
+echo "kindle-dev-ssh: stopping a running Grimoire, installing and starting the new one"
+rc=0
+ssh_host 'sh -s' <"$TMP/install.sh" || rc=$?
 
 if [ "$rc" -ne 0 ]; then
     case "$rc" in
@@ -172,7 +240,7 @@ if [ "$rc" -ne 0 ]; then
         ;;
     esac
     echo "kindle-dev-ssh: the last lines of grimoire.log:" >&2
-    ssh_host 'tail -n 30 /mnt/us/grimoire/grimoire.log 2>/dev/null || true' >&2 || true
+    ssh_host "tail -n 30 $LOG_Q" >&2 || true
     exit 1
 fi
 
@@ -190,12 +258,16 @@ done
 exit 1') || {
     echo "kindle-dev-ssh: the launcher returned, but Grimoire is not running." >&2
     echo "kindle-dev-ssh: the last lines of grimoire.log:" >&2
-    ssh_host 'tail -n 30 /mnt/us/grimoire/grimoire.log 2>/dev/null || true' >&2 || true
+    ssh_host "tail -n 30 $LOG_Q" >&2 || true
     exit 1
 }
 
-echo "kindle-dev-ssh: Grimoire is running on $HOST (pid $PID)."
+if [ "$RELEASE" = 1 ]; then
+    echo "kindle-dev-ssh: the release Grimoire is running on $HOST (pid $PID)."
+else
+    echo "kindle-dev-ssh: \"$NAME\" is running on $HOST (pid $PID)."
+fi
 if [ "$LOGS" = 1 ]; then
-    echo "kindle-dev-ssh: following /mnt/us/grimoire/grimoire.log (Ctrl-C to stop)"
-    ssh_host 'tail -n 40 -f /mnt/us/grimoire/grimoire.log'
+    echo "kindle-dev-ssh: following $LOG_F (Ctrl-C to stop)"
+    ssh_host "tail -n 40 -f $LOG_Q"
 fi
