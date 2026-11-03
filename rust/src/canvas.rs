@@ -798,23 +798,25 @@ pub fn canvas_blit_fit(dst: &mut Canvas, src: &Canvas, box_: Rect) {
     let ox = box_.x + (box_.w - w) / 2;
     let oy = box_.y + (box_.h - h) / 2;
     let clip = rect_intersect(Rect { x: ox, y: oy, w, h }, dst.clip);
-    // As in canvas_downsample: an output column's source span is the same on every row.
+    // As in canvas_downsample: an output column's source span is the same on every row. A float
+    // edge can put a span's end before its start, or both past the source: each end is clamped to
+    // 0..=the source's size with the start first, so a span's length is 0 and never a wrap.
     let mut xs: Vec<(i32, i32)> = Vec::with_capacity(clip.w.max(0) as usize);
     for x in clip.x..clip.x + clip.w {
-        let sx0 = ((x - ox) as f32 / sc) as i32;
-        let mut sx1 = ((x - ox + 1) as f32 / sc) as i32;
+        let sx0 = (((x - ox) as f32 / sc) as i32).min(src.w).max(0);
+        let mut sx1 = (((x - ox + 1) as f32 / sc) as i32).max(0);
         if sx1 <= sx0 {
             sx1 = sx0 + 1;
         }
-        xs.push((sx0, sx1.min(src.w)));
+        xs.push((sx0, sx1.min(src.w).max(sx0)));
     }
     for y in clip.y..clip.y + clip.h {
-        let sy0 = ((y - oy) as f32 / sc) as i32;
-        let mut sy1 = ((y - oy + 1) as f32 / sc) as i32;
+        let sy0 = (((y - oy) as f32 / sc) as i32).min(src.h).max(0);
+        let mut sy1 = (((y - oy + 1) as f32 / sc) as i32).max(0);
         if sy1 <= sy0 {
             sy1 = sy0 + 1;
         }
-        let sy1 = sy1.min(src.h);
+        let sy1 = sy1.min(src.h).max(sy0);
         for (i, x) in (clip.x..clip.x + clip.w).enumerate() {
             let (sx0, sx1) = xs[i];
             let w = (sx1 - sx0) as usize;
@@ -825,7 +827,7 @@ pub fn canvas_blit_fit(dst: &mut Canvas, src: &Canvas, box_: Rect) {
                     sum += v as u32;
                 }
             }
-            let n = ((sy1 - sy0) * (sx1 - sx0)) as u32;
+            let n = (sy1 - sy0) as u32 * (sx1 - sx0) as u32;
             dst.px[(y * dst.stride + x) as usize] = sum.checked_div(n).map_or(255, |v| v as u8);
         }
     }
