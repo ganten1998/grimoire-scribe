@@ -172,8 +172,8 @@ the letters page's y 2045 row is a to l and then n tilde, ten keys at x = 133 + 
 tests/scenarios/u_accents.qs types accented names with them, u_keyboard_symbols.qs a name with
 symbols.
 
-These hold in both styles, in English and in Spanish (tests/scenarios/y_all_screens.qs taps them
-in each). Upright: the Library's top bar has New at 965 95, Folder 1155 95, Share 1345 95 and
+These hold in both styles, in English, Spanish and Japanese (tests/scenarios/y_all_screens.qs
+taps them in each). Upright: the Library's top bar has New at 965 95, Folder 1155 95, Share 1345 95 and
 Settings 1535 95. Its five buttons widen together for a longer word, up to 220 px each: New is at
 965 only while they are at most 191 px wide, Folder at 1155 up to 198 and Share at 1345 up to 212
 (the same sideways), so a language with wider top-bar words moves them (docs/TRANSLATING.md).
@@ -181,12 +181,13 @@ Hosted by KOReader they move left, as Back to KOReader takes the room it needs. 
 are at x 930: Pen sensitivity y 460, Calibrate 620, Display 780, Style 930, Mirror PDFs 1060, the
 pen button's row 1190, Turn with the Kindle 1320, Pinch 1450 and Language 1580. Upright from the
 Library, the Display sheet's "Sideways, show the whole page" row is 930 1032, its sleep screen row 930 1308, and its clock and battery size cell 472 1626 and corner cell 997 1626, beside its Done at 1460 1626 (in a notebook the sheet has the Pin this page row too, so they are 472 1720, 997 1720 and 1460 1720). The Language list
-has Automatic at 930 785, English 930 945, Español 930 1105 and Cancel 930 1265. Pen feel's tabs
+has Automatic at 930 785, English 930 945, Español 930 1105, 日本語 930 1265 and Cancel 930 1425. Pen feel's tabs
 are at x = 130 + 177 n, y 289, in the order pencil, mechanical pencil, charcoal, ballpoint,
 fineliner, marker, fountain pen, calligraphy pen, highlighter, eraser. Sideways (2480x1860): the
 top bar has New at 1585 95, Share 1965 95 and Settings 2155 95; Settings' rows are at x 1240: Pen
 sensitivity y 260, Calibrate 425, Display 590, Language 1385; the Display sheet's sleep screen row
-is 1240 1099 and its Done 1770 1419; the Language list's Cancel 1240 1055. The first card's menu
+is 1240 1099 and its Done 1770 1419; the Language list has 日本語 at 1240 1009 and Cancel
+1240 1169. The first card's menu
 button is 431 896; in a notebook's menu Move to folder is 1240 790 and Delete 1240 1110, Delete's
 Keep it 1240 845, Move to's Cancel 1240 1055, and a folder's menu has Move folder at 1240 790
 and Cancel at 1240 1110. Share's

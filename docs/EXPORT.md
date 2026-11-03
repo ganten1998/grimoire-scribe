@@ -30,8 +30,8 @@ own screensaver is the sleep screen). The pages use Grimoire's own fonts in the 
 the Kindle (Gothic: Jacquard 24 titles and Jersey 10 text, sized to stay pixel-sharp; Classic:
 Terminess).
 
-The pages are in the language Grimoire is in (Settings > Language, English or Spanish), and their
-`<html lang>` says which: the index's line ("2 cuadernos en tu Kindle"), its headings, dates ("10
+The pages are in the language Grimoire is in (Settings > Language, English, Spanish or Japanese),
+and their `<html lang>` says which: the index's line ("2 cuadernos en tu Kindle"), its headings, dates ("10
 oct, 14:32") and links, each notebook's paper, a notebook's page and the Effects studio. So are the
 plain-text answers a person can meet in a browser: not found, no such notebook, export failed, and
 "use the address shown on the Kindle"; the ones only a script or a hand-made address gets stay

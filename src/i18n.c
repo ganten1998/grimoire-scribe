@@ -18,6 +18,10 @@ const int i18n_ng = 1;
 
 // Which plural form a count takes, per language (an index into the catalog's forms).
 static int plural_one_other(long n) { return n != 1; }
+static int plural_zero(long n) {
+    (void)n;
+    return 0;
+}
 
 static const struct {
     const char *code, *name;  // the name in the language itself (UTF-8)
@@ -26,6 +30,7 @@ static const struct {
 } k_langs[] = {
     {"en", "English", 2, plural_one_other},
     {"es", "Espa\xc3\xb1ol", 2, plural_one_other},
+    {"ja", "\xe6\x97\xa5\xe6\x9c\xac\xe8\xaa\x9e", 1, plural_zero},
 };
 enum { NLANGS = sizeof k_langs / sizeof k_langs[0] };
 

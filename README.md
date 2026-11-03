@@ -100,7 +100,10 @@ your notebooks and settings from `quire/` to `grimoire/` and removes the old Qui
 - **Names** can have accents: the keyboard's **áé** key opens a page of accented letters (enough
   for Spanish, Portuguese, French, Italian, German, Dutch, Catalan, Danish, Norwegian, Swedish and
   Finnish). Shift gives capitals and **abc** returns to the letters. With Grimoire in Spanish, the
-  letters page has **ñ** too, after l.
+  letters page has **ñ** too, after l. In Japanese that key is **あ**, a phone's flick pad: a tap
+  types the row's first kana and a swipe left, up, right or down the rest, **゛小** cycles the
+  kana typed last (か to が, は to ば to ぱ, つ to づ to っ), **カ** switches to katakana and **、**
+  holds 、。？！ on its flicks.
 - **Paper**: narrow, medium and wide rule (without or with a margin), Cornell, dot grid, graph,
   sheet music, guitar tab, blank, cross grid, isometric, hexagon, Seyes rule, and **Custom
   music**: stack treble, bass, alto, tenor, drum and plain staves, 4 to 8 line tabs and lyric
@@ -169,7 +172,7 @@ your notebooks and settings from `quire/` to `grimoire/` and removes the old Qui
   the Scribe 2024 with firmware 5.20.1.0.2; other firmware still needs a check. KOReader normally turns the
   passcode off for its whole session, and Grimoire opened from KOReader leaves it that way. Start
   Grimoire from the Library when you need the passcode.
-- **Language**: English or Spanish, following the Kindle's own language (see Language).
+- **Language**: English, Spanish or Japanese, following the Kindle's own language (see Language).
 
 ## White ink, pinned pens and templates
 
@@ -204,23 +207,23 @@ your notebooks and settings from `quire/` to `grimoire/` and removes the old Qui
 
 ## Language
 
-Grimoire speaks English and Spanish. **Settings > Language** offers **Automatic**, **English** and
-**Español**. Automatic, the default, follows the language set in the Kindle's own Settings, and
-gives English for a language Grimoire does not speak yet; its row names the language it gives
-("Automatic (English)"). So if your Kindle is set to Spanish, Grimoire is in Spanish from the
-first start after you update; **Ajustes > Idioma > English** (Settings > Language, in Spanish)
-switches it back. A choice applies at once and stays chosen.
+Grimoire speaks English, Spanish and Japanese. **Settings > Language** offers **Automatic**,
+**English**, **Español** and **日本語**. Automatic, the default, follows the language set in the
+Kindle's own Settings, and gives English for a language Grimoire does not speak yet; its row names
+the language it gives ("Automatic (English)"). So if your Kindle is set to Spanish or Japanese,
+Grimoire is in that language from the first start after you update; **Ajustes > Idioma > English**
+(Settings > Language, in Spanish) or **設定 > 言語 > English** (in Japanese) switches it back. A
+choice applies at once and stays chosen.
 
 All of Grimoire follows it: every screen, the share pages and the Effects studio, and the name a
-new notebook gets ("Notebook Oct 20", "Cuaderno 20 oct"). Your pages never change with the
-language: paper is drawn the same everywhere (Cornell notes keep their English headings), and the
-names you give notebooks and folders stay as you typed them. The KOReader plugin follows
-KOReader's own language.
+new notebook gets ("Notebook Oct 20", "Cuaderno 20 oct", "ノート 10月20日"). Your pages never
+change with the language: paper is drawn the same everywhere (Cornell notes keep their English
+headings), and the names you give notebooks and folders stay as you typed them. The KOReader
+plugin follows KOReader's own language.
 
-The Spanish is a draft until a native speaker reviews it: `po/es-glossary.md` lists the choices of
-words to confirm. Corrections and new languages are welcome;
-[docs/TRANSLATING.md](docs/TRANSLATING.md) says how. Translations are under Grimoire's license,
-GPL-3.0-or-later.
+Corrections and new languages are welcome; [docs/TRANSLATING.md](docs/TRANSLATING.md) says how.
+Translations are under Grimoire's license, GPL-3.0-or-later.
+
 
 ## Getting pages off the Kindle
 
@@ -253,8 +256,9 @@ That adds **Tools > Grimoire** to its menu. A fresh Grimoire installation leaves
 - **Reset pen calibration**: the same rescue as the Library's reset item.
 
 Open Grimoire is also an action for KOReader's gestures (Settings > Taps and gestures). The menu
-speaks KOReader's language, English or Spanish (**Abrir Grimoire**, **PDF de los cuadernos**,
-**Restablecer la calibración del lápiz**). Only a start from the Library updates the plugin, so
+speaks KOReader's language, English, Spanish or Japanese (**Abrir Grimoire**, **PDF de los
+cuadernos**, **Restablecer la calibración del lápiz**; **Grimoireを開く**, **ノートのPDF**,
+**ペンのキャリブレーションをリセット**). Only a start from the Library updates the plugin, so
 after you update Grimoire, tap it in the Library once.
 
 This needs a KOReader started from its Library item or from KUAL (KOReader's `koreader.sh`
@@ -506,8 +510,9 @@ Grimoire is free software: GPL-3.0-or-later (see `LICENSE`), the same license as
 Much of what Grimoire knows about the Kindle comes from [KOReader](https://koreader.rocks) and
 [kindlemodding.org](https://kindlemodding.org).
 
-- Terminess Nerd Font, Jacquard 24 and Jersey 10: SIL Open Font License 1.1
-  (`assets/*-OFL-1.1.txt`)
+- Terminess Nerd Font, Jacquard 24, Jersey 10 and DotGothic16 (the Japanese fallback, subset to
+  the kana, the punctuation and the common kanji to keep the app small: see `assets/README.md`):
+  SIL Open Font License 1.1 (`assets/*-OFL-1.1.txt`)
 - stb_truetype and stb_image_write by Sean Barrett: public domain / MIT
 - QR Code generator by Project Nayuki: MIT, vendored unmodified in `third_party/qrcodegen`
   (upstream commit 3c6d0b3)

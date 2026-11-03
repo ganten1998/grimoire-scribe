@@ -29,6 +29,19 @@ static void open_kb(Keyboard *kb, const char *initial) {
     keyboard_draw(kb, &g_c, k_screen);
 }
 
+// A swipe on a kana key: down on it, a sample where the finger went, the lift a little further
+// on, as a real one ends past where it last reported.
+static bool flick_key(Keyboard *kb, uint32_t code, float dx, float dy) {
+    Rect r, d;
+    if (!keyboard_key_rect(kb, code, &r)) return false;
+    float x = (float)r.x + (float)r.w / 2.f, y = (float)r.y + (float)r.h / 2.f;
+    keyboard_pointer(kb, 0, x, y, 0, &d);
+    keyboard_pointer(kb, 1, x + dx, y + dy, 20, &d);
+    keyboard_pointer(kb, 2, x + dx * 1.5f, y + dy * 1.5f, 40, &d);
+    keyboard_draw(kb, &g_c, k_screen);
+    return true;
+}
+
 // Types valid UTF-8 key by key, as a person would: a capital with shift and its small letter's
 // key, an accented letter from the accents page. False if a character has no key.
 static bool type_text(Keyboard *kb, const char *s) {
@@ -248,6 +261,62 @@ TEST(spanish_letters_have_enye) {
     CHECK(keyboard_key_rect(&kb, 0xF1, &n));  // still on the accents page in every language
 }
 
+// Japanese: the letters page's accents key is the kana key, and the page it opens is a mobile
+// phone's kana pad — a tap types the row's first kana, a swipe left, up, right or down the rest —
+// with ー beside it, one modifier that cycles the kana before it, カ for katakana and 、 for
+// 、。？！. Its abc goes back to the letters, and there the kana key waits.
+TEST(japanese_kana_page) {
+    i18n_set("ja");
+    Keyboard kb;
+    open_kb(&kb, "");
+    Rect r;
+    CHECK(keyboard_key_rect(&kb, KB_KEY_KANA, &r) && !keyboard_key_rect(&kb, KB_KEY_PAGE, &r));
+    CHECK(press(&kb, KB_KEY_KANA) && kb.page == 4);
+    CHECK(!keyboard_key_rect(&kb, 'a', &r));  // no Latin letters on the kana page
+    CHECK(press(&kb, KB_KEY_FLICK) && !strcmp(kb.text, "\xe3\x81\x82"));  // あ: a tap
+    // か, swiped left: き; up: く; down: こ. (た, right: て.)
+    CHECK(flick_key(&kb, KB_KEY_FLICK + 1, -80.f, 0.f) && !strcmp(kb.text, "\xe3\x81\x82\xe3\x81\x8d"));
+    CHECK(flick_key(&kb, KB_KEY_FLICK + 1, 0.f, -80.f) && !strcmp(kb.text, "\xe3\x81\x82\xe3\x81\x8d\xe3\x81\x8f"));
+    CHECK(flick_key(&kb, KB_KEY_FLICK + 1, 0.f, 80.f) && !strcmp(kb.text, "\xe3\x81\x82\xe3\x81\x8d\xe3\x81\x8f\xe3\x81\x93"));
+    CHECK(flick_key(&kb, KB_KEY_FLICK + 3, 80.f, 0.f) && !strcmp(kb.text, "\xe3\x81\x82\xe3\x81\x8d\xe3\x81\x8f\xe3\x81\x93\xe3\x81\xa6"));
+    // や keeps a phone's brackets on its sides, ゆ above it and よ below.
+    CHECK(flick_key(&kb, KB_KEY_FLICK + 7, 0.f, -80.f) && !strcmp(kb.text + strlen(kb.text) - 3, "\xe3\x82\x86"));
+    CHECK(flick_key(&kb, KB_KEY_FLICK + 7, 0.f, 80.f) && !strcmp(kb.text + strlen(kb.text) - 3, "\xe3\x82\x88"));
+    CHECK(flick_key(&kb, KB_KEY_FLICK + 7, -80.f, 0.f) && !strcmp(kb.text + strlen(kb.text) - 3, "\xe3\x80\x8c"));
+    CHECK(flick_key(&kb, KB_KEY_FLICK + 9, 0.f, -80.f) && !strcmp(kb.text + strlen(kb.text) - 3, "\xe3\x82\x93"));
+    CHECK(flick_key(&kb, KB_KEY_FLICK + 9, -80.f, 0.f) && !strcmp(kb.text + strlen(kb.text) - 3, "\xe3\x82\x92"));
+    // One modifier key cycles the kana before it (か が か; た だ っ た), and ー types straight.
+    open_kb(&kb, "");
+    press(&kb, KB_KEY_KANA);
+    CHECK(press(&kb, KB_KEY_FLICK + 1) && !strcmp(kb.text, "\xe3\x81\x8b"));
+    CHECK(press(&kb, KB_KEY_KANA_MOD) && !strcmp(kb.text, "\xe3\x81\x8c"));
+    CHECK(press(&kb, KB_KEY_KANA_MOD) && !strcmp(kb.text, "\xe3\x81\x8b"));  // round again
+    CHECK(flick_key(&kb, KB_KEY_FLICK + 3, 0.f, -80.f) && !strcmp(kb.text, "\xe3\x81\x8b\xe3\x81\xa4"));  // た, up: つ
+    CHECK(press(&kb, KB_KEY_KANA_MOD) && !strcmp(kb.text, "\xe3\x81\x8b\xe3\x81\xa5"));  // づ
+    CHECK(press(&kb, KB_KEY_KANA_MOD) && !strcmp(kb.text, "\xe3\x81\x8b\xe3\x81\xa3"));  // っ
+    CHECK(press(&kb, KB_KEY_KANA_MOD) && !strcmp(kb.text, "\xe3\x81\x8b\xe3\x81\xa4"));  // and round again
+    CHECK(press(&kb, KB_KEY_FLICK + 5) && press(&kb, KB_KEY_KANA_MOD) && press(&kb, KB_KEY_KANA_MOD) &&
+          !strcmp(kb.text + strlen(kb.text) - 3, "\xe3\x81\xb1"));  // は, twice: ぱ
+    CHECK(press(&kb, 0x30FC) && !strcmp(kb.text + strlen(kb.text) - 3, "\xe3\x83\xbc"));
+    // カ types the pad in katakana, the modifier keeping to katakana; 、 holds 、。？！.
+    CHECK(press(&kb, KB_KEY_KATA) && kb.kata);
+    CHECK(press(&kb, KB_KEY_FLICK) && !strcmp(kb.text + strlen(kb.text) - 3, "\xe3\x82\xa2"));
+    CHECK(press(&kb, KB_KEY_KANA_MOD) && !strcmp(kb.text + strlen(kb.text) - 3, "\xe3\x82\xa1"));
+    CHECK(press(&kb, KB_KEY_PUNCT) && !strcmp(kb.text + strlen(kb.text) - 3, "\xe3\x80\x81"));
+    CHECK(flick_key(&kb, KB_KEY_PUNCT, 0.f, -80.f) && !strcmp(kb.text + strlen(kb.text) - 3, "\xef\xbc\x9f"));
+    CHECK(press(&kb, KB_KEY_KATA) && !kb.kata);  // あ: back to hiragana
+    // The modifier with nothing before it changes nothing, and backspace takes a whole kana.
+    open_kb(&kb, "");
+    press(&kb, KB_KEY_KANA);
+    CHECK(press(&kb, KB_KEY_KANA_MOD) && press(&kb, KB_KEY_KANA_MOD) && kb.text[0] == 0);
+    CHECK(press(&kb, KB_KEY_FLICK + 1) && press(&kb, KB_KEY_BKSP) && kb.text[0] == 0);
+    // abc goes back to the letters.
+    CHECK(press(&kb, KB_KEY_PAGE) && kb.page == 0 && keyboard_key_rect(&kb, KB_KEY_KANA, &r));
+    i18n_set("en");
+    open_kb(&kb, "");
+    CHECK(keyboard_key_rect(&kb, KB_KEY_PAGE, &r) && !keyboard_key_rect(&kb, KB_KEY_KANA, &r));
+}
+
 // Every character on the accents page, and its capital, is in every face of both themes (no
 // borrowing from Terminess, no missing glyph).
 TEST(accents_in_every_face) {
@@ -262,7 +331,7 @@ TEST(accents_in_every_face) {
         for (int theme = THEME_GOTHIC; theme <= THEME_CLASSIC; theme++) {
             ui_set_theme((UiTheme)theme);
             for (int f = 0; f < FONT_FACE_COUNT; f++) {
-                bool ok = font_has_glyph((FontFace)f, cp) && font_has_glyph((FontFace)f, keyboard_upper(cp));
+                bool ok = font_face_has_glyph((FontFace)f, cp) && font_face_has_glyph((FontFace)f, keyboard_upper(cp));
                 if (!ok) fprintf(stderr, "  U+%04X missing in face %d (theme %d)\n", cp, f, theme);
                 CHECK(ok);
             }
@@ -358,6 +427,7 @@ int main(void) {
     RUN(long_name_tail_is_whole_characters);
     RUN(letters_layout_kept);
     RUN(spanish_letters_have_enye);
+    RUN(japanese_kana_page);
     RUN(accents_in_every_face);
     RUN(one_character_keys_at_title_size);
     RUN(typed_name_is_stored_whole);

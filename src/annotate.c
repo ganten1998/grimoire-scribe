@@ -305,9 +305,9 @@ static size_t utf8_len(const uint8_t *s) {
     return n;
 }
 
-// Every character of the title is kept, also those Grimoire's fonts cannot draw (Chinese, Japanese,
-// Korean, most Vietnamese letters): the name is also the notebook's PDF's in grimoire/PDFs, which
-// KOReader lists. Only the screens leave those out as they draw it (ui_name_label).
+// Every character of the title is kept, also those the screens cannot draw (most Chinese, Korean
+// and Vietnamese characters, rare CJK): the name is also the notebook's PDF's in grimoire/PDFs,
+// which KOReader lists. Only the screens leave those out as they draw it (ui_name_label).
 void annotate_name(const char *title, char *out, size_t cap) {
     if (!cap) return;
     size_t k = 0;

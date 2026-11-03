@@ -348,7 +348,7 @@ expect settings.language is auto
 tap 930 1580
 wait 50
 expect library.sheet is language
-tap 930 1265
+tap 930 1425
 wait 50
 expect library.sheet is settings
 # Display, with its sleep rows: each of the four sleep screens.
@@ -1130,7 +1130,7 @@ tap 1240 1385
 wait 50
 expect library.sheet is language
 shot 55-language-landscape
-tap 1240 1055
+tap 1240 1169
 wait 50
 expect library.sheet is settings
 tap 1240 260
