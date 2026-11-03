@@ -233,7 +233,8 @@ pins() {  # pins WHAT FILE LINE...: FILE has each LINE, and no other line reads 
 pins "Grimoire.sh" "$B/script.sh" 'US=${GRIMOIRE_US:-/mnt/us}' 'TMP=${GRIMOIRE_TMP:-/tmp}'
 pins "app/grimoire.sh" "$B/app/grimoire.sh" 'US=${GRIMOIRE_US:-/mnt/us}' 'TMP=${GRIMOIRE_TMP:-/tmp}' \
     'SYS=${GRIMOIRE_SYSROOT:-}' 'WD_TICK=${GRIMOIRE_WD_TICK:-2}' 'WD_FIRST=${GRIMOIRE_WD_FIRST:-25}' \
-    'WD_STALE=${GRIMOIRE_WD_STALE:-15}'
+    'WD_STALE=${GRIMOIRE_WD_STALE:-15}' 'if [ "${GRIMOIRE_DEV:-}" = 1 ]; then UPDATE_SCRIPT=""; fi' \
+    'if [ -f "$TMP/grimoire-update" ] && [ "${GRIMOIRE_DEV:-}" != 1 ]; then'
 pins "the reset scriptlet" "$B/zip/$RESET" 'S=${GRIMOIRE_US:-/mnt/us}/grimoire/settings.ini' \
     'p=$(cat "${GRIMOIRE_TMP:-/tmp}/grimoire.launcher.pid" 2>/dev/null)'
 # The watchdog looks for the heartbeat where the binary writes it (TMP is /tmp on the device).
