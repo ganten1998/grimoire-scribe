@@ -947,6 +947,9 @@ Limits of the dev copy:
   so only one Grimoire runs at a time. Close the open one first.
 - On macOS, `--mount` needs a third-party MTP mount (macOS does not mount MTP devices itself);
   `make dev-ssh` needs no mount at all.
+- On Linux the copy goes over GVFS; when another desktop daemon holds the Kindle's MTP
+  interface (KDE's kmtpd5 does this on every plug), the script stops it for the session and
+  mounts through GVFS itself.
 
 `make dev` needs the Scribe in USB file transfer (MTP) mode, unlocked, with Allow tapped if it
 asks; MTP cannot start the app, so the first launch is a tap in the Library. When the patched

@@ -14,6 +14,10 @@
 #
 # MTP cannot start the app: close Grimoire (dev) if it is open, then tap it in the Library.
 #
+# On Linux the mount goes through GVFS: the volume's own activation root (a bare
+# "gio mount mtp://" is refused by newer gvfs), releasing KDE's kmtpd5 first when it holds the
+# Kindle's MTP interface (see gvfs_mount below).
+#
 # Environment:
 #   GRIMOIRE_MTP_MOUNT  mounted Kindle folder holding documents, if auto-detection misses it
 #   ZIG                 Zig 0.16.0 for make package (default: zig on PATH)
@@ -44,10 +48,12 @@ Options:
   -h, --help     this text
 
 The Scribe must be in USB file transfer (MTP) mode, unlocked, with Allow tapped if it asks.
-On Linux the script tries a mounted MTP volume first (gio mount mtp://); otherwise pass
---mount or set GRIMOIRE_MTP_MOUNT to the folder holding documents. macOS does not mount MTP
-devices itself: use a third-party MTP mount and --mount, or make dev-ssh. The release's
-documents/Grimoire.sh and /mnt/us/grimoire are never touched.
+On Linux the script uses a mounted MTP volume if there is one, and asks GVFS to mount it if
+not; pass --mount or set GRIMOIRE_MTP_MOUNT to point at the folder holding documents yourself.
+If another desktop daemon (KDE's kmtpd5) holds the Kindle's MTP interface, the script stops it
+for the session and mounts through GVFS. macOS does not mount MTP devices itself: use a
+third-party MTP mount and --mount, or make dev-ssh. The release's documents/Grimoire.sh and
+/mnt/us/grimoire are never touched.
 
 MTP cannot launch an app: close Grimoire (dev) if it is open, then tap "Grimoire (dev)" in the
 Library. Its first launch unpacks into the dev data root; notebooks and settings there are
@@ -98,30 +104,80 @@ find_mount() {
     return 1
 }
 
+# mtp_holders DEV: the pids with DEV (the Kindle's usbfs node) open.
+mtp_holders() {
+    ls -l /proc/[0-9]*/fd 2>/dev/null | awk -v d="$1" '
+        /^\/proc\/[0-9]+\/fd:$/ { pid = $0; sub(/^\/proc\//, "", pid); sub(/\/fd:$/, "", pid) }
+        $NF == d || $NF == d " (deleted)" { print pid }' | sort -u
+}
+
+# release_mtp_holder DEV: another daemon holds the Kindle's MTP interface open, so GVFS cannot
+# claim it (journalctl --user says "device is busy"). Stop the one known holder, KDE's kmtpd5,
+# named by the holder's own cgroup; systemd starts it again the next time a KDE application asks
+# for MTP. True when something was released.
+release_mtp_holder() {
+    released=0
+    for p in $(mtp_holders "$1"); do
+        unit=$(sed -n 's|.*/\(dbus-[^/ ]*kmtpd5[^/ ]*\.service\)$|\1|p' "/proc/$p/cgroup" 2>/dev/null | head -n 1)
+        [ -n "$unit" ] || continue
+        if command -v systemctl >/dev/null 2>&1 && systemctl --user stop "$unit" 2>/dev/null; then
+            echo "kindle-dev: stopped $unit (pid $p), which had the Kindle's MTP interface"
+            released=1
+        fi
+    done
+    [ "$released" = 1 ]
+}
+
+# gvfs_mount: mount the MTP volume gvfs detected. Newer gvfs refuses a bare "gio mount mtp://"
+# ("No device specified"), so the volume's own activation root from "gio mount -l -i" is used;
+# when the device is claimed by another daemon the holder is released and the mount retried
+# once. On failure MTP_ERR holds what gio said; it is printed only if nothing mounted after all.
+gvfs_mount() {
+    MTP_ERR=
+    info=$(gio mount -l -i 2>/dev/null | awk '
+        /^(Volume|Drive)\(/ { d = "" }
+        /^[ \t]*unix-device:/ { d = $0; sub(/^[^:]*:[ \t]*/, "", d) }
+        /^[ \t]*activation_root=mtp:/ { a = $0; sub(/^[ \t]*activation_root=/, "", a); print a "\t" d; exit }')
+    uri=$(printf '%s\n' "$info" | cut -f1)
+    dev=$(printf '%s\n' "$info" | cut -f2- | tr -d "'")
+    if [ -n "$uri" ]; then
+        err=$(gio mount "$uri" 2>&1) && return 0
+    else
+        err=$(gio mount mtp:// 2>&1) && return 0
+    fi
+    if [ -n "$dev" ] && release_mtp_holder "$dev"; then
+        err=$(gio mount "${uri:-mtp://}" 2>&1) && return 0
+    fi
+    MTP_ERR=${err:-GVFS could not mount the Kindle}
+}
+
 DEST=
+MTP_ERR=
 if [ -n "$MOUNT" ]; then
     DEST=$(mount_docs "$MOUNT") || {
         echo "kindle-dev: $MOUNT does not hold a documents folder." >&2
         exit 1
     }
 else
-    DEST=$(find_mount) || {
-        if command -v gio >/dev/null 2>&1; then
-            echo "kindle-dev: asking GVFS to mount the Kindle over MTP"
-            gio mount mtp:// >/dev/null 2>&1 || true
-            DEST=$(find_mount) || DEST=
-        fi
-    }
+    DEST=$(find_mount) || DEST=
+    if [ -z "$DEST" ] && command -v gio >/dev/null 2>&1; then
+        echo "kindle-dev: asking GVFS to mount the Kindle over MTP"
+        gvfs_mount
+        DEST=$(find_mount) || DEST=
+    fi
 fi
 if [ -z "$DEST" ]; then
+    [ -n "$MTP_ERR" ] && echo "kindle-dev: $MTP_ERR" >&2
     if command -v lsusb >/dev/null 2>&1 && lsusb 2>/dev/null | grep -qi 'RNDIS/Ethernet Gadget'; then
         echo "kindle-dev: the Kindle is in USB networking (RNDIS) mode, not USB file transfer (MTP)." >&2
     fi
     cat >&2 <<'EOF'
 kindle-dev: no mounted Kindle found over MTP.
   1. On the Scribe, choose USB file transfer (MTP) and unlock it; tap Allow if it asks.
-  2. On Linux, open the Kindle once in your file manager, or run: gio mount mtp://
+  2. On Linux, open the Kindle once in your file manager.
   3. If it is mounted somewhere unusual, pass --mount (the folder holding documents).
+  4. If gio says the device could not be opened, another program has it: journalctl --user |
+     grep -i mtp names it (the script stops KDE's kmtpd5 itself when it is the holder).
 EOF
     exit 1
 fi
