@@ -29,9 +29,8 @@ po/ja-glossary.md    the words the Japanese chose, and the font and date notes
 
 ## Improving the Spanish
 
-The Spanish is one neutral `es` for Spain and Latin America, speaking to the reader as *tú*, and a
-draft until a native speaker reviews it. `po/es-glossary.md` lists every choice of words to
-confirm, with the alternatives weighed: start there.
+The Spanish is one neutral `es` for Spain and Latin America, speaking to the reader as *tú*.
+`po/es-glossary.md` lists every choice of words, with the alternatives weighed: start there.
 
 ## Improving the Japanese
 

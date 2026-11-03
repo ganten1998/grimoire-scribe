@@ -221,6 +221,9 @@ change with the language: paper is drawn the same everywhere (Cornell notes keep
 headings), and the names you give notebooks and folders stay as you typed them. The KOReader
 plugin follows KOReader's own language.
 
+Corrections and new languages are welcome; [docs/TRANSLATING.md](docs/TRANSLATING.md) says how.
+Translations are under Grimoire's license, GPL-3.0-or-later.
+
 
 ## Getting pages off the Kindle
 

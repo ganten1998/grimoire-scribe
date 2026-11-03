@@ -1,9 +1,8 @@
 # Spanish glossary (po/es.po)
 
-Grimoire's Spanish is one neutral `es` for Spain and Latin America, and a first draft: every
-choice below is for a native speaker to confirm or change. Each line gives the English, the word
-the draft uses, and the alternatives we weighed. Where a widget is narrow, its room is given in
-pixels; `make l10n-check` says when a change no longer fits (it lists `fit[es]: ...` lines), and
+Grimoire's Spanish is one neutral `es` for Spain and Latin America. Each line gives the English,
+the word the Spanish uses, and the alternatives we weighed. Where a widget is narrow, its room is
+given in pixels; `make l10n-check` says when a change no longer fits (it lists `fit[es]: ...` lines), and
 build/shots/l10n/es-gothic/ and es-classic/ show every screen in Spanish.
 
 ## Voice
@@ -18,7 +17,7 @@ build/shots/l10n/es-gothic/ and es-classic/ show every screen in Spanish.
 
 ## The Scribe's pen and the drawing tools
 
-| English | Draft | Alternatives, notes |
+| English | Spanish | Alternatives, notes |
 | --- | --- | --- |
 | pen (the Scribe's stylus) | **lápiz** | Amazon calls it *Lápiz* in Spanish, so every mention of the device uses it: *Calibrar el lápiz*, *Sensibilidad del lápiz*, *el botón del lápiz*, *No se encontró el lápiz*. |
 | Pencil (tool) | **Grafito** | *Lápiz* would collide with the pen above (*Sensibilidad: Lápiz* reads as the pen's own setting); *Lápiz de grafito* is too long for the tool picker (284 px at 34 px). |
@@ -44,7 +43,7 @@ build/shots/l10n/es-gothic/ and es-classic/ show every screen in Spanish.
 
 ## Notebooks, papers, music
 
-| English | Draft | Alternatives, notes |
+| English | Spanish | Alternatives, notes |
 | --- | --- | --- |
 | notebook | **cuaderno** | *libreta*. A new notebook is named *Cuaderno 20 oct*. |
 | Library | **Biblioteca** | |
@@ -76,7 +75,7 @@ build/shots/l10n/es-gothic/ and es-classic/ show every screen in Spanish.
 
 ## Screens, buttons, actions
 
-| English | Draft | Alternatives, notes |
+| English | Spanish | Alternatives, notes |
 | --- | --- | --- |
 | Settings | **Ajustes** | *Configuración* is 208 px at 34 px, more than the top bar's buttons can grow to hold (188 px in Gothic). |
 | Share | **Compartir** | The top bar's buttons widen to hold it in Gothic (150 px; 138 px fit inside a button's carved line). |
@@ -131,7 +130,7 @@ build/shots/l10n/es-gothic/ and es-classic/ show every screen in Spanish.
 
 ## The share pages and the studio
 
-| English | Draft | Alternatives, notes |
+| English | Spanish | Alternatives, notes |
 | --- | --- | --- |
 | Share over Wi-Fi | **Compartir por Wi-Fi** | *wifi* is the RAE's spelling; the Kindle writes Wi-Fi. |
 | phone, computer | **teléfono, computadora** | *móvil*, *ordenador* (Spain); *celular* (Latin America). |

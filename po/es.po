@@ -1,8 +1,8 @@
 # Grimoire in Spanish (one neutral "es" for Spain and Latin America), speaking to the reader as tú.
 # This file is distributed under the same license as Grimoire: GPL-3.0-or-later. Translations
 # contributed to it are under that license too.
-# A first draft, to be reviewed by a native speaker before a release: po/es-glossary.md lists
-# every choice of words to confirm, and build/shots/l10n/es-*/ show every screen (make l10n-check).
+# po/es-glossary.md lists every choice of words, with the alternatives weighed, and
+# build/shots/l10n/es-*/ show every screen (make l10n-check).
 #
 msgid ""
 msgstr ""
