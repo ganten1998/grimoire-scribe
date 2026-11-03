@@ -1,0 +1,124 @@
+#!/bin/sh
+# records the C probes' answers on this machine, for the ported tests to compare against when the
+# committed recordings, made on the owner's Mac, carry a libm this host's does not share:
+# rust/tests/test_brush.rs (BRUSH_PROBE_FIXTURE), rust/tests/test_sheets_probe.rs
+# (SHEETS_PROBE_FIXTURE, SHEETS_PROBE_TILT_FIXTURE) and rust/src/sim_sdl.rs's sim probe
+# (SIM_PROBE_FIXTURE). `make test` compares these when they exist.
+# The builds are those in rust/tests/fixtures/{brush,sheets}_probe.c's headers, and each recording
+# is made twice and must agree.
+set -eu
+top=$(cd "$(dirname "$0")/.." && pwd)
+cd "$top"
+BUILD=${BUILD:-build}
+out=$BUILD/probe
+CC=${CC:-clang}
+FLAGS="-std=gnu11 -D_GNU_SOURCE -Isrc -Ithird_party -I$BUILD/gen -DGRIMOIRE_VERSION=\"x\" -O1 -g -fsanitize=address,undefined -fno-sanitize-recover=undefined -ffp-contract=on"
+
+say() { echo "record-fixtures: $*"; }
+die() {
+    echo "record-fixtures: $*" >&2
+    exit 1
+}
+
+mkdir -p "$out"
+root=$(mktemp -d)
+stub=$root/stub.c # (.c: clang picks the language by the extension)
+trap 'rm -rf "$root"' EXIT
+
+# The sheets probe links the Makefile's CORE_SRC and UI_SRC (read from make, so an edit there is
+# picked up), plus the screens it draws and the generated sources.
+mkvar() { make -pn 2>/dev/null | sed -n "s/^$1 *[:+?]\{0,1\}= *//p" | head -1; }
+core=$(mkvar CORE_SRC)
+ui=$(mkvar UI_SRC)
+gen=$(mkvar GEN_SRC)
+[ -n "$core" ] && [ -n "$ui" ] && [ -n "$gen" ] || die "cannot read CORE_SRC/UI_SRC/GEN_SRC from the Makefile"
+make $gen || die "cannot generate $gen"
+
+# ---- the brush: brush_probe.c, the brush, the canvas and util, with a two-line i18n stub (the
+# stub defines i18n_get and i18n_getc to return their msgid) ----
+cat >"$stub" <<'EOF'
+const char *i18n_get(const char *msgid) { return msgid; }
+const char *i18n_getc(const char *ctx, const char *msgid) { (void)ctx; return msgid; }
+EOF
+say "brush probe"
+$CC -O1 -ffp-contract=on -std=gnu11 -D_GNU_SOURCE -Isrc -Ithird_party -DGRIMOIRE_VERSION='"x"' \
+    rust/tests/fixtures/brush_probe.c "$stub" src/brush.c src/canvas.c src/util.c -lm -o "$out/brush_probe" ||
+    die "the brush probe did not build"
+"$out/brush_probe" >"$out/brush_probe_c.txt" 2>/dev/null
+"$out/brush_probe" >"$out/brush_probe_again.txt" 2>/dev/null
+cmp -s "$out/brush_probe_c.txt" "$out/brush_probe_again.txt" || die "the brush probe is not deterministic"
+rm -f "$out/brush_probe_again.txt"
+
+# ---- the sheets: papers, pages, pen feel and the keyboard, drawn twice (the pen without tilt, and
+# with it: only the "penset events" section differs) ----
+for tilt in "" -DPROBE_TILT; do
+    name=sheets_probe${tilt:+_tilt}
+    say "$name probe"
+    # shellcheck disable=SC2086
+    $CC $FLAGS $tilt rust/tests/fixtures/sheets_probe.c $core $ui src/pagesview.c src/musicbuild.c $gen -lm \
+        -o "$out/$name" || die "the $name probe did not build"
+done
+"$out/sheets_probe" "$root" >"$out/sheets_probe_c.txt" 2>/dev/null
+"$out/sheets_probe" "$root" >"$out/sheets_probe_again.txt" 2>/dev/null
+cmp -s "$out/sheets_probe_c.txt" "$out/sheets_probe_again.txt" || die "the sheets probe is not deterministic"
+rm -f "$out/sheets_probe_again.txt"
+"$out/sheets_probe_tilt" "$root" 2>/dev/null | awk '/^== /{on = ($0 == "== penset events")} on' >"$out/sheets_probe_c_tilt.txt"
+[ -s "$out/sheets_probe_c_tilt.txt" ] || die "the sheets probe's pen events section is empty"
+
+# ---- the picker sections stay the committed lines: the C tree's paper pickers are the old ones,
+# and those two sections were recorded from this build (test_sheets_probe.rs's "labels and music"
+# comment) ----
+python3 - "$out/sheets_probe_c.txt" rust/tests/fixtures/sheets_probe_c.txt "$out/sheets_probe_hybrid.txt" <<'EOF'
+import sys
+
+
+def split(path):
+    head, parts, cur = [], {}, None
+    for line in open(path, encoding="utf-8"):
+        line = line.rstrip("\n")
+        if line.startswith("== "):
+            cur = line[3:]
+            parts[cur] = []
+        elif cur is None:
+            head.append(line)
+        else:
+            parts[cur].append(line)
+    return head, parts
+
+
+local, committed, out = sys.argv[1:]
+hc, cc = split(committed)
+hl, cl = split(local)
+if hc != hl:
+    sys.exit("record-fixtures: the recordings' headers differ")
+lines = list(hl)
+for name, part in cl.items():
+    lines.append("== " + name)
+    lines.extend(cc.get(name, []) if name in ("labels", "music") else part)
+open(out, "w", encoding="utf-8").write("\n".join(lines) + "\n")
+EOF
+
+# ---- the sim runner: sim_probe.c runs tests/fixtures/sim_probe.qs through the C headless runner
+# and prints every event and refresh; rust/src/sim_sdl.rs's test compares that with the Rust
+# runner's. The run ends in display_close's verdict, exit status 3 by design. ----
+say "sim probe"
+$CC -std=gnu11 -D_GNU_SOURCE -DGRIMOIRE_SIM -Isrc -Ithird_party -I"$BUILD/gen" -O1 -ffp-contract=on \
+    -o "$out/sim_probe" rust/tests/fixtures/sim_probe.c src/util.c src/calib_fit.c src/hidkeys.c src/power.c -lm ||
+    die "the sim probe did not build"
+mkdir -p "$root/simrun"
+sim=$top/$out/sim_probe # (the runs below are in another directory)
+simprobe() {
+    (cd "$root/simrun" && GRIMOIRE_SCRIPT="$top/rust/tests/fixtures/sim_probe.qs" GRIMOIRE_SHOTS=shots-sim-probe \
+        GRIMOIRE_SIM_SIZE=1200x1600 "$sim") 2>"$1"
+}
+st=0
+simprobe "$out/sim_probe_c.txt" || st=$?
+[ "$st" = 3 ] || die "the sim probe ended with status $st, not 3"
+st=0
+simprobe "$out/sim_probe_again.txt" || st=$?
+[ "$st" = 3 ] || die "the sim probe ended with status $st, not 3"
+cmp -s "$out/sim_probe_c.txt" "$out/sim_probe_again.txt" || die "the sim probe is not deterministic"
+rm -f "$out/sim_probe_again.txt"
+
+say "wrote $out/brush_probe_c.txt, $out/sheets_probe_hybrid.txt, $out/sheets_probe_c_tilt.txt and $out/sim_probe_c.txt"
+say "make test compares them while they exist; re-run this after the C they cover changes"

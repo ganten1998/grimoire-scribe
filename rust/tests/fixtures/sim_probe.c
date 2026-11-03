@@ -56,6 +56,19 @@ static void print_ev(const InEvent *e, uint32_t t0) {
             (e->t_ms - t0) / 5 * 5, e->hid_name);
 }
 
+// A float to int the way the Rust twin's `as i32` does it: NaN to 0, out of range saturating,
+// otherwise truncating. The C cast of a NaN is undefined, and this probe is handed one (the pen
+// events' calibration divides by a zero slope: the sim's x is 0xffc00000): x86-64's cvttss2si makes
+// it INT_MIN there, an empty rect and no refresh, while Apple Silicon's fd2f makes it 0, whose rect
+// clips to (0, 0, 20, 20). The recorded answers are the 0 ones, so both twins must saturate alike on
+// every host.
+static int32_t ev_i32(float f) {
+    if (f != f) return 0;  // NaN
+    if (f >= 2147483648.0f) return INT32_MAX;
+    if (f <= -2147483648.0f) return INT32_MIN;
+    return (int32_t)f;
+}
+
 static Canvas g_canvas;
 static void canvas_make(int w, int h) {
     free(g_canvas.px);
@@ -73,7 +86,7 @@ static int g_w, g_h;
 static void react(const InEvent *e) {
     if (e->type == IN_PEN_DOWN) display_live_ink(true);
     if (e->type == IN_PEN_UP) {
-        Rect r = {(int)e->x - 20, (int)e->y - 20, 40, 40};
+        Rect r = {ev_i32(e->x) - 20, ev_i32(e->y) - 20, 40, 40};
         display_present(&g_canvas, r, REFRESH_FAST);
         display_live_ink(false);
     }

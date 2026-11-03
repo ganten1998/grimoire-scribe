@@ -1656,6 +1656,13 @@ fn card_drawn_again_with_its_picture() {
     let path = template_file("Card lines.png", &g);
     let (mut on, mut off) = (NotebookInfo::default(), NotebookInfo::default());
     check!(store_create("Card", "", PAPER_MEDIUM, &mut on) == 0 && store_create("Card 2", "", PAPER_MEDIUM, &mut off) == 0);
+    // The editor's card, drawn on white paper (the notebook was left before the picture was made):
+    // written before the job goes in, which is forked at once. Written after it, the job may have
+    // drawn the card with its picture by then, and the editor's white one would cover it, leaving
+    // the card white for good: nothing draws it again.
+    let mut white = Canvas::default();
+    canvas_init(&mut white, PW / 3, PH / 3);
+    check!(store_save_thumb(on.id.as_str(), &white) == 0);
     let (mut k, mut k2) = (PAPER_BLANK, PAPER_BLANK);
     let mut why: &'static str = "";
     check!(template_install(&on, &path, &mut k, &mut why) == 0 && store_start_on(&mut on, k) == 0);
@@ -1669,9 +1676,7 @@ fn card_drawn_again_with_its_picture() {
     if let Some(pg) = p.take() {
         page_free(pg);
     }
-    let mut white = Canvas::default();
-    canvas_init(&mut white, PW / 3, PH / 3);
-    check!(store_save_thumb(on.id.as_str(), &white) == 0 && store_save_thumb(off.id.as_str(), &white) == 0);
+    check!(store_save_thumb(off.id.as_str(), &white) == 0); // (its job leaves the card alone: no race)
     drain_jobs(None);
     bgimage_retry_missing();
     let (mut card, mut want, mut other) = (Canvas::default(), Canvas::default(), Canvas::default());

@@ -383,10 +383,20 @@ $(CBUILD)/host/mklogo: tools/mklogo.c $(CORE_SRC) $(GEN_SRC) $(HDRS)
 # language), as each C test binary runs its tests in order. Twice: on the host's platform, then in
 # the headless build (--features sim), whose tests check the runner itself, the Share screen and
 # the pen that reports tilt.
+# The probe fixtures recorded on this machine (tools/record-fixtures): the ported tests compare
+# them when they are here, so a host whose libm differs from the recording Mac's runs the same
+# checks. The owner's Mac has none and compares the committed recordings in rust/tests/fixtures.
+PROBE_FIX := $(abspath $(BUILD))/probe
+BRUSH_FIXTURE := $(PROBE_FIX)/brush_probe_c.txt
+SHEETS_FIXTURE := $(PROBE_FIX)/sheets_probe_hybrid.txt
+SHEETS_TILT_FIXTURE := $(PROBE_FIX)/sheets_probe_c_tilt.txt
+SIM_FIXTURE := $(PROBE_FIX)/sim_probe_c.txt
+FIXTURE_ENV := $(if $(wildcard $(BRUSH_FIXTURE)),BRUSH_PROBE_FIXTURE="$(BRUSH_FIXTURE)") $(if $(wildcard $(SHEETS_FIXTURE)),SHEETS_PROBE_FIXTURE="$(SHEETS_FIXTURE)") $(if $(wildcard $(SHEETS_TILT_FIXTURE)),SHEETS_PROBE_TILT_FIXTURE="$(SHEETS_TILT_FIXTURE)") $(if $(wildcard $(SIM_FIXTURE)),SIM_PROBE_FIXTURE="$(SIM_FIXTURE)")
 test:
 	@mkdir -p $(BUILD)/test/tmp
-	$(call RCARGO,GRIMOIRE_TEST_TMP="$(abspath $(BUILD))/test/tmp") test -- --test-threads=1
-	$(call RCARGO,GRIMOIRE_TEST_TMP="$(abspath $(BUILD))/test/tmp") test --features sim -- --test-threads=1
+	@if [ -n '$(strip $(FIXTURE_ENV))' ]; then echo "test: comparing the probe fixtures recorded here ($(PROBE_FIX))"; fi
+	$(call RCARGO,$(FIXTURE_ENV) GRIMOIRE_TEST_TMP="$(abspath $(BUILD))/test/tmp") test -- --test-threads=1
+	$(call RCARGO,$(FIXTURE_ENV) GRIMOIRE_TEST_TMP="$(abspath $(BUILD))/test/tmp") test --features sim -- --test-threads=1
 	@echo "ALL TESTS PASSED"
 
 # The C tree's unit tests (core + ui only; no platform).
