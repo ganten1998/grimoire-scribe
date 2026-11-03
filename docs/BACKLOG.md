@@ -54,6 +54,17 @@ jumbled"):
 
 ## Next: 2.1 (deferred by the owner, 2026-10-31)
 
+- **PDF planners with their hyperlinks, imported without KOReader** (owner, 2026-11-03; next after the
+  2.0.0-beta.2 release candidate). A user asked to use a PDF planner whose pages link to each other. Two parts:
+  1. Links: each PDF link (its box and the page it jumps to) becomes a Grimoire link area pointing at the
+     notebook page that holds the target page (source.ini's map); a planner is imported whole so every target
+     exists; web links are left out at first.
+  2. Owner ruling: imports are no longer gated by KOReader. Grimoire itself finds PDFs placed in a folder it
+     watches (as it already does for page images in grimoire/import/<Name>/) and imports them, links included.
+     That needs a PDF renderer in Grimoire on the Kindle: choose by licence and size (PDFium, BSD-3, keeps every
+     licensing option open; MuPDF is AGPL-3.0; poppler GPL), cross-built for the Kindle, with page rendering in
+     the background job so the editor never blocks. KOReader's "Open this book" path stays as a second way in.
+
 - **Cross-platform tablet bridge** (owner, 2026-10-31; started, not finished: the weekly limit). One small
   dependency-free Rust tool for Windows (InjectSyntheticPointerInput PT_PEN), macOS (CGEvent tablet subtype)
   and Linux (uinput pen tablet), reading Grimoire's own Live view pen stream (/live/pen, pairing code; no SSH),
