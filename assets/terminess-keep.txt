@@ -1,0 +1,280 @@
+# The code points kept in assets/TerminessNerdFontMono-Regular.ttf and -Bold.ttf (the Terminess
+# diet: Nerd Fonts' Terminess cut down to Terminus's text and the icons Grimoire uses). make
+# fonts-subset (tools/fonts_subset.py, for the maintainer; assets/README.md) makes the two fonts
+# from Nerd Fonts' release with exactly these code points. rust/tests/test_terminess_keep.rs checks
+# that the embedded fonts hold exactly these, and that every icon the code draws is here.
+#
+# A line is one code point (U+XXXX) or a range (U+XXXX-U+YYYY); "#" starts a comment.
+#
+# Text: Terminus's own glyphs. A code point is kept where Nerd Fonts' file holds the very outline
+# of Terminus TTF 4.49.3 (make fonts-subset checks this against the upstream files). That leaves
+# out the 174 Nerd Fonts glyphs at ordinary code points: box drawing and block elements
+# U+2500-U+259F (Nerd Fonts' own set, drawn over Terminus's), the heart U+2665 and the lightning
+# U+26A1 (Octicons), the power symbols U+23FB-U+23FE and U+2B58, the menu sign U+2630 and the heavy
+# angle brackets U+276C-U+2771. Grimoire's own screens and pages use none of them.
+#
+# Icons: Material Design Icons (Pictogrammers; Apache License 2.0), each one Grimoire draws or its
+# 2.1 design plans. A new icon goes here, then make fonts-subset, or it draws nothing (the test
+# says which is missing). Not kept: KOReader's own symbols at private use code points (its battery
+# among them), which KOReader draws from its own symbols font.
+
+# Text: 1197 code points
+# Basic Latin (ASCII; U+0000 is the font's own null glyph)
+U+0000
+U+0020-U+007E
+# Latin-1: accented letters and symbols
+U+00A0-U+00FF
+# Latin Extended-A
+U+0100-U+017F
+# Latin Extended-B
+U+0186
+U+018E-U+0190
+U+0192
+U+019D-U+019E
+U+01B5-U+01B7
+U+01CD-U+01D4
+U+01E2-U+01F0
+U+01F4-U+01F5
+U+01FC-U+01FF
+U+0218-U+021B
+U+0232-U+0233
+U+0237
+# IPA letters
+U+0254
+U+0258-U+0259
+U+025B
+U+0272
+U+0292
+# spacing accents
+U+02BB-U+02BD
+U+02C6-U+02C7
+U+02D8-U+02D9
+U+02DB-U+02DD
+# combining accents
+U+0300-U+0308
+U+030A-U+030C
+U+0329
+# Greek
+U+0384-U+038A
+U+038C
+U+038E-U+03A1
+U+03A3-U+03CE
+U+03D1
+U+03D5
+U+03F0-U+03F6
+# Cyrillic
+U+0400-U+045F
+U+0462-U+0463
+U+046A-U+046B
+U+0490-U+049D
+U+04A0-U+04A5
+U+04AA-U+04AB
+U+04AE-U+04B3
+U+04B6-U+04BB
+U+04C0-U+04C2
+U+04CF-U+04DF
+U+04E2-U+04F5
+U+04F8-U+04F9
+# Hebrew
+U+05D0-U+05EA
+# Latin Extended Additional
+U+1E0C-U+1E0D
+U+1E34-U+1E37
+U+1E40-U+1E47
+U+1E6C-U+1E6D
+U+1EB8-U+1EB9
+U+1EBC-U+1EBD
+U+1ECA-U+1ECD
+U+1EE4-U+1EE5
+U+1EF8-U+1EF9
+# spaces, dashes, quotes and other punctuation
+U+2000-U+2022
+U+2026
+U+2030
+U+2032-U+2033
+U+2039-U+203A
+U+203C
+U+203E
+# superscripts and subscripts
+U+2070-U+2071
+U+2074-U+208E
+U+2090-U+2098
+U+209A
+# currency
+U+20A7
+U+20AA
+U+20AC
+U+20AE
+# letterlike symbols
+U+2102
+U+210E-U+210F
+U+2115-U+2116
+U+211A
+U+211D
+U+2122
+U+2124
+U+2126
+U+2135
+# arrows
+U+2190-U+2195
+U+21A4
+U+21A6
+U+21A8
+U+21B2-U+21B3
+U+21B5
+U+21BB
+U+21CB-U+21CC
+U+21D0-U+21D5
+# math
+U+2200
+U+2203-U+220D
+U+2212-U+2216
+U+2219-U+221A
+U+221E-U+221F
+U+2225
+U+2227-U+222A
+U+2248
+U+2260-U+2261
+U+2264-U+2265
+U+226A-U+226B
+U+2282-U+2283
+U+2286-U+2287
+U+22A5
+U+22C2-U+22C3
+# technical symbols
+U+2300
+U+2302
+U+2308-U+230B
+U+2310
+U+2319
+U+2320-U+2321
+U+239B-U+23A9
+U+23AB-U+23AF
+U+23BA-U+23BD
+U+23D0
+# control pictures
+U+2409-U+240D
+U+2424
+# geometric shapes
+U+25A0
+U+25AC
+U+25AE
+U+25B2
+U+25B6
+U+25BA
+U+25BC
+U+25C0
+U+25C4
+U+25C6
+U+25CA-U+25CB
+U+25CF
+U+25D8-U+25D9
+# symbols: faces, card suits, music notes
+U+263A-U+263C
+U+2640
+U+2642
+U+2660
+U+2663
+U+2666
+U+266A-U+266B
+# check marks and crosses
+U+2713-U+2714
+U+2717-U+2718
+# math brackets
+U+27E8-U+27EB
+# Braille
+U+2800-U+28FF
+# supplemental punctuation
+U+2E2C
+# the replacement character
+U+FFFD
+
+# Icons: 84 code points
+# Icons: the app's icons (rust/src/ui.rs, the icon table)
+U+F064F  # md-lead_pencil: the Pencil tool
+U+F0CB6  # md-pencil_outline: the Mechanical pencil tool
+U+F03EA  # md-pen: the Ballpoint tool
+U+F01FE  # md-eraser: the Eraser
+U+F054C  # md-undo: Undo
+U+F044E  # md-redo: Redo
+U+F0141  # md-chevron_left: previous page, and earlier items
+U+F0142  # md-chevron_right: next page, and later items
+U+F0415  # md-plus: add: a page, a notebook, a step up
+U+F0374  # md-minus: a step down
+U+F0156  # md-close: Close and Done
+U+F09EE  # md-file_document_outline: paper and templates
+U+F0493  # md-cog: Settings
+U+F125F  # md-bookshelf: the Library
+U+F0615  # md-arrow_collapse: folding the toolbar away
+U+F0616  # md-arrow_expand: bringing the toolbar back
+U+F01DB  # md-drag: drag handles
+U+F024B  # md-folder: folders
+U+F082E  # md-notebook: notebooks
+U+F01D8  # md-dots_horizontal: More
+U+F05A9  # md-wifi: sharing over Wi-Fi
+U+F0A7A  # md-trash_can_outline: Delete and the trash
+U+F012C  # md-check: the tick on a chosen row
+U+F004D  # md-arrow_left: Back
+U+F01A3  # md-crosshairs: the pen calibration targets
+U+F0206  # md-exit_to_app: leaving Grimoire
+U+F062E  # md-tune: pen settings
+U+F0455  # md-rename_box: Rename
+U+F0252  # md-folder_move: moving to a folder
+U+F0257  # md-folder_plus: a new folder
+U+F01DA  # md-download: downloads and exports
+U+F0652  # md-marker: the Highlighter tool
+U+F00E2  # md-broom: clearing a page
+U+F00DF  # md-brightness_6: the front light
+U+F0301  # md-invert_colors: inverting the screen
+U+F0D13  # md-fountain_pen_tip: the Fountain pen tool
+U+F0F49  # md-draw: the Fineliner tool
+U+F0648  # md-grease_pencil: the Marker tool
+U+F0143  # md-chevron_up: moving up
+U+F0140  # md-chevron_down: moving down
+U+F075A  # md-music: music
+U+F011A  # md-castle: the Gothic style
+U+F00B5  # md-blur: the Charcoal tool
+U+F06D3  # md-feather: the Calligraphy tool
+U+F05CA  # md-translate: Language
+U+F0403  # md-pin: pinning
+U+F0570  # md-view_grid: the page grid
+U+F018F  # md-content_copy: Copy
+U+F0339  # md-link_variant: links
+U+F0119  # md-cast_connected: Live view
+U+F0297  # md-gamepad_variant: controllers and keys
+U+F06B0  # md-update: Updates
+U+F0150  # md-clock_outline: the clock and battery corner
+U+F0349  # md-magnify: the Index: Go to page or name
+U+F0208  # md-eye: showing or hiding link areas
+U+F0C94  # md-link_plus: the Links bar's New link and Index
+U+F05E3  # md-chart_bubble: the Graph
+U+F07CB  # md-gesture: recorded touch gestures in Settings
+U+F0F03  # md-lasso: Select mode's lasso
+U+F051F  # md-timer_sand: a page tile whose preview is being made
+# Icons: the editor's shapes button (rust/src/editor.rs)
+U+F0831  # md-shape: shapes on
+U+F0832  # md-shape_outline: shapes off, drawn struck through
+# Icons: music paper's clefs, drawn on pages (rust/src/paper.rs; tests/test_golden pins them)
+U+F0F70  # md-music_clef_treble: the treble clef
+U+F0F6F  # md-music_clef_bass: the bass clef
+U+F0F6E  # md-music_clef_alto: the alto and tenor clefs
+# Icons: planned for 2.1 (not drawn yet)
+U+F02DC  # md-home: Home
+U+F02FA  # md-import: the Import place
+U+F10B5  # md-folder_home: Set as home
+U+F0219  # md-file_document: Documents
+U+F00F8  # md-call_merge: Merge into it
+U+F02E9  # md-image: photos and pictures
+U+F0450  # md-refresh: Look again
+U+F06D6  # md-format_font: Fonts
+U+F099B  # md-restore: Restore
+U+F0226  # md-file_pdf_box: PDFs
+U+F04BA  # md-sort: Sort
+U+F0AB6  # md-file_cabinet: All storage
+U+F0572  # md-view_list: the list view
+U+F0338  # md-link_off: a link that is not followed
+U+F0770  # md-folder_open: an open folder
+U+F0214  # md-file: other files
+U+F027F  # md-format_size: a candidate
+U+F0819  # md-delete_restore: a candidate
+U+F0256  # md-folder_outline: a candidate

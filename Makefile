@@ -291,6 +291,20 @@ $(BUILD)/host/mkicon: FORCE
 	$(call RCARGO) build --bin mkicon
 	@$(call RCOPY,$(RTARGET)/debug/mkicon,$@)
 
+# The Terminess diet (committed, like the icon; run by hand, never by make check): the two
+# assets/TerminessNerdFontMono-*.ttf cut from Nerd Fonts' release down to the code points
+# assets/terminess-keep.txt lists. tools/fonts_subset.py downloads the release and upstream Terminus
+# TTF once into FONTS_CACHE (outside the repo), checks them by SHA-256, checks the list's text against
+# upstream Terminus, and writes the fonts (assets/README.md). It needs fontTools, best in a venv
+# outside the repo: make fonts-subset FONTS_PYTHON=<venv>/bin/python. FONTS_SUBSET_FLAGS=--verify
+# writes nothing and checks that the committed fonts are what the list makes.
+FONTS_PYTHON ?= python3
+FONTS_CACHE ?= $(HOME)/.cache/grimoire-fonts
+FONTS_SUBSET_FLAGS ?=
+.PHONY: fonts-subset
+fonts-subset:
+	$(FONTS_PYTHON) -I tools/fonts_subset.py --cache "$(FONTS_CACHE)" --keep assets/terminess-keep.txt --out assets $(FONTS_SUBSET_FLAGS)
+
 # The logo for the README and releases, black and white on transparent (committed, like the icon).
 # Pixel blocks of 8: shown at half size they land on whole pixels on ordinary and Retina screens.
 logo: $(BUILD)/host/mklogo
