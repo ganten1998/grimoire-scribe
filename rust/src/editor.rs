@@ -4565,8 +4565,8 @@ fn add_pages_write(a: &mut App, at: i32, n: i32, redraw: fn(&mut App)) -> bool {
     }
     if n >= ADD_BUSY_PAGES {
         // A batch this large takes a while (each page file is written and synced: 15 to 25 ms on a Kindle):
-        // the pad goes first, in one refresh, so the screen never sits on the pad (no toast: the owner,
-        // 2026-11-04, a batch is quick).
+        // the pad goes first, in one refresh, so the screen never sits on the pad. No toast says so meanwhile
+        // (the owner marked "Adding N pages..." for removal, 2026-11-04).
         redraw(a);
         app_flush(a);
     }
