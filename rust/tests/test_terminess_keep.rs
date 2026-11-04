@@ -148,9 +148,10 @@ fn sources() -> Vec<PathBuf> {
 /// (json_min.rs's surrogate test ends at 0xE000; the largest code point is 0x10FFFF).
 const BOUNDS: [u32; 8] = [0xE000, 0xF8FF, 0xF0000, 0xFFFFD, 0xFFFFF, 0x100000, 0x10FFFD, 0x10FFFF];
 
-/// The private use code points in a source text: characters, escapes (\u{...}, \uXXXX, a CSS
-/// \XXXXX, &#x...;, &#...;, runs of \xHH or Lua's \ddd bytes) and hex numbers (0x..., with a Rust
-/// or C suffix).
+/// The private use code points in a source text: characters, escapes (\u{...}, \uXXXX and a
+/// JavaScript or JSON \uD8xx\uDCxx pair, a CSS \XXXXX, &#x...;, &#...;, runs of \xHH or Lua's \ddd
+/// bytes), hex numbers (0x..., with a Rust or C suffix) and the decimal numbers handed to a call
+/// that makes a character (String.fromCodePoint, Lua's utf8.char, char::from_u32).
 fn scan(text: &str, out: &mut BTreeSet<u32>) {
     out.extend(text.chars().map(|c| c as u32).filter(|&c| is_pua(c)));
     let b = text.as_bytes();
@@ -173,6 +174,30 @@ fn scan(text: &str, out: &mut BTreeSet<u32>) {
     let mut bytes = Vec::new();
     let mut i = 0;
     while i < b.len() {
+        for call in ["fromCodePoint(", "utf8.char(", "from_u32("] {
+            if b[i..].starts_with(call.as_bytes()) {
+                // its arguments, a list: the decimal ones (a hex one is read below)
+                let mut j = i + call.len();
+                loop {
+                    while b.get(j) == Some(&b' ') {
+                        j += 1;
+                    }
+                    let digits = b[j..].iter().take_while(|c| c.is_ascii_digit()).count();
+                    if digits == 0 || digits > 7 {
+                        break;
+                    }
+                    add(text[j..j + digits].parse().unwrap_or(0));
+                    j += digits;
+                    while b.get(j) == Some(&b' ') {
+                        j += 1;
+                    }
+                    if b.get(j) != Some(&b',') {
+                        break;
+                    }
+                    j += 1;
+                }
+            }
+        }
         let word_start = i == 0 || !(b[i - 1].is_ascii_alphanumeric() || b[i - 1] == b'_');
         if word_start && b[i] == b'0' && i + 1 < b.len() && (b[i + 1] == b'x' || b[i + 1] == b'X') {
             let (v, n) = hexrun(i + 2, 10);
@@ -204,7 +229,17 @@ fn scan(text: &str, out: &mut BTreeSet<u32>) {
                 }
             } else if c == b'u' {
                 let (v, n) = hexrun(i + 2, 4);
-                if n == 4 {
+                // a high surrogate and the low one after it are one code point (JavaScript, JSON)
+                let low = match (n, b.get(i + 6), b.get(i + 7)) {
+                    (4, Some(b'\\'), Some(b'u')) if (0xD800..=0xDBFF).contains(&v) => {
+                        let (w, m) = hexrun(i + 8, 4);
+                        (m == 4 && (0xDC00..=0xDFFF).contains(&w)).then_some(w)
+                    }
+                    _ => None,
+                };
+                if let Some(w) = low {
+                    add(0x10000 + ((v - 0xD800) << 10) + (w - 0xDC00));
+                } else if n == 4 {
                     add(v);
                 }
             } else if c == b'x' || c.is_ascii_digit() {
@@ -262,8 +297,14 @@ fn the_scan_reads_every_way_a_code_point_is_written() {
     scan("font_draw_icon(c, f, 0xF0F70, r, 0); [0xF0150u32]; 0xE000", &mut s);
     scan("\"\\u{F0831}\" '\\uE0A0' content:\"\\f0219\" &#xF0570; &#983644; \\xF3\\xB0\\x86\\x8F \\243\\176\\170\\182", &mut s);
     scan("\u{F09EE} 0xDC00..0xE000 c > 0x10FFFF 0x1234", &mut s);
-    let want: BTreeSet<u32> =
-        [0xF0F70, 0xF0150, 0xF0831, 0xE0A0, 0xF0219, 0xF0570, 0xF025C, 0xF018F, 0xF0AB6, 0xF09EE].into_iter().collect();
+    // a UTF-16 pair; decimals handed to a call that makes a character, never a bare one
+    scan("'\\uDB80\\uDEDC' '\\uDB80' String.fromCodePoint(983775, 0xF02E0) utf8.char(983777) char::from_u32(983778) 983779", &mut s);
+    let want: BTreeSet<u32> = [
+        0xF0F70, 0xF0150, 0xF0831, 0xE0A0, 0xF0219, 0xF0570, 0xF025C, 0xF018F, 0xF0AB6, 0xF09EE, 0xF02DC, 0xF02DF, 0xF02E0,
+        0xF02E1, 0xF02E2,
+    ]
+    .into_iter()
+    .collect();
     assert_eq!(s, want);
 }
 
