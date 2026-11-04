@@ -11,6 +11,7 @@
 //!                                 ?f=2..8: shrunk; headers X-Page-Size, X-Paper, X-Ink-Box)
 //!   GET /nb/<id>/thumb.png        thumbnail
 //!   GET /font/<name>.ttf          the page fonts (the binary's own copies)
+//!   GET /font/licenses.txt        the fonts' licenses (assets.rs's FONT_LICENSES)
 //!   GET /folder/<name>.zip        every notebook in a folder
 //!   GET /all.zip                  everything
 //!   GET /api/list.json            machine-readable listing (used by tools/grimoire-pull)
@@ -874,9 +875,13 @@ fn page_head(b: &mut Buf, title: &[u8]) {
     let gothic = gothic();
     if gothic {
         buf_puts(b, K_JS_PIXELS);
+    }
+    // The fonts go out with their licenses (route_font): the style that loads them says where.
+    buf_puts(b, "<style>/* The fonts' licenses: /font/licenses.txt */");
+    if gothic {
         buf_printf!(
             b,
-            "<style>@font-face{font-family:'Grimoire Title';src:url(/font/jacquard24.ttf?v=%s) \
+            "@font-face{font-family:'Grimoire Title';src:url(/font/jacquard24.ttf?v=%s) \
              format('truetype');font-display:swap}@font-face{font-family:'Grimoire Text';\
              src:url(/font/jersey10.ttf?v=%s) format('truetype');font-display:swap}",
             GRIMOIRE_VERSION,
@@ -886,7 +891,7 @@ fn page_head(b: &mut Buf, title: &[u8]) {
     } else {
         buf_printf!(
             b,
-            "<style>@font-face{font-family:'Grimoire Text';src:url(/font/terminess.ttf?v=%s) \
+            "@font-face{font-family:'Grimoire Text';src:url(/font/terminess.ttf?v=%s) \
              format('truetype');font-weight:400;font-display:swap}@font-face{font-family:'Grimoire Text';\
              src:url(/font/terminess-bold.ttf?v=%s) format('truetype');font-weight:700;font-display:swap}",
             GRIMOIRE_VERSION,
@@ -899,7 +904,9 @@ fn page_head(b: &mut Buf, title: &[u8]) {
 }
 
 // The fonts the pages use: the binary's own copies, cached by the browser for a year (the
-// version in the URL changes when they could).
+// version in the URL changes when they could). Each goes with its license: licenses.txt beside
+// them holds the texts (Terminess's icons are under the Apache License 2.0, whose text must go
+// with every copy), and each font's answer names it as its license (a Link header, rel=license).
 fn route_font(name: &[u8]) {
     let fonts: [(&[u8], &[u8]); 4] = [
         (b"jacquard24.ttf", FONT_JACQUARD24),
@@ -908,9 +915,13 @@ fn route_font(name: &[u8]) {
         (b"terminess-bold.ttf", FONT_TERMINESS_BOLD),
     ];
     let name = cbytes(name);
+    if name == b"licenses.txt" {
+        return respond_bytes(200, "text/plain; charset=utf-8", FONT_LICENSES.as_bytes(), None, None, None);
+    }
     for (n, data) in fonts {
         if name == n {
-            return respond_bytes(200, "font/ttf", data, None, Some("public, max-age=31536000, immutable"), None);
+            let license = "Link: </font/licenses.txt>; rel=\"license\"\r\n";
+            return respond_bytes(200, "font/ttf", data, None, Some("public, max-age=31536000, immutable"), Some(license));
         }
     }
     // TRANSLATORS: a plain-text answer in the browser: an address the share server has nothing at.

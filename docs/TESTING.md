@@ -191,6 +191,37 @@ save, and the warm-up starts), then open Pages: only one `previews:` line has th
 page (it is drawn once, not twice). In grimoire.log, check the `previews:` lines (`first=` is the first tile's
 time) and `beside pid` (the second background process).
 
+## 2.0.0-beta.2, the Terminess diet (device checks pending)
+
+Automated: rust/tests/test_terminess_keep.rs (the embedded fonts hold exactly
+`assets/terminess-keep.txt`'s code points, 1,197 of Terminus's text and 84 Material Design icons; every
+icon the sources draw is listed, is in both weights and draws ink; none of the Nerd Fonts glyphs the diet
+leaves out is listed), test_koreader.rs's fonts_follow_the_binary (KOReader's `fonts/Grimoire` written
+again when it differs, left alone when equal, made only while the Terminess patch is applied, nothing
+written without either, nothing else touched), test_scenarios.rs's
+a_start_brings_koreaders_terminess_up_to_date (a start of the runner does that once), test_httpd.rs
+(`/font/licenses.txt` serves the licenses of the fonts the share pages use, and each font's answer names
+it), test_font and test_golden as they were (both compare on arm64 macOS, where they were recorded), and
+package_check (the icons' notice and the Apache-2.0 text in `app/licenses` and beside the fonts in the
+KOReader patches folder). Measured once, not in `make check`
+(it needs fontTools and freetype-py): every kept code point of both weights, old file against new, drawn
+through stb_truetype as font.rs draws it (every quarter pixel from 12 to 100 px, whole pixels to 200,
+icons every quarter pixel to 400 px and through font_draw_icon's own sizing for boxes of 16 to 600 px:
+721,833 draws a weight) and through FreeType 2.13.2 at 12 to 100 px, hinted, light, unhinted, auto-hinted
+and mono, embedded bitmaps on and off (798,063 draws a weight): byte for byte the same. The same check
+finds 111,192 of the 114,009 hinted outline draws differ in a subset without hinting (FreeType then
+auto-hints), and the 10,773 draws at the bitmap sizes (12 to 32 px) in a subset without the embedded
+bitmaps; the shipped subset keeps both.
+
+On the Kindle: Classic and Gothic look as before (the toolbar's tools, the sheets' and the Library's icons,
+a music paper's clefs, the clock corner). With the Terminess patch applied in KOReader by an earlier
+version: the first start of this build logs `koreader: wrote 2 of Grimoire's Terminess files in
+.../fonts/Grimoire`, the files there are the new size (427,436 and 428,220 bytes), and a second start
+writes nothing; then in KOReader the menus look as before and the battery shows KOReader's own symbols
+in the dropdown and the reading footer, charging and unplugged. (The folder shortcuts' list draws its
+"└" from KOReader's fallback fonts now: the Nerd Fonts box drawing is gone from Terminess.) In a
+browser at the Share screen's address, `/font/licenses.txt` shows the fonts' licenses.
+
 ## 2.0.0-beta.1
 
 The same app as 2.0.0-beta.0. Checked by the owner on the Kindle Scribe 2024 (firmware 5.20.1.0.2), from the

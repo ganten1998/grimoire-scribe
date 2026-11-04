@@ -38,7 +38,7 @@ A desktop simulator (SDL3) and an SDL-free headless script runner exist for deve
 | common.h / util.c | Rect math, mm_to_px, clampf, time, logging, string helpers, dates (in the language in use) | - |
 | i18n.h/.c | the language in use, lookups in the embedded catalogs (po/*.mo) with English fallback, plural rules, the language list (see Languages) | common |
 | canvas.h/.c | 8-bit gray canvas, clip, fill, AA lines/discs, ink deposit, blit, downsample | common |
-| font.h/.c | stb_truetype text from embedded fonts; faces by role (regular, bold, title, caps, fixed) mapped per theme: Classic = Terminess Nerd Font Mono, Gothic = pixel faces Jersey 10 (text, labels; bold = overprinted one design pixel, sparing accents: see Text and the keyboard) and Jacquard 24 titles, drawn one bitmap pixel per design pixel and blown up to whole k x k blocks (no smoothing); FIXED faces (paper labels) are Terminess in both, so pages never change with the theme. DotGothic16 is the Japanese fallback for kana and kanji in both themes | canvas |
+| font.h/.c | stb_truetype text from embedded fonts; faces by role (regular, bold, title, caps, fixed) mapped per theme: Classic = Terminess Nerd Font Mono (cut down to Terminus's text and the Material Design icons the app draws: `assets/terminess-keep.txt`), Gothic = pixel faces Jersey 10 (text, labels; bold = overprinted one design pixel, sparing accents: see Text and the keyboard) and Jacquard 24 titles, drawn one bitmap pixel per design pixel and blown up to whole k x k blocks (no smoothing); FIXED faces (paper labels) are Terminess in both, so pages never change with the theme. DotGothic16 is the Japanese fallback for kana and kanji in both themes | canvas |
 | paper.h/.c | page backgrounds (rules, staves); a kind it does not know draws blank ("Newer paper") | canvas |
 | brush.h/.c | tool params, pressure/tilt mapping, deterministic dab renderer, smoother | canvas |
 | page.h/.c | Stroke, Page, hit-test, page render, thumbnail | brush, paper |
@@ -637,6 +637,15 @@ announcements: goingToScreenSaver draws the sleep screen, outOfScreenSaver is th
   table. Terminess (anti-aliased) entries are compared only with clang on arm64, where they were
   recorded. bold_letters_keep_their_gaps and inverted_exclamation_is_not_an_i guard the Gothic
   bold.
+- rust/tests/test_terminess_keep.rs holds the Terminess diet: the embedded fonts' cmaps are exactly
+  `assets/terminess-keep.txt` (none of the Nerd Fonts glyphs it leaves out is back), and every icon
+  the sources draw (rust/src, kindle/, web/, po/ and What's new, scanned for characters, escapes
+  (UTF-16 pairs too), hex numbers and the decimals handed to a call that makes a character, in the
+  private use areas) is on the list, in both weights, and draws ink. A new icon fails it until the
+  list has it and `make fonts-subset` made the fonts again (`assets/README.md`).
+  rust/tests/test_scenarios.rs's a_start_brings_koreaders_terminess_up_to_date holds the start's
+  call to `koreader_fonts_refresh`, test_koreader.rs's fonts_follow_the_binary its cases, and
+  test_httpd.rs's fonts_icons_and_the_cache `/font/licenses.txt` and the fonts' `Link` header.
 - tests/test_keyboard.c drives the keyboard API: one_character_keys_at_title_size compares each
   key with font_draw_centered at the title or text size, and typed_name_is_stored_whole sends the
   keyboard's text through store_rename, store_set_folder, export_mirror_path and
@@ -697,7 +706,10 @@ announcements: goingToScreenSaver draws the sleep screen, outOfScreenSaver is th
    new connection from the previous request); renders fork, two at a time, the rest queue
    oldest first and are dropped when their browser hangs up. The pages use the fonts of the
    Kindle's style (served from the binary, cached a year) and the language in use (Languages
-   above);
+   above). The fonts' licenses go with them (Rust only): `/font/licenses.txt` holds the texts
+   (Terminess's OFL, its Material Design icons' notice and the Apache License, the Gothic fonts'
+   OFL), each font's answer names it in a `Link: rel="license"` header, and the pages' style says
+   where it is;
    every page is rendered at its notebook's page size (`store_read_page`), whichever Kindle
    renders it, and `X-Page-Size` says that size. The
    Effects studio (`web/studio.js` + `.css`, embedded at build time) rebuilds a page in the
@@ -1109,7 +1121,10 @@ uses one image at a time and a GET page field at the top (`?p=N`), clamped to th
 
 `src/koreader.c` discovers the hosted directory or three common installations and manages the
 plugin and optional patches. Different patch contents at a managed filename are preserved.
-Terminess fonts are copied from the binary's embedded font data. No KOReader settings Lua is
+Terminess fonts are copied from the binary's embedded font data. The Rust tree alone keeps them the
+binary's (`koreader_fonts_refresh` in rust/src/koreader.rs, rust/PORTING.md's Rust only): at each
+start it writes again the copy in KOReader's `fonts/Grimoire` that differs, where it is there or the
+Terminess patch is applied (docs/KINDLE.md). No KOReader settings Lua is
 executed. The plugin's custom wallpaper export is a bounded PNG committed by write-then-rename,
 read by `store_load_koreader_sleep`; it is cached only when used and freed at shutdown.
 

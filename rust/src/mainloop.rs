@@ -429,6 +429,10 @@ fn run() -> i32 {
     }
     app_flush(&mut app);
     qlog!("first frame presented");
+    // Grimoire's own Terminess in KOReader's fonts/Grimoire follows this build's (an update can
+    // bring smaller fonts): written again only where it differs, and only where it is there or the
+    // Terminess patch is applied (koreader.rs). Once a start, after the first frame.
+    koreader_fonts_refresh();
     // The Kindle UI may repaint once more after we start (the scriptlet "book" closing, a
     // late home-screen refresh). Check the panel still shows us; if not, repaint everything.
     let started = now_ms();

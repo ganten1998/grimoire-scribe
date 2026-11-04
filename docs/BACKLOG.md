@@ -4,6 +4,24 @@ Work that was decided, deferred or found but not done yet. Keep this current: wh
 move it to "Done" with the version; when something is deferred, add it here with who decided and
 why. Newest decisions first within each section.
 
+## The Terminess diet (2.0.0-beta.2): choices for the owner
+
+The owner chose Terminess with Terminus's text and the Material Design icons only, with the Apache-2.0
+notice (assets/README.md). Left open by the builder and the reviews, 2026-11-04:
+
+- **Embedded bitmaps kept.** Dropping them saves about 305 KB a weight (0.6 MB of the app), but FreeType
+  (KOReader) would then draw outlines instead of Terminus's own pixel bitmaps at 12 to 32 px.
+- **Nerd Fonts' glyphs at ordinary code points are gone** (box drawing and blocks U+2500-U+259F, the
+  heart, the lightning, the menu sign, the power symbols, the heavy angle brackets): a name shows
+  without them, KOReader draws them from its fallback fonts. Terminus 4.49.3's own box drawing, blocks
+  and heart (OFL) could be merged back from upstream, in Terminus's shapes rather than those beta.1 drew.
+- **No visible link to the fonts' licenses on the share pages.** `/font/licenses.txt` is served, each
+  font's answer names it (`Link: rel="license"`) and the pages' style says where it is; a footer link
+  would need a translated label.
+- **The published 2.0.0-beta.1 still offers the full fonts** with only the OFL text (no CC BY
+  attribution for Font Awesome and Codicons, and the unlicensed Font Logos), until it is withdrawn, its
+  notes amended, or beta.2 replaces it.
+
 ## The keyboard scheme, the Pages view and the Graph's keys (2.0.0-beta.2): choices for the owner to confirm
 
 Built from the owner's words of 2026-11-03 for a keyboard paired with the Kindle. Left out (owner to confirm):

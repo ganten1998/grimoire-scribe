@@ -173,6 +173,41 @@ fn runner_cannot_open_its_script() {
     assert_eq!(stderr_unstamped(&o), want);
 }
 
+// A start brings Grimoire's own Terminess in KOReader's fonts/Grimoire up to date: run() calls
+// koreader_fonts_refresh once, after the first frame (test_koreader holds the refresh's own cases).
+// With the Terminess patch applied, a copy an earlier version left and a missing one are both
+// written with the binary's fonts, and nothing else of KOReader's changes.
+#[test]
+fn a_start_brings_koreaders_terminess_up_to_date() {
+    let d = scratch("ko-fonts");
+    let ko = d.join("us/koreader");
+    let fonts = ko.join("fonts/Grimoire");
+    std::fs::create_dir_all(&fonts).unwrap();
+    std::fs::create_dir_all(ko.join("patches")).unwrap();
+    std::fs::write(ko.join("reader.lua"), "KOReader").unwrap();
+    std::fs::write(ko.join("patches/2-terminess-ui-font.lua"), "the Terminess patch").unwrap();
+    std::fs::write(fonts.join("TerminessNerdFontMono-Regular.ttf"), "an earlier version's font").unwrap();
+    let script = d.join("start.qs");
+    std::fs::write(&script, "wait 0\nquit\n").unwrap();
+    let o = runner(&[
+        ("GRIMOIRE_ROOT", &d.join("root")),
+        ("GRIMOIRE_SCRIPT", &script),
+        ("GRIMOIRE_US", &d.join("us")),
+        ("KOREADER_DIR", Path::new("")),
+    ]);
+    let log = stderr_unstamped(&o);
+    assert_eq!(o.status.code(), Some(0), "{log}");
+    for name in ["TerminessNerdFontMono-Regular.ttf", "TerminessNerdFontMono-Bold.ttf"] {
+        let want = std::fs::read(top().join("assets").join(name)).unwrap();
+        assert!(std::fs::read(fonts.join(name)).ok() == Some(want), "{name} in KOReader's fonts/Grimoire is not the binary's:\n{log}");
+    }
+    assert!(log.contains("koreader: wrote 2 of Grimoire's Terminess files in "), "{log}");
+    assert_eq!(std::fs::read_to_string(ko.join("reader.lua")).unwrap(), "KOReader");
+    assert_eq!(std::fs::read_to_string(ko.join("patches/2-terminess-ui-font.lua")).unwrap(), "the Terminess patch");
+    assert_eq!(std::fs::read_dir(&fonts).unwrap().count(), 2);
+    let _ = std::fs::remove_dir_all(d);
+}
+
 // The runner checks itself: tests/selftest/pass.qs must exit 0 with its notebook's PDF written.
 #[test]
 fn selftest_pass() {

@@ -2,11 +2,11 @@
 # Checks the zip people install (make package): its four files and the optional KOReader plugin
 # folder; documents/Grimoire.sh, the self-unpacking scriptlet (SH_Integration's keys, BUILD_ID,
 # the icon, the Capabilities line, the archive); the app inside it (the binary, the launcher,
-# CAPABILITIES, KOReader's Grimoire plugin, and a license for every embedded font and every
-# third-party part of the binary: the vendored code, musl and zig's compiler-rt, the parts of
-# FBInk's tree with notices of their own, the Rust standard library and the libc crate); and that
-# the launchers' test hooks fall back to the device's own paths and timings. The plugin the app
-# carries also goes through tests/koplugin_check.sh.
+# CAPABILITIES, KOReader's Grimoire plugin, and a license for every embedded font, for Terminess's
+# Material Design icons and for every third-party part of the binary: the vendored code, musl and
+# zig's compiler-rt, the parts of FBInk's tree with notices of their own, the Rust standard library
+# and the libc crate); and that the launchers' test hooks fall back to the device's own paths and
+# timings. The plugin the app carries also goes through tests/koplugin_check.sh.
 # usage: tests/package_check.sh [build/dist/Grimoire.zip]
 set -u
 cd "$(dirname "$0")/.." || exit 1
@@ -54,7 +54,9 @@ for f in kindle/koreader/patches/*.lua; do
         check "optional patch $n parses" sh -c 'luajit -bl "$1" >/dev/null' sh "$B/zip/$PATCHZ/$n"
     fi
 done
-for f in assets/TerminessNerdFontMono-*.ttf assets/Terminess-OFL-1.1.txt; do
+# The fonts with their notices: Terminus's OFL, and the Material Design icons' notice and Apache-2.0 text.
+ICON_LICENSES="assets/MaterialDesignIcons-LICENSE.txt assets/MaterialDesignIcons-Apache-2.0.txt"
+for f in assets/TerminessNerdFontMono-*.ttf assets/Terminess-OFL-1.1.txt $ICON_LICENSES; do
     n=${f##*/}
     printf '%s\n' "$PATCHZ/fonts/Grimoire/$n" >>"$B/allowed.list"
     check "manual patches carry $n" cmp -s "$f" "$B/zip/$PATCHZ/fonts/Grimoire/$n"
@@ -141,9 +143,12 @@ check "payload has no Mac metadata" sh -c '! grep -qE "(^|/)(\._|\.DS_Store)" "$
 if command -v file >/dev/null 2>&1; then
     check "grimoire is a static ARM binary" sh -c 'file "$1" | grep -q "ARM.*statically linked"' sh "$B/app/grimoire"
 fi
-for f in assets/*-OFL-1.1.txt; do
+for f in assets/*-OFL-1.1.txt $ICON_LICENSES; do
     check "payload has licenses/${f##*/}" cmp -s "$f" "$B/app/licenses/${f##*/}"
 done
+check "the icons' notice names Material Design Icons and the Apache License" sh -c \
+    'grep -qF "Pictogrammers Free License" "$1" && grep -qF "Apache License, Version 2.0" "$1"' sh assets/MaterialDesignIcons-LICENSE.txt
+check "the Apache-2.0 text is the license's" grep -qF "TERMS AND CONDITIONS FOR USE, REPRODUCTION, AND DISTRIBUTION" assets/MaterialDesignIcons-Apache-2.0.txt
 # Each font the binary embeds (FONTS in the Makefile) needs its OFL text: a
 # licenses/<family>-OFL-1.1.txt whose family begins the font's file name (Terminess-OFL-1.1.txt
 # covers TerminessNerdFontMono-Regular.ttf).

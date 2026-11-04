@@ -9,7 +9,10 @@ apply them. Existing different patches at the same filename are kept.
 - 2-terminess-ui-font.lua: Terminess / Terminus menus, a matched regular/bold font family,
   and spacing between the dropdown menu's battery icon and percentage. Battery status and reading
   footers use KOReader's native font fallback so charging/unplugged symbols remain correct. Grimoire supplies
-  Terminess and its OFL. This updates the script shipped with 1.1.0-beta.1 and 1.1.0-beta.2.
+  Terminess with its OFL, and the Apache-2.0 notice of its icons. Since 2.0.0-beta.2 the font holds only
+  Terminus's text and Grimoire's own icons, so KOReader's battery symbols come from its own symbols font, and
+  Grimoire brings the copy in KOReader's fonts/Grimoire up to date when it starts. This updates the script
+  shipped with 1.1.0-beta.1 and 1.1.0-beta.2.
 
 Manual installation: copy only the .lua files you want into your KOReader installation's patches/
 folder. Copy fonts/Grimoire/ into its fonts/ folder. Restart KOReader. Remove a .lua file and

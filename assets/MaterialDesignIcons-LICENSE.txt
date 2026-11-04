@@ -1,0 +1,38 @@
+Material Design Icons in Grimoire's Terminess
+
+The 84 icons in assets/TerminessNerdFontMono-Regular.ttf and -Bold.ttf, the code points from
+U+F0001 to U+F1AF0 that assets/terminess-keep.txt lists (the icons the app draws, on its tools,
+buttons and sheets and as the clefs of music paper, and those its next version plans), are Material
+Design Icons by Pictogrammers (https://pictogrammers.com/library/mdi/); 52 of them were drawn by
+Google for Material Design. They come from the Material Design Icons font
+(MaterialDesignIconsDesktop.ttf, https://github.com/Templarian/MaterialDesign-Font) as Nerd Fonts
+3.4.0 carries it in src/glyphs/materialdesign/. That font is distributed under the
+Apache License, Version 2.0, whose text is MaterialDesignIcons-Apache-2.0.txt, beside this file.
+
+Changes: Nerd Fonts' font-patcher (https://github.com/ryanoasis/nerd-fonts) scaled and placed each
+icon in the Terminess character cell when it made Terminess Nerd Font Mono 3.4.0. Grimoire then cut
+that font down to Terminus's text glyphs and these icons (tools/fonts_subset.py in Grimoire's
+source). The text glyphs are Terminus, under the SIL Open Font License 1.1 (Terminess-OFL-1.1.txt).
+
+The icon set's license file, as Nerd Fonts 3.4.0 carries it (src/glyphs/materialdesign/LICENSE):
+
+Pictogrammers Free License
+--------------------------
+
+This icon collection is released as free, open source, and GPL friendly by
+the [Pictogrammers](http://pictogrammers.com/) icon group. You may use it
+for commercial projects, open source projects, or anything really.
+
+# Icons: Apache 2.0 (https://www.apache.org/licenses/LICENSE-2.0)
+Some of the icons are redistributed under the Apache 2.0 license. All other
+icons are either redistributed under their respective licenses or are
+distributed under the Apache 2.0 license.
+
+# Fonts: Apache 2.0 (https://www.apache.org/licenses/LICENSE-2.0)
+All web and desktop fonts are distributed under the Apache 2.0 license. Web
+and desktop fonts contain some icons that are redistributed under the Apache
+2.0 license. All other icons are either redistributed under their respective
+licenses or are distributed under the Apache 2.0 license.
+
+# Code: MIT (https://opensource.org/licenses/MIT)
+The MIT license applies to all non-font and non-icon files.
