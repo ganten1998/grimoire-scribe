@@ -160,8 +160,8 @@ swipe 2 1300 1200 -400 0
 wait 300
 expect editor.page_ids is 1,2,6,8,7,9,10
 expect editor.page is 7
-# A large batch: "Adding N pages..." first; a pen tap read while the pages are written (queued with the Enter
-# that started it) is let go, no ink on the page
+# A large batch (30 pages: its pad goes first, with no notice under 51 pages); a pen tap read while the pages are
+# written (queued with the Enter that started it) is let go, no ink on the page
 pen leave
 touch down 1768 1330
 wait 700

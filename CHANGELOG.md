@@ -67,9 +67,10 @@
   keyboard attached, tap it with Shift held) for a number pad that asks how many, with - and + under the
   digits and an "Add N pages" button. The pages are added in one go where New page puts one, and the bottom
   row's Undo takes the batch back while those pages are still blank. Taps made while a large batch is written
-  are ignored. A tap on + no longer opens the new page: Pages stays open, the page's tile says "(new)", and
-  Undo takes it back as a batch of one. New pages take the paper of the page they go after:
-  the last page ticked, else the open page.
+  are ignored. A big batch (from 51 pages, about 2 seconds or more on a Kindle) says "Adding N pages..." until
+  its pages are added; a smaller one adds them with nothing said. A tap on + no longer opens the new page: Pages
+  stays open, the page's tile says "(new)", and Undo takes it back as a batch of one. New pages take the paper of
+  the page they go after: the last page ticked, else the open page.
 - The toolbar's + (its next-page arrow on the last page) held, or tapped with a keyboard's modifier key held, opens the
   same number pad over the page: the pages go after the page you are on, on its paper, which stays open, and the
   Undo in Pages takes them back. A tap on it still adds one

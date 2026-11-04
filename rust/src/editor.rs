@@ -352,6 +352,9 @@ pub struct EditorState {
     page_kept: bool,
     /// how many times "Loading page..." went up before a dense page was drawn (a probe, editor.loading_toasts)
     loading_toasts: u32,
+    /// how many times "Adding N pages..." went up before a batch of new pages was written (a probe,
+    /// editor.add_notices)
+    add_notices: u32,
     /// Select mode (select.rs), and the last lasso move's or paste's times, ms (old place, new place)
     sel: SelMode,
     last_lasso_ms: (u32, u32),
@@ -4575,8 +4578,35 @@ fn pages_undo_move(a: &mut App) {
 }
 
 /// From how many pages New page's batch takes its pad down (one refresh) before it writes them (a batch under it
-/// takes under half a second on a Kindle, and keeps its one refresh).
+/// takes about a second at most on a Kindle, ADD_PAGE_MS, and keeps its one refresh).
 const ADD_BUSY_PAGES: i32 = 25;
+/// A batch says "Adding N pages..." while it is written when it should take longer than this on a Kindle, ms, and
+/// always from ADD_NOTICE_PAGES pages; a smaller one is written with nothing said (the owner, 2026-11-04: "Show
+/// "Adding N pages..." only for big batches (100 or more pages, or when adding takes longer than about 2
+/// seconds), and take it down when done. Small batches stay silent.").
+const ADD_NOTICE_MS: i32 = 2000;
+const ADD_NOTICE_PAGES: i32 = 100;
+/// What one page of a batch takes on a Kindle, ms: a batch's time is told from its count before it starts, as
+/// nothing reaches the panel while it runs. Each page is one write_file_atomic of its blank file (store_add_pages),
+/// two fsyncs, and an fsync takes 15 to 25 ms there (util.rs: a page's save, two files, took 65 to 104 ms): about
+/// 40 ms a page, so a batch takes 2 s from about 50 pages. The same on every paper: a picture paper's pages are the
+/// same blank files, and bg/pages.ini is written once for the batch (the simulator: 0.13 to 0.20 ms a page on Blank
+/// and on a template's picture alike, batches of 200 and 1000 pages). grimoire.log's "pages: added=" line gives
+/// each batch's time, to set it by.
+const ADD_PAGE_MS: i32 = 40;
+// Whether a batch of `n` pages says "Adding N pages..." as it is written: a big one, or one that should take a
+// while. Not while a pen held on an action holds the panel: no toast could show before the writing then (it would
+// come after, once the pen lifts).
+fn add_notice_due(a: &App, n: i32) -> bool {
+    !a.pen_action_down && (n >= ADD_NOTICE_PAGES || n.saturating_mul(ADD_PAGE_MS) > ADD_NOTICE_MS)
+}
+// The notice itself, for `n` pages.
+fn add_notice_text(n: i32) -> String {
+    // TRANSLATORS: a toast while New page's batch is being written (about 1700 px at 44 px in bold, or two
+    // lines): %d blank pages are being added. Only for a large batch, which can take a minute; it goes when
+    // they are added.
+    cformat!(ng_("Adding %d page...", "Adding %d pages...", n as i64), n)
+}
 // The writing a batch of new pages does, from the Pages view's New page (a tap is a batch of one, its count
 // pad more) or the toolbar's count pad: `n` blank pages at index `at` (never first), on the paper of the page
 // they go after (the owner, 2026-11-03: the selected page's, else the open page's; in the Pages view the batch
@@ -4586,7 +4616,9 @@ const ADD_BUSY_PAGES: i32 = 25;
 // takes New page's (note pages). The open page stays open (its index follows it) and the batch is the
 // notebook's Undo record (pv.add_undo), which the Pages view's bottom row offers while its pages are still
 // blank. `redraw` draws the screen as it will be without the pad (the batch's pad has closed): first, for a
-// large batch, and on a failure. False when nothing was added (a toast said so).
+// large batch, and on a failure. A big batch says "Adding N pages..." until it is written (add_notice_due),
+// and the notice is down at the end on every path: replaced by the failure's toast, or taken down. False when
+// nothing was added (a toast said so).
 fn add_pages_write(a: &mut App, at: i32, n: i32, redraw: fn(&mut App)) -> bool {
     if store_room_for_pages(&ed_ref(a).nb) < n {
         // (New page tapped in a full notebook: its count pad, held, says the same)
@@ -4598,25 +4630,42 @@ fn add_pages_write(a: &mut App, at: i32, n: i32, redraw: fn(&mut App)) -> bool {
         redraw(a);
         return false;
     }
-    if n >= ADD_BUSY_PAGES {
-        // A batch this large takes a while (each page file is written and synced: 15 to 25 ms on a Kindle):
-        // the pad goes first, in one refresh, so the screen never sits on the pad. No toast says so meanwhile
-        // (the owner marked "Adding N pages..." for removal, 2026-11-04).
+    let notice = add_notice_due(a, n);
+    if n >= ADD_BUSY_PAGES || notice {
+        // A batch this large takes a while (each page file is written and synced, ADD_PAGE_MS on a Kindle):
+        // the pad goes first, in one refresh, so the screen never sits on the pad, with "Adding N pages..." in
+        // the same refresh when the batch is big (the main loop is held until the pages are written).
         redraw(a);
+        if notice {
+            let msg = add_notice_text(n);
+            app_toast(a, &msg, 120_000);
+            ed(a).add_notices += 1;
+        }
         app_flush(a);
     }
+    let started = now_ms();
     let s = ed(a);
     let paper = batch_paper(s, at - 1);
     let open = s.open_pid();
     s.nb.last_page = s.index;
     let mut undo = None;
     let failed = at < 1 || store_add_pages(&mut s.nb, at, n, paper, &mut undo) != 0;
+    // (a large batch's time on this device, which ADD_PAGE_MS estimates; a picture paper's said apart)
+    if n >= ADD_BUSY_PAGES || notice || failed {
+        qlog!("pages: added=%d of %d ms=%d notice=%d paper=%s", if failed { 0 } else { n }, n,
+            now_ms().wrapping_sub(started) as i32, notice as i32,
+            if paper_is_image(store_new_page_paper(&ed_ref(a).nb, paper)) { "picture" } else { "drawn" });
+    }
     if failed {
         // TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): New page's batch could not
         // add the pages (the storage is full); none was added.
-        app_toast(a, tr("Couldn't add pages."), 3000);
+        app_toast(a, tr("Couldn't add pages."), 3000); // (in the notice's place)
         redraw(a);
         return false;
+    }
+    // (another toast that took the notice's place stays)
+    if notice && a.toast_visible && a.toast.as_bytes() == add_notice_text(n).as_bytes() {
+        app_toast_dismiss(a);
     }
     let s = ed(a);
     s.index = s.nb.page_ids.iter().position(|&p| p == open).map_or(s.index, |i| i as i32);
@@ -11118,6 +11167,9 @@ pub fn editor_probe(a: &mut App, key: &str, out: &mut String, cap: usize) -> i32
     } else if key == "loading_toasts" {
         // How many times "Loading page..." went up before a dense page was drawn as it opened.
         csnprintf!(out, cap, "%d", s.loading_toasts as i32);
+    } else if key == "add_notices" {
+        // How many times "Adding N pages..." went up before a batch of new pages was written.
+        csnprintf!(out, cap, "%d", s.add_notices as i32);
     } else if key == "erase_tiles" {
         // The stroke eraser's tiles drawn again since the editor began, and the tiles of the boxes of
         // what it took off (all it drew before 2.0.0-rc.12).
@@ -11398,6 +11450,18 @@ mod tests {
         compose_all(&mut a, RefreshMode::Ui);
         app_flush(&mut a);
         a
+    }
+
+    #[test]
+    fn adding_pages_says_so_only_for_a_big_batch() {
+        // About 40 ms a page on a Kindle (ADD_PAGE_MS), on any paper: over 2 s from 51 pages, and always from 100.
+        let mut a = App::default();
+        for (n, due) in [(1, false), (10, false), (25, false), (50, false), (51, true), (99, true), (100, true), (2000, true)] {
+            assert_eq!(add_notice_due(&a, n), due, "{n} pages");
+        }
+        // A pen held on an action holds the panel: no notice could show before the writing.
+        a.pen_action_down = true;
+        assert!(!add_notice_due(&a, 2000));
     }
 
     #[test]

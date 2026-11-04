@@ -5,7 +5,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: Grimoire 2.0.0-beta.1\n"
 "Report-Msgid-Bugs-To: https://github.com/ganten1998/grimoire-scribe/issues\n"
-"POT-Creation-Date: 2026-11-04 10:59-0600\n"
+"POT-Creation-Date: 2026-11-04 14:50-0600\n"
 "PO-Revision-Date: 2026-11-01 00:00+0000\n"
 "Last-Translator: draft\n"
 "Language-Team: Japanese\n"
@@ -1418,6 +1418,15 @@ msgstr "それらのページを削除できませんでした"
 #, fuzzy
 msgid "Couldn't undo move."
 msgstr "ノートブックを移動できませんでした。"
+
+#. TRANSLATORS: a toast while New page's batch is being written (about 1700 px at 44 px in bold, or two
+#. lines): %d blank pages are being added. Only for a large batch, which can take a minute; it goes when
+#. they are added.
+#: rust/src/editor.rs
+#, fuzzy, c-format
+msgid "Adding %d page..."
+msgid_plural "Adding %d pages..."
+msgstr[0] "ページ %d を読み込み中..."
 
 #. TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): New page held, in a notebook
 #. that already has the most pages a notebook can have (%d).
@@ -4873,11 +4882,6 @@ msgstr "コピーされました"
 #, c-format
 #~ msgid "This page is a copy of page %d."
 #~ msgstr "このページは %d ページのコピーです。"
-
-#, fuzzy, c-format
-#~ msgid "Adding %d page..."
-#~ msgid_plural "Adding %d pages..."
-#~ msgstr[0] "ページ %d を読み込み中..."
 
 #, fuzzy
 #~ msgid "Could not add those pages: none was added."

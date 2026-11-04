@@ -2,11 +2,12 @@
 # generate: tests/move_pages_fixture.py
 # env: GRIMOIRE_CHECK_FIT=1
 # New page's batch, a large one (review of b3-padd, 2026-11-03): from 25 pages the writing takes a while on a
-# Kindle (each page file synced, 15 to 25 ms), so the pad goes first, in one refresh, before a file is written
-# (with no toast since 2.0.0-beta.2: a batch is quick, the owner ruled). A contact made while the pages were being
-# written (read meanwhile, aimed at the pad) is let go, down to its lift: here a pen tap on + queued with the
-# Enter that started the batch adds no page. The next tap after it works as ever. Undo of the batch is offered
-# only while none of its pages is named or linked (as Undo itself requires).
+# Kindle (each page file synced, about 40 ms), so the pad goes first, in one refresh, before a file is written
+# (with no notice for 30 pages: "Adding N pages..." is for a batch of 2 s or more, z_pages_add_8_notice). A
+# contact made while the pages were being written (read meanwhile, aimed at the pad) is let go, down to its
+# lift: here a pen tap on + queued with the Enter that started the batch adds no page. The next tap after it
+# works as ever. Undo of the batch is offered only while none of its pages is named or linked (as Undo itself
+# requires).
 wait 300
 clock 1700000000
 tap library folder.Void
