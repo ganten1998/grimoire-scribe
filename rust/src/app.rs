@@ -562,6 +562,8 @@ pub fn app_init(a: &mut App, w: i32, h: i32, dpi: f32) -> i32 {
         return -1;
     }
     store_set_device(dpi, w, h);
+    // The lasso's clipboard lasts one session: an earlier one's goes before anything can paste it.
+    clipboard_clear_at_start();
     settings_load(&mut a.settings);
     let mut shortcuts_path = String::new();
     let mut controller_path = String::new();

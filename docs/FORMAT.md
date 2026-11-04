@@ -888,9 +888,13 @@ include it as `raw/links.ini`, and the notebook's PDF has each link to a page as
 
 ### The clipboard: `root/clipboard.qpg` (2.0.0-beta.2)
 
-What the lasso's Copy or Cut took: one file in the data root, so it survives page turns, notebook
-switches, Grimoire leaving for KOReader and a restart. Written atomically (`.tmp`, fsync, rename) and
-replaced whole by each Copy and Cut; if writing it fails during Cut, nothing is cut.
+What the lasso's Copy or Cut took: one file in the data root, kept for the session, so page turns and
+notebook switches keep it. It lasts one session (the owner, 2026-11-04): every start of Grimoire deletes
+the one an earlier session left, before anything can paste (the restart after an update and a start from
+KOReader too), and grimoire.log says so in one line. Written atomically (`.tmp`, fsync, rename) and
+replaced whole by each Copy and Cut; if writing it fails during Cut, nothing is cut. It is read without
+the "read-only page" log line a notebook's page with an unknown critical chunk gets: its `CLIP` chunk is
+critical on purpose.
 
 - A version-1 page file: w and h the size of the page the group came from, paper 4 (Blank), its strokes
   the group in page order at that page's coordinates (selected ink, with entirely erased ink left out, and

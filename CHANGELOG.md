@@ -2,6 +2,8 @@
 
 ## 2.0.0-beta.2 (unreleased)
 
+- The lasso's clipboard lasts one session: every start of Grimoire clears it, and a paste no longer logs a
+  false "read-only page" line.
 - Add Japanese: every screen, the share pages and the Effects studio, with a DotGothic16 pixel fallback for kana and kanji (subset to the kana and the common kanji, `assets/README.md`). `po/ja.po`, `po/ja.mo` and `po/ja-glossary.md`; the KOReader plugin's own words follow KOReader's Japanese setting.
 - A Japanese keyboard, as a phone has it: with Grimoire in Japanese the keyboard's accents key is
   あ, and it opens a flick kana pad, twelve keys in three columns (あ か さ / た な は / ま や ら /
@@ -82,7 +84,7 @@
   controller button, gesture or pen button) turns the pen into a dashed lasso; what it goes around is
   selected, with the erasing that belongs to it and its links. A bar under it has Copy, Cut, Delete, Paste
   and Done; drag inside its box to move it (only the outline moves until you lift, then it is one undo
-  step). The clipboard is a file, so it survives page turns, other notebooks, KOReader and a restart.
+  step). The clipboard is a file: page turns and other notebooks keep it, and each start of Grimoire clears it.
   While Select is on, the toolbar's tool button shows the lasso. Hold the pen still on empty page to paste
   there. There is no Select button on the panel: hold a finger still on the page (off a link) until a small
   dashed ring shows, about 0.6 s, then draw around ink without lifting to select it, with the same bar; or

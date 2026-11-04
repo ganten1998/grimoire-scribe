@@ -3,9 +3,13 @@
 //! A version-1 page file: the size of the page the group came from, Blank paper, the group's strokes
 //! at that page's coordinates with its floors encoded as on a page (markers and layer bytes, numbered
 //! from 1 in the group), then one critical chunk `CLIP`: where the group came from, its box, and its
-//! carried links. One file, written atomically and replaced whole by each Copy and Cut, so it survives
-//! page turns, notebook switches, Grimoire leaving for KOReader and a restart. Only 2.0.0-beta.2 on
-//! reads it: older versions never look at files in the data root.
+//! carried links. One file, written atomically and replaced whole by each Copy and Cut, so it lasts the
+//! session: page turns and notebook switches keep it. It does not outlive the session (the owner,
+//! 2026-11-04: "yes the lasso clipboard should clear on restart"): every start of Grimoire deletes it
+//! (clipboard_clear_at_start, from app_init, before anything can paste), the restart after an update and
+//! a start from KOReader too. Only 2.0.0-beta.2 on reads it: older versions never look at files in the data
+//! root. It is read quietly (page_deserialize_quiet): its `CLIP` chunk is critical on purpose, which a
+//! notebook's page reader would log as a read-only page.
 
 use crate::prelude::*;
 
@@ -24,6 +28,17 @@ pub fn clipboard_path() -> String {
 /// Whether there is a clipboard to paste (a file; whether it reads is told at the paste).
 pub fn clipboard_has() -> bool {
     std::path::Path::new(&clipboard_path()).is_file()
+}
+
+/// The start of a session (app_init, every launch): a clipboard an earlier session left is deleted, so
+/// nothing can paste it, and grimoire.log says so in one line. Nothing to delete says nothing.
+pub fn clipboard_clear_at_start() {
+    let path = clipboard_path();
+    match std::fs::remove_file(&path) {
+        Ok(()) => qlog!("clipboard: the lasso's clipboard from the last session is deleted (it lasts one session)"),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+        Err(e) => qlog!("clipboard: %s from the last session could not be deleted (%s)", &path, &e.to_string()),
+    }
 }
 
 /// The chunk of group g: format, source notebook id (u8 length, bytes), source page id (u32), the box
@@ -91,7 +106,8 @@ pub fn clipboard_parse(buf: &[u8]) -> Option<Group> {
         return None;
     }
     let mut out = None;
-    if page_deserialize(buf, &mut out) != 0 {
+    // (quietly: the page reader would log the CLIP chunk, critical on purpose, as a read-only page)
+    if page_deserialize_quiet(buf, &mut out) != 0 {
         return None;
     }
     let p = out?;

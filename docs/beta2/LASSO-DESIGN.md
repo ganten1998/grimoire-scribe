@@ -137,7 +137,8 @@ Registry row: **ext[1] = layer. On an erase stroke: 0 = the page (restores towar
   (i32, source px, link areas included); then the carried links as `link.N=`, `area.N=`,
   `outline.N=` lines in links.ini syntax without page ids, source coordinates, original seeds.
 - One file, written atomically (tmp, fsync, rename), replaced whole by each Copy and Cut. No torn
-  pair is possible.
+  pair is possible. (RC review, 2026-11-04: it lasts one session; every start of Grimoire deletes it,
+  FORMAT.md, The clipboard.)
 - A clipboard that is missing, does not read, has a bad or cut-off `CLIP`, or more than 20,000
   strokes or 16 MiB: Paste shows "The clipboard could not be read." and changes nothing. If writing
   it fails during Cut, nothing is cut.

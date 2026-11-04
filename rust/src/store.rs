@@ -3469,6 +3469,14 @@ pub fn page_deserialize(buf: &[u8], out: &mut Option<Box<Page>>) -> i32 {
     page_deserialize_with(buf, out, false)
 }
 
+/// page_deserialize with no "read-only page" line in the log: for a file in the page format that is no
+/// notebook's page and carries a critical chunk of its own on purpose, so that line would be false there
+/// (the lasso's clipboard, whose `CLIP` chunk keeps older versions from taking it for a page: clipboard.rs).
+/// A notebook's pages go through page_deserialize, which still logs it.
+pub fn page_deserialize_quiet(buf: &[u8], out: &mut Option<Box<Page>>) -> i32 {
+    page_parse(buf, out, true, false)
+}
+
 /// How many strokes the pumped reader reads between two calls of work_pump: 256 strokes of a dense page
 /// are a few milliseconds on the Kindle.
 pub const PUMP_STROKES: u32 = 256;
