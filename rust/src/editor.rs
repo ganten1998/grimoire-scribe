@@ -1677,6 +1677,12 @@ fn view_identity(a: &App) -> bool {
     s.zoom == 1.0 && s.ox == 0.0 && s.oy == 0.0 && s.pgw == a.w && s.pgh == a.h
 }
 
+// Whether the view (the zoom and its offsets) moved from `was`, by more than rounding: a zoom step at the most zoom
+// or the least, or a scroll at the end of the first or the last page, leaves it where it was, and draws nothing (so
+// a finger shape bound to it says nothing either, fs_fire).
+fn view_moved(s: &EditorState, was: (f32, f32, f32)) -> bool {
+    (s.zoom - was.0).abs() > was.0 * 1e-5 || (s.ox - was.1).abs() > 0.01 || (s.oy - was.2).abs() > 0.01
+}
 fn view_clamp(a: &mut App) {
     let top = status_reserved(a);
     let (aw, ah) = (a.w, a.h - top);
@@ -8244,6 +8250,7 @@ fn editor_shortcut_in(a: &mut App, action: i32, x: f32, y: f32, src: ActionSrc) 
         clear_page(a); // the panel's broom: no question, one undo step
     } else if action == SHORTCUT_ZOOM_OUT || action == SHORTCUT_ZOOM_IN {
         let s = ed(a);
+        let was = (s.zoom, s.ox, s.oy);
         let (mut px, mut py) = (0.0, 0.0);
         to_page(s, x, y, &mut px, &mut py);
         let factor = if action == SHORTCUT_ZOOM_IN { 1.25 } else { 0.8 };
@@ -8251,7 +8258,10 @@ fn editor_shortcut_in(a: &mut App, action: i32, x: f32, y: f32, src: ActionSrc) 
         s.ox = px - x / s.zoom;
         s.oy = py - y / s.zoom;
         view_clamp(a);
-        compose_all(a, RefreshMode::Ui);
+        // (at the most zoom, or the least, the view stays: nothing to draw)
+        if view_moved(ed_ref(a), was) {
+            compose_all(a, RefreshMode::Ui);
+        }
     } else if action == SHORTCUT_SCROLL_UP || action == SHORTCUT_SCROLL_DOWN {
         let top = status_reserved(a) as f32;
         let step = a.h as f32 * 0.75;
@@ -8274,9 +8284,13 @@ fn editor_shortcut_in(a: &mut App, action: i32, x: f32, y: f32, src: ActionSrc) 
                 compose_all(a, RefreshMode::Ui);
             }
         } else {
+            let was = (zoom, ox, ed_ref(a).oy);
             ed(a).oy = next - top / zoom;
             view_clamp(a);
-            compose_all(a, RefreshMode::Ui);
+            // (at the end of the first or the last page the view stays: nothing to draw)
+            if view_moved(ed_ref(a), was) {
+                compose_all(a, RefreshMode::Ui);
+            }
         }
     } else if action == SHORTCUT_FIT_PAGE {
         if !zoomed(a) {
@@ -12049,6 +12063,38 @@ mod tests {
         // A setting with nothing drawn (swiping past the last page adds a page, no toast of its own): named
         assert_eq!(fire(&mut a, SHORTCUT_GESTURE_NEW_PAGE), named(SHORTCUT_GESTURE_NEW_PAGE));
         assert!(!a.settings.gesture_new_page);
+    }
+
+    // Zoom in at the most zoom, Zoom out at the least, and a scroll past the end of the first or the last page
+    // leave the view where it was: they draw nothing, so a finger shape bound to them says nothing either. A zoom
+    // or a scroll that moves the view draws it.
+    #[test]
+    fn zoom_and_scroll_at_their_limits_draw_nothing() {
+        let mut a = fshape_app();
+        let s = ed(&mut a);
+        s.zoom = s.zoom_max;
+        view_clamp(&mut a);
+        let changes = a.changes;
+        assert!(editor_shortcut_at(&mut a, SHORTCUT_ZOOM_IN, 500.0, 700.0, ActionSrc::Shape));
+        assert_eq!(a.changes, changes);
+        assert!(editor_shortcut_at(&mut a, SHORTCUT_ZOOM_OUT, 500.0, 700.0, ActionSrc::Shape));
+        assert_ne!(a.changes, changes);
+        let s = ed(&mut a);
+        s.zoom = s.zoom_min;
+        view_clamp(&mut a);
+        let changes = a.changes;
+        assert!(editor_shortcut_at(&mut a, SHORTCUT_ZOOM_OUT, 500.0, 700.0, ActionSrc::Shape));
+        assert_eq!(a.changes, changes);
+        // Page 1 of 2, its top on show: up goes nowhere; zoomed in, down moves the view
+        view_reset(&mut a);
+        let changes = a.changes;
+        assert!(editor_shortcut(&mut a, SHORTCUT_SCROLL_UP));
+        assert_eq!((a.changes, ed_ref(&a).index), (changes, 0));
+        ed(&mut a).zoom = 2.0;
+        view_clamp(&mut a);
+        let (changes, oy) = (a.changes, ed_ref(&a).oy);
+        assert!(editor_shortcut(&mut a, SHORTCUT_SCROLL_DOWN));
+        assert!(a.changes != changes && ed_ref(&a).oy > oy && ed_ref(&a).index == 0);
     }
 
     #[test]

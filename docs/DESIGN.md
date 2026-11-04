@@ -1418,8 +1418,10 @@ fires names its action in a toast (1.2 s) only when the action did something (2.
 the app's count of redraws asked for (`App.changes`, counted by `app_invalidate`; the settle after
 writing, a refresh of what the panel shows already, is not counted) or its settings changed. Next
 page on the last page, Previous page on page 1, Clear page on an empty page, Undo and Redo with
-nothing to undo or redo, and Close menu with nothing open fire with nothing said, as does an
-action that raised its own toast, switched the screen or opened the Pages view.
+nothing to undo or redo, Close menu with nothing open, and a zoom or a scroll that leaves the view
+where it was (at the most zoom or the least, past the first or the last page: `view_moved`, nothing
+drawn) fire with nothing said, as does an action that raised its own toast, switched the screen or
+opened the Pages view.
 
 | Surface/event | Refresh | Contract |
 | --- | --- | --- |
