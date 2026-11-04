@@ -160,18 +160,19 @@ Select mode to paste. Time a move on the 1,090-stroke page (October-2026-02, pag
 ## 2.0.0-beta.2, page previews and dense pages (device checks pending)
 
 Automated: tests/test_page_previews.rs (the light pages' previews written before a dense page's, a current
-kept drawing read back and a stale one never used, a slow drawing kept by the job exactly as drawn, a
-preview cut short made again, what counts as dense; a kept drawing by another renderer not taken for a quick
-page; a page whose picture is missing keeps no drawing and gets no preview), bgjob.rs's unit tests (a tile
-shows the loading mark until its preview lands and its number alone once its batch ended without one, a check
-names only the tiles that changed; a waited batch goes first; batches of screens turned away from leave the
-queue; never two children on the same pages; a second child that cannot be forked puts its batch back; a
-running batch not asked for here is not waited on, a queued one is), and the scenarios on
+kept drawing read back and a stale one never used, a dense page's drawing kept by the job exactly as drawn
+and no lighter page's however slow, a preview cut short made again, what counts as dense; a kept drawing by
+another renderer not taken for a quick page; a page whose picture is missing keeps no drawing and gets no
+preview), bgjob.rs's unit tests (a tile shows the loading mark until its preview lands and its number alone
+once its batch ended without one, a check names only the tiles that changed; a waited batch goes first;
+batches of screens turned away from leave the queue; never two children on the same pages; a second child
+that cannot be forked puts its batch back; a running batch not asked for here is not waited on, a queued one
+is), and the scenarios on
 tests/previews_fixture.py (a notebook whose first page has 1,000 strokes, 1.3 MB):
 z_previews_1_tiles (the light tiles come while the dense page is still drawn, which shows an hourglass, then
 its tile alone is refreshed), z_previews_2_kept (the job keeps the dense page's drawing, which then opens
-from it), z_previews_3_loading ("Loading page..." reaches the panel before a dense page is drawn, as a
-notebook opens on it and as the page is turned to; never for a light page or a kept drawing),
+from it, and no light page's), z_previews_3_loading ("Loading page..." reaches the panel before a dense page
+is drawn, as a notebook opens on it and as the page is turned to; never for a light page or a kept drawing),
 z_previews_4_picker (the destination picker does the same), z_previews_5_turn (a screen turned to while a
 batch runs gets its previews after it), z_previews_6_beside (with the cores, beside it), z_previews_7_once
 (Pages opened over the idle warm-up of its own screen waits on it: no second process draws the dense page

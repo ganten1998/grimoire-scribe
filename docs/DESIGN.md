@@ -1158,9 +1158,12 @@ the UI never draws a page for a tile.
   It is left out as well when its preview is current, as the idle warm-up leaves it out: the two then ask for
   the same batch. Its preview on disk is written by the idle save, or by the job once another page is open.
 - **Dense pages.** A page with a current kept drawing (`p<id>.full`) gets its preview from that drawing,
-  read back, not drawn; a page the job drew in `store_keep_render_ms()` (1 s) or more of its own processor
-  time keeps its drawing too (`store_save_page_render_at`, only while the page file is still the one it
-  read), so the page then opens quickly in the editor as well. A stale kept drawing is never used, nor counted
+  read back, not drawn; a dense page the job draws keeps its drawing too (`store_page_dense`, the one test
+  "Loading page..." below goes by: a page file of 512 KB or more, or a page that kept a drawing before;
+  `store_save_page_render_at`, only while the page file is still the one it read), so the page then opens
+  quickly in the editor as well. No other page keeps one from the job, however long it took to draw (the
+  owner's ruling: ordinary pages save nothing extra; the editor still keeps the drawing of a page it took a
+  second or more to draw, as it did before 2.0.0-beta.2). A stale kept drawing is never used, nor counted
   as a quick page when the batch is sorted (only one whose whole stamp is current: the page file, the size and
   the renderer's fingerprint). A page drawn with its picture paper white (its picture missing or unreadable in
   the child) keeps no drawing and gets no preview, as in the editor: its tile shows its number, and the next

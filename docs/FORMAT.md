@@ -1514,10 +1514,11 @@ The folder holds three more kinds of file, all disposable too:
   size it was drawn at) and the renderer's fingerprint in 16 hex digits, with `|L` after it for a page
   with floors. Anything that does not match exactly (another page file, size, renderer or layering) is
   never used: the page is drawn instead. The editor keeps one for a page that took a second or more to
-  draw (as it opens, and at the idle save), and since 2.0.0-beta.2 the previews job keeps one for a page it
-  drew in a second or more of its own processor time; opening the page, and making its next preview, read
-  it back instead of drawing every stroke. Neither a kept drawing nor a preview is written from a drawing
-  whose picture paper came out white (its picture missing or unreadable), by the editor or the job.
+  draw (as it opens, and at the idle save), and since 2.0.0-beta.2 the previews job keeps one for each
+  dense page it draws (a page file of 512 KB or more, or a page that kept one before) and for no other;
+  opening the page, and making its next preview, read it back instead of drawing every stroke. Neither a
+  kept drawing nor a preview is written from a drawing whose picture paper came out white (its picture
+  missing or unreadable), by the editor or the job.
 - `updated`: a token rewritten each time a preview is written (since 2.0.0-beta.2 the job writes it after
   each preview, not once per batch), which tells an open view that new previews are there.
 - `generation`: rewritten to invalidate every preview at once (a template's picture made again).
