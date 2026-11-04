@@ -36,3 +36,8 @@ expect editor.map is graph
 expect editor.map.mode is around
 tap 100 95
 expect editor.map is 0
+# The name typed on node 2 is page 2's (the node shows it; no toast says so since 2.0.0-beta.2).
+pentap panel previous
+wait 300
+expect editor.page is 2
+expect editor.page_name is a

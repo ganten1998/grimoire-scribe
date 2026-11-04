@@ -1,8 +1,10 @@
 # rust-only
 # root: z_lasso_17_clipboard_session
 # settings: mirror_pdf=0
-# The lasso's clipboard lasts one session: the next start (z_lasso_17 left its clipboard.qpg in this root) deletes
-# it before anything can paste, so Select mode offers no Paste and a hold that would paste does nothing.
+# copy: tests/fixtures/clipboard-earlier
+# The lasso's clipboard lasts one session: the next start deletes it before anything can paste, so Select mode
+# offers no Paste and a hold that would paste does nothing. z_lasso_17 left its clipboard.qpg in this root, and the
+# fixture puts one there again after that session's exit, so only the start (app_init) can have deleted it.
 wait 300
 expect editor.clipboard is 0
 tap 200 400
