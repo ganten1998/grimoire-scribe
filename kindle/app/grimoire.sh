@@ -250,7 +250,7 @@ RUNNING=$ROOT/.running  # Grimoire runs (for the USB file connection, below)
 # Native PIN flag (never modified here) and legacy beta.1 recovery markers.
 PASSCODE=$SYS/var/local/system/userpasswdenabled
 PASSCODE_MARK=$ROOT/.passcode-paused
-PASSCODE_LEFT=$ROOT/.passcode-left-off  # how many starts have told the user it was left off
+PASSCODE_LEFT=$ROOT/.passcode-left-off  # how many starts have noted it was left off
 PASSCODE_NOTE=""
 
 # The Kindle is locked: its screensaver (or the passcode prompt over it) is up, or it is about
@@ -408,7 +408,7 @@ else
             TOLD=$((TOLD + 1))
             if [ "$TOLD" -ge 3 ]; then rm -f "$PASSCODE_LEFT"; else echo "$TOLD" 2>/dev/null >"$PASSCODE_LEFT"; fi
             PASSCODE_NOTE=left-off
-            log "device passcode: still off since a session that did not end; telling the user ($TOLD of 3)"
+            log "device passcode: still off since a session that did not end; noted at this start ($TOLD of 3)"
         fi
     fi
     if [ -e "$PASSCODE" ]; then
