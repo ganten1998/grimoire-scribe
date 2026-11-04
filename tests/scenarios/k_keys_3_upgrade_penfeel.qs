@@ -4,10 +4,10 @@
 # copy: tests/fixtures/keys-old-kindle .
 # rust-only
 # A Kindle that had shortcuts on keeps the starter shortcuts.ini 2.0.0-beta.1 wrote, byte for byte (nobody
-# edited it): at the start it becomes this build's starter map, with a toast once. Then Pen feel's keys: 1 to 9 that pen's tab (the picker's order), 0 and E the eraser's,
+# edited it): at the start it becomes this build's starter map (grimoire.log says so; no toast). Then Pen feel's keys: 1 to 9 that pen's tab (the picker's order), 0 and E the eraser's,
 # Esc back to where it came from.
 wait 300
-expect toast is Keyboard shortcuts: the new starter keys are in shortcuts.ini.
+expect toast is
 # Esc asks Exit Grimoire? (the new map)
 key 1 0
 wait 100
@@ -36,10 +36,10 @@ expect penset.tab is eraser
 key 10 0
 wait 200
 expect penset.tab is highlighter
-# Ctrl+S says so; Esc: back
+# Ctrl+S (no toast: pensettings.rs's unit test reads the file back); Esc: back
 key 31 1
 wait 100
-expect toast is Saved
+expect toast is
 key 1 0
 wait 300
 expect screen is library

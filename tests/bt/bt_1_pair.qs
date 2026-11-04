@@ -20,13 +20,13 @@ expect library.pair is idle 2 0
 shot 01-found
 tap 930 1055
 wait 2500
-expect toast is Could not pair that controller
+expect toast is Couldn't pair controller
 expect library.pair is idle 2 0
 tap 930 895
 wait 300
 expect library.pair is pairing 2 0
 wait 2500
-expect toast is Paired. The controller connects in a moment.
+expect toast is Paired.
 expect library.pair is idle 2 1
 shot 02-paired
 tap 930 1160

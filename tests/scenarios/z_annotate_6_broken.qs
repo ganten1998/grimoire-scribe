@@ -10,5 +10,5 @@ expect screen is library
 expect annotate.result is failed
 expect annotate.leftover is 0
 expect library.items is 0
-expect toast is Could not open the page KOReader sent: its picture does not read.
+expect toast is Couldn't open page: its image is unreadable.
 quit

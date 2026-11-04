@@ -1249,6 +1249,7 @@ pub fn pagesview_pointer(v: &mut PagesView, a: &mut App, nb: &NotebookInfo, nav:
                     v.target = if text.is_empty() { n as i32 } else { page as i32 - 1 };
                     v.moving = false;
                     keyboard_close(&mut v.kb);
+                    app_toast_dismiss(a); // (its hint goes with it: the move says nothing once done)
                     return PvResult::Move;
                 }
                 v.kb.open = true;
@@ -1687,7 +1688,7 @@ fn open_add_pad(v: &mut PagesView, a: &mut App, nb: &NotebookInfo, nav: &Nav) {
         redraw(v, a, nb, nav, RefreshMode::Ui);
         // TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): New page held, in a notebook
         // that already has the most pages a notebook can have (%d).
-        app_toast(a, &cformat!(tr("This notebook is full: it has %d pages."), STORE_MAX_PAGES as i32), 3000);
+        app_toast(a, &cformat!(tr("Notebook full with %d pages."), STORE_MAX_PAGES as i32), 3000);
         return;
     }
     v.naming = false;
@@ -1700,7 +1701,8 @@ fn open_add_pad(v: &mut PagesView, a: &mut App, nb: &NotebookInfo, nav: &Nav) {
 }
 
 // What a key of the count pad did: Done adds the count (PvResult::AddPages, the pad closed), Cancel closes
-// it with nothing added, and a count held at the most the notebook can take says so.
+// it with nothing added. A count held at the most the notebook can take shows as that count (no toast: the
+// owner, 2026-11-04).
 fn add_pad_result(v: &mut PagesView, a: &mut App, nb: &NotebookInfo, nav: &Nav, r: KbResult) -> PvResult {
     match r {
         KbResult::Done => {
@@ -1716,16 +1718,7 @@ fn add_pad_result(v: &mut PagesView, a: &mut App, nb: &NotebookInfo, nav: &Nav, 
             redraw(v, a, nb, nav, RefreshMode::Ui);
             PvResult::None
         }
-        _ => {
-            if std::mem::take(&mut v.kb.clamped) {
-                let room = v.kb.count_max;
-                // TRANSLATORS: a toast over New page's count pad (about 1700 px at 44 px in bold, or two
-                // lines): the count typed (or +) went past what the notebook can still take (a notebook
-                // holds 2000 pages at most), so the count stays at that; %d is how many more it takes.
-                app_toast(a, &cformat!(ng_("This notebook has room for %d more page.", "This notebook has room for %d more pages.", room as i64), room), 3000);
-            }
-            PvResult::None
-        }
+        _ => PvResult::None,
     }
 }
 

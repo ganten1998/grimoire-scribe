@@ -3,7 +3,7 @@
 # env: GRIMOIRE_CHECK_FIT=1 GRIMOIRE_LANG=es
 # The Graph from the Library and Leave out of the Graph in Spanish (2.0.0-beta.2): the top bar (its five
 # buttons: no Graph button, the owner's ruling of 2026-11-03), a notebook's and a folder's menus with their rows (and the greyed-out row of a notebook whose folder
-# is left out), the toasts, and the Graph opened from the Library (its one tab, its panel's library line), each without a text cut short.
+# is left out), and the Graph opened from the Library (its one tab, its panel's library line), each without a text cut short.
 wait 300
 shot 01-library
 tap library folder-menu.Library
@@ -14,12 +14,14 @@ tap library folder.Library
 tap library notebook-menu.lib001
 shot 03-notebook-menu
 tap library more.graph
-expect toast is Fuera del grafo.
-shot 04-toast
+expect toast is
+expect library.graph.omitted is lib001
+shot 04-left-out
 tap library notebook-menu.lib001
 shot 05-show-row
 tap library more.graph
-expect toast is De nuevo en el grafo.
+expect toast is
+expect library.graph.omitted is
 tap library back
 tap library folder-menu.Library
 tap library fmore.graph

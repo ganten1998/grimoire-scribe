@@ -11,7 +11,7 @@
 wait 150
 hid attach held Mapper Pad
 wait 100
-expect toast is Controller held by another app
+expect toast is Controller in use by another app
 hid detach Mapper Pad
 wait 100
 expect toast is Controller disconnected

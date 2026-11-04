@@ -15,7 +15,7 @@ expect library.sheet is display
 tap 930 1032
 wait 300
 expect settings.landscape_fit is 1
-expect toast is Applies when the Kindle is sideways.
+expect toast is
 tap 930 1032
 wait 300
 expect settings.landscape_fit is 0

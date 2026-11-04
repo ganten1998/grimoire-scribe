@@ -4,7 +4,7 @@
 # Leave out of the Graph (2.0.0-beta.2, the owner's ruling of 2026-11-03): a notebook's menu leaves it out of
 # the Graph of all notebooks (no node of it; a page linked only with it is not linked there), and Show in the
 # Graph brings it back; a folder's menu leaves out everything
-# in it, and its notebooks' rows say so, greyed out. lib000 page 1 links to lib000:2 and lib001:2, lib001 page 1
+# in it, and its notebooks' rows say so, greyed out. The menu row says which way it is, with no toast. lib000 page 1 links to lib000:2 and lib001:2, lib001 page 1
 # to lib001:2 and lib002:2, lib002 page 1 to lib002:2 and lib000:2; each page 3 to its Index.
 wait 300
 tap library folder.Library
@@ -13,7 +13,7 @@ expect library.sheet is more
 shot 01-notebook-menu
 tap library more.graph
 expect library.sheet is none
-expect toast is Left out of the Graph.
+expect toast is
 expect library.graph.omitted is lib001
 swipe 2 930 900 0 400
 expect library.map is graph
@@ -38,14 +38,14 @@ expect screen is library
 # Show in the Graph: back.
 tap library notebook-menu.lib001
 tap library more.graph
-expect toast is Shown in the Graph again.
+expect toast is
 expect library.graph.omitted is
 # The folder: everything in it left out; a notebook's row in it greyed out.
 tap library back
 tap library folder-menu.Library
 expect library.sheet is folder-more
 tap library fmore.graph
-expect toast is Left out of the Graph.
+expect toast is
 expect library.graph.omitted is lib000 lib001 lib002
 swipe 2 930 900 0 400
 expect library.map is graph
@@ -60,7 +60,7 @@ tap library done
 tap library back
 tap library folder-menu.Library
 tap library fmore.graph
-expect toast is Shown in the Graph again.
+expect toast is
 expect library.graph.omitted is
 swipe 2 930 900 0 400
 wait 600

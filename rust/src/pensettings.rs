@@ -706,7 +706,7 @@ pub fn pensettings_shortcut(a: &mut App, action: i32) -> bool {
     }
     if action == SHORTCUT_SAVE {
         settings_save(&a.settings);
-        app_toast(a, tr("Saved"), 1200);
+        app_toast_dismiss(a); // (no "Saved": the owner, 2026-11-04; a toast left up from before goes)
         return true;
     }
     if tool {
@@ -873,7 +873,7 @@ pub fn pensettings_event(a: &mut App, ev: &InEvent) {
             settings_save(&a.settings);
             draw_all(a);
             app_invalidate_all(a, RefreshMode::Ui);
-            app_toast(a, tr("Reset to defaults"), 1500);
+            app_toast_dismiss(a); // (no "Reset to defaults": the owner, 2026-11-04; the sliders show it)
         }
         H_CLEAR => {
             draw_pad_frame(a);
@@ -1024,4 +1024,29 @@ pub fn pensettings_probe(a: &mut App, key: &str, out: &mut String, cap: usize) -
     }
     csnprintf!(out, cap, "%d", if found { 1 } else { 0 });
     0
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // Ctrl+S in Pen feel writes the settings, with no toast since the owner's toast pass (2026-11-04): a setting
+    // changed in memory is in settings.ini after it.
+    #[test]
+    fn ctrl_s_in_pen_feel_writes_the_settings_without_a_toast() {
+        let root = std::env::temp_dir().join(format!("grimoire-penset-save-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        assert_eq!(store_init(root.to_str().unwrap()), 0);
+        let mut a = App { w: 1860, h: 2480, dpi: 300.0, ..Default::default() };
+        settings_default(&mut a.settings);
+        pensettings_init(&mut a);
+        a.settings.mirror_pdf = !a.settings.mirror_pdf; // (in memory only, so far)
+        assert!(pensettings_shortcut(&mut a, SHORTCUT_SAVE));
+        let mut on_disk = Settings::default();
+        settings_load(&mut on_disk);
+        assert_eq!(on_disk.mirror_pdf, a.settings.mirror_pdf);
+        assert!(!a.toast_visible);
+        pensettings_free(&mut a);
+        let _ = std::fs::remove_dir_all(&root);
+    }
 }

@@ -101,16 +101,16 @@ expect status.shown is 0
 key 46 0
 wait 300
 expect settings.status_corner is 1
-expect toast is Clock and battery: top right corner of the page
+expect toast is Clock and battery: top right corner of page
 key 46 0
 wait 300
-expect toast is Clock and battery: bottom right corner of the page
+expect toast is Clock and battery: bottom right corner of page
 key 46 0
 wait 300
-expect toast is Clock and battery: bottom left corner of the page
+expect toast is Clock and battery: bottom left corner of page
 key 46 0
 wait 300
-expect toast is Clock and battery: top left corner of the page
+expect toast is Clock and battery: top left corner of page
 expect settings.status_corner is 0
 # Sideways: the corners of the turned screen (2480 by 1860).
 key 46 0

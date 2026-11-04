@@ -41,7 +41,7 @@ key 31 0
 wait 300
 expect settings.status_on is 1
 expect status.shown is 0
-expect toast is Clock and battery on. They show on a notebook page.
+expect toast is Clock and battery on (shown on notebook pages).
 key 31 0
 wait 300
 expect settings.status_on is 0

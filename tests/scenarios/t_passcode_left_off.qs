@@ -1,8 +1,10 @@
 # settings: status_mode=1
 # env: GRIMOIRE_PASSCODE=left-off
 # A session ended without putting the passcode back (the Kindle restarted under Grimoire): the
-# launcher does not turn it back on itself, Grimoire tells the user to (at this start and the
-# next two, tests/launcher_check.sh checks), before any other notice.
+# launcher does not turn it back on itself, and tells Grimoire so (at this start and the next two,
+# tests/launcher_check.sh checks). Grimoire notes it in grimoire.log only: no toast since 2.0.0-beta.2
+# (the owner's toast pass), and the start is an ordinary one.
 wait 300
-expect toast is Your Kindle passcode was left off. Turn it back on in Kindle Settings.
+expect screen is library
+expect toast is
 quit

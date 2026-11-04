@@ -4,10 +4,10 @@
 # env: GRIMOIRE_PASSCODE=left-off
 # copy: tests/fixtures/annotate/broken import/.annotate
 # The Kindle's passcode left off by an earlier session, and a page from KOReader whose picture does
-# not read: the start's one toast is the passcode's, which goes before anything (the Kindle is
-# unprotected). Why the page did not open is in grimoire.log.
+# not read: the start's one toast says why the page did not open. The passcode note is grimoire.log's
+# alone since 2.0.0-beta.2 (the owner's toast pass), so it no longer takes that toast's place.
 wait 300
 expect screen is library
 expect annotate.result is failed
-expect toast is Your Kindle passcode was left off. Turn it back on in Kindle Settings.
+expect toast is Couldn't open page: its image is unreadable.
 quit

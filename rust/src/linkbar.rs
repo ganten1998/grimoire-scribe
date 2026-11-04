@@ -615,7 +615,7 @@ pub fn linkbar_draw(lb: &mut LinkBar, a: &mut App, nb: &NotebookInfo, nav: &Nav,
         // TRANSLATORS: the Links bar's chip area when the open page has no links (about 1300 px at 44 px).
         let none = tr("No links on this page yet.");
         // TRANSLATORS: the same when links.ini cannot be read, so the bar lists none (about 1300 px at 44 px).
-        let unreadable = tr("Links could not be read.");
+        let unreadable = tr("Couldn't read links.");
         let msg = if lb.links_ok { none } else { unreadable };
         font_draw_left(c, FontFace::Regular, ts, Rect { x: inn.x + u(10.0), y: cy, w: inn.w - u(20.0), h: ch }, msg, 0);
     }
