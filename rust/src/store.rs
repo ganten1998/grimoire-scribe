@@ -3681,6 +3681,23 @@ pub fn store_page_preview_fresh(nb: &NotebookInfo, pid: u32) -> Option<String> {
     let now = preview_stamp(&source)?;
     (preview_tag(&stamp).as_deref() == Some(now.as_str())).then_some(now)
 }
+/// Whether page pid's preview on disk is current and whole, without decoding it: its stamp is the page
+/// file's, and its image is as long as its header says (a cache write cut short is shorter: it is made
+/// again). What the previews job checks before it leaves a page out.
+pub fn store_page_preview_ok(nb: &NotebookInfo, pid: u32) -> bool {
+    let Some((_, image, _)) = page_preview_files(nb, pid) else { return false };
+    if store_page_preview_fresh(nb, pid).is_none() {
+        return false;
+    }
+    let Ok(mut f) = std::fs::File::open(&image) else { return false };
+    let mut head = [0u8; 32];
+    let Ok(n) = f.read(&mut head) else { return false };
+    let Ok(len) = f.metadata().map(|m| m.len()) else { return false };
+    match scan_p5_header(&head[..n]) {
+        Some((w, h, 255, off)) if w > 0 && h > 0 && w <= 400 && h <= 500 => len >= (off + 1 + (w * h) as usize) as u64,
+        _ => false,
+    }
+}
 /// Page pid's file as it is now (inode, size, times, and the previews' invalidation generation): a
 /// decoded preview made at this identity still shows the page.
 pub fn store_page_source_identity(nb: &NotebookInfo, pid: u32) -> Option<String> {
@@ -3710,6 +3727,44 @@ fn page_render_files(nb: &NotebookInfo, pid: u32) -> Option<(String, String, Str
     let (source, image, _) = page_preview_files(nb, pid)?;
     let base = image.strip_suffix(".pgm")?.to_string();
     Some((source, format!("{base}.full"), format!("{base}.full.stamp")))
+}
+
+/// A page whose whole drawing takes this long or longer keeps it (store_save_page_render), ms: the
+/// editor's drawing of the open page, and the previews job's of a page it makes a preview of.
+pub const STORE_KEEP_RENDER_MS: u32 = 1000;
+/// Tests: the threshold in place of STORE_KEEP_RENDER_MS (u32::MAX: none), so a unit test can have the
+/// previews job keep a page that draws quickly.
+pub static STORE_TEST_KEEP_RENDER_MS: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(u32::MAX);
+/// STORE_KEEP_RENDER_MS, or what a test asks for. (The simulator takes GRIMOIRE_KEEP_RENDER_MS instead,
+/// so scenarios can keep pages that draw quickly.)
+pub fn store_keep_render_ms() -> u32 {
+    let test = STORE_TEST_KEEP_RENDER_MS.load(std::sync::atomic::Ordering::Relaxed);
+    if test != u32::MAX {
+        return test;
+    }
+    #[cfg(feature = "sim")]
+    if let Some(ms) = std::env::var("GRIMOIRE_KEEP_RENDER_MS").ok().and_then(|v| v.parse().ok()) {
+        return ms;
+    }
+    STORE_KEEP_RENDER_MS
+}
+/// A page file this big or bigger draws slowly: seconds on a Kindle (the owner's 0.6 MB page took 5 s,
+/// a 2.4 MB one 32 s; a page of handwriting is under 0.3 MB and draws in well under a second).
+pub const STORE_DENSE_PAGE_BYTES: u64 = 512 * 1024;
+/// Whether drawing page pid takes long enough to say so (seconds on a Kindle), told without reading it:
+/// its file is STORE_DENSE_PAGE_BYTES or bigger, or it has kept a drawing before (current or not), which
+/// only a page whose drawing took store_keep_render_ms() or longer does.
+pub fn store_page_dense(nb: &NotebookInfo, pid: u32) -> bool {
+    let Some((source, _, stamp)) = page_render_files(nb, pid) else { return false };
+    std::fs::metadata(&source).is_ok_and(|m| m.len() >= STORE_DENSE_PAGE_BYTES) || access_ok(&stamp)
+}
+// Whether page pid has a kept drawing of its file as it is now, whatever size and layering it was kept
+// for: the previews job's guess that the page is quick to make, before it reads the page
+// (store_load_page_render still checks it all).
+fn page_render_current(nb: &NotebookInfo, pid: u32) -> bool {
+    let Some((source, _, stamp)) = page_render_files(nb, pid) else { return false };
+    let (Some(now), Some(tag)) = (preview_stamp(&source), preview_tag(&stamp)) else { return false };
+    tag.strip_prefix(now.as_str()).is_some_and(|rest| rest.starts_with('|'))
 }
 // A layered page (page_layered: floors, 2.0.0-beta.2 on) is tagged with a "|L" suffix and only such a
 // tag is trusted for it: 2.0.0-beta.1 keeps drawings under the same fingerprint, and would keep a flat
@@ -3776,8 +3831,19 @@ fn rle_decode(data: &[u8], px: &mut [u8]) -> bool {
 /// Keeps page pid's drawing (its whole canvas, as drawn from the page file now on disk): a cache file,
 /// written without waiting on the disk. False if it was not kept.
 pub fn store_save_page_render(nb: &NotebookInfo, pid: u32, canvas: &Canvas, layered: bool) -> bool {
-    let Some((source, image, stamp)) = page_render_files(nb, pid) else { return false };
+    let Some((source, _, _)) = page_render_files(nb, pid) else { return false };
     let Some(was) = preview_stamp(&source) else { return false };
+    store_save_page_render_at(nb, pid, canvas, layered, &was)
+}
+/// The same for a drawing of the page file as it was at identity `was` (store_page_source_identity's
+/// when it was read, as the previews job reads a page): kept only while the file is still that one, so a
+/// page written meanwhile never keeps a drawing of what it was. A file that changes as the drawing is put
+/// in place takes the drawing's stamp away with it (drawn again next time).
+pub fn store_save_page_render_at(nb: &NotebookInfo, pid: u32, canvas: &Canvas, layered: bool, was: &str) -> bool {
+    let Some((source, image, stamp)) = page_render_files(nb, pid) else { return false };
+    if preview_stamp(&source).as_deref() != Some(was) {
+        return false;
+    }
     let Some(parent) = std::path::Path::new(&image).parent() else { return false };
     if canvas.w <= 0 || canvas.h <= 0 || canvas.stride != canvas.w || std::fs::create_dir_all(parent).is_err() {
         return false;
@@ -3790,9 +3856,14 @@ pub fn store_save_page_render(nb: &NotebookInfo, pid: u32, canvas: &Canvas, laye
     let mine = format!("{image}.{}", std::process::id());
     let tag = format!("{stamp}.{}", std::process::id());
     let mut saved = false;
-    if write_cache_file(&mine, &bytes) == 0 && preview_stamp(&source).as_deref() == Some(was.as_str())
+    if write_cache_file(&mine, &bytes) == 0 && preview_stamp(&source).as_deref() == Some(was)
         && std::fs::rename(&mine, &image).is_ok() {
-        saved = write_cache_file(&tag, render_tag(&was, canvas.w, canvas.h, layered).as_bytes()) == 0 && std::fs::rename(&tag, &stamp).is_ok();
+        saved = write_cache_file(&tag, render_tag(was, canvas.w, canvas.h, layered).as_bytes()) == 0 && std::fs::rename(&tag, &stamp).is_ok();
+        if saved && preview_stamp(&source).as_deref() != Some(was) {
+            // (the page written while the drawing went in: it is not that page's drawing)
+            let _ = std::fs::remove_file(&stamp);
+            saved = false;
+        }
     }
     let _ = std::fs::remove_file(mine);
     let _ = std::fs::remove_file(tag);
@@ -4861,7 +4932,14 @@ mod tests {
 }
 
 /// Visible-page preview jobs render outside the UI process, with bounded work and stale-write checks.
+/// The missing previews are made cheapest first: pages with a current kept drawing (read back, not
+/// drawn), then the others by the size of their files, so a dense page never holds back the rest. Each
+/// preview tells an open view as it lands (page_previews_changed), which shows that tile at once. A page
+/// drawn here that took store_keep_render_ms() or more of the job's processor time keeps its drawing
+/// (store_save_page_render_at), so the page also opens quickly in the editor, and its next preview is
+/// read back. One log line per batch says where the time went.
 pub fn store_build_page_previews(id:&str, range:&str,dpi:f32)->i32 {
+    let started=now_ms();
     let mut nb=NotebookInfo::default();
     if store_load_info(id,&mut nb)!=0{return -1;}
     // "first:last", or "first:last:pid" to leave page pid out: the page open in the editor, whose preview
@@ -4871,25 +4949,63 @@ pub fn store_build_page_previews(id:&str, range:&str,dpi:f32)->i32 {
     let (Some(Ok(first)),Some(Ok(last)))=(parts.next().map(str::parse::<usize>),parts.next().map(str::parse::<usize>)) else{return -1};
     let skip=parts.next().and_then(|p|p.parse::<u32>().ok());
     if last.saturating_sub(first)>64{return -1;}
-    let mut saved=false;
+    // (pages, cached, kept drawings read back, drawn, drawings kept here)
+    let (mut pages,mut cached,mut kept,mut drawn,mut keeps)=(0,0,0,0,0);
+    let mut todo:Vec<(u64,usize,u32)>=Vec::new();
     for i in first..last.min(nb.page_ids.len()) {
-        let pid=nb.page_ids[i];let mut cached=Canvas::default();
+        let pid=nb.page_ids[i];
         if Some(pid)==skip {continue;}
-        if store_load_page_preview(&nb,pid,&mut cached){continue;}
+        pages+=1;
+        // (a stamp and a length, not a decode: the view decodes what it shows itself)
+        if store_page_preview_ok(&nb,pid) {cached+=1;continue;}
         let Some((source,_,_))=page_preview_files(&nb,pid) else{continue};
-        let before=preview_stamp(&source);
+        let cost=if page_render_current(&nb,pid) {0} else {std::fs::metadata(&source).map_or(0,|m|m.len().max(1))};
+        if todo.try_reserve(1).is_err() {break;}
+        todo.push((cost,i,pid));
+    }
+    todo.sort_by_key(|t|t.0); // (stable: pages of one cost in their order)
+    let (mut first_ms,mut slow)=(-1i32,(0u32,0i32));
+    for &(_,i,pid) in &todo {
+        let at=now_ms();
+        let Some((source,_,_))=page_preview_files(&nb,pid) else{continue};
+        // (a listed page with no file reads as a blank page: no preview is made of it)
+        let Some(before)=preview_stamp(&source) else{continue};
         let mut page=None;
         if store_read_page(&nb,i as i32,&mut page)!=0 {continue;}
         let Some(page)=page else{continue};
         if page.readonly {continue;}
         let mut full=Canvas::default();
         if canvas_init(&mut full,page.w,page.h)!=0 {continue;}
-        page_render(&mut full,&page,Rect::new(0,0,page.w,page.h),dpi);
-        if before.is_some() && before==preview_stamp(&source){saved|=save_page_preview(&nb,pid,&full);}
+        let layered=page_layered(&page);
+        if store_load_page_render(&nb,pid,page.w,page.h,&mut full,layered) {
+            kept+=1;
+        } else {
+            let cpu=cpu_ms();
+            page_render(&mut full,&page,Rect::new(0,0,page.w,page.h),dpi);
+            #[cfg(feature = "sim")]
+            sim_slow_draw(&source);
+            drawn+=1;
+            if cpu_ms().wrapping_sub(cpu)>=store_keep_render_ms() && store_save_page_render_at(&nb,pid,&full,layered,&before) {keeps+=1;}
+        }
+        drop(page);
+        if preview_stamp(&source).as_deref()==Some(before.as_str()) && save_page_preview(&nb,pid,&full) {
+            page_previews_changed(id); // (an open view shows this tile now)
+            if first_ms<0 {first_ms=now_ms().wrapping_sub(started) as i32;}
+        }
+        let ms=now_ms().wrapping_sub(at) as i32;
+        if ms>slow.1 {slow=(pid,ms);}
     }
-    // (one change for the batch: an open view repaints its tiles once, not once per page)
-    if saved {page_previews_changed(id);}
+    qlog!("previews: nb=%s pages=%d cached=%d kept=%d drawn=%d keep=%d ms=%d first=%d slow=p%u:%d",
+        id,pages,cached,kept,drawn,keeps,now_ms().wrapping_sub(started) as i32,first_ms,slow.0,slow.1);
     0
+}
+// Tests (the simulator): GRIMOIRE_SIM_DENSE_DRAW_MS=N makes the previews job's drawing of a dense page
+// (store_page_dense's size) take N ms longer, as a Kindle takes seconds to draw one: a scenario then sees
+// the other tiles come first, and the dense one's loading mark meanwhile.
+#[cfg(feature = "sim")]
+fn sim_slow_draw(source:&str) {
+    let ms=std::env::var("GRIMOIRE_SIM_DENSE_DRAW_MS").ok().and_then(|v|v.parse::<i32>().ok()).unwrap_or(0);
+    if ms>0 && std::fs::metadata(source).is_ok_and(|m|m.len()>=STORE_DENSE_PAGE_BYTES) {sleep_ms(ms);}
 }
 
 pub fn store_page_previews_epoch(id:&str)->Option<(u64,i64,i64)> {

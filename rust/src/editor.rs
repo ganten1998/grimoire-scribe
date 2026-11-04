@@ -349,8 +349,8 @@ pub struct EditorState {
     /// the stroke eraser's tiles (MASK_TILE) drawn again, and those the boxes of what it took off
     /// cover (a probe, editor.erase_tiles)
     erase_tiles: (u32, u32),
-    /// the open page (its id) and how long its last whole drawing took, ms (KEEP_RENDER_MS when it came
-    /// from its kept drawing): a page this slow keeps its drawing at each save
+    /// the open page (its id) and how long its last whole drawing took, ms (u32::MAX when it came from its
+    /// kept drawing): a page that took store_keep_render_ms() or longer keeps its drawing at each save
     full_ms: (u32, u32),
     /// whether the open page came up from its kept drawing (a probe, editor.page_kept)
     page_kept: bool,
@@ -2702,7 +2702,7 @@ fn save_page(a: &mut App) -> bool {
         if whole && s.autosaving && now.wrapping_sub(s.preview_saved_ms) >= 30_000 {
             store_save_page_preview(&s.nb, pid, &s.page_canvas);
             // A page that took a second or more to draw keeps its drawing too, so it opens at once.
-            if s.full_ms.0 == pid && s.full_ms.1 >= keep_render_ms() {
+            if s.full_ms.0 == pid && s.full_ms.1 >= store_keep_render_ms() {
                 let layered = s.open_page().is_some_and(page_layered);
                 store_save_page_render(&s.nb, pid, &s.page_canvas, layered);
             }
@@ -2862,7 +2862,7 @@ fn render_page_full(a: &mut App) {
         s.full_ms = (pid, now_ms().wrapping_sub(started));
         // A page that took this long, as it is on disk (nothing unsaved), keeps its drawing at once:
         // the next open is quick even if it is only read, never written.
-        if s.full_ms.1 >= keep_render_ms() && !s.page_dirty && !s.picture_missing && s.page_ix().is_some() {
+        if s.full_ms.1 >= store_keep_render_ms() && !s.page_dirty && !s.picture_missing && s.page_ix().is_some() {
             let layered = s.open_page().is_some_and(page_layered);
             store_save_page_render(&s.nb, pid, &s.page_canvas, layered);
         }
@@ -9576,17 +9576,6 @@ fn fs_finish_event(a: &mut App, ev: &InEvent) -> bool {
             }
         }
     }
-}
-
-/// A page whose whole drawing takes this long or longer keeps it (store_save_page_render), ms. (The
-/// simulator takes GRIMOIRE_KEEP_RENDER_MS instead, so scenarios can keep pages that draw quickly.)
-const KEEP_RENDER_MS: u32 = 1000;
-fn keep_render_ms() -> u32 {
-    #[cfg(feature = "sim")]
-    if let Some(ms) = std::env::var("GRIMOIRE_KEEP_RENDER_MS").ok().and_then(|v| v.parse().ok()) {
-        return ms;
-    }
-    KEEP_RENDER_MS
 }
 
 pub fn editor_event(a: &mut App, ev: &InEvent) {
