@@ -197,12 +197,16 @@ time) and `beside pid` (the second background process).
 
 Automated: z_pages_add_8_notice ("Adding N pages..." in the refresh that takes the count pad down, from the
 toolbar's pad and from the Pages view's, and gone with the refresh that shows the pages: 100 and 51 pages say it,
-10 and 50 do not; a batch the storage refuses has "Couldn't add pages." in its place, and adds no page).
+10 and 50 do not; a batch the storage refuses has "Couldn't add pages." in its place, and adds no page; the
+100-page batch's Redo says it too, in a refresh of its own before the pages are written again, a Redo the storage
+refuses has "Couldn't redo." in its place, and a 10-page batch's Redo says nothing). editor.add_notices counts
+only a notice that a refresh carried before the writing began (App.toast_presents).
 
 On the Kindle: add 60 pages from the Pages view's count pad: "Adding 60 pages..." shows until they are added,
-then goes; 30 pages are added with nothing said. Each batch of 25 pages or more logs `pages: added=N of N ms=M
-notice=0|1 paper=drawn|picture` in grimoire.log: M / N is a page's cost on this Kindle, which editor.rs
-ADD_PAGE_MS (40 ms) estimates, and which sets where the notice starts (2 s: 51 pages at 40 ms).
+then goes; 30 pages are added with nothing said. Undo the 60 pages, then Redo: the notice again. Each batch of 25
+pages or more logs `pages: added=N of N ms=M notice=0|1 paper=drawn|picture` in grimoire.log (a Redo, `pages:
+redo added=N of N ms=M notice=0|1`): M / N is a page's cost on this Kindle, which editor.rs ADD_PAGE_MS (40 ms)
+estimates, and which sets where the notice starts (2 s: 51 pages at 40 ms).
 
 A finger shape names its action only when the action did something. Automated: editor.rs's
 fshape_names_its_action_only_when_it_did_something (a square bound in turn to each action: Previous page on page

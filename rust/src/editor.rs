@@ -352,8 +352,8 @@ pub struct EditorState {
     page_kept: bool,
     /// how many times "Loading page..." went up before a dense page was drawn (a probe, editor.loading_toasts)
     loading_toasts: u32,
-    /// how many times "Adding N pages..." went up before a batch of new pages was written (a probe,
-    /// editor.add_notices)
+    /// how many times "Adding N pages..." reached the panel before a batch of new pages was written, or a
+    /// batch's Redo wrote them again (a probe, editor.add_notices)
     add_notices: u32,
     /// Select mode (select.rs), and the last lasso move's or paste's times, ms (old place, new place)
     sel: SelMode,
@@ -4613,6 +4613,16 @@ fn add_notice_text(n: i32) -> String {
     // they are added.
     cformat!(ng_("Adding %d page...", "Adding %d pages...", n as i64), n)
 }
+// The refresh that puts what is drawn on the panel before a batch's pages are written (nothing reaches it while
+// they are), with "Adding N pages..." when `notice` (put up just before): counted (editor.add_notices) only when
+// that refresh carried it, so the count says the notice was on the panel before the writing began.
+fn add_notice_flush(a: &mut App, notice: bool) {
+    let shown = a.toast_presents;
+    app_flush(a);
+    if notice && a.toast_presents != shown {
+        ed(a).add_notices += 1;
+    }
+}
 // The writing a batch of new pages does, from the Pages view's New page (a tap is a batch of one, its count
 // pad more) or the toolbar's count pad: `n` blank pages at index `at` (never first), on the paper of the page
 // they go after (the owner, 2026-11-03: the selected page's, else the open page's; in the Pages view the batch
@@ -4645,9 +4655,8 @@ fn add_pages_write(a: &mut App, at: i32, n: i32, redraw: fn(&mut App)) -> bool {
         if notice {
             let msg = add_notice_text(n);
             app_toast(a, &msg, 120_000);
-            ed(a).add_notices += 1;
         }
-        app_flush(a);
+        add_notice_flush(a, notice);
     }
     let started = now_ms();
     let s = ed(a);
@@ -4861,6 +4870,9 @@ fn pages_undo_add(a: &mut App) {
 // exact order it left (store_redo_move_pages), or the batch's blank pages again, with the same ids at the same
 // places (store_redo_add_pages), the open page still open, the view on the screenful of the first page it
 // changes. The record goes back to Undo (one step each). One that no longer applies is dropped, never used.
+// A batch's Redo writes its pages as slowly as the batch did: a big one says "Adding N pages..." as the batch
+// did (add_notice_due), on the panel before the writing, and the notice is down at the end, replaced by the
+// failure's toast or taken down with the rest.
 fn pages_redo(a: &mut App) {
     if !save_page(a) {
         return;
@@ -4870,6 +4882,17 @@ fn pages_redo(a: &mut App) {
     if !r.applies(&s.nb) {
         return;
     }
+    let batch = match &r {
+        PageRedo::Add(u) => u.added.len() as i32,
+        PageRedo::Move(_) => 0,
+    };
+    let notice = batch > 0 && add_notice_due(a, batch);
+    if notice {
+        app_toast(a, &add_notice_text(batch), 120_000);
+        add_notice_flush(a, true);
+    }
+    let started = now_ms();
+    let s = ed(a);
     let open = s.open_pid();
     let first_was = s.nb.page_ids[0];
     s.nb.last_page = s.index;
@@ -4877,6 +4900,11 @@ fn pages_redo(a: &mut App) {
         PageRedo::Move(u) => store_redo_move_pages(&mut s.nb, u),
         PageRedo::Add(u) => store_redo_add_pages(&mut s.nb, u),
     };
+    // (a large batch's time again, as add_pages_write logs the batch's)
+    if batch >= ADD_BUSY_PAGES || notice || (batch > 0 && rc != 0) {
+        qlog!("pages: redo added=%d of %d ms=%d notice=%d", if rc != 0 { 0 } else { batch }, batch,
+            now_ms().wrapping_sub(started) as i32, notice as i32);
+    }
     if rc != 0 {
         let s = ed(a);
         if r.applies(&s.nb) {
@@ -4884,7 +4912,7 @@ fn pages_redo(a: &mut App) {
         }
         // TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): the Pages view's Redo could not
         // do the page move or the new pages again (the storage is full).
-        app_toast(a, tr("Couldn't redo."), 3000);
+        app_toast(a, tr("Couldn't redo."), 3000); // (in the notice's place)
         compose_all(a, RefreshMode::Ui);
         return;
     }
@@ -4917,7 +4945,7 @@ fn pages_redo(a: &mut App) {
     let s = ed(a);
     s.pv.screen = at / (cols * rows).max(1);
     compose_all(a, RefreshMode::Full);
-    app_toast_dismiss(a); // (no confirmation; a toast left up from before, a failed try's, goes)
+    app_toast_dismiss(a); // (no confirmation; the notice, or a toast left up from before, a failed try's, goes)
 }
 
 // The `undo` and `redo` actions (keys, a controller, gestures) with the Pages view's grid in front: its own Undo
@@ -11196,7 +11224,8 @@ pub fn editor_probe(a: &mut App, key: &str, out: &mut String, cap: usize) -> i32
         // How many times "Loading page..." went up before a dense page was drawn as it opened.
         csnprintf!(out, cap, "%d", s.loading_toasts as i32);
     } else if key == "add_notices" {
-        // How many times "Adding N pages..." went up before a batch of new pages was written.
+        // How many times "Adding N pages..." reached the panel before a batch of new pages was written, or a
+        // batch's Redo wrote them again.
         csnprintf!(out, cap, "%d", s.add_notices as i32);
     } else if key == "erase_tiles" {
         // The stroke eraser's tiles drawn again since the editor began, and the tiles of the boxes of

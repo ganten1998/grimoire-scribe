@@ -150,7 +150,8 @@ your notebooks and settings from `quire/` to `grimoire/` and removes the old Qui
   still blank, and Redo adds the same pages again. While Pages is open, the `undo` and `redo` keys, controller
   buttons and gestures are these Undo and Redo (one step each); on the page they stay the page's own, so a
   page's writing is never undone from Pages, nor a page move from the page. A large batch takes a moment (taps
-  meanwhile are ignored); a big one, from about 50 pages, says **Adding N pages...** until they are added.
+  meanwhile are ignored); a big one, from about 50 pages, says **Adding N pages...** until they are added, and
+  so does its Redo.
   **The Graph from the Library**: swipe down with two fingers over the Library (or press the key bound to
   `index-map`) for the Graph of all notebooks with no notebook open: tap a page twice to open it, and Back from there, even from another notebook a link led to, or
   the Links bar's **Back to Graph**, comes back to the Graph. Spread two fingers to zoom it. A library with too

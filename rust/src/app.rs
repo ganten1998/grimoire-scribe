@@ -114,6 +114,10 @@ pub struct App {
     pub toast_until: u32,
     pub toast_rect: Rect,
     pub toast_visible: bool,
+    /// The refreshes that carried the toast (app_flush overlays it), counted: what tells a toast put up
+    /// before long work that holds the main loop reached the panel before the work (editor.rs: "Adding N
+    /// pages...").
+    pub toast_presents: u32,
     /// pixels the toast covers, restored when it hides
     pub toast_under: Canvas,
     /// pixels Live view's chip covers, put back after each present
@@ -1893,6 +1897,7 @@ fn app_flush_in(a: &mut App) {
         if overlay {
             canvas_blit(&mut a.toast_under, &a.screen, a.toast_rect, 0, 0);
             ui_toast_at(&mut a.screen, a.toast_rect, a.toast.as_str());
+            a.toast_presents = a.toast_presents.wrapping_add(1);
         }
     }
     display_present(&a.screen, a.dirty, m);

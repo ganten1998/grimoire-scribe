@@ -6,7 +6,8 @@
 # batches stay silent."). Nothing reaches the panel while the pages are written, so a batch's time is told from its
 # count before it starts (about 40 ms a page on a Kindle, on any paper: the notice from 51 pages), and the notice
 # goes up in the refresh that takes the count pad down and comes down in the one that shows the pages. A failed
-# batch's own toast takes its place. The toolbar's count pad and the Pages view's alike.
+# batch's own toast takes its place. The toolbar's count pad and the Pages view's alike, and a batch's Redo, which
+# writes the same pages again (editor.add_notices counts the notices a refresh carried before the writing).
 # (the launch repaints the whole screen 1.2 s and 3.5 s after it starts: past both before counting; the clock
 # corner held still)
 wait 3600
@@ -127,4 +128,49 @@ storage ok
 expect editor.pages is 313
 expect editor.add_notices is 4
 expect toast is Couldn't add pages.
+# The 100 pages undone, then redone: the Redo writes the same 100 pages again, so it says the same, in a refresh
+# of its own before they are written, and the notice is gone with the refresh that shows them; a Redo the storage
+# refuses has "Couldn't redo." in its place
+expect editor.pages.undo.kind is add
+tap panel pages.undo-add
+wait 300
+expect editor.pages is 213
+expect editor.pages.redo.kind is add
+expect toast is
+storage full
+tap panel pages.redo
+wait 300
+storage ok
+expect editor.pages is 213
+expect editor.add_notices is 5
+expect toast is Couldn't redo.
+expect editor.pages.redo.kind is add
+expect display.presents not -1
+tap panel pages.redo
+wait 300
+expect editor.pages is 313
+expect editor.add_notices is 6
+expect toast is
+expect editor.pages.undo.kind is add
+expect display.presents is fast 730 2325 120 140, ui 676 2180 508 285, full 0 0 1860 2480
+# A small batch's Redo, 10 pages, says nothing, as the batch did not
+touch down 394 2395
+wait 700
+touch up 394 2395
+wait 100
+expect editor.pages.adding is 1
+tap panel pages.key.1
+tap panel pages.key.0
+wait 100
+tap panel pages.key.done
+wait 300
+expect editor.pages is 323
+tap panel pages.undo-add
+wait 300
+expect editor.pages is 313
+tap panel pages.redo
+wait 300
+expect editor.pages is 323
+expect editor.add_notices is 6
+expect toast is
 quit
