@@ -31,7 +31,7 @@ expect editor.links is 3 3
 expect editor.undo_kind not clear
 # A dot is too small: the strip stays, and no ink
 pentap 600 1700
-expect toast is Too small for a link: draw around what links.
+expect toast is Link area too small.
 expect editor.strip is new
 expect editor.strokes is 0
 expect editor.live_matches_render is 1
@@ -84,11 +84,11 @@ expect editor.page is 1
 pentap panel undo
 wait 300
 expect editor.links is 3 3
-expect toast is Link change undone.
+expect toast is
 pentap panel redo
 wait 300
 expect editor.links is 4 4
-expect toast is Link change redone.
+expect toast is
 # A lasso low on the page: Link to... docks at the top, below the clock corner; the recent target is offered
 key 38 0
 pen line 300 2000 900 2150 30 0.6 0.6
@@ -101,7 +101,7 @@ shot 03-linkto-top
 expect editor.ui_at.1530.819 is linkto.cancel
 tap 1530 819
 wait 100
-expect toast is No link made.
+expect toast is
 expect editor.linkto is 0
 expect editor.link_area is
 expect editor.links is 4 4
@@ -113,7 +113,7 @@ expect editor.ui_at.930.2370 is linkto.pages
 tap 930 2370
 expect editor.modal is pages
 expect editor.picking is new
-expect toast is Where does the link go? Tap its page.
+expect toast is
 tap 450 95
 expect editor.pages_tab is pages
 tap 703 340
@@ -132,7 +132,8 @@ expect editor.linkto is pick
 # (pinched to 2x about 930 1240: page = 930 + (600 - 930) / 2, 1240 + (600 - 1240) / 2)
 expect editor.link_area is 765 920 150 100
 key 38 0
-expect toast is No link made.
+expect toast is
+expect editor.linkto is 0
 expect editor.links is 5 5
 # Sideways: the strip, a lasso and Link to...
 rotate 1
@@ -146,7 +147,7 @@ expect editor.linkto.dock is bottom
 expect editor.layers is ok
 shot 05-linkto-sideways
 key 38 0
-expect toast is No link made.
+expect toast is
 expect editor.linkto is 0
 rotate 0
 wait 300

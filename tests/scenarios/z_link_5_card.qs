@@ -50,7 +50,7 @@ tap 1726 1885
 expect editor.text is Cap
 tap 1643 2365
 wait 100
-expect toast is Page 3 is named Cap.
+expect toast is
 expect editor.link_card.title is Cap
 expect editor.link_card is 1
 expect editor.keyboard is
@@ -121,7 +121,7 @@ pentap panel previous
 expect editor.modal is none
 pentap panel undo
 wait 300
-expect toast is Link change undone.
+expect toast is
 pen leave
 wait 1100
 tap 600 1100
@@ -164,7 +164,7 @@ tap 1549 578
 expect editor.text is Two
 tap 1643 1058
 wait 100
-expect toast is Page 2 is named Two.
+expect toast is
 expect editor.index_rows is 3
 expect editor.link_card.title is Two
 tap 1200 600
@@ -183,7 +183,7 @@ shot 05-redraw
 pen line 1000 1000 1400 1100 30 0.6 0.6
 expect editor.strip is 0
 expect editor.link_card.border is 0
-expect toast is New area saved. Undo brings the old one back.
+expect toast is
 expect editor.strokes is 0
 expect editor.links is 3 3
 expect editor.undo_kind is link
@@ -199,7 +199,7 @@ pentap panel previous
 expect editor.page is 1
 pentap panel undo
 wait 300
-expect toast is Link change undone.
+expect toast is
 pen leave
 wait 1100
 tap 1200 1050
@@ -216,7 +216,7 @@ wait 800
 touch up 600 1450
 pentap 679 2118
 expect editor.links is 2 2
-expect toast is Link deleted. Undo brings it back.
+expect toast is
 pentap panel undo
 wait 300
 expect editor.links is 3 3

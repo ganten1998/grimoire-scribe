@@ -162,7 +162,7 @@ expect editor.panel_button is 93
 # A fourth: refused, with a toast
 pentap editor picker.tool:calligraphy
 wait 200
-expect toast is The toolbar holds up to 3 pens. Unpin one first.
+expect toast is Toolbar full (3 pens). Unpin one first.
 expect editor.pins is highlighter,fineliner,marker
 expect editor.modal is tools
 shot 05-sideways-three-pinned

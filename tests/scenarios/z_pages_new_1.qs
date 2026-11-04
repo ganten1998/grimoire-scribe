@@ -45,7 +45,7 @@ wait 300
 expect editor.modal is pages
 expect editor.page is 2
 expect editor.pages is 4
-expect toast is Added 1 page: it is page 3.
+expect toast is
 expect editor.tile.2 is Page 2 (open)
 expect editor.tile.3 is Page 3 (new)
 expect editor.tile.4 is Page 4
@@ -81,7 +81,7 @@ expect editor.modal is pages
 expect editor.page is 5
 expect editor.pages is 5
 expect editor.ticked is 0
-expect toast is Added 1 page: it is page 3.
+expect toast is
 tap panel pages.back
 wait 300
 expect editor.modal is none
@@ -105,7 +105,7 @@ expect editor.page is 3
 expect editor.pages is 6
 expect editor.strokes is 1
 expect editor.paper is 3
-expect toast has a copy of page 2
+expect toast is
 # Ink on the copy stays on the copy.
 pen curve 900 1500 40 60 0.7 2
 wait 300

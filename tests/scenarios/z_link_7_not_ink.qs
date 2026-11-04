@@ -50,7 +50,7 @@ expect editor.ui_at.1530.2370 is linkto.cancel
 tap 1530 2370
 wait 100
 expect editor.linkto is 0
-expect toast is No link made.
+expect toast is
 expect editor.link_area is
 expect editor.links is 3 3
 expect editor.strokes is 0
@@ -61,7 +61,7 @@ expect editor.strip is new
 tap 1695 2395
 wait 60
 expect editor.strip is 0
-expect toast is No link made.
+expect toast is
 pentap panel library
 waitbg
 # Live view on, then the same lasso

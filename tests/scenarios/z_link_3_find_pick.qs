@@ -71,7 +71,8 @@ expect editor.linkto is pick
 expect editor.ui_at.1530.2370 is linkto.cancel
 tap 1530 2370
 wait 100
-expect toast is No link made.
+expect toast is
+expect editor.linkto is 0
 expect editor.links is 5 5
 # A lasso low on the page: Link to... and the keyboard dock at the top, the rows under the keyboard
 key 38 0

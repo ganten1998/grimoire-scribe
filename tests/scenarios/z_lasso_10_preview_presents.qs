@@ -30,7 +30,7 @@ wait 100
 tap panel picker.select
 wait 100
 expect editor.select is armed
-# (Select mode's toast gone first: its redraw would land among the counted refreshes)
+# (a moment first: what Select mode's start refreshes would land among the counted refreshes)
 wait 2600
 expect display.presents not clear
 # the lasso, a pause after each stretch: a line selects nothing

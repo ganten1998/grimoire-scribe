@@ -27,7 +27,7 @@ side off
 wait 200
 expect editor.modal is tools
 expect editor.strokes is 1
-expect toast not Page cleared
+expect toast is
 # Clicked three times over it
 side on
 side off
@@ -37,7 +37,7 @@ side on
 side off
 wait 400
 expect editor.strokes is 1
-expect toast not Page cleared
+expect toast is
 # Held while Pin mode pins the highlighter, then Done and the picker closed, the button still down
 pentap panel picker.pin-mode
 wait 200
@@ -56,7 +56,7 @@ wait 1200
 side off
 wait 200
 expect editor.strokes is 1
-expect toast not Page cleared
+expect toast is
 # Held while the pen taps the highlighter's pin, and on after it
 side on
 pentap panel tool:highlighter
@@ -65,7 +65,7 @@ side off
 wait 200
 expect editor.tool is highlighter
 expect editor.strokes is 1
-expect toast not Page cleared
+expect toast is
 # Held over the Display sheet (under the pin now)
 pentap panel display
 wait 200
@@ -76,7 +76,7 @@ side off
 wait 200
 expect editor.modal is display
 expect editor.strokes is 1
-expect toast not Page cleared
+expect toast is
 tap 1462 1860
 wait 200
 expect editor.modal is none
@@ -85,7 +85,7 @@ side on
 wait 1500
 side off
 wait 200
-expect toast is Page cleared
+expect toast is
 expect editor.strokes is 0
 pentap panel undo
 wait 300

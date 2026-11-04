@@ -56,6 +56,6 @@ tap panel elsewhere.page.2
 expect editor.notebook_id is A
 expect editor.links is 2 2
 expect editor.strokes is 0
-expect toast is Could not save the link.
+expect toast is Couldn't save link.
 storage ok
 quit

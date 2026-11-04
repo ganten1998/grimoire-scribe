@@ -91,7 +91,7 @@ touch down 318 551
 wait 700
 touch up 318 551
 tap panel pages.delete
-expect toast has Deleted 1 page
+expect toast is
 wait 400
 expect editor.modal is pages
 expect editor.pages is 4
@@ -108,7 +108,7 @@ touch up 1542 551
 expect editor.pages.context is 3
 shot 06-card-delete-two
 tap panel pages.delete
-expect toast has Deleted 2 pages
+expect toast is
 wait 400
 shot 07-after-delete
 expect editor.pages is 2

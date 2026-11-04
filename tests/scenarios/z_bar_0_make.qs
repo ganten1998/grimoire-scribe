@@ -34,7 +34,7 @@ expect editor.pages_tab is pages
 tap 1155 340
 expect editor.links is 1 1
 # The first link made in this data root says once how a link is used (hints bit 1), instead of where it goes
-expect toast is Linked. Tap it with a finger to go there; hold it for more.
+expect toast is Linked. Finger tap to go there; hold for more.
 expect settings.hints is 2
 key 38 0
 pen line 300 1400 900 1500 30 0.6 0.6

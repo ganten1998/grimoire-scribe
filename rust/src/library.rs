@@ -6227,7 +6227,7 @@ mod tests {
     }
 
     // A node whose notebook does not open (its notebook.ini gone since the index read it): the Graph again,
-    // and the editor's "Could not open that notebook" stays up (graph_open used to clear it at once).
+    // and the editor's "Couldn't open notebook" stays up (graph_open used to clear it at once).
     #[test]
     fn a_node_that_does_not_open_keeps_its_toast_over_the_graph() {
         let root = std::env::temp_dir().join(format!("grimoire-graph-toast-{}", std::process::id()));
@@ -6257,7 +6257,7 @@ mod tests {
         assert_eq!(a.scr, ScreenId::Library);
         assert!(graph_shown(&a), "the Graph again");
         assert!(a.toast_visible);
-        assert_eq!(a.toast.as_str(), "Could not open that notebook");
+        assert_eq!(a.toast.as_str(), "Couldn't open notebook");
         library_free(&mut a);
         canvas_free(&mut a.screen);
         let _ = std::fs::remove_dir_all(&root);

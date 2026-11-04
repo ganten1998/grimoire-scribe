@@ -29,7 +29,7 @@ expect editor.modal is none
 expect editor.link_mode is 1
 expect editor.strip is new
 pentap 600 1200
-expect toast is Too small for a link: draw around what links.
+expect toast is Link area too small.
 expect editor.strokes is 1
 expect editor.link_mode is 1
 expect editor.live_matches_render is 1
@@ -42,7 +42,7 @@ tap panel linkto.pages
 expect editor.modal is pages
 expect editor.picking is new
 expect editor.pages_tab is pages
-expect toast is Where does the link go? Tap its page.
+expect toast is
 shot 02-pick-new
 tap panel pages.page.3
 expect editor.modal is none
@@ -50,7 +50,7 @@ expect editor.page is 1
 expect editor.links is 1 1
 expect editor.link.1 is p3
 # (the first link this data root makes: the one-time tip instead of where it goes, hints bit 1)
-expect toast is Linked. Tap it with a finger to go there; hold it for more.
+expect toast is Linked. Finger tap to go there; hold for more.
 # A finger's tap on it turns to page 3; one off it does nothing
 tap 600 1500
 expect editor.page is 1
@@ -125,7 +125,7 @@ expect editor.ui_at.679.1818 is card.delete
 tap 679 1818
 expect editor.links is 0 0
 expect editor.strokes is 1
-expect toast is Link deleted. Undo brings it back.
+expect toast is
 tap 600 1100
 expect editor.modal is none
 expect editor.page is 1
@@ -141,7 +141,8 @@ tap panel pages.back
 expect editor.linkto is pick
 expect editor.ui_at.1530.679 is linkto.cancel
 tap panel linkto.cancel
-expect toast is No link made.
+expect toast is
+expect editor.linkto is 0
 expect editor.strokes is 1
 expect editor.links is 0 0
 expect editor.live_matches_render is 1
@@ -160,13 +161,13 @@ pentap panel undo
 wait 300
 expect editor.links is 0 0
 expect editor.redo_kind is link
-expect toast is Link change undone.
+expect toast is
 tap 600 1450
 expect editor.page is 1
 pentap panel redo
 wait 300
 expect editor.links is 1 1
-expect toast is Link change redone.
+expect toast is
 expect editor.undo_kind is link
 # The next ink never joins a link's box
 pen line 1200 1800 1500 1900 30 0.6 0.6

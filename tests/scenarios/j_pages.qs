@@ -44,7 +44,7 @@ wait 700
 touch up 318 1249
 expect editor.pages.context is 4
 tap panel pages.delete
-expect toast has Deleted 2 pages
+expect toast is
 wait 400
 shot 03-after-delete
 expect editor.pages is 3
@@ -68,7 +68,7 @@ wait 700
 touch up 318 551
 expect editor.pages.context is 1
 tap panel pages.delete
-expect toast has Deleted 3 pages
+expect toast is
 wait 400
 shot 05-all-deleted
 expect editor.pages is 1

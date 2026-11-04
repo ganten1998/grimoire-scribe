@@ -51,7 +51,7 @@ wait 200
 expect editor.pages.drag is
 expect editor.page_ids is 1,3,4,5,6,2,7,8,9,10,11,12
 expect editor.pages.undo is 1
-expect toast has Moved 1 page: it is page 6 now.
+expect toast is
 expect display.presents is full 0 0 1860 2480
 shot 02-dropped
 tap panel pages.undo-move
@@ -187,7 +187,7 @@ expect editor.pages.drag is 2 before 7
 expect display.presents not -1
 touch up 1600 1249
 wait 200
-expect toast has Could not move those pages.
+expect toast has Couldn't move pages.
 expect editor.pages.drag is
 expect editor.page_ids is 2,1,3,4,5,6,7,9,8,10,11,12
 expect editor.ticked is 2

@@ -3,9 +3,9 @@
 # The eye: fine dotted outlines over the page where a finger's tap follows a link. The link-areas
 # action turns it on and off; the boxes are the links' areas padded to a finger's size, three of them
 # here (page 3 twice, page 2), without number badges. They are on the screen only, so a
-# stroke across one still renders as the page does, and the setting is kept through a restart. The
-# first time it comes on a toast says what the boxes are. (The bar's Areas button, which does the same,
-# is in z_bar_1_list.)
+# stroke across one still renders as the page does, and the setting is kept through a restart. It comes
+# on silently, the first time too (the link areas tip went in 2.0.0-beta.2). (The bar's Areas button, which
+# does the same, is in z_bar_1_list.)
 # root: z_bar_0_make
 # (the clock corner held still: its minute's refresh would land among the counted ones)
 clock 1700000000
@@ -22,12 +22,12 @@ key 30 0
 wait 200
 expect settings.link_areas is 1
 expect editor.areas is 3
-expect settings.hints is 6
-expect toast is Dotted outlines show where a finger tap follows a link. They never print.
+expect settings.hints is 2
+expect toast is
 shot 01-areas
 wait 4300
 expect toast is
-# Off and on again: one consistent composition each, no stale overlays and no second tip
+# Off and on again: one consistent composition each, no stale overlays and no tip
 expect display.presents not -1
 key 30 0
 wait 100

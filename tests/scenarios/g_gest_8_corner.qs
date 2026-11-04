@@ -21,10 +21,11 @@ expect editor.page is 1
 expect editor.modal is none
 tap 60 60
 expect settings.status_on is 0
-# right after a gesture that fired (a turn past the end: the toast), the corner's tap is still the clock's
+# right after a gesture that fired (a turn past the end, which stays on the page), the corner's tap is still the clock's
 wait 1100
 swipe 2 1300 1200 -400 0
-expect toast is This is the last page.
+expect touch.gesture is 2.left
+expect editor.pages is 1
 tap 60 60
 expect settings.status_on is 1
 tap 60 60

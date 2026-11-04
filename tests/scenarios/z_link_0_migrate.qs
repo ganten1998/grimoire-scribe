@@ -93,7 +93,7 @@ wait 300
 expect editor.modal is none
 expect editor.page is 2
 expect editor.pages is 5
-expect toast has a copy of page 1
+expect toast is
 expect editor.strokes is 3
 expect editor.links is 4 3
 expect editor.link.1 is index

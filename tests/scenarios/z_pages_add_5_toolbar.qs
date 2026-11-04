@@ -7,8 +7,8 @@
 # one stone. swiping still works for new pages and nav so."): on the last page the next-page button is a +; held
 # 600 ms (the Pages view's New page's hold) or clicked with a modifier key held, it opens the same count pad, along
 # the bottom over the page. Done adds that many blank pages right after the open page (on the last page: the end),
-# and the editor stays on the page it was on; a toast says how many, from which page, and that the Pages view's
-# Undo takes them back (the batch is the notebook's Undo record, as the Pages view's batch). A plain tap on the +
+# and the editor stays on the page it was on, with no toast (the owner, 2026-11-04); the Pages view's Undo takes
+# them back (the batch is the notebook's Undo record, as the Pages view's batch). A plain tap on the +
 # still adds one page and goes to it, and so does swiping past the last page (unchanged). The new-pages action
 # opens the pad from a key, on any page.
 # (the launch repaints the whole screen 1.2 s and 3.5 s after it starts: past both before counting; a slow
@@ -65,7 +65,7 @@ expect editor.addpad is 0
 expect editor.modal is none
 expect editor.page_ids is 1,2,3,4,5
 expect editor.page is 2
-expect toast is Added 3 pages after this one, from page 3. Undo them in Pages.
+expect toast is
 # (the page where the pad was, with the page count and the + turned next, in one refresh)
 expect display.presents is ui 20 1212 1820 1248
 shot 02-added
@@ -79,7 +79,7 @@ expect editor.pages.undo.kind is add
 tap panel pages.undo-add
 wait 300
 expect editor.page_ids is 1,2
-expect toast is Undone: 3 new pages taken back.
+expect toast is
 tap panel pages.back
 wait 300
 expect editor.modal is none
@@ -99,7 +99,7 @@ wait 300
 expect editor.addpad is 0
 expect editor.page_ids is 1,2,6,7
 expect editor.page is 2
-expect toast is Added 2 pages after this one, from page 3. Undo them in Pages.
+expect toast is
 # Not on the last page now: the button is next again, and held it turns the page (no pad)
 touch down 1768 1330
 wait 700
@@ -145,7 +145,7 @@ tap panel addpad.key.done
 wait 300
 expect editor.page_ids is 1,2,6,8,7
 expect editor.page is 3
-expect toast is Added 1 page after this one: page 4. Undo it in Pages.
+expect toast is
 # A plain tap on the + still adds one page and goes to it (unchanged), as does swiping past the last page
 key 37 0
 wait 200
@@ -180,7 +180,7 @@ expect editor.addpad is 0
 expect editor.pages is 37
 expect editor.page is 7
 expect editor.strokes is 0
-expect toast is Added 30 pages after this one, from page 8. Undo them in Pages.
+expect toast is
 # The next contact is no longer let go
 pen line 300 1200 900 1200 20 0.6
 wait 200

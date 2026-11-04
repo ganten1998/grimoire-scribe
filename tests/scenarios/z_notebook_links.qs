@@ -79,10 +79,11 @@ wait 1100
 tap 1200 1200
 expect editor.notebook_id is A
 expect editor.links is 3 3
-# (2.0.0-beta.2) A link whose page was deleted opens its card at once, to change where it goes or delete it.
+# (2.0.0-beta.2) A link whose page was deleted opens its card at once, to change where it goes or delete it,
+# instead of a toast (this used to see the page delete's own toast, gone since the owner's toast pass)
 expect editor.link_card.links is 1
 expect editor.link_card.rows is retarget redraw delete
-expect toast not
+expect toast is
 key 45 0
 expect editor.link_card.links is 0
 tap panel pages

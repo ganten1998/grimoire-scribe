@@ -35,7 +35,7 @@ wait 100
 expect editor.keyboard is
 expect editor.pages is 6
 expect editor.page is 1
-expect toast is Linked to the new page 6.
+expect toast is Linked to new page 6.
 expect editor.links is 4 4
 expect editor.index_rows is 3
 expect editor.linkto is 0
@@ -72,7 +72,8 @@ expect editor.pages is 6
 expect editor.ui_at.1530.2370 is linkto.cancel
 tap 1530 2370
 wait 100
-expect toast is No link made.
+expect toast is
+expect editor.linkto is 0
 expect editor.links is 4 4
 # A lasso low on the page: the card and the keyboard dock at the top; Done with no name adds page 7 unnamed
 key 38 0
@@ -89,7 +90,7 @@ tap 1643 1058
 wait 100
 expect editor.pages is 7
 expect editor.page is 1
-expect toast is Linked to the new page 7.
+expect toast is Linked to new page 7.
 expect editor.links is 5 5
 expect editor.index_rows is 3
 pentap panel library

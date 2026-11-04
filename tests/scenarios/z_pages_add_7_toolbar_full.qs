@@ -21,20 +21,21 @@ expect editor.addpad is 1
 key 10 0
 wait 100
 expect editor.text is 5
-expect toast is This notebook has room for 5 more pages.
+expect editor.addpad.done is Add 5 pages
+expect toast is
 key 28 0
 wait 300
 expect editor.addpad is 0
 expect editor.pages is 2000
 expect editor.page is 1995
-expect toast is Added 5 pages after this one, from page 1996. Undo them in Pages.
+expect toast is
 key 37 0
 wait 300
 expect editor.page is 2000
 touch down 1768 1330
 wait 700
 expect editor.addpad is 0
-expect toast is This notebook is full: it has 2000 pages.
+expect toast is Notebook full with 2000 pages.
 touch up 1768 1330
 wait 200
 expect editor.addpad is 0
@@ -44,7 +45,7 @@ tap panel next
 wait 300
 expect editor.pages is 2000
 expect editor.page is 2000
-expect toast is Could not add a page
+expect toast is Couldn't add page
 tap panel pages
 waitbg
 wait 200

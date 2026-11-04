@@ -104,7 +104,7 @@ expect editor.strokes is 2
 key 600 0 1
 wait 100
 expect editor.strokes is 0
-expect toast is Page cleared
+expect toast is
 key 304 0 1
 wait 100
 expect editor.strokes is 2
@@ -203,7 +203,7 @@ expect editor.link_mode is 1
 key 613 0 1
 wait 100
 expect editor.link_mode is 0
-expect toast is No link made.
+expect toast is
 expect editor.strokes is 2
 tap panel links
 wait 100
@@ -217,7 +217,8 @@ expect editor.strokes is 2
 key 613 0 1
 wait 200
 expect editor.modal is none
-expect toast is No link made.
+expect toast is
+expect editor.linkto is 0
 expect editor.strokes is 2
 # Pen feel opens, and its button or Close menu goes back
 key 610 0 1
@@ -243,7 +244,7 @@ key 612 0 1
 wait 300
 expect screen is editor
 expect editor.modal is none
-expect toast is Could not save this page. Is the storage full?
+expect toast is Couldn't save page. Is the storage full?
 storage ok
 # The Library
 key 612 0 1

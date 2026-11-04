@@ -86,7 +86,7 @@ expect size is 1860x2480
 # Semantic panel taps stay valid as new buttons are added.
 pentap panel library
 expect screen is library
-expect toast is Saved
+expect toast is
 expect library.items is 1
 quit
 # The app has quit: "running" is the one key with an answer now

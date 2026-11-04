@@ -14,7 +14,7 @@ tap 221 2045
 expect editor.text is a
 tap 1643 2365
 expect editor.index_rows is 3
-expect toast is Page 2 is named a.
+expect toast is
 expect editor.map is graph
 shot 01-renamed
 # Pan with a pen, preserving notebook ink.

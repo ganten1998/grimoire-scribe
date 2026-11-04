@@ -5,8 +5,8 @@
 # env: GRIMOIRE_CHECK_FIT=1
 # rust-only
 # Select mode's bar in Spanish (classic), with the fit check on: the mode button's two names (Trazos enteros,
-# Área exacta), the bar under a selection with the clipboard full (its widest), and the exact-area toast
-# all fit; a run that cuts any text short fails.
+# Área exacta) and the bar under a selection with the clipboard full (its widest) all fit; a run that cuts any
+# text short fails.
 wait 300
 tap 965 95
 wait 100

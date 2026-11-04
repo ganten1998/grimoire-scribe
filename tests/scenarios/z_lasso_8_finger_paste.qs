@@ -43,7 +43,7 @@ expect editor.selected is 2
 expect editor.sel_box is 495 695 331 131
 tap panel select.copy
 wait 100
-expect toast is Copied.
+expect toast is
 expect editor.clipboard is 1
 # held and lifted outside the selection: it goes, and the paste lands centred on the hold, selected
 touch down 900 1700
@@ -89,7 +89,8 @@ expect editor.select is selected
 expect editor.selected is 1
 tap panel select.copy
 wait 100
-expect toast is Copied.
+expect toast is
+expect editor.clipboard is 1
 touch down 900 1900
 wait 800
 expect editor.select is lasso

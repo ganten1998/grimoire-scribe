@@ -37,7 +37,7 @@ key 44 1
 wait 200
 expect editor.modal is pages
 expect editor.page_ids is 1,2,3,4,5
-expect toast is Move undone: the pages are back in their order.
+expect toast is
 expect editor.strokes is 1
 expect editor.pages.undo is 0
 expect editor.pages.redo is 1
@@ -48,7 +48,7 @@ shot 01-redo-offered
 key 21 1
 wait 200
 expect editor.page_ids is 1,3,4,5,2
-expect toast is Move redone: the pages are where you moved them.
+expect toast is
 expect editor.pages.redo is 0
 expect editor.pages.undo.kind is move
 expect editor.pages.at.redo is
@@ -103,7 +103,7 @@ expect editor.pages.redo.kind is add
 key 21 1
 wait 200
 expect editor.page_ids is 1,2,6,3,4,5
-expect toast is Redone: 1 new page again, page 3.
+expect toast is
 expect editor.tile.3 is Page 3 (new)
 # On the page: undo and redo are the page's (the stroke), the pages stay as they are
 tap panel pages.back
