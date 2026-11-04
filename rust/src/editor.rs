@@ -4314,6 +4314,10 @@ fn pages_delete(a: &mut App) {
     if k == 0 {
         return;
     }
+    // (no toast when done: the owner, 2026-11-04. One left up from before goes first, so one the delete raises,
+    // a page that could not be saved, stays.)
+    app_toast_dismiss(a);
+    let s = ed(a);
     if k == n {
         // A notebook keeps at least one page: add a fresh blank one to stay behind.
         let paper = s.open_page().map_or(s.nb.paper, |p| p.paper);
@@ -4359,10 +4363,8 @@ fn pages_delete(a: &mut App) {
     if s.nav.links_writable && nav_save_links(s.nb.id.as_str(), &mut s.nav, &s.nb) != 0 {
         qlog!("index: deleted pages' links left for a later save");
     }
-    // (the pages' files went to grimoire/trash; the view shows them gone, with no toast, and one left up from
-    // before goes)
+    // (the pages' files went to grimoire/trash; the view shows them gone)
     compose_all(a, RefreshMode::Full);
-    app_toast_dismiss(a);
 }
 
 // A page added (or copied) at index `at` this session: the open page moves along if it was there or
@@ -4402,6 +4404,9 @@ fn pages_copy(a: &mut App, index: i32) {
     if !save_page(a) {
         return;
     }
+    // (no confirmation: the owner, 2026-11-04. A toast left up from before goes first, so one the copy raises
+    // stays: the copy opening read-only says so.)
+    app_toast_dismiss(a);
     // The source page read first (PHASE2 9.2): it is migrated as it is read, so the copy takes its areas. (One
     // that does not read keeps legacy links; they are copied anyway and find the copy's ink: same strokes,
     // same seeds.)
@@ -4441,8 +4446,6 @@ fn pages_copy(a: &mut App, index: i32) {
         // lines): the page was copied, but the links drawn on it could not be saved for the copy.
         app_toast(a, tr("Copied without links: couldn't save them."), 3000,
         );
-    } else {
-        app_toast_dismiss(a); // (no confirmation: the owner, 2026-11-04; a toast left up from before goes)
     }
 }
 
@@ -5495,6 +5498,9 @@ fn link_choose(a: &mut App) {
     if ed_ref(a).lt.no_pages {
         return;
     }
+    // (no "Where does the link go?": the owner, 2026-11-04. A toast left up goes first, so a page that could not
+    // be saved still says so.)
+    app_toast_dismiss(a);
     ed(a).lt.hidden = true;
     save_page(a);
     let index = ed(a).index;
@@ -5510,7 +5516,6 @@ fn link_choose(a: &mut App) {
         return;
     }
     compose_all(a, RefreshMode::Full);
-    app_toast_dismiss(a); // (no "Where does the link go?": the owner, 2026-11-04; a toast left up goes)
 }
 
 /// New page... (6.8): a keyboard names the page to add, docked where Link to... is (at the top exactly when it
@@ -7597,6 +7602,9 @@ fn panel_act(a: &mut App, h: Hit) {
             if !save_page(a) {
                 return; // stay with the unsaved page rather than drop it
             }
+            // (a toast left up from the page does not follow to the Library; one the Library raises as it opens,
+            // its Graph's, stays)
+            app_toast_dismiss(a);
             // (a notebook the Library's Graph opened goes back to that Graph: the Library as it was left)
             let to_graph = ed_ref(a).from_graph;
             close_notebook(a);
@@ -7605,7 +7613,6 @@ fn panel_act(a: &mut App, h: Hit) {
                 crate::library::library_return_to_graph(a);
             }
             app_switch(a, ScreenId::Library);
-            app_toast_dismiss(a); // (a toast left up from the page does not follow to the Library)
         }
         P_COLLAPSE => set_collapsed(a, true),
         P_EXPAND => set_collapsed(a, false),
