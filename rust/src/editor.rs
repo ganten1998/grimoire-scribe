@@ -12026,6 +12026,10 @@ mod tests {
     // before, and so does a setting that changes with nothing drawn.
     #[test]
     fn fshape_names_its_action_only_when_it_did_something() {
+        // (a data root of its own: the setting it changes is saved, settings.ini there)
+        let root = std::env::temp_dir().join(format!("grimoire-fshape-names-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        assert_eq!(store_init(root.to_str().unwrap()), 0);
         let mut a = fshape_app();
         let path = [(250,400), (350,400), (450,400), (550,400), (650,400), (650,500),
             (650,600), (650,700), (550,700), (450,700), (350,700), (250,700), (250,600), (250,500), (250,400)];
@@ -12092,6 +12096,8 @@ mod tests {
         // A setting with nothing drawn (swiping past the last page adds a page, no toast of its own): named
         assert_eq!(fire(&mut a, SHORTCUT_GESTURE_NEW_PAGE), named(SHORTCUT_GESTURE_NEW_PAGE));
         assert!(!a.settings.gesture_new_page);
+        assert!(std::fs::read_to_string(root.join("settings.ini")).unwrap().contains("gesture_new_page=0"));
+        let _ = std::fs::remove_dir_all(&root);
     }
 
     // Zoom in at the most zoom, Zoom out at the least, and a scroll past the end of the first or the last page
