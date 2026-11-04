@@ -352,6 +352,9 @@ pub struct EditorState {
     page_kept: bool,
     /// how many times "Loading page..." went up before a dense page was drawn (a probe, editor.loading_toasts)
     loading_toasts: u32,
+    /// how many times "Adding N pages..." reached the panel before a batch of new pages was written, or a
+    /// batch's Redo wrote them again (a probe, editor.add_notices)
+    add_notices: u32,
     /// Select mode (select.rs), and the last lasso move's or paste's times, ms (old place, new place)
     sel: SelMode,
     last_lasso_ms: (u32, u32),
@@ -1674,6 +1677,12 @@ fn view_identity(a: &App) -> bool {
     s.zoom == 1.0 && s.ox == 0.0 && s.oy == 0.0 && s.pgw == a.w && s.pgh == a.h
 }
 
+// Whether the view (the zoom and its offsets) moved from `was`, by more than rounding: a zoom step at the most zoom
+// or the least, or a scroll at the end of the first or the last page, leaves it where it was, and draws nothing (so
+// a finger shape bound to it says nothing either, fs_fire).
+fn view_moved(s: &EditorState, was: (f32, f32, f32)) -> bool {
+    (s.zoom - was.0).abs() > was.0 * 1e-5 || (s.ox - was.1).abs() > 0.01 || (s.oy - was.2).abs() > 0.01
+}
 fn view_clamp(a: &mut App) {
     let top = status_reserved(a);
     let (aw, ah) = (a.w, a.h - top);
@@ -4575,8 +4584,45 @@ fn pages_undo_move(a: &mut App) {
 }
 
 /// From how many pages New page's batch takes its pad down (one refresh) before it writes them (a batch under it
-/// takes under half a second on a Kindle, and keeps its one refresh).
+/// takes about a second at most on a Kindle, ADD_PAGE_MS, and keeps its one refresh).
 const ADD_BUSY_PAGES: i32 = 25;
+/// A batch says "Adding N pages..." while it is written when it should take longer than this on a Kindle, ms, and
+/// always from ADD_NOTICE_PAGES pages; a smaller one is written with nothing said (the owner, 2026-11-04: "Show
+/// "Adding N pages..." only for big batches (100 or more pages, or when adding takes longer than about 2
+/// seconds), and take it down when done. Small batches stay silent.").
+const ADD_NOTICE_MS: i32 = 2000;
+const ADD_NOTICE_PAGES: i32 = 100;
+/// What one page of a batch takes on a Kindle, ms: a batch's time is told from its count before it starts, as
+/// nothing reaches the panel while it runs. Each page is one write_file_atomic of its blank file (store_add_pages),
+/// two fsyncs, and an fsync takes 15 to 25 ms there (util.rs: a page's save, two files, took 65 to 104 ms): about
+/// 40 ms a page, so a batch takes 2 s from about 50 pages. The same on every paper: a picture paper's pages are the
+/// same blank files, and bg/pages.ini is written once for the batch (the simulator: 0.13 to 0.20 ms a page on Blank
+/// and on a template's picture alike, batches of 200 and 1000 pages). grimoire.log's "pages: added=" line gives
+/// each batch's time, to set it by.
+const ADD_PAGE_MS: i32 = 40;
+// Whether a batch of `n` pages says "Adding N pages..." as it is written: a big one, or one that should take a
+// while. Not while a pen held on an action holds the panel: no toast could show before the writing then (it would
+// come after, once the pen lifts).
+fn add_notice_due(a: &App, n: i32) -> bool {
+    !a.pen_action_down && (n >= ADD_NOTICE_PAGES || n.saturating_mul(ADD_PAGE_MS) > ADD_NOTICE_MS)
+}
+// The notice itself, for `n` pages.
+fn add_notice_text(n: i32) -> String {
+    // TRANSLATORS: a toast while New page's batch is being written (about 1700 px at 44 px in bold, or two
+    // lines): %d blank pages are being added. Only for a large batch, which can take a minute; it goes when
+    // they are added.
+    cformat!(ng_("Adding %d page...", "Adding %d pages...", n as i64), n)
+}
+// The refresh that puts what is drawn on the panel before a batch's pages are written (nothing reaches it while
+// they are), with "Adding N pages..." when `notice` (put up just before): counted (editor.add_notices) only when
+// that refresh carried it, so the count says the notice was on the panel before the writing began.
+fn add_notice_flush(a: &mut App, notice: bool) {
+    let shown = a.toast_presents;
+    app_flush(a);
+    if notice && a.toast_presents != shown {
+        ed(a).add_notices += 1;
+    }
+}
 // The writing a batch of new pages does, from the Pages view's New page (a tap is a batch of one, its count
 // pad more) or the toolbar's count pad: `n` blank pages at index `at` (never first), on the paper of the page
 // they go after (the owner, 2026-11-03: the selected page's, else the open page's; in the Pages view the batch
@@ -4586,7 +4632,9 @@ const ADD_BUSY_PAGES: i32 = 25;
 // takes New page's (note pages). The open page stays open (its index follows it) and the batch is the
 // notebook's Undo record (pv.add_undo), which the Pages view's bottom row offers while its pages are still
 // blank. `redraw` draws the screen as it will be without the pad (the batch's pad has closed): first, for a
-// large batch, and on a failure. False when nothing was added (a toast said so).
+// large batch, and on a failure. A big batch says "Adding N pages..." until it is written (add_notice_due),
+// and the notice is down at the end on every path: replaced by the failure's toast, or taken down. False when
+// nothing was added (a toast said so).
 fn add_pages_write(a: &mut App, at: i32, n: i32, redraw: fn(&mut App)) -> bool {
     if store_room_for_pages(&ed_ref(a).nb) < n {
         // (New page tapped in a full notebook: its count pad, held, says the same)
@@ -4598,25 +4646,41 @@ fn add_pages_write(a: &mut App, at: i32, n: i32, redraw: fn(&mut App)) -> bool {
         redraw(a);
         return false;
     }
-    if n >= ADD_BUSY_PAGES {
-        // A batch this large takes a while (each page file is written and synced: 15 to 25 ms on a Kindle):
-        // the pad goes first, in one refresh, so the screen never sits on the pad. No toast says so meanwhile
-        // (the owner marked "Adding N pages..." for removal, 2026-11-04).
+    let notice = add_notice_due(a, n);
+    if n >= ADD_BUSY_PAGES || notice {
+        // A batch this large takes a while (each page file is written and synced, ADD_PAGE_MS on a Kindle):
+        // the pad goes first, in one refresh, so the screen never sits on the pad, with "Adding N pages..." in
+        // the same refresh when the batch is big (the main loop is held until the pages are written).
         redraw(a);
-        app_flush(a);
+        if notice {
+            let msg = add_notice_text(n);
+            app_toast(a, &msg, 120_000);
+        }
+        add_notice_flush(a, notice);
     }
+    let started = now_ms();
     let s = ed(a);
     let paper = batch_paper(s, at - 1);
     let open = s.open_pid();
     s.nb.last_page = s.index;
     let mut undo = None;
     let failed = at < 1 || store_add_pages(&mut s.nb, at, n, paper, &mut undo) != 0;
+    // (a large batch's time on this device, which ADD_PAGE_MS estimates; a picture paper's said apart)
+    if n >= ADD_BUSY_PAGES || notice || failed {
+        qlog!("pages: added=%d of %d ms=%d notice=%d paper=%s", if failed { 0 } else { n }, n,
+            now_ms().wrapping_sub(started) as i32, notice as i32,
+            if paper_is_image(store_new_page_paper(&ed_ref(a).nb, paper)) { "picture" } else { "drawn" });
+    }
     if failed {
         // TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): New page's batch could not
         // add the pages (the storage is full); none was added.
-        app_toast(a, tr("Couldn't add pages."), 3000);
+        app_toast(a, tr("Couldn't add pages."), 3000); // (in the notice's place)
         redraw(a);
         return false;
+    }
+    // (another toast that took the notice's place stays)
+    if notice && a.toast_visible && a.toast.as_bytes() == add_notice_text(n).as_bytes() {
+        app_toast_dismiss(a);
     }
     let s = ed(a);
     s.index = s.nb.page_ids.iter().position(|&p| p == open).map_or(s.index, |i| i as i32);
@@ -4806,6 +4870,9 @@ fn pages_undo_add(a: &mut App) {
 // exact order it left (store_redo_move_pages), or the batch's blank pages again, with the same ids at the same
 // places (store_redo_add_pages), the open page still open, the view on the screenful of the first page it
 // changes. The record goes back to Undo (one step each). One that no longer applies is dropped, never used.
+// A batch's Redo writes its pages as slowly as the batch did: a big one says "Adding N pages..." as the batch
+// did (add_notice_due), on the panel before the writing, and the notice is down at the end, replaced by the
+// failure's toast or taken down with the rest.
 fn pages_redo(a: &mut App) {
     if !save_page(a) {
         return;
@@ -4815,6 +4882,17 @@ fn pages_redo(a: &mut App) {
     if !r.applies(&s.nb) {
         return;
     }
+    let batch = match &r {
+        PageRedo::Add(u) => u.added.len() as i32,
+        PageRedo::Move(_) => 0,
+    };
+    let notice = batch > 0 && add_notice_due(a, batch);
+    if notice {
+        app_toast(a, &add_notice_text(batch), 120_000);
+        add_notice_flush(a, true);
+    }
+    let started = now_ms();
+    let s = ed(a);
     let open = s.open_pid();
     let first_was = s.nb.page_ids[0];
     s.nb.last_page = s.index;
@@ -4822,6 +4900,11 @@ fn pages_redo(a: &mut App) {
         PageRedo::Move(u) => store_redo_move_pages(&mut s.nb, u),
         PageRedo::Add(u) => store_redo_add_pages(&mut s.nb, u),
     };
+    // (a large batch's time again, as add_pages_write logs the batch's)
+    if batch >= ADD_BUSY_PAGES || notice || (batch > 0 && rc != 0) {
+        qlog!("pages: redo added=%d of %d ms=%d notice=%d", if rc != 0 { 0 } else { batch }, batch,
+            now_ms().wrapping_sub(started) as i32, notice as i32);
+    }
     if rc != 0 {
         let s = ed(a);
         if r.applies(&s.nb) {
@@ -4829,7 +4912,7 @@ fn pages_redo(a: &mut App) {
         }
         // TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): the Pages view's Redo could not
         // do the page move or the new pages again (the storage is full).
-        app_toast(a, tr("Couldn't redo."), 3000);
+        app_toast(a, tr("Couldn't redo."), 3000); // (in the notice's place)
         compose_all(a, RefreshMode::Ui);
         return;
     }
@@ -4862,7 +4945,7 @@ fn pages_redo(a: &mut App) {
     let s = ed(a);
     s.pv.screen = at / (cols * rows).max(1);
     compose_all(a, RefreshMode::Full);
-    app_toast_dismiss(a); // (no confirmation; a toast left up from before, a failed try's, goes)
+    app_toast_dismiss(a); // (no confirmation; the notice, or a toast left up from before, a failed try's, goes)
 }
 
 // The `undo` and `redo` actions (keys, a controller, gestures) with the Pages view's grid in front: its own Undo
@@ -8195,6 +8278,7 @@ fn editor_shortcut_in(a: &mut App, action: i32, x: f32, y: f32, src: ActionSrc) 
         clear_page(a); // the panel's broom: no question, one undo step
     } else if action == SHORTCUT_ZOOM_OUT || action == SHORTCUT_ZOOM_IN {
         let s = ed(a);
+        let was = (s.zoom, s.ox, s.oy);
         let (mut px, mut py) = (0.0, 0.0);
         to_page(s, x, y, &mut px, &mut py);
         let factor = if action == SHORTCUT_ZOOM_IN { 1.25 } else { 0.8 };
@@ -8202,7 +8286,10 @@ fn editor_shortcut_in(a: &mut App, action: i32, x: f32, y: f32, src: ActionSrc) 
         s.ox = px - x / s.zoom;
         s.oy = py - y / s.zoom;
         view_clamp(a);
-        compose_all(a, RefreshMode::Ui);
+        // (at the most zoom, or the least, the view stays: nothing to draw)
+        if view_moved(ed_ref(a), was) {
+            compose_all(a, RefreshMode::Ui);
+        }
     } else if action == SHORTCUT_SCROLL_UP || action == SHORTCUT_SCROLL_DOWN {
         let top = status_reserved(a) as f32;
         let step = a.h as f32 * 0.75;
@@ -8225,9 +8312,13 @@ fn editor_shortcut_in(a: &mut App, action: i32, x: f32, y: f32, src: ActionSrc) 
                 compose_all(a, RefreshMode::Ui);
             }
         } else {
+            let was = (zoom, ox, ed_ref(a).oy);
             ed(a).oy = next - top / zoom;
             view_clamp(a);
-            compose_all(a, RefreshMode::Ui);
+            // (at the end of the first or the last page the view stays: nothing to draw)
+            if view_moved(ed_ref(a), was) {
+                compose_all(a, RefreshMode::Ui);
+            }
         }
     } else if action == SHORTCUT_FIT_PAGE {
         if !zoomed(a) {
@@ -9377,6 +9468,12 @@ fn fs_fire(a: &mut App, action: i32, anchor: (f32, f32), m: FsMatch, t: u32) -> 
     // the same pending refresh. If the action refuses, fs_reject paints its sparse trail again.
     let pending = (a.dirty, a.dirty_mode);
     fs_fire_cleanup(a, trail);
+    // What the app has changed so far, and its settings: the action's name shows only if the action changes
+    // either (2.0.0-beta.2, the owner: "Show the action's name only when the action actually did something").
+    // Whatever an action does reaches one or the other (a page turned, ink drawn or taken back, a sheet or the
+    // view changed, the panel drawn again, a setting), so Next page on the last page, Previous page on page 1,
+    // Clear page on an empty page, and Undo or Redo with nothing to undo or redo fire with nothing said.
+    let (changes, settings) = (a.changes, a.settings);
     let ran = editor_shortcut_at(a, action, anchor.0, anchor.1, ActionSrc::Shape);
     if !ran {
         (a.dirty, a.dirty_mode) = pending;
@@ -9386,7 +9483,8 @@ fn fs_fire(a: &mut App, action: i32, anchor: (f32, f32), m: FsMatch, t: u32) -> 
     let name = shortcut_action_name(action).unwrap_or("unknown");
     fs_trace(a, "fired", name, m.d1, m.thr, m.d2);
     let full_view = a.scr != screen_before || a.asleep || (!pages_before && a.ed.as_deref().is_some_and(|s| s.pv.open));
-    if !full_view && a.toast_until == toast_before {
+    let did = a.changes != changes || a.settings != settings;
+    if did && !full_view && a.toast_until == toast_before {
         app_toast(a, action_label(action), 1200);
     }
     ed(a).fs_trail = RECT_EMPTY;
@@ -10283,8 +10381,15 @@ fn du_wear_tick(a: &mut App, now: u32) {
     app_invalidate(a, r, RefreshMode::Clean);
 }
 
-// The deferred settle: one GL16 refresh for everything written since the last pause.
+// The deferred settle: one GL16 refresh for everything written since the last pause. It is no change of the
+// app's (App.changes): what it draws is on the panel already, from the writing's fast refreshes, and an action
+// that settles first and then finds nothing to do did nothing (Undo with nothing to undo, fs_fire).
 fn settle_now(a: &mut App) {
+    let changes = a.changes;
+    settle_now_in(a);
+    a.changes = changes;
+}
+fn settle_now_in(a: &mut App) {
     // Under the Pages view the page is not on screen: the view's opening refreshed the whole screen
     // and its closing composes it all again, so nothing is due. Settling now would draw the whole view
     // again (compose) under its keyboard, and the panel over both.
@@ -11118,6 +11223,10 @@ pub fn editor_probe(a: &mut App, key: &str, out: &mut String, cap: usize) -> i32
     } else if key == "loading_toasts" {
         // How many times "Loading page..." went up before a dense page was drawn as it opened.
         csnprintf!(out, cap, "%d", s.loading_toasts as i32);
+    } else if key == "add_notices" {
+        // How many times "Adding N pages..." reached the panel before a batch of new pages was written, or a
+        // batch's Redo wrote them again.
+        csnprintf!(out, cap, "%d", s.add_notices as i32);
     } else if key == "erase_tiles" {
         // The stroke eraser's tiles drawn again since the editor began, and the tiles of the boxes of
         // what it took off (all it drew before 2.0.0-rc.12).
@@ -11398,6 +11507,18 @@ mod tests {
         compose_all(&mut a, RefreshMode::Ui);
         app_flush(&mut a);
         a
+    }
+
+    #[test]
+    fn adding_pages_says_so_only_for_a_big_batch() {
+        // About 40 ms a page on a Kindle (ADD_PAGE_MS), on any paper: over 2 s from 51 pages, and always from 100.
+        let mut a = App::default();
+        for (n, due) in [(1, false), (10, false), (25, false), (50, false), (51, true), (99, true), (100, true), (2000, true)] {
+            assert_eq!(add_notice_due(&a, n), due, "{n} pages");
+        }
+        // A pen held on an action holds the panel: no notice could show before the writing.
+        a.pen_action_down = true;
+        assert!(!add_notice_due(&a, 2000));
     }
 
     #[test]
@@ -11895,6 +12016,120 @@ mod tests {
         assert_eq!(ed_ref(&a).fs_last_action, SHORTCUT_LINKS);
         assert!(!ed_ref(&a).lb.open);
         assert_eq!(ed_ref(&a).index, 0);
+    }
+
+    // A finger shape names its action only when the action did something (2.0.0-beta.2, the owner: "Show the
+    // action's name only when the action actually did something"): Previous page on page 1, Next page on the last
+    // page (a shape adds no page there, even with swiping past the last page adding one), Clear page on an empty
+    // page, Undo or Redo with nothing to undo or redo, and Close menu with nothing open fire and say nothing; so
+    // does Redo right after a stroke, whose settle is no change of the app's. Done, each names its action as
+    // before, and so does a setting that changes with nothing drawn.
+    #[test]
+    fn fshape_names_its_action_only_when_it_did_something() {
+        // (a data root of its own: the setting it changes is saved, settings.ini there)
+        let root = std::env::temp_dir().join(format!("grimoire-fshape-names-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        assert_eq!(store_init(root.to_str().unwrap()), 0);
+        let mut a = fshape_app();
+        let path = [(250,400), (350,400), (450,400), (550,400), (650,400), (650,500),
+            (650,600), (650,700), (550,700), (450,700), (350,700), (250,700), (250,600), (250,500), (250,400)];
+        let pts: Vec<FsPt> = path.iter().map(|&(x, y)| FsPt { x, y }).collect();
+        let mut sample = FsSample::default();
+        fs_sample_of(&pts, &mut sample);
+        let clock = Cell::new(1000u32);
+        // (the square drawn with a finger, bound to `action` alone; the toast it leaves, None for none)
+        let fire = |a: &mut App, action: i32| -> Option<String> {
+            assert!(gesturemap_shape_set(&mut a.gestures, action, &[sample; 3]) >= 0);
+            app_toast_dismiss(a);
+            let t = clock.get();
+            fshape_event(a, InType::TouchDown, 250.0, 400.0, t);
+            for (i, &(x, y)) in path.iter().enumerate().skip(1) {
+                fshape_event(a, InType::TouchMove, x as f32, y as f32, t + i as u32 * 30);
+            }
+            fshape_event(a, InType::TouchUp, 250.0, 400.0, t + 450);
+            clock.set(t + 2000);
+            assert_eq!((ed_ref(a).fs_last_kind, ed_ref(a).fs_last_action), (FS_OUT_FIRED, action));
+            ed(a).info_dirty = false; // (this in-memory notebook has no notebook.ini to write)
+            a.toast_visible.then(|| a.toast.as_str().to_string())
+        };
+        let named = |action: i32| Some(action_label(action).to_string());
+        a.settings.gesture_new_page = true;
+        // Page 1 of 2, blank: nothing before it, nothing to clear, undo or redo, no menu to close
+        assert_eq!(fire(&mut a, SHORTCUT_PREV_PAGE), None);
+        assert_eq!(fire(&mut a, SHORTCUT_CLEAR_PAGE), None);
+        assert_eq!(fire(&mut a, SHORTCUT_UNDO), None);
+        assert_eq!(fire(&mut a, SHORTCUT_REDO), None);
+        assert_eq!(fire(&mut a, SHORTCUT_CLOSE_MENU), None);
+        assert_eq!(ed_ref(&a).index, 0);
+        // Next page: page 2, named; there, the last page, nothing
+        assert_eq!(fire(&mut a, SHORTCUT_NEXT_PAGE), named(SHORTCUT_NEXT_PAGE));
+        assert_eq!(ed_ref(&a).index, 1);
+        assert_eq!(fire(&mut a, SHORTCUT_NEXT_PAGE), None);
+        assert_eq!((ed_ref(&a).index, ed_ref(&a).nb.npages()), (1, 2));
+        // A stroke on page 2: Redo has nothing to redo (its settle draws what is there already), Undo takes the
+        // stroke away and Redo puts it back, each named
+        let t = clock.get();
+        pen_event(&mut a, InType::PenDown, false, 300.0, 1000.0, t);
+        for k in 1..10 {
+            pen_event(&mut a, InType::PenMove, false, 300.0 + 30.0 * k as f32, 1000.0, t + 10 * k);
+        }
+        pen_event(&mut a, InType::PenUp, false, 570.0, 1000.0, t + 100);
+        pen_event(&mut a, InType::PenLeave, false, 570.0, 1000.0, t + 110);
+        clock.set(t + 2000);
+        ed(&mut a).pen_left = now_ms().wrapping_sub(5000);
+        assert_eq!(ed_ref(&a).open_page().unwrap().strokes.len(), 1);
+        assert!(!rect_is_empty(ed_ref(&a).settle) || ed_ref(&a).panel_stale);
+        assert_eq!(fire(&mut a, SHORTCUT_REDO), None);
+        assert_eq!(fire(&mut a, SHORTCUT_UNDO), named(SHORTCUT_UNDO));
+        assert_eq!(ed_ref(&a).open_page().unwrap().strokes.len(), 0);
+        assert_eq!(fire(&mut a, SHORTCUT_REDO), named(SHORTCUT_REDO));
+        assert_eq!(fire(&mut a, SHORTCUT_REDO), None);
+        assert_eq!(ed_ref(&a).open_page().unwrap().strokes.len(), 1);
+        // Clear page clears it, named; then the page is empty: nothing
+        assert_eq!(fire(&mut a, SHORTCUT_CLEAR_PAGE), named(SHORTCUT_CLEAR_PAGE));
+        assert_eq!(ed_ref(&a).open_page().unwrap().strokes.len(), 0);
+        assert_eq!(fire(&mut a, SHORTCUT_CLEAR_PAGE), None);
+        // Previous page: page 1, named (the cleared page as saved: this in-memory notebook has no file for it)
+        ed(&mut a).page_dirty = false;
+        assert_eq!(fire(&mut a, SHORTCUT_PREV_PAGE), named(SHORTCUT_PREV_PAGE));
+        assert_eq!(ed_ref(&a).index, 0);
+        // A setting with nothing drawn (swiping past the last page adds a page, no toast of its own): named
+        assert_eq!(fire(&mut a, SHORTCUT_GESTURE_NEW_PAGE), named(SHORTCUT_GESTURE_NEW_PAGE));
+        assert!(!a.settings.gesture_new_page);
+        assert!(std::fs::read_to_string(root.join("settings.ini")).unwrap().contains("gesture_new_page=0"));
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    // Zoom in at the most zoom, Zoom out at the least, and a scroll past the end of the first or the last page
+    // leave the view where it was: they draw nothing, so a finger shape bound to them says nothing either. A zoom
+    // or a scroll that moves the view draws it.
+    #[test]
+    fn zoom_and_scroll_at_their_limits_draw_nothing() {
+        let mut a = fshape_app();
+        let s = ed(&mut a);
+        s.zoom = s.zoom_max;
+        view_clamp(&mut a);
+        let changes = a.changes;
+        assert!(editor_shortcut_at(&mut a, SHORTCUT_ZOOM_IN, 500.0, 700.0, ActionSrc::Shape));
+        assert_eq!(a.changes, changes);
+        assert!(editor_shortcut_at(&mut a, SHORTCUT_ZOOM_OUT, 500.0, 700.0, ActionSrc::Shape));
+        assert_ne!(a.changes, changes);
+        let s = ed(&mut a);
+        s.zoom = s.zoom_min;
+        view_clamp(&mut a);
+        let changes = a.changes;
+        assert!(editor_shortcut_at(&mut a, SHORTCUT_ZOOM_OUT, 500.0, 700.0, ActionSrc::Shape));
+        assert_eq!(a.changes, changes);
+        // Page 1 of 2, its top on show: up goes nowhere; zoomed in, down moves the view
+        view_reset(&mut a);
+        let changes = a.changes;
+        assert!(editor_shortcut(&mut a, SHORTCUT_SCROLL_UP));
+        assert_eq!((a.changes, ed_ref(&a).index), (changes, 0));
+        ed(&mut a).zoom = 2.0;
+        view_clamp(&mut a);
+        let (changes, oy) = (a.changes, ed_ref(&a).oy);
+        assert!(editor_shortcut(&mut a, SHORTCUT_SCROLL_DOWN));
+        assert!(a.changes != changes && ed_ref(&a).oy > oy && ed_ref(&a).index == 0);
     }
 
     #[test]

@@ -72,6 +72,12 @@ pub struct App {
     /// Dirty accumulator, flushed once per loop iteration.
     pub dirty: Rect,
     pub dirty_mode: RefreshMode,
+    /// The redraws the screens have asked for (app_invalidate), counted: a page turned, ink drawn or taken
+    /// back, a sheet or menu opened or closed, the view moved, the panel changed. A refresh of what the panel
+    /// shows already (the editor's settle after writing) leaves it as it was, and the app's own toasts are not
+    /// redraws. With the settings, what tells whether an action did anything: a finger shape names its action
+    /// only when one of the two changed (editor.rs fs_fire, 2.0.0-beta.2).
+    pub changes: u32,
     /// promote to FULL every 30
     pub ui_refreshes_since_full: i32,
     /// what fast refreshes left on the panel that only a flash wipes (display.rs, issue #11): the
@@ -108,6 +114,10 @@ pub struct App {
     pub toast_until: u32,
     pub toast_rect: Rect,
     pub toast_visible: bool,
+    /// The refreshes that carried the toast (app_flush overlays it), counted: what tells a toast put up
+    /// before long work that holds the main loop reached the panel before the work (editor.rs: "Adding N
+    /// pages...").
+    pub toast_presents: u32,
     /// pixels the toast covers, restored when it hides
     pub toast_under: Canvas,
     /// pixels Live view's chip covers, put back after each present
@@ -1811,6 +1821,7 @@ pub fn app_invalidate(a: &mut App, r: Rect, m: RefreshMode) {
         a.dirty_mode = m;
     }
     a.dirty = rect_union(a.dirty, r);
+    a.changes = a.changes.wrapping_add(1);
 }
 
 pub fn app_invalidate_all(a: &mut App, m: RefreshMode) {
@@ -1886,6 +1897,7 @@ fn app_flush_in(a: &mut App) {
         if overlay {
             canvas_blit(&mut a.toast_under, &a.screen, a.toast_rect, 0, 0);
             ui_toast_at(&mut a.screen, a.toast_rect, a.toast.as_str());
+            a.toast_presents = a.toast_presents.wrapping_add(1);
         }
     }
     display_present(&a.screen, a.dirty, m);

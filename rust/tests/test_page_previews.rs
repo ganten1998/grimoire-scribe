@@ -1,7 +1,7 @@
 // The Pages view's previews job (store_build_page_previews, 2.0.0-beta.2): the light pages before a dense one,
 // a current kept drawing read back instead of drawn, a stale one never used (nor taken for a quick page), a
-// slow drawing kept by the job (none with its picture missing), a preview cut short made again, and what counts
-// as a dense page (store_page_dense).
+// dense page's drawing kept by the job and no light page's however slow (none with its picture missing), a
+// preview cut short made again, and what counts as a dense page (store_page_dense).
 #[path = "testlib/mod.rs"]
 mod testlib;
 use grimoire::prelude::*;
@@ -96,7 +96,8 @@ fn light_pages_first() {
 }
 
 // A page with a current kept drawing gets its preview from that drawing, read back, not drawn: here a drawing
-// all black, which no drawing of the page (a stroke on ruled paper) would give.
+// all black, which no drawing of the page (a stroke on ruled paper) would give. Its kept drawing does not make
+// the light page a dense one.
 fn kept_drawing_read_back() {
     let _root = fresh_root("kept");
     let nb = notebook("Kept", 1);
@@ -106,6 +107,7 @@ fn kept_drawing_read_back() {
     check!(canvas_init(&mut black, W, H) == 0);
     canvas_fill(&mut black, Rect::new(0, 0, W, H), 0);
     check!(store_save_page_render(&nb, pid, &black, false));
+    check!(store_page_render_kept(&nb, pid, W, H, false) && !store_page_dense(&nb, pid));
     check!(store_build_page_previews(nb.id.as_str(), "0:1", 300.0) == 0);
     let p = preview_of(&nb, pid);
     check!(p.as_ref().is_some_and(|p| mean(p) < 1.0));
@@ -129,33 +131,54 @@ fn stale_kept_drawing_ignored() {
     check!(p.as_ref().is_some_and(|p| mean(p) > 200.0));
 }
 
-// A page the job drew in store_keep_render_ms() or more (0 here, so every one) keeps its drawing, exactly what
-// drawing it gives, so it opens from it and its next preview is read back. Under the threshold none is kept.
-fn slow_drawing_kept_by_the_job() {
+// The job keeps the drawing of a dense page (store_page_dense: a page file of 512 KB or more, as "Loading page..."
+// counts one), exactly what drawing it gives, so it opens from it and its next preview is read back; a page under
+// 512 KB gets its preview and no kept drawing, however slow (store_keep_render_ms() 0 here: every drawing counts
+// as slow, as the editor would count it). A page under 512 KB that kept a drawing before (the editor's, for a
+// page it drew slowly, or an earlier build's job's) is no dense page either: the job makes its preview and keeps
+// no drawing of it again, and its old one, gone stale, stays unused.
+fn dense_drawing_kept_by_the_job() {
     let _root = fresh_root("keep");
-    let nb = notebook("Keep", 2);
-    for i in 0..2 {
-        check!(store_save_page(&nb, i, &page_of(30, 50, 11 + i as u32)) == 0);
-    }
-    STORE_TEST_KEEP_RENDER_MS.store(u32::MAX - 1, std::sync::atomic::Ordering::Relaxed);
-    check!(store_build_page_previews(nb.id.as_str(), "1:2", 300.0) == 0);
-    check!(preview_of(&nb, nb.page_ids[1]).is_some() && !store_page_render_kept(&nb, nb.page_ids[1], W, H, false));
+    let nb = notebook("Keep", 3);
+    check!(store_save_page(&nb, 0, &page_of(1100, 60, 11)) == 0);
+    check!(store_save_page(&nb, 1, &page_of(400, 60, 12)) == 0);
+    check!(store_save_page(&nb, 2, &page_of(30, 50, 13)) == 0);
+    let dir = dir_of(&nb);
+    let size = |i: usize| std::fs::metadata(format!("{dir}/p{}.qpg", nb.page_ids[i])).unwrap().len();
+    check!(size(0) >= STORE_DENSE_PAGE_BYTES && size(1) < STORE_DENSE_PAGE_BYTES && size(1) > STORE_DENSE_PAGE_BYTES / 2);
+    let (dense, light, kept_before) = (nb.page_ids[0], nb.page_ids[1], nb.page_ids[2]);
+    // (page 3 kept a drawing before, then changed: its stamp is there, not current)
+    let mut black = Canvas::default();
+    check!(canvas_init(&mut black, W, H) == 0);
+    canvas_fill(&mut black, Rect::new(0, 0, W, H), 0);
+    check!(store_save_page_render(&nb, kept_before, &black, false));
+    std::thread::sleep(std::time::Duration::from_millis(20));
+    check!(store_save_page(&nb, 2, &page_of(31, 50, 14)) == 0);
+    check!(!store_page_render_kept(&nb, kept_before, W, H, false));
+    check!(store_page_dense(&nb, dense) && !store_page_dense(&nb, light) && !store_page_dense(&nb, kept_before));
+    let stamp = format!("{dir}/.page-previews/p{kept_before}.full.stamp");
+    let old_stamp = std::fs::read(&stamp).unwrap();
     STORE_TEST_KEEP_RENDER_MS.store(0, std::sync::atomic::Ordering::Relaxed);
-    check!(store_build_page_previews(nb.id.as_str(), "0:1", 300.0) == 0);
+    check!(store_build_page_previews(nb.id.as_str(), "0:3", 300.0) == 0);
     STORE_TEST_KEEP_RENDER_MS.store(u32::MAX, std::sync::atomic::Ordering::Relaxed);
-    let pid = nb.page_ids[0];
-    check!(store_page_render_kept(&nb, pid, W, H, false));
+    for pid in [dense, light, kept_before] {
+        check!(preview_of(&nb, pid).is_some());
+    }
+    check!(!store_page_render_kept(&nb, light, W, H, false) && !store_page_render_kept(&nb, light, W, H, true));
+    check!(!std::path::Path::new(&format!("{dir}/.page-previews/p{light}.full")).exists());
+    check!(!store_page_dense(&nb, light));
+    check!(!store_page_render_kept(&nb, kept_before, W, H, false) && !store_page_render_kept(&nb, kept_before, W, H, true));
+    check!(std::fs::read(&stamp).unwrap() == old_stamp && !store_page_dense(&nb, kept_before));
+    check!(store_page_render_kept(&nb, dense, W, H, false));
     let mut kept = Canvas::default();
     check!(canvas_init(&mut kept, W, H) == 0);
-    check!(store_load_page_render(&nb, pid, W, H, &mut kept, false));
+    check!(store_load_page_render(&nb, dense, W, H, &mut kept, false));
     let mut page = None;
     check!(store_read_page(&nb, 0, &mut page) == 0);
     let mut drawn = Canvas::default();
     check!(canvas_init(&mut drawn, W, H) == 0);
     page_render(&mut drawn, page.as_deref().unwrap(), Rect::new(0, 0, W, H), 300.0);
     check!(kept.px == drawn.px);
-    // (and a page that kept a drawing once counts as dense from then on, current drawing or not)
-    check!(store_page_dense(&nb, pid) && !store_page_dense(&nb, nb.page_ids[1]));
 }
 
 // A dense page whose kept drawing is of its file as it is now but by another renderer (a build that draws ink
@@ -190,23 +213,21 @@ fn foreign_kept_drawing_not_first() {
     }
 }
 
-// A page on picture paper whose picture is missing draws it white: the job keeps no drawing of it, however slow
-// (store_keep_render_ms() 0 here), and writes no preview of it either, as the editor writes neither then; a page
-// beside it is made as always. (Kept, the white drawing would open the page with nothing said, and stay so once the
-// picture is there.)
+// A dense page on picture paper whose picture is missing draws it white: the job keeps no drawing of it and
+// writes no preview of it either, as the editor writes neither then; a dense page beside it is made and kept as
+// always. (Kept, the white drawing would open the page with nothing said, and stay so once the picture is there.)
 fn missing_picture_keeps_nothing() {
     let _root = fresh_root("picture");
     let nb = notebook("Picture", 2);
-    let mut p = page_of(30, 50, 31);
+    let mut p = page_of(1100, 60, 31);
     p.paper = paper_image(PAPER_ROLE_TEMPLATE, 7);
     check!(store_save_page(&nb, 0, &p) == 0);
-    check!(store_save_page(&nb, 1, &page_of(30, 50, 32)) == 0);
+    check!(store_save_page(&nb, 1, &page_of(1100, 60, 32)) == 0);
     let dir = dir_of(&nb);
     check!(!std::path::Path::new(&format!("{dir}/bg/000007.png")).exists());
-    STORE_TEST_KEEP_RENDER_MS.store(0, std::sync::atomic::Ordering::Relaxed);
-    check!(store_build_page_previews(nb.id.as_str(), "0:2", 300.0) == 0);
-    STORE_TEST_KEEP_RENDER_MS.store(u32::MAX, std::sync::atomic::Ordering::Relaxed);
     let (pid, other) = (nb.page_ids[0], nb.page_ids[1]);
+    check!(store_page_dense(&nb, pid) && store_page_dense(&nb, other));
+    check!(store_build_page_previews(nb.id.as_str(), "0:2", 300.0) == 0);
     check!(!store_page_render_kept(&nb, pid, W, H, false) && !store_page_render_kept(&nb, pid, W, H, true));
     check!(preview_of(&nb, pid).is_none());
     check!(store_page_render_kept(&nb, other, W, H, false) && preview_of(&nb, other).is_some());
@@ -236,7 +257,7 @@ fn test_page_previews() {
     run!(light_pages_first);
     run!(kept_drawing_read_back);
     run!(stale_kept_drawing_ignored);
-    run!(slow_drawing_kept_by_the_job);
+    run!(dense_drawing_kept_by_the_job);
     run!(foreign_kept_drawing_not_first);
     run!(missing_picture_keeps_nothing);
     run!(cut_short_preview_made_again);

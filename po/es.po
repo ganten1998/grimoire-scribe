@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: Grimoire 1.0.0-beta\n"
 "Report-Msgid-Bugs-To: https://github.com/ganten1998/grimoire-scribe/issues\n"
-"POT-Creation-Date: 2026-11-04 10:59-0600\n"
+"POT-Creation-Date: 2026-11-04 14:50-0600\n"
 "PO-Revision-Date: 2026-10-20 08:02-0500\n"
 "Last-Translator: draft\n"
 "Language-Team: Spanish\n"
@@ -1409,6 +1409,16 @@ msgstr "No se pudieron mover las páginas."
 #: rust/src/editor.rs
 msgid "Couldn't undo move."
 msgstr "No se pudo deshacer el movimiento."
+
+#. TRANSLATORS: a toast while New page's batch is being written (about 1700 px at 44 px in bold, or two
+#. lines): %d blank pages are being added. Only for a large batch, which can take a minute; it goes when
+#. they are added.
+#: rust/src/editor.rs
+#, c-format
+msgid "Adding %d page..."
+msgid_plural "Adding %d pages..."
+msgstr[0] "Añadiendo %d página..."
+msgstr[1] "Añadiendo %d páginas..."
 
 #. TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): New page held, in a notebook
 #. that already has the most pages a notebook can have (%d).
@@ -4868,12 +4878,6 @@ msgstr "Copiado"
 
 #~ msgid "Move undone: the pages are back in their order."
 #~ msgstr "Movimiento deshecho: las páginas vuelven a su orden."
-
-#, c-format
-#~ msgid "Adding %d page..."
-#~ msgid_plural "Adding %d pages..."
-#~ msgstr[0] "Añadiendo %d página..."
-#~ msgstr[1] "Añadiendo %d páginas..."
 
 #~ msgid "Could not add those pages: none was added."
 #~ msgstr "No se pudieron añadir esas páginas: no se añadió ninguna."

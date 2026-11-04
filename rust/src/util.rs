@@ -181,13 +181,6 @@ pub fn now_ms() -> u32 {
     ((ts.tv_sec as u64).wrapping_mul(1000).wrapping_add(ts.tv_nsec as u64 / 1_000_000)) as u32
 }
 
-/// milliseconds of processor time this process has used (CLOCK_PROCESS_CPUTIME_ID): how long work
-/// took, apart from the time other processes had the processor (a niced background job's)
-pub fn cpu_ms() -> u32 {
-    let ts = clock(libc::CLOCK_PROCESS_CPUTIME_ID);
-    ((ts.tv_sec as u64).wrapping_mul(1000).wrapping_add(ts.tv_nsec as u64 / 1_000_000)) as u32
-}
-
 /// unix seconds
 pub fn wall_time() -> i64 {
     // SAFETY: time(NULL) only reads the clock.

@@ -1173,18 +1173,22 @@ the UI never draws a page for a tile.
   It is left out as well when its preview is current, as the idle warm-up leaves it out: the two then ask for
   the same batch. Its preview on disk is written by the idle save, or by the job once another page is open.
 - **Dense pages.** A page with a current kept drawing (`p<id>.full`) gets its preview from that drawing,
-  read back, not drawn; a page the job drew in `store_keep_render_ms()` (1 s) or more of its own processor
-  time keeps its drawing too (`store_save_page_render_at`, only while the page file is still the one it
-  read), so the page then opens quickly in the editor as well. A stale kept drawing is never used, nor counted
-  as a quick page when the batch is sorted (only one whose whole stamp is current: the page file, the size and
-  the renderer's fingerprint). A page drawn with its picture paper white (its picture missing or unreadable in
-  the child) keeps no drawing and gets no preview, as in the editor: its tile shows its number, and the next
-  view that opens asks for it again.
+  read back, not drawn; a dense page the job draws keeps its drawing too (`store_page_dense`, the one test
+  "Loading page..." below goes by: a page file of 512 KB or more; `store_save_page_render_at`, only while the
+  page file is still the one it read), so the page then opens quickly in the editor as well. No other page
+  keeps one from the job, however long it took to draw (the owner's ruling: ordinary pages save nothing
+  extra; the editor still keeps the drawing of a page it took a second or more to draw, as it did before
+  2.0.0-beta.2). A kept drawing does not make a page dense: counted, every page the editor kept, or an
+  earlier build's job, would keep a drawing from the job for good. A stale kept drawing is never used, nor
+  counted as a quick page when the batch is sorted (only one whose whole stamp is current: the page file, the
+  size and the renderer's fingerprint). A page drawn with its picture paper white (its picture missing or
+  unreadable in the child) keeps no drawing and gets no preview, as in the editor: its tile shows its number,
+  and the next view that opens asks for it again.
 - **Opening a dense page** (a page turn, a jump, a notebook opening on it, the page left after a deletion)
-  that has no current kept drawing and draws slowly (`store_page_dense`: a page file of 512 KB or more, or a
-  page that kept a drawing before) says "Loading page..." (`render_page_open`): the toast is put on the
-  panel (app_flush) before the drawing starts, and taken down once the page is drawn. Never for a page that
-  draws quickly, nor while a pen held on an action holds the panel.
+  that has no current kept drawing and draws slowly (`store_page_dense`: a page file of 512 KB or more) says
+  "Loading page..." (`render_page_open`): the toast is put on the panel (app_flush) before the drawing
+  starts, and taken down once the page is drawn. Never for a page that draws quickly, nor while a pen held on
+  an action holds the panel.
 - **The log.** One line per batch, from the job: `previews: nb=ID pages=N cached=N kept=N drawn=N keep=N
   ms=N first=N slow=pID:N cores=N` (pages in the batch, previews already made, kept drawings read back,
   pages drawn, drawings kept, the batch's time, the first preview's time, the slowest page, the processor's
@@ -1425,7 +1429,15 @@ the clock; deliberate motion can become a shape. Pen arrival, another contact, s
 screen/layout change aborts capture. The dotted, outlined black/white trail is drawn only on
 the screen canvas; it never enters the page, undo stack, exported PNG/PDF or autosave. The page
 backing restores the trail, including over the Links bar. Refusals fade; a first unknown shape
-can show the one-time tip (`hints` bit 7). Match dispatch uses the common action path.
+can show the one-time tip (`hints` bit 7). Match dispatch uses the common action path. A shape that
+fires names its action in a toast (1.2 s) only when the action did something (2.0.0-beta.2): when
+the app's count of redraws asked for (`App.changes`, counted by `app_invalidate`; the settle after
+writing, a refresh of what the panel shows already, is not counted) or its settings changed. Next
+page on the last page, Previous page on page 1, Clear page on an empty page, Undo and Redo with
+nothing to undo or redo, Close menu with nothing open, and a zoom or a scroll that leaves the view
+where it was (at the most zoom or the least, past the first or the last page: `view_moved`, nothing
+drawn) fire with nothing said, as does an action that raised its own toast, switched the screen or
+opened the Pages view.
 
 | Surface/event | Refresh | Contract |
 | --- | --- | --- |

@@ -57,7 +57,7 @@ pub const SETTINGS_VERSION: i32 = 3;
 /// pens pinned to the editor's panel, at most
 pub const PANEL_PINS_MAX: usize = 3;
 
-#[derive(Clone, Copy, Debug, Default)]
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct Settings {
     /// settings_version from the file (defaults migrate on upgrade)
     pub version: i32,
@@ -3737,11 +3737,12 @@ fn page_render_files(nb: &NotebookInfo, pid: u32) -> Option<(String, String, Str
     Some((source, format!("{base}.full"), format!("{base}.full.stamp")))
 }
 
-/// A page whose whole drawing takes this long or longer keeps it (store_save_page_render), ms: the
-/// editor's drawing of the open page, and the previews job's of a page it makes a preview of.
+/// A page whose whole drawing in the editor takes this long or longer keeps it (store_save_page_render), ms.
+/// (The previews job goes by store_page_dense instead: it keeps a dense page's drawing, however quick, and no
+/// other page's, however slow.)
 pub const STORE_KEEP_RENDER_MS: u32 = 1000;
-/// Tests: the threshold in place of STORE_KEEP_RENDER_MS (u32::MAX: none), so a unit test can have the
-/// previews job keep a page that draws quickly.
+/// Tests: the threshold in place of STORE_KEEP_RENDER_MS (u32::MAX: none), so a unit test can count every
+/// drawing as slow (and see that the previews job still keeps no light page's).
 pub static STORE_TEST_KEEP_RENDER_MS: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(u32::MAX);
 /// STORE_KEEP_RENDER_MS, or what a test asks for. (The simulator takes GRIMOIRE_KEEP_RENDER_MS instead,
 /// so scenarios can keep pages that draw quickly.)
@@ -3759,12 +3760,22 @@ pub fn store_keep_render_ms() -> u32 {
 /// A page file this big or bigger draws slowly: seconds on a Kindle (the owner's 0.6 MB page took 5 s,
 /// a 2.4 MB one 32 s; a page of handwriting is under 0.3 MB and draws in well under a second).
 pub const STORE_DENSE_PAGE_BYTES: u64 = 512 * 1024;
+// Whether the page file at `source` is STORE_DENSE_PAGE_BYTES or bigger (store_page_dense's size, and the
+// simulator's slow drawing in the previews job).
+fn page_file_dense(source: &str) -> bool {
+    std::fs::metadata(source).is_ok_and(|m| m.len() >= STORE_DENSE_PAGE_BYTES)
+}
 /// Whether drawing page pid takes long enough to say so (seconds on a Kindle), told without reading it:
-/// its file is STORE_DENSE_PAGE_BYTES or bigger, or it has kept a drawing before (current or not), which
-/// only a page whose drawing took store_keep_render_ms() or longer does.
+/// its file is STORE_DENSE_PAGE_BYTES or bigger. The one definition of a dense page: opening one with no
+/// current kept drawing says "Loading page..." (editor.rs loading_toast_due), and the previews job keeps the
+/// drawing of each one it draws, and of no other page (store_build_page_previews), so the two never disagree
+/// on which pages they are (the owner, 2026-11-04: "Save a drawing only for pages of 512 KB or more, the
+/// same threshold that shows "Loading page..."", "ordinary pages save nothing extra"). A kept drawing does
+/// not make a page dense: the editor keeps one for a page it took store_keep_render_ms() to draw, and an
+/// earlier build of 2.0.0-beta.2's previews job kept one for any page it drew in a second of processor
+/// time, many ordinary pages on a Kindle. Counted, each of those would keep a drawing from the job for good.
 pub fn store_page_dense(nb: &NotebookInfo, pid: u32) -> bool {
-    let Some((source, _, stamp)) = page_render_files(nb, pid) else { return false };
-    std::fs::metadata(&source).is_ok_and(|m| m.len() >= STORE_DENSE_PAGE_BYTES) || access_ok(&stamp)
+    page_render_files(nb, pid).is_some_and(|(source, _, _)| page_file_dense(&source))
 }
 // Whether page pid has a kept drawing of its file as it is now, at the notebook's page size, by this
 // renderer, layered or not (that is told only by reading the page): the previews job's guess that the page
@@ -4946,11 +4957,12 @@ mod tests {
 /// Visible-page preview jobs render outside the UI process, with bounded work and stale-write checks.
 /// The missing previews are made cheapest first: pages with a current kept drawing (read back, not
 /// drawn), then the others by the size of their files, so a dense page never holds back the rest. Each
-/// preview tells an open view as it lands (page_previews_changed), which shows that tile at once. A page
-/// drawn here that took store_keep_render_ms() or more of the job's processor time keeps its drawing
-/// (store_save_page_render_at), so the page also opens quickly in the editor, and its next preview is
-/// read back; one drawn with its picture paper white (the picture missing or unreadable) keeps neither.
-/// One log line per batch says where the time went.
+/// preview tells an open view as it lands (page_previews_changed), which shows that tile at once. A dense
+/// page drawn here (store_page_dense, as "Loading page..." counts one: a file of 512 KB or more) keeps its
+/// drawing (store_save_page_render_at), so the page also opens quickly in the editor, and its next preview
+/// is read back; no other page keeps one, however slow it was to draw (2.0.0-beta.2, the owner's ruling:
+/// ordinary pages save nothing extra). One drawn with its picture paper white (the picture missing or
+/// unreadable) keeps neither. One log line per batch says where the time went.
 pub fn store_build_page_previews(id:&str, range:&str,dpi:f32)->i32 {
     let started=now_ms();
     let mut nb=NotebookInfo::default();
@@ -4996,14 +5008,13 @@ pub fn store_build_page_previews(id:&str, range:&str,dpi:f32)->i32 {
         if store_load_page_render(&nb,pid,page.w,page.h,&mut full,layered) {
             kept+=1;
         } else {
-            let cpu=cpu_ms();
             bgimage_take_missing(); // (what drew white before)
             page_render(&mut full,&page,Rect::new(0,0,page.w,page.h),dpi);
             missing=bgimage_take_missing();
             #[cfg(feature = "sim")]
             sim_slow_draw(&source);
             drawn+=1;
-            if !missing && cpu_ms().wrapping_sub(cpu)>=store_keep_render_ms() && store_save_page_render_at(&nb,pid,&full,layered,&before) {keeps+=1;}
+            if !missing && store_page_dense(&nb,pid) && store_save_page_render_at(&nb,pid,&full,layered,&before) {keeps+=1;}
         }
         drop(page);
         // A page drawn with its picture white writes neither its kept drawing nor its preview, as the editor
@@ -5029,7 +5040,7 @@ pub fn store_build_page_previews(id:&str, range:&str,dpi:f32)->i32 {
 #[cfg(feature = "sim")]
 fn sim_slow_draw(source:&str) {
     let ms=std::env::var("GRIMOIRE_SIM_DENSE_DRAW_MS").ok().and_then(|v|v.parse::<i32>().ok()).unwrap_or(0);
-    if ms>0 && std::fs::metadata(source).is_ok_and(|m|m.len()>=STORE_DENSE_PAGE_BYTES) {sleep_ms(ms);}
+    if ms>0 && page_file_dense(source) {sleep_ms(ms);}
 }
 
 pub fn store_page_previews_epoch(id:&str)->Option<(u64,i64,i64)> {

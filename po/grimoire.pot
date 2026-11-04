@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: Grimoire 2.0.0-beta.1\n"
 "Report-Msgid-Bugs-To: https://github.com/ganten1998/grimoire-scribe/issues\n"
-"POT-Creation-Date: 2026-11-04 10:59-0600\n"
+"POT-Creation-Date: 2026-11-04 14:54-0600\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -1373,6 +1373,16 @@ msgstr ""
 #: rust/src/editor.rs
 msgid "Couldn't undo move."
 msgstr ""
+
+#. TRANSLATORS: a toast while New page's batch is being written (about 1700 px at 44 px in bold, or two
+#. lines): %d blank pages are being added. Only for a large batch, which can take a minute; it goes when
+#. they are added.
+#: rust/src/editor.rs
+#, c-format
+msgid "Adding %d page..."
+msgid_plural "Adding %d pages..."
+msgstr[0] ""
+msgstr[1] ""
 
 #. TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): New page held, in a notebook
 #. that already has the most pages a notebook can have (%d).
