@@ -1187,7 +1187,7 @@ display call or a wait.
 | Find open from the Pages view | Full (the view closes in the same refresh) | whole screen |
 | Find typing | Fast field, rows and key, each flushed; one Ui of keyboard and rows 900 ms after a pause | |
 | Find result | Full (`go_to_page`) | whole screen |
-| A page-turn toast at the end of the notebook | toast only | |
+| A gesture's page turn past either end of the notebook | none: the page stays, with no toast (2.0.0-beta.2) | |
 | `landscape_fit` toggled sideways | Full | whole screen |
 
 No GL16 and no toast ever run while the pen is down for ink: a pen down during a peek commits it at the
@@ -1282,7 +1282,7 @@ hold path (its picker, Remove link, The Index) is gone. Deleting a link never de
 | Card opens from the bar, not peeking | four Fast strips per box (at most three boxes), else one Ui of their bounds; then Ui | |
 | Card closes | Ui | card and strips |
 | Link undo or redo, Areas on | Ui | the records' boxes, before and after |
-| Link undo or redo, Areas off | toast only | |
+| Link undo or redo, Areas off | none: no toast (2.0.0-beta.2); one left up goes | its rect |
 | Migration | nothing | |
 
 The border's strips hold only black and white pixels and never meet, so DU shows them exactly; one union

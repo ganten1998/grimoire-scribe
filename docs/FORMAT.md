@@ -211,7 +211,8 @@ the paper, so a scoped erase stroke draws exactly what an ordinary one draws.
 - Ink always keeps ext[1] = 0, so deleting ink never moves a floor. Markers are never selected, and the
   stroke eraser never removes an erase stroke (1.1 on).
 - A writer takes a layer no stroke of the page uses (nor any stroke an undo or redo could bring back).
-  All 255 in use: the paste or move is refused ("This page holds too many moved groups").
+  All 255 in use: the paste or move is refused ("Too many moved groups on this page: paste
+  elsewhere.").
 - Each scoped erase stroke names its own floor, so groups pasted inside groups need no table: a group
   lifted with two floors gets two markers and two layers.
 - Scoping is written only when it is needed: when the floor is not the paper under the tiles the group's

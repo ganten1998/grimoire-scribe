@@ -357,9 +357,9 @@ Updating is one file, and so is going back. From 1.1.0-beta.1 on, Grimoire keeps
 version writes and does not understand (ink data, newer papers, extra page data, unknown lines
 in `settings.ini` and `notebook.ini`) and writes it back unchanged:
 
-- A page it cannot fully show opens **read-only**, with "This page was made by a newer Grimoire.
-  It is read-only here." Writing, erasing, clearing and changing its paper are refused on it;
-  deleting it still works. Update Grimoire to edit it.
+- A page it cannot fully show opens **read-only**, with "This page was made by a newer version,
+  and will be viewed as read-only." Writing, erasing, clearing and changing its paper are refused
+  on it; deleting it still works. Update Grimoire to edit it.
 - A paper from a newer version shows as blank paper named **Newer paper** and stays the page's
   paper. New pages added after such a page get it too.
 - A setting from a newer version that this one lacks works here as the nearest choice it has

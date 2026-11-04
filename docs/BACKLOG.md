@@ -13,8 +13,8 @@ the Kindle noticing a keyboard while shortcuts are off.
 The keyboard scheme:
 
 - Owner: "Escape for CMD S for saving anything not saved anywhere": read as Ctrl+S (Cmd+S on an Apple
-  keyboard) saves now (everywhere, a toast "Saved"), and Esc at the Library's top asks "Exit Grimoire?" (Yes
-  and No). The Exit button still leaves at once.
+  keyboard) saves now (everywhere; its "Saved" toast went in the owner's toast pass of 2026-11-04), and Esc
+  at the Library's top asks "Exit Grimoire?" (Yes and No). The Exit button still leaves at once.
 - Owner: "Left and right do what you'd expect but up and down do nothing here or anywhere else for now":
   Left and Right turn the Library's screens (no focus ring); Up and Down are unbound but in the Graph, and the
   count pad no longer steps with them (its - and + do).
@@ -53,6 +53,10 @@ jumbled"):
 - **Not built**: the selection is not kept when the Graph closes.
 
 ## Next: 2.1 (deferred by the owner, 2026-10-31)
+
+- **Moving a folder onto a folder of the same name: a merge dialog** (owner, 2026-11-04, in the review of every
+  toast; a feature of its own, not part of that pass). Today the move is refused with "Couldn't move folder. Is
+  one with that name already there?"; the owner: it "should open a MERGE dialog, not an error".
 
 - **PDF planners with their hyperlinks, imported without KOReader** (owner, 2026-11-03; next after the
   2.0.0-beta.2 release candidate). A user asked to use a PDF planner whose pages link to each other. Two parts:
