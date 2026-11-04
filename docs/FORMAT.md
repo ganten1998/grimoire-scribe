@@ -1500,3 +1500,23 @@ only bounded cached images; a background worker renders missing visible batches,
 Worker writes use process-specific temporary names, verify the source did not change during rendering,
 and publish image then stamp. Preview errors never replace or modify page files. The entire cache
 can be removed without losing notebook data; page IDs keep previews correct when pages are reordered.
+
+The folder holds three more kinds of file, all disposable too:
+
+- `p<page ID>.full` and `p<page ID>.full.stamp`: a **kept drawing** of a page that is slow to draw, the
+  whole page canvas run-length coded (runs of one byte as `(count - 1) | 0x80` then the byte, anything
+  else as `count - 1` then that many bytes). Its stamp is the preview's stamp, then `|WxH|` (the page
+  size it was drawn at) and the renderer's fingerprint in 16 hex digits, with `|L` after it for a page
+  with floors. Anything that does not match exactly (another page file, size, renderer or layering) is
+  never used: the page is drawn instead. The editor keeps one for a page that took a second or more to
+  draw (as it opens, and at the idle save), and since 2.0.0-beta.2 the previews job keeps one for a page it
+  drew in a second or more of its own processor time; opening the page, and making its next preview, read
+  it back instead of drawing every stroke.
+- `updated`: a token rewritten each time a preview is written (since 2.0.0-beta.2 the job writes it after
+  each preview, not once per batch), which tells an open view that new previews are there.
+- `generation`: rewritten to invalidate every preview at once (a template's picture made again).
+
+Since 2.0.0-beta.2 a batch makes its missing previews cheapest first: pages with a current kept drawing,
+then the others by the size of their page files, so a dense page comes last. A preview counts as made
+when its stamp is current and its image as long as its header says (one cut short is made again).
+Previews written by an older version are used as they are, and older versions use these.

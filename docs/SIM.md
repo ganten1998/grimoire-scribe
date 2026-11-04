@@ -19,7 +19,10 @@ Data goes to `./grimoire-data` (or `$GRIMOIRE_ROOT`).
 Colorsoft's); `GRIMOIRE_SIM_STATS=1` prints refresh counts.
 Two more slow the simulator down like a Kindle (simulator only): `GRIMOIRE_HTTPD_DELAY_MS` makes
 each share server render wait that long first, and `GRIMOIRE_BG_DELAY_MS` each background PDF
-export, so the next one queues behind it. `GRIMOIRE_SLEEP_MINUTE_MS` (simulator only) makes a
+export, so the next one queues behind it. `GRIMOIRE_SIM_DENSE_DRAW_MS` makes the page previews job's
+drawing of a dense page (a page file of 512 KB or more) take that many milliseconds longer, as a Kindle
+takes seconds, and `GRIMOIRE_SIM_CORES` stands for the number of cores the background jobs see (under 3:
+no second job process beside the first). `GRIMOIRE_SLEEP_MINUTE_MS` (simulator only) makes a
 minute of the Display sheet's "Sleep after" last that many milliseconds, so a scenario can see the
 timer run out.
 
@@ -383,6 +386,8 @@ shows what the app holds.
 | `editor.wear` | the DU wear not cleaned yet (display.rs `DuWear`, issue #11): the screen area fast refreshes turned back to paper (the erasers, a dragged selection), in thousandths of the screen, with ` owed` while a toolbar drag owes a clean; past 250 the next pause cleans it with one `clean` refresh, then `0` |
 | `editor.panel_at.X.Y` | the name of the panel's button at screen point (X, Y) (the panel's names, above; between two buttons or in the frame's margin beside one, the nearest, as a finger there takes it), empty for none (a greyed-out button), after settling a stale panel as a tap would: the way to check what a raw coordinate hits. Empty while no notebook is open |
 | `editor.strokes` | strokes on the open page (a stroke counts once the pen lifts) |
+| `editor.page_kept` | `1` when the open page came up from its kept drawing (read back, not drawn), else `0` |
+| `editor.loading_toasts` | how many times "Loading page..." went up before a dense page with no current kept drawing was drawn as it opened, since the editor began (2.0.0-beta.2) |
 | `editor.erase_tiles` | `DRAWN BOXED`: the 16 px tiles the stroke eraser drew the page again in since the editor began (only those the strokes it took off drew into, page_render_tiles), and the tiles of those strokes' boxes, all it drew before 2.0.0-rc.12 (`391 11011`) |
 | `editor.owner` | who has the contact now: `none`, or the owner and the input that began it, as grimoire.log's contact lines name them (`draw pen`, `lasso pen`, `link finger`, `linkto finger`, `outside pen`, `panel finger`, `strip finger`, `pen-drag pen`...). A down from the input that still owns a gesture ends that gesture as a cancel (its lift was lost: a stroke kept as drawn, a lasso back to the strip, a press let go) before it starts its own; legacy `touch down` twice, or `pen down` twice, with no lift between, makes one (g_gest_15b_lost_lift) |
 | `editor.unsaved` | `1` while the open notebook has changes not yet written, else `0` |
@@ -408,7 +413,8 @@ shows what the app holds.
 | `editor.at.NAME` | where `tap panel NAME` taps now, `X Y` (empty for none): a script holds the toolbar's + there (`editor.at.next`, then `touch down`, `wait 700`, `touch up`) |
 | `editor.pages.at.NAME` | where `tap panel pages.NAME` would tap, `X Y`, empty for none: a script holds a button there with `touch down` |
 | `editor.pages.context.from` | how many pages (this notebook's and other notebooks') link to the held page, as its card says; `0` while no card is open (2.0.0-beta.2) |
-| `editor.pages.cached`, `editor.destination.cached` | how many decoded page previews the Pages view, or Link to...'s notebook picker, keeps for the screenful on show |
+| `editor.pages.cached`, `editor.destination.cached` | how many decoded page previews the Pages view, or Link to...'s notebook picker, keeps for the screenful on show (the Pages view also keeps the open page's, made from its canvas, on any screen: since 2.0.0-beta.2) |
+| `editor.pages.shows`, `editor.destination.shows` | what the screenful's page tiles show, one letter each in their order: `p` a preview, `l` the loading mark (an hourglass: its preview is being made), `n` the page's number alone (none to come); empty while no page grid shows (2.0.0-beta.2) |
 | `editor.screen_composed` | whether the current screen matches a fresh complete composition, without repairing stale pixels |
 | `editor.map.visible` | sorted page IDs actually shown in the current graph view |
 | `editor.map.view` | `all` or `around`, after `fit ` when a pan or pinch has moved the view (the next View press fits it again) |
