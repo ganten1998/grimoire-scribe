@@ -146,6 +146,10 @@ pub fn bg_job_pending(kind:BgKind,id:&str,path:&str)->bool {
     let same=|j:&Job|j.kind==kind&&j.id.as_str()==id&&j.dir.as_str()==path;
     with(|s|(s.pid>0&&same(&s.running))||(s.extra_pid>0&&same(&s.extra))||s.q.iter().any(same))
 }
+// The same, queued only (not started: its child reads what it works on, a notebook's page list, as it starts).
+fn bg_job_queued(kind:BgKind,id:&str,path:&str)->bool {
+    with(|s|s.q.iter().any(|j|j.kind==kind&&j.id.as_str()==id&&j.dir.as_str()==path))
+}
 /// How many children run now, 0 to 2 (the runner's bg.children).
 pub fn bg_children()->i32 {
     with(|s|(s.pid>0) as i32+(s.extra_pid>0) as i32)
@@ -659,7 +663,12 @@ pub fn bg_request_page_previews(requests:&mut PagePreviewRequests,nb:&NotebookIn
 }
 /// The same, leaving out page `skip` (the page open in the editor, whose preview comes from its canvas).
 /// A batch is asked for even while another runs (an earlier screenful's, with a dense page in it): it is
-/// queued, and a view waiting on it puts it before the others (bg_prefer).
+/// queued, and a view waiting on it puts it before the others (bg_prefer). The same batch queued already
+/// (by the idle warm-up, or a view open before) is waited on instead: it reads the notebook's page list as
+/// it starts, so it makes these pages as they are now. One running that was not asked for here read the
+/// list before, and the pages may have moved since (one deleted, some added): another batch is queued, for
+/// what it does not make. That one runs after it (next_job: never two children on the same pages at once)
+/// and finds the rest made.
 pub fn bg_request_page_previews_but(requests:&mut PagePreviewRequests,nb:&NotebookInfo,first:usize,last:usize,dpi:f32,waited:bool,skip:Option<u32>) {
     let epoch=store_page_previews_epoch(nb.id.as_str());
     if requests.id!=nb.id || requests.epoch!=epoch {
@@ -669,11 +678,14 @@ pub fn bg_request_page_previews_but(requests:&mut PagePreviewRequests,nb:&Notebo
     if last-first>64 {return;}
     let range=match skip {Some(pid)=>format!("{first}:{last}:{pid}"),None=>format!("{first}:{last}")};
     if waited {requests.forget_queued(&range);}
-    // This very batch queued or running already (asked for here, or by the idle warm-up before the view
-    // opened): waited on now, it goes first.
-    let pending=bg_job_pending(BgKind::PagePreviews,nb.id.as_str(),&range);
-    if pending && waited {bg_prefer(BgKind::PagePreviews,nb.id.as_str(),&range);}
-    if pending && requests.jobs.iter().any(|(r,_)|*r==range) {return;}
+    let id=requests.id;
+    requests.jobs.retain(|(r,_)|bg_job_pending(BgKind::PagePreviews,id.as_str(),r));
+    // Asked for here, and not ended: nothing more to ask.
+    if requests.jobs.iter().any(|(r,_)|*r==range) {
+        if waited {bg_prefer(BgKind::PagePreviews,nb.id.as_str(),&range);}
+        return;
+    }
+    let queued=bg_job_queued(BgKind::PagePreviews,nb.id.as_str(),&range);
     let pages=&nb.page_ids[first..last];
     let mut missing=Vec::new();
     if missing.try_reserve(pages.len()).is_err() || requests.pages.try_reserve(pages.len()).is_err() || requests.jobs.try_reserve(1).is_err() {
@@ -681,14 +693,13 @@ pub fn bg_request_page_previews_but(requests:&mut PagePreviewRequests,nb:&Notebo
     }
     for &pid in pages {
         // (a stamp check, not a decode: the view decodes what it shows itself)
-        if Some(pid)!=skip && (pending || !requests.pages.contains(&pid)) && store_page_preview_fresh(nb,pid).is_none() {missing.push(pid);}
+        if Some(pid)!=skip && (queued || !requests.pages.contains(&pid)) && store_page_preview_fresh(nb,pid).is_none() {missing.push(pid);}
         if !requests.pages.contains(&pid) {requests.pages.push(pid);}
     }
     if missing.is_empty() {return;}
-    if !pending {
-        bg_queue(BgKind::PagePreviews,Some(nb.id.as_str()),Some(&range),dpi,waited);
-        if waited {bg_prefer(BgKind::PagePreviews,nb.id.as_str(),&range);}
-    }
+    // (the others of the notebook made idle work before this one is queued, so it is the one that starts)
+    if waited {bg_prefer(BgKind::PagePreviews,nb.id.as_str(),&range);}
+    if !queued {bg_queue(BgKind::PagePreviews,Some(nb.id.as_str()),Some(&range),dpi,waited);}
     requests.jobs.push((range,missing));
 }
 /// Page pid was saved: its preview may be made once more.
@@ -964,5 +975,50 @@ mod tests {
         assert!(!s.extra_off);
         let j = s.q.remove(0);
         assert!(!fork_failed(&mut s, j, false) && s.q.len() == 1);
+    }
+
+    // A view asks for a batch that runs already, not asked for here (a view open before, the idle warm-up): it read
+    // the page list as it started, and the pages may have moved since, so another is queued, which runs after it. One
+    // queued already is waited on instead (it reads the list as it starts), and goes first.
+    #[test]
+    fn a_running_batch_not_asked_for_here_is_not_waited_on() {
+        let root = std::env::temp_dir().join(format!("grimoire-running-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        store_init(root.to_str().unwrap());
+        store_set_device(300.0, 600, 800);
+        let mut nb = NotebookInfo::default();
+        assert_eq!(store_create("Running", "", PAPER_BLANK, &mut nb), 0);
+        for i in 1..3 {
+            assert_eq!(store_add_page(&mut nb, i, PAPER_BLANK), 0);
+        }
+        let pids = nb.page_ids.clone();
+        let id = nb.id.as_str().to_string();
+        // (a child that does not exist: nothing here waits on it; the batch queued beside it starts in no slot, as
+        // the two cover the same pages)
+        with(|s| {
+            s.pid = 999_999;
+            s.running = queued(&id, "0:3", false);
+        });
+        let mut req = PagePreviewRequests::default();
+        bg_request_page_previews(&mut req, &nb, 0, 3, 300.0, true);
+        let waited = |s: &mut State| s.q.iter().filter(|j| j.id.as_str() == id && j.dir.as_str() == "0:3" && j.notify).count();
+        assert_eq!(with(waited), 1);
+        assert_eq!(req.jobs, vec![("0:3".to_string(), pids.clone())]);
+        assert!(pids.iter().all(|&p| req.waiting(p)));
+        // Asked again (the next draw): nothing more.
+        bg_request_page_previews(&mut req, &nb, 0, 3, 300.0, true);
+        assert_eq!(with(|s| s.q.len()), 1);
+        // The running one ends: the batch queued here still makes the pages.
+        with(|s| s.pid = -1);
+        assert!(pids.iter().all(|&p| req.waiting(p)));
+        // A view opened afresh over a batch queued (here, the idle warm-up's): waited on, no other is asked for.
+        with(|s| s.q.iter_mut().for_each(|j| j.notify = false));
+        let mut fresh = PagePreviewRequests::default();
+        bg_request_page_previews(&mut fresh, &nb, 0, 3, 300.0, true);
+        assert_eq!(with(|s| s.q.iter().map(|j| (j.dir.as_str().to_string(), j.notify)).collect::<Vec<_>>()), vec![("0:3".to_string(), true)]);
+        assert_eq!(fresh.jobs, vec![("0:3".to_string(), pids.clone())]);
+        with(|s| s.q.clear());
+        assert!(!fresh.waiting(pids[0]) && !bg_busy());
+        let _ = std::fs::remove_dir_all(&root);
     }
 }

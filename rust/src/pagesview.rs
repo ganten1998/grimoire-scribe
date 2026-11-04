@@ -249,18 +249,22 @@ pub struct PagesView {
 
 /// (cols, rows, cw, ch, th)
 fn geom(a: &App, v: &PagesView) -> (i32, i32, i32, i32, i32) {
+    geom_at((a.w, a.h), v)
+}
+// The same on a screen of w x h (the view's last: view_size).
+fn geom_at((w, h): (i32, i32), v: &PagesView) -> (i32, i32, i32, i32, i32) {
     if v.unified && !v.picking {
         let gap=ui_px(24.0);
-        let cw=(a.w-gap*4)/3;
-        let ch=(a.h-ui_px(190.0)-ui_px(170.0)-gap*4)/3;
+        let cw=(w-gap*4)/3;
+        let ch=(h-ui_px(190.0)-ui_px(170.0)-gap*4)/3;
         return (3,3,cw,ch,ch-ui_px(58.0));
     }
-    let cols = if a.w > a.h { 6 } else { 4 };
+    let cols = if w > h { 6 } else { 4 };
     let m = ui_px(50.0);
-    let cw = (a.w - m * (cols + 1)) / cols;
+    let cw = (w - m * (cols + 1)) / cols;
     let th = ui_px(200.0);
     let ch = th + ui_px(90.0);
-    let mut rows = (a.h - ui_px(190.0) - ui_px(170.0) - m) / (ch + m);
+    let mut rows = (h - ui_px(190.0) - ui_px(170.0) - m) / (ch + m);
     if rows < 1 {
         rows = 1;
     }
@@ -696,9 +700,12 @@ pub fn pagesview_draw(v: &mut PagesView, a: &mut App, nb: &NotebookInfo, nav: &N
     let mut n = 0;
     if v.unified {
         // The screenful's missing previews asked for first, so its tiles show the loading mark until they
-        // come. (The open page's tile, made from its canvas as the view opened, is not drawn again there.)
+        // come. (The open page is left out when its tile is made from its canvas, as the view opened, or its
+        // preview is current: so asked, the batch is the idle warm-up's (pagesview_prefetch), and one that is
+        // queued already is the one waited on.)
         let first=(v.screen*per).max(0) as usize;let last=(first+per as usize).min(nb.page_ids.len());
-        let open=nb.page_ids.get(v.current.max(0) as usize).copied().filter(|&pid|v.cache.has(pid));
+        let open=nb.page_ids.get(v.current.max(0) as usize).copied()
+            .filter(|&pid|v.cache.has(pid)||store_page_preview_fresh(nb,pid).is_some());
         bg_request_page_previews_but(&mut v.previews,nb,first,last,a.dpi,true,open);
         draw_tiles(v,a,nb,nav);
     }
@@ -1854,11 +1861,13 @@ pub fn pagesview_probe(v: &PagesView, nb: &NotebookInfo, nav: &Nav, key: &str, o
     if key=="overlay" {csnprintf!(out,cap,"%d",v.overlay as i32);return 0;}
     if key=="multi" {csnprintf!(out,cap,"%d",v.multi_select as i32);return 0;}
     if key=="cached" {csnprintf!(out,cap,"%d",v.cache.len());return 0;}
-    // What the screenful's tiles show, one letter each: p a preview, l the loading mark, n the number alone.
+    // What the screenful's tiles show, one letter each: p a preview, l the loading mark, n the number alone
+    // (nine tiles a screenful in the Pages view, more when picking a link's page).
     if key=="shows" {
         out.clear();
         if v.open && v.unified && !v.index_tab {
-            let per=9usize;let first=((v.screen.max(0) as usize)*per).min(nb.page_ids.len());
+            let (cols,rows,..)=geom_at(v.view_size,v);
+            let per=(cols*rows).max(1) as usize;let first=((v.screen.max(0) as usize)*per).min(nb.page_ids.len());
             let end=(first+per).min(nb.page_ids.len());
             csnprintf!(out,cap,"%s",&v.cache.shows(&nb.page_ids[first..end]));
         }
