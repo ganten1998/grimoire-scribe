@@ -3758,13 +3758,16 @@ pub fn store_page_dense(nb: &NotebookInfo, pid: u32) -> bool {
     let Some((source, _, stamp)) = page_render_files(nb, pid) else { return false };
     std::fs::metadata(&source).is_ok_and(|m| m.len() >= STORE_DENSE_PAGE_BYTES) || access_ok(&stamp)
 }
-// Whether page pid has a kept drawing of its file as it is now, whatever size and layering it was kept
-// for: the previews job's guess that the page is quick to make, before it reads the page
-// (store_load_page_render still checks it all).
+// Whether page pid has a kept drawing of its file as it is now, at the notebook's page size, by this
+// renderer, layered or not (that is told only by reading the page): the previews job's guess that the page
+// is quick to make, before it reads the page (store_load_page_render still checks it all). A drawing kept
+// by another build (another fingerprint) or at another size is drawn again, and so is sorted by its size.
 fn page_render_current(nb: &NotebookInfo, pid: u32) -> bool {
     let Some((source, _, stamp)) = page_render_files(nb, pid) else { return false };
     let (Some(now), Some(tag)) = (preview_stamp(&source), preview_tag(&stamp)) else { return false };
-    tag.strip_prefix(now.as_str()).is_some_and(|rest| rest.starts_with('|'))
+    let (mut w, mut h) = (0, 0);
+    store_notebook_page_size(nb, &mut w, &mut h);
+    tag == render_tag(&now, w, h, false) || tag == render_tag(&now, w, h, true)
 }
 // A layered page (page_layered: floors, 2.0.0-beta.2 on) is tagged with a "|L" suffix and only such a
 // tag is trusted for it: 2.0.0-beta.1 keeps drawings under the same fingerprint, and would keep a flat
@@ -3900,7 +3903,8 @@ pub fn store_page_render_kept(nb: &NotebookInfo, pid: u32, w: i32, h: i32, layer
     let Some(now) = preview_stamp(&source) else { return false };
     preview_tag(&stamp).as_deref() == Some(render_tag(&now, w, h, layered).as_str())
 }
-// One page's preview written, without telling an open view: a batch tells it once, at its end.
+// One page's preview written, without telling an open view (the caller does: store_save_page_preview, and
+// the previews job as each preview lands).
 fn save_page_preview(nb: &NotebookInfo, pid: u32, canvas: &Canvas) -> bool {
     let Some((source, image, stamp)) = page_preview_files(nb,pid) else {return false};
     let Some(was) = preview_stamp(&source) else {return false};
@@ -4937,7 +4941,8 @@ mod tests {
 /// preview tells an open view as it lands (page_previews_changed), which shows that tile at once. A page
 /// drawn here that took store_keep_render_ms() or more of the job's processor time keeps its drawing
 /// (store_save_page_render_at), so the page also opens quickly in the editor, and its next preview is
-/// read back. One log line per batch says where the time went.
+/// read back; one drawn with its picture paper white (the picture missing or unreadable) keeps neither.
+/// One log line per batch says where the time went.
 pub fn store_build_page_previews(id:&str, range:&str,dpi:f32)->i32 {
     let started=now_ms();
     let mut nb=NotebookInfo::default();
@@ -4978,18 +4983,26 @@ pub fn store_build_page_previews(id:&str, range:&str,dpi:f32)->i32 {
         let mut full=Canvas::default();
         if canvas_init(&mut full,page.w,page.h)!=0 {continue;}
         let layered=page_layered(&page);
+        // (whether a picture paper drew white, its picture missing or unreadable here)
+        let mut missing=false;
         if store_load_page_render(&nb,pid,page.w,page.h,&mut full,layered) {
             kept+=1;
         } else {
             let cpu=cpu_ms();
+            bgimage_take_missing(); // (what drew white before)
             page_render(&mut full,&page,Rect::new(0,0,page.w,page.h),dpi);
+            missing=bgimage_take_missing();
             #[cfg(feature = "sim")]
             sim_slow_draw(&source);
             drawn+=1;
-            if cpu_ms().wrapping_sub(cpu)>=store_keep_render_ms() && store_save_page_render_at(&nb,pid,&full,layered,&before) {keeps+=1;}
+            if !missing && cpu_ms().wrapping_sub(cpu)>=store_keep_render_ms() && store_save_page_render_at(&nb,pid,&full,layered,&before) {keeps+=1;}
         }
         drop(page);
-        if preview_stamp(&source).as_deref()==Some(before.as_str()) && save_page_preview(&nb,pid,&full) {
+        // A page drawn with its picture white writes neither its kept drawing nor its preview, as the editor
+        // writes neither then (its render_page_full and save_page): a kept drawing would open the page white
+        // with nothing said, and both would stay so once the picture reads again. Its tile shows its number,
+        // and the next view that opens asks for it again.
+        if !missing && preview_stamp(&source).as_deref()==Some(before.as_str()) && save_page_preview(&nb,pid,&full) {
             page_previews_changed(id); // (an open view shows this tile now)
             if first_ms<0 {first_ms=now_ms().wrapping_sub(started) as i32;}
         }

@@ -1,6 +1,7 @@
 // The Pages view's previews job (store_build_page_previews, 2.0.0-beta.2): the light pages before a dense one,
-// a current kept drawing read back instead of drawn, a stale one never used, a slow drawing kept by the job,
-// a preview cut short made again, and what counts as a dense page (store_page_dense).
+// a current kept drawing read back instead of drawn, a stale one never used (nor taken for a quick page), a
+// slow drawing kept by the job (none with its picture missing), a preview cut short made again, and what counts
+// as a dense page (store_page_dense).
 #[path = "testlib/mod.rs"]
 mod testlib;
 use grimoire::prelude::*;
@@ -157,6 +158,61 @@ fn slow_drawing_kept_by_the_job() {
     check!(store_page_dense(&nb, pid) && !store_page_dense(&nb, nb.page_ids[1]));
 }
 
+// A dense page whose kept drawing is of its file as it is now but by another renderer (a build that draws ink
+// otherwise: another fingerprint) is drawn again, and so is made after the light pages, as its size says: its kept
+// drawing never puts it first. (Here a drawing all black, which is not used.)
+fn foreign_kept_drawing_not_first() {
+    let _root = fresh_root("foreign");
+    let nb = notebook("Foreign", 4);
+    check!(store_save_page(&nb, 0, &page_of(1100, 60, 7)) == 0);
+    for i in 1..4 {
+        check!(store_save_page(&nb, i, &page_of(2, 40, 100 + i as u32)) == 0);
+    }
+    let dense = nb.page_ids[0];
+    let mut black = Canvas::default();
+    check!(canvas_init(&mut black, W, H) == 0);
+    canvas_fill(&mut black, Rect::new(0, 0, W, H), 0);
+    check!(store_save_page_render(&nb, dense, &black, false));
+    let dir = dir_of(&nb);
+    let stamp = format!("{dir}/.page-previews/p{dense}.full.stamp");
+    let tag = std::fs::read_to_string(&stamp).unwrap();
+    let (head, fingerprint) = tag.rsplit_once('|').unwrap();
+    check!(fingerprint.len() == 16);
+    std::fs::write(&stamp, format!("{head}|{}", if fingerprint == "0123456789abcdef" { "fedcba9876543210" } else { "0123456789abcdef" })).unwrap();
+    check!(!store_page_render_kept(&nb, dense, W, H, false));
+    check!(store_build_page_previews(nb.id.as_str(), "0:4", 300.0) == 0);
+    let pgm = |i: usize| format!("{dir}/.page-previews/p{}.pgm", nb.page_ids[i]);
+    let p = preview_of(&nb, dense);
+    check!(p.as_ref().is_some_and(|p| mean(p) > 1.0));
+    let last = modified(&pgm(0));
+    for i in 1..4 {
+        check!(preview_of(&nb, nb.page_ids[i]).is_some() && modified(&pgm(i)) < last);
+    }
+}
+
+// A page on picture paper whose picture is missing draws it white: the job keeps no drawing of it, however slow
+// (store_keep_render_ms() 0 here), and writes no preview of it either, as the editor writes neither then; a page
+// beside it is made as always. (Kept, the white drawing would open the page with nothing said, and stay so once the
+// picture is there.)
+fn missing_picture_keeps_nothing() {
+    let _root = fresh_root("picture");
+    let nb = notebook("Picture", 2);
+    let mut p = page_of(30, 50, 31);
+    p.paper = paper_image(PAPER_ROLE_TEMPLATE, 7);
+    check!(store_save_page(&nb, 0, &p) == 0);
+    check!(store_save_page(&nb, 1, &page_of(30, 50, 32)) == 0);
+    let dir = dir_of(&nb);
+    check!(!std::path::Path::new(&format!("{dir}/bg/000007.png")).exists());
+    STORE_TEST_KEEP_RENDER_MS.store(0, std::sync::atomic::Ordering::Relaxed);
+    check!(store_build_page_previews(nb.id.as_str(), "0:2", 300.0) == 0);
+    STORE_TEST_KEEP_RENDER_MS.store(u32::MAX, std::sync::atomic::Ordering::Relaxed);
+    let (pid, other) = (nb.page_ids[0], nb.page_ids[1]);
+    check!(!store_page_render_kept(&nb, pid, W, H, false) && !store_page_render_kept(&nb, pid, W, H, true));
+    check!(preview_of(&nb, pid).is_none());
+    check!(store_page_render_kept(&nb, other, W, H, false) && preview_of(&nb, other).is_some());
+    check!(!bgimage_take_missing());
+}
+
 // A preview whose image was cut short (a cache write is never synced) under a current stamp is made again.
 fn cut_short_preview_made_again() {
     let _root = fresh_root("cut");
@@ -181,6 +237,8 @@ fn test_page_previews() {
     run!(kept_drawing_read_back);
     run!(stale_kept_drawing_ignored);
     run!(slow_drawing_kept_by_the_job);
+    run!(foreign_kept_drawing_not_first);
+    run!(missing_picture_keeps_nothing);
     run!(cut_short_preview_made_again);
     done();
 }
