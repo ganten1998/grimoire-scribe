@@ -2,10 +2,12 @@
 
 ## 2.0.0-beta.2 (unreleased)
 
-- A smaller download (the zip 2.8 MB instead of 7.8 MB, the app 5.7 MB instead of 10.2 MB): Terminess now
-  carries Terminus's text and only the Material Design icons Grimoire uses, its text exactly as before, and
-  the release ships the icons' Apache-2.0 notice beside its OFL (`assets/README.md`). Grimoire updates its
-  copy in KOReader's `fonts/Grimoire` at its next start.
+- A smaller download: the zip is 2.8 MB (beta.1's was 7.1 MB) and the app 5.8 MB (8.8 MB). Terminess keeps
+  Terminus's own text and only the Material Design icons Grimoire uses: Grimoire's own text looks as before,
+  and the box drawing, block elements, heart, lightning, menu sign, power symbols and heavy angle brackets
+  that Nerd Fonts had added are gone. The icons' Apache-2.0 notice ships beside the OFL text, and the share
+  pages serve the fonts' licenses at `/font/licenses.txt` (`assets/README.md`). Grimoire updates its copy in
+  KOReader's `fonts/Grimoire` at its next start.
 - Quieter toasts (the owner's review of every one): confirmations of what the screen already shows are gone,
   and the rest are terse ("Couldn't save page name.", "Couldn't save links. Page unchanged.").
 - The lasso's clipboard lasts one session: every start of Grimoire clears it, and a paste no longer logs a

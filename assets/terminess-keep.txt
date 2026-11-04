@@ -15,8 +15,10 @@
 #
 # Icons: Material Design Icons (Pictogrammers; Apache License 2.0), each one Grimoire draws or its
 # 2.1 design plans. A new icon goes here, then make fonts-subset, or it draws nothing (the test
-# says which is missing). Not kept: KOReader's own symbols at private use code points (its battery
-# among them), which KOReader draws from its own symbols font.
+# says which is missing). Never an icon of Material Design Icons' "Brand / Logo" category (md-github
+# and the like): Pictogrammers' license does not cover those, and MaterialDesignIcons-LICENSE.txt
+# calls every icon here Apache-2.0. Not kept: KOReader's own symbols at private use code points (its
+# battery among them), which KOReader draws from its own symbols font.
 
 # Text: 1197 code points
 # Basic Latin (ASCII; U+0000 is the font's own null glyph)

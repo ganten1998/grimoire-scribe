@@ -129,6 +129,14 @@ panel and the clock's corner as layers (`live_layer`, `editor_live_panel`,
 (`GRIMOIRE_SIM_RAWPEN`, `GRIMOIRE_SIM_RAWPEN_MAIN`, `GRIMOIRE_SIM_STALL_MS`; docs/SIM.md). The C
 tree streams version 2: `make c-check` cannot run tests/live_check.sh.
 
+The Terminess diet's two additions (2.0.0-beta.2, assets/README.md) are Rust only too:
+`koreader_fonts_refresh` in koreader.rs and its call in mainloop.rs's `run` after the first frame
+(Grimoire's copy in KOReader's fonts/Grimoire follows the binary's fonts; src/koreader.c writes it
+only when the Terminess patch is toggled), and httpd.rs's `/font/licenses.txt` (assets.rs's
+`FONT_LICENSES`), with the `Link: rel="license"` header on each font's answer and the comment in
+the pages' style that names it (src/httpd.c serves the fonts alone). Only the Rust tests hold them
+(test_koreader.rs, test_scenarios.rs, test_httpd.rs), so `make c-check` runs as before.
+
 ### Not ported
 
 - The SDL3 window simulator (`grimoire-sim`, GRIMOIRE_SIM_SDL): a development aid no check runs.

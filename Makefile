@@ -295,9 +295,10 @@ $(BUILD)/host/mkicon: FORCE
 # assets/TerminessNerdFontMono-*.ttf cut from Nerd Fonts' release down to the code points
 # assets/terminess-keep.txt lists. tools/fonts_subset.py downloads the release and upstream Terminus
 # TTF once into FONTS_CACHE (outside the repo), checks them by SHA-256, checks the list's text against
-# upstream Terminus, and writes the fonts (assets/README.md). It needs fontTools, best in a venv
-# outside the repo: make fonts-subset FONTS_PYTHON=<venv>/bin/python. FONTS_SUBSET_FLAGS=--verify
-# writes nothing and checks that the committed fonts are what the list makes.
+# upstream Terminus, and writes the fonts (assets/README.md). It needs fontTools 4.68.0 (pip install
+# fonttools==4.68.0, the version that made the committed fonts), best in a venv outside the repo: make
+# fonts-subset FONTS_PYTHON=<venv>/bin/python. FONTS_SUBSET_FLAGS=--verify writes nothing and checks
+# that the committed fonts are what the list makes.
 FONTS_PYTHON ?= python3
 FONTS_CACHE ?= $(HOME)/.cache/grimoire-fonts
 FONTS_SUBSET_FLAGS ?=

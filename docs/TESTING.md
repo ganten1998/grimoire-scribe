@@ -198,9 +198,12 @@ Automated: rust/tests/test_terminess_keep.rs (the embedded fonts hold exactly
 icon the sources draw is listed, is in both weights and draws ink; none of the Nerd Fonts glyphs the diet
 leaves out is listed), test_koreader.rs's fonts_follow_the_binary (KOReader's `fonts/Grimoire` written
 again when it differs, left alone when equal, made only while the Terminess patch is applied, nothing
-written without either, nothing else touched), test_font and test_golden as they were (both compare on
-arm64 macOS, where they were recorded), and package_check (the icons' notice and the Apache-2.0 text in
-`app/licenses` and beside the fonts in the KOReader patches folder). Measured once, not in `make check`
+written without either, nothing else touched), test_scenarios.rs's
+a_start_brings_koreaders_terminess_up_to_date (a start of the runner does that once), test_httpd.rs
+(`/font/licenses.txt` serves the licenses of the fonts the share pages use, and each font's answer names
+it), test_font and test_golden as they were (both compare on arm64 macOS, where they were recorded), and
+package_check (the icons' notice and the Apache-2.0 text in `app/licenses` and beside the fonts in the
+KOReader patches folder). Measured once, not in `make check`
 (it needs fontTools and freetype-py): every kept code point of both weights, old file against new, drawn
 through stb_truetype as font.rs draws it (every quarter pixel from 12 to 100 px, whole pixels to 200,
 icons every quarter pixel to 400 px and through font_draw_icon's own sizing for boxes of 16 to 600 px:
@@ -215,7 +218,9 @@ a music paper's clefs, the clock corner). With the Terminess patch applied in KO
 version: the first start of this build logs `koreader: wrote 2 of Grimoire's Terminess files in
 .../fonts/Grimoire`, the files there are the new size (427,436 and 428,220 bytes), and a second start
 writes nothing; then in KOReader the menus look as before and the battery shows KOReader's own symbols
-in the dropdown and the reading footer, charging and unplugged.
+in the dropdown and the reading footer, charging and unplugged. (The folder shortcuts' list draws its
+"└" from KOReader's fallback fonts now: the Nerd Fonts box drawing is gone from Terminess.) In a
+browser at the Share screen's address, `/font/licenses.txt` shows the fonts' licenses.
 
 ## 2.0.0-beta.1
 

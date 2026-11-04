@@ -2,8 +2,9 @@
 """The Terminess diet: makes assets/TerminessNerdFontMono-Regular.ttf and -Bold.ttf from Nerd
 Fonts' release, keeping only the code points assets/terminess-keep.txt lists.
 
-For the maintainer, through `make fonts-subset` (assets/README.md). It needs fontTools
-(python3 -m pip install fonttools, best in a venv outside the repo); the gate never runs it.
+For the maintainer, through `make fonts-subset` (assets/README.md). It needs fontTools 4.68.0
+(python3 -m pip install fonttools==4.68.0, best in a venv outside the repo: the committed fonts are
+what that version writes, and another may write other bytes); the gate never runs it.
 
   1. Downloads, once, into the cache folder: Nerd Fonts 3.4.0's Terminus.zip (the source of the
      shipped fonts) and Terminus TTF 4.49.3's zip (the upstream Terminus it patched), and checks
@@ -62,6 +63,8 @@ WEIGHTS = [
      "terminus-ttf-4.49.3/TerminusTTF-Bold-4.49.3.ttf"),
 ]
 MDI_FIRST, MDI_LAST = 0xF0001, 0xF1AF0
+# The fontTools that made the committed fonts: --verify matches them byte for byte with it.
+FONTTOOLS = "4.68.0"
 
 
 def fail(msg):
@@ -212,9 +215,12 @@ def main():
         import fontTools
         from fontTools.ttLib import TTFont
     except ImportError:
-        fail("needs fontTools: python3 -m pip install fonttools (in a venv), then "
-             "make fonts-subset FONTS_PYTHON=<that venv>/bin/python")
+        fail("needs fontTools: python3 -m pip install fonttools==%s (in a venv), then "
+             "make fonts-subset FONTS_PYTHON=<that venv>/bin/python" % FONTTOOLS)
     print("fonts-subset: fontTools %s" % fontTools.version)
+    if fontTools.version != FONTTOOLS:
+        print("fonts-subset: warning: the committed fonts were made with fontTools %s; this one may "
+              "write other bytes (python3 -m pip install fonttools==%s)" % (FONTTOOLS, FONTTOOLS))
     keep = read_keep(args.keep)
     text = {cp for cp in keep if not is_pua(cp)}
     icons = keep - text

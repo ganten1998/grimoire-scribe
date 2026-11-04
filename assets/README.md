@@ -41,21 +41,28 @@ Design icons Grimoire draws or plans: exactly the code points `terminess-keep.tx
 text and 84 icons. That is about 0.43 MB a weight instead of 2.67 MB. The icons are Material Design
 Icons by Pictogrammers under the Apache License 2.0 (`MaterialDesignIcons-LICENSE.txt`, which says
 where they come from, and `MaterialDesignIcons-Apache-2.0.txt`); the release ships both notices
-beside the OFL text. Left out: every other icon set Nerd Fonts patched in (Font Awesome and
-Codicons, CC BY 4.0; Font Logos, brand logos Nerd Fonts lists as unlicensed; Octicons, Devicons,
-Seti-UI and the rest), and the Nerd Fonts glyphs at ordinary code points (its box drawing and block
-elements, drawn over Terminus's, the Octicons heart and lightning, the power symbols, the menu sign
-and the heavy angle brackets). The kept glyphs are the source's own bytes: their outlines and
-metrics, the hinting that decides how FreeType draws them (no hinting would turn on its
-auto-hinter), the embedded bitmaps it uses at 12 to 32 px, and the name table whole (KOReader's
-patch and the share pages find the font by its names). Drawn through stb_truetype as the app draws
-them and through FreeType (hinting on and off) at 12 to 100 px, every kept glyph is byte for byte
-what the full font draws.
+beside the OFL text, and the share pages serve all three, with the Gothic fonts' OFL texts, as
+`/font/licenses.txt` beside the fonts (each font's answer names it as its license). Left out: every
+other icon set Nerd Fonts patched in (Font Awesome and Codicons, CC BY 4.0; Font Logos, brand logos
+Nerd Fonts lists as unlicensed; Octicons, Devicons, Seti-UI and the rest), and the Nerd Fonts glyphs
+at ordinary code points (its box drawing and block elements, drawn over Terminus's, the Octicons
+heart and lightning, the power symbols, the menu sign and the heavy angle brackets). Those
+characters are no longer in Terminess: Grimoire's own screens and pages use none of them, a name
+that has one shows without it, and KOReader takes them from its fallback fonts. The kept glyphs are
+the source's own bytes: their outlines and metrics, the hinting that decides how FreeType draws
+them (no hinting would turn on its auto-hinter), the embedded bitmaps it uses at 12 to 32 px, and
+the name table whole (the family name is what FreeType reports and what KOReader lists and stores
+when the font is chosen; KOReader's patch finds the files by their names, and the share pages load
+them under a name of their own). Drawn through stb_truetype as the app draws them and through
+FreeType (hinting on and off) at 12 to 100 px, every kept glyph is byte for byte what the full font
+draws.
 
 A new icon goes into `terminess-keep.txt` (rust/tests/test_terminess_keep.rs fails while the code
-draws one the font lacks), then the fonts are made again. For the maintainer, with fontTools in a
-venv outside the repo (`python3 -m venv ~/venvs/fonttools && ~/venvs/fonttools/bin/pip install
-fonttools`):
+draws one the font lacks), then the fonts are made again. Never an icon of Material Design Icons'
+"Brand / Logo" category: Pictogrammers' license does not cover those, and
+`MaterialDesignIcons-LICENSE.txt` calls every icon in Terminess Apache-2.0. For the maintainer, with
+fontTools 4.68.0 (the version that made the committed fonts) in a venv outside the repo
+(`python3 -m venv ~/venvs/fonttools && ~/venvs/fonttools/bin/pip install fonttools==4.68.0`):
 
 ```
 make fonts-subset FONTS_PYTHON=~/venvs/fonttools/bin/python
