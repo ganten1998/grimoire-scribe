@@ -4964,7 +4964,8 @@ pub fn store_build_page_previews(id:&str, range:&str,dpi:f32)->i32 {
         todo.push((cost,i,pid));
     }
     todo.sort_by_key(|t|t.0); // (stable: pages of one cost in their order)
-    let (mut first_ms,mut slow)=(-1i32,(0u32,0i32));
+    // (-1: none made)
+    let (mut first_ms,mut slow)=(-1i32,(0u32,-1i32));
     for &(_,i,pid) in &todo {
         let at=now_ms();
         let Some((source,_,_))=page_preview_files(&nb,pid) else{continue};
@@ -4995,8 +4996,10 @@ pub fn store_build_page_previews(id:&str, range:&str,dpi:f32)->i32 {
         let ms=now_ms().wrapping_sub(at) as i32;
         if ms>slow.1 {slow=(pid,ms);}
     }
-    qlog!("previews: nb=%s pages=%d cached=%d kept=%d drawn=%d keep=%d ms=%d first=%d slow=p%u:%d",
-        id,pages,cached,kept,drawn,keeps,now_ms().wrapping_sub(started) as i32,first_ms,slow.0,slow.1);
+    // (and the cores the processor has: with three or more a second job process may run beside this one)
+    let cores=std::thread::available_parallelism().map_or(1,|n|n.get()) as i32;
+    qlog!("previews: nb=%s pages=%d cached=%d kept=%d drawn=%d keep=%d ms=%d first=%d slow=p%u:%d cores=%d",
+        id,pages,cached,kept,drawn,keeps,now_ms().wrapping_sub(started) as i32,first_ms,slow.0,slow.1,cores);
     0
 }
 // Tests (the simulator): GRIMOIRE_SIM_DENSE_DRAW_MS=N makes the previews job's drawing of a dense page

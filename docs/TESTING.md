@@ -173,7 +173,7 @@ z_previews_4_picker (the destination picker does the same), z_previews_5_turn (a
 batch runs gets its previews after it) and z_previews_6_beside (with the cores, beside it). The dense pages
 make the job slow with GRIMOIRE_SIM_DENSE_DRAW_MS, as a Kindle draws them; tests/pages_cache_check.py still
 holds that page turns and saves write no preview. Each batch logs `previews: nb=... pages=... cached=...
-kept=... drawn=... keep=... ms=... first=... slow=...` in grimoire.log.
+kept=... drawn=... keep=... ms=... first=... slow=... cores=...` in grimoire.log.
 
 On the Kindle, in a notebook with dense pages (2.0-b1 DEMO: pages 1, 7, 8 and 12 are 0.6 to 2.6 MB): open
 Pages on a screen with a dense page: the other tiles come one by one within a second or two, the dense

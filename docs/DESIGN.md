@@ -1156,9 +1156,10 @@ the UI never draws a page for a tile.
   panel (app_flush) before the drawing starts, and taken down once the page is drawn. Never for a page that
   draws quickly, nor while a pen held on an action holds the panel.
 - **The log.** One line per batch, from the job: `previews: nb=ID pages=N cached=N kept=N drawn=N keep=N
-  ms=N first=N slow=pID:N` (pages in the batch, previews already made, kept drawings read back, pages drawn,
-  drawings kept, the batch's time, the first preview's time, the slowest page), beside bgjob's `bg: page
-  previews of ID (pid N)` and `done` lines (`beside pid N` for the second child).
+  ms=N first=N slow=pID:N cores=N` (pages in the batch, previews already made, kept drawings read back,
+  pages drawn, drawings kept, the batch's time, the first preview's time, the slowest page, the processor's
+  cores), beside bgjob's `bg: page previews of ID (pid N)` and `done` lines (`beside pid N` for the second
+  child).
 
 Drawing previews straight at their size (the page's strokes scaled to 300 x 400) was measured and not
 adopted: about 8 times faster on a dense page, but not the same picture (thin strokes and hatching come out
