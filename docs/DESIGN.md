@@ -1118,6 +1118,70 @@ its native framework was stopped. Input/screen teardown still occurs before Grim
 closes after Grimoire returns, before koreader.sh starts a new reader process. App exit statuses
 propagate to the plugin so failed launches keep the diagnostic marker.
 
+## Page previews: the Pages view and the page pickers (2.0.0-beta.2)
+
+The Pages view's tiles and the destination picker's (Copy to notebook..., Link to...'s other notebooks)
+show the small previews of `.page-previews/` (docs/FORMAT.md), which the UI only decodes. A screenful's
+missing previews are asked for before its tiles are drawn (`bg_request_page_previews_but`), as one batch
+for the background job (bgjob.rs, `store_build_page_previews`), which draws them in a forked child, so
+the UI never draws a page for a tile.
+
+- **Each tile as its preview lands.** The job makes the batch's missing previews cheapest first (pages
+  with a current kept drawing, then by the size of their files: a dense page last) and tells an open view
+  of each one as it is written (the `updated` token). While a batch of the notebook shown is being made the
+  editor looks every 100 ms (`PREVIEWS_POLL_MS`, else every 500 ms) and draws only the tiles that show
+  something else now (`PreviewCache::changed`, against what each tile was drawn showing), in one GL16 of
+  them: never the whole screen, never a flash, never twice for the same preview. Previews that land within
+  one look come in one refresh.
+- **A tile still waiting shows an hourglass** (`ui_tile_loading`, the md-timer_sand glyph, black, a third of
+  the tile), drawn once with the tile and left until the preview is drawn in its place. A tile whose batch
+  ended without its preview (a page that does not read, one from a newer Grimoire) shows its number alone,
+  as every tile did before; it is asked for again when the view opens again.
+- **A batch asked for while another runs** (the view turned to another screen while a dense page is drawn)
+  is queued, put before the other queued previews of that notebook (`bg_prefer`), and the batches of screens
+  turned away from that still wait in the queue are dropped (asked for again when they show). With three
+  cores or more (`std::thread::available_parallelism`), a batch a view waits on starts at once in a second
+  child beside the first (bgjob.rs `extra_slot`: one such child at most, previews only; each child holds a
+  page canvas and a page at a time).
+- **Never two children on the same pages** (bgjob.rs `next_job`): a previews batch does not start while the
+  other child runs one of the same notebook over any of the same page indexes (the same batch, or one that
+  meets it, as the 24 tiles of Choose from the pages... meet the warm-up's 9); it waits for that one, then
+  finds its pages made. The same batch queued already (the idle warm-up's, a view's from before) is the one a view waits on:
+  it reads the notebook's page list as it starts. One already running that the view did not ask for read the
+  list before, and the pages may have moved since (a page deleted, pages added), so the view queues its own,
+  which runs after it and makes only what it did not. A second child that cannot be forked (the memory short)
+  puts its batch back at the head of the queue, for the first child, and none is tried again until the first
+  is free. When the last batch of the notebook shown is gone, ended or dropped unstarted, the tiles still
+  waiting are drawn again (their numbers), so no hourglass stays.
+- **The open page's tile** is made from its canvas as the view opens (it is drawn already), kept while the
+  view is open (`retain_screen`), and left out of the job's batch, so a dense open page is never drawn twice.
+  It is left out as well when its preview is current, as the idle warm-up leaves it out: the two then ask for
+  the same batch. Its preview on disk is written by the idle save, or by the job once another page is open.
+- **Dense pages.** A page with a current kept drawing (`p<id>.full`) gets its preview from that drawing,
+  read back, not drawn; a page the job drew in `store_keep_render_ms()` (1 s) or more of its own processor
+  time keeps its drawing too (`store_save_page_render_at`, only while the page file is still the one it
+  read), so the page then opens quickly in the editor as well. A stale kept drawing is never used, nor counted
+  as a quick page when the batch is sorted (only one whose whole stamp is current: the page file, the size and
+  the renderer's fingerprint). A page drawn with its picture paper white (its picture missing or unreadable in
+  the child) keeps no drawing and gets no preview, as in the editor: its tile shows its number, and the next
+  view that opens asks for it again.
+- **Opening a dense page** (a page turn, a jump, a notebook opening on it, the page left after a deletion)
+  that has no current kept drawing and draws slowly (`store_page_dense`: a page file of 512 KB or more, or a
+  page that kept a drawing before) says "Loading page..." (`render_page_open`): the toast is put on the
+  panel (app_flush) before the drawing starts, and taken down once the page is drawn. Never for a page that
+  draws quickly, nor while a pen held on an action holds the panel.
+- **The log.** One line per batch, from the job: `previews: nb=ID pages=N cached=N kept=N drawn=N keep=N
+  ms=N first=N slow=pID:N cores=N` (pages in the batch, previews already made, kept drawings read back,
+  pages drawn, drawings kept, the batch's time, the first preview's time, the slowest page, the processor's
+  cores), beside bgjob's `bg: page previews of ID (pid N)` and `done` lines (`beside pid N` for the second
+  child).
+
+Drawing previews straight at their size (the page's strokes scaled to 300 x 400) was measured and not
+adopted: about 8 times faster on a dense page, but not the same picture (thin strokes and hatching come out
+darker or lighter: a mean difference of 13 to 81 gray levels on the owner's dense pages, against the shrink
+of the full drawing; drawn at twice the size and then shrunk, still 3 to 9 levels and up to 6% of the pixels
+more than 32 levels apart).
+
 ## Touch gestures, the Links bar, Find and the link areas (2.0.0-beta.5, the Rust build)
 
 **Touch.** Fingers reach the editor through `touchgest.rs`, a pure recognizer that input_evdev.rs

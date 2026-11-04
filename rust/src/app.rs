@@ -2091,12 +2091,12 @@ fn append_cut(out: &mut String, cap: usize, piece: &str) {
 /// The headless runner's `expect` checks read the app's state through this (tests only; cheap).
 /// Keys: "screen" (library|editor|penset|calib|share), "toast" and "toast.rect" (the visible toast
 /// and its rect, "" if none), "asleep" (0|1), "asleep.mode", "host", "rotation" (0..3), "size"
-/// (WxH), "language", "bg.busy", "settings.<settings.ini key>" for a few and for every tool's pen
-/// feel ("settings.ballpoint.size_max_mm"), "light.intensity", "light.warmth", and "editor.*",
-/// "library.*", "penset.*" (below), "annotate.*" (app.c) and "templates.*" (the open Templates
-/// sheet: New notebook's on the Library, else the editor's); docs/SIM.md has them all. 0 and the
-/// value in out, -1 for an unknown key. (The C finds the App through g_probe_app; the runner passes
-/// it here: sim_sdl.rs's probe point is handed the App by mainloop.rs.)
+/// (WxH), "language", "bg.busy", "bg.children", "settings.<settings.ini key>" for a few and for
+/// every tool's pen feel ("settings.ballpoint.size_max_mm"), "light.intensity", "light.warmth",
+/// and "editor.*", "library.*", "penset.*" (below), "annotate.*" (app.c) and "templates.*" (the
+/// open Templates sheet: New notebook's on the Library, else the editor's); docs/SIM.md has them
+/// all. 0 and the value in out, -1 for an unknown key. (The C finds the App through g_probe_app; the
+/// runner passes it here: sim_sdl.rs's probe point is handed the App by mainloop.rs.)
 pub fn app_probe(a: &mut App, key: &str, out: &mut String, cap: usize) -> i32 {
     const K_NAMES: [&str; ScreenId::COUNT] = ["library", "editor", "penset", "calib", "share"];
     if cap == 0 {
@@ -2128,7 +2128,7 @@ pub fn app_probe(a: &mut App, key: &str, out: &mut String, cap: usize) -> i32 {
     }
     // Settings, under their settings.ini names.
     let st = &a.settings;
-    let nums: [(&str, i32); 37] = [
+    let nums: [(&str, i32); 38] = [
         ("settings.invert", st.invert as i32),
         ("settings.mirror_pdf", st.mirror_pdf as i32),
         ("settings.follow_rotation", st.follow_rotation as i32),
@@ -2167,6 +2167,7 @@ pub fn app_probe(a: &mut App, key: &str, out: &mut String, cap: usize) -> i32 {
         ("sleep.wallpaper", !a.koreader_wallpaper.px.is_empty() as i32,
         ),
         ("bg.busy", bg_busy() as i32), // a background job (an export, a compaction) runs or waits
+        ("bg.children", bg_children()), // background processes running now (two at most: a second for page previews)
     ];
     for (k, v) in nums {
         if key == k {

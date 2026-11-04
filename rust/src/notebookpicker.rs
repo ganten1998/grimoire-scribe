@@ -74,9 +74,10 @@ impl NotebookPicker {
         if let Some(nb)=self.selected.take() {
             (per,total)=self.page_grid(a,&nb);
             self.screen=self.screen.min(total.saturating_sub(1)/per);
-            self.draw_pages(a,&nb,false);
+            // (asked for first, so the tiles still to come show the loading mark)
             let first=self.screen*per;let last=(first+per).min(total);
             bg_request_page_previews(&mut self.previews,&nb,first,last,a.dpi,true);
+            self.draw_pages(a,&nb,None);
             self.selected=Some(nb);
         } else {
             let row=u(150.0);per=((h-u(400.0))/row).max(1) as usize;
@@ -108,9 +109,9 @@ impl NotebookPicker {
         let (w,h)=(a.w,a.h);let cols=if w>h {6}else{4};
         let rows=((h-ui_px(400.0))/ui_px(340.0)).max(1);((cols*rows) as usize,nb.page_ids.len())
     }
-    // The screenful of page tiles (`again`: each cell cleared first and its hit kept), and where they are.
-    // The previews decode once while they stay on screen (PreviewCache), not at every redraw.
-    fn draw_pages(&mut self,a:&mut App,nb:&NotebookInfo,again:bool)->Rect {
+    // The screenful of page tiles (`only`: those pages' alone, each cell cleared first and its hit kept), and
+    // where they are. The previews decode once while they stay on screen (PreviewCache), not at every redraw.
+    fn draw_pages(&mut self,a:&mut App,nb:&NotebookInfo,only:Option<&[u32]>)->Rect {
         let w=a.w;let h=a.h;let u=ui_px;
         let cols=if w>h {6}else{4};let gap=u(35.0);let cw=(w-gap*(cols+1))/cols;let ch=u(340.0);
         let (per,total)=self.page_grid(a,nb);
@@ -118,31 +119,48 @@ impl NotebookPicker {
         let first=self.screen*per;let last=(first+per).min(total);
         let mut dirty=RECT_EMPTY;
         for i in first..last {
+            if only.is_some_and(|o|!o.contains(&nb.page_ids[i])) {continue;}
             let n=(i-first) as i32;let r=Rect::new(gap+n%cols*(cw+gap),u(220.0)+n/cols*ch,cw,u(235.0));
             let cell=Rect::new(r.x,r.y,r.w,ch-u(15.0));
-            if again {canvas_fill(&mut a.screen,cell,255);}
-            if let Some(thumb)=self.cache.get(nb,nb.page_ids[i]){canvas_blit_fit(&mut a.screen,thumb,r);}
-            else {font_draw_centered(&mut a.screen,FontFace::Bold,ui_title_size(),r,&(i+1).to_string(),0);}
+            if only.is_some() {canvas_fill(&mut a.screen,cell,255);}
+            match self.cache.tile(nb,nb.page_ids[i],&mut self.previews,rect_contains_rect(a.screen.clip,r)) {
+                Tile::Preview(thumb)=>canvas_blit_fit(&mut a.screen,thumb,r),
+                Tile::Loading=>ui_tile_loading(&mut a.screen,r),
+                Tile::Number=>font_draw_centered(&mut a.screen,FontFace::Bold,ui_title_size(),r,&(i+1).to_string(),0),
+            }
             ui_frame(&mut a.screen,r,u(8.0),0,false,u(3.0));
             let name=nav_name(&self.nav,nb.page_ids[i]);
             let label=if name.is_empty(){cformat!(tr("Page %d"),i as i32+1)}else{format!("{} · {}",i+1,name)};
             font_draw_left_name(&mut a.screen,FontFace::Regular,ui_small_size(),Rect::new(r.x,r.y+r.h+u(12.0),r.w,u(65.0)),&label,0);
-            if !again {hits_add(&mut self.hits,cell,5,i as i32);}
+            if only.is_none() {hits_add(&mut self.hits,cell,5,i as i32);}
             dirty=rect_union(dirty,cell);
         }
         self.cache.retain(&nb.page_ids[first..last]);
         dirty
     }
-    /// New previews came while a notebook's pages are up: only its tiles are drawn again (the caller
-    /// refreshes the rect returned; RECT_EMPTY when no page grid shows).
+    // The selected notebook's screenful of pages.
+    fn screen_pages<'a>(&self,a:&App,nb:&'a NotebookInfo)->&'a [u32] {
+        let (per,total)=self.page_grid(a,nb);
+        let first=(self.screen*per).min(total);
+        &nb.page_ids[first..(first+per).min(total)]
+    }
+    /// New previews came while a notebook's pages are up, or a batch of them ended: only the tiles that show
+    /// something else now are drawn again (the caller refreshes the rect returned; RECT_EMPTY when none did,
+    /// or no page grid shows).
     pub fn repaint_pages(&mut self,a:&mut App)->Rect {
         let Some(nb)=self.selected.take() else{return RECT_EMPTY};
-        let r=self.draw_pages(a,&nb,true);
+        let pages=self.screen_pages(a,&nb);
+        let changed=self.cache.changed(&nb,pages,&mut self.previews);
+        let r=if changed.is_empty() {RECT_EMPTY} else {self.draw_pages(a,&nb,Some(&changed))};
         self.selected=Some(nb);
         r
     }
     /// How many decoded previews it keeps (the runner's editor.destination.cached).
     pub fn cached(&self)->usize {self.cache.len()}
+    /// What its page tiles show, one letter each (the runner's editor.destination.shows: PreviewCache::shows).
+    pub fn shows(&self,a:&App)->String {
+        self.selected.as_ref().map_or_else(String::new,|nb|self.cache.shows(self.screen_pages(a,nb)))
+    }
     /// The previews generation its tiles were drawn at.
     pub fn previews_generation(&self)->u64 {self.cache.generation()}
     pub fn pointer(&mut self,a:&mut App,ph:i32,e:&InEvent)->NotebookPick {

@@ -349,11 +349,13 @@ pub struct EditorState {
     /// the stroke eraser's tiles (MASK_TILE) drawn again, and those the boxes of what it took off
     /// cover (a probe, editor.erase_tiles)
     erase_tiles: (u32, u32),
-    /// the open page (its id) and how long its last whole drawing took, ms (KEEP_RENDER_MS when it came
-    /// from its kept drawing): a page this slow keeps its drawing at each save
+    /// the open page (its id) and how long its last whole drawing took, ms (u32::MAX when it came from its
+    /// kept drawing): a page that took store_keep_render_ms() or longer keeps its drawing at each save
     full_ms: (u32, u32),
     /// whether the open page came up from its kept drawing (a probe, editor.page_kept)
     page_kept: bool,
+    /// how many times "Loading page..." went up before a dense page was drawn (a probe, editor.loading_toasts)
+    loading_toasts: u32,
     /// Select mode (select.rs), and the last lasso move's or paste's times, ms (old place, new place)
     sel: SelMode,
     last_lasso_ms: (u32, u32),
@@ -526,9 +528,6 @@ pub struct EditorState {
     lb: LinkBar,
     /// the Find sheet (findsheet.rs), over the page while it is open
     find: FindSheet,
-    /// the Pages view's previews generation as the Find sheet opened over it: the grid the screen shows
-    /// outside the sheet (the sheet's composes draw the view with newer previews where it is)
-    find_pv_generation: u64,
     /// Link to... (linkbar.rs in pick mode): where a new link goes, while its area waits (lm Pick)
     lt: LinkBar,
     /// the long-press card (linkcard.rs): a link held on the page, or a row held on the bar
@@ -577,8 +576,8 @@ pub struct EditorState {
     from_graph: bool,
     requested_page: Option<u32>,
     previews_checked: u32,
-    // when the tick first held a repaint back for a previews job still to come (0: none held)
-    previews_held_at: u32,
+    // whether a previews batch of the notebook whose previews show was queued or running at the last tick
+    previews_pending: bool,
     nav: Nav,
     // Links (nav.h). Add a link (the Index, or the add-link shortcut) shows the strip, and the next pen
     // contact on the open page draws the dashed lasso around the link's area (lm), never ink; then Link
@@ -785,15 +784,17 @@ fn map_hide(a: &mut App, draw: bool) {
     }
     touch_context(a);
 }
-// (a previews job's end repaints at most this long after the tick first waited for it)
-const PREVIEWS_HOLD_MS: u32 = 2000;
+// How often the tick looks for previews while a batch of the notebook shown is being made: each tile is drawn
+// as its preview lands (the job tells of each one), so a group of them that land together shows in one refresh.
+const PREVIEWS_POLL_MS: u32 = 100;
+// ...and while none is: previews written otherwise (the open page's, at an idle save) show within this.
+const PREVIEWS_IDLE_POLL_MS: u32 = 500;
 
+/// A previews batch ended: the tiles it made are drawn (those that landed since the last look), and those it
+/// could not make lose their loading mark.
 pub fn editor_previews_done(a:&mut App,id:&str) {
-    // Another previews job for this notebook still queued: its end repaints, once for both.
-    if bg_pending(BgKind::PagePreviews,id) {return;}
-    if let Some(s)=a.ed.as_deref_mut() {s.previews_held_at=0;}
     if a.scr==ScreenId::Editor && a.ed.as_deref().is_some_and(|s|(s.pv.open&&s.nb.id==id)
-        ||(s.destination.open&&s.destination.selected.as_ref().is_some_and(|nb|nb.id==id))) {previews_repaint(a);}
+        ||(s.destination.open&&s.destination.selected.as_ref().is_some_and(|nb|nb.id==id))) {previews_repaint(a,true);}
 }
 
 // The notebook whose page previews show (the Pages view's, or the destination picker's pages), and the
@@ -803,13 +804,13 @@ fn previews_shown(s:&EditorState)->Option<(FixedStr<STORE_ID_LEN>,u64)> {
     s.pv.open.then(||(s.nb.id,pagesview_previews_generation(&s.pv)))
 }
 
-// New previews were written (the tick saw them, or their job ended): only the tiles are drawn again, in
-// a GL16 of the grid, and never twice for the same previews.
-fn previews_repaint(a:&mut App) {
+// New previews were written (the tick saw them), or a batch ended (`ended`): only the tiles that show something
+// else now are drawn again, in one GL16 of them, and never twice for the same previews.
+fn previews_repaint(a:&mut App,ended:bool) {
     // (the Find sheet over the Pages view: its tiles are drawn as it closes)
     if !ed_ref(a).destination.open && ed_ref(a).find.open {return;}
     let Some((id,drawn))=previews_shown(ed_ref(a)) else{return};
-    if store_page_previews_generation(id.as_str())==drawn {return;}
+    if !ended && store_page_previews_generation(id.as_str())==drawn {return;}
     let r=if ed_ref(a).destination.open {with_modal(a,|s|&mut s.destination,|p,a|p.repaint_pages(a))}
         else {with_pv(a,pagesview_repaint_tiles)};
     if !rect_is_empty(r) {app_invalidate(a,r,RefreshMode::Ui);}
@@ -2702,7 +2703,7 @@ fn save_page(a: &mut App) -> bool {
         if whole && s.autosaving && now.wrapping_sub(s.preview_saved_ms) >= 30_000 {
             store_save_page_preview(&s.nb, pid, &s.page_canvas);
             // A page that took a second or more to draw keeps its drawing too, so it opens at once.
-            if s.full_ms.0 == pid && s.full_ms.1 >= keep_render_ms() {
+            if s.full_ms.0 == pid && s.full_ms.1 >= store_keep_render_ms() {
                 let layered = s.open_page().is_some_and(page_layered);
                 store_save_page_render(&s.nb, pid, &s.page_canvas, layered);
             }
@@ -2862,7 +2863,7 @@ fn render_page_full(a: &mut App) {
         s.full_ms = (pid, now_ms().wrapping_sub(started));
         // A page that took this long, as it is on disk (nothing unsaved), keeps its drawing at once:
         // the next open is quick even if it is only read, never written.
-        if s.full_ms.1 >= keep_render_ms() && !s.page_dirty && !s.picture_missing && s.page_ix().is_some() {
+        if s.full_ms.1 >= store_keep_render_ms() && !s.page_dirty && !s.picture_missing && s.page_ix().is_some() {
             let layered = s.open_page().is_some_and(page_layered);
             store_save_page_render(&s.nb, pid, &s.page_canvas, layered);
         }
@@ -2876,6 +2877,40 @@ fn render_page_full(a: &mut App) {
     if paper_is_image(s.open_page().unwrap().paper) {
         s.paper_stale = true;
     }
+}
+
+// TRANSLATORS: a toast (about 1700 px at 44 px in bold) while a dense page is drawn as it opens (seconds on a
+// Kindle); it goes as the page shows.
+const K_LOADING_PAGE: &str = n_("Loading page...");
+
+/// render_page_full for a page that opens (a page turn, a jump, a notebook opening, the page left after a
+/// deletion): one that takes seconds to draw (store_page_dense) and has no current kept drawing to read back
+/// says "Loading page..." first, on the panel before the drawing starts, and the toast goes once the page is
+/// drawn. Never for a page that draws quickly.
+fn render_page_open(a: &mut App) {
+    let toast = loading_toast_due(a);
+    if toast {
+        app_toast(a, tr(K_LOADING_PAGE), 120_000);
+        app_flush(a); // (on the panel now: the drawing holds the main loop)
+        ed(a).loading_toasts += 1;
+    }
+    render_page_full(a);
+    // (another toast that took its place stays)
+    if toast && a.toast_visible && a.toast.as_bytes() == tr(K_LOADING_PAGE).as_bytes() {
+        app_toast_dismiss(a);
+    }
+}
+
+// Whether the open page takes seconds to draw and has no current kept drawing (a pen held on an action
+// holds the panel, so no toast could show before the drawing: none then).
+fn loading_toast_due(a: &App) -> bool {
+    let s = ed_ref(a);
+    if a.pen_action_down || s.page_ix().is_none() || s.page_canvas.px.is_empty() {
+        return false;
+    }
+    let pid = s.open_pid();
+    let layered = s.open_page().is_some_and(page_layered);
+    !store_page_render_kept(&s.nb, pid, s.pgw, s.pgh, layered) && store_page_dense(&s.nb, pid)
 }
 
 // A page from a newer Grimoire (or one this build cannot fully read) is shown as far as it can
@@ -3017,7 +3052,7 @@ fn go_to_page(a: &mut App, index: i32) -> bool {
     s.index = index;
     s.nb.last_page = index;
     s.info_dirty = true;
-    render_page_full(a);
+    render_page_open(a);
     view_reset(a);
     compose_all(a, RefreshMode::Full);
     arrive_readonly(a);
@@ -3235,7 +3270,7 @@ pub fn editor_open_notebook(a: &mut App, id: &str) {
     if s.page_canvas.px.is_empty() && canvas_init(&mut s.page_canvas, s.pgw, s.pgh) != 0 {
         return;
     }
-    render_page_full(a);
+    render_page_open(a);
     ed(a).view_w = 0; // set the view up afresh on enter
     let sideways_seen = a.settings.hints & HINT_SIDEWAYS;
     app_switch(a, ScreenId::Editor);
@@ -4380,7 +4415,7 @@ fn pages_delete(a: &mut App) {
     s.nb.last_page = s.index;
     s.page = s.page_at(s.index);
     if s.page.is_some() {
-        render_page_full(a);
+        render_page_open(a);
     }
     let s = ed(a);
     s.changed = true;
@@ -6925,8 +6960,6 @@ fn open_shape_menu(a: &mut App) {
 // keyboard, there are no rows yet). The page it is asked on stays the open one until a row is gone to.
 fn find_open(a: &mut App) {
     link_off(a);
-    let s = ed(a);
-    s.find_pv_generation = pagesview_previews_generation(&s.pv);
     let mut f = std::mem::take(&mut ed(a).find);
     findsheet_open(&mut f, a);
     ed(a).find = f;
@@ -6983,13 +7016,13 @@ fn find_close(a: &mut App) {
         s.lt.hidden = false;
         r = rect_union(r, s.lt.rect);
     }
-    compose(a, r);
-    // Over the Pages view: previews that came while the sheet was up are on the canvas now (the composes under the
-    // sheet drew the view with them, so previews_repaint sees nothing new), the screen's grid outside the sheet still
-    // without them: its tiles are refreshed in the same Ui.
-    if over_pv && pagesview_previews_generation(&ed_ref(a).pv) != ed_ref(a).find_pv_generation {
+    // Over the Pages view: previews that came while the sheet was up (previews_repaint draws none under it) are
+    // drawn in their tiles, which are refreshed in the same Ui. Before the compose below: it draws the view whole,
+    // and the tiles to refresh are the ones that show something else now than the panel does.
+    if over_pv {
         r = rect_union(r, with_pv(a, pagesview_repaint_tiles));
     }
+    compose(a, r);
     app_invalidate(a, r, RefreshMode::Ui);
 }
 
@@ -7274,7 +7307,7 @@ fn bar_commit(a: &mut App) {
             s.paper_stale = true;
         }
     } else {
-        render_page_full(a);
+        render_page_open(a);
     }
     let s = ed(a);
     if pk.from_back {
@@ -9578,17 +9611,6 @@ fn fs_finish_event(a: &mut App, ev: &InEvent) -> bool {
     }
 }
 
-/// A page whose whole drawing takes this long or longer keeps it (store_save_page_render), ms. (The
-/// simulator takes GRIMOIRE_KEEP_RENDER_MS instead, so scenarios can keep pages that draw quickly.)
-const KEEP_RENDER_MS: u32 = 1000;
-fn keep_render_ms() -> u32 {
-    #[cfg(feature = "sim")]
-    if let Some(ms) = std::env::var("GRIMOIRE_KEEP_RENDER_MS").ok().and_then(|v| v.parse().ok()) {
-        return ms;
-    }
-    KEEP_RENDER_MS
-}
-
 pub fn editor_event(a: &mut App, ev: &InEvent) {
     if crate::library::library_settings_active(a) {
         crate::library::library_event(a,ev);touch_context(a);return;
@@ -10488,15 +10510,17 @@ pub fn editor_tick(a: &mut App, now: u32) {
         let (current,dpi)=(ed_ref(a).index,a.dpi);
         with_pv(a,|pv,_,nb,_|pagesview_prefetch(pv,nb,current,dpi));
     }
-    if now.wrapping_sub(ed_ref(a).previews_checked)>500 && (ed_ref(a).pv.open||ed_ref(a).destination.open) {
-        ed(a).previews_checked=now;
-        // A previews job for the notebook shown is still running or queued: its end repaints the tiles
-        // (editor_previews_done), so the tick waits for it rather than repaint twice for one batch of
-        // previews (an earlier prefetch ending first under load). It waits PREVIEWS_HOLD_MS at most.
+    if ed_ref(a).pv.open||ed_ref(a).destination.open {
+        // A batch for the notebook shown being made: its previews are looked for often, and each tile is drawn as
+        // its preview lands (only the tiles that changed: previews_repaint).
         let pending=previews_shown(ed_ref(a)).is_some_and(|(id,_)|bg_pending(BgKind::PagePreviews,id.as_str()));
-        if !pending {ed(a).previews_held_at=0;previews_repaint(a);}
-        else if ed_ref(a).previews_held_at==0 {ed(a).previews_held_at=now|1;}
-        else if now.wrapping_sub(ed_ref(a).previews_held_at)>=PREVIEWS_HOLD_MS {ed(a).previews_held_at=now|1;previews_repaint(a);}
+        // The last of them gone: the tiles still waiting are drawn again, even when no child's end said so (a
+        // batch dropped unstarted: a fork that failed, a full queue), so no loading mark stays.
+        let ended=std::mem::replace(&mut ed(a).previews_pending,pending) && !pending;
+        if ended || now.wrapping_sub(ed_ref(a).previews_checked)>=if pending {PREVIEWS_POLL_MS} else {PREVIEWS_IDLE_POLL_MS} {
+            ed(a).previews_checked=now;
+            previews_repaint(a,ended);
+        }
     }
     if ed_ref(a).destination.open {return;}
     if ed_ref(a).map.open {
@@ -10898,6 +10922,7 @@ pub fn editor_probe(a: &mut App, key: &str, out: &mut String, cap: usize) -> i32
     else if key=="destination.folder" {csnprintf!(out,cap,"%s",s.destination.folder.as_str());}
     else if key=="destination.notebook" {csnprintf!(out,cap,"%s",s.destination.selected.as_ref().map_or("",|b|b.id.as_str()));}
     else if key=="destination.cached" {csnprintf!(out,cap,"%d",s.destination.cached());}
+    else if key=="destination.shows" {csnprintf!(out,cap,"%s",&s.destination.shows(a));}
     else if key=="destination.copying" {csnprintf!(out,cap,"%d",(s.destination.open&&s.destination.copying) as i32);}
     else if key=="page_ids" {
         // The open notebook's page order, its page ids comma-separated (Move to..., Copy to notebook...).
@@ -11232,6 +11257,9 @@ pub fn editor_probe(a: &mut App, key: &str, out: &mut String, cap: usize) -> i32
     } else if key == "page_kept" {
         // Whether the open page came up from its kept drawing instead of being drawn stroke by stroke.
         csnprintf!(out, cap, "%d", s.page_kept as i32);
+    } else if key == "loading_toasts" {
+        // How many times "Loading page..." went up before a dense page was drawn as it opened.
+        csnprintf!(out, cap, "%d", s.loading_toasts as i32);
     } else if key == "erase_tiles" {
         // The stroke eraser's tiles drawn again since the editor began, and the tiles of the boxes of
         // what it took off (all it drew before 2.0.0-rc.12).
