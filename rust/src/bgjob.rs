@@ -3,7 +3,9 @@
 //! watchdog, which killed Grimoire). One child process at a time, niced, works through a small
 //! queue; each child loads what it needs itself. Besides the PDF mirror: compacting a notebook's
 //! pages (erased ink taken out of the files), installing a template into a notebook, and importing a
-//! folder of page images.
+//! folder of page images. Since 2.0.0-beta.2 a second child may run beside the first, for one job
+//! only: a batch of page previews a view on screen waits on, while the first child is busy (an export,
+//! an earlier screenful's dense page), when the processor has three cores or more (extra_slot).
 
 use crate::prelude::*;
 use std::cell::RefCell;
@@ -95,24 +97,28 @@ pub fn bg_cancel_notebook(id: &str) {
     for _ in 0..dropped {
         qlog!("bg: notebook work for %s dropped (the notebook opens or goes)", id);
     }
-    let pid = with(|s| {
-        if s.pid > 0 && matches!(s.running.kind, BgKind::CompactPages | BgKind::GraphLayout | BgKind::PagePreviews) && s.running.id.as_bytes() == id.as_bytes() {
-            s.pid
-        } else {
-            -1
+    // (either child: the second only ever runs a previews batch)
+    for extra in [false, true] {
+        let pid = with(|s| {
+            let (pid, j) = if extra { (s.extra_pid, &s.extra) } else { (s.pid, &s.running) };
+            if pid > 0 && matches!(j.kind, BgKind::CompactPages | BgKind::GraphLayout | BgKind::PagePreviews) && j.id.as_bytes() == id.as_bytes() {
+                pid
+            } else {
+                -1
+            }
+        });
+        if pid > 0 {
+            // SAFETY: kill and waitpid on the child this module forked and has not reaped (pid > 0 in
+            // the state); the status goes into our local.
+            unsafe {
+                libc::kill(pid, libc::SIGTERM);
+                let mut st = 0;
+                libc::waitpid(pid, &mut st, 0);
+            }
+            store_cleanup_preview_work(id,pid);
+            qlog!("bg: notebook work for %s stopped (the notebook opens or goes)", id);
+            with(|s| if extra { s.extra_pid = -1 } else { s.pid = -1 });
         }
-    });
-    if pid > 0 {
-        // SAFETY: kill and waitpid on the child this module forked and has not reaped (pid > 0 in
-        // the state); the status goes into our local.
-        unsafe {
-            libc::kill(pid, libc::SIGTERM);
-            let mut st = 0;
-            libc::waitpid(pid, &mut st, 0);
-        }
-        store_cleanup_preview_work(id,pid);
-        qlog!("bg: notebook work for %s stopped (the notebook opens or goes)", id);
-        with(|s| s.pid = -1);
     }
 }
 /// A view on screen waits on this very job (kind, notebook id and path), queued: it goes first, as one the
@@ -123,8 +129,8 @@ pub fn bg_prefer(kind:BgKind,id:&str,path:&str) {
 }
 /// Running includes an exited child until it is reaped, so a reopened view still receives its result.
 pub fn bg_pending(kind:BgKind,id:&str)->bool {
-    with(|s|(s.pid>0&&s.running.kind==kind&&s.running.id.as_str()==id)
-        ||s.q.iter().any(|j|j.kind==kind&&j.id.as_str()==id))
+    let same=|j:&Job|j.kind==kind&&j.id.as_str()==id;
+    with(|s|(s.pid>0&&same(&s.running))||(s.extra_pid>0&&same(&s.extra))||s.q.iter().any(same))
 }
 /// Takes this very job (kind, notebook id and path) out of the queue, if it waits there (a running one
 /// runs on): true when it did.
@@ -137,7 +143,7 @@ pub fn bg_unqueue(kind:BgKind,id:&str,path:&str)->bool {
 /// The same for this very job: kind, notebook id and path (a previews batch's range).
 pub fn bg_job_pending(kind:BgKind,id:&str,path:&str)->bool {
     let same=|j:&Job|j.kind==kind&&j.id.as_str()==id&&j.dir.as_str()==path;
-    with(|s|(s.pid>0&&same(&s.running))||s.q.iter().any(same))
+    with(|s|(s.pid>0&&same(&s.running))||(s.extra_pid>0&&same(&s.extra))||s.q.iter().any(same))
 }
 
 /// Reaps a finished child and starts the next job. Returns 1 / -1 when a notify job just
@@ -153,15 +159,19 @@ pub fn bg_poll_job(done_kind:Option<&mut i32>,mut done_id:Option<&mut FixedStr<S
     if let Some(d) = done_kind.as_mut() {
         **d = -1;
     }
-    let pid = with(|s| s.pid);
-    if pid > 0 {
+    // The first child, then the second: one finished job reported per call (the next call reports the other).
+    for extra in [false, true] {
+        let pid = with(|s| if extra { s.extra_pid } else { s.pid });
+        if pid <= 0 {
+            continue;
+        }
         let mut st = 0;
         // SAFETY: waitpid on the child this module forked and has not reaped; WNOHANG, and the
         // status goes into our local.
         let r = unsafe { libc::waitpid(pid, &mut st, libc::WNOHANG) };
         if r == pid || r < 0 {
             let ok = r == pid && libc::WIFEXITED(st) && libc::WEXITSTATUS(st) == 0;
-            let (kind, notify, id) = with(|s| (s.running.kind, s.running_notify,s.running.id));
+            let (kind, notify, id) = with(|s| if extra { (s.extra.kind, s.extra.notify, s.extra.id) } else { (s.running.kind, s.running_notify, s.running.id) });
             if let Some(done)=done_id.as_deref_mut(){*done=id;}
             qlog!("bg: %s pid %d %s", K_KIND_NAMES[kind as usize], pid, if ok { "done" } else { "FAILED" });
             if notify || kind == BgKind::GraphLayout || kind == BgKind::GraphLayoutAll {
@@ -170,7 +180,8 @@ pub fn bg_poll_job(done_kind:Option<&mut i32>,mut done_id:Option<&mut FixedStr<S
             if let Some(d) = done_kind.as_mut() {
                 **d = kind as i32;
             }
-            with(|s| s.pid = -1);
+            with(|s| if extra { s.extra_pid = -1 } else { s.pid = -1 });
+            break;
         }
     }
     start_next();
@@ -180,7 +191,7 @@ pub fn bg_poll() -> i32 {
     bg_poll_kind(None)
 }
 pub fn bg_busy() -> bool {
-    with(|s| s.pid > 0 || !s.q.is_empty())
+    with(|s| s.pid > 0 || s.extra_pid > 0 || !s.q.is_empty())
 }
 /// At exit: hands everything still queued to one detached child, which finishes on its own.
 pub fn bg_detach_rest() {
@@ -257,12 +268,30 @@ struct State {
     running_notify: bool,
     /// the job the child is running (valid while pid > 0)
     running: Job,
+    /// the second child (2.0.0-beta.2): a previews batch a view waits on, started while the first child
+    /// is busy, given the cores (extra_slot); -1 when none
+    extra_pid: i32,
+    /// the job it runs (valid while extra_pid > 0)
+    extra: Job,
 }
 
 impl Default for State {
     fn default() -> Self {
-        State { q: Vec::new(), pid: -1, running_notify: false, running: Job::default() }
+        State { q: Vec::new(), pid: -1, running_notify: false, running: Job::default(), extra_pid: -1, extra: Job::default() }
     }
+}
+
+// Whether a second child may run beside the first: three cores or more (std::thread::available_parallelism,
+// at run time), one for Grimoire's own work and one for each child. Each child holds about one page canvas
+// and one page at a time (a few tens of MB at most), so two stay well within the Kindle's memory. The
+// simulator takes GRIMOIRE_SIM_CORES instead, so a scenario can run with one child.
+fn extra_slot() -> bool {
+    #[cfg(feature = "sim")]
+    if let Some(n) = std::env::var("GRIMOIRE_SIM_CORES").ok().and_then(|v| v.parse::<usize>().ok()) {
+        return n >= 3;
+    }
+    static CORES: std::sync::OnceLock<usize> = std::sync::OnceLock::new();
+    *CORES.get_or_init(|| std::thread::available_parallelism().map_or(1, |n| n.get())) >= 3
 }
 
 thread_local! {
@@ -432,20 +461,36 @@ fn atoi(s: &str) -> i32 {
     }
 }
 
+// The next job for a free child: the first child takes the most urgent one; while it is busy, the second
+// takes the first queued previews batch a view waits on (extra_slot). Both may start at once.
 fn start_next() {
-    let next = with(|s| {
-        if s.pid > 0 || s.q.is_empty() {
-            return None;
-        }
-        let mut next = 0;
-        for i in 1..s.q.len() {
-            if rank(&s.q[i]) < rank(&s.q[next]) {
-                next = i;
+    for _ in 0..2 {
+        let next = with(|s| {
+            if s.q.is_empty() {
+                return None;
             }
-        }
-        Some(take(&mut s.q, next))
-    });
-    let Some(j) = next else { return };
+            if s.pid <= 0 {
+                let mut next = 0;
+                for i in 1..s.q.len() {
+                    if rank(&s.q[i]) < rank(&s.q[next]) {
+                        next = i;
+                    }
+                }
+                return Some((take(&mut s.q, next), false));
+            }
+            if s.extra_pid > 0 || !extra_slot() {
+                return None;
+            }
+            let i = s.q.iter().position(|j| j.kind == BgKind::PagePreviews && j.notify)?;
+            Some((take(&mut s.q, i), true))
+        });
+        let Some((j, extra)) = next else { return };
+        start_job(j, extra);
+    }
+}
+
+// Forks the child that runs j: the second child when `extra`, else the first.
+fn start_job(j: Job, extra: bool) {
     let stops = stops_set();
     // SAFETY: sigset_t is plain data, written by sigprocmask below.
     let mut was: libc::sigset_t = unsafe { std::mem::zeroed() };
@@ -488,13 +533,22 @@ fn start_next() {
         // buffers.
         unsafe { libc::_exit(if rc == 0 { 0 } else { 1 }) };
     }
-    with(|s| {
-        s.pid = pid;
-        s.running = j;
-        s.running_notify = j.notify;
+    let beside = with(|s| {
+        if extra {
+            s.extra_pid = pid;
+            s.extra = j;
+            s.pid
+        } else {
+            s.pid = pid;
+            s.running = j;
+            s.running_notify = j.notify;
+            -1
+        }
     });
     if j.kind == BgKind::MirrorPdf {
         qlog!("bg: exporting %s (pid %d)", &j.id, pid);
+    } else if extra {
+        qlog!("bg: %s of %s (pid %d, beside pid %d)", K_KIND_NAMES[j.kind as usize], j.id.as_str(), pid, beside);
     } else {
         qlog!(
             "bg: %s of %s (pid %d)",
