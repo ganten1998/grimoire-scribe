@@ -576,6 +576,8 @@ pub struct EditorState {
     from_graph: bool,
     requested_page: Option<u32>,
     previews_checked: u32,
+    // whether a previews batch of the notebook whose previews show was queued or running at the last tick
+    previews_pending: bool,
     nav: Nav,
     // Links (nav.h). Add a link (the Index, or the add-link shortcut) shows the strip, and the next pen
     // contact on the open page draws the dashed lasso around the link's area (lm), never ink; then Link
@@ -10512,9 +10514,12 @@ pub fn editor_tick(a: &mut App, now: u32) {
         // A batch for the notebook shown being made: its previews are looked for often, and each tile is drawn as
         // its preview lands (only the tiles that changed: previews_repaint).
         let pending=previews_shown(ed_ref(a)).is_some_and(|(id,_)|bg_pending(BgKind::PagePreviews,id.as_str()));
-        if now.wrapping_sub(ed_ref(a).previews_checked)>=if pending {PREVIEWS_POLL_MS} else {PREVIEWS_IDLE_POLL_MS} {
+        // The last of them gone: the tiles still waiting are drawn again, even when no child's end said so (a
+        // batch dropped unstarted: a fork that failed, a full queue), so no loading mark stays.
+        let ended=std::mem::replace(&mut ed(a).previews_pending,pending) && !pending;
+        if ended || now.wrapping_sub(ed_ref(a).previews_checked)>=if pending {PREVIEWS_POLL_MS} else {PREVIEWS_IDLE_POLL_MS} {
             ed(a).previews_checked=now;
-            previews_repaint(a,false);
+            previews_repaint(a,ended);
         }
     }
     if ed_ref(a).destination.open {return;}

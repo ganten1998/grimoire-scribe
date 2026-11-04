@@ -5,7 +5,8 @@
 //! pages (erased ink taken out of the files), installing a template into a notebook, and importing a
 //! folder of page images. Since 2.0.0-beta.2 a second child may run beside the first, for one job
 //! only: a batch of page previews a view on screen waits on, while the first child is busy (an export,
-//! an earlier screenful's dense page), when the processor has three cores or more (extra_slot).
+//! an earlier screenful's dense page), when the processor has three cores or more (extra_slot), and never
+//! over pages the other child works on (next_job).
 
 use crate::prelude::*;
 use std::cell::RefCell;
@@ -145,6 +146,10 @@ pub fn bg_job_pending(kind:BgKind,id:&str,path:&str)->bool {
     let same=|j:&Job|j.kind==kind&&j.id.as_str()==id&&j.dir.as_str()==path;
     with(|s|(s.pid>0&&same(&s.running))||(s.extra_pid>0&&same(&s.extra))||s.q.iter().any(same))
 }
+/// How many children run now, 0 to 2 (the runner's bg.children).
+pub fn bg_children()->i32 {
+    with(|s|(s.pid>0) as i32+(s.extra_pid>0) as i32)
+}
 
 /// Reaps a finished child and starts the next job. Returns 1 / -1 when a notify job just
 /// succeeded / failed, else 0. Call it often (app_tick). The kind of the job that just finished
@@ -273,11 +278,14 @@ struct State {
     extra_pid: i32,
     /// the job it runs (valid while extra_pid > 0)
     extra: Job,
+    /// a second child could not be forked (the memory short): none is tried again until the first child is
+    /// free, which then runs the batch put back in the queue (start_job)
+    extra_off: bool,
 }
 
 impl Default for State {
     fn default() -> Self {
-        State { q: Vec::new(), pid: -1, running_notify: false, running: Job::default(), extra_pid: -1, extra: Job::default() }
+        State { q: Vec::new(), pid: -1, running_notify: false, running: Job::default(), extra_pid: -1, extra: Job::default(), extra_off: false }
     }
 }
 
@@ -462,35 +470,79 @@ fn atoi(s: &str) -> i32 {
 }
 
 // The next job for a free child: the first child takes the most urgent one; while it is busy, the second
-// takes the first queued previews batch a view waits on (extra_slot). Both may start at once.
+// takes the first queued previews batch a view waits on (extra_slot). Both may start at once. A fork that
+// fails ends the round (the next poll tries again).
 fn start_next() {
+    let cores = extra_slot();
     for _ in 0..2 {
-        let next = with(|s| {
-            if s.q.is_empty() {
-                return None;
-            }
-            if s.pid <= 0 {
-                let mut next = 0;
-                for i in 1..s.q.len() {
-                    if rank(&s.q[i]) < rank(&s.q[next]) {
-                        next = i;
-                    }
-                }
-                return Some((take(&mut s.q, next), false));
-            }
-            if s.extra_pid > 0 || !extra_slot() {
-                return None;
-            }
-            let i = s.q.iter().position(|j| j.kind == BgKind::PagePreviews && j.notify)?;
-            Some((take(&mut s.q, i), true))
-        });
+        let next = with(|s| next_job(s, cores).map(|(i, extra)| (take(&mut s.q, i), extra)));
         let Some((j, extra)) = next else { return };
-        start_job(j, extra);
+        if !start_job(j, extra) {
+            return;
+        }
     }
 }
 
-// Forks the child that runs j: the second child when `extra`, else the first.
-fn start_job(j: Job, extra: bool) {
+// A previews batch's page indexes, from its path ("first:last", or "first:last:pid" leaving the open page
+// out); None for any other job.
+fn previews_range(j: &Job) -> Option<(usize, usize)> {
+    if j.kind != BgKind::PagePreviews {
+        return None;
+    }
+    let mut parts = j.dir.as_str().split(':');
+    let first = parts.next()?.parse().ok()?;
+    let last = parts.next()?.parse().ok()?;
+    Some((first, last))
+}
+// Whether two jobs are previews batches of one notebook over any of the same pages (their index ranges meet).
+fn previews_overlap(a: &Job, b: &Job) -> bool {
+    a.id.as_bytes() == b.id.as_bytes()
+        && matches!((previews_range(a), previews_range(b)), (Some((f1, l1)), Some((f2, l2))) if f1 < l2 && f2 < l1)
+}
+
+// Which queued job a free child takes now: its index in the queue, and whether that child is the second.
+// The first child takes the most urgent; the second (while the first is busy, given the cores: `cores`)
+// the first queued previews batch a view waits on. A previews batch never starts while the other child
+// runs one of the same notebook over any of the same pages: both would draw the same pages at once (a dense
+// one for half a minute on a Kindle). It waits for that one to end, and then finds its pages made.
+fn next_job(s: &mut State, cores: bool) -> Option<(usize, bool)> {
+    if s.q.is_empty() {
+        return None;
+    }
+    if s.pid <= 0 {
+        s.extra_off = false;
+        let mut next: Option<usize> = None;
+        for i in 0..s.q.len() {
+            if s.extra_pid > 0 && previews_overlap(&s.q[i], &s.extra) {
+                continue;
+            }
+            if next.is_none_or(|n| rank(&s.q[i]) < rank(&s.q[n])) {
+                next = Some(i);
+            }
+        }
+        return next.map(|i| (i, false));
+    }
+    if s.extra_pid > 0 || s.extra_off || !cores {
+        return None;
+    }
+    let i = s.q.iter().position(|j| j.kind == BgKind::PagePreviews && j.notify && !previews_overlap(j, &s.running))?;
+    Some((i, true))
+}
+
+// A fork that failed for j: a second child's batch goes back to the head of the queue, for the first child
+// once it is free (its tiles go on waiting for it), and no second child is tried until then. Any other job
+// is skipped (true when it was put back).
+fn fork_failed(s: &mut State, j: Job, extra: bool) -> bool {
+    if !extra {
+        return false;
+    }
+    s.q.insert(0, j);
+    s.extra_off = true;
+    true
+}
+
+// Forks the child that runs j: the second child when `extra`, else the first. False when the fork failed.
+fn start_job(j: Job, extra: bool) -> bool {
     let stops = stops_set();
     // SAFETY: sigset_t is plain data, written by sigprocmask below.
     let mut was: libc::sigset_t = unsafe { std::mem::zeroed() };
@@ -504,6 +556,10 @@ fn start_job(j: Job, extra: bool) {
         unsafe { libc::sigprocmask(libc::SIG_SETMASK, &was, std::ptr::null_mut()) };
     }
     if pid < 0 {
+        if with(|s| fork_failed(s, j, extra)) {
+            qlog!("bg: cannot fork a second process; %s of %s waits for the first", K_KIND_NAMES[j.kind as usize], j.id.as_str());
+            return false;
+        }
         if j.kind != BgKind::MirrorPdf {
             // only the PDF is worth a stall of the UI
             qlog!(
@@ -511,11 +567,11 @@ fn start_job(j: Job, extra: bool) {
                 K_KIND_NAMES[j.kind as usize],
                 if j.id.is_empty() { "a folder" } else { j.id.as_str() }
             );
-            return;
+            return false;
         }
         qlog!("bg: cannot fork; exporting %s in the foreground", &j.id);
         run_job(&j);
-        return;
+        return false;
     }
     if pid == 0 {
         // The child only renders and writes files: no display, no input, no atexit handlers.
@@ -557,6 +613,7 @@ fn start_job(j: Job, extra: bool) {
             pid
         );
     }
+    true
 }
 
 /// One attempt per visible page in an open browser. Missing/read-only pages must not cause
@@ -855,5 +912,57 @@ mod tests {
         assert!(!req.waiting(3) && req.waiting(12));
         with(|s| s.q.retain(|j| j.id.as_str() != "turned"));
         assert!(!req.waiting(12) && !bg_busy());
+    }
+
+    // Never two children on the same pages: a waited previews batch starts beside the first child only over other
+    // pages, or another notebook's (not the same batch, the same range under another open page, nor one that meets
+    // it), and the first child, free while the second runs, passes over a batch the second covers for the next one.
+    // No child is forked: next_job only says which job would start (the pids are made up).
+    #[test]
+    fn no_two_children_on_the_same_pages() {
+        let mut s = State { pid: 4242, running: queued("same", "0:9:2", false), ..State::default() };
+        for path in ["0:9:2", "0:9", "0:24:2", "6:15"] {
+            s.q.push(queued("same", path, true));
+        }
+        assert_eq!(next_job(&mut s, true), None);
+        s.q.push(queued("same", "9:18:2", true));
+        assert_eq!(next_job(&mut s, true), Some((4, true)));
+        s.q.insert(0, queued("other", "0:9", true));
+        assert_eq!(next_job(&mut s, true), Some((0, true)));
+        // (and none with fewer than three cores)
+        assert_eq!(next_job(&mut s, false), None);
+        // The second child runs screen 2's batch, and the first is free: it takes the most urgent job not over those
+        // pages.
+        s.q.remove(0);
+        let at = s.q.iter().position(|j| j.dir.as_str() == "9:18:2").unwrap();
+        s.extra = s.q.remove(at);
+        s.extra_pid = 4343;
+        s.pid = -1;
+        s.q.insert(0, queued("same", "12:21", true));
+        s.q.push(queued("same", "18:27", false));
+        assert_eq!(next_job(&mut s, true), Some((1, false)));
+        s.q.retain(|j| j.dir.as_str() == "12:21" || j.dir.as_str() == "6:15");
+        assert_eq!(next_job(&mut s, true), None);
+    }
+
+    // A second child that could not be forked (the memory short): its batch goes back to the head of the queue, no
+    // second child is tried while the first is busy, and the first takes the batch once it is free. A first child's
+    // job that could not be forked is skipped, as before.
+    #[test]
+    fn a_failed_second_fork_puts_its_batch_back() {
+        let mut s = State { pid: 4242, running: queued("fork", "0:9", false), ..State::default() };
+        s.q.push(queued("fork", "18:27", false));
+        s.q.push(queued("fork", "9:18", true));
+        let (i, extra) = next_job(&mut s, true).unwrap();
+        assert!(extra);
+        let j = s.q.remove(i);
+        assert!(fork_failed(&mut s, j, extra));
+        assert_eq!(s.q[0].dir.as_str(), "9:18");
+        assert_eq!(next_job(&mut s, true), None);
+        s.pid = -1;
+        assert_eq!(next_job(&mut s, true), Some((0, false)));
+        assert!(!s.extra_off);
+        let j = s.q.remove(0);
+        assert!(!fork_failed(&mut s, j, false) && s.q.len() == 1);
     }
 }
