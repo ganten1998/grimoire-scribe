@@ -526,9 +526,6 @@ pub struct EditorState {
     lb: LinkBar,
     /// the Find sheet (findsheet.rs), over the page while it is open
     find: FindSheet,
-    /// the Pages view's previews generation as the Find sheet opened over it: the grid the screen shows
-    /// outside the sheet (the sheet's composes draw the view with newer previews where it is)
-    find_pv_generation: u64,
     /// Link to... (linkbar.rs in pick mode): where a new link goes, while its area waits (lm Pick)
     lt: LinkBar,
     /// the long-press card (linkcard.rs): a link held on the page, or a row held on the bar
@@ -577,8 +574,6 @@ pub struct EditorState {
     from_graph: bool,
     requested_page: Option<u32>,
     previews_checked: u32,
-    // when the tick first held a repaint back for a previews job still to come (0: none held)
-    previews_held_at: u32,
     nav: Nav,
     // Links (nav.h). Add a link (the Index, or the add-link shortcut) shows the strip, and the next pen
     // contact on the open page draws the dashed lasso around the link's area (lm), never ink; then Link
@@ -785,15 +780,17 @@ fn map_hide(a: &mut App, draw: bool) {
     }
     touch_context(a);
 }
-// (a previews job's end repaints at most this long after the tick first waited for it)
-const PREVIEWS_HOLD_MS: u32 = 2000;
+// How often the tick looks for previews while a batch of the notebook shown is being made: each tile is drawn
+// as its preview lands (the job tells of each one), so a group of them that land together shows in one refresh.
+const PREVIEWS_POLL_MS: u32 = 100;
+// ...and while none is: previews written otherwise (the open page's, at an idle save) show within this.
+const PREVIEWS_IDLE_POLL_MS: u32 = 500;
 
+/// A previews batch ended: the tiles it made are drawn (those that landed since the last look), and those it
+/// could not make lose their loading mark.
 pub fn editor_previews_done(a:&mut App,id:&str) {
-    // Another previews job for this notebook still queued: its end repaints, once for both.
-    if bg_pending(BgKind::PagePreviews,id) {return;}
-    if let Some(s)=a.ed.as_deref_mut() {s.previews_held_at=0;}
     if a.scr==ScreenId::Editor && a.ed.as_deref().is_some_and(|s|(s.pv.open&&s.nb.id==id)
-        ||(s.destination.open&&s.destination.selected.as_ref().is_some_and(|nb|nb.id==id))) {previews_repaint(a);}
+        ||(s.destination.open&&s.destination.selected.as_ref().is_some_and(|nb|nb.id==id))) {previews_repaint(a,true);}
 }
 
 // The notebook whose page previews show (the Pages view's, or the destination picker's pages), and the
@@ -803,13 +800,13 @@ fn previews_shown(s:&EditorState)->Option<(FixedStr<STORE_ID_LEN>,u64)> {
     s.pv.open.then(||(s.nb.id,pagesview_previews_generation(&s.pv)))
 }
 
-// New previews were written (the tick saw them, or their job ended): only the tiles are drawn again, in
-// a GL16 of the grid, and never twice for the same previews.
-fn previews_repaint(a:&mut App) {
+// New previews were written (the tick saw them), or a batch ended (`ended`): only the tiles that show something
+// else now are drawn again, in one GL16 of them, and never twice for the same previews.
+fn previews_repaint(a:&mut App,ended:bool) {
     // (the Find sheet over the Pages view: its tiles are drawn as it closes)
     if !ed_ref(a).destination.open && ed_ref(a).find.open {return;}
     let Some((id,drawn))=previews_shown(ed_ref(a)) else{return};
-    if store_page_previews_generation(id.as_str())==drawn {return;}
+    if !ended && store_page_previews_generation(id.as_str())==drawn {return;}
     let r=if ed_ref(a).destination.open {with_modal(a,|s|&mut s.destination,|p,a|p.repaint_pages(a))}
         else {with_pv(a,pagesview_repaint_tiles)};
     if !rect_is_empty(r) {app_invalidate(a,r,RefreshMode::Ui);}
@@ -6925,8 +6922,6 @@ fn open_shape_menu(a: &mut App) {
 // keyboard, there are no rows yet). The page it is asked on stays the open one until a row is gone to.
 fn find_open(a: &mut App) {
     link_off(a);
-    let s = ed(a);
-    s.find_pv_generation = pagesview_previews_generation(&s.pv);
     let mut f = std::mem::take(&mut ed(a).find);
     findsheet_open(&mut f, a);
     ed(a).find = f;
@@ -6983,13 +6978,13 @@ fn find_close(a: &mut App) {
         s.lt.hidden = false;
         r = rect_union(r, s.lt.rect);
     }
-    compose(a, r);
-    // Over the Pages view: previews that came while the sheet was up are on the canvas now (the composes under the
-    // sheet drew the view with them, so previews_repaint sees nothing new), the screen's grid outside the sheet still
-    // without them: its tiles are refreshed in the same Ui.
-    if over_pv && pagesview_previews_generation(&ed_ref(a).pv) != ed_ref(a).find_pv_generation {
+    // Over the Pages view: previews that came while the sheet was up (previews_repaint draws none under it) are
+    // drawn in their tiles, which are refreshed in the same Ui. Before the compose below: it draws the view whole,
+    // and the tiles to refresh are the ones that show something else now than the panel does.
+    if over_pv {
         r = rect_union(r, with_pv(a, pagesview_repaint_tiles));
     }
+    compose(a, r);
     app_invalidate(a, r, RefreshMode::Ui);
 }
 
@@ -10477,15 +10472,14 @@ pub fn editor_tick(a: &mut App, now: u32) {
         let (current,dpi)=(ed_ref(a).index,a.dpi);
         with_pv(a,|pv,_,nb,_|pagesview_prefetch(pv,nb,current,dpi));
     }
-    if now.wrapping_sub(ed_ref(a).previews_checked)>500 && (ed_ref(a).pv.open||ed_ref(a).destination.open) {
-        ed(a).previews_checked=now;
-        // A previews job for the notebook shown is still running or queued: its end repaints the tiles
-        // (editor_previews_done), so the tick waits for it rather than repaint twice for one batch of
-        // previews (an earlier prefetch ending first under load). It waits PREVIEWS_HOLD_MS at most.
+    if ed_ref(a).pv.open||ed_ref(a).destination.open {
+        // A batch for the notebook shown being made: its previews are looked for often, and each tile is drawn as
+        // its preview lands (only the tiles that changed: previews_repaint).
         let pending=previews_shown(ed_ref(a)).is_some_and(|(id,_)|bg_pending(BgKind::PagePreviews,id.as_str()));
-        if !pending {ed(a).previews_held_at=0;previews_repaint(a);}
-        else if ed_ref(a).previews_held_at==0 {ed(a).previews_held_at=now|1;}
-        else if now.wrapping_sub(ed_ref(a).previews_held_at)>=PREVIEWS_HOLD_MS {ed(a).previews_held_at=now|1;previews_repaint(a);}
+        if now.wrapping_sub(ed_ref(a).previews_checked)>=if pending {PREVIEWS_POLL_MS} else {PREVIEWS_IDLE_POLL_MS} {
+            ed(a).previews_checked=now;
+            previews_repaint(a,false);
+        }
     }
     if ed_ref(a).destination.open {return;}
     if ed_ref(a).map.open {
@@ -10887,6 +10881,7 @@ pub fn editor_probe(a: &mut App, key: &str, out: &mut String, cap: usize) -> i32
     else if key=="destination.folder" {csnprintf!(out,cap,"%s",s.destination.folder.as_str());}
     else if key=="destination.notebook" {csnprintf!(out,cap,"%s",s.destination.selected.as_ref().map_or("",|b|b.id.as_str()));}
     else if key=="destination.cached" {csnprintf!(out,cap,"%d",s.destination.cached());}
+    else if key=="destination.shows" {csnprintf!(out,cap,"%s",&s.destination.shows(a));}
     else if key=="destination.copying" {csnprintf!(out,cap,"%d",(s.destination.open&&s.destination.copying) as i32);}
     else if key=="page_ids" {
         // The open notebook's page order, its page ids comma-separated (Move to..., Copy to notebook...).

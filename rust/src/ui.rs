@@ -86,10 +86,12 @@ pub enum IconKind {
     Gestures = 58,
     /// Select mode's lasso (Rust only)
     Lasso = 59,
+    /// a page tile whose preview is being made (Rust only: ui_tile_loading)
+    Hourglass = 60,
 }
 impl IconKind {
     /// ICON_COUNT
-    pub const COUNT: usize = 60;
+    pub const COUNT: usize = 61;
 }
 
 #[derive(Clone, Copy, Debug, Default)]
@@ -303,6 +305,7 @@ const K_ICON_CP: [u32; IconKind::COUNT] = {
     k[IconKind::LinkPlus as usize] = 0xF0C94; // md-link_plus
     k[IconKind::Bubbles as usize] = 0xF05E3; // md-chart_bubble
     k[IconKind::Lasso as usize] = 0xF0F03; // md-lasso
+    k[IconKind::Hourglass as usize] = 0xF051F; // md-timer_sand
     k
 };
 
@@ -335,6 +338,13 @@ pub fn ui_icon(c: &mut Canvas, k: IconKind, r: Rect, gray: u8) {
     let inset = (if r.w < r.h { r.w } else { r.h }) / 10;
     font_draw_icon(c, FontFace::Regular, K_ICON_CP[k as usize], rect_inflate(r, -inset), gray,
     );
+}
+/// A page tile whose preview is still being made (the Pages view's, a page picker's): an hourglass in
+/// the middle of the tile, black, a third of its smaller side, drawn once with the tile and left until
+/// the preview is drawn in its place. A page never shows one, so it never passes for a blank page.
+pub fn ui_tile_loading(c: &mut Canvas, r: Rect) {
+    let s = r.w.min(r.h) / 3;
+    ui_icon(c, IconKind::Hourglass, Rect { x: r.x + (r.w - s) / 2, y: r.y + (r.h - s) / 2, w: s, h: s }, 0);
 }
 /// The same icon hollow: its outline in edge, a few px wide, around its shape in inside (the
 /// surface under it, so the glyph reads as drawn in outline). A pen that draws white ink shows so.

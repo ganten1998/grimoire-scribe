@@ -115,15 +115,29 @@ pub fn bg_cancel_notebook(id: &str) {
         with(|s| s.pid = -1);
     }
 }
-/// A queued job of this kind for notebook id is now one the user waits on (bg_queue's notify): a
-/// view opened over an idle warm-up does not wait behind a mirror PDF.
-pub fn bg_promote(kind:BgKind,id:&str) {
-    with(|s|for j in s.q.iter_mut().filter(|j|j.kind==kind&&j.id.as_str()==id) {j.notify=true;});
+/// A view on screen waits on this very job (kind, notebook id and path), queued: it goes first, as one the
+/// user waits on (bg_queue's notify), and the other queued jobs of that kind for the notebook (an earlier
+/// screenful's previews, an idle warm-up) wait as idle work behind it, and behind a mirror PDF.
+pub fn bg_prefer(kind:BgKind,id:&str,path:&str) {
+    with(|s|for j in s.q.iter_mut().filter(|j|j.kind==kind&&j.id.as_str()==id) {j.notify=j.dir.as_str()==path;});
 }
 /// Running includes an exited child until it is reaped, so a reopened view still receives its result.
 pub fn bg_pending(kind:BgKind,id:&str)->bool {
     with(|s|(s.pid>0&&s.running.kind==kind&&s.running.id.as_str()==id)
         ||s.q.iter().any(|j|j.kind==kind&&j.id.as_str()==id))
+}
+/// Takes this very job (kind, notebook id and path) out of the queue, if it waits there (a running one
+/// runs on): true when it did.
+pub fn bg_unqueue(kind:BgKind,id:&str,path:&str)->bool {
+    with(|s| match s.q.iter().position(|j|j.kind==kind&&j.id.as_str()==id&&j.dir.as_str()==path) {
+        Some(i)=>{take(&mut s.q,i);true}
+        None=>false,
+    })
+}
+/// The same for this very job: kind, notebook id and path (a previews batch's range).
+pub fn bg_job_pending(kind:BgKind,id:&str,path:&str)->bool {
+    let same=|j:&Job|j.kind==kind&&j.id.as_str()==id&&j.dir.as_str()==path;
+    with(|s|(s.pid>0&&same(&s.running))||s.q.iter().any(same))
 }
 
 /// Reaps a finished child and starts the next job. Returns 1 / -1 when a notify job just
@@ -498,6 +512,34 @@ pub struct PagePreviewRequests {
     id: FixedStr<STORE_ID_LEN>,
     epoch: Option<(u64,i64,i64)>,
     pages: Vec<u32>,
+    /// The batches asked for and not seen ended: each one's range (its job's path) and the pages it is to
+    /// make, whose tiles show the loading mark meanwhile (waiting).
+    jobs: Vec<(String,Vec<u32>)>,
+}
+impl PagePreviewRequests {
+    /// Whether page pid's preview is still to come: a batch asked for here is to make it, and is queued or
+    /// running. A batch that ended without making it (a page that does not read, one from a newer
+    /// Grimoire) leaves its tile with its number alone.
+    pub fn waiting(&mut self,pid:u32)->bool {
+        let id=self.id;
+        self.jobs.retain(|(range,_)|bg_job_pending(BgKind::PagePreviews,id.as_str(),range));
+        self.jobs.iter().any(|(_,pages)|pages.contains(&pid))
+    }
+    // The view turned to another screenful (`keep`): the batches asked for here for the others that are still
+    // queued are taken out of the queue (no work for screens passed by), and their pages asked for again when
+    // they show again. A running one runs on.
+    fn forget_queued(&mut self,keep:&str) {
+        let id=self.id;
+        let mut i=0;
+        while i<self.jobs.len() {
+            if self.jobs[i].0!=keep && bg_unqueue(BgKind::PagePreviews,id.as_str(),&self.jobs[i].0) {
+                let (_,pages)=self.jobs.remove(i);
+                self.pages.retain(|p|!pages.contains(p));
+            } else {
+                i+=1;
+            }
+        }
+    }
 }
 /// `waited`: a view on screen shows these pages (else an idle warm-up, which runs after anything asked
 /// for and never counts as one the user waits on).
@@ -505,6 +547,8 @@ pub fn bg_request_page_previews(requests:&mut PagePreviewRequests,nb:&NotebookIn
     bg_request_page_previews_but(requests,nb,first,last,dpi,waited,None)
 }
 /// The same, leaving out page `skip` (the page open in the editor, whose preview comes from its canvas).
+/// A batch is asked for even while another runs (an earlier screenful's, with a dense page in it): it is
+/// queued, and a view waiting on it puts it before the others (bg_prefer).
 pub fn bg_request_page_previews_but(requests:&mut PagePreviewRequests,nb:&NotebookInfo,first:usize,last:usize,dpi:f32,waited:bool,skip:Option<u32>) {
     let epoch=store_page_previews_epoch(nb.id.as_str());
     if requests.id!=nb.id || requests.epoch!=epoch {
@@ -512,52 +556,131 @@ pub fn bg_request_page_previews_but(requests:&mut PagePreviewRequests,nb:&Notebo
     }
     let last=last.min(nb.page_ids.len());let first=first.min(last);
     if last-first>64 {return;}
-    if bg_pending(BgKind::PagePreviews,nb.id.as_str()) {
-        if waited {bg_promote(BgKind::PagePreviews,nb.id.as_str());}
+    let range=match skip {Some(pid)=>format!("{first}:{last}:{pid}"),None=>format!("{first}:{last}")};
+    if waited {requests.forget_queued(&range);}
+    // This very batch queued or running already (asked for here, or by the idle warm-up before the view
+    // opened): waited on now, it goes first.
+    let pending=bg_job_pending(BgKind::PagePreviews,nb.id.as_str(),&range);
+    if pending && waited {bg_prefer(BgKind::PagePreviews,nb.id.as_str(),&range);}
+    if pending && requests.jobs.iter().any(|(r,_)|*r==range) {return;}
+    let pages=&nb.page_ids[first..last];
+    let mut missing=Vec::new();
+    if missing.try_reserve(pages.len()).is_err() || requests.pages.try_reserve(pages.len()).is_err() || requests.jobs.try_reserve(1).is_err() {
         return;
     }
-    let pages=&nb.page_ids[first..last];
-    // (a stamp check, not a decode: the view decodes what it shows itself)
-    let missing=pages.iter().any(|pid|Some(*pid)!=skip && !requests.pages.contains(pid) && store_page_preview_fresh(nb,*pid).is_none());
-    if requests.pages.try_reserve(pages.len()).is_err() {return;}
-    for &pid in pages {if !requests.pages.contains(&pid){requests.pages.push(pid);}}
-    if !missing {return;}
-    let range=match skip {Some(pid)=>format!("{first}:{last}:{pid}"),None=>format!("{first}:{last}")};
-    bg_queue(BgKind::PagePreviews,Some(nb.id.as_str()),Some(&range),dpi,waited);
+    for &pid in pages {
+        // (a stamp check, not a decode: the view decodes what it shows itself)
+        if Some(pid)!=skip && (pending || !requests.pages.contains(&pid)) && store_page_preview_fresh(nb,pid).is_none() {missing.push(pid);}
+        if !requests.pages.contains(&pid) {requests.pages.push(pid);}
+    }
+    if missing.is_empty() {return;}
+    if !pending {
+        bg_queue(BgKind::PagePreviews,Some(nb.id.as_str()),Some(&range),dpi,waited);
+        if waited {bg_prefer(BgKind::PagePreviews,nb.id.as_str(),&range);}
+    }
+    requests.jobs.push((range,missing));
 }
 /// Page pid was saved: its preview may be made once more.
 pub fn bg_preview_retry(requests:&mut PagePreviewRequests,pid:u32) {
     requests.pages.retain(|&p|p!=pid);
 }
 
+/// What a page tile shows (PreviewCache::tile): its preview, the loading mark while its preview is being
+/// made, or its number alone (no preview to come).
+pub enum Tile<'a> {
+    Preview(&'a Canvas),
+    Loading,
+    Number,
+}
+// What a tile was drawn showing, its preview by the page file identity it was made at: a check later
+// draws again only the tiles that would show something else now (PreviewCache::changed).
+#[derive(Clone,Debug,PartialEq,Eq)]
+enum Shown {
+    Preview(String),
+    Loading,
+    Number,
+}
+
 /// The decoded previews a view shows, for the screenful on it (the Pages view's grid, the link
 /// destination picker's). Each keeps the page file identity it shows, so a new preview elsewhere in the
-/// notebook keeps the tiles whose pages did not change instead of decoding them all again.
+/// notebook keeps the tiles whose pages did not change instead of decoding them all again. It notes what
+/// each tile was drawn showing, so that the previews coming in one at a time are drawn one tile at a time.
 #[derive(Clone,Debug,Default)]
 pub struct PreviewCache {
     notebook: FixedStr<STORE_ID_LEN>,
     generation: u64,
     tiles: Vec<(u32,String,Canvas)>,
+    /// the tiles drawn, in the order they were first drawn (the screenful's), and what each showed
+    shown: Vec<(u32,Shown)>,
 }
 impl PreviewCache {
     /// Before a draw: another notebook empties it; new previews (or a forced check, as a view opens)
     /// keep only the tiles whose page files are as they were.
     pub fn sync(&mut self,nb:&NotebookInfo,force:bool) {
-        if self.notebook!=nb.id {self.tiles.clear();self.notebook=nb.id;self.generation=store_page_previews_generation(nb.id.as_str());return;}
+        if self.notebook!=nb.id {
+            self.tiles.clear();self.shown.clear();
+            self.notebook=nb.id;self.generation=store_page_previews_generation(nb.id.as_str());return;
+        }
         let generation=store_page_previews_generation(nb.id.as_str());
         if generation==self.generation && !force {return;}
         self.generation=generation;
         self.tiles.retain(|(pid,identity,_)|store_page_source_identity(nb,*pid).as_deref()==Some(identity.as_str()));
     }
+    // Page pid's tile among the decoded ones, decoded now from the disk cache if it is not yet.
+    fn decoded(&mut self,nb:&NotebookInfo,pid:u32)->Option<usize> {
+        if let Some(i)=self.tiles.iter().position(|t|t.0==pid) {return Some(i);}
+        let mut preview=Canvas::default();
+        let identity=store_load_page_preview_as(nb,pid,&mut preview)?;
+        if self.tiles.try_reserve(1).is_err() {return None;}
+        self.tiles.push((pid,identity,preview));
+        Some(self.tiles.len()-1)
+    }
     /// Page pid's preview: decoded once, from the disk cache, while it stays on screen.
     pub fn get(&mut self,nb:&NotebookInfo,pid:u32)->Option<&Canvas> {
-        if !self.tiles.iter().any(|t|t.0==pid) {
-            let mut preview=Canvas::default();
-            let identity=store_load_page_preview_as(nb,pid,&mut preview)?;
-            if self.tiles.try_reserve(1).is_err() {return None;}
-            self.tiles.push((pid,identity,preview));
+        let i=self.decoded(nb,pid)?;
+        Some(&self.tiles[i].2)
+    }
+    // What page pid's tile would show now.
+    fn state(&mut self,nb:&NotebookInfo,pid:u32,req:&mut PagePreviewRequests)->(Shown,Option<usize>) {
+        match self.decoded(nb,pid) {
+            Some(i)=>(Shown::Preview(self.tiles[i].1.clone()),Some(i)),
+            None if req.waiting(pid)=>(Shown::Loading,None),
+            None=>(Shown::Number,None),
         }
-        self.tiles.iter().find(|t|t.0==pid).map(|t|&t.2)
+    }
+    /// Page pid's tile as it is to be drawn now: its preview; else, while a batch asked for in `req` is to
+    /// make it, the loading mark; else its number alone. `noted`: the tile is drawn whole now (not left
+    /// out by a clip), and what it shows is noted for changed().
+    pub fn tile(&mut self,nb:&NotebookInfo,pid:u32,req:&mut PagePreviewRequests,noted:bool)->Tile<'_> {
+        let (show,at)=self.state(nb,pid,req);
+        if noted {
+            match self.shown.iter_mut().find(|s|s.0==pid) {
+                Some(s)=>s.1=show.clone(),
+                None=>if self.shown.try_reserve(1).is_ok() {self.shown.push((pid,show.clone()));},
+            }
+        }
+        match (show,at) {
+            (Shown::Preview(_),Some(i))=>Tile::Preview(&self.tiles[i].2),
+            (Shown::Loading,_)=>Tile::Loading,
+            _=>Tile::Number,
+        }
+    }
+    /// The pages of `pids` (the screenful on show) whose tiles would be drawn otherwise now than they last
+    /// were: a preview that came (decoded here), a page whose file changed, a loading mark whose batch ended
+    /// without its preview. The tiles not drawn yet are left to their first draw.
+    pub fn changed(&mut self,nb:&NotebookInfo,pids:&[u32],req:&mut PagePreviewRequests)->Vec<u32> {
+        self.sync(nb,false);
+        let mut out=Vec::new();
+        for &pid in pids {
+            let Some(was)=self.shown.iter().find(|s|s.0==pid).map(|s|s.1.clone()) else{continue};
+            if self.state(nb,pid,req).0!=was && out.try_reserve(1).is_ok() {out.push(pid);}
+        }
+        out
+    }
+    /// What the tiles drawn show, one letter each in the order they were drawn: `p` a preview, `l` the
+    /// loading mark, `n` the number alone (the runner's editor.pages.shows, editor.destination.shows).
+    pub fn shows(&self,pids:&[u32])->String {
+        pids.iter().filter_map(|p|self.shown.iter().find(|s|s.0==*p)).map(|s|match s.1 {Shown::Preview(_)=>'p',Shown::Loading=>'l',Shown::Number=>'n'}).collect()
     }
     pub fn has(&self,pid:u32)->bool {self.tiles.iter().any(|t|t.0==pid)}
     /// A preview made here (the open page, from its canvas) for the page file at `identity`.
@@ -567,9 +690,116 @@ impl PreviewCache {
     }
     pub fn forget(&mut self,pid:u32) {self.tiles.retain(|t|t.0!=pid);}
     /// Only the tiles of these pages (the screenful on show) stay.
-    pub fn retain(&mut self,pids:&[u32]) {self.tiles.retain(|t|pids.contains(&t.0));}
+    pub fn retain(&mut self,pids:&[u32]) {
+        self.tiles.retain(|t|pids.contains(&t.0));
+        self.shown.retain(|s|pids.contains(&s.0));
+    }
     /// The previews generation its tiles were checked at (store_page_previews_generation's then).
     pub fn generation(&self)->u64 {self.generation}
     pub fn len(&self)->usize {self.tiles.len()}
     pub fn is_empty(&self)->bool {self.tiles.is_empty()}
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn queued(id: &str, path: &str, notify: bool) -> Job {
+        Job { kind: BgKind::PagePreviews, id: FixedStr::from_str(id), dir: FixedStr::from_str(path), dpi: 300.0, notify }
+    }
+
+    // A page tile shows the loading mark while a batch asked for is to make its preview, the preview once it
+    // is there, and its number alone once the batch ended without one; a check after each change names only
+    // the tiles that change (each drawn on its own as its preview lands). No child is started: the batch is
+    // put in the queue by hand, and taken out as a child's end would.
+    #[test]
+    fn tiles_show_loading_until_their_preview_and_change_alone() {
+        let root = std::env::temp_dir().join(format!("grimoire-tiles-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        store_init(root.to_str().unwrap());
+        store_set_device(300.0, 600, 800);
+        let mut nb = NotebookInfo::default();
+        assert_eq!(store_create("Tiles", "", PAPER_BLANK, &mut nb), 0);
+        for i in 1..3 {
+            assert_eq!(store_add_page(&mut nb, i, PAPER_BLANK), 0);
+        }
+        let pids = nb.page_ids.clone();
+        let mut req = PagePreviewRequests::default();
+        // (what bg_request_page_previews_but notes as it queues the batch)
+        req.id = nb.id;
+        req.epoch = store_page_previews_epoch(nb.id.as_str());
+        req.pages = pids.clone();
+        req.jobs.push(("0:3".to_string(), pids.clone()));
+        with(|s| s.q.push(queued(nb.id.as_str(), "0:3", true)));
+        let mut cache = PreviewCache::default();
+        cache.sync(&nb, true);
+        for &pid in &pids {
+            assert!(matches!(cache.tile(&nb, pid, &mut req, true), Tile::Loading));
+        }
+        assert_eq!(cache.shows(&pids), "lll");
+        assert!(cache.changed(&nb, &pids, &mut req).is_empty());
+        // The second page's preview lands: that tile alone changed, and it shows the preview.
+        let mut white = Canvas::default();
+        assert_eq!(canvas_init(&mut white, 600, 800), 0);
+        canvas_fill(&mut white, Rect::new(0, 0, 600, 800), 255);
+        store_save_page_preview(&nb, pids[1], &white);
+        assert_eq!(cache.changed(&nb, &pids, &mut req), vec![pids[1]]);
+        assert!(matches!(cache.tile(&nb, pids[1], &mut req, true), Tile::Preview(_)));
+        assert_eq!(cache.shows(&pids), "lpl");
+        assert!(cache.changed(&nb, &pids, &mut req).is_empty());
+        // The batch ends without the other two (pages that do not read, say): their loading marks go.
+        with(|s| s.q.retain(|j| j.id.as_str() != nb.id.as_str()));
+        assert_eq!(cache.changed(&nb, &pids, &mut req), vec![pids[0], pids[2]]);
+        for &pid in &[pids[0], pids[2]] {
+            assert!(matches!(cache.tile(&nb, pid, &mut req, true), Tile::Number));
+        }
+        assert_eq!(cache.shows(&pids), "npn");
+        // A tile drawn under a clip (not whole) is not noted: it still counts as what the panel shows.
+        store_save_page_preview(&nb, pids[0], &white);
+        assert!(matches!(cache.tile(&nb, pids[0], &mut req, false), Tile::Preview(_)));
+        assert_eq!(cache.shows(&pids), "npn");
+        assert_eq!(cache.changed(&nb, &pids, &mut req), vec![pids[0]]);
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    // A view waiting on one batch puts it first: the other queued previews batches of that notebook wait as idle
+    // work (notify off), another notebook's are left as they are; and a batch is pending by its very path.
+    #[test]
+    fn a_waited_batch_goes_first() {
+        with(|s| {
+            s.q.push(queued("prefer-a", "0:9", true));
+            s.q.push(queued("prefer-a", "9:18", false));
+            s.q.push(queued("prefer-b", "0:9", true));
+        });
+        bg_prefer(BgKind::PagePreviews, "prefer-a", "9:18");
+        let notify: Vec<(String, String, bool)> =
+            with(|s| s.q.iter().map(|j| (j.id.as_str().to_string(), j.dir.as_str().to_string(), j.notify)).collect());
+        assert_eq!(notify, vec![("prefer-a".into(), "0:9".into(), false), ("prefer-a".into(), "9:18".into(), true), ("prefer-b".into(), "0:9".into(), true)]);
+        assert!(bg_job_pending(BgKind::PagePreviews, "prefer-a", "9:18") && !bg_job_pending(BgKind::PagePreviews, "prefer-a", "18:27"));
+        assert!(bg_pending(BgKind::PagePreviews, "prefer-b") && !bg_pending(BgKind::PagePreviews, "prefer-c"));
+        with(|s| s.q.retain(|j| !j.id.as_str().starts_with("prefer-")));
+        assert!(!bg_busy());
+    }
+
+    // The view turned away from a screenful whose batch still waits in the queue: it is taken out, and its pages
+    // are asked for again when they show again; the batch of the screenful on show stays.
+    #[test]
+    fn batches_of_screens_turned_away_from_leave_the_queue() {
+        let mut req = PagePreviewRequests::default();
+        req.id = FixedStr::from_str("turned");
+        req.pages = (1..=18).collect();
+        req.jobs.push(("0:9".to_string(), (1..=9).collect()));
+        req.jobs.push(("9:18".to_string(), (10..=18).collect()));
+        with(|s| {
+            s.q.push(queued("turned", "0:9", true));
+            s.q.push(queued("turned", "9:18", true));
+        });
+        req.forget_queued("9:18");
+        assert!(!bg_job_pending(BgKind::PagePreviews, "turned", "0:9") && bg_job_pending(BgKind::PagePreviews, "turned", "9:18"));
+        assert_eq!(req.jobs.iter().map(|j| j.0.as_str()).collect::<Vec<_>>(), vec!["9:18"]);
+        assert_eq!(req.pages, (10..=18).collect::<Vec<u32>>());
+        assert!(!req.waiting(3) && req.waiting(12));
+        with(|s| s.q.retain(|j| j.id.as_str() != "turned"));
+        assert!(!req.waiting(12) && !bg_busy());
+    }
 }

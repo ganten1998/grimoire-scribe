@@ -694,7 +694,14 @@ pub fn pagesview_draw(v: &mut PagesView, a: &mut App, nb: &NotebookInfo, nav: &N
         v.screen = clampi(v.screen, 0, screens - 1);
     }
     let mut n = 0;
-    if v.unified { draw_tiles(v,a,nb,nav); }
+    if v.unified {
+        // The screenful's missing previews asked for first, so its tiles show the loading mark until they
+        // come. (The open page's tile, made from its canvas as the view opened, is not drawn again there.)
+        let first=(v.screen*per).max(0) as usize;let last=(first+per as usize).min(nb.page_ids.len());
+        let open=nb.page_ids.get(v.current.max(0) as usize).copied().filter(|&pid|v.cache.has(pid));
+        bg_request_page_previews_but(&mut v.previews,nb,first,last,a.dpi,true,open);
+        draw_tiles(v,a,nb,nav);
+    }
     let c=&mut a.screen;
     while !v.unified && !v.index_tab && n < per {
         let i = v.screen * per + n;
@@ -781,10 +788,6 @@ pub fn pagesview_draw(v: &mut PagesView, a: &mut App, nb: &NotebookInfo, nav: &N
             hits_add(&mut v.hits, rect_inflate(cb, ui_px(30.0)), PG_TOGGLE, i);
         }
         n += 1;
-    }
-    if v.unified && !v.index_tab {
-        let first=(v.screen*per).max(0) as usize;let last=(first+per as usize).min(nb.page_ids.len());
-        bg_request_page_previews(&mut v.previews,nb,first,last,a.dpi,true);
     }
     let y = ah - ui_px(170.0);
     a.toast_floor = y; // keep a Copy page notice above the bottom controls when Pages reopens
@@ -1034,8 +1037,13 @@ fn tile_rects(v:&PagesView,a:&App,nb:&NotebookInfo,slot:i32)->(Rect,Rect,i32) {
 fn draw_tile(v:&mut PagesView,a:&mut App,nb:&NotebookInfo,nav:&Nav,slot:i32,i:i32,pid:u32)->Rect {
     let (cell,image,h)=tile_rects(v,a,nb,slot);
     let w=image.w;
-    if let Some(preview)=v.cache.get(nb,pid){canvas_blit_fit(&mut a.screen,preview,image);}
-    else {font_draw_centered(&mut a.screen,FontFace::Bold,ui_title_size(),image,&format!("{}",i+1),0);}
+    // (noted only when it is drawn whole: under the Find sheet's clip a tile is drawn again later)
+    let whole=rect_contains_rect(a.screen.clip,image);
+    match v.cache.tile(nb,pid,&mut v.previews,whole) {
+        Tile::Preview(preview)=>canvas_blit_fit(&mut a.screen,preview,image),
+        Tile::Loading=>ui_tile_loading(&mut a.screen,image),
+        Tile::Number=>font_draw_centered(&mut a.screen,FontFace::Bold,ui_title_size(),image,&format!("{}",i+1),0),
+    }
     ui_frame(&mut a.screen,image,0,0,false,ui_px(2.0));
     if !v.picking && v.sel.get(i as usize)==Some(&true) {
         let inner=rect_inflate(image,-ui_px(7.0));
@@ -1077,23 +1085,34 @@ fn draw_tiles(v:&mut PagesView,a:&mut App,nb:&NotebookInfo,nav:&Nav) {
     retain_screen(v,a,nb);
 }
 
-// Only the screenful's decoded previews stay.
-fn retain_screen(v:&mut PagesView,a:&App,nb:&NotebookInfo) {
+// The screenful's pages: the first one's index, and their ids.
+fn screen_pages<'a>(v:&PagesView,a:&App,nb:&'a NotebookInfo)->(usize,&'a [u32]) {
     let (cols,rows,..)=geom(a,v);
     let first=((v.screen*cols*rows).max(0) as usize).min(nb.page_ids.len());
     let end=(first+(cols*rows) as usize).min(nb.page_ids.len());
-    v.cache.retain(&nb.page_ids[first..end]);
+    (first,&nb.page_ids[first..end])
 }
 
-/// New previews came while the grid is up: only its tiles are drawn again (the caller refreshes the
-/// rect returned). RECT_EMPTY when no grid shows (a keyboard, the card over it): it is drawn whole when
-/// that goes.
+// Only the screenful's decoded previews stay, and the open page's (made from its canvas as the view
+// opened: its preview on disk may be older, and no job makes it while it is open).
+fn retain_screen(v:&mut PagesView,a:&App,nb:&NotebookInfo) {
+    let mut keep=screen_pages(v,a,nb).1.to_vec();
+    if let Some(&open)=nb.page_ids.get(v.current.max(0) as usize) {keep.push(open);}
+    v.cache.retain(&keep);
+}
+
+/// New previews came while the grid is up, or a batch of them ended: only the tiles that show something
+/// else now are drawn again (a preview in a loading mark's place, a loading mark whose batch could not make
+/// its preview giving way to the page's number), and the caller refreshes the rect returned. RECT_EMPTY when
+/// none did, or when no grid shows (a keyboard, the card over it): it is drawn whole when that goes.
 pub fn pagesview_repaint_tiles(v:&mut PagesView,a:&mut App,nb:&NotebookInfo,nav:&Nav)->Rect {
     if !v.open || !v.unified || v.index_tab || v.overlay || v.kb.open || v.context.is_some() || v.drag.is_some() || v.view_size!=(a.w,a.h) {
         return RECT_EMPTY;
     }
-    v.cache.sync(nb,false);
-    let r=redraw_tiles(v,a,nb,nav,None);
+    let (first,pages)=screen_pages(v,a,nb);
+    let changed=v.cache.changed(nb,pages,&mut v.previews);
+    let only:Vec<i32>=(0..pages.len()).filter(|&k|changed.contains(&pages[k])).map(|k|(first+k) as i32).collect();
+    let r=if only.is_empty() {RECT_EMPTY} else {redraw_tiles(v,a,nb,nav,Some(&only))};
     retain_screen(v,a,nb);
     r
 }
@@ -1835,6 +1854,16 @@ pub fn pagesview_probe(v: &PagesView, nb: &NotebookInfo, nav: &Nav, key: &str, o
     if key=="overlay" {csnprintf!(out,cap,"%d",v.overlay as i32);return 0;}
     if key=="multi" {csnprintf!(out,cap,"%d",v.multi_select as i32);return 0;}
     if key=="cached" {csnprintf!(out,cap,"%d",v.cache.len());return 0;}
+    // What the screenful's tiles show, one letter each: p a preview, l the loading mark, n the number alone.
+    if key=="shows" {
+        out.clear();
+        if v.open && v.unified && !v.index_tab {
+            let per=9usize;let first=((v.screen.max(0) as usize)*per).min(nb.page_ids.len());
+            let end=(first+per).min(nb.page_ids.len());
+            csnprintf!(out,cap,"%s",&v.cache.shows(&nb.page_ids[first..end]));
+        }
+        return 0;
+    }
     // The ticked pages (from 1, joined by ","; empty for none).
     if key=="ticks" {
         let t:Vec<String>=(0..nb.npages()).filter(|&i|pagesview_ticked(v,i)).map(|i|(i+1).to_string()).collect();
