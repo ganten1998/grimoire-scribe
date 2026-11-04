@@ -305,7 +305,9 @@ by updating Grimoire. The separate `KOReader-patches.zip` and the main zip carry
 from 1.1.0-beta.1: screenshot gestures and corners stay unchanged; Terminess now matches
 regular/bold fonts and separates the dropdown battery icon from its percentage. Battery status and
 reading footers keep KOReader’s native font fallback, avoiding conflicting Nerd Font icons. Fonts and manual
-instructions are included.
+instructions are included. Since 2.0.0-beta.2 the font is Terminus's text and Grimoire's own icons only (a
+smaller file with the same text), so in KOReader's menus too its battery symbols come from its own symbols
+font; Grimoire brings the copy in KOReader's `fonts/Grimoire` up to date when it next starts.
 
 **Display > Sleep screen: KOReader wallpaper** uses a snapshot of KOReader's configured custom
 image, random image or book cover, exported whenever Tools > Grimoire hands over. It also works

@@ -5,6 +5,12 @@ use crate::prelude::*;
 
 const FILES: [&str; 4] = ["grimoire.koplugin", "2-no-diagonal-screenshot.lua", "2-mosaic-square-corners.lua", "2-terminess-ui-font.lua"];
 
+/// Grimoire's own copy of Terminess in KOReader, the files the Terminess menu font patch reads:
+/// fonts/Grimoire/<name>, with the binary's bytes.
+fn fonts() -> [(&'static str, &'static [u8]); 2] {
+    [("TerminessNerdFontMono-Regular.ttf", FONT_TERMINESS_REGULAR), ("TerminessNerdFontMono-Bold.ttf", FONT_TERMINESS_BOLD)]
+}
+
 // access(path, mode) == 0
 fn accessible(path: &str, mode: libc::c_int) -> bool {
     let Ok(c) = std::ffi::CString::new(path) else { return false };
@@ -166,14 +172,49 @@ pub fn koreader_item_set(item: i32, enabled: bool) -> i32 {
             return -1;
         }
         let mut font = String::new();
-        csnprintf!(&mut font, 1200, "%s/TerminessNerdFontMono-Regular.ttf", &dir);
-        if write_file_atomic(&font, FONT_TERMINESS_REGULAR) != 0 {
-            return -1;
-        }
-        csnprintf!(&mut font, 1200, "%s/TerminessNerdFontMono-Bold.ttf", &dir);
-        if write_file_atomic(&font, FONT_TERMINESS_BOLD) != 0 {
-            return -1;
+        for (name, data) in fonts() {
+            csnprintf!(&mut font, 1200, "%s/%s", &dir, name);
+            if write_file_atomic(&font, data) != 0 {
+                return -1;
+            }
         }
     }
     copy_owned(&src, &dst, enabled)
+}
+
+/// Keeps Grimoire's own copy of Terminess in KOReader (fonts/Grimoire) the binary's, so an update
+/// that changes the embedded fonts reaches it without the patch being toggled: each of its two files
+/// that differs from the embedded font (its size, then its bytes) is written again whole (a
+/// temporary file, then a rename). A file that is not there is written only while the Terminess
+/// patch is applied, since the patch reads it; with neither the patch nor the files, nothing is
+/// written. No other KOReader file is read or written. For a quiet moment: the main loop calls it
+/// once, after the first frame. Returns how many files it wrote, or -1 when a write failed.
+pub fn koreader_fonts_refresh() -> i32 {
+    let mut ko = String::new();
+    if !koreader_find(&mut ko, 800) {
+        return 0;
+    }
+    let patched = koreader_item_installed(3);
+    let mut dir = String::new();
+    csnprintf!(&mut dir, 1024, "%s/fonts/Grimoire", &ko);
+    let mut wrote = 0;
+    for (name, data) in fonts() {
+        let mut path = String::new();
+        csnprintf!(&mut path, 1200, "%s/%s", &dir, name);
+        match std::fs::metadata(&path) {
+            Ok(m) if m.len() == data.len() as u64 && read_file(&path).as_deref() == Some(data) => continue,
+            Ok(_) => {}
+            Err(_) if !patched => continue,
+            Err(_) => {}
+        }
+        if mkdir_p(&dir) != 0 || write_file_atomic(&path, data) != 0 {
+            qlog!("koreader: could not bring %s up to date", &path);
+            return -1;
+        }
+        wrote += 1;
+    }
+    if wrote > 0 {
+        qlog!("koreader: wrote %d of Grimoire's Terminess files in %s (they differed from this build's)", wrote, &dir);
+    }
+    wrote
 }

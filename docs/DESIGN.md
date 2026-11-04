@@ -1114,7 +1114,9 @@ uses one image at a time and a GET page field at the top (`?p=N`), clamped to th
 
 `src/koreader.c` discovers the hosted directory or three common installations and manages the
 plugin and optional patches. Different patch contents at a managed filename are preserved.
-Terminess fonts are copied from the binary's embedded font data. No KOReader settings Lua is
+Terminess fonts are copied from the binary's embedded font data, and kept the binary's: at each
+start `koreader_fonts_refresh` writes again the copy in KOReader's `fonts/Grimoire` that differs, where
+it is there or the Terminess patch is applied (docs/KINDLE.md). No KOReader settings Lua is
 executed. The plugin's custom wallpaper export is a bounded PNG committed by write-then-rename,
 read by `store_load_koreader_sleep`; it is cached only when used and freed at shutdown.
 

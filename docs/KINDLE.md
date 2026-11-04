@@ -827,6 +827,16 @@ cannot replace battery symbols. Exact old Grimoire Terminess bytes
 are carried under `app/koreader/legacy` only for explicit migration; different user edits remain
 protected.
 
+Since 2.0.0-beta.2 the embedded Terminess holds only Terminus's text and the Material Design icons
+Grimoire draws (`assets/terminess-keep.txt`): no glyph from U+E000 to U+F8FF, where KOReader's
+battery symbols sit, so in KOReader's menus too those come from its own symbols font. Every start,
+once the first frame is up, Grimoire compares its copy in `fonts/Grimoire` with the binary's
+(`koreader_fonts_refresh`: size, then bytes) and writes a file that differs again whole (temporary
+file, then rename), so an update replaces the earlier, larger font without the patch being toggled.
+A missing file is written only while `patches/2-terminess-ui-font.lua` is there; with neither the
+patch nor the files nothing is written, and no other KOReader file is read or written. A write logs
+`koreader: wrote N of Grimoire's Terminess files in .../fonts/Grimoire`.
+
 Before each handover the plugin removes an old `grimoire/koreader-sleep.png`, asks KOReader's
 screensaver module to select its configured cover/custom image, paints it offscreen and commits
 a complete PNG with a temporary file and rename. It never shows the sleep UI. Errors cannot stop

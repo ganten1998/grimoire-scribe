@@ -68,6 +68,63 @@ fn discovery_and_owned_files() {
     std::env::remove_var("GRIMOIRE_US");
 }
 
+// Grimoire's own Terminess in KOReader (fonts/Grimoire) follows the binary's: a copy that differs is
+// written again, an equal one is left alone, a missing one is made only while the Terminess patch is
+// applied, and with neither the patch nor the copy nothing is written. No other file is touched.
+fn fonts_follow_the_binary() {
+    use std::os::unix::fs::MetadataExt;
+    let (regular, bold) = (grimoire::assets::FONT_TERMINESS_REGULAR, grimoire::assets::FONT_TERMINESS_BOLD);
+    let root = cformat!("%s/ko-fonts-%ld", tl_tmp().as_str(), std::process::id() as i64);
+    let _ = std::fs::remove_dir_all(&root);
+    let us = cformat!("%s/us", root.as_str());
+    std::env::set_var("GRIMOIRE_US", &us);
+    std::env::remove_var("KOREADER_DIR");
+    check!(store_init(&root) == 0);
+    check!(koreader_fonts_refresh() == 0); // no KOReader
+    let ko = cformat!("%s/koreader", us.as_str());
+    check!(mkdir_p(&cformat!("%s/fonts", ko.as_str())) == 0 && mkdir_p(&cformat!("%s/patches", ko.as_str())) == 0);
+    let reader = cformat!("%s/reader.lua", ko.as_str());
+    let other = cformat!("%s/fonts/someone-elses.ttf", ko.as_str());
+    check!(write_file_atomic(&reader, b"KOReader") == 0 && write_file_atomic(&other, b"not Grimoire's") == 0);
+    let dir = cformat!("%s/fonts/Grimoire", ko.as_str());
+    let reg = cformat!("%s/TerminessNerdFontMono-Regular.ttf", dir.as_str());
+    let bld = cformat!("%s/TerminessNerdFontMono-Bold.ttf", dir.as_str());
+    let patch = cformat!("%s/patches/%s", ko.as_str(), koreader_item_name(3));
+    let ino = |p: &str| std::fs::metadata(p).map(|m| m.ino()).unwrap_or(0);
+    // neither the patch nor the copy: nothing written, not even the folder
+    check!(koreader_fonts_refresh() == 0 && std::fs::metadata(&dir).is_err());
+    // the patch applied and no copy: both made, the binary's bytes
+    check!(write_file_atomic(&patch, b"the Terminess patch") == 0);
+    check!(koreader_fonts_refresh() == 2);
+    check!(read_file(&reg).as_deref() == Some(regular) && read_file(&bld).as_deref() == Some(bold));
+    // equal: left alone (the same files, not written again)
+    let (r0, b0) = (ino(&reg), ino(&bld));
+    check!(koreader_fonts_refresh() == 0 && ino(&reg) == r0 && ino(&bld) == b0);
+    // an earlier, larger copy (the whole Nerd Font, before 2.0.0-beta.2): written again, alone
+    check!(write_file_atomic(&reg, &vec![7u8; 2_665_032]) == 0);
+    let r1 = ino(&reg);
+    check!(koreader_fonts_refresh() == 1 && ino(&reg) != r1 && ino(&bld) == b0);
+    check!(read_file(&reg).as_deref() == Some(regular));
+    // the same size with other bytes: written again
+    let mut changed = bold.to_vec();
+    changed[bold.len() / 2] ^= 0xFF;
+    check!(write_file_atomic(&bld, &changed) == 0);
+    check!(koreader_fonts_refresh() == 1 && read_file(&bld).as_deref() == Some(bold));
+    // the patch removed: a stale copy is still brought up to date, a missing one is not made
+    check!(std::fs::remove_file(&patch).is_ok() && std::fs::remove_file(&bld).is_ok());
+    check!(write_file_atomic(&reg, b"stale") == 0);
+    check!(koreader_fonts_refresh() == 1);
+    check!(read_file(&reg).as_deref() == Some(regular) && std::fs::metadata(&bld).is_err());
+    // neither again: nothing
+    check!(std::fs::remove_file(&reg).is_ok());
+    check!(koreader_fonts_refresh() == 0 && std::fs::metadata(&reg).is_err() && std::fs::metadata(&bld).is_err());
+    // nothing else touched, no temporary file left
+    check!(read_file(&other).as_deref() == Some(&b"not Grimoire's"[..]));
+    check!(read_file(&reader).as_deref() == Some(&b"KOReader"[..]));
+    check!(std::fs::read_dir(&dir).map(|d| d.count()).unwrap_or(1) == 0);
+    std::env::remove_var("GRIMOIRE_US");
+}
+
 fn wallpaper_and_setting() {
     let root = cformat!("%s/ko-wallpaper-%ld", tl_tmp().as_str(), std::process::id() as i64);
     check!(store_init(&root) == 0);
@@ -93,6 +150,7 @@ fn wallpaper_and_setting() {
 #[test]
 fn test_koreader() {
     run!(discovery_and_owned_files);
+    run!(fonts_follow_the_binary);
     run!(wallpaper_and_setting);
     done();
 }
