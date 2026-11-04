@@ -1,3 +1,4 @@
+# rust-only
 # settings: status_mode=1
 # env: GRIMOIRE_PASSCODE=left-off
 # A session ended without putting the passcode back (the Kindle restarted under Grimoire): the

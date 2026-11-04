@@ -1,3 +1,4 @@
+# rust-only
 # settings: status_mode=1
 # copy: tests/fixtures/update-failed
 # A toast that is up when a sheet opens (here the notice a start shows for 6 s after an update that did

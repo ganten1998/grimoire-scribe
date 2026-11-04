@@ -1,3 +1,4 @@
+# rust-only
 # settings: status_mode=1
 # The store is full (the simulator's "storage full": every file write fails). The autosave says so
 # and tries again every 2 s, and holding the power button 4 s never claims a save it could not
