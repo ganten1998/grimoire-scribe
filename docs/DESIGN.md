@@ -1143,13 +1143,28 @@ the UI never draws a page for a tile.
   cores or more (`std::thread::available_parallelism`), a batch a view waits on starts at once in a second
   child beside the first (bgjob.rs `extra_slot`: one such child at most, previews only; each child holds a
   page canvas and a page at a time).
+- **Never two children on the same pages** (bgjob.rs `next_job`): a previews batch does not start while the
+  other child runs one of the same notebook over any of the same page indexes (the same batch, or one that
+  meets it, as the 24 tiles of Choose from the pages... meet the warm-up's 9); it waits for that one, then
+  finds its pages made. The same batch queued already (the idle warm-up's, a view's from before) is the one a view waits on:
+  it reads the notebook's page list as it starts. One already running that the view did not ask for read the
+  list before, and the pages may have moved since (a page deleted, pages added), so the view queues its own,
+  which runs after it and makes only what it did not. A second child that cannot be forked (the memory short)
+  puts its batch back at the head of the queue, for the first child, and none is tried again until the first
+  is free. When the last batch of the notebook shown is gone, ended or dropped unstarted, the tiles still
+  waiting are drawn again (their numbers), so no hourglass stays.
 - **The open page's tile** is made from its canvas as the view opens (it is drawn already), kept while the
   view is open (`retain_screen`), and left out of the job's batch, so a dense open page is never drawn twice.
-  Its preview on disk is written by the idle save, or by the job once another page is open.
+  It is left out as well when its preview is current, as the idle warm-up leaves it out: the two then ask for
+  the same batch. Its preview on disk is written by the idle save, or by the job once another page is open.
 - **Dense pages.** A page with a current kept drawing (`p<id>.full`) gets its preview from that drawing,
   read back, not drawn; a page the job drew in `store_keep_render_ms()` (1 s) or more of its own processor
   time keeps its drawing too (`store_save_page_render_at`, only while the page file is still the one it
-  read), so the page then opens quickly in the editor as well. A stale kept drawing is never used.
+  read), so the page then opens quickly in the editor as well. A stale kept drawing is never used, nor counted
+  as a quick page when the batch is sorted (only one whose whole stamp is current: the page file, the size and
+  the renderer's fingerprint). A page drawn with its picture paper white (its picture missing or unreadable in
+  the child) keeps no drawing and gets no preview, as in the editor: its tile shows its number, and the next
+  view that opens asks for it again.
 - **Opening a dense page** (a page turn, a jump, a notebook opening on it, the page left after a deletion)
   that has no current kept drawing and draws slowly (`store_page_dense`: a page file of 512 KB or more, or a
   page that kept a drawing before) says "Loading page..." (`render_page_open`): the toast is put on the
