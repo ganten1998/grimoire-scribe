@@ -9426,6 +9426,12 @@ fn fs_fire(a: &mut App, action: i32, anchor: (f32, f32), m: FsMatch, t: u32) -> 
     // the same pending refresh. If the action refuses, fs_reject paints its sparse trail again.
     let pending = (a.dirty, a.dirty_mode);
     fs_fire_cleanup(a, trail);
+    // What the app has changed so far, and its settings: the action's name shows only if the action changes
+    // either (2.0.0-beta.2, the owner: "Show the action's name only when the action actually did something").
+    // Whatever an action does reaches one or the other (a page turned, ink drawn or taken back, a sheet or the
+    // view changed, the panel drawn again, a setting), so Next page on the last page, Previous page on page 1,
+    // Clear page on an empty page, and Undo or Redo with nothing to undo or redo fire with nothing said.
+    let (changes, settings) = (a.changes, a.settings);
     let ran = editor_shortcut_at(a, action, anchor.0, anchor.1, ActionSrc::Shape);
     if !ran {
         (a.dirty, a.dirty_mode) = pending;
@@ -9435,7 +9441,8 @@ fn fs_fire(a: &mut App, action: i32, anchor: (f32, f32), m: FsMatch, t: u32) -> 
     let name = shortcut_action_name(action).unwrap_or("unknown");
     fs_trace(a, "fired", name, m.d1, m.thr, m.d2);
     let full_view = a.scr != screen_before || a.asleep || (!pages_before && a.ed.as_deref().is_some_and(|s| s.pv.open));
-    if !full_view && a.toast_until == toast_before {
+    let did = a.changes != changes || a.settings != settings;
+    if did && !full_view && a.toast_until == toast_before {
         app_toast(a, action_label(action), 1200);
     }
     ed(a).fs_trail = RECT_EMPTY;
@@ -10332,8 +10339,15 @@ fn du_wear_tick(a: &mut App, now: u32) {
     app_invalidate(a, r, RefreshMode::Clean);
 }
 
-// The deferred settle: one GL16 refresh for everything written since the last pause.
+// The deferred settle: one GL16 refresh for everything written since the last pause. It is no change of the
+// app's (App.changes): what it draws is on the panel already, from the writing's fast refreshes, and an action
+// that settles first and then finds nothing to do did nothing (Undo with nothing to undo, fs_fire).
 fn settle_now(a: &mut App) {
+    let changes = a.changes;
+    settle_now_in(a);
+    a.changes = changes;
+}
+fn settle_now_in(a: &mut App) {
     // Under the Pages view the page is not on screen: the view's opening refreshed the whole screen
     // and its closing composes it all again, so nothing is due. Settling now would draw the whole view
     // again (compose) under its keyboard, and the panel over both.
@@ -11959,6 +11973,82 @@ mod tests {
         assert_eq!(ed_ref(&a).fs_last_action, SHORTCUT_LINKS);
         assert!(!ed_ref(&a).lb.open);
         assert_eq!(ed_ref(&a).index, 0);
+    }
+
+    // A finger shape names its action only when the action did something (2.0.0-beta.2, the owner: "Show the
+    // action's name only when the action actually did something"): Previous page on page 1, Next page on the last
+    // page (a shape adds no page there, even with swiping past the last page adding one), Clear page on an empty
+    // page, Undo or Redo with nothing to undo or redo, and Close menu with nothing open fire and say nothing; so
+    // does Redo right after a stroke, whose settle is no change of the app's. Done, each names its action as
+    // before, and so does a setting that changes with nothing drawn.
+    #[test]
+    fn fshape_names_its_action_only_when_it_did_something() {
+        let mut a = fshape_app();
+        let path = [(250,400), (350,400), (450,400), (550,400), (650,400), (650,500),
+            (650,600), (650,700), (550,700), (450,700), (350,700), (250,700), (250,600), (250,500), (250,400)];
+        let pts: Vec<FsPt> = path.iter().map(|&(x, y)| FsPt { x, y }).collect();
+        let mut sample = FsSample::default();
+        fs_sample_of(&pts, &mut sample);
+        let clock = Cell::new(1000u32);
+        // (the square drawn with a finger, bound to `action` alone; the toast it leaves, None for none)
+        let fire = |a: &mut App, action: i32| -> Option<String> {
+            assert!(gesturemap_shape_set(&mut a.gestures, action, &[sample; 3]) >= 0);
+            app_toast_dismiss(a);
+            let t = clock.get();
+            fshape_event(a, InType::TouchDown, 250.0, 400.0, t);
+            for (i, &(x, y)) in path.iter().enumerate().skip(1) {
+                fshape_event(a, InType::TouchMove, x as f32, y as f32, t + i as u32 * 30);
+            }
+            fshape_event(a, InType::TouchUp, 250.0, 400.0, t + 450);
+            clock.set(t + 2000);
+            assert_eq!((ed_ref(a).fs_last_kind, ed_ref(a).fs_last_action), (FS_OUT_FIRED, action));
+            ed(a).info_dirty = false; // (this in-memory notebook has no notebook.ini to write)
+            a.toast_visible.then(|| a.toast.as_str().to_string())
+        };
+        let named = |action: i32| Some(action_label(action).to_string());
+        a.settings.gesture_new_page = true;
+        // Page 1 of 2, blank: nothing before it, nothing to clear, undo or redo, no menu to close
+        assert_eq!(fire(&mut a, SHORTCUT_PREV_PAGE), None);
+        assert_eq!(fire(&mut a, SHORTCUT_CLEAR_PAGE), None);
+        assert_eq!(fire(&mut a, SHORTCUT_UNDO), None);
+        assert_eq!(fire(&mut a, SHORTCUT_REDO), None);
+        assert_eq!(fire(&mut a, SHORTCUT_CLOSE_MENU), None);
+        assert_eq!(ed_ref(&a).index, 0);
+        // Next page: page 2, named; there, the last page, nothing
+        assert_eq!(fire(&mut a, SHORTCUT_NEXT_PAGE), named(SHORTCUT_NEXT_PAGE));
+        assert_eq!(ed_ref(&a).index, 1);
+        assert_eq!(fire(&mut a, SHORTCUT_NEXT_PAGE), None);
+        assert_eq!((ed_ref(&a).index, ed_ref(&a).nb.npages()), (1, 2));
+        // A stroke on page 2: Redo has nothing to redo (its settle draws what is there already), Undo takes the
+        // stroke away and Redo puts it back, each named
+        let t = clock.get();
+        pen_event(&mut a, InType::PenDown, false, 300.0, 1000.0, t);
+        for k in 1..10 {
+            pen_event(&mut a, InType::PenMove, false, 300.0 + 30.0 * k as f32, 1000.0, t + 10 * k);
+        }
+        pen_event(&mut a, InType::PenUp, false, 570.0, 1000.0, t + 100);
+        pen_event(&mut a, InType::PenLeave, false, 570.0, 1000.0, t + 110);
+        clock.set(t + 2000);
+        ed(&mut a).pen_left = now_ms().wrapping_sub(5000);
+        assert_eq!(ed_ref(&a).open_page().unwrap().strokes.len(), 1);
+        assert!(!rect_is_empty(ed_ref(&a).settle) || ed_ref(&a).panel_stale);
+        assert_eq!(fire(&mut a, SHORTCUT_REDO), None);
+        assert_eq!(fire(&mut a, SHORTCUT_UNDO), named(SHORTCUT_UNDO));
+        assert_eq!(ed_ref(&a).open_page().unwrap().strokes.len(), 0);
+        assert_eq!(fire(&mut a, SHORTCUT_REDO), named(SHORTCUT_REDO));
+        assert_eq!(fire(&mut a, SHORTCUT_REDO), None);
+        assert_eq!(ed_ref(&a).open_page().unwrap().strokes.len(), 1);
+        // Clear page clears it, named; then the page is empty: nothing
+        assert_eq!(fire(&mut a, SHORTCUT_CLEAR_PAGE), named(SHORTCUT_CLEAR_PAGE));
+        assert_eq!(ed_ref(&a).open_page().unwrap().strokes.len(), 0);
+        assert_eq!(fire(&mut a, SHORTCUT_CLEAR_PAGE), None);
+        // Previous page: page 1, named (the cleared page as saved: this in-memory notebook has no file for it)
+        ed(&mut a).page_dirty = false;
+        assert_eq!(fire(&mut a, SHORTCUT_PREV_PAGE), named(SHORTCUT_PREV_PAGE));
+        assert_eq!(ed_ref(&a).index, 0);
+        // A setting with nothing drawn (swiping past the last page adds a page, no toast of its own): named
+        assert_eq!(fire(&mut a, SHORTCUT_GESTURE_NEW_PAGE), named(SHORTCUT_GESTURE_NEW_PAGE));
+        assert!(!a.settings.gesture_new_page);
     }
 
     #[test]

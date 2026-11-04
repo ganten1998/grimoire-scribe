@@ -192,7 +192,7 @@ save, and the warm-up starts), then open Pages: only one `previews:` line has th
 page (it is drawn once, not twice). In grimoire.log, check the `previews:` lines (`first=` is the first tile's
 time) and `beside pid` (the second background process).
 
-## 2.0.0-beta.2, big page batches (device checks pending)
+## 2.0.0-beta.2, big page batches and finger shapes (device checks pending)
 
 Automated: z_pages_add_8_notice ("Adding N pages..." in the refresh that takes the count pad down, from the
 toolbar's pad and from the Pages view's, and gone with the refresh that shows the pages: 100 and 51 pages say it,
@@ -202,6 +202,15 @@ On the Kindle: add 60 pages from the Pages view's count pad: "Adding 60 pages...
 then goes; 30 pages are added with nothing said. Each batch of 25 pages or more logs `pages: added=N of N ms=M
 notice=0|1 paper=drawn|picture` in grimoire.log: M / N is a page's cost on this Kindle, which editor.rs
 ADD_PAGE_MS (40 ms) estimates, and which sets where the notice starts (2 s: 51 pages at 40 ms).
+
+A finger shape names its action only when the action did something. Automated: editor.rs's
+fshape_names_its_action_only_when_it_did_something (a square bound in turn to each action: Previous page on page
+1, Next page on the last page, Clear page on a blank page, Undo and Redo with nothing to undo or redo, Close menu
+with nothing open, and Redo right after a stroke, whose settle is drawn first, say nothing; done, each says its
+name, and so does a setting that changes with nothing drawn) and s_shape_10_nothing (the recorded Z, Undo:
+nothing said on a blank page, "Undo" after a stroke, nothing once the stroke is undone). On the Kindle: bind
+Undo to a shape (Settings > Gestures), draw it on a blank page: no toast; write, draw it: "Undo" and the stroke
+goes; draw it again: no toast.
 
 ## 2.0.0-beta.1
 

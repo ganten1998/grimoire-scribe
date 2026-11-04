@@ -57,7 +57,7 @@ pub const SETTINGS_VERSION: i32 = 3;
 /// pens pinned to the editor's panel, at most
 pub const PANEL_PINS_MAX: usize = 3;
 
-#[derive(Clone, Copy, Debug, Default)]
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct Settings {
     /// settings_version from the file (defaults migrate on upgrade)
     pub version: i32,

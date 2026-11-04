@@ -1413,7 +1413,13 @@ the clock; deliberate motion can become a shape. Pen arrival, another contact, s
 screen/layout change aborts capture. The dotted, outlined black/white trail is drawn only on
 the screen canvas; it never enters the page, undo stack, exported PNG/PDF or autosave. The page
 backing restores the trail, including over the Links bar. Refusals fade; a first unknown shape
-can show the one-time tip (`hints` bit 7). Match dispatch uses the common action path.
+can show the one-time tip (`hints` bit 7). Match dispatch uses the common action path. A shape that
+fires names its action in a toast (1.2 s) only when the action did something (2.0.0-beta.2): when
+the app's count of redraws asked for (`App.changes`, counted by `app_invalidate`; the settle after
+writing, a refresh of what the panel shows already, is not counted) or its settings changed. Next
+page on the last page, Previous page on page 1, Clear page on an empty page, Undo and Redo with
+nothing to undo or redo, and Close menu with nothing open fire with nothing said, as does an
+action that raised its own toast, switched the screen or opened the Pages view.
 
 | Surface/event | Refresh | Contract |
 | --- | --- | --- |

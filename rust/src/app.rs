@@ -72,6 +72,12 @@ pub struct App {
     /// Dirty accumulator, flushed once per loop iteration.
     pub dirty: Rect,
     pub dirty_mode: RefreshMode,
+    /// The redraws the screens have asked for (app_invalidate), counted: a page turned, ink drawn or taken
+    /// back, a sheet or menu opened or closed, the view moved, the panel changed. A refresh of what the panel
+    /// shows already (the editor's settle after writing) leaves it as it was, and the app's own toasts are not
+    /// redraws. With the settings, what tells whether an action did anything: a finger shape names its action
+    /// only when one of the two changed (editor.rs fs_fire, 2.0.0-beta.2).
+    pub changes: u32,
     /// promote to FULL every 30
     pub ui_refreshes_since_full: i32,
     /// what fast refreshes left on the panel that only a flash wipes (display.rs, issue #11): the
@@ -1811,6 +1817,7 @@ pub fn app_invalidate(a: &mut App, r: Rect, m: RefreshMode) {
         a.dirty_mode = m;
     }
     a.dirty = rect_union(a.dirty, r);
+    a.changes = a.changes.wrapping_add(1);
 }
 
 pub fn app_invalidate_all(a: &mut App, m: RefreshMode) {

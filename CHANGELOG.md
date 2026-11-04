@@ -3,7 +3,9 @@
 ## 2.0.0-beta.2 (unreleased)
 
 - Quieter toasts (the owner's review of every one): confirmations of what the screen already shows are gone,
-  and the rest are terse ("Couldn't save page name.", "Couldn't save links. Page unchanged.").
+  and the rest are terse ("Couldn't save page name.", "Couldn't save links. Page unchanged."). A finger shape
+  names its action only when the action did something: none for Next page on the last page, Previous page on
+  page 1, Clear page on an empty page, or Undo and Redo with nothing to undo or redo.
 - The lasso's clipboard lasts one session: every start of Grimoire clears it, and a paste no longer logs a
   false "read-only page" line.
 - Add Japanese: every screen, the share pages and the Effects studio, with a DotGothic16 pixel fallback for kana and kanji (subset to the kana and the common kanji, `assets/README.md`). `po/ja.po`, `po/ja.mo` and `po/ja-glossary.md`; the KOReader plugin's own words follow KOReader's Japanese setting.
