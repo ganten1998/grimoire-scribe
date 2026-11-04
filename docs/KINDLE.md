@@ -593,16 +593,16 @@ checks above. Synthetic tests cannot establish real-hand acceptance or accidenta
   but its scale fits this WxH one: made here, kept as it is`. A page file of another size than its
   notebook's (written by a version before 1.1 on the other Scribe) logs `store: <path> is WxH:
   scaled to WxH` once per run.
-- **"This page was made by a newer Grimoire. It is read-only here."**: the page came from a newer
-  Grimoire; update Grimoire to change it. grimoire.log says what happened: `store: <path> opens
+- **"This page was made by a newer version, and will be viewed as read-only."**: the page came from a
+  newer Grimoire; update Grimoire to change it. grimoire.log says what happened: `store: <path> opens
   read-only and stays as it is on disk` and `store: read-only page: <reason>` when such a page is
   opened, and `store: <id>: recovered p<n>.qpg from p<n>.qpg.damaged-<t>` when a page an older
   version set aside comes back. These appear once per run, not on every open or Library listing:
   `store: <id>: p<n>.qpg.damaged-<t> opens now, but p<n>.qpg exists too; both kept`,
   `store: <id>: p<n>.qpg is not in the page list; its set-aside copies stay aside (...)` and
   `store: <id>: <k> unknown notebook.ini line(s) do not fit in the 2048 bytes kept, left out`.
-  The toast "A damaged page was set aside; a blank one took its place (see grimoire.log)" now
-  appears only for real damage. A set-aside page that is no longer in the page list can be put
+  The toast "Damaged page replaced with a blank one (see grimoire.log)" appears only for real
+  damage. A set-aside page that is no longer in the page list can be put
   back by hand, with Grimoire closed: rename it to `p<n>.qpg` and add `<n>` to the `pages=` line
   of its `notebook.ini`.
 - **"Your Kindle passcode was left off"**: the Kindle restarted while Grimoire had the passcode

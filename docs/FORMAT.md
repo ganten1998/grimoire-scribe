@@ -447,8 +447,8 @@ the value and writes it back (version 2).
 
 A read-only page is never written, whatever happens on it: writing, erasing (the eraser, the pen's
 eraser end, the side button), clearing it and changing its paper are refused with the message
-"This page was made by a newer Grimoire. It is read-only here." (shown also when such a page is
-opened), and saving leaves its file as it is. Deleting it still works (it goes to `trash/`).
+"This page was made by a newer version, and will be viewed as read-only." (shown also when such a
+page is opened), and saving leaves its file as it is. Deleting it still works (it goes to `trash/`).
 
 When a notebook is opened in the editor (not when the Library lists it), every
 `p<id>.qpg.damaged-<time>` whose `p<id>.qpg` is missing and that opens now, normally or
@@ -908,7 +908,7 @@ critical on purpose.
   source's coordinates with their own seeds and targets.
 - A clipboard that is missing, does not read as a page, has no `CLIP` chunk or one cut off, malformed or
   followed by other bytes, links that do not parse, more than 20,000 strokes or more than 16 MiB: Paste
-  says "The clipboard could not be read." and changes nothing.
+  says "Couldn't read clipboard." and changes nothing.
 - Paste puts the group 1:1 in page pixels where it was if that spot is on screen and on the page (3 mm
   right and down on the page it was copied from), else in the middle of the view, clamped onto the page;
   only a group larger than the page is scaled down (points, areas and outlines; widths stay in mm).
@@ -950,7 +950,7 @@ line. Values are clamped to their ranges when read.
 | `status_size` | its size, 0 small, 1 medium, 2 large (the Display sheet's row), 1 (medium) by default since 2.0.0-rc.12 (0 before), and clamped to 0..2. Since 2.0.0-beta.5, as `status_on` |
 | `gestures` | 0 or 1: touch patterns and one-finger gestures, on by default; off, the touch recognizer does not dispatch these actions. Pinch and pan remain available when pinch zoom is enabled. Since 2.0.0-beta.5; older versions keep the line as one they do not know |
 | `landscape_fit` | 0 or 1: sideways, the editor shows the whole page (the page is as wide as the screen is tall, so it rests at the height of the screen), on by default; off, the page's width fills the screen as it does upright. Since 2.0.0-beta.5, as `gestures` |
-| `hints` | 0 to 2147483647: a bitmask of the one-time tips already shown (bit 0 the first-open tip, 1 the first-link tip (from 2.0.0-beta.6), 2 the link areas tip, 3 and 4 a counter 0 to 3 of the Links bar's header hints, 6 the pan hint, 7 the finger-shape reject tip, 8 the sideways hint, which takes a notebook's first open from the first-open tip when it comes up sideways, so the tip comes at the next open; the other bits are for later versions), 0 by default. Since 2.0.0-beta.5, as `gestures` |
+| `hints` | 0 to 2147483647: a bitmask of the one-time tips already shown (bit 0 the first-open tip, 1 the first-link tip (from 2.0.0-beta.6), 3 and 4 a counter 0 to 3 of the Links bar's header hints, 7 the finger-shape reject tip; bits 2 (the link areas tip), 5 (the first smart shape), 6 (the pan hint) and 8 (the sideways hint) were tips 2.0.0-beta.2 left out: no longer written, a file may still have them set; the other bits are for later versions), 0 by default. Since 2.0.0-beta.5, as `gestures` |
 | `link_areas` | 0 or 1: dotted boxes over the page show where a finger tap follows a link (the Links bar's Areas button), off by default. Since 2.0.0-beta.5, as `gestures` |
 | `status_corner` | the corner of the notebook page the clock and battery sits in (and where its tap zone is): 0 top left, the default, 1 top right, 2 bottom right, 3 bottom left (clockwise from the top left); clamped to 0..3. The Display sheet's row and the `status-corner` shortcut step it. Written after `link_areas`. Since 2.0.0-beta.5, as `gestures` |
 | `rotation_lock` | 0 follows the Kindle's rotation; 1..4 locks to the current orientation (stored as 1 plus the rotation value). The `rotation-lock` action changes it; sensor turns are ignored while locked. Written after `status_corner`. Since phase 3; earlier versions carry the unknown key. |

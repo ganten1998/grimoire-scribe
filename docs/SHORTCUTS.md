@@ -48,7 +48,7 @@ Esc is No). The Exit button leaves at once, as before. A file that binds
 **Space** (`two-finger-up`) does what two fingers swiped up do there (gestures.ini `touch.2.up`, built in the
 Links bar; with gestures off, the Links bar), and nothing while a keyboard is up (Find, a name). **Ctrl+S**
 writes the page and
-its notebook now (in the Library, a setting waiting) and says "Saved". **R** opens the page's naming keyboard,
+its notebook now (in the Library, a setting waiting), with no toast. **R** opens the page's naming keyboard,
 back to the page after.
 
 **The starter map** (`DEFAULTS`, `rust/src/shortcuts.rs`) is the scheme above with the controller's lines. On a
@@ -56,8 +56,8 @@ Kindle keyboard
 PageUp and PageDown now turn pages (they stepped tools: [ and ] do that), and Up and Down are not bound (the
 D-pad's Up and Down still step tools). A `shortcuts.ini` that is byte for byte a starter map some Grimoire wrote
 (1.1.0's, 1.2.0's or 2.0.0's; a CRLF copy counts) becomes this
-build's at the next start, with a toast once ("Keyboard shortcuts: the new starter keys are in
-shortcuts.ini."); a file someone edited is never touched and keeps meaning what it meant. live-keys.ini follows
+build's at the next start (grimoire.log says so; there is no toast since 2.0.0-beta.2); a file someone edited
+is never touched and keeps meaning what it meant. live-keys.ini follows
 the same rule. To get the new keys into an edited file, delete it and Reload.
 
 Older versions refuse the new action names (`save`, `back`, `two-finger-up`, `new-notebook`, `new-folder`,
@@ -148,8 +148,8 @@ Actions, in the Buttons sheet's groups:
   Buttons sheet),
   `fit-page` (the page's whole width again after a pinch), `pages` (the Index on its Pages view, as
   the toolbar's page count opens it), `landscape-fit` (sideways, the whole page or the page's width, in turn:
-  the Display sheet's "Sideways, show the whole page" row, with a toast; upright only the toast, as it
-  applies when the Kindle is sideways), `add-link` (Add a link) and `name-page` (Name the page), both
+  the Display sheet's "Sideways, show the whole page" row, with no toast; upright it changes nothing on
+  screen, as it applies when the Kindle is sideways), `add-link` (Add a link) and `name-page` (Name the page), both
   below, and `gesture-new-page` ("Swiping past the last page adds a page": turns that behavior on
   or off, as the Display sheet's checkbox does).
 - **Index**: `links` (the Links bar: the links on the open page, one row for each page they lead to; it
@@ -196,7 +196,7 @@ going through the Pages view: a strip along the bottom asks you to draw around w
 pen stroke on the page draws a dashed lasso around the link's area (it leaves no ink, whatever the
 tool), and Link to... then asks where it goes (a new page, The Index, a recent page, an Index entry,
 Search, or Choose from the pages...). It does not wait for ink: the stroke that follows draws the area
-only. Pressed again while the strip or Link to... is up, it is not made (a toast says so), as Close
+only. Pressed again while the strip or Link to... is up, it is not made (silently), as Close
 menu and their Cancel do. On a
 read-only page, where the notebook's `links.ini` does not read, and on a page that has 64 links, it
 does nothing but say so. `name-page` opens the Index's naming

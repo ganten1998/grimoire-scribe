@@ -472,7 +472,7 @@ Install the build and test first in the notebooks that have your beta.5 links.
    - Pick one: "Linked to ..." (the very first time, a tip about tap and hold); from the bar, the bar comes
      back with the new row. One Undo removes the link; Redo brings it back.
    - New page...: name it; a new last page is added and linked, and you stay where you were.
-   - A dot is "Too small"; Cancel says "No link made.".
+   - A dot is "Link area too small."; Cancel closes it with no toast.
 4. **Holding a link.** Hold a finger on a link for about half a second: a heavy dotted border shows
    exactly what is tappable, then a small card opens beside it. The page stays in view the whole time (no
    Pages view, no full flash).
@@ -480,7 +480,7 @@ Install the build and test first in the notebooks that have your beta.5 links.
      page in the Index everywhere. On an unnamed page the row reads "Add page N to the Index...".
    - Change where it goes...: the chooser marks the current target and has no Choose from the pages....
    - Redraw the area: circle the new area; Undo brings the old one back.
-   - Delete link: "Link deleted. Undo brings it back."; a border you drew yourself stays, and so does the
+   - Delete link: it goes with no toast, and Undo brings it back; a border you drew yourself stays, and so does the
      ring of a beta.5 link (deleting a link never deletes ink).
    - A tap outside the card closes it and does nothing else. With the card up the clock is not shown,
      so a tap in the clock corner closes the card too (the brief had it toggle the clock and leave the
@@ -519,9 +519,9 @@ Install the build and test in a notebook that has your beta.5 links, unless said
 
 1. **Upright.** Two fingers down anywhere on a page open Pages with one flash; two fingers up close
    them. Two fingers left turn to the next page, and right to the previous one. On the last page, two
-   fingers left add a page (Display > "Swiping past the last page adds a page", on by default; off, they show
-   "This is the last page." and add none); on the first page, two fingers
-   right show "This is the first page." The panel's + still adds a page.
+   fingers left add a page (Display > "Swiping past the last page adds a page", on by default; off, they stay
+   on the last page and add none, with no toast); on the first page, two fingers
+   right stay there. The panel's + still adds a page.
 2. **The Links bar.** Two fingers up (or the chain button after Next on the panel, which has a small
    dot when the page has links) open the bar along the bottom with no flash. It shows one row for each
    Index entry the page links to, numbered in reading order, with "×2" where two links go to the same

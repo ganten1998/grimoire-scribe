@@ -575,7 +575,7 @@ announcements: goingToScreenSaver draws the sleep screen, outOfScreenSaver is th
   scenario from another scenario's data (d_persist, x_turn_calibrated and y_pagesize_1_ksc use
   b_library's, s_passcode_once r_passcode's, y_pagesize_2_back y_pagesize_1_ksc's, z_language_kept
   y_language's), `# env: K=V` lines set its environment (`GRIMOIRE_PASSCODE` in r_passcode,
-  s_passcode_once, t_passcode_left_off and t_toast_over_sheets, `GRIMOIRE_BG_DELAY_MS` in
+  s_passcode_once, t_passcode_left_off and z_annotate_f_passcode, `GRIMOIRE_BG_DELAY_MS` in
   v_leave_from_editor, `GRIMOIRE_HOST` in y_koreader_hosted and y_koreader_not_hosted,
   `GRIMOIRE_LANG` in y_language and z_language_kept, `GRIMOIRE_SIM_SIZE` in y_pagesize_1_ksc,
   `GRIMOIRE_CHECK_FIT` and `GRIMOIRE_SIM_ADDRS` in y_all_screens), `# settings: key=value` lines
@@ -1137,7 +1137,7 @@ A swipe refused only for the pen says so once in ten minutes. The editor tells
 touchgest what its screen allows (`touch_context`: whether the page pans, zooms, may start a gesture)
 after every event, so a sheet, the bar or a keyboard makes a drag a swipe, which the mirror rule closes
 the menu with. What a gesture does is `gesturemap.rs`'s (the built-ins, then `gestures.ini`), through
-the same `editor_shortcut_at` a key uses; a page turned left by a gesture on the last page adds a page as the next-page key does, unless `gesture_new_page` is off (then a toast says it is the last page). The corner's
+the same `editor_shortcut_at` a key uses; a page turned left by a gesture on the last page adds a page as the next-page key does, unless `gesture_new_page` is off (then it stays on the last page, with no toast). The corner's
 clock tap (status.rs) decides at the lift and every finger tap that phase adds checks it first.
 `grimoire.log` has one line per touch session and the owner's opt-in `touch-trace.txt` has every
 contact frame (docs/FORMAT.md, docs/KINDLE.md).
