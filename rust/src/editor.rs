@@ -354,6 +354,8 @@ pub struct EditorState {
     full_ms: (u32, u32),
     /// whether the open page came up from its kept drawing (a probe, editor.page_kept)
     page_kept: bool,
+    /// how many times "Loading page..." went up before a dense page was drawn (a probe, editor.loading_toasts)
+    loading_toasts: u32,
     /// Select mode (select.rs), and the last lasso move's or paste's times, ms (old place, new place)
     sel: SelMode,
     last_lasso_ms: (u32, u32),
@@ -2875,6 +2877,40 @@ fn render_page_full(a: &mut App) {
     }
 }
 
+// TRANSLATORS: a toast (about 1700 px at 44 px in bold) while a dense page is drawn as it opens (seconds on a
+// Kindle); it goes as the page shows.
+const K_LOADING_PAGE: &str = n_("Loading page...");
+
+/// render_page_full for a page that opens (a page turn, a jump, a notebook opening, the page left after a
+/// deletion): one that takes seconds to draw (store_page_dense) and has no current kept drawing to read back
+/// says "Loading page..." first, on the panel before the drawing starts, and the toast goes once the page is
+/// drawn. Never for a page that draws quickly.
+fn render_page_open(a: &mut App) {
+    let toast = loading_toast_due(a);
+    if toast {
+        app_toast(a, tr(K_LOADING_PAGE), 120_000);
+        app_flush(a); // (on the panel now: the drawing holds the main loop)
+        ed(a).loading_toasts += 1;
+    }
+    render_page_full(a);
+    // (another toast that took its place stays)
+    if toast && a.toast_visible && a.toast.as_bytes() == tr(K_LOADING_PAGE).as_bytes() {
+        app_toast_dismiss(a);
+    }
+}
+
+// Whether the open page takes seconds to draw and has no current kept drawing (a pen held on an action
+// holds the panel, so no toast could show before the drawing: none then).
+fn loading_toast_due(a: &App) -> bool {
+    let s = ed_ref(a);
+    if a.pen_action_down || s.page_ix().is_none() || s.page_canvas.px.is_empty() {
+        return false;
+    }
+    let pid = s.open_pid();
+    let layered = s.open_page().is_some_and(page_layered);
+    !store_page_render_kept(&s.nb, pid, s.pgw, s.pgh, layered) && store_page_dense(&s.nb, pid)
+}
+
 // A page from a newer Grimoire (or one this build cannot fully read) is shown as far as it can
 // be and never changed: writing, erasing, clearing and paper changes are refused with this.
 // TRANSLATORS: in a toast (about 1700 px at 44 px in bold, or two lines).
@@ -3014,7 +3050,7 @@ fn go_to_page(a: &mut App, index: i32) -> bool {
     s.index = index;
     s.nb.last_page = index;
     s.info_dirty = true;
-    render_page_full(a);
+    render_page_open(a);
     view_reset(a);
     compose_all(a, RefreshMode::Full);
     arrive_readonly(a);
@@ -3232,7 +3268,7 @@ pub fn editor_open_notebook(a: &mut App, id: &str) {
     if s.page_canvas.px.is_empty() && canvas_init(&mut s.page_canvas, s.pgw, s.pgh) != 0 {
         return;
     }
-    render_page_full(a);
+    render_page_open(a);
     ed(a).view_w = 0; // set the view up afresh on enter
     let sideways_seen = a.settings.hints & HINT_SIDEWAYS;
     app_switch(a, ScreenId::Editor);
@@ -4377,7 +4413,7 @@ fn pages_delete(a: &mut App) {
     s.nb.last_page = s.index;
     s.page = s.page_at(s.index);
     if s.page.is_some() {
-        render_page_full(a);
+        render_page_open(a);
     }
     let s = ed(a);
     s.changed = true;
@@ -7269,7 +7305,7 @@ fn bar_commit(a: &mut App) {
             s.paper_stale = true;
         }
     } else {
-        render_page_full(a);
+        render_page_open(a);
     }
     let s = ed(a);
     if pk.from_back {
@@ -11216,6 +11252,9 @@ pub fn editor_probe(a: &mut App, key: &str, out: &mut String, cap: usize) -> i32
     } else if key == "page_kept" {
         // Whether the open page came up from its kept drawing instead of being drawn stroke by stroke.
         csnprintf!(out, cap, "%d", s.page_kept as i32);
+    } else if key == "loading_toasts" {
+        // How many times "Loading page..." went up before a dense page was drawn as it opened.
+        csnprintf!(out, cap, "%d", s.loading_toasts as i32);
     } else if key == "erase_tiles" {
         // The stroke eraser's tiles drawn again since the editor began, and the tiles of the boxes of
         // what it took off (all it drew before 2.0.0-rc.12).

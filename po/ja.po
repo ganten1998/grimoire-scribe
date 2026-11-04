@@ -1389,6 +1389,12 @@ msgstr ""
 msgid "Could not save this page. Is the storage full?"
 msgstr "このページを保存できませんでした。ストレージがいっぱいですか?"
 
+#. TRANSLATORS: a toast (about 1700 px at 44 px in bold) while a dense page is drawn as it opens (seconds on a
+#. Kindle); it goes as the page shows.
+#: rust/src/editor.rs
+msgid "Loading page..."
+msgstr ""
+
 #. TRANSLATORS: in a toast (about 1700 px at 44 px in bold, or two lines).
 #: rust/src/editor.rs
 msgid "This page was made by a newer Grimoire. It is read-only here."
