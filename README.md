@@ -543,9 +543,13 @@ Grimoire is free software: GPL-3.0-or-later (see `LICENSE`), the same license as
 Much of what Grimoire knows about the Kindle comes from [KOReader](https://koreader.rocks) and
 [kindlemodding.org](https://kindlemodding.org).
 
-- Terminess Nerd Font, Jacquard 24, Jersey 10 and DotGothic16 (the Japanese fallback, subset to
-  the kana, the punctuation and the common kanji to keep the app small: see `assets/README.md`):
-  SIL Open Font License 1.1 (`assets/*-OFL-1.1.txt`)
+- Terminus by Dimitar Toshkov Zhekov (Terminus TTF by Tilman Blumenbach), as Nerd Fonts' Terminess
+  Nerd Font Mono, Jacquard 24, Jersey 10 and DotGothic16 (the Japanese fallback): SIL Open Font
+  License 1.1 (`assets/*-OFL-1.1.txt`). Terminess and DotGothic16 are subsets, to keep the app small:
+  Terminus's text and the icons Grimoire uses; the kana, the punctuation and the common kanji (see
+  `assets/README.md`)
+- The icons, inside Terminess: Material Design Icons by Pictogrammers (some drawn by Google), Apache
+  License 2.0 (`assets/MaterialDesignIcons-LICENSE.txt`, `assets/MaterialDesignIcons-Apache-2.0.txt`)
 - stb_truetype and stb_image_write by Sean Barrett: public domain / MIT
 - QR Code generator by Project Nayuki: MIT, vendored unmodified in `third_party/qrcodegen`
   (upstream commit 3c6d0b3)

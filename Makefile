@@ -447,9 +447,12 @@ KOPLUGIN_SRC := $(wildcard kindle/koreader/grimoire.koplugin/*.lua)
 KOPATCH_SRC := $(wildcard kindle/koreader/patches/*.lua)
 KOLEGACY_SRC := $(wildcard kindle/koreader/legacy/*.lua)
 KOPLUGIN_ZIP := KOReader plugin (optional)
+# Terminess's icons are Material Design Icons (Apache-2.0): their notice and the license's text go
+# beside the fonts' OFL texts, in app/licenses and in the KOReader patches' fonts/Grimoire.
+ICON_LICENSES := assets/MaterialDesignIcons-LICENSE.txt assets/MaterialDesignIcons-Apache-2.0.txt
 package: $(BUILD)/dist/Grimoire.zip
 $(BUILD)/dist/Grimoire.zip: $(BUILD)/kindle/grimoire kindle/Grimoire.sh kindle/app/grimoire.sh kindle/app/bluetooth.sh kindle/app/wifi.sh kindle/app/update.sh $(RESET_SH) \
-                           assets/icon.png kindle/README.txt LICENSE VERSION Makefile tools/archive.py $(BUILD)/dist/source-date $(wildcard assets/*-OFL-1.1.txt) \
+                           assets/icon.png kindle/README.txt LICENSE VERSION Makefile tools/archive.py $(BUILD)/dist/source-date $(wildcard assets/*-OFL-1.1.txt) $(ICON_LICENSES) \
                            $(wildcard third_party/stb_*.h) $(VENDOR_LICENSES) $(FBINK_SRC) $(KOPLUGIN_SRC) $(KOPATCH_SRC) $(KOLEGACY_SRC) kindle/koreader/PATCHES.txt
 	rm -rf $(PKG) && mkdir -p $(PKG)/documents $(PKG)/app/licenses
 	cp $(BUILD)/kindle/grimoire kindle/app/grimoire.sh kindle/app/bluetooth.sh kindle/app/wifi.sh kindle/app/update.sh $(PKG)/app/
@@ -462,12 +465,12 @@ $(BUILD)/dist/Grimoire.zip: $(BUILD)/kindle/grimoire kindle/Grimoire.sh kindle/a
 	cp $(KOPATCH_SRC) "$(PKG)/KOReader patches (optional)/"
 	mkdir -p "$(PKG)/KOReader patches (optional)/fonts/Grimoire"
 	cp assets/TerminessNerdFontMono-*.ttf "$(PKG)/KOReader patches (optional)/fonts/Grimoire/"
-	cp assets/Terminess-OFL-1.1.txt "$(PKG)/KOReader patches (optional)/fonts/Grimoire/"
+	cp assets/Terminess-OFL-1.1.txt $(ICON_LICENSES) "$(PKG)/KOReader patches (optional)/fonts/Grimoire/"
 	cp kindle/koreader/PATCHES.txt "$(PKG)/KOReader patches (optional)/README.txt"
 	cp $(KOPLUGIN_SRC) "$(PKG)/$(KOPLUGIN_ZIP)/grimoire.koplugin/"
 	sed -n 's/^# Capabilities: //p' kindle/Grimoire.sh > $(PKG)/app/CAPABILITIES
 	cp LICENSE $(PKG)/app/licenses/GPL-3.0.txt
-	cp assets/*-OFL-1.1.txt $(PKG)/app/licenses/
+	cp assets/*-OFL-1.1.txt $(ICON_LICENSES) $(PKG)/app/licenses/
 	for d in third_party/*/; do d=$${d%/}; n=$${d##*/}; out=$(PKG)/app/licenses/$$n-LICENSE.txt; \
 	  for f in $$d/LICENSE* $$d/COPYING*; do [ -f "$$f" ] || continue; \
 	    [ -s $$out ] && printf '\n\n' >> $$out; cat "$$f" >> $$out; done; \

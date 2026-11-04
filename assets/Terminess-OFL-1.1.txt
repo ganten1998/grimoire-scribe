@@ -1,8 +1,13 @@
 Copyright (C) 2020 Dimitar Toshkov Zhekov
 Copyright (C) 2023 Tilman Blumenbach
 
+The license as Nerd Fonts' release carries it names the Reserved Font Names:
+Copyright (c) 2010 Dimitar Toshkov Zhekov, with Reserved Font Name "Terminus Font".
+Copyright (c) 2011-2021 Tilman Blumenbach, with Reserved Font Name "Terminus (TTF)".
+
 Terminess Nerd Font Mono, a Nerd Fonts patched build of Terminus TTF, embedded in Grimoire as its
-Classic typeface.
+Classic typeface. Grimoire carries a subset of it: Terminus's text glyphs and the Material Design
+icons Grimoire uses (MaterialDesignIcons-LICENSE.txt covers the icons).
 
 This Font Software is licensed under the SIL Open Font License, Version 1.1.
 This license is copied below, and is also available with a FAQ at:
