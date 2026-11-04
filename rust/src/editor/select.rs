@@ -370,8 +370,7 @@ pub(super) fn sel_toggle(a: &mut App) {
         return;
     }
     sel_enter(a, false);
-    // TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines) as Select mode starts.
-    app_toast(a, tr("Select: draw around ink with the pen."), 2500);
+    app_toast_dismiss(a); // (no toast: the owner, 2026-11-04; one left up from before goes)
 }
 
 /// The `select-exact` action: Select mode in exact area, or with Select mode on, the bar's mode button.
@@ -386,9 +385,7 @@ pub(super) fn sel_exact_action(a: &mut App) {
     EXACT.store(true, std::sync::atomic::Ordering::Relaxed);
     sel_enter(a, false);
     ed(a).sel.exact = true;
-    // TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines) as Select mode starts in exact
-    // area: the lasso will cut strokes along its line.
-    app_toast(a, tr("Select, exact area: draw around ink with the pen."), 2500);
+    app_toast_dismiss(a); // (no toast: the owner, 2026-11-04; one left up from before goes)
 }
 
 fn sel_enter(a: &mut App, held: bool) {
@@ -1064,10 +1061,10 @@ fn lasso_done(a: &mut App) {
         if erasure_there {
             // TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): a lasso in Select mode went
             // around only white ink or eraser marks, which are not objects: they move with the ink they cover.
-            app_toast(a, tr("Nothing to select here: white ink and eraser marks move with the ink they cover."), 3500);
+            app_toast(a, tr("Nothing to select: white ink and eraser marks move with the ink under them."), 3500);
         } else {
             // TRANSLATORS: a toast: a lasso in Select mode went around no ink.
-            app_toast(a, tr("Nothing to select here."), 2000);
+            app_toast(a, tr("Nothing to select."), 2000);
         }
         sel_settle_hold(a);
         return;
@@ -1161,7 +1158,7 @@ fn sel_mode_toggle(a: &mut App) {
                 // (nothing in the other mode: the selection goes, Select mode stays)
                 s.sel.kept = pts;
                 sel_deselect(a);
-                app_toast(a, tr("Nothing to select here."), 2000);
+                app_toast(a, tr("Nothing to select."), 2000);
                 return;
             }
         }
@@ -1348,7 +1345,9 @@ fn spliced_history(sp: Spliced, idx: &[usize], removed: Vec<Box<Stroke>>) -> (Ve
     (ix, out.into_iter().map(|r| r.1).collect(), outside)
 }
 
-const TOO_MANY_LAYERS: &str = n_("This page holds too many moved groups: paste on another page.");
+// TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): a move or a paste in Select mode was
+// refused, as the page holds the most moved groups it can.
+const TOO_MANY_LAYERS: &str = n_("Too many moved groups on this page: paste elsewhere.");
 
 /// The drag released: the selection moves by (dx, dy), one undo step (Move: the ink off its place, the
 /// group at the end of the page with its erasing, carried link areas moved).
@@ -1385,7 +1384,7 @@ fn sel_move(a: &mut App, dx: i32, dy: i32) {
             }
             s.sel.drag = (0, 0);
             // TRANSLATORS: a toast: a move in Select mode could not save the links it carries.
-            app_toast(a, tr("Could not save the links: nothing was moved."), 3000);
+            app_toast(a, tr("Couldn't save links: nothing moved."), 3000);
             return;
         }
     }
@@ -1519,11 +1518,11 @@ fn sel_cut(a: &mut App) {
 
 // TRANSLATORS: a toast: Cut in Select mode could not save the links the selection carries (links.ini), so
 // nothing was cut and the clipboard is as it was.
-const NOTHING_CUT: &str = n_("Could not save the links: nothing was cut.");
+const NOTHING_CUT: &str = n_("Couldn't save links: nothing cut.");
 
 /// Copy: the selection (its visible ink, the erasing that goes with it, its links) to the clipboard. Not
-/// an undo step; works on a read-only page too. False when nothing was copied. `cut`: for Cut, which
-/// says so itself once the ink is off the page.
+/// an undo step; works on a read-only page too. False when nothing was copied. `cut`: for Cut, which takes
+/// the ink off the page next. Neither says so with a toast (the owner, 2026-11-04): Paste appears.
 fn sel_copy(a: &mut App, cut: bool) -> bool {
     let dpi = a.dpi;
     let s = ed(a);
@@ -1551,7 +1550,7 @@ fn sel_copy(a: &mut App, cut: bool) -> bool {
     g.src_nb = s.nb.id.as_str().to_string();
     if clipboard_write(&g) != 0 {
         // TRANSLATORS: a toast: Copy or Cut in Select mode could not write the clipboard file.
-        app_toast(a, tr("Could not copy: the clipboard could not be written."), 3000);
+        app_toast(a, tr("Couldn't write clipboard."), 3000);
         return false;
     }
     qlog!("lasso: copy n=%d carried=%d links=%d ms=%u", g.ink as i32, g.carried as i32, g.links.len() as i32, now_ms().wrapping_sub(t0));
@@ -1561,8 +1560,7 @@ fn sel_copy(a: &mut App, cut: bool) -> bool {
     layout_bar(a); // (Paste appears)
     let r = overlay_rect(a);
     redraw(a, r, RefreshMode::Ui);
-    // TRANSLATORS: a toast: Copy in Select mode put the selection on the clipboard.
-    app_toast(a, tr("Copied."), 1500);
+    app_toast_dismiss(a); // (a toast left up from before goes)
     true
 }
 
@@ -1584,7 +1582,7 @@ fn sel_delete(a: &mut App, cut: bool) -> bool {
     if !records.is_empty() {
         if !s.nav.links_writable {
             if !cut {
-                app_toast(a, tr("Could not save the links: nothing was moved."), 3000);
+                app_toast(a, tr("Couldn't save links: nothing moved."), 3000);
             }
             return false;
         }
@@ -1593,7 +1591,7 @@ fn sel_delete(a: &mut App, cut: bool) -> bool {
         }
         if !save_links(s) {
             if !cut {
-                app_toast(a, tr("Could not save the links: nothing was moved."), 3000);
+                app_toast(a, tr("Couldn't save links: nothing moved."), 3000);
             }
             return false;
         }
@@ -1647,8 +1645,7 @@ fn sel_delete(a: &mut App, cut: bool) -> bool {
     mark_changed(ed(a));
     repaint_panel(a, RefreshMode::Ui);
     if cut {
-        // TRANSLATORS: a toast: Cut in Select mode put the selection on the clipboard and took it off the page.
-        app_toast(a, tr("Cut."), 1500);
+        app_toast_dismiss(a); // (no "Cut.": the owner, 2026-11-04; a toast left up from before goes)
     }
     sel_settle_hold(a);
     true
@@ -1761,7 +1758,7 @@ pub(super) fn sel_paste(a: &mut App, at: Option<(i32, i32)>) {
     }
     let Some(g) = clipboard_read() else {
         // TRANSLATORS: a toast: Paste found no clipboard it could read.
-        app_toast(a, tr("The clipboard could not be read."), 3000);
+        app_toast(a, tr("Couldn't read clipboard."), 3000);
         return;
     };
     let view = view_page(a);
@@ -1799,7 +1796,7 @@ pub(super) fn sel_paste(a: &mut App, at: Option<(i32, i32)>) {
         if !s.nav.links_writable || on_page + new_links.len() > NAV_LINKS_PER_PAGE as usize || s.nav.links.len() + new_links.len() > NAV_LINKS_MAX as usize {
             // TRANSLATORS: a toast: Paste was refused whole because its links do not fit (64 on a page,
             // 4000 in a notebook) or links.ini cannot be written.
-            app_toast(a, tr("Could not paste: its links do not fit on this page."), 3000);
+            app_toast(a, tr("Couldn't paste: its links don't fit here."), 3000);
             return;
         }
         let ok = new_links.iter().all(|m| nav_link_put(&mut s.nav, m) == 0);
@@ -1808,7 +1805,7 @@ pub(super) fn sel_paste(a: &mut App, at: Option<(i32, i32)>) {
                 nav_load(s.nb.id.as_str(), &mut s.nav);
                 migration_reset(s);
             }
-            app_toast(a, tr("Could not paste: its links do not fit on this page."), 3000);
+            app_toast(a, tr("Couldn't paste: its links don't fit here."), 3000);
             return;
         }
     }
@@ -1881,7 +1878,7 @@ pub(super) fn sel_paste(a: &mut App, at: Option<(i32, i32)>) {
     if index_left {
         // TRANSLATORS: a toast: a pasted link to the Index was left out, as it cannot point to another
         // notebook's Index.
-        app_toast(a, tr("A link to the Index stays in its notebook."), 3000);
+        app_toast(a, tr("Index links stay in their notebook."), 3000);
     }
 }
 

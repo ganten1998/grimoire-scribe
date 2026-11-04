@@ -126,7 +126,8 @@ wait 200
 expect editor.linkto is pick
 tap 1100 900
 wait 200
-expect toast is No link made.
+expect toast is
+expect editor.linkto is 0
 expect editor.links is 2 2
 expect editor.owner is none
 wait 1100
@@ -163,7 +164,8 @@ expect editor.strip is 0
 expect editor.linkto is pick
 tap 1100 900
 wait 200
-expect toast is No link made.
+expect toast is
+expect editor.linkto is 0
 wait 1100
 fpath 1400 1500 500 1520 250
 wait 400

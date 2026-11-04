@@ -35,7 +35,7 @@ expect editor.keyboard is
 expect editor.modal is pages
 expect editor.page_ids is 1,3,4,2,5
 expect editor.tile.4 is two
-expect toast has Moved 1 page: it is page 4 now.
+expect toast is
 expect editor.page is 1
 expect editor.ticked is 0
 shot 04-moved
@@ -59,7 +59,7 @@ wait 200
 expect editor.page_ids is 3,4,2,1,5
 expect editor.page is 4
 expect editor.tile.4 is one
-expect toast has Moved 2 pages: they start at page 4 now.
+expect toast is
 # Cancel on the pad moves nothing.
 tap panel pages.page.1
 tap panel pages.move
@@ -86,7 +86,7 @@ tap panel elsewhere.end
 wait 200
 expect editor.destination is 0
 expect editor.modal is pages
-expect toast has Copied 2 pages to Destination B.
+expect toast is
 expect editor.page_ids is 3,4,2,1,5
 expect editor.ticked is 0
 shot 07-copied
@@ -102,7 +102,7 @@ waitbg
 wait 200
 tap panel elsewhere.page.1
 wait 200
-expect toast has Copied 1 page to Destination B.
+expect toast is
 tap panel pages.back
 wait 200
 # B now: four, B first, B second, three, one.

@@ -39,7 +39,7 @@ side on
 wait 1500
 side off
 wait 400
-expect toast is Page cleared
+expect toast is
 shot 04-cleared
 expect editor.strokes is 0
 pentap panel undo

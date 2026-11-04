@@ -137,9 +137,10 @@ Registry row: **ext[1] = layer. On an erase stroke: 0 = the page (restores towar
   (i32, source px, link areas included); then the carried links as `link.N=`, `area.N=`,
   `outline.N=` lines in links.ini syntax without page ids, source coordinates, original seeds.
 - One file, written atomically (tmp, fsync, rename), replaced whole by each Copy and Cut. No torn
-  pair is possible.
+  pair is possible. (RC review, 2026-11-04: it lasts one session; every start of Grimoire deletes it,
+  FORMAT.md, The clipboard.)
 - A clipboard that is missing, does not read, has a bad or cut-off `CLIP`, or more than 20,000
-  strokes or 16 MiB: Paste shows "The clipboard could not be read." and changes nothing. If writing
+  strokes or 16 MiB: Paste shows "Couldn't read clipboard." and changes nothing. If writing
   it fails during Cut, nothing is cut.
 - Older versions never look in the data root for it (the Library lists folders with
   `notebook.ini`; the builder confirms release Library scans ignore root files).
@@ -524,7 +525,7 @@ reported, not hidden; `work_pump` keeps the pens live during long redraws.
 16. Cache tags: `|L` for layered pages; an old-style tag on a layered page is not trusted;
     unlayered tags unchanged.
 17. Clipboard: round trip; truncated file, bad `CLIP`, over-cap refused with no change; a failed
-    write cuts nothing; survives a restart; cross-notebook targets rewritten.
+    write cuts nothing; gone after a restart (RC review, 2026-11-04); cross-notebook targets rewritten.
 
 **History**
 18. Lasso undo/redo for Move, Paste, Cut, Delete: exact stroke identities and order, the patch

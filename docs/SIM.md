@@ -540,7 +540,7 @@ the script). The order is the shell's glob order, which follows the locale's col
 pass over punctuation: a scenario that starts from another must differ from its name by a letter
 or a digit, not only by punctuation or length (hence y_pagesize_1_ksc and y_pagesize_2_back).
 `# env: K=V` lines set the environment of that one scenario (values without spaces;
-r_passcode, s_passcode_once, t_passcode_left_off and t_toast_over_sheets set `GRIMOIRE_PASSCODE`,
+r_passcode, s_passcode_once, t_passcode_left_off and z_annotate_f_passcode set `GRIMOIRE_PASSCODE`,
 as the launcher does on the Kindle, v_leave_from_editor sets `GRIMOIRE_BG_DELAY_MS`,
 v_shortcuts_awake and v_shortcuts_disabled set `GRIMOIRE_SLEEP_MINUTE_MS`, y_status_corner sets `TZ=UTC`,
 y_koreader_hosted sets `GRIMOIRE_HOST` as the KOReader plugin's start does and

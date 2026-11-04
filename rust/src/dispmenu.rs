@@ -431,7 +431,7 @@ pub fn dispmenu_pointer(m: &mut DispMenu, a: &mut App, phase: i32, x: f32, y: f3
                 settings_save(&a.settings);
                 app_toast(a, tr("This page is now the sleep screen"), 2000);
             } else {
-                app_toast(a, tr("Could not save the sleep screen"), 2500);
+                app_toast(a, tr("Couldn't save sleep screen"), 2500);
             }
         }
         _ => return DmResult::None,

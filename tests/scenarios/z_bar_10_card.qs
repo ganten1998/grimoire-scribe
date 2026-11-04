@@ -39,7 +39,7 @@ expect editor.ui_at.430.1773 is card.delete
 tap 430 1773
 wait 100
 expect editor.links is 1 1
-expect toast is Links deleted. Undo brings them back.
+expect toast is
 expect editor.link_card is 0
 expect editor.bar is open
 expect editor.bar.entries is 1
@@ -107,7 +107,7 @@ pentap panel previous
 expect editor.page is 1
 pentap panel undo
 wait 300
-expect toast is Link change undone.
+expect toast is
 expect editor.links is 3 3
 pen leave
 wait 1100

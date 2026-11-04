@@ -763,16 +763,16 @@ pinch 900 900 300 700 6
 wait 100
 expect editor.zoom not 1.00
 shot 31-zoom
-# two fingers dragging the zoomed page move it, and say once that Pages and Links are on the panel now
+# two fingers dragging the zoomed page move it (silently: the pan hint went in 2.0.0-beta.2)
 pen leave
 wait 1100
 swipe 2 930 1200 0 400
 wait 300
-# (64, the pan hint; 2, the first link made above showed the first-link tip; 8, the Links bar showed its
-# second header line three times)
-expect settings.hints is 90
+# (2, the first link made above showed the first-link tip; 24, the Links bar showed its second header line
+# three times)
+expect settings.hints is 26
 expect editor.zoom not 1.00
-shot 31-zoom-pan-hint
+shot 31-zoom-pan
 tap 930 74
 expect editor.zoom not 1.00
 pinch 900 900 700 200 6
@@ -1453,7 +1453,7 @@ shot 69-display-fit
 tap 930 986
 wait 300
 expect settings.landscape_fit is 0
-shot 69-display-fit-toast
+shot 69-display-fit-off-upright
 tap 930 986
 wait 300
 expect settings.landscape_fit is 1

@@ -69,10 +69,10 @@ expect editor.tool_button is select
 expect editor.undo_kind is add
 expect editor.live_matches_render is 1
 shot 01-selected
-# the bar is the pen lasso's: Copy says so
+# the bar is the pen lasso's: Copy fills the clipboard (silently)
 tap panel select.copy
 wait 100
-expect toast is Copied.
+expect toast is
 expect editor.clipboard is 1
 # a tap outside: the selection ends, and the Select mode the hold entered with it; nothing drawn
 finger 1 down 1300 1700
@@ -100,7 +100,7 @@ frame 20
 finger 1 up 1205 1510
 frame
 wait 100
-expect toast is Nothing to select here.
+expect toast is Nothing to select.
 expect editor.select is off
 expect editor.owner is none
 expect editor.strokes is 3

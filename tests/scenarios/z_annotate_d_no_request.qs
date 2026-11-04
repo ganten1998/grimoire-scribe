@@ -1,3 +1,4 @@
+# rust-only
 # settings: status_mode=1
 # env: GRIMOIRE_HOST=koreader
 # env: GRIMOIRE_ANNOTATE=1
@@ -7,5 +8,5 @@ wait 300
 expect screen is library
 expect annotate.result is failed
 expect library.items is 0
-expect toast is Could not open the page KOReader sent (see grimoire.log).
+expect toast is Couldn't open page from KOReader (see grimoire.log).
 quit

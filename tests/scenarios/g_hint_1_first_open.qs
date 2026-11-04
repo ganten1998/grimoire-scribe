@@ -13,10 +13,10 @@ wait 100
 tap 1564 2254
 wait 300
 expect screen is editor
-expect toast is New: two fingers up show this page's links. Two fingers down open the Graph.
+expect toast is New: two fingers down for the Graph, up for page links.
 expect settings.hints is 1
 wait 3000
-expect toast is New: two fingers up show this page's links. Two fingers down open the Graph.
+expect toast is New: two fingers down for the Graph, up for page links.
 wait 3300
 expect toast is
 pentap panel library

@@ -4,7 +4,7 @@
 # left, on the blank page it added.
 # root: z_import_1_startup
 wait 1500
-expect toast not Imported a notebook of 3 pages.
+expect toast not Imported notebook (3 pages).
 expect screen is library
 expect library.items is 1
 tap 326 608

@@ -165,7 +165,7 @@ fn cached_light_actions_do_not_read_unknown_levels() {
     settings_default(&mut a.settings);
     for action in [SHORTCUT_LIGHT_DOWN, SHORTCUT_LIGHT_UP, SHORTCUT_WARMTH_DOWN, SHORTCUT_WARMTH_UP] {
         check!(app_global_action(&mut a, action, ActionSrc::Key));
-        check!(a.toast == "Light not ready yet." && light_cached() == (-1, -1));
+        check!(a.toast == "Light not ready." && light_cached() == (-1, -1));
     }
     light_set_intensity(10); light_set_warmth(6);
     check!(app_global_action(&mut a, SHORTCUT_LIGHT_UP, ActionSrc::Key) && light_cached() == (11, 6));

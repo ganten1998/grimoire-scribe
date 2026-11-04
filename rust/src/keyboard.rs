@@ -71,12 +71,10 @@ pub struct Keyboard {
     /// otherwise the modal's top y on the screen, for a keyboard that must keep clear of something low on
     /// the page (a link's area being given a target)
     pub dock_y: i32,
-    /// The count pad's (page 4): the most it takes (a digit or + past it leaves the count there and sets
-    /// `clamped`), and its Done's label for a count (Done disabled at 0)
+    /// The count pad's (page 4): the most it takes (a digit or + past it leaves the count there, which the
+    /// pad shows), and its Done's label for a count (Done disabled at 0)
     pub count_max: i32,
     pub count_label: Option<fn(i32) -> String>,
-    /// set by the count pad when a digit or + met count_max (the caller says so, a toast)
-    pub clamped: bool,
     /// set with field_dirty on the count pad: its Done, whose label shows the count (refreshed on its own)
     pub also_dirty: Rect,
     /// The count pad's count is still the 1 it opened with (the owner: "1 will be the default"): drawn highlighted, and the first digit typed replaces it rather than following it.
@@ -688,9 +686,9 @@ pub fn keyboard_open(kb: &mut Keyboard, title: &str, initial: &[u8]) {
 /// The count pad (page 4): the number pad's digits, Cancel and del, then a row with - and + (the count
 /// one less, down to 1, or one more), and Done, whose label `label` gives for the count (disabled at 0).
 /// The text is the count in digits (empty for 0); a digit or + never takes it past `max`: it stays at
-/// `max` and `clamped` is set, for the caller to say why. It opens at 1, highlighted (`count_fresh`), so
-/// Done (or Enter) at once adds one; the first digit typed replaces that 1, del clears it, and - and +
-/// count from it.
+/// `max`, which the pad shows (no toast: the owner, 2026-11-04). It opens at 1, highlighted
+/// (`count_fresh`), so Done (or Enter) at once adds one; the first digit typed replaces that 1, del
+/// clears it, and - and + count from it.
 pub fn keyboard_open_count(kb: &mut Keyboard, title: &str, max: i32, label: fn(i32) -> String) {
     let max = max.max(0);
     keyboard_open(kb, title, if max >= 1 { b"1" } else { b"" });
@@ -706,12 +704,7 @@ pub fn keyboard_count(kb: &Keyboard) -> i32 {
 }
 
 fn set_count(kb: &mut Keyboard, n: i32) {
-    let n = if n > kb.count_max {
-        kb.clamped = true;
-        kb.count_max
-    } else {
-        n.max(0)
-    };
+    let n = if n > kb.count_max { kb.count_max } else { n.max(0) };
     let digits = if n > 0 { n.to_string() } else { String::new() };
     kb.text.set_bytes(digits.as_bytes());
 }
@@ -1224,11 +1217,11 @@ mod tests {
         assert_eq!(press(&mut kb, '1' as u32), KbResult::Changed);
         assert!(!rect_is_empty(kb.field_dirty) && !rect_is_empty(kb.also_dirty), "the count line and Done");
         assert_eq!(press(&mut kb, '2' as u32), KbResult::Changed);
-        assert_eq!((kb.text.as_str(), kb.clamped), ("12", false));
+        assert_eq!(kb.text.as_str(), "12");
         assert_eq!(press(&mut kb, '0' as u32), KbResult::Changed);
-        assert_eq!((kb.text.as_str(), std::mem::take(&mut kb.clamped)), ("25", true), "120 is past 25: 25");
+        assert_eq!(kb.text.as_str(), "25", "120 is past 25: 25");
         assert_eq!(press(&mut kb, KB_KEY_INC), KbResult::None);
-        assert!(kb.clamped);
+        assert_eq!(kb.text.as_str(), "25", "+ at 25 stays at 25");
         assert_eq!(press(&mut kb, KB_KEY_BKSP), KbResult::Changed);
         assert_eq!(kb.text.as_str(), "2");
         assert_eq!(press(&mut kb, KB_KEY_DEC), KbResult::Changed);

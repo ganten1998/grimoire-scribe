@@ -127,7 +127,7 @@ shot 03-moved-erased
 tap panel select.copy
 wait 100
 expect editor.clipboard is 1
-expect toast is Copied.
+expect toast is
 expect editor.undo_kind is lasso
 tap panel select.paste
 wait 100
@@ -173,7 +173,7 @@ pen move 1420 820
 pen up 1420 710
 wait 100
 expect editor.select is armed
-expect toast is Nothing to select here: white ink and eraser marks move with the ink they cover.
+expect toast is Nothing to select: white ink and eraser marks move with the ink under them.
 # choosing a pen leaves Select mode
 pentap panel tool-picker
 pentap 872 561

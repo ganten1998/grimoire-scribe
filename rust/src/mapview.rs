@@ -607,7 +607,7 @@ fn begin(v: &mut MapView, a: &mut App, nb: &NotebookInfo, nav: &Nav, open_pid: u
     *v = MapView::default();
     #[cfg(feature = "sim")]
     if std::env::var_os("GRIMOIRE_SIM_MAP_NOMEM").is_some_and(|s| s == "1") {
-        app_toast(a, tr("Not enough memory for the graph."), 3000);
+        app_toast(a, tr("Not enough memory for the Graph."), 3000);
         return false;
     }
     v.w = a.w;
@@ -617,7 +617,7 @@ fn begin(v: &mut MapView, a: &mut App, nb: &NotebookInfo, nav: &Nav, open_pid: u
     v.selected = -1;
     v.centre = -1;
     if canvas_init(&mut v.canvas, a.w, a.h) != 0 || !reserve(&mut v.list_pages, nb.page_ids.len()) {
-        app_toast(a, tr("Not enough memory for the graph."), 3000);
+        app_toast(a, tr("Not enough memory for the Graph."), 3000);
         return false;
     }
     v.list_pages.extend_from_slice(&nb.page_ids);
@@ -686,7 +686,7 @@ pub fn mapview_open(
         return false;
     }
     if !build_one(v, a, nb, nb, nav, open_pid, around_open) {
-        app_toast(a, tr("Not enough memory for the graph."), 3000);
+        app_toast(a, tr("Not enough memory for the Graph."), 3000);
         return false;
     }
     finish(v, a, nav);
@@ -803,17 +803,17 @@ pub fn mapview_open_scoped(v: &mut MapView, a: &mut App, nb: &NotebookInfo, nav:
         }
         GRAPH_ALL_TOO_BIG => {
             if !build_one(v, a, nb, nb, nav, open_pid, around_open) {
-                app_toast(a, tr("Not enough memory for the graph."), 3000);
+                app_toast(a, tr("Not enough memory for the Graph."), 3000);
                 return false;
             }
             finish(v, a, nav);
             // TRANSLATORS: the Graph (Index, Graph tab) opens on the notebook instead of every notebook: the
             // library has more linked pages or links than it can draw at once (a toast, 2 lines at most).
-            app_toast(a, tr("Too many linked pages for All notebooks: showing this notebook."), 4000);
+            app_toast(a, tr("Too many linked pages: showing this notebook only."), 4000);
             true
         }
         _ => {
-            app_toast(a, tr("Not enough memory for the graph."), 3000);
+            app_toast(a, tr("Not enough memory for the Graph."), 3000);
             false
         }
     }
@@ -2432,7 +2432,7 @@ mod tests {
         let mut v=MapView::default();
         assert!(mapview_open_scoped(&mut v,&mut app,&nb,&nav,1,false,None));
         assert_eq!(v.scope,MapScope::One);assert_eq!(v.id.as_str(),"cap0");
-        assert_eq!(app.toast.as_str(),"Too many linked pages for All notebooks: showing this notebook.");
+        assert_eq!(app.toast.as_str(),"Too many linked pages: showing this notebook only.");
         mapview_close(&mut v);
         while bg_busy() {let mut k=-1;bg_poll_job(Some(&mut k),None);sleep_ms(2);}
         mapview_forget_all_ini();

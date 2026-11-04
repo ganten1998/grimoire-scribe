@@ -117,7 +117,7 @@ wait 100
 expect library.sheet is move
 tap library move.top
 wait 300
-expect toast has Could not move the folder
+expect toast has Couldn't move folder
 expect library.sheet is none
 expect library.folders is Archive, Archive/School, Archive/School/Math, School
 expect library.mirror is . 0, Archive_School 1, Archive_School_Math 1

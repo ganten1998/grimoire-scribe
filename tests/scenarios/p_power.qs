@@ -38,7 +38,7 @@ side off
 pinch 930 1240 300 900 8
 wait 400
 expect asleep is 1
-expect toast not Page cleared
+expect editor.strokes is 2
 # A press on the sleep screen, then the Kindle announces it is going to sleep (it was awake after
 # all, Grimoire had missed the wake): that answers the press, so no wake 3 s later.
 powerd active

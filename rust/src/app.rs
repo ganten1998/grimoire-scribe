@@ -46,8 +46,6 @@ pub struct App {
     /// A bound pen drag defers non-Fast presents and toasts until the nib lifts.
     pub pen_action_down: bool,
     pub pen_toast_pending: Option<(FixedStr<256>, i32)>,
-    /// shortcuts.ini was an earlier starter map, replaced by this build's at the start: a toast says so once
-    pub shortcuts_upgraded: bool,
     pub last_shortcut_code: i32,
     pub last_shortcut_mods: i32,
     pub last_shortcut_gamepad: bool,
@@ -169,7 +167,7 @@ pub use crate::share::{share_enter, share_event, share_free, share_init, share_l
 // Cross-screen entry points: the screens' (documented at their definitions), and app.c's own.
 pub use crate::calibrate::calibrate_open;
 pub use crate::editor::{
-    editor_busy, editor_control_at, editor_fit_changed, editor_fit_toast, editor_hold_eraser, editor_modal_key, editor_live_chip, editor_live_hole, editor_live_panel, editor_live_style, editor_live_under_panel, editor_open_notebook,
+    editor_busy, editor_control_at, editor_fit_changed, editor_hold_eraser, editor_modal_key, editor_live_chip, editor_live_hole, editor_live_panel, editor_live_style, editor_live_under_panel, editor_open_notebook,
     editor_open_notebook_at, editor_page_canvas, editor_page_in_front, editor_panel_point, editor_picture_made, editor_pin_sleep_page, editor_probe, editor_save_now,
     editor_shortcut, editor_shortcut_at, editor_suspend,
 };
@@ -484,16 +482,16 @@ fn annotate_at_start(a: &mut App, msg: &mut String, cap: usize) -> bool {
             // TRANSLATORS: notices when Grimoire opens from KOReader's "Annotate this page in Grimoire"
             // and that page cannot be opened, in a toast: one line of about 1700 px at 44 px in bold, or
             // two. This one: the picture of the page KOReader sent is damaged or missing.
-            csnprintf!(msg, cap, "%s", tr("Could not open the page KOReader sent: its picture does not read."));
+            csnprintf!(msg, cap, "%s", tr("Couldn't open page: its image is unreadable."));
         }
         AnnotateWhy::Storage => {
             // TRANSLATORS: (as above) the page could not be added to its notebook: a file could not be
             // written.
-            csnprintf!(msg, cap, "%s", tr("Could not add the page KOReader sent. Is the storage full?"));
+            csnprintf!(msg, cap, "%s", tr("Couldn't add page from KOReader. Is the storage full?"));
         }
         _ => {
             // TRANSLATORS: (as above) any other reason; %s is the log file that says why.
-            csnprintf!(msg, cap, tr("Could not open the page KOReader sent (see %s)."), "grimoire.log");
+            csnprintf!(msg, cap, tr("Couldn't open page from KOReader (see %s)."), "grimoire.log");
         }
     }
     true
@@ -506,16 +504,16 @@ fn book_failed(a: &mut App) {
         // TRANSLATORS: notices when Grimoire opens from KOReader's "Open this book in Grimoire", in a
         // toast: one line of about 1700 px at 44 px in bold, or two. This one: the book has more pages
         // than a notebook holds; %d is that number (2000).
-        csnprintf!(&mut msg, 256, tr("The book has more pages than a notebook holds (%d)."), STORE_MAX_PAGES as i32);
+        csnprintf!(&mut msg, 256, tr("Book too long: notebooks hold %d pages."), STORE_MAX_PAGES as i32);
     } else if a.book.why == AnnotateWhy::Picture {
         // TRANSLATORS: (as above) a page picture KOReader made is damaged or missing.
-        csnprintf!(&mut msg, 256, "%s", tr("Could not open the book KOReader sent: a page's picture does not read."));
+        csnprintf!(&mut msg, 256, "%s", tr("Couldn't open book: a page image is unreadable."));
     } else if a.book.why == AnnotateWhy::Storage {
         // TRANSLATORS: (as above) the pages could not be added: a file could not be written.
-        csnprintf!(&mut msg, 256, "%s", tr("Could not add the book's pages. Is the storage full?"));
+        csnprintf!(&mut msg, 256, "%s", tr("Couldn't add book pages. Is the storage full?"));
     } else {
         // TRANSLATORS: (as above) any other reason; %s is the log file that says why.
-        csnprintf!(&mut msg, 256, tr("Could not open the book KOReader sent (see %s)."), "grimoire.log");
+        csnprintf!(&mut msg, 256, tr("Couldn't open book from KOReader (see %s)."), "grimoire.log");
     }
     app_toast(a, &msg, 8000);
 }
@@ -536,7 +534,7 @@ fn book_tick(a: &mut App) {
         if a.book.added != 0 {
             let mut msg = String::new();
             // TRANSLATORS: in a toast, once the pages of a book KOReader sent are in its notebook.
-            csnprintf!(&mut msg, 256, ng_("Added %d page of the book.", "Added %d pages of the book.", a.book.added as i64), a.book.added);
+            csnprintf!(&mut msg, 256, ng_("Added %d book page.", "Added %d book pages.", a.book.added as i64), a.book.added);
             app_toast(a, &msg, 5000);
         }
     } else if a.book.state == BookState::Failed {
@@ -547,7 +545,7 @@ fn book_tick(a: &mut App) {
         let mut msg = String::new();
         // TRANSLATORS: in a toast while Grimoire puts the pages of a book KOReader sent into its
         // notebook (a few seconds for a big book): pages done, of how many. One line of about 1700 px.
-        csnprintf!(&mut msg, 256, tr("Adding the book's pages: %d of %d"), a.book.added, a.book.total);
+        csnprintf!(&mut msg, 256, tr("Adding book pages: %d of %d"), a.book.added, a.book.total);
         app_toast(a, &msg, 60000);
     }
 }
@@ -564,15 +562,16 @@ pub fn app_init(a: &mut App, w: i32, h: i32, dpi: f32) -> i32 {
         return -1;
     }
     store_set_device(dpi, w, h);
+    // The lasso's clipboard lasts one session: an earlier one's goes before anything can paste it.
+    clipboard_clear_at_start();
     settings_load(&mut a.settings);
     let mut shortcuts_path = String::new();
     let mut controller_path = String::new();
     csnprintf!(&mut shortcuts_path, 600, "%s/shortcuts.ini", &store_root());
     csnprintf!(&mut controller_path, 1024, "%s/controller.ini", &store_root());
-    // A starter map nobody edited becomes this build's; edited files stay.
+    // A starter map nobody edited becomes this build's (grimoire.log says so; no toast); edited files stay.
     if shortcuts_upgrade_starter(&shortcuts_path) {
         qlog!("shortcuts: %s was an earlier starter map; it is this build's now", &shortcuts_path);
-        a.shortcuts_upgraded = true;
     }
     shortcuts_load_all(&mut a.shortcuts, &shortcuts_path, &controller_path);
     app_gestures_load(a);
@@ -606,7 +605,7 @@ pub fn app_init(a: &mut App, w: i32, h: i32, dpi: f32) -> i32 {
         let _ = std::fs::remove_file(&failed);
         qlog!("update: the last update did not install (update.sh's lines above in this log say why)");
         // TRANSLATORS: a toast at the start after an update KPM could not install (Settings > Updates).
-        app_toast(a, tr("The last update did not install. grimoire.log says why."), 6000,
+        app_toast(a, tr("Last update failed. See grimoire.log."), 6000,
         );
     }
     a.bt_start_at = if a.settings.controller && a.settings.shortcuts_enabled { now_ms().wrapping_add(1500) } else { 0 };
@@ -659,7 +658,7 @@ pub fn app_init(a: &mut App, w: i32, h: i32, dpi: f32) -> i32 {
         app_set_rotation(a, caps.orientation);
     }
     // A page KOReader sent to annotate: the editor opens on it now, under the toast below. When it
-    // could not be opened, why is that toast, unless the passcode was left off.
+    // could not be opened, why is that toast.
     let mut note = String::new();
     let annotate_failed = annotate_at_start(a, &mut note, 256);
     // A whole book KOReader sent: its pages are added over the next moments (book_tick), and the
@@ -667,23 +666,21 @@ pub fn app_init(a: &mut App, w: i32, h: i32, dpi: f32) -> i32 {
     let book = getenv("GRIMOIRE_BOOK");
     book_start(book.as_deref() == Some("1") && !app_host().is_empty(), &mut a.book,
     );
-    // Compatibility notice for beta.1, which could leave the passcode off after a restart.
-    // Current standalone sessions leave it enabled and yield to the native keypad on sleep.
+    // Beta.1 could leave the passcode off after a restart: the launcher says so (GRIMOIRE_PASSCODE), and
+    // the log notes it, with no toast (the owner, 2026-11-04). Current standalone sessions leave it
+    // enabled and yield to the native keypad on sleep.
     let passcode = getenv("GRIMOIRE_PASSCODE");
     let mut msg = String::new();
     if passcode.as_deref() == Some("left-off") {
-        qlog!("device passcode: left off by an earlier session; telling the user");
-        // TRANSLATORS: notices at startup, in a toast: one line of about 1700 px at 44 px in bold,
-        // or two. "Kindle Settings" is the Kindle's own Settings, as its menus name them.
-        app_toast(a, tr("Your Kindle passcode was left off. Turn it back on in Kindle Settings."), 10000,
-        );
-    } else if annotate_failed {
+        qlog!("device passcode: left off by an earlier session");
+    }
+    if annotate_failed {
         app_toast(a, &note, 8000);
     } else if a.book.state == BookState::Failed {
         book_failed(a);
     } else if !caps.has_pen {
         // TRANSLATORS: %s is the app's name, Grimoire.
-        csnprintf!(&mut msg, 256, tr("No pen found. %s is made for the Kindle Scribe; writing needs its pen."), APP_NAME);
+        csnprintf!(&mut msg, 256, tr("No pen found. %s is made for Kindle Scribe; writing needs its pen."), APP_NAME);
         app_toast(a, &msg, 10000);
     }
     0
@@ -745,9 +742,9 @@ fn hid_changed(a: &mut App, ev: &InEvent) {
         return;
     }
     // TRANSLATORS: toasts (one line of about 1700 px at 44 px in bold) when a controller, keyboard
-    // or page turner comes or goes. "Held by another app": another program (a button mapper)
+    // or page turner comes or goes. "In use by another app": another program (a button mapper)
     // takes its presses, so Grimoire gets none.
-    let msg = if !attach { tr("Controller disconnected") } else if ev.value != 0 { tr("Controller held by another app") } else { tr("Controller connected") };
+    let msg = if !attach { tr("Controller disconnected") } else if ev.value != 0 { tr("Controller in use by another app") } else { tr("Controller connected") };
     app_toast(a, msg, 1500);
 }
 
@@ -1300,7 +1297,7 @@ pub fn live_view_open(a: &mut App) {
         if !ok {
             // TRANSLATORS: a toast: Live view could not start (no memory for its copy of the screen,
             // or the server's port is taken).
-            app_toast(a, tr("Could not start Live view"), 3000);
+            app_toast(a, tr("Couldn't start Live view"), 3000);
             return;
         }
         with(|s| {
@@ -1367,7 +1364,7 @@ fn live_tick(a: &mut App, now: u32) {
         // (the card keeps its code fresh: it waits there)
         live_view_stop(a, false);
         // TRANSLATORS: a toast: Live view turned itself off after 10 minutes with nobody watching.
-        app_toast(a, tr("Live view turned off: no one watched for 10 minutes."), 4000,
+        app_toast(a, tr("Live view off: no viewers for 10 minutes."), 4000,
         );
         return;
     }
@@ -1523,14 +1520,14 @@ fn app_leave(a: &mut App) {
             qlog!("leaving: staying this once (holding the power button 4 s again within a minute leaves without the page)");
             // TRANSLATORS: holding the power button 4 s leaves Grimoire, but this page could not be
             // saved (a full storage), so it stays once.
-            app_toast(a, tr("Could not save this page. Hold power 4 s again to leave anyway."), 10000,
+            app_toast(a, tr("Couldn't save page. Hold power 4 s again to leave anyway."), 10000,
             );
             return;
         }
         let mut msg = String::new();
         // TRANSLATORS: the last notice before Grimoire closes, with the page saved, or without it;
         // %s is the app's name, Grimoire.
-        csnprintf!(&mut msg, 256, if saved { tr("Saved. Leaving %s.") } else { tr("Leaving %s without this page.") }, APP_NAME);
+        csnprintf!(&mut msg, 256, if saved { tr("Saved. Leaving %s.") } else { tr("Leaving %s without saving page.") }, APP_NAME);
         app_toast(a, &msg, 3000); // shown by the last flush
     }
     a.running = false;
@@ -1543,7 +1540,7 @@ pub fn app_leave_for_update(a: &mut App) {
     // TRANSLATORS: the last notice before Grimoire closes for an update (Settings > Updates): KPM
     // installs it, then Grimoire starts again; or, opened from KOReader, KOReader comes back and
     // opens the new one next time.
-    app_toast(a, if hosted { tr("Updating. Open Grimoire from KOReader again in a moment.") } else { tr("Updating. Grimoire starts again by itself.") }, 3000,
+    app_toast(a, if hosted { tr("Updating. Reopen Grimoire from KOReader in a moment.") } else { tr("Updating. Grimoire restarts by itself.") }, 3000,
     );
     a.running = false;
 }
@@ -1646,13 +1643,13 @@ fn poll_jobs(a: &mut App) -> i32 {
     if got > 0 {
         let mut msg = String::new();
         // TRANSLATORS: a folder of page pictures (grimoire/import/<name>) became a new notebook.
-        csnprintf!(&mut msg, 256, ng_("Imported a notebook of %d page.", "Imported a notebook of %d pages.", pages as i64), pages);
+        csnprintf!(&mut msg, 256, ng_("Imported notebook (%d page).", "Imported notebook (%d pages).", pages as i64), pages);
         app_toast(a, &msg, 8000);
     } else if got < 0 {
         let mut msg = String::new();
         // TRANSLATORS: a folder of page pictures could not become a notebook; %s is the log file
         // that says why. The folder stays where it was.
-        csnprintf!(&mut msg, 256, tr("Could not import a folder of pages (see %s)."), "grimoire.log");
+        csnprintf!(&mut msg, 256, tr("Couldn't import page folder (see %s)."), "grimoire.log");
         app_toast(a, &msg, 8000);
     }
     0
@@ -1706,25 +1703,18 @@ fn app_tick_screens(a: &mut App, now: u32) {
     }
     wifi_tick();
     book_tick(a);
-    if a.shortcuts_upgraded && !a.asleep {
-        a.shortcuts_upgraded = false;
-        // TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines) once, at the first start of a new
-        // version, when shortcuts.ini was the starter map an earlier version wrote (nobody had edited it): it has
-        // this version's keys now.
-        app_toast(a, tr("Keyboard shortcuts: the new starter keys are in shortcuts.ini."), 4000);
-    }
     let bg = poll_jobs(a);
     if bg != 0 {
         let mut msg = String::new();
         // TRANSLATORS: a PDF saved in the background, and where (the Kindle's folder of them).
         if bg > 0 { csnprintf!(&mut msg, 256, tr("PDF saved to %s"), "grimoire/PDFs"); }
-        app_toast(a, if bg > 0 { msg.as_str() } else { tr("Could not save the PDF") }, 2500,
+        app_toast(a, if bg > 0 { msg.as_str() } else { tr("Couldn't save PDF") }, 2500,
         );
     }
     if store_take_corrupt_count() > 0 {
         let mut msg = String::new();
         // TRANSLATORS: a page that could not be read; %s is the log file that says which.
-        csnprintf!(&mut msg, 256, tr("A damaged page was set aside; a blank one took its place (see %s)"), "grimoire.log");
+        csnprintf!(&mut msg, 256, tr("Damaged page replaced with a blank one (see %s)"), "grimoire.log");
         app_toast(a, &msg, 6000);
     }
     // A short power press the power service did not follow with a sleep announcement. If it is in
@@ -2462,7 +2452,7 @@ pub fn app_request_sleep(a: &mut App) {
 pub fn app_toggle_shortcuts(a: &mut App) {
     let path = cformat!("%s/shortcuts.ini", &store_root());
     if !a.settings.shortcuts_enabled && shortcuts_write_defaults(&path) != 0 {
-        app_toast(a, tr("Could not save shortcuts.ini"), 5000);
+        app_toast(a, tr("Couldn't save shortcuts.ini"), 5000);
         return;
     }
     a.settings.shortcuts_enabled = !a.settings.shortcuts_enabled;
@@ -2505,7 +2495,7 @@ pub fn app_global_action(a: &mut App, action: i32, src: ActionSrc) -> bool {
             let level = if warm { warmth } else { light };
             if level < 0 {
                 // TRANSLATORS: light action before its cached level is known; toast, 1700 px at 44 px.
-                app_toast(a, tr("Light not ready yet."), 2000);
+                app_toast(a, tr("Light not ready."), 2000);
                 return true;
             }
             let up = action == SHORTCUT_LIGHT_UP || action == SHORTCUT_WARMTH_UP;
@@ -2521,7 +2511,7 @@ pub fn app_global_action(a: &mut App, action: i32, src: ActionSrc) -> bool {
                 if caps.has_orientation { a.pending_rotation = caps.orientation; }
             } else { a.pending_rotation = -1; }
             // TRANSLATORS: rotation action feedback, toast, 1700 px at 44 px bold.
-            msg.push_str(if a.settings.rotation_lock != 0 { tr("Rotation locked.") } else { tr("Rotation follows the Kindle.") });
+            msg.push_str(if a.settings.rotation_lock != 0 { tr("Rotation locked.") } else { tr("Rotation follows Kindle.") });
         }
         SHORTCUT_PINCH_ZOOM => {
             a.settings.pinch_zoom = !a.settings.pinch_zoom;
@@ -2536,7 +2526,7 @@ pub fn app_global_action(a: &mut App, action: i32, src: ActionSrc) -> bool {
         SHORTCUT_SIDE_BUTTON => {
             a.settings.side_button = (a.settings.side_button + 1) % 4;
             // TRANSLATORS: pen button setting after cycling; toast, 1700 px at 44 px, up to two lines.
-            const ROWS: [&str; 4] = [n_("Holding the pen button while writing does nothing"), n_("Holding the pen button while writing erases"), n_("Holding the pen button while writing highlights"), n_("Holding the pen button while writing draws white")];
+            const ROWS: [&str; 4] = [n_("Pen button while writing: nothing"), n_("Pen button while writing: erases"), n_("Pen button while writing: highlights"), n_("Pen button while writing: draws white")];
             msg.push_str(tr(ROWS[a.settings.side_button as usize]));
         }
         SHORTCUT_MIRROR_PDF => {
@@ -2556,7 +2546,7 @@ pub fn app_global_action(a: &mut App, action: i32, src: ActionSrc) -> bool {
         SHORTCUT_GESTURES => {
             a.settings.gestures = !a.settings.gestures;
             // TRANSLATORS: gestures action feedback; off names the recovery menu. Toast, two 1700 px lines at 44 px.
-            msg.push_str(if a.settings.gestures { tr("Gestures on.") } else { tr("Gestures off. Settings > Gestures turns them back on.") });
+            msg.push_str(if a.settings.gestures { tr("Gestures on.") } else { tr("Gestures off. Turn on in Settings > Gestures.") });
         }
         SHORTCUT_SHORTCUTS => {
             app_toggle_shortcuts(a);

@@ -1,3 +1,4 @@
+# rust-only
 # settings: status_mode=1
 # env: GRIMOIRE_HOST=koreader
 # env: GRIMOIRE_BOOK=1
@@ -10,5 +11,5 @@ expect screen is library
 expect annotate.book is failed
 expect annotate.book_leftover is 0
 expect library.items is 0
-expect toast is Could not open the book KOReader sent: a page's picture does not read.
+expect toast is Couldn't open book: a page image is unreadable.
 quit

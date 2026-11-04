@@ -42,19 +42,15 @@ const LASSO_MAX: usize = 4096;
 /// The most targets kept for Link to...'s Recent targets (it offers four of them).
 const RECENT_MAX: usize = 8;
 
-// settings.hints' bits (docs/FORMAT.md): the one-time tips shown. Bits 5 and 7 are for later versions.
+// settings.hints' bits (docs/FORMAT.md): the one-time tips shown. Bits 2 (the link areas tip), 5 (the first
+// shape), 6 (the pan hint) and 8 (the sideways hint) were tips 2.0.0-beta.2 left out (the owner's toast pass,
+// 2026-11-04): no longer written, a settings.ini may still have them set.
 /// the first notebook that opened after the update said what two fingers up and down do now
 const HINT_FIRST_OPEN: i32 = 1 << 0;
 /// the first link made said that a finger's tap follows it and a hold opens its card
 const HINT_FIRST_LINK: i32 = 1 << 1;
-/// the eye was turned on: dotted boxes show where a finger tap follows a link
-const HINT_EYE: i32 = 1 << 2;
-/// two fingers dragged the page (a pan) while two fingers up and down are gestures
-const HINT_PAN: i32 = 1 << 6;
 /// the first unrecorded finger drawing faded away with its one-time explanation
 const HINT_FSHAPE: i32 = 1 << 7;
-/// the editor shows the whole page sideways now (landscape_fit), for an owner who had the width
-const HINT_SIDEWAYS: i32 = 1 << 8;
 /// settings.hints' bits 3 and 4: how many times the Links bar showed its second header line (0 to 3)
 const HINT_BAR_SHIFT: i32 = 3;
 const HINT_BAR_MASK: i32 = 3;
@@ -326,7 +322,7 @@ struct SharedPaper {
 struct ShapeHold {
     anchor: (f32, f32), anchor_k: u32, still_fired: bool, burst: bool,
     preview: Option<ShapePreview>, last_lift: Option<PenSample>,
-    last_kind: ShapeKind, last_reason: ShapeReason, tip_pending: bool, kept: u32,
+    last_kind: ShapeKind, last_reason: ShapeReason, kept: u32,
 }
 struct ShapePreview { saved: Canvas, region: Rect, raw_n: usize, stroke: Box<Stroke> }
 
@@ -507,8 +503,6 @@ pub struct EditorState {
     /// the two fingers are a session touchgest classified (PinchBegin.value 1): its moves say zoom (1),
     /// pan (2) or swipe (3); the legacy pinch (the runner's `pinch`) decides itself
     pinch_classified: bool,
-    /// a classified pan moved the page this session: the pan hint is due when it ends
-    pinch_panned: bool,
     /// The pages the open notebook was left from by a link, the Pages view or Find, newest last, at most
     /// BACK_MAX (page ids): Back to the page before pops it. Memory only; a page turn does not push.
     back: Vec<u32>,
@@ -892,13 +886,12 @@ fn map_pointer(a: &mut App, phase: i32, ev: &InEvent) {
                 if nav_set_name(&mut s.nav, pid, text.as_str().trim()) == 0 && nav_save(s.nb.id.as_str(), &mut s.nav, &s.nb) == 0 {
                     s.changed = true;
                     let open = s.open_pid();
-                    let number = s.nb.page_ids.iter().position(|&p| p == pid).map_or(0, |i| i + 1);
+                    // (the node shows its new name: no toast, the owner, 2026-11-04; one left up from before goes)
                     with_map(a, |map, a, nb, nav| mapview_rebuild(map, a, nb, nav, open));
-                    let msg = cformat!(tr("Page %d is named %s."), number as i32, text.as_str().trim());
-                    app_toast(a, &msg, 2500);
+                    app_toast_dismiss(a);
                 } else {
                     nav_load(s.nb.id.as_str(), &mut s.nav);
-                    app_toast(a, tr("Could not save the page name."), 3000);
+                    app_toast(a, tr("Couldn't save page name."), 3000);
                 }
             }
             compose_all(a, RefreshMode::Ui);
@@ -1795,25 +1788,6 @@ pub fn editor_fit_changed(a: &mut App, in_editor: bool) {
     }
 }
 
-/// The toast that says what flipping landscape_fit did (2500 ms): the new setting sideways, and upright
-/// where it applies to a later turn only.
-pub fn editor_fit_toast(a: &mut App) {
-    if a.w <= a.h {
-        // TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): the Display sheet's
-        // "Sideways, show the whole page" was changed with the Kindle upright, where it makes no
-        // difference yet.
-        app_toast(a, tr("Applies when the Kindle is sideways."), 2500);
-    } else if a.settings.landscape_fit {
-        // TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): the editor now shows
-        // the whole page when the Kindle is turned sideways.
-        app_toast(a, tr("Sideways shows the whole page."), 2500);
-    } else {
-        // TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): the editor now fills the
-        // width with the page when the Kindle is turned sideways.
-        app_toast(a, tr("Sideways fills the width."), 2500);
-    }
-}
-
 fn to_page(s: &EditorState, sx: f32, sy: f32, px: &mut f32, py: &mut f32) {
     *px = sx / s.zoom + s.ox;
     *py = sy / s.zoom + s.oy;
@@ -2309,13 +2283,8 @@ fn eye_bounds(a: &mut App) -> Rect {
 /// composition avoids split refreshes and restores anything the previous overlay covered.
 fn areas_toggle(a: &mut App, _button: Rect) {
     a.settings.link_areas = !a.settings.link_areas;
-    let tip = a.settings.link_areas && a.settings.hints & HINT_EYE == 0;
-    if tip { a.settings.hints |= HINT_EYE; }
     settings_save(&a.settings);
     compose_all(a, RefreshMode::Ui);
-    if tip {
-        app_toast(a, tr("Dotted outlines show where a finger tap follows a link. They never print."), 4000);
-    }
 }
 
 // Rebuild a screen rect from the layers.
@@ -2683,7 +2652,7 @@ fn save_page(a: &mut App) -> bool {
             None => false,
         };
         if failed {
-            app_toast(a, tr("Could not save this page. Is the storage full?"), 5000,
+            app_toast(a, tr("Couldn't save page. Is the storage full?"), 5000,
             );
             return false;
         }
@@ -2916,7 +2885,7 @@ fn loading_toast_due(a: &App) -> bool {
 // A page from a newer Grimoire (or one this build cannot fully read) is shown as far as it can
 // be and never changed: writing, erasing, clearing and paper changes are refused with this.
 // TRANSLATORS: in a toast (about 1700 px at 44 px in bold, or two lines).
-const K_READONLY_MSG: &str = n_("This page was made by a newer Grimoire. It is read-only here.");
+const K_READONLY_MSG: &str = n_("This page was made by a newer version, and will be viewed as read-only.");
 
 fn refuse_readonly(a: &mut App) -> bool {
     if !ed(a).open_page().is_some_and(|p| p.readonly) {
@@ -3041,7 +3010,7 @@ fn go_to_page(a: &mut App, index: i32) -> bool {
     let index = clampi(index, 0, s.nb.npages() - 1);
     let Some(np) = s.page_at(index) else {
         compose_all(a, RefreshMode::Full);
-        app_toast(a, tr("Could not open that page"), 3000);
+        app_toast(a, tr("Couldn't open page"), 3000);
         return false;
     };
     live_reset();
@@ -3235,7 +3204,7 @@ pub fn editor_open_notebook(a: &mut App, id: &str) {
     // stopped compaction leaves each page file as it was; the list keeps the pages for later).
     bg_cancel_notebook(id);
     if store_load_info(id, &mut ed(a).nb) != 0 {
-        app_toast(a, tr("Could not open that notebook"), 3000);
+        app_toast(a, tr("Couldn't open notebook"), 3000);
         return;
     }
     let s = ed(a);
@@ -3249,7 +3218,7 @@ pub fn editor_open_notebook(a: &mut App, id: &str) {
     s.page = s.page_at(s.index);
     if s.page.is_none() {
         s.free_histories();
-        app_toast(a, tr("Could not open that notebook"), 3000);
+        app_toast(a, tr("Couldn't open notebook"), 3000);
         return;
     }
     s.open = true;
@@ -3272,14 +3241,9 @@ pub fn editor_open_notebook(a: &mut App, id: &str) {
     }
     render_page_open(a);
     ed(a).view_w = 0; // set the view up afresh on enter
-    let sideways_seen = a.settings.hints & HINT_SIDEWAYS;
     app_switch(a, ScreenId::Editor);
     arrive_readonly(a);
-    // One tip at a time: a notebook that came up sideways told the owner why (editor_enter, a toast of six
-    // seconds), and the first-open tip would take its place. It waits for the next open instead.
-    if a.settings.hints & HINT_SIDEWAYS == sideways_seen {
-        first_open_tip(a);
-    }
+    first_open_tip(a);
 }
 
 // The owner who updated from the build before is told once, as the first notebook comes up, what two
@@ -3295,7 +3259,7 @@ fn first_open_tip(a: &mut App) {
     settings_save(&a.settings);
     // TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines), shown once after an update: what
     // two fingers dragged up and down on a page do now.
-    app_toast(a, tr("New: two fingers up show this page's links. Two fingers down open the Graph."), 6000,
+    app_toast(a, tr("New: two fingers down for the Graph, up for page links."), 6000,
     );
 }
 
@@ -3615,7 +3579,6 @@ fn draw_end_stroke(a: &mut App) {
     if let Some(preview) = snapped {
         s.cur = Some(preview.stroke);
         s.sh.kept=s.sh.kept.saturating_add(1);
-        s.sh.tip_pending = true;
         if shape_log {qlog!("shape: kept");}
         s.settle = rect_union(s.settle, preview.region);
         live_reset();
@@ -3939,9 +3902,9 @@ fn clear_page(a: &mut App) {
     if refuse_readonly(a) {
         return;
     }
+    // (an empty page stays as it is: nothing to clear, no step, no toast)
     if ed(a).open_page().is_none_or(|p| p.strokes.is_empty())
         && nav_links_of(&ed_ref(a).nav,ed_ref(a).open_pid(),&mut 0)==0 {
-        app_toast(a, tr("This page is already empty"), 1500);
         return;
     }
     let s = ed(a);
@@ -3949,19 +3912,19 @@ fn clear_page(a: &mut App) {
     let ip = s.page_ix().unwrap();
     let pid=s.open_pid();
     if !s.nav.links_writable {
-        app_toast(a,tr("Could not save the links. The page was not cleared."),3000);return;
+        app_toast(a,tr("Couldn't save links. Page unchanged."),3000);return;
     }
     let mut records=Vec::new();
     let count=nav_links_of(&s.nav,pid,&mut 0) as usize;
     if count>0 {
         if records.try_reserve_exact(count).is_err() {
-            app_toast(a,tr("Could not save the links. The page was not cleared."),3000);return;
+            app_toast(a,tr("Couldn't save links. Page unchanged."),3000);return;
         }
         for link in s.nav.links.iter().filter(|link|link.pid==pid) {records.push((Some(link_rec(link)),None));}
         for (link,_) in &records {nav_link_remove(&mut s.nav,pid,link.as_ref().unwrap().seed);}
         if nav_save_links(s.nb.id.as_str(),&mut s.nav,&s.nb)!=0 {
             nav_load(s.nb.id.as_str(),&mut s.nav);migration_reset(s);
-            app_toast(a,tr("Could not save the links. The page was not cleared."),3000);return;
+            app_toast(a,tr("Couldn't save links. Page unchanged."),3000);return;
         }
         s.links_dirty=false;
     }
@@ -3974,7 +3937,7 @@ fn clear_page(a: &mut App) {
     compose_all(a, RefreshMode::Full);
     mark_changed(ed(a));
     repaint_panel(a, RefreshMode::Full);
-    app_toast(a, tr("Page cleared"), 1500);
+    app_toast_dismiss(a); // (no "Page cleared": the owner, 2026-11-04; a toast left up from before goes)
 }
 
 // Whether a sheet is in front of the page: the Pages view, the tool picker, Custom music, Display
@@ -4386,11 +4349,17 @@ fn pages_delete(a: &mut App) {
     if k == 0 {
         return;
     }
+    // (no toast when done: the owner, 2026-11-04. One left up from before goes first, so one the delete raises,
+    // a page that could not be saved, stays.)
+    app_toast_dismiss(a);
+    let s = ed(a);
     if k == n {
         // A notebook keeps at least one page: add a fresh blank one to stay behind.
         let paper = s.open_page().map_or(s.nb.paper, |p| p.paper);
         if store_add_page(&mut s.nb, n, paper) != 0 {
-            app_toast(a, tr("Could not delete those pages"), 2500);
+            // TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): Delete in the Pages view
+            // could not delete the ticked pages (the blank page a notebook keeps could not be added).
+            app_toast(a, tr("Couldn't delete selection."), 2500);
             return;
         }
     }
@@ -4429,11 +4398,8 @@ fn pages_delete(a: &mut App) {
     if s.nav.links_writable && nav_save_links(s.nb.id.as_str(), &mut s.nav, &s.nb) != 0 {
         qlog!("index: deleted pages' links left for a later save");
     }
-    let mut msg = String::new();
-    // TRANSLATORS: deleted pages go to the trash folder on the Kindle's storage (%s).
-    csnprintf!(&mut msg, 256, ng_("Deleted %d page (kept in %s)", "Deleted %d pages (kept in %s)", k as i64), k, "grimoire/trash");
+    // (the pages' files went to grimoire/trash; the view shows them gone)
     compose_all(a, RefreshMode::Full);
-    app_toast(a, &msg, 2500);
 }
 
 // A page added (or copied) at index `at` this session: the open page moves along if it was there or
@@ -4460,7 +4426,7 @@ fn pages_new(a: &mut App, at: i32) {
     let s = ed(a);
     let paper = s.open_page().map_or(s.nb.paper, |p| p.paper);
     if at < 1 || store_add_page(&mut s.nb, at, paper) != 0 {
-        app_toast(a, tr("Could not add a page"), 3000);
+        app_toast(a, tr("Couldn't add page"), 3000);
         return;
     }
     pages_added(a, at);
@@ -4473,6 +4439,9 @@ fn pages_copy(a: &mut App, index: i32) {
     if !save_page(a) {
         return;
     }
+    // (no confirmation: the owner, 2026-11-04. A toast left up from before goes first, so one the copy raises
+    // stays: the copy opening read-only says so.)
+    app_toast_dismiss(a);
     // The source page read first (PHASE2 9.2): it is migrated as it is read, so the copy takes its areas. (One
     // that does not read keeps legacy links; they are copied anyway and find the copy's ink: same strokes,
     // same seeds.)
@@ -4480,7 +4449,7 @@ fn pages_copy(a: &mut App, index: i32) {
     if store_duplicate_page(&mut ed(a).nb, index, index + 1) != 0 {
         // TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): Copy page in the
         // Pages view could not copy the page (the storage is full, or the notebook has 2000 pages).
-        app_toast(a, tr("Could not copy that page"), 3000);
+        app_toast(a, tr("Couldn't copy page"), 3000);
         return;
     }
     // Copy page keeps links: the copy gets every link of its source, same seed, target and area. Not an undo
@@ -4510,15 +4479,9 @@ fn pages_copy(a: &mut App, index: i32) {
     if links_failed {
         // TRANSLATORS: a toast as the copy Copy page made opens (about 1700 px at 44 px in bold, or two
         // lines): the page was copied, but the links drawn on it could not be saved for the copy.
-        app_toast(a, tr("The copy has no links: they could not be saved."), 3000,
+        app_toast(a, tr("Copied without links: couldn't save them."), 3000,
         );
-        return;
     }
-    let mut msg = String::new();
-    // TRANSLATORS: a toast as the copy Copy page made opens (about 1700 px at 44 px in bold, or two
-    // lines): %d is the page it copies.
-    csnprintf!(&mut msg, 160, tr("This page is a copy of page %d."), index + 1);
-    app_toast(a, &msg, 2500);
 }
 
 // Move to... (and a held tile dragged to a gap): the ticked pages, together and in their order, before
@@ -4546,7 +4509,7 @@ fn pages_move(a: &mut App, to: i32) {
     if store_move_pages_undo(&mut s.nb, &ticked, to, &mut s.pv.move_undo) != 0 {
         // TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): Move to... could not save
         // the notebook's new page order (the storage is full).
-        app_toast(a, tr("Could not move those pages."), 3000);
+        app_toast(a, tr("Couldn't move pages."), 3000);
         compose_all(a, RefreshMode::Ui);
         return;
     }
@@ -4564,12 +4527,10 @@ fn pages_move(a: &mut App, to: i32) {
     let (cols, rows) = pagesview_grid(&ed_ref(a).pv, a);
     let s = ed(a);
     s.pv.screen = at / (cols * rows).max(1);
+    // (the view shows the pages where they went, with no toast: the owner, 2026-11-04; one left up from before,
+    // a failed try's, goes)
     compose_all(a, RefreshMode::Full);
-    let n = moved.len() as i32;
-    // TRANSLATORS: a toast as Move to... is done (about 1700 px at 44 px in bold, or two lines): %d pages
-    // moved; they now start at page %d.
-    let msg = cformat!(ng_("Moved %d page: it is page %d now.", "Moved %d pages: they start at page %d now.", n as i64), n, at + 1);
-    app_toast(a, &msg, 2500);
+    app_toast_dismiss(a);
 }
 
 // The bottom row's Undo, right after a move (or the `undo` action over the Pages view): the pages back in the
@@ -4591,7 +4552,7 @@ fn pages_undo_move(a: &mut App) {
         }
         // TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): the Pages view's Undo could
         // not put the moved pages back (the storage is full).
-        app_toast(a, tr("Could not undo the move."), 3000);
+        app_toast(a, tr("Couldn't undo move."), 3000);
         compose_all(a, RefreshMode::Ui);
         return;
     }
@@ -4610,12 +4571,10 @@ fn pages_undo_move(a: &mut App) {
     let s = ed(a);
     s.pv.screen = at / (cols * rows).max(1);
     compose_all(a, RefreshMode::Full);
-    // TRANSLATORS: a toast as the Pages view's Undo put moved pages back where they were (about 1700 px
-    // at 44 px in bold).
-    app_toast(a, tr("Move undone: the pages are back in their order."), 2500);
+    app_toast_dismiss(a); // (no confirmation; a toast left up from before, a failed try's, goes)
 }
 
-/// From how many pages New page's batch shows "Adding N pages..." before it writes them (a batch under it
+/// From how many pages New page's batch takes its pad down (one refresh) before it writes them (a batch under it
 /// takes under half a second on a Kindle, and keeps its one refresh).
 const ADD_BUSY_PAGES: i32 = 25;
 // The writing a batch of new pages does, from the Pages view's New page (a tap is a batch of one, its count
@@ -4626,12 +4585,12 @@ const ADD_BUSY_PAGES: i32 = 25;
 // (store_add_pages: one notebook.ini write; a failure adds none). An annotated notebook takes them as it
 // takes New page's (note pages). The open page stays open (its index follows it) and the batch is the
 // notebook's Undo record (pv.add_undo), which the Pages view's bottom row offers while its pages are still
-// blank. `redraw` draws the screen as it will be without the pad (the batch's pad has closed): first, under
-// "Adding N pages...", for a large batch, and on a failure. False when nothing was added (a toast said so).
+// blank. `redraw` draws the screen as it will be without the pad (the batch's pad has closed): first, for a
+// large batch, and on a failure. False when nothing was added (a toast said so).
 fn add_pages_write(a: &mut App, at: i32, n: i32, redraw: fn(&mut App)) -> bool {
     if store_room_for_pages(&ed_ref(a).nb) < n {
         // (New page tapped in a full notebook: its count pad, held, says the same)
-        app_toast(a, &cformat!(tr("This notebook is full: it has %d pages."), STORE_MAX_PAGES as i32), 3000);
+        app_toast(a, &cformat!(tr("Notebook full with %d pages."), STORE_MAX_PAGES as i32), 3000);
         redraw(a);
         return false;
     }
@@ -4641,11 +4600,9 @@ fn add_pages_write(a: &mut App, at: i32, n: i32, redraw: fn(&mut App)) -> bool {
     }
     if n >= ADD_BUSY_PAGES {
         // A batch this large takes a while (each page file is written and synced: 15 to 25 ms on a Kindle):
-        // the pad goes and a toast says so first, in one refresh, so the screen never sits on the pad.
+        // the pad goes first, in one refresh, so the screen never sits on the pad. No toast says so meanwhile
+        // (the owner marked "Adding N pages..." for removal, 2026-11-04).
         redraw(a);
-        // TRANSLATORS: a toast while New page's batch is being written (about 1700 px at 44 px in bold, or
-        // two lines): %d blank pages are being added; it can take a minute for many.
-        app_toast(a, &cformat!(ng_("Adding %d page...", "Adding %d pages...", n as i64), n), 120000);
         app_flush(a);
     }
     let s = ed(a);
@@ -4657,7 +4614,7 @@ fn add_pages_write(a: &mut App, at: i32, n: i32, redraw: fn(&mut App)) -> bool {
     if failed {
         // TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): New page's batch could not
         // add the pages (the storage is full); none was added.
-        app_toast(a, tr("Could not add those pages: none was added."), 3000);
+        app_toast(a, tr("Couldn't add pages."), 3000);
         redraw(a);
         return false;
     }
@@ -4704,11 +4661,9 @@ fn pages_add_batch(a: &mut App, at: i32, n: i32) {
     let (cols, rows) = pagesview_grid(&ed_ref(a).pv, a);
     let s = ed(a);
     s.pv.screen = at / (cols * rows).max(1);
+    // (its tiles show, marked new, with no toast: the owner, 2026-11-04; one left up from before goes)
     compose_all(a, RefreshMode::Ui);
-    // TRANSLATORS: a toast as New page's batch is done (about 1700 px at 44 px in bold, or two lines): %d
-    // blank pages added; the first of them is page %d.
-    let msg = cformat!(ng_("Added %d page: it is page %d.", "Added %d pages: they start at page %d.", n as i64), n, at + 1);
-    app_toast(a, &msg, 2500);
+    app_toast_dismiss(a);
 }
 
 // ---- the toolbar's count pad (owner, 2026-11-03) ----
@@ -4733,7 +4688,7 @@ fn add_pad_open(a: &mut App) {
     let room = store_room_for_pages(&ed_ref(a).nb);
     if room < 1 {
         // (the Pages view's toast for New page held in a full notebook)
-        app_toast(a, &cformat!(tr("This notebook is full: it has %d pages."), STORE_MAX_PAGES as i32), 3000);
+        app_toast(a, &cformat!(tr("Notebook full with %d pages."), STORE_MAX_PAGES as i32), 3000);
         return;
     }
     // (the Pages view's title for its count pad: the same pad)
@@ -4756,7 +4711,8 @@ fn add_pad_cancel(a: &mut App) {
 }
 
 // What a key of the toolbar's count pad did: Done adds the count after the open page (toolbar_add_batch),
-// Cancel closes it, and a count held at what the notebook can take says so.
+// Cancel closes it. A count held at what the notebook can take shows as that count (no toast: the owner,
+// 2026-11-04).
 fn add_pad_result(a: &mut App, r: KbResult) {
     match r {
         KbResult::Done => {
@@ -4764,13 +4720,7 @@ fn add_pad_result(a: &mut App, r: KbResult) {
             toolbar_add_batch(a, n);
         }
         KbResult::Cancel => add_pad_cancel(a),
-        _ => {
-            if std::mem::take(&mut ed(a).add_kb.clamped) {
-                let room = ed_ref(a).add_kb.count_max;
-                // (the Pages view's count pad's toast)
-                app_toast(a, &cformat!(ng_("This notebook has room for %d more page.", "This notebook has room for %d more pages.", room as i64), room), 3000);
-            }
-        }
+        _ => {}
     }
 }
 
@@ -4783,8 +4733,8 @@ fn add_pad_pointer(a: &mut App, ph: i32, ev: &InEvent) {
 }
 
 // The toolbar's batch: `n` blank pages right after the open page (on the last page, where the toolbar's +
-// adds one: the end), the open page staying open and on screen; a toast says how many and where, and that
-// the Pages view's bottom row has their Undo (the editor's Undo is the page's own history).
+// adds one: the end), the open page staying open and on screen, the panel's page count showing them; the Pages
+// view's bottom row has their Undo (the editor's Undo is the page's own history).
 fn toolbar_add_batch(a: &mut App, n: i32) {
     let r = add_pad_area(a);
     keyboard_close(&mut ed(a).add_kb);
@@ -4806,11 +4756,6 @@ fn toolbar_add_batch(a: &mut App, n: i32) {
     let u = ed_ref(a).hits.h.iter().filter(|h| h.id == P_PAGES || h.id == P_NEXT).fold(r, |u, h| rect_union(u, h.r));
     compose(a, r);
     app_invalidate(a, u, RefreshMode::Ui);
-    // TRANSLATORS: a toast as the toolbar's batch of new pages is done (about 1700 px at 44 px in bold, or two
-    // lines): %d blank pages added right after the page that stays open; the first of them is page %d. The
-    // Pages view (its bottom row's Undo) takes them back while they are still blank.
-    let msg = cformat!(ng_("Added %d page after this one: page %d. Undo it in Pages.", "Added %d pages after this one, from page %d. Undo them in Pages.", n as i64), n, at + 1);
-    app_toast(a, &msg, 3000);
 }
 
 // The bottom row's Undo right after a batch: those pages taken back (store_undo_add_pages) while they are
@@ -4835,7 +4780,7 @@ fn pages_undo_add(a: &mut App) {
         // TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): the Pages view's Undo could
         // not take back the pages a batch added (one was written on, linked or named since, or the storage
         // is full).
-        app_toast(a, tr("Could not undo: those pages are in use."), 3000);
+        app_toast(a, tr("Couldn't undo: pages in use."), 3000);
         compose_all(a, RefreshMode::Ui);
         return;
     }
@@ -4843,7 +4788,6 @@ fn pages_undo_add(a: &mut App) {
     for &pid in &u.added {
         forget_page(s, pid); // (one opened and left blank: its entry goes with it)
     }
-    let n = u.added.len() as i32;
     s.pv.redo = Some(PageRedo::Add(u)); // (the same pages again, by the bottom row's Redo or the redo action)
     s.index = s.nb.page_ids.iter().position(|&p| p == open).map_or(s.index, |i| i as i32);
     s.nb.last_page = s.index;
@@ -4855,9 +4799,7 @@ fn pages_undo_add(a: &mut App) {
     let to = (first - 1).max(0);
     s.pv.screen = to.min(s.nb.npages() - 1) / (cols * rows).max(1);
     compose_all(a, RefreshMode::Ui);
-    // TRANSLATORS: a toast as the Pages view's Undo took back the blank pages a batch added (about 1700 px
-    // at 44 px in bold): %d of them.
-    app_toast(a, &cformat!(ng_("Undone: %d new page taken back.", "Undone: %d new pages taken back.", n as i64), n), 2500);
+    app_toast_dismiss(a); // (no confirmation; a toast left up from before goes)
 }
 
 // The bottom row's Redo, right after an Undo (or the `redo` action over the Pages view): the move again, in the
@@ -4887,7 +4829,7 @@ fn pages_redo(a: &mut App) {
         }
         // TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): the Pages view's Redo could not
         // do the page move or the new pages again (the storage is full).
-        app_toast(a, tr("Could not redo that."), 3000);
+        app_toast(a, tr("Couldn't redo."), 3000);
         compose_all(a, RefreshMode::Ui);
         return;
     }
@@ -4904,28 +4846,23 @@ fn pages_redo(a: &mut App) {
         s.pv.sel.resize(npages, false);
     }
     pagesview_untick(&mut s.pv);
-    let (at, msg) = match r {
+    let at = match r {
         PageRedo::Move(u) => {
             let at = u.before.iter().zip(&u.after).position(|(b, f)| b != f).unwrap_or(0) as i32;
             s.pv.move_undo = Some(u);
-            // TRANSLATORS: a toast as the Pages view's Redo moved pages again as the undone move had (about
-            // 1700 px at 44 px in bold).
-            (at, tr("Move redone: the pages are where you moved them.").to_string())
+            at
         }
         PageRedo::Add(u) => {
             let at = s.nb.page_ids.iter().position(|p| u.added.contains(p)).unwrap_or(0) as i32;
-            let n = u.added.len() as i32;
             s.pv.add_undo = Some(u);
-            // TRANSLATORS: a toast as the Pages view's Redo added again the blank pages its Undo took back (about
-            // 1700 px at 44 px in bold, or two lines): %d of them; the first is page %d.
-            (at, cformat!(ng_("Redone: %d new page again, page %d.", "Redone: %d new pages again, from page %d.", n as i64), n, at + 1))
+            at
         }
     };
     let (cols, rows) = pagesview_grid(&ed_ref(a).pv, a);
     let s = ed(a);
     s.pv.screen = at / (cols * rows).max(1);
     compose_all(a, RefreshMode::Full);
-    app_toast(a, &msg, 2500);
+    app_toast_dismiss(a); // (no confirmation; a toast left up from before, a failed try's, goes)
 }
 
 // The `undo` and `redo` actions (keys, a controller, gestures) with the Pages view's grid in front: its own Undo
@@ -4970,7 +4907,7 @@ fn pages_copy_to_pick(a: &mut App) {
         compose_all(a, RefreshMode::Full);
     } else {
         ed(a).copy_pids.clear();
-        app_toast(a, tr("Could not read the notebooks."), 3000);
+        app_toast(a, tr("Couldn't read notebooks."), 3000);
     }
 }
 
@@ -4991,7 +4928,7 @@ fn pages_copy_to(a: &mut App, id: &str, at: i32, pids: &[u32]) {
         || store_copy_pages_to(&s.nb, pids, &mut dst, at, &mut out) != 0 {
         // TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): Copy to notebook... copied
         // nothing (the storage is full, a page does not read, or that notebook has 2000 pages).
-        app_toast(a, tr("Could not copy those pages."), 3000);
+        app_toast(a, tr("Couldn't copy pages."), 3000);
         return;
     }
     let (mut sw, mut sh, mut dw, mut dh) = (0, 0, 0, 0);
@@ -5023,16 +4960,16 @@ fn pages_copy_to(a: &mut App, id: &str, at: i32, pids: &[u32]) {
     }
     pagesview_untick(&mut ed(a).pv);
     compose_all(a, RefreshMode::Full);
-    let n = out.len() as i32;
-    let msg = if nav_ok {
-        // TRANSLATORS: a toast as Copy to notebook... is done (about 1700 px at 44 px in bold, or two
-        // lines): %d pages copied into the notebook named %s.
-        cformat!(ng_("Copied %d page to %s.", "Copied %d pages to %s.", n as i64), n, dst.name.as_str())
-    } else {
-        // TRANSLATORS: the same toast when the page names and links could not be saved there.
-        cformat!(ng_("Copied %d page to %s, without its names and links.", "Copied %d pages to %s, without their names and links.", n as i64), n, dst.name.as_str())
-    };
-    app_toast(a, &msg, 3000);
+    // (done, no toast: the owner, 2026-11-04; only names and links that could not be saved there say so, and a
+    // toast left up from before goes)
+    app_toast_dismiss(a);
+    if !nav_ok {
+        let n = out.len() as i32;
+        // TRANSLATORS: a toast as Copy to notebook... is done (about 1700 px at 44 px in bold, or two lines): %d
+        // pages were copied into the notebook named %s, but their page names and links could not be saved there.
+        let msg = cformat!(ng_("Copied %d page to %s, without its names and links.", "Copied %d pages to %s, without their names and links.", n as i64), n, dst.name.as_str());
+        app_toast(a, &msg, 3000);
+    }
 }
 
 // ---- making a link without ink (PHASE2 6) ----
@@ -5261,7 +5198,7 @@ fn link_arm(a: &mut App, from_bar: bool, redraw: Option<u32>) {
     if !s.nav.links_writable {
         // TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): Add a link was asked while
         // the notebook's links.ini could not be read, so no link can be made.
-        app_toast(a, tr("Links could not be read in this notebook."), 3000);
+        app_toast(a, tr("Couldn't read links in this notebook."), 3000);
         return;
     }
     let pid = s.open_pid();
@@ -5269,7 +5206,7 @@ fn link_arm(a: &mut App, from_bar: bool, redraw: Option<u32>) {
         let mut msg = String::new();
         // TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): Add a link on a page that
         // has the most links a page may have; %d is that number (64).
-        csnprintf!(&mut msg, 160, tr("This page has %d links: delete one to add another."), NAV_LINKS_PER_PAGE);
+        csnprintf!(&mut msg, 160, tr("Link limit (%d) reached: delete one first."), NAV_LINKS_PER_PAGE);
         app_toast(a, &msg, 3000);
         return;
     }
@@ -5454,7 +5391,7 @@ fn lasso_end(a: &mut App) {
         lasso_cancel(a);
         // TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): after Add a link, the
         // stroke drawn was too small to be the link's box.
-        app_toast(a, tr("Too small for a link: draw around what links."), 3000);
+        app_toast(a, tr("Link area too small."), 3000);
         return;
     }
     if let Some(seed) = s.lm.redraw {
@@ -5580,7 +5517,7 @@ fn lt_result(a: &mut App, r: LbResult, d: Rect) {
         }
         LbResult::Search => find_pick_open(a),
         LbResult::Choose => link_choose(a),
-        LbResult::Cancel => link_cancel(a, true),
+        LbResult::Cancel => link_cancel(a),
         LbResult::Pager => {
             let g = ed(a).lt.grid;
             compose(a, g);
@@ -5596,6 +5533,9 @@ fn link_choose(a: &mut App) {
     if ed_ref(a).lt.no_pages {
         return;
     }
+    // (no "Where does the link go?": the owner, 2026-11-04. A toast left up goes first, so a page that could not
+    // be saved still says so.)
+    app_toast_dismiss(a);
     ed(a).lt.hidden = true;
     save_page(a);
     let index = ed(a).index;
@@ -5611,9 +5551,6 @@ fn link_choose(a: &mut App) {
         return;
     }
     compose_all(a, RefreshMode::Full);
-    // TRANSLATORS: a toast over the Pages view (about 1700 px at 44 px in bold, or two lines): the
-    // box of a new link is drawn; tap the page (or the Index) it goes to.
-    app_toast(a, tr("Where does the link go? Tap its page."), 3000);
 }
 
 /// New page... (6.8): a keyboard names the page to add, docked where Link to... is (at the top exactly when it
@@ -5670,7 +5607,7 @@ fn newpage_done(a: &mut App, name: &str) {
         let u = rect_union(kb_area, s.lt.rect);
         compose(a, u);
         app_invalidate(a, u, RefreshMode::Ui);
-        app_toast(a, tr("Could not add a page"), 3000);
+        app_toast(a, tr("Couldn't add page"), 3000);
         return;
     }
     let pid = s.nb.page_ids[n as usize];
@@ -5686,7 +5623,7 @@ fn newpage_done(a: &mut App, name: &str) {
     csnprintf!(&mut target, NAV_TARGET_LEN, "p%u", pid);
     link_pick_as(a, &target, n + 1);
     if name_failed {
-        app_toast(a, tr("Could not save the page name."), 3000);
+        app_toast(a, tr("Couldn't save page name."), 3000);
     }
 }
 
@@ -5727,7 +5664,7 @@ fn strip_pointer(a: &mut App, ph: i32, ev: &InEvent) {
         return;
     }
     if !touch_cancelled(ev) && press_is_tap(&s.lm.press, cancel) {
-        link_cancel(a, true);
+        link_cancel(a);
     } else {
         compose(a, cancel);
         app_invalidate(a, cancel, RefreshMode::Fast);
@@ -5784,7 +5721,7 @@ fn link_pick_as(a: &mut App, target: &str, new_page: i32) {
         migration_reset(s);
         lm_close(a, u);
         // TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines).
-        app_toast(a, tr("Could not save the link."), 3000);
+        app_toast(a, tr("Couldn't save link."), 3000);
         if from_bar {
             bar_show(a, false);
         }
@@ -5816,7 +5753,7 @@ fn link_pick_as(a: &mut App, target: &str, new_page: i32) {
         // TRANSLATORS: a toast, once, after the first link is made (about 1700 px at 44 px in bold, or two
         // lines): a finger's tap on the link goes where it goes; a finger held on it opens its card (rename,
         // change, redraw or delete it).
-        app_toast(a, tr("Linked. Tap it with a finger to go there; hold it for more."), 4000,
+        app_toast(a, tr("Linked. Finger tap to go there; hold for more."), 4000,
         );
         return;
     }
@@ -5845,7 +5782,7 @@ fn linked_msg(s: &EditorState, to: i32, new_page: i32) -> String {
     if new_page > 0 {
         // TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): New page... added page %d at the
         // end of the notebook and the new link goes to it.
-        csnprintf!(&mut msg, 200, tr("Linked to the new page %d."), new_page);
+        csnprintf!(&mut msg, 200, tr("Linked to new page %d."), new_page);
     } else if to >= 0 {
         let name = nav_name(&s.nav, s.nb.page_ids[to as usize]);
         if !name.is_empty() {
@@ -5901,7 +5838,7 @@ fn link_retarget(a: &mut App, target: &str, new_page: i32) {
         nav_load(s.nb.id.as_str(), &mut s.nav);
         migration_reset(s);
         lm_close(a, u);
-        app_toast(a, tr("Could not save the link."), 3000);
+        app_toast(a, tr("Couldn't save link."), 3000);
         if from_bar {
             bar_show(a, false);
         }
@@ -5944,7 +5881,7 @@ fn redraw_done(a: &mut App, seed: u32, r: Rect, drawn: Rect) {
         migration_reset(s);
         compose(a, u);
         app_invalidate(a, u, RefreshMode::Ui);
-        app_toast(a, tr("Could not save the link."), 3000);
+        app_toast(a, tr("Couldn't save link."), 3000);
         if from_bar {
             bar_show(a, false);
         }
@@ -5969,15 +5906,14 @@ fn redraw_done(a: &mut App, seed: u32, r: Rect, drawn: Rect) {
     if from_bar {
         bar_show(a, false);
     }
-    // TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): the long-press card's Redraw the
-    // area gave the link the area just drawn; Undo brings the old one back.
-    app_toast(a, tr("New area saved. Undo brings the old one back."), 2500);
+    app_toast_dismiss(a); // (no confirmation: the owner, 2026-11-04; a toast left up from before goes)
 }
 
 /// No link is made (6.10): from the strip's or Link to...'s Cancel, a tap outside Link to..., the add-link
 /// action again, Close menu, and Back while Link to... is up. The strip, the lasso, the rectangle and Link
-/// to... go; `toast` says so; the bar comes back when its New link began it.
-fn link_cancel(a: &mut App, toast: bool) {
+/// to... go, with no toast (the owner, 2026-11-04), and a toast left up from the making goes too; the bar
+/// comes back when its New link began it.
+fn link_cancel(a: &mut App) {
     let s = ed(a);
     if s.lm.state == LmState::Off && !(s.pv.open && s.pv.picking) {
         return;
@@ -5985,18 +5921,12 @@ fn link_cancel(a: &mut App, toast: bool) {
     let u = lm_bounds(a);
     let s = ed(a);
     let from_bar = s.lm.from_bar;
-    // (a retarget or a redraw the card began made nothing: it ends silently, its border going)
-    let quiet = !s.lm.retarget.is_empty() || s.lm.redraw.is_some();
     lm_drop(s);
     lm_close(a, u);
     if from_bar {
         bar_show(a, false);
     }
-    if toast && !quiet {
-        // TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): link making was cancelled
-        // (its Cancel, or Back while picking where it goes), and no link was made.
-        app_toast(a, tr("No link made."), 2500);
-    }
+    app_toast_dismiss(a);
 }
 
 /// A menu came up while a link was being made (any menu's button, on the panel or as an action): the link is
@@ -6097,12 +6027,12 @@ fn undo_redo_link(a: &mut App, ih: usize, ip: usize, undo: bool) {
             if !clearing && !lasso {history_drop_last_redo(h);}
             // TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): Undo of a link change
             // could not save links.ini, so the change is still there.
-            app_toast(a, tr("Could not save the links: that change was not undone."), 3000,
+            app_toast(a, tr("Couldn't save links: undo unsuccessful."), 3000,
             );
         } else {
             if !clearing && !lasso {history_drop_last_undo(h);}
             // TRANSLATORS: the same toast for Redo.
-            app_toast(a, tr("Could not save the links: that change was not redone."), 3000,
+            app_toast(a, tr("Couldn't save links: redo unsuccessful."), 3000,
             );
         }
         repaint_panel(a, RefreshMode::Ui);
@@ -6132,17 +6062,13 @@ fn undo_redo_link(a: &mut App, ih: usize, ip: usize, undo: bool) {
         bar_rebuild(a);render_page_full(a);compose_all(a,RefreshMode::Full);repaint_panel(a,RefreshMode::Ui);
         return;
     }
+    // (with the eye off a link change shows nowhere on the page: Undo and Redo say nothing, the owner,
+    // 2026-11-04; a toast still up about the change, "Linked to ...", would now be wrong, so it goes)
+    app_toast_dismiss(a);
     if a.settings.link_areas {
         let u = rect_union(before, eye_bounds(a));
         compose(a, u);
         app_invalidate(a, u, RefreshMode::Ui);
-    } else if undo {
-        // TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): Undo took back a link change
-        // (a link made, deleted or changed), which shows nowhere on the page while the eye is off.
-        app_toast(a, tr("Link change undone."), 2000);
-    } else {
-        // TRANSLATORS: the same toast for Redo.
-        app_toast(a, tr("Link change redone."), 2000);
     }
     repaint_panel(a, RefreshMode::Ui);
 }
@@ -6190,7 +6116,7 @@ fn pages_result(a: &mut App, r: PvResult) {
                 s.lt.hidden = false;
                 pages_hide(a, -1);
             } else if s.pv.picking {
-                link_cancel(a, true);
+                link_cancel(a);
             } else {
                 pages_hide(a, -1);
             }
@@ -6258,7 +6184,7 @@ fn pages_result(a: &mut App, r: PvResult) {
             let text = s.pv.kb.text;
             if nav_set_name(&mut s.nav, pid, text.as_str()) != 0 || nav_save(s.nb.id.as_str(), &mut s.nav, &s.nb) != 0 {
                 nav_set_name(&mut s.nav, pid, &old);
-                app_toast(a, tr("Could not save the page name."), 3000);
+                app_toast(a, tr("Couldn't save page name."), 3000);
             } else {
                 s.changed = true;
             }
@@ -6605,11 +6531,10 @@ fn rename_end(a: &mut App, done: bool) {
 }
 
 /// Rename's Done: the target page's Index name is `name` (empty takes it out of the Index), saved; not an undo
-/// step (a notebook-wide name).
+/// step (a notebook-wide name). Only a failure says so (the owner, 2026-11-04).
 fn rename_done(a: &mut App, name: &str) {
     let s = ed(a);
     let pid = card_target_pid(s);
-    let number = s.card.page + 1;
     let mut old = String::new();
     i18n_copy(&mut old, nav_name(&s.nav, pid), NAV_NAME_LEN);
     let failed = pid == 0 || nav_set_name(&mut s.nav, pid, name) != 0 || nav_save(s.nb.id.as_str(), &mut s.nav, &s.nb) != 0;
@@ -6621,19 +6546,9 @@ fn rename_done(a: &mut App, name: &str) {
     }
     rename_end(a, true);
     if failed {
-        app_toast(a, tr("Could not save the page name."), 3000);
-    } else if !name.is_empty() {
-        let mut msg = String::new();
-        // TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): the long-press card's Rename
-        // gave page %d the name %s.
-        csnprintf!(&mut msg, 200, tr("Page %d is named %s."), number, name);
-        app_toast(a, &msg, 3000);
-    } else if !old.is_empty() {
-        let mut msg = String::new();
-        // TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): the long-press card's Rename
-        // emptied page %d's name.
-        csnprintf!(&mut msg, 200, tr("Page %d has no name now."), number);
-        app_toast(a, &msg, 3000);
+        app_toast(a, tr("Couldn't save page name."), 3000);
+    } else {
+        app_toast_dismiss(a); // (a toast left up from before, a failed try's, goes)
     }
 }
 
@@ -6720,10 +6635,9 @@ fn card_delete(a: &mut App) {
         nav_load(s.nb.id.as_str(), &mut s.nav);
         migration_reset(s);
         card_close(a);
-        app_toast(a, tr("Could not save the link."), 3000);
+        app_toast(a, tr("Couldn't save link."), 3000);
         return;
     }
-    let n = records.len();
     if let Some(h) = s.cur_hist() {
         history_push_link(&mut s.hist[h].h, LinkEdit { pid, records });
     }
@@ -6731,17 +6645,9 @@ fn card_delete(a: &mut App) {
     s.changed = true;
     s.panel_stale = true;
     card_close(a);
-    repaint_panel(a, RefreshMode::Ui);
+    repaint_panel(a, RefreshMode::Ui); // (Undo, which brings them back, is enabled now; no toast)
     bar_rebuild(a);
-    if n > 1 {
-        // TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): the long-press card of a Links bar
-        // row deleted its links; Undo brings them back (the ink around them stays).
-        app_toast(a, tr("Links deleted. Undo brings them back."), 2500);
-    } else {
-        // TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): the long-press card deleted the
-        // link; Undo brings it back (the ink around it stays).
-        app_toast(a, tr("Link deleted. Undo brings it back."), 2500);
-    }
+    app_toast_dismiss(a); // (a "Linked to ..." still up would be wrong now)
 }
 
 /// The bar under a card, built again after the card changed its links or their names (the same origin and
@@ -6844,8 +6750,8 @@ fn toggle_pin(a: &mut App, t: ToolKind) {
         // TRANSLATORS: a toast when the tool picker's Pin mode is asked for one more pen than the
         // toolbar holds: %d is how many it holds, 3 in this version. About 1700 px at 44 px in bold,
         // or two lines.
-        csnprintf!(&mut msg, 200, ng_("The toolbar holds up to %d pen. Unpin one first.",
-                                      "The toolbar holds up to %d pens. Unpin one first.", PANEL_PINS_MAX as i64),
+        csnprintf!(&mut msg, 200, ng_("Toolbar full (%d pen). Unpin one first.",
+                                      "Toolbar full (%d pens). Unpin one first.", PANEL_PINS_MAX as i64),
                    PANEL_PINS_MAX as i32);
         app_toast(a, &msg, 2500);
         return;
@@ -7073,15 +6979,16 @@ fn shape_hold_label(ms: i32) -> &'static str {
 fn shape_hold_nearest(ms: i32) -> i32 {
     [400,550,900].into_iter().min_by_key(|&v| (v-ms).abs()).unwrap()
 }
+// (no toast for either: the owner, 2026-11-04; the Shapes menu shows both, the panel's Shapes button the first)
 pub fn editor_shapes_toggle(a: &mut App) {
     a.settings.shapes = !a.settings.shapes; settings_save(&a.settings);
     repaint_panel(a,RefreshMode::Ui);
-    app_toast(a,tr(if a.settings.shapes {n_("Smart shapes on. Hold the pen still at the end of a shape.")} else {n_("Smart shapes off.")}),3000);
+    app_toast_dismiss(a); // (a toast left up from before goes)
 }
 pub fn editor_shape_hold_cycle(a: &mut App) {
     a.settings.shape_hold_ms = match shape_hold_nearest(a.settings.shape_hold_ms) {400=>550,550=>900,_=>400};
     settings_save(&a.settings);
-    app_toast(a,tr(match a.settings.shape_hold_ms {400=>n_("Shape hold: Quick (0.4 s)"),900=>n_("Shape hold: Slow (0.9 s)"),_=>n_("Shape hold: Normal (0.55 s)")}),3000);
+    app_toast_dismiss(a);
 }
 pub fn editor_shape_last(a: &mut App) {
     let min_mm = a.settings.shape_min_mm;
@@ -7569,7 +7476,7 @@ fn bar_result(a: &mut App, r: LbResult, d: Rect) {
             } else if e.page < 0 {
                 // TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): a finger tapped a link
                 // whose page was deleted (or that a newer Grimoire made, to a place this one cannot open).
-                app_toast(a, tr("That link's page is not in this notebook."), 3000);
+                app_toast(a, tr("Linked page isn't in this notebook."), 3000);
             } else if e.page != ed_ref(a).index {
                 peek_page(a, e.page, i, false);
             }
@@ -7591,7 +7498,7 @@ fn bar_result(a: &mut App, r: LbResult, d: Rect) {
             } else if !s.lb.links_ok {
                 // TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): links.ini could not be
                 // read, so the Links bar lists none and cannot make one.
-                app_toast(a, tr("Links could not be read."), 3000);
+                app_toast(a, tr("Couldn't read links."), 3000);
             } else {
                 // The new link goes on the page that shows: commit to it first, then the strip; the bar comes
                 // back once it is made or cancelled.
@@ -7602,7 +7509,7 @@ fn bar_result(a: &mut App, r: LbResult, d: Rect) {
         LbResult::Eye => {
             let s = ed(a);
             if !s.lb.links_ok {
-                app_toast(a, tr("Links could not be read."), 3000);
+                app_toast(a, tr("Couldn't read links."), 3000);
             } else {
                 let button = s.lb.eye_button;
                 areas_toggle(a, button);
@@ -7684,7 +7591,7 @@ fn panel_act(a: &mut App, h: Hit) {
                 let paper = s.open_page().map_or(s.nb.paper, |p| p.paper);
                 let n = s.nb.npages();
                 if store_add_page(&mut s.nb, n, paper) != 0 {
-                    app_toast(a, tr("Could not add a page"), 3000);
+                    app_toast(a, tr("Couldn't add page"), 3000);
                     return;
                 }
                 s.changed = true;
@@ -7706,7 +7613,7 @@ fn panel_act(a: &mut App, h: Hit) {
         P_PAGES => pages_show(a),
         // The dedicated toolbar button creates a link; the upward swipe opens the Links bar.
         P_LINKS => {
-            if ed_ref(a).lm.state != LmState::Off { link_cancel(a,true); }
+            if ed_ref(a).lm.state != LmState::Off { link_cancel(a); }
             else { link_arm(a,false,None); }
         }
         P_DISPLAY => {
@@ -7723,11 +7630,14 @@ fn panel_act(a: &mut App, h: Hit) {
             if save_page(a){links_flush(a);pb_reset(ed(a));close_sheets(ed(a));crate::library::library_settings_from_notebook(a);}
         }
         P_LIBRARY => {
-            app_toast(a, tr("Saving..."), 8000);
+            // (no "Saving..." or "Saved" toast: the owner, 2026-11-04; a page that cannot be saved says so)
             app_flush(a);
             if !save_page(a) {
                 return; // stay with the unsaved page rather than drop it
             }
+            // (a toast left up from the page does not follow to the Library; one the Library raises as it opens,
+            // its Graph's, stays)
+            app_toast_dismiss(a);
             // (a notebook the Library's Graph opened goes back to that Graph: the Library as it was left)
             let to_graph = ed_ref(a).from_graph;
             close_notebook(a);
@@ -7736,7 +7646,6 @@ fn panel_act(a: &mut App, h: Hit) {
                 crate::library::library_return_to_graph(a);
             }
             app_switch(a, ScreenId::Library);
-            app_toast(a, tr("Saved"), 1200);
         }
         P_COLLAPSE => set_collapsed(a, true),
         P_EXPAND => set_collapsed(a, false),
@@ -7812,7 +7721,7 @@ fn close_front(a: &mut App, draw: bool) {
     }
     if s.pv.open {
         if s.pv.picking {
-            link_cancel(a, true);
+            link_cancel(a);
         } else if draw {
             pages_hide(a, -1);
         } else {
@@ -7858,7 +7767,7 @@ fn open_menu(a: &mut App, action: i32) {
         SHORTCUT_LIBRARY => panel_act(a, Hit { id: P_LIBRARY, ..Default::default() },
         ),
         // Nothing in front: a link being made is not made.
-        SHORTCUT_CLOSE_MENU if ed(a).lm.state != LmState::Off => link_cancel(a, true),
+        SHORTCUT_CLOSE_MENU if ed(a).lm.state != LmState::Off => link_cancel(a),
         _ => {}
     }
 }
@@ -7928,7 +7837,7 @@ fn editor_shortcut_in(a: &mut App, action: i32, x: f32, y: f32, src: ActionSrc) 
         }
         if action == SHORTCUT_SAVE {
             settings_save(&a.settings);
-            app_toast(a, tr("Saved"), 1200);
+            app_toast_dismiss(a); // (no "Saved": the owner, 2026-11-04; a toast left up from before goes)
             return true;
         }
         if action==SHORTCUT_GO_BACK || action==SHORTCUT_CLOSE_MENU {crate::library::library_settings_back(a);return true;}
@@ -7958,11 +7867,12 @@ fn editor_shortcut_in(a: &mut App, action: i32, x: f32, y: f32, src: ActionSrc) 
     if s.owner != Owner::None || s.pinching {
         return false;
     }
-    // Ctrl+S: the page and its notebook written now, whatever is in front (nothing is lost by it).
+    // Ctrl+S: the page and its notebook written now, whatever is in front (nothing is lost by it). No toast
+    // (the owner, 2026-11-04): a page that cannot be saved says so.
     if action == SHORTCUT_SAVE {
         settings_save(&a.settings);
         if save_page(a) {
-            app_toast(a, tr("Saved"), 1200);
+            app_toast_dismiss(a); // (a toast left up from before, a failed save's, goes)
         }
         return true;
     }
@@ -8040,7 +7950,7 @@ fn editor_shortcut_in(a: &mut App, action: i32, x: f32, y: f32, src: ActionSrc) 
     // ends the making silently and opens its menu (8.11).
     if s.lt.open && !s.lt.hidden {
         if action == SHORTCUT_CLOSE_MENU || action == SHORTCUT_GO_BACK || action == SHORTCUT_BACK || action == SHORTCUT_ADD_LINK {
-            link_cancel(a, true);
+            link_cancel(a);
             return true;
         }
         if menu_action(action) {
@@ -8203,20 +8113,15 @@ fn editor_shortcut_in(a: &mut App, action: i32, x: f32, y: f32, src: ActionSrc) 
         );
     } else if action == SHORTCUT_PREV_PAGE || action == SHORTCUT_NEXT_PAGE {
         // The panel's arrows: next page on the last page adds one, as its + does. So does a gesture's turn
-        // (settings.gesture_new_page, on by default); with it off, a gesture says where it stopped.
+        // (settings.gesture_new_page, on by default); with it off, a gesture stops at the last page, as one
+        // stops at the first: the page stays, with no toast (the owner, 2026-11-04).
         let (index, npages, may_add) = (ed(a).index, ed(a).nb.npages(), src == ActionSrc::Touch && a.settings.gesture_new_page,
         );
         if src != ActionSrc::Key && src != ActionSrc::Pad {
             if action == SHORTCUT_NEXT_PAGE && index >= npages - 1 && !may_add {
-                // TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): two fingers swiped
-                // to the next page on the last one, with adding a page by swiping turned off.
-                app_toast(a, tr("This is the last page."), 1500);
                 return true;
             }
             if action == SHORTCUT_PREV_PAGE && index <= 0 {
-                // TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): two fingers swiped
-                // to the previous page on the first one.
-                app_toast(a, tr("This is the first page."), 1500);
                 return true;
             }
         }
@@ -8236,7 +8141,7 @@ fn editor_shortcut_in(a: &mut App, action: i32, x: f32, y: f32, src: ActionSrc) 
         // The Index's Add a link from the page; pressed again while the strip is up, the link is not made,
         // as a menu's own button closes it.
         if ed(a).lm.state != LmState::Off {
-            link_cancel(a, true);
+            link_cancel(a);
         } else {
             link_arm(a, false, None);
         }
@@ -8270,22 +8175,15 @@ fn editor_shortcut_in(a: &mut App, action: i32, x: f32, y: f32, src: ActionSrc) 
             }
         }
     } else if action == SHORTCUT_GESTURE_NEW_PAGE {
+        // (no toast: the owner, 2026-11-04; one left up from before goes)
         a.settings.gesture_new_page = !a.settings.gesture_new_page;
         settings_save(&a.settings);
-        if a.settings.gesture_new_page {
-            // TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): two fingers swiped to the
-            // next page on the last one now add a page.
-            app_toast(a, tr("Swiping past the last page adds a page."), 2000);
-        } else {
-            // TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): two fingers swiped to the
-            // next page on the last one no longer add a page.
-            app_toast(a, tr("Swiping past the last page adds no page."), 2000);
-        }
+        app_toast_dismiss(a);
     } else if action == SHORTCUT_LANDSCAPE_FIT {
         a.settings.landscape_fit = !a.settings.landscape_fit;
         settings_save(&a.settings);
         editor_fit_changed(a, true);
-        editor_fit_toast(a);
+        app_toast_dismiss(a); // (no toast: the owner, 2026-11-04; one left up from before goes)
     } else if action == SHORTCUT_LINK_AREAS {
         areas_toggle(a, RECT_EMPTY);
     } else if action == SHORTCUT_NEW_PAGE {
@@ -8407,7 +8305,7 @@ fn editor_back(a: &mut App) -> bool {
         return true;
     }
     if s.lm.state != LmState::Off {
-        link_cancel(a, true);
+        link_cancel(a);
         return true;
     }
     if sheet_open(s) {
@@ -8477,7 +8375,7 @@ fn apply_template(a: &mut App, path: &str) {
         // TRANSLATORS: in a toast (about 1700 px at 44 px in bold, or two lines): a template picked
         // on the Templates sheet could not become the page's paper (or the new notebook's); %s is
         // the log file that says why.
-        csnprintf!(&mut msg, 256, tr("Could not use that template (see %s)."), "grimoire.log");
+        csnprintf!(&mut msg, 256, tr("Couldn't use template (see %s)."), "grimoire.log");
         app_toast(a, &msg, 4000);
         return;
     }
@@ -8497,7 +8395,7 @@ fn apply_photo(a: &mut App, path: &str) {
         let mut msg = String::new();
         // TRANSLATORS: in a toast (about 1700 px at 44 px in bold, or two lines): a photo picked on the
         // Photos sheet could not become the page's paper; %s is the log file that says why.
-        csnprintf!(&mut msg, 256, tr("Could not use that photo (see %s)."), "grimoire.log");
+        csnprintf!(&mut msg, 256, tr("Couldn't use photo (see %s)."), "grimoire.log");
         app_toast(a, &msg, 4000);
         return;
     }
@@ -8785,16 +8683,6 @@ pub fn editor_enter(a: &mut App) {
         },
     );
     touch_context(a);
-    // The first time the page comes up sideways whole, for the owner who had it filling the width: why
-    // (hints bit 8). Not for a fresh install or an owner who has seen it.
-    let st = &a.settings;
-    if turned && ed_ref(a).open && a.w > a.h && st.landscape_fit && st.upgraded && st.hints & HINT_SIDEWAYS == 0 {
-        a.settings.hints |= HINT_SIDEWAYS;
-        settings_save(&a.settings);
-        // TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines), shown once after an update:
-        // the editor now shows the whole page when the Kindle is sideways, which two-finger swipes need.
-        app_toast(a, tr("Sideways now shows the whole page, so two-finger swipes work. Pinch to zoom in; Display changes this."), 6000);
-    }
 }
 
 /// a stroke / drag / pinch is in progress
@@ -8886,9 +8774,6 @@ fn pinch(a: &mut App, ev: &InEvent) {
         s.pinching = true;
         s.pinch_committed = regrab && s.pinch_committed;
         s.pinch_classified = classified;
-        if !regrab {
-            s.pinch_panned = false;
-        }
         s.pinch_mx0 = mx;
         s.pinch_my0 = my;
         s.pinch_d0 = if d > 10.0 { d } else { 10.0 };
@@ -8925,7 +8810,6 @@ fn pinch(a: &mut App, ev: &InEvent) {
                 s.zoom = clampf(s.zoom, s.zoom_min, s.zoom_max);
             } else {
                 s.zoom = s.pinch_z0; // a pan holds the zoom: no drift
-                s.pinch_panned = true;
             }
         } else {
             // Nothing happens until the fingers clearly spread/close or travel: resting fingers
@@ -8965,25 +8849,6 @@ fn pinch(a: &mut App, ev: &InEvent) {
         compose_all(a, RefreshMode::Ui);
     }
     fs_pending_cleanup(a, RefreshMode::Ui);
-    // A pan that moved the page, while two fingers up or down are gestures: say once that here two
-    // fingers move the page, and where Pages and Links are instead (hints bit 6).
-    let s = ed(a);
-    let panned = s.pinch_classified && s.pinch_panned;
-    s.pinch_panned = false;
-    if panned && a.settings.hints & HINT_PAN == 0 {
-        let up = GestureKey::Touch { fingers: 2, kind: TouchKind::Up ,
-        };
-        let down = GestureKey::Touch { fingers: 2, kind: TouchKind::Down ,
-        };
-        if gesturemap_action(&a.gestures, up) != 0 || gesturemap_action(&a.gestures, down) != 0 {
-            a.settings.hints |= HINT_PAN;
-            settings_save(&a.settings);
-            // TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines), shown once: two
-            // fingers dragged the zoomed page, where two fingers up and down would open Links and Pages.
-            app_toast(a, tr("Here two fingers move the page. Zoom out for page and link swipes."), 4000,
-            );
-        }
-    }
 }
 
 pub fn editor_leave(a: &mut App) {
@@ -9453,7 +9318,7 @@ fn fs_fade_tick(a: &mut App, now: u32) {
         settings_save(&a.settings);
         // TRANSLATORS: a one-time toast after a finger drawing does not match any recorded shape;
         // about 1700 px at 44 px bold or two lines. Settings > Gestures lists the recorded shapes.
-        app_toast(a, tr("That is not one of your finger shapes. Settings > Gestures lists them."), 4000);
+        app_toast(a, tr("Unknown finger shape. See Settings > Gestures."), 4000);
     }
     app_flush(a);
 }
@@ -9884,7 +9749,7 @@ fn editor_event_in(a: &mut App, ev: &InEvent) {
             } else {
                 s.owner = Owner::Outside;
                 if pen {
-                    link_cancel(a, true);
+                    link_cancel(a);
                 } else {
                     press_begin(&mut s.link_press, ev.x, ev.y, ev.t_ms);
                 }
@@ -10231,7 +10096,7 @@ fn owner_pointer(a: &mut App, ph: i32, ev: &InEvent, pen: bool) {
             }
             if ed_ref(a).lt.open && !ed_ref(a).lt.hidden {
                 if !corner_tap(false) {
-                    link_cancel(a, true);
+                    link_cancel(a);
                 }
                 return;
             }
@@ -10359,11 +10224,11 @@ fn owner_pointer(a: &mut App, ph: i32, ev: &InEvent, pen: bool) {
             } else if r == DmResult::Refit {
                 editor_fit_changed(a, true);
                 // The card was redrawn with its row flipped: presented, upright (sideways the Full of the
-                // view laid out again takes it in).
+                // view laid out again takes it in). No toast (the owner, 2026-11-04); one left up goes.
                 if !rect_is_empty(d) {
                     app_invalidate(a, d, RefreshMode::Ui);
                 }
-                editor_fit_toast(a);
+                app_toast_dismiss(a);
             } else if r == DmResult::Closed {
                 compose(a, d);
                 app_invalidate(a, d, RefreshMode::Ui);
@@ -10543,13 +10408,6 @@ pub fn editor_tick(a: &mut App, now: u32) {
     }
     shape_hold_tick(a, now);
     link_shape_tick(a, now);
-    if ed_ref(a).sh.tip_pending && !ed_ref(a).pen_near && rect_is_empty(ed_ref(a).settle) {
-        ed(a).sh.tip_pending = false;
-        if a.settings.hints & (1 << 5) == 0 {
-            a.settings.hints |= 1 << 5; settings_save(&a.settings);
-            app_toast(a,tr("Shape made. Undo takes it away; the toolbar's Shapes menu has the options."),4000);
-        }
-    }
     if ed_ref(a).open && a.input_drained {
         let state = fs_tick(&mut ed(a).fs, now);
         if state == FsState::Dead {
@@ -11861,7 +11719,9 @@ mod tests {
         a.settings.gesture_new_page = true;
         pb_out(&mut a, PbOut::Fire(PenBtn::Button, PenKind::Tap), 1000);
         assert_eq!(ed_ref(&a).nb.page_ids, [1, 2]);
-        assert_eq!(a.toast.as_str(), "This is the last page.");
+        // (it stays on the last page, silently: no toast since the owner's toast pass)
+        assert_eq!(ed_ref(&a).index, 1);
+        assert!(!a.toast_visible);
         let s = ed(&mut a);
         s.map.open = true;
         keyboard_open(&mut s.map_kb, "Name", b"draft");
@@ -12856,13 +12716,15 @@ mod tests {
         // read-only: the lasso and Copy work, the paste is refused with nothing changed
         sel_off(&mut a);
         ed(&mut a).open_page_mut().unwrap().readonly = true;
+        assert_eq!(clipboard_restore(None), 0); // (so the Copy below is what fills it)
         finger_hold(&mut a, 280.0, 495.0);
         finger_ring(&mut a, 400.0, 615.0, 120.0);
         assert_eq!(ed_ref(&a).sel.state, SelState::Selected);
         let (cx, cy) = sel_control_point(ed_ref(&a), "copy").unwrap();
         finger(&mut a, InType::TouchDown, cx, cy);
         finger(&mut a, InType::TouchUp, cx, cy);
-        assert_eq!(a.toast.as_str(), "Copied.");
+        assert!(clipboard_read().is_some_and(|g| g.ink == 2), "Copy on a read-only page fills the clipboard (the word's two strokes)");
+        assert!(!a.toast_visible, "and says nothing");
         finger_hold(&mut a, 500.0, 1000.0);
         finger(&mut a, InType::TouchUp, 500.0, 1000.0);
         assert_eq!(a.toast.as_str(), tr(K_READONLY_MSG));
@@ -13064,7 +12926,7 @@ fn destination_open(a:&mut App) {
     if !save_page(a){return;}
     let folder=ed_ref(a).nb.folder.as_str().to_string();
     if with_modal(a,|s|&mut s.destination,|p,_|p.start(&folder)) {ed(a).lt.hidden=true;compose_all(a,RefreshMode::Full);}
-    else {app_toast(a,tr("Could not read the notebooks."),3000);}
+    else {app_toast(a,tr("Couldn't read notebooks."),3000);}
 }
 fn follow_target(a:&mut App,target:&str)->bool {
     if let Some((id,pid))=nav_external_target(target) {
@@ -13072,7 +12934,7 @@ fn follow_target(a:&mut App,target:&str)->bool {
     } else if target=="index" {map_show(a,false);ed_ref(a).map.open}
     else {
         let l=NavLink{target:FixedStr::from_str(target),..Default::default()};let to=nav_link_page(&l,&ed_ref(a).nb);
-        if to>=0 {go_to_page_pushing(a,to)}else{app_toast(a,tr("That link's page is not in this notebook."),3000);false}
+        if to>=0 {go_to_page_pushing(a,to)}else{app_toast(a,tr("Linked page isn't in this notebook."),3000);false}
     }
 }
 
@@ -13096,12 +12958,14 @@ fn return_to_notebook(a:&mut App)->bool {
 }
 fn open_external_page(a:&mut App,id:&str,pid:u32,push_origin:bool)->bool {
         let mut nb=NotebookInfo::default();
-        if store_load_info(id,&mut nb)!=0 || !nb.page_ids.contains(&pid) {app_toast(a,tr("That notebook or page is no longer available."),3000);return false;}
+        // TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): a link to another notebook's page
+        // was followed, but that notebook or page is gone.
+        if store_load_info(id,&mut nb)!=0 || !nb.page_ids.contains(&pid) {app_toast(a,tr("Notebook or page no longer exists."),3000);return false;}
         if ed_ref(a).nb.id==id {return nb.page_ids.iter().position(|&p|p==pid).is_some_and(|i|go_to_page_pushing(a,i as i32));}
         if !save_page(a){return false;}
-        links_flush(a);if ed_ref(a).links_dirty {app_toast(a,tr("Could not save the links."),3000);return false;}
+        links_flush(a);if ed_ref(a).links_dirty {app_toast(a,tr("Couldn't save links."),3000);return false;}
         let i=nb.page_ids.iter().position(|&p|p==pid).unwrap();let mut checked=None;
-        if store_read_page(&nb,i as i32,&mut checked)!=0 {app_toast(a,tr("Could not open that page."),3000);return false;}drop(checked);
+        if store_read_page(&nb,i as i32,&mut checked)!=0 {app_toast(a,tr("Couldn't open page."),3000);return false;}drop(checked);
         let s=ed_ref(a);
         let origin=NotebookBack{id:s.nb.id,pid:s.open_pid(),zoom:s.zoom,ox:s.ox,oy:s.oy,view_w:s.view_w,view_h:s.view_h,back:s.back.clone()};
         let mut back=std::mem::take(&mut ed(a).notebook_back);
@@ -13123,7 +12987,6 @@ pub fn editor_open_from_graph(a: &mut App, id: &str, pid: u32) {
 // Library button does, and the Library shows the Graph as it was left. False (staying) when the page could
 // not be saved.
 fn back_to_graph(a: &mut App) -> bool {
-    app_toast(a, tr("Saving..."), 8000);
     app_flush(a);
     if !save_page(a) {
         return false;

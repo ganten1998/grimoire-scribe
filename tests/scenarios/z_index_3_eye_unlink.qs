@@ -37,7 +37,7 @@ touch up 600 1100
 expect editor.ui_at.679.1818 is card.delete
 tap 679 1818
 expect editor.links is 0 0
-expect toast is Link deleted. Undo brings it back.
+expect toast is
 expect editor.eye_drawn is 0
 expect editor.areas is 0
 shot 02-eye-link-removed

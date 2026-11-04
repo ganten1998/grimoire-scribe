@@ -72,7 +72,8 @@ snapped shape; owns the old version off the page) and instant undo through canva
    place in the stroke order. Undo and redo use the patch path so they stay instant on dense pages.
    Measure a move on the 1,090-stroke page; the redraw under the old box is the known slow path (see
    BACKLOG "stroke eraser on very dense pages"): report numbers, do not hide it.
-4. **Clipboard** that survives page turns, notebook switches and Grimoire leaving for KOReader:
+4. **Clipboard** that survives page turns, notebook switches and Grimoire leaving for KOReader (changed
+   in the RC review, 2026-11-04: it lasts one session, every start of Grimoire clears it, FORMAT.md):
    `root/clipboard.qpg` (the page format, only the strokes and a header naming the page size it
    came from). Paste puts the strokes where they were if that spot is on screen, else in the
    middle of the view, selected, ready to drag. Pasted strokes get fresh seeds (no clash with ink

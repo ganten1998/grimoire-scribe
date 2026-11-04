@@ -52,7 +52,7 @@ expect editor.select is armed
 expect editor.selected is 0
 expect editor.preview_reused is 1
 expect editor.lift_covers_preview is 1
-expect toast is Nothing to select here.
+expect toast is Nothing to select.
 tap panel select.done
 wait 100
 expect editor.select is off

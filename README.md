@@ -140,8 +140,8 @@ your notebooks and settings from `quire/` to `grimoire/` and removes the old Qui
   (Move to..., Copy to notebook..., Rename, Delete), or hold and drag it to a gap between two pages to move it
   (a black bar shows the gap it goes into); right after a move, the bottom row's Undo puts the pages back, and
   then its Redo beside it moves them again. Tap **+** (New page) for one blank page at
-  once, after the open page (or the last one ticked), on that page's paper: Pages stays open, the new page's tile says "(new)" and a
-  toast says which page it is (tap the tile to open it). Hold it (or, with a keyboard attached, tap it with
+  once, after the open page (or the last one ticked), on that page's paper: Pages stays open and the new page's tile says
+  "(new)" (tap the tile to open it). Hold it (or, with a keyboard attached, tap it with
   Shift, Ctrl, Alt or Cmd held) for a number pad that asks how many: it starts at 1, so **Add 1 page** at once
   adds one; type the count (the first digit replaces the 1) or use - and + under the digits, and press
   **Add N pages**. **Go to page...** opens the page-number-or-name sheet over Pages, which stays behind it:
@@ -149,8 +149,8 @@ your notebooks and settings from `quire/` to `grimoire/` and removes the old Qui
   Ctrl+N opens the number pad. The Undo button then takes that page or batch back while its pages are
   still blank, and Redo adds the same pages again. While Pages is open, the `undo` and `redo` keys, controller
   buttons and gestures are these Undo and Redo (one step each); on the page they stay the page's own, so a
-  page's writing is never undone from Pages, nor a page move from the page. A large batch takes a while (a
-  toast says so; taps meanwhile are ignored).
+  page's writing is never undone from Pages, nor a page move from the page. A large batch takes a moment (taps
+  meanwhile are ignored).
   **The Graph from the Library**: swipe down with two fingers over the Library (or press the key bound to
   `index-map`) for the Graph of all notebooks with no notebook open: tap a page twice to open it, and Back from there, even from another notebook a link led to, or
   the Links bar's **Back to Graph**, comes back to the Graph. Spread two fingers to zoom it. A library with too
@@ -357,9 +357,9 @@ Updating is one file, and so is going back. From 1.1.0-beta.1 on, Grimoire keeps
 version writes and does not understand (ink data, newer papers, extra page data, unknown lines
 in `settings.ini` and `notebook.ini`) and writes it back unchanged:
 
-- A page it cannot fully show opens **read-only**, with "This page was made by a newer Grimoire.
-  It is read-only here." Writing, erasing, clearing and changing its paper are refused on it;
-  deleting it still works. Update Grimoire to edit it.
+- A page it cannot fully show opens **read-only**, with "This page was made by a newer version,
+  and will be viewed as read-only." Writing, erasing, clearing and changing its paper are refused
+  on it; deleting it still works. Update Grimoire to edit it.
 - A paper from a newer version shows as blank paper named **Newer paper** and stays the page's
   paper. New pages added after such a page get it too.
 - A setting from a newer version that this one lacks works here as the nearest choice it has
@@ -432,11 +432,11 @@ precise eraser, and they drop pinned pens from `settings.ini`.
   comes back. If even that does nothing, hold it until the Kindle restarts (about 40 seconds); a
   restart keeps your notebooks. Never use the passcode reset code 111222777 to get out of
   anything: it erases the Kindle, notebooks included.
-- **"Your Kindle passcode was left off"**: the Kindle restarted while Grimoire was open. Turn the
-  passcode back on in the Kindle's Settings (Device Options > Device Passcode); Grimoire leaves
-  that to you.
-- **"This page was made by a newer Grimoire. It is read-only here."**: update Grimoire to change
-  that page. Nothing on it is lost (see Moving between versions).
+- **The Kindle's passcode is off after a restart**: the Kindle restarted while Grimoire was open
+  (grimoire.log says so). Turn the passcode back on in the Kindle's Settings (Device Options > Device
+  Passcode); Grimoire leaves that to you.
+- **"This page was made by a newer version, and will be viewed as read-only."**: update Grimoire to
+  change that page. Nothing on it is lost (see Moving between versions).
 - **KOReader**: open Grimoire from KOReader with Tools > Grimoire, never with *Execute shell
   script* (see Does it work in KOReader?). If "Grimoire did not start: KOReader is running." shows
   near the top of the screen after you tap Grimoire in the Library, a KOReader is still running in

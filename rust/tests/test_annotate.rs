@@ -948,10 +948,10 @@ fn notices_fit() {
     let screen = Rect { x: 0, y: 0, w: 1860, h: 2480 };
     for l in 0..i18n_language_count() {
         i18n_set(i18n_language_code(l).unwrap_or("en"));
-        let log = cformat!(tr("Could not open the page KOReader sent (see %s)."), "grimoire.log");
+        let log = cformat!(tr("Couldn't open page from KOReader (see %s)."), "grimoire.log");
         let notes = [
-            tr("Could not open the page KOReader sent: its picture does not read."),
-            tr("Could not add the page KOReader sent. Is the storage full?"),
+            tr("Couldn't open page: its image is unreadable."),
+            tr("Couldn't add page from KOReader. Is the storage full?"),
             log.as_str(),
         ];
         for th in [UiTheme::Gothic, UiTheme::Classic] {
@@ -967,7 +967,7 @@ fn notices_fit() {
         }
         // Translated (every language but English has its words for them).
         if i18n_language_code(l) != Some("en") {
-            check!(notes[0] != "Could not open the page KOReader sent: its picture does not read.");
+            check!(notes[0] != "Couldn't open page: its image is unreadable.");
         }
     }
     ui_set_theme(UiTheme::Gothic);

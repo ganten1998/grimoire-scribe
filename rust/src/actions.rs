@@ -1128,7 +1128,7 @@ static ACTIONS: [ActionInfo; 88] = [
     // controller's buttons, and are full): they are bound in shortcuts.ini.
     ai(
         // TRANSLATORS: (the keyboard shortcuts lists, about 1100 px at 44 px in bold) Ctrl+S: the open page and
-        // its notebook written now (in the Library, any setting waiting), with a toast "Saved".
+        // its notebook written now (in the Library, any setting waiting).
         SHORTCUT_SAVE, "save", n_("Save now"), None, IconKind::Check,
         GROUP_MENUS, 0, ActionKind::OneShot, SRC_ALL,
     ),

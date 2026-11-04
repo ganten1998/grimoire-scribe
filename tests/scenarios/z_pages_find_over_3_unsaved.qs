@@ -36,7 +36,7 @@ wait 300
 expect editor.find is 0
 expect editor.modal is none
 expect editor.page is 1
-expect toast has Could not save this page
+expect toast has Couldn't save page
 expect display.presents is fast 36 1328 1788 124, full 0 0 1860 2480
 storage ok
 quit

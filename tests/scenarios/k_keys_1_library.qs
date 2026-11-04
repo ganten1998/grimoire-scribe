@@ -48,10 +48,10 @@ key 1 0
 wait 300
 expect screen is library
 expect library.sheet is none
-# Ctrl+S: anything waiting written, and says so
+# Ctrl+S: anything waiting written (library.rs's unit test reads it back), with no toast
 key 31 1
 wait 100
-expect toast is Saved
+expect toast is
 # Into the folder: Left and Right turn the grid's screens (as its arrows); Up and Down do nothing
 tap library folder.Shelf
 wait 300

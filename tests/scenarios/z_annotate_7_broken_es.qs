@@ -1,3 +1,4 @@
+# rust-only
 # settings: status_mode=1
 # env: GRIMOIRE_HOST=koreader
 # env: GRIMOIRE_ANNOTATE=1
@@ -12,5 +13,5 @@ expect language is es
 expect screen is library
 expect annotate.result is failed
 expect library.items is 0
-expect toast is No se pudo abrir la página que envió KOReader: no se puede leer su imagen.
+expect toast is No se pudo abrir la página: su imagen es ilegible.
 quit

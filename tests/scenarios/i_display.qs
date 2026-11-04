@@ -15,7 +15,7 @@ shot 01-before-clear
 expect editor.strokes is 2
 pentap panel clear
 wait 300
-expect toast is Page cleared
+expect toast is
 shot 02-cleared-by-toolbar
 expect editor.strokes is 0
 pentap panel undo

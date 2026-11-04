@@ -53,8 +53,8 @@ KOReader's `start_with` for its next start (KOReader below).
   screensaver) keeps Grimoire on its sleep screen; the second such press in a row saves and leaves
   as well, for a power key that cannot report a hold.
 - When the open page cannot be saved (a full userstore), leaving does not claim it was. Awake,
-  the first hold stays in Grimoire and shows "Could not save this page. Hold power 4 s again to
-  leave anyway." A second hold within a minute leaves, showing "Leaving Grimoire without this
+  the first hold stays in Grimoire and shows "Couldn't save page. Hold power 4 s again to leave
+  anyway." A second hold within a minute leaves, showing "Leaving Grimoire without saving
   page." From the sleep screen, and for the two-press exit of a locked Kindle, it leaves at once.
   Each such try logs `leaving: the open page could not be saved`, and the first awake hold adds
   `leaving: staying this once (...)`.
@@ -101,9 +101,10 @@ bounded to 3 seconds, and a failure leaves Grimoire so the launcher's restore ca
 The wake timer never infers native unlock from elapsed time or a guessed power state.
 
 Beta.1 could leave the PIN off after a restart. Its `.passcode-paused` marker is still consumed:
-with no passcode flag, Grimoire leaves the unknown PIN state alone and reminds the user to enable
-it in Kindle Settings at up to three starts (`.passcode-left-off`). New sessions create no pause
-marker and never recreate a passcode flag.
+with no passcode flag, Grimoire leaves the unknown PIN state alone and notes in grimoire.log, at up
+to three starts, that the PIN was left off (`.passcode-left-off`); since 2.0.0-beta.2 it shows no
+notice. Turn the PIN back on in Kindle Settings. New sessions create no pause marker and never
+recreate a passcode flag.
 
 KOReader's own `koreader.sh` normally removes the passcode flag before its plugin can run.
 Hosted Grimoire inherits that policy and does not guess whether a missing flag should be restored.
@@ -593,21 +594,22 @@ checks above. Synthetic tests cannot establish real-hand acceptance or accidenta
   but its scale fits this WxH one: made here, kept as it is`. A page file of another size than its
   notebook's (written by a version before 1.1 on the other Scribe) logs `store: <path> is WxH:
   scaled to WxH` once per run.
-- **"This page was made by a newer Grimoire. It is read-only here."**: the page came from a newer
-  Grimoire; update Grimoire to change it. grimoire.log says what happened: `store: <path> opens
+- **"This page was made by a newer version, and will be viewed as read-only."**: the page came from a
+  newer Grimoire; update Grimoire to change it. grimoire.log says what happened: `store: <path> opens
   read-only and stays as it is on disk` and `store: read-only page: <reason>` when such a page is
   opened, and `store: <id>: recovered p<n>.qpg from p<n>.qpg.damaged-<t>` when a page an older
   version set aside comes back. These appear once per run, not on every open or Library listing:
   `store: <id>: p<n>.qpg.damaged-<t> opens now, but p<n>.qpg exists too; both kept`,
   `store: <id>: p<n>.qpg is not in the page list; its set-aside copies stay aside (...)` and
   `store: <id>: <k> unknown notebook.ini line(s) do not fit in the 2048 bytes kept, left out`.
-  The toast "A damaged page was set aside; a blank one took its place (see grimoire.log)" now
-  appears only for real damage. A set-aside page that is no longer in the page list can be put
+  The toast "Damaged page replaced with a blank one (see grimoire.log)" appears only for real
+  damage. A set-aside page that is no longer in the page list can be put
   back by hand, with Grimoire closed: rename it to `p<n>.qpg` and add `<n>` to the `pages=` line
   of its `notebook.ini`.
-- **"Your Kindle passcode was left off"**: the Kindle restarted while Grimoire had the passcode
-  paused (see The Device Passcode); Grimoire says so at that start and the next two while it stays
-  off. Turn it back on in Kindle Settings > Device Options > Device Passcode.
+- **`device passcode: left off by an earlier session`** in grimoire.log: the Kindle restarted while
+  Grimoire had the passcode paused (see The Device Passcode); Grimoire logs it at that start and the
+  next two while it stays off, with no notice on the screen (since 2.0.0-beta.2). Turn it back on in
+  Kindle Settings > Device Options > Device Passcode.
 - **The screen**: the screen guard reads the framebuffer back at 32 bpp too (Scribe Colorsoft).
   It turns itself off after 10 repaints in a row and logs `screen guard: off after 10 repaints in
   a row (...)`. If the first frame and the next 4 refreshes all fail (retried once a second),

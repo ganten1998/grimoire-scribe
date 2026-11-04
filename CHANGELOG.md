@@ -2,6 +2,10 @@
 
 ## 2.0.0-beta.2 (unreleased)
 
+- Quieter toasts (the owner's review of every one): confirmations of what the screen already shows are gone,
+  and the rest are terse ("Couldn't save page name.", "Couldn't save links. Page unchanged.").
+- The lasso's clipboard lasts one session: every start of Grimoire clears it, and a paste no longer logs a
+  false "read-only page" line.
 - Add Japanese: every screen, the share pages and the Effects studio, with a DotGothic16 pixel fallback for kana and kanji (subset to the kana and the common kanji, `assets/README.md`). `po/ja.po`, `po/ja.mo` and `po/ja-glossary.md`; the KOReader plugin's own words follow KOReader's Japanese setting.
 - A Japanese keyboard, as a phone has it: with Grimoire in Japanese the keyboard's accents key is
   あ, and it opens a flick kana pad, twelve keys in three columns (あ か さ / た な は / ま や ら /
@@ -21,8 +25,8 @@
   first; Left and Right move it; Esc No). Up and Down do nothing but in the Graph; the count pad no longer
   takes them. PageUp and PageDown turn pages (they stepped tools; [ and ] do that), and an Apple keyboard's
   Cmd works as Ctrl. A shortcuts.ini (or live-keys.ini) that is byte for byte a starter map an earlier
-  version wrote gets the new keys at the next start, with a toast; one someone edited is kept and means what
-  it meant. Older versions refuse the new action names one line each.
+  version wrote gets the new keys at the next start (grimoire.log says so); one someone edited is kept and means
+  what it meant. Older versions refuse the new action names one line each.
 - Pen feel on a keyboard: 1 to 9, 0 and E pick that pen's tab.
 - The Pages view on a keyboard: Ctrl+A ticks every page (the new `select-all` action), Ctrl+N opens the number
   pad for new pages, Esc closes a held page's card alone (Pages staying open, also with a shortcuts file that
@@ -62,14 +66,13 @@
 - New page in the Pages view adds pages in a batch: tap + for one page at once; hold it (or, with a
   keyboard attached, tap it with Shift held) for a number pad that asks how many, with - and + under the
   digits and an "Add N pages" button. The pages are added in one go where New page puts one, and the bottom
-  row's Undo takes the batch back while those pages are still blank. A batch of 25 pages or more shows
-  "Adding N pages..." while it is written (about a minute for the most), and taps made meanwhile are ignored.
-  A tap on + no longer opens the new page: Pages stays open, the page's tile says "(new)", a toast says which
-  page it is, and Undo takes it back as a batch of one. New pages take the paper of the page they go after:
+  row's Undo takes the batch back while those pages are still blank. Taps made while a large batch is written
+  are ignored. A tap on + no longer opens the new page: Pages stays open, the page's tile says "(new)", and
+  Undo takes it back as a batch of one. New pages take the paper of the page they go after:
   the last page ticked, else the open page.
 - The toolbar's + (its next-page arrow on the last page) held, or tapped with a keyboard's modifier key held, opens the
-  same number pad over the page: the pages go after the page you are on, on its paper, which stays open, and a toast says
-  how many were added, from which page, and that the Undo in Pages takes them back. A tap on it still adds one
+  same number pad over the page: the pages go after the page you are on, on its paper, which stays open, and the
+  Undo in Pages takes them back. A tap on it still adds one
   page and opens it, as swiping past the last page does. The new `new-pages` action opens the pad from a key
   or a controller button.
 - Seyes rule paper is true to size: it is drawn at the panel's own density (302.9 dpi on the Scribe 2,
@@ -82,7 +85,7 @@
   controller button, gesture or pen button) turns the pen into a dashed lasso; what it goes around is
   selected, with the erasing that belongs to it and its links. A bar under it has Copy, Cut, Delete, Paste
   and Done; drag inside its box to move it (only the outline moves until you lift, then it is one undo
-  step). The clipboard is a file, so it survives page turns, other notebooks, KOReader and a restart.
+  step). The clipboard is a file: page turns and other notebooks keep it, and each start of Grimoire clears it.
   While Select is on, the toolbar's tool button shows the lasso. Hold the pen still on empty page to paste
   there. There is no Select button on the panel: hold a finger still on the page (off a link) until a small
   dashed ring shows, about 0.6 s, then draw around ink without lifting to select it, with the same bar; or

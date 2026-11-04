@@ -51,7 +51,7 @@ storage full
 tap 1643 2365
 expect editor.page_name is Notes
 expect editor.index_rows is 1
-expect toast is Could not save the page name.
+expect toast is Couldn't save page name.
 storage ok
 pentap panel previous
 pentap panel previous

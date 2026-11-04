@@ -114,12 +114,12 @@ wait 100
 expect editor.select is off
 expect screen is editor
 expect editor.strokes is 1
-# Ctrl+S: written now, and says so
+# Ctrl+S: written now, with no toast
 expect editor.unsaved is 1
 key 31 1
 wait 100
 expect editor.unsaved is 0
-expect toast is Saved
+expect toast is
 # P: the Pages view; Esc closes it
 key 25 0
 wait 300

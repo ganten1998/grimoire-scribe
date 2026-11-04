@@ -34,7 +34,7 @@ expect settings.controller is 0
 # The recovery message and the master row keep gestures recoverable.
 swipe 2 700 1100 400 0
 expect settings.gestures is 0
-expect toast is Gestos desactivados. Ajustes > Gestos los vuelve a activar.
+expect toast is Gestos desactivados. Actívalos en Ajustes > Gestos.
 swipe 2 930 1100 0 400
 expect editor.modal is none
 key 21 0

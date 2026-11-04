@@ -31,7 +31,8 @@ expect editor.selected is 2
 expect editor.sel_box is 495 695 331 131
 tap panel select.cut
 wait 100
-expect toast is Cut.
+expect toast is
+expect editor.clipboard is 1
 expect editor.strokes is 0
 tap panel select.paste
 wait 100
@@ -130,7 +131,8 @@ expect editor.select is selected
 expect editor.selected is 1
 tap panel select.copy
 wait 100
-expect toast is Copied.
+expect toast is
+expect editor.clipboard is 1
 tap panel select.cut
 wait 100
 expect toast has read-only

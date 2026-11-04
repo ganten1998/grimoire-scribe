@@ -652,7 +652,7 @@ pub fn status_toggle(a: &mut App) {
         if a.settings.status_on {
             // TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): the clock and battery were turned
             // on with a shortcut where no notebook page is in front; they show on a page only.
-            say(a, tr("Clock and battery on. They show on a notebook page."));
+            say(a, tr("Clock and battery on (shown on notebook pages)."));
         } else {
             // TRANSLATORS: a toast: the clock and battery were turned off with a shortcut.
             say(a, tr("Clock and battery off."));
@@ -671,10 +671,10 @@ pub fn status_cycle_size(a: &mut App) {
 static K_CORNER_TOASTS: [&str; STATUS_CORNERS as usize] = [
     // TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines) when the status-corner shortcut moves the
     // clock and battery where no notebook page is in front: which corner of the page they sit in now.
-    n_("Clock and battery: top left corner of the page"),
-    n_("Clock and battery: top right corner of the page"),
-    n_("Clock and battery: bottom right corner of the page"),
-    n_("Clock and battery: bottom left corner of the page"),
+    n_("Clock and battery: top left corner of page"),
+    n_("Clock and battery: top right corner of page"),
+    n_("Clock and battery: bottom right corner of page"),
+    n_("Clock and battery: bottom left corner of page"),
 ];
 
 /// The next corner, clockwise from the top left and round (the status-corner shortcut, the Display sheet's row).

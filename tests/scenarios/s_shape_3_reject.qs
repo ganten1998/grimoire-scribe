@@ -18,7 +18,7 @@ expect display.presents has fast
 wait 1000
 expect display.presents has ui
 expect settings.hints is 128
-expect toast is That is not one of your finger shapes. Settings > Gestures lists them.
+expect toast is Unknown finger shape. See Settings > Gestures.
 wait 4200
 shape S 930 1150 45 600
 expect fshape.fired is 0

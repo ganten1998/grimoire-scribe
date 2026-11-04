@@ -28,7 +28,7 @@ shot 01-add-a-link
 key 38 0
 wait 60
 expect editor.link_mode is 0
-expect toast is No link made.
+expect toast is
 expect editor.strokes is 1
 # One press, the box, then its page
 key 38 0
@@ -42,7 +42,7 @@ expect editor.ui_at.930.2370 is linkto.pages
 tap panel linkto.pages
 expect editor.modal is pages
 expect editor.picking is new
-expect toast is Where does the link go? Tap its page.
+expect toast is
 shot 02-where-it-goes
 tap panel pages.page.3
 expect editor.modal is none
@@ -50,7 +50,7 @@ expect editor.page is 1
 expect editor.links is 1 1
 expect editor.link.1 is p3
 # (the first link this data root makes: the one-time tip instead of where it goes, hints bit 1)
-expect toast is Linked. Tap it with a finger to go there; hold it for more.
+expect toast is Linked. Finger tap to go there; hold for more.
 expect settings.hints is 2
 tap 600 1100
 expect editor.page is 3
@@ -140,7 +140,7 @@ tap 1679 2205
 tap 1643 2365
 expect editor.modal is none
 expect editor.page_name is Map
-expect toast is Could not save the page name.
+expect toast is Couldn't save page name.
 storage ok
 # On another page, its own name
 pentap panel next

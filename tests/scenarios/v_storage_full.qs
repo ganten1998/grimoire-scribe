@@ -1,3 +1,4 @@
+# rust-only
 # settings: status_mode=1
 # The store is full (the simulator's "storage full": every file write fails). The autosave says so
 # and tries again every 2 s, and holding the power button 4 s never claims a save it could not
@@ -16,12 +17,12 @@ storage full
 pen line 300 1200 1300 1250 40 0.6 0.6
 wait 2600
 expect editor.unsaved is 1
-expect toast has Could not save this page
+expect toast has Couldn't save page
 power down
 power held
 power up
 expect running is 1
-expect toast is Could not save this page. Hold power 4 s again to leave anyway.
+expect toast is Couldn't save page. Hold power 4 s again to leave anyway.
 shot 01-not-saved-staying
 storage ok
 wait 2600

@@ -3,7 +3,7 @@
 # env: GRIMOIRE_CHECK_FIT=1
 # New page in the Pages view (owner, 2026-11-03): a tap adds one page at once, after the open page, and the
 # view stays (owner, later the same day: "make the page add button not enter the page when its made"), the
-# new tile marked "(new)", a toast saying which page it is, and Undo offered as for a batch of one. Held (a held tile's 600 ms) it opens the count pad instead: the number pad Move to... and Go to
+# new tile marked "(new)" (no toast), and Undo offered as for a batch of one. Held (a held tile's 600 ms) it opens the count pad instead: the number pad Move to... and Go to
 # page use, with - and + under the digits and Done labelled with the count ("Add 12 pages", off at 0). Done adds
 # that many blank pages in one go where New page puts one, the view staying on the first of them, and the
 # bottom row's Undo (in Move to...'s place) takes them back while they are still blank. Each key refreshes the
@@ -27,7 +27,7 @@ expect editor.modal is pages
 expect editor.pages.adding is 0
 expect editor.page_ids is 1,6,2,3,4,5
 expect editor.page is 1
-expect toast is Added 1 page: it is page 2.
+expect toast is
 expect editor.tile.1 is one
 expect editor.tile.2 is Page 2 (new)
 expect editor.tile.3 is two
@@ -94,7 +94,7 @@ expect editor.pages.adding is 0
 expect editor.modal is pages
 expect editor.page_ids is 1,6,7,8,9,10,11,12,13,14,15,16,17,18,2,3,4,5
 expect editor.page is 2
-expect toast is Added 12 pages: they start at page 3.
+expect toast is
 expect editor.pages.undo is 1
 expect editor.pages.undo.kind is add
 expect editor.tile.3 is Page 3 (new)
@@ -107,7 +107,7 @@ wait 300
 expect editor.page_ids is 1,6,2,3,4,5
 expect editor.page is 2
 expect editor.modal is pages
-expect toast is Undone: 12 new pages taken back.
+expect toast is
 expect editor.pages.undo is 0
 # Cancel adds none
 touch down 394 2395
@@ -152,7 +152,7 @@ key 28 0
 wait 300
 expect editor.pages.adding is 0
 expect editor.page_ids is 1,6,19,20,21,2,3,4,5
-expect toast is Added 3 pages: they start at page 3.
+expect toast is
 # A page of the batch opened and written on: no longer blank, Undo goes
 tap panel pages.page.4
 tap panel pages.page.4

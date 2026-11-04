@@ -1336,7 +1336,7 @@ fn buttons_forget(a: &mut App, row: LearnRow) -> bool {
         row.act[1],
     ) != 0
     {
-        app_toast(a, tr("Could not save controller.ini"), 4000);
+        app_toast(a, tr("Couldn't save controller.ini"), 4000);
         return false;
     }
     let mut msg = String::new();
@@ -1368,11 +1368,11 @@ fn gestures_learn(a: &mut App, action: i32) -> bool {
 
 fn save_gesture_map(a: &mut App, next: GestureMap) -> bool {
     if !lib(a).gestures_file_readable {
-        app_toast(a, tr("Could not save the gestures."), 3000);
+        app_toast(a, tr("Couldn't save gestures."), 3000);
         return false;
     }
     if gesturemap_save(&next, &gesture_path()) < 0 {
-        app_toast(a, tr("Could not save the gestures."), 3000);
+        app_toast(a, tr("Couldn't save gestures."), 3000);
         return false;
     }
     a.gestures = next;
@@ -1417,7 +1417,7 @@ fn gestures_reset(a: &mut App) -> bool {
 fn reset_gesture_map(a: &mut App) -> bool {
     let mut next = a.gestures.clone();
     if gesturemap_reset(&mut next, &gesture_path()) < 0 {
-        app_toast(a, tr("Could not save the gestures."), 3000);
+        app_toast(a, tr("Couldn't save gestures."), 3000);
         return false;
     }
     a.gestures = next;
@@ -1445,12 +1445,12 @@ fn open_gestures(a: &mut App) {
         let mut msg = String::new();
         // TRANSLATORS: a toast (about 1700 px at 44 px bold or two lines): malformed or unknown
         // gestures.ini lines were skipped; %d is their count.
-        csnprintf!(&mut msg, 200, ng_("%d line of gestures.ini could not be used.", "%d lines of gestures.ini could not be used.", n as i64), n);
+        csnprintf!(&mut msg, 200, ng_("Couldn't use %d line of gestures.ini.", "Couldn't use %d lines of gestures.ini.", n as i64), n);
         app_toast(a, &msg, 3500);
     } else if n < 0 {
         // TRANSLATORS: a toast (about 1700 px at 44 px bold or two lines): the current gestures.ini
         // is unreadable; Reset gestures is the recovery action.
-        app_toast(a, tr("gestures.ini could not be read: Reset makes a new one."), 4000);
+        app_toast(a, tr("Couldn't read gestures.ini: Reset makes a new one."), 4000);
     }
     open_modal(a, Modal::Gestures);
 }
@@ -2030,7 +2030,7 @@ fn use_recording(a: &mut App) {
         let mut next = a.gestures.clone();
         let loser = gesturemap_set(&mut next, key, action);
         if loser < 0 || !save_gesture_map(a, next) {
-            app_toast(a, tr("Could not save the gestures."), 3000);
+            app_toast(a, tr("Couldn't save gestures."), 3000);
             return;
         }
         if loser != 0 && loser != action {
@@ -2054,7 +2054,7 @@ fn use_recording(a: &mut App) {
     let mut next = a.gestures.clone();
     let loser = gesturemap_shape_set(&mut next, action, &samples[..count]);
     if loser < 0 || !save_gesture_map(a, next) {
-        app_toast(a, tr("Could not save the gestures."), 3000);
+        app_toast(a, tr("Couldn't save gestures."), 3000);
         return;
     }
     if loser != 0 && loser != action {
@@ -2094,7 +2094,7 @@ pub fn library_learn_key(a: &mut App, code: i32, gamepad: bool) -> bool {
     let before = shortcuts_lookup(&a.shortcuts, ActionSrc::Pad, code, 0);
     if shortcuts_learn(&mut a.shortcuts, &cp, ActionSrc::Pad, code, action) != 0 {
         // TRANSLATORS: a toast: the Buttons sheet could not write its file (the storage is full).
-        app_toast(a, tr("Could not save controller.ini"), 4000);
+        app_toast(a, tr("Couldn't save controller.ini"), 4000);
         lib(a).learn_row = -1;
         redraw(a, RefreshMode::Ui);
         return true;
@@ -2131,7 +2131,7 @@ fn forget_row(a: &mut App, row: i32) {
     let cp = controller_path();
     lib(a).learn_row = -1;
     if shortcuts_forget(&mut a.shortcuts, &cp, ActionSrc::Pad, r.act[0], r.act[1]) != 0 {
-        app_toast(a, tr("Could not save controller.ini"), 4000);
+        app_toast(a, tr("Couldn't save controller.ini"), 4000);
     } else {
         // TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): a finger held on a
         // Buttons sheet row, whose actions no controller button does now; %s is the row's name as the
@@ -2318,7 +2318,7 @@ pub fn library_bt(a: &mut App, event: BtEvent, reply: &BtReply) {
                 bt_ask(s, ASK_PAIR_STATUS, 1000);
             } else {
                 s.pairing = false;
-                app_toast(a, tr("Could not pair that controller"), 3000);
+                app_toast(a, tr("Couldn't pair controller"), 3000);
             }
         }
         ASK_PAIR_STATUS => {
@@ -2330,9 +2330,11 @@ pub fn library_bt(a: &mut App, event: BtEvent, reply: &BtReply) {
                 app_toast(
                     a,
                     if ok && !r.pairing {
-                        tr("Paired. The controller connects in a moment.")
+                        // TRANSLATORS: a toast as pairing a controller ends (Settings > Controller > Pair a
+                        // controller): it is paired, and connects a moment later.
+                        tr("Paired.")
                     } else {
-                        tr("Could not pair that controller")
+                        tr("Couldn't pair controller")
                     },
                     3000,
                 );
@@ -2346,7 +2348,7 @@ pub fn library_bt(a: &mut App, event: BtEvent, reply: &BtReply) {
                 if ok {
                     tr("Forgotten.")
                 } else {
-                    tr("Could not forget that controller")
+                    tr("Couldn't forget controller")
                 },
                 2500,
             );
@@ -4179,7 +4181,7 @@ fn create_notebook(a: &mut App) {
             csnprintf!(
                 &mut msg,
                 256,
-                tr("Could not use that template (see %s)."),
+                tr("Couldn't use template (see %s)."),
                 "grimoire.log"
             );
             app_toast(a, &msg, 4000);
@@ -4187,7 +4189,7 @@ fn create_notebook(a: &mut App) {
         return;
     }
     drop(nb);
-    app_toast(a, tr("Could not create the notebook (storage full?)"), 3000);
+    app_toast(a, tr("Couldn't create notebook (storage full?)"), 3000);
 }
 
 fn kb_finished(a: &mut App, ok: bool) {
@@ -4213,7 +4215,7 @@ fn kb_finished(a: &mut App, ok: bool) {
                 let parent = lib(a).cur_folder;
                 let mut path = FixedStr::new();
                 if !store_folder_join(parent.as_str(), &txt, &mut path) || store_add_folder(path.as_str()) != 0 {
-                    app_toast(a, tr("Could not create the folder. Use a shorter name without a slash."), 3500);
+                    app_toast(a, tr("Couldn't create folder. Use a shorter name without a slash."), 3500);
                 } else if kbp == KbPurpose::MoveNewFolder && it.is_some_and(|it| it.is_folder) {
                     move_folder(a, &it.unwrap(), path.as_str());
                 } else if kbp == KbPurpose::MoveNewFolder {
@@ -4222,7 +4224,7 @@ fn kb_finished(a: &mut App, ok: bool) {
                         if store_set_folder(&id, path.as_str()) == 0 {
                             mirror_follow(a, &id, false);
                         } else {
-                            app_toast(a, tr("Could not move the notebook."), 3000);
+                            app_toast(a, tr("Couldn't move notebook."), 3000);
                         }
                     }
                 }
@@ -4233,7 +4235,7 @@ fn kb_finished(a: &mut App, ok: bool) {
                     if !store_folder_join(store_folder_parent(it.folder.as_str()), &txt, &mut dest)
                         || store_rename_folder(it.folder.as_str(), dest.as_str()) != 0
                     {
-                        app_toast(a, tr("Could not rename the folder. Check the name and destination."), 3500);
+                        app_toast(a, tr("Couldn't rename folder. Check name and destination."), 3500);
                     } else {
                         folder_follow(a, it.folder.as_str());
                     }
@@ -4267,7 +4269,7 @@ fn move_folder(a: &mut App, it: &Item, parent: &str) {
     if !store_folder_join(parent, store_folder_leaf(&old), &mut dest) || store_rename_folder(&old, dest.as_str()) != 0 {
         // TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): a folder could not be moved,
         // usually because the destination has a folder of that name.
-        app_toast(a, tr("Could not move the folder. Is there one of that name there?"), 3500);
+        app_toast(a, tr("Couldn't move folder. Is one with that name already there?"), 3500);
         return;
     }
     folder_follow(a, &old);
@@ -4450,7 +4452,7 @@ fn act(a: &mut App, h: &Hit) {
             csnprintf!(&mut path, 1024, "%s/shortcuts.ini", &store_root());
             if h.id == H_SHORTCUT_ENABLE {
                 if !a.settings.shortcuts_enabled && shortcuts_write_defaults(&path) != 0 {
-                    app_toast(a, tr("Could not save shortcuts.ini"), 5000);
+                    app_toast(a, tr("Couldn't save shortcuts.ini"), 5000);
                     return;
                 }
                 a.settings.shortcuts_enabled = !a.settings.shortcuts_enabled;
@@ -4535,7 +4537,7 @@ fn act(a: &mut App, h: &Hit) {
             }
             if update_request(upd_preview(a)) != 0 {
                 // TRANSLATORS: a toast: the update could not be asked for (the storage is full, say).
-                app_toast(a, tr("Could not start the update"), 3000);
+                app_toast(a, tr("Couldn't start update"), 3000);
                 return;
             }
             qlog!("update: leaving so KPM can install %s", &lib(a).upd_latest);
@@ -4599,7 +4601,7 @@ fn act(a: &mut App, h: &Hit) {
             } else {
                 app_toast(
                     a,
-                    tr("Could not update KOReader. A different patch or a storage error?"),
+                    tr("Couldn't update KOReader. Patch conflict or storage error?"),
                     7000,
                 );
             }
@@ -4721,7 +4723,7 @@ fn act(a: &mut App, h: &Hit) {
                 bg_mirror_pdf(&id, a.dpi, &app_mirror_dir(), true);
                 lib(a).modal = Modal::None;
                 redraw(a, RefreshMode::Ui);
-                app_toast(a, tr("Saving the PDF in the background..."), 2500);
+                app_toast_dismiss(a); // (no toast while it is made: the owner, 2026-11-04; "PDF saved" says when)
             }
         }
         H_MORE_DELETE => open_modal(a, Modal::Delete),
@@ -4736,11 +4738,16 @@ fn act(a: &mut App, h: &Hit) {
             lib(a).modal = Modal::None;
             reload(a);
             redraw(a, RefreshMode::Ui);
-            // TRANSLATORS: toasts (about 1700 px at 44 px in bold) after a notebook's or a folder's menu row: its
-            // pages are left out of the Graph of all notebooks now, or shown there again; or the change could not
-            // be saved.
-            let msg = if rc != 0 { tr("Could not save that change.") } else if omit { tr("Left out of the Graph.") } else { tr("Shown in the Graph again.") };
-            app_toast(a, msg, 2500);
+            // (done, the menu row reads the other way next time; no toast: the owner, 2026-11-04, and one left up
+            // from before goes)
+            if rc != 0 {
+                // TRANSLATORS: a toast (about 1700 px at 44 px in bold) after a notebook's or a folder's menu row that
+                // leaves its pages out of the Graph of all notebooks, or shows them there again: the change could
+                // not be saved.
+                app_toast(a, tr("Couldn't save change."), 2500);
+            } else {
+                app_toast_dismiss(a);
+            }
         }
         H_DELETE_YES => {
             if let Some(it) = it.filter(|it| !it.is_folder) {
@@ -4796,7 +4803,7 @@ fn act(a: &mut App, h: &Hit) {
                 if store_set_folder(&id, &folder) == 0 {
                     mirror_follow(a, &id, false);
                 } else {
-                    app_toast(a, tr("Could not move the notebook."), 3000);
+                    app_toast(a, tr("Couldn't move notebook."), 3000);
                 }
             }
             lib(a).modal = Modal::None;
@@ -5035,10 +5042,10 @@ pub fn library_graph_shown(a: &App) -> bool {
     graph_shown(a)
 }
 
-/// Ctrl+S in the Library: anything waiting is written (the settings), and a toast says so.
+/// Ctrl+S in the Library: anything waiting is written (the settings), with no toast (one left up from before goes).
 fn library_save(a: &mut App) {
     settings_save(&a.settings);
-    app_toast(a, tr("Saved"), 1200);
+    app_toast_dismiss(a);
 }
 
 /// Esc (`back`) on the Library, or on its Settings over a notebook: the first
@@ -5352,10 +5359,11 @@ fn library_event_in(a: &mut App, ev: &InEvent) {
         } else if r == DmResult::Inverted {
             redraw(a, RefreshMode::Full);
         } else if r == DmResult::Refit {
-            // (the editor, not open here, lays its page out again when it is next entered)
+            // (the editor, not open here, lays its page out again when it is next entered; the row shows the
+            // new setting, with no toast, and one left up from before goes)
             editor_fit_changed(a, false);
             redraw(a, RefreshMode::Ui);
-            editor_fit_toast(a);
+            app_toast_dismiss(a);
         } else if !rect_is_empty(d) {
             app_invalidate(
                 a,
@@ -6196,8 +6204,30 @@ mod tests {
         canvas_free(&mut a.screen);
     }
 
+    // Ctrl+S in the Library writes what is waiting (the settings), with no toast since the owner's toast pass
+    // (2026-11-04): a setting changed in memory is in settings.ini after it.
+    #[test]
+    fn ctrl_s_in_the_library_writes_the_settings_without_a_toast() {
+        let root = std::env::temp_dir().join(format!("grimoire-lib-save-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        assert_eq!(store_init(root.to_str().unwrap()), 0);
+        let mut a = pen_record_app();
+        lib(&mut a).modal = Modal::None;
+        a.scr = ScreenId::Library;
+        settings_default(&mut a.settings);
+        a.settings.mirror_pdf = !a.settings.mirror_pdf; // (in memory only, so far)
+        assert!(library_shortcut(&mut a, SHORTCUT_SAVE));
+        let mut on_disk = Settings::default();
+        settings_load(&mut on_disk);
+        assert_eq!(on_disk.mirror_pdf, a.settings.mirror_pdf);
+        assert!(!a.toast_visible);
+        library_free(&mut a);
+        canvas_free(&mut a.screen);
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
     // A node whose notebook does not open (its notebook.ini gone since the index read it): the Graph again,
-    // and the editor's "Could not open that notebook" stays up (graph_open used to clear it at once).
+    // and the editor's "Couldn't open notebook" stays up (graph_open used to clear it at once).
     #[test]
     fn a_node_that_does_not_open_keeps_its_toast_over_the_graph() {
         let root = std::env::temp_dir().join(format!("grimoire-graph-toast-{}", std::process::id()));
@@ -6227,7 +6257,7 @@ mod tests {
         assert_eq!(a.scr, ScreenId::Library);
         assert!(graph_shown(&a), "the Graph again");
         assert!(a.toast_visible);
-        assert_eq!(a.toast.as_str(), "Could not open that notebook");
+        assert_eq!(a.toast.as_str(), "Couldn't open notebook");
         library_free(&mut a);
         canvas_free(&mut a.screen);
         let _ = std::fs::remove_dir_all(&root);

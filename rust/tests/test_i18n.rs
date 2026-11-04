@@ -670,9 +670,9 @@ fn dates() {
 
 // ---- text that must fit ----
 
-// Notices no scenario shows (a full store, a damaged page, a missing pen, the passcode left off),
-// in every language and style, on the narrow (upright) screen: a toast has two lines. Each is
-// formatted as the code formats it (keep this list in step with the messages); out holds them.
+// Notices no scenario shows (a full store, a damaged page, a missing pen), in every language and style,
+// on the narrow (upright) screen: a toast has two lines. Each is formatted as the code formats it (keep
+// this list in step with the messages); out holds them.
 const RARE_MAX: usize = 72;
 const RARE_LEN: usize = 256;
 fn rare_notices(out: &mut Vec<String>) -> usize {
@@ -683,30 +683,25 @@ fn rare_notices(out: &mut Vec<String>) -> usize {
         strlcpy_q(&mut t, &s, RARE_LEN);
         out.push(t);
     };
-    put(cformat!("%s", tr("Your Kindle passcode was left off. Turn it back on in Kindle Settings.")));
-    put(cformat!(tr("No pen found. %s is made for the Kindle Scribe; writing needs its pen."), APP_NAME));
+    put(cformat!(tr("No pen found. %s is made for Kindle Scribe; writing needs its pen."), APP_NAME));
     put(cformat!(tr("Your Kindle passcode is paused while %s is open."), APP_NAME));
-    put(cformat!("%s", tr("Could not save this page. Hold power 4 s again to leave anyway.")));
+    put(cformat!("%s", tr("Couldn't save page. Hold power 4 s again to leave anyway.")));
     put(cformat!(tr("Saved. Leaving %s."), APP_NAME));
-    put(cformat!(tr("Leaving %s without this page."), APP_NAME));
+    put(cformat!(tr("Leaving %s without saving page."), APP_NAME));
     put(cformat!(tr("PDF saved to %s"), "grimoire/PDFs"));
-    put(cformat!("%s", tr("Could not save the PDF")));
-    put(cformat!(tr("A damaged page was set aside; a blank one took its place (see %s)"), "grimoire.log"));
-    put(cformat!("%s", tr("Could not create the notebook (storage full?)")));
-    put(cformat!("%s", tr("Could not save this page. Is the storage full?")));
-    put(cformat!("%s", tr("This page was made by a newer Grimoire. It is read-only here.")));
-    put(cformat!("%s", tr("Could not open that page")));
-    put(cformat!("%s", tr("Could not open that notebook")));
-    put(cformat!("%s", tr("This page is already empty")));
-    put(cformat!("%s", tr("Could not delete those pages")));
-    put(cformat!("%s", tr("Could not add a page")));
-    put(cformat!("%s", tr("Could not copy that page")));
-    put(cformat!(tr("This page is a copy of page %d."), 2000));
-    put(cformat!("%s", tr("Could not save the sleep screen")));
+    put(cformat!("%s", tr("Couldn't save PDF")));
+    put(cformat!(tr("Damaged page replaced with a blank one (see %s)"), "grimoire.log"));
+    put(cformat!("%s", tr("Couldn't create notebook (storage full?)")));
+    put(cformat!("%s", tr("Couldn't save page. Is the storage full?")));
+    put(cformat!("%s", tr("This page was made by a newer version, and will be viewed as read-only.")));
+    put(cformat!("%s", tr("Couldn't open page")));
+    put(cformat!("%s", tr("Couldn't open notebook")));
+    put(cformat!("%s", tr("Couldn't delete selection.")));
+    put(cformat!("%s", tr("Couldn't add page")));
+    put(cformat!("%s", tr("Couldn't copy page")));
+    put(cformat!("%s", tr("Couldn't save sleep screen")));
     put(cformat!("%s", tr("Calibration saved")));
     put(cformat!(tr("Moved to %s"), "grimoire/trash"));
-    put(cformat!(ng_("Deleted %d page (kept in %s)", "Deleted %d pages (kept in %s)", 1), 1, "grimoire/trash"));
-    put(cformat!(ng_("Deleted %d page (kept in %s)", "Deleted %d pages (kept in %s)", 2000), 2000, "grimoire/trash"));
     put(cformat!(tr("Eraser: %s"), c_("eraser", "Whole strokes"))); // (a controller's Eraser mode)
     // The Buttons sheet's learn that takes a button from another action, with the longest names.
     put(cformat!(tr("That button is no longer for %s."), c_("tool", "Mechanical pencil")));
@@ -723,40 +718,23 @@ fn rare_notices(out: &mut Vec<String>) -> usize {
     put(cformat!(tr("That button is no longer for %s."), tr("Whole page sideways")));
     put(cformat!(tr("No buttons for %s now."), tr("Show link areas")));
     put(cformat!("%s", tr("Nothing to go back to.")));
-    // The gestures' toasts (a page turned past the end, the pen near, the pan hint).
-    put(cformat!("%s", tr("This is the last page.")));
-    put(cformat!("%s", tr("This is the first page.")));
+    // The gestures' toast (the pen near).
     put(cformat!("%s", tr("Move the pen away, then swipe.")));
-    put(cformat!("%s", tr("Here two fingers move the page. Open Pages and Links from the panel.")));
-    // The Display sheet's sideways row's toasts, and the once-only hint after an update.
-    put(cformat!("%s", tr("Sideways shows the whole page.")));
-    put(cformat!("%s", tr("Sideways fills the width.")));
-    put(cformat!("%s", tr("Applies when the Kindle is sideways.")));
-    put(cformat!("%s", tr("Sideways now shows the whole page, so two-finger swipes work. Pinch to zoom in; Display changes this.")));
-    // (and the first notebook's, as two fingers up and down start to mean something)
-    put(cformat!("%s", tr("New: two fingers up show this page's links. Two fingers down open the Graph.")));
-    // The Links bar's and the eye's toasts.
-    put(cformat!("%s", tr("Dotted outlines show where a finger tap follows a link. They never print.")));
+    // The once-only tip after an update, as two fingers up and down start to mean something.
+    put(cformat!("%s", tr("New: two fingers down for the Graph, up for page links.")));
+    // The Links bar's toasts.
     put(cformat!("%s", tr("This page is read-only.")));
-    put(cformat!("%s", tr("Links could not be read.")));
-    // Making a link without ink (PHASE2 14): its refusals, the pick, and undoing it.
-    put(cformat!("%s", tr("Links could not be read in this notebook.")));
-    put(cformat!(tr("This page has %d links: delete one to add another."), 64));
+    put(cformat!("%s", tr("Couldn't read links.")));
+    // Making a link without ink (PHASE2 14): its refusals and the pick.
+    put(cformat!("%s", tr("Couldn't read links in this notebook.")));
+    put(cformat!(tr("Link limit (%d) reached: delete one first."), 64));
     put(cformat!(tr("Linked to %s."), "Capítulo cuatro: la casa del árbol viejo"));
     put(cformat!(tr("Linked to page %d."), 2000));
     put(cformat!("%s", tr("Linked to the Index.")));
-    put(cformat!("%s", tr("Too small for a link: draw around what links.")));
-    put(cformat!("%s", tr("No link made.")));
-    put(cformat!("%s", tr("Could not save the links: that change was not undone.")));
-    put(cformat!("%s", tr("Could not save the links: that change was not redone.")));
-    put(cformat!("%s", tr("Link change undone.")));
-    put(cformat!("%s", tr("Link change redone.")));
-    put(cformat!(tr("Linked to the new page %d."), 2000));
-    put(cformat!(tr("Page %d is named %s."), 2000, "Wwwwwwwwwwwwwwwwwwww"));
-    put(cformat!(tr("Page %d has no name now."), 2000));
-    put(cformat!("%s", tr("Link deleted. Undo brings it back.")));
-    put(cformat!("%s", tr("Links deleted. Undo brings them back.")));
-    put(cformat!("%s", tr("New area saved. Undo brings the old one back.")));
+    put(cformat!("%s", tr("Link area too small.")));
+    put(cformat!("%s", tr("Couldn't save links: undo unsuccessful.")));
+    put(cformat!("%s", tr("Couldn't save links: redo unsuccessful.")));
+    put(cformat!(tr("Linked to new page %d."), 2000));
     out.len()
 }
 
@@ -848,7 +826,7 @@ fn the_links_bar_strings_fit() {
             check!(at("header", font_measure(FontFace::Bold, ts, &cformat!(tr("Links on this page (%d)"), 64)), 1200));
             check!(at("hint", font_measure(FontFace::Regular, small, tr("Tap a link to look. Tap the page to stay.")), 1700));
             check!(at("none", font_measure(FontFace::Regular, ts, tr("No links on this page yet.")), 1700));
-            check!(at("unreadable", font_measure(FontFace::Regular, ts, tr("Links could not be read.")), 1700));
+            check!(at("unreadable", font_measure(FontFace::Regular, ts, tr("Couldn't read links.")), 1700));
             // a chip: "Page 2000" in its name room (878 - 18 - 150 - 14), the right column (144 px), "not here"
             check!(at("page n", font_measure(FontFace::Regular, ts, &cformat!(tr("Page %d"), 2000)), 600));
             check!(at("p. n", font_measure(FontFace::Regular, small, &cformat!(c_("bar", "p. %d"), 2000)), 144));

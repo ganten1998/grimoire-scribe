@@ -1,3 +1,4 @@
+# rust-only
 # settings: status_mode=1
 # env: GRIMOIRE_HOST=koreader
 # env: GRIMOIRE_ANNOTATE=1
@@ -12,7 +13,7 @@ expect screen is library
 expect annotate.result is failed
 expect annotate.leftover is 0
 expect library.items is 1
-expect toast is Could not add the page KOReader sent. Is the storage full?
+expect toast is Couldn't add page from KOReader. Is the storage full?
 tap 326 608
 wait 600
 expect screen is editor

@@ -30,7 +30,7 @@ tap panel pages.key.2
 tap panel pages.key.done
 wait 300
 expect editor.page_ids is 1,2,3,6,7,4,5
-expect toast is Added 2 pages: they start at page 4.
+expect toast is
 expect editor.pages.undo.kind is add
 # Undone and redone (Ctrl+Z, Ctrl+Y): the same ids at the same places
 key 44 1
@@ -40,7 +40,7 @@ expect editor.pages.redo.kind is add
 key 21 1
 wait 200
 expect editor.page_ids is 1,2,3,6,7,4,5
-expect toast is Redone: 2 new pages again, from page 4.
+expect toast is
 shot 01-redone-batch
 # Pages 2 (wide rule) and 7 (id 5, medium rule) ticked (Multi-select still on): a tap on New page goes after
 # page 7, on medium rule

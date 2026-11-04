@@ -21,7 +21,7 @@ expect templates.ready is 2
 pentap 511 452
 wait 300
 expect editor.modal is none
-expect toast is Could not use that template (see grimoire.log).
+expect toast is Couldn't use template (see grimoire.log).
 expect editor.paper is 1
 expect editor.unsaved is 0
 shot 01-could-not

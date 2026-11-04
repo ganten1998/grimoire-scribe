@@ -3,8 +3,8 @@
 # settings: status_mode=1
 # rust-only
 # Zoomed in, two fingers pan the page: the zoom held, a drag that starts at the top edge pans too, and a
-# drag at a scroll limit still pans (nowhere): it never navigates. The first pan says once where Pages
-# and Links went. A surface that does not pan (the Pages view) makes the same drag a swipe, which the
+# drag at a scroll limit still pans (nowhere): it never navigates, and says nothing (the pan hint went in
+# 2.0.0-beta.2). A surface that does not pan (the Pages view) makes the same drag a swipe, which the
 # mirror rule closes it with.
 # settings: mirror_pdf=0
 wait 300
@@ -20,16 +20,14 @@ wait 400
 expect editor.zoomed is 1
 expect editor.zoom is 2.25
 expect editor.scrolls is 1 1
-# a vertical drag pans, holds the zoom, opens nothing, and the pan hint shows
+# a vertical drag pans, holds the zoom, opens nothing, and says nothing
 swipe 2 930 1200 0 400
 expect editor.modal is none
 expect touch.gesture is
 expect editor.zoom is 2.25
 expect editor.zoomed is 1
-expect toast is Here two fingers move the page. Zoom out for page and link swipes.
-expect settings.hints is 64
-wait 4200
 expect toast is
+expect settings.hints is 0
 # starting 40 px from the top edge
 swipe 2 930 40 0 400
 expect editor.modal is none

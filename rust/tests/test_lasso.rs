@@ -18,6 +18,44 @@ use testlib::*;
 
 const DPI: f32 = 300.0;
 
+// What the code under test logs (grimoire.log is its stderr), from log_capture to log_captured (as
+// test_annotate.rs has it).
+static G_LOG_SAVED: std::sync::atomic::AtomicI32 = std::sync::atomic::AtomicI32::new(-1);
+
+fn g_log_path() -> String {
+    format!("{}/lasso-captured.log", tl_tmp())
+}
+
+fn log_capture() {
+    // (stderr is not buffered here: the lines of earlier checks are out already)
+    // SAFETY: dup, open and dup2 on descriptor 2 and one this function opens, which it closes again.
+    unsafe {
+        G_LOG_SAVED.store(libc::dup(2), Ordering::Relaxed);
+        let path = std::ffi::CString::new(g_log_path()).unwrap();
+        let fd = libc::open(path.as_ptr(), libc::O_WRONLY | libc::O_CREAT | libc::O_TRUNC, 0o644 as libc::c_uint);
+        if fd >= 0 {
+            libc::dup2(fd, 2);
+            libc::close(fd);
+        }
+    }
+}
+
+fn log_captured() -> Option<String> {
+    let saved = G_LOG_SAVED.swap(-1, Ordering::Relaxed);
+    if saved >= 0 {
+        // SAFETY: puts descriptor 2 back from the copy log_capture made, and closes the copy.
+        unsafe {
+            libc::dup2(saved, 2);
+            libc::close(saved);
+        }
+    }
+    let t = std::fs::read(g_log_path()).ok().map(|t| String::from_utf8_lossy(&t).into_owned());
+    if let Some(t) = &t {
+        eprint!("{}", t);
+    }
+    t
+}
+
 static SEED: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(1);
 fn rnd() -> u32 {
     let s = SEED.load(Ordering::Relaxed).wrapping_mul(1664525).wrapping_add(1013904223);
@@ -469,7 +507,8 @@ fn clipboard_round_trip_and_refusals() {
     check!(clipboard_parse(&bad).is_none());
     check!(clipboard_parse(&bytes[..at]).is_none());
     check!(clipboard_parse(b"QPG1").is_none());
-    // the file: written atomically, read back, survives (a new process reads the same file)
+    // the file: written atomically, read back (by this session: page turns and notebook switches read the
+    // same file; a start of Grimoire deletes it, below)
     let root = format!("{}/lasso-clip", tl_tmp());
     let _ = std::fs::remove_dir_all(&root);
     check!(store_init(&root) == 0);
@@ -492,6 +531,30 @@ fn clipboard_round_trip_and_refusals() {
     check!(clipboard_read().is_some_and(|b| b.src_pid == 4));
     check!(clipboard_restore(None) == 0 && !clipboard_has());
     check!(clipboard_snapshot().is_none() && clipboard_restore(None) == 0);
+    // The clipboard lasts one session (the owner, 2026-11-04): a start of Grimoire (app_init) deletes the one an
+    // earlier session left, saying so in one log line; a start with none says nothing.
+    check!(clipboard_write(&g) == 0 && clipboard_has());
+    log_capture();
+    clipboard_clear_at_start();
+    let log = log_captured().unwrap_or_default();
+    check!(!clipboard_has() && clipboard_read().is_none());
+    check!(log.lines().filter(|l| l.contains("clipboard:")).count() == 1);
+    check!(log.contains("the lasso's clipboard from the last session is deleted"));
+    log_capture();
+    clipboard_clear_at_start();
+    check!(log_captured().is_some_and(|l| !l.contains("clipboard:")));
+    check!(!clipboard_has());
+    // Read quietly: its CLIP chunk, critical on purpose, logs no "read-only page" line as a paste reads it,
+    // while a notebook's page with a chunk this version does not know still does.
+    check!(clipboard_write(&g) == 0);
+    log_capture();
+    check!(clipboard_read().is_some());
+    check!(log_captured().is_some_and(|l| !l.contains("read-only page")));
+    log_capture();
+    let mut as_page = None;
+    check!(page_deserialize(&bytes, &mut as_page) == 0 && as_page.as_ref().is_some_and(|p| p.readonly));
+    check!(log_captured().is_some_and(|l| l.contains("store: read-only page: a chunk this version does not know (CLIP)")));
+    check!(clipboard_restore(None) == 0);
     // its own page's originals: there (even after the file's round trip), then gone (a Cut) or moved
     check!(group_originals_on(&p, &g) && group_originals_on(&p, &back));
     let mut moved = page_new(600, 400, PAPER_NARROW);

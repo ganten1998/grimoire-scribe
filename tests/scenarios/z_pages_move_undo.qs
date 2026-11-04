@@ -30,7 +30,7 @@ tap panel pages.undo-move
 wait 200
 expect editor.page_ids is 1,2,3,4,5
 expect editor.pages.undo is 0
-expect toast is Move undone: the pages are back in their order.
+expect toast is
 expect editor.page is 1
 expect editor.modal is pages
 shot 02-undone

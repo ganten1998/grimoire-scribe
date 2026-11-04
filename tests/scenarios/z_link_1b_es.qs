@@ -39,7 +39,8 @@ expect editor.linkto is pick
 expect editor.ui_at.1530.2370 is linkto.cancel
 tap 1530 2370
 wait 100
-expect toast is No se creó el enlace.
+expect toast is
+expect editor.linkto is 0
 expect editor.links is 3 3
 # The card for one link, to Árbol: four rows
 pen leave
