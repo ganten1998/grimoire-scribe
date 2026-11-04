@@ -182,8 +182,9 @@ fn the_index_lists_every_notebook_in_its_folder() {
     check!(has(&t, &format!("<p class=meta style='margin-top:40px'>Grimoire {}</p>", GRIMOIRE_VERSION)));
     check!(has(&t, "window.GRIMOIRE_DOWNLOAD_WORDS=[\"Preparing PDF...\",\"Preparing PDF: {done} / {total} pages\""));
     check!(t.ends_with("</script></body></html>"));
-    // the Gothic style's fonts (the next test asks for the Classic ones)
+    // the Gothic style's fonts (the next test asks for the Classic ones), and where their licenses are
     check!(has(&t, "/font/jacquard24.ttf?v=") && has(&t, "/font/jersey10.ttf?v=") && has(&t, "<body class=gothic>"));
+    check!(has(&t, "<style>/* The fonts' licenses: /font/licenses.txt */@font-face{"));
     check!(get("/index.html").body == r.body);
 }
 
@@ -284,6 +285,18 @@ fn fonts_icons_and_the_cache() {
     check!(get("/font/jacquard24.ttf").body == grimoire::assets::FONT_JACQUARD24);
     check!(get("/font/terminess.ttf").body == grimoire::assets::FONT_TERMINESS_REGULAR);
     check!(get("/font/terminess-bold.ttf").body == grimoire::assets::FONT_TERMINESS_BOLD);
+    // each font names its license, the texts served beside them (the Material Design icons inside
+    // Terminess are under the Apache License 2.0, whose text goes with every copy)
+    for font in ["jersey10.ttf", "jacquard24.ttf", "terminess.ttf", "terminess-bold.ttf"] {
+        check!(get(&format!("/font/{font}")).header("Link") == Some("</font/licenses.txt>; rel=\"license\""));
+    }
+    let lic = get("/font/licenses.txt");
+    check!(lic.status() == "HTTP/1.0 200 OK" && lic.header("Content-Type") == Some("text/plain; charset=utf-8"));
+    check!(lic.header("Cache-Control") == Some("no-store") && lic.body == grimoire::assets::FONT_LICENSES.as_bytes());
+    let t = lic.text();
+    check!(has(&t, "Copyright (C) 2020 Dimitar Toshkov Zhekov") && has(&t, "SIL OPEN FONT LICENSE Version 1.1"));
+    check!(has(&t, "Pictogrammers Free License") && has(&t, "TERMS AND CONDITIONS FOR USE, REPRODUCTION, AND DISTRIBUTION"));
+    check!(has(&t, "soft-type-jacquard") && has(&t, "soft-type-jersey"));
     let nope = get("/font/nope.ttf");
     check!(nope.status() == "HTTP/1.0 404 Not Found" && nope.text() == "not found\n" && nope.header("Cache-Control") == Some("no-store"));
     let icon = get("/icon.svg");
@@ -300,6 +313,7 @@ fn the_classic_style_has_its_own_fonts() {
     check!(r.status() == "HTTP/1.0 200 OK");
     let t = r.text();
     check!(has(&t, "/font/terminess.ttf?v=") && has(&t, "/font/terminess-bold.ttf?v=") && has(&t, "<body class=classic>"));
+    check!(has(&t, "<style>/* The fonts' licenses: /font/licenses.txt */@font-face{"));
     check!(!has(&t, "jacquard24"));
 }
 
@@ -413,11 +427,12 @@ fn a_second_owner_shares_the_server_and_the_last_one_stops_it() {
     check!(httpd_acquire(HTTPD_LIVE, port(), 300.0, true) == 0 && httpd_owners() == HTTPD_SHARE | HTTPD_LIVE);
     httpd_release(HTTPD_SHARE);
     check!(httpd_owners() == HTTPD_LIVE && httpd_running());
-    // only Live view keeps it: a download is refused, the fonts and /live answer
+    // only Live view keeps it: a download is refused, the fonts (and their licenses) and /live answer
     let r = get("/api/list.json");
     check!(r.status() == "HTTP/1.0 403 Forbidden" && r.text() == "Open Share on the Kindle to download.\n");
     check!(get("/nb/x.pdf").status() == "HTTP/1.0 403 Forbidden");
     check!(get("/font/jersey10.ttf").status() == "HTTP/1.0 200 OK");
+    check!(get("/font/licenses.txt").status() == "HTTP/1.0 200 OK");
     let live = get("/live");
     check!(live.status() == "HTTP/1.0 200 OK");
     let t = live.text();
