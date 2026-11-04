@@ -9,5 +9,5 @@
 wait 600
 shot 01-toast
 expect annotate.book is failed
-expect toast is No se pudo abrir el libro que envió KOReader: no se puede leer la imagen de una página.
+expect toast is No se pudo abrir el libro: la imagen de una página es ilegible.
 quit

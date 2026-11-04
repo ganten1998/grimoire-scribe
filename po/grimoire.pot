@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: Grimoire 2.0.0-beta.1\n"
 "Report-Msgid-Bugs-To: https://github.com/ganten1998/grimoire-scribe/issues\n"
-"POT-Creation-Date: 2026-11-03 15:47-0600\n"
+"POT-Creation-Date: 2026-11-04 10:59-0600\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -456,7 +456,7 @@ msgid "New pages..."
 msgstr ""
 
 #. TRANSLATORS: (the keyboard shortcuts lists, about 1100 px at 44 px in bold) Ctrl+S: the open page and
-#. its notebook written now (in the Library, any setting waiting), with a toast "Saved".
+#. its notebook written now (in the Library, any setting waiting).
 #: rust/src/actions.rs
 msgid "Save now"
 msgstr ""
@@ -543,19 +543,19 @@ msgstr ""
 #. and that page cannot be opened, in a toast: one line of about 1700 px at 44 px in bold, or
 #. two. This one: the picture of the page KOReader sent is damaged or missing.
 #: rust/src/app.rs
-msgid "Could not open the page KOReader sent: its picture does not read."
+msgid "Couldn't open page: its image is unreadable."
 msgstr ""
 
 #. TRANSLATORS: (as above) the page could not be added to its notebook: a file could not be
 #. written.
 #: rust/src/app.rs
-msgid "Could not add the page KOReader sent. Is the storage full?"
+msgid "Couldn't add page from KOReader. Is the storage full?"
 msgstr ""
 
 #. TRANSLATORS: (as above) any other reason; %s is the log file that says why.
 #: rust/src/app.rs
 #, c-format
-msgid "Could not open the page KOReader sent (see %s)."
+msgid "Couldn't open page from KOReader (see %s)."
 msgstr ""
 
 #. TRANSLATORS: notices when Grimoire opens from KOReader's "Open this book in Grimoire", in a
@@ -563,30 +563,30 @@ msgstr ""
 #. than a notebook holds; %d is that number (2000).
 #: rust/src/app.rs
 #, c-format
-msgid "The book has more pages than a notebook holds (%d)."
+msgid "Book too long: notebooks hold %d pages."
 msgstr ""
 
 #. TRANSLATORS: (as above) a page picture KOReader made is damaged or missing.
 #: rust/src/app.rs
-msgid "Could not open the book KOReader sent: a page's picture does not read."
+msgid "Couldn't open book: a page image is unreadable."
 msgstr ""
 
 #. TRANSLATORS: (as above) the pages could not be added: a file could not be written.
 #: rust/src/app.rs
-msgid "Could not add the book's pages. Is the storage full?"
+msgid "Couldn't add book pages. Is the storage full?"
 msgstr ""
 
 #. TRANSLATORS: (as above) any other reason; %s is the log file that says why.
 #: rust/src/app.rs
 #, c-format
-msgid "Could not open the book KOReader sent (see %s)."
+msgid "Couldn't open book from KOReader (see %s)."
 msgstr ""
 
 #. TRANSLATORS: in a toast, once the pages of a book KOReader sent are in its notebook.
 #: rust/src/app.rs
 #, c-format
-msgid "Added %d page of the book."
-msgid_plural "Added %d pages of the book."
+msgid "Added %d book page."
+msgid_plural "Added %d book pages."
 msgstr[0] ""
 msgstr[1] ""
 
@@ -594,35 +594,29 @@ msgstr[1] ""
 #. notebook (a few seconds for a big book): pages done, of how many. One line of about 1700 px.
 #: rust/src/app.rs
 #, c-format
-msgid "Adding the book's pages: %d of %d"
+msgid "Adding book pages: %d of %d"
 msgstr ""
 
 #. TRANSLATORS: a toast at the start after an update KPM could not install (Settings > Updates).
 #: rust/src/app.rs
-msgid "The last update did not install. grimoire.log says why."
-msgstr ""
-
-#. TRANSLATORS: notices at startup, in a toast: one line of about 1700 px at 44 px in bold,
-#. or two. "Kindle Settings" is the Kindle's own Settings, as its menus name them.
-#: rust/src/app.rs
-msgid "Your Kindle passcode was left off. Turn it back on in Kindle Settings."
+msgid "Last update failed. See grimoire.log."
 msgstr ""
 
 #. TRANSLATORS: %s is the app's name, Grimoire.
 #: rust/src/app.rs
 #, c-format
-msgid "No pen found. %s is made for the Kindle Scribe; writing needs its pen."
+msgid "No pen found. %s is made for Kindle Scribe; writing needs its pen."
 msgstr ""
 
 #. TRANSLATORS: toasts (one line of about 1700 px at 44 px in bold) when a controller, keyboard
-#. or page turner comes or goes. "Held by another app": another program (a button mapper)
+#. or page turner comes or goes. "In use by another app": another program (a button mapper)
 #. takes its presses, so Grimoire gets none.
 #: rust/src/app.rs
 msgid "Controller disconnected"
 msgstr ""
 
 #: rust/src/app.rs
-msgid "Controller held by another app"
+msgid "Controller in use by another app"
 msgstr ""
 
 #: rust/src/app.rs
@@ -632,7 +626,7 @@ msgstr ""
 #. TRANSLATORS: a toast: Live view could not start (no memory for its copy of the screen,
 #. or the server's port is taken).
 #: rust/src/app.rs
-msgid "Could not start Live view"
+msgid "Couldn't start Live view"
 msgstr ""
 
 #. TRANSLATORS: a toast as Live view stops (the Stop button on its card).
@@ -642,7 +636,7 @@ msgstr ""
 
 #. TRANSLATORS: a toast: Live view turned itself off after 10 minutes with nobody watching.
 #: rust/src/app.rs
-msgid "Live view turned off: no one watched for 10 minutes."
+msgid "Live view off: no viewers for 10 minutes."
 msgstr ""
 
 #. TRANSLATORS: a toast as the first computer starts watching the screen (Live view).
@@ -653,7 +647,7 @@ msgstr ""
 #. TRANSLATORS: holding the power button 4 s leaves Grimoire, but this page could not be
 #. saved (a full storage), so it stays once.
 #: rust/src/app.rs
-msgid "Could not save this page. Hold power 4 s again to leave anyway."
+msgid "Couldn't save page. Hold power 4 s again to leave anyway."
 msgstr ""
 
 #. TRANSLATORS: the last notice before Grimoire closes, with the page saved, or without it;
@@ -665,25 +659,25 @@ msgstr ""
 
 #: rust/src/app.rs
 #, c-format
-msgid "Leaving %s without this page."
+msgid "Leaving %s without saving page."
 msgstr ""
 
 #. TRANSLATORS: the last notice before Grimoire closes for an update (Settings > Updates): KPM
 #. installs it, then Grimoire starts again; or, opened from KOReader, KOReader comes back and
 #. opens the new one next time.
 #: rust/src/app.rs
-msgid "Updating. Open Grimoire from KOReader again in a moment."
+msgid "Updating. Reopen Grimoire from KOReader in a moment."
 msgstr ""
 
 #: rust/src/app.rs
-msgid "Updating. Grimoire starts again by itself."
+msgid "Updating. Grimoire restarts by itself."
 msgstr ""
 
 #. TRANSLATORS: a folder of page pictures (grimoire/import/<name>) became a new notebook.
 #: rust/src/app.rs
 #, c-format
-msgid "Imported a notebook of %d page."
-msgid_plural "Imported a notebook of %d pages."
+msgid "Imported notebook (%d page)."
+msgid_plural "Imported notebook (%d pages)."
 msgstr[0] ""
 msgstr[1] ""
 
@@ -691,14 +685,7 @@ msgstr[1] ""
 #. that says why. The folder stays where it was.
 #: rust/src/app.rs
 #, c-format
-msgid "Could not import a folder of pages (see %s)."
-msgstr ""
-
-#. TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines) once, at the first start of a new
-#. version, when shortcuts.ini was the starter map an earlier version wrote (nobody had edited it): it has
-#. this version's keys now.
-#: rust/src/app.rs
-msgid "Keyboard shortcuts: the new starter keys are in shortcuts.ini."
+msgid "Couldn't import page folder (see %s)."
 msgstr ""
 
 #. TRANSLATORS: a PDF saved in the background, and where (the Kindle's folder of them).
@@ -708,22 +695,22 @@ msgid "PDF saved to %s"
 msgstr ""
 
 #: rust/src/app.rs
-msgid "Could not save the PDF"
+msgid "Couldn't save PDF"
 msgstr ""
 
 #. TRANSLATORS: a page that could not be read; %s is the log file that says which.
 #: rust/src/app.rs
 #, c-format
-msgid "A damaged page was set aside; a blank one took its place (see %s)"
+msgid "Damaged page replaced with a blank one (see %s)"
 msgstr ""
 
 #: rust/src/app.rs rust/src/library.rs
-msgid "Could not save shortcuts.ini"
+msgid "Couldn't save shortcuts.ini"
 msgstr ""
 
 #. TRANSLATORS: light action before its cached level is known; toast, 1700 px at 44 px.
 #: rust/src/app.rs
-msgid "Light not ready yet."
+msgid "Light not ready."
 msgstr ""
 
 #. TRANSLATORS: cached light step and maximum; toast, 1700 px at 44 px bold.
@@ -743,7 +730,7 @@ msgid "Rotation locked."
 msgstr ""
 
 #: rust/src/app.rs
-msgid "Rotation follows the Kindle."
+msgid "Rotation follows Kindle."
 msgstr ""
 
 #. TRANSLATORS: pinch zoom toggle feedback, toast, 1700 px at 44 px bold.
@@ -757,19 +744,19 @@ msgstr ""
 
 #. TRANSLATORS: pen button setting after cycling; toast, 1700 px at 44 px, up to two lines.
 #: rust/src/app.rs
-msgid "Holding the pen button while writing does nothing"
+msgid "Pen button while writing: nothing"
 msgstr ""
 
 #: rust/src/app.rs
-msgid "Holding the pen button while writing erases"
+msgid "Pen button while writing: erases"
 msgstr ""
 
 #: rust/src/app.rs
-msgid "Holding the pen button while writing highlights"
+msgid "Pen button while writing: highlights"
 msgstr ""
 
 #: rust/src/app.rs
-msgid "Holding the pen button while writing draws white"
+msgid "Pen button while writing: draws white"
 msgstr ""
 
 #. TRANSLATORS: PDF mirror setting feedback; toast, 1700 px at 44 px bold.
@@ -806,7 +793,7 @@ msgid "Gestures on."
 msgstr ""
 
 #: rust/src/app.rs
-msgid "Gestures off. Settings > Gestures turns them back on."
+msgid "Gestures off. Turn on in Settings > Gestures."
 msgstr ""
 
 #. TRANSLATORS: shortcut enablement feedback; toast, 1700 px at 44 px bold.
@@ -1154,7 +1141,7 @@ msgid "This page is now the sleep screen"
 msgstr ""
 
 #: rust/src/dispmenu.rs
-msgid "Could not save the sleep screen"
+msgid "Couldn't save sleep screen"
 msgstr ""
 
 #. TRANSLATORS: the title of the keyboard that names the page a held link goes to (about 1500 px at 44 px).
@@ -1163,15 +1150,8 @@ msgstr ""
 msgid "Page name"
 msgstr ""
 
-#. TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): the long-press card's Rename
-#. gave page %d the name %s.
 #: rust/src/editor.rs
-#, c-format
-msgid "Page %d is named %s."
-msgstr ""
-
-#: rust/src/editor.rs
-msgid "Could not save the page name."
+msgid "Couldn't save page name."
 msgstr ""
 
 #. TRANSLATORS: the title of the editor's paper sheet, which changes the open page's paper.
@@ -1204,25 +1184,6 @@ msgstr ""
 
 #: rust/src/editor.rs
 msgid "To"
-msgstr ""
-
-#. TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): the Display sheet's
-#. "Sideways, show the whole page" was changed with the Kindle upright, where it makes no
-#. difference yet.
-#: rust/src/editor.rs
-msgid "Applies when the Kindle is sideways."
-msgstr ""
-
-#. TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): the editor now shows
-#. the whole page when the Kindle is turned sideways.
-#: rust/src/editor.rs
-msgid "Sideways shows the whole page."
-msgstr ""
-
-#. TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): the editor now fills the
-#. width with the page when the Kindle is turned sideways.
-#: rust/src/editor.rs
-msgid "Sideways fills the width."
 msgstr ""
 
 #. TRANSLATORS: the tool picker's ink row under the pens, two choices side by side; this one:
@@ -1340,17 +1301,12 @@ msgid "%d%%"
 msgstr ""
 
 #: rust/src/editor.rs
-msgid ""
-"Dotted outlines show where a finger tap follows a link. They never print."
-msgstr ""
-
-#: rust/src/editor.rs
-msgid "Could not save this page. Is the storage full?"
+msgid "Couldn't save page. Is the storage full?"
 msgstr ""
 
 #. TRANSLATORS: in a toast (about 1700 px at 44 px in bold, or two lines).
 #: rust/src/editor.rs
-msgid "This page was made by a newer Grimoire. It is read-only here."
+msgid "This page was made by a newer version, and will be viewed as read-only."
 msgstr ""
 
 #: rust/src/editor.rs rust/src/httpd.rs rust/src/linkbar.rs
@@ -1361,124 +1317,69 @@ msgid "Page %d"
 msgstr ""
 
 #: rust/src/editor.rs
-msgid "Could not open that page"
+msgid "Couldn't open page"
 msgstr ""
 
 #: rust/src/editor.rs
-msgid "Could not open that notebook"
+msgid "Couldn't open notebook"
 msgstr ""
 
 #. TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines), shown once after an update: what
 #. two fingers dragged up and down on a page do now.
 #: rust/src/editor.rs
-msgid ""
-"New: two fingers up show this page's links. Two fingers down open the Graph."
+msgid "New: two fingers down for the Graph, up for page links."
 msgstr ""
 
 #: rust/src/editor.rs
-msgid "This page is already empty"
+msgid "Couldn't save links. Page unchanged."
+msgstr ""
+
+#. TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): Delete in the Pages view
+#. could not delete the ticked pages (the blank page a notebook keeps could not be added).
+#: rust/src/editor.rs
+msgid "Couldn't delete selection."
 msgstr ""
 
 #: rust/src/editor.rs
-msgid "Could not save the links. The page was not cleared."
-msgstr ""
-
-#: rust/src/editor.rs
-msgid "Page cleared"
-msgstr ""
-
-#: rust/src/editor.rs
-msgid "Could not delete those pages"
-msgstr ""
-
-#. TRANSLATORS: deleted pages go to the trash folder on the Kindle's storage (%s).
-#: rust/src/editor.rs
-#, c-format
-msgid "Deleted %d page (kept in %s)"
-msgid_plural "Deleted %d pages (kept in %s)"
-msgstr[0] ""
-msgstr[1] ""
-
-#: rust/src/editor.rs
-msgid "Could not add a page"
+msgid "Couldn't add page"
 msgstr ""
 
 #. TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): Copy page in the
 #. Pages view could not copy the page (the storage is full, or the notebook has 2000 pages).
 #: rust/src/editor.rs
-msgid "Could not copy that page"
+msgid "Couldn't copy page"
 msgstr ""
 
 #. TRANSLATORS: a toast as the copy Copy page made opens (about 1700 px at 44 px in bold, or two
 #. lines): the page was copied, but the links drawn on it could not be saved for the copy.
 #: rust/src/editor.rs
-msgid "The copy has no links: they could not be saved."
-msgstr ""
-
-#. TRANSLATORS: a toast as the copy Copy page made opens (about 1700 px at 44 px in bold, or two
-#. lines): %d is the page it copies.
-#: rust/src/editor.rs
-#, c-format
-msgid "This page is a copy of page %d."
+msgid "Copied without links: couldn't save them."
 msgstr ""
 
 #. TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): Move to... could not save
 #. the notebook's new page order (the storage is full).
 #: rust/src/editor.rs
-msgid "Could not move those pages."
+msgid "Couldn't move pages."
 msgstr ""
-
-#. TRANSLATORS: a toast as Move to... is done (about 1700 px at 44 px in bold, or two lines): %d pages
-#. moved; they now start at page %d.
-#: rust/src/editor.rs
-#, c-format
-msgid "Moved %d page: it is page %d now."
-msgid_plural "Moved %d pages: they start at page %d now."
-msgstr[0] ""
-msgstr[1] ""
 
 #. TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): the Pages view's Undo could
 #. not put the moved pages back (the storage is full).
 #: rust/src/editor.rs
-msgid "Could not undo the move."
-msgstr ""
-
-#. TRANSLATORS: a toast as the Pages view's Undo put moved pages back where they were (about 1700 px
-#. at 44 px in bold).
-#: rust/src/editor.rs
-msgid "Move undone: the pages are back in their order."
+msgid "Couldn't undo move."
 msgstr ""
 
 #. TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): New page held, in a notebook
 #. that already has the most pages a notebook can have (%d).
 #: rust/src/editor.rs rust/src/pagesview.rs
 #, c-format
-msgid "This notebook is full: it has %d pages."
+msgid "Notebook full with %d pages."
 msgstr ""
-
-#. TRANSLATORS: a toast while New page's batch is being written (about 1700 px at 44 px in bold, or
-#. two lines): %d blank pages are being added; it can take a minute for many.
-#: rust/src/editor.rs
-#, c-format
-msgid "Adding %d page..."
-msgid_plural "Adding %d pages..."
-msgstr[0] ""
-msgstr[1] ""
 
 #. TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): New page's batch could not
 #. add the pages (the storage is full); none was added.
 #: rust/src/editor.rs
-msgid "Could not add those pages: none was added."
+msgid "Couldn't add pages."
 msgstr ""
-
-#. TRANSLATORS: a toast as New page's batch is done (about 1700 px at 44 px in bold, or two lines): %d
-#. blank pages added; the first of them is page %d.
-#: rust/src/editor.rs
-#, c-format
-msgid "Added %d page: it is page %d."
-msgid_plural "Added %d pages: they start at page %d."
-msgstr[0] ""
-msgstr[1] ""
 
 #. TRANSLATORS: the title in New page's count pad (bold, 44 px, about 700 px): how many blank pages to
 #. add at once, typed on the number pad or changed by one with its - and + keys.
@@ -1486,83 +1387,31 @@ msgstr[1] ""
 msgid "Pages to add"
 msgstr ""
 
-#. TRANSLATORS: a toast over New page's count pad (about 1700 px at 44 px in bold, or two
-#. lines): the count typed (or +) went past what the notebook can still take (a notebook
-#. holds 2000 pages at most), so the count stays at that; %d is how many more it takes.
-#: rust/src/editor.rs rust/src/pagesview.rs
-#, c-format
-msgid "This notebook has room for %d more page."
-msgid_plural "This notebook has room for %d more pages."
-msgstr[0] ""
-msgstr[1] ""
-
-#. TRANSLATORS: a toast as the toolbar's batch of new pages is done (about 1700 px at 44 px in bold, or two
-#. lines): %d blank pages added right after the page that stays open; the first of them is page %d. The
-#. Pages view (its bottom row's Undo) takes them back while they are still blank.
-#: rust/src/editor.rs
-#, c-format
-msgid "Added %d page after this one: page %d. Undo it in Pages."
-msgid_plural "Added %d pages after this one, from page %d. Undo them in Pages."
-msgstr[0] ""
-msgstr[1] ""
-
 #. TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): the Pages view's Undo could
 #. not take back the pages a batch added (one was written on, linked or named since, or the storage
 #. is full).
 #: rust/src/editor.rs
-msgid "Could not undo: those pages are in use."
+msgid "Couldn't undo: pages in use."
 msgstr ""
-
-#. TRANSLATORS: a toast as the Pages view's Undo took back the blank pages a batch added (about 1700 px
-#. at 44 px in bold): %d of them.
-#: rust/src/editor.rs
-#, c-format
-msgid "Undone: %d new page taken back."
-msgid_plural "Undone: %d new pages taken back."
-msgstr[0] ""
-msgstr[1] ""
 
 #. TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): the Pages view's Redo could not
 #. do the page move or the new pages again (the storage is full).
 #: rust/src/editor.rs
-msgid "Could not redo that."
+msgid "Couldn't redo."
 msgstr ""
 
-#. TRANSLATORS: a toast as the Pages view's Redo moved pages again as the undone move had (about
-#. 1700 px at 44 px in bold).
 #: rust/src/editor.rs
-msgid "Move redone: the pages are where you moved them."
-msgstr ""
-
-#. TRANSLATORS: a toast as the Pages view's Redo added again the blank pages its Undo took back (about
-#. 1700 px at 44 px in bold, or two lines): %d of them; the first is page %d.
-#: rust/src/editor.rs
-#, c-format
-msgid "Redone: %d new page again, page %d."
-msgid_plural "Redone: %d new pages again, from page %d."
-msgstr[0] ""
-msgstr[1] ""
-
-#: rust/src/editor.rs
-msgid "Could not read the notebooks."
+msgid "Couldn't read notebooks."
 msgstr ""
 
 #. TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): Copy to notebook... copied
 #. nothing (the storage is full, a page does not read, or that notebook has 2000 pages).
 #: rust/src/editor.rs
-msgid "Could not copy those pages."
+msgid "Couldn't copy pages."
 msgstr ""
 
-#. TRANSLATORS: a toast as Copy to notebook... is done (about 1700 px at 44 px in bold, or two
-#. lines): %d pages copied into the notebook named %s.
-#: rust/src/editor.rs
-#, c-format
-msgid "Copied %d page to %s."
-msgid_plural "Copied %d pages to %s."
-msgstr[0] ""
-msgstr[1] ""
-
-#. TRANSLATORS: the same toast when the page names and links could not be saved there.
+#. TRANSLATORS: a toast as Copy to notebook... is done (about 1700 px at 44 px in bold, or two lines): %d
+#. pages were copied into the notebook named %s, but their page names and links could not be saved there.
 #: rust/src/editor.rs
 #, c-format
 msgid "Copied %d page to %s, without its names and links."
@@ -1583,26 +1432,20 @@ msgstr ""
 #. TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): Add a link was asked while
 #. the notebook's links.ini could not be read, so no link can be made.
 #: rust/src/editor.rs
-msgid "Links could not be read in this notebook."
+msgid "Couldn't read links in this notebook."
 msgstr ""
 
 #. TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): Add a link on a page that
 #. has the most links a page may have; %d is that number (64).
 #: rust/src/editor.rs
 #, c-format
-msgid "This page has %d links: delete one to add another."
+msgid "Link limit (%d) reached: delete one first."
 msgstr ""
 
 #. TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): after Add a link, the
 #. stroke drawn was too small to be the link's box.
 #: rust/src/editor.rs
-msgid "Too small for a link: draw around what links."
-msgstr ""
-
-#. TRANSLATORS: a toast over the Pages view (about 1700 px at 44 px in bold, or two lines): the
-#. box of a new link is drawn; tap the page (or the Index) it goes to.
-#: rust/src/editor.rs
-msgid "Where does the link go? Tap its page."
+msgid "Link area too small."
 msgstr ""
 
 #. TRANSLATORS: the title of the keyboard that names the page New page... adds for a link (about 1500 px at
@@ -1613,7 +1456,7 @@ msgstr ""
 
 #. TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines).
 #: rust/src/editor.rs
-msgid "Could not save the link."
+msgid "Couldn't save link."
 msgstr ""
 
 #. TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): a new link was made to
@@ -1627,14 +1470,14 @@ msgstr ""
 #. lines): a finger's tap on the link goes where it goes; a finger held on it opens its card (rename,
 #. change, redraw or delete it).
 #: rust/src/editor.rs
-msgid "Linked. Tap it with a finger to go there; hold it for more."
+msgid "Linked. Finger tap to go there; hold for more."
 msgstr ""
 
 #. TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): New page... added page %d at the
 #. end of the notebook and the new link goes to it.
 #: rust/src/editor.rs
 #, c-format
-msgid "Linked to the new page %d."
+msgid "Linked to new page %d."
 msgstr ""
 
 #. TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): a new link was made to
@@ -1650,57 +1493,15 @@ msgstr ""
 msgid "Linked to the Index."
 msgstr ""
 
-#. TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): the long-press card's Redraw the
-#. area gave the link the area just drawn; Undo brings the old one back.
-#: rust/src/editor.rs
-msgid "New area saved. Undo brings the old one back."
-msgstr ""
-
-#. TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): link making was cancelled
-#. (its Cancel, or Back while picking where it goes), and no link was made.
-#: rust/src/editor.rs
-msgid "No link made."
-msgstr ""
-
 #. TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): Undo of a link change
 #. could not save links.ini, so the change is still there.
 #: rust/src/editor.rs
-msgid "Could not save the links: that change was not undone."
+msgid "Couldn't save links: undo unsuccessful."
 msgstr ""
 
 #. TRANSLATORS: the same toast for Redo.
 #: rust/src/editor.rs
-msgid "Could not save the links: that change was not redone."
-msgstr ""
-
-#. TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): Undo took back a link change
-#. (a link made, deleted or changed), which shows nowhere on the page while the eye is off.
-#: rust/src/editor.rs
-msgid "Link change undone."
-msgstr ""
-
-#. TRANSLATORS: the same toast for Redo.
-#: rust/src/editor.rs
-msgid "Link change redone."
-msgstr ""
-
-#. TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): the long-press card's Rename
-#. emptied page %d's name.
-#: rust/src/editor.rs
-#, c-format
-msgid "Page %d has no name now."
-msgstr ""
-
-#. TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): the long-press card of a Links bar
-#. row deleted its links; Undo brings them back (the ink around them stays).
-#: rust/src/editor.rs
-msgid "Links deleted. Undo brings them back."
-msgstr ""
-
-#. TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): the long-press card deleted the
-#. link; Undo brings it back (the ink around it stays).
-#: rust/src/editor.rs
-msgid "Link deleted. Undo brings it back."
+msgid "Couldn't save links: redo unsuccessful."
 msgstr ""
 
 #. TRANSLATORS: a toast when the tool picker's Pin mode is asked for one more pen than the
@@ -1708,8 +1509,8 @@ msgstr ""
 #. or two lines.
 #: rust/src/editor.rs
 #, c-format
-msgid "The toolbar holds up to %d pen. Unpin one first."
-msgid_plural "The toolbar holds up to %d pens. Unpin one first."
+msgid "Toolbar full (%d pen). Unpin one first."
+msgid_plural "Toolbar full (%d pens). Unpin one first."
 msgstr[0] ""
 msgstr[1] ""
 
@@ -1726,33 +1527,13 @@ msgid "Hold: Normal"
 msgstr ""
 
 #: rust/src/editor.rs
-msgid "Smart shapes on. Hold the pen still at the end of a shape."
-msgstr ""
-
-#: rust/src/editor.rs
-msgid "Smart shapes off."
-msgstr ""
-
-#: rust/src/editor.rs
-msgid "Shape hold: Quick (0.4 s)"
-msgstr ""
-
-#: rust/src/editor.rs
-msgid "Shape hold: Slow (0.9 s)"
-msgstr ""
-
-#: rust/src/editor.rs
-msgid "Shape hold: Normal (0.55 s)"
-msgstr ""
-
-#: rust/src/editor.rs
 msgid "No shape in the last stroke."
 msgstr ""
 
 #. TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): a finger tapped a link
 #. whose page was deleted (or that a newer Grimoire made, to a place this one cannot open).
 #: rust/src/editor.rs
-msgid "That link's page is not in this notebook."
+msgid "Linked page isn't in this notebook."
 msgstr ""
 
 #. TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): New link on the Links bar
@@ -1765,45 +1546,13 @@ msgstr ""
 #. read, so the Links bar lists none and cannot make one.
 #. TRANSLATORS: the same when links.ini cannot be read, so the bar lists none (about 1300 px at 44 px).
 #: rust/src/editor.rs rust/src/linkbar.rs
-msgid "Links could not be read."
-msgstr ""
-
-#: rust/src/editor.rs
-msgid "Saving..."
-msgstr ""
-
-#: rust/src/editor.rs rust/src/library.rs rust/src/pensettings.rs
-msgid "Saved"
-msgstr ""
-
-#. TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): two fingers swiped
-#. to the next page on the last one, with adding a page by swiping turned off.
-#: rust/src/editor.rs
-msgid "This is the last page."
-msgstr ""
-
-#. TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): two fingers swiped
-#. to the previous page on the first one.
-#: rust/src/editor.rs
-msgid "This is the first page."
+msgid "Couldn't read links."
 msgstr ""
 
 #. TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): Back to the page
 #. before was asked with no page to go back to.
 #: rust/src/editor.rs
 msgid "Nothing to go back to."
-msgstr ""
-
-#. TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): two fingers swiped to the
-#. next page on the last one now add a page.
-#: rust/src/editor.rs
-msgid "Swiping past the last page adds a page."
-msgstr ""
-
-#. TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): two fingers swiped to the
-#. next page on the last one no longer add a page.
-#: rust/src/editor.rs
-msgid "Swiping past the last page adds no page."
 msgstr ""
 
 #. TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): a controller's button
@@ -1832,51 +1581,34 @@ msgstr ""
 #. the log file that says why.
 #: rust/src/editor.rs rust/src/library.rs
 #, c-format
-msgid "Could not use that template (see %s)."
+msgid "Couldn't use template (see %s)."
 msgstr ""
 
 #. TRANSLATORS: in a toast (about 1700 px at 44 px in bold, or two lines): a photo picked on the
 #. Photos sheet could not become the page's paper; %s is the log file that says why.
 #: rust/src/editor.rs
 #, c-format
-msgid "Could not use that photo (see %s)."
-msgstr ""
-
-#. TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines), shown once after an update:
-#. the editor now shows the whole page when the Kindle is sideways, which two-finger swipes need.
-#: rust/src/editor.rs
-msgid ""
-"Sideways now shows the whole page, so two-finger swipes work. Pinch to zoom "
-"in; Display changes this."
-msgstr ""
-
-#. TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines), shown once: two
-#. fingers dragged the zoomed page, where two fingers up and down would open Links and Pages.
-#: rust/src/editor.rs
-msgid "Here two fingers move the page. Zoom out for page and link swipes."
+msgid "Couldn't use photo (see %s)."
 msgstr ""
 
 #. TRANSLATORS: a one-time toast after a finger drawing does not match any recorded shape;
 #. about 1700 px at 44 px bold or two lines. Settings > Gestures lists the recorded shapes.
 #: rust/src/editor.rs
-msgid "That is not one of your finger shapes. Settings > Gestures lists them."
+msgid "Unknown finger shape. See Settings > Gestures."
+msgstr ""
+
+#. TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): a link to another notebook's page
+#. was followed, but that notebook or page is gone.
+#: rust/src/editor.rs
+msgid "Notebook or page no longer exists."
 msgstr ""
 
 #: rust/src/editor.rs
-msgid ""
-"Shape made. Undo takes it away; the toolbar's Shapes menu has the options."
+msgid "Couldn't save links."
 msgstr ""
 
 #: rust/src/editor.rs
-msgid "That notebook or page is no longer available."
-msgstr ""
-
-#: rust/src/editor.rs
-msgid "Could not save the links."
-msgstr ""
-
-#: rust/src/editor.rs
-msgid "Could not open that page."
+msgid "Couldn't open page."
 msgstr ""
 
 #. TRANSLATORS: Select mode's bar under a selection (a button, about 220 px at 44 px): copies the
@@ -1933,75 +1665,55 @@ msgid_plural "%d links"
 msgstr[0] ""
 msgstr[1] ""
 
-#. TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines) as Select mode starts.
-#: rust/src/editor/select.rs
-msgid "Select: draw around ink with the pen."
-msgstr ""
-
-#. TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines) as Select mode starts in exact
-#. area: the lasso will cut strokes along its line.
-#: rust/src/editor/select.rs
-msgid "Select, exact area: draw around ink with the pen."
-msgstr ""
-
 #. TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): a lasso in Select mode went
 #. around only white ink or eraser marks, which are not objects: they move with the ink they cover.
 #: rust/src/editor/select.rs
 msgid ""
-"Nothing to select here: white ink and eraser marks move with the ink they "
-"cover."
+"Nothing to select: white ink and eraser marks move with the ink under them."
 msgstr ""
 
 #. TRANSLATORS: a toast: a lasso in Select mode went around no ink.
 #: rust/src/editor/select.rs
-msgid "Nothing to select here."
+msgid "Nothing to select."
 msgstr ""
 
+#. TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): a move or a paste in Select mode was
+#. refused, as the page holds the most moved groups it can.
 #: rust/src/editor/select.rs
-msgid "This page holds too many moved groups: paste on another page."
+msgid "Too many moved groups on this page: paste elsewhere."
 msgstr ""
 
 #. TRANSLATORS: a toast: a move in Select mode could not save the links it carries.
 #: rust/src/editor/select.rs
-msgid "Could not save the links: nothing was moved."
+msgid "Couldn't save links: nothing moved."
 msgstr ""
 
 #. TRANSLATORS: a toast: Cut in Select mode could not save the links the selection carries (links.ini), so
 #. nothing was cut and the clipboard is as it was.
 #: rust/src/editor/select.rs
-msgid "Could not save the links: nothing was cut."
+msgid "Couldn't save links: nothing cut."
 msgstr ""
 
 #. TRANSLATORS: a toast: Copy or Cut in Select mode could not write the clipboard file.
 #: rust/src/editor/select.rs
-msgid "Could not copy: the clipboard could not be written."
-msgstr ""
-
-#. TRANSLATORS: a toast: Copy in Select mode put the selection on the clipboard.
-#: rust/src/editor/select.rs
-msgid "Copied."
-msgstr ""
-
-#. TRANSLATORS: a toast: Cut in Select mode put the selection on the clipboard and took it off the page.
-#: rust/src/editor/select.rs
-msgid "Cut."
+msgid "Couldn't write clipboard."
 msgstr ""
 
 #. TRANSLATORS: a toast: Paste found no clipboard it could read.
 #: rust/src/editor/select.rs
-msgid "The clipboard could not be read."
+msgid "Couldn't read clipboard."
 msgstr ""
 
 #. TRANSLATORS: a toast: Paste was refused whole because its links do not fit (64 on a page,
 #. 4000 in a notebook) or links.ini cannot be written.
 #: rust/src/editor/select.rs
-msgid "Could not paste: its links do not fit on this page."
+msgid "Couldn't paste: its links don't fit here."
 msgstr ""
 
 #. TRANSLATORS: a toast: a pasted link to the Index was left out, as it cannot point to another
 #. notebook's Index.
 #: rust/src/editor/select.rs
-msgid "A link to the Index stays in its notebook."
+msgid "Index links stay in their notebook."
 msgstr ""
 
 #. TRANSLATORS: the title of the keyboard of the Find sheet, in its text line (about 560 px at 44 px in bold):
@@ -2764,7 +2476,7 @@ msgstr ""
 
 #. TRANSLATORS: a toast: the Buttons sheet could not write its file (the storage is full).
 #: rust/src/library.rs
-msgid "Could not save controller.ini"
+msgid "Couldn't save controller.ini"
 msgstr ""
 
 #: rust/src/library.rs
@@ -2773,7 +2485,7 @@ msgid "No buttons for %s now."
 msgstr ""
 
 #: rust/src/library.rs
-msgid "Could not save the gestures."
+msgid "Couldn't save gestures."
 msgstr ""
 
 #: rust/src/library.rs
@@ -2785,15 +2497,15 @@ msgstr ""
 #. gestures.ini lines were skipped; %d is their count.
 #: rust/src/library.rs
 #, c-format
-msgid "%d line of gestures.ini could not be used."
-msgid_plural "%d lines of gestures.ini could not be used."
+msgid "Couldn't use %d line of gestures.ini."
+msgid_plural "Couldn't use %d lines of gestures.ini."
 msgstr[0] ""
 msgstr[1] ""
 
 #. TRANSLATORS: a toast (about 1700 px at 44 px bold or two lines): the current gestures.ini
 #. is unreadable; Reset gestures is the recovery action.
 #: rust/src/library.rs
-msgid "gestures.ini could not be read: Reset makes a new one."
+msgid "Couldn't read gestures.ini: Reset makes a new one."
 msgstr ""
 
 #. TRANSLATORS: the record card already has a shape sample; repeat that shape.
@@ -2975,11 +2687,13 @@ msgid "%s connected"
 msgstr ""
 
 #: rust/src/library.rs
-msgid "Could not pair that controller"
+msgid "Couldn't pair controller"
 msgstr ""
 
+#. TRANSLATORS: a toast as pairing a controller ends (Settings > Controller > Pair a
+#. controller): it is paired, and connects a moment later.
 #: rust/src/library.rs
-msgid "Paired. The controller connects in a moment."
+msgid "Paired."
 msgstr ""
 
 #: rust/src/library.rs
@@ -2987,7 +2701,7 @@ msgid "Forgotten."
 msgstr ""
 
 #: rust/src/library.rs
-msgid "Could not forget that controller"
+msgid "Couldn't forget controller"
 msgstr ""
 
 #. TRANSLATORS: Gestures row: action and first binding plus +N, about 1300 px with a thumbnail, two lines at 34 px.
@@ -3390,25 +3104,25 @@ msgid "Keep it"
 msgstr ""
 
 #: rust/src/library.rs
-msgid "Could not create the notebook (storage full?)"
+msgid "Couldn't create notebook (storage full?)"
 msgstr ""
 
 #: rust/src/library.rs
-msgid "Could not create the folder. Use a shorter name without a slash."
+msgid "Couldn't create folder. Use a shorter name without a slash."
 msgstr ""
 
 #: rust/src/library.rs
-msgid "Could not move the notebook."
+msgid "Couldn't move notebook."
 msgstr ""
 
 #: rust/src/library.rs
-msgid "Could not rename the folder. Check the name and destination."
+msgid "Couldn't rename folder. Check name and destination."
 msgstr ""
 
 #. TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): a folder could not be moved,
 #. usually because the destination has a folder of that name.
 #: rust/src/library.rs
-msgid "Could not move the folder. Is there one of that name there?"
+msgid "Couldn't move folder. Is one with that name already there?"
 msgstr ""
 
 #. TRANSLATORS: a new notebook's name until it is renamed, with the day ("Notebook Oct 10").
@@ -3430,7 +3144,7 @@ msgstr ""
 
 #. TRANSLATORS: a toast: the update could not be asked for (the storage is full, say).
 #: rust/src/library.rs
-msgid "Could not start the update"
+msgid "Couldn't start update"
 msgstr ""
 
 #: rust/src/library.rs
@@ -3438,26 +3152,14 @@ msgid "Updated. Restart KOReader to apply."
 msgstr ""
 
 #: rust/src/library.rs
-msgid "Could not update KOReader. A different patch or a storage error?"
+msgid "Couldn't update KOReader. Patch conflict or storage error?"
 msgstr ""
 
+#. TRANSLATORS: a toast (about 1700 px at 44 px in bold) after a notebook's or a folder's menu row that
+#. leaves its pages out of the Graph of all notebooks, or shows them there again: the change could
+#. not be saved.
 #: rust/src/library.rs
-msgid "Saving the PDF in the background..."
-msgstr ""
-
-#. TRANSLATORS: toasts (about 1700 px at 44 px in bold) after a notebook's or a folder's menu row: its
-#. pages are left out of the Graph of all notebooks now, or shown there again; or the change could not
-#. be saved.
-#: rust/src/library.rs
-msgid "Could not save that change."
-msgstr ""
-
-#: rust/src/library.rs
-msgid "Left out of the Graph."
-msgstr ""
-
-#: rust/src/library.rs
-msgid "Shown in the Graph again."
+msgid "Couldn't save change."
 msgstr ""
 
 #. TRANSLATORS: a deleted notebook went to the trash folder on the Kindle's storage (%s).
@@ -3621,7 +3323,7 @@ msgid "All"
 msgstr ""
 
 #: rust/src/mapview.rs
-msgid "Not enough memory for the graph."
+msgid "Not enough memory for the Graph."
 msgstr ""
 
 #. TRANSLATORS: the Graph opened from the Library cannot draw every notebook: the library has more
@@ -3634,7 +3336,7 @@ msgstr ""
 #. TRANSLATORS: the Graph (Index, Graph tab) opens on the notebook instead of every notebook: the
 #. library has more linked pages or links than it can draw at once (a toast, 2 lines at most).
 #: rust/src/mapview.rs
-msgid "Too many linked pages for All notebooks: showing this notebook."
+msgid "Too many linked pages: showing this notebook only."
 msgstr ""
 
 #: rust/src/mapview.rs rust/src/nav.rs
@@ -4250,10 +3952,6 @@ msgid ""
 "The eraser takes away only what it touches; harder pressure = bigger reach."
 msgstr ""
 
-#: rust/src/pensettings.rs
-msgid "Reset to defaults"
-msgstr ""
-
 #. TRANSLATORS: the Share screen's help, under the address: a line each, 1578 px at 34 px
 #. sideways (beside the QR code), 1640 upright.
 #: rust/src/share.rs
@@ -4424,7 +4122,7 @@ msgstr ""
 #. TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): the clock and battery were turned
 #. on with a shortcut where no notebook page is in front; they show on a page only.
 #: rust/src/status.rs
-msgid "Clock and battery on. They show on a notebook page."
+msgid "Clock and battery on (shown on notebook pages)."
 msgstr ""
 
 #. TRANSLATORS: a toast: the clock and battery were turned off with a shortcut.
@@ -4435,19 +4133,19 @@ msgstr ""
 #. TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines) when the status-corner shortcut moves the
 #. clock and battery where no notebook page is in front: which corner of the page they sit in now.
 #: rust/src/status.rs
-msgid "Clock and battery: top left corner of the page"
+msgid "Clock and battery: top left corner of page"
 msgstr ""
 
 #: rust/src/status.rs
-msgid "Clock and battery: top right corner of the page"
+msgid "Clock and battery: top right corner of page"
 msgstr ""
 
 #: rust/src/status.rs
-msgid "Clock and battery: bottom right corner of the page"
+msgid "Clock and battery: bottom right corner of page"
 msgstr ""
 
 #: rust/src/status.rs
-msgid "Clock and battery: bottom left corner of the page"
+msgid "Clock and battery: bottom left corner of page"
 msgstr ""
 
 #. TRANSLATORS: the heading of the Templates sheet when grimoire/templates has no picture to
