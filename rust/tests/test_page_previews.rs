@@ -96,7 +96,8 @@ fn light_pages_first() {
 }
 
 // A page with a current kept drawing gets its preview from that drawing, read back, not drawn: here a drawing
-// all black, which no drawing of the page (a stroke on ruled paper) would give.
+// all black, which no drawing of the page (a stroke on ruled paper) would give. Its kept drawing does not make
+// the light page a dense one.
 fn kept_drawing_read_back() {
     let _root = fresh_root("kept");
     let nb = notebook("Kept", 1);
@@ -106,6 +107,7 @@ fn kept_drawing_read_back() {
     check!(canvas_init(&mut black, W, H) == 0);
     canvas_fill(&mut black, Rect::new(0, 0, W, H), 0);
     check!(store_save_page_render(&nb, pid, &black, false));
+    check!(store_page_render_kept(&nb, pid, W, H, false) && !store_page_dense(&nb, pid));
     check!(store_build_page_previews(nb.id.as_str(), "0:1", 300.0) == 0);
     let p = preview_of(&nb, pid);
     check!(p.as_ref().is_some_and(|p| mean(p) < 1.0));
@@ -133,8 +135,8 @@ fn stale_kept_drawing_ignored() {
 // counts one), exactly what drawing it gives, so it opens from it and its next preview is read back; a page under
 // 512 KB gets its preview and no kept drawing, however slow (store_keep_render_ms() 0 here: every drawing counts
 // as slow, as the editor would count it). A page under 512 KB that kept a drawing before (the editor's, for a
-// page it drew slowly) counts as dense by the same definition, so the job keeps its drawing again once it has
-// gone stale.
+// page it drew slowly, or an earlier build's job's) is no dense page either: the job makes its preview and keeps
+// no drawing of it again, and its old one, gone stale, stays unused.
 fn dense_drawing_kept_by_the_job() {
     let _root = fresh_root("keep");
     let nb = notebook("Keep", 3);
@@ -153,7 +155,9 @@ fn dense_drawing_kept_by_the_job() {
     std::thread::sleep(std::time::Duration::from_millis(20));
     check!(store_save_page(&nb, 2, &page_of(31, 50, 14)) == 0);
     check!(!store_page_render_kept(&nb, kept_before, W, H, false));
-    check!(store_page_dense(&nb, dense) && !store_page_dense(&nb, light) && store_page_dense(&nb, kept_before));
+    check!(store_page_dense(&nb, dense) && !store_page_dense(&nb, light) && !store_page_dense(&nb, kept_before));
+    let stamp = format!("{dir}/.page-previews/p{kept_before}.full.stamp");
+    let old_stamp = std::fs::read(&stamp).unwrap();
     STORE_TEST_KEEP_RENDER_MS.store(0, std::sync::atomic::Ordering::Relaxed);
     check!(store_build_page_previews(nb.id.as_str(), "0:3", 300.0) == 0);
     STORE_TEST_KEEP_RENDER_MS.store(u32::MAX, std::sync::atomic::Ordering::Relaxed);
@@ -163,7 +167,8 @@ fn dense_drawing_kept_by_the_job() {
     check!(!store_page_render_kept(&nb, light, W, H, false) && !store_page_render_kept(&nb, light, W, H, true));
     check!(!std::path::Path::new(&format!("{dir}/.page-previews/p{light}.full")).exists());
     check!(!store_page_dense(&nb, light));
-    check!(store_page_render_kept(&nb, kept_before, W, H, false));
+    check!(!store_page_render_kept(&nb, kept_before, W, H, false) && !store_page_render_kept(&nb, kept_before, W, H, true));
+    check!(std::fs::read(&stamp).unwrap() == old_stamp && !store_page_dense(&nb, kept_before));
     check!(store_page_render_kept(&nb, dense, W, H, false));
     let mut kept = Canvas::default();
     check!(canvas_init(&mut kept, W, H) == 0);

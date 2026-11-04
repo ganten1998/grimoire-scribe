@@ -3766,14 +3766,16 @@ fn page_file_dense(source: &str) -> bool {
     std::fs::metadata(source).is_ok_and(|m| m.len() >= STORE_DENSE_PAGE_BYTES)
 }
 /// Whether drawing page pid takes long enough to say so (seconds on a Kindle), told without reading it:
-/// its file is STORE_DENSE_PAGE_BYTES or bigger, or it has kept a drawing before (current or not: only a
-/// page of that size keeps one, or a page the editor took store_keep_render_ms() or longer to draw). The one
-/// definition of a dense page: opening one with no current kept drawing says "Loading page..." (editor.rs
-/// loading_toast_due), and the previews job keeps the drawing of each one it draws, and of no other page
-/// (store_build_page_previews), so the two never disagree on which pages they are.
+/// its file is STORE_DENSE_PAGE_BYTES or bigger. The one definition of a dense page: opening one with no
+/// current kept drawing says "Loading page..." (editor.rs loading_toast_due), and the previews job keeps the
+/// drawing of each one it draws, and of no other page (store_build_page_previews), so the two never disagree
+/// on which pages they are (the owner, 2026-11-04: "Save a drawing only for pages of 512 KB or more, the
+/// same threshold that shows "Loading page..."", "ordinary pages save nothing extra"). A kept drawing does
+/// not make a page dense: the editor keeps one for a page it took store_keep_render_ms() to draw, and an
+/// earlier build of 2.0.0-beta.2's previews job kept one for any page it drew in a second of processor
+/// time, many ordinary pages on a Kindle. Counted, each of those would keep a drawing from the job for good.
 pub fn store_page_dense(nb: &NotebookInfo, pid: u32) -> bool {
-    let Some((source, _, stamp)) = page_render_files(nb, pid) else { return false };
-    page_file_dense(&source) || access_ok(&stamp)
+    page_render_files(nb, pid).is_some_and(|(source, _, _)| page_file_dense(&source))
 }
 // Whether page pid has a kept drawing of its file as it is now, at the notebook's page size, by this
 // renderer, layered or not (that is told only by reading the page): the previews job's guess that the page

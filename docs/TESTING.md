@@ -161,9 +161,10 @@ Select mode to paste. Time a move on the 1,090-stroke page (October-2026-02, pag
 
 Automated: tests/test_page_previews.rs (the light pages' previews written before a dense page's, a current
 kept drawing read back and a stale one never used, a dense page's drawing kept by the job exactly as drawn
-and no lighter page's however slow, a preview cut short made again, what counts as dense; a kept drawing by
-another renderer not taken for a quick page; a page whose picture is missing keeps no drawing and gets no
-preview), bgjob.rs's unit tests (a tile shows the loading mark until its preview lands and its number alone
+and no lighter page's however slow, nor again a light page's that kept one before, a preview cut short made
+again, what counts as dense (a page file of 512 KB or more; a kept drawing does not make a page dense); a kept
+drawing by another renderer not taken for a quick page; a page whose picture is missing keeps no drawing and
+gets no preview), bgjob.rs's unit tests (a tile shows the loading mark until its preview lands and its number alone
 once its batch ended without one, a check names only the tiles that changed; a waited batch goes first;
 batches of screens turned away from leave the queue; never two children on the same pages; a second child
 that cannot be forked puts its batch back; a running batch not asked for here is not waited on, a queued one
