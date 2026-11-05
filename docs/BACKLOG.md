@@ -4,6 +4,36 @@ Work that was decided, deferred or found but not done yet. Keep this current: wh
 move it to "Done" with the version; when something is deferred, add it here with who decided and
 why. Newest decisions first within each section.
 
+## Found on the owner's stress pages (2026-11-05): candidates for 2.0.0, the owner decides
+
+From STRESS TEST 2 (648 strokes, 153,588 points, 2.8 MB) and STRESS TEST 3 (698 strokes, 163,950 points,
+3.0 MB) in the owner's "2.0b2 DEMO", written on the Scribe on 2026-11-04 and 05 with 2.0.0-beta.2 builds.
+The record and the evidence are in the maintainer's lab folder (stress-tests-2026-11-05/RECORD.md).
+Writing stayed fast at any size (median pen to screen 0.6 to 0.9 ms); the costs are elsewhere:
+
+- **A page written from blank never gets a kept drawing while it is written.** render_page_full keeps one
+  only after an open that took 1 s or more, the idle autosave only for a page whose open was slow, and the
+  previews job only runs with Pages shown. So the first revisit draws the page whole: 11.6 s for STRESS TEST 2,
+  28.4 s for STRESS TEST 3 (beside an export), 3.6 s for a 1 MB page. Proposed: at the idle autosave or on
+  leaving the page, keep the drawing of any page of 512 KB or more whose canvas is whole.
+- **The PDF mirror export redraws every page from strokes at each close after a change**: 51.4 s and 48.6 s
+  for this 5-page notebook, the second for five strokes on page 1. It could reuse current kept drawings, or
+  redraw only the pages that changed.
+- **Closing from a page other than page 1 draws page 1 again from its strokes** for the Library card: 2.9 s
+  from STRESS TEST 3, 208 ms from page 1 itself.
+- **Write amplification at the idle autosave**: 40 small strokes (about 31 KB of ink) wrote 6.5 MB (the page,
+  its preview and its kept drawing), and a kept drawing was written twice in 19 s.
+- **Zoom steps on the stress pages took 0.56 to 0.66 s each**, with frame copies of 0.57 to 0.61 s; a zoom on
+  a lighter page minutes later had none. Not explained yet.
+- **A stroke-eraser move on STRESS TEST 2 took 2.1 s** at 2.38 MB, its screen update 2 s late (as the CHANGELOG's
+  about 3 s for a page-wide marker stroke on the first stress page).
+- **"Loading page..." and undo are not logged**, so a record cannot say whether the notice showed or undo ran.
+- **Limits, by extrapolation only**: nothing caps strokes or points on a page; the nearest limit is the 120 s
+  heartbeat for a page drawn whole, reached at roughly 13 to 15 MB of STRESS TEST 3's mix (about 35 minutes
+  of pen contact on one page). Points are kept at the pen's full rate, about 6.3 KB a second of contact.
+- **As fixtures**: real device data with strokes of up to 7,028 points (the synthetic dense fixture has 10 to
+  129), but 2.8 to 3.0 MB each and the owner's own drawings, so adding one is the owner's call.
+
 ## The Terminess diet (2.0.0-beta.2): choices for the owner
 
 The owner chose Terminess with Terminus's text and the Material Design icons only, with the Apache-2.0
