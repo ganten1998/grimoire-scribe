@@ -1195,3 +1195,49 @@ What only the Scribe and a real browser can show:
 8. **Inverted.** With Invert colors on (Settings > Display), the browser's toast is inverted with the rest of
    the picture, as on the Kindle (white with black words), and the browser's Invert colors switch turns it
    with the picture.
+
+## 2.0.0-beta.2, Shift and caps
+
+The owner's request of 2026-11-05 about the on-screen keyboard: "next toggle shift in typing toggles off shift
+for next char then shift on which makes longer caps strings possible." The shift key has three states, a tap
+each and round again: the next letter's capital (as before), caps on, off.
+
+Automated: keyboard.rs `shift_once_gives_the_next_letter_only` (one tap: one capital, then small letters; a
+digit, a symbol or the space bar leaves it waiting for a letter, as before), `shift_twice_is_caps_on_until_a_third_tap`
+(capitals through digits, the space bar, delete and the symbols and accents pages; a third tap is off, a
+fourth shift for one letter again), `caps_on_ends_when_the_keyboard_closes` (Done, Cancel and a paired
+keyboard's Esc; the next keyboard opens with shift off), `a_shift_tap_refreshes_only_what_it_changed` (off to
+one letter and caps on to off refresh the keyboard, as shift always did, since every letter key's label
+changes case; one letter to caps on refreshes the shift key alone, and on the symbols page, where no label
+changes case, all three taps do) and `caps_on_draws_a_bar_under_the_shift_label`
+(Gothic and Classic, upright and sideways: shift for one letter is the pressed key, as before; caps on is that
+key with a white bar under its label, and nothing else on the keyboard differs between the two).
+tests/scenarios/u_keyboard_caps.qs types "NASA 2026 ÉTÉ! go" in New folder, caps on through a digit, delete
+and the accents and symbols pages, then off, with each shift tap's refresh counted (on the symbols page too:
+the shift key alone each time), and shoots the states
+upright and sideways (build/shots/u_keyboard_caps: 02-shift-once, 03-caps-on, 04-caps-on-accents,
+06-caps-on-sideways); u_keyboard_caps_classic.qs shoots Classic's. u_accents.qs now taps shift twice to turn
+it off after its shift shot (one tap did that when shift had two states). The tests fail on the two-state
+shift.
+
+On the Scribe:
+
+1. **One tap.** Library, New folder: tap shift once. The key goes black and the letter keys show capitals.
+   Type "ab": it reads "Ab", the keys show small letters again and shift is white. Tap shift, then 1, the
+   space bar and c: "1 C" (the digit and the space leave shift waiting for a letter).
+2. **Two taps: caps on.** Tap shift twice: the key stays black and a white bar shows under its label. Note
+   whether the two looks are easy to tell apart at a glance, and whether the second tap refreshes only the
+   shift key at once (the keyboard's usual clean-up follows when typing pauses). Type "nasa": "NASA". Then a
+   digit, the space bar, del and more letters: still capitals.
+3. **The other pages.** With caps on, tap áé: the accented letters show as capitals (É, Ñ, Œ) and shift keeps
+   its bar; é types É. Tap #+=: the symbols type as they are; abc, and the letters are still capitals. On the
+   symbols page a shift tap refreshes the shift key alone (none of its keys has a capital to show).
+4. **Three taps: off.** Tap shift a third time: the key goes white, the bar goes, the letter keys show small
+   letters and type them. A fourth tap is shift for one letter again.
+5. **Closing.** With caps on, tap Done (or Cancel). Open a keyboard again: shift is off (a white key, small
+   letters).
+6. **Sideways and Classic.** Steps 1 to 4 sideways, and in Classic (Settings, Style): the bar shows under the
+   label in each, and in Spanish under "mayús".
+7. **Rename and Find.** Rename a notebook from the Library with caps on, and in a notebook type a page name in
+   Find (Go to page... in Pages, or the Links bar's Go to) with caps on: the same three states. Find's Done with
+   no page to go to keeps the keyboard, and caps on with it.

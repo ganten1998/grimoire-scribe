@@ -311,6 +311,19 @@ draws them. White ink and the precise eraser make them.
   `keyboard_open` keeps valid UTF-8 and drops control characters and broken bytes. A key types a whole character; backspace removes one. In Spanish
   the letters page's middle row ends with ñ after l (`k_row_es`), as Spanish keyboards have it, and
   is then as wide as the row above; the accents page keeps ñ in every language.
+- The shift key has three states, a tap each and round again (`Keyboard.shift`, `KbShift`; 2.0.0-beta.2,
+  the owner, 2026-11-05: "next toggle shift in typing toggles off shift for next char then shift on which
+  makes longer caps strings possible"): off; `Once`, the next letter's capital, then off (a key with no
+  capital, a digit, a symbol or the space bar, leaves it waiting for a letter, as shift always did); `Caps`,
+  every letter a capital through digits, the space bar, delete and the page keys, until the next tap. Both
+  on-states draw the shift key pressed (black, its label white) and the letter keys in capitals (`key_label`);
+  caps on adds a white bar under the label, as wide as it (`caps_bar`), so the two read apart with no word to
+  translate. A tap from off or from caps on changes every letter key's label, so it refreshes the keyboard
+  (as shift always did); the tap from once to caps on refreshes the shift key alone, as does every tap on the
+  symbols page, where no label changes case (`shift_shows_on_keys`), and a letter typed with caps on refreshes
+  only what any letter does. `keyboard_open` starts every keyboard with shift off, so caps
+  on ends when the keyboard closes (Find's Done with no page to go to keeps its keyboard open, and the state
+  with it). A paired keyboard never reaches this state: its keys type nowhere but on the count pad.
 - Every keyboard host (the Library's sheet, the Pages view's Page name and Go to page) hands its pen
   and finger events to `app_keyboard_pointer` and its tick to `app_keyboard_tick` (app.c), so a key
   costs the same over any screen. A sample that changes nothing (the pen resting on a key sends one

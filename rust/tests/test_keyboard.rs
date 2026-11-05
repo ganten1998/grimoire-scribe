@@ -85,7 +85,7 @@ fn type_text(kb: &mut Keyboard, s: &str) -> bool {
         if !keyboard_key_rect(kb, key, &mut r) {
             return false;
         }
-        if key != cp && !kb.shift {
+        if key != cp && kb.shift == KbShift::Off {
             press(kb, KB_KEY_SHIFT);
         }
         press(kb, key);
@@ -133,8 +133,8 @@ fn types_musica_through_the_accents_page() {
     let mut kb = Keyboard::default();
     open_kb(&mut kb, b"");
     check!(kb.page == 0 && !keyboard_key_rect(&kb, 0xFA, &mut Rect::default()));
-    check!(press(&mut kb, KB_KEY_SHIFT) && kb.shift);
-    check!(press(&mut kb, 'm' as u32) && !kb.shift); // one-shot
+    check!(press(&mut kb, KB_KEY_SHIFT) && kb.shift == KbShift::Once);
+    check!(press(&mut kb, 'm' as u32) && kb.shift == KbShift::Off); // one-shot
     check!(press(&mut kb, KB_KEY_PAGE) && kb.page == 1);
     check!(!keyboard_key_rect(&kb, 'q' as u32, &mut Rect::default())); // the letters are on the other page
     check!(press(&mut kb, 0xFA)); // u acute
@@ -143,8 +143,8 @@ fn types_musica_through_the_accents_page() {
     check!(press(&mut kb, 0xFA) && kb.page == 1); // typing stays on the page
     check!(press(&mut kb, KB_KEY_PAGE) && kb.page == 0);
     check!(press(&mut kb, 's' as u32) && press(&mut kb, 'i' as u32) && press(&mut kb, 'c' as u32) && press(&mut kb, 'a' as u32) && press(&mut kb, ' ' as u32));
-    check!(press(&mut kb, KB_KEY_PAGE) && press(&mut kb, KB_KEY_SHIFT) && kb.shift);
-    check!(press(&mut kb, 0xF1) && !kb.shift); // n tilde, shifted: N tilde, and shift lets go
+    check!(press(&mut kb, KB_KEY_PAGE) && press(&mut kb, KB_KEY_SHIFT) && kb.shift == KbShift::Once);
+    check!(press(&mut kb, 0xF1) && kb.shift == KbShift::Off); // n tilde, shifted: N tilde, and shift lets go
     check!(text(&kb) == b"M\xc3\xbasica \xc3\x91");
     check!(press(&mut kb, KB_KEY_BKSP) && text(&kb) == b"M\xc3\xbasica ");
     check!(press(&mut kb, KB_KEY_BKSP) && text(&kb) == b"M\xc3\xbasica");
@@ -171,7 +171,7 @@ fn shift_gives_accented_capitals() {
     ];
     for (key, typed) in K {
         kb.text.clear();
-        if !kb.shift {
+        if kb.shift == KbShift::Off {
             press(&mut kb, KB_KEY_SHIFT);
         }
         let there = press(&mut kb, key);
@@ -181,7 +181,7 @@ fn shift_gives_accented_capitals() {
             want[1] = (0x80 | (typed & 0x3F)) as u8;
         }
         let end = want.iter().position(|&b| b == 0).unwrap_or(4);
-        let ok = there && text(&kb) == &want[..end] && kb.shift == (typed == key);
+        let ok = there && text(&kb) == &want[..end] && (kb.shift == KbShift::Once) == (typed == key);
         if !ok {
             eprintln!("  key U+{:04X} typed \"{}\"", key, kb.text);
         }
@@ -355,7 +355,7 @@ fn symbols_page() {
     check!(text(&kb) == b"Joe's notes (2)!");
     press(&mut kb, KB_KEY_SHIFT);
     press(&mut kb, '&' as u32);
-    check!(text(&kb) == b"Joe's notes (2)!&" && kb.shift); // (no capital: shift waits for a letter)
+    check!(text(&kb) == b"Joe's notes (2)!&" && kb.shift == KbShift::Once); // (no capital: shift waits for a letter)
     open_kb(&mut kb, b"");
     let all = "1234567890!@#$%^&*()?,\":;_+=/~[]<>\u{20ac}\u{a3}\u{b0}-'. ";
     check!(type_text(&mut kb, all));

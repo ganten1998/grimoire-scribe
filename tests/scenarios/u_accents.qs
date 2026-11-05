@@ -120,6 +120,9 @@ tap 696 2365
 tap 175 2205
 wait 100
 shot 06-accents-page-classic-shift
+# Shift off again for a small e acute: a second tap is caps on and a third turns it off (2.0.0-beta.2;
+# one tap turned it off when shift had two states)
+tap 175 2205
 tap 175 2205
 tap 310 1725
 wait 100

@@ -173,7 +173,7 @@ the panel, is the writing hand by the same rules, and anywhere else, the Library
 keyboard, a finger is always a finger).
 
 The keyboard's keys in portrait (the Library's keyboard, for every name, at 300 dpi): shift
-175 2205, del 1679 2205, and along the bottom Cancel 175 2365, `-` 393 2365, the symbols key 570
+175 2205 (a tap each: the next letter's capital, caps on, off), del 1679 2205, and along the bottom Cancel 175 2365, `-` 393 2365, the symbols key 570
 2365 (labelled #+=, abc on the symbols page), the accents key 747 2365 (labelled with a and e
 acute, abc on the accents page), space 1018 2365, `'` 1289 2365, `.` 1466 2365 and Done 1685
 2365 (Cancel 217, the accents key 696, space 1060 and Done 1643, where they were before the
@@ -186,7 +186,7 @@ y 1725 the digits, y 1885 `! @ # $ % ^ & * ( )`, y 2045 `? , " : ; _ + = / ~`, e
 177 n; y 2205 `[ ] < >`, the euro, the pound and the degree sign at x = 393 + 177 n. In Spanish
 the letters page's y 2045 row is a to l and then n tilde, ten keys at x = 133 + 177 n.
 tests/scenarios/u_accents.qs types accented names with them, u_keyboard_symbols.qs a name with
-symbols.
+symbols, u_keyboard_caps.qs one with caps on. Sideways the shift key is at 221 1585.
 
 These hold in both styles, in English, Spanish and Japanese (tests/scenarios/y_all_screens.qs
 taps them in each). Upright: the Library's top bar has New at 965 95, Folder 1155 95, Share 1345 95 and

@@ -1,6 +1,7 @@
 //! keyboard.h: on-screen keyboard modal for naming notebooks and folders.
 //! QWERTY + numbers row, shift, space, backspace, Cancel / Done, - ' and . beside the space bar, and
-//! a key each to a page of symbols and a page of accented letters (and back). Pen or finger taps. The text is UTF-8: a key types a whole character and
+//! a key each to a page of symbols and a page of accented letters (and back). Shift tapped once gives
+//! the next letter's capital, twice caps on, a third time off (KbShift). Pen or finger taps. The text is UTF-8: a key types a whole character and
 //! backspace takes a whole character away. In Japanese the accents key is a kana key: a flick
 //! keypad, twelve keys in three columns, where a tap types the row's first kana and a swipe left,
 //! up, right or down the rest of the row (a mobile phone's kana pad), with ー beside it, one
@@ -42,12 +43,30 @@ pub const KB_KEY_CANCEL: u32 = 27;
 pub const KB_KEY_DEC: u32 = 14;
 pub const KB_KEY_INC: u32 = 15;
 
+/// The shift key's three states, a tap each in this order and round again (the owner, 2026-11-05: "next
+/// toggle shift in typing toggles off shift for next char then shift on which makes longer caps strings
+/// possible"). The letter keys show their capitals in both on-states.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum KbShift {
+    /// small letters
+    #[default]
+    Off,
+    /// the next letter a capital, then off; a key with no capital (a digit, a symbol, the space bar)
+    /// leaves it on, waiting for a letter. Drawn as the pressed key.
+    Once,
+    /// caps on: every letter a capital until shift is tapped again or the keyboard closes; digits,
+    /// symbols, the space bar, delete and the page keys leave it on. Drawn as the pressed key with a bar
+    /// under its label.
+    Caps,
+}
+
 #[derive(Clone, Copy, Debug, Default)]
 pub struct Keyboard {
     pub open: bool,
     pub title: FixedStr<64>,
     pub text: FixedStr<KB_TEXT_MAX>,
-    pub shift: bool,
+    /// the shift key's state (keyboard_open starts every keyboard with it off)
+    pub shift: KbShift,
     /// the kana page in katakana (カ toggles it): the pad types カ キ ク, not か き く
     pub kata: bool,
     /// 0 letters, 1 accents, 2 number pad, 3 symbols, 4 count pad (keyboard_open_count), 5 kana
@@ -770,7 +789,7 @@ fn key_label<'a>(kb: &Keyboard, code: u32, ch: &'a mut [u8; 8]) -> &'a str {
                 code
             };
             let mut enc = [0u8; 4];
-            let n = utf8_put(if kb.shift { keyboard_upper(code) } else { code }, &mut enc);
+            let n = utf8_put(if kb.shift != KbShift::Off { keyboard_upper(code) } else { code }, &mut enc);
             ch[..n].copy_from_slice(&enc[..n]);
             ch[n] = 0;
             std::str::from_utf8(&ch[..n]).unwrap_or("")
@@ -844,7 +863,7 @@ pub fn keyboard_draw(kb: &mut Keyboard, c: &mut Canvas, screen: Rect) -> Rect {
             ui_button(c, key.r, IconKind::None, lab, ButtonStyle::Disabled);
             continue;
         }
-        let st = if i as i32 == kb.pressed_key || (key.code == KB_KEY_SHIFT && kb.shift) {
+        let st = if i as i32 == kb.pressed_key || (key.code == KB_KEY_SHIFT && kb.shift != KbShift::Off) {
             ButtonStyle::Selected
         } else if key.code == KB_KEY_DONE {
             ButtonStyle::Primary
@@ -855,8 +874,24 @@ pub fn keyboard_draw(kb: &mut Keyboard, c: &mut Canvas, screen: Rect) -> Rect {
         ui_frame(c, key.r, ui_px(12.0), 0, false, if st == ButtonStyle::Primary { ui_px(6.0) } else { ui_px(3.0) });
         let ks = if utf8_count(lab) > 1 { ui_text_size() } else { ui_title_size() };
         font_draw_centered(c, FontFace::Bold, ks, key.r, lab, if st == ButtonStyle::Selected { 255 } else { 0 });
+        if key.code == KB_KEY_SHIFT && kb.shift == KbShift::Caps {
+            caps_bar(c, key.r, ks, lab);
+        }
     }
     area
+}
+
+// Caps on's cue: a white bar under the shift key's white label on the pressed key's black, as wide as the
+// label. Shift for the next letter is the pressed key alone, so the two read apart at a glance, in both
+// themes and sideways, with no word of their own to translate.
+fn caps_bar(c: &mut Canvas, r: Rect, size: f32, lab: &str) {
+    let w = font_measure(FontFace::Bold, size, lab).min(r.w - ui_px(40.0)).max(1);
+    let (asc, desc) = (font_ascent(FontFace::Bold, size), font_descent(FontFace::Bold, size));
+    // (the label's bottom, where font_draw_centered sets it)
+    let bottom = r.y + (r.h - (asc + desc)) / 2 + asc + desc;
+    let h = ui_px(12.0);
+    let y = (bottom + ui_px(6.0)).min(r.y + r.h - ui_px(12.0) - h);
+    canvas_fill(c, Rect { x: r.x + (r.w - w) / 2, y, w, h }, 255);
 }
 
 // The count pad's Done at a count of 0: drawn disabled, and it does nothing.
@@ -875,9 +910,10 @@ fn key_at(kb: &Keyboard, x: f32, y: f32) -> i32 {
     -1
 }
 
-// Appends the key's character (its capital while shift is on) if it fits; shift is one-shot.
+// Appends the key's character (its capital while shift is on) if it fits. Shift for the next letter lets go
+// once it gave a capital (every letter key's label changes back: the keyboard's refresh); caps on stays.
 fn type_key(kb: &mut Keyboard, code: u32, dirty: &mut Rect) {
-    let ch = if kb.shift { keyboard_upper(code) } else { code };
+    let ch = if kb.shift != KbShift::Off { keyboard_upper(code) } else { code };
     let mut enc = [0u8; 4];
     let len = kb.text.len();
     let n = utf8_put(ch, &mut enc);
@@ -888,10 +924,20 @@ fn type_key(kb: &mut Keyboard, code: u32, dirty: &mut Rect) {
         buf[len..len + n].copy_from_slice(&enc[..n]);
         kb.text.set_bytes(&buf[..len + n]);
     }
-    if kb.shift && ch != code {
-        kb.shift = false;
+    if kb.shift == KbShift::Once && ch != code {
+        kb.shift = KbShift::Off;
         *dirty = kb.area;
     }
+}
+
+// Whether shift shows on the page's other keys: a key whose character has a capital shows it while shift is
+// on (key_label). The letters and accents pages have them; the symbols page has none (its digits and signs
+// have no capitals), so a shift tap there changes the shift key alone. (The named keys' codes are below 32,
+// the kana pad's flick keys among them; neither changes with shift.)
+fn shift_shows_on_keys(kb: &Keyboard) -> bool {
+    let mut keys = [Key::default(); MAX_KEYS];
+    let n = layout(kb.area, kb.page, &mut keys);
+    keys.iter().take(n).any(|k| k.code >= 32 && keyboard_upper(k.code) != k.code)
 }
 
 /// Where the key with this code is on the page showing now (as last drawn); false if that page
@@ -1039,8 +1085,18 @@ pub fn keyboard_press(kb: &mut Keyboard, code: u32, dirty: &mut Rect) -> KbResul
             return KbResult::Done;
         }
         KB_KEY_SHIFT => {
-            kb.shift = !kb.shift;
-            *dirty = kb.area;
+            // Off, the next letter, caps on, off again (KbShift). Off to the next letter and caps on to off
+            // change every letter key's label (capitals while shift is on): the keyboard's refresh, as
+            // before. The next letter to caps on changes the shift key alone (its bar): its own refresh, and
+            // so does every tap on a page with no letter keys (the symbols page: no label there changes case).
+            kb.shift = match kb.shift {
+                KbShift::Off => KbShift::Once,
+                KbShift::Once => KbShift::Caps,
+                KbShift::Caps => KbShift::Off,
+            };
+            let only_key = kb.shift == KbShift::Caps || !shift_shows_on_keys(kb);
+            let mut r = RECT_EMPTY;
+            *dirty = if only_key && keyboard_key_rect(kb, KB_KEY_SHIFT, &mut r) { r } else { kb.area };
             return KbResult::Changed;
         }
         KB_KEY_PAGE | KB_KEY_SYMBOLS | KB_KEY_KANA => {
@@ -1124,7 +1180,7 @@ mod tests {
     #[test]
     fn opening_keeps_valid_characters_only() {
         let kb = opened(b"Hi");
-        assert!(kb.open && kb.pressed_key == -1 && kb.page == 0 && !kb.shift);
+        assert!(kb.open && kb.pressed_key == -1 && kb.page == 0 && kb.shift == KbShift::Off);
         assert_eq!((kb.title.as_str(), kb.text.as_str()), ("Title \u{e9}", "Hi"));
         assert_eq!(opened("caf\u{e9} \u{20ac} \u{1f600}".as_bytes()).text.as_str(), "caf\u{e9} \u{20ac} \u{1f600}");
         // Control characters (C0, DEL, C1) and broken UTF-8 are dropped; the no-break space stays.
@@ -1320,5 +1376,198 @@ mod tests {
                 assert_eq!(fresh.px[i], typed.px[i], "the 1 itself drawn the same at ({x}, {y})");
             }
         }
+    }
+
+    // A keyboard open on the letters page, drawn on this screen (its keys where keyboard_key_rect finds them).
+    fn drawn(screen: Rect) -> (Keyboard, Canvas) {
+        let mut kb = opened(b"");
+        let mut c = Canvas::default();
+        assert_eq!(canvas_init(&mut c, screen.w, screen.h), 0);
+        keyboard_draw(&mut kb, &mut c, screen);
+        (kb, c)
+    }
+
+    // A key typed (keyboard_press), which must change something: what it refreshes beyond the text line.
+    fn tap(kb: &mut Keyboard, code: u32) -> Rect {
+        let mut d = RECT_EMPTY;
+        assert_eq!(keyboard_press(kb, code, &mut d), KbResult::Changed, "key {code}");
+        d
+    }
+
+    fn type_str(kb: &mut Keyboard, s: &str) {
+        for ch in s.chars() {
+            tap(kb, ch as u32);
+        }
+    }
+
+    // The key with this code tapped as a finger does, down and up at its middle (keyboard_pointer): what the lift
+    // refreshes.
+    fn tap_at(kb: &mut Keyboard, code: u32) -> Rect {
+        let mut r = RECT_EMPTY;
+        assert!(keyboard_key_rect(kb, code, &mut r), "key {code} on the page");
+        let (x, y) = ((r.x + r.w / 2) as f32, (r.y + r.h / 2) as f32);
+        let mut d = RECT_EMPTY;
+        keyboard_pointer(kb, 0, x, y, 0, &mut d);
+        keyboard_pointer(kb, 2, x, y, 40, &mut d);
+        d
+    }
+
+    /// Shift tapped once gives the next letter its capital and lets go, as it always has; a key with no capital
+    /// (a digit, a symbol, the space bar) leaves it waiting for a letter.
+    #[test]
+    fn shift_once_gives_the_next_letter_only() {
+        let mut kb = opened(b"");
+        tap(&mut kb, KB_KEY_SHIFT);
+        assert_eq!(kb.shift, KbShift::Once);
+        type_str(&mut kb, "abc");
+        assert_eq!((kb.text.as_str(), kb.shift), ("Abc", KbShift::Off));
+        tap(&mut kb, KB_KEY_SHIFT);
+        type_str(&mut kb, "1- &");
+        assert_eq!((kb.text.as_str(), kb.shift), ("Abc1- &", KbShift::Once), "no capital yet: it waits for a letter");
+        type_str(&mut kb, "\u{e9}e");
+        assert_eq!((kb.text.as_str(), kb.shift), ("Abc1- &\u{c9}e", KbShift::Off));
+    }
+
+    /// Shift tapped twice is caps on (2.0.0-beta.2, the owner, 2026-11-05: "next toggle shift in typing toggles off
+    /// shift for next char then shift on which makes longer caps strings possible"): every letter a capital through
+    /// digits, the space bar, delete and the symbols and accents pages, until a third tap turns it off.
+    #[test]
+    fn shift_twice_is_caps_on_until_a_third_tap() {
+        let mut kb = opened(b"");
+        tap(&mut kb, KB_KEY_SHIFT);
+        tap(&mut kb, KB_KEY_SHIFT);
+        assert_eq!(kb.shift, KbShift::Caps);
+        type_str(&mut kb, "nasa 2026");
+        assert_eq!(kb.text.as_str(), "NASA 2026");
+        tap(&mut kb, KB_KEY_BKSP);
+        tap(&mut kb, KB_KEY_BKSP);
+        type_str(&mut kb, "x ");
+        assert_eq!(kb.text.as_str(), "NASA 20X ");
+        tap(&mut kb, KB_KEY_SYMBOLS);
+        assert_eq!(kb.page, 3);
+        type_str(&mut kb, "!&");
+        tap(&mut kb, KB_KEY_PAGE); // the symbols page's accents key
+        assert_eq!(kb.page, 1);
+        type_str(&mut kb, "\u{e9}\u{f1}\u{153}");
+        tap(&mut kb, KB_KEY_PAGE); // abc
+        assert_eq!(kb.page, 0);
+        type_str(&mut kb, "ab");
+        assert_eq!((kb.text.as_str(), kb.shift), ("NASA 20X !&\u{c9}\u{d1}\u{152}AB", KbShift::Caps));
+        tap(&mut kb, KB_KEY_SHIFT);
+        assert_eq!(kb.shift, KbShift::Off, "a third tap: off");
+        type_str(&mut kb, "cd");
+        assert!(kb.text.as_str().ends_with("ABcd"));
+        tap(&mut kb, KB_KEY_SHIFT);
+        assert_eq!(kb.shift, KbShift::Once, "and round again");
+    }
+
+    /// Caps on ends with the keyboard: closed by Done, Cancel or a hardware Esc, the next keyboard opens with shift
+    /// off (every keyboard_open starts there, as before).
+    #[test]
+    fn caps_on_ends_when_the_keyboard_closes() {
+        let mut d = RECT_EMPTY;
+        for close in [Some(KB_KEY_DONE), Some(KB_KEY_CANCEL), None] {
+            let mut kb = opened(b"x");
+            tap(&mut kb, KB_KEY_SHIFT);
+            tap(&mut kb, KB_KEY_SHIFT);
+            assert_eq!(kb.shift, KbShift::Caps);
+            match close {
+                Some(code) => assert_ne!(keyboard_press(&mut kb, code, &mut d), KbResult::Changed),
+                None => assert_eq!(keyboard_input(&mut kb, &KbInput::Cancel, &mut d), KbResult::Cancel),
+            }
+            assert!(!kb.open);
+            keyboard_open(&mut kb, "Name", b"");
+            assert_eq!(kb.shift, KbShift::Off);
+            type_str(&mut kb, "ab");
+            assert_eq!(kb.text.as_str(), "ab");
+        }
+    }
+
+    /// What a shift tap refreshes: off to once and caps on to off change every letter key's label (capitals while
+    /// shift is on), so the keyboard, as before; once to caps on changes only the shift key (its bar), so only it.
+    /// A letter typed with caps on refreshes what any letter does (its key, then the text line, keyboard_pointer);
+    /// the capital of shift once takes the letter keys back to small letters. On the symbols page no label changes
+    /// case, so each of the three taps refreshes the shift key alone.
+    #[test]
+    fn a_shift_tap_refreshes_only_what_it_changed() {
+        let (mut kb, _c) = drawn(Rect { x: 0, y: 0, w: 1860, h: 2480 });
+        let mut key = RECT_EMPTY;
+        assert!(keyboard_key_rect(&kb, KB_KEY_SHIFT, &mut key));
+        assert_eq!(tap_at(&mut kb, KB_KEY_SHIFT), kb.area, "off to once");
+        assert_eq!(tap_at(&mut kb, KB_KEY_SHIFT), key, "once to caps on: the shift key alone");
+        assert_eq!(kb.shift, KbShift::Caps);
+        assert_eq!(tap(&mut kb, 'a' as u32), RECT_EMPTY, "a letter with caps on: no more than any letter");
+        assert_eq!(tap_at(&mut kb, KB_KEY_SHIFT), kb.area, "caps on to off");
+        tap_at(&mut kb, KB_KEY_SHIFT);
+        assert_eq!(tap(&mut kb, '1' as u32), RECT_EMPTY, "a digit: shift once still waits");
+        assert_eq!(tap(&mut kb, 'b' as u32), kb.area, "shift once let go");
+        assert_eq!((kb.text.as_str(), kb.shift), ("A1B", KbShift::Off));
+        // The symbols page: no key's label there changes case, so every tap refreshes the shift key alone.
+        tap_at(&mut kb, KB_KEY_SYMBOLS);
+        assert_eq!(kb.page, 3);
+        assert!(keyboard_key_rect(&kb, KB_KEY_SHIFT, &mut key));
+        assert_eq!(tap_at(&mut kb, KB_KEY_SHIFT), key, "symbols page, off to once");
+        assert_eq!(tap_at(&mut kb, KB_KEY_SHIFT), key, "symbols page, once to caps on");
+        assert_eq!(tap_at(&mut kb, KB_KEY_SHIFT), key, "symbols page, caps on to off");
+        // The accents page's letters show their capitals: the keyboard again.
+        tap_at(&mut kb, KB_KEY_PAGE);
+        assert_eq!(kb.page, 1);
+        assert_eq!(tap_at(&mut kb, KB_KEY_SHIFT), kb.area, "accents page, off to once");
+    }
+
+    /// The two on-states read apart on the e-ink screen: shift once is the pressed key, as shift always was (black,
+    /// its label white); caps on is that key with a white bar under its label, as wide as the label. Nothing else on
+    /// the keyboard differs between the two (the letter keys show their capitals in both). Gothic and Classic,
+    /// upright and sideways.
+    #[test]
+    fn caps_on_draws_a_bar_under_the_shift_label() {
+        assert_eq!(font_init(), 0);
+        for th in [UiTheme::Gothic, UiTheme::Classic] {
+            ui_set_theme(th);
+            for screen in [Rect { x: 0, y: 0, w: 1860, h: 2480 }, Rect { x: 0, y: 0, w: 2480, h: 1860 }] {
+                let shot = |shift: KbShift, pressed: bool| {
+                    let (mut kb, mut c) = drawn(screen);
+                    let mut r = RECT_EMPTY;
+                    assert!(keyboard_key_rect(&kb, KB_KEY_SHIFT, &mut r));
+                    kb.shift = shift;
+                    if pressed {
+                        kb.pressed_key = key_at(&kb, (r.x + r.w / 2) as f32, (r.y + r.h / 2) as f32);
+                    }
+                    keyboard_draw(&mut kb, &mut c, screen);
+                    (c, r)
+                };
+                let (pressed, _) = shot(KbShift::Off, true);
+                let (once, r) = shot(KbShift::Once, false);
+                let (caps, _) = shot(KbShift::Caps, false);
+                let px = |c: &Canvas, x: i32, y: i32| c.px[(y * c.stride + x) as usize];
+                let inside = |x: i32, y: i32| rect_contains(r, x, y);
+                let (mut label_bottom, mut bar) = (i32::MIN, (i32::MAX, i32::MAX, i32::MIN, i32::MIN));
+                for y in 0..screen.h {
+                    for x in 0..screen.w {
+                        let (o, k) = (px(&once, x, y), px(&caps, x, y));
+                        if !inside(x, y) {
+                            assert_eq!(o, k, "{th:?} {}x{}: only the shift key differs, not ({x}, {y})", screen.w, screen.h);
+                            continue;
+                        }
+                        assert_eq!(o, px(&pressed, x, y), "{th:?}: shift once is the pressed key, at ({x}, {y})");
+                        if o > 128 && rect_contains(rect_inflate(r, -ui_px(16.0)), x, y) {
+                            label_bottom = label_bottom.max(y);
+                        }
+                        if o != k {
+                            assert_eq!((o, k), (0, 255), "{th:?}: caps on adds white to the black key, at ({x}, {y})");
+                            bar = (bar.0.min(x), bar.1.min(y), bar.2.max(x), bar.3.max(y));
+                        }
+                    }
+                }
+                let (bw, bh) = (bar.2 - bar.0 + 1, bar.3 - bar.1 + 1);
+                assert_eq!(bh, ui_px(12.0), "{th:?} {}x{}: a bar", screen.w, screen.h);
+                assert!(bw >= ui_px(60.0) && bw < r.w - ui_px(30.0), "{th:?}: as wide as the label, inside the key: {bw}");
+                assert!((bar.0 + bar.2 + 1 - (2 * r.x + r.w)).abs() <= 1, "{th:?}: centered under the label");
+                assert!(bar.1 > label_bottom && bar.3 < r.y + r.h - ui_px(10.0), "{th:?}: under the label, in the key");
+                let ink = (r.y..r.y + r.h).flat_map(|y| (r.x..r.x + r.w).map(move |x| (x, y))).filter(|&(x, y)| px(&caps, x, y) < 128).count();
+                assert!(ink * 2 > (r.w * r.h) as usize, "{th:?}: caps on is still the black key");
+            }
+        }
+        ui_set_theme(UiTheme::Gothic);
     }
 }
