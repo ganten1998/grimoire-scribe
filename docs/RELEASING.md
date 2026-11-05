@@ -162,10 +162,12 @@ would publish. The usual causes are a different rustc, zig or cargo-zigbuild ver
 crate in `Cargo.lock`, or a path or environment that reached the binary (tests/repro_check.sh
 looks for the last kind). Fix the cause, gate, test again.
 
-The Rust workflow was written on a Mac and had not run on a GitHub runner when this was written.
-The first dry run is where its mistakes show: the toolchain steps, the time (the C workflow took
-about 28 minutes; each job now has its own `timeout-minutes`, the package job's 90), the disk on the runner. Delete this paragraph once it
-has passed.
+The Rust workflow's first runs on GitHub were for 2.0.0-beta.2 (2026-11-05): the dry run passed and CI's files
+matched the tested bundle byte for byte, but the release run ended green with its publish job skipped (its
+condition had no status function, so the skipped docs job upstream skipped it). The files and the feed were then
+published by hand from that run's `grimoire-release` artifact, as the publish job does it. The condition is fixed;
+the next release is its first real run, so check the release's files and the `kpm` branch after it, and delete
+this paragraph once a publish job has run.
 
 ## Tag and publish
 

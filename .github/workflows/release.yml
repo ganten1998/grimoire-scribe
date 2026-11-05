@@ -397,7 +397,11 @@ jobs:
 
   publish:
     needs: [gate, package]
-    if: github.event_name == 'release'
+    # Not a bare `github.event_name == 'release'`: a job's if without a status function means success() too,
+    # which is false whenever a job upstream was skipped, and docs (through gate) always is on a code change.
+    # v2.0.0-beta.2's run ended green with this job skipped: no files, no feed (docs/RELEASING.md, When
+    # something fails). gate is the sum of the checks, so its result and package's are what count.
+    if: ${{ !cancelled() && github.event_name == 'release' && needs.gate.result == 'success' && needs.package.result == 'success' }}
     runs-on: ubuntu-24.04
     permissions:
       contents: write
