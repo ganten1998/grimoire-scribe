@@ -5,6 +5,12 @@ use crate::prelude::*;
 
 const FILES: [&str; 4] = ["grimoire.koplugin", "2-no-diagonal-screenshot.lua", "2-mosaic-square-corners.lua", "2-terminess-ui-font.lua"];
 
+/// Grimoire's earlier Terminess patches, byte for byte, as the app carries them in app/koreader/legacy
+/// (kindle/koreader/legacy): 1.1.0-beta.2's, rc.6's (1.2.0) and rc.7's (2.0.0-beta.0 and beta.1). A copy in
+/// KOReader that is one of them is Grimoire's to replace; any other file there is kept.
+pub const KOREADER_TERMINESS_EARLIER: [&str; 3] =
+    ["2-terminess-ui-font.lua", "2-terminess-ui-font-rc6.lua", "2-terminess-ui-font-rc7.lua"];
+
 /// Grimoire's own copy of Terminess in KOReader, the files the Terminess menu font patch reads:
 /// fonts/Grimoire/<name>, with the binary's bytes.
 fn fonts() -> [(&'static str, &'static [u8]); 2] {
@@ -100,12 +106,33 @@ fn unlink(path: &str) -> i32 {
     unsafe { libc::unlink(c.as_ptr()) }
 }
 
+/// Which of Grimoire's earlier Terminess patches (KOREADER_TERMINESS_EARLIER, in the store's
+/// app/koreader/legacy) the file at path is, byte for byte: its name there, or None (no file, or any
+/// other bytes). The size first, so a large file is not read for nothing.
+fn terminess_earlier(path: &str) -> Option<&'static str> {
+    let len = std::fs::metadata(path).ok()?.len();
+    let legacy = cformat!("%s/app/koreader/legacy", &store_root());
+    let mut data: Option<Vec<u8>> = None;
+    for name in KOREADER_TERMINESS_EARLIER {
+        let old = cformat!("%s/%s", &legacy, name);
+        if std::fs::metadata(&old).map(|m| m.len()).ok() != Some(len) {
+            continue;
+        }
+        if data.is_none() {
+            data = Some(read_file(path)?);
+        }
+        if read_file(&old).is_some_and(|o| Some(&o) == data.as_ref()) {
+            return Some(name);
+        }
+    }
+    None
+}
+
 fn copy_owned(src: &str, dst: &str, enabled: bool) -> i32 {
     if accessible(dst, libc::F_OK) && !same(src, dst) {
         // Allow an explicit upgrade/removal of our byte-exact earlier Terminess patches.
         // A modified copy or an unrelated patch stays untouched.
-        let legacy_root=format!("{}/app/koreader/legacy",store_root());
-        let owned=["2-terminess-ui-font.lua","2-terminess-ui-font-rc6.lua"].iter().any(|name|same(&format!("{legacy_root}/{name}"),dst));
+        let owned = terminess_earlier(dst).is_some();
         let name = src.rfind('/');
         match name {
             Some(at) if &src[at + 1..] == "2-terminess-ui-font.lua" && owned => {}
@@ -217,4 +244,32 @@ pub fn koreader_fonts_refresh() -> i32 {
         qlog!("koreader: wrote %d of Grimoire's Terminess files in %s (they differed from this build's)", wrote, &dir);
     }
     wrote
+}
+
+/// Brings an earlier Grimoire's Terminess patch in KOReader up to date, so its fixes reach the menus
+/// without the patch being toggled (the owner's Scribe kept rc.6's, whose menus showed a "JS" badge for
+/// the battery, 2026-11-04): a patches/2-terminess-ui-font.lua that is byte for byte one of
+/// KOREADER_TERMINESS_EARLIER (terminess_earlier: the size, then the bytes) is written again whole with
+/// the app's (app/koreader/patches; a temporary file, then a rename), and grimoire.log says so. A copy
+/// someone changed, an unrelated file and this build's own copy are left alone, and with the patch not
+/// applied nothing is written. No other KOReader file is read or written. For the quiet moment of
+/// koreader_fonts_refresh, right after it. Returns 1 when it wrote, 0 when there was nothing to do, or -1
+/// when the write failed.
+pub fn koreader_patch_refresh() -> i32 {
+    let mut src = String::new();
+    let mut dst = String::new();
+    if !paths(3, &mut src, &mut dst) || !accessible(&dst, libc::F_OK) {
+        return 0;
+    }
+    let Some(was) = terminess_earlier(&dst) else { return 0 };
+    let Some(data) = read_file(&src) else { return 0 };
+    if read_file(&dst).as_deref() == Some(&data[..]) {
+        return 0; // this build's patch is one of the earlier ones too: nothing to do
+    }
+    if write_file_atomic(&dst, &data) != 0 {
+        qlog!("koreader: could not bring %s up to date", &dst);
+        return -1;
+    }
+    qlog!("koreader: %s was Grimoire's earlier patch (%s in app/koreader/legacy); it is this build's now", &dst, was);
+    1
 }

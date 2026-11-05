@@ -49,6 +49,12 @@ fn discovery_and_owned_files() {
     check!(write_file_atomic(&p,b"rc6 font patch")==0);
     check!(koreader_item_set(3,true)==0);
     check!(read_file(&p).as_deref()==Some(&b"new font patch"[..]));
+    // 2.0.0-beta.1's copy (rc.7's) is an earlier one since 2.0.0-beta.2: Settings replaces it too
+    let rc7 = cformat!("%s/app/koreader/legacy/2-terminess-ui-font-rc7.lua", root.as_str());
+    check!(write_file_atomic(&rc7, b"rc7 font patch") == 0);
+    check!(write_file_atomic(&p, b"rc7 font patch") == 0);
+    check!(koreader_item_set(3, true) == 0);
+    check!(read_file(&p).as_deref() == Some(&b"new font patch"[..]));
     check!(write_file_atomic(&p,b"rc6 font patch with owner edits")==0);
     check!(koreader_item_set(3,true)!=0 && koreader_item_set(3,false)!=0);
     check!(read_file(&p).as_deref()==Some(&b"rc6 font patch with owner edits"[..]));
@@ -125,6 +131,90 @@ fn fonts_follow_the_binary() {
     std::env::remove_var("GRIMOIRE_US");
 }
 
+// An earlier Grimoire's Terminess patch in KOReader becomes this build's at the start (koreader_patch_refresh,
+// with the app's real files): each of kindle/koreader/legacy byte for byte is replaced, atomically; this
+// build's is not written again; a copy someone changed, an unrelated file and an absent patch stay as they
+// are; without the app's own patch nothing is written. No other file is touched.
+fn earlier_terminess_patch_follows_the_binary() {
+    use std::os::unix::fs::MetadataExt;
+    const KO_SRC: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../kindle/koreader");
+    let root = cformat!("%s/ko-patch-%ld", tl_tmp().as_str(), std::process::id() as i64);
+    let _ = std::fs::remove_dir_all(&root);
+    let us = cformat!("%s/us", root.as_str());
+    std::env::set_var("GRIMOIRE_US", &us);
+    std::env::remove_var("KOREADER_DIR");
+    check!(store_init(&root) == 0);
+    check!(koreader_patch_refresh() == 0); // no KOReader
+    let ko = cformat!("%s/koreader", us.as_str());
+    check!(mkdir_p(&cformat!("%s/patches", ko.as_str())) == 0);
+    let reader = cformat!("%s/reader.lua", ko.as_str());
+    let other = cformat!("%s/patches/2-someone-elses.lua", ko.as_str());
+    check!(write_file_atomic(&reader, b"KOReader") == 0 && write_file_atomic(&other, b"not Grimoire's") == 0);
+    let patch = cformat!("%s/patches/%s", ko.as_str(), koreader_item_name(3));
+    let ino = |p: &str| std::fs::metadata(p).map(|m| m.ino()).unwrap_or(0);
+    // the app as the package lays it out: app/koreader/patches and app/koreader/legacy
+    let current = std::fs::read(cformat!("%s/patches/2-terminess-ui-font.lua", KO_SRC)).unwrap();
+    check!(mkdir_p(&cformat!("%s/app/koreader/patches", root.as_str())) == 0);
+    check!(mkdir_p(&cformat!("%s/app/koreader/legacy", root.as_str())) == 0);
+    let mut earlier: Vec<(String, Vec<u8>)> = Vec::new();
+    for e in std::fs::read_dir(cformat!("%s/legacy", KO_SRC)).unwrap() {
+        let e = e.unwrap();
+        let name = e.file_name().to_string_lossy().into_owned();
+        let data = std::fs::read(e.path()).unwrap();
+        check!(data != current); // an earlier copy is never this build's
+        check!(write_file_atomic(&cformat!("%s/app/koreader/legacy/%s", root.as_str(), name.as_str()), &data) == 0);
+        earlier.push((name, data));
+    }
+    earlier.sort();
+    // every earlier copy the app carries is one the code knows, and the other way round
+    let mut names: Vec<&str> = earlier.iter().map(|(n, _)| n.as_str()).collect();
+    let mut known = KOREADER_TERMINESS_EARLIER.to_vec();
+    names.sort();
+    known.sort();
+    check!(names == known);
+    // without the app's own patch (a store from before the patches), nothing is written
+    check!(write_file_atomic(&patch, &earlier[0].1) == 0);
+    check!(koreader_patch_refresh() == 0 && read_file(&patch).as_deref() == Some(&earlier[0].1[..]));
+    check!(write_file_atomic(&cformat!("%s/app/koreader/patches/2-terminess-ui-font.lua", root.as_str()), &current) == 0);
+    // the patch not applied: nothing written, and none made
+    check!(std::fs::remove_file(&patch).is_ok());
+    check!(koreader_patch_refresh() == 0 && std::fs::metadata(&patch).is_err());
+    // each earlier copy, byte for byte: replaced whole (a new file), then left alone
+    for (name, data) in &earlier {
+        check!(write_file_atomic(&patch, data) == 0);
+        let before = ino(&patch);
+        let replaced = koreader_patch_refresh() == 1;
+        check!(replaced && read_file(&patch).as_deref() == Some(&current[..]) && ino(&patch) != before);
+        if !replaced {
+            eprintln!("  the earlier copy {name} was not replaced");
+        }
+        let after = ino(&patch);
+        check!(koreader_patch_refresh() == 0 && ino(&patch) == after);
+    }
+    // a copy someone changed (one byte more, or one byte different) is kept
+    let mut edited = earlier[0].1.clone();
+    edited.extend_from_slice(b"-- the owner's line\n");
+    check!(write_file_atomic(&patch, &edited) == 0);
+    check!(koreader_patch_refresh() == 0 && read_file(&patch).as_deref() == Some(&edited[..]));
+    let mut flipped = earlier[1].1.clone();
+    flipped[100] ^= 0x20;
+    check!(write_file_atomic(&patch, &flipped) == 0);
+    check!(koreader_patch_refresh() == 0 && read_file(&patch).as_deref() == Some(&flipped[..]));
+    // an unrelated patch at the same name is kept
+    check!(write_file_atomic(&patch, b"someone else's Terminess patch") == 0);
+    check!(koreader_patch_refresh() == 0 && read_file(&patch).as_deref() == Some(&b"someone else's Terminess patch"[..]));
+    // this build's copy: not written again
+    check!(write_file_atomic(&patch, &current) == 0);
+    let same = ino(&patch);
+    check!(koreader_patch_refresh() == 0 && ino(&patch) == same);
+    // nothing else touched, no temporary file left
+    check!(read_file(&other).as_deref() == Some(&b"not Grimoire's"[..]));
+    check!(read_file(&reader).as_deref() == Some(&b"KOReader"[..]));
+    check!(std::fs::read_dir(cformat!("%s/patches", ko.as_str())).map(|d| d.count()).unwrap_or(0) == 2);
+    check!(std::fs::metadata(cformat!("%s/fonts", ko.as_str())).is_err());
+    std::env::remove_var("GRIMOIRE_US");
+}
+
 fn wallpaper_and_setting() {
     let root = cformat!("%s/ko-wallpaper-%ld", tl_tmp().as_str(), std::process::id() as i64);
     check!(store_init(&root) == 0);
@@ -151,6 +241,7 @@ fn wallpaper_and_setting() {
 fn test_koreader() {
     run!(discovery_and_owned_files);
     run!(fonts_follow_the_binary);
+    run!(earlier_terminess_patch_follows_the_binary);
     run!(wallpaper_and_setting);
     done();
 }

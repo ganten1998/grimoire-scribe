@@ -208,6 +208,57 @@ fn a_start_brings_koreaders_terminess_up_to_date() {
     let _ = std::fs::remove_dir_all(d);
 }
 
+// A start brings an earlier Grimoire's Terminess patch in KOReader up to date: run() calls
+// koreader_patch_refresh once, after the first frame (test_koreader holds its own cases). The owner's
+// Scribe kept rc.6's copy, whose menus showed KOReader's battery as a "JS" badge (2026-11-04): with the
+// app laid out as the package lays it out, that copy becomes this build's and grimoire.log says so once;
+// the next start finds it current and says nothing.
+#[test]
+fn a_start_brings_an_earlier_terminess_patch_up_to_date() {
+    let d = scratch("ko-patch");
+    let ko = d.join("us/koreader");
+    let app = d.join("root/app/koreader");
+    std::fs::create_dir_all(ko.join("patches")).unwrap();
+    std::fs::create_dir_all(app.join("patches")).unwrap();
+    std::fs::create_dir_all(app.join("legacy")).unwrap();
+    std::fs::write(ko.join("reader.lua"), "KOReader").unwrap();
+    let src = top().join("kindle/koreader");
+    let current = std::fs::read(src.join("patches/2-terminess-ui-font.lua")).unwrap();
+    std::fs::write(app.join("patches/2-terminess-ui-font.lua"), &current).unwrap();
+    for e in std::fs::read_dir(src.join("legacy")).unwrap() {
+        let e = e.unwrap();
+        std::fs::copy(e.path(), app.join("legacy").join(e.file_name())).unwrap();
+    }
+    let rc6 = std::fs::read(src.join("legacy/2-terminess-ui-font-rc6.lua")).unwrap();
+    let patch = ko.join("patches/2-terminess-ui-font.lua");
+    std::fs::write(&patch, &rc6).unwrap();
+    std::fs::write(ko.join("patches/2-mosaic-square-corners.lua"), "someone's corners").unwrap();
+    let script = d.join("start.qs");
+    std::fs::write(&script, "wait 0\nquit\n").unwrap();
+    let start = || {
+        runner(&[
+            ("GRIMOIRE_ROOT", &d.join("root")),
+            ("GRIMOIRE_SCRIPT", &script),
+            ("GRIMOIRE_US", &d.join("us")),
+            ("KOREADER_DIR", Path::new("")),
+        ])
+    };
+    let said = "was Grimoire's earlier patch (2-terminess-ui-font-rc6.lua in app/koreader/legacy); it is this build's now";
+    let o = start();
+    let log = stderr_unstamped(&o);
+    assert_eq!(o.status.code(), Some(0), "{log}");
+    assert!(std::fs::read(&patch).unwrap() == current, "KOReader's Terminess patch is not this build's:\n{log}");
+    assert!(log.contains(&format!("koreader: {} {said}", patch.display())), "{log}");
+    assert_eq!(std::fs::read_to_string(ko.join("patches/2-mosaic-square-corners.lua")).unwrap(), "someone's corners");
+    assert_eq!(std::fs::read_dir(ko.join("patches")).unwrap().count(), 2);
+    let o = start();
+    let log = stderr_unstamped(&o);
+    assert_eq!(o.status.code(), Some(0), "{log}");
+    assert!(!log.contains("Grimoire's earlier patch"), "the second start wrote the patch again:\n{log}");
+    assert!(std::fs::read(&patch).unwrap() == current);
+    let _ = std::fs::remove_dir_all(d);
+}
+
 // The runner checks itself: tests/selftest/pass.qs must exit 0 with its notebook's PDF written.
 #[test]
 fn selftest_pass() {
