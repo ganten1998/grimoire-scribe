@@ -26,12 +26,12 @@ enum Modal {
     Updates = 16,   // MOD_UPDATES
     Gestures = 17,  // MOD_GESTURES
     About = 18,     // (Rust only: the bat's What's new)
-    /// Settings > Pair (2.0.0-beta.2, Rust only): the Bluetooth helper on or off, Pair a controller... (the
-    /// Pair sheet above), and what is connected
-    PairMenu = 19,
     /// Esc at the top level, "Exit Grimoire?" (Rust only; numbered from 300, past the C's sheets: the probe
     /// names it apart from SHEETS)
     Exit = 300,
+    /// Settings > Pair (2.0.0-beta.2, Rust only; a number of its own past the C's, as Exit's): the Bluetooth
+    /// helper on or off, Pair a controller... (the Pair sheet above), and what is connected
+    PairMenu = 330,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -5828,7 +5828,7 @@ fn card_probe(a: &mut App, key: &str, out: &mut String, cap: usize) -> i32 {
 /// "templates.*" keys reach it whole (docs/SIM.md).
 // The script runner's "library.*" keys (app_probe forwards them without the prefix).
 pub fn library_probe(a: &mut App, key: &str, out: &mut String, cap: usize) -> i32 {
-    static SHEETS: [&str; 20] = [
+    static SHEETS: [&str; 19] = [
         "none",        // MOD_NONE
         "new",         // MOD_NEW
         "settings",    // MOD_SETTINGS
@@ -5848,7 +5848,6 @@ pub fn library_probe(a: &mut App, key: &str, out: &mut String, cap: usize) -> i3
         "updates",     // MOD_UPDATES
         "gestures",    // MOD_GESTURES
         "about",       // (What's new)
-        "pair-menu",   // (Settings > Pair, 2.0.0-beta.2)
     ];
     if a.lib.is_none() {
         return -1;
@@ -5910,6 +5909,8 @@ pub fn library_probe(a: &mut App, key: &str, out: &mut String, cap: usize) -> i3
     }
     if key == "sheet" && s.modal == Modal::Exit {
         csnprintf!(out, cap, "exit");
+    } else if key == "sheet" && s.modal == Modal::PairMenu {
+        csnprintf!(out, cap, "pair-menu");
     } else if key == "sheet" {
         match SHEETS.get(s.modal as usize) {
             Some(m) => csnprintf!(out, cap, "%s", *m),
