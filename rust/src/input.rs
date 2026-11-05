@@ -138,8 +138,13 @@ pub struct InEvent {
     pub live_seq: u32,
     /// the first sample after pen events the kernel dropped: joined straight
     pub gap: bool,
-    /// IN_HID_*: the device's name, printable ASCII (hidkeys_name)
+    /// IN_HID_*, IN_KEY and IN_KEY_UP: the device's name, printable ASCII (hidkeys_name); for a key, the
+    /// device it came from (its shortcuts profile, shortcut_profiles.rs), empty where no device sent it (the
+    /// script's own keyboard, which uses the default shortcuts)
     pub hid_name: FixedStr<41>,
+    /// and its vendor and product numbers (EVIOCGID), 0 where nobody says
+    pub hid_vendor: u16,
+    pub hid_product: u16,
 }
 
 /// The time a stroke records for a pen sample: the kernel's when known, else when it was read.
@@ -206,14 +211,18 @@ pub fn input_shortcuts_enable(enabled: bool) {
     platform::input_shortcuts_enable(enabled)
 }
 /// The optional keyboards and controllers watched now, none while shortcuts are off: their names
-/// (as hid_name), whether each is a controller, whether another app holds it, and whether it is a
-/// Switch-mode one (hidkeys_switch: the Buttons sheet names its buttons as printed). Returns how many.
+/// (as hid_name), whether each is a controller, whether another app holds it, whether it is a
+/// Switch-mode one (hidkeys_switch: the Buttons sheet names its buttons as printed), and its vendor and
+/// product numbers. Returns how many.
 #[derive(Clone, Copy, Debug, Default)]
 pub struct InputHid {
     pub name: FixedStr<41>,
     pub gamepad: bool,
     pub held: bool,
     pub switch_layout: bool,
+    /// EVIOCGID's vendor and product: with the name, which shortcuts profile is the device's
+    pub vendor: u16,
+    pub product: u16,
 }
 #[inline]
 pub fn input_hids(out: &mut [InputHid]) -> i32 {

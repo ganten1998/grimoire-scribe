@@ -102,6 +102,10 @@ struct State {
     // shortcuts are on, but watched, listed and announced only while they are, as on the Kindle.
     hids: [InputHid; 4],
     nhids: usize,
+    /// "hid keys NAME": the attached device the script's key, keyup and axis lines come from from then on
+    /// (its name and numbers on each event, so its shortcuts profile applies), until "hid keys" alone or
+    /// its detach; None: the script's own keyboard, no device (the default shortcuts)
+    key_dev: Option<InputHid>,
 
     // input_sample_hook's (Live view's): called for each pen event as it is queued, and before
     // each event is taken. They run under this module's borrow: by input.h's rule they only store
@@ -248,6 +252,7 @@ impl Default for State {
             shortcuts_enabled: false,
             hids: [InputHid::default(); 4],
             nhids: 0,
+            key_dev: None,
             sample_fn: None,
             sample_batch: None,
             raw_fd: -1,
@@ -346,6 +351,14 @@ fn with<R>(f: impl FnOnce(&mut State) -> R) -> R {
 }
 
 impl State {
+    /// A key's device: the one "hid keys" named (its name and numbers), else none.
+    fn key_from(&self, e: &mut InEvent) {
+        if let Some(h) = self.key_dev {
+            e.hid_name = h.name;
+            e.hid_vendor = h.vendor;
+            e.hid_product = h.product;
+        }
+    }
     fn q_push(&mut self, mut e: InEvent) {
         let n = (self.qt + 1) % QN;
         if n == self.qh {
@@ -1718,7 +1731,7 @@ fn script_step_in(st: &mut State) -> Step {
                 hidkeys_set_mods_held(hidkeys_mods(&st.mod_keys) | (st.ptr_mods as i32));
                 continue;
             }
-            let e = InEvent {
+            let mut e = InEvent {
                 type_: if a.len() > 3 { InType::KeyUp } else { InType::Key },
                 value: iv[0],
                 key_mods: iv[1] as u32 | hidkeys_mods(&st.mod_keys) as u32,
@@ -1726,6 +1739,7 @@ fn script_step_in(st: &mut State) -> Step {
                 t_ms: now_ms(),
                 ..Default::default()
             };
+            st.key_from(&mut e);
             st.q_push(e);
         } else if a == b"axis" {
             // axis CODE VALUE: an axis of a controller as Linux's generic driver reports an Xbox One
@@ -1757,7 +1771,7 @@ fn script_step_in(st: &mut State) -> Step {
             }
             let trig = st.axis_trig;
             if hidkeys_trigger_event(&mut st.axis_keys, &trig, iv[0], iv[1], &mut p) != 0 {
-                let e = InEvent {
+                let mut e = InEvent {
                     type_: if p.up { InType::KeyUp } else { InType::Key },
                     value: p.code,
                     key_mods: p.mods as u32,
@@ -1765,15 +1779,35 @@ fn script_step_in(st: &mut State) -> Step {
                     t_ms: now_ms(),
                     ..Default::default()
                 };
+                st.key_from(&mut e);
                 st.q_push(e);
             }
+        } else if a == b"hid" && b == b"keys" {
+            // hid keys NAME: the key, keyup and axis lines from here on come from that attached device
+            // (shortcuts profiles); hid keys alone: from the script's own keyboard again.
+            let raw = scan_hid_detach(s);
+            if raw.is_empty() {
+                st.key_dev = None;
+                continue;
+            }
+            let mut name = String::new();
+            hidkeys_name(&mut name, FixedStr::<41>::CAP, raw);
+            match st.hids[..st.nhids].iter().find(|h| h.name.as_str() == name) {
+                Some(h) => st.key_dev = Some(*h),
+                None => {
+                    err(&bformat("script: hid keys names no device attached: %s", &[B::S(s)]));
+                    st.expect_unknown_line();
+                }
+            }
         } else if a == b"hid" {
-            // hid attach pad|key|held NAME, hid detach NAME: a controller (held: one another app
-            // grabs), or a keyboard or page turner, comes or goes, as input_evdev.c reports it. A
-            // controller has sixteen buttons from BTN_A, as Linux's generic driver gives one, so its
-            // name alone makes it a Switch-mode one ("Pro Controller", hidkeys_switch).
+            // hid attach pad|key|held[:VVVV:PPPP] NAME, hid detach NAME: a controller (held: one another
+            // app grabs), or a keyboard or page turner, comes or goes, as input_evdev.c reports it, with
+            // its vendor and product numbers in hex (EVIOCGID; 0 without). A controller has sixteen
+            // buttons from BTN_A, as Linux's generic driver gives one, so its name alone makes it a
+            // Switch-mode one ("Pro Controller", hidkeys_switch).
             let attach = b == b"attach";
             let (kind, raw) = if attach { scan_hid_attach(s) } else { (&b""[..], scan_hid_detach(s)) };
+            let (kind, ids) = split_hid_ids(kind);
             let mut e = InEvent {
                 type_: if attach { InType::HidAttach } else { InType::HidDetach },
                 t_ms: now_ms(),
@@ -1786,9 +1820,12 @@ fn script_step_in(st: &mut State) -> Step {
             while i < st.nhids && st.hids[i].name != e.hid_name {
                 i += 1;
             }
-            if attach && st.nhids < 4 && (kind == b"pad" || kind == b"key" || kind == b"held") {
-                let mut h = InputHid { gamepad: kind != b"key", held: kind == b"held", ..Default::default() };
+            if attach && st.nhids < 4 && (kind == b"pad" || kind == b"key" || kind == b"held") && ids.is_some() {
+                let (vendor, product) = ids.unwrap_or((0, 0));
+                let mut h = InputHid { gamepad: kind != b"key", held: kind == b"held", vendor, product, ..Default::default() };
                 h.name = e.hid_name;
+                e.hid_vendor = vendor;
+                e.hid_product = product;
                 let mut buttons = [0u8; HID_KEY_BYTES];
                 for code in 304..=319usize {
                     buttons[code / 8] |= 1u8 << (code % 8);
@@ -1800,6 +1837,11 @@ fn script_step_in(st: &mut State) -> Step {
                 e.value = h.held as i32;
             } else if !attach && b == b"detach" && i < st.nhids {
                 e.gamepad = st.hids[i].gamepad;
+                e.hid_vendor = st.hids[i].vendor;
+                e.hid_product = st.hids[i].product;
+                if st.key_dev.is_some_and(|k| k.name == st.hids[i].name) {
+                    st.key_dev = None; // (its keys cannot come any more)
+                }
                 st.nhids -= 1;
                 st.hids[i] = st.hids[st.nhids];
             } else {
@@ -2760,6 +2802,18 @@ fn scan_hid_attach(s: &[u8]) -> (&[u8], &[u8]) {
     (kind, sc.up_to_newline(255).unwrap_or(b""))
 }
 
+/// "pad", "pad:057e:2009": the kind of "hid attach" and its vendor and product numbers (hex; 0 and 0
+/// without), None for numbers that do not read.
+fn split_hid_ids(kind: &[u8]) -> (&[u8], Option<(u16, u16)>) {
+    let Some(colon) = kind.iter().position(|&c| c == b':') else { return (kind, Some((0, 0))) };
+    let ids = std::str::from_utf8(&kind[colon + 1..]).ok().and_then(|t| {
+        let (v, p) = t.split_once(':')?;
+        let hex = |x: &str| if x.len() == 4 { u16::from_str_radix(x, 16).ok() } else { None };
+        Some((hex(v)?, hex(p)?))
+    });
+    (&kind[..colon], ids)
+}
+
 /// sscanf(s, "%*s %*s %255[^\n]", raw): the name of "hid detach".
 fn scan_hid_detach(s: &[u8]) -> &[u8] {
     let mut sc = Scan::new(s);
@@ -3419,6 +3473,44 @@ mod tests {
         assert_eq!(input_hids(&mut hids), 1);
         assert_eq!(hids[0].name.as_str(), "Page Turner");
         // "hid detach Nobody" failed as an unknown line
+        assert_eq!(with(|st| (st.expect_total, st.expect_failed)), (1, 1));
+    }
+
+    // A device's numbers ("hid attach pad:2dc8:6006 NAME"), and "hid keys NAME": the key lines after it come
+    // from that device (its name and numbers on each, as input_evdev.rs sends them), until "hid keys" alone
+    // or its detach; before it they come from no device. A name not attached fails the line.
+    #[test]
+    fn hid_keys_come_from_a_device() {
+        assert_eq!(split_hid_ids(b"pad"), (&b"pad"[..], Some((0, 0))));
+        assert_eq!(split_hid_ids(b"key:05ac:0256"), (&b"key"[..], Some((0x05ac, 0x0256))));
+        assert_eq!(split_hid_ids(b"pad:5ac:256"), (&b"pad"[..], None));
+        fresh();
+        script(
+            "hid-keys",
+            "hid attach pad:2dc8:6006 Pro 2\nkey 304 0 1\nhid keys Pro 2\nkey 304 0 1\nkeyup 304 0 1\n\
+             hid keys\nkey 30 0\nhid keys Pro 2\nhid detach Pro 2\nkey 31 0\nhid keys Nobody\nwait 0\n",
+        );
+        input_shortcuts_enable(true);
+        let got: Vec<_> = batch()
+            .iter()
+            .map(|ev| (ev.type_, ev.value, ev.hid_name.as_str().to_string(), ev.hid_vendor, ev.hid_product))
+            .collect();
+        let pro = |t, v| (t, v, "Pro 2".to_string(), 0x2dc8, 0x6006);
+        let none = |t, v| (t, v, String::new(), 0, 0);
+        assert_eq!(
+            got,
+            vec![
+                pro(InType::HidAttach, 0),
+                none(InType::Key, 304),
+                pro(InType::Key, 304),
+                pro(InType::KeyUp, 304),
+                none(InType::Key, 30),
+                pro(InType::HidDetach, 0),
+                none(InType::Key, 31),
+            ]
+        );
+        let mut hids = [InputHid::default(); 4];
+        assert_eq!(input_hids(&mut hids), 0);
         assert_eq!(with(|st| (st.expect_total, st.expect_failed)), (1, 1));
     }
 
