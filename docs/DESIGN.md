@@ -1683,7 +1683,7 @@ The binding design is docs/beta2/LASSO-DESIGN.md; this is where it lives in the 
   copies, then deletes; a delete refused after the copy puts the clipboard back (`clipboard_snapshot`,
   `clipboard_restore`). A lasso step's dirty rect leaves out floor markers (history.rs `bbox_of`), so its
   undo refreshes only the group's place.
-- The drag (select.rs `drag_step`, `drag_tick`, `DragView`; 2.1.0, the owner's report of 2026-11-05 that a drag of
+- The drag (select.rs `drag_step`, `drag_tick`, `DragView`; 2.0.0, the owner's report of 2026-11-05 that a drag of
   shading or of many strokes was "horrifically slow"). Until 2.0.0-beta.2 each pen sample composed and DU-refreshed
   the box joined with the bar (1680 x 365 px on his page), the selection's halo walked again every time: about
   22 ms a sample on the Scribe, one sample a loop turn, while the pen reports every 2 to 3 ms. Now a sample only

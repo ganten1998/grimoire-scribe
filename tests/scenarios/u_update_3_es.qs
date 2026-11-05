@@ -1,4 +1,6 @@
 # settings: status_mode=1
+# settings: updates=preview
+# (The preview channel pinned: on Automatic, a stable version such as 2.0.0 follows releases only.)
 # env: GRIMOIRE_LANG=es GRIMOIRE_CHECK_FIT=1 GRIMOIRE_UPDATE_SCRIPT=tests/fake_update.sh FAKE_UPDATE_PREVIEW=9.0.0-beta.9 FAKE_UPDATE_STABLE=1.2.0
 # Settings > Updates in Spanish (the longer language), upright and sideways, every text checked for
 # fit: the version, a newer one with its Update row, releases only and the newest.

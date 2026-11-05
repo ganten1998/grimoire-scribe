@@ -1,7 +1,12 @@
 # Changelog
 
-## 2.0.0 (unreleased)
+## 2.0.0 (2026-11-05)
 
+- The first stable release of Grimoire 2.0: 2.0.0-beta.2 with the fixes below, now on the stable channel too
+  (KPM 2.0.9999; a preview subscriber is offered it as well). Fixes come as 2.0.1, 2.0.2 and so on, new features
+  as 2.1 and up. Since beta.2 the release workflow publishes on its own again (its publish job had no status
+  function in its condition, so a skipped job upstream skipped it), and README's Building from source describes
+  the Rust build.
 - What's new after every update, and no Don't show this again (the owner's rule of 2026-11-05: "no don't show
   this again, just a "Dismiss" and every update with changes by default has at least a basic what's new"). The
   first start after an update opens the notes once, even where the box of the 2.0.0 betas was ticked; the card

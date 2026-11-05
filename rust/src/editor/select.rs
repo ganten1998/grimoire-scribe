@@ -3,7 +3,7 @@
 //! A drag inside the selection's box moves only the box's outline; the strokes move at the release,
 //! one undo step. The geometry and the data are lasso.rs and clipboard.rs; this is the screen.
 //!
-//! The drag on e-ink (2.1.0, the owner's report of 2026-11-05: "horrifically slow on drag with anything
+//! The drag on e-ink (2.0.0, the owner's report of 2026-11-05: "horrifically slow on drag with anything
 //! containing colored in or multiple strokes"): a pen sample only records the newest place (`drag_step`),
 //! and the editor's tick shows it (`drag_tick`) when the panel has finished the last fast refresh, at
 //! most every PREVIEW_MS or at once when the pen pauses, as the lasso's preview does. Its first move takes
@@ -2271,7 +2271,7 @@ pub(super) fn sel_probe(a: &App, key: &str) -> Option<String> {
             let b = s.sel.lift_rect;
             format!("{} {} {} {}", b.x, b.y, b.w, b.h)
         }
-        // a drag (2.1.0): the pen samples that changed its place, the shows of it (the first move's
+        // a drag (2.0.0): the pen samples that changed its place, the shows of it (the first move's
         // included), how many times the selection's ink was walked while it lasted (its halo drawn), all
         // for the drag now or the last one; where the screen shows its outline ("dx dy" page px from the
         // box's place, "-" while no drag moves); and whether it holds its copy of the screen

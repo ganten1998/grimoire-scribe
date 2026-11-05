@@ -95,6 +95,17 @@ and of CI's package job) checks that the CI shards' split ends and keeps each sc
 roots at any shard count (`SCENARIO_SHARDS` can go up safely), that a scenario under a skipped
 rust-only root is skipped whatever the order, and that a failed run says why.
 
+## 2.0.0
+
+The first stable release, promoted by the owner from 2.0.0-beta.2 on 2026-11-05 ("promote to 2.0.0 stable"),
+with three fixes the owner put into it: the lasso drag on dense selections (his report of 2026-11-05), What's
+new after every update with Dismiss in place of the box (his rule of 2026-11-05), and Live view's toolbar under
+menus (issue #16, reported by nebuff). Their checks for the owner's Scribe are the "2.0.0, ..." sections at the
+end of this file. The owner used 2.0.0-beta.2 (and its candidates) on the Kindle Scribe 2024 (firmware
+5.20.1.0.2); what beta.2's section lists as not reported still holds until he reports it. The stable channel
+gets its first 2.0 release here: after the release, check stable/manifest.json and preview/manifest.json on the
+kpm branch and the release's files, the first run of the fixed publish job.
+
 ## 2.0.0-beta.2
 
 Checked by the owner on the Kindle Scribe 2024 (firmware 5.20.1.0.2) on the beta.2 builds installed through
