@@ -116,8 +116,8 @@ A desktop simulator (SDL3) and an SDL-free headless script runner exist for deve
   ms of its end), shared by display_fbink.c and sim_sdl.c, which reports it to scripts
   (`display.last_fast`). A new display.h backend must define `display_live_ink`.
 - Toasts are never stored in `App.screen`: `app_flush` overlays one just for the refresh and puts
-  the pixels under it straight back (while Live view is on it copies the toast into the browser's toast
-  layer as it draws it: Live view, below). `App.toast_floor` keeps them clear of a screen's controls:
+  the pixels under it straight back (while Live view is on it draws the toast again, with alpha, for
+  the browser: Live view, below). `App.toast_floor` keeps them clear of a screen's controls:
   a screen that keeps the bottom for controls sets it as it draws, and toasts sit above it. The
   Library sets it in `redraw` for an open sheet: the keyboard's top, or else the top of the
   control just under the first band of a toast's height that is clear of the sheet's controls,
@@ -954,30 +954,41 @@ announcements: goingToScreenSaver draws the sleep screen, outOfScreenSaver is th
 
    The toast is the third layer (2.0.0-beta.2, LIVE_LAYER_TOAST; the owner: "Enable toasts on the live
    view display. they don't show up now."), drawn over the other two and always shown: there is no
-   switch and no setting. `app_flush` copies it as it draws it over a present (`live_toast_sync`),
-   its rect with the toast and what the Kindle shows under its round ends, so the browser has its
-   place and its look as the panel has them; where the live chip is under the toast's rect the toast
-   is drawn again for the layer over what the chip covers, so no part of the chip is ever streamed.
-   The layer follows the panel: a present that draws the toast tells it (moved by `toast_follow` or a
-   turn, the new rect; another toast in its place, the new pixels; the same rect and pixels, nothing),
-   one that goes out without it (its time up, `app_toast_dismiss`, a redraw) takes it away, and one
-   away from it leaves it as it is, as it stays on the panel. A turn takes it away until the turned
-   screen's flush, and a screen switch draws it again over the new screen, as on the Kindle. While the
-   state is not LIVE_AWAKE nothing is streamed, as before, and the toast is kept out of the frame too:
-   `live_set_state` takes it away as the state leaves LIVE_AWAKE (the sleep screen has no toast; the
-   browser drops its own with the state frame, as it does the pen), and `live_layer` tells a toast as
-   none while the state is not LIVE_AWAKE, so a toast drawn over the pairing card is never in the
+   switch and no setting. As `app_flush` draws it over a present it draws it again for the layer
+   (`live_toast_sync`, `live_layer_drawn`), so the browser has its place and its look as the panel has
+   them. Its pixels have alpha (gray and alpha, two bytes a pixel, and a PNG of color type 4): the
+   toast is drawn twice, into a canvas all black and one all white, and where the two agree the layer
+   is opaque, where they differ it is as clear as the white showed through (`live_matte`): outside its
+   round (Classic) or pointed (Gothic) ends, and part clear on their anti-aliased edge. So the layer
+   holds the toast alone, never what is under its ends, and the browser composites it over whatever it
+   shows there: the page, or the toolbar and the clock corner as its own switches say (with Show
+   toolbar off the toast's ends show the page, not bits of the hidden toolbar), and never the live
+   chip, which is not in the frame. Over the same picture the browser's result is the Kindle's, to a
+   unit of gray on that edge. The cost while Live view is on: two more draws of the toast per present
+   that reaches it (about 0.1 ms for a one-line toast and 0.45 ms for the widest two-line one on the
+   build Mac), and none while it is off. The layer follows the panel: a present that draws the toast
+   tells it (moved by `toast_follow` or a turn, the new rect; another toast in its place, the new
+   pixels; the same rect and pixels, nothing), one that goes out without it (its time up,
+   `app_toast_dismiss`, a redraw) takes it away, and one away from it leaves it as it is, as it stays
+   on the panel. A turn takes it away until the turned screen's flush, and a screen switch draws it
+   again over the new screen, as on the Kindle. While the state is not LIVE_AWAKE nothing is streamed,
+   as before, and the toast is kept out of the frame too: `live_set_state` takes it away as the state
+   leaves LIVE_AWAKE (the sleep screen has no toast; the browser drops its own with the state frame,
+   as it does the pen), and `live_layer` tells a toast as none while the state is not LIVE_AWAKE (and
+   `live_layer_drawn` does not draw it then), so a toast drawn over the pairing card is never in the
    frame for a viewer to send once the card closes; one still up then is drawn again by the closing's
-   full redraw and comes as it is. No toast carries the pairing code (pair.rs and share.rs raise
-   none; the code is drawn only on the card) or the Kindle's passcode (the Kindle's own keypad, while
-   Grimoire is asleep and draws nothing). The viewer checks the state again after copying a layer,
-   as after a run. The panel's and the corner's buffers in the shared frame are w * h bytes each; the
+   full redraw and comes as it is. No toast carries the pairing code (pair.rs and share.rs raise none;
+   the code is drawn only on the card) or the Kindle's passcode (the Kindle's own keypad, while
+   Grimoire is asleep and draws nothing). The viewer checks the state again after copying a layer, as
+   after a run. The panel's and the corner's buffers in the shared frame are w * h bytes each; the
    toast's holds the screen's longer side times the tallest toast (`ui_toast_max_h`: two one-line
-   boxes, 220 px at 300 dpi), about 0.55 MB on the Scribe (1860 x 2480) where another w * h buffer
-   would be 4.6 MB; a shared anonymous mapping takes memory only for the pages written, so the frame
-   costs at most the biggest toast shown, about 0.4 MB for a two-line one sideways. A browser that
-   does not know a layer id leaves it out (`i < layers.length`), so a page from before it shows no
-   toast and nothing else changes, and the hello's version stays 3.
+   boxes, 220 px at 300 dpi) at two bytes a pixel, about 1.1 MB on the Scribe (1860 x 2480, 1.2 MB on
+   the larger one) where a gray w * h buffer like the others would be 4.6 MB; a shared anonymous
+   mapping takes memory only for the pages written, so the frame costs at most the biggest toast
+   shown, about 0.75 MB for a two-line one sideways and 0.1 to 0.4 MB for a usual one. The main loop
+   needs the two canvases for the draws (one byte a pixel each, the toast's size) only while it tells
+   the layer. A browser that does not know a layer id leaves it out (`i < layers.length`), so a page
+   from before it shows no toast and nothing else changes, and the hello's version stays 3.
 
    The page works per animation frame: a batch read only unions its rect into what waits, and the
    next frame composes it once (a burst after a Wi-Fi stall is one compose), shows it, draws the

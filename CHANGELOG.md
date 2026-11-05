@@ -94,10 +94,12 @@
   the same place with the same look, over the page, the toolbar and the clock corner; it moves when it
   moves on the Kindle (a sheet or the keyboard opening under it, the Kindle turned) and goes when it goes
   there (its time up, a dismiss, another toast in its place, the Kindle asleep). It always shows, with no
-  setting, and the toolbar and clock switches leave it alone. Nothing is sent while the pairing card is up
-  or the Kindle sleeps, as before, and a toast from then never shows afterwards unless the Kindle still
-  shows it. The toast is a third layer of the stream, kept on the Kindle in a buffer of 0.55 MB at most
-  (`live.rs`); a browser page from before it shows no toast and works as before.
+  setting, and the toolbar and clock switches leave it alone: it comes with transparency, so with the
+  toolbar or the clock switched off its round ends show the page there, never bits of what is hidden.
+  Nothing is sent while the pairing card is up or the Kindle sleeps, as before, and a toast from then
+  never shows afterwards unless the Kindle still shows it. The toast is a third layer of the stream, kept
+  on the Kindle in a buffer of about 1.1 MB at most (`live.rs`); a browser page from before it shows no
+  toast and works as before.
 - Live view's picture in picture no longer costs more the larger its window. In a large PiP window the
   pen showed 15 to 23 ms later than on the page (the Latency readout's pen age at paint): every frame
   redrew the whole picture, up to the Kindle's 4.6 million pixels, the capture copied them all, and with
