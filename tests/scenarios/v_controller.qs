@@ -2,7 +2,7 @@
 # settings: shortcuts_enabled=1
 # Controllers as express keys: one another app holds, one coming and going (a toast each way, at
 # most one a direction in 30 s, so a link that keeps dropping does not flash the screen), the
-# Controller sheet listing what is connected, and the Buttons sheet learning buttons into
+# Shortcuts sheet listing what is connected, and the Buttons sheet learning buttons into
 # controller.ini in its groups (one button per action, a toast when a button leaves another action,
 # previous / next page, tool and in the tool picker in two presses, 10 s without a press gives up,
 # Reset goes back to shortcuts.ini's), which the editor then uses (Add a link and Name the page
@@ -20,11 +20,11 @@ wait 100
 expect toast is Controller disconnected
 tap 1535 95
 wait 200
-tap library controller
+tap library shortcuts
 wait 200
 expect library.sheet is shortcuts
-shot 01-controller-sheet
-tap 930 1215
+shot 01-shortcuts-sheet
+tap library buttons
 wait 200
 expect library.sheet is buttons
 expect library.buttons_group is
@@ -143,7 +143,7 @@ wait 100
 tap library done
 wait 100
 expect library.sheet is shortcuts
-tap 930 1695
+tap library done
 wait 100
 expect library.sheet is none
 # In a notebook the learned buttons act
@@ -213,9 +213,9 @@ pentap panel library
 wait 300
 tap 1535 95
 wait 200
-tap library controller
+tap library shortcuts
 wait 200
-tap 930 1215
+tap library buttons
 wait 200
 tap library buttons.reset
 wait 100

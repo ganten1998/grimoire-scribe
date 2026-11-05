@@ -347,7 +347,7 @@ static K_SYSTEM: [LearnRow; 6] = [
 ];
 
 static K_GROUPS: [ActionGroup; N_GROUPS] = [
-    // TRANSLATORS: the Buttons sheet's list (Settings > Controller > Buttons): its groups of actions,
+    // TRANSLATORS: the Buttons sheet's list (Settings > Shortcuts > Buttons): its groups of actions,
     // each opening a sheet of them (about 1100 px at 44 px in bold), and those sheets' titles. Editing:
     // undo, redo, the eraser, white ink, clearing the page.
     ActionGroup {

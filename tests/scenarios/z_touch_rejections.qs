@@ -45,7 +45,7 @@ tap 217 2365
 wait 50
 # Pen feel: a slider a second finger takes over (a palm, landing late) keeps the value it reached.
 tap 1535 95
-tap 930 446
+tap library pen-feel
 expect screen is penset
 finger 1 down 830 1172
 frame 100

@@ -556,6 +556,13 @@ fn starter_maps_and_their_upgrade() {
         check!(!shortcuts_upgrade_starter(&path));
         check!(read_file(&path).as_deref() == Some(text.as_bytes()));
     }
+    // The 2.0.0-beta.2 builds' starter before Settings > Shortcuts (its first line naming "Settings > Controller
+    // and keys"), unedited: this build's at the start, as an earlier starter is.
+    let beta2 = k.replacen("Settings > Shortcuts;", "Settings > Controller and keys;", 1);
+    check!(beta2 != k && k.starts_with("# Grimoire shortcuts. Enable in Settings > Shortcuts;"));
+    check!(write_file_atomic(&path, beta2.as_bytes()) == 0);
+    check!(shortcuts_upgrade_starter(&path));
+    check!(read_file(&path).as_deref() == Some(k.as_bytes()));
     unlink(&path);
     check!(!shortcuts_upgrade_starter(&path)); // (no file: nothing)
 }

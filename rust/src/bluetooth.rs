@@ -1,5 +1,5 @@
 //! bluetooth.h: the Bluetooth helper (kindle-hid-passthrough; docs/SHORTCUTS.md, Bluetooth) as Grimoire
-//! runs it. With Settings > Controller's Bluetooth on, Grimoire starts the helper after its first
+//! runs it. With Settings > Pair's Bluetooth controller on, Grimoire starts the helper after its first
 //! frame (kindle/app/bluetooth.sh start: only one of its own, never someone else's) and stops it when
 //! that is turned off; the launcher's restore stops it as Grimoire leaves, crash or not, and gives
 //! the Kindle its own Bluetooth jobs back. Pairing goes through the helper's local API

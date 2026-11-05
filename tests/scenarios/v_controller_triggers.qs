@@ -11,9 +11,9 @@ hid attach pad Xbox Bluetooth Gamepad
 wait 100
 tap 1535 95
 wait 200
-tap library controller
+tap library shortcuts
 wait 200
-tap 930 1215
+tap library buttons
 wait 200
 tap library buttons.group.editing
 wait 100
@@ -49,7 +49,7 @@ tap library done
 wait 100
 tap library done
 wait 100
-tap 930 1695
+tap library done
 wait 100
 expect library.sheet is none
 # In a notebook: LT undoes once per pull, RT erases while it is held

@@ -148,11 +148,11 @@ tap 1535 95
 wait 50
 expect library.sheet is settings
 shot 02-settings
-tap library controller
+tap library shortcuts
 wait 50
 expect library.sheet is shortcuts
 shot 02-shortcuts-disabled
-tap 930 575
+tap library shortcuts.enable
 wait 50
 expect settings.shortcuts_enabled is 1
 key 305 0 1
@@ -161,8 +161,34 @@ shot 02-shortcuts-input
 hid attach held Mapper Pad
 wait 50
 shot 02-shortcuts-held
+# Two devices: the device row names one and offers the next; its own shortcuts on (a copy of the default)
+# title the Buttons sheet with its name; gone, it is listed as not connected; its own shortcuts off again.
+hid attach pad:2dc8:6006 Pro 2
+wait 50
+tap library shortcuts.device
+wait 50
+expect library.shortcuts.device is pro-2-2dc8-6006
+shot 02-shortcuts-devices
+tap library shortcuts.own
+wait 50
+expect library.shortcuts.own is on
+shot 02-shortcuts-own
+tap library buttons
+wait 50
+expect library.sheet is buttons
+shot 02-buttons-own
+tap library done
+wait 50
+expect library.sheet is shortcuts
+hid detach Pro 2
+wait 50
+expect library.shortcuts.device is pro-2-2dc8-6006
+shot 02-shortcuts-saved
+tap library shortcuts.own
+wait 50
+expect library.shortcuts.own is off
 hid detach Mapper Pad
-tap 930 1215
+tap library buttons
 wait 50
 expect library.sheet is buttons
 shot 02-buttons
@@ -271,12 +297,42 @@ wait 50
 tap library done
 wait 50
 expect library.sheet is shortcuts
-tap 930 1375
+tap library shortcuts.reload
 wait 50
-tap 930 575
+# The Pair sheet: a controller another app holds, nothing connected, then shortcuts off (its rows greyed, the
+# line saying where to turn them on).
+hid attach held Mapper Pad
+wait 50
+tap library done
+wait 50
+expect library.sheet is none
+tap 1535 95
+wait 50
+tap library pair-menu
+wait 50
+expect library.sheet is pair-menu
+shot 02-pair-held
+hid detach Mapper Pad
+wait 50
+shot 02-pair
+tap library done
+wait 50
+tap 1535 95
+wait 50
+tap library shortcuts
+wait 50
+tap library shortcuts.enable
 wait 50
 expect settings.shortcuts_enabled is 0
-tap 930 1695
+tap library done
+wait 50
+tap 1535 95
+wait 50
+tap library pair-menu
+wait 50
+expect library.sheet is pair-menu
+shot 02-pair-shortcuts-off
+tap library done
 wait 50
 expect library.sheet is none
 tap 1535 95
@@ -352,7 +408,7 @@ tap 930 1425
 wait 50
 expect library.sheet is settings
 # Display, with its sleep rows: each of the four sleep screens.
-tap 930 780
+tap library display
 wait 50
 expect library.sheet is display
 shot 07-display
@@ -374,7 +430,7 @@ wait 50
 expect library.sheet is settings
 # Pen feel: every tab (the pad drawn on in the pencil's and the calligraphy pen's: the live readout),
 # Reset tool.
-tap 930 460
+tap library pen-feel
 wait 100
 expect screen is penset
 shot 10-penfeel
@@ -432,7 +488,7 @@ expect screen is library
 # off, then right; touch skipped with the pen; the check, then Cancel (keep the old calibration).
 tap 1535 95
 wait 50
-tap 930 620
+tap library calibrate
 wait 100
 expect screen is calib
 shot 13-calib-pen
@@ -891,14 +947,14 @@ tap 2155 95
 wait 100
 expect library.sheet is settings
 shot 45-settings-landscape
-tap library controller
+tap library shortcuts
 wait 50
 expect library.sheet is shortcuts
-tap 1240 368
+tap library shortcuts.enable
 wait 50
 expect settings.shortcuts_enabled is 1
-shot 45-controller-landscape
-tap 1240 1008
+shot 45-shortcuts-landscape
+tap library buttons
 wait 50
 expect library.sheet is buttons
 shot 45-buttons-landscape
@@ -932,10 +988,10 @@ expect library.buttons_group is
 tap library done
 wait 50
 expect library.sheet is shortcuts
-tap 1240 368
+tap library shortcuts.enable
 wait 50
 expect settings.shortcuts_enabled is 0
-tap 1240 1488
+tap library done
 wait 50
 expect library.sheet is none
 tap 2155 95
@@ -1123,7 +1179,7 @@ expect library.sheet is none
 tap 2155 95
 wait 100
 expect library.sheet is settings
-tap 1240 590
+tap library display
 wait 50
 expect library.sheet is display
 tap 1240 1239
@@ -1148,7 +1204,7 @@ shot 55-language-landscape
 tap 1240 1169
 wait 50
 expect library.sheet is settings
-tap 1240 260
+tap library pen-feel
 wait 100
 expect screen is penset
 tap 1834 289
@@ -1164,7 +1220,7 @@ wait 100
 expect screen is library
 tap 2155 95
 wait 50
-tap 1240 425
+tap library calibrate
 wait 100
 expect screen is calib
 shot 57-calib-pen-landscape

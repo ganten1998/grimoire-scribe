@@ -163,22 +163,31 @@ macro_rules! scheme_zoom_pages_graph {
         )
     };
 }
+// The starter map below its first line, which names the menu (a macro, as concat! reads only literals).
+macro_rules! starter_body {
+    () => {
+        concat!(
+            "# key.NAME or key.Ctrl+NAME=ACTION (an Apple keyboard's Cmd is Ctrl here); codeN is a Linux evdev key code;\n",
+            "# pad.NUMBER is a Linux evdev gamepad button code.\n",
+            "# A key may have one action in each place (the Library, a notebook page, the Pages view, the Graph,\n",
+            "# Pen feel): each action acts in its own places (docs/SHORTCUTS.md).\n",
+            scheme_everywhere!(),
+            scheme_library_and_page!(),
+            scheme_zoom_pages_graph!(),
+            "# Generic evdev gamepad defaults; controllers may report different codes.\n",
+            "pad.304=undo\npad.305=tool:eraser\npad.307=redo\npad.308=white\n",
+            "pad.310=previous-tool\npad.311=next-tool\npad.314=previous-page\npad.315=next-page\n",
+            "# Digital D-pad buttons and standard HAT0 directions share these bindings.\n",
+            dpad_lines!(),
+        )
+    };
+}
 /// The Kindle's starter shortcuts.ini (written when shortcuts are first enabled, and read in memory with no
-/// file): the scheme for a paired keyboard, and the controller's lines.
+/// file): the scheme for a paired keyboard, and the controller's lines. Its first line names the menu as
+/// 2.0.0-beta.2 has it, Settings > Shortcuts (the owner's ruling of 2026-11-04).
 const DEFAULTS: &str = concat!(
-    "# Grimoire shortcuts. Enable in Settings > Controller and keys; after editing, Reload shortcuts.ini there.\n",
-    "# key.NAME or key.Ctrl+NAME=ACTION (an Apple keyboard's Cmd is Ctrl here); codeN is a Linux evdev key code;\n",
-    "# pad.NUMBER is a Linux evdev gamepad button code.\n",
-    "# A key may have one action in each place (the Library, a notebook page, the Pages view, the Graph,\n",
-    "# Pen feel): each action acts in its own places (docs/SHORTCUTS.md).\n",
-    scheme_everywhere!(),
-    scheme_library_and_page!(),
-    scheme_zoom_pages_graph!(),
-    "# Generic evdev gamepad defaults; controllers may report different codes.\n",
-    "pad.304=undo\npad.305=tool:eraser\npad.307=redo\npad.308=white\n",
-    "pad.310=previous-tool\npad.311=next-tool\npad.314=previous-page\npad.315=next-page\n",
-    "# Digital D-pad buttons and standard HAT0 directions share these bindings.\n",
-    dpad_lines!(),
+    "# Grimoire shortcuts. Enable in Settings > Shortcuts; after editing, Reload shortcuts.ini there.\n",
+    starter_body!(),
 );
 
 /// The starter map: what a missing shortcuts.ini reads as, and what Enable shortcuts writes.
@@ -187,10 +196,11 @@ pub fn shortcuts_starter() -> &'static str {
 }
 
 /// Every starter shortcuts.ini an earlier Grimoire wrote, byte for byte (from the history of src/shortcuts.c
-/// and rust/src/shortcuts.rs): the Kindle's of 1.1.0, of 1.2.0 (the D-pad) and of 2.0.0 (Settings >
-/// Controller, the picker's order). Such a file nobody edited is replaced by this build's starter map at the
-/// next start (shortcuts_upgrade_starter); any other is kept.
-const OLD_STARTERS: [&str; 3] = [
+/// and rust/src/shortcuts.rs): the Kindle's of 1.1.0, of 1.2.0 (the D-pad), of 2.0.0 (Settings >
+/// Controller, the picker's order) and of the 2.0.0-beta.2 builds before Settings > Shortcuts (the keyboard
+/// scheme, its first line naming "Settings > Controller and keys"). Such a file nobody edited is replaced by
+/// this build's starter map at the next start (shortcuts_upgrade_starter); any other is kept.
+const OLD_STARTERS: [&str; 4] = [
     concat!(
         "# Grimoire shortcuts. Enable in Settings > Shortcuts. Reload there after editing.\n",
         "# key.NAME or key.Ctrl+NAME; pad.NUMBER is a Linux evdev gamepad button code.\n",
@@ -216,6 +226,10 @@ const OLD_STARTERS: [&str; 3] = [
         dpad_lines!(),
     ),
     OLD_KINDLE_STARTER_2_0,
+    concat!(
+        "# Grimoire shortcuts. Enable in Settings > Controller and keys; after editing, Reload shortcuts.ini there.\n",
+        starter_body!(),
+    ),
 ];
 /// The Kindle's starter map from 2.0.0-beta.1 until this build (live-keys.ini's earlier starter came from it).
 pub(crate) const OLD_KINDLE_STARTER_2_0: &str = concat!(
@@ -555,7 +569,7 @@ pub fn shortcuts_lookup_graph(map: &Shortcuts, src: impl Into<ActionSrc>, code: 
     }
     GRAPH_KEYS.iter().find(|k| k.0 == code).map_or(SHORTCUT_NONE, |k| k.1)
 }
-/// controller.ini (Settings > Controller > Buttons): the gamepad buttons learned there. While it is
+/// controller.ini (Settings > Shortcuts > Buttons): the gamepad buttons learned there. While it is
 /// there they come from it alone (shortcuts.ini's pad.* lines are set aside); key.* lines are
 /// always shortcuts.ini's. Grimoire writes it whole, atomically; a line it cannot read is rejected
 /// and counted, as in shortcuts.ini. A shortcuts.ini that binds no D-pad direction (one written
@@ -589,10 +603,11 @@ pub fn shortcuts_load_all(map: &mut Shortcuts, shortcuts_path: &str, controller_
     }
 }
 
-/// controller.ini with every gamepad binding of map, written whole (atomically); -1 when it could not be.
+/// controller.ini (or a device profile's <slug>.controller.ini, shortcut_profiles.rs) with every gamepad
+/// binding of map, written whole (atomically); -1 when it could not be.
 fn write_pads(next: &Shortcuts, controller_path: &str) -> i32 {
-    const HEADER: &str = "# Grimoire: controller buttons, learned in Settings > Controller > Buttons.\n\
-         # While this file is here, shortcuts.ini's pad. lines are set aside.\n";
+    const HEADER: &str = "# Grimoire: controller buttons, learned in Settings > Shortcuts > Buttons.\n\
+         # While this file is here, the pad. lines of the shortcuts file beside it are set aside.\n";
     let mut longest_name = 0usize;
     for id in (SHORTCUT_TOOL_BASE..SHORTCUT_TOOL_BASE + TOOL_COUNT as i32)
         .chain(K_ACTIONS.iter().map(|(_, id)| *id))

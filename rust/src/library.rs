@@ -26,6 +26,9 @@ enum Modal {
     Updates = 16,   // MOD_UPDATES
     Gestures = 17,  // MOD_GESTURES
     About = 18,     // (Rust only: the bat's What's new)
+    /// Settings > Pair (2.0.0-beta.2, Rust only): the Bluetooth helper on or off, Pair a controller... (the
+    /// Pair sheet above), and what is connected
+    PairMenu = 19,
     /// Esc at the top level, "Exit Grimoire?" (Rust only; numbered from 300, past the C's sheets: the probe
     /// names it apart from SHEETS)
     Exit = 300,
@@ -135,6 +138,11 @@ const H_FMORE_GRAPH: i32 = 79;
 // 2.0.0-beta.2: the Exit Grimoire? dialog's Yes and No.
 const H_EXIT_YES: i32 = 82;
 const H_EXIT_NO: i32 = 83;
+// 2.0.0-beta.2, the owner's ruling of 2026-11-04 (Settings' Controller split into Shortcuts and Pair): Settings'
+// Pair button, and the Shortcuts sheet's device and its own shortcuts on or off.
+const H_PAIR_MENU: i32 = 84;
+const H_SHORTCUT_DEVICE: i32 = 85;
+const H_SHORTCUT_OWN: i32 = 86;
 
 #[derive(Clone, Copy, Default)]
 struct Item {
@@ -189,8 +197,12 @@ pub struct LibraryState {
     shown_shortcut_code: i32,
     shown_shortcut_mods: i32,
     shown_shortcut_gamepad: bool,
-    /// App.hid_changes as the Controller sheet's status line (or Buttons' rows) last showed
+    /// App.hid_changes as the Shortcuts sheet's devices, the Pair sheet's status line or Buttons' rows last
+    /// showed
     shown_hid_changes: u32,
+    /// The Shortcuts sheet's device (its profile's slug, shortcut_profile_slug; "" none yet): whose own
+    /// shortcuts its row turns on or off, and whose buttons Buttons... learns while they are on.
+    shortcut_dev: String,
     // The Buttons sheet: its group open (K_GROUPS; -1 the list of them), the row learning its
     // buttons (-1 none), which of its actions, and since when (it gives up after LEARN_MS without a
     // press).
@@ -239,7 +251,7 @@ pub struct LibraryState {
     record_pen_pointer: bool,
     record_pen_capture: bool,
     record_pen_redraw: bool,
-    // The Pair sheet (Settings > Controller > Pair a controller): what it asked the Bluetooth helper
+    // The Pair sheet (Settings > Pair > Pair a controller): what it asked the Bluetooth helper
     // last (ASK_*), what it asks next and when, the controllers found and those paired.
     bt_asked: i32,
     bt_next: i32,
@@ -988,6 +1000,9 @@ struct MenuRow {
     id: i32,
     arg: i32,
     st: ButtonStyle,
+    /// the label holds a name from a device (the Shortcuts sheet's device row): drawn smaller, or on two lines,
+    /// then shortened as names are (ui_text_name), never counted as cut short
+    name: bool,
 }
 
 // A notebook's menu row for the Graph of all notebooks (2.0.0-beta.2, the owner's ruling of 2026-11-03):
@@ -1028,10 +1043,11 @@ fn menu_row(icon: IconKind, label: &str, id: i32, arg: i32, st: ButtonStyle) -> 
         id,
         arg,
         st,
+        name: false,
     }
 }
 
-// ---- the controller's buttons (Settings > Controller > Buttons) ----
+// ---- the controller's buttons (Settings > Shortcuts > Buttons) ----
 
 const LEARN_MS: u32 = 10000;
 // A Buttons row held this long without moving loses its buttons (forget_row), as a link held in the
@@ -1118,20 +1134,27 @@ fn learning_action(s: &LibraryState) -> i32 {
     .map_or(SHORTCUT_NONE, |r| r.act[s.learn_step.clamp(0, 1) as usize])
 }
 
-// "South, Up" for an action's buttons, "none" when it has none; "B, Up" while the first controller
-// connected is a Switch-mode one, as its buttons are printed.
+// "South, Up" for an action's buttons (the Shortcuts sheet's device's own while they are on, buttons_map),
+// "none" when it has none; "B, Up" while that device, or else the first controller connected, is a
+// Switch-mode one, as its buttons are printed.
 fn pads_text(a: &App, action: i32, out: &mut String, cap: usize) {
     let mut codes = [0i32; GROUP_ROWS_MAX];
-    let n = shortcuts_pads_for(&a.shortcuts, ActionSrc::Pad, action, &mut codes);
+    let n = shortcuts_pads_for(buttons_map(a), ActionSrc::Pad, action, &mut codes);
     let mut h = [InputHid::default(); 4];
     let nh = input_hids(&mut h);
-    let mut switch_layout = false;
+    let chosen = a.lib.as_deref().map_or("", |s| s.shortcut_dev.as_str());
+    let mut switch_layout = None;
     for hid in h.iter().take(nh.max(0) as usize) {
-        if hid.gamepad {
-            switch_layout = hid.switch_layout;
+        if !hid.gamepad {
+            continue;
+        }
+        if shortcut_profile_slug(hid.name.as_str(), hid.vendor, hid.product) == chosen {
+            switch_layout = Some(hid.switch_layout);
             break;
         }
+        switch_layout.get_or_insert(hid.switch_layout);
     }
+    let switch_layout = switch_layout.unwrap_or(false);
     out.clear();
     let mut i = 0;
     while i < n && i < GROUP_ROWS_MAX as i32 {
@@ -1327,9 +1350,9 @@ fn buttons_learn(a: &mut App, action: i32) -> bool {
 }
 
 fn buttons_forget(a: &mut App, row: LearnRow) -> bool {
-    let cp = controller_path();
+    let cp = buttons_pads_path(a);
     if shortcuts_forget(
-        &mut a.shortcuts,
+        buttons_map_mut(a),
         &cp,
         ActionSrc::Pad,
         row.act[0],
@@ -1355,7 +1378,7 @@ fn buttons_forget(a: &mut App, row: LearnRow) -> bool {
 }
 
 fn buttons_reset(a: &mut App) -> bool {
-    let cp = controller_path();
+    let cp = buttons_pads_path(a);
     let _ = std::fs::remove_file(&cp);
     lib(a).learn_row = -1;
     reload_shortcuts(a);
@@ -2066,19 +2089,17 @@ fn use_recording(a: &mut App) {
     finish_recording(a);
 }
 
-// The shortcuts again: shortcuts.ini's keys (and its buttons while there is no controller.ini), and
-// gestures.ini's gestures.
+// The shortcuts again: shortcuts.ini's keys (and its buttons while there is no controller.ini), every
+// device's own (root/shortcuts), and gestures.ini's gestures.
 fn reload_shortcuts(a: &mut App) {
-    let mut sp = String::new();
-    csnprintf!(&mut sp, 1024, "%s/shortcuts.ini", &store_root());
-    let cp = controller_path();
-    shortcuts_load_all(&mut a.shortcuts, &sp, &cp);
+    app_shortcuts_load(a);
     app_gestures_load(a);
 }
 
-/// A controller's press while Settings > Controller > Buttons learns one: true when it took it.
+/// A controller's press while Settings > Shortcuts > Buttons learns one: true when it took it.
 // A controller's press while the Buttons sheet learns: true when it was taken (the row's action has
-// that button now, or the file could not be written: a toast says so).
+// that button now, or the file could not be written: a toast says so). It goes into the Shortcuts sheet's
+// device's own buttons while they are on (buttons_profile), else into controller.ini.
 pub fn library_learn_key(a: &mut App, code: i32, gamepad: bool) -> bool {
     let Some(s) = a.lib.as_deref() else {
         return false;
@@ -2089,10 +2110,10 @@ pub fn library_learn_key(a: &mut App, code: i32, gamepad: bool) -> bool {
     if !gamepad {
         return true; // (a keyboard's key is shortcuts.ini's: nothing to learn here)
     }
-    let cp = controller_path();
     let action = learning_action(s);
-    let before = shortcuts_lookup(&a.shortcuts, ActionSrc::Pad, code, 0);
-    if shortcuts_learn(&mut a.shortcuts, &cp, ActionSrc::Pad, code, action) != 0 {
+    let cp = buttons_pads_path(a);
+    let before = shortcuts_lookup(buttons_map(a), ActionSrc::Pad, code, 0);
+    if shortcuts_learn(buttons_map_mut(a), &cp, ActionSrc::Pad, code, action) != 0 {
         // TRANSLATORS: a toast: the Buttons sheet could not write its file (the storage is full).
         app_toast(a, tr("Couldn't save controller.ini"), 4000);
         lib(a).learn_row = -1;
@@ -2128,9 +2149,9 @@ pub fn library_learn_key(a: &mut App, code: i32, gamepad: bool) -> bool {
 fn forget_row(a: &mut App, row: i32) {
     let Some(r) = binding_row_at(BUTTONS, lib(a).buttons_group as usize, row as usize) else { return };
     let mut msg = String::new();
-    let cp = controller_path();
+    let cp = buttons_pads_path(a);
     lib(a).learn_row = -1;
-    if shortcuts_forget(&mut a.shortcuts, &cp, ActionSrc::Pad, r.act[0], r.act[1]) != 0 {
+    if shortcuts_forget(buttons_map_mut(a), &cp, ActionSrc::Pad, r.act[0], r.act[1]) != 0 {
         app_toast(a, tr("Couldn't save controller.ini"), 4000);
     } else {
         // TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): a finger held on a
@@ -2150,15 +2171,106 @@ fn forget_row(a: &mut App, row: i32) {
     redraw(a, RefreshMode::Ui);
 }
 
-// The Controller sheet's status line: the controllers and keyboards Grimoire reads now.
+// A keyboard or controller the Shortcuts sheet lists: one connected now, or one with a profile saved.
+#[derive(Clone, Default)]
+struct ShortcutDev {
+    slug: String,
+    name: String,
+    vendor: u16,
+    product: u16,
+    connected: bool,
+}
+
+// The Shortcuts sheet's devices: those connected now (input_hids: none while shortcuts are off), then those with
+// a profile saved, each once (two of the same model and name are one device: they share a profile).
+fn shortcut_devices(a: &App) -> Vec<ShortcutDev> {
+    let mut h = [InputHid::default(); 4];
+    let n = input_hids(&mut h).max(0) as usize;
+    let mut out: Vec<ShortcutDev> = Vec::new();
+    for hid in &h[..n.min(h.len())] {
+        let slug = shortcut_profile_slug(hid.name.as_str(), hid.vendor, hid.product);
+        if !out.iter().any(|d| d.slug == slug) {
+            out.push(ShortcutDev { slug, name: hid.name.as_str().to_string(), vendor: hid.vendor, product: hid.product, connected: true });
+        }
+    }
+    for p in &a.shortcut_profiles {
+        if !out.iter().any(|d| d.slug == p.slug) {
+            out.push(ShortcutDev { slug: p.slug.clone(), name: p.name.clone(), vendor: p.vendor, product: p.product, connected: false });
+        }
+    }
+    out
+}
+
+// The Shortcuts sheet's device now: the one chosen while it is listed, else the first (a connected one before
+// a saved one); None with none listed.
+fn shortcut_dev_now(a: &App) -> Option<ShortcutDev> {
+    let devs = shortcut_devices(a);
+    let chosen = a.lib.as_deref().map_or("", |s| s.shortcut_dev.as_str());
+    devs.iter().find(|d| d.slug == chosen).or(devs.first()).cloned()
+}
+
+// The profile the Buttons sheet shows and learns into: the Shortcuts sheet's device's own while they are on;
+// None for the default (controller.ini), as before profiles.
+fn buttons_profile(a: &App) -> Option<usize> {
+    let slug = a.lib.as_deref()?.shortcut_dev.as_str();
+    if slug.is_empty() {
+        return None;
+    }
+    a.shortcut_profiles.iter().position(|p| p.on && p.slug == slug)
+}
+fn buttons_map(a: &App) -> &Shortcuts {
+    match buttons_profile(a) {
+        Some(i) => &a.shortcut_profiles[i].map,
+        None => &a.shortcuts,
+    }
+}
+fn buttons_map_mut(a: &mut App) -> &mut Shortcuts {
+    match buttons_profile(a) {
+        Some(i) => &mut a.shortcut_profiles[i].map,
+        None => &mut a.shortcuts,
+    }
+}
+// The file the Buttons sheet writes: the profile's <slug>.controller.ini, else controller.ini.
+fn buttons_pads_path(a: &App) -> String {
+    match buttons_profile(a) {
+        Some(i) => shortcut_profile_pads(&shortcut_profiles_dir(), &a.shortcut_profiles[i].slug),
+        None => controller_path(),
+    }
+}
+
+// The Shortcuts sheet's row for its device: its own shortcuts on, from a copy of the default the first time
+// (shortcut_profile_create), or off (the profile kept, to be used again when they are turned on).
+fn toggle_own_shortcuts(a: &mut App) {
+    let Some(dev) = shortcut_dev_now(a) else { return };
+    let dir = shortcut_profiles_dir();
+    // (a profile by the device's slug, as listed: a saved one is turned on or off by its file's name, whatever
+    // its header says)
+    let r = match a.shortcut_profiles.iter().find(|p| p.slug == dev.slug) {
+        Some(p) => shortcut_profile_set_on(&dir, &dev.slug, !p.on),
+        None => {
+            let sp = cformat!("%s/shortcuts.ini", &store_root());
+            shortcut_profile_create(&dir, &dev.name, dev.vendor, dev.product, &sp, &controller_path())
+        }
+    };
+    if r != 0 {
+        // TRANSLATORS: a toast (about 1700 px at 44 px in bold): the Shortcuts sheet could not write a device's
+        // own shortcuts in grimoire/shortcuts (the storage is full, or shortcuts.ini cannot be read).
+        app_toast(a, tr("Couldn't save the device's shortcuts"), 4000);
+    }
+    lib(a).shortcut_dev = dev.slug;
+    reload_shortcuts(a);
+    redraw(a, RefreshMode::Ui);
+}
+
+// The Pair sheet's status line: the controllers and keyboards Grimoire reads now.
 fn hid_status(a: &mut App, out: &mut String, cap: usize) {
     let mut h = [InputHid::default(); 4];
     let n = input_hids(&mut h);
     let hid_changes = a.hid_changes;
     lib(a).shown_hid_changes = hid_changes;
     if n == 0 {
-        // TRANSLATORS: the Controller sheet's status line: no controller or keyboard Grimoire reads now
-        // (about 1100 px at 44 px in bold, and the same for the two below).
+        // TRANSLATORS: the Pair sheet's status line: no controller or keyboard Grimoire reads now (about 1100
+        // px at 44 px in bold, and the same for the two below); also the Shortcuts sheet's device row then.
         csnprintf!(
             out,
             cap,
@@ -2170,11 +2282,11 @@ fn hid_status(a: &mut App, out: &mut String, cap: usize) {
             }
         );
     } else if h[0].held {
-        // TRANSLATORS: (Controller sheet) %s is the controller's own name, as it reports it: another app
-        // (a button mapper) holds it, so Grimoire gets none of its presses.
+        // TRANSLATORS: (Pair sheet) %s is the controller's own name, as it reports it: another app (a button
+        // mapper) holds it, so Grimoire gets none of its presses.
         csnprintf!(out, cap, tr("%s: held by another app"), &h[0].name);
     } else {
-        // TRANSLATORS: (Controller sheet) %s is the controller's or keyboard's own name.
+        // TRANSLATORS: (Pair sheet) %s is the controller's or keyboard's own name.
         csnprintf!(out, cap, tr("%s connected"), &h[0].name);
     }
     if n > 1 {
@@ -2268,7 +2380,7 @@ pub fn library_bt(a: &mut App, event: BtEvent, reply: &BtReply) {
         return;
     };
     if e == BtEvent::State {
-        if s.modal == Modal::Shortcuts || s.modal == Modal::Pair {
+        if s.modal == Modal::PairMenu || s.modal == Modal::Pair {
             redraw(a, RefreshMode::Ui);
         }
         return;
@@ -2326,11 +2438,11 @@ pub fn library_bt(a: &mut App, event: BtEvent, reply: &BtReply) {
                 bt_ask(s, ASK_PAIR_STATUS, 1000);
             } else {
                 s.pairing = false;
-                // TRANSLATORS: toasts as pairing a controller ends (Settings > Controller > Pair a controller).
+                // TRANSLATORS: toasts as pairing a controller ends (Settings > Pair > Pair a controller).
                 app_toast(
                     a,
                     if ok && !r.pairing {
-                        // TRANSLATORS: a toast as pairing a controller ends (Settings > Controller > Pair a
+                        // TRANSLATORS: a toast as pairing a controller ends (Settings > Pair > Pair a
                         // controller): it is paired, and connects a moment later.
                         tr("Paired.")
                     } else {
@@ -2467,7 +2579,9 @@ fn draw_menu(a: &mut App, title: &str, rows: &[MenuRow]) -> Vec<Rect> {
             );
         }
         let text_rect = Rect::new(r.x + rh + ui_px(10.0), r.y, r.w - rh - ui_px(30.0), r.h);
-        if row.id == H_NONE && row.st == ButtonStyle::Disabled {
+        if row.name {
+            ui_text_name(c, FontFace::Bold, ui_text_size(), ui_small_size(), text_rect, &row.label, 2, fg);
+        } else if row.id == H_NONE && row.st == ButtonStyle::Disabled {
             ui_text(c, FontFace::Bold, ui_text_size(), ui_small_size(), text_rect, &row.label, 2, false, fg);
         } else {
             font_draw_left(c, FontFace::Bold, ui_text_size(), text_rect, &row.label, fg);
@@ -2589,7 +2703,7 @@ fn bind_menu_rows(a: &App, kind: BindKind) -> Vec<MenuRow> {
         tr("Reset gestures")
     };
     let reset_enabled = if kind.modal == BUTTONS.modal {
-        std::fs::metadata(controller_path()).is_ok()
+        std::fs::metadata(buttons_pads_path(a)).is_ok()
     } else {
         true
     };
@@ -2618,7 +2732,13 @@ fn draw_bind_sheet(a: &mut App, kind: BindKind) {
     let group = bind_group(kind, lib(a));
     if group < 0 {
         let rows = bind_menu_rows(a, kind);
-        draw_menu(a, tr(kind.title), &rows);
+        let title = match buttons_profile(a).filter(|_| kind.modal == BUTTONS.modal) {
+            // TRANSLATORS: the Buttons sheet's title while it learns one keyboard's or controller's own
+            // buttons (Settings > Shortcuts, Own shortcuts for this device on); %s is the device's own name.
+            Some(i) => cformat!(tr("Buttons: %s"), &a.shortcut_profiles[i].name),
+            None => tr(kind.title).to_string(),
+        };
+        draw_menu(a, &title, &rows);
     } else {
         draw_bind_group(a, kind, group as usize);
     }
@@ -3075,87 +3195,49 @@ fn draw_settings(a: &mut App) {
     let s = lib.as_deref_mut().unwrap();
     let card = sheet_rect(aw, ah, ui_px(1820.0));
     let in_ = ui_sheet(c, card, tr("Settings"));
-    let rh = ui_px(140.0);
-    let gap = ui_px(24.0);
+    // The rows that open a screen or a sheet, in the owner's order of 2026-11-04 ("the 4 top settings options
+    // should be in a different order - Display, Pen sens, Shortcuts, Calibrate"). Four rows in the height
+    // three took before (110 px each, as the lines below them), so everything under them stays where it was.
+    let rh = ui_px(110.0);
+    let gap = ui_px(13.0);
     let mut y = in_.y;
-    let r1 = Rect::new(in_.x, y, in_.w, rh);
-    ui_button(c, r1, IconKind::None, "", ButtonStyle::Plain);
-    ui_icon(
-        c,
-        IconKind::Tune,
-        Rect::new(
-            r1.x + ui_px(20.0),
-            r1.y + ui_px(15.0),
-            rh - ui_px(30.0),
-            rh - ui_px(30.0),
-        ),
-        0,
-    );
     // TRANSLATORS: the rows of Settings: buttons with an icon (1470 px at 44 px in bold), then
     // lines a tap changes (1530 px at 44 px) and checkboxes (1548 px at 44 px, or two lines at
     // 34 px). Sideways they are 80 px wider.
     let pens = tr("Pen sensitivity (pressure + tilt per tool)");
-    font_draw_left(
-        c,
-        FontFace::Bold,
-        ui_text_size(),
-        Rect::new(r1.x + rh + ui_px(10.0), r1.y, r1.w - rh - ui_px(30.0), rh),
-        pens,
-        0,
-    );
-    hits_add(&mut s.hits, r1, H_SET_PENS, 0);
-    y += rh + gap;
-    let r2 = Rect::new(in_.x, y, in_.w, rh);
-    ui_button(c, r2, IconKind::None, "", ButtonStyle::Plain);
-    ui_icon(
-        c,
-        IconKind::Target,
-        Rect::new(
-            r2.x + ui_px(20.0),
-            r2.y + ui_px(15.0),
-            rh - ui_px(30.0),
-            rh - ui_px(30.0),
-        ),
-        0,
-    );
-    font_draw_left(
-        c,
-        FontFace::Bold,
-        ui_text_size(),
-        Rect::new(r2.x + rh + ui_px(10.0), r2.y, r2.w - rh - ui_px(30.0), rh),
-        tr("Calibrate pen and touch"),
-        0,
-    );
-    hits_add(&mut s.hits, r2, H_SET_CALIB, 0);
-    y += rh + gap;
-    let r2b = Rect::new(in_.x, y, in_.w, rh);
-    ui_button(c, r2b, IconKind::None, "", ButtonStyle::Plain);
-    ui_icon(
-        c,
-        IconKind::Brightness,
-        Rect::new(
-            r2b.x + ui_px(20.0),
-            r2b.y + ui_px(15.0),
-            rh - ui_px(30.0),
-            rh - ui_px(30.0),
-        ),
-        0,
-    );
-    font_draw_left(
-        c,
-        FontFace::Bold,
-        ui_text_size(),
-        Rect::new(
-            r2b.x + rh + ui_px(10.0),
-            r2b.y,
-            r2b.w - rh - ui_px(30.0),
-            rh,
-        ),
-        tr("Display: brightness, warmth, invert"),
-        0,
-    );
-    hits_add(&mut s.hits, r2b, H_SET_DISPLAY, 0);
-    y += rh + gap;
+    let top = [
+        (IconKind::Brightness, tr("Display: brightness, warmth, invert"), H_SET_DISPLAY),
+        (IconKind::Tune, pens, H_SET_PENS),
+        // TRANSLATORS: (Settings) the row that opens the Shortcuts sheet: a keyboard's keys and a controller's
+        // buttons as shortcuts, each device's own if it has them (1470 px at 44 px in bold, as its neighbours).
+        (IconKind::Gamepad, tr("Shortcuts: keys and controller buttons"), H_SHORTCUTS),
+        (IconKind::Target, tr("Calibrate pen and touch"), H_SET_CALIB),
+    ];
+    for (icon, label, id) in top {
+        let r = Rect::new(in_.x, y, in_.w, rh);
+        ui_button(c, r, IconKind::None, "", ButtonStyle::Plain);
+        ui_icon(
+            c,
+            icon,
+            Rect::new(
+                r.x + ui_px(20.0),
+                r.y + ui_px(15.0),
+                rh - ui_px(30.0),
+                rh - ui_px(30.0),
+            ),
+            0,
+        );
+        font_draw_left(
+            c,
+            FontFace::Bold,
+            ui_text_size(),
+            Rect::new(r.x + rh + ui_px(10.0), r.y, r.w - rh - ui_px(30.0), rh),
+            label,
+            0,
+        );
+        hits_add(&mut s.hits, r, id, 0);
+        y += rh + gap;
+    }
     let rt = Rect::new(in_.x, y, in_.w, ui_px(110.0));
     canvas_fill(c, rt, 255);
     ui_icon(
@@ -3315,7 +3397,7 @@ fn draw_settings(a: &mut App) {
     let ko = Rect::new(in_.x, done.y, ui_px(300.0), done.h);
     ui_button(c, ko, IconKind::Notebook, "KOReader", ButtonStyle::Plain);
     hits_add(&mut s.hits, ko, H_KOREADER, 0);
-    // Controller, Gestures and Updates share the space between KOReader and Done.
+    // Pair, Gestures and Updates share the space between KOReader and Done.
     let gap = ui_px(30.0);
     let mid = done.x - ko.x - ko.w - 4 * gap;
     let third = mid / 3;
@@ -3328,16 +3410,10 @@ fn draw_settings(a: &mut App) {
         done.h,
     );
     // TRANSLATORS: Settings' bottom buttons, each a word under its icon, about 240 px at 34 px.
-    // Controller opens the connected key/controller settings, Gestures opens gesture bindings,
-    // Updates checks for a newer Grimoire.
-    ui_button(
-        c,
-        keys,
-        IconKind::Gamepad,
-        tr("Controller"),
-        ButtonStyle::Plain,
-    );
-    hits_add(&mut s.hits, keys, H_SHORTCUTS, 0);
+    // Pair opens the Pair sheet (a Bluetooth controller: the helper on or off, pairing one; also that
+    // sheet's title), Gestures opens gesture bindings, Updates checks for a newer Grimoire.
+    ui_button(c, keys, IconKind::Link, tr("Pair"), ButtonStyle::Plain);
+    hits_add(&mut s.hits, keys, H_PAIR_MENU, 0);
     ui_button(
         c,
         gestures,
@@ -3582,25 +3658,16 @@ fn draw_modal(a: &mut App) {
                 0,
                 ButtonStyle::Plain,
             ));
-            // TRANSLATORS: the Pair sheet's title (Settings > Controller > Pair a controller).
+            // TRANSLATORS: the title of the sheet that pairs a controller (Settings > Pair > Pair a controller).
             draw_menu(a, tr("Pair a controller"), &rows);
         }
         Modal::Buttons => draw_bind_sheet(a, BUTTONS),
         Modal::Gestures => draw_gestures_modal(a),
         Modal::Shortcuts => {
-            let mut count = String::new();
             let mut last = String::new();
-            let mut status = String::new();
-            // TRANSLATORS: (Controller sheet) how many shortcuts grimoire/shortcuts.ini (and controller.ini)
-            // hold, and how many of their lines were refused.
-            csnprintf!(
-                &mut count,
-                160,
-                tr("Mappings: %d; rejected: %d"),
-                a.shortcuts.count,
-                a.shortcuts.rejected
-            );
             if a.last_shortcut_code != 0 {
+                // TRANSLATORS: (Shortcuts sheet) the last key ("key") or controller button ("pad") pressed:
+                // its Linux evdev code and the modifiers held, for writing shortcuts.ini by hand.
                 csnprintf!(
                     &mut last,
                     160,
@@ -3621,40 +3688,71 @@ fn draw_modal(a: &mut App) {
                     tr("Press a connected key or controller button")
                 );
             }
-            let (code, mods, gamepad) = (
+            let (code, mods, gamepad, hid_changes) = (
                 a.last_shortcut_code,
                 a.last_shortcut_mods,
                 a.last_shortcut_gamepad,
+                a.hid_changes,
             );
             let s = lib(a);
             s.shown_shortcut_code = code;
             s.shown_shortcut_mods = mods;
             s.shown_shortcut_gamepad = gamepad;
-            hid_status(a, &mut status, 160);
-            let bt_changes = a.bt_changes;
-            lib(a).shown_bt_changes = bt_changes;
-            let bs = bt_state();
-            if bs == BtState::Starting {
-                // TRANSLATORS: (Controller sheet) its status line while the Bluetooth helper starts, and when it
-                // would not start.
-                csnprintf!(&mut status, 160, "%s", tr("Bluetooth: starting..."));
-            } else if bs == BtState::Failed {
-                csnprintf!(
-                    &mut status,
-                    160,
-                    "%s",
-                    tr("Bluetooth did not start (see grimoire.log)")
-                );
-            }
+            s.shown_hid_changes = hid_changes;
             let on = app_shortcuts_on(a);
-            let present = bt_present();
-            let bt_up = bs == BtState::Owned || bs == BtState::External;
+            // The device: the one chosen, else the first listed (a connected one before a saved one).
+            let dev = shortcut_dev_now(a);
+            lib(a).shortcut_dev = dev.as_ref().map_or(String::new(), |d| d.slug.clone());
+            let more = shortcut_devices(a).len() > 1;
+            let own = dev.as_ref().and_then(|d| a.shortcut_profiles.iter().find(|p| p.slug == d.slug));
+            let own_on = own.is_some_and(|p| p.on);
+            let mut dev_line = String::new();
+            let mut own_line = String::new();
+            match &dev {
+                None => {
+                    csnprintf!(&mut dev_line, 160, "%s", tr("No controller or keyboard connected"));
+                }
+                Some(d) => {
+                    let mut name = String::new();
+                    if d.connected {
+                        csnprintf!(&mut name, 120, "%s", &d.name);
+                    } else {
+                        // TRANSLATORS: (Shortcuts sheet) a device with its own shortcuts saved that is not
+                        // connected now; %s is its own name.
+                        csnprintf!(&mut name, 120, tr("%s, not connected"), &d.name);
+                    }
+                    if more {
+                        // TRANSLATORS: (Shortcuts sheet) the keyboard or controller the next two rows are about,
+                        // with others listed, which a tap goes through (those connected, then those with
+                        // shortcuts saved); %s is its own name (about 1300 px at 44 px in bold with a short
+                        // name).
+                        csnprintf!(&mut dev_line, 160, tr("Device: %s (tap for the next)"), &name);
+                    } else {
+                        // TRANSLATORS: (Shortcuts sheet) the same with no other device listed.
+                        csnprintf!(&mut dev_line, 160, tr("Device: %s"), &name);
+                    }
+                }
+            }
+            match own.filter(|p| p.on) {
+                Some(p) => {
+                    // TRANSLATORS: (Shortcuts sheet) the device's own shortcuts are on: how many it has, and
+                    // how many of its file's lines were refused (grimoire/shortcuts/<device>.ini).
+                    csnprintf!(&mut own_line, 160, tr("Own shortcuts (%d, %d refused)"), p.map.count, p.map.rejected);
+                }
+                None => {
+                    // TRANSLATORS: (Shortcuts sheet) a tap gives the device shortcuts of its own, a copy of
+                    // the default ones to start from, or uses the ones it had again (about 1300 px at 44 px
+                    // in bold).
+                    csnprintf!(&mut own_line, 160, "%s", tr("Own shortcuts for this device"));
+                }
+            }
             let mut reload = String::new();
-            // TRANSLATORS: (Controller sheet) reads grimoire/shortcuts.ini (and controller.ini) again: how
-            // many shortcuts they hold, and how many of their lines were refused.
             csnprintf!(
                 &mut reload,
                 160,
+                // TRANSLATORS: (Shortcuts sheet) reads grimoire/shortcuts.ini (and controller.ini, and every
+                // device's own) again: how many shortcuts the default ones hold, and how many of their
+                // lines were refused.
                 tr("Reload shortcuts.ini (%d, %d refused)"),
                 a.shortcuts.count,
                 a.shortcuts.rejected
@@ -3667,41 +3765,24 @@ fn draw_modal(a: &mut App) {
                     0,
                     ButtonStyle::Plain,
                 ),
-                // TRANSLATORS: (Controller sheet) starts the Bluetooth helper with Grimoire, for a
-                // Bluetooth controller; without the helper unpacked in grimoire/bluetooth, the second.
+                MenuRow {
+                    name: dev.is_some(),
+                    ..menu_row(
+                        IconKind::Gamepad,
+                        &dev_line,
+                        if dev.is_some() { H_SHORTCUT_DEVICE } else { H_NONE },
+                        0,
+                        if dev.is_some() { ButtonStyle::Plain } else { ButtonStyle::Disabled },
+                    )
+                },
                 menu_row(
-                    if a.settings.controller && present {
-                        IconKind::Check
-                    } else {
-                        IconKind::None
-                    },
-                    if present {
-                        tr("Bluetooth controller")
-                    } else {
-                        tr("No Bluetooth helper in grimoire/bluetooth")
-                    },
-                    H_BT_TOGGLE,
+                    if own_on { IconKind::Check } else { IconKind::None },
+                    &own_line,
+                    H_SHORTCUT_OWN,
                     0,
-                    if present && on {
-                        ButtonStyle::Plain
-                    } else {
-                        ButtonStyle::Disabled
-                    },
+                    if dev.is_some() { ButtonStyle::Plain } else { ButtonStyle::Disabled },
                 ),
-                // TRANSLATORS: (Controller sheet) opens the Pair sheet: find a Bluetooth controller and pair it.
-                menu_row(
-                    IconKind::Plus,
-                    tr("Pair a controller..."),
-                    H_PAIR,
-                    0,
-                    if bt_up && on {
-                        ButtonStyle::Plain
-                    } else {
-                        ButtonStyle::Disabled
-                    },
-                ),
-                menu_row(IconKind::None, &status, H_NONE, 0, ButtonStyle::Disabled),
-                // TRANSLATORS: (Controller sheet) opens the Buttons sheet: which controller button does what.
+                // TRANSLATORS: (Shortcuts sheet) opens the Buttons sheet: which controller button does what.
                 menu_row(
                     IconKind::None,
                     tr("Buttons..."),
@@ -3723,10 +3804,73 @@ fn draw_modal(a: &mut App) {
                 menu_row(IconKind::None, &last, H_NONE, 0, ButtonStyle::Disabled),
                 menu_row(IconKind::Close, tr("Done"), H_CANCEL, 0, ButtonStyle::Plain),
             ];
-            let _ = count;
-            // TRANSLATORS: the Controller sheet's title (Settings > Controller): a controller's or a
-            // keyboard's buttons as shortcuts.
-            draw_menu(a, tr("Controller and keys"), &rows);
+            // TRANSLATORS: the Shortcuts sheet's title (Settings > Shortcuts): a keyboard's or a controller's
+            // keys as shortcuts, each device's own if it has them.
+            draw_menu(a, tr("Shortcuts"), &rows);
+        }
+        Modal::PairMenu => {
+            let mut status = String::new();
+            hid_status(a, &mut status, 160);
+            let bt_changes = a.bt_changes;
+            lib(a).shown_bt_changes = bt_changes;
+            let bs = bt_state();
+            let on = app_shortcuts_on(a);
+            if !on {
+                // TRANSLATORS: (Pair sheet) its status line while shortcuts are off, which the Bluetooth helper
+                // serves alone (about 1100 px at 44 px in bold, or two lines at 34 px).
+                csnprintf!(&mut status, 160, "%s", tr("Shortcuts are off: turn them on in Settings > Shortcuts."));
+            } else if bs == BtState::Starting {
+                // TRANSLATORS: (Pair sheet) its status line while the Bluetooth helper starts, and when it
+                // would not start.
+                csnprintf!(&mut status, 160, "%s", tr("Bluetooth: starting..."));
+            } else if bs == BtState::Failed {
+                csnprintf!(
+                    &mut status,
+                    160,
+                    "%s",
+                    tr("Bluetooth did not start (see grimoire.log)")
+                );
+            }
+            let present = bt_present();
+            let bt_up = bs == BtState::Owned || bs == BtState::External;
+            let rows = [
+                // TRANSLATORS: (Pair sheet) starts the Bluetooth helper with Grimoire, for a Bluetooth
+                // controller; without the helper unpacked in grimoire/bluetooth, the second.
+                menu_row(
+                    if a.settings.controller && present {
+                        IconKind::Check
+                    } else {
+                        IconKind::None
+                    },
+                    if present {
+                        tr("Bluetooth controller")
+                    } else {
+                        tr("No Bluetooth helper in grimoire/bluetooth")
+                    },
+                    H_BT_TOGGLE,
+                    0,
+                    if present && on {
+                        ButtonStyle::Plain
+                    } else {
+                        ButtonStyle::Disabled
+                    },
+                ),
+                // TRANSLATORS: (Pair sheet) opens the next sheet: find a Bluetooth controller and pair it.
+                menu_row(
+                    IconKind::Plus,
+                    tr("Pair a controller..."),
+                    H_PAIR,
+                    0,
+                    if bt_up && on {
+                        ButtonStyle::Plain
+                    } else {
+                        ButtonStyle::Disabled
+                    },
+                ),
+                menu_row(IconKind::None, &status, H_NONE, 0, ButtonStyle::Disabled),
+                menu_row(IconKind::Close, tr("Done"), H_CANCEL, 0, ButtonStyle::Plain),
+            ];
+            draw_menu(a, tr("Pair"), &rows);
         }
         Modal::Koreader => {
             let mut ko = String::new();
@@ -4447,6 +4591,17 @@ fn act(a: &mut App, h: &Hit) {
         H_RECORD_RETRY => { let action = lib(a).record_action; open_record_card(a, action); }
         H_RECORD_CANCEL => close_record_card(a),
         H_SHORTCUTS => open_modal(a, Modal::Shortcuts),
+        H_PAIR_MENU => open_modal(a, Modal::PairMenu),
+        H_SHORTCUT_DEVICE => {
+            // The next device listed (the first after the last), whose own shortcuts the next row is about.
+            let devs = shortcut_devices(a);
+            if let Some(now) = shortcut_dev_now(a) {
+                let i = devs.iter().position(|d| d.slug == now.slug).unwrap_or(0);
+                lib(a).shortcut_dev = devs[(i + 1) % devs.len()].slug.clone();
+            }
+            redraw(a, RefreshMode::Ui);
+        }
+        H_SHORTCUT_OWN => toggle_own_shortcuts(a),
         H_SHORTCUT_ENABLE | H_SHORTCUT_RELOAD => {
             let mut path = String::new();
             csnprintf!(&mut path, 1024, "%s/shortcuts.ini", &store_root());
@@ -4494,7 +4649,7 @@ fn act(a: &mut App, h: &Hit) {
             redraw(a, RefreshMode::Ui);
         }
         H_BUTTONS_RESET => {
-            let cp = controller_path();
+            let cp = buttons_pads_path(a);
             let _ = std::fs::remove_file(&cp);
             lib(a).learn_row = -1;
             reload_shortcuts(a);
@@ -4510,7 +4665,9 @@ fn act(a: &mut App, h: &Hit) {
                 return;
             }
             s.bt_next = ASK_NONE;
-            open_modal(a, Modal::Shortcuts);
+            // (the Pair a controller sheet's Done goes back to Pair, the Buttons sheet's to Shortcuts)
+            let back = if s.modal == Modal::Pair { Modal::PairMenu } else { Modal::Shortcuts };
+            open_modal(a, back);
         }
         H_UPDATES => {
             let s = lib(a);
@@ -5094,7 +5251,7 @@ pub fn library_back(a: &mut App) -> bool {
             lib(a).modal = Modal::Settings;
             redraw(a, RefreshMode::Ui);
         }
-        Modal::Language | Modal::Koreader | Modal::Shortcuts | Modal::Updates => {
+        Modal::Language | Modal::Koreader | Modal::Shortcuts | Modal::PairMenu | Modal::Updates => {
             lib(a).modal = Modal::Settings;
             redraw(a, RefreshMode::Ui);
         }
@@ -5472,6 +5629,11 @@ pub fn library_tick(a: &mut App, now: u32) {
     {
         redraw(a, RefreshMode::Ui);
     }
+    // The Pair sheet's status line names what is connected.
+    let s = a.lib.as_deref().unwrap();
+    if s.modal == Modal::PairMenu && s.shown_hid_changes != a.hid_changes {
+        redraw(a, RefreshMode::Ui);
+    }
     // A group's rows name the buttons as the controller connected labels them.
     let s = a.lib.as_deref().unwrap();
     if s.modal == Modal::Buttons && s.buttons_group >= 0 && s.shown_hid_changes != a.hid_changes {
@@ -5482,7 +5644,7 @@ pub fn library_tick(a: &mut App, now: u32) {
     }
     upd_poll(a);
     let s = a.lib.as_deref().unwrap();
-    if s.modal == Modal::Shortcuts && s.shown_bt_changes != a.bt_changes {
+    if s.modal == Modal::PairMenu && s.shown_bt_changes != a.bt_changes {
         redraw(a, RefreshMode::Ui);
     }
     let s = lib(a);
@@ -5666,7 +5828,7 @@ fn card_probe(a: &mut App, key: &str, out: &mut String, cap: usize) -> i32 {
 /// "templates.*" keys reach it whole (docs/SIM.md).
 // The script runner's "library.*" keys (app_probe forwards them without the prefix).
 pub fn library_probe(a: &mut App, key: &str, out: &mut String, cap: usize) -> i32 {
-    static SHEETS: [&str; 19] = [
+    static SHEETS: [&str; 20] = [
         "none",        // MOD_NONE
         "new",         // MOD_NEW
         "settings",    // MOD_SETTINGS
@@ -5686,6 +5848,7 @@ pub fn library_probe(a: &mut App, key: &str, out: &mut String, cap: usize) -> i3
         "updates",     // MOD_UPDATES
         "gestures",    // MOD_GESTURES
         "about",       // (What's new)
+        "pair-menu",   // (Settings > Pair, 2.0.0-beta.2)
     ];
     if a.lib.is_none() {
         return -1;
@@ -5723,6 +5886,19 @@ pub fn library_probe(a: &mut App, key: &str, out: &mut String, cap: usize) -> i3
         }
         ids.sort();
         csnprintf!(out, cap, "%s", &ids.join(" "));
+        return 0;
+    }
+    if key == "shortcuts.device" || key == "shortcuts.own" {
+        // The Shortcuts sheet's device (its profile's slug, "" for none), and its own shortcuts: "on", "off"
+        // (the file kept) or "none" (no file).
+        let dev = shortcut_dev_now(a);
+        let own = dev.as_ref().and_then(|d| a.shortcut_profiles.iter().find(|p| p.slug == d.slug));
+        let text = if key == "shortcuts.device" {
+            dev.map_or(String::new(), |d| d.slug)
+        } else {
+            own.map_or("none", |p| if p.on { "on" } else { "off" }).to_string()
+        };
+        csnprintf!(out, cap, "%s", &text);
         return 0;
     }
     let pp = per_page(a);
@@ -5805,7 +5981,8 @@ pub fn library_probe(a: &mut App, key: &str, out: &mut String, cap: usize) -> i3
                 H_FMORE_RENAME=>"fmore.rename",H_FMORE_MOVE=>"fmore.move",H_FMORE_REMOVE=>"fmore.remove",
                 H_MOVE_TOP=>"move.top",H_MOVE_TO=>"move.to.",H_MOVE_NEW=>"move.new",H_MOVE_PREV=>"move.prev",H_MOVE_NEXT=>"move.next",
                 H_SET_PENS => "pen-feel", H_SET_CALIB => "calibrate", H_SET_DISPLAY => "display",
-                H_KOREADER => "ko", H_SHORTCUTS => "controller", H_GESTURES => "gestures",
+                H_KOREADER => "ko", H_SHORTCUTS => "shortcuts", H_PAIR_MENU => "pair-menu", H_GESTURES => "gestures",
+                H_SHORTCUT_DEVICE => "shortcuts.device", H_SHORTCUT_OWN => "shortcuts.own", H_SHORTCUT_RELOAD => "shortcuts.reload",
                 H_UPDATES => "updates", H_CANCEL => "done", H_GESTURES_MASTER => "gestures.master",
                 H_UPD_CHANNEL => "updates.channel", H_UPD_CHECK => "updates.check", H_UPD_NOW => "updates.now",
                 H_SET_ROTATE => "rotate", H_SHORTCUT_ENABLE => "shortcuts.enable", H_BT_TOGGLE => "bluetooth",

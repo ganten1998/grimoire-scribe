@@ -6,11 +6,12 @@
 # near that point; penset.pad_lighter: a pixel of the pad is lighter than the pad drawn bare (one
 # of its lines, or its Clear button, erased away).
 # settings: eraser_mode=1
+# rust-only (it opens Pen feel by its Settings row's name: the rows moved in 2.0.0-beta.2)
 wait 300
 tap 1535 95
 wait 200
 expect library.sheet is settings
-tap 930 446
+tap library pen-feel
 wait 400
 expect screen is penset
 expect penset.pad_ink is 0
