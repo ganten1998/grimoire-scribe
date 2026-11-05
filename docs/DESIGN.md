@@ -1173,10 +1173,11 @@ the UI never draws a page for a tile.
   It is left out as well when its preview is current, as the idle warm-up leaves it out: the two then ask for
   the same batch. Its preview on disk is written by the idle save, or by the job once another page is open.
 - **Dense pages.** A page with a current kept drawing (`p<id>.full`) gets its preview from that drawing,
-  read back, not drawn; a dense page the job draws keeps its drawing too (`store_page_dense`, the one test
-  "Loading page..." below goes by: a page file of 512 KB or more; `store_save_page_render_at`, only while the
-  page file is still the one it read), so the page then opens quickly in the editor as well. No other page
-  keeps one from the job, however long it took to draw (the owner's ruling: ordinary pages save nothing
+  read back, not drawn; a dense page the job draws keeps its drawing too (`store_page_dense`: a page file of
+  512 KB or more, the test "Loading page..." below went by too until the owner's decision of 2026-11-04;
+  `store_save_page_render_at`, only while the page file is still the one it read), so the page then opens
+  quickly in the editor as well. No other page keeps one from the job, however long it took to draw, not
+  even a slow page under 512 KB that says "Loading page..." (the owner's ruling: ordinary pages save nothing
   extra; the editor still keeps the drawing of a page it took a second or more to draw, as it did before
   2.0.0-beta.2). A kept drawing does not make a page dense: counted, every page the editor kept, or an
   earlier build's job, would keep a drawing from the job for good. A stale kept drawing is never used, nor
@@ -1184,11 +1185,16 @@ the UI never draws a page for a tile.
   size and the renderer's fingerprint). A page drawn with its picture paper white (its picture missing or
   unreadable in the child) keeps no drawing and gets no preview, as in the editor: its tile shows its number,
   and the next view that opens asks for it again.
-- **Opening a dense page** (a page turn, a jump, a notebook opening on it, the page left after a deletion)
-  that has no current kept drawing and draws slowly (`store_page_dense`: a page file of 512 KB or more) says
-  "Loading page..." (`render_page_open`): the toast is put on the panel (app_flush) before the drawing
-  starts, and taken down once the page is drawn. Never for a page that draws quickly, nor while a pen held on
-  an action holds the panel.
+- **Opening a slow page** (a page turn, a jump, a notebook opening on it, the page left after a deletion)
+  that has no current kept drawing (`store_page_slow`: a page file of 256 KB or more, so every dense page
+  too) says "Loading page..." (`render_page_open`): the toast is put on the panel (app_flush) before the
+  drawing starts, and taken down once the page is drawn. Never for a page that draws quickly, nor while a pen
+  held on an action holds the panel. It went by `store_page_dense` (512 KB), the job's rule, until the owner's
+  decision of 2026-11-04: a page of handwriting is under 0.3 MB and draws in well under a second, but one of
+  about 0.3 to 0.5 MB could sit 2 to 4 s on its first open with nothing said, so the notice now starts at
+  256 KB and kept drawings stay at 512 KB. A page between the two keeps no drawing from the job; the editor
+  keeps its drawing once it has taken a second or more to draw (on a Kindle, most such pages), so then only
+  its first open, or one after a change, says so.
 - **The log.** One line per batch, from the job: `previews: nb=ID pages=N cached=N kept=N drawn=N keep=N
   ms=N first=N slow=pID:N cores=N` (pages in the batch, previews already made, kept drawings read back,
   pages drawn, drawings kept, the batch's time, the first preview's time, the slowest page, the processor's

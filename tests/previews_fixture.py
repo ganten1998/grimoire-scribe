@@ -3,13 +3,15 @@
 one (1,000 strokes, one in ten an erase stroke: over the 512 KB that counts as dense, store_page_dense) and
 the rest light (a few strokes each); it opens on page 2. "other" has ten light pages and a dense ninth, for
 the destination picker (Copy to notebook..., Link to...'s other notebooks). "dense" opens on its dense first
-page. Deterministic; never touches a user's data root."""
+page. With "slow" before the root (# generate: tests/previews_fixture.py slow), "slow" too: three pages, the
+first a slow one under 512 KB (300 strokes: over the 256 KB that says "Loading page...", store_page_slow, and
+no dense page) and two light ones; it opens on page 2. Deterministic; never touches a user's data root."""
 import math
 import pathlib
 import struct
 import sys
 
-root = pathlib.Path(sys.argv[1])
+root = pathlib.Path(sys.argv[-1])
 W, H = 1860, 2480
 seed = 0xD0D0
 
@@ -39,9 +41,9 @@ def stroke(tool, size, x, y, n, step):
     return struct.pack('<B3sI13fI', tool, b'\0\0\0', s, *params, n) + pts
 
 
-def dense_page():
-    out = bytearray(struct.pack('<4sHHIII', b'QPG1', 1, 0, W, H, 1000))
-    for _ in range(1000):
+def dense_page(strokes=1000):
+    out = bytearray(struct.pack('<4sHHIII', b'QPG1', 1, 0, W, H, strokes))
+    for _ in range(strokes):
         erase = rnd() % 10 == 0
         tool = 3 if erase else [2, 0, 6, 7][rnd() % 4]
         out += stroke(tool, (2.0, 2.0) if erase else (0.3, 0.6), frand(0, W), frand(0, H), 10 + rnd() % 120, 4)
@@ -56,18 +58,20 @@ def light_page(k):
     return bytes(out)
 
 
-def notebook(ident, name, count, dense, last):
+def notebook(ident, name, count, dense, last, strokes=1000):
     book = root / 'notebooks' / ident
     book.mkdir(parents=True, exist_ok=True)
     (book / 'notebook.ini').write_text(
         f'# Grimoire notebook\nname={name}\nfolder=\npaper=0\ncreated=1\nmodified=1\nlast_page={last}\n'
         f'next_page_id={count + 1}\npage_w={W}\npage_h={H}\npages=' + ','.join(str(i) for i in range(1, count + 1)) + '\n')
     for i in range(1, count + 1):
-        (book / f'p{i}.qpg').write_bytes(dense_page() if i == dense else light_page(i))
+        (book / f'p{i}.qpg').write_bytes(dense_page(strokes) if i == dense else light_page(i))
 
 
 notebook('previews', 'Previews', 12, 1, 1)
 notebook('other', 'Other', 10, 9, 0)
 notebook('dense', 'Dense', 2, 1, 0)
+if 'slow' in sys.argv[1:-1]:
+    notebook('slow', 'Slow', 3, 1, 1, 300)
 with (root / 'settings.ini').open('a') as f:
     f.write('\nmirror_pdf=0\nstatus_mode=1\n')
