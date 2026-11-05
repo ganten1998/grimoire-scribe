@@ -16,8 +16,9 @@
 // reset, then 20 bytes a sample, the first u32 its identity: the kernel's time of its frame in
 // microseconds), 8 ink style (64 bytes), 9 layer (u8 0 the toolbar, 1 the clock and battery
 // corner, 2 the toast; u8 0; u16 x, y, w, h; the PNG, none while it is not on the screen: drawn over
-// the page in that order, the toolbar and the corner unless switched off here, the toast always; an
-// id this page does not know is left out). src/live.h (live.rs's head) has them byte by byte. Under node
+// the page in that order, the toolbar and the corner unless switched off here, the toast always, its
+// PNG with alpha so that what shows under its round ends is what this page shows there; an id this
+// page does not know is left out). src/live.h (live.rs's head) has them byte by byte. Under node
 // (tests/live_check.js) it only exports the frame reader, the pure parts below and CodecRecorder
 // (which the check runs on a stand-in encoder); tests/live_browser_check.js runs the page itself
 // on DOM and canvas stand-ins.

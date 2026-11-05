@@ -109,17 +109,22 @@ fn skip_head(fd: i32) -> bool {
 
 // A gray PNG decoded by stb_image: its pixels and size.
 fn decode_png(data: &[u8]) -> Option<(Vec<u8>, i32, i32)> {
+    decode_png_as(data, 1).map(|(v, w, h, _)| (v, w, h))
+}
+
+// The same with n channels asked for (2: gray and alpha), and how many the PNG itself has.
+fn decode_png_as(data: &[u8], n: i32) -> Option<(Vec<u8>, i32, i32, i32)> {
     let (mut pw, mut ph, mut ch) = (0, 0, 0);
-    // SAFETY: stb reads data.len() bytes of data; the pixels it returns (pw * ph of them, one
-    // channel asked for) are copied out and freed with its own free.
+    // SAFETY: stb reads data.len() bytes of data; the pixels it returns (pw * ph of them, n
+    // channels each) are copied out and freed with its own free.
     unsafe {
-        let px = stbi_load_from_memory(data.as_ptr(), data.len() as i32, &mut pw, &mut ph, &mut ch, 1);
+        let px = stbi_load_from_memory(data.as_ptr(), data.len() as i32, &mut pw, &mut ph, &mut ch, n);
         if px.is_null() {
             return None;
         }
-        let v = std::slice::from_raw_parts(px, (pw * ph) as usize).to_vec();
+        let v = std::slice::from_raw_parts(px, (pw * ph * n) as usize).to_vec();
         stbi_image_free(px as *mut libc::c_void);
-        Some((v, pw, ph))
+        Some((v, pw, ph, ch))
     }
 }
 
@@ -1250,7 +1255,8 @@ fn a_layer_comes_with_the_tiles_and_goes() {
     canvas_free(&mut c);
 }
 
-// A layer frame's body read back: (id, x, y, w, h) and its pixels decoded (none for w = 0).
+// A layer frame's body read back: (id, x, y, w, h) and its pixels decoded (none for w = 0), as the
+// layer holds them: gray, or the toast's gray and alpha, which its PNG must have of its own.
 fn layer_frame(b: &[u8]) -> Option<(u8, Rect, Vec<u8>)> {
     if b.len() < 10 || b[1] != 0 {
         return None;
@@ -1259,8 +1265,9 @@ fn layer_frame(b: &[u8]) -> Option<(u8, Rect, Vec<u8>)> {
     if r.w == 0 {
         return if b.len() == 10 { Some((b[0], r, Vec::new())) } else { None };
     }
-    match decode_png(&b[10..]) {
-        Some((px, w, h)) if w == r.w && h == r.h => Some((b[0], r, px)),
+    let n = live_layer_bpp(b[0] as usize) as i32;
+    match decode_png_as(&b[10..], n) {
+        Some((px, w, h, ch)) if w == r.w && h == r.h && ch == n => Some((b[0], r, px)),
         _ => None,
     }
 }
@@ -1274,12 +1281,50 @@ fn pixels_of(c: &Canvas, r: Rect) -> Vec<u8> {
     v
 }
 
+// A layer's gray and alpha drawn over the gray pixels under it (as many), as a browser draws its PNG.
+fn over(ga: &[u8], under: &[u8]) -> Vec<u8> {
+    ga.chunks_exact(2).zip(under).map(|(p, &u)| ((p[0] as u32 * p[1] as u32 + u as u32 * (255 - p[1] as u32) + 127) / 255) as u8).collect()
+}
+
+// How far apart two pictures of the same size are, at their farthest pixel.
+fn farthest(a: &[u8], b: &[u8]) -> i32 {
+    if a.len() != b.len() {
+        return 256;
+    }
+    a.iter().zip(b).map(|(&x, &y)| (x as i32 - y as i32).abs()).max().unwrap_or(0)
+}
+
+// A toast's stand-in drawn into r: black with round ends, and a white stroke for its words.
+fn toast_stand_in(c: &mut Canvas, r: Rect) {
+    canvas_round_rect(c, r, r.h / 2, 0, true, 0);
+    canvas_fill(c, Rect { x: r.x + 20, y: r.y + 10, w: 30, h: 4 }, 255);
+}
+
+// live_matte: a pixel drawn over black and over white, as one with alpha.
+fn a_matte_tells_the_drawing_from_what_is_under_it() {
+    check!(live_matte(0, 0) == (0, 255) && live_matte(255, 255) == (255, 255) && live_matte(90, 90) == (90, 255));
+    check!(live_matte(0, 255) == (0, 0)); // (nothing drawn there)
+    check!(live_matte(0, 128) == (0, 127)); // (half covered with black)
+    check!(live_matte(64, 192) == (129, 127)); // (half covered with mid gray: 128.5 over that alpha)
+    for a in [1u32, 40, 128, 200, 254] {
+        for under in [0u32, 77, 200, 255] {
+            // black drawn at coverage a: over black 0, over white 255 - a; over any gray, within a unit
+            let (g, al) = live_matte(0, (255 - a) as u8);
+            let kindle = (under as f32 * (1.0 - a as f32 / 255.0) + 0.5) as i32;
+            let browser = ((g as u32 * al as u32 + under * (255 - al as u32) + 127) / 255) as i32;
+            check!((kindle - browser).abs() <= 1);
+        }
+    }
+}
+
 // The toast as a layer of its own (frame 9, LIVE_LAYER_TOAST; 2.0.0-beta.2, the owner: "Enable toasts on
-// the live view display. they don't show up now."): its rect and its pixels as drawn, after the panel's and
-// the corner's in their batch (the browser draws the layers in that order: the toast on top); moved, its new
-// rect; gone, w = 0. Nothing of it while the state is not awake: one told then is told as none, and the state
-// leaving awake takes the one up away, so a toast over the pairing card or from before a sleep never comes
-// after it unless the Kindle draws it again.
+// the live view display. they don't show up now."): its rect and its pixels with alpha (the toast alone,
+// clear outside its round ends: what is under them is the page's, the panel's or the corner's, whichever the
+// browser shows), its PNG gray and alpha, after the panel's and the corner's in their batch (the browser
+// draws the layers in that order: the toast on top); moved, its new rect; gone, w = 0. Nothing of it while
+// the state is not awake: one told then is told as none, and the state leaving awake takes the one up away,
+// so a toast over the pairing card or from before a sleep never comes after it unless the Kindle draws it
+// again.
 fn the_toast_layer_comes_moves_and_goes_only_while_awake() {
     let (w, h) = (128, 128);
     check!(live_start(w, h) == 0);
@@ -1290,14 +1335,24 @@ fn the_toast_layer_comes_moves_and_goes_only_while_awake() {
     let panel = Rect { x: 100, y: 0, w: 28, h: 90 };
     canvas_fill(&mut c, panel, 90);
     live_layer(LIVE_LAYER_PANEL, &c, panel);
-    // a toast over the panel's foot: black, a white stroke of text, the page at its corners
+    // a toast over the panel's foot, its right end over the panel
     let toast = Rect { x: 20, y: 80, w: 100, h: 24 };
-    canvas_fill(&mut c, toast, 0);
-    canvas_fill(&mut c, Rect { x: 40, y: 90, w: 30, h: 4 }, 255);
-    c.px[(80 * c.stride + 20) as usize] = 255;
-    live_layer(LIVE_LAYER_TOAST, &c, toast);
+    let under = pixels_of(&c, toast);
+    live_layer_drawn(LIVE_LAYER_TOAST, toast, toast_stand_in);
+    toast_stand_in(&mut c, toast); // (the Kindle's screen with it)
     let (now, px) = live_layer_now(LIVE_LAYER_TOAST);
-    check!(now == toast && px == pixels_of(&c, toast));
+    check!(now == toast && px.len() == (toast.w * toast.h * 2) as usize);
+    let at = |x: i32, y: i32| (px[(2 * (y * toast.w + x)) as usize], px[(2 * (y * toast.w + x) + 1) as usize]);
+    check!(at(0, 0) == (0, 0) && at(toast.w - 1, 0) == (0, 0) && at(toast.w - 1, toast.h - 1) == (0, 0)); // (clear: no panel there)
+    check!(at(toast.w / 2, toast.h - 2) == (0, 255) && at(25, 11) == (255, 255)); // (the toast, and its words)
+    check!(px.chunks_exact(2).any(|p| p[1] > 0 && p[1] < 255 && p[0] == 0)); // (the round ends' edge, part clear)
+    // over what the Kindle had under it, what the Kindle shows; over plain white, the toast alone
+    check!(farthest(&over(&px, &under), &pixels_of(&c, toast)) <= 1);
+    let mut alone = Canvas::default();
+    check!(canvas_init(&mut alone, toast.w, toast.h) == 0);
+    toast_stand_in(&mut alone, Rect { x: 0, y: 0, w: toast.w, h: toast.h });
+    check!(farthest(&over(&px, &vec![255; (toast.w * toast.h) as usize]), &alone.px) <= 1);
+    canvas_free(&mut alone);
     let sv = socket_pair();
     check!(live_take_viewer(sv[0]));
     close(sv[0]);
@@ -1316,15 +1371,16 @@ fn the_toast_layer_comes_moves_and_goes_only_while_awake() {
     let ids: Vec<u8> = layers.iter().flatten().map(|l| l.0).collect();
     check!(ids == [LIVE_LAYER_PANEL as u8, LIVE_LAYER_STATUS as u8, LIVE_LAYER_TOAST as u8]);
     let last = layers.last().cloned().flatten();
-    check!(matches!(&last, Some((_, r, px)) if *r == toast && *px == pixels_of(&c, toast)));
+    check!(matches!(&last, Some((_, r, got)) if *r == toast && *got == px));
     // Moved (a sheet opened under it): the new rect, the same toast.
-    canvas_fill(&mut c, toast, 255);
     let moved = Rect { x: 20, y: 40, w: 100, h: 24 };
-    canvas_fill(&mut c, moved, 0);
-    live_layer(LIVE_LAYER_TOAST, &c, moved);
+    live_layer_drawn(LIVE_LAYER_TOAST, moved, toast_stand_in);
     let b = next_kind(sv[1], LIVE_LAYER).and_then(|b| layer_frame(&b));
-    check!(matches!(&b, Some((i, r, px)) if *i == LIVE_LAYER_TOAST as u8 && *r == moved && *px == pixels_of(&c, moved)));
+    check!(matches!(&b, Some((i, r, got)) if *i == LIVE_LAYER_TOAST as u8 && *r == moved && *got == px));
     check!(next_kind(sv[1], LIVE_BATCH).is_some());
+    // The same again (a present that reached it and drew it as it was): nothing to send.
+    live_layer_drawn(LIVE_LAYER_TOAST, moved, toast_stand_in);
+    check!(quiet(sv[1], 100));
     // Gone: w = 0, and gone again changes nothing.
     live_layer(LIVE_LAYER_TOAST, &c, RECT_EMPTY);
     let b = next_kind(sv[1], LIVE_LAYER).and_then(|b| layer_frame(&b));
@@ -1332,10 +1388,19 @@ fn the_toast_layer_comes_moves_and_goes_only_while_awake() {
     check!(next_kind(sv[1], LIVE_BATCH).is_some());
     live_layer(LIVE_LAYER_TOAST, &c, RECT_EMPTY);
     check!(quiet(sv[1], 100) && rect_is_empty(live_layer_now(LIVE_LAYER_TOAST).0));
+    // A gray rect told as the toast's layer is opaque.
+    live_layer(LIVE_LAYER_TOAST, &c, toast);
+    let (now, opaque) = live_layer_now(LIVE_LAYER_TOAST);
+    check!(now == toast && opaque.chunks_exact(2).map(|p| p[0]).eq(pixels_of(&c, toast)) && opaque.chunks_exact(2).all(|p| p[1] == 255));
+    check!(next_kind(sv[1], LIVE_BATCH).is_some());
+    live_layer(LIVE_LAYER_TOAST, &c, RECT_EMPTY);
+    check!(next_kind(sv[1], LIVE_BATCH).is_some());
     // The pairing card: a toast drawn over it is not in the frame, nor sent; nothing is.
     live_set_state(LIVE_PAIRING);
     let mut st = [0u8; 3];
     check!(next_state(sv[1], &mut st) && st[0] == LIVE_PAIRING as u8);
+    live_layer_drawn(LIVE_LAYER_TOAST, moved, toast_stand_in);
+    check!(rect_is_empty(live_layer_now(LIVE_LAYER_TOAST).0));
     live_layer(LIVE_LAYER_TOAST, &c, moved);
     check!(rect_is_empty(live_layer_now(LIVE_LAYER_TOAST).0));
     check!(quiet(sv[1], 150));
@@ -1344,14 +1409,14 @@ fn the_toast_layer_comes_moves_and_goes_only_while_awake() {
     check!(quiet(sv[1], 150)); // (it was never told: nothing to take away)
     // A toast up as the Kindle sleeps: taken away with the state; back awake, the browser is told it is
     // gone (and the Kindle's next present tells it again if it is still on the panel).
-    live_layer(LIVE_LAYER_TOAST, &c, moved);
+    live_layer_drawn(LIVE_LAYER_TOAST, moved, toast_stand_in);
     let b = next_kind(sv[1], LIVE_LAYER).and_then(|b| layer_frame(&b));
     check!(matches!(&b, Some((i, r, _)) if *i == LIVE_LAYER_TOAST as u8 && *r == moved));
     check!(next_kind(sv[1], LIVE_BATCH).is_some());
     live_set_state(LIVE_ASLEEP);
     check!(next_state(sv[1], &mut st) && st[0] == LIVE_ASLEEP as u8);
     check!(rect_is_empty(live_layer_now(LIVE_LAYER_TOAST).0));
-    live_layer(LIVE_LAYER_TOAST, &c, moved); // (asleep: told as none)
+    live_layer_drawn(LIVE_LAYER_TOAST, moved, toast_stand_in); // (asleep: told as none)
     check!(rect_is_empty(live_layer_now(LIVE_LAYER_TOAST).0));
     check!(quiet(sv[1], 150));
     live_set_state(LIVE_AWAKE);
@@ -1363,10 +1428,12 @@ fn the_toast_layer_comes_moves_and_goes_only_while_awake() {
     canvas_free(&mut c);
 }
 
-// The App's side: app_flush puts the toast it draws in the layer as the panel shows it, the screen
-// under its round ends with it; and where the live chip (never streamed) is under one of those ends,
-// the layer has the toast drawn over what the chip covers instead. Hidden, the next present empties it.
-fn app_flush_copies_the_toast_without_the_chip() {
+// The App's side: app_flush puts the toast it draws in the layer, and only the toast: nothing of what is
+// under its round ends, so neither the live chip (never streamed) nor a toolbar there, which the browser
+// may have switched off (a reviewer, 2026-11-05: with Show toolbar off the toast's ends still showed bits
+// of it). Over what the Kindle had under it, the layer is what the panel shows. Hidden, the next present
+// empties it.
+fn app_flush_gives_the_toast_alone_to_its_layer() {
     check!(font_init() == 0);
     ui_init(300.0);
     // (app_flush presents: the panel is opened first, as mainloop opens it, test_sheets_probe.rs's way)
@@ -1388,50 +1455,54 @@ fn app_flush_copies_the_toast_without_the_chip() {
     app_flush(&mut a); // (the chip goes up in the top right corner)
     let chip = a.chip_at;
     check!(!rect_is_empty(chip));
+    // The toast as the layer must hold it: the toast alone, over white.
+    let alone = |r: Rect, msg: &str| {
+        let mut t = Canvas::default();
+        check!(canvas_init(&mut t, r.w, r.h) == 0);
+        ui_toast_at(&mut t, Rect { x: 0, y: 0, w: r.w, h: r.h }, msg);
+        t.px
+    };
+    // What the Kindle shows: the toast over the screen's rect (after the present: neither toast nor chip).
+    let shown = |a: &App, r: Rect| {
+        let mut t = Canvas::default();
+        check!(canvas_init(&mut t, r.w, r.h) == 0);
+        canvas_blit(&mut t, &a.screen, r, 0, 0);
+        ui_toast_at(&mut t, Rect { x: 0, y: 0, w: r.w, h: r.h }, a.toast.as_str());
+        t.px
+    };
+    let white = |r: Rect| vec![255u8; (r.w * r.h) as usize];
+    let clear_corners = |px: &[u8], r: Rect| [(0, 0), (r.w - 1, 0), (0, r.h - 1), (r.w - 1, r.h - 1)].iter().all(|&(x, y)| px[(2 * (y * r.w + x) + 1) as usize] == 0);
     // A toast too long for two lines (as wide as a toast gets) held up by a floor near the top, so its
-    // right end is over the chip.
+    // right end is over the chip, and its left end over a toolbar's stand-in.
     a.toast_floor = 60;
     let long = "A toast too long for two lines is as wide as a toast gets, and held up by a floor near the top of the screen its right end reaches into the top right corner, where the live chip is: three lines of text here, cut to two.";
     app_toast(&mut a, long, 60000);
-    app_flush(&mut a);
     let r = a.toast_rect;
-    check!(a.toast_visible && rect_overlaps(r, chip));
+    let bar = Rect { x: r.x - 20, y: r.y - 20, w: 120, h: r.h + 40 };
+    canvas_fill(&mut a.screen, bar, 77);
+    app_invalidate(&mut a, bar, RefreshMode::Ui);
+    app_flush(&mut a);
+    check!(a.toast_visible && a.toast_rect == r && rect_overlaps(r, chip) && rect_overlaps(r, bar));
     let (got, px) = live_layer_now(LIVE_LAYER_TOAST);
-    check!(got == r);
-    // What it should be: the toast over the page, no chip.
-    let mut want = Canvas::default();
-    check!(canvas_init(&mut want, r.w, r.h) == 0);
-    canvas_blit(&mut want, &a.screen, r, 0, 0);
-    let mut chipped = Canvas::default();
-    check!(canvas_init(&mut chipped, r.w, r.h) == 0);
-    canvas_blit(&mut chipped, &a.screen, r, 0, 0);
-    ui_frame(&mut chipped, Rect { x: chip.x - r.x, y: chip.y - r.y, w: chip.w, h: chip.h }, ui_px(8.0), 0, true, 0);
-    let all = Rect { x: 0, y: 0, w: r.w, h: r.h };
-    ui_toast_at(&mut want, all, a.toast.as_str());
-    ui_toast_at(&mut chipped, all, a.toast.as_str());
-    check!(px == pixels_of(&want, all));
-    check!(pixels_of(&chipped, all) != pixels_of(&want, all)); // (the chip would show at its end)
-    // Away from the chip, the layer is the screen's rect as presented.
+    check!(got == r && px.len() == (r.w * r.h * 2) as usize);
+    check!(clear_corners(&px, r));
+    check!(farthest(&over(&px, &white(r)), &alone(r, long)) <= 1); // (no chip, no toolbar, no page in it)
+    check!(farthest(&over(&px, &pixels_of(&a.screen, r)), &shown(&a, r)) <= 1); // (as the panel shows it)
+    // Away from the chip, the same.
     a.toast_floor = 0;
     app_toast(&mut a, "Short", 60000);
     app_flush(&mut a);
     let r = a.toast_rect;
     check!(!rect_overlaps(r, chip));
-    let mut want2 = Canvas::default();
-    check!(canvas_init(&mut want2, r.w, r.h) == 0);
-    canvas_blit(&mut want2, &a.screen, r, 0, 0);
-    let all = Rect { x: 0, y: 0, w: r.w, h: r.h };
-    ui_toast_at(&mut want2, all, a.toast.as_str());
     let (got, px) = live_layer_now(LIVE_LAYER_TOAST);
-    check!(got == r && px == pixels_of(&want2, all));
+    check!(got == r && px.len() == (r.w * r.h * 2) as usize && clear_corners(&px, r));
+    check!(farthest(&over(&px, &white(r)), &alone(r, "Short")) <= 1);
+    check!(farthest(&over(&px, &pixels_of(&a.screen, r)), &shown(&a, r)) <= 1);
     // Hidden: the present that takes it off the panel empties the layer.
     app_toast_dismiss(&mut a);
     app_flush(&mut a);
     check!(rect_is_empty(live_layer_now(LIVE_LAYER_TOAST).0));
     live_stop();
-    canvas_free(&mut want);
-    canvas_free(&mut chipped);
-    canvas_free(&mut want2);
     canvas_free(&mut a.screen);
 }
 
@@ -1660,8 +1731,9 @@ fn test_live() {
     run!(raw_gate_follows_the_capture_state);
     run!(a_pen_viewer_reads_the_raw_node_itself);
     run!(a_layer_comes_with_the_tiles_and_goes);
+    run!(a_matte_tells_the_drawing_from_what_is_under_it);
     run!(the_toast_layer_comes_moves_and_goes_only_while_awake);
-    run!(app_flush_copies_the_toast_without_the_chip);
+    run!(app_flush_gives_the_toast_alone_to_its_layer);
     run!(a_run_splits_into_the_tiles_that_changed);
     run!(a_wide_redraw_sends_only_the_tiles_that_changed);
     run!(a_slow_browser_gets_the_newest_tiles_and_the_pen_never_waits);

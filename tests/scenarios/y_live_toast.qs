@@ -7,8 +7,9 @@
 # env: GRIMOIRE_SIM_ADDRS=en0=192.168.0.20
 # Toasts in Live view (2.0.0-beta.2; the owner, 2026-11-05: "Enable toasts on the live view display. they
 # don't show up now."): the toast is a layer of the stream (live.toast: what a browser is sent), in the same
-# place as on the panel and, pixel for pixel, as the panel shows it (live.toast.stale 0). A toast over the
-# pairing card is never in it, and one still up as the card closes comes then; it moves with the floor
+# place as on the panel and, drawn with its alpha over the screen as a browser draws it, as the panel shows
+# it (live.toast.stale 0: no pixel more than a unit of gray off). A toast over the pairing card is never in
+# it, and one still up as the card closes comes then; it moves with the floor
 # (the New sheet) and with a turn, follows Invert colors as the panel's picture does, is replaced by the
 # next toast, and goes when its time is up, when the Kindle sleeps (and stays gone at the wake), and when
 # it went while the card was up. (The fixture's notice of an update that did not install is up for 6 s
