@@ -137,6 +137,9 @@ struct DragView {
     /// (page px from the box's place; None for nowhere, while its first move takes it away)
     moving: bool,
     shown: Option<(i32, i32)>,
+    /// the pen has strayed past the drag's slop from where it came down (DRAG_SLOP_MM): until then the box
+    /// stays, so a tap that wobbles a pixel is a tap (no bar taken away, no move, no undo step)
+    left: bool,
     /// the screen without the bar and the outline over `base_at` (the page's part of the screen, lasso_clip
     /// as the drag began), kept in step by every compose while it lasts (sel_draw); None without the memory
     /// for it, when each show composes its strips instead (the halo drawn again where they meet it)
@@ -165,11 +168,14 @@ const HALO_UI: f32 = 3.0;
 const PREVIEW_RECTS: usize = 6;
 /// A drag shows its newest place at most this often (ms), as the preview folds (on the Kindle the panel's
 /// DU, about 188 ms at room temperature, paces it first: display_fast_busy)...
-const DRAG_SHOW_MS: u32 = PREVIEW_MS;
+pub(super) const DRAG_SHOW_MS: u32 = PREVIEW_MS;
 /// ...or as soon as the pen has kept still this long.
 const DRAG_PAUSE_MS: u32 = PREVIEW_PAUSE_MS;
 /// A show's DU refreshes: at most this many (its strips, two joined only when that covers no more).
 const DRAG_RECTS: usize = 16;
+/// How far a pen may stray from where it came down inside the selection (mm on the screen) before the box
+/// moves: a tap's wobble, not a drag (a finger's: press_move's slop, finger_slop).
+const DRAG_SLOP_MM: f32 = 1.0;
 
 /// press_move's slop (ui.rs): how far a finger may stray and still be held, or lifted, still.
 fn finger_slop() -> f32 {
@@ -673,6 +679,15 @@ pub(super) fn sel_finger_outside(a: &mut App) -> bool {
 
 /// A down Select mode takes (sel_takes said so).
 pub(super) fn sel_down(a: &mut App, ev: &InEvent, pen: bool) {
+    if sel_ref(a).state == SelState::Dragging {
+        // A drag whose lift never came and that nothing ended as a cancel (lift_lost and editor_suspend
+        // do): ended now, the box and the bar back at their place, and this contact swallowed, since the
+        // bar it may land on was not on the screen as it came down.
+        qlog!("lasso: a drag was left with no lift: ended as a cancel");
+        drag_done(a, true);
+        ed(a).owner = Owner::Select;
+        return;
+    }
     let (x, y) = (ev.x as i32, ev.y as i32);
     let s = ed(a);
     s.owner = Owner::Select;
@@ -1325,12 +1340,23 @@ fn sel_mode_toggle(a: &mut App) {
 }
 
 /// A pen sample of the drag: the newest place (whole page px, clamped so the box stays on the page) and its
-/// time, nothing drawn; drag_tick shows it. A sample costs the same for three words as for a page of
-/// shading, so the main loop takes every sample waiting in one turn and the outline is never behind the pen.
+/// time, nothing drawn; drag_tick shows it. None while the pen is still within DRAG_SLOP_MM of where it came
+/// down. A sample costs the same for three words as for a page of shading, so the main loop takes every
+/// sample waiting in one turn and the outline is never behind the pen.
 fn drag_step(a: &mut App, ev: &InEvent) {
+    let dpi = a.dpi;
     let s = ed(a);
     let (mut px, mut py) = (0.0, 0.0);
     to_page(s, ev.x, ev.y, &mut px, &mut py);
+    if !s.sel.dv.left {
+        // (within the slop the box stays; past it, it follows the pen from where it came down)
+        let r = if s.owner_is_pen { mm_to_px(DRAG_SLOP_MM, dpi) } else { finger_slop() } / s.zoom;
+        let (ex, ey) = (px - s.sel.drag_from.0, py - s.sel.drag_from.1);
+        if ex * ex + ey * ey <= r * r {
+            return;
+        }
+        s.sel.dv.left = true;
+    }
     let b = s.sel.box_;
     let dx = ((px - s.sel.drag_from.0).round() as i32).clamp(-b.x, (s.pgw - b.x - b.w).max(-b.x));
     let dy = ((py - s.sel.drag_from.1).round() as i32).clamp(-b.y, (s.pgh - b.y - b.h).max(-b.y));

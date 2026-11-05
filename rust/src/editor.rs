@@ -8984,6 +8984,12 @@ pub fn editor_suspend(a: &mut App) -> bool {
     if ed(a).owner == Owner::Erase {
         erase_end(a);
     }
+    if ed(a).owner == Owner::Select {
+        // (a drag of the selection ends as a cancel, as owner_cancel ends it: its lift is lost, and waking
+        // to a box with no bar while the bar's buttons still answered where it was is how a tap on nothing
+        // deleted it; a lasso being drawn is dropped)
+        sel_cancel(a);
+    }
     let s = ed(a);
     card_drop(s); // (the Kindle sleeps: it is not there on waking)
     bar_drop(s);
@@ -12890,9 +12896,11 @@ mod tests {
     }
 
     // A drag of the selection (2.1.0, select.rs's head): its pen samples draw nothing and refresh nothing; the
-    // tick shows the newest place, the first move taking the bar away; the screen is what compose makes of it
-    // at each step; Back in the middle ends the selection with its copy of the screen and leaves the screen as
-    // compose makes it; and a drag's lift moves the ink by exactly its newest place, shown or not.
+    // tick shows the newest place, the first move taking the bar away, and no other show comes before
+    // DRAG_SHOW_MS while the pen moves; the screen is what compose makes of it at each step; Back in the middle
+    // ends the selection with its copy of the screen and leaves the screen as compose makes it; a drag's lift
+    // moves the ink by exactly its newest place, shown or not; a tap that wobbles a pixel is a tap; and a drag
+    // whose lift was lost is ended by the next down, which acts on no button of the bar it had taken away.
     #[test]
     fn a_drag_draws_at_the_tick_never_at_a_sample() {
         let root = fhold_root("drag");
@@ -12916,9 +12924,13 @@ mod tests {
             pen_event(&mut a, InType::PenMove, false, 400.0 + 3.0 * k as f32, 610.0 - k as f32, 2000 + 3 * k as u32);
         }
         assert!(a.screen.px == screen0 && rect_is_empty(a.dirty), "a sample draws nothing");
-        assert_eq!((probe(&a, "drag_samples"), probe(&a, "drag_shows"), probe(&a, "drag_shown")), ("40".into(), "0".into(), "-".into()));
+        // (the first three within the drag's slop, 1 mm: the box stays for them)
+        assert_eq!((probe(&a, "drag_samples"), probe(&a, "drag_shows"), probe(&a, "drag_shown")), ("37".into(), "0".into(), "-".into()));
         // the tick: the first move shown, the bar gone, the selection's ink walked only for the outline's strips
-        editor_tick(&mut a, now_ms());
+        // (the show's time a second back: every sample after it is newer than any tick below, so the pen never
+        // seems to have paused and only DRAG_SHOW_MS can let a show through)
+        let t0 = now_ms().wrapping_sub(1000);
+        editor_tick(&mut a, t0);
         app_flush(&mut a);
         assert_eq!((probe(&a, "drag_shows"), probe(&a, "drag_copy")), ("1".into(), "1".into()));
         let (mut dx, mut dy) = (0.0, 0.0);
@@ -12931,18 +12943,29 @@ mod tests {
         let inked: u32 = probe(&a, "drag_inked").parse().unwrap();
         assert!((1..=4).contains(&inked), "the halo walked only where the outline's strips were: {inked}");
         assert!(layers_ok(&mut a));
-        // more samples, and the pen keeps still: the newest place shown
-        for k in 41..=60 {
+        // the pen moves on: a tick before DRAG_SHOW_MS went by since the show shows nothing
+        for k in 41..=50 {
             pen_event(&mut a, InType::PenMove, false, 400.0 + 3.0 * k as f32, 610.0 - k as f32, 2200 + 3 * k as u32);
         }
-        editor_tick(&mut a, now_ms().wrapping_add(1000)); // (past the 120 ms between shows and the 50 ms pause)
+        let screen1 = a.screen.px.clone();
+        editor_tick(&mut a, t0.wrapping_add(DRAG_SHOW_MS - 1));
+        assert!(a.screen.px == screen1 && rect_is_empty(a.dirty), "no show before DRAG_SHOW_MS");
+        assert_eq!((probe(&a, "drag_shows"), probe(&a, "drag_shown")), ("1".into(), format!("{} {}", want.0, want.1)));
+        // more samples, and DRAG_SHOW_MS went by since the show: the newest place shown, once
+        for k in 51..=60 {
+            pen_event(&mut a, InType::PenMove, false, 400.0 + 3.0 * k as f32, 610.0 - k as f32, 2200 + 3 * k as u32);
+        }
+        editor_tick(&mut a, t0.wrapping_add(DRAG_SHOW_MS));
         app_flush(&mut a);
         assert_eq!(probe(&a, "drag_shows"), "2");
-        assert_eq!(probe(&a, "drag_shown"), {
+        let newest = {
             let (mut x, mut y) = (0.0, 0.0);
             to_page(ed(&mut a), 580.0, 550.0, &mut x, &mut y);
             format!("{} {}", (x - ox).round() as i32, (y - oy).round() as i32)
-        });
+        };
+        assert_eq!(probe(&a, "drag_shown"), newest);
+        editor_tick(&mut a, t0.wrapping_add(2 * DRAG_SHOW_MS)); // (nothing newer: nothing to show)
+        assert_eq!(probe(&a, "drag_shows"), "2");
         assert!(layers_ok(&mut a));
         // Back in the middle: the selection ends, its copy of the screen with it, the screen as compose makes it
         assert!(editor_back(&mut a));
@@ -12970,6 +12993,45 @@ mod tests {
         let moved: Vec<(f32, f32)> = at0.iter().map(|&(x, y)| (x + mx, y + my)).collect();
         assert_eq!(first(&a), moved);
         assert_eq!(probe(&a, "drag_copy"), "0");
+        assert!(layers_ok(&mut a));
+        // a tap inside that wobbles a pixel (within the slop): no show, nothing moved, no undo step, the bar
+        // left as it was
+        let depth = undo_depth(&mut a);
+        let screen2 = a.screen.px.clone();
+        pen_event(&mut a, InType::PenDown, false, 470.0, 700.0, 5000);
+        assert_eq!(ed_ref(&a).sel.state, SelState::Dragging);
+        pen_event(&mut a, InType::PenMove, false, 471.0, 700.0, 5003);
+        pen_event(&mut a, InType::PenMove, false, 471.0, 701.0, 5006);
+        editor_tick(&mut a, now_ms().wrapping_add(1000));
+        assert!(a.screen.px == screen2 && rect_is_empty(a.dirty), "a wobble shows nothing");
+        pen_event(&mut a, InType::PenUp, false, 471.0, 701.0, 5009);
+        app_flush(&mut a);
+        assert_eq!((probe(&a, "drag_samples"), probe(&a, "drag_shows")), ("0".into(), "0".into()));
+        assert_eq!(ed_ref(&a).sel.state, SelState::Selected);
+        assert_eq!(undo_depth(&mut a), depth);
+        assert_eq!(first(&a), moved);
+        assert!(bar_drawn(&a));
+        assert!(layers_ok(&mut a));
+        // a drag whose lift was lost and that nothing ended (its owner let go): the next down ends it as a
+        // cancel and is swallowed, even where the bar's Delete was before the drag (not on the screen then)
+        let del = ed_ref(&a).sel.btns.iter().find(|(_, k)| *k == SelBtn::Delete).map(|(r, _)| *r).unwrap();
+        let (cx, cy) = ((del.x + del.w / 2) as f32, (del.y + del.h / 2) as f32);
+        pen_event(&mut a, InType::PenDown, false, 470.0, 700.0, 6000);
+        pen_event(&mut a, InType::PenMove, false, 470.0, 640.0, 6010); // (up: the outline off the bar's rect)
+        editor_tick(&mut a, now_ms());
+        app_flush(&mut a);
+        assert_eq!(probe(&a, "drag_shows"), "1");
+        assert!(!bar_drawn(&a));
+        ed(&mut a).owner = Owner::None;
+        pen_event(&mut a, InType::PenDown, false, cx, cy, 7000);
+        pen_event(&mut a, InType::PenUp, false, cx, cy, 7010);
+        app_flush(&mut a);
+        assert_eq!(ed_ref(&a).sel.state, SelState::Selected);
+        assert_eq!(ed_ref(&a).owner, Owner::None);
+        assert_eq!(first(&a), moved, "nothing deleted, nothing moved");
+        assert_eq!(undo_depth(&mut a), depth);
+        assert_eq!(probe(&a, "drag_copy"), "0");
+        assert!(bar_drawn(&a));
         assert!(layers_ok(&mut a));
         std::fs::remove_dir_all(root).unwrap();
     }

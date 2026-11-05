@@ -48,6 +48,7 @@ wait 800
 expect display.presents not -1
 # 60 samples at once, 1.75 px right and 0.25 px up each: one turn of the main loop, one show of the newest place.
 # The bar goes, the outline's strips where it was, and the outline at 105 -15: nine DU, none of them the box.
+# (The first six are within the drag's 1 mm slop, 11.8 px: they move nothing, so 54 samples changed the place.)
 pen down 612.00 605.00 0.5
 pen move 613.75 604.75 0.5
 pen move 615.50 604.50 0.5
@@ -111,7 +112,7 @@ pen move 715.25 590.25 0.5
 pen move 717.00 590.00 0.5
 wait 200
 expect editor.select is dragging
-expect editor.drag_samples is 60
+expect editor.drag_samples is 54
 expect editor.drag_shows is 1
 expect editor.drag_shown is 105 -15
 expect editor.drag_copy is 1
@@ -184,7 +185,7 @@ pen move 818.50 575.50 0.5
 pen move 820.25 575.25 0.5
 pen move 822.00 575.00 0.5
 wait 200
-expect editor.drag_samples is 120
+expect editor.drag_samples is 114
 expect editor.drag_shows is 2
 expect editor.drag_shown is 210 -30
 expect editor.drag_inked is 5
@@ -593,7 +594,7 @@ wait 4
 pen move 1172.00 525.00 0.5
 wait 4
 wait 200
-expect editor.drag_samples is 320
+expect editor.drag_samples is 314
 expect editor.drag_shown is 560 -80
 expect editor.drag_inked is 5
 expect display.presents has fast 720 480 209 8, fast 720 672 209 8, fast 720 488 10 184, fast 919 488 10 184

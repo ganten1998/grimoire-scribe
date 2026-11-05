@@ -21,6 +21,10 @@ below; docs/DESIGN.md, The drag). Left open:
   the first move (its strokes as thin lines, or its halo's edge, a few ms on the device for 9,852 points),
   moved with the outline. It would present about the box's area at each show, 1 to 2 ms on the device, and
   the box's inside would then be refreshed by DU.
+- **The bar's place shows in dots while dragging** (the owner's call): the first move takes the bar away by one
+  DU of its rect (1680 x 130 px on his page), which leaves the page there in black-and-white dots until the
+  lift's grayscale refresh. A GL16 of that rect instead would keep it gray, but it is slower on the panel and the
+  first move's strips, refreshed by DU right after, may meet it there; not tried on the device.
 - **The lift on a page like his** still takes about 0.6 s on the device (263 ms to draw the old place, which
   still holds the originals under the paste, 290 ms to place the moved ink with fresh grain, then one GL16):
   the move itself, unchanged. Its grayscale refresh is merged with the panel's repaint into one rect (1822 x
@@ -438,9 +442,12 @@ Ideas, not plans: each needs the owner's go and its own design. No code is taken
   (a scratch copy, never in the repository): 0.13 us a sample instead of 1.77 ms, 16 shows of about 13,000 px
   for a 400-sample drag instead of 403 refreshes of 613,000 px; on the device that is about 2 ms a show at most
   about 5 times a second, against about 22 ms a sample before. The lift is unchanged (the screen after it is
-  pixel for pixel the old build's). tests/scenarios/z_lasso_19_drag_dense.qs and z_lasso_20_drag_live.qs on a
-  generated page with his page's statistics; z_refresh_4_select's wear and lift rect follow the bar no longer
-  going round with the box (57 thousandths of the screen worn on its drag instead of 384, so no Clean follows).
+  pixel for pixel the old build's). The box moves once the pen has gone 1 mm (a tap that wobbles a pixel is a
+  tap), and a sleep in the middle of a drag cancels it (the review: the bar, away, kept its buttons answering at
+  their old place after the wake). tests/scenarios/z_lasso_19_drag_dense.qs, z_lasso_20_drag_live.qs and
+  z_lasso_21_drag_sleep.qs on a generated page with his page's statistics; z_refresh_4_select's wear and lift
+  rect follow the bar no longer going round with the box (57 thousandths of the screen worn on its drag instead of
+  384, so no Clean follows).
 
 - 2.0.0-beta.2 (unreleased, b2g/del; the owner, 2026-11-05: "hold del long enough in keyboards to quick delete",
   "low ish delay but not too low", "repeat rate high so it feels snappy", "not too high"): the on-screen keyboard's

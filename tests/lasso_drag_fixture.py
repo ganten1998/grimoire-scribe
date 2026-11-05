@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """A notebook with one page of pencil shading, deterministic, for the lasso drag scenarios
-(z_lasso_19_drag_dense, z_lasso_20_drag_live): three hexagons coloured in with 12 Pencil strokes of 9,852
-points in all (300 to 4,381 each), about 1 to 1.8 px apart, in a box of about 168 x 166 px at (493, 487).
+(z_lasso_19_drag_dense, z_lasso_20_drag_live, z_lasso_21_drag_sleep): three hexagons coloured in with 12
+Pencil strokes of 9,852 points in all (300 to 4,381 each), about 1 to 1.8 px apart, in a box of about 168 x
+166 px at (493, 487).
 These are the statistics of the 12 strokes the owner copied, pasted and dragged on his Scribe (2026-11-05,
 page 5 of his notebook): generated here, never his drawing. Hexagon paper, as his page. Never touches a
 user's data root."""
