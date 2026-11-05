@@ -99,11 +99,12 @@ your notebooks and settings from `quire/` to `grimoire/` and removes the old Qui
   ever erased outright).
 - **Names** can have accents: the keyboard's **áé** key opens a page of accented letters (enough
   for Spanish, Portuguese, French, Italian, German, Dutch, Catalan, Danish, Norwegian, Swedish and
-  Finnish). Shift gives capitals and **abc** returns to the letters. With Grimoire in Spanish, the
-  letters page has **ñ** too, after l. In Japanese that key is **あ**, a phone's flick pad: a tap
-  types the row's first kana and a swipe left, up, right or down the rest, **゛小** cycles the
-  kana typed last (か to が, は to ば to ぱ, つ to づ to っ), **カ** switches to katakana and **、**
-  holds 、。？！ on its flicks.
+  Finnish). Shift gives the next letter its capital; tap it twice for caps on (a bar under the
+  key's label, every letter a capital until a third tap) and **abc** returns to the letters. With
+  Grimoire in Spanish, the letters page has **ñ** too, after l. In Japanese that key is **あ**, a
+  phone's flick pad: a tap types the row's first kana and a swipe left, up, right or down the
+  rest, **゛小** cycles the kana typed last (か to が, は to ば to ぱ, つ to づ to っ), **カ**
+  switches to katakana and **、** holds 、。？！ on its flicks.
 - **Paper**: narrow, medium and wide rule (without or with a margin), Cornell, dot grid, graph,
   sheet music, guitar tab, blank, cross grid, isometric, hexagon, Seyes rule, and **Custom
   music**: stack treble, bass, alto, tenor, drum and plain staves, 4 to 8 line tabs and lyric

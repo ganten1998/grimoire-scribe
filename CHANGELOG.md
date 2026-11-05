@@ -32,6 +32,13 @@
   so dakuten, handakuten and the small kana are one key. カ types the pad in katakana (ノート,
   メモ) and あ back in hiragana; 、 holds 、。？！・ on its flicks. Every keyboard has it, so
   notebook, folder, page and link names all take kana. Every other language keeps áé there.
+- Caps on: the keyboard's shift key has three states, a tap each (the owner's "next toggle shift in typing
+  toggles off shift for next char then shift on which makes longer caps strings possible"). One tap gives the
+  next letter its capital, as before; a second tap is caps on, every letter a capital through digits, spaces,
+  delete and the symbols and accents pages, for names such as NASA or a run of initials; a third tap turns it
+  off. Shift for one letter shows the pressed shift key, as before; caps on shows the same key with a bar under
+  its label. Every keyboard opens with shift off, so caps on ends when the keyboard closes. Every keyboard has
+  it: names, Find, link names and the rest.
 - One keyboard scheme for a keyboard paired with the Kindle (the owner's scheme; docs/SHORTCUTS.md). A key
   may do one thing in each place (the Library, a notebook page, the Pages view, the Graph, Pen feel): in the
   Library Ctrl+N a new notebook, Ctrl+F a new folder, S Share, O Settings, Left and Right its screens; on a page
