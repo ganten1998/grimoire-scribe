@@ -3,7 +3,8 @@
 # (the owner's rule of 2026-11-05). The card ends at the last of the notes that fits whole above the
 # signature (2.0.0's notes: all 13 upright, the first 8 sideways, the rest Read all's). Read all
 # shows the whole notes on the sheet, a page at a time (2.0.0's notes: two pages upright, three
-# sideways); Dismiss closes the card and the sheet.
+# sideways); Dismiss closes the card and the sheet. The counts are the notes' (card_notes, card_blocks,
+# pages): every release's new notes set them again (docs/RELEASING.md, The bump commit).
 # rust-only
 wait 200
 expect screen is library

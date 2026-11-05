@@ -79,7 +79,19 @@ them.
      user-visible changes in short bullets from the CHANGELOG, then the owner's closing and the
      `{signature}` line as the last notes had them. The app compiles the file in, so it is part of the
      build the owner tests. For a release the owner vets the note and makes his changes to it: send
-     it to him before the tag, and gate again after his changes.
+     it to him, and put his changes in, before the gate (step 5) and his test (step 6). A change
+     after his test is a new gate and a new test, and the build he tested has already recorded the
+     version as seen on his Scribe, so changed notes would not open there by themselves.
+     `tests/scenarios/z_about.qs` states the notes' shape, in its comment and in its checks: the
+     card's `library.about.card_notes` and `card_blocks`, upright and sideways, and Read all's
+     `pages`, upright and sideways (its page arrows need two pages or more sideways). Set them to
+     the new notes': `make scenarios SCENARIOS=tests/scenarios/z_about.qs SCEN_NO_SELFTEST=1` names
+     each check that differs, with the value it found, and `build/shots/z_about/` shows the card,
+     which must end at a whole item.
+   - `docs/screens/whatsnew.png`, the README's picture of the card, when its look or the notes
+     changed: `build/shots/z_about/01-card.png` from the gate of step 5, made 620x827 in grey
+     (`magick 01-card.png -colorspace Gray -filter Lanczos -resize '620x827!' -depth 8 whatsnew.png`).
+     The picture is not in the build, so it can come in the docs commit of step 6.
    - `po/grimoire.pot` carries the version in its header: `make l10n` (needs GNU gettext) rewrites
      it, and the .po and .mo files with it. A stale header does no harm.
 
