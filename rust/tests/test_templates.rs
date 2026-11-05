@@ -1669,9 +1669,21 @@ fn card_drawn_again_with_its_picture() {
     if let Some(pg) = p.take() {
         page_free(pg);
     }
+    // Installation starts a job at once. Finish it before staging the old white cards, then
+    // remove its pictures and queue the jobs again only after both cards are ready.
+    drain_jobs(None);
+    check!(!bg_busy());
+    for (nb, kind) in [(&on, k), (&off, k2)] {
+        let (mut dir, mut file) = (String::new(), String::new());
+        check!(bgimage_dir(nb.id.as_str(), &mut dir, 700) == 0);
+        bgimage_file(&dir, paper_image_id(kind), &mut file, 800);
+        check!(std::fs::remove_file(&file).is_ok());
+    }
     let mut white = Canvas::default();
     canvas_init(&mut white, PW / 3, PH / 3);
     check!(store_save_thumb(on.id.as_str(), &white) == 0 && store_save_thumb(off.id.as_str(), &white) == 0);
+    bg_queue(BgKind::Template, Some(on.id.as_str()), Some(&path), DPI, false);
+    bg_queue(BgKind::Template, Some(off.id.as_str()), Some(&path), DPI, false);
     drain_jobs(None);
     bgimage_retry_missing();
     let (mut card, mut want, mut other) = (Canvas::default(), Canvas::default(), Canvas::default());
