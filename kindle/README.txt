@@ -38,7 +38,10 @@ if you need it.
 PATCHES: Library > Settings > KOReader installs/updates/removes the plugin and toggles three
 optional KOReader patches. Restart KOReader after a change. The manual patches folder includes
 fonts and instructions. Terminess now separates the battery icon and percentage in the dropdown
-menu. Different patches with the same filename are kept.
+menu. Different patches with the same filename are kept. The Terminess menus use Grimoire's own
+font in koreader/fonts/Grimoire whenever it is there, so KOReader's battery icon shows (another
+full Nerd Font put a "JS" badge in its place). A Grimoire start updates an unchanged earlier copy
+of the Terminess patch; koreader/crash.log names the font the menus use.
 WALLPAPER: Display > Sleep screen: KOReader wallpaper uses KOReader's custom image/cover, copied
 at each Tools > Grimoire handover. Without one, it shows your page. With a passcode set, the
 keypad comes first.

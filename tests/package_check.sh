@@ -2,11 +2,12 @@
 # Checks the zip people install (make package): its four files and the optional KOReader plugin
 # folder; documents/Grimoire.sh, the self-unpacking scriptlet (SH_Integration's keys, BUILD_ID,
 # the icon, the Capabilities line, the archive); the app inside it (the binary, the launcher,
-# CAPABILITIES, KOReader's Grimoire plugin, and a license for every embedded font, for Terminess's
-# Material Design icons and for every third-party part of the binary: the vendored code, musl and
-# zig's compiler-rt, the parts of FBInk's tree with notices of their own, the Rust standard library
-# and the libc crate); and that the launchers' test hooks fall back to the device's own paths and
-# timings. The plugin the app carries also goes through tests/koplugin_check.sh.
+# CAPABILITIES, KOReader's Grimoire plugin, the KOReader patches and Grimoire's earlier Terminess
+# patches, and a license for every embedded font, for Terminess's Material Design icons and for
+# every third-party part of the binary: the vendored code, musl and zig's compiler-rt, the parts of
+# FBInk's tree with notices of their own, the Rust standard library and the libc crate); and that
+# the launchers' test hooks fall back to the device's own paths and timings. The plugin the app
+# carries also goes through tests/koplugin_check.sh.
 # usage: tests/package_check.sh [build/dist/Grimoire.zip]
 set -u
 cd "$(dirname "$0")/.." || exit 1
@@ -130,6 +131,12 @@ check "payload's grimoire.sh Capabilities leave out unpack-only" sh -c 'case " $
 # KOReader's Grimoire plugin, which Grimoire.sh installs into KOReader from app/koreader.
 for f in "$KOPLUGIN"/*; do
     check "payload has koreader/grimoire.koplugin/${f##*/}, kindle's" cmp -s "$f" "$B/app/koreader/grimoire.koplugin/${f##*/}"
+done
+# The patches Settings > KOReader applies, and Grimoire's earlier Terminess patches: a copy in KOReader
+# that is byte for byte one of those is replaced with app/koreader/patches' at a start (koreader.rs).
+for f in kindle/koreader/patches/*.lua kindle/koreader/legacy/*.lua; do
+    d=${f%/*}
+    check "payload has koreader/${d##*/}/${f##*/}, kindle's" cmp -s "$f" "$B/app/koreader/${d##*/}/${f##*/}"
 done
 if tests/koplugin_check.sh "$B/app/koreader/grimoire.koplugin" "$B/koplugin-check" >"$B/koplugin.log" 2>&1; then
     echo "ok   the plugin the app carries passes tests/koplugin_check.sh"

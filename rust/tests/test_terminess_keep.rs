@@ -1,6 +1,7 @@
 // test_terminess_keep: the Terminess diet (assets/terminess-keep.txt; assets/README.md). The
 // embedded Terminess fonts hold exactly the code points the list names; the list keeps no Nerd Fonts
-// glyph the diet leaves out; and every icon the code draws is on the list, in both fonts, and draws.
+// glyph the diet leaves out; every icon the code draws is on the list, in both fonts, and draws; and
+// KOReader's battery symbols, which the Terminess menu patch names, are in neither font.
 use grimoire::prelude::*;
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
@@ -56,6 +57,13 @@ fn left_out() -> BTreeSet<u32> {
     s.extend([0x2630, 0x2665, 0x26A1, 0x2B58]);
     s
 }
+
+/// KOReader's battery symbols (its frontend/device/generic/powerd.lua, getBatterySymbol), which it draws
+/// from its own nerdfonts/symbols.ttf. The Terminess menu patch names them to pass over a font with a
+/// glyph there (a full Nerd Font's Devicons: U+E781 is a "JS" badge, the owner's 2026-11-04 report), so
+/// the scan below finds them; Grimoire never draws them, and its Terminess must not have them.
+const KOREADER_BATTERY: [u32; 13] =
+    [0xE778, 0xE779, 0xE77A, 0xE77B, 0xE77C, 0xE77D, 0xE77E, 0xE77F, 0xE780, 0xE781, 0xE782, 0xE783, 0xEDA3];
 
 // ---- the fonts' cmaps, read from their bytes ----
 
@@ -349,7 +357,7 @@ fn the_list_keeps_terminus_text_and_material_design_icons_only() {
 #[test]
 fn every_icon_the_code_draws_is_kept_and_draws() {
     let keep = keep_list();
-    let drawn = drawn();
+    let drawn: BTreeSet<u32> = drawn().into_iter().filter(|c| !KOREADER_BATTERY.contains(c)).collect();
     // The scan finds the icon table, the shapes button and the clefs (65 at 2.0.0-beta.2).
     assert!(drawn.len() >= 65 && drawn.contains(&0xF064F) && drawn.contains(&0xF0831) && drawn.contains(&0xF0F6E),
         "the scan found {} icons", drawn.len());
@@ -367,5 +375,27 @@ fn every_icon_the_code_draws_is_kept_and_draws() {
             assert!(c.px.iter().any(|&p| p < 128), "U+{cp:05X} draws nothing ({face:?})");
             canvas_free(&mut c);
         }
+    }
+}
+
+// The code points every_icon_the_code_draws_is_kept_and_draws leaves out are exactly what the
+// Terminess menu patch names, KOReader's battery symbols, and neither font has a glyph at one, so
+// KOReader's own symbols font draws them in its menus (kindle/koreader/patches/2-terminess-ui-font.lua).
+#[test]
+fn koreaders_battery_symbols_are_named_and_never_in_terminess() {
+    let path = format!("{TOP}/kindle/koreader/patches/2-terminess-ui-font.lua");
+    let mut named = BTreeSet::new();
+    scan(&std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("{path}: {e}")), &mut named);
+    assert_eq!(named, KOREADER_BATTERY.into_iter().collect::<BTreeSet<u32>>(), "the private use code points {path} names");
+    let mut elsewhere = BTreeSet::new();
+    for f in sources().iter().filter(|f| !f.ends_with("koreader/patches/2-terminess-ui-font.lua")) {
+        scan(&String::from_utf8_lossy(&std::fs::read(f).unwrap_or_default()), &mut elsewhere);
+    }
+    let drawn: Vec<String> = elsewhere.iter().filter(|c| KOREADER_BATTERY.contains(c)).map(hex).collect();
+    assert!(drawn.is_empty(), "KOReader's battery symbols named outside the Terminess patch: {drawn:?}");
+    for (name, font) in fonts() {
+        let full = mapped(font, subtable(font, 3, 10).expect("a (3,10) cmap"));
+        let there: Vec<String> = KOREADER_BATTERY.iter().filter(|c| full.contains(c)).map(hex).collect();
+        assert!(there.is_empty(), "{name} has glyphs where KOReader's battery symbols are: {there:?}");
     }
 }

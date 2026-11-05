@@ -137,6 +137,12 @@ only when the Terminess patch is toggled), and httpd.rs's `/font/licenses.txt` (
 the pages' style that names it (src/httpd.c serves the fonts alone). Only the Rust tests hold them
 (test_koreader.rs, test_scenarios.rs, test_httpd.rs), so `make c-check` runs as before.
 
+So is the Terminess patch's upgrade at the start (2.0.0-beta.2, the owner's "JS" battery report):
+`koreader_patch_refresh` in koreader.rs and its call in mainloop.rs's `run` right after
+`koreader_fonts_refresh`, and `KOREADER_TERMINESS_EARLIER`, the earlier copies `copy_owned` and it
+know (src/koreader.c knows only the first, `legacy/2-terminess-ui-font.lua`, and replaces it only when
+the patch is toggled). test_koreader.rs and test_scenarios.rs hold them.
+
 ### Not ported
 
 - The SDL3 window simulator (`grimoire-sim`, GRIMOIRE_SIM_SDL): a development aid no check runs.

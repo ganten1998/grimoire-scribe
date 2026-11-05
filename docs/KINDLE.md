@@ -824,8 +824,8 @@ KOReader uses its original UI font. Since 2.0.0-beta.1 the Terminess patch match
 fonts and spaces the dropdown battery icon from its percentage. From 2.0.0-rc.7, dropdown status
 and reading footers retain KOReader's native font fallback: Terminess's unrelated private-use icons
 cannot replace battery symbols. Exact old Grimoire Terminess bytes
-are carried under `app/koreader/legacy` only for explicit migration; different user edits remain
-protected.
+are carried under `app/koreader/legacy` only for migration (the Settings toggle, and since
+2.0.0-beta.2 each start, below); different user edits remain protected.
 
 Since 2.0.0-beta.2 the embedded Terminess holds only Terminus's text and the Material Design icons
 Grimoire draws (`assets/terminess-keep.txt`): no glyph from U+E000 to U+F8FF, where KOReader's
@@ -836,6 +836,26 @@ file, then rename), so an update replaces the earlier, larger font without the p
 A missing file is written only while `patches/2-terminess-ui-font.lua` is there; with neither the
 patch nor the files nothing is written, and no other KOReader file is read or written. A write logs
 `koreader: wrote N of Grimoire's Terminess files in .../fonts/Grimoire`.
+
+Also since 2.0.0-beta.2 (the owner's Scribe showed KOReader's battery as a "JS" badge, 2026-11-04): the
+patch takes Grimoire's own copy (`./fonts/Grimoire/TerminessNerdFontMono-Regular.ttf` and `-Bold.ttf`, KOReader
+running in its own folder) whenever its regular face is there, before any other Terminess or Terminus file in
+`/mnt/us/fonts` or `koreader/fonts`. Without it, the other regular faces in their order (non-Mono, Mono,
+Propo, then by path) are asked through KOReader's face API for a glyph at KOReader's battery code points
+(U+E778 to U+E783 and U+EDA3, `frontend/device/generic/powerd.lua`): `Font:getFace(path, 20).ftsize:hasGlyph(cp)`,
+true or false, as KOReader v2026.07.2 has it (`ffi/freetype.lua`, where `ftsize` is a cdata: a method it lacks
+raises an error); failing that, the `checkGlyph(cp)` of older builds (0 for
+none) on `ftsize` or `ftface`; each ask in a pcall. The first with none is used, else the first (a face that
+cannot be read counts as one with a glyph). crash.log names the menus' fonts (`... (Grimoire's own copy)`), each
+other regular face passed over and why, a `used anyway:` line for a menus' font with such a glyph or whose
+glyphs could not be read, and a `not checked:` line when Grimoire's own copy could not be read. The status
+line and footers keep KOReader's own font as in rc.7. At each start, right after the fonts,
+`koreader_patch_refresh` replaces a `patches/2-terminess-ui-font.lua` that is byte for byte one of
+`KOREADER_TERMINESS_EARLIER` (the files in `app/koreader/legacy`: 1.1.0-beta.2's, rc.6's and rc.7's; the
+size, then the bytes) with `app/koreader/patches`' (temporary file, then rename) and logs
+`koreader: .../2-terminess-ui-font.lua was Grimoire's earlier patch (NAME in app/koreader/legacy); it is this
+build's now`. A changed copy, an unrelated file and this build's copy are left alone; with no patch nothing
+is written. The Settings toggle's upgrade (`copy_owned`) uses the same list.
 
 Before each handover the plugin removes an old `grimoire/koreader-sleep.png`, asks KOReader's
 screensaver module to select its configured cover/custom image, paints it offscreen and commits

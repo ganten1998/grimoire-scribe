@@ -310,7 +310,13 @@ reading footers keep KOReader’s native font fallback, avoiding conflicting Ner
 instructions are included. Since 2.0.0-beta.2 the font is Terminus's text and Grimoire's own icons only (a
 much smaller file). In KOReader's menus the battery symbols now come from KOReader's own symbols font too, and
 the box drawing, heart, lightning and the like that Nerd Fonts had added come from KOReader's fallback fonts.
-Grimoire brings the copy in KOReader's `fonts/Grimoire` up to date when it next starts.
+Grimoire brings the copy in KOReader's `fonts/Grimoire` up to date when it next starts. The menus use that
+copy whenever it is there, even with other Terminess or Terminus files in the Kindle's `fonts` folder: a full
+Nerd Font has icons of its own where KOReader's battery symbols are (a "JS" badge in place of the battery), so
+without Grimoire's copy such a font is passed over while another will do, and `koreader/crash.log` names the
+font the menus use and why. A start of Grimoire also replaces an earlier Grimoire copy of the Terminess patch
+in KOReader's `patches`, one byte for byte as Grimoire wrote it, with the current one (`grimoire.log` says so);
+a copy you changed is kept.
 
 **Display > Sleep screen: KOReader wallpaper** uses a snapshot of KOReader's configured custom
 image, random image or book cover, exported whenever Tools > Grimoire hands over. It also works

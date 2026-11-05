@@ -1050,3 +1050,55 @@ On the Scribe:
    The same on the toolbar's + held on the last page.
 6. Note whether the drag feels late to start on a big tile (the bar waits until the finger is off the page); if
    it does, say so, and the pick-up can move back to the slop with a drop in place made harmless instead.
+
+## 2.0.0-beta.2, KOReader battery symbols
+
+The owner's Scribe showed a "JS" badge where KOReader's dropdown has its battery symbol (2026-11-04). KOReader's
+battery symbols are U+E778 to U+E783 and U+EDA3, from its own `nerdfonts/symbols.ttf`; a full Terminess Nerd Font
+has Devicons and Font Awesome there (U+E781 is the JavaScript badge, a 90 to 99 percent battery). The likeliest
+cause: the Kindle still had rc.6's Terminess patch (the RC7 sweep found it there), which takes the full Nerd Font in
+`fonts/Terminus` for the menus, the footer and the dropdown's status line alike, and only a toggle in Settings >
+KOReader replaced it. Not confirmed on the Kindle: it was not reachable.
+
+Automated: tests/kopatch_check.lua (make kopatch-check) plays the patch against stand-in fonts folders and faces:
+Grimoire's own copy in `koreader/fonts/Grimoire` comes first, over the whole Nerd Font in `fonts/Terminus` and over
+a clean Terminus, and only its face is opened to check; Grimoire's bold alone is not its copy; without it, a font
+with a glyph at a battery code point is passed over for one without, and with none without, the first by rank is
+used as before; a face that cannot be read (an error, or nil as KOReader's getFace gives for a font it cannot open)
+is passed over; crash.log names the menus' fonts and why each other regular face was passed over; the footer and
+the dropdown's status line keep KOReader's own font. Its faces are cdata like KOReader's (an ffi metatype, so a
+method a face lacks raises an error, as on the Kindle): `ftsize:hasGlyph` (true or false) as in KOReader
+v2026.07.2, the owner's; `checkGlyph` (0 for none) on `ftsize` or on `ftface` as in older builds, which pick the
+clean Terminus over the whole Nerd Font all the same; and neither, where nothing can be checked: the first by rank,
+crash.log saying the glyphs could not be read (not that the others have one), and with Grimoire's copy, that copy
+with a `not checked:` line. test_koreader.rs's
+earlier_terminess_patch_follows_the_binary runs koreader_patch_refresh against the app's real files: each copy in
+kindle/koreader/legacy is replaced with the current patch (a new file), this build's copy is not written again, a
+copy with one byte changed or one line added and an unrelated file are kept, an absent patch stays absent, and the
+code's list of earlier copies is the folder's. test_scenarios.rs's a_start_brings_an_earlier_terminess_patch_up_to_date
+starts the runner with rc.6's copy in KOReader: it is the current patch after the start, grimoire.log says so, and a
+second start says nothing. tests/package_check.sh checks the app carries kindle/koreader/patches and
+kindle/koreader/legacy as they are. test_terminess_keep.rs's koreaders_battery_symbols_are_named_and_never_in_terminess
+holds that only the patch names the battery code points (the icon scan leaves them out) and that neither embedded
+Terminess has a glyph at one.
+
+On the Kindle (with the whole Terminess Nerd Font still in `fonts/Terminus`, as on the owner's Scribe):
+
+1. Install beta.2 and start Grimoire once from the Library. `grimoire/grimoire.log` has
+   `koreader: .../koreader/patches/2-terminess-ui-font.lua was Grimoire's earlier patch (2-terminess-ui-font-rc6.lua
+   in app/koreader/legacy); it is this build's now` (or `-rc7` or the plain name for another earlier copy). Leave
+   Grimoire and start it again: no such line the second time. No line on the first start either: the Kindle's
+   copy was already this build's, or not one Grimoire wrote (changed by hand), which Grimoire keeps; compare
+   `koreader/patches/2-terminess-ui-font.lua` with the zip's `KOReader patches (optional)` copy, and if they
+   differ, delete it and apply the patch again in Settings > KOReader.
+2. Start KOReader. `koreader/crash.log` has `terminess ui font patch: menus in
+   ./fonts/Grimoire/TerminessNerdFontMono-Regular.ttf and ./fonts/Grimoire/TerminessNerdFontMono-Bold.ttf (Grimoire's
+   own copy)`, then a `passed over /mnt/us/fonts/Terminus/... (Grimoire's own copy in koreader/fonts/Grimoire comes
+   first)` line for each other regular Terminess, and no `used anyway:`, `not checked:` or `could not be read`
+   line. A `not checked: ... (its glyphs could not be read)` line means the patch could not ask this KOReader for
+   glyphs at all (its face API differs from v2026.07.2's): the menus still use Grimoire's copy, but send crash.log.
+3. Open KOReader's dropdown (tap the top of the screen): the clock, then the battery symbol and the percentage with
+   a space between them, not "JS". Check it charging (the plug) and unplugged at a few levels if you can; the
+   90 to 99 percent level is the one that drew "JS".
+4. Open a book with the reading footer showing the battery: the battery symbol there too, not "JS".
+5. The menus still read in Terminess, regular and bold (titles), as before.

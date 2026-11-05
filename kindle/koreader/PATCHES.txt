@@ -13,10 +13,16 @@ apply them. Existing different patches at the same filename are kept.
   Terminus's text and Grimoire's own icons, so KOReader's battery symbols come from its own symbols font, and
   Grimoire brings the copy in KOReader's fonts/Grimoire up to date when it starts. This updates the script
   shipped with 1.1.0-beta.1 and 1.1.0-beta.2.
+  Since 2.0.0-beta.2 the menus use Grimoire's own copy in fonts/Grimoire whenever it is there, even with
+  other Terminess or Terminus files in the Kindle's fonts folder. A full Nerd Font has its own icons where
+  KOReader's battery symbols are (a "JS" badge, for one), so without Grimoire's copy such a font is passed
+  over while another will do. koreader/crash.log names the font the menus use and why others were passed
+  over. A start of Grimoire also replaces an earlier Grimoire copy of this script in KOReader's patches
+  with the current one, if that copy is byte for byte as Grimoire wrote it (grimoire.log says so once).
 
 Manual installation: copy only the .lua files you want into your KOReader installation's patches/
 folder. Copy fonts/Grimoire/ into its fonts/ folder. Restart KOReader. Remove a .lua file and
 restart to undo that patch. The font files can stay; without the patch they change no menus.
 The screenshot and square-corner scripts are unchanged since 1.1.0-beta.1. The Terminess script
-has been updated. A byte-exact earlier Grimoire Terminess patch can be upgraded from Settings;
-a locally modified copy is preserved.
+has been updated. A byte-exact earlier Grimoire Terminess patch is upgraded at Grimoire's next
+start, or from Settings; a locally modified copy is preserved.
