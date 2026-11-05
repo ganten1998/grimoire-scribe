@@ -105,6 +105,9 @@ your notebooks and settings from `quire/` to `grimoire/` and removes the old Qui
   phone's flick pad: a tap types the row's first kana and a swipe left, up, right or down the
   rest, **゛小** cycles the kana typed last (か to が, は to ば to ぱ, つ to づ to っ), **カ**
   switches to katakana and **、** holds 、。？！ on its flicks.
+- **Delete held down** deletes one character after another, on every keyboard (names, Find, the page number
+  pads, the count pad): a tap deletes one, and a finger or the pen kept on the key deletes the next after about
+  0.4 s, then about 15 a second until it lifts or slides off.
 - **Paper**: narrow, medium and wide rule (without or with a margin), Cornell, dot grid, graph,
   sheet music, guitar tab, blank, cross grid, isometric, hexagon, Seyes rule, and **Custom
   music**: stack treble, bass, alto, tenor, drum and plain staves, 4 to 8 line tabs and lyric

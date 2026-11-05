@@ -1241,3 +1241,50 @@ On the Scribe:
 7. **Rename and Find.** Rename a notebook from the Library with caps on, and in a notebook type a page name in
    Find (Go to page... in Pages, or the Links bar's Go to) with caps on: the same three states. Find's Done with
    no page to go to keeps the keyboard, and caps on with it.
+
+## 2.0.0-beta.2, Hold delete
+
+The owner, 2026-11-05: "hold del long enough in keyboards to quick delete", "low ish delay but not too low",
+"repeat rate high so it feels snappy", "not too high". Delete held deletes again after 400 ms (`KB_HOLD_MS`),
+then every 65 ms (`KB_REPEAT_MS`), about 15 a second, on every keyboard; a tap deletes one as before.
+
+Automated: keyboard.rs `a_tap_on_delete_deletes_one`, `a_hold_deletes_again_after_the_delay_then_at_the_rate`
+(held H ms: 1 under 400, else 2 + (H - 400) / 65, across the clock's wrap too),
+`a_late_repeat_catches_up_a_batch_at_most`, `a_repeat_waits_for_the_panel` (a due repeat waits while the last fast
+refresh may be on the panel, then the ones that came due go together, three at most, one refresh; nothing after
+the lift), `sliding_off_delete_ends_the_hold`, `the_hold_ends_with_the_text`,
+`closing_a_new_contact_and_sleep_end_the_hold`, `every_keyboard_page_repeats_delete` (letters, accents, symbols,
+the number pad, the kana pad) and `the_count_pads_del_repeats_down_to_nothing` (the opening 1 cleared by the
+touch-down, nothing to repeat). tests/scenarios/u_keyboard_hold_delete.qs holds del on the Library's New folder
+keyboard and on the Find sheet: a tap and a 399 ms hold delete one; held 630 ms with samples, four; each repeat
+one fast refresh of the text line (and on Find the rows' card after it), the keyboard drawn once, nothing once
+the text is gone, the key alone at the lift and only the keyboard's GL16 after it; held with no samples at all
+(the tick's repeats) the field empties and stops. It runs again in `make scenarios-late`.
+
+On the Scribe (Gothic and Classic, upright and sideways):
+
+1. **Rename.** In the Library, a notebook's Rename (a name of 20 characters or so): tap del, one character goes.
+   Hold it: after about 0.4 s it goes on deleting, about 15 a second, and stops the moment the finger lifts; the
+   name shown at the lift is the name kept (Done saves exactly that). Note if it starts too soon (a deliberate
+   tap that deleted two) or too late, or runs too fast to stop where you mean to.
+2. **The pen.** The same with the pen held on del: it repeats too, and stops at the lift.
+3. **Slide off.** Hold del, then slide onto another key without lifting: the deleting stops there, and no key is
+   typed; sliding back onto del does not start it again.
+4. **Empty.** Hold del until the name is empty, and keep holding a few seconds: it stops at empty, nothing flashes
+   or refreshes over and over, and the keyboard gets its gray clean-up once the finger lifts. Hold del on an empty
+   field: nothing happens but the key's own pressed look.
+5. **Find.** In a notebook with named pages, Find (Ctrl+F, or the bar's Go to): type a few letters so rows show,
+   then hold del: the text and the rows follow it down, the rows refreshed after the text each step, and both stop
+   at the lift. Note if the text ever seems to fall behind the finger (a jump of a few characters at once is the
+   panel catching up, at most three at a time; anything that keeps changing after the lift is a fault).
+6. **Other keyboards.** A page's name (R, or Rename in Pages), a link's Rename on its card, New page...'s name and
+   the Graph's rename: holding del repeats on each. In Japanese, the kana pad's del repeats too.
+7. **Count pad.** Hold New page (+) in Pages: the pad reads 1. Hold del: the 1 clears at once and nothing more
+   happens. Type 123 and hold del: 12, 1, then empty, its Done greyed at 0; lift and type a digit: it follows as
+   before. The same on the toolbar's + count pad. With a keyboard paired: type 12345, hold del on the screen and,
+   while it deletes, type 9 on the keyboard: the 9 stays and the deleting stops, the finger still on del.
+8. **Interrupted.** Hold del and, still holding, press the power button to sleep; wake: nothing was deleted after
+   the sleep, and holding is over. Hold del and put a second finger on another key: the deleting stops and the
+   second key types.
+9. **Cold.** If the Kindle is cold (below about 15 degrees), note whether holding del feels slower: it waits for
+   the panel's slower refreshes rather than run ahead of them.

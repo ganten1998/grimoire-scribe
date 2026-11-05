@@ -10600,10 +10600,19 @@ pub fn editor_tick(a: &mut App, now: u32) {
         app_keyboard_tick(a, &mut kb, now);
         ed(a).lm.kb = kb;
     }
-    // Typing on the Find sheet pauses: its keyboard's grayscale refresh, the card of rows with it.
+    // Typing on the Find sheet pauses: its keyboard's grayscale refresh, the card of rows with it. Or delete held
+    // down deletes again: the rows the text finds now, after the text line's refresh, as for a key.
     let s = ed(a);
-    if s.open && s.find.open {
-        with_find(a, |f, a, _nb, _nav| findsheet_tick(f, a, now));
+    if s.open && s.find.open && with_find(a, |f, a, nb, nav| findsheet_tick(f, a, nb, nav, now)) == FsResult::Changed {
+        find_result(a, FsResult::Changed, RECT_EMPTY);
+    }
+    // Rename's keyboard on a link's card (its typing through the keyboard host, as every keyboard's): a held
+    // delete's repeats, and its grayscale refresh once typing pauses.
+    let s = ed(a);
+    if s.open && s.card.open && s.card.kb.open {
+        let mut kb = std::mem::take(&mut s.card.kb);
+        app_keyboard_tick(a, &mut kb, now);
+        ed(a).card.kb = kb;
     }
     // The Links bar gets the pages it goes to ready while nothing is touching: a page or a band a tick.
     let drained = a.input_drained;

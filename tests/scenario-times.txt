@@ -72,6 +72,7 @@ t_touch_1_contacts 2.4
 u_accents 9.2
 u_keyboard_caps 5.8
 u_keyboard_caps_classic 2.4
+u_keyboard_hold_delete 19.4
 u_keyboard_symbols 2.4
 u_keyboard_symbols_classic 2.4
 u_update_1 4.1

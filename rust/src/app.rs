@@ -1414,6 +1414,7 @@ fn app_sleep(a: &mut App) {
         return;
     }
     a.asleep = true;
+    keyboard_holds_end(); // (a lift while asleep is dropped: a held delete must not go on deleting at the wake)
     live_hover_sync(a);
     status_save_now(a); // (a setting the corner changed, saved after its refresh: the refresh is not coming)
     status_reset(); // (the sleep screen is drawn without the corner)
@@ -1972,6 +1973,7 @@ pub fn app_switch(a: &mut App, s: ScreenId) {
     a.live_processed = 0;
     a.live_processed_ms = 0;
     (ops(a.scr).leave)(a);
+    keyboard_holds_end(); // (the lift goes to the new screen: a held delete on the old one lets go now)
     a.prev_scr = a.scr;
     a.scr = s;
     a.toast_floor = 0; // the new screen sets its own
@@ -2005,7 +2007,8 @@ const KB_SETTLE_MS: u32 = 900;
 /// A pen or finger event on an on-screen keyboard (keyboard.h), drawn and refreshed the one way every
 /// keyboard is, so a key costs the same over any screen: only when the key changed something, only
 /// the keyboard (never what is under it), and on the fast waveform, the text line first and on its
-/// own, then the key. Returns keyboard_pointer's result; on KB_DONE and KB_CANCEL nothing is drawn
+/// own, then the key. Returns keyboard_pointer's result (or, for a move of a contact holding delete,
+/// keyboard_repeat's: Changed when it deleted again); on KB_DONE and KB_CANCEL nothing is drawn
 /// (the caller closes it and draws what it covered). (kb is not inside a: a screen takes its
 /// keyboard out of its state for the call, PORTING.md, The App.)
 pub fn app_keyboard_pointer(a: &mut App, kb: &mut Keyboard, phase: i32, ev: &InEvent) -> KbResult {
@@ -2024,23 +2027,34 @@ pub fn app_keyboard_pointer_split(a: &mut App, kb: &mut Keyboard, phase: i32, ev
 ) -> (KbResult, Rect) {
     let mut d = RECT_EMPTY;
     // (a hardware key's input, app_type_text: at the lift, instead of a key)
-    let r = match a.kb_inject.take() {
+    let mut r = match a.kb_inject.take() {
         Some(input) if phase == 2 => keyboard_input(kb, &input, &mut d),
         _ => keyboard_pointer(kb, phase, ev.x, ev.y, ev.t_ms, &mut d),
     };
     if r == KbResult::Done || r == KbResult::Cancel {
         return (r, RECT_EMPTY);
     }
+    // Delete held down: a sample of the contact on it (the pen resting there sends one at every digitizer
+    // frame, a finger now and then) is a moment it may delete again, as the screen's tick is.
+    if phase == 1 && r == KbResult::None && kb.repeat_at != 0 {
+        r = keyboard_repeat(kb, ev.t_ms, display_fast_busy());
+    }
     // A sample that changed nothing draws nothing: the pen resting on a key sends one at every
     // digitizer frame, and each whole keyboard drawn again is main-thread work the next key waits for.
     if rect_is_empty(d) && rect_is_empty(kb.field_dirty) {
         return (r, RECT_EMPTY);
     }
-    // Typing stays on the fast waveform: the text first (what the eye is on), then the key, each a
-    // refresh of its own. One over both would span the keyboard from the text line down to the key:
-    // on the Kindle several times the pixels to copy, and the next key's refreshes would overlap it
-    // and wait in the driver's queue for it to end (docs/INK-PERFORMANCE.md), every key behind the
-    // one before. One clean GL16 of the keyboard follows once typing pauses (app_keyboard_tick).
+    kb_typed(a, kb);
+    (r, d)
+}
+
+// What a key changed, drawn and refreshed (app_keyboard_pointer_split, and a held delete's repeats from the tick).
+// Typing stays on the fast waveform: the text first (what the eye is on), then the key, each a refresh of its
+// own. One over both would span the keyboard from the text line down to the key: on the Kindle several times the
+// pixels to copy, and the next key's refreshes would overlap it and wait in the driver's queue for it to end
+// (docs/INK-PERFORMANCE.md), every key behind the one before. One clean GL16 of the keyboard follows once typing
+// pauses (app_keyboard_tick).
+fn kb_typed(a: &mut App, kb: &mut Keyboard) {
     keyboard_draw(kb, &mut a.screen, Rect { x: 0, y: 0, w: a.w, h: a.h ,
         },
     );
@@ -2057,13 +2071,14 @@ pub fn app_keyboard_pointer_split(a: &mut App, kb: &mut Keyboard, phase: i32, ev
     if kb.settle_at == 0 {
         kb.settle_at = 1;
     }
-    (r, d)
 }
 
 /// A key of a hardware keyboard on an on-screen keyboard (keyboard_press: the key with that code, as if
 /// tapped), drawn and refreshed as a tap's is, the text line and then the count pad's Done each on its
 /// own (no on-screen key was pressed, so none is refreshed). On KB_DONE and KB_CANCEL nothing is drawn.
+/// It ends a held delete, as a second finger's key does: the digit it types is never the next repeat's.
 pub fn app_keyboard_press(a: &mut App, kb: &mut Keyboard, code: u32) -> KbResult {
+    kb.repeat_at = 0;
     let mut d = RECT_EMPTY;
     let r = keyboard_press(kb, code, &mut d);
     if r == KbResult::Done || r == KbResult::Cancel || r == KbResult::None {
@@ -2080,16 +2095,27 @@ pub fn app_keyboard_press(a: &mut App, kb: &mut Keyboard, code: u32) -> KbResult
     r
 }
 
-/// From the screen's tick while its keyboard is up: once typing pauses, one grayscale refresh of the
-/// keyboard cleans up what the fast ones left.
-pub fn app_keyboard_tick(a: &mut App, kb: &mut Keyboard, now: u32) {
+/// From the screen's tick while its keyboard is up: delete held down deletes again when it is due
+/// (keyboard_repeat), drawn and refreshed as a key's typing is, the text line and then the count pad's Done each
+/// on its own (the key, pressed all along, is not refreshed), and then KbResult::Changed, for a screen that
+/// follows the text (Find's rows); else, once typing pauses, one grayscale refresh of the keyboard cleans up what
+/// the fast ones left, and None. (The main loop goes round at least every 30 ms, its input poll's timeout,
+/// so a repeat 65 ms apart needs no wake of its own; with no hold this is the one test of repeat_at.)
+pub fn app_keyboard_tick(a: &mut App, kb: &mut Keyboard, now: u32) -> KbResult {
+    if kb.repeat_at != 0 {
+        if keyboard_repeat(kb, now, display_fast_busy()) == KbResult::Changed {
+            kb_typed(a, kb);
+            return KbResult::Changed;
+        }
+    }
     if kb.settle_at == 0 || (now.wrapping_sub(kb.settle_at) as i32) < 0 {
-        return;
+        return KbResult::None;
     }
     kb.settle_at = 0;
     if kb.open && kb.pressed_key < 0 {
         app_invalidate(a, kb.area, RefreshMode::Ui); // (not under a press)
     }
+    KbResult::None
 }
 
 // The runner's annotate.* keys: "role", the open page's paper ("document" for a page KOReader sent
@@ -2502,6 +2528,39 @@ mod tests {
         assert_eq!(out, "East,So");
         append_cut(&mut out, 8, ",West");
         assert_eq!(out, "East,So");
+    }
+
+    /// A hardware keyboard's key on a count pad (app_keyboard_press) ends the on-screen delete held there, as a
+    /// second finger's key does: the digit it typed stays, the next repeat never comes.
+    #[test]
+    fn a_hardware_key_ends_a_held_delete() {
+        assert_eq!(font_init(), 0);
+        ui_init(300.0);
+        i18n_set("en");
+        let mut a = App { w: 1860, h: 2480, dpi: 300.0, ..Default::default() };
+        assert_eq!(canvas_init(&mut a.screen, a.w, a.h), 0);
+        #[cfg(feature = "sim")]
+        {
+            let (mut w, mut h) = (a.w, a.h);
+            crate::sim_sdl::display_set_orientation(0, &mut w, &mut h);
+        }
+        let mut kb = Keyboard::default();
+        keyboard_open_count(&mut kb, "Pages to add", 999, |n| format!("Add {n}"));
+        kb.area = keyboard_area(&kb, Rect { x: 0, y: 0, w: a.w, h: a.h });
+        for c in ['3', '4', '5'] {
+            assert_eq!(app_keyboard_press(&mut a, &mut kb, c as u32), KbResult::Changed);
+        }
+        let mut r = RECT_EMPTY;
+        assert!(keyboard_key_rect(&kb, KB_KEY_BKSP, &mut r));
+        let (x, y) = ((r.x + r.w / 2) as f32, (r.y + r.h / 2) as f32);
+        app_keyboard_pointer(&mut a, &mut kb, 0, &InEvent { x, y, t_ms: 1000, ..Default::default() });
+        assert_eq!(kb.text.as_str(), "34");
+        assert_ne!(kb.repeat_at, 0, "delete held");
+        assert_eq!(app_keyboard_press(&mut a, &mut kb, '9' as u32), KbResult::Changed);
+        assert_eq!((kb.text.as_str(), kb.repeat_at), ("349", 0));
+        app_keyboard_tick(&mut a, &mut kb, 1000 + KB_HOLD_MS + 4 * KB_REPEAT_MS);
+        app_keyboard_pointer(&mut a, &mut kb, 1, &InEvent { x, y, t_ms: 1000 + KB_HOLD_MS + 5 * KB_REPEAT_MS, ..Default::default() });
+        assert_eq!(kb.text.as_str(), "349", "the finger still on del deletes nothing more");
     }
 }
 /// The existing screen lifecycle applied after a language or theme change.

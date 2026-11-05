@@ -1387,3 +1387,24 @@ pub fn display_close() {
 }
 /// Last Fast frame needed the existing colour-panel driver wait; reads cached state only.
 pub fn display_last_fast_waiting() -> bool { with(|s| s.last_fast_wait) }
+
+/// With no word from the quiet thread, how long a refresh is taken to stay on the panel: the fast (DU)
+/// waveform's length down to 15 degrees (294 ms, docs/INK-PERFORMANCE.md).
+const FAST_BUSY_GUESS_MS: u32 = 300;
+
+/// display.rs display_fast_busy: the quiet thread's books when it follows the updates and took on the newest
+/// (its newest standard DU not yet ended); otherwise (no thread, or the newest went out in pen mode) whether
+/// anything was sent in the last FAST_BUSY_GUESS_MS. Never a wait, and no ioctl.
+pub fn display_fast_busy() -> bool {
+    let (fd, last) = with(|s| (s.g_fd, s.g_last_refresh));
+    if fd < 0 {
+        return false;
+    }
+    {
+        let q = qlock();
+        if q.on && q.fd >= 0 && fbink_get_last_marker() == q.handed {
+            return q.du_done != q.du_sent;
+        }
+    }
+    now_ms().wrapping_sub(last) < FAST_BUSY_GUESS_MS
+}
