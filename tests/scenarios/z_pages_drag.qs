@@ -1,7 +1,8 @@
 # rust-only
 # generate: tests/drag_pages_fixture.py
 # Drag to reorder (owner, 2026-11-02): a page held until its card opens and then moved without lifting is
-# picked up. Only the gap's black bar shows while it is dragged (the owner, 2026-11-03: "no need to have the
+# picked up (every hold here is 700 ms, the card's path; since 2026-11-04 a 300 ms hold picks it up with no card,
+# z_pages_drag_hold). Only the gap's black bar shows while it is dragged (the owner, 2026-11-03: "no need to have the
 # page outline show when dragging, just show the black bar"; small fast refreshes of the bar alone), the
 # lift drops it there through Move (one undo step) and draws the view once. A tile held and lifted still
 # opens its card; a drop back in its own place, on the top bar or the bottom row, or a lost lift moves

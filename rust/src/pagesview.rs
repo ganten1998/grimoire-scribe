@@ -13,8 +13,9 @@
 //! (Link to... has the Index and Search for those). And it opens with
 //! its naming keyboard up for the open page (pagesview_name), for a shortcut pressed on the page.
 //!
-//! Since 2.0.0-beta.2 a held tile moved without lifting is dragged to a gap (PageDrag), and the bottom
-//! row offers Undo right after a page move (move_undo): both go through the editor's Move path.
+//! Since 2.0.0-beta.2 a tile held DRAG_HOLD_MS and moved without lifting is dragged to a gap (PageDrag), with no
+//! card drawn first (the card waits for CARD_HOLD_MS held still), and the bottom row offers Undo right after a
+//! page move (move_undo): both go through the editor's Move path.
 //! New page held (or tapped with a keyboard's modifier key held) opens the count pad for a batch
 //! of new pages (PvResult::AddPages), and Undo takes the batch back while its pages are still blank
 //! (add_undo). A tap on New page is a batch of one (owner, 2026-11-03: the page is not opened; the view
@@ -54,9 +55,23 @@ const PG_UNDO_MOVE: i32 = 28;
 const PG_UNDO_ADD: i32 = 29;
 const PG_REDO: i32 = 30;
 
-/// How long New page is held to open the batch's count pad: a held tile's (its card) time. The editor's
-/// toolbar + (the next-page button on the last page) takes the same hold for its own count pad.
+/// How long New page is held to open the batch's count pad: a held tile's card's time (CARD_HOLD_MS). The
+/// editor's toolbar + (the next-page button on the last page) takes the same hold for its own count pad.
 pub const ADD_HOLD_MS: u32 = 600;
+/// How long a tile is held still to open its card (Open, Add a link, Rename, Delete, Move to..., Copy to
+/// notebook...): drawn by pagesview_tick as the hold reaches it, or at the lift when the tick has not seen it.
+const CARD_HOLD_MS: u32 = 600;
+/// How long a tile is held before a move past the slop picks it up for a drag (PageDrag), well before its card
+/// would open, so a drag never draws the card and takes it down again (2.0.0-beta.2, the owner, 2026-11-04:
+/// "Make the delay for reordering smaller, so that it can safely be activated before the long-pressed
+/// management dialong. They are too disruptive as a pair."). 300 ms, half the card's hold: a finger that
+/// means to drag rests on the tile first, and the other half of CARD_HOLD_MS is its time to start moving
+/// before the card is due; a flick lands moving and passes the slop far sooner, so it stays a flick that
+/// turns the screen. A move past the slop before this is never a drag later in the same contact (drag_begin
+/// is asked only as the contact first passes the slop).
+const DRAG_HOLD_MS: u32 = 300;
+// (the drag's hold under the card's, or every drag would draw the card first again)
+const _: () = assert!(DRAG_HOLD_MS < CARD_HOLD_MS);
 /// A tap on New page with any of these held on a keyboard (KEYMOD_*, which input_evdev puts on each pen
 /// and touch event) opens it too (and the toolbar's + its pad).
 pub const ADD_MODS: u32 = (KEYMOD_SHIFT | KEYMOD_CTRL | KEYMOD_ALT | KEYMOD_META) as u32;
@@ -1358,7 +1373,7 @@ pub fn pagesview_pointer(v: &mut PagesView, a: &mut App, nb: &NotebookInfo, nav:
     if !v.picking && hit.id==PG_NEW && (ev.key_mods&ADD_MODS!=0 || in_sample_ms(ev).wrapping_sub(v.down_k)>=ADD_HOLD_MS) {
         open_add_pad(v,a,nb,nav);return PvResult::None;
     }
-    if v.unified && !v.picking && hit.id==PG_OPEN && in_sample_ms(ev).wrapping_sub(v.down_k)>=600 {
+    if v.unified && !v.picking && hit.id==PG_OPEN && in_sample_ms(ev).wrapping_sub(v.down_k)>=CARD_HOLD_MS {
         v.context=Some(hit.arg);v.last_tap=None;redraw(v,a,nb,nav,RefreshMode::Ui);return PvResult::None;
     }
     match hit.id {
@@ -1551,8 +1566,11 @@ fn drag_under(v: &mut PagesView, a: &mut App, nb: &NotebookInfo) {
     drag_paint(v, a, nb);
 }
 
-// A hold on a tile (its card up, or held 600 ms and the card not drawn yet) moved past the slop: the tile
-// is picked up, the ticked pages with it when it is one of them. The card goes in the same refresh.
+// A hold on a tile moved past the slop: the tile is picked up, the ticked pages with it when it is one of
+// them. Held DRAG_HOLD_MS by the contact's own clock (in_sample_ms), the card not up: no card is ever drawn,
+// and the bar alone is refreshed, fast. Held still to CARD_HOLD_MS, its card up: the card goes in the same
+// refresh as the bar comes. Asked once a contact, as it first passes the slop (pagesview_pointer): a move
+// before DRAG_HOLD_MS stays what it was (a flick, or nothing).
 fn drag_begin(v: &mut PagesView, a: &mut App, nb: &NotebookInfo, nav: &Nav, ev: &InEvent) {
     if !v.open || !v.unified || v.picking || v.index_tab || v.overlay || v.kb.open || touch_cancelled(ev) {
         return;
@@ -1560,7 +1578,7 @@ fn drag_begin(v: &mut PagesView, a: &mut App, nb: &NotebookInfo, nav: &Nav, ev: 
     let page = match v.context {
         Some(p) if v.held => p,
         Some(_) => return, // (a card left up: this contact is on it)
-        None if in_sample_ms(ev).wrapping_sub(v.down_k) >= 600 => {
+        None if in_sample_ms(ev).wrapping_sub(v.down_k) >= DRAG_HOLD_MS => {
             match hits_find(&v.hits, v.press.x0, v.press.y0).filter(|h| h.id == PG_OPEN) {
                 Some(h) => h.arg,
                 None => return,
@@ -1823,8 +1841,9 @@ pub fn pagesview_tick(v: &mut PagesView, a: &mut App, nb:&NotebookInfo, nav:&Nav
         && hits_find(&v.hits,v.press.x0,v.press.y0).is_some_and(|h|h.id==PG_NEW) {
         open_add_pad(v,a,nb,nav);
     }
-    if v.open && v.unified && !v.picking && !v.kb.open && v.context.is_none() && v.press.down && !v.press.moved
-        && now.wrapping_sub(v.press.t0)>=600 {
+    // (never while a drag starts or runs: a contact past the slop is moved, and a drag holds no card)
+    if v.open && v.unified && !v.picking && !v.kb.open && v.context.is_none() && v.drag.is_none() && v.press.down && !v.press.moved
+        && now.wrapping_sub(v.press.t0)>=CARD_HOLD_MS {
         if let Some(hit)=hits_find(&v.hits,v.press.x0,v.press.y0).copied().filter(|h|h.id==PG_OPEN) {
             v.context=Some(hit.arg);v.held=true;v.last_tap=None;redraw(v,a,nb,nav,RefreshMode::Ui);
         }
