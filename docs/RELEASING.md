@@ -72,12 +72,26 @@ them.
    - `README.md`: the banner, `Pre-release VERSION.` (a stable release has no banner).
    - `docs/TESTING.md`: a `## VERSION` section, with what the owner checked on a Kindle and what
      still needs a device. Claim only what the owner reported.
+   - `docs/WHATSNEW.md`, this version's What's new: every release has one, at least a basic one (the
+     owner's rule of 2026-11-05: "every update with changes by default has at least a basic what's
+     new"), since the first start after an update opens it by itself. Its title is
+     `# What's new (since PREVIOUS VERSION)` (the release before, as `2.0.0-beta.1`), then the
+     user-visible changes in short bullets from the CHANGELOG, then the owner's closing and the
+     `{signature}` line as the last notes had them. The app compiles the file in, so it is part of the
+     build the owner tests. For a release the owner vets the note and makes his changes to it: send
+     it to him before the tag, and gate again after his changes.
    - `po/grimoire.pot` carries the version in its header: `make l10n` (needs GNU gettext) rewrites
      it, and the .po and .mo files with it. A stale header does no harm.
 
    Then `tools/release-preflight.sh` checks the version, the changelog's dated heading, the
-   placeholders, the README banner, the TESTING section and a clean tree. The workflow runs it again
-   on the release's tag, first thing.
+   placeholders, the README banner, the TESTING section, that `docs/WHATSNEW.md` changed since the
+   release before (the newest `vVERSION` tag among the commit's ancestors, other than its own tag) and
+   a clean tree. The workflow runs it again on the release's tag, first thing; its checkout holds the
+   tag's commit alone, so the step fetches the history and the `v*` tags first (a failed fetch fails
+   the step). Where neither can tell the release before (a shallow clone, a clone without tags), the
+   preflight says `docs/WHATSNEW.md not checked: could not tell the previous release` with the reason,
+   and does not fail for that: fetch them as it says (`git fetch --unshallow --tags`, or
+   `git fetch --tags`) and run it again.
 
 5. **The gate on the bump commit.** The version is in the binary, so the gate runs after the bump,
    with the pinned toolchain and no skipped part:
