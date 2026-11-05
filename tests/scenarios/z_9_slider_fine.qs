@@ -1,9 +1,10 @@
 # settings: status_mode=1
 # Holding and moving away gives exact, continuous adjustments, without an up-event jump.
 # env: GRIMOIRE_CHECK_FIT=1
+# rust-only (it opens Pen feel by its Settings row's name: the rows moved in 2.0.0-beta.2)
 wait 100
 tap 1535 95
-tap 930 446
+tap library pen-feel
 expect screen is penset
 touch down 830 1172
 expect penset.param.size_min_mm is 0.2800

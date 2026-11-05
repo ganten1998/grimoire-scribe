@@ -115,10 +115,12 @@ const fn eviocgabs_req(abs: u16) -> u32 {
     ioc(IOC_READ, 0x40 + abs as u32, size_of::<InputAbsinfo>())
 }
 const EVIOCGRAB: u32 = ioc(IOC_WRITE, 0x90, size_of::<c_int>());
+const EVIOCGID: u32 = ioc(IOC_READ, 0x02, size_of::<[u16; 4]>());
 const EVIOCSCLOCKID: u32 = ioc(IOC_WRITE, 0xa0, size_of::<c_int>());
 
 // The kernel's own numbers for them, and its structs' sizes (16 bytes an event on the Kindle).
 const _: () = assert!(EVIOCGRAB == 0x4004_4590 && EVIOCSCLOCKID == 0x4004_45a0, "evdev ioctls");
+const _: () = assert!(EVIOCGID == 0x8008_4502, "EVIOCGID");
 const _: () = assert!(eviocgabs_req(ABS_X) == 0x8018_4540, "EVIOCGABS");
 const _: () = assert!(size_of::<InputAbsinfo>() == 24, "struct input_absinfo");
 const _: () = assert!(size_of::<InputEvent>() == 2 * size_of::<c_ulong>() + 8, "struct input_event");
@@ -182,6 +184,18 @@ fn evioc_read(fd: i32, nr: u32, buf: &mut [u8]) -> i32 {
 /// EVIOCGNAME(buf.len())
 fn eviocgname(fd: i32, buf: &mut [u8]) -> i32 {
     evioc_read(fd, 0x06, buf)
+}
+/// EVIOCGID: the device's struct input_id (bustype, vendor, product, version), or None.
+fn eviocgid(fd: i32) -> Option<[u16; 4]> {
+    let mut id = [0u16; 4];
+    // SAFETY: EVIOCGID writes one struct input_id, four u16s (its size is in the request), into id;
+    // a bad fd only makes it fail.
+    let r = unsafe { libc::ioctl(fd, EVIOCGID as _, id.as_mut_ptr()) };
+    if r < 0 {
+        None
+    } else {
+        Some(id)
+    }
 }
 /// EVIOCGKEY(buf.len())
 fn eviocgkey(fd: i32, buf: &mut [u8]) -> i32 {
@@ -471,8 +485,13 @@ const KEY_DEVS: usize = 4;
 struct KeyDev {
     fd: i32,
     path: FixedStr<300>,
-    /// name: hidkeys_name's, for IN_HID_* and input_hids
+    /// name: hidkeys_name's, for IN_HID_*, IN_KEY and input_hids
     name: FixedStr<41>,
+    /// EVIOCGID's vendor and product (0 when it does not answer): with the name, the device's shortcuts
+    /// profile (shortcut_profiles.rs). Its EVIOCGUNIQ (a Bluetooth address) is not read: nothing has shown
+    /// the Kindle's helper reporting one, let alone the same one at every connection.
+    vendor: u16,
+    product: u16,
     kind: HidKind,
     /// another app held it exclusively when it came
     held: bool,
@@ -1901,15 +1920,20 @@ impl State {
         (p, t)
     }
 
-    fn key_push(&mut self, p: &HidPress) {
-        let e = InEvent {
+    // A press or release of the device in slot i, which the event names (its shortcuts profile).
+    fn key_push(&mut self, i: usize, p: &HidPress) {
+        let k = &self.keys[i];
+        let mut e = InEvent {
             type_: if p.up { InType::KeyUp } else { InType::Key },
             value: p.code,
             key_mods: p.mods as u32,
             gamepad: p.gamepad,
             t_ms: now_ms(),
+            hid_vendor: k.vendor,
+            hid_product: k.product,
             ..Default::default()
         };
+        e.hid_name = k.name;
         self.q_push(e);
     }
     // A resync's releases: what was held before and is not now (a hold ends with them, app.c).
@@ -1918,7 +1942,7 @@ impl State {
         let k = &mut self.keys[i];
         let n = hidkeys_resync(&mut k.keys, k.kind, held, hat_x, hat_y, &mut ups);
         for u in &ups[..n as usize] {
-            self.key_push(u);
+            self.key_push(i, u);
         }
         self.mods_sync();
     }
@@ -1987,7 +2011,8 @@ impl State {
     }
     fn key_announce(&mut self, i: usize, type_: InType) {
         let k = &self.keys[i];
-        let mut e = InEvent { type_, gamepad: k.kind == HidKind::Gamepad, value: k.held as i32, t_ms: now_ms(), ..Default::default() };
+        let mut e = InEvent { type_, gamepad: k.kind == HidKind::Gamepad, value: k.held as i32, t_ms: now_ms(),
+            hid_vendor: k.vendor, hid_product: k.product, ..Default::default() };
         e.hid_name.set_bytes(k.name.as_bytes());
         self.q_push(e);
     }
@@ -2110,6 +2135,10 @@ impl State {
                 let mut shown = String::new();
                 hidkeys_name(&mut shown, FixedStr::<41>::CAP, &name);
                 self.keys[slot].name.set(&shown);
+                if let Some(id) = eviocgid(fd) {
+                    self.keys[slot].vendor = id[1];
+                    self.keys[slot].product = id[2];
+                }
                 if kind == HidKind::Gamepad {
                     self.key_triggers(slot, &keys, &axes);
                 }
@@ -2184,7 +2213,8 @@ impl State {
             if k.fd < 0 {
                 continue;
             }
-            out[n] = InputHid { gamepad: k.kind == HidKind::Gamepad, held: k.held, switch_layout: k.switch_layout, ..Default::default() };
+            out[n] = InputHid { gamepad: k.kind == HidKind::Gamepad, held: k.held, switch_layout: k.switch_layout,
+                vendor: k.vendor, product: k.product, ..Default::default() };
             out[n].name.set_bytes(k.name.as_bytes());
             n += 1;
         }
@@ -2233,7 +2263,7 @@ impl State {
             );
         }
         for p in &out[..n as usize] {
-            self.key_push(p);
+            self.key_push(i, p);
         }
         if ev.type_ == EV_KEY {
             self.mods_sync();

@@ -1,9 +1,10 @@
 # settings: status_mode=1
 # The maintainer's handwriting stays centered and erasable as its original 32 strokes.
 # env: GRIMOIRE_CHECK_FIT=1
+# rust-only (it opens Pen feel by its Settings row's name: the rows moved in 2.0.0-beta.2)
 wait 100
 tap 1535 95
-tap 930 446
+tap library pen-feel
 tap 1723 289
 expect settings.eraser_mode is 0
 expect penset.pad_strokes is 32

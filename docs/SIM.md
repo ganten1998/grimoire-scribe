@@ -83,7 +83,8 @@ GRIMOIRE_ROOT=/tmp/q GRIMOIRE_SCRIPT=tests/scenarios/a_notebook.qs GRIMOIRE_SHOT
 | `key CODE MODS [PAD]` | a key press (Linux evdev code, KEYMOD_* bits), a controller's when PAD is 1. A modifier (29, 97 Ctrl; 42, 54 Shift; 56, 100 Alt; 125, 126 Meta) is held instead, no event of its own, as input_evdev.rs reads a keyboard: every key, pen and touch event carries it until its `keyup`; `hidkeys_mods_held` follows it too (z_lasso_16_exact_shift_key) |
 | `keyup CODE MODS [PAD]` | its release, as input_evdev.c reports one (a key or button let go, or no longer held after a resync); a modifier's lets it go |
 | `axis CODE VALUE` | an axis of a controller as Linux's generic driver reports an Xbox One S's (X, Y, RX and RY 0 to 65535, its triggers ABS_Z 2 and ABS_RZ 5 0 to 1023), decided and decoded as input_evdev.c does: a trigger pulled past half its travel is a press of LT (or RT), let back to a quarter or under its release, once each way; the sticks do nothing |
-| `hid attach pad\|key\|held NAME`, `hid detach NAME` | a controller (held: one another app holds), or a keyboard or page turner, connects or goes, as input_evdev.c reports it; announced while shortcuts are on. A controller has sixteen buttons from BTN_A, as Linux's generic driver gives one, so one named `Pro Controller` is a Switch-mode one (the Buttons sheet names its buttons B, A, ZL...) |
+| `hid attach pad\|key\|held[:VVVV:PPPP] NAME`, `hid detach NAME` | a controller (held: one another app holds), or a keyboard or page turner, connects or goes, as input_evdev.c reports it; announced while shortcuts are on. `:VVVV:PPPP` gives its vendor and product numbers in hex (EVIOCGID's, `pad:2dc8:6006`; 0 and 0 without), which with its name make its shortcuts profile's slug (docs/SHORTCUTS.md, Device profiles). A controller has sixteen buttons from BTN_A, as Linux's generic driver gives one, so one named `Pro Controller` is a Switch-mode one (the Buttons sheet names its buttons B, A, ZL...) |
+| `hid keys NAME`, `hid keys` | the `key`, `keyup` and `axis` lines from here on come from that attached device (its name and numbers ride on each event, so its own shortcuts apply while they are on), until `hid keys` alone or its detach; before any, they come from the script's own keyboard, no device, which uses the default shortcuts (2.0.0-beta.2). NAME not attached fails the line |
 | `pentap X Y`, `tap X Y` | pen tap / finger tap |
 | `pentap panel NAME`, `tap panel NAME` | the same at the centre of the editor panel's button NAME (the panel's names, below), where the panel draws it now. A stroke queued ahead of the line is handled first (the line ends the batch before it looks), and a stale panel is settled as a human tap settles it. NAME not a button now, or no notebook open, fails the line like a failed check: `expect failed (line N): no panel button NAME` (exit 3). Ends the batch, like `tap` |
 | `touch down/move/up X Y` | raw finger events. A `touch move` or `touch up` is stamped with the script's own clock: its contact's `touch down` time plus the `wait`s read since (never later than now; a `waitbg` or `hold` reads the real clock again), as the Kindle's kernel stamps a sample when the finger moved, not when the app got to it. So `touch down`, `wait 700`, `touch up` is a 700 ms press however long the machine took besides |
@@ -253,13 +254,13 @@ the provisional `TG_TUNE`. The scenario harness clears both hooks between runs. 
 shapes and `tests/fixtures/touch/synthetic.txt` are regression inputs, not owner evidence.
 The trace contains no pen coordinates: replay cannot measure hover-distance acceptance.
 
-The Settings bottom row is KOReader | Controller | Gestures | Updates | Done, in either
-orientation. These interior tap points were checked with `library.ui_at` in English and
-Spanish, Gothic and Classic, on the 1860 x 2480 panel (2480 x 1860 sideways):
+The Settings bottom row is KOReader | Pair | Gestures | Updates | Done, in either
+orientation (Pair in Controller's place since 2.0.0-beta.2). These interior tap points were checked with
+`library.ui_at` in English and Spanish, Gothic and Classic, on the 1860 x 2480 panel (2480 x 1860 sideways):
 
 | Target | Upright | Sideways |
 |---|---|---|
-| Controller | 580, 1930 | 863, 1695 |
+| Pair | 580, 1930 | 863, 1695 |
 | Gestures | 890, 1930 | 1170, 1695 |
 | Updates | 1200, 1930 | 1470, 1695 |
 | Settings Done | 1550, 1930 | 1820, 1695 |
@@ -270,7 +271,7 @@ Spanish, Gothic and Classic, on the 1860 x 2480 panel (2480 x 1860 sideways):
 The three sample slots have interior centres at x = 630 / 930 / 1230, y = 1110 upright,
 and x = 940 / 1240 / 1540, y = 800 sideways. They display samples and have no hit action.
 Use `library.ui_at.X.Y` to check a candidate hit before depending on it. Its
-values include `controller`, `gestures`, `updates`, `done`, `gestures.master`,
+values include `pair-menu` (Settings' Pair), `gestures`, `updates`, `done`, `gestures.master`,
 `gestures.group.NAME`, `gestures.row.N`, `gestures.reset`, `gestures.reset.confirm`,
 `gestures.reset.cancel`, `record.use`, `record.retry` and `record.cancel`. This is a hit-test
 probe, not a coordinate locator; existing unrelated coordinates above remain as documented.
@@ -453,12 +454,15 @@ shows what the app holds.
 | `editor.hold_eraser` | `1` while a controller's Erase while held is down (from its press to its release), else `0` |
 | `editor.music` | the Custom music layout on the Custom music sheet while it is open, else the page's if its paper is custom, else empty: the systems per page, a colon, then the parts top to bottom (`treble`, `bass`, `alto`, `tenor`, `drums`, `plain`, `tab4` to `tab7`, `lyrics`), e.g. `4: treble tab6 bass` |
 | `editor.music_max` | while the editor's Custom music sheet is open, the most systems its layout fits on the page it is for (that page's height), else empty |
-| `library.sheet` | what is open over the cards: `none`, `new` (New notebook), `settings`, `more` (a notebook's menu), `folder-more` (a folder's menu), `move` (Move to), `delete`, `keyboard`, `display`, `music`, `koreader`, `language` (Settings > Language's list), `shortcuts` (Settings > Controller), `buttons` (its Buttons sheet), `pair` (its Pair sheet), `updates`, `gestures`, `about` (What's new, Rust only) or `exit` (Exit Grimoire?, Esc at the top level: 2.0.0-beta.2) |
+| `library.sheet` | what is open over the cards: `none`, `new` (New notebook), `settings`, `more` (a notebook's menu), `folder-more` (a folder's menu), `move` (Move to), `delete`, `keyboard`, `display`, `music`, `koreader`, `language` (Settings > Language's list), `shortcuts` (Settings > Shortcuts), `buttons` (its Buttons sheet), `pair-menu` (Settings > Pair, 2.0.0-beta.2), `pair` (its Pair a controller... sheet), `updates`, `gestures`, `about` (What's new, Rust only) or `exit` (Exit Grimoire?, Esc at the top level: 2.0.0-beta.2) |
 | `library.exit` | Exit Grimoire?'s highlighted answer, `yes` or `no`; empty while it is not up |
 | `library.learning` | the action the Buttons sheet waits for a press for (`undo`, `next-page`), else empty |
 | `library.buttons.ACTION` | the Buttons sheet's buttons for ACTION (`library.buttons.undo`): as the files name them (`South, Up`), or as printed while the first controller connected is a Switch-mode one (`B, Up`); `none` for none |
+| `library.buttons.dev` | the device whose own buttons the Buttons sheet shows and learns into, by its profile's slug (`pro-2-2dc8-6006`), fixed as it opens; empty for the default (controller.ini): a device with no own shortcuts on, a keyboard connected now, or none (2.0.0-beta.2) |
 | `library.buttons_group` | the Buttons sheet's group open: `editing`, `tools`, `pages`, `index` (the Index's actions, Rust only) `menus`, `screen` or `system`; empty on its list (or with no Buttons sheet) |
-| `library.pair` | the Pair sheet: `scanning`, `pairing` or `idle`, then how many controllers it found and how many are paired (`idle 2 1`) |
+| `library.pair` | the Pair a controller sheet: `scanning`, `pairing` or `idle`, then how many controllers it found and how many are paired (`idle 2 1`) |
+| `library.shortcuts.device` | the Shortcuts sheet's device, by its profile's slug (`pro-2-2dc8-6006`): the one chosen while it is listed, else the first (a connected one before a saved one); empty with none (2.0.0-beta.2) |
+| `library.shortcuts.own` | that device's own shortcuts: `on`, `off` (its file kept, the default used) or `none` (no file) |
 | `library.bluetooth` | the Bluetooth helper as Grimoire sees it: `stopped`, `starting`, `owned` (Grimoire's), `external` (someone else's, or the test's stand-in), `failed` or `stopping` |
 | `gestures.ACTION` | binding for ACTION: touch key (`touch.1.right`, `touch.2.down`), `shape` for a known/carried newer shape, or pen key (`pen.Button.double`); built-ins in FORMAT.md; empty for none. |
 | `pen.gesture` | last editor-recognized button gesture: `Button.tap`, `Button.double`, `Button.triple`, `Button.hold`, `Button.drag` (or `Button2.*`); empty before any recognition |
@@ -471,7 +475,7 @@ shows what the app holds.
 | `library.gestures.learning` | action being recorded, or `0` |
 | `library.record` | `0`, `wait`, `pattern touch.N.KIND`, `shape K` (sample count), `checking` or `ready` |
 | `library.record.line` | record card's progress/refusal line, empty without a card |
-| `library.ui_at.X.Y` | semantic name of the Library hit at screen pixel X,Y, empty for none; see recording workflow. The top bar has five buttons (`exit`, `settings`, `share`, `new-folder`, `new`; beta.2's Graph button was taken out again, the owner's ruling of 2026-11-03). A notebook's menu has `more.open`, `more.rename`, `more.move`, `more.pdf`, `more.graph` (Leave out of the Graph, or Show in the Graph) and `more.delete`; a folder's `fmore.rename`, `fmore.move`, `fmore.graph` and `fmore.remove` (Cancel is `done` in both); Move to `move.top`, `move.to.PATH` (a folder by its path, `move.to.School/Math`), `move.new`, `move.prev` and `move.next` |
+| `library.ui_at.X.Y` | semantic name of the Library hit at screen pixel X,Y, empty for none; see recording workflow. The top bar has five buttons (`exit`, `settings`, `share`, `new-folder`, `new`; beta.2's Graph button was taken out again, the owner's ruling of 2026-11-03). A notebook's menu has `more.open`, `more.rename`, `more.move`, `more.pdf`, `more.graph` (Leave out of the Graph, or Show in the Graph) and `more.delete`; a folder's `fmore.rename`, `fmore.move`, `fmore.graph` and `fmore.remove` (Cancel is `done` in both); Move to `move.top`, `move.to.PATH` (a folder by its path, `move.to.School/Math`), `move.new`, `move.prev` and `move.next`. Settings' top rows are `display`, `pen-feel`, `shortcuts` and `calibrate` (in that order since 2.0.0-beta.2: tap them by name, never by place), its bottom row `ko`, `pair-menu`, `gestures`, `updates` and `done`; the Shortcuts sheet has `shortcuts.enable`, `shortcuts.device`, `shortcuts.own`, `buttons`, `shortcuts.reload` and `done`, the Pair sheet `bluetooth`, `pair` and `done` (a greyed-out row has no name) |
 | `library.map`, `library.map.KEY` | the Graph opened from the Library (2.0.0-beta.2: two fingers down over it, or the `index-map` key): `graph` while it shows, else `0`, and every `editor.map.KEY` (below) of it. `library.map.no_notebook` is `1` for it (no notebook open), `library.map.tabs` the tabs drawn (`graph` alone here; `graph list pages` for the editor's). `library.map.picker` is `1` while its notebooks' browser (past the caps) is up, `library.map.keep` `1` while a notebook it opened is in front (Back there comes back to it). `tap library map.NAME` taps its controls (`map.back`, `map.open`, `map.view`), `tap library elsewhere.NAME` its browser's (`elsewhere.folder.PATH`, `elsewhere.book.ID`, `elsewhere.back`), and `tap map-node ID:PID` its nodes |
 | `library.graph.omitted` | the Library's notebooks the Graph of all notebooks leaves out (by their own Leave out of the Graph or a folder's), by id, sorted, space-separated (2.0.0-beta.2) |
 | `library.about.page`, `library.about.pages`, `library.about.full` | What's new while it is open (else `0`): the page shown (from 1) and the pages the notes take on the sheet, and `1` once Read all shows the whole notes (the card: `0`). Its hits: `about` (the bat and the name beside it, at the top level; in a folder `back` is where the bat is), `about.close`, `about.hide`, `about.more` (Read all), `about.prev`, `about.next` |
@@ -483,7 +487,8 @@ shows what the app holds.
 | `fshape.state` | `idle`, `pending`, `drawing`, `dead` |
 | `fshape.trail` | current trail rectangle `x y w h`, empty for none |
 | `fshape.armed` | `1` when page capture may arm, otherwise `0` |
-| `pads.ACTION` | the controller buttons that do ACTION (`pads.undo`, `pads.tool:eraser`), as the files name them, comma separated; empty for none |
+| `pads.ACTION` | the controller buttons that do ACTION (`pads.undo`, `pads.tool:eraser`) in the default shortcuts (shortcuts.ini and controller.ini; a device's own are `library.buttons.ACTION` while the Buttons sheet is about it, `library.buttons.dev`), as the files name them, comma separated; empty for none |
+| `shortcuts.profiles` | the device profiles in root/shortcuts as their files are now, by slug, each `:on` or `:off` (`pro-2-2dc8-6006:on`); empty for none (2.0.0-beta.2) |
 | `settings.controller` | `1` when the Bluetooth helper starts with Grimoire |
 | `settings.updates` | Settings > Updates' channel: `0` by the version, `1` releases only, `2` betas too |
 | `settings.status_on`, `settings.status_size`, `settings.status_corner` | the clock and battery corner as settings.ini stores it: `1` while it is on, its size, 0 small, 1 medium, 2 large, and its corner, 0 top left, 1 top right, 2 bottom right, 3 bottom left |

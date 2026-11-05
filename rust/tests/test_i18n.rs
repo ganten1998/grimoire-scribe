@@ -929,7 +929,7 @@ fn gestures_and_record_card_strings_fit() {
         i18n_set(language);
         for theme in THEMES {
             ui_set_theme(theme);
-            for source in ["Controller", "Gestures", "Updates"] {
+            for source in ["Pair", "Gestures", "Updates"] {
                 let label = tr(source);
                 let width = font_measure(FontFace::Caps, 34.0, label);
                 if width > 248 {

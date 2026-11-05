@@ -89,7 +89,7 @@ tap 1535 95
 wait 200
 shot 08-settings
 expect library.sheet is settings
-tap 930 446
+tap library pen-feel
 wait 400
 shot 09-penfeel-ballpoint
 expect screen is penset
@@ -113,7 +113,7 @@ expect library.sheet is none
 tap 1535 95
 wait 200
 expect library.sheet is settings
-tap 930 610
+tap library calibrate
 wait 300
 shot 11-calib-first
 expect screen is calib

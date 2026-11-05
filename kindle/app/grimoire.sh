@@ -282,7 +282,7 @@ restore() {
     lipc-set-prop com.lab126.powerd preventScreenSaver "$PREVENT_BEFORE" 2>/dev/null
     # Grimoire's power-service watcher, should a crash have left it behind.
     pkill -f "lipc-wait-event .*com.lab126.powerd goingToScreenSaver,outOfScreenSaver" 2>/dev/null
-    # The Bluetooth helper, if Grimoire started it (Settings > Controller): stopped, and the Kindle's
+    # The Bluetooth helper, if Grimoire started it (Settings > Pair): stopped, and the Kindle's
     # own Bluetooth jobs started again as they were. One that someone else started is left running.
     if [ -f "$DIR/bluetooth.sh" ]; then
         GRIMOIRE_ROOT="$ROOT" sh "$DIR/bluetooth.sh" stop-owned >/dev/null 2>>"$LOG"

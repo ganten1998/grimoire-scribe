@@ -7,9 +7,9 @@
 wait 150
 tap 1535 95
 wait 100
-tap library controller
+tap library shortcuts
 wait 100
-tap 930 1215
+tap library buttons
 wait 100
 tap library buttons.group.pages
 wait 100
@@ -62,7 +62,7 @@ expect library.buttons_group is
 tap library done
 wait 100
 expect library.sheet is shortcuts
-tap 1240 1488
+tap library done
 wait 100
 expect library.sheet is none
 rotate 0

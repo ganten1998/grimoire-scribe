@@ -1424,8 +1424,8 @@ new paths and collisions before writing, retaining original metadata for rollbac
 
 ## Settings > Gestures and page finger shapes (Index phase 3)
 
-The Settings bottom row has five equal cells: KOReader, Controller, Gestures, Updates, Done.
-Controller, Gestures and Updates words have a 248 px budget at 34 px caps on the upright panel,
+The Settings bottom row has five equal cells: KOReader, Pair (Controller until 2.0.0-beta.2), Gestures,
+Updates, Done. Pair, Gestures and Updates words have a 248 px budget at 34 px caps on the upright panel,
 in English and Spanish, in both themes. Coordinates remain pending main-scenario verification.
 Buttons and Gestures share the seven registry groups and row descriptors from `actions.rs`.
 Source masks expose every action to PEN. Hold eraser is pen-only in Gestures (hold/drag slots),

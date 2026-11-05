@@ -106,7 +106,7 @@ expect editor.settings.sheet is gestures
 expect editor.screen_composed is 1
 tap library done
 expect editor.settings.sheet is settings
-tap library controller
+tap library shortcuts
 expect editor.settings.sheet is shortcuts
 tap library done
 expect editor.settings.sheet is settings

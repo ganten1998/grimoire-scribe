@@ -9,7 +9,7 @@ expect settings.landscape_fit is 0
 expect screen is library
 tap 1535 95
 wait 200
-tap 930 780
+tap library display
 wait 200
 expect library.sheet is display
 tap 930 1032
@@ -39,7 +39,7 @@ rotate 0
 wait 800
 tap 1535 95
 wait 200
-tap 930 780
+tap library display
 wait 200
 tap 930 1032
 wait 300

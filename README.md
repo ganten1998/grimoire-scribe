@@ -479,12 +479,14 @@ Betas get betas and releases; a tap there switches to releases only. It needs KP
 
 ## Keyboard and controller shortcuts
 
-In **Library > Settings > Controller**, enable shortcuts: a keyboard or a controller then switches
+In **Library > Settings > Shortcuts**, enable shortcuts: a keyboard or a controller then switches
 tools, undoes and redoes, toggles white ink and turns pages in a notebook. **Buttons...** learns
-which controller button does what (tap a row, press the button). For a Bluetooth controller, unpack
-the kindle-hid-passthrough helper into `grimoire/bluetooth` (only its files, never its installer),
-turn on **Bluetooth controller** and **Pair a controller...**; Grimoire runs the helper only while
-it runs. `grimoire/shortcuts.ini` holds the keyboard's mappings. Shortcuts start disabled. A
+which controller button does what (tap a row, press the button), and **Own shortcuts for this device**
+gives a keyboard or controller shortcuts of its own, saved in `grimoire/shortcuts/` and used whenever it
+is connected (2.0.0-beta.2). For a Bluetooth controller, unpack the kindle-hid-passthrough helper into
+`grimoire/bluetooth` (only its files, never its installer), then in **Settings > Pair** turn on
+**Bluetooth controller** and **Pair a controller...**; Grimoire runs the helper only while it runs.
+`grimoire/shortcuts.ini` holds the default mappings. Shortcuts start disabled. A
 keyboard paired with the Kindle has one scheme (2.0.0-beta.2): in the Library Ctrl+N a notebook, Ctrl+F
 a folder, S Share, O Settings, Esc "Exit Grimoire?"; on a page 1 to 0 the tools, Ctrl+L a link, R the
 page's name, Space what two fingers up do, - and + zoom, Ctrl+S saves, Esc closes what is in front or

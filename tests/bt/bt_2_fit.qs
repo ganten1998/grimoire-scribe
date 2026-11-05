@@ -6,10 +6,11 @@
 wait 2000
 tap 1535 95
 wait 200
-tap library controller
+tap library pair-menu
 wait 200
-expect library.sheet is shortcuts
-tap 930 895
+expect library.sheet is pair-menu
+shot 00-pair-menu
+tap library pair
 wait 300
 expect library.sheet is pair
 shot 01-searching

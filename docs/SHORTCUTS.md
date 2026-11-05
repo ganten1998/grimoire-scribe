@@ -5,12 +5,77 @@ tools, undo and redo, the eraser and white ink, links and page names, in the not
 opens and closes the editor's menus, but does not move around inside them (but for next and
 previous in the tool picker, below): tap there.
 
-Enable **Library > Settings > Controller > Enable shortcuts**. This writes starter mappings to
+Enable **Library > Settings > Shortcuts > Enable shortcuts**. This writes starter mappings to
 `/mnt/us/grimoire/shortcuts.ini` only if that file does not exist. Edit it over USB/SSH and choose
 **Reload shortcuts.ini**; that row says how many mappings loaded and how many lines were refused.
-The sheet shows the controller or keyboard Grimoire reads now (its own name), or that another app
-holds it (see below), and the last key or controller button code. Disable shortcuts to close the
-optional input devices again.
+The sheet lists the keyboards and controllers (below, Device profiles), and shows the last key or
+controller button code. Disable shortcuts to close the optional input devices again.
+
+Settings had one Controller sheet for all of this until 2.0.0-beta.2; the owner's ruling of 2026-11-04
+split it in two: "\"Controller\" no longer fully describes the contents of that menu. I would like to see
+shortcuts as its own menu in the settings with per device profiles that are saved. \"Shortcuts\" is better
+now. You can move the pair options to a button occupying the previous spot called \"Pair\"." So Settings'
+top rows are **Display**, **Pen sensitivity**, **Shortcuts** and **Calibrate pen and touch**, in that order,
+and the bottom row's **Pair** (where Controller was) opens the Bluetooth part: Bluetooth controller, Pair a
+controller... and a line naming what is connected (or that another app holds it, below).
+
+- **Settings > Shortcuts**: Enable shortcuts; **Device** (the keyboard or controller the next two rows are
+  about; a tap goes to the next one listed); **Own shortcuts for this device**; **Buttons...**; **Reload
+  shortcuts.ini** (the default's count); the last input; Done.
+- **Settings > Pair**: **Bluetooth controller** (the helper on or off); **Pair a controller...**; the status
+  line; Done. With shortcuts off its rows are greyed and the line says to turn them on in Settings >
+  Shortcuts, as the helper serves shortcuts alone.
+
+## Device profiles (2.0.0-beta.2)
+
+Each keyboard or controller, USB or Bluetooth, can have shortcuts of its own, saved and used again whenever
+it is connected. One that has none uses the default: `shortcuts.ini` and `controller.ini`, as every device
+did before. Nobody who never turns a device's own shortcuts on sees any change, and this never writes
+`shortcuts.ini` or `controller.ini` (they are only read, for the copy below); the starter map upgrade above
+applies to `shortcuts.ini` alone.
+
+**Which device.** Grimoire knows a device by its name (as the Shortcuts sheet shows it: printable ASCII, at
+most 40 bytes) and its vendor and product numbers (Linux's EVIOCGID). Its Bluetooth address is not used:
+nothing has shown the Kindle's Bluetooth helper reporting one (Linux's EVIOCGUNIQ), let alone the same one at
+every connection, and a key that changed would lose a profile. So two controllers of the same model and name
+share one profile, and a controller in another mode (8BitDo's Switch and Xbox modes report other names and
+numbers) is another device.
+
+**The sheet.** The Device row lists the devices connected now, then those with a profile saved that are not
+connected ("8BitDo Pro 2, not connected"). For the device shown, **Own shortcuts for this device** turns its
+own shortcuts on: the first time, from a copy of the default, so it does what it did until you change it.
+Turned off, the device uses the default again and its profile is kept, file and learned buttons alike; turned
+on again, it is used as it was. (Off never deletes anything: delete the files over USB to start over.) While
+they are on the row reads **Own shortcuts (N, M refused)**, the profile's count as Reload's is the default's.
+**Buttons...** shows and learns into the device's own buttons while they are on (its title is **Buttons:
+NAME**), else the default's, `controller.ini`, as before. A keyboard connected now leaves it on the default
+even with its own shortcuts on: no controller's button looks in a keyboard's profile. It learns a press only
+from a controller that uses the buttons it shows, so a button learned does what the sheet says on the
+controller pressed; a press from another is not learned, and a toast names it ("8BitDo Pro 2 has buttons of
+its own", or "... uses the default buttons": choose it in the Device row first), while the row still waits.
+**Reload shortcuts.ini** reads the default and every profile again. While shortcuts are off no device is
+read, so the Device row lists none ("Devices are listed while shortcuts are on"); the one chosen is shown
+again when they are turned back on.
+
+**The files**, in `/mnt/us/grimoire/shortcuts/`, named by the device's slug: its name in lower case, every
+run of other characters one `-`, then its vendor and product numbers in hex (`8BitDo Pro 2` with 2dc8:6006
+is `8bitdo-pro-2-2dc8-6006`):
+
+- `<slug>.ini`: its shortcuts, in `shortcuts.ini`'s lines (`key.` and `pad.`, below), under a header naming
+  the device (`# Device: 8BitDo Pro 2`, `# Id: 2dc8:6006`). Grimoire writes it once, when its own shortcuts
+  are first turned on (a copy of `shortcuts.ini`, or of the starter map when there is none), and never
+  again: edit it over USB as `shortcuts.ini`, then Reload. Its lines are read and counted as
+  `shortcuts.ini`'s are (refused lines, the D-pad's starter lines for one that binds no direction, the
+  Graph's keys).
+- `<slug>.controller.ini`: the buttons Buttons... learned for it, with `controller.ini`'s rules: while it
+  is there the profile's `pad.` lines are set aside. The copy starts with `controller.ini`'s when there is
+  one. Reset buttons deletes this file alone.
+- `<slug>.off`: there while its own shortcuts are off. Its presence is what counts.
+
+A key or button uses the profile of the device it came from while that is on, else the default.
+`gestures.ini`, the pen's button and finger shapes are not per device, and neither is Live view's
+`live-keys.ini`. Every write is atomic. Grimoire reads at most 32 profiles (the folder's first, by name).
+Versions before 2.0.0-beta.2 never read the folder: every device uses `shortcuts.ini` there.
 
 ## The keyboard scheme (2.0.0-beta.2)
 
@@ -65,7 +130,8 @@ Older versions refuse the new action names (`save`, `back`, `two-finger-up`, `ne
 
 ## Controller buttons
 
-**Settings > Controller > Buttons...** shows what each button does and learns new ones. Its list
+**Settings > Shortcuts > Buttons...** shows what each button does and learns new ones (the device
+shown's own while they are on, above). Its list
 has seven registry groups: **Editing** (undo, redo, erase and clear), **Tools** (pens and tool
 steps), **Pages** (page movement, zoom, scroll and sideways behavior), **Index** (links, finding
 and naming), **Menus** (surfaces, toolbar and status), **Screen** (light, warmth, rotation and
@@ -304,7 +370,7 @@ With a menu or sheet in front, its own bound gesture closes it, as can its oppos
 actions follow the surface's input rules. With the Links bar up, two fingers down always close
 it, back to the page it began on. Finger shapes can act over the Links bar without becoming ink,
 links or undo entries. Clock-corner taps keep their existing behavior; moving into a shape can
-still arm capture there. Opening Settings > Gestures reloads the map, as does Controller >
+still arm capture there. Opening Settings > Gestures reloads the map, as does Shortcuts >
 Reload shortcuts.ini. Unsupported source/action combinations and malformed lines are refused
 and counted; unknown future lines are carried within the limits in FORMAT.md.
 
@@ -340,7 +406,7 @@ was switched on again, so its disconnect toast came just before the connect one.
 it within tens of milliseconds of the Bluetooth helper (below), and neither can tell sooner: an
 idle controller sends nothing, so it looks the same as one switched off. When another app holds a
 controller exclusively (a button mapper), Grimoire cannot get its presses: the toast and the
-Controller sheet say so. Analog sticks are not read; analog triggers are, as LT and RT (above).
+Pair sheet say so. Analog sticks are not read; analog triggers are, as LT and RT (above).
 
 ## Action registry (through phase 6)
 
@@ -500,7 +566,7 @@ Grimoire can run it for you, only while Grimoire runs:
    install its KPM package: those add a button mapper that starts at every boot and grabs
    controllers away from every app, Grimoire included, and write to the system partition.
    (An existing install in `/mnt/us/kindle_hid_passthrough` is used too, as it is.)
-2. **Settings > Controller > Bluetooth controller** starts it now, and from then on a moment after
+2. **Settings > Pair > Bluetooth controller** starts it now, and from then on a moment after
    Grimoire starts. The Kindle's own Bluetooth jobs stop while it runs.
 3. **Pair a controller...** searches for 15 seconds (put the controller in pairing mode first) and
    lists what it finds; tap one to pair it. A controller paired before reconnects by itself (often
