@@ -14,7 +14,7 @@ one is a cross-group event (see "Interface changes").
 Homebrew's rustc shadows rustup's on the owner's Mac. Put rustup's toolchain first:
 
 ```
-export PATH=~/.rustup/toolchains/stable-aarch64-apple-darwin/bin:$PATH   # rustc 1.97.1
+export PATH="$RUST_BIN:$PATH"   # rustup's 1.97.1, as make runs it (../README.md, Building from source)
 cd rust
 cargo build                                    # host: the library, grimoire-export, mkicon, mklogo
 cargo build --features sim                     # adds grimoire-headless, the scripted runner
@@ -52,9 +52,11 @@ The C tree builds into `build/c` under `c-headless`, `c-test`, `c-tools`, `c-kin
 binaries (`BUILD=build/c`). Never run a GUI binary as a check, and never touch the device from a
 check.
 
-The unit tests read `GRIMOIRE_TEST_TMP` as the C's do (test_store writes to its `../out`): a bare
-`cargo test` without it fails test_store's export checks in both languages. Run them through
-`make test`, or set it to a writable directory whose parent is writable too.
+The unit tests read `GRIMOIRE_TEST_TMP` as the C's do (test_store writes to its `../out`); `make test`
+sets it to `build/test/tmp`. Without it `tl_tmp()` is a `grimoire-test` folder in the system's
+temporary directory (the C's `/tmp` put `../out` at `/out`), and `.cargo/config.toml` sets
+`RUST_TEST_THREADS=1`, so a plain `cargo test` here runs one test at a time and passes, as
+`cargo test --features sim` does.
 
 ## Variants
 

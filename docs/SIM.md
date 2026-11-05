@@ -2,7 +2,9 @@
 
 `make sim && ./build/host/grimoire-sim` opens a window showing the 1860x2480 page scaled to fit,
 with refreshes emulated (DU regions show as pure black/white until a later GL16 settles them).
-Data goes to `./grimoire-data` (or `$GRIMOIRE_ROOT`).
+Data goes to `./grimoire-data` (or `$GRIMOIRE_ROOT`). This window is the C tree's (src/), from before
+the Rust port, which did not carry it over: the checks use the headless runner below, the Rust
+build's, and never open a window.
 
 | input | does |
 |---|---|

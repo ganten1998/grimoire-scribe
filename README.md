@@ -506,15 +506,36 @@ keep your pages). With KOReader, delete `koreader/plugins/grimoire.koplugin` too
 
 ## Building from source
 
-Needs Zig 0.16.0 (the Kindle cross build), `clang`, Python 3.12+, and LuaJIT for patch checks.
-SDL3 is needed for the desktop simulator; gettext updates translations. The release workflow
-records the build/test setup.
+The app is Rust: one crate in `rust/` (`rust/Cargo.toml`; there is no `Cargo.toml` at the top), built
+and checked by the top-level Makefile. Run cargo from inside `rust/`, or use make; `rust/PORTING.md`
+has the cargo commands and the rules for the code.
+
+What it needs (the versions are the release workflow's pins, in `.github/workflows/release.yml`):
+
+- **Rust 1.97.1** through rustup, with the Kindle's target, and the Makefile pointed at it:
+  `rustup toolchain install 1.97.1 --profile minimal --target armv7-unknown-linux-musleabihf`, then
+  `export RUST_BIN="$(dirname "$(rustup which --toolchain 1.97.1 rustc)")"`. Without `RUST_BIN` the
+  Makefile puts rustup's `stable` toolchain for Apple Silicon first on the PATH (it moves with each
+  Rust release, and has no Kindle target unless you add one); on an Intel Mac or on Linux that folder
+  does not exist, so make runs whichever `cargo` is first on your PATH.
+- **Zig 0.16.0** (ziglang.org) and **cargo-zigbuild 0.23.0**
+  (`cargo install cargo-zigbuild --version 0.23.0 --locked`), for the Kindle build. A newer zig
+  passes the checks, but only the pinned one makes the release's bytes.
+- A C compiler (`clang`; gcc on Linux), make, curl and unzip: build.rs compiles the vendored C.
+- **Python 3.12+** (the standard library only), **Node.js 18+** and **LuaJIT**: the checks run them.
+- Optional, each skipped with a message when missing: shellcheck, luacheck, dash and busybox (the
+  launchers and the KOReader plugin), ImageMagick 7's `magick` (the Effects studio's picture check),
+  and GNU gettext's `msgfmt` (the languages' `.mo` comparison; `make l10n` needs it). `make sim`
+  needs SDL3 and pkg-config (on a Mac, `brew install sdl3 pkgconf`).
 
 ```
-make check     # unit tests, scripted UI scenarios with state checks, share server, exporter,
-               # ARM build, the zip with its launchers and KOReader plugin, and every language
-               # on every screen (make l10n-check)
-make sim       # desktop simulator window (docs/SIM.md)
+make check     # everything that can be checked without a Kindle: unit tests, scripted UI scenarios
+               # with state checks, every language on every screen (make l10n-check), the share
+               # server, Live view, Bluetooth, the exporter, the ARM build, the zip with its launchers
+               # and KOReader plugin, two clean builds compared byte for byte, and the KPM package;
+               # ends with CHECK PASSED
+make test      # the unit tests (rust/tests), on the host and in the headless build
+make scenarios # tests/scenarios/*.qs on the headless runner (SCENARIOS=... for some; docs/SIM.md)
 make kindle    # build/kindle/grimoire: static ARMv7 hard-float (musl) binary
 make dist      # complete installable bundle in dist/Grimoire-VERSION-COMMIT/
 make package   # build/dist/Grimoire.zip
@@ -522,7 +543,16 @@ make kpm-package # build/kpm/*.kpkg and preview/stable repository manifests
 make tools     # build/host/grimoire-export (used by tools/grimoire-pull)
 make tablet    # build/host/scribe-tablet: the pen as a Mac tablet for osu! (docs/TABLET.md)
 make l10n      # po/grimoire.pot from the sources, every po/<lang>.po updated and compiled
+make sim       # the C tree's simulator: an SDL3 window, the app before the Rust port (docs/SIM.md)
 ```
+
+On a 15-core Mac, `make -j15 check SCEN_JOBS=8` takes about 7 minutes once the build cache is warm; a
+first build, or a smaller or busier machine, takes longer (`make -j8 check SCEN_JOBS=4` took 13 minutes
+on a busy one). `build/` grows to a few GB, and more over time as cargo keeps older builds in
+`build/cargo`. Two checkouts can run it at the same time on different ports (`GRIMOIRE_TEST_PORT`,
+docs/TESTING.md). The whole of `make check` runs on macOS. On Linux the unit tests and the scenarios
+run (with two known failures, in docs/BACKLOG.md); the rest has not been tried there, and the share
+check needs macOS's `sips`.
 
 Use `make dist` for builds to keep or install. It collects the installer ZIP, optional KOReader
 patch ZIP, KPM package and manifests, checksums, and source revision in `dist/`. Version/commit
