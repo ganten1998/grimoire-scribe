@@ -137,8 +137,9 @@ your notebooks and settings from `quire/` to `grimoire/` and removes the old Qui
   fits it, V switches its view, Ctrl+A selects every page drawn and Enter opens the selected page. List shows
   existing links. Pages has small
   cached previews and controls for adding, copying, selecting and deleting pages. Hold a page for its card
-  (Move to..., Copy to notebook..., Rename, Delete), or hold and drag it to a gap between two pages to move it
-  (a black bar shows the gap it goes into); right after a move, the bottom row's Undo puts the pages back, and
+  (Move to..., Copy to notebook..., Rename, Delete), or hold it a moment (300 ms, before the card would open) and
+  drag it to a gap between two pages to move it (a black bar shows the gap it goes into; no card opens); right
+  after a move, the bottom row's Undo puts the pages back, and
   then its Redo beside it moves them again. Tap **+** (New page) for one blank page at
   once, after the open page (or the last one ticked), on that page's paper: Pages stays open and the new page's tile says
   "(new)" (tap the tile to open it). Hold it (or, with a keyboard attached, tap it with
