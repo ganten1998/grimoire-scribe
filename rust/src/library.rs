@@ -127,7 +127,7 @@ const H_GESTURES_RESET_CONFIRM: i32 = 67;
 const H_GESTURES_RESET_CANCEL: i32 = 68;
 const H_ABOUT: i32 = 71;
 const H_ABOUT_CLOSE: i32 = 72;
-const H_ABOUT_HIDE: i32 = 73;
+// (73 was Don't show this again, gone in 2.0.0: the owner's rule of 2026-11-05)
 const H_ABOUT_PREV: i32 = 74;
 const H_ABOUT_NEXT: i32 = 75;
 const H_ABOUT_MORE: i32 = 76;
@@ -220,11 +220,13 @@ pub struct LibraryState {
     gestures_file_readable: bool,
     gestures_refused: i32,
     gestures_reset_confirm: bool,
-    /// The About sheet: its page, Compact's Read all tapped, and where the bat is (it hangs from it).
+    /// The About sheet: its page, Compact's Read all tapped, and where the bat is (it hangs from it);
+    /// the card's notes as it last drew them (the blocks shown, of how many, the last one cut).
     about_page: i32,
     about_pages: i32,
     about_full: bool,
     about_bat: Rect,
+    about_card: (i32, i32, bool),
     record_action: i32,
     record_next_action: i32,
     record_started: u32,
@@ -3524,13 +3526,14 @@ fn draw_modal(a: &mut App) {
         Modal::New => draw_new(a),
         Modal::Settings => draw_settings(a),
         Modal::About => {
-            let (aw, ah, hide) = (a.w, a.h, a.settings.whatsnew_hide);
+            let (aw, ah) = (a.w, a.h);
             let App { screen: c, lib, .. } = a;
             let s = lib.as_deref_mut().unwrap();
-            let h = crate::about::about_draw(c, aw, ah, s.about_bat, s.about_page, s.about_full, hide);
+            let h = crate::about::about_draw(c, aw, ah, s.about_bat, s.about_page, s.about_full);
             s.about_page = s.about_page.clamp(0, (h.pages - 1).max(0));
             s.about_pages = h.pages;
-            for (r, id) in [(h.close, H_ABOUT_CLOSE), (h.hide, H_ABOUT_HIDE), (h.prev, H_ABOUT_PREV), (h.next, H_ABOUT_NEXT), (h.more, H_ABOUT_MORE)] {
+            s.about_card = (h.card_blocks, h.card_notes, h.card_cut);
+            for (r, id) in [(h.close, H_ABOUT_CLOSE), (h.prev, H_ABOUT_PREV), (h.next, H_ABOUT_NEXT), (h.more, H_ABOUT_MORE)] {
                 if !rect_is_empty(r) {
                     hits_add(&mut s.hits, r, id, 0);
                 }
@@ -4561,11 +4564,6 @@ fn act(a: &mut App, h: &Hit) {
             open_modal(a, Modal::About);
         }
         H_ABOUT_CLOSE => close_modal(a),
-        H_ABOUT_HIDE => {
-            a.settings.whatsnew_hide = !a.settings.whatsnew_hide;
-            settings_save(&a.settings);
-            redraw(a, RefreshMode::Ui);
-        }
         H_ABOUT_PREV | H_ABOUT_NEXT => {
             lib(a).about_page += if h.id == H_ABOUT_NEXT { 1 } else { -1 };
             redraw(a, RefreshMode::Ui);
@@ -5474,8 +5472,9 @@ pub fn library_enter(a: &mut App) {
         s.settings_return_editor = false;
     }
     s.pressed = None;
-    // What's new opens by itself once after an update (Settings.whatsnew_due): over the Library the
-    // first time it shows, this version's notes then recorded as seen.
+    // What's new opens by itself once after every update (Settings.whatsnew_due, the owner's rule of
+    // 2026-11-05): over the Library the first time it shows, this version's notes then recorded as
+    // seen. Dismiss, Back and Esc close it; the bat opens it again.
     if !relayout && a.settings.whatsnew_due {
         a.settings.whatsnew_due = false;
         a.settings.whatsnew_seen.set(GRIMOIRE_VERSION);
@@ -6001,13 +6000,18 @@ pub fn library_probe(a: &mut App, key: &str, out: &mut String, cap: usize) -> i3
             None => csnprintf!(out, cap, "%d", s.modal as i32),
         };
     } else if let Some(k) = key.strip_prefix("about.") {
-        // What's new: its page (from 1) and pages, and whether Read all shows the whole notes.
+        // What's new: its page (from 1) and pages, and whether Read all shows the whole notes; the
+        // card's notes: the blocks it shows, of how many, and 1 when the last shown is cut.
         let open = s.modal == Modal::About;
+        let card = open && !s.about_full;
         let v = match k {
             "page" if open => s.about_page + 1,
             "pages" if open => s.about_pages,
             "full" if open => s.about_full as i32,
-            "page" | "pages" | "full" => 0,
+            "card_blocks" if card => s.about_card.0,
+            "card_notes" if card => s.about_card.1,
+            "card_cut" if card => s.about_card.2 as i32,
+            "page" | "pages" | "full" | "card_blocks" | "card_notes" | "card_cut" => 0,
             _ => return -1,
         };
         csnprintf!(out, cap, "%d", v);
@@ -6081,7 +6085,7 @@ pub fn library_probe(a: &mut App, key: &str, out: &mut String, cap: usize) -> i3
                 H_BUTTONS_DONE => "done", H_BUTTONS_RESET => "buttons.reset",
                 H_PAPER => "paper.", H_PAPER_CUSTOM => "paper.custom", H_PAPER_MORE => "paper.more", H_NEW_RENAME => "new.rename",
                 H_EXIT_YES => "exit.yes", H_EXIT_NO => "exit.no",
-                H_BACK => "back", H_ABOUT => "about", H_ABOUT_CLOSE => "about.close", H_ABOUT_HIDE => "about.hide",
+                H_BACK => "back", H_ABOUT => "about", H_ABOUT_CLOSE => "about.close",
                 H_ABOUT_PREV => "about.prev", H_ABOUT_NEXT => "about.next", H_ABOUT_MORE => "about.more",
                 _ => "",
             });

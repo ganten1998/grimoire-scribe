@@ -1,5 +1,18 @@
 # Changelog
 
+## 2.0.0 (unreleased)
+
+- What's new after every update, and no Don't show this again (the owner's rule of 2026-11-05: "no don't show
+  this again, just a "Dismiss" and every update with changes by default has at least a basic what's new"). The
+  first start after an update opens the notes once, even where the box of the 2.0.0 betas was ticked; the card
+  and Read all close with Dismiss (or Back, or Esc), and the bat in the Library's top bar opens them again.
+  `whatsnew_hide` stays in settings.ini as it was, for an older Grimoire that reads the file, and this version
+  no longer looks at it. Every release now comes with its What's new: the release checks fail when
+  docs/WHATSNEW.md has not changed since the release before (docs/RELEASING.md, The bump commit).
+- The What's new card ends at the last note that fits whole above the signature, and leaves the rest to Read
+  all (the card had cut the last paragraph of 2.0.0's notes mid-sentence: "please consider donating to"). A
+  first note too long for the card on its own is cut at the end of a line.
+
 ## 2.0.0-beta.2 (2026-11-05)
 
 - A smaller download: the zip is 2.9 MB (beta.1's was 7.1 MB) and the app 5.8 MB (8.8 MB). Terminess keeps

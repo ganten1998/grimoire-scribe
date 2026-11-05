@@ -1,7 +1,9 @@
 # settings: status_mode=1
-# What's new: the bat (or the name beside it) opens the card; Don't show this again is a setting,
-# kept at once; Read all shows the whole notes on the sheet, a page at a time (2.0.0's notes: two
-# pages upright, three sideways); Close.
+# What's new: the bat (or the name beside it) opens the card, with Read all and Dismiss and no box
+# (the owner's rule of 2026-11-05). The card ends at the last of the notes that fits whole above the
+# signature (2.0.0's notes: all 13 upright, the first 8 sideways, the rest Read all's). Read all
+# shows the whole notes on the sheet, a page at a time (2.0.0's notes: two pages upright, three
+# sideways); Dismiss closes the card and the sheet.
 # rust-only
 wait 200
 expect screen is library
@@ -12,17 +14,24 @@ tap 120 95
 wait 100
 expect library.sheet is about
 expect library.about.full is 0
+expect library.about.card_notes is 13
+expect library.about.card_blocks is 13
+expect library.about.card_cut is 0
 shot 01-card
-tap library about.hide
-wait 50
-expect settings.whatsnew_hide is 1
-shot 02-ticked
-tap library about.hide
-wait 50
-expect settings.whatsnew_hide is 0
+rotate 1
+wait 200
+expect library.sheet is about
+expect library.about.full is 0
+expect library.about.card_blocks is 8
+expect library.about.card_cut is 0
+shot 02-card-sideways
+rotate 0
+wait 200
+expect library.about.card_blocks is 13
 tap library about.more
 wait 100
 expect library.about.full is 1
+expect library.about.card_blocks is 0
 expect library.about.pages is 2
 expect library.about.page is 1
 shot 03-all

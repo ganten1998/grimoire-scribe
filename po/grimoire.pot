@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: Grimoire 2.0.0-beta.2\n"
 "Report-Msgid-Bugs-To: https://github.com/ganten1998/grimoire-scribe/issues\n"
-"POT-Creation-Date: 2026-11-05 03:35-0600\n"
+"POT-Creation-Date: 2026-11-05 08:00-0600\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -18,16 +18,12 @@ msgstr ""
 "Content-Transfer-Encoding: 8bit\n"
 "Plural-Forms: nplurals=INTEGER; plural=EXPRESSION;\n"
 
-#. TRANSLATORS: the What's new card's box (1040 px at 44 px; on the sheet, what Close leaves):
-#. when ticked, What's new no longer opens by itself after an update (the bat in the Library's
-#. top bar still opens it).
+#. TRANSLATORS: What's new's button that closes it, on the card and on Read all's sheet (a word
+#. under an icon, at 34 px: 200 px). What's new opens by itself once after every update and from
+#. the bat in the Library's top bar; this only closes it until then (it is not "never again").
 #: rust/src/about.rs
-msgid "Don't show this again"
-msgstr ""
-
-#. TRANSLATORS: What's new's button that closes it (a word under an icon, at 34 px: 200 px).
-#: rust/src/about.rs
-msgid "Close"
+msgctxt "what's new"
+msgid "Dismiss"
 msgstr ""
 
 #. TRANSLATORS: the card's title (and the sheet's when the notes have none): what this version

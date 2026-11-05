@@ -4,9 +4,13 @@
 # once, as the first notebook comes up, what two fingers up and down do now (hints bit 0): one toast
 # for six seconds, set down as seen, and not said again at the next open.
 # settings: settings_version=3
-# settings: whatsnew_hide=1
 # settings: mirror_pdf=0
 wait 300
+# (the update opens What's new first, once: every update does since 2.0.0, z_about_3_hidden)
+expect library.sheet is about
+tap library about.close
+wait 100
+expect library.sheet is none
 expect settings.hints is 0
 tap 965 95
 wait 100

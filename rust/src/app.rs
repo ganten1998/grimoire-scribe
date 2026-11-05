@@ -2272,6 +2272,11 @@ pub fn app_probe(a: &mut App, key: &str, out: &mut String, cap: usize) -> i32 {
         }
     }
     let st = &a.settings;
+    // What's new: the version whose notes were last shown or due, as settings.ini has it.
+    if key == "settings.whatsnew_seen" {
+        csnprintf!(out, cap, "%s", st.whatsnew_seen.as_str());
+        return 0;
+    }
     if key == "screen" {
         csnprintf!(out, cap, "%s", K_NAMES[a.scr as usize]);
     } else if key == "toast" {

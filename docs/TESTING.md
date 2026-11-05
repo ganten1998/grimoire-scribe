@@ -1310,3 +1310,40 @@ On the Scribe (Gothic and Classic, upright and sideways):
    second key types.
 9. **Cold.** If the Kindle is cold (below about 15 degrees), note whether holding del feels slower: it waits for
    the panel's slower refreshes rather than run ahead of them.
+
+## 2.0.0, What's new
+
+The owner's rulings of 2026-11-05: "do the small change" (the card had cut the last paragraph of 2.0.0's notes
+mid-sentence, "please consider donating to", just above the signature) and "new rule -- no don't show this
+again, just a "Dismiss" and every update with changes by default has at least a basic what's new". The card
+ends at the last note that fits whole; there is no box; the first start after every update opens the notes once,
+whatever the old box said; every release has a What's new (tools/release-preflight.sh fails when
+docs/WHATSNEW.md did not change since the release before).
+
+Automated: about.rs `the_card_ends_at_the_last_block_that_fits_whole` (2.0.0's notes on 1860x2480, upright
+and sideways, Gothic and Classic: the card ends with a whole block and the next would not have fitted; upright
+all 13 blocks, sideways the first 8 in Gothic and 9 in Classic) and
+`a_first_paragraph_too_long_for_the_card_is_cut_at_a_line`; test_store.rs `whatsnew_due_after_every_update`
+(due with `whatsnew_hide=1` and another version seen, `whatsnew_hide` written back as it was; not due for this
+version's notes, nor for a file without `settings_version`). tests/scenarios/z_about.qs (the card upright and
+sideways, `library.about.card_cut` 0, Read all's pages, Dismiss), z_about_1_update.qs and z_about_2_after.qs
+(an update opens the notes once), z_about_3_hidden.qs and z_about_4_hidden_after.qs (a settings.ini with
+`whatsnew_hide=1` and 1.2.0's notes seen: the notes open, Dismiss closes them with this version recorded, the
+next start opens the Library alone, and `whatsnew_hide=1` is still there). The release check's What's new rule
+was tried by hand on a scratch clone (docs/RELEASING.md, The bump commit).
+
+On the Scribe (Gothic and Classic, upright and sideways):
+
+1. **The update opens the notes once, even with the old box ticked.** Before installing 2.0.0, settings.ini has
+   `whatsnew_hide=1` (Don't show this again was ticked in a beta; the owner's Scribe has it). Install 2.0.0 and
+   start Grimoire: the Library opens with What's new hanging from the bat by itself.
+2. **No box, and Dismiss.** The card has What's new and the version, the notes, the signature, Read all and
+   Dismiss, and no Don't show this again. Dismiss closes it; open it again from the bat and close it with Back
+   or Esc on a keyboard: it closes the same way. Read all shows the whole notes on the sheet with Dismiss at
+   its foot, no box, and Dismiss closes it.
+3. **Once.** Exit Grimoire and start it again: the Library opens alone. settings.ini still has
+   `whatsnew_hide=1` and `whatsnew_seen=2.0.0`.
+4. **The bat opens them again.** A tap on the bat, or on the name Grimoire beside it, opens the card every time.
+5. **The card ends at a whole item.** Upright, 2.0.0's notes should all fit, the Ko-fi paragraph whole above the
+   signature. Sideways, the card ends with a whole bullet (no line of a bullet or paragraph left hanging) and
+   the signature under it; Read all has the rest. Note any card that ends mid-sentence.

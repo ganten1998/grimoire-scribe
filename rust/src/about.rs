@@ -1,11 +1,14 @@
 //! The About sheet, "What's new": the notes in docs/WHATSNEW.md (built in) and the owner's
 //! signature. The bat in the Library's top bar opens it (library.rs), and so does the first start
-//! after an update unless "Don't show this again" was ticked. Rust only (2.0.0).
+//! after every update, once (the owner's rule of 2026-11-05: "no don't show this again, just a
+//! "Dismiss" and every update with changes by default has at least a basic what's new"; store.rs,
+//! whatsnew_due). Rust only (2.0.0).
 //!
 //! It opens as a card hanging from the bat: What's new, the notes (each heading with its first line;
-//! notes without headings, as much of them as the card has room for), the signature, the box, Read
-//! all and Close. Read all shows the whole notes on the Library's sheet, a page at a time when they
-//! need more than one.
+//! notes without headings, their bullets and paragraphs), the signature, Read all and Dismiss. The
+//! card ends at the last of those that fits whole above the signature (card_rows); the rest is Read
+//! all's, which shows the whole notes on the Library's sheet, a page at a time when they need more
+//! than one.
 //!
 //! WHATSNEW.md is a small Markdown: "# " the title, "## " a heading, "- " a bullet, other lines a
 //! paragraph (lines joined until a blank one), and a line "{signature}" where the signature goes.
@@ -151,6 +154,11 @@ struct Row {
     gap: i32,
     /// a heading's last line: it goes to the next page rather than end one alone
     keep_next: bool,
+    /// the block it is a line of (its index in the blocks laid out)
+    block: usize,
+    /// the last line of a block the card may end at: a bullet's, a paragraph's, the signature's (a
+    /// heading goes with the block under it)
+    end: bool,
     items: Vec<Item>,
 }
 
@@ -177,7 +185,7 @@ fn rows(bl: &[Block], w: i32, k: &Look) -> Vec<Row> {
     };
     let mut out: Vec<Row> = Vec::new();
     let mut after_head = false;
-    for b in bl {
+    for (block, b) in bl.iter().enumerate() {
         let first = out.len();
         match b {
             Block::Title(_) => continue, // (the sheet's title)
@@ -189,6 +197,8 @@ fn rows(bl: &[Block], w: i32, k: &Look) -> Vec<Row> {
                         h: head_lh,
                         gap: if i == 0 { k.head_gap } else { 0 },
                         keep_next: i + 1 == n,
+                        block,
+                        end: false,
                         items: vec![text(l, k.head_f, k.head_px, 0, head_lh, w)],
                     });
                 }
@@ -199,7 +209,7 @@ fn rows(bl: &[Block], w: i32, k: &Look) -> Vec<Row> {
                     if i == 0 {
                         items.push(Item { r: Rect::new(0, 0, k.indent, body_lh), ink: Ink::Dot });
                     }
-                    out.push(Row { h: body_lh, gap: if i == 0 { k.item_gap } else { 0 }, keep_next: false, items });
+                    out.push(Row { h: body_lh, gap: if i == 0 { k.item_gap } else { 0 }, keep_next: false, block, end: false, items });
                 }
             }
             Block::Para(t) => {
@@ -208,6 +218,8 @@ fn rows(bl: &[Block], w: i32, k: &Look) -> Vec<Row> {
                         h: body_lh,
                         gap: if i == 0 { k.para_gap } else { 0 },
                         keep_next: false,
+                        block,
+                        end: false,
                         items: vec![text(l, FontFace::Regular, k.body, 0, body_lh, w)],
                     });
                 }
@@ -219,8 +231,11 @@ fn rows(bl: &[Block], w: i32, k: &Look) -> Vec<Row> {
                     prev.keep_next = true;
                 }
                 let (sw, sh) = sig_box(k.sign_w.min(w), k.sign_h);
-                out.push(Row { h: sh, gap: k.para_gap, keep_next: false, items: vec![Item { r: Rect::new(0, 0, sw, sh), ink: Ink::Sign }] });
+                out.push(Row { h: sh, gap: k.para_gap, keep_next: false, block, end: false, items: vec![Item { r: Rect::new(0, 0, sw, sh), ink: Ink::Sign }] });
             }
+        }
+        if !matches!(b, Block::Heading(_)) && out.len() > first {
+            out.last_mut().unwrap().end = true;
         }
         if after_head {
             if let Some(r) = out.get_mut(first) {
@@ -252,6 +267,40 @@ fn paginate(rows: &[Row], h: i32) -> Vec<Vec<Item>> {
         y += gap + row.h;
     }
     pages
+}
+
+/// How many of the rows the card shows in room (px), and whether the last of them leaves its block
+/// cut: every row of each block up to the last that fits whole (a heading counts with the block under
+/// it), so a bullet or paragraph that would be cut is left for Read all, and so is all that follows
+/// it. When not even the first block fits whole (a paragraph longer than the card's room), the card
+/// shows the lines of it that fit, as a page of Read all would end (at least one; a heading's last
+/// line never alone at the bottom): cut at a line, never inside one, and never an empty card, since
+/// Read all is a tap away for the rest.
+fn card_rows(rs: &[Row], room: i32) -> (usize, bool) {
+    let (mut y, mut whole) = (0, 0);
+    for (i, r) in rs.iter().enumerate() {
+        y += r.h + if i == 0 { 0 } else { r.gap };
+        if y > room {
+            break;
+        }
+        if r.end {
+            whole = i + 1;
+        }
+    }
+    if whole > 0 || rs.is_empty() {
+        return (whole, false);
+    }
+    let (mut y, mut n) = (0, 0);
+    for (i, r) in rs.iter().enumerate() {
+        let gap = if i == 0 { 0 } else { r.gap };
+        let next = if r.keep_next { rs.get(i + 1).map_or(0, |x| x.gap + x.h) } else { 0 };
+        if i > 0 && y + gap + r.h + next > room {
+            break;
+        }
+        y += gap + r.h;
+        n = i + 1;
+    }
+    (n, !rs[n - 1].end)
 }
 
 fn rows_h(rows: &[Row]) -> i32 {
@@ -350,44 +399,65 @@ fn draw_signature(c: &mut Canvas, r: Rect) {
     }
 }
 
-/// Where the sheet's controls are (empty when not shown), and its pages.
+/// Where the sheet's controls are (empty when not shown), and its pages; for the card, the notes'
+/// blocks it shows, of how many, and whether the last of them is cut (docs/SIM.md,
+/// library.about.card_*).
 #[derive(Clone, Copy, Debug, Default)]
 pub struct AboutHits {
     pub close: Rect,
-    pub hide: Rect,
     pub prev: Rect,
     pub next: Rect,
     pub more: Rect,
     pub pages: i32,
+    pub card_blocks: i32,
+    pub card_notes: i32,
+    pub card_cut: bool,
 }
 
 /// Draws What's new: the card hanging from the bat (bat: its rect in the top bar), or with full
-/// (Read all) the whole notes on the sheet, at page (from 0; kept in range). hide: the box ticked.
-pub fn about_draw(c: &mut Canvas, aw: i32, ah: i32, bat: Rect, page: i32, full: bool, hide: bool) -> AboutHits {
+/// (Read all) the whole notes on the sheet, at page (from 0; kept in range).
+pub fn about_draw(c: &mut Canvas, aw: i32, ah: i32, bat: Rect, page: i32, full: bool) -> AboutHits {
     let bl = about_blocks(WHATSNEW);
     if full {
-        draw_sheet(c, aw, ah, &bl, page, hide)
+        draw_sheet(c, aw, ah, &bl, page)
     } else {
-        draw_card(c, aw, ah, bat, &bl, hide)
+        draw_card(c, aw, ah, bat, &bl)
     }
 }
 
-fn hide_label() -> &'static str {
-    // TRANSLATORS: the What's new card's box (1040 px at 44 px; on the sheet, what Close leaves):
-    // when ticked, What's new no longer opens by itself after an update (the bat in the Library's
-    // top bar still opens it).
-    tr("Don't show this again")
-}
-
 fn close_label() -> &'static str {
-    // TRANSLATORS: What's new's button that closes it (a word under an icon, at 34 px: 200 px).
-    tr("Close")
+    // TRANSLATORS: What's new's button that closes it, on the card and on Read all's sheet (a word
+    // under an icon, at 34 px: 200 px). What's new opens by itself once after every update and from
+    // the bat in the Library's top bar; this only closes it until then (it is not "never again").
+    c_("what's new", "Dismiss")
 }
 
-/// The card: What's new and the version, the highlights and the signature, the box, Read all and
-/// Close. It hangs from the bat, a notch pointing up at it.
-fn draw_card(c: &mut Canvas, aw: i32, ah: i32, bat: Rect, bl: &[Block], hide: bool) -> AboutHits {
-    let mut hits = AboutHits { pages: 1, ..AboutHits::default() };
+/// The card's measures for aw by ah with the bat at bat, before anything is drawn: the notes it shows
+/// (card_rows) and the room they had.
+struct Card {
+    k: Look,
+    pad: i32,
+    w: i32,
+    iw: i32,
+    head_h: i32,
+    btn_h: i32,
+    top: i32,
+    fixed: i32,
+    /// the highlights but the signature, laid out; the card shows the first n
+    rs: Vec<Row>,
+    n: usize,
+    cut: bool,
+    /// the blocks the card shows, of notes
+    blocks: usize,
+    notes: usize,
+    room: i32,
+    sig: bool,
+    sw: i32,
+    sh: i32,
+    sig_h: i32,
+}
+
+fn card_layout(aw: i32, ah: i32, bat: Rect, bl: &[Block]) -> Card {
     let pad = ui_px(40.0);
     let w = ui_px(1120.0).min(aw - 2 * ui_px(40.0));
     let iw = w - 2 * pad;
@@ -404,11 +474,10 @@ fn draw_card(c: &mut Canvas, aw: i32, ah: i32, bat: Rect, bl: &[Block], hide: bo
         sign_h: ui_px(130.0),
     };
     let head_h = ui_px(84.0);
-    let box_h = ui_px(110.0);
     let btn_h = ui_px(110.0);
     let top = bat.y + bat.h + ui_px(44.0);
-    let fixed = 2 * pad + head_h + ui_px(10.0) + ui_px(30.0) + box_h + ui_px(14.0) + btn_h;
-    // The highlights the screen has room for (Read all has the rest), the signature always.
+    let fixed = 2 * pad + head_h + ui_px(10.0) + ui_px(30.0) + btn_h;
+    // The highlights the screen has room for, each whole (Read all has the rest), the signature always.
     let short = highlights(bl);
     let sig = short.last() == Some(&Block::Signature);
     let notes = &short[..short.len() - sig as usize];
@@ -416,9 +485,21 @@ fn draw_card(c: &mut Canvas, aw: i32, ah: i32, bat: Rect, bl: &[Block], hide: bo
     let sig_h = if sig { k.para_gap + sh } else { 0 };
     let room = (ah - ui_px(40.0) - top - fixed - sig_h).max(0);
     let rs = rows(notes, iw, &k);
-    let page = paginate(&rs, room).swap_remove(0);
+    let (n, cut) = card_rows(&rs, room);
+    let blocks = rs[..n].windows(2).filter(|p| p[0].block != p[1].block).count() + (n > 0) as usize;
+    Card { k, pad, w, iw, head_h, btn_h, top, fixed, rs, n, cut, blocks, notes: notes.len(), room, sig, sw, sh, sig_h }
+}
+
+/// The card: What's new and the version, the highlights that fit whole and the signature, Read all
+/// and Dismiss. It hangs from the bat, a notch pointing up at it.
+fn draw_card(c: &mut Canvas, aw: i32, ah: i32, bat: Rect, bl: &[Block]) -> AboutHits {
+    let l = card_layout(aw, ah, bat, bl);
+    let mut hits = AboutHits { pages: 1, card_blocks: l.blocks as i32, card_notes: l.notes as i32, card_cut: l.cut, ..AboutHits::default() };
+    let (pad, w, iw, head_h, btn_h, k) = (l.pad, l.w, l.iw, l.head_h, l.btn_h, &l.k);
+    let page = paginate(&l.rs[..l.n], i32::MAX).swap_remove(0);
     let notes_h = items_h(&page);
-    let card = Rect::new(bat.x.max(ui_px(40.0)).min(aw - w - ui_px(40.0)), top, w, fixed + notes_h + sig_h);
+    debug_assert!(l.n <= 1 || notes_h <= l.room, "the card's notes overflow their room");
+    let card = Rect::new(bat.x.max(ui_px(40.0)).min(aw - w - ui_px(40.0)), l.top, w, l.fixed + notes_h + l.sig_h);
     ui_frame(c, card, ui_px(20.0), 255, true, 0);
     ui_frame(c, card, ui_px(20.0), 0, false, ui_px(5.0));
     let nx = bat.x + bat.w / 2;
@@ -439,12 +520,10 @@ fn draw_card(c: &mut Canvas, aw: i32, ah: i32, bat: Rect, bl: &[Block], hide: bo
     canvas_hline(c, inner.x, inner.x + iw, inner.y + head_h, ui_px(2.0), 0);
     let body = Rect::new(inner.x, inner.y + head_h + ui_px(10.0), iw, notes_h);
     draw_items(c, &page, body);
-    if sig {
-        draw_signature(c, Rect::new(inner.x, body.y + notes_h + k.para_gap, sw, sh));
+    if l.sig {
+        draw_signature(c, Rect::new(inner.x, body.y + notes_h + k.para_gap, l.sw, l.sh));
     }
     let by = inner.y + inner.h - btn_h;
-    hits.hide = Rect::new(inner.x, by - ui_px(14.0) - box_h, iw, box_h);
-    ui_checkbox(c, hits.hide, hide_label(), hide);
     let cw = ui_px(260.0);
     hits.close = Rect::new(inner.x + iw - cw, by, cw, btn_h);
     ui_button(c, hits.close, IconKind::Close, close_label(), ButtonStyle::Primary);
@@ -456,8 +535,8 @@ fn draw_card(c: &mut Canvas, aw: i32, ah: i32, bat: Rect, bl: &[Block], hide: bo
 }
 
 /// Read all: the Library's sheet, the notes' title as its title, the bat and the version under it,
-/// the notes a page at a time, the box and Close (and the page arrows between them).
-fn draw_sheet(c: &mut Canvas, aw: i32, ah: i32, bl: &[Block], page: i32, hide: bool) -> AboutHits {
+/// the notes a page at a time, Dismiss (and the page arrows left of it).
+fn draw_sheet(c: &mut Canvas, aw: i32, ah: i32, bl: &[Block], page: i32) -> AboutHits {
     let mut hits = AboutHits::default();
     let k = Look {
         body: ui_text_size(),
@@ -491,14 +570,11 @@ fn draw_sheet(c: &mut Canvas, aw: i32, ah: i32, bl: &[Block], page: i32, hide: b
     hits.pages = pages.len() as i32;
     let page = page.clamp(0, hits.pages - 1);
     draw_items(c, &pages[page as usize], body);
-    // The bottom: the box at the left, Close at the right, the page arrows between them.
+    // The bottom: Dismiss at the right, the page arrows left of it.
     let r = Rect::new(inner.x, inner.y + inner.h - foot_h, inner.w, foot_h);
     let cw = ui_px(300.0);
     hits.close = Rect::new(r.x + r.w - cw, r.y, cw, r.h);
     ui_button(c, hits.close, IconKind::Close, close_label(), ButtonStyle::Primary);
-    let arrows = if hits.pages > 1 { 2 * ui_px(130.0) + ui_px(150.0) + ui_px(40.0) } else { 0 };
-    hits.hide = Rect::new(r.x, r.y, r.w - cw - ui_px(40.0) - arrows, r.h);
-    ui_checkbox(c, hits.hide, hide_label(), hide);
     if hits.pages > 1 {
         let (bw, tw) = (ui_px(130.0), ui_px(150.0));
         let x = hits.close.x - ui_px(40.0) - 2 * bw - tw;
@@ -553,6 +629,84 @@ mod tests {
         assert_eq!(h.len(), 7);
         assert_eq!(h[0], Block::Para("one".into()));
         assert_eq!(h[6], Block::Signature);
+    }
+
+    fn up(theme: UiTheme) {
+        ui_init(300.0);
+        assert_eq!(font_init(), 0);
+        ui_set_theme(theme);
+        i18n_apply("en");
+    }
+
+    /// The bat as the Library's top bar places it (library.rs draw_base: the margin 50 px, the bar
+    /// 190 px high, the bat 3 px a unit).
+    fn bat() -> Rect {
+        let k = ui_px(3.0);
+        Rect::new(ui_px(50.0), (ui_px(190.0) - BAT_H * k) / 2, BAT_W * k, BAT_H * k)
+    }
+
+    /// What the card shows, for the test's output: each block's first words, and whether it is cut.
+    fn shown(l: &Card, bl: &[Block]) -> String {
+        let notes: Vec<Block> = highlights(bl).into_iter().filter(|b| *b != Block::Signature).collect();
+        let mut out = String::new();
+        for b in notes.iter().take(l.blocks) {
+            let t = match b {
+                Block::Heading(t) | Block::Bullet(t) | Block::Para(t) => t.as_str(),
+                _ => "",
+            };
+            out.push_str(&format!("  {}\n", t.split_whitespace().take(6).collect::<Vec<_>>().join(" ")));
+        }
+        out
+    }
+
+    #[test]
+    fn the_card_ends_at_the_last_block_that_fits_whole() {
+        // The owner's ruling of 2026-11-05 ("do the small change"): 2.0.0's notes cut the Ko-fi
+        // paragraph mid-sentence above the signature. Upright and sideways on the Scribe, in both
+        // looks, the card ends with a whole block, and the next block would not have fitted.
+        let bl = about_blocks(WHATSNEW);
+        for theme in [UiTheme::Gothic, UiTheme::Classic] {
+            up(theme);
+            for (aw, ah) in [(1860, 2480), (2480, 1860)] {
+                let l = card_layout(aw, ah, bat(), &bl);
+                eprintln!("{theme:?} {aw}x{ah}: {} of {} blocks, room {}\n{}", l.blocks, l.notes, l.room, shown(&l, &bl));
+                assert!(l.n > 0 && !l.cut, "{theme:?} {aw}x{ah}");
+                assert!(l.rs[l.n - 1].end);
+                assert!(rows_h(&l.rs[..l.n]) <= l.room);
+                if l.n < l.rs.len() {
+                    // (the block after the last one shown, a heading with the block under it, is
+                    // taller than what is left)
+                    let next_end = (l.n..l.rs.len()).find(|&i| l.rs[i].end).unwrap();
+                    assert!(rows_h(&l.rs[..next_end + 1]) > l.room);
+                    assert!(l.blocks < l.notes);
+                } else {
+                    assert_eq!(l.blocks, l.notes);
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn a_first_paragraph_too_long_for_the_card_is_cut_at_a_line() {
+        up(UiTheme::Gothic);
+        let long = vec!["words that go on and on"; 400].join(" ");
+        let md = format!("# T\n\n{long}\n\n- after\n\n{{signature}}\n");
+        let bl = about_blocks(&md);
+        let l = card_layout(1860, 2480, bat(), &bl);
+        let para = l.rs.iter().filter(|r| r.block == 0).count();
+        assert!(l.cut && l.n > 0 && l.n < para, "{} of {para} lines", l.n);
+        assert!(l.rs[..l.n].iter().all(|r| r.block == 0));
+        assert!(rows_h(&l.rs[..l.n]) <= l.room);
+        // (the next line would not have fitted: as many lines as there is room for)
+        assert!(rows_h(&l.rs[..l.n + 1]) > l.room);
+        assert_eq!(l.blocks, 1);
+        // Whole lines: each row is one of the paragraph's wrapped lines, as Read all has them.
+        let lines = wrap(FontFace::Regular, l.k.body, &long, l.iw);
+        assert_eq!(lines.len(), para);
+        // A paragraph that fits but is followed by one that does not: the card ends after the first.
+        let md = format!("# T\n\nShort.\n\n{long}\n\n{{signature}}\n");
+        let l = card_layout(1860, 2480, bat(), &about_blocks(&md));
+        assert!(!l.cut && l.blocks == 1 && l.n == 1);
     }
 
     #[test]

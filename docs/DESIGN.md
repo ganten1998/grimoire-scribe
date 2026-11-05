@@ -1172,6 +1172,37 @@ th, combining accents dropped), so Álgebra sorts among the A's; names that fold
 bytes. A name, folder or folders.ini line longer than 95 bytes is cut before the UTF-8 character
 that would cross the limit (`clean_line`).
 
+## What's new, the About sheet (2.0.0)
+
+`about.rs`. The notes are docs/WHATSNEW.md, compiled in (a small Markdown: `# ` the title, `## ` a
+heading, `- ` a bullet, other lines a paragraph, `{signature}` where the owner's signature goes), the
+owner's text, not translated. The bat in the Library's top bar (or the name beside it) opens them as
+a card hanging from the bat: What's new and the version, the notes (each heading with its first
+bullet; notes without headings, every bullet and paragraph), the signature, Read all and Dismiss.
+
+- **The card ends at a whole note** (the owner's "do the small change", 2026-11-05: the card had cut
+  the last paragraph mid-sentence). `card_rows` keeps every line of each block up to the last that
+  fits whole above the signature, a heading counting with the block under it; a block that would be
+  cut, and everything after it, is Read all's. Only when not even the first block fits whole (a
+  paragraph longer than the card's room) does the card show part of one: the lines of it that fit,
+  cut at the end of a line, never inside one and never an empty card. The signature always shows.
+  On the Scribe 2.0.0's notes fit whole upright (13 blocks) and to the 8th sideways in Gothic (9th in
+  Classic). Probes: `library.about.card_blocks`, `card_notes`, `card_cut`.
+- **Read all** shows the whole notes on the Library's sheet in the larger type, a page at a time
+  (`paginate`, a heading's last line never alone at a page's foot), with the page arrows left of
+  Dismiss.
+- **It opens by itself once after every update** (the owner's rule of 2026-11-05: "no don't show this
+  again, just a "Dismiss" and every update with changes by default has at least a basic what's
+  new"). store.rs sets `whatsnew_due` when settings.ini was saved by a Grimoire before (it has
+  `settings_version`) and its `whatsnew_seen` names another version; the Library then opens the card
+  over itself the first time it shows, and records this version as seen at once. Dismiss, Back and
+  Esc close it; the bat opens it again. The box Don't show this again (2.0.0-rc.11 to 2.0.0-beta.2)
+  is gone: its `whatsnew_hide` is still read and written back as it was, so those versions keep its
+  meaning, but this version never sets it and never reads it for the decision, so a Scribe that had
+  the box ticked sees the notes once after the update. Every release comes with its own What's new
+  for that reason: tools/release-preflight.sh fails when docs/WHATSNEW.md has not changed since the
+  release before (docs/RELEASING.md, The bump commit).
+
 ## Fast navigation and optional KOReader integration (1.1.0-beta.2)
 
 The Pages screen (`pagesview.c`) draws a fixed screenful of numbered tiles, never `load_page` or

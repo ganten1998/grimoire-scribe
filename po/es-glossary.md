@@ -91,6 +91,7 @@ build/shots/l10n/es-gothic/ and es-classic/ show every screen in Spanish.
 | Done | **Listo** | *Hecho* (Spain), *Aceptar*. |
 | Cancel, Retry | **Cancelar, Reintentar** | |
 | Back (the Templates sheet's button back to the papers) | **Volver** | *Atrás*. |
+| Dismiss (What's new's button, context `what's new`) | **Descartar** | *Cerrar*, which the share page's Dismiss keeps. What's new opens by itself after every update and from the bat; the button only puts it away until then (since 2.0.0 there is no *No volver a mostrar*). |
 | Delete | **Borrar** | *Eliminar*. A notebook or pages go (*Se borraron 3 páginas*). |
 | Clear (a page, the test pad) | **Limpiar** (*Se limpió la página*) | The strokes go, the page stays: not *borrar*, which deletes. *Vaciar* (*Página vaciada*). |
 | Rename | **Renombrar** | *Cambiar nombre*. |

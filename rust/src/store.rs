@@ -155,14 +155,16 @@ pub struct Settings {
     /// rc.9 to rc.11 saved 0 for their 10 mm). Since 2.0.0-rc.12 the recognizer's own floor.
     pub shape_min_mm: i32,
     /// What's new (about.rs): the version whose notes were last shown or due (settings.ini
-    /// whatsnew_seen), and Don't show this again (whatsnew_hide). 2.0.0.
+    /// whatsnew_seen), and the box Don't show this again of the 2.0.0 betas (whatsnew_hide): read and
+    /// written back as it was, so an older Grimoire that reads the file keeps its meaning, but since
+    /// 2.0.0 never set and never read for whether the notes open (whatsnew_due). 2.0.0.
     pub whatsnew_seen: FixedStr<32>,
     pub whatsnew_hide: bool,
     /// Smart shapes round a snapped polygon's corners by this percentage of the largest radius that
     /// fits (shape.rs fillet; 0: sharp). 2.0.0-rc.12.
     pub shape_corner: i32,
     /// Memory only, never saved: this start follows an update (a file a Grimoire saved, its notes seen
-    /// an older version's) and the box is not ticked, so the Library opens What's new once.
+    /// another version's), so the Library opens What's new once.
     pub whatsnew_due: bool,
     /// One-time hints already shown, a bitmask (settings.ini hints; bit numbers: docs/FORMAT.md).
     pub hints: i32,
@@ -4616,8 +4618,12 @@ pub fn settings_load(s: &mut Settings) -> i32 {
         s.upgraded = s.version == SETTINGS_VERSION && !has_gestures;
         // What's new is for an update: a file a Grimoire saved (it has the version key) whose notes
         // seen were another version's. A fresh start, or a file written by hand, records this
-        // version's as seen.
-        s.whatsnew_due = s.version > 0 && !s.whatsnew_hide && s.whatsnew_seen.as_str() != GRIMOIRE_VERSION;
+        // version's as seen. Every update opens them once, whatever whatsnew_hide says: the owner's
+        // rule of 2026-11-05, "no don't show this again, just a "Dismiss" and every update with
+        // changes by default has at least a basic what's new". whatsnew_hide is still read and
+        // written back unchanged (an older version reading the file keeps its meaning), but this
+        // version never sets it and never reads it here.
+        s.whatsnew_due = s.version > 0 && s.whatsnew_seen.as_str() != GRIMOIRE_VERSION;
         settings_upgrade(s);
     } else {
         s.version = SETTINGS_VERSION;

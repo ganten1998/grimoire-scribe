@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: Grimoire 1.0.0-beta\n"
 "Report-Msgid-Bugs-To: https://github.com/ganten1998/grimoire-scribe/issues\n"
-"POT-Creation-Date: 2026-11-04 20:15-0600\n"
+"POT-Creation-Date: 2026-11-05 08:00-0600\n"
 "PO-Revision-Date: 2026-10-20 08:02-0500\n"
 "Last-Translator: draft\n"
 "Language-Team: Spanish\n"
@@ -18,17 +18,13 @@ msgstr ""
 "Content-Transfer-Encoding: 8bit\n"
 "Plural-Forms: nplurals=2; plural=(n != 1);\n"
 
-#. TRANSLATORS: the What's new card's box (1040 px at 44 px; on the sheet, what Close leaves):
-#. when ticked, What's new no longer opens by itself after an update (the bat in the Library's
-#. top bar still opens it).
+#. TRANSLATORS: What's new's button that closes it, on the card and on Read all's sheet (a word
+#. under an icon, at 34 px: 200 px). What's new opens by itself once after every update and from
+#. the bat in the Library's top bar; this only closes it until then (it is not "never again").
 #: rust/src/about.rs
-msgid "Don't show this again"
-msgstr "No volver a mostrar"
-
-#. TRANSLATORS: What's new's button that closes it (a word under an icon, at 34 px: 200 px).
-#: rust/src/about.rs
-msgid "Close"
-msgstr "Cerrar"
+msgctxt "what's new"
+msgid "Dismiss"
+msgstr "Descartar"
 
 #. TRANSLATORS: the card's title (and the sheet's when the notes have none): what this version
 #. brings (520 px at 44 px in bold).
@@ -2756,7 +2752,8 @@ msgstr "%s tiene botones propios. Elígelo antes en la fila Dispositivo."
 #: rust/src/library.rs
 #, c-format
 msgid "%s uses the default buttons: choose it in the Device row first."
-msgstr "%s usa los botones predeterminados. Elígelo antes en la fila Dispositivo."
+msgstr ""
+"%s usa los botones predeterminados. Elígelo antes en la fila Dispositivo."
 
 #: rust/src/library.rs
 #, c-format
@@ -4893,6 +4890,12 @@ msgstr "Seleccionado: usa Cmd/Ctrl+C"
 msgctxt "studio"
 msgid "Copied"
 msgstr "Copiado"
+
+#~ msgid "Don't show this again"
+#~ msgstr "No volver a mostrar"
+
+#~ msgid "Close"
+#~ msgstr "Cerrar"
 
 #~ msgid "Controller"
 #~ msgstr "Mando"

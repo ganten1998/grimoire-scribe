@@ -768,6 +768,24 @@ fn shape_corner_key() {
     check!(settings_load(&mut s) == 0 && s.shape_corner == 0);
 }
 
+// What's new after every update (the owner's rule of 2026-11-05): due when a file a Grimoire saved
+// names another version's notes as seen, whatever whatsnew_hide says (the 2.0.0 betas' box, read and
+// written back as it was); not due for this version's, nor for a file without settings_version.
+fn whatsnew_due_after_every_update() {
+    let path = format!("{}/settings.ini", store_root());
+    let mut s = Settings::default();
+    check!(write_file_atomic(&path, b"settings_version=3\nwhatsnew_seen=1.2.0\nwhatsnew_hide=1\n") == 0);
+    check!(settings_load(&mut s) == 0 && s.whatsnew_due && s.whatsnew_hide && s.whatsnew_seen.as_str() == "1.2.0");
+    check!(settings_save(&s) == 0 && has_pins_line(&path, "whatsnew_hide=1"));
+    check!(write_file_atomic(&path, b"settings_version=3\nwhatsnew_seen=1.2.0\nwhatsnew_hide=0\n") == 0);
+    check!(settings_load(&mut s) == 0 && s.whatsnew_due && !s.whatsnew_hide);
+    let seen = format!("settings_version=3\nwhatsnew_seen={GRIMOIRE_VERSION}\nwhatsnew_hide=1\n");
+    check!(write_file_atomic(&path, seen.as_bytes()) == 0);
+    check!(settings_load(&mut s) == 0 && !s.whatsnew_due && s.whatsnew_hide);
+    check!(write_file_atomic(&path, b"whatsnew_seen=1.2.0\n") == 0);
+    check!(settings_load(&mut s) == 0 && !s.whatsnew_due && s.whatsnew_seen.as_str() == GRIMOIRE_VERSION);
+}
+
 fn status_corner_keys() {
     let path = format!("{}/settings.ini", store_root());
     let mut s = Settings::default();
@@ -1218,6 +1236,7 @@ fn test_store() {
     run!(status_corner_keys);
     run!(shape_preferences_and_retired_bar_migration);
     run!(shape_corner_key);
+    run!(whatsnew_due_after_every_update);
     run!(gesture_keys);
     run!(rotation_lock_key);
     run!(safe_names);
