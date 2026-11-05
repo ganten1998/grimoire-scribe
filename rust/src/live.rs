@@ -1231,6 +1231,48 @@ pub fn live_layer_now(i: usize) -> (Rect, Vec<u8>) {
     (r, px)
 }
 
+/// The browser's picture of r as the frame holds it now (the main loop's side, for the runner's
+/// probes): the tiles (the page under the layers), with the panel's and the corner's layers over them
+/// and the toast's drawn over those with its alpha, as a browser with every layer switched on draws
+/// them; rows r.w pixels apart, gray. None while Live view is off, or r is not inside the frame's
+/// screen (a turn not told yet).
+pub fn live_picture_now(r: Rect) -> Option<Vec<u8>> {
+    let f = frame()?;
+    let sh = f.sh();
+    let (w, h) = (sh.w.load(SeqCst) as i32, sh.h.load(SeqCst) as i32);
+    if rect_is_empty(r) || r.x < 0 || r.y < 0 || r.x + r.w > w || r.y + r.h > h {
+        return None;
+    }
+    let mut out = vec![0u8; (r.w as usize) * (r.h as usize)];
+    for y in 0..r.h as usize {
+        // SAFETY: row r.y + y, columns r.x..r.x + r.w, of the frame's w * h pixels (r is inside the
+        // screen, checked above); only this process writes them.
+        let row = unsafe { std::slice::from_raw_parts(f.px().add((r.y as usize + y) * w as usize + r.x as usize) as *const u8, r.w as usize) };
+        out[y * r.w as usize..][..r.w as usize].copy_from_slice(row);
+    }
+    for i in 0..LIVE_LAYERS {
+        let (l, px) = live_layer_now(i);
+        let cut = rect_intersect(l, r);
+        if rect_is_empty(cut) {
+            continue;
+        }
+        let bpp = live_layer_bpp(i);
+        for y in cut.y..cut.y + cut.h {
+            for x in cut.x..cut.x + cut.w {
+                let k = (((y - l.y) * l.w + (x - l.x)) as usize) * bpp;
+                let at = &mut out[((y - r.y) * r.w + (x - r.x)) as usize];
+                *at = if bpp == 1 {
+                    px[k]
+                } else {
+                    let (g, al) = (px[k] as u32, px[k + 1] as u32);
+                    ((g * al + *at as u32 * (255 - al) + 127) / 255) as u8
+                };
+            }
+        }
+    }
+    Some(out)
+}
+
 // ---- the raw digitizer, as a pen viewer reads it ----
 
 // linux/input.h's numbers the raw pen uses (input_evdev.rs has them all).

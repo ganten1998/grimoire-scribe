@@ -1,5 +1,14 @@
 # Changelog
 
+## 2.0.0 (unreleased)
+
+- Live view keeps the toolbar in the browser while a menu is up on the Kindle (issue #16, reported by nebuff).
+  The toolbar's layer was taken away whenever the Display sheet, the Paper sheet or another of the notebook's
+  menus opened, so the browser showed the page where the Kindle still showed the toolbar beside the menu, until
+  the menu closed. Now the layer holds what the Kindle shows where the toolbar is: the toolbar beside a menu,
+  and a menu's part over it where the menu covers it, whether a setting changes in the menu or not. Settings
+  and its Display sheet were already shown as the Kindle shows them, and still are.
+
 ## 2.0.0-beta.2 (2026-11-05)
 
 - A smaller download: the zip is 2.9 MB (beta.1's was 7.1 MB) and the app 5.8 MB (8.8 MB). Terminess keeps

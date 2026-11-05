@@ -2506,22 +2506,24 @@ fn draw_panel_over(a: &mut App) {
     compose(a, p);
 }
 
-/// Live view: where the panel is, for its layer (RECT_EMPTY where none shows: no notebook, or a menu, sheet,
-/// bar or the Pages view in front, which draw over the panel: the browser's layer would be over them).
+/// Live view: where the panel is, for its layer (app.rs, live_push_screen), which holds the screen there as the
+/// Kindle shows it: the panel, and whatever menu, sheet or bar is over a part of it or all of it, drawn over it
+/// there too. So the browser shows the toolbar wherever the Kindle does, beside a menu as under none, and a menu
+/// over it as the Kindle does (2.0.0, issue #16: the layer was empty while any menu was up, so the browser lost
+/// the toolbar beside the Display sheet until it closed). None where the panel is not drawn: no notebook, the
+/// Pages view, the Graph or the notebooks' browser over the screen, or Settings, whose screen the frame holds
+/// whole (editor_live_hole).
 pub fn editor_live_panel(a: &App) -> Rect {
     if crate::library::library_settings_active(a) {return RECT_EMPTY;}
     match a.ed.as_deref() {
-        Some(s) if !sheet_open(s) => s.panel,
-        // The tool picker (and its Pin mode, and the Smart shapes menu) opens beside the panel, which stays
-        // on the Kindle's screen: so it does in the browser, unless the menu is over it.
-        Some(s) if s.tools_open && !sheet_open_besides_tools(s) && rect_is_empty(rect_intersect(s.tools_rect, s.panel)) => s.panel,
+        Some(s) if s.open && !s.pv.open && !s.map.open && !s.destination.open => s.panel,
         _ => RECT_EMPTY,
     }
 }
 
 /// Live view: where the screen holds the panel, which the frame is pushed without (editor_live_under_panel): the
-/// panel's rect, with a menu over it or not (the browser's layer is gone while one is up, and the tiles must not
-/// hold the panel then), and none where the Pages view covers the screen.
+/// panel's rect, with a menu over it or not (the tiles hold the page and the menu there, never the panel, for a
+/// browser that shows no toolbar), and none where the Pages view covers the screen.
 pub fn editor_live_hole(a: &App) -> Rect {
     if crate::library::library_settings_active(a) {return RECT_EMPTY;}
     match a.ed.as_deref() {
@@ -3953,12 +3955,10 @@ fn clear_page(a: &mut App) {
 // Whether a sheet is in front of the page: the Pages view, the tool picker, Custom music, Display
 // or the paper sheet. The pen's button clears no page from under one.
 fn sheet_open(s: &EditorState) -> bool {
-    s.tools_open || sheet_open_besides_tools(s)
-}
-fn sheet_open_besides_tools(s: &EditorState) -> bool {
     s.destination.open
         || s.map.open
         || s.pv.open
+        || s.tools_open
         || s.mb.open
         || s.dm.open
         || s.paper_open
@@ -11467,23 +11467,47 @@ mod tests {
     }
 
     #[test]
-    fn the_live_toolbar_stays_beside_the_tool_picker_but_not_under_a_menu_over_it() {
+    fn the_live_toolbar_layer_stays_where_the_panel_is_under_any_menu() {
+        // 2.0.0, issue #16: the layer was empty while any menu was up, so the browser lost the toolbar beside the
+        // Display sheet (and the Paper sheet, ...) while the Kindle still showed it. The layer is where the panel is
+        // with a menu beside it or over it: it holds the screen there (live_push_screen), the menu's part over the
+        // panel too, as the Kindle shows it.
         let mut a = app(1860, 2480, 1860, 2480);
         let s = ed(&mut a);
+        s.open = true;
         s.panel = Rect { x: 1700, y: 300, w: 140, h: 900 };
-        assert_eq!(editor_live_panel(&a), ed_ref(&a).panel);
-        // The tool picker and its Pin mode open beside the panel: the browser keeps the toolbar.
-        let s = ed(&mut a);
-        s.tools_open = true;
-        s.pin_mode = true;
-        s.tools_rect = Rect { x: 500, y: 300, w: 1180, h: 900 };
-        assert_eq!(editor_live_panel(&a), ed_ref(&a).panel);
-        // A menu over the panel, or any other sheet, takes the layer away (it would be over them).
-        ed(&mut a).tools_rect = Rect { x: 600, y: 300, w: 1180, h: 900 };
-        assert!(rect_is_empty(editor_live_panel(&a)));
-        let s = ed(&mut a);
-        s.tools_rect = Rect { x: 500, y: 300, w: 1180, h: 900 };
-        s.paper_open = true;
+        let panel = s.panel;
+        assert_eq!(editor_live_panel(&a), panel);
+        for open in [
+            // the tool picker and its Pin mode beside the panel, and over it
+            |s: &mut EditorState, on: bool| { s.tools_open = on; s.pin_mode = on; s.tools_rect = Rect { x: 500, y: 300, w: 1180, h: 900 }; },
+            |s: &mut EditorState, on: bool| { s.tools_open = on; s.tools_rect = Rect { x: 600, y: 300, w: 1180, h: 900 }; },
+            |s: &mut EditorState, on: bool| s.dm.open = on,
+            |s: &mut EditorState, on: bool| s.paper_open = on,
+            |s: &mut EditorState, on: bool| s.ts.open = on,
+            |s: &mut EditorState, on: bool| s.mb.open = on,
+            |s: &mut EditorState, on: bool| s.lb.open = on,
+            |s: &mut EditorState, on: bool| s.lt.open = on,
+            |s: &mut EditorState, on: bool| s.find.open = on,
+            |s: &mut EditorState, on: bool| s.card.open = on,
+        ] {
+            open(ed(&mut a), true);
+            assert_eq!(editor_live_panel(&a), panel);
+            assert_eq!(editor_live_hole(&a), panel); // (the tiles there hold the page and the menu, not the panel)
+            open(ed(&mut a), false);
+        }
+        // A view over the whole screen draws no panel: no layer (the Pages view's frame has no hole either).
+        for open in [
+            |s: &mut EditorState, on: bool| s.pv.open = on,
+            |s: &mut EditorState, on: bool| s.map.open = on,
+            |s: &mut EditorState, on: bool| s.destination.open = on,
+        ] {
+            open(ed(&mut a), true);
+            assert!(rect_is_empty(editor_live_panel(&a)));
+            open(ed(&mut a), false);
+            assert_eq!(editor_live_panel(&a), panel);
+        }
+        ed(&mut a).open = false;
         assert!(rect_is_empty(editor_live_panel(&a)));
     }
     fn fshape_app() -> App {
@@ -12395,14 +12419,15 @@ mod tests {
         ed(&mut a).panel = Rect::new(0, 0, box_(), box_());
         let c = editor_live_chip(&a, 42);
         assert!(rect_contains_rect(Rect::new(0, 0, 1860, 2480), c));
-        // A menu, sheet, bar or the Pages view in front takes it away, and the panel's Live layer with it.
+        // A menu, sheet, bar or the Pages view in front takes it away (the panel's Live layer stays, holding the menu
+        // over it as the screen does, but under the Pages view: the_live_toolbar_layer_stays_...).
         ed(&mut a).collapsed = false;
         ed(&mut a).panel = Rect::new(1704, 220, 128, 1520);
         assert_ne!(editor_live_panel(&a), RECT_EMPTY);
         assert_eq!(editor_live_hole(&a), Rect::new(1704, 220, 128, 1520));
         for open in [
             |s: &mut EditorState, on: bool| s.pv.open = on,
-            // (the tool picker over the panel: beside it, the layer stays, the_live_toolbar_stays_...)
+            // (the tool picker over the panel)
             |s: &mut EditorState, on: bool| { s.tools_open = on; s.tools_rect = if on { s.panel } else { RECT_EMPTY }; },
             |s: &mut EditorState, on: bool| s.mb.open = on,
             |s: &mut EditorState, on: bool| s.dm.open = on,
@@ -12415,7 +12440,7 @@ mod tests {
             open(ed(&mut a), true);
             assert!(!editor_page_in_front(&a));
             assert_eq!(editor_live_chip(&a, 42), RECT_EMPTY);
-            assert_eq!(editor_live_panel(&a), RECT_EMPTY);
+            assert_eq!(editor_live_panel(&a) == RECT_EMPTY, ed_ref(&a).pv.open);
             // (the frame is still pushed without the panel under a menu, but for the Pages view, which has none)
             assert_eq!(editor_live_hole(&a) == RECT_EMPTY, ed_ref(&a).pv.open);
             open(ed(&mut a), false);

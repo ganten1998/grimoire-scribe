@@ -1310,3 +1310,35 @@ On the Scribe (Gothic and Classic, upright and sideways):
    second key types.
 9. **Cold.** If the Kindle is cold (below about 15 degrees), note whether holding del feels slower: it waits for
    the panel's slower refreshes rather than run ahead of them.
+
+## 2.0.0, Live view toolbar (issue #16)
+
+The toolbar stays in Live view's browser while a menu is up on the Kindle (issue #16, reported by nebuff:
+"Toolbar disappears in live view when a popup menu (settings, display settings) is opened then comes back after
+closing menu, Only happens when a setting was changed inside of that menu"). The toolbar's layer used to go
+whenever one of the notebook's menus opened (Display, Paper, Templates, Custom music, the tool picker over the
+toolbar, Find, the Links bar); now it holds what the Kindle shows where the toolbar is, the toolbar and any part
+of a menu over it. The automated checks: `tests/scenarios/y_live_toolbar_menus.qs` (in the simulator: the
+Display sheet and the Paper sheet beside the toolbar, the brightness dragged, a box ticked and the colors
+inverted, the Display sheet over the toolbar's top, then Settings with a row changed, its Display sheet and the
+style; the browser's picture of the toolbar's rect against the simulated panel each time, and the Kindle's own
+refreshes as before) and the editor's unit test `the_live_toolbar_layer_stays_where_the_panel_is_under_any_menu`.
+What only the Scribe and a real browser can show:
+
+1. **Display.** Pair a browser and open a notebook. Tap the toolbar's Display button: the Display sheet opens on
+   the Kindle and in the browser, and the toolbar stays beside it in the browser, as on the Kindle. Drag
+   Brightness, tick or untick "Swiping past the last page adds a page", then tap Invert colors twice: the toolbar
+   stays in the browser the whole time (inverted with the rest while the colors are). Tap Done: the sheet goes
+   from both and the toolbar is unchanged.
+2. **Settings.** Tap the toolbar's Settings button: the browser shows the Settings sheet as the Kindle does, over
+   most of the toolbar, and any strip of the toolbar it leaves at its right. Change a row (Turn with the Kindle, say, and back),
+   open Display from it and drag Brightness, then go back and tap Done: at every step the browser shows what the
+   Kindle shows, and after Done the toolbar is in the browser as before.
+3. **Over the toolbar.** Drag the toolbar to the middle of the page and open Display again: the sheet covers the
+   toolbar's top on the Kindle, and the browser shows the same, the sheet over the toolbar and the rest of the
+   toolbar below it. Change a setting and close the sheet: the whole toolbar is back in both. Drag the toolbar
+   back.
+4. **Other menus.** Open Paper and the tool picker in turn: the toolbar stays in the browser wherever the Kindle
+   shows it. The Pages view and the Graph cover the whole screen on both.
+5. **Show toolbar off.** In the browser's View settings, switch Show toolbar off and open Display: the browser
+   shows the page and the sheet and no toolbar. Switch it back on.
