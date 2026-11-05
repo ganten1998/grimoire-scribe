@@ -6,6 +6,7 @@ use testlib::*;
 
 fn discovery_and_owned_files() {
     let root = cformat!("%s/ko-manager-%ld", tl_tmp().as_str(), std::process::id() as i64);
+    let _ = std::fs::remove_dir_all(&root);
     let us = cformat!("%s/us", root.as_str());
     std::env::set_var("GRIMOIRE_US", &us);
     std::env::remove_var("KOREADER_DIR");
@@ -135,6 +136,8 @@ fn fonts_follow_the_binary() {
 // with the app's real files): each of kindle/koreader/legacy byte for byte is replaced, atomically; this
 // build's is not written again; a copy someone changed, an unrelated file and an absent patch stay as they
 // are; without the app's own patch nothing is written. No other file is touched.
+// Unix only, like fonts_follow_the_binary: inode numbers check whether a file was left alone.
+#[cfg(unix)]
 fn earlier_terminess_patch_follows_the_binary() {
     use std::os::unix::fs::MetadataExt;
     const KO_SRC: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../kindle/koreader");
@@ -241,6 +244,7 @@ fn wallpaper_and_setting() {
 fn test_koreader() {
     run!(discovery_and_owned_files);
     run!(fonts_follow_the_binary);
+    #[cfg(unix)]
     run!(earlier_terminess_patch_follows_the_binary);
     run!(wallpaper_and_setting);
     done();
