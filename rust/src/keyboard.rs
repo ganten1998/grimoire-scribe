@@ -930,6 +930,16 @@ fn type_key(kb: &mut Keyboard, code: u32, dirty: &mut Rect) {
     }
 }
 
+// Whether shift shows on the page's other keys: a key whose character has a capital shows it while shift is
+// on (key_label). The letters and accents pages have them; the symbols page has none (its digits and signs
+// have no capitals), so a shift tap there changes the shift key alone. (The named keys' codes are below 32,
+// the kana pad's flick keys among them; neither changes with shift.)
+fn shift_shows_on_keys(kb: &Keyboard) -> bool {
+    let mut keys = [Key::default(); MAX_KEYS];
+    let n = layout(kb.area, kb.page, &mut keys);
+    keys.iter().take(n).any(|k| k.code >= 32 && keyboard_upper(k.code) != k.code)
+}
+
 /// Where the key with this code is on the page showing now (as last drawn); false if that page
 /// has no such key. For tests and scripted runs.
 pub fn keyboard_key_rect(kb: &Keyboard, code: u32, r: &mut Rect) -> bool {
@@ -1077,14 +1087,16 @@ pub fn keyboard_press(kb: &mut Keyboard, code: u32, dirty: &mut Rect) -> KbResul
         KB_KEY_SHIFT => {
             // Off, the next letter, caps on, off again (KbShift). Off to the next letter and caps on to off
             // change every letter key's label (capitals while shift is on): the keyboard's refresh, as
-            // before. The next letter to caps on changes the shift key alone (its bar): its own refresh.
+            // before. The next letter to caps on changes the shift key alone (its bar): its own refresh, and
+            // so does every tap on a page with no letter keys (the symbols page: no label there changes case).
             kb.shift = match kb.shift {
                 KbShift::Off => KbShift::Once,
                 KbShift::Once => KbShift::Caps,
                 KbShift::Caps => KbShift::Off,
             };
+            let only_key = kb.shift == KbShift::Caps || !shift_shows_on_keys(kb);
             let mut r = RECT_EMPTY;
-            *dirty = if kb.shift == KbShift::Caps && keyboard_key_rect(kb, KB_KEY_SHIFT, &mut r) { r } else { kb.area };
+            *dirty = if only_key && keyboard_key_rect(kb, KB_KEY_SHIFT, &mut r) { r } else { kb.area };
             return KbResult::Changed;
         }
         KB_KEY_PAGE | KB_KEY_SYMBOLS | KB_KEY_KANA => {
@@ -1474,7 +1486,8 @@ mod tests {
     /// What a shift tap refreshes: off to once and caps on to off change every letter key's label (capitals while
     /// shift is on), so the keyboard, as before; once to caps on changes only the shift key (its bar), so only it.
     /// A letter typed with caps on refreshes what any letter does (its key, then the text line, keyboard_pointer);
-    /// the capital of shift once takes the letter keys back to small letters.
+    /// the capital of shift once takes the letter keys back to small letters. On the symbols page no label changes
+    /// case, so each of the three taps refreshes the shift key alone.
     #[test]
     fn a_shift_tap_refreshes_only_what_it_changed() {
         let (mut kb, _c) = drawn(Rect { x: 0, y: 0, w: 1860, h: 2480 });
@@ -1489,6 +1502,17 @@ mod tests {
         assert_eq!(tap(&mut kb, '1' as u32), RECT_EMPTY, "a digit: shift once still waits");
         assert_eq!(tap(&mut kb, 'b' as u32), kb.area, "shift once let go");
         assert_eq!((kb.text.as_str(), kb.shift), ("A1B", KbShift::Off));
+        // The symbols page: no key's label there changes case, so every tap refreshes the shift key alone.
+        tap_at(&mut kb, KB_KEY_SYMBOLS);
+        assert_eq!(kb.page, 3);
+        assert!(keyboard_key_rect(&kb, KB_KEY_SHIFT, &mut key));
+        assert_eq!(tap_at(&mut kb, KB_KEY_SHIFT), key, "symbols page, off to once");
+        assert_eq!(tap_at(&mut kb, KB_KEY_SHIFT), key, "symbols page, once to caps on");
+        assert_eq!(tap_at(&mut kb, KB_KEY_SHIFT), key, "symbols page, caps on to off");
+        // The accents page's letters show their capitals: the keyboard again.
+        tap_at(&mut kb, KB_KEY_PAGE);
+        assert_eq!(kb.page, 1);
+        assert_eq!(tap_at(&mut kb, KB_KEY_SHIFT), kb.area, "accents page, off to once");
     }
 
     /// The two on-states read apart on the e-ink screen: shift once is the pressed key, as shift always was (black,

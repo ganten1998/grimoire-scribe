@@ -1161,11 +1161,13 @@ digit, a symbol or the space bar leaves it waiting for a letter, as before), `sh
 fourth shift for one letter again), `caps_on_ends_when_the_keyboard_closes` (Done, Cancel and a paired
 keyboard's Esc; the next keyboard opens with shift off), `a_shift_tap_refreshes_only_what_it_changed` (off to
 one letter and caps on to off refresh the keyboard, as shift always did, since every letter key's label
-changes case; one letter to caps on refreshes the shift key alone) and `caps_on_draws_a_bar_under_the_shift_label`
+changes case; one letter to caps on refreshes the shift key alone, and on the symbols page, where no label
+changes case, all three taps do) and `caps_on_draws_a_bar_under_the_shift_label`
 (Gothic and Classic, upright and sideways: shift for one letter is the pressed key, as before; caps on is that
 key with a white bar under its label, and nothing else on the keyboard differs between the two).
 tests/scenarios/u_keyboard_caps.qs types "NASA 2026 ÉTÉ! go" in New folder, caps on through a digit, delete
-and the accents and symbols pages, then off, with each shift tap's refresh counted, and shoots the states
+and the accents and symbols pages, then off, with each shift tap's refresh counted (on the symbols page too:
+the shift key alone each time), and shoots the states
 upright and sideways (build/shots/u_keyboard_caps: 02-shift-once, 03-caps-on, 04-caps-on-accents,
 06-caps-on-sideways); u_keyboard_caps_classic.qs shoots Classic's. u_accents.qs now taps shift twice to turn
 it off after its shift shot (one tap did that when shift had two states). The tests fail on the two-state
@@ -1181,7 +1183,8 @@ On the Scribe:
    shift key at once (the keyboard's usual clean-up follows when typing pauses). Type "nasa": "NASA". Then a
    digit, the space bar, del and more letters: still capitals.
 3. **The other pages.** With caps on, tap áé: the accented letters show as capitals (É, Ñ, Œ) and shift keeps
-   its bar; é types É. Tap #+=: the symbols type as they are; abc, and the letters are still capitals.
+   its bar; é types É. Tap #+=: the symbols type as they are; abc, and the letters are still capitals. On the
+   symbols page a shift tap refreshes the shift key alone (none of its keys has a capital to show).
 4. **Three taps: off.** Tap shift a third time: the key goes white, the bar goes, the letter keys show small
    letters and type them. A fourth tap is shift for one letter again.
 5. **Closing.** With caps on, tap Done (or Cancel). Open a keyboard again: shift is off (a white key, small

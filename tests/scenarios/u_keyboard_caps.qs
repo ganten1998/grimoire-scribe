@@ -5,6 +5,7 @@
 # keyboard in Gothic, upright and sideways (u_keyboard_caps_classic.qs shoots Classic's). A shift tap
 # refreshes the keyboard when the letter keys' labels change case (off to shift once, caps on to off), and
 # the shift key alone from shift once to caps on (one fast refresh a tap: the touch's key and the lift's).
+# On the symbols page no label changes case, so each of the three taps refreshes the shift key alone.
 # rust-only
 # (the clock corner held still: its minute's refresh would land among the counted ones)
 clock 1700000000
@@ -69,6 +70,15 @@ wait 100
 expect library.sheet is keyboard
 tap 221 2045
 expect library.text is a
+# The symbols page: each shift tap refreshes the shift key alone
+tap 570 2365
+expect display.presents not -1
+tap 175 2205
+expect display.presents is fast 50 2130 250 150
+tap 175 2205
+expect display.presents is fast 50 2130 250 150
+tap 175 2205
+expect display.presents is fast 50 2130 250 150
 tap 175 2365
 wait 300
 expect library.sheet is none

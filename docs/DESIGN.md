@@ -318,8 +318,9 @@ draws them. White ink and the precise eraser make them.
   on-states draw the shift key pressed (black, its label white) and the letter keys in capitals (`key_label`);
   caps on adds a white bar under the label, as wide as it (`caps_bar`), so the two read apart with no word to
   translate. A tap from off or from caps on changes every letter key's label, so it refreshes the keyboard
-  (as shift always did); the tap from once to caps on refreshes the shift key alone, and a letter typed with
-  caps on refreshes only what any letter does. `keyboard_open` starts every keyboard with shift off, so caps
+  (as shift always did); the tap from once to caps on refreshes the shift key alone, as does every tap on the
+  symbols page, where no label changes case (`shift_shows_on_keys`), and a letter typed with caps on refreshes
+  only what any letter does. `keyboard_open` starts every keyboard with shift off, so caps
   on ends when the keyboard closes (Find's Done with no page to go to keeps its keyboard open, and the state
   with it). A paired keyboard never reaches this state: its keys type nowhere but on the count pad.
 - Every keyboard host (the Library's sheet, the Pages view's Page name and Go to page) hands its pen
