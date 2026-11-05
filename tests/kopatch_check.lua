@@ -5,11 +5,33 @@ local function check(value, message)
     checks = checks + 1
     assert(value, message or ("check " .. checks))
 end
+-- KOReader's face API as its builds have it. A face's ftsize is a cdata (ffi/freetype.lua puts a
+-- metatype on FT_SizeRec_), so asking it for a member it lacks raises an error, as on the Kindle.
+-- "now" is KOReader v2026.07.2 (the owner's): hasGlyph(cp), true or false. "old" has checkGlyph(cp)
+-- instead (0 for none), "older" has it on the face's ftface and no ftsize, "bare" has neither.
+local ffi = require("ffi")
+ffi.cdef[[
+struct grimoire_size_now { int set; };
+struct grimoire_size_old { int set; };
+struct grimoire_size_bare { int set; };
+]]
+local glyph_sets = {}
+local function glyphs_of(self) return glyph_sets[self.set] end
+local sizes = {
+    now = ffi.metatype("struct grimoire_size_now", {__index={hasGlyph=function(self, cp) return glyphs_of(self)[cp] == true end}}),
+    old = ffi.metatype("struct grimoire_size_old", {__index={checkGlyph=function(self, cp) return glyphs_of(self)[cp] and 1 or 0 end}}),
+    bare = ffi.metatype("struct grimoire_size_bare", {__index={}}),
+}
+-- A face named name with glyphs at the code points has gives true, through the api given.
+local function face(api, name, has, size)
+    glyph_sets[#glyph_sets + 1] = has or {}
+    if api == "older" then return {orig_font=name, size=size, ftface=sizes.old(#glyph_sets)} end
+    return {orig_font=name, size=size, ftsize=sizes[api](#glyph_sets)}
+end
 local Font = {fontmap = {cfont="NotoSans-Regular.ttf", ffont="NotoSans-Regular.ttf", tfont="NotoSans-Bold.ttf", other="DroidSansMono.ttf"},
               bold_font_variant={}, regular_font_variant={}}
 -- Faces with no glyph where KOReader's battery symbols are (the cases below give some).
-local no_glyph = {checkGlyph=function() return 0 end}
-function Font:getFace(name) return {orig_font=name, ftsize=no_glyph} end
+function Font:getFace(name) return face("now", name) end
 local TitleBar = {}
 local status = "12:34 ⌁battery50% +aux100%"
 local TouchMenu = {}
@@ -63,13 +85,15 @@ ordinary:setText("battery50%")
 check(ordinary.text == "battery50%", "only menu status widget changes")
 
 -- The menus' font, case by case: a fresh KOReader each time, with the fonts folders as a tree and
--- faces whose glyphs at the battery code points the case gives (KOReader's face API, checkGlyph:
--- 0 for none). Returns the Font, crash.log's lines and the paths whose faces were opened.
+-- faces whose glyphs at the battery code points the case gives, through the face API api ("now"
+-- unless the case says). broken[path] is true for a face that raises an error and "nil" for one
+-- KOReader cannot open (its getFace logs it and gives nil). Returns the Font, crash.log's lines and
+-- the paths whose faces were opened.
 local battery = {0xE778, 0xE779, 0xE77A, 0xE77B, 0xE77C, 0xE77D, 0xE77E, 0xE77F, 0xE780, 0xE781,
                  0xE782, 0xE783, 0xEDA3}
 local nerd = {}  -- a full Nerd Font: Devicons and Font Awesome at every one (U+E781 the "JS" badge)
 for _, cp in ipairs(battery) do nerd[cp] = true end
-local function world(tree, glyphs, broken)
+local function world(tree, glyphs, broken, api)
     local F = {fontmap={cfont="NotoSans-Regular.ttf", ffont="NotoSans-Regular.ttf", tfont="NotoSans-Bold.ttf",
                         smallinfofontbold="NotoSans-Bold.ttf", infont="DroidSansMono.ttf"},
                bold_font_variant={}, regular_font_variant={}}
@@ -77,11 +101,11 @@ local function world(tree, glyphs, broken)
     function F:getFace(name, size)
         if type(name) == "string" and name:find("/", 1, true) then
             opened[#opened + 1] = name
+            if broken and broken[name] == "nil" then return nil end
             if broken and broken[name] then error("no such face") end
-            local has = glyphs[name] or {}
-            return {orig_font=name, size=size, ftsize={checkGlyph=function(_, cp) return has[cp] and 1 or 0 end}}
+            return face(api or "now", name, glyphs[name], size)
         end
-        return {orig_font=name, ftsize=no_glyph}
+        return face(api or "now", name, {}, size)
     end
     package.loaded["ui/font"] = F
     package.loaded["ui/widget/titlebar"] = {}
@@ -128,7 +152,8 @@ check(logged(log, "passed over " .. term .. "/TerminessNerdFont-Regular.ttf (Gri
       "crash.log says why the owner's Nerd Font was passed over")
 check(not logged(log, "TerminessNerdFont-Bold.ttf") and not logged(log, "Italic"), "only regular faces are named as passed over")
 check(#opened == 1 and opened[1] == own, "only Grimoire's own copy opened to check")
-check(not logged(log, "used anyway"), "a clean copy of Grimoire's is not remarked on")
+check(not logged(log, "used anyway") and not logged(log, "not checked") and not logged(log, "could not be read"),
+      "a clean copy of Grimoire's is not remarked on")
 
 -- Grimoire's own copy comes first over a clean Terminus too, and without its bold it is its own bold.
 F, log = world({["/mnt/us/fonts"]={"TerminusTTF-4.49.3.ttf", "TerminusTTF-Bold-4.49.3.ttf"}, ["./fonts"]={"Grimoire"},
@@ -166,9 +191,48 @@ F, log = world({["/mnt/us/fonts"]={"TerminessNerdFont-Regular.ttf", "TerminusTTF
                {["/mnt/us/fonts/TerminessNerdFont-Regular.ttf"]=true})
 check(F.fontmap.cfont == "/mnt/us/fonts/TerminusTTF-4.49.3.ttf", "an unreadable face passed over for a readable one")
 check(logged(log, "passed over /mnt/us/fonts/TerminessNerdFont-Regular.ttf (its glyphs could not be read)"), "crash.log says it could not be read")
+-- KOReader's getFace gives nil for a font it cannot open (and logs it): passed over the same way.
+F, log = world({["/mnt/us/fonts"]={"TerminessNerdFont-Regular.ttf", "TerminusTTF-4.49.3.ttf"}}, {},
+               {["/mnt/us/fonts/TerminessNerdFont-Regular.ttf"]="nil"})
+check(F.fontmap.cfont == "/mnt/us/fonts/TerminusTTF-4.49.3.ttf"
+      and logged(log, "passed over /mnt/us/fonts/TerminessNerdFont-Regular.ttf (its glyphs could not be read)"),
+      "a face KOReader cannot open is passed over")
 F, log = world({["/mnt/us/fonts"]={"TerminessNerdFont-Regular.ttf", "TerminusTTF-4.49.3.ttf"}}, {},
                {["/mnt/us/fonts/TerminessNerdFont-Regular.ttf"]=true, ["/mnt/us/fonts/TerminusTTF-4.49.3.ttf"]=true})
 check(F.fontmap.cfont == "/mnt/us/fonts/TerminessNerdFont-Regular.ttf", "none readable: the first by rank, as before")
+check(logged(log, "used anyway: /mnt/us/fonts/TerminessNerdFont-Regular.ttf (its glyphs could not be read) - no Terminess or Terminus could be checked")
+      and not logged(log, "without one"), "none readable: crash.log does not say the others have a glyph")
+
+-- KOReader's face API, build by build, in the Kindle's world without Grimoire's copy: the whole Nerd
+-- Font in fonts/Terminus (a glyph at every battery code point) and a clean Terminus beside it.
+local beside = {["/mnt/us/fonts"]={"Terminus", "TerminusTTF-4.49.3.ttf", "TerminusTTF-Bold-4.49.3.ttf"},
+                [term]={"TerminessNerdFont-Regular.ttf", "TerminessNerdFont-Bold.ttf"}}
+local beside_glyphs = {[term .. "/TerminessNerdFont-Regular.ttf"]=nerd, [term .. "/TerminessNerdFont-Bold.ttf"]=nerd}
+for _, api in ipairs({"now", "old", "older"}) do
+    F, log = world(beside, beside_glyphs, nil, api)
+    check(F.fontmap.cfont == "/mnt/us/fonts/TerminusTTF-4.49.3.ttf" and F.fontmap.tfont == "/mnt/us/fonts/TerminusTTF-Bold-4.49.3.ttf",
+          "the clean Terminus over the whole Nerd Font, through KOReader's " .. api .. " face API")
+    check(logged(log, "passed over " .. term .. "/TerminessNerdFont-Regular.ttf (it has a glyph at U+E778, where KOReader's battery symbols are)")
+          and not logged(log, "used anyway") and not logged(log, "could not be read"),
+          "crash.log names the battery glyph, through KOReader's " .. api .. " face API")
+end
+-- A face API with neither method: nothing can be checked, so the first by rank, as before, and
+-- crash.log says that is why (not that the clean Terminus has a glyph too).
+F, log = world(beside, beside_glyphs, nil, "bare")
+check(F.fontmap.cfont == term .. "/TerminessNerdFont-Regular.ttf", "no face API: the first by rank, as before")
+check(logged(log, "used anyway: " .. term .. "/TerminessNerdFont-Regular.ttf (its glyphs could not be read) - no Terminess or Terminus could be checked")
+      and logged(log, "passed over /mnt/us/fonts/TerminusTTF-4.49.3.ttf (its glyphs could not be read)"),
+      "no face API: crash.log says the glyphs could not be read")
+-- Grimoire's own copy is used whatever the face API, and crash.log says when it could not be checked.
+local with_own = {["/mnt/us/fonts"]={"Terminus"}, [term]=owners, ["./fonts"]={"Grimoire"},
+                  ["./fonts/Grimoire"]={"TerminessNerdFontMono-Regular.ttf", "TerminessNerdFontMono-Bold.ttf"}}
+F, log = world(with_own, full, nil, "bare")
+check(F.fontmap.cfont == own and F.fontmap.tfont == own_bold, "no face API: Grimoire's own copy still first")
+check(logged(log, "terminess ui font patch: not checked: " .. own .. " (its glyphs could not be read)") and not logged(log, "used anyway"),
+      "no face API: crash.log says Grimoire's copy could not be checked")
+F, log = world(with_own, full, nil, "old")
+check(F.fontmap.cfont == own and not logged(log, "not checked") and not logged(log, "used anyway"),
+      "an older face API checks Grimoire's own copy too")
 
 -- An earlier Grimoire's copy (the whole Nerd Font, before 2.0.0-beta.2) is still Grimoire's: used, and remarked on.
 F, log = world({["/mnt/us/fonts"]={"TerminusTTF-4.49.3.ttf"}, ["./fonts"]={"Grimoire"},

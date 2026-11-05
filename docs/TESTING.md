@@ -1001,8 +1001,14 @@ Automated: tests/kopatch_check.lua (make kopatch-check) plays the patch against 
 Grimoire's own copy in `koreader/fonts/Grimoire` comes first, over the whole Nerd Font in `fonts/Terminus` and over
 a clean Terminus, and only its face is opened to check; Grimoire's bold alone is not its copy; without it, a font
 with a glyph at a battery code point is passed over for one without, and with none without, the first by rank is
-used as before; a face that cannot be read is passed over; crash.log names the menus' fonts and why each other
-regular face was passed over; the footer and the dropdown's status line keep KOReader's own font. test_koreader.rs's
+used as before; a face that cannot be read (an error, or nil as KOReader's getFace gives for a font it cannot open)
+is passed over; crash.log names the menus' fonts and why each other regular face was passed over; the footer and
+the dropdown's status line keep KOReader's own font. Its faces are cdata like KOReader's (an ffi metatype, so a
+method a face lacks raises an error, as on the Kindle): `ftsize:hasGlyph` (true or false) as in KOReader
+v2026.07.2, the owner's; `checkGlyph` (0 for none) on `ftsize` or on `ftface` as in older builds, which pick the
+clean Terminus over the whole Nerd Font all the same; and neither, where nothing can be checked: the first by rank,
+crash.log saying the glyphs could not be read (not that the others have one), and with Grimoire's copy, that copy
+with a `not checked:` line. test_koreader.rs's
 earlier_terminess_patch_follows_the_binary runs koreader_patch_refresh against the app's real files: each copy in
 kindle/koreader/legacy is replaced with the current patch (a new file), this build's copy is not written again, a
 copy with one byte changed or one line added and an unrelated file are kept, an absent patch stays absent, and the
@@ -1025,7 +1031,9 @@ On the Kindle (with the whole Terminess Nerd Font still in `fonts/Terminus`, as 
 2. Start KOReader. `koreader/crash.log` has `terminess ui font patch: menus in
    ./fonts/Grimoire/TerminessNerdFontMono-Regular.ttf and ./fonts/Grimoire/TerminessNerdFontMono-Bold.ttf (Grimoire's
    own copy)`, then a `passed over /mnt/us/fonts/Terminus/... (Grimoire's own copy in koreader/fonts/Grimoire comes
-   first)` line for each other regular Terminess, and no `used anyway:` line.
+   first)` line for each other regular Terminess, and no `used anyway:`, `not checked:` or `could not be read`
+   line. A `not checked: ... (its glyphs could not be read)` line means the patch could not ask this KOReader for
+   glyphs at all (its face API differs from v2026.07.2's): the menus still use Grimoire's copy, but send crash.log.
 3. Open KOReader's dropdown (tap the top of the screen): the clock, then the battery symbol and the percentage with
    a space between them, not "JS". Check it charging (the plug) and unplugged at a few levels if you can; the
    90 to 99 percent level is the one that drew "JS".

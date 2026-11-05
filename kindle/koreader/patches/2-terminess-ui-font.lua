@@ -57,18 +57,35 @@ table.sort(candidates, function(a, b)
 end)
 local function is_file(path) return lfs.attributes(path, "mode") == "file" end
 local function is_bold(path) return path:lower():find("bold", 1, true) ~= nil end
+-- Whether object's method finds a glyph for cp: true or false, nil when it cannot say. Each ask is
+-- guarded: a face's ftsize is a cdata, and asking one for a method it lacks raises an error.
+local function ask(object, method, cp)
+    if object == nil then return nil end
+    local ok, has = pcall(function() return object[method](object, cp) end)
+    if not ok then return nil end
+    if type(has) == "boolean" then return has end
+    if type(has) == "number" then return has ~= 0 end
+end
+-- Whether a face has a glyph for cp, through KOReader's own face API: hasGlyph on its ftsize (true
+-- or false), as KOReader v2026.07.2 has it (ffi/freetype.lua); failing that, the checkGlyph of older
+-- builds (0 for none), on ftsize or on ftface. nil when none answers.
+local function has_glyph(face, cp)
+    local has = ask(face.ftsize, "hasGlyph", cp)
+    if has == nil then has = ask(face.ftsize, "checkGlyph", cp) end
+    if has == nil then has = ask(face.ftface, "checkGlyph", cp) end
+    return has
+end
 -- The first battery code point the font has a glyph for, false for none, nil when its glyphs could
--- not be read: KOReader's own face API, asked as its rendertext.lua asks it (0 is no glyph).
+-- not be read (KOReader could not open it, or its face API did not answer).
 local function clash(path)
-    local ok, found = pcall(function()
-        local ftsize = Font:getFace(path, 20).ftsize
-        for _, cp in ipairs(battery) do
-            local has = ftsize:checkGlyph(cp)
-            if has and has ~= 0 then return cp end
-        end
-        return false
-    end)
-    if ok then return found end
+    local ok, face = pcall(function() return Font:getFace(path, 20) end)
+    if not ok or type(face) ~= "table" then return nil end
+    for _, cp in ipairs(battery) do
+        local has = has_glyph(face, cp)
+        if has == nil then return nil end
+        if has then return cp end
+    end
+    return false
 end
 local function why(found)
     if found then return string.format("(it has a glyph at U+%04X, where KOReader's battery symbols are)", found) end
@@ -79,10 +96,13 @@ local notes = {}
 if is_file(own_regular) then
     regular = own_regular
     bold = is_file(own_bold) and own_bold or nil
-    -- Only an earlier Grimoire's copy can have one, and Grimoire's next start replaces it.
+    -- Only an earlier Grimoire's copy can have one, and Grimoire's next start replaces it. A copy
+    -- whose glyphs could not be read is said too: then nothing here could check a font.
     local found = clash(own_regular)
     if found then
         notes[#notes + 1] = {"used anyway:", own_regular, why(found), "- an earlier Grimoire's copy, which its next start replaces"}
+    elseif found == nil then
+        notes[#notes + 1] = {"not checked:", own_regular, why(found)}
     end
     for _, path in ipairs(candidates) do
         if path ~= own_regular and not is_bold(path) then
@@ -100,10 +120,12 @@ else
             if found == false then break end
         end
     end
-    local pick = checked[#checked]
+    local pick, read = checked[#checked], false
+    for _, item in ipairs(checked) do read = read or item[2] ~= nil end
     if pick and pick[2] ~= false then
         pick = checked[1]
-        notes[#notes + 1] = {"used anyway:", pick[1], why(pick[2]), "- no other Terminess or Terminus without one"}
+        notes[#notes + 1] = {"used anyway:", pick[1], why(pick[2]),
+                             read and "- no other Terminess or Terminus without one" or "- no Terminess or Terminus could be checked"}
     end
     for _, item in ipairs(checked) do
         if item ~= pick then notes[#notes + 1] = {"passed over", item[1], why(item[2])} end

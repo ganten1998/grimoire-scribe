@@ -841,11 +841,14 @@ Also since 2.0.0-beta.2 (the owner's Scribe showed KOReader's battery as a "JS" 
 patch takes Grimoire's own copy (`./fonts/Grimoire/TerminessNerdFontMono-Regular.ttf` and `-Bold.ttf`, KOReader
 running in its own folder) whenever its regular face is there, before any other Terminess or Terminus file in
 `/mnt/us/fonts` or `koreader/fonts`. Without it, the other regular faces in their order (non-Mono, Mono,
-Propo, then by path) are asked through KOReader's face API (`Font:getFace(path, 20).ftsize:checkGlyph(cp)`, in
-a pcall) for a glyph at KOReader's battery code points (U+E778 to U+E783 and U+EDA3,
-`frontend/device/generic/powerd.lua`): the first with none is used, else the first (a face that cannot be
-read counts as one with a glyph). crash.log names the menus' fonts (`... (Grimoire's own copy)`), each other
-regular face passed over and why, and a `used anyway:` line for a menus' font with such a glyph. The status
+Propo, then by path) are asked through KOReader's face API for a glyph at KOReader's battery code points
+(U+E778 to U+E783 and U+EDA3, `frontend/device/generic/powerd.lua`): `Font:getFace(path, 20).ftsize:hasGlyph(cp)`,
+true or false, as KOReader v2026.07.2 has it (`ffi/freetype.lua`, where `ftsize` is a cdata: a method it lacks
+raises an error); failing that, the `checkGlyph(cp)` of older builds (0 for
+none) on `ftsize` or `ftface`; each ask in a pcall. The first with none is used, else the first (a face that
+cannot be read counts as one with a glyph). crash.log names the menus' fonts (`... (Grimoire's own copy)`), each
+other regular face passed over and why, a `used anyway:` line for a menus' font with such a glyph or whose
+glyphs could not be read, and a `not checked:` line when Grimoire's own copy could not be read. The status
 line and footers keep KOReader's own font as in rc.7. At each start, right after the fonts,
 `koreader_patch_refresh` replaces a `patches/2-terminess-ui-font.lua` that is byte for byte one of
 `KOREADER_TERMINESS_EARLIER` (the files in `app/koreader/legacy`: 1.1.0-beta.2's, rc.6's and rc.7's; the
