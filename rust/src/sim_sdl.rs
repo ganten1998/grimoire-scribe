@@ -163,6 +163,8 @@ struct State {
     // ---- script mode ----
     script: Option<BufReader<File>>,
     wait_until: u32,
+    // App time at the end of a wait; waitbg holds it still until the job has finished.
+    wait_script_until: Option<u32>,
     /// hold's PATH: the script resumes once that file exists ("" for none)
     hold_file: FixedStr<256>,
     /// external test driver owns lifetime after the hold command
@@ -280,6 +282,7 @@ impl Default for State {
             battery: Battery { percent: 100, charging: false },
             script: None,
             wait_until: 0,
+            wait_script_until: None,
             late_ms: 0,
             ptr_mods: 0,
             mod_keys: HidKeys::default(),
@@ -2082,7 +2085,8 @@ fn script_step_in(st: &mut State) -> Step {
             return Step::Batch;
         } else if a == b"wait" {
             let ms = atoi(b).max(0) as u32;
-            st.wait_until = now_ms().wrapping_add(ms).wrapping_add(st.late_ms);
+            st.wait_until = real_now_ms().wrapping_add(ms).wrapping_add(st.late_ms);
+            st.wait_script_until = crate::util::sim_clock().map(|at| at.wrapping_add(ms));
             st.wait_bg = false;
             st.touch_at = st.touch_at.map(|at| at.wrapping_add(ms));
             return Step::Batch;
@@ -2094,7 +2098,8 @@ fn script_step_in(st: &mut State) -> Step {
         } else if a == b"waitbg" {
             // Background work (an import, a template's picture, a PDF) takes as long as the machine
             // lets it: wait for it to end, not a time that holds on a quiet machine only.
-            st.wait_until = now_ms().wrapping_add((if !b.is_empty() { atoi(b) } else { 60000 }) as u32);
+            st.wait_script_until = None;
+            st.wait_until = real_now_ms().wrapping_add((if !b.is_empty() { atoi(b) } else { 60000 }) as u32);
             st.wait_bg = true;
             st.touch_at = None;
             return Step::Batch;
@@ -2409,6 +2414,9 @@ pub fn input_open(screen_w: i32, screen_h: i32, dpi: f32, pen: Option<&InputCali
         let stall = std::env::var_os("GRIMOIRE_SIM_STALL_MS").map_or(0, |v| atoi(v.as_bytes()));
         with(|st| st.raw_stall_ms = stall.max(0));
     }
+    if std::env::var("GRIMOIRE_SIM_CLOCK").as_deref() == Ok("script") {
+        crate::util::sim_clock_set(Some(real_now_ms()));
+    }
     if let Some(late) = std::env::var_os("GRIMOIRE_SIM_LATE_MS") {
         let late = atoi(late.as_bytes()).max(0) as u32;
         with(|st| st.late_ms = late);
@@ -2424,7 +2432,7 @@ pub fn input_open(screen_w: i32, screen_h: i32, dpi: f32, pen: Option<&InputCali
             // so once CLOCK_MONOTONIC passes 2^31 ms, 24.8 days up, every run waited forever.)
             Ok(f) => with(|st| {
                 st.script = Some(BufReader::new(f));
-                st.wait_until = now_ms();
+                st.wait_until = real_now_ms();
             }),
             Err(_) => {
                 err(&bformat("cannot open script %s\n", &[B::S(script.as_bytes())]));
@@ -2503,6 +2511,7 @@ pub fn input_close() {
     work_pump_set(None);
     work_pump_mark_set(None);
     expect_unrun();
+    crate::util::sim_clock_set(None);
     with(|st| st.script = None);
 }
 
@@ -2662,22 +2671,33 @@ fn poll_in(ev: &mut InEvent, timeout_ms: i32, mut a: Option<&mut App>) -> i32 {
         if with(|st| st.wait_bg) && !bg_busy() {
             with(|st| {
                 st.wait_bg = false;
-                st.wait_until = now_ms(); // (reaped: its toast is up)
+                st.wait_until = real_now_ms(); // (reaped: its toast is up)
             });
         }
         let (wait_until, wait_bg) = with(|st| (st.wait_until, st.wait_bg));
         // (One reading of the clock for both: the wait is over once the signed difference from it
         // is no longer negative, and what is left is measured from that same reading, so a wait
         // that ended between two readings never comes out as 2^32 ms still to go.)
-        let now = now_ms();
+        let now = real_now_ms();
         if (now.wrapping_sub(wait_until) as i32) < 0 {
             let mut left = wait_until.wrapping_sub(now);
             if wait_bg && left > 20 {
                 left = 20; // look again soon
             }
             let t = timeout_ms as u32;
-            sleep_ms((if left < t { left } else { t }) as i32);
+            let step = left.min(t);
+            sleep_ms(step as i32);
+            if let Some(end) = with(|st| st.wait_script_until) {
+                let at = now_ms();
+                crate::util::sim_clock_set(Some(at.wrapping_add(end.wrapping_sub(at).min(step))));
+            }
             return 0;
+        }
+        if let Some(end) = with(|st| st.wait_script_until.take()) {
+            if now_ms() != end {
+                crate::util::sim_clock_set(Some(end));
+                return 0; // let the app tick at the wait's end before reading the next check
+            }
         }
         if !with(|st| st.script_done) {
             script_step(a);

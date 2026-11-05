@@ -168,7 +168,7 @@ SIM_HOOKS := GRIMOIRE_WIFI_SCRIPT GRIMOIRE_HOST GRIMOIRE_PASSCODE GRIMOIRE_SIM_A
              GRIMOIRE_BT_API GRIMOIRE_UPDATE_SCRIPT GRIMOIRE_UPDATE_REQUEST FAKE_UPDATE_PREVIEW FAKE_UPDATE_STABLE FAKE_UPDATE_FAIL \
              GRIMOIRE_SIM_STATS GRIMOIRE_SIM_SIZE GRIMOIRE_CHECK_FIT GRIMOIRE_LANG GRIMOIRE_L10N_DIR GRIMOIRE_ANNOTATE \
              GRIMOIRE_SLEEP_MINUTE_MS GRIMOIRE_SIM_RAWPEN GRIMOIRE_SIM_RAWPEN_MAIN GRIMOIRE_SIM_STALL_MS \
-             GRIMOIRE_LIVE_PEN_SOURCE GRIMOIRE_SIM_MAP_NOMEM GRIMOIRE_KEEP_RENDER_MS GRIMOIRE_SIM_LATE_MS \
+             GRIMOIRE_LIVE_PEN_SOURCE GRIMOIRE_SIM_MAP_NOMEM GRIMOIRE_KEEP_RENDER_MS GRIMOIRE_SIM_LATE_MS GRIMOIRE_SIM_CLOCK \
              GRIMOIRE_SIM_DENSE_DRAW_MS GRIMOIRE_SIM_CORES
 # The scenarios tap by coordinates and check English text: they run in English whatever the
 # caller's LANG says (GRIMOIRE_LANG ranks first), unless a scenario's "# env:" line sets another.
@@ -205,7 +205,7 @@ scenario-times: scenarios
 # 300 ms drag hold against the card's 600 ms timer, which reads the real clock: its short holds are
 # frame lines, so a late wake cannot open the card first. u_keyboard_hold_delete times a held delete's repeats by
 # frame lines, against the screen's tick, which reads the real clock.
-LATE_SCENARIOS := y_status_press s_shape_4_guards z_pages_drag_hold u_keyboard_hold_delete
+LATE_SCENARIOS := y_status_press s_shape_4_guards z_pages_drag_hold u_keyboard_hold_delete y_status_corner z_rc8_pages_refresh
 .PHONY: scenarios-late
 scenarios-late: $(BUILD)/host/grimoire-headless
 	@echo "== the scenarios again with every wait 400 ms late: $(LATE_SCENARIOS)"

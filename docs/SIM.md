@@ -46,6 +46,12 @@ runs it after the scenarios). A script that times a contact keeps passing howeve
 is when it times it by the script's own clock: `touch` lines are stamped by their waits (below), and
 `finger`/`frame` lines by their frame offsets with no `wait` between the frames.
 
+`GRIMOIRE_SIM_CLOCK=script` holds app timers still while a script line is processed or a background
+job runs. Each `wait MS` advances those timers by exactly MS; host work and `GRIMOIRE_SIM_LATE_MS`
+still delay the runner, but do not advance app time. `waitbg` keeps a real deadline and polls the
+jobs while app time stays still. This is opt-in for exact toast and refresh checks; other scenarios
+keep the real monotonic clock. `clock SECONDS` still sets only the displayed wall time.
+
 Four more:
 
 - `GRIMOIRE_LANG=es` (or `en`, or a locale name such as `es_MX.UTF-8`) picks the language that

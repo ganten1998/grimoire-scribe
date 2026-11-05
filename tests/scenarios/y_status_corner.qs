@@ -1,3 +1,4 @@
+# env: GRIMOIRE_SIM_CLOCK=script
 # settings: status_size=0
 # settings: status_mode=1
 # settings: status_on=0

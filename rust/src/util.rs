@@ -177,8 +177,43 @@ pub fn mm_to_px(mm: f32, dpi: f32) -> f32 {
 /// monotonic milliseconds (CLOCK_MONOTONIC, as the kernel stamps input events: pensync.rs compares
 /// the two)
 pub fn now_ms() -> u32 {
+    #[cfg(feature = "sim")]
+    if let Some(at) = sim_clock() { return at; }
+    real_now_ms()
+}
+
+/// Host time for the runner's waits and background-job deadlines, even with scripted app timers.
+pub fn real_now_ms() -> u32 {
     let ts = clock(libc::CLOCK_MONOTONIC);
     ((ts.tv_sec as u64).wrapping_mul(1000).wrapping_add(ts.tv_nsec as u64 / 1_000_000)) as u32
+}
+
+// Only the headless runner opts into this clock. Keeping it outside its State avoids borrowing
+// that state again when the app or a queued input sample reads now_ms().
+#[cfg(feature = "sim")]
+static SIM_CLOCK: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+#[cfg(feature = "sim")]
+pub fn sim_clock() -> Option<u32> {
+    let value = SIM_CLOCK.load(Ordering::Relaxed);
+    (value != 0).then_some(value as u32)
+}
+#[cfg(feature = "sim")]
+pub fn sim_clock_set(at: Option<u32>) {
+    SIM_CLOCK.store(at.map_or(0, |ms| (1u64 << 32) | ms as u64), Ordering::Relaxed);
+}
+
+#[cfg(all(test, feature = "sim"))]
+#[test]
+fn scripted_clock_wraps_and_returns_to_host_time() {
+    sim_clock_set(Some(u32::MAX - 9));
+    assert_eq!(now_ms(), u32::MAX - 9);
+    sim_clock_set(Some(now_ms().wrapping_add(20)));
+    assert_eq!(now_ms(), 10);
+    sim_clock_set(Some(0));
+    assert_eq!(now_ms(), 0);
+    sim_clock_set(None);
+    assert!(sim_clock().is_none());
+    assert!(real_now_ms().wrapping_sub(now_ms()) < 100);
 }
 
 /// unix seconds

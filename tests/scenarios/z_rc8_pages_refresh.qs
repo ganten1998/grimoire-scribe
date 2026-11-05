@@ -1,3 +1,4 @@
+# env: GRIMOIRE_SIM_CLOCK=script
 # rust-only
 # generate: tests/page_management_fixture.py
 # env: GRIMOIRE_CHECK_FIT=1
