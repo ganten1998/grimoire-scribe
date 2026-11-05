@@ -42,6 +42,7 @@ root/graph-omit.ini                     folders left out of the Graph of all not
 root/clipboard.qpg                      the lasso's clipboard: what Copy or Cut took (2.0.0-beta.2; The clipboard)
 root/shortcuts.ini                      keyboard and controller mappings the owner edits (2.0; settings.ini)
 root/controller.ini                     controller buttons learned in Settings (2.0; settings.ini)
+root/shortcuts/<device>.ini             one keyboard's or controller's own shortcuts, with .controller.ini and .off beside it (2.0.0-beta.2; settings.ini)
 root/gestures.ini                       touch, pen-button bindings and recorded finger shapes, over the built-ins (2.0; settings.ini)
 root/live-keys.ini                      the keys a Live view browser sends, the owner edits (2.0; settings.ini)
 root/touch-trace                        an empty file the owner makes: asks for touch-trace.txt (2.0)
@@ -961,7 +962,7 @@ line. Values are clamped to their ranges when read.
 | `shape_corner` | 0 to 100: Smart shapes' Corner roundness, the corners of a snapped rectangle, square, quad or triangle rounded by this percentage of the largest radius the shape holds (one radius for every corner; at 100 the arcs at the ends of its tightest edge meet in its middle, so a square is a circle), 0 (Sharp) by default, clamped to 0..100. The arcs are part of the stroke's points (the stroke is ink); link areas keep sharp corners. Written after `whatsnew_hide`. Since 2.0.0-rc.12, as `gestures` |
 | `status_mode` | Retired status-strip preference. New saves write 1 (corner). Legacy 0 becomes the small enabled top-left corner, 2 becomes an off corner. There is no reserved strip or mode selector. `status-mode` is a compatibility alias for the corner toggle. |
 | `shortcuts_enabled` | 0 or 1: keyboard and controller shortcuts, off by default (`shortcuts.ini`, below). Since 2.0.0-beta.1; 1.1.0-beta.1 and 1.1.0-beta.2 keep the line and have no shortcuts, 1.0.0-beta drops it on its next save |
-| `controller` | 0 or 1: start the Bluetooth helper with Grimoire (Settings > Controller > Bluetooth controller; docs/SHORTCUTS.md), off by default; it only starts while shortcuts are on too. Since 2.0.0-beta.5; versions before keep the line (from 1.0.0-beta.2 on) or drop it (1.0.0-beta), and start nothing |
+| `controller` | 0 or 1: start the Bluetooth helper with Grimoire (Settings > Pair > Bluetooth controller, Settings > Controller before 2.0.0-beta.2; docs/SHORTCUTS.md), off by default; it only starts while shortcuts are on too. Since 2.0.0-beta.5; versions before keep the line (from 1.0.0-beta.2 on) or drop it (1.0.0-beta), and start nothing |
 | `updates` | `stable` (releases only) or `preview` (betas too): which of Grimoire's feeds Settings > Updates checks (docs/KPM.md, Updating). Absent: by the running version (a beta or RC: preview). Since 2.0.0-beta.5; versions before keep or drop it as above |
 | `settings_version` | 3: which default-changing upgrades have run (2: the pencil and mechanical pencil defaults; 3: the ballpoint's smoothing, since 2.0.0-beta.4). Each moves a value still at its old default, in files from before its version |
 | `pen.valid`, `pen.swap`, `pen.ax`, `pen.bx`, `pen.ay`, `pen.by` | pen calibration (0/1, 0/1, then floats) |
@@ -1025,13 +1026,39 @@ earlier ignore it; 1.2.0 and the 2.0 betas read it. A line naming an action a ve
 memory; the file is not changed.
 
 `controller.ini` (2.0.0-beta.5 on), beside it, holds the controller buttons learned in Settings >
-Controller > Buttons: `# ...` lines, then `pad.<button>=<action>` lines in `shortcuts.ini`'s grammar,
+Shortcuts > Buttons (Settings > Controller > Buttons before 2.0.0-beta.2): `# ...` lines, then `pad.<button>=<action>` lines in `shortcuts.ini`'s grammar,
 a button by name (`South`) or number (`316`). Grimoire writes it whole and atomically each time a
 button is learned, and deletes it on Reset buttons. While it is there, the controller's buttons come
 from it alone (`shortcuts.ini`'s `pad.` lines are set aside); a `key.` line in it is refused, as a
 line `shortcuts.ini` cannot read is, and so is an action this version does not know. A learn writes
 the file again from the lines that were read, so such a line goes then. Versions before
 2.0.0-beta.5 never read it.
+
+`shortcuts/` (2.0.0-beta.2 on), beside them, holds the keyboards' and controllers' own shortcuts
+(docs/SHORTCUTS.md, Device profiles), three files a device, named by its slug: its name (as Grimoire shows
+it) in lower case with every run of other characters one `-`, none at either end (`device` for a name with
+no letter or digit; at most 40 characters), then `-VVVV-PPPP`, its vendor and product numbers (EVIOCGID) in
+four lower-case hex digits each. `<slug>.ini` is in `shortcuts.ini`'s grammar and read as it is (refused
+lines counted, the D-pad's lines in memory for a file that binds none); Grimoire writes it once, when the
+device's own shortcuts are first turned on, as these four comment lines, byte for byte but for the name and
+the numbers, then `shortcuts.ini`'s bytes (the starter map's where there is none):
+
+```ini
+# Grimoire: the shortcuts of one keyboard or controller, used while it is connected (Settings >
+# Shortcuts, Own shortcuts for this device). The lines are shortcuts.ini's (docs/SHORTCUTS.md).
+# Device: 8BitDo Pro 2
+# Id: 2dc8:6006
+```
+
+and never changes it after that. The `# Device:` and `# Id:` lines (among the comments before the first
+other line) are what the Shortcuts sheet names a device that is not connected by; a file without them is
+named by its slug. `<slug>.controller.ini` is `controller.ini`'s format for that device alone, with its
+rules (the profile's `pad.` lines set aside while it is there; a learn writes it whole and atomically, Reset
+buttons deletes it); it starts as a copy of `controller.ini` where there is one. `<slug>.off`, a comment
+line, is there while the device's own shortcuts are off (its presence alone counts). Only names of
+lower-case letters, digits and `-` ending in `.ini`, and not in `.controller.ini`, are profiles, the first
+32 by name. Nothing here writes `shortcuts.ini` or `controller.ini`. Versions before 2.0.0-beta.2 never read
+the folder.
 
 `live-keys.ini` (2.0.0-beta.6 on), beside them, holds the keys a browser showing Live view sends
 to Grimoire: `key.` lines in `shortcuts.ini`'s grammar (a `pad.` line is set aside). Grimoire writes
@@ -1328,6 +1355,7 @@ marked 1.1 shipped in 1.1.0-beta.1 together with those rules, so for it the last
 | `shortcuts.ini` (2.0) | never read | never read |
 | `controller` (2.0) | dropped on the next save | kept; there is no Bluetooth helper there |
 | `controller.ini`, `bluetooth/` (2.0) | never read | never read; a helper someone else starts still makes its controllers into input devices, which 1.2.0 and 2.0.0-beta.1 to beta.4 read through `shortcuts.ini` |
+| `shortcuts/` (2.0.0-beta.2) | never read | never read: every device uses `shortcuts.ini` (and `controller.ini` from 2.0.0-beta.5) |
 | `gestures.ini` (2.0) | never read | never read: 1.2.0 to 2.0.0-beta.4 have no touch gestures (two fingers only pinch) |
 | the `settings.ini` keys `gestures`, `landscape_fit`, `hints` and `link_areas` (2.0) | unknown lines: dropped on the next save | unknown lines: kept, so turning back to a build before them and forward again keeps what was set |
 | an erase stroke's layer byte and a floor marker (ext[1], 2.0.0-beta.2: Scoped erase strokes) | the marker draws nothing (off the page); a re-save zeroes ext, so a scoped group's erasure becomes ordinary there for good | kept; 1.1 to 2.0.0-beta.1 draw a scoped erasure flat (also over the ink under it, on their screen only) and keep the bytes |

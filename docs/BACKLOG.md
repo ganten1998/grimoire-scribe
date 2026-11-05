@@ -117,7 +117,7 @@ Decided by the lane B3 design (docs/beta2/PIXEL-LASSO.md, 2026-11-03) and its bu
 - **"Save selection as picture"** (design 3, owner question 3): a raster export of a selection. A raster
   selection as a page object was rejected (no tool id or chunk older versions keep).
 - **Remembering the lasso mode in settings.ini** (owner question 1): it lasts until Grimoire restarts.
-- **A `select-exact` row in Settings > Controller > Buttons**: its Editing list is full (11 rows); bind it in
+- **A `select-exact` row in Settings > Shortcuts > Buttons**: its Editing list is full (11 rows); bind it in
   shortcuts.ini or gestures.ini meanwhile (builder, 2026-11-03).
 - **Cutting a calligraphy stroke whose tilt widens or lightens it**: its nib's smoothing restarts at a cut
   and only where the tilt changes nothing but the nib can a piece start it where it was, so such a stroke
@@ -256,7 +256,7 @@ Decided by the lane B3 design (docs/beta2/PIXEL-LASSO.md, 2026-11-03) and its bu
 - **Kindle Click (Amazon's Bluetooth page turner, 2026).** Grimoire accepts any input device that
   sends ordinary key codes, so it works if the firmware exposes it as an input device while
   Grimoire runs. Test: pair it in the Kindle's settings, list `/proc/bus/input/devices`, then try
-  Settings > Controller > Buttons.
+  Settings > Shortcuts > Buttons.
 
 ## Deferred from beta.2 lane C (links between notebooks; lane C's decisions, 2026-11-02, for the owner to confirm)
 

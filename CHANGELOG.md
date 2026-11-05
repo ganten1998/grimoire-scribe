@@ -36,6 +36,20 @@
   Cmd works as Ctrl. A shortcuts.ini (or live-keys.ini) that is byte for byte a starter map an earlier
   version wrote gets the new keys at the next start (grimoire.log says so); one someone edited is kept and means
   what it meant. Older versions refuse the new action names one line each.
+- Settings > Shortcuts and Settings > Pair, in place of the Controller sheet (the owner's "\"Shortcuts\" is
+  better now ... a button occupying the previous spot called \"Pair\""). Settings' top rows are Display, Pen
+  sensitivity, Shortcuts and Calibrate pen and touch, in that order, and the bottom row's Pair (where
+  Controller was) holds Bluetooth controller, Pair a controller... and what is connected. Shortcuts holds
+  Enable shortcuts, Buttons... and Reload shortcuts.ini, and each keyboard's or controller's own shortcuts:
+  its Device row goes through those connected and those saved, and **Own shortcuts for this device** gives
+  the one shown a profile, `grimoire/shortcuts/<device>.ini` (a copy of shortcuts.ini to start from), used
+  whenever it is connected; Buttons... then learns its buttons beside it. Turned off, the device uses the
+  default again and the profile is kept for when it is turned on. A device is its name and vendor:product
+  numbers (two of the same model share a profile). A device with none, and anyone who never makes one, uses
+  shortcuts.ini and controller.ini as before, and they are never rewritten by this; gestures, the pen's
+  button and finger shapes are not per device (docs/SHORTCUTS.md, Device profiles). The starter
+  shortcuts.ini names Settings > Shortcuts; an unedited one from an earlier beta.2 build becomes it at the
+  next start, as earlier starters do.
 - Pen feel on a keyboard: 1 to 9, 0 and E pick that pen's tab.
 - The Pages view on a keyboard: Ctrl+A ticks every page (the new `select-all` action), Ctrl+N opens the number
   pad for new pages, Esc closes a held page's card alone (Pages staying open, also with a shortcuts file that

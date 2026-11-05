@@ -153,7 +153,7 @@ the Kindle: Exact area on the bar, lasso through the middle of a written line an
 the part left behind and the ends; undo. On the Kindle: open the tool picker,
 Select, lasso a word and its i-dots, drag it; erase part of a word with the precise eraser, lasso and move
 it, then paste a copy over other ink (the ink under it must not lighten); copy a linked item into another
-notebook and tap it there. Bind `select` to the pen button's drag (Settings > Controller > Buttons): hold the
+notebook and tap it there. Bind `select` to the pen button's drag (Settings > Gestures): hold the
 button and lasso, let go, drag the selection, tap outside it and write; hold the pen still on empty page in
 Select mode to paste. Time a move on the 1,090-stroke page (October-2026-02, page 72).
 
@@ -987,3 +987,43 @@ For a failure, write down the Scribe model, firmware, jailbreak, KOReader versio
 is installed and how Grimoire was started. Attach `grimoire/grimoire.log`, and for a hand-over
 failure `koreader/crash.log`. Read the logs before sharing them; never include a passcode, a
 serial number or a book file.
+
+## 2.0.0-beta.2, Shortcuts and Pair
+
+Settings' Controller sheet is two now (the owner's ruling of 2026-11-04): **Settings > Shortcuts**, a top row,
+and **Settings > Pair**, the bottom row's button where Controller was; each keyboard or controller can have
+shortcuts of its own (docs/SHORTCUTS.md, Device profiles). The scenarios cover the sheets and the profiles
+with stand-in devices (`tests/scenarios/v_shortcuts_profiles.qs`, `y_all_screens.qs`, `tests/bt/`); what
+only the Scribe can show:
+
+1. **Settings.** The top rows read Display, Pen sensitivity, Shortcuts, Calibrate pen and touch, upright
+   and sideways, in Gothic and Classic, and each opens its own screen. The bottom row reads KOReader | Pair |
+   Gestures | Updates | Done, and nothing under the top rows moved (Style, Mirror PDFs, the pen button row,
+   turning, pinching, Language).
+2. **Pair.** With the helper in `grimoire/bluetooth`, Settings > Pair > Bluetooth controller starts it,
+   Pair a controller... finds and pairs a controller, its Done comes back to Pair, and the status line
+   names the controller once it connects (or that another app holds it). With shortcuts off the rows are
+   greyed and the line says to turn them on in Settings > Shortcuts. Esc (with shortcuts on) goes back to
+   Settings.
+3. **The device row.** With a keyboard and a controller connected, Settings > Shortcuts' Device row names
+   one, a tap the other ("(tap for the next)" while there are two or more). Note the names it shows: they
+   are what the profiles are known by.
+4. **Own shortcuts.** For the controller, tap Own shortcuts for this device: it reads Own shortcuts (N, 0
+   refused), the same N as Reload shortcuts.ini's, and over USB `grimoire/shortcuts/` has
+   `<name>-<vendor>-<product>.ini` with its `# Device:` and `# Id:` lines. `shortcuts.ini` and
+   `controller.ini` are unchanged (their dates too).
+5. **Its buttons.** Buttons... is titled Buttons: NAME. Learn one button to another action, then in a
+   notebook check that this controller does the new action and the keyboard (or a second controller) still
+   does the default's. `controller.ini` is not touched; `<slug>.controller.ini` appears beside the profile.
+6. **Off and on.** Turn Own shortcuts off: the controller does the default's actions again, and the files
+   are all still there (plus a `.off`). Turn it on again: the learned button is back. Disconnect the
+   controller: the Device row still lists it, "NAME, not connected", and its row still turns it on and off.
+7. **Reconnect.** Switch the controller off and on (or out of range and back) and reconnect it over
+   Bluetooth: its own shortcuts apply again without opening Settings. Say whether the name it shows is the
+   same each time (it is how the profile is found; a controller in another mode is another device).
+8. **Edit by hand.** Edit the profile's `.ini` over USB (a `key.` line for the keyboard's profile, say), then
+   Reload shortcuts.ini: the change acts for that device only, and a bad line counts in its Own shortcuts row
+   as refused.
+9. **Upgrade.** A Kindle that had shortcuts on in an earlier beta.2 build with an unedited `shortcuts.ini`:
+   after this build's first start its first line names Settings > Shortcuts (grimoire.log says it became
+   this build's); an edited one is left as it was.

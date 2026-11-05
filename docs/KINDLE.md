@@ -506,7 +506,7 @@ lists acceptance targets and decision rules; synthetic fixtures cannot satisfy t
    together. Pinch straight after writing and re-grab a finger briefly during pinch/pan.
 2. Write with the palm resting, then hold/read for several minutes: no page turns, menus or
    shapes should fire. Try a distant fresh pen hover and a nearby hover separately.
-3. Check KOReader | Controller | Gestures | Updates | Done upright and sideways, in English,
+3. Check KOReader | Pair | Gestures | Updates | Done upright and sideways, in English,
    Spanish and Japanese, in Gothic and Classic. All five labels should fit.
 4. In Gestures record a two-finger tap for Undo; then reassign an occupied pattern. The card
    must name the action losing it. Try fingers far apart, diagonal motion and the nearby pen;
@@ -516,7 +516,7 @@ lists acceptance targets and decision rules; synthetic fixtures cannot satisfy t
 6. Tap the clock corner: its clock still toggles. Start a deliberate shape there: it can fire.
 7. Hold a row to clear. Reset restores built-ins and confirms when shapes exist. Cancel a
    recording and try an unwritable gesture file: neither should change live bindings.
-8. Controller > Buttons has seven groups. Try light, invert, rotation lock, theme, language,
+8. Shortcuts > Buttons has seven groups. Try light, invert, rotation lock, theme, language,
    sleep after, sleep screen (all four modes, including KOReader wallpaper) and Whole page
    sideways on keys and on gestures/shapes. Enable shortcuts and Bluetooth controller must
    be learnable by touch, shapes or pen, never keys/pads. Check the toasts for changes with no visible effect.
@@ -917,6 +917,11 @@ A link follows stable notebook/page IDs through renaming, folder moves and page 
 missing notebook or deleted destination page reports that it is unavailable. Existing Index links
 continue to open the unified Index. Clear page and its Undo/Redo include cross-notebook link areas.
 The notebook toolbar's settings cog opens the main Settings menu; Done returns to the notebook.
+Settings' rows that open a screen or a sheet are, top down, Display, Pen sensitivity, Shortcuts and
+Calibrate pen and touch (the owner's order of 2026-11-04), and its bottom row KOReader, Pair, Gestures,
+Updates and Done. Shortcuts holds Enable shortcuts, each keyboard's or controller's own shortcuts,
+Buttons... and Reload shortcuts.ini; Pair holds Bluetooth controller and Pair a controller...
+(docs/SHORTCUTS.md). Until 2.0.0-beta.2 both were one Controller sheet behind the bottom row's button.
 
 
 ## Wi-Fi in Grimoire and KOReader
