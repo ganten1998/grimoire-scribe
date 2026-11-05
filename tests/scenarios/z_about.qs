@@ -1,6 +1,7 @@
 # settings: status_mode=1
 # What's new: the bat (or the name beside it) opens the card; Don't show this again is a setting,
-# kept at once; Read all shows the whole notes on the sheet, a page at a time sideways; Close.
+# kept at once; Read all shows the whole notes on the sheet, a page at a time (2.0.0's notes: two
+# pages upright, three sideways); Close.
 # rust-only
 wait 200
 expect screen is library
@@ -22,12 +23,13 @@ expect settings.whatsnew_hide is 0
 tap library about.more
 wait 100
 expect library.about.full is 1
-expect library.about.pages is 1
+expect library.about.pages is 2
+expect library.about.page is 1
 shot 03-all
 rotate 1
 wait 200
 expect library.sheet is about
-expect library.about.pages is 2
+expect library.about.pages is 3
 expect library.about.page is 1
 shot 04-all-sideways
 tap library about.next
