@@ -53,7 +53,13 @@ pub fn done() {
     assert_eq!(f, 0, "{f} of {c} checks failed");
 }
 
-/// Scratch dir for tests (the Makefile sets GRIMOIRE_TEST_TMP).
+/// Scratch dir for tests (the Makefile sets GRIMOIRE_TEST_TMP). Without it, a grimoire-test folder in
+/// the system's temporary directory, made here: the C's "/tmp" put the tests' `<tmp>/../out` at /out,
+/// which a plain `cargo test` cannot write.
 pub fn tl_tmp() -> String {
-    std::env::var("GRIMOIRE_TEST_TMP").unwrap_or_else(|_| "/tmp".into())
+    std::env::var("GRIMOIRE_TEST_TMP").unwrap_or_else(|_| {
+        let dir = std::env::temp_dir().join("grimoire-test");
+        let _ = std::fs::create_dir_all(&dir);
+        dir.to_string_lossy().into_owned()
+    })
 }

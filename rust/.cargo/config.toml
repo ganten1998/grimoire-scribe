@@ -12,3 +12,9 @@ rustflags = [
     # zig's linker notes that it ignores the -O1 rustc passes it: noise, not a problem.
     "-A", "linker_messages",
 ]
+
+# The unit tests run one at a time (PORTING.md, Tests): the ported tests keep the C's process-wide
+# state (the store's root, the language). ../Makefile and CI pass --test-threads=1; this makes a
+# plain `cargo test` here do the same. An environment that sets RUST_TEST_THREADS itself wins.
+[env]
+RUST_TEST_THREADS = "1"

@@ -163,6 +163,15 @@ fn socket_pair() -> [i32; 2] {
     let mut sv = [0i32; 2];
     // SAFETY: socketpair fills the two descriptors of the local array.
     check!(unsafe { libc::socketpair(libc::AF_UNIX, libc::SOCK_STREAM, 0, sv.as_mut_ptr()) } == 0);
+    // The test reads sv[1] (sv[0] goes to the viewer). A read there gives up after 10 s, so a viewer
+    // that never sends what a test waits for fails that test instead of hanging make check. (Under the
+    // 15 s after which a viewer sends a ping: a ping every 15 s would keep next_kind reading forever.)
+    let tv = libc::timeval { tv_sec: 10, tv_usec: 0 };
+    // SAFETY: setsockopt reads the one timeval of the local tv, whose size it is given.
+    unsafe {
+        libc::setsockopt(sv[1], libc::SOL_SOCKET, libc::SO_RCVTIMEO, &tv as *const libc::timeval as *const libc::c_void,
+            std::mem::size_of::<libc::timeval>() as libc::socklen_t)
+    };
     sv
 }
 
@@ -1096,7 +1105,14 @@ fn mono_now() -> (u64, u64) {
 // published map, drawn with the published style, known by the frame's microseconds; and the tiles'
 // watermark names the same identity once the main loop's own event of that frame is presented.
 fn a_pen_viewer_reads_the_raw_node_itself() {
-    let dir = tl_tmp();
+    // The published map carries the node's path in 127 bytes (live.rs, raw_map_bytes; the Kindle's
+    // /dev/input/eventN is far shorter). Under a test root deeper than that the viewer would be handed
+    // a cut path it never opens, and the reads below would wait for samples that never come: the FIFO
+    // goes to /tmp then.
+    let mut dir = tl_tmp();
+    if dir.len() + "/rawpen-4294967295".len() > 127 {
+        dir = "/tmp".into();
+    }
     let _ = std::fs::create_dir_all(&dir);
     // SAFETY: getpid takes no arguments.
     let path = cformat!("%s/rawpen-%d", &dir, unsafe { libc::getpid() });
