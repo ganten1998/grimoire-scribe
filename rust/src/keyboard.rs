@@ -77,7 +77,8 @@ pub struct Keyboard {
     pub count_label: Option<fn(i32) -> String>,
     /// set with field_dirty on the count pad: its Done, whose label shows the count (refreshed on its own)
     pub also_dirty: Rect,
-    /// The count pad's count is still the 1 it opened with (the owner: "1 will be the default"): drawn highlighted, and the first digit typed replaces it rather than following it.
+    /// The count pad's count is still the 1 it opened with (the owner: "1 will be the default"): drawn as any
+    /// count is but with no caret after it, and the first digit typed replaces it rather than following it.
     pub count_fresh: bool,
 }
 
@@ -686,8 +687,8 @@ pub fn keyboard_open(kb: &mut Keyboard, title: &str, initial: &[u8]) {
 /// The count pad (page 4): the number pad's digits, Cancel and del, then a row with - and + (the count
 /// one less, down to 1, or one more), and Done, whose label `label` gives for the count (disabled at 0).
 /// The text is the count in digits (empty for 0); a digit or + never takes it past `max`: it stays at
-/// `max`, which the pad shows (no toast: the owner, 2026-11-04). It opens at 1, highlighted
-/// (`count_fresh`), so Done (or Enter) at once adds one; the first digit typed replaces that 1, del
+/// `max`, which the pad shows (no toast: the owner, 2026-11-04). It opens at 1 (`count_fresh`, drawn plain
+/// with no caret), so Done (or Enter) at once adds one; the first digit typed replaces that 1, del
 /// clears it, and - and + count from it.
 pub fn keyboard_open_count(kb: &mut Keyboard, title: &str, max: i32, label: fn(i32) -> String) {
     let max = max.max(0);
@@ -810,22 +811,21 @@ pub fn keyboard_draw(kb: &mut Keyboard, c: &mut Canvas, screen: Rect) -> Rect {
     // Show the tail of long text so the caret stays visible.
     let tr = Rect { x: f.x + ui_px(24.0) + tw, y: f.y, w: f.w - ui_px(48.0) - tw, h: f.h };
     let text = kb.text.as_str();
-    // (the count pad's count large, in bold)
-    let (face, size) = if kb.page == 4 { (FontFace::Bold, ui_title_size()) } else { (FontFace::Regular, ts * 1.1) };
+    // (the count pad's count in bold, at the size of the title beside it: at ui_title_size it was large and
+    // intrusive, the owner's Scribe feedback of 2026-11-04)
+    let (face, size) = if kb.page == 4 { (FontFace::Bold, ts) } else { (FontFace::Regular, ts * 1.1) };
     let mut at = 0;
     while at < text.len() && font_measure(face, size, &text[at..]) > tr.w - ui_px(20.0) {
         at = utf8_next(text.as_bytes(), at);
     }
     let shown = &text[at..];
     let w = font_measure(face, size, shown);
-    if kb.page == 4 && kb.count_fresh && !shown.is_empty() {
-        // The count it opened with, highlighted as selected text is: what the first digit typed replaces.
-        let pad = ui_px(18.0);
-        ui_frame(c, Rect { x: tr.x - pad / 2, y: f.y + ui_px(14.0), w: w + 2 * pad, h: f.h - ui_px(28.0) }, ui_px(8.0), 0, true, 0);
-        let tr = Rect { x: tr.x + pad / 2, ..tr };
-        font_draw_left(c, face, size, tr, shown, 255);
-    } else {
-        font_draw_left(c, face, size, tr, shown, 0);
+    font_draw_left(c, face, size, tr, shown, 0);
+    // The count pad's opening 1 (count_fresh) is plain black text like any count, with no caret after it: the
+    // first digit typed replaces it rather than following it. (It was a white 1 in a black box, as selected
+    // text is drawn, which read as a 0 on the Scribe: the owner, 2026-11-04, "Batch page adding starts the
+    // counter at 0 - and is displayed at a large, intrusive amount".)
+    if !(kb.page == 4 && kb.count_fresh) {
         canvas_fill(c, Rect { x: tr.x + w + ui_px(4.0), y: f.y + ui_px(24.0), w: ui_px(5.0), h: f.h - ui_px(48.0) }, 0);
     }
     let mut keys = [Key::default(); MAX_KEYS];
@@ -1206,7 +1206,7 @@ mod tests {
         keyboard_draw(&mut kb, &mut c, Rect { x: 0, y: 0, w: 600, h: 1600 });
         let mut d = RECT_EMPTY;
         let mut press = |kb: &mut Keyboard, code: u32| keyboard_press(kb, code, &mut d);
-        // It opens at 1, highlighted; del clears that 1 (the count 0: Done off).
+        // It opens at 1 (count_fresh); del clears that 1 (the count 0: Done off).
         assert_eq!((kb.page, keyboard_count(&kb), kb.count_fresh), (4, 1, true));
         assert_eq!(press(&mut kb, KB_KEY_BKSP), KbResult::Changed);
         assert_eq!((keyboard_count(&kb), kb.count_fresh), (0, false));
@@ -1238,8 +1238,8 @@ mod tests {
     }
 
     /// The count pad opens at 1 (the owner: "if enter is pressed or confirm via touch, 1 will be the default"): Done at once is 1; the first digit replaces the 1, the next ones follow it; - and +
-    /// count from it; a typed 1 still takes the highlight away (a change to draw). A notebook with no room opens
-    /// it empty.
+    /// count from it; a typed 1 is still a change to draw (its caret shows). A notebook with no
+    /// room opens it empty.
     #[test]
     fn the_count_pad_opens_at_one_and_the_first_digit_replaces_it() {
         let mut d = RECT_EMPTY;
@@ -1254,7 +1254,7 @@ mod tests {
         assert_eq!(keyboard_press(&mut kb, '2' as u32, &mut d), KbResult::Changed);
         assert_eq!(kb.text.as_str(), "25", "72 is past 25: 25");
         keyboard_open_count(&mut kb, "Pages to add", 25, label);
-        assert_eq!(keyboard_press(&mut kb, '1' as u32, &mut d), KbResult::Changed, "the highlight goes");
+        assert_eq!(keyboard_press(&mut kb, '1' as u32, &mut d), KbResult::Changed, "its caret shows");
         assert_eq!((kb.text.as_str(), kb.count_fresh), ("1", false));
         assert_eq!(keyboard_press(&mut kb, '2' as u32, &mut d), KbResult::Changed);
         assert_eq!(kb.text.as_str(), "12");
@@ -1262,10 +1262,63 @@ mod tests {
         assert_eq!(keyboard_press(&mut kb, KB_KEY_INC, &mut d), KbResult::Changed);
         assert_eq!((kb.text.as_str(), kb.count_fresh), ("2", false), "+ from 1");
         keyboard_open_count(&mut kb, "Pages to add", 25, label);
-        assert_eq!(keyboard_press(&mut kb, KB_KEY_DEC, &mut d), KbResult::Changed, "- stays at 1, the highlight goes");
+        assert_eq!(keyboard_press(&mut kb, KB_KEY_DEC, &mut d), KbResult::Changed, "- stays at 1, its caret shows");
         assert_eq!((kb.text.as_str(), kb.count_fresh), ("1", false));
         assert_eq!(keyboard_press(&mut kb, KB_KEY_DEC, &mut d), KbResult::None);
         keyboard_open_count(&mut kb, "Pages to add", 0, label);
         assert_eq!((kb.text.as_str(), kb.count_fresh), ("", false), "no room: empty");
+    }
+
+    /// The count pad's opening 1 is plain black text, drawn as its title is (bold, at the title's size), with no
+    /// caret after it; a count typed has its caret (2.0.0-beta.2, the owner's Scribe feedback of 2026-11-04: the
+    /// white 1 in a black box, at the title size, "starts the counter at 0 - and is displayed at a large,
+    /// intrusive amount"). The pad is titled "1" here, so the title's glyph and the count's are the same.
+    #[test]
+    fn the_count_pads_opening_one_is_plain_text() {
+        assert_eq!(font_init(), 0);
+        let screen = Rect { x: 0, y: 0, w: 1000, h: 1600 };
+        let draw = |fresh: bool| {
+            let mut kb = Keyboard::default();
+            keyboard_open_count(&mut kb, "1", 25, label);
+            kb.count_fresh = fresh;
+            let mut c = Canvas::default();
+            assert_eq!(canvas_init(&mut c, screen.w, screen.h), 0);
+            keyboard_draw(&mut kb, &mut c, screen);
+            (c, field_rect(kb.area))
+        };
+        // The black pixels' bounds (x0, y0, x1, y1) inside r, and how many.
+        let ink = |c: &Canvas, r: Rect| {
+            let (mut b, mut n) = ((i32::MAX, i32::MAX, i32::MIN, i32::MIN), 0);
+            for y in r.y..r.y + r.h {
+                for x in r.x..r.x + r.w {
+                    if c.px[(y * c.stride + x) as usize] < 128 {
+                        b = (b.0.min(x), b.1.min(y), b.2.max(x), b.3.max(y));
+                        n += 1;
+                    }
+                }
+            }
+            (b, n)
+        };
+        let (fresh, f) = draw(true);
+        let (typed, _) = draw(false);
+        // inside the field's frame: the title from its left margin, the count after the title's width
+        let inner = Rect { x: f.x + ui_px(12.0), y: f.y + ui_px(12.0), w: f.w - ui_px(24.0), h: f.h - ui_px(24.0) };
+        let count_x = f.x + ui_px(24.0) + font_measure(FontFace::Bold, ui_text_size(), "1") + ui_px(30.0);
+        let title_r = Rect { w: count_x - inner.x, ..inner };
+        let count_r = Rect { x: count_x, w: inner.x + inner.w - count_x, ..inner };
+        let (tb, tn) = ink(&fresh, title_r);
+        let (cb, cn) = ink(&fresh, count_r);
+        assert!(tn > 0 && cn > 0, "the title and the count are drawn");
+        assert_eq!((cb.1, cb.3), (tb.1, tb.3), "the count's 1 as tall as the title's, on its line");
+        assert_eq!((cb.2 - cb.0, cn), (tb.2 - tb.0, tn), "the same glyph, black on white: no box, no caret");
+        // Typed, the same 1 and a caret after it, and nothing else differs.
+        let (yb, yn) = ink(&typed, count_r);
+        assert!(yn > cn && yb.0 == cb.0 && yb.2 > cb.2, "a typed count has its caret");
+        for y in count_r.y..count_r.y + count_r.h {
+            for x in count_r.x..=cb.2 {
+                let i = (y * fresh.stride + x) as usize;
+                assert_eq!(fresh.px[i], typed.px[i], "the 1 itself drawn the same at ({x}, {y})");
+            }
+        }
     }
 }
