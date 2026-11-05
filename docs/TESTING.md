@@ -106,6 +106,11 @@ end of this file. The owner used 2.0.0-beta.2 (and its candidates) on the Kindle
 gets its first 2.0 release here: after the release, check stable/manifest.json and preview/manifest.json on the
 kpm branch and the release's files, the first run of the fixed publish job.
 
+The owner checked 8fcf67c's build (fbb07f29cd3e, installed through KPM on 2026-11-05) on the Scribe and asked for
+one change only, a shorter What's new ("only thing i'll change is the what's new note here -- it's too long"):
+the KOReader battery and Links between notebooks items out, Pages shortened. The release is that build with
+the shorter notes.
+
 ## 2.0.0-beta.2
 
 Checked by the owner on the Kindle Scribe 2024 (firmware 5.20.1.0.2) on the beta.2 builds installed through
