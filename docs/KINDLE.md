@@ -905,7 +905,7 @@ List contains existing links grouped by destination notebook and scrolls without
 Pages manages the current notebook's pages and shows small cached previews as they are generated: each page's
 preview as soon as it is ready, the light pages first, and an hourglass on a page whose preview is still being
 made. Dense pages are slow to draw (seconds on a Kindle): their drawing is kept, so their previews and opening
-them later are quick, and opening one that has to be drawn again says Loading page... until it shows.
+them later are quick. Opening a page of 256 KB or more that has to be drawn says Loading page... until it shows.
 
 Swipe up with two fingers for page status: the notebook name, current/total page count, its links,
 Name page and Areas. The toolbar's link-plus button makes a link. In Where does the link go?,

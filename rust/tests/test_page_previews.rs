@@ -1,7 +1,8 @@
 // The Pages view's previews job (store_build_page_previews, 2.0.0-beta.2): the light pages before a dense one,
 // a current kept drawing read back instead of drawn, a stale one never used (nor taken for a quick page), a
 // dense page's drawing kept by the job and no light page's however slow (none with its picture missing), a
-// preview cut short made again, and what counts as a dense page (store_page_dense).
+// preview cut short made again, what counts as a dense page (store_page_dense), and what counts as a slow one
+// (store_page_slow, "Loading page..."'s, from 256 KB since the owner's decision of 2026-11-04).
 #[path = "testlib/mod.rs"]
 mod testlib;
 use grimoire::prelude::*;
@@ -131,8 +132,8 @@ fn stale_kept_drawing_ignored() {
     check!(p.as_ref().is_some_and(|p| mean(p) > 200.0));
 }
 
-// The job keeps the drawing of a dense page (store_page_dense: a page file of 512 KB or more, as "Loading page..."
-// counts one), exactly what drawing it gives, so it opens from it and its next preview is read back; a page under
+// The job keeps the drawing of a dense page (store_page_dense: a page file of 512 KB or more), exactly what
+// drawing it gives, so it opens from it and its next preview is read back; a page under
 // 512 KB gets its preview and no kept drawing, however slow (store_keep_render_ms() 0 here: every drawing counts
 // as slow, as the editor would count it). A page under 512 KB that kept a drawing before (the editor's, for a
 // page it drew slowly, or an earlier build's job's) is no dense page either: the job makes its preview and keeps
@@ -179,6 +180,48 @@ fn dense_drawing_kept_by_the_job() {
     check!(canvas_init(&mut drawn, W, H) == 0);
     page_render(&mut drawn, page.as_deref().unwrap(), Rect::new(0, 0, W, H), 300.0);
     check!(kept.px == drawn.px);
+}
+
+// A slow page under 512 KB (store_page_slow: a page file of 256 KB or more, which says "Loading page..." as it
+// opens with no current kept drawing, the owner's decision of 2026-11-04) is no dense page: the job makes its
+// preview and keeps no drawing of it, however slow (store_keep_render_ms() 0 here), so it still says so at its
+// next open; the job's rule stays at 512 KB. A page under 256 KB is neither, and a dense page is both. A kept
+// drawing (the editor's) changes neither: the notice asks store_page_render_kept as well.
+fn slow_page_not_dense() {
+    let _root = fresh_root("slow");
+    let nb = notebook("Slow", 3);
+    check!(store_save_page(&nb, 0, &page_of(1100, 60, 41)) == 0);
+    check!(store_save_page(&nb, 1, &page_of(400, 60, 42)) == 0);
+    check!(store_save_page(&nb, 2, &page_of(30, 50, 43)) == 0);
+    let dir = dir_of(&nb);
+    let size = |i: usize| std::fs::metadata(format!("{dir}/p{}.qpg", nb.page_ids[i])).unwrap().len();
+    check!(STORE_SLOW_PAGE_BYTES == 256 * 1024 && STORE_DENSE_PAGE_BYTES == 512 * 1024);
+    check!(size(0) >= STORE_DENSE_PAGE_BYTES);
+    check!(size(1) >= STORE_SLOW_PAGE_BYTES && size(1) < STORE_DENSE_PAGE_BYTES);
+    check!(size(2) < STORE_SLOW_PAGE_BYTES);
+    let (dense, slow, light) = (nb.page_ids[0], nb.page_ids[1], nb.page_ids[2]);
+    check!(store_page_slow(&nb, dense) && store_page_dense(&nb, dense));
+    check!(store_page_slow(&nb, slow) && !store_page_dense(&nb, slow));
+    check!(!store_page_slow(&nb, light) && !store_page_dense(&nb, light));
+    STORE_TEST_KEEP_RENDER_MS.store(0, std::sync::atomic::Ordering::Relaxed);
+    check!(store_build_page_previews(nb.id.as_str(), "0:3", 300.0) == 0);
+    STORE_TEST_KEEP_RENDER_MS.store(u32::MAX, std::sync::atomic::Ordering::Relaxed);
+    for pid in [dense, slow, light] {
+        check!(preview_of(&nb, pid).is_some());
+    }
+    check!(store_page_render_kept(&nb, dense, W, H, false));
+    check!(!store_page_render_kept(&nb, slow, W, H, false) && !store_page_render_kept(&nb, slow, W, H, true));
+    check!(!std::path::Path::new(&format!("{dir}/.page-previews/p{slow}.full")).exists());
+    check!(!store_page_render_kept(&nb, light, W, H, false) && !store_page_render_kept(&nb, light, W, H, true));
+    check!(store_page_slow(&nb, slow) && !store_page_dense(&nb, slow) && !store_page_slow(&nb, light));
+    // (the editor's kept drawing of each, as it keeps one of a page it drew slowly)
+    let mut black = Canvas::default();
+    check!(canvas_init(&mut black, W, H) == 0);
+    canvas_fill(&mut black, Rect::new(0, 0, W, H), 0);
+    check!(store_save_page_render(&nb, slow, &black, false) && store_save_page_render(&nb, light, &black, false));
+    check!(store_page_render_kept(&nb, slow, W, H, false) && store_page_render_kept(&nb, light, W, H, false));
+    check!(store_page_slow(&nb, slow) && !store_page_dense(&nb, slow));
+    check!(!store_page_slow(&nb, light) && !store_page_dense(&nb, light));
 }
 
 // A dense page whose kept drawing is of its file as it is now but by another renderer (a build that draws ink
@@ -258,6 +301,7 @@ fn test_page_previews() {
     run!(kept_drawing_read_back);
     run!(stale_kept_drawing_ignored);
     run!(dense_drawing_kept_by_the_job);
+    run!(slow_page_not_dense);
     run!(foreign_kept_drawing_not_first);
     run!(missing_picture_keeps_nothing);
     run!(cut_short_preview_made_again);

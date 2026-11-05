@@ -350,7 +350,7 @@ pub struct EditorState {
     full_ms: (u32, u32),
     /// whether the open page came up from its kept drawing (a probe, editor.page_kept)
     page_kept: bool,
-    /// how many times "Loading page..." went up before a dense page was drawn (a probe, editor.loading_toasts)
+    /// how many times "Loading page..." went up before a slow page was drawn (a probe, editor.loading_toasts)
     loading_toasts: u32,
     /// how many times "Adding N pages..." reached the panel before a batch of new pages was written, or a
     /// batch's Redo wrote them again (a probe, editor.add_notices)
@@ -2862,9 +2862,10 @@ fn render_page_full(a: &mut App) {
 const K_LOADING_PAGE: &str = n_("Loading page...");
 
 /// render_page_full for a page that opens (a page turn, a jump, a notebook opening, the page left after a
-/// deletion): one that takes seconds to draw (store_page_dense) and has no current kept drawing to read back
-/// says "Loading page..." first, on the panel before the drawing starts, and the toast goes once the page is
-/// drawn. Never for a page that draws quickly.
+/// deletion): one that takes seconds to draw (store_page_slow: a page file of 256 KB or more, the owner's
+/// decision of 2026-11-04; it went by store_page_dense's 512 KB before) and has no current kept drawing to read
+/// back says "Loading page..." first, on the panel before the drawing starts, and the toast goes once the page
+/// is drawn. Never for a page that draws quickly.
 fn render_page_open(a: &mut App) {
     let toast = loading_toast_due(a);
     if toast {
@@ -2888,7 +2889,7 @@ fn loading_toast_due(a: &App) -> bool {
     }
     let pid = s.open_pid();
     let layered = s.open_page().is_some_and(page_layered);
-    !store_page_render_kept(&s.nb, pid, s.pgw, s.pgh, layered) && store_page_dense(&s.nb, pid)
+    !store_page_render_kept(&s.nb, pid, s.pgw, s.pgh, layered) && store_page_slow(&s.nb, pid)
 }
 
 // A page from a newer Grimoire (or one this build cannot fully read) is shown as far as it can
@@ -11221,7 +11222,7 @@ pub fn editor_probe(a: &mut App, key: &str, out: &mut String, cap: usize) -> i32
         // Whether the open page came up from its kept drawing instead of being drawn stroke by stroke.
         csnprintf!(out, cap, "%d", s.page_kept as i32);
     } else if key == "loading_toasts" {
-        // How many times "Loading page..." went up before a dense page was drawn as it opened.
+        // How many times "Loading page..." went up before a slow page was drawn as it opened.
         csnprintf!(out, cap, "%d", s.loading_toasts as i32);
     } else if key == "add_notices" {
         // How many times "Adding N pages..." reached the panel before a batch of new pages was written, or a

@@ -188,9 +188,10 @@ Pages on a screen with a dense page: the other tiles come one by one within a se
 page's tile shows an hourglass until its own comes. Turn to the next screen at once: its tiles come without
 waiting for the dense page. Open a dense page whose preview was just made: it opens quickly. Edit a dense
 page, turn away within two seconds, and come back: "Loading page..." shows until the page is drawn, and goes.
-A light page never shows it. Write on a page whose screen has a dense page, pause three seconds (the idle
-save, and the warm-up starts), then open Pages: only one `previews:` line has the dense page as its `slow=`
-page (it is drawn once, not twice). In grimoire.log, check the `previews:` lines (`first=` is the first tile's
+A light page never shows it (under 256 KB since the owner's decision of 2026-11-04: see the end of this
+file). Write on a page whose screen has a dense page, pause three seconds (the idle save, and the warm-up
+starts), then open Pages: only one `previews:` line has the dense page as its `slow=` page (it is drawn
+once, not twice). In grimoire.log, check the `previews:` lines (`first=` is the first tile's
 time) and `beside pid` (the second background process).
 
 ## 2.0.0-beta.2, the Terminess diet (device checks pending)
@@ -987,3 +988,26 @@ For a failure, write down the Scribe model, firmware, jailbreak, KOReader versio
 is installed and how Grimoire was started. Attach `grimoire/grimoire.log`, and for a hand-over
 failure `koreader/crash.log`. Read the logs before sharing them; never include a passcode, a
 serial number or a book file.
+
+## 2.0.0-beta.2, Loading page from 256 KB
+
+The owner's decision of 2026-11-04: "Loading page..." shows as a page of 256 KB or more opens with no kept
+drawing (store_page_slow), where it went by the dense page's 512 KB before; the previews job still keeps a
+drawing only of a page of 512 KB or more (store_page_dense). A page of handwriting is under 0.3 MB and draws
+in well under a second; one of 0.3 to 0.5 MB could sit 2 to 4 s on its first open with nothing said.
+
+Automated: tests/test_page_previews.rs's slow_page_not_dense (a page between 256 and 512 KB is slow and not
+dense, one under 256 KB neither, one over 512 KB both; the job makes the slow page's preview and keeps no
+drawing of it, every drawing counted as slow; a kept drawing changes neither) and z_previews_9_slow
+(tests/previews_fixture.py slow: a 381 KB page with no kept drawing, its preview just made by the job, says
+"Loading page..." in a refresh of its own before it is drawn, gone once the page shows; a light page with no
+kept drawing says nothing; the slow page again, from the drawing the editor kept, says nothing). The scenario
+fails with the notice on the 512 KB rule.
+
+On the Kindle: open a page of 300 to 500 KB (its `p<id>.qpg` in the notebook's folder) that has no kept
+drawing (write a stroke on it, turn to another page and come back): "Loading page..." shows until the page is
+drawn, then goes. Turn away and back again: nothing (a page that took a second or more to draw keeps its
+drawing). A light page (under 256 KB, most pages of handwriting) shows nothing. Write on the 300 to 500 KB
+page again, turn to the next page, open Pages and let the page's tile come, go back and open the page:
+"Loading page..." still shows, as the job keeps no drawing of a page under 512 KB (a dense page opens at
+once then; in grimoire.log the batch's `previews:` line says `keep=0` when its screen has no dense page).
