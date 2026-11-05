@@ -37,7 +37,12 @@ pub struct App {
     /// mirrors the panel
     pub screen: Canvas,
     pub settings: Settings,
+    /// the default shortcuts: shortcuts.ini and controller.ini, which every keyboard and controller uses
+    /// but one with shortcuts of its own
     pub shortcuts: Shortcuts,
+    /// the keyboards' and controllers' own shortcuts (shortcut_profiles.rs): a key or button uses its
+    /// device's while that is on (app_key_map)
+    pub shortcut_profiles: Vec<ShortcutProfile>,
     /// Live view holds have independent identity and a lease; physical releases cannot end them.
     pub live_holds: Vec<crate::live_keys::LiveKey>,
     /// what each touch gesture does: the built-ins and gestures.ini (app_gestures_load)
@@ -576,14 +581,12 @@ pub fn app_init(a: &mut App, w: i32, h: i32, dpi: f32) -> i32 {
     clipboard_clear_at_start();
     settings_load(&mut a.settings);
     let mut shortcuts_path = String::new();
-    let mut controller_path = String::new();
     csnprintf!(&mut shortcuts_path, 600, "%s/shortcuts.ini", &store_root());
-    csnprintf!(&mut controller_path, 1024, "%s/controller.ini", &store_root());
     // A starter map nobody edited becomes this build's (grimoire.log says so; no toast); edited files stay.
     if shortcuts_upgrade_starter(&shortcuts_path) {
         qlog!("shortcuts: %s was an earlier starter map; it is this build's now", &shortcuts_path);
     }
-    shortcuts_load_all(&mut a.shortcuts, &shortcuts_path, &controller_path);
+    app_shortcuts_load(a);
     app_gestures_load(a);
     // The owner's touch trace (docs/KINDLE.md): an empty <root>/touch-trace asks for
     // <root>/touch-trace.txt, written while Grimoire has the panel (only the Kindle writes one).
@@ -741,8 +744,8 @@ fn note_input(a: &mut App) {
     }
 }
 
-// A keyboard or controller came or went (shortcuts on): the Controller and keys sheet's status line
-// follows, and a short toast says so, at most once a direction in 30 s, so a link that keeps
+// A keyboard or controller came or went (shortcuts on): the Shortcuts sheet's devices and the Pair sheet's
+// status line follow, and a short toast says so, at most once a direction in 30 s, so a link that keeps
 // dropping does not flash the screen. None over the sleep screen or a stroke being drawn.
 fn hid_changed(a: &mut App, ev: &InEvent) {
     let attach = ev.type_ == InType::HidAttach;
@@ -776,9 +779,25 @@ pub fn app_graph_up(a: &App) -> bool {
     }
 }
 
-/// Whether keys and a controller's buttons are shortcuts now: Settings > Controller's Enable shortcuts.
+/// Whether keys and a controller's buttons are shortcuts now: Settings > Shortcuts' Enable shortcuts.
 pub fn app_shortcuts_on(a: &App) -> bool {
     a.settings.shortcuts_enabled
+}
+
+/// The shortcuts a key or button of ev's device uses: the device's own (its profile, while on), else the
+/// default (shortcuts.ini and controller.ini). gestures.ini, the pen's button and finger shapes are not per
+/// device.
+pub fn app_key_map<'a>(a: &'a App, ev: &InEvent) -> &'a Shortcuts {
+    shortcut_profile_for(&a.shortcut_profiles, ev.hid_name.as_str(), ev.hid_vendor, ev.hid_product).unwrap_or(&a.shortcuts)
+}
+
+/// The default shortcuts (shortcuts.ini's keys, and its buttons while there is no controller.ini) and every
+/// device's own again: at the start, Reload shortcuts.ini, Enable shortcuts.
+pub fn app_shortcuts_load(a: &mut App) {
+    let sp = cformat!("%s/shortcuts.ini", &store_root());
+    let cp = cformat!("%s/controller.ini", &store_root());
+    shortcuts_load_all(&mut a.shortcuts, &sp, &cp);
+    a.shortcut_profiles = shortcut_profiles_load(&shortcut_profiles_dir());
 }
 
 /// The open on-screen keyboard's area, None when no keyboard is open.
@@ -900,12 +919,14 @@ fn app_event_screens(a: &mut App, ev: &InEvent) {
             if (a.scr == ScreenId::Library || crate::library::library_settings_active(a)) && library_learn_key(a, ev.value, ev.gamepad) {
                 return;
             }
-            // (one key may do one thing in each place: the Library, a page, the Pages view, the Graph, Pen feel)
-            let mut action = shortcuts_lookup_at(&a.shortcuts, ActionSrc::from(ev.gamepad), ev.value, ev.key_mods as i32, app_place(a));
+            // (one key may do one thing in each place: the Library, a page, the Pages view, the Graph, Pen feel;
+            // and each device may have shortcuts of its own, app_key_map)
+            let map = app_key_map(a, ev);
+            let mut action = shortcuts_lookup_at(map, ActionSrc::from(ev.gamepad), ev.value, ev.key_mods as i32, app_place(a));
             if app_graph_up(a) {
                 // The Graph's keys: an older edited file with none of its actions has the arrows and V
                 // there too (shortcuts_lookup_graph); Enter opens the selected page.
-                action = shortcuts_lookup_graph(&a.shortcuts, ActionSrc::from(ev.gamepad), ev.value, ev.key_mods as i32);
+                action = shortcuts_lookup_graph(map, ActionSrc::from(ev.gamepad), ev.value, ev.key_mods as i32);
                 if action == SHORTCUT_NONE && !ev.gamepad && matches!(ev.value, 28 | 96) && ev.key_mods == 0 {
                     action = GRAPH_KEY_ENTER;
                 }
@@ -2272,6 +2293,14 @@ pub fn app_probe(a: &mut App, key: &str, out: &mut String, cap: usize) -> i32 {
             );
             i += 1;
         }
+    } else if key == "shortcuts.profiles" {
+        // The device profiles in root/shortcuts as their files are now, by slug: "slug:on slug:off" (off: the
+        // device uses the default, its file kept), "" for none.
+        let list: Vec<String> = shortcut_profiles_load(&shortcut_profiles_dir())
+            .iter()
+            .map(|p| format!("{}:{}", p.slug, if p.on { "on" } else { "off" }))
+            .collect();
+        csnprintf!(out, cap, "%s", &list.join(" "));
     } else if key == "gestures.shape_count" {
         csnprintf!(out, cap, "%d", gesturemap_shapes(&a.gestures).len() as i32);
     } else if key == "gestures.refused" {
@@ -2475,8 +2504,7 @@ pub fn app_toggle_shortcuts(a: &mut App) {
     } else if a.settings.controller && bt_present() {
         bt_start();
     }
-    let pads = cformat!("%s/controller.ini", &store_root());
-    shortcuts_load_all(&mut a.shortcuts, &path, &pads);
+    app_shortcuts_load(a);
 }
 
 pub fn app_toggle_controller(a: &mut App) {

@@ -51,6 +51,7 @@ pub mod penbutton;
 pub mod power;
 pub mod qr;
 pub mod shortcuts;
+pub mod shortcut_profiles; // per-device shortcuts: root/shortcuts/<device>.ini (Rust only, 2.0.0-beta.2)
 pub mod touchgest; // the touch recognizer: contact frames in, touch, pinch and gesture events out
 pub mod update;
 pub mod wifi;
@@ -189,6 +190,7 @@ pub mod prelude {
     pub use crate::power::*;
     pub use crate::qr::*;
     pub use crate::shortcuts::*;
+    pub use crate::shortcut_profiles::*;
     pub use crate::status::*;
     pub use crate::store::*;
     pub use crate::templates::*;
