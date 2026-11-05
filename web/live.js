@@ -15,8 +15,10 @@
 // is no /live/pen; a hello or any state but awake takes it away), 7 samples (u32 ink epoch, u32
 // reset, then 20 bytes a sample, the first u32 its identity: the kernel's time of its frame in
 // microseconds), 8 ink style (64 bytes), 9 layer (u8 0 the toolbar, 1 the clock and battery
-// corner; u8 0; u16 x, y, w, h; the PNG, none while it is not on the screen: drawn over the page
-// unless switched off here). src/live.h (live.rs's head) has them byte by byte. Under node
+// corner, 2 the toast; u8 0; u16 x, y, w, h; the PNG, none while it is not on the screen: drawn over
+// the page in that order, the toolbar and the corner unless switched off here, the toast always, its
+// PNG with alpha so that what shows under its round ends is what this page shows there; an id this
+// page does not know is left out). src/live.h (live.rs's head) has them byte by byte. Under node
 // (tests/live_check.js) it only exports the frame reader, the pure parts below and CodecRecorder
 // (which the check runs on a stand-in encoder); tests/live_browser_check.js runs the page itself
 // on DOM and canvas stand-ins.
@@ -1110,10 +1112,13 @@
     let penEpoch = 0, tileInk = 0, fastConnected = false, paintSamples = [], debug = false, monitor = false;
     let batchAck = 0, batchAckMs = 0, batchInk = 0, paintedAck = 0, paintedAckMs = 0, paintedInk = 0, layer = null;
     let tileHellos = 0, helloWaiters = [], penW = 0, penH = 0;
-    // The layers (frame 9) as the stream has them: [{x, y, w, h, bmp}] (w 0: not on the screen), and
-    // whether each shows here (layerOn: the toolbar, the clock and battery corner; both by default).
-    const layers = [{x: 0, y: 0, w: 0, h: 0, bmp: null}, {x: 0, y: 0, w: 0, h: 0, bmp: null}];
-    const layerOn = [true, true];
+    // The layers (frame 9) as the stream has them: [{x, y, w, h, bmp}] (w 0: not on the screen), drawn
+    // in this order, and whether each shows here (layerOn: the toolbar and the clock and battery corner,
+    // both by default, each with its switch; the toast, TOAST, always: 2.0.0-beta.2, the owner: "Enable
+    // toasts on the live view display. they don't show up now.").
+    const TOAST = 2;
+    const layers = [0, 1, TOAST].map(() => ({x: 0, y: 0, w: 0, h: 0, bmp: null}));
+    const layerOn = [true, true, true];
     // size: the picture's size (liveSize), remembered; Monitor mode and a pop-out or PiP window fit
     // it whatever it is. shownSize: viewSize's answer at the last layout. bright: the picture's
     // brightness (liveBrightness), remembered.
@@ -2460,6 +2465,15 @@
         });
         repaint(x0, y0, x1 - x0, y1 - y0);
     }
+    // The toast goes with any state but awake, as the pen does: the Kindle's sleep screen has none, and
+    // one over the pairing card is never shown. (Awake again, the stream says whether one is up.)
+    function dropToast() {
+        const l = layers[TOAST], {x, y, w, h} = l;
+        if (!w) return;
+        if (l.bmp && l.bmp.close) l.bmp.close();
+        Object.assign(l, {x: 0, y: 0, w: 0, h: 0, bmp: null});
+        composeSoon(x, y, w, h);
+    }
     function union(a, b) {
         const x = Math.min(a.x, b.x), y = Math.min(a.y, b.y);
         return {x, y, w: Math.max(a.x + a.w, b.x + b.w) - x, h: Math.max(a.y + a.h, b.y + b.h) - y};
@@ -2560,7 +2574,7 @@
                         kindleWarmth = warm;
                         look();
                     }
-                    if (s !== 0) { ink.reset(); paintSamples = []; movePen(null); }  // (any state but awake takes the pen away)
+                    if (s !== 0) { ink.reset(); paintSamples = []; movePen(null); dropToast(); }  // (any state but awake takes the pen and the toast away)
                     if (s === 0) status(words.live, true);
                     else if (s === 1) status(words.asleep);
                     else if (s === 2) status(words.pairing);

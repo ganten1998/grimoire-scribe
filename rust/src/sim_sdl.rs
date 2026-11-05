@@ -1396,6 +1396,48 @@ fn display_stale(a: Option<&mut App>, key: &[u8], out: &mut String, cap: usize) 
     })
 }
 
+/// "live.toast.stale": how many pixels of Live view's toast layer (live_layer_now: gray and alpha), drawn
+/// over the app's screen as the browser draws it over its picture, differ by more than a unit of gray
+/// from what the simulated panel shows there, the panel's colors as drawn (Invert colors undone): 0
+/// when the browser shows the toast as the Kindle does; "none" while the layer holds none. (The app's
+/// screen after a present holds neither the toast nor the live chip nor the clock corner, which the
+/// panel shows over it: keep the toast clear of the chip and the corner. A toast shown by a fast
+/// refresh is dithered on the panel.)
+fn live_toast_stale(a: Option<&mut App>, key: &[u8], out: &mut String, cap: usize) -> bool {
+    if key != b"live.toast.stale" {
+        return false;
+    }
+    let Some(a) = a else { return false };
+    let (r, px) = live_layer_now(LIVE_LAYER_TOAST);
+    if rect_is_empty(r) {
+        csnprintf!(out, cap, "%s", "none");
+        return true;
+    }
+    with(|st| {
+        let ew = st.w;
+        if st.eink.is_empty() || a.screen.w != ew || a.screen.h != st.h || r.x < 0 || r.y < 0 || r.x + r.w > ew || r.y + r.h > st.h {
+            return false;
+        }
+        let mut n = 0i64;
+        for y in 0..r.h {
+            for x in 0..r.w {
+                let at = (r.y + y) as usize * ew as usize + (r.x + x) as usize;
+                let shown = st.eink[at];
+                let shown = if st.sim_invert { 255 - shown } else { shown };
+                let k = 2 * (y * r.w + x) as usize;
+                let (g, al) = (px[k] as i32, px[k + 1] as i32);
+                let under = a.screen.px[(r.y + y) as usize * a.screen.stride as usize + (r.x + x) as usize] as i32;
+                let seen = (g * al + under * (255 - al) + 127) / 255;
+                if (seen - shown as i32).abs() > 1 {
+                    n += 1;
+                }
+            }
+        }
+        csnprintf!(out, cap, "%lld", n);
+        true
+    })
+}
+
 /// app_probe, which the C reaches through g_probe_app: the App the main loop handed the poll, none
 /// before there is one (the C's NULL g_probe_app: -1). Every key app_probe answers is ASCII, so a
 /// key in bytes that are not UTF-8 is unknown there too.
@@ -1425,6 +1467,7 @@ fn expect_check_as(gone: bool, mut a: Option<&mut App>) {
         && !watching
         && !with(|st| st.display_probe(&key, &mut got, GOT_CAP))
         && !display_stale(a.as_deref_mut(), &key, &mut got, GOT_CAP)
+        && !live_toast_stale(a.as_deref_mut(), &key, &mut got, GOT_CAP)
         && !power_probe(&key, &mut got, GOT_CAP)
         && probe_app(a, &key, &mut got, GOT_CAP) != 0
     {

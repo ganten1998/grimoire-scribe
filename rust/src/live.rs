@@ -1,13 +1,13 @@
 //! live.h: Live view, a computer's browser watching what Grimoire shows (docs/DESIGN.md, Live view).
 //!
 //! While it is on, every rect the main loop presents is copied from App.screen into a shared frame
-//! (one memcpy of a rect it presents anyway; toasts and the live chip are never in it) and its
-//! 64 px tiles are marked. A browser that has paired (pair.h) gets a viewer child of its own, forked
-//! by the share server: it sends the tiles that changed as gray PNGs over one long HTTP response
-//! (GET /live/stream), at most about 30 batches a second, and never holds up the pen: a slow
-//! browser only makes the marks pile up, and the next batch carries what is newest (its socket holds
-//! little, and a batch waits for room in it: tile_room). Two viewers at most. Nothing is written to
-//! disk.
+//! (one memcpy of a rect it presents anyway; the toast and the live chip are never in it: the toast
+//! comes as a layer, below, and the chip not at all) and its 64 px tiles are marked. A browser that
+//! has paired (pair.h) gets a viewer child of its own, forked by the share server: it sends the
+//! tiles that changed as gray PNGs over one long HTTP response (GET /live/stream), at most about 30
+//! batches a second, and never holds up the pen: a slow browser only makes the marks pile up, and
+//! the next batch carries what is newest (its socket holds little, and a batch waits for room in
+//! it: tile_room). Two viewers at most. Nothing is written to disk.
 //!
 //! The pen has a stream of its own (GET /live/pen, fast ink): the browser draws a quick stroke from
 //! its samples the moment they come, and the tiles that carry the real one take its place as they
@@ -43,7 +43,16 @@
 //! The editor's panel and the clock and battery corner come as layers of their own (frame 9): the
 //! frame holds the page under the panel (app_flush composes that rect again without it), and the
 //! corner, an overlay never in the frame, is copied as it is painted. The browser shows either or
-//! neither over the page. The Kindle's own screen is unchanged.
+//! neither over the page. The toast is a third layer, over the other two, and the browser always
+//! shows it (2.0.0-beta.2, the owner: "Enable toasts on the live view display. they don't show up
+//! now."): app_flush draws it again for the layer as it draws it over a present, and empties it with
+//! the present that takes it off the panel (its time up, a dismiss, a redraw; another toast in its
+//! place replaces it). Its pixels have alpha (live_layer_drawn): the toast's own and nothing under its
+//! round or pointed ends, so the browser shows there whatever it shows of the page, the panel and the
+//! corner, and never the live chip, whatever its switches say. A turn empties it
+//! (live_resize), and so does the state leaving LIVE_AWAKE (live_set_state): a toast told while the
+//! state is not LIVE_AWAKE is told as none, so one drawn over the pairing card never reaches a
+//! browser afterwards. The Kindle's own screen is unchanged.
 //!
 //! Two epochs. The screen's moves on at a start and a turn, the only times the tiles start again
 //! from white. The ink epoch moves on whenever ink drawn before can no longer join what comes (a
@@ -71,9 +80,10 @@
 //!                colors inverted (white on black: the frame never is), else 0; u8 the front light's
 //!                warmth, 0..LIGHT_MAX, or LIVE_NO_WARMTH (no warm light, or not known). First thing
 //!                on every stream, then whenever any of them changes (/live/pen: the state only).
-//!                Any but LIVE_AWAKE takes the pen and the quick ink away, and nothing of the screen
-//!                or the pen is sent while it lasts: the pairing code and the Kindle's own passcode
-//!                are never streamed.
+//!                Any but LIVE_AWAKE takes the pen, the quick ink and the toast away, and nothing of
+//!                the screen or the pen is sent while it lasts: the pairing code and the Kindle's own
+//!                passcode are never streamed. (Back to LIVE_AWAKE, the toast layer comes again if
+//!                the Kindle shows a toast then.)
 //!   6 pen        u16 x, y in the screen's pixels (the tiles'), u8 LIVE_PEN_AWAY, LIVE_PEN_HOVER or
 //!                LIVE_PEN_TOUCH: where the Kindle's pen is, for the browser to draw over the picture
 //!                (/live/stream only; the page follows it only while it has no /live/pen). After the
@@ -100,10 +110,16 @@
 //!                0, 1) ^ gamma); i32 x, y, w, h of the page on the screen (the ink's clip), then of
 //!                the panel (no ink over it). The quick ink is round: nibs, grain, smoothing, tilt and
 //!                the paper white ink brings back come with the tiles.
-//!   9 layer      u8 LIVE_LAYER_PANEL (the editor's panel) or LIVE_LAYER_STATUS (the clock and battery
-//!                corner), u8 0, u16 x, y, w, h, then the PNG of that rect (/live/stream only); w = 0
-//!                and no PNG when the layer is not on the screen. In the batch it changed in, and
-//!                again after every hello. The tiles under it hold what is under it.
+//!   9 layer      u8 LIVE_LAYER_PANEL (the editor's panel), LIVE_LAYER_STATUS (the clock and battery
+//!                corner) or LIVE_LAYER_TOAST (the toast), u8 0, u16 x, y, w, h, then the PNG of that
+//!                rect (/live/stream only); w = 0 and no PNG when the layer is not on the screen. In
+//!                the batch it changed in, and again after every hello. The tiles under it hold what
+//!                is under it. The panel's and the corner's PNGs are gray; the toast's is gray and
+//!                alpha (live_layer_bpp), opaque on the toast and clear outside its round or pointed
+//!                ends, which the browser draws over what it shows there. The browser draws the
+//!                layers in the order of their ids, the toast over the others, and leaves out an id
+//!                it does not know: a page from before the toast layer shows no toast and nothing
+//!                else changes, so the version stays 3.
 
 use crate::prelude::*;
 use std::cell::RefCell;
@@ -137,10 +153,24 @@ pub const LIVE_STYLE: i32 = 8;
 pub const LIVE_LAYER: i32 = 9;
 /// the streams' version, in each hello
 pub const LIVE_VERSION: u32 = 3;
-/// the layers (frame 9): the editor's panel, and the clock and battery corner
-pub const LIVE_LAYERS: usize = 2;
+/// the layers (frame 9): the editor's panel, the clock and battery corner, and the toast
+pub const LIVE_LAYERS: usize = 3;
 pub const LIVE_LAYER_PANEL: usize = 0;
 pub const LIVE_LAYER_STATUS: usize = 1;
+/// the last layer: its buffer is the toast's size at most, not the screen's (live_start)
+pub const LIVE_LAYER_TOAST: usize = 2;
+const _: () = assert!(LIVE_LAYER_TOAST == LIVE_LAYERS - 1, "the toast's buffer is the last in the frame");
+
+/// Bytes a pixel of layer i holds, and its PNG's channels: gray for the panel and the corner; gray and
+/// alpha for the toast (live_layer_drawn), whose round or pointed ends let through what the browser
+/// shows under them, so its look never depends on the other layers' switches.
+pub const fn live_layer_bpp(i: usize) -> usize {
+    if i == LIVE_LAYER_TOAST {
+        2
+    } else {
+        1
+    }
+}
 pub const LIVE_PEN_AWAY: i32 = 0;
 pub const LIVE_PEN_HOVER: i32 = 1;
 pub const LIVE_PEN_TOUCH: i32 = 2;
@@ -191,14 +221,16 @@ const _: () = assert!(cfg!(target_has_atomic = "32"), "the tile marks must work 
 
 // The frame both sides map. w and h change only on a turn, written before epoch moves on; px holds
 // w * h bytes (the same in either orientation), rows w apart, right after this header (the C's
-// flexible array member), then a buffer of as many bytes for each layer. Each tile viewer slot has
-// marks of its own: a viewer takes its marks as it sends, which must leave the other's. pen is
-// live_pen_word's. ack_* is live_presented's watermark, written between two steps of ack_version
-// (odd while it changes) so a viewer reads it whole. woken: a slot's wake byte is on its way (wake):
-// the child clears it once it has drained its pipe and before it looks at the frame again, so a wake
-// while it is set needs no byte of its own. capture, raw_map and each layer are written the same
-// way (Seq), and blocked is live_set_blocked's. ring_only: GRIMOIRE_LIVE_PEN_SOURCE=ring (tests and
-// measurements: the pen viewers take the samples from the ring even where a raw digitizer is).
+// flexible array member), then a buffer of as many bytes for the panel's layer and for the
+// corner's, and last the toast's, of toast_cap bytes (frame_layout: a toast is far smaller than the
+// screen and its buffer is too). Each tile viewer slot has marks of its own: a viewer takes its
+// marks as it sends, which must leave the other's. pen is live_pen_word's. ack_* is
+// live_presented's watermark, written between two steps of ack_version (odd while it changes) so a
+// viewer reads it whole. woken: a slot's wake byte is on its way (wake): the child clears it once
+// it has drained its pipe and before it looks at the frame again, so a wake while it is set needs
+// no byte of its own. capture, raw_map and each layer are written the same way (Seq), and blocked
+// is live_set_blocked's. ring_only: GRIMOIRE_LIVE_PEN_SOURCE=ring (tests and measurements: the pen
+// viewers take the samples from the ring even where a raw digitizer is).
 #[repr(C)]
 struct Shared {
     epoch: AtomicU32,
@@ -285,11 +317,25 @@ const MAP_WORDS: usize = MAP_BYTES / 4;
 /// sizeof(Shared) in the C: where px begins
 const SHARED_SIZE: usize = std::mem::size_of::<Shared>();
 
-/// The mapping (g_sh and g_sh_size): a copy of it is what the viewer child is handed.
+/// The mapping (g_sh and g_sh_size): a copy of it is what the viewer child is handed. px_len and
+/// toast_cap are frame_layout's, fixed at live_start (a turn keeps both).
 #[derive(Clone, Copy)]
 struct Frame {
     base: *mut Shared,
     size: usize,
+    px_len: usize,
+    toast_cap: usize,
+}
+
+/// A w x h screen's frame: the pixels' bytes (w * h, also each of the panel's and the corner's
+/// buffers), the toast's buffer (as many rows of the longer side as the tallest toast,
+/// ui_toast_max_h, and never more than w * h pixels, at live_layer_bpp's two bytes a pixel, gray and
+/// alpha; at most 2648 x 220 x 2 bytes, about 1.2 MB, where a gray buffer like the others would be
+/// 4.6 to 5.3 MB) and the mapping's whole size.
+fn frame_layout(w: i32, h: i32) -> (usize, usize, usize) {
+    let px_len = (w as usize) * (h as usize);
+    let toast_cap = ((w.max(h) as usize) * (ui_toast_max_h().max(1) as usize)).min(px_len) * live_layer_bpp(LIVE_LAYER_TOAST);
+    (px_len, toast_cap, SHARED_SIZE + px_len * LIVE_LAYERS + toast_cap)
 }
 
 impl Frame {
@@ -306,14 +352,24 @@ impl Frame {
         // SAFETY: the mapping is SHARED_SIZE + w * h long, so SHARED_SIZE is inside it (or its end).
         unsafe { (self.base as *mut u8).add(SHARED_SIZE) }
     }
-    /// w * h: the pixels, and each layer's buffer
+    /// w * h: the pixels, and the panel's and the corner's buffers
     fn px_len(&self) -> usize {
-        (self.size - SHARED_SIZE) / (1 + LIVE_LAYERS)
+        self.px_len
     }
-    /// The first byte of layer i's buffer (px_len bytes), read and written in short copies as px.
+    /// How many bytes layer i's buffer holds: px_len, or the toast's toast_cap (live_layer_bpp's bytes
+    /// a pixel).
+    fn layer_cap(&self, i: usize) -> usize {
+        if i == LIVE_LAYER_TOAST {
+            self.toast_cap
+        } else {
+            self.px_len
+        }
+    }
+    /// The first byte of layer i's buffer (layer_cap(i) bytes), read and written in short copies as px.
     fn layer_px(&self, i: usize) -> *mut u8 {
-        // SAFETY: the mapping holds px_len bytes of pixels and then px_len for each layer.
-        unsafe { self.px().add(self.px_len() * (1 + i)) }
+        // SAFETY: the mapping holds px_len bytes of pixels, then px_len for each layer before the
+        // toast's (the last: LIVE_LAYER_TOAST == LIVE_LAYERS - 1), then toast_cap (frame_layout).
+        unsafe { self.px().add(self.px_len * (1 + i)) }
     }
 }
 
@@ -559,13 +615,13 @@ pub fn live_start(w: i32, h: i32) -> i32 {
     {
         return -1;
     }
-    let size = SHARED_SIZE + (w as usize) * (h as usize) * (1 + LIVE_LAYERS);
+    let (px_len, toast_cap, size) = frame_layout(w, h);
     // SAFETY: an anonymous shared mapping: no file, no address asked for; the result is checked.
     let p = unsafe { libc::mmap(std::ptr::null_mut(), size, libc::PROT_READ | libc::PROT_WRITE, libc::MAP_SHARED | libc::MAP_ANON, -1, 0) };
     if p == libc::MAP_FAILED {
         return -1;
     }
-    let f = Frame { base: p as *mut Shared, size };
+    let f = Frame { base: p as *mut Shared, size, px_len, toast_cap };
     // SAFETY: px() is the start of the w * h pixel bytes of the mapping, which nobody else has yet.
     unsafe { std::ptr::write_bytes(f.px(), 255, (w as usize) * (h as usize)) };
     let sh = f.sh();
@@ -677,7 +733,7 @@ pub fn live_push(screen: &Canvas, r: Rect) {
 /// it is told again, and a new ink epoch (the ink before is on the screen before the turn).
 pub fn live_resize(w: i32, h: i32) {
     let Some(f) = frame() else { return };
-    if (w as usize).wrapping_mul(h as usize).wrapping_mul(1 + LIVE_LAYERS).wrapping_add(SHARED_SIZE) != f.size {
+    if w <= 0 || h <= 0 || (w as usize).wrapping_mul(h as usize) != f.px_len {
         return;
     }
     let sh = f.sh();
@@ -685,7 +741,7 @@ pub fn live_resize(w: i32, h: i32) {
     sh.h.store(h as u32, SeqCst);
     sh.pen.store(0, SeqCst); // (its place was on the screen before the turn)
     set_ack(sh, 0, 0, sh.ack_ink.load(SeqCst)); // (the turned screen's first flush says it again)
-    // SAFETY: px() is the start of the w * h pixel bytes (the size was checked against the mapping's).
+    // SAFETY: px() is the start of the w * h pixel bytes (w * h was checked against the frame's).
     unsafe { std::ptr::write_bytes(f.px(), 255, (w as usize) * (h as usize)) };
     for layer in sh.layers.iter() {
         layer.write(&[0u8; 20]); // (on the screen before the turn: the turned one's flush tells them again)
@@ -709,7 +765,7 @@ pub fn live_reset() {
 }
 
 /// LIVE_AWAKE, LIVE_ASLEEP or LIVE_PAIRING (the pairing card is up: nothing is sent while it is).
-/// Any but LIVE_AWAKE takes the pen away.
+/// Any but LIVE_AWAKE takes the pen and the toast away.
 pub fn live_set_state(state: i32) {
     let Some(f) = frame() else { return };
     let sh = f.sh();
@@ -722,6 +778,12 @@ pub fn live_set_state(state: i32) {
     }
     if state != LIVE_AWAKE {
         sh.pen.store(0, SeqCst); // (the browsers take it away with the state)
+        // The toast too (the browsers drop theirs with the state): the sleep screen has none, and one
+        // over the pairing card is never kept for afterwards (live_layer tells none meanwhile).
+        let mut was = [0u8; 20];
+        if sh.layers[LIVE_LAYER_TOAST].read(&mut was).is_none() || get32(&was[8..]) != 0 {
+            sh.layers[LIVE_LAYER_TOAST].write(&[0u8; 20]);
+        }
     }
     fence(SeqCst);
     if state == LIVE_AWAKE {
@@ -1004,9 +1066,10 @@ pub fn live_set_raw_map(m: Option<&LiveRawMap>) {
     wake_pens(); // (a pen viewer opens the node, or lets it go)
 }
 
-/// Layer i (LIVE_LAYER_PANEL, LIVE_LAYER_STATUS) is r of screen now, or not on the screen (r empty):
-/// its pixels copied into the layer's buffer, the tile viewers woken. An empty layer told again
-/// changes nothing.
+/// Layer i (LIVE_LAYER_PANEL, LIVE_LAYER_STATUS, LIVE_LAYER_TOAST) is r of screen now, or not on
+/// the screen (r empty): its pixels copied into the layer's buffer, the tile viewers woken. An empty
+/// layer told again changes nothing, and so does the same rect with the same pixels. (The toast's
+/// layer, which has alpha, takes the rect as opaque: app_flush gives it live_layer_drawn's instead.)
 pub fn live_layer(i: usize, screen: &Canvas, r: Rect) {
     let Some(f) = frame() else { return };
     let sh = f.sh();
@@ -1016,12 +1079,102 @@ pub fn live_layer(i: usize, screen: &Canvas, r: Rect) {
         return; // (a turn not told yet: live_resize comes, and the flush after it tells the layers)
     }
     let r = rect_intersect(r, Rect { x: 0, y: 0, w, h });
+    let stride = screen.stride as usize;
+    let bpp = live_layer_bpp(i);
+    layer_write(&f, i, r, |y, row| {
+        let from = &screen.px[((r.y + y) as usize) * stride + r.x as usize..][..r.w as usize];
+        if bpp == 1 {
+            row.copy_from_slice(from);
+        } else {
+            for (to, &g) in row.chunks_exact_mut(2).zip(from) {
+                to[0] = g;
+                to[1] = 255;
+            }
+        }
+    });
+}
+
+/// Layer i (the toast's: a layer with alpha, live_layer_bpp) is what draw paints into r, and nothing
+/// under it (2.0.0-beta.2: the browser's switches for the panel and the corner must not change the
+/// toast's look, and the live chip is never streamed). draw paints a canvas of r's size twice, all
+/// black and all white before it, as it paints the screen at (0, 0); where the two agree the layer is
+/// opaque, and where they differ (outside the toast's round or pointed ends, and the anti-aliased
+/// edge of them) it lets through as much of what is under it as the white showed through. Over the
+/// same picture the browser's composite is the Kindle's, to a unit of gray at that edge. Nothing is
+/// drawn while the layer is told as none anyway (Live view off, the state not awake, r off the
+/// screen), and without memory for the two canvases the layer is none.
+pub fn live_layer_drawn(i: usize, r: Rect, draw: impl Fn(&mut Canvas, Rect)) {
+    let Some(f) = frame() else { return };
+    let sh = f.sh();
+    let w = sh.w.load(SeqCst) as i32;
+    let h = sh.h.load(SeqCst) as i32;
+    if i >= LIVE_LAYERS || live_layer_bpp(i) != 2 {
+        return;
+    }
+    let cut = rect_intersect(r, Rect { x: 0, y: 0, w, h });
+    if rect_is_empty(cut) || sh.state.load(SeqCst) != LIVE_AWAKE as u32 {
+        layer_write(&f, i, RECT_EMPTY, |_, _| {});
+        return;
+    }
+    let all = Rect { x: 0, y: 0, w: r.w, h: r.h };
+    let (mut black, mut white) = (Canvas::default(), Canvas::default());
+    if canvas_init(&mut black, r.w, r.h) != 0 || canvas_init(&mut white, r.w, r.h) != 0 {
+        canvas_free(&mut black);
+        layer_write(&f, i, RECT_EMPTY, |_, _| {});
+        return;
+    }
+    canvas_fill(&mut black, all, 0);
+    draw(&mut black, all);
+    draw(&mut white, all); // (canvas_init's own fill is white)
+    let (dx, dy) = ((cut.x - r.x) as usize, (cut.y - r.y) as usize);
+    let stride = black.stride as usize;
+    layer_write(&f, i, cut, |y, row| {
+        let o = (dy + y as usize) * stride + dx;
+        let (b, wh) = (&black.px[o..][..cut.w as usize], &white.px[o..][..cut.w as usize]);
+        for ((to, &b), &wh) in row.chunks_exact_mut(2).zip(b).zip(wh) {
+            let (g, a) = live_matte(b, wh);
+            to[0] = g;
+            to[1] = a;
+        }
+    });
+    canvas_free(&mut black);
+    canvas_free(&mut white);
+}
+
+/// A pixel drawn over black (b) and over white (w) as one with alpha: (gray, alpha), the gray not
+/// premultiplied, as a PNG has it. Agreeing, opaque; the white showing through by w - b, that much
+/// less alpha, and the gray what the black one is over that alpha (0 where nothing was drawn).
+pub fn live_matte(b: u8, w: u8) -> (u8, u8) {
+    let a = 255 - w.saturating_sub(b) as u32;
+    if a == 0 {
+        return (0, 0);
+    }
+    (((b as u32 * 255 + a / 2) / a).min(255) as u8, a as u8)
+}
+
+// Layer i is r (cut to the screen), row y of it (r.w pixels of live_layer_bpp(i) bytes) as fill(y,
+// row) writes it; r empty: none. The toast only while the state is LIVE_AWAKE: one told meanwhile
+// (over the pairing card) is told as none, so its pixels are never in the frame for a viewer to send
+// once the state is LIVE_AWAKE again. A rect bigger than the layer's buffer (never: ui_toast_max_h
+// bounds a toast) is told as none too, and logged.
+fn layer_write(f: &Frame, i: usize, r: Rect, fill: impl Fn(i32, &mut [u8])) {
+    let sh = f.sh();
     let layer = &sh.layers[i];
+    let bpp = live_layer_bpp(i);
+    let mut empty = rect_is_empty(r);
+    if i == LIVE_LAYER_TOAST && sh.state.load(SeqCst) != LIVE_AWAKE as u32 {
+        empty = true;
+    }
+    if !empty && (r.w as usize) * (r.h as usize) * bpp > f.layer_cap(i) {
+        qlog!("live: layer %d is %dx%d, more than its %d bytes: told as none", i as i32, r.w, r.h, f.layer_cap(i) as i32);
+        empty = true;
+    }
     let mut was = [0u8; 20];
-    let empty = rect_is_empty(r);
     if empty && layer.read(&mut was).is_some() && get32(&was[8..]) == 0 {
         return;
     }
+    let line = if empty { 0 } else { (r.w as usize) * bpp };
+    let mut row = vec![0u8; line];
     let mut words = [0u8; 20];
     if !empty {
         put32(&mut words, r.x as u32);
@@ -1031,11 +1184,12 @@ pub fn live_layer(i: usize, screen: &Canvas, r: Rect) {
         // The same rect with the same pixels (every flush that reaches the panel tells it): nothing.
         if layer.read(&mut was).is_some() && was[..16] == words[..16] {
             let same = (0..r.h).all(|y| {
-                let from = &screen.px[((r.y + y) as usize) * (screen.stride as usize) + r.x as usize..][..r.w as usize];
-                // SAFETY: row y of the packed copy is inside the layer's buffer (r is cut to the
-                // screen); only this process writes it, so it holds what was copied last.
-                let kept = unsafe { std::slice::from_raw_parts(f.layer_px(i).add((y as usize) * (r.w as usize)) as *const u8, r.w as usize) };
-                from == kept
+                // SAFETY: row y of the packed copy is inside the layer's buffer (r.w * r.h * bpp is at
+                // most layer_cap(i), checked above); only this process writes it, so it holds what was
+                // copied last.
+                let kept = unsafe { std::slice::from_raw_parts(f.layer_px(i).add((y as usize) * line) as *const u8, line) };
+                fill(y, &mut row);
+                row == kept
             });
             if same {
                 return;
@@ -1044,16 +1198,37 @@ pub fn live_layer(i: usize, screen: &Canvas, r: Rect) {
     }
     layer.version.fetch_add(1, SeqCst);
     for y in 0..if empty { 0 } else { r.h } {
-        let from = &screen.px[((r.y + y) as usize) * (screen.stride as usize) + r.x as usize..][..r.w as usize];
-        // SAFETY: row y of the packed r.w x r.h copy is inside the layer's px_len (= w * h) bytes,
-        // since r is cut to the screen; `from` is the caller's canvas, a different allocation.
-        unsafe { std::ptr::copy_nonoverlapping(from.as_ptr(), f.layer_px(i).add((y as usize) * (r.w as usize)), r.w as usize) };
+        fill(y, &mut row);
+        // SAFETY: row y of the packed copy (line bytes a row) is inside the layer's layer_cap(i) bytes
+        // (checked above); row is this call's own buffer, line bytes long.
+        unsafe { std::ptr::copy_nonoverlapping(row.as_ptr(), f.layer_px(i).add((y as usize) * line), line) };
     }
     for (k, word) in layer.words.iter().enumerate() {
         word.store(get32(&words[k * 4..]), SeqCst);
     }
     layer.version.fetch_add(1, SeqCst);
     wake_tiles();
+}
+
+/// Layer i as the frame holds it now (the main loop's side, for the runner's probes and the tests):
+/// its rect and its pixels (rows r.w pixels apart, live_layer_bpp(i) bytes each: the toast's gray
+/// and alpha); an empty rect and none when it is not on the screen, or Live view is off.
+pub fn live_layer_now(i: usize) -> (Rect, Vec<u8>) {
+    let Some(f) = frame() else { return (RECT_EMPTY, Vec::new()) };
+    let mut words = [0u8; 20];
+    if i >= LIVE_LAYERS || f.sh().layers[i].read(&mut words).is_none() {
+        return (RECT_EMPTY, Vec::new());
+    }
+    let r = Rect { x: get32(&words) as i32, y: get32(&words[4..]) as i32, w: get32(&words[8..]) as i32, h: get32(&words[12..]) as i32 };
+    let n = (r.w.max(0) as usize) * (r.h.max(0) as usize) * live_layer_bpp(i);
+    if n == 0 || n > f.layer_cap(i) {
+        return (RECT_EMPTY, Vec::new());
+    }
+    let mut px = vec![0u8; n];
+    // SAFETY: n bytes from the start of layer i's buffer, which holds layer_cap(i) >= n; only this
+    // process writes it.
+    unsafe { std::ptr::copy_nonoverlapping(f.layer_px(i) as *const u8, px.as_mut_ptr(), n) };
+    (r, px)
 }
 
 // ---- the raw digitizer, as a pen viewer reads it ----
@@ -1542,17 +1717,22 @@ struct Png {
 }
 
 impl Png {
-    /// The w x h gray tile as a PNG, None when stb has no memory for it.
-    fn of_tile(tile: &[u8], w: i32, h: i32) -> Option<Png> {
-        Png::of_part(tile, w, w, h)
+    /// The w x h layer as a PNG of bpp channels (live_layer_bpp: gray, or gray and alpha), None when
+    /// stb has no memory for it.
+    fn of_layer(px: &[u8], w: i32, h: i32, bpp: usize) -> Option<Png> {
+        Png::of_rows(px, w * bpp as i32, w, h, bpp)
     }
-    /// The same for the w x h rect at the start of rows stride bytes apart (a part of a run).
+    /// The w x h gray rect at the start of rows stride bytes apart (a part of a run), as a PNG.
     fn of_part(tile: &[u8], stride: i32, w: i32, h: i32) -> Option<Png> {
-        assert!(w <= stride && (h <= 0 || tile.len() >= (stride as usize) * (h as usize - 1) + w as usize));
+        Png::of_rows(tile, stride, w, h, 1)
+    }
+    fn of_rows(tile: &[u8], stride: i32, w: i32, h: i32, bpp: usize) -> Option<Png> {
+        let line = w as usize * bpp;
+        assert!(line <= stride as usize && (h <= 0 || tile.len() >= (stride as usize) * (h as usize - 1) + line));
         let mut len: libc::c_int = 0;
-        // SAFETY: stb reads h rows of w bytes, stride apart, from tile (checked above) and returns a
-        // malloc'ed buffer of len bytes, or null.
-        let ptr = unsafe { crate::ffi_stb::stbi_write_png_to_mem(tile.as_ptr(), stride, w, h, 1, &mut len) };
+        // SAFETY: stb reads h rows of w pixels of bpp bytes, stride apart, from tile (checked above)
+        // and returns a malloc'ed buffer of len bytes, or null.
+        let ptr = unsafe { crate::ffi_stb::stbi_write_png_to_mem(tile.as_ptr(), stride, w, h, bpp as libc::c_int, &mut len) };
         if ptr.is_null() {
             None
         } else {
@@ -2336,8 +2516,9 @@ Cache-Control: no-store\r\nX-Content-Type-Options: nosniff\r\nConnection: close\
                         out += 1;
                     }
                 }
-                // The layers that changed, after the tiles (the page under them first), each whole:
-                // one being written as it is read comes at the next wake, which its write makes.
+                // The layers that changed, after the tiles (the page under them first), each whole,
+                // in the order of their ids (the toast last): one being written as it is read comes
+                // at the next wake, which its write makes.
                 for i in 0..LIVE_LAYERS {
                     if !ok || sh.layers[i].version.load(SeqCst) == layer_sent[i] {
                         continue;
@@ -2345,17 +2526,23 @@ Cache-Control: no-store\r\nX-Content-Type-Options: nosniff\r\nConnection: close\
                     let mut words = [0u8; 20];
                     let Some(v) = sh.layers[i].read(&mut words) else { continue };
                     let r = Rect { x: get32(&words) as i32, y: get32(&words[4..]) as i32, w: get32(&words[8..]) as i32, h: get32(&words[12..]) as i32 };
-                    let n = (r.w.max(0) as usize) * (r.h.max(0) as usize);
-                    if n > f.px_len() || (n > 0 && layer_buf.try_reserve(n.saturating_sub(layer_buf.len())).is_err()) {
+                    let n = (r.w.max(0) as usize) * (r.h.max(0) as usize) * live_layer_bpp(i);
+                    if n > f.layer_cap(i) || (n > 0 && layer_buf.try_reserve(n.saturating_sub(layer_buf.len())).is_err()) {
                         continue;
                     }
                     layer_buf.resize(n.max(layer_buf.len()), 0);
-                    // SAFETY: n bytes from the start of layer i's buffer, which holds px_len >= n; a
-                    // copy of bytes the main loop may be rewriting, checked whole by the version below.
+                    // SAFETY: n bytes from the start of layer i's buffer, which holds layer_cap(i) >= n;
+                    // a copy of bytes the main loop may be rewriting, checked whole by the version below.
                     unsafe { std::ptr::copy_nonoverlapping(f.layer_px(i) as *const u8, layer_buf.as_mut_ptr(), n) };
                     fence(SeqCst);
                     if sh.layers[i].version.load(SeqCst) != v {
                         continue;
+                    }
+                    // The state again, as after a run's snapshot: nothing goes once it is not awake.
+                    if sh.state.load(SeqCst) != LIVE_AWAKE as u32 || sh.epoch.load(SeqCst) != epoch {
+                        ok = false;
+                        moved = true;
+                        break;
                     }
                     let mut at = [0u8; 10];
                     at[0] = i as u8;
@@ -2366,7 +2553,7 @@ Cache-Control: no-store\r\nX-Content-Type-Options: nosniff\r\nConnection: close\
                     let sent_ok = if n == 0 {
                         send_frame(fd, LIVE_LAYER as u8, &at, &[])
                     } else {
-                        let Some(png) = Png::of_tile(&layer_buf, r.w, r.h) else { continue };
+                        let Some(png) = Png::of_layer(&layer_buf, r.w, r.h, live_layer_bpp(i)) else { continue };
                         send_frame(fd, LIVE_LAYER as u8, &at, png.as_slice())
                     };
                     if !sent_ok {

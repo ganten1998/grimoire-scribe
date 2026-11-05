@@ -35,23 +35,31 @@ def log_code():
 
 # A PNG of 8-bit gray, as stb writes them: rows of (filter byte, pixels).
 def png_gray(data):
+    w, h, n, rows = png_pixels(data)
+    assert n == 1
+    return w, h, rows
+
+# A gray (color type 0) or gray and alpha (4: the toast's layer) PNG: w, h, the bytes a pixel and the rows.
+def png_pixels(data):
     assert data[:8] == b'\x89PNG\r\n\x1a\n'
-    at, idat, w = 8, b'', 0
+    at, idat, w, n = 8, b'', 0, 1
     while at < len(data):
-        n, kind = struct.unpack('>I4s', data[at:at + 8])
-        chunk = data[at + 8:at + 8 + n]
+        n_, kind = struct.unpack('>I4s', data[at:at + 8])
+        chunk = data[at + 8:at + 8 + n_]
         if kind == b'IHDR':
             w, h, depth, ctype = struct.unpack('>IIBB', chunk[:10])
-            assert depth == 8 and ctype == 0
+            assert depth == 8 and ctype in (0, 4)
+            n = 2 if ctype == 4 else 1
         elif kind == b'IDAT':
             idat += chunk
-        at += 12 + n
-    raw, rows, prev = zlib.decompress(idat), [], bytearray(w)
+        at += 12 + n_
+    stride = w * n
+    raw, rows, prev = zlib.decompress(idat), [], bytearray(stride)
     for y in range(h):
-        f, line = raw[y * (w + 1)], bytearray(raw[y * (w + 1) + 1:(y + 1) * (w + 1)])
-        for x in range(w):
-            a = line[x - 1] if x else 0
-            b, c = prev[x], prev[x - 1] if x else 0
+        f, line = raw[y * (stride + 1)], bytearray(raw[y * (stride + 1) + 1:(y + 1) * (stride + 1)])
+        for x in range(stride):
+            a = line[x - n] if x >= n else 0
+            b, c = prev[x], prev[x - n] if x >= n else 0
             if f == 1: line[x] = (line[x] + a) & 255
             elif f == 2: line[x] = (line[x] + b) & 255
             elif f == 3: line[x] = (line[x] + (a + b) // 2) & 255
@@ -61,7 +69,7 @@ def png_gray(data):
                 line[x] = (line[x] + (a if pa <= pb and pa <= pc else b if pb <= pc else c)) & 255
         rows.append(bytes(line))
         prev = line
-    return w, h, rows
+    return w, h, n, rows
 
 # The stream's frames; every byte read is kept in raw, and each frame's (type, length) in seen, for
 # tests/live_check.js (the browser's frame reader on the same bytes).
@@ -296,6 +304,30 @@ if bars:
           % (in_layer, in_page), lw == bw and lh == bh and in_layer >= 18 and in_page <= 4)
 else:
     check('the toolbar comes as a layer of its own', False)
+# The toast as a layer of its own (id 2; 2.0.0-beta.2): the one the first browser brings ("A computer is
+# watching this screen.", 3 s) comes as the PNG of its rect, black with white words (the frame's colors as
+# drawn, though settings.ini inverts the Kindle's), gray and alpha: clear at its corners, outside its round
+# ends (nothing of what is under them, which the browser shows or not by its own switches), opaque within;
+# and it goes (w = 0) when its time is up.
+def toast_went():
+    shown = [i for i, l in enumerate(layers) if l[0] == 2 and l[3]]
+    return bool(shown) and any(l[0] == 2 and not l[3] for l in layers[shown[0] + 1:])
+for _ in range(160):
+    if toast_went(): break
+    time.sleep(.05)
+toasts = [l for l in layers if l[0] == 2 and l[3]]
+if toasts:
+    _, tx, ty, tw, th, tpng = toasts[0]
+    gw, gh, gn, trows = png_pixels(tpng)
+    opaque = [(row[x], row[x + 1]) for row in trows for x in range(0, len(row), 2) if row[x + 1] == 255] if gn == 2 else []
+    dark = sum(1 for g, _ in opaque if g < 128)
+    light = sum(1 for g, _ in opaque if g >= 128)
+    clear = gn == 2 and all(trows[y][2 * x + 1] == 0 for x, y in ((0, 0), (gw - 1, 0), (0, gh - 1), (gw - 1, gh - 1)))
+    check('the toast comes as a layer of its own, %dx%d at %d,%d, gray and alpha, clear at its corners, black with '
+          'white words (%d dark, %d light), and goes when its time is up' % (tw, th, tx, ty, dark, light),
+          (gw, gh) == (tw, th) and clear and dark > tw * th // 2 and light > tw * th // 100 and toast_went())
+else:
+    check('the first browser\'s toast comes as a layer of its own', False)
 with open(os.path.join(OUT, 'fast.bin'), 'wb') as f: f.write(fast_raw)
 with open(os.path.join(OUT, 'fast.txt'), 'w') as f: f.write(''.join('%d %d\n' % item for item in fast_frames))
 cp.close()

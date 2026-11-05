@@ -1148,3 +1148,50 @@ only the Scribe can show:
 9. **Upgrade.** A Kindle that had shortcuts on in an earlier beta.2 build with an unedited `shortcuts.ini`:
    after this build's first start its first line names Settings > Shortcuts (grimoire.log says it became
    this build's); an edited one is left as it was.
+
+## 2.0.0-beta.2, Toasts in Live view
+
+Live view shows Grimoire's toasts now (the owner, 2026-11-05: "Enable toasts on the live view display. they
+don't show up now."): a third layer of the stream, drawn over the page, the toolbar and the clock corner, with
+no setting. It comes with transparency: the toast alone, and what shows under its round ends is what the
+browser shows there. The automated checks: `rust/tests/test_live.rs` (the layer's rect and its gray and alpha,
+moved, gone, nothing while pairing or asleep; `app_flush` gives the layer the toast alone, neither the live
+chip nor a toolbar under its ends, and over what the Kindle had under it the layer is what the panel shows),
+`tests/scenarios/y_live_toast.qs` (in the simulator: over the pairing card, moved by a sheet, sideways,
+inverted, replaced, timed out, asleep; the layer drawn over the screen against the simulated panel),
+`tests/live_stream.py` (the first browser's own toast over a real stream, clear at its corners) and
+`tests/live_browser_check.js` (the page draws it on top, clears it, drops it with any state but awake, and
+leaves out a layer id it does not know).
+What only the Scribe and a real browser can show:
+
+1. **The first one.** Pair a browser. As the card closes, the Kindle says "A computer is watching this screen."
+   for 3 s: the browser shows it in the same place with the same look (black, white words, round ends; in
+   Gothic its pointed ends and inner line), and it goes from both together.
+2. **On a page.** In a notebook, choose the lasso and circle empty paper: "Nothing to select." on both, over
+   the page; gone from both after 2 s. To see one toast replace another: bind a key or a controller button to
+   light-up (none is bound by default: Settings > Shortcuts > Buttons... for a controller, or a `key.` line in
+   shortcuts.ini, docs/SHORTCUTS.md) and press it a few times quickly: each "Light N of 24" replaces the last
+   in the browser too.
+3. **Switches and the toolbar.** Drag the toolbar down to the foot of the page, under where toasts show, and
+   make "Nothing to select." over it: on both, the toast covers the toolbar and the toolbar shows around its
+   round ends. In the browser's View settings, switch Show toolbar and Show clock and battery off and make the
+   toast again: it still shows, and around its round ends is the page, with no piece of the hidden toolbar.
+   The same in Gothic (Settings, Style: tap for Gothic), at its pointed ends. Switch them back on and put
+   the toolbar back.
+4. **Loading page...** Turn to a dense page that says "Loading page..." as it opens: the browser shows it while
+   the Kindle draws, and it goes as the page shows.
+5. **It moves.** Make "Nothing to select." and at once open the toolbar's Pages view: the toast moves above the
+   Pages view's buttons on the Kindle and in the browser alike. Make one and turn the Kindle sideways: the
+   browser shows it in its sideways place.
+6. **Asleep.** Make "Nothing to select." and press the power button while it is up (within its 2 s): the
+   browser says the Kindle is asleep and the toast leaves its picture at once. Wake the Kindle: no toast on
+   either.
+7. **The pairing card.** With a browser watching, open Library > Share > Live view again (the card): the
+   browser says it is pairing and shows nothing new. To have a toast up as the card closes, turn on a paired
+   Bluetooth keyboard or controller while the card shows (Shortcuts on): the Kindle says "Controller
+   connected" for 1.5 s; tap Done while it is up, and the browser shows it as the card closes. Again, but wait
+   for it to go before Done: it does not come back. (That toast comes at most once in 30 s: turn the device
+   off and wait between the two.)
+8. **Inverted.** With Invert colors on (Settings > Display), the browser's toast is inverted with the rest of
+   the picture, as on the Kindle (white with black words), and the browser's Invert colors switch turns it
+   with the picture.

@@ -127,7 +127,10 @@ digitizer (`input_raw_pen`, `live_set_raw_map`, `live_set_capture`, `live_set_bl
 panel and the clock's corner as layers (`live_layer`, `editor_live_panel`,
 `editor_live_under_panel`, `status_live`), and the runner's stand-in nodes
 (`GRIMOIRE_SIM_RAWPEN`, `GRIMOIRE_SIM_RAWPEN_MAIN`, `GRIMOIRE_SIM_STALL_MS`; docs/SIM.md). The C
-tree streams version 2: `make c-check` cannot run tests/live_check.sh.
+tree streams version 2: `make c-check` cannot run tests/live_check.sh. The toast's layer
+(2.0.0-beta.2: `LIVE_LAYER_TOAST`, its gray and alpha (`live_layer_bpp`, `live_layer_drawn`,
+`live_matte`) and its smaller buffer, `frame_layout`, `live_layer_now`, app.rs's `live_toast_sync`,
+ui.rs's `ui_toast_max_h`, the runner's `live.toast` and `live.toast.stale`) is Rust only as well.
 
 The Terminess diet's two additions (2.0.0-beta.2, assets/README.md) are Rust only too:
 `koreader_fonts_refresh` in koreader.rs and its call in mainloop.rs's `run` after the first frame
