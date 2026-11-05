@@ -3767,6 +3767,43 @@ mod tests {
         err(b"(not reached: a check failed)\n");
     }
 
+    // The fixture came from ARM64's fused multiply-adds. Other CPUs use separate operations
+    // (util::fmla), so only the event's float fields may differ by the measured subpixel tolerance.
+    fn probe_line_matches(got: &str, want: &str, rounding: bool) -> bool {
+        if got == want { return true; }
+        if !got.starts_with("ev ") || !want.starts_with("ev ") { return false; }
+        let (g, w): (Vec<_>, Vec<_>) = (got.split(' ').collect(), want.split(' ').collect());
+        if g.len() != w.len() { return false; }
+        for i in 0..g.len() {
+            if g[i] == w[i] { continue; }
+            if i == 0 || !matches!(w[i - 1], "x" | "y" | "nx" | "ny" | "p" | "tx" | "ty" | "x2" | "y2") { return false; }
+            let (Ok(a), Ok(b)) = (u32::from_str_radix(g[i], 16), u32::from_str_radix(w[i], 16)) else { return false };
+            // The x86_64 Mac run differs by at most 1/8192 px, or 1/8388608 in normalized
+            // coordinates and pressure. Cancellation can turn that into more than a few ULPs.
+            let tolerance = if matches!(w[i - 1], "x" | "y") { 1.0 / 8192.0 } else { 1.0 / 8388608.0 };
+            let (a, b) = (f32::from_bits(a), f32::from_bits(b));
+            // NaN's sign is not specified across CPUs; it must still be NaN on both.
+            if rounding && a.is_nan() && b.is_nan() { continue; }
+            if !rounding || !a.is_finite() || !b.is_finite() || (a - b).abs() > tolerance { return false; }
+        }
+        true
+    }
+
+    #[test]
+    fn probe_tolerance_is_only_for_float_rounding() {
+        let want = "ev 2 nx 3f800000 y 40000000 v 0 dt 5";
+        assert!(probe_line_matches("ev 2 nx 3f800001 y 40000000 v 0 dt 5", want, true));
+        assert!(!probe_line_matches("ev 2 nx 3f800002 y 40000000 v 0 dt 5", want, true));
+        assert!(!probe_line_matches("ev 2 nx 3f800001 y 40000000 v 0 dt 5", want, false));
+        assert!(!probe_line_matches("ev 3 nx 3f800000 y 40000000 v 0 dt 5", want, true));
+        assert!(!probe_line_matches("ev 2 nx 3f800000 y 40000000 v 0 dt 6", want, true));
+        assert!(!probe_line_matches("ev 2 nx 7f800000 y 40000000 v 0 dt 5", want, true));
+        assert!(probe_line_matches("ev 1 x ffc00000", "ev 1 x 7fc00000", true));
+        assert!(!probe_line_matches("ev 1 x ffc00000", "ev 1 x 7fc00000", false));
+        assert!(!probe_line_matches("ev 1 x 7fc00000", "ev 1 x 3f800000", true));
+        assert!(!probe_line_matches("tally 2 0", "tally 1 0", true));
+    }
+
     #[test]
     fn sim_probe_matches_the_c() {
         let dir = std::env::var("GRIMOIRE_TEST_TMP").unwrap_or_else(|_| std::env::temp_dir().to_string_lossy().into());
@@ -3785,15 +3822,12 @@ mod tests {
             .output()
             .unwrap();
         let want: &[u8] = include_bytes!("../tests/fixtures/sim_probe_c.txt");
-        if out.stderr != want {
-            let (g, w) = (String::from_utf8_lossy(&out.stderr), String::from_utf8_lossy(want));
-            for (i, (a, b)) in g.lines().zip(w.lines()).enumerate() {
-                if a != b {
-                    panic!("line {}:\n  rust: {a}\n  c:    {b}", i + 1);
-                }
-            }
-            panic!("the outputs differ in length: rust {} lines, c {} lines", g.lines().count(), w.lines().count());
+        let (g, w) = (String::from_utf8_lossy(&out.stderr), String::from_utf8_lossy(want));
+        let rounding = !cfg!(target_arch = "aarch64");
+        for (i, (a, b)) in g.lines().zip(w.lines()).enumerate() {
+            assert!(probe_line_matches(a, b, rounding), "line {}:\n  rust: {a}\n  c:    {b}", i + 1);
         }
+        assert_eq!(g.lines().count(), w.lines().count(), "the outputs differ in length");
         assert_eq!(out.status.code(), Some(3));
         // The shots the C stand-in left unwritten: one gray plane of the panel's size.
         let png = std::fs::read(cwd.join("shots-sim-probe/first.png")).unwrap();
