@@ -203,8 +203,9 @@ scenario-times: scenarios
 # script's own clock (docs/SIM.md), so they hold however late the machine is. After the scenarios
 # (s_shape_4_guards starts from s_shape_1_record's data). z_pages_drag_hold times the Pages view's
 # 300 ms drag hold against the card's 600 ms timer, which reads the real clock: its short holds are
-# frame lines, so a late wake cannot open the card first.
-LATE_SCENARIOS := y_status_press s_shape_4_guards z_pages_drag_hold
+# frame lines, so a late wake cannot open the card first. u_keyboard_hold_delete times a held delete's repeats by
+# frame lines, against the screen's tick, which reads the real clock.
+LATE_SCENARIOS := y_status_press s_shape_4_guards z_pages_drag_hold u_keyboard_hold_delete
 .PHONY: scenarios-late
 scenarios-late: $(BUILD)/host/grimoire-headless
 	@echo "== the scenarios again with every wait 400 ms late: $(LATE_SCENARIOS)"

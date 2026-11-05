@@ -346,17 +346,23 @@ pub fn findsheet_cancel_press(f: &mut FindSheet, a: &mut App) -> Rect {
     f.pressed.r
 }
 
-/// From the editor's tick while the sheet is open: once typing pauses the keyboard's grayscale refresh
-/// (app_keyboard_tick), with the card of rows in it, so it too is cleaned of what the fast ones left.
-pub fn findsheet_tick(f: &mut FindSheet, a: &mut App, now: u32) {
+/// From the editor's tick while the sheet is open (app_keyboard_tick): a held delete's repeat, after which the
+/// rows are made again for the text as a key's typing makes them, and FsResult::Changed (the editor draws and
+/// refreshes `rows_dirty`, find_result); else, once typing pauses, the keyboard's grayscale refresh with the
+/// card of rows in it, so it too is cleaned of what the fast ones left, and None.
+pub fn findsheet_tick(f: &mut FindSheet, a: &mut App, nb: &NotebookInfo, nav: &Nav, now: u32) -> FsResult {
     if !f.open || !f.kb.open {
-        return;
+        return FsResult::None;
     }
     let due = f.kb.settle_at != 0 && (now.wrapping_sub(f.kb.settle_at) as i32) >= 0 && f.kb.pressed_key < 0;
-    app_keyboard_tick(a, &mut f.kb, now);
+    if app_keyboard_tick(a, &mut f.kb, now) == KbResult::Changed {
+        findsheet_update(f, a, nb, nav);
+        return FsResult::Changed;
+    }
     if due {
         app_invalidate(a, f.rect, RefreshMode::Ui);
     }
+    FsResult::None
 }
 
 /// The runner's keys for the sheet, without "editor.find.": "rows" (how many rows it shows) and "N" (row N from

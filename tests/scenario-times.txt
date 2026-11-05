@@ -70,6 +70,7 @@ t_passcode_left_off 0.3
 t_toast_over_sheets 2.2
 t_touch_1_contacts 2.4
 u_accents 9.2
+u_keyboard_hold_delete 19.4
 u_keyboard_symbols 2.4
 u_keyboard_symbols_classic 2.4
 u_update_1 4.1

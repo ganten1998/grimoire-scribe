@@ -229,6 +229,15 @@ pub fn display_wake() {
 pub fn display_close() {
     platform::display_close()
 }
+/// Whether the last fast refresh sent may still be on the panel, its waveform not ended: a held delete's
+/// next repeat waits for it rather than queue behind it in the driver (keyboard_repeat). No display
+/// operation is issued. Never in the simulator, whose refreshes are done when they are sent.
+pub fn display_fast_busy() -> bool {
+    #[cfg(feature = "kindle")]
+    { crate::display_fbink::display_fast_busy() }
+    #[cfg(not(feature = "kindle"))]
+    { false }
+}
 /// Cached indication for pacing non-ink trails on a colour panel. No display operation is issued.
 pub fn display_last_fast_waiting() -> bool {
     #[cfg(feature = "kindle")]

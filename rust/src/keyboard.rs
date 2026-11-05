@@ -6,6 +6,7 @@
 //! up, right or down the rest of the row (a mobile phone's kana pad), with ー beside it, one
 //! modifier that cycles the kana typed last (゛小: か to が, は to ば to ぱ, つ to づ to っ), カ for
 //! katakana and 、 for 、。？！.
+//! Delete held down deletes again and again (keyboard_repeat), on every page with a delete key.
 
 use crate::prelude::*;
 
@@ -41,6 +42,24 @@ pub const KB_KEY_CANCEL: u32 = 27;
 /// The count pad's (page 4) - and +: the count one less, one more.
 pub const KB_KEY_DEC: u32 = 14;
 pub const KB_KEY_INC: u32 = 15;
+
+/// Delete held down (the owner, 2026-11-05: "hold del long enough in keyboards to quick delete"): the
+/// touch-down deletes one, as a tap does, and a contact still on the key this long after it deletes again
+/// ("low ish delay but not too low"). 400 ms is twice a slow tap's contact (about 200 ms: a tap stays one
+/// delete, however deliberate) and shorter than the 500 to 660 ms desktop systems wait by default, a pause
+/// that on the Kindle reads as nothing happening.
+pub const KB_HOLD_MS: u32 = 400;
+/// Then one more every 65 ms, about 15 a second, until the lift or a slide off the key ("repeat rate high so
+/// it feels snappy", "not too high"): twice as fast as anyone taps, about half the 25 to 30 a second of
+/// desktop keyboards, which empty a name faster than the eye can stop them. The same rate all the way: no
+/// speeding up to words.
+pub const KB_REPEAT_MS: u32 = 65;
+/// The most characters one repeat deletes. A repeat waits while the last fast refresh is still on the panel
+/// (keyboard_repeat), rather than send another to queue behind it in the driver, and then deletes those that
+/// came due meanwhile together, one refresh for them all. A fast (DU) refresh lasts 188 ms on the Scribe at
+/// room temperature, three repeats (docs/INK-PERFORMANCE.md), so there the rate holds; colder the panel is
+/// slower, and the repeat slows to its pace instead of jumping further.
+pub const KB_REPEAT_BATCH: u32 = 3;
 
 #[derive(Clone, Copy, Debug, Default)]
 pub struct Keyboard {
@@ -80,6 +99,12 @@ pub struct Keyboard {
     /// The count pad's count is still the 1 it opened with (the owner: "1 will be the default"): drawn as any
     /// count is but with no caret after it, and the first digit typed replaces it rather than following it.
     pub count_fresh: bool,
+    /// Delete held down: when it deletes next (keyboard_repeat), 0 while it is not held. The touch-down's delete
+    /// sets it when text is left; the lift, a slide off the key, the text gone, the keyboard closing and
+    /// keyboard_holds_end clear it.
+    pub repeat_at: u32,
+    /// keyboard_holds_end's count when the hold began: once it has moved on, the hold is over
+    pub repeat_gen: u32,
 }
 
 // keyboard.c: on-screen keyboard modal. Layout is computed from the area it was drawn in,
@@ -712,6 +737,7 @@ fn set_count(kb: &mut Keyboard, n: i32) {
 
 pub fn keyboard_close(kb: &mut Keyboard) {
     kb.open = false;
+    kb.repeat_at = 0;
 }
 
 // What a key shows: a name for the named keys, else its character as it would type now (in
@@ -910,7 +936,9 @@ pub fn keyboard_key_rect(kb: &Keyboard, code: u32, r: &mut Rect) -> bool {
 
 /// Pointer events only (pen or touch, already unified by the caller as down/move/up).
 /// *dirty receives the rect needing redraw (may be empty). Characters and backspace type on
-/// touch-down (no waiting for the lift); Shift, the page keys, Cancel and Done act on release.
+/// touch-down (no waiting for the lift); Shift, the page keys, Cancel and Done act on release. Delete's
+/// touch-down also starts its hold (Keyboard.repeat_at), which a move off the key or the lift ends; the
+/// repeats themselves are keyboard_repeat's, at the samples and the ticks after.
 /// phase: 0 down, 1 move, 2 up.
 pub fn keyboard_pointer(kb: &mut Keyboard, phase: i32, x: f32, y: f32, t: u32, dirty: &mut Rect) -> KbResult {
     *dirty = RECT_EMPTY;
@@ -921,6 +949,9 @@ pub fn keyboard_pointer(kb: &mut Keyboard, phase: i32, x: f32, y: f32, t: u32, d
     kb.also_dirty = RECT_EMPTY;
     let mut keys = [Key::default(); MAX_KEYS];
     let n = layout(kb.area, kb.page, &mut keys) as i32;
+    if phase != 1 {
+        kb.repeat_at = 0; // (a new contact, or the lift: no hold goes on)
+    }
     if phase == 0 {
         press_begin(&mut kb.press, x, y, t);
         kb.pressed_key = key_at(kb, x, y);
@@ -948,6 +979,9 @@ pub fn keyboard_pointer(kb: &mut Keyboard, phase: i32, x: f32, y: f32, t: u32, d
         kb.typed = true; // type now: the lift only releases the key
     } else if phase == 1 {
         press_move(&mut kb.press, x, y);
+        if kb.repeat_at != 0 && key_at(kb, x, y) != kb.pressed_key {
+            kb.repeat_at = 0; // (slid off delete: the hold is over, and coming back does not start it again)
+        }
         // A swipe on a kana key shows the kana it would type there, once for each way it turns.
         let k = kb.pressed_key;
         if k >= 0 && k < n && is_flick(keys[k as usize].code) {
@@ -989,7 +1023,15 @@ pub fn keyboard_pointer(kb: &mut Keyboard, phase: i32, x: f32, y: f32, t: u32, d
     if k < 0 || k >= n {
         return KbResult::None;
     }
-    keyboard_press(kb, keys[k as usize].code, dirty)
+    let code = keys[k as usize].code;
+    let r = keyboard_press(kb, code, dirty);
+    if phase == 0 && code == KB_KEY_BKSP && kb.open && !kb.text.is_empty() {
+        // Held, it deletes again (keyboard_repeat): not with nothing left to delete, so a hold on an empty
+        // field, or on the count pad's opening 1 (which this delete cleared), does nothing more.
+        kb.repeat_at = t.wrapping_add(KB_HOLD_MS).max(1);
+        kb.repeat_gen = G_HOLDS.with(|g| g.get());
+    }
+    r
 }
 
 /// What a key of the page showing does, as keyboard_pointer does it for a tap on that key (a keyboard's
@@ -1071,6 +1113,71 @@ pub fn keyboard_press(kb: &mut Keyboard, code: u32, dirty: &mut Rect) -> KbResul
     }
     kb.field_dirty = field_rect(kb.area);
     KbResult::Changed
+}
+
+thread_local! {
+    /// keyboard_holds_end
+    static G_HOLDS: Cell<u32> = const { Cell::new(0) };
+}
+
+/// Every keyboard's held delete lets go, wherever that keyboard is: at sleep and at a switch to another screen,
+/// after which the lift may never reach it (asleep, a lift is dropped; on another screen, it goes there), and
+/// its hold would go on deleting once its screen was back.
+pub fn keyboard_holds_end() {
+    G_HOLDS.with(|g| g.set(g.get().wrapping_add(1)));
+}
+
+// The code of the key pressed now, on the page showing (as last drawn).
+fn pressed_code(kb: &Keyboard) -> Option<u32> {
+    let mut keys = [Key::default(); MAX_KEYS];
+    let n = layout(kb.area, kb.page, &mut keys);
+    (kb.pressed_key >= 0 && (kb.pressed_key as usize) < n).then(|| keys[kb.pressed_key as usize].code)
+}
+
+/// Delete held down, at `now` (a sample of the contact on it, or the screen's tick): once its next repeat is due,
+/// the delete a tap makes, with every repeat that came due since up to KB_REPEAT_BATCH (a tick or a sample late,
+/// or the panel busy); the next is due KB_REPEAT_MS after the last that came due, so the rate holds and those
+/// past the batch are skipped, never saved up. `panel_busy`: the last fast refresh may still be on the panel
+/// (display_fast_busy). The repeat then waits, so its refresh never queues behind another, and the text shown
+/// is never more than that one refresh behind the text, at the lift too, after which nothing more is deleted.
+/// Changed when it deleted, with field_dirty (and on the count pad also_dirty) as keyboard_press sets them; None
+/// otherwise, both empty. The hold ends once nothing is left to delete, and when the keyboard has closed, the
+/// key pressed is not delete or keyboard_holds_end came since it began.
+pub fn keyboard_repeat(kb: &mut Keyboard, now: u32, panel_busy: bool) -> KbResult {
+    kb.field_dirty = RECT_EMPTY;
+    kb.also_dirty = RECT_EMPTY;
+    if kb.repeat_at == 0 {
+        return KbResult::None;
+    }
+    if !kb.open
+        || kb.text.is_empty()
+        || kb.repeat_gen != G_HOLDS.with(|g| g.get())
+        || pressed_code(kb) != Some(KB_KEY_BKSP)
+    {
+        kb.repeat_at = 0;
+        return KbResult::None;
+    }
+    let late = now.wrapping_sub(kb.repeat_at);
+    if (late as i32) < 0 || panel_busy {
+        return KbResult::None;
+    }
+    let due = 1 + late / KB_REPEAT_MS;
+    let (mut field, mut also, mut key) = (RECT_EMPTY, RECT_EMPTY, RECT_EMPTY);
+    let mut r = KbResult::None;
+    for _ in 0..due.min(KB_REPEAT_BATCH) {
+        if keyboard_press(kb, KB_KEY_BKSP, &mut key) == KbResult::Changed {
+            r = KbResult::Changed;
+            field = rect_union(field, kb.field_dirty);
+            also = rect_union(also, kb.also_dirty);
+        }
+        if kb.text.is_empty() {
+            break;
+        }
+    }
+    kb.field_dirty = field;
+    kb.also_dirty = also;
+    kb.repeat_at = if kb.text.is_empty() { 0 } else { kb.repeat_at.wrapping_add(due * KB_REPEAT_MS).max(1) };
+    r
 }
 
 #[cfg(test)]
@@ -1189,6 +1296,233 @@ mod tests {
         assert_eq!(&buf, "\u{1f600}".as_bytes());
         assert_eq!(utf8_next("a\u{e9}b".as_bytes(), 1), 3);
         assert_eq!(utf8_count("a\u{e9}\u{20ac}"), 3);
+    }
+
+    // Delete held down (2.0.0-beta.2, the owner, 2026-11-05: "hold del long enough in keyboards to quick
+    // delete"). A keyboard on the Scribe's upright screen with `text`, on `page`, laid out as drawn, and the
+    // middle of its delete key.
+    fn on_page(text: &[u8], page: i32) -> (Keyboard, f32, f32) {
+        let mut kb = opened(text);
+        kb.page = page;
+        kb.area = keyboard_area(&kb, Rect { x: 0, y: 0, w: 1860, h: 2480 });
+        let mut r = RECT_EMPTY;
+        assert!(keyboard_key_rect(&kb, KB_KEY_BKSP, &mut r), "page {page} has a delete key");
+        (kb, (r.x + r.w / 2) as f32, (r.y + r.h / 2) as f32)
+    }
+
+    // The pointer on the keyboard at time t (phase 0 down, 1 move, 2 up).
+    fn at(kb: &mut Keyboard, phase: i32, x: f32, y: f32, t: u32) -> KbResult {
+        let mut d = RECT_EMPTY;
+        keyboard_pointer(kb, phase, x, y, t, &mut d)
+    }
+
+    /// A tap on delete deletes one character, at the touch-down, and nothing after its lift. The hold starts
+    /// at the touch-down, KB_HOLD_MS ahead, and the lift ends it.
+    #[test]
+    fn a_tap_on_delete_deletes_one() {
+        let (mut kb, x, y) = on_page(b"abcdef", 0);
+        assert_eq!(at(&mut kb, 0, x, y, 1000), KbResult::Changed);
+        assert_eq!((kb.text.as_str(), kb.repeat_at), ("abcde", 1000 + KB_HOLD_MS));
+        assert!(!rect_is_empty(kb.field_dirty));
+        assert_eq!(at(&mut kb, 2, x, y, 1120), KbResult::None);
+        assert_eq!(kb.repeat_at, 0, "the lift ends the hold");
+        assert_eq!(keyboard_repeat(&mut kb, 1000 + KB_HOLD_MS, false), KbResult::None);
+        assert_eq!(keyboard_repeat(&mut kb, 5000, false), KbResult::None);
+        assert_eq!(kb.text.as_str(), "abcde");
+    }
+
+    /// Held for H ms, with a tick every millisecond (or a sample: keyboard_repeat is the same) until the lift,
+    /// delete takes 1 character for H under KB_HOLD_MS, and 1 + 1 + (H - KB_HOLD_MS) / KB_REPEAT_MS from it on:
+    /// the touch-down's, one at KB_HOLD_MS, and one every KB_REPEAT_MS after (a repeat due at the lift's own
+    /// moment counts, as its tick comes first). The same across the clock's wrap.
+    #[test]
+    fn a_hold_deletes_again_after_the_delay_then_at_the_rate() {
+        assert_eq!((KB_HOLD_MS, KB_REPEAT_MS), (400, 65), "the owner's \"low ish\" delay and \"snappy\" rate");
+        let text = [b'x'; 60];
+        for t0 in [1000u32, u32::MAX - 200] {
+            for held in [0u32, 100, 399, 400, 401, 464, 465, 529, 530, 1000, 2000] {
+                let (mut kb, x, y) = on_page(&text, 0);
+                at(&mut kb, 0, x, y, t0);
+                for dt in 1..=held {
+                    keyboard_repeat(&mut kb, t0.wrapping_add(dt), false);
+                }
+                at(&mut kb, 2, x, y, t0.wrapping_add(held));
+                let want = 1 + if held >= KB_HOLD_MS { 1 + (held - KB_HOLD_MS) / KB_REPEAT_MS } else { 0 };
+                assert_eq!(60 - kb.text.len() as u32, want, "held {held} ms from {t0}");
+                assert_eq!(kb.repeat_at, 0);
+            }
+        }
+        // 2 s: 1 + 1 + 24, about 15 a second after the first 0.4 s.
+        let (mut kb, x, y) = on_page(&text, 0);
+        at(&mut kb, 0, x, y, 1000);
+        for t in (1010..=3000).step_by(10) {
+            keyboard_repeat(&mut kb, t, false);
+        }
+        assert_eq!(kb.text.len(), 60 - 26);
+    }
+
+    /// A repeat comes when it is due, at the tick or sample after (the main loop goes round every 30 ms or
+    /// sooner), each one a change to draw on its own; one found late deletes those that came due since together,
+    /// three at most, and the next is due on the schedule, never sooner (the ones past three are skipped).
+    #[test]
+    fn a_late_repeat_catches_up_a_batch_at_most() {
+        let (mut kb, x, y) = on_page(b"0123456789abcdefghij", 0);
+        at(&mut kb, 0, x, y, 1000);
+        assert_eq!(keyboard_repeat(&mut kb, 1399, false), KbResult::None);
+        assert!(rect_is_empty(kb.field_dirty));
+        assert_eq!(keyboard_repeat(&mut kb, 1425, false), KbResult::Changed, "a tick 25 ms late");
+        assert!(!rect_is_empty(kb.field_dirty), "the text line to refresh");
+        assert_eq!((kb.text.len(), kb.repeat_at), (18, 1465));
+        assert_eq!(keyboard_repeat(&mut kb, 1464, false), KbResult::None);
+        // Found 5 repeats late: three of them, and the next due after now, on the 65 ms schedule.
+        assert_eq!(keyboard_repeat(&mut kb, 1465 + 4 * KB_REPEAT_MS + 10, false), KbResult::Changed);
+        assert_eq!((kb.text.len(), kb.repeat_at), (15, 1465 + 5 * KB_REPEAT_MS));
+        assert_eq!(KB_REPEAT_BATCH, 3);
+    }
+
+    /// While the last fast refresh is still on the panel a due repeat waits (nothing deleted, nothing to draw,
+    /// so no refresh queues behind it); once it ends, the repeats that came due meanwhile go together, three at
+    /// most, one refresh. The lift during the wait deletes nothing more: the text shown is the text.
+    #[test]
+    fn a_repeat_waits_for_the_panel() {
+        let (mut kb, x, y) = on_page(b"0123456789abcdefghij", 0);
+        at(&mut kb, 0, x, y, 1000);
+        assert_eq!(keyboard_repeat(&mut kb, 1400, false), KbResult::Changed);
+        for t in [1465, 1500, 1530, 1580] {
+            assert_eq!(keyboard_repeat(&mut kb, t, true), KbResult::None, "busy at {t}");
+            assert!(rect_is_empty(kb.field_dirty));
+        }
+        assert_eq!(kb.text.len(), 18);
+        // Free at 1600: 1465, 1530 and 1595 came due, one change.
+        assert_eq!(keyboard_repeat(&mut kb, 1600, false), KbResult::Changed);
+        assert_eq!((kb.text.len(), kb.repeat_at), (15, 1660));
+        assert_eq!(keyboard_repeat(&mut kb, 1700, true), KbResult::None);
+        at(&mut kb, 2, x, y, 1720);
+        assert_eq!(keyboard_repeat(&mut kb, 1800, false), KbResult::None);
+        assert_eq!(kb.text.len(), 15, "nothing after the lift");
+    }
+
+    /// A slide off delete ends the hold (back on, it does not start again); the finger rolling on the key does
+    /// not. Any other key held types once, as before, and never repeats.
+    #[test]
+    fn sliding_off_delete_ends_the_hold() {
+        let (mut kb, x, y) = on_page(b"0123456789", 0);
+        at(&mut kb, 0, x, y, 1000);
+        at(&mut kb, 1, x + 3.0, y - 2.0, 1200);
+        assert_eq!(kb.repeat_at, 1400, "still on the key");
+        let mut m = RECT_EMPTY;
+        assert!(keyboard_key_rect(&kb, 'm' as u32, &mut m));
+        at(&mut kb, 1, (m.x + m.w / 2) as f32, (m.y + m.h / 2) as f32, 1300);
+        assert_eq!(kb.repeat_at, 0, "slid off");
+        at(&mut kb, 1, x, y, 1350);
+        assert_eq!(keyboard_repeat(&mut kb, 1500, false), KbResult::None);
+        at(&mut kb, 2, x, y, 1600);
+        assert_eq!(kb.text.as_str(), "012345678");
+        // An m held: typed once, no hold.
+        at(&mut kb, 0, (m.x + m.w / 2) as f32, (m.y + m.h / 2) as f32, 2000);
+        assert_eq!((kb.text.as_str(), kb.repeat_at), ("012345678m", 0));
+        assert_eq!(keyboard_repeat(&mut kb, 3000, false), KbResult::None);
+        at(&mut kb, 2, (m.x + m.w / 2) as f32, (m.y + m.h / 2) as f32, 3000);
+        assert_eq!(kb.text.as_str(), "012345678m");
+    }
+
+    /// The hold ends when nothing is left to delete: no repeat, nothing to draw, however long it is held. A hold
+    /// on an empty field never starts.
+    #[test]
+    fn the_hold_ends_with_the_text() {
+        let (mut kb, x, y) = on_page("a\u{e9}\u{20ac}".as_bytes(), 0);
+        at(&mut kb, 0, x, y, 1000);
+        assert_eq!(keyboard_repeat(&mut kb, 1400, false), KbResult::Changed);
+        assert_eq!(kb.text.as_str(), "a", "whole characters");
+        assert_eq!(keyboard_repeat(&mut kb, 1465, false), KbResult::Changed);
+        assert_eq!((kb.text.as_str(), kb.repeat_at), ("", 0), "empty: the hold is over");
+        for t in [1530, 2000, 9000] {
+            assert_eq!(keyboard_repeat(&mut kb, t, false), KbResult::None);
+            assert!(rect_is_empty(kb.field_dirty));
+        }
+        // Held on the empty field: no hold at all.
+        at(&mut kb, 2, x, y, 9100);
+        at(&mut kb, 0, x, y, 10000);
+        assert_eq!(kb.repeat_at, 0);
+        assert_eq!(keyboard_repeat(&mut kb, 11000, false), KbResult::None);
+        // And the last character deleted at the touch-down: none either.
+        let (mut kb, x, y) = on_page(b"z", 0);
+        at(&mut kb, 0, x, y, 1000);
+        assert_eq!((kb.text.as_str(), kb.repeat_at), ("", 0));
+    }
+
+    /// The keyboard closing (keyboard_close, or Done and Cancel, which close it themselves), a new contact (a
+    /// second finger's key, a hardware key's touch on the text line), and keyboard_holds_end (sleep, another
+    /// screen) each end the hold.
+    #[test]
+    fn closing_a_new_contact_and_sleep_end_the_hold() {
+        let text = b"0123456789";
+        let (mut kb, x, y) = on_page(text, 0);
+        at(&mut kb, 0, x, y, 1000);
+        keyboard_close(&mut kb);
+        assert_eq!(kb.repeat_at, 0);
+        let (mut kb, x, y) = on_page(text, 0);
+        at(&mut kb, 0, x, y, 1000);
+        kb.open = false; // (as Done and Cancel leave it)
+        assert_eq!(keyboard_repeat(&mut kb, 1400, false), KbResult::None);
+        assert_eq!(kb.repeat_at, 0);
+        let (mut kb, x, y) = on_page(text, 0);
+        at(&mut kb, 0, x, y, 1000);
+        let f = field_rect(kb.area);
+        at(&mut kb, 0, (f.x + f.w / 2) as f32, (f.y + f.h / 2) as f32, 1100);
+        assert_eq!(kb.repeat_at, 0, "a new contact");
+        let (mut kb, x, y) = on_page(text, 0);
+        at(&mut kb, 0, x, y, 1000);
+        keyboard_holds_end();
+        assert_eq!(keyboard_repeat(&mut kb, 1400, false), KbResult::None);
+        assert_eq!((kb.text.as_str(), kb.repeat_at), ("012345678", 0));
+        // A hold that began after it is not touched by it.
+        at(&mut kb, 2, x, y, 1500);
+        at(&mut kb, 0, x, y, 2000);
+        assert_eq!(keyboard_repeat(&mut kb, 2400, false), KbResult::Changed);
+        assert_eq!(kb.text.as_str(), "0123456");
+    }
+
+    /// Every page with a delete key holds it: the letters, accents and symbols pages, the number pad and the kana
+    /// pad (whose bottom row has one).
+    #[test]
+    fn every_keyboard_page_repeats_delete() {
+        for page in [0, 1, 3, 2, KANA_PAGE] {
+            let (mut kb, x, y) = on_page(b"1234", page);
+            at(&mut kb, 0, x, y, 1000);
+            assert_eq!(keyboard_repeat(&mut kb, 1400, false), KbResult::Changed, "page {page}");
+            assert_eq!(kb.text.as_str(), "12", "page {page}");
+        }
+    }
+
+    /// The count pad's del held deletes the digits typed, one by one, its Done (which shows the count) to
+    /// refresh with the count, and stops at 0. On the pad as it opens the touch-down clears the opening 1 (the
+    /// owner's ruling: del clears it) and there is nothing to hold.
+    #[test]
+    fn the_count_pads_del_repeats_down_to_nothing() {
+        let mut d = RECT_EMPTY;
+        let mut kb = Keyboard::default();
+        keyboard_open_count(&mut kb, "Pages to add", 999, label);
+        kb.area = keyboard_area(&kb, Rect { x: 0, y: 0, w: 1860, h: 2480 });
+        let mut r = RECT_EMPTY;
+        assert!(keyboard_key_rect(&kb, KB_KEY_BKSP, &mut r));
+        let (x, y) = ((r.x + r.w / 2) as f32, (r.y + r.h / 2) as f32);
+        at(&mut kb, 0, x, y, 1000);
+        assert_eq!((keyboard_count(&kb), kb.count_fresh, kb.repeat_at), (0, false, 0), "the opening 1 cleared, no hold");
+        assert_eq!(keyboard_repeat(&mut kb, 1400, false), KbResult::None);
+        at(&mut kb, 2, x, y, 1500);
+        for c in ['3', '4', '5'] {
+            keyboard_press(&mut kb, c as u32, &mut d);
+        }
+        assert_eq!(kb.text.as_str(), "345");
+        at(&mut kb, 0, x, y, 2000);
+        assert_eq!((kb.text.as_str(), kb.repeat_at), ("34", 2400));
+        assert_eq!(keyboard_repeat(&mut kb, 2400, false), KbResult::Changed);
+        assert!(!rect_is_empty(kb.field_dirty) && !rect_is_empty(kb.also_dirty), "the count line and Done");
+        assert_eq!(keyboard_repeat(&mut kb, 2465, false), KbResult::Changed);
+        assert_eq!((kb.text.as_str(), keyboard_count(&kb), kb.repeat_at), ("", 0, 0));
+        assert_eq!(keyboard_repeat(&mut kb, 3000, false), KbResult::None);
+        assert!(kb.open && !kb.count_fresh);
     }
 
     fn label(n: i32) -> String {
