@@ -990,9 +990,10 @@ announcements: goingToScreenSaver draws the sleep screen, outOfScreenSaver is th
    Kindle shows it: with a menu, sheet or bar up beside the panel it is the panel, and where one covers a
    part of the panel or all of it, that part of the menu too, while the tiles there hold the page and the
    menu without the panel (2.0.0, issue #16: the layer went whenever a menu was up, so the browser lost the
-   toolbar beside the Display sheet until it closed). It is empty only where the panel is not drawn: the
-   Pages view, the Graph and the notebooks' browser over the screen, and Settings over the notebook, whose
-   screen the frame holds whole (it is drawn again whole, so no part of it is composed without the panel).
+   toolbar beside the Display sheet until it closed). It is empty where the panel is not drawn (the Pages
+   view, the Graph and the notebooks' browser over the screen) and while Settings is over the notebook, whose
+   screen, the panel's strip beside it included, the frame holds whole (it is drawn again whole, so no part of
+   it is composed without the panel).
    A present that reaches the panel's rect copies the layer again, so it follows the menu over it. The
    corner, an overlay never in a.screen, is
    copied as status.rs paints it, and taken away when it goes. The tile viewer sends a layer that

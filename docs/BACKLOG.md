@@ -396,7 +396,8 @@ Ideas, not plans: each needs the owner's go and its own design. No code is taken
   (settings, display settings) is opened then comes back after closing menu"): the toolbar's Live view layer
   stays where the panel is under every menu, sheet and bar of the notebook, holding what the Kindle shows there
   (the toolbar, and a menu's part over it), and is none only under the Pages view, the Graph and the notebooks'
-  browser, which cover the screen (docs/DESIGN.md, Live view). In the headless runner the layer went as the
+  browser, which cover the screen, and while Settings is over the notebook, whose screen, the toolbar's strip
+  beside it included, the frame holds whole (docs/DESIGN.md, Live view). In the headless runner the layer went as the
   Display sheet or the Paper sheet opened, a setting changed or not (76,089 pixels of the toolbar's rect wrong in
   the browser beside the Display sheet); Settings over the notebook, and its own Display sheet, were already
   right, the frame then holding the whole screen. tests/scenarios/y_live_toolbar_menus.qs checks it with two new

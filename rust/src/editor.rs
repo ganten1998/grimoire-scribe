@@ -2510,9 +2510,9 @@ fn draw_panel_over(a: &mut App) {
 /// Kindle shows it: the panel, and whatever menu, sheet or bar is over a part of it or all of it, drawn over it
 /// there too. So the browser shows the toolbar wherever the Kindle does, beside a menu as under none, and a menu
 /// over it as the Kindle does (2.0.0, issue #16: the layer was empty while any menu was up, so the browser lost
-/// the toolbar beside the Display sheet until it closed). None where the panel is not drawn: no notebook, the
-/// Pages view, the Graph or the notebooks' browser over the screen, or Settings, whose screen the frame holds
-/// whole (editor_live_hole).
+/// the toolbar beside the Display sheet until it closed). None where the panel is not drawn (no notebook, the
+/// Pages view, the Graph or the notebooks' browser over the screen) and while Settings is over the notebook,
+/// whose screen, the panel's strip beside it included, the frame holds whole (editor_live_hole).
 pub fn editor_live_panel(a: &App) -> Rect {
     if crate::library::library_settings_active(a) {return RECT_EMPTY;}
     match a.ed.as_deref() {
