@@ -25,7 +25,13 @@ def plan(target, data, artifact):
     current = target / 'manifest.json'
     if not current.exists():
         return 'updated'
-    old = json.loads(current.read_text())['packages']['grimoire']['artifacts'][0]
+    packages = json.loads(current.read_text()).get('packages') or {}
+    artifacts = (packages.get('grimoire') or {}).get('artifacts') or []
+    if not artifacts:
+        # An emptied channel (the feeds' reset before 2.0.0-beta.0 left stable with no package) holds no
+        # version to keep: 2.0.0's publication stopped here with a KeyError, and its feed went up by hand.
+        return 'updated'
+    old = artifacts[0]
     if old['version'] > artifact['version']:
         return 'kept newer'
     if old['version'] == artifact['version']:

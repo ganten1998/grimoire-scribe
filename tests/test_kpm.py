@@ -211,6 +211,18 @@ class FeedTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             self.publish('1.2.0-beta.1', 'different bytes')
 
+    def test_an_emptied_channel_takes_the_release(self):
+        # The kpm branch's stable channel after the reset before 2.0.0-beta.0: a manifest with no package.
+        for name in ('stable', 'preview'):
+            (self.dest / name).mkdir(parents=True)
+        empty = json.dumps({'manifest_version': 2, 'id': 'grimoirestable', 'packages': {}}) + '\n'
+        for filename in ('manifest.json', 'manifest.v2.json'):
+            (self.dest / 'stable' / filename).write_text(empty)
+        self.assertEqual(self.publish('2.0.0-beta.2'), {'preview': 'updated'})
+        self.assertEqual(self.publish('2.0.0'), {'stable': 'updated', 'preview': 'updated'})
+        self.assertEqual(self.offered('stable'), '2.0.0')
+        self.assertEqual(self.offered('preview'), '2.0.0')
+
     def test_stable_release_is_mirrored_into_preview(self):
         self.assertEqual(self.publish('2.0.0-beta.1'), {'preview': 'updated'})
         # The first publication of a stable version also creates the stable folder.
