@@ -43,7 +43,7 @@ wait 200
 expect editor.tile.2 is Page 2 (open)
 expect editor.pages.adding is 0
 expect editor.pages.undo is 0
-# Held: the count pad, at 1 (highlighted: the first digit typed replaces it), Done on
+# Held: the count pad, at 1 (plain black, as any count, with no caret: the first digit typed replaces it), Done on
 touch down 394 2395
 wait 700
 expect editor.pages.adding is 1

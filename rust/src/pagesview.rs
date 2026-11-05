@@ -13,8 +13,9 @@
 //! (Link to... has the Index and Search for those). And it opens with
 //! its naming keyboard up for the open page (pagesview_name), for a shortcut pressed on the page.
 //!
-//! Since 2.0.0-beta.2 a held tile moved without lifting is dragged to a gap (PageDrag), and the bottom
-//! row offers Undo right after a page move (move_undo): both go through the editor's Move path.
+//! Since 2.0.0-beta.2 a tile held DRAG_HOLD_MS and moved off it without lifting is dragged to a gap (PageDrag),
+//! with no card drawn first (the card waits for CARD_HOLD_MS held still), and the bottom row offers Undo right
+//! after a page move (move_undo): both go through the editor's Move path.
 //! New page held (or tapped with a keyboard's modifier key held) opens the count pad for a batch
 //! of new pages (PvResult::AddPages), and Undo takes the batch back while its pages are still blank
 //! (add_undo). A tap on New page is a batch of one (owner, 2026-11-03: the page is not opened; the view
@@ -54,9 +55,25 @@ const PG_UNDO_MOVE: i32 = 28;
 const PG_UNDO_ADD: i32 = 29;
 const PG_REDO: i32 = 30;
 
-/// How long New page is held to open the batch's count pad: a held tile's (its card) time. The editor's
-/// toolbar + (the next-page button on the last page) takes the same hold for its own count pad.
+/// How long New page is held to open the batch's count pad: a held tile's card's time (CARD_HOLD_MS). The
+/// editor's toolbar + (the next-page button on the last page) takes the same hold for its own count pad.
 pub const ADD_HOLD_MS: u32 = 600;
+/// How long a tile is held still to open its card (Open, Add a link, Rename, Delete, Move to..., Copy to
+/// notebook...): drawn by pagesview_tick as the hold reaches it, or at the lift when the tick has not seen it.
+const CARD_HOLD_MS: u32 = 600;
+/// How long a tile is held before a move past the slop picks it up for a drag (PageDrag), well before its card
+/// would open, so a drag never draws the card and takes it down again (2.0.0-beta.2, the owner, 2026-11-04:
+/// "Make the delay for reordering smaller, so that it can safely be activated before the long-pressed
+/// management dialong. They are too disruptive as a pair."). 300 ms, half the card's hold: a finger that
+/// means to drag rests on the tile first, and the other half of CARD_HOLD_MS is its time to start moving
+/// before the card is due; a flick lands moving and passes the slop far sooner, so it stays a flick that
+/// turns the screen. The page is picked up as the contact leaves its tile (drag_armed until then): a slow tap
+/// rolls past the slop too, and lifted on its tile it is still the tap it was. A move past the slop before
+/// this is never a drag later in the same contact (only a contact that passed the slop held this long is
+/// armed).
+const DRAG_HOLD_MS: u32 = 300;
+// (the drag's hold under the card's, or every drag would draw the card first again)
+const _: () = assert!(DRAG_HOLD_MS < CARD_HOLD_MS);
 /// A tap on New page with any of these held on a keyboard (KEYMOD_*, which input_evdev puts on each pen
 /// and touch event) opens it too (and the toolbar's + its pad).
 pub const ADD_MODS: u32 = (KEYMOD_SHIFT | KEYMOD_CTRL | KEYMOD_ALT | KEYMOD_META) as u32;
@@ -239,6 +256,9 @@ pub struct PagesView {
     /// the press's down, at its kernel time (in_sample_ms): how long a tile was held
     down_k: u32,
     drag: Option<PageDrag>,
+    /// the contact under way was held DRAG_HOLD_MS on a tile, moved past the slop and is still on that tile: it
+    /// is picked up as it leaves the tile (drag_begin), and lifted on it first it is the tap it was
+    drag_armed: bool,
     /// the modifier keys held as the contact under way came down
     press_mods: u32,
     view_size: (i32,i32),
@@ -328,6 +348,7 @@ pub fn pagesview_open(v: &mut PagesView, a: &mut App, nb: &NotebookInfo, nav: &N
     v.context = None;
     v.held = false;
     v.drag = None;
+    v.drag_armed = false;
     v.last_tap = None;
     v.picking = false;
     let npages = nb.npages() as usize;
@@ -434,6 +455,7 @@ pub fn pagesview_close(v: &mut PagesView) {
     v.press.down = false;
     v.context = None;
     v.drag = None;
+    v.drag_armed = false;
     v.last_tap = None;
     v.picking = false;
     v.quiet_until = None;
@@ -1313,6 +1335,7 @@ pub fn pagesview_pointer(v: &mut PagesView, a: &mut App, nb: &NotebookInfo, nav:
     }
     if phase == 0 {
         v.held = false;
+        v.drag_armed = false;
         v.down_k = in_sample_ms(ev);
         v.press_mods = ev.key_mods;
         press_begin(&mut v.press, ev.x, ev.y, ev.t_ms);
@@ -1327,12 +1350,13 @@ pub fn pagesview_pointer(v: &mut PagesView, a: &mut App, nb: &NotebookInfo, nav:
     if phase == 1 {
         if v.drag.is_some() {
             drag_step(v, a, nb, ev);
-        } else if v.press.moved && !was_moved {
+        } else if v.drag_armed || (v.press.moved && !was_moved) {
             drag_begin(v, a, nb, nav, ev);
         }
         return PvResult::None;
     }
     v.press.down = false;
+    v.drag_armed = false; // (lifted on its tile: the tap it was, below)
     let back = app_press_release(a, &mut v.pressed);
     if !rect_is_empty(back) {
         app_invalidate(a, back, RefreshMode::Ui);
@@ -1358,7 +1382,7 @@ pub fn pagesview_pointer(v: &mut PagesView, a: &mut App, nb: &NotebookInfo, nav:
     if !v.picking && hit.id==PG_NEW && (ev.key_mods&ADD_MODS!=0 || in_sample_ms(ev).wrapping_sub(v.down_k)>=ADD_HOLD_MS) {
         open_add_pad(v,a,nb,nav);return PvResult::None;
     }
-    if v.unified && !v.picking && hit.id==PG_OPEN && in_sample_ms(ev).wrapping_sub(v.down_k)>=600 {
+    if v.unified && !v.picking && hit.id==PG_OPEN && in_sample_ms(ev).wrapping_sub(v.down_k)>=CARD_HOLD_MS {
         v.context=Some(hit.arg);v.last_tap=None;redraw(v,a,nb,nav,RefreshMode::Ui);return PvResult::None;
     }
     match hit.id {
@@ -1551,20 +1575,32 @@ fn drag_under(v: &mut PagesView, a: &mut App, nb: &NotebookInfo) {
     drag_paint(v, a, nb);
 }
 
-// A hold on a tile (its card up, or held 600 ms and the card not drawn yet) moved past the slop: the tile
-// is picked up, the ticked pages with it when it is one of them. The card goes in the same refresh.
+// A hold on a tile moved past the slop: the tile is picked up, the ticked pages with it when it is one of
+// them. Held DRAG_HOLD_MS by the contact's own clock (in_sample_ms), the card not up: no card is ever drawn,
+// and the bar alone is refreshed, fast; but only as the contact leaves the tile (drag_armed until then), since
+// a slow tap rolls past the slop too and stays a tap while it is on its tile (press_is_tap): a ticked tile's
+// own gap gathers the ticked pages, which a tap must never do. Held still to CARD_HOLD_MS, its card up: picked
+// up at the slop, and the card goes in the same refresh as the bar comes. Asked as the contact first passes the
+// slop (pagesview_pointer), and again on each move while it is armed: a move before DRAG_HOLD_MS stays what it
+// was (a flick, or nothing).
 fn drag_begin(v: &mut PagesView, a: &mut App, nb: &NotebookInfo, nav: &Nav, ev: &InEvent) {
     if !v.open || !v.unified || v.picking || v.index_tab || v.overlay || v.kb.open || touch_cancelled(ev) {
+        v.drag_armed = false;
         return;
     }
     let page = match v.context {
         Some(p) if v.held => p,
         Some(_) => return, // (a card left up: this contact is on it)
-        None if in_sample_ms(ev).wrapping_sub(v.down_k) >= 600 => {
-            match hits_find(&v.hits, v.press.x0, v.press.y0).filter(|h| h.id == PG_OPEN) {
-                Some(h) => h.arg,
-                None => return,
+        None if v.drag_armed || in_sample_ms(ev).wrapping_sub(v.down_k) >= DRAG_HOLD_MS => {
+            let Some(h) = hits_find(&v.hits, v.press.x0, v.press.y0).copied().filter(|h| h.id == PG_OPEN) else {
+                v.drag_armed = false;
+                return;
+            };
+            v.drag_armed = rect_contains(h.r, ev.x as i32, ev.y as i32);
+            if v.drag_armed {
+                return; // (still on its tile: nothing drawn yet)
             }
+            h.arg
         }
         None => return,
     };
@@ -1577,6 +1613,7 @@ fn drag_begin(v: &mut PagesView, a: &mut App, nb: &NotebookInfo, nav: &Nav, ev: 
     let pages: Vec<i32> = if pagesview_ticked(v, page) { (0..nb.npages()).filter(|&i| pagesview_ticked(v, i)).collect() } else { vec![page] };
     v.context = None;
     v.held = false;
+    v.drag_armed = false;
     v.last_tap = None;
     v.drag = Some(PageDrag {
         pages,
@@ -1632,19 +1669,26 @@ fn drag_step(v: &mut PagesView, a: &mut App, nb: &NotebookInfo, ev: &InEvent) {
 // The drag's lift: dropped in a gap that changes the order, the editor moves the pages carried (`carry`,
 // PvResult::Move, one undo step, the view drawn once; drawn again too if the move fails). The gap is the
 // one the bar shows (`to`, as drawn: drag_step skips moves under 4 px, so the lift's own place can be a
-// few pixels past it). Lifted off the grid, back in their own place, or cancelled (a second finger, a
-// lost lift): nothing moves, the view is drawn again.
+// few pixels past it). Lifted off the grid or back in their own place: nothing moves, and the bar alone
+// goes, on one fast refresh of its place, as drag_step takes it off the grid (the view under it is the one
+// kept under the drag, the card already gone; until 2026-11-04 the whole view was drawn again). Cancelled
+// (a second finger, a lost lift): nothing moves, the view is drawn again.
 fn drag_drop(v: &mut PagesView, a: &mut App, nb: &NotebookInfo, nav: &Nav, d: PageDrag, ev: &InEvent) -> PvResult {
     v.held = false;
-    let at = if touch_cancelled(ev) { None } else { d.to };
-    if let Some(to) = at {
+    let cancelled = touch_cancelled(ev);
+    if let Some(to) = d.to.filter(|_| !cancelled) {
         if store_move_order(&nb.page_ids, &d.pages, to).is_some_and(|o| o != nb.page_ids) {
             v.carry = d.pages;
             v.target = to;
             return PvResult::Move;
         }
     }
-    redraw(v, a, nb, nav, RefreshMode::Ui);
+    if cancelled || d.under.w != a.w || d.under.h != a.h {
+        redraw(v, a, nb, nav, RefreshMode::Ui);
+    } else if !rect_is_empty(d.shown) {
+        canvas_blit(&mut a.screen, &d.under, d.shown, d.shown.x, d.shown.y);
+        app_invalidate(a, d.shown, RefreshMode::Fast);
+    }
     PvResult::None
 }
 
@@ -1823,8 +1867,9 @@ pub fn pagesview_tick(v: &mut PagesView, a: &mut App, nb:&NotebookInfo, nav:&Nav
         && hits_find(&v.hits,v.press.x0,v.press.y0).is_some_and(|h|h.id==PG_NEW) {
         open_add_pad(v,a,nb,nav);
     }
-    if v.open && v.unified && !v.picking && !v.kb.open && v.context.is_none() && v.press.down && !v.press.moved
-        && now.wrapping_sub(v.press.t0)>=600 {
+    // (never while a drag starts or runs: a contact past the slop is moved, and a drag holds no card)
+    if v.open && v.unified && !v.picking && !v.kb.open && v.context.is_none() && v.drag.is_none() && v.press.down && !v.press.moved
+        && now.wrapping_sub(v.press.t0)>=CARD_HOLD_MS {
         if let Some(hit)=hits_find(&v.hits,v.press.x0,v.press.y0).copied().filter(|h|h.id==PG_OPEN) {
             v.context=Some(hit.arg);v.held=true;v.last_tap=None;redraw(v,a,nb,nav,RefreshMode::Ui);
         }

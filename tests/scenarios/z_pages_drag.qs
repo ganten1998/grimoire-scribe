@@ -1,11 +1,13 @@
 # rust-only
 # generate: tests/drag_pages_fixture.py
 # Drag to reorder (owner, 2026-11-02): a page held until its card opens and then moved without lifting is
-# picked up. Only the gap's black bar shows while it is dragged (the owner, 2026-11-03: "no need to have the
+# picked up (every hold here is 700 ms, the card's path; since 2026-11-04 a 300 ms hold and a move off the tile
+# pick it up with no card, z_pages_drag_hold). Only the gap's black bar shows while it is dragged (the owner, 2026-11-03: "no need to have the
 # page outline show when dragging, just show the black bar"; small fast refreshes of the bar alone), the
 # lift drops it there through Move (one undo step) and draws the view once. A tile held and lifted still
 # opens its card; a drop back in its own place, on the top bar or the bottom row, or a lost lift moves
-# nothing and makes no undo step. Over the bottom row (or the top bar) the screen turns. A ticked tile
+# nothing and makes no undo step (in its own place the bar goes on one fast refresh, off the grid it is gone
+# already, and a lost lift draws the view again). Over the bottom row (or the top bar) the screen turns. A ticked tile
 # carries the ticked pages; a pen drags as a finger does.
 # (the clock corner held still: its minute's refresh would land among the counted ones)
 clock 1700000000
@@ -70,7 +72,8 @@ expect editor.page_ids is 5,1,2,3,4,6,7,8,9,10,11,12
 expect editor.page is 2
 tap panel pages.undo-move
 wait 200
-# Back in its own place (page 3 dropped on the right half of page 2, before itself): nothing, no undo step
+# Back in its own place (page 3 dropped on the right half of page 2, before itself): nothing, no undo step, and
+# only the bar taken off, on one fast refresh of its place (since 2026-11-04: the view was drawn whole again)
 touch down 1542 551
 wait 700
 touch move 1400 600
@@ -82,7 +85,8 @@ wait 200
 expect editor.page_ids is 1,2,3,4,5,6,7,8,9,10,11,12
 expect editor.pages.undo is 0
 expect editor.pages.context is 0
-expect display.presents is ui 0 0 1860 2480
+expect display.presents is fast 1230 214 12 674
+expect display.stale.1224.214.24.674 is 0
 # Lifted over the top bar: nothing
 touch down 318 551
 wait 700

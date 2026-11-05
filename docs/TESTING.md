@@ -1011,3 +1011,42 @@ drawing). A light page (under 256 KB, most pages of handwriting) shows nothing. 
 page again, turn to the next page, open Pages and let the page's tile come, go back and open the page:
 "Loading page..." still shows, as the job keeps no drawing of a page under 512 KB (a dense page opens at
 once then; in grimoire.log the batch's `previews:` line says `keep=0` when its screen has no dense page).
+
+## 2.0.0-beta.2, count pad and drag hold
+
+The owner's Scribe feedback of 2026-11-04: "Make the delay for reordering smaller, so that it can safely be
+activated before the long-pressed management dialong. They are too disruptive as a pair." and "Pages - Batch page
+adding starts the counter at 0 - and is displayed at a large, intrusive amount."
+
+Automated: keyboard.rs `the_count_pads_opening_one_is_plain_text` (the opening 1 drawn as the pad's title is,
+black on white at the title's size, with no box and no caret; a typed count has its caret), and the count pad's
+behaviour as before (`the_count_pad_opens_at_one_and_the_first_digit_replaces_it`); the shots
+z_pages_add_1_batch/01-pad.png (the Pages view's pad) and z_pages_add_5_toolbar/01-pad.png (the toolbar's).
+z_pages_drag_hold: a page held 350 ms and moved past the slop on its own tile draws nothing and is not a drag yet;
+moved off the tile it is dragged with no card, its first refresh the gap's bar alone (fast), the card's 600 ms
+passing under the drag drawing nothing; a slow tap (held 350 ms, rolled 45 px, lifted on its tile) is the tap it
+was: on a ticked page in Select it unticks it and the ticked pages stay where they are, and with Select off it
+selects the page with one small repaint; a swipe from a page turns the screen; a contact past the slop at 100 ms
+and lifted at 400 ms is a flick, and lifted past 1 s nothing, never a drag; a page held still 700 ms opens its
+card; ticked pages and a pen drag on the short hold too. Its short holds are `finger` and `frame` lines, and it
+runs again in `make scenarios-late` (every wait 400 ms late). z_pages_drag still drags from the card (held
+700 ms); a drag lifted back in its own place takes the bar off with one fast refresh of its rect.
+
+On the Scribe:
+
+1. Pages, hold a page about a third of a second and move it without lifting: the black bar shows as the finger
+   leaves the page and follows, and the page's card never flashes up. Drop it in another gap: the page moves,
+   and Undo puts it back. Drag it out and back to where it was and lift: only the bar goes, with no redraw of
+   the whole screen.
+2. Hold a page still: its card opens at the same moment as before (Open, Add a link, Rename, Delete, Move to...,
+   Copy to notebook...). With the card up, move without lifting: the drag starts and the card goes.
+3. Flick sideways from a page, as quickly as you would to turn: the screen turns, no bar shows. Try a few
+   flicks that start with a slight pause; note any that became a drag instead (how long the pause felt).
+4. Tap and double-tap pages: a tap still ticks, a double tap still opens, including slow taps that roll a little
+   under the finger. With Select on and a few pages ticked, slow-tap a ticked page: it unticks, and no page moves.
+   Note any tap that showed the bar instead.
+5. Hold New page (+): the count pad reads "Pages to add 1", a plain black 1 the size of "Pages to add", no box
+   and no caret after it. Type 7: it reads 7 (not 17) with the caret after it. Add 1 page at once adds one.
+   The same on the toolbar's + held on the last page.
+6. Note whether the drag feels late to start on a big tile (the bar waits until the finger is off the page); if
+   it does, say so, and the pick-up can move back to the slop with a drop in place made harmless instead.

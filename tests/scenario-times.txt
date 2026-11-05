@@ -250,6 +250,7 @@ z_notebook_polish 4.8
 z_notebook_return 5.4
 z_page_management 10.7
 z_pages_drag 14.8
+z_pages_drag_hold 10.0
 z_pages_flick 3.2
 z_pages_many 2.4
 z_pages_move 5.7
