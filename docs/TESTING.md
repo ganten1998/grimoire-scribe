@@ -1188,7 +1188,8 @@ On the Scribe (Gothic and Classic, upright and sideways):
    the Graph's rename: holding del repeats on each. In Japanese, the kana pad's del repeats too.
 7. **Count pad.** Hold New page (+) in Pages: the pad reads 1. Hold del: the 1 clears at once and nothing more
    happens. Type 123 and hold del: 12, 1, then empty, its Done greyed at 0; lift and type a digit: it follows as
-   before. The same on the toolbar's + count pad.
+   before. The same on the toolbar's + count pad. With a keyboard paired: type 12345, hold del on the screen and,
+   while it deletes, type 9 on the keyboard: the 9 stays and the deleting stops, the finger still on del.
 8. **Interrupted.** Hold del and, still holding, press the power button to sleep; wake: nothing was deleted after
    the sleep, and holding is over. Hold del and put a second finger on another key: the deleting stops and the
    second key types.

@@ -345,7 +345,8 @@ draws them. White ink and the precise eraser make them.
   the lift. The hold ends at the lift, a move off the key (back on, it does not start again), the text gone
   (a hold on an empty field, or on the count pad's opening 1, which its touch-down clears, never starts),
   the keyboard closing, a new contact (a second finger's key ends the first's, a hardware key's touch on the
-  text line too), and `keyboard_holds_end`, which `app_sleep` and `app_switch` call for every keyboard at
+  text line too), a hardware keyboard's key on a count pad (`app_keyboard_press`: the digit it types is never
+  the next repeat's), and `keyboard_holds_end`, which `app_sleep` and `app_switch` call for every keyboard at
   once, since the lift may never reach one then. A hardware keyboard's Backspace is not repeated: text fields
   take no typed keys (only Esc, their Cancel), and on the count pads `hidkeys_event` drops the kernel's
   autorepeat (value 2) as it does for every key.

@@ -2053,7 +2053,9 @@ fn kb_typed(a: &mut App, kb: &mut Keyboard) {
 /// A key of a hardware keyboard on an on-screen keyboard (keyboard_press: the key with that code, as if
 /// tapped), drawn and refreshed as a tap's is, the text line and then the count pad's Done each on its
 /// own (no on-screen key was pressed, so none is refreshed). On KB_DONE and KB_CANCEL nothing is drawn.
+/// It ends a held delete, as a second finger's key does: the digit it types is never the next repeat's.
 pub fn app_keyboard_press(a: &mut App, kb: &mut Keyboard, code: u32) -> KbResult {
+    kb.repeat_at = 0;
     let mut d = RECT_EMPTY;
     let r = keyboard_press(kb, code, &mut d);
     if r == KbResult::Done || r == KbResult::Cancel || r == KbResult::None {
@@ -2496,6 +2498,39 @@ mod tests {
         assert_eq!(out, "East,So");
         append_cut(&mut out, 8, ",West");
         assert_eq!(out, "East,So");
+    }
+
+    /// A hardware keyboard's key on a count pad (app_keyboard_press) ends the on-screen delete held there, as a
+    /// second finger's key does: the digit it typed stays, the next repeat never comes.
+    #[test]
+    fn a_hardware_key_ends_a_held_delete() {
+        assert_eq!(font_init(), 0);
+        ui_init(300.0);
+        i18n_set("en");
+        let mut a = App { w: 1860, h: 2480, dpi: 300.0, ..Default::default() };
+        assert_eq!(canvas_init(&mut a.screen, a.w, a.h), 0);
+        #[cfg(feature = "sim")]
+        {
+            let (mut w, mut h) = (a.w, a.h);
+            crate::sim_sdl::display_set_orientation(0, &mut w, &mut h);
+        }
+        let mut kb = Keyboard::default();
+        keyboard_open_count(&mut kb, "Pages to add", 999, |n| format!("Add {n}"));
+        kb.area = keyboard_area(&kb, Rect { x: 0, y: 0, w: a.w, h: a.h });
+        for c in ['3', '4', '5'] {
+            assert_eq!(app_keyboard_press(&mut a, &mut kb, c as u32), KbResult::Changed);
+        }
+        let mut r = RECT_EMPTY;
+        assert!(keyboard_key_rect(&kb, KB_KEY_BKSP, &mut r));
+        let (x, y) = ((r.x + r.w / 2) as f32, (r.y + r.h / 2) as f32);
+        app_keyboard_pointer(&mut a, &mut kb, 0, &InEvent { x, y, t_ms: 1000, ..Default::default() });
+        assert_eq!(kb.text.as_str(), "34");
+        assert_ne!(kb.repeat_at, 0, "delete held");
+        assert_eq!(app_keyboard_press(&mut a, &mut kb, '9' as u32), KbResult::Changed);
+        assert_eq!((kb.text.as_str(), kb.repeat_at), ("349", 0));
+        app_keyboard_tick(&mut a, &mut kb, 1000 + KB_HOLD_MS + 4 * KB_REPEAT_MS);
+        app_keyboard_pointer(&mut a, &mut kb, 1, &InEvent { x, y, t_ms: 1000 + KB_HOLD_MS + 5 * KB_REPEAT_MS, ..Default::default() });
+        assert_eq!(kb.text.as_str(), "349", "the finger still on del deletes nothing more");
     }
 }
 /// The existing screen lifecycle applied after a language or theme change.
