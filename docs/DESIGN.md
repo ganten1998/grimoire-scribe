@@ -1642,6 +1642,31 @@ The binding design is docs/beta2/LASSO-DESIGN.md; this is where it lives in the 
   copies, then deletes; a delete refused after the copy puts the clipboard back (`clipboard_snapshot`,
   `clipboard_restore`). A lasso step's dirty rect leaves out floor markers (history.rs `bbox_of`), so its
   undo refreshes only the group's place.
+- The drag (select.rs `drag_step`, `drag_tick`, `DragView`; 2.1.0, the owner's report of 2026-11-05 that a
+  drag of shading or of many strokes was "horrifically slow"). Until 2.0.0-beta.2 each pen sample composed
+  and DU-refreshed the box joined with the bar (1680 x 365 px on his page), the selection's halo walked again
+  every time: about 22 ms a sample on the Scribe, one sample a loop turn, while the pen reports every 2 to
+  3 ms. Now a sample only records the newest place (`drag`, clamped to the page) and when it changed; the
+  editor's tick (`sel_tick`, once a loop turn, after the turn's samples) shows it when `display_fast_busy`
+  says the last DU is off the panel (never queued in the driver: at most about 5 a second at 25 C) and
+  PREVIEW_MS (120 ms) went by since the last show, or the pen kept still PREVIEW_PAUSE_MS (50 ms). The first
+  move begins the display (`drag_begin`): the bar's rect and the outline's strips are composed again without
+  them (`bar_hidden`, `outline_off`: sel_draw draws the outline where the screen shows it, the place last
+  shown), then the page's part of the screen (lasso_clip, 4.6 MB at most) is copied as the drag's base; no
+  memory for it, and each show composes its strips instead. A show (`drag_show`) puts the old outline's
+  strips back from the base, draws the new outline (`draw_outline`, the same shapes sel_draw draws), and
+  refreshes each strip by a DU flushed on its own (`drag_present`, the link card's border strips' way:
+  `dither_strips` is linkcard_strips' shape; two join only when one rect over both covers no more), so no
+  refresh spans the box's gray inside. sel_draw copies whatever compose made of its rect into the base
+  first (it is the last layer), except for Live view's composing without the panel, so a panel repaint or
+  any compose during the drag keeps the base true; a show waits while a sheet, the peek or the Library's
+  settings are in front. Each show adds the old outline's ink to the DU wear; the first, the bar's rect.
+  The halo and the ink are drawn only where the first move composes the outline's four strips. The lift
+  (`drag_done`) is as before: `sel_move` with the newest place, shown or not, then one Ui refresh of every
+  place the drag refreshed (`outline_rect`) and the overlay, the base freed; Back, an undo or the `select`
+  action in the middle (`sel_deselect`, `sel_off`) free it too. Its log line: `lasso: drag samples= shows= px= inked=
+  copy=`. Probes: `editor.drag_samples`, `drag_shows`, `drag_shown`, `drag_inked`, `drag_copy`, and the
+  runner's `live.frame.stale` (Live view's frame against the screen).
 - `rust/src/lasso_live.rs` (pure): the live selection preview (docs/beta2/PIXEL-LASSO.md 2). Each sample a
   stroke is judged by (`judged_samples`, shared with the lift; lengths in fixed point, 1/64 px) keeps its
   winding as the integer sum of the lasso's edges' contributions, computed with the one crossing expression

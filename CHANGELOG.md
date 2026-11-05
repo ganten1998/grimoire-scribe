@@ -1,5 +1,20 @@
 # Changelog
 
+## 2.1.0 (unreleased)
+
+- Dragging a selection follows the pen however much it holds (the owner's report of 2026-11-05: "the copy paste
+  lasso function is horrifically slow on drag with anything containing colored in or multiple strokes"). The
+  drag drew its whole band again at every pen sample, the bar and the selection's dotted halo included, so a
+  selection of shading or of many strokes took about 22 ms a sample on the Scribe, while the pen reports one
+  every 2 to 3 ms, and the outline fell behind the pen. Now a pen sample only notes where the pen is, and the
+  outline is drawn at the newest place once the panel has finished the last fast refresh (about five times a
+  second at room temperature), or at once when the pen stops: it steps along with the pen and never trails
+  behind it. Only the outline's strips are refreshed, never the bar or the box's inside, and nothing of the ink
+  is drawn while it moves, so a selection of colored-in hexagons drags as lightly as three words. The bar goes
+  while you drag and comes back under the box when you lift. The lift is as before: the strokes move to where
+  the pen lifted, one undo step, with pencil, mechanical pencil and charcoal grain drawn afresh on the moved
+  part, and links move with them. Live view shows the drag as the Kindle does.
+
 ## 2.0.0-beta.2 (2026-11-05)
 
 - A smaller download: the zip is 2.9 MB (beta.1's was 7.1 MB) and the app 5.8 MB (8.8 MB). Terminess keeps
