@@ -32,6 +32,17 @@
   so dakuten, handakuten and the small kana are one key. カ types the pad in katakana (ノート,
   メモ) and あ back in hiragana; 、 holds 、。？！・ on its flicks. Every keyboard has it, so
   notebook, folder, page and link names all take kana. Every other language keeps áé there.
+- Delete held down deletes one character after another (the owner's "hold del long enough in keyboards to
+  quick delete"), on every keyboard: names (notebooks, folders, pages, links), Find, the page number pads and the
+  count pad for new pages. A tap still deletes one, at the touch-down; kept on the key, it deletes the next after
+  0.4 s ("low ish delay but not too low"), then one every 65 ms, about 15 a second ("repeat rate high so it feels
+  snappy", "not too high"), the same rate all the way, until the finger or the pen lifts or slides off the key.
+  It never runs ahead of the screen: while the panel is still showing the last delete, the next waits and then
+  takes the ones that came due together (three at most), so nothing is deleted after the lift that was not
+  already on its way to the screen. It stops with the text gone, and on the count pad the touch-down clears the
+  opening 1 as before, with nothing to repeat. The link card's Rename keyboard now also gets the gray clean-up
+  refresh the other keyboards get once typing pauses. A hardware keyboard's held Backspace still deletes one digit
+  on a count pad.
 - One keyboard scheme for a keyboard paired with the Kindle (the owner's scheme; docs/SHORTCUTS.md). A key
   may do one thing in each place (the Library, a notebook page, the Pages view, the Graph, Pen feel): in the
   Library Ctrl+N a new notebook, Ctrl+F a new folder, S Share, O Settings, Left and Right its screens; on a page

@@ -333,7 +333,6 @@ Decided by the lane B3 design (docs/beta2/PIXEL-LASSO.md, 2026-11-03) and its bu
 - Live view: decode, compose and average in a Worker with OffscreenCanvas; optional 4-bit gray
   tiles when the link is congested.
 - Graph: find a page in the graph and Around history. (Other notebooks as anchors: built in beta.2, lane C.)
-- On-screen keyboard: Backspace auto-repeat.
 - Remove the retired status-bar code (`status_reserved()` is always 0) and the graph's satellite
   and tray code unused since RC5 (about 250 lines in mapview.rs).
 - A tree-wide rustfmt pass over leftovers of an earlier mechanical reformat.
@@ -363,6 +362,13 @@ Ideas, not plans: each needs the owner's go and its own design. No code is taken
 
 ## Done
 
+- 2.0.0-beta.2 (unreleased, b2g/del; the owner, 2026-11-05: "hold del long enough in keyboards to quick delete",
+  "low ish delay but not too low", "repeat rate high so it feels snappy", "not too high"): the on-screen keyboard's
+  Backspace auto-repeat, from the RC8 review's list. Delete held repeats on every keyboard after 400 ms, every
+  65 ms, never queueing a refresh behind the panel (docs/DESIGN.md, Text and the keyboard). Left as it is: a
+  hardware keyboard's held Backspace on a count pad deletes one digit, as `hidkeys_event` drops the kernel's
+  autorepeat for every key (text fields take no typed keys at all, only Esc); repeating it would let autorepeat
+  into the path every shortcut shares, for a count of a few digits.
 - 2.0.0-beta.2 (unreleased, claude/b3-pv3; the owner's rulings of 2026-11-03, verbatim): (a) "The graph button if
   there is to be one shouldn't be at the top -- we had good visual soundness with 5 icons. For now just the drag
   to summon on the main menu." The Library's top bar is back to its five icons (Exit, Settings, Share, Folder,

@@ -307,7 +307,8 @@ draws them. White ink and the precise eraser make them.
   Every kana the pad types, both scripts, and 、。？！・ー゛小カ, is drawn in every theme:
   DotGothic16 covers what the pixel and Terminess faces lack. `keyboard_upper()` is the shift case map (Latin-1 and Latin
   Extended-A), `keyboard_key_rect()` locates a key on the page showing (for tests and scripts), and
-  `keyboard_open` keeps valid UTF-8 and drops control characters and broken bytes. A key types a whole character; backspace removes one. In Spanish
+  `keyboard_open` keeps valid UTF-8 and drops control characters and broken bytes. A key types a whole character; backspace removes one,
+  and held it removes one after another (below). In Spanish
   the letters page's middle row ends with ñ after l (`k_row_es`), as Spanish keyboards have it, and
   is then as wide as the row above; the accents page keeps ñ in every language.
 - Every keyboard host (the Library's sheet, the Pages view's Page name and Go to page) hands its pen
@@ -323,6 +324,31 @@ draws them. White ink and the precise eraser make them.
   sample: on the Kindle each key's refreshes then overlapped the one before and waited in the
   driver's queue for it (docs/INK-PERFORMANCE.md), and the text fell further behind with every key.
   tests/scenarios/j_pages_keyboard.qs holds both keyboards to the same refreshes and draws.
+- Delete held down repeats on every page that has it (letters, accents, symbols, the number pad, the kana pad,
+  the count pad), in every keyboard: the owner's "hold del long enough in keyboards to quick delete", "low ish
+  delay but not too low", "repeat rate high so it feels snappy", "not too high" (2026-11-05). Its touch-down
+  deletes one, as a tap does, and when text is left starts the hold (`Keyboard.repeat_at`, `KB_HOLD_MS` = 400
+  ms ahead); then `keyboard_repeat` deletes one when it is due and the next is due `KB_REPEAT_MS` = 65 ms
+  later (about 15 a second, the same rate all the way: no speeding up to words). It runs at the samples of the
+  contact holding the key (`app_keyboard_pointer_split`, by the sample's time: the pen resting there sends one
+  at every digitizer frame) and at the screen's tick (`app_keyboard_tick`, which every keyboard host calls,
+  the link card's Rename keyboard too): the main loop goes round at least every 30 ms, its input poll's
+  timeout, so a repeat needs no wake of its own, and with no hold the tick tests one field. A repeat draws and
+  refreshes as a key's typing does, the text line alone (the key stays pressed), and returns
+  `KbResult::Changed`, so a screen that follows the text follows it (`findsheet_tick` makes the Find sheet's
+  rows again and the editor refreshes them after the text line, as for a key). It never queues a refresh
+  behind another: while the last fast refresh may still be on the panel (`display_fast_busy`: the quiet
+  thread's books of the newest DU, or 300 ms since the last refresh without them; never in the simulator) a
+  due repeat waits, and then deletes together the repeats that came due meanwhile, `KB_REPEAT_BATCH` = 3 at
+  most (one DU at room temperature), in one refresh; the next is due on the same schedule, those past the
+  batch skipped. So the text shown is at most that one refresh behind the text, and nothing is deleted after
+  the lift. The hold ends at the lift, a move off the key (back on, it does not start again), the text gone
+  (a hold on an empty field, or on the count pad's opening 1, which its touch-down clears, never starts),
+  the keyboard closing, a new contact (a second finger's key ends the first's, a hardware key's touch on the
+  text line too), and `keyboard_holds_end`, which `app_sleep` and `app_switch` call for every keyboard at
+  once, since the lift may never reach one then. A hardware keyboard's Backspace is not repeated: text fields
+  take no typed keys (only Esc, their Cancel), and on the count pads `hidkeys_event` drops the kernel's
+  autorepeat (value 2) as it does for every key.
 
 ## Languages
 
