@@ -642,10 +642,18 @@ announcements: goingToScreenSaver draws the sleep screen, outOfScreenSaver is th
   the sources draw (rust/src, kindle/, web/, po/ and What's new, scanned for characters, escapes
   (UTF-16 pairs too), hex numbers and the decimals handed to a call that makes a character, in the
   private use areas) is on the list, in both weights, and draws ink. A new icon fails it until the
-  list has it and `make fonts-subset` made the fonts again (`assets/README.md`).
+  list has it and `make fonts-subset` made the fonts again (`assets/README.md`). KOReader's battery
+  symbols (U+E778 to U+E783, U+EDA3) are the exception: the Terminess menu patch names them to pass
+  over a font that has them, and koreaders_battery_symbols_are_named_and_never_in_terminess holds
+  that only the patch names them and neither embedded font has one.
   rust/tests/test_scenarios.rs's a_start_brings_koreaders_terminess_up_to_date holds the start's
   call to `koreader_fonts_refresh`, test_koreader.rs's fonts_follow_the_binary its cases, and
   test_httpd.rs's fonts_icons_and_the_cache `/font/licenses.txt` and the fonts' `Link` header.
+  a_start_brings_an_earlier_terminess_patch_up_to_date holds the start's call to
+  `koreader_patch_refresh` (rc.6's patch in KOReader becomes the current one, logged once), and
+  earlier_terminess_patch_follows_the_binary its cases against kindle/koreader/legacy's real files.
+  tests/kopatch_check.lua holds the patch's own choice: Grimoire's copy first, then a font with no
+  glyph at KOReader's battery code points.
 - tests/test_keyboard.c drives the keyboard API: one_character_keys_at_title_size compares each
   key with font_draw_centered at the title or text size, and typed_name_is_stored_whole sends the
   keyboard's text through store_rename, store_set_folder, export_mirror_path and
@@ -1124,7 +1132,9 @@ plugin and optional patches. Different patch contents at a managed filename are 
 Terminess fonts are copied from the binary's embedded font data. The Rust tree alone keeps them the
 binary's (`koreader_fonts_refresh` in rust/src/koreader.rs, rust/PORTING.md's Rust only): at each
 start it writes again the copy in KOReader's `fonts/Grimoire` that differs, where it is there or the
-Terminess patch is applied (docs/KINDLE.md). No KOReader settings Lua is
+Terminess patch is applied (docs/KINDLE.md). Right after it, `koreader_patch_refresh` (Rust only too)
+replaces a Terminess patch in KOReader that is byte for byte an earlier Grimoire copy
+(`app/koreader/legacy`) with the current one. No KOReader settings Lua is
 executed. The plugin's custom wallpaper export is a bounded PNG committed by write-then-rename,
 read by `store_load_koreader_sleep`; it is cached only when used and freed at shutdown.
 

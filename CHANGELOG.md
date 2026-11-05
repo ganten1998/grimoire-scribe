@@ -8,6 +8,14 @@
   that Nerd Fonts had added are gone. The icons' Apache-2.0 notice ships beside the OFL text, and the share
   pages serve the fonts' licenses at `/font/licenses.txt` (`assets/README.md`). Grimoire updates its copy in
   KOReader's `fonts/Grimoire` at its next start.
+- KOReader's battery symbol is back in its dropdown and reading footer with the Terminess menus (the owner's
+  Scribe showed a "JS" badge in its place, 2026-11-04). The menus use Grimoire's own copy of Terminess in
+  `koreader/fonts/Grimoire` whenever it is there, before any other Terminess or Terminus in the Kindle's fonts
+  folders; a full Nerd Font, whose icons sit where KOReader's battery symbols are (U+E781 is a JavaScript
+  badge), is used only when no other font will do. `koreader/crash.log` names the font the menus use and why
+  each other was passed over. A start of Grimoire replaces an earlier Grimoire copy of the Terminess patch in
+  KOReader's `patches` (1.1.0-beta.2's, 1.2.0's or 2.0.0-beta.1's, byte for byte) with this one, and
+  grimoire.log says so; a copy someone changed is kept, and a patch that is not applied stays off.
 - Quieter toasts (the owner's review of every one): confirmations of what the screen already shows are gone,
   and the rest are terse ("Couldn't save page name.", "Couldn't save links. Page unchanged."). A finger shape
   names its action only when the action did something: none for Next page on the last page, Previous page on
