@@ -27,6 +27,12 @@
   sleep in the middle of a drag cancels it. The lift is as before: the strokes move to where the pen lifted, one
   undo step, with pencil, mechanical pencil and charcoal grain drawn afresh on the moved part, and links move
   with them. Live view shows the drag as the Kindle does.
+- Live view keeps the toolbar in the browser while a menu is up on the Kindle (issue #16, reported by nebuff).
+  The toolbar's layer was taken away whenever the Display sheet, the Paper sheet or another of the notebook's
+  menus opened, so the browser showed the page where the Kindle still showed the toolbar beside the menu, until
+  the menu closed. Now the layer holds what the Kindle shows where the toolbar is: the toolbar beside a menu,
+  and a menu's part over it where the menu covers it, whether a setting changes in the menu or not. Settings
+  and its Display sheet were already shown as the Kindle shows them, and still are.
 
 ## 2.0.0-beta.2 (2026-11-05)
 

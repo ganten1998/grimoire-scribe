@@ -161,8 +161,9 @@ A desktop simulator (SDL3) and an SDL-free headless script runner exist for deve
   the panel alone (a tool picked, the panel dragged, folded or fitted, a settle) goes through
   `draw_panel_over`, which draws the menus over the part they cover again; `compose` draws the menus over the
   whole panel, not only over the rect it was asked for. The Pages view covers the screen and the panel is
-  not drawn on it, and Live view's browser layer of the panel (`editor_live_panel`) is empty while any of
-  them is up.
+  not drawn on it. Live view's browser layer of the panel (`editor_live_panel`) stays where the panel is
+  while any of the menus is up, holding the screen there with the menu's part over it (Live view, below);
+  it is empty under the Pages view, the Graph and the notebooks' browser.
 - Display safety (main.c, display_fbink.c): the screen guard reads the framebuffer back (8 and
   32 bpp) and repaints what another process drew; after 10 repaints in a row it turns itself off.
   If the first frame and the next 4 refreshes all fail (`display_broken`, retried once a second),
@@ -985,7 +986,16 @@ announcements: goingToScreenSaver draws the sleep screen, outOfScreenSaver is th
    remembered). The frame holds the page under the panel: app_flush pushes the rect a.screen
    presents, then composes the part of it under the panel again without the panel
    (`editor_live_under_panel`: compose with the panel left out, pushed, the pixels put back) and
-   copies the panel into its layer (`live_layer`); the corner, an overlay never in a.screen, is
+   copies the panel into its layer (`live_layer`). The layer is the screen where the panel is, as the
+   Kindle shows it: with a menu, sheet or bar up beside the panel it is the panel, and where one covers a
+   part of the panel or all of it, that part of the menu too, while the tiles there hold the page and the
+   menu without the panel (2.0.0, issue #16: the layer went whenever a menu was up, so the browser lost the
+   toolbar beside the Display sheet until it closed). It is empty where the panel is not drawn (the Pages
+   view, the Graph and the notebooks' browser over the screen) and while Settings is over the notebook, whose
+   screen, the panel's strip beside it included, the frame holds whole (it is drawn again whole, so no part of
+   it is composed without the panel).
+   A present that reaches the panel's rect copies the layer again, so it follows the menu over it. The
+   corner, an overlay never in a.screen, is
    copied as status.rs paints it, and taken away when it goes. The tile viewer sends a layer that
    changed after the batch's tiles, whole (Seq: odd while it is written), and every layer again
    after a hello; a turn takes them away until the turned screen's flush tells them. The page keeps

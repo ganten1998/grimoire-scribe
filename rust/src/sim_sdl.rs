@@ -1396,6 +1396,45 @@ fn display_stale(a: Option<&mut App>, key: &[u8], out: &mut String, cap: usize) 
     })
 }
 
+/// "live.stale.X.Y.W.H": how many pixels of that screen rect the browser's picture (live_picture_now: the
+/// frame's tiles with the toolbar's and the corner's layers over them and the toast with its alpha, every
+/// layer switched on) shows more than a unit of gray off what the simulated panel shows there, the panel's
+/// colors as drawn (Invert colors undone): 0 where a browser shows what the Kindle does (2.0.0, issue #16:
+/// the toolbar gone from the browser while the Kindle showed it beside a menu). "none" while Live view is
+/// off or the rect is not inside the screen. Keep the rect clear of the live chip, which the panel shows
+/// and the stream never holds, and of a refresh's dithered grays.
+fn live_stale(a: Option<&mut App>, key: &[u8], out: &mut String, cap: usize) -> bool {
+    let Some(rest) = key.strip_prefix(b"live.stale.") else { return false };
+    let Some(a) = a else { return false };
+    let v: Vec<i32> = std::str::from_utf8(rest).unwrap_or("").split('.').filter_map(|t| t.parse().ok()).collect();
+    if v.len() != 4 {
+        return false;
+    }
+    let r = Rect { x: v[0], y: v[1], w: v[2], h: v[3] };
+    let Some(seen) = live_picture_now(r) else {
+        csnprintf!(out, cap, "%s", "none");
+        return true;
+    };
+    with(|st| {
+        let ew = st.w;
+        if st.eink.is_empty() || a.screen.w != ew || a.screen.h != st.h || r.x + r.w > ew || r.y + r.h > st.h {
+            return false;
+        }
+        let mut n = 0i64;
+        for y in 0..r.h {
+            for x in 0..r.w {
+                let shown = st.eink[(r.y + y) as usize * ew as usize + (r.x + x) as usize];
+                let shown = if st.sim_invert { 255 - shown } else { shown };
+                if (seen[(y * r.w + x) as usize] as i32 - shown as i32).abs() > 1 {
+                    n += 1;
+                }
+            }
+        }
+        csnprintf!(out, cap, "%lld", n);
+        true
+    })
+}
+
 /// "live.toast.stale": how many pixels of Live view's toast layer (live_layer_now: gray and alpha), drawn
 /// over the app's screen as the browser draws it over its picture, differ by more than a unit of gray
 /// from what the simulated panel shows there, the panel's colors as drawn (Invert colors undone): 0
@@ -1486,6 +1525,7 @@ fn expect_check_as(gone: bool, mut a: Option<&mut App>) {
         && !display_stale(a.as_deref_mut(), &key, &mut got, GOT_CAP)
         && !live_toast_stale(a.as_deref_mut(), &key, &mut got, GOT_CAP)
         && !live_frame_stale(a.as_deref_mut(), &key, &mut got, GOT_CAP)
+        && !live_stale(a.as_deref_mut(), &key, &mut got, GOT_CAP)
         && !power_probe(&key, &mut got, GOT_CAP)
         && probe_app(a, &key, &mut got, GOT_CAP) != 0
     {

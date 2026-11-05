@@ -1298,8 +1298,9 @@ fn live_push_screen(a: &mut App, r: Rect) {
     if !live_on() {
         return;
     }
-    // The layer is the panel the browser draws over the frame (none while a menu is in front of the page: it would
-    // be over the menu); the frame is pushed without the panel wherever the screen holds one, or a menu over it.
+    // The layer is the panel the browser draws over the frame, as the screen holds it: with a menu over it, the menu
+    // there too, as the Kindle shows it (issue #16); the frame is pushed without the panel wherever the screen holds
+    // one, the page and any menu over it in its place.
     let (panel, hole) = if a.scr == ScreenId::Editor { (editor_live_panel(a), editor_live_hole(a)) } else { (RECT_EMPTY, RECT_EMPTY) };
     let under = rect_intersect(r, hole);
     let moved = with(|s| s.live_panel) != panel;
@@ -2312,8 +2313,8 @@ pub fn app_probe(a: &mut App, key: &str, out: &mut String, cap: usize) -> i32 {
         csnprintf!(out, cap, "%d", live_viewers());
     } else if key == "live.pairing" {
         csnprintf!(out, cap, "%d", if share_live_card_up(a) { 1 } else { 0 });
-    } else if key == "live.toast" {
-        let (r, _) = live_layer_now(LIVE_LAYER_TOAST);
+    } else if key == "live.panel" || key == "live.toast" {
+        let (r, _) = live_layer_now(if key == "live.panel" { LIVE_LAYER_PANEL } else { LIVE_LAYER_TOAST });
         if rect_is_empty(r) {
             csnprintf!(out, cap, "%s", "");
         } else {

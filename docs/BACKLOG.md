@@ -448,7 +448,16 @@ Ideas, not plans: each needs the owner's go and its own design. No code is taken
   z_lasso_21_drag_sleep.qs on a generated page with his page's statistics; z_refresh_4_select's wear and lift
   rect follow the bar no longer going round with the box (57 thousandths of the screen worn on its drag instead of
   384, so no Clean follows).
-
+- 2.0.0 (unreleased, v21/i16; issue #16, reported by nebuff: "Toolbar disappears in live view when a popup menu
+  (settings, display settings) is opened then comes back after closing menu"): the toolbar's Live view layer
+  stays where the panel is under every menu, sheet and bar of the notebook, holding what the Kindle shows there
+  (the toolbar, and a menu's part over it), and is none only under the Pages view, the Graph and the notebooks'
+  browser, which cover the screen, and while Settings is over the notebook, whose screen, the toolbar's strip
+  beside it included, the frame holds whole (docs/DESIGN.md, Live view). In the headless runner the layer went as the
+  Display sheet or the Paper sheet opened, a setting changed or not (76,089 pixels of the toolbar's rect wrong in
+  the browser beside the Display sheet); Settings over the notebook, and its own Display sheet, were already
+  right, the frame then holding the whole screen. tests/scenarios/y_live_toolbar_menus.qs checks it with two new
+  probes, `live.panel` and `live.stale.X.Y.W.H` (docs/SIM.md).
 - 2.0.0-beta.2 (unreleased, b2g/del; the owner, 2026-11-05: "hold del long enough in keyboards to quick delete",
   "low ish delay but not too low", "repeat rate high so it feels snappy", "not too high"): the on-screen keyboard's
   Backspace auto-repeat, from the RC8 review's list. Delete held repeats on every keyboard after 400 ms, every
