@@ -95,6 +95,28 @@ and of CI's package job) checks that the CI shards' split ends and keeps each sc
 roots at any shard count (`SCENARIO_SHARDS` can go up safely), that a scenario under a skipped
 rust-only root is skipped whatever the order, and that a failed run says why.
 
+## 2.0.0-beta.2
+
+Checked by the owner on the Kindle Scribe 2024 (firmware 5.20.1.0.2) on the beta.2 builds installed through
+KPM on 2026-11-04 and 05, the last of them 8e1bd38's (this release's code, with the version before the bump).
+What the owner reported:
+
+- On the first candidate (416686d): toasts "Good for now"; Japanese works (a native speaker's confirmation is
+  awaited); KOReader's menus good, but its battery symbol showed "JS" (fixed since: on 2026-11-05 at 03:48
+  KOReader's crash.log names Grimoire's own Terminess for its menus); Pages' drag had to start before the held
+  page's card, and the count pad's opening 1 read as a 0 (both changed: the sections below); the keyboard was
+  not tried yet.
+- On the next candidates: swiping past the last page adds a page by default ("Great stuff"); two new stress
+  pages written on the Kindle, STRESS TEST 2 and 3 (2.8 and 3.0 MB, 648 and 698 strokes), whose first revisits
+  took 11.6 s and 28.4 s with no kept drawing (docs/BACKLOG.md, Found on the owner's stress pages).
+- Toasts in Live view, the shift key's caps on and delete held down were added at the owner's request and
+  installed on 2026-11-05 (8e1bd38); the owner then said "Release, this is beta 2."
+
+Not reported on a Kindle, or still needing one: the battery symbol seen in KOReader (the log shows the font),
+the device names in Settings > Shortcuts across a reconnect, how the 300 ms drag hold feels, Live view's toasts
+in a browser, whether caps on's bar stands out, delete held down batching on the panel, and the device checks of
+the 2.0.0-beta.2 sections below marked pending.
+
 ## 2.0.0-beta.2, Live view picture in picture in Firefox Nightly (browser checks pending)
 
 Automated: tests/live_browser_check.js (in `make check`, through live_check.sh) checks that in video

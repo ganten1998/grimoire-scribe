@@ -1,8 +1,8 @@
 # Changelog
 
-## 2.0.0-beta.2 (unreleased)
+## 2.0.0-beta.2 (2026-11-05)
 
-- A smaller download: the zip is 2.8 MB (beta.1's was 7.1 MB) and the app 5.8 MB (8.8 MB). Terminess keeps
+- A smaller download: the zip is 2.9 MB (beta.1's was 7.1 MB) and the app 5.8 MB (8.8 MB). Terminess keeps
   Terminus's own text and only the Material Design icons Grimoire uses: Grimoire's own text looks as before,
   and the box drawing, block elements, heart, lightning, menu sign, power symbols and heavy angle brackets
   that Nerd Fonts had added are gone. The icons' Apache-2.0 notice ships beside the OFL text, and the share
