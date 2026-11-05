@@ -1148,3 +1148,37 @@ only the Scribe can show:
 9. **Upgrade.** A Kindle that had shortcuts on in an earlier beta.2 build with an unedited `shortcuts.ini`:
    after this build's first start its first line names Settings > Shortcuts (grimoire.log says it became
    this build's); an edited one is left as it was.
+
+## 2.0.0-beta.2, Toasts in Live view
+
+Live view shows Grimoire's toasts now (the owner, 2026-11-05: "Enable toasts on the live view display. they
+don't show up now."): a third layer of the stream, drawn over the page, the toolbar and the clock corner, with
+no setting. The automated checks: `rust/tests/test_live.rs` (the layer's rect and pixels, moved, gone, nothing
+while pairing or asleep; `app_flush` copies the toast as drawn and leaves the live chip out),
+`tests/scenarios/y_live_toast.qs` (in the simulator: over the pairing card, moved by a sheet, sideways, inverted,
+replaced, timed out, asleep; the layer's pixels against the simulated panel's), `tests/live_stream.py` (the first
+browser's own toast over a real stream) and `tests/live_browser_check.js` (the page draws it on top, clears it,
+drops it with any state but awake, and leaves out a layer id it does not know). What only the Scribe and a real
+browser can show:
+
+1. **The first one.** Pair a browser. As the card closes, the Kindle says "A computer is watching this screen."
+   for 3 s: the browser shows it in the same place with the same look (black, white words, round ends; in
+   Gothic its pointed ends and inner line), and it goes from both together.
+2. **On a page.** In a notebook, choose the lasso and circle empty paper: "Nothing to select." on both, over
+   the page and, where they meet, the toolbar; gone from both after 2 s. With a keyboard, the light keys
+   (Light N of 24) a few times quickly: each new toast replaces the last in the browser too.
+3. **Switches.** In the browser's View settings, switch Show toolbar and Show clock and battery off, and make
+   a toast again: it still shows. Switch them back on.
+4. **Loading page....** Turn to a dense page that says "Loading page..." as it opens: the browser shows it while
+   the Kindle draws, and it goes as the page shows.
+5. **It moves.** Make "Nothing to select." and at once open the toolbar's Pages view: the toast moves above the
+   Pages view's buttons on the Kindle and in the browser alike. Make one and turn the Kindle sideways: the
+   browser shows it in its sideways place.
+6. **Asleep.** Make a toast (Loading page... lasts longest) and press the power button: the browser says the
+   Kindle is asleep and the toast leaves its picture at once. Wake the Kindle: no toast on either.
+7. **The pairing card.** With a browser watching, open Library > Share > Live view again (the card): the
+   browser says it is pairing and shows nothing new. Close the card with Done: a toast still up on the Kindle
+   shows in the browser; one that went while the card was up does not come back.
+8. **Inverted.** With Invert colors on (Settings > Display), the browser's toast is inverted with the rest of
+   the picture, as on the Kindle (white with black words), and the browser's Invert colors switch turns it
+   with the picture.

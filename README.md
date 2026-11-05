@@ -170,7 +170,8 @@ your notebooks and settings from `quire/` to `grimoire/` and removes the old Qui
   picture**, Monitor mode, full screen, recording, **View settings** (transparent paper, colors,
   warmth and brightness, the pen dot, the toolbar and clock layers, latency) and **Keys**. Picture in picture floats the
   page over your other windows; keep the original tab open meanwhile, and close the small window
-  to bring the view back.
+  to bring the view back. Grimoire's toasts show in the browser too, where and as the Kindle shows
+  them, and go when they go there (always: the toolbar and clock switches leave them alone).
   A small icon in the top right corner says it is on; **Stop** on
   its card turns it off, and it turns itself off after 10 minutes with nobody watching. Plain HTTP:
   use it on a network you trust.
