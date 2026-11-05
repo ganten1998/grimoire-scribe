@@ -357,6 +357,52 @@ module.exports = async function browserChecks(ok) {
     p.raw.calls = [];
     toolbar.click(); toolbar.click(); p.paint();
     ok('layers: one no longer on the screen draws nothing', !drewLayer());
+    // The toast (layer 2; 2.0.0-beta.2): drawn over the toolbar where they meet, with no switch of its
+    // own (the toolbar's switched off, the toast still shows); gone with w = 0; taken away by any state but
+    // awake, the toolbar kept; and a layer id the page does not know (as the toast's is to an older page) is
+    // left out, the stream going on.
+    {
+        const q = page();
+        await turn();
+        const t = q.readers['/live/stream'];
+        t.push(hello(1));
+        const lay = (id, x, y, w, h) => {
+            const b = new Uint8Array(w ? 14 : 10), d = new DataView(b.buffer);
+            b[0] = id; [x, y, w, h].forEach((v, k) => d.setUint16(2 + k * 2, v, true));
+            return frame(9, b);
+        };
+        const tb = {close() {}};
+        q.decode(tb);  // (every layer's picture is this one: they are told apart by where they are drawn)
+        t.push(lay(0, 10, 20, 30, 40)); t.push(lay(2, 5, 30, 60, 10)); t.push(batch(0, 1));
+        for (let i = 0; i < 5; i++) await turn();
+        q.raw.calls = []; q.paint();
+        const at = (x, y) => q.raw.calls.findIndex(c => c[0] === 'drawImage' && c[1] === tb && c[6] === x && c[7] === y);
+        ok('toast: drawn after the toolbar over the page, so on top where they meet', at(10, 20) >= 0 && at(5, 30) > at(10, 20));
+        const toolbar = q.elements.find(e => e.textContent === 'toolbar');
+        ok('toast: no switch of its own', !q.elements.some(e => e.textContent === 'toast'));
+        q.raw.calls = []; toolbar.click(); q.paint();  // (the toolbar's rect made again: the toast's part of it from 10, 30)
+        ok('toast: the toolbar switched off, the toast still shows', at(10, 20) < 0 && at(10, 30) >= 0);
+        toolbar.click(); q.paint();
+        t.push(lay(2, 0, 0, 0, 0)); t.push(batch(0, 1));
+        for (let i = 0; i < 5; i++) await turn();
+        q.raw.calls = []; q.paint();
+        ok('toast: gone with w = 0, its place made again from the page and the toolbar',
+            at(5, 30) < 0 && at(10, 30) >= 0 && q.raw.calls.some(c => c[0] === 'drawImage' && c[1] !== tb && c[6] === 5 && c[7] === 30));
+        t.push(lay(2, 5, 30, 60, 10)); t.push(batch(0, 1));
+        for (let i = 0; i < 5; i++) await turn();
+        q.paint();
+        t.push(frame(5, new Uint8Array([1, 0, 255])));
+        for (let i = 0; i < 5; i++) await turn();
+        q.raw.calls = []; q.paint();
+        ok('toast: a state but awake takes it away and keeps the toolbar', at(5, 30) < 0 && at(10, 30) >= 0);
+        t.push(frame(5, new Uint8Array([0, 0, 255])));
+        t.push(lay(3, 0, 0, 10, 10)); t.push(batch(0, 1));
+        t.push(lay(2, 5, 30, 60, 10)); t.push(batch(0, 1));
+        for (let i = 0; i < 5; i++) await turn();
+        q.raw.calls = []; q.paint();
+        ok('layers: an id the page does not know is left out, and the next batch draws as before',
+            at(0, 0) < 0 && at(5, 30) >= 0);
+    }
     const select = p.elements.find(e => e.tag === 'select'), picker = p.elements.find(e => e.type === 'color');
     ok('dot: the size small and the first color by default, settable without storage', select.value === 'small' &&
        picker.value === '#f03c28' && (select.value = 'large', select.change(), true) && select.value === 'large');

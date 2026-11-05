@@ -1910,7 +1910,8 @@ fn app_flush_in(a: &mut App) {
     let mut dirty = a.dirty;
     let corner = status_cover(a, &mut dirty);
     a.dirty = dirty;
-    let mut overlay = a.toast_visible && rect_overlaps(a.dirty, a.toast_rect);
+    let reached = a.toast_visible && rect_overlaps(a.dirty, a.toast_rect);
+    let mut overlay = reached;
     if overlay {
         a.dirty = rect_union(a.dirty, a.toast_rect);
         canvas_free(&mut a.toast_under);
@@ -1921,6 +1922,7 @@ fn app_flush_in(a: &mut App) {
             a.toast_presents = a.toast_presents.wrapping_add(1);
         }
     }
+    live_toast_sync(a, overlay, reached, if chipped { Some(chip) } else { None });
     display_present(&a.screen, a.dirty, m);
     du_wear_presented(&mut a.du_wear, a.dirty, m);
     if overlay {
@@ -1940,6 +1942,42 @@ fn app_flush_in(a: &mut App) {
     a.dirty = RECT_EMPTY;
     a.dirty_mode = RefreshMode::Fast;
     status_flush(a); // (a refresh of the corner this one did not hold)
+}
+
+// Live view's toast layer (live.rs, LIVE_LAYER_TOAST) as the present app_flush is about to send leaves
+// the panel (2.0.0-beta.2, the owner: "Enable toasts on the live view display. they don't show up
+// now."): the toast this present draws (drawn), copied as drawn, with what is under its round ends;
+// none once a present goes out without it (hidden: its place is in this present; or reached and not
+// drawn, for want of memory); else as it was, since a present away from the toast leaves it on the
+// panel. Where the live chip (never streamed) is under the toast's rect, the toast is drawn again for
+// the layer over what the chip covers (chip_under), so no part of the chip shows at its round ends.
+fn live_toast_sync(a: &mut App, drawn: bool, reached: bool, chip: Option<Rect>) {
+    if !live_on() {
+        return;
+    }
+    if !drawn {
+        if reached || !a.toast_visible {
+            live_layer(LIVE_LAYER_TOAST, &a.screen, RECT_EMPTY);
+        }
+        return;
+    }
+    let r = a.toast_rect;
+    let Some(c) = chip.filter(|c| rect_overlaps(*c, r)) else {
+        live_layer(LIVE_LAYER_TOAST, &a.screen, r);
+        return;
+    };
+    let mut t = Canvas::default();
+    if canvas_init(&mut t, r.w, r.h) != 0 {
+        live_layer(LIVE_LAYER_TOAST, &a.screen, RECT_EMPTY); // (no memory: none rather than the chip)
+        return;
+    }
+    let all = Rect { x: 0, y: 0, w: r.w, h: r.h };
+    canvas_blit(&mut t, &a.toast_under, all, 0, 0);
+    let o = rect_intersect(c, r);
+    canvas_blit(&mut t, &a.chip_under, Rect { x: o.x - c.x, y: o.y - c.y, w: o.w, h: o.h }, o.x - r.x, o.y - r.y);
+    ui_toast_at(&mut t, all, a.toast.as_str());
+    live_layer_from(LIVE_LAYER_TOAST, &t, r);
+    canvas_free(&mut t);
 }
 
 /// calls leave/enter and redraws fully (REFRESH_FULL)
@@ -2258,6 +2296,13 @@ pub fn app_probe(a: &mut App, key: &str, out: &mut String, cap: usize) -> i32 {
         csnprintf!(out, cap, "%d", live_viewers());
     } else if key == "live.pairing" {
         csnprintf!(out, cap, "%d", if share_live_card_up(a) { 1 } else { 0 });
+    } else if key == "live.toast" {
+        let (r, _) = live_layer_now(LIVE_LAYER_TOAST);
+        if rect_is_empty(r) {
+            csnprintf!(out, cap, "%s", "");
+        } else {
+            csnprintf!(out, cap, "%d %d %d %d", r.x, r.y, r.w, r.h);
+        }
     } else if key == "live.chip" {
         let r = a.chip_at;
         if live_on() && !rect_is_empty(r) {

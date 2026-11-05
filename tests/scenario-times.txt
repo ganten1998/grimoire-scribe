@@ -117,6 +117,7 @@ y_koreader_not_hosted 3.3
 y_language 1.5
 y_live_chip 7.0
 y_live_ink 6.6
+y_live_toast 8.8
 y_menus_over_panel 12.4
 y_pagesize_1_ksc 16.7
 y_pagesize_2_back 7.1

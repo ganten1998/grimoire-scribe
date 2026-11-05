@@ -296,6 +296,26 @@ if bars:
           % (in_layer, in_page), lw == bw and lh == bh and in_layer >= 18 and in_page <= 4)
 else:
     check('the toolbar comes as a layer of its own', False)
+# The toast as a layer of its own (id 2; 2.0.0-beta.2): the one the first browser brings ("A computer is
+# watching this screen.", 3 s) comes as the PNG of its rect, black with white words (the frame's colors as
+# drawn, though settings.ini inverts the Kindle's), and goes (w = 0) when its time is up.
+def toast_went():
+    shown = [i for i, l in enumerate(layers) if l[0] == 2 and l[3]]
+    return bool(shown) and any(l[0] == 2 and not l[3] for l in layers[shown[0] + 1:])
+for _ in range(160):
+    if toast_went(): break
+    time.sleep(.05)
+toasts = [l for l in layers if l[0] == 2 and l[3]]
+if toasts:
+    _, tx, ty, tw, th, tpng = toasts[0]
+    gw, gh, trows = png_gray(tpng)
+    dark = sum(1 for row in trows for v in row if v < 128)
+    light = sum(1 for row in trows for v in row if v >= 128)
+    check('the toast comes as a layer of its own, %dx%d at %d,%d, black with white words (%d dark, %d light), '
+          'and goes when its time is up' % (tw, th, tx, ty, dark, light),
+          (gw, gh) == (tw, th) and dark > tw * th // 2 and light > tw * th // 100 and toast_went())
+else:
+    check('the first browser\'s toast comes as a layer of its own', False)
 with open(os.path.join(OUT, 'fast.bin'), 'wb') as f: f.write(fast_raw)
 with open(os.path.join(OUT, 'fast.txt'), 'w') as f: f.write(''.join('%d %d\n' % item for item in fast_frames))
 cp.close()

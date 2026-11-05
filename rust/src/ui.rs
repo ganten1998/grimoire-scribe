@@ -751,6 +751,12 @@ pub fn ui_toast_rect(screen: Rect, msg: &str) -> Rect {
     Rect { x: screen.x + (screen.w - w) / 2, y: screen.y + screen.h - h - ui_px(120.0), w, h ,
     }
 }
+/// The tallest ui_toast_rect makes, in either theme: two one-line boxes. Its second line adds a line's
+/// ascent and descent at the body size (44 px at 300 dpi), never as much as a one-line box (110 px). Live
+/// view's toast layer is no bigger than the screen's longer side times this (live.rs, live_start).
+pub fn ui_toast_max_h() -> i32 {
+    2 * toast_one_h()
+}
 pub fn ui_toast(c: &mut Canvas, screen: Rect, msg: &str) {
     ui_toast_at(c, ui_toast_rect(screen, msg), msg);
 }

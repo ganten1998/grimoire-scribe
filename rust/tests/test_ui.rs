@@ -273,6 +273,25 @@ fn name_labels() {
     check!(font_drawable_copy("ab\u{20ac}\u{20ac}", &mut small, 6) == 0 && small == "ab\u{20ac}");
 }
 
+// Live view's toast layer holds the screen's longer side times ui_toast_max_h (live.rs, frame_layout):
+// no toast is taller than that in either theme, however long its text, nor wider than the screen.
+fn toasts_fit_the_live_view_layer() {
+    let was = ui_theme();
+    let long = "A toast too long for two lines is cut to two, and the second line adds less than a one-line box, \
+        so even this one, which goes on and on past where two lines end, is no taller than the bound.";
+    for theme in [UiTheme::Classic, UiTheme::Gothic] {
+        ui_set_theme(theme);
+        for screen in [(1860, 2480), (2480, 1860), (1986, 2648), (2648, 1986)] {
+            let s = Rect { x: 0, y: 0, w: screen.0, h: screen.1 };
+            for msg in ["Undo", "Nothing to select: white ink and eraser marks move with the ink under them.", long] {
+                let r = ui_toast_rect(s, msg);
+                check!(r.h > 0 && r.h <= ui_toast_max_h() && r.w <= s.w);
+            }
+        }
+    }
+    ui_set_theme(was);
+}
+
 #[test]
 fn test_ui() {
     ui_init(300.0);
@@ -286,5 +305,6 @@ fn test_ui() {
     run!(keyboard_typing);
     run!(sheets);
     run!(name_labels);
+    run!(toasts_fit_the_live_view_layer);
     done();
 }

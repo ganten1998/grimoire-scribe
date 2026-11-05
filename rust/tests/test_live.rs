@@ -1244,10 +1244,195 @@ fn a_layer_comes_with_the_tiles_and_goes() {
             break;
         }
     }
-    check!(kinds.iter().filter(|k| k.0 == LIVE_LAYER as u8 && k.1 == 10).count() == 2);
+    check!(kinds.iter().filter(|k| k.0 == LIVE_LAYER as u8 && k.1 == 10).count() == LIVE_LAYERS);
     live_stop();
     close(sv[1]);
     canvas_free(&mut c);
+}
+
+// A layer frame's body read back: (id, x, y, w, h) and its pixels decoded (none for w = 0).
+fn layer_frame(b: &[u8]) -> Option<(u8, Rect, Vec<u8>)> {
+    if b.len() < 10 || b[1] != 0 {
+        return None;
+    }
+    let r = Rect { x: u16(&b[2..]) as i32, y: u16(&b[4..]) as i32, w: u16(&b[6..]) as i32, h: u16(&b[8..]) as i32 };
+    if r.w == 0 {
+        return if b.len() == 10 { Some((b[0], r, Vec::new())) } else { None };
+    }
+    match decode_png(&b[10..]) {
+        Some((px, w, h)) if w == r.w && h == r.h => Some((b[0], r, px)),
+        _ => None,
+    }
+}
+
+// The rect r of c, row after row.
+fn pixels_of(c: &Canvas, r: Rect) -> Vec<u8> {
+    let mut v = Vec::new();
+    for y in r.y..r.y + r.h {
+        v.extend_from_slice(&c.px[(y * c.stride + r.x) as usize..][..r.w as usize]);
+    }
+    v
+}
+
+// The toast as a layer of its own (frame 9, LIVE_LAYER_TOAST; 2.0.0-beta.2, the owner: "Enable toasts on
+// the live view display. they don't show up now."): its rect and its pixels as drawn, after the panel's and
+// the corner's in their batch (the browser draws the layers in that order: the toast on top); moved, its new
+// rect; gone, w = 0. Nothing of it while the state is not awake: one told then is told as none, and the state
+// leaving awake takes the one up away, so a toast over the pairing card or from before a sleep never comes
+// after it unless the Kindle draws it again.
+fn the_toast_layer_comes_moves_and_goes_only_while_awake() {
+    let (w, h) = (128, 128);
+    check!(live_start(w, h) == 0);
+    let mut c = Canvas::default();
+    check!(canvas_init(&mut c, w, h) == 0);
+    canvas_fill(&mut c, Rect { x: 0, y: 0, w, h }, 255);
+    live_push(&c, Rect { x: 0, y: 0, w, h });
+    let panel = Rect { x: 100, y: 0, w: 28, h: 90 };
+    canvas_fill(&mut c, panel, 90);
+    live_layer(LIVE_LAYER_PANEL, &c, panel);
+    // a toast over the panel's foot: black, a white stroke of text, the page at its corners
+    let toast = Rect { x: 20, y: 80, w: 100, h: 24 };
+    canvas_fill(&mut c, toast, 0);
+    canvas_fill(&mut c, Rect { x: 40, y: 90, w: 30, h: 4 }, 255);
+    c.px[(80 * c.stride + 20) as usize] = 255;
+    live_layer(LIVE_LAYER_TOAST, &c, toast);
+    let (now, px) = live_layer_now(LIVE_LAYER_TOAST);
+    check!(now == toast && px == pixels_of(&c, toast));
+    let sv = socket_pair();
+    check!(live_take_viewer(sv[0]));
+    close(sv[0]);
+    check!(skip_head(sv[1]));
+    // The first batch: the tiles, then the layers in the order of their ids, the toast's last and whole.
+    let mut layers = Vec::new();
+    while let Some((t, body)) = read_frame(sv[1]) {
+        if t == LIVE_LAYER as u8 {
+            layers.push(layer_frame(&body));
+        }
+        if t == LIVE_BATCH as u8 {
+            break;
+        }
+    }
+    check!(layers.len() == LIVE_LAYERS && layers.iter().all(|l| l.is_some()));
+    let ids: Vec<u8> = layers.iter().flatten().map(|l| l.0).collect();
+    check!(ids == [LIVE_LAYER_PANEL as u8, LIVE_LAYER_STATUS as u8, LIVE_LAYER_TOAST as u8]);
+    let last = layers.last().cloned().flatten();
+    check!(matches!(&last, Some((_, r, px)) if *r == toast && *px == pixels_of(&c, toast)));
+    // Moved (a sheet opened under it): the new rect, the same toast.
+    canvas_fill(&mut c, toast, 255);
+    let moved = Rect { x: 20, y: 40, w: 100, h: 24 };
+    canvas_fill(&mut c, moved, 0);
+    live_layer(LIVE_LAYER_TOAST, &c, moved);
+    let b = next_kind(sv[1], LIVE_LAYER).and_then(|b| layer_frame(&b));
+    check!(matches!(&b, Some((i, r, px)) if *i == LIVE_LAYER_TOAST as u8 && *r == moved && *px == pixels_of(&c, moved)));
+    check!(next_kind(sv[1], LIVE_BATCH).is_some());
+    // Gone: w = 0, and gone again changes nothing.
+    live_layer(LIVE_LAYER_TOAST, &c, RECT_EMPTY);
+    let b = next_kind(sv[1], LIVE_LAYER).and_then(|b| layer_frame(&b));
+    check!(matches!(&b, Some((i, r, _)) if *i == LIVE_LAYER_TOAST as u8 && r.w == 0));
+    check!(next_kind(sv[1], LIVE_BATCH).is_some());
+    live_layer(LIVE_LAYER_TOAST, &c, RECT_EMPTY);
+    check!(quiet(sv[1], 100) && rect_is_empty(live_layer_now(LIVE_LAYER_TOAST).0));
+    // The pairing card: a toast drawn over it is not in the frame, nor sent; nothing is.
+    live_set_state(LIVE_PAIRING);
+    let mut st = [0u8; 3];
+    check!(next_state(sv[1], &mut st) && st[0] == LIVE_PAIRING as u8);
+    live_layer(LIVE_LAYER_TOAST, &c, moved);
+    check!(rect_is_empty(live_layer_now(LIVE_LAYER_TOAST).0));
+    check!(quiet(sv[1], 150));
+    live_set_state(LIVE_AWAKE);
+    check!(next_state(sv[1], &mut st) && st[0] == LIVE_AWAKE as u8);
+    check!(quiet(sv[1], 150)); // (it was never told: nothing to take away)
+    // A toast up as the Kindle sleeps: taken away with the state; back awake, the browser is told it is
+    // gone (and the Kindle's next present tells it again if it is still on the panel).
+    live_layer(LIVE_LAYER_TOAST, &c, moved);
+    let b = next_kind(sv[1], LIVE_LAYER).and_then(|b| layer_frame(&b));
+    check!(matches!(&b, Some((i, r, _)) if *i == LIVE_LAYER_TOAST as u8 && *r == moved));
+    check!(next_kind(sv[1], LIVE_BATCH).is_some());
+    live_set_state(LIVE_ASLEEP);
+    check!(next_state(sv[1], &mut st) && st[0] == LIVE_ASLEEP as u8);
+    check!(rect_is_empty(live_layer_now(LIVE_LAYER_TOAST).0));
+    live_layer(LIVE_LAYER_TOAST, &c, moved); // (asleep: told as none)
+    check!(rect_is_empty(live_layer_now(LIVE_LAYER_TOAST).0));
+    check!(quiet(sv[1], 150));
+    live_set_state(LIVE_AWAKE);
+    check!(next_state(sv[1], &mut st) && st[0] == LIVE_AWAKE as u8);
+    let b = next_kind(sv[1], LIVE_LAYER).and_then(|b| layer_frame(&b));
+    check!(matches!(&b, Some((i, r, _)) if *i == LIVE_LAYER_TOAST as u8 && r.w == 0));
+    live_stop();
+    close(sv[1]);
+    canvas_free(&mut c);
+}
+
+// The App's side: app_flush puts the toast it draws in the layer as the panel shows it, the screen
+// under its round ends with it; and where the live chip (never streamed) is under one of those ends,
+// the layer has the toast drawn over what the chip covers instead. Hidden, the next present empties it.
+fn app_flush_copies_the_toast_without_the_chip() {
+    check!(font_init() == 0);
+    ui_init(300.0);
+    // (app_flush presents: the panel is opened first, as mainloop opens it, test_sheets_probe.rs's way)
+    #[cfg(feature = "sim")]
+    std::env::set_var("GRIMOIRE_SCRIPT", "/dev/null");
+    let (mut pw, mut ph, mut dpi) = (0, 0, 0.0f32);
+    let _ = display_open(&mut pw, &mut ph, &mut dpi);
+    let mut a = App::default();
+    a.w = 1860;
+    a.h = 2480;
+    a.running = true;
+    settings_default(&mut a.settings);
+    a.settings.status_on = false;
+    check!(canvas_init(&mut a.screen, a.w, a.h) == 0);
+    // a gray page, so the round ends' corners show something other than the toast's black or white
+    canvas_fill(&mut a.screen, Rect { x: 0, y: 0, w: a.w, h: a.h }, 200);
+    check!(live_start(a.w, a.h) == 0);
+    app_invalidate_all(&mut a, RefreshMode::Full);
+    app_flush(&mut a); // (the chip goes up in the top right corner)
+    let chip = a.chip_at;
+    check!(!rect_is_empty(chip));
+    // A toast too long for two lines (as wide as a toast gets) held up by a floor near the top, so its
+    // right end is over the chip.
+    a.toast_floor = 60;
+    let long = "A toast too long for two lines is as wide as a toast gets, and held up by a floor near the top of the screen its right end reaches into the top right corner, where the live chip is: three lines of text here, cut to two.";
+    app_toast(&mut a, long, 60000);
+    app_flush(&mut a);
+    let r = a.toast_rect;
+    check!(a.toast_visible && rect_overlaps(r, chip));
+    let (got, px) = live_layer_now(LIVE_LAYER_TOAST);
+    check!(got == r);
+    // What it should be: the toast over the page, no chip.
+    let mut want = Canvas::default();
+    check!(canvas_init(&mut want, r.w, r.h) == 0);
+    canvas_blit(&mut want, &a.screen, r, 0, 0);
+    let mut chipped = Canvas::default();
+    check!(canvas_init(&mut chipped, r.w, r.h) == 0);
+    canvas_blit(&mut chipped, &a.screen, r, 0, 0);
+    ui_frame(&mut chipped, Rect { x: chip.x - r.x, y: chip.y - r.y, w: chip.w, h: chip.h }, ui_px(8.0), 0, true, 0);
+    let all = Rect { x: 0, y: 0, w: r.w, h: r.h };
+    ui_toast_at(&mut want, all, a.toast.as_str());
+    ui_toast_at(&mut chipped, all, a.toast.as_str());
+    check!(px == pixels_of(&want, all));
+    check!(pixels_of(&chipped, all) != pixels_of(&want, all)); // (the chip would show at its end)
+    // Away from the chip, the layer is the screen's rect as presented.
+    a.toast_floor = 0;
+    app_toast(&mut a, "Short", 60000);
+    app_flush(&mut a);
+    let r = a.toast_rect;
+    check!(!rect_overlaps(r, chip));
+    let mut want2 = Canvas::default();
+    check!(canvas_init(&mut want2, r.w, r.h) == 0);
+    canvas_blit(&mut want2, &a.screen, r, 0, 0);
+    let all = Rect { x: 0, y: 0, w: r.w, h: r.h };
+    ui_toast_at(&mut want2, all, a.toast.as_str());
+    let (got, px) = live_layer_now(LIVE_LAYER_TOAST);
+    check!(got == r && px == pixels_of(&want2, all));
+    // Hidden: the present that takes it off the panel empties the layer.
+    app_toast_dismiss(&mut a);
+    app_flush(&mut a);
+    check!(rect_is_empty(live_layer_now(LIVE_LAYER_TOAST).0));
+    live_stop();
+    canvas_free(&mut want);
+    canvas_free(&mut chipped);
+    canvas_free(&mut want2);
+    canvas_free(&mut a.screen);
 }
 
 // The parts of a run that changed: whole tiles, each stretch of them one part, the screen's edge
@@ -1475,6 +1660,8 @@ fn test_live() {
     run!(raw_gate_follows_the_capture_state);
     run!(a_pen_viewer_reads_the_raw_node_itself);
     run!(a_layer_comes_with_the_tiles_and_goes);
+    run!(the_toast_layer_comes_moves_and_goes_only_while_awake);
+    run!(app_flush_copies_the_toast_without_the_chip);
     run!(a_run_splits_into_the_tiles_that_changed);
     run!(a_wide_redraw_sends_only_the_tiles_that_changed);
     run!(a_slow_browser_gets_the_newest_tiles_and_the_pen_never_waits);
