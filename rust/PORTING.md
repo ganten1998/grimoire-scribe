@@ -14,7 +14,7 @@ one is a cross-group event (see "Interface changes").
 Homebrew's rustc shadows rustup's on the owner's Mac. Put rustup's toolchain first:
 
 ```
-export PATH="$RUST_BIN:$PATH"   # rustup's 1.97.1, as make runs it (../README.md, Building from source)
+export PATH="${RUST_BIN:?set RUST_BIN first: ../README.md, Building from source}:$PATH"   # rustup's 1.97.1, as make runs it
 cd rust
 cargo build                                    # host: the library, grimoire-export, mkicon, mklogo
 cargo build --features sim                     # adds grimoire-headless, the scripted runner
