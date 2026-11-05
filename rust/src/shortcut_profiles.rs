@@ -182,11 +182,16 @@ pub fn shortcut_profile_read(dir: &str, slug: &str) -> ShortcutProfile {
 /// The shortcuts a device uses while its own are on (its profile's), else None: the default. A key no
 /// device sent (an empty name) has none.
 pub fn shortcut_profile_for<'a>(profiles: &'a [ShortcutProfile], name: &str, vendor: u16, product: u16) -> Option<&'a Shortcuts> {
+    shortcut_profile_index(profiles, name, vendor, product).map(|i| &profiles[i].map)
+}
+
+/// Which of profiles a device uses (shortcut_profile_for), by its place in the list; None for the default.
+pub fn shortcut_profile_index(profiles: &[ShortcutProfile], name: &str, vendor: u16, product: u16) -> Option<usize> {
     if name.is_empty() || profiles.is_empty() {
         return None;
     }
     let slug = shortcut_profile_slug(name, vendor, product);
-    profiles.iter().find(|p| p.on && p.slug == slug).map(|p| &p.map)
+    profiles.iter().position(|p| p.on && p.slug == slug)
 }
 
 /// The device's own shortcuts turned on, from a copy of the default: shortcuts.ini's text (the starter map
@@ -371,11 +376,16 @@ mod tests {
         assert!(shortcut_profile_for(&profiles, "Pro Controller", 0x057e, 0x2009).is_none());
         assert!(shortcut_profile_for(&profiles, "Arcade Stick", 0x2dc8, 0x1004).is_none());
         assert!(shortcut_profile_for(&profiles, "", 0, 0).is_none());
+        // (the Buttons sheet compares a press's profile with its own by place: the same answers)
+        assert_eq!(shortcut_profile_index(&profiles, "Arcade Stick", 0x2dc8, 0x1003), Some(0));
+        assert_eq!(shortcut_profile_index(&profiles, "Pro Controller", 0x057e, 0x2009), None);
+        assert_eq!(shortcut_profile_index(&profiles, "", 0, 0), None);
         // Off: the default again, the file kept.
         assert_eq!(shortcut_profile_set_on(&dir, &slug, false), 0);
         let profiles = shortcut_profiles_load(&dir);
         assert!(!profiles[0].on && profiles[0].map.count == 0);
         assert!(shortcut_profile_for(&profiles, "Arcade Stick", 0x2dc8, 0x1003).is_none());
+        assert_eq!(shortcut_profile_index(&profiles, "Arcade Stick", 0x2dc8, 0x1003), None);
         assert_eq!(read(&shortcut_profile_ini(&dir, &slug)), own);
         // On again: used as it was (a create over it only turns it on).
         assert_eq!(shortcut_profile_create(&dir, "Arcade Stick", 0x2dc8, 0x1003, &format!("{root}/shortcuts.ini"), &format!("{root}/controller.ini")), 0);

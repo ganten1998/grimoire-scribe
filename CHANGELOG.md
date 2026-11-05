@@ -43,7 +43,9 @@
   Enable shortcuts, Buttons... and Reload shortcuts.ini, and each keyboard's or controller's own shortcuts:
   its Device row goes through those connected and those saved, and **Own shortcuts for this device** gives
   the one shown a profile, `grimoire/shortcuts/<device>.ini` (a copy of shortcuts.ini to start from), used
-  whenever it is connected; Buttons... then learns its buttons beside it. Turned off, the device uses the
+  whenever it is connected; Buttons... then learns its buttons beside it, and takes a press only from a
+  controller that uses the buttons it shows (a toast names another; a keyboard's profile leaves it on the
+  default's, controller.ini). Turned off, the device uses the
   default again and the profile is kept for when it is turned on. A device is its name and vendor:product
   numbers (two of the same model share a profile). A device with none, and anyone who never makes one, uses
   shortcuts.ini and controller.ini as before, and they are never rewritten by this; gestures, the pen's

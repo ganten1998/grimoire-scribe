@@ -47,9 +47,15 @@ own shortcuts on: the first time, from a copy of the default, so it does what it
 Turned off, the device uses the default again and its profile is kept, file and learned buttons alike; turned
 on again, it is used as it was. (Off never deletes anything: delete the files over USB to start over.) While
 they are on the row reads **Own shortcuts (N, M refused)**, the profile's count as Reload's is the default's.
-**Buttons...** learns into the device's own buttons while they are on (its title is **Buttons: NAME**), else
-into `controller.ini` as before; it takes a press from any controller, as before, into the device shown.
-**Reload shortcuts.ini** reads the default and every profile again.
+**Buttons...** shows and learns into the device's own buttons while they are on (its title is **Buttons:
+NAME**), else the default's, `controller.ini`, as before. A keyboard connected now leaves it on the default
+even with its own shortcuts on: no controller's button looks in a keyboard's profile. It learns a press only
+from a controller that uses the buttons it shows, so a button learned does what the sheet says on the
+controller pressed; a press from another is not learned, and a toast names it ("8BitDo Pro 2 has buttons of
+its own", or "... uses the default buttons": choose it in the Device row first), while the row still waits.
+**Reload shortcuts.ini** reads the default and every profile again. While shortcuts are off no device is
+read, so the Device row lists none ("Devices are listed while shortcuts are on"); the one chosen is shown
+again when they are turned back on.
 
 **The files**, in `/mnt/us/grimoire/shortcuts/`, named by the device's slug: its name in lower case, every
 run of other characters one `-`, then its vendor and product numbers in hex (`8BitDo Pro 2` with 2dc8:6006

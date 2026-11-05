@@ -993,7 +993,8 @@ serial number or a book file.
 Settings' Controller sheet is two now (the owner's ruling of 2026-11-04): **Settings > Shortcuts**, a top row,
 and **Settings > Pair**, the bottom row's button where Controller was; each keyboard or controller can have
 shortcuts of its own (docs/SHORTCUTS.md, Device profiles). The scenarios cover the sheets and the profiles
-with stand-in devices (`tests/scenarios/v_shortcuts_profiles.qs`, `y_all_screens.qs`, `tests/bt/`); what
+with stand-in devices (`tests/scenarios/v_shortcuts_profiles.qs`, `v_shortcuts_buttons_device.qs`,
+`y_all_screens.qs`, `tests/bt/`); what
 only the Scribe can show:
 
 1. **Settings.** The top rows read Display, Pen sensitivity, Shortcuts, Calibrate pen and touch, upright
@@ -1015,9 +1016,14 @@ only the Scribe can show:
 5. **Its buttons.** Buttons... is titled Buttons: NAME. Learn one button to another action, then in a
    notebook check that this controller does the new action and the keyboard (or a second controller) still
    does the default's. `controller.ini` is not touched; `<slug>.controller.ini` appears beside the profile.
+   Then choose the keyboard in the Device row and open Buttons... again: it is titled Buttons (the
+   default's), and a press on the controller is not learned: a toast names the controller and says to
+   choose it in the Device row first.
 6. **Off and on.** Turn Own shortcuts off: the controller does the default's actions again, and the files
    are all still there (plus a `.off`). Turn it on again: the learned button is back. Disconnect the
    controller: the Device row still lists it, "NAME, not connected", and its row still turns it on and off.
+   Turn Enable shortcuts off with the controller connected: the Device row reads "Devices are listed while
+   shortcuts are on" (no device, connected or saved), and turned back on it shows the same device.
 7. **Reconnect.** Switch the controller off and on (or out of range and back) and reconnect it over
    Bluetooth: its own shortcuts apply again without opening Settings. Say whether the name it shows is the
    same each time (it is how the profile is found; a controller in another mode is another device).

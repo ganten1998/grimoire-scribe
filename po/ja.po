@@ -5,7 +5,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: Grimoire 2.0.0-beta.1\n"
 "Report-Msgid-Bugs-To: https://github.com/ganten1998/grimoire-scribe/issues\n"
-"POT-Creation-Date: 2026-11-04 19:24-0600\n"
+"POT-Creation-Date: 2026-11-04 20:15-0600\n"
 "PO-Revision-Date: 2026-11-01 00:00+0000\n"
 "Last-Translator: draft\n"
 "Language-Team: Japanese\n"
@@ -2565,11 +2565,6 @@ msgstr "指の形状 (新しいバージョン)"
 msgid "+%d"
 msgstr "+%d"
 
-#. TRANSLATORS: a toast: the Buttons sheet could not write its file (the storage is full).
-#: rust/src/library.rs
-msgid "Couldn't save controller.ini"
-msgstr "controller.iniを保存できませんでした"
-
 #: rust/src/library.rs
 #, c-format
 msgid "No buttons for %s now."
@@ -2757,17 +2752,45 @@ msgstr "これは、新しい Grimoire の形状を置き換えます。"
 msgid "That shape is no longer for %s."
 msgstr "あの形状はもう%sにはありません。"
 
+#. TRANSLATORS: (Buttons sheet) the %s of the two toasts below for a controller that reports no
+#. name.
+#: rust/src/library.rs
+msgctxt "buttons"
+msgid "That controller"
+msgstr ""
+
+#. TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): the Buttons sheet did not
+#. learn a press, as the controller pressed has its own shortcuts (Settings > Shortcuts, Own
+#. shortcuts for this device) and the sheet shows others; %s is its own name. The Device row is the
+#. Shortcuts sheet's ("Device: %s").
+#: rust/src/library.rs
+#, c-format
+msgid "%s has buttons of its own: choose it in the Device row first."
+msgstr ""
+
+#. TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): the same for a controller
+#. that uses the default buttons (controller.ini) while the sheet shows one device's own.
+#: rust/src/library.rs
+#, c-format
+msgid "%s uses the default buttons: choose it in the Device row first."
+msgstr ""
+
 #: rust/src/library.rs
 #, c-format
 msgid "That button is no longer for %s."
 msgstr "そのボタンは %s ではなくなりました。"
 
 #. TRANSLATORS: a toast (about 1700 px at 44 px in bold): the Shortcuts sheet could not write a device's
-#. own shortcuts in grimoire/shortcuts (the storage is full, or shortcuts.ini cannot be read).
+#. own shortcuts in grimoire/shortcuts (the storage is full, or shortcuts.ini cannot be read); also the
+#. Buttons sheet's, for a button learned or forgotten in a device's own.
 #: rust/src/library.rs
-#, fuzzy
 msgid "Couldn't save the device's shortcuts"
-msgstr "shortcuts.iniを保存できませんでした"
+msgstr ""
+
+#. TRANSLATORS: a toast: the Buttons sheet could not write its file (the storage is full).
+#: rust/src/library.rs
+msgid "Couldn't save controller.ini"
+msgstr "controller.iniを保存できませんでした"
 
 #: rust/src/library.rs
 msgid "No controller or keyboard connected"
@@ -2830,9 +2853,9 @@ msgstr "リセットジェスチャ"
 #. TRANSLATORS: the Buttons sheet's title while it learns one keyboard's or controller's own
 #. buttons (Settings > Shortcuts, Own shortcuts for this device on); %s is the device's own name.
 #: rust/src/library.rs
-#, fuzzy, c-format
+#, c-format
 msgid "Buttons: %s"
-msgstr "ボタン..."
+msgstr ""
 
 #: rust/src/library.rs
 msgid "Reset gestures?"
@@ -2888,9 +2911,8 @@ msgstr "表示: 明るさ、暖かさ、反転"
 #. TRANSLATORS: (Settings) the row that opens the Shortcuts sheet: a keyboard's keys and a controller's
 #. buttons as shortcuts, each device's own if it has them (1470 px at 44 px in bold, as its neighbours).
 #: rust/src/library.rs
-#, fuzzy
 msgid "Shortcuts: keys and controller buttons"
-msgstr "接続されているキーまたはコントローラーのボタンを押します"
+msgstr ""
 
 #: rust/src/library.rs
 msgid "Calibrate pen and touch"
@@ -2980,9 +3002,8 @@ msgstr "データ：%s"
 #. Pair opens the Pair sheet (a Bluetooth controller: the helper on or off, pairing one; also that
 #. sheet's title), Gestures opens gesture bindings, Updates checks for a newer Grimoire.
 #: rust/src/library.rs
-#, fuzzy
 msgid "Pair"
-msgstr "ペアリングしました。コントローラーはすぐに接続されます。"
+msgstr ""
 
 #. TRANSLATORS: the Updates sheet's title (Settings > Updates).
 #: rust/src/library.rs
@@ -3078,12 +3099,18 @@ msgstr "最後の入力: %s %d;モディファイア: %d"
 msgid "Press a connected key or controller button"
 msgstr "接続されているキーまたはコントローラーのボタンを押します"
 
+#. TRANSLATORS: (Shortcuts sheet) the device row while Enable shortcuts is off: no keyboard
+#. or controller is read then, so none is listed (about 1300 px at 44 px in bold).
+#: rust/src/library.rs
+msgid "Devices are listed while shortcuts are on"
+msgstr ""
+
 #. TRANSLATORS: (Shortcuts sheet) a device with its own shortcuts saved that is not
 #. connected now; %s is its own name.
 #: rust/src/library.rs
-#, fuzzy, c-format
+#, c-format
 msgid "%s, not connected"
-msgstr "%sが接続されました"
+msgstr ""
 
 #. TRANSLATORS: (Shortcuts sheet) the keyboard or controller the next two rows are about,
 #. with others listed, which a tap goes through (those connected, then those with
@@ -3096,16 +3123,16 @@ msgstr ""
 
 #. TRANSLATORS: (Shortcuts sheet) the same with no other device listed.
 #: rust/src/library.rs
-#, fuzzy, c-format
+#, c-format
 msgid "Device: %s"
-msgstr "ビュー: %s"
+msgstr ""
 
 #. TRANSLATORS: (Shortcuts sheet) the device's own shortcuts are on: how many it has, and
 #. how many of its file's lines were refused (grimoire/shortcuts/<device>.ini).
 #: rust/src/library.rs
-#, fuzzy, c-format
+#, c-format
 msgid "Own shortcuts (%d, %d refused)"
-msgstr "shortcuts.ini をリロード (%d、%d は拒否されました)"
+msgstr ""
 
 #. TRANSLATORS: (Shortcuts sheet) a tap gives the device shortcuts of its own, a copy of
 #. the default ones to start from, or uses the ones it had again (about 1300 px at 44 px
@@ -3129,16 +3156,14 @@ msgstr "ボタン..."
 #. TRANSLATORS: the Shortcuts sheet's title (Settings > Shortcuts): a keyboard's or a controller's
 #. keys as shortcuts, each device's own if it has them.
 #: rust/src/library.rs
-#, fuzzy
 msgid "Shortcuts"
-msgstr "ショートカットオン。"
+msgstr ""
 
 #. TRANSLATORS: (Pair sheet) its status line while shortcuts are off, which the Bluetooth helper
 #. serves alone (about 1100 px at 44 px in bold, or two lines at 34 px).
 #: rust/src/library.rs
-#, fuzzy
 msgid "Shortcuts are off: turn them on in Settings > Shortcuts."
-msgstr "ジェスチャーはオフです。 [設定] > [ジェスチャー] で再びオンにします。"
+msgstr ""
 
 #. TRANSLATORS: (Pair sheet) its status line while the Bluetooth helper starts, and when it
 #. would not start.

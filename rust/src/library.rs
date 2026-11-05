@@ -201,8 +201,11 @@ pub struct LibraryState {
     /// showed
     shown_hid_changes: u32,
     /// The Shortcuts sheet's device (its profile's slug, shortcut_profile_slug; "" none yet): whose own
-    /// shortcuts its row turns on or off, and whose buttons Buttons... learns while they are on.
+    /// shortcuts its row turns on or off.
     shortcut_dev: String,
+    /// The device whose own buttons the Buttons sheet shows and learns into, fixed as it opens (buttons_dev_for;
+    /// "" for the default, controller.ini).
+    buttons_dev: String,
     // The Buttons sheet: its group open (K_GROUPS; -1 the list of them), the row learning its
     // buttons (-1 none), which of its actions, and since when (it gives up after LEARN_MS without a
     // press).
@@ -1134,9 +1137,9 @@ fn learning_action(s: &LibraryState) -> i32 {
     .map_or(SHORTCUT_NONE, |r| r.act[s.learn_step.clamp(0, 1) as usize])
 }
 
-// "South, Up" for an action's buttons (the Shortcuts sheet's device's own while they are on, buttons_map),
-// "none" when it has none; "B, Up" while that device, or else the first controller connected, is a
-// Switch-mode one, as its buttons are printed.
+// "South, Up" for an action's buttons (those the Buttons sheet shows, buttons_map), "none" when it has none;
+// "B, Up" while the Shortcuts sheet's device, or else the first controller connected, is a Switch-mode one,
+// as its buttons are printed.
 fn pads_text(a: &App, action: i32, out: &mut String, cap: usize) {
     let mut codes = [0i32; GROUP_ROWS_MAX];
     let n = shortcuts_pads_for(buttons_map(a), ActionSrc::Pad, action, &mut codes);
@@ -1359,7 +1362,7 @@ fn buttons_forget(a: &mut App, row: LearnRow) -> bool {
         row.act[1],
     ) != 0
     {
-        app_toast(a, tr("Couldn't save controller.ini"), 4000);
+        buttons_save_failed(a);
         return false;
     }
     let mut msg = String::new();
@@ -2097,25 +2100,54 @@ fn reload_shortcuts(a: &mut App) {
 }
 
 /// A controller's press while Settings > Shortcuts > Buttons learns one: true when it took it.
-// A controller's press while the Buttons sheet learns: true when it was taken (the row's action has
-// that button now, or the file could not be written: a toast says so). It goes into the Shortcuts sheet's
-// device's own buttons while they are on (buttons_profile), else into controller.ini.
-pub fn library_learn_key(a: &mut App, code: i32, gamepad: bool) -> bool {
+// A controller's press (ev) while the Buttons sheet learns: true when it was taken (the row's action has
+// that button now, or the file could not be written, or the press was not the sheet's: a toast says so).
+// It goes into the buttons the sheet shows (buttons_profile: a device's own, else controller.ini), and
+// only when they are the ones the pressed controller uses (shortcut_profile_index): a press from another
+// would be learned where that controller never looks, or change buttons it does not use.
+pub fn library_learn_key(a: &mut App, ev: &InEvent) -> bool {
     let Some(s) = a.lib.as_deref() else {
         return false;
     };
     if s.modal != Modal::Buttons || s.buttons_group < 0 || s.learn_row < 0 {
         return false;
     }
-    if !gamepad {
+    if !ev.gamepad {
         return true; // (a keyboard's key is shortcuts.ini's: nothing to learn here)
     }
+    let code = ev.value;
     let action = learning_action(s);
+    let from = shortcut_profile_index(&a.shortcut_profiles, ev.hid_name.as_str(), ev.hid_vendor, ev.hid_product);
+    let shown = buttons_profile(a);
+    if from != shown {
+        // (the row still waits, for a press from a controller these buttons are)
+        let name = if ev.hid_name.is_empty() {
+            // TRANSLATORS: (Buttons sheet) the %s of the two toasts below for a controller that reports no
+            // name.
+            c_("buttons", "That controller")
+        } else {
+            ev.hid_name.as_str()
+        };
+        let mut msg = String::new();
+        if from.is_some() {
+            // TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): the Buttons sheet did not
+            // learn a press, as the controller pressed has its own shortcuts (Settings > Shortcuts, Own
+            // shortcuts for this device) and the sheet shows others; %s is its own name. The Device row is the
+            // Shortcuts sheet's ("Device: %s").
+            csnprintf!(&mut msg, 200, tr("%s has buttons of its own: choose it in the Device row first."), name);
+        } else {
+            // TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): the same for a controller
+            // that uses the default buttons (controller.ini) while the sheet shows one device's own.
+            csnprintf!(&mut msg, 200, tr("%s uses the default buttons: choose it in the Device row first."), name);
+        }
+        app_toast(a, &msg, 3000);
+        lib(a).learn_at = now_ms();
+        return true;
+    }
     let cp = buttons_pads_path(a);
     let before = shortcuts_lookup(buttons_map(a), ActionSrc::Pad, code, 0);
     if shortcuts_learn(buttons_map_mut(a), &cp, ActionSrc::Pad, code, action) != 0 {
-        // TRANSLATORS: a toast: the Buttons sheet could not write its file (the storage is full).
-        app_toast(a, tr("Couldn't save controller.ini"), 4000);
+        buttons_save_failed(a);
         lib(a).learn_row = -1;
         redraw(a, RefreshMode::Ui);
         return true;
@@ -2152,7 +2184,7 @@ fn forget_row(a: &mut App, row: i32) {
     let cp = buttons_pads_path(a);
     lib(a).learn_row = -1;
     if shortcuts_forget(buttons_map_mut(a), &cp, ActionSrc::Pad, r.act[0], r.act[1]) != 0 {
-        app_toast(a, tr("Couldn't save controller.ini"), 4000);
+        buttons_save_failed(a);
     } else {
         // TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): a finger held on a
         // Buttons sheet row, whose actions no controller button does now; %s is the row's name as the
@@ -2179,6 +2211,8 @@ struct ShortcutDev {
     vendor: u16,
     product: u16,
     connected: bool,
+    /// A controller connected now (false for a keyboard, and for a saved device not connected: not known)
+    gamepad: bool,
 }
 
 // The Shortcuts sheet's devices: those connected now (input_hids: none while shortcuts are off), then those with
@@ -2189,34 +2223,73 @@ fn shortcut_devices(a: &App) -> Vec<ShortcutDev> {
     let mut out: Vec<ShortcutDev> = Vec::new();
     for hid in &h[..n.min(h.len())] {
         let slug = shortcut_profile_slug(hid.name.as_str(), hid.vendor, hid.product);
-        if !out.iter().any(|d| d.slug == slug) {
-            out.push(ShortcutDev { slug, name: hid.name.as_str().to_string(), vendor: hid.vendor, product: hid.product, connected: true });
+        match out.iter_mut().find(|d| d.slug == slug) {
+            Some(d) => d.gamepad |= hid.gamepad,
+            None => out.push(ShortcutDev {
+                slug,
+                name: hid.name.as_str().to_string(),
+                vendor: hid.vendor,
+                product: hid.product,
+                connected: true,
+                gamepad: hid.gamepad,
+            }),
         }
     }
     for p in &a.shortcut_profiles {
         if !out.iter().any(|d| d.slug == p.slug) {
-            out.push(ShortcutDev { slug: p.slug.clone(), name: p.name.clone(), vendor: p.vendor, product: p.product, connected: false });
+            out.push(ShortcutDev { slug: p.slug.clone(), name: p.name.clone(), vendor: p.vendor, product: p.product, connected: false, gamepad: false });
         }
     }
     out
 }
 
 // The Shortcuts sheet's device now: the one chosen while it is listed, else the first (a connected one before
-// a saved one); None with none listed.
+// a saved one); None with none listed, and while shortcuts are off: no device is read then (input_hids), so
+// whether a saved one is connected is not known.
 fn shortcut_dev_now(a: &App) -> Option<ShortcutDev> {
+    if !app_shortcuts_on(a) {
+        return None;
+    }
     let devs = shortcut_devices(a);
     let chosen = a.lib.as_deref().map_or("", |s| s.shortcut_dev.as_str());
     devs.iter().find(|d| d.slug == chosen).or(devs.first()).cloned()
 }
 
-// The profile the Buttons sheet shows and learns into: the Shortcuts sheet's device's own while they are on;
-// None for the default (controller.ini), as before profiles.
+// The device whose own buttons the Buttons sheet is about, as it opens: the Shortcuts sheet's device while its
+// own shortcuts are on, unless it is a keyboard connected now (a controller's buttons never look in a
+// keyboard's profile); "" for the default (controller.ini), as before profiles.
+fn buttons_dev_for(a: &App) -> String {
+    let Some(dev) = shortcut_dev_now(a) else { return String::new() };
+    if dev.connected && !dev.gamepad {
+        return String::new();
+    }
+    if a.shortcut_profiles.iter().any(|p| p.on && p.slug == dev.slug) {
+        dev.slug
+    } else {
+        String::new()
+    }
+}
+
+// The profile the Buttons sheet shows and learns into (buttons_dev, while its own shortcuts are on); None for
+// the default (controller.ini).
 fn buttons_profile(a: &App) -> Option<usize> {
-    let slug = a.lib.as_deref()?.shortcut_dev.as_str();
+    let slug = a.lib.as_deref()?.buttons_dev.as_str();
     if slug.is_empty() {
         return None;
     }
     a.shortcut_profiles.iter().position(|p| p.on && p.slug == slug)
+}
+
+// The toast for a Buttons sheet write that failed (the storage is full): the device's own file while the sheet
+// is about one, else controller.ini.
+fn buttons_save_failed(a: &mut App) {
+    let msg = if buttons_profile(a).is_some() {
+        tr("Couldn't save the device's shortcuts")
+    } else {
+        // TRANSLATORS: a toast: the Buttons sheet could not write its file (the storage is full).
+        tr("Couldn't save controller.ini")
+    };
+    app_toast(a, msg, 4000);
 }
 fn buttons_map(a: &App) -> &Shortcuts {
     match buttons_profile(a) {
@@ -2254,7 +2327,8 @@ fn toggle_own_shortcuts(a: &mut App) {
     };
     if r != 0 {
         // TRANSLATORS: a toast (about 1700 px at 44 px in bold): the Shortcuts sheet could not write a device's
-        // own shortcuts in grimoire/shortcuts (the storage is full, or shortcuts.ini cannot be read).
+        // own shortcuts in grimoire/shortcuts (the storage is full, or shortcuts.ini cannot be read); also the
+        // Buttons sheet's, for a button learned or forgotten in a device's own.
         app_toast(a, tr("Couldn't save the device's shortcuts"), 4000);
     }
     lib(a).shortcut_dev = dev.slug;
@@ -3700,15 +3774,23 @@ fn draw_modal(a: &mut App) {
             s.shown_shortcut_gamepad = gamepad;
             s.shown_hid_changes = hid_changes;
             let on = app_shortcuts_on(a);
-            // The device: the one chosen, else the first listed (a connected one before a saved one).
+            // The device: the one chosen, else the first listed (a connected one before a saved one); none while
+            // shortcuts are off (the one chosen is kept for when they are on again).
             let dev = shortcut_dev_now(a);
-            lib(a).shortcut_dev = dev.as_ref().map_or(String::new(), |d| d.slug.clone());
+            if let Some(d) = &dev {
+                lib(a).shortcut_dev = d.slug.clone();
+            }
             let more = shortcut_devices(a).len() > 1;
             let own = dev.as_ref().and_then(|d| a.shortcut_profiles.iter().find(|p| p.slug == d.slug));
             let own_on = own.is_some_and(|p| p.on);
             let mut dev_line = String::new();
             let mut own_line = String::new();
             match &dev {
+                None if !on => {
+                    // TRANSLATORS: (Shortcuts sheet) the device row while Enable shortcuts is off: no keyboard
+                    // or controller is read then, so none is listed (about 1300 px at 44 px in bold).
+                    csnprintf!(&mut dev_line, 160, "%s", tr("Devices are listed while shortcuts are on"));
+                }
                 None => {
                     csnprintf!(&mut dev_line, 160, "%s", tr("No controller or keyboard connected"));
                 }
@@ -4630,7 +4712,9 @@ fn act(a: &mut App, h: &Hit) {
             redraw(a, RefreshMode::Ui);
         }
         H_BUTTONS => {
+            let dev = buttons_dev_for(a);
             let s = lib(a);
+            s.buttons_dev = dev;
             s.buttons_group = -1;
             s.learn_row = -1;
             open_modal(a, Modal::Buttons);
@@ -6022,6 +6106,11 @@ pub fn library_probe(a: &mut App, key: &str, out: &mut String, cap: usize) -> i3
             None
         };
         csnprintf!(out, cap, "%s", n.unwrap_or(""));
+    } else if key == "buttons.dev" {
+        // The device whose own buttons the Buttons sheet shows and learns into, by its profile's slug; empty for
+        // the default (controller.ini).
+        let slug = buttons_profile(a).map_or(String::new(), |i| a.shortcut_profiles[i].slug.clone());
+        csnprintf!(out, cap, "%s", &slug);
     } else if let Some(action) = key.strip_prefix("buttons.") {
         // The Buttons sheet's buttons for an action ("buttons.undo"): "B, Up", "none".
         pads_text(a, shortcut_action(action), out, cap);

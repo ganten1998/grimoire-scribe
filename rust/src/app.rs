@@ -916,7 +916,7 @@ fn app_event_screens(a: &mut App, ev: &InEvent) {
             a.last_shortcut_code = ev.value;
             a.last_shortcut_mods = ev.key_mods as i32;
             a.last_shortcut_gamepad = ev.gamepad;
-            if (a.scr == ScreenId::Library || crate::library::library_settings_active(a)) && library_learn_key(a, ev.value, ev.gamepad) {
+            if (a.scr == ScreenId::Library || crate::library::library_settings_active(a)) && library_learn_key(a, ev) {
                 return;
             }
             // (one key may do one thing in each place: the Library, a page, the Pages view, the Graph, Pen feel;

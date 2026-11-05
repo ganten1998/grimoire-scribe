@@ -458,6 +458,7 @@ shows what the app holds.
 | `library.exit` | Exit Grimoire?'s highlighted answer, `yes` or `no`; empty while it is not up |
 | `library.learning` | the action the Buttons sheet waits for a press for (`undo`, `next-page`), else empty |
 | `library.buttons.ACTION` | the Buttons sheet's buttons for ACTION (`library.buttons.undo`): as the files name them (`South, Up`), or as printed while the first controller connected is a Switch-mode one (`B, Up`); `none` for none |
+| `library.buttons.dev` | the device whose own buttons the Buttons sheet shows and learns into, by its profile's slug (`pro-2-2dc8-6006`), fixed as it opens; empty for the default (controller.ini): a device with no own shortcuts on, a keyboard connected now, or none (2.0.0-beta.2) |
 | `library.buttons_group` | the Buttons sheet's group open: `editing`, `tools`, `pages`, `index` (the Index's actions, Rust only) `menus`, `screen` or `system`; empty on its list (or with no Buttons sheet) |
 | `library.pair` | the Pair a controller sheet: `scanning`, `pairing` or `idle`, then how many controllers it found and how many are paired (`idle 2 1`) |
 | `library.shortcuts.device` | the Shortcuts sheet's device, by its profile's slug (`pro-2-2dc8-6006`): the one chosen while it is listed, else the first (a connected one before a saved one); empty with none (2.0.0-beta.2) |
@@ -486,7 +487,7 @@ shows what the app holds.
 | `fshape.state` | `idle`, `pending`, `drawing`, `dead` |
 | `fshape.trail` | current trail rectangle `x y w h`, empty for none |
 | `fshape.armed` | `1` when page capture may arm, otherwise `0` |
-| `pads.ACTION` | the controller buttons that do ACTION (`pads.undo`, `pads.tool:eraser`) in the default shortcuts (shortcuts.ini and controller.ini; a device's own are `library.buttons.ACTION` while the Shortcuts sheet has it chosen), as the files name them, comma separated; empty for none |
+| `pads.ACTION` | the controller buttons that do ACTION (`pads.undo`, `pads.tool:eraser`) in the default shortcuts (shortcuts.ini and controller.ini; a device's own are `library.buttons.ACTION` while the Buttons sheet is about it, `library.buttons.dev`), as the files name them, comma separated; empty for none |
 | `shortcuts.profiles` | the device profiles in root/shortcuts as their files are now, by slug, each `:on` or `:off` (`pro-2-2dc8-6006:on`); empty for none (2.0.0-beta.2) |
 | `settings.controller` | `1` when the Bluetooth helper starts with Grimoire |
 | `settings.updates` | Settings > Updates' channel: `0` by the version, `1` releases only, `2` betas too |

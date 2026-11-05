@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: Grimoire 2.0.0-beta.1\n"
 "Report-Msgid-Bugs-To: https://github.com/ganten1998/grimoire-scribe/issues\n"
-"POT-Creation-Date: 2026-11-04 19:24-0600\n"
+"POT-Creation-Date: 2026-11-04 20:15-0600\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -2490,11 +2490,6 @@ msgstr ""
 msgid "+%d"
 msgstr ""
 
-#. TRANSLATORS: a toast: the Buttons sheet could not write its file (the storage is full).
-#: rust/src/library.rs
-msgid "Couldn't save controller.ini"
-msgstr ""
-
 #: rust/src/library.rs
 #, c-format
 msgid "No buttons for %s now."
@@ -2680,15 +2675,44 @@ msgstr ""
 msgid "That shape is no longer for %s."
 msgstr ""
 
+#. TRANSLATORS: (Buttons sheet) the %s of the two toasts below for a controller that reports no
+#. name.
+#: rust/src/library.rs
+msgctxt "buttons"
+msgid "That controller"
+msgstr ""
+
+#. TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): the Buttons sheet did not
+#. learn a press, as the controller pressed has its own shortcuts (Settings > Shortcuts, Own
+#. shortcuts for this device) and the sheet shows others; %s is its own name. The Device row is the
+#. Shortcuts sheet's ("Device: %s").
+#: rust/src/library.rs
+#, c-format
+msgid "%s has buttons of its own: choose it in the Device row first."
+msgstr ""
+
+#. TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): the same for a controller
+#. that uses the default buttons (controller.ini) while the sheet shows one device's own.
+#: rust/src/library.rs
+#, c-format
+msgid "%s uses the default buttons: choose it in the Device row first."
+msgstr ""
+
 #: rust/src/library.rs
 #, c-format
 msgid "That button is no longer for %s."
 msgstr ""
 
 #. TRANSLATORS: a toast (about 1700 px at 44 px in bold): the Shortcuts sheet could not write a device's
-#. own shortcuts in grimoire/shortcuts (the storage is full, or shortcuts.ini cannot be read).
+#. own shortcuts in grimoire/shortcuts (the storage is full, or shortcuts.ini cannot be read); also the
+#. Buttons sheet's, for a button learned or forgotten in a device's own.
 #: rust/src/library.rs
 msgid "Couldn't save the device's shortcuts"
+msgstr ""
+
+#. TRANSLATORS: a toast: the Buttons sheet could not write its file (the storage is full).
+#: rust/src/library.rs
+msgid "Couldn't save controller.ini"
 msgstr ""
 
 #: rust/src/library.rs
@@ -2994,6 +3018,12 @@ msgstr ""
 
 #: rust/src/library.rs
 msgid "Press a connected key or controller button"
+msgstr ""
+
+#. TRANSLATORS: (Shortcuts sheet) the device row while Enable shortcuts is off: no keyboard
+#. or controller is read then, so none is listed (about 1300 px at 44 px in bold).
+#: rust/src/library.rs
+msgid "Devices are listed while shortcuts are on"
 msgstr ""
 
 #. TRANSLATORS: (Shortcuts sheet) a device with its own shortcuts saved that is not
