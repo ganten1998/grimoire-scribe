@@ -1103,19 +1103,23 @@ before and after), kept in `PagesView.move_undo` and dropped as the notebook clo
 same notebook, its pages still in the order the move left: an add, delete, copy or another move changes
 that; a rename does not) and nothing is ticked, the bottom row's Undo stands in Move to...'s place, and
 `store_undo_move_pages` writes the order back through the same `reorder_pages` path (notebook.ini only).
-A tile held `DRAG_HOLD_MS` (300 ms, by the contact's own clock) and then moved past the slop is dragged
-(`PageDrag`) with no card drawn: the card waits for `CARD_HOLD_MS` (600 ms) held still, and a drag from a card
-already up takes it down in the bar's first refresh (the owner, 2026-11-04: the card popped and taken down
-again before every drag was "too disruptive as a pair"). A contact that passed the slop before
-`DRAG_HOLD_MS` is never a drag (a flick, or nothing): `drag_begin` is asked once, as the contact first passes
-the slop. The view as drawn is kept,
+A tile held `DRAG_HOLD_MS` (300 ms, by the contact's own clock), moved past the slop and then off the tile
+is dragged (`PageDrag`) with no card drawn: the card waits for `CARD_HOLD_MS` (600 ms) held still, and a drag
+from a card already up starts at the slop and takes the card down in the bar's first refresh (the owner,
+2026-11-04: the card popped and taken down again before every drag was "too disruptive as a pair"). Between
+the slop and the tile's edge the contact is `drag_armed` and nothing is drawn: a slow tap rolls past the 30 px
+slop too, and lifted on its tile it is the tap it was (`press_is_tap`), which matters most on a ticked tile,
+whose own gap would gather the ticked pages. A contact that passed the slop before `DRAG_HOLD_MS` is never
+armed, so never a drag (a flick, or nothing). The view as drawn is kept,
 and a bar in the gap alone (`drop_at`: the half of the tile under the contact says before or after it; past
 the last tile, the end; no outline of the tile, the owner's ruling of 2026-11-03) is drawn over it inside the
 grid's band and refreshed fast, only where it was and is; 700 ms over the top bar or the bottom row
 turns the screen (the band alone refreshed). The lift asks `store_move_order` whether the gap changes the
 order: then the carried pages (`PagesView.carry`, the ticks left as they are) take Move to...'s path (one
 undo step, one Full redraw);
-else, and for a lift over the bars or a cancel, one Ui redraw and no undo step. Copy to
+else no undo step: a lift in place or over the bars takes the bar off (copied back from the kept view, one
+fast refresh of its rect, or nothing when it was off the grid already), and a cancel draws the view again
+(one Ui redraw). Copy to
 notebook... opens `NotebookPicker::start_copy` over the Pages view, without the open notebook; a page tile
 there (the copies go before it) or At the end gives `NotebookPick::Place`. `store_copy_pages_to` copies the
 files (docs/FORMAT.md, Moving and copying pages), then `nav_copy_pages_across` the names and links, every
