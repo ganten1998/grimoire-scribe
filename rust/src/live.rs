@@ -1231,6 +1231,27 @@ pub fn live_layer_now(i: usize) -> (Rect, Vec<u8>) {
     (r, px)
 }
 
+/// How many pixels of the frame (what a browser is sent) differ from `screen` outside `skip` (the main loop's
+/// side, for the runner's probes: the editor's panel, under which the frame holds the page): None while Live
+/// view is off, or the frame is of another size.
+pub fn live_frame_differs(screen: &Canvas, skip: Rect) -> Option<i64> {
+    let f = frame()?;
+    let sh = f.sh();
+    let (w, h) = (sh.w.load(SeqCst) as i32, sh.h.load(SeqCst) as i32);
+    if screen.w != w || screen.h != h {
+        return None;
+    }
+    let mut row = vec![0u8; w as usize];
+    let mut n = 0i64;
+    for y in 0..h {
+        // SAFETY: row y of the w * h pixel bytes of the mapping, copied out; only this process writes them.
+        unsafe { std::ptr::copy_nonoverlapping(f.px().add(y as usize * w as usize) as *const u8, row.as_mut_ptr(), w as usize) };
+        let s = &screen.px[y as usize * screen.stride as usize..][..w as usize];
+        n += (0..w).filter(|&x| s[x as usize] != row[x as usize] && !rect_contains(skip, x, y)).count() as i64;
+    }
+    Some(n)
+}
+
 // ---- the raw digitizer, as a pen viewer reads it ----
 
 // linux/input.h's numbers the raw pen uses (input_evdev.rs has them all).

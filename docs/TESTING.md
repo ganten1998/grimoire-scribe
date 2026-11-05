@@ -1347,3 +1347,69 @@ On the Scribe (Gothic and Classic, upright and sideways):
 5. **The card ends at a whole item.** Upright, 2.0.0's notes should all fit, the Ko-fi paragraph whole above the
    signature. Sideways, the card ends with a whole bullet (no line of a bullet or paragraph left hanging) and
    the signature under it; Read all has the rest. Note any card that ends mid-sentence.
+
+## 2.0.0, lasso drag
+
+A drag of a selection follows the pen whatever it holds (the owner, 2026-11-05: "the copy paste lasso function
+is horrifically slow on drag with anything containing colored in or multiple strokes"). A pen sample only notes
+the newest place; the outline is drawn there once the panel has finished the last fast refresh (about five times
+a second at room temperature) or at once when the pen stops; the box moves only once the pen has strayed 1 mm
+from where it came down (a tap that wobbles is a tap); the bar goes for the drag, by a fast refresh of its rect at
+the first step, and comes back at the lift; after that only the outline's strips are refreshed, each a DU of its
+own, and no ink or halo is drawn while the box moves. The lift is unchanged; a sleep in the middle of a drag
+cancels it. The automated checks: editor.rs `a_drag_draws_at_the_tick_never_at_a_sample` (samples draw and
+refresh nothing; the tick shows the newest place, the bar away, the screen what compose makes of it; no other
+show before 120 ms while the pen moves; Back in the middle; a lift at a place never shown moves the ink by
+exactly that place, one step; a wobble of a pixel is a tap; a drag whose lift was lost is ended by the next
+down, which presses no button of the bar it had taken away),
+`tests/scenarios/z_lasso_19_drag_dense.qs` (a generated page with the owner's page's statistics, 12 Pencil
+strokes of 9,852 points coloured in: copy, paste 3 mm off over the originals, then 60 samples at once are one show
+of nine DU, the bar's and the strips', 60 more one show of eight strips, then 200 samples 4 ms apart; the ink
+walked only for the first move's four strips; the lift's refresh, box and undo as before),
+`tests/scenarios/z_lasso_20_drag_live.qs` (the same with Live view on: its frame equals the screen after every
+step), `tests/scenarios/z_lasso_21_drag_sleep.qs` (a tap that wobbles a pixel moves and refreshes nothing; a
+sleep in the middle of a drag wakes to the box at its place with its bar, nothing moved; a drag after it as any
+other) and `tests/scenarios/z_refresh_4_select.qs` (the whole way drawn again in grays at the lift). Each drag
+logs `lasso: drag samples=N shows=N px=N inked=N copy=1` in grimoire.log, before its `lasso: move` line: copy=0
+says there was no memory for the drag's copy of the screen (each show then composes its strips, slower on a
+heavy selection).
+
+On the owner's Scribe, his notebook "Seyes", page 5 of 6 (the colored-in hexagons, Hexagon paper), upright, at
+room temperature first:
+
+1. **Copy, paste, drag, Live view off.** Select, lasso the hexagons, Copy, Paste: the copy lands 3 mm off over the
+   originals, selected. Put the pen down inside the box and drag it slowly across the page: the bar goes as the
+   box starts to move; the dotted box follows the pen in small steps, a few a second, and is under the pen
+   whenever it stops; the hexagons and their dotted halo stay where they were. Where the bar was, the page shows
+   in black-and-white dots (its rect's one fast refresh, at the first step) until the lift; elsewhere the hexagon
+   lines stay gray but for thin traces where the box's edges passed (beta.2 turned a band as wide as the bar and
+   as tall as the box and the bar together to black-and-white dots, again at every pen sample); nothing else on
+   the page flickers. Lift: the dots and traces turn gray again, and about half a second later the hexagons
+   appear at the new place with their grain and the bar comes back under the box. A drag of a few seconds
+   leaves no Clean flash after it (several in a row may add up to one, at a pause, as erasing does). Undo puts
+   them back over the originals in one step.
+2. **Fast and back.** Drag quickly in a wide circle and lift near where you started: the box keeps up (it may
+   jump further between steps, never behind the pen), and the lift moves the hexagons by as much as the pen
+   lifted from where it came down (a pixel or two), the bar back, one undo step. Drag a few centimetres and stop
+   without lifting: the box settles under the pen at once.
+3. **Grimoire.log.** For each drag, `lasso: drag samples=... shows=... px=... inked=4 copy=1`: shows about five
+   for each second of dragging, px about 13,000 a show (on this page) after the first's about 225,000 (the bar),
+   inked 4 (the halo drawn only where the first move took the outline away; more only when something else
+   redrew the page during the drag). The log's `display: fast timing`
+   lines during the drag should read a copy of well under 1 ms (2.0.0-beta.2: about 11 ms). Note the
+   `lasso: move ... src_ms=... dst_ms=...` (beta.2: 263 and 290 ms here; unchanged by this).
+4. **Live view on.** Pair a browser and repeat 1 and 2: the browser shows the box stepping with the Kindle's,
+   no bar during the drag, the hexagons moved at the lift; the Kindle's drag feels as it did with Live view off.
+5. **A tap, Back, sleep.** Tap inside the selection, as a hand taps, a little wobble included: nothing moves,
+   the bar stays, no undo step. Put the pen down inside it and move it slowly: the box starts to move once the
+   pen has gone about 1 mm. Start a drag and, without lifting, press Esc on a paired keyboard (or a button bound
+   to Back): the selection ends, the box and the halo go, nothing moved. Start a drag and, without lifting,
+   press the power button; wake the Kindle: the box is back at its place with the bar under it, nothing moved,
+   and the bar's buttons work where you see them.
+6. **Big and light.** Lasso a whole paragraph of writing (most of the page) and drag it: it follows the pen the
+   same, the refreshes only along the box's edges after the bar's at the first step. Lasso three words of
+   ballpoint and drag: the same feel.
+7. **A link.** Lasso ink with a link area and drag it: its dashed area moves with the box, and the link goes
+   with the ink at the lift.
+8. **Cold.** If the Kindle is cold (below about 15 degrees), note the steps: fewer a second (the panel's slower
+   refresh paces them), still under the pen when it stops.

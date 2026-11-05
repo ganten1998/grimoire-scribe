@@ -4,6 +4,47 @@ Work that was decided, deferred or found but not done yet. Keep this current: wh
 move it to "Done" with the version; when something is deferred, add it here with who decided and
 why. Newest decisions first within each section.
 
+## The lasso drag (2.0.0): the owner's report of 2026-11-05, fixed; what is left for the owner
+
+The report, verbatim: "the copy paste lasso function is horrifically slow on drag with anything containing
+colored in or multiple strokes." On his Scribe with the published 2.0.0-beta.2, his notebook's page 5 of 6
+(Hexagon paper): 12 Pencil strokes of 9,852 points, colored-in hexagons, copied and pasted over the originals,
+then dragged, Live view on. The evidence (his grimoire.log, page and clipboard) is in the maintainer's lab folder
+(lasso-drag-2026-11-05); his drawing is never a fixture. What it found: every pen sample composed and refreshed
+the box joined with the bar, 1680 x 365 px, and drew the selection's halo again over all 9,852 points (about 11 ms
+of framebuffer copy and 10 ms of drawing a sample on the device, measured from the log: about 40 overlapping DU
+refreshes a second), one sample a loop turn while the pen reports one every 2 to 3 ms. Fixed in 2.1.0 (Done
+below; docs/DESIGN.md, The drag). Left open:
+
+- **A ghost of the ink while dragging** (the owner's call; the CHANGELOG has promised the outline alone since
+  beta.2, and LASSO-DESIGN.md deferred "a dragged-ink preview"): a 1-bit picture of the selection made once at
+  the first move (its strokes as thin lines, or its halo's edge, a few ms on the device for 9,852 points),
+  moved with the outline. It would present about the box's area at each show, 1 to 2 ms on the device, and
+  the box's inside would then be refreshed by DU.
+- **The bar's place shows in dots while dragging** (the owner's call): the first move takes the bar away by one
+  DU of its rect (1680 x 130 px on his page), which leaves the page there in black-and-white dots until the
+  lift's grayscale refresh. A GL16 of that rect instead would keep it gray, but it is slower on the panel and the
+  first move's strips, refreshed by DU right after, may meet it there; not tried on the device.
+- **The lift on a page like his** still takes about 0.6 s on the device (263 ms to draw the old place, which
+  still holds the originals under the paste, 290 ms to place the moved ink with fresh grain, then one GL16):
+  the move itself, unchanged. Its grayscale refresh is merged with the panel's repaint into one rect (1822 x
+  1734 there); refreshing the panel on its own would trim it a little.
+- **A drag on a cold Kindle** shows less often: each show waits for the last DU, which takes 294 ms at 15 to
+  18 C (docs/INK-PERFORMANCE.md), so about 3 a second. Not measured on the device yet (docs/TESTING.md, 2.1.0,
+  lasso drag).
+- Found while diagnosing it, not part of the fix (for the owner to schedule):
+  - **Kept drawings and previews were all retired by each update** (cached=0 for every page at the first
+    preview batch after a new build, on Nov 4 and 5), while the renderer's fingerprint stayed the same. A
+    hypothesis to check on the device: preview_stamp (store.rs) keys them on the page file's st_ino and
+    ctime; on vfat (/mnt/us) Linux makes inode numbers up when it reads the inode, so a remount or an evicted
+    inode changes them. Check with `stat -c '%i %Z'` on a page before and after a restart, its `.full.stamp`,
+    and `mount | grep /mnt/us`; if it holds, a stamp of size, mtime with nanoseconds and a hash of the file's
+    head and tail instead.
+  - **A 9.2 s touch on the editor screen** (06:56:24 in his log) was opening his "2.0-b1 DEMO" notebook from
+    the Graph, its open page drawn whole on the main loop with no kept drawing (the item above).
+  - **The editor and the previews job drew the same dense page at once** (06:42, his Seyes p171, 1.48 MB, 5.4
+    and 5.6 s on the two cores): neither had a kept drawing, and the job keeps one only once it has drawn.
+
 ## Found on the owner's stress pages (2026-11-05): candidates for 2.0.0, the owner decides
 
 From STRESS TEST 2 (648 strokes, 153,588 points, 2.8 MB) and STRESS TEST 3 (698 strokes, 163,950 points,
@@ -391,6 +432,22 @@ Ideas, not plans: each needs the owner's go and its own design. No code is taken
   install).
 
 ## Done
+
+- 2.0.0 (the owner put it into 2.0.0; v21/lasso; the owner, 2026-11-05: "the copy paste lasso function is horrifically slow on
+  drag with anything containing colored in or multiple strokes"): a drag of the selection follows the pen
+  whatever it holds. A pen sample only records the newest place; the editor's tick shows it once the last DU is
+  off the panel and 120 ms went by, or the pen paused 50 ms. The first move takes the bar away and keeps a copy
+  of the screen without the outline; each show puts the old outline's strips back from it and draws the new
+  ones, each strip a DU of its own, with no compose and no halo or ink drawn. On his page in the headless runner
+  (a scratch copy, never in the repository): 0.13 us a sample instead of 1.77 ms, 16 shows of about 13,000 px
+  for a 400-sample drag instead of 403 refreshes of 613,000 px; on the device that is about 2 ms a show at most
+  about 5 times a second, against about 22 ms a sample before. The lift is unchanged (the screen after it is
+  pixel for pixel the old build's). The box moves once the pen has gone 1 mm (a tap that wobbles a pixel is a
+  tap), and a sleep in the middle of a drag cancels it (the review: the bar, away, kept its buttons answering at
+  their old place after the wake). tests/scenarios/z_lasso_19_drag_dense.qs, z_lasso_20_drag_live.qs and
+  z_lasso_21_drag_sleep.qs on a generated page with his page's statistics; z_refresh_4_select's wear and lift
+  rect follow the bar no longer going round with the box (57 thousandths of the screen worn on its drag instead of
+  384, so no Clean follows).
 
 - 2.0.0-beta.2 (unreleased, b2g/del; the owner, 2026-11-05: "hold del long enough in keyboards to quick delete",
   "low ish delay but not too low", "repeat rate high so it feels snappy", "not too high"): the on-screen keyboard's

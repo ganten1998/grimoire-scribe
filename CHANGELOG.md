@@ -12,6 +12,21 @@
 - The What's new card ends at the last note that fits whole above the signature, and leaves the rest to Read
   all (the card had cut the last paragraph of 2.0.0's notes mid-sentence: "please consider donating to"). A
   first note too long for the card on its own is cut at the end of a line.
+- Dragging a selection follows the pen however much it holds (the owner's report of 2026-11-05: "the copy paste
+  lasso function is horrifically slow on drag with anything containing colored in or multiple strokes"). The
+  drag drew its whole band again at every pen sample, the bar and the selection's dotted halo included, so a
+  selection of shading or of many strokes took about 22 ms a sample on the Scribe, while the pen reports one
+  every 2 to 3 ms, and the outline fell behind the pen. Now a pen sample only notes where the pen is, and the
+  outline is drawn at the newest place once the panel has finished the last fast refresh (about five times a
+  second at room temperature), or at once when the pen stops: it steps along with the pen and never trails
+  behind it. The bar goes as the box starts to move (one fast refresh of its place, which shows the page in
+  black-and-white dots until you lift) and comes back under the box when you lift; after that only the outline's
+  strips are refreshed, never the box's inside, and nothing of the ink is drawn while it moves, so a selection of
+  colored-in hexagons drags as lightly as three words. The box moves once the pen has gone 1 mm (a finger a
+  little more), so a tap inside the selection that wobbles a pixel no longer moves it with an undo step, and a
+  sleep in the middle of a drag cancels it. The lift is as before: the strokes move to where the pen lifted, one
+  undo step, with pencil, mechanical pencil and charcoal grain drawn afresh on the moved part, and links move
+  with them. Live view shows the drag as the Kindle does.
 
 ## 2.0.0-beta.2 (2026-11-05)
 
