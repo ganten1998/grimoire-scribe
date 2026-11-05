@@ -1438,6 +1438,23 @@ fn live_toast_stale(a: Option<&mut App>, key: &[u8], out: &mut String, cap: usiz
     })
 }
 
+/// "live.frame.stale": how many pixels of Live view's frame (what a browser is sent) differ from the app's
+/// screen, the editor's panel left out (the frame holds the page under it, the panel being a layer of its
+/// own): 0 when every change on the screen went out to the frame with its present; "none" while Live view
+/// is off.
+fn live_frame_stale(a: Option<&mut App>, key: &[u8], out: &mut String, cap: usize) -> bool {
+    if key != b"live.frame.stale" {
+        return false;
+    }
+    let Some(a) = a else { return false };
+    let skip = if a.scr == ScreenId::Editor { editor_live_hole(a) } else { RECT_EMPTY };
+    match live_frame_differs(&a.screen, skip) {
+        Some(n) => csnprintf!(out, cap, "%lld", n),
+        None => csnprintf!(out, cap, "%s", "none"),
+    };
+    true
+}
+
 /// app_probe, which the C reaches through g_probe_app: the App the main loop handed the poll, none
 /// before there is one (the C's NULL g_probe_app: -1). Every key app_probe answers is ASCII, so a
 /// key in bytes that are not UTF-8 is unknown there too.
@@ -1468,6 +1485,7 @@ fn expect_check_as(gone: bool, mut a: Option<&mut App>) {
         && !with(|st| st.display_probe(&key, &mut got, GOT_CAP))
         && !display_stale(a.as_deref_mut(), &key, &mut got, GOT_CAP)
         && !live_toast_stale(a.as_deref_mut(), &key, &mut got, GOT_CAP)
+        && !live_frame_stale(a.as_deref_mut(), &key, &mut got, GOT_CAP)
         && !power_probe(&key, &mut got, GOT_CAP)
         && probe_app(a, &key, &mut got, GOT_CAP) != 0
     {

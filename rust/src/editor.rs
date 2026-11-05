@@ -12881,6 +12881,99 @@ mod tests {
         std::fs::remove_dir_all(root).unwrap();
     }
 
+    // The screen is what its layers make of it (the `layers` probe's rule: a frame's blended edge drawn again over
+    // itself may differ by 64 at most).
+    fn layers_ok(a: &mut App) -> bool {
+        let keep = a.screen.px.clone();
+        compose(a, Rect { x: 0, y: 0, w: a.w, h: a.h });
+        keep.iter().zip(a.screen.px.iter()).all(|(x, y)| x.abs_diff(*y) <= 64)
+    }
+
+    // A drag of the selection (2.1.0, select.rs's head): its pen samples draw nothing and refresh nothing; the
+    // tick shows the newest place, the first move taking the bar away; the screen is what compose makes of it
+    // at each step; Back in the middle ends the selection with its copy of the screen and leaves the screen as
+    // compose makes it; and a drag's lift moves the ink by exactly its newest place, shown or not.
+    #[test]
+    fn a_drag_draws_at_the_tick_never_at_a_sample() {
+        let root = fhold_root("drag");
+        let mut a = fshape_app();
+        let (mut px, mut py) = (0.0, 0.0);
+        to_page(ed(&mut a), 400.0, 600.0, &mut px, &mut py);
+        sel_word(&mut a, px, py);
+        sel_toggle(&mut a);
+        sel_lasso(&mut a, 400.0, 615.0, 120.0, false, 1000);
+        app_flush(&mut a);
+        assert_eq!(ed_ref(&a).sel.state, SelState::Selected);
+        assert!(bar_drawn(&a));
+        let probe = |a: &App, k: &str| sel_probe(a, k).unwrap();
+        let first = |a: &App| ed_ref(a).open_page().unwrap().strokes.iter().map(|st| (st.pts[0].x, st.pts[0].y)).collect::<Vec<_>>();
+        let at0 = first(&a);
+        // the samples: nothing drawn, nothing to refresh
+        let screen0 = a.screen.px.clone();
+        pen_event(&mut a, InType::PenDown, false, 400.0, 610.0, 2000);
+        assert_eq!(ed_ref(&a).sel.state, SelState::Dragging);
+        for k in 1..=40 {
+            pen_event(&mut a, InType::PenMove, false, 400.0 + 3.0 * k as f32, 610.0 - k as f32, 2000 + 3 * k as u32);
+        }
+        assert!(a.screen.px == screen0 && rect_is_empty(a.dirty), "a sample draws nothing");
+        assert_eq!((probe(&a, "drag_samples"), probe(&a, "drag_shows"), probe(&a, "drag_shown")), ("40".into(), "0".into(), "-".into()));
+        // the tick: the first move shown, the bar gone, the selection's ink walked only for the outline's strips
+        editor_tick(&mut a, now_ms());
+        app_flush(&mut a);
+        assert_eq!((probe(&a, "drag_shows"), probe(&a, "drag_copy")), ("1".into(), "1".into()));
+        let (mut dx, mut dy) = (0.0, 0.0);
+        to_page(ed(&mut a), 520.0, 570.0, &mut dx, &mut dy);
+        let (mut ox, mut oy) = (0.0, 0.0);
+        to_page(ed(&mut a), 400.0, 610.0, &mut ox, &mut oy);
+        let want = ((dx - ox).round() as i32, (dy - oy).round() as i32);
+        assert_eq!(probe(&a, "drag_shown"), format!("{} {}", want.0, want.1));
+        assert!(!bar_drawn(&a), "the bar is away while the box moves");
+        let inked: u32 = probe(&a, "drag_inked").parse().unwrap();
+        assert!((1..=4).contains(&inked), "the halo walked only where the outline's strips were: {inked}");
+        assert!(layers_ok(&mut a));
+        // more samples, and the pen keeps still: the newest place shown
+        for k in 41..=60 {
+            pen_event(&mut a, InType::PenMove, false, 400.0 + 3.0 * k as f32, 610.0 - k as f32, 2200 + 3 * k as u32);
+        }
+        editor_tick(&mut a, now_ms().wrapping_add(1000)); // (past the 120 ms between shows and the 50 ms pause)
+        app_flush(&mut a);
+        assert_eq!(probe(&a, "drag_shows"), "2");
+        assert_eq!(probe(&a, "drag_shown"), {
+            let (mut x, mut y) = (0.0, 0.0);
+            to_page(ed(&mut a), 580.0, 550.0, &mut x, &mut y);
+            format!("{} {}", (x - ox).round() as i32, (y - oy).round() as i32)
+        });
+        assert!(layers_ok(&mut a));
+        // Back in the middle: the selection ends, its copy of the screen with it, the screen as compose makes it
+        assert!(editor_back(&mut a));
+        app_flush(&mut a);
+        assert_eq!(ed_ref(&a).sel.state, SelState::Armed);
+        assert_eq!(probe(&a, "drag_copy"), "0");
+        assert!(layers_ok(&mut a));
+        pen_event(&mut a, InType::PenUp, false, 580.0, 550.0, 2600);
+        assert_eq!(first(&a), at0, "nothing moved");
+        // again, lifted with a place the tick never showed: the ink moved by it exactly, one step
+        sel_lasso(&mut a, 400.0, 615.0, 120.0, false, 3000);
+        assert_eq!(ed_ref(&a).sel.state, SelState::Selected);
+        let depth = undo_depth(&mut a);
+        pen_event(&mut a, InType::PenDown, false, 400.0, 610.0, 4000);
+        pen_event(&mut a, InType::PenMove, false, 450.0, 640.0, 4010);
+        editor_tick(&mut a, now_ms());
+        pen_event(&mut a, InType::PenMove, false, 470.0, 700.0, 4020);
+        pen_event(&mut a, InType::PenUp, false, 470.0, 700.0, 4030);
+        app_flush(&mut a);
+        assert_eq!(ed_ref(&a).sel.state, SelState::Selected);
+        assert_eq!(undo_depth(&mut a), depth + 1);
+        let (mut x, mut y) = (0.0, 0.0);
+        to_page(ed(&mut a), 470.0, 700.0, &mut x, &mut y);
+        let (mx, my) = ((x - ox).round(), (y - oy).round());
+        let moved: Vec<(f32, f32)> = at0.iter().map(|&(x, y)| (x + mx, y + my)).collect();
+        assert_eq!(first(&a), moved);
+        assert_eq!(probe(&a, "drag_copy"), "0");
+        assert!(layers_ok(&mut a));
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
     // A finger held on a link opens the link's card, never the lasso; one that moved before the hold time is
     // what it always was (no lasso, no card).
     #[test]

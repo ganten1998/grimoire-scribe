@@ -3,6 +3,15 @@
 //! A drag inside the selection's box moves only the box's outline; the strokes move at the release,
 //! one undo step. The geometry and the data are lasso.rs and clipboard.rs; this is the screen.
 //!
+//! The drag on e-ink (2.1.0, the owner's report of 2026-11-05: "horrifically slow on drag with anything
+//! containing colored in or multiple strokes"): a pen sample only records the newest place (`drag_step`),
+//! and the editor's tick shows it (`drag_tick`) when the panel has finished the last fast refresh, at
+//! most every PREVIEW_MS or at once when the pen pauses, as the lasso's preview does. Its first move takes
+//! the bar away and keeps a copy of the screen without the outline (`DragView::base`); each show then puts
+//! the outline's old strips back from that copy and draws the new ones, each strip a DU of its own. Nothing
+//! is composed and no ink or halo is drawn while the box moves, so a selection of pencil shading costs what
+//! one of three words does.
+//!
 //! Not a tool id: a mode beside link making, entered from the tool picker or the bindable `select`
 //! action, left by choosing a pen, the action again, or the bar's Done.
 //!
@@ -117,6 +126,32 @@ pub(super) struct SelMode {
     /// exact area: the strokes the lasso crosses (by identity) and their pieces, each with whether it is
     /// inside; nothing on the page changes until Move, Cut or Delete splices them in
     plan: Vec<(StrokeId, Vec<(Box<Stroke>, bool)>)>,
+    /// a drag as the screen shows it (the module's head)
+    dv: DragView,
+}
+
+/// A drag of the selection as the screen shows it, while `drag` is where the pen has taken it.
+#[derive(Default)]
+struct DragView {
+    /// the drag has moved and its display began: the bar is gone, and the outline is drawn at `shown`
+    /// (page px from the box's place; None for nowhere, while its first move takes it away)
+    moving: bool,
+    shown: Option<(i32, i32)>,
+    /// the screen without the bar and the outline over `base_at` (the page's part of the screen, lasso_clip
+    /// as the drag began), kept in step by every compose while it lasts (sel_draw); None without the memory
+    /// for it, when each show composes its strips instead (the halo drawn again where they meet it)
+    base: Option<Canvas>,
+    base_at: Rect,
+    /// when the outline was last shown, and when the place last changed (now_ms)
+    shown_at: u32,
+    moved_at: u32,
+    /// the scripts' probes and the log line at the lift: the pen samples that changed the place, the shows
+    /// (the first move's included), the px they presented, and how many times the selection's ink was
+    /// walked while the drag lasted (its halo drawn: every point of every stroke it meets)
+    samples: u32,
+    shows: u32,
+    px: i64,
+    inked: u32,
 }
 
 /// How long the preview lets new lasso points wait before it folds them in (input time, ms, from the first
@@ -128,6 +163,13 @@ const PREVIEW_PAUSE_MS: u32 = 50;
 const HALO_UI: f32 = 3.0;
 /// A batch's refreshes: at most this many rects (the strokes that flipped, merged).
 const PREVIEW_RECTS: usize = 6;
+/// A drag shows its newest place at most this often (ms), as the preview folds (on the Kindle the panel's
+/// DU, about 188 ms at room temperature, paces it first: display_fast_busy)...
+const DRAG_SHOW_MS: u32 = PREVIEW_MS;
+/// ...or as soon as the pen has kept still this long.
+const DRAG_PAUSE_MS: u32 = PREVIEW_PAUSE_MS;
+/// A show's DU refreshes: at most this many (its strips, two joined only when that covers no more).
+const DRAG_RECTS: usize = 16;
 
 /// press_move's slop (ui.rs): how far a finger may stray and still be held, or lifted, still.
 fn finger_slop() -> f32 {
@@ -177,18 +219,110 @@ fn view_page(a: &App) -> Rect {
     Rect { x: x0.ceil() as i32, y: y0.ceil() as i32, w: (x1 - x0).floor() as i32, h: (y1 - y0).floor() as i32 }
 }
 
-/// The screen rect the selection's overlay covers now: its box (moved by the drag), its bar.
+/// The screen rect the selection's overlay covers now: its box where the screen shows it, its bar (none while
+/// a drag moves it).
 fn overlay_rect(a: &App) -> Rect {
     let m = sel_ref(a);
     if !matches!(m.state, SelState::Selected | SelState::Dragging | SelState::Armed) {
         return RECT_EMPTY;
     }
-    let mut r = m.bar;
+    let mut r = if bar_hidden(m) { RECT_EMPTY } else { m.bar };
     if m.state != SelState::Armed && !rect_is_empty(m.box_) {
-        let b = Rect { x: m.box_.x + m.drag.0, y: m.box_.y + m.drag.1, ..m.box_ };
-        r = rect_union(r, rect_inflate(box_screen(ed_ref(a), b), link_band() + ui_px(4.0)));
+        if let Some(off) = outline_off(m) {
+            r = rect_union(r, rect_inflate(box_at(ed_ref(a), m.box_, off), link_band() + ui_px(4.0)));
+        }
     }
     r
+}
+
+/// Where the screen shows the selection's outline (page px from the box's place): while a drag moves it,
+/// the place last shown (none while its first move takes it away); before that the box's own place.
+fn outline_off(m: &SelMode) -> Option<(i32, i32)> {
+    match m.state {
+        SelState::Dragging if m.dv.moving => m.dv.shown,
+        SelState::Dragging => Some((0, 0)),
+        _ => Some(m.drag),
+    }
+}
+
+/// The bar is away while a drag moves the box (it comes back at the lift).
+fn bar_hidden(m: &SelMode) -> bool {
+    m.state == SelState::Dragging && m.dv.moving
+}
+
+/// Page rect r moved by `off`, on the screen.
+fn box_at(s: &EditorState, r: Rect, off: (i32, i32)) -> Rect {
+    box_screen(s, Rect { x: r.x + off.0, y: r.y + off.1, ..r })
+}
+
+/// What the selection's outline draws with its box at `off`: the box's dithered band (as the link lasso's)
+/// and its carried link areas' thinner ones, each (rect, band, halo) for canvas_dither_rect, screen px.
+fn outline_shapes(s: &EditorState, off: (i32, i32)) -> Vec<(Rect, i32, i32)> {
+    let mut v = Vec::with_capacity(1 + s.sel.links.len());
+    v.push((rect_inflate(box_at(s, s.sel.box_, off), ui_px(6.0)), link_band(), ui_px(1.0)));
+    for l in s.sel.links.iter().filter(|l| l.has_area) {
+        v.push((box_at(s, l.area, off), ui_px(2.0), ui_px(1.0)));
+    }
+    v
+}
+
+/// The outline with its box at `off`, onto the screen where r meets the page's part of it (lasso_clip).
+fn draw_outline(a: &mut App, off: (i32, i32), r: Rect) {
+    let shapes = outline_shapes(ed_ref(a), off);
+    let clip = a.screen.clip;
+    let c = rect_intersect(r, lasso_clip(a));
+    canvas_set_clip(&mut a.screen, c);
+    for (b, t, h) in shapes {
+        canvas_dither_rect(&mut a.screen, b, t, h);
+    }
+    a.screen.clip = clip;
+}
+
+/// The four strips canvas_dither_rect(r, thick, halo) paints, apart: the top and the bottom the full width,
+/// the left and the right between them (linkcard_strips' shape). Together exactly what it paints.
+fn dither_strips(r: Rect, thick: i32, halo: i32) -> [Rect; 4] {
+    let t = thick.min(r.w).min(r.h);
+    let o = rect_inflate(r, halo);
+    let s = t + 2 * halo;
+    let top = Rect { x: o.x, y: o.y, w: o.w, h: s.min(o.h) };
+    let bottom = Rect { x: o.x, y: (o.y + o.h - s).max(top.y + top.h), w: o.w, h: (o.y + o.h - (top.y + top.h)).clamp(0, s) };
+    let mid_y = top.y + top.h;
+    let mid_h = (bottom.y - mid_y).max(0);
+    let left = Rect { x: o.x, y: mid_y, w: s.min(o.w), h: mid_h };
+    let right = Rect { x: (o.x + o.w - s).max(left.x + left.w), y: mid_y, w: (o.x + o.w - (left.x + left.w)).clamp(0, s), h: mid_h };
+    [top, bottom, left, right]
+}
+
+/// The screen strips the outline covers with its box at `off`, cut to where it draws (lasso_clip).
+fn outline_strips(a: &App, off: (i32, i32)) -> Vec<Rect> {
+    let clip = lasso_clip(a);
+    let shapes = outline_shapes(ed_ref(a), off);
+    let mut v = Vec::with_capacity(4 * shapes.len());
+    for (b, t, h) in shapes {
+        for st in dither_strips(b, t, h) {
+            let st = rect_intersect(st, clip);
+            if !rect_is_empty(st) {
+                v.push(st);
+            }
+        }
+    }
+    v
+}
+
+fn rect_area(r: Rect) -> i64 {
+    if rect_is_empty(r) { 0 } else { r.w as i64 * r.h as i64 }
+}
+
+/// The screen px of the outline's ink with its box at `off`, which a fast refresh turns back to the page as
+/// it moves (its carried link areas' thinner ones left out).
+fn outline_ink(a: &App, off: (i32, i32)) -> i64 {
+    let s = ed_ref(a);
+    if rect_is_empty(s.sel.box_) {
+        return 0;
+    }
+    let b = rect_inflate(box_at(s, s.sel.box_, off), ui_px(6.0));
+    let (w, h, t) = (b.w as i64, b.h as i64, link_band() as i64);
+    (2 * (w + h) * t).min(w * h)
 }
 
 fn redraw(a: &mut App, r: Rect, m: RefreshMode) {
@@ -223,8 +357,10 @@ fn layout_bar(a: &mut App) {
     let m = ui_px(15.0);
     let h = bh + 2 * m;
     let n = kinds.len() as i32;
+    // (under the box where the screen shows it)
+    let off = outline_off(&s.sel).unwrap_or(s.sel.drag);
     let y = if st == SelState::Selected || st == SelState::Dragging {
-        let b = box_screen(s, Rect { x: s.sel.box_.x + s.sel.drag.0, y: s.sel.box_.y + s.sel.drag.1, ..s.sel.box_ });
+        let b = box_at(s, s.sel.box_, off);
         let below = b.y + b.h + ui_px(30.0);
         if below + h <= ah - ui_px(20.0) { below } else { (b.y - ui_px(30.0) - h).max(top + ui_px(10.0)) }
     } else {
@@ -247,7 +383,7 @@ fn layout_bar(a: &mut App) {
     let wide = |b: SelBtn| if b == SelBtn::Mode { mw } else { bw };
     let w = kinds.iter().map(|&b| wide(b) + m).sum::<i32>() + m;
     let want = if st == SelState::Selected || st == SelState::Dragging {
-        let b = box_screen(s, Rect { x: s.sel.box_.x + s.sel.drag.0, y: s.sel.box_.y + s.sel.drag.1, ..s.sel.box_ });
+        let b = box_at(s, s.sel.box_, off);
         b.x + b.w / 2 - w / 2
     } else {
         (lo + hi - w) / 2
@@ -302,6 +438,19 @@ fn mode_label(exact: bool) -> &'static str {
 /// where r meets them. compose calls it over everything.
 pub(super) fn sel_draw(a: &mut App, r: Rect) {
     let st = sel_ref(a).state;
+    // A drag's copy of the screen without its outline takes what compose made of r first: compose draws
+    // this last, so r holds every layer under it now (never Live view's composing without the panel)
+    if st == SelState::Dragging && !ed_ref(a).live_no_panel {
+        let App { screen, ed, .. } = a;
+        let dv = &mut ed.as_deref_mut().unwrap().sel.dv;
+        let at = dv.base_at;
+        if let Some(base) = dv.base.as_mut() {
+            let rr = rect_intersect(r, at);
+            if !rect_is_empty(rr) {
+                canvas_blit(base, screen, rr, rr.x - at.x, rr.y - at.y);
+            }
+        }
+    }
     // (under a sheet or the page peek the bar could not be tapped: it is drawn again as the sheet closes; a
     // finger's hold that entered Select mode shows no bar until it has selected or pasted something)
     if st == SelState::Off || st == SelState::Lasso || sel_ref(a).quiet || !ed_ref(a).open || sheet_open(ed_ref(a)) || ed_ref(a).peek.active {
@@ -310,24 +459,21 @@ pub(super) fn sel_draw(a: &mut App, r: Rect) {
         }
         return;
     }
-    layout_bar(a);
+    let hidden = bar_hidden(sel_ref(a));
+    if !hidden {
+        layout_bar(a);
+    }
     let clip = a.screen.clip;
-    let lc = rect_intersect(r, lasso_clip(a));
-    canvas_set_clip(&mut a.screen, lc);
     let s = ed_ref(a);
     if (st == SelState::Selected || st == SelState::Dragging) && s.sel.pid == s.open_pid() {
-        let (dx, dy) = s.sel.drag;
-        let b = box_screen(s, Rect { x: s.sel.box_.x + dx, y: s.sel.box_.y + dy, ..s.sel.box_ });
-        let boxes: Vec<Rect> = s.sel.links.iter().filter(|l| l.has_area).map(|l| box_screen(s, Rect { x: l.area.x + dx, y: l.area.y + dy, ..l.area })).collect();
-        canvas_dither_rect(&mut a.screen, rect_inflate(b, ui_px(6.0)), link_band(), ui_px(1.0));
-        for lb in boxes {
-            canvas_dither_rect(&mut a.screen, lb, ui_px(2.0), ui_px(1.0));
+        if let Some(off) = outline_off(&s.sel) {
+            draw_outline(a, off, r);
         }
     }
     canvas_set_clip(&mut a.screen, r);
     let s = ed_ref(a);
     let (bar, btns, nlinks) = (s.sel.bar, s.sel.btns.clone(), s.sel.links.len());
-    if rect_overlaps(r, bar) {
+    if !hidden && rect_overlaps(r, bar) {
         let c = &mut a.screen;
         ui_frame(c, bar, ui_px(24.0), 255, true, 0);
         ui_frame(c, bar, ui_px(24.0), 0, false, ui_px(6.0));
@@ -442,7 +588,9 @@ pub(super) fn sel_off(a: &mut App) {
     if sel_ref(a).state == SelState::Off {
         return;
     }
-    let r = rect_union(rect_union(rect_union(overlay_rect(a), sel_ref(a).lasso_rect), sel_ref(a).stale), sel_ref(a).preview_rect);
+    let m = sel_ref(a);
+    // (a drag's outline_rect: every place it showed the outline and the bar by DU, drawn again in grays)
+    let r = rect_union(rect_union(rect_union(rect_union(overlay_rect(a), m.lasso_rect), m.stale), m.preview_rect), m.outline_rect);
     let s = ed(a);
     if s.owner == Owner::Select {
         s.owner = Owner::None;
@@ -461,7 +609,7 @@ pub(super) fn sel_deselect(a: &mut App) {
     if !matches!(st, SelState::Selected | SelState::Dragging) {
         return;
     }
-    let r = overlay_rect(a);
+    let r = rect_union(overlay_rect(a), std::mem::take(&mut ed(a).sel.outline_rect));
     let s = ed(a);
     s.sel.state = SelState::Armed;
     s.sel.ids.clear();
@@ -470,6 +618,7 @@ pub(super) fn sel_deselect(a: &mut App) {
     s.sel.links.clear();
     s.sel.box_ = RECT_EMPTY;
     s.sel.drag = (0, 0);
+    s.sel.dv = DragView::default(); // (a drag ended by Back, an undo...: its copy of the screen goes)
     layout_bar(a);
     let r = rect_union(r, overlay_rect(a));
     redraw(a, r, RefreshMode::Ui);
@@ -544,10 +693,13 @@ pub(super) fn sel_down(a: &mut App, ev: &InEvent, pen: bool) {
     to_page(s, ev.x, ev.y, &mut px, &mut py);
     if s.sel.state == SelState::Selected {
         if in_grab(s, ev.x, ev.y) {
+            // (nothing drawn yet: a tap here, no move, leaves the screen as it is; the first move begins the
+            // drag's display at the next tick, drag_tick)
             s.sel.state = SelState::Dragging;
             s.sel.drag_from = (px, py);
             s.sel.drag = (0, 0);
             s.sel.outline_rect = RECT_EMPTY;
+            s.sel.dv = DragView::default();
             return;
         }
         sel_deselect(a);
@@ -1012,6 +1164,10 @@ pub(super) fn sel_draw_halo(a: &mut App, r: Rect) {
         }
     }
     a.screen.clip = keep;
+    let m = &mut ed(a).sel;
+    if m.state == SelState::Dragging {
+        m.dv.inked += 1; // (the probe: a drag that moves draws none, but where its first move takes the outline away)
+    }
 }
 
 /// The lasso lifted: what it encloses is selected (a toast when nothing is).
@@ -1168,51 +1324,202 @@ fn sel_mode_toggle(a: &mut App) {
     redraw(a, r, RefreshMode::Ui);
 }
 
+/// A pen sample of the drag: the newest place (whole page px, clamped so the box stays on the page) and its
+/// time, nothing drawn; drag_tick shows it. A sample costs the same for three words as for a page of
+/// shading, so the main loop takes every sample waiting in one turn and the outline is never behind the pen.
 fn drag_step(a: &mut App, ev: &InEvent) {
     let s = ed(a);
     let (mut px, mut py) = (0.0, 0.0);
     to_page(s, ev.x, ev.y, &mut px, &mut py);
     let b = s.sel.box_;
-    // clamped so the box stays on the page
     let dx = ((px - s.sel.drag_from.0).round() as i32).clamp(-b.x, (s.pgw - b.x - b.w).max(-b.x));
     let dy = ((py - s.sel.drag_from.1).round() as i32).clamp(-b.y, (s.pgh - b.y - b.h).max(-b.y));
     if (dx, dy) == s.sel.drag {
         return;
     }
-    let before = overlay_rect(a);
-    let worn = overlay_ink_area(a);
-    ed(a).sel.drag = (dx, dy);
-    layout_bar(a);
-    let after = overlay_rect(a);
-    let s = ed(a);
-    s.sel.outline_rect = rect_union(s.sel.outline_rect, rect_union(before, after));
-    // (only the outline moves: cheap on e-ink)
-    redraw(a, rect_union(before, after), RefreshMode::Fast);
-    // DU turned the outline and the bar where they were back to the page: their traces count toward a
-    // clean (display.rs, DuWear)
-    du_wear_add(&mut a.du_wear, before, worn, now_ms());
+    s.sel.drag = (dx, dy);
+    s.sel.dv.moved_at = now_ms();
+    s.sel.dv.samples += 1;
 }
 
-/// The screen px of the overlay's ink, which a fast refresh turns back to the page as it moves: the bar
-/// (its frame and buttons, the Done button black) and the box's dithered outline (its carried link
-/// areas' thinner ones left out).
-fn overlay_ink_area(a: &App) -> i64 {
+/// Whether the screen shows the page and the selection's overlay over it, so a drag's show may draw (not
+/// under a sheet, the page peek or the Library's settings: what composes them does not draw the outline).
+fn drag_can_show(a: &App) -> bool {
+    let s = ed_ref(a);
+    s.open && !sel_ref(a).quiet && !sheet_open(s) && !s.peek.active && !crate::library::library_settings_active(a)
+}
+
+/// editor_tick: a drag's newest place shown once the panel has finished the last fast refresh (on the Kindle,
+/// display_fast_busy: never one queued behind a DU still on the panel, so at most about 5 a second at room
+/// temperature) and DRAG_SHOW_MS went by since the last show, or the pen kept still DRAG_PAUSE_MS. The first
+/// move begins the display (drag_begin). One show a turn at most, after the turn's samples: the newest place.
+fn drag_tick(a: &mut App, now: u32) {
     let m = sel_ref(a);
-    let mut n = m.bar.w as i64 * m.bar.h as i64;
-    if matches!(m.state, SelState::Selected | SelState::Dragging) && !rect_is_empty(m.box_) {
-        let b = Rect { x: m.box_.x + m.drag.0, y: m.box_.y + m.drag.1, ..m.box_ };
-        let b = rect_inflate(box_screen(ed_ref(a), b), ui_px(6.0));
-        let (w, h, t) = (b.w as i64, b.h as i64, link_band() as i64);
-        n += (2 * (w + h) * t).min(w * h);
+    if m.state != SelState::Dragging || (!m.dv.moving && m.drag == (0, 0)) || (m.dv.moving && m.dv.shown == Some(m.drag)) {
+        return;
     }
-    n
+    if !drag_can_show(a) || display_fast_busy() {
+        return;
+    }
+    if !m.dv.moving {
+        drag_begin(a, now);
+        return;
+    }
+    if (now.wrapping_sub(m.dv.shown_at) as i32) >= DRAG_SHOW_MS as i32 || (now.wrapping_sub(m.dv.moved_at) as i32) >= DRAG_PAUSE_MS as i32 {
+        drag_show(a, now);
+    }
+}
+
+/// The drag's first move shown: the bar and the outline taken away (composed again where they were, the
+/// outline's strips alone), the screen without them copied (over the page's part of it), the outline drawn
+/// at the newest place; the bar and each strip a DU of its own. DU turned the bar and the outline back to
+/// the page: their traces count toward a clean (display.rs, DuWear).
+fn drag_begin(a: &mut App, now: u32) {
+    let screen = Rect { x: 0, y: 0, w: a.w, h: a.h };
+    let bar = rect_intersect(rect_union(sel_ref(a).bar, std::mem::take(&mut ed(a).sel.stale)), screen);
+    let old = outline_strips(a, (0, 0));
+    let worn = rect_area(sel_ref(a).bar) + outline_ink(a, (0, 0));
+    let s = ed(a);
+    s.sel.dv.moving = true;
+    s.sel.dv.shown = None;
+    if !rect_is_empty(bar) {
+        compose(a, bar);
+    }
+    for &r in &old {
+        compose(a, r);
+    }
+    let at = rect_intersect(lasso_clip(a), screen);
+    let mut base = Canvas::default();
+    let based = !rect_is_empty(at) && canvas_init(&mut base, at.w, at.h) == 0;
+    if based {
+        canvas_blit(&mut base, &a.screen, at, 0, 0);
+    } else {
+        qlog!("lasso: no memory for the drag's copy of the screen: each show composes its strips");
+    }
+    let s = ed(a);
+    let off = s.sel.drag;
+    s.sel.dv.base = based.then_some(base);
+    s.sel.dv.base_at = at;
+    s.sel.dv.shown = Some(off);
+    let new = outline_strips(a, off);
+    if based {
+        draw_outline(a, off, screen);
+    } else {
+        for &r in &new {
+            compose(a, r);
+        }
+    }
+    let mut v = Vec::with_capacity(1 + old.len() + new.len());
+    v.push(bar);
+    let gone = old.iter().fold(bar, |u, &r| rect_union(u, r));
+    v.extend(old);
+    v.extend(new);
+    drag_present(a, v, now);
+    du_wear_add(&mut a.du_wear, gone, worn, now_ms());
+}
+
+/// The drag's newest place shown: the outline's strips where it was put back (from the copy of the screen,
+/// or composed again without it), the new ones drawn, each a DU of its own; the old outline counted as DU
+/// wear. No ink and no halo drawn, nothing composed (with the copy): the same few hundred microseconds
+/// whatever the selection holds.
+fn drag_show(a: &mut App, now: u32) {
+    let Some(was) = sel_ref(a).dv.shown else { return };
+    let old = outline_strips(a, was);
+    let worn = outline_ink(a, was);
+    let off = sel_ref(a).drag;
+    ed(a).sel.dv.shown = Some(off);
+    let new = outline_strips(a, off);
+    let based = {
+        let App { screen, ed, .. } = a;
+        let dv = &ed.as_deref().unwrap().sel.dv;
+        match dv.base.as_ref() {
+            Some(base) => {
+                let at = dv.base_at;
+                for &r in &old {
+                    let r = rect_intersect(r, at);
+                    if !rect_is_empty(r) {
+                        canvas_blit(screen, base, Rect { x: r.x - at.x, y: r.y - at.y, ..r }, r.x, r.y);
+                    }
+                }
+                true
+            }
+            None => false,
+        }
+    };
+    if based {
+        draw_outline(a, off, Rect { x: 0, y: 0, w: a.w, h: a.h });
+    } else {
+        for &r in old.iter().chain(new.iter()) {
+            compose(a, r);
+        }
+    }
+    let gone = old.iter().fold(RECT_EMPTY, |u, &r| rect_union(u, r));
+    let mut v = old;
+    v.extend(new);
+    drag_present(a, v, now);
+    du_wear_add(&mut a.du_wear, gone, worn, now_ms());
+}
+
+/// A drag's rects refreshed by DU, each flushed on its own (the link card's border strips' way: one rect
+/// around them all would span the gray ink inside the box), two joined only when one rect over both
+/// covers no more than they do apart (a short move's strips overlap), at most DRAG_RECTS. They join the
+/// drag's outline_rect, which its lift draws again in grays.
+fn drag_present(a: &mut App, mut v: Vec<Rect>, now: u32) {
+    v.retain(|r| !rect_is_empty(*r));
+    loop {
+        let mut best: Option<(i64, usize, usize)> = None;
+        for i in 0..v.len() {
+            for j in i + 1..v.len() {
+                let waste = rect_area(rect_union(v[i], v[j])) - rect_area(v[i]) - rect_area(v[j]);
+                if best.is_none_or(|b| waste < b.0) {
+                    best = Some((waste, i, j));
+                }
+            }
+        }
+        match best {
+            Some((waste, i, j)) if waste <= 0 || v.len() > DRAG_RECTS => {
+                let u = rect_union(v[i], v[j]);
+                v.swap_remove(j);
+                v[i] = u;
+            }
+            _ => break,
+        }
+    }
+    if !rect_is_empty(a.dirty) {
+        app_flush(a); // (what was waiting goes in its own refresh, as it would have)
+    }
+    let mut px = 0i64;
+    let mut all = RECT_EMPTY;
+    for r in v {
+        app_invalidate(a, r, RefreshMode::Fast);
+        app_flush(a);
+        px += rect_area(r);
+        all = rect_union(all, r);
+    }
+    let m = &mut ed(a).sel;
+    m.outline_rect = rect_union(m.outline_rect, all);
+    m.dv.shown_at = now;
+    m.dv.shows += 1;
+    m.dv.px += px;
+}
+
+/// The drag's display ends (its lift, or a cancel): the log's line for it, and its copy of the screen goes.
+fn drag_end_view(m: &mut SelMode) {
+    let dv = &mut m.dv;
+    if dv.moving {
+        qlog!("lasso: drag samples=%u shows=%u px=%lld inked=%u copy=%d", dv.samples, dv.shows, dv.px, dv.inked, dv.base.is_some() as i32);
+    }
+    dv.moving = false;
+    dv.shown = None;
+    dv.base = None;
 }
 
 fn drag_done(a: &mut App, cancelled: bool) {
     let (dx, dy) = sel_ref(a).drag;
-    // (where the drag drew the outline on its way, as well as where it ends)
+    // (where the drag drew the outline and the bar on its way, as well as where it ends)
     let before = rect_union(overlay_rect(a), std::mem::take(&mut ed(a).sel.outline_rect));
     let s = ed(a);
+    drag_end_view(&mut s.sel);
     s.sel.state = SelState::Selected;
     if cancelled || (dx, dy) == (0, 0) {
         s.sel.drag = (0, 0);
@@ -1655,6 +1962,7 @@ fn sel_delete(a: &mut App, cut: bool) -> bool {
 /// the clipboard centred there (design 6.1 and 6.7); the rest of the contact does nothing. Nothing without a
 /// clipboard: the lasso goes on.
 pub(super) fn sel_tick(a: &mut App, now: u32) {
+    drag_tick(a, now);
     preview_tick(a, now);
     let m = sel_ref(a);
     if m.state != SelState::Lasso || m.finger || !m.still || now.wrapping_sub(m.down_at) < PASTE_HOLD_MS || ed_ref(a).owner != Owner::Select {
@@ -1885,7 +2193,7 @@ pub(super) fn sel_paste(a: &mut App, at: Option<(i32, i32)>) {
 // ---- the scripts' probes ----
 
 /// editor.select, editor.selected, editor.sel_links, editor.sel_box, editor.sel_bar.<button>,
-/// editor.clipboard, editor.layered, editor.lasso_ms: None for another key.
+/// editor.clipboard, editor.layered, editor.lasso_ms, editor.drag_*: None for another key.
 pub(super) fn sel_probe(a: &App, key: &str) -> Option<String> {
     let s = ed_ref(a);
     Some(match key {
@@ -1937,6 +2245,18 @@ pub(super) fn sel_probe(a: &App, key: &str) -> Option<String> {
             let b = s.sel.lift_rect;
             format!("{} {} {} {}", b.x, b.y, b.w, b.h)
         }
+        // a drag (2.1.0): the pen samples that changed its place, the shows of it (the first move's
+        // included), how many times the selection's ink was walked while it lasted (its halo drawn), all
+        // for the drag now or the last one; where the screen shows its outline ("dx dy" page px from the
+        // box's place, "-" while no drag moves); and whether it holds its copy of the screen
+        "drag_samples" => s.sel.dv.samples.to_string(),
+        "drag_shows" => s.sel.dv.shows.to_string(),
+        "drag_inked" => s.sel.dv.inked.to_string(),
+        "drag_shown" => match (s.sel.state, s.sel.dv.moving, s.sel.dv.shown) {
+            (SelState::Dragging, true, Some((x, y))) => format!("{} {}", x, y),
+            _ => "-".to_string(),
+        },
+        "drag_copy" => (s.sel.dv.base.is_some() as i32).to_string(),
         // the open page's links: target@x,y,w,h each (area or "-"), in seed order
         "page_links" => {
             let pid = s.open_pid();
