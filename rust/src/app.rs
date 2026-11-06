@@ -1489,6 +1489,11 @@ fn app_sleep(a: &mut App) {
     canvas_free(&mut pinned);
 }
 
+/// How long after a wake the screen is pushed again as a full refresh (app_wake): long enough for the
+/// Kindle's screensaver to have finished drawing on the way out (the owner's Scribe, 2026-11-05: the
+/// KOReader wallpaper left on parts of the panel after a wake, until a redraw).
+pub const WAKE_REDRAW_MS: u32 = 2500;
+
 fn app_wake(a: &mut App) {
     if !a.asleep {
         return;
@@ -1524,14 +1529,18 @@ fn app_wake(a: &mut App) {
         live_set_state(LIVE_AWAKE);
     }
     app_watch_server(a);
-    let mode = sleep_mode(a);
-
     // A sleep request turned preventScreenSaver off: "Sleep after: never" wants it back on.
     app_apply_sleep_policy(a);
     // Back to work at once (no-flash refresh), then once more a moment later in case the Kindle
-    // UI (its screensaver closing, the status bar) drew something on the way out.
+    // UI (its screensaver closing, the status bar) drew something on the way out. That second push
+    // is a full refresh: the owner's Scribe woke with parts of the KOReader wallpaper still on the
+    // panel while the framebuffer held the Library whole (read over ssh, 2026-11-05 21:42), so the
+    // Kindle had drawn on the panel past Grimoire, and a no-flash refresh drives only the pixels the
+    // controller thinks changed, which those were not. A full refresh drives every pixel, at the cost
+    // of one flash after a wake. It waits 2.5 s whatever the sleep picture, to come after the
+    // Kindle's own drawing on the way out.
     app_redraw_mode(a, RefreshMode::Ui);
-    a.wake_redraw_at = now_ms().wrapping_add(if mode == 2 { 2500 } else { 1500 });
+    a.wake_redraw_at = now_ms().wrapping_add(WAKE_REDRAW_MS);
 }
 
 // Saves and leaves Grimoire: the way out of any stuck state (a 4 s hold of the power button, a
@@ -1797,7 +1806,9 @@ fn app_tick_screens(a: &mut App, now: u32) {
     }
     if a.wake_redraw_at != 0 && now.wrapping_sub(a.wake_redraw_at) as i32 >= 0 && !(a.scr == ScreenId::Editor && editor_busy(a)) {
         a.wake_redraw_at = 0;
-        app_invalidate_all(a, RefreshMode::Ui); // the screen is already right: just push it again
+        // The screen is already right: push it again, a full refresh, so the panel matches it however
+        // the Kindle left it (app_wake).
+        app_invalidate_all(a, RefreshMode::Full);
     }
     // Sleep after a while without input, the same way the power button does.
     if !a.asleep

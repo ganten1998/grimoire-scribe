@@ -1461,3 +1461,12 @@ What only the Scribe and a real browser can show:
    shows it. The Pages view and the Graph cover the whole screen on both.
 5. **Show toolbar off.** In the browser's View settings, switch Show toolbar off and open Display: the browser
    shows the page and the sheet and no toolbar. Switch it back on.
+
+## 2.0.1, wake
+
+The owner's Scribe woke (2026-11-05 21:41) with parts of the KOReader wallpaper still on the panel while the
+framebuffer, read over ssh a minute later, held the Library whole. Automated: tests/scenarios/p_wake_full.qs (a
+full refresh of the whole screen comes 2.5 s after a wake; it fails on 2.0.0, whose push there was no-flash).
+On the Kindle: with Sleep picture set to KOReader's wallpaper, sleep and wake a few times, from the Library and
+from a page: about 2.5 s after each wake the screen flashes once, and nothing of the wallpaper stays.
+

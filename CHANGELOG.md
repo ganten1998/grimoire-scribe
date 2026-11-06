@@ -1,5 +1,13 @@
 # Changelog
 
+## 2.0.1 (unreleased)
+
+- A wake no longer leaves parts of the sleep picture (the KOReader wallpaper) on the screen until a redraw (the
+  owner's Scribe, 2026-11-05). The framebuffer held the Library whole: the Kindle draws on the panel on its way
+  out of the screensaver after Grimoire's first refresh, and the second push was a no-flash one, which drives
+  only the pixels the panel's controller thinks changed. That push is now a full refresh, 2.5 s after the wake
+  whatever the sleep picture: one flash, and nothing of the sleep picture can stay.
+
 ## 2.0.0 (2026-11-05)
 
 - The first stable release of Grimoire 2.0: 2.0.0-beta.2 with the fixes below, now on the stable channel too
