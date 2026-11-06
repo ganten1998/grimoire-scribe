@@ -112,7 +112,8 @@ Esc is No). The Exit button leaves at once, as before. A file that binds
 
 **What's new** (2.0.1): Enter opens, as New notebook's Create, shortcuts on or off: the card's Read all,
 then on the list the notes of the version running (the Library's sheets have no highlighted row, so Up and
-Down do nothing there). Esc goes back from a version's notes to the list, and closes the list and the card.
+Down do nothing there). Esc goes back one layer: from a version's notes to the list, from the list to the card
+(as the Templates sheet goes back to New notebook), and closes the card.
 Left and Right (`previous-page`, `next-page`) turn the list's and the notes' pages, as their arrows.
 
 **Space** (`two-finger-up`) does what two fingers swiped up do there (gestures.ini `touch.2.up`, built in the

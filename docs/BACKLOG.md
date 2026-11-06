@@ -18,9 +18,10 @@ confirm or change:
   still work.
 - **Notes shared by several versions** are named "2.0.0, 2.0.0-beta.2" (a comma, no word to translate). None do
   today: 2.0.0-beta.2 has no file of its own.
-- **Esc on the list closes What's new** (as on Read all's sheet before) rather than going back to the card; Esc on
-  a version's notes goes back to the list. **Enter on the list opens the running version's notes**, as there is
-  no highlighted row (the Library's sheets have none).
+- **Esc goes back one layer**: a version's notes to the list, the list to the card (as the Templates sheet goes
+  back to New notebook, and as SHORTCUTS.md's "one level a press"), the card closes. In 2.0.0 Esc on Read all's
+  sheet closed What's new; the list has no on-screen way back to the card, only Esc. **Enter on the list opens
+  the running version's notes**, as there is no highlighted row (the Library's sheets have none).
 - **Japanese for "This version" and "unreleased"** is empty in po/ja.po: the list shows them in English in
   Japanese until nebuff translates them. Back reuses the Templates sheet's, already translated.
 

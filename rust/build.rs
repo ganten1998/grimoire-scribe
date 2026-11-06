@@ -108,9 +108,11 @@ fn main() {
 // $OUT_DIR/whatsnew.rs: about.rs's NOTE_FILES, one for each docs/whatsnew/VERSION.md in name order
 // (about.rs puts them in version order). The folder holds the notes alone: a file not named for a
 // version (2.0.1.md, 2.0.0-beta.1.md, as tools/release-preflight.sh reads VERSION), or empty, stops
-// the build rather than leave a version's notes out. Hidden files (.DS_Store) are passed over. Each
-// note's date is CHANGELOG.md's for its version: "2026-11-05" from "## 2.0.0 (2026-11-05)",
-// "unreleased" from "## 2.0.1 (unreleased)", else none ("").
+// the build rather than leave a version's notes out. Hidden files (.DS_Store, Emacs's lock .#2.0.1.md)
+// and an editor's temporary ones (Emacs's auto-save #2.0.1.md# and backup 2.0.2.md~) are passed over,
+// so a build while a note is being written still runs. Each note's date is CHANGELOG.md's for its
+// version: "2026-11-05" from "## 2.0.0 (2026-11-05)", "unreleased" from "## 2.0.1 (unreleased)", else
+// none ("").
 fn whatsnew(top: &Path) -> String {
     let dir = top.join("docs/whatsnew");
     let changelog = top.join("CHANGELOG.md");
@@ -121,7 +123,7 @@ fn whatsnew(top: &Path) -> String {
     for e in fs::read_dir(&dir).unwrap_or_else(|e| panic!("{}: {e}", dir.display())) {
         let p = e.unwrap().path();
         let name = p.file_name().unwrap().to_string_lossy().to_string();
-        if name.starts_with('.') {
+        if skipped_note_name(&name) {
             continue;
         }
         let version = name.strip_suffix(".md").filter(|v| is_version(v));
@@ -152,6 +154,13 @@ fn whatsnew(top: &Path) -> String {
     }
     s.push_str("];\n");
     s
+}
+
+// A name in docs/whatsnew/ that is no note and no mistake either: hidden (.DS_Store, .#2.0.1.md), or an
+// editor's while a note is open (#2.0.1.md#, 2.0.2.md~). about.rs's the_built_in_notes_are_the_folders
+// passes the same names over.
+fn skipped_note_name(name: &str) -> bool {
+    name.starts_with('.') || name.starts_with('#') || name.ends_with('~')
 }
 
 // MAJOR.MINOR.PATCH[-beta.N|-rc.N], N from 0 to 999 without leading zeros (tools/release-preflight.sh's

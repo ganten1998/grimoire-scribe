@@ -877,6 +877,26 @@ mod tests {
         }
     }
 
+    #[test]
+    fn the_card_keeps_each_headings_first_line_and_the_signature() {
+        let b = about_blocks("# T\n## A\n- a1\n- a2\n## B\nprose\n## C\n- c1\n{signature}\n");
+        let h = highlights(&b);
+        let want = ["A", "a1", "C", "c1"];
+        assert_eq!(h.len(), 5);
+        for (got, w) in h.iter().zip(want) {
+            match got {
+                Block::Heading(t) | Block::Bullet(t) => assert_eq!(t, w),
+                other => panic!("{other:?}"),
+            }
+        }
+        assert_eq!(h[4], Block::Signature);
+        // A letter (no headings): all its bullets and paragraphs, then the signature.
+        let h = highlights(&about_blocks("one\n\n- two\n- three\n- four\n- five\n\nCheers,\n\n{signature}\n"));
+        assert_eq!(h.len(), 7);
+        assert_eq!(h[0], Block::Para("one".into()));
+        assert_eq!(h[6], Block::Signature);
+    }
+
     fn file(version: &'static str, date: &'static str, md: &'static str) -> NoteFile {
         NoteFile { version, date, md }
     }
@@ -933,13 +953,18 @@ mod tests {
 
     #[test]
     fn the_built_in_notes_are_the_folders() {
-        // build.rs's list is docs/whatsnew/*.md, every file, with its text.
+        // build.rs's list is docs/whatsnew/*.md, every file, with its text (an editor's files passed
+        // over as build.rs passes them: .#2.0.1.md, #2.0.1.md#, 2.0.2.md~).
         let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../docs/whatsnew");
         let mut want: Vec<(String, String)> = std::fs::read_dir(&dir)
             .unwrap()
             .filter_map(|e| {
                 let p = e.unwrap().path();
-                let v = p.file_name()?.to_str()?.strip_suffix(".md")?.to_string();
+                let name = p.file_name()?.to_str()?;
+                if name.starts_with('.') || name.starts_with('#') || name.ends_with('~') {
+                    return None;
+                }
+                let v = name.strip_suffix(".md")?.to_string();
                 Some((v, std::fs::read_to_string(&p).unwrap()))
             })
             .collect();

@@ -7,10 +7,10 @@
 # whole, a page at a time, with the signature at their end; Back returns to the list; Dismiss closes
 # What's new from the list and from a version's notes. Sideways the same. Each step on the sheet
 # refreshes the sheet's place alone, in the sheet's refresh (ui). On a keyboard Enter opens (the card's
-# Read all, then the notes of the row marked) and Esc goes back one layer (the notes to the list; the
-# list and the card close). The rows are docs/whatsnew/'s notes as this build sees them (VERSION
-# 2.0.0, with 2.0.1's notes written and unreleased): every release sets them again (docs/RELEASING.md,
-# The bump commit).
+# Read all, then the notes of the row marked) and Esc goes back one layer (the notes to the list, the
+# list to the card, as the Templates sheet goes back to New notebook; the card closes). The rows are
+# docs/whatsnew/'s notes as this build sees them (VERSION 2.0.0, with 2.0.1's notes written and
+# unreleased): every release sets them again (docs/RELEASING.md, The bump commit).
 # rust-only
 wait 200
 expect screen is library
@@ -122,6 +122,16 @@ expect library.about.page is 1
 key 1 0
 wait 100
 expect library.about.view is list
+# (the list back to the card: where the list was and where the card is, as Read all, not the whole
+# screen)
+expect display.presents not -1
+key 1 0
+wait 100
+expect library.about.view is card
+expect library.about.note is 2.0.0
+expect library.about.rows is 0
+expect library.sheet is about
+expect display.presents has ui 50 130 1740
 key 1 0
 wait 100
 expect library.sheet is none

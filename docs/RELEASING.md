@@ -87,10 +87,13 @@ them.
      release the owner vets the note and makes his changes to it: send it to him, and put his changes
      in, before the gate (step 5) and his test (step 6). A change after his test is a new gate and a
      new test, and the build he tested has already recorded the version as seen on his Scribe, so
-     changed notes would not open there by themselves. A version whose notes would be the same as
-     another's (word for word) needs no file of its own: the list shows one entry for notes that are
-     the same, naming every version that has them, and a version without a file shows the newest
-     notes on its card. `tests/scenarios/z_about.qs` states the notes' shape, in its comment and in
+     changed notes would not open there by themselves. Every version released has a file of its own:
+     the preflight refuses a release without one, or with the release before's notes again, and the
+     gate's unit test (about.rs, `the_current_note_is_this_versions_else_the_newest`) fails a build
+     whose `VERSION` has none. Notes that are word for word an older release's (one that is not the
+     release before) show as one row naming each version. The card falls back to the newest notes
+     for a version without a file, which only a build made with another `VERSION` by hand can be.
+     `tests/scenarios/z_about.qs` states the notes' shape, in its comment and in
      its checks: the card's `library.about.card_notes` and `card_blocks`, upright and sideways, and
      the notes' `pages` on the sheet, upright and sideways (its page arrows need two pages or more
      sideways), from the row `about.row.VERSION`. `tests/scenarios/z_about_list.qs` states the list:

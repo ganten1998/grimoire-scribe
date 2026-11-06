@@ -1490,7 +1490,8 @@ the marked row), `the_built_in_list_marks_this_version` and `a_versions_notes_en
 (2.0.0-beta.1's letter: the signature on its last page, Back at the foot's left). tests/scenarios/z_about_list.qs
 (the list's three rows, 2.0.1 unreleased, 2.0.0 marked This version with 2026-11-05, 2.0.0-beta.1 with
 2026-11-01; the letter signed, Back to the list; sideways the letter's two pages; Dismiss from the notes and
-from the list; Enter, Esc, Left and Right; the refreshes of each step only the sheet's place), z_about.qs
+from the list; Enter, Esc (the notes to the list, the list to the card, the card closed), Left and Right; the
+refreshes of each step only the sheet's place), z_about.qs
 (the card as before, then 2.0.0's notes from their row), y_all_screens.qs (the list and a version's notes in
 every language and look: `make l10n-check` finds no Spanish text cut short). The release check's new rule
 was tried by hand on a scratch clone: a missing file, a file with only its title and `{signature}`, a file
@@ -1512,6 +1513,7 @@ On the Scribe (Gothic and Classic, upright and sideways), with a build of this b
 3. **Dismiss closes everything**, from the list and from a version's notes; the bat opens the card again.
 4. **Sideways** the list and the notes fit, the rows whole, the date at the right.
 5. **A keyboard** (shortcuts on): on the card Enter opens the list, Enter again 2.0.0's notes; Right and Left
-   turn their pages; Esc goes back to the list, Esc again closes What's new; Esc on the card closes it.
+   turn their pages; Esc goes back to the list, Esc again to the card (only where the list and the card are
+   redraws, without a flash), and Esc on the card closes it.
 6. **Spanish** (Settings > Language): the list's mark reads Esta versión and 2.0.1's date sin publicar; Back
    reads Volver. Japanese shows those two words in English until they are translated.

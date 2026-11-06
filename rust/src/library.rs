@@ -4355,10 +4355,10 @@ fn about_open(s: &mut LibraryState) {
     s.about_area = RECT_EMPTY;
 }
 
-/// What's new after a step on it (Read all, a version's notes, Back, a page): the screen drawn again,
-/// and the panel refreshed only where the card or sheet was and where it is now, as the sheet
-/// refreshes (Ui): the Library around it has not changed. Opening and Dismiss refresh the whole
-/// screen, as every sheet's do.
+/// What's new after a step on it (Read all, a version's notes, Back, a page, Esc back to the list or the
+/// card): the screen drawn again, and the panel refreshed only where the card or sheet was and where it
+/// is now, as the sheet refreshes (Ui): the Library around it has not changed. Opening and Dismiss
+/// refresh the whole screen, as every sheet's do.
 fn about_step(a: &mut App) {
     let was = lib(a).about_area;
     if rect_is_empty(was) || graph_shown(a) || lib(a).settings_return_editor {
@@ -5418,8 +5418,13 @@ pub fn library_back(a: &mut App) -> bool {
             redraw(a, RefreshMode::Ui);
         }
         Modal::Pair | Modal::Buttons => tap(a, H_BUTTONS_DONE),
-        // (What's new: from a version's notes back to the list; the list and the card close)
+        // (What's new, one layer a press: a version's notes back to the list, the list back to the card
+        // that opened it, as the Templates sheet goes back to New notebook; the card closes)
         Modal::About if lib(a).about_view == AboutView::Note => tap(a, H_ABOUT_BACK),
+        Modal::About if lib(a).about_view == AboutView::List => {
+            lib(a).about_view = AboutView::Card;
+            about_step(a);
+        }
         Modal::Gestures if reset_asked => tap(a, H_GESTURES_RESET_CANCEL),
         Modal::Gestures => tap(a, H_GESTURES_DONE),
         Modal::New | Modal::Settings | Modal::More | Modal::FolderMore | Modal::Move | Modal::Delete

@@ -1223,17 +1223,18 @@ bullet and paragraph), the signature, Read all and Dismiss.
   (`paginate`, a heading's last line never alone at a page's foot): their title as the sheet's (else
   What's new), the version and its date under it, Back at the foot's left, Dismiss at its right, the
   page arrows left of Dismiss. Back returns to the list at the page it was left at.
-- **The keys** (docs/SHORTCUTS.md's scheme). Esc goes back one layer: a version's notes to the list; the
-  list and the card close (the list replaced the card, as Read all's sheet did). Enter opens: the card's
+- **The keys** (docs/SHORTCUTS.md's scheme). Esc goes back one layer: a version's notes to the list, the
+  list to the card that opened it (as the Templates sheet goes back to New notebook; a step, so only the
+  list's and the card's places refresh), and the card closes. Enter opens: the card's
   Read all, and on the list the notes of the row marked as this version's (the card's notes); the
   Library's sheets have no highlighted row, so Up and Down do nothing here either. Left and Right
   (`previous-page`, `next-page`) turn the list's and the notes' pages, as their arrows, and a greyed
   arrow does nothing.
 - **The refreshes.** Opening What's new and Dismiss refresh the whole screen as every sheet's do (the
-  Library's cards may have changed meanwhile). A step on it (Read all, a row, Back, a page) draws the
-  screen again and refreshes only where the card or sheet was and where it is now (`about_step`, the
-  union of the two places, in the sheet's refresh, GL16 on the Scribe): the Library around it has not
-  changed. `display.presents` shows it (tests/scenarios/z_about_list.qs).
+  Library's cards may have changed meanwhile). A step on it (Read all, a row, Back, a page, Esc to the
+  list or the card) draws the screen again and refreshes only where the card or sheet was and where it is
+  now (`about_step`, the union of the two places, in the sheet's refresh, GL16 on the Scribe): the
+  Library around it has not changed. `display.presents` shows it (tests/scenarios/z_about_list.qs).
 - **It opens by itself once after every update** (the owner's rule of 2026-11-05: "no don't show this
   again, just a "Dismiss" and every update with changes by default has at least a basic what's
   new"). store.rs sets `whatsnew_due` when settings.ini was saved by a Grimoire before (it has
