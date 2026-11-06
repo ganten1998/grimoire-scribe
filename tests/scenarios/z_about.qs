@@ -1,10 +1,12 @@
 # settings: status_mode=1
 # What's new: the bat (or the name beside it) opens the card, with Read all and Dismiss and no box
-# (the owner's rule of 2026-11-05). The card ends at the last of the notes that fits whole above the
-# signature (2.0.0's notes: all 11 upright, the first 10 sideways, the rest Read all's). Read all
-# shows the whole notes on the sheet, a page at a time (2.0.0's notes: two pages upright and two
-# sideways); Dismiss closes the card and the sheet. The counts are the notes' (card_notes, card_blocks,
-# pages): every release's new notes set them again (docs/RELEASING.md, The bump commit).
+# (the owner's rule of 2026-11-05). The card shows this version's notes and ends at the last of them
+# that fits whole above the signature (2.0.0's notes: all 11 upright, the first 10 sideways, the rest
+# Read all's). Read all opens the list of every version's notes (2.0.1; z_about_list.qs), and its row
+# for this version shows the whole notes on the sheet, a page at a time (2.0.0's notes: two pages
+# upright and two sideways); Dismiss closes the card and the sheet. The counts are the notes'
+# (card_notes, card_blocks, pages, the row's version): every release's new notes set them again
+# (docs/RELEASING.md, The bump commit).
 # rust-only
 wait 200
 expect screen is library
@@ -31,8 +33,14 @@ wait 200
 expect library.about.card_blocks is 11
 tap library about.more
 wait 100
+expect library.about.view is list
 expect library.about.full is 1
 expect library.about.card_blocks is 0
+tap library about.row.2.0.0
+wait 100
+expect library.about.view is note
+expect library.about.note is 2.0.0
+expect library.about.full is 1
 expect library.about.pages is 2
 expect library.about.page is 1
 shot 03-all

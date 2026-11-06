@@ -1,22 +1,115 @@
-//! The About sheet, "What's new": the notes in docs/WHATSNEW.md (built in) and the owner's
-//! signature. The bat in the Library's top bar opens it (library.rs), and so does the first start
-//! after every update, once (the owner's rule of 2026-11-05: "no don't show this again, just a
+//! The About sheet, "What's new": every version's notes (docs/whatsnew/VERSION.md, built in) and the
+//! owner's signature. The bat in the Library's top bar opens it (library.rs), and so does the first
+//! start after every update, once (the owner's rule of 2026-11-05: "no don't show this again, just a
 //! "Dismiss" and every update with changes by default has at least a basic what's new"; store.rs,
 //! whatsnew_due). Rust only (2.0.0).
 //!
-//! It opens as a card hanging from the bat: What's new, the notes (each heading with its first line;
-//! notes without headings, their bullets and paragraphs), the signature, Read all and Dismiss. The
-//! card ends at the last of those that fits whole above the signature (card_rows); the rest is Read
-//! all's, which shows the whole notes on the Library's sheet, a page at a time when they need more
-//! than one.
+//! It opens as a card hanging from the bat: What's new, the version, this version's notes (each
+//! heading with its first line; notes without headings, their bullets and paragraphs), the
+//! signature, Read all and Dismiss. The card ends at the last of those that fits whole above the
+//! signature (card_rows). Read all opens the list of every version's notes on the Library's sheet
+//! (the owner, 2026-11-06: "wire read all button to a list of each UNIQUE release note, and allow
+//! users to easily browse the changes by version"): a row for each, newest first, with its version
+//! (this version's marked), its date and its first line, a page at a time when they need more than
+//! one. A tap on a row shows that version's notes whole, a page at a time, with Back to the list;
+//! Dismiss closes What's new from any of them (2.0.1).
 //!
-//! WHATSNEW.md is a small Markdown: "# " the title, "## " a heading, "- " a bullet, other lines a
+//! The notes, a file for each version (2.0.1): build.rs lists docs/whatsnew/*.md, each named for its
+//! version (VERSION.md), with the date CHANGELOG.md's "## VERSION (YYYY-MM-DD)" heading gives it, into
+//! NOTE_FILES; a new release's notes are a new file there, and no code changes. The archive (notes)
+//! puts them newest first by version (update_version_cmp: 2.0.1, 2.0.0, 2.0.0-rc.2, 2.0.0-beta.2,
+//! 2.0.0-beta.1, the numbers compared as numbers), one entry for each note: versions whose notes are
+//! the same, block for block, share one entry ("2.0.0, 2.0.0-beta.2") at the newest one's place, with
+//! its date. 2.0.0-beta.2 has no file: it shipped 2.0.0-beta.1's notes, and its changes are in
+//! 2.0.0's. The card's notes are this version's (GRIMOIRE_VERSION), or the newest when this version
+//! has none (current).
+//!
+//! A note is a small Markdown: "# " the title, "## " a heading, "- " a bullet, other lines a
 //! paragraph (lines joined until a blank one), and a line "{signature}" where the signature goes.
-//! It is the owner's text and is not translated; the sheet's own words are.
+//! The notes are the owner's text and are not translated; the sheet's own words are.
 
 use crate::prelude::*;
+use std::sync::OnceLock;
 
-pub static WHATSNEW: &str = include_str!("../../docs/WHATSNEW.md");
+/// One version's notes as built in: docs/whatsnew/VERSION.md, and the date CHANGELOG.md's heading for
+/// the version gives it ("2026-11-05"; "unreleased" for "(unreleased)"; "" without one).
+#[derive(Clone, Copy, Debug)]
+pub struct NoteFile {
+    pub version: &'static str,
+    pub date: &'static str,
+    pub md: &'static str,
+}
+
+// NOTE_FILES: build.rs's list of docs/whatsnew, in file name order (never empty).
+include!(concat!(env!("OUT_DIR"), "/whatsnew.rs"));
+
+/// One entry of the archive: a note, and every version that has it, newest first.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Entry {
+    pub versions: Vec<&'static str>,
+    /// the newest one's date (NoteFile::date)
+    pub date: &'static str,
+    pub md: &'static str,
+}
+
+impl Entry {
+    /// Its versions as the list names them: "2.0.0", or "2.0.0, 2.0.0-beta.2" for notes two shared.
+    pub fn label(&self) -> String {
+        self.versions.join(", ")
+    }
+}
+
+/// The notes newest first by version, one entry for each note: a note that is another's block for
+/// block (whatever its line breaks and blank lines) adds its version to the first one's entry.
+pub fn archive(files: &[NoteFile]) -> Vec<Entry> {
+    let mut f: Vec<&NoteFile> = files.iter().collect();
+    f.sort_by(|a, b| update_version_cmp(b.version, a.version).cmp(&0).then(a.version.cmp(b.version)));
+    let mut out: Vec<(Vec<Block>, Entry)> = Vec::new();
+    for n in f {
+        let bl = about_blocks(n.md);
+        match out.iter_mut().find(|(b, _)| *b == bl) {
+            Some((_, e)) => e.versions.push(n.version),
+            None => out.push((bl, Entry { versions: vec![n.version], date: n.date, md: n.md })),
+        }
+    }
+    out.into_iter().map(|(_, e)| e).collect()
+}
+
+/// The built-in notes' archive (archive of NOTE_FILES).
+pub fn notes() -> &'static [Entry] {
+    static ARCHIVE: OnceLock<Vec<Entry>> = OnceLock::new();
+    ARCHIVE.get_or_init(|| archive(NOTE_FILES))
+}
+
+/// The entry with version's notes, else the newest (0): the card shows a version without notes of
+/// its own the newest there are.
+pub fn current(entries: &[Entry], version: &str) -> usize {
+    entries.iter().position(|e| e.versions.contains(&version)).unwrap_or(0)
+}
+
+/// A note's line in the list: its first heading or first line (its title, when it has one).
+pub fn summary(md: &str) -> String {
+    about_blocks(md)
+        .into_iter()
+        .find_map(|b| match b {
+            Block::Title(t) | Block::Heading(t) | Block::Bullet(t) | Block::Para(t) => Some(t),
+            Block::Signature => None,
+        })
+        .unwrap_or_default()
+}
+
+/// A note's date as the list and the sheet show it: the changelog's, or "unreleased" in the
+/// language in use.
+pub fn date_label(date: &str) -> &str {
+    if date == "unreleased" {
+        // TRANSLATORS: What's new's list of versions (Read all), in a version's row and above its
+        // notes: in place of the date of a version not released yet, a test build (34 px, at the
+        // right: at most 400 px).
+        tr("unreleased")
+    } else {
+        date
+    }
+}
 
 /// The owner's signature, with the bat drawn beside it: a P5 PGM of the page's ink as Grimoire drew
 /// it (the notebook "2.0b1 sig", page 1, cut to its ink), laid over the sheet so that only the ink
@@ -50,7 +143,7 @@ fn flush(para: &mut String, out: &mut Vec<Block>) {
     }
 }
 
-/// WHATSNEW.md's blocks, in order.
+/// A note's blocks, in order.
 pub fn about_blocks(md: &str) -> Vec<Block> {
     let mut out = Vec::new();
     let mut para = String::new();
@@ -399,36 +492,65 @@ fn draw_signature(c: &mut Canvas, r: Rect) {
     }
 }
 
-/// Where the sheet's controls are (empty when not shown), and its pages; for the card, the notes'
-/// blocks it shows, of how many, and whether the last of them is cut (docs/SIM.md,
-/// library.about.card_*).
-#[derive(Clone, Copy, Debug, Default)]
+/// What's new's three views: the card hanging from the bat (this version's notes), Read all's list
+/// of every version's notes, and one version's notes whole on the sheet.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum AboutView {
+    #[default]
+    Card,
+    List,
+    Note,
+}
+
+/// Where the card's or sheet's controls are (empty when not shown), and what it shows (docs/SIM.md,
+/// library.about.*): its pages and the page shown; the list's rows on that page, each with its entry
+/// in notes(); whether the page shown has the signature; for the card, the notes' blocks it shows, of
+/// how many, and whether the last of them is cut; and where the card or the sheet is (a step on it
+/// refreshes there alone).
+#[derive(Clone, Debug, Default)]
 pub struct AboutHits {
     pub close: Rect,
     pub prev: Rect,
     pub next: Rect,
     pub more: Rect,
+    pub back: Rect,
+    pub rows: Vec<(Rect, usize)>,
+    /// the row marked as this version's, on the page shown (from 1; 0 none)
+    pub marked: i32,
+    pub signed: bool,
+    pub area: Rect,
     pub pages: i32,
+    /// the page shown (from 0), kept in range
+    pub page: i32,
     pub card_blocks: i32,
     pub card_notes: i32,
     pub card_cut: bool,
 }
 
-/// Draws What's new: the card hanging from the bat (bat: its rect in the top bar), or with full
-/// (Read all) the whole notes on the sheet, at page (from 0; kept in range).
-pub fn about_draw(c: &mut Canvas, aw: i32, ah: i32, bat: Rect, page: i32, full: bool) -> AboutHits {
-    let bl = about_blocks(WHATSNEW);
-    if full {
-        draw_sheet(c, aw, ah, &bl, page)
-    } else {
-        draw_card(c, aw, ah, bat, &bl)
+/// Draws What's new as view: the card hanging from the bat (bat: its rect in the top bar), Read all's
+/// list at page, or the notes of entry note (its index in notes()) at page. Pages count from 0 and are
+/// kept in range.
+pub fn about_draw(c: &mut Canvas, aw: i32, ah: i32, bat: Rect, view: AboutView, note: usize, page: i32) -> AboutHits {
+    let all = notes();
+    match view {
+        AboutView::Card => draw_card(c, aw, ah, bat, &about_blocks(all[current(all, GRIMOIRE_VERSION)].md)),
+        AboutView::List => draw_list(c, aw, ah, all, GRIMOIRE_VERSION, page),
+        AboutView::Note => draw_note(c, aw, ah, &all[note.min(all.len() - 1)], page),
     }
 }
 
+fn whats_new() -> &'static str {
+    // TRANSLATORS: the What's new card's title (520 px at 44 px in bold), and the title of Read all's
+    // list of every version's notes and of a version's notes that have no title of their own (the
+    // sheet's title type): what this version brings.
+    tr("What's new")
+}
+
 fn close_label() -> &'static str {
-    // TRANSLATORS: What's new's button that closes it, on the card and on Read all's sheet (a word
-    // under an icon, at 34 px: 200 px). What's new opens by itself once after every update and from
-    // the bat in the Library's top bar; this only closes it until then (it is not "never again").
+    // TRANSLATORS: What's new's button that closes it, on the card, on Read all's list and on a
+    // version's notes (a word under an icon, at 34 px: 200 px). What's new opens by itself once after
+    // every update and from the bat in the Library's top bar; this only closes it until then (it is
+    // not "never again").
     c_("what's new", "Dismiss")
 }
 
@@ -494,7 +616,7 @@ fn card_layout(aw: i32, ah: i32, bat: Rect, bl: &[Block]) -> Card {
 /// and Dismiss. It hangs from the bat, a notch pointing up at it.
 fn draw_card(c: &mut Canvas, aw: i32, ah: i32, bat: Rect, bl: &[Block]) -> AboutHits {
     let l = card_layout(aw, ah, bat, bl);
-    let mut hits = AboutHits { pages: 1, card_blocks: l.blocks as i32, card_notes: l.notes as i32, card_cut: l.cut, ..AboutHits::default() };
+    let mut hits = AboutHits { pages: 1, card_blocks: l.blocks as i32, card_notes: l.notes as i32, card_cut: l.cut, signed: l.sig, ..AboutHits::default() };
     let (pad, w, iw, head_h, btn_h, k) = (l.pad, l.w, l.iw, l.head_h, l.btn_h, &l.k);
     let page = paginate(&l.rs[..l.n], i32::MAX).swap_remove(0);
     let notes_h = items_h(&page);
@@ -510,10 +632,9 @@ fn draw_card(c: &mut Canvas, aw: i32, ah: i32, bat: Rect, bl: &[Block]) -> About
     for i in 0..nh - t {
         canvas_hline(c, nx - (nh - t - i), nx + (nh - t - i), card.y + ui_px(5.0) - i, 1, 255);
     }
+    hits.area = rect_union(card, Rect::new(nx - nh, card.y - nh, 2 * nh + 1, nh + 1));
     let inner = Rect::new(card.x + pad, card.y + pad, iw, card.h - 2 * pad);
-    // TRANSLATORS: the card's title (and the sheet's when the notes have none): what this version
-    // brings (520 px at 44 px in bold).
-    font_draw_left(c, FontFace::Bold, ui_text_size(), Rect::new(inner.x, inner.y, iw * 2 / 3, head_h), tr("What's new"), 0);
+    font_draw_left(c, FontFace::Bold, ui_text_size(), Rect::new(inner.x, inner.y, iw * 2 / 3, head_h), whats_new(), 0);
     let ver = GRIMOIRE_VERSION;
     let vw = font_measure(FontFace::Regular, k.body, ver);
     font_draw_left_name(c, FontFace::Regular, k.body, Rect::new(inner.x + iw - vw, inner.y, vw, head_h), ver, 90);
@@ -529,15 +650,182 @@ fn draw_card(c: &mut Canvas, aw: i32, ah: i32, bat: Rect, bl: &[Block]) -> About
     ui_button(c, hits.close, IconKind::Close, close_label(), ButtonStyle::Primary);
     let mw = ui_px(330.0);
     hits.more = Rect::new(hits.close.x - ui_px(24.0) - mw, by, mw, btn_h);
-    // TRANSLATORS: the What's new card's button to the whole notes (330 px at 44 px in bold).
+    // TRANSLATORS: the What's new card's button to the list of every version's notes (330 px at 44 px
+    // in bold).
     ui_button(c, hits.more, IconKind::None, tr("Read all"), ButtonStyle::Plain);
     hits
 }
 
-/// Read all: the Library's sheet, the notes' title as its title, the bat and the version under it,
-/// the notes a page at a time, Dismiss (and the page arrows left of it).
-fn draw_sheet(c: &mut Canvas, aw: i32, ah: i32, bl: &[Block], page: i32) -> AboutHits {
-    let mut hits = AboutHits::default();
+// ---- the Library's sheet: Read all's list, and a version's notes ----
+
+/// The sheet's width on a screen aw wide.
+fn sheet_w(aw: i32) -> i32 {
+    (aw - 2 * ui_px(70.0)).min(ui_px(1800.0))
+}
+
+/// What the sheet's edges and title take (ui_sheet's), across and down.
+fn sheet_chrome() -> (i32, i32) {
+    if gothic() {
+        (ui_px(80.0), ui_px(210.0))
+    } else {
+        (ui_px(72.0), ui_px(192.0))
+    }
+}
+
+/// The band under the title (the bat and the version), and the foot (the buttons).
+fn head_h() -> i32 {
+    ui_px(70.0)
+}
+fn foot_h() -> i32 {
+    ui_px(120.0)
+}
+
+/// The sheet's height besides its body.
+fn sheet_fixed() -> i32 {
+    sheet_chrome().1 + head_h() + ui_px(24.0) + ui_px(36.0) + foot_h()
+}
+
+/// The tallest body a sheet on a screen ah high has room for.
+fn body_max(ah: i32) -> i32 {
+    ah - 2 * ui_px(40.0) - sheet_fixed()
+}
+
+/// The sheet for a body body_h high (or as high as the screen has room for): under the top bar, the
+/// bat in sight, when the screen has the room.
+fn sheet_rect(aw: i32, ah: i32, body_h: i32) -> Rect {
+    let w = sheet_w(aw);
+    let h = (sheet_fixed() + body_h).min(ah - 2 * ui_px(40.0));
+    Rect::new((aw - w) / 2, (ah - ui_px(40.0) - h).min(ui_px(214.0)).max(ui_px(40.0)), w, h)
+}
+
+/// The body in the sheet's inside (ui_sheet's answer).
+fn sheet_body(inner: Rect) -> Rect {
+    let top = head_h() + ui_px(24.0);
+    Rect::new(inner.x, inner.y + top, inner.w, inner.h - top - ui_px(36.0) - foot_h())
+}
+
+/// The band under the title: the bat, "Grimoire" and the versions, and the date at the right.
+fn draw_head(c: &mut Canvas, inner: Rect, versions: &str, date: &str) {
+    let (kb, h, px) = (ui_px(2.0), head_h(), ui_small_size());
+    draw_bat(c, inner.x, inner.y + (h - BAT_H * kb) / 2, kb);
+    let vx = inner.x + BAT_W * kb + ui_px(24.0);
+    let dw = if date.is_empty() { 0 } else { font_measure(FontFace::Regular, px, date) };
+    if dw > 0 {
+        font_draw_left(c, FontFace::Regular, px, Rect::new(inner.x + inner.w - dw, inner.y, dw, h), date, 90);
+    }
+    let ver = format!("Grimoire {versions}");
+    let vw = inner.x + inner.w - vx - if dw > 0 { dw + ui_px(40.0) } else { 0 };
+    font_draw_left_name(c, FontFace::Regular, px, Rect::new(vx, inner.y, vw, h), &ver, 90);
+}
+
+/// The foot: Dismiss at the right, the page arrows left of it when there are pages (hits' page and
+/// pages), and with back Back at the left.
+fn draw_foot(c: &mut Canvas, inner: Rect, hits: &mut AboutHits, back: bool) {
+    let r = Rect::new(inner.x, inner.y + inner.h - foot_h(), inner.w, foot_h());
+    let cw = ui_px(300.0);
+    hits.close = Rect::new(r.x + r.w - cw, r.y, cw, r.h);
+    ui_button(c, hits.close, IconKind::Close, close_label(), ButtonStyle::Primary);
+    if back {
+        hits.back = Rect::new(r.x, r.y, cw, r.h);
+        // TRANSLATORS: What's new: the button on a version's notes back to the list of every
+        // version's notes (Read all), at the left of the sheet's foot (a word under an icon, at 34 px:
+        // 300 px).
+        ui_button(c, hits.back, IconKind::Back, tr("Back"), ButtonStyle::Plain);
+    }
+    if hits.pages > 1 {
+        let (bw, tw) = (ui_px(130.0), ui_px(150.0));
+        let x = hits.close.x - ui_px(40.0) - 2 * bw - tw;
+        hits.prev = Rect::new(x, r.y, bw, r.h);
+        hits.next = Rect::new(x + bw + tw, r.y, bw, r.h);
+        let st = |on: bool| if on { ButtonStyle::Plain } else { ButtonStyle::Disabled };
+        ui_button(c, hits.prev, IconKind::Prev, "", st(hits.page > 0));
+        ui_button(c, hits.next, IconKind::Next, "", st(hits.page + 1 < hits.pages));
+        font_draw_centered(c, FontFace::Regular, ui_small_size(), Rect::new(x + bw, r.y, tw, r.h), &format!("{} / {}", hits.page + 1, hits.pages), 0);
+    }
+}
+
+/// Read all's list of n entries on aw by ah: the sheet, its rows' height and the gap between them,
+/// how many rows a page holds (as many as the tallest sheet has room for) and how many pages they
+/// take. The sheet is as tall as a full page of rows (as the rows when they take one page), so a
+/// turn keeps it where it is.
+struct ListLayout {
+    card: Rect,
+    rh: i32,
+    gap: i32,
+    per_page: usize,
+    pages: i32,
+}
+
+fn list_layout(aw: i32, ah: i32, n: usize) -> ListLayout {
+    let (rh, gap) = (ui_px(170.0), ui_px(20.0));
+    let per_page = ((body_max(ah) + gap) / (rh + gap)).max(1) as usize;
+    let shown = n.clamp(1, per_page) as i32;
+    let card = sheet_rect(aw, ah, shown * (rh + gap) - gap);
+    ListLayout { card, rh, gap, per_page, pages: n.div_ceil(per_page).max(1) as i32 }
+}
+
+/// A row of the list: the versions in bold (this version's marked beside them, white on black), the
+/// date at the right, and the notes' first heading or first line under them, cut short to the row.
+fn draw_row(c: &mut Canvas, r: Rect, e: &Entry, this: bool) {
+    ui_frame(c, r, ui_px(16.0), 255, true, 0);
+    ui_frame(c, r, ui_px(16.0), 0, false, ui_px(3.0));
+    let (big, small) = (ui_text_size(), ui_small_size());
+    let (h1, h2) = (line_h(FontFace::Bold, big, 1.0), line_h(FontFace::Regular, small, 1.0));
+    let gap = (r.h - h1 - h2) / 3;
+    let (y1, y2) = (r.y + gap, r.y + 2 * gap + h1);
+    let pad = ui_px(32.0);
+    let (x, right) = (r.x + pad, r.x + r.w - pad);
+    let date = date_label(e.date);
+    let dw = if date.is_empty() { 0 } else { font_measure(FontFace::Regular, small, date) };
+    if dw > 0 {
+        font_draw_left(c, FontFace::Regular, small, Rect::new(right - dw, y1, dw, h1), date, 90);
+    }
+    // TRANSLATORS: What's new's list of versions (Read all): the mark beside the version running,
+    // white on a black box in its row (34 px in bold: at most 360 px).
+    let mark = if this { tr("This version") } else { "" };
+    let (mpad, mgap) = (ui_px(18.0), ui_px(24.0));
+    let mw = if this { font_measure(FontFace::Bold, small, mark) + 2 * mpad } else { 0 };
+    let room = right - x - if dw > 0 { dw + ui_px(40.0) } else { 0 } - if this { mw + mgap } else { 0 };
+    let label = e.label();
+    let lw = font_measure(FontFace::Bold, big, &label).min(room.max(1));
+    font_draw_left_name(c, FontFace::Bold, big, Rect::new(x, y1, lw, h1), &label, 0);
+    if this {
+        let mh = h2 + ui_px(8.0);
+        let m = Rect::new(x + lw + mgap, y1 + (h1 - mh) / 2, mw, mh);
+        ui_frame(c, m, ui_px(10.0), 0, true, 0);
+        font_draw_centered(c, FontFace::Bold, small, m, mark, 255);
+    }
+    font_draw_left_name(c, FontFace::Regular, small, Rect::new(x, y2, right - x, h2), &summary(e.md), 0);
+}
+
+/// Read all: the list of every version's notes on the Library's sheet, What's new its title, the bat
+/// and this version under it; a row for each entry, newest first, a page of them at a time, this
+/// version's marked; Dismiss (and the page arrows left of it). A tap on a row shows its notes.
+fn draw_list(c: &mut Canvas, aw: i32, ah: i32, all: &[Entry], version: &str, page: i32) -> AboutHits {
+    let l = list_layout(aw, ah, all.len());
+    let mut hits = AboutHits { area: l.card, pages: l.pages, page: page.clamp(0, l.pages - 1), ..AboutHits::default() };
+    let inner = ui_sheet(c, l.card, whats_new());
+    draw_head(c, inner, version, "");
+    let body = sheet_body(inner);
+    let first = hits.page as usize * l.per_page;
+    for (k, (i, e)) in all.iter().enumerate().skip(first).take(l.per_page).enumerate() {
+        let r = Rect::new(body.x, body.y + k as i32 * (l.rh + l.gap), body.w, l.rh);
+        let this = e.versions.contains(&version);
+        draw_row(c, r, e, this);
+        if this {
+            hits.marked = k as i32 + 1;
+        }
+        hits.rows.push((r, i));
+    }
+    draw_foot(c, inner, &mut hits, false);
+    hits
+}
+
+/// A version's notes whole on the Library's sheet: their title as its title (else What's new), the
+/// bat, the version and its date under it, the notes a page at a time in the larger type, Back to the
+/// list at the foot's left and Dismiss at its right (the page arrows left of Dismiss).
+fn draw_note(c: &mut Canvas, aw: i32, ah: i32, e: &Entry, page: i32) -> AboutHits {
+    let bl = about_blocks(e.md);
     let k = Look {
         body: ui_text_size(),
         head_f: FontFace::Bold,
@@ -550,41 +838,18 @@ fn draw_sheet(c: &mut Canvas, aw: i32, ah: i32, bl: &[Block], page: i32) -> Abou
         sign_w: ui_px(720.0),
         sign_h: ui_px(190.0),
     };
-    let w = (aw - 2 * ui_px(70.0)).min(ui_px(1800.0));
-    let (chrome_w, chrome_h) = if gothic() { (ui_px(80.0), ui_px(210.0)) } else { (ui_px(72.0), ui_px(192.0)) };
-    let head_h = ui_px(70.0);
-    let foot_h = ui_px(120.0);
-    let rs = rows(bl, w - chrome_w, &k);
-    let fixed = chrome_h + head_h + ui_px(24.0) + ui_px(36.0) + foot_h;
-    let h = (fixed + rows_h(&rs)).min(ah - 2 * ui_px(40.0));
-    // (under the top bar, the bat in sight, when the screen has the room)
-    let card = Rect::new((aw - w) / 2, (ah - ui_px(40.0) - h).min(ui_px(214.0)).max(ui_px(40.0)), w, h);
-    let inner = ui_sheet(c, card, md_title(bl).unwrap_or(tr("What's new")));
-    let kb = ui_px(2.0);
-    draw_bat(c, inner.x, inner.y + (head_h - BAT_H * kb) / 2, kb);
-    let vx = inner.x + BAT_W * kb + ui_px(24.0);
-    let ver = format!("Grimoire {}", GRIMOIRE_VERSION);
-    font_draw_left_name(c, FontFace::Regular, ui_small_size(), Rect::new(vx, inner.y, inner.w - (vx - inner.x), head_h), &ver, 90);
-    let body = Rect::new(inner.x, inner.y + head_h + ui_px(24.0), inner.w, inner.h - head_h - ui_px(24.0) - ui_px(36.0) - foot_h);
+    let rs = rows(&bl, sheet_w(aw) - sheet_chrome().0, &k);
+    let card = sheet_rect(aw, ah, rows_h(&rs));
+    let inner = ui_sheet(c, card, md_title(&bl).unwrap_or(whats_new()));
+    draw_head(c, inner, &e.label(), date_label(e.date));
+    let body = sheet_body(inner);
     let pages = paginate(&rs, body.h);
-    hits.pages = pages.len() as i32;
-    let page = page.clamp(0, hits.pages - 1);
-    draw_items(c, &pages[page as usize], body);
-    // The bottom: Dismiss at the right, the page arrows left of it.
-    let r = Rect::new(inner.x, inner.y + inner.h - foot_h, inner.w, foot_h);
-    let cw = ui_px(300.0);
-    hits.close = Rect::new(r.x + r.w - cw, r.y, cw, r.h);
-    ui_button(c, hits.close, IconKind::Close, close_label(), ButtonStyle::Primary);
-    if hits.pages > 1 {
-        let (bw, tw) = (ui_px(130.0), ui_px(150.0));
-        let x = hits.close.x - ui_px(40.0) - 2 * bw - tw;
-        hits.prev = Rect::new(x, r.y, bw, r.h);
-        hits.next = Rect::new(x + bw + tw, r.y, bw, r.h);
-        let st = |on: bool| if on { ButtonStyle::Plain } else { ButtonStyle::Disabled };
-        ui_button(c, hits.prev, IconKind::Prev, "", st(page > 0));
-        ui_button(c, hits.next, IconKind::Next, "", st(page + 1 < hits.pages));
-        font_draw_centered(c, FontFace::Regular, ui_small_size(), Rect::new(x + bw, r.y, tw, r.h), &format!("{} / {}", page + 1, hits.pages), 0);
-    }
+    let mut hits = AboutHits { area: card, pages: pages.len() as i32, ..AboutHits::default() };
+    hits.page = page.clamp(0, hits.pages - 1);
+    let shown = &pages[hits.page as usize];
+    hits.signed = shown.iter().any(|it| matches!(it.ink, Ink::Sign));
+    draw_items(c, shown, body);
+    draw_foot(c, inner, &mut hits, true);
     hits
 }
 
@@ -606,29 +871,109 @@ mod tests {
                 Block::Signature,
             ]
         );
-        // The built-in notes have a place for the signature, at their end.
-        let b = about_blocks(WHATSNEW);
-        assert_eq!(b.last(), Some(&Block::Signature));
+        // Every built-in note has a place for the signature, at its end.
+        for e in notes() {
+            assert_eq!(about_blocks(e.md).last(), Some(&Block::Signature), "{}", e.label());
+        }
+    }
+
+    fn file(version: &'static str, date: &'static str, md: &'static str) -> NoteFile {
+        NoteFile { version, date, md }
     }
 
     #[test]
-    fn the_card_keeps_each_headings_first_line_and_the_signature() {
-        let b = about_blocks("# T\n## A\n- a1\n- a2\n## B\nprose\n## C\n- c1\n{signature}\n");
-        let h = highlights(&b);
-        let want = ["A", "a1", "C", "c1"];
-        assert_eq!(h.len(), 5);
-        for (got, w) in h.iter().zip(want) {
-            match got {
-                Block::Heading(t) | Block::Bullet(t) => assert_eq!(t, w),
-                other => panic!("{other:?}"),
+    fn the_archive_is_newest_first_one_entry_a_note() {
+        // In no order, as a folder lists them; beta.2 shipped beta.1's notes (another line break, a
+        // blank line more), rc.10 2.0.1's.
+        let files = [
+            file("2.0.0-beta.1", "2026-11-01", "Dear reader,\n\n- one\n- two\n\n{signature}\n"),
+            file("2.0.0-rc.2", "", "# Since rc.1\n\n- a fix\n"),
+            file("2.0.1", "unreleased", "# What's new (since 2.0.0)\n\n- wake\n\n{signature}\n"),
+            file("2.0.0-beta.10", "", "# Ten\n\n- ten\n"),
+            file("2.0.0", "2026-11-05", "# What's new (since 2.0.0-beta.1)\n\n- lots\n\n{signature}\n"),
+            file("2.0.0-beta.2", "2026-11-05", "Dear\nreader,\n\n\n- one\n- two\n{signature}"),
+            file("2.0.0-rc.10", "", "# What's new (since 2.0.0)\n- wake\n\n{signature}"),
+        ];
+        let a = archive(&files);
+        let got: Vec<String> = a.iter().map(|e| e.label()).collect();
+        // (by version, numbers as numbers: rc.10 after 2.0.1's place, beta.10 before beta.2)
+        assert_eq!(got, ["2.0.1, 2.0.0-rc.10", "2.0.0", "2.0.0-rc.2", "2.0.0-beta.10", "2.0.0-beta.2, 2.0.0-beta.1"]);
+        // An entry's date is its newest version's; its notes are that version's text.
+        assert_eq!(a[0].date, "unreleased");
+        assert_eq!(a[4].date, "2026-11-05");
+        assert_eq!(a[4].md, files[5].md);
+        // Unique: no two entries have the same notes.
+        for (i, x) in a.iter().enumerate() {
+            for y in &a[i + 1..] {
+                assert_ne!(about_blocks(x.md), about_blocks(y.md));
             }
         }
-        assert_eq!(h[4], Block::Signature);
-        // A letter (no headings): all its bullets and paragraphs, then the signature.
-        let h = highlights(&about_blocks("one\n\n- two\n- three\n- four\n- five\n\nCheers,\n\n{signature}\n"));
-        assert_eq!(h.len(), 7);
-        assert_eq!(h[0], Block::Para("one".into()));
-        assert_eq!(h[6], Block::Signature);
+        assert!(archive(&[]).is_empty());
+    }
+
+    #[test]
+    fn the_current_note_is_this_versions_else_the_newest() {
+        let files = [
+            file("2.0.0-beta.1", "2026-11-01", "Letter.\n\n{signature}\n"),
+            file("2.0.0", "2026-11-05", "# Since beta.1\n\n- lots\n"),
+            file("2.0.0-beta.2", "2026-11-05", "Letter.\n\n{signature}\n"),
+        ];
+        let a = archive(&files);
+        assert_eq!(current(&a, "2.0.0"), 0);
+        assert_eq!(current(&a, "2.0.0-beta.2"), 1);
+        assert_eq!(current(&a, "2.0.0-beta.1"), 1);
+        // A version with no notes of its own (2.0.1 before its file is written) shows the newest.
+        assert_eq!(current(&a, "2.0.1"), 0);
+        assert_eq!(a[current(&a, "2.0.1")].versions[0], "2.0.0");
+        assert_eq!(current(&a, "1.2.0"), 0);
+        // The built-in notes: this version has its own (docs/RELEASING.md, The bump commit), and the
+        // card shows them.
+        assert!(notes()[current(notes(), GRIMOIRE_VERSION)].versions.contains(&GRIMOIRE_VERSION));
+    }
+
+    #[test]
+    fn the_built_in_notes_are_the_folders() {
+        // build.rs's list is docs/whatsnew/*.md, every file, with its text.
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../docs/whatsnew");
+        let mut want: Vec<(String, String)> = std::fs::read_dir(&dir)
+            .unwrap()
+            .filter_map(|e| {
+                let p = e.unwrap().path();
+                let v = p.file_name()?.to_str()?.strip_suffix(".md")?.to_string();
+                Some((v, std::fs::read_to_string(&p).unwrap()))
+            })
+            .collect();
+        want.sort();
+        let mut got: Vec<(String, String)> = NOTE_FILES.iter().map(|f| (f.version.to_string(), f.md.to_string())).collect();
+        got.sort();
+        assert_eq!(got, want);
+        // The released versions' dates are the changelog's; 2.0.0-beta.2 has no notes of its own (it
+        // shipped 2.0.0-beta.1's, and 2.0.0's notes have its changes).
+        let date = |v: &str| NOTE_FILES.iter().find(|f| f.version == v).map(|f| f.date);
+        assert_eq!(date("2.0.0-beta.1"), Some("2026-11-01"));
+        assert_eq!(date("2.0.0"), Some("2026-11-05"));
+        assert_eq!(date("2.0.0-beta.2"), None);
+        for f in NOTE_FILES {
+            let b = f.date.as_bytes();
+            assert!(f.date.is_empty() || f.date == "unreleased" || (b.len() == 10 && b[4] == b'-' && b[7] == b'-'), "{}", f.date);
+        }
+        // Newest first, each note once.
+        let all = notes();
+        for p in all.windows(2) {
+            assert!(update_version_cmp(p[0].versions[0], p[1].versions[0]) > 0);
+        }
+        assert_eq!(all.iter().map(|e| e.versions.len()).sum::<usize>(), NOTE_FILES.len());
+    }
+
+    #[test]
+    fn a_rows_line_is_the_first_heading_or_line() {
+        assert_eq!(summary("# What's new (since 2.0.0)\n\n- wake\n{signature}\n"), "What's new (since 2.0.0)");
+        assert_eq!(summary("## Pages\n- drag\n"), "Pages");
+        assert_eq!(summary("Grimoire was made\nwith love.\n\n- one\n"), "Grimoire was made with love.");
+        assert_eq!(summary("{signature}\n"), "");
+        // The letter of 2.0.0-beta.1, which has no title: its first paragraph.
+        let beta1 = NOTE_FILES.iter().find(|f| f.version == "2.0.0-beta.1").unwrap();
+        assert!(summary(beta1.md).starts_with("Grimoire was made with a lot of love"));
     }
 
     fn up(theme: UiTheme) {
@@ -643,6 +988,114 @@ mod tests {
     fn bat() -> Rect {
         let k = ui_px(3.0);
         Rect::new(ui_px(50.0), (ui_px(190.0) - BAT_H * k) / 2, BAT_W * k, BAT_H * k)
+    }
+
+    fn screen(aw: i32, ah: i32) -> Canvas {
+        let mut c = Canvas::default();
+        assert_eq!(canvas_init(&mut c, aw, ah), 0);
+        c
+    }
+
+    fn inside(o: Rect, r: Rect) -> bool {
+        rect_contains_rect(o, r)
+    }
+
+    /// n entries, 2.0.n-1 down to 2.0.0, each its own note.
+    fn entries(n: usize) -> Vec<Entry> {
+        (0..n)
+            .rev()
+            .map(|i| Entry {
+                versions: vec![Box::leak(format!("2.0.{i}").into_boxed_str())],
+                date: "2026-11-05",
+                md: Box::leak(format!("# Notes {i}\n\n- a change\n").into_boxed_str()),
+            })
+            .collect()
+    }
+
+    #[test]
+    fn the_list_holds_whole_rows_a_page_at_a_time() {
+        for theme in [UiTheme::Gothic, UiTheme::Classic] {
+            up(theme);
+            for (aw, ah) in [(1860, 2480), (2480, 1860)] {
+                for n in [1, 3, 40] {
+                    let all = entries(n);
+                    let l = list_layout(aw, ah, n);
+                    eprintln!("{theme:?} {aw}x{ah} n {n}: {} a page, {} pages", l.per_page, l.pages);
+                    // As many rows a page as the tallest sheet holds, and no more.
+                    let fits = |k: i32| k * (l.rh + l.gap) - l.gap <= body_max(ah);
+                    assert!(fits(l.per_page as i32) && !fits(l.per_page as i32 + 1));
+                    assert_eq!(l.pages as usize, n.div_ceil(l.per_page));
+                    let mut seen = Vec::new();
+                    for page in 0..l.pages {
+                        let mut c = screen(aw, ah);
+                        let h = draw_list(&mut c, aw, ah, &all, "2.0.1", page);
+                        assert_eq!((h.page, h.pages), (page, l.pages));
+                        assert!(!h.rows.is_empty() && h.rows.len() <= l.per_page);
+                        for (i, (r, _)) in h.rows.iter().enumerate() {
+                            // each row on the sheet, above its buttons, under the one before it
+                            assert!(inside(h.area, *r) && r.y + r.h <= h.close.y, "{r:?} {:?}", h.close);
+                            if i > 0 {
+                                assert!(r.y >= h.rows[i - 1].0.y + h.rows[i - 1].0.h);
+                            }
+                        }
+                        assert!(inside(Rect::new(0, 0, aw, ah), h.area));
+                        // the page arrows when there are pages, Dismiss always, no Back on the list
+                        assert_eq!(rect_is_empty(h.next), l.pages == 1);
+                        assert!(!rect_is_empty(h.close) && rect_is_empty(h.back));
+                        // 2.0.1 (the entry before the oldest) marked in its row, on its page alone
+                        let at = n.checked_sub(2).filter(|i| i / l.per_page == page as usize);
+                        assert_eq!(h.marked, at.map_or(0, |i| (i % l.per_page) as i32 + 1));
+                        seen.extend(h.rows.iter().map(|r| r.1));
+                    }
+                    // every entry once, newest first
+                    assert_eq!(seen, (0..n).collect::<Vec<_>>());
+                }
+                // A few rows: one page, the sheet no taller than they need.
+                let l = list_layout(aw, ah, 3);
+                assert_eq!(l.pages, 1);
+                assert_eq!(l.card.h, sheet_fixed() + 3 * l.rh + 2 * l.gap);
+            }
+        }
+    }
+
+    #[test]
+    fn the_built_in_list_marks_this_version() {
+        up(UiTheme::Gothic);
+        let mut c = screen(1860, 2480);
+        let h = draw_list(&mut c, 1860, 2480, notes(), GRIMOIRE_VERSION, 0);
+        let all = notes();
+        assert_eq!(h.rows.len(), all.len().min(list_layout(1860, 2480, all.len()).per_page));
+        let i = current(all, GRIMOIRE_VERSION);
+        assert_eq!(h.marked as usize, i + 1);
+        // a version that has no notes: no row is its own
+        let h = draw_list(&mut c, 1860, 2480, all, "9.9.9", 0);
+        assert_eq!(h.marked, 0);
+    }
+
+    #[test]
+    fn a_versions_notes_end_with_the_signature_and_go_back() {
+        let beta1 = notes().iter().find(|e| e.versions.contains(&"2.0.0-beta.1")).unwrap();
+        for theme in [UiTheme::Gothic, UiTheme::Classic] {
+            up(theme);
+            for (aw, ah) in [(1860, 2480), (2480, 1860)] {
+                let mut c = screen(aw, ah);
+                let first = draw_note(&mut c, aw, ah, beta1, 0);
+                let last = draw_note(&mut c, aw, ah, beta1, first.pages - 1);
+                eprintln!("{theme:?} {aw}x{ah}: the letter takes {} pages", first.pages);
+                // the signature on the last page, and on no other
+                assert!(last.signed);
+                assert!(first.pages == 1 || !first.signed);
+                // Back at the foot's left, Dismiss at its right, the arrows between when there are pages
+                for h in [&first, &last] {
+                    assert!(!rect_is_empty(h.back) && h.back.x + h.back.w <= h.close.x);
+                    assert!(h.pages == 1 || (h.back.x + h.back.w <= h.prev.x && h.next.x + h.next.w <= h.close.x));
+                    assert!(inside(h.area, h.back) && inside(h.area, h.close));
+                    assert!(h.rows.is_empty() && rect_is_empty(h.more));
+                }
+                // a page past the end shows the last
+                assert_eq!(draw_note(&mut c, aw, ah, beta1, 99).page, first.pages - 1);
+            }
+        }
     }
 
     /// What the card shows, for the test's output: each block's first words, and whether it is cut.
@@ -663,8 +1116,9 @@ mod tests {
     fn the_card_ends_at_the_last_block_that_fits_whole() {
         // The owner's ruling of 2026-11-05 ("do the small change"): 2.0.0's notes cut the Ko-fi
         // paragraph mid-sentence above the signature. Upright and sideways on the Scribe, in both
-        // looks, the card ends with a whole block, and the next block would not have fitted.
-        let bl = about_blocks(WHATSNEW);
+        // looks, the card ends with a whole block, and the next block would not have fitted. The
+        // card's notes are this version's.
+        let bl = about_blocks(notes()[current(notes(), GRIMOIRE_VERSION)].md);
         for theme in [UiTheme::Gothic, UiTheme::Classic] {
             up(theme);
             for (aw, ah) in [(1860, 2480), (2480, 1860)] {

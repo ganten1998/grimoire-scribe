@@ -66,7 +66,7 @@ beside `make host-checks` (on ports apart), so `make -j15 check` took 4 min 41 s
 
 | Job | Runner | What it runs (the make check part it replaces) |
 |---|---|---|
-| changes | Linux | Decides what runs: a pull request that changes only `*.md` and `docs/` (not `docs/WHATSNEW.md`, which the app compiles in) runs the docs job alone; a file moved into `docs/` counts its old path too |
+| changes | Linux | Decides what runs: a pull request that changes only `*.md` and `docs/` (not `docs/whatsnew/` or `CHANGELOG.md`, whose notes and dates the app compiles in) runs the docs job alone; a file moved into `docs/` counts its old path too |
 | docs | Linux | `git diff --check` on a docs-only pull request, from where it branched off |
 | build-host | macOS | `make headless tools`, uploaded for the jobs below |
 | unit (host, sim) | macOS | `make test-host`, `make test-sim`: the two halves of `make test` |
@@ -1470,3 +1470,48 @@ full refresh of the whole screen comes 2.5 s after a wake; it fails on 2.0.0, wh
 On the Kindle: with Sleep picture set to KOReader's wallpaper, sleep and wake a few times, from the Library and
 from a page: about 2.5 s after each wake the screen flashes once, and nothing of the wallpaper stays.
 
+## 2.0.1, What's new by version
+
+The owner's request of 2026-11-06: "The messages have all fit in the popup card, now we do the sensible thing -
+wire read all button to a list of each UNIQUE release note, and allow users to easily browse the changes by
+version - some of them are important". Read all opens the list of every version's notes, newest first, this
+version's marked; a row shows that version's notes whole, with Back to the list; Dismiss closes from anywhere.
+The notes are a file for each version (docs/whatsnew/), dated by CHANGELOG.md's headings.
+
+Automated: about.rs `the_archive_is_newest_first_one_entry_a_note` (versions in version order, numbers as
+numbers: 2.0.1, 2.0.0, rc.10, rc.2, beta.10, beta.2; notes that are the same block for block, line breaks
+aside, are one entry naming both, at the newest's place and with its date),
+`the_current_note_is_this_versions_else_the_newest` (a version without a file, 2.0.1 before its notes, shows
+the newest; the built-in VERSION has its own), `the_built_in_notes_are_the_folders` (build.rs's list is docs/whatsnew/ file for file, the
+released versions' dates are the changelog's, 2.0.0-beta.2 has none), `a_rows_line_is_the_first_heading_or_line`,
+`the_list_holds_whole_rows_a_page_at_a_time` (1, 3 and 40 versions, upright and sideways, Gothic and Classic:
+every row on the sheet above its buttons, as many a page as fit and no more, each version once over the pages,
+the marked row), `the_built_in_list_marks_this_version` and `a_versions_notes_end_with_the_signature_and_go_back`
+(2.0.0-beta.1's letter: the signature on its last page, Back at the foot's left). tests/scenarios/z_about_list.qs
+(the list's three rows, 2.0.1 unreleased, 2.0.0 marked This version with 2026-11-05, 2.0.0-beta.1 with
+2026-11-01; the letter signed, Back to the list; sideways the letter's two pages; Dismiss from the notes and
+from the list; Enter, Esc, Left and Right; the refreshes of each step only the sheet's place), z_about.qs
+(the card as before, then 2.0.0's notes from their row), y_all_screens.qs (the list and a version's notes in
+every language and look: `make l10n-check` finds no Spanish text cut short). The release check's new rule
+was tried by hand on a scratch clone: a missing file, a file with only its title and `{signature}`, a file
+that is 2.0.0's notes again (docs/WHATSNEW.md at v2.0.0) and, after a scratch v2.0.1 tag, 2.0.2's notes the
+same as 2.0.1's each fail; new notes pass; a clone without tags says it could not compare and passes.
+
+On the Scribe (Gothic and Classic, upright and sideways), with a build of this branch (its version is still
+2.0.0, so the list shows 2.0.1's draft notes as unreleased above it):
+
+1. **Read all is the list.** Open What's new from the bat: the card is as in 2.0.0 (2.0.0's notes, the
+   signature, Read all and Dismiss). Tap Read all: the sheet titled What's new lists 2.0.1 (unreleased),
+   2.0.0 (with a black This version mark and 2026-11-05) and 2.0.0-beta.1 (2026-11-01), each with its first
+   line under it (2.0.0-beta.1's letter cut short with "..."). Only the sheet's place redraws, without a flash;
+   the Library's cards around it do not.
+2. **A version's notes.** Tap 2.0.0-beta.1: the letter whole, "Grimoire 2.0.0-beta.1" and its date under the
+   title, the signature and the bat at its end (sideways in Gothic on a second page: the arrow turns to it).
+   Back at the foot's left returns to the list. Tap 2.0.0: 2.0.0's notes on two pages, as Read all showed them
+   in 2.0.0.
+3. **Dismiss closes everything**, from the list and from a version's notes; the bat opens the card again.
+4. **Sideways** the list and the notes fit, the rows whole, the date at the right.
+5. **A keyboard** (shortcuts on): on the card Enter opens the list, Enter again 2.0.0's notes; Right and Left
+   turn their pages; Esc goes back to the list, Esc again closes What's new; Esc on the card closes it.
+6. **Spanish** (Settings > Language): the list's mark reads Esta versión and 2.0.1's date sin publicar; Back
+   reads Volver. Japanese shows those two words in English until they are translated.

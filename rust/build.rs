@@ -7,6 +7,9 @@
 //   build/gen/l10n.c    the catalogs of ../po/*.mo, in name order: $OUT_DIR/l10n.rs (assets.rs
 //                       includes it); the fonts, the eraser sample and web/* need no step, assets.rs
 //                       takes them with include_bytes!, the same bytes xxd -i embeds
+//   What's new          ../docs/whatsnew/VERSION.md, each version's notes, in name order, each with
+//                       the date ../CHANGELOG.md's "## VERSION (YYYY-MM-DD)" heading gives it:
+//                       $OUT_DIR/whatsnew.rs (about.rs includes it; Rust only, 2.0.1)
 use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -97,6 +100,99 @@ fn main() {
     l10n.push_str("];\n");
     let out = PathBuf::from(env::var("OUT_DIR").unwrap());
     write_if_changed(&out.join("l10n.rs"), &l10n);
+
+    // ---- What's new: every version's notes, a file each, with the changelog's date ----
+    write_if_changed(&out.join("whatsnew.rs"), &whatsnew(&top));
+}
+
+// $OUT_DIR/whatsnew.rs: about.rs's NOTE_FILES, one for each docs/whatsnew/VERSION.md in name order
+// (about.rs puts them in version order). The folder holds the notes alone: a file not named for a
+// version (2.0.1.md, 2.0.0-beta.1.md, as tools/release-preflight.sh reads VERSION), or empty, stops
+// the build rather than leave a version's notes out. Hidden files (.DS_Store) are passed over. Each
+// note's date is CHANGELOG.md's for its version: "2026-11-05" from "## 2.0.0 (2026-11-05)",
+// "unreleased" from "## 2.0.1 (unreleased)", else none ("").
+fn whatsnew(top: &Path) -> String {
+    let dir = top.join("docs/whatsnew");
+    let changelog = top.join("CHANGELOG.md");
+    println!("cargo:rerun-if-changed={}", dir.display());
+    println!("cargo:rerun-if-changed={}", changelog.display());
+    let log = fs::read_to_string(&changelog).unwrap_or_default();
+    let mut notes: Vec<(String, PathBuf)> = Vec::new();
+    for e in fs::read_dir(&dir).unwrap_or_else(|e| panic!("{}: {e}", dir.display())) {
+        let p = e.unwrap().path();
+        let name = p.file_name().unwrap().to_string_lossy().to_string();
+        if name.starts_with('.') {
+            continue;
+        }
+        let version = name.strip_suffix(".md").filter(|v| is_version(v));
+        let Some(version) = version else {
+            panic!("docs/whatsnew/{name}: the folder holds each version's notes, named VERSION.md (2.0.1.md, 2.0.0-beta.1.md)");
+        };
+        let md = fs::read_to_string(&p).unwrap_or_else(|e| panic!("{}: {e}", p.display()));
+        if md.trim().is_empty() {
+            panic!("docs/whatsnew/{name} is empty: write {version}'s notes, or take the file away");
+        }
+        println!("cargo:rerun-if-changed={}", p.display());
+        notes.push((version.to_string(), p));
+    }
+    if notes.is_empty() {
+        panic!("docs/whatsnew/ has no notes: What's new needs this version's (docs/RELEASING.md, The bump commit)");
+    }
+    notes.sort();
+    let mut s = String::from(
+        "// docs/whatsnew/*.md and CHANGELOG.md's dates for them, by build.rs (about.rs includes it).\n\
+         pub static NOTE_FILES: &[NoteFile] = &[\n",
+    );
+    for (v, p) in &notes {
+        s.push_str(&format!(
+            "    NoteFile {{ version: {v:?}, date: {:?}, md: include_str!({:?}) }},\n",
+            changelog_date(&log, v),
+            p.display().to_string()
+        ));
+    }
+    s.push_str("];\n");
+    s
+}
+
+// MAJOR.MINOR.PATCH[-beta.N|-rc.N], N from 0 to 999 without leading zeros (tools/release-preflight.sh's
+// rule for VERSION).
+fn is_version(v: &str) -> bool {
+    let num = |s: &str, max_len: usize| {
+        !s.is_empty() && s.len() <= max_len && s.bytes().all(|b| b.is_ascii_digit()) && (s == "0" || !s.starts_with('0'))
+    };
+    let (core, pre) = match v.split_once('-') {
+        Some((c, p)) => (c, Some(p)),
+        None => (v, None),
+    };
+    let parts: Vec<&str> = core.split('.').collect();
+    // (the preflight's [0-9]+ allows leading zeros in MAJOR.MINOR.PATCH; so does this)
+    if parts.len() != 3 || !parts.iter().all(|p| !p.is_empty() && p.bytes().all(|b| b.is_ascii_digit())) {
+        return false;
+    }
+    match pre {
+        None => true,
+        Some(p) => match p.split_once('.') {
+            Some(("beta" | "rc", n)) => num(n, 3),
+            _ => false,
+        },
+    }
+}
+
+// The date of the changelog's "## VERSION (...)" heading: YYYY-MM-DD, "unreleased", or "".
+fn changelog_date(log: &str, version: &str) -> String {
+    let head = format!("## {version} (");
+    for l in log.lines() {
+        let Some(rest) = l.trim_end().strip_prefix(&head) else { continue };
+        let Some(inner) = rest.strip_suffix(')') else { continue };
+        let b = inner.as_bytes();
+        let date = b.len() == 10
+            && b.iter().enumerate().all(|(i, c)| if i == 4 || i == 7 { *c == b'-' } else { c.is_ascii_digit() });
+        if date || inner == "unreleased" {
+            return inner.to_string();
+        }
+        return String::new();
+    }
+    String::new()
 }
 
 // The flags every vendored C file gets in ../Makefile: -std=gnu11 -D_GNU_SOURCE, and on the Kindle

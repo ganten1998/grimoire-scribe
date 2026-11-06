@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: Grimoire 2.0.0\n"
 "Report-Msgid-Bugs-To: https://github.com/ganten1998/grimoire-scribe/issues\n"
-"POT-Creation-Date: 2026-11-05 09:17-0600\n"
+"POT-Creation-Date: 2026-11-06 03:23-0600\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -18,23 +18,48 @@ msgstr ""
 "Content-Transfer-Encoding: 8bit\n"
 "Plural-Forms: nplurals=INTEGER; plural=EXPRESSION;\n"
 
-#. TRANSLATORS: What's new's button that closes it, on the card and on Read all's sheet (a word
-#. under an icon, at 34 px: 200 px). What's new opens by itself once after every update and from
-#. the bat in the Library's top bar; this only closes it until then (it is not "never again").
+#. TRANSLATORS: What's new's list of versions (Read all), in a version's row and above its
+#. notes: in place of the date of a version not released yet, a test build (34 px, at the
+#. right: at most 400 px).
+#: rust/src/about.rs
+msgid "unreleased"
+msgstr ""
+
+#. TRANSLATORS: the What's new card's title (520 px at 44 px in bold), and the title of Read all's
+#. list of every version's notes and of a version's notes that have no title of their own (the
+#. sheet's title type): what this version brings.
+#: rust/src/about.rs
+msgid "What's new"
+msgstr ""
+
+#. TRANSLATORS: What's new's button that closes it, on the card, on Read all's list and on a
+#. version's notes (a word under an icon, at 34 px: 200 px). What's new opens by itself once after
+#. every update and from the bat in the Library's top bar; this only closes it until then (it is
+#. not "never again").
 #: rust/src/about.rs
 msgctxt "what's new"
 msgid "Dismiss"
 msgstr ""
 
-#. TRANSLATORS: the card's title (and the sheet's when the notes have none): what this version
-#. brings (520 px at 44 px in bold).
-#: rust/src/about.rs
-msgid "What's new"
-msgstr ""
-
-#. TRANSLATORS: the What's new card's button to the whole notes (330 px at 44 px in bold).
+#. TRANSLATORS: the What's new card's button to the list of every version's notes (330 px at 44 px
+#. in bold).
 #: rust/src/about.rs
 msgid "Read all"
+msgstr ""
+
+#. TRANSLATORS: What's new: the button on a version's notes back to the list of every
+#. version's notes (Read all), at the left of the sheet's foot (a word under an icon, at 34 px:
+#. 300 px).
+#. TRANSLATORS: the Templates sheet's button back to the papers, under its icon (348 px at
+#. 34 px).
+#: rust/src/about.rs rust/src/tplsheet.rs
+msgid "Back"
+msgstr ""
+
+#. TRANSLATORS: What's new's list of versions (Read all): the mark beside the version running,
+#. white on a black box in its row (34 px in bold: at most 360 px).
+#: rust/src/about.rs
+msgid "This version"
 msgstr ""
 
 #: rust/src/actions.rs
@@ -4314,12 +4339,6 @@ msgstr ""
 #. opens (1560 px at 64 px).
 #: rust/src/tplsheet.rs
 msgid "Photos"
-msgstr ""
-
-#. TRANSLATORS: the Templates sheet's button back to the papers, under its icon (348 px at
-#. 34 px).
-#: rust/src/tplsheet.rs
-msgid "Back"
 msgstr ""
 
 #. TRANSLATORS: months, as short as the language writes them on a date: "Oct 10, 14:32" on the

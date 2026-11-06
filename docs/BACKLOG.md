@@ -4,6 +4,26 @@ Work that was decided, deferred or found but not done yet. Keep this current: wh
 move it to "Done" with the version; when something is deferred, add it here with who decided and
 why. Newest decisions first within each section.
 
+## What's new by version (2.0.1): choices for the owner to confirm
+
+The owner's request of 2026-11-06 ("wire read all button to a list of each UNIQUE release note, and allow users
+to easily browse the changes by version") is built (docs/DESIGN.md, What's new). Decided by the lane, for him to
+confirm or change:
+
+- **2.0.1's notes are a draft** (docs/whatsnew/2.0.1.md): the title, the wake fix and this list in one bullet
+  each, and the signature. The owner vets and edits them before the release.
+- **Dates come from CHANGELOG.md's headings**, built in (no date line in the notes): 2.0.1 reads "unreleased"
+  until the bump commit dates its section. Dates show as 2026-11-05 in every language.
+- **docs/WHATSNEW.md is gone** (moved to docs/whatsnew/2.0.0.md), no pointer file: links to it at the 2.0.0 tags
+  still work.
+- **Notes shared by several versions** are named "2.0.0, 2.0.0-beta.2" (a comma, no word to translate). None do
+  today: 2.0.0-beta.2 has no file of its own.
+- **Esc on the list closes What's new** (as on Read all's sheet before) rather than going back to the card; Esc on
+  a version's notes goes back to the list. **Enter on the list opens the running version's notes**, as there is
+  no highlighted row (the Library's sheets have none).
+- **Japanese for "This version" and "unreleased"** is empty in po/ja.po: the list shows them in English in
+  Japanese until nebuff translates them. Back reuses the Templates sheet's, already translated.
+
 ## The lasso drag (2.0.0): the owner's report of 2026-11-05, fixed; what is left for the owner
 
 The report, verbatim: "the copy paste lasso function is horrifically slow on drag with anything containing

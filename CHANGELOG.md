@@ -7,6 +7,19 @@
   out of the screensaver after Grimoire's first refresh, and the second push was a no-flash one, which drives
   only the pixels the panel's controller thinks changed. That push is now a full refresh, 2.5 s after the wake
   whatever the sleep picture: one flash, and nothing of the sleep picture can stay.
+- What's new's Read all lists every version's notes, newest first (the owner, 2026-11-06: "wire read all
+  button to a list of each UNIQUE release note, and allow users to easily browse the changes by version - some
+  of them are important"). A row for each: the version (the one running marked This version), its date and the
+  notes' first line. A tap on a row shows that version's notes whole, a page at a time, with Back to the list;
+  Dismiss closes What's new from the list and from a version's notes, as from the card. Notes that are word for
+  word the same are one row naming every version that has them. On a keyboard Enter opens (the card's Read all,
+  then the notes of the version running), Esc goes back a step (a version's notes to the list; the list and the
+  card close), and Left and Right turn the pages. Each step on the sheet refreshes the sheet's place alone. The
+  card is as before, this version's notes. The notes are a file for each version now, `docs/whatsnew/VERSION.md`
+  (2.0.0's and 2.0.0-beta.1's as they shipped; `docs/WHATSNEW.md` is gone; 2.0.0-beta.2 showed beta.1's notes
+  and has no file), built in with the dates of this changelog's headings. The release checks want this
+  version's file, with notes in it, and not the release before's notes again (docs/RELEASING.md, The bump
+  commit).
 
 ## 2.0.0 (2026-11-05)
 

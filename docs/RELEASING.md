@@ -72,22 +72,34 @@ them.
    - `README.md`: the banner, `Pre-release VERSION.` (a stable release has no banner).
    - `docs/TESTING.md`: a `## VERSION` section, with what the owner checked on a Kindle and what
      still needs a device. Claim only what the owner reported.
-   - `docs/WHATSNEW.md`, this version's What's new: every release has one, at least a basic one (the
-     owner's rule of 2026-11-05: "every update with changes by default has at least a basic what's
-     new"), since the first start after an update opens it by itself. Its title is
-     `# What's new (since PREVIOUS VERSION)` (the release before, as `2.0.0-beta.1`), then the
-     user-visible changes in short bullets from the CHANGELOG, then the owner's closing and the
-     `{signature}` line as the last notes had them. The app compiles the file in, so it is part of the
-     build the owner tests. For a release the owner vets the note and makes his changes to it: send
-     it to him, and put his changes in, before the gate (step 5) and his test (step 6). A change
-     after his test is a new gate and a new test, and the build he tested has already recorded the
-     version as seen on his Scribe, so changed notes would not open there by themselves.
-     `tests/scenarios/z_about.qs` states the notes' shape, in its comment and in its checks: the
-     card's `library.about.card_notes` and `card_blocks`, upright and sideways, and Read all's
-     `pages`, upright and sideways (its page arrows need two pages or more sideways). Set them to
-     the new notes': `make scenarios SCENARIOS=tests/scenarios/z_about.qs SCEN_NO_SELFTEST=1` names
-     each check that differs, with the value it found, and `build/shots/z_about/` shows the card,
-     which must end at a whole item.
+   - `docs/whatsnew/VERSION.md`, this version's What's new (`docs/whatsnew/2.0.1.md`): every release
+     has one, at least a basic one (the owner's rule of 2026-11-05: "every update with changes by
+     default has at least a basic what's new"), since the first start after an update opens it by
+     itself. Each version's notes are a file of their own in `docs/whatsnew/` (since 2.0.1), and the
+     earlier ones stay as they were: What's new's Read all lists them all, newest first (the owner,
+     2026-11-06: "some of them are important"). Write the note while the CHANGELOG section is still
+     `(unreleased)` if you like; it is dated by the CHANGELOG, whose heading this commit dates (the
+     list shows `unreleased` until then), so the note itself has no date to write. Its title is
+     `# What's new (since PREVIOUS VERSION)` (the release before, as `2.0.0`), then the user-visible
+     changes in short bullets from the CHANGELOG, then the owner's closing and the `{signature}` line
+     as the last notes had them. The app compiles the folder in (build.rs lists it: a file there not
+     named `VERSION.md` stops the build), so the note is part of the build the owner tests. For a
+     release the owner vets the note and makes his changes to it: send it to him, and put his changes
+     in, before the gate (step 5) and his test (step 6). A change after his test is a new gate and a
+     new test, and the build he tested has already recorded the version as seen on his Scribe, so
+     changed notes would not open there by themselves. A version whose notes would be the same as
+     another's (word for word) needs no file of its own: the list shows one entry for notes that are
+     the same, naming every version that has them, and a version without a file shows the newest
+     notes on its card. `tests/scenarios/z_about.qs` states the notes' shape, in its comment and in
+     its checks: the card's `library.about.card_notes` and `card_blocks`, upright and sideways, and
+     the notes' `pages` on the sheet, upright and sideways (its page arrows need two pages or more
+     sideways), from the row `about.row.VERSION`. `tests/scenarios/z_about_list.qs` states the list:
+     its rows (`library.about.row.N` and `row_date.N`, newest first), the row marked as this version's
+     (`library.about.marked`), and the refreshes its steps send. Set them to the new notes':
+     `make scenarios SCENARIOS="tests/scenarios/z_about.qs tests/scenarios/z_about_list.qs"
+     SCEN_NO_SELFTEST=1` names each check that differs, with the value it found, and
+     `build/shots/z_about/` and `build/shots/z_about_list/` show the card, which must end at a whole
+     item, and the list.
    - `docs/screens/whatsnew.png`, the README's picture of the card, when its look or the notes
      changed: `build/shots/z_about/01-card.png` from the gate of step 5, made 620x827 in grey
      (`magick 01-card.png -colorspace Gray -filter Lanczos -resize '620x827!' -depth 8 whatsnew.png`).
@@ -96,14 +108,17 @@ them.
      it, and the .po and .mo files with it. A stale header does no harm.
 
    Then `tools/release-preflight.sh` checks the version, the changelog's dated heading, the
-   placeholders, the README banner, the TESTING section, that `docs/WHATSNEW.md` changed since the
-   release before (the newest `vVERSION` tag among the commit's ancestors, other than its own tag) and
-   a clean tree. The workflow runs it again on the release's tag, first thing; its checkout holds the
-   tag's commit alone, so the step fetches the history and the `v*` tags first (a failed fetch fails
-   the step). Where neither can tell the release before (a shallow clone, a clone without tags), the
-   preflight says `docs/WHATSNEW.md not checked: could not tell the previous release` with the reason,
-   and does not fail for that: fetch them as it says (`git fetch --unshallow --tags`, or
-   `git fetch --tags`) and run it again.
+   placeholders, the README banner, the TESTING section, that `docs/whatsnew/VERSION.md` is there with
+   notes in it (a line besides its title and `{signature}`) and that they are not the release before's
+   again, spaces and line breaks aside (the newest `vVERSION` tag among the commit's ancestors, other
+   than its own tag; its notes are its own `docs/whatsnew/` file, or `docs/WHATSNEW.md` for a release
+   before 2.0.1), and a clean tree. The workflow runs it again on the release's tag, first thing; its
+   checkout holds the tag's commit alone, so the step fetches the history and the `v*` tags first (a
+   failed fetch fails the step). Where neither can tell the release before (a shallow clone, a clone
+   without tags), the preflight says `docs/whatsnew/VERSION.md not compared: could not tell the
+   previous release` with the reason, and does not fail for that (the file and its notes are still
+   checked): fetch them as it says (`git fetch --unshallow --tags`, or `git fetch --tags`) and run it
+   again.
 
 5. **The gate on the bump commit.** The version is in the binary, so the gate runs after the bump,
    with the pinned toolchain and no skipped part:

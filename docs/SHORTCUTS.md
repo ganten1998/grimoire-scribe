@@ -110,6 +110,11 @@ Library's top **Exit Grimoire?** (Yes and No; Enter the highlighted one, Yes at 
 Esc is No). The Exit button leaves at once, as before. A file that binds
 `key.Escape=close-menu` keeps that.
 
+**What's new** (2.0.1): Enter opens, as New notebook's Create, shortcuts on or off: the card's Read all,
+then on the list the notes of the version running (the Library's sheets have no highlighted row, so Up and
+Down do nothing there). Esc goes back from a version's notes to the list, and closes the list and the card.
+Left and Right (`previous-page`, `next-page`) turn the list's and the notes' pages, as their arrows.
+
 **Space** (`two-finger-up`) does what two fingers swiped up do there (gestures.ini `touch.2.up`, built in the
 Links bar; with gestures off, the Links bar), and nothing while a keyboard is up (Find, a name). **Ctrl+S**
 writes the page and

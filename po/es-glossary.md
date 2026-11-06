@@ -90,8 +90,10 @@ build/shots/l10n/es-gothic/ and es-classic/ show every screen in Spanish.
 | picture (of a page) | **imagen** (*no se puede leer su imagen*) | As the import folder's README says *imágenes*; *foto* is a photograph. |
 | Done | **Listo** | *Hecho* (Spain), *Aceptar*. |
 | Cancel, Retry | **Cancelar, Reintentar** | |
-| Back (the Templates sheet's button back to the papers) | **Volver** | *Atrás*. |
+| Back (the Templates sheet's button back to the papers; What's new's, from a version's notes back to the list of versions) | **Volver** | *Atrás*. |
 | Dismiss (What's new's button, context `what's new`) | **Descartar** | *Cerrar*, which the share page's Dismiss keeps. What's new opens by itself after every update and from the bat; the button only puts it away until then (since 2.0.0 there is no *No volver a mostrar*). |
+| This version (What's new's list of versions: the mark on the row of the version running) | **Esta versión** | *Instalada* and *Actual* say less: the mark is on the version that is running now, beside its number. |
+| unreleased (What's new's list: a version not released yet, in place of its date) | **sin publicar** | *No publicada*, *inédita*. Lower case, as the English, in the column of dates. |
 | Delete | **Borrar** | *Eliminar*. A notebook or pages go (*Se borraron 3 páginas*). |
 | Clear (a page, the test pad) | **Limpiar** (*Se limpió la página*) | The strokes go, the page stays: not *borrar*, which deletes. *Vaciar* (*Página vaciada*). |
 | Rename | **Renombrar** | *Cambiar nombre*. |

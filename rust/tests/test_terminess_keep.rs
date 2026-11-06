@@ -128,7 +128,8 @@ fn mapped(font: &[u8], at: usize) -> BTreeSet<u32> {
 // ---- what the code draws ----
 
 /// The text files of the places Grimoire draws Terminess from: the app (rust/src), KOReader's plugin
-/// and patches (kindle/), the share pages (web/), the translations (po/) and What's new.
+/// and patches (kindle/), the share pages (web/), the translations (po/) and What's new (every
+/// version's notes, docs/whatsnew/).
 fn sources() -> Vec<PathBuf> {
     fn walk(dir: &Path, out: &mut Vec<PathBuf>) {
         let Ok(entries) = std::fs::read_dir(dir) else { return };
@@ -145,10 +146,9 @@ fn sources() -> Vec<PathBuf> {
         }
     }
     let mut out = Vec::new();
-    for dir in ["rust/src", "kindle", "web", "po"] {
+    for dir in ["rust/src", "kindle", "web", "po", "docs/whatsnew"] {
         walk(&Path::new(TOP).join(dir), &mut out);
     }
-    out.push(Path::new(TOP).join("docs/WHATSNEW.md"));
     out
 }
 

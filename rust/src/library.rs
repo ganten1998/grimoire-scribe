@@ -2,6 +2,7 @@
 //! plus the sheets: new notebook (paper picker), settings, notebook actions, move, delete.
 
 use crate::prelude::*;
+use crate::about::AboutView;
 
 #[repr(i32)]
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -131,6 +132,10 @@ const H_ABOUT_CLOSE: i32 = 72;
 const H_ABOUT_PREV: i32 = 74;
 const H_ABOUT_NEXT: i32 = 75;
 const H_ABOUT_MORE: i32 = 76;
+// 2.0.1: Read all's list of every version's notes, its rows (arg: the entry in about::notes()), and Back
+// from a version's notes to it.
+const H_ABOUT_ROW: i32 = 87;
+const H_ABOUT_BACK: i32 = 88;
 const H_FMORE_MOVE: i32 = 77;
 // 2.0.0-beta.2: a notebook's or a folder's Leave out of the Graph / Show in the Graph.
 const H_MORE_GRAPH: i32 = 78;
@@ -220,13 +225,23 @@ pub struct LibraryState {
     gestures_file_readable: bool,
     gestures_refused: i32,
     gestures_reset_confirm: bool,
-    /// The About sheet: its page, Compact's Read all tapped, and where the bat is (it hangs from it);
-    /// the card's notes as it last drew them (the blocks shown, of how many, the last one cut).
+    /// The About sheet (What's new): its view (the card, Read all's list, a version's notes), the
+    /// version's notes shown (their entry in about::notes()), the list's page and the notes' page, and
+    /// where the bat is (the card hangs from it). As it last drew: the view's pages, the list's
+    /// entries on its page and the row marked as this version's, whether the signature shows, the
+    /// card's notes (the blocks shown, of how many, the last one cut), and where the card or sheet is
+    /// (a step on the sheet refreshes there alone: about_step).
+    about_view: AboutView,
+    about_note: usize,
+    about_list_page: i32,
     about_page: i32,
     about_pages: i32,
-    about_full: bool,
     about_bat: Rect,
+    about_rows: Vec<usize>,
+    about_marked: i32,
+    about_signed: bool,
     about_card: (i32, i32, bool),
+    about_area: Rect,
     record_action: i32,
     record_next_action: i32,
     record_started: u32,
@@ -3529,14 +3544,27 @@ fn draw_modal(a: &mut App) {
             let (aw, ah) = (a.w, a.h);
             let App { screen: c, lib, .. } = a;
             let s = lib.as_deref_mut().unwrap();
-            let h = crate::about::about_draw(c, aw, ah, s.about_bat, s.about_page, s.about_full);
-            s.about_page = s.about_page.clamp(0, (h.pages - 1).max(0));
+            let list = s.about_view == AboutView::List;
+            let page = if list { s.about_list_page } else { s.about_page };
+            let h = crate::about::about_draw(c, aw, ah, s.about_bat, s.about_view, s.about_note, page);
+            if list {
+                s.about_list_page = h.page;
+            } else {
+                s.about_page = h.page;
+            }
             s.about_pages = h.pages;
+            s.about_rows = h.rows.iter().map(|r| r.1).collect();
+            s.about_marked = h.marked;
+            s.about_signed = h.signed;
             s.about_card = (h.card_blocks, h.card_notes, h.card_cut);
-            for (r, id) in [(h.close, H_ABOUT_CLOSE), (h.prev, H_ABOUT_PREV), (h.next, H_ABOUT_NEXT), (h.more, H_ABOUT_MORE)] {
+            s.about_area = h.area;
+            for (r, id) in [(h.close, H_ABOUT_CLOSE), (h.prev, H_ABOUT_PREV), (h.next, H_ABOUT_NEXT), (h.more, H_ABOUT_MORE), (h.back, H_ABOUT_BACK)] {
                 if !rect_is_empty(r) {
                     hits_add(&mut s.hits, r, id, 0);
                 }
+            }
+            for (r, i) in &h.rows {
+                hits_add(&mut s.hits, *r, H_ABOUT_ROW, *i as i32);
             }
         }
         Modal::Updates => {
@@ -4319,6 +4347,32 @@ fn open_modal(a: &mut App, m: Modal) {
     redraw(a, RefreshMode::Ui);
 }
 
+/// What's new as the bat and the first start after an update open it: the card.
+fn about_open(s: &mut LibraryState) {
+    s.about_view = AboutView::Card;
+    s.about_page = 0;
+    s.about_list_page = 0;
+    s.about_area = RECT_EMPTY;
+}
+
+/// What's new after a step on it (Read all, a version's notes, Back, a page): the screen drawn again,
+/// and the panel refreshed only where the card or sheet was and where it is now, as the sheet
+/// refreshes (Ui): the Library around it has not changed. Opening and Dismiss refresh the whole
+/// screen, as every sheet's do.
+fn about_step(a: &mut App) {
+    let was = lib(a).about_area;
+    if rect_is_empty(was) || graph_shown(a) || lib(a).settings_return_editor {
+        redraw(a, RefreshMode::Ui);
+        return;
+    }
+    draw_base(a);
+    hits_clear(&mut lib(a).hits);
+    draw_modal(a);
+    a.toast_floor = toast_floor(a);
+    let now = lib(a).about_area;
+    app_invalidate(a, rect_union(was, now), RefreshMode::Ui);
+}
+
 fn close_modal(a: &mut App) {
     if lib(a).settings_return_editor {
         if lib(a).modal==Modal::Settings {let changed=lib(a).settings_editor_fit!=a.settings.landscape_fit;lib(a).settings_return_editor=false;lib(a).modal=Modal::None;library_leave(a);if changed {editor_fit_changed(a,true);}crate::editor::editor_settings_background(a);app_invalidate_all(a,RefreshMode::Ui);}
@@ -4558,19 +4612,39 @@ fn act(a: &mut App, h: &Hit) {
         }
         H_EXIT_NO => close_modal(a),
         H_ABOUT => {
-            let s = lib(a);
-            s.about_page = 0;
-            s.about_full = false;
+            about_open(lib(a));
             open_modal(a, Modal::About);
         }
         H_ABOUT_CLOSE => close_modal(a),
         H_ABOUT_PREV | H_ABOUT_NEXT => {
-            lib(a).about_page += if h.id == H_ABOUT_NEXT { 1 } else { -1 };
-            redraw(a, RefreshMode::Ui);
+            // (the page shown's neighbour, when there is one: a greyed arrow does nothing)
+            let s = lib(a);
+            let page = if s.about_view == AboutView::List { &mut s.about_list_page } else { &mut s.about_page };
+            let to = *page + if h.id == H_ABOUT_NEXT { 1 } else { -1 };
+            if to >= 0 && to < s.about_pages {
+                *page = to;
+                about_step(a);
+            }
         }
+        // Read all: the list of every version's notes, from its first page.
         H_ABOUT_MORE => {
-            lib(a).about_full = true;
-            redraw(a, RefreshMode::Ui);
+            let s = lib(a);
+            s.about_view = AboutView::List;
+            s.about_list_page = 0;
+            about_step(a);
+        }
+        // A row of the list: that version's notes, from their first page.
+        H_ABOUT_ROW => {
+            let s = lib(a);
+            s.about_view = AboutView::Note;
+            s.about_note = h.arg.max(0) as usize;
+            s.about_page = 0;
+            about_step(a);
+        }
+        // Back from a version's notes: the list, at the page it was left at.
+        H_ABOUT_BACK => {
+            lib(a).about_view = AboutView::List;
+            about_step(a);
         }
         H_PREV | H_NEXT => turn(a, h.id == H_NEXT),
         H_CARD => {
@@ -5252,6 +5326,12 @@ pub fn library_shortcut(a: &mut App, action: i32) -> bool {
     if action == SHORTCUT_BACK {
         return library_back(a);
     }
+    // What's new's list and a version's notes: Left and Right turn their pages, as their arrows.
+    if lib(a).modal == Modal::About && matches!(action, SHORTCUT_PREV_PAGE | SHORTCUT_NEXT_PAGE) {
+        let id = if action == SHORTCUT_NEXT_PAGE { H_ABOUT_NEXT } else { H_ABOUT_PREV };
+        act(a, &Hit { id, ..Default::default() });
+        return true;
+    }
     if lib(a).modal != Modal::None {
         return false;
     }
@@ -5338,6 +5418,8 @@ pub fn library_back(a: &mut App) -> bool {
             redraw(a, RefreshMode::Ui);
         }
         Modal::Pair | Modal::Buttons => tap(a, H_BUTTONS_DONE),
+        // (What's new: from a version's notes back to the list; the list and the card close)
+        Modal::About if lib(a).about_view == AboutView::Note => tap(a, H_ABOUT_BACK),
         Modal::Gestures if reset_asked => tap(a, H_GESTURES_RESET_CANCEL),
         Modal::Gestures => tap(a, H_GESTURES_DONE),
         Modal::New | Modal::Settings | Modal::More | Modal::FolderMore | Modal::Move | Modal::Delete
@@ -5374,6 +5456,18 @@ pub fn library_modal_key(a: &mut App, code: i32) -> bool {
         }
         Modal::New if code == ENTER || code == KP_ENTER => {
             act(a, &Hit { id: H_NEW_CREATE, ..Default::default() });
+            true
+        }
+        // What's new's Enter opens: the card's Read all (the list), and on the list the notes of the row
+        // marked as this version's (the card's notes; the newest when no row is this version's).
+        Modal::About if (code == ENTER || code == KP_ENTER) && s.about_view != AboutView::Note => {
+            let hit = if s.about_view == AboutView::Card {
+                Hit { id: H_ABOUT_MORE, ..Default::default() }
+            } else {
+                let all = crate::about::notes();
+                Hit { id: H_ABOUT_ROW, arg: crate::about::current(all, GRIMOIRE_VERSION) as i32, ..Default::default() }
+            };
+            act(a, &hit);
             true
         }
         _ => false,
@@ -5480,8 +5574,7 @@ pub fn library_enter(a: &mut App) {
         a.settings.whatsnew_seen.set(GRIMOIRE_VERSION);
         settings_save(&a.settings);
         let s = lib(a);
-        s.about_page = 0;
-        s.about_full = false;
+        about_open(s);
         s.modal = Modal::About;
     }
     reload(a);
@@ -6000,18 +6093,56 @@ pub fn library_probe(a: &mut App, key: &str, out: &mut String, cap: usize) -> i3
             None => csnprintf!(out, cap, "%d", s.modal as i32),
         };
     } else if let Some(k) = key.strip_prefix("about.") {
-        // What's new: its page (from 1) and pages, and whether Read all shows the whole notes; the
+        // What's new (docs/SIM.md): its view; its page (from 1) and pages; 1 on Read all's sheet (the list
+        // or a version's notes); the list's rows on its page, the row marked as this version's, each
+        // row's versions and date; the notes shown and whether the page shown has the signature; the
         // card's notes: the blocks it shows, of how many, and 1 when the last shown is cut.
         let open = s.modal == Modal::About;
-        let card = open && !s.about_full;
+        let view = if open { Some(s.about_view) } else { None };
+        let all = crate::about::notes();
+        let row = |n: &str| -> Option<&crate::about::Entry> {
+            let n = n.parse::<usize>().ok()?.checked_sub(1)?;
+            all.get(*s.about_rows.get(n).filter(|_| view == Some(AboutView::List))?)
+        };
+        if k == "view" {
+            let v = match view {
+                Some(AboutView::Card) => "card",
+                Some(AboutView::List) => "list",
+                Some(AboutView::Note) => "note",
+                None => "",
+            };
+            csnprintf!(out, cap, "%s", v);
+            return 0;
+        } else if k == "note" {
+            let e = match view {
+                Some(AboutView::Card) => all.get(crate::about::current(all, GRIMOIRE_VERSION)),
+                Some(AboutView::Note) => all.get(s.about_note),
+                _ => None,
+            };
+            csnprintf!(out, cap, "%s", &e.map_or(String::new(), |e| e.label()));
+            return 0;
+        } else if let Some(n) = k.strip_prefix("row.") {
+            csnprintf!(out, cap, "%s", &row(n).map_or(String::new(), |e| e.label()));
+            return 0;
+        } else if let Some(n) = k.strip_prefix("row_date.") {
+            csnprintf!(out, cap, "%s", row(n).map_or("", |e| crate::about::date_label(e.date)));
+            return 0;
+        }
+        let card = view == Some(AboutView::Card);
+        let list = view == Some(AboutView::List);
         let v = match k {
-            "page" if open => s.about_page + 1,
+            "page" if open => if list { s.about_list_page + 1 } else { s.about_page + 1 },
             "pages" if open => s.about_pages,
-            "full" if open => s.about_full as i32,
+            "full" if open => !card as i32,
+            "entries" if open => all.len() as i32,
+            "rows" if list => s.about_rows.len() as i32,
+            "marked" if list => s.about_marked,
+            "signature" if open && !list => s.about_signed as i32,
             "card_blocks" if card => s.about_card.0,
             "card_notes" if card => s.about_card.1,
             "card_cut" if card => s.about_card.2 as i32,
-            "page" | "pages" | "full" | "card_blocks" | "card_notes" | "card_cut" => 0,
+            "page" | "pages" | "full" | "entries" | "rows" | "marked" | "signature" | "card_blocks" | "card_notes"
+            | "card_cut" => 0,
             _ => return -1,
         };
         csnprintf!(out, cap, "%d", v);
@@ -6087,8 +6218,12 @@ pub fn library_probe(a: &mut App, key: &str, out: &mut String, cap: usize) -> i3
                 H_EXIT_YES => "exit.yes", H_EXIT_NO => "exit.no",
                 H_BACK => "back", H_ABOUT => "about", H_ABOUT_CLOSE => "about.close",
                 H_ABOUT_PREV => "about.prev", H_ABOUT_NEXT => "about.next", H_ABOUT_MORE => "about.more",
+                H_ABOUT_ROW => "about.row.", H_ABOUT_BACK => "about.back",
                 _ => "",
             });
+            if hit.id == H_ABOUT_ROW {
+                name.push_str(crate::about::notes().get(hit.arg as usize).map_or("", |e| e.versions[0]));
+            }
             if hit.id == H_PAPER { name.push_str(&hit.arg.to_string()); }
             if hit.id == H_MOVE_TO { name.push_str(s.folders.get(hit.arg as usize).map_or("", |f| f.as_str())); }
             if matches!(hit.id, H_GESTURE_GROUP | H_BUTTON_GROUP) {

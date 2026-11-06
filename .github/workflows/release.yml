@@ -27,8 +27,8 @@ env:
   SCENARIO_SHARDS: '6'
 # make check, spread over jobs that run at once (docs/TESTING.md, Continuous integration, maps each
 # job to the make targets it replaces):
-#   changes      what the pull request touches: only docs (*.md, docs/, but not docs/WHATSNEW.md,
-#                which the app compiles in) runs the docs job alone
+#   changes      what the pull request touches: only docs (*.md, docs/, but not docs/whatsnew/ or
+#                CHANGELOG.md, whose notes and dates the app compiles in) runs the docs job alone
 #   build-host   the headless runner and the host tools, once, for the jobs below
 #   unit         make test, its two halves at once
 #   scenarios    make scenarios in SCENARIO_SHARDS shards (whole # root: chains, balanced by
@@ -73,7 +73,7 @@ jobs:
             echo "Changed files:"; cat "$RUNNER_TEMP/changed.txt"
             if [ -s "$RUNNER_TEMP/changed.txt" ] &&
                ! grep -Ev '(\.md$|^docs/)' "$RUNNER_TEMP/changed.txt" | grep -q . &&
-               ! grep -qx 'docs/WHATSNEW.md' "$RUNNER_TEMP/changed.txt"; then
+               ! grep -qE '^(docs/whatsnew/|CHANGELOG\.md$)' "$RUNNER_TEMP/changed.txt"; then
               code=false
             fi
           fi
@@ -289,13 +289,14 @@ jobs:
           test "$TAG" = "v$(cat VERSION)"
           case "$TAG" in *-*) test "$PRERELEASE" = true ;; *) test "$PRERELEASE" = false ;; esac
           # The history and the release tags, which the checkout above leaves out (one commit, the
-          # tag's): the preflight finds the release before and checks that docs/WHATSNEW.md changed
-          # since. A fetch that fails fails the step, so the check is never skipped here.
+          # tag's): the preflight finds the release before and checks that this version's notes,
+          # docs/whatsnew/VERSION.md, are not that release's again. A fetch that fails fails the
+          # step, so the check is never skipped here.
           if [ "$(git rev-parse --is-shallow-repository)" = true ]; then unshallow=--unshallow; else unshallow=; fi
           git fetch --quiet --no-tags $unshallow origin '+refs/tags/v*:refs/tags/v*'
           # The changelog has this version's dated section and no placeholder; the README and
-          # docs/TESTING.md name the version; What's new changed since the release before
-          # (docs/RELEASING.md, Before the tag).
+          # docs/TESTING.md name the version; this version has its What's new, new since the
+          # release before (docs/RELEASING.md, The bump commit).
           tools/release-preflight.sh "$TAG"
       - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
         with:

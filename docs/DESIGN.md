@@ -1182,25 +1182,58 @@ th, combining accents dropped), so Álgebra sorts among the A's; names that fold
 bytes. A name, folder or folders.ini line longer than 95 bytes is cut before the UTF-8 character
 that would cross the limit (`clean_line`).
 
-## What's new, the About sheet (2.0.0)
+## What's new, the About sheet (2.0.0; every version's notes, 2.0.1)
 
-`about.rs`. The notes are docs/WHATSNEW.md, compiled in (a small Markdown: `# ` the title, `## ` a
-heading, `- ` a bullet, other lines a paragraph, `{signature}` where the owner's signature goes), the
-owner's text, not translated. The bat in the Library's top bar (or the name beside it) opens them as
-a card hanging from the bat: What's new and the version, the notes (each heading with its first
-bullet; notes without headings, every bullet and paragraph), the signature, Read all and Dismiss.
+`about.rs`. The notes are a file for each version, `docs/whatsnew/VERSION.md` (2.0.1; until then the one
+docs/WHATSNEW.md), compiled in, each a small Markdown: `# ` the title, `## ` a heading, `- ` a bullet, other
+lines a paragraph, `{signature}` where the owner's signature goes. They are the owner's text, not translated.
+The bat in the Library's top bar (or the name beside it) opens What's new as a card hanging from the bat: What's
+new and the version, this version's notes (each heading with its first bullet; notes without headings, every
+bullet and paragraph), the signature, Read all and Dismiss.
 
+- **The notes, a file a version** (2.0.1). build.rs lists `docs/whatsnew/*.md` into `NOTE_FILES`, each with
+  the date of CHANGELOG.md's `## VERSION (YYYY-MM-DD)` heading (`unreleased` for `(unreleased)`, none
+  without a heading), so a release's notes are a new file and its date the changelog's, which the bump commit
+  dates anyway; no code lists them. A file there not named for a version, or empty, stops the build rather
+  than leave a version's notes out (hidden files are passed over); `the_built_in_notes_are_the_folders`
+  checks the list against the folder. `archive` orders them newest first by version (`update_version_cmp`:
+  2.0.1, 2.0.0, rc, beta, the numbers compared as numbers) and makes one entry of notes that are the same
+  block for block, naming every version that has them ("2.0.0, 2.0.0-beta.2") at the newest one's place,
+  with its date. `current` is this version's entry, or the newest when this version has no file; the card
+  shows it. 2.0.0-beta.2 has no file: it shipped 2.0.0-beta.1's notes, and its changes are in 2.0.0's. The
+  CI's docs-only path counts docs/whatsnew/ and CHANGELOG.md as code, since both are built in.
 - **The card ends at a whole note** (the owner's "do the small change", 2026-11-05: the card had cut
   the last paragraph mid-sentence). `card_rows` keeps every line of each block up to the last that
   fits whole above the signature, a heading counting with the block under it; a block that would be
   cut, and everything after it, is Read all's. Only when not even the first block fits whole (a
   paragraph longer than the card's room) does the card show part of one: the lines of it that fit,
   cut at the end of a line, never inside one and never an empty card. The signature always shows.
-  On the Scribe 2.0.0's notes fit whole upright (13 blocks) and to the 8th sideways in Gothic (9th in
+  On the Scribe 2.0.0's notes fit whole upright (11 blocks) and to the 10th sideways in Gothic (9th in
   Classic). Probes: `library.about.card_blocks`, `card_notes`, `card_cut`.
-- **Read all** shows the whole notes on the Library's sheet in the larger type, a page at a time
-  (`paginate`, a heading's last line never alone at a page's foot), with the page arrows left of
-  Dismiss.
+- **Read all lists every version's notes** (2.0.1, the owner, 2026-11-06: "wire read all button to a
+  list of each UNIQUE release note, and allow users to easily browse the changes by version - some of
+  them are important"). The Library's sheet titled What's new, the bat and the version running under the
+  title, then a row for each entry, newest first, framed as the Library's menu rows (170 px, 20 px
+  apart): the versions in bold, the one running marked This version (white on a black box beside it),
+  the date at the right, and under them the notes' first heading or first line (`summary`: the title
+  when there is one; 2.0.0-beta.1's letter has none, so its first paragraph), cut short with an ellipsis.
+  As many rows a page as the tallest sheet holds (10 upright, 7 sideways on the Scribe), with the page
+  arrows left of Dismiss when they take more (`list_layout`); the sheet is as tall as a page of them. A
+  tap on a row shows that version's notes whole on the sheet in the larger type, a page at a time
+  (`paginate`, a heading's last line never alone at a page's foot): their title as the sheet's (else
+  What's new), the version and its date under it, Back at the foot's left, Dismiss at its right, the
+  page arrows left of Dismiss. Back returns to the list at the page it was left at.
+- **The keys** (docs/SHORTCUTS.md's scheme). Esc goes back one layer: a version's notes to the list; the
+  list and the card close (the list replaced the card, as Read all's sheet did). Enter opens: the card's
+  Read all, and on the list the notes of the row marked as this version's (the card's notes); the
+  Library's sheets have no highlighted row, so Up and Down do nothing here either. Left and Right
+  (`previous-page`, `next-page`) turn the list's and the notes' pages, as their arrows, and a greyed
+  arrow does nothing.
+- **The refreshes.** Opening What's new and Dismiss refresh the whole screen as every sheet's do (the
+  Library's cards may have changed meanwhile). A step on it (Read all, a row, Back, a page) draws the
+  screen again and refreshes only where the card or sheet was and where it is now (`about_step`, the
+  union of the two places, in the sheet's refresh, GL16 on the Scribe): the Library around it has not
+  changed. `display.presents` shows it (tests/scenarios/z_about_list.qs).
 - **It opens by itself once after every update** (the owner's rule of 2026-11-05: "no don't show this
   again, just a "Dismiss" and every update with changes by default has at least a basic what's
   new"). store.rs sets `whatsnew_due` when settings.ini was saved by a Grimoire before (it has
@@ -1210,8 +1243,8 @@ bullet; notes without headings, every bullet and paragraph), the signature, Read
   is gone: its `whatsnew_hide` is still read and written back as it was, so those versions keep its
   meaning, but this version never sets it and never reads it for the decision, so a Scribe that had
   the box ticked sees the notes once after the update. Every release comes with its own What's new
-  for that reason: tools/release-preflight.sh fails when docs/WHATSNEW.md has not changed since the
-  release before (docs/RELEASING.md, The bump commit).
+  for that reason: tools/release-preflight.sh fails when `docs/whatsnew/VERSION.md` is missing, has no
+  notes, or has the release before's notes again (docs/RELEASING.md, The bump commit).
 
 ## Fast navigation and optional KOReader integration (1.1.0-beta.2)
 

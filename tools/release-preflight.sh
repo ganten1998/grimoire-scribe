@@ -47,15 +47,28 @@ esac
 # docs/TESTING.md: a section for this version (what was checked on a Kindle, and what was not).
 grep -qE "^## $escaped( |$)" docs/TESTING.md || bad "docs/TESTING.md has no '## $VERSION' section"
 
-# docs/WHATSNEW.md: every release has its What's new, at least a basic one (the owner's rule of
-# 2026-11-05: "every update with changes by default has at least a basic what's new"), so the file
-# changed since the release before: the newest release tag (vMAJOR.MINOR.PATCH[-beta.N|-rc.N]) that
-# is an ancestor of HEAD and not on HEAD itself (that one is this release's own tag). Where the
-# history or the tags cannot tell (a shallow clone, a clone without tags, the first release), it says
-# so and does not fail for that; the release workflow fetches both before it runs this.
+# docs/whatsnew/VERSION.md: every release has its What's new, at least a basic one (the owner's rule
+# of 2026-11-05: "every update with changes by default has at least a basic what's new"), the notes
+# the first start after the update opens by itself (since 2.0.1 every version's notes are a file
+# there; the app builds them in). This version's file is there, has notes (a line besides its "# "
+# title and the {signature} line), and they are not the release before's again, spaces and line
+# breaks aside. The release before is the newest release tag (vMAJOR.MINOR.PATCH[-beta.N|-rc.N])
+# that is an ancestor of HEAD and not on HEAD itself (that one is this release's own tag); its notes
+# are its docs/whatsnew/ file for its version, or docs/WHATSNEW.md for a release before 2.0.1 (the
+# single file of then). Where the history or the tags cannot tell (a shallow clone, a clone without
+# tags, the first release), the comparison says so and does not fail for that; the release workflow
+# fetches both before it runs this.
+note=docs/whatsnew/$VERSION.md
+norm() {  # norm: the text on stdin with each run of spaces and line breaks one space, none at the ends
+    tr -s '[:space:]' ' ' | sed -e 's/^ //' -e 's/ $//'
+}
 release_re='[0-9]+\.[0-9]+\.[0-9]+(-(beta|rc)\.(0|[1-9][0-9]{0,2}))?'
-if ! git rev-parse --verify -q HEAD >/dev/null 2>&1; then
-    echo "release-preflight: docs/WHATSNEW.md not checked: no git history here to compare it with"
+if [ ! -f "$note" ]; then
+    bad "$note is missing: write this version's What's new, at least its title and the user-visible changes in short bullets (docs/RELEASING.md, The bump commit)"
+elif ! grep -v -e '^[[:space:]]*$' -e '^[[:space:]]*# ' -e '^[[:space:]]*{signature}[[:space:]]*$' "$note" | grep -q .; then
+    bad "$note has no notes: write this version's user-visible changes in short bullets under its title (docs/RELEASING.md, The bump commit)"
+elif ! git rev-parse --verify -q HEAD >/dev/null 2>&1; then
+    echo "release-preflight: $note not compared: no git history here to compare it with"
 else
     own=$(git tag --points-at HEAD 2>/dev/null)
     prev='' best=''
@@ -71,11 +84,19 @@ else
         else
             why="no earlier release tag among its ancestors; git fetch --tags, then run this again"
         fi
-        echo "release-preflight: docs/WHATSNEW.md not checked: could not tell the previous release ($why)"
-    elif git diff --quiet "$prev" HEAD -- docs/WHATSNEW.md; then
-        bad "docs/WHATSNEW.md is unchanged since $prev: write this version's What's new, at least its title and the user-visible changes in short bullets (docs/RELEASING.md, The bump commit)"
+        echo "release-preflight: $note not compared: could not tell the previous release ($why)"
     else
-        echo "release-preflight: docs/WHATSNEW.md changed since $prev"
+        was=''
+        for f in "docs/whatsnew/${prev#v}.md" docs/WHATSNEW.md; do
+            if git cat-file -e "$prev:$f" 2>/dev/null; then was=$f; break; fi
+        done
+        if [ -z "$was" ]; then
+            echo "release-preflight: $note not compared: $prev has no What's new"
+        elif [ "$(git show "$prev:$was" | norm)" = "$(norm < "$note")" ]; then
+            bad "$note is $prev's What's new again ($was there): write this version's, at least its title and the user-visible changes in short bullets (docs/RELEASING.md, The bump commit)"
+        else
+            echo "release-preflight: $note is new since $prev ($was there)"
+        fi
     fi
 fi
 
