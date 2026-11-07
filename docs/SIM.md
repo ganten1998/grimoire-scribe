@@ -34,6 +34,10 @@ save spaces its preview and kept-drawing writes by, and the quiet time a page ne
 written at an idle save (0: neither; z_dense_saves_*, z_keep_ghost_*). `GRIMOIRE_SLEEP_MINUTE_MS` (simulator only) makes a
 minute of the Display sheet's "Sleep after" last that many milliseconds, so a scenario can see the
 timer run out.
+`GRIMOIRE_STORAGE=PATH` (off the Kindle only; compiled out of the Kindle build) stands for the Kindle's
+storage, `/mnt/us`, for the storage layer (`fsview.rs`, 2.1): the root every `StoragePath` is relative to.
+An absolute path, never `/`; without it there is no storage to browse. Nothing reads it yet but the
+tests (`tests/test_fsview.rs`); the scenarios unset it.
 
 Live view's raw digitizer has stand-ins (headless runner only; tests/live_pen_stall.py uses them):
 `GRIMOIRE_SIM_RAWPEN=PATH` names a FIFO of `struct input_event` records in the host's layout (x

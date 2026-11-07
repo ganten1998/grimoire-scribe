@@ -93,6 +93,7 @@ pub mod dispmenu;
 pub mod editor;
 pub mod erasersample; // header only (the bytes are in assets.rs)
 pub mod findsheet; // the Find sheet: go to a page by its number or name (Rust only, the Index's phase 1)
+pub mod fsview; // one storage layer: the walk, zones, listing and stats of the Kindle's storage (2.1, read-only)
 pub mod httpd;
 pub mod inkmode; // header only
 pub mod keyboard;
