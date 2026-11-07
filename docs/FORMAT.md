@@ -1541,8 +1541,8 @@ The folder holds three more kinds of file, all disposable too:
 - `p<page ID>.full` and `p<page ID>.full.stamp`: a **kept drawing** of a page that is slow to draw, the
   whole page canvas run-length coded (runs of one byte as `(count - 1) | 0x80` then the byte, anything
   else as `count - 1` then that many bytes). Its stamp is the preview's stamp, then `|WxH|` (the page
-  size it was drawn at) and the renderer's fingerprint in 16 hex digits, with `|L` after it for a page
-  with floors. Anything that does not match exactly (another page file, size, renderer or layering) is
+  size it was drawn at), the renderer's fingerprint in 16 hex digits and, since 2.0.2, the kept drawings'
+  version (`|k2`), with `|L` after them for a page with floors. Anything that does not match exactly (another page file, size, renderer or layering) is
   never used: the page is drawn instead. The editor keeps one for a page that took a second or more to
   draw (as it opens, and at the idle save), and since 2.0.0-beta.2 the previews job keeps one for each
   dense page it draws (a page file of 512 KB or more) and for no other; opening the page, and making its
@@ -1550,7 +1550,9 @@ The folder holds three more kinds of file, all disposable too:
   written from a drawing whose picture paper came out white (its picture missing or unreadable), by the
   editor or the job. A kept drawing is of the page file: since 2.0.2 the editor reads it back only for a page
   with nothing unsaved. 2.0.0 and 2.0.1 read it back for a page just cleared or given a new paper, and their
-  next save kept that old picture under the new file's stamp.
+  next save kept that old picture under the new file's stamp, so 2.0.2 reads none of theirs (they have no
+  `|k2`): the editor draws such a page again, removes the old drawing when its stamp was current for the page
+  file, and makes the page's preview and, for page 1, the notebook's `thumb.pgm` again from what it drew.
 - `updated`: a token rewritten each time a preview is written (since 2.0.0-beta.2 the job writes it after
   each preview, not once per batch), which tells an open view that new previews are there.
 - `generation`: rewritten to invalidate every preview at once (a template's picture made again).

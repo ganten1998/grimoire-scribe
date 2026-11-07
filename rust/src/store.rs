@@ -3811,9 +3811,20 @@ fn page_render_current(nb: &NotebookInfo, pid: u32) -> bool {
 }
 // A layered page (page_layered: floors, 2.0.0-beta.2 on) is tagged with a "|L" suffix and only such a
 // tag is trusted for it: 2.0.0-beta.1 keeps drawings under the same fingerprint, and would keep a flat
-// drawing of a layered page (its scoped erasure lightening the ink under it). Unlayered pages keep
-// their tags exactly, so no kept drawing is retired.
+// drawing of a layered page (its scoped erasure lightening the ink under it). Unlayered pages kept
+// their tags exactly then, so no kept drawing was retired.
+//
+// Since 2.0.2 the tag carries the kept drawings' own version after the fingerprint, "|k2", and a drawing kept by an
+// earlier build (render_tag_before's tag) is never read: 2.0.0 and 2.0.1 could keep the old picture of a page just
+// cleared or given a new paper under the new file's stamp (editor.rs page_is_its_file), and nothing in such a tag
+// tells it from a true one. Every page with a kept drawing is drawn once more after the update (on a Kindle, 11 and
+// 28 s for the owner's two stress pages, saying "Loading page..."), and keeps its drawing again.
+const RENDER_TAG_VERSION: u32 = 2;
 fn render_tag(stamp: &str, w: i32, h: i32, layered: bool) -> String {
+    format!("{stamp}|{w}x{h}|{:016x}|k{RENDER_TAG_VERSION}{}", page_render_fingerprint(), if layered { "|L" } else { "" })
+}
+// The tag 2.0.0 and 2.0.1 kept a drawing under (store_retire_page_render).
+fn render_tag_before(stamp: &str, w: i32, h: i32, layered: bool) -> String {
     format!("{stamp}|{w}x{h}|{:016x}{}", page_render_fingerprint(), if layered { "|L" } else { "" })
 }
 // Runs of one byte (most of a page is paper, much of the rest one ink level) as (count - 1) | 0x80
@@ -3935,6 +3946,20 @@ pub fn store_load_page_render(nb: &NotebookInfo, pid: u32, w: i32, h: i32, out: 
         return false;
     }
     out.px[..(w * h) as usize].copy_from_slice(&px);
+    true
+}
+/// Takes away page pid's drawing kept by 2.0.0 or 2.0.1 (render_tag_before's tag, never read since 2.0.2) when it
+/// was current for the page file as it is now, at this size: true when there was one. Such a drawing may show the
+/// page as it was before a Clear or a new paper (editor.rs page_is_its_file), and so may the Pages preview and the
+/// Library card made beside it: the editor, which has just drawn the page from its strokes, makes them again.
+pub fn store_retire_page_render(nb: &NotebookInfo, pid: u32, w: i32, h: i32) -> bool {
+    let Some((source, image, stamp)) = page_render_files(nb, pid) else { return false };
+    let (Some(now), Some(tag)) = (preview_stamp(&source), preview_tag(&stamp)) else { return false };
+    if tag != render_tag_before(&now, w, h, false) && tag != render_tag_before(&now, w, h, true) {
+        return false;
+    }
+    let _ = std::fs::remove_file(&stamp);
+    let _ = std::fs::remove_file(&image);
     true
 }
 /// Whether page pid has a current kept drawing (it is kept fresh from then on, at every save).

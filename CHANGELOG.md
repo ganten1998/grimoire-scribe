@@ -10,6 +10,11 @@
   Library's card when it was page 1. The page itself was always saved right (a cleared page with no strokes), and
   PDF exports drew it right. A kept drawing now stands for a page only while nothing on it has changed since it
   was saved; a changed page is drawn from its strokes.
+- Each page that kept its drawing is drawn once more the first time it opens after the update (on a dense page,
+  seconds, with "Loading page..."), then opens at once again: a drawing kept by 2.0.0 or 2.0.1 may hold a cleared
+  page's old picture, and nothing tells it from a true one, so none of them is used. As such a page is drawn, its
+  Pages view preview is made again from it, and so is the notebook's Library card when it is page 1 (once the page
+  is left), so an old picture they kept goes too.
 
 - The Links bar learning scenario waits for its incoming rows with the headless runner's new `waitfor`,
   instead of guessing that every runner will check 120 notebooks within 9 seconds. Normal application

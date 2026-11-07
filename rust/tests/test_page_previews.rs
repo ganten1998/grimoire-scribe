@@ -242,9 +242,13 @@ fn foreign_kept_drawing_not_first() {
     let dir = dir_of(&nb);
     let stamp = format!("{dir}/.page-previews/p{dense}.full.stamp");
     let tag = std::fs::read_to_string(&stamp).unwrap();
-    let (head, fingerprint) = tag.rsplit_once('|').unwrap();
-    check!(fingerprint.len() == 16);
-    std::fs::write(&stamp, format!("{head}|{}", if fingerprint == "0123456789abcdef" { "fedcba9876543210" } else { "0123456789abcdef" })).unwrap();
+    // (the page file's stamp, |WxH|, the fingerprint, then the kept drawings' version: |k2 since 2.0.2)
+    let size = format!("|{W}x{H}|");
+    let (head, rest) = tag.split_once(size.as_str()).unwrap();
+    let (fingerprint, version) = rest.split_once('|').unwrap();
+    check!(fingerprint.len() == 16 && version == "k2");
+    let other = if fingerprint == "0123456789abcdef" { "fedcba9876543210" } else { "0123456789abcdef" };
+    std::fs::write(&stamp, format!("{head}{size}{other}|{version}")).unwrap();
     check!(!store_page_render_kept(&nb, dense, W, H, false));
     check!(store_build_page_previews(nb.id.as_str(), "0:4", 300.0) == 0);
     let pgm = |i: usize| format!("{dir}/.page-previews/p{}.pgm", nb.page_ids[i]);

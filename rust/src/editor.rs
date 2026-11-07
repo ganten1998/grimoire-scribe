@@ -2852,6 +2852,16 @@ fn render_page_full(a: &mut App) {
         draw_page(a, r);
         let s = ed(a);
         s.full_ms = (pid, now_ms().wrapping_sub(started));
+        // A drawing 2.0.0 or 2.0.1 kept of the page file as it is now (never read since 2.0.2, store.rs
+        // RENDER_TAG_VERSION: it may show the page as it was before a Clear or a new paper) goes, and the Pages
+        // preview and the Library card made beside it are made again from this drawing: the preview now, the card
+        // as page 1 is left (write_thumb_if_needed). Not from a drawing with its picture white: later, then.
+        if page_is_its_file(s) && !s.picture_missing && s.page_ix().is_some() && store_retire_page_render(&s.nb, pid, s.pgw, s.pgh) {
+            store_save_page_preview(&s.nb, pid, &s.page_canvas);
+            if s.index == 0 {
+                s.thumb_dirty = true;
+            }
+        }
         // A page that took this long, as it is on disk (nothing unsaved), keeps its drawing at once:
         // the next open is quick even if it is only read, never written.
         if s.full_ms.1 >= store_keep_render_ms() && !s.page_dirty && !s.picture_missing && s.page_ix().is_some() {
@@ -11775,6 +11785,51 @@ mod tests {
         clear_page(&mut a);
         assert!(ed_ref(&a).open_page().unwrap().strokes.is_empty());
         assert!(!ed_ref(&a).page_kept && canvas_is_the_page(&a));
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn a_drawing_kept_by_2_0_1_goes_with_the_preview_and_card_made_beside_it() {
+        // What 2.0.0 and 2.0.1 may have left of a cleared page: its old ink kept under the cleared file's stamp, and
+        // the Pages preview and the Library card made from it. The page is drawn from its strokes, the drawing goes,
+        // and the preview and the card are made again from the page drawn.
+        let root = std::env::temp_dir().join(format!("grimoire-kept-before-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        store_init(root.to_str().unwrap());
+        let mut nb = NotebookInfo::default();
+        assert_eq!(store_create("Before", "", PAPER_BLANK, &mut nb), 0);
+        let mut a = fshape_app();
+        let s = ed(&mut a);
+        s.nb = nb;
+        assert_eq!(store_save_page(&s.nb, 0, s.open_page().unwrap()), 0); // (blank: cleared)
+        let mut ghost = Canvas::default();
+        assert_eq!(canvas_init(&mut ghost, s.pgw, s.pgh), 0);
+        ghost.px.iter_mut().enumerate().for_each(|(i, v)| *v = if i % 7 == 0 { 40 } else { 255 });
+        assert!(store_save_page_render(&s.nb, 1, &ghost, false));
+        store_save_page_preview(&s.nb, 1, &ghost);
+        let mut card = Canvas::default();
+        assert_eq!(canvas_init(&mut card, s.pgw / 3, s.pgh / 3), 0);
+        canvas_downsample_keep_lines(&mut card, &ghost, 0.35);
+        assert_eq!(store_save_thumb(s.nb.id.as_str(), &card), 0);
+        let mut dir = String::new();
+        assert_eq!(store_notebook_dir(s.nb.id.as_str(), &mut dir, 600), 0);
+        let stamp = format!("{dir}/.page-previews/p1.full.stamp");
+        let tag = std::fs::read_to_string(&stamp).unwrap();
+        std::fs::write(&stamp, tag.replace("|k2", "")).unwrap(); // (2.0.1's tag)
+        render_page_full(&mut a);
+        assert!(!ed_ref(&a).page_kept && canvas_is_the_page(&a));
+        let s = ed(&mut a);
+        assert!(!std::path::Path::new(&stamp).exists() && !store_retire_page_render(&s.nb, 1, s.pgw, s.pgh));
+        let mut shown = Canvas::default();
+        let mut made = Canvas::default();
+        assert!(store_load_page_preview(&s.nb, 1, &mut shown));
+        assert!(store_page_preview_image(&s.page_canvas, &mut made) && shown.px == made.px);
+        assert!(s.thumb_dirty);
+        write_thumb_if_needed(&mut a);
+        let s = ed(&mut a);
+        assert_eq!(store_load_thumb(s.nb.id.as_str(), &mut shown), 0);
+        canvas_downsample_keep_lines(&mut card, &s.page_canvas, 0.35);
+        assert!(shown.px == card.px);
         std::fs::remove_dir_all(root).unwrap();
     }
 
