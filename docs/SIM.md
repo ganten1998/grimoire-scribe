@@ -360,9 +360,11 @@ shows what the app holds.
 | `asleep.mode` | while asleep, which sleep screen is up, numbered as `settings.sleep_mode` after fallback/override (native PIN forces `2`; unavailable wallpaper uses `0`) (hosted by KOReader, mode 2 reads `0`); empty while awake |
 | `host` | `koreader` when started as KOReader's Grimoire plugin starts it (`GRIMOIRE_HOST=koreader`), else empty |
 | `language` | the language in use, `en` or `es` |
+| `font` | Classic's font in use (2.1), by its settings.ini id: `terminess`, `atkinson`, `noto-sans` or `literata` (also while Gothic shows: the family Classic would use) |
 | `rotation` | the quarter turns applied, 0..3 |
 | `size` | the screen, `1860x2480` or `2480x1860` (`1986x2648` or `2648x1986` under `GRIMOIRE_SIM_SIZE=1986x2648`) |
-| `settings.KEY` | the setting as settings.ini stores it, for `theme` (`gothic` or `classic`), `invert`, `mirror_pdf`, `follow_rotation`, `pinch_zoom`, `side_button` (0 nothing, 1 eraser, 2 highlighter, 3 white ink), `sleep_mode` (0 the page, 1 a pinned page, 2 the Kindle's screensaver, 3 KOReader wallpaper), `sleep_minutes`, `pen.valid` and `touch.valid` (1 once calibrated); `language` (`auto`, `en` or `es`, and `auto` for a value this version does not speak, which settings.ini keeps as it was); `pen.panel` and `touch.panel` (the panel the calibration was made on, `WxH`, empty when not recorded) |
+| `settings.KEY` | the setting as settings.ini stores it, for `theme` (`gothic` or `classic`), `invert`, `mirror_pdf`, `follow_rotation`, `pinch_zoom`, `side_button` (0 nothing, 1 eraser, 2 highlighter, 3 white ink), `sleep_mode` (0 the page, 1 a pinned page, 2 the Kindle's screensaver, 3 KOReader wallpaper), `sleep_minutes`, `pen.valid` and `touch.valid` (1 once calibrated); `language` (`auto`, `en` or `es`, and `auto` for a value this version does not speak, which settings.ini keeps as it was); `font` (Classic's font, 2.1: `terminess`, `atkinson`, `noto-sans` or `literata`, and `terminess` for a value this version does not have, which settings.ini keeps as it was); `pen.panel` and `touch.panel` (the panel the calibration was made on, `WxH`, empty when not recorded) |
+| `settings.kept.KEY` | the value settings.ini had for a known key that this version could not use as written and keeps to write back as it was (`settings.kept.font` is `comic-sans` for `font=comic-sans`); empty when there is none (2.1) |
 | `settings.TOOL.PARAM` | a tool's pen feel as settings.ini stores it, four decimals: TOOL as for `editor.tool`, PARAM a slider's settings.ini name (`size_min_mm`, `size_max_mm`, `opacity_min`, `opacity_max`, `pressure_floor`, `pressure_ceiling`, `pressure_gamma`, `tilt_min_deg`, `tilt_max_deg`, `tilt_size`, `tilt_opacity`, `grain`, `smoothing`), e.g. `settings.fountain.pressure_gamma` |
 | `light.intensity`, `light.warmth` | the front light (the simulator starts at 12 and 8) |
 | `editor.page`, `editor.pages` | the open page (from 1) and the page count, 0 with no notebook open |
@@ -467,7 +469,8 @@ shows what the app holds.
 | `editor.hold_eraser` | `1` while a controller's Erase while held is down (from its press to its release), else `0` |
 | `editor.music` | the Custom music layout on the Custom music sheet while it is open, else the page's if its paper is custom, else empty: the systems per page, a colon, then the parts top to bottom (`treble`, `bass`, `alto`, `tenor`, `drums`, `plain`, `tab4` to `tab7`, `lyrics`), e.g. `4: treble tab6 bass` |
 | `editor.music_max` | while the editor's Custom music sheet is open, the most systems its layout fits on the page it is for (that page's height), else empty |
-| `library.sheet` | what is open over the cards: `none`, `new` (New notebook), `settings`, `more` (a notebook's menu), `folder-more` (a folder's menu), `move` (Move to), `delete`, `keyboard`, `display`, `music`, `koreader`, `language` (Settings > Language's list), `shortcuts` (Settings > Shortcuts), `buttons` (its Buttons sheet), `pair-menu` (Settings > Pair, 2.0.0-beta.2), `pair` (its Pair a controller... sheet), `updates`, `gestures`, `about` (What's new, Rust only) or `exit` (Exit Grimoire?, Esc at the top level: 2.0.0-beta.2) |
+| `library.sheet` | what is open over the cards: `none`, `new` (New notebook), `settings`, `more` (a notebook's menu), `folder-more` (a folder's menu), `move` (Move to), `delete`, `keyboard`, `display`, `music`, `koreader`, `language` (Settings > Language's list), `shortcuts` (Settings > Shortcuts), `buttons` (its Buttons sheet), `pair-menu` (Settings > Pair, 2.0.0-beta.2), `pair` (its Pair a controller... sheet), `updates`, `gestures`, `about` (What's new, Rust only), `font` (Settings > Font, Classic only: 2.1) or `exit` (Exit Grimoire?, Esc at the top level: 2.0.0-beta.2) |
+| `library.font.pick` | the Font sheet's highlighted family, by its settings.ini id (the font in use as the sheet opens; a tap on a row moves it, Done applies it); empty while the sheet is not up (2.1) |
 | `library.exit` | Exit Grimoire?'s highlighted answer, `yes` or `no`; empty while it is not up |
 | `library.learning` | the action the Buttons sheet waits for a press for (`undo`, `next-page`), else empty |
 | `library.buttons.ACTION` | the Buttons sheet's buttons for ACTION (`library.buttons.undo`): as the files name them (`South, Up`), or as printed while the first controller connected is a Switch-mode one (`B, Up`); `none` for none |
@@ -488,7 +491,7 @@ shows what the app holds.
 | `library.gestures.learning` | action being recorded, or `0` |
 | `library.record` | `0`, `wait`, `pattern touch.N.KIND`, `shape K` (sample count), `checking` or `ready` |
 | `library.record.line` | record card's progress/refusal line, empty without a card |
-| `library.ui_at.X.Y` | semantic name of the Library hit at screen pixel X,Y, empty for none; see recording workflow. The top bar has five buttons (`exit`, `settings`, `share`, `new-folder`, `new`; beta.2's Graph button was taken out again, the owner's ruling of 2026-11-03). A notebook's menu has `more.open`, `more.rename`, `more.move`, `more.pdf`, `more.graph` (Leave out of the Graph, or Show in the Graph) and `more.delete`; a folder's `fmore.rename`, `fmore.move`, `fmore.graph` and `fmore.remove` (Cancel is `done` in both); Move to `move.top`, `move.to.PATH` (a folder by its path, `move.to.School/Math`), `move.new`, `move.prev` and `move.next`. Settings' top rows are `display`, `pen-feel`, `shortcuts` and `calibrate` (in that order since 2.0.0-beta.2: tap them by name, never by place), its bottom row `ko`, `pair-menu`, `gestures`, `updates` and `done`; the Shortcuts sheet has `shortcuts.enable`, `shortcuts.device`, `shortcuts.own`, `buttons`, `shortcuts.reload` and `done`, the Pair sheet `bluetooth`, `pair` and `done` (a greyed-out row has no name) |
+| `library.ui_at.X.Y` | semantic name of the Library hit at screen pixel X,Y, empty for none; see recording workflow. The top bar has five buttons (`exit`, `settings`, `share`, `new-folder`, `new`; beta.2's Graph button was taken out again, the owner's ruling of 2026-11-03). A notebook's menu has `more.open`, `more.rename`, `more.move`, `more.pdf`, `more.graph` (Leave out of the Graph, or Show in the Graph) and `more.delete`; a folder's `fmore.rename`, `fmore.move`, `fmore.graph` and `fmore.remove` (Cancel is `done` in both); Move to `move.top`, `move.to.PATH` (a folder by its path, `move.to.School/Math`), `move.new`, `move.prev` and `move.next`. Settings' top rows are `display`, `pen-feel`, `shortcuts` and `calibrate` (in that order since 2.0.0-beta.2: tap them by name, never by place), its bottom row `ko`, `pair-menu`, `gestures`, `updates` and `done`, and in Classic the Style row's Font chip `font` (the rest of the row is `theme`; 2.1); the Font sheet has `font.terminess`, `font.atkinson`, `font.noto-sans` and `font.literata` (its rows), `font.cancel` and `font.done`; the Shortcuts sheet has `shortcuts.enable`, `shortcuts.device`, `shortcuts.own`, `buttons`, `shortcuts.reload` and `done`, the Pair sheet `bluetooth`, `pair` and `done` (a greyed-out row has no name) |
 | `library.map`, `library.map.KEY` | the Graph opened from the Library (2.0.0-beta.2: two fingers down over it, or the `index-map` key): `graph` while it shows, else `0`, and every `editor.map.KEY` (below) of it. `library.map.no_notebook` is `1` for it (no notebook open), `library.map.tabs` the tabs drawn (`graph` alone here; `graph list pages` for the editor's). `library.map.picker` is `1` while its notebooks' browser (past the caps) is up, `library.map.keep` `1` while a notebook it opened is in front (Back there comes back to it). `tap library map.NAME` taps its controls (`map.back`, `map.open`, `map.view`), `tap library elsewhere.NAME` its browser's (`elsewhere.folder.PATH`, `elsewhere.book.ID`, `elsewhere.back`), and `tap map-node ID:PID` its nodes |
 | `library.graph.omitted` | the Library's notebooks the Graph of all notebooks leaves out (by their own Leave out of the Graph or a folder's), by id, sorted, space-separated (2.0.0-beta.2) |
 | `library.about.view` | What's new while it is open (else empty): `card` (the card hanging from the bat), `list` (Read all's list of every version's notes) or `note` (a version's notes on the sheet) (2.1.0) |
@@ -666,6 +669,14 @@ page area's GL16 rather than DU strips.
   depend on the language. Its shots, `build/shots/l10n/<lang>-<style>/` (01-library-empty to
   65-music-landscape), show translators every screen in context. `make scenarios` runs it too, in
   English and Gothic.
+- The styles are Gothic and Classic (in Terminess, its default font), and in English and Spanish
+  Classic in each other font of Settings > Font too (2.1, the Rust build): `classic-atkinson`,
+  `classic-noto-sans` and `classic-literata` (settings.ini `theme=classic` and `font=`), for
+  y_all_screens.qs, shapes, hosted, templates, the Index scenarios and z_wifi. Japanese takes its
+  letters from DotGothic16 in every font, so it runs in Gothic and Classic only.
+- tests/l10n/fonts.qs (Rust only), in every language and in Classic with each font, Terminess too:
+  Settings with the Style row's Font chip, then the Font sheet with each family highlighted, sideways
+  then upright, and Cancel (shots in `build/shots/l10n/fonts-<lang>-<style>/`).
 - In each language, tests/l10n/long_root.qs opens Settings from a data root whose path is longer
   than the sheet is wide (`build/scen/l10n/long-root/a-long-data-root-...<lang>`): its Data line, a
   path, is cut short as names are, and the check must not count it, or make check would fail in a
@@ -682,7 +693,10 @@ Under make check it runs after the scenarios, since both open the share server o
 The scenarios y_language (with `GRIMOIRE_LANG=es`: Automatic is Spanish, a pick applies at once
 and is saved, Cancel changes nothing) and z_language_kept (`# root: y_language`: the pick outlasts
 a restart, and Automatic hands the choice back) check Settings > Language, and tests/test_i18n.c
-what no scenario reaches.
+what no scenario reaches. Settings > Font (2.1) has y_fonts (the chip opens the sheet on the font in
+use; a tap highlights and changes nothing; Cancel and Esc leave the font; Done applies and saves it;
+Gothic has no chip), z_fonts_kept (`# root: y_fonts`: the font outlasts a restart) and y_fonts_unknown
+(`font=comic-sans`: Terminess draws, the line stays through Cancel and other saves, a pick replaces it).
 
 ## The Share screen in tests
 

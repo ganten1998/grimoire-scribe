@@ -1,15 +1,22 @@
 //! font.h: TrueType text via stb_truetype, fonts embedded at build time
 //! (build/gen/fonts.c, from assets/*.ttf via xxd -i). Glyph bitmaps are cached per size.
+//! Classic's text can be drawn in one of FONT_FAMILIES (2.1, Rust only): Terminess, or a bundled
+//! family the Font sheet offers (settings.ini font=).
 
-use crate::assets::{FONT_DOTGOTHIC16, FONT_JACQUARD24, FONT_JERSEY10, FONT_TERMINESS_BOLD, FONT_TERMINESS_REGULAR};
+use crate::assets::{
+    FONT_ATKINSON_BOLD, FONT_ATKINSON_REGULAR, FONT_DOTGOTHIC16, FONT_JACQUARD24, FONT_JERSEY10, FONT_LITERATA_BOLD,
+    FONT_LITERATA_REGULAR, FONT_NOTO_SANS_BOLD, FONT_NOTO_SANS_REGULAR, FONT_TERMINESS_BOLD, FONT_TERMINESS_REGULAR,
+};
 use crate::ffi_stb::*;
 use crate::prelude::*;
 use std::cell::RefCell;
 
-/// What the text is for; the theme picks the typeface. Classic: all Terminess. Gothic: pixel
+/// What the text is for; the theme picks the typeface. Classic: Terminess, or the family the Font
+/// sheet picked (its Regular for text, its Bold for bold, titles and caps). Gothic: pixel
 /// faces, Jersey 10 for text and labels (overprinted one design pixel for bold, except where
 /// that would fill in an accent or turn a letter into another), Jacquard 24 (pixel blackletter)
-/// for titles. FIXED faces are Terminess in every theme: paper labels.
+/// for titles. FIXED faces are Terminess in every theme and with every font: paper labels, the
+/// clock.
 #[repr(i32)]
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
 pub enum FontFace {
@@ -32,13 +39,124 @@ impl FontFace {
 
 // The embedded TrueType files. Terminess (with the Nerd Font icons) is always there; the
 // pixel faces belong to the gothic theme: Jacquard 24 (pixel blackletter) for titles, Jersey
-// 10 for text and labels. DotGothic16 is the Japanese fallback, in the same pixel style.
+// 10 for text and labels. DotGothic16 is the Japanese fallback, in the same pixel style. Then
+// the Classic families the Font sheet offers (2.1), each a Regular and a Bold (assets/README.md
+// says how they were made: static, Latin only; what they lack comes from Terminess).
 const TTF_TERM: usize = 0;
 const TTF_TERM_BOLD: usize = 1;
 const TTF_JACQUARD: usize = 2;
 const TTF_JERSEY: usize = 3;
 const TTF_JP: usize = 4;
-const TTF_COUNT: usize = 5;
+const TTF_ATKINSON: usize = 5;
+const TTF_ATKINSON_BOLD: usize = 6;
+const TTF_NOTO: usize = 7;
+const TTF_NOTO_BOLD: usize = 8;
+const TTF_LITERATA: usize = 9;
+const TTF_LITERATA_BOLD: usize = 10;
+const TTF_COUNT: usize = 11;
+
+/// The embedded file of a TTF_* index.
+fn ttf_data(ttf: usize) -> &'static [u8] {
+    match ttf {
+        TTF_TERM => FONT_TERMINESS_REGULAR,
+        TTF_TERM_BOLD => FONT_TERMINESS_BOLD,
+        TTF_JACQUARD => FONT_JACQUARD24,
+        TTF_JERSEY => FONT_JERSEY10,
+        TTF_JP => FONT_DOTGOTHIC16,
+        TTF_ATKINSON => FONT_ATKINSON_REGULAR,
+        TTF_ATKINSON_BOLD => FONT_ATKINSON_BOLD,
+        TTF_NOTO => FONT_NOTO_SANS_REGULAR,
+        TTF_NOTO_BOLD => FONT_NOTO_SANS_BOLD,
+        TTF_LITERATA => FONT_LITERATA_REGULAR,
+        _ => FONT_LITERATA_BOLD,
+    }
+}
+
+/// A family Classic's text can be drawn in (2.1): Terminess, the default, or one the Font sheet
+/// offers beside it. Font names are never translated.
+#[derive(Clone, Copy, Debug)]
+pub struct FontFamily {
+    /// settings.ini's font= value
+    pub id: &'static str,
+    /// its name: the Font sheet's row, drawn in the family itself
+    pub name: &'static str,
+    /// the short name Settings' Font chip shows ("Font: Atkinson")
+    pub short: &'static str,
+    /// its Regular and Bold (TTF_*)
+    regular: usize,
+    bold: usize,
+    /// How much bigger than asked its text is drawn (FaceMap.scale; a size is a line height, ascent
+    /// to descent, and each family puts a different share of its line in its letters): Terminess's
+    /// sizes stay the sizes every layout was made for, and each family's letters come out about
+    /// Terminess's size while every screen still fits in English and Spanish, upright and sideways
+    /// (make l10n-check runs every screen in each family).
+    pub scale: f32,
+    /// the share pages' names for its Regular and Bold, under /font/ (httpd.rs serves the files)
+    pub web: [&'static str; 2],
+    /// the CSS generic family the share pages name after it
+    pub css_generic: &'static str,
+}
+
+/// The families, Terminess first (the default; settings.ini font=terminess). The share pages serve the
+/// one in use (httpd.rs), and only in Classic: Gothic's look is its pixel faces.
+pub const FONT_FAMILIES: [FontFamily; 4] = [
+    FontFamily {
+        id: "terminess",
+        name: "Terminess",
+        short: "Terminess",
+        regular: TTF_TERM,
+        bold: TTF_TERM_BOLD,
+        scale: 1.0,
+        web: ["terminess.ttf", "terminess-bold.ttf"],
+        css_generic: "monospace",
+    },
+    // Atkinson Hyperlegible Next (Braille Institute): made for readers with low vision; I, l and 1,
+    // O and 0 cannot be mistaken.
+    FontFamily {
+        id: "atkinson",
+        name: "Atkinson Hyperlegible Next",
+        short: "Atkinson",
+        regular: TTF_ATKINSON,
+        bold: TTF_ATKINSON_BOLD,
+        scale: 1.10,
+        web: ["atkinson.ttf", "atkinson-bold.ttf"],
+        css_generic: "sans-serif",
+    },
+    // Noto Sans: neutral, its digits all one width (a number that changes keeps its place).
+    FontFamily {
+        id: "noto-sans",
+        name: "Noto Sans",
+        short: "Noto Sans",
+        regular: TTF_NOTO,
+        bold: TTF_NOTO_BOLD,
+        scale: 1.065,
+        web: ["noto-sans.ttf", "noto-sans-bold.ttf"],
+        css_generic: "sans-serif",
+    },
+    // Literata: a serif made for reading on screens (Google Play Books' typeface), at its 12 pt
+    // optical size, the sturdy one.
+    FontFamily {
+        id: "literata",
+        name: "Literata",
+        short: "Literata",
+        regular: TTF_LITERATA,
+        bold: TTF_LITERATA_BOLD,
+        scale: 1.15,
+        web: ["literata.ttf", "literata-bold.ttf"],
+        css_generic: "serif",
+    },
+];
+
+/// The family settings.ini's font= names (its id), None for one this version does not have.
+pub fn font_family_find(id: &[u8]) -> Option<usize> {
+    FONT_FAMILIES.iter().position(|f| f.id.as_bytes() == id)
+}
+
+/// A family's Regular (bold false) or Bold file, as embedded: what the share pages serve.
+pub fn font_family_file(family: usize, bold: bool) -> &'static [u8] {
+    let f = &FONT_FAMILIES[family.min(FONT_FAMILIES.len() - 1)];
+    ttf_data(if bold { f.bold } else { f.regular })
+}
 
 /// Font units per design pixel (0 = an outline font, drawn smooth). Measured: every outline
 /// point of these files sits on this grid.
@@ -49,17 +167,24 @@ const K_UNIT: [i32; TTF_COUNT] = {
     k
 };
 
-/// What a FontFace means under the current theme: which file, how much bigger than asked, and
-/// whether to embolden by overprinting (one design pixel for pixel faces).
+/// What a FontFace means under the current theme and font: which file, how much bigger than asked,
+/// whether to embolden by overprinting (one design pixel for pixel faces), and the Terminess weight a
+/// glyph the file lacks comes from (the bold faces' from its Bold).
 #[derive(Clone, Copy)]
 struct FaceMap {
     ttf: usize,
     scale: f32,
     embolden: bool,
+    fallback: usize,
 }
 
 const fn fm(ttf: usize, scale: f32, embolden: bool) -> FaceMap {
-    FaceMap { ttf, scale, embolden }
+    FaceMap { ttf, scale, embolden, fallback: if embolden { TTF_TERM_BOLD } else { TTF_TERM } }
+}
+
+/// The same for a face of a family's own Bold (it needs no overprint, and its fallback is bold).
+const fn fm_bold(ttf: usize, scale: f32) -> FaceMap {
+    FaceMap { ttf, scale, embolden: false, fallback: TTF_TERM_BOLD }
 }
 
 // The glyph cache: one slot per (face, size, code point), probed from a hash.
@@ -92,6 +217,8 @@ struct State {
     ready: bool,
     map: [FaceMap; FontFace::COUNT],
     gothic: bool,
+    /// the Classic family (FONT_FAMILIES)
+    family: usize,
     cache: Vec<Glyph>,
     cache_used: i32,
     overflow: Option<FontOverflowHook>,
@@ -104,6 +231,7 @@ impl State {
             ready: false,
             map: [fm(0, 0.0, false); FontFace::COUNT],
             gothic: false,
+            family: 0,
             cache: (0..CACHE_SLOTS).map(|_| Glyph::default()).collect(),
             cache_used: 0,
             overflow: None,
@@ -193,13 +321,16 @@ fn codepoint_bitmap(fi: &stbtt_fontinfo, sx: f32, sy: f32, cp: u32) -> (Vec<u8>,
 // ---- faces ----
 
 fn map_faces(st: &mut State, gothic: bool) {
-    const CLASSIC: [FaceMap; FontFace::COUNT] = [
-        fm(TTF_TERM, 1.0, false),      // FONT_REGULAR
-        fm(TTF_TERM_BOLD, 1.0, false), // FONT_BOLD
-        fm(TTF_TERM_BOLD, 1.0, false), // FONT_TITLE
-        fm(TTF_TERM_BOLD, 1.0, false), // FONT_CAPS
+    // Classic: the family's Regular for text, its Bold for bold, titles and caps (Terminess's are the
+    // classic faces of every version before 2.1); FIXED always Terminess.
+    let f = &FONT_FAMILIES[st.family];
+    let classic: [FaceMap; FontFace::COUNT] = [
+        fm(f.regular, f.scale, false), // FONT_REGULAR
+        fm_bold(f.bold, f.scale),      // FONT_BOLD
+        fm_bold(f.bold, f.scale),      // FONT_TITLE
+        fm_bold(f.bold, f.scale),      // FONT_CAPS
         fm(TTF_TERM, 1.0, false),      // FONT_FIXED
-        fm(TTF_TERM_BOLD, 1.0, false), // FONT_FIXED_BOLD
+        fm_bold(TTF_TERM_BOLD, 1.0),   // FONT_FIXED_BOLD
     ];
     const GOTH: [FaceMap; FontFace::COUNT] = [
         fm(TTF_JERSEY, 1.15, false),   // FONT_REGULAR
@@ -209,7 +340,7 @@ fn map_faces(st: &mut State, gothic: bool) {
         fm(TTF_TERM, 1.0, false),      // FONT_FIXED
         fm(TTF_TERM_BOLD, 1.0, false), // FONT_FIXED_BOLD
     ];
-    st.map = if gothic { GOTH } else { CLASSIC };
+    st.map = if gothic { GOTH } else { classic };
 }
 
 /// Pixel faces: how many screen pixels one design pixel becomes at a requested line height.
@@ -238,15 +369,8 @@ pub fn font_init() -> i32 {
         if st.ready {
             return None;
         }
-        let data: [&'static [u8]; TTF_COUNT] = [
-            FONT_TERMINESS_REGULAR,
-            FONT_TERMINESS_BOLD,
-            FONT_JACQUARD24,
-            FONT_JERSEY10,
-            FONT_DOTGOTHIC16,
-        ];
-        for (i, d) in data.iter().enumerate() {
-            if !init_font(&mut st.font[i], d) {
+        for i in 0..TTF_COUNT {
+            if !init_font(&mut st.font[i], ttf_data(i)) {
                 return Some(i);
             }
         }
@@ -273,6 +397,32 @@ pub fn font_set_gothic(gothic: bool) {
 
 pub fn font_gothic() -> bool {
     with(|st| st.gothic)
+}
+
+/// Classic's text from now on in FONT_FAMILIES[family] (one past the list: Terminess). Gothic keeps
+/// its pixel faces whatever the family; FIXED faces and icons are Terminess in every family. Nothing
+/// cached is lost: the glyph cache keys each glyph by its file.
+pub fn font_set_family(family: usize) {
+    with(|st| {
+        st.family = if family < FONT_FAMILIES.len() { family } else { 0 };
+        let gothic = st.gothic;
+        map_faces(st, gothic);
+    });
+}
+
+/// The Classic family in use (FONT_FAMILIES).
+pub fn font_family() -> usize {
+    with(|st| st.family)
+}
+
+/// f run with Classic's text in another family, the one in use again after it: the Font sheet draws
+/// each family's row, and the sample of the one highlighted, in that family.
+pub fn font_with_family<R>(family: usize, f: impl FnOnce() -> R) -> R {
+    let was = font_family();
+    font_set_family(family);
+    let r = f();
+    font_set_family(was);
+    r
 }
 
 pub fn font_shutdown() {
@@ -596,13 +746,14 @@ fn layout(
     let mut i = from;
     while at(s, i) != 0 && end.is_none_or(|e| i < e) {
         let cp = utf8_next(s, &mut i);
-        // Glyphs a theme face lacks (symbols, arrows, Japanese) come from Terminess at the
-        // asked size, or, when Terminess lacks them too, from DotGothic16.
+        // Glyphs a theme face or a family lacks (symbols, arrows, Greek, Japanese) come from
+        // Terminess at the asked size (a bold face's from its Bold), or, when Terminess lacks them
+        // too, from DotGothic16.
         let mut ttf = m.ttf;
         let mut gpx = fpx;
         if cp > 0x7F && find_glyph_index(&st.font[ttf], cp) == 0 {
             if ttf != TTF_TERM && ttf != TTF_TERM_BOLD {
-                ttf = if m.embolden { TTF_TERM_BOLD } else { TTF_TERM };
+                ttf = m.fallback;
                 gpx = px;
             }
             if find_glyph_index(&st.font[ttf], cp) == 0 && find_glyph_index(&st.font[TTF_JP], cp) != 0 {
@@ -1321,6 +1472,52 @@ mod tests {
         assert_eq!(font_measure(FontFace::Regular, 20.0, "Hello"), 0);
         assert_eq!(font_init(), 0);
         assert!(font_measure(FontFace::Regular, 20.0, "Hello") > 0);
+    }
+
+    #[test]
+    fn the_face_table() {
+        up();
+        // Terminess first, the default, at the sizes every layout was made for
+        let t = &FONT_FAMILIES[0];
+        assert_eq!((t.id, t.regular, t.bold, t.scale), ("terminess", TTF_TERM, TTF_TERM_BOLD, 1.0));
+        let mut files = vec![TTF_TERM, TTF_TERM_BOLD];
+        for (i, f) in FONT_FAMILIES.iter().enumerate() {
+            assert_eq!(font_family_find(f.id.as_bytes()), Some(i));
+            assert!(FONT_FAMILIES[..i].iter().all(|g| g.id != f.id && g.web != f.web));
+            assert!(f.short.len() <= f.name.len() && f.name.starts_with(f.short.split(' ').next().unwrap()));
+            assert!((1.0..=1.25).contains(&f.scale), "{}", f.id);
+            assert_eq!(font_family_file(i, false), ttf_data(f.regular));
+            assert_eq!(font_family_file(i, true), ttf_data(f.bold));
+            if i > 0 {
+                files.extend([f.regular, f.bold]);
+            }
+        }
+        // every embedded file is a family's, Gothic's or the Japanese one, once
+        files.extend([TTF_JACQUARD, TTF_JERSEY, TTF_JP]);
+        files.sort();
+        assert_eq!(files, (0..TTF_COUNT).collect::<Vec<_>>());
+        assert_eq!(font_family_find(b"comic-sans"), None);
+        assert_eq!(font_family_find(b""), None);
+        // a family past the list is Terminess; with_family puts the one in use back
+        font_set_family(99);
+        assert_eq!(font_family(), 0);
+        let lit = font_family_find(b"literata").unwrap();
+        let w = font_with_family(lit, || {
+            assert_eq!(font_family(), lit);
+            font_measure(FontFace::Regular, 44.0, "Literata")
+        });
+        assert_eq!(font_family(), 0);
+        assert_ne!(w, font_measure(FontFace::Regular, 44.0, "Literata"));
+        // its scale: the line is that much taller than asked
+        let asc = font_with_family(lit, || font_ascent(FontFace::Regular, 100.0) + font_descent(FontFace::Regular, 100.0));
+        assert!((asc - (100.0 * FONT_FAMILIES[lit].scale).round() as i32).abs() <= 1, "{asc}");
+        // kerning inside a family (its GPOS pairs, read by stb)
+        let atk = font_family_find(b"atkinson").unwrap();
+        font_with_family(atk, || {
+            let pair = font_measure(FontFace::Regular, 100.0, "AV");
+            let apart = font_measure(FontFace::Regular, 100.0, "A") + font_measure(FontFace::Regular, 100.0, "V");
+            assert!(pair < apart, "{pair} {apart}");
+        });
     }
 
     #[test]

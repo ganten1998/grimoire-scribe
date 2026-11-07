@@ -204,6 +204,14 @@ your notebooks and settings from `quire/` to `grimoire/` and removes the old Qui
   passcode off for its whole session, and Grimoire opened from KOReader leaves it that way. Start
   Grimoire from the Library when you need the passcode.
 - **Language**: English, Spanish or Japanese, following the Kindle's own language (see Language).
+- **Fonts** (Classic): the Style row in Settings has a **Font** chip at its right end in the Classic style.
+  It opens the Font sheet: **Terminess** (the default), **Atkinson Hyperlegible Next** (made for readers
+  with low vision: I, l and 1, O and 0 cannot be mistaken), **Noto Sans** and **Literata** (a serif made
+  for reading on screens), each named in itself, with a sample of the one you tap at the top. **Done**
+  applies it to every screen; **Cancel** leaves the font as it was. Your pages, paper labels, the clock,
+  PDFs and pictures never change with the font, and neither do the icons; the share pages in your browser
+  use the same font. Gothic keeps its own pixel type, so the chip is not there. Greek, Cyrillic and other
+  letters a font lacks come from Terminess, and Japanese from DotGothic16, as in every style.
 
 ## White ink, pinned pens and templates
 
@@ -594,6 +602,12 @@ Much of what Grimoire knows about the Kindle comes from [KOReader](https://korea
 - Jacquard 24, Jersey 10 and DotGothic16 (the Japanese fallback, a subset: the kana, the punctuation
   and the common kanji, to keep the app small; see `assets/README.md`): SIL Open Font License 1.1
   (`assets/*-OFL-1.1.txt`)
+- The Classic fonts of Settings > Font: Atkinson Hyperlegible Next by the Braille Institute (with Applied
+  Design Works, Elliott Scott, Megan Eiswerth and Letters From Sweden), Noto Sans by Google (the Noto
+  Project Authors), and Literata by TypeTogether (the Literata Project Authors), each from Google Fonts'
+  release as a Regular and a Bold cut down to the Latin letters and punctuation Grimoire draws (see
+  `assets/README.md`): SIL Open Font License 1.1 (`assets/AtkinsonHyperlegibleNext-OFL-1.1.txt`,
+  `assets/NotoSans-OFL-1.1.txt`, `assets/Literata-OFL-1.1.txt`)
 - stb_truetype and stb_image_write by Sean Barrett: public domain / MIT
 - QR Code generator by Project Nayuki: MIT, vendored unmodified in `third_party/qrcodegen`
   (upstream commit 3c6d0b3)

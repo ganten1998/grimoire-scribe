@@ -38,7 +38,7 @@ A desktop simulator (SDL3) and an SDL-free headless script runner exist for deve
 | common.h / util.c | Rect math, mm_to_px, clampf, time, logging, string helpers, dates (in the language in use) | - |
 | i18n.h/.c | the language in use, lookups in the embedded catalogs (po/*.mo) with English fallback, plural rules, the language list (see Languages) | common |
 | canvas.h/.c | 8-bit gray canvas, clip, fill, AA lines/discs, ink deposit, blit, downsample | common |
-| font.h/.c | stb_truetype text from embedded fonts; faces by role (regular, bold, title, caps, fixed) mapped per theme: Classic = Terminess Nerd Font Mono (cut down to Terminus's text and the Material Design icons the app draws: `assets/terminess-keep.txt`), Gothic = pixel faces Jersey 10 (text, labels; bold = overprinted one design pixel, sparing accents: see Text and the keyboard) and Jacquard 24 titles, drawn one bitmap pixel per design pixel and blown up to whole k x k blocks (no smoothing); FIXED faces (paper labels) are Terminess in both, so pages never change with the theme. DotGothic16 is the Japanese fallback for kana and kanji in both themes | canvas |
+| font.h/.c | stb_truetype text from embedded fonts; faces by role (regular, bold, title, caps, fixed) mapped per theme: Classic = its font (`FONT_FAMILIES`, Rust only, 2.1: Terminess Nerd Font Mono by default, cut down to Terminus's text and the Material Design icons the app draws, `assets/terminess-keep.txt`; or Atkinson Hyperlegible Next, Noto Sans or Literata, settings.ini `font=`: the family's Regular for text, its Bold for bold, titles and caps, each drawn at its own scale), Gothic = pixel faces Jersey 10 (text, labels; bold = overprinted one design pixel, sparing accents: see Text and the keyboard) and Jacquard 24 titles, drawn one bitmap pixel per design pixel and blown up to whole k x k blocks (no smoothing); FIXED faces (paper labels) are Terminess in both, so pages never change with the theme. DotGothic16 is the Japanese fallback for kana and kanji in both themes | canvas |
 | paper.h/.c | page backgrounds (rules, staves); a kind it does not know draws blank ("Newer paper") | canvas |
 | brush.h/.c | tool params, pressure/tilt mapping, deterministic dab renderer, smoother | canvas |
 | page.h/.c | Stroke, Page, hit-test, page render, thumbnail | brush, paper |
@@ -288,6 +288,31 @@ draws them. White ink and the precise eraser make them.
   the face's descenders. ASCII never takes these paths and draws as it always has.
   `font_face_has_glyph(face, cp)` tells whether a face has its own glyph, without the Terminess
   or DotGothic16 fallback; `font_has_glyph(face, cp)` also counts those fallbacks.
+- Classic's fonts (2.1, Rust only). `FONT_FAMILIES` in font.rs is the face table: each family's
+  settings.ini id, its name (never translated), the short name Settings' chip shows, its Regular and
+  Bold files, its scale and its share-page file names. Terminess is first and the default, at scale 1;
+  `font_set_family` maps Classic's faces to another family (Regular for text, Bold for bold, titles and
+  caps; FIXED and FIXED_BOLD stay Terminess, as do the icons), and Gothic's map never changes. A size is
+  a line height (ascent to descent), and each family puts a different share of its line into its
+  letters, so each is drawn bigger than asked by its scale: Atkinson Hyperlegible Next 1.10 and Noto Sans
+  1.065 match Terminess's x-height (0.42 of the line), Literata 1.15 is the largest at which every screen
+  still fits in Spanish (1.23 would match; its serif wants the room). Layouts are Terminess's as they
+  were: make l10n-check runs every screen in each family (Languages). A glyph a family lacks (Greek,
+  Cyrillic, arrows, the Latin Extended-A letters Atkinson lacks) comes from Terminess at the asked size,
+  a bold face's from Terminess Bold (`FaceMap.fallback`), then from DotGothic16, so Japanese is drawn
+  as in every theme; kerning stays inside a face (the families keep their GPOS pairs, which stb reads).
+  The glyph cache keys a glyph by its file, so a change of font loses nothing cached. The files are
+  static Regular and Bold instances of Google Fonts' variable fonts, cut to Latin, Latin-1, Latin
+  Extended-A and General Punctuation (238 KB for the six: `assets/README.md`).
+- Settings > Font (library.rs, `Modal::Font`, 2.1): in Classic the Style row's right end is a chip, "Font:
+  Terminess" (the family's short name, md-format_font beside it), and the rest of the row still changes
+  the style; Gothic has no chip. The chip opens the Font sheet: a sample card (the highlighted family's
+  name at the title size, a translated sentence at the text size, digits and accents at the small size,
+  all drawn in it), then a row for each family drawn in itself, a check on the one in use, then Cancel
+  and Done. The sheet's own words stay in the font in use. A tap highlights a row and refreshes only the
+  sample and the two rows (`font_step`, one partial refresh); Done saves `font=`, applies it and redraws
+  with a Full refresh, as a style change does; Cancel, Back and Esc change nothing. `font_with_family`
+  draws a family's row and sample and puts the font in use back.
 - The keyboard's text is UTF-8 and its keys carry code points (`KB_KEY_*` below 32 for the named
   keys, `KB_KEY_FLICK` + row for the kana pad's own keys). There are four pages of characters,
   letters, symbols, accents and kana (`Keyboard.page`); the first three have `-`, `'` and `.`
@@ -434,9 +459,9 @@ draws them. White ink and the precise eraser make them.
   reported: `font_draw_left_name` (a notebook's, a folder's, Settings' data path) shortens with
   "..." by design. With `GRIMOIRE_CHECK_FIT=1` the simulator and the headless runner list each cut
   (`fit[es]: "..." needs W px, has R`, once per text and room) and exit 3, and make l10n-check
-  runs every screen so, in every language and style (docs/SIM.md). Text no scenario reaches (rare
-  notices, the Share screen without an address, Pen feel's raw labels) is measured in
-  tests/test_i18n.c.
+  runs every screen so, in every language and style, and in English and Spanish in Classic with each
+  font of Settings > Font (2.1; docs/SIM.md). Text no scenario reaches (rare notices, the Share screen
+  without an address, Pen feel's raw labels) is measured in tests/test_i18n.c, in each font too.
 - The share pages: httpd.c writes `<html lang=..>` and escapes every translation as text, as it
   does names (a catalog is third-party input, and none may add markup; share_check serves the pages
   from a catalog full of markup). /api/list.json keeps the English identifiers. The studio's words
@@ -636,7 +661,10 @@ announcements: goingToScreenSaver draws the sleep screen, outOfScreenSaver is th
   styles with the fit check, then tests/l10n/long_root.qs (Settings from a data root longer than
   the sheet is wide) in each language, then tests/l10n/hosted.qs (the top bar as KOReader opens
   it) and tests/l10n/templates.qs (the Templates sheet with templates in it, its `# copy:` line
-  honoured) in each language and style. docs/TRANSLATING.md and docs/SIM.md have the rest.
+  honoured) in each language and style; the styles include Classic in each other font of Settings >
+  Font (`classic-atkinson`, `classic-noto-sans`, `classic-literata`) in English and Spanish, and
+  tests/l10n/fonts.qs shows the Font sheet in every language and every font. docs/TRANSLATING.md and
+  docs/SIM.md have the rest.
 - Dependencies: HDRS holds the Makefile, VERSION and third_party/qrcodegen/qrcodegen.h besides
   src/*.h, so a change of flags rebuilds every program (FBInk's objects follow only their own
   .c files); the test binaries also depend on tests/*.h (beta_format.h among them), and the zip on
@@ -651,7 +679,7 @@ announcements: goingToScreenSaver draws the sleep screen, outOfScreenSaver is th
   headless runner stop at the first undefined behaviour (`-fno-sanitize-recover=undefined`).
 - `make kindle` (zig cc -target arm-linux-musleabihf, static) -> build/kindle/grimoire
 - `make package` -> build/dist/Grimoire.zip. The licenses in its app/licenses: the GPL; the font
-  licenses, which follow FONTS in the Makefile (each embedded font needs an
+  licenses, which follow FONTS and FONTS_CLASSIC in the Makefile (each embedded font needs an
   assets/<family>-OFL-1.1.txt whose family begins the font's file name); every
   third_party/<dir>/LICENSE* or COPYING* as <dir>-LICENSE.txt and CREDITS* as <dir>-CREDITS.txt;
   the stb headers' license, extracted once into stb-LICENSE.txt; musl's COPYRIGHT, from `zig env`'s
@@ -662,7 +690,8 @@ announcements: goingToScreenSaver draws the sleep screen, outOfScreenSaver is th
   FBInk's CREDITS, the only text the tree has for them. The recipe fails when it cannot find zig's
   LICENSE or musl's COPYRIGHT, or one of those notices. A vendored directory with no license file,
   a font without its OFL text, or a missing notice fails package-check, and so does a change to
-  FBINK_SRC until its notice is added.
+  FBINK_SRC until its notice is added. package-check also holds the size guard (2.1, the owner's
+  decision D23): the Kindle binary under 10.5 MB (10,500,000 bytes) and the zip under 5.5 MB.
 
 ## Tests
 
@@ -678,7 +707,12 @@ announcements: goingToScreenSaver draws the sleep screen, outOfScreenSaver is th
   a deliberate rendering change, `GRIMOIRE_FONT_CRC=print build/test/test_font` prints a fresh
   table. Terminess (anti-aliased) entries are compared only with clang on arm64, where they were
   recorded. bold_letters_keep_their_gaps and inverted_exclamation_is_not_an_i guard the Gothic
-  bold.
+  bold. The Classic fonts of 2.1 have a table of their own (rust/tests/test_font.rs, K_CRC_FAMILIES:
+  each family's Regular and Bold, the same strings and sizes, recorded when they came in); the first
+  table is Terminess's and never changes with them. families_unchanged also holds that Title and Caps
+  are a family's Bold, FIXED stays Terminess and Gothic ignores the family; families_fall_back_to_terminess
+  that a letter a family lacks is Terminess's own pixels. font.rs's the_face_table holds the table
+  itself (ids, files, scales, kerning).
 - rust/tests/test_terminess_keep.rs holds the Terminess diet: the embedded fonts' cmaps are exactly
   `assets/terminess-keep.txt` (none of the Nerd Fonts glyphs it leaves out is back), and every icon
   the sources draw (rust/src, kindle/, web/, po/ and What's new, scanned for characters, escapes
@@ -704,7 +738,8 @@ announcements: goingToScreenSaver draws the sleep screen, outOfScreenSaver is th
   the QR drawing, and tests/test_probe.c that the probes' tool names match settings.ini.
 - tests/test_i18n.c: lookups, contexts and plurals in the embedded catalogs; every translation
   against its English (the same printf arguments by type, the language's number of plural forms,
-  only glyphs that Jersey 10, Jacquard 24 and Terminess regular and bold all have) and the
+  only glyphs that Jersey 10, Jacquard 24 and Terminess regular and bold all have, and that each Classic
+  font's Regular and Bold has of its own, Japanese's letters aside) and the
   catalog's Plural-Forms against `k_rules`; damaged catalogs refused whole; the choice of language
   (settings.ini, then `GRIMOIRE_LANG`, the Kindle's locale file, `LC_ALL`, `LC_MESSAGES` and
   `LANG`); dates; paper that never changes with the language; the layout helpers (the overflow
@@ -756,10 +791,12 @@ announcements: goingToScreenSaver draws the sleep screen, outOfScreenSaver is th
    new connection from the previous request); renders fork, two at a time, the rest queue
    oldest first and are dropped when their browser hangs up. The pages use the fonts of the
    Kindle's style (served from the binary, cached a year) and the language in use (Languages
-   above). The fonts' licenses go with them (Rust only): `/font/licenses.txt` holds the texts
-   (Terminess's OFL, its Material Design icons' notice and the Apache License, the Gothic fonts'
-   OFL), each font's answer names it in a `Link: rel="license"` header, and the pages' style says
-   where it is;
+   above): in Classic the font in use when the server started (Settings > Font; its Regular and Bold
+   as 'Grimoire Text', the browser's serif, sans-serif or monospace after it, and Terminess as 'Grimoire
+   Mono' for the studio's command line). The fonts' licenses go with them (Rust only): `/font/licenses.txt`
+   holds the texts (Terminess's OFL, its Material Design icons' notice and the Apache License, the Gothic
+   fonts' and the Classic fonts' OFL), each font's answer names it in a `Link: rel="license"` header, and
+   the pages' style says where it is;
    every page is rendered at its notebook's page size (`store_read_page`), whichever Kindle
    renders it, and `X-Page-Size` says that size. The
    Effects studio (`web/studio.js` + `.css`, embedded at build time) rebuilds a page in the
@@ -1236,8 +1273,10 @@ bullet and paragraph), the signature, Read all and Dismiss.
   two sizes in that range: 44 px, and from 43 px down its next size (that of 34 px); the steps below
   43 px only make its gaps and signature smaller. On the Scribe 2.1.0's notes keep 44 px everywhere;
   2.0.0's take 43 px in Gothic both ways and 38.5 px in Classic sideways (44 px upright); 2.0.0-beta.1's
-  letter 43 px in Gothic sideways, else 44 px. `note_px` keeps each answer for the note, the screen's
-  size and the look, so a step on the sheet does not search again. A note's sheet that would end over
+  letter 43 px in Gothic sideways, else 44 px. In Classic's other fonts (2.1, Settings > Font) 2.0.0's
+  take 42.5 px sideways in Atkinson, 43 px in Noto Sans and 42 px in Literata, the rest 44 px. `note_px`
+  keeps each answer for the note, the screen's size, the look and Classic's font (each sets the notes
+  at its own widths), so a step on the sheet does not search again and a font picked does. A note's sheet that would end over
   the Library's pager (its rule and its Page 1 of 1, which the sheet's edge would cut through) reaches
   down to the margin, as the tallest sheet does (`note_sheet`). Probe: `library.about.body_px`.
 - **The keys** (docs/SHORTCUTS.md's scheme). Esc goes back one layer: a version's notes to the list, the

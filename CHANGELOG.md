@@ -2,6 +2,26 @@
 
 ## 2.1.0 (unreleased)
 
+- More fonts in Classic (the owner, 2026-11-04: "Custom font support/More fonts in the classic theme").
+  In Classic the Style row in Settings has a Font chip at its right end ("Font: Terminess"); the rest of
+  the row still changes the style, and Gothic, whose look is its pixel type, has no chip. It opens the
+  Font sheet: Terminess (still the default), Atkinson Hyperlegible Next, Noto Sans and Literata, each
+  named in itself, the one in use with a check, and on top a sample of the one highlighted (its name, a
+  sentence in the language in use, digits and accents). A tap highlights a font and refreshes only the
+  sample and the two rows; Done applies it with a full refresh, as a style change does; Cancel, Back and
+  Esc leave the font as it was. Every screen's text follows (the share pages in the browser too); pages,
+  paper labels, the clock, PDFs, pictures and the icons never do. Each font is drawn a little bigger than
+  the size asked so that its letters come out about Terminess's size (Atkinson 1.10, Noto Sans 1.065,
+  Literata 1.15), and every screen fits in each in English and Spanish, upright and sideways. Letters a
+  font lacks (Greek, Cyrillic, a few of Latin Extended-A in Atkinson) come from Terminess, and Japanese
+  from DotGothic16, as before. Saved as `font=` in settings.ini (`terminess`, `atkinson`, `noto-sans`,
+  `literata`); a value this version does not have draws as Terminess and stays in the file until a font
+  is picked. The three families are Google Fonts' releases (Atkinson Hyperlegible Next 2.001, Noto Sans
+  2.015, Literata 3.103 at its 12 pt optical size), each a static Regular and Bold cut down to Latin,
+  Latin-1, Latin Extended-A and the general punctuation: 238 KB for the six, with their OFL texts in
+  `app/licenses` and `make fonts-subset` making them again (`tools/fonts_classic.py`, assets/README.md).
+  The Kindle binary grows by about 0.26 MB (5,840,984 to 6,101,920 bytes) and the zip by about 0.13 MB;
+  package-check now fails a binary of 10.5 MB or more and a zip of 5.5 MB or more (decision D23).
 - A wake no longer leaves parts of the sleep picture (the KOReader wallpaper) on the screen until a redraw (the
   owner's Scribe, 2026-11-05). The framebuffer held the Library whole: the Kindle draws on the panel on its way
   out of the screensaver after Grimoire's first refresh, and the second push was a no-flash one, which drives

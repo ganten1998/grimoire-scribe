@@ -297,6 +297,15 @@ fn fonts_icons_and_the_cache() {
     check!(has(&t, "Copyright (C) 2020 Dimitar Toshkov Zhekov") && has(&t, "SIL OPEN FONT LICENSE Version 1.1"));
     check!(has(&t, "Pictogrammers Free License") && has(&t, "TERMS AND CONDITIONS FOR USE, REPRODUCTION, AND DISTRIBUTION"));
     check!(has(&t, "soft-type-jacquard") && has(&t, "soft-type-jersey"));
+    // the Classic fonts (2.1): each family's Regular and Bold, with their licenses
+    for (i, f) in FONT_FAMILIES.iter().enumerate() {
+        for (w, bold) in [(f.web[0], false), (f.web[1], true)] {
+            let r = get(&format!("/font/{w}"));
+            check!(r.status() == "HTTP/1.0 200 OK" && r.body == font_family_file(i, bold));
+            check!(r.header("Link") == Some("</font/licenses.txt>; rel=\"license\""));
+        }
+    }
+    check!(has(&t, "atkinson-hyperlegible-next") && has(&t, "The Noto Project Authors") && has(&t, "The Literata Project Authors"));
     let nope = get("/font/nope.ttf");
     check!(nope.status() == "HTTP/1.0 404 Not Found" && nope.text() == "not found\n" && nope.header("Cache-Control") == Some("no-store"));
     let icon = get("/icon.svg");
@@ -314,7 +323,17 @@ fn the_classic_style_has_its_own_fonts() {
     let t = r.text();
     check!(has(&t, "/font/terminess.ttf?v=") && has(&t, "/font/terminess-bold.ttf?v=") && has(&t, "<body class=classic>"));
     check!(has(&t, "<style>/* The fonts' licenses: /font/licenses.txt */@font-face{"));
-    check!(!has(&t, "jacquard24"));
+    check!(!has(&t, "jacquard24") && !has(&t, "literata"));
+    check!(has(&t, "body{font-family:'Grimoire Text','Terminess Nerd Font',ui-monospace,Menlo,monospace;"));
+}
+
+// Classic in another font (2.1): the pages load that family as their text, the browser's own serif or
+// sans-serif after it, and Terminess only for the studio's command line ('Grimoire Mono').
+fn the_classic_style_follows_the_font() {
+    let t = get("/").text();
+    check!(has(&t, "/font/literata.ttf?v=") && has(&t, "/font/literata-bold.ttf?v=") && has(&t, "<body class=classic>"));
+    check!(has(&t, "body{font-family:'Grimoire Text',serif;"));
+    check!(has(&t, "font-family:'Grimoire Mono';src:url(/font/terminess.ttf?v=") && !has(&t, "terminess-bold"));
 }
 
 fn heads_answer_without_a_body() {
@@ -642,6 +661,12 @@ fn test_httpd() {
     httpd_stop();
     check!(httpd_acquire(HTTPD_SHARE, port(), 300.0, false) == 0);
     run!(the_classic_style_has_its_own_fonts);
+    httpd_stop();
+    // and its font, the one in use when it starts (2.1)
+    font_set_family(font_family_find(b"literata").unwrap());
+    check!(httpd_acquire(HTTPD_SHARE, port(), 300.0, false) == 0);
+    font_set_family(0);
+    run!(the_classic_style_follows_the_font);
     httpd_stop();
     serving(HTTPD_SHARE);
     run!(a_second_owner_shares_the_server_and_the_last_one_stops_it);

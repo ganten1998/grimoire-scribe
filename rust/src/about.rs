@@ -881,8 +881,9 @@ fn note_fit(bl: &[Block], aw: i32, ah: i32) -> f32 {
 
 thread_local! {
     /// note_px's answers: the notes (their text's place and length), the screen's width and height,
-    /// the look and the body type's size, and the body size note_fit found for them.
-    static NOTE_PX: RefCell<Vec<((usize, usize, i32, i32, bool, u32), f32)>> = const { RefCell::new(Vec::new()) };
+    /// the look, Classic's font (2.1, Settings > Font; 0 in Gothic, which has one) and the body type's
+    /// size, and the body size note_fit found for them.
+    static NOTE_PX: RefCell<Vec<((usize, usize, i32, i32, bool, usize, u32), f32)>> = const { RefCell::new(Vec::new()) };
 }
 #[cfg(test)]
 thread_local! {
@@ -891,9 +892,11 @@ thread_local! {
 }
 
 /// note_fit's size for the notes md (bl, their blocks) on aw by ah, found once for each note,
-/// orientation and look, not at every draw.
+/// orientation, look and font, not at every draw. Each of Classic's fonts sets the notes at its own
+/// widths, so a size found in one is not the size for another.
 fn note_px(md: &'static str, bl: &[Block], aw: i32, ah: i32) -> f32 {
-    let key = (md.as_ptr() as usize, md.len(), aw, ah, gothic(), ui_text_size().to_bits());
+    let family = if gothic() { 0 } else { font_family() };
+    let key = (md.as_ptr() as usize, md.len(), aw, ah, gothic(), family, ui_text_size().to_bits());
     if let Some(px) = NOTE_PX.with_borrow(|v| v.iter().find(|e| e.0 == key).map(|e| e.1)) {
         return px;
     }
@@ -1224,9 +1227,14 @@ mod tests {
         // all past messages, or fit all (which i lean toward)". Every version's notes in
         // docs/whatsnew/ are whole on one page, upright and sideways on the Scribe, in both looks, at
         // the largest of note_fit's sizes that holds them (each larger one does not), and none needs
-        // the floor's pages. No page arrows, no "1 / 2".
-        for theme in [UiTheme::Gothic, UiTheme::Classic] {
+        // the floor's pages. No page arrows, no "1 / 2". Classic in each of its fonts (2.1, Settings >
+        // Font), one after another as a pick in Settings changes it: each font's size is its own.
+        let mut looks = vec![(UiTheme::Gothic, 0)];
+        looks.extend((0..FONT_FAMILIES.len()).map(|f| (UiTheme::Classic, f)));
+        for (theme, family) in looks {
             up(theme);
+            font_set_family(family);
+            let font = FONT_FAMILIES[family].id;
             for (aw, ah) in [(1860, 2480), (2480, 1860)] {
                 for e in notes() {
                     let mut c = screen(aw, ah);
@@ -1234,8 +1242,8 @@ mod tests {
                     let bl = about_blocks(e.md);
                     let i = (0..=FIT_STEPS).position(|i| fit_size(i) == h.body_px).expect("one of note_fit's sizes");
                     let need = rows_h(&rows(&bl, note_w(aw), &note_look(h.body_px)));
-                    eprintln!("{theme:?} {aw}x{ah} {}: body {} px, {} page(s), {need} of {} px", e.label(), h.body_px, h.pages, body_max(ah));
-                    assert_eq!(h.pages, 1, "{theme:?} {aw}x{ah} {}", e.label());
+                    eprintln!("{theme:?} {font} {aw}x{ah} {}: body {} px, {} page(s), {need} of {} px", e.label(), h.body_px, h.pages, body_max(ah));
+                    assert_eq!(h.pages, 1, "{theme:?} {font} {aw}x{ah} {}", e.label());
                     assert!(h.signed && fits(&bl, aw, ah, h.body_px));
                     assert!(h.body_px > ui_small_size() || fits(&bl, aw, ah, ui_small_size()));
                     for j in 0..i {
@@ -1245,7 +1253,7 @@ mod tests {
                     assert!(inside(Rect::new(0, 0, aw, ah), h.area) && inside(h.area, h.back) && inside(h.area, h.close));
                     // The sheet's edge clears the Library's pager, or covers it to the margin.
                     let (end, bar) = (h.area.y + h.area.h, ah - crate::library::bottom_h() - ui_px(10.0));
-                    assert!(end <= bar || end == ah - ui_px(40.0), "{theme:?} {aw}x{ah} {}: ends at {end}", e.label());
+                    assert!(end <= bar || end == ah - ui_px(40.0), "{theme:?} {font} {aw}x{ah} {}: ends at {end}", e.label());
                 }
             }
         }
@@ -1334,8 +1342,8 @@ mod tests {
 
     #[test]
     fn a_notes_size_is_found_once_for_each_screen() {
-        // note_fit runs once for a note, an orientation and a look, not at each draw (a page turned,
-        // a step back to the notes).
+        // note_fit runs once for a note, an orientation, a look and a font, not at each draw (a page
+        // turned, a step back to the notes).
         up(UiTheme::Gothic);
         let e = note("# Once\n\n- a change\n\n{signature}\n".into());
         let mut c = screen(1860, 2480);
@@ -1353,6 +1361,19 @@ mod tests {
         draw_note(&mut c, 1860, 2480, &e, 0);
         draw_note(&mut c, 1860, 2480, &e, 0);
         assert_eq!(FIT_RUNS.get(), runs + 3);
+        // Another of Classic's fonts (2.1) is found anew, once; back in the first, its size is known.
+        font_set_family(FONT_FAMILIES.len() - 1);
+        draw_note(&mut c, 1860, 2480, &e, 0);
+        draw_note(&mut c, 1860, 2480, &e, 0);
+        assert_eq!(FIT_RUNS.get(), runs + 4);
+        font_set_family(0);
+        draw_note(&mut c, 1860, 2480, &e, 0);
+        assert_eq!(FIT_RUNS.get(), runs + 4);
+        // Gothic has one face whatever Classic's font: no search for the font picked.
+        up(UiTheme::Gothic);
+        font_set_family(1);
+        draw_note(&mut c, 1860, 2480, &e, 0);
+        assert_eq!(FIT_RUNS.get(), runs + 4);
     }
 
     /// What the card shows, for the test's output: each block's first words, and whether it is cut.

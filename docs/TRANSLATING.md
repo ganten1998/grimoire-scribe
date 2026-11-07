@@ -51,7 +51,10 @@ every character to be in that font or the Latin faces.
    screen in context:
    `build/shots/l10n/es-gothic/` and `es-classic/`, `hosted-es-gothic/` and
    `hosted-es-classic/` for the Library opened from KOReader, and `templates-es-gothic/` and
-   `templates-es-classic/` for the Templates sheet with templates in it.
+   `templates-es-classic/` for the Templates sheet with templates in it. English and Spanish run in
+   Classic in each other font of Settings > Font too (`es-classic-atkinson/`, `es-classic-noto-sans/`,
+   `es-classic-literata/`, and the same for hosted and templates), and `fonts-es-classic-literata/` and
+   the like show the Font sheet in every language and font.
 4. `make test` runs tests/test_i18n.c, which checks the catalog as well (What the checks catch,
    below).
 5. Commit `po/es.po` and `po/es.mo` together, with `po/grimoire.pot` if it changed: make
@@ -108,9 +111,16 @@ Its log then says `i18n: (simulator) the catalog for es comes from /tmp/l10n/es.
   `month`, `date`, `key`, `keyboard`, `share link`, `folder`, `sleep after` and `studio`. The
   months are short names (Spanish *oct*, *sept*).
 - **Characters.** Every character must be one that a face can draw: Jersey 10 and Jacquard 24
-  (Gothic), Terminess regular and bold (Classic), or, for Japanese, DotGothic16. tests/test_i18n.c
-  fails on any other. The Gothic faces draw º and ª as a plain o and a, so the Spanish does
-  without them.
+  (Gothic), Terminess regular and bold (Classic), or, for Japanese, DotGothic16. The Classic fonts of
+  Settings > Font (Atkinson Hyperlegible Next, Noto Sans and Literata, Regular and Bold) must have every
+  character but Japanese's own too: they hold Latin, Latin-1, Latin Extended-A and the general
+  punctuation, less a few letters Atkinson lacks (`assets/README.md`). tests/test_i18n.c fails on any
+  other. The Gothic faces draw º and ª as a plain o and a, so the Spanish does without them.
+- **Font names** (Terminess, Atkinson Hyperlegible Next, Noto Sans, Literata) are never translated: they
+  reach `Font: %s` and the Font sheet as they are. The sheet's sample sentence ("The quick brown fox
+  jumps over the lazy dog.") is yours to replace with a sentence of about the same length that uses
+  many of your language's letters; the Spanish is "La cigüeña tocaba el saxofón detrás del palenque de
+  paja.".
 - **What stays as it is**: Grimoire, Kindle, Kindle Scribe, KOReader, Wi-Fi, PDF, PNG, ZIP,
   ImageMagick; the file and folder names on the Kindle (`grimoire/PDFs`, `grimoire/trash`,
   `grimoire.log`); the command `tools/grimoire-pull --http`. The headings printed on Cornell paper
@@ -156,7 +166,8 @@ tests/test_i18n.c checks both, and that the language's own name can be drawn in 
 - msgfmt --check (make l10n and make l10n-check): a `.po` that does not compile, and a translation
   whose printf conversions differ from its English.
 - make l10n-check: a `.mo` that is not what msgfmt makes of its `.po` now; text cut short on any
-  screen or sheet, in either style, upright or sideways (`fit[<lang>]: "..." needs W px, has R`);
+  screen or sheet, in either style (in English and Spanish in each Classic font too), upright or
+  sideways (`fit[<lang>]: "..." needs W px, has R`);
   the Settings sheet from a deep data root, whose path is cut short as names are and does not
   count; and the Library's top bar opened from KOReader. A top bar widened past the every-screen
   scenario's taps fails here too, on its `expect` lines (The top bar's taps, above).

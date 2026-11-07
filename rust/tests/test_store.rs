@@ -768,6 +768,35 @@ fn shape_corner_key() {
     check!(settings_load(&mut s) == 0 && s.shape_corner == 0);
 }
 
+// Classic's font (2.1): Terminess without the key; each family by its id; a font this version does not
+// have draws as Terminess and goes back as it was (kept) until the font is picked; the newest known key.
+fn font_key() {
+    let path = format!("{}/settings.ini", store_root());
+    let mut s = Settings::default();
+    check!(write_file_atomic(&path, b"invert=1\n") == 0);
+    check!(settings_load(&mut s) == 0 && s.font == 0);
+    check!(settings_save(&s) == 0 && has_pins_line(&path, "font=terminess"));
+    let text = read_file(&path).unwrap_or_default();
+    let at = |k: &str| text.windows(k.len()).position(|w| w == k.as_bytes());
+    check!(at("shape_corner=") < at("font="));
+    for (i, f) in FONT_FAMILIES.iter().enumerate() {
+        check!(write_file_atomic(&path, format!("font={}\n", f.id).as_bytes()) == 0);
+        check!(settings_load(&mut s) == 0 && s.font == i as i32 && settings_kept("font").is_none());
+        check!(settings_save(&s) == 0 && has_pins_line(&path, &format!("font={}", f.id)));
+    }
+    check!(write_file_atomic(&path, b"font=comic-sans\ntheme=classic\n") == 0);
+    check!(settings_load(&mut s) == 0 && s.font == 0 && settings_kept("font").as_deref() == Some(&b"comic-sans"[..]));
+    check!(settings_save(&s) == 0 && has_pins_line(&path, "font=comic-sans"));
+    s.mirror_pdf = !s.mirror_pdf;
+    check!(settings_save(&s) == 0 && has_pins_line(&path, "font=comic-sans"));
+    s.font = 3;
+    check!(settings_save(&s) == 0 && has_pins_line(&path, "font=literata") && !has_pins_line(&path, "font=comic-sans"));
+    // (picked back to Terminess it is written as set: the kept value is forgotten once changed)
+    s.font = 0;
+    check!(settings_save(&s) == 0 && has_pins_line(&path, "font=terminess"));
+    unlink(&path);
+}
+
 // What's new after every update (the owner's rule of 2026-11-05): due when a file a Grimoire saved
 // names another version's notes as seen, whatever whatsnew_hide says (the 2.0.0 betas' box, read and
 // written back as it was); not due for this version's, nor for a file without settings_version.
@@ -1236,6 +1265,7 @@ fn test_store() {
     run!(status_corner_keys);
     run!(shape_preferences_and_retired_bar_migration);
     run!(shape_corner_key);
+    run!(font_key);
     run!(whatsnew_due_after_every_update);
     run!(gesture_keys);
     run!(rotation_lock_key);

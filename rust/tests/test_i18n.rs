@@ -11,6 +11,10 @@ use std::cell::RefCell;
 use testlib::*;
 
 const THEMES: [UiTheme; 2] = [UiTheme::Gothic, UiTheme::Classic];
+/// The styles text must fit in: Gothic, and Classic in each font of Settings > Font (2.1; FONT_FAMILIES,
+/// Terminess first). The fit checks below run in each.
+const STYLES: [(UiTheme, usize); 5] =
+    [(UiTheme::Gothic, 0), (UiTheme::Classic, 0), (UiTheme::Classic, 1), (UiTheme::Classic, 2), (UiTheme::Classic, 3)];
 
 // ---- printf formats ----
 
@@ -240,7 +244,9 @@ fn next_cp(s: &mut &[u8]) -> i64 {
 
 // Every face text can be drawn in: Gothic's Jersey 10 (text) and Jacquard 24 (titles), Classic's
 // Terminess and its bold. A glyph a pixel face lacks would come from Terminess, smaller and in
-// another style: a translation must not need that.
+// another style: a translation must not need that. Nor in the Classic fonts of Settings > Font (2.1):
+// each family's Regular and Bold has its own glyph for every letter a translation uses, but for
+// Japanese's own, which come from DotGothic16 in every font.
 fn missing_glyphs(s: &str) -> i32 {
     let mut missing = 0;
     let mut s = s.as_bytes();
@@ -256,6 +262,15 @@ fn missing_glyphs(s: &str) -> i32 {
         let mut ok = font_has_glyph(FontFace::Regular, cp as u32) && font_has_glyph(FontFace::Title, cp as u32);
         ui_set_theme(UiTheme::Classic);
         ok = ok && font_has_glyph(FontFace::Regular, cp as u32) && font_has_glyph(FontFace::Bold, cp as u32);
+        let japanese = (0x2E80..=0x9FFF).contains(&cp) || (0xF900..=0xFAFF).contains(&cp) || (0xFF00..=0xFFEF).contains(&cp);
+        for fam in 1..FONT_FAMILIES.len() {
+            font_set_family(fam);
+            if !japanese && !(font_face_has_glyph(FontFace::Regular, cp as u32) && font_face_has_glyph(FontFace::Bold, cp as u32)) {
+                eprintln!("  U+{:04X} is missing from {}", cp, FONT_FAMILIES[fam].name);
+                ok = false;
+            }
+        }
+        font_set_family(0);
         ui_set_theme(UiTheme::Gothic);
         if !ok {
             eprintln!("  U+{:04X} is missing from a face", cp);
@@ -752,8 +767,9 @@ fn rare_notices_fit() {
     for l in 0..i18n_language_count() {
         i18n_set(i18n_language_code(l).unwrap());
         let nt = rare_notices(&mut toasts);
-        for th in THEMES {
+        for (th, fam) in STYLES {
             ui_set_theme(th);
+            font_set_family(fam);
             for s in toasts.iter().take(nt) {
                 let lines = font_wrap_lines(FontFace::Bold, ui_text_size(), s, ui_toast_room(screen), None);
                 if !(1..=2).contains(&lines) {
@@ -802,6 +818,7 @@ fn rare_notices_fit() {
             check!(font_measure(FontFace::Regular, ui_small_size(), &data) <= if th == UiTheme::Gothic { 1640 } else { 1648 });
         }
     }
+    font_set_family(0);
     ui_set_theme(UiTheme::Gothic);
     i18n_set("en");
 }
@@ -812,8 +829,9 @@ fn rare_notices_fit() {
 fn the_links_bar_strings_fit() {
     for l in 0..i18n_language_count() {
         i18n_set(i18n_language_code(l).unwrap());
-        for th in THEMES {
+        for (th, fam) in STYLES {
             ui_set_theme(th);
+            font_set_family(fam);
             let ts = ui_text_size();
             let small = ui_small_size();
             let at = |what: &str, w: i32, room: i32| {
@@ -886,6 +904,7 @@ fn the_links_bar_strings_fit() {
             }
         }
     }
+    font_set_family(0);
     ui_set_theme(UiTheme::Gothic);
     i18n_set("en");
 }
@@ -927,8 +946,9 @@ fn gestures_and_record_card_strings_fit() {
     ];
     for language in ["en", "es"] {
         i18n_set(language);
-        for theme in THEMES {
+        for (theme, fam) in STYLES {
             ui_set_theme(theme);
+            font_set_family(fam);
             for source in ["Pair", "Gestures", "Updates"] {
                 let label = tr(source);
                 let width = font_measure(FontFace::Caps, 34.0, label);
@@ -984,6 +1004,7 @@ fn gestures_and_record_card_strings_fit() {
             }
         }
     }
+    font_set_family(0);
     ui_set_theme(UiTheme::Gothic);
     i18n_set("en");
 }
@@ -1002,8 +1023,9 @@ fn pen_gesture_labels_body_and_long_rows_fit() {
     font_set_overflow_hook(Some(hook));
     for language in ["en", "es"] {
         i18n_set(language);
-        for theme in THEMES {
+        for (theme, fam) in STYLES {
             ui_set_theme(theme);
+            font_set_family(fam);
             for name in names {
                 let label = tr(name);
                 if language == "es" { check!(label != name); }
@@ -1063,6 +1085,7 @@ fn pen_gesture_labels_body_and_long_rows_fit() {
     font_set_overflow_hook(None);
     canvas_free(&mut canvas);
     i18n_set("en");
+    font_set_family(0);
     ui_set_theme(UiTheme::Gothic);
 }
 
@@ -1090,8 +1113,9 @@ fn copies_cut_between_characters() {
 fn raw_labels_fit() {
     for l in 0..i18n_language_count() {
         i18n_set(i18n_language_code(l).unwrap());
-        for th in THEMES {
+        for (th, fam) in STYLES {
             ui_set_theme(th);
+            font_set_family(fam);
             let ss = ui_small_size();
             check!(font_measure(FontFace::Regular, ss, tr("pen pressure")) <= 570);
             check!(font_measure(FontFace::Regular, ss, tr("ink")) <= 570);
@@ -1100,6 +1124,7 @@ fn raw_labels_fit() {
             check!(font_measure(FontFace::Regular, ss, tr("test pad (white ink: try it on the black)")) <= 1180);
         }
     }
+    font_set_family(0);
     ui_set_theme(UiTheme::Gothic);
     i18n_set("en");
 }
@@ -1215,6 +1240,7 @@ fn overflow_hook() {
 }
 
 fn wrapping() {
+    font_set_family(0);
     ui_set_theme(UiTheme::Gothic);
     let ls: f32 = 34.0 * 0.9;
     let w = font_measure(FontFace::Regular, ls, "Narrow, no margin");
@@ -1278,6 +1304,7 @@ fn wrapping() {
 }
 
 fn fit_sizes() {
+    font_set_family(0);
     ui_set_theme(UiTheme::Gothic);
     let s = "Restablecer herramienta";
     let mut at44 = font_measure(FontFace::Caps, 44.0, s);
@@ -1296,6 +1323,7 @@ fn fit_sizes() {
     check!(f > 27.0 && f < 34.0 && font_measure(FontFace::Regular, f, s) <= at44 * 9 / 10);
     check!(font_measure(FontFace::Regular, f + 0.25, s) > at44 * 9 / 10);
     check!(font_fit_px(FontFace::Regular, 34.0, 27.0, s, 10) == 0.0);
+    font_set_family(0);
     ui_set_theme(UiTheme::Gothic);
     check!(ui_text_box_w(FontFace::Bold, 34.0, "150%   tap to reset", 40, 380, 900) >= 380);
     check!(ui_text_box_w(FontFace::Bold, 34.0, "", 40, 380, 900) == 380);
@@ -1381,6 +1409,7 @@ fn button_labels_clear_the_carved_line() {
     font_set_overflow_hook(None);
     canvas_free(&mut a);
     canvas_free(&mut b);
+    font_set_family(0);
     ui_set_theme(UiTheme::Gothic);
 }
 
@@ -1442,6 +1471,7 @@ fn button_grid_sizes() {
     }
     canvas_free(&mut a);
     canvas_free(&mut b);
+    font_set_family(0);
     ui_set_theme(UiTheme::Gothic);
 }
 
@@ -1463,6 +1493,7 @@ fn chips() {
         check!(ui_chip_w(FontFace::Bold, ui_small_size(), longer, 100, 380, 2400) == tw + 2 * pad);
         check!(ui_chip_w(FontFace::Bold, ui_small_size(), longer, 100, 380, 500) == 500);
     }
+    font_set_family(0);
     ui_set_theme(UiTheme::Gothic);
 }
 
@@ -1470,6 +1501,7 @@ fn chips() {
 // t_toast_over_sheets.qs checks where it goes); two, in a taller box, where one would be cut.
 fn toasts() {
     let screen = Rect { x: 0, y: 0, w: 1860, h: 2480 };
+    font_set_family(0);
     ui_set_theme(UiTheme::Gothic);
     let mut r = ui_toast_rect(screen, "Your Kindle passcode was left off. Turn it back on in Kindle Settings.");
     check!(r.x == 112 && r.y == 2250 && r.w == 1636 && r.h == 110);
@@ -1498,6 +1530,7 @@ fn toasts() {
     check!(hook_calls() == 1);
     font_set_overflow_hook(None);
     canvas_free(&mut c);
+    font_set_family(0);
     ui_set_theme(UiTheme::Gothic);
 }
 

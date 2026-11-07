@@ -4,6 +4,35 @@ Work that was decided, deferred or found but not done yet. Keep this current: wh
 move it to "Done" with the version; when something is deferred, add it here with who decided and
 why. Newest decisions first within each section.
 
+## Classic fonts (2.1.0): choices for the owner, and what waits
+
+The owner's ask of 2026-11-04 ("Custom font support/More fonts in the classic theme") is half built: More
+fonts in Classic (Done, below). Decided by the lane on the 2.1 plan's defaults, for him to confirm on the
+Scribe (docs/TESTING.md, 2.1.0, Classic fonts):
+
+- **The three families**: Atkinson Hyperlegible Next, Noto Sans, Literata (the plan's D4). The alternates
+  measured with them were Inter, Fira Sans and Source Serif 4; a swap is a line in tools/fonts_classic.py and
+  FONT_FAMILIES, a new CRC table and the l10n runs.
+- **Their sizes**: Atkinson x1.10 and Noto Sans x1.065 match Terminess's x-height; Literata x1.15 is 93% of
+  it (x1.23 would match, and cuts the music sheet's preset buttons in Spanish). The owner may want them a
+  step smaller or larger after seeing them on e-ink; each is one number in font.rs, with a new CRC table.
+- **Latin only**: Greek and Cyrillic left out of the subsets (the lane's brief), so a Greek or Russian name
+  shows in Terminess beside the family's letters. Keeping them costs about 185 KB for the six files.
+- **The chip shows the short name** ("Font: Atkinson"); the sheet's own words stay in the font in use until
+  Done (the plan's D6 and fonts.md 5.7, which drew them in Terminess for custom fonts only).
+- **No tabular digits** in Atkinson and Literata (Noto Sans has them): a number that changes in place (a
+  slider's value, the page counter) shifts by a pixel or two between values (fonts.md 7.B, deferred).
+
+Waits, from the 2.1 plan:
+
+- **Your own fonts** (2.1.0-beta.3, lane L10): `.ttf`/`.otf` in `grimoire/fonts`, checked in the sandbox
+  worker (L5) before the UI reads them; the Font sheet's "Built in" and "Your fonts" sections.
+- **Japanese in Classic** (2.2, nebuff): a smooth Japanese face (Noto Sans JP, +0.97 MB) beside DotGothic16.
+- **y_all_screens.qs split by screen group** so the per-font l10n runs shard (the plan's L3): the runs are
+  whole for now (six more of about 80 s here).
+- **The glyph cache's 4 MB byte cap** (the plan's L3, section 7): the bundled fonts are small; it matters
+  with custom fonts.
+
 ## What's new by version (2.1.0): choices for the owner to confirm
 
 The owner's request of 2026-11-06 ("wire read all button to a list of each UNIQUE release note, and allow users
@@ -471,6 +500,13 @@ Ideas, not plans: each needs the owner's go and its own design. No code is taken
 
 ## Done
 
+- 2.1.0 (unreleased, v21/fonts; the owner, 2026-11-04: "Custom font support/More fonts in the classic theme",
+  and 2026-11-07: "can we fast track anything that might be cool alongside this that was planned for 2.1 or
+  future?"): More fonts in Classic. Settings' Style row has a Font chip in Classic; the Font sheet offers
+  Terminess, Atkinson Hyperlegible Next, Noto Sans and Literata with a live sample, applied on Done; `font=` in
+  settings.ini (an unknown value kept); the share pages follow; every screen fits in each in English and
+  Spanish (make l10n-check's `classic-<font>` styles, tests/l10n/fonts.qs); the size guard in package-check
+  (D23). Choices and what waits: Classic fonts (2.1.0), above.
 - 2.0.0 (the owner put it into 2.0.0; v21/lasso; the owner, 2026-11-05: "the copy paste lasso function is horrifically slow on
   drag with anything containing colored in or multiple strokes"): a drag of the selection follows the pen
   whatever it holds. A pen sample only records the newest place; the editor's tick shows it once the last DU is

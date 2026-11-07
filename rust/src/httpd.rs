@@ -1,6 +1,7 @@
 //! httpd.h: tiny single-threaded HTTP/1.0 share server, polled from the main loop.
 //! Serves a phone/desktop-friendly HTML index of folders + notebooks with thumbnails and
-//! download links, in the Kindle's style (Gothic or Classic fonts). Routes (ids are notebook
+//! download links, in the Kindle's style (Gothic's fonts, or Classic's font: Terminess or the one picked
+//! in Settings > Font). Routes (ids are notebook
 //! ids, n is 1-based):
 //!   GET /                         HTML index (folders, notebooks, page links)
 //!   GET /nb/<id>                  HTML notebook page with per-page PNG links
@@ -10,7 +11,8 @@
 //!   GET /nb/<id>/<n>.png          one page PNG (?layer=ink or ?layer=paper: that layer alone;
 //!                                 ?f=2..8: shrunk; headers X-Page-Size, X-Paper, X-Ink-Box)
 //!   GET /nb/<id>/thumb.png        thumbnail
-//!   GET /font/<name>.ttf          the page fonts (the binary's own copies)
+//!   GET /font/<name>.ttf          the page fonts (the binary's own copies: Gothic's, Terminess and the
+//!                                 Classic fonts, font.rs's FONT_FAMILIES)
 //!   GET /font/licenses.txt        the fonts' licenses (assets.rs's FONT_LICENSES)
 //!   GET /folder/<name>.zip        every notebook in a folder
 //!   GET /all.zip                  everything
@@ -225,6 +227,8 @@ struct State {
     listen: i32,
     dpi: f32,
     gothic: bool,
+    /// Classic's font when the server started (FONT_FAMILIES), as gothic is the style then
+    font: usize,
     served: i32,
     /// HTTPD_SHARE, HTTPD_LIVE: who keeps the server up
     owners: u32,
@@ -251,6 +255,7 @@ impl Default for State {
             listen: -1,
             dpi: 300.0,
             gothic: true,
+            font: 0,
             served: 0,
             owners: 0,
             live_pairings: 0,
@@ -277,6 +282,9 @@ fn dpi() -> f32 {
 }
 fn gothic() -> bool {
     with(|s| s.gothic)
+}
+fn family() -> &'static FontFamily {
+    &FONT_FAMILIES[with(|s| s.font).min(FONT_FAMILIES.len() - 1)]
 }
 fn owners() -> u32 {
     with(|s| s.owners)
@@ -325,6 +333,7 @@ fn httpd_start(port: i32, dpi: f32, gothic: bool) -> i32 {
     with(|s| {
         s.dpi = dpi;
         s.gothic = gothic;
+        s.font = font_family();
     });
     // SAFETY: socket takes no pointers.
     let fd = unsafe { libc::socket(libc::AF_INET, libc::SOCK_STREAM, 0) };
@@ -369,7 +378,8 @@ fn httpd_start(port: i32, dpi: f32, gothic: bool) -> i32 {
 }
 
 /// Keeps the server up for owner (HTTPD_SHARE or HTTPD_LIVE), starting it on 0.0.0.0:port if no
-/// owner had it: 0, or -1 when it could not start. gothic: the pages use the Gothic style's fonts.
+/// owner had it: 0, or -1 when it could not start. gothic: the pages use the Gothic style's fonts (else
+/// Classic's: the font in use as it starts, font_family).
 pub fn httpd_acquire(owner: u32, port: i32, dpi: f32, gothic: bool) -> i32 {
     if with(|s| s.listen) < 0 && httpd_start(port, dpi, gothic) != 0 {
         return -1;
@@ -813,7 +823,9 @@ fn bat_svg(b: &mut Buf) {
 
 // The pages are dark (the Kindle's own pictures in them stay as the Kindle draws them: thumbnails,
 // pages, Live view's screen), in the colors of :root, which web/live.css and web/studio.css use too.
-// The pages wear the Kindle's style. Classic is Terminess throughout. Gothic sets titles in
+// The pages wear the Kindle's style. Classic is its font throughout, Terminess or the one picked in
+// Settings > Font, with the browser's own sans-serif, serif or monospace after it (a command line in the
+// studio stays in Terminess, 'Grimoire Mono', whatever the font: web/studio.css). Gothic sets titles in
 // Jacquard 24 and text in Jersey 10, pixel faces whose outlines sit on a grid of design pixels
 // (30 and 75 font units): sized so one design pixel is a whole number of device pixels (--px
 // for text, --pxs for small print, --tp/--tp1 for titles, set from the screen's pixel ratio)
@@ -834,10 +846,8 @@ const K_CSS_COMMON: &str = concat!(
     ".bat{width:calc(var(--bp,2px)*43);height:calc(var(--bp,2px)*14);fill:currentColor;shape-rendering:crispEdges;",
     "flex:none}h1.brand{display:flex;align-items:center;gap:.35em}"
 );
-const K_CSS_CLASSIC: &str = concat!(
-    "body{font-family:'Grimoire Text','Terminess Nerd Font',ui-monospace,Menlo,monospace;font-size:16px}",
-    "h1{font-size:28px}h2{font-size:20px}h1,h2,.name,.big,b,strong{font-weight:bold}.meta{font-size:13px}"
-);
+const K_CSS_CLASSIC: &str =
+    "h1{font-size:28px}h2{font-size:20px}h1,h2,.name,.big,b,strong{font-weight:bold}.meta{font-size:13px}";
 const K_CSS_GOTHIC: &str = concat!(
     ":root{--px:1.5px;--pxs:1px;--tp:1px;--tp1:1.5px;--bp:var(--tp1)}",
     "body{font-family:'Grimoire Text',ui-monospace,monospace;font-size:calc(var(--px)*18.6667);",
@@ -889,14 +899,23 @@ fn page_head(b: &mut Buf, title: &[u8]) {
         );
         buf_puts(b, K_CSS_GOTHIC);
     } else {
+        let f = family();
         buf_printf!(
             b,
-            "@font-face{font-family:'Grimoire Text';src:url(/font/terminess.ttf?v=%s) \
+            "@font-face{font-family:'Grimoire Text';src:url(/font/%s?v=%s) \
              format('truetype');font-weight:400;font-display:swap}@font-face{font-family:'Grimoire Text';\
-             src:url(/font/terminess-bold.ttf?v=%s) format('truetype');font-weight:700;font-display:swap}",
+             src:url(/font/%s?v=%s) format('truetype');font-weight:700;font-display:swap}\
+             @font-face{font-family:'Grimoire Mono';src:url(/font/terminess.ttf?v=%s) format('truetype');\
+             font-display:swap}",
+            f.web[0],
+            GRIMOIRE_VERSION,
+            f.web[1],
             GRIMOIRE_VERSION,
             GRIMOIRE_VERSION
         );
+        // (Terminess goes on as the font installed under its Nerd Fonts name, then the system's)
+        let fallback = if f.css_generic == "monospace" { "'Terminess Nerd Font',ui-monospace,Menlo,monospace" } else { f.css_generic };
+        buf_printf!(b, "body{font-family:'Grimoire Text',%s;font-size:16px}", fallback);
         buf_puts(b, K_CSS_CLASSIC);
     }
     buf_puts(b, K_CSS_COMMON);
@@ -904,16 +923,16 @@ fn page_head(b: &mut Buf, title: &[u8]) {
 }
 
 // The fonts the pages use: the binary's own copies, cached by the browser for a year (the
-// version in the URL changes when they could). Each goes with its license: licenses.txt beside
+// version in the URL changes when they could): Gothic's two, and each Classic font's Regular and
+// Bold (Terminess's among them). Each goes with its license: licenses.txt beside
 // them holds the texts (Terminess's icons are under the Apache License 2.0, whose text must go
 // with every copy), and each font's answer names it as its license (a Link header, rel=license).
 fn route_font(name: &[u8]) {
-    let fonts: [(&[u8], &[u8]); 4] = [
-        (b"jacquard24.ttf", FONT_JACQUARD24),
-        (b"jersey10.ttf", FONT_JERSEY10),
-        (b"terminess.ttf", FONT_TERMINESS_REGULAR),
-        (b"terminess-bold.ttf", FONT_TERMINESS_BOLD),
-    ];
+    let mut fonts: Vec<(&[u8], &[u8])> = vec![(b"jacquard24.ttf", FONT_JACQUARD24), (b"jersey10.ttf", FONT_JERSEY10)];
+    for (i, f) in FONT_FAMILIES.iter().enumerate() {
+        fonts.push((f.web[0].as_bytes(), font_family_file(i, false)));
+        fonts.push((f.web[1].as_bytes(), font_family_file(i, true)));
+    }
     let name = cbytes(name);
     if name == b"licenses.txt" {
         return respond_bytes(200, "text/plain; charset=utf-8", FONT_LICENSES.as_bytes(), None, None, None);

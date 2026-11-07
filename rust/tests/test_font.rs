@@ -3,7 +3,10 @@
 // and a range of sizes, must draw byte for byte as it did then, and so must every face that is
 // never overprinted (accents included, all but the inverted exclamation mark, which Jersey 10
 // now sets lower) and the symbols the pixel faces borrow from Terminess.
-// GRIMOIRE_FONT_CRC=print prints a fresh table instead of checking (after a deliberate change).
+// The Classic fonts of 2.1 (font.rs's FONT_FAMILIES past Terminess) have a table of their own,
+// K_CRC_FAMILIES, recorded when they came in: each family's Regular and Bold, the same strings
+// and sizes. GRIMOIRE_FONT_CRC=print prints fresh tables instead of checking (after a deliberate
+// change).
 // (the C's index loops, kept: rust/src/lib.rs says why)
 #![allow(clippy::needless_range_loop)]
 mod testlib;
@@ -297,6 +300,171 @@ fn ascii_unchanged() {
     check!(i == NCRC);
     check!(print || compared > NCRC / 2 || !OUTLINE_EXACT);
     check!(bad == 0);
+}
+
+// ---- the Classic fonts (2.1) ----
+
+/// The families past Terminess, each with its Regular and Bold: what K_CRC_FAMILIES pins.
+const NFAM: usize = 3;
+const FAM_FACES: [FontFace; 2] = [FontFace::Regular, FontFace::Bold];
+const NCRC_FAM: usize = NFAM * 2 * NSIZES * STR_COUNT;
+/// Recorded when the fonts came in (clang, arm64). Order: family (atkinson, noto-sans, literata),
+/// face (Regular, Bold), size, string.
+static K_CRC_FAMILIES: [u32; NCRC_FAM] = [
+    0xA0D7A892, 0xD94AB6C8, 0x2596CF4D, 0xAE37C819, 0x80C8E2B2, 0x3BA08702,
+    0x1095EE38, 0x14262285, 0x5700A9C8, 0xA67D19A9, 0x253AA606, 0x816153FE,
+    0xEB0DA936, 0xA24684D3, 0x00022BF0, 0x48530E74, 0x13D46315, 0xE583FFA6,
+    0x07E06C70, 0xE1EAEB28, 0xC6F78332, 0x657026A1, 0x07C43319, 0xF59956B1,
+    0xD6586DFB, 0x95149226, 0x7ED4F047, 0x051FF39B, 0xE8E2E390, 0xF596FB70,
+    0x9F781ACC, 0xF5EAF907, 0xFC3F1C10, 0xA192E7CE, 0x64880B16, 0xA337D8BC,
+    0x49E9122B, 0x08AAB4E3, 0xD652D7FC, 0xA2D4264A, 0x62ED2FD7, 0xE5BAF6B3,
+    0xC403154C, 0xB0F7F5D0, 0x5EEADFAF, 0x3135245B, 0x765605F6, 0x9F4B253A,
+    0x64EB8063, 0x2C27EDB6, 0xACC2E092, 0xA6DB374F, 0xB48A5516, 0x67C3D67F,
+    0xE61BC4E3, 0x3DDDC261, 0x78735AC8, 0xBE01439C, 0x25022984, 0xBA3CFBCB,
+    0x7E034041, 0xC10F1E63, 0x98672324, 0xA498797F, 0xB29B2840, 0x312E26B2,
+    0x461EFEA0, 0xD36D9C4F, 0x2912F92C, 0x8A932E38, 0xEAF4670E, 0x4F27A66A,
+    0x4AD6080C, 0xAC83B207, 0x6EED3932, 0xBAEB649D, 0x270919E5, 0xEE19A8D4,
+    0xDEA49770, 0xB11CD715, 0xB527EFA0, 0xB7BDC2C4, 0x55CA1F49, 0x475AD810,
+    0x7D4E7FC5, 0x44485792, 0xA269E517, 0x70133C03, 0x91A70403, 0x0495E268,
+    0x184BA7F7, 0xFABDC45C, 0x3D97173C, 0xA6275345, 0x14F10635, 0xAAF720AE,
+    0xA50B09CE, 0x74AC1CC6, 0xA51A3336, 0xAD35DF3C, 0xC964D96D, 0x21240740,
+    0x110FB7E1, 0x7A3ACE03, 0x605EAFD0, 0xE84DFDE6, 0xBB9D90E5, 0x6530B27B,
+    0xC6B15A4D, 0x6DC1A666, 0x7CB535DF, 0x7EA8770B, 0x19D1EC5F, 0xE8DB19E9,
+    0x66991B94, 0x7B399DAC, 0x4896F842, 0x3C5F90E6, 0x4BEC1FE7, 0x0711C4F2,
+    0x977E1161, 0x36E3E384, 0xF8FA58EE, 0x7B047219, 0x7D1B40EE, 0xAE423FC1,
+    0xE7D34886, 0xB5EB9A8A, 0x203B4FC0, 0xC6B0B94C, 0x18EA4EC3, 0x518A3944,
+    0x3DC558B1, 0x7B7EC034, 0x7CB3FE36, 0x54DB8097, 0xAA8521F6, 0x982D71C6,
+    0xCA891944, 0x698A7650, 0x79326BDC, 0x40DC7EFF, 0xCC57C979, 0xB725263A,
+    0xE252CBC2, 0xD51FD2A4, 0x3F753086, 0xD8158404, 0xB1112578, 0x69DF8C80,
+    0x8E0F590F, 0xB31F0252, 0x6D0B9E0B, 0xB9CD3B8C, 0x63478326, 0xFB0E4916,
+    0x908B7BAB, 0x889D64EA, 0xCE0B6F15, 0x4C7DCFC9, 0x07C12BF8, 0x20F01B38,
+    0xDD5C6FE6, 0x19A60319, 0x2129CABF, 0x18C3B63B, 0x011B99C9, 0x7D3D07C2,
+    0x64CD3822, 0x219C4C7C, 0x017A124A, 0xBBB76C1E, 0x8C4D27F9, 0xE1A8A31C,
+    0xA6457BC5, 0xCA965EE4, 0x78D16B5A, 0xA05A16F8, 0x8490A536, 0xF85CA71A,
+    0xDF1FC62A, 0x4A426DF7, 0x1A50D898, 0x02D3E01C, 0x66E66655, 0x7111737D,
+    0xCDB68286, 0x3FF50205, 0x7E3C0227, 0xF92BEBAD, 0x687D54DE, 0x42BF7F6A,
+    0x9CED79F6, 0x6634E327, 0xB76E38EF, 0xE3A86D19, 0x6440E485, 0x1121DB36,
+    0x3CD0228C, 0xC331A926, 0xFC5C9877, 0x5540E717, 0xF27EF2A0, 0xBC745389,
+    0xEF2DFE9B, 0x2051E083, 0xA4B3EE52, 0xBA1AD378, 0x41A0785C, 0xA7E5FE6C,
+    0x1780C8F7, 0xBF07AB8B, 0x846ABBBF, 0x760D0ECF, 0x545F813E, 0x815648DB,
+    0x5FE91EE0, 0x58B61AD8, 0x50656C1B, 0x0740D4BD, 0x1ADAB8CC, 0x6512AD7E,
+    0xDCD7FEBB, 0xB2DE48AD, 0x0F640692, 0x5F8AAADF, 0x0AF4E159, 0xE9B771F8,
+    0x48573CFF, 0x041BC416, 0xFC42F4CA, 0x62EB68D3, 0x0F12F1D5, 0xE77AB20E,
+    0x292C7B98, 0x15B4431A, 0xD115A470, 0xF0882754, 0x4170F1E5, 0xA4D68257,
+    0x444D26C8, 0x3E2C71C5, 0xEA65DDD1, 0xCEB9BF58, 0xE7BAE04F, 0xC9E6702A,
+    0x94AF402A, 0x468E1A21, 0x48DCD580, 0xD5813BD4, 0x1AF45E98, 0xB28ECE7A,
+    0xDC281E6E, 0xCD1C303F, 0x396595A0, 0xB0D577D4, 0xA3B464BE, 0xFED46170,
+    0x1D22E6EF, 0x076BF017, 0x8D19DB3A, 0x740727B0, 0x41EC43EA, 0xE74B26A5,
+    0xE0F3FBEF, 0xDBBC639B, 0x17EC06C0, 0x3418D876, 0x8727A9A7, 0x22E51DDA,
+    0x94E77BBA, 0x84F7051E, 0xA92A091B, 0x5BB8FA5A, 0x413DC39A, 0x0539645A,
+    0x38370990, 0x4C912256, 0xE81578E5, 0xC2E14037, 0x51310E86, 0x4829A7F8,
+    0x497736DA, 0x1A4A5732, 0x74AA9714, 0x827585F9, 0x7976D2EF, 0xC57339FE,
+    0xFA636A7B, 0x46ACC977, 0x823D01AD, 0x6B505556, 0x8003F377, 0x0F5EF947,
+    0xDFEC7F4A, 0xD1FC07EF, 0x5E2BE15D, 0x39E77F67, 0x28FB3A1D, 0x2C4F5485,
+    0xD1BA4094, 0x70A2FB34, 0xB83E7E5F, 0xA5B8C73B, 0x9333B582, 0x5FA0F080,
+    0xA18370D3, 0x759EE5E4, 0x6C695145, 0x9E3389EE, 0x24166501, 0x5A60E802,
+    0x8B03593A, 0xD73C221F, 0x5E5AC577, 0x142AE1EC, 0xCE18A3B8, 0x5867976D,
+    0x958EB7AE, 0xF7D2F0CC, 0xC2E70DA0, 0xC395FF2A, 0x8DF8CA43, 0x177F0719,
+    0x386B88D6, 0xE3A1B653, 0x765632A7, 0x0699667C, 0x925DCCCC, 0x688F811A,
+    0xDB3A5A24, 0xF731FDA3, 0x669AE5E3, 0x6FBA87A3, 0x0A0F5AB0, 0x7F51353E,
+    0x9E1B2CF4, 0xF68FBC37, 0x894B93A9, 0x5D7F79A8, 0x71258584, 0x72A11C06,
+    0x0C45C257, 0xB1070799, 0xD70CD2C6, 0x7245C84C, 0xCE302A72, 0x35B9D5F2,
+    0x70B4231C, 0x8FF74833, 0xA3659BDE, 0xD4B5F07A, 0xA0CFF42D, 0x2F0494CE,
+    0xE9DB66C9, 0x6A515ED6, 0x60473B40, 0x0C01D8F5, 0xEFB69527, 0x319D1201,
+    0x3C386B0C, 0xBBC6A521, 0xC8999708, 0xAE2A4D5A, 0xC8267747, 0x381AB173,
+    0x6C16FB5A, 0x5562B780, 0x61E792D4, 0x7FD98226, 0x54E01A7C, 0xBFBD761A,
+    0xE069024B, 0x1D4511B5, 0x23A6EF6D, 0x3B8CEF07, 0xE1C21060, 0x960A8130,
+    0xF47D61C6, 0x4A877B62, 0x420C3B48, 0x94EAF188, 0xF8475808, 0x1CF2256F,
+    0x75F83853, 0x6DFDFE61, 0x4FB97B44, 0x396E4227, 0x7B9A3046, 0x01E9A839,
+];
+
+// Every family draws as it did when it came in; Title and Caps are its Bold, FIXED and FIXED_BOLD stay
+// Terminess (paper labels and the clock never change with the font), and the table above is Terminess's
+// alone, in every family but the default.
+fn families_unchanged() {
+    let ascii: String = (0..95u8).map(|i| (32 + i) as char).collect();
+    let table = crc_table();
+    let print = std::env::var("GRIMOIRE_FONT_CRC").is_ok_and(|v| v == "print");
+    check!(FONT_FAMILIES.len() == NFAM + 1 && FONT_FAMILIES[0].id == "terminess");
+    ui_set_theme(UiTheme::Classic);
+    let fixed: Vec<u32> = [FontFace::Fixed, FontFace::FixedBold].iter().map(|&f| render_crc(&table, &ascii, f, 44.0, STR_WORDS)).collect();
+    let (mut i, mut compared, mut bad) = (0usize, 0usize, 0usize);
+    if print {
+        println!("static K_CRC_FAMILIES: [u32; NCRC_FAM] = [");
+    }
+    for fam in 1..=NFAM {
+        font_set_family(fam);
+        for face in FAM_FACES {
+            for z in 0..NSIZES {
+                for s in 0..STR_COUNT {
+                    let crc = render_crc(&table, &ascii, face, K_SIZES[z], s);
+                    if print {
+                        print!("{}0x{:08X},{}", if i % 6 != 0 { " " } else { "    " }, crc, if i % 6 == 5 || i == NCRC_FAM - 1 { "\n" } else { "" });
+                        i += 1;
+                        continue;
+                    }
+                    i += 1;
+                    if !OUTLINE_EXACT {
+                        continue;
+                    }
+                    compared += 1;
+                    if crc != K_CRC_FAMILIES[i - 1] {
+                        bad += 1;
+                        eprintln!("  changed: {} face {} at {:.1} px, string {}", FONT_FAMILIES[fam].id, face as i32, K_SIZES[z], s);
+                    }
+                }
+            }
+        }
+        for (f, same) in [(FontFace::Title, FontFace::Bold), (FontFace::Caps, FontFace::Bold)] {
+            check!(render_crc(&table, &ascii, f, 44.0, STR_WORDS) == render_crc(&table, &ascii, same, 44.0, STR_WORDS));
+        }
+        check!(render_crc(&table, &ascii, FontFace::Fixed, 44.0, STR_WORDS) == fixed[0]);
+        check!(render_crc(&table, &ascii, FontFace::FixedBold, 44.0, STR_WORDS) == fixed[1]);
+        // its own face, not Terminess's, for text
+        check!(render_crc(&table, &ascii, FontFace::Regular, 44.0, STR_WORDS) != render_crc(&table, &ascii, FontFace::Fixed, 44.0, STR_WORDS));
+        // Gothic keeps its pixel faces whatever the family
+        ui_set_theme(UiTheme::Gothic);
+        let g = render_crc(&table, &ascii, FontFace::Regular, 44.0, STR_WORDS);
+        font_set_family(0);
+        check!(render_crc(&table, &ascii, FontFace::Regular, 44.0, STR_WORDS) == g);
+        font_set_family(fam);
+        ui_set_theme(UiTheme::Classic);
+    }
+    if print {
+        println!("];");
+    }
+    font_set_family(0);
+    ui_set_theme(UiTheme::Gothic);
+    check!(i == NCRC_FAM);
+    check!(print || compared == NCRC_FAM || !OUTLINE_EXACT);
+    check!(bad == 0);
+}
+
+// A glyph a family lacks comes from Terminess at the size asked (a bold face's from Terminess Bold),
+// so Greek in a family's text (a name) is Terminess's own, and the family's letters beside it its.
+fn families_fall_back_to_terminess() {
+    ui_set_theme(UiTheme::Classic);
+    for fam in 1..=NFAM {
+        font_set_family(fam);
+        for (face, fixed) in [(FontFace::Regular, FontFace::Fixed), (FontFace::Bold, FontFace::FixedBold)] {
+            check!(!font_face_has_glyph(face, 0x3B1) && font_has_glyph(face, 0x3B1));
+            check!(font_measure(face, 44.0, "\u{3b1}") == font_measure(fixed, 44.0, "\u{3b1}"));
+            let (mut a, mut b) = (Canvas::default(), Canvas::default());
+            if !blank(&mut a, 44.0) || !blank(&mut b, 44.0) {
+                check!(false); // canvas
+                return;
+            }
+            draw1(&mut a, face, 44.0, 0, "\u{3b1}");
+            draw1(&mut b, fixed, 44.0, 0, "\u{3b1}");
+            check!(a.px == b.px);
+            canvas_free(&mut a);
+            canvas_free(&mut b);
+        }
+        // Japanese from DotGothic16, as in every theme
+        check!(!font_face_has_glyph(FontFace::Regular, 0x65E5) && font_has_glyph(FontFace::Regular, 0x65E5));
+    }
+    font_set_family(0);
+    ui_set_theme(UiTheme::Gothic);
 }
 
 // ---- the Gothic bold and accents ----
@@ -733,5 +901,7 @@ fn test_font() {
     run!(bold_differs_only_at_marks);
     run!(bold_letters_keep_their_gaps);
     run!(inverted_exclamation_is_not_an_i);
+    run!(families_unchanged);
+    run!(families_fall_back_to_terminess);
     done();
 }

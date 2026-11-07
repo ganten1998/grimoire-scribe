@@ -1560,3 +1560,67 @@ On the Scribe, with a build of this branch, in Gothic and in Classic:
 3. **No half label.** Sideways in Gothic with 2.0.0's notes, and upright with 2.0.0-beta.1's letter: the sheet
    reaches down over the Library's page buttons; no part of "Page 1 of 1" shows under its edge.
 4. **The steps still redraw only the sheet's place**, without a flash: a row, Back, Esc, Dismiss as before.
+
+## 2.1.0, Classic fonts
+
+Built for the owner's ask of 2026-11-04 ("Custom font support/More fonts in the classic theme"): in Classic
+the Style row's Font chip opens the Font sheet, with Terminess (the default), Atkinson Hyperlegible Next, Noto
+Sans and Literata; Done applies, Cancel leaves the font as it was; `font=` in settings.ini; the share pages
+follow (docs/DESIGN.md, Text; docs/BACKLOG.md, Classic fonts (2.1.0), for the choices made for him).
+
+Automated: rust/tests/test_font.rs `families_unchanged` (each family's Regular and Bold at 13 sizes and five
+strings against K_CRC_FAMILIES; Title and Caps are its Bold, FIXED stays Terminess, Gothic ignores the
+family) and `families_fall_back_to_terminess` (Greek in a family's text is Terminess's own pixels, Japanese is
+DotGothic16's); the first table, Terminess's, and rust/tests/test_golden.rs unchanged; font.rs `the_face_table`
+(ids, files, scales, a family past the list is Terminess, `font_with_family` puts the font back, kerning);
+test_store.rs `font_key` (Terminess without the key; each id; `font=comic-sans` draws as Terminess and goes back
+as it was through other saves until a font is picked; written after `shape_corner`); test_i18n.rs (every
+translation's letters in each family's own Regular and Bold, Japanese's aside; the rare notices, the Links
+bar, the gestures, the pen labels and the raw labels fit in each font); test_httpd.rs (each family's files
+served with their license; the Classic pages load the font in use, Terminess for the studio's command line);
+tests/package_check.sh (each Classic font's OFL text in app/licenses; the binary under 10.5 MB and the zip
+under 5.5 MB); tests/scenarios/y_fonts.qs (the chip opens the sheet on the font in use; a tap highlights and
+applies nothing; Cancel and Esc; Done applies and saves; Gothic has no chip), z_fonts_kept.qs (the font
+outlasts a restart) and y_fonts_unknown.qs (an unknown value kept); make l10n-check (every screen in English
+and Spanish in each font, `classic-atkinson`, `classic-noto-sans`, `classic-literata`, with the fit check, and
+tests/l10n/fonts.qs, the Font sheet in every language and font, upright and sideways); about.rs
+`every_note_fits_one_page_upright_and_sideways` in each font too (each version's notes on one page, upright and
+sideways, at the size found for that font: 2.0.0's sideways 42.5 px in Atkinson, 43 px in Noto Sans, 42 px in
+Literata, 38.5 px in Terminess) and `a_notes_size_is_found_once_for_each_screen` (a font picked searches again,
+once; Gothic ignores Classic's font).
+
+On the Scribe (a 2022 or 2024 Scribe, with a build of this branch):
+
+1. **The sample page on e-ink.** Copy the plan's fonts sample page (`fonts-sample-1860x2480.png`, one Scribe
+   page of the candidate fonts drawn as Grimoire draws text) into `grimoire/photos` over USB, then in a scratch
+   notebook open Paper > Photos... on a new page and pick it. At 1:1, judge Atkinson Hyperlegible Next, Noto
+   Sans and Literata against Terminess, regular, bold and small, and each block's third line, drawn as a fast
+   refresh shows text (no grays). (The page draws them a little smaller than the app now does: x1.05, x1.0
+   and x1.12 there, x1.10, x1.065 and x1.15 here.) Say if another of its fonts (Inter, Fira Sans, Source
+   Serif 4) should take one's place.
+2. **Pick each font.** Settings in Classic: the Style row reads "Style: Classic (tap for Gothic)" with "Font:
+   Terminess" in a chip at its right end; a tap left of the chip still changes the style. Tap the chip: the
+   Font sheet, Terminess highlighted and checked. Tap each family: only the sample and the two rows redraw,
+   without a flash, and the sample's name, sentence and digits are in that family. Done on Atkinson: one full
+   refresh, and Settings, the Library, a notebook's menus, the toolbar's sheets and the keyboard are in it;
+   the chip reads "Font: Atkinson". Then Noto Sans and Literata the same way, upright and sideways. Cancel and
+   Back change nothing. Restart Grimoire: the font is still the one picked. Switch to Gothic: no chip, the
+   pixel type as before; back in Classic the font picked is still there.
+3. **Thin strokes under the fast refresh.** In each font, type a notebook's name on the keyboard (its text
+   line draws with the fast refresh) and turn a slider in Pen feel: no letter should break up or vanish while
+   it updates, Literata's serifs and Atkinson's thin joins included. Say which, if any, reads poorly.
+4. **What never changes.** A page with Cornell paper and a music page: the headings and clefs are as before
+   in every font, and so are the clock and battery corner, the icons, a mirror PDF and a shared PNG.
+5. **Spanish and Japanese.** Settings > Language > Español: "Fuente: Atkinson" in the chip, "Fuente" over the
+   sheet, the sentence "La cigüeña tocaba el saxofón detrás del palenque de paja."; nothing cut short in any
+   font. In 日本語 the kana and kanji stay DotGothic16 in every font; the chip, the sheet's title and its
+   sentence show in English until they are translated.
+6. **The share pages.** With Noto Sans picked, open Share and the address in a browser: the Library list and a
+   notebook's page are in Noto Sans (Literata, Atkinson the same when picked before Share opens); the Effects
+   studio's command box stays in Terminess.
+7. **KOReader unaffected.** With the KOReader patch on (Settings > KOReader), open KOReader: its menus are in
+   Terminess as before, whatever font Grimoire's Classic uses, and Open this book and the Grimoire plugin work
+   as in 2.0.0.
+8. **What's new in each font.** In Terminess, open What's new from the bat, Read all, then 2.0.0, sideways:
+   one sheet. Dismiss, pick Literata (Settings > Font, Done) and open 2.0.0's notes sideways again: still one
+   sheet, every bullet and the signature, no page arrows. The same in Atkinson and Noto Sans.

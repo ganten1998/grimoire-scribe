@@ -96,6 +96,9 @@ pub struct Settings {
     pub sleep_minutes: i32,
     /// UiTheme: 0 gothic, 1 classic (settings.ini: theme=gothic|classic)
     pub theme: i32,
+    /// Classic's font, an index of font.rs's FONT_FAMILIES (settings.ini font=, the family's id:
+    /// terminess, atkinson, noto-sans or literata; 2.1). Gothic keeps its own faces whatever it is.
+    pub font: i32,
     pub pen_calib: InputCalib,
     pub touch_calib: InputCalib,
     /// The panel each calibration was made on (settings.ini pen.panel, touch.panel: WxH). A
@@ -4147,6 +4150,7 @@ pub fn settings_default(s: &mut Settings) {
     s.follow_rotation = true;
     s.pinch_zoom = true;
     s.theme = 0;
+    s.font = 0; // Terminess
     s.sleep_mode = 0;
     s.sleep_minutes = 10;
     s.http_port = 8765;
@@ -4241,6 +4245,12 @@ fn settings_unknown(k: &[u8], v: &[u8]) {
         s.g_set_unknown.extend_from_slice(v);
         s.g_set_unknown.push(b'\n');
     });
+}
+
+/// The value settings.ini had for a known key that this build could not use as written, kept to be written
+/// back (keep_value), None when there is none: the probes' settings.kept.KEY.
+pub fn settings_kept(k: &str) -> Option<Vec<u8>> {
+    with(|s| s.g_kept.iter().find(|e| e.key == k).map(|e| e.raw.clone()))
 }
 
 /// A known key read: `used` is what this build made of `raw` when it could not use it as written,
@@ -4462,6 +4472,15 @@ fn settings_cb(s: &mut Settings, k: &[u8], v: &[u8]) -> bool {
                     Some("gothic")
                 },
             );
+        }
+        b"font" => {
+            // A font this version does not have (a newer one's) draws as Terminess, and stays in the file.
+            let found = font_family_find(v);
+            if found.is_none() {
+                qlog_once!("settings: font=%s is not a font of this version: Terminess", &String::from_utf8_lossy(v).into_owned());
+            }
+            s.font = found.unwrap_or(0) as i32;
+            keep_value("font", v, if found.is_some() { None } else { Some(FONT_FAMILIES[0].id) });
         }
         b"shortcuts_enabled" => s.shortcuts_enabled = keep_bool("shortcuts_enabled", v),
         b"controller" => s.controller = keep_bool("controller", v),
@@ -4801,6 +4820,8 @@ pub fn settings_save(s: &Settings) -> i32 {
     put(&mut b, "whatsnew_seen", s.whatsnew_seen.as_str());
     put_int(&mut b, "whatsnew_hide", s.whatsnew_hide as i32);
     put_int(&mut b, "shape_corner", s.shape_corner);
+    // 2.1: Classic's font (a value this build does not have goes back as it was, keep_value).
+    put(&mut b, "font", FONT_FAMILIES[clampi(s.font, 0, FONT_FAMILIES.len() as i32 - 1) as usize].id);
     // Lines this build does not know, as they were; but a pen.panel or touch.panel this build could
     // not read goes once the calibration's panel is recorded (written above in its place).
     let unknown = with(|st| st.g_set_unknown.clone());

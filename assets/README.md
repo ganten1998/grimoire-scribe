@@ -80,6 +80,37 @@ Material Design icon of the release, subsets both weights with fontTools and wri
 `FONTS_SUBSET_FLAGS=--verify` writes nothing and checks that the committed fonts are what the list
 makes; with fontTools 4.68.0 they are byte for byte. `make check` never runs it.
 
+The Classic fonts of Settings > Font (2.1): `AtkinsonHyperlegibleNext-Regular.ttf` and `-Bold.ttf`,
+`NotoSans-Regular.ttf` and `-Bold.ttf`, `Literata-Regular.ttf` and `-Bold.ttf`, each family under the SIL Open
+Font License 1.1 with no Reserved Font Name (`AtkinsonHyperlegibleNext-OFL-1.1.txt`, `NotoSans-OFL-1.1.txt`,
+`Literata-OFL-1.1.txt`, Google Fonts' OFL.txt for each, byte for byte), so the cut-down files keep the
+families' names (OFL FAQ 2.6). They are made from Google Fonts' releases, the variable fonts in
+https://github.com/google/fonts at the commit that added each version, every one more than two weeks old:
+
+| Family | Version | Google Fonts' file, at commit | SHA-256 of the file |
+|---|---|---|---|
+| Atkinson Hyperlegible Next | 2.001 (2025-01-07) | `ofl/atkinsonhyperlegiblenext/AtkinsonHyperlegibleNext[wght].ttf`, 66eef70728ca29f28c31cdc5e7947f2c2de73e8d | `5a455d1cfa099b601ab70751bb9673e8fe1854dc4500c80e1a220d0d75e31745` |
+| Noto Sans | 2.015 (2024-11-20) | `ofl/notosans/NotoSans[wdth,wght].ttf`, 2984c575fdce412ee02b2baaba67672b9a9434d8 | `bfb7bb691513f12e734dc346c03a03f784912432d7e3fa8e56efcf906fe86b3d` |
+| Literata | 3.103 (2023-05-19) | `ofl/literata/Literata[opsz,wght].ttf`, c8018e986708f2aed63c928b1e9026826da1553d | `b41138c9373112f32abb589cc22e8674b06ed4048b0c513be922bdd26f274440` |
+
+(the OFL texts at the same commits: `aca6a428...4030`, `cee9892f...061a` and `87429636...614e`; the full
+values are in `tools/fonts_classic.py`). Each weight is a static font of its own (stb_truetype reads no
+variations): fontTools' instancer pins the weight at 400 (Regular) or 700 (Bold) and every other axis at its
+default, Literata's optical size at 12 (its default, the sturdy text size) and Noto Sans's width at 100, and
+the names say the family and Regular or Bold. Then it is cut down to Basic Latin, Latin-1, Latin Extended-A,
+General Punctuation, the euro, the arrows, the minus sign and the replacement character, with kerning (the
+`kern` feature's pairs, which stb reads), without hinting (stb draws unhinted, at 300 dpi), glyph names,
+substitutions, vertical metrics or the axes' names, and with the copyright, family, style, version and
+license names (IDs 0 to 6, 13 and 14). 238,260 bytes for the six. Greek, Cyrillic and Japanese are left out:
+Terminess draws Greek and Cyrillic, DotGothic16 Japanese, as for every theme. Atkinson Hyperlegible Next has no
+µ, no soft hyphen and some Latin Extended-A letters (Esperanto's, ŋ, ŧ, ŗ, ō, ũ and their kin), and no arrows;
+those come from Terminess too. Every character a translation uses is in each family (rust/tests/test_i18n.rs).
+
+`make fonts-subset` (above) makes them too, after the Terminess diet: `tools/fonts_classic.py` downloads the
+three fonts and their OFL texts into `FONTS_CACHE` once, checks each by SHA-256, makes the six fonts and writes
+them and the three OFL texts here. With fontTools 4.68.0, `FONTS_SUBSET_FLAGS=--verify` finds the committed
+files byte for byte what it makes.
+
 `eraser-sample.qpg` contains the maintainer's handwritten “erase me!” practice ink, contributed
 to Grimoire under the project's GPL-3.0 license. The app fits a private in-memory copy to the
 eraser pad. It does not read or modify a notebook to provide this sample.

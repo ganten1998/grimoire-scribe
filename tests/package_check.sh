@@ -156,11 +156,11 @@ done
 check "the icons' notice names Material Design Icons and the Apache License" sh -c \
     'grep -qF "Pictogrammers Free License" "$1" && grep -qF "Apache License, Version 2.0" "$1"' sh assets/MaterialDesignIcons-LICENSE.txt
 check "the Apache-2.0 text is the license's" grep -qF "TERMS AND CONDITIONS FOR USE, REPRODUCTION, AND DISTRIBUTION" assets/MaterialDesignIcons-Apache-2.0.txt
-# Each font the binary embeds (FONTS in the Makefile) needs its OFL text: a
+# Each font the binary embeds (FONTS and FONTS_CLASSIC in the Makefile) needs its OFL text: a
 # licenses/<family>-OFL-1.1.txt whose family begins the font's file name (Terminess-OFL-1.1.txt
-# covers TerminessNerdFontMono-Regular.ttf).
-FONTS=$(awk '/^FONTS[ \t]*:=/ { on = 1; sub(/^FONTS[ \t]*:=/, "") }
-    on { l = $0; sub(/\\$/, "", l); print l; if ($0 !~ /\\$/) exit }' Makefile)
+# covers TerminessNerdFontMono-Regular.ttf, NotoSans-OFL-1.1.txt NotoSans-Bold.ttf).
+FONTS=$(awk '/^FONTS(_CLASSIC)?[ \t]*:=/ { on = 1; sub(/^FONTS(_CLASSIC)?[ \t]*:=/, "") }
+    on { l = $0; sub(/\\$/, "", l); print l; if ($0 !~ /\\$/) on = 0 }' Makefile)
 nfonts=0
 for font in $FONTS; do
     nfonts=$((nfonts + 1))
@@ -172,7 +172,13 @@ for font in $FONTS; do
     done
     check "payload has the OFL text for $font" is "$found" yes
 done
-check "the Makefile's FONTS names the embedded fonts ($nfonts)" [ "$nfonts" -gt 0 ]
+check "the Makefile's FONTS and FONTS_CLASSIC name the embedded fonts ($nfonts)" [ "$nfonts" -ge 11 ]
+# The Classic fonts the binary embeds are the ones rust/src/assets.rs includes, and no other.
+for font in $FONTS; do
+    check "rust/src/assets.rs embeds $font" grep -qF "assets/$font\")" rust/src/assets.rs
+done
+check "rust/src/assets.rs embeds only the Makefile's fonts" is \
+    "$(grep -c 'include_bytes!("../../assets/[^"]*\.ttf")' rust/src/assets.rs)" "$nfonts"
 # Every vendored component needs its license in the package: a third_party/<dir> brings a
 # LICENSE or COPYING file, a single-file library at the top of third_party/ must be named in a
 # notice. The binary is linked static, so musl's notice goes too.
@@ -267,6 +273,13 @@ for w in "lipc-wait-event -s 0 $EVENTS" "lipc-wait-event -m -s 0 $EVENTS"; do
     check "the binary runs '$w'" sh -c 'tr "\000" "\n" <"$1" | grep -qF -- "$2"' sh "$B/app/grimoire" "$w"
     check "restore()'s pkill pattern matches '$w'" sh -c 'printf "%s\n" "$2" | grep -qE -- "$1"' sh "$PAT" "$w"
 done
+
+# The size guard (2.1, the owner's decision D23): the Kindle binary stays under 10.5 MB and the zip under
+# 5.5 MB (the binary is on the Kindle twice: in documents/Grimoire.sh's archive and as app/grimoire).
+BIN_SIZE=$(wc -c <"$B/app/grimoire" | tr -d ' ')
+ZIP_SIZE=$(wc -c <"$ZIP" | tr -d ' ')
+check "the Kindle binary is under 10.5 MB ($BIN_SIZE bytes)" [ "$BIN_SIZE" -lt 10500000 ]
+check "the zip is under 5.5 MB ($ZIP_SIZE bytes)" [ "$ZIP_SIZE" -lt 5500000 ]
 
 if [ $fail = 0 ]; then
     rm -rf "$B"

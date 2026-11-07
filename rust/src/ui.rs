@@ -88,10 +88,12 @@ pub enum IconKind {
     Lasso = 59,
     /// a page tile whose preview is being made (Rust only: ui_tile_loading)
     Hourglass = 60,
+    /// Settings' Font chip, in Classic (2.1, Rust only)
+    Font = 61,
 }
 impl IconKind {
     /// ICON_COUNT
-    pub const COUNT: usize = 61;
+    pub const COUNT: usize = 62;
 }
 
 #[derive(Clone, Copy, Debug, Default)]
@@ -306,6 +308,7 @@ const K_ICON_CP: [u32; IconKind::COUNT] = {
     k[IconKind::Bubbles as usize] = 0xF05E3; // md-chart_bubble
     k[IconKind::Lasso as usize] = 0xF0F03; // md-lasso
     k[IconKind::Hourglass as usize] = 0xF051F; // md-timer_sand
+    k[IconKind::Font as usize] = 0xF06D6; // md-format_font
     k
 };
 

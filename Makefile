@@ -68,6 +68,10 @@ all: sim headless test tools kindle dist
 # ---- generated: embedded fonts ----
 FONTS := TerminessNerdFontMono-Regular.ttf TerminessNerdFontMono-Bold.ttf Jacquard24-Regular.ttf \
          Jersey10-Regular.ttf DotGothic16-Regular.ttf
+# The Classic fonts the Font sheet offers beside Terminess (2.1, Rust only: rust/src/assets.rs embeds
+# them; the C tree's build/gen/fonts.c keeps FONTS alone). Made by make fonts-subset.
+FONTS_CLASSIC := AtkinsonHyperlegibleNext-Regular.ttf AtkinsonHyperlegibleNext-Bold.ttf \
+         NotoSans-Regular.ttf NotoSans-Bold.ttf Literata-Regular.ttf Literata-Bold.ttf
 $(BUILD)/gen/fonts.c: $(addprefix assets/,$(FONTS))
 	@mkdir -p $(BUILD)/gen
 	( cd assets && for f in $(FONTS); do xxd -i $$f; done ) > $@.tmp && mv $@.tmp $@
@@ -300,14 +304,18 @@ $(BUILD)/host/mkicon: FORCE
 # TTF once into FONTS_CACHE (outside the repo), checks them by SHA-256, checks the list's text against
 # upstream Terminus, and writes the fonts (assets/README.md). It needs fontTools 4.68.0 (pip install
 # fonttools==4.68.0, the version that made the committed fonts), best in a venv outside the repo: make
-# fonts-subset FONTS_PYTHON=<venv>/bin/python. FONTS_SUBSET_FLAGS=--verify writes nothing and checks
-# that the committed fonts are what the list makes.
+# fonts-subset FONTS_PYTHON=<venv>/bin/python. Then the Classic fonts (2.1): tools/fonts_classic.py
+# downloads Atkinson Hyperlegible Next, Noto Sans and Literata from Google Fonts' repository at pinned
+# commits into the same cache, checks them by SHA-256, and writes each family's Regular and Bold, static
+# and subset, with its OFL text (FONTS_CLASSIC below). FONTS_SUBSET_FLAGS=--verify writes nothing and
+# checks that the committed fonts are what the recipes make.
 FONTS_PYTHON ?= python3
 FONTS_CACHE ?= $(HOME)/.cache/grimoire-fonts
 FONTS_SUBSET_FLAGS ?=
 .PHONY: fonts-subset
 fonts-subset:
 	$(FONTS_PYTHON) -I tools/fonts_subset.py --cache "$(FONTS_CACHE)" --keep assets/terminess-keep.txt --out assets $(FONTS_SUBSET_FLAGS)
+	$(FONTS_PYTHON) -I tools/fonts_classic.py --cache "$(FONTS_CACHE)" --out assets $(FONTS_SUBSET_FLAGS)
 
 # The logo for the README and releases, black and white on transparent (committed, like the icon).
 # Pixel blocks of 8: shown at half size they land on whole pixels on ordinary and Retina screens.

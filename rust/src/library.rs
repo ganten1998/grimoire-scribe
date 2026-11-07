@@ -33,6 +33,9 @@ enum Modal {
     /// Settings > Pair (2.0.0-beta.2, Rust only; a number of its own past the C's, as Exit's): the Bluetooth
     /// helper on or off, Pair a controller... (the Pair sheet above), and what is connected
     PairMenu = 330,
+    /// Settings > Font (2.1, Rust only, Classic only; a number of its own as PairMenu's): the families
+    /// Classic's text can be drawn in, with a sample, applied on Done
+    Font = 340,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -148,6 +151,11 @@ const H_EXIT_NO: i32 = 83;
 const H_PAIR_MENU: i32 = 84;
 const H_SHORTCUT_DEVICE: i32 = 85;
 const H_SHORTCUT_OWN: i32 = 86;
+// 2.1: the Style row's Font chip (Classic only), and the Font sheet's rows (arg: the family), Done and Cancel.
+const H_SET_FONT: i32 = 89;
+const H_FONT_PICK: i32 = 90;
+const H_FONT_DONE: i32 = 91;
+const H_FONT_CANCEL: i32 = 92;
 
 #[derive(Clone, Copy, Default)]
 struct Item {
@@ -166,6 +174,11 @@ struct Item {
 pub struct LibraryState {
     /// Exit Grimoire?'s highlight is on No (Left and Right move it; Enter presses it)
     exit_no: bool,
+    /// The Font sheet (2.1): the family highlighted (FONT_FAMILIES; the one in use as it opens), and
+    /// where its sample card and its rows were drawn (a tap on a row refreshes only those).
+    font_pick: usize,
+    font_sample: Rect,
+    font_rows: Vec<Rect>,
     settings_return_editor: bool,
     settings_painting: bool,
     settings_editor_fit: bool,
@@ -3340,20 +3353,44 @@ fn draw_settings(a: &mut App) {
         Rect::new(rt.x, rt.y + ui_px(15.0), ui_px(80.0), ui_px(80.0)),
         0,
     );
-    // TRANSLATORS: the style Grimoire is drawn in, and the other one a tap changes to.
+    // TRANSLATORS: the style Grimoire is drawn in, and the other one a tap changes to (1530 px at 44 px
+    // in Gothic; in Classic the Font chip takes the row's right end, which leaves about 1000 px).
     let mut style = tr("Style: Gothic (tap for Classic)");
     if ui_theme() == UiTheme::Classic {
         style = tr("Style: Classic (tap for Gothic)");
+    }
+    // In Classic a chip at the row's right end opens the Font sheet (2.1); the rest of the row still
+    // changes the style. Gothic has no chip: its look is its own type.
+    let mut text_w = rt.w - ui_px(110.0);
+    let mut theme_r = rt;
+    if ui_theme() == UiTheme::Classic {
+        let mut label = String::new();
+        // TRANSLATORS: (Settings, Classic only) the chip at the Style row's right end that opens the
+        // Font sheet, with the font in use by its short name, never translated ("Terminess",
+        // "Atkinson", "Noto Sans", "Literata"): about 450 px at 34 px in bold, beside its icon.
+        csnprintf!(&mut label, 96, tr("Font: %s"), FONT_FAMILIES[font_family()].short);
+        let ch = ui_px(90.0);
+        // (the icon, then its label: the chip as wide as they need, up to 560 px)
+        let lx = ch + ui_px(10.0);
+        let w = lx + ui_chip_w(FontFace::Bold, ui_small_size(), &label, ch, ui_px(240.0), ui_px(560.0)) - ui_px(24.0);
+        let chip = Rect::new(rt.x + rt.w - w, rt.y + (rt.h - ch) / 2, w, ch);
+        ui_frame(c, chip, ch / 2, 255, true, 0);
+        ui_frame(c, chip, ch / 2, 0, false, ui_px(3.0));
+        ui_icon(c, IconKind::Font, Rect::new(chip.x + ui_px(16.0), chip.y + ui_px(8.0), ch - ui_px(16.0), ch - ui_px(16.0)), 0);
+        font_draw_left(c, FontFace::Bold, ui_small_size(), Rect::new(chip.x + lx, chip.y, chip.w - lx - ui_px(24.0), ch), &label, 0);
+        text_w = chip.x - ui_px(24.0) - (rt.x + ui_px(110.0));
+        theme_r.w = chip.x - ui_px(12.0) - rt.x;
+        hits_add(&mut s.hits, chip, H_SET_FONT, 0);
     }
     font_draw_left(
         c,
         FontFace::Regular,
         ui_text_size(),
-        Rect::new(rt.x + ui_px(110.0), rt.y, rt.w - ui_px(110.0), rt.h),
+        Rect::new(rt.x + ui_px(110.0), rt.y, text_w, rt.h),
         style,
         0,
     );
-    hits_add(&mut s.hits, rt, H_SET_THEME, 0);
+    hits_add(&mut s.hits, theme_r, H_SET_THEME, 0);
     y += ui_px(130.0);
     let r3 = Rect::new(in_.x, y, in_.w, ui_px(110.0));
     let mut row = String::new();
@@ -3520,6 +3557,85 @@ fn draw_settings(a: &mut App) {
     hits_add(&mut s.hits, upd, H_UPDATES, 0);
 }
 
+/// The Font sheet's third sample line, the same in every language: digits, the punctuation Spanish
+/// opens with, the angle quotes, and accented letters (Japanese comes from DotGothic16 in every font).
+const FONT_SAMPLE_CHARS: &str = "0123456789  \u{bf}? \u{a1}! \u{ab}\u{bb}  \u{e1}\u{e9}\u{ed}\u{f3}\u{fa} \u{f1} \u{e7} \u{fc} \u{df} \u{20ac}";
+
+/// Settings > Font (2.1, Classic only): on top a sample of the family highlighted (its name at the
+/// title size, a sentence at the text size, digits and accents at the small size, all in it), then
+/// every family by its name, each drawn in itself, the one in use with a check, then Cancel and Done.
+/// The sheet's own words are in the font in use until Done applies another.
+fn draw_font_sheet(a: &mut App) {
+    let (aw, ah) = (a.w, a.h);
+    let applied = font_family();
+    let App { screen: c, lib, .. } = a;
+    let s = lib.as_deref_mut().unwrap();
+    let pick = s.font_pick.min(FONT_FAMILIES.len() - 1);
+    let n = FONT_FAMILIES.len() as i32;
+    let (sample_h, rh, gap, bh, pad) = (ui_px(300.0), ui_px(130.0), ui_px(16.0), ui_px(140.0), ui_px(24.0));
+    let card = sheet_rect(aw, ah, ui_px(120.0) + 2 * ui_px(36.0) + sample_h + pad + n * (rh + gap) - gap + pad + bh);
+    // TRANSLATORS: the title of Settings > Font, the list of fonts Classic can be drawn in.
+    let in_ = ui_sheet(c, card, tr("Font"));
+    let sample = Rect::new(in_.x, in_.y, in_.w, sample_h);
+    ui_frame(c, sample, ui_px(16.0), 0, false, ui_px(3.0));
+    let fam = &FONT_FAMILIES[pick];
+    let tx = sample.x + pad;
+    let tw = sample.w - 2 * pad;
+    // TRANSLATORS: the Font sheet's sample sentence, drawn in each font at 44 px, at most two lines of
+    // about 1600 px: a sentence that uses many of your language's letters (English: a pangram; Spanish
+    // could be "La cigüeña tocaba el saxofón detrás del palenque de paja.").
+    let sentence = tr("The quick brown fox jumps over the lazy dog.");
+    font_with_family(pick, || {
+        font_draw_left(c, FontFace::Title, ui_title_size(), Rect::new(tx, sample.y + ui_px(16.0), tw, ui_px(90.0)), fam.name, 0);
+        font_draw_wrapped(c, FontFace::Regular, ui_text_size(), Rect::new(tx, sample.y + ui_px(106.0), tw, ui_px(124.0)),
+            sentence, 2, ui_px(62.0), false, 0);
+        font_draw_left(c, FontFace::Regular, ui_small_size(), Rect::new(tx, sample.y + ui_px(230.0), tw, ui_px(56.0)), FONT_SAMPLE_CHARS, 0);
+    });
+    s.font_sample = sample;
+    s.font_rows.clear();
+    let mut y = sample.y + sample.h + pad;
+    for (i, f) in FONT_FAMILIES.iter().enumerate() {
+        let r = Rect::new(in_.x, y, in_.w, rh);
+        let on = i == pick;
+        let fg: u8 = if on { 255 } else { 0 };
+        ui_frame(c, r, ui_px(16.0), if on { 0 } else { 255 }, true, 0);
+        ui_frame(c, r, ui_px(16.0), 0, false, ui_px(3.0));
+        let mark = rh - ui_px(30.0);
+        font_with_family(i, || {
+            font_draw_left(c, FontFace::Bold, ui_text_size(), Rect::new(r.x + ui_px(40.0), r.y, r.w - ui_px(80.0) - mark, rh), f.name, fg);
+        });
+        if i == applied {
+            ui_icon(c, IconKind::Check, Rect::new(r.x + r.w - ui_px(25.0) - mark, r.y + ui_px(15.0), mark, mark), fg);
+        }
+        hits_add(&mut s.hits, r, H_FONT_PICK, i as i32);
+        s.font_rows.push(r);
+        y += rh + gap;
+    }
+    let done = Rect::new(in_.x + in_.w - ui_px(380.0), in_.y + in_.h - bh, ui_px(380.0), bh);
+    let cancel = Rect::new(in_.x, done.y, ui_px(380.0), bh);
+    ui_button(c, cancel, IconKind::None, tr("Cancel"), ButtonStyle::Plain);
+    ui_button(c, done, IconKind::None, tr("Done"), ButtonStyle::Primary);
+    hits_add(&mut s.hits, cancel, H_FONT_CANCEL, 0);
+    hits_add(&mut s.hits, done, H_FONT_DONE, 0);
+}
+
+/// The Font sheet after a tap on a family: the screen drawn again, and the panel refreshed only where
+/// the sample and the two rows whose highlight changed are (Ui), as What's new steps (about_step).
+fn font_step(a: &mut App, pick: usize) {
+    let s = lib(a);
+    let was = s.font_pick;
+    s.font_pick = pick;
+    let (sample, rows) = (s.font_sample, s.font_rows.clone());
+    if rect_is_empty(sample) || rows.len() <= was.max(pick) || graph_shown(a) || lib(a).settings_return_editor {
+        redraw(a, RefreshMode::Ui);
+        return;
+    }
+    draw_base(a);
+    hits_clear(&mut lib(a).hits);
+    draw_modal(a);
+    a.toast_floor = toast_floor(a);
+    app_invalidate(a, rect_union(sample, rect_union(rows[was], rows[pick])), RefreshMode::Ui);
+}
 
 // The item MORE, MOVE and DELETE act on (S->target), if it is one.
 fn target_item(s: &LibraryState) -> Option<Item> {
@@ -3543,6 +3659,7 @@ fn draw_modal(a: &mut App) {
     match modal {
         Modal::New => draw_new(a),
         Modal::Settings => draw_settings(a),
+        Modal::Font => draw_font_sheet(a),
         Modal::About => {
             let (aw, ah) = (a.w, a.h);
             let App { screen: c, lib, .. } = a;
@@ -4980,6 +5097,34 @@ fn act(a: &mut App, h: &Hit) {
             settings_save(&a.settings);
             redraw(a, RefreshMode::Ui);
         }
+        H_SET_FONT => {
+            lib(a).font_pick = font_family();
+            open_modal(a, Modal::Font);
+        }
+        H_FONT_PICK => {
+            let pick = (h.arg.max(0) as usize).min(FONT_FAMILIES.len() - 1);
+            if pick != lib(a).font_pick {
+                font_step(a, pick);
+            }
+        }
+        // Done applies the family highlighted, saved, and the screen comes back in it with a Full refresh, as
+        // a style change does; Cancel (Back, Esc) leaves the font as it was.
+        H_FONT_DONE => {
+            let pick = lib(a).font_pick;
+            lib(a).modal = Modal::Settings;
+            if pick != font_family() {
+                a.settings.font = pick as i32;
+                font_set_family(pick);
+                settings_save(&a.settings);
+                redraw(a, RefreshMode::Full);
+            } else {
+                redraw(a, RefreshMode::Ui);
+            }
+        }
+        H_FONT_CANCEL => {
+            lib(a).modal = Modal::Settings;
+            redraw(a, RefreshMode::Ui);
+        }
         H_SET_LANGUAGE => open_modal(a, Modal::Language),
         H_LANG_PICK => {
             // Saved and applied at once: the Settings sheet comes back in the language picked.
@@ -5422,6 +5567,7 @@ pub fn library_back(a: &mut App) -> bool {
             redraw(a, RefreshMode::Ui);
         }
         Modal::Pair | Modal::Buttons => tap(a, H_BUTTONS_DONE),
+        Modal::Font => tap(a, H_FONT_CANCEL),
         // (What's new, one layer a press: a version's notes back to the list, the list back to the card
         // that opened it, as the Templates sheet goes back to New notebook; the card closes)
         Modal::About if lib(a).about_view == AboutView::Note => tap(a, H_ABOUT_BACK),
@@ -6096,6 +6242,11 @@ pub fn library_probe(a: &mut App, key: &str, out: &mut String, cap: usize) -> i3
         csnprintf!(out, cap, "exit");
     } else if key == "sheet" && s.modal == Modal::PairMenu {
         csnprintf!(out, cap, "pair-menu");
+    } else if key == "sheet" && s.modal == Modal::Font {
+        csnprintf!(out, cap, "font");
+    } else if key == "font.pick" {
+        // The Font sheet's family highlighted, by its settings.ini id; "" while the sheet is not up.
+        csnprintf!(out, cap, "%s", if s.modal == Modal::Font { FONT_FAMILIES[s.font_pick.min(FONT_FAMILIES.len() - 1)].id } else { "" });
     } else if key == "sheet" {
         match SHEETS.get(s.modal as usize) {
             Some(m) => csnprintf!(out, cap, "%s", *m),
@@ -6235,8 +6386,12 @@ pub fn library_probe(a: &mut App, key: &str, out: &mut String, cap: usize) -> i3
                 H_BACK => "back", H_ABOUT => "about", H_ABOUT_CLOSE => "about.close",
                 H_ABOUT_PREV => "about.prev", H_ABOUT_NEXT => "about.next", H_ABOUT_MORE => "about.more",
                 H_ABOUT_ROW => "about.row.", H_ABOUT_BACK => "about.back",
+                H_SET_FONT => "font", H_FONT_PICK => "font.", H_FONT_DONE => "font.done", H_FONT_CANCEL => "font.cancel",
                 _ => "",
             });
+            if hit.id == H_FONT_PICK {
+                name.push_str(FONT_FAMILIES.get(hit.arg as usize).map_or("", |f| f.id));
+            }
             if hit.id == H_ABOUT_ROW {
                 name.push_str(crate::about::notes().get(hit.arg as usize).map_or("", |e| e.versions[0]));
             }

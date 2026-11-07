@@ -508,6 +508,11 @@ def shard_select(files, shards, index, times):
 
 # ---- the languages (make l10n-check) ----
 
+# The Classic fonts besides Terminess (rust/src/font.rs's FONT_FAMILIES, by settings.ini id), and the
+# languages every screen is checked in each of.
+CLASSIC_FONTS = ('atkinson', 'noto-sans', 'literata')
+FONT_LANGS = ('en', 'es')
+
 def l10n(args, hooks):
     failed = []
     if shutil.which('msgfmt'):
@@ -528,7 +533,16 @@ def l10n(args, hooks):
         print('l10n: skipped the check that po/*.mo match po/*.po (msgfmt is not installed)')
     b = args.build
     langs = args.langs.split()
-    styles = ('gothic', 'classic')
+    # The styles, and the settings.ini lines each runs with: Gothic and Classic (in Terminess, its default
+    # font), then Classic in each other font of Settings > Font (2.1, the Rust build's), in English and
+    # Spanish (Japanese takes its letters from DotGothic16 in every font).
+    inis = {'gothic': ['theme=gothic'], 'classic': ['theme=classic']}
+    for font in CLASSIC_FONTS:
+        inis[f'classic-{font}'] = ['theme=classic', f'font={font}']
+
+    def styles_for(lang):
+        return [st for st in inis
+                if not st.startswith('classic-') or (lang in FONT_LANGS and not args.skip_rust_only)]
     tasks = []
 
     def task(n, script, root, env, ini, weight):
@@ -540,19 +554,19 @@ def l10n(args, hooks):
     w_all = times.get('y_all_screens', DEFAULT_WEIGHT)
     if not args.skip_rust_only:
         for lang in langs:
-            for style in styles:
+            for style in styles_for(lang):
                 n = f'{lang}-{style}'
                 if n in args.skip:
                     print(f'== l10n {n}: skipped (make scenarios ran {args.scenario} in it)')
                     continue
                 task(n, args.scenario, f'{b}/scen/l10n/{n}',
                      [('GRIMOIRE_LANG', lang), ('GRIMOIRE_CHECK_FIT', '1'), ('GRIMOIRE_SIM_ADDRS', 'wlan0=192.168.0.20')],
-                     [f'theme={style}'], w_all)
+                     inis[style], w_all)
         for lang in langs:
-            for style in styles:
+            for style in styles_for(lang):
                 n = f'shapes-{lang}-{style}'
                 task(n, 'tests/l10n/shapes.qs', f'{b}/scen/l10n/{n}',
-                     [('GRIMOIRE_LANG', lang), ('GRIMOIRE_CHECK_FIT', '1')], [f'theme={style}'], 10.0)
+                     [('GRIMOIRE_LANG', lang), ('GRIMOIRE_CHECK_FIT', '1')], inis[style], 10.0)
     else:
         print(f'l10n: skipped {args.scenario} (rust-only: it visits the Rust build\'s screens)')
     shutil.rmtree(f'{b}/scen/l10n/long-root', ignore_errors=True)
@@ -561,40 +575,47 @@ def l10n(args, hooks):
         task(n, 'tests/l10n/long_root.qs', f'{b}/scen/l10n/long-root/' + 'a-long-data-root-' * 8 + lang,
              [('GRIMOIRE_LANG', lang), ('GRIMOIRE_CHECK_FIT', '1')], [], 5.0)
     for lang in langs:
-        for style in styles:
+        for style in styles_for(lang):
             n = f'hosted-{lang}-{style}'
             task(n, 'tests/l10n/hosted.qs', f'{b}/scen/l10n/{n}',
                  [('GRIMOIRE_LANG', lang), ('GRIMOIRE_CHECK_FIT', '1'), ('GRIMOIRE_HOST', 'koreader')],
-                 [f'theme={style}'], 5.0)
+                 inis[style], 5.0)
     copies = header(args.templates)['copies']
     for lang in langs:
-        for style in styles:
+        for style in styles_for(lang):
             n = f'templates-{lang}-{style}'
             t = task(n, args.templates, f'{b}/scen/l10n/{n}',
-                     [('GRIMOIRE_LANG', lang), ('GRIMOIRE_CHECK_FIT', '1')], [f'theme={style}'], 8.0)
+                     [('GRIMOIRE_LANG', lang), ('GRIMOIRE_CHECK_FIT', '1')], inis[style], 8.0)
             t.copies = copies
     if not args.skip_rust_only:
+        # Settings > Font (2.1) in every language and in each font, Terminess too: its chip, and the sheet
+        # with each family highlighted.
+        for lang in langs:
+            for style in ['classic'] + [f'classic-{f}' for f in CLASSIC_FONTS]:
+                n = f'fonts-{lang}-{style}'
+                task(n, 'tests/l10n/fonts.qs', f'{b}/scen/l10n/{n}',
+                     [('GRIMOIRE_LANG', lang), ('GRIMOIRE_CHECK_FIT', '1')], inis[style], 4.0)
         # The unified Index and the cross-notebook selector (tests/index_l10n_check.py was these),
         # each from its fixture, then the Wi-Fi controls with and without an address
         # (tests/wifi_l10n_check.py was these), in every language and style.
         fixtures = {'z_page_management': 'page_management_fixture.py',
                     'z_links_1_backlinks': 'notebook_backlinks_fixture.py'}
         for lang in langs:
-            for style in styles:
+            for style in styles_for(lang):
                 for case in ('z_index_unified', 'z_notebook_links', 'z_page_management', 'z_links_1_backlinks'):
                     n = f'index-{case}-{lang}-{style}'
                     t = task(n, f'tests/scenarios/{case}.qs', f'{b}/scen/l10n/{n}',
-                             [('GRIMOIRE_LANG', lang), ('GRIMOIRE_CHECK_FIT', '1')], [f'theme={style}'], 4.0)
+                             [('GRIMOIRE_LANG', lang), ('GRIMOIRE_CHECK_FIT', '1')], inis[style], 4.0)
                     t.generate = 'tests/' + fixtures.get(case, 'notebook_links_fixture.py')
         for lang in langs:
-            for style in styles:
+            for style in styles_for(lang):
                 for online in (0, 1):
                     n = f'wifi-{lang}-{style}-{online}'
                     task(n, 'tests/scenarios/z_wifi.qs', f'{b}/scen/l10n/{n}',
                          [('GRIMOIRE_LANG', lang), ('GRIMOIRE_CHECK_FIT', '1'),
                           ('GRIMOIRE_WIFI_SCRIPT', os.path.abspath('tests/fixtures/wifi/helper.sh')),
                           ('GRIMOIRE_SIM_ADDRS', 'wlan0=192.168.0.20' if online else '')],
-                         [f'theme={style}'], 4.0)
+                         inis[style], 4.0)
     for t in tasks:
         t.serial = t.name in args.serial
     run_all(tasks, args, hooks)

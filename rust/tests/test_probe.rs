@@ -55,7 +55,7 @@ fn tool_names_are_settings_ini_names() {
 
 // The gestures' settings keys (Index phase 1) are undotted (a dotted head is a calibration's or a
 // tool's), come after the keys the build before them wrote, in the order gestures, landscape_fit,
-// hints, link_areas (then the clock corner's place, status_corner), and leave every earlier line as that build wrote it: tests/fixtures/
+// hints, link_areas (then the clock corner's place, status_corner; 2.1's font last), and leave every earlier line as that build wrote it: tests/fixtures/
 // settings_default_head.ini is a default Settings saved before they existed, through status_size.
 fn gesture_keys_follow_the_older_ones() {
     let mut s = Settings::default();
@@ -73,7 +73,7 @@ fn gesture_keys_follow_the_older_ones() {
     let want = head.as_bytes();
     check!(got.len() > want.len() && &got[..want.len()] == want);
     let tail = String::from_utf8_lossy(&got[want.len().min(got.len())..]).to_string();
-    check!(tail == "gestures=1\nlandscape_fit=1\nhints=0\nlink_areas=0\nstatus_corner=0\nrotation_lock=0\ngesture_new_page=1\nstatus_mode=1\nshapes=1\nshape_hold_ms=550\nshape_quads=1\nshape_round=1\nshape_links=1\nshape_min_mm=10\nwhatsnew_seen=\nwhatsnew_hide=0\nshape_corner=0\n");
+    check!(tail == "gestures=1\nlandscape_fit=1\nhints=0\nlink_areas=0\nstatus_corner=0\nrotation_lock=0\ngesture_new_page=1\nstatus_mode=1\nshapes=1\nshape_hold_ms=550\nshape_quads=1\nshape_round=1\nshape_links=1\nshape_min_mm=10\nwhatsnew_seen=\nwhatsnew_hide=0\nshape_corner=0\nfont=terminess\n");
     // (undotted: no key before its "=" has a dot)
     for line in tail.lines() {
         let key = line.split('=').next().unwrap_or("");

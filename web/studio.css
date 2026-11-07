@@ -33,7 +33,7 @@
 .st-presets{display:flex;flex-wrap:wrap;gap:6px}
 .st-cmd{white-space:pre-wrap;word-break:break-all;background:var(--well);border:2px solid var(--fg);padding:10px;margin:8px 0;max-height:340px;overflow:auto;font-size:13px;line-height:1.45}
 .gothic .st-cmd{font-family:ui-monospace,Menlo,Consolas,monospace}
-.classic .st-cmd{font-family:inherit}
+.classic .st-cmd{font-family:'Grimoire Mono',ui-monospace,Menlo,Consolas,monospace}
 .st-hide{display:none!important}
 .st-msg{min-height:1.4em;margin:8px 0 0}
 .st-busy button{opacity:.5;pointer-events:none}

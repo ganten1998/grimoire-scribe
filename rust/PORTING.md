@@ -148,6 +148,15 @@ So is the Terminess patch's upgrade at the start (2.0.0-beta.2, the owner's "JS"
 know (src/koreader.c knows only the first, `legacy/2-terminess-ui-font.lua`, and replaces it only when
 the patch is toggled). test_koreader.rs and test_scenarios.rs hold them.
 
+Classic's fonts (2.1, docs/DESIGN.md, Text) are Rust only: font.rs's `FONT_FAMILIES` and the files past
+`TTF_JP` (assets.rs's `FONT_ATKINSON_*`, `FONT_NOTO_SANS_*`, `FONT_LITERATA_*`; the Makefile's FONTS_CLASSIC,
+which build/gen/fonts.c leaves out), `FaceMap.fallback`, `font_set_family`, `font_family`,
+`font_with_family`, `font_family_find` and `font_family_file`; the Settings key `font` (store.rs, with
+`settings_kept`); library.rs's Font chip and `Modal::Font`; the icon `IconKind::Font`; httpd.rs's pages and
+fonts for the family; the probes `font`, `settings.font`, `settings.kept.KEY` and `library.font.pick`; and
+the l10n runner's `classic-<font>` styles and tests/l10n/fonts.qs. The C tree draws Classic in Terminess and
+keeps a `font=` line as one it does not know; `make c-check` runs as before.
+
 ### Not ported
 
 - The SDL3 window simulator (`grimoire-sim`, GRIMOIRE_SIM_SDL): a development aid no check runs.

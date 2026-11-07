@@ -5,7 +5,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: Grimoire 2.0.0-beta.1\n"
 "Report-Msgid-Bugs-To: https://github.com/ganten1998/grimoire-scribe/issues\n"
-"POT-Creation-Date: 2026-11-06 03:23-0600\n"
+"POT-Creation-Date: 2026-11-07 11:21-0600\n"
 "PO-Revision-Date: 2026-11-01 00:00+0000\n"
 "Last-Translator: draft\n"
 "Language-Team: Japanese\n"
@@ -2939,7 +2939,8 @@ msgstr ""
 msgid "Calibrate pen and touch"
 msgstr "ペンとタッチを調整する"
 
-#. TRANSLATORS: the style Grimoire is drawn in, and the other one a tap changes to.
+#. TRANSLATORS: the style Grimoire is drawn in, and the other one a tap changes to (1530 px at 44 px
+#. in Gothic; in Classic the Font chip takes the row's right end, which leaves about 1000 px).
 #: rust/src/library.rs
 msgid "Style: Gothic (tap for Classic)"
 msgstr "スタイル: ゴシック (タップするとクラシック)"
@@ -2947,6 +2948,14 @@ msgstr "スタイル: ゴシック (タップするとクラシック)"
 #: rust/src/library.rs
 msgid "Style: Classic (tap for Gothic)"
 msgstr "スタイル: クラシック (タップするとゴシック)"
+
+#. TRANSLATORS: (Settings, Classic only) the chip at the Style row's right end that opens the
+#. Font sheet, with the font in use by its short name, never translated ("Terminess",
+#. "Atkinson", "Noto Sans", "Literata"): about 450 px at 34 px in bold, beside its icon.
+#: rust/src/library.rs
+#, c-format
+msgid "Font: %s"
+msgstr ""
 
 #: rust/src/library.rs
 #, c-format
@@ -3030,6 +3039,18 @@ msgstr ""
 #: rust/src/library.rs
 msgid "Updates"
 msgstr "アップデート"
+
+#. TRANSLATORS: the title of Settings > Font, the list of fonts Classic can be drawn in.
+#: rust/src/library.rs
+msgid "Font"
+msgstr ""
+
+#. TRANSLATORS: the Font sheet's sample sentence, drawn in each font at 44 px, at most two lines of
+#. about 1600 px: a sentence that uses many of your language's letters (English: a pangram; Spanish
+#. could be "La cigüeña tocaba el saxofón detrás del palenque de paja.").
+#: rust/src/library.rs
+msgid "The quick brown fox jumps over the lazy dog."
+msgstr ""
 
 #: rust/src/library.rs
 msgid "Updates come through KPM, which is not here."
@@ -5144,10 +5165,6 @@ msgstr "コピーされました"
 
 #~ msgid "Around"
 #~ msgstr "周り"
-
-#, c-format
-#~ msgid "Fit: %s"
-#~ msgstr "適合: %s"
 
 #~ msgid "Around it"
 #~ msgstr "その周り"
