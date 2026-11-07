@@ -10,8 +10,8 @@
 - What's new's Read all lists every version's notes, newest first (the owner, 2026-11-06: "wire read all button
   to a list of each UNIQUE release note, and allow users to easily browse the changes by version - some of them
   are important"). A row for each: the version (the one running marked This version), its date and the notes'
-  first line. A tap on a row shows that version's notes whole, a page at a time, with Back to the list; Dismiss
-  closes What's new from the list and from a version's notes, as from the card. Notes that are word for word
+  first line. A tap on a row shows that version's notes whole (on one screen, below), with Back to the list;
+  Dismiss closes What's new from the list and from a version's notes, as from the card. Notes that are word for word
   the same are one row naming every version that has them. On a keyboard Enter opens (the card's Read all, then
   the notes of the version running), Esc goes back a step (a version's notes to the list, the list to the card,
   and the card closes), and Left and Right turn the pages. Each step on the sheet refreshes the sheet's place
@@ -20,6 +20,15 @@
   2.0.0-beta.2 showed beta.1's notes and has no file), built in with the dates of this changelog's headings.
   The release checks want this version's file, with notes in it, and not the release before's notes again
   (docs/RELEASING.md, The bump commit).
+- Read all shows each version's notes whole on one screen (the owner, 2026-11-07: "The read all doesn't need
+  text that big -- either smaller text for all past messages, or fit all (which i lean toward)"). The notes are
+  set at the largest size that fits them on the sheet, upright or sideways, from the size they had (44 px) down
+  in half pixels, the gaps, bullets and signature smaller with the text; the title, the version line and the
+  buttons keep their sizes, and there are no page arrows. 2.0.0's notes, which took two pages in Gothic and
+  sideways in Classic, fit on one: in Gothic at its pixel type's next size down, in Classic at 38.5 px. The text
+  gets no smaller than 34 px, the size the card sets the same notes in: notes too long even for that would
+  take pages at it (none do). A sheet that would end over the Library's page buttons reaches down to the
+  screen's margin instead, so their Page 1 of 1 is never cut through.
 
 ## 2.0.0 (2026-11-05)
 

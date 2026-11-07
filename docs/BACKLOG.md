@@ -15,7 +15,20 @@ confirm or change:
   draft note, moved to docs/whatsnew/2.1.0.md with its text as written. The 2.0.1 release commit (4425ef9) is
   abandoned; VERSION stays 2.0.0 until 2.1's bump.
 - **2.1.0's notes are a draft** (docs/whatsnew/2.1.0.md): the title, the wake fix and this list in one bullet
-  each, and the signature. The owner vets and edits them before the release.
+  each, and the signature. The owner vets and edits them before the release. They do not mention yet that
+  Read all now fits each version's notes on one screen (below).
+- **Fit all** (the owner, 2026-11-07: "either smaller text for all past messages, or fit all (which i lean
+  toward)"): built (docs/DESIGN.md, A version's notes fit one screen). Decided by the lane: the floor is 34 px,
+  the size the card sets the same notes in and the list its rows' lines (no sheet sets body text smaller); the
+  steps are half a pixel; the gaps, bullets and signature shrink with the text, the title, the version line
+  and the buttons do not. Gothic's text face draws whole design pixels, so its text has two sizes in that
+  range, 44 px and from 43 px down its next (the same as 34 px): 2.0.0's notes, two pages at 44 px, are set
+  at 43 px in Gothic and use 1095 of the 1940 px the sheet has upright, the rest of the screen under the
+  sheet. If that reads too small, the owner's call: let Gothic keep 44 px with pages where a note does not
+  fit, or open the leading up to fill the room.
+- **A note's sheet that would end over the Library's pager reaches down to the margin**, not asked for: the
+  sheet of 2.0.0's notes sideways in Gothic, once they fit, ended across the pager's Page 1 of 1 and cut it in
+  half. 2.0.0-beta.1's letter upright is 7 px taller for it (its sheet already covered the label).
 - **Dates come from CHANGELOG.md's headings**, built in (no date line in the notes): 2.1.0 reads "unreleased"
   until the bump commit dates its section. Dates show as 2026-11-05 in every language.
 - **docs/WHATSNEW.md is gone** (moved to docs/whatsnew/2.0.0.md), no pointer file: links to it at the 2.0.0 tags

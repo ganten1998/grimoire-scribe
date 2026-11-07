@@ -1219,10 +1219,27 @@ bullet and paragraph), the signature, Read all and Dismiss.
   when there is one; 2.0.0-beta.1's letter has none, so its first paragraph), cut short with an ellipsis.
   As many rows a page as the tallest sheet holds (10 upright, 7 sideways on the Scribe), with the page
   arrows left of Dismiss when they take more (`list_layout`); the sheet is as tall as a page of them. A
-  tap on a row shows that version's notes whole on the sheet in the larger type, a page at a time
-  (`paginate`, a heading's last line never alone at a page's foot): their title as the sheet's (else
-  What's new), the version and its date under it, Back at the foot's left, Dismiss at its right, the
-  page arrows left of Dismiss. Back returns to the list at the page it was left at.
+  tap on a row shows that version's notes whole on the sheet, on one screen (below): their title as
+  the sheet's (else What's new), the version and its date under it, Back at the foot's left, Dismiss
+  at its right. Back returns to the list at the page it was left at.
+- **A version's notes fit one screen** (2.1.0, the owner, 2026-11-07: "The read all doesn't need text
+  that big -- either smaller text for all past messages, or fit all (which i lean toward)"). `note_fit`
+  tries the body size Read all always had, 44 px (`ui_text_size`), then smaller ones in half-pixel
+  steps down to a floor, and takes the first at which the notes' rows fit the tallest sheet's body
+  whole, in the orientation in use; the whole look scales with it (`note_look`: the headings, the
+  leading's lines, the bullets' indent and dots, the gaps, the signature), while the title, the band
+  under it and the foot keep their sizes. Each size is tried whole, top down, since a smaller size
+  wraps the lines anew. The floor is 34 px (`ui_small_size`), the size the card sets the same notes
+  in and the list its rows' lines; notes that do not fit even there are set at it and take pages
+  (`paginate`, a heading's last line never alone at a page's foot, the page arrows left of Dismiss).
+  None of today's do. Gothic's text face, Jersey 10, is drawn in whole design pixels, so its text has
+  two sizes in that range: 44 px, and from 43 px down its next size (that of 34 px); the steps below
+  43 px only make its gaps and signature smaller. On the Scribe 2.1.0's notes keep 44 px everywhere;
+  2.0.0's take 43 px in Gothic both ways and 38.5 px in Classic sideways (44 px upright); 2.0.0-beta.1's
+  letter 43 px in Gothic sideways, else 44 px. `note_px` keeps each answer for the note, the screen's
+  size and the look, so a step on the sheet does not search again. A note's sheet that would end over
+  the Library's pager (its rule and its Page 1 of 1, which the sheet's edge would cut through) reaches
+  down to the margin, as the tallest sheet does (`note_sheet`). Probe: `library.about.body_px`.
 - **The keys** (docs/SHORTCUTS.md's scheme). Esc goes back one layer: a version's notes to the list, the
   list to the card that opened it (as the Templates sheet goes back to New notebook; a step, so only the
   list's and the card's places refresh), and the card closes. Enter opens: the card's

@@ -1489,7 +1489,7 @@ every row on the sheet above its buttons, as many a page as fit and no more, eac
 the marked row), `the_built_in_list_marks_this_version` and `a_versions_notes_end_with_the_signature_and_go_back`
 (2.0.0-beta.1's letter: the signature on its last page, Back at the foot's left). tests/scenarios/z_about_list.qs
 (the list's three rows, 2.1.0 unreleased, 2.0.0 marked This version with 2026-11-05, 2.0.0-beta.1 with
-2026-11-01; the letter signed, Back to the list; sideways the letter's two pages; Dismiss from the notes and
+2026-11-01; the letter signed, Back to the list; sideways the letter on one page (below); Dismiss from the notes and
 from the list; Enter, Esc (the notes to the list, the list to the card, the card closed), Left and Right; the
 refreshes of each step only the sheet's place), z_about.qs
 (the card as before, then 2.0.0's notes from their row), y_all_screens.qs (the list and a version's notes in
@@ -1507,13 +1507,56 @@ On the Scribe (Gothic and Classic, upright and sideways), with a build of this b
    line under it (2.0.0-beta.1's letter cut short with "..."). Only the sheet's place redraws, without a flash;
    the Library's cards around it do not.
 2. **A version's notes.** Tap 2.0.0-beta.1: the letter whole, "Grimoire 2.0.0-beta.1" and its date under the
-   title, the signature and the bat at its end (sideways in Gothic on a second page: the arrow turns to it).
-   Back at the foot's left returns to the list. Tap 2.0.0: 2.0.0's notes on two pages, as Read all showed them
-   in 2.0.0.
+   title, the signature and the bat at its end, on one page (2.1.0, Read all fits each version's notes,
+   below). Back at the foot's left returns to the list. Tap 2.0.0: 2.0.0's notes, on one page too.
 3. **Dismiss closes everything**, from the list and from a version's notes; the bat opens the card again.
 4. **Sideways** the list and the notes fit, the rows whole, the date at the right.
-5. **A keyboard** (shortcuts on): on the card Enter opens the list, Enter again 2.0.0's notes; Right and Left
-   turn their pages; Esc goes back to the list, Esc again to the card (only where the list and the card are
-   redraws, without a flash), and Esc on the card closes it.
+5. **A keyboard** (shortcuts on): on the card Enter opens the list, Enter again 2.0.0's notes (one page:
+   Right and Left do nothing); Esc goes back to the list, Esc again to the card (only where the list and the
+   card are redraws, without a flash), and Esc on the card closes it.
 6. **Spanish** (Settings > Language): the list's mark reads Esta versión and 2.1.0's date sin publicar; Back
    reads Volver. Japanese shows those two words in English until they are translated.
+
+## 2.1.0, Read all fits each version's notes
+
+The owner's decision of 2026-11-07: "The read all doesn't need text that big -- either smaller text for all
+past messages, or fit all (which i lean toward)". A version's notes are set at the largest size that fits them
+whole on the sheet (44 px, then down in half pixels), in the orientation in use; the floor is 34 px, the size
+the card sets the same notes in, below which notes would take pages again (none do). The sizes on the Scribe:
+
+| Notes | Gothic upright | Gothic sideways | Classic upright | Classic sideways |
+|---|---|---|---|---|
+| 2.1.0 (draft) | 44 px | 44 px | 44 px | 44 px |
+| 2.0.0 | 43 px | 43 px | 44 px | 38.5 px |
+| 2.0.0-beta.1 | 44 px | 43 px | 44 px | 44 px |
+
+All on one page. Gothic's text face draws whole design pixels, so its 43 px text is the same size as its 34 px
+text (only the gaps and the signature are a little larger than at 34 px); at 44 px 2.0.0's notes took two pages
+there.
+
+Automated: about.rs `every_note_fits_one_page_upright_and_sideways` (each note in docs/whatsnew/, upright and
+sideways, Gothic and Classic: one page, signed, no page arrows, at a size every larger step of which does not
+fit, and the sheet's edge clear of the Library's pager or down to the margin),
+`a_note_is_set_at_the_largest_size_that_fits` (a short note keeps 44 px and the look Read all always had;
+bullets enough for two pages at 44 px fit at the largest size between, the gaps, dots and signature smaller
+with it), `a_note_too_long_for_the_floor_takes_pages_at_the_floor` (90 bullets: 34 px, three to five pages,
+the arrows between Back and Dismiss, the signature on the last page alone), `a_notes_sheet_never_ends_over_the_pager`
+and `a_notes_size_is_found_once_for_each_screen` (the search runs once for a note, an orientation and a look,
+not on a page turn or a redraw). tests/scenarios/z_about.qs (2.0.0's notes: one page at 43 px upright and
+sideways, no arrows), z_about_list.qs (the letter at 44 px upright, 43 px sideways, one page each; 2.1.0's at
+44 px both ways; Right and Left do nothing on notes that fit; the refreshes of each step still only the
+sheet's place, the letter's sheet down to the margin), y_all_screens.qs (2.0.0's notes on one page, upright and
+sideways, in every language and both looks). The shots, before and after, are in the maintainer's lab folder
+(readall-fit-2026-11-07).
+
+On the Scribe, with a build of this branch, in Gothic and in Classic:
+
+1. **2.0.0's notes on one screen.** Open What's new from the bat, Read all, then 2.0.0: every bullet, the two
+   paragraphs and the signature on one sheet, with Back and Dismiss at its foot and no page arrows or "1 / 2".
+   The text reads comfortably at arm's length (in Gothic it is the next size down; in Classic upright it is as
+   before). Turn the Scribe sideways: still one sheet (in Classic a little smaller again), nothing cut.
+2. **The other notes.** Back, then 2.0.0-beta.1's letter: one sheet upright and sideways, signed. 2.1.0's notes
+   at the size they always had.
+3. **No half label.** Sideways in Gothic with 2.0.0's notes, and upright with 2.0.0-beta.1's letter: the sheet
+   reaches down over the Library's page buttons; no part of "Page 1 of 1" shows under its edge.
+4. **The steps still redraw only the sheet's place**, without a flash: a row, Back, Esc, Dismiss as before.

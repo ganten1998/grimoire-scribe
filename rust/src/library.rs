@@ -229,8 +229,9 @@ pub struct LibraryState {
     /// version's notes shown (their entry in about::notes()), the list's page and the notes' page, and
     /// where the bat is (the card hangs from it). As it last drew: the view's pages, the list's
     /// entries on its page and the row marked as this version's, whether the signature shows, the
-    /// card's notes (the blocks shown, of how many, the last one cut), and where the card or sheet is
-    /// (a step on the sheet refreshes there alone: about_step).
+    /// card's notes (the blocks shown, of how many, the last one cut), a version's notes' body size (0
+    /// elsewhere), and where the card or sheet is (a step on the sheet refreshes there alone:
+    /// about_step).
     about_view: AboutView,
     about_note: usize,
     about_list_page: i32,
@@ -241,6 +242,7 @@ pub struct LibraryState {
     about_marked: i32,
     about_signed: bool,
     about_card: (i32, i32, bool),
+    about_body_px: f32,
     about_area: Rect,
     record_action: i32,
     record_next_action: i32,
@@ -331,7 +333,8 @@ const LABEL_CAP: usize = STORE_NAME_LEN + 32;
 fn top_h() -> i32 {
     ui_px(190.0)
 }
-fn bottom_h() -> i32 {
+/// The pager's bar at the foot (its rule 10 px above it); about.rs keeps a version's notes off it.
+pub(crate) fn bottom_h() -> i32 {
     ui_px(170.0)
 }
 fn margin() -> i32 {
@@ -3557,6 +3560,7 @@ fn draw_modal(a: &mut App) {
             s.about_marked = h.marked;
             s.about_signed = h.signed;
             s.about_card = (h.card_blocks, h.card_notes, h.card_cut);
+            s.about_body_px = h.body_px;
             s.about_area = h.area;
             for (r, id) in [(h.close, H_ABOUT_CLOSE), (h.prev, H_ABOUT_PREV), (h.next, H_ABOUT_NEXT), (h.more, H_ABOUT_MORE), (h.back, H_ABOUT_BACK)] {
                 if !rect_is_empty(r) {
@@ -6100,8 +6104,9 @@ pub fn library_probe(a: &mut App, key: &str, out: &mut String, cap: usize) -> i3
     } else if let Some(k) = key.strip_prefix("about.") {
         // What's new (docs/SIM.md): its view; its page (from 1) and pages; 1 on Read all's sheet (the list
         // or a version's notes); the list's rows on its page, the row marked as this version's, each
-        // row's versions and date; the notes shown and whether the page shown has the signature; the
-        // card's notes: the blocks it shows, of how many, and 1 when the last shown is cut.
+        // row's versions and date; the notes shown, their body size and whether the page shown has the
+        // signature; the card's notes: the blocks it shows, of how many, and 1 when the last shown is
+        // cut.
         let open = s.modal == Modal::About;
         let view = if open { Some(s.about_view) } else { None };
         let all = crate::about::notes();
@@ -6131,6 +6136,12 @@ pub fn library_probe(a: &mut App, key: &str, out: &mut String, cap: usize) -> i3
             return 0;
         } else if let Some(n) = k.strip_prefix("row_date.") {
             csnprintf!(out, cap, "%s", row(n).map_or("", |e| crate::about::date_label(e.date)));
+            return 0;
+        } else if k == "body_px" {
+            // (in px to a tenth, "44" or "38.5"; 0 but on a version's notes)
+            let px = if view == Some(AboutView::Note) { s.about_body_px } else { 0.0 };
+            let t = format!("{px:.1}");
+            csnprintf!(out, cap, "%s", t.strip_suffix(".0").unwrap_or(&t));
             return 0;
         }
         let card = view == Some(AboutView::Card);

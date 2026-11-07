@@ -1588,9 +1588,11 @@ shot 81-whatsnew-list
 tap library about.row.2.0.0
 wait 100
 expect library.about.view is note
+expect library.about.pages is 1
 shot 82-whatsnew-notes
 rotate 1
 wait 100
+expect library.about.pages is 1
 shot 83-whatsnew-notes-sideways
 rotate 0
 wait 100
