@@ -206,7 +206,7 @@ fn unlayered_pages_draw_as_before() {
 
 // The renderer's fingerprint stays what 2.0.0-beta.1's is: no kept drawing or preview is retired by it. (2.0.2
 // sets 2.0.0's and 2.0.1's kept drawings aside by their version instead, store.rs RENDER_TAG_VERSION, and knows
-// them by this fingerprint: store_retire_page_render.)
+// them by its absence: store_retire_page_render.)
 fn fingerprint_unchanged() {
     // (recorded from 2.0.0-beta.1's renderer on this processor family: the fingerprint is the hash of a
     // fixed page; floors never run on it, which the identity test above already proves)

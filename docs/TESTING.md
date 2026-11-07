@@ -1748,21 +1748,41 @@ The fix above keeps no new old picture, but 2.0.0 and 2.0.1 may have kept some o
 under a valid stamp (a cleared page's old ink, the old paper of a page given a new one). Nothing in such a tag
 tells it from a true one, and there is no exact check short of drawing the page, so 2.0.2's kept drawings carry
 their own version (`|k2`, store.rs RENDER_TAG_VERSION) and none of the earlier ones is read: every page that kept
-a drawing is drawn once more at its next open, and keeps its drawing again. Drawing such a page, the editor
-removes the old drawing when its stamp was current for the page file and makes the page's Pages preview, and for
-page 1 the Library card, again from what it drew. Automated: tests/test_render_keep.rs
+a drawing is drawn once more at its next open, and keeps its drawing again. Drawing such a page whole from its
+strokes, nothing unsaved and its picture there (as it opens, or as the Links bar or "Back to page N" stays on it),
+the editor removes the old drawing, current for the page file or not, and makes the page's Pages preview, and for
+page 1 the Library card, again from what it drew; the Pages view decodes that preview again (a tile goes by its
+preview file as well as its page file: kept by its page file alone, a tile of the old preview stayed until
+Grimoire was started again); the previews job keeps no drawing of its own over an old one. A page or notebook not
+opened since keeps its old preview or card (docs/BACKLOG.md). Automated: tests/test_render_keep.rs
 `drawings_kept_by_2_0_1_are_never_read_and_retired_once` (2.0.1's tag, layered or not, is never read; it is
-retired once, stamp and drawing, only when current for the page file at that size; this build's never) and
-editor.rs `a_drawing_kept_by_2_0_1_goes_with_the_preview_and_card_made_beside_it` (a cleared page with 2.0.1's
-ghost drawing, preview and card: drawn from its strokes, the drawing gone, the preview and the card made from the
-page drawn). Both fail without the version, and the editor's without its retirement.
+retired once, stamp and drawing, current for the page file or not; this build's never, nor a later version's; the
+test calls done() now, so a failed check fails it), bgjob.rs `a_preview_written_again_is_decoded_again` (a preview
+written again over the same page file is decoded again), editor.rs
+`a_drawing_kept_by_2_0_1_goes_with_the_preview_and_card_made_beside_it` (a cleared page with 2.0.1's ghost drawing,
+preview and card: drawn from its strokes, the drawing gone, the preview and the card made from the page drawn),
+`a_stale_drawing_kept_by_2_0_1_goes_with_the_preview_and_card_made_beside_it` (the same with a word written after
+the Clear, the drawing no longer current) and `a_drawing_kept_by_2_0_1_goes_as_the_links_bar_stays_on_its_page`,
+and the scenarios on tests/previews_fixture.py's "ghosts" notebooks: z_keep_ghost_7_pages (the Pages view's tile
+of page 1 shows the old ink, then, the page opened, the page drawn, at the view's next open and the notebook's),
+z_keep_ghost_8_stale (a page written on after the Clear: its preview and card made again),
+z_keep_ghost_9_job (the same on a dense page whose preview the previews job made first: the page is drawn from its
+strokes as it opens, and the card made again) and z_keep_ghost_10_bar (a page stayed on from the Links bar: its
+preview made again, and its tile). They fail without the version, and without their part of the retirement: the
+Pages view's tile check (z_keep_ghost_7, the bgjob test), retiring a drawing not current (z_keep_ghost_8 and _9,
+the stale editor test, test_render_keep), the job's (z_keep_ghost_9: the page opens from the job's drawing), the
+Links bar's (z_keep_ghost_10, the Links bar editor test).
 
 On the Scribe, with Scratch (2.0.2, a cleared page's old picture, step 1):
 
-1. **A ghost from 2.0.1.** With 2.0.1 installed, open Scratch's dense page 1 until it comes up at once, Clear it,
-   wait 3 s, turn away and back (the old ink is back), go to the Library: Scratch's card shows the old ink.
-2. **After the update.** Install this build. Scratch's card still shows the old ink, as may the page's tile in
-   the Pages view of a notebook opened elsewhere. Open Scratch at page 1: blank. Turn to page 2: the Pages view's
-   tile of page 1 is blank; go to the Library: the card is blank.
+1. **Ghosts from 2.0.0 or 2.0.1.** With 2.0.0 or 2.0.1 installed, open Scratch's dense page 1 until it comes up
+   at once, Clear it, wait 3 s, turn to page 2 and back (the old ink is back), turn to page 2 again and go to the
+   Library: Scratch's card shows the old ink. Make Scratch 2 with a dense page 1 as Scratch was made, open it until
+   it comes up at once, Clear it, wait 3 s, write a word at once (within 30 s of the Clear), wait 3 s and go to the
+   Library from page 1: Scratch 2's card shows the old ink and the word.
+2. **After the update.** Install this build. Both cards still show the old ink. Open Scratch (it opens on page 2)
+   and the Pages view: tile 1 shows the old ink too (page 1 has not been opened since). Double-tap tile 1: blank.
+   Open the Pages view again: tile 1 is blank. Go to the Library: Scratch's card is blank. Open Scratch 2: page 1
+   shows the word alone; go to the Library: its card shows the word alone.
 3. **Every kept page is drawn once.** A dense page not cleared says "Loading page..." the first time it opens
    after the update (on the stress pages, about 11 s and 28 s), and comes up at once from then on.

@@ -43,14 +43,19 @@ page has nothing unsaved (editor.rs page_is_its_file). Left open:
   stress pages), as any page drawn whole did before kept drawings, where 2.0.1, from a kept drawing, was at once (and wrong). It could
   say "Loading page..." as a page that opens does (render_page_open's toast, which is due then: the page is
   changed). The lane's recommendation: yes, in 2.1.0; not done, as it is a new notice.
-- **Old pictures 2.0.0 and 2.0.1 kept, on pages not opened since** (the retirement commit: every drawing they
-  kept is drawn again once, store.rs RENDER_TAG_VERSION). Each page's Pages preview, and page 1's Library card,
-  are made again as the editor draws the page; until then a page cleared under 2.0.0 or 2.0.1 can still show its
-  old ink in the Pages view, and a notebook whose cleared page 1 is not visited keeps it on its card (the
-  previews job leaves pages whose previews are current alone). Making them again without opening the page means
-  drawing it whole (on a Kindle, 11 and 28 s for the owner's two stress pages): the previews job could do it in
-  the background for each page whose drawing came from 2.0.0 or 2.0.1. The lane's recommendation: not unless an
-  owner's notebook shows one; few pages were cleared or given a new paper with a kept drawing current.
+- **Old pictures 2.0.0 and 2.0.1 kept, on pages and notebooks not opened since** (the retirement commits: every
+  drawing they kept is drawn again once, store.rs RENDER_TAG_VERSION). Covered: as the editor draws such a page
+  whole from its strokes, nothing unsaved and its picture there (as it opens, as its template's or photo's picture
+  comes, or as the Links bar or "Back to page N" stays on it), it removes the old drawing, current for the page
+  file or not (a page written on again since included), makes the page's Pages preview again from what it drew
+  (a Pages view decodes it again: a tile goes by its preview file too) and page 1's Library card as the page is
+  left. The previews job keeps no drawing of its own over an old one, so a page it draws is still drawn from its
+  strokes at its next open. Left: until a page is drawn so, a page cleared or given a new paper under 2.0.0 or
+  2.0.1 can still show its old picture in the Pages view (the previews job leaves current previews alone), and a
+  notebook whose page 1 is not opened again keeps it on its Library card. Making them again without opening the
+  page means drawing it whole (on a Kindle, 11 and 28 s for the owner's two stress pages): the previews job could
+  do it in the background for each page whose drawing came from 2.0.0 or 2.0.1. The lane's recommendation: not
+  unless an owner's notebook shows one; few pages were cleared or given a new paper with a kept drawing current.
 - **Undo of a Clear on a dense page keeps no drawing.** It draws the page whole (no patch: Clear keeps none) but
   times only drawings made by render_page_full, so the page is drawn again, once, at its next open, and keeps its
   drawing then. Small; left as it is.

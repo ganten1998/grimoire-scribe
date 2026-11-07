@@ -1551,8 +1551,8 @@ The folder holds three more kinds of file, all disposable too:
   editor or the job. A kept drawing is of the page file: since 2.0.2 the editor reads it back only for a page
   with nothing unsaved. 2.0.0 and 2.0.1 read it back for a page just cleared or given a new paper, and their
   next save kept that old picture under the new file's stamp, so 2.0.2 reads none of theirs (they have no
-  `|k2`): the editor draws such a page again, removes the old drawing when its stamp was current for the page
-  file, and makes the page's preview and, for page 1, the notebook's `thumb.pgm` again from what it drew.
+  `|k2`): the editor draws such a page again, removes the old drawing (current for the page file or not), and
+  makes the page's preview and, for page 1, the notebook's `thumb.pgm` again from what it drew.
 - `updated`: a token rewritten each time a preview is written (since 2.0.0-beta.2 the job writes it after
   each preview, not once per batch), which tells an open view that new previews are there.
 - `generation`: rewritten to invalidate every preview at once (a template's picture made again).

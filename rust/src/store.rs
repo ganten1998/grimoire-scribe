@@ -3676,9 +3676,12 @@ pub fn store_retag_compacted_preview(nb:&NotebookInfo,pid:u32,before:Option<&str
 pub fn store_load_page_preview(nb: &NotebookInfo, pid: u32, out: &mut Canvas) -> bool {
     store_load_page_preview_as(nb,pid,out).is_some()
 }
-/// The same, with the page file identity the preview shows (store_page_source_identity's then).
-pub fn store_load_page_preview_as(nb: &NotebookInfo, pid: u32, out: &mut Canvas) -> Option<String> {
+/// The same, with what the picture read is of: the page file identity it shows (store_page_source_identity's
+/// then) and the preview file it was read from (store_page_preview_file's, taken before it is read: one written
+/// again meanwhile is read again at the next check).
+pub fn store_load_page_preview_as(nb: &NotebookInfo, pid: u32, out: &mut Canvas) -> Option<(String, String)> {
     let (_, image, stamp) = page_preview_files(nb, pid)?;
+    let file = store_page_preview_file(nb, pid)?;
     let now = store_page_preview_fresh(nb, pid)?;
     if !std::fs::metadata(&image).is_ok_and(|m| m.len() <= 200_000)
         || load_pgm(&image,out) != 0 || out.w > 400 || out.h > 500 {
@@ -3686,7 +3689,15 @@ pub fn store_load_page_preview_as(nb: &NotebookInfo, pid: u32, out: &mut Canvas)
         // fsynced): the stamp goes, so the preview counts as missing and is made again.
         canvas_free(out);let _=std::fs::remove_file(stamp);return None;
     }
-    Some(now)
+    Some((now, file))
+}
+/// Page pid's preview file as it is now, whatever page file it is of: its inode, size and modification time (a
+/// write is a new file, renamed into place). A preview written again over the same page file (editor.rs
+/// retire_kept_before, in place of one 2.0.0 or 2.0.1 made from an old picture) is another file, so a picture
+/// decoded from the one before is decoded again (bgjob.rs PreviewCache).
+pub fn store_page_preview_file(nb: &NotebookInfo, pid: u32) -> Option<String> {
+    let st = std::fs::metadata(page_preview_files(nb, pid)?.1).ok()?;
+    Some(format!("{}:{}:{}:{}", st.ino(), st.size(), st.mtime(), st.mtime_nsec()))
 }
 /// Whether page pid's preview on disk is current, without decoding it: its identity when it is.
 pub fn store_page_preview_fresh(nb: &NotebookInfo, pid: u32) -> Option<String> {
@@ -3815,7 +3826,7 @@ fn page_render_current(nb: &NotebookInfo, pid: u32) -> bool {
 // their tags exactly then, so no kept drawing was retired.
 //
 // Since 2.0.2 the tag carries the kept drawings' own version after the fingerprint, "|k2", and a drawing kept by an
-// earlier build (render_tag_before's tag) is never read: 2.0.0 and 2.0.1 could keep the old picture of a page just
+// earlier build (render_tag_is_before) is never read: 2.0.0 and 2.0.1 could keep the old picture of a page just
 // cleared or given a new paper under the new file's stamp (editor.rs page_is_its_file), and nothing in such a tag
 // tells it from a true one. Every page with a kept drawing is drawn once more after the update (on a Kindle, 11 and
 // 28 s for the owner's two stress pages, saying "Loading page..."), and keeps its drawing again.
@@ -3823,9 +3834,13 @@ const RENDER_TAG_VERSION: u32 = 2;
 fn render_tag(stamp: &str, w: i32, h: i32, layered: bool) -> String {
     format!("{stamp}|{w}x{h}|{:016x}|k{RENDER_TAG_VERSION}{}", page_render_fingerprint(), if layered { "|L" } else { "" })
 }
-// The tag 2.0.0 and 2.0.1 kept a drawing under (store_retire_page_render).
-fn render_tag_before(stamp: &str, w: i32, h: i32, layered: bool) -> String {
-    format!("{stamp}|{w}x{h}|{:016x}{}", page_render_fingerprint(), if layered { "|L" } else { "" })
+// Whether a kept drawing's tag is one 2.0.0 or 2.0.1 wrote (store_retire_page_render): a stamp, |WxH| and a
+// fingerprint, then "|L" or nothing, with no kept drawings' version. Whatever the stamp, size or renderer.
+fn render_tag_is_before(tag: &str) -> bool {
+    let mut parts = tag.split('|').skip(1);
+    let size = parts.next().and_then(|p| p.split_once('x')).is_some_and(|(w, h)| w.parse::<u32>().is_ok() && h.parse::<u32>().is_ok());
+    let fingerprint = parts.next().is_some_and(|p| p.len() == 16 && p.bytes().all(|b| b.is_ascii_hexdigit()));
+    size && fingerprint && matches!((parts.next(), parts.next()), (None, None) | (Some("L"), None))
 }
 // Runs of one byte (most of a page is paper, much of the rest one ink level) as (count - 1) | 0x80
 // then the byte; anything else as count - 1 then that many bytes. A dense page shrank 3 to 6 times.
@@ -3948,18 +3963,25 @@ pub fn store_load_page_render(nb: &NotebookInfo, pid: u32, w: i32, h: i32, out: 
     out.px[..(w * h) as usize].copy_from_slice(&px);
     true
 }
-/// Takes away page pid's drawing kept by 2.0.0 or 2.0.1 (render_tag_before's tag, never read since 2.0.2) when it
-/// was current for the page file as it is now, at this size: true when there was one. Such a drawing may show the
-/// page as it was before a Clear or a new paper (editor.rs page_is_its_file), and so may the Pages preview and the
-/// Library card made beside it: the editor, which has just drawn the page from its strokes, makes them again.
-pub fn store_retire_page_render(nb: &NotebookInfo, pid: u32, w: i32, h: i32) -> bool {
-    let Some((source, image, stamp)) = page_render_files(nb, pid) else { return false };
-    let (Some(now), Some(tag)) = (preview_stamp(&source), preview_tag(&stamp)) else { return false };
-    if tag != render_tag_before(&now, w, h, false) && tag != render_tag_before(&now, w, h, true) {
+// Whether page pid has a drawing kept by 2.0.0 or 2.0.1 (render_tag_is_before), current for the page file or not.
+fn page_render_before(nb: &NotebookInfo, pid: u32) -> bool {
+    page_render_files(nb, pid).is_some_and(|(_, _, stamp)| preview_tag(&stamp).is_some_and(|tag| render_tag_is_before(&tag)))
+}
+/// Takes away page pid's drawing kept by 2.0.0 or 2.0.1 (render_tag_is_before, never read since 2.0.2), current for
+/// the page file or not, and the Pages preview beside it: true when there was one. Such a drawing may show the page
+/// as it was before a Clear or a new paper (editor.rs page_is_its_file), and so may the preview and the Library card
+/// made beside it, even once the page file changed again (an idle save inside the previews' 30 s writes the file
+/// alone, and so does a notebook closed before its idle save): the editor, which has just drawn the page from its
+/// strokes, makes them again (the preview, if it cannot be written, is made by the previews job from the page file).
+/// The previews job keeps no drawing over such a one (store_build_page_previews), so the editor finds it there.
+pub fn store_retire_page_render(nb: &NotebookInfo, pid: u32) -> bool {
+    let (Some((_, image, stamp)), Some((_, small, small_stamp))) = (page_render_files(nb, pid), page_preview_files(nb, pid)) else { return false };
+    if !page_render_before(nb, pid) {
         return false;
     }
-    let _ = std::fs::remove_file(&stamp);
-    let _ = std::fs::remove_file(&image);
+    for file in [stamp, image, small_stamp, small] {
+        let _ = std::fs::remove_file(file);
+    }
     true
 }
 /// Whether page pid has a current kept drawing (it is kept fresh from then on, at every save).
@@ -5083,7 +5105,9 @@ pub fn store_build_page_previews(id:&str, range:&str,dpi:f32)->i32 {
             #[cfg(feature = "sim")]
             sim_slow_draw(&source);
             drawn+=1;
-            if !missing && store_page_dense(&nb,pid) && store_save_page_render_at(&nb,pid,&full,layered,&before) {keeps+=1;}
+            // (none over a drawing 2.0.0 or 2.0.1 kept: the editor, drawing the page as it opens, takes that one
+            // away and makes the Library card made beside it again, store_retire_page_render)
+            if !missing && store_page_dense(&nb,pid) && !page_render_before(&nb,pid) && store_save_page_render_at(&nb,pid,&full,layered,&before) {keeps+=1;}
         }
         drop(page);
         // A page drawn with its picture white writes neither its kept drawing nor its preview, as the editor

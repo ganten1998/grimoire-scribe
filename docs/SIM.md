@@ -438,6 +438,7 @@ shows what the app holds.
 | `editor.pages.context.from` | how many pages (this notebook's and other notebooks') link to the held page, as its card says; `0` while no card is open (2.0.0-beta.2) |
 | `editor.pages.cached`, `editor.destination.cached` | how many decoded page previews the Pages view, or Link to...'s notebook picker, keeps for the screenful on show (the Pages view also keeps the open page's, made from its canvas, on any screen: since 2.0.0-beta.2) |
 | `editor.pages.shows`, `editor.destination.shows` | what the screenful's page tiles show, one letter each in their order: `p` a preview, `l` the loading mark (an hourglass: its preview is being made), `n` the page's number alone (none to come); empty while no page grid shows (2.0.0-beta.2) |
+| `editor.pages.ink.N` | how many pixels of page N's (from 1) decoded preview in the Pages view are darker than mid-gray, `none` while none is decoded: the tile it draws, as decoded, so a tile of an old preview shows (2.0.2) |
 | `editor.screen_composed` | whether the current screen matches a fresh complete composition, without repairing stale pixels |
 | `editor.map.visible` | sorted page IDs actually shown in the current graph view |
 | `editor.map.view` | `all` or `around`, after `fit ` when a pan or pinch has moved the view (the next View press fits it again) |

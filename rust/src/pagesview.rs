@@ -440,7 +440,7 @@ pub fn pagesview_seed(v:&mut PagesView,nb:&NotebookInfo,pid:u32,canvas:&Canvas) 
     if v.cache.has(pid) || store_page_preview_fresh(nb,pid).is_some() {return;}
     let Some(identity)=store_page_source_identity(nb,pid) else{return};
     let mut small=Canvas::default();
-    if store_page_preview_image(canvas,&mut small) {v.cache.put(pid,identity,small);}
+    if store_page_preview_image(canvas,&mut small) {v.cache.put(pid,identity,store_page_preview_file(nb,pid),small);}
 }
 
 /// The previews generation the view's tiles were drawn at (0 before the first).
@@ -1899,6 +1899,12 @@ pub fn pagesview_probe(v: &PagesView, nb: &NotebookInfo, nav: &Nav, key: &str, o
     if key=="overlay" {csnprintf!(out,cap,"%d",v.overlay as i32);return 0;}
     if key=="multi" {csnprintf!(out,cap,"%d",v.multi_select as i32);return 0;}
     if key=="cached" {csnprintf!(out,cap,"%d",v.cache.len());return 0;}
+    // The pixels darker than mid-gray in page N's decoded preview (from 1), `none` while none is decoded.
+    if let Some(n)=key.strip_prefix("ink.") {
+        let ink=n.parse::<usize>().ok().and_then(|n|nb.page_ids.get(n.wrapping_sub(1))).and_then(|&pid|v.cache.ink(pid));
+        match ink {Some(k)=>csnprintf!(out,cap,"%d",k as i32),None=>csnprintf!(out,cap,"none")};
+        return 0;
+    }
     // What the screenful's tiles show, one letter each: p a preview, l the loading mark, n the number alone
     // (nine tiles a screenful in the Pages view, more when picking a link's page).
     if key=="shows" {

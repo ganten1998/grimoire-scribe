@@ -63,11 +63,15 @@ fn kept_drawings_are_exact_and_only_current() {
     check!(page_render_fingerprint() == page_render_fingerprint() && page_render_fingerprint() != 0);
 }
 
-// A drawing 2.0.0 or 2.0.1 kept: its tag is this build's without the version ("|k2") after the fingerprint.
-fn kept_by_2_0_1(nb: &NotebookInfo, pid: u32) {
+fn dir_of(nb: &NotebookInfo) -> String {
     let mut dir = String::new();
     check!(store_notebook_dir(nb.id.as_str(), &mut dir, 600) == 0);
-    let stamp = format!("{dir}/.page-previews/p{pid}.full.stamp");
+    dir
+}
+
+// A drawing 2.0.0 or 2.0.1 kept: its tag is this build's without the version ("|k2") after the fingerprint.
+fn kept_by_2_0_1(nb: &NotebookInfo, pid: u32) {
+    let stamp = format!("{}/.page-previews/p{pid}.full.stamp", dir_of(nb));
     let tag = std::fs::read_to_string(&stamp).unwrap();
     check!(tag.contains("|k2"));
     std::fs::write(&stamp, tag.replace("|k2", "")).unwrap();
@@ -92,22 +96,31 @@ fn drawings_kept_by_2_0_1_are_never_read_and_retired_once() {
         check!(canvas_init(&mut back, w, h) == 0);
         check!(!store_page_render_kept(&nb, pid, w, h, layered));
         check!(!store_load_page_render(&nb, pid, w, h, &mut back, layered));
-        // Current for the page file as it is now: it goes, once (stamp and drawing)
-        check!(!store_retire_page_render(&nb, pid, w, h + 1));
-        check!(store_retire_page_render(&nb, pid, w, h));
-        check!(!store_retire_page_render(&nb, pid, w, h));
-        let mut dir = String::new();
-        check!(store_notebook_dir(nb.id.as_str(), &mut dir, 600) == 0);
-        check!(!std::path::Path::new(&format!("{dir}/.page-previews/p{pid}.full")).exists());
+        // It goes, once (stamp and drawing)
+        check!(store_retire_page_render(&nb, pid));
+        check!(!store_retire_page_render(&nb, pid));
+        check!(!std::path::Path::new(&format!("{}/.page-previews/p{pid}.full", dir_of(&nb))).exists());
     }
-    // This build's drawing is never taken for one, and one of another page file stays as it is (never read)
-    check!(store_save_page_render(&nb, pid, &drawn, false));
-    check!(!store_retire_page_render(&nb, pid, w, h));
-    check!(store_page_render_kept(&nb, pid, w, h, false));
+    // One of the page file as it was before (the file written again since, by an idle save inside the previews'
+    // 30 s or a notebook closed before its idle save) goes too: the preview and the card made beside it may show
+    // a Clear's old ink all the same.
+    check!(store_save_page_render(&nb, pid, &drawn, true));
     kept_by_2_0_1(&nb, pid);
     std::thread::sleep(std::time::Duration::from_millis(20));
     check!(store_save_page(&nb, 0, &p) == 0);
-    check!(!store_retire_page_render(&nb, pid, w, h));
+    check!(store_retire_page_render(&nb, pid) && !store_retire_page_render(&nb, pid));
+    // This build's drawing is never taken for one, current or not, nor one of a later version
+    check!(store_save_page_render(&nb, pid, &drawn, false));
+    check!(!store_retire_page_render(&nb, pid));
+    check!(store_page_render_kept(&nb, pid, w, h, false));
+    std::thread::sleep(std::time::Duration::from_millis(20));
+    check!(store_save_page(&nb, 0, &p) == 0);
+    check!(!store_retire_page_render(&nb, pid));
+    let stamp = format!("{}/.page-previews/p{pid}.full.stamp", dir_of(&nb));
+    let tag = std::fs::read_to_string(&stamp).unwrap();
+    std::fs::write(&stamp, tag.replace("|k2", "|k3")).unwrap();
+    check!(!store_retire_page_render(&nb, pid));
+    check!(std::path::Path::new(&format!("{}/.page-previews/p{pid}.full", dir_of(&nb))).exists());
 }
 
 #[test]
@@ -118,4 +131,5 @@ fn test_render_keep() {
     run!(kept_drawings_are_exact_and_only_current);
     run!(drawings_kept_by_2_0_1_are_never_read_and_retired_once);
     let _ = std::fs::remove_dir_all(&root);
+    done(); // (a failed check fails the test: it did not, without this)
 }

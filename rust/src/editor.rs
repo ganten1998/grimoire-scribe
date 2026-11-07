@@ -2831,6 +2831,22 @@ fn page_is_its_file(s: &EditorState) -> bool {
     !s.page_dirty
 }
 
+// A drawing 2.0.0 or 2.0.1 kept of the open page, current for its file or not, goes as the page is drawn whole from
+// its strokes with nothing unsaved (never read since 2.0.2, store.rs RENDER_TAG_VERSION: it may show the page as it
+// was before a Clear or a new paper), and the Pages preview and the Library card made beside it are made again from
+// this drawing: the preview now (a view decodes it again: bgjob.rs PreviewCache goes by the preview file too), the
+// card as page 1 is left (write_thumb_if_needed). Not from a drawing with its picture white: later, then. For
+// render_page_full and the Links bar's commit of a page it drew.
+fn retire_kept_before(s: &mut EditorState) {
+    let pid = s.open_pid();
+    if page_is_its_file(s) && !s.picture_missing && s.page_ix().is_some() && store_retire_page_render(&s.nb, pid) {
+        store_save_page_preview(&s.nb, pid, &s.page_canvas);
+        if s.index == 0 {
+            s.thumb_dirty = true;
+        }
+    }
+}
+
 fn render_page_full(a: &mut App) {
     let s = ed(a);
     s.boxes.stale = true; // (a page drawn whole is another page, or one that changed whole)
@@ -2852,16 +2868,7 @@ fn render_page_full(a: &mut App) {
         draw_page(a, r);
         let s = ed(a);
         s.full_ms = (pid, now_ms().wrapping_sub(started));
-        // A drawing 2.0.0 or 2.0.1 kept of the page file as it is now (never read since 2.0.2, store.rs
-        // RENDER_TAG_VERSION: it may show the page as it was before a Clear or a new paper) goes, and the Pages
-        // preview and the Library card made beside it are made again from this drawing: the preview now, the card
-        // as page 1 is left (write_thumb_if_needed). Not from a drawing with its picture white: later, then.
-        if page_is_its_file(s) && !s.picture_missing && s.page_ix().is_some() && store_retire_page_render(&s.nb, pid, s.pgw, s.pgh) {
-            store_save_page_preview(&s.nb, pid, &s.page_canvas);
-            if s.index == 0 {
-                s.thumb_dirty = true;
-            }
-        }
+        retire_kept_before(s);
         // A page that took this long, as it is on disk (nothing unsaved), keeps its drawing at once:
         // the next open is quick even if it is only read, never written.
         if s.full_ms.1 >= store_keep_render_ms() && !s.page_dirty && !s.picture_missing && s.page_ix().is_some() {
@@ -7319,6 +7326,8 @@ fn bar_commit(a: &mut App) {
         if s.open_page().is_some_and(|p| paper_is_image(p.paper)) {
             s.paper_stale = true;
         }
+        s.picture_missing = false; // (ready: the bar's canvas drew no picture white)
+        retire_kept_before(s); // (drawn whole from its strokes, as render_page_full draws it)
     } else {
         render_page_open(a);
     }
@@ -11788,11 +11797,35 @@ mod tests {
         std::fs::remove_dir_all(root).unwrap();
     }
 
+    // What 2.0.0 and 2.0.1 may have left of a cleared page pid: its old ink kept under the cleared file's stamp (their
+    // tag, with no "|k2") and the Pages preview made from it. The old ink (the Library card was made from it) and the
+    // drawing's stamp.
+    fn ghost_of_2_0_1(s: &mut EditorState, pid: u32) -> (Canvas, String) {
+        let mut ghost = Canvas::default();
+        assert_eq!(canvas_init(&mut ghost, s.pgw, s.pgh), 0);
+        ghost.px.iter_mut().enumerate().for_each(|(i, v)| *v = if i % 7 == 0 { 40 } else { 255 });
+        assert!(store_save_page_render(&s.nb, pid, &ghost, false));
+        store_save_page_preview(&s.nb, pid, &ghost);
+        let mut dir = String::new();
+        assert_eq!(store_notebook_dir(s.nb.id.as_str(), &mut dir, 600), 0);
+        let stamp = format!("{dir}/.page-previews/p{pid}.full.stamp");
+        let tag = std::fs::read_to_string(&stamp).unwrap();
+        std::fs::write(&stamp, tag.replace("|k2", "")).unwrap(); // (2.0.1's tag)
+        (ghost, stamp)
+    }
+
+    // The open page's Pages preview on disk is the one made from the page canvas.
+    fn preview_is_the_canvas(s: &EditorState) -> bool {
+        let mut shown = Canvas::default();
+        let mut made = Canvas::default();
+        store_load_page_preview(&s.nb, s.open_pid(), &mut shown) && store_page_preview_image(&s.page_canvas, &mut made) && shown.px == made.px
+    }
+
     #[test]
     fn a_drawing_kept_by_2_0_1_goes_with_the_preview_and_card_made_beside_it() {
-        // What 2.0.0 and 2.0.1 may have left of a cleared page: its old ink kept under the cleared file's stamp, and
-        // the Pages preview and the Library card made from it. The page is drawn from its strokes, the drawing goes,
-        // and the preview and the card are made again from the page drawn.
+        // A cleared page's ghost from 2.0.1, current for the page file: the page is drawn from its strokes, the
+        // drawing goes, and the preview and the card are made again from the page drawn. (The Pages view decodes the
+        // preview again, its page file as it was: bgjob.rs a_preview_written_again_is_decoded_again.)
         let root = std::env::temp_dir().join(format!("grimoire-kept-before-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&root);
         store_init(root.to_str().unwrap());
@@ -11802,34 +11835,113 @@ mod tests {
         let s = ed(&mut a);
         s.nb = nb;
         assert_eq!(store_save_page(&s.nb, 0, s.open_page().unwrap()), 0); // (blank: cleared)
-        let mut ghost = Canvas::default();
-        assert_eq!(canvas_init(&mut ghost, s.pgw, s.pgh), 0);
-        ghost.px.iter_mut().enumerate().for_each(|(i, v)| *v = if i % 7 == 0 { 40 } else { 255 });
-        assert!(store_save_page_render(&s.nb, 1, &ghost, false));
-        store_save_page_preview(&s.nb, 1, &ghost);
+        let (ghost, stamp) = ghost_of_2_0_1(s, 1);
         let mut card = Canvas::default();
         assert_eq!(canvas_init(&mut card, s.pgw / 3, s.pgh / 3), 0);
         canvas_downsample_keep_lines(&mut card, &ghost, 0.35);
         assert_eq!(store_save_thumb(s.nb.id.as_str(), &card), 0);
-        let mut dir = String::new();
-        assert_eq!(store_notebook_dir(s.nb.id.as_str(), &mut dir, 600), 0);
-        let stamp = format!("{dir}/.page-previews/p1.full.stamp");
-        let tag = std::fs::read_to_string(&stamp).unwrap();
-        std::fs::write(&stamp, tag.replace("|k2", "")).unwrap(); // (2.0.1's tag)
         render_page_full(&mut a);
         assert!(!ed_ref(&a).page_kept && canvas_is_the_page(&a));
         let s = ed(&mut a);
-        assert!(!std::path::Path::new(&stamp).exists() && !store_retire_page_render(&s.nb, 1, s.pgw, s.pgh));
-        let mut shown = Canvas::default();
-        let mut made = Canvas::default();
-        assert!(store_load_page_preview(&s.nb, 1, &mut shown));
-        assert!(store_page_preview_image(&s.page_canvas, &mut made) && shown.px == made.px);
+        assert!(!std::path::Path::new(&stamp).exists() && !store_retire_page_render(&s.nb, 1));
+        assert!(preview_is_the_canvas(s));
         assert!(s.thumb_dirty);
         write_thumb_if_needed(&mut a);
         let s = ed(&mut a);
+        let mut shown = Canvas::default();
         assert_eq!(store_load_thumb(s.nb.id.as_str(), &mut shown), 0);
         canvas_downsample_keep_lines(&mut card, &s.page_canvas, 0.35);
         assert!(shown.px == card.px);
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn a_stale_drawing_kept_by_2_0_1_goes_with_the_preview_and_card_made_beside_it() {
+        // The same ghost, then a word written: 2.0.1's idle save inside the previews' 30 s wrote the page file alone
+        // (and so does a notebook closed before its idle save), so the drawing is of the file as it was. The card, made
+        // from the canvas as page 1 was left, holds the old ink and the word, and so does the preview a later idle save
+        // made from that canvas, current for the page file. The drawing goes all the same, and the preview and the card
+        // are made again from the page drawn.
+        let root = std::env::temp_dir().join(format!("grimoire-kept-stale-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        store_init(root.to_str().unwrap());
+        let mut nb = NotebookInfo::default();
+        assert_eq!(store_create("Stale", "", PAPER_BLANK, &mut nb), 0);
+        let mut a = fshape_app();
+        let s = ed(&mut a);
+        s.nb = nb;
+        assert_eq!(store_save_page(&s.nb, 0, s.open_page().unwrap()), 0); // (blank: cleared)
+        let (mut ghost, stamp) = ghost_of_2_0_1(s, 1);
+        let mut prm = ToolParams::default();
+        tool_params_default(TOOL_BALLPOINT, &mut prm);
+        let mut word = stroke_new(TOOL_BALLPOINT, &prm, 0x77);
+        for i in 0..30 {
+            let t = i as f32 / 29.0;
+            stroke_append(&mut word, &PenSample { x: 300.0 + 500.0 * t, y: 600.0 + 60.0 * t, pressure: 0.6, t_ms: i * 5, ..Default::default() }, 300.0);
+        }
+        page_add(s.open_page_mut().unwrap(), word);
+        std::thread::sleep(std::time::Duration::from_millis(20));
+        assert_eq!(store_save_page(&s.nb, 0, s.open_page().unwrap()), 0);
+        assert!(!store_page_render_kept(&s.nb, 1, s.pgw, s.pgh, false) && store_page_preview_fresh(&s.nb, 1).is_none());
+        // (the old ink and the word, as 2.0.1 showed the page)
+        ghost.px[(600 * s.pgw + 300) as usize..][..500].fill(0);
+        store_save_page_preview(&s.nb, 1, &ghost);
+        assert!(store_page_preview_fresh(&s.nb, 1).is_some());
+        let mut card = Canvas::default();
+        assert_eq!(canvas_init(&mut card, s.pgw / 3, s.pgh / 3), 0);
+        canvas_downsample_keep_lines(&mut card, &ghost, 0.35);
+        assert_eq!(store_save_thumb(s.nb.id.as_str(), &card), 0);
+        render_page_full(&mut a);
+        assert!(!ed_ref(&a).page_kept && canvas_is_the_page(&a));
+        let s = ed(&mut a);
+        assert!(!std::path::Path::new(&stamp).exists());
+        assert!(preview_is_the_canvas(s));
+        assert!(s.thumb_dirty);
+        write_thumb_if_needed(&mut a);
+        let s = ed(&mut a);
+        let mut shown = Canvas::default();
+        assert_eq!(store_load_thumb(s.nb.id.as_str(), &mut shown), 0);
+        canvas_downsample_keep_lines(&mut card, &s.page_canvas, 0.35);
+        assert!(shown.px == card.px);
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn a_drawing_kept_by_2_0_1_goes_as_the_links_bar_stays_on_its_page() {
+        // A page reached from the Links bar comes from the bar's canvas, drawn from its strokes ahead of the tap,
+        // not from render_page_full: staying there takes 2.0.1's drawing away as well, and makes its preview again,
+        // even when the page left had its picture missing (a template's, still being made).
+        let root = std::env::temp_dir().join(format!("grimoire-kept-bar-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        store_init(root.to_str().unwrap());
+        let mut nb = NotebookInfo::default();
+        assert_eq!(store_create("Bar", "", PAPER_BLANK, &mut nb), 0);
+        assert_eq!(store_add_page(&mut nb, 1, PAPER_BLANK), 0);
+        let mut a = fshape_app();
+        let dpi = a.dpi;
+        let s = ed(&mut a);
+        assert_eq!(nb.page_ids, [1, 2]);
+        s.nb = nb;
+        assert_eq!(store_save_page(&s.nb, 0, s.open_page().unwrap()), 0);
+        let e = s.entry_for(2).unwrap();
+        assert_eq!(store_save_page(&s.nb, 1, s.hist[e].page.as_deref().unwrap()), 0); // (blank: cleared)
+        let (_, stamp) = ghost_of_2_0_1(s, 2);
+        // Page 2 peeked: the bar's canvas of it drawn whole
+        let mut peeked = Canvas::default();
+        assert_eq!(canvas_init(&mut peeked, s.pgw, s.pgh), 0);
+        page_render(&mut peeked, s.hist[e].page.as_deref().unwrap(), Rect { x: 0, y: 0, w: s.pgw, h: s.pgh }, dpi);
+        s.ccache[0] = CacheEntry { pid: 2, w: s.pgw, h: s.pgh, pic_gen: bgimage_generation(), canvas: peeked, rows_done: s.pgh, from_hist: true, ..Default::default() };
+        s.lb.open = true;
+        s.peek = Peek { active: true, index: 1, pid: 2, slot: 0, count: 1, from_back: false };
+        s.picture_missing = true;
+        bar_commit(&mut a);
+        let s = ed(&mut a);
+        assert!(!s.lb.open && s.index == 1 && s.open_pid() == 2);
+        assert!(canvas_is_the_page(&a));
+        let s = ed(&mut a);
+        assert!(!s.picture_missing);
+        assert!(!std::path::Path::new(&stamp).exists());
+        assert!(preview_is_the_canvas(s));
         std::fs::remove_dir_all(root).unwrap();
     }
 

@@ -714,30 +714,40 @@ pub enum Tile<'a> {
     Loading,
     Number,
 }
-// What a tile was drawn showing, its preview by the page file identity it was made at: a check later
-// draws again only the tiles that would show something else now (PreviewCache::changed).
+// What a decoded preview is of: the page file identity it shows (store_page_source_identity's) and the preview
+// file it was read from (store_page_preview_file's; for one made here from the open page's canvas, the preview file
+// there was then, if any). Either changed, it is decoded again: a preview written again over the same page file
+// (editor.rs retire_kept_before, in place of one 2.0.0 or 2.0.1 made from an old picture) is another picture.
+type Of = (String,Option<String>);
+// Whether a decoded preview of page pid is still of the page file and the preview file there now.
+fn of_now(nb:&NotebookInfo,pid:u32,of:&Of)->bool {
+    store_page_source_identity(nb,pid).as_deref()==Some(of.0.as_str()) && store_page_preview_file(nb,pid)==of.1
+}
+// What a tile was drawn showing, its preview by what it is of (Of): a check later draws again only the tiles
+// that would show something else now (PreviewCache::changed).
 #[derive(Clone,Debug,PartialEq,Eq)]
 enum Shown {
-    Preview(String),
+    Preview(Of),
     Loading,
     Number,
 }
 
 /// The decoded previews a view shows, for the screenful on it (the Pages view's grid, the link
-/// destination picker's). Each keeps the page file identity it shows, so a new preview elsewhere in the
-/// notebook keeps the tiles whose pages did not change instead of decoding them all again. It notes what
-/// each tile was drawn showing, so that the previews coming in one at a time are drawn one tile at a time.
+/// destination picker's). Each keeps the page file identity it shows and the preview file it was read
+/// from, so a new preview elsewhere in the notebook keeps the tiles whose pages and previews did not change
+/// instead of decoding them all again. It notes what each tile was drawn showing, so that the previews
+/// coming in one at a time are drawn one tile at a time.
 #[derive(Clone,Debug,Default)]
 pub struct PreviewCache {
     notebook: FixedStr<STORE_ID_LEN>,
     generation: u64,
-    tiles: Vec<(u32,String,Canvas)>,
+    tiles: Vec<(u32,Of,Canvas)>,
     /// the tiles drawn, in the order they were first drawn (the screenful's), and what each showed
     shown: Vec<(u32,Shown)>,
 }
 impl PreviewCache {
     /// Before a draw: another notebook empties it; new previews (or a forced check, as a view opens)
-    /// keep only the tiles whose page files are as they were.
+    /// keep only the tiles whose page files and preview files are as they were.
     pub fn sync(&mut self,nb:&NotebookInfo,force:bool) {
         if self.notebook!=nb.id {
             self.tiles.clear();self.shown.clear();
@@ -746,15 +756,15 @@ impl PreviewCache {
         let generation=store_page_previews_generation(nb.id.as_str());
         if generation==self.generation && !force {return;}
         self.generation=generation;
-        self.tiles.retain(|(pid,identity,_)|store_page_source_identity(nb,*pid).as_deref()==Some(identity.as_str()));
+        self.tiles.retain(|(pid,of,_)|of_now(nb,*pid,of));
     }
     // Page pid's tile among the decoded ones, decoded now from the disk cache if it is not yet.
     fn decoded(&mut self,nb:&NotebookInfo,pid:u32)->Option<usize> {
         if let Some(i)=self.tiles.iter().position(|t|t.0==pid) {return Some(i);}
         let mut preview=Canvas::default();
-        let identity=store_load_page_preview_as(nb,pid,&mut preview)?;
+        let (identity,file)=store_load_page_preview_as(nb,pid,&mut preview)?;
         if self.tiles.try_reserve(1).is_err() {return None;}
-        self.tiles.push((pid,identity,preview));
+        self.tiles.push((pid,(identity,Some(file)),preview));
         Some(self.tiles.len()-1)
     }
     /// Page pid's preview: decoded once, from the disk cache, while it stays on screen.
@@ -805,10 +815,17 @@ impl PreviewCache {
         pids.iter().filter_map(|p|self.shown.iter().find(|s|s.0==*p)).map(|s|match s.1 {Shown::Preview(_)=>'p',Shown::Loading=>'l',Shown::Number=>'n'}).collect()
     }
     pub fn has(&self,pid:u32)->bool {self.tiles.iter().any(|t|t.0==pid)}
-    /// A preview made here (the open page, from its canvas) for the page file at `identity`.
-    pub fn put(&mut self,pid:u32,identity:String,preview:Canvas) {
+    /// How many pixels of page pid's decoded preview are darker than mid-gray (the runner's editor.pages.ink.N),
+    /// None while none is decoded.
+    pub fn ink(&self,pid:u32)->Option<usize> {
+        let (_,_,c)=self.tiles.iter().find(|t|t.0==pid)?;
+        Some((0..c.h.max(0) as usize).map(|y|c.px[y*c.stride as usize..][..c.w as usize].iter().filter(|&&v|v<128).count()).sum())
+    }
+    /// A preview made here (the open page, from its canvas) for the page file at `identity`, beside the preview
+    /// file `file` (store_page_preview_file's then: None for none).
+    pub fn put(&mut self,pid:u32,identity:String,file:Option<String>,preview:Canvas) {
         self.forget(pid);
-        if self.tiles.try_reserve(1).is_ok() {self.tiles.push((pid,identity,preview));}
+        if self.tiles.try_reserve(1).is_ok() {self.tiles.push((pid,(identity,file),preview));}
     }
     pub fn forget(&mut self,pid:u32) {self.tiles.retain(|t|t.0!=pid);}
     /// Only the tiles of these pages (the screenful on show) stay.
@@ -881,6 +898,60 @@ mod tests {
         assert!(matches!(cache.tile(&nb, pids[0], &mut req, false), Tile::Preview(_)));
         assert_eq!(cache.shows(&pids), "npn");
         assert_eq!(cache.changed(&nb, &pids, &mut req), vec![pids[0]]);
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    // A preview written again over the same page file (editor.rs retire_kept_before puts the page drawn in place of an
+    // old picture 2.0.0 or 2.0.1 made) is decoded again at the next check, the tile drawn showing it named as changed;
+    // so is a tile made from the open page's canvas once a preview is written beside it. Another page's new preview
+    // leaves a tile as it is. Before, a tile was kept by its page file alone: the old picture stayed, at every open of
+    // the view, until the process ended.
+    #[test]
+    fn a_preview_written_again_is_decoded_again() {
+        let root = std::env::temp_dir().join(format!("grimoire-tiles-again-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        store_init(root.to_str().unwrap());
+        store_set_device(300.0, 600, 800);
+        let mut nb = NotebookInfo::default();
+        assert_eq!(store_create("Again", "", PAPER_BLANK, &mut nb), 0);
+        assert_eq!(store_add_page(&mut nb, 1, PAPER_BLANK), 0);
+        let pids = nb.page_ids.clone();
+        let (mut dark, mut white) = (Canvas::default(), Canvas::default());
+        assert_eq!(canvas_init(&mut dark, 600, 800), 0);
+        assert_eq!(canvas_init(&mut white, 600, 800), 0);
+        canvas_fill(&mut dark, Rect::new(0, 0, 600, 800), 40);
+        canvas_fill(&mut white, Rect::new(0, 0, 600, 800), 255);
+        let mut req = PagePreviewRequests::default();
+        let mut cache = PreviewCache::default();
+        store_save_page_preview(&nb, pids[0], &dark);
+        store_save_page_preview(&nb, pids[1], &white);
+        cache.sync(&nb, true);
+        assert!(matches!(cache.tile(&nb, pids[0], &mut req, true), Tile::Preview(_)));
+        assert!(matches!(cache.tile(&nb, pids[1], &mut req, true), Tile::Preview(_)));
+        assert_eq!(cache.ink(pids[0]), Some(300 * 400));
+        // Page 1's preview written again, its page file as it was
+        let page = store_page_source_identity(&nb, pids[0]);
+        store_save_page_preview(&nb, pids[0], &white);
+        assert!(page.is_some() && store_page_source_identity(&nb, pids[0]) == page);
+        assert_eq!(cache.changed(&nb, &pids, &mut req), vec![pids[0]]);
+        assert!(matches!(cache.tile(&nb, pids[0], &mut req, true), Tile::Preview(_)));
+        assert_eq!(cache.ink(pids[0]), Some(0));
+        assert!(cache.changed(&nb, &pids, &mut req).is_empty());
+        // and checked as a view opens
+        store_save_page_preview(&nb, pids[0], &dark);
+        cache.sync(&nb, true);
+        assert!(!cache.has(pids[0]) && cache.has(pids[1]));
+        assert!(cache.get(&nb, pids[0]).is_some() && cache.ink(pids[0]) == Some(300 * 400));
+        // A tile made from the canvas, its preview on disk older: it goes once a preview is written beside it
+        let mut small = Canvas::default();
+        assert!(store_page_preview_image(&dark, &mut small));
+        cache.put(pids[1], store_page_source_identity(&nb, pids[1]).unwrap(), store_page_preview_file(&nb, pids[1]), small);
+        store_save_page_preview(&nb, pids[0], &white);
+        cache.sync(&nb, false);
+        assert_eq!(cache.ink(pids[1]), Some(300 * 400));
+        store_save_page_preview(&nb, pids[1], &white);
+        cache.sync(&nb, false);
+        assert!(!cache.has(pids[1]));
         let _ = std::fs::remove_dir_all(&root);
     }
 
