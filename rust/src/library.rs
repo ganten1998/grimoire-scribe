@@ -419,7 +419,7 @@ fn reload(a: &mut App) {
     free_lists(s);
     s.card_gen = bgimage_generation(); // (the cards read from now on are up to date)
     store_list(&mut s.books);
-    store_list_folders(&mut s.folders);
+    store_list_folders_from(&s.books, &mut s.folders); // (each notebook.ini read once)
     let nbooks = s.books.len();
     s.thumbs = vec![Canvas::default(); nbooks];
     s.thumb_tried = vec![false; nbooks];
@@ -6814,6 +6814,34 @@ mod tests {
         settings_load(&mut on_disk);
         assert_eq!(on_disk.mirror_pdf, a.settings.mirror_pdf);
         assert!(!a.toast_visible);
+        library_free(&mut a);
+        canvas_free(&mut a.screen);
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    // The Library's reload reads each notebook.ini once: its cards and its folders come from the one listing
+    // (browser.md 9: it read every notebook.ini twice, 1,000 opens on FUSE for 500 notebooks at each enter).
+    #[test]
+    fn a_reload_reads_each_notebook_once() {
+        let root = std::env::temp_dir().join(format!("grimoire-reload-once-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        assert_eq!(store_init(root.to_str().unwrap()), 0);
+        for (name, folder) in [("A", ""), ("B", "School"), ("C", "School/2025"), ("D", "Work")] {
+            let mut nb = NotebookInfo::default();
+            assert_eq!(store_create(name, folder, PAPER_BLANK, &mut nb), 0);
+        }
+        let mut a = pen_record_app();
+        lib(&mut a).modal = Modal::None;
+        let before = store_info_reads();
+        reload(&mut a);
+        assert_eq!(store_info_reads() - before, 4, "one read of each notebook.ini");
+        let s = lib(&mut a);
+        assert_eq!(s.books.len(), 4);
+        assert_eq!(s.folders, ["School", "School/2025", "Work"]);
+        // (the same folders as the listing of its own)
+        let mut folders = Vec::new();
+        assert_eq!(store_list_folders(&mut folders), 0);
+        assert_eq!(lib(&mut a).folders, folders);
         library_free(&mut a);
         canvas_free(&mut a.screen);
         let _ = std::fs::remove_dir_all(&root);

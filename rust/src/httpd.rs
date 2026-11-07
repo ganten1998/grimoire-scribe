@@ -1021,7 +1021,7 @@ fn route_index() {
     let mut nbs: Vec<NotebookInfo> = Vec::new();
     let mut folders: Vec<String> = Vec::new();
     store_list(&mut nbs);
-    store_list_folders(&mut folders);
+    store_list_folders_from(&nbs, &mut folders);
     let n = nbs.len() as i32;
     let mut b = Buf::default();
     page_head(&mut b, b"Grimoire");
@@ -1234,7 +1234,7 @@ fn route_list_json() {
     let mut nbs: Vec<NotebookInfo> = Vec::new();
     let mut folders: Vec<String> = Vec::new();
     store_list(&mut nbs);
-    store_list_folders(&mut folders);
+    store_list_folders_from(&nbs, &mut folders);
     let mut b = Buf::default();
     buf_printf!(&mut b, "{\"device\":\"Grimoire\",\"version\":");
     json_str(&mut b, GRIMOIRE_VERSION.as_bytes());

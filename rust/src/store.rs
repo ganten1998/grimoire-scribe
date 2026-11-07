@@ -2085,9 +2085,15 @@ pub fn name_cmp(a: &str, b: &str) -> Ordering {
 
 /// distinct non-empty folders, sorted
 pub fn store_list_folders(out: &mut Vec<String>) -> i32 {
-    let f = load_folders_ini();
     let mut nbs = Vec::new();
     store_list(&mut nbs);
+    store_list_folders_from(&nbs, out)
+}
+
+/// The same from the notebooks a caller has just listed (store_list): the Library's reload reads each
+/// notebook.ini once, not once for its cards and again for its folders (browser.md 9).
+pub fn store_list_folders_from(nbs: &[NotebookInfo], out: &mut Vec<String>) -> i32 {
+    let f = load_folders_ini();
     let mut all: Vec<FolderName> = Vec::new();
     for i in 0..f.len() + nbs.len() {
         let name = if i < f.len() {

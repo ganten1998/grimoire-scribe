@@ -29,7 +29,7 @@ pub enum NotebookPick { None, Cancel, Target(String), Place(String, i32), Notebo
 impl NotebookPicker {
     pub fn start(&mut self, folder:&str) -> bool {
         *self=Self::default();
-        if store_list(&mut self.books)!=0 || store_list_folders(&mut self.folders)!=0 {return false;}
+        if store_list(&mut self.books)!=0 || store_list_folders_from(&self.books,&mut self.folders)!=0 {return false;}
         self.folder=folder.to_string();self.open=true;true
     }
     /// The same for the Library's Graph past its caps (2.0.0-beta.2): a tap on a notebook picks it, with no page step.
