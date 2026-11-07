@@ -24,7 +24,12 @@ each share server render wait that long first, and `GRIMOIRE_BG_DELAY_MS` each b
 export, so the next one queues behind it. `GRIMOIRE_SIM_DENSE_DRAW_MS` makes the page previews job's
 drawing of a dense page (a page file of 512 KB or more) take that many milliseconds longer, as a Kindle
 takes seconds, and `GRIMOIRE_SIM_CORES` stands for the number of cores the background jobs see (under 3:
-no second job process beside the first). `GRIMOIRE_SLEEP_MINUTE_MS` (simulator only) makes a
+no second job process beside the first). `GRIMOIRE_SIM_BACKLINKS_STEP_MS` (headless runner only) makes
+each idle tick of the backlinks cache's check take that many milliseconds longer (a tick with no check
+under way is not slowed), as a loaded runner reads the notebooks slower:
+tests/scenarios/z_links_3_bar_learns.qs runs with 60, so its check of 120 notebooks takes over 11 s
+however fast the machine is, longer than the fixed 9 s wait it had before `waitfor`.
+`GRIMOIRE_SLEEP_MINUTE_MS` (simulator only) makes a
 minute of the Display sheet's "Sleep after" last that many milliseconds, so a scenario can see the
 timer run out.
 

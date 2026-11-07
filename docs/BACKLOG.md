@@ -697,7 +697,9 @@ Ideas, not plans: each needs the owner's go and its own design. No code is taken
 ## Completed for 2.0.2: the Links bar learning check (2026-11-07)
 
 - `z_links_3_bar_learns` waits for the incoming rows themselves, with a 60-second failure bound, instead
-  of a fixed 9-second sleep. Its normal and 400-ms-late runs cover the slow-runner CI failure.
+  of a fixed 9-second sleep. The slow-runner CI failure is pinned by `GRIMOIRE_SIM_BACKLINKS_STEP_MS=60`
+  on the scenario (each tick of the backlinks check 60 ms longer: the old fixed wait fails every run). The
+  400-ms-late run covers the waits around the learning, not a slow check.
 - The headless runner's `waitfor KEY OP VALUE` shares expect's probes and operators, idles as `wait` does
   (30 ms a round; app time moved on under `GRIMOIRE_SIM_CLOCK=script`), stops as soon as ready, and fails
   immediately for malformed or unknown probes and for the keys a check starts again.

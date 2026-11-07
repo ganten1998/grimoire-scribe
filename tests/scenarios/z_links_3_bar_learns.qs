@@ -1,9 +1,12 @@
 # rust-only
 # generate: tests/notebook_backlinks_fixture.py many
 # env: GRIMOIRE_CHECK_FIT=1
+# env: GRIMOIRE_SIM_BACKLINKS_STEP_MS=60
 # The Links bar up before the backlinks cache's first check is through (120 more notebooks to read first, one
 # a tick): its Linked from rows come in by themselves once the check learns them, the bar built and drawn
 # again (2.0.0-beta.2). Wait for the learned rows, however slow the runner, ending as soon as they show.
+# Each tick of the check 60 ms longer, as on a slow CI runner (where a fixed 9 s wait ran out before the rows
+# came): the check takes over 11 s however fast this machine is.
 # A long press on a Linked from row is its tap: it has no links of this page for a card.
 wait 300
 tap library folder.Other

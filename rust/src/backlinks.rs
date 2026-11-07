@@ -30,8 +30,9 @@
 //! Links bar's Linked from rows and the Graph's anchors label their pages with, read again only when one
 //! of those two files changed (never their links.ini).
 //!
-//! The module is pure apart from its files: no screen, no clock. Its state is per thread (the store's
-//! root is), and starts again when the root changes (the tests' roots).
+//! The module is pure apart from its files: no screen, no clock (the simulator's slowed ticks aside:
+//! backlinks_sim_step_ms_set). Its state is per thread (the store's root is), and starts again when the
+//! root changes (the tests' roots).
 
 use crate::prelude::*;
 use std::cell::RefCell;
@@ -419,6 +420,8 @@ fn list_ids() -> Vec<FixedStr<STORE_ID_LEN>> {
 /// checked with at most one links.ini read again; at the end of a check, notebooks no longer there
 /// dropped and the file written if it changed. True while there is more to do.
 pub fn backlinks_step() -> bool {
+    #[cfg(feature = "sim")]
+    sim_slow_step();
     with(|b| {
         if !b.loaded {
             load(b);
@@ -473,6 +476,26 @@ pub fn backlinks_step() -> bool {
         flush(b);
         !b.complete
     })
+}
+
+// Tests (the simulator): GRIMOIRE_SIM_BACKLINKS_STEP_MS=N (the headless runner hands it here) makes each
+// tick of a check, the cache's read included, take N ms longer, as a loaded runner or the Kindle reads
+// notebooks slower than a quiet Mac: tests/scenarios/z_links_3_bar_learns.qs then learns its rows later
+// than a fixed wait could guess. A tick with no check under way (every notebook checked) is not slowed.
+#[cfg(feature = "sim")]
+thread_local! {
+    static SIM_STEP_MS: std::cell::Cell<u32> = const { std::cell::Cell::new(0) };
+}
+#[cfg(feature = "sim")]
+pub fn backlinks_sim_step_ms_set(ms: u32) {
+    SIM_STEP_MS.with(|c| c.set(ms));
+}
+#[cfg(feature = "sim")]
+fn sim_slow_step() {
+    let ms = SIM_STEP_MS.with(|c| c.get());
+    if ms > 0 && !with(|b| b.loaded && b.complete) {
+        sleep_ms(ms.min(i32::MAX as u32) as i32);
+    }
 }
 
 /// The cache written now if it changed (a notebook closing). False when the write failed.
@@ -868,6 +891,54 @@ mod tests {
         assert_eq!((from[0].pid, from[0].count), (a.page_ids[1], 1));
         assert_eq!((from[1].pid, from[1].count), (a.page_ids[2], 2));
         assert_eq!(from[2].id, b.id);
+        let _ = std::fs::remove_dir_all(&r);
+    }
+
+    /// The simulator's ticks back at full speed when a test ends, a failed one too.
+    #[cfg(feature = "sim")]
+    struct SlowTicks;
+    #[cfg(feature = "sim")]
+    impl Drop for SlowTicks {
+        fn drop(&mut self) {
+            backlinks_sim_step_ms_set(0);
+        }
+    }
+
+    #[cfg(feature = "sim")]
+    #[test]
+    fn the_simulators_slowed_ticks_slow_a_check_and_nothing_else() {
+        use std::time::{Duration, Instant};
+        let r = root("slowticks");
+        let (a, b) = (book("A", 1), book("B", 1));
+        link(&a, 0, &b, 0, 1);
+        let _slow = SlowTicks;
+        backlinks_sim_step_ms_set(40);
+        // Every tick of the check is 40 ms longer: the cache's read, the listing, the stamps and the read.
+        let mut ticks = 0;
+        let t = Instant::now();
+        loop {
+            ticks += 1;
+            let at = Instant::now();
+            let more = backlinks_step();
+            assert!(at.elapsed() >= Duration::from_millis(40), "tick {ticks}");
+            if !more {
+                break;
+            }
+            assert!(ticks < 100, "the check never ends");
+        }
+        assert!(ticks >= 3 && t.elapsed() >= Duration::from_millis(40 * ticks), "{ticks} {:?}", t.elapsed());
+        assert_eq!(backlinks_to(b.id.as_str(), b.page_ids[0]).len(), 1);
+        // Every notebook checked: a tick has nothing to do and takes none of it.
+        backlinks_sim_step_ms_set(5000);
+        let at = Instant::now();
+        assert!(!backlinks_step());
+        assert!(at.elapsed() < Duration::from_millis(5000));
+        // A notebook opening starts a check again, slowed again.
+        backlinks_sim_step_ms_set(40);
+        backlinks_revalidate();
+        let at = Instant::now();
+        assert!(backlinks_step());
+        assert!(at.elapsed() >= Duration::from_millis(40));
         let _ = std::fs::remove_dir_all(&r);
     }
 }

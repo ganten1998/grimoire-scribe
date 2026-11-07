@@ -2459,6 +2459,10 @@ pub fn input_open(screen_w: i32, screen_h: i32, dpi: f32, pen: Option<&InputCali
         let late = atoi(late.as_bytes()).max(0) as u32;
         with(|st| st.late_ms = late);
     }
+    // (the backlinks cache's check slowed, a tick at a time: backlinks.rs)
+    if let Some(ms) = std::env::var_os("GRIMOIRE_SIM_BACKLINKS_STEP_MS") {
+        crate::backlinks::backlinks_sim_step_ms_set(atoi(ms.as_bytes()).max(0) as u32);
+    }
     if let Some(sp) = std::env::var_os("GRIMOIRE_SIM_PRESSURE") {
         let p = clampf(atof(sp.as_bytes()) as f32, 0.0, 1.0);
         with(|st| st.pressure = p);

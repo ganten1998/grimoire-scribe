@@ -1696,3 +1696,7 @@ On the Scribe, with a build of this branch:
   notice to go and passes in about 6 s; before the fix it failed at the 60 s bound. A `waitfor` on
   `display.presents`, `main.longest_unpumped_ms`, `pump.calls`, `keyboard.draws` or `fshape.fired` fails at
   once with "waitfor cannot wait on KEY, which starts again when read". Nothing to check on the Scribe.
+- Host check (the slow runner): `z_links_3_bar_learns` runs with `GRIMOIRE_SIM_BACKLINKS_STEP_MS=60`, so its
+  backlinks check takes over 11 s; the same script with the old `wait 9000` in place of its `waitfor` fails
+  (incoming 0, wanted 2). Nothing to check on the Scribe: the slowed check is the headless runner's only
+  (the Kindle build has none of it).

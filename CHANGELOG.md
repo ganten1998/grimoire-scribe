@@ -3,8 +3,12 @@
 ## 2.1.0 (unreleased)
 
 - The Links bar learning scenario waits for its incoming rows, with a bounded probe wait, instead of
-  guessing that every runner will check 120 notebooks within 9 seconds. It also runs with waits ending
-  400 ms late. Normal application behavior is unchanged.
+  guessing that every runner will check 120 notebooks within 9 seconds. Normal application behavior is
+  unchanged. The slow runner it failed on is now pinned: `GRIMOIRE_SIM_BACKLINKS_STEP_MS` (headless runner
+  only) makes each tick of the backlinks check that much longer, and the scenario runs with 60 ms, so its
+  check takes over 11 s however fast the machine is (the old 9 s wait fails every run, the new one passes).
+  Its run with every wait 400 ms late (`make scenarios-late`) does not slow the check: it covers the waits
+  around it, not the slow runner.
 - The headless runner's `waitfor` idles as `wait` does: a round of the main loop every 30 ms (it went round
   every 20 ms, so the app's idle work, the backlinks check included, ran 1.3 to 1.5 times faster than in a
   `wait` or on the Kindle), and with `GRIMOIRE_SIM_CLOCK=script` app time moves on by what it idled (it stood
