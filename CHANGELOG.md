@@ -2,6 +2,9 @@
 
 ## 2.1.0 (unreleased)
 
+- The Links bar learning scenario waits for its incoming rows, with a bounded probe wait, instead of
+  guessing that every runner will check 120 notebooks within 9 seconds. It also runs with waits ending
+  400 ms late. Normal application behavior is unchanged.
 - More fonts in Classic (the owner, 2026-11-04: "Custom font support/More fonts in the classic theme"). In
   Classic the Style row in Settings has a Font chip at its right end ("Font: Terminess"); the rest of the
   row still changes the style, and Gothic, whose look is its pixel type, has no chip. It opens the Font

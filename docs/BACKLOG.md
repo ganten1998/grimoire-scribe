@@ -693,3 +693,10 @@ Ideas, not plans: each needs the owner's go and its own design. No code is taken
 - 2.0.0-rc.8: taps no longer swallowed near the pen off the page; sliders keep their value on a
   cancelled touch; Live view rail, size control and picture in picture tiers; steadier, faster
   graph; Pages and Graph untangled.
+
+## Completed for 2.0.2: the Links bar learning check (2026-11-07)
+
+- `z_links_3_bar_learns` waits for the incoming rows themselves, with a 60-second failure bound, instead
+  of a fixed 9-second sleep. Its normal and 400-ms-late runs cover the slow-runner CI failure.
+- The headless runner's `waitfor KEY OP VALUE` shares expect's probes and operators, keeps application
+  timers running, stops as soon as ready, and fails immediately for malformed or unknown probes.

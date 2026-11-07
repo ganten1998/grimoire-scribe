@@ -209,7 +209,9 @@ scenario-times: scenarios
 # 300 ms drag hold against the card's 600 ms timer, which reads the real clock: its short holds are
 # frame lines, so a late wake cannot open the card first. u_keyboard_hold_delete times a held delete's repeats by
 # frame lines, against the screen's tick, which reads the real clock.
-LATE_SCENARIOS := y_status_press s_shape_4_guards z_pages_drag_hold u_keyboard_hold_delete y_status_corner z_rc8_pages_refresh
+# The backlinks check waits on a probe, so late timer wakes must not make it guess a duration either.
+LATE_SCENARIOS := y_status_press s_shape_4_guards z_pages_drag_hold u_keyboard_hold_delete y_status_corner z_rc8_pages_refresh \
+  z_links_3_bar_learns
 .PHONY: scenarios-late
 scenarios-late: $(BUILD)/host/grimoire-headless
 	@echo "== the scenarios again with every wait 400 ms late: $(LATE_SCENARIOS)"

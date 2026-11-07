@@ -17,6 +17,7 @@ use std::fs::File;
 use std::io::{BufRead, BufReader, ErrorKind, Write};
 use std::os::unix::ffi::OsStrExt;
 use std::sync::atomic::Ordering;
+use std::time::{Duration, Instant};
 
 // Exercise the evdev frame adapters on the host as well as cross-checking the Kindle build.
 #[cfg(test)]
@@ -68,6 +69,8 @@ const EXPECT_VALUE_CAP: usize = 512;
 struct Expect {
     /// read, not checked yet
     pending: bool,
+    /// waitfor: retry a known probe until it matches or this bounded deadline passes.
+    until: Option<Instant>,
     /// the line could not be read: it fails when its turn comes
     bad: bool,
     line: i32,
@@ -1212,11 +1215,13 @@ pub fn display_close() {
 // ---- expect ----
 
 impl State {
-    // Reads "expect KEY OP VALUE" (s starts at "expect") into g_expect.
+    // Reads expect or waitfor KEY OP VALUE into the pending assertion.
     fn expect_read(&mut self, s: &[u8]) {
-        self.expect = Expect { pending: true, line: self.line_no, ..Default::default() };
+        self.expect = Expect { pending: true, line: self.line_no,
+            until: s.starts_with(b"waitfor").then(|| Instant::now() + Duration::from_secs(60)),
+            ..Default::default() };
         let at = |i: usize| -> u8 { s.get(i).copied().unwrap_or(0) };
-        let mut k = 6;
+        let mut k = strcspn(s, b" \t\r\n");
         while at(k) == b' ' || at(k) == b'\t' {
             k += 1;
         }
@@ -1510,10 +1515,8 @@ fn probe_app(a: Option<&mut App>, key: &[u8], out: &mut String, cap: usize) -> i
 // Checks the expect just read. gone: the app quit before the script got to it, so only "running"
 // has an answer (0); any other key fails as not run.
 fn expect_check_as(gone: bool, mut a: Option<&mut App>) {
-    let (bad, line, op, key, value, watch_fd) = with(|st| {
-        st.expect.pending = false;
-        st.expect_total += 1;
-        (st.expect.bad, st.expect.line, st.expect.op, st.expect.key.clone(), st.expect.value.clone(), st.watch_fd)
+    let (bad, line, op, key, value, watch_fd, until) = with(|st| {
+        (st.expect.bad, st.expect.line, st.expect.op, st.expect.key.clone(), st.expect.value.clone(), st.watch_fd, st.expect.until)
     });
     let mut got = String::new();
     let running = key == b"running";
@@ -1547,14 +1550,26 @@ fn expect_check_as(gone: bool, mut a: Option<&mut App>) {
             ExpectOp::Not => g != value.as_slice(),
         };
         if ok {
+            expect_done(false);
             return;
+        }
+        if !gone && until.is_some_and(|end| Instant::now() < end) {
+            return; // timers keep running; this one assertion is counted only when it ends
         }
         err(&bformat(
             "expect failed (line %d): %s is \"%s\", wanted %s \"%s\"\n",
             &[B::D(line), B::S(&key), B::S(g), B::S(K_EXPECT_OPS[op as usize].as_bytes()), B::S(&value)],
         ));
     }
-    with(|st| st.expect_failed += 1);
+    expect_done(true);
+}
+
+fn expect_done(failed: bool) {
+    with(|st| {
+        st.expect.pending = false;
+        st.expect_total += 1;
+        st.expect_failed += i32::from(failed);
+    });
 }
 
 fn expect_check(a: Option<&mut App>) {
@@ -1572,7 +1587,8 @@ fn expect_unrun() {
         let read = with(|st| {
             let line = st.script_line()?;
             let s = skip_space(c_str(&line));
-            let is_expect = s.starts_with(b"expect") && (s.len() == 6 || isspace(s[6]));
+            let is_expect = (s.starts_with(b"expect") && (s.len() == 6 || isspace(s[6])))
+                || (s.starts_with(b"waitfor") && (s.len() == 7 || isspace(s[7])));
             if is_expect {
                 st.expect_read(s);
             }
@@ -2105,6 +2121,10 @@ fn script_step_in(st: &mut State) -> Step {
             return Step::Batch;
         } else if a == b"shot" {
             st.pending_shot.set_bytes(b);
+            return Step::Batch;
+        } else if a == b"waitfor" {
+            st.expect_read(s);
+            st.touch_at = None; // elapsed time belongs to the real clock, as with waitbg
             return Step::Batch;
         } else if a == b"expect" {
             st.expect_read(s);
@@ -2651,6 +2671,10 @@ fn poll_in(ev: &mut InEvent, timeout_ms: i32, mut a: Option<&mut App>) -> i32 {
         });
         if with(|st| st.expect.pending) {
             expect_check(a.as_deref_mut()); // an expect waits for the same moment
+            if with(|st| st.expect.pending) {
+                sleep_ms(timeout_ms.clamp(1, 20));
+                return 0;
+            }
         }
         with(|st| {
             if st.script_hold && !st.hold_file.is_empty() && access_exists(st.hold_file.as_bytes()) {
@@ -3440,6 +3464,62 @@ mod tests {
         let leave = q.iter().position(|e| e.type_ == InType::PenLeave).unwrap();
         assert!(!q[leave].side_button2);
         assert_eq!(leave + 1, q.len()); // no button event may revive proximity after leave
+    }
+
+    #[test]
+    fn waitfor_keeps_ticking_and_counts_one_assertion_when_ready_or_timed_out() {
+        fresh();
+        with(|st| st.expect_read(b"waitfor watching is 1"));
+        for _ in 0..4 { expect_check(None); }
+        assert!(with(|st| st.expect.pending));
+        assert_eq!(with(|st| (st.expect_total, st.expect_failed)), (0, 0));
+        with(|st| st.watch_fd = 123);
+        expect_check(None);
+        assert!(!with(|st| st.expect.pending));
+        assert_eq!(with(|st| (st.expect_total, st.expect_failed)), (1, 0));
+        // An already ready probe finishes at once, without waiting for the deadline.
+        with(|st| st.expect_read(b"waitfor watching is 1"));
+        expect_check(None);
+        assert!(!with(|st| st.expect.pending));
+        assert_eq!(with(|st| st.expect_total), 2);
+        // A bounded wait fails as one assertion; malformed and unknown probes fail at once too.
+        with(|st| {
+            st.expect_read(b"waitfor watching is 0");
+            st.expect.until = Some(Instant::now());
+        });
+        expect_check(None);
+        assert!(!with(|st| st.expect.pending));
+        assert_eq!(with(|st| (st.expect_total, st.expect_failed)), (3, 1));
+        for line in [b"waitfor typo is 1".as_slice(), b"waitfor running nope 1"] {
+            with(|st| st.expect_read(line));
+            expect_check(None);
+            assert!(!with(|st| st.expect.pending));
+        }
+        assert_eq!(with(|st| (st.expect_total, st.expect_failed)), (5, 3));
+    }
+
+    #[test]
+    fn waitfor_holds_script_input_but_resumes_as_soon_as_the_probe_matches() {
+        fresh();
+        script("waitfor-poll", "waitfor watching is 1\nkey 30 0\nquit\n");
+        let mut ev = InEvent::default();
+        assert_eq!(input_poll(&mut ev, 1), 0);
+        assert!(with(|st| st.expect.pending));
+        assert_eq!(input_poll(&mut ev, 1), 0);
+        assert_eq!(with(|st| st.line_no), 1); // no later input leaks through the wait
+        with(|st| st.watch_fd = 123);
+        assert_eq!(input_poll(&mut ev, 1), 1);
+        assert_eq!(ev.type_, InType::Key);
+        assert_eq!(with(|st| (st.expect_total, st.expect_failed)), (1, 0));
+        assert!(!with(|st| st.expect.pending));
+    }
+
+    #[test]
+    fn an_unreached_waitfor_fails_if_the_app_exits_first() {
+        fresh();
+        script("waitfor-unrun", "waitfor watching is 1\n");
+        expect_unrun();
+        assert_eq!(with(|st| (st.expect_total, st.expect_failed)), (1, 1));
     }
 
     #[test]

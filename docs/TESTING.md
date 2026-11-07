@@ -1685,3 +1685,10 @@ On the Scribe, with a build of this branch:
    (1.23, 1.27, 1.22); one sheet each, nothing cut. In Noto Sans, 2.0.0-beta.1's letter sideways: its sheet
    starts just under the toolbar's buttons, the bat and every button whole above it, and reaches the bottom
    margin; in the other fonts it starts at the top margin, nothing of the buttons cut but slivers.
+
+## Scribe checks: Links bar learning test (2.1.0)
+
+- No application behavior changes. With many notebooks and an empty backlinks cache, open Links before
+  learning finishes: Linked from rows should appear by themselves and still open the right pages.
+- Host check: run `z_links_3_bar_learns` normally and with `GRIMOIRE_SIM_LATE_MS=400`; it should continue
+  as soon as both incoming rows appear. An unknown probe or a never-ready probe must fail the runner.
