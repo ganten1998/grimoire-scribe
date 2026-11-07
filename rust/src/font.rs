@@ -1013,8 +1013,9 @@ fn next_char(t: &[u8], mut s: usize) -> usize {
 }
 
 /// True for a character Japanese breaks lines between: kana, kanji, CJK punctuation and fullwidth
-/// forms. (Latin words, including accented ones, must stay whole.)
-fn cjk(cp: u32) -> bool {
+/// forms. (Latin words, including accented ones, must stay whole.) about.rs breaks a version's notes
+/// there too.
+pub(crate) fn cjk(cp: u32) -> bool {
     (0x2E80..=0x9FFF).contains(&cp) || (0xF900..=0xFAFF).contains(&cp) || (0xFE30..=0xFE4F).contains(&cp) || (0xFF00..=0xFFEF).contains(&cp)
 }
 

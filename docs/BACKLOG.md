@@ -49,15 +49,37 @@ confirm or change:
 - **Fit all** (the owner, 2026-11-07: "either smaller text for all past messages, or fit all (which i lean
   toward)"): built (docs/DESIGN.md, A version's notes fit one screen). Decided by the lane: the floor is 34 px,
   the size the card sets the same notes in and the list its rows' lines (no sheet sets body text smaller); the
-  steps are half a pixel; the gaps, bullets and signature shrink with the text, the title, the version line
-  and the buttons do not. Gothic's text face draws whole design pixels, so its text has two sizes in that
-  range, 44 px and from 43 px down its next (the same as 34 px): 2.0.0's notes, two pages at 44 px, are set
-  at 43 px in Gothic and use 1095 of the 1940 px the sheet has upright, the rest of the screen under the
-  sheet. If that reads too small, the owner's call: let Gothic keep 44 px with pages where a note does not
-  fit, or open the leading up to fill the room.
-- **A note's sheet that would end over the Library's pager reaches down to the margin**, not asked for: the
-  sheet of 2.0.0's notes sideways in Gothic, once they fit, ended across the pager's Page 1 of 1 and cut it in
-  half. 2.0.0-beta.1's letter upright is 7 px taller for it (its sheet already covered the label).
+  steps are half a pixel; the gaps and signature shrink with the text, the title, the version line and the
+  buttons do not.
+- **Set closer before smaller** (the owner, 2026-11-07: "The note reading itself isn't polished enough"; a
+  review: in Gothic, fitting by size alone dropped 2.0.0's notes to the card's type with 122 to 127
+  characters a line over 1095 of 1940 px upright). Decided by the lane: at 44 px the leading tightens first,
+  from 1.3 to at least 1.15, and the gaps to at least 60% of theirs; only then does the size step down, and a
+  step down gives its room back to the leading and the gaps, up to the open look, never past it. 2.0.0's
+  notes now keep 44 px in Gothic upright (the leading 1.19) and in Classic's Atkinson, Noto Sans and Literata
+  sideways, and take 41.5 px at 1.15 in Terminess sideways (38.5 px before). **Left for the owner:** Gothic
+  sideways has no room for 44 px type (2.0.0's notes need 1871 px at the tightest, the letter 1460, of 1320),
+  so both are still set in Jersey 10's next size, the card's, in the leading they always had, using 1095 and
+  997 of the 1320 px the tallest sheet has there (their sheets start under the top bar). Opening the leading
+  past 1.3 to fill it, or a narrower measure there, is his call; 1.15 as the leading's floor likewise.
+- **Bullets keep the card's proportion** (a review): a note's dots are to its type as the card's are to the
+  card's, by the type's height as drawn, so 44 px notes have larger dots than 2.0.0's Read all had (1.29 times
+  the card's in Classic, 1.5 in Gothic, whose 44 px type is that much taller); at the card's size, the card's.
+- **A sheet stays off the Library's top bar and pager**, not asked for: the sheet of 2.0.0's notes sideways in
+  Gothic, once they fit, ended across the pager's Page 1 of 1 and cut it in half, so a note's sheet (and since
+  2.1.0's review the list's, which with 6 versions sideways or 9 upright would end there too) that would end
+  over the pager reaches down to the margin; 2.0.0-beta.1's letter upright is 7 px taller for it (its sheet
+  already covered the label). And a sheet that would start across the top bar's buttons starts at the margin
+  above them, as the tallest does, where sheet_rect started it across them (2.0.0's notes and the letter sideways
+  in Classic: judged from the shots, the clipped icon tops above the sheet read worse than the tallest sheet's
+  slivers). A sheet that starts below the buttons keeps its place, the bat and the buttons whole above it: with
+  Noto Sans the letter sideways starts at 186 px, over the bar's rule only, and reaches the margin as before
+  (moved up, it would have hidden the bar to show the pager). The card's room ends at the pager too (sideways
+  in Gothic it covered the pager's left button and its P): 2.0.0's card shows its first 9 blocks sideways, the
+  rest Read all's.
+- **Long words and Japanese in the notes**: a word wider than the sheet (a link) is broken between its
+  characters on lines of its own, and Japanese or Chinese between any two characters, a short list of closing
+  and opening marks kept with their neighbours; no hyphen. None of today's notes have either.
 - **Dates come from CHANGELOG.md's headings**, built in (no date line in the notes): 2.1.0 reads "unreleased"
   until the bump commit dates its section. Dates show as 2026-11-05 in every language.
 - **docs/WHATSNEW.md is gone** (moved to docs/whatsnew/2.0.0.md), no pointer file: links to it at the 2.0.0 tags

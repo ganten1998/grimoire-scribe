@@ -97,14 +97,16 @@ them.
      its checks: the card's `library.about.card_notes` and `card_blocks`, upright and sideways, and
      the notes on the sheet, from the row `about.row.VERSION`, upright and sideways: one page
      (`pages`; every version's notes fit one screen since 2.1.0, about.rs's
-     `every_note_fits_one_page_upright_and_sideways` fails a note that does not) at the size that
-     fits them (`body_px`). `tests/scenarios/z_about_list.qs` states the list:
+     `every_note_fits_one_page_upright_and_sideways` fails a note that does not) at the size and the
+     leading that fit them (`body_px`, `lead`), and `tests/scenarios/z_about_classic.qs` the same in
+     Classic. `tests/scenarios/z_about_list.qs` states the list:
      its rows (`library.about.row.N` and `row_date.N`, newest first), the row marked as this version's
      (`library.about.marked`), and the refreshes its steps send. Set them to the new notes':
-     `make scenarios SCENARIOS="tests/scenarios/z_about.qs tests/scenarios/z_about_list.qs"
-     SCEN_NO_SELFTEST=1` names each check that differs, with the value it found, and
-     `build/shots/z_about/` and `build/shots/z_about_list/` show the card, which must end at a whole
-     item, the list and the notes. Notes too long to fit even at the floor (34 px) would take pages
+     `make scenarios SCENARIOS="tests/scenarios/z_about.qs tests/scenarios/z_about_list.qs
+     tests/scenarios/z_about_classic.qs" SCEN_NO_SELFTEST=1` names each check that differs, with the
+     value it found, and `build/shots/z_about/`, `build/shots/z_about_list/` and
+     `build/shots/z_about_classic/` show the card, which must end at a whole item, the list and the
+     notes. Notes too long to fit even at the floor (34 px) would take pages
      at it: shorten them, or that test's rule is the owner's to change.
    - `docs/screens/whatsnew.png`, the README's picture of the card, when its look or the notes
      changed: `build/shots/z_about/01-card.png` from the gate of step 5, made 620x827 in grey

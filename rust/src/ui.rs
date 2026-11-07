@@ -670,8 +670,18 @@ pub fn ui_slider_drag_to(s: &mut Slider, drag: &mut SliderDrag, x: f32, y: f32, 
 }
 
 
+/// The content rect ui_sheet returns for card, with a title or without, before anything is drawn:
+/// what a sheet's edges and title take, for a sheet sized to what it holds (about.rs).
+pub fn ui_sheet_inner(card: Rect, titled: bool) -> Rect {
+    let (th, inset, bare) = if gothic() { (ui_px(130.0), ui_px(40.0), ui_px(44.0)) } else { (ui_px(120.0), ui_px(36.0), ui_px(36.0)) };
+    if titled {
+        return rect_inflate(Rect { y: card.y + th, h: card.h - th, ..card }, -inset);
+    }
+    rect_inflate(card, -bare)
+}
+
 /// Modal sheet: dims nothing (e-ink), draws a white card with a thick border + title bar.
-/// Returns the content rect inside the card.
+/// Returns the content rect inside the card (ui_sheet_inner's).
 pub fn ui_sheet(c: &mut Canvas, card: Rect, title: &str) -> Rect {
     if gothic() {
         canvas_chamfer_rect(c, card, ui_px(34.0), 255, true, 0);
@@ -691,11 +701,9 @@ pub fn ui_sheet(c: &mut Canvas, card: Rect, title: &str) -> Rect {
             );
             ornament(c, card.x + ui_px(60.0), card.x + card.w - ui_px(60.0), card.y + th, 0,
             );
-            return rect_inflate(Rect { x: card.x, y: card.y + th, w: card.w, h: card.h - th ,
-                }, -ui_px(40.0),
-            );
+            return ui_sheet_inner(card, true);
         }
-        return rect_inflate(card, -ui_px(44.0));
+        return ui_sheet_inner(card, false);
     }
     canvas_round_rect(c, card, ui_px(24.0), 255, true, 0);
     canvas_round_rect(c, card, ui_px(24.0), 0, false, ui_px(6.0));
@@ -712,11 +720,9 @@ pub fn ui_sheet(c: &mut Canvas, card: Rect, title: &str) -> Rect {
         );
         canvas_hline(c, card.x + ui_px(6.0), card.x + card.w - ui_px(6.0), card.y + th, ui_px(3.0), 0,
         );
-        return rect_inflate(Rect { x: card.x, y: card.y + th, w: card.w, h: card.h - th ,
-            }, -ui_px(36.0),
-        );
+        return ui_sheet_inner(card, true);
     }
-    rect_inflate(card, -ui_px(36.0))
+    ui_sheet_inner(card, false)
 }
 // A toast is one line of text, or two at the same size when it needs them: the box grows by a
 // line, as wide as the longer line needs, and keeps the ends of a one-line box (Gothic's points,

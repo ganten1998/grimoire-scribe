@@ -153,6 +153,7 @@ z_about_1_update 0.5
 z_about_2_after 0.3
 z_about_3_hidden 0.3
 z_about_4_hidden_after 0.3
+z_about_classic 1.2
 z_about_list 3.1
 z_annotate_1_new 1.8
 z_annotate_2_again 1.0

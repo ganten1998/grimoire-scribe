@@ -1247,9 +1247,11 @@ bullet and paragraph), the signature, Read all and Dismiss.
   fits whole above the signature, a heading counting with the block under it; a block that would be
   cut, and everything after it, is Read all's. Only when not even the first block fits whole (a
   paragraph longer than the card's room) does the card show part of one: the lines of it that fit,
-  cut at the end of a line, never inside one and never an empty card. The signature always shows.
-  On the Scribe 2.0.0's notes fit whole upright (11 blocks) and to the 10th sideways in Gothic (9th in
-  Classic). Probes: `library.about.card_blocks`, `card_notes`, `card_cut`.
+  cut at the end of a line, never inside one and never an empty card. The signature always shows. The
+  card's room ends at the Library's pager (2.1.0): sideways in Gothic its edge had covered the pager's
+  left button and the P of its Page 1 of 1. On the Scribe 2.0.0's notes fit whole upright (11 blocks)
+  and to the 9th sideways (it was the 10th in Gothic before 2.1.0). Probes: `library.about.card_blocks`,
+  `card_notes`, `card_cut`.
 - **Read all lists every version's notes** (2.1.0, the owner, 2026-11-06: "wire read all button to a
   list of each UNIQUE release note, and allow users to easily browse the changes by version - some of
   them are important"). The Library's sheet titled What's new, the bat and the version running under the
@@ -1258,30 +1260,58 @@ bullet and paragraph), the signature, Read all and Dismiss.
   the date at the right, and under them the notes' first heading or first line (`summary`: the title
   when there is one; 2.0.0-beta.1's letter has none, so its first paragraph), cut short with an ellipsis.
   As many rows a page as the tallest sheet holds (10 upright, 7 sideways on the Scribe), with the page
-  arrows left of Dismiss when they take more (`list_layout`); the sheet is as tall as a page of them. A
+  arrows left of Dismiss when they take more (`list_layout`); the sheet is as tall as a page of them,
+  placed as a version's notes' sheet is (`sheet_place`, below: 6 rows sideways or 9 upright would have
+  ended over the Library's pager). A
   tap on a row shows that version's notes whole on the sheet, on one screen (below): their title as
   the sheet's (else What's new), the version and its date under it, Back at the foot's left, Dismiss
   at its right. Back returns to the list at the page it was left at.
 - **A version's notes fit one screen** (2.1.0, the owner, 2026-11-07: "The read all doesn't need text
-  that big -- either smaller text for all past messages, or fit all (which i lean toward)"). `note_fit`
-  tries the body size Read all always had, 44 px (`ui_text_size`), then smaller ones in half-pixel
-  steps down to a floor, and takes the first at which the notes' rows fit the tallest sheet's body
-  whole, in the orientation in use; the whole look scales with it (`note_look`: the headings, the
-  leading's lines, the bullets' indent and dots, the gaps, the signature), while the title, the band
-  under it and the foot keep their sizes. Each size is tried whole, top down, since a smaller size
-  wraps the lines anew. The floor is 34 px (`ui_small_size`), the size the card sets the same notes
-  in and the list its rows' lines; notes that do not fit even there are set at it and take pages
-  (`paginate`, a heading's last line never alone at a page's foot, the page arrows left of Dismiss).
-  None of today's do. Gothic's text face, Jersey 10, is drawn in whole design pixels, so its text has
-  two sizes in that range: 44 px, and from 43 px down its next size (that of 34 px); the steps below
-  43 px only make its gaps and signature smaller. On the Scribe 2.1.0's notes keep 44 px everywhere;
-  2.0.0's take 43 px in Gothic both ways and 38.5 px in Classic sideways (44 px upright); 2.0.0-beta.1's
-  letter 43 px in Gothic sideways, else 44 px. In Classic's other fonts (2.1, Settings > Font) 2.0.0's
-  take 42.5 px sideways in Atkinson, 43 px in Noto Sans and 42 px in Literata, the rest 44 px. `note_px`
-  keeps each answer for the note, the screen's size, the look and Classic's font (each sets the notes
-  at its own widths), so a step on the sheet does not search again and a font picked does. A note's sheet that would end over
-  the Library's pager (its rule and its Page 1 of 1, which the sheet's edge would cut through) reaches
-  down to the margin, as the tallest sheet does (`note_sheet`). Probe: `library.about.body_px`.
+  that big -- either smaller text for all past messages, or fit all (which i lean toward)", then "The
+  note reading itself isn't polished enough"). `note_fit` sets them closer before it sets them smaller.
+  At the body size Read all always had, 44 px (`ui_text_size`), it first tightens the leading, from 1.3
+  down to 1.15 a hundredth a step, and the gaps with it, to 60% of theirs (`note_look`'s `tight`, 15
+  steps); only notes that do not fit the tallest sheet's body whole even at the tightest step down in
+  half pixels, to the largest size at which the tightest look fits, and the room that step leaves goes
+  back to the leading and the gaps, up to the open look (the most open step that fits, found by
+  halving: at one size each step tighter is no taller). The rest of the look scales with the size (the
+  headings, the bullets' indent, the signature); the title, the band under it and the foot keep their
+  sizes. Each size is tried whole, top down, since a smaller size wraps the lines anew. The floor is
+  34 px (`ui_small_size`), the size the card sets the same notes in and the list its rows' lines; notes
+  that do not fit even there at the tightest are set at it in the open look and take pages (`paginate`,
+  a heading's last line never alone at a page's foot, the page arrows left of Dismiss). None of today's
+  do. Gothic's text face, Jersey 10, is drawn in whole design pixels, so its text has two sizes in that
+  range: 44 and 43.5 px, and from 43 px down its next size (that of 34 px, two thirds as tall); notes
+  that need the smaller size are set in it at 43 px, as open as its room allows (today's in the leading
+  they always had, the rest of the room unused). On the Scribe (`library.about.body_px`
+  and `lead`):
+
+  | Notes | Gothic upright | Gothic sideways | Classic upright | Classic sideways |
+  |---|---|---|---|---|
+  | 2.1.0 (draft) | 44 px, 1.3 | 44 px, 1.3 | 44 px, 1.3 | 44 px, 1.3 |
+  | 2.0.0 | 44 px, 1.19 | 43 px (next size), 1.3 | 44 px, 1.3 | 41.5 px, 1.15 |
+  | 2.0.0-beta.1 | 44 px, 1.3 | 43 px (next size), 1.3 | 44 px, 1.3 | 44 px, 1.3 |
+
+  Gothic sideways has no room for 44 px type: 2.0.0's notes need 1871 px at the tightest and the letter
+  1460, of 1320. In Classic's other fonts (2.1, Settings > Font) 2.0.0's notes sideways take 44 px at
+  the leading 1.23 in Atkinson, 1.27 in Noto Sans and 1.22 in Literata, the rest 44 px at 1.3. A
+  bullet's dot keeps the proportion the card's has to the card's text, by the type's height as it is
+  drawn (`dot_scale`): a note at the card's size has the card's dots, at 44 px dots 1.29 times the
+  card's in Classic and 1.5 times in Gothic (whose 44 px type is that much taller). `wrap` breaks lines
+  at spaces, and in Japanese or Chinese between any two characters (font.rs `cjk`; never before a
+  closing mark such as 。 or 」, nor after an opening one), and a word wider than the line (a long link)
+  starts a line and is broken between its characters, so the fit, which measures heights, never leaves a
+  line cut short. `note_set` keeps each answer for the note, the screen's size, the look and Classic's
+  font (each sets the notes at its own widths), so a step on the sheet does not search again and a font
+  picked does. What the sheet's edges and title take is ui_sheet's own (`ui_sheet_inner`), so the body
+  the notes are fitted to is the body the sheet has at any dpi (two sums of their own had Gothic at
+  320 dpi 1 px short, every note on two pages). `sheet_place` keeps the list's and a note's sheet off
+  the Library's top bar's buttons and its pager: one that would start across the bar's buttons, their
+  icons' tops cut off above its edge, starts at the margin above them, as the tallest sheet does
+  (2.0.0's notes sideways in Classic, and the letter in every font but Noto Sans; a sheet that starts
+  below the buttons, the bat in sight, keeps its place, as the letter's does in Noto Sans), and one that
+  would end over the pager (its rule and its Page 1 of 1, which the sheet's edge would cut through)
+  reaches down to the margin. Probes: `library.about.body_px`, `lead`.
 - **The keys** (docs/SHORTCUTS.md's scheme). Esc goes back one layer: a version's notes to the list, the
   list to the card that opened it (as the Templates sheet goes back to New notebook; a step, so only the
   list's and the card's places refresh), and the card closes. Enter opens: the card's

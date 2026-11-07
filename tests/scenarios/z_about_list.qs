@@ -4,7 +4,7 @@
 # 2026-11-06: "wire read all button to a list of each UNIQUE release note, and allow users to easily
 # browse the changes by version"): a row for each note, newest first, this version's marked, each with
 # its version, its date (CHANGELOG.md's) and its first line. A tap on a row shows that version's notes
-# whole on one page, at the largest size that fits them (the owner, 2026-11-07: "fit all"), with the
+# whole on one page (the owner, 2026-11-07: "fit all"; about.rs note_fit), with the
 # signature at their end and no page arrows; Back returns to the list; Dismiss closes What's new from
 # the list and from a version's notes. Sideways the same. Each step on the sheet
 # refreshes the sheet's place alone, in the sheet's refresh (ui). On a keyboard Enter opens (the card's
@@ -37,6 +37,8 @@ expect library.about.row.3 is 2.0.0-beta.1
 expect library.about.row_date.3 is 2026-11-01
 expect library.about.marked is 2
 expect library.about.note is
+expect library.about.body_px is 0
+expect library.about.lead is 0
 # (Read all refreshed where the card was and where the list is, never the whole screen: the card's
 # corner and width, the list's right edge, whatever their heights)
 expect display.presents has ui 50 130 1740
@@ -52,6 +54,7 @@ expect library.about.view is note
 expect library.about.note is 2.0.0-beta.1
 expect library.about.pages is 1
 expect library.about.body_px is 44
+expect library.about.lead is 1.3
 expect library.about.signature is 1
 expect library.about.rows is 0
 expect library.ui_has.about.back is 1
@@ -67,7 +70,8 @@ expect library.about.view is list
 expect display.presents has ui 70 214 1720 2226
 expect library.about.rows is 3
 expect library.about.marked is 2
-# Sideways: the list, and the letter whole on one page too, at 43 px (at 44 it took two), signed.
+# Sideways: the list, and the letter whole on one page too, signed: in Jersey 10's next size down (from
+# 43 px), at the leading it always had, as at 44 px even its closest look takes two pages.
 rotate 1
 wait 200
 expect library.sheet is about
@@ -82,6 +86,7 @@ expect library.about.note is 2.0.0-beta.1
 expect library.about.pages is 1
 expect library.about.page is 1
 expect library.about.body_px is 43
+expect library.about.lead is 1.3
 expect library.about.signature is 1
 expect library.ui_has.about.next is 0
 expect library.ui_has.about.back is 1

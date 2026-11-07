@@ -11,8 +11,8 @@
 //! (the owner, 2026-11-06: "wire read all button to a list of each UNIQUE release note, and allow
 //! users to easily browse the changes by version"): a row for each, newest first, with its version
 //! (this version's marked), its date and its first line, a page at a time when they need more than
-//! one. A tap on a row shows that version's notes whole on one screen, at the largest size that fits
-//! them (the owner, 2026-11-07: "fit all"; note_px), with Back to the list; Dismiss closes What's new
+//! one. A tap on a row shows that version's notes whole on one screen (the owner, 2026-11-07: "fit
+//! all"): set closer first, then smaller (note_fit), with Back to the list; Dismiss closes What's new
 //! from any of them (2.1.0).
 //!
 //! The notes, a file for each version (2.1.0): build.rs lists docs/whatsnew/*.md, each named for its
@@ -207,17 +207,62 @@ fn highlights(bl: &[Block]) -> Vec<Block> {
     out
 }
 
-/// Lines of text broken at spaces to fit w (a word wider than w alone keeps its own line).
+/// Marks a line never starts with (Japanese's closing marks and small kana), and marks it never
+/// ends with (the opening ones): no break before the first, nor after the second.
+const NO_BREAK_BEFORE: &str = "、。，．・：；？！ー々ゝゞヽヾ）〕］｝〉》」』】〙〗〟’”｠»ぁぃぅぇぉっゃゅょゎァィゥェォッャュョヮヵヶ";
+const NO_BREAK_AFTER: &str = "（〔［｛〈《「『【〘〖〝‘“｟«";
+
+/// The text's pieces a line may break between, each with whether a space comes before it: its
+/// words, and in Japanese or Chinese, which have no spaces, each character (font.rs cjk), never a
+/// closing mark apart from what comes before it nor an opening one from what follows.
+fn pieces(text: &str) -> Vec<(String, bool)> {
+    let mut out = Vec::new();
+    for word in text.split_whitespace() {
+        let (mut cur, mut spaced, mut prev) = (String::new(), true, None::<char>);
+        for ch in word.chars() {
+            if let Some(p) = prev {
+                if (crate::font::cjk(ch as u32) || crate::font::cjk(p as u32)) && !NO_BREAK_BEFORE.contains(ch) && !NO_BREAK_AFTER.contains(p) {
+                    out.push((std::mem::take(&mut cur), spaced));
+                    spaced = false;
+                }
+            }
+            cur.push(ch);
+            prev = Some(ch);
+        }
+        out.push((cur, spaced));
+    }
+    out
+}
+
+/// Lines of text broken at spaces to fit w, and between the characters of Japanese or Chinese
+/// (pieces). A word wider than w on its own (a long link) starts a line and is broken between its
+/// characters, as many to a line as fit (at least one), so no line is wider than w and nothing is
+/// cut short.
 fn wrap(f: FontFace, px: f32, text: &str, w: i32) -> Vec<String> {
     let mut out = Vec::new();
     let mut line = String::new();
-    for word in text.split_whitespace() {
-        let trial = if line.is_empty() { word.to_string() } else { format!("{line} {word}") };
-        if line.is_empty() || font_measure(f, px, &trial) <= w {
+    for (piece, spaced) in pieces(text) {
+        let trial = if line.is_empty() { piece.clone() } else if spaced { format!("{line} {piece}") } else { format!("{line}{piece}") };
+        if font_measure(f, px, &trial) <= w {
             line = trial;
-        } else {
-            out.push(std::mem::replace(&mut line, word.to_string()));
+            continue;
         }
+        if !line.is_empty() {
+            out.push(std::mem::take(&mut line));
+        }
+        let mut rest = piece.as_str();
+        while font_measure(f, px, rest) > w {
+            let mut cut = rest.chars().next().map_or(rest.len(), char::len_utf8);
+            while let Some(c) = rest[cut..].chars().next() {
+                if font_measure(f, px, &rest[..cut + c.len_utf8()]) > w {
+                    break;
+                }
+                cut += c.len_utf8();
+            }
+            out.push(rest[..cut].to_string());
+            rest = &rest[cut..];
+        }
+        line = rest.to_string();
     }
     if !line.is_empty() {
         out.push(line);
@@ -530,8 +575,9 @@ pub struct AboutHits {
     pub card_blocks: i32,
     pub card_notes: i32,
     pub card_cut: bool,
-    /// a version's notes: the size of their body text (note_px); else 0
+    /// a version's notes: the size of their body text and their leading (note_fit); else 0
     pub body_px: f32,
+    pub lead: f32,
 }
 
 /// Draws What's new as view: the card hanging from the bat (bat: its rect in the top bar), Read all's
@@ -607,13 +653,15 @@ fn card_layout(aw: i32, ah: i32, bat: Rect, bl: &[Block]) -> Card {
     let btn_h = ui_px(110.0);
     let top = bat.y + bat.h + ui_px(44.0);
     let fixed = 2 * pad + head_h + ui_px(10.0) + ui_px(30.0) + btn_h;
-    // The highlights the screen has room for, each whole (Read all has the rest), the signature always.
+    // The highlights the screen has room for, each whole (Read all has the rest), the signature always:
+    // the card ends above the Library's pager, whose left button and Page 1 of 1 its edge would cover
+    // (sideways; 2.1.0).
     let short = highlights(bl);
     let sig = short.last() == Some(&Block::Signature);
     let notes = &short[..short.len() - sig as usize];
     let (sw, sh) = sig_box(k.sign_w, k.sign_h);
     let sig_h = if sig { k.para_gap + sh } else { 0 };
-    let room = (ah - ui_px(40.0) - top - fixed - sig_h).max(0);
+    let room = (pager_top(ah) - top - fixed - sig_h).max(0);
     let rs = rows(notes, iw, &k);
     let (n, cut) = card_rows(&rs, room);
     let blocks = rs[..n].windows(2).filter(|p| p[0].block != p[1].block).count() + (n > 0) as usize;
@@ -671,13 +719,12 @@ fn sheet_w(aw: i32) -> i32 {
     (aw - 2 * ui_px(70.0)).min(ui_px(1800.0))
 }
 
-/// What the sheet's edges and title take (ui_sheet's), across and down.
+/// What the sheet's edges and title take, across and down: ui_sheet's own (ui_sheet_inner), so a
+/// body found to fit is the body the sheet has at any dpi, its rounding and all.
 fn sheet_chrome() -> (i32, i32) {
-    if gothic() {
-        (ui_px(80.0), ui_px(210.0))
-    } else {
-        (ui_px(72.0), ui_px(192.0))
-    }
+    let card = Rect::new(0, 0, 4096, 4096);
+    let inner = ui_sheet_inner(card, true);
+    (card.w - inner.w, card.h - inner.h)
 }
 
 /// The band under the title (the bat and the version), and the foot (the buttons).
@@ -699,11 +746,11 @@ fn body_max(ah: i32) -> i32 {
 }
 
 /// The sheet for a body body_h high (or as high as the screen has room for): under the top bar, the
-/// bat in sight, when the screen has the room.
+/// bat in sight, when the screen has the room (sheet_place keeps it off the top bar and the pager).
 fn sheet_rect(aw: i32, ah: i32, body_h: i32) -> Rect {
     let w = sheet_w(aw);
     let h = (sheet_fixed() + body_h).min(ah - 2 * ui_px(40.0));
-    Rect::new((aw - w) / 2, (ah - ui_px(40.0) - h).min(ui_px(214.0)).max(ui_px(40.0)), w, h)
+    Rect::new((aw - w) / 2, (ah - ui_px(40.0) - h).min(sheet_top()).max(ui_px(40.0)), w, h)
 }
 
 /// The body in the sheet's inside (ui_sheet's answer).
@@ -755,7 +802,8 @@ fn draw_foot(c: &mut Canvas, inner: Rect, hits: &mut AboutHits, back: bool) {
 /// Read all's list of n entries on aw by ah: the sheet, its rows' height and the gap between them,
 /// how many rows a page holds (as many as the tallest sheet has room for) and how many pages they
 /// take. The sheet is as tall as a full page of rows (as the rows when they take one page), so a
-/// turn keeps it where it is.
+/// turn keeps it where it is, and placed as a version's notes' is (sheet_place: never across the
+/// Library's top bar or its pager, which a list of 6 versions sideways or 9 upright would end over).
 struct ListLayout {
     card: Rect,
     rh: i32,
@@ -768,7 +816,7 @@ fn list_layout(aw: i32, ah: i32, n: usize) -> ListLayout {
     let (rh, gap) = (ui_px(170.0), ui_px(20.0));
     let per_page = ((body_max(ah) + gap) / (rh + gap)).max(1) as usize;
     let shown = n.clamp(1, per_page) as i32;
-    let card = sheet_rect(aw, ah, shown * (rh + gap) - gap);
+    let card = sheet_place(aw, ah, shown * (rh + gap) - gap);
     ListLayout { card, rh, gap, per_page, pages: n.div_ceil(per_page).max(1) as i32 }
 }
 
@@ -829,24 +877,48 @@ fn draw_list(c: &mut Canvas, aw: i32, ah: i32, all: &[Entry], version: &str, pag
     hits
 }
 
-/// The notes' look with their body text at px: at ui_text_size, the size Read all has always set
-/// them in, that look itself; smaller, every measure of it smaller with the text (the headings, the
-/// leading's lines, the bullets' indent and dots, the gaps, the signature).
-fn note_look(px: f32) -> Look {
+/// The notes' leading at its most open (the look Read all has always set them in) and at its
+/// tightest, and their gaps at their tightest as a share of the open look's (the owner, 2026-11-07:
+/// "The note reading itself isn't polished enough"): notes too long for one screen tighten these at
+/// their size before their type gets smaller (note_fit).
+const LEAD: f32 = 1.3;
+const LEAD_MIN: f32 = 1.15;
+const GAPS_MIN: f32 = 0.6;
+/// The steps from the open look (0) to the tightest: the leading a hundredth a step.
+const TIGHT_STEPS: i32 = 15;
+
+/// A bullet's dot beside body text at px, as a share of the card's: in the proportion the card's dot
+/// has to the card's text (ui_small_size), by the type's height as it is drawn. Notes at the card's
+/// size have the card's dots, larger ones larger dots, and Gothic's type, which changes size only at
+/// whole design pixels, the dots of the size it shows.
+fn dot_scale(px: f32) -> f32 {
+    let h = |px: f32| (font_ascent(FontFace::Regular, px) + font_descent(FontFace::Regular, px)) as f32;
+    h(px) / h(ui_small_size()).max(1.0)
+}
+
+/// The notes' look with their body text at px, tight steps from the open look to the tightest
+/// (TIGHT_STEPS): at ui_text_size and 0, the look Read all has always set them in, but for the
+/// bullets' dots (dot_scale). Smaller type makes every measure smaller with it (the headings, the
+/// leading's lines, the bullets' indent, the gaps, the signature); each step tighter takes the
+/// leading a hundredth nearer LEAD_MIN, and the gaps nearer GAPS_MIN of theirs, at the same size.
+fn note_look(px: f32, tight: i32) -> Look {
     let k = px / ui_text_size();
+    let t = tight.clamp(0, TIGHT_STEPS) as f32 / TIGHT_STEPS as f32;
+    let g = k * (1.0 - (1.0 - GAPS_MIN) * t);
     let at = |v: f32| ui_px(v * k);
+    let gap = |v: f32| ui_px(v * g);
     Look {
         body: px,
         head_f: FontFace::Bold,
         head_px: px,
-        lead: 1.3,
+        lead: LEAD - (LEAD - LEAD_MIN) * t,
         indent: at(56.0),
-        head_gap: at(44.0),
-        item_gap: at(8.0),
-        para_gap: at(24.0),
+        head_gap: gap(44.0),
+        item_gap: gap(8.0),
+        para_gap: gap(24.0),
         sign_w: at(720.0),
         sign_h: at(190.0),
-        dot: k,
+        dot: dot_scale(px),
     }
 }
 
@@ -865,25 +937,55 @@ fn note_w(aw: i32) -> i32 {
     sheet_w(aw) - sheet_chrome().0
 }
 
-/// The body size for notes bl on aw by ah: the largest of ui_text_size and the sizes under it, in
-/// FIT_STEPS steps, at which the notes fit the tallest sheet's body whole, on one page (the owner,
+/// How a version's notes are set (note_look): their body size, and how many steps tighter than the
+/// open look.
+#[derive(Clone, Copy, Debug, PartialEq)]
+struct Fit {
+    px: f32,
+    tight: i32,
+}
+
+/// How notes bl are set on aw by ah to fit the tallest sheet's body whole, on one page (the owner,
 /// 2026-11-07: "The read all doesn't need text that big -- either smaller text for all past
-/// messages, or fit all (which i lean toward)"). The floor is ui_small_size, the size the card sets
-/// the same notes in and the list the rows' lines: when the notes do not fit even there, they are
-/// set at the floor and take pages. Tried from the top down, a size at a time: a smaller size wraps
-/// the lines anew, so a size that fits says nothing of the next.
-fn note_fit(bl: &[Block], aw: i32, ah: i32) -> f32 {
+/// messages, or fit all (which i lean toward)"; and "The note reading itself isn't polished
+/// enough"). At ui_text_size, the size they have always had, the leading and the gaps tighten
+/// first; only notes too long even at the tightest step down in size, in FIT_STEPS steps, to the
+/// largest size at which the tightest look fits, and the room a step down leaves goes back to the
+/// leading and the gaps, up to the open look, so the notes fill the sheet evenly. (Gothic's type has
+/// two sizes in that range, ui_text_size and the next down from 43.5 px: a note that needs the
+/// smaller is set in it with the room it leaves.) The floor is ui_small_size, the size the card sets
+/// the same notes in and the list the rows' lines: when the notes do not fit even there, they are set
+/// at the floor in the open look and take pages. Sizes are tried from the top down, a size at a time:
+/// a smaller size wraps the lines anew, so a size that fits says nothing of the next. At one size each
+/// step tighter is no taller (the lines are the same), so the most open look that fits is halved for.
+fn note_fit(bl: &[Block], aw: i32, ah: i32) -> Fit {
     #[cfg(test)]
     FIT_RUNS.set(FIT_RUNS.get() + 1);
     let (w, room) = (note_w(aw), body_max(ah));
-    (0..=FIT_STEPS).map(fit_size).find(|&px| rows_h(&rows(bl, w, &note_look(px))) <= room).unwrap_or(ui_small_size())
+    let fits = |px: f32, tight: i32| rows_h(&rows(bl, w, &note_look(px, tight))) <= room;
+    for px in (0..=FIT_STEPS).map(fit_size) {
+        if !fits(px, TIGHT_STEPS) {
+            continue;
+        }
+        let (mut open, mut tight) = (0, TIGHT_STEPS);
+        while open < tight {
+            let mid = (open + tight) / 2;
+            if fits(px, mid) {
+                tight = mid;
+            } else {
+                open = mid + 1;
+            }
+        }
+        return Fit { px, tight };
+    }
+    Fit { px: ui_small_size(), tight: 0 }
 }
 
 thread_local! {
-    /// note_px's answers: the notes (their text's place and length), the screen's width and height,
+    /// note_set's answers: the notes (their text's place and length), the screen's width and height,
     /// the look, Classic's font (2.1, Settings > Font; 0 in Gothic, which has one) and the body type's
-    /// size, and the body size note_fit found for them.
-    static NOTE_PX: RefCell<Vec<((usize, usize, i32, i32, bool, usize, u32), f32)>> = const { RefCell::new(Vec::new()) };
+    /// size, and how note_fit set them.
+    static NOTE_FIT: RefCell<Vec<((usize, usize, i32, i32, bool, usize, u32), Fit)>> = const { RefCell::new(Vec::new()) };
 }
 #[cfg(test)]
 thread_local! {
@@ -891,48 +993,64 @@ thread_local! {
     static FIT_RUNS: std::cell::Cell<u32> = const { std::cell::Cell::new(0) };
 }
 
-/// note_fit's size for the notes md (bl, their blocks) on aw by ah, found once for each note,
+/// note_fit's answer for the notes md (bl, their blocks) on aw by ah, found once for each note,
 /// orientation, look and font, not at every draw. Each of Classic's fonts sets the notes at its own
 /// widths, so a size found in one is not the size for another.
-fn note_px(md: &'static str, bl: &[Block], aw: i32, ah: i32) -> f32 {
+fn note_set(md: &'static str, bl: &[Block], aw: i32, ah: i32) -> Fit {
     let family = if gothic() { 0 } else { font_family() };
     let key = (md.as_ptr() as usize, md.len(), aw, ah, gothic(), family, ui_text_size().to_bits());
-    if let Some(px) = NOTE_PX.with_borrow(|v| v.iter().find(|e| e.0 == key).map(|e| e.1)) {
-        return px;
+    if let Some(f) = NOTE_FIT.with_borrow(|v| v.iter().find(|e| e.0 == key).map(|e| e.1)) {
+        return f;
     }
-    let px = note_fit(bl, aw, ah);
-    NOTE_PX.with_borrow_mut(|v| v.push((key, px)));
-    px
+    let f = note_fit(bl, aw, ah);
+    NOTE_FIT.with_borrow_mut(|v| v.push((key, f)));
+    f
 }
 
-/// The sheet for a version's notes body_h high: sheet_rect's, unless it would end over the Library's
-/// pager at the foot (its rule and label, which its edge would cut through: 2.0.0's notes sideways in
-/// Gothic once they fit); then it reaches down to the margin above the screen's edge, as the tallest
-/// sheet does, the room under the notes left blank.
-fn note_sheet(aw: i32, ah: i32, body_h: i32) -> Rect {
-    let r = sheet_rect(aw, ah, body_h);
-    let bar = ah - crate::library::bottom_h() - ui_px(10.0);
-    if r.y + r.h > bar {
-        Rect { h: ah - ui_px(40.0) - r.y, ..r }
-    } else {
-        r
+/// The top of a sheet under the Library's top bar, the bat in sight (sheet_rect's).
+fn sheet_top() -> i32 {
+    ui_px(214.0)
+}
+
+/// The top of the Library's pager at the foot (its rule; library.rs bottom_h).
+fn pager_top(ah: i32) -> i32 {
+    ah - crate::library::bottom_h() - ui_px(10.0)
+}
+
+/// The sheet for Read all's list or a version's notes, body_h high, as sheet_rect places it, but never
+/// across the Library's top bar's buttons or its pager, whose icons and label its edge would cut
+/// through: a sheet that would start across the top bar's buttons starts where the tallest sheet
+/// does, at the margin above them (2.0.0's notes sideways in Classic once they fit, whose edge showed
+/// the icons' tops cut off), while one that starts below them keeps its place, the bat in sight; and
+/// one that would end over the pager (its rule and its Page 1 of 1: 2.0.0's notes sideways in Gothic)
+/// reaches down to the margin above the screen's edge, as the tallest sheet does, the room under what
+/// it holds left blank.
+fn sheet_place(aw: i32, ah: i32, body_h: i32) -> Rect {
+    let mut r = sheet_rect(aw, ah, body_h);
+    if r.y < crate::library::top_buttons_foot() {
+        r.y = ui_px(40.0);
     }
+    if r.y + r.h > pager_top(ah) {
+        r.h = ah - ui_px(40.0) - r.y;
+    }
+    r
 }
 
 /// A version's notes whole on the Library's sheet: their title as its title (else What's new), the
-/// bat, the version and its date under it, the notes on one page at the largest size that fits them
-/// (note_px; at the floor and a page at a time when even that does not), Back to the list at the
-/// foot's left and Dismiss at its right (the page arrows left of Dismiss when there are pages).
+/// bat, the version and its date under it, the notes on one page, set as note_fit found (at the floor
+/// and a page at a time when even that does not fit them), Back to the list at the foot's left and
+/// Dismiss at its right (the page arrows left of Dismiss when there are pages).
 fn draw_note(c: &mut Canvas, aw: i32, ah: i32, e: &Entry, page: i32) -> AboutHits {
     let bl = about_blocks(e.md);
-    let px = note_px(e.md, &bl, aw, ah);
-    let rs = rows(&bl, note_w(aw), &note_look(px));
-    let card = note_sheet(aw, ah, rows_h(&rs));
+    let fit = note_set(e.md, &bl, aw, ah);
+    let k = note_look(fit.px, fit.tight);
+    let rs = rows(&bl, note_w(aw), &k);
+    let card = sheet_place(aw, ah, rows_h(&rs));
     let inner = ui_sheet(c, card, md_title(&bl).unwrap_or(whats_new()));
     draw_head(c, inner, &e.label(), date_label(e.date));
     let body = sheet_body(inner);
     let pages = paginate(&rs, body.h);
-    let mut hits = AboutHits { area: card, pages: pages.len() as i32, body_px: px, ..AboutHits::default() };
+    let mut hits = AboutHits { area: card, pages: pages.len() as i32, body_px: fit.px, lead: k.lead, ..AboutHits::default() };
     hits.page = page.clamp(0, hits.pages - 1);
     let shown = &pages[hits.page as usize];
     hits.signed = shown.iter().any(|it| matches!(it.ink, Ink::Sign));
@@ -1216,17 +1334,48 @@ mod tests {
         Entry { versions: vec!["9.9.9"], date: "", md: Box::leak(md.into_boxed_str()) }
     }
 
-    /// Whether notes bl fit the tallest sheet on aw by ah whole at body size px.
-    fn fits(bl: &[Block], aw: i32, ah: i32, px: f32) -> bool {
-        rows_h(&rows(bl, note_w(aw), &note_look(px))) <= body_max(ah)
+    /// Whether notes bl fit the tallest sheet on aw by ah whole at body size px, tight steps tighter
+    /// than the open look.
+    fn fits(bl: &[Block], aw: i32, ah: i32, px: f32, tight: i32) -> bool {
+        rows_h(&rows(bl, note_w(aw), &note_look(px, tight))) <= body_max(ah)
+    }
+
+    /// The height of the body type at px as it is drawn (Gothic's in whole design pixels).
+    fn type_h(px: f32) -> i32 {
+        font_ascent(FontFace::Regular, px) + font_descent(FontFace::Regular, px)
+    }
+
+    /// That fit is note_fit's way of setting notes bl on aw by ah: the largest size at which their
+    /// tightest look fits (at each larger size even that does not), in the most open look that fits
+    /// there (a step more open does not); at the floor in the open look when nothing fits.
+    fn check_fit(bl: &[Block], aw: i32, ah: i32, fit: Fit, what: &str) {
+        let i = (0..=FIT_STEPS).position(|i| fit_size(i) == fit.px).expect("one of note_fit's sizes");
+        for j in 0..i as i32 {
+            assert!(!fits(bl, aw, ah, fit_size(j), TIGHT_STEPS), "{what}: {} px fits too", fit_size(j));
+        }
+        if !fits(bl, aw, ah, fit.px, TIGHT_STEPS) {
+            assert_eq!(fit, Fit { px: ui_small_size(), tight: 0 }, "{what}");
+            return;
+        }
+        assert!(fits(bl, aw, ah, fit.px, fit.tight), "{what}");
+        assert!(fit.tight == 0 || !fits(bl, aw, ah, fit.px, fit.tight - 1), "{what}: a step more open fits too");
+    }
+
+    /// A sheet r on a screen ah high starts below the Library's top bar's buttons or at the margin
+    /// above them, as the tallest sheet does, and ends above the Library's pager or at the margin
+    /// under it.
+    fn clear_of_bars(ah: i32, r: Rect, what: &str) {
+        let end = r.y + r.h;
+        assert!(r.y >= crate::library::top_buttons_foot() || r.y == ui_px(40.0), "{what}: starts at {}", r.y);
+        assert!(end <= pager_top(ah) || end == ah - ui_px(40.0), "{what}: ends at {end}");
     }
 
     #[test]
     fn every_note_fits_one_page_upright_and_sideways() {
         // The owner, 2026-11-07: "The read all doesn't need text that big -- either smaller text for
-        // all past messages, or fit all (which i lean toward)". Every version's notes in
-        // docs/whatsnew/ are whole on one page, upright and sideways on the Scribe, in both looks, at
-        // the largest of note_fit's sizes that holds them (each larger one does not), and none needs
+        // all past messages, or fit all (which i lean toward)", and "The note reading itself isn't
+        // polished enough". Every version's notes in docs/whatsnew/ are whole on one page, upright and
+        // sideways on the Scribe, in both looks, set as note_fit sets them (check_fit), and none needs
         // the floor's pages. No page arrows, no "1 / 2". Classic in each of its fonts (2.1, Settings >
         // Font), one after another as a pick in Settings changes it: each font's size is its own.
         let mut looks = vec![(UiTheme::Gothic, 0)];
@@ -1240,52 +1389,91 @@ mod tests {
                     let mut c = screen(aw, ah);
                     let h = draw_note(&mut c, aw, ah, e, 0);
                     let bl = about_blocks(e.md);
-                    let i = (0..=FIT_STEPS).position(|i| fit_size(i) == h.body_px).expect("one of note_fit's sizes");
-                    let need = rows_h(&rows(&bl, note_w(aw), &note_look(h.body_px)));
-                    eprintln!("{theme:?} {font} {aw}x{ah} {}: body {} px, {} page(s), {need} of {} px", e.label(), h.body_px, h.pages, body_max(ah));
-                    assert_eq!(h.pages, 1, "{theme:?} {font} {aw}x{ah} {}", e.label());
-                    assert!(h.signed && fits(&bl, aw, ah, h.body_px));
-                    assert!(h.body_px > ui_small_size() || fits(&bl, aw, ah, ui_small_size()));
-                    for j in 0..i {
-                        assert!(!fits(&bl, aw, ah, fit_size(j as i32)), "{} px fits too", fit_size(j as i32));
-                    }
+                    let fit = note_fit(&bl, aw, ah);
+                    let what = format!("{theme:?} {font} {aw}x{ah} {}", e.label());
+                    let need = rows_h(&rows(&bl, note_w(aw), &note_look(fit.px, fit.tight)));
+                    let at44 = |t: i32| rows_h(&rows(&bl, note_w(aw), &note_look(ui_text_size(), t)));
+                    eprintln!(
+                        "{what}: body {} px (type {} px high), leading {:.2}, {} page(s), {need} of {} px (44 px: {} open, {} tightest), sheet {} to {}",
+                        h.body_px,
+                        type_h(h.body_px),
+                        h.lead,
+                        h.pages,
+                        body_max(ah),
+                        at44(0),
+                        at44(TIGHT_STEPS),
+                        h.area.y,
+                        h.area.y + h.area.h
+                    );
+                    assert_eq!((h.body_px, h.lead), (fit.px, note_look(fit.px, fit.tight).lead), "{what}");
+                    check_fit(&bl, aw, ah, fit, &what);
+                    assert_eq!(h.pages, 1, "{what}");
+                    assert!(h.signed && fits(&bl, aw, ah, fit.px, fit.tight));
                     assert!(rect_is_empty(h.prev) && rect_is_empty(h.next));
                     assert!(inside(Rect::new(0, 0, aw, ah), h.area) && inside(h.area, h.back) && inside(h.area, h.close));
-                    // The sheet's edge clears the Library's pager, or covers it to the margin.
-                    let (end, bar) = (h.area.y + h.area.h, ah - crate::library::bottom_h() - ui_px(10.0));
-                    assert!(end <= bar || end == ah - ui_px(40.0), "{theme:?} {font} {aw}x{ah} {}: ends at {end}", e.label());
+                    clear_of_bars(ah, h.area, &what);
                 }
             }
         }
+        font_set_family(0);
     }
 
     #[test]
-    fn a_note_is_set_at_the_largest_size_that_fits() {
+    fn a_note_tightens_its_leading_and_gaps_before_its_type_gets_smaller() {
+        // The owner, 2026-11-07: "The note reading itself isn't polished enough". Notes too long for
+        // one screen in the look Read all has always had are first set closer at the size they have
+        // always had (the leading down to LEAD_MIN, the gaps to GAPS_MIN of theirs); only past that is
+        // their type smaller, and the room the smaller type leaves goes back to the leading and the
+        // gaps, up to the open look. (Fitting by size alone set 2.0.0's notes in Gothic in its smaller
+        // type over 1095 of 1940 px, upright.)
         for theme in [UiTheme::Gothic, UiTheme::Classic] {
             up(theme);
             for (aw, ah) in [(1860, 2480), (2480, 1860)] {
-                // A short note keeps the size Read all has always set notes in, and its look whole.
+                let what = format!("{theme:?} {aw}x{ah}");
+                // A short note keeps the size and the look Read all has always had.
                 let short = note("# Short\n\n- one change\n\n{signature}\n".into());
                 let mut c = screen(aw, ah);
                 let h = draw_note(&mut c, aw, ah, &short, 0);
-                assert_eq!((h.body_px, h.pages), (ui_text_size(), 1));
-                let k = note_look(h.body_px);
-                assert_eq!((k.body, k.head_px, k.indent, k.head_gap, k.item_gap, k.para_gap), (ui_text_size(), ui_text_size(), ui_px(56.0), ui_px(44.0), ui_px(8.0), ui_px(24.0)));
-                assert_eq!((k.sign_w, k.sign_h, k.dot), (ui_px(720.0), ui_px(190.0), 1.0));
-                // Bullets enough that today's size takes two pages and the floor holds them: a size
-                // between, the largest that fits, every measure smaller with it.
+                assert_eq!((h.body_px, h.lead, h.pages), (ui_text_size(), LEAD, 1));
+                let k = note_look(h.body_px, 0);
+                assert_eq!((k.body, k.head_px, k.lead), (ui_text_size(), ui_text_size(), 1.3));
+                assert_eq!((k.indent, k.head_gap, k.item_gap, k.para_gap, k.sign_w, k.sign_h), (ui_px(56.0), ui_px(44.0), ui_px(8.0), ui_px(24.0), ui_px(720.0), ui_px(190.0)));
+                // The tightest look at that size: the leading 1.15, the gaps 60% of theirs, the rest
+                // as it was.
+                let t = note_look(ui_text_size(), TIGHT_STEPS);
+                assert!((t.lead - 1.15).abs() < 1e-4 && t.body == ui_text_size() && t.dot == k.dot);
+                assert_eq!((t.indent, t.head_gap, t.item_gap, t.para_gap, t.sign_w, t.sign_h), (ui_px(56.0), ui_px(26.4), ui_px(4.8), ui_px(14.4), ui_px(720.0), ui_px(190.0)));
                 let md = |n: usize| (0..n).map(|i| format!("- change {i}, in words enough for a line\n")).collect::<String>() + "\n{signature}\n";
-                let n = (1..).find(|&n| !fits(&about_blocks(&md(n)), aw, ah, ui_text_size())).unwrap();
+                // Bullets enough that the open look takes two pages and the tightest holds them: the
+                // size they always had, set as little closer as fits.
+                let n = (1..).find(|&n| !fits(&about_blocks(&md(n)), aw, ah, ui_text_size(), 0)).unwrap();
                 let bl = about_blocks(&md(n));
-                assert!(fits(&bl, aw, ah, ui_small_size()), "{n} bullets");
+                assert!(fits(&bl, aw, ah, ui_text_size(), TIGHT_STEPS), "{what}: {n} bullets");
                 let h = draw_note(&mut c, aw, ah, &note(md(n)), 0);
-                eprintln!("{theme:?} {aw}x{ah}: {n} bullets at {} px", h.body_px);
-                assert!(h.body_px < ui_text_size() && h.body_px >= ui_small_size());
-                assert_eq!(h.pages, 1);
-                assert!(fits(&bl, aw, ah, h.body_px) && !fits(&bl, aw, ah, h.body_px + fit_size(0) - fit_size(1)));
-                // (the gaps are whole pixels: half a pixel less may round to the same)
-                let (k, k0) = (note_look(h.body_px), note_look(ui_text_size()));
-                assert!(k.indent <= k0.indent && k.para_gap <= k0.para_gap && k.sign_h < k0.sign_h && k.dot < 1.0);
+                let fit = note_fit(&bl, aw, ah);
+                eprintln!("{what}: {n} bullets at {} px, leading {:.2}", h.body_px, h.lead);
+                assert_eq!((h.body_px, h.pages), (ui_text_size(), 1));
+                assert!(fit.tight > 0 && h.lead < LEAD && h.lead > LEAD_MIN - 1e-4);
+                check_fit(&bl, aw, ah, fit, &what);
+                // More, so that even the tightest look takes two pages at that size: a smaller size,
+                // the largest at which the tightest fits, as open as the room it leaves allows.
+                let n = (n..).find(|&n| !fits(&about_blocks(&md(n)), aw, ah, ui_text_size(), TIGHT_STEPS)).unwrap();
+                let bl = about_blocks(&md(n));
+                assert!(fits(&bl, aw, ah, ui_small_size(), TIGHT_STEPS), "{what}: {n} bullets");
+                let h = draw_note(&mut c, aw, ah, &note(md(n)), 0);
+                let fit = note_fit(&bl, aw, ah);
+                eprintln!("{what}: {n} bullets at {} px, leading {:.2}", h.body_px, h.lead);
+                assert!(h.body_px < ui_text_size() && h.body_px >= ui_small_size() && h.pages == 1);
+                check_fit(&bl, aw, ah, fit, &what);
+                let (k, k0) = (note_look(fit.px, fit.tight), note_look(ui_text_size(), 0));
+                assert!(k.indent <= k0.indent && k.sign_h < k0.sign_h);
+                if theme == UiTheme::Gothic {
+                    // Gothic's type has two sizes here: the first step that changes it (to 43 px, the
+                    // card's type) makes it two thirds as tall, and its room goes back to the open look.
+                    let i = (0..=FIT_STEPS).position(|i| fit_size(i) == fit.px).unwrap() as i32;
+                    assert_eq!((type_h(fit.px), fit.tight), (type_h(ui_small_size()), 0), "{what}");
+                    assert!((0..i).all(|j| type_h(fit_size(j)) == type_h(ui_text_size())), "{what}");
+                }
             }
         }
     }
@@ -1293,25 +1481,25 @@ mod tests {
     #[test]
     fn a_note_too_long_for_the_floor_takes_pages_at_the_floor() {
         // The floor is ui_small_size, the card's size for the same notes: a note that does not fit
-        // there is set at it (no smaller) and takes pages, the signature on the last, the arrows and
-        // "1 / N" between Back and Dismiss.
+        // there even at the tightest is set at it (no smaller), in the open look, and takes pages, the
+        // signature on the last, the arrows and "1 / N" between Back and Dismiss.
         let long: String = (0..90).map(|i| format!("- change {i}, which takes a line or two to say at any of these sizes\n")).collect();
         let e = note(format!("# Long\n\n{long}\nCheers,\n\n{{signature}}\n"));
         let bl = about_blocks(e.md);
         for theme in [UiTheme::Gothic, UiTheme::Classic] {
             up(theme);
             for (aw, ah) in [(1860, 2480), (2480, 1860)] {
-                assert!(!fits(&bl, aw, ah, ui_small_size()));
+                assert!(!fits(&bl, aw, ah, ui_small_size(), TIGHT_STEPS));
                 let mut c = screen(aw, ah);
                 let first = draw_note(&mut c, aw, ah, &e, 0);
                 let last = draw_note(&mut c, aw, ah, &e, first.pages - 1);
                 eprintln!("{theme:?} {aw}x{ah}: the long note takes {} pages at {} px", first.pages, first.body_px);
-                assert_eq!((first.body_px, last.body_px), (ui_small_size(), ui_small_size()));
+                assert_eq!((first.body_px, last.body_px, first.lead), (ui_small_size(), ui_small_size(), LEAD));
                 assert!(first.pages > 1 && !first.signed && last.signed);
                 assert!(!rect_is_empty(first.next) && first.back.x + first.back.w <= first.prev.x && first.next.x + first.next.w <= first.close.x);
                 // the tallest sheet, each page's rows in its body, above the foot
                 assert_eq!(first.area.h, ah - 2 * ui_px(40.0));
-                let pages = paginate(&rows(&bl, note_w(aw), &note_look(ui_small_size())), body_max(ah));
+                let pages = paginate(&rows(&bl, note_w(aw), &note_look(ui_small_size(), 0)), body_max(ah));
                 assert_eq!(pages.len() as i32, first.pages);
                 assert!(pages.iter().all(|p| items_h(p) <= body_max(ah)));
             }
@@ -1319,23 +1507,99 @@ mod tests {
     }
 
     #[test]
-    fn a_notes_sheet_never_ends_over_the_pager() {
-        // Every height a note's body can take: the sheet ends above the Library's pager, as
-        // sheet_rect places it, or covers the pager down to the margin, as the tallest sheet does.
+    fn a_sheet_never_cuts_across_the_top_bar_or_the_pager() {
+        // Every height a note's body can take: the sheet starts as sheet_rect places it when that is
+        // below the Library's top bar's buttons (under the bar, or a little higher, the bat in sight),
+        // or at the margin above them, as the tallest sheet does (sheet_rect started a sheet too tall
+        // for that across the buttons, their icons' tops cut off above its edge: 2.0.0's notes
+        // sideways in Classic); and it ends above the Library's pager, or covers the pager down to the
+        // margin, as the tallest sheet does.
+        let foot = crate::library::top_buttons_foot();
         for theme in [UiTheme::Gothic, UiTheme::Classic] {
             up(theme);
             for (aw, ah) in [(1860, 2480), (2480, 1860)] {
-                let bar = ah - crate::library::bottom_h() - ui_px(10.0);
-                let mut grown = 0;
+                let (mut raised, mut kept, mut grown) = (0, 0, 0);
                 for body_h in (0..=body_max(ah)).step_by(5) {
-                    let (r, was) = (note_sheet(aw, ah, body_h), sheet_rect(aw, ah, body_h));
-                    let end = r.y + r.h;
-                    assert!(end <= bar || end == ah - ui_px(40.0), "{body_h}: ends at {end}");
-                    assert!((r.x, r.y, r.w) == (was.x, was.y, was.w) && r.h >= was.h);
-                    assert!(r.h == was.h || was.y + was.h > bar);
+                    let (r, was) = (sheet_place(aw, ah, body_h), sheet_rect(aw, ah, body_h));
+                    clear_of_bars(ah, r, &format!("{theme:?} {aw}x{ah} {body_h}"));
+                    assert!((r.x, r.w) == (was.x, was.w) && r.h >= was.h);
+                    assert!(r.y == was.y || (was.y < foot && r.y == ui_px(40.0)));
+                    assert!(r.h == was.h || (r.y + was.h > pager_top(ah) && r.y + r.h == ah - ui_px(40.0)));
+                    raised += (r.y < was.y) as i32;
+                    kept += (r.y == was.y && (foot..sheet_top()).contains(&r.y)) as i32;
                     grown += (r.h > was.h) as i32;
                 }
-                assert!(grown > 0);
+                // (some sheets start between the buttons' foot and the bar's rule: they stay there)
+                assert!(raised > 0 && kept > 0 && grown > 0, "{theme:?} {aw}x{ah}: {raised} {kept} {grown}");
+                // Read all's list the same, with a row for each of 1 to 40 versions (sheet_rect's list
+                // of 6 sideways ended over the pager, of 9 upright too).
+                for n in 1..=40 {
+                    clear_of_bars(ah, list_layout(aw, ah, n).card, &format!("{theme:?} {aw}x{ah} list of {n}"));
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn the_sheet_has_the_body_it_was_measured_for_at_any_dpi() {
+        // At a dpi other than 300 ui_px rounds each measure on its own. What the sheet's edges and
+        // title take is ui_sheet's own (ui_sheet_inner), so the body note_fit fits the notes to is
+        // the body ui_sheet gives them, and every note is whole on one page there too. (Two sums of
+        // their own gave Gothic at 320 dpi 1 px less than measured: every note took two pages, the
+        // second holding its last row.)
+        for theme in [UiTheme::Gothic, UiTheme::Classic] {
+            for (dpi, w, h) in [(320.0, 1986, 2648), (250.0, 1550, 2067), (212.0, 1072, 1448), (167.0, 600, 800)] {
+                ui_init(dpi);
+                assert_eq!(font_init(), 0);
+                ui_set_theme(theme);
+                for (aw, ah) in [(w, h), (h, w)] {
+                    let what = format!("{theme:?} {dpi} dpi {aw}x{ah}");
+                    let mut c = screen(aw, ah);
+                    for body_h in [0, body_max(ah) / 2, body_max(ah)] {
+                        let card = sheet_place(aw, ah, body_h);
+                        let inner = ui_sheet(&mut c, card, "What's new");
+                        assert_eq!((card.w - inner.w, card.h - inner.h), sheet_chrome(), "{what}");
+                        assert!(sheet_body(inner).h >= body_h && sheet_body(inner).h == card.h - sheet_fixed(), "{what}");
+                    }
+                    for e in notes() {
+                        let hits = draw_note(&mut c, aw, ah, e, 0);
+                        let fit = note_fit(&about_blocks(e.md), aw, ah);
+                        eprintln!("{what} {}: {} px, leading {:.2}, {} page(s)", e.label(), hits.body_px, hits.lead, hits.pages);
+                        // one page whenever the notes fit at all (the smallest screens' do not)
+                        assert!(hits.pages == 1 || !fits(&about_blocks(e.md), aw, ah, ui_small_size(), TIGHT_STEPS), "{what} {}", e.label());
+                        assert!(dpi < 300.0 || hits.pages == 1, "{what} {}", e.label());
+                        assert_eq!(hits.body_px, fit.px);
+                    }
+                }
+            }
+        }
+        ui_init(300.0);
+    }
+
+    #[test]
+    fn a_bullets_dot_keeps_the_cards_proportion_to_its_text() {
+        // The card's dot beside its text (ui_small_size) is the measure: a note at the card's size has
+        // the card's dots, at another size dots in proportion to its type as it is drawn, however
+        // tight. (Shrunk from the 44 px look's, where the card's dot stood beside larger type, a note
+        // at the floor had dots 0.77 of the card's beside the same type.)
+        for theme in [UiTheme::Gothic, UiTheme::Classic] {
+            up(theme);
+            for tight in [0, TIGHT_STEPS] {
+                assert_eq!(note_look(ui_small_size(), tight).dot, 1.0);
+                for i in 0..=FIT_STEPS {
+                    let px = fit_size(i);
+                    let k = note_look(px, tight).dot;
+                    assert!((k - type_h(px) as f32 / type_h(ui_small_size()) as f32).abs() < 1e-6 && k >= 1.0, "{theme:?} {px}");
+                }
+            }
+            let big = note_look(ui_text_size(), 0).dot;
+            eprintln!("{theme:?}: a 44 px note's dot is {big} times the card's");
+            if theme == UiTheme::Gothic {
+                // Gothic's type from 43 px down is the card's, and so are its dots; at 44 px (and
+                // 43.5) its type is half again as tall, and so are its dots.
+                assert_eq!((note_look(43.0, 0).dot, note_look(43.5, 0).dot, big), (1.0, 1.5, 1.5));
+            } else {
+                assert!((big - 44.0 / 34.0).abs() < 0.05);
             }
         }
     }
@@ -1403,6 +1667,10 @@ mod tests {
                 let l = card_layout(aw, ah, bat(), &bl);
                 eprintln!("{theme:?} {aw}x{ah}: {} of {} blocks, room {}\n{}", l.blocks, l.notes, l.room, shown(&l, &bl));
                 assert!(l.n > 0 && !l.cut, "{theme:?} {aw}x{ah}");
+                // The card ends above the Library's pager (sideways it covered the pager's left button
+                // and the P of Page 1 of 1 in Gothic).
+                let h = draw_card(&mut screen(aw, ah), aw, ah, bat(), &bl);
+                assert!(h.area.y + h.area.h <= pager_top(ah), "{theme:?} {aw}x{ah}: the card ends at {}", h.area.y + h.area.h);
                 assert!(l.rs[l.n - 1].end);
                 assert!(rows_h(&l.rs[..l.n]) <= l.room);
                 if l.n < l.rs.len() {
@@ -1439,6 +1707,46 @@ mod tests {
         let md = format!("# T\n\nShort.\n\n{long}\n\n{{signature}}\n");
         let l = card_layout(1860, 2480, bat(), &about_blocks(&md));
         assert!(!l.cut && l.blocks == 1 && l.n == 1);
+    }
+
+    #[test]
+    fn a_word_wider_than_the_sheet_is_broken_not_cut() {
+        // A link longer than a line, and Japanese, which has no spaces: wrap breaks the link between
+        // its characters on lines of its own, and Japanese between any two of its characters (never
+        // before a closing mark such as 。 or 」, nor after an opening one such as 「), so every line
+        // fits whole and nothing is cut short with "...". (wrap broke only at spaces: each was one
+        // line, drawn cut at the sheet's edge at every size, which the fit, by height, never saw.)
+        let url = format!("https://example.com/{}", "grimoire-notes/".repeat(12));
+        let link = format!("See {url} for the rest.");
+        let ja = "グリモアはキンドルスクライブのためのノートです。「すべて読む」を押すと、すべての版のお知らせが一覧になり、タップするとその版のお知らせが一画面に収まります。".repeat(3);
+        let strip = |s: &str| s.chars().filter(|c| !c.is_whitespace()).collect::<String>();
+        for theme in [UiTheme::Gothic, UiTheme::Classic] {
+            up(theme);
+            for aw in [1860, 2480] {
+                let w = note_w(aw);
+                for px in [ui_text_size(), ui_small_size()] {
+                    for (text, iw) in [(&link, w - note_look(px, 0).indent), (&ja, w)] {
+                        let lines = wrap(FontFace::Regular, px, text, iw);
+                        assert!(lines.len() > 1, "{theme:?} {aw} {px}: {lines:?}");
+                        for l in &lines {
+                            assert!(font_measure(FontFace::Regular, px, l) <= iw, "{theme:?} {aw} {px}: {l}");
+                            assert!(!NO_BREAK_BEFORE.contains(l.chars().next().unwrap()) && !NO_BREAK_AFTER.contains(l.chars().last().unwrap()), "{l}");
+                        }
+                        // nothing lost or added: the lines are the text, the spaces at their breaks aside
+                        assert_eq!(strip(&lines.concat()), strip(text));
+                    }
+                    // The link starts a line of its own, and its lines are full ones but the last.
+                    let lines = wrap(FontFace::Regular, px, &link, w);
+                    assert_eq!(lines[0], "See");
+                    assert!(lines[1].starts_with("https://"));
+                }
+            }
+            // Words between spaces stay whole, as before; Latin beside Japanese may break.
+            assert_eq!(wrap(FontFace::Regular, 44.0, "one two  three", 10000), ["one two three"]);
+            let two = wrap(FontFace::Regular, 44.0, "one two three", font_measure(FontFace::Regular, 44.0, "one two"));
+            assert_eq!(two, ["one two", "three"]);
+            assert_eq!(pieces("Kindleの「本」。"), [("Kindle".into(), true), ("の".into(), false), ("「本」。".into(), false)]);
+        }
     }
 
     #[test]

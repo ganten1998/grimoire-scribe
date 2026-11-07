@@ -1520,30 +1520,31 @@ On the Scribe (Gothic and Classic, upright and sideways), with a build of this b
 ## 2.1.0, Read all fits each version's notes
 
 The owner's decision of 2026-11-07: "The read all doesn't need text that big -- either smaller text for all
-past messages, or fit all (which i lean toward)". A version's notes are set at the largest size that fits them
-whole on the sheet (44 px, then down in half pixels), in the orientation in use; the floor is 34 px, the size
-the card sets the same notes in, below which notes would take pages again (none do). The sizes on the Scribe:
+past messages, or fit all (which i lean toward)". A version's notes are set whole on the sheet, in the
+orientation in use: since the review that followed (2.1.0, Read all set closer, at the end) closer first at
+44 px, then smaller in half pixels; the floor is 34 px, the size the card sets the same notes in, below which
+notes would take pages again (none do). The sizes and the leading on the Scribe:
 
 | Notes | Gothic upright | Gothic sideways | Classic upright | Classic sideways |
 |---|---|---|---|---|
-| 2.1.0 (draft) | 44 px | 44 px | 44 px | 44 px |
-| 2.0.0 | 43 px | 43 px | 44 px | 38.5 px |
-| 2.0.0-beta.1 | 44 px | 43 px | 44 px | 44 px |
+| 2.1.0 (draft) | 44 px, 1.3 | 44 px, 1.3 | 44 px, 1.3 | 44 px, 1.3 |
+| 2.0.0 | 44 px, 1.19 | 43 px, 1.3 | 44 px, 1.3 | 41.5 px, 1.15 |
+| 2.0.0-beta.1 | 44 px, 1.3 | 43 px, 1.3 | 44 px, 1.3 | 44 px, 1.3 |
 
 All on one page. Gothic's text face draws whole design pixels, so its 43 px text is the same size as its 34 px
-text (only the gaps and the signature are a little larger than at 34 px); at 44 px 2.0.0's notes took two pages
+text, the card's; at 44 px, even at the closest leading, 2.0.0's notes and the letter take two pages sideways
 there.
 
 Automated: about.rs `every_note_fits_one_page_upright_and_sideways` (each note in docs/whatsnew/, upright and
-sideways, Gothic and Classic: one page, signed, no page arrows, at a size every larger step of which does not
-fit, and the sheet's edge clear of the Library's pager or down to the margin),
-`a_note_is_set_at_the_largest_size_that_fits` (a short note keeps 44 px and the look Read all always had;
-bullets enough for two pages at 44 px fit at the largest size between, the gaps, dots and signature smaller
-with it), `a_note_too_long_for_the_floor_takes_pages_at_the_floor` (90 bullets: 34 px, three to five pages,
-the arrows between Back and Dismiss, the signature on the last page alone), `a_notes_sheet_never_ends_over_the_pager`
+sideways, Gothic and Classic: one page, signed, no page arrows, set as note_fit sets them, and the sheet clear
+of the Library's top bar and pager or at the margin),
+`a_note_tightens_its_leading_and_gaps_before_its_type_gets_smaller` (a short note keeps 44 px and the look Read
+all always had; bullets enough for two pages at 44 px fit there set closer; more take the largest smaller
+size), `a_note_too_long_for_the_floor_takes_pages_at_the_floor` (90 bullets: 34 px, three to five pages,
+the arrows between Back and Dismiss, the signature on the last page alone), `a_sheet_never_cuts_across_the_top_bar_or_the_pager`
 and `a_notes_size_is_found_once_for_each_screen` (the search runs once for a note, an orientation and a look,
-not on a page turn or a redraw). tests/scenarios/z_about.qs (2.0.0's notes: one page at 43 px upright and
-sideways, no arrows), z_about_list.qs (the letter at 44 px upright, 43 px sideways, one page each; 2.1.0's at
+not on a page turn or a redraw). tests/scenarios/z_about.qs (2.0.0's notes: one page, 44 px at the leading 1.19
+upright, 43 px sideways, no arrows), z_about_list.qs (the letter at 44 px upright, 43 px sideways, one page each; 2.1.0's at
 44 px both ways; Right and Left do nothing on notes that fit; the refreshes of each step still only the
 sheet's place, the letter's sheet down to the margin), y_all_screens.qs (2.0.0's notes on one page, upright and
 sideways, in every language and both looks). The shots, before and after, are in the maintainer's lab folder
@@ -1553,8 +1554,9 @@ On the Scribe, with a build of this branch, in Gothic and in Classic:
 
 1. **2.0.0's notes on one screen.** Open What's new from the bat, Read all, then 2.0.0: every bullet, the two
    paragraphs and the signature on one sheet, with Back and Dismiss at its foot and no page arrows or "1 / 2".
-   The text reads comfortably at arm's length (in Gothic it is the next size down; in Classic upright it is as
-   before). Turn the Scribe sideways: still one sheet (in Classic a little smaller again), nothing cut.
+   The text reads comfortably at arm's length (upright it is the size it always was, in Gothic a little closer).
+   Turn the Scribe sideways: still one sheet (in Gothic the next size down; in Classic a little smaller and
+   closer), nothing cut.
 2. **The other notes.** Back, then 2.0.0-beta.1's letter: one sheet upright and sideways, signed. 2.1.0's notes
    at the size they always had.
 3. **No half label.** Sideways in Gothic with 2.0.0's notes, and upright with 2.0.0-beta.1's letter: the sheet
@@ -1585,8 +1587,8 @@ outlasts a restart) and y_fonts_unknown.qs (an unknown value kept); make l10n-ch
 and Spanish in each font, `classic-atkinson`, `classic-noto-sans`, `classic-literata`, with the fit check, and
 tests/l10n/fonts.qs, the Font sheet in every language and font, upright and sideways); about.rs
 `every_note_fits_one_page_upright_and_sideways` in each font too (each version's notes on one page, upright and
-sideways, at the size found for that font: 2.0.0's sideways 42.5 px in Atkinson, 43 px in Noto Sans, 42 px in
-Literata, 38.5 px in Terminess) and `a_notes_size_is_found_once_for_each_screen` (a font picked searches again,
+sideways, as set for that font: 2.0.0's sideways 44 px at the leading 1.23 in Atkinson, 1.27 in Noto Sans and
+1.22 in Literata, 41.5 px at 1.15 in Terminess) and `a_notes_size_is_found_once_for_each_screen` (a font picked searches again,
 once; Gothic ignores Classic's font).
 
 On the Scribe (a 2022 or 2024 Scribe, with a build of this branch):
@@ -1626,3 +1628,60 @@ On the Scribe (a 2022 or 2024 Scribe, with a build of this branch):
 8. **What's new in each font.** In Terminess, open What's new from the bat, Read all, then 2.0.0, sideways:
    one sheet. Dismiss, pick Literata (Settings > Font, Done) and open 2.0.0's notes sideways again: still one
    sheet, every bullet and the signature, no page arrows. The same in Atkinson and Noto Sans.
+
+## 2.1.0, Read all set closer
+
+The owner on Read all's notes, 2026-11-07: "The note reading itself isn't polished enough". A review of the fit
+above found five things, fixed here: in Gothic, 2.0.0's notes dropped to the card's type with 122 to 127
+characters a line over 1095 of the 1940 px the sheet has upright; a size found in one of Classic's fonts was
+kept for another (already fixed with Classic fonts: the font is in the key); at a dpi other than 300 every
+Gothic note took two pages, the second with only its last row; a word wider than the sheet (a link, or
+Japanese, which has no spaces) was cut with "..."; Read all's list of 6 versions sideways (9 upright) ended
+across the Library's pager. Besides: a shrunk note's bullets were smaller than the card's beside the same type;
+in Classic sideways 2.0.0's fitted sheet started across the top bar's buttons; the card sideways in Gothic
+covered the pager's left button and the P of Page 1 of 1. Now notes are set closer before they are set
+smaller: at 44 px the leading tightens from 1.3 to at least 1.15 and the gaps to at least 60% of theirs; only
+then does the size step down, and a step down gives its room back to the leading, up to the usual look (sizes
+and leadings in the table of "Read all fits each version's notes", above). The list's sheet is kept off the
+pager as a note's is; a sheet that would start across the top bar's buttons starts at the margin above them,
+as the tallest does; the card ends above the pager (sideways it shows 2.0.0's nine bullets, the paragraphs Read
+all's); a note's bullets keep the card's proportion to the type (1.29 times the card's beside Classic's 44 px
+text, 1.5 times beside Gothic's, whose 44 px type is that much taller); wrap breaks a too-wide word between its
+characters and Japanese or Chinese between any two; and the sheet's edges and title are measured as ui_sheet
+draws them (ui_sheet_inner).
+
+Automated: about.rs `a_note_tightens_its_leading_and_gaps_before_its_type_gets_smaller` (the tightest look:
+leading 1.15, gaps 60%, the type and the rest as they were; bullets enough for two pages in the open look fit
+at 44 px a few steps closer, no step more open fitting; more than the tightest holds take the largest smaller
+size, as open as fits, in Gothic the card's type in the open look), `every_note_fits_one_page_upright_and_sideways`
+(each note, each look and font: the largest size whose tightest look fits, the most open look that fits there),
+`a_sheet_never_cuts_across_the_top_bar_or_the_pager` (every body height, and the list of 1 to 40 versions: the
+sheet starts below the top bar's buttons, where sheet_rect put it, or at the margin above them, and ends above
+the pager or at the margin under it),
+`the_sheet_has_the_body_it_was_measured_for_at_any_dpi` (320, 250, 212 and 167 dpi: ui_sheet's inside is what
+sheet_chrome says, and every note that fits at all takes one page), `a_bullets_dot_keeps_the_cards_proportion_to_its_text`,
+`a_word_wider_than_the_sheet_is_broken_not_cut` (a link and a Japanese paragraph at 44 and 34 px, upright and
+sideways: every line within the sheet, nothing lost, no line starting with a closing mark),
+`the_card_ends_at_the_last_block_that_fits_whole` (the card above the pager) and
+`a_notes_size_is_found_once_for_each_screen`. tests/scenarios/z_about.qs (the card sideways: 9 blocks; 2.0.0's
+notes 44 px at the leading 1.19 upright, 43 px at 1.3 sideways), z_about_list.qs (`library.about.lead`) and the
+new z_about_classic.qs (2.0.0's notes in Classic: 44 px at 1.3 upright, 41.5 px at 1.15 sideways, the step from
+the list refreshing 340 40 1800 1780, the sheet from the margin above the top bar's buttons). The shots, from this head,
+are in the maintainer's lab folder (readall-fit-2026-11-07, with Classic's three new fonts for 2.0.0 upright).
+
+On the Scribe, with a build of this branch:
+
+1. **2.0.0 in Gothic, upright.** What's new, Read all, 2.0.0: the large type, as 2.1.0's, every bullet, the two
+   paragraphs and the signature on one sheet that starts at the top margin and reaches the bottom one. Say
+   whether the closer lines (1.19 against 1.3) read well, or crowded, at arm's length.
+2. **2.0.0 sideways.** In Gothic: the card's type (there is no room for the large one), the usual spacing. In
+   Classic: 41.5 px at the closest spacing, the sheet's top at the margin, not across the toolbar's buttons
+   (only slivers of their frames show above it). Say whether 1.15 is too tight there.
+3. **Bullets.** The diamonds and dots beside 44 px text are larger than before, in the card's proportion to its
+   text; beside the card-size text (Gothic sideways) they are the card's. Say if they look heavy.
+4. **The card sideways** (Gothic and Classic): it ends above the page buttons, which show whole with Page 1 of
+   1; its last item is the ninth bullet, and Read all has the paragraphs.
+5. **Classic's fonts.** In Atkinson, Noto Sans and Literata, 2.0.0's notes sideways keep 44 px, a little closer
+   (1.23, 1.27, 1.22); one sheet each, nothing cut. In Noto Sans, 2.0.0-beta.1's letter sideways: its sheet
+   starts just under the toolbar's buttons, the bat and every button whole above it, and reaches the bottom
+   margin; in the other fonts it starts at the top margin, nothing of the buttons cut but slivers.

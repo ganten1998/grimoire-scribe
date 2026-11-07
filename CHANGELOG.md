@@ -43,14 +43,23 @@
   The release checks want this version's file, with notes in it, and not the release before's notes again
   (docs/RELEASING.md, The bump commit).
 - Read all shows each version's notes whole on one screen (the owner, 2026-11-07: "The read all doesn't need
-  text that big -- either smaller text for all past messages, or fit all (which i lean toward)"). The notes are
-  set at the largest size that fits them on the sheet, upright or sideways, from the size they had (44 px) down
-  in half pixels, the gaps, bullets and signature smaller with the text; the title, the version line and the
-  buttons keep their sizes, and there are no page arrows. 2.0.0's notes, which took two pages in Gothic and
-  sideways in Classic, fit on one: in Gothic at its pixel type's next size down, in Classic at 38.5 px. The text
-  gets no smaller than 34 px, the size the card sets the same notes in: notes too long even for that would
-  take pages at it (none do). A sheet that would end over the Library's page buttons reaches down to the
-  screen's margin instead, so their Page 1 of 1 is never cut through.
+  text that big -- either smaller text for all past messages, or fit all (which i lean toward)", and "The note
+  reading itself isn't polished enough"). Notes too long for the sheet are first set closer at the size they
+  had (44 px): the line spacing down to 1.15 and the gaps between items to 60%. Only if that is not enough does
+  the text get smaller, in half pixels, to the largest size that fits at the closest spacing, and the room that
+  leaves goes back to the spacing, up to the usual look, so the notes fill their sheet evenly. The title, the
+  version line and the buttons keep their sizes, and there are no page arrows. 2.0.0's notes, which took two
+  pages in Gothic and sideways in Classic, fit on one: at 44 px in Gothic upright and in Classic's Atkinson,
+  Noto Sans and Literata sideways, at 41.5 px in Terminess sideways, and sideways in Gothic, which has no room
+  for its large type, in its next size down. The text gets no smaller than 34 px, the size the card sets the
+  same notes in: notes too long even for that would take pages at it (none do). Bullets keep the card's
+  proportion to the text, so they are a little larger beside 44 px text than before. A word too long for a
+  line (a link) is broken across lines rather than cut short, and Japanese or Chinese breaks between
+  characters. Read all's sheets, the list's too, never end across the Library's page buttons (they reach
+  down to the screen's margin instead, so Page 1 of 1 is never cut through) nor start across its top bar's
+  buttons (such a sheet starts at the margin above them instead, as the tallest does). The What's new card
+  ends above the page buttons too: sideways it had covered the left one and the P of Page 1 of 1, and now
+  shows 2.0.0's nine bullets there, its two paragraphs left to Read all.
 
 ## 2.0.0 (2026-11-05)
 

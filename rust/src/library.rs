@@ -256,6 +256,7 @@ pub struct LibraryState {
     about_signed: bool,
     about_card: (i32, i32, bool),
     about_body_px: f32,
+    about_lead: f32,
     about_area: Rect,
     record_action: i32,
     record_next_action: i32,
@@ -345,6 +346,14 @@ const LABEL_CAP: usize = STORE_NAME_LEN + 32;
 // ---- layout ----
 fn top_h() -> i32 {
     ui_px(190.0)
+}
+/// The top bar's buttons' height, centred in the bar (draw_base).
+fn top_btn_h() -> i32 {
+    ui_px(150.0)
+}
+/// Where the top bar's buttons end; about.rs starts a sheet that would cut across them at the margin.
+pub(crate) fn top_buttons_foot() -> i32 {
+    (top_h() - top_btn_h()) / 2 + top_btn_h()
 }
 /// The pager's bar at the foot (its rule 10 px above it); about.rs keeps a version's notes off it.
 pub(crate) fn bottom_h() -> i32 {
@@ -650,7 +659,7 @@ fn draw_base(a: &mut App) {
     let th = top_h();
     let m = margin();
     let mut bw = ui_px(170.0);
-    let bh = ui_px(150.0);
+    let bh = top_btn_h();
     let by = (th - bh) / 2;
     let mut x = m;
     if !s.cur_folder.is_empty() {
@@ -3678,6 +3687,7 @@ fn draw_modal(a: &mut App) {
             s.about_signed = h.signed;
             s.about_card = (h.card_blocks, h.card_notes, h.card_cut);
             s.about_body_px = h.body_px;
+            s.about_lead = h.lead;
             s.about_area = h.area;
             for (r, id) in [(h.close, H_ABOUT_CLOSE), (h.prev, H_ABOUT_PREV), (h.next, H_ABOUT_NEXT), (h.more, H_ABOUT_MORE), (h.back, H_ABOUT_BACK)] {
                 if !rect_is_empty(r) {
@@ -6257,9 +6267,9 @@ pub fn library_probe(a: &mut App, key: &str, out: &mut String, cap: usize) -> i3
     } else if let Some(k) = key.strip_prefix("about.") {
         // What's new (docs/SIM.md): its view; its page (from 1) and pages; 1 on Read all's sheet (the list
         // or a version's notes); the list's rows on its page, the row marked as this version's, each
-        // row's versions and date; the notes shown, their body size and whether the page shown has the
-        // signature; the card's notes: the blocks it shows, of how many, and 1 when the last shown is
-        // cut.
+        // row's versions and date; the notes shown, their body size, their leading and whether the page
+        // shown has the signature; the card's notes: the blocks it shows, of how many, and 1 when the
+        // last shown is cut.
         let open = s.modal == Modal::About;
         let view = if open { Some(s.about_view) } else { None };
         let all = crate::about::notes();
@@ -6295,6 +6305,13 @@ pub fn library_probe(a: &mut App, key: &str, out: &mut String, cap: usize) -> i3
             let px = if view == Some(AboutView::Note) { s.about_body_px } else { 0.0 };
             let t = format!("{px:.1}");
             csnprintf!(out, cap, "%s", t.strip_suffix(".0").unwrap_or(&t));
+            return 0;
+        } else if k == "lead" {
+            // (to a hundredth, "1.3" or "1.22"; 0 but on a version's notes)
+            let lead = if view == Some(AboutView::Note) { s.about_lead } else { 0.0 };
+            let t = format!("{lead:.2}");
+            let t = t.trim_end_matches('0').trim_end_matches('.');
+            csnprintf!(out, cap, "%s", if t.is_empty() { "0" } else { t });
             return 0;
         }
         let card = view == Some(AboutView::Card);
