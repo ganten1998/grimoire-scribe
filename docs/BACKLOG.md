@@ -33,6 +33,20 @@ Waits, from the 2.1 plan:
 - **The glyph cache's 4 MB byte cap** (the plan's L3, section 7): the bundled fonts are small; it matters
   with custom fonts.
 
+## A cleared page's old picture (2.1.0): fixed; what is left for the owner
+
+A page with a current kept drawing showed its old picture after Clear page or a new paper, template or photo, and
+kept it (2.0.0 to 2.0.1; CHANGELOG 2.1.0, docs/TESTING.md). Fixed: a kept drawing stands for a page only while the
+page has nothing unsaved (editor.rs page_is_its_file). Left open:
+
+- **A new paper on a slow page says nothing for seconds.** It draws the whole page (11 and 28 s on the owner's two
+  stress pages), as any page drawn whole did before kept drawings, where 2.0.1, from a kept drawing, was at once (and wrong). It could
+  say "Loading page..." as a page that opens does (render_page_open's toast, which is due then: the page is
+  changed). The lane's recommendation: yes, in 2.1.0; not done, as it is a new notice.
+- **Undo of a Clear on a dense page keeps no drawing.** It draws the page whole (no patch: Clear keeps none) but
+  times only drawings made by render_page_full, so the page is drawn again, once, at its next open, and keeps its
+  drawing then. Small; left as it is.
+
 ## What's new by version (2.1.0): choices for the owner to confirm
 
 The owner's request of 2026-11-06 ("wire read all button to a list of each UNIQUE release note, and allow users

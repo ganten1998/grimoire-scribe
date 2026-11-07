@@ -2821,16 +2821,27 @@ fn draw_page_in(a: &mut App, r: Rect, mask: Option<Rc<TileMask>>) {
     base_follow(s, r);
 }
 
+// Whether the page in memory is the page file on disk: what a drawing kept of the file (store_load_page_render,
+// which goes by the file's stamp alone) may stand for. Not while it has a change not yet written (page_dirty), so
+// whatever changes the page marks it changed (mark_changed) before it draws it again. Clear page and a new paper
+// drew it first, and read back the drawing kept of the file as it was before the change: the old ink came back on
+// the cleared page, the old paper under a new one, and the idle save kept that picture under the new file's stamp,
+// with the Pages preview and the Library card made from it (2.0.0 to 2.0.1).
+fn page_is_its_file(s: &EditorState) -> bool {
+    !s.page_dirty
+}
+
 fn render_page_full(a: &mut App) {
     let s = ed(a);
     s.boxes.stale = true; // (a page drawn whole is another page, or one that changed whole)
     let r = Rect { x: 0, y: 0, w: s.pgw, h: s.pgh ,
     };
-    // A dense page's drawing kept from before, when it is current (store_load_page_render): read back
-    // in a fraction of a second instead of drawing every stroke again.
+    // A dense page's drawing kept from before, when it is current (store_load_page_render) and the page in
+    // memory is the file it was kept of (page_is_its_file): read back in a fraction of a second instead of
+    // drawing every stroke again.
     let pid = s.open_pid();
     let layered = s.open_page().is_some_and(page_layered);
-    let kept = s.page_ix().is_some() && !s.page_canvas.px.is_empty()
+    let kept = page_is_its_file(s) && s.page_ix().is_some() && !s.page_canvas.px.is_empty()
         && store_load_page_render(&s.nb, pid, s.pgw, s.pgh, &mut s.page_canvas, layered);
     s.page_kept = kept;
     if kept {
@@ -2882,8 +2893,8 @@ fn render_page_open(a: &mut App) {
     }
 }
 
-// Whether the open page takes seconds to draw and has no current kept drawing (a pen held on an action
-// holds the panel, so no toast could show before the drawing: none then).
+// Whether the open page takes seconds to draw and has no current kept drawing to come up from (page_is_its_file;
+// a pen held on an action holds the panel, so no toast could show before the drawing: none then).
 fn loading_toast_due(a: &App) -> bool {
     let s = ed_ref(a);
     if a.pen_action_down || s.page_ix().is_none() || s.page_canvas.px.is_empty() {
@@ -2891,7 +2902,7 @@ fn loading_toast_due(a: &App) -> bool {
     }
     let pid = s.open_pid();
     let layered = s.open_page().is_some_and(page_layered);
-    !store_page_render_kept(&s.nb, pid, s.pgw, s.pgh, layered) && store_page_slow(&s.nb, pid)
+    !(page_is_its_file(s) && store_page_render_kept(&s.nb, pid, s.pgw, s.pgh, layered)) && store_page_slow(&s.nb, pid)
 }
 
 // A page from a newer Grimoire (or one this build cannot fully read) is shown as far as it can
@@ -3332,6 +3343,7 @@ pub fn editor_save_now(a: &mut App) -> bool {
 
 // ---- ink ----
 
+// The open page changed: as it changes, before it is drawn again (page_is_its_file).
 fn mark_changed(s: &mut EditorState) {
     s.page_dirty = true;
     s.changed = true;
@@ -3943,11 +3955,11 @@ fn clear_page(a: &mut App) {
     let links=(!records.is_empty()).then_some(LinkEdit{pid,records});
     let (hh, page) = hist_page(&mut s.hist, h, ip);
     history_push_clear_links(hh, page,links);
+    mark_changed(s); // (before it is drawn: page_is_its_file)
     ed(a).boxes.stale = true;
     bar_rebuild(a);
     render_page_full(a);
     compose_all(a, RefreshMode::Full);
-    mark_changed(ed(a));
     repaint_panel(a, RefreshMode::Full);
     app_toast_dismiss(a); // (no "Page cleared": the owner, 2026-11-04; a toast left up from before goes)
 }
@@ -8448,9 +8460,10 @@ fn apply_paper(a: &mut App, k: PaperKind) {
         history_push_paper(&mut s.hist[hi].h, old, k);
     }
     s.open_page_mut().unwrap().paper = k;
+    mark_changed(s); // (before it is drawn: page_is_its_file)
     render_page_full(a);
     compose_all(a, RefreshMode::Full);
-    mark_changed(ed(a));
+    ed(a).last_up = now_ms(); // (the idle save 2 s after the drawing, seconds on a dense page, as before)
 }
 
 // A template picked on the Templates sheet becomes this page's paper, as any paper does (one undo
@@ -10721,6 +10734,65 @@ fn newest(s: &EditorState) -> Option<&Stroke> {
     s.open_page()?.strokes.last().map(|x| &**x)
 }
 
+// For the probes editor.kept_matches_render, editor.preview_matches_render and editor.card_matches_render: the
+// open page's kept drawing (.page-previews/pN.full) or its Pages preview (pN.pgm), when current for its file,
+// against the open page drawn afresh (the preview as shrunk from it); or the Library card (thumb.pgm) against
+// page 1 drawn afresh (the page in memory, else its file), shrunk as the editor shrinks its canvas for the card or
+// as a closing notebook shrinks page 1's file. Some(true) the same, Some(false) not, None with no such cache.
+// A cache is of the page file, the fresh drawing of the page in memory: asked with the page saved
+// (editor.unsaved 0). Each draws a whole page.
+fn cache_matches_render(s: &EditorState, key: &str, dpi: f32) -> Option<bool> {
+    let fresh = |p: &Page| {
+        let mut c = Canvas::default();
+        (canvas_init(&mut c, p.w, p.h) == 0).then(|| {
+            page_render(&mut c, p, Rect { x: 0, y: 0, w: p.w, h: p.h }, dpi);
+            c
+        })
+    };
+    let same = |x: &Canvas, y: &Canvas| x.w == y.w && x.h == y.h && x.px[..(x.w * x.h) as usize] == y.px[..(y.w * y.h) as usize];
+    let pid = s.open_pid();
+    match key {
+        "kept_matches_render" => {
+            let p = s.open_page()?;
+            let mut kept = Canvas::default();
+            if canvas_init(&mut kept, s.pgw, s.pgh) != 0 || !store_load_page_render(&s.nb, pid, s.pgw, s.pgh, &mut kept, page_layered(p)) {
+                return None;
+            }
+            Some(same(&kept, &fresh(p)?))
+        }
+        "preview_matches_render" => {
+            let p = s.open_page()?;
+            let mut shown = Canvas::default();
+            if !store_load_page_preview(&s.nb, pid, &mut shown) {
+                return None;
+            }
+            let mut small = Canvas::default();
+            Some(store_page_preview_image(&fresh(p)?, &mut small) && same(&shown, &small))
+        }
+        _ => {
+            let mut card = Canvas::default();
+            if store_load_thumb(s.nb.id.as_str(), &mut card) != 0 {
+                return None;
+            }
+            let first = *s.nb.page_ids.first()?;
+            let mut read = None;
+            let p = match s.hist.iter().find(|e| e.page_id == first).and_then(|e| e.page.as_deref()) {
+                Some(p) => p,
+                None if store_read_page(&s.nb, 0, &mut read) == 0 => read.as_deref()?,
+                None => return None,
+            };
+            let full = fresh(p)?;
+            let (mut lines, mut plain) = (Canvas::default(), Canvas::default());
+            if canvas_init(&mut lines, s.pgw / 3, s.pgh / 3) != 0 || canvas_init(&mut plain, s.pgw / 3, s.pgh / 3) != 0 {
+                return None;
+            }
+            canvas_downsample_keep_lines(&mut lines, &full, 0.35); // (save_thumb_from_canvas)
+            canvas_downsample(&mut plain, &full); // (close_notebook's page_render_thumb)
+            Some(same(&card, &lines) || same(&card, &plain))
+        }
+    }
+}
+
 /// The headless runner's "editor.*" keys, asked without the prefix (app_probe's contract);
 /// "templates.*" keys reach it whole (docs/SIM.md).
 pub fn editor_probe(a: &mut App, key: &str, out: &mut String, cap: usize) -> i32 {
@@ -11280,6 +11352,11 @@ pub fn editor_probe(a: &mut App, key: &str, out: &mut String, cap: usize) -> i32
             }
         }
         csnprintf!(out, cap, "%d", if same { 1 } else { 0 });
+    } else if key == "kept_matches_render" || key == "preview_matches_render" || key == "card_matches_render" {
+        // What the caches beside the pages show, against the page drawn afresh: 1 the same, 0 not, none with no
+        // such cache (cache_matches_render).
+        let v = if has_page { cache_matches_render(s, key, dpi) } else { None };
+        csnprintf!(out, cap, "%s", match v { None => "none", Some(true) => "1", Some(false) => "0" });
     } else if key == "stroke_screen_mm" {
         // The newest stroke's widest, as the screen shows it at the zoom now (the precise eraser's
         // keeps its setting at any zoom); empty with no stroke.
@@ -11630,6 +11707,74 @@ mod tests {
         clear_page(&mut a);assert!(nav_link_get(&ed_ref(&a).nav,1,88).is_none());
         undo_redo(&mut a,true);assert!(nav_link_get(&ed_ref(&a).nav,1,88).is_some());
         assert!(ed_ref(&a).open_page().unwrap().strokes.is_empty());
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    // The open page drawn afresh from its strokes, pixel for pixel what the page canvas holds.
+    fn canvas_is_the_page(a: &App) -> bool {
+        let s = ed_ref(a);
+        let mut c = Canvas::default();
+        assert_eq!(canvas_init(&mut c, s.pgw, s.pgh), 0);
+        page_render(&mut c, s.open_page().unwrap(), Rect { x: 0, y: 0, w: s.pgw, h: s.pgh }, a.dpi);
+        c.px == s.page_canvas.px
+    }
+
+    #[test]
+    fn a_kept_drawing_stands_for_the_page_only_while_the_page_is_its_file() {
+        // 2.0.0 to 2.0.1: Clear page and a new paper drew the page again before they marked it changed, and read
+        // the drawing kept of its file back, the old ink and paper; a page with a change not yet written read it
+        // back too wherever it was drawn whole.
+        let root = std::env::temp_dir().join(format!("grimoire-kept-file-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        store_init(root.to_str().unwrap());
+        let mut nb = NotebookInfo::default();
+        assert_eq!(store_create("Kept", "", PAPER_BLANK, &mut nb), 0);
+        let mut a = fshape_app();
+        let s = ed(&mut a);
+        s.nb = nb;
+        // Page 1 with enough ink to say "Loading page..." as it opens (store_page_slow: a file of 256 KB or more)
+        let mut prm = ToolParams::default();
+        tool_params_default(TOOL_BALLPOINT, &mut prm);
+        for k in 0..160u32 {
+            let mut ink = stroke_new(TOOL_BALLPOINT, &prm, 0x900 + k);
+            for i in 0..100 {
+                let t = i as f32 / 99.0;
+                stroke_append(&mut ink, &PenSample { x: 60.0 + 880.0 * t, y: 40.0 + 8.0 * k as f32 + 6.0 * (t * 17.0).sin(), pressure: 0.6, t_ms: i * 5, ..Default::default() }, 300.0);
+            }
+            page_add(s.open_page_mut().unwrap(), ink);
+        }
+        let keep = |a: &mut App| {
+            let s = ed(a);
+            assert_eq!(store_save_page(&s.nb, 0, s.open_page().unwrap()), 0);
+            s.page_dirty = false;
+            render_page_full(a);
+            let s = ed(a);
+            assert!(store_save_page_render(&s.nb, 1, &s.page_canvas, false));
+            assert!(store_page_slow(&s.nb, 1) && store_page_render_kept(&s.nb, 1, s.pgw, s.pgh, false));
+        };
+        keep(&mut a);
+        // The page as its file is comes up from the drawing kept of it, with no "Loading page..."
+        assert!(!loading_toast_due(&a));
+        render_page_full(&mut a);
+        assert!(ed_ref(&a).page_kept && canvas_is_the_page(&a));
+        // A change not yet written: drawn from the strokes, and "Loading page..." would go up
+        let s = ed(&mut a);
+        let gone = s.open_page_mut().unwrap().strokes.pop().unwrap();
+        stroke_free(gone);
+        mark_changed(s);
+        assert!(loading_toast_due(&a));
+        render_page_full(&mut a);
+        assert!(!ed_ref(&a).page_kept && canvas_is_the_page(&a));
+        // A new paper
+        keep(&mut a);
+        apply_paper(&mut a, PAPER_NARROW);
+        assert_eq!(ed_ref(&a).open_page().unwrap().paper, PAPER_NARROW);
+        assert!(!ed_ref(&a).page_kept && canvas_is_the_page(&a));
+        // Clear page
+        keep(&mut a);
+        clear_page(&mut a);
+        assert!(ed_ref(&a).open_page().unwrap().strokes.is_empty());
+        assert!(!ed_ref(&a).page_kept && canvas_is_the_page(&a));
         std::fs::remove_dir_all(root).unwrap();
     }
 

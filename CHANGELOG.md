@@ -2,6 +2,15 @@
 
 ## 2.1.0 (unreleased)
 
+- A cleared page, or a page given a new paper, template or photo, no longer shows its old picture (2.0.0 and
+  2.0.1). A page that keeps its drawing so that it opens at once (a dense page, or one that took a second or more
+  to draw) was drawn from that drawing again after the change, though it was made before it: a cleared page still
+  showed all its old ink (with Undo and Clear greyed out, as it had none), a new paper showed the old one, and the
+  save 2 seconds later kept that picture, so it came back at every open, in the Pages view's preview, and on the
+  Library's card when it was page 1. The page itself was always saved right (a cleared page with no strokes), and
+  PDF exports drew it right. A kept drawing now stands for a page only while nothing on it has changed since it
+  was saved; a changed page is drawn from its strokes.
+
 - The Links bar learning scenario waits for its incoming rows with the headless runner's new `waitfor`,
   instead of guessing that every runner will check 120 notebooks within 9 seconds. Normal application
   behavior is unchanged. `waitfor KEY OP VALUE` takes the keys and checks of `expect` and lets timers run as

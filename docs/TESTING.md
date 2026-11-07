@@ -1706,3 +1706,38 @@ On the Scribe, with a build of this branch:
   press as long as the `waitfor` and the `wait` took; the unit test
   `a_waitfor_hands_a_held_touch_back_to_the_clock_as_the_docs_say` pins the stamp and the row. Nothing to
   check on the Scribe.
+
+## 2.1.0, a cleared page's old picture
+
+Found by a review on 2026-11-07 and confirmed by two reproductions: in every 2.0.0 beta, 2.0.0 and 2.0.1 (since
+the kept drawings of 2026-10-31), a page with a current kept drawing (`.page-previews/pN.full`: kept after a slow
+open, or by the previews job for a dense page) showed its old picture after Clear page or a new paper, template
+or photo, and the idle save kept that picture, with the Pages preview and the Library card made from it. The page
+files were right. Automated: tests/scenarios/z_keep_ghost_1_clear.qs, _2_paper, _3_template (a template the
+notebook has already), _4_photo (likewise), _5_redo (Redo of a Clear that took a link away) and _6_job (a drawing
+the previews job kept, at the editor's own threshold): after the change the page is pixel for pixel its strokes
+drawn afresh (`editor.live_matches_render`), and after the idle save, a page turn and an open of the notebook
+again so are the kept drawing, the Pages preview and the Library card (`editor.kept_matches_render`,
+`editor.preview_matches_render`, `editor.card_matches_render`, new probes: docs/SIM.md). Each fails on 2.0.1 (9
+or 10 of its checks), and so does editor.rs `a_kept_drawing_stands_for_the_page_only_while_the_page_is_its_file`
+(a page changed in memory, a new paper and Clear page each drawn from the strokes, and "Loading page..." due for
+a changed slow page), with any one of the fix's three parts put back.
+
+On the Scribe, with a scratch notebook (never one whose pages matter):
+
+1. **A dense scratch page.** Make a notebook, Scratch. In the Pages view of a notebook with a dense page (one
+   that says "Loading page..." as it first opens: the stress pages do), tick it and Copy to notebook... Scratch;
+   in Scratch's Pages view drag it before the blank page 1, so that the Library card shows it. On Scratch's other
+   page pick a template, then a photo, so that the notebook has both. Open the dense page and wait until it
+   shows, turn to the other page and back: it now comes up at once, with no "Loading page..." (its drawing is
+   kept).
+2. **A new paper.** Pick another paper: the whole page is drawn on it (seconds on a dense page, with nothing said,
+   as for any page drawn whole; 2.0.1 was at once, and showed the old paper). Wait 3 s, turn away and back
+   ("Loading page...": drawn, and its drawing kept), and again: on the new paper each time, the second time at
+   once. The same with the template, and with the photo (from the Paper sheet's More papers... and Photos...).
+3. **Clear page.** Clear it: the page goes blank at once (2.0.1 kept all the old ink on the screen, with Undo and
+   Clear greyed out). Wait 3 s, turn away and back: blank. Undo: the ink comes back (drawn whole: seconds on a
+   dense page); Redo: blank again. Wait 3 s, go to the Library: Scratch's card is blank; open Scratch: the page is
+   blank, and so is its tile in the Pages view.
+4. **Nothing else is slower.** A dense page that has not changed still comes up at once from its kept drawing,
+   on page turns and as the notebook opens.

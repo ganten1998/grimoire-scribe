@@ -5,7 +5,8 @@ the rest light (a few strokes each); it opens on page 2. "other" has ten light p
 the destination picker (Copy to notebook..., Link to...'s other notebooks). "dense" opens on its dense first
 page. With "slow" before the root (# generate: tests/previews_fixture.py slow), "slow" too: three pages, the
 first a slow one under 512 KB (300 strokes: over the 256 KB that says "Loading page...", store_page_slow, and
-no dense page) and two light ones; it opens on page 2. Deterministic; never touches a user's data root."""
+no dense page) and two light ones; it opens on page 2. With "linked", "dense"'s first page has a link to its second,
+with an area (z_keep_ghost_5_redo). Deterministic; never touches a user's data root."""
 import math
 import pathlib
 import struct
@@ -73,5 +74,7 @@ notebook('other', 'Other', 10, 9, 0)
 notebook('dense', 'Dense', 2, 1, 0)
 if 'slow' in sys.argv[1:-1]:
     notebook('slow', 'Slow', 3, 1, 1, 300)
+if 'linked' in sys.argv[1:-1]:
+    (root / 'notebooks' / 'dense' / 'links.ini').write_text('# Grimoire links\nlink.1=00000001,p2\narea.1=00000001,300,500,400,200\n')
 with (root / 'settings.ini').open('a') as f:
     f.write('\nmirror_pdf=0\nstatus_mode=1\n')
