@@ -323,7 +323,7 @@ pub struct LibraryState {
     press: Press,
     /// The hit the finger went down on (the C's pressed, which points at its pressed_copy).
     pressed: Option<Hit>,
-    /// when the finger went down on it (a Buttons row held ROW_HOLD_MS: forget_row)
+    /// when the finger went down on it (a Buttons row held HOLD_MS: forget_row)
     pressed_at: u32,
     /// The Graph as a place of its own (2.0.0-beta.2, the owner's ruling of 2026-11-03): opened from the
     /// Library (two fingers down, the index-map key) on every notebook, with no notebook
@@ -1095,9 +1095,6 @@ fn menu_row(icon: IconKind, label: &str, id: i32, arg: i32, st: ButtonStyle) -> 
 // ---- the controller's buttons (Settings > Shortcuts > Buttons) ----
 
 const LEARN_MS: u32 = 10000;
-// A Buttons row held this long without moving loses its buttons (forget_row), as a link held in the
-// editor opens (LINK_HOLD_MS).
-const ROW_HOLD_MS: u32 = 600;
 
 // One descriptor drives the Buttons and Gestures sheets. The shared registry supplies the seven
 // action groups; these callbacks own only source-specific text and changes.
@@ -2218,7 +2215,7 @@ pub fn library_learn_key(a: &mut App, ev: &InEvent) -> bool {
     true
 }
 
-// A Buttons row held (ROW_HOLD_MS): its actions lose their buttons, this row's alone, and it reads
+// A Buttons row held (HOLD_MS): its actions lose their buttons, this row's alone, and it reads
 // "none"; a toast says so. Its release starts no learning.
 fn forget_row(a: &mut App, row: i32) {
     let Some(r) = binding_row_at(BUTTONS, lib(a).buttons_group as usize, row as usize) else { return };
@@ -6002,7 +5999,7 @@ pub fn library_tick(a: &mut App, now: u32) {
         && s.buttons_group >= 0
         && s.pressed.is_some_and(|p| p.id == H_BUTTON_ROW)
         && !s.press.moved
-        && now.wrapping_sub(s.pressed_at) >= ROW_HOLD_MS
+        && now.wrapping_sub(s.pressed_at) >= HOLD_MS
     {
         let row = s.pressed.map_or(0, |p| p.arg);
         s.pressed = None;
@@ -6011,7 +6008,7 @@ pub fn library_tick(a: &mut App, now: u32) {
     let s = lib(a);
     if s.modal == Modal::Gestures && s.gestures_group >= 0 && s.record_action == SHORTCUT_NONE
         && !s.gestures_reset_confirm && s.pressed.is_some_and(|p| p.id == H_GESTURE_ROW)
-        && !s.press.moved && now.wrapping_sub(s.pressed_at) >= ROW_HOLD_MS
+        && !s.press.moved && now.wrapping_sub(s.pressed_at) >= HOLD_MS
     {
         let row = s.pressed.take().unwrap().arg;
         if let Some(row) = binding_row_at(GESTURES, s.gestures_group as usize, row as usize) {

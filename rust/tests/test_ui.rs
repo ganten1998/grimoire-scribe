@@ -292,6 +292,64 @@ fn toasts_fit_the_live_view_layer() {
     ui_set_theme(was);
 }
 
+// One hold (DESIGN.md, One hold): every touch hold reads ui.rs's HOLD_MS, so none can drift from the others.
+// The five constants and the alias that held the same 600 ms each are gone, every hold site compares with
+// HOLD_MS, and no file of the app declares a hold of its own number but the keyboard's repeat (not a hold
+// that offers choices).
+fn every_hold_reads_hold_ms() {
+    check!(HOLD_MS == 600);
+    let sites: [(&str, &str, usize); 5] = [
+        ("editor.rs", include_str!("../src/editor.rs"), 3), // a link's card, a Links bar row's card, the toolbar's +
+        ("editor/select.rs", include_str!("../src/editor/select.rs"), 1), // the paste (the finger lasso is editor.rs's link hold)
+        ("library.rs", include_str!("../src/library.rs"), 2), // a Buttons or Gestures row
+        ("pagesview.rs", include_str!("../src/pagesview.rs"), 4), // New page and a tile, at the tick and the lift
+        ("linkbar.rs", include_str!("../src/linkbar.rs"), 1), // a chip held: neither a peek nor a stay
+    ];
+    for (name, src, uses) in sites {
+        for old in ["LINK_HOLD_MS", "PASTE_HOLD_MS", "ROW_HOLD_MS", "ADD_HOLD_MS", "CARD_HOLD_MS"] {
+            if src.contains(old) {
+                eprintln!("  {name} still names {old}");
+                check!(false);
+            }
+        }
+        let n = [">= HOLD_MS", "> HOLD_MS", ">=HOLD_MS", "< HOLD_MS"].iter().map(|c| src.matches(c).count()).sum::<usize>();
+        if n < uses {
+            eprintln!("  {name}: {n} comparisons with HOLD_MS, {uses} wanted");
+        }
+        check!(n >= uses);
+    }
+    // No hold of its own number anywhere: `const X_HOLD_MS: u32 = 600;` (a derived one, as the Pages view's drag
+    // at half the hold, is not a number).
+    let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+    let mut stack = vec![dir];
+    let mut own: Vec<String> = Vec::new();
+    while let Some(d) = stack.pop() {
+        for e in std::fs::read_dir(&d).unwrap() {
+            let p = e.unwrap().path();
+            if p.is_dir() {
+                stack.push(p);
+                continue;
+            }
+            if p.extension().and_then(|x| x.to_str()) != Some("rs") {
+                continue;
+            }
+            for line in std::fs::read_to_string(&p).unwrap().lines() {
+                let t = line.trim_start().trim_start_matches("pub ").trim_start_matches("pub(crate) ");
+                let Some(rest) = t.strip_prefix("const ") else { continue };
+                let Some((name, value)) = rest.split_once(": u32 = ") else { continue };
+                if name.ends_with("HOLD_MS") && value.trim_end_matches(';').trim().bytes().all(|b| b.is_ascii_digit()) {
+                    own.push(format!("{}: {name}", p.file_name().unwrap().to_string_lossy()));
+                }
+            }
+        }
+    }
+    own.sort();
+    if own != ["keyboard.rs: KB_HOLD_MS", "ui.rs: HOLD_MS"] {
+        eprintln!("  holds of their own number: {own:?}");
+        check!(false);
+    }
+}
+
 #[test]
 fn test_ui() {
     ui_init(300.0);
@@ -306,5 +364,6 @@ fn test_ui() {
     run!(sheets);
     run!(name_labels);
     run!(toasts_fit_the_live_view_layer);
+    run!(every_hold_reads_hold_ms);
     done();
 }

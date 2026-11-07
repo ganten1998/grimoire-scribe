@@ -16,7 +16,7 @@
 //! action, left by choosing a pen, the action again, or the bar's Done.
 //!
 //! The finger's way in (owner ruling 2026-11-02: no panel button for Select): a finger held still on the
-//! page off a link for LINK_HOLD_MS arms a lasso (a small dashed ring shows at the finger); drawn on
+//! page off a link for HOLD_MS arms a lasso (a small dashed ring shows at the finger); drawn on
 //! without lifting, it selects as the pen's does, and Select mode stays while the selection does; lifted
 //! where it was held, it pastes the clipboard there (nothing without one). editor_tick arms it
 //! (sel_finger_arm), from the same hold that opens a link's card.
@@ -182,9 +182,6 @@ fn finger_slop() -> f32 {
     ui_px(30.0) as f32
 }
 
-/// How long a pen held still on the page in Select mode waits before it pastes there (the link card's
-/// hold, editor.rs LINK_HOLD_MS).
-const PASTE_HOLD_MS: u32 = LINK_HOLD_MS;
 
 fn sel_ref(a: &App) -> &SelMode {
     &ed_ref(a).sel
@@ -1984,14 +1981,14 @@ fn sel_delete(a: &mut App, cut: bool) -> bool {
     true
 }
 
-/// editor_tick: a pen held still on the page in Select mode (its lasso not begun) for PASTE_HOLD_MS pastes
+/// editor_tick: a pen held still on the page in Select mode (its lasso not begun) for HOLD_MS pastes
 /// the clipboard centred there (design 6.1 and 6.7); the rest of the contact does nothing. Nothing without a
 /// clipboard: the lasso goes on.
 pub(super) fn sel_tick(a: &mut App, now: u32) {
     drag_tick(a, now);
     preview_tick(a, now);
     let m = sel_ref(a);
-    if m.state != SelState::Lasso || m.finger || !m.still || now.wrapping_sub(m.down_at) < PASTE_HOLD_MS || ed_ref(a).owner != Owner::Select {
+    if m.state != SelState::Lasso || m.finger || !m.still || now.wrapping_sub(m.down_at) < HOLD_MS || ed_ref(a).owner != Owner::Select {
         return;
     }
     if !clipboard_has() {
@@ -2010,7 +2007,7 @@ pub(super) fn sel_tick(a: &mut App, now: u32) {
     sel_paste(a, Some(at));
 }
 
-/// editor_tick: a finger held still for LINK_HOLD_MS at screen point (x, y), not on a link: the finger lasso
+/// editor_tick: a finger held still for HOLD_MS at screen point (x, y), not on a link: the finger lasso
 /// arms there (Select mode entered for it, quietly, when it was off), and a small dashed ring at the
 /// finger says so. False (nothing done) where it cannot: making a link, a sheet, the page peek or the
 /// card in front, a selection being dragged, off the page, on the panel or Select's bar.

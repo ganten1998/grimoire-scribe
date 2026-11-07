@@ -904,9 +904,17 @@ pub fn ui_name_label<'a>(name: &'a str, buf: &'a mut String, cap: usize) -> &'a 
 /// corner): a fingertip pressed firmly on glass rolls a few millimetres.
 pub const TAP_SLOP_MM: f32 = 5.0;
 
+/// How long a finger (or the nib) is held still on a control before the hold offers that control's choices
+/// (DESIGN.md, One hold): a link's card, the finger lasso and a paste, the toolbar's and the Pages view's +
+/// (the count pad), a tile's card, a Links bar row's card, a Buttons or Gestures row. Every touch hold reads
+/// this one constant, so none can drift from the others (rust/tests/test_ui.rs checks the sites). Not a touch
+/// hold, so not this: the pen dwell for shapes (a setting), the pen button's 1200 ms, the power key's 4 s and
+/// the keyboard's repeat.
+pub const HOLD_MS: u32 = 600;
+
 /// Tap tracking shared by screens: a press that starts and ends in the same rect is a tap, however
-/// the fingertip rolled between (moved, past the slop, is for drags and holds). Long press = held >
-/// 600 ms without moving.
+/// the fingertip rolled between (moved, past the slop, is for drags and holds). Long press = held
+/// HOLD_MS without moving.
 #[derive(Clone, Copy, Debug, Default)]
 pub struct Press {
     pub down: bool,

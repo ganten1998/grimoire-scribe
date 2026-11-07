@@ -32,9 +32,6 @@ const LINE_MM: f32 = 10.0;
 
 /// A drag down from the grip or the header this far closes the bar.
 const DRAG_CLOSE_MM: f32 = 15.0;
-/// A press held this long on a chip is neither a peek nor a stay: it is the long-press card's (the editor's tick
-/// opens it, PHASE2 8.10).
-const HOLD_MS: u32 = 600;
 
 // Hit ids.
 const LB_GRIP: i32 = 1;
@@ -693,7 +690,7 @@ pub fn linkbar_pointer(lb: &mut LinkBar, a: &mut App, ph: i32, ev: &InEvent, dir
     // (only a List chip of the page's own links has a hold, the long-press card: a slow press on anything else,
     // a Linked from row included, is its tap)
     let held = h.id == LB_CHIP && lb.mode == LbMode::List && linkbar_from_row(lb, h.arg).is_none()
-        && ev.t_ms.wrapping_sub(lb.press.t0) > HOLD_MS;
+        && ev.t_ms.wrapping_sub(lb.press.t0) > HOLD_MS; // (ui.rs: the long-press card's, PHASE2 8.10)
     if held || !press_is_tap(&lb.press, h.r) {
         return LbResult::None;
     }

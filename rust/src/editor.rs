@@ -20,9 +20,6 @@ const SETTLE_LEFT_MS: i32 = 150;
 // The band of the page an erased stroke counts as toward DU wear (stroke_wear_area): its ink and the
 // paper right around it, about the height of a small handwritten letter.
 const WEAR_BAND_MM: f32 = 4.0;
-// A finger held this long on a link (without moving) opens it to change or remove; a shorter tap
-// follows it.
-const LINK_HOLD_MS: u32 = 600;
 /// A pen that left proximity less than this before a finger came down still counts as in range for that
 /// finger: its hold arms no lasso (the writing hand, a grip thumb; select.rs sel_finger_arm).
 const FHOLD_PEN_MS: u32 = 500;
@@ -580,7 +577,7 @@ pub struct EditorState {
     nav: Nav,
     // Links (nav.h). Add a link (the Index, or the add-link shortcut) shows the strip, and the next pen
     // contact on the open page draws the dashed lasso around the link's area (lm), never ink; then Link
-    // to... picks where it goes. A finger's tap on a link follows it; one held on it (LINK_HOLD_MS) shows
+    // to... picks where it goes. A finger's tap on a link follows it; one held on it (HOLD_MS) shows
     // its border and the long-press card beside it (card), over the page. Held anywhere else on the page,
     // it arms the finger lasso (select.rs sel_finger_arm).
     lm: LinkMaking,
@@ -4894,7 +4891,7 @@ fn add_pad_area(a: &App) -> Rect {
     keyboard_area(&ed_ref(a).add_kb, Rect { x: 0, y: 0, w: a.w, h: a.h })
 }
 
-// The toolbar's + held (ADD_HOLD_MS, as the Pages view's New page), clicked with a modifier key held, or the
+// The toolbar's + held (HOLD_MS, as the Pages view's New page), clicked with a modifier key held, or the
 // new-pages action: the count pad along the bottom, over the page, which stays. A full notebook says so.
 fn add_pad_open(a: &mut App) {
     if !add_pad_allowed(ed_ref(a)) {
@@ -6639,7 +6636,7 @@ fn top_of_page(a: &App) -> i32 {
     status_reserved(a)
 }
 
-/// A finger held still on a link (LINK_HOLD_MS, editor_tick): its border and the long-press card, over the
+/// A finger held still on a link (HOLD_MS, editor_tick): its border and the long-press card, over the
 /// page (R2: no Pages view, no full refresh). A link being made is not made, silently.
 fn card_open_link(a: &mut App) {
     ed(a).link_held = true;
@@ -8773,7 +8770,7 @@ fn ui_pointer(a: &mut App, ph: i32, ev: &InEvent, modal: bool) {
     if modal {
         modal_act(a, h);
     } else if h.id == P_NEXT && next_adds(ed_ref(a)) && add_pad_allowed(ed_ref(a))
-        && (ev.key_mods & ADD_MODS != 0 || in_sample_ms(ev).wrapping_sub(ed_ref(a).panel_down_k) >= ADD_HOLD_MS) {
+        && (ev.key_mods & ADD_MODS != 0 || in_sample_ms(ev).wrapping_sub(ed_ref(a).panel_down_k) >= HOLD_MS) {
         // The toolbar's + held (the tick may not have seen it yet), or clicked with a modifier key held: the
         // count pad, as the Pages view's New page.
         add_pad_open(a);
@@ -10711,7 +10708,7 @@ pub fn editor_tick(a: &mut App, now: u32) {
     let s = ed(a);
     if s.open && s.owner == Owner::Link && !s.link_held && !s.link_press.moved && s.fs.state != FsState::Drawing
         && s.fs.state != FsState::Dead
-        && now.wrapping_sub(s.link_down_at) >= LINK_HOLD_MS {
+        && now.wrapping_sub(s.link_down_at) >= HOLD_MS {
         fs_kill(&mut ed(a).fs, FsReason::Held);
         // On a link, its card; anywhere else on the page the finger lasso arms (owner ruling 2026-11-02):
         // drawn on it selects, lifted where it is it pastes (select.rs)
@@ -10729,15 +10726,15 @@ pub fn editor_tick(a: &mut App, now: u32) {
     }
     // A press held on a chip of the Links bar (a finger or the pen): the long-press card for its entry (8.10).
     let s = ed(a);
-    if s.open && s.owner == Owner::Bar && !s.card.open && now.wrapping_sub(s.lb.down_at) >= LINK_HOLD_MS {
+    if s.open && s.owner == Owner::Bar && !s.card.open && now.wrapping_sub(s.lb.down_at) >= HOLD_MS {
         if let Some((i, chip)) = linkbar_pressed_chip(&s.lb) {
             bar_hold(a, i, chip);
         }
     }
-    // The toolbar's + held still (ADD_HOLD_MS): its press let go, and the count pad.
+    // The toolbar's + held still (HOLD_MS): its press let go, and the count pad.
     let s = ed(a);
     if s.open && s.owner == Owner::Panel && s.has_pressed && s.pressed.id == P_NEXT && !s.press.moved
-        && next_adds(s) && add_pad_allowed(s) && now.wrapping_sub(s.press.t0) >= ADD_HOLD_MS {
+        && next_adds(s) && add_pad_allowed(s) && now.wrapping_sub(s.press.t0) >= HOLD_MS {
         let r = s.pressed.r;
         s.has_pressed = false;
         canvas_invert(&mut a.screen, r);
@@ -13494,7 +13491,7 @@ mod tests {
     // A finger down at (x, y), still for the hold time: editor_tick's hold fires.
     fn finger_hold(a: &mut App, x: f32, y: f32) {
         finger(a, InType::TouchDown, x, y);
-        editor_tick(a, now_ms().wrapping_add(LINK_HOLD_MS + 10));
+        editor_tick(a, now_ms().wrapping_add(HOLD_MS + 10));
     }
 
     // The rest of a finger's lasso from its hold at (cx - r, cy - r): around (cx, cy), then the lift.
@@ -13533,7 +13530,7 @@ mod tests {
         assert!(!rect_is_empty(s.sel.lasso_rect), "the ring is drawn, to be drawn away with the lasso");
         assert!(rect_is_empty(s.sel.bar), "no bar yet");
         // the pen's timed paste is not the finger's: held on, nothing happens
-        editor_tick(&mut a, now_ms().wrapping_add(3 * LINK_HOLD_MS));
+        editor_tick(&mut a, now_ms().wrapping_add(3 * HOLD_MS));
         assert_eq!(ed_ref(&a).sel.state, SelState::Lasso);
         finger_ring(&mut a, 400.0, 615.0, 120.0);
         let s = ed_ref(&a);
@@ -13734,7 +13731,7 @@ mod tests {
         // moved past the slop before the hold time: no lasso, whatever the wait
         finger(&mut a, InType::TouchDown, 600.0, 900.0);
         finger(&mut a, InType::TouchMove, 600.0, 1000.0);
-        editor_tick(&mut a, now_ms().wrapping_add(LINK_HOLD_MS + 10));
+        editor_tick(&mut a, now_ms().wrapping_add(HOLD_MS + 10));
         assert_eq!(ed_ref(&a).sel.state, SelState::Off);
         assert_eq!(ed_ref(&a).owner, Owner::Link);
         finger(&mut a, InType::TouchUp, 600.0, 1000.0);
@@ -13743,7 +13740,7 @@ mod tests {
         // a tremor within the slop still holds
         finger(&mut a, InType::TouchDown, 600.0, 900.0);
         finger(&mut a, InType::TouchMove, 605.0, 903.0);
-        editor_tick(&mut a, now_ms().wrapping_add(LINK_HOLD_MS + 10));
+        editor_tick(&mut a, now_ms().wrapping_add(HOLD_MS + 10));
         assert_eq!(ed_ref(&a).sel.state, SelState::Lasso);
         finger(&mut a, InType::TouchUp, 605.0, 903.0);
         assert_eq!(ed_ref(&a).sel.state, SelState::Off);
@@ -13870,14 +13867,14 @@ mod tests {
         fhold_clipboard(&mut a);
         let n = ed_ref(&a).open_page().unwrap().strokes.len();
         finger_v(&mut a, InType::TouchDown, 600.0, 1000.0, TOUCH_F_BROAD);
-        editor_tick(&mut a, now_ms().wrapping_add(LINK_HOLD_MS + 10));
+        editor_tick(&mut a, now_ms().wrapping_add(HOLD_MS + 10));
         assert_eq!(ed_ref(&a).sel.state, SelState::Off);
         finger_v(&mut a, InType::TouchUp, 600.0, 1000.0, TOUCH_F_BROAD);
         assert_eq!(ed_ref(&a).open_page().unwrap().strokes.len(), n);
         // broad on a move before the hold time
         finger(&mut a, InType::TouchDown, 600.0, 1000.0);
         finger_v(&mut a, InType::TouchMove, 601.0, 1000.0, TOUCH_F_BROAD);
-        editor_tick(&mut a, now_ms().wrapping_add(LINK_HOLD_MS + 10));
+        editor_tick(&mut a, now_ms().wrapping_add(HOLD_MS + 10));
         assert_eq!(ed_ref(&a).sel.state, SelState::Off);
         finger(&mut a, InType::TouchUp, 601.0, 1000.0);
         assert_eq!(ed_ref(&a).open_page().unwrap().strokes.len(), n);
@@ -13923,7 +13920,7 @@ mod tests {
         pen_event(&mut a, InType::PenHover, false, 200.0, 200.0, now_ms());
         pen_event(&mut a, InType::PenLeave, false, 200.0, 200.0, now_ms());
         assert_eq!(ed_ref(&a).owner, Owner::Link);
-        editor_tick(&mut a, now_ms().wrapping_add(LINK_HOLD_MS + 10));
+        editor_tick(&mut a, now_ms().wrapping_add(HOLD_MS + 10));
         assert_eq!(ed_ref(&a).sel.state, SelState::Off);
         finger(&mut a, InType::TouchUp, 600.0, 1000.0);
         assert_eq!(ed_ref(&a).open_page().unwrap().strokes.len(), n);
@@ -13979,7 +13976,7 @@ mod tests {
         finger(&mut a, InType::TouchDown, 900.0, 1300.0);
         pen_event(&mut a, InType::PenMove, false, 400.0, 1100.0, t + 50);
         pen_event(&mut a, InType::PenUp, false, 400.0, 1100.0, t + 100);
-        editor_tick(&mut a, now_ms().wrapping_add(LINK_HOLD_MS + 10));
+        editor_tick(&mut a, now_ms().wrapping_add(HOLD_MS + 10));
         assert_eq!(ed_ref(&a).sel.state, SelState::Off);
         finger(&mut a, InType::TouchUp, 900.0, 1300.0);
         assert_eq!(ed_ref(&a).open_page().unwrap().strokes.len(), n + 2);

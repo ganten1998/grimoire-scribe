@@ -1355,8 +1355,8 @@ before and after), kept in `PagesView.move_undo` and dropped as the notebook clo
 same notebook, its pages still in the order the move left: an add, delete, copy or another move changes
 that; a rename does not) and nothing is ticked, the bottom row's Undo stands in Move to...'s place, and
 `store_undo_move_pages` writes the order back through the same `reorder_pages` path (notebook.ini only).
-A tile held `DRAG_HOLD_MS` (300 ms, by the contact's own clock), moved past the slop and then off the tile
-is dragged (`PageDrag`) with no card drawn: the card waits for `CARD_HOLD_MS` (600 ms) held still, and a drag
+A tile held `DRAG_HOLD_MS` (300 ms, half of `HOLD_MS`, by the contact's own clock), moved past the slop and then off the tile
+is dragged (`PageDrag`) with no card drawn: the card waits for `HOLD_MS` (600 ms) held still, and a drag
 from a card already up starts at the slop and takes the card down in the bar's first refresh (the owner,
 2026-11-04: the card popped and taken down again before every drag was "too disruptive as a pair"). Between
 the slop and the tile's edge the contact is `drag_armed` and nothing is drawn: a slow tap rolls past the 30 px
@@ -1802,7 +1802,7 @@ The binding design is docs/beta2/LASSO-DESIGN.md; this is where it lives in the 
   While Select mode is on the panel's tool button shows the lasso, selected (no pen is), and the early
   Live ink hook draws nothing (`editor_pen_not_ink`). `sel_hold` is `select` held on a pen button's hold
   or drag (`pb_out`: the drag's contact is not claimed, so it reaches `sel_down` as the lasso);
-  `sel_tick` and `sel_finger_hold` paste on a long press (PASTE_HOLD_MS, the link card's hold). Cut
+  `sel_tick` and `sel_finger_hold` paste on a long press (`HOLD_MS`, the link card's hold). Cut
   copies, then deletes; a delete refused after the copy puts the clipboard back (`clipboard_snapshot`,
   `clipboard_restore`). A lasso step's dirty rect leaves out floor markers (history.rs `bbox_of`), so its
   undo refreshes only the group's place.
