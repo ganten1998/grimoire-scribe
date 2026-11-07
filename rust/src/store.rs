@@ -2015,6 +2015,74 @@ fn cmp_name(a: &[u8], b: &[u8]) -> Ordering {
     a.cmp(b)
 }
 
+/// The order of names in lists people read (DESIGN.md, Name order): cmp_name's letters (each compared as its
+/// base letter, lowercase, accents dropped) with natural_cmp's numbers (a run of digits compared by its value,
+/// so "Álgebra 2" goes before "Álgebra 10"). Equal that way ("a01" and "a1", "Arbol" and "Árbol"), the names'
+/// own bytes decide, so it is a total order that never depends on the input's. For the file browser, the
+/// order of a PDF import and the font list; the Library's folders keep cmp_name, and the pictures of an
+/// import folder keep natural_cmp (bgwork_template.rs), whose order the Kindle's caches already hold.
+pub fn name_cmp(a: &str, b: &str) -> Ordering {
+    let (mut x, mut y) = (a.as_bytes(), b.as_bytes());
+    let mut fx = [0u8; 5];
+    let mut fy = [0u8; 5];
+    // what is left of each name's current folded character
+    let (mut px, mut py) = (0usize, 0usize);
+    let digit = |s: &[u8]| s.first().is_some_and(|c| c.is_ascii_digit());
+    // A run of digits: its leading zeros, then its other digits.
+    let run = |s: &[u8]| {
+        let z = s.iter().take_while(|&&c| c == b'0').count();
+        (z, s[z..].iter().take_while(|c| c.is_ascii_digit()).count())
+    };
+    loop {
+        // the next letters, up to a digit (a combining accent folds to nothing and is passed)
+        while fx[px] == 0 && !x.is_empty() && !digit(x) {
+            let n = fold_next(x, &mut fx);
+            x = &x[n..];
+            px = 0;
+        }
+        while fy[py] == 0 && !y.is_empty() && !digit(y) {
+            let n = fold_next(y, &mut fy);
+            y = &y[n..];
+            py = 0;
+        }
+        if fx[px] == 0 && fy[py] == 0 && digit(x) && digit(y) {
+            let ((zx, nx), (zy, ny)) = (run(x), run(y));
+            // more digits (past the zeros): a bigger number; as many: the digits decide
+            let c = nx.cmp(&ny).then_with(|| x[zx..zx + nx].cmp(&y[zy..zy + ny]));
+            if c != Ordering::Equal {
+                return c;
+            }
+            x = &x[zx + nx..];
+            y = &y[zy + ny..];
+            continue;
+        }
+        // a digit on one side only: compared as the character it is
+        if fx[px] == 0 && !x.is_empty() {
+            let n = fold_next(x, &mut fx);
+            x = &x[n..];
+            px = 0;
+        }
+        if fy[py] == 0 && !y.is_empty() {
+            let n = fold_next(y, &mut fy);
+            y = &y[n..];
+            py = 0;
+        }
+        if fx[px] == 0 || fy[py] == 0 {
+            if fx[px] != fy[py] {
+                // one ran out first: it goes first
+                return if fx[px] != 0 { Ordering::Greater } else { Ordering::Less };
+            }
+            break;
+        }
+        if fx[px] != fy[py] {
+            return fx[px].cmp(&fy[py]);
+        }
+        px += 1;
+        py += 1;
+    }
+    a.as_bytes().cmp(b.as_bytes())
+}
+
 /// distinct non-empty folders, sorted
 pub fn store_list_folders(out: &mut Vec<String>) -> i32 {
     let f = load_folders_ini();
@@ -5065,6 +5133,48 @@ mod tests {
         let mut v = vec!["Zoo", "Álgebra", "arte", "Études", "e\u{301}poca"];
         v.sort_by(|a, b| cmp_name(a.as_bytes(), b.as_bytes()));
         assert_eq!(v, ["Álgebra", "arte", "e\u{301}poca", "Études", "Zoo"]);
+    }
+
+    // One order for names people read: accents folded as the Library's folders fold them, numbers by their
+    // value as an import folder's pictures are; equal so, the bytes decide; and it is a total order.
+    #[test]
+    fn names_fold_accents_and_count_numbers() {
+        assert_eq!(name_cmp("Álgebra 2", "Álgebra 10"), Ordering::Less);
+        assert_eq!(name_cmp("algebra 10", "Álgebra 2"), Ordering::Greater);
+        assert_eq!(name_cmp("Straße 2", "Strasse 10"), Ordering::Less); // ß is ss
+        assert_eq!(name_cmp("page-002", "page-3"), Ordering::Less);
+        assert_eq!(name_cmp("a01", "a1"), Ordering::Less); // the same number: the bytes decide
+        assert_eq!(name_cmp("a1", "a01"), Ordering::Greater);
+        assert_eq!(name_cmp("x", "x1"), Ordering::Less);
+        assert_eq!(name_cmp("same", "same"), Ordering::Equal);
+        assert_eq!(name_cmp("", ""), Ordering::Equal);
+        assert_eq!(name_cmp("", "a"), Ordering::Less);
+        assert_eq!(name_cmp("B", "b"), Ordering::Less); // equal but for case: 'B' is before 'b'
+        assert_eq!(name_cmp("e\u{301}2", "e10"), Ordering::Less); // a combining accent before a number
+        assert_eq!(name_cmp("99999999999999999999", "100000000000000000000"), Ordering::Less); // past u64
+        let mut v = vec![
+            "Zoo", "Álgebra 10", "page 10", "arte", "Álgebra 2", "Page 9", "Études", "e\u{301}poca", "Arbol", "Árbol",
+            "日記", "1 Intro", "10 End", "2 Middle", "02 Middle", "Straße 2", "Strasse 10",
+        ];
+        v.sort_by(|a, b| name_cmp(a, b));
+        assert_eq!(
+            v,
+            [
+                "1 Intro", "02 Middle", "2 Middle", "10 End", "Álgebra 2", "Álgebra 10", "Arbol", "Árbol", "arte",
+                "e\u{301}poca", "Études", "Page 9", "page 10", "Straße 2", "Strasse 10", "Zoo", "日記",
+            ]
+        );
+        // a total order: each pair one way, and the same order whatever the input's
+        for a in &v {
+            for b in &v {
+                assert_eq!(name_cmp(a, b), name_cmp(b, a).reverse(), "{a} {b}");
+                assert_eq!(name_cmp(a, b) == Ordering::Equal, a == b, "{a} {b}");
+            }
+        }
+        let mut r = v.clone();
+        r.reverse();
+        r.sort_by(|a, b| name_cmp(a, b));
+        assert_eq!(r, v);
     }
 
     #[test]
