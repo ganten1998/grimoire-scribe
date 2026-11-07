@@ -698,5 +698,14 @@ Ideas, not plans: each needs the owner's go and its own design. No code is taken
 
 - `z_links_3_bar_learns` waits for the incoming rows themselves, with a 60-second failure bound, instead
   of a fixed 9-second sleep. Its normal and 400-ms-late runs cover the slow-runner CI failure.
-- The headless runner's `waitfor KEY OP VALUE` shares expect's probes and operators, keeps application
-  timers running, stops as soon as ready, and fails immediately for malformed or unknown probes.
+- The headless runner's `waitfor KEY OP VALUE` shares expect's probes and operators, idles as `wait` does
+  (30 ms a round; app time moved on under `GRIMOIRE_SIM_CLOCK=script`), stops as soon as ready, and fails
+  immediately for malformed or unknown probes and for the keys a check starts again.
+
+## Deferred: waitfor (2026-11-07)
+
+- `waitfor` ends as soon as its probe matches, also under `GRIMOIRE_SIM_LATE_MS` (a wait ends late there);
+  its 60 s bound is real time, also under `GRIMOIRE_SIM_CLOCK=script` (app time then runs no faster than
+  real time, so a timer close to 60 s of app time can outlast the bound). No scenario needs otherwise yet.
+- The keys a check starts again could be read without starting them again (a peek for each of the five)
+  instead of being refused, if a scenario ever needs to wait for a count.

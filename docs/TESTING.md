@@ -1692,3 +1692,7 @@ On the Scribe, with a build of this branch:
   learning finishes: Linked from rows should appear by themselves and still open the right pages.
 - Host check: run `z_links_3_bar_learns` normally and with `GRIMOIRE_SIM_LATE_MS=400`; it should continue
   as soon as both incoming rows appear. An unknown probe or a never-ready probe must fail the runner.
+- Host check (waitfor): `z_waitfor_script_clock` (`GRIMOIRE_SIM_CLOCK=script`) waits for the update-failed
+  notice to go and passes in about 6 s; before the fix it failed at the 60 s bound. A `waitfor` on
+  `display.presents`, `main.longest_unpumped_ms`, `pump.calls`, `keyboard.draws` or `fshape.fired` fails at
+  once with "waitfor cannot wait on KEY, which starts again when read". Nothing to check on the Scribe.

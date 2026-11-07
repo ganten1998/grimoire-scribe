@@ -1512,6 +1512,19 @@ fn probe_app(a: Option<&mut App>, key: &[u8], out: &mut String, cap: usize) -> i
     }
 }
 
+/// The keys whose check starts their count again (docs/SIM.md says so of each): display.presents,
+/// main.longest_unpumped_ms, pump.calls and keyboard.draws (here) and fshape.fired (editor_probe, under
+/// both its names). waitfor refuses them: it tries its check again and again, and each try would clear
+/// what it waits for. (sim_reset_on_read_keys_are_the_docs checks the list against docs/SIM.md.)
+const RESET_ON_READ: [&[u8]; 6] = [
+    b"display.presents",
+    b"main.longest_unpumped_ms",
+    b"pump.calls",
+    b"keyboard.draws",
+    b"fshape.fired",
+    b"editor.fshape.fired",
+];
+
 // Checks the expect just read. gone: the app quit before the script got to it, so only "running"
 // has an answer (0); any other key fails as not run.
 fn expect_check_as(gone: bool, mut a: Option<&mut App>) {
@@ -1523,6 +1536,11 @@ fn expect_check_as(gone: bool, mut a: Option<&mut App>) {
     let watching = key == b"watching";
     if bad {
         err(&bformat("expect failed (line %d): cannot read it (expect KEY is|has|not VALUE)\n", &[B::D(line)]));
+    } else if until.is_some() && RESET_ON_READ.contains(&key.as_slice()) {
+        // (each try would start the count again: a waitfor could pass on what it cleared itself, or never
+        // see a count reach its value; not read, so the count is left for an expect)
+        err(&bformat("expect failed (line %d): waitfor cannot wait on %s, which starts again when read (wait, then expect it)\n",
+            &[B::D(line), B::S(&key)]));
     } else if gone && !running {
         err(&bformat("expect failed (line %d): not run (the app quit before the script got here)\n", &[B::D(line)]));
     } else if !running
@@ -2671,8 +2689,8 @@ fn poll_in(ev: &mut InEvent, timeout_ms: i32, mut a: Option<&mut App>) -> i32 {
         });
         if with(|st| st.expect.pending) {
             expect_check(a.as_deref_mut()); // an expect waits for the same moment
-            if with(|st| st.expect.pending) {
-                sleep_ms(timeout_ms.clamp(1, 20));
+            if let Some(end) = with(|st| st.expect.until.filter(|_| st.expect.pending)) {
+                waitfor_idle(end, timeout_ms);
                 return 0;
             }
         }
@@ -2730,6 +2748,19 @@ fn poll_in(ev: &mut InEvent, timeout_ms: i32, mut a: Option<&mut App>) -> i32 {
     }
     // (no SDL window to pump: grimoire-headless always runs a script)
     0
+}
+
+/// A waitfor not ready yet idles as a wait does: the poll's timeout at a time (the main loop's 30 ms, so
+/// the app's idle ticks come as often as in a wait or on the Kindle at rest), cut at the waitfor's
+/// deadline, and with GRIMOIRE_SIM_CLOCK=script app time moved on by what was slept, as a wait moves it
+/// (else a waitfor on what a timer does would see app time stand still until its deadline).
+fn waitfor_idle(end: Instant, timeout_ms: i32) {
+    let left = end.saturating_duration_since(Instant::now()).as_millis().min(u32::MAX as u128) as u32;
+    let step = left.min(timeout_ms as u32).max(1);
+    sleep_ms(step as i32);
+    if let Some(at) = crate::util::sim_clock() {
+        crate::util::sim_clock_set(Some(at.wrapping_add(step)));
+    }
 }
 
 pub fn input_poll(ev: &mut InEvent, timeout_ms: i32) -> i32 {
@@ -3520,6 +3551,96 @@ mod tests {
         script("waitfor-unrun", "waitfor watching is 1\n");
         expect_unrun();
         assert_eq!(with(|st| (st.expect_total, st.expect_failed)), (1, 1));
+    }
+
+    /// The script clock back to host time when a test ends, a failed one too.
+    struct ScriptClock;
+    impl Drop for ScriptClock {
+        fn drop(&mut self) {
+            crate::util::sim_clock_set(None);
+        }
+    }
+
+    #[test]
+    fn waitfor_idles_a_poll_timeout_a_round_and_moves_the_script_clock_as_wait_does() {
+        fresh();
+        script("waitfor-clock", "waitfor watching is 1\nwait 50\nquit\n");
+        let _clock = ScriptClock;
+        crate::util::sim_clock_set(Some(1000));
+        let mut ev = InEvent::default();
+        assert_eq!(input_poll(&mut ev, 30), 0); // the waitfor read
+        assert!(with(|st| st.expect.pending));
+        assert_eq!(now_ms(), 1000);
+        // Not ready: each round sleeps the poll's timeout (the main loop's 30 ms), as a wait does, so the
+        // app's idle ticks come no faster than in a wait, and app time moves on by just that.
+        let real = Instant::now();
+        for round in 1..=3 {
+            assert_eq!(input_poll(&mut ev, 30), 0);
+            assert_eq!(now_ms(), 1000 + 30 * round);
+        }
+        assert!(real.elapsed() >= Duration::from_millis(90), "{:?}", real.elapsed());
+        assert_eq!(with(|st| st.line_no), 1);
+        // Ready: the next line is read at once, and the wait after it moves app time on as before.
+        with(|st| st.watch_fd = 123);
+        assert_eq!(input_poll(&mut ev, 30), 0);
+        assert_eq!(with(|st| (st.line_no, st.expect_total, st.expect_failed)), (2, 1, 0));
+        assert_eq!(now_ms(), 1090);
+        for _ in 0..100 {
+            if with(|st| st.line_no) == 3 {
+                break;
+            }
+            input_poll(&mut ev, 30);
+            assert!(now_ms().wrapping_sub(1090) <= 50);
+        }
+        assert_eq!((with(|st| st.line_no), now_ms()), (3, 1140));
+    }
+
+    #[test]
+    fn waitfor_refuses_the_keys_a_check_starts_again_and_leaves_their_counts() {
+        fresh();
+        // Each try of pump.calls would take the count: refused at once, one failed check, the count left
+        // for the expect that reads it after.
+        G_PUMPS.with(|p| p.set(3));
+        with(|st| st.expect_read(b"waitfor pump.calls is 3"));
+        expect_check(None);
+        assert!(!with(|st| st.expect.pending));
+        assert_eq!(with(|st| (st.expect_total, st.expect_failed)), (1, 1));
+        assert_eq!(G_PUMPS.with(|p| p.get()), 3);
+        with(|st| st.expect_read(b"expect pump.calls is 3"));
+        expect_check(None);
+        assert_eq!(with(|st| (st.expect_total, st.expect_failed)), (2, 1));
+        // Nothing to wait for on any of them, not even what a first try would clear and then pass on.
+        for key in RESET_ON_READ {
+            for check in [b" is ".as_slice(), b" not x"] {
+                with(|st| st.expect_read(&[b"waitfor ".as_slice(), key, check].concat()));
+                expect_check(None);
+                assert!(!with(|st| st.expect.pending), "{}", String::from_utf8_lossy(key));
+            }
+        }
+        assert_eq!(with(|st| (st.expect_total, st.expect_failed)), (14, 13));
+        // An expect still reads them (the count starts again).
+        with(|st| st.expect_read(b"expect display.presents is "));
+        expect_check(None);
+        assert_eq!(with(|st| (st.expect_total, st.expect_failed)), (15, 13));
+    }
+
+    #[test]
+    fn sim_reset_on_read_keys_are_the_docs() {
+        let doc = std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/../docs/SIM.md")).unwrap();
+        let says = ["since this key was last checked", "reading consumes", "starts the count again"];
+        let mut documented: Vec<&str> = doc
+            .lines()
+            .filter(|l| l.starts_with("| `") && says.iter().any(|s| l.contains(s)))
+            .filter_map(|l| l[3..].split('`').next())
+            .collect();
+        documented.sort_unstable();
+        let mut listed: Vec<&str> = RESET_ON_READ
+            .iter()
+            .map(|k| std::str::from_utf8(k).unwrap())
+            .filter(|k| !k.starts_with("editor.")) // (fshape.fired by its other name)
+            .collect();
+        listed.sort_unstable();
+        assert_eq!(documented, listed);
     }
 
     #[test]

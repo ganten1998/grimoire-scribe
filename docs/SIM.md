@@ -48,9 +48,11 @@ is when it times it by the script's own clock: `touch` lines are stamped by thei
 
 `GRIMOIRE_SIM_CLOCK=script` holds app timers still while a script line is processed or a background
 job runs. Each `wait MS` advances those timers by exactly MS; host work and `GRIMOIRE_SIM_LATE_MS`
-still delay the runner, but do not advance app time. `waitbg` keeps a real deadline and polls the
-jobs while app time stays still. This is opt-in for exact toast and refresh checks; other scenarios
-keep the real monotonic clock. `clock SECONDS` still sets only the displayed wall time.
+still delay the runner, but do not advance app time. A `waitfor` advances them by what it idled, a
+round at a time, until its probe matches (tests/scenarios/z_waitfor_script_clock.qs waits so for a
+toast to go). `waitbg` keeps a real deadline and polls the jobs while app time stays still. This is
+opt-in for exact toast and refresh checks; other scenarios keep the real monotonic clock. `clock
+SECONDS` still sets only the displayed wall time.
 
 Four more:
 
@@ -104,7 +106,7 @@ GRIMOIRE_ROOT=/tmp/q GRIMOIRE_SCRIPT=tests/scenarios/a_notebook.qs GRIMOIRE_SHOT
 | `tapn N X Y [SEP] [MS]` | N fingers (fingers 1 to N) in a row centred on (X, Y), SEP px apart (default 150), each kept on the screen, landing one frame each 10 ms apart, still for MS (default 80), lifting one frame each 10 ms apart: `tapn 2 100 100` puts them at x 25 and 175, their midpoint at 100; one batch |
 | `rotate N` | the Kindle now turned N quarter turns clockwise (0..3) |
 | `sleep`, `wake` | the power service announcing the sleep screen, and its end |
-| `waitfor KEY OP VALUE` (`OP`: `is`, `has`, `not`) | let timers run until a probe matches, checking after each flush; fail after 60 seconds, or immediately for an unknown key or malformed check. Ends as soon as the condition holds |
+| `waitfor KEY OP VALUE` (`OP`: `is`, `has`, `not`) | let timers run as `wait` does until a probe matches, checking after each flush: the main loop idles its 30 ms a round, as in a `wait` or on the Kindle at rest, and with `GRIMOIRE_SIM_CLOCK=script` each round moves app time on by what it idled. Ends as soon as the condition holds (not later with `GRIMOIRE_SIM_LATE_MS`); fails after 60 seconds of real time, or at once for an unknown key, a malformed check, or a key whose check starts its count again (`display.presents`, `main.longest_unpumped_ms`, `pump.calls`, `keyboard.draws`, `fshape.fired`: each try would clear what it waits for), which it leaves unread for an `expect`: `expect failed (line N): waitfor cannot wait on KEY, which starts again when read` |
 | `wait MS` | let timers run (autosave, toasts, the share server); at least MS of real time (more on a busy machine, or with `GRIMOIRE_SIM_LATE_MS`) |
 | `hold [PATH]` | keep timers and the server running until the external test driver stops the process, or resumes the script by creating PATH (no spaces, at most 63 bytes); used to attach Live view's readers before drawing in tests |
 | `waitbg [MS]` | let timers run until no background job is queued or running (an import, a template's picture, a PDF), at most MS (60000 if not given): what it waited for took as long as the machine let it, so it ends with that job's toast up |
