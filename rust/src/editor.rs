@@ -6547,7 +6547,7 @@ fn card_show(a: &mut App, seeds: &[u32]) {
     let (w, h) = linkcard_size(&s.card);
     let screen = Rect { x: 0, y: top_of_page(a), w: a.w, h: a.h - top_of_page(a) ,
     };
-    let rect = linkcard_place(w, h, s.card.band, screen, s.panel, status_zone(a));
+    let rect = popout_place(w, h, s.card.band, screen, &[s.panel, status_zone(a)]);
     ed(a).card.rect = rect;
     compose(a, rect);
     app_invalidate(a, rect, RefreshMode::Ui);

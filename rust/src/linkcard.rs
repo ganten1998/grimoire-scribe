@@ -11,8 +11,9 @@
 //! rows (732 x 118 each, 12 px apart), for N links the line 'To change one, hold it on the page.' (60 px, 12 px
 //! above it), 24 px padding: 666 px with four rows, 536 with three, 608 or 478 for N links, 218 read-only.
 //!
-//! Where it goes (linkcard_place) is a pure function, tested: beside the border, never over it when any place
-//! avoids it, never over the clock's corner, and off the panel when it can be.
+//! Where it goes is the shared popout's place (popout.rs, popout_place, with the panel and the clock's corner to
+//! avoid): beside the border, never over it when any place avoids it, never over the clock's corner, and off the
+//! panel when it can be.
 
 use crate::prelude::*;
 
@@ -186,64 +187,6 @@ pub fn linkcard_set(c: &mut LinkCard, pid: u32, seeds: &[u32], nb: &NotebookInfo
         tr("Delete link").to_string()
     };
     add(c, CardRow::Delete, true, delete);
-}
-
-/// The card's place on screen `screen` beside `anchor` (the border's outer rect), PHASE2 8.4: right of it, then
-/// left, below, above; each clamped into the screen 20 px in on its free axis, and slid sideways off the panel
-/// when it meets it. The first that is on the screen, does not cover the anchor, the panel or `corner` (the
-/// clock's corner zone) wins; then the first that covers neither the anchor nor the corner (it draws over the
-/// panel); else the right one clamped to the screen, moved below the corner when it meets it.
-pub fn linkcard_place(w: i32, h: i32, anchor: Rect, screen: Rect, panel: Rect, corner: Rect) -> Rect {
-    let m = u(20.0);
-    let gap = u(24.0);
-    let x_lo = screen.x + m;
-    let x_hi = screen.x + screen.w - m - w;
-    let y_lo = screen.y + m;
-    let y_hi = screen.y + screen.h - m - h;
-    let on_screen = |r: Rect| r.x >= x_lo && r.x <= x_hi && r.y >= y_lo && r.y <= y_hi;
-    let cy = clampi(anchor.y, y_lo, y_hi);
-    let cx = clampi(anchor.x, x_lo, x_hi);
-    let cands = [
-        Rect { x: anchor.x + anchor.w + gap, y: cy, w, h },
-        Rect { x: anchor.x - gap - w, y: cy, w, h },
-        Rect { x: cx, y: anchor.y + anchor.h + gap, w, h },
-        Rect { x: cx, y: anchor.y - gap - h, w, h },
-    ];
-    // Off the panel: to the nearer side of it that stays on the screen.
-    let slide = |r: Rect| -> Rect {
-        if !rect_overlaps(r, panel) {
-            return r;
-        }
-        let left = Rect { x: panel.x - m - w, ..r };
-        let right = Rect { x: panel.x + panel.w + m, ..r };
-        let (near, far) = if (r.x - left.x).abs() <= (right.x - r.x).abs() { (left, right) } else { (right, left) };
-        if on_screen(near) {
-            near
-        } else if on_screen(far) {
-            far
-        } else {
-            r
-        }
-    };
-    let clear = |r: Rect| on_screen(r) && !rect_overlaps(r, anchor) && !rect_overlaps(r, corner);
-    for &c in &cands {
-        let r = slide(c);
-        if clear(r) && !rect_overlaps(r, panel) {
-            return r;
-        }
-    }
-    for &c in &cands {
-        for r in [slide(c), c] {
-            if clear(r) {
-                return r;
-            }
-        }
-    }
-    let mut r = Rect { x: clampi(cands[0].x, x_lo, x_hi), y: clampi(cands[0].y, y_lo, y_hi), w, h };
-    if rect_overlaps(r, corner) {
-        r.y = corner.y + corner.h + u(8.0);
-    }
-    r
 }
 
 /// The card from a Links bar row (PHASE2 8.10): above the bar, 16 px over it, in the held chip's column,
