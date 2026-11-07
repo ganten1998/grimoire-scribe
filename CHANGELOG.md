@@ -98,6 +98,18 @@
   buttons (such a sheet starts at the margin above them instead, as the tallest does). The What's new card
   ends above the page buttons too: sideways it had covered the left one and the P of Page 1 of 1, and now
   shows 2.0.0's nine bullets there, its two paragraphs left to Read all.
+- A long book from KOReader no longer flashes the whole screen while its pages are added. "Adding book pages: N
+  of M" was a toast put up again every 0.6 s, and every redraw of it counted toward the full refresh that comes
+  after 30 small ones: about one flash every 18 s. It is now a notice that stays in the same place until the book
+  is open, redrawn on its own, without a flash and without counting, when its number changes, at most once every
+  2 s. A toast that comes meanwhile shows in its place for its time, then the notice is back.
+- The Library reads each notebook once when it opens, changes folder or closes a sheet (it read every
+  notebook.ini twice: once for the cards, once for the folders). It lists exactly what it did.
+- Under the hood, the pieces 2.1's planner links, file picker, fonts and quick sizes will share, with nothing
+  else changed on the Scribe: one hold time for every touch hold (600 ms, as each was), one placement for cards
+  that open beside what was held (the long-press card places exactly as before), one order for names ("Álgebra
+  2" before "Álgebra 10", accents folded), and a read-only layer for the Kindle's storage that never follows a
+  link, stays on its own device and never reaches Grimoire's notebooks by another name.
 
 ## 2.0.0 (2026-11-05)
 

@@ -4,6 +4,31 @@ Work that was decided, deferred or found but not done yet. Keep this current: wh
 move it to "Done" with the version; when something is deferred, add it here with who decided and
 why. Newest decisions first within each section.
 
+## 2.1 foundations (lane L0, 2026-11-07): choices for the owner, and what waits
+
+Lane L0 built the shared pieces of the 2.1 plan (docs/DESIGN.md, Shared building blocks) with nothing new to
+see. Defaults taken, for the owner to confirm:
+
+- **The book's progress changes at most every 2 s** (the plan's rate for every staying notice), where the toast
+  changed every 0.6 s. The default keeps a long book from ever flashing the panel; 1 s (browser.md's figure)
+  would show the count move faster, still without a flash. Recommended: 2 s, as built.
+- **The staying notice is in the toast's place** (bottom, above a sheet's buttons), so the book's progress reads
+  where it did. The Font sheet's "Checking 3 fonts..." (the plan: "above its buttons") falls there too.
+
+What waits for the lanes that use them:
+
+- The popout's frame, rows, chips with a preview well, contacts, refreshes and keys (3.2 in the 2.1 plan): with
+  the quick size card (L1). L0 moved only the place.
+- The notice's other keys: Import (the PDF import, L5), FontCheck (your own fonts, L10), Loading and Previews
+  (the picker, L8; Previews in 2.2). Their screens' rules are in `notice_pick`; Import shows on the Library only
+  until the browser has screens of its own.
+- fsview's writes (delete as a rename into the trash, `renameat2(RENAME_NOREPLACE)` with its fallback, the
+  allow-list, "File changed. Try again.", the free-space refusal and "Kindle storage nearly full."), the
+  Loading notice over 1 s, and its first readers (the picker, the PDF import, the KOReader hand-over's walk in
+  place of `realpath`).
+- `name_cmp`'s readers: the browser, the import order and the font list.
+- The Library listing from libindex's cache plus stamps (browser.md 17), past reading each notebook.ini once.
+
 ## Classic fonts (2.1.0): choices for the owner, and what waits
 
 The owner's ask of 2026-11-04 ("Custom font support/More fonts in the classic theme") is half built: More

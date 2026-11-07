@@ -1820,3 +1820,33 @@ after an idle save run with the window at 0.
    notebook whose card was made by an older version has its card drawn again from page 1's strokes at its
    first close from another page (seconds on a dense page), and not at the next.
 4. The PDF mirror still draws strokes (not done: docs/BACKLOG.md).
+
+## 2.1.0, L0 foundations
+
+Built for the 2.1 plan's lane L0 (the shared pieces every later 2.1 lane reuses; docs/DESIGN.md, Shared
+building blocks): one hold time (`ui::HOLD_MS`), one popout's place (`popout_place`), the staying notice
+(`app_notice`, with KOReader's book progress on it), one name order (`name_cmp`), a read-only storage layer
+(`fsview.rs`) and the Library reading each notebook.ini once. Nothing else should look or behave differently.
+
+Automated: rust/tests/test_ui.rs `every_hold_reads_hold_ms`; rust/tests/test_popout.rs (the long-press card's
+placement cases, avoid lists, sideways, no panel, and `the_link_card_places_as_it_did`, the same rect as
+2.0.0's `linkcard_place` for 190,000 cases); app.rs's notice tests (a redraw only for a new text and at most
+every 2 s, none counted, `App.screen` unchanged after a clear, a toast over it and back, each key on its
+screens, a 400-page book and a 10-minute import making no Full); store.rs `names_fold_accents_and_count_numbers`;
+rust/tests/test_fsview.rs (the hostile tree); library.rs `a_reload_reads_each_notebook_once`; the link card,
+count pad and book scenarios unchanged.
+
+On the Scribe:
+
+1. **A long book from KOReader.** In KOReader, open a PDF of 100 pages or more and use Open this book in
+   Grimoire. "Adding book pages: N of M" stays at the bottom, in the toast's place, its number changing about
+   every 2 s; the screen never flashes whole while it counts, and the editor opens on the reader's page with
+   "Added M book pages." as before. Say if 2 s between numbers feels too slow.
+2. **The long-press card where it was.** Hold a link near each edge of a page, upright and sideways, with the
+   toolbar panel on the left and then on the right: the card opens beside the link's border as in 2.0.0, off
+   the panel, never over the clock corner or the link. From a Links bar row it opens above the bar as before.
+3. **Holds unchanged.** Paste in Select, a link, a Library row, a page in the Pages view (its card, and a drag
+   after the shorter hold) and a Links bar row each still need the same 0.6 s hold.
+4. **The Library as before.** With many notebooks in several folders and subfolders: the Library opens,
+   changes folder and closes its sheets showing the same notebooks and folders as 2.0.0, and the Move to
+   folder list and the share page's folders are the same.

@@ -175,7 +175,7 @@ fn grimoires_folders_by_identity() {
 // names kept; Grimoire's folder lists only the user's places; stats only for the rows asked, links unfollowed.
 fn a_listing_never_enters_a_link() {
     let (root, g) = tree();
-    let odd = format!("{root}/documents/caf\u{e9} \u{2014}.pdf");
+    let odd = format!("{root}/documents/caf\u{e9} \u{65e5}\u{8a18}.pdf");
     std::fs::write(&odd, b"x").unwrap();
     // a name that is not UTF-8 (a storage that refuses one, APFS, has none)
     let raw = std::ffi::OsStr::from_bytes(b"caf\xe9.pdf");
@@ -185,7 +185,7 @@ fn a_listing_never_enters_a_link() {
     check!(names(&l) == ["Downloads", "documents", "fonts", "grimoire"]);
     check!(l.hidden == 4 && l.done && !l.capped); // system, koreader, .active, Book.sdr
     let mut l = list_all(&st, b"documents", false);
-    let mut want = vec!["Books", "a.pdf", "caf\u{e9} \u{2014}.pdf", "pipe", "time 10:30.pdf"];
+    let mut want = vec!["Books", "a.pdf", "caf\u{e9} \u{65e5}\u{8a18}.pdf", "pipe", "time 10:30.pdf"];
     if non_utf8 {
         want.push("caf\u{fffd}.pdf");
     }

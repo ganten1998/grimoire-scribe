@@ -1872,3 +1872,55 @@ The binding design is docs/beta2/LASSO-DESIGN.md; this is where it lives in the 
   shows a crossing stroke's inside runs of judged samples and a solid tick halfway between an inside and an
   outside sample. Probes: `editor.sel_exact`, `sel_cut`, `page_sig_keep`, `page_sig_same`;
   `tap panel select.mode`.
+
+## Shared building blocks (2.1, lane L0)
+
+The 2.1 plan builds a few pieces once, for every later lane to reuse (no second one grows beside them).
+Lane L0 adds them with nothing visible: each keeps what the Scribe showed before.
+
+- **One hold, `ui::HOLD_MS` (600 ms).** Every touch hold that offers a control's choices reads it: the link
+  hold and Select's paste hold in the editor, the Library's row hold, the Pages view's card hold (its drag
+  hold is `HOLD_MS / 2`) and the Links bar's. Not the pen dwell for shapes (a setting), the pen button's
+  1200 ms, the power key's 4 s or the keyboard's repeat. rust/tests/test_ui.rs `every_hold_reads_hold_ms`
+  fails on a hold of its own number.
+- **One popout's place, `popout.rs` `popout_place(w, h, anchor, screen, avoid)`.** A card beside what was
+  held: right of the anchor, then left, below and above, each clamped 20 px into the screen on its free axis.
+  `avoid` lists what it keeps clear of: the first is a side panel (a candidate that meets it slides sideways
+  to its nearer side, and it is the first given up when nothing else fits), the rest are never covered when
+  any place avoids them; the last resort is the right place clamped, moved below each of the rest it meets.
+  The long-press card passes `[panel, clock corner]` and places exactly as `linkcard_place` did
+  (tests/test_popout.rs compares the two over 190,000 cases); the quick size card will pass the same and the
+  Library's item cards (2.2) nothing. The frame, rows, chips with a preview well, contacts and keys come with
+  the quick size card.
+- **One notice that stays until ready, `app_notice(a, key, text)` until `app_notice_clear(a, key)`** (app.rs).
+  Drawn like a toast, in the toast's place above `toast_floor`, overlaid for its presents and never stored in
+  `App.screen`. A new text redraws it at most once every 2 s (`NOTICE_EVERY_MS`) by one Ui of its rect,
+  presented after the flush the way the clock corner presents itself, never counted in
+  `ui_refreshes_since_full` (whose 30th Ui is a Full); a flush that reaches its place anyway carries it; it
+  waits while the pen is down. Clearing it repaints its rect by one Ui, also uncounted. A toast takes its place
+  for the toast's time (the toast's own refresh repaints where it was) and it returns in the refresh that takes
+  the toast down. One shows at a time: the screen in front's own key (FontCheck, Loading, Previews, on the
+  screen that asked), then Book (every screen), then Import (the Library). The screen guard leaves it out of
+  its comparison (`app_overlay_rect`) and Live view's toast layer shows it when no toast does. Its texts are
+  its users': KOReader's book ("Adding book pages: %d of %d", made every 600 ms by `book_progress`) is its
+  first, so a long book no longer flashes the panel about every 18 s. Probes `notice`, `notice.key`.
+- **One name order, `store::name_cmp`.** `cmp_name`'s accent folding with `natural_cmp`'s digit runs
+  ("Álgebra 2" before "Álgebra 10"); equal so, the bytes decide, a total order. For the file browser, the
+  order of a PDF import and the font list. The Library's folders keep `cmp_name` and an import folder's
+  pictures `natural_cmp`.
+- **One storage layer, `fsview.rs`** (read-only so far; browser.md 8 and 9 in the 2.1 plan). The root is
+  `/mnt/us` on the Kindle (when Grimoire's folder is inside it), elsewhere `GRIMOIRE_STORAGE` (compiled out
+  of the Kindle build; never `/`). A `StoragePath` is a checked path relative to it, under 600 bytes, of
+  byte names. The walk opens each component with `openat(O_DIRECTORY|O_NOFOLLOW)` from the one before and
+  the file with `O_NOFOLLOW|O_NONBLOCK`, so a link anywhere fails and a FIFO never waits; each folder must be
+  on the root's device, and Grimoire's notebooks (for a pick also its PDFs and trash) are refused by `st_dev`
+  and `st_ino` whatever the case of the name. Zones by name in any case: the system's folders, dot-entries,
+  `*.sdr` and Grimoire's own refused; its import, templates, photos and fonts writable; the rest read-only.
+  `FsListing` reads names and `d_type` only, at most 5,000, in slices of at most 20 ms with the folder kept
+  open between ticks, links and refused entries left out; stats (`fstatat`, no link followed) only for the
+  rows asked, in slices. Free space: a big job leaves 100 MB; under 200 MB is "nearly full". The log has
+  counts and timings, never a name. Writes (trash, `renameat2(RENAME_NOREPLACE)`, the allow-list) come with
+  their first user.
+- **The Library reads each notebook.ini once.** `reload` lists the notebooks and takes their folders from
+  that list (`store_list_folders_from`), as the notebook picker and the share server's index do; it read
+  each twice (500 notebooks: 1,000 reads on FUSE at each enter).
