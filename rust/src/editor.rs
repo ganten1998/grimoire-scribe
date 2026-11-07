@@ -3296,6 +3296,8 @@ pub fn editor_open_notebook(a: &mut App, id: &str) {
         return;
     }
     let s = ed(a);
+    s.thumb_source = Some(first_page_source(&s.nb));
+    s.thumb_dirty = false;
     store_recover_pages(&s.nb); // pages an older version set aside that open now
     // Pages an older version saved on blank paper get their pictures back (bg/pages.ini), all of
     // them now: the thumbnail and PDF it drew are drawn again when the notebook closes.
@@ -3303,8 +3305,6 @@ pub fn editor_open_notebook(a: &mut App, id: &str) {
     bgimage_retry_missing(); // (a picture the Library found missing may be there now)
     use_page_size(s);
     s.index = requested.and_then(|pid|s.nb.page_ids.iter().position(|&p|p==pid)).map_or_else(||clampi(s.nb.last_page,0,s.nb.npages()-1),|i|i as i32);
-    s.thumb_source = Some(first_page_source(&s.nb));
-    s.thumb_dirty = false;
     s.page = s.page_at(s.index);
     if s.page.is_none() {
         s.free_histories();
