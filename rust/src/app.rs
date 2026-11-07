@@ -133,6 +133,8 @@ pub struct App {
     /// toasts stay above this y (the keyboard, a sheet's buttons); 0 none.
     /// The screen sets it as it draws; app_switch clears it.
     pub toast_floor: i32,
+    /// The staying notice (app_notice): what each key asks to say, and what the panel shows of it.
+    pub notice: Notice,
     pub lib: Option<Box<LibraryState>>,
     pub ed: Option<Box<EditorState>>,
     pub ps: Option<Box<PenSetState>>,
@@ -544,8 +546,8 @@ fn book_tick(a: &mut App) {
     if a.book.state == BookState::Done {
         let nb = a.book.nb;
         let added = a.book.made || a.book.added > 0;
+        app_notice_clear(a, NoticeKey::Book); // (the notice saying how far it got goes)
         editor_open_notebook_at(a, nb.as_str(), a.book.pid, added);
-        a.toast_until = now_ms(); // (the one saying how far it got, if it showed, goes)
         if a.book.added != 0 {
             let mut msg = String::new();
             // TRANSLATORS: in a toast, once the pages of a book KOReader sent are in its notebook.
@@ -553,16 +555,26 @@ fn book_tick(a: &mut App) {
             app_toast(a, &msg, 5000);
         }
     } else if a.book.state == BookState::Failed {
-        app_redraw_mode(a, RefreshMode::Ui); // (the toast saying how far it got goes)
+        app_notice_clear(a, NoticeKey::Book); // (the notice saying how far it got goes)
         book_failed(a);
-    } else if now_ms().wrapping_sub(a.book_told) >= 600 {
-        a.book_told = now_ms();
-        let mut msg = String::new();
-        // TRANSLATORS: in a toast while Grimoire puts the pages of a book KOReader sent into its
-        // notebook (a few seconds for a big book): pages done, of how many. One line of about 1700 px.
-        csnprintf!(&mut msg, 256, tr("Adding book pages: %d of %d"), a.book.added, a.book.total);
-        app_toast(a, &msg, 60000);
+    } else {
+        book_progress(a, now_ms());
     }
+}
+
+// How far the book got, in the staying notice (Book: on every screen), its text made at most every 600 ms.
+// The notice redraws only when its text changes, at most once every 2 s, outside the count whose 30th Ui
+// is a Full: a long book no longer flashes the panel about every 18 s (2.1, DESIGN.md "One notice").
+fn book_progress(a: &mut App, now: u32) {
+    if now.wrapping_sub(a.book_told) < 600 {
+        return;
+    }
+    a.book_told = now;
+    let mut msg = String::new();
+    // TRANSLATORS: in a toast while Grimoire puts the pages of a book KOReader sent into its
+    // notebook (a few seconds for a big book): pages done, of how many. One line of about 1700 px.
+    csnprintf!(&mut msg, 256, tr("Adding book pages: %d of %d"), a.book.added, a.book.total);
+    app_notice(a, NoticeKey::Book, &msg);
 }
 
 pub fn app_init(a: &mut App, w: i32, h: i32, dpi: f32) -> i32 {
@@ -1145,8 +1157,13 @@ pub fn app_toast_dismiss(a: &mut App) {
 // for its controls (the keyboard, a sheet's buttons), just above them, so their labels stay
 // readable while it shows.
 fn toast_place(a: &App) -> Rect {
+    toast_place_for(a, a.toast.as_str())
+}
+
+// The same for any text (the staying notice's goes in the toast's place).
+fn toast_place_for(a: &App, msg: &str) -> Rect {
     let mut r = ui_toast_rect(Rect { x: 0, y: 0, w: a.w, h: a.h ,
-        }, a.toast.as_str(),
+        }, msg,
     );
     let gap = ui_px(20.0);
     if a.toast_floor > 0 && r.y + r.h + gap > a.toast_floor {
@@ -1161,7 +1178,10 @@ fn toast_place(a: &App) -> Rect {
 fn toast_draw(a: &mut App) {
     a.toast_rect = toast_place(a);
     a.toast_visible = true;
-    let r = a.toast_rect;
+    // A toast takes the staying notice's place for its time: where the notice was is repainted from the
+    // screen in the toast's own refresh, and it comes back once the toast goes (notice_ride).
+    let r = rect_union(a.toast_rect, std::mem::take(&mut a.notice.rect));
+    a.notice.shown = None;
     with(|s| s.self_dirty = rect_union(s.self_dirty, r));
 }
 
@@ -1191,6 +1211,209 @@ pub fn app_toast(a: &mut App, msg: &str, ms: i32) {
     a.toast.set_cut(msg); // (too long: cut between two characters)
     a.toast_until = now_ms().wrapping_add(ms as u32);
     toast_draw(a);
+}
+
+// ---- the staying notice (2.1, DESIGN.md "One notice that stays until ready") ----
+
+/// The staying notice's keys, in the order one shows when several ask: the screen in front's own (FontCheck,
+/// Loading, Previews: only on the screen that asked), then Book (every screen), then Import (the Library and,
+/// with 2.1's browser, its screens; not the Import place, whose rows say the same).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum NoticeKey {
+    /// new fonts being checked (2.1.0-beta.3), on the Font sheet above its buttons
+    FontCheck,
+    /// a folder being read in the file browser (2.1.0-beta.2)
+    Loading,
+    /// previews being made for the file browser (2.2)
+    Previews,
+    /// KOReader's book being added
+    Book,
+    /// a PDF import (2.1.0-beta.2)
+    Import,
+}
+
+impl NoticeKey {
+    const ALL: [NoticeKey; 5] = [NoticeKey::FontCheck, NoticeKey::Loading, NoticeKey::Previews, NoticeKey::Book, NoticeKey::Import];
+
+    /// its name for the runner's notice.key
+    pub fn name(self) -> &'static str {
+        match self {
+            NoticeKey::FontCheck => "fontcheck",
+            NoticeKey::Loading => "loading",
+            NoticeKey::Previews => "previews",
+            NoticeKey::Book => "book",
+            NoticeKey::Import => "import",
+        }
+    }
+}
+
+/// The staying notice's redraws for a new text, at most one this often.
+pub const NOTICE_EVERY_MS: u32 = 2000;
+
+/// What each key asks the staying notice to say (empty: nothing), with the screen that asked, and what the
+/// panel shows of it. Drawn like a toast: overlaid for its presents, never stored in App.screen.
+#[derive(Default)]
+pub struct Notice {
+    asked: [(FixedStr<256>, ScreenId); 5],
+    /// the key and text on the panel, and where (empty: nothing of it is on the panel)
+    shown: Option<NoticeKey>,
+    shown_text: FixedStr<256>,
+    rect: Rect,
+    /// when it was last drawn
+    drawn_ms: u32,
+    /// its own presents, counted (a Ui each, none of them in ui_refreshes_since_full)
+    pub presents: u32,
+    under: Canvas,
+}
+
+/// The staying notice for `key` says `text` until app_notice_clear(key) (or another text), on the screens its
+/// key belongs to. It has no strings of its own: the texts are its users'. It is drawn at the next flush, in
+/// the toast's place: a new text redraws it at most once every 2 s, by one Ui of its rect outside the count
+/// whose 30th Ui is a Full, so a long job never flashes the panel. A toast goes over it for the toast's time.
+pub fn app_notice(a: &mut App, key: NoticeKey, text: &str) {
+    let asked = &mut a.notice.asked[key as usize];
+    asked.0.set_cut(text);
+    asked.1 = a.scr;
+}
+
+/// The notice for `key` is done: its rect is repainted from the screen by one Ui at the next flush (also
+/// outside the count), or the next key's notice takes its place.
+pub fn app_notice_clear(a: &mut App, key: NoticeKey) {
+    a.notice.asked[key as usize].0.clear();
+}
+
+/// The key whose notice shows now: none while a toast is up.
+fn notice_pick(a: &App) -> Option<NoticeKey> {
+    if a.toast_visible {
+        return None;
+    }
+    NoticeKey::ALL.into_iter().find(|&k| {
+        let (text, asker) = &a.notice.asked[k as usize];
+        !text.is_empty()
+            && match k {
+                NoticeKey::FontCheck | NoticeKey::Loading | NoticeKey::Previews => a.scr == *asker,
+                NoticeKey::Book => true,
+                NoticeKey::Import => a.scr == ScreenId::Library,
+            }
+    })
+}
+
+#[cfg(test)]
+thread_local! {
+    static NOTICE_CLOCK: Cell<Option<u32>> = const { Cell::new(None) };
+}
+
+fn notice_now() -> u32 {
+    #[cfg(test)]
+    if let Some(t) = NOTICE_CLOCK.with(|c| c.get()) {
+        return t;
+    }
+    now_ms()
+}
+
+/// Draws the notice for `key` at `r` into the screen, keeping what it covers to put back (notice_put_back).
+fn notice_draw(a: &mut App, key: NoticeKey, r: Rect) {
+    let text = a.notice.asked[key as usize].0;
+    canvas_free(&mut a.notice.under);
+    if canvas_init(&mut a.notice.under, r.w, r.h) != 0 {
+        return;
+    }
+    canvas_blit(&mut a.notice.under, &a.screen, r, 0, 0);
+    ui_toast_at(&mut a.screen, r, text.as_str());
+    a.notice.shown = Some(key);
+    a.notice.shown_text = text;
+    a.notice.rect = r;
+    a.notice.drawn_ms = notice_now();
+}
+
+fn notice_put_back(a: &mut App, r: Rect) {
+    if a.notice.under.w == r.w && a.notice.under.h == r.h && !a.notice.under.px.is_empty() {
+        canvas_blit(&mut a.screen, &a.notice.under, Rect { x: 0, y: 0, w: r.w, h: r.h }, r.x, r.y);
+    }
+    canvas_free(&mut a.notice.under);
+}
+
+/// The notice rides a present that reaches its place (or the place it leaves): drawn into it, or its old
+/// place repainted. Returns where it was drawn, for notice_put_back after the present.
+fn notice_ride(a: &mut App) -> Option<Rect> {
+    let old = a.notice.rect;
+    let want = notice_pick(a).map(|k| (k, toast_place_for(a, a.notice.asked[k as usize].0.as_str())));
+    let reached = want.is_some_and(|(_, r)| rect_overlaps(a.dirty, r)) || rect_overlaps(a.dirty, old);
+    if !reached {
+        return None;
+    }
+    a.dirty = rect_union(a.dirty, old);
+    a.notice.rect = RECT_EMPTY;
+    a.notice.shown = None;
+    let (k, r) = want?;
+    a.dirty = rect_union(a.dirty, r);
+    notice_draw(a, k, r);
+    Some(r)
+}
+
+/// The notice's own present, after the flush (as the clock corner's is): when a key asks for it and it is not
+/// on the panel, when its place moved, when its text changed and 2 s have gone since it was drawn, or when
+/// nothing asks for it any more and it is on the panel. One Ui of its rect, never counted toward the Full;
+/// held while the pen is down, as toasts are.
+fn notice_flush(a: &mut App) {
+    if a.asleep || a.pen_action_down {
+        return;
+    }
+    let old = a.notice.rect;
+    let want = notice_pick(a);
+    let (mut area, drawn) = match want {
+        None if rect_is_empty(old) => return,
+        None => (old, None),
+        Some(k) => {
+            let text = a.notice.asked[k as usize].0;
+            let r = toast_place_for(a, text.as_str());
+            if r == old && a.notice.shown == Some(k) {
+                let same = text.as_str() == a.notice.shown_text.as_str();
+                if same || notice_now().wrapping_sub(a.notice.drawn_ms) < NOTICE_EVERY_MS {
+                    return;
+                }
+            }
+            (rect_union(old, r), Some((k, r)))
+        }
+    };
+    area = rect_intersect(area, Rect { x: 0, y: 0, w: a.w, h: a.h });
+    a.notice.rect = RECT_EMPTY;
+    a.notice.shown = None;
+    let corner = status_cover(a, &mut area);
+    if let Some((k, r)) = drawn {
+        notice_draw(a, k, r);
+    }
+    display_present(&a.screen, area, RefreshMode::Ui);
+    if let Some((_, r)) = drawn {
+        notice_put_back(a, r);
+    }
+    if let Some(c) = corner {
+        status_uncover(a, c);
+    }
+    status_presented(a, area);
+    a.notice.presents = a.notice.presents.wrapping_add(1);
+    notice_live(a);
+}
+
+/// The staying notice in Live view's toast layer as the panel has it (it is in the toast's place, and never
+/// with the toast), or nothing once it is gone.
+fn notice_live(a: &App) {
+    if !live_on() || a.toast_visible {
+        return;
+    }
+    if rect_is_empty(a.notice.rect) {
+        live_layer(LIVE_LAYER_TOAST, &a.screen, RECT_EMPTY);
+        return;
+    }
+    let text = a.notice.shown_text;
+    live_layer_drawn(LIVE_LAYER_TOAST, a.notice.rect, |c, all| ui_toast_at(c, all, text.as_str()));
+}
+
+/// What the app overlays on the panel that App.screen does not hold (the toast, the staying notice): the
+/// screen guard leaves it out of its comparison.
+pub fn app_overlay_rect(a: &App) -> Rect {
+    let toast = if a.toast_visible { a.toast_rect } else { RECT_EMPTY };
+    rect_union(toast, a.notice.rect)
 }
 
 /// Same, with the refresh to use (waking uses a no-flash refresh: faster to get back to work).
@@ -1882,6 +2105,7 @@ fn app_flush_in(a: &mut App) {
     if rect_is_empty(a.dirty) && rect_is_empty(with(|s| s.self_dirty)) {
         live_presented(a.live_processed, a.live_processed_ms);
         status_flush(a); // (the clock and battery corner alone: its own small refresh, if one is due)
+        notice_flush(a); // (the staying notice alone, the same way)
         return;
     }
     toast_follow(a); // (a screen that moves its floor redraws, so there is something to flush)
@@ -1924,6 +2148,7 @@ fn app_flush_in(a: &mut App) {
     let mut dirty = a.dirty;
     let corner = status_cover(a, &mut dirty);
     a.dirty = dirty;
+    let noticed = notice_ride(a); // (the staying notice, never with the toast)
     let reached = a.toast_visible && rect_overlaps(a.dirty, a.toast_rect);
     let mut overlay = reached;
     if overlay {
@@ -1936,13 +2161,16 @@ fn app_flush_in(a: &mut App) {
             a.toast_presents = a.toast_presents.wrapping_add(1);
         }
     }
-    live_toast_sync(a, overlay, reached);
+    live_toast_sync(a, overlay, reached, noticed.is_some());
     display_present(&a.screen, a.dirty, m);
     du_wear_presented(&mut a.du_wear, a.dirty, m);
     if overlay {
         canvas_blit(&mut a.screen, &a.toast_under, Rect { x: 0, y: 0, w: a.toast_rect.w, h: a.toast_rect.h ,
             }, a.toast_rect.x, a.toast_rect.y,
         );
+    }
+    if let Some(r) = noticed {
+        notice_put_back(a, r);
     }
     if let Some(c) = corner {
         status_uncover(a, c);
@@ -1956,6 +2184,7 @@ fn app_flush_in(a: &mut App) {
     a.dirty = RECT_EMPTY;
     a.dirty_mode = RefreshMode::Fast;
     status_flush(a); // (a refresh of the corner this one did not hold)
+    notice_flush(a); // (and of the staying notice)
 }
 
 // Live view's toast layer (live.rs, LIVE_LAYER_TOAST) as the present app_flush is about to send leaves
@@ -1965,12 +2194,14 @@ fn app_flush_in(a: &mut App) {
 // (the live chip, the panel and the corner, which the browser shows or not by its own switches); none
 // once a present goes out without it (hidden: its place is in this present; or reached and not drawn,
 // for want of memory); else as it was, since a present away from the toast leaves it on the panel.
-fn live_toast_sync(a: &App, drawn: bool, reached: bool) {
+fn live_toast_sync(a: &App, drawn: bool, reached: bool, noticed: bool) {
     if !live_on() {
         return;
     }
     if !drawn {
-        if reached || !a.toast_visible {
+        if noticed {
+            notice_live(a);
+        } else if reached || (!a.toast_visible && rect_is_empty(a.notice.rect)) {
             live_layer(LIVE_LAYER_TOAST, &a.screen, RECT_EMPTY);
         }
         return;
@@ -2175,7 +2406,7 @@ fn append_cut(out: &mut String, cap: usize, piece: &str) {
 
 /// The headless runner's `expect` checks read the app's state through this (tests only; cheap).
 /// Keys: "screen" (library|editor|penset|calib|share), "toast" and "toast.rect" (the visible toast
-/// and its rect, "" if none), "asleep" (0|1), "asleep.mode", "host", "rotation" (0..3), "size"
+/// and its rect, "" if none), "notice" and "notice.key" (the staying notice's text and key on the panel), "asleep" (0|1), "asleep.mode", "host", "rotation" (0..3), "size"
 /// (WxH), "language", "bg.busy", "bg.children", "settings.<settings.ini key>" for a few and for
 /// every tool's pen feel ("settings.ballpoint.size_max_mm"), "light.intensity", "light.warmth",
 /// and "editor.*", "library.*", "penset.*" (below), "annotate.*" (app.c) and "templates.*" (the
@@ -2294,6 +2525,14 @@ pub fn app_probe(a: &mut App, key: &str, out: &mut String, cap: usize) -> i32 {
         csnprintf!(out, cap, "%s", K_NAMES[a.scr as usize]);
     } else if key == "toast" {
         csnprintf!(out, cap, "%s", if a.toast_visible { a.toast.as_str() } else { "" });
+    } else if key == "notice" || key == "notice.key" {
+        let shown = a.notice.shown.filter(|_| !rect_is_empty(a.notice.rect));
+        let v = match shown {
+            None => "",
+            Some(k) if key == "notice.key" => k.name(),
+            Some(_) => a.notice.shown_text.as_str(),
+        };
+        csnprintf!(out, cap, "%s", v);
     } else if key == "toast.rect" {
         let r = a.toast_rect;
         if a.toast_visible {
@@ -2586,6 +2825,172 @@ mod tests {
         app_keyboard_tick(&mut a, &mut kb, 1000 + KB_HOLD_MS + 4 * KB_REPEAT_MS);
         app_keyboard_pointer(&mut a, &mut kb, 1, &InEvent { x, y, t_ms: 1000 + KB_HOLD_MS + 5 * KB_REPEAT_MS, ..Default::default() });
         assert_eq!(kb.text.as_str(), "349", "the finger still on del deletes nothing more");
+    }
+
+    // ---- the staying notice ----
+
+    fn notice_app() -> App {
+        assert_eq!(font_init(), 0);
+        ui_init(300.0);
+        i18n_set("en");
+        let mut a = App { w: 1860, h: 2480, dpi: 300.0, ..Default::default() };
+        assert_eq!(canvas_init(&mut a.screen, a.w, a.h), 0);
+        #[cfg(feature = "sim")]
+        {
+            let (mut w, mut h) = (a.w, a.h);
+            crate::sim_sdl::display_set_orientation(0, &mut w, &mut h);
+        }
+        canvas_fill(&mut a.screen, Rect { x: 0, y: 0, w: a.w, h: a.h }, 255);
+        canvas_fill(&mut a.screen, Rect { x: 100, y: 2000, w: 1600, h: 300 }, 90); // something under it
+        a
+    }
+
+    /// The app's clock at `t`, then a flush, as the main loop's each turn.
+    fn flush_at(a: &mut App, t: u32) {
+        NOTICE_CLOCK.with(|c| c.set(Some(t)));
+        app_flush(a);
+    }
+
+    fn probe(a: &mut App, key: &str) -> String {
+        let mut out = String::new();
+        assert_eq!(app_probe(a, key, &mut out, 256), 0, "{key}");
+        out
+    }
+
+    /// Shown at the next flush; drawn again only for a new text, at most once every 2 s; none of it counted
+    /// toward the Full, and App.screen holds none of it.
+    #[test]
+    fn the_notice_redraws_for_a_new_text_at_most_every_2_s() {
+        let mut a = notice_app();
+        let before = a.screen.px.clone();
+        app_notice(&mut a, NoticeKey::Book, "Adding book pages: 1 of 400");
+        flush_at(&mut a, 10_000);
+        assert_eq!(probe(&mut a, "notice"), "Adding book pages: 1 of 400");
+        assert_eq!(probe(&mut a, "notice.key"), "book");
+        assert_eq!(a.notice.presents, 1);
+        assert_eq!(a.notice.rect, toast_place_for(&a, "Adding book pages: 1 of 400"));
+        // the same text: nothing, however long
+        flush_at(&mut a, 60_000);
+        assert_eq!(a.notice.presents, 1);
+        // a new text waits for 2 s from the last drawing
+        app_notice(&mut a, NoticeKey::Book, "Adding book pages: 2 of 400");
+        flush_at(&mut a, 60_500);
+        assert_eq!((a.notice.presents, probe(&mut a, "notice").as_str()), (2, "Adding book pages: 2 of 400"));
+        app_notice(&mut a, NoticeKey::Book, "Adding book pages: 3 of 400");
+        for t in [60_600, 61_000, 62_499] {
+            flush_at(&mut a, t);
+        }
+        assert_eq!((a.notice.presents, probe(&mut a, "notice").as_str()), (2, "Adding book pages: 2 of 400"));
+        flush_at(&mut a, 62_500);
+        assert_eq!((a.notice.presents, probe(&mut a, "notice").as_str()), (3, "Adding book pages: 3 of 400"));
+        assert_eq!(a.ui_refreshes_since_full, 0, "none of it counted");
+        // cleared: its rect from the screen at once, and the screen's bytes as they were
+        app_notice_clear(&mut a, NoticeKey::Book);
+        flush_at(&mut a, 62_600);
+        assert_eq!((a.notice.presents, probe(&mut a, "notice").as_str()), (4, ""));
+        assert!(rect_is_empty(a.notice.rect) && rect_is_empty(app_overlay_rect(&a)));
+        assert!(a.screen.px == before, "App.screen unchanged");
+        assert_eq!(a.ui_refreshes_since_full, 0);
+        NOTICE_CLOCK.with(|c| c.set(None));
+    }
+
+    /// A toast takes the notice's place for its time, its own refresh repainting where the notice was; once it
+    /// goes the notice comes back in the refresh that takes the toast down.
+    #[test]
+    fn a_toast_goes_over_the_notice_and_the_notice_comes_back() {
+        let mut a = notice_app();
+        let before = a.screen.px.clone();
+        app_notice(&mut a, NoticeKey::Book, "Adding book pages: 5 of 40");
+        flush_at(&mut a, 1_000);
+        let at = a.notice.rect;
+        assert!(!rect_is_empty(at));
+        app_toast(&mut a, "Saved", 2000);
+        assert!(rect_contains_rect(with(|s| s.self_dirty), at), "the toast's refresh repaints the notice's place");
+        flush_at(&mut a, 1_100);
+        assert_eq!((probe(&mut a, "notice").as_str(), probe(&mut a, "toast").as_str()), ("", "Saved"));
+        // a new text while the toast shows: nothing drawn
+        app_notice(&mut a, NoticeKey::Book, "Adding book pages: 9 of 40");
+        let presents = a.notice.presents;
+        flush_at(&mut a, 4_000);
+        assert_eq!(a.notice.presents, presents);
+        // the toast goes: the notice rides the refresh that takes it down, with its new text
+        toast_hide(&mut a);
+        flush_at(&mut a, 4_100);
+        assert_eq!(probe(&mut a, "notice"), "Adding book pages: 9 of 40");
+        assert_eq!((a.notice.presents, a.notice.rect), (presents, toast_place_for(&a, "Adding book pages: 9 of 40")));
+        assert!(a.screen.px == before, "App.screen holds neither");
+        NOTICE_CLOCK.with(|c| c.set(None));
+    }
+
+    /// Each key on its screens only (Book everywhere, Import on the Library, the asking screen's own there),
+    /// one at a time: the screen in front's own first, then Book, then Import.
+    #[test]
+    fn a_notice_shows_where_its_key_belongs_and_the_front_screens_wins() {
+        let mut a = notice_app();
+        a.scr = ScreenId::Editor;
+        app_notice(&mut a, NoticeKey::Import, "Importing: 3 of 90 pages");
+        flush_at(&mut a, 1_000);
+        assert_eq!((probe(&mut a, "notice").as_str(), a.notice.presents), ("", 0), "no Import over the editor");
+        app_notice(&mut a, NoticeKey::Book, "Adding book pages: 1 of 3");
+        flush_at(&mut a, 1_100);
+        assert_eq!(probe(&mut a, "notice.key"), "book");
+        // the Library in front: Book still before Import
+        a.scr = ScreenId::Library;
+        flush_at(&mut a, 4_000);
+        assert_eq!(probe(&mut a, "notice.key"), "book");
+        app_notice_clear(&mut a, NoticeKey::Book);
+        flush_at(&mut a, 4_100);
+        assert_eq!(probe(&mut a, "notice.key"), "import", "the next key at once");
+        // a key of the screen in front (the Font sheet's check) goes first, and only there
+        app_notice(&mut a, NoticeKey::FontCheck, "Checking 3 fonts...");
+        flush_at(&mut a, 4_200);
+        assert_eq!(probe(&mut a, "notice"), "Checking 3 fonts...");
+        a.scr = ScreenId::Editor;
+        assert_eq!(notice_pick(&a), None);
+        a.scr = ScreenId::Library;
+        app_notice_clear(&mut a, NoticeKey::FontCheck);
+        app_notice_clear(&mut a, NoticeKey::Import);
+        flush_at(&mut a, 4_300);
+        assert_eq!(probe(&mut a, "notice"), "");
+        assert_eq!(a.ui_refreshes_since_full, 0);
+        NOTICE_CLOCK.with(|c| c.set(None));
+    }
+
+    /// A 400-page book (its progress made by book_progress every 600 ms, 1.5 s a page) and a 10-minute import
+    /// with the Library in front, the main loop flushing every 30 ms: no Full, and at most one redraw every 2 s
+    /// (the toast it replaced counted every 600 ms: a Full about every 18 s).
+    #[test]
+    fn a_long_book_and_a_long_import_make_no_full_refresh() {
+        let mut a = notice_app();
+        a.scr = ScreenId::Editor;
+        a.book.total = 400;
+        let mut t = 100_000u32;
+        let end = t + 400 * 1500;
+        while t < end {
+            a.book.added = ((t - 100_000) / 1500) as i32;
+            book_progress(&mut a, t);
+            flush_at(&mut a, t);
+            assert_eq!(a.ui_refreshes_since_full, 0);
+            t += 30;
+        }
+        let last = probe(&mut a, "notice"); // (the newest text, or the one 2 s before it)
+        assert!(["Adding book pages: 398 of 400", "Adding book pages: 399 of 400"].contains(&last.as_str()), "{last}");
+        let book = a.notice.presents;
+        assert!(book > 200 && book <= 400 * 1500 / NOTICE_EVERY_MS + 1, "{book}");
+        app_notice_clear(&mut a, NoticeKey::Book);
+        flush_at(&mut a, t);
+        a.scr = ScreenId::Library;
+        let (from, end) = (t, t + 10 * 60 * 1000);
+        while t < end {
+            let done = (t - from) / 700;
+            app_notice(&mut a, NoticeKey::Import, &format!("Importing: {done} of 857 pages"));
+            flush_at(&mut a, t);
+            assert_eq!(a.ui_refreshes_since_full, 0);
+            t += 30;
+        }
+        let import = a.notice.presents - book - 1;
+        assert!(import > 250 && import <= 600_000 / NOTICE_EVERY_MS + 1, "{import}");
+        NOTICE_CLOCK.with(|c| c.set(None));
     }
 }
 /// The existing screen lifecycle applied after a language or theme change.

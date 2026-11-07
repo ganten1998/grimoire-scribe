@@ -366,6 +366,8 @@ shows what the app holds.
 | `screen` | `library`, `editor`, `penset` (pen feel), `calib` or `share` |
 | `toast` | the toast showing, empty if none |
 | `toast.rect` | where the visible toast is, `x y w h` in screen pixels, empty if none |
+| `notice` | the staying notice on the panel (`app_notice`, 2.1: a job's progress drawn in the toast's place until its user clears it), empty if none; a toast goes over it for its time and it comes back after |
+| `notice.key` | which key that notice is: `book` (KOReader's book being added, every screen), `import` (the Library), `fontcheck`, `loading` or `previews` (the screen that asked), empty if none. Its redraws are `ui` presents of its rect in `display.presents`, at most one every 2 s for a new text, never counted toward the Full |
 | `asleep` | `1` while the sleep screen is up, else `0` |
 | `asleep.mode` | while asleep, which sleep screen is up, numbered as `settings.sleep_mode` after fallback/override (native PIN forces `2`; unavailable wallpaper uses `0`) (hosted by KOReader, mode 2 reads `0`); empty while awake |
 | `host` | `koreader` when started as KOReader's Grimoire plugin starts it (`GRIMOIRE_HOST=koreader`), else empty |

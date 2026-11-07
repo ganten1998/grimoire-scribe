@@ -501,7 +501,7 @@ fn run() -> i32 {
             last_guard = t;
             // The Kindle's status bar strip (clock, battery) lives at the top of the panel: check
             // that band densely, and repaint just it (no flash) when something drew there.
-            let skip = if app.toast_visible { app.toast_rect } else { RECT_EMPTY };
+            let skip = app_overlay_rect(&app); // (the toast and the staying notice are not in app.screen)
             let top = Rect { x: 0, y: 0, w: app.w, h: ui_px(150.0) };
             let mut where_ = RECT_EMPTY;
             let before = guards;
