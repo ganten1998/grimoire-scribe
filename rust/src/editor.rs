@@ -332,6 +332,8 @@ pub struct EditorState {
     /// save under way is the idle autosave (which makes it at most every 30 s)
     preview_saved_ms: u32,
     autosaving: bool,
+    /// An edited page still needs its idle preview after the cache write cooldown.
+    caches_pending: bool,
     /// The page canvas as it was before the step under way, a copy of it between steps (base_follow):
     /// what differs from it when a step ends is that step's patch (history.rs Patch), which undo and
     /// redo swap back. `base_page` is the page it mirrors (canvas_page's), 0 for none; `base_hold`
@@ -394,6 +396,8 @@ pub struct EditorState {
     changed: bool,
     /// page 1 changed: library thumbnail to write when leaving it
     thumb_dirty: bool,
+    /// The first page the Library card last showed in this session.
+    thumb_source: Option<(u32, Option<String>)>,
     // Grays settle in one GL16 refresh once the writer stops (not after every stroke): when the pen
     // leaves the page, or after SETTLE_NEAR_MS with it still near. While the pen stays near only
     // fast DU updates go out, nothing blocks, and the next word never meets a settle still on the
@@ -2600,13 +2604,16 @@ fn repaint_panel(a: &mut App, m: RefreshMode) {
 
 // ---- pages ----
 
-fn save_thumb_from_canvas(s: &EditorState) {
+fn save_thumb_from_canvas(s: &mut EditorState) {
     let mut t = Canvas::default();
     if canvas_init(&mut t, s.pgw / 3, s.pgh / 3) != 0 {
         return;
     }
     canvas_downsample_keep_lines(&mut t, &s.page_canvas, 0.35);
-    store_save_thumb(s.nb.id.as_str(), &t);
+    if store_save_thumb(s.nb.id.as_str(), &t) == 0 {
+        s.thumb_source = Some(first_page_source(&s.nb));
+        s.thumb_dirty = false;
+    }
 }
 
 // Page `pid` was written with an erase stroke it did not have: its file keeps the ink under it
@@ -2670,28 +2677,13 @@ fn save_page(a: &mut App) -> bool {
         if s.index == 0 {
             s.thumb_dirty = true; // written when leaving the page (it is slow)
         }
-        // Its Pages preview from the canvas, which is the page drawn already: a cache file written without
-        // waiting on the disk, by the idle autosave alone (2 s after the pen lifts, at most every 30 s).
-        // Turning the page and closing write the page and nothing more, so they never wait on a cache
-        // file; a page left before its idle save gets its preview from the background job when Pages
-        // next opens elsewhere (pagesview_prefetch leaves the open page out).
         let pid = s.open_pid();
         pagesview_page_saved(&mut s.pv, pid);
-        let now = now_ms();
-        let whole = s.canvas_page == s.open_page_ref() && s.page_canvas.w == s.pgw && s.page_canvas.h == s.pgh
-            && !s.page_canvas.px.is_empty() && !s.picture_missing;
-        if whole && s.autosaving && now.wrapping_sub(s.preview_saved_ms) >= 30_000 {
-            store_save_page_preview(&s.nb, pid, &s.page_canvas);
-            // A page that took a second or more to draw keeps its drawing too, so it opens at once.
-            if s.full_ms.0 == pid && s.full_ms.1 >= store_keep_render_ms() {
-                let layered = s.open_page().is_some_and(page_layered);
-                store_save_page_render(&s.nb, pid, &s.page_canvas, layered);
-            }
-            s.preview_saved_ms = now;
-        }
+        s.caches_pending = true;
         s.page_dirty = false;
         s.info_dirty = true;
     }
+    save_page_caches(s, now_ms());
     list_erased_pages(s); // their files have the erase strokes now (and the ink under them)
     if s.info_dirty {
         if store_save_info(&mut s.nb) != 0 {
@@ -2700,6 +2692,69 @@ fn save_page(a: &mut App) -> bool {
         s.info_dirty = false;
     }
     true
+}
+
+// Cache work happens after saving, never as the pen moves. Idle writes are spaced across page turns
+// and notebook reopens too. Leaving keeps a changed dense drawing even inside that window: otherwise
+// its first revisit would draw all the ink again. Small previews stay idle/background work.
+fn save_page_caches(s: &mut EditorState, now: u32) {
+    let whole = s.canvas_page == s.open_page_ref() && s.page_canvas.w == s.pgw && s.page_canvas.h == s.pgh
+        && !s.page_canvas.px.is_empty() && !s.picture_missing;
+    if s.page_dirty || !whole || s.open_page().is_none_or(|p| p.readonly) {
+        return;
+    }
+    let pid = s.open_pid();
+    let layered = s.open_page().is_some_and(page_layered);
+    let keep = store_page_dense(&s.nb, pid)
+        || (s.full_ms.0 == pid && s.full_ms.1 >= store_keep_render_ms());
+    if s.autosaving && now.wrapping_sub(s.preview_saved_ms) < 30_000 {
+        return;
+    }
+    if s.autosaving && s.caches_pending {
+        if !store_page_preview_ok(&s.nb, pid) {
+            store_save_page_preview(&s.nb, pid, &s.page_canvas);
+        }
+        s.caches_pending = !store_page_preview_ok(&s.nb, pid);
+        s.preview_saved_ms = now;
+    }
+    if keep && !store_page_render_kept(&s.nb, pid, s.pgw, s.pgh, layered) {
+        if store_save_page_render(&s.nb, pid, &s.page_canvas, layered) {
+            s.preview_saved_ms = now;
+        }
+    }
+}
+
+fn first_page_source(nb: &NotebookInfo) -> (u32, Option<String>) {
+    let pid = nb.page_ids[0];
+    (pid, store_page_source_identity(nb, pid))
+}
+
+// A change on another page leaves the Library card alone. A changed/reordered first page uses its
+// kept drawing, then its current small preview, before falling back to drawing the strokes.
+fn refresh_library_thumb(s: &mut EditorState, dpi: f32) {
+    let source = first_page_source(&s.nb);
+    if !s.thumb_dirty && s.thumb_source.as_ref() == Some(&source) && store_thumb_stamp(s.nb.id.as_str()) != 0 {
+        return;
+    }
+    let mut p = None;
+    if s.load_page(0, &mut p) != 0 { return; }
+    let Some(p) = p else { return; };
+    let mut t = Canvas::default();
+    if canvas_init(&mut t, s.pgw / 3, s.pgh / 3) != 0 { return; }
+    let mut full = Canvas::default();
+    let kept = canvas_init(&mut full, s.pgw, s.pgh) == 0
+        && store_load_page_render(&s.nb, source.0, s.pgw, s.pgh, &mut full, page_layered(&p));
+    if kept {
+        canvas_downsample_keep_lines(&mut t, &full, 0.35);
+    } else if store_load_page_preview(&s.nb, source.0, &mut full) {
+        canvas_downsample_keep_lines(&mut t, &full, 0.35);
+    } else {
+        page_render_thumb(&mut t, &p, dpi);
+    }
+    if store_save_thumb(s.nb.id.as_str(), &t) == 0 {
+        s.thumb_source = Some(source);
+        s.thumb_dirty = false;
+    }
 }
 
 // Draws r of the open page into the page canvas. An image paper's picture that is not there (a
@@ -2879,7 +2934,8 @@ fn render_page_full(a: &mut App) {
     let s = ed(a);
     s.canvas_page = s.open_page_ref();
     base_reset(s);
-    s.preview_saved_ms = now_ms().wrapping_sub(30_000); // (a page opened: its first idle save writes them)
+    s.preview_saved_ms = now_ms().wrapping_sub(store_page_cache_age_ms(&s.nb, pid).min(30_000));
+    s.caches_pending = false;
     // An image paper's picture can have come since its paper alone was drawn (S->paper: a picture
     // made in the background draws white until it is there), and the page now shows it.
     if paper_is_image(s.open_page().unwrap().paper) {
@@ -3177,15 +3233,7 @@ fn close_notebook(a: &mut App) {
     let dpi = a.dpi;
     let s = ed(a);
     if s.index != 0 && s.changed {
-        // Keep the library thumbnail (page 1) in sync even if we never visited it.
-        let mut p0: Option<Box<Page>> = None;
-        if s.load_page(0, &mut p0) == 0 {
-            let mut t = Canvas::default();
-            if canvas_init(&mut t, s.pgw / 3, s.pgh / 3) == 0 {
-                page_render_thumb(&mut t, p0.as_deref().unwrap(), dpi);
-                store_save_thumb(s.nb.id.as_str(), &t);
-            }
-        }
+        refresh_library_thumb(s, dpi);
     }
     if a.settings.mirror_pdf && ed(a).changed {
         let id = ed(a).nb.id;
@@ -3255,6 +3303,8 @@ pub fn editor_open_notebook(a: &mut App, id: &str) {
     bgimage_retry_missing(); // (a picture the Library found missing may be there now)
     use_page_size(s);
     s.index = requested.and_then(|pid|s.nb.page_ids.iter().position(|&p|p==pid)).map_or_else(||clampi(s.nb.last_page,0,s.nb.npages()-1),|i|i as i32);
+    s.thumb_source = Some(first_page_source(&s.nb));
+    s.thumb_dirty = false;
     s.page = s.page_at(s.index);
     if s.page.is_none() {
         s.free_histories();
@@ -10455,7 +10505,6 @@ fn write_thumb_if_needed(a: &mut App) {
         return;
     }
     save_thumb_from_canvas(s);
-    s.thumb_dirty = false;
 }
 
 // A background job ended since the open page (page), or a cache (caches: note_white), drew a
@@ -10669,7 +10718,8 @@ pub fn editor_tick(a: &mut App, now: u32) {
     // Autosave after a real pause (and never while the pen is down). One that fails (a full store)
     // tries again 2 s later, not at every tick: each try says so with a toast.
     let s = ed(a);
-    if s.open && s.page_dirty && s.owner == Owner::None && now.wrapping_sub(s.last_up) > 2000 && !autosave(a) {
+    if s.open && (s.page_dirty || (s.caches_pending && now.wrapping_sub(s.preview_saved_ms) >= 30_000))
+        && s.owner == Owner::None && now.wrapping_sub(s.last_up) > 2000 && !autosave(a) {
         ed(a).last_up = now;
     }
     // beta.5's links on pages not visited yet: one page a tick, only while nothing is touching or open
@@ -11566,6 +11616,139 @@ mod tests {
         s.pgw = pw;
         s.pgh = ph;
         a
+    }
+
+    // Generated ink with STRESS TEST 3's counts and long stroke; no owner's drawing is stored here.
+    fn stress_ink() -> Box<Page> {
+        let mut p = page_new(1000, 1400, PAPER_BLANK);
+        for k in 0..698 {
+            let n = if k == 0 { 6648 } else { 225 + usize::from(k <= 477) };
+            let tool = if k < 75 { TOOL_HIGHLIGHTER } else { TOOL_FOUNTAIN };
+            let mut prm = ToolParams::default();
+            tool_params_default(tool, &mut prm);
+            let mut ink = stroke_new(tool, &prm, 19 + k as u32);
+            for j in 0..n {
+                stroke_append(&mut ink, &PenSample { x: 100.0 + (j % 200) as f32 * 3.0,
+                    y: 200.0 + (k % 60) as f32 * 12.0, pressure: 0.6, t_ms: j as u32 * 3,
+                    ..Default::default() }, 300.0);
+            }
+            page_add(&mut p, ink);
+        }
+        assert_eq!(p.strokes.iter().map(|s| s.pts.len()).sum::<usize>(), 163950);
+        p
+    }
+
+    #[test]
+    fn dense_written_from_blank_keeps_current_canvas_without_repeated_cache_writes() {
+        use std::os::unix::fs::MetadataExt;
+        let root = fhold_root("dense-saves");
+        let mut nb = NotebookInfo::default();
+        assert_eq!(store_create("Dense", "", PAPER_BLANK, &mut nb), 0);
+        let mut a = fshape_app();
+        let s = ed(&mut a);
+        s.nb = nb;
+        // Opened blank and quick, then grew dense while written: its opening time stays quick.
+        s.hist[0].page = Some(stress_ink());
+        s.page = Some(1);
+        s.full_ms = (1, 0);
+        draw_page(&mut a, Rect::new(0, 0, 1000, 1400));
+        let s = ed(&mut a);
+        s.canvas_page = s.open_page_ref();
+        assert!(s.page_canvas.px.iter().any(|&v| v < 255));
+        s.preview_saved_ms = now_ms().wrapping_sub(30_000);
+        mark_changed(s);
+        assert!(autosave(&mut a));
+        let s = ed_ref(&a);
+        assert!(store_page_dense(&s.nb, 1));
+        assert!(store_page_render_kept(&s.nb, 1, 1000, 1400, false));
+        assert!(store_page_preview_ok(&s.nb, 1));
+        let dir = root.join("notebooks").join(s.nb.id.as_str());
+        let files = [dir.join("p1.qpg"), dir.join(".page-previews/p1.pgm"), dir.join(".page-previews/p1.full")];
+        let stamps = || files.iter().map(|p| { let m = p.metadata().unwrap(); (m.ino(), m.mtime(), m.mtime_nsec()) }).collect::<Vec<_>>();
+        let first = stamps();
+        assert!(autosave(&mut a));
+        assert!(save_page(&mut a));
+        assert_eq!(first, stamps(), "unchanged saves write nothing again");
+        // Reopening does not reset the cooldown. A changed file saves now, its caches wait.
+        render_page_full(&mut a);
+        assert!(ed_ref(&a).page_kept);
+        assert!(now_ms().wrapping_sub(ed_ref(&a).preview_saved_ms) < 30_000);
+        let s = ed(&mut a);
+        s.open_page_mut().unwrap().strokes.pop();
+        mark_changed(s);
+        assert!(autosave(&mut a));
+        let second = stamps();
+        assert_ne!(first[0], second[0]);
+        assert_eq!(first[1..], second[1..], "no second cache write inside 30 s");
+        assert!(ed_ref(&a).caches_pending);
+        // Leaving needs a current drawing even before that idle window expires.
+        assert!(save_page(&mut a));
+        assert!(store_page_render_kept(&ed_ref(&a).nb, 1, 1000, 1400, false));
+        let leaving = stamps();
+        assert_ne!(leaving[2], second[2]);
+        assert!(save_page(&mut a));
+        assert_eq!(leaving, stamps());
+        // A deferred preview finishes at a later idle pause without rewriting the saved page/drawing.
+        ed(&mut a).preview_saved_ms = now_ms().wrapping_sub(30_000);
+        assert!(autosave(&mut a));
+        let final_ = stamps();
+        assert_eq!(leaving[0], final_[0]);
+        assert_eq!(leaving[2], final_[2]);
+        assert_ne!(leaving[1], final_[1]);
+        assert!(!ed_ref(&a).caches_pending);
+        // Neither a partial canvas nor one missing its picture can become a kept drawing.
+        for missing in [false, true] {
+            let s = ed(&mut a);
+            s.open_page_mut().unwrap().strokes.pop();
+            mark_changed(s);
+            s.picture_missing = missing;
+            s.canvas_page = if missing { s.open_page_ref() } else { 0 };
+            assert!(save_page(&mut a));
+            assert!(!store_page_render_kept(&ed_ref(&a).nb, 1, 1000, 1400, false));
+        }
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn closing_keeps_an_unchanged_library_card_and_reuses_current_first_page_caches() {
+        let root = fhold_root("dense-card");
+        let mut nb = NotebookInfo::default();
+        assert_eq!(store_create("Card", "", PAPER_BLANK, &mut nb), 0);
+        let mut a = fshape_app();
+        let s = ed(&mut a);
+        s.nb = nb;
+        s.thumb_source = Some(first_page_source(&s.nb));
+        let mut c = Canvas::default();
+        canvas_init(&mut c, 1000, 1400);
+        c.px.fill(23);
+        store_save_thumb(s.nb.id.as_str(), &c);
+        let before = store_thumb_stamp(s.nb.id.as_str());
+        refresh_library_thumb(s, 300.0);
+        assert_eq!(before, store_thumb_stamp(s.nb.id.as_str()), "other-page edits leave the card alone");
+        // A changed first page: a sentinel kept drawing proves there is no stroke redraw.
+        assert_eq!(store_save_page(&s.nb, 0, &stress_ink()), 0);
+        assert!(store_save_page_render(&s.nb, 1, &c, false));
+        refresh_library_thumb(s, 300.0);
+        let mut card = Canvas::default();
+        assert_eq!(store_load_thumb(s.nb.id.as_str(), &mut card), 0);
+        assert!(card.px.iter().all(|&v| v == 23));
+        let current = store_thumb_stamp(s.nb.id.as_str());
+        refresh_library_thumb(s, 300.0);
+        assert_eq!(current, store_thumb_stamp(s.nb.id.as_str()));
+        // With no kept drawing, a current preview also avoids a stroke redraw.
+        let mut p = stress_ink(); p.strokes.pop();
+        assert_eq!(store_save_page(&s.nb, 0, &p), 0);
+        c.px.fill(71);
+        store_save_page_preview(&s.nb, 1, &c);
+        refresh_library_thumb(s, 300.0);
+        assert_eq!(store_load_thumb(s.nb.id.as_str(), &mut card), 0);
+        assert!(card.px.iter().all(|&v| v == 71));
+        // A new first page must replace the card, even if its file was never edited here.
+        assert_eq!(store_add_page(&mut s.nb, 0, PAPER_BLANK), 0);
+        refresh_library_thumb(s, 300.0);
+        assert_eq!(store_load_thumb(s.nb.id.as_str(), &mut card), 0);
+        assert!(card.px.iter().all(|&v| v == 255));
+        std::fs::remove_dir_all(root).unwrap();
     }
 
     #[test]

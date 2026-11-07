@@ -1786,3 +1786,19 @@ On the Scribe, with Scratch (2.0.2, a cleared page's old picture, step 1):
    shows the word alone; go to the Library: its card shows the word alone.
 3. **Every kept page is drawn once.** A dense page not cleared says "Loading page..." the first time it opens
    after the update (on the stress pages, about 11 s and 28 s), and comes up at once from then on.
+
+## Scribe checks: dense-page revisits (2.0.2, 2026-11-07)
+
+1. From blank, write a page past 512 KB without opening Pages. Pause at least 2 seconds, turn away and
+   back: the first revisit should read its kept drawing without a long Loading page notice. Repeat by
+   turning away immediately after the last stroke, before autosave. Compare all ink with the page before.
+2. Add ink, pause, close and reopen within 30 seconds, add 40 small strokes and pause again. The page
+   file should save; the preview and drawing should wait for the idle 30-second window. Leave the page:
+   its final changed drawing is kept once, and its next open shows every stroke. No repeated cache writes
+   on read-only reopens or saves without changes. Check undo, redo, an image paper and floors as well.
+3. Open a notebook on another page, change that page and close it. Its existing page-1 Library card should
+   remain and closing should be quick. Edit page 1, leave it, edit another page and close: the card should
+   show page 1's new ink without drawing it twice. Reorder a different page into first place and check
+   that the card changes to that page; remove its caches and check the fallback draws the right card.
+4. The PDF mirror still draws strokes; compare a mirrored Seyes PDF with the page. The editor's kept
+   drawing is intentionally not used for a potentially different export paper scale.

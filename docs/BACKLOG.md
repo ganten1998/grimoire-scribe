@@ -168,18 +168,9 @@ From STRESS TEST 2 (648 strokes, 153,588 points, 2.8 MB) and STRESS TEST 3 (698 
 The record and the evidence are in the maintainer's lab folder (stress-tests-2026-11-05/RECORD.md).
 Writing stayed fast at any size (median pen to screen 0.6 to 0.9 ms); the costs are elsewhere:
 
-- **A page written from blank never gets a kept drawing while it is written.** render_page_full keeps one
-  only after an open that took 1 s or more, the idle autosave only for a page whose open was slow, and the
-  previews job only runs with Pages shown. So the first revisit draws the page whole: 11.6 s for STRESS TEST 2,
-  28.4 s for STRESS TEST 3 (beside an export), 3.6 s for a 1 MB page. Proposed: at the idle autosave or on
-  leaving the page, keep the drawing of any page of 512 KB or more whose canvas is whole.
 - **The PDF mirror export redraws every page from strokes at each close after a change**: 51.4 s and 48.6 s
   for this 5-page notebook, the second for five strokes on page 1. It could reuse current kept drawings, or
   redraw only the pages that changed.
-- **Closing from a page other than page 1 draws page 1 again from its strokes** for the Library card: 2.9 s
-  from STRESS TEST 3, 208 ms from page 1 itself.
-- **Write amplification at the idle autosave**: 40 small strokes (about 31 KB of ink) wrote 6.5 MB (the page,
-  its preview and its kept drawing), and a kept drawing was written twice in 19 s.
 - **Zoom steps on the stress pages took 0.56 to 0.66 s each**, with frame copies of 0.57 to 0.61 s; a zoom on
   a lighter page minutes later had none. Not explained yet.
 - **A stroke-eraser move on STRESS TEST 2 took 2.1 s** at 2.38 MB, its screen update 2 s late (as the CHANGELOG's
@@ -721,7 +712,7 @@ Ideas, not plans: each needs the owner's go and its own design. No code is taken
   cancelled touch; Live view rail, size control and picture in picture tiers; steadier, faster
   graph; Pages and Graph untangled.
 
-## Completed for 2.0.2: the Links bar learning check (2026-11-07)
+## Completed for 2.1.0: the Links bar learning check (2026-11-07)
 
 - `z_links_3_bar_learns` waits for the incoming rows themselves, with a 60-second failure bound, instead
   of a fixed 9-second sleep. The slow-runner CI failure is pinned by `GRIMOIRE_SIM_BACKLINKS_STEP_MS=60`
@@ -743,3 +734,15 @@ Ideas, not plans: each needs the owner's go and its own design. No code is taken
 - A `touch` contact held across a `waitfor` could be stamped by the script's own clock moved on by what
   the `waitfor` idled (as a `wait` moves it by its MS) instead of by the clock after it, so that a press
   timed across one is not stretched by a busy machine. No scenario holds a touch across a `waitfor` yet.
+
+## Completed for 2.1.0: dense-page revisits (2026-11-07)
+
+- A page written from blank keeps its whole drawing once its file reaches 512 KB, at idle save or when
+  left. First revisits no longer need the slow opening that used to create the first kept drawing.
+- Closing after changes on another page retains the Library card when page 1 stayed the same. A changed
+  or reordered first page uses a current kept drawing, then its current preview, then a stroke render.
+- Idle previews and kept drawings write only when stale and at most every 30 seconds, including across
+  reopens. Deferred previews finish after that window without another page-file write. Departure still
+  keeps the final changed dense drawing so its first revisit is quick. Generated regression ink has
+  STRESS TEST 3's 698 strokes, 163,950 points and a 6,648-point stroke; no owner's page is committed.
+- PDF mirror reuse remains above: its paper scale can differ from the editor's, especially for Seyes.

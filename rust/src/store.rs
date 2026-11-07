@@ -3753,6 +3753,16 @@ fn page_render_files(nb: &NotebookInfo, pid: u32) -> Option<(String, String, Str
     Some((source, format!("{base}.full"), format!("{base}.full.stamp")))
 }
 
+/// Time since this page's newest preview or kept drawing was written. A missing cache has no cooldown.
+/// Disk time preserves the idle write limit when a page or notebook is reopened.
+pub fn store_page_cache_age_ms(nb: &NotebookInfo, pid: u32) -> u32 {
+    let Some((_, image, _)) = page_preview_files(nb, pid) else { return u32::MAX };
+    let Some((_, full, _)) = page_render_files(nb, pid) else { return u32::MAX };
+    [image, full].iter().filter_map(|p| std::fs::metadata(p).ok()?.modified().ok())
+        .filter_map(|t| t.elapsed().ok()).map(|d| d.as_millis().min(u32::MAX as u128) as u32)
+        .min().unwrap_or(u32::MAX)
+}
+
 /// A page whose whole drawing in the editor takes this long or longer keeps it (store_save_page_render), ms.
 /// (The previews job goes by store_page_dense instead: it keeps a dense page's drawing, however quick, and no
 /// other page's, however slow.)
