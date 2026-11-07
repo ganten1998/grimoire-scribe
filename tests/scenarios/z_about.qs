@@ -2,7 +2,7 @@
 # What's new: the bat (or the name beside it) opens the card, with Read all and Dismiss and no box
 # (the owner's rule of 2026-11-05). The card shows this version's notes and ends at the last of them
 # that fits whole above the signature (2.0.0's notes: all 11 upright, the first 10 sideways, the rest
-# Read all's). Read all opens the list of every version's notes (2.0.1; z_about_list.qs), and its row
+# Read all's). Read all opens the list of every version's notes (2.1.0; z_about_list.qs), and its row
 # for this version shows the whole notes on the sheet, a page at a time (2.0.0's notes: two pages
 # upright and two sideways); Dismiss closes the card and the sheet. The counts are the notes'
 # (card_notes, card_blocks, pages, the row's version): every release's new notes set them again

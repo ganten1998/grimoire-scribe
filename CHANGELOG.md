@@ -1,6 +1,6 @@
 # Changelog
 
-## 2.0.1 (unreleased)
+## 2.1.0 (unreleased)
 
 - A wake no longer leaves parts of the sleep picture (the KOReader wallpaper) on the screen until a redraw (the
   owner's Scribe, 2026-11-05). The framebuffer held the Library whole: the Kindle draws on the panel on its way

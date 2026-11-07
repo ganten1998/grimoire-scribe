@@ -132,7 +132,7 @@ const H_ABOUT_CLOSE: i32 = 72;
 const H_ABOUT_PREV: i32 = 74;
 const H_ABOUT_NEXT: i32 = 75;
 const H_ABOUT_MORE: i32 = 76;
-// 2.0.1: Read all's list of every version's notes, its rows (arg: the entry in about::notes()), and Back
+// 2.1.0: Read all's list of every version's notes, its rows (arg: the entry in about::notes()), and Back
 // from a version's notes to it.
 const H_ABOUT_ROW: i32 = 87;
 const H_ABOUT_BACK: i32 = 88;

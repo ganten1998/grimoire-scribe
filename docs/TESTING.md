@@ -1462,7 +1462,7 @@ What only the Scribe and a real browser can show:
 5. **Show toolbar off.** In the browser's View settings, switch Show toolbar off and open Display: the browser
    shows the page and the sheet and no toolbar. Switch it back on.
 
-## 2.0.1, wake
+## 2.1.0, wake
 
 The owner's Scribe woke (2026-11-05 21:41) with parts of the KOReader wallpaper still on the panel while the
 framebuffer, read over ssh a minute later, held the Library whole. Automated: tests/scenarios/p_wake_full.qs (a
@@ -1470,7 +1470,7 @@ full refresh of the whole screen comes 2.5 s after a wake; it fails on 2.0.0, wh
 On the Kindle: with Sleep picture set to KOReader's wallpaper, sleep and wake a few times, from the Library and
 from a page: about 2.5 s after each wake the screen flashes once, and nothing of the wallpaper stays.
 
-## 2.0.1, What's new by version
+## 2.1.0, What's new by version
 
 The owner's request of 2026-11-06: "The messages have all fit in the popup card, now we do the sensible thing -
 wire read all button to a list of each UNIQUE release note, and allow users to easily browse the changes by
@@ -1479,16 +1479,16 @@ version's marked; a row shows that version's notes whole, with Back to the list;
 The notes are a file for each version (docs/whatsnew/), dated by CHANGELOG.md's headings.
 
 Automated: about.rs `the_archive_is_newest_first_one_entry_a_note` (versions in version order, numbers as
-numbers: 2.0.1, 2.0.0, rc.10, rc.2, beta.10, beta.2; notes that are the same block for block, line breaks
+numbers: 2.1.0, 2.0.0, rc.10, rc.2, beta.10, beta.2; notes that are the same block for block, line breaks
 aside, are one entry naming both, at the newest's place and with its date),
-`the_current_note_is_this_versions_else_the_newest` (a version without a file, 2.0.1 before its notes, shows
+`the_current_note_is_this_versions_else_the_newest` (a version without a file, 2.1.0 before its notes, shows
 the newest; the built-in VERSION has its own), `the_built_in_notes_are_the_folders` (build.rs's list is docs/whatsnew/ file for file, the
 released versions' dates are the changelog's, 2.0.0-beta.2 has none), `a_rows_line_is_the_first_heading_or_line`,
 `the_list_holds_whole_rows_a_page_at_a_time` (1, 3 and 40 versions, upright and sideways, Gothic and Classic:
 every row on the sheet above its buttons, as many a page as fit and no more, each version once over the pages,
 the marked row), `the_built_in_list_marks_this_version` and `a_versions_notes_end_with_the_signature_and_go_back`
 (2.0.0-beta.1's letter: the signature on its last page, Back at the foot's left). tests/scenarios/z_about_list.qs
-(the list's three rows, 2.0.1 unreleased, 2.0.0 marked This version with 2026-11-05, 2.0.0-beta.1 with
+(the list's three rows, 2.1.0 unreleased, 2.0.0 marked This version with 2026-11-05, 2.0.0-beta.1 with
 2026-11-01; the letter signed, Back to the list; sideways the letter's two pages; Dismiss from the notes and
 from the list; Enter, Esc (the notes to the list, the list to the card, the card closed), Left and Right; the
 refreshes of each step only the sheet's place), z_about.qs
@@ -1499,10 +1499,10 @@ that is 2.0.0's notes again (docs/WHATSNEW.md at v2.0.0) and, after a scratch v2
 same as 2.0.1's each fail; new notes pass; a clone without tags says it could not compare and passes.
 
 On the Scribe (Gothic and Classic, upright and sideways), with a build of this branch (its version is still
-2.0.0, so the list shows 2.0.1's draft notes as unreleased above it):
+2.0.0, so the list shows 2.1.0's draft notes as unreleased above it):
 
 1. **Read all is the list.** Open What's new from the bat: the card is as in 2.0.0 (2.0.0's notes, the
-   signature, Read all and Dismiss). Tap Read all: the sheet titled What's new lists 2.0.1 (unreleased),
+   signature, Read all and Dismiss). Tap Read all: the sheet titled What's new lists 2.1.0 (unreleased),
    2.0.0 (with a black This version mark and 2026-11-05) and 2.0.0-beta.1 (2026-11-01), each with its first
    line under it (2.0.0-beta.1's letter cut short with "..."). Only the sheet's place redraws, without a flash;
    the Library's cards around it do not.
@@ -1515,5 +1515,5 @@ On the Scribe (Gothic and Classic, upright and sideways), with a build of this b
 5. **A keyboard** (shortcuts on): on the card Enter opens the list, Enter again 2.0.0's notes; Right and Left
    turn their pages; Esc goes back to the list, Esc again to the card (only where the list and the card are
    redraws, without a flash), and Esc on the card closes it.
-6. **Spanish** (Settings > Language): the list's mark reads Esta versión and 2.0.1's date sin publicar; Back
+6. **Spanish** (Settings > Language): the list's mark reads Esta versión and 2.1.0's date sin publicar; Back
    reads Volver. Japanese shows those two words in English until they are translated.

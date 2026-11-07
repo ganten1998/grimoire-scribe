@@ -49,12 +49,12 @@ grep -qE "^## $escaped( |$)" docs/TESTING.md || bad "docs/TESTING.md has no '## 
 
 # docs/whatsnew/VERSION.md: every release has its What's new, at least a basic one (the owner's rule
 # of 2026-11-05: "every update with changes by default has at least a basic what's new"), the notes
-# the first start after the update opens by itself (since 2.0.1 every version's notes are a file
+# the first start after the update opens by itself (since 2.1.0 every version's notes are a file
 # there; the app builds them in). This version's file is there, has notes (a line besides its "# "
 # title and the {signature} line), and they are not the release before's again, spaces and line
 # breaks aside. The release before is the newest release tag (vMAJOR.MINOR.PATCH[-beta.N|-rc.N])
 # that is an ancestor of HEAD and not on HEAD itself (that one is this release's own tag); its notes
-# are its docs/whatsnew/ file for its version, or docs/WHATSNEW.md for a release before 2.0.1 (the
+# are its docs/whatsnew/ file for its version, or docs/WHATSNEW.md for a release before 2.1.0 (the
 # single file of then). Where the history or the tags cannot tell (a shallow clone, a clone without
 # tags, the first release), the comparison says so and does not fail for that; the release workflow
 # fetches both before it runs this.

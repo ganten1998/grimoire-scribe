@@ -1182,22 +1182,22 @@ th, combining accents dropped), so Álgebra sorts among the A's; names that fold
 bytes. A name, folder or folders.ini line longer than 95 bytes is cut before the UTF-8 character
 that would cross the limit (`clean_line`).
 
-## What's new, the About sheet (2.0.0; every version's notes, 2.0.1)
+## What's new, the About sheet (2.0.0; every version's notes, 2.1.0)
 
-`about.rs`. The notes are a file for each version, `docs/whatsnew/VERSION.md` (2.0.1; until then the one
+`about.rs`. The notes are a file for each version, `docs/whatsnew/VERSION.md` (2.1.0; until then the one
 docs/WHATSNEW.md), compiled in, each a small Markdown: `# ` the title, `## ` a heading, `- ` a bullet, other
 lines a paragraph, `{signature}` where the owner's signature goes. They are the owner's text, not translated.
 The bat in the Library's top bar (or the name beside it) opens What's new as a card hanging from the bat: What's
 new and the version, this version's notes (each heading with its first bullet; notes without headings, every
 bullet and paragraph), the signature, Read all and Dismiss.
 
-- **The notes, a file a version** (2.0.1). build.rs lists `docs/whatsnew/*.md` into `NOTE_FILES`, each with
+- **The notes, a file a version** (2.1.0). build.rs lists `docs/whatsnew/*.md` into `NOTE_FILES`, each with
   the date of CHANGELOG.md's `## VERSION (YYYY-MM-DD)` heading (`unreleased` for `(unreleased)`, none
   without a heading), so a release's notes are a new file and its date the changelog's, which the bump commit
   dates anyway; no code lists them. A file there not named for a version, or empty, stops the build rather
   than leave a version's notes out (hidden files are passed over); `the_built_in_notes_are_the_folders`
   checks the list against the folder. `archive` orders them newest first by version (`update_version_cmp`:
-  2.0.1, 2.0.0, rc, beta, the numbers compared as numbers) and makes one entry of notes that are the same
+  2.1.0, 2.0.0, rc, beta, the numbers compared as numbers) and makes one entry of notes that are the same
   block for block, naming every version that has them ("2.0.0, 2.0.0-beta.2") at the newest one's place,
   with its date. `current` is this version's entry, or the newest when this version has no file; the card
   shows it. 2.0.0-beta.2 has no file: it shipped 2.0.0-beta.1's notes, and its changes are in 2.0.0's. The
@@ -1210,7 +1210,7 @@ bullet and paragraph), the signature, Read all and Dismiss.
   cut at the end of a line, never inside one and never an empty card. The signature always shows.
   On the Scribe 2.0.0's notes fit whole upright (11 blocks) and to the 10th sideways in Gothic (9th in
   Classic). Probes: `library.about.card_blocks`, `card_notes`, `card_cut`.
-- **Read all lists every version's notes** (2.0.1, the owner, 2026-11-06: "wire read all button to a
+- **Read all lists every version's notes** (2.1.0, the owner, 2026-11-06: "wire read all button to a
   list of each UNIQUE release note, and allow users to easily browse the changes by version - some of
   them are important"). The Library's sheet titled What's new, the bat and the version running under the
   title, then a row for each entry, newest first, framed as the Library's menu rows (170 px, 20 px

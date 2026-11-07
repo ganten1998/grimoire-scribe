@@ -119,10 +119,10 @@ This keeps beta < RC < final < next patch without relying on unsupported version
 A hotfix goes out as the next version on its channel, through the same workflow, and reaches every
 Kindle at its next **Check for updates**:
 
-1. Branch from the release's tag: `git switch -c hotfix/2.0.1 v2.0.0` (or from the beta's tag for a
+1. Branch from the release's tag: `git switch -c hotfix/2.1.1 v2.1.0` (or from the beta's tag for a
    beta: the fix is the next beta).
 2. Fix it, with the targeted tests that cover it, and run the full `make check` once.
-3. Bump `VERSION`: a release's hotfix is the next patch (2.0.0 to 2.0.1, KPM 2.0.19999); a beta's is
+3. Bump `VERSION`: a release's hotfix is the next patch (2.1.0 to 2.1.1, KPM 2.1.19999); a beta's is
    the next beta (2.0.0-beta.5 to beta.6, KPM 2.0.1006). Add its CHANGELOG entry.
 4. Tag, push both remotes, and publish the GitHub release (a beta as a prerelease). The workflow
    checks, uploads, and writes the channel; preview subscribers get a stable hotfix too.

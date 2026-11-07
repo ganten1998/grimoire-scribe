@@ -72,10 +72,10 @@ them.
    - `README.md`: the banner, `Pre-release VERSION.` (a stable release has no banner).
    - `docs/TESTING.md`: a `## VERSION` section, with what the owner checked on a Kindle and what
      still needs a device. Claim only what the owner reported.
-   - `docs/whatsnew/VERSION.md`, this version's What's new (`docs/whatsnew/2.0.1.md`): every release
+   - `docs/whatsnew/VERSION.md`, this version's What's new (`docs/whatsnew/2.1.0.md`): every release
      has one, at least a basic one (the owner's rule of 2026-11-05: "every update with changes by
      default has at least a basic what's new"), since the first start after an update opens it by
-     itself. Each version's notes are a file of their own in `docs/whatsnew/` (since 2.0.1), and the
+     itself. Each version's notes are a file of their own in `docs/whatsnew/` (since 2.1.0), and the
      earlier ones stay as they were: What's new's Read all lists them all, newest first (the owner,
      2026-11-06: "some of them are important"). Write the note while the CHANGELOG section is still
      `(unreleased)` if you like; it is dated by the CHANGELOG, whose heading this commit dates (the
@@ -115,7 +115,7 @@ them.
    notes in it (a line besides its title and `{signature}`) and that they are not the release before's
    again, spaces and line breaks aside (the newest `vVERSION` tag among the commit's ancestors, other
    than its own tag; its notes are its own `docs/whatsnew/` file, or `docs/WHATSNEW.md` for a release
-   before 2.0.1), and a clean tree. The workflow runs it again on the release's tag, first thing; its
+   before 2.1.0), and a clean tree. The workflow runs it again on the release's tag, first thing; its
    checkout holds the tag's commit alone, so the step fetches the history and the `v*` tags first (a
    failed fetch fails the step). Where neither can tell the release before (a shallow clone, a clone
    without tags), the preflight says `docs/whatsnew/VERSION.md not compared: could not tell the

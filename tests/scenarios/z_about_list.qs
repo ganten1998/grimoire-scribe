@@ -1,6 +1,6 @@
 # settings: status_mode=1
 # settings: shortcuts_enabled=1
-# What's new's Read all opens the list of every version's notes (2.0.1, the owner's request of
+# What's new's Read all opens the list of every version's notes (2.1.0, the owner's request of
 # 2026-11-06: "wire read all button to a list of each UNIQUE release note, and allow users to easily
 # browse the changes by version"): a row for each note, newest first, this version's marked, each with
 # its version, its date (CHANGELOG.md's) and its first line. A tap on a row shows that version's notes
@@ -9,7 +9,7 @@
 # refreshes the sheet's place alone, in the sheet's refresh (ui). On a keyboard Enter opens (the card's
 # Read all, then the notes of the row marked) and Esc goes back one layer (the notes to the list, the
 # list to the card, as the Templates sheet goes back to New notebook; the card closes). The rows are
-# docs/whatsnew/'s notes as this build sees them (VERSION 2.0.0, with 2.0.1's notes written and
+# docs/whatsnew/'s notes as this build sees them (VERSION 2.0.0, with 2.1.0's notes written and
 # unreleased): every release sets them again (docs/RELEASING.md, The bump commit).
 # rust-only
 wait 200
@@ -28,7 +28,7 @@ expect library.about.full is 1
 expect library.about.entries is 3
 expect library.about.rows is 3
 expect library.about.pages is 1
-expect library.about.row.1 is 2.0.1
+expect library.about.row.1 is 2.1.0
 expect library.about.row_date.1 is unreleased
 expect library.about.row.2 is 2.0.0
 expect library.about.row_date.2 is 2026-11-05
@@ -88,9 +88,9 @@ shot 05-letter-sideways-2
 tap library about.back
 wait 100
 expect library.about.view is list
-tap library about.row.2.0.1
+tap library about.row.2.1.0
 wait 100
-expect library.about.note is 2.0.1
+expect library.about.note is 2.1.0
 expect library.about.pages is 1
 expect library.about.signature is 1
 shot 06-unreleased-sideways

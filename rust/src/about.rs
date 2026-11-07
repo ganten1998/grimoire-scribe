@@ -12,12 +12,12 @@
 //! users to easily browse the changes by version"): a row for each, newest first, with its version
 //! (this version's marked), its date and its first line, a page at a time when they need more than
 //! one. A tap on a row shows that version's notes whole, a page at a time, with Back to the list;
-//! Dismiss closes What's new from any of them (2.0.1).
+//! Dismiss closes What's new from any of them (2.1.0).
 //!
-//! The notes, a file for each version (2.0.1): build.rs lists docs/whatsnew/*.md, each named for its
+//! The notes, a file for each version (2.1.0): build.rs lists docs/whatsnew/*.md, each named for its
 //! version (VERSION.md), with the date CHANGELOG.md's "## VERSION (YYYY-MM-DD)" heading gives it, into
 //! NOTE_FILES; a new release's notes are a new file there, and no code changes. The archive (notes)
-//! puts them newest first by version (update_version_cmp: 2.0.1, 2.0.0, 2.0.0-rc.2, 2.0.0-beta.2,
+//! puts them newest first by version (update_version_cmp: 2.1.0, 2.0.0, 2.0.0-rc.2, 2.0.0-beta.2,
 //! 2.0.0-beta.1, the numbers compared as numbers), one entry for each note: versions whose notes are
 //! the same, block for block, share one entry ("2.0.0, 2.0.0-beta.2") at the newest one's place, with
 //! its date. 2.0.0-beta.2 has no file: it shipped 2.0.0-beta.1's notes, and its changes are in
@@ -904,11 +904,11 @@ mod tests {
     #[test]
     fn the_archive_is_newest_first_one_entry_a_note() {
         // In no order, as a folder lists them; beta.2 shipped beta.1's notes (another line break, a
-        // blank line more), rc.10 2.0.1's.
+        // blank line more), rc.10 2.1.0's.
         let files = [
             file("2.0.0-beta.1", "2026-11-01", "Dear reader,\n\n- one\n- two\n\n{signature}\n"),
             file("2.0.0-rc.2", "", "# Since rc.1\n\n- a fix\n"),
-            file("2.0.1", "unreleased", "# What's new (since 2.0.0)\n\n- wake\n\n{signature}\n"),
+            file("2.1.0", "unreleased", "# What's new (since 2.0.0)\n\n- wake\n\n{signature}\n"),
             file("2.0.0-beta.10", "", "# Ten\n\n- ten\n"),
             file("2.0.0", "2026-11-05", "# What's new (since 2.0.0-beta.1)\n\n- lots\n\n{signature}\n"),
             file("2.0.0-beta.2", "2026-11-05", "Dear\nreader,\n\n\n- one\n- two\n{signature}"),
@@ -916,8 +916,8 @@ mod tests {
         ];
         let a = archive(&files);
         let got: Vec<String> = a.iter().map(|e| e.label()).collect();
-        // (by version, numbers as numbers: rc.10 after 2.0.1's place, beta.10 before beta.2)
-        assert_eq!(got, ["2.0.1, 2.0.0-rc.10", "2.0.0", "2.0.0-rc.2", "2.0.0-beta.10", "2.0.0-beta.2, 2.0.0-beta.1"]);
+        // (by version, numbers as numbers: rc.10 after 2.1.0's place, beta.10 before beta.2)
+        assert_eq!(got, ["2.1.0, 2.0.0-rc.10", "2.0.0", "2.0.0-rc.2", "2.0.0-beta.10", "2.0.0-beta.2, 2.0.0-beta.1"]);
         // An entry's date is its newest version's; its notes are that version's text.
         assert_eq!(a[0].date, "unreleased");
         assert_eq!(a[4].date, "2026-11-05");
@@ -942,9 +942,9 @@ mod tests {
         assert_eq!(current(&a, "2.0.0"), 0);
         assert_eq!(current(&a, "2.0.0-beta.2"), 1);
         assert_eq!(current(&a, "2.0.0-beta.1"), 1);
-        // A version with no notes of its own (2.0.1 before its file is written) shows the newest.
-        assert_eq!(current(&a, "2.0.1"), 0);
-        assert_eq!(a[current(&a, "2.0.1")].versions[0], "2.0.0");
+        // A version with no notes of its own (2.1.0 before its file is written) shows the newest.
+        assert_eq!(current(&a, "2.1.0"), 0);
+        assert_eq!(a[current(&a, "2.1.0")].versions[0], "2.0.0");
         assert_eq!(current(&a, "1.2.0"), 0);
         // The built-in notes: this version has its own (docs/RELEASING.md, The bump commit), and the
         // card shows them.
@@ -954,7 +954,7 @@ mod tests {
     #[test]
     fn the_built_in_notes_are_the_folders() {
         // build.rs's list is docs/whatsnew/*.md, every file, with its text (an editor's files passed
-        // over as build.rs passes them: .#2.0.1.md, #2.0.1.md#, 2.0.2.md~).
+        // over as build.rs passes them: .#2.1.0.md, #2.1.0.md#, 2.1.1.md~).
         let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../docs/whatsnew");
         let mut want: Vec<(String, String)> = std::fs::read_dir(&dir)
             .unwrap()
@@ -1025,12 +1025,12 @@ mod tests {
         rect_contains_rect(o, r)
     }
 
-    /// n entries, 2.0.n-1 down to 2.0.0, each its own note.
+    /// n entries, 2.n-1.0 down to 2.0.0, each its own note.
     fn entries(n: usize) -> Vec<Entry> {
         (0..n)
             .rev()
             .map(|i| Entry {
-                versions: vec![Box::leak(format!("2.0.{i}").into_boxed_str())],
+                versions: vec![Box::leak(format!("2.{i}.0").into_boxed_str())],
                 date: "2026-11-05",
                 md: Box::leak(format!("# Notes {i}\n\n- a change\n").into_boxed_str()),
             })
@@ -1053,7 +1053,7 @@ mod tests {
                     let mut seen = Vec::new();
                     for page in 0..l.pages {
                         let mut c = screen(aw, ah);
-                        let h = draw_list(&mut c, aw, ah, &all, "2.0.1", page);
+                        let h = draw_list(&mut c, aw, ah, &all, "2.1.0", page);
                         assert_eq!((h.page, h.pages), (page, l.pages));
                         assert!(!h.rows.is_empty() && h.rows.len() <= l.per_page);
                         for (i, (r, _)) in h.rows.iter().enumerate() {
@@ -1067,7 +1067,7 @@ mod tests {
                         // the page arrows when there are pages, Dismiss always, no Back on the list
                         assert_eq!(rect_is_empty(h.next), l.pages == 1);
                         assert!(!rect_is_empty(h.close) && rect_is_empty(h.back));
-                        // 2.0.1 (the entry before the oldest) marked in its row, on its page alone
+                        // 2.1.0 (the entry before the oldest) marked in its row, on its page alone
                         let at = n.checked_sub(2).filter(|i| i / l.per_page == page as usize);
                         assert_eq!(h.marked, at.map_or(0, |i| (i % l.per_page) as i32 + 1));
                         seen.extend(h.rows.iter().map(|r| r.1));

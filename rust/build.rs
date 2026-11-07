@@ -9,7 +9,7 @@
 //                       takes them with include_bytes!, the same bytes xxd -i embeds
 //   What's new          ../docs/whatsnew/VERSION.md, each version's notes, in name order, each with
 //                       the date ../CHANGELOG.md's "## VERSION (YYYY-MM-DD)" heading gives it:
-//                       $OUT_DIR/whatsnew.rs (about.rs includes it; Rust only, 2.0.1)
+//                       $OUT_DIR/whatsnew.rs (about.rs includes it; Rust only, 2.1.0)
 use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -107,11 +107,11 @@ fn main() {
 
 // $OUT_DIR/whatsnew.rs: about.rs's NOTE_FILES, one for each docs/whatsnew/VERSION.md in name order
 // (about.rs puts them in version order). The folder holds the notes alone: a file not named for a
-// version (2.0.1.md, 2.0.0-beta.1.md, as tools/release-preflight.sh reads VERSION), or empty, stops
-// the build rather than leave a version's notes out. Hidden files (.DS_Store, Emacs's lock .#2.0.1.md)
-// and an editor's temporary ones (Emacs's auto-save #2.0.1.md# and backup 2.0.2.md~) are passed over,
+// version (2.1.0.md, 2.0.0-beta.1.md, as tools/release-preflight.sh reads VERSION), or empty, stops
+// the build rather than leave a version's notes out. Hidden files (.DS_Store, Emacs's lock .#2.1.0.md)
+// and an editor's temporary ones (Emacs's auto-save #2.1.0.md# and backup 2.1.1.md~) are passed over,
 // so a build while a note is being written still runs. Each note's date is CHANGELOG.md's for its
-// version: "2026-11-05" from "## 2.0.0 (2026-11-05)", "unreleased" from "## 2.0.1 (unreleased)", else
+// version: "2026-11-05" from "## 2.0.0 (2026-11-05)", "unreleased" from "## 2.1.0 (unreleased)", else
 // none ("").
 fn whatsnew(top: &Path) -> String {
     let dir = top.join("docs/whatsnew");
@@ -128,7 +128,7 @@ fn whatsnew(top: &Path) -> String {
         }
         let version = name.strip_suffix(".md").filter(|v| is_version(v));
         let Some(version) = version else {
-            panic!("docs/whatsnew/{name}: the folder holds each version's notes, named VERSION.md (2.0.1.md, 2.0.0-beta.1.md)");
+            panic!("docs/whatsnew/{name}: the folder holds each version's notes, named VERSION.md (2.1.0.md, 2.0.0-beta.1.md)");
         };
         let md = fs::read_to_string(&p).unwrap_or_else(|e| panic!("{}: {e}", p.display()));
         if md.trim().is_empty() {
@@ -156,8 +156,8 @@ fn whatsnew(top: &Path) -> String {
     s
 }
 
-// A name in docs/whatsnew/ that is no note and no mistake either: hidden (.DS_Store, .#2.0.1.md), or an
-// editor's while a note is open (#2.0.1.md#, 2.0.2.md~). about.rs's the_built_in_notes_are_the_folders
+// A name in docs/whatsnew/ that is no note and no mistake either: hidden (.DS_Store, .#2.1.0.md), or an
+// editor's while a note is open (#2.1.0.md#, 2.1.1.md~). about.rs's the_built_in_notes_are_the_folders
 // passes the same names over.
 fn skipped_note_name(name: &str) -> bool {
     name.starts_with('.') || name.starts_with('#') || name.ends_with('~')
