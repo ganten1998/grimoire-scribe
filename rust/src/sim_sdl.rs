@@ -189,8 +189,8 @@ struct State {
     /// than now), as the Kindle's kernel stamps a sample when the finger moved, not when the app got
     /// to it. The real time between two lines is the waits plus whatever the machine took besides:
     /// stamped with that, a 700 ms press read as more than 800 on a slow runner. None: no contact
-    /// held, or a `waitbg` or `hold` since (their time is the machine's, so the next touch line
-    /// reads the real clock).
+    /// held, or a `waitfor`, `waitbg` or `hold` since (their time is the machine's, so the next touch
+    /// line reads the clock: docs/SIM.md's touch row says so of all three).
     touch_at: Option<u32>,
     pending_shot: FixedStr<128>,
     script_done: bool,
@@ -3597,6 +3597,41 @@ mod tests {
             assert!(now_ms().wrapping_sub(1090) <= 50);
         }
         assert_eq!((with(|st| st.line_no), now_ms()), (3, 1140));
+    }
+
+    #[test]
+    fn a_waitfor_hands_a_held_touch_back_to_the_clock_as_the_docs_say() {
+        fresh();
+        script("waitfor-touch", "touch down 100 100\nwaitfor watching is 1\nwait 300\ntouch up 100 100\nquit\n");
+        let _clock = ScriptClock;
+        crate::util::sim_clock_set(Some(1000));
+        let mut ev = InEvent::default();
+        assert_eq!(input_poll(&mut ev, 30), 1);
+        assert_eq!((ev.type_, ev.t_ms), (InType::TouchDown, 1000));
+        for _ in 0..3 {
+            assert_eq!(input_poll(&mut ev, 30), 0);
+        }
+        assert!(with(|st| st.expect.pending));
+        with(|st| st.watch_fd = 123);
+        assert_eq!(input_poll(&mut ev, 30), 0);
+        let ready = now_ms();
+        assert!(ready > 1000, "{ready}"); // the waitfor idled with the finger down
+        let mut up = None;
+        for _ in 0..100 {
+            if input_poll(&mut ev, 30) == 1 && ev.type_ == InType::TouchUp {
+                up = Some(ev.t_ms);
+                break;
+            }
+        }
+        // The press lasted the waitfor and the wait: not the touch down plus the wait alone (1300), as if
+        // no time went by while the waitfor held the finger down.
+        assert_eq!(up, Some(ready + 300));
+        // and the touch row of docs/SIM.md says so, with the other two that do it
+        let doc = std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/../docs/SIM.md")).unwrap();
+        let row = doc.lines().find(|l| l.starts_with("| `touch down/move/up")).unwrap();
+        for line in ["`waitfor`", "`waitbg`", "`hold`"] {
+            assert!(row.contains(line), "the touch row does not name {line}: {row}");
+        }
     }
 
     #[test]

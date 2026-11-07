@@ -2,20 +2,20 @@
 
 ## 2.1.0 (unreleased)
 
-- The Links bar learning scenario waits for its incoming rows, with a bounded probe wait, instead of
-  guessing that every runner will check 120 notebooks within 9 seconds. Normal application behavior is
-  unchanged. The slow runner it failed on is now pinned: `GRIMOIRE_SIM_BACKLINKS_STEP_MS` (headless runner
-  only) makes each tick of the backlinks check that much longer, and the scenario runs with 60 ms, so its
-  check takes over 11 s however fast the machine is (the old 9 s wait fails every run, the new one passes).
-  Its run with every wait 400 ms late (`make scenarios-late`) does not slow the check: it covers the waits
-  around it, not the slow runner.
-- The headless runner's `waitfor` idles as `wait` does: a round of the main loop every 30 ms (it went round
-  every 20 ms, so the app's idle work, the backlinks check included, ran 1.3 to 1.5 times faster than in a
-  `wait` or on the Kindle), and with `GRIMOIRE_SIM_CLOCK=script` app time moves on by what it idled (it stood
-  still, so a `waitfor` on what a timer does, a toast going, failed at its 60 s). It refuses the keys whose
-  check starts their count again (`display.presents`, `main.longest_unpumped_ms`, `pump.calls`,
-  `keyboard.draws`, `fshape.fired`) with a one-line error, leaving the count for an `expect`: each try
-  cleared what it waited for, so it could pass on nothing or never see a count reach its value.
+- The Links bar learning scenario waits for its incoming rows with the headless runner's new `waitfor`,
+  instead of guessing that every runner will check 120 notebooks within 9 seconds. Normal application
+  behavior is unchanged. `waitfor KEY OP VALUE` takes the keys and checks of `expect` and lets timers run as
+  `wait` does until its check holds, then reads on at once: the main loop goes round every 30 ms, as in a
+  `wait` or on the Kindle at rest, and with `GRIMOIRE_SIM_CLOCK=script` app time moves on by what it idled,
+  so it can wait on what a timer does (a toast going). It fails after 60 s of real time, and at once for an
+  unknown key, a malformed check or a key whose check starts its count again (`display.presents`,
+  `main.longest_unpumped_ms`, `pump.calls`, `keyboard.draws`, `fshape.fired`), which it leaves unread for an
+  `expect`. A `touch` contact held across it is stamped by the clock again after it, as across a `waitbg`.
+- The slow runner the scenario failed on is pinned: `GRIMOIRE_SIM_BACKLINKS_STEP_MS` (headless runner only)
+  makes each tick of the backlinks check that much longer, and the scenario runs with 60 ms, so its check
+  takes over 11 s however fast the machine is (the old 9 s wait fails every run, the `waitfor` passes). Its
+  run with every wait 400 ms late (`make scenarios-late`) does not slow the check: it covers the waits around
+  it, not the slow runner.
 - More fonts in Classic (the owner, 2026-11-04: "Custom font support/More fonts in the classic theme"). In
   Classic the Style row in Settings has a Font chip at its right end ("Font: Terminess"); the rest of the
   row still changes the style, and Gothic, whose look is its pixel type, has no chip. It opens the Font

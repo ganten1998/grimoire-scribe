@@ -1693,10 +1693,16 @@ On the Scribe, with a build of this branch:
 - Host check: run `z_links_3_bar_learns` normally and with `GRIMOIRE_SIM_LATE_MS=400`; it should continue
   as soon as both incoming rows appear. An unknown probe or a never-ready probe must fail the runner.
 - Host check (waitfor): `z_waitfor_script_clock` (`GRIMOIRE_SIM_CLOCK=script`) waits for the update-failed
-  notice to go and passes in about 6 s; before the fix it failed at the 60 s bound. A `waitfor` on
-  `display.presents`, `main.longest_unpumped_ms`, `pump.calls`, `keyboard.draws` or `fshape.fired` fails at
-  once with "waitfor cannot wait on KEY, which starts again when read". Nothing to check on the Scribe.
+  notice to go and passes in about 6 s, as app time moves on while it waits (held still, the notice would
+  stay and the `waitfor` fail at its 60 s bound). A `waitfor` on `display.presents`,
+  `main.longest_unpumped_ms`, `pump.calls`, `keyboard.draws` or `fshape.fired` fails at once with "waitfor
+  cannot wait on KEY, which starts again when read". Nothing to check on the Scribe.
 - Host check (the slow runner): `z_links_3_bar_learns` runs with `GRIMOIRE_SIM_BACKLINKS_STEP_MS=60`, so its
   backlinks check takes over 11 s; the same script with the old `wait 9000` in place of its `waitfor` fails
   (incoming 0, wanted 2). Nothing to check on the Scribe: the slowed check is the headless runner's only
   (the Kindle build has none of it).
+- Host check (a touch held across a `waitfor`): docs/SIM.md's `touch down/move/up` row names `waitfor` with
+  `waitbg` and `hold` as reading the clock again, so `touch down`, `waitfor ...`, `wait 300`, `touch up` is a
+  press as long as the `waitfor` and the `wait` took; the unit test
+  `a_waitfor_hands_a_held_touch_back_to_the_clock_as_the_docs_say` pins the stamp and the row. Nothing to
+  check on the Scribe.

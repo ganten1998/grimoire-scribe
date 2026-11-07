@@ -700,9 +700,11 @@ Ideas, not plans: each needs the owner's go and its own design. No code is taken
   of a fixed 9-second sleep. The slow-runner CI failure is pinned by `GRIMOIRE_SIM_BACKLINKS_STEP_MS=60`
   on the scenario (each tick of the backlinks check 60 ms longer: the old fixed wait fails every run). The
   400-ms-late run covers the waits around the learning, not a slow check.
-- The headless runner's `waitfor KEY OP VALUE` shares expect's probes and operators, idles as `wait` does
-  (30 ms a round; app time moved on under `GRIMOIRE_SIM_CLOCK=script`), stops as soon as ready, and fails
-  immediately for malformed or unknown probes and for the keys a check starts again.
+- The headless runner's new `waitfor KEY OP VALUE` shares expect's probes and operators, idles as `wait`
+  does (30 ms a round; app time moves on under `GRIMOIRE_SIM_CLOCK=script`), stops as soon as ready, and
+  fails immediately for malformed or unknown probes and for the keys a check starts again. A `touch`
+  contact held across it is stamped by the clock again after it, as across `waitbg` or `hold` (docs/SIM.md's
+  touch row names all three).
 
 ## Deferred: waitfor (2026-11-07)
 
@@ -711,3 +713,6 @@ Ideas, not plans: each needs the owner's go and its own design. No code is taken
   real time, so a timer close to 60 s of app time can outlast the bound). No scenario needs otherwise yet.
 - The keys a check starts again could be read without starting them again (a peek for each of the five)
   instead of being refused, if a scenario ever needs to wait for a count.
+- A `touch` contact held across a `waitfor` could be stamped by the script's own clock moved on by what
+  the `waitfor` idled (as a `wait` moves it by its MS) instead of by the clock after it, so that a press
+  timed across one is not stretched by a busy machine. No scenario holds a touch across a `waitfor` yet.
