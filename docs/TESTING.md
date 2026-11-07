@@ -1617,7 +1617,9 @@ On the Scribe (a 2022 or 2024 Scribe, with a build of this branch):
    sentence show in English until they are translated.
 6. **The share pages.** With Noto Sans picked, open Share and the address in a browser: the Library list and a
    notebook's page are in Noto Sans (Literata, Atkinson the same when picked before Share opens); the Effects
-   studio's command box stays in Terminess.
+   studio's command box stays in Terminess. With Live view on (it keeps the server up across screens), pick
+   Literata in Settings > Font and Done, then reload the Library list in the browser: it is in Literata; switch
+   the style to Gothic and reload: it is in Gothic's pixel type.
 7. **KOReader unaffected.** With the KOReader patch on (Settings > KOReader), open KOReader: its menus are in
    Terminess as before, whatever font Grimoire's Classic uses, and Open this book and the Grimoire plugin work
    as in 2.0.0.

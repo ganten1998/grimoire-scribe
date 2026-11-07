@@ -15,17 +15,21 @@ bytes); the gate never runs it.
      700 (Bold) and every other axis at its default (Literata's optical size at 12, its default,
      the sturdy text size; Noto Sans's width at 100). stb_truetype reads no variations, so each
      weight is a font of its own.
-  3. Subsets it to the text Grimoire's screens draw: Basic Latin, Latin-1, Latin Extended-A,
-     General Punctuation, and the few symbols the keyboard and the screens use (the euro, the minus
-     sign, the arrows, the replacement character). Kerning stays (the kern feature: stb reads its
-     pairs), hinting goes (stb draws unhinted, at 300 dpi), and so do the glyph names, the
-     substitutions, the axes' names and the vertical metrics, which nothing here reads. The names
-     kept are the copyright, the family, the style, the version and the license (IDs 0 to 6, 13,
-     14). Greek, Cyrillic and Japanese are left out: Terminess draws Greek and Cyrillic, DotGothic16
-     Japanese, as for every theme (rust/src/font.rs's fallback).
-  4. Checks the result (every code point of the subset is there, the weight is the one asked, the
-     family name is the source's) and writes the font and the family's OFL text into the output
-     folder.
+  3. Subsets it to the text Grimoire's screens draw, as much of it as the source has: Basic Latin,
+     Latin-1, Latin Extended-A, General Punctuation, and the few symbols the keyboard and the screens
+     use (the euro, the minus sign, the arrows, the replacement character). Not every family has all
+     of them (Noto Sans has no arrows; Literata no long s and no replacement character; Atkinson
+     Hyperlegible Next neither of those nor the arrows, the micro sign, the soft hyphen and some
+     Latin Extended-A letters): step 4 names what is missing outside General Punctuation, and
+     Terminess draws it. Kerning stays (the kern feature: stb reads its pairs), hinting goes (stb
+     draws unhinted, at 300 dpi), and so do the glyph names, the substitutions, the axes' names and
+     the vertical metrics, which nothing here reads. The names kept are the copyright, the family,
+     the style, the version and the license (IDs 0 to 6, 13, 14). Greek, Cyrillic and Japanese are
+     left out: Terminess draws Greek and Cyrillic, DotGothic16 Japanese, as for every theme
+     (rust/src/font.rs's fallback).
+  4. Checks the result (every character every family must have is there, REQUIRED below, and the
+     others of the subset the source lacks are named; the weight is the one asked, the family name
+     is the source's) and writes the font and the family's OFL text into the output folder.
 
 With --verify it writes nothing: it makes every font in memory and fails unless each matches the
 file already in the output folder byte for byte (the same fontTools version makes the same bytes).

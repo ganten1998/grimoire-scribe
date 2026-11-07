@@ -5071,6 +5071,7 @@ fn act(a: &mut App, h: &Hit) {
             } else {
                 UiTheme::Gothic
             });
+            httpd_restyle(ui_theme() == UiTheme::Gothic);
             settings_save(&a.settings);
             redraw(a, RefreshMode::Full);
         }
@@ -5115,6 +5116,7 @@ fn act(a: &mut App, h: &Hit) {
             if pick != font_family() {
                 a.settings.font = pick as i32;
                 font_set_family(pick);
+                httpd_restyle(ui_theme() == UiTheme::Gothic); // (the share pages, if Live view is on)
                 settings_save(&a.settings);
                 redraw(a, RefreshMode::Full);
             } else {

@@ -667,6 +667,17 @@ fn test_httpd() {
     check!(httpd_acquire(HTTPD_SHARE, port(), 300.0, false) == 0);
     font_set_family(0);
     run!(the_classic_style_follows_the_font);
+    // a style or font changed while it runs (Live view keeps it up): httpd_restyle, and the next page
+    // is in it
+    httpd_restyle(false);
+    run!(the_classic_style_has_its_own_fonts);
+    font_set_family(font_family_find(b"literata").unwrap());
+    httpd_restyle(false);
+    font_set_family(0);
+    run!(the_classic_style_follows_the_font);
+    httpd_restyle(true);
+    let t = get("/").text();
+    check!(has(&t, "/font/jacquard24.ttf?v=") && has(&t, "<body class=gothic>") && !has(&t, "literata"));
     httpd_stop();
     serving(HTTPD_SHARE);
     run!(a_second_owner_shares_the_server_and_the_last_one_stops_it);

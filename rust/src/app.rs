@@ -2675,6 +2675,7 @@ pub fn app_global_action(a: &mut App, action: i32, src: ActionSrc) -> bool {
         SHORTCUT_THEME => {
             a.settings.theme = if a.settings.theme == UiTheme::Classic as i32 { UiTheme::Gothic as i32 } else { UiTheme::Classic as i32 };
             ui_set_theme(if a.settings.theme == UiTheme::Classic as i32 { UiTheme::Classic } else { UiTheme::Gothic });
+            httpd_restyle(ui_theme() == UiTheme::Gothic); // (the share pages, if Live view is on)
             relayout = true;
         }
         SHORTCUT_SIDE_BUTTON => {

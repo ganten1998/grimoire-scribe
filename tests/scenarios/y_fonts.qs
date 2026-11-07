@@ -6,6 +6,10 @@
 # highlighted; a tap on a family highlights it and changes nothing else; Cancel leaves the font as it
 # was; a pick and Done applies it (saved, and the screens come back in it); z_fonts_kept starts again
 # from what this run saved. Shots of the sheet with each family highlighted, upright and sideways.
+# A tap on a family refreshes the sample and the two rows whose highlight changed, never the whole
+# screen (font_step: the sample's top through the lower row, whatever the font); Done on another font
+# refreshes the whole screen with a Full, as a style change does. ("has", not "is": a refresh of the
+# Library starting up can land in the same wait.)
 # rust-only
 wait 100
 expect settings.font is terminess
@@ -20,18 +24,24 @@ wait 50
 expect library.sheet is font
 expect library.font.pick is terminess
 shot 02-font-terminess
+expect display.presents not -1
 tap library font.atkinson
 wait 50
 expect library.font.pick is atkinson
 expect font is terminess
+expect display.presents has ui 106 566 1648 600
 shot 03-font-atkinson
+expect display.presents not -1
 tap library font.noto-sans
 wait 50
 expect library.font.pick is noto-sans
+expect display.presents has ui 106 566 1648 746
 shot 04-font-noto-sans
+expect display.presents not -1
 tap library font.literata
 wait 50
 expect library.font.pick is literata
+expect display.presents has ui 106 566 1648 892
 shot 05-font-literata
 rotate 1
 wait 100
@@ -60,9 +70,11 @@ tap library font
 wait 50
 tap library font.atkinson
 wait 50
+expect display.presents not -1
 tap library font.done
 wait 100
 expect library.sheet is settings
+expect display.presents has full 0 0 1860 2480
 expect font is atkinson
 expect settings.font is atkinson
 shot 07-settings-atkinson

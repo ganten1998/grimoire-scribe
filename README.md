@@ -210,7 +210,7 @@ your notebooks and settings from `quire/` to `grimoire/` and removes the old Qui
   for reading on screens), each named in itself, with a sample of the one you tap at the top. **Done**
   applies it to every screen; **Cancel** leaves the font as it was. Your pages, paper labels, the clock,
   PDFs and pictures never change with the font, and neither do the icons; the share pages in your browser
-  use the same font. Gothic keeps its own pixel type, so the chip is not there. Greek, Cyrillic and other
+  use the same font (a page already open takes it when it loads again). Gothic keeps its own pixel type, so the chip is not there. Greek, Cyrillic and other
   letters a font lacks come from Terminess, and Japanese from DotGothic16, as in every style.
 
 ## White ink, pinned pens and templates

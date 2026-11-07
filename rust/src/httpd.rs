@@ -388,6 +388,17 @@ pub fn httpd_acquire(owner: u32, port: i32, dpi: f32, gothic: bool) -> i32 {
     0
 }
 
+/// The style changed while the server may be up (Live view keeps it up across screens): the pages
+/// take gothic (as httpd_acquire's) and Classic's font in use now (font_family). The pages are made
+/// for each request, so the next one is in the new style; a page already open keeps its own until
+/// it loads again.
+pub fn httpd_restyle(gothic: bool) {
+    with(|s| {
+        s.gothic = gothic;
+        s.font = font_family();
+    });
+}
+
 /// owner is done with it: the server stops once no owner is left (its downloads and connections
 /// with it), and the routes only owner had stop answering at once.
 pub fn httpd_release(owner: u32) {

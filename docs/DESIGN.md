@@ -791,9 +791,12 @@ announcements: goingToScreenSaver draws the sleep screen, outOfScreenSaver is th
    new connection from the previous request); renders fork, two at a time, the rest queue
    oldest first and are dropped when their browser hangs up. The pages use the fonts of the
    Kindle's style (served from the binary, cached a year) and the language in use (Languages
-   above): in Classic the font in use when the server started (Settings > Font; its Regular and Bold
+   above): in Classic the font in use (Settings > Font; its Regular and Bold
    as 'Grimoire Text', the browser's serif, sans-serif or monospace after it, and Terminess as 'Grimoire
-   Mono' for the studio's command line). The fonts' licenses go with them (Rust only): `/font/licenses.txt`
+   Mono' for the studio's command line). The server takes the style and the font as it starts, and again
+   when either changes while it runs (Live view keeps it up across screens: the style row, the theme
+   shortcut and the Font sheet's Done call `httpd_restyle`), so the next page a browser loads is in them;
+   a page already open keeps its own until it loads again. The fonts' licenses go with them (Rust only): `/font/licenses.txt`
    holds the texts (Terminess's OFL, its Material Design icons' notice and the Apache License, the Gothic
    fonts' and the Classic fonts' OFL), each font's answer names it in a `Link: rel="license"` header, and
    the pages' style says where it is;

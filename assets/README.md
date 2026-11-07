@@ -97,14 +97,19 @@ https://github.com/google/fonts at the commit that added each version, every one
 values are in `tools/fonts_classic.py`). Each weight is a static font of its own (stb_truetype reads no
 variations): fontTools' instancer pins the weight at 400 (Regular) or 700 (Bold) and every other axis at its
 default, Literata's optical size at 12 (its default, the sturdy text size) and Noto Sans's width at 100, and
-the names say the family and Regular or Bold. Then it is cut down to Basic Latin, Latin-1, Latin Extended-A,
-General Punctuation, the euro, the arrows, the minus sign and the replacement character, with kerning (the
-`kern` feature's pairs, which stb reads), without hinting (stb draws unhinted, at 300 dpi), glyph names,
-substitutions, vertical metrics or the axes' names, and with the copyright, family, style, version and
-license names (IDs 0 to 6, 13 and 14). 238,260 bytes for the six. Greek, Cyrillic and Japanese are left out:
-Terminess draws Greek and Cyrillic, DotGothic16 Japanese, as for every theme. Atkinson Hyperlegible Next has no
-µ, no soft hyphen and some Latin Extended-A letters (Esperanto's, ŋ, ŧ, ŗ, ō, ũ and their kin), and no arrows;
-those come from Terminess too. Every character a translation uses is in each family (rust/tests/test_i18n.rs).
+the names say the family and Regular or Bold. Then it is cut down to what it has of Basic Latin, Latin-1,
+Latin Extended-A, General Punctuation, the euro, the arrows, the minus sign and the replacement character,
+with kerning (the `kern` feature's pairs, which stb reads), without hinting (stb draws unhinted, at 300
+dpi), glyph names, substitutions, vertical metrics or the axes' names, and with the copyright, family,
+style, version and license names (IDs 0 to 6, 13 and 14). 238,260 bytes for the six. Greek, Cyrillic and
+Japanese are left out: Terminess draws Greek and Cyrillic, DotGothic16 Japanese, as for every theme. Not
+every family has all of the rest: Noto Sans has no arrows; Literata has no long s (ſ) and no replacement
+character; Atkinson Hyperlegible Next has no arrows, no replacement character, no µ, no soft hyphen and some
+Latin Extended-A letters (Esperanto's, ĸ, ŋ, ŧ, ŗ, ō, ũ, ſ and their kin); and Atkinson and Literata have
+only the common marks of General Punctuation (a few spaces, dashes, quotes, the ellipsis, the bullet, the
+daggers, the per mille, the angle quotes). Those come from Terminess too (`tools/fonts_classic.py` names the
+ones outside General Punctuation as it makes the fonts). Every character a translation uses is in each
+family (rust/tests/test_i18n.rs).
 
 `make fonts-subset` (above) makes them too, after the Terminess diet: `tools/fonts_classic.py` downloads the
 three fonts and their OFL texts into `FONTS_CACHE` once, checks each by SHA-256, makes the six fonts and writes
