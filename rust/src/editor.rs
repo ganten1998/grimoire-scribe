@@ -5018,14 +5018,6 @@ fn qs_result(a: &mut App, r: QsResult, d: Rect) {
             compose(a, r);
             app_invalidate(a, r, RefreshMode::Ui);
         }
-        QsResult::PenFeel => {
-            let t = ed_ref(a).qs.tool;
-            ed(a).qs = QuickSize::default();
-            ed(a).owner = Owner::None;
-            ed(a).qs_save = 0;
-            settings_save(&a.settings);
-            pensettings_open(a, t);
-        }
     }
 }
 

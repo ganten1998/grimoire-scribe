@@ -526,8 +526,8 @@ fn settings_upgrade_keeps_tweaks() {
     let mut s = Settings::default();
     settings_load(&mut s);
     let (pencil, mech) = (TOOL_PENCIL.0 as usize, TOOL_MECH_PENCIL.0 as usize);
-    check_near!(s.tools[pencil].size_min_mm, 0.12f32, 1e-3);
-    check_near!(s.tools[pencil].size_max_mm, 0.32f32, 1e-3);
+    check_near!(s.tools[pencil].size_min_mm, 0.13f32, 1e-3);
+    check_near!(s.tools[pencil].size_max_mm, 0.35f32, 1e-3);
     check_near!(s.tools[pencil].tilt_size, 3.10f32, 1e-3); // the owner's own value stays
     check_near!(s.tools[mech].grain, 0.50f32, 1e-3);
     check!(s.version == SETTINGS_VERSION);
@@ -569,6 +569,40 @@ fn settings_upgrade_ballpoint_smoothing() {
     settings_load(&mut u);
     check_near!(u.tools[ball].smoothing, 0.50f32, 1e-3);
     check_near!(u.tools[pencil].smoothing, 0.00f32, 1e-3);
+}
+
+// Version 4 (quick sizes): a tool's widths move to the new default only when BOTH still equal the old default
+// pair; a pair changed in either field stays exactly as it is.
+fn settings_upgrade_quick_size_pairs() {
+    let path = format!("{}/settings.ini", store_root());
+    let ini = "settings_version=3\n\
+        pencil.size_min_mm=0.12\npencil.size_max_mm=0.32\n\
+        charcoal.size_min_mm=0.30\ncharcoal.size_max_mm=0.60\n\
+        ballpoint.size_min_mm=0.25\nballpoint.size_max_mm=0.48\n\
+        fineliner.size_min_mm=0.28\nfineliner.size_max_mm=0.28\n\
+        calligraphy.size_min_mm=1.75\ncalligraphy.size_max_mm=1.75\n\
+        highlighter.size_min_mm=5.0\nhighlighter.size_max_mm=5.0\n\
+        eraser.size_min_mm=2.5\neraser.size_max_mm=7.0\n";
+    write_file_atomic(&path, ini.as_bytes());
+    let mut s = Settings::default();
+    settings_load(&mut s);
+    let w = |t: ToolKind| (s.tools[t.0 as usize].size_min_mm, s.tools[t.0 as usize].size_max_mm);
+    let near = |a: (f32, f32), b: (f32, f32)| (a.0 - b.0).abs() < 1e-3 && (a.1 - b.1).abs() < 1e-3;
+    check!(near(w(TOOL_PENCIL), (0.13, 0.35)));
+    check!(near(w(TOOL_FINELINER), (0.25, 0.25)));
+    check!(near(w(TOOL_CALLIGRAPHY), (2.0, 2.0)));
+    check!(near(w(TOOL_HIGHLIGHTER), (5.6, 5.6)));
+    check!(near(w(TOOL_ERASER), (2.86, 8.0)));
+    // only the max changed (charcoal), only the min changed (ballpoint): left alone
+    check!(near(w(TOOL_CHARCOAL), (0.30, 0.60)));
+    check!(near(w(TOOL_BALLPOINT), (0.25, 0.48)));
+    check!(s.version == SETTINGS_VERSION);
+    // a version-4 file is not moved again
+    let again = "settings_version=4\npencil.size_min_mm=0.12\npencil.size_max_mm=0.32\n";
+    write_file_atomic(&path, again.as_bytes());
+    let mut t = Settings::default();
+    settings_load(&mut t);
+    check_near!(t.tools[TOOL_PENCIL.0 as usize].size_max_mm, 0.32f32, 1e-3);
 }
 
 fn pen_defaults_from_device() {
@@ -1259,6 +1293,7 @@ fn test_store() {
     run!(settings_roundtrip);
     run!(settings_upgrade_keeps_tweaks);
     run!(settings_upgrade_ballpoint_smoothing);
+    run!(settings_upgrade_quick_size_pairs);
     run!(pen_defaults_from_device);
     run!(panel_tools);
     run!(before_eraser);

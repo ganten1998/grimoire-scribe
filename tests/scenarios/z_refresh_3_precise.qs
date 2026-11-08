@@ -51,7 +51,7 @@ eraser line 700 720 700 800 8
 pen leave
 wait 400
 expect editor.strokes is 2
-expect editor.wear is 2
+expect editor.wear is 3
 expect display.presents not has clean
 # a scribble of the eraser over most of it: no flash with the pen near, then one where it swept
 eraser down 200 690 0.6
@@ -81,13 +81,13 @@ eraser move 1500 1610 0.6
 eraser move 200 1650 0.6
 eraser up 200 1650
 expect editor.strokes is 3
-expect editor.wear is 318
+expect editor.wear is 325
 wait 400
 expect display.presents not has clean
 # (the pen stays near: the clean waits as the grayscale settle does, 1.5 s after the stroke, and goes out
 # with it as one refresh)
 wait 1300
-expect display.presents is clean 154 644 1394 1054
+expect display.presents is clean 148 638 1406 1066
 expect editor.wear is 0
 expect display.stale.0.300.1650.2000 is 0
 expect editor.layers is ok

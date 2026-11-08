@@ -937,6 +937,7 @@ fn pen_screen(p: &mut Probe, tab: ToolKind) {
 fn penset_draws(p: &mut Probe) {
     pensettings_init(&mut p.app);
     settings_default(&mut p.app.settings);
+    pin_pre21_sizes(&mut p.app.settings); // (the recorded hashes: the C build's sizes)
     p.app.scr = ScreenId::Penset;
     // Every tool's tab, upright and sideways, in both looks; the eraser's two modes; white ink.
     for turn in 0..2 {
@@ -984,6 +985,7 @@ fn penset_draws(p: &mut Probe) {
 fn penset_events(p: &mut Probe) {
     pensettings_init(&mut p.app);
     settings_default(&mut p.app.settings);
+    pin_pre21_sizes(&mut p.app.settings); // (the recorded hashes: the C build's sizes)
     p.app.scr = ScreenId::Penset;
     // The pen on the pad, on each tool's tab: the stroke, the readout, the graph's live dot.
     p.screen(1860, 2480);

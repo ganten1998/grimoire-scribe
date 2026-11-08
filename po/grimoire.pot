@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: Grimoire 2.0.0\n"
 "Report-Msgid-Bugs-To: https://github.com/ganten1998/grimoire-scribe/issues\n"
-"POT-Creation-Date: 2026-11-08 00:14-0600\n"
+"POT-Creation-Date: 2026-11-08 16:38-0600\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -272,9 +272,7 @@ msgstr ""
 msgid "Display"
 msgstr ""
 
-#. TRANSLATORS: the label of the sizes card's Pen feel chip, under the Tune icon (the card a pen button on the
-#. toolbar held opens): up to 300 px at 34 px. The same words as the toolbar action that opens Pen feel.
-#: rust/src/actions.rs rust/src/quicksize.rs
+#: rust/src/actions.rs
 msgid "Pen feel"
 msgstr ""
 

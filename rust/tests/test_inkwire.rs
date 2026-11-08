@@ -94,7 +94,7 @@ fn eraser_size_follows_the_zoom() {
     }
     check!(ranges == 2);
     let mut e = ToolParams::default();
-    tool_params_default(TOOL_ERASER, &mut e);
+    tool_params_default_pre21(TOOL_ERASER, &mut e); // (the arithmetic below is for 2.5..7 mm)
     let mut z = eraser_at_zoom(&e, 1.0);
     check!(z == e);
     z = eraser_at_zoom(&e, 2.0);

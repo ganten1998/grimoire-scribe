@@ -1,62 +1,68 @@
-//! Quick sizes (2.1, lane L1): a pen button on the toolbar held HOLD_MS opens a card beside it with four chips,
-//! each a width in millimetres drawn as a short stroke of that tool's own brush, and a Pen feel chip. A tap on a
-//! chip, or sliding the contact that opened the card onto one and lifting there, sets the tool's width and closes
-//! the card. The eraser's card has a second row, Whole strokes / Precise.
+//! Quick sizes (2.1, lane L1): a pen button on the toolbar held HOLD_MS opens a card beside it with five chips,
+//! each a width in millimetres drawn as a short stroke of that tool's own brush. A tap on a chip, or sliding the
+//! contact that opened the card onto one and lifting there, sets the tool's width and closes the card. The eraser's card has a second row, Whole strokes / Precise.
 //!
 //! An editor-hosted card like linkcard.rs: it draws itself and takes the contacts, and says what was asked
 //! (QsResult); the editor does it. A size is a setting, never a page change: it writes the tool's own
 //! `size_min_mm` and `size_max_mm` (settings.ini, the keys every version reads) and nothing else, with no history
-//! step. Its place is the shared popout's (popout.rs, popout_place).
+//! step: the max is the chip's width, the min keeps the tool's own thin-to-thick ratio. Its place is the shared popout's (popout.rs, popout_place).
 //!
 //! Layout (logical px at 300 dpi, scaled with ui_px): 24 px padding; a 64 px header (the tool's name at the
-//! left, its width now at the right); 12 px; the chip row, 170 px tall: four size chips, 160 x 170 each (a white
-//! well 136 x 100 with the sample, the width under it), 16 px apart, then, 24 px on, the Pen feel chip (the
-//! Tune icon over its label, as wide as the label needs, 160 to 300 px). The eraser's second row is 110 px
-//! tall, 12 px under the chips. About 960 x 294 px (the eraser's 416 tall).
+//! left, its width now at the right); 12 px; the chip row, 170 px tall: five size chips, 160 x 170 each (a white
+//! well 136 x 100 with the sample, the width under it), 16 px apart. The eraser's second row is 110 px tall,
+//! 12 px under the chips. 912 x 294 px (the eraser's 416 tall).
 
 use crate::prelude::*;
 
 // Hit ids.
 const QS_CHIP: i32 = 1;
-const QS_FEEL: i32 = 2;
 const QS_MODE: i32 = 3;
 
 /// The chips of a card.
-pub const QS_CHIPS: usize = 4;
+pub const QS_CHIPS: usize = 5;
 
-/// The pairs (min, max) in millimetres of a tool's four chips, widest last. The label of a chip is the max, the
-/// width at full pressure; the min is the max times the tool's own proportion (rounded to 0.01, never under the
-/// format's 0.10). The tool's default pair is always one of them. The eraser's are screen millimetres. One array:
-/// the owner's to change.
-const PRESETS: [(ToolKind, [(f32, f32); QS_CHIPS]); TOOL_COUNT] = [
-    (TOOL_PENCIL, [(0.10, 0.25), (0.12, 0.32), (0.19, 0.50), (0.30, 0.80)]),
-    (TOOL_MECH_PENCIL, [(0.3, 0.3), (0.5, 0.5), (0.7, 0.7), (0.9, 0.9)]),
-    (TOOL_CHARCOAL, [(0.22, 0.40), (0.30, 0.55), (0.55, 1.00), (1.09, 2.00)]),
-    (TOOL_BALLPOINT, [(0.22, 0.35), (0.30, 0.48), (0.44, 0.70), (0.62, 1.00)]),
-    (TOOL_FINELINER, [(0.2, 0.2), (0.28, 0.28), (0.4, 0.4), (0.6, 0.6)]),
-    (TOOL_MARKER, [(0.7, 0.7), (1.0, 1.0), (1.6, 1.6), (2.5, 2.5)]),
-    (TOOL_FOUNTAIN, [(0.15, 0.60), (0.25, 1.00), (0.35, 1.40), (0.50, 2.00)]),
-    (TOOL_CALLIGRAPHY, [(1.0, 1.0), (1.75, 1.75), (2.4, 2.4), (3.8, 3.8)]),
-    (TOOL_HIGHLIGHTER, [(3.0, 3.0), (4.0, 4.0), (5.0, 5.0), (7.0, 7.0)]),
-    (TOOL_ERASER, [(0.71, 2.0), (1.43, 4.0), (2.50, 7.0), (4.29, 12.0)]),
+/// The full-pressure widths in millimetres of a tool's five chips, smallest first: the pens follow the ISO
+/// sqrt(2) pen-width series (each step about 1.4x), the mechanical pencil has lead sizes, the eraser doubles
+/// (screen millimetres, 12 the format's largest). The tool's default max is always one of them. One array: the
+/// owner's to change.
+const PRESETS: [(ToolKind, [f32; QS_CHIPS]); TOOL_COUNT] = [
+    (TOOL_PENCIL, [0.25, 0.35, 0.5, 0.7, 1.0]),
+    (TOOL_MECH_PENCIL, [0.3, 0.5, 0.7, 0.9, 1.3]),
+    (TOOL_CHARCOAL, [0.5, 0.7, 1.0, 1.4, 2.0]),
+    (TOOL_BALLPOINT, [0.25, 0.35, 0.5, 0.7, 1.0]),
+    (TOOL_FINELINER, [0.25, 0.35, 0.5, 0.7, 1.0]),
+    (TOOL_MARKER, [0.7, 1.0, 1.4, 2.0, 2.8]),
+    (TOOL_FOUNTAIN, [0.5, 0.7, 1.0, 1.4, 2.0]),
+    (TOOL_CALLIGRAPHY, [1.0, 1.4, 2.0, 2.8, 4.0]),
+    (TOOL_HIGHLIGHTER, [2.0, 2.8, 4.0, 5.6, 8.0]),
+    (TOOL_ERASER, [1.0, 2.0, 4.0, 8.0, 12.0]),
 ];
 
-/// Tool `t`'s four chips as (size_min_mm, size_max_mm); the pencil's for a tool out of range.
-pub fn quicksize_presets(t: ToolKind) -> [(f32, f32); QS_CHIPS] {
+/// Tool `t`'s five chip widths (the max, at full pressure); the pencil's for a tool out of range.
+pub fn quicksize_presets(t: ToolKind) -> [f32; QS_CHIPS] {
     PRESETS.iter().find(|(k, _)| *k == t).map_or(PRESETS[0].1, |(_, p)| *p)
 }
 
-/// The chip whose pair both of `p`'s widths match within 0.005 mm (the tolerance settings_upgrade uses), or
-/// None after Pen feel tuned the widths to something between.
+/// The chip whose width matches `p`'s size_max_mm within 0.005 mm (the tolerance settings_upgrade uses), whatever
+/// the min; None after Pen feel tuned the max to something between.
 pub fn quicksize_current(t: ToolKind, p: &ToolParams) -> Option<usize> {
-    quicksize_presets(t).iter().position(|&(lo, hi)| (p.size_min_mm - lo).abs() < 0.005 && (p.size_max_mm - hi).abs() < 0.005)
+    quicksize_presets(t).iter().position(|&hi| (p.size_max_mm - hi).abs() < 0.005)
 }
 
-/// Chip `i`'s pair written into `p`: size_min_mm and size_max_mm, the eleven other fields as they were.
+/// Chip `i` written into `p`: size_max_mm is the chip's width, size_min_mm the chip's width times the tool's
+/// current min/max ratio (its default ratio when the current max is 0 or not finite), rounded to 0.01 and
+/// clamped to 0.10 .. the width; the eleven other fields as they were.
 pub fn quicksize_apply(t: ToolKind, p: &mut ToolParams, i: usize) {
-    let (lo, hi) = quicksize_presets(t)[i.min(QS_CHIPS - 1)];
-    p.size_min_mm = lo;
+    let hi = quicksize_presets(t)[i.min(QS_CHIPS - 1)];
+    let ratio = if p.size_max_mm.is_finite() && p.size_max_mm > 0.0 && p.size_min_mm.is_finite() {
+        p.size_min_mm / p.size_max_mm
+    } else {
+        let mut d = ToolParams::default();
+        tool_params_default(t, &mut d);
+        d.size_min_mm / d.size_max_mm
+    };
     p.size_max_mm = hi;
+    p.size_min_mm = ((hi * ratio * 100.0).round() / 100.0).max(0.10).min(hi);
 }
 
 /// "0.28 mm", "0.5 mm", "1 mm", "12 mm": at most two decimals, no trailing zeros, a point in every language (as
@@ -77,14 +83,9 @@ fn u(v: f32) -> i32 {
     ui_px(v)
 }
 
-/// The Pen feel chip's width: what its label needs, 160 to 300 px.
-pub fn quicksize_feel_w() -> i32 {
-    clampi(ui_button_need_w(u(170.0), IconKind::Tune, tr("Pen feel"), ButtonStyle::Plain), u(160.0), u(300.0))
-}
-
-/// The card's size for tool `t` with a Pen feel chip `feel_w` wide: about 960 x 294, the eraser's 416 tall.
-pub fn quicksize_size(t: ToolKind, feel_w: i32) -> (i32, i32) {
-    let w = u(24.0) + QS_CHIPS as i32 * u(160.0) + (QS_CHIPS as i32 - 1) * u(16.0) + u(24.0) + feel_w + u(24.0);
+/// The card's size for tool `t`: 912 x 294, the eraser's 416 tall.
+pub fn quicksize_size(t: ToolKind) -> (i32, i32) {
+    let w = u(24.0) + QS_CHIPS as i32 * u(160.0) + (QS_CHIPS as i32 - 1) * u(16.0) + u(24.0);
     let mut h = u(24.0) + u(64.0) + u(12.0) + u(170.0) + u(24.0);
     if t == TOOL_ERASER {
         h += u(12.0) + u(110.0);
@@ -94,8 +95,8 @@ pub fn quicksize_size(t: ToolKind, feel_w: i32) -> (i32, i32) {
 
 /// Where the card for `t` goes: beside the held button `anchor`, off the panel, clear of the clock's corner and
 /// anything else in `avoid` (popout_place).
-pub fn quicksize_place(t: ToolKind, feel_w: i32, anchor: Rect, screen: Rect, panel: Rect, avoid: &[Rect]) -> Rect {
-    let (w, h) = quicksize_size(t, feel_w);
+pub fn quicksize_place(t: ToolKind, anchor: Rect, screen: Rect, panel: Rect, avoid: &[Rect]) -> Rect {
+    let (w, h) = quicksize_size(t);
     let mut list = Vec::with_capacity(1 + avoid.len());
     list.push(panel);
     list.extend_from_slice(avoid);
@@ -107,12 +108,11 @@ pub fn quicksize_place(t: ToolKind, feel_w: i32, anchor: Rect, screen: Rect, pan
 pub struct QsLayout {
     pub header: Rect,
     pub chips: [Rect; QS_CHIPS],
-    pub feel: Rect,
     /// the eraser's Whole strokes and Precise (empty for a pen)
     pub modes: [Rect; 2],
 }
 
-pub fn quicksize_layout(t: ToolKind, card: Rect, feel_w: i32) -> QsLayout {
+pub fn quicksize_layout(t: ToolKind, card: Rect) -> QsLayout {
     let (x, y) = (card.x + u(24.0), card.y + u(24.0));
     let header = Rect { x, y, w: card.w - 2 * u(24.0), h: u(64.0) };
     let row_y = y + u(64.0) + u(12.0);
@@ -120,7 +120,6 @@ pub fn quicksize_layout(t: ToolKind, card: Rect, feel_w: i32) -> QsLayout {
     for (i, c) in chips.iter_mut().enumerate() {
         *c = Rect { x: x + i as i32 * (u(160.0) + u(16.0)), y: row_y, w: u(160.0), h: u(170.0) };
     }
-    let feel = Rect { x: x + QS_CHIPS as i32 * u(160.0) + (QS_CHIPS as i32 - 1) * u(16.0) + u(24.0), y: row_y, w: feel_w, h: u(170.0) };
     let mut modes = [RECT_EMPTY; 2];
     if t == TOOL_ERASER {
         let inner = card.w - 2 * u(24.0);
@@ -129,7 +128,7 @@ pub fn quicksize_layout(t: ToolKind, card: Rect, feel_w: i32) -> QsLayout {
         modes[0] = Rect { x, y: my, w, h: u(110.0) };
         modes[1] = Rect { x: x + w + u(16.0), y: my, w, h: u(110.0) };
     }
-    QsLayout { header, chips, feel, modes }
+    QsLayout { header, chips, modes }
 }
 
 /// The card's state while it is up (memory only).
@@ -162,17 +161,14 @@ pub enum QsResult {
     Chip(usize),
     /// the eraser's Whole strokes (0) or Precise (1) picked
     Mode(i32),
-    /// the Pen feel chip
-    PenFeel,
     /// a control was pressed or let go without a pick: its rect (`dirty`) is to be refreshed
     Changed,
 }
 
 /// The card for tool `t`, beside `anchor`, at the view's `zoom`.
 pub fn quicksize_open(q: &mut QuickSize, t: ToolKind, anchor: Rect, screen: Rect, panel: Rect, avoid: &[Rect], zoom: f32) {
-    let feel_w = quicksize_feel_w();
-    let rect = quicksize_place(t, feel_w, anchor, screen, panel, avoid);
-    *q = QuickSize { open: true, tool: t, anchor, rect, lay: quicksize_layout(t, rect, feel_w), zoom, ..Default::default() };
+    let rect = quicksize_place(t, anchor, screen, panel, avoid);
+    *q = QuickSize { open: true, tool: t, anchor, rect, lay: quicksize_layout(t, rect), zoom, ..Default::default() };
 }
 
 // One sample stroke across a well: about 20 points along a gently rising curve, the pressure 0.2 rising to 1.0
@@ -191,13 +187,16 @@ fn sample_points(well: Rect) -> Vec<PenSample> {
         .collect()
 }
 
-/// The widths a chip's sample is drawn with: the pair times the zoom (page millimetres), for the view the next
-/// stroke is written in; the eraser's are screen millimetres and keep their size.
-fn sample_params(t: ToolKind, pair: (f32, f32), base: &ToolParams, zoom: f32) -> ToolParams {
+/// The widths a chip's sample is drawn with: what a pick would write (the chip's width, the min in the tool's own
+/// ratio) times the zoom (page millimetres), for the view the next stroke is written in; the eraser's are screen
+/// millimetres and keep their size.
+fn sample_params(t: ToolKind, i: usize, base: &ToolParams, zoom: f32) -> ToolParams {
     let mut p = *base;
     let z = if t == TOOL_ERASER || !(zoom > 0.0) { 1.0 } else { zoom };
-    p.size_min_mm = pair.0 * z;
-    p.size_max_mm = pair.1 * z;
+    let mut picked = *base;
+    quicksize_apply(t, &mut picked, i);
+    p.size_min_mm = picked.size_min_mm * z;
+    p.size_max_mm = picked.size_max_mm * z;
     p
 }
 
@@ -206,12 +205,12 @@ fn sample_params(t: ToolKind, pair: (f32, f32), base: &ToolParams, zoom: f32) ->
 fn draw_sample(a: &mut App, q: &QuickSize, well: Rect, i: usize) {
     let (t, dpi) = (q.tool, a.dpi);
     let white = a.settings.white && t != TOOL_ERASER;
-    let pair = quicksize_presets(t)[i];
+    let width = quicksize_presets(t)[i];
     let App { screen, settings, .. } = &mut *a;
     let saved = screen.clip;
     screen.clip = rect_intersect(saved, well);
     if t == TOOL_ERASER {
-        let r = pair.1 * dpi / 25.4 / 2.0;
+        let r = width * dpi / 25.4 / 2.0;
         let (cx, cy) = ((well.x + well.w / 2) as f32, (well.y + well.h / 2) as f32);
         canvas_disc_aa(screen, cx, cy, r, 0, 1.0);
         canvas_disc_aa(screen, cx, cy, (r - u(4.0) as f32).max(0.0), 255, 1.0);
@@ -219,7 +218,7 @@ fn draw_sample(a: &mut App, q: &QuickSize, well: Rect, i: usize) {
         return;
     }
     let pts = sample_points(well);
-    let prm = sample_params(t, pair, &settings.tools[t.0 as usize], q.zoom);
+    let prm = sample_params(t, i, &settings.tools[t.0 as usize], q.zoom);
     if white {
         canvas_fill(screen, well, 0);
     } else if t == TOOL_HIGHLIGHTER {
@@ -260,7 +259,7 @@ pub fn quicksize_draw(q: &mut QuickSize, a: &mut App) -> Rect {
     for i in 0..QS_CHIPS {
         let r = q.lay.chips[i];
         let on = now == Some(i);
-        let pair = quicksize_presets(t)[i];
+        let width = quicksize_presets(t)[i];
         ui_button(&mut a.screen, r, IconKind::None, "", if on { ButtonStyle::Selected } else { ButtonStyle::Plain });
         // (the well stays white inside a Selected chip, so the ink sample stays black on white)
         let well = Rect { x: r.x + u(12.0), y: r.y + u(12.0), w: r.w - u(24.0), h: u(100.0) };
@@ -270,13 +269,9 @@ pub fn quicksize_draw(q: &mut QuickSize, a: &mut App) -> Rect {
         }
         draw_sample(a, q, well, i);
         let lr = Rect { x: r.x + u(6.0), y: well.y + well.h, w: r.w - u(12.0), h: r.y + r.h - well.y - well.h - u(6.0) };
-        ui_text(&mut a.screen, FontFace::Regular, ui_small_size(), ui_small_size() * 0.8, lr, &quicksize_mm_label(pair.1), 1, true, if on { 255 } else { 0 });
+        ui_text(&mut a.screen, FontFace::Regular, ui_small_size(), ui_small_size() * 0.8, lr, &quicksize_mm_label(width), 1, true, if on { 255 } else { 0 });
         hits_add(&mut q.hits, r, QS_CHIP, i as i32);
     }
-    // TRANSLATORS: the label of the sizes card's Pen feel chip, under the Tune icon (the card a pen button on the
-    // toolbar held opens): up to 300 px at 34 px. The same words as the toolbar action that opens Pen feel.
-    ui_button(&mut a.screen, q.lay.feel, IconKind::Tune, tr("Pen feel"), ButtonStyle::Plain);
-    hits_add(&mut q.hits, q.lay.feel, QS_FEEL, 0);
     if t == TOOL_ERASER {
         const MODES: [&str; 2] = [
             // TRANSLATORS: the eraser's sizes card, the first choice of its second row: the eraser takes every
@@ -363,20 +358,18 @@ pub fn quicksize_pointer(q: &mut QuickSize, a: &mut App, ph: i32, ev: &InEvent, 
     match h.id {
         QS_CHIP if (0..QS_CHIPS as i32).contains(&h.arg) => QsResult::Chip(h.arg as usize),
         QS_MODE => QsResult::Mode(h.arg),
-        QS_FEEL => QsResult::PenFeel,
         _ => QsResult::None,
     }
 }
 
-/// The centre of the card's control `name` for the runner's `tap panel`: `quicksize.0` to `quicksize.3`,
-/// `quicksize.pen-feel`, and the eraser's `quicksize.whole` and `quicksize.precise`. None for another name or
+/// The centre of the card's control `name` for the runner's `tap panel`: `quicksize.0` to `quicksize.4`,
+/// and the eraser's `quicksize.whole` and `quicksize.precise`. None for another name or
 /// a card that is not up.
 pub fn quicksize_control_point(q: &QuickSize, name: &str) -> Option<(f32, f32)> {
     if !q.open {
         return None;
     }
     let r = match name {
-        "pen-feel" => q.lay.feel,
         "whole" if q.tool == TOOL_ERASER => q.lay.modes[0],
         "precise" if q.tool == TOOL_ERASER => q.lay.modes[1],
         n => *q.lay.chips.get(n.parse::<usize>().ok()?)?,
@@ -385,7 +378,7 @@ pub fn quicksize_control_point(q: &QuickSize, name: &str) -> Option<(f32, f32)> 
 }
 
 /// The runner's keys for the card, without "editor.quicksize.": "current" (the chip matching the tool's
-/// widths, 0 to 3, or -1), "chip.N" (its label), "rect" (`x y w h`, empty closed), "white" (1 while its
+/// max width, 0 to 4, or -1), "chip.N" (its label), "rect" (`x y w h`, empty closed), "white" (1 while its
 /// samples are white on black) and "mode" (the eraser's, 0 or 1). false for another key.
 pub fn quicksize_probe(q: &QuickSize, st: &Settings, key: &str, out: &mut String, cap: usize) -> bool {
     let t = q.tool;
@@ -393,7 +386,7 @@ pub fn quicksize_probe(q: &QuickSize, st: &Settings, key: &str, out: &mut String
         let c = if q.open { quicksize_current(t, &st.tools[t.0 as usize]).map_or(-1, |i| i as i32) } else { -1 };
         csnprintf!(out, cap, "%d", c);
     } else if let Some(n) = key.strip_prefix("chip.") {
-        let label = n.parse::<usize>().ok().filter(|&i| q.open && i < QS_CHIPS).map(|i| quicksize_mm_label(quicksize_presets(t)[i].1));
+        let label = n.parse::<usize>().ok().filter(|&i| q.open && i < QS_CHIPS).map(|i| quicksize_mm_label(quicksize_presets(t)[i]));
         csnprintf!(out, cap, "%s", label.as_deref().unwrap_or(""));
     } else if key == "rect" {
         if q.open {
@@ -433,35 +426,30 @@ mod tests {
         p
     }
 
-    /// The table: every tool has four ascending chips inside the format's range with min at or under max; the
-    /// tool's own default is one of them; each min is the max times the default proportion, rounded to 0.01 and
-    /// floored at 0.10; the eraser's top chip is at most what a page file keeps.
+    /// The table: every tool has five strictly ascending chips inside the format's range, its default max is
+    /// one of them, and the eraser's top chip is at most what a page file keeps.
     #[test]
     fn the_table_holds_to_its_rules() {
         for k in 0..TOOL_COUNT {
             let t = ToolKind(k as i32);
             let chips = quicksize_presets(t);
+            assert_eq!(chips.len(), 5);
+            assert!(chips.windows(2).all(|w| w[0] < w[1]), "{}: ascending", tool_name(t));
+            assert!(chips.iter().all(|&c| (0.10..=12.0).contains(&c)), "{}: range", tool_name(t));
             let d = defaults(t);
-            let prop = d.size_min_mm / d.size_max_mm;
-            assert!(chips.windows(2).all(|w| w[0].1 < w[1].1), "{}: ascending", tool_name(t));
-            for &(lo, hi) in &chips {
-                assert!((0.10..=12.0).contains(&lo) && (0.10..=12.0).contains(&hi) && lo <= hi, "{}: {lo}..{hi}", tool_name(t));
-                let want = ((hi * prop * 100.0).round() / 100.0).max(0.10);
-                assert!((lo - want).abs() <= 0.0101, // (a half step: the table keeps 0.62 where 0.625 rounds either way)
-                     "{}: min {lo} for max {hi} (proportion {prop}) wants {want}", tool_name(t));
-            }
-            assert!(quicksize_current(t, &d).is_some(), "{}: its default is a chip", tool_name(t));
+            assert!(quicksize_current(t, &d).is_some(), "{}: its default max is a chip", tool_name(t));
         }
-        assert!(quicksize_presets(TOOL_ERASER)[3].1 <= ERASER_MM_MAX);
+        assert!(quicksize_presets(TOOL_ERASER)[4] <= ERASER_MM_MAX);
         // (the table covers every tool, once)
         assert_eq!(PRESETS.len(), TOOL_COUNT);
         assert!((0..TOOL_COUNT).all(|k| PRESETS.iter().filter(|(t, _)| t.0 == k as i32).count() == 1));
     }
 
-    /// apply changes fields 0 and 1 only (the other eleven bit for bit); current finds the chip just applied and
-    /// None for a Pen feel value between chips.
+    /// apply changes fields 0 and 1 only (the other eleven bit for bit), keeps the tool's own min/max ratio
+    /// (a pencil tuned to 0.05..0.32 becomes 0.11..0.70 at the 0.7 chip), a constant-width tool stays min = max,
+    /// an unusable max falls back to the default ratio; current finds the chip by its max whatever the min.
     #[test]
-    fn apply_touches_the_two_widths_and_current_finds_them() {
+    fn apply_keeps_the_ratio_and_the_other_fields() {
         for k in 0..TOOL_COUNT {
             let t = ToolKind(k as i32);
             let mut p = defaults(t);
@@ -476,34 +464,52 @@ mod tests {
                 for f in 2..ToolParams::COUNT {
                     assert_eq!(q.get(f).to_bits(), before.get(f).to_bits(), "{} field {f}", tool_name(t));
                 }
-                assert_eq!((q.size_min_mm, q.size_max_mm), quicksize_presets(t)[i]);
+                assert_eq!(q.size_max_mm, quicksize_presets(t)[i]);
+                assert!(q.size_min_mm >= 0.10 && q.size_min_mm <= q.size_max_mm);
+                if before.size_min_mm == before.size_max_mm {
+                    assert_eq!(q.size_min_mm, q.size_max_mm, "{}: constant stays constant", tool_name(t));
+                }
             }
             // between chips (one tuned in Pen feel): none
             let mut odd = before;
-            odd.size_min_mm = 0.11;
-            odd.size_max_mm = quicksize_presets(t)[1].1 + 0.03;
+            odd.size_max_mm = quicksize_presets(t)[1] + 0.03;
             assert_eq!(quicksize_current(t, &odd), None);
+        }
+        let mut p = defaults(TOOL_PENCIL);
+        p.size_min_mm = 0.05;
+        p.size_max_mm = 0.32;
+        quicksize_apply(TOOL_PENCIL, &mut p, 3);
+        assert_eq!((p.size_min_mm, p.size_max_mm), (0.11, 0.7));
+        // current ignores the min
+        assert_eq!(quicksize_current(TOOL_PENCIL, &p), Some(3));
+        // a max that is not usable: the default ratio (pencil 0.13/0.35)
+        for bad in [0.0, f32::NAN, f32::INFINITY, -1.0] {
+            let mut p = defaults(TOOL_PENCIL);
+            p.size_max_mm = bad;
+            quicksize_apply(TOOL_PENCIL, &mut p, 3);
+            assert_eq!((p.size_min_mm, p.size_max_mm), (0.26, 0.7), "max {bad}");
         }
     }
 
-    /// Apply 2, then 0, then 2 gives the same bytes as apply 2 once.
+    /// The same pick twice gives the same bytes as once. (A different pick between is not undone: the ratio is
+    /// rounded to 0.01 and floored at 0.10 each time, so min can drift across picks; that is the rule.)
     #[test]
     fn a_pick_is_repeatable() {
         for k in 0..TOOL_COUNT {
             let t = ToolKind(k as i32);
-            let mut once = defaults(t);
-            quicksize_apply(t, &mut once, 2);
-            let mut again = defaults(t);
-            for i in [2, 0, 2] {
-                quicksize_apply(t, &mut again, i);
+            for i in 0..QS_CHIPS {
+                let mut once = defaults(t);
+                quicksize_apply(t, &mut once, i);
+                let mut twice = once;
+                quicksize_apply(t, &mut twice, i);
+                assert!((0..ToolParams::COUNT).all(|f| once.get(f).to_bits() == twice.get(f).to_bits()), "{} chip {i}", tool_name(t));
             }
-            assert!((0..ToolParams::COUNT).all(|f| once.get(f).to_bits() == again.get(f).to_bits()));
         }
     }
 
     #[test]
     fn labels_drop_trailing_zeros() {
-        for (mm, want) in [(0.25, "0.25 mm"), (0.5, "0.5 mm"), (1.0, "1 mm"), (1.75, "1.75 mm"), (12.0, "12 mm"), (0.28, "0.28 mm"), (7.0, "7 mm")] {
+        for (mm, want) in [(0.25, "0.25 mm"), (0.5, "0.5 mm"), (1.0, "1 mm"), (1.75, "1.75 mm"), (12.0, "12 mm"), (0.35, "0.35 mm"), (5.6, "5.6 mm")] {
             assert_eq!(quicksize_mm_label(mm), want);
         }
     }
@@ -513,67 +519,72 @@ mod tests {
     #[test]
     fn the_card_is_placed_beside_the_held_button() {
         up();
-        let feel = u(200.0);
         for t in [TOOL_FINELINER, TOOL_ERASER] {
-            let (w, h) = quicksize_size(t, feel);
-            assert_eq!(w, 960);
+            let (w, h) = quicksize_size(t);
+            assert_eq!(w, 912);
             assert_eq!(h, if t == TOOL_ERASER { 416 } else { 294 });
             for screen in [UP, SIDE] {
                 // the toolbar at the right edge: the card goes left of it, top level with the button
                 let panel = Rect { x: screen.w - 156, y: 220, w: 128, h: 1520 };
                 let button = Rect { x: panel.x + 8, y: 420, w: 112, h: 112 };
-                let r = quicksize_place(t, feel, button, screen, panel, &[CORNER]);
+                let r = quicksize_place(t, button, screen, panel, &[CORNER]);
                 assert!(r.x + r.w <= panel.x, "left of the panel: {r:?}");
                 assert_eq!(r.y, 420);
                 assert!(!rect_overlaps(r, button) && !rect_overlaps(r, CORNER) && !rect_overlaps(r, panel));
                 // the toolbar at the left edge: right of it
                 let panel = Rect { x: 28, y: 220, w: 128, h: 1520 };
                 let button = Rect { x: panel.x + 8, y: 420, w: 112, h: 112 };
-                let r = quicksize_place(t, feel, button, screen, panel, &[CORNER]);
+                let r = quicksize_place(t, button, screen, panel, &[CORNER]);
                 assert!(r.x >= panel.x + panel.w, "right of the panel: {r:?}");
                 assert!(!rect_overlaps(r, button) && !rect_overlaps(r, CORNER) && !rect_overlaps(r, panel));
             }
             // the toolbar well in from the edge, room for the card on its left: off it and off the button
             let panel = Rect { x: 1000, y: 300, w: 128, h: 1520 };
             let button = Rect { x: 1008, y: 1000, w: 112, h: 112 };
-            let r = quicksize_place(t, feel, button, UP, panel, &[CORNER]);
+            let r = quicksize_place(t, button, UP, panel, &[CORNER]);
             assert!(!rect_overlaps(r, button) && !rect_overlaps(r, panel) && !rect_overlaps(r, CORNER));
             // the toolbar in the middle, no room beside it: never over the held button or the corner
             let panel = Rect { x: 700, y: 300, w: 128, h: 1520 };
             let button = Rect { x: 708, y: 1000, w: 112, h: 112 };
-            let r = quicksize_place(t, feel, button, UP, panel, &[CORNER]);
+            let r = quicksize_place(t, button, UP, panel, &[CORNER]);
             assert!(!rect_overlaps(r, button) && !rect_overlaps(r, CORNER) && inside_screen(r));
             // no room beside a toolbar as wide as the page: below the held button
             let panel = Rect { x: 40, y: 300, w: 1780, h: 400 };
             let button = Rect { x: 800, y: 320, w: 112, h: 112 };
-            let r = quicksize_place(t, feel, button, UP, panel, &[CORNER]);
+            let r = quicksize_place(t, button, UP, panel, &[CORNER]);
             assert!(!rect_overlaps(r, button) && !rect_overlaps(r, CORNER));
             assert!(r.y >= button.y + button.h);
         }
     }
 
-    /// The layout: four chips in a row 16 px apart, the Pen feel chip 24 px on, all inside the card; the
-    /// eraser's mode row under them, a pen's has none.
+    /// The layout: five chips in a row 16 px apart, all inside the card, upright and sideways; no Pen feel chip;
+    /// the eraser's mode row under them, a pen's has none.
     #[test]
     fn the_layout_fits_the_card() {
         up();
-        let feel = u(200.0);
         for t in [TOOL_PENCIL, TOOL_ERASER] {
-            let (w, h) = quicksize_size(t, feel);
-            let card = Rect { x: 100, y: 200, w, h };
-            let l = quicksize_layout(t, card, feel);
-            for r in l.chips.iter().chain(std::iter::once(&l.feel)) {
-                assert!(rect_contains_rect(card, *r));
-            }
-            assert_eq!(l.chips[1].x - (l.chips[0].x + l.chips[0].w), 16);
-            assert_eq!(l.feel.x - (l.chips[3].x + l.chips[3].w), 24);
-            assert_eq!((l.chips[0].w, l.chips[0].h), (160, 170));
-            assert_eq!(l.feel.x + l.feel.w + 24, card.x + card.w);
-            if t == TOOL_ERASER {
-                assert!(l.modes.iter().all(|m| rect_contains_rect(card, *m) && m.y >= l.chips[0].y + 170 + 12));
-                assert!(!rect_overlaps(l.modes[0], l.modes[1]));
-            } else {
-                assert_eq!(l.modes, [RECT_EMPTY; 2]);
+            let (w, h) = quicksize_size(t);
+            assert_eq!(w, 24 + 5 * 160 + 4 * 16 + 24);
+            for screen in [UP, SIDE] {
+                let panel = Rect { x: screen.w - 156, y: 220, w: 128, h: 1520 };
+                let button = Rect { x: panel.x + 8, y: 420, w: 112, h: 112 };
+                let card = quicksize_place(t, button, screen, panel, &[CORNER]);
+                assert_eq!((card.w, card.h), (w, h));
+                assert!(card.x >= 20 && card.y >= 20 && card.x + card.w <= screen.w - 20 && card.y + card.h <= screen.h - 20, "{card:?}");
+                let l = quicksize_layout(t, card);
+                for r in l.chips.iter() {
+                    assert!(rect_contains_rect(card, *r));
+                }
+                assert!(rect_contains_rect(card, l.header));
+                assert_eq!(l.chips[1].x - (l.chips[0].x + l.chips[0].w), 16);
+                assert_eq!((l.chips[0].w, l.chips[0].h), (160, 170));
+                assert_eq!(l.chips[4].x + l.chips[4].w + 24, card.x + card.w);
+                if t == TOOL_ERASER {
+                    assert!(l.modes.iter().all(|m| rect_contains_rect(card, *m) && m.y >= l.chips[0].y + 170 + 12));
+                    assert!(!rect_overlaps(l.modes[0], l.modes[1]));
+                } else {
+                    assert_eq!(l.modes, [RECT_EMPTY; 2]);
+                }
             }
         }
     }
@@ -584,12 +595,12 @@ mod tests {
         up();
         let mut q = QuickSize::default();
         assert_eq!(quicksize_control_point(&q, "0"), None);
-        let feel = u(200.0);
         quicksize_open(&mut q, TOOL_ERASER, Rect { x: 1700, y: 600, w: 112, h: 112 }, UP, Rect { x: 1690, y: 220, w: 128, h: 1520 }, &[CORNER], 1.0);
-        for n in ["0", "1", "2", "3", "pen-feel", "whole", "precise"] {
+        for n in ["0", "1", "2", "3", "4", "whole", "precise"] {
             assert!(quicksize_control_point(&q, n).is_some(), "{n}");
         }
-        assert_eq!(quicksize_control_point(&q, "4"), None);
+        assert_eq!(quicksize_control_point(&q, "5"), None);
+        assert_eq!(quicksize_control_point(&q, "pen-feel"), None);
         assert_eq!(quicksize_control_point(&q, "nope"), None);
         quicksize_open(&mut q, TOOL_PENCIL, Rect { x: 1700, y: 600, w: 112, h: 112 }, UP, Rect { x: 1690, y: 220, w: 128, h: 1520 }, &[CORNER], 1.0);
         assert_eq!(quicksize_control_point(&q, "whole"), None);
@@ -598,8 +609,8 @@ mod tests {
         let mut out = String::new();
         assert!(quicksize_probe(&q, &st, "current", &mut out, 64));
         assert_eq!(out, "1");
-        assert!(quicksize_probe(&q, &st, "chip.3", &mut out, 64));
-        assert_eq!(out, "0.8 mm");
+        assert!(quicksize_probe(&q, &st, "chip.4", &mut out, 64));
+        assert_eq!(out, "1 mm");
         assert!(!quicksize_probe(&q, &st, "nope", &mut out, 64));
     }
 }

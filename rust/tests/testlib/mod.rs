@@ -46,6 +46,42 @@ macro_rules! run {
     }};
 }
 
+/// The tool sizes (size_min_mm, size_max_mm) the defaults had before 2.1's quick sizes moved them onto the pen-width
+/// series: what the recorded goldens (the C build's hashes) and the pixel tolerances measured on them were made with.
+pub const PRE_21_SIZES: [(grimoire::prelude::ToolKind, f32, f32); 7] = {
+    use grimoire::prelude::*;
+    [
+        (TOOL_PENCIL, 0.12, 0.32),
+        (TOOL_CHARCOAL, 0.30, 0.55),
+        (TOOL_BALLPOINT, 0.30, 0.48),
+        (TOOL_FINELINER, 0.28, 0.28),
+        (TOOL_CALLIGRAPHY, 1.75, 1.75),
+        (TOOL_HIGHLIGHTER, 5.0, 5.0),
+        (TOOL_ERASER, 2.5, 7.0),
+    ]
+};
+
+/// Tool `t`'s default parameters with the pre-2.1 sizes (a test that is not about the sizes pins them, so its
+/// recorded hashes and measured tolerances stay what they were).
+pub fn tool_params_default_pre21(t: grimoire::prelude::ToolKind, p: &mut grimoire::prelude::ToolParams) {
+    grimoire::prelude::tool_params_default(t, p);
+    // (a tool out of range gets the pencil's, as tool_params_default does)
+    let known = (0..grimoire::prelude::TOOL_COUNT as i32).contains(&t.0);
+    let key = if known { t } else { grimoire::prelude::TOOL_PENCIL };
+    if let Some(&(_, lo, hi)) = PRE_21_SIZES.iter().find(|(k, _, _)| *k == key) {
+        p.size_min_mm = lo;
+        p.size_max_mm = hi;
+    }
+}
+
+/// Every tool of `s` with the pre-2.1 sizes (after settings_default).
+pub fn pin_pre21_sizes(s: &mut grimoire::prelude::Settings) {
+    for &(t, lo, hi) in PRE_21_SIZES.iter() {
+        s.tools[t.0 as usize].size_min_mm = lo;
+        s.tools[t.0 as usize].size_max_mm = hi;
+    }
+}
+
 /// tl_done: prints the tally; the #[test] fails if any check did.
 pub fn done() {
     let (c, f) = (CHECKS.load(Ordering::Relaxed), FAILURES.load(Ordering::Relaxed));

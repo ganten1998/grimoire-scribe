@@ -75,7 +75,7 @@ fn make_stroke(n: usize, seed: u32) -> Vec<PenSample> {
 
 fn variant(t: ToolKind, var: i32) -> ToolParams {
     let mut p = ToolParams::default();
-    tool_params_default(t, &mut p);
+    tool_params_default_pre21(t, &mut p); // (the C build's hashes: its sizes)
     if var == 1 {
         p.grain = 0.9;
         p.tilt_size = 2.0;
@@ -238,7 +238,7 @@ fn pure(out: &mut String) {
     }
     for t in TOOLS {
         let mut p = ToolParams::default();
-        tool_params_default(t, &mut p);
+        tool_params_default_pre21(t, &mut p);
         for i in 0..ToolParams::COUNT {
             h = fnv_f(h, p.get(i));
         }
@@ -277,7 +277,7 @@ fn odd(out: &mut String) {
     let mut c = Canvas::default();
     check!(canvas_init(&mut c, CW, CH) == 0);
     let mut p = ToolParams::default();
-    tool_params_default(TOOL_PENCIL, &mut p);
+    tool_params_default_pre21(TOOL_PENCIL, &mut p);
     let mut b = BrushState::default();
     brush_begin(&mut b, TOOL_PENCIL, &p, 5, 300.0);
     let s = PenSample { x: 100.0, y: 100.0, pressure: 0.7, tilt_x: 10.0, tilt_y: 20.0, t_ms: 5000 };

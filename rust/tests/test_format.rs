@@ -1122,6 +1122,7 @@ fn quick_sizes_round_trip() {
             check!(p.size_max_mm.to_bits() == s.tools[k].size_max_mm.to_bits());
             check!((2..ToolParams::COUNT).all(|f| (p.get(f) - before.get(f)).abs() < 1e-4));
             check!(quicksize_current(t, &p) == Some(i));
+            check!(p.size_max_mm == quicksize_presets(t)[i]);
         }
     }
 }

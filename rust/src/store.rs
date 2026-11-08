@@ -53,7 +53,7 @@ impl NotebookInfo {
     }
 }
 
-pub const SETTINGS_VERSION: i32 = 3;
+pub const SETTINGS_VERSION: i32 = 4;
 /// pens pinned to the editor's panel, at most
 pub const PANEL_PINS_MAX: usize = 3;
 
@@ -4863,8 +4863,39 @@ fn settings_upgrade(s: &mut Settings) {
         // about 2 (docs/INK-PERFORMANCE.md, "Input smoothing").
         (3, TOOL_BALLPOINT, 12, 1.0),
     ];
+    // Version 4 (quick sizes, 2.1): the pens moved onto the pen-width series. Unlike the table above this goes by
+    // the PAIR: a tool's widths move to the new default only when BOTH still equal the old default pair; a pair
+    // the owner changed in either field stays exactly as it is. (the tool; the old min; the old max)
+    const SIZES_V4: [(ToolKind, f32, f32); 7] = [
+        (TOOL_PENCIL, 0.12, 0.32),
+        (TOOL_CHARCOAL, 0.30, 0.55),
+        (TOOL_BALLPOINT, 0.30, 0.48),
+        (TOOL_FINELINER, 0.28, 0.28),
+        (TOOL_CALLIGRAPHY, 1.75, 1.75),
+        (TOOL_HIGHLIGHTER, 5.0, 5.0),
+        (TOOL_ERASER, 2.5, 7.0),
+    ];
     if s.version >= SETTINGS_VERSION {
         return;
+    }
+    if s.version < 4 {
+        for &(tool, lo, hi) in SIZES_V4.iter() {
+            let p = &mut s.tools[tool.0 as usize];
+            if (p.size_min_mm - lo).abs() < 0.005 && (p.size_max_mm - hi).abs() < 0.005 {
+                let mut d = ToolParams::default();
+                tool_params_default(tool, &mut d);
+                qlog!(
+                    "settings: %s sizes updated %.2f..%.2f -> %.2f..%.2f",
+                    tool_name(tool),
+                    p.size_min_mm,
+                    p.size_max_mm,
+                    d.size_min_mm,
+                    d.size_max_mm
+                );
+                p.size_min_mm = d.size_min_mm;
+                p.size_max_mm = d.size_max_mm;
+            }
+        }
     }
     for &(since, tool, off, old_v) in CHANGED.iter() {
         if s.version >= since {
@@ -4920,7 +4951,8 @@ pub fn settings_load(s: &mut Settings) -> i32 {
         // An owner upgrading from the build before the gestures: an existing file at version 3 that has
         // no gestures key (a fresh install has no file; a file this build saved has the key). The
         // one-time toasts of what changed (hints bits 0 and 8) are for this owner only.
-        s.upgraded = s.version == SETTINGS_VERSION && !has_gestures;
+        // (version 3 literally: the build before the gestures wrote it; later versions' files have the key)
+        s.upgraded = s.version == 3 && !has_gestures;
         // What's new is for an update: a file a Grimoire saved (it has the version key) whose notes
         // seen were another version's. A fresh start, or a file written by hand, records this
         // version's as seen. Every update opens them once, whatever whatsnew_hide says: the owner's

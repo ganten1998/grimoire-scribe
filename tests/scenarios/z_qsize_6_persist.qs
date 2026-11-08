@@ -5,4 +5,4 @@
 wait 600
 expect settings.eraser.size_max_mm is 12.0000
 expect settings.eraser.size_min_mm is 4.2900
-expect settings.pencil.size_max_mm is 0.3200
+expect settings.pencil.size_max_mm is 0.3500

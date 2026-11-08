@@ -35,12 +35,12 @@ expect editor.quicksize.white is 1
 shot 01-white-card
 tap panel quicksize.3
 wait 200
-expect settings.fineliner.size_max_mm is 0.6000
+expect settings.fineliner.size_max_mm is 0.7000
 pen line 300 520 1300 540 40 0.7 0.7
 wait 400
 pen leave
 expect editor.stroke_look is white fineliner
-expect editor.stroke_screen_mm is 0.60
+expect editor.stroke_screen_mm is 0.70
 # The eraser's card: Precise is the mode shown; Whole strokes taps through to settings and the card stays.
 touch down 1768 574
 wait 700
@@ -57,7 +57,7 @@ expect editor.quicksize.mode is 0
 tap panel quicksize.precise
 wait 200
 expect settings.eraser_mode is 1
-tap panel quicksize.3
+tap panel quicksize.4
 wait 200
 expect settings.eraser.size_max_mm is 12.0000
 expect editor.quicksize is 0

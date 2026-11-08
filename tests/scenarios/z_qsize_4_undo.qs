@@ -18,7 +18,7 @@ pen line 300 700 1300 720 40 0.7 0.7
 wait 400
 pen leave
 expect editor.strokes is 1
-expect editor.stroke_screen_mm is 0.28
+expect editor.stroke_screen_mm is 0.25
 expect editor.undo_kind is add
 touch down 1768 466
 wait 700
@@ -27,26 +27,26 @@ wait 200
 expect editor.quicksize is fineliner
 tap panel quicksize.2
 wait 200
-expect settings.fineliner.size_max_mm is 0.4000
+expect settings.fineliner.size_max_mm is 0.5000
 expect editor.quicksize is 0
 expect editor.strokes is 1
 expect editor.undo_kind is add
-expect editor.stroke_screen_mm is 0.28
+expect editor.stroke_screen_mm is 0.25
 # Undo takes the stroke; the size stays.
 tap panel undo
 wait 300
 expect editor.strokes is 0
-expect settings.fineliner.size_max_mm is 0.4000
+expect settings.fineliner.size_max_mm is 0.5000
 tap panel redo
 wait 300
 expect editor.strokes is 1
-expect editor.stroke_screen_mm is 0.28
+expect editor.stroke_screen_mm is 0.25
 # The next stroke has the new width, the one before it keeps its own.
 pen line 300 900 1300 920 40 0.7 0.7
 wait 400
 pen leave
 expect editor.strokes is 2
-expect editor.stroke_screen_mm is 0.40
+expect editor.stroke_screen_mm is 0.50
 tap panel undo
 wait 300
-expect editor.stroke_screen_mm is 0.28
+expect editor.stroke_screen_mm is 0.25

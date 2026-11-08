@@ -33,14 +33,14 @@ wait 700
 shot 01-long-stroke-gone
 expect editor.strokes is 8
 expect editor.live_matches_render is 1
-expect editor.erase_tiles is 391 11011
+expect editor.erase_tiles is 397 11011
 # Down through the first three rows
 eraser line 1000 450 1000 1000 20
 wait 700
 shot 02-three-rows-gone
 expect editor.strokes is 5
 expect editor.live_matches_render is 1
-expect editor.erase_tiles is 544 11488
+expect editor.erase_tiles is 550 11488
 pentap panel undo
 wait 300
 expect editor.strokes is 8

@@ -21,7 +21,7 @@ expect editor.strokes is 2
 eraser line 400 480 440 700 12
 wait 300
 expect editor.strokes is 3
-expect editor.stroke_screen_mm is 7.00
+expect editor.stroke_screen_mm is 8.00
 expect editor.stroke_look is round tip
 expect editor.stroke_settings is eraser
 expect editor.live_matches_render is 1
@@ -34,7 +34,7 @@ eraser line 900 300 1000 1100 30
 wait 700
 shot 02-zoomed-erased
 expect editor.strokes is 4
-expect editor.stroke_screen_mm is 7.00
+expect editor.stroke_screen_mm is 8.00
 expect editor.stroke_look is round tip
 expect editor.stroke_settings is eraser
 expect editor.live_matches_render is 1
@@ -54,7 +54,7 @@ eraser line 700 500 760 1000 20
 wait 700
 shot 04-sideways-erased
 expect editor.strokes is 5
-expect editor.stroke_screen_mm is 7.00
+expect editor.stroke_screen_mm is 8.00
 expect editor.stroke_look is round tip
 expect editor.stroke_settings is eraser
 expect editor.live_matches_render is 1

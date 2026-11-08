@@ -65,7 +65,7 @@ fn page_matches_the_c_build() {
         for si in 0..NS {
             let mut r = 0x1234u32 + ti as u32 * 131 + si as u32 * 7919;
             let mut prm = ToolParams::default();
-            tool_params_default(TOOLS[ti], &mut prm);
+            tool_params_default_pre21(TOOLS[ti], &mut prm); // (the C build's hashes: its sizes)
             let mut s = stroke_new(TOOLS[ti], &prm, 77 + ti as u32);
             let n = if si == 0 {
                 1

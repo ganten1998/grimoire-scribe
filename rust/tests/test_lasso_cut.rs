@@ -36,7 +36,7 @@ fn render(p: &Page) -> Canvas {
 /// A wandering stroke of tool t (tip `tip`), its points stored as the page file stores them.
 fn stroke(t: ToolKind, tip: u8, w: f32, h: f32) -> Box<Stroke> {
     let mut prm = ToolParams::default();
-    tool_params_default(t, &mut prm);
+    tool_params_default_pre21(t, &mut prm); // (the tolerances below were measured at these sizes)
     if rnd() % 3 == 0 {
         prm.tilt_size = frand(0.0, 1.5);
     }

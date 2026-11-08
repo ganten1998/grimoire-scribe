@@ -71,7 +71,7 @@ pen up 500 750
 wait 300
 # nothing moved, and all of the way drawn again in grays
 expect editor.undo_kind is add
-expect display.presents is ui 10 636 1450 1156
+expect display.presents is ui 10 635 1450 1158
 expect display.stale.0.300.1650.2100 is 0
 expect editor.wear is 57
 # the pen gone: under a quarter of the screen worn, no Clean

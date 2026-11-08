@@ -582,7 +582,8 @@ pen curve 300 600 40 70 0.7 4
 wait 100
 shot 23-editor
 # The quick sizes card (a pen button held 600 ms): the eraser's with its Whole strokes / Precise row, then every
-# pen's through the tool button (the pencil last, as the rest of the scenario has it); the Pen feel chip in every language.
+# pen's through the tool button (the pencil last, as the rest of the scenario has it): five chips each, no Pen feel chip;
+# every card must fit the screen upright and sideways, in English, Spanish and Japanese.
 touch down 1768 466
 wait 700
 touch up 1768 466
