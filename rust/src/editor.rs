@@ -2824,7 +2824,7 @@ fn first_page_source(nb: &NotebookInfo) -> String {
 // it was drawn from is kept beside it, store_note_thumb_source: a card of before, or one drawn from another page 1
 // or from a page 1 since written, is drawn again, whatever it held at the open). A changed or reordered first page
 // uses its kept drawing, then its current small preview, before falling back to drawing the strokes. (A card of
-// no known source, one a version before 2.0.2 made, may show a cleared page's old picture, and the preview beside
+// no known source, one a version before 2.1.0 made, may show a cleared page's old picture, and the preview beside
 // it may too: that one is drawn from the strokes, once, as every close did before.)
 fn refresh_library_thumb(s: &mut EditorState, dpi: f32) {
     let source = first_page_source(&s.nb);
@@ -2984,7 +2984,7 @@ fn page_is_its_file(s: &EditorState) -> bool {
 }
 
 // A drawing 2.0.0 or 2.0.1 kept of the open page, current for its file or not, goes as the page is drawn whole from
-// its strokes with nothing unsaved (never read since 2.0.2, store.rs RENDER_TAG_VERSION: it may show the page as it
+// its strokes with nothing unsaved (never read since 2.1.0, store.rs RENDER_TAG_VERSION: it may show the page as it
 // was before a Clear or a new paper), and the Pages preview and the Library card made beside it are made again from
 // this drawing: the preview now (a view decodes it again: bgjob.rs PreviewCache goes by the preview file too), the
 // card as page 1 is left (write_thumb_if_needed). Not from a drawing with its picture white: later, then. For
@@ -12076,7 +12076,7 @@ mod tests {
 
     #[test]
     fn pending_caches_run_no_autosave_while_they_cannot_be_made() {
-        // 2.0.2 review: the flag set by a save outlived a canvas that was not whole (an image paper's picture
+        // 2.1.0 review: the flag set by a save outlived a canvas that was not whole (an image paper's picture
         // still being made) or a read-only page, and editor_tick ran the autosave at every pass of the main loop.
         let (root, mut a) = dense_app_page("dense-pending");
         assert!(save_page(&mut a));
@@ -12117,7 +12117,7 @@ mod tests {
         c.px.fill(23);
         store_save_thumb(s.nb.id.as_str(), &c);
         // A card nothing says what it was drawn from (one of an older version, a stale one at the open) is drawn
-        // again: the open does not take it for page 1's as it is (2.0.2 review)
+        // again: the open does not take it for page 1's as it is (2.1.0 review)
         let before = store_thumb_stamp(s.nb.id.as_str());
         let mut stale = Canvas::default();
         refresh_library_thumb(s, 300.0);

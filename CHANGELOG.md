@@ -24,7 +24,7 @@
   so they no longer write that 3.4 MB drawing at each press. The Pages preview is made at an idle save at most
   every 30 s (across page turns and reopens too). Closing a notebook from another page no longer draws page 1
   again for the Library card: the card is kept when it was drawn from page 1 as it is, and else made from page
-  1's kept drawing (a card of before 2.0.2 is drawn from its strokes, once).
+  1's kept drawing (a card of before 2.1.0 is drawn from its strokes, once).
 - The Links bar learning scenario waits for its incoming rows with the headless runner's new `waitfor`,
   instead of guessing that every runner will check 120 notebooks within 9 seconds. Normal application
   behavior is unchanged. `waitfor KEY OP VALUE` takes the keys and checks of `expect` and lets timers run as

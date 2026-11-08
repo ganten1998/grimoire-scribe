@@ -242,7 +242,7 @@ fn foreign_kept_drawing_not_first() {
     let dir = dir_of(&nb);
     let stamp = format!("{dir}/.page-previews/p{dense}.full.stamp");
     let tag = std::fs::read_to_string(&stamp).unwrap();
-    // (the page file's stamp, |WxH|, the fingerprint, then the kept drawings' version: |k2 since 2.0.2)
+    // (the page file's stamp, |WxH|, the fingerprint, then the kept drawings' version: |k2 since 2.1.0)
     let size = format!("|{W}x{H}|");
     let (head, rest) = tag.split_once(size.as_str()).unwrap();
     let (fingerprint, version) = rest.split_once('|').unwrap();

@@ -4064,7 +4064,7 @@ fn page_render_current(nb: &NotebookInfo, pid: u32) -> bool {
 // drawing of a layered page (its scoped erasure lightening the ink under it). Unlayered pages kept
 // their tags exactly then, so no kept drawing was retired.
 //
-// Since 2.0.2 the tag carries the kept drawings' own version after the fingerprint, "|k2", and a drawing kept by an
+// Since 2.1.0 the tag carries the kept drawings' own version after the fingerprint, "|k2", and a drawing kept by an
 // earlier build (render_tag_is_before) is never read: 2.0.0 and 2.0.1 could keep the old picture of a page just
 // cleared or given a new paper under the new file's stamp (editor.rs page_is_its_file), and nothing in such a tag
 // tells it from a true one. Every page with a kept drawing is drawn once more after the update (on a Kindle, 11 and
@@ -4206,7 +4206,7 @@ pub fn store_load_page_render(nb: &NotebookInfo, pid: u32, w: i32, h: i32, out: 
 fn page_render_before(nb: &NotebookInfo, pid: u32) -> bool {
     page_render_files(nb, pid).is_some_and(|(_, _, stamp)| preview_tag(&stamp).is_some_and(|tag| render_tag_is_before(&tag)))
 }
-/// Takes away page pid's drawing kept by 2.0.0 or 2.0.1 (render_tag_is_before, never read since 2.0.2), current for
+/// Takes away page pid's drawing kept by 2.0.0 or 2.0.1 (render_tag_is_before, never read since 2.1.0), current for
 /// the page file or not, and the Pages preview beside it: true when there was one. Such a drawing may show the page
 /// as it was before a Clear or a new paper (editor.rs page_is_its_file), and so may the preview and the Library card
 /// made beside it, even once the page file changed again (an idle save inside the previews' 30 s writes the file

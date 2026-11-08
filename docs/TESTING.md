@@ -1742,11 +1742,11 @@ On the Scribe, with a scratch notebook (never one whose pages matter):
 4. **Nothing else is slower.** A dense page that has not changed still comes up at once from its kept drawing,
    on page turns and as the notebook opens.
 
-## 2.0.2, drawings kept by 2.0.0 and 2.0.1 set aside
+## 2.1.0, drawings kept by 2.0.0 and 2.0.1 set aside
 
 The fix above keeps no new old picture, but 2.0.0 and 2.0.1 may have kept some on the owner's Scribe and others'
 under a valid stamp (a cleared page's old ink, the old paper of a page given a new one). Nothing in such a tag
-tells it from a true one, and there is no exact check short of drawing the page, so 2.0.2's kept drawings carry
+tells it from a true one, and there is no exact check short of drawing the page, so 2.1.0's kept drawings carry
 their own version (`|k2`, store.rs RENDER_TAG_VERSION) and none of the earlier ones is read: every page that kept
 a drawing is drawn once more at its next open, and keeps its drawing again. Drawing such a page whole from its
 strokes, nothing unsaved and its picture there (as it opens, or as the Links bar or "Back to page N" stays on it),
@@ -1773,7 +1773,7 @@ Pages view's tile check (z_keep_ghost_7, the bgjob test), retiring a drawing not
 the stale editor test, test_render_keep), the job's (z_keep_ghost_9: the page opens from the job's drawing), the
 Links bar's (z_keep_ghost_10, the Links bar editor test).
 
-On the Scribe, with Scratch (2.0.2, a cleared page's old picture, step 1):
+On the Scribe, with Scratch (2.1.0, a cleared page's old picture, step 1):
 
 1. **Ghosts from 2.0.0 or 2.0.1.** With 2.0.0 or 2.0.1 installed, open Scratch's dense page 1 until it comes up
    at once, Clear it, wait 3 s, turn to page 2 and back (the old ink is back), turn to page 2 again and go to the
@@ -1787,7 +1787,7 @@ On the Scribe, with Scratch (2.0.2, a cleared page's old picture, step 1):
 3. **Every kept page is drawn once.** A dense page not cleared says "Loading page..." the first time it opens
    after the update (on the stress pages, about 11 s and 28 s), and comes up at once from then on.
 
-## Scribe checks: dense-page revisits (2.0.2, 2026-11-07)
+## Scribe checks: dense-page revisits (2.1.0)
 
 Automated: editor.rs `dense_written_from_blank_keeps_its_drawing_once_quiet_or_left_and_never_twice_in_a_window`
 (the idle save makes the preview and no drawing; the drawing follows once the window and the quiet time are over;
