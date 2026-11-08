@@ -1860,7 +1860,7 @@ On the Scribe, in a copy of a Library with folders:
 ## 2.1.0, L1 quick sizes
 
 Built for the 2.1 plan's lane L1: hold a pen on the toolbar for a card of its sizes (docs/DESIGN.md, Quick
-sizes). Automated: quicksize.rs's unit tests (the table, apply and current, repeatability, labels, placement),
+sizes). Automated: quicksize.rs's unit tests (the table, apply keeping the ratio, repeatability, labels, placement, the five-chip layout), test_store.rs `settings_upgrade_quick_size_pairs`,
 test_format.rs `quick_sizes_round_trip`, scenarios z_qsize_1 to z_qsize_6, every card in y_all_screens (upright
 and sideways, English, Spanish and Japanese, Gothic and Classic), y_menus_over_panel.
 
@@ -1881,13 +1881,21 @@ On the Scribe:
    flash of the page. Opening and closing each take one refresh.
 6. **Look.** The samples read well in Gothic and Classic, white ink shows white on black, the eraser shows rings
    (the 12 mm ring is cut by its box) and its Whole strokes / Precise row changes the eraser's mode and keeps the
-   card open. The Pen feel chip opens Pen feel on that pen's tab.
+   card open. There is no Pen feel chip (Pen feel is in the tool picker and Settings).
 7. **The tip.** On a fresh settings file, open Pen feel from the toolbar once: "Hold a pen on the toolbar for its
    sizes." once, and not again.
 8. **Sizes survive.** Pick a size, leave the notebook and Grimoire, come back: the width is kept, and Pen feel's
    Max width shows it.
 9. **Live ink on the largest sizes.** With tools/bench-ink.c (docs/INK-PERFORMANCE.md) on charcoal 2 mm, marker
-   2.5 mm, highlighter 7 mm and the eraser's 12 mm: does live ink keep up? A size whose ink lags is to go.
+   2.8 mm, highlighter 8 mm and the eraser's 12 mm: does live ink keep up? A size whose ink lags is to go.
 10. **Live view.** With Live view on, a pen on the card draws no fast ink; after a pick the next stroke's live ink
     has the new width.
+11. **Five chips on each tool, no Pen feel chip.** Hold every pen and the eraser: five sizes each (the ISO series
+    for the pens, 1, 2, 4, 8 and 12 mm for the eraser), nothing else on the card but the eraser's mode row.
+12. **A tuned range survives a pick.** In Pen feel set a pen's minimum width well under its maximum, then pick a
+    size on its card: the maximum is the chip's, the minimum has scaled with it (Pen feel shows both), and
+    pressing lightly still gives the thin line.
+13. **After the update.** Update from 2.0.x with pens left at their factory widths: they are on the new
+    widths (pencil 0.13 to 0.35, fineliner 0.25, highlighter 5.6, eraser 2.86 to 8 mm) and the lit chip is the
+    middle or an end one as expected; a pen whose width you had changed is exactly as you left it.
 

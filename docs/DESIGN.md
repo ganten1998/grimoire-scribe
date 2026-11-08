@@ -1928,9 +1928,9 @@ Lane L0 adds them with nothing visible: each keeps what the Scribe showed before
 ## Quick sizes (2.1, lane L1)
 
 A pen button on the toolbar held `HOLD_MS` (600 ms), with a finger or the nib, opens a card beside it
-(`quicksize.rs`, hosted by the editor like the long-press card): the tool's name and its width now, four chips
-of widths in millimetres, each with a short stroke of that tool's own brush at the view's zoom, and a Pen feel
-chip; the eraser's card has rings in screen millimetres and a second row, Whole strokes / Precise. The buttons:
+(`quicksize.rs`, hosted by the editor like the long-press card): the tool's name and its width now, five chips
+of widths in millimetres, each with a short stroke of that tool's own brush at the view's zoom (no Pen feel chip:
+Pen feel stays in the tool picker and Settings); the eraser's card has rings in screen millimetres and a second row, Whole strokes / Precise. The buttons:
 a pinned pen, the eraser and the tool button while it shows a pen (not the grid, the lasso or the folded box).
 The hold makes that pen the pen in use as its tap would (Select mode ends; the eraser in use stays), and the
 lift after a hold never acts. The contact that opened the card (`Owner::QuickSize`, 22) may slide onto a chip
@@ -1939,8 +1939,30 @@ a finger closes it at the lift and the nib at its down (its stroke swallowed), t
 Esc and Close menu close it, a turn or wake closes it silently. It counts as a sheet (`sheet_open`), and
 `editor_pen_not_ink` is true while it is up, so Live view's fast ink never previews a contact on it.
 
-A pick writes the tool's `size_min_mm` and `size_max_mm` (a literal pair per chip, `PRESETS`; the label is the
-max; the tool's default is always a chip) and nothing else: no page, no history step, no new key. `settings_save`
+A pick writes the tool's `size_max_mm` (the chip's width, `PRESETS`; the label) and `size_min_mm`, and nothing
+else: no page, no history step, no new key. The min is the chip's width times the tool's current min/max ratio,
+rounded to 0.01 and clamped to 0.10 .. the width (a constant-width tool stays min = max; a max that is 0 or not
+finite falls back to the tool's default ratio), so a pressure range tuned in Pen feel is kept; the other eleven
+fields are untouched. The rounding and the 0.10 floor mean a run of different picks can drift the min a little.
+The lit chip is the one whose width is `size_max_mm` within 0.005, whatever the min. The chips, full-pressure
+widths in mm, smallest first (pens: the ISO sqrt(2) pen-width series, each step about 1.4x; the mechanical
+pencil: lead sizes; the eraser: doubling, screen mm, 12 the format's largest); a tool's default max is always
+one of them (`tool_params_default`, brush.rs; `settings_version` 4 moves a pair still at its old default, FORMAT.md):
+
+| Tool | 1 | 2 | 3 | 4 | 5 |
+|---|---|---|---|---|---|
+| Pencil | 0.25 | 0.35 | 0.5 | 0.7 | 1.0 |
+| Mechanical pencil | 0.3 | 0.5 | 0.7 | 0.9 | 1.3 |
+| Charcoal | 0.5 | 0.7 | 1.0 | 1.4 | 2.0 |
+| Ballpoint | 0.25 | 0.35 | 0.5 | 0.7 | 1.0 |
+| Fineliner | 0.25 | 0.35 | 0.5 | 0.7 | 1.0 |
+| Marker | 0.7 | 1.0 | 1.4 | 2.0 | 2.8 |
+| Fountain pen | 0.5 | 0.7 | 1.0 | 1.4 | 2.0 |
+| Calligraphy pen | 1.0 | 1.4 | 2.0 | 2.8 | 4.0 |
+| Highlighter | 2.0 | 2.8 | 4.0 | 5.6 | 8.0 |
+| Eraser | 1 | 2 | 4 | 8 | 12 |
+
+ `settings_save`
 runs a pass of the loop after the card's close was presented (`qs_save`). White ink shares its pen's sizes (the
 samples are white on black). The first time Pen feel opens from the toolbar a toast says how to find the card
 (hints bit 9, FORMAT.md).
@@ -1954,5 +1976,4 @@ Refreshes (no display call is added; MXCFB_WAIT_FOR_UPDATE_SUBMISSION is never i
 | a chip entered while sliding, or pressed | DU at once | the chip |
 | a chip left while sliding | Ui (GL16 turns its black back to white exactly; a DU would leave issue #11's trace) | the chip |
 | picked, or closed | Ui | the card |
-| Pen feel chip | the screen switch's Full | the screen |
 | settings.ini written | none | |

@@ -48,14 +48,20 @@
   folder cannot be merged into its own child. The README and FORMAT.md no longer say "one level of folders".
 - Quick sizes (the owner, 2026-11: "quick size menu via longpressing a tool"). Hold a pen on the toolbar (a pinned
   pen, the eraser, or the tool button while it shows a pen) for 0.6 s, with a finger or the nib: that pen becomes
-  the pen in use and a card opens beside the toolbar with its name, its width now and four sizes in
-  millimetres, each with a stroke of the pen's own brush at the size (drawn at the view's zoom), and a Pen feel
-  chip. Tap a size, or slide the same touch onto one and lift, and the pen has it; a tap anywhere else closes
-  the card and does nothing more. The eraser's card has rings of 2, 4, 7 and 12 mm and a Whole strokes / Precise
+  the pen in use and a card opens beside the toolbar with its name, its width now and five sizes in
+  millimetres (the pens follow the ISO pen-width series, each step about 1.4 times the last; the mechanical
+  pencil has lead sizes), each with a stroke of the pen's own brush at the size (drawn at the view's zoom). A
+  pick keeps the pen's own thin-to-thick ratio: the size is the pen's widest, and its thinnest scales with it,
+  so a pressure range tuned in Pen feel is not lost. Tap a size, or slide the same touch onto one and lift, and the pen has it; a tap anywhere else closes
+  the card and does nothing more. The eraser's card has rings of 1, 2, 4, 8 and 12 mm and a Whole strokes / Precise
   row. A size is a setting, not a page change: no undo step, old strokes keep their width, nothing but
   settings.ini is written (the tool's own `size_min_mm` and `size_max_mm`, which every version reads). The
   first time Pen feel opens from the toolbar a toast says "Hold a pen on the toolbar for its sizes." (hints
   bit 9). Holding is never also a tap: the lift after a hold does nothing.
+- The pens' factory widths moved onto that series: pencil 0.13 to 0.35 mm, charcoal 0.27 to 0.50, ballpoint 0.31
+  to 0.50, fineliner 0.25, calligraphy pen 2.0, highlighter 5.6, eraser 2.86 to 8 mm. Only a pen still on its
+  factory widths moves, when the update first runs: a pen whose minimum or maximum width you changed keeps both
+  as they are. The mechanical pencil, marker and fountain pen are unchanged.
 - More fonts in Classic (the owner, 2026-11-04: "Custom font support/More fonts in the classic theme"). In
   Classic the Style row in Settings has a Font chip at its right end ("Font: Terminess"); the rest of the
   row still changes the style, and Gothic, whose look is its pixel type, has no chip. It opens the Font

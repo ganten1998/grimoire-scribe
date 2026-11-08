@@ -29,16 +29,31 @@ What waits for the lanes that use them:
 - `name_cmp`'s readers: the browser, the import order and the font list.
 - The Library listing from libindex's cache plus stamps (browser.md 17), past reading each notebook.ini once.
 
-## Quick sizes (2.1.0, lane L1, 2026-11-07): defaults taken, for the owner to confirm, and what waits
+## Quick sizes (2.1.0, lane L1, 2026-11-07): defaults taken, the owner's decisions of 2026-11-08, and what waits
 
-Built on the plan's recommended defaults (the owner has not answered them; each can change after trying it):
+The owner's decisions of 2026-11-08 (they replace the chip table and the pair-pick the lane had taken):
+
+- **Five chips per tool**, and no Pen feel chip on the card (Pen feel stays in the tool picker and Settings); the
+  eraser keeps its Whole strokes / Precise row.
+- **The table** (full-pressure widths in mm): pencil 0.25 0.35 0.5 0.7 1.0; mechanical pencil 0.3 0.5 0.7 0.9 1.3;
+  charcoal 0.5 0.7 1.0 1.4 2.0; ballpoint 0.25 0.35 0.5 0.7 1.0; fineliner 0.25 0.35 0.5 0.7 1.0; marker 0.7 1.0
+  1.4 2.0 2.8; fountain pen 0.5 0.7 1.0 1.4 2.0; calligraphy pen 1.0 1.4 2.0 2.8 4.0; highlighter 2.0 2.8 4.0 5.6
+  8.0; eraser 1 2 4 8 12. White ink shares its pen's chips.
+- **A pick keeps the user's thin-to-thick ratio:** size_max_mm is the chip's width, size_min_mm that width times
+  the tool's current min/max (default ratio if the max is unusable), rounded to 0.01, clamped to 0.10 .. width;
+  nothing else changes. The lit chip matches size_max_mm within 0.005.
+- **Defaults nudged onto the series:** pencil 0.13..0.35, charcoal 0.27..0.50, ballpoint 0.31..0.50, fineliner
+  0.25, calligraphy 2.0, highlighter 5.6, eraser 2.86..8.0 (mechanical pencil, marker, fountain pen unchanged).
+- **Existing users:** settings_version 4 moves a tool's pair to the new default only when both stored widths still
+  equal the old default pair.
+
+Built on the plan's other recommended defaults (the owner has not answered them; each can change after trying it):
 
 - **D2, the hold's delay:** one 600 ms hold, `ui::HOLD_MS`, for the pen buttons as for every other hold.
 - **D3 (quicksize.md D1 to D12):** labels in millimetres without trailing zeros ("0.5 mm"); the number is the
-  width at full pressure (Pen feel's Max width); a pick sets the tool's own min/max proportion (a literal pair,
-  replacing a proportion tuned in Pen feel); the hold also makes the pen the pen in use; a pick closes the card;
-  slide to pick only after the touch moved past the slop; white ink shares its pen's sizes; four chips per tool
-  as the plan's table, the tool's default always one of them; no hold on the folded toolbar box; samples drawn at
+  width at full pressure (Pen feel's Max width); a pick keeps the tool's own min/max proportion (2026-11-08, above); the hold also makes the pen the pen in use; a pick closes the card;
+  slide to pick only after the touch moved past the slop; white ink shares its pen's sizes; five chips per tool
+  (the 2026-11-08 table), the tool's default always one of them; no hold on the folded toolbar box; samples drawn at
   the view's zoom with labels in page millimetres; O1 (the eraser's Whole strokes / Precise row) and O7 (the
   one-time tip) in 2.1.
 - **Taken within those:** the eraser's mode row toggles and leaves the card open (a size pick closes it); the
@@ -49,7 +64,7 @@ Built on the plan's recommended defaults (the owner has not answered them; each 
 
 What waits: O2 (the ink row in a pen's card), O3 (size keys and the `quick-size` action, ids 105 to 107), O4 (your
 own chips), O6 (hold in the picker), O8 to O10 stay out; the live ink on the largest chips (charcoal 2, marker
-2.5, highlighter 7, eraser 12 mm) is for the owner to measure with `tools/bench-ink.c` (docs/TESTING.md): drop a
+2.8, highlighter 8, eraser 12 mm) is for the owner to measure with `tools/bench-ink.c` (docs/TESTING.md): drop a
 top chip if live ink lags. The Japanese for "Hold a pen on the toolbar for its sizes." is for nebuff.
 
 ## Classic fonts (2.1.0): choices for the owner, and what waits
