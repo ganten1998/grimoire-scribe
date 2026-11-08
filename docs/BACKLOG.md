@@ -424,6 +424,16 @@ Decided by the lane B3 design (docs/beta2/PIXEL-LASSO.md, 2026-11-03) and its bu
 
 ## To investigate
 
+- **Parts of the sleep picture left on the screen after a wake** (the owner's Scribe, 2026-11-05: the KOReader
+  wallpaper over parts of the panel until a redraw, while the framebuffer, read over ssh, held Grimoire's screen
+  whole). The owner has since seen it in KOReader alone, with Grimoire not running, so it may not be Grimoire's.
+  A full refresh 2.5 s after every wake (81ec634) hid it; the owner took it out of 2.1 (2026-11-08: "I don't
+  think this is grimoire, so i want it gone until I know"), so a wake is as in 2.0.0 again. Leads: the Kindle's
+  screensaver module stays loaded while KOReader runs without stopping the framework (lipc blanket `load`), and
+  KOReader unloads it only with STOP_FRAMEWORK=yes; the Terminess patch to KOReader is the other change of that
+  week. Evidence: ~/KindleLab/evidence/wake-wallpaper-2026-11-05/ (private). Next: the owner reboots the Scribe
+  and tries KOReader alone with and without the Terminess patch.
+
 - **Two checks fail on a Linux host** (2026-11-03, on a Void Linux x86_64 machine; both the same at
   5d3e6fe; they matter before `GRIMOIRE_CI_LINUX` is turned on): `tests/scenarios/y_status_corner.qs` line 82 sees a second present at 632,2250 595 x 110
   (a toast's place) after the corner is tapped back on; `rust/tests/test_templates.rs`'s

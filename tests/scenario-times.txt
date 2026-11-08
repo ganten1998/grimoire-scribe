@@ -50,7 +50,6 @@ p_pin_native 8.1
 p_power 32.4
 p_power_locked 12.3
 p_power_released_late 4.9
-p_wake_full 3.4
 p_wake_interrupted_ink 1.1
 q_share_rotate 14.7
 r_passcode 0.3

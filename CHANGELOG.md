@@ -78,11 +78,6 @@
   assets/README.md). The Kindle binary grows by about 0.26 MB (5,840,984 to 6,102,208 bytes) and the zip
   by about 0.13 MB; package-check now fails a binary of 10.5 MB or more and a zip of 5.5 MB or more
   (decision D23).
-- A wake no longer leaves parts of the sleep picture (the KOReader wallpaper) on the screen until a redraw (the
-  owner's Scribe, 2026-11-05). The framebuffer held the Library whole: the Kindle draws on the panel on its way
-  out of the screensaver after Grimoire's first refresh, and the second push was a no-flash one, which drives
-  only the pixels the panel's controller thinks changed. That push is now a full refresh, 2.5 s after the wake
-  whatever the sleep picture: one flash, and nothing of the sleep picture can stay.
 - What's new's Read all lists every version's notes, newest first (the owner, 2026-11-06: "wire read all button
   to a list of each UNIQUE release note, and allow users to easily browse the changes by version - some of them
   are important"). A row for each: the version (the one running marked This version), its date and the notes'
