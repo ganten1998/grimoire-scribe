@@ -29,7 +29,9 @@ each idle tick of the backlinks cache's check take that many milliseconds longer
 under way is not slowed), as a loaded runner reads the notebooks slower:
 tests/scenarios/z_links_3_bar_learns.qs runs with 60, so its check of 120 notebooks takes over 11 s
 however fast the machine is, longer than the fixed 9 s wait it had before `waitfor`.
-`GRIMOIRE_SLEEP_MINUTE_MS` (simulator only) makes a
+`GRIMOIRE_CACHE_WINDOW_MS` (simulator only) sets the 30 s the idle
+save spaces its preview and kept-drawing writes by, and the quiet time a page needs for its kept drawing to be
+written at an idle save (0: neither; z_dense_saves_*, z_keep_ghost_*). `GRIMOIRE_SLEEP_MINUTE_MS` (simulator only) makes a
 minute of the Display sheet's "Sleep after" last that many milliseconds, so a scenario can see the
 timer run out.
 

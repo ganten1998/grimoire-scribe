@@ -1,6 +1,7 @@
 # rust-only
 # generate: tests/previews_fixture.py linked
 # env: GRIMOIRE_KEEP_RENDER_MS=0
+# env: GRIMOIRE_CACHE_WINDOW_MS=0
 # Redo of a Clear that took a link away, on a page with a current kept drawing (z_keep_ghost_1_clear): that redo
 # draws the page whole again (undo_redo_link), and 2.0.0 and 2.0.1 read the drawing kept of the file back there
 # too, the page marked changed already: nothing is saved in between here, so the file still has the old ink.

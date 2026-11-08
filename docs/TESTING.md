@@ -1789,16 +1789,34 @@ On the Scribe, with Scratch (2.0.2, a cleared page's old picture, step 1):
 
 ## Scribe checks: dense-page revisits (2.0.2, 2026-11-07)
 
-1. From blank, write a page past 512 KB without opening Pages. Pause at least 2 seconds, turn away and
-   back: the first revisit should read its kept drawing without a long Loading page notice. Repeat by
-   turning away immediately after the last stroke, before autosave. Compare all ink with the page before.
-2. Add ink, pause, close and reopen within 30 seconds, add 40 small strokes and pause again. The page
-   file should save; the preview and drawing should wait for the idle 30-second window. Leave the page:
-   its final changed drawing is kept once, and its next open shows every stroke. No repeated cache writes
-   on read-only reopens or saves without changes. Check undo, redo, an image paper and floors as well.
+Automated: editor.rs `dense_written_from_blank_keeps_its_drawing_once_quiet_or_left_and_never_twice_in_a_window`
+(the idle save makes the preview and no drawing; the drawing follows once the window and the quiet time are over;
+Ctrl+S-style saves write the page and no cache, inside the window or out; leaving writes the drawing at once and
+only if it is not current; nothing is written twice; a partial canvas or a white picture keeps nothing),
+`pending_caches_run_no_autosave_while_they_cannot_be_made` (editor_tick's autosave for the caches alone: not while
+the canvas is not whole, its picture is white, or the page is read-only), `closing_keeps_an_unchanged_library_card_...`
+(a card of no known source is drawn again, from the strokes; a card noted as drawn from page 1 as it is stays),
+and the scenarios z_dense_first_revisit (a page left before its idle save), z_dense_saves_1_explicit (Ctrl+S and
+the Pages view write no drawing; leaving does), z_dense_saves_2_quiet (the idle save keeps the drawing only after
+the quiet time: GRIMOIRE_CACHE_WINDOW_MS shortens the 30 s), z_dense_card_stale (a card stale at the open is drawn
+again at the close from another page), and z_dense_leave_1_clear to _4_photo (Clear page, Undo, a new paper, a
+template or a photo, the page left or the notebook closed at once: the drawing kept, the Library card and the page
+read back are of the page as it is, never of the old picture). The z_keep_ghost scenarios that check the preview
+after an idle save run with the window at 0.
+
+1. From blank, write a page past 512 KB without opening Pages. Turn away at once, after the last stroke, and
+   back: the first revisit reads its kept drawing without a long Loading page notice. Compare all ink with the
+   page before. Repeat after pausing 2 seconds before the turn (the drawing is made at the turn, not at the
+   pause).
+2. Write in bursts with pauses of a few seconds for a minute, pressing Ctrl+S now and then, and open the Pages
+   view once: nothing is slower at the pauses or the presses. Stop writing for 30 s: the drawing is made then
+   (a short stall at most), and again only after more writing. Leave the page: its final changed drawing is
+   kept at once, and its next open shows every stroke. No cache is written on a reopen or a save with no change.
+   Check undo, redo, an image paper and floors as well.
 3. Open a notebook on another page, change that page and close it. Its existing page-1 Library card should
    remain and closing should be quick. Edit page 1, leave it, edit another page and close: the card should
    show page 1's new ink without drawing it twice. Reorder a different page into first place and check
-   that the card changes to that page; remove its caches and check the fallback draws the right card.
-4. The PDF mirror still draws strokes; compare a mirrored Seyes PDF with the page. The editor's kept
-   drawing is intentionally not used for a potentially different export paper scale.
+   that the card changes to that page; remove its caches and check the fallback draws the right card. A
+   notebook whose card was made by an older version has its card drawn again from page 1's strokes at its
+   first close from another page (seconds on a dense page), and not at the next.
+4. The PDF mirror still draws strokes (not done: docs/BACKLOG.md).

@@ -17,11 +17,14 @@
   notebook's Library card when it is page 1 (once the page is left), so an old picture they kept goes too, even on
   a page written on again since. A page not opened since keeps its old preview, and a notebook whose page 1 is not
   opened keeps its old card, until then.
-- Pages that grow to 512 KB while being written keep their whole drawing at an idle save or when left,
-  so their first revisit reads it back. Idle previews and kept drawings write only when stale, at most
-  every 30 seconds across reopens too; a deferred preview finishes at the next quiet opportunity. Leaving
-  a changed dense page keeps its final drawing even within that window. Editing another page leaves
-  the Library card alone; a changed first page uses its kept drawing or preview before drawing its ink.
+- A dense page (512 KB or more) written from blank keeps its whole drawing, so its first revisit reads it back
+  (11 s and 25 s on the owner's stress pages before; a tenth of a second after, host time) instead of drawing
+  every stroke again: it is made when the page is left or the notebook closed, and at an idle save once the page
+  has been quiet for 30 s. Ctrl+S, the Pages view, Settings and the power press write the page and nothing more,
+  so they no longer write that 3.4 MB drawing at each press. The Pages preview is made at an idle save at most
+  every 30 s (across page turns and reopens too). Closing a notebook from another page no longer draws page 1
+  again for the Library card: the card is kept when it was drawn from page 1 as it is, and else made from page
+  1's kept drawing (a card of before 2.0.2 is drawn from its strokes, once).
 
 - The Links bar learning scenario waits for its incoming rows with the headless runner's new `waitfor`,
   instead of guessing that every runner will check 120 notebooks within 9 seconds. Normal application

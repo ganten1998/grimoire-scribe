@@ -741,8 +741,12 @@ Ideas, not plans: each needs the owner's go and its own design. No code is taken
   left. First revisits no longer need the slow opening that used to create the first kept drawing.
 - Closing after changes on another page retains the Library card when page 1 stayed the same. A changed
   or reordered first page uses a current kept drawing, then its current preview, then a stroke render.
-- Idle previews and kept drawings write only when stale and at most every 30 seconds, including across
-  reopens. Deferred previews finish after that window without another page-file write. Departure still
-  keeps the final changed dense drawing so its first revisit is quick. Generated regression ink has
+- Idle previews write at most every 30 seconds, including across reopens, and only when stale; the kept
+  drawing of a dense page is made when the page is left or the notebook closed, and at an idle save only once
+  the page has been quiet for 30 seconds (written in bursts, it was 3.4 MB at every pause); Ctrl+S, the Pages
+  view, Settings, the power press and a sleep write the page file and no cache. Generated regression ink has
   STRESS TEST 3's 698 strokes, 163,950 points and a 6,648-point stroke; no owner's page is committed.
-- PDF mirror reuse remains above: its paper scale can differ from the editor's, especially for Seyes.
+- PDF mirror reuse (brief item 1.4) is not done, and not for a scale reason: a background job is a fork of
+  the panel's process and inherits the panel's Seyes factor (bgjob.rs, paper.rs seyes_scale), so the export
+  draws at the editor's scale. What is left is to find the export's pages that a current kept drawing can stand
+  for (same size, same layers) and read them back instead of drawing their strokes (above: 51 s at each close).

@@ -2,6 +2,7 @@
 # generate: tests/previews_fixture.py
 # copy: tests/fixtures/photos photos
 # env: GRIMOIRE_KEEP_RENDER_MS=0
+# env: GRIMOIRE_CACHE_WINDOW_MS=0
 # A photo this notebook has already (page 2's) picked for a page with a current kept drawing (z_keep_ghost_3_template):
 # its picture is there, so the page goes onto it at once. 2.0.0 and 2.0.1 read the drawing kept of the file back
 # instead, the old paper under the old ink, and kept that picture under the new file's stamp. (A photo new to the

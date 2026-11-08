@@ -1,5 +1,6 @@
 # rust-only
 # generate: tests/previews_fixture.py
+# env: GRIMOIRE_CACHE_WINDOW_MS=0
 # Clear page on a dense page whose drawing the previews job kept (z_previews_2_kept), at the editor's own keep
 # threshold: the page comes up from that drawing, and Clear draws it from its strokes, none (z_keep_ghost_1_clear).
 wait 300

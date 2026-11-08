@@ -3596,6 +3596,31 @@ pub fn store_save_thumb(id: &str, thumb: &Canvas) -> i32 {
     save_pgm(&path, thumb)
 }
 
+/// Which page 1 the card was drawn from (store_page_source_identity of the page, with its id), beside the card
+/// (thumb.src) and bound to the card file itself: a card written by anything else (an older version, another
+/// path) matches no source, so a close redraws it rather than trusting that it shows page 1 as it is.
+pub fn store_note_thumb_source(id: &str, source: &str) {
+    let Some(dir) = notebook_dir(id.as_bytes()) else { return };
+    let stamp = store_thumb_stamp(id);
+    if stamp == 0 {
+        return;
+    }
+    let path = format!("{dir}/thumb.src");
+    let mine = format!("{path}.{}", std::process::id());
+    if write_cache_file(&mine, format!("{stamp}|{source}").as_bytes()) == 0 && std::fs::rename(&mine, &path).is_ok() {
+        return;
+    }
+    let _ = std::fs::remove_file(mine);
+}
+
+/// What store_note_thumb_source noted, while the card is still the file it was noted for.
+pub fn store_thumb_source(id: &str) -> Option<String> {
+    let dir = notebook_dir(id.as_bytes())?;
+    let text = preview_tag(&format!("{dir}/thumb.src"))?;
+    let (stamp, source) = text.split_once('|')?;
+    (stamp == store_thumb_stamp(id).to_string()).then(|| source.to_string())
+}
+
 /// canvas_init'd by the callee
 pub fn store_load_thumb(id: &str, out: &mut Canvas) -> i32 {
     *out = Canvas::default();

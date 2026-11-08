@@ -1,6 +1,7 @@
 # rust-only
 # generate: tests/previews_fixture.py
 # env: GRIMOIRE_KEEP_RENDER_MS=0
+# env: GRIMOIRE_CACHE_WINDOW_MS=0
 # Clear page on a page with a current kept drawing (GRIMOIRE_KEEP_RENDER_MS=0: the dense page keeps its drawing
 # as it first opens). A kept drawing is of the page file, which holds the old ink until the idle save: 2.0.0 and
 # 2.0.1 read it back as Clear drew the emptied page again, so the cleared page showed its old picture, and the

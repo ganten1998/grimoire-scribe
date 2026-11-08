@@ -1,6 +1,7 @@
 # rust-only
 # generate: tests/previews_fixture.py
 # env: GRIMOIRE_KEEP_RENDER_MS=0
+# env: GRIMOIRE_CACHE_WINDOW_MS=0
 # A new paper on a page with a current kept drawing (z_keep_ghost_1_clear): 2.0.0 and 2.0.1 read the drawing kept
 # of the file back, the old paper under the old ink, and kept it again under the new file's stamp. The page is drawn
 # on its new paper now, and kept so.
