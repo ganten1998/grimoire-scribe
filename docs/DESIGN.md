@@ -1889,9 +1889,9 @@ Lane L0 adds them with nothing visible: each keeps what the Scribe showed before
   to its nearer side, and it is the first given up when nothing else fits), the rest are never covered when
   any place avoids them; the last resort is the right place clamped, moved below each of the rest it meets.
   The long-press card passes `[panel, clock corner]` and places exactly as `linkcard_place` did
-  (tests/test_popout.rs compares the two over 190,000 cases); the quick size card will pass the same and the
-  Library's item cards (2.2) nothing. The frame, rows, chips with a preview well, contacts and keys come with
-  the quick size card.
+  (tests/test_popout.rs compares the two over 190,000 cases); the quick size card passes the same and the
+  Library's item cards (2.2) will pass nothing. The popout's chips, contacts, refreshes and keys are the quick
+  size card's (below).
 - **One notice that stays until ready, `app_notice(a, key, text)` until `app_notice_clear(a, key)`** (app.rs).
   Drawn like a toast, in the toast's place above `toast_floor`, overlaid for its presents and never stored in
   `App.screen`. A new text redraws it at most once every 2 s (`NOTICE_EVERY_MS`) by one Ui of its rect,
@@ -1924,3 +1924,35 @@ Lane L0 adds them with nothing visible: each keeps what the Scribe showed before
 - **The Library reads each notebook.ini once.** `reload` lists the notebooks and takes their folders from
   that list (`store_list_folders_from`), as the notebook picker and the share server's index do; it read
   each twice (500 notebooks: 1,000 reads on FUSE at each enter).
+
+## Quick sizes (2.1, lane L1)
+
+A pen button on the toolbar held `HOLD_MS` (600 ms), with a finger or the nib, opens a card beside it
+(`quicksize.rs`, hosted by the editor like the long-press card): the tool's name and its width now, four chips
+of widths in millimetres, each with a short stroke of that tool's own brush at the view's zoom, and a Pen feel
+chip; the eraser's card has rings in screen millimetres and a second row, Whole strokes / Precise. The buttons:
+a pinned pen, the eraser and the tool button while it shows a pen (not the grid, the lasso or the folded box).
+The hold makes that pen the pen in use as its tap would (Select mode ends; the eraser in use stays), and the
+lift after a hold never acts. The contact that opened the card (`Owner::QuickSize`, 22) may slide onto a chip
+and lift there once it has moved past the 30 px slop; a tap on a chip picks it; a pick closes the card. Outside,
+a finger closes it at the lift and the nib at its down (its stroke swallowed), the clock corner keeps its tap,
+Esc and Close menu close it, a turn or wake closes it silently. It counts as a sheet (`sheet_open`), and
+`editor_pen_not_ink` is true while it is up, so Live view's fast ink never previews a contact on it.
+
+A pick writes the tool's `size_min_mm` and `size_max_mm` (a literal pair per chip, `PRESETS`; the label is the
+max; the tool's default is always a chip) and nothing else: no page, no history step, no new key. `settings_save`
+runs a pass of the loop after the card's close was presented (`qs_save`). White ink shares its pen's sizes (the
+samples are white on black). The first time Pen feel opens from the toolbar a toast says how to find the card
+(hints bit 9, FORMAT.md).
+
+Refreshes (no display call is added; MXCFB_WAIT_FOR_UPDATE_SUBMISSION is never involved):
+
+| Moment | Waveform | Rect |
+|---|---|---|
+| a pen button pressed | DU at once (`app_press_feedback`) | the button |
+| the hold reached: button let go, pen picked, card drawn | Ui, one present | the card with the button, or with the whole panel when the pen changed |
+| a chip entered while sliding, or pressed | DU at once | the chip |
+| a chip left while sliding | Ui (GL16 turns its black back to white exactly; a DU would leave issue #11's trace) | the chip |
+| picked, or closed | Ui | the card |
+| Pen feel chip | the screen switch's Full | the screen |
+| settings.ini written | none | |

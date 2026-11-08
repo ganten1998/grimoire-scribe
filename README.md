@@ -109,7 +109,8 @@ your notebooks and settings from `quire/` to `grimoire/` and removes the old Qui
   lines (or start from grand staff or a 4 to 7 string bass tab), and choose how many systems fit
   on a page. Each page can have its own paper.
 - **Pens**: pencil, mechanical pencil, charcoal, ballpoint, fineliner, marker, fountain pen,
-  calligraphy pen, highlighter. Every pen's pressure and tilt response can be tuned
+  calligraphy pen, highlighter. Hold a pen on the toolbar for its sizes: a card of four widths
+  in millimetres (the eraser's also has Whole strokes / Precise). Every pen's pressure and tilt response can be tuned
   (Settings > Pen sensitivity). The eraser takes away whole strokes, or set to **Precise** only
   what it touches (see White ink, pinned pens and templates); the eraser end of the Premium Pen
   works too.

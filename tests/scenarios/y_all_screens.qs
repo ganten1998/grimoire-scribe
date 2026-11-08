@@ -581,6 +581,156 @@ expect screen is editor
 pen curve 300 600 40 70 0.7 4
 wait 100
 shot 23-editor
+# The quick sizes card (a pen button held 600 ms): the eraser's with its Whole strokes / Precise row, then every
+# pen's through the tool button (the pencil last, as the rest of the scenario has it); the Pen feel chip in every language.
+touch down 1768 466
+wait 700
+touch up 1768 466
+wait 100
+expect editor.quicksize is eraser
+shot 23-quick-sizes-eraser
+pentap 400 1200
+wait 150
+pen leave
+expect editor.quicksize is 0
+pentap panel tool-picker
+wait 100
+expect editor.tool is pencil
+pentap panel tool-picker
+wait 50
+tap panel picker.tool:mech
+wait 100
+expect editor.modal is none
+touch down 1768 358
+wait 700
+touch up 1768 358
+wait 100
+expect editor.quicksize is mech
+shot 23-quick-sizes-mech
+pentap 400 1200
+wait 150
+pen leave
+expect editor.quicksize is 0
+pentap panel tool-picker
+wait 50
+tap panel picker.tool:charcoal
+wait 100
+expect editor.modal is none
+touch down 1768 358
+wait 700
+touch up 1768 358
+wait 100
+expect editor.quicksize is charcoal
+shot 23-quick-sizes-charcoal
+pentap 400 1200
+wait 150
+pen leave
+expect editor.quicksize is 0
+pentap panel tool-picker
+wait 50
+tap panel picker.tool:ballpoint
+wait 100
+expect editor.modal is none
+touch down 1768 358
+wait 700
+touch up 1768 358
+wait 100
+expect editor.quicksize is ballpoint
+shot 23-quick-sizes-ballpoint
+pentap 400 1200
+wait 150
+pen leave
+expect editor.quicksize is 0
+pentap panel tool-picker
+wait 50
+tap panel picker.tool:fineliner
+wait 100
+expect editor.modal is none
+touch down 1768 358
+wait 700
+touch up 1768 358
+wait 100
+expect editor.quicksize is fineliner
+shot 23-quick-sizes-fineliner
+pentap 400 1200
+wait 150
+pen leave
+expect editor.quicksize is 0
+pentap panel tool-picker
+wait 50
+tap panel picker.tool:marker
+wait 100
+expect editor.modal is none
+touch down 1768 358
+wait 700
+touch up 1768 358
+wait 100
+expect editor.quicksize is marker
+shot 23-quick-sizes-marker
+pentap 400 1200
+wait 150
+pen leave
+expect editor.quicksize is 0
+pentap panel tool-picker
+wait 50
+tap panel picker.tool:fountain
+wait 100
+expect editor.modal is none
+touch down 1768 358
+wait 700
+touch up 1768 358
+wait 100
+expect editor.quicksize is fountain
+shot 23-quick-sizes-fountain
+pentap 400 1200
+wait 150
+pen leave
+expect editor.quicksize is 0
+pentap panel tool-picker
+wait 50
+tap panel picker.tool:calligraphy
+wait 100
+expect editor.modal is none
+touch down 1768 358
+wait 700
+touch up 1768 358
+wait 100
+expect editor.quicksize is calligraphy
+shot 23-quick-sizes-calligraphy
+pentap 400 1200
+wait 150
+pen leave
+expect editor.quicksize is 0
+pentap panel tool-picker
+wait 50
+tap panel picker.tool:highlighter
+wait 100
+expect editor.modal is none
+touch down 1768 358
+wait 700
+touch up 1768 358
+wait 100
+expect editor.quicksize is highlighter
+shot 23-quick-sizes-highlighter
+pentap 400 1200
+wait 150
+pen leave
+expect editor.quicksize is 0
+pentap panel tool-picker
+wait 50
+tap panel picker.tool:pencil
+wait 100
+expect editor.modal is none
+touch down 1768 358
+wait 700
+touch up 1768 358
+wait 100
+expect editor.quicksize is pencil
+shot 23-quick-sizes-pencil
+pentap 400 1200
+wait 150
+pen leave
+expect editor.quicksize is 0
 pentap panel tool-picker
 wait 50
 expect editor.modal is tools
@@ -825,8 +975,8 @@ wait 1100
 swipe 2 930 1200 0 400
 wait 300
 # (2, the first link made above showed the first-link tip; 24, the Links bar showed its second header line
-# three times)
-expect settings.hints is 26
+# three times; 512, the first quick sizes card, bit 9)
+expect settings.hints is 538
 expect editor.zoom not 1.00
 shot 31-zoom-pan
 tap 930 74
@@ -1033,6 +1183,28 @@ tap 267 530
 wait 200
 expect screen is editor
 shot 48-editor-landscape
+touch down 2026 264
+wait 700
+touch up 2026 264
+wait 100
+expect editor.quicksize is ballpoint
+shot 48-quick-sizes-landscape
+tap 600 700
+wait 150
+expect editor.quicksize is 0
+touch down 2026 372
+wait 700
+touch up 2026 372
+wait 100
+expect editor.quicksize is eraser
+shot 48-quick-sizes-eraser-landscape
+tap 600 700
+wait 150
+expect editor.quicksize is 0
+# (the eraser is the pen in use now: the tool button's tap brings its pen back)
+tap panel tool-picker
+wait 100
+expect editor.tool is ballpoint
 pentap panel tool-picker
 wait 50
 expect editor.modal is tools

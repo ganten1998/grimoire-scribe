@@ -17,8 +17,8 @@ see. Defaults taken, for the owner to confirm:
 
 What waits for the lanes that use them:
 
-- The popout's frame, rows, chips with a preview well, contacts, refreshes and keys (3.2 in the 2.1 plan): with
-  the quick size card (L1). L0 moved only the place.
+- The popout's frame, rows, contacts, refreshes and keys (3.2 in the 2.1 plan) were built by the quick size card
+  (L1, below); the Library's item cards (2.2) and the font picker reuse its chip with a preview well.
 - The notice's other keys: Import (the PDF import, L5), FontCheck (your own fonts, L10), Loading and Previews
   (the picker, L8; Previews in 2.2). Their screens' rules are in `notice_pick`; Import shows on the Library only
   until the browser has screens of its own.
@@ -28,6 +28,29 @@ What waits for the lanes that use them:
   place of `realpath`).
 - `name_cmp`'s readers: the browser, the import order and the font list.
 - The Library listing from libindex's cache plus stamps (browser.md 17), past reading each notebook.ini once.
+
+## Quick sizes (2.1.0, lane L1, 2026-11-07): defaults taken, for the owner to confirm, and what waits
+
+Built on the plan's recommended defaults (the owner has not answered them; each can change after trying it):
+
+- **D2, the hold's delay:** one 600 ms hold, `ui::HOLD_MS`, for the pen buttons as for every other hold.
+- **D3 (quicksize.md D1 to D12):** labels in millimetres without trailing zeros ("0.5 mm"); the number is the
+  width at full pressure (Pen feel's Max width); a pick sets the tool's own min/max proportion (a literal pair,
+  replacing a proportion tuned in Pen feel); the hold also makes the pen the pen in use; a pick closes the card;
+  slide to pick only after the touch moved past the slop; white ink shares its pen's sizes; four chips per tool
+  as the plan's table, the tool's default always one of them; no hold on the folded toolbar box; samples drawn at
+  the view's zoom with labels in page millimetres; O1 (the eraser's Whole strokes / Precise row) and O7 (the
+  one-time tip) in 2.1.
+- **Taken within those:** the eraser's mode row toggles and leaves the card open (a size pick closes it); the
+  card opens beside the toolbar with the clock corner kept clear and, while a link is being made, the strip too;
+  the hold's pen pick and the tip's bit are written with the size, a pass after the close was presented.
+- **The eraser's chips are screen millimetres**, so at a zoom under 1 the 12 mm chip is clamped at the format's 12
+  page millimetres.
+
+What waits: O2 (the ink row in a pen's card), O3 (size keys and the `quick-size` action, ids 105 to 107), O4 (your
+own chips), O6 (hold in the picker), O8 to O10 stay out; the live ink on the largest chips (charcoal 2, marker
+2.5, highlighter 7, eraser 12 mm) is for the owner to measure with `tools/bench-ink.c` (docs/TESTING.md): drop a
+top chip if live ink lags. The Japanese for "Hold a pen on the toolbar for its sizes." is for nebuff.
 
 ## Classic fonts (2.1.0): choices for the owner, and what waits
 

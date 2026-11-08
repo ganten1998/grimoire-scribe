@@ -46,6 +46,16 @@
   taken there (in any case of its letters) becomes "Name 2", then "Name 3", so its mirror PDF follows
   without replacing another; no notebook is lost, and a write that fails leaves every file as it was. A
   folder cannot be merged into its own child. The README and FORMAT.md no longer say "one level of folders".
+- Quick sizes (the owner, 2026-11: "quick size menu via longpressing a tool"). Hold a pen on the toolbar (a pinned
+  pen, the eraser, or the tool button while it shows a pen) for 0.6 s, with a finger or the nib: that pen becomes
+  the pen in use and a card opens beside the toolbar with its name, its width now and four sizes in
+  millimetres, each with a stroke of the pen's own brush at the size (drawn at the view's zoom), and a Pen feel
+  chip. Tap a size, or slide the same touch onto one and lift, and the pen has it; a tap anywhere else closes
+  the card and does nothing more. The eraser's card has rings of 2, 4, 7 and 12 mm and a Whole strokes / Precise
+  row. A size is a setting, not a page change: no undo step, old strokes keep their width, nothing but
+  settings.ini is written (the tool's own `size_min_mm` and `size_max_mm`, which every version reads). The
+  first time Pen feel opens from the toolbar a toast says "Hold a pen on the toolbar for its sizes." (hints
+  bit 9). Holding is never also a tap: the lift after a hold does nothing.
 - More fonts in Classic (the owner, 2026-11-04: "Custom font support/More fonts in the classic theme"). In
   Classic the Style row in Settings has a Font chip at its right end ("Font: Terminess"); the rest of the
   row still changes the style, and Gothic, whose look is its pixel type, has no chip. It opens the Font

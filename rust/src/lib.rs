@@ -101,6 +101,7 @@ pub mod library;
 pub mod linkbar; // the Links bar: the page's links as numbered rows (Rust only, the Index's phase 1)
 pub mod linkcard; // the long-press card: what a held link (or bar row) can do (Rust only, the Index's phase 2)
 pub mod popout; // one popout: a card anchored beside what was held, its place (2.1, DESIGN.md "One popout")
+pub mod quicksize; // quick sizes: a held pen button's card of four widths (2.1, lane L1)
 pub mod live;
 pub mod live_keys;
 pub mod pagesview;
@@ -178,6 +179,7 @@ pub mod prelude {
     pub use crate::linkbar::*;
     pub use crate::linkcard::*;
     pub use crate::popout::*;
+    pub use crate::quicksize::*;
     pub use crate::live::*;
     pub use crate::musicbuild::*;
     pub use crate::nav::*;

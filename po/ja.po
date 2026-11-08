@@ -5,7 +5,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: Grimoire 2.0.0-beta.1\n"
 "Report-Msgid-Bugs-To: https://github.com/ganten1998/grimoire-scribe/issues\n"
-"POT-Creation-Date: 2026-11-07 23:29-0600\n"
+"POT-Creation-Date: 2026-11-07 23:51-0600\n"
 "PO-Revision-Date: 2026-11-01 00:00+0000\n"
 "Last-Translator: draft\n"
 "Language-Team: Japanese\n"
@@ -269,7 +269,9 @@ msgstr "紙"
 msgid "Display"
 msgstr "画面"
 
-#: rust/src/actions.rs
+#. TRANSLATORS: the label of the sizes card's Pen feel chip, under the Tune icon (the card a pen button on the
+#. toolbar held opens): up to 300 px at 34 px. The same words as the toolbar action that opens Pen feel.
+#: rust/src/actions.rs rust/src/quicksize.rs
 msgid "Pen feel"
 msgstr "ペンの感触"
 
@@ -1637,6 +1639,13 @@ msgstr "このページは読み取り専用です。"
 msgid "Couldn't read links."
 msgstr "リンクを読み取れませんでした。"
 
+#. TRANSLATORS: a toast, once, the first time Pen feel is opened from the toolbar (about 1300
+#. px at 44 px in bold, or two lines): a pen button on the toolbar, held for a moment, opens a
+#. card of that pen's widths.
+#: rust/src/editor.rs
+msgid "Hold a pen on the toolbar for its sizes."
+msgstr ""
+
 #. TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): Back to the page
 #. before was asked with no page to go back to.
 #: rust/src/editor.rs
@@ -1652,14 +1661,18 @@ msgstr "消しゴム：%s"
 
 #. TRANSLATORS: the second choice of Pen feel's Eraser row: the eraser takes away only what
 #. it touches, as white ink does, keeping the paper's lines (468 px at 44 px).
-#: rust/src/editor.rs rust/src/pensettings.rs
+#. TRANSLATORS: the eraser's sizes card, the second choice of its second row: the eraser takes away
+#. only what it touches. The same words as Pen feel's Eraser row (468 px at 44 px).
+#: rust/src/editor.rs rust/src/pensettings.rs rust/src/quicksize.rs
 msgctxt "eraser"
 msgid "Precise"
 msgstr "精密"
 
 #. TRANSLATORS: the first choice of Pen feel's Eraser row: the eraser takes every stroke it
 #. touches away whole (as before 1.1). 468 px at 44 px, or two lines at 34 px.
-#: rust/src/editor.rs rust/src/pensettings.rs
+#. TRANSLATORS: the eraser's sizes card, the first choice of its second row: the eraser takes every
+#. stroke it touches away whole. The same words as Pen feel's Eraser row (468 px at 44 px).
+#: rust/src/editor.rs rust/src/pensettings.rs rust/src/quicksize.rs
 msgctxt "eraser"
 msgid "Whole strokes"
 msgstr "ストローク全体"

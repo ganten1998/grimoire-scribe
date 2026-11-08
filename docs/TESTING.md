@@ -1851,7 +1851,9 @@ On the Scribe:
    changes folder and closes its sheets showing the same notebooks and folders as 2.0.0, and the Move to
    folder list and the share page's folders are the same.
 
-Folders that meet (L2, 2.1), on the Scribe, in a copy of a Library with folders:
+## 2.1.0, L2 folders that meet
+
+On the Scribe, in a copy of a Library with folders:
 
 1. **Move onto a name.** Make folders A and B/A (B holds a notebook "Notes", A one too). Open B, the menu of
    B/A, Move folder, Library (top level): the sheet "A folder named "A" is already there." opens with three
@@ -1862,3 +1864,38 @@ Folders that meet (L2, 2.1), on the Scribe, in a copy of a Library with folders:
 3. **Keep both.** The same, Keep both (as "A 2"): the folder is "A 2" beside A, its notebooks as they were.
 4. **Rename onto a name.** Rename a folder to the name of another at its level: the same sheet. Upright and
    sideways, and in Spanish, the title and rows fit on one line each.
+
+## 2.1.0, L1 quick sizes
+
+Built for the 2.1 plan's lane L1: hold a pen on the toolbar for a card of its sizes (docs/DESIGN.md, Quick
+sizes). Automated: quicksize.rs's unit tests (the table, apply and current, repeatability, labels, placement),
+test_format.rs `quick_sizes_round_trip`, scenarios z_qsize_1 to z_qsize_6, every card in y_all_screens (upright
+and sideways, English, Spanish and Japanese, Gothic and Classic), y_menus_over_panel.
+
+On the Scribe:
+
+1. **600 ms with a finger and with the nib.** Hold a pinned pen, the eraser and the tool button (while it shows
+   a pen) for a moment: the card opens as you pass 0.6 s, level with the button and beside the toolbar, never
+   over the button or the clock corner. Does 0.6 s feel right with each? A quick tap still just picks the pen.
+2. **The hold picks the pen.** After the hold that pen is the one in use (the toolbar shows it); the lift does
+   not go back to the pen before the eraser and does not open the picker.
+3. **Slide to pick.** Keep the nib (or finger) down after the card opens, slide onto a size and lift: it is
+   picked. Lifting without moving picks nothing and the card stays; sliding off every size and lifting leaves it
+   open.
+4. **Tap to pick, tap elsewhere to close.** Tap a size: the card closes and the next stroke has that width (the
+   old strokes keep theirs, Undo takes the last stroke, not the size). A tap on the page or another toolbar
+   button only closes the card; the pen's down outside closes it and leaves no ink; the clock corner still toggles.
+5. **No residue.** Slide over the sizes back and forth and lift on none: no grey ghost of a size left behind, no
+   flash of the page. Opening and closing each take one refresh.
+6. **Look.** The samples read well in Gothic and Classic, white ink shows white on black, the eraser shows rings
+   (the 12 mm ring is cut by its box) and its Whole strokes / Precise row changes the eraser's mode and keeps the
+   card open. The Pen feel chip opens Pen feel on that pen's tab.
+7. **The tip.** On a fresh settings file, open Pen feel from the toolbar once: "Hold a pen on the toolbar for its
+   sizes." once, and not again.
+8. **Sizes survive.** Pick a size, leave the notebook and Grimoire, come back: the width is kept, and Pen feel's
+   Max width shows it.
+9. **Live ink on the largest sizes.** With tools/bench-ink.c (docs/INK-PERFORMANCE.md) on charcoal 2 mm, marker
+   2.5 mm, highlighter 7 mm and the eraser's 12 mm: does live ink keep up? A size whose ink lags is to go.
+10. **Live view.** With Live view on, a pen on the card draws no fast ink; after a pick the next stroke's live ink
+    has the new width.
+

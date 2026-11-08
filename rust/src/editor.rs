@@ -48,6 +48,8 @@ const HINT_FIRST_OPEN: i32 = 1 << 0;
 const HINT_FIRST_LINK: i32 = 1 << 1;
 /// the first unrecorded finger drawing faded away with its one-time explanation
 const HINT_FSHAPE: i32 = 1 << 7;
+/// the quick sizes tip was shown (Pen feel opened from the toolbar the first time), or the card was used (2.1)
+const HINT_QUICK_SIZE: i32 = 1 << 9;
 /// settings.hints' bits 3 and 4: how many times the Links bar showed its second header line (0 to 3)
 const HINT_BAR_SHIFT: i32 = 3;
 const HINT_BAR_MASK: i32 = 3;
@@ -131,13 +133,16 @@ enum Owner {
     Select = 20,
     /// a pointer that began on the toolbar's count pad, or one let go while its batch was written
     AddPad = 21,
+    /// the contact that opened the quick sizes card (a pen button held HOLD_MS), which may slide to a chip, or one
+    /// that began on the card (quicksize.rs)
+    QuickSize = 22,
 }
 
 /// The owner's name in grimoire.log and the `editor.owner` probe.
 fn owner_name(o: Owner) -> &'static str {
-    const K: [&str; 22] = [
+    const K: [&str; 23] = [
         "none", "draw", "erase", "panel", "modal", "display", "pages", "tools", "build", "templates", "link", "bar",
-        "outside", "find", "lasso", "card", "linkto", "strip", "map", "pen-drag", "select", "add-pad",
+        "outside", "find", "lasso", "card", "linkto", "strip", "map", "pen-drag", "select", "add-pad", "quick-size",
     ];
     K[o as usize]
 }
@@ -528,6 +533,12 @@ pub struct EditorState {
     lt: LinkBar,
     /// the long-press card (linkcard.rs): a link held on the page, or a row held on the bar
     card: LinkCard,
+    /// the quick sizes card (quicksize.rs): a pen button on the toolbar held HOLD_MS
+    qs: QuickSize,
+    /// a size picked, a pen the hold made the pen in use, or the tip's bit is not in settings.ini yet: 1 when it
+    /// was asked for, 2 once a pass of the loop has presented the screen (editor_tick writes it then, so the
+    /// card's close never waits for the storage)
+    qs_save: u8,
     /// the targets ("p<page id>") links were made to this session, newest last, at most RECENT_MAX: Link to...'s
     /// Recent targets. Memory only; the notebook's closing clears it.
     recent: Vec<FixedStr<NAV_TARGET_LEN>>,
@@ -932,6 +943,14 @@ fn with_lt<R>(a: &mut App, f: impl FnOnce(&mut LinkBar, &mut App, &NotebookInfo,
     s.lt = lt;
     s.nb = nb;
     s.nav = nav;
+    r
+}
+
+// The same for the quick sizes card (it needs the App alone).
+fn with_qs<R>(a: &mut App, f: impl FnOnce(&mut QuickSize, &mut App) -> R) -> R {
+    let mut q = std::mem::take(&mut ed(a).qs);
+    let r = f(&mut q, a);
+    ed(a).qs = q;
     r
 }
 
@@ -1455,6 +1474,7 @@ pub fn editor_panel_point(a: &mut App, name: &str) -> Option<(f32, f32)> {
         let mut r=RECT_EMPTY;
         return keyboard_key_rect(&s.add_kb,code,&mut r).then(||((r.x+r.w/2) as f32,(r.y+r.h/2) as f32));
     }
+    if let Some(n)=name.strip_prefix("quicksize."){return quicksize_control_point(&s.qs,n);}
     if let Some(n)=name.strip_prefix("display."){return dispmenu_control_point(&s.dm,n);}
     if name=="elsewhere.current" {return s.destination.point(&format!("book.{}",s.nb.id));}
     if let Some(n)=name.strip_prefix("elsewhere."){return s.destination.point(n);}
@@ -1734,7 +1754,7 @@ fn touch_context(a: &App) {
         zoom_ok: a.settings.pinch_zoom
             && !s.map_kb.open
             && !s.add_kb.open
-            && !(s.paper_open || s.mb.open || s.ts.open || s.lb.open || s.find.open || s.lt.open || s.card.open),
+            && !(s.paper_open || s.mb.open || s.ts.open || s.lb.open || s.find.open || s.lt.open || s.card.open || s.qs.open),
         gestures_on: a.settings.gestures,
         record: false,
         keyboard_open,
@@ -2468,6 +2488,14 @@ fn draw_menus(a: &mut App, r: Rect) {
             keyboard_draw(&mut ed.as_deref_mut().unwrap().add_kb, c, screen);
         }
         a.toast_floor = area.y;
+    }
+    // The quick sizes card, over the page and the panel (nothing else is up with it).
+    let s = ed_ref(a);
+    if s.qs.open && rect_overlaps(r, s.qs.rect) {
+        let clip = a.screen.clip;
+        canvas_set_clip(&mut a.screen, r);
+        with_qs(a, quicksize_draw);
+        a.screen.clip = clip;
     }
     // The long-press card, above everything (the bar included), and Rename's keyboard over it; the card is
     // left out while that keyboard covers part of it.
@@ -4114,6 +4142,7 @@ fn sheet_open(s: &EditorState) -> bool {
         || s.find.open
         || s.lt.open
         || s.card.open
+        || s.qs.open
 }
 
 /// Whether the pen's next contact is no ink: the Links bar is up (a tap on it, or outside it, which closes or
@@ -4128,6 +4157,7 @@ pub fn editor_pen_not_ink(a: &App) -> bool {
             || s.lb.open
             || s.find.open
             || s.card.open
+            || s.qs.open
             || s.lm.state != LmState::Off
             || s.sel.state != SelState::Off
             || (s.owner == Owner::Outside && s.owner_is_pen)
@@ -4876,6 +4906,127 @@ fn pages_add_batch(a: &mut App, at: i32, n: i32) {
     // (its tiles show, marked new, with no toast: the owner, 2026-11-04; one left up from before goes)
     compose_all(a, RefreshMode::Ui);
     app_toast_dismiss(a);
+}
+
+// ---- the quick sizes card (2.1, lane L1) ----
+
+// The pen a toolbar button stands for when it is held: a pinned pen, the eraser, or the tool button while it shows
+// a pen (not the grid, whose pen is pinned and which opens the picker, nor the lasso).
+fn qs_target(s: &EditorState, h: Hit) -> Option<ToolKind> {
+    match h.id {
+        P_TOOL if (h.arg as u32) < TOOL_COUNT as u32 => Some(ToolKind(h.arg)),
+        P_TOOLPICK if s.tool_button_shows >= 0 => Some(ToolKind(s.tool_button_shows)),
+        _ => None,
+    }
+}
+
+// Whether a pen button held opens the card now: nothing in front of the page (a link being made, its strip up,
+// does not stop it, as it does not stop a pen tap), and not over the toolbar's count pad.
+fn qs_allowed(s: &EditorState) -> bool {
+    s.open && !s.add_kb.open && !sheet_open(s) && matches!(s.lm.state, LmState::Off | LmState::Armed)
+}
+
+// The held button's pen becomes the pen in use, as its tap would make it (Select mode ends; the eraser in use
+// stays, a hold never goes back to the pen before it), the button's press look is let go and the card opens
+// beside it, in one Ui. The contact (a finger or the nib) stays the card's unless it was lifted already.
+fn qs_hold(a: &mut App, h: Hit, tool: ToolKind, lifted: bool) {
+    if h.id == P_TOOL {
+        sel_off(a);
+    }
+    let mut save = false;
+    let st = &mut a.settings;
+    let changed = st.current_tool != tool;
+    if changed {
+        if h.id == P_TOOL && tool == TOOL_ERASER {
+            st.before_eraser = st.current_tool.0;
+        }
+        st.current_tool = tool;
+        save = true;
+        if h.id != P_TOOL {
+            sel_off(a);
+        }
+    }
+    if a.settings.hints & HINT_QUICK_SIZE == 0 {
+        // (a user who found the card needs no tip about it)
+        a.settings.hints |= HINT_QUICK_SIZE;
+        save = true;
+    }
+    if !lifted {
+        canvas_invert(&mut a.screen, h.r); // (the press look is let go; the redraw below draws it right)
+    }
+    let screen = Rect { x: 0, y: 0, w: a.w, h: a.h };
+    let s = ed_ref(a);
+    let (panel, zoom) = (s.panel, s.zoom);
+    let mut avoid = vec![status_zone(a)];
+    if s.lm.state == LmState::Armed {
+        avoid.push(s.lm.strip);
+    }
+    let mut q = QuickSize::default();
+    quicksize_open(&mut q, tool, h.r, screen, panel, &avoid, zoom);
+    let card = q.rect;
+    let s = ed(a);
+    s.qs = q;
+    s.has_pressed = false;
+    if save && s.qs_save == 0 {
+        s.qs_save = 1;
+    }
+    if !lifted {
+        s.owner = Owner::QuickSize;
+        s.qs.opener = true;
+        let p = s.press;
+        press_begin(&mut s.qs.press, p.x, p.y, p.t0);
+    }
+    // (the card with the button, or with the whole panel when the pen changed and its marks moved)
+    let u = rect_union(card, if changed { panel } else { h.r });
+    compose(a, u);
+    app_invalidate(a, u, RefreshMode::Ui);
+}
+
+// The card closes with nothing picked (outside it, Esc, Close menu): the page and the panel where it was, one Ui.
+fn qs_close(a: &mut App) {
+    let s = ed(a);
+    if !s.qs.open {
+        return;
+    }
+    let r = s.qs.rect;
+    s.qs = QuickSize::default();
+    compose(a, r);
+    app_invalidate(a, r, RefreshMode::Ui);
+}
+
+// What a contact on the card asked for (quicksize.rs). A pick is a setting: the tool's two widths, nothing on the
+// page, no history step; settings.ini is written a pass after the card's close was presented (qs_save).
+fn qs_result(a: &mut App, r: QsResult, d: Rect) {
+    match r {
+        QsResult::None => {}
+        QsResult::Changed => {
+            if !rect_is_empty(d) {
+                app_invalidate(a, d, RefreshMode::Ui);
+            }
+        }
+        QsResult::Chip(i) => {
+            let t = ed_ref(a).qs.tool;
+            quicksize_apply(t, &mut a.settings.tools[t.0 as usize], i);
+            ed(a).qs_save = 1;
+            qs_close(a);
+        }
+        QsResult::Mode(m) => {
+            a.settings.eraser_mode = m;
+            let s = ed(a);
+            s.qs_save = 1;
+            let r = s.qs.rect;
+            compose(a, r);
+            app_invalidate(a, r, RefreshMode::Ui);
+        }
+        QsResult::PenFeel => {
+            let t = ed_ref(a).qs.tool;
+            ed(a).qs = QuickSize::default();
+            ed(a).owner = Owner::None;
+            ed(a).qs_save = 0;
+            settings_save(&a.settings);
+            pensettings_open(a, t);
+        }
+    }
 }
 
 // ---- the toolbar's count pad (owner, 2026-11-03) ----
@@ -7857,6 +8008,16 @@ fn panel_act(a: &mut App, h: Hit) {
         P_PENSET => {
             let t = a.settings.current_tool;
             pensettings_open(a, t);
+            // The first time Pen feel opens from the toolbar, once (hints bit 9): where a user looks for a width,
+            // the way to a quicker one.
+            if a.settings.hints & HINT_QUICK_SIZE == 0 {
+                a.settings.hints |= HINT_QUICK_SIZE;
+                settings_save(&a.settings);
+                // TRANSLATORS: a toast, once, the first time Pen feel is opened from the toolbar (about 1300
+                // px at 44 px in bold, or two lines): a pen button on the toolbar, held for a moment, opens a
+                // card of that pen's widths.
+                app_toast(a, tr("Hold a pen on the toolbar for its sizes."), 4000);
+            }
         }
         P_SETTINGS => {
             fs_abort_view(a,FsAbortView::Screen);settle_now(a);
@@ -7963,6 +8124,9 @@ fn close_front(a: &mut App, draw: bool) {
         return;
     }
     let mut r = if s.tools_open { rect_union(s.tools_rect, s.panel) } else { RECT_EMPTY };
+    if s.qs.open {
+        r = rect_union(r, s.qs.rect);
+    }
     if s.paper_open {
         r = rect_union(r, s.paper_rect);
     }
@@ -8168,6 +8332,19 @@ fn editor_shortcut_in(a: &mut App, action: i32, x: f32, y: f32, src: ActionSrc) 
             return false;
         }
         card_close(a);
+    }
+    // The quick sizes card: Close menu and Back close it, one layer; another menu's button closes it and goes on;
+    // anything else is refused.
+    if ed_ref(a).qs.open {
+        let action_closes = action == SHORTCUT_CLOSE_MENU || action == SHORTCUT_GO_BACK || action == SHORTCUT_BACK;
+        if action_closes {
+            qs_close(a);
+            return true;
+        }
+        if !menu_action(action) {
+            return false;
+        }
+        qs_close(a);
     }
     let Some(s) = a.ed.as_deref_mut() else { return false ;
     };
@@ -8774,6 +8951,12 @@ fn ui_pointer(a: &mut App, ph: i32, ev: &InEvent, modal: bool) {
         // The toolbar's + held (the tick may not have seen it yet), or clicked with a modifier key held: the
         // count pad, as the Pages view's New page.
         add_pad_open(a);
+    } else if let Some(tool) = qs_target(ed_ref(a), h).filter(|_| {
+        qs_allowed(ed_ref(a)) && !p.moved && !touch_cancelled(ev) && in_sample_ms(ev).wrapping_sub(ed_ref(a).panel_down_k) >= HOLD_MS
+    }) {
+        // A pen button held (the tick may not have seen it yet): its pen picked and the sizes card up, and the
+        // lift is never also the tap.
+        qs_hold(a, h, tool, true);
     } else {
         panel_act(a, h);
     }
@@ -8845,6 +9028,7 @@ fn close_sheets(s: &mut EditorState) {
     card_drop(s);
     bar_drop(s);
     find_drop(s);
+    s.qs = QuickSize::default();
     s.paper_open = false;
     s.dm.open = false;
     s.mb.open = false;
@@ -8921,6 +9105,9 @@ pub fn editor_enter(a: &mut App) {
     if !a.relayout {
         close_sheets(ed(a));
     }
+    // (the quick sizes card was placed for the screen it was opened on: a turn or a wake closes it, silently, in
+    // this redraw)
+    ed(a).qs = QuickSize::default();
     compose(a, Rect { x: 0, y: 0, w: a.w, h: a.h ,
         },
     );
@@ -9009,7 +9196,7 @@ fn pinch(a: &mut App, ev: &InEvent) {
         // legacy one's, with the zoom setting).
         let classified = ev.value == 1;
         // (The bar does not pan or zoom the page behind it.)
-        if s.owner != Owner::None || s.paper_open || s.mb.open || s.ts.open || s.lb.open || s.find.open || s.lt.open || s.card.open || (!classified && !pinch_zoom) {
+        if s.owner != Owner::None || s.paper_open || s.mb.open || s.ts.open || s.lb.open || s.find.open || s.lt.open || s.card.open || s.qs.open || (!classified && !pinch_zoom) {
             return;
         }
         let regrab = s.pinching;
@@ -9193,6 +9380,7 @@ fn keyboard_over_corner(a: &App, s: &EditorState) -> bool {
 fn phase2_surface_at(s: &EditorState, x: i32, y: i32) -> bool {
     let kb_at = |kb: &Keyboard| kb.open && rect_contains(kb.area, x, y);
     (s.card.open && rect_contains(s.card.rect, x, y))
+        || (s.qs.open && rect_contains(s.qs.rect, x, y))
         || (s.lt.open && !s.lt.hidden && rect_contains(s.lt.rect, x, y))
         || (s.find.open && rect_contains(s.find.rect, x, y))
         || ((s.lm.state == LmState::Armed || s.lm.state == LmState::Lasso) && rect_contains(s.lm.strip, x, y))
@@ -9252,7 +9440,7 @@ fn fs_can_arm(a: &App, in_links_bar: bool) -> bool {
     if gesturemap_shapes(&a.gestures).is_empty() && !gesturemap_has_onefinger(&a.gestures) {
         return false;
     }
-    if s.pv.open || s.tools_open || s.mb.open || s.dm.open || s.paper_open || s.ts.open || s.find.open || s.lt.open || s.card.open
+    if s.pv.open || s.tools_open || s.mb.open || s.dm.open || s.paper_open || s.ts.open || s.find.open || s.lt.open || s.card.open || s.qs.open
         || s.lm.state != LmState::Off || s.pv.kb.open || s.find.kb.open || s.lm.kb.open || s.card.kb.open || s.add_kb.open
     {
         return false;
@@ -9978,6 +10166,25 @@ fn editor_event_in(a: &mut App, ev: &InEvent) {
             }
             return;
         }
+        // The quick sizes card: a contact on it is its own; one outside it (the toolbar included) closes it with
+        // nothing else done, a finger at the lift (the clock's corner keeps its tap), a pen at its down, its
+        // stroke swallowed.
+        if s.qs.open {
+            if rect_contains(s.qs.rect, ev.x as i32, ev.y as i32) {
+                s.owner = Owner::QuickSize;
+                let mut d = RECT_EMPTY;
+                let r = with_qs(a, |q, a| quicksize_pointer(q, a, 0, ev, &mut d));
+                qs_result(a, r, d);
+            } else {
+                s.owner = Owner::Outside;
+                if pen {
+                    qs_close(a);
+                } else {
+                    press_begin(&mut s.link_press, ev.x, ev.y, ev.t_ms);
+                }
+            }
+            return;
+        }
         // New page...'s keyboard takes a contact on it; one outside it goes back to Link to... (a finger at the
         // lift, a pen at its down, its stroke swallowed).
         if s.lm.state == LmState::Naming && s.lm.kb.open {
@@ -10211,6 +10418,14 @@ fn owner_pointer(a: &mut App, ph: i32, ev: &InEvent, pen: bool) {
         }
         Owner::Select => sel_pointer(a, ph, ev),
         Owner::Map => map_pointer(a, ph, ev),
+        Owner::QuickSize => {
+            let mut d = RECT_EMPTY;
+            let r = with_qs(a, |q, a| quicksize_pointer(q, a, ph, ev, &mut d));
+            if ph == 2 {
+                ed(a).owner = Owner::None;
+            }
+            qs_result(a, r, d);
+        }
         Owner::Card => {
             if ed_ref(a).card.kb.open {
                 card_kb_pointer(a, ph, ev);
@@ -10332,6 +10547,13 @@ fn owner_pointer(a: &mut App, ph: i32, ev: &InEvent, pen: bool) {
                     } else {
                         card_close(a);
                     }
+                }
+                return;
+            }
+            // The quick sizes card closes with nothing picked (the clock's corner keeps its tap).
+            if ed_ref(a).qs.open {
+                if !corner_tap(false) {
+                    qs_close(a);
                 }
                 return;
             }
@@ -10741,6 +10963,26 @@ pub fn editor_tick(a: &mut App, now: u32) {
         app_invalidate(a, r, RefreshMode::Ui);
         add_pad_open(a);
     }
+    // A pen button held still (HOLD_MS), by a finger or the nib: its pen is the pen in use, and the sizes card opens
+    // beside it; the contact stays the card's (it may slide to a chip).
+    let s = ed(a);
+    if s.open && s.owner == Owner::Panel && s.has_pressed && !s.press.moved && now.wrapping_sub(s.press.t0) >= HOLD_MS {
+        let h = s.pressed;
+        if let Some(tool) = qs_target(s, h).filter(|_| qs_allowed(s)) {
+            qs_hold(a, h, tool, false);
+        }
+    }
+    // The sizes card's save, a pass of the loop after its close was presented.
+    let drained = a.input_drained;
+    let s = ed(a);
+    if s.open && s.qs_save != 0 && s.owner == Owner::None {
+        if s.qs_save == 1 {
+            s.qs_save = 2;
+        } else if drained {
+            s.qs_save = 0;
+            settings_save(&a.settings);
+        }
+    }
     // Typing on the toolbar's count pad pauses: its grayscale refresh.
     let s = ed(a);
     if s.open && s.add_kb.open {
@@ -11138,6 +11380,17 @@ pub fn editor_probe(a: &mut App, key: &str, out: &mut String, cap: usize) -> i32
         // The strip: 0, or new while it is up for a new link, redraw for the card's Redraw the area.
         let on = s.open && (s.lm.state == LmState::Armed || s.lm.state == LmState::Lasso);
         csnprintf!(out, cap, "%s", if !on { "0" } else if s.lm.redraw.is_some() { "redraw" } else { "new" });
+    } else if key == "quicksize" {
+        // The quick sizes card: the tool's name while it is up, 0 closed.
+        if s.open && s.qs.open {
+            csnprintf!(out, cap, "%s", app_probe_tool(s.qs.tool).unwrap_or("?"));
+        } else {
+            csnprintf!(out, cap, "%s", "0");
+        }
+    } else if let Some(k) = key.strip_prefix("quicksize.") {
+        if !quicksize_probe(&s.qs, &a.settings, k, out, cap) {
+            return -1;
+        }
     } else if key == "link_card" {
         // The long-press card: 0, or 1 while it is up.
         csnprintf!(out, cap, "%d", if s.open && s.card.open { 1 } else { 0 });
@@ -11394,6 +11647,8 @@ pub fn editor_probe(a: &mut App, key: &str, out: &mut String, cap: usize) -> i32
             "find"
         } else if s.card.open {
             "card"
+        } else if s.qs.open {
+            "quick-size"
         } else if s.lt.open && !s.pv.open {
             "linkto"
         } else if s.lb.open {
@@ -11906,6 +12161,42 @@ mod tests {
         std::fs::remove_dir_all(root).unwrap();
     }
 
+    /// The quick sizes card is a sheet in every check that asks whether something is in front, and Live view's fast
+    /// ink never previews a pen contact on it (the card keeps the clock corner, as the long-press card does).
+    #[test]
+    fn the_quick_sizes_card_is_a_sheet_and_makes_no_fast_ink() {
+        let mut a = app(1860, 2480, 1860, 2480);
+        let s = ed(&mut a);
+        s.open = true;
+        assert!(!sheet_open(ed_ref(&a)) && !editor_pen_not_ink(&a));
+        ed(&mut a).qs.open = true;
+        assert!(sheet_open(ed_ref(&a)));
+        assert!(editor_pen_not_ink(&a));
+        // (so the browser's live style is off for any pen contact while it is up)
+        let ev = InEvent { type_: InType::PenDown, x: 900.0, y: 900.0, pressure: 0.5, ..Default::default() };
+        let mut out = LiveStyle::default();
+        editor_live_style(&a, &ev, &mut out);
+        assert_eq!(out.enabled, 0);
+        assert!(!corner_sheet_open(ed_ref(&a)));
+        assert!(!qs_allowed(ed_ref(&a)), "no second card over the first");
+        let s = ed(&mut a);
+        s.qs.open = false;
+        s.qs = QuickSize::default();
+        assert!(qs_allowed(ed_ref(&a)));
+        // a hold targets a pinned pen, the eraser and the tool button while it shows a pen, nothing else
+        let hit = |id: i32, arg: i32| Hit { r: RECT_EMPTY, id, arg };
+        let s = ed(&mut a);
+        s.tool_button_shows = TOOL_PENCIL.0;
+        assert_eq!(qs_target(s, hit(P_TOOLPICK, 0)), Some(TOOL_PENCIL));
+        assert_eq!(qs_target(s, hit(P_TOOL, TOOL_ERASER.0)), Some(TOOL_ERASER));
+        s.tool_button_shows = TB_GRID;
+        assert_eq!(qs_target(s, hit(P_TOOLPICK, 0)), None);
+        s.tool_button_shows = TB_SELECT;
+        assert_eq!(qs_target(s, hit(P_TOOLPICK, 0)), None);
+        assert_eq!(qs_target(s, hit(P_UNDO, 0)), None);
+        assert_eq!(qs_target(s, hit(P_EXPAND, 0)), None);
+    }
+
     #[test]
     fn the_live_toolbar_layer_stays_where_the_panel_is_under_any_menu() {
         // 2.0.0, issue #16: the layer was empty while any menu was up, so the browser lost the toolbar beside the
@@ -11930,6 +12221,7 @@ mod tests {
             |s: &mut EditorState, on: bool| s.lt.open = on,
             |s: &mut EditorState, on: bool| s.find.open = on,
             |s: &mut EditorState, on: bool| s.card.open = on,
+            |s: &mut EditorState, on: bool| s.qs.open = on,
         ] {
             open(ed(&mut a), true);
             assert_eq!(editor_live_panel(&a), panel);
@@ -13243,6 +13535,8 @@ mod tests {
         assert_eq!(owner_name(Owner::PenDrag),"pen-drag");
         assert_eq!(owner_name(Owner::Select),"select");
         assert_eq!(owner_name(Owner::AddPad),"add-pad");
+        assert_eq!(Owner::QuickSize as i32, 22);
+        assert_eq!(owner_name(Owner::QuickSize),"quick-size");
     }
 
     #[test]

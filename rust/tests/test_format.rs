@@ -1102,6 +1102,30 @@ fn params_past_their_ranges() {
     check!(!mine.is_empty() && mine.len() == d.len() && mine != d); // narrowed for good
 }
 
+// Quick sizes (lane L1): every chip of every tool is written by settings_save in the two keys older versions read
+// and comes back as the very same f32s; nothing but those two keys of the tool changes.
+fn quick_sizes_round_trip() {
+    for k in 0..TOOL_COUNT {
+        let t = ToolKind(k as i32);
+        for i in 0..QS_CHIPS {
+            let mut s = Settings::default();
+            for j in 0..TOOL_COUNT {
+                tool_params_default(ToolKind(j as i32), &mut s.tools[j]);
+            }
+            let before = s.tools[k];
+            quicksize_apply(t, &mut s.tools[k], i);
+            check!(settings_save(&s) == 0);
+            let mut back = Settings::default();
+            check!(settings_load(&mut back) == 0);
+            let p = back.tools[k];
+            check!(p.size_min_mm.to_bits() == s.tools[k].size_min_mm.to_bits());
+            check!(p.size_max_mm.to_bits() == s.tools[k].size_max_mm.to_bits());
+            check!((2..ToolParams::COUNT).all(|f| (p.get(f) - before.get(f)).abs() < 1e-4));
+            check!(quicksize_current(t, &p) == Some(i));
+        }
+    }
+}
+
 #[test]
 fn test_format() {
     let r = format!("{}/format-{}", tl_tmp(), std::process::id());
@@ -1123,6 +1147,7 @@ fn test_format() {
     run!(recovery_never_loses_a_page);
     run!(lasting_states_logged_once);
     run!(params_past_their_ranges);
+    run!(quick_sizes_round_trip);
     let _ = std::fs::remove_dir_all(&r);
     done();
 }
