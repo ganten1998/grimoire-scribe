@@ -380,6 +380,13 @@ fn mkdir_one(p: &str) -> i32 {
 /// userstore, so a scenario can see what a failed save does.
 pub static SIM_STORAGE_FULL: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
+#[cfg(any(test, feature = "sim"))]
+thread_local! {
+    /// A test's injected write failure: the Nth write_file_atomic from now (1 = the next) fails, once; 0 = none.
+    /// Per thread, as the store's own state is.
+    pub static FAIL_WRITE_AT: std::cell::Cell<u32> = const { std::cell::Cell::new(0) };
+}
+
 /// Atomic file write: path.tmp, fsync, rename. Returns 0 on success. It pumps (work_pump) between
 /// its steps, so each wait on the storage is one fsync at most.
 pub fn write_file_atomic(path: &str, data: &[u8]) -> i32 {
@@ -390,6 +397,17 @@ pub fn write_file_atomic(path: &str, data: &[u8]) -> i32 {
 
 fn write_file_atomic_in(path: &str, data: &[u8]) -> i32 {
     let tmp = format!("{path}.tmp");
+    #[cfg(any(test, feature = "sim"))]
+    if FAIL_WRITE_AT.with(|c| match c.get() {
+        0 => false,
+        n => {
+            c.set(n - 1);
+            n == 1
+        }
+    }) {
+        crate::qlog!("write %s: (injected failure)", &tmp);
+        return -1;
+    }
     #[cfg(feature = "sim")]
     if SIM_STORAGE_FULL.load(Ordering::Relaxed) {
         crate::qlog!("write %s: %s (simulated: storage full)", &tmp, &strerror(libc::ENOSPC));

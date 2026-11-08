@@ -1,8 +1,8 @@
 # root: b_library
 # rust-only
 # Folders move (Move folder in a folder's menu): with all they hold, never into themselves or a folder
-# inside them, back to the top level, into a folder New folder... makes, refused onto a folder of the
-# same name; the mirror PDFs follow and the directories left empty go
+# inside them, back to the top level, into a folder New folder... makes, onto a folder of the
+# same name it asks (the Merge dialog, z_merge_1_into and after); the mirror PDFs follow and the directories left empty go
 wait 200
 expect library.folder is
 expect library.folders is School
@@ -91,7 +91,7 @@ wait 300
 tap 125 95
 wait 300
 expect library.folder is Archive
-# A top-level folder named School: moving Archive/School to the top is refused, with the toast
+# A top-level folder named School: moving Archive/School to the top asks (Merge dialog); Cancel changes nothing
 tap 125 95
 wait 300
 expect library.folder is
@@ -117,11 +117,15 @@ wait 100
 expect library.sheet is move
 tap library move.top
 wait 300
-expect toast has Couldn't move folder
+expect library.sheet is merge
+expect toast is
+shot 04-merge-asked
+tap library done
+wait 100
 expect library.sheet is none
 expect library.folders is Archive, Archive/School, Archive/School/Math, School
 expect library.mirror is . 0, Archive_School 1, Archive_School_Math 1
-shot 04-refused
+shot 04-cancelled
 # Without the clash (the empty top-level School removed) it goes back to the top level
 tap 125 95
 wait 300

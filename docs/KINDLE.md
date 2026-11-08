@@ -908,7 +908,11 @@ Folders may contain subfolders. Open a folder and use Folder to create one insid
 one level. Renaming a folder also renames its descendants. Move to folder lists full destinations,
 with More folders when needed. A folder moves too (Move folder in its menu), with everything in it,
 to the top level or into another folder that is not inside it; a folder of the same name there
-refuses it. Folder ZIP exports include descendants and keep their hierarchy.
+opens the Merge dialog (2.1), as Rename folder onto a name that is there does: Merge into it, Keep both
+(as "Name 2") or Cancel. A merge rewrites the folder prefix in every notebook.ini and folders.ini line in one
+pass, and a failed write puts every file back as it was; a notebook whose name is taken in the folder it
+joins becomes "Name 2" (then " 3"), so no two share a mirror PDF path, and none is ever replaced. A folder
+cannot be merged into its own child. Folder ZIP exports include descendants and keep their hierarchy.
 PDF mirrors retain their existing filename convention (a slash in a logical folder becomes an
 underscore). Links between pages of one notebook can be made with New link and Choose from the pages.
 The selection stroke disappears; a visible border is ordinary ink drawn separately.

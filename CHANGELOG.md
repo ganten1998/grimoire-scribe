@@ -25,7 +25,6 @@
   every 30 s (across page turns and reopens too). Closing a notebook from another page no longer draws page 1
   again for the Library card: the card is kept when it was drawn from page 1 as it is, and else made from page
   1's kept drawing (a card of before 2.0.2 is drawn from its strokes, once).
-
 - The Links bar learning scenario waits for its incoming rows with the headless runner's new `waitfor`,
   instead of guessing that every runner will check 120 notebooks within 9 seconds. Normal application
   behavior is unchanged. `waitfor KEY OP VALUE` takes the keys and checks of `expect` and lets timers run as
@@ -40,6 +39,13 @@
   takes over 11 s however fast the machine is (the old 9 s wait fails every run, the `waitfor` passes). Its
   run with every wait 400 ms late (`make scenarios-late`) does not slow the check: it covers the waits around
   it, not the slow runner.
+- Folders that meet (the owner, 2026-11-04: it "should open a MERGE dialog, not an error"). Moving or renaming
+  a folder onto the name of one that is there no longer says "Couldn't move folder": a sheet asks "A folder
+  named "School" is already there." with Merge into it, Keep both (as "School 2") and Cancel. Merge puts
+  everything the folder holds, subfolders included, into the other in one step; a notebook whose name is
+  taken there (in any case of its letters) becomes "Name 2", then "Name 3", so its mirror PDF follows
+  without replacing another; no notebook is lost, and a write that fails leaves every file as it was. A
+  folder cannot be merged into its own child. The README and FORMAT.md no longer say "one level of folders".
 - More fonts in Classic (the owner, 2026-11-04: "Custom font support/More fonts in the classic theme"). In
   Classic the Style row in Settings has a Font chip at its right end ("Font: Terminess"); the rest of the
   row still changes the style, and Gothic, whose look is its pixel type, has no chip. It opens the Font

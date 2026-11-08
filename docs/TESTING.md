@@ -1850,3 +1850,15 @@ On the Scribe:
 4. **The Library as before.** With many notebooks in several folders and subfolders: the Library opens,
    changes folder and closes its sheets showing the same notebooks and folders as 2.0.0, and the Move to
    folder list and the share page's folders are the same.
+
+Folders that meet (L2, 2.1), on the Scribe, in a copy of a Library with folders:
+
+1. **Move onto a name.** Make folders A and B/A (B holds a notebook "Notes", A one too). Open B, the menu of
+   B/A, Move folder, Library (top level): the sheet "A folder named "A" is already there." opens with three
+   rows and no toast. Cancel changes nothing.
+2. **Merge into it.** The same, Merge into it: A holds both notebooks, the one that clashed named "Notes 2";
+   B's A is gone; a notebook's PDF under grimoire/PDFs follows its folder and name (the folder A in PDFs holds
+   both). Reopen Grimoire: nothing moved back.
+3. **Keep both.** The same, Keep both (as "A 2"): the folder is "A 2" beside A, its notebooks as they were.
+4. **Rename onto a name.** Rename a folder to the name of another at its level: the same sheet. Upright and
+   sideways, and in Spanish, the title and rows fit on one line each.

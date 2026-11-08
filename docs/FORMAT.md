@@ -1199,7 +1199,7 @@ Frozen while 1.0.0-beta is in use:
 | key | value |
 |---|---|
 | `name` | the notebook's name, one line. A missing or empty one is read as "Untitled" (from 1.1 in the language of the screens: "Sin título" in Spanish), which the next save writes, as new notebooks get a name in that language ("Cuaderno 20 oct") |
-| `folder` | its folder, one line ("" = top level; one level of folders) |
+| `folder` | its folder, one line ("" = top level; slash-separated components nest folders, described further down) |
 | `paper` | the paper new pages get: a paper value (decimal); from 1.1 also an image paper of the notebook's (a template's, for a notebook made on one in New notebook) |
 | `created`, `modified` | unix seconds |
 | `last_page` | the page index opened next time |

@@ -275,9 +275,10 @@ jumbled"):
 
 ## Next: 2.1 (deferred by the owner, 2026-10-31)
 
-- **Moving a folder onto a folder of the same name: a merge dialog** (owner, 2026-11-04, in the review of every
-  toast; a feature of its own, not part of that pass). Today the move is refused with "Couldn't move folder. Is
-  one with that name already there?"; the owner: it "should open a MERGE dialog, not an error".
+- **Moving a folder onto a folder of the same name: a merge dialog**: DONE in 2.1 (branch v21/l2-merge; the
+  owner's toast-review note closed). Not part of it: a failed graph-omit.ini write after a merge or move is
+  logged, not rolled back (the Graph's left-out lines stay by the old path until the next change), and a
+  merged folder's Leave-out line now covers the folder it merged into.
 
 - **PDF planners with their hyperlinks, imported without KOReader** (owner, 2026-11-03; next after the
   2.0.0-beta.2 release candidate). A user asked to use a PDF planner whose pages link to each other. Two parts:

@@ -89,7 +89,7 @@ your notebooks and settings from `quire/` to `grimoire/` and removes the old Qui
 
 ## Using it
 
-- **Library**: notebooks as covers with thumbnails, one level of folders. Tap the `...` on a
+- **Library**: notebooks as covers with thumbnails, in folders that nest (a folder moved or renamed onto one that is there asks: merge, keep both or cancel). Tap the `...` on a
   notebook to rename, move or delete it (deleted notebooks go to `grimoire/trash`, nothing is
   ever erased outright).
 - **Names** can have accents: the keyboard's **áé** key opens a page of accented letters (enough

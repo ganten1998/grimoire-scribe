@@ -5,7 +5,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: Grimoire 2.0.0-beta.1\n"
 "Report-Msgid-Bugs-To: https://github.com/ganten1998/grimoire-scribe/issues\n"
-"POT-Creation-Date: 2026-11-07 11:21-0600\n"
+"POT-Creation-Date: 2026-11-07 23:29-0600\n"
 "PO-Revision-Date: 2026-11-01 00:00+0000\n"
 "Last-Translator: draft\n"
 "Language-Team: Japanese\n"
@@ -3303,6 +3303,26 @@ msgstr "新しいフォルダ..."
 msgid "Move to"
 msgstr "移動先"
 
+#. TRANSLATORS: the title of the dialog that opens when a folder is moved or renamed onto the
+#. name of one that is there (%s: that folder's name, as the Library shows it).
+#: rust/src/library.rs
+#, c-format
+msgid "A folder named \"%s\" is already there."
+msgstr ""
+
+#. TRANSLATORS: the second answer (1470 px at 44 px in bold; %s: the name the folder would get,
+#. the other one's with a number, "School 2"): the two folders stay apart.
+#: rust/src/library.rs
+#, c-format
+msgid "Keep both (as \"%s\")"
+msgstr ""
+
+#. TRANSLATORS: the first answer (1470 px at 44 px in bold): what is in the folder that was
+#. moved or renamed goes into the folder that is there, and that folder is gone.
+#: rust/src/library.rs
+msgid "Merge into it"
+msgstr ""
+
 #. TRANSLATORS: Exit Grimoire?'s answers (1470 px at 44 px in bold): leave Grimoire, or stay.
 #: rust/src/library.rs
 msgid "Yes"
@@ -3353,11 +3373,17 @@ msgid "Couldn't rename folder. Check name and destination."
 msgstr ""
 "フォルダーの名前を変更できませんでした。名前と目的地を確認してください。"
 
-#. TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): a folder could not be moved,
-#. usually because the destination has a folder of that name.
+#. TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): a folder could not be moved
+#. (a name too long, or storage that failed); a folder of that name there opens a dialog instead.
 #: rust/src/library.rs
-msgid "Couldn't move folder. Is one with that name already there?"
-msgstr "フォルダーを移動できませんでした。そこにその名前の人はいますか？"
+msgid "Couldn't move folder. Check the destination."
+msgstr ""
+
+#. TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): Merge into it or Keep both
+#. could not be done; nothing was changed.
+#: rust/src/library.rs
+msgid "Couldn't merge the folders. Nothing was changed."
+msgstr ""
 
 #. TRANSLATORS: a new notebook's name until it is renamed, with the day ("Notebook Oct 10").
 #: rust/src/library.rs
@@ -4951,6 +4977,9 @@ msgctxt "studio"
 msgid "Copied"
 msgstr "コピーされました"
 
+#~ msgid "Couldn't move folder. Is one with that name already there?"
+#~ msgstr "フォルダーを移動できませんでした。そこにその名前の人はいますか？"
+
 #~ msgid "Don't show this again"
 #~ msgstr "次回から表示しない"
 
@@ -5008,9 +5037,6 @@ msgstr "コピーされました"
 
 #~ msgid "This page is already empty"
 #~ msgstr "このページはすでに空です"
-
-#~ msgid "Could not save the links. The page was not cleared."
-#~ msgstr "リンクを保存できませんでした。ページはクリアされませんでした。"
 
 #~ msgid "Page cleared"
 #~ msgstr "ページがクリアされました"

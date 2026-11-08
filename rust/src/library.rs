@@ -36,6 +36,9 @@ enum Modal {
     /// Settings > Font (2.1, Rust only, Classic only; a number of its own as PairMenu's): the families
     /// Classic's text can be drawn in, with a sample, applied on Done
     Font = 340,
+    /// A folder moved or renamed onto the name of one that is there (2.1, Rust only; a number of its own as
+    /// Font's): Merge into it, Keep both (as "Name 2"), Cancel
+    Merge = 350,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -156,6 +159,9 @@ const H_SET_FONT: i32 = 89;
 const H_FONT_PICK: i32 = 90;
 const H_FONT_DONE: i32 = 91;
 const H_FONT_CANCEL: i32 = 92;
+// 2.1: the Merge dialog's Merge into it and Keep both (Cancel is H_CANCEL).
+const H_MERGE_INTO: i32 = 93;
+const H_MERGE_BOTH: i32 = 94;
 
 #[derive(Clone, Copy, Default)]
 struct Item {
@@ -179,6 +185,10 @@ pub struct LibraryState {
     font_pick: usize,
     font_sample: Rect,
     font_rows: Vec<Rect>,
+    /// The Merge dialog (2.1): the folder that was moved or renamed, and the path it would take, which is
+    /// the name of a folder already there
+    merge_old: FixedStr<STORE_NAME_LEN>,
+    merge_dest: FixedStr<STORE_NAME_LEN>,
     settings_return_editor: bool,
     settings_painting: bool,
     settings_editor_fit: bool,
@@ -4293,6 +4303,27 @@ fn draw_modal(a: &mut App) {
             // TRANSLATORS: the title of the list of folders a notebook (or a folder) can be moved to.
             draw_menu(a, tr("Move to"), &rows);
         }
+        Modal::Merge => {
+            let s = lib(a);
+            let dest = s.merge_dest;
+            let both = store_folder_unique(dest.as_str());
+            let mut title = String::new();
+            let mut keep = String::new();
+            // TRANSLATORS: the title of the dialog that opens when a folder is moved or renamed onto the
+            // name of one that is there (%s: that folder's name, as the Library shows it).
+            csnprintf!(&mut title, 256, tr("A folder named \"%s\" is already there."), &name_label(store_folder_leaf(dest.as_str())));
+            // TRANSLATORS: the second answer (1470 px at 44 px in bold; %s: the name the folder would get,
+            // the other one's with a number, "School 2"): the two folders stay apart.
+            csnprintf!(&mut keep, 256, tr("Keep both (as \"%s\")"), &name_label(store_folder_leaf(both.as_deref().unwrap_or(dest.as_str()))));
+            let rows = [
+                // TRANSLATORS: the first answer (1470 px at 44 px in bold): what is in the folder that was
+                // moved or renamed goes into the folder that is there, and that folder is gone.
+                menu_row(IconKind::FolderMove, tr("Merge into it"), H_MERGE_INTO, 0, ButtonStyle::Primary),
+                menu_row(IconKind::Copy, &keep, H_MERGE_BOTH, 0, if both.is_some() { ButtonStyle::Plain } else { ButtonStyle::Disabled }),
+                menu_row(IconKind::Close, tr("Cancel"), H_CANCEL, 0, ButtonStyle::Plain),
+            ];
+            draw_menu(a, &title, &rows);
+        }
         Modal::Exit => {
             // Esc at the Library's top level (4.2): Yes leaves as the Exit button does, No stays; the highlighted
             // one is Enter's (Yes at first), Left and Right move it.
@@ -4628,7 +4659,9 @@ fn kb_finished(a: &mut App, ok: bool) {
                 if !store_folder_join(parent.as_str(), &txt, &mut path) || store_add_folder(path.as_str()) != 0 {
                     app_toast(a, tr("Couldn't create folder. Use a shorter name without a slash."), 3500);
                 } else if kbp == KbPurpose::MoveNewFolder && it.is_some_and(|it| it.is_folder) {
-                    move_folder(a, &it.unwrap(), path.as_str());
+                    if move_folder(a, &it.unwrap(), path.as_str()) {
+                        back = Modal::Merge;
+                    }
                 } else if kbp == KbPurpose::MoveNewFolder {
                     if let Some(it) = it.filter(|it| !it.is_folder) {
                         let id = lib(a).books[it.nb].id.as_str().to_string();
@@ -4643,9 +4676,10 @@ fn kb_finished(a: &mut App, ok: bool) {
             KbPurpose::RenameFolder => {
                 if let Some(it) = it.filter(|it| it.is_folder) {
                     let mut dest = FixedStr::new();
-                    if !store_folder_join(store_folder_parent(it.folder.as_str()), &txt, &mut dest)
-                        || store_rename_folder(it.folder.as_str(), dest.as_str()) != 0
-                    {
+                    let joined = store_folder_join(store_folder_parent(it.folder.as_str()), &txt, &mut dest);
+                    if joined && merge_asked(a, it.folder.as_str(), dest.as_str()) {
+                        back = Modal::Merge;
+                    } else if !joined || store_rename_folder(it.folder.as_str(), dest.as_str()) != 0 {
                         app_toast(a, tr("Couldn't rename folder. Check name and destination."), 3500);
                     } else {
                         folder_follow(a, it.folder.as_str());
@@ -4670,20 +4704,62 @@ fn move_dests(s: &LibraryState, it: &Item) -> Vec<usize> {
 }
 
 /// A folder, with all it holds, into parent ("" the top level): its name stays, its notebooks' mirror
-/// PDFs follow. Refused (with a toast) when parent has a folder of that name.
-fn move_folder(a: &mut App, it: &Item, parent: &str) {
+/// PDFs follow. When parent has a folder of that name the Merge dialog opens instead (true); a move that
+/// cannot be made at all is a toast.
+fn move_folder(a: &mut App, it: &Item, parent: &str) -> bool {
     let old = it.folder.as_str().to_string();
     if store_folder_parent(&old) == parent {
-        return;
+        return false;
     }
     let mut dest = FixedStr::new();
+    if store_folder_join(parent, store_folder_leaf(&old), &mut dest) && merge_asked(a, &old, dest.as_str()) {
+        return true;
+    }
     if !store_folder_join(parent, store_folder_leaf(&old), &mut dest) || store_rename_folder(&old, dest.as_str()) != 0 {
-        // TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): a folder could not be moved,
-        // usually because the destination has a folder of that name.
-        app_toast(a, tr("Couldn't move folder. Is one with that name already there?"), 3500);
-        return;
+        // TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): a folder could not be moved
+        // (a name too long, or storage that failed); a folder of that name there opens a dialog instead.
+        app_toast(a, tr("Couldn't move folder. Check the destination."), 3500);
+        return false;
     }
     folder_follow(a, &old);
+    false
+}
+
+/// Folder old is to take the path dest: when a folder is there by that name (and dest is not inside old),
+/// the Merge dialog is what the caller opens (true; its state is set). False: the path is free, or cannot
+/// be asked about (the plain rename and its refusals follow).
+fn merge_asked(a: &mut App, old: &str, dest: &str) -> bool {
+    if old == dest || store_folder_contains(old, dest) || !store_folder_exists(dest) {
+        return false;
+    }
+    let s = lib(a);
+    s.merge_old.set(old);
+    s.merge_dest.set(dest);
+    true
+}
+
+/// The Merge dialog's answer: into the folder that is there, or beside it as "Name 2".
+fn merge_answer(a: &mut App, both: bool) {
+    let s = lib(a);
+    let (old, dest) = (s.merge_old.as_str().to_string(), s.merge_dest.as_str().to_string());
+    let rc = if both {
+        match store_folder_unique(&dest) {
+            Some(path) => store_rename_folder(&old, &path),
+            None => -1,
+        }
+    } else {
+        store_merge_folder(&old, &dest)
+    };
+    lib(a).modal = Modal::None;
+    if rc == 0 {
+        folder_follow(a, &old);
+    } else {
+        // TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): Merge into it or Keep both
+        // could not be done; nothing was changed.
+        app_toast(a, tr("Couldn't merge the folders. Nothing was changed."), 3500);
+    }
+    reload(a);
+    redraw(a, RefreshMode::Ui);
 }
 
 /// After the folder old was renamed or moved (the lists still from before): the mirror PDFs of the
@@ -5258,12 +5334,16 @@ fn act(a: &mut App, h: &Hit) {
             reload(a);
             redraw(a, RefreshMode::Ui);
         }
+        H_MERGE_INTO | H_MERGE_BOTH => merge_answer(a, h.id == H_MERGE_BOTH),
         H_MOVE_TOP | H_MOVE_TO if it.is_some_and(|it| it.is_folder) => {
             let it = it.unwrap();
             let parent = if h.id == H_MOVE_TOP { String::new() } else { lib(a).folders[h.arg as usize].clone() };
-            move_folder(a, &it, &parent);
-            lib(a).modal = Modal::None;
-            reload(a);
+            if move_folder(a, &it, &parent) {
+                lib(a).modal = Modal::Merge;
+            } else {
+                lib(a).modal = Modal::None;
+                reload(a);
+            }
             redraw(a, RefreshMode::Ui);
         }
         H_MOVE_TOP | H_MOVE_TO => {
@@ -5587,7 +5667,7 @@ pub fn library_back(a: &mut App) -> bool {
         Modal::Gestures if reset_asked => tap(a, H_GESTURES_RESET_CANCEL),
         Modal::Gestures => tap(a, H_GESTURES_DONE),
         Modal::New | Modal::Settings | Modal::More | Modal::FolderMore | Modal::Move | Modal::Delete
-        | Modal::About | Modal::Exit => close_modal(a),
+        | Modal::About | Modal::Exit | Modal::Merge => close_modal(a),
     }
     true
 }
@@ -6251,6 +6331,8 @@ pub fn library_probe(a: &mut App, key: &str, out: &mut String, cap: usize) -> i3
         csnprintf!(out, cap, "exit");
     } else if key == "sheet" && s.modal == Modal::PairMenu {
         csnprintf!(out, cap, "pair-menu");
+    } else if key == "sheet" && s.modal == Modal::Merge {
+        csnprintf!(out, cap, "merge");
     } else if key == "sheet" && s.modal == Modal::Font {
         csnprintf!(out, cap, "font");
     } else if key == "font.pick" {
@@ -6399,6 +6481,7 @@ pub fn library_probe(a: &mut App, key: &str, out: &mut String, cap: usize) -> i3
                 H_BUTTONS_DONE => "done", H_BUTTONS_RESET => "buttons.reset",
                 H_PAPER => "paper.", H_PAPER_CUSTOM => "paper.custom", H_PAPER_MORE => "paper.more", H_NEW_RENAME => "new.rename",
                 H_EXIT_YES => "exit.yes", H_EXIT_NO => "exit.no",
+                H_MERGE_INTO => "merge.into", H_MERGE_BOTH => "merge.both",
                 H_BACK => "back", H_ABOUT => "about", H_ABOUT_CLOSE => "about.close",
                 H_ABOUT_PREV => "about.prev", H_ABOUT_NEXT => "about.next", H_ABOUT_MORE => "about.more",
                 H_ABOUT_ROW => "about.row.", H_ABOUT_BACK => "about.back",

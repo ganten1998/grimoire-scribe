@@ -1836,21 +1836,151 @@ pub fn store_rename_folder(old: &str, new: &str) -> i32 {
         let Some(bytes) = read_file(&path) else {
             return -1;
         };
+        let before = nb.clone();
         nb.folder.set(&dest);
-        changes.push((nb, path, bytes));
+        changes.push(Rewrite { now: nb, before, path, bytes });
     }
+    if commit_rewrite(&changes, &folders) != 0 {
+        return -1;
+    }
+    graph_omit_renamed(old, new);
+    0
+}
+
+// One notebook's rewrite: what it becomes, what it was, and its notebook.ini's exact bytes for a rollback.
+struct Rewrite {
+    now: NotebookInfo,
+    before: NotebookInfo,
+    path: String,
+    bytes: Vec<u8>,
+}
+
+// Every changed notebook.ini, then folders.ini; a write that fails puts every file written back as it was
+// (its exact bytes), the Graph's index too, and returns -1: the tree is as before the call.
+fn commit_rewrite(changes: &[Rewrite], folders: &[FolderName]) -> i32 {
+    let undo = |n: usize| {
+        for c in &changes[..n] {
+            write_file_atomic(&c.path, &c.bytes);
+            libindex_note_info(&c.before);
+        }
+    };
     for i in 0..changes.len() {
-        if write_info(&changes[i].0) != 0 {
-            for (_, path, bytes) in &changes[..i] {
-                write_file_atomic(path, bytes);
-            }
+        if write_info(&changes[i].now) != 0 {
+            undo(i);
             return -1;
         }
     }
-    if save_folders_ini(&folders) != 0 {
-        for (_, path, bytes) in &changes {
-            write_file_atomic(path, bytes);
+    if save_folders_ini(folders) != 0 {
+        undo(changes.len());
+        return -1;
+    }
+    0
+}
+
+/// Whether a folder of exactly this path is there (a folders.ini line, or a notebook's folder= path or an
+/// ancestor of one).
+pub fn store_folder_exists(path: &str) -> bool {
+    let mut all = Vec::new();
+    store_list_folders(&mut all) == 0 && all.iter().any(|f| f == path)
+}
+
+/// The name Keep both gives a folder that meets one of its own name: path's leaf and " 2" (then " 3" ...),
+/// the first that no folder has, in any case of its letters (two would share a mirror directory on a storage
+/// that ignores case). None when the path cannot be made or every number is taken.
+pub fn store_folder_unique(path: &str) -> Option<String> {
+    let mut all = Vec::new();
+    if !store_folder_valid(path) || store_list_folders(&mut all) != 0 {
+        return None;
+    }
+    let low: Vec<String> = all.iter().map(|f| f.to_lowercase()).collect();
+    (2..1000).map(|k| format!("{path} {k}")).find(|c| store_folder_valid(c) && !low.contains(&c.to_lowercase()))
+}
+
+// What a notebook's mirror PDF path comes from: its folder's and its name's safe names, compared without
+// case (export_mirror_path), so two notebooks that share one share a file.
+fn mirror_key(folder: &str, name: &str) -> (String, String) {
+    let (mut f, mut n) = (String::new(), String::new());
+    if !folder.is_empty() {
+        crate::export::export_safe_name(folder, &mut f, STORE_NAME_LEN);
+    }
+    crate::export::export_safe_name(name, &mut n, STORE_NAME_LEN);
+    (f.to_lowercase(), n.to_lowercase())
+}
+
+/// Merge folder `old` (with all it holds) into the folder `new` that is already there: a logical rewrite of
+/// the folder prefix in every notebook.ini and folders.ini line in one pass, with store_rename_folder's
+/// rollback (a failed write puts every file back as it was). Nothing moves on the disk and no notebook is
+/// ever replaced: one that would share a mirror PDF path with another there is named "Name 2" (then " 3"
+/// ...), the clashing ones in name order. Graph-omit lines follow as for a move. -1 (and nothing changed)
+/// when either folder is not there, old is new, or new is inside old.
+pub fn store_merge_folder(old: &str, new: &str) -> i32 {
+    if !store_folder_valid(old) || !store_folder_valid(new) || old == new || store_folder_contains(old, new) {
+        return -1;
+    }
+    let mut all = Vec::new();
+    if store_list_folders(&mut all) != 0 || !all.iter().any(|f| f == old) || !all.iter().any(|f| f == new) {
+        return -1;
+    }
+    let mut folders: Vec<FolderName> = Vec::new();
+    for mut f in load_folders_ini() {
+        if store_folder_contains(old, f.as_str()) {
+            let path = format!("{}{}", new, &f.as_str()[old.len()..]);
+            if !store_folder_valid(&path) {
+                return -1;
+            }
+            f.set(&path);
         }
+        if !folders.iter().any(|x| x.as_bytes() == f.as_bytes()) {
+            folders.push(f);
+        }
+    }
+    let mut books = Vec::new();
+    if store_list(&mut books) != 0 {
+        return -1;
+    }
+    // The paths the notebooks that stay hold; the ones that come take theirs as they are free.
+    let mut taken: Vec<(String, String)> =
+        books.iter().filter(|nb| !store_folder_contains(old, nb.folder.as_str())).map(|nb| mirror_key(nb.folder.as_str(), nb.name.as_str())).collect();
+    let mut coming: Vec<NotebookInfo> = books.into_iter().filter(|nb| store_folder_contains(old, nb.folder.as_str())).collect();
+    coming.sort_by(|a, b| name_cmp(a.name.as_str(), b.name.as_str()).then_with(|| a.id.as_str().cmp(b.id.as_str())));
+    let mut changes = Vec::new();
+    if changes.try_reserve_exact(coming.len()).is_err() {
+        return -1;
+    }
+    for mut nb in coming {
+        let dest = format!("{}{}", new, &nb.folder.as_str()[old.len()..]);
+        if !store_folder_valid(&dest) {
+            return -1;
+        }
+        let before = nb.clone();
+        nb.folder.set(&dest);
+        let base = nb.name.as_str().to_string();
+        let mut name = base.clone();
+        let mut k = 2;
+        while taken.contains(&mirror_key(&dest, &name)) {
+            if k >= 1000 {
+                return -1;
+            }
+            let suffix = format!(" {k}");
+            let mut cut = base.len().min(STORE_NAME_LEN - 1 - suffix.len());
+            while !base.is_char_boundary(cut) {
+                cut -= 1;
+            }
+            name = format!("{}{suffix}", &base[..cut]);
+            k += 1;
+        }
+        taken.push(mirror_key(&dest, &name));
+        nb.name.set(&name);
+        let Some(dir) = notebook_dir(nb.id.as_bytes()) else {
+            return -1;
+        };
+        let path = format!("{dir}/notebook.ini");
+        let Some(bytes) = read_file(&path) else {
+            return -1;
+        };
+        changes.push(Rewrite { now: nb, before, path, bytes });
+    }
+    if commit_rewrite(&changes, &folders) != 0 {
         return -1;
     }
     graph_omit_renamed(old, new);
@@ -5131,6 +5261,211 @@ mod tests {
         // Made again later: in the Graph.
         assert_eq!(store_set_folder(c.id.as_str(), "School/2025"), 0);
         assert!(!store_folder_graph_omitted(&store_graph_omit_folders(), "School/2025"));
+        let _ = std::fs::remove_dir_all(&r);
+    }
+
+    // ---- Merge (2.1, L2): a folder merged into one that is there ----
+
+    fn merge_root(tag: &str) -> std::path::PathBuf {
+        let base = std::env::var("GRIMOIRE_TEST_TMP").map(std::path::PathBuf::from).unwrap_or_else(|_| std::env::temp_dir());
+        let r = base.join(format!("grimoire-store-merge-{tag}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&r);
+        assert_eq!(store_init(r.to_str().unwrap()), 0);
+        r
+    }
+
+    fn make(name: &str, folder: &str) -> NotebookInfo {
+        let mut nb = NotebookInfo::default();
+        assert_eq!(store_create(name, "", PAPER_BLANK, &mut nb), 0);
+        if !folder.is_empty() {
+            assert_eq!(store_set_folder(nb.id.as_str(), folder), 0);
+        }
+        nb
+    }
+
+    // (name, folder) of every notebook, sorted
+    fn tree() -> Vec<(String, String)> {
+        let mut v = Vec::new();
+        assert_eq!(store_list(&mut v), 0);
+        let mut t: Vec<(String, String)> = v.iter().map(|n| (n.name.as_str().to_string(), n.folder.as_str().to_string())).collect();
+        t.sort();
+        t
+    }
+
+    // Every file the tree holds that a merge writes, as bytes: for "the tree exactly as before".
+    fn snapshot(r: &std::path::Path) -> Vec<(String, Vec<u8>)> {
+        let mut out = Vec::new();
+        let mut stack = vec![r.to_path_buf()];
+        while let Some(d) = stack.pop() {
+            for e in std::fs::read_dir(&d).unwrap().flatten() {
+                let p = e.path();
+                if p.is_dir() {
+                    stack.push(p);
+                } else if p.extension().is_none_or(|x| x != "tmp") {
+                    out.push((p.strip_prefix(r).unwrap().to_string_lossy().into_owned(), std::fs::read(&p).unwrap()));
+                }
+            }
+        }
+        out.sort();
+        out
+    }
+
+    fn mirror_paths() -> Vec<String> {
+        let mut v = Vec::new();
+        assert_eq!(store_list(&mut v), 0);
+        v.iter()
+            .map(|n| {
+                let mut p = String::new();
+                crate::export::export_mirror_path(n, "/m", &mut p, 1200);
+                p.to_lowercase()
+            })
+            .collect()
+    }
+
+    // Nested folders: every notebook.ini folder= and every folders.ini line under the old prefix takes the
+    // new one in one pass; the old folder is gone; what was not under it is as it was; no name changed.
+    #[test]
+    fn merge_rewrites_nested_prefixes() {
+        let r = merge_root("nested");
+        for f in ["Keep", "School", "Old", "Old/x", "Old/x/y", "Oldish"] {
+            assert_eq!(store_add_folder(f), 0);
+        }
+        make("a", "School");
+        make("b", "Old");
+        make("c", "Old/x");
+        make("d", "Old/x/y");
+        make("e", "Oldish");
+        make("f", "");
+        assert_eq!(store_merge_folder("Old", "School"), 0);
+        assert_eq!(
+            tree(),
+            [("a", "School"), ("b", "School"), ("c", "School/x"), ("d", "School/x/y"), ("e", "Oldish"), ("f", "")]
+                .map(|(n, f)| (n.to_string(), f.to_string()))
+        );
+        let mut all = Vec::new();
+        assert_eq!(store_list_folders(&mut all), 0);
+        assert_eq!(all, ["Keep", "Oldish", "School", "School/x", "School/x/y"]);
+        let ini = std::fs::read_to_string(r.join("folders.ini")).unwrap();
+        assert!(!ini.lines().any(|l| l == "Old" || l.starts_with("Old/")), "{ini}");
+        // Two folders of the same name below: they meet too (School/x merged by a second pass)
+        assert_eq!(store_add_folder("Other"), 0);
+        assert_eq!(store_add_folder("Other/x"), 0);
+        make("g", "Other/x");
+        assert_eq!(store_merge_folder("Other", "School"), 0);
+        assert!(tree().contains(&("g".to_string(), "School/x".to_string())));
+        let _ = std::fs::remove_dir_all(&r);
+    }
+
+    // Names that clash get " 2" (" 3" when " 2" is taken), in name order, case ignored; every mirror PDF path
+    // stays unique; a notebook that does not clash keeps its name; nothing is ever dropped.
+    #[test]
+    fn merge_names_that_clash_get_a_number() {
+        let r = merge_root("names");
+        assert_eq!(store_add_folder("A"), 0);
+        assert_eq!(store_add_folder("B"), 0);
+        assert_eq!(store_add_folder("B/sub"), 0);
+        make("Notes", "A");
+        make("Notes 2", "A");
+        make("Plan", "A");
+        make("Notes", "B");
+        make("notes", "B");
+        make("Own", "B");
+        make("Notes", "B/sub"); // (another folder: it clashes with the same names once the prefix is A/sub)
+        make("Notes", "A/sub");
+        assert_eq!(store_add_folder("A/sub"), 0);
+        assert_eq!(store_merge_folder("B", "A"), 0);
+        let t = tree();
+        assert_eq!(t.len(), 8, "{t:?}");
+        let in_a: Vec<&str> = t.iter().filter(|(_, f)| f == "A").map(|(n, _)| n.as_str()).collect();
+        assert_eq!(in_a.len(), 6);
+        for n in ["Notes", "Notes 2", "Plan", "Own"] {
+            assert!(in_a.contains(&n), "{n} in {in_a:?}");
+        }
+        // the two that came are "Notes 3" and "notes 4" (the order: Notes then notes by their bytes)
+        assert!(in_a.contains(&"Notes 3") && in_a.contains(&"notes 4"), "{in_a:?}");
+        let sub: Vec<&str> = t.iter().filter(|(_, f)| f == "A/sub").map(|(n, _)| n.as_str()).collect();
+        assert_eq!(sub.len(), 2);
+        assert!(sub.contains(&"Notes") && sub.contains(&"Notes 2"), "{sub:?}");
+        let mut m = mirror_paths();
+        m.sort();
+        let n = m.len();
+        m.dedup();
+        assert_eq!(m.len(), n, "a mirror path is shared: {m:?}");
+        let _ = std::fs::remove_dir_all(&r);
+    }
+
+    // Case-only differences: folders that differ only in case are two folders (the dialog asks only for an
+    // exact name); merging "school" into "School" makes "Math" and "math" clash (their mirror files would be
+    // one on a storage that ignores case), and Keep both's number avoids a folder of any case.
+    #[test]
+    fn merge_case_only_differences() {
+        let r = merge_root("case");
+        assert_eq!(store_add_folder("school"), 0);
+        assert_eq!(store_add_folder("School"), 0);
+        assert!(store_folder_exists("school") && store_folder_exists("School") && !store_folder_exists("SCHOOL"));
+        make("Math", "School");
+        make("math", "school");
+        assert_eq!(store_merge_folder("school", "School"), 0);
+        let t = tree();
+        assert_eq!(t, [("Math", "School"), ("math 2", "School")].map(|(n, f)| (n.to_string(), f.to_string())));
+        assert_eq!(store_add_folder("Work"), 0);
+        assert_eq!(store_add_folder("work 2"), 0);
+        assert_eq!(store_folder_unique("Work").as_deref(), Some("Work 3"));
+        assert_eq!(store_folder_unique("Free").as_deref(), Some("Free 2"));
+        // A case-only rename with no folder of the new spelling is a plain rename
+        assert_eq!(store_rename_folder("Work", "WORK"), 0);
+        assert!(store_folder_exists("WORK") && !store_folder_exists("Work"));
+        let _ = std::fs::remove_dir_all(&r);
+    }
+
+    // A folder merged into itself or into its own child (or a folder not there) is refused, and nothing changes.
+    #[test]
+    fn merge_refusals_change_nothing() {
+        let r = merge_root("refuse");
+        for f in ["P", "P/c", "Q"] {
+            assert_eq!(store_add_folder(f), 0);
+        }
+        make("n", "P/c");
+        let before = snapshot(&r);
+        assert_eq!(store_merge_folder("P", "P"), -1);
+        assert_eq!(store_merge_folder("P", "P/c"), -1);
+        assert_eq!(store_merge_folder("P", "Nope"), -1);
+        assert_eq!(store_merge_folder("Nope", "P"), -1);
+        assert_eq!(store_merge_folder("", "P"), -1);
+        assert_eq!(snapshot(&r), before);
+        // a parent is fine: P/c's notebooks go up into P
+        assert_eq!(store_merge_folder("P/c", "P"), 0);
+        assert_eq!(tree(), vec![("n".to_string(), "P".to_string())]);
+        let _ = std::fs::remove_dir_all(&r);
+    }
+
+    // A write that fails at any step (each notebook.ini, then folders.ini) puts the tree back exactly as it was:
+    // every file, byte for byte; and the same merge made after it works.
+    #[test]
+    fn merge_rollback_at_every_step() {
+        let r = merge_root("rollback");
+        for f in ["A", "B", "B/x"] {
+            assert_eq!(store_add_folder(f), 0);
+        }
+        make("Notes", "A");
+        make("Notes", "B");
+        make("Two", "B");
+        make("Deep", "B/x");
+        assert_eq!(store_set_folder_graph_omit("B", true), 0);
+        let before = snapshot(&r);
+        let steps = 3 + 1; // the three notebooks of B (one under B/x), then folders.ini
+        for k in 1..=steps as u32 {
+            crate::util::FAIL_WRITE_AT.with(|c| c.set(k));
+            assert_eq!(store_merge_folder("B", "A"), -1, "step {k}");
+            crate::util::FAIL_WRITE_AT.with(|c| c.set(0));
+            assert_eq!(snapshot(&r), before, "the tree after a failure at step {k}");
+            assert_eq!(store_graph_omit_folders(), vec!["B".to_string()], "step {k}");
+        }
+        assert_eq!(store_merge_folder("B", "A"), 0);
+        let t = tree();
+        assert_eq!(t.len(), 4);
+        assert!(t.contains(&("Notes 2".to_string(), "A".to_string())), "{t:?}");
+        assert_eq!(store_graph_omit_folders(), vec!["A".to_string()]);
         let _ = std::fs::remove_dir_all(&r);
     }
 

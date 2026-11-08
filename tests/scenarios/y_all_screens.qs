@@ -1566,6 +1566,43 @@ expect editor.map is 0
 pentap panel library
 wait 300
 expect screen is library
+# The Merge dialog (2.1): a folder renamed onto the name of one that is there, upright and sideways, then Cancel.
+tap library back
+wait 100
+expect library.folder is
+expect library.folders is A
+tap 1155 95
+wait 100
+tap 221 2045
+expect library.text is a
+tap 1643 2365
+wait 100
+expect library.folders is A, a
+tap library folder-menu.a
+wait 100
+tap library fmore.rename
+wait 100
+expect library.sheet is keyboard
+tap 1679 2205
+tap 175 2205
+tap 221 2045
+expect library.text is A
+tap 1643 2365
+wait 100
+expect library.sheet is merge
+shot 77-merge
+rotate 1
+wait 100
+expect library.sheet is merge
+shot 77-merge-sideways
+rotate 0
+wait 100
+tap library done
+wait 100
+expect library.sheet is none
+expect library.folders is A, a
+tap library folder.A
+wait 100
 # What's new: the card, Read all's list of every version's notes (this version marked, the newest
 # unreleased) and a version's notes with Back and the page arrows, upright and sideways (from the top
 # level: a folder's bar has its name where the bat is).
