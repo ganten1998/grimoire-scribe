@@ -1899,3 +1899,10 @@ On the Scribe:
     widths (pencil 0.13 to 0.35, fineliner 0.25, highlighter 5.6, eraser 2.86 to 8 mm) and the lit chip is the
     middle or an end one as expected; a pen whose width you had changed is exactly as you left it.
 
+
+## 2.1.0-beta.1
+
+The first 2.1 beta: everything in CHANGELOG's 2.1.0-beta.1 section. Automated: the full gate on the release
+commit with the pinned toolchain. On the owner's Scribe: not yet checked; the sections above list each
+feature's device checks (Read all fitting each note, Classic fonts, the kept drawings and dense-page revisits,
+L0, the merge dialog, quick sizes). The What's new note is a draft the owner vets on the device.

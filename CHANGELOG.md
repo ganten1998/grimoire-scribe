@@ -1,6 +1,6 @@
 # Changelog
 
-## 2.1.0 (unreleased)
+## 2.1.0-beta.1 (2026-11-08)
 
 - A cleared page, or a page given a new paper, template or photo, no longer shows its old picture (2.0.0 and
   2.0.1). A page that keeps its drawing so that it opens at once (a dense page, or one that took a second or more

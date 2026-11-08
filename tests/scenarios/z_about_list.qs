@@ -10,15 +10,15 @@
 # refreshes the sheet's place alone, in the sheet's refresh (ui). On a keyboard Enter opens (the card's
 # Read all, then the notes of the row marked) and Esc goes back one layer (the notes to the list, the
 # list to the card, as the Templates sheet goes back to New notebook; the card closes). The rows are
-# docs/whatsnew/'s notes as this build sees them (VERSION 2.0.0, with 2.1.0's notes written and
-# unreleased): every release sets them again (docs/RELEASING.md, The bump commit).
+# docs/whatsnew/'s notes as this build sees them (VERSION 2.1.0-beta.1): every release sets them again
+# (docs/RELEASING.md, The bump commit).
 # rust-only
 wait 200
 expect screen is library
 tap library about
 wait 100
 expect library.about.view is card
-expect library.about.note is 2.0.0
+expect library.about.note is 2.1.0-beta.1
 expect library.about.rows is 0
 expect display.presents not -1
 tap library about.more
@@ -29,13 +29,13 @@ expect library.about.full is 1
 expect library.about.entries is 3
 expect library.about.rows is 3
 expect library.about.pages is 1
-expect library.about.row.1 is 2.1.0
-expect library.about.row_date.1 is unreleased
+expect library.about.row.1 is 2.1.0-beta.1
+expect library.about.row_date.1 is 2026-11-08
 expect library.about.row.2 is 2.0.0
 expect library.about.row_date.2 is 2026-11-05
 expect library.about.row.3 is 2.0.0-beta.1
 expect library.about.row_date.3 is 2026-11-01
-expect library.about.marked is 2
+expect library.about.marked is 1
 expect library.about.note is
 expect library.about.body_px is 0
 expect library.about.lead is 0
@@ -69,7 +69,7 @@ wait 100
 expect library.about.view is list
 expect display.presents has ui 70 214 1720 2226
 expect library.about.rows is 3
-expect library.about.marked is 2
+expect library.about.marked is 1
 # Sideways: the list, and the letter whole on one page too, signed: in Jersey 10's next size down (from
 # 43 px), at the leading it always had, as at 44 px even its closest look takes two pages.
 rotate 1
@@ -77,7 +77,7 @@ wait 200
 expect library.sheet is about
 expect library.about.view is list
 expect library.about.rows is 3
-expect library.about.marked is 2
+expect library.about.marked is 1
 shot 03-list-sideways
 tap library about.row.2.0.0-beta.1
 wait 100
@@ -94,13 +94,13 @@ shot 04-letter-sideways
 tap library about.back
 wait 100
 expect library.about.view is list
-tap library about.row.2.1.0
+tap library about.row.2.1.0-beta.1
 wait 100
-expect library.about.note is 2.1.0
+expect library.about.note is 2.1.0-beta.1
 expect library.about.pages is 1
 expect library.about.body_px is 44
 expect library.about.signature is 1
-shot 06-unreleased-sideways
+shot 06-this-version-sideways
 # Dismiss from a version's notes closes What's new.
 tap library about.close
 wait 100
@@ -118,7 +118,7 @@ expect library.about.view is list
 key 28 0
 wait 100
 expect library.about.view is note
-expect library.about.note is 2.0.0
+expect library.about.note is 2.1.0-beta.1
 expect library.about.pages is 1
 key 106 0
 wait 50
@@ -136,7 +136,7 @@ expect display.presents not -1
 key 1 0
 wait 100
 expect library.about.view is card
-expect library.about.note is 2.0.0
+expect library.about.note is 2.1.0-beta.1
 expect library.about.rows is 0
 expect library.sheet is about
 expect display.presents has ui 50 130 1740
@@ -148,19 +148,19 @@ wait 100
 key 1 0
 wait 100
 expect library.sheet is none
-# Upright, the unreleased notes at the size Read all has always had (they are short); then Dismiss from
+# Upright, this version's notes at the size Read all has always had (they are short); then Dismiss from
 # the list.
 tap library about
 wait 100
 tap library about.more
 wait 100
-tap library about.row.2.1.0
+tap library about.row.2.1.0-beta.1
 wait 100
-expect library.about.note is 2.1.0
+expect library.about.note is 2.1.0-beta.1
 expect library.about.pages is 1
 expect library.about.body_px is 44
 expect library.about.signature is 1
-shot 07-unreleased
+shot 07-this-version
 tap library about.back
 wait 100
 expect library.about.view is list
