@@ -47,6 +47,8 @@
 - PDFs are read by a separate process that cannot reach the files, the network or other programs (a sandboxed
   worker); a Scribe that refuses a step reads no PDF and says so in grimoire.log. A picture folder in `import/`
   now also gets a notebook name no other notebook has.
+- package-check's size guard is now 11 MB for the Kindle binary and 6 MB for the zip (was 10.5 MB and 5.5 MB):
+  the PDF engine, its safe worker and the file picker brought the binary to 10.45 MB before your own fonts.
 
 ## 2.1.0-beta.1 (2026-11-08)
 

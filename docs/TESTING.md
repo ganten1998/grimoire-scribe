@@ -1572,8 +1572,8 @@ as it was through other saves until a font is picked; written after `shape_corne
 translation's letters in each family's own Regular and Bold, Japanese's aside; the rare notices, the Links
 bar, the gestures, the pen labels and the raw labels fit in each font); test_httpd.rs (each family's files
 served with their license; the Classic pages load the font in use, Terminess for the studio's command line);
-tests/package_check.sh (each Classic font's OFL text in app/licenses; the binary under 10.5 MB and the zip
-under 5.5 MB); tests/scenarios/y_fonts.qs (the chip opens the sheet on the font in use; a tap highlights and
+tests/package_check.sh (each Classic font's OFL text in app/licenses; the binary under 11 MB and the zip
+under 6 MB, since 2.1.0-beta.2); tests/scenarios/y_fonts.qs (the chip opens the sheet on the font in use; a tap highlights and
 applies nothing; Cancel and Esc; Done applies and saves; Gothic has no chip), z_fonts_kept.qs (the font
 outlasts a restart) and y_fonts_unknown.qs (an unknown value kept); make l10n-check (every screen in English
 and Spanish in each font, `classic-atkinson`, `classic-noto-sans`, `classic-literata`, with the fit check, and
