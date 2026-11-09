@@ -2,6 +2,15 @@
 
 ## 2.1.0-beta.2 (unreleased)
 
+- **Closing a big notebook no longer redraws every page.** The PDF of a notebook (the mirror in `PDFs/`) kept
+  every page drawn at every close of a changed notebook: minutes on a 400-page planner, with the one background
+  queue held. Each page's image is now kept in `grimoire/.cache/pdf/` (256 MB in all, disposable: deleting it
+  loses nothing) and only the pages you changed are drawn again. The PDF is written to its file as it is made
+  rather than built whole in memory, so a 2,000-page notebook's PDF no longer takes hundreds of MB; the share
+  page's PDF and zip downloads are streamed the same way. A page with a coloured picture (an imported colour page,
+  a colour template) is kept in colour in the PDF; every other page stays gray. Every background process now runs
+  at a lower priority for the memory killer (an out-of-memory kill takes it before Grimoire) and with a ceiling on
+  its memory.
 - **A PDF's own links work in a notebook: a planner's tabs.** Opening a book from KOReader (Open this book in
   Grimoire) now also sends the links of its pages: a finger tap on "March" goes to March. They are part of the
   page, kept in a file of their own (`doclinks.ini`, up to 16,000 links) apart from the links you draw: your links
@@ -23,6 +32,11 @@
   links than a notebook holds (14,400) keeps the most on every page and trims the busiest pages, and the end
   says "Imported notebook (%d pages). Some links were left out.". A notebook Grimoire exported as a PDF and
   imported again gives back its links and page names.
+- Pictures you put in `grimoire/templates`, `grimoire/photos` or an import folder are now read by that same
+  separate process, in slices, instead of by the part of Grimoire that writes files: a damaged or hostile picture
+  (cut short, enormous, a decompression bomb) is refused as before, and one that crashes the reader is marked as
+  not usable (templates and photos) or refuses its folder. Where the sandbox is not available (see
+  grimoire.log) pictures are read the old way, and the log says so once.
 - PDFs are read by a separate process that cannot reach the files, the network or other programs (a sandboxed
   worker); a Scribe that refuses a step reads no PDF and says so in grimoire.log. A picture folder in `import/`
   now also gets a notebook name no other notebook has.

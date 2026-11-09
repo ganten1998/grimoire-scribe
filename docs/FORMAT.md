@@ -56,6 +56,7 @@ root/import/<Name>/                     page pictures to become a notebook at th
 root/import/.annotate/                  a page KOReader sends to annotate, and its request (Annotated pages)
 root/trash/                             deleted notebooks and pages, moved here, never unlinked
 root/PDFs/                              the PDF mirror (an export, not data)
+root/.cache/pdf/<id>/                   the notebook PDF's page streams, disposable (2.1.0-beta.2)
 ```
 
 `root` is `/mnt/us/grimoire` on the Kindle. A notebook id is the folder's name: letters, digits,
@@ -1692,3 +1693,52 @@ Since 2.0.0-beta.2 a batch makes its missing previews cheapest first: pages with
 page comes last. A preview counts as made when its stamp is current and its image as long as its header says
 (one cut short is made again). Previews written by an older version are used as they are, and older versions
 use these.
+
+## The notebook PDF and its page streams: `.cache/pdf/<id>/` (2.1.0-beta.2)
+
+The PDF of a notebook (the mirror in `PDFs/`, the share server's download, a zip's PDF entry) has one image
+per page: a Flate stream of the page drawn at the notebook's size, DeviceGray, or DeviceRGB for a page whose
+picture is a colour PNG (the picture fitted to the page, the ink drawn over it: where ink darkened the gray
+paper under it each channel is scaled by the same ratio, where it lightened it (white ink) each channel moves
+toward white by the same share; a pixel the ink did not touch is the picture's own). Every other page is gray.
+Drawing a page is most of the work, so each page's stream is kept in `root/.cache/pdf/<notebook id>/p<page
+id>.z`, one file per page, written by the background mirror job only (the share server's children read it and
+never write):
+
+```text
+offset  size  field
+0       4     "GPZ1"
+4       4     renderer version (bumped when drawing changes)
+8       8     FNV-1a of the Grimoire version string
+16      4     dpi, as the bits of the f32
+20      8     the page file's size
+28      8     the page file's modification time, seconds
+36      4     ... and nanoseconds
+40      4     the notebook's page width       44  4  its page height
+48      4     the page's paper kind (image papers: the picture's id is in it)
+52      4     the picture's channels by its PNG header when the record was made (3 colour, else 1)
+56      4     the image's channels, in the top byte (1 or 3)
+60      4     image width      64  4  image height
+68      4     length of the stream            72  4  CRC-32 of the stream
+76      8     the page file's inode           84  4  zero
+88      ...   the zlib stream
+```
+
+All integers little endian. A record is used only when it reads, its length and CRC-32 are right, its stamp
+(bytes 4 to 47, and the inode) is the page's today, taken before the page was read, and the channels of the page's picture are what the record says: a
+changed page, a picture replaced by a gray or a colour one, another dpi or page size, a newer Grimoire, a
+damaged or truncated file, are all simply drawn again (full render on any doubt). The PDF's bytes are the same
+whether a page was drawn or found: streamed output is byte for byte a full render. A record is written
+through `p<id>.z.tmp` and a rename, without a sync: it is a cache, and a record cut short fails its checks.
+When a write fails (a full disk, a folder that cannot be made) the run goes on without the cache.
+
+After a finished mirror the job prunes: the records of pages no longer in the notebook, the folders of
+notebooks that are gone, stray `share-<pid>.spool` files over an hour old, and then, past 256 MB in all, the
+oldest records first. Deleting `.cache/pdf/` loses nothing: the next mirror draws every page again.
+
+The PDF is written object by object to wherever it goes (a file, a connection, a zip entry), one page's
+stream in memory at a time, with the offsets kept for the xref; the mirror writes `<name>.pdf.tmp` as it goes
+and renames it over the old file when it is whole. The share server answers a PDF or zip download from a spool
+file it makes and unlinks at once (so the answer has its Content-Length), `.cache/pdf/share-<pid>.spool`; with
+no room for one it makes the file twice, once to count it and once into the connection. A zip's PDF entry is
+written with a data descriptor (flag bit 3) as stored deflate blocks, its sizes known only at its end.

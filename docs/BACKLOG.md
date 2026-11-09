@@ -19,15 +19,23 @@ why. Newest decisions first within each section.
   did not settle: it would be a dead tap area over visible paper); a toast names one thing (when both blank pages
   and left-out links apply, the pages' ending wins and the links are in the log); the name tree's walk order
   decides which entries a 100,000-entry cap keeps.
-- **Pictures in the worker (lane L7)**: `sandbox::session_broken()` is what L7 asks to fall back to 2.0's path;
-  `WorkKind` has only `Pdf`, and the record protocol is open to a font kind (L10).
+- **Pictures in the worker (lane L7)**: done in `picwork.rs` (`WorkKind::Picture`). Left, and why: the seccomp
+  allow-list and the worker's address space for pictures (`s1::PICTURE_AS_MARGIN`, `PICTURE_SLICE`,
+  `PICTURE_CPU_SECS`, `PICTURE_WATCHDOG_MS`) are placeholders until S1 and the owner's Scribe run them (the Linux
+  `sandbox` job has the first real run of a picture in the sandbox: `pictures_decode_in_the_real_sandbox`); a
+  worker killed by the filter marks its picture `.bad` rather than falling back, so a call the list lacks would
+  mark pictures bad on a device until it is added (the log names the call); KOReader's page PNGs and Grimoire's
+  own `bg/` pictures stay decoded by the UI (a later option: re-encode KOReader's through the worker, which would
+  change the UI process's book flow); the fallback flag set in one job child does not reach the UI or the next
+  child (each finds out for itself, at the cost of one failed start), and `install_picture` on the UI thread
+  starts a worker for a small template with no preview yet.
 - **The picker (lane L8)** calls `pdfimport::pdf_import_queue(&StoragePath, name, folder, dpi)`; the Import place's
   Waiting row reads `pdfimport::detached_running()`. The runner's `pdfimport` command stands in until then.
 - **The notebook PDF (lane L9)**: MERGE-ME: the mirror and the share pages draw pages through `bgimage_render`,
   which holds only the luma canvas, so they embed the gray render of a colour page (FORMAT.md says so); if L9's
   streamed PDF ever embeds a page's picture file directly, a colour page is a 3-channel PNG and must be
   converted or embedded as DeviceRGB. `child_setup` only gained the lock's descriptor; L9's caps are still to add.
-- **Not done**: a worker for fonts and pictures; the Import place's rows (L8); a card for the notebook being made;
+- **Not done**: a worker for fonts (L10); the Import place's rows (L8); a card for the notebook being made;
   an update while a detached import runs is covered only by the worker being `/proc/self/exe` (no scenario).
 - **Choices the plan did not settle**: a page's blank replacement is a white image page (shared by content);
   the colour tolerance is 6 levels (pdfwork::GRAY_TOLERANCE); a PDF whose every page is unreadable is still a
@@ -687,6 +695,23 @@ Ideas, not plans: each needs the owner's go and its own design. No code is taken
   document link's seed (only the user's links are; ink seeds are 32-bit hashes, a clash would be harmless
   since a document link has an area and never takes an ink box).
 - **package_check.sh** (lane L5's) should list `links` among app/grimoire.sh's required capabilities.
+
+## Notebook PDF cache and child caps (lane L9, 2.1.0-beta.2): what waits
+
+- **The mirror's 64 MiB margin on a very dense page.** A page with millions of points holds its strokes plus a
+  page canvas; if a real notebook's mirror fails with the cap on (the log says `export of ... failed` and the
+  child died of a failed allocation), raise `child_margin(BgKind::MirrorPdf)` in `childcaps.rs`. The 2,000-page
+  test measures a light page. Nothing measured on the device yet (TESTING L9, check 7).
+- **The cache is read per page even with no change.** A hit reads the page file only when the notebook has a link
+  on that page; a planner with a document link on every page still reads and parses every page (no drawing). A
+  per-page "links stamp" could skip that too.
+- **The share server never writes the cache** (the plan: background jobs only), so a download of a notebook whose
+  mirror is off, or not yet made, draws every page; the page progress shows it. Making the mirror job also
+  prepare the cache when the mirror is off would fix it.
+- **A zip entry is stored, not compressed** (stored deflate blocks, since the PDF's images are compressed
+  already); the raw `.qpg`/PNG entries are as before.
+- **Caps are Linux only** (the host build and the simulator apply none); `RLIMIT_AS` for the share server's render
+  children is a flat 128 MiB over their start: a zip of a notebook with a very big raw page may need more.
 
 ## Done
 

@@ -1932,6 +1932,38 @@ holds, so it takes a moment longer):
 7. **A 2.0 build** (go back with the update file): the notebook opens, your own links work and are editable,
    the tabs are not there; updating again brings them back.
 8. **The notebook PDF** (Notebook PDFs in KOReader): the tabs are links in the PDF.
+
+## 2.1.0-beta.2, L9 (the incremental, streamed notebook PDF; every child capped)
+
+On the Scribe, with Notebook PDFs on (Settings), a 400-page planner (or any notebook of a few hundred pages with
+image papers) and `grimoire.log` readable over USB or SSH. The mirror job logs one line when it finishes:
+`bg: export of <id>: N pages, D drawn, T ms, VmHWM K kB`.
+
+1. **First close draws everything.** Open the planner, write one stroke, close it. The line says `D` equal to `N`
+   (every page drawn) and a long `T` (minutes); `grimoire/.cache/pdf/<id>/` now has one `.z` file a page, and
+   `PDFs/<name>.pdf` is whole (open it on a computer: pages, outline, tabs as links).
+2. **One page edited.** Open the planner again, write on one page, close it. The line says `D` 1 and `T` in seconds
+   (the 400 pages' records are read, the one page drawn). The PDF on the computer shows the new writing and is the
+   size it would be from scratch (compare with the first: only the edited page's stream differs in size).
+3. **Memory flat.** In both lines `VmHWM` is within a few MB of each other whatever the page count (it was
+   hundreds of MB on a 2,000-page notebook before); try an import of 1,000 or more pages if you have one. No
+   `Killed` lines in the log, and the Library and the editor never stall while the mirror runs.
+4. **The cache is disposable.** Delete `grimoire/.cache` over USB, close the notebook after a stroke: it is drawn
+   in full again and the PDF is the same. Fill the storage nearly (leave under 20 MB) and close a notebook: the
+   PDF is still made (the log may say `pdf cache: a write failed`); free the space and the next close fills the
+   cache again.
+5. **Share downloads.** On the Share screen, download a notebook's PDF and its zip from a computer: the browser's
+   progress bar counts as before (Preparing n of N, then the bytes), the file opens, and the zip's PDF entry opens
+   from the zip. While it runs the Kindle's editor stays responsive. `grimoire/.cache/pdf/` has no `share-*.spool`
+   left after (the file is unlinked at once).
+6. **Colour.** An imported page with colour, in the PDF mirror: still colour (gray pages gray); the Scribe shows it
+   in gray as before.
+7. **The caps.** Over SSH while a big mirror runs: `cat /proc/<pid>/oom_score_adj` of the `grimoire-bg` child is
+   `500`, and `grep 'Max address space' /proc/<pid>/limits` shows its soft limit about 64 MiB above the child's
+   `VmSize` at its start. Opening Share and downloading a PDF: the render child (named `grimoire`, a child of
+   Grimoire) shows `500` and about 128 MiB over its start too. Nothing in the app misbehaves at those ceilings
+   (a very dense page's mirror is the case to watch: it fails with a line in the log if 64 MiB is too tight, and
+   BACKLOG says what to loosen).
 ## 2.1.0-beta.2, L5 (the safe loader and the PDF import)
 
 Automated: the unit tests (`rust/tests/test_pdfimport.rs` runs real workers over generated PDFs: pages, colour
@@ -1986,3 +2018,26 @@ planner on a Scribe.** The owner's checks:
    `document link(s) and ... page name(s); left out: ...` says how many web and other links were left out.
 3. Export a notebook with links and names as a PDF (Share, or KOReader), copy that PDF into `import/` and
    compare: the same tabs in the same places, the same names.
+
+## 2.1.0-beta.2, L7 (pictures in the sandbox)
+
+Automated: `rust/tests/test_picwork.rs` (real workers: the worker's pixels equal the writer's decode byte for byte,
+a hostile corpus of truncated, enormous and decompression-bomb pictures is refused and the worker lives on, a
+worker that crashes or stalls on a picture fails that picture alone, 70 pictures cross slices, a template whose
+worker dies is marked bad), `test_picwork_fallback.rs` (a forced sandbox failure: pictures decode in the writer
+and the log says so once), and the template, photo and import tests of `test_templates.rs`, unchanged.
+**Not run anywhere yet: a picture in the sandbox's real steps** (`pictures_decode_in_the_real_sandbox` in
+`test_sandbox_linux.rs`, the CI job `sandbox`) and everything on a Scribe. The owner's checks:
+
+1. Copy a PNG and a JPEG into `grimoire/templates` and a photo into `grimoire/photos` over USB, open New notebook
+   > the template list and a page's paper sheet: they appear with their previews, and one of each still goes onto a
+   page (a template still imports; a photo still comes upright).
+2. grimoire.log has `work: sandboxed (uid 62001, ...)` once a session, and no `pictures decode in the writer` and
+   no `made call N, which the sandbox does not allow`. If either shows, send the log (the call is added to the
+   allow-list; the fallback line means the sandbox refused a step).
+3. Copy a folder of 20 phone photos (12 MP) into `grimoire/import/<Folder>`: it imports as before; time it from the
+   log (`import: ... N of M pages`) against 2.0.0, and watch `MemAvailable`: the slices are 32 pictures a worker.
+4. Put a broken `.png` (cut a real one in half) in `grimoire/templates`: it is listed as unusable as in 2.0, and
+   Grimoire stays quick; a folder with it among good pictures is refused whole, as in 2.0.
+5. Does a 40 MP JPEG (the cap) still decode on the Scribe within the worker's limits (`PICTURE_AS_MARGIN`,
+   `PICTURE_WATCHDOG_MS` are placeholders)? A refusal says why in the log.
