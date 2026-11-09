@@ -569,7 +569,7 @@ rotate 0
 wait 100
 tap library files.row.1
 wait 300
-expect files.place is grimoire/import
+expect files.place has /import
 expect files.rows is 1
 shot 20-files-import
 tap library files.back

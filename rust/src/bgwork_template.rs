@@ -1762,12 +1762,13 @@ fn import_folder(src: &str) -> i32 {
 
 /// bgjob.h: the work of a BG_IMPORT_FOLDER job, in the child; 0 = done.
 pub fn bg_import_folder(path: &str, dpi: f32) -> i32 {
-    let _ = dpi;
+    // (a negative dpi marks a folder picked in place: its path is a StoragePath, read through fsview; the dpi
+    // itself is no import's)
+    let pick = dpi < 0.0;
     // (the import lock is the UI's: it holds it while any import is queued or running, and no job opens it or
     // waits for it, so a lock held elsewhere can never stall the queue behind it: pdfimport.rs)
     let cap = cap_memory();
-    // (a path that is not absolute is a folder picked in place: a StoragePath, read through fsview)
-    let rc = if path.starts_with('/') { import_folder(path) } else { import_pick(path) };
+    let rc = if pick { import_pick(path) } else { import_folder(path) };
     uncap_memory(&cap);
     if rc == IMPORT_DONE {
         0
@@ -1782,7 +1783,7 @@ pub fn bg_import_folder(path: &str, dpi: f32) -> i32 {
 // written to; its mark lives in import/.marks/<hash> (the PDFs' marks), and goes when the notebook is made. The
 // folder is walked by fsview (no link anywhere, one device, never Grimoire's own folders by identity) and each
 // picture is opened O_NOFOLLOW through the same walk, so a planted link is never followed. The job's path is the
-// folder's StoragePath (no leading "/": import_folder's are absolute).
+// folder's StoragePath, and its dpi is negative (import_folder's paths are the data root's, absolute or not).
 
 struct PickCtx {
     st: FsStorage,
@@ -1947,7 +1948,7 @@ pub fn import_pick_queue(path: &StoragePath, name: Option<&str>, folder: Option<
         lock_release_if_idle();
         return Queued::Refused("mark");
     }
-    bg_queue(BgKind::ImportFolder, Some(&id), Some(&src), dpi, true);
+    bg_queue(BgKind::ImportFolder, Some(&id), Some(&src), -dpi.abs().max(1.0), true);
     with(|s| s.pending.push(FixedStr::from_str(&id)));
     Queued::Started(id)
 }

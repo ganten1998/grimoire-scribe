@@ -666,6 +666,11 @@ every 10 s, and again after 5 s while a file waits):
   progress a detached import leaves, rewritten at most every 20 s. `import/.attempts` also keys PDFs (a hash of
   the file's name; the second hash is of its size and mtime): three tries, or a refusal, wait until the file
   changes. A sandbox failure counts no try.
+- **A folder of pictures picked in place** (the picker's Import N pictures as notebook, 2.1.0-beta.2): the job's
+  path is the folder's path from the storage root (no leading `/`; the folders of `import/` have absolute ones),
+  its mark is the same file in `import/.marks/` (`pick=1`, `name`, `folder`) and goes when the notebook is made or
+  the import fails. The folder is walked by fsview and each picture opened without following a link; it is
+  never moved, marked or written to, and no attempt is recorded for it.
 - **One owner:** `import/.lock` (flock) is taken by the UI without blocking before it queues any import and
   held while any is queued or running, through one close-on-exec handle; each background child (and the child
   that finishes the queue after Grimoire closes) keeps that descriptor. No job opens it or waits for it.
