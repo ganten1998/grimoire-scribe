@@ -165,6 +165,10 @@ const H_MERGE_INTO: i32 = 93;
 const H_MERGE_BOTH: i32 = 94;
 // 2.1.0-beta.2: New notebook's From a file... (the file picker over it).
 const H_NEW_FILE: i32 = 95;
+// 2.1.0-beta.2: the Font sheet's rows of the owner's own fonts (arg: the font, an index of LibraryState.fonts),
+// and the pages of them (arg: -1 back, 1 on).
+const H_FONT_OWN: i32 = 96;
+const H_FONT_PAGE: i32 = 97;
 
 #[derive(Clone, Copy, Default)]
 struct Item {
@@ -188,6 +192,17 @@ pub struct LibraryState {
     font_pick: usize,
     font_sample: Rect,
     font_rows: Vec<Rect>,
+    /// The Font sheet's own fonts (2.1.0-beta.2): the files of grimoire/fonts as the sheet found them
+    /// (userfonts_scan), the one highlighted (its path under the folder; "" while a family is: font_pick), the
+    /// first shown of the page on show and how many a page holds, the rows drawn (each font's index and where),
+    /// how the sample was drawn (the runner's probe), and when the cache was last looked at.
+    fonts: Vec<crate::userfonts::UserFont>,
+    font_file: String,
+    font_first: usize,
+    font_per_page: usize,
+    font_own_rows: Vec<(usize, Rect)>,
+    font_sample_how: &'static str,
+    fonts_looked_ms: u32,
     /// The file picker (2.1.0-beta.2, browser.rs), open over New notebook's sheet (which stays under it: Cancel
     /// and Esc at the picker's root come back to it), and whether the sheet's name was typed (D28: a typed name is
     /// the imported notebook's, else the file's own).
@@ -3398,7 +3413,9 @@ fn draw_settings(a: &mut App) {
         // TRANSLATORS: (Settings, Classic only) the chip at the Style row's right end that opens the
         // Font sheet, with the font in use by its short name, never translated ("Terminess",
         // "Atkinson", "Noto Sans", "Literata"): about 450 px at 34 px in bold, beside its icon.
-        csnprintf!(&mut label, 96, tr("Font: %s"), FONT_FAMILIES[font_family()].short);
+        // (one of the owner's own fonts by its family's name, cut short as a name is)
+        let own_name = crate::userfonts::userfonts_in_use_name();
+        csnprintf!(&mut label, 96, tr("Font: %s"), own_name.as_deref().unwrap_or(FONT_FAMILIES[font_family()].short));
         let ch = ui_px(90.0);
         // (the icon, then its label: the chip as wide as they need, up to 560 px)
         let lx = ch + ui_px(10.0);
@@ -3407,7 +3424,11 @@ fn draw_settings(a: &mut App) {
         ui_frame(c, chip, ch / 2, 255, true, 0);
         ui_frame(c, chip, ch / 2, 0, false, ui_px(3.0));
         ui_icon(c, IconKind::Font, Rect::new(chip.x + ui_px(16.0), chip.y + ui_px(8.0), ch - ui_px(16.0), ch - ui_px(16.0)), 0);
-        font_draw_left(c, FontFace::Bold, ui_small_size(), Rect::new(chip.x + lx, chip.y, chip.w - lx - ui_px(24.0), ch), &label, 0);
+        if own_name.is_some() {
+            font_draw_left_name(c, FontFace::Bold, ui_small_size(), Rect::new(chip.x + lx, chip.y, chip.w - lx - ui_px(24.0), ch), &label, 0);
+        } else {
+            font_draw_left(c, FontFace::Bold, ui_small_size(), Rect::new(chip.x + lx, chip.y, chip.w - lx - ui_px(24.0), ch), &label, 0);
+        }
         text_w = chip.x - ui_px(24.0) - (rt.x + ui_px(110.0));
         theme_r.w = chip.x - ui_px(12.0) - rt.x;
         hits_add(&mut s.hits, chip, H_SET_FONT, 0);
@@ -3591,42 +3612,206 @@ fn draw_settings(a: &mut App) {
 /// opens with, the angle quotes, and accented letters (Japanese comes from DotGothic16 in every font).
 const FONT_SAMPLE_CHARS: &str = "0123456789  \u{bf}? \u{a1}! \u{ab}\u{bb}  \u{e1}\u{e9}\u{ed}\u{f3}\u{fa} \u{f1} \u{e7} \u{fc} \u{df} \u{20ac}";
 
-/// Settings > Font (2.1, Classic only): on top a sample of the family highlighted (its name at the
-/// title size, a sentence at the text size, digits and accents at the small size, all in it), then
-/// every family by its name, each drawn in itself, the one in use with a check, then Cancel and Done.
-/// The sheet's own words are in the font in use until Done applies another.
+/// What a row of the owner's own fonts says under the font's name: that it is being checked, why it cannot be
+/// used, that some of the language's letters come from Terminess, or nothing.
+fn font_row_note(f: &crate::userfonts::UserFont) -> String {
+    use crate::userfonts::{FontWhy, UserFontState};
+    let mut out = String::new();
+    match &f.state {
+        // TRANSLATORS: (Settings > Font, a row of Your fonts) the font file is being checked in the background
+        // before Grimoire uses it. Each of these row notes: about 900 px at 34 px, one line.
+        UserFontState::Checking => out.push_str(tr("Checking...")),
+        UserFontState::Checked => {}
+        UserFontState::Ready(facts, _) => {
+            if facts.lacks >> i18n_find(i18n_current()).clamp(0, 15) & 1 == 1 {
+                // TRANSLATORS: (a row of Your fonts) the font can be used, but lacks some letters of the
+                // language Grimoire is in: those are drawn in Terminess (the built-in font's name, kept).
+                out.push_str(tr("Some letters come from Terminess."));
+            }
+        }
+        // TRANSLATORS: (a row of Your fonts, greyed) the file is no font Grimoire can read: damaged, empty,
+        // or one whose letters draw nothing.
+        UserFontState::No(FontWhy::Unreadable) => out.push_str(tr("Unreadable font.")),
+        UserFontState::No(FontWhy::TooBig) => {
+            // TRANSLATORS: (a row of Your fonts, greyed) the font file is bigger than Grimoire takes; %d is 24.
+            csnprintf!(&mut out, 96, tr("Too big (over %d MB)."), (crate::fontcheck::FONT_FILE_MAX >> 20) as i32);
+        }
+        // TRANSLATORS: (a row of Your fonts, greyed) a symbol font, or one without the letters A to Z.
+        UserFontState::No(FontWhy::NoLatin) => out.push_str(tr("No Latin letters.")),
+        // TRANSLATORS: (a row of Your fonts, greyed) a web font (.woff, .woff2): Grimoire takes .ttf and .otf
+        // files. The two endings are file kinds: keep them as they are.
+        UserFontState::No(FontWhy::Format) => out.push_str(tr("Use .ttf or .otf.")),
+        // TRANSLATORS: (a row of Your fonts, greyed) checking the font took longer than Grimoire allows.
+        UserFontState::No(FontWhy::Slow) => out.push_str(tr("Took too long to read.")),
+        // TRANSLATORS: (a row of Your fonts, greyed) the font Grimoire was set to is no longer in the folder.
+        UserFontState::No(FontWhy::Missing) => out.push_str(tr("File missing.")),
+    }
+    out
+}
+
+/// The check's preview (black on white) drawn into r: at its left, centred up and down, cut at r's right;
+/// on a highlighted row white on black.
+fn draw_font_preview(c: &mut Canvas, r: Rect, p: &Canvas, on: bool) {
+    let dy = r.y + (r.h - p.h) / 2;
+    let area = rect_intersect(rect_intersect(Rect::new(r.x, dy, p.w.min(r.w), p.h), r), c.clip);
+    for y in area.y..area.y + area.h {
+        for x in area.x..area.x + area.w {
+            let v = p.px[((y - dy) * p.stride + (x - r.x)) as usize];
+            let d = &mut c.px[(y * c.stride + x) as usize];
+            *d = if on { (*d).max(255 - v) } else { (*d).min(v) };
+        }
+    }
+}
+
+/// A row of the owner's own fonts: the font's name drawn in itself (the picture the check made: the UI never
+/// opens the file to list it), under it the file's name and what is to be said of it, in Terminess. A file that
+/// cannot be used is greyed, with its name alone.
+fn draw_font_own_row(c: &mut Canvas, r: Rect, f: &mut crate::userfonts::UserFont, on: bool, applied: bool) {
+    crate::userfonts::userfont_resolve(f);
+    let usable = f.usable();
+    let fg: u8 = if on { 255 } else if usable { 0 } else { 110 };
+    ui_frame(c, r, ui_px(16.0), if on { 0 } else { 255 }, true, 0);
+    ui_frame(c, r, ui_px(16.0), if usable { 0 } else { 110 }, false, ui_px(3.0));
+    let mark = r.h - ui_px(30.0);
+    let x = r.x + ui_px(40.0);
+    let w = r.w - ui_px(80.0) - mark;
+    let top = Rect::new(x, r.y + ui_px(8.0), w, r.h - ui_px(58.0));
+    let bottom = Rect::new(x, r.y + r.h - ui_px(54.0), w, ui_px(46.0));
+    let note = font_row_note(f);
+    let file = f.rel.rsplit('/').next().unwrap_or("").to_string();
+    let base = f.base().to_string();
+    let drawn = match crate::userfonts::userfont_preview(f) {
+        Some(p) => {
+            draw_font_preview(c, top, p, on);
+            true
+        }
+        None => false,
+    };
+    if !drawn {
+        font_draw_left_name(c, FontFace::FixedBold, ui_text_size(), top, &base, fg);
+    }
+    let nw = if note.is_empty() { 0 } else { font_measure(FontFace::Fixed, ui_small_size(), &note) };
+    if usable {
+        // (the file's own name, cut short as names are, then the note at the row's right)
+        let room = (w - nw - if nw > 0 { ui_px(30.0) } else { 0 }).max(0);
+        font_draw_left_name(c, FontFace::Fixed, ui_small_size(), Rect::new(x, bottom.y, room, bottom.h), &file, fg);
+        if nw > 0 {
+            font_draw_left(c, FontFace::Fixed, ui_small_size(), Rect::new(x + w - nw.min(w), bottom.y, nw.min(w), bottom.h), &note, fg);
+        }
+    } else {
+        font_draw_left(c, FontFace::Fixed, ui_small_size(), bottom, &note, fg);
+    }
+    if applied {
+        ui_icon(c, IconKind::Check, Rect::new(r.x + r.w - ui_px(25.0) - mark, r.y + ui_px(15.0), mark, mark), fg);
+    }
+}
+
+/// Settings > Font (2.1, Classic only): on top a sample of the font highlighted (its name at the title size,
+/// a sentence at the text size, digits and accents at the small size, all in it), then Built in: every family
+/// by its name, each drawn in itself; then Your fonts (2.1.0-beta.2): the files of grimoire/fonts, a page of
+/// them at a time (or where to copy some); the one in use with a check; then Cancel and Done. The sheet's own
+/// words are in the font in use until Done applies another, unless that font is one of the owner's own:
+/// then they are Terminess, so a font that went wrong can always be taken back.
 fn draw_font_sheet(a: &mut App) {
+    if font_own() {
+        font_with_family(0, || draw_font_sheet_in(a, None));
+    } else {
+        let applied = font_family();
+        draw_font_sheet_in(a, Some(applied));
+    }
+}
+
+fn draw_font_sheet_in(a: &mut App, applied: Option<usize>) {
     let (aw, ah) = (a.w, a.h);
-    let applied = font_family();
+    let own_applied = a.settings.font_file.as_str().to_string();
     let App { screen: c, lib, .. } = a;
     let s = lib.as_deref_mut().unwrap();
     let pick = s.font_pick.min(FONT_FAMILIES.len() - 1);
-    let n = FONT_FAMILIES.len() as i32;
+    let n = FONT_FAMILIES.len();
+    // Sideways the rows stand two abreast.
+    let cols: usize = if aw > ah { 2 } else { 1 };
     let (sample_h, rh, gap, bh, pad) = (ui_px(300.0), ui_px(130.0), ui_px(16.0), ui_px(140.0), ui_px(24.0));
-    let card = sheet_rect(aw, ah, ui_px(120.0) + 2 * ui_px(36.0) + sample_h + pad + n * (rh + gap) - gap + pad + bh);
+    // (a section's label; the second holds the pager; and above the buttons the room the staying notice
+    // takes, "Checking 3 fonts...", clear of every control)
+    let (lh, lh2, band) = (ui_px(50.0), ui_px(80.0), ui_px(150.0));
+    let built_rows = n.div_ceil(cols) as i32;
+    let fixed = sample_h + lh + built_rows * (rh + gap) + lh2 + band + bh;
+    let full = sheet_rect(aw, ah, i32::MAX / 2);
+    let chrome = full.h - ui_sheet_inner(full, true).h;
+    let rows_max = ((full.h - chrome - fixed + gap) / (rh + gap)).max(1) as usize;
+    let per_page = rows_max * cols;
+    let nown = s.fonts.len();
+    s.font_per_page = per_page;
+    if s.font_first >= nown {
+        s.font_first = nown.saturating_sub(1) / per_page * per_page;
+    }
+    s.font_first -= s.font_first % per_page;
+    let first = s.font_first;
+    let shown = nown.saturating_sub(first).min(per_page);
+    let own_rows = if nown == 0 { 1 } else { shown.div_ceil(cols).max(1) } as i32;
+    let card = sheet_rect(aw, ah, chrome + fixed + own_rows * (rh + gap) - gap);
     // TRANSLATORS: the title of Settings > Font, the list of fonts Classic can be drawn in.
     let in_ = ui_sheet(c, card, tr("Font"));
     let sample = Rect::new(in_.x, in_.y, in_.w, sample_h);
     ui_frame(c, sample, ui_px(16.0), 0, false, ui_px(3.0));
-    let fam = &FONT_FAMILIES[pick];
     let tx = sample.x + pad;
     let tw = sample.w - 2 * pad;
     // TRANSLATORS: the Font sheet's sample sentence, drawn in each font at 44 px, at most two lines of
     // about 1600 px: a sentence that uses many of your language's letters (English: a pangram; Spanish
     // could be "La cigüeña tocaba el saxofón detrás del palenque de paja.").
     let sentence = tr("The quick brown fox jumps over the lazy dog.");
-    font_with_family(pick, || {
-        font_draw_left(c, FontFace::Title, ui_title_size(), Rect::new(tx, sample.y + ui_px(16.0), tw, ui_px(90.0)), fam.name, 0);
+    let own_pick = if s.font_file.is_empty() { None } else { s.fonts.iter().position(|f| f.rel == s.font_file) };
+    let draw_sample = |c: &mut Canvas, name: &str, named: bool| {
+        let title = Rect::new(tx, sample.y + ui_px(16.0), tw, ui_px(90.0));
+        if named {
+            font_draw_left_name(c, FontFace::Title, ui_title_size(), title, name, 0);
+        } else {
+            font_draw_left(c, FontFace::Title, ui_title_size(), title, name, 0);
+        }
         font_draw_wrapped(c, FontFace::Regular, ui_text_size(), Rect::new(tx, sample.y + ui_px(106.0), tw, ui_px(124.0)),
             sentence, 2, ui_px(62.0), false, 0);
         font_draw_left(c, FontFace::Regular, ui_small_size(), Rect::new(tx, sample.y + ui_px(230.0), tw, ui_px(56.0)), FONT_SAMPLE_CHARS, 0);
-    });
+    };
+    match own_pick {
+        Some(i) => {
+            // A font of the owner's own: drawn by the font itself when it is loaded (the one in use, or the
+            // sample this sheet holds); else by the picture the check made of its name.
+            let name = s.fonts[i].family();
+            let rel = s.fonts[i].rel.clone();
+            if crate::userfonts::userfonts_in_use(&rel) {
+                s.font_sample_how = "own";
+                font_with_own(false, || draw_sample(c, &name, true));
+            } else if crate::userfonts::userfonts_sample_is(&rel) {
+                s.font_sample_how = "own";
+                font_with_own(true, || draw_sample(c, &name, true));
+            } else {
+                s.font_sample_how = "preview";
+                let f = &mut s.fonts[i];
+                let base = f.base().to_string();
+                if let Some(p) = crate::userfonts::userfont_preview(f) {
+                    draw_font_preview(c, Rect::new(tx, sample.y + ui_px(16.0), tw, ui_px(124.0)), p, false);
+                }
+                font_draw_left_name(c, FontFace::Fixed, ui_small_size(), Rect::new(tx, sample.y + ui_px(230.0), tw, ui_px(56.0)), &base, 0);
+            }
+        }
+        None => {
+            s.font_sample_how = "family";
+            font_with_family(pick, || draw_sample(c, FONT_FAMILIES[pick].name, false));
+        }
+    }
     s.font_sample = sample;
     s.font_rows.clear();
-    let mut y = sample.y + sample.h + pad;
+    s.font_own_rows.clear();
+    let cw = (in_.w - (cols as i32 - 1) * gap) / cols as i32;
+    let cell = |i: usize, top: i32| Rect::new(in_.x + (i % cols) as i32 * (cw + gap), top + (i / cols) as i32 * (rh + gap), cw, rh);
+    let mut y = sample.y + sample.h;
+    // TRANSLATORS: (Settings > Font) the heading over the fonts that come with Grimoire. 34 px bold, about
+    // 800 px.
+    font_draw_left(c, FontFace::Bold, ui_small_size(), Rect::new(in_.x, y, in_.w, lh), tr("Built in"), 0);
+    y += lh;
     for (i, f) in FONT_FAMILIES.iter().enumerate() {
-        let r = Rect::new(in_.x, y, in_.w, rh);
-        let on = i == pick;
+        let r = cell(i, y);
+        let on = own_pick.is_none() && i == pick;
         let fg: u8 = if on { 255 } else { 0 };
         ui_frame(c, r, ui_px(16.0), if on { 0 } else { 255 }, true, 0);
         ui_frame(c, r, ui_px(16.0), 0, false, ui_px(3.0));
@@ -3634,12 +3819,58 @@ fn draw_font_sheet(a: &mut App) {
         font_with_family(i, || {
             font_draw_left(c, FontFace::Bold, ui_text_size(), Rect::new(r.x + ui_px(40.0), r.y, r.w - ui_px(80.0) - mark, rh), f.name, fg);
         });
-        if i == applied {
+        if applied == Some(i) {
             ui_icon(c, IconKind::Check, Rect::new(r.x + r.w - ui_px(25.0) - mark, r.y + ui_px(15.0), mark, mark), fg);
         }
         hits_add(&mut s.hits, r, H_FONT_PICK, i as i32);
         s.font_rows.push(r);
-        y += rh + gap;
+    }
+    y += built_rows * (rh + gap);
+    // The owner's own: the heading names the folder, with the pages' arrows at its right when the fonts
+    // take more than one.
+    let mut heading = String::new();
+    // TRANSLATORS: (Settings > Font) the heading over the fonts the owner copied onto the Kindle; %s is
+    // their folder there, grimoire/fonts. 34 px bold, about 800 px.
+    csnprintf!(&mut heading, 160, tr("Your fonts (%s)"), "grimoire/fonts");
+    let pages = nown.div_ceil(per_page).max(1);
+    let hw = if pages > 1 { in_.w - ui_px(420.0) } else { in_.w };
+    font_draw_left(c, FontFace::Bold, ui_small_size(), Rect::new(in_.x, y, hw, lh2), &heading, 0);
+    if pages > 1 {
+        let (bw, bh2) = (ui_px(130.0), lh2 - ui_px(10.0));
+        let prev = Rect::new(in_.x + in_.w - ui_px(400.0), y + ui_px(4.0), bw, bh2);
+        let next = Rect::new(in_.x + in_.w - bw, y + ui_px(4.0), bw, bh2);
+        let page = first / per_page;
+        ui_button(c, prev, IconKind::Prev, "", if page > 0 { ButtonStyle::Plain } else { ButtonStyle::Disabled });
+        ui_button(c, next, IconKind::Next, "", if page + 1 < pages { ButtonStyle::Plain } else { ButtonStyle::Disabled });
+        let count = format!("{}/{}", page + 1, pages);
+        font_draw_centered(c, FontFace::Fixed, ui_small_size(), Rect::new(prev.x + bw, prev.y, next.x - prev.x - bw, bh2), &count, 0);
+        if page > 0 {
+            hits_add(&mut s.hits, prev, H_FONT_PAGE, -1);
+        }
+        if page + 1 < pages {
+            hits_add(&mut s.hits, next, H_FONT_PAGE, 1);
+        }
+    }
+    y += lh2;
+    if nown == 0 {
+        let mut line = String::new();
+        // TRANSLATORS: (Settings > Font, under Your fonts while the folder is empty) how to add a font: %s is
+        // the folder on the Kindle's storage, grimoire/fonts. ".ttf" and ".otf" are file kinds: keep them.
+        // Up to two lines of about 1600 px at 44 px, or at 34 px.
+        csnprintf!(&mut line, 256, tr("Copy .ttf or .otf files into %s over USB."), "grimoire/fonts");
+        ui_text(c, FontFace::Regular, ui_text_size(), ui_small_size(), Rect::new(in_.x, y, in_.w, rh), &line, 2, false, 0);
+    }
+    for k in 0..shown {
+        let idx = first + k;
+        let r = cell(k, y);
+        let f = &mut s.fonts[idx];
+        let on = own_pick == Some(idx);
+        let applied_own = !own_applied.is_empty() && f.rel == own_applied && crate::userfonts::userfonts_in_use(&own_applied);
+        draw_font_own_row(c, r, f, on, applied_own);
+        if f.usable() {
+            hits_add(&mut s.hits, r, H_FONT_OWN, idx as i32);
+        }
+        s.font_own_rows.push((idx, r));
     }
     let done = Rect::new(in_.x + in_.w - ui_px(380.0), in_.y + in_.h - bh, ui_px(380.0), bh);
     let cancel = Rect::new(in_.x, done.y, ui_px(380.0), bh);
@@ -3649,14 +3880,29 @@ fn draw_font_sheet(a: &mut App) {
     hits_add(&mut s.hits, done, H_FONT_DONE, 0);
 }
 
-/// The Font sheet after a tap on a family: the screen drawn again, and the panel refreshed only where
-/// the sample and the two rows whose highlight changed are (Ui), as What's new steps (about_step).
-fn font_step(a: &mut App, pick: usize) {
+/// Where the Font sheet drew the row of what is highlighted now (a family's, or an own font's if it is on
+/// the page shown).
+fn font_pick_row(s: &LibraryState) -> Rect {
+    if s.font_file.is_empty() {
+        return s.font_rows.get(s.font_pick).copied().unwrap_or(RECT_EMPTY);
+    }
+    let at = s.fonts.iter().position(|f| f.rel == s.font_file);
+    s.font_own_rows.iter().find(|(i, _)| Some(*i) == at).map_or(RECT_EMPTY, |(_, r)| *r)
+}
+
+/// The Font sheet after a tap on a row (a family: `own` None; one of the owner's fonts: its path): the screen
+/// drawn again, and the panel refreshed only where the sample and the two rows whose highlight changed are
+/// (Ui), as What's new steps (about_step).
+fn font_step(a: &mut App, pick: usize, own: Option<String>) {
+    let was = font_pick_row(lib(a));
     let s = lib(a);
-    let was = s.font_pick;
     s.font_pick = pick;
-    let (sample, rows) = (s.font_sample, s.font_rows.clone());
-    if rect_is_empty(sample) || rows.len() <= was.max(pick) || graph_shown(a) || lib(a).settings_return_editor {
+    s.font_file = own.clone().unwrap_or_default();
+    // The sample of one of the owner's fonts is drawn by the font: held beside the one in use while it shows.
+    let want = own.filter(|rel| !crate::userfonts::userfonts_in_use(rel));
+    crate::userfonts::userfonts_sample(a, want.as_deref());
+    let sample = lib(a).font_sample;
+    if rect_is_empty(sample) || rect_is_empty(was) || graph_shown(a) || lib(a).settings_return_editor {
         redraw(a, RefreshMode::Ui);
         return;
     }
@@ -3664,7 +3910,88 @@ fn font_step(a: &mut App, pick: usize) {
     hits_clear(&mut lib(a).hits);
     draw_modal(a);
     a.toast_floor = toast_floor(a);
-    app_invalidate(a, rect_union(sample, rect_union(rows[was], rows[pick])), RefreshMode::Ui);
+    let now = font_pick_row(lib(a));
+    app_invalidate(a, rect_union(sample, rect_union(was, now)), RefreshMode::Ui);
+}
+
+/// The Font sheet's staying notice while fonts are checked ("Checking 3 fonts..."), gone when none is.
+fn font_notice(a: &mut App) {
+    let n = crate::userfonts::userfonts_checking(&lib(a).fonts);
+    if lib(a).modal != Modal::Font || n == 0 {
+        app_notice_clear(a, NoticeKey::FontCheck);
+        return;
+    }
+    let mut msg = String::new();
+    // TRANSLATORS: the notice that stays above the Font sheet's buttons while the fonts copied into
+    // grimoire/fonts are checked in the background, with how many are left. One line of about 1700 px at 44 px
+    // bold.
+    csnprintf!(&mut msg, 160, ng_("Checking %d font...", "Checking %d fonts...", n as i64), n as i32);
+    app_notice(a, NoticeKey::FontCheck, &msg);
+}
+
+/// The Font sheet's list read again from grimoire/fonts (as it opens, and when a check left files that were
+/// still being copied): the fonts not checked yet go to the background job. The font settings.ini names stays
+/// listed when its file is gone ("File missing.").
+fn font_list_scan(a: &mut App) {
+    let dpi = a.dpi;
+    let mut list = crate::userfonts::userfonts_scan(dpi);
+    let chosen = a.settings.font_file.as_str().to_string();
+    if !chosen.is_empty() && !list.iter().any(|f| f.rel == chosen) {
+        list.push(crate::userfonts::userfont_missing(&chosen));
+    }
+    let s = lib(a);
+    s.fonts = list;
+    s.fonts_looked_ms = now_ms();
+}
+
+/// Leaves the Font sheet's own state behind (Done, Cancel, or the sheet closed with the Library): the sample
+/// font, the list and the notice.
+fn font_sheet_closed(a: &mut App) {
+    crate::userfonts::userfonts_sample(a, None);
+    let s = lib(a);
+    s.fonts = Vec::new();
+    s.font_file.clear();
+    s.font_own_rows.clear();
+    app_notice_clear(a, NoticeKey::FontCheck);
+}
+
+/// While the Font sheet is up: the rows of fonts being checked fill in as their verdicts land (the cache is
+/// looked at twice a second, a listing of one small folder), and the folder is read again when a check left
+/// files for later.
+fn font_sheet_tick(a: &mut App, now: u32) {
+    if crate::userfonts::userfonts_look_again(now) {
+        font_list_scan(a);
+        font_notice(a);
+        redraw(a, RefreshMode::Ui);
+        return;
+    }
+    if now.wrapping_sub(lib(a).fonts_looked_ms) < 500 {
+        return;
+    }
+    lib(a).fonts_looked_ms = now;
+    if crate::userfonts::userfonts_refresh(&mut lib(a).fonts) > 0 {
+        font_notice(a);
+        redraw(a, RefreshMode::Ui);
+    }
+}
+
+/// A font check ended (app.rs's poll_jobs): the Font sheet, if it is up, shows what it found at once; and when
+/// the font settings.ini asks for was waiting for it and draws from now on (`changed`), the Library is drawn
+/// again in it, with a Full refresh as a change of font makes.
+pub fn library_fonts_checked(a: &mut App, changed: bool) {
+    if a.lib.is_none() || a.scr != ScreenId::Library {
+        return;
+    }
+    if lib(a).modal == Modal::Font {
+        crate::userfonts::userfonts_refresh(&mut lib(a).fonts);
+        font_notice(a);
+    }
+    if changed {
+        httpd_restyle(ui_theme() == UiTheme::Gothic);
+        redraw(a, RefreshMode::Full);
+    } else if lib(a).modal == Modal::Font {
+        redraw(a, RefreshMode::Ui);
+    }
 }
 
 // The item MORE, MOVE and DELETE act on (S->target), if it is one.
@@ -5178,6 +5505,7 @@ fn act(a: &mut App, h: &Hit) {
             } else {
                 UiTheme::Gothic
             });
+            crate::userfonts::userfonts_apply(a); // (Classic's own font, if it has one; Gothic holds none)
             httpd_restyle(ui_theme() == UiTheme::Gothic);
             settings_save(&a.settings);
             redraw(a, RefreshMode::Full);
@@ -5206,31 +5534,75 @@ fn act(a: &mut App, h: &Hit) {
             redraw(a, RefreshMode::Ui);
         }
         H_SET_FONT => {
-            lib(a).font_pick = font_family();
-            open_modal(a, Modal::Font);
+            // The sheet opens on the font in use: one of the owner's own, or a family. It looks into
+            // grimoire/fonts as it opens (new files go to the background check).
+            let own = a.settings.font_file.as_str().to_string();
+            let own_on = !own.is_empty() && crate::userfonts::userfonts_in_use(&own);
+            font_list_scan(a);
+            let s = lib(a);
+            s.font_pick = font_family();
+            s.font_file = if own_on { own } else { String::new() };
+            s.font_first = match s.fonts.iter().position(|f| f.rel == s.font_file) {
+                Some(i) if !s.font_file.is_empty() => i,
+                _ => 0,
+            };
+            s.font_per_page = 1;
+            lib(a).modal = Modal::Font;
+            font_notice(a);
+            redraw(a, RefreshMode::Ui);
         }
         H_FONT_PICK => {
             let pick = (h.arg.max(0) as usize).min(FONT_FAMILIES.len() - 1);
-            if pick != lib(a).font_pick {
-                font_step(a, pick);
+            if pick != lib(a).font_pick || !lib(a).font_file.is_empty() {
+                font_step(a, pick, None);
             }
         }
-        // Done applies the family highlighted, saved, and the screen comes back in it with a Full refresh, as
-        // a style change does; Cancel (Back, Esc) leaves the font as it was.
-        H_FONT_DONE => {
-            let pick = lib(a).font_pick;
-            lib(a).modal = Modal::Settings;
-            if pick != font_family() {
-                a.settings.font = pick as i32;
-                font_set_family(pick);
-                httpd_restyle(ui_theme() == UiTheme::Gothic); // (the share pages, if Live view is on)
-                settings_save(&a.settings);
-                redraw(a, RefreshMode::Full);
-            } else {
-                redraw(a, RefreshMode::Ui);
+        H_FONT_OWN => {
+            let s = lib(a);
+            let rel = s.fonts.get(h.arg.max(0) as usize).filter(|f| f.usable()).map(|f| f.rel.clone());
+            if let Some(rel) = rel.filter(|r| *r != s.font_file) {
+                let pick = s.font_pick;
+                font_step(a, pick, Some(rel));
             }
+        }
+        H_FONT_PAGE => {
+            let s = lib(a);
+            let per = s.font_per_page.max(1);
+            s.font_first = if h.arg < 0 { s.font_first.saturating_sub(per) } else { s.font_first + per };
+            redraw(a, RefreshMode::Ui);
+        }
+        // Done applies the font highlighted, saved, and the screen comes back in it with a Full refresh, as
+        // a style change does; Cancel (Back, Esc) leaves the font as it was. One of the owner's own fonts is
+        // settings.ini's font=file:<its path>; its Bold file is found again for it (font_bold= is for a hand).
+        H_FONT_DONE => {
+            let (pick, own) = (lib(a).font_pick, lib(a).font_file.clone());
+            font_sheet_closed(a);
+            lib(a).modal = Modal::Settings;
+            let was_own = a.settings.font_file.as_str().to_string();
+            let same = if own.is_empty() { was_own.is_empty() && pick == font_family() } else { own == was_own && crate::userfonts::userfonts_in_use(&own) };
+            if same {
+                redraw(a, RefreshMode::Ui);
+                return;
+            }
+            if own.is_empty() {
+                a.settings.font = pick as i32;
+                a.settings.font_file.clear();
+                a.settings.font_bold.clear();
+                font_set_family(pick);
+            } else {
+                a.settings.font = 0;
+                if own != was_own {
+                    a.settings.font_bold.clear();
+                }
+                a.settings.font_file.set(&own);
+            }
+            crate::userfonts::userfonts_apply(a);
+            httpd_restyle(ui_theme() == UiTheme::Gothic); // (the share pages, if Live view is on)
+            settings_save(&a.settings);
+            redraw(a, RefreshMode::Full);
         }
         H_FONT_CANCEL => {
+            font_sheet_closed(a);
             lib(a).modal = Modal::Settings;
             redraw(a, RefreshMode::Ui);
         }
@@ -5955,6 +6327,16 @@ pub fn library_enter(a: &mut App) {
     // A turn, or the redraw after waking, re-lays out the same screen: the open sheet stays open
     // (every sheet lays itself out when drawn).
     let relayout = a.relayout;
+    if !relayout {
+        if lib(a).modal == Modal::Font {
+            font_sheet_closed(a);
+        }
+        // The font settings.ini asks for, if its check ended while a notebook was open: from now on (never in
+        // the middle of a page).
+        if crate::userfonts::userfonts_waiting() && crate::userfonts::userfonts_apply(a) {
+            httpd_restyle(ui_theme() == UiTheme::Gothic);
+        }
+    }
     let s = lib(a);
     if !relayout {
         s.modal = Modal::None;
@@ -6177,6 +6559,9 @@ pub fn library_tick(a: &mut App, now: u32) {
     if files_shown(a) {
         files_tick(a, now);
         return;
+    }
+    if lib(a).modal == Modal::Font && !graph_shown(a) {
+        font_sheet_tick(a, now);
     }
     if graph_shown(a) {
         graph_tick(a, now);
@@ -6514,8 +6899,45 @@ pub fn library_probe(a: &mut App, key: &str, out: &mut String, cap: usize) -> i3
     } else if key == "sheet" && s.modal == Modal::Font {
         csnprintf!(out, cap, "font");
     } else if key == "font.pick" {
-        // The Font sheet's family highlighted, by its settings.ini id; "" while the sheet is not up.
-        csnprintf!(out, cap, "%s", if s.modal == Modal::Font { FONT_FAMILIES[s.font_pick.min(FONT_FAMILIES.len() - 1)].id } else { "" });
+        // The Font sheet's font highlighted, by its settings.ini value (a family's id, or file:<path> for one of
+        // the owner's own); "" while the sheet is not up.
+        if s.modal != Modal::Font {
+            csnprintf!(out, cap, "%s", "");
+        } else if s.font_file.is_empty() {
+            csnprintf!(out, cap, "%s", FONT_FAMILIES[s.font_pick.min(FONT_FAMILIES.len() - 1)].id);
+        } else {
+            csnprintf!(out, cap, "file:%s", &s.font_file);
+        }
+    } else if key == "font.rows" {
+        // The Font sheet's own fonts: how many files of grimoire/fonts it lists.
+        csnprintf!(out, cap, "%d", s.fonts.len() as i32);
+    } else if key == "font.checking" {
+        csnprintf!(out, cap, "%d", crate::userfonts::userfonts_checking(&s.fonts) as i32); // of them, still being checked
+    } else if key == "font.shown" {
+        // The rows of own fonts on the page shown, by their paths, joined by "|"; font.page is "2/3".
+        let v: Vec<&str> = s.font_own_rows.iter().filter_map(|(i, _)| s.fonts.get(*i)).map(|f| f.rel.as_str()).collect();
+        csnprintf!(out, cap, "%s", &v.join("|"));
+    } else if key == "font.page" {
+        let per = s.font_per_page.max(1);
+        csnprintf!(out, cap, "%d/%d", (s.font_first / per + 1) as i32, s.fonts.len().div_ceil(per).max(1) as i32);
+    } else if key == "font.sample" {
+        // How the sample card was drawn: "family", "own" (by the owner's font itself) or "preview" (by the
+        // picture the check made); "" while the sheet is not up.
+        csnprintf!(out, cap, "%s", if s.modal == Modal::Font { s.font_sample_how } else { "" });
+    } else if let Some(rel) = key.strip_prefix("font.state.") {
+        // An own font's row by its path: "ready", "checking", "unreadable", "toobig", "nolatin", "format",
+        // "slow" or "missing"; "" for a file the sheet does not list. font.note.<path> is what the row says.
+        let mut f = s.fonts.iter().find(|f| f.rel == rel).cloned();
+        if let Some(f) = f.as_mut() {
+            crate::userfonts::userfont_resolve(f);
+        }
+        csnprintf!(out, cap, "%s", f.as_ref().map_or("", |f| f.state_name()));
+    } else if let Some(rel) = key.strip_prefix("font.note.") {
+        let mut f = s.fonts.iter().find(|f| f.rel == rel).cloned();
+        if let Some(f) = f.as_mut() {
+            crate::userfonts::userfont_resolve(f);
+        }
+        csnprintf!(out, cap, "%s", &f.as_ref().map_or(String::new(), font_row_note));
     } else if key == "sheet" {
         match SHEETS.get(s.modal as usize) {
             Some(m) => csnprintf!(out, cap, "%s", *m),
@@ -6664,10 +7086,14 @@ pub fn library_probe(a: &mut App, key: &str, out: &mut String, cap: usize) -> i3
                 H_ABOUT_PREV => "about.prev", H_ABOUT_NEXT => "about.next", H_ABOUT_MORE => "about.more",
                 H_ABOUT_ROW => "about.row.", H_ABOUT_BACK => "about.back",
                 H_SET_FONT => "font", H_FONT_PICK => "font.", H_FONT_DONE => "font.done", H_FONT_CANCEL => "font.cancel",
+                H_FONT_OWN => "font.file:", H_FONT_PAGE => if hit.arg < 0 { "font.prev" } else { "font.next" },
                 _ => "",
             });
             if hit.id == H_FONT_PICK {
                 name.push_str(FONT_FAMILIES.get(hit.arg as usize).map_or("", |f| f.id));
+            }
+            if hit.id == H_FONT_OWN {
+                name.push_str(s.fonts.get(hit.arg as usize).map_or("", |f| f.rel.as_str()));
             }
             if hit.id == H_ABOUT_ROW {
                 name.push_str(crate::about::notes().get(hit.arg as usize).map_or("", |e| e.versions[0]));

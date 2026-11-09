@@ -661,6 +661,9 @@ pub fn app_init(a: &mut App, w: i32, h: i32, dpi: f32) -> i32 {
     }
     ui_set_theme(if a.settings.theme == UiTheme::Classic as i32 { UiTheme::Classic } else { UiTheme::Gothic });
     font_set_family(a.settings.font.max(0) as usize);
+    // A font of the owner's own (font=file:...), if it passed its check and the crash guard lets it in:
+    // before the first screen is drawn, so that screen is the one the guard waits for.
+    crate::userfonts::userfonts_apply(a);
     display_set_invert(a.settings.invert);
     for op in K_SCREENS.iter() {
         (op.init)(a);
@@ -676,6 +679,7 @@ pub fn app_init(a: &mut App, w: i32, h: i32, dpi: f32) -> i32 {
     // The owner's pictures (templates.h): the templates and import folders, and the folders of page
     // pictures copied into import/ since the last run, made into notebooks in the background.
     templates_init();
+    crate::userfonts::userfonts_init();
     import_scan(dpi);
     let caps = input_caps();
     if a.settings.rotation_lock != 0 {
@@ -1990,6 +1994,13 @@ fn poll_jobs(a: &mut App) -> i32 {
         pdf_import_done(a, done_id.as_str(), r > 0);
         return 0;
     }
+    if done == BgKind::FontCheck as i32 {
+        // The Font sheet's rows fill in; the font settings.ini asks for, if it waited for this, draws from now
+        // on (only while the Library is in front: never in the middle of a page).
+        let changed = crate::userfonts::userfonts_job_done(a, bg_last_exit());
+        crate::library::library_fonts_checked(a, changed);
+        return 0;
+    }
     if done != BgKind::ImportFolder as i32 {
         return r;
     }
@@ -2277,6 +2288,7 @@ fn app_flush_in(a: &mut App) {
     a.dirty_mode = RefreshMode::Fast;
     status_flush(a); // (a refresh of the corner this one did not hold)
     notice_flush(a); // (and of the staying notice)
+    crate::userfonts::userfonts_screen_drawn(); // (a custom font's first screen is on the panel: its guard mark goes)
 }
 
 // Live view's toast layer (live.rs, LIVE_LAYER_TOAST) as the present app_flush is about to send leaves
@@ -2771,9 +2783,26 @@ pub fn app_probe(a: &mut App, key: &str, out: &mut String, cap: usize) -> i32 {
         csnprintf!(out, cap, "%s", if st.theme == UiTheme::Classic as i32 { "classic" } else { "gothic" });
     } else if key == "settings.font" {
         // (terminess for a font this version does not have: settings.kept.font has the file's value)
-        csnprintf!(out, cap, "%s", FONT_FAMILIES[clampi(st.font, 0, FONT_FAMILIES.len() as i32 - 1) as usize].id);
+        if st.font_file.is_empty() {
+            csnprintf!(out, cap, "%s", FONT_FAMILIES[clampi(st.font, 0, FONT_FAMILIES.len() as i32 - 1) as usize].id);
+        } else {
+            csnprintf!(out, cap, "file:%s", st.font_file.as_str());
+        }
+    } else if key == "settings.font_bold" {
+        csnprintf!(out, cap, "%s", st.font_bold.as_str());
     } else if key == "font" {
-        csnprintf!(out, cap, "%s", FONT_FAMILIES[font_family()].id); // Classic's font in use
+        // Classic's font in use: a family's id, or file:<path> while a font of the owner's own draws
+        if font_own() && crate::userfonts::userfonts_in_use(st.font_file.as_str()) {
+            csnprintf!(out, cap, "file:%s", st.font_file.as_str());
+        } else {
+            csnprintf!(out, cap, "%s", FONT_FAMILIES[font_family()].id);
+        }
+    } else if key == "font.guard" {
+        csnprintf!(out, cap, "%s", &crate::userfonts::userfonts_guard_probe()); // the crash guard's marks
+    } else if key == "font.own.bytes" {
+        csnprintf!(out, cap, "%d", font_own_bytes() as i32); // the font files the UI holds
+    } else if key == "font.own.drawn" {
+        csnprintf!(out, cap, "%d", (font_own_drawn() > 0) as i32); // a custom font drew a glyph
     } else if let Some(k) = key.strip_prefix("settings.kept.") {
         csnprintf!(out, cap, "%s", &String::from_utf8_lossy(&settings_kept(k).unwrap_or_default()).into_owned());
     } else if key == "settings.panel_tools" {
@@ -3198,6 +3227,7 @@ pub fn app_global_action(a: &mut App, action: i32, src: ActionSrc) -> bool {
         SHORTCUT_THEME => {
             a.settings.theme = if a.settings.theme == UiTheme::Classic as i32 { UiTheme::Gothic as i32 } else { UiTheme::Classic as i32 };
             ui_set_theme(if a.settings.theme == UiTheme::Classic as i32 { UiTheme::Classic } else { UiTheme::Gothic });
+            crate::userfonts::userfonts_apply(a); // (Classic's own font, if it has one; Gothic holds none)
             httpd_restyle(ui_theme() == UiTheme::Gothic); // (the share pages, if Live view is on)
             relayout = true;
         }

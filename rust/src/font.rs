@@ -272,6 +272,8 @@ struct State {
     own_off: bool,
     /// glyphs of custom faces drawn so far (the crash guard waits for a screen with some)
     own_drawn: u32,
+    /// how many times the custom font in use was set (font_look: another font, another layout)
+    own_sets: usize,
 }
 
 impl State {
@@ -291,6 +293,7 @@ impl State {
             own_pick: 0,
             own_off: false,
             own_drawn: 0,
+            own_sets: 0,
         }
     }
 }
@@ -600,7 +603,16 @@ fn set_own_slot(st: &mut State, which: usize, f: Option<OwnFont>) {
 /// Classic's text from now on in a font of the owner's own (None: in the family again). It passed the
 /// check: userfonts.rs loads it. Gothic keeps its pixel faces; FIXED faces and icons stay Terminess.
 pub fn font_set_own(f: Option<OwnFont>) {
-    with(|st| set_own_slot(st, 0, f));
+    with(|st| {
+        st.own_sets += 1;
+        set_own_slot(st, 0, f)
+    });
+}
+
+/// A number for what Classic's text is drawn in now, for anything that keeps a layout it measured: the
+/// family (FONT_FAMILIES), or past them a number of its own for each custom font set.
+pub fn font_look() -> usize {
+    with(|st| if st.own_map[0].is_some() && !st.own_off { FONT_FAMILIES.len() + st.own_sets } else { st.family })
 }
 
 /// Whether a custom font is in use for Classic's text.
@@ -609,16 +621,17 @@ pub fn font_own() -> bool {
 }
 
 /// The font the Font sheet shows a sample of (None: none), held beside the one in use and drawn only by
-/// font_with_sample.
+/// font_with_own.
 pub fn font_set_sample(f: Option<OwnFont>) {
     with(|st| set_own_slot(st, 1, f));
 }
 
-/// f run with Classic's text in the sample font (font_set_sample), the font in use again after it.
-pub fn font_with_sample<R>(f: impl FnOnce() -> R) -> R {
+/// f run with Classic's text in a font of the owner's own: the sample (font_set_sample), or the font in use
+/// (inside font_with_family, which sets it aside); what drew before draws again after it.
+pub fn font_with_own<R>(sample: bool, f: impl FnOnce() -> R) -> R {
     let (was_pick, was_off) = with(|st| {
         let was = (st.own_pick, st.own_off);
-        st.own_pick = 1;
+        st.own_pick = sample as usize;
         st.own_off = false;
         let gothic = st.gothic;
         map_faces(st, gothic);
@@ -1900,11 +1913,14 @@ mod tests {
         // the sample: another font, only inside font_with_sample
         font_set_sample(Some(OwnFont { regular: face(b"atkinson"), bold: None }));
         assert_eq!(font_measure(FontFace::Regular, 44.0, "Hamburg"), reg);
-        let sample = font_with_sample(|| font_measure(FontFace::Regular, 44.0, "Hamburg"));
+        let sample = font_with_own(true, || font_measure(FontFace::Regular, 44.0, "Hamburg"));
         assert_ne!(sample, reg);
         assert_eq!(font_measure(FontFace::Regular, 44.0, "Hamburg"), reg);
-        // the sheet's own words: the family, whatever font is in use
+        // the sheet's own words: the family, whatever font is in use; the font in use again inside it
         let term = font_with_family(0, || font_measure(FontFace::Regular, 44.0, "Hamburg"));
+        assert_ne!(term, reg);
+        assert_eq!(font_with_family(0, || font_with_own(false, || font_measure(FontFace::Regular, 44.0, "Hamburg"))), reg);
+        assert_eq!(font_with_family(0, || font_with_own(true, || font_measure(FontFace::Regular, 44.0, "Hamburg"))), sample);
         font_set_sample(None);
         font_set_own(None);
         assert_eq!(font_measure(FontFace::Regular, 44.0, "Hamburg"), term);

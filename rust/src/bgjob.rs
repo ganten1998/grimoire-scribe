@@ -33,6 +33,9 @@ pub enum BgKind {
     /// id: the notebook being made, path: the PDF's StoragePath; one slice of at most 25 pages or 20 s of a PDF
     /// import (pdfimport.rs). It ends with "more to do" (exit 3) until the last slice, which commits.
     PdfImport = 7,
+    /// id: none, path: "" or "recheck:<key>"; the fonts of grimoire/fonts that have no verdict yet, each checked by
+    /// the sandboxed worker (userfonts.rs, 2.1.0-beta.2). It ends 0, 3 (some files wait) or 4 (no worker).
+    FontCheck = 8,
 }
 
 /// Queues a job (a queued duplicate, same kind, id and path, is merged). notify: report the result
@@ -191,7 +194,8 @@ pub fn bg_poll_job(done_kind:Option<&mut i32>,mut done_id:Option<&mut FixedStr<S
             let code = if r == pid && libc::WIFEXITED(st) { libc::WEXITSTATUS(st) } else { -1 };
             let (kind, notify, id, job) = with(|s| if extra { (s.extra.kind, s.extra.notify, s.extra.id, s.extra) } else { (s.running.kind, s.running_notify, s.running.id, s.running) });
             let is_pdf = kind == BgKind::PdfImport;
-            let ok = code == 0 || (is_pdf && (code == 2 || code == 3));
+            // (a font check's 3: some files were still being copied and wait for the next look)
+            let ok = code == 0 || (is_pdf && (code == 2 || code == 3)) || (kind == BgKind::FontCheck && code == 3);
             if let Some(done)=done_id.as_deref_mut(){*done=id;}
             if is_pdf && code == 3 {
                 with(|s| if extra { s.extra_pid = -1 } else { s.pid = -1 });
@@ -299,7 +303,7 @@ struct Job {
     notify: bool,
 }
 
-const K_KIND_NAMES: [&str; 8] = ["export", "compaction", "template", "import", "map layout", "page previews", "library map layout", "PDF import"];
+const K_KIND_NAMES: [&str; 9] = ["export", "compaction", "template", "import", "map layout", "page previews", "library map layout", "PDF import", "font check"];
 
 /// bgjob.c's g_q, g_n, g_pid, g_running_notify and g_running.
 struct State {
@@ -410,6 +414,7 @@ fn run_job(j: &Job) -> i32 {
         BgKind::Template => bg_template(j.id.as_str(), j.dir.as_str(), j.dpi),
         BgKind::ImportFolder => bg_import_folder(j.dir.as_str(), j.dpi),
         BgKind::PdfImport => crate::pdfimport::bg_pdf_import(j.id.as_str(), j.dir.as_str()),
+        BgKind::FontCheck => crate::userfonts::bg_font_check(j.dir.as_str(), j.dpi),
     }
 }
 
@@ -651,8 +656,10 @@ fn start_job(j: Job, extra: bool) -> bool {
         }
         let rc = run_job_guarded(&j);
         // SAFETY: the child ends here without running the parent's exit handlers or flushing its
-        // buffers. (A PDF import slice's 2 and 3 mean done with blank pages, and more to do.)
-        unsafe { libc::_exit(if rc == 0 { 0 } else if j.kind == BgKind::PdfImport && (rc == 2 || rc == 3) { rc } else { 1 }) };
+        // buffers. (A PDF import slice's 2 and 3 mean done with blank pages, and more to do; a font check's 3
+        // and 4, some files wait, and no worker can be had.)
+        let says_more = (j.kind == BgKind::PdfImport && (rc == 2 || rc == 3)) || (j.kind == BgKind::FontCheck && (rc == 3 || rc == 4));
+        unsafe { libc::_exit(if rc == 0 { 0 } else if says_more { rc } else { 1 }) };
     }
     let beside = with(|s| {
         if extra {

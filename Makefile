@@ -176,7 +176,9 @@ SIM_HOOKS := GRIMOIRE_WIFI_SCRIPT GRIMOIRE_HOST GRIMOIRE_PASSCODE GRIMOIRE_SIM_A
              GRIMOIRE_SIM_DENSE_DRAW_MS GRIMOIRE_SIM_CORES GRIMOIRE_SIM_BACKLINKS_STEP_MS GRIMOIRE_CACHE_WINDOW_MS GRIMOIRE_STORAGE \
              GRIMOIRE_IMPORT_STABLE GRIMOIRE_PDF_SLICE_PAGES GRIMOIRE_PDF_BANDS GRIMOIRE_PDF_NO_MAP GRIMOIRE_PDF_FREE_BYTES GRIMOIRE_PDF_WATCHDOG_MS \
              GRIMOIRE_PDF_TEST_CRASH_PAGE GRIMOIRE_PDF_TEST_HANG_PAGE GRIMOIRE_PDF_TEST_ALLOC_PAGE GRIMOIRE_PDF_TEST_TRAP_PAGE GRIMOIRE_PDF_TEST_LINKS GRIMOIRE_WORK_FAIL_STEP GRIMOIRE_WORK_EXE GRIMOIRE_SANDBOX \
-             GRIMOIRE_PIC_WATCHDOG_MS GRIMOIRE_PIC_TEST_CRASH GRIMOIRE_PIC_TEST_HANG GRIMOIRE_PIC_TEST_TRAP
+             GRIMOIRE_PIC_WATCHDOG_MS GRIMOIRE_PIC_TEST_CRASH GRIMOIRE_PIC_TEST_HANG GRIMOIRE_PIC_TEST_TRAP \
+             GRIMOIRE_FONT_WATCHDOG_MS GRIMOIRE_FONT_SLICE_MS GRIMOIRE_FONT_JOB_MS GRIMOIRE_FONT_TEST_CRASH GRIMOIRE_FONT_TEST_HANG \
+             GRIMOIRE_FONT_TEST_TRAP GRIMOIRE_FONT_TEST_DRAW_CRASH GRIMOIRE_FONT_MEM_AVAILABLE
 # The scenarios tap by coordinates and check English text: they run in English whatever the
 # caller's LANG says (GRIMOIRE_LANG ranks first), unless a scenario's "# env:" line sets another.
 SCEN_LANG := GRIMOIRE_LANG=en
@@ -400,6 +402,13 @@ test-sim:
 pdf-fixtures:
 	@mkdir -p $(abspath tests/fixtures/pdf)
 	$(call RCARGO,GRIMOIRE_WRITE_PDF_FIXTURES="$(abspath tests/fixtures/pdf)") test --test test_pdf_fixtures
+
+# The fonts the scenarios copy (tests/fixtures/fonts/), made by the fixture writer in rust/tests/fontfix, never
+# edited by hand; rust/tests/test_font_fixtures.rs checks the committed bytes are what it makes now.
+.PHONY: font-fixtures
+font-fixtures:
+	@mkdir -p $(abspath tests/fixtures/fonts)
+	$(call RCARGO,GRIMOIRE_WRITE_FONT_FIXTURES="$(abspath tests/fixtures/fonts)") test --test test_font_fixtures
 
 # The C tree's unit tests (core + ui only; no platform).
 TESTS := $(patsubst tests/%.c,$(CBUILD)/test/%,$(wildcard tests/test_*.c))

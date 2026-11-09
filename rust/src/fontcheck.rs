@@ -450,26 +450,42 @@ fn open_face<'a>(data: &'a [u8], out: &mut Outliner, scale_pm: i32) -> Result<Op
         }
     }
     // The line: the font's own, unless it is far from what its letters reach (a font whose tables say ten
-    // lines of air, or none): then what the capitals, the digits and g j p q y reach.
+    // lines of air, or none): then what they reach. Above: the capitals, the digits, the tall small letters,
+    // and the accented capitals it has; below: g j p q y and the cedillas.
     let limit_line = upem * 8;
-    let reach = |out: &mut Outliner, chars: &[u8]| -> Result<(i32, i32), Refuse> {
-        let (mut top, mut bottom) = (0, 0);
-        for &c in chars {
-            match out.outline(&glyphs, ascii[c as usize], &[], limit_line) {
-                Ok(Some(b)) => {
-                    top = top.max(b.y1);
-                    bottom = bottom.min(b.y0);
-                }
-                Ok(None) => {}
-                Err(_) => return Err(Refuse::Unreadable),
+    let reach = |out: &mut Outliner, glyph: u32, need: bool, top: &mut i32, bottom: &mut i32| -> Result<(), Refuse> {
+        match out.outline(&glyphs, glyph, &[], limit_line) {
+            Ok(Some(b)) => {
+                *top = (*top).max(b.y1);
+                *bottom = (*bottom).min(b.y0);
             }
+            Ok(None) => {}
+            // (a letter that does not draw refuses the font; an accented one is only left out of the measure)
+            Err(_) if need => return Err(Refuse::Unreadable),
+            Err(_) => {}
         }
-        Ok((top, bottom))
+        Ok(())
     };
-    let (top, _) = reach(out, b"ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789")?;
-    let (_, bottom) = reach(out, b"gjpqy")?;
+    let (mut top, mut bottom, mut unused) = (0, 0, 0);
+    for &c in b"ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789" {
+        reach(out, ascii[c as usize], true, &mut top, &mut unused)?;
+    }
     if top <= 0 {
         return Err(Refuse::Unreadable); // capitals that reach nowhere
+    }
+    let caps = top;
+    for &c in b"bdfhkl" {
+        reach(out, ascii[c as usize], true, &mut top, &mut unused)?;
+    }
+    for &c in b"gjpqy" {
+        reach(out, ascii[c as usize], true, &mut unused, &mut bottom)?;
+    }
+    let extra = |cp: u32| cmap.map(cp).map(|g| g.to_u32()).filter(|&g| g != 0 && g < nglyphs);
+    for g in (0xC0u32..=0xDE).filter_map(extra) {
+        reach(out, g, false, &mut top, &mut unused)?;
+    }
+    for g in [0xC7u32, 0xE7].into_iter().filter_map(extra) {
+        reach(out, g, false, &mut unused, &mut bottom)?;
     }
     let fin = |v: f32| if v.is_finite() { v.round_ties_even().clamp(-1.0e6, 1.0e6) as i32 } else { 0 };
     let (mut ascent, mut descent) = (fin(m.ascent), fin(m.descent).min(0));
@@ -477,8 +493,13 @@ fn open_face<'a>(data: &'a [u8], out: &mut Outliner, scale_pm: i32) -> Result<Op
     if far(ascent, top) {
         ascent = top;
     }
-    if bottom < 0 && far(-descent, -bottom) {
-        descent = bottom;
+    if bottom < 0 {
+        if far(-descent, -bottom) {
+            descent = bottom;
+        }
+    } else if -(descent as i64) > caps as i64 {
+        // (letters without a tail, and a descent deeper than the capitals are tall: a quarter of them)
+        descent = -(caps / 4);
     }
     let line = ascent - descent;
     if !(upem / 8..=upem * 8).contains(&line) {
@@ -549,7 +570,7 @@ fn open_face<'a>(data: &'a [u8], out: &mut Outliner, scale_pm: i32) -> Result<Op
     // Its scale: capitals as tall as Terminess's, then smaller until its text is no wider than Terminess's.
     // (The first slice settles it; the ones after it are told.)
     if scale_pm == 0 {
-        let cap = out.outline(&glyphs, ascii[b'H' as usize], &[], line).ok().flatten().map_or(top, |b| b.y1).max(1);
+        let cap = out.outline(&glyphs, ascii[b'H' as usize], &[], line).ok().flatten().map_or(caps, |b| b.y1).max(1);
         let k = (FONT_CAP_OF_LINE * line as f32 / cap as f32).clamp(0.85, 1.25);
         let (pm, lacks) = fit_strings(&font, &facts, (k * 1000.0).round() as i32);
         facts.scale_pm = pm;
@@ -579,31 +600,40 @@ fn fit_strings(font: &FontRef, facts: &FaceFacts, start: i32) -> (i32, u32) {
             (a.is_finite() && a >= 0.0 && a <= FONT_BOX_LINES as f32 * line).then_some(a * px / line)
         })
     };
+    // (what Terminess, or the Japanese face behind it, takes for a character, as font.rs lays it out)
+    let mut theirs = std::collections::HashMap::<u32, f32>::new();
+    let mut terminess = |ch: char| -> f32 {
+        *theirs.entry(ch as u32).or_insert_with(|| {
+            let mut buf = [0u8; 4];
+            font_measure(FontFace::Fixed, px, ch.encode_utf8(&mut buf)) as f32
+        })
+    };
     // each string: what the font's own glyphs take at scale 1, what the borrowed ones take, Terminess's width
+    // (character by character, so a string drawn all in borrowed glyphs is exactly as wide either way)
     let mut rows: Vec<(f32, f32, f32)> = Vec::new();
     let mut lacks = 0u32;
     let mut one = |s: &str, lang: usize, rows: &mut Vec<(f32, f32, f32)>| {
         if s.chars().count() < 3 {
             return;
         }
-        let (mut a, mut b) = (0.0f32, 0.0f32);
-        let mut buf = [0u8; 4];
+        let (mut a, mut b, mut t) = (0.0f32, 0.0f32, 0.0f32);
         for ch in s.chars() {
             let cp = ch as u32;
             if cp < 0x20 {
                 continue;
             }
+            let w = terminess(ch);
+            t += w;
             match advance(cp).filter(|_| !crate::font::cjk(cp)) {
-                Some(w) => a += w,
+                Some(own) => a += own,
                 None => {
-                    b += font_measure(FontFace::Fixed, px, ch.encode_utf8(&mut buf)) as f32;
+                    b += w;
                     if cp > 0x20 && !crate::font::cjk(cp) {
                         lacks |= 1 << lang;
                     }
                 }
             }
         }
-        let t = font_measure(FontFace::Fixed, px, s) as f32;
         if t > 0.0 {
             rows.push((a, b, t));
         }

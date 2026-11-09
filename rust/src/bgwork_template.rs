@@ -361,7 +361,7 @@ fn uncap_memory(m: &MemCap) {
 
 // A folder's README.txt, written once when Grimoire makes the folder (in the language in use then)
 // for the owner to read on a computer: a title and paragraphs, a translated string each.
-fn write_readme(dir: &str, parts: &[&str], what: &str) {
+pub(crate) fn write_readme(dir: &str, parts: &[&str], what: &str) {
     let mut path = String::new();
     csnprintf!(&mut path, 700, "%s/README.txt", dir);
     if exists(&path) {
