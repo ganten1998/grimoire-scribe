@@ -19,7 +19,7 @@ pub const PDF_CACHE_MAX: u64 = 256 << 20;
 /// Bumped whenever a change to drawing would make an old record wrong.
 const PDF_RENDER_VER: u32 = 1;
 /// A record's header, in bytes.
-const HEAD: usize = 80;
+const HEAD: usize = 88;
 /// The most a record's stream may be (a page is one image of at most 6000 x 6000 pixels).
 const Z_MAX: usize = 128 << 20;
 
@@ -53,11 +53,12 @@ pub enum PdfCacheMode {
 /// What a record was made under, besides the picture's channels (checked apart: the page's paper is
 /// in the record).
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
-struct Stamp {
+pub struct PdfStamp {
     render: u32,
     version: u64,
     dpi: u32,
     size: u64,
+    ino: u64,
     sec: i64,
     nsec: u32,
     nbw: i32,
@@ -77,7 +78,7 @@ pub struct PageImage {
 
 /// A record read back: the image, and what it was made from.
 struct Record {
-    stamp: Stamp,
+    stamp: PdfStamp,
     paper: u32,
     key_ch: u32,
     img: PageImage,
@@ -88,7 +89,7 @@ pub struct PdfCache {
     write: bool,
     /// a write failed: no more are tried in this run
     off: bool,
-    stamp: Stamp,
+    stamp: PdfStamp,
     /// picture channels by paper id (one header read a picture in a run)
     chans: std::collections::HashMap<u32, u32>,
 }
@@ -125,16 +126,19 @@ impl PdfCache {
             dir: format!("{}/{}", pdf_cache_root(), nb.id.as_str()),
             write: mode == PdfCacheMode::ReadWrite,
             off: false,
-            stamp: Stamp { render: PDF_RENDER_VER, version: fnv(GRIMOIRE_VERSION), dpi: dpi.to_bits(), nbw: w, nbh: h, ..Stamp::default() },
+            stamp: PdfStamp { render: PDF_RENDER_VER, version: fnv(GRIMOIRE_VERSION), dpi: dpi.to_bits(), nbw: w, nbh: h, ..PdfStamp::default() },
             chans: std::collections::HashMap::new(),
         })
     }
 
-    fn stamp_of(&self, nb: &NotebookInfo, pid: u32) -> Stamp {
+    /// What a record of the page must have been made under, as the page file is now: taken before the
+    /// page is read, so a save that comes while it is drawn leaves the record stale, never trusted.
+    pub fn stamp_of(&self, nb: &NotebookInfo, pid: u32) -> PdfStamp {
         use std::os::unix::fs::MetadataExt;
         let mut s = self.stamp;
         if let Ok(m) = std::fs::metadata(page_file(nb, pid)) {
             s.size = m.len();
+            s.ino = m.ino();
             s.sec = m.mtime();
             s.nsec = m.mtime_nsec() as u32;
         }
@@ -150,21 +154,21 @@ impl PdfCache {
     }
 
     /// The page's image when a record of it was made from the page as it is now.
-    pub fn get(&mut self, nb: &NotebookInfo, pid: u32) -> Option<PageImage> {
+    pub fn get(&mut self, nb: &NotebookInfo, pid: u32, stamp: &PdfStamp) -> Option<PageImage> {
         let data = std::fs::read(self.record_path(pid)).ok()?;
         let rec = parse(&data)?;
-        if rec.stamp != self.stamp_of(nb, pid) || rec.key_ch != self.channels(nb, rec.paper) {
+        if rec.stamp != *stamp || rec.key_ch != self.channels(nb, rec.paper) {
             return None;
         }
         Some(rec.img)
     }
 
     /// Keeps the image just drawn for the page (best effort). `paper` is the page's paper kind.
-    pub fn put(&mut self, nb: &NotebookInfo, pid: u32, paper: u32, img: &PageImage) {
+    pub fn put(&mut self, nb: &NotebookInfo, pid: u32, stamp: &PdfStamp, paper: u32, img: &PageImage) {
         if !self.write || self.off {
             return;
         }
-        let rec = Record { stamp: self.stamp_of(nb, pid), paper, key_ch: self.channels(nb, paper), img: PageImage { w: img.w, h: img.h, ch: img.ch, z: Vec::new() } };
+        let rec = Record { stamp: *stamp, paper, key_ch: self.channels(nb, paper), img: PageImage { w: img.w, h: img.h, ch: img.ch, z: Vec::new() } };
         let head = serialize_head(&rec, img.z.len(), crc32(&img.z));
         if !self.write_record(pid, &head, &img.z) {
             self.off = true;
@@ -222,6 +226,7 @@ fn serialize_head(r: &Record, zlen: usize, crc: u32) -> Vec<u8> {
     v.extend_from_slice(&r.img.h.to_le_bytes());
     v.extend_from_slice(&(zlen as u32).to_le_bytes());
     v.extend_from_slice(&crc.to_le_bytes());
+    v.extend_from_slice(&r.stamp.ino.to_le_bytes());
     while v.len() < HEAD {
         v.push(0);
     }
@@ -240,11 +245,12 @@ fn parse(d: &[u8]) -> Option<Record> {
     };
     let u32_ = |s: &[u8]| u32::from_le_bytes([s[0], s[1], s[2], s[3]]);
     let u64_ = |s: &[u8]| u64::from_le_bytes([s[0], s[1], s[2], s[3], s[4], s[5], s[6], s[7]]);
-    let stamp = Stamp {
+    let stamp = PdfStamp {
         render: u32_(take(4)),
         version: u64_(take(8)),
         dpi: u32_(take(4)),
         size: u64_(take(8)),
+        ino: 0,
         sec: u64_(take(8)) as i64,
         nsec: u32_(take(4)),
         nbw: u32_(take(4)) as i32,
@@ -257,6 +263,8 @@ fn parse(d: &[u8]) -> Option<Record> {
     let h = u32_(take(4)) as i32;
     let zlen = u32_(take(4)) as usize;
     let crc = u32_(take(4));
+    let ino = u64_(take(8));
+    let stamp = PdfStamp { ino, ..stamp };
     if (ch != 1 && ch != 3) || w < 1 || h < 1 || zlen > Z_MAX || d.len() != HEAD + zlen {
         return None;
     }

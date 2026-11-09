@@ -703,7 +703,10 @@ pub fn export_notebook_pdf_to(nb: &NotebookInfo, dpi: f32, sink: &mut dyn Sink, 
 /// as it is, else the page drawn (and kept, when the cache is written). None when it cannot be drawn.
 fn page_image(nb: &NotebookInfo, index: i32, dpi: f32, cache: &mut Option<PdfCache>, pl: &mut PageLinks) -> Option<PageImage> {
     let pid = nb.page_ids[index as usize];
-    if let Some(img) = cache.as_mut().and_then(|c| c.get(nb, pid)) {
+    // (the page file's stamp before anything reads it: a save that comes while the page is drawn must not
+    // make the picture drawn from the old page pass for the new one's)
+    let stamp = cache.as_ref().map(|c| c.stamp_of(nb, pid));
+    if let Some(img) = cache.as_mut().zip(stamp.as_ref()).and_then(|(c, st)| c.get(nb, pid, st)) {
         // A page with no links needs no reading: its image is all the PDF takes from it.
         let mut first = 0;
         pl.n = 0;
@@ -736,8 +739,8 @@ fn page_image(nb: &NotebookInfo, index: i32, dpi: f32, cache: &mut Option<PdfCac
     let img = z.map(|z| PageImage { w, h, ch: if color.is_some() { 3 } else { 1 }, z: z.as_slice().to_vec() });
     canvas_free(&mut c);
     let img = img?;
-    if let Some(cache) = cache.as_mut() {
-        cache.put(nb, pid, paper, &img);
+    if let (Some(cache), Some(stamp)) = (cache.as_mut(), stamp.as_ref()) {
+        cache.put(nb, pid, stamp, paper, &img);
     }
     Some(img)
 }

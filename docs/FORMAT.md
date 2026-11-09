@@ -1646,11 +1646,12 @@ offset  size  field
 56      4     the image's channels, in the top byte (1 or 3)
 60      4     image width      64  4  image height
 68      4     length of the stream            72  4  CRC-32 of the stream
-76      4     zero            80  ...  the zlib stream
+76      8     the page file's inode           84  4  zero
+88      ...   the zlib stream
 ```
 
 All integers little endian. A record is used only when it reads, its length and CRC-32 are right, its stamp
-(bytes 4 to 47) is the page's today, and the channels of the page's picture are what the record says: a
+(bytes 4 to 47, and the inode) is the page's today, taken before the page was read, and the channels of the page's picture are what the record says: a
 changed page, a picture replaced by a gray or a colour one, another dpi or page size, a newer Grimoire, a
 damaged or truncated file, are all simply drawn again (full render on any doubt). The PDF's bytes are the same
 whether a page was drawn or found: streamed output is byte for byte a full render. A record is written

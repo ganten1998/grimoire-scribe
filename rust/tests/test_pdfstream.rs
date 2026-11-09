@@ -123,7 +123,12 @@ fn streamed_is_a_full_render_and_the_mirror_fills_the_cache() {
 fn a_changed_page_draws_once() {
     let nb = book("Changed", 12);
     mirror(&nb, 300.0);
+    // a save changes the page's stamp (taken before the page is read, so a save during a draw leaves the record stale)
+    let cache = PdfCache::open(&nb, 300.0, PdfCacheMode::Read).unwrap();
+    let before = cache.stamp_of(&nb, nb.page_ids[5]);
     scribble(&nb, 5, 99);
+    assert_ne!(cache.stamp_of(&nb, nb.page_ids[5]), before, "a saved page has another stamp");
+    assert_eq!(cache.stamp_of(&nb, nb.page_ids[4]), cache.stamp_of(&nb, nb.page_ids[4]));
     let nb = reload(&nb);
     let (pdf, drawn) = mirror(&nb, 300.0);
     assert_eq!(drawn, 1, "a changed notebook closes by drawing its one changed page");
