@@ -439,6 +439,23 @@ to 2.0.0-beta.5 (f9d13f5) keeps those links working there through their ink; lin
 have no ink, so they do nothing in beta.5 until you come back. The checks to run on the Kindle are in
 docs/TESTING.md (Index phase 2).
 
+## PDF imports (2.1.0-beta.2)
+
+Copy a PDF into `grimoire/import/` (see README). Device checks are in TESTING.md. What grimoire.log says (no
+file name, title or key ever appears in it: ids, page numbers, counts, timings, reasons):
+
+- `work: sandboxed (uid 62001, chroot, netns, no new privileges, seccomp, selinux enforcing|permissive|off)`:
+  once a session, at the first worker. `work: not sandboxed (...)` anywhere the steps are skipped.
+- `import: <id>: N page(s), the PDF is N KB`, `import: <id>: N of M pages` (every 10), then `import: notebook
+  <id> made of N page(s), N picture(s), N blank`.
+- `import: N PDF(s) queued; left as they are: ...`: a scan's counts (not yet steady, tried out, imported,
+  skipped, held elsewhere).
+- `import: <id>: page N of M: the worker died of signal S (strike K)` or `... stalled ...` or `... made call C,
+  which the sandbox does not allow` (a call to add to `sandbox::s1::allow` with the spike's numbers); after the
+  second strike `... could not be read ...; it is blank`.
+- `import: <id>: the sandbox refused its step "<step>": no PDF is read and no try is counted`.
+- `bg: PDF import of <id> (pid N)` once per slice; `bg: PDF import pid N done`.
+
 ## Touch gestures and the touch trace
 
 Two fingers are gestures on the notebook page (docs/SHORTCUTS.md, gestures.ini by hand): down opens

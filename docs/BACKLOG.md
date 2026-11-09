@@ -4,6 +4,34 @@ Work that was decided, deferred or found but not done yet. Keep this current: wh
 move it to "Done" with the version; when something is deferred, add it here with who decided and
 why. Newest decisions first within each section.
 
+## PDF import (2.1.0-beta.2, lane L5): what waits, and what is for the owner
+
+- **S1 has not run**: every number it sets is a placeholder in `sandbox::s1` (slice and job CPU caps, band mode's
+  threshold, the 512 MB and 64 MB caps, the allow-list, the 2 s D12 trigger, the pipe against memfd), with a
+  comment "set by S1". The seccomp allow-list also carries `exit_group` (musl's `_exit`), which the plan's list
+  did not name.
+- **Links and the outline (lane L6)**: `pdfwork::probe_links` records nothing and the grammar has no `L`, `Q`, `O`
+  or `F` record yet; `pdfimport::commit` marks where `links.part` and `names.part` are folded in (MERGE-ME L6).
+- **Pictures in the worker (lane L7)**: `sandbox::session_broken()` is what L7 asks to fall back to 2.0's path;
+  `WorkKind` has only `Pdf`, and the record protocol is open to a font kind (L10).
+- **The picker (lane L8)** calls `pdfimport::pdf_import_queue(&StoragePath, name, folder, dpi)`; the Import place's
+  Waiting row reads `pdfimport::detached_running()`. The runner's `pdfimport` command stands in until then.
+- **The notebook PDF (lane L9)**: MERGE-ME: the mirror and the share pages draw pages through `bgimage_render`,
+  which holds only the luma canvas, so they embed the gray render of a colour page (FORMAT.md says so); if L9's
+  streamed PDF ever embeds a page's picture file directly, a colour page is a 3-channel PNG and must be
+  converted or embedded as DeviceRGB. `child_setup` only gained the lock's descriptor; L9's caps are still to add.
+- **Not done**: a worker for fonts and pictures; the Import place's rows (L8); a card for the notebook being made;
+  an update while a detached import runs is covered only by the worker being `/proc/self/exe` (no scenario).
+- **Choices the plan did not settle**: a page's blank replacement is a white image page (shared by content);
+  the colour tolerance is 6 levels (pdfwork::GRAY_TOLERANCE); a PDF whose every page is unreadable is still a
+  notebook of blank pages; a PDF that fails before any page keeps its file and costs a try (3 tries, then it
+  waits until it changes); the "Some pages couldn't be read." ending shows even with the Library in front; a PDF
+  in a Library folder gets a toast "Imported notebook" since its card is not on the Library's top.
+- **Crates**: Cargo.lock names a second skrifa and read-fonts (glifo's optional dependency), not built; the build
+  has three duplicates (fearless_simd, miniz_oxide, syn), not the plan's five. flate2, smallvec and syn were
+  moved to versions published before 2026-11-02 so that every crate is two weeks old at a tag on or after
+  2026-11-16 (`tools/check-crate-dates.py --tag-date 2026-11-16` passes).
+
 ## Planned, not scheduled: a sleep screen picture of Grimoire's own (the owner, 2026-11-09)
 
 The owner wants a wallpaper Grimoire sets itself, with no KOReader in it ("no koreader folder for the non

@@ -380,15 +380,20 @@ its previews of these files in the .cache folder."),
     root_path("import", &mut dir, 600);
     if mkdir_p(&dir) == 0 {
         // TRANSLATORS: grimoire/import/README.txt, written like the templates one: its title, then
-        // its two paragraphs. "done" is the name of a folder: keep it as it is.
+        // its three paragraphs (folders of pictures, PDFs, what happens after). "done" is the name of a
+        // folder: keep it as it is. "PDF" files are the ones Grimoire reads itself, with their pages as they
+        // are printed.
         let parts = [
             tr("Importing pages into Grimoire"),
             tr("To write on pages you already have, such as a PDF saved as pictures, put a folder of PNG or JPG \
 files here, one picture a page, and start Grimoire. The folder's name becomes the notebook's name, \
 and the pages follow the file names in order (page-2 comes before page-10). Gray pictures import \
 faster and take less room than colour ones."),
-            tr("Grimoire imports each folder in the background and then moves it into the done folder. Copy folders \
-in over USB while Grimoire is closed."),
+            tr("A PDF, such as a planner, goes in as it is: put the file here, or in a folder here to file its \
+notebook in the Library folder of that name, and open the Library. Its pages become the notebook's \
+pages, in colour where the PDF has colour. A file still being copied waits until it is whole."),
+            tr("Grimoire imports each folder or PDF in the background and then moves it into the done folder. Copy \
+them in over USB, or over SSH while Grimoire runs."),
         ];
         write_readme(&dir, &parts, "import");
     }

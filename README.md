@@ -247,6 +247,11 @@ your notebooks and settings from `quire/` to `grimoire/` and removes the old Qui
   PDF exported as pictures with `pdftoppm -gray -png -r 200 file.pdf page`) in
   `grimoire/import/<Name>/` and start Grimoire: it becomes the notebook <Name>, and the folder
   moves to `grimoire/import/done/`.
+- **PDFs**: copy a PDF (a planner, a book) into `grimoire/import/` over USB, or over SSH while Grimoire
+  runs, and open the Library: a notice at the bottom says how far it is ("Importing: page 37 of 412"), and
+  the notebook appears. Its pages are the PDF's pages, in colour where the PDF has colour (the Scribe shows
+  them in gray). A PDF put in a folder there goes into the Library folder of that name, and the PDF moves
+  to `import/done/`. KOReader's Open this book still works for books and for the pages it draws.
 - **Erased ink leaves the files**: when a notebook closes, ink erased entirely is taken out of its
   page files in the background. A stroke erased only in part stays whole in the file.
 
