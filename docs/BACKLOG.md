@@ -4,6 +4,23 @@ Work that was decided, deferred or found but not done yet. Keep this current: wh
 move it to "Done" with the version; when something is deferred, add it here with who decided and
 why. Newest decisions first within each section.
 
+## Planned, not scheduled: a sleep screen picture of Grimoire's own (the owner, 2026-11-09)
+
+The owner wants a wallpaper Grimoire sets itself, with no KOReader in it ("no koreader folder for the non
+koreader version"; "add it to the list but we aren't ready to build yet"). Today Display's "Sleep screen:
+KOReader wallpaper" shows `grimoire/koreader-sleep.png`, which only the KOReader plugin writes, at each
+hand-over from KOReader (`sendWallpaper`): KOReader's screensaver must be set to a custom image, a random image
+or a cover, and Grimoire opened from KOReader at least once; a start from the Kindle's library reuses the last
+snapshot, and with none the page shows.
+
+- **The plan:** a fifth sleep choice, "Sleep screen: a photo", from `grimoire/photos/` (the folder page
+  backgrounds already use, filled over USB): one photo picked in Display, or a random one at each sleep. The
+  photo job (bgwork_template.rs) fits it to the screen in grey in a background child and keeps the result in
+  Grimoire's own folder, so sleeping only reads a ready picture. Nothing of KOReader is read or written.
+- **To decide when it is built:** whether "KOReader wallpaper" stays for everyone or shows only when the
+  KOReader plugin is installed; fit or fill, and the background around a picture that does not fill the screen;
+  how a random pick avoids repeating.
+
 ## 2.1 foundations (lane L0, 2026-11-07): choices for the owner, and what waits
 
 Lane L0 built the shared pieces of the 2.1 plan (docs/DESIGN.md, Shared building blocks) with nothing new to
