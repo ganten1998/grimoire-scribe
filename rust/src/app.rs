@@ -1875,7 +1875,7 @@ fn pdf_import_done(a: &mut App, id: &str, ok: bool) {
     let mut msg = String::new();
     match fin {
         Finished::Nothing => {}
-        Finished::Imported { pages, blank } => {
+        Finished::Imported { pages, blank, trimmed } => {
             let mut nb = NotebookInfo::default();
             let on_top = store_load_info(id, &mut nb) == 0 && nb.folder.is_empty();
             if a.scr == ScreenId::Library && !a.asleep {
@@ -1885,6 +1885,10 @@ fn pdf_import_done(a: &mut App, id: &str, ok: bool) {
                 // TRANSLATORS: a PDF became a new notebook, but some of its pages could not be read and are
                 // blank; %d is its page count. In a toast: one line of about 1700 px at 44 px in bold, or two.
                 csnprintf!(&mut msg, 256, ng_("Imported notebook (%d page). Some pages couldn't be read.", "Imported notebook (%d pages). Some pages couldn't be read.", pages as i64), pages as i32);
+            } else if trimmed > 0 {
+                // TRANSLATORS: a PDF became a new notebook, but its document links (a planner's tabs) were more than
+                // a notebook holds and some were left out; %d is its page count. In a toast: one or two lines.
+                csnprintf!(&mut msg, 256, ng_("Imported notebook (%d page). Some links were left out.", "Imported notebook (%d pages). Some links were left out.", pages as i64), pages as i32);
             } else if !(a.scr == ScreenId::Library && on_top) {
                 // TRANSLATORS: a folder of page pictures (grimoire/import/<name>) or a PDF became a new notebook.
                 csnprintf!(&mut msg, 256, ng_("Imported notebook (%d page).", "Imported notebook (%d pages).", pages as i64), pages as i32);

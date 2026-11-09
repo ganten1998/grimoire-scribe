@@ -22,6 +22,7 @@ fn the_widest_import_texts_fit_two_lines_in_every_language_and_style() {
                 tr("PDF needs a password.").to_string(),
                 tr("PDF already imported.").to_string(),
                 cformat!(ng_("Imported notebook (%d page). Some pages couldn't be read.", "Imported notebook (%d pages). Some pages couldn't be read.", 2000), 2000),
+                cformat!(ng_("Imported notebook (%d page). Some links were left out.", "Imported notebook (%d pages). Some links were left out.", 2000), 2000),
             ];
             for t in &texts {
                 let lines = font_wrap_lines(FontFace::Bold, ui_text_size(), t, ui_toast_room(screen), None);

@@ -462,6 +462,13 @@ file name, title or key ever appears in it: ids, page numbers, counts, timings, 
   which the sandbox does not allow` (a call to add to `sandbox::s1::allow` with the spike's numbers); after the
   second strike `... could not be read ...; it is blank`.
 - `import: <id>: the sandbox refused its step "<step>": no PDF is read and no try is counted`.
+- Pictures (templates, photos, picture folders) are decoded by the same worker (`grimoire --work pic ...`), which
+  serves up to 32 pictures and is then replaced. `work: a picture's worker ended (the worker ended|the worker
+  stalled)` and `... made call C, which the sandbox does not allow`: the picture in hand is marked `.bad` (a
+  template or photo) or refuses its folder. `work: pictures decode in the writer (<why>); the sandbox is
+  unavailable`: once a process, when no worker could be had (a sandbox step failed, the exec did not start, the
+  handshake failed): pictures then decode in the writer as in 2.0, and nothing is marked. Only a picture
+  that comes from outside Grimoire and KOReader goes this way; KOReader's own page PNGs are still drawn by the UI.
 - `bg: PDF import of <id> (pid N)` once per slice; `bg: PDF import pid N done`.
 
 ## Touch gestures and the touch trace

@@ -56,6 +56,7 @@ root/import/<Name>/                     page pictures to become a notebook at th
 root/import/.annotate/                  a page KOReader sends to annotate, and its request (Annotated pages)
 root/trash/                             deleted notebooks and pages, moved here, never unlinked
 root/PDFs/                              the PDF mirror (an export, not data)
+root/.cache/pdf/<id>/                   the notebook PDF's page streams, disposable (2.1.0-beta.2)
 ```
 
 `root` is `/mnt/us/grimoire` on the Kindle. A notebook id is the folder's name: letters, digits,
@@ -671,6 +672,30 @@ every 10 s, and again after 5 s while a file waits):
   its mark is the same file in `import/.marks/` (`pick=1`, `name`, `folder`) and goes when the notebook is made or
   the import fails. The folder is walked by fsview and each picture opened without following a link; it is
   never moved, marked or written to, and no attempt is recorded for it.
+- **Links and names (lane L6):** slice 0 also asks the worker for the PDF's links (`LINKS <w> <h>`, after the page
+  count), in the pixels of the Scribe page by the same transform that draws the page, and keeps what it sent in
+  the work folder as `links.part` (the `L` and `Q` records, then `F`) and `names.part` (the `O` records), in the
+  worker's own record grammar, read back strictly by the last slice. The commit writes `doclinks.ini` (below) and
+  `nav.ini` from them, before `notebook.ini`, and removes the two parts. A worker that dies, stalls or lies in
+  the walk costs the notebook its links and names only (logged); the pages do not depend on it. What is read:
+  an annotation `/Subtype /Link`, not hidden (`/F` bit 2) or not viewed (bit 6); its `/A` GoTo (explicit
+  destination, or a name or string looked up in the catalog's `/Names /Dests` name tree and its PDF 1.1 `/Dests`
+  dictionary, each tried for either type), the four Named actions (`NextPage`, `PrevPage`, `FirstPage`,
+  `LastPage`, resolved to the concrete page), else its `/Dest`; an explicit destination naming its page by
+  number instead of a reference counts as a 0-based index in range; `/QuadPoints` (up to 8 quads, a link each,
+  its box as the area, a quad that is not an axis-aligned rectangle also as a closed `outline.` polygon),
+  else `/Rect`. Web links (URI) are left out and counted in the log; GoToR, Launch, JavaScript, a link with no
+  action, one whose destination does not resolve, an empty rectangle, a link to its own page and one that falls
+  off the page are left out and counted too. Walks are capped (name trees and the outline: depth 32, 100,000
+  entries and nodes, a visited set; 20,000 annotations a page; 60,000 links a PDF) and the rest is left out.
+  The areas are the mapped rectangles (floor of the minimum, ceiling of the maximum, clamped to the page, at
+  least 1 px), so a notebook exported by Grimoire and imported again gives its links back within 1 px. The
+  outline names pages: depth first, the first item that points at a page names it, a page's own name staying
+  (an import makes a new notebook, so none has one); titles are decoded from PDF text strings (UTF-16BE or LE
+  with a BOM, UTF-8 with a BOM, else PDFDocEncoding), controls become spaces, trimmed, cut at 95 bytes between
+  characters. The water level trims the densest pages first; when it (or a page's 1,024, or the worker's cap)
+  left links out the end says "Imported notebook (%d pages). Some links were left out." (the pages-not-read
+  ending wins when both apply).
 - **One owner:** `import/.lock` (flock) is taken by the UI without blocking before it queues any import and
   held while any is queued or running, through one close-on-exec handle; each background child (and the child
   that finishes the queue after Grimoire closes) keeps that descriptor. No job opens it or waits for it.
@@ -873,6 +898,9 @@ whose target is not `p<id>`, with its area and outline) are carried, as links.in
 | links | 16,000 | 4,000 |
 | size | 1.5 MiB | 512 KiB |
 | a page | 1,024 | 64 |
+
+Two producers fill it: KOReader's `links.txt` (above) and the PDF import's own link annotations (Imports: PDFs).
+Both go through `pdflinks.rs`.
 
 A file over a cap, a carried line past its bounds or one that holds a NUL does not read: it shows no tabs and is
 never written over. The water level: a fill keeps the most links under 90% of the links and of the bytes (outline
@@ -1670,3 +1698,52 @@ Since 2.0.0-beta.2 a batch makes its missing previews cheapest first: pages with
 page comes last. A preview counts as made when its stamp is current and its image as long as its header says
 (one cut short is made again). Previews written by an older version are used as they are, and older versions
 use these.
+
+## The notebook PDF and its page streams: `.cache/pdf/<id>/` (2.1.0-beta.2)
+
+The PDF of a notebook (the mirror in `PDFs/`, the share server's download, a zip's PDF entry) has one image
+per page: a Flate stream of the page drawn at the notebook's size, DeviceGray, or DeviceRGB for a page whose
+picture is a colour PNG (the picture fitted to the page, the ink drawn over it: where ink darkened the gray
+paper under it each channel is scaled by the same ratio, where it lightened it (white ink) each channel moves
+toward white by the same share; a pixel the ink did not touch is the picture's own). Every other page is gray.
+Drawing a page is most of the work, so each page's stream is kept in `root/.cache/pdf/<notebook id>/p<page
+id>.z`, one file per page, written by the background mirror job only (the share server's children read it and
+never write):
+
+```text
+offset  size  field
+0       4     "GPZ1"
+4       4     renderer version (bumped when drawing changes)
+8       8     FNV-1a of the Grimoire version string
+16      4     dpi, as the bits of the f32
+20      8     the page file's size
+28      8     the page file's modification time, seconds
+36      4     ... and nanoseconds
+40      4     the notebook's page width       44  4  its page height
+48      4     the page's paper kind (image papers: the picture's id is in it)
+52      4     the picture's channels by its PNG header when the record was made (3 colour, else 1)
+56      4     the image's channels, in the top byte (1 or 3)
+60      4     image width      64  4  image height
+68      4     length of the stream            72  4  CRC-32 of the stream
+76      8     the page file's inode           84  4  zero
+88      ...   the zlib stream
+```
+
+All integers little endian. A record is used only when it reads, its length and CRC-32 are right, its stamp
+(bytes 4 to 47, and the inode) is the page's today, taken before the page was read, and the channels of the page's picture are what the record says: a
+changed page, a picture replaced by a gray or a colour one, another dpi or page size, a newer Grimoire, a
+damaged or truncated file, are all simply drawn again (full render on any doubt). The PDF's bytes are the same
+whether a page was drawn or found: streamed output is byte for byte a full render. A record is written
+through `p<id>.z.tmp` and a rename, without a sync: it is a cache, and a record cut short fails its checks.
+When a write fails (a full disk, a folder that cannot be made) the run goes on without the cache.
+
+After a finished mirror the job prunes: the records of pages no longer in the notebook, the folders of
+notebooks that are gone, stray `share-<pid>.spool` files over an hour old, and then, past 256 MB in all, the
+oldest records first. Deleting `.cache/pdf/` loses nothing: the next mirror draws every page again.
+
+The PDF is written object by object to wherever it goes (a file, a connection, a zip entry), one page's
+stream in memory at a time, with the offsets kept for the xref; the mirror writes `<name>.pdf.tmp` as it goes
+and renames it over the old file when it is whole. The share server answers a PDF or zip download from a spool
+file it makes and unlinks at once (so the answer has its Content-Length), `.cache/pdf/share-<pid>.spool`; with
+no room for one it makes the file twice, once to count it and once into the connection. A zip's PDF entry is
+written with a data descriptor (flag bit 3) as stored deflate blocks, its sizes known only at its end.

@@ -1486,6 +1486,64 @@ fn load_picture(nb: &str, id: u32, out: &mut Canvas, why: &mut &'static str) -> 
     rc
 }
 
+/// How many channels the PDF of a notebook embeds for image paper k's page: 3 when the picture file is a
+/// colour PNG (read from its header alone, 26 bytes), else 1 (gray, no picture, a file that does not read).
+/// Grimoire keeps a picture gray when no pixel has colour, so a colour type is a colour picture.
+pub fn bgimage_channels(nb: &str, k: PaperKind) -> i32 {
+    if !paper_is_image(k) || nb.is_empty() {
+        return 1;
+    }
+    let mut dir = String::new();
+    let mut path = String::new();
+    if bgimage_dir(nb, &mut dir, 700) != 0 {
+        return 1;
+    }
+    bgimage_file(&dir, paper_image_id(k), &mut path, 800);
+    let mut head = [0u8; 26];
+    let Ok(mut f) = std::fs::File::open(&path) else { return 1 };
+    if f.read_exact(&mut head).is_err() || head[..8] != PNG_SIG {
+        return 1;
+    }
+    // (IHDR's colour type: 0 gray, 2 RGB, 3 palette, 4 gray and alpha, 6 RGBA)
+    if matches!(head[25], 2 | 3 | 6) {
+        3
+    } else {
+        1
+    }
+}
+
+/// The colour picture of image paper k fitted to a w x h page (RGB, rows of w * 3 bytes), for a page
+/// the notebook PDF embeds in colour. None when the picture is gray, missing or does not read: the
+/// page is then drawn gray as everywhere else. It is decoded afresh (not kept in the picture cache,
+/// whose pictures are gray), so a mirror child holds the one picture and no more.
+pub fn bgimage_render_color(nb: &str, k: PaperKind, w: i32, h: i32) -> Option<BgPicture> {
+    if bgimage_channels(nb, k) != 3 || w < 1 || h < 1 {
+        return None;
+    }
+    let mut dir = String::new();
+    let mut path = String::new();
+    bgimage_dir(nb, &mut dir, 700);
+    bgimage_file(&dir, paper_image_id(k), &mut path, 800);
+    let data = bgimage_read(&path, BG_UI_FILE_MAX)?;
+    let mut why = "";
+    let mut pic = BgPicture::default();
+    if data.len() < 8 || data[..8] != PNG_SIG || decode_within(&data, BG_UI_DECODE_BUDGET, &mut pic, &mut why) != 0 {
+        return None;
+    }
+    drop(data);
+    if pic.ch != 3 {
+        return None;
+    }
+    if pic.w == w && pic.h == h {
+        return Some(pic);
+    }
+    let mut fitted = BgPicture::default();
+    if bgimage_normalize(&pic, w, h, &mut fitted) != 0 {
+        return None;
+    }
+    Some(fitted)
+}
+
 // Notebook nb's picture id, decoded, or NULL (missing or unreadable: remembered).
 fn picture(nb: &str, id: u32) -> Option<Rc<Canvas>> {
     enum Look {

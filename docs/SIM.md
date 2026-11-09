@@ -861,3 +861,6 @@ private mapping: the worker reads the file whole), `GRIMOIRE_PDF_FREE_BYTES=N` (
 its allow-list when it reaches page N), `GRIMOIRE_WORK_FAIL_STEP=<step>` (that sandbox step fails),
 `GRIMOIRE_SANDBOX=require` (the steps are required, as on the Kindle) and `GRIMOIRE_WORK_EXE=<path>` (the binary a
 worker execs: a test's own executable is a test harness).
+Picture hooks (same builds): `GRIMOIRE_PIC_WATCHDOG_MS=N` (the picture watchdog), `GRIMOIRE_PIC_TEST_CRASH=N`,
+`..._HANG=N`, `..._TRAP=N` (a picture worker aborts, spins or makes a call outside its allow-list on its N-th
+picture), and `GRIMOIRE_WORK_FAIL_STEP` fails a picture worker's step too: pictures then decode in the writer.

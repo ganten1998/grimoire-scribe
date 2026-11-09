@@ -490,6 +490,7 @@ root/notebooks/<id>/p<pageid>.qpg.damaged-<time>   a page that could not be read
 root/notebooks/<id>/thumb.pgm      binary PGM thumbnail of page 1 (P5)
 root/trash/<id>/               deleted notebooks are moved here, never unlinked
 root/PDFs/<folder>/<name>.pdf  the PDF mirror (an export, not data)
+root/.cache/pdf/<id>/          the notebook PDF's page streams (disposable; docs/FORMAT.md)
 root/.passcode-paused          legacy beta.1 recovery marker (new sessions never create it)
 root/.passcode-left-off        how many starts were told a restart left the passcode off
 root/.koplugin-installed       the build whose KOReader plugin went into koreader/plugins, or
@@ -1341,7 +1342,7 @@ bullet and paragraph), the signature, Read all and Dismiss.
 A PDF's own links (a planner's tabs) live in `notebooks/<id>/doclinks.ini`, never in links.ini: own caps (16,000
 links, 1.5 MiB, 1,024 a page), so the user's 4,000/512 KiB/64 and a 2.0 build's reading are untouched. `doclinks.rs`
 holds the file (24-byte records sorted by page, annotation order kept), `pdflinks.rs` takes records from any
-source (KOReader's `links.txt` today) and validates, seeds (a hash of page and annotation index), fills (same
+source (KOReader's `links.txt`, and the PDF import's link annotations) and validates, seeds (a hash of page and annotation index), fills (same
 target and area within 2 px is one link) and trims to a water level at 90% of links and bytes, the densest pages
 first. The editor keeps them in `EditorState.dl`, read at open; taps try the user's links, then a document link
 whose exact area holds the point, then one reached only through the 7 mm growth (`doclinks_at`, later annotation
@@ -1352,6 +1353,36 @@ Select (D7b a): the hold asks `link_under`, which never sees them. Nothing that 
 index reads the file; Clear page, the lasso, the clipboard and the 64/4,000 checks read `nav.links` alone, so they
 never see them by construction. Copy page and Copy to notebook carry them (the latter only to targets that were
 copied too); the notebook PDF and raw zips carry them.
+
+## The notebook PDF, incremental and streamed (2.1.0-beta.2, lane L9)
+
+Closing a changed notebook used to draw every page again (minutes for a 400-page planner, holding the one
+background queue) and built the whole PDF in one buffer before writing it. Now `export_notebook_pdf_to` writes the
+PDF to any `Sink` (a Buf, a file, a count, a connection) as its objects are made: a scratch buffer holds one page's
+objects, a page's image goes to the sink straight, the xref's offsets are kept (8 bytes an object). Each page's
+Flate stream is cached in `grimoire/.cache/pdf/<id>/` under a stamp (`pdfcache.rs`; the record's layout is in
+FORMAT.md): a record that does not read or whose stamp is not the page's today is drawn again, so the cache can
+only make a PDF faster, never different (a test holds the streamed bytes equal to a render with the cache off,
+and counts the pages drawn). Links are not cached: the page is read for them only when the notebook has a link on
+it (the user's, or a document link), since they depend on `nav.ini` and `doclinks.ini`, not on the page's pixels.
+Only the mirror job writes records and prunes them (256 MB in all; deleted pages and notebooks; oldest first);
+the share server's children read.
+
+A page whose picture is colour (an imported PDF's page with colour, a colour template) is embedded as DeviceRGB:
+`bgimage_render_color` decodes the picture afresh (the picture cache holds gray), and the ink drawn over it
+is applied as a change of the gray paper beneath (`ink_over_colour`). The picture's channel count is in the stamp
+and is read from the PNG header (26 bytes), so a picture replaced by a gray one is drawn again.
+
+The share server's PDF and zip answers are made into a spool file in the child and sent from it (so the answer has
+its Content-Length and the progress counts stay exact), or made twice (count, then send) with no room for a spool;
+a zip's PDF entry is written with a data descriptor. The mirror's PDF is `<name>.pdf.tmp`, renamed when whole.
+
+Every background child carries two caps (`childcaps.rs`): `oom_score_adj` 500 (the PDF worker's 1000 is lane L5's;
+the UI's is unchanged) and `RLIMIT_AS` at the child's size at fork plus a margin by kind (a streaming mirror 64 MiB;
+previews and map layouts 128; compaction and the default 256; a picture job 512, above its own tighter cap), applied
+after `child_setup` for each bgjob child, the detached child and the share server's render children (128 MiB).
+Both are Linux's; the host build applies nothing. The mirror logs its pages, how many it drew, its time and
+`VmHWM` ("bg: export of ...: N pages, D drawn, T ms, VmHWM K kB").
 
 ## Fast navigation and optional KOReader integration (1.1.0-beta.2)
 
@@ -1908,6 +1939,31 @@ skipped (plain process isolation) unless GRIMOIRE_SANDBOX=require. The worker's 
 fixed grammar plus pixel bands, at most 4 MiB a job besides pixels, parsed strictly (`pdfwork.rs`); every
 number the device spike (S1) sets is in the one table `sandbox::s1`, marked "set by S1". The notebook, its
 slices, marks and colour rule are in FORMAT.md, "Imports: PDFs".
+
+The links and names (lane L6) come out of the same worker. After the page count the writer sends `LINKS <w> <h>`;
+the worker walks the annotations of every page (`pdfwork.rs`, module `links`), resolves each destination to a
+page (an explicit one by the page's object id, a named one through the name tree and the `/Dests` dictionary,
+read once and only when a link first names one, under the walk caps), maps the rectangle or quads through the
+transform the page was drawn with (`page_fit`, shared with the renderer so the box lands on what it covers), and
+answers `L`, `Q`, `O` and `F` records. The writer checks each one (`Collected::take`: pages inside the PDF,
+coordinates inside bounds, a quad only after its link, one name a page), keeps them in the work folder, and the
+last slice's commit puts them through `pdflinks_fill` and `pdflinks_water` into `doclinks.ini`, and the outline
+into `nav.ini`. A worker that fails in the walk costs the notebook its links, not its pages.
+Pictures (lane L7) go through the same worker as a second kind (`grimoire --work pic ...`, `picwork.rs`): the
+templates, photos and picture-folder pages come from outside Grimoire, so the writer reads their bytes (it hashes
+them, never parses them) and sends them down fd 5 one picture at a time (`C` a header check, `D` a decode, each a
+line then the bytes). The worker runs the very code the writer ran before (`bgimage.rs`: the header check, the
+decode within the 256 MiB budget, the EXIF turn for a photo, the fit onto the notebook's page) and answers with
+the source's size and the page picture, which the writer checks (the page's size, 1 or 3 channels, the source's
+bounds) before it writes a file. One worker serves up to 32 pictures (`s1::PICTURE_SLICE`), so a 2000-picture
+folder costs about 63 execs. A worker that dies or stalls on a picture ends that picture alone: a template or photo
+is marked `.bad`, a folder import is refused whole; a worker killed by the seccomp filter is the same (never a
+reason to decode in the writer, which would hand a compromised worker's picture to a root process). When no
+worker can be had at all (a sandbox step failed before a byte was read, the exec did not start, the handshake
+failed) pictures decode in the writer, as in 2.0, logged once (D21); `sandbox::session_broken()` is the flag the
+PDF import also reads. KOReader's own page PNGs and Grimoire's own `bg/` pictures are still decoded by the UI, as
+they come from KOReader's encoder and from Grimoire. The UI's check of a small template file with no preview yet
+(`install_picture`) goes through the worker too.
 
 ## The file picker (2.1.0-beta.2, lane L8)
 
