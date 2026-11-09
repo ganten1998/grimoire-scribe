@@ -1909,6 +1909,38 @@ fixed grammar plus pixel bands, at most 4 MiB a job besides pixels, parsed stric
 number the device spike (S1) sets is in the one table `sandbox::s1`, marked "set by S1". The notebook, its
 slices, marks and colour rule are in FORMAT.md, "Imports: PDFs".
 
+## The file picker (2.1.0-beta.2, lane L8)
+
+`browser.rs` is the picker, `fsview.rs` everything it touches. Library > New notebook > From a file... opens it
+over the sheet (the sheet stays under it: Cancel at the picker's root and Esc come back to it), hosted by the
+Library as a mode the way it hosts the Graph (`LibraryState.files`; its events, ticks, keys, redraws and probes
+are routed in `library.rs` as the Graph's are, and two fingers down does nothing in it).
+
+- **The one exception to "a tap acts".** A tap on a PDF opens its card (the popout's place, `popout_place`),
+  and the card's Import as notebook is the second tap: an import can be 400 pages, and the card is the
+  confirmation. A folder's tap enters it; its card (a hold of `HOLD_MS`, or its `...`) offers Open and Import
+  %d pictures as notebook. A contact outside a card closes it at the lift and does nothing else, and the lift
+  after a hold never acts.
+- **Places.** Import (`grimoire/import`), Documents (`documents`), Downloads and All storage (the root), each
+  with its real path as a second line, and the free space at the top. Rows are 150 px, paged, never scrolled; the
+  keys are Left and Right (Up and Down unbound), Esc goes up and cancels at the root. The picker lists folders
+  and PDFs only, by `name_cmp`, folders first.
+- **Read only outside Grimoire's folders (D26).** Every listing, stat and open is fsview's walk: no link at any
+  component, one device, `grimoire/notebooks`, `PDFs` and `trash` refused by identity (so a path cased otherwise
+  on a case-insensitive storage cannot reach them), a listing of names and kinds only in slices of 20 ms, the
+  stats, picture counts and book keys of the rows on screen on idle ticks. The action checks the file again
+  ("File changed. Try again."). The jobs that follow open the file through the same walk: a PDF is
+  `pdfimport::pdf_import_queue`, a folder of pictures `bgwork_template::import_pick_queue` (marks in
+  `import/.marks/`, the source never moved or written, each picture opened `O_NOFOLLOW`).
+- **Names (D28).** The notebook takes the file's name (a folder's, for pictures) unless a name was typed in the
+  sheet (`new_name_typed`), and goes in the sheet's In: folder; the paper tiles do not apply.
+- **The Import place** reads each row's status from the marks, the queue and the attempts
+  (`pdfimport::import_status`, `bgwork_template::folder_failed`) at most once a second, and redraws only the rows
+  that changed. The staying notice of an import stays off that place (`library_import_place_up`): its rows say it.
+- **"has notes"** is the PDF's book key (KOReader's partial MD5, 12 reads of 1 KiB through the walk) compared with
+  the notebooks' `source=`; the card then offers Open its notebook.
+- **Logs** carry counts and timings only ("files: listed N entries (M usable) in T ms"), never a name.
+
 ## Shared building blocks (2.1, lane L0)
 
 The 2.1 plan builds a few pieces once, for every later lane to reuse (no second one grows beside them).

@@ -609,6 +609,14 @@ def l10n(args, hooks):
                 n = f'fonts-{lang}-{style}'
                 task(n, 'tests/l10n/fonts.qs', f'{b}/scen/l10n/{n}',
                      [('GRIMOIRE_LANG', lang), ('GRIMOIRE_CHECK_FIT', '1')], inis[style], 4.0)
+        # The file picker (2.1.0-beta.2) over a fixture storage root, in every language and style.
+        fcopies = header('tests/l10n/files.qs')['copies']
+        for lang in langs:
+            for style in styles_for(lang):
+                n = f'files-{lang}-{style}'
+                t = task(n, 'tests/l10n/files.qs', f'{b}/scen/l10n/{n}',
+                         [('GRIMOIRE_LANG', lang), ('GRIMOIRE_CHECK_FIT', '1')], inis[style], 5.0)
+                t.copies, t.storage = fcopies, True
         # The unified Index and the cross-notebook selector (tests/index_l10n_check.py was these),
         # each from its fixture, then the Wi-Fi controls with and without an address
         # (tests/wifi_l10n_check.py was these), in every language and style.

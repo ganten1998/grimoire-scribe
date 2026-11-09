@@ -226,6 +226,13 @@ impl Browser {
         StoragePath::new(format!("{}/import", self.storage.as_ref()?.grimoire_rel()?.to_string_lossy()).as_bytes())
     }
 
+    /// Enters the folder `p` as a tap on it would (the tests'): false, with the toast, when the walk refuses it.
+    pub fn go(&mut self, p: StoragePath) -> bool {
+        let ok = self.enter(p, false, now_ms());
+        self.list_now();
+        ok
+    }
+
     /// Reads the folder shown again (Look again: the scan may have moved files).
     pub fn relist(&mut self, now: u32) {
         self.card = None;
@@ -356,6 +363,11 @@ impl Browser {
         pdfs.sort_by(|a, b| name_cmp(&a.name, &b.name));
         if odd > 0 || l.hidden > 0 {
             qlog!("files: %d names left out (links, refused folders, odd names, long paths: %d, %d of them odd)", (odd + l.hidden) as i32, l.hidden as i32, odd as i32);
+        }
+        if l.too_long > 0 {
+            // TRANSLATORS: a toast in the file picker: some names in this folder are left out because their path
+            // would be too long for Grimoire to hand to its import (one line).
+            self.toast = Some(tr("Path too long."));
         }
         self.rows = dirs;
         self.rows.extend(pdfs);
@@ -1335,5 +1347,90 @@ impl Browser {
                 find(if what == "more" { B_MORE } else { B_ROW }, i)
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::pdfimport::{import_status, ImportStatus};
+
+    // A storage root with Grimoire's folder in it, set as the app's (the process's: one test at a time).
+    static LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+    fn storage(name: &str) -> (String, std::sync::MutexGuard<'static, ()>) {
+        let g = LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let base = std::env::temp_dir().join(format!("grimoire-browser-{}-{name}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+        let root = base.join("grimoire");
+        std::fs::create_dir_all(root.join("import")).unwrap();
+        std::env::set_var("GRIMOIRE_STORAGE", &base);
+        assert_eq!(store_init(root.to_str().unwrap()), 0);
+        crate::pdfimport::ui_reset();
+        (base.to_str().unwrap().to_string(), g)
+    }
+
+    // What an Import row says: Waiting for a file nothing knows, Waiting for a pick that waits for the lock,
+    // Imported for a done mark, Failed once its attempts are used up and it has not changed.
+    #[test]
+    fn an_import_row_says_waiting_imported_or_failed() {
+        let (base, _g) = storage("status");
+        let f = format!("{base}/grimoire/import/A.pdf");
+        std::fs::write(&f, b"%PDF-1.4\n").unwrap();
+        let src = "grimoire/import/A.pdf";
+        let md = std::fs::metadata(&f).unwrap();
+        use std::os::unix::fs::MetadataExt;
+        let (size, mtime) = (md.len(), md.mtime());
+        assert_eq!(import_status(src, size, mtime), ImportStatus::Waiting);
+        let m = |state| crate::pdfimport::Mark { state, src: src.into(), pick: false, at: 1, ..Default::default() };
+        assert!(crate::pdfimport::mark_write_public(&m(crate::pdfimport::MarkState::Waiting)));
+        assert_eq!(import_status(src, size, mtime), ImportStatus::Waiting);
+        assert!(crate::pdfimport::mark_write_public(&m(crate::pdfimport::MarkState::Done)));
+        assert_eq!(import_status(src, size, mtime), ImportStatus::Imported);
+        crate::pdfimport::mark_drop(src);
+        // three tries with these very contents: Failed, until the file changes
+        let h = {
+            let mut h: u64 = 14695981039346656037;
+            for b in size.to_ne_bytes().iter().chain(mtime.to_ne_bytes().iter()) {
+                h = (h ^ *b as u64).wrapping_mul(1099511628211);
+            }
+            h
+        };
+        for _ in 0..3 {
+            crate::bgwork_template::attempts_note_public(src, h, 0);
+        }
+        assert_eq!(import_status(src, size, mtime), ImportStatus::Failed);
+        assert_eq!(import_status(src, size + 1, mtime), ImportStatus::Waiting);
+    }
+
+    // The Import place is the screen only at grimoire/import itself (the staying notice stays off it there).
+    #[test]
+    fn the_notice_stays_off_the_import_place_only() {
+        let (base, _g) = storage("place");
+        std::fs::create_dir_all(format!("{base}/grimoire/import/Sub")).unwrap();
+        std::fs::create_dir_all(format!("{base}/documents")).unwrap();
+        let mut b = Browser::default();
+        assert!(b.open_pick(PickSpec { kinds: &[PickKind::Pdf, PickKind::PictureFolder] }));
+        assert!(!b.import_place_up());
+        assert!(b.go(StoragePath::new(b"grimoire/import").unwrap()));
+        assert!(b.import_place_up());
+        assert!(b.go(StoragePath::new(b"grimoire/import/Sub").unwrap()));
+        assert!(!b.import_place_up());
+        assert!(b.go(StoragePath::new(b"documents").unwrap()));
+        assert!(!b.import_place_up());
+    }
+
+    #[test]
+    fn sizes_read_in_kb_mb_and_gb() {
+        i18n_set("en");
+        assert_eq!(size_label(0), "1 KB");
+        assert_eq!(size_label(1500), "2 KB");
+        assert_eq!(size_label(14_900_000), "14.2 MB");
+        assert_eq!(size_label(5 << 30), "5.0 GB");
+    }
+
+    #[test]
+    fn no_em_dash() {
+        assert!(!include_str!("browser.rs").contains('\u{2014}'));
     }
 }

@@ -557,6 +557,27 @@ shot 20-templates-empty-new
 tap 300 2123
 wait 50
 expect library.sheet is new
+# From a file...: the picker's root (upright and sideways), its Import place, Back to the sheet, Cancel at its root.
+tap library new.file
+wait 150
+expect files.open is 1
+shot 20-files-root
+rotate 1
+wait 100
+shot 20-files-root-sideways
+rotate 0
+wait 100
+tap library files.row.1
+wait 300
+expect files.place is grimoire/import
+expect files.rows is 1
+shot 20-files-import
+tap library files.back
+wait 100
+tap library files.back
+wait 100
+expect files.open is 0
+expect library.sheet is new
 tap library new.rename
 wait 50
 expect library.sheet is keyboard

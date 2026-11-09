@@ -127,7 +127,7 @@ GRIMOIRE_ROOT=/tmp/q GRIMOIRE_SCRIPT=tests/scenarios/a_notebook.qs GRIMOIRE_SHOT
 | `power down`, `power up` | one half each; the release reports the real time between them, so `power down`, `wait 3000`, `power up` is a 3 s press |
 | `power held` | the 4 s mark of a press still down (IN_POWER_HELD alone, what input_evdev.c sends then), so `power down`, `power held` leaves while the key is down (check that with `expect running is 0`) |
 | `powerhold` | the press, the 4 s hold and the release at once, with no time passing: Grimoire saves and quits (check that with `expect running is 0`) |
-| `pdfimport PATH [NAME [FOLDER]]` | the picker's entry point (2.1.0-beta.2, lane L8 draws the picker) with no picker: imports the PDF at PATH (from the storage root: `GRIMOIRE_STORAGE`, else the folder around the data root), read in place and never moved, named NAME and put in Library folder FOLDER (`_` stands for a space in each). `waitbg` waits for it |
+| `pdfimport PATH [NAME [FOLDER]]` | the picker's entry point without the picker (kept for tests; the picker, Library > New > From a file..., calls the same function): imports the PDF at PATH (from the storage root: `GRIMOIRE_STORAGE`, else the folder around the data root), read in place and never moved, named NAME and put in Library folder FOLDER (`_` stands for a space in each). `waitbg` waits for it |
 | `powerd STATE` | what the simulated power service reports from now on: `active` (the start), `screenSaver`, `readyToSuspend` or `suspended`; `unknown` or nothing reads as unreadable |
 | `clock SECONDS` | the time the clock and battery corner shows, in unix seconds (`clock 1700000000` is 2023-11-14 22:13:20 UTC), kept where the script puts it: it does not run on; `clock real` is the machine's clock again |
 | `battery PERCENT [charging]` | the battery that corner shows (a pixel art battery with the percent beside it), 0 to 100, with the bolt over it when `charging` follows; `battery none` is a battery that cannot be read. The simulator starts at 100 and not charging |
@@ -324,6 +324,26 @@ cargo run --manifest-path rust/Cargo.toml --bin tgstudy -- tests/fixtures/touch/
 session measures and outcomes, intended-fire counts and wrong/negative fires. Check the split
 before interpreting a report. `--blocks` supplies names in order. No coordinate or success-rate
 claim from synthetic replay establishes the owner study or the finger-shape freeze gate.
+
+### The file picker (`files.*`, 2.1.0-beta.2)
+
+A scenario with `# storage: 1` runs on a fixture storage root: the run's root is the storage (`GRIMOIRE_STORAGE`),
+Grimoire's data root its folder `grimoire`, and `# copy: DIR DEST` and `# generate:` work on the storage root
+(tests/files_hostile.py plants links, a FIFO and odd names). `tap library new` then `tap library new.file` opens
+the picker. Taps: `tap library files.back`, `files.prev`, `files.next`, `files.row.N` (the Nth row on the screen,
+from 1), `files.more.N` (its `...`), `files.item.NAME` (the row of that name, `_` for a space), and the open
+card's `files.card.import`, `files.card.open`, `files.card.pictures`, `files.card.notebook`, `files.card.cancel`.
+
+| key | value |
+|---|---|
+| `files.open` | `1` while the picker is up |
+| `files.place` | `root` at its four rows, else the folder's path from the storage root (`documents`, `grimoire/import`; empty for All storage) |
+| `files.crumbs` | the path line ("Files > Documents > Books"), empty at the root |
+| `files.ready` | `1` once the folder is read; `files.rows` the rows in all, `files.page`, `files.pages`, `files.per_page` |
+| `files.hidden` | entries left out of the folder (links, refused folders, paths too long); `files.capped` `1` at 5,000 entries |
+| `files.row.N`, `files.item.NAME` | a row's name as drawn; `files.sub.N` its second line; `files.kind.N` (`place`, `folder`, `pdf`, `look`); `files.status.N` (`waiting`, `importing`, `failed`, `imported` or empty); `files.notes.N` (`1` with "has notes"); `files.pictures.N` (a folder's count, empty before it is counted) |
+| `files.card` | the open card: `pdf`, `folder` or empty; `files.card.details` its first line, `files.card.rows` its rows joined by `|` |
+| `storage.exists.PATH`, `storage.size.PATH`, `storage.names.DIR` | on the storage root: whether a path is there (a link counts as itself), a file's size (-1 without it), a folder's names sorted and joined by `|` |
 
 ### Checks
 

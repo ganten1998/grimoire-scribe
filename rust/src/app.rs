@@ -2523,6 +2523,28 @@ pub fn app_probe(a: &mut App, key: &str, out: &mut String, cap: usize) -> i32 {
     if let Some(k) = key.strip_prefix("library.") {
         return library_probe(a, k, out, cap);
     }
+    // The storage the picker browses (the runner's, docs/SIM.md): storage.exists.PATH, storage.size.PATH (-1
+    // without it) and storage.names.DIR (sorted, joined by |), PATH relative to the storage root, no link followed.
+    if let Some(rest) = key.strip_prefix("storage.") {
+        let Some(root) = crate::pdfimport::storage_root() else { return -1 };
+        let (what, p) = rest.split_once('.').unwrap_or((rest, ""));
+        let full = format!("{}/{}", root.trim_end_matches('/'), p);
+        match what {
+            "exists" => {
+                csnprintf!(out, cap, "%d", std::fs::symlink_metadata(&full).is_ok() as i32);
+            }
+            "size" => {
+                csnprintf!(out, cap, "%d", std::fs::symlink_metadata(&full).map_or(-1, |m| m.len() as i64) as i32);
+            }
+            "names" => {
+                let mut v: Vec<String> = std::fs::read_dir(&full).map(|d| d.flatten().map(|e| e.file_name().to_string_lossy().into_owned()).collect()).unwrap_or_default();
+                v.sort();
+                csnprintf!(out, cap, "%s", &v.join("|"));
+            }
+            _ => return -1,
+        }
+        return 0;
+    }
     // The file picker (the Library's mode, browser.rs): files.*
     if key.starts_with("files.") {
         return library_probe(a, key, out, cap);

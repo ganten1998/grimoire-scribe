@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: Grimoire 1.0.0-beta\n"
 "Report-Msgid-Bugs-To: https://github.com/ganten1998/grimoire-scribe/issues\n"
-"POT-Creation-Date: 2026-11-09 13:21-0600\n"
+"POT-Creation-Date: 2026-11-09 14:37-0600\n"
 "PO-Revision-Date: 2026-10-20 08:02-0500\n"
 "Last-Translator: draft\n"
 "Language-Team: Spanish\n"
@@ -750,14 +750,16 @@ msgstr "No se pudo importar el PDF. ¿Está lleno el almacenamiento?"
 
 #. TRANSLATORS: a toast: the PDF could not become a notebook; %s is the log file that says why.
 #. The PDF stays where it was.
-#: rust/src/app.rs
+#. TRANSLATORS: a row of the Import place: this PDF could not become a notebook; %s is the log that says why.
+#: rust/src/app.rs rust/src/browser.rs rust/src/library.rs
 #, c-format
 msgid "Couldn't import PDF (see %s)."
 msgstr "No se pudo importar el PDF (detalles en %s)."
 
 #. TRANSLATORS: the staying notice at the bottom of the Library while a PDF becomes a notebook
 #. (and a row of the Import place): the page it is on, of how many. One line of about 1700 px.
-#: rust/src/app.rs
+#. TRANSLATORS: a row of the Import place while its PDF becomes a notebook: the page it is on, of how many.
+#: rust/src/app.rs rust/src/browser.rs
 #, c-format
 msgid "Importing: page %d of %d"
 msgstr "Importando: página %d de %d"
@@ -1021,6 +1023,166 @@ msgstr ""
 "Grimoire importa cada carpeta o PDF en segundo plano y después lo mueve a la "
 "carpeta done. Cópialos por USB, o por SSH mientras Grimoire funciona."
 
+#. TRANSLATORS: a file's size in kilobytes, in the file picker's rows and cards (small text).
+#: rust/src/browser.rs
+#, c-format
+msgid "%d KB"
+msgstr "%d KB"
+
+#. TRANSLATORS: a file's size in megabytes with one decimal ("14.2 MB"), in the file picker's rows and cards.
+#: rust/src/browser.rs
+#, c-format
+msgid "%.1f MB"
+msgstr "%.1f MB"
+
+#. TRANSLATORS: a size in gigabytes with one decimal ("9.8 GB"), in the file picker's rows, cards and free space line.
+#: rust/src/browser.rs
+#, c-format
+msgid "%.1f GB"
+msgstr "%.1f GB"
+
+#: rust/src/browser.rs rust/src/library.rs
+msgid "Couldn't open folder."
+msgstr "No se pudo abrir la carpeta."
+
+#. TRANSLATORS: a toast in the file picker: some names in this folder are left out because their path
+#. would be too long for Grimoire to hand to its import (one line).
+#: rust/src/browser.rs
+msgid "Path too long."
+msgstr "Ruta demasiado larga."
+
+#. TRANSLATORS: the file picker's first row, the folder Grimoire watches (grimoire/import): PDFs and pictures
+#. dropped in it become notebooks. Also the first word of its path line (a row of 150 px at 44 px).
+#: rust/src/browser.rs
+msgid "Import"
+msgstr "Importar"
+
+#. TRANSLATORS: the file picker's row for the Kindle's documents folder (44 px in a row).
+#: rust/src/browser.rs
+msgid "Documents"
+msgstr "Documentos"
+
+#. TRANSLATORS: the file picker's row for the Kindle's Downloads folder (44 px in a row).
+#: rust/src/browser.rs
+msgid "Downloads"
+msgstr "Descargas"
+
+#. TRANSLATORS: the file picker's row for the whole Kindle storage, less Grimoire's own notebooks (44 px in a row).
+#: rust/src/browser.rs
+msgid "All storage"
+msgstr "Todo el almacenamiento"
+
+#. TRANSLATORS: the Import place's last row: it looks in grimoire/import for new files now (44 px in a row).
+#: rust/src/browser.rs
+msgid "Look again"
+msgstr "Buscar de nuevo"
+
+#. TRANSLATORS: a folder in the file picker that holds pictures; %d is how many (small text under its name).
+#: rust/src/browser.rs
+#, c-format
+msgid "%d picture"
+msgid_plural "%d pictures"
+msgstr[0] "%d imagen"
+msgstr[1] "%d imágenes"
+
+#. TRANSLATORS: a row of the Import place: this file is not imported yet (small text under its name).
+#: rust/src/browser.rs
+msgid "Waiting"
+msgstr "En espera"
+
+#. TRANSLATORS: a row of the Import place: this file became a notebook.
+#: rust/src/browser.rs
+msgid "Imported"
+msgstr "Importado"
+
+#. TRANSLATORS: the file picker's name, the first word of its path line (small, in a band of 100 px).
+#: rust/src/browser.rs
+msgid "Files"
+msgstr "Archivos"
+
+#. TRANSLATORS: a PDF's card in the file picker: a notebook already holds this book, and this opens it
+#. (a row of about 800 px at 44 px).
+#: rust/src/browser.rs
+msgid "Open its notebook"
+msgstr "Abrir su cuaderno"
+
+#. TRANSLATORS: a PDF's card in the file picker: this makes a notebook of its pages (a row of about 800 px at 44 px).
+#: rust/src/browser.rs
+msgid "Import as notebook"
+msgstr "Importar como cuaderno"
+
+#: rust/src/browser.rs rust/src/library.rs rust/src/mapview.rs
+#: rust/src/pagesview.rs
+msgid "Open"
+msgstr "Abrir"
+
+#. TRANSLATORS: a folder's card in the file picker: this makes one notebook of the %d pictures in it,
+#. in their order (a row of about 800 px at 44 px).
+#: rust/src/browser.rs
+#, c-format
+msgid "Import %d picture as notebook"
+msgid_plural "Import %d pictures as notebook"
+msgstr[0] "Importar %d imagen como cuaderno"
+msgstr[1] "Importar %d imágenes como cuaderno"
+
+#. TRANSLATORS: the sheets' buttons: 348 px at 44 px inside Gothic's carved line (342 for Create,
+#. the main one), or at 34 px, or two lines of that.
+#: rust/src/browser.rs rust/src/calibrate.rs rust/src/editor.rs
+#: rust/src/keyboard.rs rust/src/library.rs rust/src/linkbar.rs
+#: rust/src/musicbuild.rs rust/src/pagesview.rs
+msgid "Cancel"
+msgstr "Cancelar"
+
+#. TRANSLATORS: the title of the file picker opened by New notebook's From a file... (the Library's header,
+#. about 1400 px at 56 px).
+#: rust/src/browser.rs
+msgid "Import a PDF or pictures"
+msgstr "Importar un PDF o imágenes"
+
+#. TRANSLATORS: the file picker's top line when the Kindle has under 200 MB free (one line, about 800 px at 44 px).
+#: rust/src/browser.rs
+msgid "Kindle storage nearly full."
+msgstr "Almacenamiento del Kindle casi lleno."
+
+#. TRANSLATORS: the file picker's free space line: free of the whole storage ("Free: 9.8 GB of 14.5 GB"), at 44 px, right-aligned.
+#: rust/src/browser.rs
+#, c-format
+msgid "Free: %s of %s"
+msgstr "Libre: %s de %s"
+
+#. TRANSLATORS: a folder in the file picker held more than it lists; %d is how many it shows (5000), at 34 px, right of the path.
+#: rust/src/browser.rs
+#, c-format
+msgid "Showing the first %d."
+msgstr "Se muestran los primeros %d."
+
+#. TRANSLATORS: a folder in the file picker with nothing in it a PDF import can use (one line, 44 px, centred).
+#: rust/src/browser.rs
+msgid "Nothing here to use."
+msgstr "Nada que usar aquí."
+
+#. TRANSLATORS: between the Library's page buttons (1320 px at 44 px).
+#. TRANSLATORS: (also) between the Templates sheet's page buttons, in bold: 440 px at 44 px.
+#: rust/src/browser.rs rust/src/library.rs rust/src/tplsheet.rs
+#, c-format
+msgid "Page %d of %d"
+msgstr "Página %d de %d"
+
+#. TRANSLATORS: a PDF in the file picker that a notebook already holds (its notes are there); a tag at the
+#. right of the row under its name (about 260 px at 34 px).
+#: rust/src/browser.rs
+msgid "has notes"
+msgstr "con notas"
+
+#: rust/src/browser.rs
+msgid "File changed. Try again."
+msgstr "El archivo cambió. Inténtalo de nuevo."
+
+#. TRANSLATORS: the staying notice while the file picker reads a big folder (one line, about 600 px at 44 px).
+#: rust/src/browser.rs
+msgid "Loading..."
+msgstr "Cargando..."
+
 #: rust/src/brush.rs
 msgctxt "tool"
 msgid "Tool"
@@ -1116,14 +1278,6 @@ msgstr "Toca con un dedo el centro de la diana (%d de %d)."
 #: rust/src/calibrate.rs
 msgid "Cancel (tap with a finger)"
 msgstr "Cancelar (toca con un dedo)"
-
-#. TRANSLATORS: the sheets' buttons: 348 px at 44 px inside Gothic's carved line (342 for Create,
-#. the main one), or at 34 px, or two lines of that.
-#: rust/src/calibrate.rs rust/src/editor.rs rust/src/keyboard.rs
-#: rust/src/library.rs rust/src/linkbar.rs rust/src/musicbuild.rs
-#: rust/src/pagesview.rs
-msgid "Cancel"
-msgstr "Cancelar"
 
 #: rust/src/calibrate.rs
 msgid "Touch was fine: skip (tap with the pen)"
@@ -2464,13 +2618,6 @@ msgstr "Aún no hay cuadernos"
 msgid "Tap New to start one."
 msgstr "Toca Nuevo para empezar uno."
 
-#. TRANSLATORS: between the Library's page buttons (1320 px at 44 px).
-#. TRANSLATORS: (also) between the Templates sheet's page buttons, in bold: 440 px at 44 px.
-#: rust/src/library.rs rust/src/tplsheet.rs
-#, c-format
-msgid "Page %d of %d"
-msgstr "Página %d de %d"
-
 #. TRANSLATORS: the new notebook's name, then its Rename button (268 px at 29 px, under its
 #. icon, inside Gothic's carved line), then the folder it goes in, or the Library itself.
 #: rust/src/library.rs
@@ -2496,6 +2643,12 @@ msgstr "Biblioteca (sin carpeta)"
 #: rust/src/library.rs
 msgid "Create"
 msgstr "Crear"
+
+#. TRANSLATORS: New notebook's button (348 px at 44 px, or 34 px, or two lines of that): it opens the file picker
+#. to make a notebook of a PDF or a folder of pictures anywhere on the Kindle.
+#: rust/src/library.rs
+msgid "From a file..."
+msgstr "Desde un archivo..."
 
 #. TRANSLATORS: a notebook's and a folder's menu (rows of 1470 px at 44 px in bold): its pages are not shown
 #. in the Graph of all notebooks (the Graph: the Index's map of linked pages), or are shown there again.
@@ -3321,10 +3474,6 @@ msgstr "Fuente Terminess en los menús"
 #, c-format
 msgid "Save PDF to %s now"
 msgstr "Guardar el PDF en %s ahora"
-
-#: rust/src/library.rs rust/src/mapview.rs rust/src/pagesview.rs
-msgid "Open"
-msgstr "Abrir"
 
 #: rust/src/library.rs
 msgid "Move to folder"
@@ -5251,9 +5400,6 @@ msgstr "Copiado"
 
 #~ msgid "This is the last page."
 #~ msgstr "Es la última página."
-
-#~ msgid "This is the first page."
-#~ msgstr "Es la primera página."
 
 #~ msgid "Swiping past the last page adds a page."
 #~ msgstr "Deslizar tras la última página añade una página."

@@ -1964,3 +1964,35 @@ replace the placeholders in `sandbox::s1` with one commit):
 8. Does the private mapping of a file on `/mnt/us` work (`pdf: ... the device refuses the private mapping` would
    say not), and what does a 100 MB PDF do to the memory?
 
+
+## 2.1.0-beta.2, the file picker (lane L8)
+
+Run on the Scribe (the headless scenarios z_files_1 to z_files_5 and tests/l10n/files.qs cover the logic):
+
+1. Library > New > From a file...: the picker opens over the sheet with Import, Documents, Downloads (when the
+   folders exist) and All storage, and "Free: X of Y". Back at its root comes back to the sheet; Esc does too.
+2. **Listing and stat timings on a big `documents/`** (a few thousand files): open Documents and read grimoire.log:
+   `files: listed N entries (M usable) in T ms` (counts and timings only, never a name). Note T for the first
+   screen, whether "Loading..." appears (over 1 s), and whether the rows' sizes and dates arrive quickly after.
+   Send the log line and the folder's size. Also a folder of 5,000+ files: "Showing the first 5,000."
+3. A planner PDF in `documents/`: a tap on it opens its card beside the row ("14.2 MB, Oct 30", Import as
+   notebook, Cancel); the second tap imports it, the Library comes back with "Importing: page N of M" at the
+   bottom, and the card appears at the end. **The PDF is still in `documents/`, unchanged** (check over USB:
+   nothing new in `documents/`, no `.sdr`, no mark beside it; the mark lives in `grimoire/import/.marks/`).
+4. The same PDF again: the row says "has notes" and its card says Open its notebook. A name typed in New
+   notebook's Rename first becomes the notebook's name; without one, the file's name. The sheet's In: folder is
+   where the card appears.
+5. **Plant a symlink over SSH** (`ln -s /mnt/us/documents /mnt/us/documents/loop`, `ln -s /etc /mnt/us/documents/etc`,
+   `ln -s Planner.pdf /mnt/us/documents/Alias.pdf`, and `ln -s /mnt/us/grimoire/notebooks /mnt/us/Downloads/nb`),
+   then open the picker: none of them is listed (not as a folder, not as a PDF), All storage lists no `grimoire/
+   notebooks`, `PDFs` or `trash`, and `grimoire/PDFs/...` cannot be reached by typing a path (there is no field).
+   Does the Scribe's `/mnt/us` take symlinks at all? Say so either way.
+6. A folder of pictures in `documents/` (PNG or JPG, a few): its row says "N pictures"; its `...` (or a finger
+   held on it for 0.6 s) opens a card with Open and Import N pictures as notebook; the notebook appears and the
+   folder is unchanged.
+7. The Import place: a PDF copied to `grimoire/import` while Grimoire runs shows Waiting (until it has held still
+   5 s), then "Importing: page N of M", then the folder `done` says Imported. Look again scans now. No staying
+   notice shows while the Import place is up, and it shows on the Library and on the other picker screens.
+8. A PDF being copied over USB while its row is on screen is "File changed. Try again." if its card's action is
+   tapped after the size changed.
+9. Rotate the Scribe with the picker open: the rows, band and card lay out again.

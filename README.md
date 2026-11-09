@@ -252,6 +252,15 @@ your notebooks and settings from `quire/` to `grimoire/` and removes the old Qui
   the notebook appears. Its pages are the PDF's pages, in colour where the PDF has colour (the Scribe shows
   them in gray). A PDF put in a folder there goes into the Library folder of that name, and the PDF moves
   to `import/done/`. KOReader's Open this book still works for books and for the pages it draws.
+- **A file anywhere on the Kindle**: Library > New > **From a file...** opens Files, titled "Import a PDF or
+  pictures": Import (`grimoire/import`, with what each file is doing: Waiting, "Importing: page 40 of 365",
+  Imported, and a Look again row), Documents, Downloads and All storage (Grimoire's notebooks, PDFs and trash
+  are never listed). A tap on a folder opens it; a tap on a PDF opens its card ("14.2 MB, Oct 30" and Import as
+  notebook, or Open its notebook when a notebook already holds that book; "has notes" shows on its row), and
+  the second tap imports it. A folder of pictures is imported from its `...` (or a finger held on it) card.
+  The notebook takes the file's name unless you typed one in the New notebook sheet first, and goes in that
+  sheet's folder. The file stays exactly where it was: Grimoire only reads outside its own folders, and never
+  follows a link.
 - **Erased ink leaves the files**: when a notebook closes, ink erased entirely is taken out of its
   page files in the background. A stroke erased only in part stays whole in the file.
 

@@ -893,3 +893,25 @@ Ideas, not plans: each needs the owner's go and its own design. No code is taken
   the panel's process and inherits the panel's Seyes factor (bgjob.rs, paper.rs seyes_scale), so the export
   draws at the editor's scale. What is left is to find the export's pages that a current kept drawing can stand
   for (same size, same layers) and read them back instead of drawing their strokes (above: 51 s at each close).
+
+## The file picker (2.1.0-beta.2, lane L8): what waits
+
+- **A pick that waits has no retry.** When a previous run's detached child still holds the import lock,
+  `pdf_import_queue` and `import_pick_queue` write a `waiting` mark and return Waiting: nothing queues the file
+  again outside `grimoire/import` (the scan only walks `import/`). The user picks the file again once the notice
+  has gone. (L5's behaviour, kept; the picker shows no toast for it, as D20 asks.)
+- **Folder rows count their pictures by listing the folder** (on the idle tick, one folder a tick, at most 200 ms
+  each) to show "%d pictures" and to offer Import %d pictures as notebook. On a big `documents/` of big folders over
+  FUSE that is unmeasured: TESTING.md has the timing check. A cheaper rule (count only when the card opens) is
+  one line in `Browser::work` if the Scribe says so.
+- **Pictures as files, fonts, the path bar, Go to, Sort, Show, View, Covers, item cards on every file, Rename,
+  Trash, Set as home, previews and "Making previews..."** are 2.2 (L11), as the plan has them; `PickKind` and
+  `PickSpec` are ready for Picture and Font.
+- **A PDF being imported still offers Import as notebook** on its card in the Import place; a second tap while it
+  runs is `AlreadyRunning` and says nothing (its row says Waiting or Importing).
+- **A picked folder's import has no progress** (the picture import never had: its row says Waiting until the
+  notebook appears).
+- **Names that are not UTF-8** are left out of the picker and counted in the log line ("N names left out"):
+  the job queue and the screens take paths as text.
+- **Not run anywhere but the headless runner**: `rust/tests/test_browser.rs` plants the odd name where the file
+  system takes one (not on macOS); the Scribe's checks are in TESTING.md.

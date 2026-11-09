@@ -17,6 +17,13 @@
   412", the PDF moves to `import/done/`, and a PDF already imported says so. Pages with colour are kept in
   colour (the Scribe shows gray); a page that cannot be read ends blank and the notebook says "Some pages
   couldn't be read." (a PDF with no readable page is not imported). More than 2000 pages, over 512 MB or a password are refused with a message.
+- **Library > New > From a file... picks a PDF or a folder of pictures anywhere on the Kindle.** It opens Files:
+  Import (with a status on every row: Waiting, "Importing: page 40 of 365", Imported, and a Look again row),
+  Documents, Downloads and All storage. A tap on a PDF opens its card (size and date, Import as notebook, or Open
+  its notebook when a notebook already holds the book: "has notes" shows on its row); the second tap imports it.
+  A folder of pictures imports from its card (a hold or its `...`). The notebook is named as typed in the sheet,
+  else as the file, and goes in the sheet's folder. The file is only read: it stays where it is, no link is ever
+  followed, and Grimoire's own notebooks, PDFs and trash are never listed.
 - PDFs are read by a separate process that cannot reach the files, the network or other programs (a sandboxed
   worker); a Scribe that refuses a step reads no PDF and says so in grimoire.log. A picture folder in `import/`
   now also gets a notebook name no other notebook has.
