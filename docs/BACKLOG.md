@@ -35,14 +35,15 @@ why. Newest decisions first within each section.
   which holds only the luma canvas, so they embed the gray render of a colour page (FORMAT.md says so); if L9's
   streamed PDF ever embeds a page's picture file directly, a colour page is a 3-channel PNG and must be
   converted or embedded as DeviceRGB. `child_setup` only gained the lock's descriptor; L9's caps are still to add.
-- **Not done**: a worker for fonts (L10); the Import place's rows (L8); a card for the notebook being made;
+- **Not done**: the Import place's rows (L8); a card for the notebook being made;
   an update while a detached import runs is covered only by the worker being `/proc/self/exe` (no scenario).
 - **Choices the plan did not settle**: a page's blank replacement is a white image page (shared by content);
   the colour tolerance is 6 levels (pdfwork::GRAY_TOLERANCE); a PDF whose every page is unreadable is still a
   notebook of blank pages; a PDF that fails before any page keeps its file and costs a try (3 tries, then it
   waits until it changes); the "Some pages couldn't be read." ending shows even with the Library in front; a PDF
   in a Library folder gets a toast "Imported notebook" since its card is not on the Library's top.
-- **Crates**: Cargo.lock names a second skrifa and read-fonts (glifo's optional dependency), not built; the build
+- **Crates**: skrifa is now a direct dependency (your own fonts, L10), pinned to the 0.46.2 hayro brings: no
+  crate is added. Cargo.lock names a second skrifa and read-fonts (glifo's optional dependency), not built; the build
   has three duplicates (fearless_simd, miniz_oxide, syn), not the plan's five. flate2, smallvec and syn were
   moved to versions published before 2026-11-02 so that every crate is two weeks old at a tag on or after
   2026-11-16 (`tools/check-crate-dates.py --tag-date 2026-11-16` passes).
@@ -148,13 +149,78 @@ Scribe (docs/TESTING.md, 2.1.0, Classic fonts):
 
 Waits, from the 2.1 plan:
 
-- **Your own fonts** (2.1.0-beta.3, lane L10): `.ttf`/`.otf` in `grimoire/fonts`, checked in the sandbox
-  worker (L5) before the UI reads them; the Font sheet's "Built in" and "Your fonts" sections.
 - **Japanese in Classic** (2.2, nebuff): a smooth Japanese face (Noto Sans JP, +0.97 MB) beside DotGothic16.
 - **y_all_screens.qs split by screen group** so the per-font l10n runs shard (the plan's L3): the runs are
   whole for now (six more of about 80 s here).
-- **The glyph cache's 4 MB byte cap** (the plan's L3, section 7): the bundled fonts are small; it matters
-  with custom fonts.
+
+(Your own fonts and the glyph cache's 4 MB byte cap are built: 2.1.0-beta.2, lane L10, below.)
+
+## Your own fonts (2.1.0-beta.2, lane L10): choices for the owner, and what waits
+
+Built to the 2.1 plan's D30 (Done, below). **Nothing of it has run on a Scribe, and its sandbox steps have not
+run anywhere** (the CI job `sandbox` is their first run): docs/TESTING.md, "2.1.0-beta.2, L10", has the device
+checks. Where the plan did not settle a thing, what the lane chose, for the owner to confirm:
+
+- **The size of text in your font.** The plan's rule as written: capitals as tall as Terminess's, the scale
+  kept between 0.85 and 1.25, then lowered until 95 of 100 of Grimoire's strings are no wider than in
+  Terminess. It gives Noto Sans 1.06 (the bundled copy has 1.065, set by hand), Atkinson 0.96 (bundled: 1.10)
+  and Literata Bold 1.07 (bundled: 1.15): a custom font comes out a little smaller than the three that were
+  fitted screen by screen, since nothing fits a custom font's screens. If your fonts look small on the Scribe,
+  the 95 is the number to lower (`fit_strings` in fontcheck.rs); a verdict keeps the scale it was given, so
+  delete `grimoire/fonts/.cache` after changing it.
+- **The line of a font whose tables are far off.** The plan replaces an ascent or descent more than 1.5 times
+  what the letters reach. The lane measures that reach over the capitals, the digits, b d f h k l and the
+  accented capitals the font has (not the capitals alone: Literata's line would have been squashed to its
+  capitals), replaces a line less than two thirds of the reach as well (letters would stick out of it), and
+  gives a font without descenders whose descent is deeper than its capitals are tall a quarter of them.
+- **Outlines in font units**, not the plan's sixteenths of a pixel: the unscaled outline is what makes a
+  TrueType font's bitmaps stb's own byte for byte, and one outline serves every size, so the check's walk
+  covers what the UI draws at any size. A CFF font's fractional coordinates are rounded to whole units (stb's
+  own CFF reader cuts them the same).
+- **The sizes a custom font is drawn at**: 8 to 160 px of line (the UI's text is 34 to 64 px at 300 dpi, a
+  family's scale up to 1.25, and the fit steps down from there). Outside them a glyph comes from Terminess.
+- **The sample card is drawn by the font itself** (loaded when its row is tapped, under the crash guard, held
+  beside the font in use), not by a picture from the check: the sentence is in the UI's language, which the
+  check does not know. If it cannot be loaded (32 MB of fonts held already) the card shows the check's picture.
+- **The sheet's own words are Terminess only while a font of the owner's own is in use** (L3's reading of the
+  plan, kept: with a bundled font in use they stay in that font).
+- **The crash guard strikes fonts, not starts.** A start that finds a mark armed draws none of the fonts that
+  were armed (the font in use, its Bold file, the sheet's sample), and everything else as usual. So when the
+  mark was the font in use, that start is in Terminess, as the plan says; when Grimoire died while only a
+  sample was new, the font in use is still drawn at the next start, and the sample's font has the strike.
+- **Marks an earlier run left.** A `.checking` mark found when a job starts is taken away and the font checked
+  again (a power cut is not the font's fault); only a job the UI sees die on a file marks it `.bad`.
+- **A worker ended by its CPU limit is "Took too long to read."**, not "Unreadable font.".
+- **No worker at all** (a sandbox step failed): the unchecked rows say "Unreadable font." for that session
+  only; nothing is written, and the next start checks them.
+- **A truncated file can pass** when the cut is inside a table the check does not read (the names, the
+  PostScript table): it still draws every glyph, and what the UI reads later is those same bytes.
+- **Bold by a Bold file**: only one in the same folder as the font, of the same family name, weight 600 or
+  more, upright; `font_bold=` names another by hand and is forgotten when another font is picked.
+- **The preview carries the style** when it is not Regular ("Inter Bold"), so a family's files tell apart.
+- **Gothic lets the font go** (its memory too) and Classic reads it again.
+- **A folder of grimoire/fonts named as one of the storage's system folders** (`system`, `koreader`,
+  `extensions`...) is not looked into: the walk's deny-list is the storage's.
+
+What waits:
+
+- **Add a font...** (the Kindle's own fonts folder, copied in) comes with 2.2's Files (the plan's D30).
+- **The Japanese slot** (a custom or bundled smooth Japanese face in Classic, the plan's L14, with nebuff).
+  Kana and kanji of a custom font are already drawn at DotGothic16's em.
+- **Kerning for custom fonts** (GPOS pairs through read-fonts, fonts.md 7.G): none today; the bundled fonts
+  keep stb's.
+- **Tabular digits** (fonts.md 7.B) and **the other faces of a collection** (7.I: a `.ttc` gives its first).
+- **Checked fonts for PDFs that name a font they do not embed** (hayro's `font_resolver`, fonts.md 8).
+- **The verdict's `cover=` counts** (Latin-1, Extended-A, Greek, Cyrillic, kana, kanji) are written and not
+  shown anywhere yet (2.2's Files details, the Japanese slot's "has kana").
+- **The fit check cannot cover a custom font**: l10n-check runs the Font sheet over the fixtures in every
+  language, but a real font's widths are its own; labels that do not fit end in "...".
+- **Left and Right do not turn the pages of Your fonts** (the sheet's arrows do).
+- **`sandbox::s1::FONT_*`** (20 s slices, 10 min a font, 60 s of CPU a worker, a 30 s watchdog, 64 MiB over the
+  file) are the plan's numbers, placeholders until S1 measures the Scribe; `s1::WORKER_IMAGE` (11 MiB) is now
+  only about 0.9 MiB above the binary's size, which the margins absorb.
+- **A What's new line** for 2.1.0-beta.2's notes (docs/whatsnew), which the owner writes.
+- **Japanese** for the 15 new strings (nebuff): English shows until then.
 
 ## A cleared page's old picture (2.1.0): fixed; what is left for the owner
 
@@ -715,6 +781,14 @@ Ideas, not plans: each needs the owner's go and its own design. No code is taken
 
 ## Done
 
+- 2.1.0-beta.2 (unreleased, v21b2/l10-fonts; the owner, 2026-11-04: "Custom font support/More fonts in the classic
+  theme", and 2026-11-09: "Fast track everything up till beta.3 into a beta.2."): your own fonts. `.ttf` and
+  `.otf` files copied into `grimoire/fonts` are checked by the sandboxed worker (skrifa reads them; every glyph
+  is outlined under the caps and drawn at the smallest and largest size) and listed in Settings > Font under
+  "Your fonts", each by its name drawn in itself or by why it is refused; a font that passed draws Classic's
+  text through stb's own rasterizer, with Terminess for what it lacks; bold by its weight axis, a Bold file or
+  overprint; `font=file:...` and `font_bold=` in settings.ini; the crash guard in `grimoire/.font-inuse`; the
+  glyph cache capped at 4 MB. Choices and what waits: Your own fonts (2.1.0-beta.2, lane L10), above.
 - 2.1.0 (unreleased, v21/fonts; the owner, 2026-11-04: "Custom font support/More fonts in the classic theme",
   and 2026-11-07: "can we fast track anything that might be cool alongside this that was planned for 2.1 or
   future?"): More fonts in Classic. Settings' Style row has a Font chip in Classic; the Font sheet offers

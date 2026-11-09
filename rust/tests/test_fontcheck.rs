@@ -143,6 +143,8 @@ fn good_fonts_pass() {
     // the preview follows the screen's text size
     let (_, _, _, h2) = passed(check_font(&ttf(&test_font("Regular", 400)), 30));
     check!(h2 == 46);
+    // a hairline font (stems 8 units of 1000 wide) is thin, not blank: it passes
+    check!(passed(check_font(&ttf(&thin(8, 1000)), 44)).0.skip.is_empty());
 }
 
 // The malformed-font corpus: each gets a verdict, and the worker never dies on one. A font cut short anywhere, a
@@ -183,6 +185,8 @@ fn the_corpus_gets_verdicts_never_a_crash() {
     for bytes in [
         ttf(&cyclic_composite(true)),
         ttf(&empty_letters()),
+        // (letters of dust, a unit each way: nothing a screen could show)
+        ttf(&thin(1, 1)),
         otf(&test_font("Regular", 400), 12, false),
         otf(&test_font("Regular", 400), 200, false),
         ttf(&wild_glyphs(Wild::TooMany)),
@@ -443,6 +447,35 @@ fn a_replaced_file_is_checked_again_and_bold_is_found() {
     check!(state_of(&listed(), "Blank.ttf") == "unreadable");
 }
 
+// The fonts the UI holds stay under 32 MB together: a big family's Bold file gives way to overprint; and a
+// file over 24 MB is too big whatever it holds (it is never read).
+fn the_loaded_fonts_are_capped() {
+    clean_env();
+    let r = root("caps");
+    let mut reg = test_font("Regular", 400);
+    reg.family = "Heavy".into();
+    let mut bold = test_font("Bold", 700);
+    bold.family = "Heavy".into();
+    put(&r, "Heavy-Regular.ttf", &ttf_padded(&reg, 17 << 20));
+    put(&r, "Heavy-Bold.ttf", &ttf_padded(&bold, 17 << 20));
+    put(&r, "Huge.ttf", &ttf_padded(&reg, 25 << 20));
+    check!(job() == 0);
+    let l = listed();
+    check!(state_of(&l, "Heavy-Regular.ttf") == "ready" && state_of(&l, "Heavy-Bold.ttf") == "ready");
+    check!(state_of(&l, "Huge.ttf") == "toobig");
+    check!(!std::fs::read_dir(format!("{r}/fonts/.cache")).unwrap().flatten().any(|e| e.file_name().to_string_lossy().ends_with(".bad")));
+    // 17 MB and 17 MB are more than the UI holds: the regular, and bold by overprint
+    check!(userfonts_try_load("Heavy-Regular.ttf", "") == Ok("overprint"));
+    check!(userfonts_try_load("Huge.ttf", "") == Err(LoadErr::Refused));
+    // a family that fits keeps its Bold file
+    put(&r, "Light-Regular.ttf", &ttf_padded(&reg, 2 << 20));
+    put(&r, "Light-Bold.ttf", &ttf_padded(&bold, 2 << 20));
+    std::fs::remove_file(format!("{r}/fonts/Heavy-Bold.ttf")).unwrap();
+    check!(job() == 0);
+    check!(userfonts_try_load("Light-Regular.ttf", "") == Ok("a Bold file"));
+    let _ = std::fs::remove_dir_all(&r);
+}
+
 // The check's time on this machine for a font of 20,000 glyphs (the Scribe's is in docs/TESTING.md's device
 // checks): it ends, within the budget a font has.
 fn twenty_thousand_glyphs_are_checked() {
@@ -464,6 +497,7 @@ fn test_fontcheck() {
     run!(the_folder_is_listed_by_the_walk);
     run!(a_file_still_being_copied_waits);
     run!(a_replaced_file_is_checked_again_and_bold_is_found);
+    run!(the_loaded_fonts_are_capped);
     run!(twenty_thousand_glyphs_are_checked);
     // (last: it leaves the session without workers, as a failed step does)
     run!(a_failed_sandbox_step_checks_nothing);

@@ -41,6 +41,14 @@ rotate 0
 wait 100
 tap library font.cancel
 wait 50
+# Done on Terminess, which draws now: nothing changes, the lines stay
+tap library font
+wait 50
+tap library font.done
+wait 50
+expect library.sheet is settings
+expect settings.font is file:Gone.ttf
+expect settings.font_bold is Gone-Bold.ttf
 # Another setting saved: the lines stay
 tap 930 1060
 wait 50

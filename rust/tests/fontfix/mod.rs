@@ -616,8 +616,32 @@ fn gvar_of(f: &Font) -> Vec<u8> {
     v
 }
 
+/// A font whose every stroke is `w` units wide and `h` high at most (a hairline, or dust).
+pub fn thin(w: i16, h: i16) -> Font {
+    let mut f = test_font("Regular", 400);
+    f.family = "Grimoire Test Thin".into();
+    for g in f.glyphs.iter_mut().skip(1) {
+        for c in g.contours.iter_mut() {
+            let (x0, y0, y1) = (c[0].0, c[0].1, c[1].1);
+            let top = y1.min(y0 + h);
+            *c = vec![(x0, y0), (x0, top), (x0 + w, top), (x0 + w, y0)];
+        }
+    }
+    f
+}
+
+/// The TrueType file of a font, made `pad` bytes bigger by a table no reader looks at (a big file that is
+/// still a font).
+pub fn ttf_padded(f: &Font, pad: usize) -> Vec<u8> {
+    ttf_with(f, pad)
+}
+
 /// The TrueType file of a font.
 pub fn ttf(f: &Font) -> Vec<u8> {
+    ttf_with(f, 0)
+}
+
+fn ttf_with(f: &Font, pad: usize) -> Vec<u8> {
     let (mut glyf, mut loca) = (Vec::new(), Vec::new());
     for g in &f.glyphs {
         w32(&mut loca, glyf.len() as u32);
@@ -646,6 +670,9 @@ pub fn ttf(f: &Font) -> Vec<u8> {
     if let Some(axis) = f.wght {
         tables.push((*b"fvar", fvar_of(axis)));
         tables.push((*b"gvar", gvar_of(f)));
+    }
+    if pad > 0 {
+        tables.push((*b"zpad", vec![0x5A; pad]));
     }
     sfnt(0x0001_0000, tables)
 }

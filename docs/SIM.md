@@ -397,7 +397,9 @@ shows what the app holds.
 | `asleep.mode` | while asleep, which sleep screen is up, numbered as `settings.sleep_mode` after fallback/override (native PIN forces `2`; unavailable wallpaper uses `0`) (hosted by KOReader, mode 2 reads `0`); empty while awake |
 | `host` | `koreader` when started as KOReader's Grimoire plugin starts it (`GRIMOIRE_HOST=koreader`), else empty |
 | `language` | the language in use, `en` or `es` |
-| `font` | Classic's font in use (2.1), by its settings.ini id: `terminess`, `atkinson`, `noto-sans` or `literata` (also while Gothic shows: the family Classic would use) |
+| `font` | Classic's font in use (2.1), by its settings.ini id: `terminess`, `atkinson`, `noto-sans` or `literata` (also while Gothic shows: the family Classic would use); `file:<path>` while a font of the owner's own draws (2.1.0-beta.2: the path under grimoire/fonts). `settings.font` is what settings.ini asks for, which stays `file:<path>` while that font cannot be used and Terminess draws; `settings.font_bold` its Bold file's path, if one is set |
+| `font.guard` | the crash guard's marks (2.1.0-beta.2), `<key> <strikes> <armed>` each, joined by commas; empty when there is none |
+| `font.own.bytes`, `font.own.drawn` | the bytes of custom font files the UI holds (0: none loaded), and `1` once a custom font has drawn a glyph in this run |
 | `rotation` | the quarter turns applied, 0..3 |
 | `size` | the screen, `1860x2480` or `2480x1860` (`1986x2648` or `2648x1986` under `GRIMOIRE_SIM_SIZE=1986x2648`) |
 | `settings.KEY` | the setting as settings.ini stores it, for `theme` (`gothic` or `classic`), `invert`, `mirror_pdf`, `follow_rotation`, `pinch_zoom`, `side_button` (0 nothing, 1 eraser, 2 highlighter, 3 white ink), `sleep_mode` (0 the page, 1 a pinned page, 2 the Kindle's screensaver, 3 KOReader wallpaper), `sleep_minutes`, `pen.valid` and `touch.valid` (1 once calibrated); `language` (`auto`, `en` or `es`, and `auto` for a value this version does not speak, which settings.ini keeps as it was); `font` (Classic's font, 2.1: `terminess`, `atkinson`, `noto-sans` or `literata`, and `terminess` for a value this version does not have, which settings.ini keeps as it was); `pen.panel` and `touch.panel` (the panel the calibration was made on, `WxH`, empty when not recorded) |
@@ -512,7 +514,11 @@ shows what the app holds.
 | `editor.music` | the Custom music layout on the Custom music sheet while it is open, else the page's if its paper is custom, else empty: the systems per page, a colon, then the parts top to bottom (`treble`, `bass`, `alto`, `tenor`, `drums`, `plain`, `tab4` to `tab7`, `lyrics`), e.g. `4: treble tab6 bass` |
 | `editor.music_max` | while the editor's Custom music sheet is open, the most systems its layout fits on the page it is for (that page's height), else empty |
 | `library.sheet` | what is open over the cards: `none`, `new` (New notebook), `settings`, `more` (a notebook's menu), `folder-more` (a folder's menu), `move` (Move to), `delete`, `keyboard`, `display`, `music`, `koreader`, `language` (Settings > Language's list), `shortcuts` (Settings > Shortcuts), `buttons` (its Buttons sheet), `pair-menu` (Settings > Pair, 2.0.0-beta.2), `pair` (its Pair a controller... sheet), `updates`, `gestures`, `about` (What's new, Rust only), `font` (Settings > Font, Classic only: 2.1), `merge` (a folder moved or renamed onto a name that is there: 2.1; hits `merge.into`, `merge.both`, Cancel is `done`) or `exit` (Exit Grimoire?, Esc at the top level: 2.0.0-beta.2) |
-| `library.font.pick` | the Font sheet's highlighted family, by its settings.ini id (the font in use as the sheet opens; a tap on a row moves it, Done applies it); empty while the sheet is not up (2.1) |
+| `library.font.pick` | the Font sheet's highlighted font, by its settings.ini value: a family's id, or `file:<path>` for one of the owner's own (the font in use as the sheet opens; a tap on a row moves it, Done applies it); empty while the sheet is not up (2.1) |
+| `library.font.rows`, `library.font.checking` | the Font sheet's own fonts (2.1.0-beta.2): how many files of grimoire/fonts it lists, and how many of them are still being checked |
+| `library.font.state.PATH`, `library.font.note.PATH` | an own font's row by its path under grimoire/fonts: `ready`, `checking`, `unreadable`, `toobig`, `nolatin`, `format`, `slow` or `missing` (empty for a file the sheet does not list), and what the row says under the name ("Unreadable font.", "Some letters come from Terminess.", empty) |
+| `library.font.shown`, `library.font.page` | the own fonts on the page of them shown, by their paths joined with `\|`, and `2/3` |
+| `library.font.sample` | how the sample card was drawn: `family`, `own` (by the owner's font itself, loaded) or `preview` (by the picture the check made, when it could not be loaded); empty while the sheet is not up |
 | `library.exit` | Exit Grimoire?'s highlighted answer, `yes` or `no`; empty while it is not up |
 | `library.learning` | the action the Buttons sheet waits for a press for (`undo`, `next-page`), else empty |
 | `library.buttons.ACTION` | the Buttons sheet's buttons for ACTION (`library.buttons.undo`): as the files name them (`South, Up`), or as printed while the first controller connected is a Switch-mode one (`B, Up`); `none` for none |
@@ -739,6 +745,19 @@ what no scenario reaches. Settings > Font (2.1) has y_fonts (the chip opens the 
 use; a tap highlights and changes nothing; Cancel and Esc leave the font; Done applies and saves it;
 Gothic has no chip), z_fonts_kept (`# root: y_fonts`: the font outlasts a restart) and y_fonts_unknown
 (`font=comic-sans`: Terminess draws, the line stays through Cancel and other saves, a pick replaces it).
+Your own fonts (2.1.0-beta.2) have y_fonts_own_1_sheet (`# copy:` lines put tests/fixtures/fonts/good and
+refused into the data root's fonts/: the rows say "Checking..." under the notice "Checking 9 fonts..." while
+`GRIMOIRE_BG_DELAY_MS` holds the check back, then each shows its preview or why it is refused; the pages of
+them; a tap draws the sample in the font and applies nothing; Done saves `font=file:<path>`, redraws with one
+Full refresh and leaves no guard mark; the sheet over a font of the owner's own; a variable and a CFF font;
+Gothic holds none; a built-in font takes it away), z_fonts_own_kept (`# root: y_fonts_own_1_sheet`: the font is
+there at the first screen of the next start) and y_fonts_own_2_missing (`font=file:Gone.ttf`: Terminess draws,
+the row says "File missing.", the line stays through other saves, a pick replaces it and `font_bold`). A row of
+the owner's fonts is tapped by its path, `tap library font.file:GrimoireTest-Regular.ttf` (only a font that can
+be used has the name), the pages by `font.prev` and `font.next`. The fonts are made by rust/tests/fontfix (`make
+font-fixtures`; test_font_fixtures.rs holds the committed bytes to it), and tests/fonts_big_fixture.py plants
+the sparse 30 MB file ("Too big"). The crash guard needs the app to die and start again, which a scenario
+cannot do: rust/tests/test_fontguard.rs runs the runner start after start with `GRIMOIRE_FONT_TEST_DRAW_CRASH`.
 
 ## The Share screen in tests
 
@@ -864,3 +883,10 @@ worker execs: a test's own executable is a test harness).
 Picture hooks (same builds): `GRIMOIRE_PIC_WATCHDOG_MS=N` (the picture watchdog), `GRIMOIRE_PIC_TEST_CRASH=N`,
 `..._HANG=N`, `..._TRAP=N` (a picture worker aborts, spins or makes a call outside its allow-list on its N-th
 picture), and `GRIMOIRE_WORK_FAIL_STEP` fails a picture worker's step too: pictures then decode in the writer.
+Font hooks (same builds): `GRIMOIRE_FONT_WATCHDOG_MS=N` (the font watchdog), `GRIMOIRE_FONT_SLICE_MS=N` and
+`GRIMOIRE_FONT_JOB_MS=N` (a slice's CPU time and a whole check's), `GRIMOIRE_FONT_TEST_CRASH=N`, `..._HANG=N`,
+`..._TRAP=N` (a font worker aborts, spins or makes a call outside its allow-list when it reaches glyph N),
+`GRIMOIRE_FONT_MEM_AVAILABLE=N` (the memory available, in bytes, as the font load reads it) and
+`GRIMOIRE_FONT_TEST_DRAW_CRASH=1` (the simulator's build only: the app ends at the first glyph a custom font
+draws, as a font that crashed its first screen would). `GRIMOIRE_IMPORT_STABLE=fast` takes a font file at the
+first look too, and `GRIMOIRE_WORK_FAIL_STEP` fails a font worker's step: no font is then checked.

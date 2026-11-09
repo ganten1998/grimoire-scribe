@@ -11,7 +11,7 @@ use crate::assets::{
     FONT_LITERATA_REGULAR, FONT_NOTO_SANS_BOLD, FONT_NOTO_SANS_REGULAR, FONT_TERMINESS_BOLD, FONT_TERMINESS_REGULAR,
 };
 use crate::ffi_stb::*;
-use crate::fontcheck::{SafeFace, FONT_CJK_EM, FONT_PX_MAX, FONT_PX_MIN};
+use crate::fontcheck::{Outliner, SafeFace, FONT_CJK_EM, FONT_PX_MAX, FONT_PX_MIN};
 use crate::prelude::*;
 use std::cell::RefCell;
 
@@ -274,6 +274,8 @@ struct State {
     own_drawn: u32,
     /// how many times the custom font in use was set (font_look: another font, another layout)
     own_sets: usize,
+    /// the one buffer custom faces' outlines are read into (256 KB, there from the first custom glyph on)
+    own_out: Option<Outliner>,
 }
 
 impl State {
@@ -294,6 +296,7 @@ impl State {
             own_off: false,
             own_drawn: 0,
             own_sets: 0,
+            own_out: None,
         }
     }
 }
@@ -452,9 +455,15 @@ fn own_draw_hook() {
 fn own_glyph(st: &mut State, ttf: usize, px: f32, cp: u32) -> (i32, Vec<u8>, i32, i32, i32, i32) {
     #[cfg(feature = "sim")]
     own_draw_hook();
-    let Some(f) = own_face(st, ttf) else { return (0, Vec::new(), 0, 0, 0, 0) };
+    if st.own_out.is_none() {
+        st.own_out = Outliner::new();
+    }
+    let State { own, own_out, .. } = st;
+    let (Some(f), Some(out)) = (own.get_mut(ttf.wrapping_sub(TTF_COUNT)).and_then(|f| f.as_mut()), own_out.as_mut()) else {
+        return (0, Vec::new(), 0, 0, 0, 0);
+    };
     let Some((gid, adv)) = f.glyph(cp) else { return (0, Vec::new(), 0, 0, 0, 0) };
-    let bm = f.bitmap(gid, px);
+    let bm = f.bitmap(out, gid, px);
     st.own_drawn = st.own_drawn.wrapping_add(1);
     match bm {
         Some(b) => (adv, b.px, b.w, b.h, b.xoff, b.yoff),

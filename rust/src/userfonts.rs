@@ -286,7 +286,7 @@ pub fn guard_parse(text: &[u8]) -> Option<Vec<GuardEntry>> {
 
 /// What a start makes of the marks it finds: a mark still armed means the last start with that font never
 /// finished its first screen, which is a strike. Returns the keys struck now: this start draws none of them
-/// (the first such start stays in Terminess altogether).
+/// (when the font in use is one, this start is in Terminess).
 pub fn guard_start(e: &mut Vec<GuardEntry>) -> Vec<u64> {
     let mut struck = Vec::new();
     for g in e.iter_mut() {
@@ -353,6 +353,10 @@ struct State {
     later_ms: Option<u32>,
     /// the sample the Font sheet holds: its path
     sample: Option<String>,
+    /// the guard keys of the files the font in use and the sample were loaded from (a font let go before any
+    /// screen showed it gives its mark back)
+    in_use_keys: Vec<u64>,
+    sample_keys: Vec<u64>,
     /// why the font asked for was not used, as last logged (said once, not at every look)
     said: Option<LoadErr>,
 }
@@ -380,7 +384,7 @@ fn guard_load(st: &mut State) -> &mut Vec<GuardEntry> {
         st.struck = guard_start(&mut marks);
         if !st.struck.is_empty() {
             qlog!(
-                "font: the last start did not finish its first screen with your font (%d mark(s)): Terminess for this start",
+                "font: the last start did not finish its first screen with your font (%d mark(s)): not drawn at this start",
                 st.struck.len() as i32
             );
         }
@@ -437,18 +441,40 @@ fn guard_arm_keys(keys: &[u64]) -> bool {
     })
 }
 
+/// A font that was armed and then not used after all (it did not load): its mark is let go, strikes kept.
+fn guard_disarm_keys(keys: &[u64]) {
+    with(|st| {
+        if !keys.iter().any(|k| st.armed.contains(k)) {
+            return;
+        }
+        st.armed.retain(|k| !keys.contains(k));
+        let marks = guard_load(st);
+        for g in marks.iter_mut().filter(|g| keys.contains(&g.key)) {
+            g.armed = false;
+        }
+        marks.retain(|g| g.armed || g.strikes > 0);
+        let marks = marks.clone();
+        guard_save(&marks);
+    });
+}
+
 /// After the panel was given a screen: if a custom font drew on it since its mark was armed, the mark goes.
-/// (Called after every present: it costs a comparison when nothing is armed.)
+/// (Called after every present: it costs a comparison when nothing is armed.) A mark the storage would not let
+/// go stays armed in memory too, and is tried again after the next screen a custom font draws on.
 pub fn userfonts_screen_drawn() {
     with(|st| {
         if st.armed.is_empty() || font_own_drawn() == st.armed_at {
             return;
         }
-        let armed = std::mem::take(&mut st.armed);
         let marks = guard_load(st);
+        let before = marks.clone();
         guard_settle(marks);
-        let marks = marks.clone();
-        guard_save(&marks);
+        if !guard_save(marks) {
+            *marks = before;
+            st.armed_at = font_own_drawn();
+            return;
+        }
+        let armed = std::mem::take(&mut st.armed);
         st.settled.extend(armed);
     });
 }
@@ -758,10 +784,26 @@ fn pair_of(rel: &str, facts: &FaceFacts) -> Option<String> {
     best.map(|b| b.1)
 }
 
+/// A face of bytes that passed the check, the guard armed for its file before skrifa reads a byte of it here
+/// (the mark is let go again if the face cannot be made). None: the mark could not be written, or the bytes
+/// do not read as the check read them.
+fn guarded_face(l: &Loaded, bold: bool) -> Option<SafeFace> {
+    if !guard_arm_keys(&[l.key]) {
+        qlog!("font: the guard's mark could not be written: your font is not used");
+        return None;
+    }
+    let face = SafeFace::new(l.data.clone(), l.facts.clone(), bold);
+    if face.is_none() && !bold {
+        guard_disarm_keys(&[l.key]);
+    }
+    face
+}
+
 /// Loads the font at `rel` (a path under grimoire/fonts) for drawing: its regular face, and its bold by its
 /// weight axis, else by `bold_rel` (settings.ini's font_bold) or the Bold file of its family, else none (bold
 /// is then the regular overprinted). `held` is what other loaded fonts hold already: all together stay under
-/// FONT_LOADED_MAX, the bold file giving way first. Returns the font and the keys the guard arms for it.
+/// FONT_LOADED_MAX, the bold file giving way first. The crash guard is armed for each file before it is read
+/// as a font. Returns the font, its files' keys, and how its bold is made.
 fn load_font(rel: &str, bold_rel: &str, dpi: f32, held: usize) -> Result<(OwnFont, Vec<u64>, &'static str), LoadErr> {
     let st = storage().ok_or(LoadErr::Missing)?;
     if mem_available().is_some_and(|m| m < USERFONT_MEM_FLOOR) {
@@ -771,21 +813,23 @@ fn load_font(rel: &str, bold_rel: &str, dpi: f32, held: usize) -> Result<(OwnFon
     let t0 = now_ms();
     let reg = load_file(&st, rel, dpi, FONT_LOADED_MAX.saturating_sub(held))?;
     let mut keys = vec![reg.key];
-    let regular = SafeFace::new(reg.data.clone(), reg.facts.clone(), false).ok_or(LoadErr::Failed)?;
+    let regular = guarded_face(&reg, false).ok_or(LoadErr::Failed)?;
     let mut how = "overprint";
     let mut bold = None;
     let mut bytes = reg.data.len();
     let explicit = userfont_rel_ok(bold_rel) && bold_rel != rel;
     if reg.facts.bold_at != 0 && !explicit {
-        bold = SafeFace::new(reg.data.clone(), reg.facts.clone(), true);
-        how = "its weight axis";
+        bold = guarded_face(&reg, true);
+        if bold.is_some() {
+            how = "its weight axis";
+        }
     }
     if bold.is_none() {
         let pair = if explicit { Some(bold_rel.to_string()) } else { pair_of(rel, &reg.facts) };
         if let Some(p) = pair {
             match load_file(&st, &p, dpi, FONT_LOADED_MAX.saturating_sub(held + bytes)) {
                 Ok(b) => {
-                    if let Some(face) = SafeFace::new(b.data.clone(), b.facts.clone(), false) {
+                    if let Some(face) = guarded_face(&b, false) {
                         bytes += b.data.len();
                         keys.push(b.key);
                         bold = Some(face);
@@ -812,7 +856,10 @@ fn load_font(rel: &str, bold_rel: &str, dpi: f32, held: usize) -> Result<(OwnFon
 /// bold is made ("its weight axis", "a Bold file", "overprint"), or why it did not load.
 #[cfg(not(feature = "kindle"))]
 pub fn userfonts_try_load(rel: &str, bold_rel: &str) -> Result<&'static str, LoadErr> {
-    load_font(rel, bold_rel, 300.0, 0).map(|l| l.2)
+    load_font(rel, bold_rel, 300.0, 0).map(|l| {
+        guard_disarm_keys(&l.1);
+        l.2
+    })
 }
 
 // This process's resident memory in kB (Linux's VmRSS line), 0 where it is not known.
@@ -852,7 +899,11 @@ fn apply(a: &mut App) -> Applied {
         if font_own() {
             font_set_own(None);
         }
-        with(|st| st.in_use = None);
+        let keys = with(|st| {
+            st.in_use = None;
+            std::mem::take(&mut st.in_use_keys)
+        });
+        guard_disarm_keys(&keys);
         return Applied::None;
     }
     // The same file as the one in use: nothing to do.
@@ -868,16 +919,16 @@ fn apply(a: &mut App) -> Applied {
     // (A font struck at this start is out for the session, load_file's guard_out: Terminess draws.)
     font_set_sample(None);
     font_set_own(None);
-    with(|st| {
+    let keys = with(|st| {
         st.in_use = None;
         st.sample = None;
+        let mut k = std::mem::take(&mut st.in_use_keys);
+        k.append(&mut st.sample_keys);
+        k
     });
+    guard_disarm_keys(&keys);
     match load_font(&rel, a.settings.font_bold.as_str(), a.dpi, 0) {
         Ok((font, keys, _)) => {
-            if !guard_arm_keys(&keys) {
-                qlog!("font: the guard's mark could not be written: your font is not used");
-                return Applied::Fallback(LoadErr::Failed);
-            }
             let name = match font.regular.facts().family.as_str() {
                 "" => rel.rsplit('/').next().unwrap_or("").rsplit_once('.').map_or(rel.as_str(), |n| n.0).to_string(),
                 family => family.to_string(),
@@ -886,6 +937,7 @@ fn apply(a: &mut App) -> Applied {
             font_set_own(Some(font));
             with(|st| {
                 st.in_use = Some((rel, keys[0]));
+                st.in_use_keys = keys;
                 st.in_use_name = name;
                 st.said = None;
             });
@@ -913,24 +965,23 @@ fn load_err_name(e: LoadErr) -> &'static str {
 /// The Font sheet's sample: the font at `rel` held beside the one in use, for font_with_sample (None: the
 /// sample goes). True when it is there to draw. The font in use, picked again, is its own sample.
 pub fn userfonts_sample(a: &mut App, rel: Option<&str>) -> bool {
-    let Some(rel) = rel else {
-        if with(|st| st.sample.take().is_some()) {
-            font_set_sample(None);
-        }
-        return false;
-    };
-    if with(|st| st.sample.as_deref() == Some(rel)) {
+    if rel.is_some() && with(|st| st.sample.as_deref() == rel) {
         return true;
     }
-    font_set_sample(None);
-    with(|st| st.sample = None);
+    // (the sample held before goes, and its mark with it if no screen ever showed it)
+    if with(|st| st.sample.take().is_some()) {
+        font_set_sample(None);
+    }
+    let keys = with(|st| std::mem::take(&mut st.sample_keys));
+    guard_disarm_keys(&keys);
+    let Some(rel) = rel else { return false };
     match load_font(rel, "", a.dpi, font_own_bytes()) {
         Ok((font, keys, _)) => {
-            if !guard_arm_keys(&keys) {
-                return false;
-            }
             font_set_sample(Some(font));
-            with(|st| st.sample = Some(rel.to_string()));
+            with(|st| {
+                st.sample = Some(rel.to_string());
+                st.sample_keys = keys;
+            });
             true
         }
         Err(_) => false,

@@ -309,7 +309,9 @@ draws them. White ink and the precise eraser make them.
   the style; Gothic has no chip. The chip opens the Font sheet: a sample card (the highlighted family's
   name at the title size, a translated sentence at the text size, digits and accents at the small size,
   all drawn in it), then a row for each family drawn in itself, a check on the one in use, then Cancel
-  and Done. The sheet's own words stay in the font in use. A tap highlights a row and refreshes only the
+  and Done. The sheet's own words stay in the font in use (in Terminess while that is one of the owner's
+  own, 2.1.0-beta.2: Your own fonts, which also adds the headings Built in and Your fonts, the rows of
+  grimoire/fonts and their pages). A tap highlights a row and refreshes only the
   sample and the two rows (`font_step`, one partial refresh); Done saves `font=`, applies it and redraws
   with a Full refresh, as a style change does; Cancel, Back and Esc change nothing. `font_with_family`
   draws a family's row and sample and puts the font in use back.
@@ -489,6 +491,8 @@ root/notebooks/<id>/p<pageid>.qpg  binary page (see docs/FORMAT.md)
 root/notebooks/<id>/p<pageid>.qpg.damaged-<time>   a page that could not be read, kept
 root/notebooks/<id>/thumb.pgm      binary PGM thumbnail of page 1 (P5)
 root/trash/<id>/               deleted notebooks are moved here, never unlinked
+root/fonts/, fonts/.cache/     the owner's own fonts and what the check found of them (Your own fonts)
+root/.font-inuse               the crash guard of a font of the owner's own (Your own fonts)
 root/PDFs/<folder>/<name>.pdf  the PDF mirror (an export, not data)
 root/.cache/pdf/<id>/          the notebook PDF's page streams (disposable; docs/FORMAT.md)
 root/.passcode-paused          legacy beta.1 recovery marker (new sessions never create it)
@@ -1964,6 +1968,80 @@ failed) pictures decode in the writer, as in 2.0, logged once (D21); `sandbox::s
 PDF import also reads. KOReader's own page PNGs and Grimoire's own `bg/` pictures are still decoded by the UI, as
 they come from KOReader's encoder and from Grimoire. The UI's check of a small template file with no preview yet
 (`install_picture`) goes through the worker too.
+
+## Your own fonts (2.1.0-beta.2, lane L10)
+
+A font file someone copied into `grimoire/fonts` is untrusted, and stb_truetype, which draws the embedded
+fonts, says of itself that it does no range checking of the offsets it finds in a file. So stb never opens
+such a file, and the rule is: **the UI process never parses a font that has not passed the check for exactly
+its bytes.** Four parts keep it (`fontcheck.rs`, `userfonts.rs`, `font.rs`):
+
+- **The safe face.** skrifa (no unsafe code; the parser hayro already brings, pinned to the same version) reads
+  the tables. Each glyph's outline comes out unscaled, in font units, as stb's own vertex list, through a pen
+  that applies the caps: 4,096 points a glyph, every point within 4 line heights of the origin and the box no
+  larger, 256 KB of draw memory. `stbtt_Rasterize`, stb's rasterizer and nothing else of stb, draws it at the
+  scale the size asks. For a TrueType font at its default location the vertex list is the very one stb's own
+  parser makes (contours started as stb starts them, implied points rounded down as stb rounds them, the same
+  closing line), so the bitmap is stb's own, byte for byte, size and offsets too: `font.rs`'s test checks it
+  on every glyph of every embedded text file at five sizes (Terminess's icons apart: some are built of scaled
+  components, where stb's parser cuts a coordinate short, and they never go this road). The check and the UI
+  draw through the same functions, and outlines do not depend on the size, so what the check drew is what the
+  UI draws.
+- **The check** runs in the safe loader's worker as a third kind (`grimoire --work font ...`), one font a unit,
+  its bytes sent down fd 5. It refuses a WOFF or WOFF2 file, a file skrifa does not read, a font with no
+  Unicode cmap or a symbol one, and one that lacks a printable ASCII character. It takes the font's line
+  (ascent and descent) unless that is more than half again as far as, or less than two thirds of, what the
+  capitals, digits, tall letters and accented capitals reach above and g j p q y and the cedillas below: then
+  what they reach. It requires ink inside the line box for A to Z, a to z and 0 to 9, at the smallest and the
+  largest size the UI draws a custom font at (8 and 160 px of line: outside them a glyph comes from Terminess).
+  Then it walks every glyph the cmap maps, at each location the UI uses (the default, and the bold's when the
+  font has a weight axis that reaches 100 above its default: 700, or its heaviest), outlining under the caps
+  and drawing at both sizes; a glyph that fails is listed and comes from Terminess, and more than one in a
+  hundred is "Unreadable font.". It works in slices of 20 s of its own CPU time (`s1::FONT_SLICE_CPU_SECS`),
+  each a fresh worker that gets the bytes again and goes on from the glyph index the last reached, 10 minutes
+  in all, then "Took too long to read."; a worker silent for 30 s is killed and is the same. It settles the
+  font's scale (capitals as tall as Terminess's, 0.592 of the line, between 0.85 and 1.25, then lowered a
+  hundredth at a time until 95 of 100 of Grimoire's strings, in every language, are no wider than Terminess
+  draws them, measured as `font.rs` measures: advances only), says which languages need letters the font
+  lacks, and draws the preview: the family's name in the font. Its records are text lines of a fixed grammar
+  and the preview's pixels; the writer validates every number.
+- **The writer** (`BgKind::FontCheck`, one job for every unchecked file, each read whole through `fsview`'s
+  walk) writes `<key>.checking` before a font and the verdict `<key>.font` with the preview after it
+  (FORMAT.md, "Your own fonts"). A worker that dies on a font leaves `<key>.bad` and the others go on; a job
+  that itself dies has its `.checking` mark turned into `.bad` by the UI, which queues the rest again. A
+  sandbox step that fails, or a worker that cannot start, marks nothing: the job ends with status 4 and the
+  session checks no more fonts. A file still being copied (under 5 s old, or changed between two looks 2 s
+  apart) waits: status 3, and the Font sheet looks again.
+- **The UI** lists the folder without opening a font (the rows are the check's previews), and loads one only
+  with a passing verdict whose `hash` is the FNV-1a 64 of the bytes it just read; another file under the same
+  name, size and time is checked again (`recheck:<key>`). It holds at most 32 MB of font files (the Bold file
+  gives way to overprint first), loads none under 100 MB of available memory, and none in Gothic. `font.rs`
+  keeps four face slots after the embedded files (the font in use and its bold, the Font sheet's sample and
+  its bold); a glyph's cache slot names its face, a cache now capped at 4 MB of bitmaps. `layout` draws a
+  custom face's own glyph when the font has it, it passed, and the size is one the check drew; everything
+  else, ASCII too, is borrowed from Terminess and then DotGothic16 as a family's missing glyphs are. Kana and
+  kanji of a custom font are drawn at the size whose em is DotGothic16's (0.691 of the line), so Japanese takes
+  the room it takes today. A custom font has no kerning (skrifa has no kerning API). Bold is the font's weight
+  axis, else `font_bold=`, else the Bold file of its family in the same folder, else overprint.
+- **The crash guard** (`grimoire/.font-inuse`): a font's mark is armed before its first use in a session and
+  taken away by the first present after a custom face drew a glyph (`userfonts_screen_drawn`, called at the end
+  of `app_flush`). An armed mark found at a start is a strike: one, and that start does not load the font; the
+  start after tries once more; two, and it stays out until the file changes. The Font sheet draws its own
+  words in Terminess while a custom font is in use (`font_with_family`, which sets a custom font aside), so a
+  bad pick can always be undone, and deleting the file over USB brings Terminess back ("File missing.").
+
+The share pages never serve a custom font (the browser gets Terminess), and nothing in a notebook, a PDF or a
+picture changes with one. grimoire.log never names a font file or a family.
+
+Tests: `test_fontcheck.rs` (real workers: good TrueType, variable and CFF fonts; the malformed-font corpus of
+`tests/fontfix`: truncations, a cmap past the end, composites that include each other, CFF subroutines past the
+format's depth, a symbol cmap, a web font, letters that draw nothing, wild glyphs, a line ten ems tall, random
+byte flips; a killed worker leaves `.bad`; a hung one is slow; slices come to one slice's verdict; a replaced
+file is checked again; the listing; a file still being copied waits; 20,000 glyphs), `test_fontguard.rs` (the
+guard start by start, with the app killed at a custom font's first glyph), `font.rs` (stb's bitmaps byte for
+byte; a custom font draws as the same file embedded; the cache's cap), `fontcheck.rs` and `userfonts.rs` (the
+verdict and guard files read strictly; the strike rules), `test_sandbox_linux.rs` (the check in the real
+sandbox, as root in CI), and the scenarios `y_fonts_own_1_sheet`, `y_fonts_own_2_missing`, `z_fonts_own_kept`.
 
 ## The file picker (2.1.0-beta.2, lane L8)
 

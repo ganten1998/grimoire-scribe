@@ -49,6 +49,22 @@
   now also gets a notebook name no other notebook has.
 - package-check's size guard is now 11 MB for the Kindle binary and 6 MB for the zip (was 10.5 MB and 5.5 MB):
   the PDF engine, its safe worker and the file picker brought the binary to 10.45 MB before your own fonts.
+- **Your own fonts in Classic.** Copy `.ttf` or `.otf` files into `grimoire/fonts` over USB (a family in a
+  folder of its own is fine) and open Settings > Font: under "Your fonts" each file shows its name drawn in
+  itself once Grimoire has checked it in the background ("Checking 3 fonts..." stays above the buttons
+  meanwhile), or its row says why it cannot be used: "Unreadable font.", "Too big (over 24 MB).", "No Latin
+  letters.", "Use .ttf or .otf." or "Took too long to read.". Tap one to see the sample in it, Done to use it.
+  Bold comes from the font's weight axis, else from the Bold file of the same family beside it, else from a
+  thicker print of the regular; a letter the font lacks comes from Terminess. Your font draws Grimoire's own
+  words only: pages, paper labels, the clock, icons, PDFs and the share pages never change with it, and the
+  file stays on the Kindle. A font is first read in the sandbox that reads PDFs and pictures, glyph by glyph,
+  and Grimoire draws it only while the file is byte for byte the one that passed. Should a font ever stop
+  Grimoire before its first screen, the next start is in Terminess by itself; deleting the font's file brings
+  Terminess back too ("File missing."), and while a font of yours is in use the Font sheet's own words stay in
+  Terminess. New in `settings.ini`: `font=file:<path>` and `font_bold=`, which 2.1.0-beta.1 and older keep as
+  lines they do not know (they draw Terminess). The Kindle binary is 10.6 MB and the zip 5.5 MB with it.
+- The text cache now holds at most 4 MB of letters (it was only limited by their number), which matters for
+  large letters of your own fonts.
 
 ## 2.1.0-beta.1 (2026-11-08)
 

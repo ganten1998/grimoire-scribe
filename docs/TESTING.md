@@ -2073,3 +2073,68 @@ and the log says so once), and the template, photo and import tests of `test_tem
    Grimoire stays quick; a folder with it among good pictures is refused whole, as in 2.0.
 5. Does a 40 MP JPEG (the cap) still decode on the Scribe within the worker's limits (`PICTURE_AS_MARGIN`,
    `PICTURE_WATCHDOG_MS` are placeholders)? A refusal says why in the log.
+
+## 2.1.0-beta.2, L10 (your own fonts)
+
+Automated: `rust/tests/test_fontcheck.rs` (real workers: good TrueType, variable and CFF fonts pass with what
+the file says; the malformed-font corpus of `rust/tests/fontfix` gets verdicts and never a dead worker:
+truncations, a cmap past the end, composite glyphs that include each other, CFF subroutines nested past the
+format's ten, a symbol cmap, a web font, letters that draw nothing, wild glyphs, a line ten ems tall, random
+byte flips; a sparse 30 MB file is too big and never read; a killed worker leaves `.bad` and the others go on;
+a hung worker is "took too long"; many slices come to one slice's verdict and preview; a replaced file is
+checked again; the listing follows no link; a file still being copied waits; a font of 20,000 glyphs is checked,
+in about a quarter of a second on the Mac), `test_fontguard.rs` (the crash guard with the app killed at a custom
+font's first glyph: a strike and a start in Terminess, one more try, a second strike, Terminess until the file
+changes; one strike forgiven; Gothic holds no custom font), the unit tests of `font.rs` (skrifa's outlines
+through `stbtt_Rasterize` are stb's own bitmaps byte for byte, over 30,000 glyph bitmaps of the embedded text
+fonts; a custom font draws each character as the same file embedded; the glyph cache's byte cap),
+`fontcheck.rs` and `userfonts.rs` (the verdict and guard files read strictly), the scenarios
+`y_fonts_own_1_sheet`, `y_fonts_own_2_missing` and `z_fonts_own_kept`, and `make l10n-check`'s `fonts-own` and
+`fonts-own-slow` runs (every row note, the headings and the notice in every language, upright and sideways).
+**Not run anywhere yet: a font in the sandbox's real steps** (`a_font_is_checked_in_the_real_sandbox` in
+`test_sandbox_linux.rs`, the CI job `sandbox`), **and everything on a Scribe**: the check's speed there, the
+load's time and memory, the look on e-ink. The owner's checks:
+
+1. Copy a downloaded `.ttf` (any text font: Inter, EB Garamond) into `grimoire/fonts` over USB, open Grimoire,
+   Settings (Classic) > Font. Under "Your fonts (grimoire/fonts)" the file first says "Checking..." with
+   "Checking 1 font..." above the buttons, then shows its name drawn in itself. Tap it: the sample card is drawn
+   in it. Done: every screen comes back in it with one flash, and the chip reads "Font: <its family>". Open a
+   notebook: its page, its paper labels and the clock corner are as before; the toolbar's sheets, the Pages
+   view, the Links bar and the keyboard are in your font.
+2. **E-ink look.** Read the Library, Settings and the keyboard's typing line in your font: are thin strokes
+   still there at the small size (34 px) and after a fast refresh (type a notebook's name)? Is its size right
+   next to Terminess's (the scale is in grimoire.log's check line only as a result: note whether it looks too
+   small or too large; the rule is in DESIGN.md, Your own fonts)? Do names in the Library end in "..." more
+   than in Terminess?
+3. **Bold.** A family unzipped into `grimoire/fonts/<Family>/` with its Regular and Bold files: pick the Regular;
+   titles and buttons are the Bold file's (grimoire.log: `font: custom font loaded: ... bold by a Bold file`).
+   A variable font with a weight axis (Inter's variable file): `bold by its weight axis`. A lone Regular:
+   `bold by overprint`, and bold text is the regular thickened.
+4. **Check time.** Copy a large CJK font (Noto Sans JP's variable file is about 9 MB with 17,000 glyphs; or any
+   font of about 20,000 glyphs) and time "Checking..." on the row, and from grimoire.log: `fonts: file I of N
+   passed: S KB, G glyphs, K from Terminess, checked in T ms`. It should pass well inside the 10 minutes a font
+   has (the slices are 20 s; `sandbox::s1::FONT_*` hold the numbers, placeholders until measured). Does the
+   Kindle stay responsive in the Font sheet meanwhile (the notice may lag: it redraws every 2 s at most)?
+5. **Load time and memory.** With a font of about 10 MB picked, restart Grimoire and read grimoire.log: `font:
+   custom font loaded: S KB in T ms, ..., VmRSS R kB`. Compare T with the launcher's 15 s watchdog (it should
+   be a fraction of a second), and R with the same line's R for a small font: the difference is about the
+   file's size. With two large fonts in the folder, tap one while the other is in use: the sample is still
+   drawn (both are held, up to 32 MB in all; past that the sample card shows the check's picture instead).
+6. **Japanese.** In Japanese (Settings > Language), with a Latin font picked: kana and kanji are DotGothic16's
+   as before. With a CJK font picked: its kana and kanji are drawn, in the room DotGothic16's take (no label
+   overflows that fitted before).
+7. **Refusals.** Copy a `.woff2`, a symbol font (Webdings or any dingbats font), a file that is not a font
+   renamed `.ttf`, and a font over 24 MB: their rows are greyed with "Use .ttf or .otf.", "No Latin letters.",
+   "Unreadable font." and "Too big (over 24 MB).", and a tap on them does nothing.
+8. **Getting back.** With your font in use, open Settings > Font: the sheet's own words (Font, Built in, Your
+   fonts, Cancel, Done) are in Terminess. Pick Terminess and Done: back. Pick your font again, close Grimoire,
+   delete the file over USB, open Grimoire: Terminess, and the sheet's row says "File missing."; copy the file
+   back and open Grimoire: your font again.
+9. **The sandbox.** grimoire.log has `work: sandboxed (uid 62001, ...)` and no `fonts: no worker for the check`
+   and no `made call N, which the sandbox does not allow` (if either shows, send the log: a call is then added
+   to the allow-list with the spike's numbers, and until then no font is checked, none is marked).
+10. **The crash guard** cannot be provoked without a font that crashes Grimoire; its marks can be watched:
+    while your font's first screen is being drawn `grimoire/.font-inuse` exists, and it is gone a moment after.
+    If Grimoire is ever killed in that moment (hold the power button the instant the first screen appears),
+    the next start is in Terminess once (the log says `the last start did not finish its first screen with your
+    font`), and the start after has your font back.

@@ -5585,7 +5585,10 @@ fn act(a: &mut App, h: &Hit) {
             font_sheet_closed(a);
             lib(a).modal = Modal::Settings;
             let was_own = a.settings.font_file.as_str().to_string();
-            let same = if own.is_empty() { was_own.is_empty() && pick == font_family() } else { own == was_own && crate::userfonts::userfonts_in_use(&own) };
+            // Done on what draws now changes nothing: also not a font= line whose font cannot be used (a file
+            // that is gone, a newer version's font), which stays as it is until another font is picked.
+            let drawn_own = if crate::userfonts::userfonts_in_use(&was_own) { was_own.clone() } else { String::new() };
+            let same = own == drawn_own && (!own.is_empty() || pick == font_family());
             if same {
                 redraw(a, RefreshMode::Ui);
                 return;

@@ -52,6 +52,8 @@ root/bluetooth/                         the Bluetooth helper, unpacked by the ow
 root/.update-failed                     an update KPM could not install: told at the next start, then removed (2.0)
 root/templates/                         pictures the owner copies in to use as paper (Templates)
 root/photos/                            photos the owner copies in, each to be a page's paper (2.0; Photos)
+root/fonts/                             font files the owner copies in, for Classic's text (2.1.0-beta.2; Your own fonts)
+root/.font-inuse                        the crash guard of a font of the owner's own (2.1.0-beta.2; Your own fonts)
 root/import/<Name>/                     page pictures to become a notebook at the next start (Imports)
 root/import/.annotate/                  a page KOReader sends to annotate, and its request (Annotated pages)
 root/trash/                             deleted notebooks and pages, moved here, never unlinked
@@ -588,6 +590,56 @@ first 64 KB; none, or a PNG, is taken as upright), and so is its preview. Ids: a
 versions draw such a page as any picture page (1.1 on), or blank (1.0.0-beta, which `bg/pages.ini`
 puts right again).
 
+### Your own fonts: `root/fonts/` (2.1.0-beta.2 on)
+
+Font files the owner copies in (over USB, while Grimoire is closed, or over SSH while it runs) to draw
+Classic's text in: files whose names end in `.ttf`, `.otf`, `.ttc` or `.otc` (any case; of a collection, its
+first face) and do not start with a dot, in the folder itself and in its folders one level down, at most 200
+in name order, each at most 24 MB. Files ending in `.woff` or `.woff2` are listed and never read ("Use .ttf or
+.otf."). Links are never followed, and a file whose path under the folder is longer than 200 bytes, or holds a
+control character, is left out. Grimoire makes the folder at startup, with a `README.txt`, if it is missing.
+Nothing in a notebook ever refers to a font: pages, PDFs and pictures do not change with one.
+
+`fonts/.cache/` holds what the background check found, each file named by the FNV-1a 64 hash (16 hex digits) of
+the font's path under the folder, its size and its time (`<path>/<size>/<mtime>`), so a file replaced by
+another is checked afresh. It is a cache: deleting it loses nothing, and only the background job writes it.
+
+- `<key>.font`, the verdict, text, at most 8 KiB, read strictly (an unknown line, or a number out of range,
+  makes the file no verdict and the font is checked again):
+
+  ```text
+  grimoire-font 1
+  hash=<FNV-1a 64 of the whole file, 16 hex digits>
+  size=<the file's size in bytes>
+  ok=1                            or  why=unreadable | nolatin | format | slow
+  upem=<units per em, 16 to 16384>
+  ascent=<units above the baseline>     descent=<units below it, as a magnitude>
+  scale=<how much bigger than asked its text is drawn, in thousandths: 850 to 1250>
+  weight=<its weight class, 1 to 1000>  italic=<0|1>
+  mapped=<glyphs its cmap maps>
+  wght=<least> <default> <most>   bold=<the weight its bold is drawn at>   (a weight axis only)
+  cover=<characters it has of Latin-1, Latin Extended-A, Greek, Cyrillic, kana, kanji>
+  lacks=<bits: 1 English, 2 Spanish, 4 Japanese: that language's words need letters it lacks>
+  family=<its family's name>      style=<its style's name>     (64 characters each at most)
+  skip=<glyph>,<glyph>,...        glyphs that failed the check, in order, at most 656: drawn in Terminess
+  ```
+
+  The lines after `size` are there only with `ok=1`. `ascent` and `descent` are the font's own unless they
+  are far from what its letters reach (then what they reach). Grimoire draws a font only when the bytes it
+  reads hash to `hash`; other bytes under the same name, size and time are checked again.
+- `<key>.pgm`, the preview (P5 PGM): the family's name (and its style, unless Regular) drawn in the font,
+  black on white, at the text size of the screen the check ran for.
+- `<key>.checking`, empty: a check of this file is under way.
+- `<key>.bad`, empty: the check's worker died on this file, or the check itself did. The font is not read
+  again until the file changes.
+
+`root/.font-inuse` is the crash guard, not a cache (the app itself writes it): text, a first line
+`grimoire-font-guard 1`, then at most eight lines `<key> <strikes 0|1|2> <armed 0|1>`. A font's line is armed
+before its first use in a session and removed once a screen drawn with it is on the panel. An armed line found
+at a start is a strike: that start does not draw the font; with one strike the next start tries it once more;
+with two it is left alone until the file changes (another key). A file that does not read as this is started
+afresh. Deleting it only forgets the strikes.
+
 ### Imports: `root/import/<Name>/`
 
 At startup, each folder `import/<Name>/` that holds page pictures (named as templates are) becomes
@@ -1094,7 +1146,8 @@ line. Values are clamped to their ranges when read.
 | `whatsnew_seen` | the version whose What's new notes were last shown or due (`2.0.0-rc.11`): the first start after an update opens them once over the Library, when the file was saved by a Grimoire before (it has `settings_version`) and this names another version, every update (since 2.0.0 whatever `whatsnew_hide` says). A file without `settings_version` (a fresh start, or one written by hand) records the running version as seen. Written after `shape_min_mm`. Since 2.0.0-rc.11, as `gestures` |
 | `whatsnew_hide` | 0 or 1: What's new's Don't show this again of 2.0.0-rc.11 to 2.0.0-beta.2, off by default; there, on, an update opened no notes by themselves (the bat in the Library's top bar still opened them). Since 2.0.0 the box is gone (the owner's rule of 2026-11-05: every update opens What's new once): the key is read and written back as it was, so those versions keep its meaning, but it is never set and not used. Written after `whatsnew_seen`. Since 2.0.0-rc.11, as `gestures` |
 | `shape_corner` | 0 to 100: Smart shapes' Corner roundness, the corners of a snapped rectangle, square, quad or triangle rounded by this percentage of the largest radius the shape holds (one radius for every corner; at 100 the arcs at the ends of its tightest edge meet in its middle, so a square is a circle), 0 (Sharp) by default, clamped to 0..100. The arcs are part of the stroke's points (the stroke is ink); link areas keep sharp corners. Written after `whatsnew_hide`. Since 2.0.0-rc.12, as `gestures` |
-| `font` | Classic's font, Settings > Font: `terminess` (the default, also when the key is missing), `atkinson` (Atkinson Hyperlegible Next), `noto-sans` (Noto Sans) or `literata` (Literata). Every screen's text in Classic, the share pages' too; never a page, a paper label, the clock, a PDF or a picture, and never the icons. Gothic keeps its own faces whatever it says (the line stays). A value this version does not have (a later one's font) draws as Terminess and is written back as it was (below) until a font is picked and applied with Done. Written after `shape_corner`. Since 2.1.0; older versions keep the line as one they do not know |
+| `font` | Classic's font, Settings > Font: `terminess` (the default, also when the key is missing), `atkinson` (Atkinson Hyperlegible Next), `noto-sans` (Noto Sans) or `literata` (Literata). Every screen's text in Classic, the share pages' too; never a page, a paper label, the clock, a PDF or a picture, and never the icons. Gothic keeps its own faces whatever it says (the line stays). A value this version does not have (a later one's font) draws as Terminess and is written back as it was (below) until a font is picked and applied with Done. Written after `shape_corner`. Since 2.1.0; older versions keep the line as one they do not know. Since 2.1.0-beta.2 also `file:<path>`, a font of the owner's own by its path under `fonts/` (`file:Inter.ttf`, `file:Inter/Inter-Regular.ttf`; Your own fonts): used when the file is there, passed its check and the crash guard lets it in, else Terminess draws and the line stays as it is (the file put back brings the font back); the share pages get Terminess. 2.1.0-beta.1 reads it as a font it does not have |
+| `font_bold` | `file:<path>`: the Bold file to draw a custom `font`'s bold with, for a hand to set. The line is not there unless it was set: without it bold comes from the font's weight axis, else from the Bold file of its family in the same folder (weight 600 or more, upright), else the regular is overprinted. Any other value is not used and is written back as it was. Picking another font in Settings > Font removes it. Written after `font`. Since 2.1.0-beta.2; older versions keep the line as one they do not know |
 | `status_mode` | Retired status-strip preference. New saves write 1 (corner). Legacy 0 becomes the small enabled top-left corner, 2 becomes an off corner. There is no reserved strip or mode selector. `status-mode` is a compatibility alias for the corner toggle. |
 | `shortcuts_enabled` | 0 or 1: keyboard and controller shortcuts, off by default (`shortcuts.ini`, below). Since 2.0.0-beta.1; 1.1.0-beta.1 and 1.1.0-beta.2 keep the line and have no shortcuts, 1.0.0-beta drops it on its next save |
 | `controller` | 0 or 1: start the Bluetooth helper with Grimoire (Settings > Pair > Bluetooth controller, Settings > Controller before 2.0.0-beta.2; docs/SHORTCUTS.md), off by default; it only starts while shortcuts are on too. Since 2.0.0-beta.5; versions before keep the line (from 1.0.0-beta.2 on) or drop it (1.0.0-beta), and start nothing |

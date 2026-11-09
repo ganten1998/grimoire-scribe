@@ -392,7 +392,7 @@ fn bit(set: &[u64], i: u32) -> bool {
     set.get((i / 64) as usize).is_some_and(|w| w >> (i % 64) & 1 == 1)
 }
 
-/// The ink a bitmap has inside the line box, in whole pixels of coverage (255 a pixel).
+/// The ink a bitmap has inside the line box, in 255ths of a pixel of coverage.
 fn ink_in_line(bm: &Bitmap, asc_px: i32, desc_px: i32) -> u64 {
     let mut sum = 0u64;
     for r in 0..bm.h {
@@ -403,7 +403,7 @@ fn ink_in_line(bm: &Bitmap, asc_px: i32, desc_px: i32) -> u64 {
         let row = &bm.px[(r * bm.w) as usize..((r + 1) * bm.w) as usize];
         sum += row.iter().map(|&p| p as u64).sum::<u64>();
     }
-    sum / 255
+    sum
 }
 
 fn name_of(font: &FontRef, ids: [StringId; 2]) -> String {
@@ -524,11 +524,12 @@ fn open_face<'a>(data: &'a [u8], out: &mut Outliner, scale_pm: i32) -> Result<Op
     let weight = fin(attrs.weight.value()).clamp(1, 1000);
     let italic = !matches!(attrs.style, skrifa::attribute::Style::Normal);
     // Every letter and digit must put ink inside the line box at the smallest and the largest size: a font
-    // whose letters are there and draw nothing never reaches a screen.
+    // whose letters are there and draw nothing never reaches a screen. (An eighth of a pixel of coverage at the
+    // smallest size, which the thinnest stem of a real font passes, and sixteen pixels at the largest.)
     for cp in (b'A'..=b'Z').chain(b'a'..=b'z').chain(b'0'..=b'9') {
         for loc in &locations {
             let Ok(Some(b)) = out.outline(&glyphs, ascii[cp as usize], loc, line) else { return Err(Refuse::Unreadable) };
-            for (px, need) in [(FONT_PX_MIN, 1u64), (FONT_PX_MAX, 16)] {
+            for (px, need) in [(FONT_PX_MIN, 32u64), (FONT_PX_MAX, 16 * 255)] {
                 let scale = px / line as f32;
                 let (asc_px, desc_px) = ((ascent as f32 * scale).ceil() as i32, (-descent as f32 * scale).ceil() as i32);
                 match rasterize(&mut out.verts, b, scale) {
@@ -941,7 +942,7 @@ fn check_one(data: &[u8], start: usize, px: f32, slice_ms: u64, scale_pm: i32, h
             }
         }
         gid += 1;
-        if gid % 16 == 0 {
+        if gid.is_multiple_of(16) {
             let now = cpu_ms();
             if now.saturating_sub(t0) >= slice_ms && gid < nglyphs {
                 say(&format!("N {gid} {}\n", now.saturating_sub(t0)));
@@ -1142,7 +1143,7 @@ fn unhex(t: &str) -> Option<String> {
     if t == "-" {
         return Some(String::new());
     }
-    if t.len() % 2 != 0 || t.len() > FONT_NAME_CHARS * 8 || !t.bytes().all(|c| c.is_ascii_digit() || (b'a'..=b'f').contains(&c)) {
+    if !t.len().is_multiple_of(2) || t.len() > FONT_NAME_CHARS * 8 || !t.bytes().all(|c| c.is_ascii_digit() || (b'a'..=b'f').contains(&c)) {
         return None;
     }
     let bytes: Vec<u8> = (0..t.len() / 2).map(|i| u8::from_str_radix(&t[i * 2..i * 2 + 2], 16).unwrap_or(0)).collect();
@@ -1504,7 +1505,8 @@ pub struct SafeFace {
     data: Rc<Vec<u8>>,
     coords: Vec<NormalizedCoord>,
     facts: Rc<FaceFacts>,
-    out: Outliner,
+    /// how many glyphs the font says it has: the check walked no glyph past them, so none is drawn
+    nglyphs: u32,
     /// code point to (glyph, advance in font units); (0, 0) for one the face does not draw
     look: std::collections::HashMap<u32, (u32, i32)>,
 }
@@ -1522,8 +1524,8 @@ impl SafeFace {
         let font = FontRef::from_index(&data, 0).ok()?;
         font.outline_glyphs().format()?;
         let coords = if bold { location_for(&font, facts.bold_at as f32) } else { Vec::new() };
-        let out = Outliner::new()?;
-        Some(SafeFace { data, coords, facts, out, look: std::collections::HashMap::new() })
+        let nglyphs = (font.metrics(Size::unscaled(), LocationRef::default()).glyph_count as u32).max(1);
+        Some(SafeFace { data, coords, facts, nglyphs, look: std::collections::HashMap::new() })
     }
 
     pub fn facts(&self) -> &FaceFacts {
@@ -1552,7 +1554,7 @@ impl SafeFace {
     fn find(&self, cp: u32) -> Option<(u32, i32)> {
         let font = FontRef::from_index(&self.data, 0).ok()?;
         let g = font.charmap().map(cp)?.to_u32();
-        if g == 0 || g > 65_535 || self.facts.skip.binary_search(&(g as u16)).is_ok() {
+        if g == 0 || g >= self.nglyphs || g > 65_535 || self.facts.skip.binary_search(&(g as u16)).is_ok() {
             return None;
         }
         let adv = font.glyph_metrics(Size::unscaled(), LocationRef::new(&self.coords)).advance_width(GlyphId::new(g))?;
@@ -1563,18 +1565,19 @@ impl SafeFace {
         Some((g, adv.round_ties_even() as i32))
     }
 
-    /// Glyph `gid` at a line height of `px`: its bitmap (empty for a glyph with no ink), None when the size is
-    /// outside what the check drew or the outline does not pass the caps (nothing is drawn then).
-    pub fn bitmap(&mut self, gid: u32, px: f32) -> Option<Bitmap> {
+    /// Glyph `gid` at a line height of `px`, outlined through `out` (the one outline buffer the UI keeps): its
+    /// bitmap (empty for a glyph with no ink), None when the size is outside what the check drew or the outline
+    /// does not pass the caps (nothing is drawn then).
+    pub fn bitmap(&self, out: &mut Outliner, gid: u32, px: f32) -> Option<Bitmap> {
         if !(FONT_PX_MIN..=FONT_PX_MAX).contains(&px) {
             return None;
         }
         let line = self.facts.line();
         let font = FontRef::from_index(&self.data, 0).ok()?;
         let glyphs = font.outline_glyphs();
-        match self.out.outline(&glyphs, gid, &self.coords, line) {
+        match out.outline(&glyphs, gid, &self.coords, line) {
             Ok(None) => Some(Bitmap::default()),
-            Ok(Some(b)) => rasterize(&mut self.out.verts, b, px / line as f32),
+            Ok(Some(b)) => rasterize(&mut out.verts, b, px / line as f32),
             Err(_) => None,
         }
     }

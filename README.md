@@ -218,6 +218,28 @@ your notebooks and settings from `quire/` to `grimoire/` and removes the old Qui
   PDFs and pictures never change with the font, and neither do the icons; the share pages in your browser
   use the same font (a page already open takes it when it loads again). Gothic keeps its own pixel type, so the chip is not there. Greek, Cyrillic and other
   letters a font lacks come from Terminess, and Japanese from DotGothic16, as in every style.
+- **Your own fonts** (Classic, since 2.1.0-beta.2): copy `.ttf` or `.otf` files into `grimoire/fonts` over USB
+  (a family unzipped into a folder of its own is fine, one folder deep; up to 200 files, 24 MB each), then open
+  Settings > Font. Under **Your fonts** each file shows its name drawn in itself once Grimoire has checked it
+  in the background ("Checking 3 fonts..." stays above the buttons meanwhile, and a file still being copied
+  waits until it is whole), or its row is greyed and says why not: "Unreadable font." (not a font, damaged, or
+  one whose letters draw nothing), "Too big (over 24 MB).", "No Latin letters." (a symbol font), "Use .ttf or
+  .otf." (a web font) or "Took too long to read.". Tap a font to see the sample in it, and **Done** to use it.
+  Bold comes from the font's own weight axis if it has one, else from the Bold file of the same family beside
+  it, else Grimoire thickens the regular. A letter your font lacks comes from Terminess (its row says "Some
+  letters come from Terminess." when your language needs some), and kana and kanji from DotGothic16 unless your
+  font has them. Text in your font may be a little smaller or larger than in Terminess: Grimoire sizes it so
+  its capitals are about as tall and its words no wider, and a label that still does not fit ends in "...".
+  - **Whose fonts.** Your font draws Grimoire's own words only (menus, names, the keyboard). Pages, paper
+    labels, the clock, icons, PDFs and pictures never use it, and neither do the share pages (your browser gets
+    Terminess): Grimoire never copies your font into a page, a PDF or anywhere else, and never sends it
+    anywhere. It stays on this Kindle. Use fonts you have the right to use.
+  - **Back to Terminess.** Pick Terminess in the Font sheet (while a font of yours is in use the sheet's own
+    words are in Terminess, so it can always be read), or delete the font's file over USB: Grimoire is in
+    Terminess at once, and the row says "File missing." until you pick another font or put the file back,
+    which brings the font back. If a font ever stops Grimoire before its first screen is drawn, the next start
+    is in Terminess by itself, the start after tries the font once more, and after a second failure Grimoire
+    leaves it alone until the file changes.
 
 ## White ink, pinned pens and templates
 
@@ -464,7 +486,12 @@ precise eraser, and they drop pinned pens from `settings.ini`.
 - **Share has no password.** Anyone on the same network can open it while the Share screen is
   open, and nobody once you leave it. Do not open Share on a network you do not trust.
 - **grimoire.log**, which a bug report asks for, holds no serial number, account, Wi-Fi name or
-  network address, and Share notes downloads without notebook or folder names.
+  network address, and Share notes downloads without notebook or folder names. It never names a font of
+  yours either, by file or by family: only sizes, counts and timings.
+- **Files from outside are read in a sandbox.** A PDF, a picture or a font you copy onto the Kindle is first
+  read by a separate, locked-down copy of Grimoire that has no network, sees no files, runs as a user of its
+  own and may make only a short list of system calls; what it reports is checked before anything is written.
+  A font is drawn by Grimoire itself only after it passed that check for exactly its bytes.
 
 ## Known issues
 

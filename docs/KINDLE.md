@@ -30,6 +30,10 @@ grimoire/settings.ini, folders.ini, sleep.pgm, grimoire.log
 grimoire/.passcode-paused      legacy beta.1 marker, consumed for its recovery notice
 grimoire/.passcode-left-off    counts the starts told that a restart left the passcode off
 grimoire/.koplugin-installed   the build whose plugin went into KOReader, or "removed"
+grimoire/fonts/                font files you copy in for Classic's text (2.1.0-beta.2), with a README.txt
+grimoire/fonts/.cache/         what the background check found of each: verdict, preview, marks (deletable)
+grimoire/.font-inuse           the crash guard of a font of yours: there from before its first use in a
+                               session until a screen drawn with it is on the panel, and while it has a strike
 grimoire/trash/                deleted notebooks and pages
 grimoire/PDFs/                 PDF mirror (USB road); kept out of documents/ so the Kindle never indexes it
 ```
@@ -470,6 +474,42 @@ file name, title or key ever appears in it: ids, page numbers, counts, timings, 
   handshake failed): pictures then decode in the writer as in 2.0, and nothing is marked. Only a picture
   that comes from outside Grimoire and KOReader goes this way; KOReader's own page PNGs are still drawn by the UI.
 - `bg: PDF import of <id> (pid N)` once per slice; `bg: PDF import pid N done`.
+
+## Your own fonts (2.1.0-beta.2)
+
+Copy `.ttf` or `.otf` files into `grimoire/fonts/` (see README). Device checks are in TESTING.md. A font is
+read first by the sandboxed worker (`grimoire --work font ...`, the same loader as PDFs and pictures: its bytes
+come down a pipe, 24 MB at most; its address space is its image, the file and 64 MiB; a slice is 20 s of its
+own CPU time, then a fresh worker goes on from the glyph the last one reached, 10 minutes in all). The UI reads
+a font only once its verdict is there, and only if the bytes it reads hash to the verdict's. What grimoire.log
+says (never a file's name or a family's: counts, sizes, timings, reasons):
+
+- `bg: font check of a folder (pid N)`, then for each file not checked yet `fonts: file I of N passed: S KB, G
+  glyphs, K from Terminess, checked in T ms`, or `... refused (unreadable|no Latin letters|a web font)`, or `...
+  took too long to read (T ms)`, or `... the check's worker ended (<why>): marked unreadable`, or `... left for
+  later (out of memory)`; then `fonts: P passed, R refused, D the worker died on, L left for later` and `bg: font
+  check pid N done`. A file under five seconds old, or changed between two looks, is left for later (it is
+  still being copied), and the Font sheet looks again after three seconds.
+- `fonts: no worker for the check (<why>); nothing is marked`, then `fonts: no worker can be had (see the lines
+  above): no font is checked until Grimoire starts again`: a sandbox step failed or the worker did not start.
+  No font is read, none is marked; the rows of unchecked fonts say "Unreadable font." for this session.
+- `fonts: the check ended badly; N file(s) marked unreadable`: the background job itself died on a file.
+- `font: custom font loaded: S KB in T ms, bold by its weight axis|a Bold file|overprint, K glyph(s) from
+  Terminess, VmRSS R kB`: the font settings.ini names (or the Font sheet's sample) was read and hashed. T and R
+  are the load time and the memory to compare in TESTING.md's device checks.
+- `font: your font is not used (<why>): Terminess`, once for each reason: its file is missing, it is being
+  checked, it did not pass its check, too little memory, it could not be loaded. `font: under 100 MB of memory
+  available: your font is not loaded`. `font: the Bold file would pass 32 MB of fonts loaded: bold is
+  overprinted`. `font: a font file is not the one that was checked: checking it again` (other bytes under the
+  same name, size and time).
+- `font: the last start did not finish its first screen with your font (N mark(s)): not drawn at this start`:
+  the crash guard found a mark armed (the font in use, its Bold file or the Font sheet's sample). `font: the guard's mark could not be written: your font is not used`.
+  `font: the guard file does not read; starting it afresh`.
+- `fonts: N file(s) left out (too many, or a name too long to keep)`: over 200 files, or a path over 200 bytes.
+
+To get back to Terminess by hand: delete the font's file, or delete the `font=file:...` line of
+`grimoire/settings.ini` while Grimoire is closed. Deleting `grimoire/.font-inuse` forgets a font's strikes;
+deleting `grimoire/fonts/.cache/` has every font checked again.
 
 ## Touch gestures and the touch trace
 
