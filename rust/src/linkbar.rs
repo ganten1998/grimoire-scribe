@@ -107,6 +107,10 @@ pub enum LbResult {
     Around,
     /// the pager: another screenful of chips (the grid is drawn again)
     Pager,
+    /// the "From the PDF (%d)" row: the page's document links open as chips grouped by target
+    Docs,
+    /// X inside the document links' chips (nothing looked at): back to the page's own rows
+    DocsBack,
     /// Link to...: chip i of picks
     Pick(i32),
     /// Link to...: Search (Find in pick mode)
@@ -197,29 +201,77 @@ pub fn linkbar_group(
     count
 }
 
+/// Whether the bar's list ends in the "From the PDF (%d)" row now: the page has document links and the bar is
+/// not inside them.
+pub fn linkbar_has_docs_row(lb: &LinkBar) -> bool {
+    !lb.in_docs && lb.doc_links > 0
+}
+
+/// The entries chips 0.. are: the page's own, or, inside the document links, theirs (grouped by target).
+fn linkbar_list(lb: &LinkBar) -> &[LbEntry] {
+    if lb.in_docs {
+        &lb.docs
+    } else {
+        &lb.entries[..lb.n.min(LB_MAX)]
+    }
+}
+
+/// Chip i's entry: a row of the page's own links, or inside the document links one of theirs. None for the
+/// document links' own row, a Linked from row and anything past the last.
+pub fn linkbar_entry(lb: &LinkBar, i: i32) -> Option<&LbEntry> {
+    if i < 0 {
+        return None;
+    }
+    linkbar_list(lb).get(i as usize)
+}
+
+/// Whether chip i is the "From the PDF (%d)" row.
+pub fn linkbar_is_docs_row(lb: &LinkBar, i: i32) -> bool {
+    linkbar_has_docs_row(lb) && i == lb.n as i32
+}
+
 /// The entries the pager shows now: the screenful (its Linked from rows: linkbar_visible_from).
 pub fn linkbar_visible(lb: &LinkBar) -> &[LbEntry] {
-    let first = ((lb.screen * lb.per).max(0) as usize).min(lb.n);
-    let end = (first + lb.per.max(0) as usize).min(lb.n);
-    &lb.entries[first..end]
+    let list = linkbar_list(lb);
+    let first = ((lb.screen * lb.per).max(0) as usize).min(list.len());
+    let end = (first + lb.per.max(0) as usize).min(list.len());
+    &list[first..end]
+}
+
+/// Where the Linked from rows begin among the chips.
+fn from_at(lb: &LinkBar) -> usize {
+    lb.n + linkbar_has_docs_row(lb) as usize
 }
 
 /// The Linked from rows the pager shows now.
 pub fn linkbar_visible_from(lb: &LinkBar) -> &[LbFrom] {
+    if lb.in_docs {
+        return &[];
+    }
+    let at = from_at(lb);
     let first = (lb.screen * lb.per).max(0) as usize;
     let end = first + lb.per.max(0) as usize;
-    let (a, b) = (first.max(lb.n) - lb.n, end.max(lb.n) - lb.n);
+    let (a, b) = (first.max(at) - at, end.max(at) - at);
     &lb.from[a.min(lb.from.len())..b.min(lb.from.len())]
 }
 
-/// Every chip the bar has: the page's entries, then its Linked from rows.
+/// Every chip the bar has: the page's entries, the document links' row, then its Linked from rows; inside the
+/// document links, theirs.
 pub fn linkbar_chips(lb: &LinkBar) -> usize {
-    lb.n + lb.from.len()
+    if lb.in_docs {
+        lb.docs.len()
+    } else {
+        from_at(lb) + lb.from.len()
+    }
 }
 
 /// Chip i's Linked from row, None for one of the page's own entries.
 pub fn linkbar_from_row(lb: &LinkBar, i: i32) -> Option<&LbFrom> {
-    (i >= lb.n as i32).then(|| lb.from.get(i as usize - lb.n)).flatten()
+    if lb.in_docs {
+        return None;
+    }
+    let at = from_at(lb);
+    (i >= at as i32).then(|| lb.from.get(i as usize - at)).flatten()
 }
 
 /// Chip i's rect on the screen as last drawn (None when it is not on the screenful shown).
@@ -296,6 +348,13 @@ pub struct LinkBar {
     pub from: Vec<LbFrom>,
     /// the backlinks cache's generation the rows were made at (the editor builds the bar again past it)
     pub from_gen: u32,
+    /// the page's document links (doclinks.ini) grouped by target in reading order: what the "From the PDF"
+    /// row opens (any number: a month page of a planner has a link for every day)
+    pub docs: Vec<LbEntry>,
+    /// how many document links the page has
+    pub doc_links: i32,
+    /// inside the document links' chips: the grid lists `docs`, the header names them
+    pub in_docs: bool,
 }
 
 // (Arrays derive Default only up to 32 elements: written by hand, as EditorState's LinkBoxes.)
@@ -340,6 +399,9 @@ impl Default for LinkBar {
             foreign: Vec::new(),
             from: Vec::new(),
             from_gen: 0,
+            docs: Vec::new(),
+            doc_links: 0,
+            in_docs: false,
         }
     }
 }
@@ -360,6 +422,51 @@ pub fn linkbar_build(lb: &mut LinkBar, nb: &NotebookInfo, nav: &Nav, page: &Page
     let mut numbers = [0u8; LB_MAX];
     lb.n = linkbar_group(nb, &links[..n], &areas[..n], dpi, &mut lb.entries, &mut numbers);
     lb.links = n as i32;
+}
+
+/// The page's document links (pid's, areas in page px) as the "From the PDF (%d)" row's chips: grouped by the
+/// page they go to, in the reading order of each group's first box (the same order the user's rows have),
+/// each with how many go there. Not part of the 64-entry arrays: a month page has 365. Set before
+/// linkbar_layout; `inside` keeps the bar in the document links' chips (a rebuild under them) while there are
+/// any.
+pub fn linkbar_set_docs(lb: &mut LinkBar, nb: &NotebookInfo, links: &[(u32, Rect)], dpi: f32, inside: bool) {
+    lb.docs.clear();
+    lb.doc_links = links.len() as i32;
+    lb.in_docs = inside && !links.is_empty();
+    let mut order: Vec<usize> = (0..links.len()).collect();
+    order.sort_by_key(|&i| (links[i].1.y, links[i].1.x, i));
+    let line = mm_to_px(LINE_MM, dpi) as i32;
+    let mut read: Vec<usize> = Vec::with_capacity(order.len());
+    let mut at = 0;
+    while at < order.len() {
+        let top = links[order[at]].1.y;
+        let mut end = at;
+        while end < order.len() && links[order[end]].1.y - top <= line {
+            end += 1;
+        }
+        let mut row: Vec<usize> = order[at..end].to_vec();
+        row.sort_by_key(|&i| (links[i].1.x, links[i].1.y, i));
+        read.extend(row);
+        at = end;
+    }
+    let mut index: std::collections::HashMap<u32, usize> = std::collections::HashMap::new();
+    for &i in &read {
+        let (to, area) = links[i];
+        let target = FixedStr::<NAV_TARGET_LEN>::from_str(&format!("p{to}"));
+        let e = match index.get(&to) {
+            Some(&e) => e,
+            None => {
+                let page = nb.page_ids.iter().position(|&p| p == to).map_or(-1, |k| k as i32);
+                if lb.docs.try_reserve(1).is_err() {
+                    return;
+                }
+                lb.docs.push(LbEntry { target, page, count: 0, first_box: area });
+                index.insert(to, lb.docs.len() - 1);
+                lb.docs.len() - 1
+            }
+        };
+        lb.docs[e].count += 1;
+    }
 }
 
 fn u(v: f32) -> i32 {
@@ -455,7 +562,7 @@ fn foreign_state(foreign: &mut Vec<(FixedStr<NAV_TARGET_LEN>, NavTarget)>, targe
 /// Entry i's link goes to a page or a notebook that was deleted (a broken link: its chip is dashed, a tap
 /// opens its card to change where it goes or delete it). Reads the notebook once per open bar.
 pub fn linkbar_entry_broken(lb: &mut LinkBar, i: i32) -> bool {
-    let Some(e) = lb.entries.get(i as usize).filter(|_| i >= 0 && (i as usize) < lb.n).copied() else { return false };
+    let Some(e) = linkbar_entry(lb, i).copied() else { return false };
     foreign_state(&mut lb.foreign, e.target).is_some_and(|t| nav_target_broken(&t))
 }
 
@@ -533,6 +640,19 @@ fn chip_column(c: &mut Canvas, r: Rect, page: i32, count: i32) {
     }
 }
 
+// The "From the PDF (%d)" chip: the page's document links, which a tap opens as chips of their own.
+fn draw_docs_chip(c: &mut Canvas, r: Rect, n: i32) {
+    ui_frame(c, r, u(16.0), 255, true, 0);
+    ui_frame(c, r, u(16.0), 0, false, u(3.0));
+    let col_w = u(60.0);
+    let name = Rect { x: r.x + u(18.0), y: r.y, w: r.w - u(18.0) - col_w - u(14.0), h: r.h };
+    // TRANSLATORS: the last row of the Links bar when the page has document links (a planner PDF's tabs):
+    // %d how many; a tap opens them grouped by the page they go to (about 700 px at 44 px).
+    font_draw_left(c, FontFace::Regular, ui_text_size(), name, &cformat!(tr("From the PDF (%d)"), n), 0);
+    let arrow = Rect { x: r.x + r.w - col_w - u(8.0), y: r.y, w: col_w, h: r.h };
+    font_draw_centered(c, FontFace::Bold, ui_text_size(), arrow, "\u{203a}", 0);
+}
+
 // A Linked from chip: "Linked from" small over the page's name, its number here at the right (none for another
 // notebook's page), and "x2" when two of its links come here.
 fn draw_from_chip(c: &mut Canvas, r: Rect, f: &LbFrom, selected: bool) {
@@ -599,7 +719,15 @@ pub fn linkbar_draw(lb: &mut LinkBar, a: &mut App, nb: &NotebookInfo, nav: &Nav,
     if !back_text.is_empty(){let bw=ui_chip_w(FontFace::Bold,ts,&back_text,bh,u(200.0),u(380.0));let back=Rect::new(left,hy,bw,bh);ui_button(c,back,IconKind::None,&back_text,ButtonStyle::Plain);hits_add(&mut lb.hits,back,LB_BACK,0);left+=bw+u(20.0);}
     let count=Rect::new(right-u(230.0),hy,u(230.0),bh);
     font_draw_centered(c,FontFace::Bold,ts,count,&format!("{} / {}",page,nb.npages()),0);
-    font_draw_left_name(c,FontFace::Bold,ts,Rect::new(left,hy,(count.x-left-u(15.0)).max(0),bh),nb.name.as_str(),0);
+    if lb.in_docs {
+        // The header names the document links' chips (X goes back to the page's own rows).
+        // TRANSLATORS: the Links bar's header inside the page's document links (a planner PDF's tabs), %d how many
+        // (bold, about 900 px at 44 px).
+        let head_name = cformat!(tr("From the PDF (%d)"), lb.doc_links);
+        font_draw_left_name(c,FontFace::Bold,ts,Rect::new(left,hy,(count.x-left-u(15.0)).max(0),bh),&head_name,0);
+    } else {
+        font_draw_left_name(c,FontFace::Bold,ts,Rect::new(left,hy,(count.x-left-u(15.0)).max(0),bh),nb.name.as_str(),0);
+    }
     if lb.header_hint && peek==0 {
         font_draw_left(c,FontFace::Regular,ui_small_size(),Rect::new(head.x,hy+bh-u(4.0),head.w,u(60.0)),tr("Tap a link to look. Tap the page to stay."),0);
     }
@@ -608,7 +736,7 @@ pub fn linkbar_draw(lb: &mut LinkBar, a: &mut App, nb: &NotebookInfo, nav: &Nav,
     let ch = u(124.0);
     let gap = u(24.0);
     let cw = (inn.w - (lb.cols - 1) * gap) / lb.cols;
-    if lb.n == 0 && lb.from.is_empty() {
+    if lb.n == 0 && lb.from.is_empty() && lb.doc_links == 0 {
         // TRANSLATORS: the Links bar's chip area when the open page has no links (about 1300 px at 44 px).
         let none = tr("No links on this page yet.");
         // TRANSLATORS: the same when links.ini cannot be read, so the bar lists none (about 1300 px at 44 px).
@@ -623,10 +751,12 @@ pub fn linkbar_draw(lb: &mut LinkBar, a: &mut App, nb: &NotebookInfo, nav: &Nav,
             break;
         }
         let r = Rect { x: inn.x + (k % lb.cols) * (cw + gap), y: cy + (k / lb.cols) * (ch + u(16.0)), w: cw, h: ch };
-        if let Some(f) = linkbar_from_row(lb, i) {
+        if linkbar_is_docs_row(lb, i) {
+            draw_docs_chip(c, r, lb.doc_links);
+        } else if let Some(f) = linkbar_from_row(lb, i) {
             draw_from_chip(c, r, f, i == lb.selected);
         } else {
-            let e = lb.entries[i as usize];
+            let Some(e) = linkbar_entry(lb, i).copied() else { continue };
             let (label, named) = entry_label(&mut lb.foreign, nb, nav, &e);
             let broken = foreign_state(&mut lb.foreign, e.target).is_some_and(|t| nav_target_broken(&t));
             draw_chip(c, r, &e, &label, named, i == lb.selected, broken);
@@ -689,12 +819,19 @@ pub fn linkbar_pointer(lb: &mut LinkBar, a: &mut App, ph: i32, ev: &InEvent, dir
     *dirty = h.r;
     // (only a List chip of the page's own links has a hold, the long-press card: a slow press on anything else,
     // a Linked from row included, is its tap)
-    let held = h.id == LB_CHIP && lb.mode == LbMode::List && linkbar_from_row(lb, h.arg).is_none()
+    let held = h.id == LB_CHIP && lb.mode == LbMode::List && linkbar_from_row(lb, h.arg).is_none() && !linkbar_is_docs_row(lb, h.arg)
         && ev.t_ms.wrapping_sub(lb.press.t0) > HOLD_MS; // (ui.rs: the long-press card's, PHASE2 8.10)
     if held || !press_is_tap(&lb.press, h.r) {
         return LbResult::None;
     }
     match h.id {
+        LB_X if lb.in_docs && lb.selected < 0 => {
+            // Inside the document links with nothing looked at: back to the page's own rows.
+            lb.in_docs = false;
+            lb.screen = 0;
+            lb.paged = false;
+            LbResult::DocsBack
+        }
         LB_X => LbResult::Cancel,
         LB_PREV => {
             lb.screen = (lb.screen - 1).max(0);
@@ -710,6 +847,12 @@ pub fn linkbar_pointer(lb: &mut LinkBar, a: &mut App, ph: i32, ev: &InEvent, dir
         LB_SEARCH => LbResult::Search,
         LB_PAGES => LbResult::Choose,
         LB_CANCEL => LbResult::Cancel,
+        LB_CHIP if linkbar_is_docs_row(lb, h.arg) => {
+            lb.in_docs = true;
+            lb.screen = 0;
+            lb.paged = false;
+            LbResult::Docs
+        }
         LB_CHIP => {
             if h.arg == lb.selected {
                 LbResult::Commit
@@ -733,7 +876,7 @@ pub fn linkbar_pointer(lb: &mut LinkBar, a: &mut App, ph: i32, ev: &InEvent, dir
 /// its lift is its tap, held or not).
 pub fn linkbar_pressed_chip(lb: &LinkBar) -> Option<(i32, Rect)> {
     if !lb.open || lb.mode != LbMode::List || !lb.has_pressed || lb.pressed.id != LB_CHIP || lb.press.moved || lb.held >= 0
-        || linkbar_from_row(lb, lb.pressed.arg).is_some() {
+        || linkbar_from_row(lb, lb.pressed.arg).is_some() || linkbar_is_docs_row(lb, lb.pressed.arg) {
         return None;
     }
     Some((lb.pressed.arg, lb.pressed.r))
@@ -795,6 +938,27 @@ pub fn linkbar_probe(lb: &LinkBar, key: &str, out: &mut String, cap: usize) -> b
         csnprintf!(out, cap, "%s", &if lb.open { linkbar_back_text(lb, 0) } else { String::new() });
     } else if key == "incoming" {
         csnprintf!(out, cap, "%d", lb.incoming);
+    } else if key == "docs" {
+        // How many document links the open page has (the "From the PDF" row's number), 0 closed.
+        csnprintf!(out, cap, "%d", if lb.open { lb.doc_links } else { 0 });
+    } else if key == "docs.view" {
+        // `docs` inside the document links' chips, `list` otherwise, empty closed.
+        csnprintf!(out, cap, "%s", if !lb.open { "" } else if lb.in_docs { "docs" } else { "list" });
+    } else if key == "docs.row" {
+        // The place of the "From the PDF" row among the chips (from 1), 0 for none.
+        csnprintf!(out, cap, "%d", if lb.open && linkbar_has_docs_row(lb) { lb.n as i32 + 1 } else { 0 });
+    } else if key == "docs.entries" {
+        csnprintf!(out, cap, "%d", if lb.open { lb.docs.len() as i32 } else { 0 });
+    } else if let Some(k) = key.strip_prefix("docs.") {
+        // Document-link entry K (from 1, reading order): `p3`, then ` x2` when two go there.
+        let e = k.parse::<usize>().ok().and_then(|k| k.checked_sub(1)).and_then(|k| lb.docs.get(k)).filter(|_| lb.open);
+        let v = match e {
+            Some(e) if e.page >= 0 && e.count > 1 => format!("p{} x{}", e.page + 1, e.count),
+            Some(e) if e.page >= 0 => format!("p{}", e.page + 1),
+            Some(_) => "missing".to_string(),
+            None => String::new(),
+        };
+        csnprintf!(out, cap, "%s", &v);
     } else if let Some(k) = key.strip_prefix("from.") {
         // Linked from row K (from 1): `p3` for a page here, `n:<notebook>:p<page id>` for another notebook's,
         // then ` x2` for two links; empty past the last.

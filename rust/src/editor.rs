@@ -255,13 +255,18 @@ struct LinkBoxes {
     /// its bar entry's number, from 1
     entry: [u8; LB_MAX],
     stale: bool,
+    /// the page's document links' exact areas, page px (the eye draws them dotted and unnumbered; no row of
+    /// the bar stands for one of them: they fold into its "From the PDF" row)
+    doc: Vec<Rect>,
     /// how many boxes the eye's last paint drew (the scripts' editor.eye_drawn: 0 when it painted none)
     drawn: usize,
+    /// how many document-link boxes it drew (editor.eye_docs)
+    doc_drawn: usize,
 }
 // (arrays derive Default only up to 32 elements: EditorState keeps its derive)
 impl Default for LinkBoxes {
     fn default() -> Self {
-        LinkBoxes { n: 0, link: [NavLink::default(); LB_MAX], area: [RECT_EMPTY; LB_MAX], entry: [0; LB_MAX], stale: true, drawn: 0 ,
+        LinkBoxes { n: 0, link: [NavLink::default(); LB_MAX], area: [RECT_EMPTY; LB_MAX], entry: [0; LB_MAX], stale: true, doc: Vec::new(), drawn: 0, doc_drawn: 0,
         }
     }
 }
@@ -586,6 +591,9 @@ pub struct EditorState {
     // whether a previews batch of the notebook whose previews show was queued or running at the last tick
     previews_pending: bool,
     nav: Nav,
+    /// the links the document brought (doclinks.ini, 2.1): read at open, written only by Copy page and Copy to
+    /// notebook; never part of `nav` (links.ini's caps, the lasso and Clear page never see them)
+    dl: DocLinks,
     // Links (nav.h). Add a link (the Index, or the add-link shortcut) shows the strip, and the next pen
     // contact on the open page draws the dashed lasso around the link's area (lm), never ink; then Link
     // to... picks where it goes. A finger's tap on a link follows it; one held on it (HOLD_MS) shows
@@ -2210,6 +2218,10 @@ fn boxes_get(a: &mut App) {
     s.boxes.stale = false;
     s.boxes.n = 0;
     let pid = s.open_pid();
+    s.boxes.doc = match s.open_page() {
+        Some(page) if pid != 0 => doclinks_boxes(&s.dl, page, pid),
+        _ => Vec::new(),
+    };
     let mut links = [NavLink::default(); LB_MAX];
     let mut areas = [RECT_EMPTY; LB_MAX];
     // (exactly link_under's minimum: the eye promises what nav_link_at hits)
@@ -2265,17 +2277,19 @@ fn draw_areas(a: &mut App, r: Rect) {
         return;
     }
     // A peek is display-only: outline its links at its own viewport without committing it.
-    let (links,areas,n,zoom,ox,oy)=if ed_ref(a).peek.active {
+    let (links,areas,n,zoom,ox,oy,docs)=if ed_ref(a).peek.active {
         let s=ed_ref(a);let pk=s.peek;
         let mut links=[NavLink::default();LB_MAX];let mut areas=[RECT_EMPTY;LB_MAX];
         let page=s.hist.iter().find(|h|h.page_id==pk.pid).and_then(|h|h.page.as_deref()).or(s.ccache[pk.slot].page.as_deref());
         let n=page.map_or(0,|p|nav_link_areas(&s.nav,p,pk.pid,NAV_LINK_MIN_MM*a.dpi/25.4,&mut links,&mut areas)as usize);
+        let docs=page.map_or_else(Vec::new,|p|doclinks_boxes(&s.dl,p,pk.pid));
         let top=status_reserved(a);let (zoom,ox,oy)=peek_view(a.w,a.h-top,s.pgw,s.pgh,a.settings.landscape_fit||top>0);
-        (links,areas,n,zoom,ox,oy-top as f32/zoom)
+        (links,areas,n,zoom,ox,oy-top as f32/zoom,docs)
     } else {
-        boxes_get(a);let s=ed_ref(a);(s.boxes.link,s.boxes.area,s.boxes.n,s.zoom,s.ox,s.oy)
+        boxes_get(a);let s=ed_ref(a);(s.boxes.link,s.boxes.area,s.boxes.n,s.zoom,s.ox,s.oy,s.boxes.doc.clone())
     };
     ed(a).boxes.drawn = n;
+    ed(a).boxes.doc_drawn = docs.len();
     let (thick, halo) = (link_band(), ui_px(1.0));
     let clip = a.screen.clip;
     canvas_set_clip(&mut a.screen, r);
@@ -2290,6 +2304,15 @@ fn draw_areas(a: &mut App, r: Rect) {
         if links[i].outline.n>0 {draw_outline(&mut a.screen,links[i].outline,links[i].area,p,(zoom,ox,oy));}
         else {canvas_dither_rect(&mut a.screen,sr,thick,halo);}
     }
+    // The document links' boxes: dotted (a thinner band than the user's), unnumbered, only where r is.
+    let thin=(thick/2).max(2);
+    for p in docs {
+        let x0=((p.x as f32-ox)*zoom).round()as i32;let y0=((p.y as f32-oy)*zoom).round()as i32;
+        let x1=(((p.x+p.w)as f32-ox)*zoom).round()as i32;let y1=(((p.y+p.h)as f32-oy)*zoom).round()as i32;
+        let sr=Rect::new(x0,y0,(x1-x0).max(1),(y1-y0).max(1));
+        if !rect_overlaps(r,rect_inflate(sr,thin/2+ui_px(1.0)+1)) {continue;}
+        canvas_dither_rect(&mut a.screen,sr,thin.min((sr.w.min(sr.h)/2).max(1)),halo);
+    }
     a.screen.clip = clip;
 }
 
@@ -2300,6 +2323,11 @@ fn eye_bounds(a: &mut App) -> Rect {
     for i in 0..ed_ref(a).boxes.n {
         let s = ed_ref(a);
         let sr = box_screen(s, s.boxes.area[i]);
+        u = rect_union(u, eye_reach(a, sr));
+    }
+    for i in 0..ed_ref(a).boxes.doc.len() {
+        let s = ed_ref(a);
+        let sr = box_screen(s, s.boxes.doc[i]);
         u = rect_union(u, eye_reach(a, sr));
     }
     rect_intersect(u, Rect { x: 0, y: 0, w: a.w, h: a.h ,
@@ -3369,6 +3397,7 @@ fn close_notebook(a: &mut App) {
     s.pv.tab_initialized = false;
     nav_free(&mut s.nav);
     nav_init(&mut s.nav);
+    s.dl = DocLinks::default();
     s.links_dirty = false; // (what a failed flush kept is left for this notebook's next open)
     s.migrate_done = Vec::new();
     s.open = false;
@@ -3409,6 +3438,7 @@ pub fn editor_open_notebook(a: &mut App, id: &str) {
     }
     s.open = true;
     nav_load(s.nb.id.as_str(), &mut s.nav);
+    s.dl = doclinks_load(s.nb.id.as_str());
     // The page it opens at was read before its links were: its beta.5 links migrate now, before the
     // first tap.
     s.links_dirty = false;
@@ -3619,7 +3649,7 @@ fn draw_begin(a: &mut App, ev: &InEvent) {
     // Ink never shares a seed with a stroke or a link of the page: a link's box is its seed's strokes.
     if !erase {
         let pid = s.nb.page_ids[s.index as usize];
-        seed = nav_new_seed(&s.nav, s.open_page().unwrap(), pid, seed);
+        seed = nav_new_seed_with(&s.nav, Some(&s.dl), s.open_page().unwrap(), pid, seed);
     }
     // (stroke_new cannot fail here: the C's NULL check has nothing to catch)
     let mut cur = if erase { stroke_new(TOOL_ERASER, &prm, erase_seed(ps.tool, seed)) } else { stroke_new(ps.tool, &prm, seed) };
@@ -4656,6 +4686,19 @@ fn pages_copy(a: &mut App, index: i32) {
             s.links_dirty = false; // (the save wrote every migrated area too)
         }
     }
+    // The document links come too (a planner's tabs are part of the page): Copy page's rewrite of
+    // doclinks.ini. Past the water level, or with the file unwritable, the page is copied without them and
+    // the same toast says so.
+    if !doclinks_of(&ed_ref(a).dl, src).is_empty() {
+        let s = ed(a);
+        let mut dl = s.dl.clone();
+        if doclinks_copy_page(&mut dl, src, copy) < 0 || doclinks_save(s.nb.id.as_str(), &mut dl, &s.nb) != 0 {
+            links_failed = true;
+        } else {
+            s.dl = dl;
+            s.boxes.stale = true;
+        }
+    }
     pages_added(a, index + 1);
     let s = ed(a);
     let erased = s.open_page().is_some_and(|p| p.strokes.iter().any(|x| stroke_is_erase(x)));
@@ -5310,6 +5353,9 @@ fn pages_copy_to(a: &mut App, id: &str, at: i32, pids: &[u32]) {
     store_notebook_page_size(&dst, &mut dw, &mut dh);
     let mut res = NavCopyResult::default();
     let nav_ok = nav_copy_pages_across(&s.nav, s.nb.id.as_str(), &out, &dst, dw as f32 / sw.max(1) as f32, dh as f32 / sh.max(1) as f32, &mut res) == 0;
+    // The document links of the pages whose targets were copied too (a page out of a planner loses the tabs to
+    // pages left behind); a notebook whose doclinks.ini does not write gets the pages without them.
+    let nav_ok = doclinks_copy_across(&s.dl, &out, &dst, dw as f32 / sw.max(1) as f32, dh as f32 / sh.max(1) as f32) >= 0 && nav_ok;
     for c in out.iter().filter(|c| c.erased) {
         if compact_note_page(id, c.to) != 0 {
             qlog!("compact: %s: p%u.qpg (a copy) could not be listed", id, c.to);
@@ -6084,7 +6130,7 @@ fn link_pick_as(a: &mut App, target: &str, new_page: i32) {
     let page = s.open_page().unwrap();
     // unique among the page's ink and link seeds: a link never takes in ink, and new ink never joins it
     let want = now_ms().wrapping_mul(2654435761) ^ page.strokes.len() as u32;
-    let seed = nav_new_seed(&s.nav, page, pid, want);
+    let seed = nav_new_seed_with(&s.nav, Some(&s.dl), page, pid, want);
     s.boxes.stale = true;
     let ok = nav_link_set(&mut s.nav, pid, seed, target) == 0
         && nav_link_set_area(&mut s.nav, pid, seed, Some(area)) == 0
@@ -6584,10 +6630,27 @@ fn link_under(a: &App, x: f32, y: f32, out: &mut NavLink) -> bool {
     )
 }
 
-// A finger's tap at (x, y): a link there goes to its page, or opens the Index.
+// The document link under (x, y) on screen, on the open page (D9: its exact area first, then the finger's
+// growth). Only asked where no link of the user's is: theirs come first.
+fn doc_link_under(a: &App, x: f32, y: f32) -> Option<DocLink> {
+    let s = ed_ref(a);
+    let page = s.open_page()?;
+    if s.dl.links.is_empty() || s.page_ix().is_none() {
+        return None;
+    }
+    let (mut px, mut py) = (0.0, 0.0);
+    to_page(s, x, y, &mut px, &mut py);
+    doclinks_at(&s.dl, page, s.nb.page_ids[s.index as usize], px, py, NAV_LINK_MIN_MM * a.dpi / 25.4)
+}
+
+// A finger's tap at (x, y): a link there goes to its page, or opens the Index. The user's links first, then a
+// document link (a planner's tab).
 fn link_follow(a: &mut App, x: f32, y: f32) {
     let mut l = NavLink::default();
     if !link_under(a, x, y, &mut l) {
+        if let Some(d) = doc_link_under(a, x, y) {
+            follow_target(a, &format!("p{}", d.target));
+        }
         return;
     }
     if ed_ref(a).nav.links_writable && nav_target_state(l.target.as_str()).is_some_and(|t| nav_target_broken(&t)) {
@@ -6712,6 +6775,25 @@ fn card_set(a: &mut App, seeds: &[u32], from_bar: bool) {
     ed(a).card.band = band;
 }
 
+/// The card of the document-link chip i (a group of the page's document links to one target): read only, its
+/// heavy border around their exact boxes, one row, Rename the page. False for a chip with no page here.
+fn card_set_doc(a: &mut App, i: i32) -> bool {
+    let s = ed_ref(a);
+    let Some(e) = linkbar_entry(&s.lb, i).copied() else { return false };
+    let Some(&target) = (e.page >= 0).then(|| s.nb.page_ids.get(e.page as usize)).flatten() else { return false };
+    let pid = s.open_pid();
+    let Some(page) = s.open_page() else { return false };
+    let mut boxes: Vec<Rect> = doclinks_targets(&s.dl, page, pid).into_iter().filter(|&(t, _)| t == target).map(|(_, r)| r).collect();
+    boxes.sort_by_key(|r| (r.y, r.x));
+    with_card(a, |c, _a, nb, nav| linkcard_set_doc(c, pid, target, nb, nav, true));
+    let s = ed(a);
+    s.card.boxes = boxes;
+    s.card.border = true;
+    let band = card_band(a);
+    ed(a).card.band = band;
+    true
+}
+
 /// A press held on chip `chip` of the Links bar (entry i, 8.10, D1): the long-press card for all the entry's
 /// links on the page, above the bar in the chip's column, the bar staying under it. While the bar looks at
 /// another page it looks at its own again first (the links are there), and the borders come with the page area's
@@ -6725,20 +6807,25 @@ fn bar_hold(a: &mut App, i: i32, chip: Rect) {
         s.peek = Peek { count: s.peek.count, ..Peek::default() };
         s.lb.selected = -1;
     }
-    // The entry's links, in reading order: those whose box carries its number.
+    // The entry's links, in reading order: those whose box carries its number. Inside the document links, the
+    // chip's document links (read only: Rename the page).
     boxes_get(a);
+    let is_doc = ed_ref(a).lb.in_docs;
     let s = ed_ref(a);
     let mut ks: Vec<usize> = (0..s.boxes.n).filter(|&k| s.boxes.entry[k] as i32 == i + 1).collect();
     ks.sort_by_key(|&k| (s.boxes.area[k].y, s.boxes.area[k].x, k));
-    let seeds: Vec<u32> = ks.iter().map(|&k| s.boxes.link[k].seed).collect();
-    if seeds.is_empty() {
+    let seeds: Vec<u32> = if is_doc { Vec::new() } else { ks.iter().map(|&k| s.boxes.link[k].seed).collect() };
+    let shown = if is_doc { card_set_doc(a, i) } else { !seeds.is_empty() };
+    if !shown {
         if peeking {
             bar_back_drawn(a);
         }
         app_invalidate(a, d, RefreshMode::Ui);
         return;
     }
-    card_set(a, &seeds, true);
+    if !is_doc {
+        card_set(a, &seeds, true);
+    }
     let s = ed_ref(a);
     let (aw, bar) = (a.w, s.lb.rect);
     if peeking {
@@ -6889,11 +6976,16 @@ fn rename_end(a: &mut App, done: bool) {
     let u = rect_union(s.card.kb.area, s.card.rect);
     keyboard_close(&mut s.card.kb);
     let (pid, readonly, from_bar) = (s.card.pid, s.card.readonly, s.card.from_bar);
+    let (doc, doc_target) = (s.card.doc, s.card.doc_target);
     let seeds = s.card.seeds.clone();
     let (rect, boxes, band, border) = (s.card.rect, std::mem::take(&mut s.card.boxes), s.card.band, s.card.border,
     );
     with_card(a, |c, _a, nb, nav| {
-        linkcard_set(c, pid, &seeds, nb, nav, readonly, from_bar)});
+        if doc {
+            linkcard_set_doc(c, pid, doc_target, nb, nav, from_bar)
+        } else {
+            linkcard_set(c, pid, &seeds, nb, nav, readonly, from_bar)
+        }});
     let c = &mut ed(a).card;
     c.rect = rect;
     c.boxes = boxes;
@@ -7039,6 +7131,8 @@ fn bar_rebuild(a: &mut App) {
     let (hint, label, back_to, back_graph) = (s.lb.header_hint, s.lb.back_label, s.lb.back_to, s.lb.back_graph);
     let mut lb = LinkBar::default();
     linkbar_build(&mut lb, &s.nb, &s.nav, page, s.index, dpi);
+    let docs = doclinks_targets(&s.dl, page, s.open_pid());
+    linkbar_set_docs(&mut lb, &s.nb, &docs, dpi, s.lb.in_docs);
     lb.header_hint = hint;
     lb.back_label = label;
     lb.back_to = back_to;
@@ -7458,6 +7552,8 @@ fn bar_show(a: &mut App, count_open: bool) {
     let Some(page) = s.open_page() else { return };
     let mut lb = LinkBar::default();
     linkbar_build(&mut lb, &s.nb, &s.nav, page, s.index, dpi);
+    let docs = doclinks_targets(&s.dl, page, s.open_pid());
+    linkbar_set_docs(&mut lb, &s.nb, &docs, dpi, false);
     lb.header_hint = shown < HINT_BAR_MASK;
     lb.back_label = s.index + 1;
     if let Some((_, label)) = s.back_top() {
@@ -7836,7 +7932,7 @@ fn bar_result(a: &mut App, r: LbResult, d: Rect) {
                 } else {bar_stay(a);follow_target(a, f.target.as_str());}
                 return;
             }
-            let Some(e) = ed_ref(a).lb.entries.get(i as usize).copied() else { return ;
+            let Some(e) = linkbar_entry(&ed_ref(a).lb, i).copied() else { return ;
             };
             if ed(a).lb.links_ok && linkbar_entry_broken(&mut ed(a).lb, i) {
                 // A link to a page or notebook that was deleted: its card at once, to change where it goes or
@@ -7907,8 +8003,21 @@ fn bar_result(a: &mut App, r: LbResult, d: Rect) {
             compose(a, g);
             app_invalidate(a, g, RefreshMode::Ui);
         }
+        LbResult::Docs | LbResult::DocsBack => bar_relayout(a),
         _ => {}
     }
+}
+
+// The bar's chips changed (into the document links or back out): its card is laid out again, which can make it
+// taller or shorter, and drawn where it was and where it is.
+fn bar_relayout(a: &mut App) {
+    let (aw, ah) = (a.w, a.h);
+    let s = ed(a);
+    let old = s.lb.rect;
+    linkbar_layout(&mut s.lb, aw, ah);
+    let u = rect_union(old, s.lb.rect);
+    compose(a, u);
+    app_invalidate(a, u, RefreshMode::Ui);
 }
 
 fn panel_act(a: &mut App, h: Hit) {
@@ -9399,7 +9508,7 @@ pub fn editor_control_at(a: &App, x: f32, y: f32) -> bool {
         return false;
     }
     let mut l = NavLink::default();
-    link_under(a, x, y, &mut l)
+    link_under(a, x, y, &mut l) || doc_link_under(a, x, y).is_some()
 }
 
 /// Whether the finger lift being handled was a tap in the corner, which the clock took (status.rs
@@ -11321,6 +11430,28 @@ pub fn editor_probe(a: &mut App, key: &str, out: &mut String, cap: usize) -> i32
         csnprintf!(out, cap, "%d", ed_ref(a).boxes.drawn as i32);
         return 0;
     }
+    if key == "eye_docs" {
+        // How many document-link boxes the eye's last paint drew.
+        if a.ed.is_none() {
+            return -1;
+        }
+        csnprintf!(out, cap, "%d", ed_ref(a).boxes.doc_drawn as i32);
+        return 0;
+    }
+    if key == "doc_areas" {
+        // How many document-link boxes the eye would draw now (0 while it is off).
+        if a.ed.is_none() {
+            return -1;
+        }
+        let n = if a.settings.link_areas && ed_ref(a).open && a.scr == ScreenId::Editor {
+            boxes_get(a);
+            ed_ref(a).boxes.doc.len() as i32
+        } else {
+            0
+        };
+        csnprintf!(out, cap, "%d", n);
+        return 0;
+    }
     if key == "areas" {
         // How many link boxes the eye draws now, 0 while it is off.
         if a.ed.is_none() {
@@ -11503,6 +11634,24 @@ pub fn editor_probe(a: &mut App, key: &str, out: &mut String, cap: usize) -> i32
         let i = atoi(n) - 1;
         match (i >= 0 && i < n_links).then(|| s.nav.links[(first + i) as usize]).filter(|l| l.has_area) {
             Some(l) => csnprintf!(out, cap, "%d %d %d %d", l.area.x, l.area.y, l.area.w, l.area.h),
+            None => csnprintf!(out, cap, "%s", ""),
+        };
+    } else if key == "doclinks" {
+        // The open page's document links, and all of the notebook's: `page notebook`.
+        let pid = if has_page { s.nb.page_ids[s.index as usize] } else { 0 };
+        csnprintf!(out, cap, "%d %d", if has_page { doclinks_of(&s.dl, pid).len() as i32 } else { 0 }, s.dl.links.len() as i32);
+    } else if let Some(n) = key.strip_prefix("doclink.") {
+        // The open page's document link N (from 1, annotation order): its target's page number from 1 and its
+        // area, `p<number> x y w h`; empty past the last.
+        let pid = if has_page { s.nb.page_ids[s.index as usize] } else { 0 };
+        let mine = doclinks_of(&s.dl, pid);
+        let i = atoi(n) - 1;
+        match (i >= 0).then(|| mine.get(i as usize)).flatten() {
+            Some(l) => {
+                let r = l.area();
+                let at = s.nb.page_ids.iter().position(|&p| p == l.target).map_or(0, |i| i + 1);
+                csnprintf!(out, cap, "p%d %d %d %d %d", at as i32, r.x, r.y, r.w, r.h)
+            }
             None => csnprintf!(out, cap, "%s", ""),
         };
     } else if key == "migrate_left" {

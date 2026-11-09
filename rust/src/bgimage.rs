@@ -784,7 +784,7 @@ pub fn bgimage_decode(data: &[u8], out: &mut BgPicture, why: &mut &'static str) 
 
 // Where a sw x sh picture goes on a dw x dh page: fitted inside it, aspect kept (rounded to whole
 // pixels), centred.
-fn fit_box(sw: i32, sh: i32, dw: i32, dh: i32) -> Rect {
+pub(crate) fn fit_box(sw: i32, sh: i32, dw: i32, dh: i32) -> Rect {
     let (mut fw, mut fh);
     if (dw as i64) * (sh as i64) <= (dh as i64) * (sw as i64) {
         // as wide as the page

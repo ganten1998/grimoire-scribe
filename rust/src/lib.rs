@@ -77,6 +77,8 @@ pub mod shape;
 pub mod graph;
 pub mod musicbuild;
 pub mod nav;
+pub mod doclinks; // doclinks.ini: the links a document brought (2.1, lane L4)
+pub mod pdflinks; // document links from any source: validation, seeds, fills, the water level (2.1, lane L4)
 pub mod notebookpicker;
 pub mod page;
 pub mod paper;
@@ -183,6 +185,8 @@ pub mod prelude {
     pub use crate::live::*;
     pub use crate::musicbuild::*;
     pub use crate::nav::*;
+    pub use crate::doclinks::*;
+    pub use crate::pdflinks::*;
     pub use crate::notebookpicker::*;
     pub use crate::mapview::*;
     pub use crate::page::*;
