@@ -1,5 +1,5 @@
 #!/bin/sh
-# Capabilities: guard hosted annotate book
+# Capabilities: guard hosted annotate book links
 # Grimoire launcher, started by the documents/Grimoire.sh scriptlet. Pauses the Kindle UI the way
 # KOReader does on upstart firmware (5.x, incl. 5.16+ hard-float and 5.19), runs Grimoire, and
 # ALWAYS restores everything on exit.
@@ -17,7 +17,8 @@
 # A Device Passcode stays enabled. Sleep releases input and resumes the native PIN screen.
 # Inside KOReader it refuses to start (exit 3), as documents/Grimoire.sh does: --hosted is the one
 # start allowed there. The Capabilities line above says what this file supports (guard: that
-# refusal; hosted: --hosted koreader; annotate: its --annotate; book: its --book), for a tool that
+# refusal; hosted: --hosted koreader; annotate: its --annotate; book: its --book; links: --book also
+# takes import/.book/links.txt, the links of the book's pages), for a tool that
 # must not run it to find out; it always describes this very file, while app/CAPABILITIES can
 # outlive a downgrade (see documents/Grimoire.sh).
 #

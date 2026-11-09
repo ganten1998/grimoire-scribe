@@ -339,10 +339,23 @@ pub fn doclinks_text(dl: &DocLinks, nb: Option<&NotebookInfo>) -> Vec<u8> {
 /// pages (they are dropped from memory after the write, as links.ini's are). -1 when not writable, over a
 /// cap (links, bytes, or links on a page) or the write failed: nothing is left out then.
 pub fn doclinks_save(id: &str, dl: &mut DocLinks, nb: &NotebookInfo) -> i32 {
-    if id.as_bytes() != nb.id.as_bytes() || !dl.writable || nb.npages() < 0 || nb.npages() > STORE_MAX_PAGES as i32 {
+    if id.as_bytes() != nb.id.as_bytes() {
         return -1;
     }
     let Some(path) = path_for(id, "doclinks.ini") else { return -1 };
+    doclinks_save_to(&path, dl, nb)
+}
+
+/// doclinks_save into the notebook folder `dir`, which is not the store's yet (a notebook being built in a work
+/// folder, renamed into place once whole).
+pub fn doclinks_save_in(dir: &str, dl: &mut DocLinks, nb: &NotebookInfo) -> i32 {
+    doclinks_save_to(&format!("{dir}/doclinks.ini"), dl, nb)
+}
+
+fn doclinks_save_to(path: &str, dl: &mut DocLinks, nb: &NotebookInfo) -> i32 {
+    if !dl.writable || nb.npages() < 0 || nb.npages() > STORE_MAX_PAGES as i32 {
+        return -1;
+    }
     let kept = |l: &DocLink| has_page(nb, l.pid) && has_page(nb, l.target);
     let n = dl.links.iter().filter(|l| kept(l)).count();
     if !dl.file && n == 0 && dl.unknown.is_empty() {
@@ -364,7 +377,7 @@ pub fn doclinks_save(id: &str, dl: &mut DocLinks, nb: &NotebookInfo) -> i32 {
     if text.len() > DOCLINKS_FILE_MAX {
         return -1;
     }
-    let rc = write_file_atomic(&path, &text);
+    let rc = write_file_atomic(path, &text);
     if rc == 0 {
         dl.file = true;
         dl.retain(|l| kept(l));

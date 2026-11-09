@@ -246,6 +246,9 @@ pub struct AnnotatePage {
 pub struct AnnotateMap {
     pub book: FixedStr<STORE_SOURCE_LEN>,
     pub kind: FixedStr<16>,
+    /// `links=1`: the notebook's document links were filled from KOReader's (the plugin sends the links of
+    /// the pages it already held once, while this is missing)
+    pub links: bool,
     /// the C's e, n, cap
     pub e: Vec<AnnotatePage>,
     /// lines this version does not know, written back as they were
@@ -325,6 +328,8 @@ pub fn annotate_map_parse(text: Option<&[u8]>, m: &mut AnnotateMap) -> i32 {
             m.book.set_bytes(&line[5..]);
         } else if eq.is_some() && line.starts_with(b"kind=") && word_ok(&line[5..], FixedStr::<16>::CAP) {
             m.kind.set_bytes(&line[5..]);
+        } else if line == b"links=1" {
+            m.links = true;
         } else if page >= 1 && pages >= page && pid >= 1 {
             if annotate_map_add(m, page as i32, pages as i32, pid as u32) != 0 {
                 annotate_map_free(m);
@@ -387,6 +392,9 @@ pub fn annotate_map_text(m: &AnnotateMap, nb: &NotebookInfo) -> Option<Vec<u8>> 
         t.extend_from_slice(b"kind=");
         t.extend_from_slice(m.kind.as_bytes());
         t.push(b'\n');
+    }
+    if m.links {
+        t.extend_from_slice(b"links=1\n");
     }
     for x in &e {
         t.extend_from_slice(cformat!("page.%d.%d=%u\n", x.page, x.pages, x.pid).as_bytes());
@@ -1474,6 +1482,9 @@ struct Job {
     placed: Vec<String>,
     /// pictures to fit in the background, once the notebook is done
     fits: Vec<u32>,
+    /// import/.book/links.txt, when the plugin sent one (the links of the pages it drew and, once, of the
+    /// pages already held), read at the start and built into doclinks.ini at the commit
+    links: Option<BookLinks>,
 }
 
 /// Pictures left to fit after a job (book_fits_tick), in their notebook.
@@ -1669,6 +1680,7 @@ fn start(j: &mut Job, asked: bool, st: &mut BookStatus) {
         j.nb.name.set_bytes(unique.as_bytes());
     }
     j.nb.source.set_bytes(j.r.book.as_bytes());
+    j.links = read_book_links(&dir);
     if j.m.book.is_empty() {
         j.m.book.set_bytes(j.r.book.as_bytes());
     }
@@ -1687,6 +1699,80 @@ fn start(j: &mut Job, asked: bool, st: &mut BookStatus) {
         j.r.pages,
         if j.made { "new" } else { "existing" }
     );
+}
+
+/// The links the plugin sent (links.txt, strictly: a file is taken whole or not at all). None for no file or one
+/// that does not read, which is logged by size and count only, never by content.
+fn read_book_links(dir: &str) -> Option<BookLinks> {
+    let path = format!("{dir}/links.txt");
+    let meta = fs::metadata(&path).ok().filter(|m| m.is_file())?;
+    if meta.len() > BOOK_LINKS_FILE_MAX as u64 {
+        qlog!("book: links.txt is too big (%d bytes); its links are left out", meta.len() as i64);
+        return None;
+    }
+    let text = read_file(&path)?;
+    match pdflinks_parse_book(&text) {
+        Some(b) => Some(b),
+        None => {
+            qlog!("book: links.txt does not read; its links are left out");
+            None
+        }
+    }
+}
+
+/// The notebook's document links filled from links.txt, before the commit writes anything else: the links that go
+/// between pages the notebook holds (the book pages mapped through source.ini's map), validated, the same
+/// as any source's, trimmed to the water level, written whole (doclinks.ini in the notebook's folder). True when
+/// they are there: then source.ini says links=1 and the plugin does not send the held pages' links again. False
+/// when the file did not read, or doclinks.ini could not be written: nothing says links=1, so the next Open
+/// this book tries again.
+fn commit_doc_links(j: &mut Job) -> bool {
+    let Some(book) = j.links.take() else { return false };
+    let mut dl = if j.made { DocLinks::default() } else { doclinks_load(j.nb.id.as_str()) };
+    if !dl.writable {
+        qlog!("book: %s: its doclinks.ini does not read; left as it is", &j.nb.id);
+        return false;
+    }
+    // each page's links in the order the plugin sent them: the document's annotation order
+    let mut counts: std::collections::HashMap<i32, u32> = std::collections::HashMap::new();
+    let mut recs: Vec<DocRecord> = Vec::new();
+    if recs.try_reserve_exact(book.links.len()).is_err() {
+        return false;
+    }
+    for &(s, d, r) in &book.links {
+        let (src, dst) = (annotate_map_find(&j.m, &j.nb, s, j.r.pages), annotate_map_find(&j.m, &j.nb, d, j.r.pages));
+        let index = counts.entry(s).or_insert(0);
+        let at = *index;
+        *index += 1;
+        if src == 0 || dst == 0 {
+            continue;
+        }
+        let rect = pdflinks_to_page(r, book.pic_w, book.pic_h, j.pw, j.ph);
+        recs.push(DocRecord { src, dst, rect, quad: None, index: at });
+    }
+    // the user's own links' seeds: never shared
+    let mut mine = Nav::default();
+    nav_init(&mut mine);
+    if !j.made {
+        nav_load_links(j.nb.id.as_str(), &mut mine);
+    }
+    let have = |p: u32| j.nb.page_ids.contains(&p);
+    let st = pdflinks_fill(&mut dl, &recs, j.pw, j.ph, &have, &|pid, seed| nav_link_get(&mine, pid, seed).is_some());
+    let trimmed = pdflinks_water(&mut dl);
+    if doclinks_save_in(&j.dir, &mut dl, &j.nb) != 0 {
+        qlog!("book: %s: its document links could not be written; left out", &j.nb.id);
+        return false;
+    }
+    qlog!(
+        "book: %s: %d document link(s) (%d added, %d already there, %d refused, %d trimmed)",
+        &j.nb.id,
+        dl.links.len() as i32,
+        st.added as i32,
+        st.same as i32,
+        (st.invalid + st.full) as i32,
+        trimmed as i32
+    );
+    true
 }
 
 /// One page: its picture into bg/, its page file, its place in the page list and source.ini (in
@@ -1787,6 +1873,12 @@ fn commit(j: &mut Job, st: &mut BookStatus) -> i32 {
     }
     in_notebook(&j.nb, open, Some(&mut open_at));
     j.nb.last_page = open_at;
+    // (first: a later failure leaves doc links of pages that are not listed, which are dropped at the next
+    // write; a failure here leaves links=1 unsaid, so the next Open this book sends the links again)
+    let links_now = commit_doc_links(j);
+    if links_now {
+        j.m.links = true;
+    }
     if j.made {
         let mut path = String::new();
         let t = annotate_map_text(&j.m, &j.nb);
@@ -1832,8 +1924,13 @@ fn commit(j: &mut Job, st: &mut BookStatus) -> i32 {
             csnprintf!(&mut thumb, 700, "%s/thumb.pgm", &j.dir);
             let _ = fs::remove_file(&thumb);
         }
-    } else if store_write_info_in(&j.dir, &j.nb) != 0 {
-        return -1; // (nothing added: only the page to open)
+    } else {
+        if links_now && map_save(&j.dir, &j.m, &j.nb) != 0 {
+            return -1; // (only the links came: source.ini says so)
+        }
+        if store_write_info_in(&j.dir, &j.nb) != 0 {
+            return -1; // (nothing added: only the page to open)
+        }
     }
     if !j.fits.is_empty() {
         // fitted in the background, one at a time (book_fits_tick)
