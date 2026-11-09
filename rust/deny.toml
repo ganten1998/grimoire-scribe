@@ -24,8 +24,8 @@ wildcards = "deny"
 #  - miniz_oxide: the png crate (through fdeflate and flate2) and zune-jpeg's inflate take two releases
 #  - syn: the derive crates of two generations (build time only; nothing of it is in the binary)
 # Cargo.lock also names a second skrifa and read-fonts (glifo's optional dependency): not built with the
-# features Grimoire asks of hayro, so not a duplicate of the build. Custom fonts (2.1.0-beta.3) reuse the one
-# skrifa there is, so no crate is added for them.
+# features Grimoire asks of hayro, so not a duplicate of the build. Your own fonts (2.1.0-beta.2) use the one
+# skrifa there is, pinned in Cargo.toml to the very version hayro brings, so no crate is added for them.
 skip = [
     { crate = "fearless_simd@0.7.0", reason = "an older major, pulled in by the rasterizer's SIMD layer" },
     { crate = "fearless_simd@1.2.0", reason = "the newer major, pulled in by hayro's image code" },

@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: Grimoire 1.0.0-beta\n"
 "Report-Msgid-Bugs-To: https://github.com/ganten1998/grimoire-scribe/issues\n"
-"POT-Creation-Date: 2026-11-09 15:19-0600\n"
+"POT-Creation-Date: 2026-11-09 17:22-0600\n"
 "PO-Revision-Date: 2026-10-20 08:02-0500\n"
 "Last-Translator: draft\n"
 "Language-Team: Spanish\n"
@@ -3178,7 +3178,8 @@ msgstr "Estilo: Clásico (toca para cambiar a Gótico)"
 
 #. TRANSLATORS: (Settings, Classic only) the chip at the Style row's right end that opens the
 #. Font sheet, with the font in use by its short name, never translated ("Terminess",
-#. "Atkinson", "Noto Sans", "Literata"): about 450 px at 34 px in bold, beside its icon.
+#. "Atkinson", "Noto Sans", "Literata"; one of your own fonts by its family's name, cut short
+#. if it is long): about 450 px at 34 px in bold, beside its icon.
 #: rust/src/library.rs
 #, c-format
 msgid "Font: %s"
@@ -3268,6 +3269,51 @@ msgstr "Emparejar"
 msgid "Updates"
 msgstr "Actualizaciones"
 
+#. TRANSLATORS: (Settings > Font, a row of Your fonts) the font file is being checked in the background
+#. before Grimoire uses it. Each of these row notes: about 900 px at 34 px, one line.
+#: rust/src/library.rs
+msgid "Checking..."
+msgstr "Comprobando..."
+
+#. TRANSLATORS: (a row of Your fonts) the font can be used, but lacks some letters of the
+#. language Grimoire is in: those are drawn in Terminess (the built-in font's name, kept).
+#: rust/src/library.rs
+msgid "Some letters come from Terminess."
+msgstr "Algunas letras vienen de Terminess."
+
+#. TRANSLATORS: (a row of Your fonts, greyed) the file is no font Grimoire can read: damaged, empty,
+#. or one whose letters draw nothing.
+#: rust/src/library.rs
+msgid "Unreadable font."
+msgstr "Fuente ilegible."
+
+#. TRANSLATORS: (a row of Your fonts, greyed) the font file is bigger than Grimoire takes; %d is 24.
+#: rust/src/library.rs
+#, c-format
+msgid "Too big (over %d MB)."
+msgstr "Demasiado grande (más de %d MB)."
+
+#. TRANSLATORS: (a row of Your fonts, greyed) a symbol font, or one without the letters A to Z.
+#: rust/src/library.rs
+msgid "No Latin letters."
+msgstr "Sin letras latinas."
+
+#. TRANSLATORS: (a row of Your fonts, greyed) a web font (.woff, .woff2): Grimoire takes .ttf and .otf
+#. files. The two endings are file kinds: keep them as they are.
+#: rust/src/library.rs
+msgid "Use .ttf or .otf."
+msgstr "Usa .ttf o .otf."
+
+#. TRANSLATORS: (a row of Your fonts, greyed) checking the font took longer than Grimoire allows.
+#: rust/src/library.rs
+msgid "Took too long to read."
+msgstr "Tardó demasiado en leerse."
+
+#. TRANSLATORS: (a row of Your fonts, greyed) the font Grimoire was set to is no longer in the folder.
+#: rust/src/library.rs
+msgid "File missing."
+msgstr "Falta el archivo."
+
 #. TRANSLATORS: the title of Settings > Font, the list of fonts Classic can be drawn in.
 #: rust/src/library.rs
 msgid "Font"
@@ -3279,6 +3325,37 @@ msgstr "Fuente"
 #: rust/src/library.rs
 msgid "The quick brown fox jumps over the lazy dog."
 msgstr "La cigüeña tocaba el saxofón detrás del palenque de paja."
+
+#. TRANSLATORS: (Settings > Font) the heading over the fonts that come with Grimoire. 34 px bold, about
+#. 800 px.
+#: rust/src/library.rs
+msgid "Built in"
+msgstr "Incluidas"
+
+#. TRANSLATORS: (Settings > Font) the heading over the fonts the owner copied onto the Kindle; %s is
+#. their folder there, grimoire/fonts. 34 px bold, about 800 px.
+#: rust/src/library.rs
+#, c-format
+msgid "Your fonts (%s)"
+msgstr "Tus fuentes (%s)"
+
+#. TRANSLATORS: (Settings > Font, under Your fonts while the folder is empty) how to add a font: %s is
+#. the folder on the Kindle's storage, grimoire/fonts. ".ttf" and ".otf" are file kinds: keep them.
+#. Up to two lines of about 1600 px at 44 px, or at 34 px.
+#: rust/src/library.rs
+#, c-format
+msgid "Copy .ttf or .otf files into %s over USB."
+msgstr "Copia archivos .ttf o .otf en %s por USB."
+
+#. TRANSLATORS: the notice that stays above the Font sheet's buttons while the fonts copied into
+#. grimoire/fonts are checked in the background, with how many are left. One line of about 1700 px at 44 px
+#. bold.
+#: rust/src/library.rs
+#, c-format
+msgid "Checking %d font..."
+msgid_plural "Checking %d fonts..."
+msgstr[0] "Comprobando %d fuente..."
+msgstr[1] "Comprobando %d fuentes..."
 
 #: rust/src/library.rs
 msgid "Updates come through KPM, which is not here."
@@ -4712,6 +4789,34 @@ msgstr "Plantillas"
 #: rust/src/tplsheet.rs
 msgid "Photos"
 msgstr "Fotos"
+
+#. TRANSLATORS: grimoire/fonts/README.txt, a plain text file Grimoire writes once (in the language in
+#. use then) for the owner to read on a computer: its title, then its two paragraphs. No room limit.
+#: rust/src/userfonts.rs
+msgid "Fonts for Grimoire"
+msgstr "Fuentes para Grimoire"
+
+#. TRANSLATORS: grimoire/fonts/README.txt's first paragraph. "Settings", "Font", "Your fonts" and
+#. "Classic" name Grimoire's own sheet, chip, heading and style: as they are translated there. ".ttf"
+#. and ".otf" are kinds of file: keep them. Terminess is the built-in font's name: kept.
+#: rust/src/userfonts.rs
+msgid ""
+"Copy font files here to read Grimoire in a font of your own: .ttf or .otf "
+"files. In Settings, with the Classic style, tap Font and pick it under Your "
+"fonts. Your font draws Grimoire's own words (menus, names, the keyboard); "
+"your pages, their PDFs and the pages you share never change with it. A "
+"letter your font lacks comes from Terminess."
+msgstr "Copia aquí archivos de fuentes para leer Grimoire con una fuente tuya: archivos .ttf o .otf. En Ajustes, con el estilo Clásico, toca Fuente y elígela en Tus fuentes. Tu fuente dibuja las palabras de Grimoire (menús, nombres, el teclado); tus páginas, sus PDF y las páginas que compartes nunca cambian con ella. Una letra que le falte a tu fuente viene de Terminess."
+
+#. TRANSLATORS: grimoire/fonts/README.txt's second paragraph. ".cache" is a folder's name: keep it.
+#: rust/src/userfonts.rs
+msgid ""
+"Copy them in over USB while Grimoire is closed. Grimoire checks each font in "
+"the background before it uses it, and keeps what it found in the .cache "
+"folder. Your fonts stay on this Kindle: use fonts you have the right to use. "
+"If a font ever goes wrong, delete its file here and Grimoire is back in "
+"Terminess."
+msgstr "Cópialas por USB con Grimoire cerrado. Grimoire comprueba cada fuente en segundo plano antes de usarla, y guarda lo que encontró en la carpeta .cache. Tus fuentes se quedan en este Kindle: usa fuentes que tengas derecho a usar. Si una fuente falla alguna vez, borra aquí su archivo y Grimoire vuelve a Terminess."
 
 #. TRANSLATORS: months, as short as the language writes them on a date: "Oct 10, 14:32" on the
 #. Library's cards, which are narrow when the Kindle is sideways.

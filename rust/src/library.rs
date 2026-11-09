@@ -3410,11 +3410,12 @@ fn draw_settings(a: &mut App) {
     let mut theme_r = rt;
     if ui_theme() == UiTheme::Classic {
         let mut label = String::new();
-        // TRANSLATORS: (Settings, Classic only) the chip at the Style row's right end that opens the
-        // Font sheet, with the font in use by its short name, never translated ("Terminess",
-        // "Atkinson", "Noto Sans", "Literata"): about 450 px at 34 px in bold, beside its icon.
         // (one of the owner's own fonts by its family's name, cut short as a name is)
         let own_name = crate::userfonts::userfonts_in_use_name();
+        // TRANSLATORS: (Settings, Classic only) the chip at the Style row's right end that opens the
+        // Font sheet, with the font in use by its short name, never translated ("Terminess",
+        // "Atkinson", "Noto Sans", "Literata"; one of your own fonts by its family's name, cut short
+        // if it is long): about 450 px at 34 px in bold, beside its icon.
         csnprintf!(&mut label, 96, tr("Font: %s"), own_name.as_deref().unwrap_or(FONT_FAMILIES[font_family()].short));
         let ch = ui_px(90.0);
         // (the icon, then its label: the chip as wide as they need, up to 560 px)
@@ -3674,7 +3675,8 @@ fn draw_font_own_row(c: &mut Canvas, r: Rect, f: &mut crate::userfonts::UserFont
     ui_frame(c, r, ui_px(16.0), if usable { 0 } else { 110 }, false, ui_px(3.0));
     let mark = r.h - ui_px(30.0);
     let x = r.x + ui_px(40.0);
-    let w = r.w - ui_px(80.0) - mark;
+    // (the check mark's room is the row's own while it has none)
+    let w = r.w - ui_px(80.0) - if applied { mark } else { 0 };
     let top = Rect::new(x, r.y + ui_px(8.0), w, r.h - ui_px(58.0));
     let bottom = Rect::new(x, r.y + r.h - ui_px(54.0), w, ui_px(46.0));
     let note = font_row_note(f);
@@ -3692,11 +3694,14 @@ fn draw_font_own_row(c: &mut Canvas, r: Rect, f: &mut crate::userfonts::UserFont
     }
     let nw = if note.is_empty() { 0 } else { font_measure(FontFace::Fixed, ui_small_size(), &note) };
     if usable {
-        // (the file's own name, cut short as names are, then the note at the row's right)
-        let room = (w - nw - if nw > 0 { ui_px(30.0) } else { 0 }).max(0);
+        // The file's own name, cut short as names are, then the note at the row's right. In a narrow row
+        // (sideways, two abreast) the name keeps three tenths of the line and the note is set smaller to fit.
+        let gap = if nw > 0 { ui_px(30.0) } else { 0 };
+        let room = (w - nw - gap).max(w * 3 / 10).min(w);
         font_draw_left_name(c, FontFace::Fixed, ui_small_size(), Rect::new(x, bottom.y, room, bottom.h), &file, fg);
         if nw > 0 {
-            font_draw_left(c, FontFace::Fixed, ui_small_size(), Rect::new(x + w - nw.min(w), bottom.y, nw.min(w), bottom.h), &note, fg);
+            let nr = (w - room - gap).max(0).min(nw);
+            ui_text(c, FontFace::Fixed, ui_small_size(), ui_small_size() * 0.7, Rect::new(x + w - nr, bottom.y, nr, bottom.h), &note, 1, false, fg);
         }
     } else {
         font_draw_left(c, FontFace::Fixed, ui_small_size(), bottom, &note, fg);
@@ -3733,7 +3738,7 @@ fn draw_font_sheet_in(a: &mut App, applied: Option<usize>) {
     let (sample_h, rh, gap, bh, pad) = (ui_px(300.0), ui_px(130.0), ui_px(16.0), ui_px(140.0), ui_px(24.0));
     // (a section's label; the second holds the pager; and above the buttons the room the staying notice
     // takes, "Checking 3 fonts...", clear of every control)
-    let (lh, lh2, band) = (ui_px(50.0), ui_px(80.0), ui_px(150.0));
+    let (lh, lh2, band) = (ui_px(60.0), ui_px(80.0), ui_px(150.0));
     let built_rows = n.div_ceil(cols) as i32;
     let fixed = sample_h + lh + built_rows * (rh + gap) + lh2 + band + bh;
     let full = sheet_rect(aw, ah, i32::MAX / 2);
@@ -3776,6 +3781,7 @@ fn draw_font_sheet_in(a: &mut App, applied: Option<usize>) {
         Some(i) => {
             // A font of the owner's own: drawn by the font itself when it is loaded (the one in use, or the
             // sample this sheet holds); else by the picture the check made of its name.
+            crate::userfonts::userfont_resolve(&mut s.fonts[i]);
             let name = s.fonts[i].family();
             let rel = s.fonts[i].rel.clone();
             if crate::userfonts::userfonts_in_use(&rel) {

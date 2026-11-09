@@ -831,8 +831,9 @@ fn glyph_draws(o: &Opened, out: &mut Outliner, gid: u32) -> bool {
 }
 
 /// The preview: the font's family name drawn in the font itself at `px` (as text of that size is drawn, at
-/// the font's scale), black on white, cut at the last whole letter that fits. A name with no letter of the
-/// font in it gives the alphabet's start instead.
+/// the font's scale), with its style when that is not plain Regular (the Bold and the Italic of one family
+/// tell apart), black on white, cut at the last whole letter that fits. A name with no letter of the font in
+/// it gives the alphabet's start instead.
 fn preview(o: &Opened, out: &mut Outliner, px: f32) -> Option<(Vec<u8>, i32, i32)> {
     let f = &o.facts;
     let line = f.line() as f32;
@@ -883,7 +884,8 @@ fn preview(o: &Opened, out: &mut Outliner, px: f32) -> Option<(Vec<u8>, i32, i32
         }
         right
     };
-    let mut right = draw(&f.family, &mut px_out);
+    let named = if f.style.is_empty() || f.style.eq_ignore_ascii_case("regular") { f.family.clone() } else { format!("{} {}", f.family, f.style) };
+    let mut right = draw(&named, &mut px_out);
     if right == 0 {
         right = draw("AaBbCc 123", &mut px_out);
     }

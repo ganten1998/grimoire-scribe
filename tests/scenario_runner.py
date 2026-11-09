@@ -609,6 +609,19 @@ def l10n(args, hooks):
                 n = f'fonts-{lang}-{style}'
                 task(n, 'tests/l10n/fonts.qs', f'{b}/scen/l10n/{n}',
                      [('GRIMOIRE_LANG', lang), ('GRIMOIRE_CHECK_FIT', '1')], inis[style], 4.0)
+        # Your own fonts (2.1.0-beta.2): the Font sheet over a fonts folder of fixtures, in every language: every
+        # note a row can carry, the headings and the notice; then every font taking too long.
+        for script, ini, extra, weight in (
+                ('fonts-own', ['theme=classic', 'font=file:Gone.ttf'], [('GRIMOIRE_BG_DELAY_MS', '1500')], 8.0),
+                ('fonts-own-slow', ['theme=classic'],
+                 [('GRIMOIRE_FONT_TEST_HANG', '40'), ('GRIMOIRE_FONT_WATCHDOG_MS', '400')], 6.0)):
+            h = header(f'tests/l10n/{script}.qs')
+            for lang in langs:
+                n = f'{script}-{lang}'
+                t = task(n, f'tests/l10n/{script}.qs', f'{b}/scen/l10n/{n}',
+                         [('GRIMOIRE_LANG', lang), ('GRIMOIRE_CHECK_FIT', '1'), ('GRIMOIRE_IMPORT_STABLE', 'fast')] + extra,
+                         ini, weight)
+                t.copies, t.generate = h['copies'], h['generate']
         # The file picker (2.1.0-beta.2) over a fixture storage root, in every language and style.
         fcopies = header('tests/l10n/files.qs')['copies']
         for lang in langs:

@@ -3,6 +3,7 @@
 // (.github/workflows/release.yml: sudo, GRIMOIRE_SANDBOX=require) and are skipped anywhere else, with a line
 // saying so. THEY HAVE NOT BEEN RUN ON THIS MAC OR ON A KINDLE: the first CI run is their first run.
 #![cfg(all(target_os = "linux", feature = "sim"))]
+mod fontfix;
 mod pdffix;
 use grimoire::pdfwork::*;
 use grimoire::sandbox::*;
@@ -201,4 +202,41 @@ fn pictures_decode_in_the_real_sandbox() {
     assert!(matches!(pool.decode(&bytes, false, 300, 400), PicOut::Dead(_)));
     std::env::remove_var("GRIMOIRE_PIC_TEST_TRAP");
     assert!(!in_fallback());
+}
+
+// Fonts (lane L10): checked in the real sandbox, with every call the check makes on the allow-list (the walk of
+// every glyph, the string fit through the embedded fonts, the CPU clock that ends a slice); a trap ends the
+// worker and the font is marked (never checked by the writer itself).
+#[test]
+fn a_font_is_checked_in_the_real_sandbox() {
+    use grimoire::fontcheck::*;
+    if !root() {
+        return;
+    }
+    let (_g, _f, _len) = setup();
+    for h in ["GRIMOIRE_FONT_TEST_TRAP", "GRIMOIRE_FONT_SLICE_MS"] {
+        std::env::remove_var(h);
+    }
+    let font = fontfix::ttf(&fontfix::test_font_many(3000));
+    match check_font(&font, 44) {
+        FontOut::Passed { facts, w, h, .. } => {
+            assert_eq!(facts.mapped, 3095);
+            assert!(facts.skip.is_empty() && w > 100 && h == 63);
+        }
+        other => panic!("{other:?}"),
+    }
+    // in slices (a fresh sandboxed worker each), and a CFF font, and one the check refuses
+    std::env::set_var("GRIMOIRE_FONT_SLICE_MS", "2");
+    assert!(matches!(check_font(&font, 44), FontOut::Passed { .. }));
+    std::env::remove_var("GRIMOIRE_FONT_SLICE_MS");
+    assert!(matches!(check_font(&fontfix::otf(&fontfix::test_font("Regular", 400), 2, false), 44), FontOut::Passed { .. }));
+    assert!(matches!(check_font(&fontfix::ttf(&fontfix::cyclic_composite(true)), 44), FontOut::Refused(Refuse::Unreadable)));
+    assert!(matches!(check_font(&fontfix::woff2(), 44), FontOut::Refused(Refuse::Format)));
+    // a call outside the list: the worker is ended, and the font is not passed
+    std::env::set_var("GRIMOIRE_FONT_TEST_TRAP", "40");
+    assert!(matches!(check_font(&font, 44), FontOut::Dead(_)));
+    std::env::remove_var("GRIMOIRE_FONT_TEST_TRAP");
+    assert!(!session_broken(), "a trap is the worker's end, not the sandbox's");
+    // (a forced failed step, which checks nothing and leaves the session without workers, is test_fontcheck.rs's:
+    // it would take the workers away from the tests after this one)
 }

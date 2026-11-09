@@ -56,17 +56,18 @@ pub fn userfonts_init() {
     if mkdir_p(&dir) != 0 {
         return;
     }
-    // TRANSLATORS: grimoire/fonts/README.txt, a plain text file Grimoire writes once (in the language in use
-    // then) for the owner to read on a computer: its title, then its two paragraphs. No room limit. "Settings",
-    // "Font", "Your fonts" and "Classic" name Grimoire's own sheet, chip, heading and style: as they are
-    // translated there. ".ttf", ".otf" and ".cache" are a file's and a folder's names: keep them. Terminess is
-    // the built-in font's name: kept.
     let parts = [
+        // TRANSLATORS: grimoire/fonts/README.txt, a plain text file Grimoire writes once (in the language in
+        // use then) for the owner to read on a computer: its title, then its two paragraphs. No room limit.
         tr("Fonts for Grimoire"),
+        // TRANSLATORS: grimoire/fonts/README.txt's first paragraph. "Settings", "Font", "Your fonts" and
+        // "Classic" name Grimoire's own sheet, chip, heading and style: as they are translated there. ".ttf"
+        // and ".otf" are kinds of file: keep them. Terminess is the built-in font's name: kept.
         tr("Copy font files here to read Grimoire in a font of your own: .ttf or .otf files. In Settings, with the \
 Classic style, tap Font and pick it under Your fonts. Your font draws Grimoire's own words (menus, names, the \
 keyboard); your pages, their PDFs and the pages you share never change with it. A letter your font lacks \
 comes from Terminess."),
+        // TRANSLATORS: grimoire/fonts/README.txt's second paragraph. ".cache" is a folder's name: keep it.
         tr("Copy them in over USB while Grimoire is closed. Grimoire checks each font in the background before it \
 uses it, and keeps what it found in the .cache folder. Your fonts stay on this Kindle: use fonts you have the \
 right to use. If a font ever goes wrong, delete its file here and Grimoire is back in Terminess."),
@@ -352,6 +353,8 @@ struct State {
     later_ms: Option<u32>,
     /// the sample the Font sheet holds: its path
     sample: Option<String>,
+    /// why the font asked for was not used, as last logged (said once, not at every look)
+    said: Option<LoadErr>,
 }
 
 thread_local! {
@@ -584,7 +587,9 @@ pub fn userfont_resolve(f: &mut UserFont) {
 }
 
 fn queue_check(arg: &str, dpi: f32) {
-    if with(|st| st.broken) {
+    // (one look at the folder at a time: a check that runs or waits already serves; a file it was too early
+    // for is found by the look after it)
+    if with(|st| st.broken) || (arg.is_empty() && bg_pending(BgKind::FontCheck, "")) {
         return;
     }
     bg_queue(BgKind::FontCheck, Some(""), Some(arg), dpi, true);
@@ -598,6 +603,16 @@ pub fn userfonts_scan(dpi: f32) -> Vec<UserFont> {
     if left_out != 0 {
         qlog!("fonts: %d file(s) left out (too many, or a name too long to keep)", left_out as i32);
     }
+    // The guard forgets the fonts that are gone or changed (their strikes were another file's).
+    with(|st| {
+        let marks = guard_load(st);
+        let n = marks.len();
+        marks.retain(|g| g.armed || files.iter().any(|l| l.key == g.key));
+        if marks.len() != n {
+            let marks = marks.clone();
+            guard_save(&marks);
+        }
+    });
     let cache = cache_names();
     let list: Vec<UserFont> = files
         .iter()
@@ -872,11 +887,14 @@ fn apply(a: &mut App) -> Applied {
             with(|st| {
                 st.in_use = Some((rel, keys[0]));
                 st.in_use_name = name;
+                st.said = None;
             });
             Applied::Own
         }
         Err(e) => {
-            qlog!("font: your font is not used (%s): Terminess", load_err_name(e));
+            if with(|st| st.said.replace(e)) != Some(e) {
+                qlog!("font: your font is not used (%s): Terminess", load_err_name(e));
+            }
             Applied::Fallback(e)
         }
     }

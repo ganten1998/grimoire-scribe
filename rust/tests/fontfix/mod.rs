@@ -833,7 +833,7 @@ pub fn scenario_files() -> Vec<(&'static str, Vec<u8>)> {
         ("refused/Borrowing.ttf", ttf(&cyclic_composite(false))),
     ];
     // enough fonts for two pages of the sheet
-    for i in 1..=9 {
+    for i in 1..=7 {
         let mut f = test_font("Regular", 400);
         f.family = format!("Grimoire Test {i}");
         let name: &'static str = Box::leak(format!("many/Test{i:02}.ttf").into_boxed_str());
