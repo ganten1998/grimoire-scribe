@@ -12,6 +12,14 @@
   as links. A 2.0 build shows the pages and your own links, without the tabs. Needs the KOReader plugin of this
   version (Grimoire installs it) and a book opened once more: the links of the pages Grimoire already holds are
   sent the first time.
+- A PDF dropped in `grimoire/import/` (or in a folder there, to file it in that Library folder) becomes a
+  notebook of its pages, with no KOReader: a notice at the bottom of the Library says "Importing: page 37 of
+  412", the PDF moves to `import/done/`, and a PDF already imported says so. Pages with colour are kept in
+  colour (the Scribe shows gray); a page that cannot be read ends blank and the notebook says "Some pages
+  couldn't be read." (a PDF with no readable page is not imported). More than 2000 pages, over 512 MB or a password are refused with a message.
+- PDFs are read by a separate process that cannot reach the files, the network or other programs (a sandboxed
+  worker); a Scribe that refuses a step reads no PDF and says so in grimoire.log. A picture folder in `import/`
+  now also gets a notebook name no other notebook has.
 
 ## 2.1.0-beta.1 (2026-11-08)
 

@@ -1866,6 +1866,99 @@ fn powerd_state_now(name: &mut String, cap: usize) -> PowerdState {
     powerd_parse_state(Some(name.as_str()))
 }
 
+// A PDF import ended (pdfimport.rs): what to tell the user. With the Library in front and the new card on it
+// (D20) no toast says "Imported"; elsewhere one does. One that left pages blank says so whatever is in front,
+// as it is news the card does not carry.
+fn pdf_import_done(a: &mut App, id: &str, ok: bool) {
+    use crate::pdfimport::{FailWhy, Finished};
+    let fin = crate::pdfimport::finished(id, ok);
+    let mut msg = String::new();
+    match fin {
+        Finished::Nothing => {}
+        Finished::Imported { pages, blank } => {
+            let mut nb = NotebookInfo::default();
+            let on_top = store_load_info(id, &mut nb) == 0 && nb.folder.is_empty();
+            if a.scr == ScreenId::Library && !a.asleep {
+                app_redraw_mode(a, RefreshMode::Ui); // (waking redraws it too)
+            }
+            if blank > 0 {
+                // TRANSLATORS: a PDF became a new notebook, but some of its pages could not be read and are
+                // blank; %d is its page count. In a toast: one line of about 1700 px at 44 px in bold, or two.
+                csnprintf!(&mut msg, 256, ng_("Imported notebook (%d page). Some pages couldn't be read.", "Imported notebook (%d pages). Some pages couldn't be read.", pages as i64), pages as i32);
+            } else if !(a.scr == ScreenId::Library && on_top) {
+                // TRANSLATORS: a folder of page pictures (grimoire/import/<name>) or a PDF became a new notebook.
+                csnprintf!(&mut msg, 256, ng_("Imported notebook (%d page).", "Imported notebook (%d pages).", pages as i64), pages as i32);
+            }
+        }
+        Finished::Already => {
+            // TRANSLATORS: a toast: the PDF dropped in grimoire/import (or picked) is one Grimoire made a notebook
+            // of before. The file moves to import/done.
+            csnprintf!(&mut msg, 256, "%s", tr("PDF already imported."));
+        }
+        Finished::Failed(why) => match why {
+            FailWhy::Password => {
+                // TRANSLATORS: a toast: the PDF is protected by a password, which Grimoire cannot ask for.
+                csnprintf!(&mut msg, 256, "%s", tr("PDF needs a password."));
+            }
+            FailWhy::TooLong(n) => {
+                // TRANSLATORS: a toast: the PDF has more pages than a notebook holds; %d is that number (2000).
+                csnprintf!(&mut msg, 256, tr("PDF too long: notebooks hold %d pages."), n as i32);
+            }
+            FailWhy::TooBig(mb) => {
+                // TRANSLATORS: a toast: the PDF's file is bigger than Grimoire reads; %d is the size in MB (512).
+                csnprintf!(&mut msg, 256, tr("PDF too big: over %d MB."), mb as i32);
+            }
+            FailWhy::Storage => {
+                // TRANSLATORS: a toast: the PDF could not be imported because the Kindle's storage is full.
+                csnprintf!(&mut msg, 256, "%s", tr("Couldn't import PDF. Is the storage full?"));
+            }
+            FailWhy::Generic => {
+                // TRANSLATORS: a toast: the PDF could not become a notebook; %s is the log file that says why.
+                // The PDF stays where it was.
+                csnprintf!(&mut msg, 256, tr("Couldn't import PDF (see %s)."), "grimoire.log");
+            }
+        },
+    }
+    if !msg.is_empty() {
+        app_toast(a, &msg, 8000);
+    }
+}
+
+// The Library's rescan of import/ (a PDF copied in while Grimoire runs): when the Library comes in front, at most
+// every 10 s, and again after 5 s while a file waits to hold still. No timer runs while the editor is in front.
+pub fn app_import_rescan(a: &mut App, entering: bool) {
+    let now = now_ms();
+    if a.asleep || a.scr != ScreenId::Library || !crate::pdfimport::scan_due(now, entering) {
+        return;
+    }
+    crate::pdfimport::scan_noted(now);
+    import_scan(a.dpi);
+}
+
+// The staying notice of an import (the Library's: "Importing: page 37 of 412"), from the shared progress record
+// the writer fills, or from the coarse progress in import/.marks while a previous run's detached child imports.
+fn pdf_import_tick(a: &mut App, now: u32) {
+    match crate::pdfimport::progress_text(now) {
+        Some((page, pages)) => {
+            let mut msg = String::new();
+            // TRANSLATORS: the staying notice at the bottom of the Library while a PDF becomes a notebook
+            // (and a row of the Import place): the page it is on, of how many. One line of about 1700 px.
+            csnprintf!(&mut msg, 256, tr("Importing: page %d of %d"), page as i32, pages as i32);
+            app_notice(a, NoticeKey::Import, &msg);
+            crate::pdfimport::notice_set(true);
+        }
+        None => {
+            if crate::pdfimport::notice_on() && crate::pdfimport::pending_count() == 0 && !crate::pdfimport::detached_running() {
+                app_notice_clear(a, NoticeKey::Import);
+                crate::pdfimport::notice_set(false);
+            }
+        }
+    }
+    if a.scr == ScreenId::Library {
+        app_import_rescan(a, false);
+    }
+}
+
 // A background job that finished: an import says how it went (the Library shows its new notebook),
 // a template's picture may now be there to draw. Returns bg_poll's result for the PDF mirror's toast.
 fn poll_jobs(a: &mut App) -> i32 {
@@ -1889,11 +1982,16 @@ fn poll_jobs(a: &mut App) -> i32 {
         bgimage_retry_missing();
         editor_picture_made(a); // (the open page may be on that picture: a page KOReader sent)
     }
+    if done == BgKind::PdfImport as i32 {
+        pdf_import_done(a, done_id.as_str(), r > 0);
+        return 0;
+    }
     if done != BgKind::ImportFolder as i32 {
         return r;
     }
     let mut pages = 0;
     let got = import_finished(r > 0, &mut pages);
+    crate::pdfimport::lock_release_if_idle(); // (the lock is the UI's while any import is queued or running)
     if got > 0 && a.scr == ScreenId::Library && !a.asleep {
         app_redraw_mode(a, RefreshMode::Ui); // (waking redraws it too)
     }
@@ -1960,6 +2058,7 @@ fn app_tick_screens(a: &mut App, now: u32) {
     }
     wifi_tick();
     book_tick(a);
+    pdf_import_tick(a, now);
     let bg = poll_jobs(a);
     if bg != 0 {
         let mut msg = String::new();

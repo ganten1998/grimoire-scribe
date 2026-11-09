@@ -1932,3 +1932,35 @@ holds, so it takes a moment longer):
 7. **A 2.0 build** (go back with the update file): the notebook opens, your own links work and are editable,
    the tabs are not there; updating again brings them back.
 8. **The notebook PDF** (Notebook PDFs in KOReader): the tabs are links in the PDF.
+## 2.1.0-beta.2, L5 (the safe loader and the PDF import)
+
+Automated: the unit tests (`rust/tests/test_pdfimport.rs` runs real workers over generated PDFs: pages, colour
+and gray, password, caps, hostile files, a page that kills or stalls its worker twice, resume, duplicates, bands
+against whole pages, the mapping against reading whole, the fit for every rotation and crop, the sandbox
+refusing a step), eight scenarios (`z_pdf_*.qs`), the strings' fit (`test_pdf_strings.rs`), `cargo deny`, the
+crate-date check and `tests/package_check.sh` (every crate in `rust-crates.txt`, the size guard).
+**Not run anywhere yet: the sandbox's real steps** (`rust/tests/test_sandbox_linux.rs` needs Linux and root; the
+CI job `sandbox` is their first run) and everything on a Scribe. The owner's checks on the Scribe (S1's numbers
+replace the placeholders in `sandbox::s1` with one commit):
+
+1. Copy a real planner PDF into `grimoire/import/` over USB, open Grimoire: "Importing: page N of M" stays at
+   the bottom of the Library and the cards stay usable; at the end the card appears and no toast says so.
+   Time a page from grimoire.log (the `import: ... N of M pages` lines are 10 pages apart), and the
+   worker's memory (`VmHWM` in `/proc/<pid>/status` while it runs: `grimoire --work pdf`).
+2. grimoire.log has `work: sandboxed (uid 62001, chroot, netns, no new privileges, seccomp, selinux ...)` and no
+   `the sandbox refused its step`. If a step is refused, send the log (the plan goes back to the owner, D21).
+   A line `made call N, which the sandbox does not allow` names a system call the allow-list must gain.
+3. Sleep the Scribe in the middle of a big import: it must not fail (the watchdog counts monotonic time).
+   Quit Grimoire in the middle: the import finishes in the background; start it again and the notice shows the
+   coarse progress; the notebook appears once.
+4. An import across a restart resumes (kill Grimoire's process in the middle, start it: "goes on from page N").
+5. A colour PDF: its pages open in gray, the notebook's storage is larger than a gray one's, and the Library
+   and Pages view stay quick (no memory warning, `MemAvailable` in the log).
+6. A PDF with a broken page (or a copy with one page's content stream damaged): the notebook appears with a
+   blank page and the toast "Imported notebook (N pages). Some pages couldn't be read."
+7. A PDF with a password: "PDF needs a password."; one over 2000 pages: "PDF too long: notebooks hold 2000
+   pages."; the same PDF twice: "PDF already imported."; a file being copied (copy a big one over USB and
+   watch) waits until it is whole.
+8. Does the private mapping of a file on `/mnt/us` work (`pdf: ... the device refuses the private mapping` would
+   say not), and what does a 100 MB PDF do to the memory?
+

@@ -623,6 +623,53 @@ count), each page a document page; the notebook's own paper is Blank. It is made
 
 Grimoire makes `import/` at startup, with a `README.txt`, if it is missing.
 
+### Imports: PDFs, `root/import/*.pdf` (2.1.0-beta.2)
+
+A PDF in `import/` becomes a notebook of its pages, with no KOReader. A file in `import/<Folder>/` becomes a
+notebook in Library folder `<Folder>` (made if missing); a folder that holds PDFs and page pictures imports its
+PDFs first, then its pictures as above. A PDF picked anywhere is read in place and never moved; the others
+move to `import/done/<Name>-<YYYYMMDD-HHMMSS>.pdf` once imported. Names: the file's name without `.pdf`, numbered
+(" 2", " 3") when a notebook has it. The rules of the scan (at start, when the Library comes in front at most
+every 10 s, and again after 5 s while a file waits):
+
+- **A file is taken when it is whole:** its size and mtime held across two looks at least 2 s apart, its mtime
+  is at least 5 s old, `%PDF-` is in its first KiB and `%%EOF` (white space after it allowed) in its last.
+  Links, dot-files, names that are not UTF-8 and paths of 600 bytes or more are skipped and counted.
+- **Pages:** one document page (image paper) per PDF page, the page fitted inside the Scribe page and centred
+  on white (the crop box within the media box, turned by `/Rotate`; the scale is the smaller of the two
+  ratios; the rendered size and offsets are whole pixels, as KOReader draws a page). At most 2000 pages and
+  512 MB (64 MB where the device refuses a private mapping of the file), else refused: "PDF too long", "PDF too
+  big". A password refuses it too ("PDF needs a password."); an owner password alone does not.
+- **Colour:** a page whose pixels differ by no more than 6 levels between their channels (anywhere on it) is
+  stored as an 8-bit gray PNG, any other page as an 8-bit RGB PNG (`bg/<pic>.png`; the pictures of equal
+  content share one file). Page pictures may therefore be RGB (3 channels); older versions read them (stb_image)
+  and show their luma. The Scribe draws every page picture as its luma (a page held in memory is the 4.6 MB
+  gray canvas, never the 13.8 MB RGB copy), so the mirror PDF and the share pages embed the gray render, never
+  the colour. The KOReader route's pages stay gray.
+- **The book key** is KOReader's partial MD5 of the file (1 KiB samples at 0, 1 KiB, 4 KiB ... 1 GiB), written
+  as `source=` in `notebook.ini` and `book=` in `source.ini` (`kind=paged`, a `page.<n>.<count>=<page id>` line
+  per page), so the KOReader route and the import find the same notebook. The same key again: "PDF already
+  imported." and the file moves to `done/`.
+- **Slices:** the work runs in slices of at most 25 pages or 20 s, each a background job
+  (`BgKind::PdfImport` = 7) that exits "more to do" (status 3) until the last, which commits. Slice 0 probes
+  (page count, caps), the others render, the last writes `source.ini`, `bg/pages.ini` and last `notebook.ini`,
+  renames `notebooks/.import-<id>/` into place and moves the file. The slices' state is
+  `notebooks/.import-<id>/pdf-import.ini` (`src`, `size`, `mtime`, `key`, `pages`, `next`, `pics` (the picture
+  id of each page made, hex), `blank`, `strikes`, `cpu_ms`, `owner`, `started`), which a start or a scan that
+  finds the file unchanged resumes from; a changed file removes the work.
+- **A page that cannot be read:** its worker died or stalled twice (a strike each, in `strikes`), so it becomes
+  a blank document page (`blank`), the import goes on and ends with "Imported notebook (%d pages). Some pages
+  couldn't be read." A PDF that fails before any page (no page tree, a password, the caps, the sandbox) fails
+  whole and keeps its file.
+- **Marks:** `import/.marks/<16 hex of the source path>` holds `state` (`making`, `waiting` or `done`), `id`,
+  `src` (the path from the storage root), `pick`, `name`, `folder`, `page`, `pages` and `at`; the coarse
+  progress a detached import leaves, rewritten at most every 20 s. `import/.attempts` also keys PDFs (a hash of
+  the file's name; the second hash is of its size and mtime): three tries, or a refusal, wait until the file
+  changes. A sandbox failure counts no try.
+- **One owner:** `import/.lock` (flock) is taken by the UI without blocking before it queues any import and
+  held while any is queued or running, through one close-on-exec handle; each background child (and the child
+  that finishes the queue after Grimoire closes) keeps that descriptor. No job opens it or waits for it.
+
 ### Annotated pages: `root/import/.annotate/` and `source.ini` (1.1 on)
 
 KOReader's Grimoire plugin (`kindle/koreader/grimoire.koplugin`), in a book, has Tools > Grimoire >

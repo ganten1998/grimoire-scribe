@@ -1890,6 +1890,25 @@ The binding design is docs/beta2/LASSO-DESIGN.md; this is where it lives in the 
   outside sample. Probes: `editor.sel_exact`, `sel_cut`, `page_sig_keep`, `page_sig_same`;
   `tap panel select.mode`.
 
+## The safe loader and the PDF import (2.1.0-beta.2, lane L5)
+
+PDFs are untrusted, and Grimoire runs as root, so no process that writes files parses one. The import is three
+processes: the UI (queues, shows the notice, never reads the PDF beyond the ends of the file), the writer (a
+background job child: opens the file through `fsview`'s walk, owns the work folder, validates every record
+and writes the files) and the worker, a fresh exec of the same binary (`grimoire --work pdf ...`, taken
+before any UI start-up) that inherits nothing: descriptors 0 to 5 only (0 to 2 on /dev/null, 3 the PDF, read
+only, 4 the pipe to the writer, 5 the pipe from it). On the Kindle the worker takes these steps in order, and a
+failed step sends `E sandbox <step>` and exits before a byte of the PDF is read: oom_score_adj 1000,
+no network or System V IPC (unshare), chroot into an empty directory on /tmp (checked to be tmpfs), the uid
+and gid 62001 (checked unused), no new privileges and not dumpable, the parent-death signal, the limits
+(`RLIMIT_NOFILE` 0, `NPROC` 0, `FSIZE` 0, `CORE` 0, `AS`, `CPU`) and a seccomp allow-list (read, write, the
+mmap family, brk, futex, clock_gettime, rt_sigreturn, exit) whose violation traps into a reporter. A refused
+step marks nothing and counts no try; the session then imports no more PDFs. Off the Kindle the steps are
+skipped (plain process isolation) unless GRIMOIRE_SANDBOX=require. The worker's records are text lines of a
+fixed grammar plus pixel bands, at most 4 MiB a job besides pixels, parsed strictly (`pdfwork.rs`); every
+number the device spike (S1) sets is in the one table `sandbox::s1`, marked "set by S1". The notebook, its
+slices, marks and colour rule are in FORMAT.md, "Imports: PDFs".
+
 ## Shared building blocks (2.1, lane L0)
 
 The 2.1 plan builds a few pieces once, for every later lane to reuse (no second one grows beside them).

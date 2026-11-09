@@ -2212,6 +2212,23 @@ fn script_step_in(st: &mut State) -> Step {
             if b != b"full" && b != b"ok" {
                 st.expect_unknown_line();
             }
+        } else if a == b"pdfimport" {
+            // pdfimport PATH [NAME [FOLDER]]: the picker's entry (lane L8) with no picker: imports the PDF at
+            // PATH (relative to the storage root, GRIMOIRE_STORAGE or the folder around the data root), read
+            // in place and never moved, named NAME (words joined by _ for spaces) into Library folder FOLDER.
+            // A lock held by a detached import leaves it waiting (the Import place's Waiting).
+            let t = String::from_utf8_lossy(b).into_owned();
+            let w: Vec<&str> = t.split_whitespace().collect();
+            let unspace = |x: &str| x.replace('_', " ");
+            match w.first().and_then(|p| crate::fsview::StoragePath::new(p.as_bytes())) {
+                Some(sp) => {
+                    let name = w.get(1).map(|x| unspace(x));
+                    let folder = w.get(2).map(|x| unspace(x));
+                    let r = crate::pdfimport::pdf_import_queue(&sp, name.as_deref(), folder.as_deref(), store_dpi());
+                    qlog!("script: pdfimport: %s", &format!("{r:?}"));
+                }
+                None => st.expect_unknown_line(),
+            }
         } else if a == b"powerd" {
             // powerd STATE: what the power service reports from now on (active, screenSaver, ...)
             st.powerd_state.set_bytes(b);
