@@ -689,6 +689,23 @@ Ideas, not plans: each needs the owner's go and its own design. No code is taken
   since a document link has an area and never takes an ink box).
 - **package_check.sh** (lane L5's) should list `links` among app/grimoire.sh's required capabilities.
 
+## Notebook PDF cache and child caps (lane L9, 2.1.0-beta.2): what waits
+
+- **The mirror's 64 MiB margin on a very dense page.** A page with millions of points holds its strokes plus a
+  page canvas; if a real notebook's mirror fails with the cap on (the log says `export of ... failed` and the
+  child died of a failed allocation), raise `child_margin(BgKind::MirrorPdf)` in `childcaps.rs`. The 2,000-page
+  test measures a light page. Nothing measured on the device yet (TESTING L9, check 7).
+- **The cache is read per page even with no change.** A hit reads the page file only when the notebook has a link
+  on that page; a planner with a document link on every page still reads and parses every page (no drawing). A
+  per-page "links stamp" could skip that too.
+- **The share server never writes the cache** (the plan: background jobs only), so a download of a notebook whose
+  mirror is off, or not yet made, draws every page; the page progress shows it. Making the mirror job also
+  prepare the cache when the mirror is off would fix it.
+- **A zip entry is stored, not compressed** (stored deflate blocks, since the PDF's images are compressed
+  already); the raw `.qpg`/PNG entries are as before.
+- **Caps are Linux only** (the host build and the simulator apply none); `RLIMIT_AS` for the share server's render
+  children is a flat 128 MiB over their start: a zip of a notebook with a very big raw page may need more.
+
 ## Done
 
 - 2.1.0 (unreleased, v21/fonts; the owner, 2026-11-04: "Custom font support/More fonts in the classic theme",

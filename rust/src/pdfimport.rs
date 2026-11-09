@@ -1158,13 +1158,17 @@ fn can_map(fd: i32, len: u64) -> bool {
     if std::env::var("GRIMOIRE_PDF_NO_MAP").is_ok() {
         return false;
     }
+    // One page answers the question (does this storage allow a private mapping): the whole file would ask
+    // this process's address space instead, which the writer's RLIMIT_AS (childcaps.rs) keeps small, and
+    // refuse every PDF over the read-whole cap. The worker maps the whole file in its own fresh process.
+    let n = (len as usize).min(4096);
     // SAFETY: a private, read-only mapping, unmapped at once.
     unsafe {
-        let p = libc::mmap(std::ptr::null_mut(), len as usize, libc::PROT_READ, libc::MAP_PRIVATE, fd, 0);
+        let p = libc::mmap(std::ptr::null_mut(), n, libc::PROT_READ, libc::MAP_PRIVATE, fd, 0);
         if p == libc::MAP_FAILED {
             return false;
         }
-        libc::munmap(p, len as usize);
+        libc::munmap(p, n);
     }
     true
 }

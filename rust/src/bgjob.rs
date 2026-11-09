@@ -260,6 +260,8 @@ pub fn bg_detach_rest() {
         // SAFETY: setsid detaches the child from the terminal and process group it was forked in.
         unsafe { libc::setsid() };
         child_setup();
+        // (the detached child runs the jobs left, the biggest margin of them)
+        child_caps_apply(jobs.iter().map(|j| child_margin(j.kind)).max().unwrap_or(0));
         // Wait for the running export first (it writes the same folder).
         // SAFETY: kill with signal 0 only checks that the process exists.
         while running > 0 && unsafe { libc::kill(running, 0) } == 0 {
@@ -348,11 +350,31 @@ fn with<R>(f: impl FnOnce(&mut State) -> R) -> R {
 fn run_mirror(j: &Job) -> i32 {
     let mut nb = Box::<NotebookInfo>::default();
     let li = store_load_info(j.id.as_str(), &mut nb);
+    let (t0, drawn0) = (now_ms(), pdf_pages_rendered());
     let rc = if li == 0 { export_mirror_pdf(&nb, j.dpi, j.dir.as_str()) } else { -1 };
     if rc != 0 {
         qlog!("bg: export of %s failed (load %d, export %d)", &j.id, li, rc);
+    } else {
+        // (the mirror's time and memory, for the device check in docs/TESTING.md: pages drawn against pages
+        // found in the cache, and the child's peak resident memory)
+        qlog!(
+            "bg: export of %s: %d pages, %d drawn, %d ms, VmHWM %d kB",
+            &j.id,
+            nb.npages(),
+            pdf_pages_rendered().wrapping_sub(drawn0) as i32,
+            now_ms().wrapping_sub(t0) as i32,
+            vm_hwm_kb()
+        );
     }
     rc
+}
+
+// This process's peak resident memory in kB (Linux's VmHWM line), 0 where it is not known.
+fn vm_hwm_kb() -> i32 {
+    std::fs::read_to_string("/proc/self/status")
+        .ok()
+        .and_then(|s| s.lines().find_map(|l| l.strip_prefix("VmHWM:").and_then(|v| v.trim().trim_end_matches("kB").trim().parse::<i32>().ok())))
+        .unwrap_or(0)
 }
 
 fn run_graph(j: &Job) -> i32 {
@@ -619,6 +641,7 @@ fn start_job(j: Job, extra: bool) -> bool {
         // The child only renders and writes files: no display, no input, no atexit handlers.
         child_stops_by_default(&was);
         child_setup();
+        child_caps_apply(child_margin(j.kind)); // (oom_score_adj 500 and RLIMIT_AS, childcaps.rs)
         #[cfg(feature = "sim")]
         {
             // Tests: an export as slow as a big notebook's on the Kindle, so the next one queues.
