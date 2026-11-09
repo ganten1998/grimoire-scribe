@@ -70,8 +70,10 @@ pub struct Fit {
 pub fn fit_page(pw: f64, ph: f64, page_w: i32, page_h: i32) -> Fit {
     let (pw, ph) = (pw.max(1.0), ph.max(1.0));
     let scale = (page_w as f64 / pw).min(page_h as f64 / ph);
-    let rw = ((pw * scale) as i32).clamp(1, page_w);
-    let rh = ((ph * scale) as i32).clamp(1, page_h);
+    // trunc, as KOReader's integer dimensions, after a hair of slack: the side that decides the scale comes
+    // out at exactly page_w or page_h (842 pt x 1860 / 842 is 1859.9999... in floating point)
+    let rw = ((pw * scale + 1e-6) as i32).clamp(1, page_w);
+    let rh = ((ph * scale + 1e-6) as i32).clamp(1, page_h);
     Fit { scale, ox: (page_w - rw) / 2, oy: (page_h - rh) / 2, rw, rh }
 }
 
@@ -766,7 +768,8 @@ mod tests {
         assert_eq!(f.ox, (1860 - f.rw) / 2);
         // landscape: fitted as it is (letterboxed), never turned
         let f = fit_page(842.0, 595.0, 1860, 2480);
-        assert!((1859..=1860).contains(&f.rw), "{}", f.rw); // (trunc of a float product: the width, to a pixel)
+        assert_eq!(f.rw, 1860); // the deciding side fills the page exactly, never a pixel short
+        assert_eq!(f.ox, 0);
         assert!(f.rh < 2480 && f.oy == (2480 - f.rh) / 2);
         // no area counts as 1 x 1
         let f = fit_page(0.0, 0.0, 100, 100);

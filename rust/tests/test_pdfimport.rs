@@ -340,6 +340,19 @@ fn a_page_that_kills_its_worker_twice_ends_blank_and_the_rest_import() {
 }
 
 #[test]
+fn a_pdf_whose_every_page_kills_its_worker_fails_whole() {
+    // keeping the good pages (D37) never makes a notebook of nothing but blank pages
+    let e = setup("isolation-all");
+    std::env::set_var("GRIMOIRE_PDF_TEST_CRASH_PAGE", "1");
+    let src = e.drop("Planner.pdf", &pdffix::planner(1));
+    let (_id, ends) = import_all(&src);
+    assert!(matches!(last(&ends), SliceEnd::Failed(..)), "{ends:?}");
+    assert!(e.notebooks().is_empty());
+    assert_eq!(e.work_folders(), 0);
+    assert_eq!(e.done_files(), 0, "the PDF stays where it was");
+}
+
+#[test]
 fn a_page_that_stalls_twice_ends_blank_too() {
     let e = setup("hang");
     std::env::set_var("GRIMOIRE_PDF_WATCHDOG_MS", "700");

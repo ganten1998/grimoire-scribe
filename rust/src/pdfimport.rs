@@ -1761,6 +1761,15 @@ fn commit(id: &str, src: &str, abs: &str, state: &State, mark: Option<&Mark>, so
         }
         return fail(id, R_FAILED, 0);
     }
+    // the good pages are kept (D37), but a PDF with none is not a notebook of blank pages: it fails whole
+    if state.pages > 0 && state.blank.len() as u32 >= state.pages {
+        qlog!("import: %s: no page of %d could be read; nothing imported", id, state.pages as i32);
+        remove_work_folder(id);
+        if !pick {
+            mark_drop(src);
+        }
+        return fail(id, R_FAILED, 0);
+    }
     let mut final_ = String::new();
     if store_notebook_dir(id, &mut final_, 600) != 0 {
         remove_work_folder(id);
