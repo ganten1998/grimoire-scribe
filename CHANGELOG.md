@@ -1,5 +1,7 @@
 # Changelog
 
+## 2.1.0-beta.2 (unreleased)
+
 ## 2.1.0-beta.1 (2026-11-08)
 
 - A cleared page, or a page given a new paper, template or photo, no longer shows its old picture (2.0.0 and
