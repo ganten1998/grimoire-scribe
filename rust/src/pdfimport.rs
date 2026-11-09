@@ -1432,6 +1432,9 @@ pub fn run_slice(id: &str, src: &str) -> SliceEnd {
                 return refuse(R_FAILED, 0);
             }
             let mapped = can_map(std::os::fd::AsRawFd::as_raw_fd(&source.fd), source.size);
+            if !mapped {
+                qlog!("import: %s: the device refuses the private mapping of the PDF; the worker reads it whole (%d MB at most)", id, (s1::PDF_MAX_READ_WHOLE >> 20) as i32);
+            }
             let cap = if mapped { s1::PDF_MAX_MAPPED } else { s1::PDF_MAX_READ_WHOLE };
             if source.size > cap {
                 qlog!("import: %s: a PDF over %d MB; nothing imported%s", id, (cap >> 20) as i32, if mapped { "" } else { " (the device refuses the private mapping)" });

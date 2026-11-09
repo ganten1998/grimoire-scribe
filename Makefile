@@ -661,6 +661,7 @@ rust-host:
 host-checks:
 	$(MAKE) -o $(BUILD)/host/grimoire-headless scenarios-late
 	python3 -I tests/pages_cache_check.py $(BUILD)/host/grimoire-headless $(BUILD)/pages-cache-check
+	python3 -I tests/import_check.py $(BUILD)/host/grimoire-headless $(BUILD)/import-check
 	$(MAKE) -o $(BUILD)/host/grimoire-headless mirror-cleanup-check
 	BUILD=$(BUILD) $(SCEN_LANG) tests/share_check.sh $(BUILD)/scen/b_library
 	BUILD=$(BUILD) tests/live_check.sh
