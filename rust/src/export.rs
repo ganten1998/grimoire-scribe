@@ -136,6 +136,10 @@ fn zlib_compress(data: &[u8]) -> Option<StbBytes> {
 // Link boxes found on a rendered page (render_page_links).
 struct PageLinks<'a> {
     nav: &'a Nav,
+    /// the notebook's document links (doclinks.ini), and the open page's, as (target page id, exact area):
+    /// a vector beside the 64-entry arrays, since a planner's month page has 365
+    docs: &'a DocLinks,
+    doc: Vec<(u32, Rect)>,
     links: [NavLink; NAV_LINKS_PER_PAGE as usize],
     areas: [Rect; NAV_LINKS_PER_PAGE as usize],
     n: i32,
@@ -170,6 +174,7 @@ fn render_page_links(nb: &NotebookInfo, index: i32, dpi: f32, layers: i32, c: &m
     }
     if let Some(links) = links {
         links.n = nav_link_areas(links.nav, &p, nb.page_ids[index as usize], NAV_LINK_MIN_MM * dpi / 25.4, &mut links.links, &mut links.areas);
+        links.doc = doclinks_targets(links.docs, &p, nb.page_ids[index as usize]);
     }
     page_free(p);
     0
@@ -333,8 +338,12 @@ pub fn export_notebook_pdf_progress(nb: &NotebookInfo, dpi: f32, out: &mut Buf, 
     nav_init(&mut nav);
     nav_load(nb.id.as_str(), &mut nav); // what does not read is left out
     let nnamed = nav_index(&nav, nb, &mut named[..np as usize]);
+    let dl = doclinks_load(nb.id.as_str()); // what does not read is left out
+    let page_at: std::collections::HashMap<u32, i32> = nb.page_ids.iter().enumerate().map(|(i, &p)| (p, i as i32)).collect();
     let mut pl = PageLinks {
         nav: &nav,
+        docs: &dl,
+        doc: Vec::new(),
         links: [NavLink::default(); NAV_LINKS_PER_PAGE as usize],
         areas: [Rect::default(); NAV_LINKS_PER_PAGE as usize],
         n: 0,
@@ -393,6 +402,16 @@ pub fn export_notebook_pdf_progress(nb: &NotebookInfo, dpi: f32, out: &mut Buf, 
                 nannot += 1;
             }
         }
+        // The page's document links follow the user's, each at its exact area (a viewer's tap box).
+        let mut areas: Vec<Rect> = pl.areas[..nannot as usize].to_vec();
+        let mut tos: Vec<i32> = to[..nannot as usize].to_vec();
+        for (t, r) in &pl.doc {
+            if let Some(&at) = page_at.get(t) {
+                areas.push(*r);
+                tos.push(at);
+            }
+        }
+        let nannot = areas.len() as i32;
         if nobj + nannot > cap {
             let grown = (nobj + nannot) * 2;
             if off.try_reserve_exact((grown as usize + 1).saturating_sub(off.len())).is_err() {
@@ -422,7 +441,7 @@ pub fn export_notebook_pdf_progress(nb: &NotebookInfo, dpi: f32, out: &mut Buf, 
         }
         buf_printf!(out, " >>\nendobj\n");
         for k in 0..nannot {
-            let r = pl.areas[k as usize];
+            let r = areas[k as usize];
             let s = 72.0f32 / dpi;
             obj(out, &mut off, base, first_annot + k);
             buf_printf!(
@@ -432,7 +451,7 @@ pub fn export_notebook_pdf_progress(nb: &NotebookInfo, dpi: f32, out: &mut Buf, 
                 fmla(-((r.y + r.h) as f32), s, ph),
                 ((r.x + r.w) as f32) * s,
                 fmla(-(r.y as f32), s, ph),
-                4 + 3 * to[k as usize]
+                4 + 3 * tos[k as usize]
             );
         }
         let mut content = String::new();
@@ -668,7 +687,7 @@ fn add_raw_files(nb: &NotebookInfo, z: &mut ZipWriter, dirprefix: &str) -> i32 {
     let mut name = String::new();
     // Notebook metadata, the book-page map and named sections: a notebook put back from the zip
     // keeps its navigation as well as its ink and pictures.
-    const K_INFO: [&str; 4] = ["notebook.ini", "source.ini", "nav.ini", "links.ini"];
+    const K_INFO: [&str; 5] = ["notebook.ini", "source.ini", "nav.ini", "links.ini", "doclinks.ini"];
     for k in K_INFO {
         csnprintf!(&mut path, 900, "%s/%s", &dir, k);
         let Some(d) = read_file(&path) else { continue };
