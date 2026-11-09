@@ -2088,6 +2088,7 @@ fn serve_in_child(c: usize, method: &[u8], path: &[u8]) -> ! {
     if unsafe { libc::nice(5) } < 0 {
         // best effort
     }
+    child_caps_apply(SHARE_CHILD_MARGIN); // (oom_score_adj 500 and RLIMIT_AS, childcaps.rs)
     #[cfg(feature = "sim")]
     {
         use std::os::unix::ffi::OsStrExt;

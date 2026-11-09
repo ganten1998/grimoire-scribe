@@ -249,6 +249,26 @@ struct PageLinks<'a> {
     n: i32,
 }
 
+thread_local! {
+    /// The colour picture the last coloured page drew from (notebook id, paper kind, page size): a notebook
+    /// whose pages share one picture decodes it once. Cleared when the PDF is done.
+    static COLOR_PIC: std::cell::RefCell<Option<(String, u32, i32, i32, BgPicture)>> = const { std::cell::RefCell::new(None) };
+}
+
+/// bgimage_render_color, a copy of the picture kept from the last page for the next.
+fn color_picture(nb: &str, paper: PaperKind, w: i32, h: i32) -> Option<BgPicture> {
+    let kept = COLOR_PIC.with(|c| {
+        c.borrow().as_ref().filter(|k| k.0 == nb && k.1 == paper.0 && k.2 == w && k.3 == h).map(|k| k.4.clone())
+    });
+    if kept.is_some() {
+        return kept;
+    }
+    COLOR_PIC.with(|c| *c.borrow_mut() = None);
+    let pic = bgimage_render_color(nb, paper, w, h)?;
+    COLOR_PIC.with(|c| *c.borrow_mut() = Some((nb.to_string(), paper.0, w, h, pic.clone())));
+    Some(pic)
+}
+
 /// One page drawn into c (its paper kind in `paper`, its links in `links`). With `color` asked for (the
 /// notebook PDF, all layers), a page whose picture has colour also gets `color`: the page as 8-bit RGB,
 /// the picture fitted to the page and the ink drawn over it as it darkens or lightens the gray paper
@@ -287,7 +307,7 @@ fn render_page_links(nb: &NotebookInfo, index: i32, dpi: f32, layers: i32, c: &m
     }
     if let Some(color) = color.filter(|_| layers == PAGE_LAYER_ALL && paper_is_image(p.paper)) {
         *color = None;
-        if let Some(mut pic) = bgimage_render_color(nb.id.as_str(), p.paper, p.w, p.h) {
+        if let Some(mut pic) = color_picture(nb.id.as_str(), p.paper, p.w, p.h) {
             // The paper alone, as the gray page has it under its ink: where the page is the paper, the
             // picture shows as it is; where ink changed it, the picture takes the same change.
             let mut cp = Canvas::default();
@@ -671,6 +691,7 @@ pub fn export_notebook_pdf_to(nb: &NotebookInfo, dpi: f32, sink: &mut dyn Sink, 
         buf_printf!(&mut out.buf, "trailer\n<< /Size %d /Root 1 0 R /Info 3 0 R >>\nstartxref\n%zu\n%%%%EOF\n", nobj + 1, xref);
     }
     out.flush();
+    COLOR_PIC.with(|c| *c.borrow_mut() = None);
     if rc != 0 || out.buf.err {
         -1
     } else {

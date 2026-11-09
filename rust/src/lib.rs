@@ -69,6 +69,7 @@ pub mod bgwork_template; // templates.h + bg_template, bg_import_folder
 pub mod brush;
 pub mod compact; // compact.h's surface (bodies in bgwork_compact.rs)
 pub mod export;
+pub mod childcaps; // oom_score_adj and RLIMIT_AS for every background child (2.1, lane L9)
 pub mod pdfcache; // the notebook PDF's page streams (2.1, lane L9)
 pub mod history;
 pub mod lasso; // lasso select, copy, cut, paste, move (the pure part)
@@ -157,6 +158,7 @@ pub mod prelude {
     pub use crate::erasersample::*;
     pub use crate::export::*;
     pub use crate::pdfcache::*;
+    pub use crate::childcaps::*;
     pub use crate::fbcheck::*;
     pub use crate::fbpack::*;
     pub use crate::findsheet::*;
