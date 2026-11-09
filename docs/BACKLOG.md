@@ -635,6 +635,24 @@ Ideas, not plans: each needs the owner's go and its own design. No code is taken
 - Promote a quiet 2.0.0 release candidate to 2.0.0 stable (the stable KPM feed updates every 1.2.0
   install).
 
+## Document links (lane L4, 2.1.0-beta.2): what waits
+
+- **Hand-made links keep 2.0's tap rule** (growth first, smallest box); widening exact-area-first to them waits
+  for the owner (DESIGN 3.10).
+- **Edit a document link.** Their card is read only (Rename the page): Change where it goes, Redraw and Delete
+  are not offered for them. A link the user wants gone is not removable in 2.1.
+- **Inside the bar's document chips, X goes back to the page's own rows** (a second X closes); a drag down from
+  the grip closes at once. Chosen because the bar has no room for a back chip beside the header's own; to
+  confirm on the Scribe.
+- **KOReader quad links.** `getPageLinks` gives rectangles only, so a KOReader-sent link has no outline; the
+  PDF route (lane L6) can pass quads through `DocRecord.quad`.
+- **The notebook PDF writes a document link at its exact area** (a user link at its 7 mm-padded one).
+- **Paste's seeds:** a pasted stroke or link avoids the seeds of the page's document links (select.rs
+  `seed_holders`); the stroke's own seed is not checked against document links when a *fill* picks the
+  document link's seed (only the user's links are; ink seeds are 32-bit hashes, a clash would be harmless
+  since a document link has an area and never takes an ink box).
+- **package_check.sh** (lane L5's) should list `links` among app/grimoire.sh's required capabilities.
+
 ## Done
 
 - 2.1.0 (unreleased, v21/fonts; the owner, 2026-11-04: "Custom font support/More fonts in the classic theme",

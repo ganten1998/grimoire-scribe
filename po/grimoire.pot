@@ -6,9 +6,9 @@
 #, fuzzy
 msgid ""
 msgstr ""
-"Project-Id-Version: Grimoire 2.0.0\n"
+"Project-Id-Version: Grimoire 2.1.0-beta.1\n"
 "Report-Msgid-Bugs-To: https://github.com/ganten1998/grimoire-scribe/issues\n"
-"POT-Creation-Date: 2026-11-08 16:38-0600\n"
+"POT-Creation-Date: 2026-11-09 12:53-0600\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -3371,6 +3371,15 @@ msgstr ""
 #: rust/src/linkbar.rs rust/src/linkcard.rs
 #, c-format
 msgid "×%d"
+msgstr ""
+
+#. TRANSLATORS: the last row of the Links bar when the page has document links (a planner PDF's tabs):
+#. %d how many; a tap opens them grouped by the page they go to (about 700 px at 44 px).
+#. TRANSLATORS: the Links bar's header inside the page's document links (a planner PDF's tabs), %d how many
+#. (bold, about 900 px at 44 px).
+#: rust/src/linkbar.rs
+#, c-format
+msgid "From the PDF (%d)"
 msgstr ""
 
 #. TRANSLATORS: the caption over a Links bar chip for a page whose links come TO the open page (in this

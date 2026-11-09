@@ -132,7 +132,7 @@ your notebooks and settings from `quire/` to `grimoire/` and removes the old Qui
   after the page you are on, on its paper, which stays open, and the Undo in Pages takes them back while they
   are still blank. The `new-pages` shortcut opens the same pad on any page.
 - **Pen button**: hold the button while drawing to highlight (or erase; Settings). Hold it while
-  hovering to clear the page. Clear removes ink and outgoing links together; Undo restores both.
+  hovering to clear the page. Clear removes ink and outgoing links together (not a PDF's own links, its tabs); Undo restores both.
 - **The Index**: swipe down with two fingers for Graph, or tap the page counter for Pages. **Graph**, **List** and
   **Pages** share one navigation bar; Back returns to the notebook. Graph always shows every linked page of
   every notebook, each notebook's pages an island with its name over it (a library with too many linked pages
@@ -374,7 +374,15 @@ then opens the page you are reading. In KOReader's file browser, long-press such
 **Open with... > Grimoire** to do the same without opening it. KOReader draws each page first, about
 a second or two a page on a Scribe, with a message that a tap stops; pages the notebook already has,
 with what you wrote on them, are kept as they are, so opening the same book again only adds what is
-missing. It is the same notebook Annotate this page uses.
+missing. It is the same notebook Annotate this page uses. A PDF's own links come along (a planner's tabs: a
+finger tap on "March" goes to March): see Document links.
+
+**Document links.** The tabs of a planner PDF are part of its pages. A tap follows one (a link you drew yourself
+comes first where they overlap); a finger held on one starts Select, as anywhere on the page. Clear page keeps
+them, a lasso around what you wrote in a day cell never takes the cell's link, and Copy page, Move to... and
+Copy to notebook... carry them (to pages that go too). The Links bar lists them as its last row, "From the PDF
+(43)", which opens them grouped by the page they go to; Areas draws their boxes dotted. They are in a file of their own
+(`doclinks.ini`), so an older Grimoire shows the pages and your links without them.
 
 ## Moving between versions
 

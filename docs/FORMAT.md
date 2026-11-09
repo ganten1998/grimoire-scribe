@@ -35,6 +35,7 @@ root/notebooks/<id>/bg/pages.ini        the image paper of each page that has on
 root/notebooks/<id>/source.ini          the book a notebook annotates, page by page (1.1; Annotated pages)
 root/notebooks/<id>/nav.ini             its named sections (1.2.0; Named sections)
 root/notebooks/<id>/links.ini           links drawn on its pages (2.0; Links)
+root/notebooks/<id>/doclinks.ini        links a document brought: a planner PDF's tabs (2.1.0-beta.2; Document links)
 root/backlinks.ini                      links between notebooks, turned around (2.0.0-beta.2; a cache: Backlinks cache)
 root/graph-index.ini                    every notebook's pages, names and links, for the Graph (2.0.0-beta.2; a cache: Library index)
 root/graph-all.ini                      the Graph of all notebooks' layout (2.0.0-beta.2; a cache: Library index)
@@ -783,6 +784,59 @@ The editor then opens on the page to open (else the first page added).
 
 1.0.0-beta to 2.0.0-beta.4 never read `import/.book/`; the plugin never sends to them.
 
+### Links from KOReader: `import/.book/links.txt` and `source.ini`'s `links=1` (2.1.0-beta.2 on)
+
+The plugin also sends the links inside the book, to a launcher whose `# Capabilities:` line says `links` (an
+older one gets no file, and KOReader is not asked). For each page it draws in this run, plus, once per book while
+the notebook's `source.ini` lacks `links=1`, each page the notebook holds already, it asks KOReader's
+`getPageLinks` (a rectangle `x0 y0 x1 y1` in page space and a 0-based target `page`, or a `uri`), maps the
+rectangle with the transform that drew the page's picture, and writes `links.txt` (whole, before `request.ini`):
+
+```
+# comment lines and blank lines are skipped
+P <w> <h>                                  the pictures' size in pixels, first, once
+L <from> <to> <x> <y> <w> <h>              a link: book pages from 1, the rectangle in those pixels, whole numbers
+```
+
+A link to a web address or a file, to its own page, or to a page the book lacks is left out by the plugin.
+Grimoire reads the file strictly at the start of the book job (at most 8 MiB and 200,000 links; one line it does
+not understand and the whole file is ignored, logged without its content), maps the book pages to the notebook's
+page ids through `source.ini`, scales the rectangles into page pixels as the pictures are fitted, and at the
+commit fills `doclinks.ini` (below): validated, the same link twice (same target, area within 2 px) once, trimmed
+to the water level, written before anything else, so a later failure leaves at most lines of pages that are not
+listed (dropped at the next write). Then `source.ini` says `links=1` (one more line; a 2.0 build carries it as an
+unknown line), and the plugin stops sending the held pages' links. A fill that could not write leaves `links=1`
+unsaid, so the next Open this book sends them again.
+
+## Document links: `doclinks.ini` (2.1.0-beta.2 on)
+
+`notebooks/<id>/doclinks.ini` holds the links a document brought (a planner's tabs), in `links.ini`'s lines
+(`link.<page id>=<seed>,<target>`, then `area.` and `outline.` lines keyed the same), every target a page of the
+same notebook (`p<page id>`) and every link with an area. Within a page, the file's order is the annotation
+order of the document: of two equal boxes the later one wins a tap. Lines this version does not know (or a link
+whose target is not `p<id>`, with its area and outline) are carried, as links.ini's are.
+
+| | `doclinks.ini` | `links.ini` (unchanged) |
+|---|---|---|
+| links | 16,000 | 4,000 |
+| size | 1.5 MiB | 512 KiB |
+| a page | 1,024 | 64 |
+
+A file over a cap, a carried line past its bounds or one that holds a NUL does not read: it shows no tabs and is
+never written over. The water level: a fill keeps the most links under 90% of the links and of the bytes (outline
+lines included), the densest pages first, each page keeping its first links, so Copy page and later fills have
+room; a Copy page past it copies the page without its document links ("Copied without links: couldn't save
+them."). The writers: the book import's commit (above), Copy page and Copy to notebook. Never a page turn, Clear
+page, a lasso or Select. The seed is a hash of the source page and the annotation index, and never one the page's
+ink or its own links have.
+
+Who reads it: the editor (taps, the eye, the Links bar's "From the PDF (%d)" row, the card), Copy page and
+Copy to notebook (a link goes along when its target page does too), the notebook's PDF (a link annotation at its
+exact area) and raw zips (`raw/doclinks.ini`). Who never does: the Links bar's Linked from rows, the backlinks
+cache, the library index and the Graph, the lasso and Select, the clipboard, and the 64-a-page and
+4,000-a-notebook checks, which count the user's links only. Moving pages inside a notebook (Move to...) changes
+only the page list: links go by page id.
+
 ## Named sections: `nav.ini` (1.2.0 on)
 
 An optional UTF-8 file inside the notebook directory. `name.<page id>=<title>` names a section
@@ -1329,6 +1383,8 @@ marked 1.1 shipped in 1.1.0-beta.1 together with those rules, so for it the last
 | `graph-index.ini` and `graph-all.ini` (and `graph-all.ini.lock`) in the data root (2.0.0-beta.2, caches) | never read or written | the same; 1.2.0 to 2.0.0-beta.1 never read them either; a notebook another version changes is read again at the next check (Library index) |
 | `graph-omit.ini` in the data root (2.0.0-beta.2) | never read or written | the same; 1.2.0 to 2.0.0-beta.1 never read it either: every notebook is in their Graph. A folder another version renames keeps its old line, which then names no folder and leaves nothing out (Library index) |
 | `graph=0` in `notebook.ini` (2.0.0-beta.2) | dropped on its next save of `notebook.ini` (the notebook is back in the Graph) | kept, as a key it does not know: the notebook stays left out when 2.0.0-beta.2 reads it again |
+| `doclinks.ini` (links a document brought, 2.1.0-beta.2) | never read or written; the notebook shows its pages and the user's own links, editable as always, without the tabs; its raw zips leave the file out | read and kept; raw zips carry it (Document links) |
+| `links=1` in `source.ini` (2.1.0-beta.2) | carried as an unknown line | read |
 | `area.` lines in `links.ini` (a link's area, 2.0.0-beta.6) | never read or written, as the file | the same; 2.0.0-beta.5 carries them as unknown lines within its limits, and a link with an area but no ink does nothing there (Links) |
 | page version 3 to 255 | set aside as `.damaged-<time>`, a blank page in its place | read-only, shown blank; copies set aside earlier come back if the page is still in the notebook |
 | a tool id of 10 or more | set aside, as above | read-only; the strokes it knows are shown |

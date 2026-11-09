@@ -2,6 +2,17 @@
 
 ## 2.1.0-beta.2 (unreleased)
 
+- **A PDF's own links work in a notebook: a planner's tabs.** Opening a book from KOReader (Open this book in
+  Grimoire) now also sends the links of its pages: a finger tap on "March" goes to March. They are part of the
+  page, kept in a file of their own (`doclinks.ini`, up to 16,000 links) apart from the links you draw: your links
+  come first where they overlap a tab; Clear page keeps the tabs; a lasso around the writing in a day cell never
+  picks the cell's link up; Copy page and Copy to notebook carry them (to pages that travel too). The Links bar
+  lists them as one last row, "From the PDF (43)", which opens them grouped by page; the eye draws their boxes
+  dotted. A finger held on one arms Select, as on paper. The Graph never draws them. The notebook's PDF has them
+  as links. A 2.0 build shows the pages and your own links, without the tabs. Needs the KOReader plugin of this
+  version (Grimoire installs it) and a book opened once more: the links of the pages Grimoire already holds are
+  sent the first time.
+
 ## 2.1.0-beta.1 (2026-11-08)
 
 - A cleared page, or a page given a new paper, template or photo, no longer shows its old picture (2.0.0 and

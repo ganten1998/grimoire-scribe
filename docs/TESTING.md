@@ -1900,6 +1900,32 @@ On the Scribe:
     middle or an end one as expected; a pen whose width you had changed is exactly as you left it.
 
 
+## 2.1.0-beta.2, L4 (document links)
+
+On the Scribe, with the user's planner (or one like it) opened through KOReader's Open this book in Grimoire,
+the plugin and Grimoire of this build (the first Open this book sends the links of the pages Grimoire already
+holds, so it takes a moment longer):
+
+1. **Tabs land on their boxes.** On a month page, tap a day cell and each tab: each goes to its page. Turn on
+   Areas: the dotted boxes sit on the printed tabs and cells, none numbered. A tap just outside a box but within
+   a finger's reach still goes to the nearest.
+2. **Load time.** A notebook whose `doclinks.ini` is at its cap (16,000 links) opens in at most 150 ms of
+   reading it (`grimoire.log` has the notebook's open time; compare with and without the file). If it takes
+   longer the plan is to load it in slices after the first page.
+3. **Copy page.** Copy page on a month page of a full planner takes under 300 ms and the copy's tabs work; on a
+   planner already past 90% of the cap the copy has no tabs and says "Copied without links: couldn't save them."
+4. **The hold arms Select on a month page.** Hold a finger on a day cell: the lasso arms (no card opens);
+   drawing around the writing in the cell picks up the writing and no link; a link you drew yourself there
+   still opens its card on a hold.
+5. **Links bar.** Open it on a month page: your own links as before, then "From the PDF (365)"; it opens as chips
+   grouped by page (six a screen, paged); a tap on a chip looks at its page, a second tap stays; X goes back to
+   the rows, a second X closes. A hold on a chip: a card with Rename the page only.
+6. **Clear and the Graph.** Clear page on a page of tabs and no ink does nothing (the broom is greyed); with ink
+   it clears the ink and keeps the tabs. The Graph shows the notebook with no link of its tabs.
+7. **A 2.0 build** (go back with the update file): the notebook opens, your own links work and are editable,
+   the tabs are not there; updating again brings them back.
+8. **The notebook PDF** (Notebook PDFs in KOReader): the tabs are links in the PDF.
+
 ## 2.1.0-beta.1
 
 The first 2.1 beta: everything in CHANGELOG's 2.1.0-beta.1 section. Automated: the full gate on the release

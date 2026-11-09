@@ -24,6 +24,8 @@ grimoire/app/BUILD_ID, CAPABILITIES   the build unpacked there; what the launche
 grimoire/app/koreader/grimoire.koplugin   KOReader's Grimoire plugin, as the app carries it
 grimoire/app/licenses/         the licenses of the fonts and code in the app
 grimoire/notebooks/<id>/notebook.ini, p<N>.qpg, thumb.pgm   (the format: docs/FORMAT.md)
+grimoire/notebooks/<id>/doclinks.ini   the links a PDF brought (a planner's tabs), apart from links.ini
+grimoire/import/.book/links.txt   the links of a book's pages, sent by the KOReader plugin with the pages
 grimoire/settings.ini, folders.ini, sleep.pgm, grimoire.log
 grimoire/.passcode-paused      legacy beta.1 marker, consumed for its recovery notice
 grimoire/.passcode-left-off    counts the starts told that a restart left the passcode off
@@ -153,6 +155,12 @@ note that Grimoire rewrites those files) and Reset pen calibration (after a conf
 `grimoire/app/grimoire.sh --reset-calibration`), and KOReader's gestures get an Open Grimoire
 action (`grimoire_open`). Its words are its own, since KOReader's catalogs do not have them:
 English, Spanish and Japanese, picked by KOReader's language setting, English for any other.
+
+**Links through KOReader (2.1.0-beta.2).** Open this book in Grimoire also sends the PDF's internal links (a
+planner's tabs), to a launcher whose Capabilities line says `links`: KOReader's `getPageLinks` for the pages it
+draws in this run, and once per book (until the notebook's `source.ini` says `links=1`) for the pages Grimoire
+already holds, so an Open this book costs no page opens it does not need after the first. They arrive as
+`import/.book/links.txt`, and Grimoire builds `doclinks.ini` from them (docs/FORMAT.md, Links from KOReader).
 
 **How it gets into KOReader.** A fresh installation leaves KOReader untouched. Use Library >
 Settings > KOReader > Install / update Grimoire plugin, or manually copy the ZIP's

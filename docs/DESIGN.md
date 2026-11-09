@@ -1336,6 +1336,23 @@ bullet and paragraph), the signature, Read all and Dismiss.
   for that reason: tools/release-preflight.sh fails when `docs/whatsnew/VERSION.md` is missing, has no
   notes, or has the release before's notes again (docs/RELEASING.md, The bump commit).
 
+## Document links (2.1.0-beta.2)
+
+A PDF's own links (a planner's tabs) live in `notebooks/<id>/doclinks.ini`, never in links.ini: own caps (16,000
+links, 1.5 MiB, 1,024 a page), so the user's 4,000/512 KiB/64 and a 2.0 build's reading are untouched. `doclinks.rs`
+holds the file (24-byte records sorted by page, annotation order kept), `pdflinks.rs` takes records from any
+source (KOReader's `links.txt` today) and validates, seeds (a hash of page and annotation index), fills (same
+target and area within 2 px is one link) and trims to a water level at 90% of links and bytes, the densest pages
+first. The editor keeps them in `EditorState.dl`, read at open; taps try the user's links, then a document link
+whose exact area holds the point, then one reached only through the 7 mm growth (`doclinks_at`, later annotation
+wins a tie); the eye draws `LinkBoxes.doc` dotted and unnumbered; the Links bar folds them into one last row whose
+chips (`LinkBar.docs`, grouped by target, a vector since a month page has 365) open in the bar itself, with X
+going back; their card (`linkcard_set_doc`) is read only and offers Rename the page. A finger hold on one arms
+Select (D7b a): the hold asks `link_under`, which never sees them. Nothing that builds the Graph or the library
+index reads the file; Clear page, the lasso, the clipboard and the 64/4,000 checks read `nav.links` alone, so they
+never see them by construction. Copy page and Copy to notebook carry them (the latter only to targets that were
+copied too); the notebook PDF and raw zips carry them.
+
 ## Fast navigation and optional KOReader integration (1.1.0-beta.2)
 
 The Pages screen (`pagesview.c`) draws a fixed screenful of numbered tiles, never `load_page` or
