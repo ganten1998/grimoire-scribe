@@ -1431,6 +1431,7 @@ pub fn import_scan(dpi: f32) -> i32 {
         attempts_save(&att[..kept]);
     }
     // (the lock stays with the UI while anything is queued: a scan that queued nothing lets go of it)
+    crate::pdfimport::pictures_wait(with_pdfs != 0);
     crate::pdfimport::lock_release_if_idle();
     if queued != 0 || empty != 0 || waiting != 0 || toolong != 0 || with_pdfs != 0 {
         qlog!(

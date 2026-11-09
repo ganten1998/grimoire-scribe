@@ -597,6 +597,8 @@ struct Ui {
     detached_read: u32,
     /// the notice's last text came from this key
     notice_on: bool,
+    /// a page folder waits for the PDFs in it: a scan is due as soon as they are done
+    pictures_wait: bool,
 }
 
 thread_local! {
@@ -632,6 +634,11 @@ fn fresh_id() -> String {
         }
     }
     id
+}
+
+/// A scan left a folder's pictures waiting for its PDFs: look again when they are done.
+pub fn pictures_wait(on: bool) {
+    ui(|u| u.pictures_wait = on);
 }
 
 /// What a scan found to do.
@@ -1014,30 +1021,20 @@ pub enum FailWhy {
 /// A PDF import job ended (`ok` and `code` as bgjob says): what to tell the user. Lets go of the lock when no
 /// import is left.
 pub fn finished(id: &str, ok: bool) -> Finished {
-    let was = ui(|u| {
-        let i = u.pending.iter().position(|p| p == id);
-        if let Some(i) = i {
+    // (pending and queued are pushed together, so a job's place in one is its place in the other)
+    let was = ui(|u| match u.pending.iter().position(|p| p == id) {
+        Some(i) => {
             u.pending.remove(i);
+            if i < u.queued.len() {
+                u.queued.remove(i);
+            }
+            true
         }
-        i.is_some()
+        None => false,
     });
     if !was {
         return Finished::Nothing;
     }
-    // (a queued source whose job ended is free to be scanned again)
-    let src = state_src_for(id);
-    ui(|u| {
-        if let Some(s) = src {
-            u.queued.retain(|q| *q != s);
-        } else {
-            u.queued.clear();
-            for p in u.pending.clone() {
-                if let Some(s) = state_src_for(&p) {
-                    u.queued.push(s);
-                }
-            }
-        }
-    });
     let p = progress();
     let mine = p.result_for.load(Ordering::Acquire) == id_hash(id);
     let (reason, arg, blank) = if mine {
@@ -1051,6 +1048,13 @@ pub fn finished(id: &str, ok: bool) -> Finished {
     p.page.store(0, Ordering::Relaxed);
     p.pages.store(0, Ordering::Relaxed);
     lock_release_if_idle();
+    // pictures that waited for this folder's PDFs: the next scan is due now
+    if ui(|u| u.pictures_wait) && pending_count() == 0 {
+        ui(|u| {
+            u.pictures_wait = false;
+            u.rescan_at = Some(now_ms());
+        });
+    }
     if !ok {
         return Finished::Failed(match reason {
             R_PASSWORD => FailWhy::Password,
@@ -1069,11 +1073,6 @@ pub fn finished(id: &str, ok: bool) -> Finished {
         return Finished::Nothing;
     }
     Finished::Imported { pages, blank: if reason == R_DONE { blank } else { 0 } }
-}
-
-// the sources of pending jobs, by id: the mark of each (the work folder is gone by the end)
-fn state_src_for(id: &str) -> Option<String> {
-    ui(|u| u.pending.iter().position(|p| p == id).and_then(|i| u.queued.get(i).cloned()))
 }
 
 // ====================================================================================================

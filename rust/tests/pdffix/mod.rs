@@ -275,5 +275,6 @@ pub fn scenario_files() -> Vec<(&'static str, Vec<u8>)> {
         ("folder/Work/Report.pdf", planner(2)),
         ("mixed/Etudes Op. 10 notes.pdf", planner(2)),
         ("junk/Broken.pdf", junk()),
+        ("pick/Planner.pdf", planner(2)),
     ]
 }
