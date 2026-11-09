@@ -264,11 +264,16 @@ pub fn page_tree_deep(depth: usize) -> Vec<u8> {
     w.finish(1, "")
 }
 
-/// The files the scenarios copy: (name, bytes).
+/// The files the scenarios copy: (path under tests/fixtures/pdf, bytes). Each folder is one scenario's `# copy:`.
 pub fn scenario_files() -> Vec<(&'static str, Vec<u8>)> {
     vec![
-        ("planner.pdf", planner(7)),
-        ("colour.pdf", colour()),
-        ("locked.pdf", encrypted_planner(2, "secret", "owner")),
+        ("planner/2027 Planner.pdf", planner(7)),
+        ("colour/Colour.pdf", colour()),
+        ("locked/Locked.pdf", encrypted_planner(2, "secret", "owner")),
+        ("twice/First.pdf", planner(3)),
+        ("twice/Second.pdf", planner(3)),
+        ("folder/Work/Report.pdf", planner(2)),
+        ("mixed/Etudes Op. 10 notes.pdf", planner(2)),
+        ("junk/Broken.pdf", junk()),
     ]
 }

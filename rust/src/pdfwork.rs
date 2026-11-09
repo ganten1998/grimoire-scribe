@@ -11,7 +11,7 @@
 //!   `PROBE`                         the page count, then the links and outline (lane L6: a stub today)
 //!   `R <page> <w> <h> <bands>`      page n (from 1) fitted and centred on a w x h white page, in 1 band
 //!                                   (whole) or in that many bands
-//!   `H <hook> <page>`               a test hook (headless and test builds only: `crash`, `hang`, `alloc`)
+//!   `H <hook> <page>`               a test hook (headless and test builds only: `crash`, `hang`, `alloc`, `trap`)
 //!   `Q`                             end
 //!
 //! Records (worker to writer, text lines of a fixed grammar, at most 4 MiB a job besides the pixels):
@@ -283,10 +283,13 @@ impl Renderer {
 
 /// What a worker does on a hook page (headless and test builds only; the Kindle build has none).
 #[derive(Clone, Copy, Default)]
+#[cfg_attr(feature = "kindle", allow(dead_code))]
 struct Hooks {
     crash: u32,
     hang: u32,
     alloc: u32,
+    /// makes a call outside the allow-list (getpid), to see the sandbox kill it
+    trap: u32,
 }
 
 /// Warms up what would touch the filesystem or entropy after the chroot (3.7, step 1): std's CPU feature
@@ -416,6 +419,7 @@ pub fn worker_run(l: &Limits) -> i32 {
                     "crash" => hooks.crash = p,
                     "hang" => hooks.hang = p,
                     "alloc" => hooks.alloc = p,
+                    "trap" => hooks.trap = p,
                     _ => {
                         say("E protocol\n");
                         return 1;
@@ -443,6 +447,10 @@ fn run_hooks(h: &Hooks, page: u32) {
         loop {
             x = std::hint::black_box(x.wrapping_add(1));
         }
+    }
+    if h.trap == page {
+        // SAFETY: getpid takes no arguments; it is not on the allow-list, so under the filter it never returns.
+        unsafe { libc::getpid() };
     }
     if h.alloc == page {
         // more than any address-space cap: the allocation fails and the worker aborts

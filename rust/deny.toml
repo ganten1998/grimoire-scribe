@@ -1,0 +1,42 @@
+# cargo deny check licenses bans sources advisories (2.1.0-beta.2, DESIGN.md 5, D22), run in CI (the deny job
+# of .github/workflows/release.yml) from this folder: every crate the app is built from is permissively
+# licensed, every version that appears twice is named below with its reason, and every crate comes from
+# crates.io (no git, no other registry). Cargo.lock is committed and every build is --locked.
+
+[graph]
+targets = ["armv7-unknown-linux-musleabihf", "aarch64-apple-darwin", "x86_64-unknown-linux-gnu"]
+
+[advisories]
+version = 2
+yanked = "deny"
+
+[licenses]
+version = 2
+# What the crates' licenses say, as the SPDX words (a crate offered under "A OR B" needs one of them allowed).
+allow = ["MIT", "Apache-2.0", "BSD-3-Clause", "Zlib", "Unicode-3.0", "Unlicense", "0BSD", "GPL-3.0-or-later"]
+confidence-threshold = 0.9
+
+[bans]
+multiple-versions = "deny"
+wildcards = "deny"
+# The versions that appear twice in the build, each here by name and version (a fourth fails the check):
+#  - fearless_simd: the rasterizer's SIMD layer (vello) and hayro's image code pin two majors of it
+#  - miniz_oxide: the png crate (through fdeflate and flate2) and zune-jpeg's inflate take two releases
+#  - syn: the derive crates of two generations (build time only; nothing of it is in the binary)
+# Cargo.lock also names a second skrifa and read-fonts (glifo's optional dependency): not built with the
+# features Grimoire asks of hayro, so not a duplicate of the build. Custom fonts (2.1.0-beta.3) reuse the one
+# skrifa there is, so no crate is added for them.
+skip = [
+    { crate = "fearless_simd@0.7.0", reason = "an older major, pulled in by the rasterizer's SIMD layer" },
+    { crate = "fearless_simd@1.2.0", reason = "the newer major, pulled in by hayro's image code" },
+    { crate = "miniz_oxide@0.8.9", reason = "the inflate behind flate2" },
+    { crate = "miniz_oxide@0.9.1", reason = "the inflate behind the png crate's encoder" },
+    { crate = "syn@2.0.119", reason = "build time only: the older derive generation" },
+    { crate = "syn@3.0.9", reason = "build time only: the newer derive generation" },
+]
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]
+allow-git = []

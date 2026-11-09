@@ -1353,7 +1353,12 @@ fn need_bytes(pages: u32) -> u64 {
 #[cfg(not(feature = "kindle"))]
 fn test_hooks() -> Vec<(&'static str, u32)> {
     let mut v = Vec::new();
-    for (name, var) in [("crash", "GRIMOIRE_PDF_TEST_CRASH_PAGE"), ("hang", "GRIMOIRE_PDF_TEST_HANG_PAGE"), ("alloc", "GRIMOIRE_PDF_TEST_ALLOC_PAGE")] {
+    for (name, var) in [
+        ("crash", "GRIMOIRE_PDF_TEST_CRASH_PAGE"),
+        ("hang", "GRIMOIRE_PDF_TEST_HANG_PAGE"),
+        ("alloc", "GRIMOIRE_PDF_TEST_ALLOC_PAGE"),
+        ("trap", "GRIMOIRE_PDF_TEST_TRAP_PAGE"),
+    ] {
         if let Some(p) = std::env::var(var).ok().and_then(|x| x.parse::<u32>().ok()) {
             v.push((name, p));
         }
