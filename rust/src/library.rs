@@ -5822,6 +5822,11 @@ pub fn library_enter(a: &mut App) {
         s.modal = Modal::About;
     }
     reload(a);
+    // PDFs copied into grimoire/import/ while Grimoire ran: looked at when the Library comes in front, at most
+    // every 10 s (pdfimport.rs; not on a re-layout).
+    if !relayout {
+        crate::app::app_import_rescan(a, true);
+    }
     // (Back from a notebook the Graph opened: the Graph again, as it was left)
     if !relayout && std::mem::take(&mut lib(a).map_return) {
         if let Some(keep) = lib(a).map_keep.take() {

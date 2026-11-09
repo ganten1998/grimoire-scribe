@@ -43,13 +43,17 @@ pub mod hidkeys;
 pub mod i18n;
 pub mod json_min;
 pub mod koreader;
+pub mod md5; // MD5 and KOReader's partial MD5, a book's key (2.1)
 pub mod latency;
 pub mod linkoutline;
 pub mod pair;
+pub mod pdfimport; // PDFs imported without KOReader: scan, slices, commit (2.1.0-beta.2)
+pub mod pdfwork; // the PDF worker and its record protocol (2.1)
 pub mod pensync;
 pub mod penbutton;
 pub mod power;
 pub mod qr;
+pub mod sandbox; // the safe loader: one worker for every untrusted parser (2.1)
 pub mod shortcuts;
 pub mod shortcut_profiles; // per-device shortcuts: root/shortcuts/<device>.ini (Rust only, 2.0.0-beta.2)
 pub mod touchgest; // the touch recognizer: contact frames in, touch, pinch and gesture events out
