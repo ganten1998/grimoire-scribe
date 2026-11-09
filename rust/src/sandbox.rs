@@ -1,5 +1,5 @@
-//! The safe loader (2.1, DESIGN.md 3.7, 4.2 and 4.3): one worker for every untrusted parser (PDFs now; fonts
-//! and pictures later), a fresh exec of this very binary that inherits nothing and reaches nothing.
+//! The safe loader (2.1, DESIGN.md 3.7, 4.2 and 4.3): one worker for every untrusted parser (PDFs, pictures
+//! and fonts), a fresh exec of this very binary that inherits nothing and reaches nothing.
 //!
 //! ```text
 //! UI process (root)     never parses untrusted bytes; holds the import lock; queues jobs
@@ -69,6 +69,19 @@ pub mod s1 {
     /// among them), the copy of the decoded picture that is kept (up to 120 MiB), the fitted page and
     /// slack. Address space, not memory. (set by S1)
     pub const PICTURE_AS_MARGIN: u64 = (256 + 128 + 32) << 20;
+    /// Fonts (lane L10): a font worker checks glyphs for this long (its own CPU time), then the next slice gets a
+    /// fresh exec, resumed by glyph index. (set by S1)
+    pub const FONT_SLICE_CPU_SECS: u64 = 20;
+    /// A font's check in all, counted across slices: past it the font is "Took too long to read.". (set by S1)
+    pub const FONT_JOB_CPU_SECS: u64 = 600;
+    /// RLIMIT_CPU of one font worker: a slice, and room for a glyph that never ends to be caught. (set by S1)
+    pub const FONT_CPU_SECS: u64 = 60;
+    /// A font worker that sends no record for this long is killed (CLOCK_MONOTONIC, which stops in sleep). (set
+    /// by S1)
+    pub const FONT_WATCHDOG_MS: u32 = 30_000;
+    /// A font worker's address space beyond its image and the file's bytes: skrifa's draw memory, the glyph
+    /// bitmaps at the largest size, stb's edges. (set by S1)
+    pub const FONT_AS_MARGIN: u64 = 64 << 20;
     /// D12's trigger: if the median planner page takes longer than this whole on the Scribe, a PDFium helper is
     /// weighed before this goes on. Nothing in the code reads it. (set by S1)
     pub const D12_TRIGGER_PAGE_MS: u32 = 2_000;
@@ -101,6 +114,9 @@ pub enum WorkKind {
     /// pictures: templates, photos and picture-folder imports (picwork.rs, lane L7): the bytes come down fd 5
     /// one picture after another, validated pixels go back on fd 4
     Picture,
+    /// a font of grimoire/fonts (fontcheck.rs, lane L10): its bytes come down fd 5, a verdict's records and a
+    /// preview go back on fd 4
+    Font,
 }
 
 impl WorkKind {
@@ -108,12 +124,14 @@ impl WorkKind {
         match self {
             WorkKind::Pdf => "pdf",
             WorkKind::Picture => "pic",
+            WorkKind::Font => "font",
         }
     }
     pub fn parse(s: &str) -> Option<WorkKind> {
         match s {
             "pdf" => Some(WorkKind::Pdf),
             "pic" => Some(WorkKind::Picture),
+            "font" => Some(WorkKind::Font),
             _ => None,
         }
     }
@@ -684,6 +702,9 @@ pub fn work_main(args: &[String]) -> i32 {
     let _ = std::collections::hash_map::RandomState::new();
     let _ = std::time::Instant::now();
     crate::pdfwork::warm_up();
+    if a.kind == WorkKind::Font {
+        crate::fontcheck::warm_up();
+    }
     out_line(&format!("B {}\n", build_id()));
     let fail = injected_failure(&a);
     let required = sandbox_required() || fail.is_some();
@@ -711,6 +732,7 @@ pub fn work_main(args: &[String]) -> i32 {
     let rc = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| match a.kind {
         WorkKind::Pdf => crate::pdfwork::worker_run(&a.limits),
         WorkKind::Picture => crate::picwork::worker_run(&a.limits),
+        WorkKind::Font => crate::fontcheck::worker_run(&a.limits),
     }))
     .unwrap_or_else(|_| {
         out_line("E panic\n");
@@ -1229,8 +1251,11 @@ mod tests {
         assert_eq!(parse_work_args(&with_fail).unwrap().fail_step.as_deref(), Some("chroot"));
         assert!(parse_work_args(&v[..8]).is_none());
         let mut bad = v.clone();
-        bad[2] = "font".into();
+        bad[2] = "movie".into();
         assert!(parse_work_args(&bad).is_none());
+        let mut font = v.clone();
+        font[2] = "font".into();
+        assert_eq!(parse_work_args(&font).unwrap().kind, WorkKind::Font);
     }
 
     #[test]

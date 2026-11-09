@@ -215,6 +215,7 @@ dependencies = [
  "hayro",
  "libc",
  "png",
+ "skrifa 0.46.2",
 ]
 
 [[package]]

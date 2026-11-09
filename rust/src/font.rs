@@ -1,13 +1,17 @@
 //! font.h: TrueType text via stb_truetype, fonts embedded at build time
 //! (build/gen/fonts.c, from assets/*.ttf via xxd -i). Glyph bitmaps are cached per size.
 //! Classic's text can be drawn in one of FONT_FAMILIES (2.1, Rust only): Terminess, or a bundled
-//! family the Font sheet offers (settings.ini font=).
+//! family the Font sheet offers (settings.ini font=). Or in a font of the owner's own (2.1.0-beta.2,
+//! font=file:...): a file of grimoire/fonts that passed the check, which stb never opens: skrifa reads
+//! it and stb's rasterizer draws the outlines (fontcheck.rs's SafeFace), glyph by glyph, with Terminess
+//! for whatever it lacks.
 
 use crate::assets::{
     FONT_ATKINSON_BOLD, FONT_ATKINSON_REGULAR, FONT_DOTGOTHIC16, FONT_JACQUARD24, FONT_JERSEY10, FONT_LITERATA_BOLD,
     FONT_LITERATA_REGULAR, FONT_NOTO_SANS_BOLD, FONT_NOTO_SANS_REGULAR, FONT_TERMINESS_BOLD, FONT_TERMINESS_REGULAR,
 };
 use crate::ffi_stb::*;
+use crate::fontcheck::{SafeFace, FONT_CJK_EM, FONT_PX_MAX, FONT_PX_MIN};
 use crate::prelude::*;
 use std::cell::RefCell;
 
@@ -54,6 +58,12 @@ const TTF_NOTO_BOLD: usize = 8;
 const TTF_LITERATA: usize = 9;
 const TTF_LITERATA_BOLD: usize = 10;
 const TTF_COUNT: usize = 11;
+// After the embedded files, the faces of the owner's own fonts (2.1.0-beta.2), which are no file of the
+// binary and never stb's to open: the font in use (its regular, and its bold when it has one), then the
+// one the Font sheet shows a sample of. A glyph's cache slot names its face by these numbers too.
+const TTF_OWN: usize = TTF_COUNT;
+const TTF_TRY: usize = TTF_COUNT + 2;
+const OWN_SLOTS: usize = 4;
 
 /// The embedded file of a TTF_* index.
 fn ttf_data(ttf: usize) -> &'static [u8] {
@@ -167,6 +177,15 @@ const K_UNIT: [i32; TTF_COUNT] = {
     k
 };
 
+/// K_UNIT for any face: a custom font is an outline font.
+fn k_unit(ttf: usize) -> i32 {
+    if ttf < TTF_COUNT {
+        K_UNIT[ttf]
+    } else {
+        0
+    }
+}
+
 /// What a FontFace means under the current theme and font: which file, how much bigger than asked,
 /// whether to embolden by overprinting (one design pixel for pixel faces), and the Terminess weight a
 /// glyph the file lacks comes from (the bold faces' from its Bold).
@@ -209,6 +228,24 @@ struct Glyph {
 }
 
 const CACHE_SLOTS: usize = 1024;
+/// The bitmaps the cache holds at most, all together: past it, it is flushed whole, as when its slots
+/// run out. (A screen of text is a few hundred KB; a custom font's large glyphs are what could grow it.)
+const CACHE_BYTES_MAX: usize = 4 << 20;
+
+/// How a custom font maps onto Classic's faces: its scale, and whether its bold is a face of its own (its
+/// weight axis, or a Bold file paired with it) or the regular overprinted.
+#[derive(Clone, Copy)]
+struct OwnMap {
+    scale: f32,
+    bold_face: bool,
+}
+
+/// A font of the owner's own, ready to draw: its regular face, and its bold when it has one (None: bold is
+/// the regular overprinted, as an outline face's always was).
+pub struct OwnFont {
+    pub regular: SafeFace,
+    pub bold: Option<SafeFace>,
+}
 
 struct State {
     /// one stbtt_fontinfo per embedded file, boxed so it keeps its address once stbtt_InitFont has
@@ -221,7 +258,20 @@ struct State {
     family: usize,
     cache: Vec<Glyph>,
     cache_used: i32,
+    /// the bytes of the bitmaps in the cache
+    cache_bytes: usize,
     overflow: Option<FontOverflowHook>,
+    /// the custom faces (TTF_OWN + i): the font in use, then the Font sheet's sample
+    own: [Option<SafeFace>; OWN_SLOTS],
+    /// how each of the two maps (None: there is none)
+    own_map: [Option<OwnMap>; 2],
+    /// which of the two Classic's text is drawn in: 0 the font in use, 1 the sample
+    own_pick: usize,
+    /// Classic's text in the family whatever custom font there is (the Font sheet's built-in rows and its
+    /// own words)
+    own_off: bool,
+    /// glyphs of custom faces drawn so far (the crash guard waits for a screen with some)
+    own_drawn: u32,
 }
 
 impl State {
@@ -234,7 +284,13 @@ impl State {
             family: 0,
             cache: (0..CACHE_SLOTS).map(|_| Glyph::default()).collect(),
             cache_used: 0,
+            cache_bytes: 0,
             overflow: None,
+            own: std::array::from_fn(|_| None),
+            own_map: [None; 2],
+            own_pick: 0,
+            own_off: false,
+            own_drawn: 0,
         }
     }
 }
@@ -318,13 +374,98 @@ fn codepoint_bitmap(fi: &stbtt_fontinfo, sx: f32, sy: f32, cp: u32) -> (Vec<u8>,
     (bmp, w, h, xo, yo)
 }
 
+// ---- a face, embedded or the owner's own ----
+
+fn own_face(st: &mut State, ttf: usize) -> Option<&mut SafeFace> {
+    st.own.get_mut(ttf.wrapping_sub(TTF_COUNT))?.as_mut()
+}
+
+/// Whether the face has its own glyph for cp (a custom face: one that passed the check).
+fn face_has(st: &mut State, ttf: usize, cp: u32) -> bool {
+    if ttf < TTF_COUNT {
+        find_glyph_index(&st.font[ttf], cp) != 0
+    } else {
+        own_face(st, ttf).is_some_and(|f| f.glyph(cp).is_some())
+    }
+}
+
+/// cp's advance in the face's font units.
+fn face_advance(st: &mut State, ttf: usize, cp: u32) -> i32 {
+    if ttf < TTF_COUNT {
+        hmetrics(&st.font[ttf], cp).0
+    } else {
+        own_face(st, ttf).and_then(|f| f.glyph(cp)).map_or(0, |g| g.1)
+    }
+}
+
+/// The face's ascent and descent in font units (a custom face's as the check settled them).
+fn face_vmetrics(st: &State, ttf: usize) -> (i32, i32) {
+    if ttf < TTF_COUNT {
+        let (a, d, _l) = vmetrics(&st.font[ttf]);
+        return (a, d);
+    }
+    match st.own.get(ttf - TTF_COUNT).and_then(|f| f.as_ref()) {
+        Some(f) => (f.facts().ascent, f.facts().descent),
+        None => (1, 0),
+    }
+}
+
+/// Pixels a font unit of the face at a line height of px: stbtt_ScaleForPixelHeight, for any face.
+fn face_scale(st: &State, ttf: usize, px: f32) -> f32 {
+    if ttf < TTF_COUNT {
+        return scale_for_pixel_height(&st.font[ttf], px);
+    }
+    let (a, d) = face_vmetrics(st, ttf);
+    px / (a - d).max(1) as f32
+}
+
+/// The line height a custom face's glyph for cp is drawn at when its text is drawn at fpx (px asked, times
+/// the font's scale): fpx, but kana and kanji at the size whose em is DotGothic16's, so Japanese takes the
+/// room it takes in every other face. None when that is a size the check did not draw: the glyph then
+/// comes from Terminess.
+fn own_px(st: &State, ttf: usize, px: f32, fpx: f32, cp: u32) -> Option<f32> {
+    let f = st.own.get(ttf.wrapping_sub(TTF_COUNT))?.as_ref()?.facts();
+    let g = if cjk(cp) { px * FONT_CJK_EM * f.line() as f32 / f.upem.max(1) as f32 } else { fpx };
+    (FONT_PX_MIN..=FONT_PX_MAX).contains(&g).then_some(g)
+}
+
+/// Whether the custom font in use draws cp in Classic's text (a name's letters count as drawable then).
+fn own_text_has(st: &mut State, cp: u32) -> bool {
+    !st.gothic && !st.own_off && st.own_map[0].is_some() && face_has(st, TTF_OWN, cp)
+}
+
+/// Tests (the simulator's build): GRIMOIRE_FONT_TEST_DRAW_CRASH ends the app at the first glyph a custom
+/// font draws, as a font that crashed its first screen would.
+#[cfg(feature = "sim")]
+fn own_draw_hook() {
+    static ON: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    if *ON.get_or_init(|| std::env::var_os("GRIMOIRE_FONT_TEST_DRAW_CRASH").is_some()) {
+        std::process::abort();
+    }
+}
+
+/// A custom face's glyph for the cache: (advance, bitmap, w, h, xoff, yoff). A glyph that does not draw
+/// (it cannot after the check, but the caps are applied again) leaves its room empty.
+fn own_glyph(st: &mut State, ttf: usize, px: f32, cp: u32) -> (i32, Vec<u8>, i32, i32, i32, i32) {
+    #[cfg(feature = "sim")]
+    own_draw_hook();
+    let Some(f) = own_face(st, ttf) else { return (0, Vec::new(), 0, 0, 0, 0) };
+    let Some((gid, adv)) = f.glyph(cp) else { return (0, Vec::new(), 0, 0, 0, 0) };
+    let bm = f.bitmap(gid, px);
+    st.own_drawn = st.own_drawn.wrapping_add(1);
+    match bm {
+        Some(b) => (adv, b.px, b.w, b.h, b.xoff, b.yoff),
+        None => (adv, Vec::new(), 0, 0, 0, 0),
+    }
+}
+
 // ---- faces ----
 
 fn map_faces(st: &mut State, gothic: bool) {
     // Classic: the family's Regular for text, its Bold for bold, titles and caps (Terminess's are the
     // classic faces of every version before 2.1); FIXED always Terminess.
     let f = &FONT_FAMILIES[st.family];
-    let classic: [FaceMap; FontFace::COUNT] = [
+    let mut classic: [FaceMap; FontFace::COUNT] = [
         fm(f.regular, f.scale, false), // FONT_REGULAR
         fm_bold(f.bold, f.scale),      // FONT_BOLD
         fm_bold(f.bold, f.scale),      // FONT_TITLE
@@ -332,6 +473,16 @@ fn map_faces(st: &mut State, gothic: bool) {
         fm(TTF_TERM, 1.0, false),      // FONT_FIXED
         fm_bold(TTF_TERM_BOLD, 1.0),   // FONT_FIXED_BOLD
     ];
+    // A font of the owner's own takes the family's place in the four text faces: its bold face where it
+    // has one, else its regular overprinted. What it lacks comes from Terminess, glyph by glyph.
+    if let (false, Some(m)) = (st.own_off, st.own_map[st.own_pick]) {
+        let reg = if st.own_pick == 0 { TTF_OWN } else { TTF_TRY };
+        let bold = if m.bold_face { fm_bold(reg + 1, m.scale) } else { fm(reg, m.scale, true) };
+        classic[FontFace::Regular as usize] = fm(reg, m.scale, false);
+        classic[FontFace::Bold as usize] = bold;
+        classic[FontFace::Title as usize] = bold;
+        classic[FontFace::Caps as usize] = bold;
+    }
     const GOTH: [FaceMap; FontFace::COUNT] = [
         fm(TTF_JERSEY, 1.15, false),   // FONT_REGULAR
         fm(TTF_JERSEY, 1.15, true),    // FONT_BOLD
@@ -346,7 +497,7 @@ fn map_faces(st: &mut State, gothic: bool) {
 /// Pixel faces: how many screen pixels one design pixel becomes at a requested line height.
 fn pixel_k(st: &State, ttf: usize, px: f32) -> i32 {
     let (a, d, _l) = vmetrics(&st.font[ttf]);
-    let line = (a - d) as f32 / K_UNIT[ttf] as f32;
+    let line = (a - d) as f32 / k_unit(ttf) as f32;
     let k = (px / line).round_ties_even() as i32;
     if k < 1 {
         1
@@ -361,6 +512,7 @@ fn cache_flush(st: &mut State) {
         *g = Glyph::default();
     }
     st.cache_used = 0;
+    st.cache_bytes = 0;
 }
 
 /// 0 on success
@@ -416,13 +568,92 @@ pub fn font_family() -> usize {
 }
 
 /// f run with Classic's text in another family, the one in use again after it: the Font sheet draws
-/// each family's row, and the sample of the one highlighted, in that family.
+/// each family's row, and the sample of the one highlighted, in that family. The family itself: a custom
+/// font in use is set aside for the run, so the sheet's own words can be drawn in Terminess whatever font
+/// was picked (a pick that went wrong can always be undone).
 pub fn font_with_family<R>(family: usize, f: impl FnOnce() -> R) -> R {
-    let was = font_family();
+    let (was, was_off) = with(|st| (st.family, std::mem::replace(&mut st.own_off, true)));
     font_set_family(family);
     let r = f();
+    with(|st| st.own_off = was_off);
     font_set_family(was);
     r
+}
+
+fn set_own_slot(st: &mut State, which: usize, f: Option<OwnFont>) {
+    let (reg, bold, map) = match f {
+        Some(o) => {
+            let map = OwnMap { scale: o.regular.facts().scale_pm as f32 / 1000.0, bold_face: o.bold.is_some() };
+            (Some(o.regular), o.bold, Some(map))
+        }
+        None => (None, None, None),
+    };
+    st.own[which * 2] = reg;
+    st.own[which * 2 + 1] = bold;
+    st.own_map[which] = map;
+    // (a slot's number names another font now: nothing cached for it holds)
+    cache_flush(st);
+    let gothic = st.gothic;
+    map_faces(st, gothic);
+}
+
+/// Classic's text from now on in a font of the owner's own (None: in the family again). It passed the
+/// check: userfonts.rs loads it. Gothic keeps its pixel faces; FIXED faces and icons stay Terminess.
+pub fn font_set_own(f: Option<OwnFont>) {
+    with(|st| set_own_slot(st, 0, f));
+}
+
+/// Whether a custom font is in use for Classic's text.
+pub fn font_own() -> bool {
+    with(|st| st.own_map[0].is_some())
+}
+
+/// The font the Font sheet shows a sample of (None: none), held beside the one in use and drawn only by
+/// font_with_sample.
+pub fn font_set_sample(f: Option<OwnFont>) {
+    with(|st| set_own_slot(st, 1, f));
+}
+
+/// f run with Classic's text in the sample font (font_set_sample), the font in use again after it.
+pub fn font_with_sample<R>(f: impl FnOnce() -> R) -> R {
+    let (was_pick, was_off) = with(|st| {
+        let was = (st.own_pick, st.own_off);
+        st.own_pick = 1;
+        st.own_off = false;
+        let gothic = st.gothic;
+        map_faces(st, gothic);
+        was
+    });
+    let r = f();
+    with(|st| {
+        st.own_pick = was_pick;
+        st.own_off = was_off;
+        let gothic = st.gothic;
+        map_faces(st, gothic);
+    });
+    r
+}
+
+/// The bytes of font files the custom faces hold (a bold through the weight axis shares its regular's).
+pub fn font_own_bytes() -> usize {
+    with(|st| {
+        let mut seen: Vec<*const Vec<u8>> = Vec::new();
+        let mut n = 0;
+        for f in st.own.iter().flatten() {
+            let p = std::rc::Rc::as_ptr(f.data());
+            if !seen.contains(&p) {
+                seen.push(p);
+                n += f.data().len();
+            }
+        }
+        n
+    })
+}
+
+/// How many glyphs custom faces have drawn so far: the crash guard takes its mark away after a screen
+/// that drew some (userfonts.rs).
+pub fn font_own_drawn() -> u32 {
+    with(|st| st.own_drawn)
 }
 
 pub fn font_shutdown() {
@@ -466,7 +697,7 @@ fn make_pixel_glyph(st: &State, ttf: usize, k: i32, cp: u32) -> (Vec<u8>, i32, i
 
 /// The cache slot of the glyph, made on first use.
 fn glyph_get(st: &mut State, ttf: usize, px: f32, cp: u32) -> usize {
-    let size4 = if K_UNIT[ttf] != 0 { -pixel_k(st, ttf, px) } else { (px * 4.0).round_ties_even() as i32 };
+    let size4 = if k_unit(ttf) != 0 { -pixel_k(st, ttf, px) } else { (px * 4.0).round_ties_even() as i32 };
     let hsh = cp.wrapping_mul(2654435761) ^ (size4 as u32).wrapping_mul(40503) ^ (ttf as u32).wrapping_mul(977);
     for probe in 0..16u32 {
         let slot = (hsh.wrapping_add(probe) % CACHE_SLOTS as u32) as usize;
@@ -475,18 +706,22 @@ fn glyph_get(st: &mut State, ttf: usize, px: f32, cp: u32) -> usize {
             return slot;
         }
         if !g.used {
-            if st.cache_used > (CACHE_SLOTS * 3 / 4) as i32 {
+            if st.cache_used > (CACHE_SLOTS * 3 / 4) as i32 || st.cache_bytes > CACHE_BYTES_MAX {
                 cache_flush(st);
                 return glyph_get(st, ttf, px, cp);
             }
-            let (adv, _lsb) = hmetrics(&st.font[ttf], cp);
-            let (bmp, w, h, xoff, yoff);
-            if size4 < 0 {
+            let (adv, bmp, w, h, xoff, yoff);
+            if ttf >= TTF_COUNT {
+                (adv, bmp, w, h, xoff, yoff) = own_glyph(st, ttf, size4 as f32 / 4.0, cp);
+            } else if size4 < 0 {
+                adv = hmetrics(&st.font[ttf], cp).0;
                 (bmp, w, h, xoff, yoff) = make_pixel_glyph(st, ttf, -size4, cp);
             } else {
+                adv = hmetrics(&st.font[ttf], cp).0;
                 let scale = scale_for_pixel_height(&st.font[ttf], size4 as f32 / 4.0);
                 (bmp, w, h, xoff, yoff) = codepoint_bitmap(&st.font[ttf], scale, scale, cp);
             }
+            st.cache_bytes += bmp.len();
             st.cache[slot] =
                 Glyph { used: true, face: ttf as u8, size4, cp, w, h, xoff, yoff, advance: adv, bmp, bold: Vec::new() };
             st.cache_used += 1;
@@ -704,10 +939,10 @@ fn pixel_bold(g: &mut Glyph) -> bool {
 /// Horizontal font units -> screen pixels for a face at a size (pixel faces: whole design
 /// pixels, so every glyph starts on the grid).
 fn units_to_px(st: &State, ttf: usize, gpx: f32, units: i32) -> f32 {
-    if K_UNIT[ttf] != 0 {
-        return (((units as f32) / (K_UNIT[ttf] as f32)).round_ties_even() as i64 * pixel_k(st, ttf, gpx) as i64) as f32;
+    if k_unit(ttf) != 0 {
+        return (((units as f32) / (k_unit(ttf) as f32)).round_ties_even() as i64 * pixel_k(st, ttf, gpx) as i64) as f32;
     }
-    scale_for_pixel_height(&st.font[ttf], gpx) * units as f32
+    face_scale(st, ttf, gpx) * units as f32
 }
 
 /// Lays out (and with a canvas, draws) the text from s[from] up to s[end] (None: its terminator).
@@ -735,7 +970,7 @@ fn layout(
     // pixel face, by a size-relative amount for an outline face.
     let bold = if !m.embolden {
         0
-    } else if K_UNIT[m.ttf] != 0 {
+    } else if k_unit(m.ttf) != 0 {
         pixel_k(st, m.ttf, fpx)
     } else {
         (1.0f32).max((fpx / 34.0).round_ties_even() as i64 as f32) as i32
@@ -751,7 +986,20 @@ fn layout(
         // too, from DotGothic16.
         let mut ttf = m.ttf;
         let mut gpx = fpx;
-        if cp > 0x7F && find_glyph_index(&st.font[ttf], cp) == 0 {
+        // A custom font draws the glyphs it has and that passed its check, at the sizes the check drew;
+        // every other one is borrowed the same way, ASCII too.
+        let lacks = if ttf >= TTF_COUNT {
+            match own_px(st, ttf, px, fpx, cp) {
+                Some(g) if face_has(st, ttf, cp) => {
+                    gpx = g;
+                    false
+                }
+                _ => true,
+            }
+        } else {
+            cp > 0x7F && find_glyph_index(&st.font[ttf], cp) == 0
+        };
+        if lacks {
             if ttf != TTF_TERM && ttf != TTF_TERM_BOLD {
                 ttf = m.fallback;
                 gpx = px;
@@ -761,7 +1009,8 @@ fn layout(
                 gpx = px;
             }
         }
-        if prev != 0 && prev_ttf == ttf as i32 {
+        // (kerning is stb's, inside one embedded face; a custom font has none)
+        if prev != 0 && prev_ttf == ttf as i32 && ttf < TTF_COUNT {
             pen += units_to_px(st, ttf, gpx, kern_advance(&st.font[ttf], prev, cp));
         }
         let advance;
@@ -774,7 +1023,7 @@ fn layout(
                 let gy = baseline + g.yoff;
                 // Accented letters in a pixel face's bold spare their marks (pixel_bold); that
                 // bitmap already holds the overprint of one design pixel (bold == k px).
-                let bb = bold != 0 && cp > 0x7F && K_UNIT[ttf] != 0 && bold == -g.size4 && pixel_bold(g);
+                let bb = bold != 0 && cp > 0x7F && k_unit(ttf) != 0 && bold == -g.size4 && pixel_bold(g);
                 if bb {
                     blit(cv, &g.bold, g.w + bold, g.h, gx, gy, gray);
                 } else {
@@ -785,7 +1034,7 @@ fn layout(
                 }
             }
         } else {
-            advance = hmetrics(&st.font[ttf], cp).0;
+            advance = face_advance(st, ttf, cp);
         }
         pen += units_to_px(st, ttf, gpx, advance) + bold as f32;
         prev = cp;
@@ -820,7 +1069,10 @@ pub fn font_measure(f: FontFace, px: f32, utf8: &str) -> i32 {
 /// Whether the face (as the current theme maps it) has its own glyph for cp, without either
 /// fallback.
 pub fn font_face_has_glyph(f: FontFace, cp: u32) -> bool {
-    with(|st| st.ready && find_glyph_index(&st.font[face_of(st, f).ttf], cp) != 0)
+    with(|st| {
+        let ttf = face_of(st, f).ttf;
+        st.ready && face_has(st, ttf, cp)
+    })
 }
 
 /// Whether it can draw cp: its own glyph, or the Terminess or DotGothic16 fallback.
@@ -835,7 +1087,8 @@ pub fn font_has_glyph(f: FontFace, cp: u32) -> bool {
 
 /// utf8 without the characters no face draws (every face takes what it lacks from Terminess or
 /// DotGothic16, so what neither has would show as a box: most Vietnamese letters and rare CJK
-/// characters), and without the spaces that leaves doubled, first or last. Returns how many
+/// characters; a custom font in use counts for what it has, so a name in Korean shows with a font
+/// that has its letters), and without the spaces that leaves doubled, first or last. Returns how many
 /// characters it left out: 0, and out is utf8 as it is (cut to cap between characters). Before
 /// font_init, none.
 pub fn font_drawable_copy(utf8: &str, out: &mut String, cap: usize) -> i32 {
@@ -852,7 +1105,10 @@ pub fn font_drawable_copy(utf8: &str, out: &mut String, cap: usize) -> i32 {
         let n = i - c;
         if cp > 0x7F
             && with(|st| {
-                st.ready && find_glyph_index(&st.font[TTF_TERM], cp) == 0 && find_glyph_index(&st.font[TTF_JP], cp) == 0
+                st.ready
+                    && find_glyph_index(&st.font[TTF_TERM], cp) == 0
+                    && find_glyph_index(&st.font[TTF_JP], cp) == 0
+                    && !own_text_has(st, cp)
             })
         {
             left_out += 1;
@@ -881,11 +1137,11 @@ pub fn font_ascent(f: FontFace, px: f32) -> i32 {
             return px as i32;
         }
         let m = face_of(st, f);
-        let (a, _d, _l) = vmetrics(&st.font[m.ttf]);
-        if K_UNIT[m.ttf] != 0 {
-            return ((a as f32 / K_UNIT[m.ttf] as f32).round_ties_even() as i32) * pixel_k(st, m.ttf, px * m.scale);
+        let (a, _d) = face_vmetrics(st, m.ttf);
+        if k_unit(m.ttf) != 0 {
+            return ((a as f32 / k_unit(m.ttf) as f32).round_ties_even() as i32) * pixel_k(st, m.ttf, px * m.scale);
         }
-        (a as f32 * scale_for_pixel_height(&st.font[m.ttf], px * m.scale)).round_ties_even() as i32
+        (a as f32 * face_scale(st, m.ttf, px * m.scale)).round_ties_even() as i32
     })
 }
 
@@ -896,11 +1152,11 @@ pub fn font_descent(f: FontFace, px: f32) -> i32 {
             return 0;
         }
         let m = face_of(st, f);
-        let (_a, d, _l) = vmetrics(&st.font[m.ttf]);
-        if K_UNIT[m.ttf] != 0 {
-            return (((-d) as f32 / K_UNIT[m.ttf] as f32).round_ties_even() as i32) * pixel_k(st, m.ttf, px * m.scale);
+        let (_a, d) = face_vmetrics(st, m.ttf);
+        if k_unit(m.ttf) != 0 {
+            return (((-d) as f32 / k_unit(m.ttf) as f32).round_ties_even() as i32) * pixel_k(st, m.ttf, px * m.scale);
         }
-        ((-d) as f32 * scale_for_pixel_height(&st.font[m.ttf], px * m.scale)).round_ties_even() as i32
+        ((-d) as f32 * face_scale(st, m.ttf, px * m.scale)).round_ties_even() as i32
     })
 }
 
@@ -1228,10 +1484,10 @@ pub fn font_fit_px(f: FontFace, px: f32, min_px: f32, utf8: &str, maxw: i32) -> 
         return 0.0;
     }
     let m = with(|st| face_of(st, f));
-    if K_UNIT[m.ttf] != 0 {
+    if k_unit(m.ttf) != 0 {
         // Each smaller whole step, at the size it is drawn for, or at min_px inside it.
         let (a, d, _l) = with(|st| vmetrics(&st.font[m.ttf]));
-        let line = (a - d) as f32 / K_UNIT[m.ttf] as f32;
+        let line = (a - d) as f32 / k_unit(m.ttf) as f32;
         let mut k = with(|st| pixel_k(st, m.ttf, px * m.scale)) - 1;
         while k >= 1 {
             let size = (k as f32 * line / m.scale).max(min_px);
@@ -1519,6 +1775,155 @@ mod tests {
             let apart = font_measure(FontFace::Regular, 100.0, "A") + font_measure(FontFace::Regular, 100.0, "V");
             assert!(pair < apart, "{pair} {apart}");
         });
+    }
+
+    // A font of the owner's own is read by skrifa and drawn by stb's rasterizer (fontcheck.rs), never opened by
+    // stb. For a TrueType font the two roads meet: the outline skrifa hands over is the very vertex list stb's
+    // own parser makes, so the bitmap is stb's own, byte for byte, with its size and its offsets. Checked here
+    // on every glyph every embedded text file maps, at five sizes: the pixel faces, DotGothic16's 3,340 glyphs,
+    // the three families' Regular and Bold, and Terminess's text. Terminess's icons (the private use areas) are
+    // left out: some are built of scaled components, where stb's parser cuts a coordinate short and skrifa
+    // rounds it, a unit apart; they are never drawn through this road (icons are stb's, always).
+    #[test]
+    fn skrifa_outlines_drawn_by_stb_are_stbs_own_bitmaps() {
+        use crate::fontcheck::*;
+        use skrifa::MetadataProvider;
+        up();
+        let mut out = Outliner::new().unwrap();
+        let mut compared = 0;
+        for ttf in 0..TTF_COUNT {
+            let font = skrifa::raw::FontRef::from_index(ttf_data(ttf), 0).unwrap();
+            let glyphs = font.outline_glyphs();
+            let (a, d, _) = with(|st| vmetrics(&st.font[ttf]));
+            let line = a - d;
+            for (cp, gid) in font.charmap().mappings() {
+                if (ttf == TTF_TERM || ttf == TTF_TERM_BOLD) && ((0xE000..=0xF8FF).contains(&cp) || cp >= 0xF0000) {
+                    continue;
+                }
+                for px in [12.0f32, 34.0, 44.0, 64.0, 100.0] {
+                    let scale = with(|st| scale_for_pixel_height(&st.font[ttf], px));
+                    let (bmp, w, h, xo, yo) = with(|st| codepoint_bitmap(&st.font[ttf], scale, scale, cp));
+                    let ours = match out.outline(&glyphs, gid.to_u32(), &[], line) {
+                        Ok(Some(b)) => rasterize(&mut out.verts, b, scale).unwrap(),
+                        Ok(None) => Bitmap::default(),
+                        Err(e) => panic!("face {ttf} U+{cp:04X}: {e:?}"),
+                    };
+                    if bmp.is_empty() {
+                        // (stb gives no bitmap for a glyph with no ink)
+                        assert!(ours.px.is_empty(), "face {ttf} U+{cp:04X} at {px}");
+                        continue;
+                    }
+                    assert_eq!((ours.w, ours.h, ours.xoff, ours.yoff), (w, h, xo, yo), "face {ttf} U+{cp:04X} at {px}");
+                    assert!(ours.px == bmp, "face {ttf} U+{cp:04X} at {px}: the bitmaps differ");
+                    compared += 1;
+                }
+            }
+        }
+        assert!(compared > 30_000, "{compared}");
+    }
+
+    // The same road end to end: Noto Sans as a font of the owner's own (the file's bytes, read by the check and
+    // drawn as a custom font) draws each character as the bundled Noto Sans does, at the same scale: the same
+    // pixels, the same advance, regular and bold. (Whole strings differ by design: a custom font has no kerning.)
+    #[test]
+    fn a_custom_font_draws_as_the_same_file_embedded() {
+        use crate::fontcheck::*;
+        use std::rc::Rc;
+        up();
+        let noto = font_family_find(b"noto-sans").unwrap();
+        let own = |bold: bool| {
+            let data = Rc::new(font_family_file(noto, bold).to_vec());
+            let mut facts = facts_in_process(&data).unwrap();
+            // (the bundled family's scale, and stb's line for the file)
+            facts.scale_pm = (FONT_FAMILIES[noto].scale * 1000.0).round() as i32;
+            let (a, d, _) = with(|st| vmetrics(&st.font[if bold { TTF_NOTO_BOLD } else { TTF_NOTO }]));
+            assert_eq!((facts.ascent, facts.descent), (a, d));
+            SafeFace::new(data, Rc::new(facts), false).unwrap()
+        };
+        font_set_own(Some(OwnFont { regular: own(false), bold: Some(own(true)) }));
+        assert!(font_own());
+        let shot = |f: FontFace, px: f32, text: &str| {
+            let mut c = Canvas::default();
+            canvas_init(&mut c, 260, 220);
+            let w = font_draw(&mut c, f, px, 40, 150, text, 0);
+            (c.px, w, font_ascent(f, px), font_descent(f, px))
+        };
+        let mut seen = 0;
+        for f in [FontFace::Regular, FontFace::Bold, FontFace::Title, FontFace::Caps] {
+            for px in [20.0f32, 34.0, 44.0, 64.0] {
+                for cp in (0x21u32..0x7F).chain(0xA1..0x17F).chain([0x2026, 0x20AC]) {
+                    let text = char::from_u32(cp).unwrap().to_string();
+                    let mine = shot(f, px, &text);
+                    let theirs = font_with_family(noto, || shot(f, px, &text));
+                    assert!(mine == theirs, "{f:?} at {px}: U+{cp:04X}");
+                    seen += 1;
+                }
+            }
+        }
+        assert!(seen > 4000);
+        // what the font lacks comes from Terminess, then DotGothic16, as for a family
+        for text in ["\u{2192}", "\u{65e5}\u{672c}"] {
+            assert!(shot(FontFace::Regular, 44.0, text) == font_with_family(noto, || shot(FontFace::Regular, 44.0, text)), "{text}");
+        }
+        // a size the check never drew: Terminess's glyph, not the font's (the line stays the font's)
+        let big = shot(FontFace::Regular, 400.0, "A");
+        let term = font_with_family(0, || shot(FontFace::Regular, 400.0, "A"));
+        assert!(big.0 == term.0 && big.1 == term.1);
+        assert!(font_own_drawn() > 0 && font_own_bytes() > 50_000);
+        // Gothic keeps its faces; FIXED is Terminess whatever the font
+        let fixed = shot(FontFace::Fixed, 44.0, "Ag");
+        assert!(fixed == font_with_family(0, || shot(FontFace::Fixed, 44.0, "Ag")));
+        ui_set_theme(UiTheme::Gothic);
+        let gothic = shot(FontFace::Regular, 44.0, "Ag");
+        font_set_own(None);
+        assert!(!font_own() && font_own_bytes() == 0);
+        assert!(gothic == shot(FontFace::Regular, 44.0, "Ag"));
+        ui_set_theme(UiTheme::Classic);
+    }
+
+    // A custom font whose bold is its regular overprinted (no weight axis, no Bold file): bold text is wider by
+    // the overprint, as an outline face's always was; and the sample slot draws beside the font in use.
+    #[test]
+    fn a_custom_font_without_a_bold_is_overprinted_and_the_sample_stands_beside_it() {
+        use crate::fontcheck::*;
+        use std::rc::Rc;
+        up();
+        let face = |family: &[u8]| {
+            let data = Rc::new(font_family_file(font_family_find(family).unwrap(), false).to_vec());
+            let facts = facts_in_process(&data).unwrap();
+            SafeFace::new(data, Rc::new(facts), false).unwrap()
+        };
+        font_set_own(Some(OwnFont { regular: face(b"literata"), bold: None }));
+        let reg = font_measure(FontFace::Regular, 44.0, "Hamburg");
+        let bold = font_measure(FontFace::Bold, 44.0, "Hamburg");
+        assert!(bold > reg, "{bold} {reg}");
+        // the sample: another font, only inside font_with_sample
+        font_set_sample(Some(OwnFont { regular: face(b"atkinson"), bold: None }));
+        assert_eq!(font_measure(FontFace::Regular, 44.0, "Hamburg"), reg);
+        let sample = font_with_sample(|| font_measure(FontFace::Regular, 44.0, "Hamburg"));
+        assert_ne!(sample, reg);
+        assert_eq!(font_measure(FontFace::Regular, 44.0, "Hamburg"), reg);
+        // the sheet's own words: the family, whatever font is in use
+        let term = font_with_family(0, || font_measure(FontFace::Regular, 44.0, "Hamburg"));
+        font_set_sample(None);
+        font_set_own(None);
+        assert_eq!(font_measure(FontFace::Regular, 44.0, "Hamburg"), term);
+    }
+
+    // The glyph cache has a byte cap beside its slots: big glyphs flush it before it grows past it, and text
+    // draws the same after a flush.
+    #[test]
+    fn the_glyph_cache_is_capped_in_bytes() {
+        up();
+        let mut c = Canvas::default();
+        canvas_init(&mut c, 900, 900);
+        for i in 0..40 {
+            // an icon 700 px high is about half a megabyte of coverage
+            font_draw_icon(&mut c, FontFace::Regular, 0xF064F, Rect { x: 0, y: 0, w: 700 - i, h: 700 - i }, 0);
+            assert!(with(|st| st.cache_bytes) <= CACHE_BYTES_MAX + (1 << 20));
+        }
+        assert!(with(|st| st.cache_used) < 20);
+        assert!(font_measure(FontFace::Regular, 20.0, "Hello") > 0);
     }
 
     #[test]

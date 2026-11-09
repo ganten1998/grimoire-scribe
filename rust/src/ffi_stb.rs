@@ -47,6 +47,52 @@ extern "C" {
         yoff: *mut c_int,
     ) -> *mut c_uchar;
     pub fn stbtt_FreeBitmap(bitmap: *mut c_uchar, userdata: *mut c_void);
+    /// stb's own rasterizer, the one its glyph bitmaps come from (public since v1.08): `vertices` in any
+    /// units, scaled by `scale_x`/`scale_y` and shifted, drawn into `result` whose corner is at
+    /// (`x_off`, `y_off`). fontcheck.rs gives it outlines skrifa read from a checked font (2.1.0-beta.2):
+    /// no byte of such a font ever reaches stb's parser.
+    pub fn stbtt_Rasterize(
+        result: *mut stbtt__bitmap,
+        flatness_in_pixels: f32,
+        vertices: *mut stbtt_vertex,
+        num_verts: c_int,
+        scale_x: f32,
+        scale_y: f32,
+        shift_x: f32,
+        shift_y: f32,
+        x_off: c_int,
+        y_off: c_int,
+        invert: c_int,
+        userdata: *mut c_void,
+    );
+}
+
+/// stb_truetype.h's stbtt_vertex: a point of an outline (`kind`: STBTT_V*), with the control point of a
+/// quadratic (cx, cy) and the second one of a cubic (cx1, cy1).
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct stbtt_vertex {
+    pub x: i16,
+    pub y: i16,
+    pub cx: i16,
+    pub cy: i16,
+    pub cx1: i16,
+    pub cy1: i16,
+    pub kind: u8,
+    pub padding: u8,
+}
+pub const STBTT_VMOVE: u8 = 1;
+pub const STBTT_VLINE: u8 = 2;
+pub const STBTT_VCURVE: u8 = 3;
+pub const STBTT_VCUBIC: u8 = 4;
+
+/// stb_truetype.h's stbtt__bitmap: the 8-bit picture stbtt_Rasterize draws into (ours to allocate).
+#[repr(C)]
+pub struct stbtt__bitmap {
+    pub w: c_int,
+    pub h: c_int,
+    pub stride: c_int,
+    pub pixels: *mut c_uchar,
 }
 
 // ---- stb_image_write ----
@@ -76,6 +122,9 @@ extern "C" {
     pub fn grimoire_stbi_jpeg_size() -> size_t;
     /// sizeof(stbtt_fontinfo) as the C compiler lays it out (the test below).
     pub fn grimoire_stbtt_fontinfo_size() -> size_t;
+    /// sizeof(stbtt_vertex) and sizeof(stbtt__bitmap), the same.
+    pub fn grimoire_stbtt_vertex_size() -> size_t;
+    pub fn grimoire_stbtt_bitmap_size() -> size_t;
 }
 
 // stb_image's allocator (STBI_MALLOC, STBI_REALLOC, STBI_FREE in csrc/stb_image_impl.c): bgimage.c's
@@ -104,5 +153,13 @@ mod tests {
         // SAFETY: a sizeof, no arguments.
         let n = unsafe { super::grimoire_stbtt_fontinfo_size() };
         assert!(n <= std::mem::size_of::<super::stbtt_fontinfo>(), "stbtt_fontinfo is {n} bytes");
+    }
+
+    #[test]
+    fn rasterizer_structs_are_laid_out_as_the_c_has_them() {
+        // SAFETY: two sizeofs, no arguments.
+        let (v, b) = unsafe { (super::grimoire_stbtt_vertex_size(), super::grimoire_stbtt_bitmap_size()) };
+        assert_eq!(v, std::mem::size_of::<super::stbtt_vertex>());
+        assert_eq!(b, std::mem::size_of::<super::stbtt__bitmap>());
     }
 }

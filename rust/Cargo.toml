@@ -65,6 +65,9 @@ libc = "0.2"
 # 2026-11-16 (D12). `png` is already in its tree (same version), used to encode the pages.
 hayro = { version = "=0.8.0", default-features = false, features = ["embed-fonts", "embed-cmaps"] }
 png = "=0.18.1"
+# Your own fonts (2.1.0-beta.2, DESIGN.md 5): the memory-safe font parser hayro-interpret already brings, at the
+# very version it brings (one skrifa in the build, never a second), with the features it asks for.
+skrifa = "=0.46.2"
 
 [build-dependencies]
 cc = "1"

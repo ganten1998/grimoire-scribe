@@ -38,6 +38,7 @@ pub mod fbpack;
 pub mod fingershape;
 pub mod fingershape_synth;
 pub mod font;
+pub mod fontcheck; // your own fonts: the safe face, the check's worker and the writer's side of it (2.1.0-beta.2)
 pub mod gesturemap; // which action each gesture does: the built-ins and gestures.ini
 pub mod hidkeys;
 pub mod i18n;
