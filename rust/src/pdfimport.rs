@@ -145,7 +145,7 @@ fn root_path(sub: &str) -> String {
 
 /// The storage root a StoragePath is relative to: the Kindle's /mnt/us, else GRIMOIRE_STORAGE (the
 /// simulator's and tests' hook), else (headless builds only) the folder around Grimoire's own.
-fn storage_root() -> Option<String> {
+pub(crate) fn storage_root() -> Option<String> {
     if let Some(r) = fsview_root() {
         return Some(r);
     }
@@ -160,7 +160,7 @@ fn storage_root() -> Option<String> {
 }
 
 /// Grimoire's folder relative to the storage root ("grimoire" on the Kindle).
-fn grimoire_rel() -> Option<String> {
+pub(crate) fn grimoire_rel() -> Option<String> {
     let root = storage_root()?;
     let g = store_root();
     g.strip_prefix(root.trim_end_matches('/')).map(|r| r.trim_matches('/').to_string()).filter(|r| !r.is_empty())
@@ -359,7 +359,7 @@ pub fn mark_parse(t: &[u8]) -> Option<Mark> {
     have_state.then_some(m)
 }
 
-fn mark_read(src: &str) -> Option<Mark> {
+pub(crate) fn mark_read(src: &str) -> Option<Mark> {
     let t = read_file(&mark_path(src))?;
     mark_parse(&t)
 }
@@ -382,7 +382,7 @@ fn mark_write(m: &Mark) -> bool {
     write_file_atomic(&mark_path(&m.src), mark_text(m).as_bytes()) == 0
 }
 
-fn mark_drop(src: &str) {
+pub(crate) fn mark_drop(src: &str) {
     let _ = std::fs::remove_file(mark_path(src));
 }
 
@@ -922,6 +922,72 @@ pub fn pdf_import_queue(path: &StoragePath, name: Option<&str>, folder: Option<&
     Queued::Started(ui(|u| u.pending.last().cloned().unwrap_or_default()))
 }
 
+// ---- what the Import place says of a row (lane L8) ----
+
+/// What a row of the browser's Import place says of a file in `grimoire/import` (a PDF; a folder of pictures
+/// has `folder_status` in bgwork_template.rs).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum ImportStatus {
+    /// not taken yet (it has to hold still first), queued behind another, or the lock is held elsewhere
+    Waiting,
+    /// the page it is on, of how many
+    Importing(u32, u32),
+    /// tried and failed; it waits until the file changes
+    Failed,
+    /// made a notebook (its file moved to import/done, or could not and is marked)
+    Imported,
+}
+
+/// The shared progress record's page and count while an import of this process runs.
+fn live_progress() -> Option<(u32, u32)> {
+    if ui(|u| u.pending.is_empty()) {
+        return None;
+    }
+    let p = progress();
+    let (page, pages) = (p.page.load(Ordering::Relaxed), p.pages.load(Ordering::Relaxed));
+    (pages > 0 && pages <= PDF_MAX_PAGES).then(|| (page.clamp(1, pages), pages))
+}
+
+/// The status of the PDF at `src` (its StoragePath as text; `size` and `mtime` as listed). Reads its mark and
+/// the attempts: small files, and only for the rows on screen.
+pub fn import_status(src: &str, size: u64, mtime: i64) -> ImportStatus {
+    if is_queued(src) {
+        let head = ui(|u| u.queued.first().is_some_and(|q| q == src));
+        if head {
+            if let Some((p, n)) = live_progress() {
+                return ImportStatus::Importing(p, n);
+            }
+        }
+        return ImportStatus::Waiting;
+    }
+    if let Some(m) = mark_read(src) {
+        match m.state {
+            MarkState::Done => return ImportStatus::Imported,
+            MarkState::Waiting => return ImportStatus::Waiting,
+            MarkState::Making => {
+                if ui(|u| u.detached) && m.pages > 0 && m.pages <= PDF_MAX_PAGES && !m.id.is_empty() && exists(&work_dir(&m.id)) {
+                    return ImportStatus::Importing(m.page.clamp(1, m.pages), m.pages);
+                }
+            }
+        }
+    }
+    let stable_hash = fnv(fnv(FNV0, &size.to_ne_bytes()), &mtime.to_ne_bytes());
+    if crate::bgwork_template::attempts_waiting(src, stable_hash, &crate::bgwork_template::attempts_snapshot(), PDF_TRIES) {
+        return ImportStatus::Failed;
+    }
+    ImportStatus::Waiting
+}
+
+/// Whether anything of this process imports now (the Import place re-reads its rows' statuses while so).
+pub fn import_busy() -> bool {
+    ui(|u| !u.pending.is_empty() || u.detached)
+}
+
+/// A hash of what changes a row's status text (the browser redraws a row when it changes).
+pub fn import_progress_stamp() -> u32 {
+    live_progress().map_or(0, |(p, n)| p.wrapping_mul(4099) ^ n) ^ (pending_count() as u32) << 28
+}
+
 /// The UI's tick: the staying notice's text from the shared record (or, while a previous run's detached child
 /// imports, from the coarse progress in .marks), the lock let go when idle, and a rescan due.
 pub fn progress_text(now: u32) -> Option<(u32, u32)> {
@@ -1213,14 +1279,19 @@ pub fn unique_import_name(base: &str, all: &[NotebookInfo]) -> String {
 
 /// A notebook already holds this book key (its `source=`, or a `source.ini` that names it).
 fn notebook_with_key(key: &str, all: &[NotebookInfo]) -> bool {
-    all.iter().any(|nb| {
+    notebook_id_with_key(key, all).is_some()
+}
+
+/// The notebook that holds this book key, when one does (the picker's "has notes" and Open its notebook).
+pub fn notebook_id_with_key(key: &str, all: &[NotebookInfo]) -> Option<String> {
+    all.iter().find(|nb| {
         nb.source.as_bytes() == key.as_bytes() || (nb.source.is_empty() && {
             let mut m = AnnotateMap::default();
             let r = annotate_map_load(nb.id.as_str(), &mut m) == 0 && m.book.as_bytes() == key.as_bytes();
             annotate_map_free(&mut m);
             r
         })
-    })
+    }).map(|nb| nb.id.as_str().to_string())
 }
 
 /// Another import in flight (another work folder) holds this key.

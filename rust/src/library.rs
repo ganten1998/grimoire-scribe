@@ -3,6 +3,7 @@
 
 use crate::prelude::*;
 use crate::about::AboutView;
+use crate::browser::{Browser, BrowserResult, PickKind, PickSpec};
 
 #[repr(i32)]
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -162,6 +163,8 @@ const H_FONT_CANCEL: i32 = 92;
 // 2.1: the Merge dialog's Merge into it and Keep both (Cancel is H_CANCEL).
 const H_MERGE_INTO: i32 = 93;
 const H_MERGE_BOTH: i32 = 94;
+// 2.1.0-beta.2: New notebook's From a file... (the file picker over it).
+const H_NEW_FILE: i32 = 95;
 
 #[derive(Clone, Copy, Default)]
 struct Item {
@@ -185,6 +188,11 @@ pub struct LibraryState {
     font_pick: usize,
     font_sample: Rect,
     font_rows: Vec<Rect>,
+    /// The file picker (2.1.0-beta.2, browser.rs), open over New notebook's sheet (which stays under it: Cancel
+    /// and Esc at the picker's root come back to it), and whether the sheet's name was typed (D28: a typed name is
+    /// the imported notebook's, else the file's own).
+    files: Browser,
+    new_name_typed: bool,
     /// The Merge dialog (2.1): the folder that was moved or renamed, and the path it would take, which is
     /// the name of a folder already there
     merge_old: FixedStr<STORE_NAME_LEN>,
@@ -1046,6 +1054,12 @@ fn draw_new(a: &mut App) {
     let more = Rect::new(cancel.x + bw + ui_px(30.0), cancel.y, bw, bh);
     ui_button(c, more, IconKind::None, tr("More layouts..."), if tpl { ButtonStyle::Selected } else { ButtonStyle::Plain });
     hits_add(&mut s.hits, more, H_PAPER_MORE, PAPER_BLANK.0 as i32);
+    // From a file... (the file picker) beside it: a PDF or a folder of pictures becomes a notebook.
+    let file = Rect::new(more.x + bw + ui_px(30.0), cancel.y, bw, bh);
+    // TRANSLATORS: New notebook's button (348 px at 44 px, or 34 px, or two lines of that): it opens the file picker
+    // to make a notebook of a PDF or a folder of pictures anywhere on the Kindle.
+    ui_button(c, file, IconKind::None, tr("From a file..."), ButtonStyle::Plain);
+    hits_add(&mut s.hits, file, H_NEW_FILE, 0);
 }
 
 /// A row of draw_menu's list (the C's MenuRow, its label owned).
@@ -4482,6 +4496,13 @@ fn toast_floor(a: &App) -> i32 {
 }
 
 fn redraw(a: &mut App, m: RefreshMode) {
+    if files_shown(a) {
+        let mut b = std::mem::take(&mut lib(a).files);
+        b.draw(a);
+        lib(a).files = b;
+        app_invalidate_all(a, m);
+        return;
+    }
     if graph_shown(a) {
         graph_draw(a);
         a.toast_floor = 0;
@@ -4644,6 +4665,7 @@ fn kb_finished(a: &mut App, ok: bool) {
         match kbp {
             KbPurpose::NewName => {
                 lib(a).new_name.set(&txt);
+                lib(a).new_name_typed = true;
                 back = Modal::New;
             }
             KbPurpose::Rename => {
@@ -4800,6 +4822,7 @@ fn act(a: &mut App, h: &Hit) {
             let mut new_name = FixedStr::<STORE_NAME_LEN>::new();
             unique_name(s, &base, &mut new_name);
             s.new_name = new_name;
+            s.new_name_typed = false;
             s.new_paper = PAPER_NARROW_NM;
             s.new_tpl.clear();
             canvas_free(&mut s.tpl_prev);
@@ -4907,6 +4930,7 @@ fn act(a: &mut App, h: &Hit) {
             );
         }
         H_NEW_CREATE => create_notebook(a),
+        H_NEW_FILE => files_open(a),
         H_CANCEL => close_modal(a),
         H_GESTURES => open_gestures(a),
         H_GESTURE_GROUP => {
@@ -5519,6 +5543,120 @@ fn graph_event(a: &mut App, ev: &InEvent) {
     graph_result(a, r);
 }
 
+// ---- the file picker (2.1.0-beta.2, browser.rs) ----
+//
+// New notebook > From a file... opens Files in pick mode over New notebook's sheet, which stays under it. The
+// picker draws and takes the contacts, and says what was asked (BrowserResult); this does it: a PDF or a folder
+// of pictures is queued as an import (named as typed in the sheet, else by its file; into the sheet's In: folder),
+// a PDF a notebook already holds opens that notebook, Back at the picker's root comes back to the sheet.
+
+/// The file picker is up: its keys and contacts are its own.
+fn files_shown(a: &App) -> bool {
+    a.scr == ScreenId::Library && a.lib.as_deref().is_some_and(|s| s.files.open)
+}
+
+/// Whether the Import place is on screen: the staying notice of an import stays off it (its rows say the same).
+pub fn library_import_place_up(a: &App) -> bool {
+    files_shown(a) && a.lib.as_deref().is_some_and(|s| s.files.import_place_up())
+}
+
+fn with_files<R>(a: &mut App, f: impl FnOnce(&mut Browser, &mut App) -> R) -> R {
+    let mut b = std::mem::take(&mut lib(a).files);
+    let r = f(&mut b, a);
+    lib(a).files = b;
+    r
+}
+
+fn files_open(a: &mut App) {
+    let ok = with_files(a, |b, _| b.open_pick(PickSpec { kinds: &[PickKind::Pdf, PickKind::PictureFolder] }));
+    if !ok {
+        // (no storage to browse: the sheet stays)
+        app_toast(a, tr("Couldn't open folder."), 3000);
+        return;
+    }
+    lib(a).pressed = None;
+    a.toast_floor = 0;
+    redraw(a, RefreshMode::Full);
+    input_touch_context(library_touch_view(a));
+}
+
+/// The picker closed: back to New notebook's sheet (a cancel) or the Library (an import started).
+fn files_close(a: &mut App, to_library: bool) {
+    let s = lib(a);
+    s.files.close();
+    if to_library {
+        s.modal = Modal::None;
+    }
+    app_notice_clear(a, NoticeKey::Loading);
+    if to_library {
+        reload(a);
+    }
+    redraw(a, RefreshMode::Full);
+}
+
+fn files_result(a: &mut App, r: BrowserResult) {
+    use crate::pdfimport::Queued;
+    let (name, folder) = {
+        let s = lib(a);
+        (
+            (s.new_name_typed && !s.new_name.is_empty()).then(|| s.new_name.as_str().to_string()),
+            (!s.cur_folder.is_empty()).then(|| s.cur_folder.as_str().to_string()),
+        )
+    };
+    match r {
+        BrowserResult::None => {}
+        BrowserResult::Cancel => files_close(a, false),
+        BrowserResult::Pdf(ref p) | BrowserResult::Pictures(ref p) => {
+            let pdf = matches!(r, BrowserResult::Pdf(_));
+            let q = if pdf {
+                crate::pdfimport::pdf_import_queue(p, name.as_deref(), folder.as_deref(), a.dpi)
+            } else {
+                crate::bgwork_template::import_pick_queue(p, name.as_deref(), folder.as_deref(), a.dpi)
+            };
+            files_close(a, true);
+            // (a start shows on the staying notice, a wait on the Import place's row: no toast says it)
+            if let Queued::Refused(_) = q {
+                let mut msg = String::new();
+                csnprintf!(&mut msg, 256, tr("Couldn't import PDF (see %s)."), "grimoire.log");
+                app_toast(a, &msg, 4000);
+            }
+        }
+        BrowserResult::OpenNotebook(id) => {
+            files_close(a, true);
+            editor_open_notebook(a, &id);
+        }
+        BrowserResult::LookAgain => {
+            import_scan(a.dpi);
+            with_files(a, |b, a| {
+                b.relist(now_ms());
+                b.draw(a);
+            });
+            app_invalidate_all(a, RefreshMode::Ui);
+        }
+    }
+}
+
+fn files_event(a: &mut App, ev: &InEvent) {
+    let ph = app_pointer_phase(ev);
+    if ph < 0 {
+        return; // (two fingers down does nothing here: the Graph's gesture belongs to the Notebooks place)
+    }
+    let r = with_files(a, |b, a| b.pointer(a, ph, ev));
+    files_result(a, r);
+}
+
+/// Esc: the card closes, else up one level, and at the root the picker cancels. Always taken.
+fn files_back(a: &mut App) -> bool {
+    if !with_files(a, |b, a| b.back(a)) {
+        files_close(a, false);
+    }
+    true
+}
+
+fn files_tick(a: &mut App, now: u32) {
+    with_files(a, |b, a| b.tick(a, now));
+}
+
 // Two fingers down over the Library (or whatever gestures.ini binds to index-map) open the Graph; no other
 // gesture does anything here.
 fn library_gesture(a: &mut App, ev: &InEvent) {
@@ -5541,6 +5679,16 @@ pub fn library_shortcut(a: &mut App, action: i32) -> bool {
     if action == SHORTCUT_SAVE {
         library_save(a);
         return true;
+    }
+    if files_shown(a) {
+        match action {
+            SHORTCUT_BACK | SHORTCUT_GO_BACK | SHORTCUT_CLOSE_MENU => return files_back(a),
+            SHORTCUT_PREV_PAGE | SHORTCUT_NEXT_PAGE => {
+                with_files(a, |b, a| b.turn_key(a, action == SHORTCUT_NEXT_PAGE));
+                return true;
+            }
+            _ => return false,
+        }
     }
     if graph_shown(a) {
         // The Graph's own keys first: pans, zoom, Fit, its view, Select all, Enter, and Esc's selection.
@@ -5615,6 +5763,9 @@ pub fn library_back(a: &mut App) -> bool {
         return false;
     }
     let tap = |a: &mut App, id: i32| act(a, &Hit { id, ..Default::default() });
+    if files_shown(a) {
+        return files_back(a);
+    }
     if library_record_active(a) {
         tap(a, H_RECORD_CANCEL);
         return true;
@@ -5676,7 +5827,7 @@ pub fn library_back(a: &mut App) -> bool {
 /// Grimoire?'s Enter (the highlighted answer), Left and Right (the highlight) and Esc (No), and New notebook's
 /// Enter (Create). True when it took the key; Exit Grimoire? takes every key (nothing behind it acts).
 pub fn library_modal_key(a: &mut App, code: i32) -> bool {
-    if a.scr != ScreenId::Library || graph_shown(a) || library_record_active(a) {
+    if a.scr != ScreenId::Library || graph_shown(a) || files_shown(a) || library_record_active(a) {
         return false;
     }
     let Some(s) = a.lib.as_deref_mut() else { return false };
@@ -5838,6 +5989,10 @@ pub fn library_enter(a: &mut App) {
 }
 
 pub fn library_leave(a: &mut App) {
+    if !a.relayout && a.lib.as_deref().is_some_and(|s| s.files.open) {
+        lib(a).files.close();
+        app_notice_clear(a, NoticeKey::Loading);
+    }
     if !a.relayout && a.lib.as_deref().is_some_and(|s| s.map.open || s.map_picker.open) {
         // (the Graph saves its layout as it closes; a notebook it opened has kept what Back needs)
         let s = lib(a);
@@ -5885,6 +6040,10 @@ pub fn library_event(a: &mut App, ev: &InEvent) {
 
 fn library_event_in(a: &mut App, ev: &InEvent) {
     if library_record_active(a) && record_event(a, ev) {
+        return;
+    }
+    if files_shown(a) {
+        files_event(a, ev);
         return;
     }
     if graph_shown(a) {
@@ -6015,6 +6174,10 @@ fn library_event_in(a: &mut App, ev: &InEvent) {
 }
 
 pub fn library_tick(a: &mut App, now: u32) {
+    if files_shown(a) {
+        files_tick(a, now);
+        return;
+    }
     if graph_shown(a) {
         graph_tick(a, now);
         return;
@@ -6277,6 +6440,16 @@ pub fn library_probe(a: &mut App, key: &str, out: &mut String, cap: usize) -> i3
     if a.lib.is_none() {
         return -1;
     }
+    // The file picker (2.1.0-beta.2): the files.* keys (docs/SIM.md).
+    if let Some(k) = key.strip_prefix("files.") {
+        let h = a.h;
+        let mut text = String::new();
+        if !lib(a).files.probe(h, k, &mut text) {
+            return -1;
+        }
+        csnprintf!(out, cap, "%s", &text);
+        return 0;
+    }
     // The Graph opened from the Library (2.0.0-beta.2): the editor's map.* keys (docs/SIM.md), map.picker its
     // notebooks' browser (past the caps), map.keep 1 while a notebook it opened is in front; graph.omitted the
     // Library's notebooks the Graph of all notebooks leaves out (by their own setting or a folder's).
@@ -6484,7 +6657,7 @@ pub fn library_probe(a: &mut App, key: &str, out: &mut String, cap: usize) -> i3
                 H_GESTURE_GROUP => "gestures.group.", H_GESTURE_ROW => "gestures.row.",
                 H_BUTTON_GROUP => "buttons.group.", H_BUTTON_ROW => "buttons.row.",
                 H_BUTTONS_DONE => "done", H_BUTTONS_RESET => "buttons.reset",
-                H_PAPER => "paper.", H_PAPER_CUSTOM => "paper.custom", H_PAPER_MORE => "paper.more", H_NEW_RENAME => "new.rename",
+                H_PAPER => "paper.", H_PAPER_CUSTOM => "paper.custom", H_PAPER_MORE => "paper.more", H_NEW_RENAME => "new.rename", H_NEW_FILE => "new.file",
                 H_EXIT_YES => "exit.yes", H_EXIT_NO => "exit.no",
                 H_MERGE_INTO => "merge.into", H_MERGE_BOTH => "merge.both",
                 H_BACK => "back", H_ABOUT => "about", H_ABOUT_CLOSE => "about.close",
@@ -7409,6 +7582,8 @@ mod tests {
 pub fn library_control_point(a:&mut App,name:&str)->Option<(f32,f32)> {
     if name.starts_with("music.") {return musicbuild_control_point(&a.lib.as_deref()?.mb,name);}
     if name.starts_with("ui_has.") {return None;}
+    // The file picker: files.back, files.row.N, files.more.N, files.item.NAME, files.prev, files.next, files.card.*
+    if let Some(n)=name.strip_prefix("files.") {return a.lib.as_deref()?.files.point(n);}
     // The Display sheet's controls while it is open ("display.done", "display.fit").
     if let Some(n)=name.strip_prefix("display.") {return dispmenu_control_point(&a.lib.as_deref()?.dm,n);}
     // The Graph opened from the Library: its controls (map.back, map.view, ...) and its notebooks' browser's

@@ -7,6 +7,7 @@
 //! logged here, only notebook ids and counts.
 
 use crate::prelude::*;
+use crate::fsview::*;
 use std::cell::RefCell;
 use std::io::Read;
 use std::os::unix::fs::MetadataExt;
@@ -177,6 +178,9 @@ fn copy_name<const N: usize>(dst: &mut FixedStr<N>, src: &str) {
 
 // A whole picture file of at most max bytes, or None (missing, unreadable, or bigger: errno EFBIG).
 fn read_source(path: &str, max: usize) -> Option<Vec<u8>> {
+    if let Some(r) = pick_read(path, max) {
+        return r;
+    }
     bgimage_read(path, max)
 }
 
@@ -195,6 +199,15 @@ fn read_head(path: &str, max: usize) -> Option<Vec<u8>> {
 // thumbnail) anywhere in the file, read whole for that. 0 with its size, or -1 and why.
 fn check_file(path: &str, max: usize, w: &mut i32, h: &mut i32, why: &mut &'static str) -> i32 {
     *why = "the file does not read";
+    if let Some(r) = pick_read(path, max.saturating_add(1)) {
+        // (a picture picked in place: read through the walk, whole, then checked as a file's head is)
+        let Some(all) = r else { return -1 };
+        if all.len() > max {
+            *why = "too big a file";
+            return -1;
+        }
+        return bgimage_check(&all, all.len(), w, h, why);
+    }
     let Ok(st) = std::fs::metadata(path) else { return -1 };
     if !st.is_file() {
         return -1;
@@ -1479,6 +1492,11 @@ pub fn import_finished(ok: bool, pages: &mut i32) -> i32 {
 // Moves a folder that became notebook id to import/done/<Name>-<time>; one that cannot move is
 // marked done in place, so no later start imports it again.
 fn finish_source(src: &str, id: &str) {
+    if pick_active() {
+        // a folder picked in place stays where it is (its mark goes: the notebook is made)
+        crate::pdfimport::mark_drop(src);
+        return;
+    }
     let (mut import, mut done, mut to) = (String::new(), String::new(), String::new());
     root_path("import", &mut import, 600);
     root_path("import/done", &mut done, 700);
@@ -1658,8 +1676,13 @@ fn build_notebook(id: &str, src: &str, final_: &str, names: &[String]) -> i32 {
         let mut all = Vec::new();
         store_list(&mut all);
         let mut cut = FixedStr::<STORE_NAME_LEN>::new();
-        copy_name(&mut cut, name);
+        let (given_name, given_folder) = pick_given();
+        copy_name(&mut cut, if given_name.is_empty() { name } else { &given_name });
         nb.name.set_cut(&crate::pdfimport::unique_import_name(cut.as_str(), &all));
+        if !given_folder.is_empty() && store_folder_valid(&given_folder) {
+            store_add_folder(&given_folder);
+            nb.folder.set_cut(&given_folder);
+        }
         nb.paper = PAPER_BLANK;
         nb.created = wall_time();
         nb.modified = nb.created;
@@ -1743,13 +1766,200 @@ pub fn bg_import_folder(path: &str, dpi: f32) -> i32 {
     // (the import lock is the UI's: it holds it while any import is queued or running, and no job opens it or
     // waits for it, so a lock held elsewhere can never stall the queue behind it: pdfimport.rs)
     let cap = cap_memory();
-    let rc = import_folder(path);
+    // (a path that is not absolute is a folder picked in place: a StoragePath, read through fsview)
+    let rc = if path.starts_with('/') { import_folder(path) } else { import_pick(path) };
     uncap_memory(&cap);
     if rc == IMPORT_DONE {
         0
     } else {
         -1
     }
+}
+
+// ---- a folder of pictures picked in place (lane L8) ----
+//
+// The picker's Import pictures as notebook (browser.rs): the folder is read where it is, never moved and never
+// written to; its mark lives in import/.marks/<hash> (the PDFs' marks), and goes when the notebook is made. The
+// folder is walked by fsview (no link anywhere, one device, never Grimoire's own folders by identity) and each
+// picture is opened O_NOFOLLOW through the same walk, so a planted link is never followed. The job's path is the
+// folder's StoragePath (no leading "/": import_folder's are absolute).
+
+struct PickCtx {
+    st: FsStorage,
+    rel: String,
+    name: String,
+    folder: String,
+}
+
+thread_local! {
+    static PICK: RefCell<Option<PickCtx>> = const { RefCell::new(None) };
+}
+
+fn pick_active() -> bool {
+    PICK.with(|p| p.borrow().is_some())
+}
+
+/// The name and Library folder a pick was given ("" for the folder's name, and the top).
+fn pick_given() -> (String, String) {
+    PICK.with(|p| p.borrow().as_ref().map_or((String::new(), String::new()), |c| (c.name.clone(), c.folder.clone())))
+}
+
+/// A picture of the folder picked in place, read through the walk: None when no pick is active or the path is
+/// not in its folder (then a path is read as a path); Some(None) when it could not be read.
+fn pick_read(path: &str, max: usize) -> Option<Option<Vec<u8>>> {
+    PICK.with(|p| {
+        let p = p.borrow();
+        let c = p.as_ref()?;
+        let name = path.strip_prefix(c.rel.as_str())?.strip_prefix('/')?;
+        let sp = StoragePath::new(c.rel.as_bytes())?.join(name.as_bytes())?;
+        let fd = match c.st.open_file(&sp, true) {
+            Ok(fd) => fd,
+            Err(_) => return Some(None),
+        };
+        let mut f = std::fs::File::from(fd);
+        let mut buf: Vec<u8> = Vec::new();
+        if buf.try_reserve_exact(max.min(64 << 20)).is_err() {
+            return Some(None);
+        }
+        let _ = f.by_ref().take(max as u64).read_to_end(&mut buf);
+        Some(Some(buf))
+    })
+}
+
+/// The picture files of a folder picked in place, in natural order, at most `max`: its regular files by the
+/// walk (links, folders and anything else are left out, as are names that are not UTF-8).
+fn pick_names(st: &FsStorage, sp: &StoragePath, max: usize) -> Option<Vec<String>> {
+    let mut l = FsListing::start(st, sp, true).ok()?;
+    while !l.step(FS_SLICE_MS * 5) {}
+    let n = l.entries.len();
+    l.stat(0..n, u32::MAX);
+    let mut names: Vec<String> = l
+        .entries
+        .iter()
+        .filter(|e| e.kind == FsKind::File)
+        .filter_map(|e| std::str::from_utf8(&e.name).ok())
+        .filter(|n| picture_name(n))
+        .map(|n| n.to_string())
+        .collect();
+    names.sort_by(|a, b| natural_cmp(a, b).cmp(&0));
+    names.truncate(max);
+    Some(names)
+}
+
+/// How many pictures the folder at `sp` holds (counted through the walk, at most STORE_MAX_PAGES + 1).
+pub fn pick_picture_count(st: &FsStorage, sp: &StoragePath) -> usize {
+    pick_names(st, sp, STORE_MAX_PAGES + 1).map_or(0, |n| n.len())
+}
+
+/// The import itself, in the child, under the lock: `rel` is the folder's StoragePath. A failed one leaves no
+/// notebook, and the folder as it was.
+fn import_pick(rel: &str) -> i32 {
+    let (Some(root), Some(sp)) = (crate::pdfimport::storage_root(), StoragePath::new(rel.as_bytes())) else {
+        return IMPORT_RETRY;
+    };
+    let Ok(st) = FsStorage::open(&root, &store_root()) else {
+        return IMPORT_RETRY;
+    };
+    let mark = crate::pdfimport::mark_read(rel);
+    let (mut id, given_name, given_folder) = match &mark {
+        Some(m) => (m.id.clone(), m.name.clone(), m.folder.clone()),
+        None => (String::new(), String::new(), String::new()),
+    };
+    if id.is_empty() {
+        store_make_id(&mut id);
+    }
+    let mut final_ = String::new();
+    if store_notebook_dir(&id, &mut final_, 600) != 0 {
+        return IMPORT_RETRY;
+    }
+    if is_dir(&final_) {
+        qlog!("import: %s: made by an earlier run", &id);
+        crate::pdfimport::mark_drop(rel);
+        return IMPORT_DONE;
+    }
+    let Some(names) = pick_names(&st, &sp, STORE_MAX_PAGES + 1) else {
+        // (refused, a link, gone: nothing is named in the log)
+        qlog!("import: %s: the picked folder does not open", &id);
+        crate::pdfimport::mark_drop(rel);
+        return IMPORT_REFUSED;
+    };
+    PICK.with(|p| *p.borrow_mut() = Some(PickCtx { st, rel: rel.to_string(), name: given_name, folder: given_folder }));
+    let mut rc = check_pages(&id, rel, &names);
+    if rc == 0 {
+        rc = build_notebook(&id, rel, &final_, &names);
+    }
+    PICK.with(|p| *p.borrow_mut() = None);
+    if rc != IMPORT_DONE {
+        crate::pdfimport::mark_drop(rel);
+    }
+    rc
+}
+
+/// What the picker's Import pictures as notebook says (like pdfimport::Queued).
+pub fn import_pick_queue(path: &StoragePath, name: Option<&str>, folder: Option<&str>, dpi: f32) -> crate::pdfimport::Queued {
+    use crate::pdfimport::*;
+    let Ok(src) = String::from_utf8(path.as_bytes().to_vec()) else { return Queued::Refused("name") };
+    if with(|s| s.pending.len()) >= IMPORT_QUEUE_MAX {
+        return Queued::Refused("busy");
+    }
+    // Grimoire's own folders are refused here by name (quick), and by identity when the job walks to them
+    let comps: Vec<&[u8]> = path.components().collect();
+    if let Some(g) = grimoire_rel() {
+        let gc: Vec<&str> = g.split('/').collect();
+        if comps.len() > gc.len() && gc.iter().zip(&comps).all(|(a, b)| a.as_bytes().eq_ignore_ascii_case(b)) {
+            let n = comps[gc.len()];
+            if [&b"notebooks"[..], b"PDFs", b"trash"].iter().any(|r| n.eq_ignore_ascii_case(r)) {
+                return Queued::Refused("own");
+            }
+        }
+    }
+    if let Some(m) = mark_read(&src) {
+        if m.state == MarkState::Making && !m.id.is_empty() && with(|s| s.pending.iter().any(|p| p.as_str() == m.id)) {
+            return Queued::AlreadyRunning;
+        }
+    }
+    let busy = match lock_take() {
+        Lock::Busy(_) => true,
+        Lock::Fresh => {
+            import_leftovers(true, &mut Vec::new());
+            false
+        }
+        Lock::Held => false,
+    };
+    let mark = |id: &str, state: MarkState| Mark {
+        state,
+        id: id.to_string(),
+        src: src.clone(),
+        pick: true,
+        name: name.unwrap_or("").to_string(),
+        folder: folder.unwrap_or("").to_string(),
+        page: 0,
+        pages: 0,
+        at: wall_time(),
+    };
+    if busy {
+        mark_write_public(&mark("", MarkState::Waiting));
+        return Queued::Waiting;
+    }
+    let mut id = String::new();
+    fresh_import_id(&mut id);
+    if !mark_write_public(&mark(&id, MarkState::Making)) {
+        lock_release_if_idle();
+        return Queued::Refused("mark");
+    }
+    bg_queue(BgKind::ImportFolder, Some(&id), Some(&src), dpi, true);
+    with(|s| s.pending.push(FixedStr::from_str(&id)));
+    Queued::Started(id)
+}
+
+/// What a row of the Import place says of the folder at `src` (its absolute path): Failed after the tries, else
+/// Waiting (a folder is taken at the next scan).
+pub fn folder_failed(src: &str) -> bool {
+    let mut names = Vec::new();
+    if list_names(src, true, STORE_MAX_PAGES + 1, &mut names) != 0 || names.is_empty() {
+        return false;
+    }
+    attempts_waiting(src, pictures_hash(src, &names), &attempts_snapshot(), IMPORT_TRIES)
 }
 
 // ---- what pdfimport.rs shares ----

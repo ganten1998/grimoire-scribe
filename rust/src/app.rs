@@ -1293,7 +1293,7 @@ fn notice_pick(a: &App) -> Option<NoticeKey> {
             && match k {
                 NoticeKey::FontCheck | NoticeKey::Loading | NoticeKey::Previews => a.scr == *asker,
                 NoticeKey::Book => true,
-                NoticeKey::Import => a.scr == ScreenId::Library,
+                NoticeKey::Import => a.scr == ScreenId::Library && !crate::library::library_import_place_up(a),
             }
     })
 }
@@ -2522,6 +2522,10 @@ pub fn app_probe(a: &mut App, key: &str, out: &mut String, cap: usize) -> i32 {
     }
     if let Some(k) = key.strip_prefix("library.") {
         return library_probe(a, k, out, cap);
+    }
+    // The file picker (the Library's mode, browser.rs): files.*
+    if key.starts_with("files.") {
+        return library_probe(a, key, out, cap);
     }
     if let Some(k) = key.strip_prefix("penset.") {
         return pensettings_probe(a, k, out, cap);

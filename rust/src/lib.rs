@@ -94,6 +94,7 @@ pub mod tplsheet;
 pub mod about; // the About sheet, What's new (Rust only, 2.0.0)
 pub mod app;
 pub mod bat; // header only
+pub mod browser; // the file picker: Library > New > From a file... (2.1.0-beta.2, lane L8)
 pub mod calibrate;
 pub mod dispmenu;
 pub mod editor;

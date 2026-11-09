@@ -95,6 +95,10 @@ impl StoragePath {
     pub fn as_bytes(&self) -> &[u8] {
         &self.0
     }
+    /// As text for a screen or a job (a name that is not UTF-8 is shown with U+FFFD).
+    pub fn to_string_lossy(&self) -> String {
+        String::from_utf8_lossy(&self.0).into_owned()
+    }
     pub fn is_root(&self) -> bool {
         self.0.is_empty()
     }
@@ -309,6 +313,11 @@ impl FsStorage {
         })
     }
 
+    /// Grimoire's own folder relative to the root, when it is inside it.
+    pub fn grimoire_rel(&self) -> Option<&StoragePath> {
+        self.grimoire.as_ref()
+    }
+
     /// The zone of `p` (a pick also refuses Grimoire's PDFs and trash).
     pub fn zone(&self, p: &StoragePath, pick: bool) -> FsZone {
         zone_of(self.grimoire.as_ref(), p, pick)
@@ -379,6 +388,13 @@ impl FsStorage {
         stat_at(dir.as_raw_fd(), &c)
     }
 
+    /// The size of the storage in bytes, None when it cannot tell.
+    pub fn total_bytes(&self) -> Option<u64> {
+        // SAFETY: sv is written by fstatvfs before it is read.
+        let mut sv: libc::statvfs = unsafe { std::mem::zeroed() };
+        (unsafe { libc::fstatvfs(self.root.as_raw_fd(), &mut sv) } == 0).then(|| sv.f_blocks as u64 * sv.f_frsize as u64)
+    }
+
     /// The bytes free on the storage for this user (statvfs's f_bavail), None when it cannot tell.
     pub fn free_bytes(&self) -> Option<u64> {
         // SAFETY: sv is written by fstatvfs before it is read.
@@ -412,8 +428,10 @@ pub struct FsListing {
     dir: *mut libc::DIR,
     pub path: StoragePath,
     pub entries: Vec<FsEntry>,
-    /// entries left out: the deny-list's, and links
+    /// entries left out: the deny-list's, links, and names that would make a path of 600 bytes or more
     pub hidden: usize,
+    /// of those, the names whose path would be too long ("Path too long.")
+    pub too_long: usize,
     /// stopped at FS_LIST_MAX
     pub capped: bool,
     pub done: bool,
@@ -449,6 +467,7 @@ impl FsListing {
             path: p.clone(),
             entries: Vec::new(),
             hidden: 0,
+            too_long: 0,
             capped: false,
             done: false,
             grimoire: st.grimoire.clone(),
@@ -501,7 +520,11 @@ impl FsListing {
             libc::DT_UNKNOWN => FsKind::Unknown,
             _ => FsKind::Other,
         };
-        let refused = self.path.join(&name).is_none_or(|p| zone_of(self.grimoire.as_ref(), &p, self.pick) == FsZone::Refused);
+        let joined = self.path.join(&name);
+        if joined.is_none() {
+            self.too_long += 1;
+        }
+        let refused = joined.is_none_or(|p| zone_of(self.grimoire.as_ref(), &p, self.pick) == FsZone::Refused);
         if kind == FsKind::Link || refused {
             self.hidden += 1;
             return;
