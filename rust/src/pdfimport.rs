@@ -364,6 +364,16 @@ fn mark_read(src: &str) -> Option<Mark> {
     mark_parse(&t)
 }
 
+/// (the tests write a mark the way the queue does)
+pub fn mark_write_public(m: &Mark) -> bool {
+    mark_write(m)
+}
+
+/// Whether a worker in this process's progress record reported a failed sandbox step.
+pub fn sandbox_broken_in_progress() -> bool {
+    progress().broken.load(Ordering::Relaxed) != 0
+}
+
 fn mark_write(m: &Mark) -> bool {
     let dir = root_path(MARKS_DIR);
     if mkdir_p(&dir) != 0 {

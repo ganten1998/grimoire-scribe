@@ -32,6 +32,16 @@ use crate::sandbox::*;
 /// A page's pixels are at most this many on a side (what bgimage takes of a page picture).
 pub const PAGE_PX_MAX: i32 = 6000;
 
+/// How long a worker may go without its next record before it is killed (3.7, Timers): the table's number, or
+/// (headless and test builds) GRIMOIRE_PDF_WATCHDOG_MS.
+pub fn page_watchdog_ms() -> u64 {
+    #[cfg(not(feature = "kindle"))]
+    if let Some(v) = std::env::var("GRIMOIRE_PDF_WATCHDOG_MS").ok().and_then(|v| v.parse::<u64>().ok()).filter(|&v| v > 0) {
+        return v;
+    }
+    s1::PAGE_WATCHDOG_MS as u64
+}
+
 /// The records of one job, besides pixels.
 pub const RECORDS_MAX_BYTES: usize = 4 << 20;
 
@@ -549,7 +559,7 @@ impl Session {
         }
         let mut pages = None;
         loop {
-            let deadline = mono_ms() + s1::PAGE_WATCHDOG_MS as u64;
+            let deadline = mono_ms() + page_watchdog_ms();
             let line = match self.w.read_line(4096, deadline) {
                 Ok(l) => l,
                 Err(_) => {
@@ -603,7 +613,7 @@ impl Session {
         px.resize(wu * hu, 255);
         let mut next_y = 0usize;
         loop {
-            let deadline = mono_ms() + s1::PAGE_WATCHDOG_MS as u64;
+            let deadline = mono_ms() + page_watchdog_ms();
             let line = match self.w.read_line(512, deadline) {
                 Ok(l) => l,
                 Err(ReadErr::Timeout) => {

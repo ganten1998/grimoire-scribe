@@ -173,7 +173,9 @@ SIM_HOOKS := GRIMOIRE_WIFI_SCRIPT GRIMOIRE_HOST GRIMOIRE_PASSCODE GRIMOIRE_SIM_A
              GRIMOIRE_SIM_STATS GRIMOIRE_SIM_SIZE GRIMOIRE_CHECK_FIT GRIMOIRE_LANG GRIMOIRE_L10N_DIR GRIMOIRE_ANNOTATE \
              GRIMOIRE_SLEEP_MINUTE_MS GRIMOIRE_SIM_RAWPEN GRIMOIRE_SIM_RAWPEN_MAIN GRIMOIRE_SIM_STALL_MS \
              GRIMOIRE_LIVE_PEN_SOURCE GRIMOIRE_SIM_MAP_NOMEM GRIMOIRE_KEEP_RENDER_MS GRIMOIRE_SIM_LATE_MS GRIMOIRE_SIM_CLOCK \
-             GRIMOIRE_SIM_DENSE_DRAW_MS GRIMOIRE_SIM_CORES GRIMOIRE_SIM_BACKLINKS_STEP_MS GRIMOIRE_CACHE_WINDOW_MS GRIMOIRE_STORAGE
+             GRIMOIRE_SIM_DENSE_DRAW_MS GRIMOIRE_SIM_CORES GRIMOIRE_SIM_BACKLINKS_STEP_MS GRIMOIRE_CACHE_WINDOW_MS GRIMOIRE_STORAGE \
+             GRIMOIRE_IMPORT_STABLE GRIMOIRE_PDF_SLICE_PAGES GRIMOIRE_PDF_BANDS GRIMOIRE_PDF_NO_MAP GRIMOIRE_PDF_FREE_BYTES GRIMOIRE_PDF_WATCHDOG_MS \
+             GRIMOIRE_PDF_TEST_CRASH_PAGE GRIMOIRE_PDF_TEST_HANG_PAGE GRIMOIRE_PDF_TEST_ALLOC_PAGE GRIMOIRE_WORK_FAIL_STEP GRIMOIRE_WORK_EXE GRIMOIRE_SANDBOX
 # The scenarios tap by coordinates and check English text: they run in English whatever the
 # caller's LANG says (GRIMOIRE_LANG ranks first), unless a scenario's "# env:" line sets another.
 SCEN_LANG := GRIMOIRE_LANG=en
@@ -390,6 +392,13 @@ test-host:
 test-sim:
 	@mkdir -p $(BUILD)/test/tmp
 	$(call RCARGO,GRIMOIRE_TEST_TMP="$(abspath $(BUILD))/test/tmp") test --features sim -- --test-threads=1
+
+# The PDFs the scenarios copy (tests/fixtures/pdf/), made by the fixture writer in rust/tests/pdffix, never
+# edited by hand; rust/tests/test_pdf_fixtures.rs checks the committed bytes are what it makes now.
+.PHONY: pdf-fixtures
+pdf-fixtures:
+	@mkdir -p $(abspath tests/fixtures/pdf)
+	$(call RCARGO,GRIMOIRE_WRITE_PDF_FIXTURES="$(abspath tests/fixtures/pdf)") test --test test_pdf_fixtures
 
 # The C tree's unit tests (core + ui only; no platform).
 TESTS := $(patsubst tests/%.c,$(CBUILD)/test/%,$(wildcard tests/test_*.c))

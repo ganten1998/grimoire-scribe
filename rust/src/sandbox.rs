@@ -350,13 +350,16 @@ pub struct WorkArgs {
     pub writer_pid: i32,
     pub limits: Limits,
     pub jail: Option<String>,
+    /// a step to fail on purpose (headless and test builds only)
+    pub fail_step: Option<String>,
 }
 
 pub fn parse_work_args(args: &[String]) -> Option<WorkArgs> {
     // args: grimoire --work kind pid as cpu mode file_len jail
     let i = args.iter().position(|a| a == "--work")?;
     let r = &args[i + 1..];
-    if r.len() != 7 {
+    // (an eighth word, fail=<step>, is the headless and test builds' injected failure: GRIMOIRE_WORK_FAIL_STEP)
+    if r.len() != 7 && !(r.len() == 8 && r[7].starts_with("fail=")) {
         return None;
     }
     Some(WorkArgs {
@@ -373,6 +376,7 @@ pub fn parse_work_args(args: &[String]) -> Option<WorkArgs> {
             file_len: r[5].parse().ok()?,
         },
         jail: (r[6] != "-").then(|| r[6].clone()),
+        fail_step: r.get(7).and_then(|w| w.strip_prefix("fail=")).map(str::to_string),
     })
 }
 
@@ -617,15 +621,31 @@ fn soft_limits(l: &Limits) {
     }
 }
 
-/// A step that fails on purpose (the headless and test builds only: GRIMOIRE_WORK_FAIL_STEP=<name>), so a
-/// scenario sees what a refusing sandbox does without a Kindle.
-#[cfg(not(feature = "kindle"))]
-fn injected_failure() -> Option<String> {
-    std::env::var("GRIMOIRE_WORK_FAIL_STEP").ok().filter(|s| !s.is_empty())
+/// A step that fails on purpose (the headless and test builds only: the writer reads GRIMOIRE_WORK_FAIL_STEP=<name>
+/// and tells the worker through its command line, whose environment is empty), so a scenario sees what a refusing
+/// sandbox does without a Kindle.
+fn injected_failure(a: &WorkArgs) -> Option<String> {
+    #[cfg(not(feature = "kindle"))]
+    {
+        a.fail_step.clone().filter(|s| !s.is_empty())
+    }
+    #[cfg(feature = "kindle")]
+    {
+        let _ = a;
+        None
+    }
 }
-#[cfg(feature = "kindle")]
-fn injected_failure() -> Option<String> {
-    None
+
+/// What the writer adds to the worker's command line (never on the Kindle).
+fn injected_arg() -> Option<String> {
+    #[cfg(not(feature = "kindle"))]
+    {
+        std::env::var("GRIMOIRE_WORK_FAIL_STEP").ok().filter(|s| !s.is_empty()).map(|s| format!("fail={s}"))
+    }
+    #[cfg(feature = "kindle")]
+    {
+        None
+    }
 }
 
 fn out_line(s: &str) {
@@ -645,8 +665,8 @@ pub fn work_main(args: &[String]) -> i32 {
     let _ = std::time::Instant::now();
     crate::pdfwork::warm_up();
     out_line(&format!("B {}\n", build_id()));
-    let required = sandbox_required() || injected_failure().is_some();
-    let fail = injected_failure();
+    let fail = injected_failure(&a);
+    let required = sandbox_required() || fail.is_some();
     let mut steps = standard_steps(&a);
     if let Some(name) = fail.as_deref() {
         // an injected failure takes the place of the named step (or comes first in a build with none)
@@ -771,7 +791,7 @@ impl Worker {
             return Err(SpawnErr::Start);
         }
         let exe = work_exe();
-        let argv_s = [
+        let mut argv_s = vec![
             "grimoire".to_string(),
             "--work".to_string(),
             kind.name().to_string(),
@@ -783,6 +803,7 @@ impl Worker {
             limits.file_len.to_string(),
             jail.clone().unwrap_or_else(|| "-".to_string()),
         ];
+        argv_s.extend(injected_arg());
         let (Ok(cexe), Ok(cargs)) = (CString::new(exe), argv_s.iter().map(|s| CString::new(s.as_str())).collect::<Result<Vec<_>, _>>()) else {
             return Err(SpawnErr::Start);
         };
@@ -1138,6 +1159,10 @@ mod tests {
         assert_eq!(a.writer_pid, 123);
         assert_eq!(a.limits, Limits { as_bytes: 200_000_000, cpu_secs: 60, mapped: true, file_len: 4096 });
         assert_eq!(a.jail.as_deref(), Some("/tmp/j"));
+        assert_eq!(a.fail_step, None);
+        let mut with_fail = v.clone();
+        with_fail.push("fail=chroot".into());
+        assert_eq!(parse_work_args(&with_fail).unwrap().fail_step.as_deref(), Some("chroot"));
         assert!(parse_work_args(&v[..8]).is_none());
         let mut bad = v.clone();
         bad[2] = "font".into();
