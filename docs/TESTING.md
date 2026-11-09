@@ -1900,6 +1900,13 @@ On the Scribe:
     middle or an end one as expected; a pen whose width you had changed is exactly as you left it.
 
 
+## 2.1.0-beta.1
+
+The first 2.1 beta: everything in CHANGELOG's 2.1.0-beta.1 section. Automated: the full gate on the release
+commit with the pinned toolchain. On the owner's Scribe: not yet checked; the sections above list each
+feature's device checks (Read all fitting each note, Classic fonts, the kept drawings and dense-page revisits,
+L0, the merge dialog, quick sizes). The What's new note is a draft the owner vets on the device.
+
 ## 2.1.0-beta.2, L4 (document links)
 
 On the Scribe, with the user's planner (or one like it) opened through KOReader's Open this book in Grimoire,
@@ -1925,10 +1932,3 @@ holds, so it takes a moment longer):
 7. **A 2.0 build** (go back with the update file): the notebook opens, your own links work and are editable,
    the tabs are not there; updating again brings them back.
 8. **The notebook PDF** (Notebook PDFs in KOReader): the tabs are links in the PDF.
-
-## 2.1.0-beta.1
-
-The first 2.1 beta: everything in CHANGELOG's 2.1.0-beta.1 section. Automated: the full gate on the release
-commit with the pinned toolchain. On the owner's Scribe: not yet checked; the sections above list each
-feature's device checks (Read all fitting each note, Classic fonts, the kept drawings and dense-page revisits,
-L0, the merge dialog, quick sizes). The What's new note is a draft the owner vets on the device.
