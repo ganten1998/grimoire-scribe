@@ -1964,3 +1964,26 @@ replace the placeholders in `sandbox::s1` with one commit):
 8. Does the private mapping of a file on `/mnt/us` work (`pdf: ... the device refuses the private mapping` would
    say not), and what does a 100 MB PDF do to the memory?
 
+
+## 2.1.0-beta.2, L7 (pictures in the sandbox)
+
+Automated: `rust/tests/test_picwork.rs` (real workers: the worker's pixels equal the writer's decode byte for byte,
+a hostile corpus of truncated, enormous and decompression-bomb pictures is refused and the worker lives on, a
+worker that crashes or stalls on a picture fails that picture alone, 70 pictures cross slices, a template whose
+worker dies is marked bad), `test_picwork_fallback.rs` (a forced sandbox failure: pictures decode in the writer
+and the log says so once), and the template, photo and import tests of `test_templates.rs`, unchanged.
+**Not run anywhere yet: a picture in the sandbox's real steps** (`pictures_decode_in_the_real_sandbox` in
+`test_sandbox_linux.rs`, the CI job `sandbox`) and everything on a Scribe. The owner's checks:
+
+1. Copy a PNG and a JPEG into `grimoire/templates` and a photo into `grimoire/photos` over USB, open New notebook
+   > the template list and a page's paper sheet: they appear with their previews, and one of each still goes onto a
+   page (a template still imports; a photo still comes upright).
+2. grimoire.log has `work: sandboxed (uid 62001, ...)` once a session, and no `pictures decode in the writer` and
+   no `made call N, which the sandbox does not allow`. If either shows, send the log (the call is added to the
+   allow-list; the fallback line means the sandbox refused a step).
+3. Copy a folder of 20 phone photos (12 MP) into `grimoire/import/<Folder>`: it imports as before; time it from the
+   log (`import: ... N of M pages`) against 2.0.0, and watch `MemAvailable`: the slices are 32 pictures a worker.
+4. Put a broken `.png` (cut a real one in half) in `grimoire/templates`: it is listed as unusable as in 2.0, and
+   Grimoire stays quick; a folder with it among good pictures is refused whole, as in 2.0.
+5. Does a 40 MP JPEG (the cap) still decode on the Scribe within the worker's limits (`PICTURE_AS_MARGIN`,
+   `PICTURE_WATCHDOG_MS` are placeholders)? A refusal says why in the log.

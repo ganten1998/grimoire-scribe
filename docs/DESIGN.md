@@ -1909,6 +1909,22 @@ fixed grammar plus pixel bands, at most 4 MiB a job besides pixels, parsed stric
 number the device spike (S1) sets is in the one table `sandbox::s1`, marked "set by S1". The notebook, its
 slices, marks and colour rule are in FORMAT.md, "Imports: PDFs".
 
+Pictures (lane L7) go through the same worker as a second kind (`grimoire --work pic ...`, `picwork.rs`): the
+templates, photos and picture-folder pages come from outside Grimoire, so the writer reads their bytes (it hashes
+them, never parses them) and sends them down fd 5 one picture at a time (`C` a header check, `D` a decode, each a
+line then the bytes). The worker runs the very code the writer ran before (`bgimage.rs`: the header check, the
+decode within the 256 MiB budget, the EXIF turn for a photo, the fit onto the notebook's page) and answers with
+the source's size and the page picture, which the writer checks (the page's size, 1 or 3 channels, the source's
+bounds) before it writes a file. One worker serves up to 32 pictures (`s1::PICTURE_SLICE`), so a 2000-picture
+folder costs about 63 execs. A worker that dies or stalls on a picture ends that picture alone: a template or photo
+is marked `.bad`, a folder import is refused whole; a worker killed by the seccomp filter is the same (never a
+reason to decode in the writer, which would hand a compromised worker's picture to a root process). When no
+worker can be had at all (a sandbox step failed before a byte was read, the exec did not start, the handshake
+failed) pictures decode in the writer, as in 2.0, logged once (D21); `sandbox::session_broken()` is the flag the
+PDF import also reads. KOReader's own page PNGs and Grimoire's own `bg/` pictures are still decoded by the UI, as
+they come from KOReader's encoder and from Grimoire. The UI's check of a small template file with no preview yet
+(`install_picture`) goes through the worker too.
+
 ## Shared building blocks (2.1, lane L0)
 
 The 2.1 plan builds a few pieces once, for every later lane to reuse (no second one grows beside them).

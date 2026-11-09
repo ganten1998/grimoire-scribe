@@ -175,3 +175,30 @@ fn the_filter_is_the_one_the_tests_evaluate() {
     // tests evaluate that very function, so here it is enough that the list is what they evaluated
     assert_eq!(allow_list(), allow_list_for(this_arch()));
 }
+
+// Pictures (lane L7): decoded in the real sandbox, a trap ends the worker and refuses the picture (never a
+// fallback to the writer's own decode), and a forced failed step falls back and says so.
+#[test]
+fn pictures_decode_in_the_real_sandbox() {
+    use grimoire::picwork::*;
+    use grimoire::prelude::*;
+    if !root() {
+        return;
+    }
+    let (_g, _f, _len) = setup();
+    std::env::remove_var("GRIMOIRE_PIC_TEST_TRAP");
+    let px: Vec<u8> = (0..80 * 60).map(|i| (i % 250) as u8).collect();
+    let src = BgPicture { px, w: 80, h: 60, ch: 1 };
+    let path = std::env::temp_dir().join(format!("grimoire-sandbox-{}/p.png", std::process::id()));
+    assert_eq!(bgimage_write_png(path.to_str().unwrap(), &src), 0);
+    let bytes = std::fs::read(&path).unwrap();
+    let mut pool = PicPool::new();
+    assert!(matches!(pool.decode(&bytes, false, 300, 400), PicOut::Pic { src_w: 80, src_h: 60, .. }));
+    assert!(!in_fallback(), "the sandbox held");
+    std::env::set_var("GRIMOIRE_PIC_TEST_TRAP", "2");
+    let mut pool = PicPool::new();
+    assert!(matches!(pool.decode(&bytes, false, 300, 400), PicOut::Pic { .. }));
+    assert!(matches!(pool.decode(&bytes, false, 300, 400), PicOut::Dead(_)));
+    std::env::remove_var("GRIMOIRE_PIC_TEST_TRAP");
+    assert!(!in_fallback());
+}

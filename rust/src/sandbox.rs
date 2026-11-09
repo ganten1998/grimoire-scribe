@@ -57,6 +57,18 @@ pub mod s1 {
     pub const AS_MARGIN_WHOLE: u64 = 160 << 20;
     /// ... and band mode. (set by S1)
     pub const AS_MARGIN_BAND: u64 = 96 << 20;
+    /// Pictures (lane L7): a worker serves at most this many pictures, then the next one gets a fresh exec (a
+    /// 2000-picture folder costs a few dozen execs). (set by S1)
+    pub const PICTURE_SLICE: usize = 32;
+    /// RLIMIT_CPU of a picture worker, a slice's: seconds of CPU. (set by S1)
+    pub const PICTURE_CPU_SECS: u64 = 300;
+    /// A picture that sends no record for this long is killed (CLOCK_MONOTONIC, which stops in sleep). (set
+    /// by S1)
+    pub const PICTURE_WATCHDOG_MS: u32 = 60_000;
+    /// A picture worker's address space beyond its image: the decode budget (256 MiB, the file's own bytes
+    /// among them), the copy of the decoded picture that is kept (up to 120 MiB), the fitted page and
+    /// slack. Address space, not memory. (set by S1)
+    pub const PICTURE_AS_MARGIN: u64 = (256 + 128 + 32) << 20;
     /// D12's trigger: if the median planner page takes longer than this whole on the Scribe, a PDFium helper is
     /// weighed before this goes on. Nothing in the code reads it. (set by S1)
     pub const D12_TRIGGER_PAGE_MS: u32 = 2_000;
@@ -86,16 +98,24 @@ pub fn build_id() -> String {
 pub enum WorkKind {
     /// a PDF: probe, then pages to gray or RGB pixels
     Pdf,
+    /// pictures: templates, photos and picture-folder imports (picwork.rs, lane L7): the bytes come down fd 5
+    /// one picture after another, validated pixels go back on fd 4
+    Picture,
 }
 
 impl WorkKind {
     pub fn name(self) -> &'static str {
         match self {
             WorkKind::Pdf => "pdf",
+            WorkKind::Picture => "pic",
         }
     }
     pub fn parse(s: &str) -> Option<WorkKind> {
-        (s == "pdf").then_some(WorkKind::Pdf)
+        match s {
+            "pdf" => Some(WorkKind::Pdf),
+            "pic" => Some(WorkKind::Picture),
+            _ => None,
+        }
     }
 }
 
@@ -690,6 +710,7 @@ pub fn work_main(args: &[String]) -> i32 {
     // 10. parses on one thread, writes only records and pixels to fd 4
     let rc = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| match a.kind {
         WorkKind::Pdf => crate::pdfwork::worker_run(&a.limits),
+        WorkKind::Picture => crate::picwork::worker_run(&a.limits),
     }))
     .unwrap_or_else(|_| {
         out_line("E panic\n");
@@ -875,6 +896,49 @@ impl Worker {
                 return false;
             }
             off += n as usize;
+        }
+        true
+    }
+
+    /// Sends `b` (a picture's bytes, up to 64 MB) before `deadline_ms`. A worker that does not read (hung, or
+    /// gone) can never block the writer: each write follows a poll for room and is at most PIPE_BUF, which
+    /// then cannot block.
+    pub fn send_bytes(&mut self, b: &[u8], deadline_ms: u64) -> bool {
+        #[cfg(target_os = "linux")]
+        const CHUNK: usize = 4096;
+        #[cfg(not(target_os = "linux"))]
+        const CHUNK: usize = 512;
+        let mut off = 0;
+        while off < b.len() {
+            let left = deadline_ms.saturating_sub(mono_ms());
+            if left == 0 {
+                return false;
+            }
+            let mut pfd = libc::pollfd { fd: self.tx, events: libc::POLLOUT, revents: 0 };
+            // SAFETY: poll reads and writes the one pollfd we own.
+            let r = unsafe { libc::poll(&mut pfd, 1, left.min(1000) as libc::c_int) };
+            if r < 0 {
+                if std::io::Error::last_os_error().kind() == std::io::ErrorKind::Interrupted {
+                    continue;
+                }
+                return false;
+            }
+            if r == 0 {
+                continue;
+            }
+            if pfd.revents & (libc::POLLERR | libc::POLLHUP | libc::POLLNVAL) != 0 {
+                return false;
+            }
+            let n = (b.len() - off).min(CHUNK);
+            // SAFETY: write from a slice we own to the pipe's descriptor.
+            let w = unsafe { libc::write(self.tx, b[off..].as_ptr() as *const libc::c_void, n) };
+            if w < 0 && std::io::Error::last_os_error().kind() == std::io::ErrorKind::Interrupted {
+                continue;
+            }
+            if w <= 0 {
+                return false;
+            }
+            off += w as usize;
         }
         true
     }

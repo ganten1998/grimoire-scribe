@@ -6,6 +6,7 @@
 //! grimoire.log goes into public bug reports: the names of the owner's files and folders are never
 //! logged here, only notebook ids and counts.
 
+use crate::picwork::{PicOut, PicPool};
 use crate::prelude::*;
 use std::cell::RefCell;
 use std::io::Read;
@@ -193,7 +194,13 @@ fn read_head(path: &str, max: usize) -> Option<Vec<u8>> {
 // Whether the file at path, of at most max bytes, is a picture Grimoire takes (bgimage_check), from
 // its header: in its first 64 KB, or else (metadata before it: an ICC profile, a JPEG's
 // thumbnail) anywhere in the file, read whole for that. 0 with its size, or -1 and why.
+#[cfg(test)]
 fn check_file(path: &str, max: usize, w: &mut i32, h: &mut i32, why: &mut &'static str) -> i32 {
+    check_file_in(&mut PicPool::new(), path, max, w, h, why)
+}
+
+// check_file through a picture pool: the header is read by the sandboxed worker, not here (picwork.rs).
+fn check_file_in(pool: &mut PicPool, path: &str, max: usize, w: &mut i32, h: &mut i32, why: &mut &'static str) -> i32 {
     *why = "the file does not read";
     let Ok(st) = std::fs::metadata(path) else { return -1 };
     if !st.is_file() {
@@ -207,15 +214,31 @@ fn check_file(path: &str, max: usize, w: &mut i32, h: &mut i32, why: &mut &'stat
     let head = read_head(path, want);
     let more = head.as_ref().is_some_and(|h| h.len() == want);
     let mut rc = match &head {
-        Some(hd) => bgimage_check(hd, st.len() as usize, w, h, why),
+        Some(hd) => check_bytes(pool, hd, st.len() as usize, w, h, why),
         None => -1,
     };
     if rc != 0 && more {
         if let Some(all) = read_source(path, max) {
-            rc = bgimage_check(&all, all.len(), w, h, why);
+            rc = check_bytes(pool, &all, all.len(), w, h, why);
         }
     }
     rc
+}
+
+// bgimage_check, by the pool: 0 with the size, or -1 and why.
+fn check_bytes(pool: &mut PicPool, data: &[u8], file_len: usize, w: &mut i32, h: &mut i32, why: &mut &'static str) -> i32 {
+    match pool.check(data, file_len) {
+        PicOut::Info { w: pw, h: ph } => {
+            *w = pw;
+            *h = ph;
+            0
+        }
+        PicOut::Bad(m) | PicOut::Retry(m) | PicOut::Dead(m) => {
+            *why = m;
+            -1
+        }
+        PicOut::Pic { .. } => -1,
+    }
 }
 
 fn cpath(path: &str) -> Option<std::ffi::CString> {
@@ -587,6 +610,7 @@ fn make_previews(dir: &str) -> i32 {
         return -1;
     }
     let nn = names.len();
+    let mut pool = PicPool::new();
     let (mut pw, mut ph) = (0, 0);
     let (mut made, mut bad, mut later) = (0, 0, 0);
     store_page_size(&mut pw, &mut ph);
@@ -618,32 +642,40 @@ fn make_previews(dir: &str) -> i32 {
         } else {
             "the file does not read"
         };
-        let mut src = BgPicture::default();
-        let mut fit = BgPicture::default();
         let mut full = Canvas::default();
         let mut small = Canvas::default();
         let bytes: &[u8] = data.as_deref().unwrap_or(&[]);
-        let mut dec = if data.is_some() {
-            bgimage_decode(bytes, &mut src, &mut why)
+        // (the picture is decoded by the sandboxed worker, upright for a photo, fitted onto the page)
+        let out = if data.is_some() {
+            pool.decode(bytes, photo, pw, ph)
         } else if too_big {
-            -1
+            PicOut::Bad(why)
         } else {
-            -2
+            PicOut::Retry(why)
         };
-        if dec == 0 && photo && bgimage_orient(&mut src, bgimage_exif_orientation(bytes)) != 0 {
-            dec = -2;
+        let mut is_bad = false;
+        let mut src_size = (0, 0);
+        let mut fit = BgPicture::default();
+        match out {
+            PicOut::Pic { src_w, src_h, fit: f } => {
+                src_size = (src_w, src_h);
+                fit = f;
+            }
+            PicOut::Bad(m) | PicOut::Dead(m) => {
+                is_bad = true;
+                why = m;
+            }
+            PicOut::Retry(m) => why = m,
+            PicOut::Info { .. } => {}
         }
-        let ok = dec == 0
-            && bgimage_normalize(&src, pw, ph, &mut fit) == 0
-            && bgimage_luma(&fit, &mut full) == 0
-            && canvas_init(&mut small, pw / THUMB_DIV, ph / THUMB_DIV) == 0;
+        let ok = !fit.px.is_empty() && bgimage_luma(&fit, &mut full) == 0 && canvas_init(&mut small, pw / THUMB_DIV, ph / THUMB_DIV) == 0;
         if ok {
             canvas_downsample_keep_lines(&mut small, &full, 0.6);
-            let key = cformat!("%016llx %d %d\n", bgimage_content_hash(bytes), src.w, src.h);
+            let key = cformat!("%016llx %d %d\n", bgimage_content_hash(bytes), src_size.0, src_size.1);
             // (the key first: a preview has one)
             let wrote = write_quiet(&kp, &key) == 0 && store_write_pgm(&pv, &small) == 0;
             made += wrote as i32;
-        } else if dec == -1 {
+        } else if is_bad {
             qlog!(
                 "%s: file %d of %d is not a picture Grimoire can use (%s)",
                 if photo { "photos" } else { "templates" },
@@ -656,7 +688,6 @@ fn make_previews(dir: &str) -> i32 {
         } else {
             later += 1; // out of memory, or the file did not read: the next scan tries again
         }
-        bgpicture_free(&mut src);
         bgpicture_free(&mut fit);
         canvas_free(&mut full);
         canvas_free(&mut small);
@@ -854,7 +885,7 @@ fn install_picture(nb: &NotebookInfo, path: &str, kind: &mut PaperKind, why: &mu
         let ok = match &data {
             Some(d) => {
                 len = d.len();
-                bgimage_check(d, len, &mut w, &mut h, why) == 0
+                check_bytes(&mut PicPool::new(), d, len, &mut w, &mut h, why) == 0
             }
             None => false,
         };
@@ -992,24 +1023,27 @@ fn make_template(id: &str, src: &str, dpi: f32) -> i32 {
     bgimage_file(&dir, pic, &mut file, 800);
     let mut rc = 0;
     if !exists(&file) {
-        let mut p = BgPicture::default();
-        let mut fit = BgPicture::default();
         let mut why: &'static str = "out of memory";
-        rc = if bgimage_decode(&data, &mut p, &mut why) == 0
-            && (!photo || bgimage_orient(&mut p, bgimage_exif_orientation(&data)) == 0)
-            && bgimage_normalize(&p, pw, ph, &mut fit) == 0
-            && bgimage_write_png(&file, &fit) == 0
-        {
-            0
-        } else {
-            -1
-        };
+        let mut fit = BgPicture::default();
+        // (decoded by the sandboxed worker, upright first for a photo, fitted onto the notebook's page)
+        match PicPool::new().decode(&data, photo, pw, ph) {
+            PicOut::Pic { fit: f, .. } => {
+                fit = f;
+                if bgimage_write_png(&file, &fit) != 0 {
+                    rc = -1;
+                }
+            }
+            PicOut::Bad(m) | PicOut::Retry(m) | PicOut::Dead(m) => {
+                why = m;
+                rc = -1;
+            }
+            PicOut::Info { .. } => rc = -1,
+        }
         if rc != 0 {
             qlog!("templates: %s: bg/%06x.png could not be made (%s)", id, pic, why);
         } else {
             qlog!("templates: %s: bg/%06x.png made (%dx%d, %s)", id, pic, pw, ph, if fit.ch == 3 { "colour" } else { "gray" });
         }
-        bgpicture_free(&mut p);
         bgpicture_free(&mut fit);
         if rc == 0 {
             redraw_card(&nb, pic, dpi);
@@ -1541,12 +1575,13 @@ fn check_pages(id: &str, src: &str, names: &[String]) -> i32 {
         qlog!("import: %s: %s page pictures; nothing imported", id, if n != 0 { "more than 2000" } else { "no" });
         return IMPORT_REFUSED;
     }
+    let mut pool = PicPool::new();
     for (i, name) in names.iter().enumerate() {
         let mut path = String::new();
         let (mut w, mut h) = (0, 0);
         let mut why: &'static str = "";
         csnprintf!(&mut path, PATH_BUF, "%s/%s", src, name);
-        if check_file(&path, BG_SOURCE_MAX_BYTES, &mut w, &mut h, &mut why) != 0 {
+        if check_file_in(&mut pool, &path, BG_SOURCE_MAX_BYTES, &mut w, &mut h, &mut why) != 0 {
             qlog!("import: %s: page %d of %d: %s; nothing imported", id, i + 1, n, why);
             return IMPORT_REFUSED;
         }
@@ -1567,6 +1602,7 @@ fn build_notebook(id: &str, src: &str, final_: &str, names: &[String]) -> i32 {
     let (mut pw, mut ph) = (0, 0);
     store_page_size(&mut pw, &mut ph);
     let mut ix = BgIndex::default();
+    let mut pool = PicPool::new();
     let mut pids: Vec<u32> = Vec::new();
     let mut papers: Vec<PaperKind> = Vec::new();
     let mut nb = NotebookInfo::default();
@@ -1584,26 +1620,28 @@ fn build_notebook(id: &str, src: &str, final_: &str, names: &[String]) -> i32 {
             let mut path = String::new();
             csnprintf!(&mut path, PATH_BUF, "%s/%s", src, name);
             let data = read_source(&path, BG_SOURCE_MAX_BYTES);
-            let mut p = BgPicture::default();
             let mut fit = BgPicture::default();
             let mut why: &'static str = "the file does not read";
             let mut fail = IMPORT_RETRY;
             if let Some(d) = &data {
-                let dec = bgimage_decode(d, &mut p, &mut why);
-                fail = if dec == 0 {
-                    0
-                } else if dec == -2 {
-                    IMPORT_RETRY
-                } else {
-                    IMPORT_REFUSED
-                };
+                // (decoded and fitted by the sandboxed worker; one that died on its picture refuses the folder)
+                match pool.decode(d, false, pw, ph) {
+                    PicOut::Pic { fit: f, .. } => {
+                        fit = f;
+                        fail = 0;
+                    }
+                    PicOut::Retry(m) => {
+                        why = m;
+                        fail = IMPORT_RETRY;
+                    }
+                    PicOut::Bad(m) | PicOut::Dead(m) => {
+                        why = m;
+                        fail = IMPORT_REFUSED;
+                    }
+                    PicOut::Info { .. } => {}
+                }
             }
             drop(data);
-            if fail == 0 && bgimage_normalize(&p, pw, ph, &mut fit) != 0 {
-                why = "out of memory";
-                fail = IMPORT_RETRY;
-            }
-            bgpicture_free(&mut p);
             let mut pic = 0u32;
             let mut added = false;
             if fail == 0 && bgindex_claim(&mut ix, &bgdir, bgimage_key(&fit), &mut pic, &mut added) != 0 {

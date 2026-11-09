@@ -17,6 +17,11 @@
   412", the PDF moves to `import/done/`, and a PDF already imported says so. Pages with colour are kept in
   colour (the Scribe shows gray); a page that cannot be read ends blank and the notebook says "Some pages
   couldn't be read." (a PDF with no readable page is not imported). More than 2000 pages, over 512 MB or a password are refused with a message.
+- Pictures you put in `grimoire/templates`, `grimoire/photos` or an import folder are now read by that same
+  separate process, in slices, instead of by the part of Grimoire that writes files: a damaged or hostile picture
+  (cut short, enormous, a decompression bomb) is refused as before, and one that crashes the reader is marked as
+  not usable (templates and photos) or refuses its folder. Where the sandbox is not available (see
+  grimoire.log) pictures are read the old way, and the log says so once.
 - PDFs are read by a separate process that cannot reach the files, the network or other programs (a sandboxed
   worker); a Scribe that refuses a step reads no PDF and says so in grimoire.log. A picture folder in `import/`
   now also gets a notebook name no other notebook has.

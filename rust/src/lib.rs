@@ -49,6 +49,7 @@ pub mod linkoutline;
 pub mod pair;
 pub mod pdfimport; // PDFs imported without KOReader: scan, slices, commit (2.1.0-beta.2)
 pub mod pdfwork; // the PDF worker and its record protocol (2.1)
+pub mod picwork; // pictures decoded in the sandboxed worker, and the writer's side of it (2.1.0-beta.2)
 pub mod pensync;
 pub mod penbutton;
 pub mod power;
