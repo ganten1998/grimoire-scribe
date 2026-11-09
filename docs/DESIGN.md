@@ -490,6 +490,7 @@ root/notebooks/<id>/p<pageid>.qpg.damaged-<time>   a page that could not be read
 root/notebooks/<id>/thumb.pgm      binary PGM thumbnail of page 1 (P5)
 root/trash/<id>/               deleted notebooks are moved here, never unlinked
 root/PDFs/<folder>/<name>.pdf  the PDF mirror (an export, not data)
+root/.cache/pdf/<id>/          the notebook PDF's page streams (disposable; docs/FORMAT.md)
 root/.passcode-paused          legacy beta.1 recovery marker (new sessions never create it)
 root/.passcode-left-off        how many starts were told a restart left the passcode off
 root/.koplugin-installed       the build whose KOReader plugin went into koreader/plugins, or
@@ -1352,6 +1353,36 @@ Select (D7b a): the hold asks `link_under`, which never sees them. Nothing that 
 index reads the file; Clear page, the lasso, the clipboard and the 64/4,000 checks read `nav.links` alone, so they
 never see them by construction. Copy page and Copy to notebook carry them (the latter only to targets that were
 copied too); the notebook PDF and raw zips carry them.
+
+## The notebook PDF, incremental and streamed (2.1.0-beta.2, lane L9)
+
+Closing a changed notebook used to draw every page again (minutes for a 400-page planner, holding the one
+background queue) and built the whole PDF in one buffer before writing it. Now `export_notebook_pdf_to` writes the
+PDF to any `Sink` (a Buf, a file, a count, a connection) as its objects are made: a scratch buffer holds one page's
+objects, a page's image goes to the sink straight, the xref's offsets are kept (8 bytes an object). Each page's
+Flate stream is cached in `grimoire/.cache/pdf/<id>/` under a stamp (`pdfcache.rs`; the record's layout is in
+FORMAT.md): a record that does not read or whose stamp is not the page's today is drawn again, so the cache can
+only make a PDF faster, never different (a test holds the streamed bytes equal to a render with the cache off,
+and counts the pages drawn). Links are not cached: the page is read for them only when the notebook has a link on
+it (the user's, or a document link), since they depend on `nav.ini` and `doclinks.ini`, not on the page's pixels.
+Only the mirror job writes records and prunes them (256 MB in all; deleted pages and notebooks; oldest first);
+the share server's children read.
+
+A page whose picture is colour (an imported PDF's page with colour, a colour template) is embedded as DeviceRGB:
+`bgimage_render_color` decodes the picture afresh (the picture cache holds gray), and the ink drawn over it
+is applied as a change of the gray paper beneath (`ink_over_colour`). The picture's channel count is in the stamp
+and is read from the PNG header (26 bytes), so a picture replaced by a gray one is drawn again.
+
+The share server's PDF and zip answers are made into a spool file in the child and sent from it (so the answer has
+its Content-Length and the progress counts stay exact), or made twice (count, then send) with no room for a spool;
+a zip's PDF entry is written with a data descriptor. The mirror's PDF is `<name>.pdf.tmp`, renamed when whole.
+
+Every background child carries two caps (`childcaps.rs`): `oom_score_adj` 500 (the PDF worker's 1000 is lane L5's;
+the UI's is unchanged) and `RLIMIT_AS` at the child's size at fork plus a margin by kind (a streaming mirror 64 MiB;
+previews and map layouts 128; compaction and the default 256; a picture job 512, above its own tighter cap), applied
+after `child_setup` for each bgjob child, the detached child and the share server's render children (128 MiB).
+Both are Linux's; the host build applies nothing. The mirror logs its pages, how many it drew, its time and
+`VmHWM` ("bg: export of ...: N pages, D drawn, T ms, VmHWM K kB").
 
 ## Fast navigation and optional KOReader integration (1.1.0-beta.2)
 

@@ -2,6 +2,15 @@
 
 ## 2.1.0-beta.2 (unreleased)
 
+- **Closing a big notebook no longer redraws every page.** The PDF of a notebook (the mirror in `PDFs/`) kept
+  every page drawn at every close of a changed notebook: minutes on a 400-page planner, with the one background
+  queue held. Each page's image is now kept in `grimoire/.cache/pdf/` (256 MB in all, disposable: deleting it
+  loses nothing) and only the pages you changed are drawn again. The PDF is written to its file as it is made
+  rather than built whole in memory, so a 2,000-page notebook's PDF no longer takes hundreds of MB; the share
+  page's PDF and zip downloads are streamed the same way. A page with a coloured picture (an imported colour page,
+  a colour template) is kept in colour in the PDF; every other page stays gray. Every background process now runs
+  at a lower priority for the memory killer (an out-of-memory kill takes it before Grimoire) and with a ceiling on
+  its memory.
 - **A PDF's own links work in a notebook: a planner's tabs.** Opening a book from KOReader (Open this book in
   Grimoire) now also sends the links of its pages: a finger tap on "March" goes to March. They are part of the
   page, kept in a file of their own (`doclinks.ini`, up to 16,000 links) apart from the links you draw: your links

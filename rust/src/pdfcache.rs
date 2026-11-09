@@ -274,6 +274,11 @@ pub fn pdf_cache_prune(nb: &NotebookInfo) {
     prune_in(&pdf_cache_root(), nb, PDF_CACHE_MAX);
 }
 
+/// pdf_cache_prune with another size cap (tests).
+pub fn pdf_cache_prune_to(nb: &NotebookInfo, max: u64) {
+    prune_in(&pdf_cache_root(), nb, max);
+}
+
 pub(crate) fn prune_in(root: &str, nb: &NotebookInfo, max: u64) {
     let Ok(rd) = std::fs::read_dir(root) else { return };
     let notebooks = format!("{}/notebooks", store_root());

@@ -745,7 +745,7 @@ fn page_image(nb: &NotebookInfo, index: i32, dpi: f32, cache: &mut Option<PdfCac
 /// `rgb` (3 bytes a pixel) given the change from the gray paper to the gray page: a darker pixel
 /// scales each channel by the same ratio, a lighter one (white ink) moves each toward white by the
 /// same share. Untouched pixels stay the picture's own.
-fn ink_over_colour(rgb: &mut [u8], paper: &[u8], page: &[u8]) {
+pub fn ink_over_colour(rgb: &mut [u8], paper: &[u8], page: &[u8]) {
     for (i, (&g0, &g1)) in paper.iter().zip(page.iter()).enumerate() {
         if g0 == g1 {
             continue;
