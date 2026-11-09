@@ -766,7 +766,7 @@ mod tests {
         assert_eq!(f.ox, (1860 - f.rw) / 2);
         // landscape: fitted as it is (letterboxed), never turned
         let f = fit_page(842.0, 595.0, 1860, 2480);
-        assert_eq!(f.rw, 1860);
+        assert!((1859..=1860).contains(&f.rw), "{}", f.rw); // (trunc of a float product: the width, to a pixel)
         assert!(f.rh < 2480 && f.oy == (2480 - f.rh) / 2);
         // no area counts as 1 x 1
         let f = fit_page(0.0, 0.0, 100, 100);
