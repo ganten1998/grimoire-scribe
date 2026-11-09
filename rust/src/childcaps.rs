@@ -19,8 +19,9 @@ pub fn child_margin(kind: BgKind) -> u64 {
         BgKind::MirrorPdf => 64 * MIB,
         BgKind::GraphLayout | BgKind::GraphLayoutAll | BgKind::PagePreviews => 128 * MIB,
         BgKind::Template | BgKind::ImportFolder => 512 * MIB,
-        // MERGE-ME: lane L5's BgKind::PdfImport takes its margin here (its writer holds a 4.6 MB gray
-        // page and PNG buffers: the default is more than it needs).
+        // the PDF import's writer: one page (4.6 MB gray, 13.8 MB RGB) and its PNG buffers. The worker it
+        // execs sets its own RLIMIT_AS (sandbox.rs, sized to the PDF), which this soft limit never bounds.
+        BgKind::PdfImport => 256 * MIB,
         _ => 256 * MIB,
     }
 }

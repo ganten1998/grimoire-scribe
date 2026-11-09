@@ -2247,6 +2247,7 @@ fn start_renders() {
         // may allocate (PORTING.md, The process model).
         let pid = unsafe { libc::fork() };
         if pid == 0 {
+            crate::pdfimport::lock_close_in_child(); // (the import lock is the UI's: DESIGN.md 3.9)
             serve_in_child(next, &method, &path);
         }
         if pid > 0 {

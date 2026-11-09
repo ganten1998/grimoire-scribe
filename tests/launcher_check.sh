@@ -632,8 +632,7 @@ suite() {
     check "$s app/grimoire.sh's Capabilities include book" sh -c \
         'head -n 10 "$1" | sed -n "s/^# Capabilities: //p" | grep -qw book' sh "$APP/grimoire.sh"
     # (links: the same --book also reads import/.book/links.txt, which the plugin sends only to a launcher saying so;
-    # MERGE-ME (lane L5 owns tests/package_check.sh): its capability loop, `for c in guard hosted annotate book`,
-    # wants `links` too.)
+    # tests/package_check.sh checks the packaged copy's line too.)
     check "$s app/grimoire.sh's Capabilities include links" sh -c \
         'head -n 10 "$1" | sed -n "s/^# Capabilities: //p" | grep -qw links' sh "$APP/grimoire.sh"
     hosted_tree hosted-book

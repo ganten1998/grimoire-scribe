@@ -121,10 +121,11 @@ check "payload's wifi.sh is kindle's" cmp -s "$B/app/wifi.sh" kindle/app/wifi.sh
 check "payload's update.sh is kindle's" cmp -s "$B/app/update.sh" kindle/app/update.sh
 check "payload's CAPABILITIES match the header" is "$(cat "$B/app/CAPABILITIES" 2>/dev/null)" "$CAPS"
 # app/grimoire.sh names what it supports itself: the guard, --hosted, --annotate (a page KOReader
-# sends) and --book (a whole book), and no unpacking (that is Grimoire.sh's).
+# sends), --book (a whole book) and links (the book's links, import/.book/links.txt), and no unpacking
+# (that is Grimoire.sh's).
 APP_CAPS=$(head -n 10 "$B/app/grimoire.sh" 2>/dev/null | sed -n 's/^# Capabilities: //p')
 check "payload's grimoire.sh has its own Capabilities line ($APP_CAPS)" [ -n "$APP_CAPS" ]
-for c in guard hosted annotate book; do
+for c in guard hosted annotate book links; do
     check "payload's grimoire.sh Capabilities include $c" sh -c 'case " $1 " in *" $2 "*) exit 0 ;; esac; exit 1' sh "$APP_CAPS" "$c"
 done
 check "payload's grimoire.sh Capabilities leave out unpack-only" sh -c 'case " $1 " in *" unpack-only "*) exit 1 ;; esac' sh "$APP_CAPS"
@@ -215,6 +216,17 @@ check "payload has licenses/rust-std-LICENSE.txt, the Rust standard library's no
 check "payload has licenses/rust-libc-LICENSE.txt, the libc crate's MIT and Apache-2.0 licenses" sh -c \
     'grep -qF "From the libc crate" "$1" && grep -qF "The Rust Project Developers" "$1" &&
      grep -qF "Permission is hereby granted" "$1" && grep -qF "Apache License" "$1"' sh "$L/rust-libc-LICENSE.txt"
+# The PDF engine's crates (2.1.0-beta.2, D22): app/licenses/rust-crates.txt is generated at package time from
+# the crates Cargo.lock holds (tools/crate_licenses.py), and every one of them is in it with its version, besides
+# the notices of the data hayro carries: Foxit's standard fonts, Adobe's CMaps and the ICC profiles.
+check "payload has licenses/rust-crates.txt" [ -s "$L/rust-crates.txt" ]
+LOCKED=$(awk '/^name = / { gsub(/"/, "", $3); n = $3 } /^version = / { gsub(/"/, "", $3); if (n != "" && n != "grimoire") print n " " $3; n = "" }' rust/Cargo.lock)
+check "Cargo.lock lists crates (the PDF engine's)" [ -n "$LOCKED" ]
+MISSING=$(printf '%s\n' "$LOCKED" | while read -r n v; do grep -qF -- "$n $v  (licensed" "$L/rust-crates.txt" || echo "$n-$v"; done)
+check "rust-crates.txt names every crate of Cargo.lock with its version (missing: ${MISSING:-none})" [ -z "$MISSING" ]
+check "rust-crates.txt has hayro and Foxit's notice" sh -c 'grep -qF "hayro 0.8.0" "$1" && grep -qF "Foxit" "$1"' sh "$L/rust-crates.txt"
+check "rust-crates.txt has Adobe's CMaps notice" sh -c 'grep -qF "Adobe" "$1"' sh "$L/rust-crates.txt"
+check "rust-crates.txt has the ICC profiles' notice" sh -c 'grep -qF "the ICC profiles" "$1" && grep -qF "CC0 1.0 Universal" "$1"' sh "$L/rust-crates.txt"
 # FBInk compiles two parts of its tree with notices of their own into the binary: cutef8
 # (cutef8/utf8.c) and Bjoern Hoehrmann's UTF-8 decoder (cutef8/dfa.c). Each ships the notice at the
 # head of its source and its entry in FBInk's CREDITS, the only text the tree has for them. A new

@@ -2004,10 +2004,12 @@ fn import_makes_a_notebook() {
     bgpicture_free(&mut p3);
     let id = "20261020-120000-abcd";
     mark(&src, id);
+    // a notebook called Score exists (document_role_not_inherited's): the import's name is numbered (2.1)
+    check!(notebooks_named("Score") == 1);
     check!(bg_import_folder(&src, DPI) == 0);
     let mut nb = NotebookInfo::default();
     check!(store_load_info(id, &mut nb) == 0);
-    check!(nb.name == "Score" && nb.folder.is_empty() && nb.npages() == 4 && nb.paper == PAPER_BLANK);
+    check!(nb.name == "Score 2" && nb.folder.is_empty() && nb.npages() == 4 && nb.paper == PAPER_BLANK);
     check!(nb.page_w == PW && nb.page_h == PH && nb.next_page_id == 5);
     // Natural order: page-1, page-2, page-3, page-10.
     check!(page_value(&nb, 0) == 30 && page_value(&nb, 1) == 60 && page_value(&nb, 3) == 90);
@@ -2051,9 +2053,9 @@ fn import_makes_a_notebook() {
     let mut first: Option<Box<Page>> = None;
     store_read_page(&nb, 0, &mut first);
     let cmd = cformat!(
-        "unzip -tq '%s' >/dev/null && unzip -l '%s' | grep -q 'Score/raw/bg/%06x.png' && \
-         unzip -l '%s' | grep -q 'Score/raw/bg/index.ini' && unzip -l '%s' | grep -q 'Score/raw/bg/pages.ini' && \
-         unzip -l '%s' | grep -q 'Score/page-004.png'",
+        "unzip -tq '%s' >/dev/null && unzip -l '%s' | grep -q 'Score 2/raw/bg/%06x.png' && \
+         unzip -l '%s' | grep -q 'Score 2/raw/bg/index.ini' && unzip -l '%s' | grep -q 'Score 2/raw/bg/pages.ini' && \
+         unzip -l '%s' | grep -q 'Score 2/page-004.png'",
         &zp,
         &zp,
         first.as_ref().map_or(0u32, |f| paper_image_id(f.paper)),
@@ -2280,6 +2282,9 @@ fn import_leftover_whole() {
     let from = format!("{}/notebooks/{}", root(), id);
     let to = format!("{}/notebooks/.import-{}", root(), lost);
     check!(std::fs::rename(&from, &to).is_ok() && notebooks_named("Kept") == 0);
+    // the next start: the import lock is taken afresh (this process held it since an earlier scan), and
+    // only then is a cut-off import's folder no one's (2.1, pdfimport.rs lock_take)
+    grimoire::pdfimport::lock_release_if_idle();
     check!(import_scan(DPI) == 0);
     let mut nb = NotebookInfo::default();
     check!(!exists(&to) && store_load_info(lost, &mut nb) == 0 && nb.npages() == 1 && nb.name == "Kept");

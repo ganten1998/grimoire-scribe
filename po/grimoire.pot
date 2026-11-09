@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: Grimoire 2.1.0-beta.1\n"
 "Report-Msgid-Bugs-To: https://github.com/ganten1998/grimoire-scribe/issues\n"
-"POT-Creation-Date: 2026-11-09 12:53-0600\n"
+"POT-Creation-Date: 2026-11-09 13:45-0600\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -556,7 +556,7 @@ msgid "Move the Graph down"
 msgstr ""
 
 #. TRANSLATORS: the name of a notebook that has none (it is saved with it, as a name given).
-#: rust/src/annotate.rs rust/src/store.rs rust/src/ui.rs
+#: rust/src/annotate.rs rust/src/pdfimport.rs rust/src/store.rs rust/src/ui.rs
 msgid "Untitled"
 msgstr ""
 
@@ -694,6 +694,16 @@ msgstr ""
 msgid "Updating. Grimoire restarts by itself."
 msgstr ""
 
+#. TRANSLATORS: a PDF became a new notebook, but some of its pages could not be read and are
+#. blank; %d is its page count. In a toast: one line of about 1700 px at 44 px in bold, or two.
+#: rust/src/app.rs
+#, c-format
+msgid "Imported notebook (%d page). Some pages couldn't be read."
+msgid_plural "Imported notebook (%d pages). Some pages couldn't be read."
+msgstr[0] ""
+msgstr[1] ""
+
+#. TRANSLATORS: a folder of page pictures (grimoire/import/<name>) or a PDF became a new notebook.
 #. TRANSLATORS: a folder of page pictures (grimoire/import/<name>) became a new notebook.
 #: rust/src/app.rs
 #, c-format
@@ -701,6 +711,48 @@ msgid "Imported notebook (%d page)."
 msgid_plural "Imported notebook (%d pages)."
 msgstr[0] ""
 msgstr[1] ""
+
+#. TRANSLATORS: a toast: the PDF dropped in grimoire/import (or picked) is one Grimoire made a notebook
+#. of before. The file moves to import/done.
+#: rust/src/app.rs
+msgid "PDF already imported."
+msgstr ""
+
+#. TRANSLATORS: a toast: the PDF is protected by a password, which Grimoire cannot ask for.
+#: rust/src/app.rs
+msgid "PDF needs a password."
+msgstr ""
+
+#. TRANSLATORS: a toast: the PDF has more pages than a notebook holds; %d is that number (2000).
+#: rust/src/app.rs
+#, c-format
+msgid "PDF too long: notebooks hold %d pages."
+msgstr ""
+
+#. TRANSLATORS: a toast: the PDF's file is bigger than Grimoire reads; %d is the size in MB (512).
+#: rust/src/app.rs
+#, c-format
+msgid "PDF too big: over %d MB."
+msgstr ""
+
+#. TRANSLATORS: a toast: the PDF could not be imported because the Kindle's storage is full.
+#: rust/src/app.rs
+msgid "Couldn't import PDF. Is the storage full?"
+msgstr ""
+
+#. TRANSLATORS: a toast: the PDF could not become a notebook; %s is the log file that says why.
+#. The PDF stays where it was.
+#: rust/src/app.rs
+#, c-format
+msgid "Couldn't import PDF (see %s)."
+msgstr ""
+
+#. TRANSLATORS: the staying notice at the bottom of the Library while a PDF becomes a notebook
+#. (and a row of the Import place): the page it is on, of how many. One line of about 1700 px.
+#: rust/src/app.rs
+#, c-format
+msgid "Importing: page %d of %d"
+msgstr ""
 
 #. TRANSLATORS: a folder of page pictures could not become a notebook; %s is the log file
 #. that says why. The folder stays where it was.
@@ -918,8 +970,16 @@ msgstr ""
 
 #: rust/src/bgwork_template.rs
 msgid ""
-"Grimoire imports each folder in the background and then moves it into the "
-"done folder. Copy folders in over USB while Grimoire is closed."
+"A PDF, such as a planner, goes in as it is: put the file here, or in a "
+"folder here to file its notebook in the Library folder of that name, and "
+"open the Library. Its pages become the notebook's pages, in colour where the "
+"PDF has colour. A file still being copied waits until it is whole."
+msgstr ""
+
+#: rust/src/bgwork_template.rs
+msgid ""
+"Grimoire imports each folder or PDF in the background and then moves it into "
+"the done folder. Copy them in over USB, or over SSH while Grimoire runs."
 msgstr ""
 
 #: rust/src/brush.rs

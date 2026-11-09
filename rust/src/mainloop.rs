@@ -335,6 +335,11 @@ pub fn main(args: Vec<String>) -> i32 {
     unsafe {
         libc::signal(libc::SIGPIPE, libc::SIG_DFL);
     }
+    // The safe loader's worker (sandbox.rs): a fresh exec of this binary, which takes --work before any UI
+    // start-up (no display, input, settings or log) and parses what it is given.
+    if args.get(1).is_some_and(|a| a == "--work") {
+        return crate::sandbox::work_main(&args);
+    }
     for a in args.iter().skip(1) {
         if a == "--version" {
             println!("{GRIMOIRE_VERSION}");

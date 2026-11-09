@@ -21,6 +21,8 @@ env:
   RUST_VERSION: '1.97.1'
   ZIG_VERSION: '0.16.0'
   CARGO_ZIGBUILD_VERSION: '0.23.0'
+  # cargo-deny, for the deny job (rust/deny.toml); published 2026-07-09.
+  CARGO_DENY_VERSION: '0.20.2'
   # Retry a crate download before failing the job over a network blip.
   CARGO_NET_RETRY: '5'
   # The scenario shards (the scenarios job's matrix lists 1 to this; keep the two in step).
@@ -39,6 +41,8 @@ env:
 #   package      the Kindle build, the zip and every check of it, the KPM package, the KOReader
 #                patches; pushes to main and releases also build it twice from clean
 #                (tests/repro_check.sh) and keep the release files
+#   deny         cargo deny over the crates the app is built from (rust/deny.toml)
+#   sandbox      the safe loader's real steps as root on Linux (rust/tests/test_sandbox_linux.rs)
 #   gate         the one check branch protection requires: every job above passed (or, for a
 #                docs-only pull request, the docs job did)
 #   publish      releases: uploads the package job's release files and publishes the KPM channel
@@ -374,6 +378,58 @@ jobs:
           # A rerun of this job replaces the artifact its first attempt uploaded.
           overwrite: true
 
+  deny:
+    # cargo deny over the crates the app is built from (docs/RELEASING.md step 3 and rust/deny.toml, D22): licenses,
+    # the versions that appear twice (named in deny.toml), sources (crates.io only) and advisories.
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ github.event.release.tag_name || github.event.pull_request.head.sha || github.sha }}
+      - name: Install Rust
+        run: |
+          rustup toolchain install "$RUST_VERSION" --profile minimal --no-self-update
+          rustup default "$RUST_VERSION"
+          echo "RUST_BIN=$(dirname "$(rustup which --toolchain "$RUST_VERSION" rustc)")" >> "$GITHUB_ENV"
+      - name: Install cargo-deny
+        # From crates.io at its pinned version (published 2026-07-09), with the crate's own Cargo.lock.
+        run: |
+          PATH="$RUST_BIN:$PATH" cargo install cargo-deny --version "$CARGO_DENY_VERSION" --locked --root "$RUNNER_TEMP/cargo-deny"
+          echo "$RUNNER_TEMP/cargo-deny/bin" >> "$GITHUB_PATH"
+      - name: cargo deny check licenses bans sources advisories
+        run: |
+          cd rust
+          PATH="$RUST_BIN:$PATH" cargo deny --locked check licenses bans sources advisories
+
+  sandbox:
+    # The safe loader's real steps (DESIGN.md 3.7, lane L5): the worker's namespaces, chroot, uid, no new
+    # privileges, rlimits and seccomp filter need Linux and root, so rust/tests/test_sandbox_linux.rs runs here,
+    # as root, with the sandbox required (GRIMOIRE_SANDBOX=require), and skips itself anywhere else. The
+    # worker is the headless runner's binary; the allow-list is x86-64's here and ARM's on the Kindle (the
+    # tests of the filter itself run for both in the unit job).
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ github.event.release.tag_name || github.event.pull_request.head.sha || github.sha }}
+      - name: Install Rust
+        run: |
+          rustup toolchain install "$RUST_VERSION" --profile minimal --no-self-update
+          rustup default "$RUST_VERSION"
+          echo "RUST_BIN=$(dirname "$(rustup which --toolchain "$RUST_VERSION" rustc)")" >> "$GITHUB_ENV"
+      - name: The sandbox tests, as root
+        run: |
+          (cd rust && PATH="$RUST_BIN:$PATH" cargo fetch --locked)
+          cd rust
+          sudo -E env "PATH=$RUST_BIN:$PATH" "HOME=$HOME" GRIMOIRE_SANDBOX=require \
+            cargo test --locked --features sim --test test_sandbox_linux -- --test-threads=1 --nocapture
+
   gate:
     # The one required check: every job of this run passed (a docs-only pull request: the docs job).
     # Branch protection on main must require this job (and no other: docs/TESTING.md, The required
@@ -381,7 +437,7 @@ jobs:
     # passed, so a cancelled run of a pull request's newest commit must not leave it mergeable (a
     # run superseded by a newer push only marks its old commit red).
     if: ${{ always() }}
-    needs: [changes, docs, build-host, unit, scenarios, l10n, host-checks, package]
+    needs: [changes, docs, build-host, unit, scenarios, l10n, host-checks, package, deny, sandbox]
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:

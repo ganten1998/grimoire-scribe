@@ -127,6 +127,7 @@ GRIMOIRE_ROOT=/tmp/q GRIMOIRE_SCRIPT=tests/scenarios/a_notebook.qs GRIMOIRE_SHOT
 | `power down`, `power up` | one half each; the release reports the real time between them, so `power down`, `wait 3000`, `power up` is a 3 s press |
 | `power held` | the 4 s mark of a press still down (IN_POWER_HELD alone, what input_evdev.c sends then), so `power down`, `power held` leaves while the key is down (check that with `expect running is 0`) |
 | `powerhold` | the press, the 4 s hold and the release at once, with no time passing: Grimoire saves and quits (check that with `expect running is 0`) |
+| `pdfimport PATH [NAME [FOLDER]]` | the picker's entry point (2.1.0-beta.2, lane L8 draws the picker) with no picker: imports the PDF at PATH (from the storage root: `GRIMOIRE_STORAGE`, else the folder around the data root), read in place and never moved, named NAME and put in Library folder FOLDER (`_` stands for a space in each). `waitbg` waits for it |
 | `powerd STATE` | what the simulated power service reports from now on: `active` (the start), `screenSaver`, `readyToSuspend` or `suspended`; `unknown` or nothing reads as unreadable |
 | `clock SECONDS` | the time the clock and battery corner shows, in unix seconds (`clock 1700000000` is 2023-11-14 22:13:20 UTC), kept where the script puts it: it does not run on; `clock real` is the machine's clock again |
 | `battery PERCENT [charging]` | the battery that corner shows (a pixel art battery with the percent beside it), 0 to 100, with the bolt over it when `charging` follows; `battery none` is a battery that cannot be read. The simulator starts at 100 and not charging |
@@ -830,3 +831,13 @@ scenario taps a row of a notebook's or folder's menu by its name (`tap library m
 `tap library fmore.remove`, `tap library done` for Cancel; the names under `library.ui_at.X.Y`),
 never by its place, so that it does not break when the menu gains a row (2.0.0-beta.2 added
 Leave out of the Graph above Delete and Remove folder).
+
+PDF import hooks (headless and test builds; compiled out of the Kindle build, listed in the Makefile's SIM_HOOKS):
+`GRIMOIRE_IMPORT_STABLE=fast` (a file is taken at the first look: no 2 s and 5 s wait), `GRIMOIRE_PDF_SLICE_PAGES=N`
+(slices of N pages), `GRIMOIRE_PDF_BANDS=N` (N above 1: band mode), `GRIMOIRE_PDF_NO_MAP=1` (the device refuses the
+private mapping: the worker reads the file whole), `GRIMOIRE_PDF_FREE_BYTES=N` (free storage as N bytes),
+`GRIMOIRE_PDF_WATCHDOG_MS=N` (the page watchdog), `GRIMOIRE_PDF_TEST_CRASH_PAGE=N`, `..._HANG_PAGE=N`,
+`..._ALLOC_PAGE=N`, `..._TRAP_PAGE=N` (the worker aborts, spins, allocates without bound or makes a call outside
+its allow-list when it reaches page N), `GRIMOIRE_WORK_FAIL_STEP=<step>` (that sandbox step fails),
+`GRIMOIRE_SANDBOX=require` (the steps are required, as on the Kindle) and `GRIMOIRE_WORK_EXE=<path>` (the binary a
+worker execs: a test's own executable is a test harness).

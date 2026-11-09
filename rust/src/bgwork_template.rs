@@ -380,15 +380,20 @@ its previews of these files in the .cache folder."),
     root_path("import", &mut dir, 600);
     if mkdir_p(&dir) == 0 {
         // TRANSLATORS: grimoire/import/README.txt, written like the templates one: its title, then
-        // its two paragraphs. "done" is the name of a folder: keep it as it is.
+        // its three paragraphs (folders of pictures, PDFs, what happens after). "done" is the name of a
+        // folder: keep it as it is. "PDF" files are the ones Grimoire reads itself, with their pages as they
+        // are printed.
         let parts = [
             tr("Importing pages into Grimoire"),
             tr("To write on pages you already have, such as a PDF saved as pictures, put a folder of PNG or JPG \
 files here, one picture a page, and start Grimoire. The folder's name becomes the notebook's name, \
 and the pages follow the file names in order (page-2 comes before page-10). Gray pictures import \
 faster and take less room than colour ones."),
-            tr("Grimoire imports each folder in the background and then moves it into the done folder. Copy folders \
-in over USB while Grimoire is closed."),
+            tr("A PDF, such as a planner, goes in as it is: put the file here, or in a folder here to file its \
+notebook in the Library folder of that name, and open the Library. Its pages become the notebook's \
+pages, in colour where the PDF has colour. A file still being copied waits until it is whole."),
+            tr("Grimoire imports each folder or PDF in the background and then moves it into the done folder. Copy \
+them in over USB, or over SSH while Grimoire runs."),
         ];
         write_readme(&dir, &parts, "import");
     }
@@ -1049,31 +1054,10 @@ pub fn bg_template(id: &str, src: &str, dpi: f32) -> i32 {
 
 // ---- imports ----
 
-// Only one import runs at a time, in whichever process (a run's last jobs go on in a detached child
-// after Grimoire closes): grimoire/import/.lock, held while it works. A start that finds it held
-// leaves the import folders for the next start. Err(errno) (EWOULDBLOCK: it is held), or the
-// descriptor that holds the lock.
-fn import_lock(wait: bool) -> Result<i32, i32> {
-    let mut path = String::new();
-    root_path("import/.lock", &mut path, 700);
-    let Some(c) = cpath(&path) else { return Err(libc::ENOENT) };
-    // SAFETY: open reads the NUL-terminated path we own; the descriptor it returns is ours alone.
-    let fd = unsafe { libc::open(c.as_ptr(), libc::O_RDWR | libc::O_CREAT, 0o644 as libc::c_uint) };
-    if fd < 0 {
-        return Err(errno());
-    }
-    // SAFETY: flock only takes the open descriptor.
-    while unsafe { libc::flock(fd, libc::LOCK_EX | if wait { 0 } else { libc::LOCK_NB }) } != 0 {
-        let err = errno();
-        if err == libc::EINTR {
-            continue;
-        }
-        // SAFETY: close takes the descriptor opened above, which is not used again.
-        unsafe { libc::close(fd) };
-        return Err(err);
-    }
-    Ok(fd)
-}
+// Only one import runs at a time, in whichever process (a run's last jobs go on in a detached child after
+// Grimoire closes): grimoire/import/.lock, taken by the UI without blocking before it queues any import and
+// held while any is queued or running (pdfimport.rs lock_take). A start that finds it held leaves the import
+// folders for the next scan.
 
 // Removes a folder an import was building (notebooks/.import-<id>/: its files and its bg/).
 fn remove_work<P: AsRef<Path>>(work: P) {
@@ -1138,7 +1122,7 @@ const ATTEMPTS_MAX: usize = 64;
 const TRIES_REFUSED: i32 = 99;
 
 #[derive(Clone, Copy)]
-struct Attempt {
+pub(crate) struct Attempt {
     name: u64,
     pictures: u64,
     tries: i32,
@@ -1266,7 +1250,7 @@ fn attempts_note(src: &str, pictures: u64, what: i32) {
 // notebook.ini is whole (that file is written last, each one before it made durable): it goes into
 // place, and its folder moves when its id comes up (the folder's mark names it). Any other is
 // removed. Whether there were any; with `act`, deals with them all.
-fn import_leftovers(act: bool) -> bool {
+fn import_leftovers(act: bool, resumable: &mut Vec<String>) -> bool {
     use std::os::unix::ffi::OsStrExt;
     let mut notebooks = String::new();
     root_path("notebooks", &mut notebooks, 600);
@@ -1290,6 +1274,12 @@ fn import_leftovers(act: bool) -> bool {
                 continue;
             };
             let id = &name[8..];
+            // A PDF import cut off between slices goes on from its state when its file is still there,
+            // unchanged (pdfimport.rs): it is not removed, and the scan queues it again.
+            if crate::pdfimport::keep_work_folder(id) {
+                resumable.push(id.to_string());
+                continue;
+            }
             let (mut work, mut ini, mut final_) = (String::new(), String::new(), String::new());
             csnprintf!(&mut work, 1000, "%s/%s", &notebooks, name);
             csnprintf!(&mut ini, 1100, "%s/notebook.ini", &work);
@@ -1326,11 +1316,16 @@ fn fresh_import_id(id: &mut String) {
     }
 }
 
-/// At startup: every folder in grimoire/import/ (but done/ and dot-folders) holding page pictures
-/// is queued to become a notebook (BG_IMPORT_FOLDER), at most 8 a start. What an import that was cut
-/// off left in notebooks/ (.import-<id>/) is put in place when it was whole, else removed. A folder
-/// tried 3 times, or refused (a page that is no picture Grimoire takes), waits until its pictures
-/// change (import/.attempts, docs/FORMAT.md). Returns how many were queued.
+/// At startup and when the Library comes in front (at most every 10 s): the PDFs in grimoire/import/ that
+/// have held still, and every folder holding page pictures (but done/ and dot-folders), are queued to become
+/// notebooks (BG_PDF_IMPORT, BG_IMPORT_FOLDER), at most 8 a scan. A folder of PDFs and pictures imports its
+/// PDFs first (into Library folder <Folder>), then its pictures as one notebook as before. What an import that
+/// was cut off left in notebooks/ (.import-<id>/) is put in place when it was whole, goes on when it is a PDF
+/// import whose file is still there unchanged, else is removed. A folder tried 3 times, or refused (a page
+/// that is no picture Grimoire takes), waits until its pictures change (import/.attempts, docs/FORMAT.md).
+/// The UI takes the import lock without blocking, once, and holds it while any import is queued or running
+/// (pdfimport.rs); a lock held elsewhere (a previous run's detached child) leaves everything for the next
+/// scan. Returns how many were queued.
 pub fn import_scan(dpi: f32) -> i32 {
     let mut dir = String::new();
     root_path("import", &mut dir, 600);
@@ -1338,29 +1333,36 @@ pub fn import_scan(dpi: f32) -> i32 {
     if list_names(&dir, false, 1000, &mut names) != 0 {
         names.clear();
     }
+    let found = crate::pdfimport::list_pdfs();
     let folders = names.iter().filter(|n| n.as_str() != "done").count();
-    if folders == 0 && !import_leftovers(false) {
+    if folders == 0 && found.files.is_empty() && !import_leftovers(false, &mut Vec::new()) {
         // nothing to do (and no lock file made for it)
+        crate::pdfimport::detached_check();
         return 0;
     }
-    let lock = match import_lock(false) {
-        Ok(fd) => fd,
-        Err(err) => {
-            if err == libc::EWOULDBLOCK {
-                qlog!("import: an import from an earlier run is still going; the import folders wait for the next start");
-            } else {
-                qlog!("import: the import lock cannot be taken (%s); the import folders wait for the next start", &strerror(err));
-            }
-            return 0;
+    let lock = crate::pdfimport::lock_take();
+    if let crate::pdfimport::Lock::Busy(err) = lock {
+        if err == libc::EWOULDBLOCK {
+            qlog!("import: an import from an earlier run is still going; the import folders wait for the next scan");
+        } else {
+            qlog!("import: the import lock cannot be taken (%s); the import folders wait for the next scan", &strerror(err));
         }
-    };
-    // Leftovers of an import that was cut off (Grimoire or the Kindle stopped mid-way): no import
-    // runs now (the lock), so they are no one's.
-    import_leftovers(true);
+        crate::pdfimport::detached_check();
+        return 0;
+    }
+    let mut found = found;
+    // Leftovers of an import that was cut off (Grimoire or the Kindle stopped mid-way): when the lock is
+    // taken afresh, no import runs, so they are no one's.
+    if lock == crate::pdfimport::Lock::Fresh {
+        import_leftovers(true, &mut found.resumable);
+    } else {
+        import_leftovers(false, &mut Vec::new());
+    }
+    let mut queued = crate::pdfimport::scan_queue(&found, dpi, false);
     let mut att = attempts_load();
     let natt = att.len();
     let mut seen = [false; ATTEMPTS_MAX];
-    let (mut queued, mut empty, mut waiting, mut toolong) = (0, 0, 0, 0);
+    let (mut empty, mut waiting, mut toolong, mut with_pdfs) = (0, 0, 0, 0);
     for name in &names {
         if name == "done" {
             continue;
@@ -1377,11 +1379,16 @@ pub fn import_scan(dpi: f32) -> i32 {
             }
         }
         if with(|s| s.pending.len()) >= IMPORT_QUEUE_MAX {
-            continue; // (the next start takes it)
+            continue; // (the next scan takes it)
         }
         if src.len() >= JOB_PATH_MAX {
             // it would be cut on its way to the job
             toolong += 1;
+            continue;
+        }
+        // its PDFs first: the pictures wait until they are imported and have moved to done/
+        if crate::pdfimport::folder_holds_pdfs(name) {
+            with_pdfs += 1;
             continue;
         }
         let mut pics = Vec::new();
@@ -1409,6 +1416,10 @@ pub fn import_scan(dpi: f32) -> i32 {
                 continue;
             }
         }
+        // (a scan never queues an import that is queued or running already)
+        if with(|s| s.pending.iter().any(|p| p.as_str() == id.as_str())) {
+            continue;
+        }
         bg_queue(BgKind::ImportFolder, Some(&id), Some(&src), dpi, true);
         with(|s| s.pending.push(FixedStr::from_str(&id)));
         queued += 1;
@@ -1424,16 +1435,18 @@ pub fn import_scan(dpi: f32) -> i32 {
     if kept != natt {
         attempts_save(&att[..kept]);
     }
-    // SAFETY: close takes the descriptor import_lock opened, which is not used again.
-    unsafe { libc::close(lock) };
-    if queued != 0 || empty != 0 || waiting != 0 || toolong != 0 {
+    // (the lock stays with the UI while anything is queued: a scan that queued nothing lets go of it)
+    crate::pdfimport::pictures_wait(with_pdfs != 0);
+    crate::pdfimport::lock_release_if_idle();
+    if queued != 0 || empty != 0 || waiting != 0 || toolong != 0 || with_pdfs != 0 {
         qlog!(
-            "import: %d folder(s) queued; left as they are: %d without page pictures, %d that failed and have not \
-changed since, %d with too long a name",
+            "import: %d import(s) queued; page folders left as they are: %d without page pictures, %d that failed and have not \
+changed since, %d with too long a name, %d waiting for their PDFs",
             queued,
             empty,
             waiting,
-            toolong
+            toolong,
+            with_pdfs
         );
     }
     queued
@@ -1640,7 +1653,13 @@ fn build_notebook(id: &str, src: &str, final_: &str, names: &[String]) -> i32 {
         // The notebook around them: its pages are document pages, and pages added to it are blank.
         nb.id.set(id);
         let name = src.rfind('/').map_or(src, |s| &src[s + 1..]);
-        copy_name(&mut nb.name, name); // (a long one cut between characters)
+        // (a long one cut between characters; numbered when a notebook has it, so two folders of one name
+        // never share a mirror PDF)
+        let mut all = Vec::new();
+        store_list(&mut all);
+        let mut cut = FixedStr::<STORE_NAME_LEN>::new();
+        copy_name(&mut cut, name);
+        nb.name.set_cut(&crate::pdfimport::unique_import_name(cut.as_str(), &all));
         nb.paper = PAPER_BLANK;
         nb.created = wall_time();
         nb.modified = nb.created;
@@ -1721,23 +1740,47 @@ fn import_folder(src: &str) -> i32 {
 /// bgjob.h: the work of a BG_IMPORT_FOLDER job, in the child; 0 = done.
 pub fn bg_import_folder(path: &str, dpi: f32) -> i32 {
     let _ = dpi;
-    let lock = match import_lock(true) {
-        Ok(fd) => fd,
-        Err(err) => {
-            qlog!("import: no lock (%s)", &strerror(err));
-            return -1;
-        }
-    };
+    // (the import lock is the UI's: it holds it while any import is queued or running, and no job opens it or
+    // waits for it, so a lock held elsewhere can never stall the queue behind it: pdfimport.rs)
     let cap = cap_memory();
     let rc = import_folder(path);
     uncap_memory(&cap);
-    // SAFETY: close takes the descriptor import_lock opened, which is not used again.
-    unsafe { libc::close(lock) };
     if rc == IMPORT_DONE {
         0
     } else {
         -1
     }
+}
+
+// ---- what pdfimport.rs shares ----
+
+/// How many picture-folder imports are queued or running.
+pub(crate) fn pictures_pending() -> usize {
+    with(|s| s.pending.len())
+}
+pub(crate) fn attempts_snapshot() -> Vec<Attempt> {
+    attempts_load()
+}
+pub(crate) fn attempts_restore(a: &[Attempt]) {
+    attempts_save(a);
+}
+/// `what`: 0 a try, 1 refused, 2 done.
+pub(crate) fn attempts_note_public(src: &str, pictures: u64, what: i32) {
+    attempts_note(src, pictures, what);
+}
+/// Whether the record of `src` (by its name) says it was tried `tries` times with these very contents.
+pub(crate) fn attempts_waiting(src: &str, pictures: u64, a: &[Attempt], tries: i32) -> bool {
+    let nh = folder_name_hash(src);
+    a.iter().any(|e| e.name == nh && e.tries >= tries && e.pictures == pictures)
+}
+pub(crate) fn remove_work_public<P: AsRef<Path>>(work: P) {
+    remove_work(work)
+}
+pub(crate) fn sync_dir_public(dir: &str) {
+    sync_dir(dir)
+}
+pub(crate) fn import_leftovers_public(act: bool) -> bool {
+    import_leftovers(act, &mut Vec::new())
 }
 
 #[cfg(test)]
