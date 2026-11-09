@@ -17,6 +17,12 @@
   412", the PDF moves to `import/done/`, and a PDF already imported says so. Pages with colour are kept in
   colour (the Scribe shows gray); a page that cannot be read ends blank and the notebook says "Some pages
   couldn't be read." (a PDF with no readable page is not imported). More than 2000 pages, over 512 MB or a password are refused with a message.
+- A PDF dropped in `grimoire/import/` brings its links and page names too: a planner's tabs work in the notebook
+  it becomes (the PDF's internal links, including those by name, the next, previous, first and last page links,
+  and links drawn as several boxes; web links are left out), and its outline names the pages. A planner with more
+  links than a notebook holds (14,400) keeps the most on every page and trims the busiest pages, and the end
+  says "Imported notebook (%d pages). Some links were left out.". A notebook Grimoire exported as a PDF and
+  imported again gives back its links and page names.
 - PDFs are read by a separate process that cannot reach the files, the network or other programs (a sandboxed
   worker); a Scribe that refuses a step reads no PDF and says so in grimoire.log. A picture folder in `import/`
   now also gets a notebook name no other notebook has.

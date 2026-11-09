@@ -1341,7 +1341,7 @@ bullet and paragraph), the signature, Read all and Dismiss.
 A PDF's own links (a planner's tabs) live in `notebooks/<id>/doclinks.ini`, never in links.ini: own caps (16,000
 links, 1.5 MiB, 1,024 a page), so the user's 4,000/512 KiB/64 and a 2.0 build's reading are untouched. `doclinks.rs`
 holds the file (24-byte records sorted by page, annotation order kept), `pdflinks.rs` takes records from any
-source (KOReader's `links.txt` today) and validates, seeds (a hash of page and annotation index), fills (same
+source (KOReader's `links.txt`, and the PDF import's link annotations) and validates, seeds (a hash of page and annotation index), fills (same
 target and area within 2 px is one link) and trims to a water level at 90% of links and bytes, the densest pages
 first. The editor keeps them in `EditorState.dl`, read at open; taps try the user's links, then a document link
 whose exact area holds the point, then one reached only through the 7 mm growth (`doclinks_at`, later annotation
@@ -1908,6 +1908,16 @@ skipped (plain process isolation) unless GRIMOIRE_SANDBOX=require. The worker's 
 fixed grammar plus pixel bands, at most 4 MiB a job besides pixels, parsed strictly (`pdfwork.rs`); every
 number the device spike (S1) sets is in the one table `sandbox::s1`, marked "set by S1". The notebook, its
 slices, marks and colour rule are in FORMAT.md, "Imports: PDFs".
+
+The links and names (lane L6) come out of the same worker. After the page count the writer sends `LINKS <w> <h>`;
+the worker walks the annotations of every page (`pdfwork.rs`, module `links`), resolves each destination to a
+page (an explicit one by the page's object id, a named one through the name tree and the `/Dests` dictionary,
+read once and only when a link first names one, under the walk caps), maps the rectangle or quads through the
+transform the page was drawn with (`page_fit`, shared with the renderer so the box lands on what it covers), and
+answers `L`, `Q`, `O` and `F` records. The writer checks each one (`Collected::take`: pages inside the PDF,
+coordinates inside bounds, a quad only after its link, one name a page), keeps them in the work folder, and the
+last slice's commit puts them through `pdflinks_fill` and `pdflinks_water` into `doclinks.ini`, and the outline
+into `nav.ini`. A worker that fails in the walk costs the notebook its links, not its pages.
 
 ## Shared building blocks (2.1, lane L0)
 

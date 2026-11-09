@@ -666,6 +666,30 @@ every 10 s, and again after 5 s while a file waits):
   progress a detached import leaves, rewritten at most every 20 s. `import/.attempts` also keys PDFs (a hash of
   the file's name; the second hash is of its size and mtime): three tries, or a refusal, wait until the file
   changes. A sandbox failure counts no try.
+- **Links and names (lane L6):** slice 0 also asks the worker for the PDF's links (`LINKS <w> <h>`, after the page
+  count), in the pixels of the Scribe page by the same transform that draws the page, and keeps what it sent in
+  the work folder as `links.part` (the `L` and `Q` records, then `F`) and `names.part` (the `O` records), in the
+  worker's own record grammar, read back strictly by the last slice. The commit writes `doclinks.ini` (below) and
+  `nav.ini` from them, before `notebook.ini`, and removes the two parts. A worker that dies, stalls or lies in
+  the walk costs the notebook its links and names only (logged); the pages do not depend on it. What is read:
+  an annotation `/Subtype /Link`, not hidden (`/F` bit 2) or not viewed (bit 6); its `/A` GoTo (explicit
+  destination, or a name or string looked up in the catalog's `/Names /Dests` name tree and its PDF 1.1 `/Dests`
+  dictionary, each tried for either type), the four Named actions (`NextPage`, `PrevPage`, `FirstPage`,
+  `LastPage`, resolved to the concrete page), else its `/Dest`; an explicit destination naming its page by
+  number instead of a reference counts as a 0-based index in range; `/QuadPoints` (up to 8 quads, a link each,
+  its box as the area, a quad that is not an axis-aligned rectangle also as a closed `outline.` polygon),
+  else `/Rect`. Web links (URI) are left out and counted in the log; GoToR, Launch, JavaScript, a link with no
+  action, one whose destination does not resolve, an empty rectangle, a link to its own page and one that falls
+  off the page are left out and counted too. Walks are capped (name trees and the outline: depth 32, 100,000
+  entries and nodes, a visited set; 20,000 annotations a page; 60,000 links a PDF) and the rest is left out.
+  The areas are the mapped rectangles (floor of the minimum, ceiling of the maximum, clamped to the page, at
+  least 1 px), so a notebook exported by Grimoire and imported again gives its links back within 1 px. The
+  outline names pages: depth first, the first item that points at a page names it, a page's own name staying
+  (an import makes a new notebook, so none has one); titles are decoded from PDF text strings (UTF-16BE or LE
+  with a BOM, UTF-8 with a BOM, else PDFDocEncoding), controls become spaces, trimmed, cut at 95 bytes between
+  characters. The water level trims the densest pages first; when it (or a page's 1,024, or the worker's cap)
+  left links out the end says "Imported notebook (%d pages). Some links were left out." (the pages-not-read
+  ending wins when both apply).
 - **One owner:** `import/.lock` (flock) is taken by the UI without blocking before it queues any import and
   held while any is queued or running, through one close-on-exec handle; each background child (and the child
   that finishes the queue after Grimoire closes) keeps that descriptor. No job opens it or waits for it.
@@ -868,6 +892,9 @@ whose target is not `p<id>`, with its area and outline) are carried, as links.in
 | links | 16,000 | 4,000 |
 | size | 1.5 MiB | 512 KiB |
 | a page | 1,024 | 64 |
+
+Two producers fill it: KOReader's `links.txt` (above) and the PDF import's own link annotations (Imports: PDFs).
+Both go through `pdflinks.rs`.
 
 A file over a cap, a carried line past its bounds or one that holds a NUL does not read: it shows no tabs and is
 never written over. The water level: a fill keeps the most links under 90% of the links and of the bytes (outline

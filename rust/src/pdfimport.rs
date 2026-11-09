@@ -1002,8 +1002,9 @@ pub fn scan_noted(now: u32) {
 pub enum Finished {
     /// not one of ours (or already told)
     Nothing,
-    /// a notebook of this many pages, of which `blank` could not be read
-    Imported { pages: u32, blank: u32 },
+    /// a notebook of this many pages, of which `blank` could not be read, and `trimmed` of whose document links
+    /// were left out (the water level, a page's cap or the worker's)
+    Imported { pages: u32, blank: u32, trimmed: u32 },
     Failed(FailWhy),
     /// the PDF was imported before
     Already,
@@ -1016,6 +1017,13 @@ pub enum FailWhy {
     TooLong(u32),
     TooBig(u32),
     Storage,
+}
+
+/// The result record of import `id` as its job left it: (reason, arg, blank pages), None when the record is
+/// another job's. For a finished import `arg` is how many document links it left out.
+pub fn import_result(id: &str) -> Option<(u32, u32, u32)> {
+    let p = progress();
+    (p.result_for.load(Ordering::Acquire) == id_hash(id)).then(|| (p.reason.load(Ordering::Relaxed), p.arg.load(Ordering::Relaxed), p.blank.load(Ordering::Relaxed)))
 }
 
 /// A PDF import job ended (`ok` and `code` as bgjob says): what to tell the user. Lets go of the lock when no
@@ -1072,7 +1080,8 @@ pub fn finished(id: &str, ok: bool) -> Finished {
     if pages == 0 {
         return Finished::Nothing;
     }
-    Finished::Imported { pages, blank: if reason == R_DONE { blank } else { 0 } }
+    // (a finished import's `arg` is the number of links it left out)
+    Finished::Imported { pages, blank: if reason == R_DONE { blank } else { 0 }, trimmed: if reason == R_DONE || reason == R_NONE { arg } else { 0 } }
 }
 
 // ====================================================================================================
@@ -1357,6 +1366,7 @@ fn test_hooks() -> Vec<(&'static str, u32)> {
         ("hang", "GRIMOIRE_PDF_TEST_HANG_PAGE"),
         ("alloc", "GRIMOIRE_PDF_TEST_ALLOC_PAGE"),
         ("trap", "GRIMOIRE_PDF_TEST_TRAP_PAGE"),
+        ("links", "GRIMOIRE_PDF_TEST_LINKS"),
     ] {
         if let Some(p) = std::env::var(var).ok().and_then(|x| x.parse::<u32>().ok()) {
             v.push((name, p));
@@ -1481,9 +1491,22 @@ pub fn run_slice(id: &str, src: &str) -> SliceEnd {
                 ..Default::default()
             };
             let limits = Limits { as_bytes: worker_as_bytes(source.size, false), cpu_secs: s1::SLICE_CPU_SECS, mapped, file_len: source.size };
+            let (spw, sph) = {
+                let (mut w, mut h) = (0, 0);
+                store_page_size(&mut w, &mut h);
+                (w, h)
+            };
+            let mut found: Option<Collected> = None;
             let pages = match start_session(&source, &limits, id) {
                 Ok(mut s) => {
                     let r = s.probe();
+                    // the links and names, in the same worker: a failure costs the notebook them, not its pages
+                    if matches!(r, Ok(n) if n <= PDF_MAX_PAGES) {
+                        match s.links(spw, sph) {
+                            Ok(c) => found = Some(c),
+                            Err(why) => qlog!("import: %s: the links and names could not be read (%s); the notebook has none", id, why),
+                        }
+                    }
                     s.end();
                     r
                 }
@@ -1530,6 +1553,15 @@ pub fn run_slice(id: &str, src: &str) -> SliceEnd {
                     qlog!("import: %s: not enough room for %d pages; nothing imported", id, pages as i32);
                     remove_work_folder(id);
                     return refuse(R_STORAGE, 0);
+                }
+            }
+            if let Some(c) = &found {
+                let w1 = write_file_atomic(&format!("{work}/links.part"), c.links_text().as_bytes());
+                let w2 = write_file_atomic(&format!("{work}/names.part"), c.names_text().as_bytes());
+                if w1 != 0 || w2 != 0 {
+                    qlog!("import: %s: the links and names could not be kept (%s); the notebook has none", id, &strerror(errno()));
+                    let _ = std::fs::remove_file(format!("{work}/links.part"));
+                    let _ = std::fs::remove_file(format!("{work}/names.part"));
                 }
             }
             st.pages = pages;
@@ -1747,6 +1779,79 @@ fn write_progress_mark(src: &str, prior: &Option<Mark>, id: &str, page: u32, pag
     mark_write(&m);
 }
 
+/// Folds the first slice's links and names (the work folder's links.part and names.part) into the notebook being
+/// made: doclinks.ini (every record validated and put through pdflinks.rs, the water level trimming the densest
+/// pages first) and nav.ini (the outline's names, for the pages that have none: all of them, here). Both are
+/// optional: a part that is missing or does not read, or a file that cannot be written, leaves the notebook
+/// without them and says so in the log. Returns how many links were left out for room (the toast says so).
+fn fold_links(id: &str, work: &str, nb: &NotebookInfo, pw: i32, ph: i32) -> u32 {
+    let read = |n: &str| std::fs::read(format!("{work}/{n}")).ok().filter(|b| b.len() <= 2 * RECORDS_MAX_BYTES);
+    let (Some(lt), Some(nt)) = (read("links.part"), read("names.part")) else { return 0 };
+    let pages = nb.npages().max(0) as u32;
+    let Some(c) = Collected::from_parts(&lt, &nt, pages) else {
+        qlog!("import: %s: its links and names do not read; the notebook has none", id);
+        return 0;
+    };
+    // the names
+    let mut nav = Nav::default();
+    nav_init(&mut nav);
+    for (page, text) in &c.names {
+        if let Some(&pid) = nb.page_ids.get(*page as usize - 1) {
+            nav_set_name(&mut nav, pid, &String::from_utf8_lossy(text));
+        }
+    }
+    let mut ini: Vec<u8> = b"# Grimoire: page names\n".to_vec();
+    let mut named = 0;
+    for &pid in &nb.page_ids {
+        let n = nav_name(&nav, pid);
+        if !n.is_empty() {
+            ini.extend_from_slice(format!("name.{pid}={n}\n").as_bytes());
+            named += 1;
+        }
+    }
+    nav_free(&mut nav);
+    if named > 0 && write_file_atomic(&format!("{work}/nav.ini"), &ini) != 0 {
+        qlog!("import: %s: its page names could not be written; left out", id);
+        named = 0;
+    }
+    // the links
+    let recs: Vec<DocRecord> = c
+        .links
+        .iter()
+        .map(|(l, q)| DocRecord {
+            src: nb.page_ids[l.src as usize - 1],
+            dst: nb.page_ids[l.dst as usize - 1],
+            rect: Rect { x: l.x, y: l.y, w: l.w, h: l.h },
+            quad: q.map(|q| {
+                let f = |i: usize| q[i] as f32 / 16.0;
+                [(f(0), f(1)), (f(2), f(3)), (f(4), f(5)), (f(6), f(7))]
+            }),
+            index: l.index,
+        })
+        .collect();
+    let mut dl = DocLinks::default();
+    let have = |p: u32| nb.page_ids.contains(&p);
+    let st = pdflinks_fill(&mut dl, &recs, pw, ph, &have, &|_, _| false);
+    let water = pdflinks_water(&mut dl);
+    let kept = dl.links.len();
+    if doclinks_save_in(work, &mut dl, nb) != 0 {
+        qlog!("import: %s: its document links could not be written; left out", id);
+        return 0;
+    }
+    qlog!(
+        "import: %s: %d document link(s) and %d page name(s); left out: %d web, %d other action(s), %d without a place to go, %d refused, %d for room",
+        id,
+        kept as i32,
+        named as i32,
+        c.left.uri as i32,
+        c.left.other as i32,
+        c.left.dead as i32,
+        st.invalid as i32,
+        (water + st.full + c.left.capped as usize) as i32
+    );
+    (water + st.full + c.left.capped as usize) as u32
+}
+
 fn commit(id: &str, src: &str, abs: &str, state: &State, mark: Option<&Mark>, source: &Src, pw: i32, ph: i32) -> SliceEnd {
     let work = work_dir(id);
     let bgdir = format!("{work}/bg");
@@ -1813,12 +1918,15 @@ fn commit(id: &str, src: &str, abs: &str, state: &State, mark: Option<&Mark>, so
     }
     let text = annotate_map_text(&m, &nb);
     annotate_map_free(&mut m);
-    // MERGE-ME(L6): the links and names the probe recorded (work/links.part, names.part) are folded into
-    // links.ini (doclinks.ini, lane L4) and nav.ini here, before notebook.ini is written.
+    // the links and names the first slice read (links.part, names.part): doclinks.ini and nav.ini, before
+    // notebook.ini is written
+    let trimmed = fold_links(id, &work, &nb, pw, ph);
     let wrote = text.as_ref().is_some_and(|t| write_file_atomic(&format!("{work}/source.ini"), t) == 0)
         && store_write_pages_list_in(&bgdir, &pids, &papers) == 0
         && {
             let _ = std::fs::remove_file(state_path(id)); // (a finished notebook carries no import state)
+            let _ = std::fs::remove_file(format!("{work}/links.part"));
+            let _ = std::fs::remove_file(format!("{work}/names.part"));
             store_write_info_in(&work, &nb) == 0 // notebook.ini last: a folder holding it is whole
         };
     if !wrote {
@@ -1842,7 +1950,7 @@ fn commit(id: &str, src: &str, abs: &str, state: &State, mark: Option<&Mark>, so
         mark_drop(src);
     }
     crate::bgwork_template::attempts_note_public(src, 0, 2);
-    set_result(id, if blank > 0 { R_DONE } else { R_NONE }, 0, blank);
+    set_result(id, if blank > 0 { R_DONE } else { R_NONE }, trimmed, blank);
     SliceEnd::Done { pages: state.pages, blank }
 }
 

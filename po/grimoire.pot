@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: Grimoire 2.1.0-beta.1\n"
 "Report-Msgid-Bugs-To: https://github.com/ganten1998/grimoire-scribe/issues\n"
-"POT-Creation-Date: 2026-11-09 13:45-0600\n"
+"POT-Creation-Date: 2026-11-09 14:24-0600\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -700,6 +700,15 @@ msgstr ""
 #, c-format
 msgid "Imported notebook (%d page). Some pages couldn't be read."
 msgid_plural "Imported notebook (%d pages). Some pages couldn't be read."
+msgstr[0] ""
+msgstr[1] ""
+
+#. TRANSLATORS: a PDF became a new notebook, but its document links (a planner's tabs) were more than
+#. a notebook holds and some were left out; %d is its page count. In a toast: one or two lines.
+#: rust/src/app.rs
+#, c-format
+msgid "Imported notebook (%d page). Some links were left out."
+msgid_plural "Imported notebook (%d pages). Some links were left out."
 msgstr[0] ""
 msgstr[1] ""
 

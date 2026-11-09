@@ -1964,3 +1964,25 @@ replace the placeholders in `sandbox::s1` with one commit):
 8. Does the private mapping of a file on `/mnt/us` work (`pdf: ... the device refuses the private mapping` would
    say not), and what does a 100 MB PDF do to the memory?
 
+## 2.1.0-beta.2, L6 (links and page names from the PDF)
+
+Automated: `rust/tests/test_pdflinks_import.rs` runs real workers over generated PDFs (every destination and
+action kind, the name tree with `/Kids` and the PDF 1.1 `/Dests`, the four Named actions, QuadPoints, out-of-spec
+page numbers, hidden links, the outline in three encodings, loops and depth in the outline and the name tree, a
+200,000-entry name tree, a worker that dies or stalls in the walk, the area of every link on the box drawn under
+it for every rotation, a crop, landscape and A4, the year planner's water level, and a notebook exported by
+Grimoire and imported again), the scenario `z_pdf_9_tabs.qs` (a tab of an imported planner is tapped), the
+records' strictness (`pdfwork.rs`) and the new toast's fit (`test_pdf_strings.rs`). **Not run anywhere: a real
+planner on a Scribe.** The owner's checks:
+
+1. Copy the year planner PDF (the one with its tabs) into `grimoire/import/` over USB and open Grimoire. When the
+   notebook appears, open it: a tap on a month tab goes to that month, a tap on a day goes to the day, the
+   next-page and previous-page links (if the planner has them) work, and the outline's names are the page names
+   in the Index. If the end said "Imported notebook (%d pages). Some links were left out.", the planner has more
+   links than a notebook holds (14,400): the densest pages (the year at a glance) lost the last cells, every tab
+   survived.
+2. Time the import against one without links (grimoire.log, `import: ... N of M pages`): the walk runs once, in
+   the first slice, and adds under a second for a planner of 6,000 links. The log line
+   `document link(s) and ... page name(s); left out: ...` says how many web and other links were left out.
+3. Export a notebook with links and names as a PDF (Share, or KOReader), copy that PDF into `import/` and
+   compare: the same tabs in the same places, the same names.

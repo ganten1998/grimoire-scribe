@@ -10,8 +10,15 @@ why. Newest decisions first within each section.
   threshold, the 512 MB and 64 MB caps, the allow-list, the 2 s D12 trigger, the pipe against memfd), with a
   comment "set by S1". The seccomp allow-list also carries `exit_group` (musl's `_exit`), which the plan's list
   did not name.
-- **Links and the outline (lane L6)**: `pdfwork::probe_links` records nothing and the grammar has no `L`, `Q`, `O`
-  or `F` record yet; `pdfimport::commit` marks where `links.part` and `names.part` are folded in (MERGE-ME L6).
+- **Links and the outline (lane L6)**: DONE in 2.1.0-beta.2 (FORMAT.md, "Imports: PDFs"). Left for later: web links
+  are counted and left out (the optional QR card, 8.I of the plan, is the way to keep them); the outline names
+  only new notebooks' pages (a page's own name would keep it, which matters only when a fill comes in 2.2);
+  a worker caps at 60,000 links a PDF (after the water level a notebook keeps 14,400 at most, but a PDF past the
+  cap loses its later pages' links before the densest-first trim sees them); `/Next` action chains, JavaScript
+  and `/GoToR` are ignored; a Link that is hidden (`/F` bit 2) or not viewed (bit 6) is skipped (a choice the plan
+  did not settle: it would be a dead tap area over visible paper); a toast names one thing (when both blank pages
+  and left-out links apply, the pages' ending wins and the links are in the log); the name tree's walk order
+  decides which entries a 100,000-entry cap keeps.
 - **Pictures in the worker (lane L7)**: `sandbox::session_broken()` is what L7 asks to fall back to 2.0's path;
   `WorkKind` has only `Pdf`, and the record protocol is open to a font kind (L10).
 - **The picker (lane L8)** calls `pdfimport::pdf_import_queue(&StoragePath, name, folder, dpi)`; the Import place's
