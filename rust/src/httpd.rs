@@ -678,16 +678,11 @@ fn download_pages(done: i32, total: i32, d: Option<usize>) {
     shared(d).pages.store(done as u32, SeqCst);
 }
 
-// The answer to g_cur. cache: a Cache-Control value, None for no-store (everything but the
-// fonts); extra: more header lines, each ending in \r\n, or None.
-fn respond_bytes(
-    code: i32,
-    ctype: &str,
-    data: &[u8],
-    download_name: Option<&[u8]>,
-    cache: Option<&str>,
-    extra: Option<&str>,
-) {
+// The head of an answer: the status line and headers, up to and with the blank line. len: the body's
+// length for Content-Length (None: no such line, the connection's close ends the body, as in HTTP/1.0).
+// cache: a Cache-Control value, None for no-store (everything but the fonts); extra: more header
+// lines, each ending in \r\n, or None.
+fn response_head(code: i32, ctype: &str, len: Option<usize>, download_name: Option<&[u8]>, cache: Option<&str>, extra: Option<&str>) -> Buf {
     let reason = if code == 200 {
         "OK"
     } else if code == 404 {
@@ -713,17 +708,11 @@ fn respond_bytes(
     };
     // (the C appends to g_cur->out, empty at this point: the connection answers once)
     let mut o = with(|s| std::mem::take(&mut s.cl[s.cur].out));
-    buf_printf!(
-        &mut o,
-        "HTTP/1.0 %d %s\r\nContent-Type: %s\r\nContent-Length: %zu\r\nConnection: close\r\n\
-         Cache-Control: %s\r\n%s",
-        code,
-        reason,
-        ctype,
-        data.len(),
-        cache.unwrap_or("no-store"),
-        extra.unwrap_or("")
-    );
+    buf_printf!(&mut o, "HTTP/1.0 %d %s\r\nContent-Type: %s\r\n", code, reason, ctype);
+    if let Some(len) = len {
+        buf_printf!(&mut o, "Content-Length: %zu\r\n", len);
+    }
+    buf_printf!(&mut o, "Connection: close\r\nCache-Control: %s\r\n%s", cache.unwrap_or("no-store"), extra.unwrap_or(""));
     if let Some(name) = download_name {
         let mut ascii: Vec<u8> = Vec::new(); // char ascii[STORE_NAME_LEN + 8]
         for &p in cbytes(name) {
@@ -739,6 +728,19 @@ fn respond_bytes(
         buf_printf!(&mut o, "\r\n");
     }
     buf_printf!(&mut o, "\r\n");
+    o
+}
+
+// The answer to g_cur.
+fn respond_bytes(
+    code: i32,
+    ctype: &str,
+    data: &[u8],
+    download_name: Option<&[u8]>,
+    cache: Option<&str>,
+    extra: Option<&str>,
+) {
+    let mut o = response_head(code, ctype, Some(data.len()), download_name, cache, extra);
     if with(|s| s.child_response) {
         // The fork owns a blocking socket. Send directly from the export buffer instead
         // of copying the whole PDF/ZIP into a second, equally large response buffer.
@@ -770,6 +772,98 @@ fn respond_bytes(
 
 fn respond(code: i32, ctype: &str, body: &Buf, download_name: Option<&[u8]>) {
     respond_bytes(code, ctype, &body.data, download_name, None, None);
+}
+
+/// The connection of a download as a Sink, in the child that owns it: what the export makes goes out as
+/// it comes, the byte count (sent) kept for the progress the parent answers.
+struct SocketSink {
+    d: Option<usize>,
+    total: usize,
+}
+impl Sink for SocketSink {
+    fn put(&mut self, b: &[u8]) -> bool {
+        if !child_send(b, None) {
+            return false;
+        }
+        self.total += b.len();
+        if let Some(d) = self.d {
+            shared(d).sent.store(self.total as u32, SeqCst);
+        }
+        true
+    }
+}
+
+/// A file only this child holds, for a download to be made into before it is sent (so its length is
+/// known): made in the cache's folder and unlinked at once, so a kill leaves nothing behind.
+fn spool_create() -> Option<FileSink> {
+    let dir = pdf_cache_root();
+    if mkdir_p(&dir) != 0 {
+        return None;
+    }
+    let path = format!("{dir}/share-{}.spool", std::process::id());
+    let f = FileSink::create_spool(&path);
+    let _ = std::fs::remove_file(&path);
+    f
+}
+
+/// Answers with a file made by `make` into the sink it is given, without ever holding it whole in
+/// memory: the child makes it into a spool file (one page of the PDF, one entry of the zip in memory
+/// at a time) and sends that with its length; with no room for a spool it makes the file twice, a
+/// first time to count it and a second time into the connection. Anywhere but a render child (the
+/// fork failed: the export runs in-process) it is made into a Buf and answered as every answer is.
+/// `make` is told whether this is the first making of the file (the one that reports the pages made).
+fn respond_made(ctype: &str, name: Option<&[u8]>, make: &mut dyn FnMut(&mut dyn Sink, bool) -> i32) {
+    if !with(|s| s.child_response) {
+        let mut b = Buf::default();
+        let rc = make(&mut BufSink(&mut b), true);
+        if rc == 0 {
+            respond(200, ctype, &b, name);
+        } else {
+            respond_text(500, tr("export failed"));
+        }
+        buf_free(&mut b);
+        return;
+    }
+    let d = with(|s| s.cl[s.cur].download);
+    let head_only = with(|s| s.child_head);
+    let mut spool: Option<FileSink> = None;
+    let mut len: Option<u64> = None;
+    let mut told = false; // whether a making has told the progress
+    if let Some(mut sp) = spool_create() {
+        told = true;
+        let rc = make(&mut sp, true);
+        if rc == 0 && !sp.failed() {
+            len = Some(sp.len());
+            spool = Some(sp);
+        } else if !sp.failed() {
+            return respond_text(500, tr("export failed")); // (the export itself failed, not the disk)
+        }
+    }
+    if len.is_none() {
+        // (no room for the spool: counted, then made again into the connection)
+        let mut c = CountSink::default();
+        if make(&mut c, !told) != 0 {
+            return respond_text(500, tr("export failed"));
+        }
+        len = Some(c.0);
+    }
+    let len = len.unwrap_or(0);
+    let head = response_head(200, ctype, Some(len as usize), name, None, None);
+    if let Some(d) = d {
+        shared(d).bytes.store(len as u32, SeqCst);
+        shared(d).state.store(DL_SENDING, SeqCst);
+    }
+    let mut ok = !head.err && child_send(&head.data, None);
+    if ok && !head_only {
+        let mut sock = SocketSink { d, total: 0 };
+        ok = match spool {
+            Some(sp) => sp.send_all(&mut sock),
+            None => make(&mut sock, false) == 0,
+        };
+    }
+    if let Some(d) = d {
+        shared(d).state.store(if ok { DL_DONE } else { DL_FAILED }, SeqCst);
+    }
 }
 
 /// export_safe_name on bytes, as the C has it (export.rs's takes text, and drops the cut character a
@@ -1774,14 +1868,7 @@ fn route(path_in: &[u8]) {
         return;
     }
     if path == b"/all.zip" {
-        let mut b = Buf::default();
-        let rc = export_folder_zip("", dpi(), &mut b);
-        if rc == 0 {
-            respond(200, "application/zip", &b, Some(b"Grimoire.zip"));
-        } else {
-            respond_text(500, tr("export failed"));
-        }
-        buf_free(&mut b);
+        respond_made("application/zip", Some(b"Grimoire.zip"), &mut |sink, _| export_folder_zip_to("", dpi(), sink));
         return;
     }
     if path.starts_with(b"/folder/") {
@@ -1796,18 +1883,12 @@ fn route(path_in: &[u8]) {
         if l - 4 >= STORE_NAME_LEN {
             return respond_text(404, tr("not found")); // longer than any folder
         }
-        let mut b = Buf::default();
         let mut fname = safe_name(folder, STORE_NAME_LEN);
         fname.extend_from_slice(b".zip");
         fname.truncate(STORE_NAME_LEN + 8 - 1);
         // (the folders there are are text: one that is not matches none)
         let folder = String::from_utf8_lossy(folder).into_owned();
-        if export_folder_zip(&folder, dpi(), &mut b) == 0 {
-            respond(200, "application/zip", &b, Some(&fname));
-        } else {
-            respond_text(500, tr("export failed"));
-        }
-        buf_free(&mut b);
+        respond_made("application/zip", Some(&fname), &mut |sink, _| export_folder_zip_to(&folder, dpi(), sink));
         return;
     }
     if !path.starts_with(b"/nb/") {
@@ -1837,23 +1918,15 @@ fn route(path_in: &[u8]) {
     } else if rest == b".pdf" {
         fname = [&safe[..], b".pdf"].concat();
         let d = with(|s| s.cl[s.cur].download);
-        if export_notebook_pdf_progress(nb, dpi, &mut b, Some(&mut |done: i32, total: i32| download_pages(done, total, d))) == 0 {
-            respond(200, "application/pdf", &b, Some(&fname));
-        } else {
-            respond_text(500, tr("export failed"));
-        }
+        // (the page count is told by the first making of the file: a second one, when there was no room for
+        // a spool, would count it over)
+        respond_made("application/pdf", Some(&fname), &mut |sink, first| {
+            let mut told = |done: i32, total: i32| download_pages(done, total, d);
+            export_notebook_pdf_to(nb, dpi, sink, PdfCacheMode::Read, if first { Some(&mut told) } else { None })
+        });
     } else if rest == b".zip" {
-        let mut z = zip_begin(&mut b);
-        let mut rc = export_notebook_zip(nb, dpi, &mut z, "");
-        if zip_end(&mut z) != 0 {
-            rc = -1;
-        }
         fname = [&safe[..], b".zip"].concat();
-        if rc == 0 {
-            respond(200, "application/zip", &b, Some(&fname));
-        } else {
-            respond_text(500, tr("export failed"));
-        }
+        respond_made("application/zip", Some(&fname), &mut |sink, _| export_notebook_zip_to(nb, dpi, sink));
     } else if rest == b"/thumb.png" {
         let mut t = Canvas::default();
         if store_load_thumb(nb.id.as_str(), &mut t) == 0 {
