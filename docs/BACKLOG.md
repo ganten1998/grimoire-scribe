@@ -439,6 +439,12 @@ Decided by the lane B3 design (docs/beta2/PIXEL-LASSO.md, 2026-11-03) and its bu
 
 ## To investigate
 
+- **z_pages_find_over flakes on GitHub's runner** (the v2.1.0-beta.1 release run 42540001325, shard 6; passed on
+  rerun, and in the dry run of the same commit): line 50 saw `ui 20 1312 1820 1148, ui 0 0 1860 2480` where it
+  wants the first alone, an extra whole-screen Ui present on a slower host. It flaked under Wine's load too
+  (2026-11-07). Find what sends the whole-screen present (a tick racing the Find sheet's step) or let the
+  scenario wait for it with `waitfor`.
+
 - **Parts of the sleep picture left on the screen after a wake** (the owner's Scribe, 2026-11-05: the KOReader
   wallpaper over parts of the panel until a redraw, while the framebuffer, read over ssh, held Grimoire's screen
   whole). The owner has since seen it in KOReader alone, with Grimoire not running, so it may not be Grimoire's.
