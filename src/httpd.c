@@ -363,6 +363,7 @@ static void respond_bytes(int code, const char *ctype, const void *data, size_t 
                                           : code == 302 ? "Found" : code == 401 ? "Unauthorized"
                                           : code == 403 ? "Forbidden" : "Internal Server Error";
     if (!g_cur) return;
+    if (!ctype) return;
     Buf *o = &g_cur->out;
     buf_printf(o, "HTTP/1.0 %d %s\r\nContent-Type: %s\r\nContent-Length: %zu\r\nConnection: close\r\n"
                   "Cache-Control: %s\r\n%s", code, reason, ctype, len, cache ? cache : "no-store", extra ? extra : "");
