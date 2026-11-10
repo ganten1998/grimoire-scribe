@@ -396,9 +396,10 @@ fn copy_page_and_copy_to_notebook_carry_what_travels() {
     let copied = doclinks_of(&work, new_pid);
     assert_eq!(copied.len(), 2);
     assert_eq!((copied[0].seed, copied[0].area(), copied[0].target), (doclinks_of(&dl, ids[0])[0].seed, Rect::new(10, 10, 50, 50), ids[1]));
-    // past the water level the copy gets none, and says nothing is done (the editor's toast says it)
+    // past the caps (the water level's room is Copy page's to use) the copy gets none, and says nothing is done
+    // (the editor's toast says it)
     let mut full = DocLinks::default();
-    for k in 0..14_400u32 {
+    for k in 0..(DOCLINKS_MAX as u32 - 1) {
         full.push(DocLink::new(2000 + k / 100, k, 3, Rect::new(0, 0, 5, 5)).unwrap(), None);
     }
     full.push(DocLink::new(5, 1, 3, Rect::new(0, 0, 5, 5)).unwrap(), None);
@@ -454,4 +455,111 @@ fn book_links_text_and_mapping() {
     assert_eq!(half, Rect::new(200, 200, 200, 200));
     let wide = pdflinks_to_page(Rect::new(0, 0, 100, 100), 1000, 500, 800, 1000);
     assert_eq!((wide.x, wide.y, wide.w, wide.h), (0, 300, 80, 80), "a sideways page is fitted by width and centred");
+}
+
+// ---- the review round's fixes (2.1.0-beta.2, F3): no store root, each in memory or in a folder of its own ----
+
+fn nb_with(ids: &[u32]) -> NotebookInfo {
+    let mut nb = NotebookInfo::default();
+    nb.id.set("20261109-000000-f3f3");
+    nb.page_ids = ids.to_vec();
+    nb
+}
+
+fn scratch(name: &str) -> PathBuf {
+    let d = root().join(format!("f3-{name}"));
+    let _ = std::fs::remove_dir_all(&d);
+    std::fs::create_dir_all(&d).unwrap();
+    d
+}
+
+/// The 10% the water level keeps "for Copy page and later fills" is usable: Copy page refuses at the caps.
+#[test]
+fn copy_page_may_use_the_room_the_water_level_keeps() {
+    let mut dl = DocLinks::default();
+    for pid in 1..=400u32 {
+        for k in 0..50u32 {
+            assert!(dl.push(DocLink::new(pid, 1000 + k, pid % 399 + 1, Rect::new(k as i32 * 10, 10, 8, 8)).unwrap(), None));
+        }
+    }
+    pdflinks_water(&mut dl);
+    let mut one = dl.clone();
+    one.retain(|l| l.pid != 7 || l.seed == 1000);
+    for k in 0..35u32 {
+        assert!(one.push(DocLink::new(401, k, 9, Rect::new(k as i32 * 10, 700, 8, 8)).unwrap(), None));
+    }
+    assert_eq!(one.links.len(), DOCLINKS_MAX * DOCLINKS_WATER_PCT / 100);
+    assert_eq!(doclinks_copy_page(&mut one, 7, 5000), 1, "a page with one tab copies at the water level");
+    // a page of 36 tabs also fits under the cap (1,600 links of room)
+    assert!(doclinks_copy_page(&mut dl, 1, 5000) > 0);
+    // and the cap itself still refuses
+    let mut full = DocLinks::default();
+    for k in 0..DOCLINKS_MAX as u32 {
+        assert!(full.push(DocLink::new(k / 500 + 1, k % 500, 2, Rect::new(0, 0, 8, 8)).unwrap(), None));
+    }
+    assert_eq!(doclinks_copy_page(&mut full, 1, 5000), -1);
+}
+
+/// A tab to a page that was deleted is not a tab: prune takes it from the tap, the eye and the Links bar.
+#[test]
+fn a_tab_to_a_deleted_page_is_not_tapped() {
+    let p = page_new(800, 1000, PAPER_NARROW_NM);
+    let text = b"link.1=0000000a,p2\narea.1=0000000a,100,100,200,100\nlink.1=0000000b,p3\narea.1=0000000b,100,300,200,100\n";
+    let mut dl = doclinks_parse(text).unwrap();
+    let nb = nb_with(&[1, 3]);
+    assert_eq!(doclinks_prune(&mut dl, &nb), 1);
+    assert!(doclinks_at(&dl, &p, 1, 150.0, 150.0, 84.0).is_none());
+    assert_eq!(doclinks_boxes(&dl, &p, 1).len(), 1);
+    let mut lb = LinkBar::default();
+    linkbar_set_docs(&mut lb, &nb, &doclinks_targets(&dl, &p, 1), 300.0, true);
+    assert_eq!(lb.doc_links, 1);
+    assert!(lb.docs.iter().all(|e| e.page >= 0));
+}
+
+/// The 1,024-a-page cap holds on reading as FORMAT.md says: such a file does not read, so it is never shown as
+/// if it could be written (and never written over).
+#[test]
+fn a_page_over_1024_does_not_read() {
+    let mut text = String::new();
+    for k in 0..1025u32 {
+        text.push_str(&format!("link.1={:08x},p2\narea.1={:08x},{},{},5,5\n", k, k, k % 100 * 6, k / 100 * 6));
+    }
+    assert!(doclinks_parse(text.as_bytes()).is_none());
+    let mut ok = String::new();
+    for k in 0..1024u32 {
+        ok.push_str(&format!("link.1={:08x},p2\narea.1={:08x},{},{},5,5\n", k, k, k % 100 * 6, k / 100 * 6));
+    }
+    assert_eq!(doclinks_parse(ok.as_bytes()).map(|d| d.links.len()), Some(1024));
+}
+
+/// A link whose area a later version wrote in a form this one cannot read is carried whole, not dropped.
+#[test]
+fn a_link_with_an_area_of_a_later_form_is_carried() {
+    let text = b"link.1=0000000a,p2\narea.1=0000000a,0,0,7000,10\nlink.1=0000000b,p2\narea.1=0000000b,0,0,10,10\n";
+    let dl = doclinks_parse(text).unwrap();
+    assert_eq!(dl.links.len(), 1);
+    let out = String::from_utf8(doclinks_text(&dl, None)).unwrap();
+    assert!(out.contains("link.1=0000000a,p2"), "its link line is carried: {out}");
+    assert!(out.contains("area.1=0000000a,0,0,7000,10"));
+    // and what is written reads back the same
+    let again = doclinks_parse(out.as_bytes()).unwrap();
+    assert_eq!(doclinks_text(&again, None), out.as_bytes());
+    let dir = scratch("later");
+    let nb = nb_with(&[1, 2]);
+    let mut dl = dl;
+    assert_eq!(doclinks_save_in(dir.to_str().unwrap(), &mut dl, &nb), 0);
+    assert!(std::fs::read_to_string(dir.join("doclinks.ini")).unwrap().contains("link.1=0000000a,p2"));
+}
+
+/// A links.txt of more than 200,000 links keeps the first 200,000 (a planner over the cap keeps what it can).
+#[test]
+fn a_book_past_200000_links_keeps_the_first() {
+    let mut text = String::from("P 1860 2480\n");
+    for k in 0..BOOK_LINKS_MAX as u32 + 5 {
+        text.push_str(&format!("L {} {} 10 10 30 30\n", k % 2000 + 1, (k + 1) % 2000 + 1));
+    }
+    assert_eq!(pdflinks_parse_book(text.as_bytes()).map(|b| b.links.len()), Some(BOOK_LINKS_MAX));
+    // a line past the cap that does not read still refuses the file whole
+    text.push_str("L 1 2 50 50 30 30 9\n");
+    assert!(pdflinks_parse_book(text.as_bytes()).is_none());
 }

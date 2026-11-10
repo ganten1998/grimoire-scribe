@@ -158,10 +158,113 @@ fn gothic_holds_no_custom_font() {
     check!(guard(&r).is_empty());
 }
 
+/// One start with `env` on top of a clean GRIMOIRE_ environment (the stability rule is the real one unless env
+/// says GRIMOIRE_IMPORT_STABLE=fast).
+fn start_env(root: &str, script: &str, env: &[(&str, &str)]) -> (Option<i32>, Option<i32>, String) {
+    let path = format!("{root}/script.qs");
+    std::fs::write(&path, script).unwrap();
+    let mut c = Command::new(BIN);
+    for (k, _) in std::env::vars() {
+        if k.starts_with("GRIMOIRE_") {
+            c.env_remove(k);
+        }
+    }
+    c.env("GRIMOIRE_ROOT", root).env("GRIMOIRE_SCRIPT", &path).env("GRIMOIRE_LANG", "en").env("GRIMOIRE_WORK_EXE", BIN);
+    for (k, v) in env {
+        c.env(k, v);
+    }
+    let out = c.output().unwrap();
+    let text = format!("{}{}", String::from_utf8_lossy(&out.stdout), String::from_utf8_lossy(&out.stderr));
+    (out.status.code(), out.status.signal(), text)
+}
+
+fn settings_font_line(root: &str) -> String {
+    std::fs::read_to_string(format!("{root}/settings.ini")).unwrap_or_default().lines().filter(|l| l.starts_with("font=")).collect::<Vec<_>>().join("|")
+}
+
+const OWN: &str = "# Grimoire settings\ntheme=classic\nfont=file:Mine.ttf\nwhatsnew_seen=9.9.9\n";
+
+// H8: a chosen font that cannot get a verdict is not checked again at once, without end. (1) its file is dated an
+// hour ahead of the clock, so every check leaves it for later; (2) the cache folder takes no write, so every
+// check fails. The Library sits idle for 4 s: on 0c26d912 that forked 116 checks; now the first, and the retry
+// after its wait of 3 s.
+fn a_check_that_cannot_end_is_not_queued_again_at_once() {
+    let r = root("later");
+    std::fs::write(format!("{r}/fonts/Mine.ttf"), ttf(&test_font("Regular", 400))).unwrap();
+    std::fs::write(format!("{r}/settings.ini"), OWN).unwrap();
+    let later = std::time::SystemTime::now() + std::time::Duration::from_secs(3600);
+    std::fs::File::options().write(true).open(format!("{r}/fonts/Mine.ttf")).unwrap().set_modified(later).unwrap();
+    let (code, _, out) = start_env(&r, "wait 4000\nexpect font is terminess\nquit\n", &[]);
+    let forks = out.lines().filter(|l| l.contains("bg: font check of")).count();
+    check!(code == Some(0));
+    check!(forks >= 1 && forks <= 3);
+    if forks > 3 {
+        eprintln!("{forks} font check children forked in 4 s (file ahead of the clock)");
+    }
+    let r = root("readonly");
+    std::fs::write(format!("{r}/fonts/Mine.ttf"), ttf(&test_font("Regular", 400))).unwrap();
+    std::fs::write(format!("{r}/settings.ini"), OWN).unwrap();
+    std::fs::create_dir_all(format!("{r}/fonts/.cache")).unwrap();
+    use std::os::unix::fs::PermissionsExt;
+    std::fs::set_permissions(format!("{r}/fonts/.cache"), std::fs::Permissions::from_mode(0o555)).unwrap();
+    let (code, _, out) = start_env(&r, "wait 4000\nexpect font is terminess\nquit\n", &[("GRIMOIRE_IMPORT_STABLE", "fast")]);
+    std::fs::set_permissions(format!("{r}/fonts/.cache"), std::fs::Permissions::from_mode(0o755)).unwrap();
+    let forks = out.lines().filter(|l| l.contains("bg: font check of")).count();
+    check!(code == Some(0));
+    check!(forks >= 1 && forks <= 3);
+    if forks > 3 {
+        eprintln!("{forks} font check children forked in 4 s (cache not writable)");
+    }
+}
+
+// M17: after a start in Terminess (one strike), the owner opens the Font sheet, taps Terminess and Done: the
+// font= line goes, so the next start does not load the font that crashed.
+fn done_on_terminess_after_a_strike_takes_the_font_away() {
+    let r = prepared("undo");
+    let (code, signal, _) = start(&r, IN_USE, true);
+    check!(code.is_none() && signal == Some(libc::SIGABRT));
+    let undo = "wait 200\nexpect font is terminess\ntap 1535 95\nwait 50\ntap library font\nwait 50\ntap library font.terminess\nwait 50\ntap library font.done\nwait 100\n\
+tap library done\nwait 50\nquit\n";
+    let (code, _, out) = start(&r, undo, false);
+    check!(code == Some(0));
+    if code != Some(0) {
+        eprintln!("{out}");
+    }
+    check!(!settings_font_line(&r).contains("file:"));
+    // the next start would have crashed on the font: it is not asked to draw it
+    let (code, signal, _) = start(&r, "wait 100\nexpect font is terminess\nexpect font.own.drawn is 0\nquit\n", true);
+    check!(code == Some(0) && signal.is_none());
+}
+
+// M20: a verdict that does not read (a line a later version added) is checked again, once: the row does not say
+// "Checking..." for good, and the open sheet does not refresh at every look.
+fn a_verdict_that_does_not_read_is_checked_again() {
+    let r = prepared("verdict");
+    std::fs::write(format!("{r}/settings.ini"), "# Grimoire settings\ntheme=classic\nwhatsnew_seen=9.9.9\n").unwrap();
+    let cache = format!("{r}/fonts/.cache");
+    let verdict = std::fs::read_dir(&cache).unwrap().flatten().map(|e| e.path()).find(|p| p.extension().is_some_and(|e| e == "font")).unwrap();
+    let text = std::fs::read_to_string(&verdict).unwrap();
+    std::fs::write(&verdict, format!("{text}future=1\n")).unwrap();
+    let sheet = "wait 200\ntap 1535 95\nwait 50\ntap library font\nwait 300\nwaitbg\nwait 600\nexpect library.font.state.Mine.ttf is ready\n\
+wait 3000\ntap library font.cancel\nwait 50\nquit\n";
+    let (code, _, out) = start_env(&r, sheet, &[("GRIMOIRE_IMPORT_STABLE", "fast")]);
+    check!(code == Some(0));
+    if code != Some(0) {
+        eprintln!("{out}");
+    }
+    let forks = out.lines().filter(|l| l.contains("bg: font check of")).count();
+    check!(forks >= 1 && forks <= 2);
+    // (the verdict is this version's again)
+    check!(!std::fs::read_to_string(&verdict).is_ok_and(|t| t.contains("future=1")));
+}
+
 #[test]
 fn test_fontguard() {
     run!(two_strikes_then_terminess_until_the_file_changes);
     run!(one_strike_is_forgiven);
     run!(gothic_holds_no_custom_font);
+    run!(a_check_that_cannot_end_is_not_queued_again_at_once);
+    run!(done_on_terminess_after_a_strike_takes_the_font_away);
+    run!(a_verdict_that_does_not_read_is_checked_again);
     done();
 }

@@ -52,9 +52,15 @@ fn put(root: &str, rel: &str, bytes: &[u8]) {
     std::fs::write(p, bytes).unwrap();
 }
 
-/// Runs the job in this process (the writer's side as the background child runs it).
+/// Runs the job in this process (the writer's side as the background child runs it): a job checks one font and
+/// says 5 when more are left, as the app queues the next one; this runs them all and gives the last one's code.
 fn job() -> i32 {
-    bg_font_check("", 300.0)
+    loop {
+        let rc = bg_font_check("", 300.0);
+        if rc != 5 {
+            return rc;
+        }
+    }
 }
 
 fn asset(name: &str) -> Vec<u8> {
@@ -98,6 +104,10 @@ fn wait_job() -> i32 {
         bg_poll_kind(Some(&mut kind));
         if kind == BgKind::FontCheck as i32 {
             code = bg_last_exit();
+            if code == 5 {
+                // (one font a job: the app's next one, behind everything else)
+                bg_queue(BgKind::FontCheck, Some(""), Some("next"), 300.0, false);
+            }
         }
         assert!(t0.elapsed().as_secs() < 120, "the font check did not end");
         std::thread::sleep(std::time::Duration::from_millis(10));
@@ -314,14 +324,26 @@ fn slow_fonts_and_slices() {
     let t = std::time::Instant::now();
     check!(matches!(check_font(&ttf(&test_font("Regular", 400)), 44), FontOut::Slow));
     check!(t.elapsed().as_millis() >= 600 && t.elapsed().as_secs() < 20);
-    // in the folder: the row says it took too long, and it is not tried again
+    // in the folder: a first timeout is not a verdict (the clock may have jumped after a wake): the font waits a
+    // minute and is checked once more; the second timeout is the row's "took too long", and it is not tried again
     let r = root("slow");
     put(&r, "Hangs.ttf", &ttf(&test_font("Regular", 400)));
+    check!(job() == 3);
+    check!(state_of(&listed(), "Hangs.ttf") == "checking");
+    let mark = std::fs::read_dir(format!("{r}/fonts/.cache")).unwrap().flatten().map(|e| e.path()).find(|p| p.extension().is_some_and(|x| x == "slow"));
+    check!(mark.is_some());
+    // (within the minute it is left alone: no worker is started for it)
+    let t = std::time::Instant::now();
+    check!(job() == 3 && t.elapsed().as_millis() < 500);
+    let mark = mark.unwrap();
+    let old = std::time::SystemTime::now() - std::time::Duration::from_secs(120);
+    std::fs::File::options().write(true).open(&mark).unwrap().set_modified(old).unwrap();
     check!(job() == 0);
     std::env::remove_var("GRIMOIRE_FONT_TEST_HANG");
     std::env::remove_var("GRIMOIRE_FONT_WATCHDOG_MS");
     let l = listed();
     check!(state_of(&l, "Hangs.ttf") == "slow");
+    check!(!mark.exists());
 }
 
 // A sandbox step that fails is not the font's fault: nothing is checked, nothing is marked, the job says no
@@ -488,6 +510,83 @@ fn twenty_thousand_glyphs_are_checked() {
     check!(t.elapsed().as_secs() < 120);
 }
 
+// One font a job: the job ends after each font that needs a verdict with 5 ("more to do"), so that an export or
+// the next slice of a PDF import is not kept waiting for every font of the folder. The last says 0.
+fn one_font_a_job() {
+    clean_env();
+    let r = root("onejob");
+    for n in ["A.ttf", "B.ttf", "C.ttf"] {
+        put(&r, n, &ttf(&test_font("Regular", 400)));
+        // (three files of different bytes: another time each, so the keys differ)
+        let t = std::time::SystemTime::now() - std::time::Duration::from_secs(100 + n.as_bytes()[0] as u64);
+        std::fs::File::options().write(true).open(format!("{r}/fonts/{n}")).unwrap().set_modified(t).unwrap();
+    }
+    let verdicts = || std::fs::read_dir(format!("{r}/fonts/.cache")).unwrap().flatten().filter(|e| e.file_name().to_string_lossy().ends_with(".font")).count();
+    check!(bg_font_check("", 300.0) == 5 && verdicts() == 1);
+    check!(bg_font_check("next", 300.0) == 5 && verdicts() == 2);
+    check!(bg_font_check("next", 300.0) == 0 && verdicts() == 3);
+    check!(bg_font_check("next", 300.0) == 0 && verdicts() == 3);
+}
+
+fn be16(v: u16) -> [u8; 2] {
+    v.to_be_bytes()
+}
+fn be32(v: u32) -> [u8; 4] {
+    v.to_be_bytes()
+}
+
+/// `font` with its cmap replaced by one format 12 subtable of these groups, in this order.
+fn with_cmap12(font: &[u8], groups: &[(u32, u32, u32)]) -> Vec<u8> {
+    let mut t = Vec::new();
+    t.extend(be16(0));
+    t.extend(be16(1));
+    t.extend(be16(3));
+    t.extend(be16(10));
+    t.extend(be32(12));
+    t.extend(be16(12));
+    t.extend(be16(0));
+    t.extend(be32(16 + 12 * groups.len() as u32));
+    t.extend(be32(0));
+    t.extend(be32(groups.len() as u32));
+    for &(a, b, g) in groups {
+        t.extend(be32(a));
+        t.extend(be32(b));
+        t.extend(be32(g));
+    }
+    let mut v = font.to_vec();
+    while v.len() % 4 != 0 {
+        v.push(0);
+    }
+    let at = v.len() as u32;
+    v.extend(&t);
+    let n = u16::from_be_bytes([v[4], v[5]]) as usize;
+    for i in 0..n {
+        let r = 12 + i * 16;
+        if &v[r..r + 4] == b"cmap" {
+            v[r + 8..r + 12].copy_from_slice(&be32(at));
+            v[r + 12..r + 16].copy_from_slice(&be32(t.len() as u32));
+        }
+    }
+    v
+}
+
+// Invariant 4.2.1: the check's walk covers every glyph the UI will ask for. The UI asks Charmap::map (a search
+// over the cmap's groups); the walk used Charmap::mappings (the groups in file order), and on groups that
+// overlap the two name different glyphs: the UI could be the first to outline a glyph. Now the walk asks map too.
+fn the_walk_and_the_ui_read_the_cmap_the_same_way() {
+    clean_env();
+    let f = wild_glyphs(Wild::Dense);
+    let dense = glyph_index(&f, '\u{b6}');
+    let plain = ttf(&f);
+    let crafted = with_cmap12(&plain, &[(0x20, 0x21, 1), (0x21, 0x21, dense), (0x22, 0x7E, 3)]);
+    // (the font is refused now, its ASCII '!' being a glyph over the caps; a pass must have walked it)
+    let FontOut::Passed { facts, .. } = check_font(&crafted, 44) else { return };
+    let mut face = SafeFace::new(std::rc::Rc::new(crafted.clone()), std::rc::Rc::new(facts.clone()), false).expect("the face is made");
+    let got = face.glyph(0x21);
+    // what the UI asks for is either a glyph the walk visited and passed, or not drawn at all
+    check!(got.is_none_or(|(g, _)| g != dense || facts.skip.contains(&(g as u16))));
+}
+
 #[test]
 fn test_fontcheck() {
     run!(good_fonts_pass);
@@ -499,6 +598,8 @@ fn test_fontcheck() {
     run!(a_replaced_file_is_checked_again_and_bold_is_found);
     run!(the_loaded_fonts_are_capped);
     run!(twenty_thousand_glyphs_are_checked);
+    run!(one_font_a_job);
+    run!(the_walk_and_the_ui_read_the_cmap_the_same_way);
     // (last: it leaves the session without workers, as a failed step does)
     run!(a_failed_sandbox_step_checks_nothing);
     done();
