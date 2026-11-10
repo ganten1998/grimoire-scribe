@@ -231,8 +231,16 @@ fn no_room_counts_nothing_and_the_file_goes_once_there_is_room() {
 #[test]
 fn a_pdf_and_one_of_its_name_in_a_folder_have_a_record_each() {
     let e = setup("same-name");
-    e.put("grimoire/import/A.pdf", &pdffix::encrypted_planner(1, "secret", "owner"));
-    e.put("grimoire/import/Work/A.pdf", &pdffix::planner(2));
+    // (the same bytes and the same time: a record keyed by the name alone could not tell them apart)
+    let bytes = pdffix::encrypted_planner(1, "secret", "owner");
+    e.put("grimoire/import/A.pdf", &bytes);
+    e.put("grimoire/import/Work/A.pdf", &bytes);
+    for f in ["A.pdf", "Work/A.pdf"] {
+        let c = std::ffi::CString::new(format!("{}/import/{f}", e.root)).unwrap();
+        let tv = [libc::timeval { tv_sec: 1_700_000_000, tv_usec: 0 }, libc::timeval { tv_sec: 1_700_000_000, tv_usec: 0 }];
+        // SAFETY: utimes reads the path and the two timevals we own.
+        assert_eq!(unsafe { libc::utimes(c.as_ptr(), tv.as_ptr()) }, 0);
+    }
     assert!(matches!(run_to_end(&new_id(), "grimoire/import/A.pdf", 5), SliceEnd::Failed(2, 0)));
     let md = std::fs::metadata(format!("{}/import/Work/A.pdf", e.root)).unwrap();
     assert_eq!(import_status("grimoire/import/Work/A.pdf", md.len(), md.mtime()), ImportStatus::Waiting, "the refusal is the top-level file's only");
