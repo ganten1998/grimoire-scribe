@@ -148,6 +148,26 @@ pub fn pdf_cache_root() -> String {
     format!("{}/.cache/pdf", store_root())
 }
 
+/// Whether `dir` and the folder it is in are real folders (never links). The cache is pruned with remove_dir_all
+/// and written as root: a linked .cache, .cache/pdf or notebook folder of it would be pruned and written in its
+/// target, anywhere on the device (security review 2026-11). A folder that is not there yet passes (mkdir_p
+/// makes it); a link never does.
+fn real_dirs(dir: &str) -> bool {
+    let ok = |p: &str| match std::fs::symlink_metadata(p) {
+        Ok(m) => m.file_type().is_dir(),
+        Err(e) => e.kind() == std::io::ErrorKind::NotFound,
+    };
+    let parent = dir.rsplit_once('/').map_or("", |x| x.0);
+    ok(dir) && (parent.is_empty() || ok(parent))
+}
+
+/// A file of the cache created afresh, never through a link (O_EXCL after any stale one goes).
+fn create_fresh(path: &str) -> std::io::Result<std::fs::File> {
+    use std::os::unix::fs::OpenOptionsExt;
+    let _ = std::fs::remove_file(path);
+    std::fs::OpenOptions::new().write(true).create_new(true).custom_flags(libc::O_NOFOLLOW | libc::O_CLOEXEC).open(path)
+}
+
 fn page_file(nb: &NotebookInfo, pid: u32) -> String {
     let mut dir = String::new();
     store_notebook_dir(nb.id.as_str(), &mut dir, 700);
@@ -259,13 +279,13 @@ impl PdfCache {
     }
 
     fn write_record(&self, pid: u32, head: &[u8], z: &[u8]) -> bool {
-        if FULL.load(Ordering::Relaxed) || mkdir_p(&self.dir) != 0 {
+        if FULL.load(Ordering::Relaxed) || !real_dirs(&self.dir) || !real_dirs(&pdf_cache_root()) || mkdir_p(&self.dir) != 0 {
             return false;
         }
         let path = self.record_path(pid);
         let tmp = format!("{path}.{}.tmp", std::process::id());
         let ok = (|| -> std::io::Result<()> {
-            let mut f = std::fs::File::create(&tmp)?;
+            let mut f = create_fresh(&tmp)?;
             f.write_all(head)?;
             f.write_all(z)?;
             f.flush()
@@ -375,10 +395,11 @@ pub fn pdf_mirror_lock(id: &str) -> Option<MirrorLock> {
         return None;
     }
     let root = pdf_cache_root();
-    if mkdir_p(&root) != 0 {
+    if !real_dirs(&root) || mkdir_p(&root) != 0 {
         return None;
     }
-    let f = std::fs::OpenOptions::new().read(true).write(true).create(true).truncate(false).open(format!("{root}/{id}.lock")).ok()?;
+    use std::os::unix::fs::OpenOptionsExt;
+    let f = std::fs::OpenOptions::new().read(true).write(true).create(true).truncate(false).custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK).open(format!("{root}/{id}.lock")).ok()?;
     let t0 = now_ms();
     let mut said = false;
     loop {
@@ -406,7 +427,7 @@ pub fn pdf_mirror_lock(id: &str) -> Option<MirrorLock> {
 /// are made again. (Each record names its picture's file as it was, and a page drawn without its picture
 /// is never kept: this is the last of three guards.)
 pub fn pdf_cache_forget(id: &str) {
-    if good_id(id) {
+    if good_id(id) && real_dirs(&pdf_cache_root()) {
         let _ = std::fs::remove_dir_all(format!("{}/{}", pdf_cache_root(), id));
     }
 }
@@ -430,10 +451,10 @@ pub fn pdf_cache_sweep_due() {
     let root = pdf_cache_root();
     let stamp = format!("{root}/.swept");
     let due = std::fs::metadata(&stamp).ok().and_then(|m| m.modified().ok()).is_none_or(|t| std::time::SystemTime::now().duration_since(t).is_ok_and(|d| d.as_secs() >= 86400));
-    if !due || !std::path::Path::new(&root).is_dir() {
+    if !due || !std::path::Path::new(&root).is_dir() || !real_dirs(&root) {
         return;
     }
-    if std::fs::write(&stamp, b"").is_ok() {
+    if create_fresh(&stamp).is_ok() {
         prune_in(&root, None, CAP.load(Ordering::Relaxed));
     }
 }
@@ -447,6 +468,9 @@ fn touch(path: &str) {
 }
 
 pub(crate) fn prune_in(root: &str, nb: Option<&NotebookInfo>, max: u64) {
+    if !real_dirs(root) {
+        return; // (a linked cache is never pruned: it would be pruned in its target)
+    }
     let Ok(rd) = std::fs::read_dir(root) else { return };
     let notebooks = format!("{}/notebooks", store_root());
     let gone = |id: &str| !std::path::Path::new(&format!("{notebooks}/{id}")).is_dir();
