@@ -2250,7 +2250,7 @@ None of this has run on a Scribe. Nothing here needs a debugger; read grimoire.l
    Terminess draws; the choice stays in settings.ini.
 6. **A name in a font that has the letters only in its regular.** A notebook named with Cyrillic or Greek letters,
    a font whose Regular has them and whose Bold file does not: the name is drawn by Terminess's letters where it
-   has them, and is left out where nothing has them (no empty box).
+   has them, and is a box where nothing has them (2.1.0-beta.2, missing characters, below).
 7. **A tab under the clock corner.** A planner with a home tab in the top left corner (the clock's default corner):
    tap the tab: it goes to its page, the clock does not toggle. Tap in the corner where no tab lies: the clock
    toggles. Move the clock to a free corner (Display > Corner) if the tab is in the way.
@@ -2263,3 +2263,23 @@ None of this has run on a Scribe. Nothing here needs a debugger; read grimoire.l
 9. **Copy to notebook... into a notebook with no room for tabs.** The toast says "Copied N pages to X, without
    their document links." and not "without their names and links" when the names and links did save.
 
+## 2.1.0-beta.2, missing characters
+
+None of this has run on a Scribe. Read the screens; nothing here needs grimoire.log.
+
+1. **The owner's notebook.** The notebook imported from 会议记录.pdf: its card in the Library reads 会 and then
+   three hollow boxes (one for each of 议, 记 and 录), no longer 会 alone, and so wherever else the name is drawn
+   (the Pages view, Copy to notebook..., the Graph). Try it in Classic and in Gothic, and with each Classic font
+   (Settings > Font): the boxes look the same in every one (not thickened in bold or in titles), each about as wide
+   as a letter of the text around it. With a long name of boxes, the "..." comes after whole boxes.
+2. **Characters that are meant to be unseen.** On the Mac, name a PDF `Family 👨‍👩‍👧 🏳️‍🌈 🏴󠁧󠁢󠁥󠁮󠁧󠁿.pdf` (from
+   the emoji picker: the family of three, the rainbow flag and the flag of England, which hide joiners, a
+   variation selector and tags inside them) and drop it in `grimoire/import/`. Its card shows `Family` and one box
+   for each pictograph: three, two and one, with no box for what joins them (a joiner keeps the blank width of a
+   letter between two boxes, as Terminess has always drawn it).
+3. **Chinese with a font of your own.** Copy a font that has simplified Chinese and Latin (Noto Sans SC, for one)
+   into `grimoire/fonts` and choose it in Classic (Settings > Font): 会议记录 shows all four letters. Back in
+   Terminess the boxes return. Note how long the font's check takes on the Scribe (a Chinese font has tens of
+   thousands of glyphs), and whether it ends in "Took too long to read.".
+4. **Nothing else moved.** Japanese names, accented names, the clock and every screen in Spanish and Japanese
+   draw as in 2.1.0-beta.1.

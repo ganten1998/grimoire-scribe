@@ -287,7 +287,15 @@ draws them. White ink and the precise eraser make them.
   lower in every Gothic weight: the font draws it exactly as its i, and two pixels is the depth of
   the face's descenders. ASCII never takes these paths and draws as it always has.
   `font_face_has_glyph(face, cp)` tells whether a face has its own glyph, without the Terminess
-  or DotGothic16 fallback; `font_has_glyph(face, cp)` also counts those fallbacks.
+  or DotGothic16 fallback; `font_has_glyph(face, cp)` also counts those fallbacks. Where the chain
+  ends with no glyph (`pick_face`), a visible character is drawn as a box (`missing_box`, 2.1.0-beta.2):
+  a hollow rectangle in a cell of Terminess at the asked size (the room its missing glyph took before),
+  0.6 of the line tall, its sides a 24th of the size, the same in every face, weight and theme (never
+  overprinted) and measured as drawn, so fitting, "...", centring and the fit checks count it; whitespace
+  takes a space's room and what is meant to be unseen (Unicode's controls, format characters, combining
+  marks and default-ignorables, `UNSEEN`) none. `font_drawable_copy`, through which `ui_name_label`
+  shows names, leaves out only those unseen ones: a name in simplified Chinese shows its boxes, never
+  looks cut short.
 - Classic's fonts (2.1, Rust only). `FONT_FAMILIES` in font.rs is the face table: each family's
   settings.ini id, its name (never translated), the short name Settings' chip shows, its Regular and
   Bold files, its scale and its share-page file names. Terminess is first and the default, at scale 1;

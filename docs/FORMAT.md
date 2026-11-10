@@ -829,9 +829,9 @@ it) whatever it does with what it finds:
   newest one with no `source` line whose `source.ini` names the book (one whose `source` line an
   older version dropped). Its compaction, queued or running, stops first, as when a notebook opens.
   With none, a notebook is made for the book: named after the title (on one line, control
-  characters as spaces, one space between two words, broken UTF-8 and the characters Grimoire's
-  fonts cannot draw left out (Chinese, Japanese and Korean: they would show as boxes), cut to 95
-  bytes between two characters; Untitled, in the language in use, when nothing is left; with
+  characters as spaces, one space between two words, broken UTF-8 left out, every other character
+  kept (one Grimoire's fonts cannot draw, such as most Chinese and Korean, shows as a box on the
+  screens), cut to 95 bytes between two characters; Untitled, in the language in use, when nothing is left; with
   " 2", " 3"... added when a notebook has that name already, as two notebooks of one name would
   share a PDF), at the top level, at the device's page size, its one page the annotated one. It
   is built in `notebooks/.annotate-<id>/` (a dot-folder the Library and every older version skip)
