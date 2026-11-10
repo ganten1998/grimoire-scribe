@@ -1092,3 +1092,18 @@ fn a_worker_that_stalls_right_after_a_wake_is_tried_again_without_a_strike() {
     assert_eq!(log.matches("stalled right after a wake; tried again (no strike)").count(), 1, "{log}");
     assert!(log.contains("(strike 1)") && log.contains("(strike 2)"), "two strikes after the one free try: {log}");
 }
+
+// A picked PDF's mark goes whatever the end (they piled up, and the notice read only the first 64).
+#[test]
+fn a_picked_pdfs_mark_goes_when_its_import_fails() {
+    let e = setup("pick-fails");
+    std::fs::create_dir_all(format!("{}/../documents", e.root)).unwrap();
+    std::fs::write(format!("{}/../documents/Locked.pdf", e.root), pdffix::encrypted_planner(1, "secret", "owner")).unwrap();
+    let src = "documents/Locked.pdf";
+    let id = new_id();
+    assert!(mark_write_public(&pick_mark(&id, src, "")));
+    assert!(matches!(last(&run_to_end(&id, src, 5)), SliceEnd::Failed(2, 0)));
+    let left = std::fs::read_dir(format!("{}/import/.marks", e.root)).map(|r| r.flatten().count()).unwrap_or(0);
+    assert_eq!(left, 0, "the pick's mark is left");
+    assert_eq!(attempts_of(&e), "", "a pick elsewhere keeps no record of tries");
+}

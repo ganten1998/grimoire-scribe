@@ -277,6 +277,8 @@ fn the_lock_is_free_once_no_import_is_left_whatever_else_runs() {
     bg_queue(BgKind::CompactPages, Some("20261109-101112-ab12"), None, DPI, false);
     std::env::remove_var("GRIMOIRE_BG_DELAY_MS");
     assert_eq!(bg_children(), 1);
+    // (the child closes its copy first thing, before its delay: a pick is a person's tap, later than that)
+    std::thread::sleep(std::time::Duration::from_millis(300));
     lock_release_if_idle();
     assert_eq!(lock_fd(), -1);
     let sp = StoragePath::new(b"documents/Book.pdf").unwrap();
@@ -556,4 +558,28 @@ fn a_second_copy_says_already_once_the_first_is_imported() {
     assert_eq!(e.notebooks().len(), 1, "{told:?}");
     assert!(told.iter().any(|t| t == "Already"), "{told:?}");
     assert_eq!(e.names("grimoire/import/done").len(), 2);
+}
+
+// A PDF that never gets its end marker is taken as it is once it has not changed for a minute (it waited as
+// "Waiting" for good, with a look every 5 s).
+#[test]
+fn a_pdf_without_its_end_marker_is_taken_after_a_minute_unchanged() {
+    let e = setup("never-whole");
+    let mut b = pdffix::planner(2);
+    let end = b.windows(5).rposition(|w| w == b"%%EOF").unwrap();
+    b.truncate(end);
+    e.put("grimoire/import/Cut.pdf", &b);
+    let c = std::ffi::CString::new(format!("{}/import/Cut.pdf", e.root)).unwrap();
+    let tv = [libc::timeval { tv_sec: 1_700_000_000, tv_usec: 0 }, libc::timeval { tv_sec: 1_700_000_000, tv_usec: 0 }];
+    // SAFETY: utimes reads the path and the two timevals we own.
+    assert_eq!(unsafe { libc::utimes(c.as_ptr(), tv.as_ptr()) }, 0);
+    let t0 = 5_000_000u32;
+    let mut queued = Vec::new();
+    for dt in [0u32, 3_000, 30_000, 61_000] {
+        grimoire::util::sim_clock_set(Some(t0 + dt));
+        queued.push(grimoire::bgwork_template::import_scan(DPI));
+    }
+    grimoire::util::sim_clock_set(None);
+    drain();
+    assert_eq!(queued, vec![0, 0, 0, 1]);
 }
