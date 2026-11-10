@@ -7,8 +7,9 @@ usage: tests/import_check.py <headless binary> <work dir>
 2. A second Grimoire started meanwhile finds the lock held: it queues nothing, a PDF picked by hand is recorded
    as waiting (import/.marks), and nothing is imported twice.
 3. When the detached child is done: one notebook, no work folder, the PDF in import/done/, no mark left for it.
-4. A later start imports another PDF as usual (a continuation a full queue drops is resumed from its work
-   folder's state: rust/tests/test_pdfimport.rs, the resume tests).
+4. A later start takes the lock afresh: the pick that waited is imported (read in place, never moved), and
+   another PDF dropped meanwhile as usual (a continuation a full queue drops is queued again: rust/tests/
+   test_import_queue.rs).
 """
 import os
 import shutil
@@ -83,9 +84,13 @@ assert len(notebooks()) == 1, notebooks()
 assert not work_folders(), work_folders()
 done = list((root / 'import' / 'done').glob('Planner-*.pdf'))
 assert len(done) == 1 and not (root / 'import' / 'Planner.pdf').exists(), 'the PDF did not move to done/'
-# 4. the lock is free again: the next start imports
+# 4. the lock is free again: the next start imports the pick that waited, and a file dropped meanwhile
 env['GRIMOIRE_BG_DELAY_MS'] = '0'
 shutil.copy(fix / 'twice' / 'First.pdf', root / 'import' / 'Cut.pdf')
 log3 = run('cut', 'waitbg\nwait 200')
-assert len(notebooks()) == 2, notebooks()
+assert 'pick(s) that waited for the lock queued' in log3, log3
+assert len(notebooks()) == 3, notebooks()
+assert (root / 'Docs' / 'Other.pdf').exists(), 'the picked file moved'
+marks = list((root / 'import' / '.marks').glob('*')) if (root / 'import' / '.marks').exists() else []
+assert not any('state=waiting' in m.read_text() for m in marks), 'a waiting mark is left'
 print('IMPORT CHECK PASSED')

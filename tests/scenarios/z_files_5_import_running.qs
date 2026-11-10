@@ -1,6 +1,6 @@
 # settings: status_mode=1
 # storage: 1
-# env: GRIMOIRE_IMPORT_STABLE=fast GRIMOIRE_PDF_SLICE_PAGES=1 GRIMOIRE_BG_DELAY_MS=900
+# env: GRIMOIRE_IMPORT_STABLE=fast GRIMOIRE_PDF_SLICE_PAGES=1 GRIMOIRE_BG_DELAY_MS=1500
 # copy: tests/fixtures/files .
 # While a PDF in grimoire/import is imported, the Import place's row says "Importing: page %d of %d" and the
 # staying notice is off that place (it shows on the Library and on the picker's other screens); when it is done the
