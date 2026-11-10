@@ -1249,9 +1249,9 @@ fn card_rows_at((aw,ah):(i32,i32))->(i32,i32,Rect) {
     // What the screen's room for the sheet leaves its rows, 40 px clear at the top and the bottom.
     let room=ah-2*ui_px(40.0)-chrome-linked;
     let mut rh=ui_px(140.0);let mut gap=ui_px(20.0);
-    if 7*(rh+gap)>room {rh=clampi(room/7-gap,ui_px(118.0),rh);}
-    if 7*(rh+gap)>room {gap=clampi(room/7-rh,ui_px(10.0),gap);}
-    let h=linked+7*(rh+gap)+chrome;
+    if 7*rh+6*gap>room {rh=clampi(room/7-gap,ui_px(118.0),rh);}
+    if 7*rh+6*gap>room {gap=clampi(room/7-rh,ui_px(10.0),gap);}
+    let h=linked+7*rh+6*gap+chrome;
     (rh,gap,Rect::new((aw-w)/2,(ah-h)/2,w,h))
 }
 
