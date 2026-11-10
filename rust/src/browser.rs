@@ -312,6 +312,8 @@ impl Browser {
                 true
             }
             Err(_) => {
+                // TRANSLATORS: a toast in the file picker: the folder tapped could not be opened (gone since it was
+                // listed, or one Grimoire never opens). One line of about 1000 px at 44 px.
                 self.toast = Some(tr("Couldn't open folder."));
                 false
             }
@@ -1180,6 +1182,8 @@ impl Browser {
                 if !self.unchanged(row) {
                     // the file changed since it was listed: the folder is read again
                     self.card = None;
+                    // TRANSLATORS: a toast in the file picker: the file tapped was changed or replaced since its
+                    // folder was listed; the folder is read again. One line of about 1000 px at 44 px.
                     self.toast = Some(tr("File changed. Try again."));
                     let at = self.at.clone();
                     if let Some(p) = at {

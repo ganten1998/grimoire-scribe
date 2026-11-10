@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: Grimoire 1.0.0-beta\n"
 "Report-Msgid-Bugs-To: https://github.com/ganten1998/grimoire-scribe/issues\n"
-"POT-Creation-Date: 2026-11-09 17:22-0600\n"
+"POT-Creation-Date: 2026-11-09 20:53-0600\n"
 "PO-Revision-Date: 2026-10-20 08:02-0500\n"
 "Last-Translator: draft\n"
 "Language-Team: Spanish\n"
@@ -730,7 +730,7 @@ msgstr[0] "Cuaderno importado (%d página)."
 msgstr[1] "Cuaderno importado (%d páginas)."
 
 #. TRANSLATORS: a toast: the PDF dropped in grimoire/import (or picked) is one Grimoire made a notebook
-#. of before. The file moves to import/done.
+#. of before. A file of grimoire/import moves to import/done; a file picked elsewhere stays where it is.
 #: rust/src/app.rs
 msgid "PDF already imported."
 msgstr "PDF ya importado."
@@ -775,7 +775,7 @@ msgstr "Importando: página %d de %d"
 
 #. TRANSLATORS: a folder of page pictures could not become a notebook; %s is the log file
 #. that says why. The folder stays where it was.
-#: rust/src/app.rs
+#: rust/src/app.rs rust/src/library.rs
 #, c-format
 msgid "Couldn't import page folder (see %s)."
 msgstr "No se pudo importar la carpeta de páginas (detalles en %s)."
@@ -1011,6 +1011,8 @@ msgstr ""
 "page-10). Las imágenes en gris se importan más rápido y ocupan menos espacio "
 "que las de color."
 
+#. TRANSLATORS: grimoire/import/README.txt, its second paragraph: a PDF dropped here becomes a notebook.
+#. "Library" names Grimoire's own screen, as it is translated there.
 #: rust/src/bgwork_template.rs
 msgid ""
 "A PDF, such as a planner, goes in as it is: put the file here, or in a "
@@ -1024,6 +1026,8 @@ msgstr ""
 "cuaderno, en color si el PDF lo tiene. Un archivo que aún se está copiando "
 "espera hasta estar completo."
 
+#. TRANSLATORS: grimoire/import/README.txt, its last paragraph. "done" is the name of a folder: keep it as
+#. it is.
 #: rust/src/bgwork_template.rs
 msgid ""
 "Grimoire imports each folder or PDF in the background and then moves it into "
@@ -1050,6 +1054,8 @@ msgstr "%.1f MB"
 msgid "%.1f GB"
 msgstr "%.1f GB"
 
+#. TRANSLATORS: a toast in the file picker: the folder tapped could not be opened (gone since it was
+#. listed, or one Grimoire never opens). One line of about 1000 px at 44 px.
 #: rust/src/browser.rs rust/src/library.rs
 msgid "Couldn't open folder."
 msgstr "No se pudo abrir la carpeta."
@@ -1183,6 +1189,8 @@ msgstr "Página %d de %d"
 msgid "has notes"
 msgstr "con notas"
 
+#. TRANSLATORS: a toast in the file picker: the file tapped was changed or replaced since its
+#. folder was listed; the folder is read again. One line of about 1000 px at 44 px.
 #: rust/src/browser.rs
 msgid "File changed. Try again."
 msgstr "El archivo cambió. Inténtalo de nuevo."
@@ -3726,6 +3734,13 @@ msgstr "No se pudo guardar el cambio."
 msgid "Moved to %s"
 msgstr "Movido a %s"
 
+#. TRANSLATORS: a toast after a file was picked to import while an import from an earlier run is
+#. still going (in the background): this one starts once that one is done. One line of about
+#. 1700 px at 44 px, or two.
+#: rust/src/library.rs
+msgid "Another import is still going. This one starts after it."
+msgstr "Hay otra importación en curso. Esta empezará cuando termine."
+
 #. TRANSLATORS: the notebook's Index (the list of named pages) as a place a link goes: a Links bar row, a
 #. Link to... chip (about 700 px at 44 px in bold upright, 600 sideways) and the long-press card's title.
 #: rust/src/linkbar.rs rust/src/linkcard.rs rust/src/mapview.rs
@@ -4806,7 +4821,12 @@ msgid ""
 "fonts. Your font draws Grimoire's own words (menus, names, the keyboard); "
 "your pages, their PDFs and the pages you share never change with it. A "
 "letter your font lacks comes from Terminess."
-msgstr "Copia aquí archivos de fuentes para leer Grimoire con una fuente tuya: archivos .ttf o .otf. En Ajustes, con el estilo Clásico, toca Fuente y elígela en Tus fuentes. Tu fuente dibuja las palabras de Grimoire (menús, nombres, el teclado); tus páginas, sus PDF y las páginas que compartes nunca cambian con ella. Una letra que le falte a tu fuente viene de Terminess."
+msgstr ""
+"Copia aquí archivos de fuentes para leer Grimoire con una fuente tuya: "
+"archivos .ttf o .otf. En Ajustes, con el estilo Clásico, toca Fuente y "
+"elígela en Tus fuentes. Tu fuente dibuja las palabras de Grimoire (menús, "
+"nombres, el teclado); tus páginas, sus PDF y las páginas que compartes nunca "
+"cambian con ella. Una letra que le falte a tu fuente viene de Terminess."
 
 #. TRANSLATORS: grimoire/fonts/README.txt's second paragraph. ".cache" is a folder's name: keep it.
 #: rust/src/userfonts.rs
@@ -4816,7 +4836,12 @@ msgid ""
 "folder. Your fonts stay on this Kindle: use fonts you have the right to use. "
 "If a font ever goes wrong, delete its file here and Grimoire is back in "
 "Terminess."
-msgstr "Cópialas por USB con Grimoire cerrado. Grimoire comprueba cada fuente en segundo plano antes de usarla, y guarda lo que encontró en la carpeta .cache. Tus fuentes se quedan en este Kindle: usa fuentes que tengas derecho a usar. Si una fuente falla alguna vez, borra aquí su archivo y Grimoire vuelve a Terminess."
+msgstr ""
+"Cópialas por USB con Grimoire cerrado. Grimoire comprueba cada fuente en "
+"segundo plano antes de usarla, y guarda lo que encontró en la "
+"carpeta .cache. Tus fuentes se quedan en este Kindle: usa fuentes que tengas "
+"derecho a usar. Si una fuente falla alguna vez, borra aquí su archivo y "
+"Grimoire vuelve a Terminess."
 
 #. TRANSLATORS: months, as short as the language writes them on a date: "Oct 10, 14:32" on the
 #. Library's cards, which are narrow when the Kindle is sideways.

@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: Grimoire 2.1.0-beta.1\n"
 "Report-Msgid-Bugs-To: https://github.com/ganten1998/grimoire-scribe/issues\n"
-"POT-Creation-Date: 2026-11-09 17:22-0600\n"
+"POT-Creation-Date: 2026-11-09 20:53-0600\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -722,7 +722,7 @@ msgstr[0] ""
 msgstr[1] ""
 
 #. TRANSLATORS: a toast: the PDF dropped in grimoire/import (or picked) is one Grimoire made a notebook
-#. of before. The file moves to import/done.
+#. of before. A file of grimoire/import moves to import/done; a file picked elsewhere stays where it is.
 #: rust/src/app.rs
 msgid "PDF already imported."
 msgstr ""
@@ -767,7 +767,7 @@ msgstr ""
 
 #. TRANSLATORS: a folder of page pictures could not become a notebook; %s is the log file
 #. that says why. The folder stays where it was.
-#: rust/src/app.rs
+#: rust/src/app.rs rust/src/library.rs
 #, c-format
 msgid "Couldn't import page folder (see %s)."
 msgstr ""
@@ -979,6 +979,8 @@ msgid ""
 "and take less room than colour ones."
 msgstr ""
 
+#. TRANSLATORS: grimoire/import/README.txt, its second paragraph: a PDF dropped here becomes a notebook.
+#. "Library" names Grimoire's own screen, as it is translated there.
 #: rust/src/bgwork_template.rs
 msgid ""
 "A PDF, such as a planner, goes in as it is: put the file here, or in a "
@@ -987,6 +989,8 @@ msgid ""
 "PDF has colour. A file still being copied waits until it is whole."
 msgstr ""
 
+#. TRANSLATORS: grimoire/import/README.txt, its last paragraph. "done" is the name of a folder: keep it as
+#. it is.
 #: rust/src/bgwork_template.rs
 msgid ""
 "Grimoire imports each folder or PDF in the background and then moves it into "
@@ -1011,6 +1015,8 @@ msgstr ""
 msgid "%.1f GB"
 msgstr ""
 
+#. TRANSLATORS: a toast in the file picker: the folder tapped could not be opened (gone since it was
+#. listed, or one Grimoire never opens). One line of about 1000 px at 44 px.
 #: rust/src/browser.rs rust/src/library.rs
 msgid "Couldn't open folder."
 msgstr ""
@@ -1144,6 +1150,8 @@ msgstr ""
 msgid "has notes"
 msgstr ""
 
+#. TRANSLATORS: a toast in the file picker: the file tapped was changed or replaced since its
+#. folder was listed; the folder is read again. One line of about 1000 px at 44 px.
 #: rust/src/browser.rs
 msgid "File changed. Try again."
 msgstr ""
@@ -3648,6 +3656,13 @@ msgstr ""
 #: rust/src/library.rs
 #, c-format
 msgid "Moved to %s"
+msgstr ""
+
+#. TRANSLATORS: a toast after a file was picked to import while an import from an earlier run is
+#. still going (in the background): this one starts once that one is done. One line of about
+#. 1700 px at 44 px, or two.
+#: rust/src/library.rs
+msgid "Another import is still going. This one starts after it."
 msgstr ""
 
 #. TRANSLATORS: the notebook's Index (the list of named pages) as a place a link goes: a Links bar row, a
