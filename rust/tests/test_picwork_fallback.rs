@@ -1,5 +1,6 @@
-// test_picwork_fallback.rs: with the sandbox unavailable, pictures fall back to the writer's own decode and say
-// so in the log (D21). Its own binary: the fallback holds for the rest of the process.
+// test_picwork_fallback.rs: with the sandbox unavailable where it is not required (the Mac, the simulator, tests),
+// pictures fall back to the writer's own decode and say so in the log (D21). Where it is required they wait
+// instead (test_picwork_closed.rs). Its own binary: the fallback holds for the rest of the process.
 #![cfg(feature = "sim")]
 mod testlib;
 use grimoire::picwork::*;
@@ -9,6 +10,7 @@ use testlib::*;
 fn fallback_decodes_and_says_so() {
     std::env::set_var("GRIMOIRE_WORK_EXE", env!("CARGO_BIN_EXE_grimoire-headless"));
     std::env::set_var("GRIMOIRE_WORK_FAIL_STEP", "seccomp");
+    std::env::remove_var("GRIMOIRE_SANDBOX"); // (not required)
     let dir = format!("{}/picfallback-{}", tl_tmp(), std::process::id());
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(&dir).unwrap();

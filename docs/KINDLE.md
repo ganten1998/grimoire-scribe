@@ -487,10 +487,18 @@ file name, title or key ever appears in it: ids, page numbers, counts, timings, 
   nothing after it (a second death in a row) and `... made call C, which the sandbox does not allow`: the
   picture in hand is marked `.bad` (a template or photo); a picture folder's import fails and counts one try of
   its three (as for a picture the memory could not hold): only a picture at fault refuses the folder until its
-  files change. `work: pictures decode in the writer (<why>); the sandbox is
-  unavailable`: once a process, when no worker could be had (a sandbox step failed, the exec did not start, the
-  handshake failed): pictures then decode in the writer as in 2.0, and nothing is marked. Only a picture
-  that comes from outside Grimoire and KOReader goes this way; KOReader's own page PNGs are still drawn by the UI.
+  files change. `work: pictures wait (<why>): no sandboxed worker can be had, and the writer decodes none;
+  nothing is marked and no try is counted`: once a process (each background job is one), when no worker could be
+  had (`a sandbox step failed`, `step <name>`, `the worker did not start`, `the worker did not answer`, `the worker
+  is another build`, `no handshake`). No picture is decoded then (since 2.1.0-beta.2's fail-closed change): a
+  template or photo gets no preview (`templates: ... N left for a later scan (out of memory, a file that did not
+  read, or no sandboxed worker)`) and no `.bad`; a notebook's template picture is not made (`templates: <id>:
+  bg/<pic>.png could not be made (no sandboxed worker can be had)`); a picture folder's import ends with `import:
+  <id>: page N of M: no sandboxed worker can be had; nothing imported` and `import: <id>: no try is counted; a
+  later scan takes the folder again`. Off the Kindle, where the sandbox is not required, the same failure reads
+  `work: pictures decode in the writer (<why>); the sandbox is unavailable` and the pictures decode in the writer
+  as in 2.0. Only a picture that comes from outside Grimoire and KOReader goes this way; KOReader's own page PNGs
+  are still drawn by the UI.
 - `bg: PDF import of <id> (pid N)` once per slice; `bg: PDF import pid N done`.
 
 ## Your own fonts (2.1.0-beta.2)

@@ -779,7 +779,8 @@ pub enum SpawnErr {
 static BROKEN: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
 /// A worker in this session reported a failed sandbox step (`E sandbox`): no more PDF or font work is queued
-/// until the next start. Pictures fall back to 2.0's path (lane L7 asks this).
+/// until the next start. Pictures then wait where the sandbox is required (the Kindle), and elsewhere fall
+/// back to 2.0's path (picwork.rs).
 pub fn session_broken() -> bool {
     BROKEN.load(std::sync::atomic::Ordering::Relaxed)
 }

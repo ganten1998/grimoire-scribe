@@ -30,10 +30,12 @@ const JOB_PATH_MAX: usize = TEMPLATE_PATH_MAX;
 const PATH_BUF: usize = 1600;
 
 // What import_folder came to: done, failed in a way that may pass (memory, a full disk), or
-// refused (a page is no picture Grimoire takes: the same pictures fail the same way).
+// refused (a page is no picture Grimoire takes: the same pictures fail the same way), or not tried
+// (no sandboxed picture worker can be had: not the folder's fault, no try is counted).
 const IMPORT_DONE: i32 = 0;
 const IMPORT_RETRY: i32 = -1;
 const IMPORT_REFUSED: i32 = -2;
+const IMPORT_LATER: i32 = -3;
 
 // The one piece of the C's file-level state: the imports this run queued.
 #[derive(Default)]
@@ -202,7 +204,8 @@ fn check_file(path: &str, max: usize, w: &mut i32, h: &mut i32, why: &mut &'stat
 }
 
 // check_file through a picture pool: the header is read by the sandboxed worker, not here (picwork.rs).
-// -2 (not -1) when the answer may differ another time: no memory for it, or two workers in a row ended on it.
+// -2 (not -1) when the answer may differ another time: no memory for it, or two workers in a row ended on it;
+// -3 when no sandboxed worker can be had (the sandbox is required: nothing read the picture).
 fn check_file_in(pool: &mut PicPool, path: &str, max: usize, w: &mut i32, h: &mut i32, why: &mut &'static str) -> i32 {
     *why = "the file does not read";
     if let Some(r) = pick_read(path, max.saturating_add(1)) {
@@ -239,7 +242,7 @@ fn check_file_in(pool: &mut PicPool, path: &str, max: usize, w: &mut i32, h: &mu
 }
 
 // bgimage_check, by the pool: 0 with the size, or -1 and why (the picture is at fault), or -2 and why (no
-// memory for it, or its workers died: another time may answer otherwise).
+// memory for it, or its workers died: another time may answer otherwise), or -3 (no sandboxed worker).
 fn check_bytes(pool: &mut PicPool, data: &[u8], file_len: usize, w: &mut i32, h: &mut i32, why: &mut &'static str) -> i32 {
     match pool.check(data, file_len) {
         PicOut::Info { w: pw, h: ph } => {
@@ -254,6 +257,10 @@ fn check_bytes(pool: &mut PicPool, data: &[u8], file_len: usize, w: &mut i32, h:
         PicOut::Retry(m) | PicOut::Dead(m) => {
             *why = m;
             -2
+        }
+        PicOut::NoWorker(m) => {
+            *why = m;
+            -3
         }
         PicOut::Pic { .. } => -1,
     }
@@ -688,7 +695,8 @@ fn make_previews(dir: &str) -> i32 {
                 is_bad = true;
                 why = m;
             }
-            PicOut::Retry(m) => why = m,
+            // (no sandboxed worker: not ready yet, never marked bad; the next scan tries it again)
+            PicOut::Retry(m) | PicOut::NoWorker(m) => why = m,
             PicOut::Info { .. } => {}
         }
         let ok = !fit.px.is_empty() && bgimage_luma(&fit, &mut full) == 0 && canvas_init(&mut small, pw / THUMB_DIV, ph / THUMB_DIV) == 0;
@@ -709,7 +717,7 @@ fn make_previews(dir: &str) -> i32 {
             write_quiet(&bp, "");
             bad += 1;
         } else {
-            later += 1; // out of memory, or the file did not read: the next scan tries again
+            later += 1; // out of memory, the file did not read, or no sandboxed worker: the next scan tries again
         }
         bgpicture_free(&mut fit);
         canvas_free(&mut full);
@@ -733,7 +741,7 @@ fn make_previews(dir: &str) -> i32 {
     }
     qlog!(
         "%s: %d preview(s) made, %d file(s) that are no picture Grimoire can use, %d left for a later scan \
-(out of memory, or a file that did not read)",
+(out of memory, a file that did not read, or no sandboxed worker)",
         if photo { "photos" } else { "templates" },
         made,
         bad,
@@ -1047,7 +1055,8 @@ fn make_template(id: &str, src: &str, dpi: f32) -> i32 {
                     rc = -1;
                 }
             }
-            PicOut::Bad(m) | PicOut::Retry(m) | PicOut::Dead(m) => {
+            // (no sandboxed worker: not made now, and nothing is marked; the template is not at fault)
+            PicOut::Bad(m) | PicOut::Retry(m) | PicOut::Dead(m) | PicOut::NoWorker(m) => {
                 why = m;
                 rc = -1;
             }
@@ -1646,7 +1655,8 @@ fn finish_source(src: &str, id: &str) {
 
 // Every page's header (a millisecond or so a page), before any picture is made: a folder with a
 // page that is no picture Grimoire takes fails at once, whatever its place. IMPORT_REFUSED, or 0; or
-// IMPORT_RETRY when a header could not be checked this time (no memory, its workers died: one try of three).
+// IMPORT_RETRY when a header could not be checked this time (no memory, its workers died: one try of three),
+// or IMPORT_LATER when no sandboxed worker can be had (no try).
 fn check_pages(id: &str, src: &str, names: &[String]) -> i32 {
     let n = names.len();
     if n == 0 || n > STORE_MAX_PAGES {
@@ -1662,7 +1672,11 @@ fn check_pages(id: &str, src: &str, names: &[String]) -> i32 {
         let rc = check_file_in(&mut pool, &path, BG_SOURCE_MAX_BYTES, &mut w, &mut h, &mut why);
         if rc != 0 {
             qlog!("import: %s: page %d of %d: %s; nothing imported", id, i + 1, n, why);
-            return if rc == -2 { IMPORT_RETRY } else { IMPORT_REFUSED };
+            return match rc {
+                -2 => IMPORT_RETRY,
+                -3 => IMPORT_LATER,
+                _ => IMPORT_REFUSED,
+            };
         }
     }
     0
@@ -1670,7 +1684,7 @@ fn check_pages(id: &str, src: &str, names: &[String]) -> i32 {
 
 // The notebook itself, built in notebooks/.import-<id>/ (which the Library never lists) and renamed
 // into place only once whole; anything going wrong removes it. IMPORT_DONE (its folder moved to
-// import/done), IMPORT_RETRY or IMPORT_REFUSED.
+// import/done), IMPORT_RETRY, IMPORT_REFUSED or IMPORT_LATER.
 fn build_notebook(id: &str, src: &str, final_: &str, names: &[String]) -> i32 {
     let n = names.len();
     let mut work = String::new();
@@ -1717,6 +1731,11 @@ fn build_notebook(id: &str, src: &str, final_: &str, names: &[String]) -> i32 {
                     PicOut::Bad(m) => {
                         why = m;
                         fail = IMPORT_REFUSED;
+                    }
+                    // (no sandboxed worker: the folder is not at fault, and its try is taken back)
+                    PicOut::NoWorker(m) => {
+                        why = m;
+                        fail = IMPORT_LATER;
                     }
                     PicOut::Info { .. } => {}
                 }
@@ -1854,6 +1873,11 @@ fn import_folder(src: &str) -> i32 {
     } else {
         if rc == IMPORT_REFUSED {
             attempts_note(src, pictures, ATTEMPT_REFUSED);
+        } else if rc == IMPORT_LATER {
+            // (no sandboxed worker read a picture: the try counted above is taken back, and a later scan takes the
+            // folder again)
+            attempts_note(src, pictures, ATTEMPT_UNTRY);
+            qlog!("import: %s: no try is counted; a later scan takes the folder again", &id);
         }
         drop_mark(src);
     }

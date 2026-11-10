@@ -26,8 +26,9 @@ why. Newest decisions first within each section.
   worker killed by the filter marks its picture `.bad` rather than falling back, so a call the list lacks would
   mark pictures bad on a device until it is added (the log names the call); KOReader's page PNGs and Grimoire's
   own `bg/` pictures stay decoded by the UI (a later option: re-encode KOReader's through the worker, which would
-  change the UI process's book flow); the fallback flag set in one job child does not reach the UI or the next
-  child (each finds out for itself, at the cost of one failed start). (`install_picture` no longer starts a worker
+  change the UI process's book flow); the no-worker flag set in one job child (on the Kindle pictures then wait;
+  elsewhere they fall back) does not reach the UI or the next child (each finds out for itself, at the cost of one
+  failed start). (`install_picture` no longer starts a worker
   on the UI thread: a template or photo with no preview yet waits for the previews job, the fix round's M13.)
 - **The picker (lane L8)** and **the notebook PDF's colour and caps (lane L9)**: done in 2.1.0-beta.2 (their own
   sections below).

@@ -55,8 +55,10 @@
   (cut short, enormous, a decompression bomb) is refused as before; one that crashes the reader is read again by a
   fresh one, and crashing that too marks it as not usable (templates and photos), or counts one of its folder's
   three tries. A template or photo copied in a moment ago is picked once its tile shows its preview ("Not ready
-  yet. Try again in a moment." before that). Where the sandbox is not available (see grimoire.log) pictures are
-  read the old way, and the log says so once.
+  yet. Try again in a moment." before that). On the Kindle a picture is never read outside that process: should it
+  ever be unavailable (grimoire.log says why, once), a template or photo waits for its preview and is never marked
+  as not usable, and a picture folder stays in `import/` and is tried again at every look without using up its
+  tries.
 - PDFs are read by a separate process that cannot reach the files, the network or other programs (a sandboxed
   worker); a Scribe that refuses a step reads no PDF and says so in grimoire.log. A picture folder in `import/`
   now also gets a notebook name no other notebook has.

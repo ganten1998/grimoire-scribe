@@ -2070,9 +2070,9 @@ and the log says so once), and the template, photo and import tests of `test_tem
    > the template list and a page's paper sheet: they appear with their previews, and one of each still goes onto a
    page (a template still imports; a photo still comes upright).
 2. grimoire.log has `work: sandboxed (uid 62001, ...)` once a background job that reads pictures (each job is a
-   process of its own; for PDFs it is once a session), and no `pictures decode in the writer` and
-   no `made call N, which the sandbox does not allow`. If either shows, send the log (the call is added to the
-   allow-list; the fallback line means the sandbox refused a step).
+   process of its own; for PDFs it is once a session), and no `pictures decode in the writer` (since pictures
+   fail closed: no `pictures wait`) and no `made call N, which the sandbox does not allow`. If either shows, send
+   the log (the call is added to the allow-list; the other line means the sandbox refused a step).
 3. Copy a folder of 20 phone photos (12 MP) into `grimoire/import/<Folder>`: it imports as before; time it from the
    log (`import: ... N of M pages`) against 2.0.0, and watch `MemAvailable`: the slices are 32 pictures a worker.
 4. Put a broken `.png` (cut a real one in half) in `grimoire/templates`: it is listed as unusable as in 2.0, and
@@ -2263,3 +2263,20 @@ None of this has run on a Scribe. Nothing here needs a debugger; read grimoire.l
 9. **Copy to notebook... into a notebook with no room for tabs.** The toast says "Copied N pages to X, without
    their document links." and not "without their names and links" when the names and links did save.
 
+## 2.1.0-beta.2, pictures fail closed
+
+The owner's ruling of 2026-11-10: where the sandbox is required (the Kindle) a picture is never decoded outside
+it. When no sandboxed worker can be had, a template or photo is not ready yet (never marked unusable), a picture
+folder in `import/` counts no try and is taken again at every later scan, and grimoire.log says why once a
+process. Off the Kindle the 2.0 fallback stays. Automated: `rust/tests/test_picwork_closed.rs` (GRIMOIRE_SANDBOX=
+require with a failing sandbox step, and with an exec that does not start: no preview, no `.bad`, no try counted
+over four scans, nothing decoded in the writer even for a picture a worker died on, the log line once a process;
+with a worker back, the previews, the notebook's picture and the folder's notebook are made) and
+`test_picwork_fallback.rs` (not required: the fallback still decodes). **Not run on a Scribe.** The owner's check:
+
+1. With the sandbox working (the normal case), nothing changes: copy a PNG into `grimoire/templates`, a photo into
+   `grimoire/photos` and a folder of three pictures into `grimoire/import/<Folder>`. The previews appear, the
+   folder becomes a notebook, and grimoire.log has `work: sandboxed (uid 62001, ...)` and neither `pictures wait`
+   nor `pictures decode in the writer`. If `work: pictures wait (<why>)` shows, send the log: the templates stay
+   without previews and the folder stays in `import/` (it is tried again at each scan, the Library's toast
+   "Couldn't import page folder" each time) until the sandbox works again.

@@ -564,7 +564,8 @@ again to use it; and an empty `<hash>.bad` for a file that is no picture it can 
 no picture Grimoire takes (as above), it is bigger than 16 MB, or (since 2.1.0-beta.2) two of the
 sandboxed workers that read it ended on it in a row (one death is tried again on a fresh worker),
 or one made a call the sandbox refuses. A file that does not read when the previews are made (no
-memory for it, a read error) gets no `.bad`: a later scan tries it again. A file whose path is 600
+memory for it, a read error), or that no sandboxed worker could read (the Kindle never reads a
+picture outside the sandbox), gets no `.bad`: a later scan tries it again. A file whose path is 600
 bytes or longer is left out. Since 2.1.0-beta.2 a template or photo is picked only once its
 `.key` is there (its preview made): the previews job's worker has then found it a picture, and the
 UI never reads or checks the file itself.
@@ -672,7 +673,8 @@ count), each page a document page; the notebook's own paper is Blank. It is made
   keeps its folder as it was. `import/.attempts` says how each folder still in `import/` fared:
   `# ...`, then a line `<hash of the folder's name> <hash of its pictures' names, sizes and times>
   <tries>` (16 hex digits, 16 hex digits, a number) for each folder an import tried, its tries
-  counted as each starts (99 once a page was no picture Grimoire takes). A folder refused so, or
+  counted as each starts (99 once a page was no picture Grimoire takes; an import that found no
+  sandboxed worker to read its pictures counts none). A folder refused so, or
   tried at 3 starts (a full disk, an import cut off each time), waits until its pictures change: a
   file added, removed, renamed or replaced, or the folder renamed. A start drops the lines of
   folders no longer there. A start takes at most 8 folders; a folder of more than 2000 pictures is

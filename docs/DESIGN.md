@@ -1986,14 +1986,22 @@ line then the bytes). The worker runs the very code the writer ran before (`bgim
 decode within the 256 MiB budget, the EXIF turn for a photo, the fit onto the notebook's page) and answers with
 the source's size and the page picture, which the writer checks (the page's size, 1 or 3 channels, the source's
 bounds) before it writes a file. One worker serves up to 32 pictures (`s1::PICTURE_SLICE`), so a 2000-picture
-folder costs about 63 execs. A worker that dies or stalls on a picture ends that picture alone: a template or photo
-is marked `.bad`, a folder import is refused whole; a worker killed by the seccomp filter is the same (never a
-reason to decode in the writer, which would hand a compromised worker's picture to a root process). When no
-worker can be had at all (a sandbox step failed before a byte was read, the exec did not start, the handshake
-failed) pictures decode in the writer, as in 2.0, logged once (D21); `sandbox::session_broken()` is the flag the
-PDF import also reads. KOReader's own page PNGs and Grimoire's own `bg/` pictures are still decoded by the UI, as
-they come from KOReader's encoder and from Grimoire. The UI's check of a small template file with no preview yet
-(`install_picture`) goes through the worker too.
+folder costs about 63 execs. A worker that dies or stalls on a picture twice in a row ends that picture alone: a
+template or photo is marked `.bad`, a folder's import counts one try of its three; a worker killed by the seccomp
+filter ends its picture so at once (never a reason to decode in the writer, which would hand a compromised
+worker's picture to a root process). When no worker can be had at all (a sandbox step failed before a byte was
+read, the exec did not start, the handshake failed), pictures fail closed wherever the sandbox is required (the
+owner's ruling of 2026-11-10, replacing D21's picture fallback; `sandbox::sandbox_required`: the Kindle always,
+elsewhere GRIMOIRE_SANDBOX=require): no picture is decoded in the writer, the pool answers `PicOut::NoWorker`, a
+template or photo is not ready yet (no `.bad`: the next scan makes its preview, and a notebook's picture is made
+when the template is picked again), and a picture folder's import ends with its try taken back
+(`import/.attempts` unchanged), so every later scan takes it again. Where the sandbox is not required (the Mac,
+the simulator, tests) a picture no worker was given still decodes in the writer, as in 2.0. Either way the log
+says so once a process, with the reason, and a picture a worker was given is never decoded in the writer.
+`sandbox::session_broken()` is the flag the PDF import also reads. KOReader's own page PNGs and Grimoire's own
+`bg/` pictures are still decoded by the UI, as they come from KOReader's encoder and from Grimoire. The UI never
+checks a template or photo itself: one with no preview yet waits for the previews job (`install_picture`, the
+fix round's M13).
 
 ## Your own fonts (2.1.0-beta.2, lane L10)
 

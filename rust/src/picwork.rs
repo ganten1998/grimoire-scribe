@@ -11,9 +11,12 @@
 //!   2000-picture folder costs a few dozen execs, not 2000). A worker that dies or stalls on a picture is
 //!   replaced by a fresh one, which tries the picture again; a second death in a row fails that picture
 //!   alone (`PicOut::Dead`): a template or photo is marked `.bad`, a folder's import counts one try of its
-//!   three. A call the filter refuses is final at once. A worker that cannot start, or
-//!   whose sandbox step failed, is not the picture's fault: the pool then decodes in the writer, as 2.0
-//!   did, and says so once in the log (D21).
+//!   three. A call the filter refuses is final at once. A worker that cannot start, or whose sandbox step
+//!   failed, is not the picture's fault. Where the sandbox is required (the Kindle, or GRIMOIRE_SANDBOX=require:
+//!   sandbox.rs `sandbox_required`) pictures then fail closed (the owner's ruling, 2026-11-10): nothing is
+//!   decoded, in a worker or in the writer, and the picture waits (`PicOut::NoWorker`: a template or photo is not
+//!   marked, a folder's import counts no try, and a later job tries again). Elsewhere (the Mac, the simulator,
+//!   tests) the pool decodes in the writer, as 2.0 did (D21). Either way the log says so once a process.
 //!
 //! Commands (writer to worker, one line, then `len` bytes):
 //!   `C <file_len> <len>`            the header check of a picture (the first `len` bytes of a file of
@@ -292,19 +295,30 @@ pub enum PicOut {
     Retry(&'static str),
     /// the worker died or stalled on it: it is marked bad
     Dead(&'static str),
+    /// no worker can be had and the sandbox is required (the Kindle): nothing was decoded, in a worker or in the
+    /// writer. Not the picture's fault: nothing is marked and no try is counted; a later job tries it again.
+    NoWorker(&'static str),
 }
 
-static FALLBACK: AtomicBool = AtomicBool::new(false);
+/// What `PicOut::NoWorker` says (the reason is in the log line `no_worker` writes once a process).
+pub const NO_WORKER_WHY: &str = "no sandboxed worker can be had";
+
+static NO_WORKER: AtomicBool = AtomicBool::new(false);
 static SANDBOX_LINE: AtomicBool = AtomicBool::new(false);
 
-/// Whether this process decodes pictures itself (a worker could not start, or its sandbox failed).
+/// Whether no picture worker can be had in this process (one could not start, or a sandbox step failed). Where
+/// the sandbox is required pictures then wait (`PicOut::NoWorker`); elsewhere the writer decodes them itself.
 pub fn in_fallback() -> bool {
-    FALLBACK.load(Ordering::Relaxed) || session_broken()
+    NO_WORKER.load(Ordering::Relaxed) || session_broken()
 }
 
-fn fall_back(why: &str) {
-    if !FALLBACK.swap(true, Ordering::Relaxed) {
-        qlog!("work: pictures decode in the writer (%s); the sandbox is unavailable", why);
+fn no_worker(why: &str) {
+    if !NO_WORKER.swap(true, Ordering::Relaxed) {
+        if sandbox_required() {
+            qlog!("work: pictures wait (%s): no sandboxed worker can be had, and the writer decodes none; nothing is marked and no try is counted", why);
+        } else {
+            qlog!("work: pictures decode in the writer (%s); the sandbox is unavailable", why);
+        }
     }
 }
 
@@ -323,7 +337,32 @@ impl Default for PicPool {
 enum Start {
     Ready,
     /// no worker can be had: the sandbox or the exec is unavailable
-    Fallback,
+    NoWorker,
+}
+
+/// What one request came to (`PicPool::ask`).
+enum Asked {
+    /// the worker's first record
+    Line(Vec<u8>),
+    /// no worker can be had, and none was given this picture: the writer may decode it (the sandbox is not
+    /// required: D21)
+    Local,
+    /// no worker can be had, and the sandbox is required: nothing decodes it now, it waits
+    Wait,
+}
+
+/// No worker can be had for a picture: where the sandbox is required it waits, never decoded here (whether a
+/// worker was given it before or not); elsewhere one that no worker was given is decoded in the writer (D21), and
+/// one a worker was given is refused, for a worker the picture took over could otherwise hand it to a root process
+/// (security review 2026-11).
+fn without_worker(handed: bool) -> Result<Asked, &'static str> {
+    if sandbox_required() {
+        Ok(Asked::Wait)
+    } else if handed {
+        Err("no worker for a picture a worker was given")
+    } else {
+        Ok(Asked::Local)
+    }
 }
 
 impl PicPool {
@@ -334,9 +373,9 @@ impl PicPool {
     fn start(&mut self) -> Start {
         if in_fallback() {
             if session_broken() {
-                fall_back("an earlier worker's sandbox step failed");
+                no_worker("an earlier worker's sandbox step failed");
             }
-            return Start::Fallback;
+            return Start::NoWorker;
         }
         if self.w.is_some() && self.served < s1::PICTURE_SLICE {
             return Start::Ready;
@@ -349,12 +388,12 @@ impl PicPool {
             Ok(w) => w,
             Err(SpawnErr::Sandbox(step)) => {
                 session_set_broken();
-                fall_back(&format!("step {step}"));
-                return Start::Fallback;
+                no_worker(&format!("step {step}"));
+                return Start::NoWorker;
             }
             Err(SpawnErr::Start) => {
-                fall_back("the worker did not start");
-                return Start::Fallback;
+                no_worker("the worker did not start");
+                return Start::NoWorker;
             }
         };
         let deadline = mono_ms() + 15_000;
@@ -380,13 +419,13 @@ impl PicPool {
             Some(Ok(())) => {}
             Some(Err(why)) => {
                 w.kill_and_reap();
-                fall_back(why);
-                return Start::Fallback;
+                no_worker(why);
+                return Start::NoWorker;
             }
             None => {
                 w.kill_and_reap();
-                fall_back("the worker did not answer");
-                return Start::Fallback;
+                no_worker("the worker did not answer");
+                return Start::NoWorker;
             }
         }
         if !SANDBOX_LINE.swap(true, Ordering::Relaxed) {
@@ -410,19 +449,19 @@ impl PicPool {
         }
     }
 
-    /// One request: the command line, the bytes, and the first record back. `Ok(None)` means no worker can be had
-    /// and no worker was ever given this picture (nothing was decoded: the caller falls back). `handed` says an
-    /// earlier try gave it to a worker already: a picture a worker was given is never decoded in the writer, for a
-    /// worker the picture took over could otherwise hand it to a root process (security review 2026-11).
-    fn ask(&mut self, line: &str, data: &[u8], mut handed: bool) -> Result<Option<(Vec<u8>, usize)>, &'static str> {
+    /// One request: the command line, the bytes, and the first record back. When no worker can be had nothing was
+    /// decoded: `Asked::Wait` where the sandbox is required (the picture waits), else `Asked::Local` when no worker
+    /// was ever given this picture (the caller decodes it in the writer, D21). `handed` says an earlier try gave it
+    /// to a worker already: a picture a worker was given is never decoded in the writer (`without_worker`).
+    fn ask(&mut self, line: &str, data: &[u8], mut handed: bool) -> Result<Asked, &'static str> {
         let mut again = true;
         loop {
-            if let Start::Fallback = self.start() {
-                return if handed { Err("no worker for a picture a worker was given") } else { Ok(None) };
+            if let Start::NoWorker = self.start() {
+                return without_worker(handed);
             }
             let fresh = self.served == 0;
             let Some(w) = self.w.as_mut() else {
-                return if handed { Err("no worker for a picture a worker was given") } else { Ok(None) };
+                return without_worker(handed);
             };
             self.served += 1;
             let deadline = mono_ms() + watchdog_ms();
@@ -442,7 +481,7 @@ impl PicPool {
                 return Err(if stalled { "the worker stalled" } else { "the worker ended" });
             }
             match w.read_line(512, deadline) {
-                Ok(l) => return Ok(Some((l, self.served))),
+                Ok(l) => return Ok(Asked::Line(l)),
                 Err(ReadErr::Timeout) => {
                     self.drop_worker();
                     return Err("the worker stalled");
@@ -480,8 +519,9 @@ impl PicPool {
             r = self.ask(&cmd, head, true);
         }
         let line = match r {
-            Ok(Some((l, _))) => l,
-            Ok(None) => return local_check(head, file_len),
+            Ok(Asked::Line(l)) => l,
+            Ok(Asked::Local) => return local_check(head, file_len),
+            Ok(Asked::Wait) => return PicOut::NoWorker(NO_WORKER_WHY),
             Err(why) => {
                 qlog!("work: a picture's worker ended on its header (%s)", why);
                 return PicOut::Dead(why);
@@ -538,8 +578,9 @@ impl PicPool {
     fn decode_once(&mut self, data: &[u8], orient: bool, pw: i32, ph: i32, handed: bool) -> Result<PicOut, &'static str> {
         let r = self.ask(&format!("D {} {} {} {}\n", orient as u8, pw, ph, data.len()), data, handed);
         let line = match r {
-            Ok(Some((l, _))) => l,
-            Ok(None) => return Ok(local_decode(data, orient, pw, ph)),
+            Ok(Asked::Line(l)) => l,
+            Ok(Asked::Local) => return Ok(local_decode(data, orient, pw, ph)),
+            Ok(Asked::Wait) => return Ok(PicOut::NoWorker(NO_WORKER_WHY)),
             Err(why) => return Err(why),
         };
         self.decoded(&line, pw, ph)
@@ -630,8 +671,11 @@ fn parse_info(line: &[u8]) -> Reply {
     }
 }
 
-/// The writer's own header check: what 2.0 did, for when no worker can be had.
+/// The writer's own header check: what 2.0 did, for when no worker can be had and the sandbox is not required.
 fn local_check(head: &[u8], file_len: usize) -> PicOut {
+    if sandbox_required() {
+        return PicOut::NoWorker(NO_WORKER_WHY); // (never reached: `without_worker`; a last guard)
+    }
     let (mut w, mut h) = (0, 0);
     let mut why: &'static str = "";
     if bgimage_check(head, file_len, &mut w, &mut h, &mut why) == 0 {
@@ -641,8 +685,11 @@ fn local_check(head: &[u8], file_len: usize) -> PicOut {
     }
 }
 
-/// The writer's own decode: what 2.0 did, for when no worker can be had.
+/// The writer's own decode: what 2.0 did, for when no worker can be had and the sandbox is not required.
 fn local_decode(data: &[u8], orient: bool, pw: i32, ph: i32) -> PicOut {
+    if sandbox_required() {
+        return PicOut::NoWorker(NO_WORKER_WHY); // (never reached: `without_worker`; a last guard)
+    }
     match decode_one(data, orient, pw, ph) {
         Ok((fit, sw, sh)) => PicOut::Pic { src_w: sw, src_h: sh, fit },
         Err(rec) => match parse_info(rec.trim_end().as_bytes()) {
