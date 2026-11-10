@@ -39,7 +39,9 @@ fn heartbeat() {
     // SAFETY: open/write/close on a NUL-terminated path we own and the fd open returns; write reads
     // one byte of a static.
     unsafe {
-        let fd = libc::open(path.as_ptr(), libc::O_WRONLY | libc::O_CREAT | libc::O_TRUNC, 0o644 as libc::c_uint);
+        // (O_NOFOLLOW: /tmp is every user's, and a link planted there must not make root truncate and write its
+        // target every 2 s; security review 2026-11)
+        let fd = libc::open(path.as_ptr(), libc::O_WRONLY | libc::O_CREAT | libc::O_TRUNC | libc::O_NOFOLLOW | libc::O_CLOEXEC, 0o644 as libc::c_uint);
         if fd >= 0 {
             if libc::write(fd, b"1".as_ptr() as *const libc::c_void, 1) < 0 { /* best effort */ }
             libc::close(fd);

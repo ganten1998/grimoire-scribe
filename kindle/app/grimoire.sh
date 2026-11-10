@@ -557,14 +557,18 @@ rm -f "$BEAT"
 # in $TMP (the update replaces the app's own), and starts Grimoire again. Never in the dev copy
 # (GRIMOIRE_DEV=1): an update from it would install over the release, so the request is not
 # honoured even if one were left behind.
+# The copy goes in a folder of its own that only root can enter (mkdir fails on any name already there): a fixed
+# name in $TMP could be another user's file, written by cp and changed again before sh reads it (security review
+# 2026-11).
+UPD="$TMP/grimoire-update.$$.d"
 if [ -f "$TMP/grimoire-update" ] && [ "${GRIMOIRE_DEV:-}" != 1 ]; then
     rm -f "$TMP/grimoire-update"
-    if cp "$DIR/update.sh" "$TMP/grimoire-update.sh" 2>/dev/null; then
+    if mkdir -m 700 "$UPD" 2>/dev/null && cp "$DIR/update.sh" "$UPD/update.sh" 2>/dev/null; then
         log "an update was asked for: KPM installs it once this launcher has finished"
         if command -v setsid >/dev/null 2>&1; then
-            GRIMOIRE_ROOT="$ROOT" setsid sh "$TMP/grimoire-update.sh" install "$$" "$HOSTED" </dev/null >>"$LOG" 2>&1 &
+            GRIMOIRE_ROOT="$ROOT" setsid sh "$UPD/update.sh" install "$$" "$HOSTED" </dev/null >>"$LOG" 2>&1 &
         else
-            GRIMOIRE_ROOT="$ROOT" nohup sh "$TMP/grimoire-update.sh" install "$$" "$HOSTED" </dev/null >>"$LOG" 2>&1 &
+            GRIMOIRE_ROOT="$ROOT" nohup sh "$UPD/update.sh" install "$$" "$HOSTED" </dev/null >>"$LOG" 2>&1 &
         fi
     else
         log "an update was asked for, but update.sh could not be copied to $TMP"
