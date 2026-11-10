@@ -2026,18 +2026,18 @@ do -- A launcher that takes links: the links of the pages drawn in this run (1, 
     logs_name_no_book(s)
 end
 
-do -- Once per book: a notebook that says links=1 holds its links; its held page is not asked again.
+do -- A notebook that says links=1 holds its links, but pages are to be added in this run (1, 3 and 4): a page
+    -- deleted and added again is a target the held pages' tabs lost, so every held page's links are asked again.
     world("book-links-once")
     W.unpack_writes = LINKS_CAPS
     book_with_links(4, 2, ABOUT_LINKS)
     notebook_of(W.book.md5, 4, { 2 })
     local nb = W.us .. "/grimoire/notebooks/20261026-100000-abcd/source.ini"
     write(nb, read_all(nb) .. "links=1\n")
+    write(W.us .. "/grimoire/notebooks/20261026-100000-abcd/doclinks.ini", "# Grimoire: links a document brought\n")
     koreader(true):onOpenBookInGrimoire()
-    local s = "book links, again"
-    check(s .. ": only the pages drawn this run are asked", link_calls() == "1 3 4")
-    local text = read_all(book_dir() .. "/links.txt") or ""
-    check(s .. ": their links only", text:find("\nL 1 2 ", 1, true) and text:find("\nL 3 1 ", 1, true) and not text:find("\nL 2 3 ", 1, true))
+    local s = "book links, again with pages to add"
+    check(s .. ": the held page is asked again with the drawn ones", link_calls() == "1 2 3 4")
 end
 
 do -- Everything held and filled: nothing to draw, nothing asked, no links.txt.
@@ -2047,10 +2047,24 @@ do -- Everything held and filled: nothing to draw, nothing asked, no links.txt.
     notebook_of(W.book.md5, 2, { 1, 2 })
     local nb = W.us .. "/grimoire/notebooks/20261026-100000-abcd/source.ini"
     write(nb, read_all(nb) .. "links=1\n")
+    write(W.us .. "/grimoire/notebooks/20261026-100000-abcd/doclinks.ini", "# Grimoire: links a document brought\n")
     koreader(true):onOpenBookInGrimoire()
     local s = "book links, all held and filled"
     check(s .. ": nothing asked", link_calls() == "")
     check(s .. ": no links.txt, a request with no pictures", book_files() == "request.ini")
+end
+
+do -- links=1 with no doclinks.ini beside it (a zip an older build made keeps the line and leaves the file out): not filled.
+    world("book-links-nofile")
+    W.unpack_writes = LINKS_CAPS
+    book_with_links(2, 1, ABOUT_LINKS)
+    notebook_of(W.book.md5, 2, { 1, 2 })
+    local nb = W.us .. "/grimoire/notebooks/20261026-100000-abcd/source.ini"
+    write(nb, read_all(nb) .. "links=1\n")
+    koreader(true):onOpenBookInGrimoire()
+    local s = "book links, links=1 without its file"
+    check(s .. ": every held page asked again", link_calls() == "1 2")
+    check(s .. ": links.txt and the request", book_files() == "links.txt request.ini")
 end
 
 do -- Everything held, links not filled yet (an older Grimoire made the notebook): the one backfill, links.txt alone.
