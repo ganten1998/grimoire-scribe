@@ -365,6 +365,76 @@ pub fn mkdir_p(path: &str) -> i32 {
     mkdir_one(path)
 }
 
+/// Removes a work folder Grimoire was building (`files` first, then the files of its bg/ and its own, then the
+/// folders), by descriptor and never through a link: a folder, or a bg/, that is a link is unlinked itself and
+/// never entered, so a planted link cannot make root delete the files of another folder (security review
+/// 2026-11). A folder left inside (not Grimoire's) stays, and so does the work folder then.
+pub fn remove_work_dir(work: &std::path::Path, files: &[&std::ffi::CStr]) {
+    use std::os::unix::ffi::OsStrExt;
+    let Ok(c) = std::ffi::CString::new(work.as_os_str().as_bytes()) else { return };
+    // SAFETY: open reads the NUL-terminated path we own; the descriptor is closed below.
+    let fd = unsafe { libc::open(c.as_ptr(), libc::O_RDONLY | libc::O_DIRECTORY | libc::O_NOFOLLOW | libc::O_CLOEXEC) };
+    if fd < 0 {
+        // a link (or no folder at all): the entry itself goes, never what it points at
+        if std::fs::symlink_metadata(work).is_ok_and(|m| !m.is_dir()) {
+            let _ = std::fs::remove_file(work);
+        }
+        return;
+    }
+    for f in files {
+        // SAFETY: unlinkat on the descriptor we own and a NUL-terminated name.
+        unsafe { libc::unlinkat(fd, f.as_ptr(), 0) };
+    }
+    // SAFETY: openat on the descriptor we own; the descriptor it returns is closed below.
+    let bg = unsafe { libc::openat(fd, c"bg".as_ptr(), libc::O_RDONLY | libc::O_DIRECTORY | libc::O_NOFOLLOW | libc::O_CLOEXEC) };
+    if bg >= 0 {
+        unlink_files_at(bg);
+        // SAFETY: closing the descriptor opened above, then removing the folder by its name in ours.
+        unsafe {
+            libc::close(bg);
+            libc::unlinkat(fd, c"bg".as_ptr(), libc::AT_REMOVEDIR);
+        }
+    }
+    unlink_files_at(fd);
+    // SAFETY: closing the descriptor opened above.
+    unsafe { libc::close(fd) };
+    let _ = std::fs::remove_dir(work);
+}
+
+/// Unlinks every entry of the folder open at `fd` that is not a folder (a link is unlinked, never followed).
+fn unlink_files_at(fd: i32) {
+    // SAFETY: fdopendir takes a duplicate of our descriptor, which closedir closes; readdir's entries are read
+    // before the next readdir call.
+    let names = unsafe {
+        let d2 = libc::dup(fd);
+        if d2 < 0 {
+            return;
+        }
+        let d = libc::fdopendir(d2);
+        if d.is_null() {
+            libc::close(d2);
+            return;
+        }
+        let mut names = Vec::new();
+        loop {
+            let e = libc::readdir(d);
+            if e.is_null() {
+                break;
+            }
+            let n = std::ffi::CStr::from_ptr((*e).d_name.as_ptr()).to_owned();
+            if n.as_bytes() != b"." && n.as_bytes() != b".." {
+                names.push(n);
+            }
+        }
+        libc::closedir(d);
+        names
+    };
+    for n in names {
+        // SAFETY: unlinkat on the descriptor we own and a NUL-terminated name (a folder fails: EISDIR).
+        unsafe { libc::unlinkat(fd, n.as_ptr(), 0) };
+    }
+}
+
 fn mkdir_one(p: &str) -> i32 {
     let Ok(c) = std::ffi::CString::new(p) else { return -1 };
     // SAFETY: mkdir reads the NUL-terminated path we own.

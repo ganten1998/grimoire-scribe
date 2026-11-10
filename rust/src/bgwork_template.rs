@@ -1113,19 +1113,9 @@ pub fn bg_template(id: &str, src: &str, dpi: f32) -> i32 {
 // Removes a folder an import was building (notebooks/.import-<id>/: its files and its bg/). A PDF import's state
 // goes first: a removal cut off then leaves a folder that is no one's (removed at the next start), never one that
 // resumes with its pictures gone (H7).
+// (by descriptor, never through a link: util.rs remove_work_dir)
 fn remove_work<P: AsRef<Path>>(work: P) {
-    let work = work.as_ref();
-    let _ = std::fs::remove_file(work.join("pdf-import.ini"));
-    for pass in 0..2 {
-        let dir = if pass == 0 { work.join("bg") } else { work.to_path_buf() };
-        if let Ok(rd) = std::fs::read_dir(&dir) {
-            for e in rd {
-                let Ok(e) = e else { break };
-                let _ = std::fs::remove_file(dir.join(e.file_name()));
-            }
-        }
-        let _ = std::fs::remove_dir(&dir);
-    }
+    remove_work_dir(work.as_ref(), &[c"pdf-import.ini"]);
 }
 
 // The notebook id written in an import folder's mark, or false (none, or "done").

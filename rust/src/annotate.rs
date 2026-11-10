@@ -834,21 +834,9 @@ fn empty_requests() -> i32 {
 }
 
 /// Removes a folder a new notebook was being made in (its files, its bg/ and source.ini).
+/// (by descriptor, never through a link: util.rs remove_work_dir)
 fn remove_work(work: &Path) {
-    for pass in 0..2 {
-        // (work + "/bg" by its bytes: the C joins them as strings, so an empty work is "/bg")
-        let mut dir = work.as_os_str().as_bytes().to_vec();
-        if pass == 0 {
-            dir.extend_from_slice(b"/bg");
-        }
-        let dir = Path::new(std::ffi::OsStr::from_bytes(&dir));
-        if let Ok(d) = fs::read_dir(dir) {
-            for e in d.flatten() {
-                let _ = fs::remove_file(e.path());
-            }
-        }
-        let _ = fs::remove_dir(dir);
-    }
+    remove_work_dir(work, &[]);
 }
 
 /// What a start cut off while it made a notebook left (notebooks/.annotate-<id>/): never whole,
