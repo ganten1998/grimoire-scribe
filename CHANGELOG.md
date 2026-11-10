@@ -65,6 +65,11 @@
   lines they do not know (they draw Terminess). The Kindle binary is 10.6 MB and the zip 5.5 MB with it.
 - The text cache now holds at most 4 MB of letters (it was only limited by their number), which matters for
   large letters of your own fonts.
+- Japanese: nearly every string is translated now (922 of 987), and several that said the wrong thing are fixed
+  ("Save now" and "Select (lasso)" among them), by nebuff. The 65 still in English are 2.1's newest: most of
+  this beta's new screens, What's new, the Font sheet and the folder merge.
+- The Graph's list of links sorts faster on notebooks with many links (each row's target is read once, not at
+  every comparison), by nebuff.
 
 ## 2.1.0-beta.1 (2026-11-08)
 
