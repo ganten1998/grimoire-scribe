@@ -1396,7 +1396,7 @@ pub fn import_scan(dpi: f32) -> i32 {
         names.clear();
     }
     let found = crate::pdfimport::list_pdfs();
-    let folders = names.iter().filter(|n| n.as_str() != "done").count();
+    let folders = names.iter().filter(|n| !n.eq_ignore_ascii_case("done")).count();
     if folders == 0 && found.files.is_empty() && !import_leftovers(false, &mut Vec::new()) && !crate::pdfimport::marks_waiting() {
         // nothing to do: only whether a previous run's detached child still holds the lock
         crate::pdfimport::detached_check();
@@ -1430,7 +1430,7 @@ pub fn import_scan(dpi: f32) -> i32 {
     let natt = att.len();
     let (mut empty, mut waiting, mut toolong, mut with_pdfs) = (0, 0, 0, 0);
     for name in &names {
-        if name == "done" {
+        if name.eq_ignore_ascii_case("done") {
             continue;
         }
         let mut src = String::new();
@@ -1503,7 +1503,7 @@ pub fn import_scan(dpi: f32) -> i32 {
     // the PDF is listed (H1: a record keyed by the PDF's path under import/). Read again first: a job may have
     // written one since.
     let live: std::collections::HashSet<u64> =
-        names.iter().filter(|n| n.as_str() != "done").map(|n| fnv(FNV0, n.as_bytes())).chain(found.files.iter().map(|f| fnv(FNV0, f.0.as_bytes()))).collect();
+        names.iter().filter(|n| !n.eq_ignore_ascii_case("done")).map(|n| fnv(FNV0, n.as_bytes())).chain(found.files.iter().map(|f| fnv(FNV0, f.0.as_bytes()))).collect();
     let now_att = attempts_load();
     let kept: Vec<Attempt> = now_att.iter().filter(|e| live.contains(&e.name)).copied().collect();
     if kept.len() != now_att.len() {

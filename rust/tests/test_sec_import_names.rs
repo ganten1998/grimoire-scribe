@@ -19,7 +19,6 @@ fn setup(name: &str) -> String {
     root.to_str().unwrap().to_string()
 }
 
-#[test]
 fn names_that_end_inside_a_character_do_not_crash_the_scan() {
     let root = setup("cjk");
     let imp = format!("{root}/import");
@@ -34,4 +33,27 @@ fn names_that_end_inside_a_character_do_not_crash_the_scan() {
     let found = found.unwrap();
     let names: Vec<&str> = found.files.iter().map(|f| f.0.as_str()).collect();
     assert_eq!(names, vec!["Ok.pdf"]);
+}
+
+// (finding "a folder named Done loops"): under_import, which decides whether a PDF may be moved, takes done/ in any
+// case, as the storage compares names; the scan skipped only "done". A PDF in import/Done/ (or in done/ itself on a
+// storage that keeps the folder as "Done") was imported, never moved and never counted, and the scan that follows
+// a folder holding PDFs took it again at once: "already imported" for ever while the Library is up.
+fn done_in_any_case_is_not_scanned() {
+    let root = setup("done");
+    let imp = format!("{root}/import");
+    std::fs::create_dir_all(format!("{imp}/Done")).unwrap();
+    std::fs::write(format!("{imp}/Done/Old.pdf"), b"%PDF-1.4\n").unwrap();
+    std::fs::write(format!("{imp}/New.pdf"), b"%PDF-1.4\n").unwrap();
+    let found = list_pdfs();
+    let names: Vec<&str> = found.files.iter().map(|f| f.0.as_str()).collect();
+    eprintln!("  listed: {names:?}");
+    assert_eq!(names, vec!["New.pdf"], "the scan lists a PDF of import/Done, which no import may ever move");
+}
+
+// (one test, its checks in order: the store's root is the process's)
+#[test]
+fn test_sec_import_names() {
+    names_that_end_inside_a_character_do_not_crash_the_scan();
+    done_in_any_case_is_not_scanned();
 }

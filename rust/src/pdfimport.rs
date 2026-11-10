@@ -800,7 +800,9 @@ pub fn list_pdfs() -> Found {
             f.skipped += 1;
             continue;
         };
-        if name.starts_with('.') || name == "done" {
+        // (done/ in any case, as under_import and the storage take it: a PDF there is never moved, so a scan that
+        // listed it would take it again and again; security review 2026-11)
+        if name.starts_with('.') || name.eq_ignore_ascii_case("done") {
             continue;
         }
         let Ok(ft) = e.file_type() else { continue };
