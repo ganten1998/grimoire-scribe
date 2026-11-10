@@ -1201,11 +1201,11 @@ fn draw_context(v:&mut PagesView,a:&mut App,nb:&NotebookInfo,nav:&Nav,page:i32) 
     // TRANSLATORS: the same sheet: copy the page (or the ticked pages) into another notebook, picked from
     // the notebooks and folders.
     let copying=if k>1 && pagesview_ticked(v,page) {cformat!(ng_("Copy %d page to notebook...","Copy %d pages to notebook...",k as i64),k)}else{tr("Copy to notebook...").to_string()};
-    let rows=[(PG_CONTEXT_OPEN,IconKind::None,tr("Open")),(PG_CONTEXT_LINK,IconKind::LinkPlus,tr("Add a link")),
+    let rows=[(PG_CONTEXT_OPEN,IconKind::Paper,tr("Open")),(PG_CONTEXT_LINK,IconKind::LinkPlus,tr("Add a link")),
         (PG_CONTEXT_RENAME,IconKind::Rename,rename),(PG_CONTEXT_MOVE,IconKind::Grip,moving.as_str()),
         (PG_CONTEXT_COPY_TO,IconKind::Notebook,copying.as_str()),(PG_CONTEXT_DELETE,IconKind::Trash,del.as_str()),
         (PG_CONTEXT_CANCEL,IconKind::Close,tr("Cancel"))];
-    let card=card_rect(a,v);
+    let (rh,gap,card)=card_rows(a);
     let mut inner=ui_sheet(&mut a.screen,card,&cformat!(tr("Page %d"),page+1));
     if from>0 {
         // TRANSLATORS: under a held page's title in the Pages view (about 900 px at 34 px): how many pages, in this
@@ -1214,7 +1214,6 @@ fn draw_context(v:&mut PagesView,a:&mut App,nb:&NotebookInfo,nav:&Nav,page:i32) 
         font_draw_centered(&mut a.screen,FontFace::Regular,ui_small_size(),Rect::new(inner.x,inner.y,inner.w,ui_px(44.0)),&line,0);
         inner.y+=ui_px(48.0);inner.h-=ui_px(48.0);
     }
-    let rh=ui_px(140.0);let gap=ui_px(20.0);
     for (i,&(id,icon,label)) in rows.iter().enumerate() {
         let r=Rect::new(inner.x,inner.y+i as i32*(rh+gap),inner.w,rh);
         let enabled=nb.page_ids.get(page as usize).is_some() && (id!=PG_CONTEXT_RENAME || nav.writable);
@@ -1231,17 +1230,29 @@ fn draw_context(v:&mut PagesView,a:&mut App,nb:&NotebookInfo,nav:&Nav,page:i32) 
     a.toast_floor=card.y;
 }
 
-// Where a held tile's sheet is drawn: centred, sized for its seven rows and the linked-from line
-// (the same rows the app's menus draw, so a page held shows like any other list item).
-fn card_rect(a:&App,_v:&PagesView)->Rect {
-    card_rect_at((a.w,a.h))
+// A held tile's sheet: its row height, the gap between rows, and where it is drawn. Centred, sized
+// for its seven rows and the linked-from line (the same rows the app's menus draw, so a page held
+// shows like any other list item); rows shorter when a short screen has no room for the card, as the
+// menus' do, so the last row (Cancel) never falls outside it.
+fn card_rows(a:&App)->(i32,i32,Rect) {
+    card_rows_at((a.w,a.h))
 }
-fn card_rect_at((aw,ah):(i32,i32))->Rect {
+fn card_rect_at(at:(i32,i32))->Rect {
+    card_rows_at(at).2
+}
+fn card_rows_at((aw,ah):(i32,i32))->(i32,i32,Rect) {
     let w=ui_px(1000.0).min(aw-ui_px(60.0));
-    // ui_sheet_inner's chrome above and below the content: the title bar less its inset on both sides.
-    let chrome=-ui_sheet_inner(Rect::new(0,0,w,0),true).h;
-    let h=7*ui_px(140.0)+6*ui_px(20.0)+ui_px(48.0)+chrome;
-    Rect::new((aw-w)/2,(ah-h)/2,w,h)
+    // ui_sheet_inner's chrome above and below the content: the title bar and its inset on both sides
+    // (read off a card tall enough for its inner rect: a rect with no height clamps its to none).
+    let chrome=ui_px(1000.0)-ui_sheet_inner(Rect::new(0,0,w,ui_px(1000.0)),true).h;
+    let linked=ui_px(48.0);
+    // What the screen's room for the sheet leaves its rows, 40 px clear at the top and the bottom.
+    let room=ah-2*ui_px(40.0)-chrome-linked;
+    let mut rh=ui_px(140.0);let mut gap=ui_px(20.0);
+    if 7*(rh+gap)>room {rh=clampi(room/7-gap,ui_px(118.0),rh);}
+    if 7*(rh+gap)>room {gap=clampi(room/7-rh,ui_px(10.0),gap);}
+    let h=linked+7*(rh+gap)+chrome;
+    (rh,gap,Rect::new((aw-w)/2,(ah-h)/2,w,h))
 }
 
 // How many pages link to page index `page` of nb: its own pages (nav) and other notebooks' (the backlinks cache).
@@ -1638,7 +1649,7 @@ fn drag_begin(v: &mut PagesView, a: &mut App, nb: &NotebookInfo, nav: &Nav, ev: 
     if page < 0 || page >= nb.npages() || slot < 0 || slot >= cols * rows {
         return;
     }
-    let card = if v.context.is_some() { card_rect(a, v) } else { RECT_EMPTY };
+    let card = if v.context.is_some() { card_rows_at((a.w, a.h)).2 } else { RECT_EMPTY };
     let pages: Vec<i32> = if pagesview_ticked(v, page) { (0..nb.npages()).filter(|&i| pagesview_ticked(v, i)).collect() } else { vec![page] };
     v.context = None;
     v.held = false;
