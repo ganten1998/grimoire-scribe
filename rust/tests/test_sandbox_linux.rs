@@ -100,7 +100,7 @@ fn the_workers_maps_hold_nothing_of_the_writer() {
     let deadline = mono_ms() + 15_000;
     let hello = w.read_line(512, deadline).expect("its build line");
     assert!(hello.starts_with(b"B "), "{:?}", String::from_utf8_lossy(&hello));
-    assert_eq!(w.read_line(512, deadline).expect("its sandbox line"), b"S 1");
+    assert_eq!(String::from_utf8_lossy(&w.read_line(512, deadline).expect("its sandbox line")), "S 1");
     let maps = std::fs::read_to_string(format!("/proc/{}/maps", w.pid)).unwrap();
     assert!(!maps.lines().any(|l| l.split_whitespace().nth(1).is_some_and(|p| p.ends_with('s') && p.starts_with("rw"))), "a shared writable mapping:\n{maps}");
     let me = std::fs::canonicalize(std::env::current_exe().unwrap()).unwrap();
