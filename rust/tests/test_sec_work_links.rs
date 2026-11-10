@@ -33,7 +33,6 @@ fn left(v: &std::path::Path) -> usize {
     std::fs::read_dir(v).map(|r| r.count()).unwrap_or(0)
 }
 
-#[test]
 fn the_cleanup_of_a_cut_off_import_never_follows_a_link() {
     let (root, top) = setup("cleanup");
     // a work folder that is itself a link, and a real one whose bg/ is a link
@@ -48,4 +47,25 @@ fn the_cleanup_of_a_cut_off_import_never_follows_a_link() {
     assert_eq!(a, 3, "the scan deleted files through a linked .import- folder");
     assert_eq!(b, 3, "the scan deleted files through a linked bg/");
     let _ = std::fs::remove_dir_all(&top);
+}
+
+// (the same, for KOReader's request folder: annotate_take, at every start, empties grimoire/import/.annotate by its
+// path: a .annotate that is a link to a folder made the UI delete every file of that folder)
+fn the_start_never_empties_a_folder_through_a_linked_request_folder() {
+    let (root, top) = setup("annotate");
+    let v = victim(&top, "outside3");
+    std::os::unix::fs::symlink(&v, format!("{root}/import/.annotate")).unwrap();
+    let mut r = AnnotateResult::default();
+    annotate_take(false, &mut r);
+    let n = left(&v);
+    eprintln!("  files left behind the linked import/.annotate: {n} of 3");
+    assert_eq!(n, 3, "the start deleted files through a linked import/.annotate");
+    let _ = std::fs::remove_dir_all(&top);
+}
+
+// (one test, its checks in order: the store's root is the process's)
+#[test]
+fn test_sec_work_links() {
+    the_cleanup_of_a_cut_off_import_never_follows_a_link();
+    the_start_never_empties_a_folder_through_a_linked_request_folder();
 }

@@ -424,19 +424,41 @@ pub fn remove_work_dir(work: &std::path::Path, files: &[&std::ffi::CStr]) {
     let _ = std::fs::remove_dir(work);
 }
 
-/// Unlinks every entry of the folder open at `fd` that is not a folder (a link is unlinked, never followed).
-fn unlink_files_at(fd: i32) {
+/// Empties a folder of Grimoire's (its files go, then the folder when nothing is left), by descriptor and never
+/// through a link: a folder that is a link is unlinked itself and never entered (security review 2026-11). How
+/// many files went.
+pub fn empty_dir_nofollow(dir: &std::path::Path) -> i32 {
+    use std::os::unix::ffi::OsStrExt;
+    let Ok(c) = std::ffi::CString::new(dir.as_os_str().as_bytes()) else { return 0 };
+    // SAFETY: open reads the NUL-terminated path we own; the descriptor is closed below.
+    let fd = unsafe { libc::open(c.as_ptr(), libc::O_RDONLY | libc::O_DIRECTORY | libc::O_NOFOLLOW | libc::O_CLOEXEC) };
+    if fd < 0 {
+        if std::fs::symlink_metadata(dir).is_ok_and(|m| !m.is_dir()) {
+            let _ = std::fs::remove_file(dir);
+        }
+        return 0;
+    }
+    let n = unlink_files_at(fd);
+    // SAFETY: closing the descriptor opened above.
+    unsafe { libc::close(fd) };
+    let _ = std::fs::remove_dir(dir);
+    n
+}
+
+/// Unlinks every entry of the folder open at `fd` that is not a folder (a link is unlinked, never followed): how
+/// many went.
+fn unlink_files_at(fd: i32) -> i32 {
     // SAFETY: fdopendir takes a duplicate of our descriptor, which closedir closes; readdir's entries are read
     // before the next readdir call.
     let names = unsafe {
         let d2 = libc::dup(fd);
         if d2 < 0 {
-            return;
+            return 0;
         }
         let d = libc::fdopendir(d2);
         if d.is_null() {
             libc::close(d2);
-            return;
+            return 0;
         }
         let mut names = Vec::new();
         loop {
@@ -452,10 +474,12 @@ fn unlink_files_at(fd: i32) {
         libc::closedir(d);
         names
     };
+    let mut gone = 0;
     for n in names {
         // SAFETY: unlinkat on the descriptor we own and a NUL-terminated name (a folder fails: EISDIR).
-        unsafe { libc::unlinkat(fd, n.as_ptr(), 0) };
+        gone += (unsafe { libc::unlinkat(fd, n.as_ptr(), 0) } == 0) as i32;
     }
+    gone
 }
 
 fn mkdir_one(p: &str) -> i32 {

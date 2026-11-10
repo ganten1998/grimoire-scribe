@@ -817,14 +817,9 @@ fn request_dir(buf: &mut String, cap: usize) {
 }
 
 /// Empties a request's folder (and removes it): everything in it was one request's. How many files went.
+/// (By descriptor, never through a link: util.rs empty_dir_nofollow. It runs at every start on import/.annotate.)
 fn empty_folder(dir: &str) -> i32 {
-    let Ok(d) = fs::read_dir(dir) else { return 0 };
-    let mut n = 0;
-    for e in d.flatten() {
-        n += fs::remove_file(e.path()).is_ok() as i32;
-    }
-    let _ = fs::remove_dir(dir);
-    n
+    empty_dir_nofollow(Path::new(dir))
 }
 
 fn empty_requests() -> i32 {
