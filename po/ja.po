@@ -5,7 +5,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: Grimoire 2.0.0-beta.1\n"
 "Report-Msgid-Bugs-To: https://github.com/ganten1998/grimoire-scribe/issues\n"
-"POT-Creation-Date: 2026-11-09 17:22-0600\n"
+"POT-Creation-Date: 2026-11-09 20:25-0600\n"
 "PO-Revision-Date: 2026-11-09 00:00+0000\n"
 "Last-Translator: draft\n"
 "Language-Team: Japanese\n"
@@ -601,12 +601,26 @@ msgstr "本のページを追加できませんでした。ストレージがい
 msgid "Couldn't open book from KOReader (see %s)."
 msgstr "KOReader が送信した本を開けませんでした (%s を参照)。"
 
+#. TRANSLATORS: in a toast, once the pages of a book KOReader sent are in its notebook, but some of
+#. the book's links (a planner's tabs) are not: there were too many, or they could not be saved.
+#: rust/src/app.rs
+#, c-format
+msgid "Added %d book page. Some links were left out."
+msgid_plural "Added %d book pages. Some links were left out."
+msgstr[0] ""
+
 #. TRANSLATORS: in a toast, once the pages of a book KOReader sent are in its notebook.
 #: rust/src/app.rs
 #, c-format
 msgid "Added %d book page."
 msgid_plural "Added %d book pages."
 msgstr[0] "本の%dページを追加しました。"
+
+#. TRANSLATORS: in a toast, once a book KOReader sent opened in its notebook with no new pages: some of
+#. the book's links (a planner's tabs) are not in it, as there were too many, or they could not be saved.
+#: rust/src/app.rs
+msgid "Some links were left out."
+msgstr ""
 
 #. TRANSLATORS: in a toast while Grimoire puts the pages of a book KOReader sent into its
 #. notebook (a few seconds for a big book): pages done, of how many. One line of about 1700 px.
@@ -1077,7 +1091,6 @@ msgstr ""
 msgid "%d picture"
 msgid_plural "%d pictures"
 msgstr[0] ""
-msgstr[1] ""
 
 #. TRANSLATORS: a row of the Import place: this file is not imported yet (small text under its name).
 #: rust/src/browser.rs
@@ -1117,7 +1130,6 @@ msgstr "開く"
 msgid "Import %d picture as notebook"
 msgid_plural "Import %d pictures as notebook"
 msgstr[0] ""
-msgstr[1] ""
 
 #. TRANSLATORS: the sheets' buttons: 348 px at 44 px inside Gothic's carved line (342 for Create,
 #. the main one), or at 34 px, or two lines of that.
@@ -1704,6 +1716,15 @@ msgstr "ページをコピーできませんでした。"
 msgid "Copied %d page to %s, without its names and links."
 msgid_plural "Copied %d pages to %s, without their names and links."
 msgstr[0] "%dページを%sにコピーしました（ページ名とリンクは除く）。"
+
+#. TRANSLATORS: a toast as Copy to notebook... is done (about 1700 px at 44 px in bold, or two lines): %d
+#. pages were copied into the notebook named %s with their names and links, but not the links the
+#. document brought (a planner's tabs: that notebook has no room for them, or its file does not read).
+#: rust/src/editor.rs
+#, c-format
+msgid "Copied %d page to %s, without its document links."
+msgid_plural "Copied %d pages to %s, without their document links."
+msgstr[0] ""
 
 #. TRANSLATORS: the same strip for the long-press card's Redraw the area (about 1400 px at 44 px in
 #. bold): the next pen stroke draws the link's new area, and leaves no ink.
@@ -3690,6 +3711,12 @@ msgid "Couldn't update KOReader. Patch conflict or storage error?"
 msgstr ""
 "KOReaderをアップデートできませんでした。パッチが違うのか、それともストレージ"
 "エラーですか?"
+
+#. TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): Done on a font of the
+#. owner's own that could not be loaded just now (too little memory free, or its file changed).
+#: rust/src/library.rs
+msgid "Couldn't use that font."
+msgstr ""
 
 #. TRANSLATORS: a toast (about 1700 px at 44 px in bold) after a notebook's or a folder's menu row that
 #. leaves its pages out of the Graph of all notebooks, or shows them there again: the change could

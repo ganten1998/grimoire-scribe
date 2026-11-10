@@ -1350,7 +1350,7 @@ source (KOReader's `links.txt`, and the PDF import's link annotations) and valid
 target and area within 2 px is one link) and trims to a water level at 90% of links and bytes, the densest pages
 first. The editor keeps them in `EditorState.dl`, read at open; taps try the user's links, then a document link
 whose exact area holds the point, then one reached only through the 7 mm growth (`doclinks_at`, later annotation
-wins a tie); the eye draws `LinkBoxes.doc` dotted and unnumbered; the Links bar folds them into one last row whose
+wins a tie); the eye draws `LinkBoxes.doc` dotted and unnumbered; the Links bar folds them into one row (before any Linked from rows) whose
 chips (`LinkBar.docs`, grouped by target, a vector since a month page has 365) open in the bar itself, with X
 going back; their card (`linkcard_set_doc`) is read only and offers Rename the page. A finger hold on one arms
 Select (D7b a): the hold asks `link_under`, which never sees them. Nothing that builds the Graph or the library
@@ -1994,7 +1994,8 @@ its bytes.** Four parts keep it (`fontcheck.rs`, `userfonts.rs`, `font.rs`):
   capitals, digits, tall letters and accented capitals reach above and g j p q y and the cedillas below: then
   what they reach. It requires ink inside the line box for A to Z, a to z and 0 to 9, at the smallest and the
   largest size the UI draws a custom font at (8 and 160 px of line: outside them a glyph comes from Terminess).
-  Then it walks every glyph the cmap maps, at each location the UI uses (the default, and the bold's when the
+  Then it walks every glyph that `Charmap::map` finds for a character the cmap lists (the UI's own question: a walk of
+  the cmap's groups could name another glyph where groups overlap), at each location the UI uses (the default, and the bold's when the
   font has a weight axis that reaches 100 above its default: 700, or its heaviest), outlining under the caps
   and drawing at both sizes; a glyph that fails is listed and comes from Terminess, and more than one in a
   hundred is "Unreadable font.". It works in slices of 20 s of its own CPU time (`s1::FONT_SLICE_CPU_SECS`),
@@ -2021,8 +2022,9 @@ its bytes.** Four parts keep it (`fontcheck.rs`, `userfonts.rs`, `font.rs`):
   custom face's own glyph when the font has it, it passed, and the size is one the check drew; everything
   else, ASCII too, is borrowed from Terminess and then DotGothic16 as a family's missing glyphs are. Kana and
   kanji of a custom font are drawn at the size whose em is DotGothic16's (0.691 of the line), so Japanese takes
-  the room it takes today. A custom font has no kerning (skrifa has no kerning API). Bold is the font's weight
-  axis, else `font_bold=`, else the Bold file of its family in the same folder, else overprint.
+  the room it takes today. A custom font has no kerning (skrifa has no kerning API). Bold is `font_bold=`
+  when it names a file, else the font's weight axis, else the Bold file of its family in the same folder, else
+  overprint.
 - **The crash guard** (`grimoire/.font-inuse`): a font's mark is armed before its first use in a session and
   taken away by the first present after a custom face drew a glyph (`userfonts_screen_drawn`, called at the end
   of `app_flush`). An armed mark found at a start is a strike: one, and that start does not load the font; the
@@ -2034,7 +2036,7 @@ The share pages never serve a custom font (the browser gets Terminess), and noth
 picture changes with one. grimoire.log never names a font file or a family.
 
 Tests: `test_fontcheck.rs` (real workers: good TrueType, variable and CFF fonts; the malformed-font corpus of
-`tests/fontfix`: truncations, a cmap past the end, composites that include each other, CFF subroutines past the
+`rust/tests/fontfix`: truncations, a cmap past the end, composites that include each other, CFF subroutines past the
 format's depth, a symbol cmap, a web font, letters that draw nothing, wild glyphs, a line ten ems tall, random
 byte flips; a killed worker leaves `.bad`; a hung one is slow; slices come to one slice's verdict; a replaced
 file is checked again; the listing; a file still being copied waits; 20,000 glyphs), `test_fontguard.rs` (the
@@ -2056,12 +2058,13 @@ are routed in `library.rs` as the Graph's are, and two fingers down does nothing
   %d pictures as notebook. A contact outside a card closes it at the lift and does nothing else, and the lift
   after a hold never acts.
 - **Places.** Import (`grimoire/import`), Documents (`documents`), Downloads and All storage (the root), each
-  with its real path as a second line, and the free space at the top. Rows are 150 px, paged, never scrolled; the
+  but All storage with its real path as a second line, and the free space at the top. Rows are 150 px, paged, never scrolled; the
   keys are Left and Right (Up and Down unbound), Esc goes up and cancels at the root. The picker lists folders
   and PDFs only, by `name_cmp`, folders first.
 - **Read only outside Grimoire's folders (D26).** Every listing, stat and open is fsview's walk: no link at any
   component, one device, `grimoire/notebooks`, `PDFs` and `trash` refused by identity (so a path cased otherwise
-  on a case-insensitive storage cannot reach them), a listing of names and kinds only in slices of 20 ms, the
+  on a case-insensitive storage cannot reach them), a listing of names and kinds only, read in slices of at most 20 ms a tick (a
+  folder row's picture count is a walk of its own, up to 200 ms), the
   stats, picture counts and book keys of the rows on screen on idle ticks. The action checks the file again
   ("File changed. Try again."). The jobs that follow open the file through the same walk: a PDF is
   `pdfimport::pdf_import_queue`, a folder of pictures `bgwork_template::import_pick_queue` (marks in

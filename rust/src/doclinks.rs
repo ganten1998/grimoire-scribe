@@ -577,3 +577,32 @@ pub fn doclinks_copy_across(src: &DocLinks, copies: &[PageCopy], dst: &NotebookI
     }
     n
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Copy to notebook counts a new link's bytes with its outline line, which a link not in a set has no index to
+    /// be asked for by (the water check was blind to them).
+    #[test]
+    fn a_new_links_bytes_count_its_outline() {
+        let pts: Vec<(f32, f32)> = (0..=60)
+            .map(|i| {
+                let a = i as f32 * std::f32::consts::TAU / 60.0;
+                (60.0 + 50.0 * a.cos(), 60.0 + 50.0 * a.sin())
+            })
+            .collect();
+        let outline = LinkOutline::from_points(&pts, true, 800, 1000);
+        let mut src = DocLinks::default();
+        assert!(src.push(DocLink::new(1, 5, 2, Rect::new(0, 0, 120, 120)).unwrap(), Some(outline)));
+        let held = doclinks_link_bytes(&src, &doclinks_of(&src, 1)[0]);
+        let fresh = DocLink::new(1, 5, 2, Rect::new(0, 0, 120, 120)).unwrap();
+        assert_eq!(link_bytes(&fresh, Some(&outline)), held);
+        assert!(link_bytes(&fresh, None) < held);
+    }
+
+    #[test]
+    fn no_em_dash() {
+        assert!(!include_str!("doclinks.rs").contains('\u{2014}'));
+    }
+}

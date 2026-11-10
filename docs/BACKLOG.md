@@ -213,6 +213,39 @@ What waits:
 - **Checked fonts for PDFs that name a font they do not embed** (hayro's `font_resolver`, fonts.md 8).
 - **The verdict's `cover=` counts** (Latin-1, Extended-A, Greek, Cyrillic, kana, kanji) are written and not
   shown anywhere yet (2.2's Files details, the Japanese slot's "has kana").
+
+From the whole-release review of 2.1.0-beta.2 (the fix round, lane F3; the review's finding IDs). Fixed there: H8,
+M17, M19, M20, the watchdog timeout that was a verdict for good (a second timeout is the verdict now), the
+Bold-only letters of a name, a Done on a font that does not load. Left, with what each costs:
+
+- **Only the regular's advances are fitted** (review, L10 item 3). `fit_strings` measures Grimoire's labels in
+  the regular face while most chrome is Bold, so more than 5 labels in 100 can end in "..." with a font whose Bold
+  is wider. The cost is a few clipped labels in a bold-heavy font; the fix is to fit on the bold's advances too
+  (fontcheck.rs, and every verdict is checked again).
+- **Outside 8 to 160 px the glyphs are Terminess's but the line metrics stay the font's** (item 6): a very small
+  or very large text in a font with a tall line leaves a gap or crowds a line. Unmeasured on the Scribe, where the
+  UI's sizes sit inside the range.
+- **A sample tap reads and hashes up to 24 MB on the UI thread** (item 7). Moving it off the UI thread needs the
+  loaded face to cross a thread (`SafeFace` holds `Rc`s), so it was not a simple change. The cost is a pause
+  (unmeasured; 24 MB over FUSE) at the tap of a very big font's row; the check job's hash is already off-thread.
+- **With a bundled family in use the sheet's chrome is that family, not Terminess** (item 8): a family without
+  the sheet's letters (or an unreadable one) can make the sheet harder to read; the plan wants Terminess only
+  while a font of the owner's own is in use, which is what is built.
+- **An italic regular pairs with an upright Bold, and a Bold file added later pairs only at the next load**
+  (item 14): `pair_of` looks at weight and family only for the regular, and the pair is found at load.
+- **A worker killed for memory, and the check writer's death, are verdicts for good** (`.bad`): a font that
+  needed more memory than the margin gave stays "Unreadable font." until its file changes, even after the
+  margin is raised. (A watchdog timeout now gets one retry.)
+- **A guard mark and a sample.** A sample that reached the panel is settled, so Done on it draws the first whole
+  screen with no mark on disk; and the Bold file and the regular are struck together (a strike on one is on
+  both). Both are the plan's 4.2.8 as built; a stricter rule is a larger state machine.
+- **A chosen font past the 200 listed files shows as "File missing."** in the sheet (the folder listing stops at
+  200 files); the font still loads at a start if it was checked, the row alone is wrong.
+- **Rows stay at "Checking..." while a failed check waits for its retry** (3 s, 15 s, 60 s, then the session
+  stops asking and the rows say "Unreadable font."): the notice says it, the row does not say why.
+- **The plan's 3.7 retry "right after a wake"** is built as one retry a minute after a first timeout, not as a
+  wake event (the UI has no wake event the check could wait for).
+
 - **The fit check cannot cover a custom font**: l10n-check runs the Font sheet over the fixtures in every
   language, but a real font's widths are its own; labels that do not fit end in "...".
 - **Left and Right do not turn the pages of Your fonts** (the sheet's arrows do).
@@ -761,6 +794,16 @@ Ideas, not plans: each needs the owner's go and its own design. No code is taken
   document link's seed (only the user's links are; ink seeds are 32-bit hashes, a clash would be harmless
   since a document link has an area and never takes an ink box).
 - **package_check.sh** (lane L5's) should list `links` among app/grimoire.sh's required capabilities.
+
+From the whole-release review (the fix round, lane F3). Fixed there: M16, M21 (the conservative reading) and the Low
+items of Document links. Left:
+
+- **No test pins the Links bar's dropped selection** on opening "From the PDF" (linkbar.rs): the fix is one line
+  and needs a page with both a link of its own and tabs to pin in a scenario.
+- **Older builds and the plugin's `links=1`.** `links=1` outlives a book page an older build added: those pages
+  have no tabs until pages are added again (the plugin then asks for every held page's links) or `links=1` is
+  taken out of `source.ini` by hand. A fix that cannot be wrong needs `links=` to carry the held pages' count, a
+  format change the owner has not asked for.
 
 ## Notebook PDF cache and child caps (lane L9, 2.1.0-beta.2): what waits
 

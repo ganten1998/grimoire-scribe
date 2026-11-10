@@ -1776,8 +1776,9 @@ fn commit_doc_links(j: &mut Job) -> bool {
         qlog!("book: %s: its document links could not be written; left out", &j.nb.id);
         return false;
     }
-    // (links to pages the book lacks are left out by the plugin and never counted: only these are lost)
-    j.links_out = st.invalid + st.full + trimmed > 0;
+    // (as the PDF import counts: a link left out for room, over a page's 1,024 or the water level; one refused as
+    // no link, such as one to its own page, is not news)
+    j.links_out = st.full + trimmed > 0;
     qlog!(
         "book: %s: %d document link(s) (%d added, %d already there, %d refused, %d trimmed)",
         &j.nb.id,
