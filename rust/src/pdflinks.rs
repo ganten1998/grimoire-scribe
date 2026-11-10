@@ -217,7 +217,8 @@ pub struct BookLinks {
 
 /// links.txt, strictly: `P <w> <h>` first (the pictures' size), then `L <src> <dst> <x> <y> <w> <h>` lines (book
 /// pages from 1, whole pixels), `#` lines and blank ones skipped. None when anything else is in it, a number is
-/// out of range or there are more links than BOOK_LINKS_MAX (a file is taken whole or not at all).
+/// out of range (a file is taken whole or not at all). Past BOOK_LINKS_MAX links the first ones are kept and
+/// the rest are dropped (a planner over the cap keeps the most it can).
 pub fn pdflinks_parse_book(text: &[u8]) -> Option<BookLinks> {
     let text = std::str::from_utf8(text).ok()?;
     let mut out = BookLinks::default();
@@ -247,7 +248,7 @@ pub fn pdflinks_parse_book(text: &[u8]) -> Option<BookLinks> {
                 have_size = true;
             }
             "L" => {
-                if !have_size || out.links.len() >= BOOK_LINKS_MAX {
+                if !have_size {
                     return None;
                 }
                 let (s, d, x, y, w, h) = (num()?, num()?, num()?, num()?, num()?, num()?);
@@ -257,8 +258,11 @@ pub fn pdflinks_parse_book(text: &[u8]) -> Option<BookLinks> {
                 if !(-100_000..=100_000).contains(&x) || !(-100_000..=100_000).contains(&y) || w > 100_000 || h > 100_000 {
                     return None;
                 }
-                out.links.try_reserve(1).ok()?;
-                out.links.push((s as i32, d as i32, Rect { x: x as i32, y: y as i32, w: w as i32, h: h as i32 }));
+                // (a book with more links than the cap keeps the first BOOK_LINKS_MAX: the rest are read and dropped)
+                if out.links.len() < BOOK_LINKS_MAX {
+                    out.links.try_reserve(1).ok()?;
+                    out.links.push((s as i32, d as i32, Rect { x: x as i32, y: y as i32, w: w as i32, h: h as i32 }));
+                }
             }
             _ => return None,
         }

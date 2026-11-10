@@ -938,7 +938,11 @@ function Grimoire:pagesHeld(key, pages)
                     if tonumber(of) == pages then held[tonumber(page)] = true end
                 end
                 found = true
-                if not ("\n" .. text):find("\nlinks=1\r?\n") then all_linked = false end
+                -- links=1 counts only with the notebook's doclinks.ini beside it (a zip an older build made
+                -- leaves the file out and keeps the line)
+                local dl = io.open(root .. "/" .. name .. "/doclinks.ini", "r")
+                if dl then dl:close() end
+                if not dl or not ("\n" .. text):find("\nlinks=1\r?\n") then all_linked = false end
             end
         end
     end
@@ -1086,6 +1090,14 @@ function Grimoire:sendBook(b)
     end
     empty_dir(dir)
     local held, linked = self:pagesHeld(b.key, pages)
+    -- Pages are to be added in this run: the held pages' links are asked for again, as a page deleted and added
+    -- again is a target the held pages' tabs lost (links=1 is a latch that cannot tell), and one an older
+    -- build added had no links asked for. The fill takes a link it holds already once.
+    local todo_count = 0
+    for p = 1, pages do
+        if not held[p] then todo_count = todo_count + 1 end
+    end
+    if todo_count > 0 then linked = false end
     -- The links of the pages drawn in this run, and once per book those of the pages already held (KOReader
     -- restarts at each hand-over, so its page cache is cold: asking every page at every Open this book would
     -- cost a 400-page planner 400 page opens each time). Only for a launcher that says it takes them.

@@ -437,7 +437,10 @@ fn own_px(st: &State, ttf: usize, px: f32, fpx: f32, cp: u32) -> Option<f32> {
 
 /// Whether the custom font in use draws cp in Classic's text (a name's letters count as drawable then).
 fn own_text_has(st: &mut State, cp: u32) -> bool {
-    !st.gothic && !st.own_off && st.own_map[0].is_some() && face_has(st, TTF_OWN, cp)
+    // (the Bold face draws most of the chrome: a Bold file that lacks the letter would show the missing-glyph
+    // box where the regular has it, so both must have it)
+    let Some(m) = st.own_map[0] else { return false };
+    !st.gothic && !st.own_off && face_has(st, TTF_OWN, cp) && (!m.bold_face || face_has(st, TTF_OWN + 1, cp))
 }
 
 /// Tests (the simulator's build): GRIMOIRE_FONT_TEST_DRAW_CRASH ends the app at the first glyph a custom
