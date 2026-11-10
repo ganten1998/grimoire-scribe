@@ -2433,7 +2433,7 @@ pub fn app_probe(a: &mut App, key: &str, out: &mut String, cap: usize) -> i32 {
     }
     // Settings, under their settings.ini names.
     let st = &a.settings;
-    let nums: [(&str, i32); 38] = [
+    let nums: [(&str, i32); 39] = [
         ("settings.invert", st.invert as i32),
         ("settings.mirror_pdf", st.mirror_pdf as i32),
         ("settings.follow_rotation", st.follow_rotation as i32),
@@ -2449,6 +2449,7 @@ pub fn app_probe(a: &mut App, key: &str, out: &mut String, cap: usize) -> i32 {
         ("settings.controller", st.controller as i32),
         ("settings.updates", st.updates),
         ("settings.status_on", st.status_on as i32),
+        ("settings.clock_12h", st.clock_12h as i32),
         ("settings.status_mode", st.status_mode),
         ("settings.shapes", st.shapes as i32),
         ("settings.shape_hold_ms", st.shape_hold_ms),

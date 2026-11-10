@@ -77,7 +77,7 @@ wait 200
 expect editor.modal is display
 expect editor.strokes is 1
 expect toast is
-tap 1462 1860
+tap 1462 1950
 wait 200
 expect editor.modal is none
 # Over the bare page: the hold clears it, and undo brings it back
