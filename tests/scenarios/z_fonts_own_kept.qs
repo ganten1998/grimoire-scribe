@@ -6,6 +6,9 @@
 # before the first screen is drawn (its bytes hash to what the check passed), and the crash guard's mark is
 # gone once that screen is on the panel. Every screen of the Library is drawn in it. (2.1.0-beta.2)
 # rust-only
+# (the folder's fonts are checked one a job now: the chosen one waits for its turn)
+wait 100
+waitbg
 wait 100
 expect settings.theme is classic
 expect settings.font is file:GrimoireTest-Regular.ttf

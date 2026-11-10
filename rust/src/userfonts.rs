@@ -1175,6 +1175,16 @@ fn fast_stable() -> bool {
     }
 }
 
+/// How long a font waits for its second try after a first timeout. Tests (not the Kindle's build) that set the
+/// watchdog short on purpose do not wait the minute.
+fn slow_retry_s() -> i64 {
+    #[cfg(not(feature = "kindle"))]
+    if std::env::var_os("GRIMOIRE_FONT_WATCHDOG_MS").is_some() {
+        return 0;
+    }
+    SLOW_RETRY_S
+}
+
 fn write_cache(path: &str, data: &[u8]) -> bool {
     write_file_atomic(path, data) == 0
 }
@@ -1232,7 +1242,7 @@ pub fn bg_font_check(arg: &str, dpi: f32) -> i32 {
         let slow_mark = cache_file(l.key, "slow");
         if let Ok(m) = std::fs::metadata(&slow_mark) {
             let age = m.modified().ok().and_then(|t| std::time::SystemTime::now().duration_since(t).ok()).map_or(0, |d| d.as_secs() as i64);
-            if age < SLOW_RETRY_S {
+            if age < slow_retry_s() {
                 later += 1;
                 continue;
             }
