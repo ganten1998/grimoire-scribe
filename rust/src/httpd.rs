@@ -797,7 +797,8 @@ impl Sink for SocketSink {
 /// known): made in the cache's folder and unlinked at once, so a kill leaves nothing behind.
 fn spool_create() -> Option<FileSink> {
     let dir = pdf_cache_root();
-    if mkdir_p(&dir) != 0 {
+    // (never in a cache reached through a planted link: the spool is written as root)
+    if !no_link_below(&store_root(), &dir) || mkdir_p(&dir) != 0 {
         return None;
     }
     let path = format!("{dir}/share-{}.spool", std::process::id());

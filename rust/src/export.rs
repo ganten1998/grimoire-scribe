@@ -96,7 +96,11 @@ impl FileSink {
         if crate::util::SIM_STORAGE_FULL.load(std::sync::atomic::Ordering::Relaxed) {
             return None;
         }
-        let f = std::fs::OpenOptions::new().read(true).write(true).create(true).truncate(true).open(path).ok()?;
+        // (made afresh, O_EXCL|O_NOFOLLOW, mode 0600: a spool is written as root, and a planted link at its name, which
+        // the pid makes easy to guess, must never be truncated and written through; security review 2026-11)
+        use std::os::unix::fs::OpenOptionsExt;
+        let _ = std::fs::remove_file(path);
+        let f = std::fs::OpenOptions::new().read(true).write(true).create_new(true).mode(0o600).custom_flags(libc::O_NOFOLLOW | libc::O_CLOEXEC).open(path).ok()?;
         Some(FileSink { f, len: 0, failed: false })
     }
     /// A write failed (the disk is full): the file is not whole.
