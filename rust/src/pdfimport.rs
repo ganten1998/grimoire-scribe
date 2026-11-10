@@ -783,7 +783,9 @@ pub struct Found {
 }
 
 fn is_pdf_name(n: &str) -> bool {
-    n.len() > 4 && n[n.len() - 4..].eq_ignore_ascii_case(".pdf") && !n.starts_with('.')
+    // (the bytes, never the str: a name whose last four bytes begin inside a character must not panic the scan,
+    // which the UI runs at every start; security review 2026-11)
+    n.len() > 4 && n.as_bytes()[n.len() - 4..].eq_ignore_ascii_case(b".pdf") && !n.starts_with('.')
 }
 
 /// The PDFs of import/ (top level, and one folder down), no links, regular files only, sorted by the
@@ -1583,7 +1585,7 @@ pub fn import_name(given: &str, src: &str, all: &[NotebookInfo]) -> String {
     if clean.is_empty() {
         // no name given, or one that cleans to nothing (spaces): the file's (D28)
         let f = src.rsplit('/').next().unwrap_or(src);
-        let base = f.strip_suffix(".pdf").or_else(|| f.strip_suffix(".PDF")).or_else(|| (f.len() > 4 && f[f.len() - 4..].eq_ignore_ascii_case(".pdf")).then(|| &f[..f.len() - 4])).unwrap_or(f);
+        let base = f.strip_suffix(".pdf").or_else(|| f.strip_suffix(".PDF")).or_else(|| (f.len() > 4 && f.as_bytes()[f.len() - 4..].eq_ignore_ascii_case(b".pdf")).then(|| &f[..f.len() - 4])).unwrap_or(f);
         annotate_name(base.as_bytes(), &mut clean, STORE_NAME_LEN);
     }
     unique_import_name(&clean, all)
