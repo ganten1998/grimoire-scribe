@@ -121,3 +121,76 @@ fn a_path_of_599_bytes_lists_and_a_name_that_makes_600_is_counted() {
     assert_eq!(b.rows.len(), 1, "only ok.pdf makes a path under 600 bytes: 589 + 1 + 6 = 596");
     assert_eq!(b.too_long, 1);
 }
+
+// ---- the fix round of 2026-11-09 (M18 and the Import place's rows): each failed on 0c26d912 ----
+
+fn plain_tree(name: &str) -> String {
+    let base = std::env::var("GRIMOIRE_TEST_TMP").map(std::path::PathBuf::from).unwrap_or_else(|_| std::env::temp_dir());
+    let root = base.join(format!("grimoire-browser-it-{}-{name}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&root);
+    std::fs::create_dir_all(root.join("grimoire/import")).unwrap();
+    std::fs::create_dir_all(root.join("documents")).unwrap();
+    std::env::set_var("GRIMOIRE_STORAGE", &root);
+    assert_eq!(store_init(root.join("grimoire").to_str().unwrap()), 0);
+    grimoire::pdfimport::ui_reset();
+    root.to_str().unwrap().to_string()
+}
+
+// Back and Esc leave a folder whose parent no longer opens (renamed over USB while the picker is two levels down).
+#[test]
+fn back_leaves_a_folder_whose_parent_is_gone() {
+    ui_init(300.0);
+    i18n_set("en");
+    let root = plain_tree("up-trap");
+    std::fs::create_dir_all(format!("{root}/documents/A/B")).unwrap();
+    std::fs::write(format!("{root}/documents/A/B/x.pdf"), b"%PDF-1.4\n").unwrap();
+    let mut b = open();
+    for p in ["documents", "documents/A", "documents/A/B"] {
+        assert!(b.go(sp(p)), "{p}");
+    }
+    std::fs::rename(format!("{root}/documents/A"), format!("{root}/documents/Z")).unwrap();
+    let mut presses = 0;
+    while presses < 10 && b.up(now_ms()) {
+        presses += 1;
+        b.list_now();
+    }
+    assert!(presses < 10, "ten presses of Back, each one taken, and the picker never left");
+    let mut o = String::new();
+    assert!(b.probe(2480, "place", &mut o));
+    assert_eq!(o, "root");
+}
+
+// A row whose file is gone since the listing is not drawn (and the panel refreshed) again at every tick.
+#[test]
+fn a_row_whose_file_is_gone_is_not_redrawn_at_every_tick() {
+    ui_init(300.0);
+    i18n_set("en");
+    let root = plain_tree("gone-row");
+    for f in ["a.pdf", "b.pdf"] {
+        std::fs::write(format!("{root}/documents/{f}"), b"%PDF-1.4\n").unwrap();
+    }
+    let mut b = open();
+    assert!(b.go(sp("documents")));
+    assert_eq!(b.rows.len(), 2);
+    std::fs::remove_file(format!("{root}/documents/a.pdf")).unwrap();
+    let redraws = (0..50u32).filter(|k| b.work(2480, 1000 + k * 30).contains(&0)).count();
+    assert!(redraws <= 1, "50 ticks: the gone file's row was redrawn {redraws} times");
+}
+
+// Only grimoire/import/done and what is in it reads as Imported: a folder named done-old is a folder.
+#[test]
+fn a_folder_whose_name_starts_with_done_is_not_imported() {
+    ui_init(300.0);
+    i18n_set("en");
+    let root = plain_tree("done-old");
+    std::fs::create_dir_all(format!("{root}/grimoire/import/done-old")).unwrap();
+    std::fs::write(format!("{root}/grimoire/import/done-old/x.pdf"), b"%PDF-1.4\n").unwrap();
+    let mut b = open();
+    assert!(b.go(sp("grimoire/import/done-old")));
+    for k in 0..10u32 {
+        b.work(2480, 1000 + k * 1100);
+    }
+    let mut o = String::new();
+    assert!(b.probe(2480, "status.1", &mut o));
+    assert_ne!(o, "imported", "a PDF in import/done-old is not imported");
+}

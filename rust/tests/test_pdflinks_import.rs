@@ -208,6 +208,27 @@ fn quads_make_a_link_each_up_to_eight_and_a_slanted_one_a_polygon() {
     assert!(dl.outline_of(&dl.links[0]).is_some(), "the slanted quad is an outline");
 }
 
+// QuadPoints are taken inside their link's Rect only, and only with an area (the fix round of 2026-11-09): an
+// all-zero quad and one outside the Rect are left out, the Rect then being the area; a good quad beside a bad one
+// is the link's.
+#[test]
+fn quads_outside_their_rect_or_without_an_area_are_left_out() {
+    let e = setup("quads-bad");
+    let mut zero = Lnk::new([20.0, 20.0, 120.0, 60.0], Act::Page(2));
+    zero.quads = vec![[0.0; 8]];
+    let mut outside = Lnk::new([20.0, 200.0, 120.0, 240.0], Act::Page(2));
+    outside.quads = vec![[300.0, 400.0, 380.0, 400.0, 300.0, 380.0, 380.0, 380.0]];
+    let mut mixed = Lnk::new([20.0, 300.0, 200.0, 340.0], Act::Page(2));
+    mixed.quads = vec![[30.0, 330.0, 70.0, 330.0, 30.0, 310.0, 70.0, 310.0], [0.0; 8]];
+    let c = e.walk(&make_linked(&plain_pages(2), &on(1, 2, vec![zero, outside, mixed]), &Extra::default()));
+    assert_eq!(c.links.len(), 3, "{:?}", c.links);
+    // the first two are their Rects (100 pt wide: well over a pixel), the third its one good quad (40 pt)
+    let w: Vec<i32> = c.links.iter().map(|(l, _)| l.w).collect();
+    assert!(w[0] > 50 && w[1] > 50, "{w:?}");
+    assert!(w[2] < w[0], "{w:?}");
+    assert!(c.links.iter().all(|(l, _)| l.w > 1 && l.h > 1), "no 1 px link: {:?}", c.links);
+}
+
 fn names_of(c: &Collected) -> Vec<(u32, String)> {
     c.names.iter().map(|(p, t)| (*p, String::from_utf8(t.clone()).unwrap())).collect()
 }

@@ -7,6 +7,7 @@ mod pdffix;
 use grimoire::fsview::StoragePath;
 use grimoire::pdfimport::*;
 use grimoire::prelude::*;
+use std::os::unix::fs::MetadataExt;
 use std::sync::Mutex;
 
 const PW: i32 = 600;
@@ -609,4 +610,443 @@ fn a_boxes_place_is_the_fit_for_every_rotation_a_crop_and_a_landscape_page() {
     expect_box(842.0, 595.0, 0, None, [100.0, 300.0, 80.0, 60.0]);
     // A4
     expect_box(595.0, 842.0, 0, None, [100.0, 300.0, 80.0, 60.0]);
+}
+
+// ====================================================================================================
+// The fix round of 2026-11-09 (the review of 0c26d912): each test failed on that line.
+// ====================================================================================================
+
+fn new_id() -> String {
+    let mut id = String::new();
+    store_make_id(&mut id);
+    id
+}
+
+fn run_to_end(id: &str, src: &str, most: usize) -> Vec<SliceEnd> {
+    let mut ends = Vec::new();
+    for _ in 0..most {
+        let e = run_slice(id, src);
+        let more = e == SliceEnd::More;
+        ends.push(e);
+        if !more {
+            break;
+        }
+    }
+    ends
+}
+
+fn attempts_of(e: &Env) -> String {
+    std::fs::read_to_string(format!("{}/import/.attempts", e.root)).unwrap_or_default()
+}
+
+fn tries_of(e: &Env) -> Vec<i32> {
+    attempts_of(e).lines().filter(|l| !l.starts_with('#')).filter_map(|l| l.split_whitespace().nth(2)?.parse().ok()).collect()
+}
+
+/// A stand-in worker: it starts and shakes hands, then runs `then` (a shell line), as a worker the writer cannot
+/// tell from a real one up to there.
+fn stand_in_worker(e: &Env, name: &str, then: &str) -> String {
+    use std::os::unix::fs::PermissionsExt;
+    let path = format!("{}/{name}.sh", e.root);
+    std::fs::write(&path, format!("#!/bin/sh\nprintf 'B {}\\nS 0\\n' >&4\n{then}\n", grimoire::sandbox::build_id())).unwrap();
+    std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).unwrap();
+    path
+}
+
+/// The writer of one slice in a child of its own (as a bgjob child is), in a process group with its workers.
+fn fork_slice(id: &str, src: &str) -> i32 {
+    // SAFETY: a fork whose child only runs one slice and ends with _exit.
+    let pid = unsafe { libc::fork() };
+    if pid == 0 {
+        unsafe { libc::setpgid(0, 0) };
+        let _ = run_slice(id, src);
+        unsafe { libc::_exit(0) };
+    }
+    unsafe { libc::setpgid(pid, pid) };
+    pid
+}
+
+fn kill_group(pid: i32) {
+    // SAFETY: SIGKILL to a process group this test made, then waitpid on its leader.
+    unsafe {
+        libc::kill(-pid, libc::SIGKILL);
+        libc::kill(pid, libc::SIGKILL);
+        let mut st = 0;
+        libc::waitpid(pid, &mut st, 0);
+    }
+}
+
+// ---- H6: a picked file is never moved, whatever its mark ----
+
+fn pick_mark(id: &str, src: &str, name: &str) -> Mark {
+    Mark { state: MarkState::Making, id: id.into(), src: src.into(), pick: true, name: name.into(), at: 1, ..Default::default() }
+}
+
+fn a_pick_whose_mark_is_lost(name: &str, lose: impl Fn(&str)) {
+    let e = setup(name);
+    std::env::set_var("GRIMOIRE_PDF_SLICE_PAGES", "1");
+    std::fs::create_dir_all(format!("{}/../documents", e.root)).unwrap();
+    let file = format!("{}/../documents/Book.pdf", e.root);
+    std::fs::write(&file, pdffix::planner(3)).unwrap();
+    let src = "documents/Book.pdf";
+    let id = new_id();
+    assert!(mark_write_public(&pick_mark(&id, src, "Chosen")));
+    assert_eq!(run_slice(&id, src), SliceEnd::More); // the probe
+    assert_eq!(run_slice(&id, src), SliceEnd::More); // page 1
+    // the Kindle stops here; the mark does not survive (the work folder does)
+    lose(&format!("{}/import/.marks", e.root));
+    assert!(keep_work_folder(&id));
+    let ends = run_to_end(&id, src, 20);
+    assert_eq!(last(&ends), &SliceEnd::Done { pages: 3, blank: 0 }, "{ends:?}");
+    assert!(std::path::Path::new(&file).exists(), "the picked file left documents/");
+    assert_eq!(e.done_files(), 0);
+    assert_eq!(e.notebooks()[0].name.as_str(), "Chosen", "the name typed is kept in the state too");
+}
+
+#[test]
+fn a_pick_resumed_without_its_mark_never_moves_the_users_file() {
+    a_pick_whose_mark_is_lost("mark-gone", |dir| {
+        for m in std::fs::read_dir(dir).unwrap().flatten() {
+            std::fs::remove_file(m.path()).unwrap();
+        }
+    });
+}
+
+#[test]
+fn a_pick_resumed_with_a_torn_mark_never_moves_the_users_file() {
+    a_pick_whose_mark_is_lost("mark-torn", |dir| {
+        for m in std::fs::read_dir(dir).unwrap().flatten() {
+            std::fs::write(m.path(), b"").unwrap(); // (created, not yet written: what a cut-off write leaves)
+        }
+    });
+}
+
+// A pick inside grimoire/import is a drop whoever chose it: filed in done/ at its commit, with the name typed.
+#[test]
+fn a_pdf_picked_inside_the_import_folder_is_settled_by_its_own_import() {
+    let e = setup("pick-in-import");
+    let src = e.drop("Here.pdf", &pdffix::planner(2));
+    let id = new_id();
+    assert!(mark_write_public(&pick_mark(&id, &src, "Typed")));
+    assert_eq!(last(&run_to_end(&id, &src, 10)), &SliceEnd::Done { pages: 2, blank: 0 });
+    assert!(!std::path::Path::new(&format!("{}/import/Here.pdf", e.root)).exists());
+    assert_eq!(e.done_files(), 1);
+    assert_eq!(e.notebooks()[0].name.as_str(), "Typed");
+}
+
+// ---- H7: a resume never commits pages whose files are gone ----
+
+fn pages_without_their_picture(root: &str, id: &str) -> Vec<u32> {
+    let mut nb = NotebookInfo::default();
+    assert_eq!(store_load_info(id, &mut nb), 0);
+    let mut gone = Vec::new();
+    for i in 0..nb.npages() {
+        let mut pg = None;
+        assert_eq!(store_load_page(&nb, i, PW, PH, &mut pg), 0);
+        let path = format!("{root}/notebooks/{id}/bg/{:06x}.png", paper_image_id(pg.as_ref().unwrap().paper));
+        if !std::path::Path::new(&path).exists() {
+            gone.push(i as u32 + 1);
+        }
+    }
+    gone
+}
+
+#[test]
+fn a_slice_cut_off_after_a_strike_keeps_the_pictures_of_its_good_pages() {
+    let e = setup("cut-after-strike");
+    std::env::set_var("GRIMOIRE_PDF_WATCHDOG_MS", "1500");
+    let src = e.drop("Planner.pdf", &pdffix::planner(6));
+    let id = new_id();
+    assert_eq!(run_slice(&id, &src), SliceEnd::More); // the probe
+    std::env::set_var("GRIMOIRE_PDF_TEST_HANG_PAGE", "4");
+    let state_file = format!("{}/notebooks/.import-{id}/pdf-import.ini", e.root);
+    let pid = fork_slice(&id, &src);
+    let t0 = std::time::Instant::now();
+    let mut state = String::new();
+    while t0.elapsed().as_secs() < 30 {
+        state = std::fs::read_to_string(&state_file).unwrap_or_default();
+        if state.contains("strikes=4:1") {
+            break;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(10));
+    }
+    kill_group(pid); // (page 4's second try hangs: the writer ends mid-slice)
+    assert!(state.contains("strikes=4:1") && state.contains("next=4"), "the state after the strike: {state}");
+    std::env::remove_var("GRIMOIRE_PDF_TEST_HANG_PAGE");
+    let ends = run_to_end(&id, &src, 50);
+    assert_eq!(last(&ends), &SliceEnd::Done { pages: 6, blank: 0 }, "{ends:?}");
+    assert_eq!(pages_without_their_picture(&e.root, &id), Vec::<u32>::new());
+}
+
+/// An import cut off after two pages, then `cut` done to its work folder (an older build's sweep cut off).
+fn resume_after(name: &str, cut: impl Fn(&str)) {
+    let e = setup(name);
+    std::env::set_var("GRIMOIRE_PDF_SLICE_PAGES", "2");
+    let src = e.drop("Planner.pdf", &pdffix::planner(5));
+    let id = new_id();
+    assert_eq!(run_slice(&id, &src), SliceEnd::More);
+    assert_eq!(run_slice(&id, &src), SliceEnd::More);
+    cut(&format!("{}/notebooks/.import-{id}", e.root));
+    let ends = run_to_end(&id, &src, 20);
+    assert_eq!(last(&ends), &SliceEnd::Done { pages: 5, blank: 0 }, "{ends:?}");
+    assert_eq!(pages_without_their_picture(&e.root, &id), Vec::<u32>::new(), "every page has its picture");
+    assert!(std::path::Path::new(&format!("{}/notebooks/{id}/p1.qpg", e.root)).exists(), "and its page file");
+}
+
+#[test]
+fn a_resume_after_a_sweep_that_took_the_pictures_and_index_makes_them_again() {
+    resume_after("sweep", |work| {
+        for f in std::fs::read_dir(format!("{work}/bg")).unwrap().flatten() {
+            std::fs::remove_file(f.path()).unwrap();
+        }
+    });
+}
+
+#[test]
+fn a_resume_after_a_sweep_that_took_the_pictures_only_makes_them_again() {
+    resume_after("sweep-pics", |work| {
+        for f in std::fs::read_dir(format!("{work}/bg")).unwrap().flatten() {
+            if f.file_name().to_string_lossy().ends_with(".png") {
+                std::fs::remove_file(f.path()).unwrap();
+            }
+        }
+    });
+}
+
+#[test]
+fn a_resume_after_a_sweep_that_took_a_page_file_makes_it_again() {
+    resume_after("sweep-page", |work| std::fs::remove_file(format!("{work}/p1.qpg")).unwrap());
+}
+
+// ---- H9: a copy waits without holding its job ----
+
+#[test]
+fn a_second_copy_does_not_wait_forever_on_a_work_folder_no_job_runs() {
+    let e = setup("twins");
+    std::env::set_var("GRIMOIRE_PDF_SLICE_PAGES", "1");
+    let bytes = pdffix::planner(3);
+    let a = e.drop("First.pdf", &bytes);
+    let b = e.drop("Second.pdf", &bytes);
+    let ida = new_id();
+    assert_eq!(run_slice(&ida, &a), SliceEnd::More);
+    assert_eq!(run_slice(&ida, &a), SliceEnd::More);
+    // what the detached child's loop does with the copy's job: it ends at once, counting nothing
+    let ends = run_to_end(&new_id(), &b, 15);
+    assert!(ends.len() < 15 && *last(&ends) != SliceEnd::More, "{ends:?}");
+    assert_eq!(tries_of(&e), vec![1], "only First's try is on record");
+    // the first goes on to its end; the copy, taken again, is "already imported"
+    assert_eq!(last(&run_to_end(&ida, &a, 20)), &SliceEnd::Done { pages: 3, blank: 0 });
+    assert_eq!(last(&run_to_end(&new_id(), &b, 5)), &SliceEnd::Already);
+}
+
+// ---- M1: a worker that cannot open the PDF in a later slice ----
+
+#[test]
+fn a_worker_that_cannot_open_the_pdf_in_a_later_slice_does_not_blank_the_rest() {
+    let e = setup("probe-dies");
+    std::env::set_var("GRIMOIRE_PDF_SLICE_PAGES", "2");
+    let src = e.drop("Planner.pdf", &pdffix::planner(9));
+    let id = new_id();
+    assert_eq!(run_slice(&id, &src), SliceEnd::More);
+    assert_eq!(run_slice(&id, &src), SliceEnd::More);
+    std::env::set_var("GRIMOIRE_WORK_EXE", stand_in_worker(&e, "dies-opening", "exit 0"));
+    let ends = run_to_end(&id, &src, 40);
+    std::env::set_var("GRIMOIRE_WORK_EXE", bin());
+    assert!(matches!(last(&ends), SliceEnd::Failed(..)), "{ends:?}");
+    assert!(e.notebooks().is_empty() && e.done_files() == 0, "no notebook of blank pages, no file filed");
+}
+
+#[test]
+fn a_file_that_stops_opening_fails_the_import_instead_of_blanking_it() {
+    let e = setup("stops-opening");
+    std::env::set_var("GRIMOIRE_PDF_SLICE_PAGES", "1");
+    let path = format!("{}/import/Planner.pdf", e.root);
+    let good = pdffix::planner(5);
+    std::fs::write(&path, &good).unwrap();
+    let md = std::fs::metadata(&path).unwrap();
+    let src = "grimoire/import/Planner.pdf";
+    let id = new_id();
+    assert_eq!(run_slice(&id, src), SliceEnd::More);
+    assert_eq!(run_slice(&id, src), SliceEnd::More);
+    // no worker can open the file from here on (no PDF any more, under the same size and mtime)
+    let mut junk = vec![b'x'; good.len()];
+    junk[..9].copy_from_slice(b"%PDF-1.7\n");
+    std::fs::write(&path, &junk).unwrap();
+    let c = std::ffi::CString::new(path.clone()).unwrap();
+    let tv = [libc::timeval { tv_sec: md.mtime() as _, tv_usec: 0 }, libc::timeval { tv_sec: md.mtime() as _, tv_usec: 0 }];
+    // SAFETY: utimes reads the path and the two timevals we own.
+    assert_eq!(unsafe { libc::utimes(c.as_ptr(), tv.as_ptr()) }, 0);
+    let ends = run_to_end(&id, src, 20);
+    assert!(matches!(last(&ends), SliceEnd::Failed(..)), "{ends:?}");
+    assert!(e.notebooks().is_empty());
+    assert_eq!(e.done_files(), 0);
+}
+
+// Read whole (the device refuses the private mapping), every worker of a slice reads the file from its start.
+#[test]
+fn read_whole_one_worker_death_blanks_only_its_page() {
+    let e = setup("readwhole");
+    std::env::set_var("GRIMOIRE_PDF_NO_MAP", "1");
+    std::env::set_var("GRIMOIRE_PDF_TEST_CRASH_PAGE", "2");
+    let src = e.drop("Whole.pdf", &pdffix::planner(7));
+    let ends = run_to_end(&new_id(), &src, 50);
+    assert_eq!(last(&ends), &SliceEnd::Done { pages: 7, blank: 1 }, "{ends:?}");
+}
+
+// ---- M3: SIGPIPE never ends the writer ----
+
+static PIPES: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+extern "C" fn on_pipe(_sig: libc::c_int) {
+    PIPES.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+}
+
+#[test]
+fn a_worker_that_ended_by_itself_never_raises_sigpipe_in_the_writer() {
+    use grimoire::pdfwork::*;
+    use grimoire::sandbox::*;
+    use std::os::fd::AsRawFd;
+    let e = setup("sigpipe");
+    let path = format!("{}/import/locked.pdf", e.root);
+    let bytes = pdffix::encrypted_planner(2, "secret", "owner");
+    std::fs::write(&path, &bytes).unwrap();
+    let len = bytes.len() as u64;
+    let limits = Limits { as_bytes: worker_as_bytes(len, false), cpu_secs: 60, mapped: true, file_len: len };
+    // SAFETY: a handler that only bumps an atomic (the harness ignores SIGPIPE: this counts what would end the writer).
+    unsafe { libc::signal(libc::SIGPIPE, on_pipe as *const () as libc::sighandler_t) };
+    PIPES.store(0, std::sync::atomic::Ordering::Relaxed);
+    let f = std::fs::File::open(&path).unwrap();
+    let mut s = Session::start(f.as_raw_fd(), len, &limits).expect("the worker starts");
+    std::thread::sleep(std::time::Duration::from_millis(300)); // (the writer held up: the worker has gone)
+    let r = s.probe();
+    s.end();
+    std::thread::sleep(std::time::Duration::from_millis(100));
+    let pipes = PIPES.load(std::sync::atomic::Ordering::Relaxed);
+    // SAFETY: back to what the harness had.
+    unsafe { libc::signal(libc::SIGPIPE, libc::SIG_IGN) };
+    assert_eq!(pipes, 0, "SIGPIPE reached the writer");
+    assert_eq!(r, Err(StartErr::Password), "its last record was read");
+}
+
+// ---- M6: a worker that cannot start ----
+
+#[test]
+fn a_worker_that_cannot_start_counts_no_try() {
+    let e = setup("no-worker-first");
+    let src = e.drop("Planner.pdf", &pdffix::planner(2));
+    std::env::set_var("GRIMOIRE_WORK_EXE", "/nonexistent/grimoire");
+    let ends = run_to_end(&new_id(), &src, 5);
+    std::env::set_var("GRIMOIRE_WORK_EXE", bin());
+    assert!(matches!(last(&ends), SliceEnd::Failed(..) | SliceEnd::Sandbox), "{ends:?}");
+    assert_eq!(attempts_of(&e), "", "a try was counted though no worker ever read the file");
+}
+
+#[test]
+fn a_worker_that_cannot_start_in_a_later_slice_keeps_the_pages_made() {
+    let e = setup("no-worker-later");
+    std::env::set_var("GRIMOIRE_PDF_SLICE_PAGES", "2");
+    let src = e.drop("Planner.pdf", &pdffix::planner(9));
+    let id = new_id();
+    assert_eq!(run_slice(&id, &src), SliceEnd::More);
+    assert_eq!(run_slice(&id, &src), SliceEnd::More);
+    std::env::set_var("GRIMOIRE_WORK_EXE", "/nonexistent/grimoire");
+    let end = run_slice(&id, &src);
+    std::env::set_var("GRIMOIRE_WORK_EXE", bin());
+    assert_eq!(e.work_folders(), 1, "{end:?}: the work folder, 2 of 9 pages made, is kept");
+    assert!(keep_work_folder(&id));
+    // the next start goes on from page 3
+    let ends = run_to_end(&id, &src, 20);
+    assert_eq!(last(&ends), &SliceEnd::Done { pages: 9, blank: 0 }, "{ends:?}");
+}
+
+// ---- M10: the CPU budget counts the job's own workers ----
+
+#[test]
+fn the_cpu_budget_of_a_later_import_starts_with_its_own_probe() {
+    let e = setup("cpu");
+    let first = e.drop("First.pdf", &pdffix::planner(40));
+    assert_eq!(last(&run_to_end(&new_id(), &first, 50)), &SliceEnd::Done { pages: 40, blank: 0 });
+    // SAFETY: ru is written by getrusage before it is read.
+    let mut ru: libc::rusage = unsafe { std::mem::zeroed() };
+    unsafe { libc::getrusage(libc::RUSAGE_CHILDREN, &mut ru) };
+    let spent = (ru.ru_utime.tv_sec as u64 + ru.ru_stime.tv_sec as u64) * 1000 + (ru.ru_utime.tv_usec as u64 + ru.ru_stime.tv_usec as u64) / 1000;
+    let mut other = pdffix::planner(2);
+    other.extend_from_slice(b"\n% another file\n%%EOF\n");
+    let second = e.drop("Second.pdf", &other);
+    let id = new_id();
+    assert_eq!(run_slice(&id, &second), SliceEnd::More);
+    let s = State::parse(&std::fs::read(format!("{}/notebooks/.import-{id}/pdf-import.ini", e.root)).unwrap()).unwrap();
+    assert!(spent > 0);
+    assert!(s.cpu_ms < spent, "the second import is charged {} ms, the first's workers used {spent} ms", s.cpu_ms);
+}
+
+// ---- M11: a writer that dies in a later slice is counted ----
+
+#[test]
+fn a_writer_that_dies_in_a_later_slice_ends_the_import_after_three() {
+    let e = setup("uncounted");
+    std::env::set_var("GRIMOIRE_PDF_WATCHDOG_MS", "60000");
+    let src = e.drop("Planner.pdf", &pdffix::planner(4));
+    let id = new_id();
+    assert_eq!(run_slice(&id, &src), SliceEnd::More);
+    std::env::set_var("GRIMOIRE_PDF_TEST_HANG_PAGE", "2");
+    let bg = format!("{}/notebooks/.import-{id}/bg", e.root);
+    let mut rounds = 0;
+    while keep_work_folder(&id) && rounds < 6 {
+        rounds += 1;
+        let pid = fork_slice(&id, &src);
+        // (page 1 is made, page 2 hangs: the writer is ended there; a slice that ends the import ends by itself)
+        let t0 = std::time::Instant::now();
+        while t0.elapsed().as_secs() < 20 && std::fs::read_dir(&bg).map(|d| d.flatten().filter(|f| f.file_name().to_string_lossy().ends_with(".png")).count()).unwrap_or(0) == 0 {
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+        std::thread::sleep(std::time::Duration::from_millis(100));
+        kill_group(pid);
+    }
+    std::env::remove_var("GRIMOIRE_PDF_TEST_HANG_PAGE");
+    assert!(!keep_work_folder(&id), "{rounds} writers cut off, and the import still goes on at every scan");
+    assert!(rounds <= 4, "{rounds} rounds");
+    assert_eq!(e.work_folders(), 0);
+    assert_eq!(tries_of(&e), vec![1], "one try counted for the whole import");
+}
+
+// ---- M22: links=1 ----
+
+#[test]
+fn an_imported_pdf_says_its_links_are_in() {
+    let e = setup("links-latch");
+    let src = e.drop("Planner.pdf", &pdffix::planner(2));
+    let (id, ends) = import_all(&src);
+    assert_eq!(last(&ends), &SliceEnd::Done { pages: 2, blank: 0 });
+    let ini = std::fs::read_to_string(format!("{}/notebooks/{id}/source.ini", e.root)).unwrap();
+    assert!(ini.lines().any(|l| l == "links=1"), "KOReader's Open this book would ask for the links again: {ini}");
+}
+
+// ---- the Low items ----
+
+#[test]
+fn a_typed_name_of_spaces_falls_back_to_the_files_name() {
+    i18n_set("en");
+    assert_eq!(import_name("   ", "documents/Book.pdf", &[]), "Book");
+}
+
+#[test]
+fn a_worker_that_says_a_pdf_has_no_pages_is_refused() {
+    let e = setup("p0");
+    let src = e.drop("Planner.pdf", &pdffix::planner(2));
+    std::env::set_var("GRIMOIRE_PDF_WATCHDOG_MS", "2000");
+    std::env::set_var("GRIMOIRE_WORK_EXE", stand_in_worker(&e, "no-pages", "read cmd <&5\nprintf 'P 0\\nK\\n' >&4\nsleep 1"));
+    let ends = run_to_end(&new_id(), &src, 5);
+    std::env::set_var("GRIMOIRE_WORK_EXE", bin());
+    assert!(matches!(last(&ends), SliceEnd::Failed(..)), "{ends:?}");
+    assert!(e.notebooks().is_empty(), "a notebook of no pages");
+}
+
+#[test]
+fn a_done_mark_is_that_files_and_another_file_of_its_name_imports() {
+    let e = setup("done-mark");
+    std::env::set_var("GRIMOIRE_IMPORT_STABLE", "fast");
+    let src = e.drop("Planner.pdf", &pdffix::planner(2));
+    // imported before, its file could not move: marked done with its size and mtime
+    assert!(mark_write_public(&Mark { state: MarkState::Done, id: new_id(), src: src.clone(), size: 1, mtime: 2, ..Default::default() }));
+    assert_eq!(grimoire::bgwork_template::import_scan(300.0), 1, "another file of that name is a new file");
 }
