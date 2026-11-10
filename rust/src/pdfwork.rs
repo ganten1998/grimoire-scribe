@@ -1306,8 +1306,13 @@ impl Session {
         }
         px.resize(wu * hu, 255);
         let mut next_y = 0usize;
+        // The worker cuts a page into exactly `bands` bands of ceil(h / bands) rows (render_page), and each comes
+        // within the watchdog: a page is never more than that, so a worker that drips one-row bands (asleep in
+        // futex, no CPU spent) cannot hold the writer and the job queue for hours (security review 2026-11).
+        let band_h = (h as u32).div_ceil(bands.max(1)) as usize;
+        let page_end = mono_ms() + page_watchdog_ms().saturating_mul(bands.max(1) as u64 + 1);
         loop {
-            let deadline = mono_ms() + page_watchdog_ms();
+            let deadline = (mono_ms() + page_watchdog_ms()).min(page_end);
             let line = match self.w.read_line(512, deadline) {
                 Ok(l) => l,
                 Err(ReadErr::Timeout) => {
@@ -1335,6 +1340,7 @@ impl Session {
                         && bw as i32 == w
                         && bh >= 1
                         && next_y + bh as usize <= hu
+                        && bh as usize == band_h.min(hu - next_y)
                         && (bch == 1 || bch == 3);
                     if !ok {
                         self.w.kill_and_reap();
