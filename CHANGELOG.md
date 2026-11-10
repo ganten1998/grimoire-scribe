@@ -88,6 +88,10 @@
   this beta's new screens, What's new, the Font sheet and the folder merge.
 - The Graph's list of links sorts faster on notebooks with many links (each row's target is read once, not at
   every comparison), by nebuff.
+- A file or folder in `grimoire/import` whose name ends in Chinese or Japanese characters (or some accented letters)
+  made Grimoire close at every start; fixed.
+- Hardening: Grimoire no longer follows links planted in its own folders when it saves, cleans up or prunes its
+  caches, and a late sandbox reply from the separate process that reads PDFs and pictures now counts as a failure.
 
 ## 2.1.0-beta.1 (2026-11-08)
 
