@@ -116,23 +116,23 @@ tap panel display
 wait 400
 expect status.shown is 1
 expect display.presents not -1
-tap 472 1860
+tap 472 1950
 wait 300
 expect settings.status_size is 1
 expect status.shown is 1
-tap 472 1860
+tap 472 1950
 wait 300
 expect settings.status_size is 2
-tap 472 1860
+tap 472 1950
 wait 300
 expect settings.status_size is 0
-tap 472 1860
+tap 472 1950
 wait 300
-tap 472 1860
+tap 472 1950
 wait 300
 expect settings.status_size is 2
 shot 02-display-sheet-large
-tap 1460 1860
+tap 1460 1950
 wait 400
 expect editor.modal is none
 expect status.shown is 1

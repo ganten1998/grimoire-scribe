@@ -92,7 +92,7 @@ wait 300
 expect light.intensity is 10
 finger 1 up 1150 552
 frame
-tap 1464 1858
+tap 1464 1950
 wait 300
 expect editor.modal is none
 # On the page's ink a finger beside the hovering pen is its writing hand, held; one far from it

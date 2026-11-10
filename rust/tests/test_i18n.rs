@@ -666,6 +666,12 @@ fn dates() {
     i18n_set("en");
     format_time_short(t, &mut b, 64);
     check!(b == "Oct 10, 14:32");
+    format_time_short_12h(t, &mut b, 64);
+    check!(b == "Oct 10, 2:32 PM");
+    format_time_short_12h(1736208000, &mut b, 64); // 2025-01-07 00:00
+    check!(b == "Jan 7, 12:00 AM");
+    format_time_short_12h(1736208000 + 12 * 3600, &mut b, 64); // noon
+    check!(b == "Jan 7, 12:00 PM");
     format_date_short(t, &mut b, 64);
     check!(b == "Oct 10");
     i18n_set("es");

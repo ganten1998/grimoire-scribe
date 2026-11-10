@@ -52,10 +52,11 @@ const D_CORNER: i32 = 10;
 
 pub fn dispmenu_control_point(m:&DispMenu,name:&str)->Option<(f32,f32)> {
     if !m.open{return None;}
-    let id=match name {"size"=>D_STATUS,"corner"=>D_CORNER,"done"=>D_DONE,"fit"=>D_FIT,"newpage"=>D_NEWPAGE,"invert"=>D_INVERT,"brightness"=>D_BRIGHT,"warmth"=>D_WARM,_=>return None};
+    let id=match name {"size"=>D_STATUS,"corner"=>D_CORNER,"done"=>D_DONE,"fit"=>D_FIT,"newpage"=>D_NEWPAGE,"time12"=>D_TIME12,"invert"=>D_INVERT,"brightness"=>D_BRIGHT,"warmth"=>D_WARM,_=>return None};
     m.hits.h.iter().find(|h|h.id==id).map(|h|((h.r.x+h.r.w/2)as f32,(h.r.y+h.r.h/2)as f32))
 }
 const D_NEWPAGE: i32 = 11;
+const D_TIME12: i32 = 12;
 
 /// A dragged slider's row is drawn at most this often, as Pen feel's sliders are.
 const DRAG_DRAW_MS: u32 = 80;
@@ -119,9 +120,10 @@ fn step_of(minutes: i32) -> i32 {
     best as i32
 }
 
-/// Rows: brightness, warmth, invert, sideways, new page by swiping, [heading], sleep screen, [pin], sleep after.
+/// Rows: brightness, warmth, invert, sideways, new page by swiping, 12-hour time, [heading], sleep
+/// screen, [pin], sleep after.
 fn row_h(a: &App) -> i32 {
-    let rows = 8 + if editor_page_canvas(a).is_some() { 1 } else { 0 };
+    let rows = 9 + if editor_page_canvas(a).is_some() { 1 } else { 0 };
     let room = a.h - ui_px(120.0) - ui_px(72.0) - ui_px(190.0) - ui_px(80.0);
     let h = room / rows;
     clampi(h, ui_px(100.0), ui_px(140.0))
@@ -132,7 +134,7 @@ fn card_rect(a: &App) -> Rect {
     if w > ui_px(1500.0) {
         w = ui_px(1500.0);
     }
-    let rows = 8 + if editor_page_canvas(a).is_some() { 1 } else { 0 };
+    let rows = 9 + if editor_page_canvas(a).is_some() { 1 } else { 0 };
     let h = ui_px(120.0) + ui_px(72.0) + rows * row_h(a) + ui_px(190.0);
     // (the card's top stays where it was before the new-page row: it grows downward by that row)
     Rect { x: (a.w - w) / 2, y: (a.h - (h - row_h(a))) / 3, w, h }
@@ -227,6 +229,13 @@ pub fn dispmenu_draw(m: &mut DispMenu, a: &mut App) -> Rect {
     // (off: it only says it is the last page). About 1000 px at 44 px.
     ui_checkbox(&mut a.screen, np, tr("Swiping past the last page adds a page"), a.settings.gesture_new_page);
     hits_add(&mut m.hits, np, D_NEWPAGE, 0);
+    y += rh;
+    // The clock on a notebook page: 12-hour time instead of 24-hour.
+    let t12 = Rect { x: in_.x, y, w: in_.w, h: rh };
+    // TRANSLATORS: the Display sheet's checkbox row: the clock on a notebook page shows the time on
+    // the 12-hour clock ("2:32 PM") instead of the 24-hour one ("14:32"). About 850 px at 44 px.
+    ui_checkbox(&mut a.screen, t12, tr("Display time as 12 hour"), a.settings.clock_12h);
+    hits_add(&mut m.hits, t12, D_TIME12, 0);
     y += rh;
     // Sleep section.
     canvas_hline(&mut a.screen, in_.x, in_.x + in_.w, y + rh / 3, ui_px(3.0), 0);
@@ -415,6 +424,14 @@ pub fn dispmenu_pointer(m: &mut DispMenu, a: &mut App, phase: i32, x: f32, y: f3
         D_NEWPAGE => {
             a.settings.gesture_new_page = !a.settings.gesture_new_page;
             settings_save(&a.settings);
+            dispmenu_draw(m, a);
+            *dirty = m.rect;
+            return DmResult::Changed;
+        }
+        D_TIME12 => {
+            a.settings.clock_12h = !a.settings.clock_12h;
+            settings_save(&a.settings);
+            crate::status::ask_change(a);
             dispmenu_draw(m, a);
             *dirty = m.rect;
             return DmResult::Changed;

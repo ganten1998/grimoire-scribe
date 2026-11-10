@@ -34,7 +34,7 @@ tap panel display
 wait 400
 expect editor.modal is display
 # (the Kindle's refreshes as before: the pressed button, then the sheet with the button let go)
-expect display.presents is fast 1718 1624 100 100, ui 180 239 1638 1729
+expect display.presents is fast 1718 1624 100 100, ui 180 239 1638 1822
 expect live.panel is 1704 220 128 1734
 expect live.stale.1704.220.128.1734 is 0
 # The brightness dragged, a box ticked, the colors inverted (the whole screen again) and back: it stays.
@@ -63,7 +63,7 @@ expect display.presents not -1
 tap panel display.done
 wait 400
 expect editor.modal is none
-expect display.presents is fast 1280 1788 360 140, ui 180 239 1516 1729
+expect display.presents is fast 1280 1881 360 140, ui 180 239 1516 1822
 expect live.panel is 1704 220 128 1734
 expect live.stale.1704.220.128.1734 is 0
 # Another sheet beside it (Paper), and closed again.

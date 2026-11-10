@@ -86,7 +86,7 @@ expect toast is
 tap 1240 779
 wait 400
 expect settings.landscape_fit is 0
-tap 1462 1860
+tap 1462 1950
 wait 300
 expect editor.modal is none
 # upright the setting applies to a later turn only: the card's new checkbox (after the row's pressed
@@ -101,9 +101,9 @@ tap 930 986
 wait 300
 expect settings.landscape_fit is 1
 expect toast is
-expect display.presents is fast 220 916 1420 140, ui 180 326 1500 1642
+expect display.presents is fast 220 869 1420 140, ui 180 279 1500 1782
 tap 930 986
 wait 300
 expect settings.landscape_fit is 0
 expect toast is
-expect display.presents is fast 220 916 1420 140, ui 180 326 1500 1642
+expect display.presents is fast 220 869 1420 140, ui 180 279 1500 1782
