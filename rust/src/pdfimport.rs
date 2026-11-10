@@ -2105,6 +2105,8 @@ fn later_slice(id: &str, src: &str, abs: &str, source: &Src, mut state: State) -
     let t0 = mono_ms_now();
     let mut made = 0usize;
     let mut probes_failed = 0u32;
+    // the pages whose worker stalled right after a wake, tried again once without a strike (DESIGN.md 3.7)
+    let mut woke_again: Vec<u32> = Vec::new();
     let max_pages = slice_pages();
     let mut end: Option<SliceEnd> = None;
     while state.next <= state.pages && made < max_pages && mono_ms_now() - t0 < s1::SLICE_WALL_MS as u64 {
@@ -2170,6 +2172,12 @@ fn later_slice(id: &str, src: &str, abs: &str, source: &Src, mut state: State) -
             let outcome = sess.as_mut().map(|s| s.render(page, pw, ph, bands));
             let why = match outcome {
                 Some(PageOutcome::Page(p)) => break p,
+                Some(PageOutcome::Died(Death::TimeoutAfterWake)) if !woke_again.contains(&page) => {
+                    sess = None;
+                    woke_again.push(page);
+                    qlog!("import: %s: page %d of %d: the worker stalled right after a wake; tried again (no strike)", id, page as i32, state.pages as i32);
+                    continue;
+                }
                 Some(PageOutcome::Died(d)) => death_text(&d),
                 Some(PageOutcome::Failed(e)) => format!("could not render it ({e:?})"),
                 Some(PageOutcome::NoMemory) => "left the writer without memory for its pixels".to_string(),
@@ -2284,6 +2292,7 @@ fn later_slice(id: &str, src: &str, abs: &str, source: &Src, mut state: State) -
 fn death_text(d: &Death) -> String {
     match d {
         Death::Timeout => "stalled".to_string(),
+        Death::TimeoutAfterWake => "stalled right after a wake".to_string(),
         Death::Gone(st) => {
             if libc::WIFSIGNALED(*st) {
                 format!("died of signal {}", libc::WTERMSIG(*st))

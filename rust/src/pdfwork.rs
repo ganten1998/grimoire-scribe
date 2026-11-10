@@ -1139,6 +1139,8 @@ pub struct PagePixels {
 pub enum Death {
     /// no record for PAGE_WATCHDOG_MS
     Timeout,
+    /// the same, the Kindle having slept while the page was waited for: retried once without a strike (3.7)
+    TimeoutAfterWake,
     /// the pipe ended: exit status, as waitpid gave it
     Gone(i32),
     /// it said which call killed it (the seccomp reporter)
@@ -1289,6 +1291,7 @@ impl Session {
     pub fn render(&mut self, page: u32, w: i32, h: i32, bands: u32) -> PageOutcome {
         // (a send that fails is read past: the worker's last record, or the end of its pipe, says what became of it)
         let _ = self.w.send(&format!("R {page} {w} {h} {bands}\n"));
+        let slept0 = slept_ms();
         let (wu, hu) = (w as usize, h as usize);
         let mut px: Vec<u8> = Vec::new();
         let mut ch = 1usize;
@@ -1304,7 +1307,7 @@ impl Session {
                 Ok(l) => l,
                 Err(ReadErr::Timeout) => {
                     self.w.kill_and_reap();
-                    return PageOutcome::Died(Death::Timeout);
+                    return PageOutcome::Died(timeout_since(slept0));
                 }
                 Err(ReadErr::End) => {
                     let st = self.w.kill_and_reap();
@@ -1343,7 +1346,7 @@ impl Session {
                         Ok(()) => {}
                         Err(ReadErr::Timeout) => {
                             self.w.kill_and_reap();
-                            return PageOutcome::Died(Death::Timeout);
+                            return PageOutcome::Died(timeout_since(slept0));
                         }
                         Err(_) => {
                             let st = self.w.kill_and_reap();
@@ -1422,6 +1425,42 @@ impl Session {
     /// Kills the worker now.
     pub fn kill(&mut self) -> i32 {
         self.w.kill_and_reap()
+    }
+}
+
+/// What the Kindle has slept since it started, in ms: CLOCK_BOOTTIME (which counts a suspend) less
+/// CLOCK_MONOTONIC (which does not, as the watchdogs do not). It grows only while asleep. 0 where there is no
+/// such clock (a wake is then never seen), or, in headless and test builds, with GRIMOIRE_PDF_TEST_WOKE an hour
+/// more at every look.
+fn slept_ms() -> i64 {
+    #[cfg(not(feature = "kindle"))]
+    if std::env::var_os("GRIMOIRE_PDF_TEST_WOKE").is_some() {
+        static N: std::sync::atomic::AtomicI64 = std::sync::atomic::AtomicI64::new(0);
+        return N.fetch_add(3_600_000, std::sync::atomic::Ordering::Relaxed);
+    }
+    #[cfg(target_os = "linux")]
+    {
+        // SAFETY: both are written by clock_gettime before they are read.
+        let (mut b, mut m): (libc::timespec, libc::timespec) = unsafe { (std::mem::zeroed(), std::mem::zeroed()) };
+        unsafe {
+            libc::clock_gettime(libc::CLOCK_BOOTTIME, &mut b);
+            libc::clock_gettime(libc::CLOCK_MONOTONIC, &mut m);
+        }
+        (b.tv_sec as i64 - m.tv_sec as i64) * 1000 + (b.tv_nsec as i64 - m.tv_nsec as i64) / 1_000_000
+    }
+    #[cfg(not(target_os = "linux"))]
+    {
+        0
+    }
+}
+
+/// A page's watchdog ran out: right after a wake (the Kindle slept for more than a second while the page was
+/// waited for) or not.
+fn timeout_since(slept0: i64) -> Death {
+    if slept_ms() - slept0 > 1000 {
+        Death::TimeoutAfterWake
+    } else {
+        Death::Timeout
     }
 }
 

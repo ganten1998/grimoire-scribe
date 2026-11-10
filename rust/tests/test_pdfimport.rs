@@ -23,7 +23,8 @@ struct Env {
     _g: std::sync::MutexGuard<'static, ()>,
 }
 
-const HOOKS: [&str; 12] = [
+const HOOKS: [&str; 13] = [
+    "GRIMOIRE_PDF_TEST_WOKE",
     "GRIMOIRE_PDF_SLICE_PAGES",
     "GRIMOIRE_PDF_BANDS",
     "GRIMOIRE_PDF_NO_MAP",
@@ -1049,4 +1050,45 @@ fn a_done_mark_is_that_files_and_another_file_of_its_name_imports() {
     // imported before, its file could not move: marked done with its size and mtime
     assert!(mark_write_public(&Mark { state: MarkState::Done, id: new_id(), src: src.clone(), size: 1, mtime: 2, ..Default::default() }));
     assert_eq!(grimoire::bgwork_template::import_scan(300.0), 1, "another file of that name is a new file");
+}
+
+// ---- 3.7: a worker that stalls right after a wake is tried again once, without a strike ----
+
+/// What `f` writes to the log (stderr, where qlog goes in the tests).
+fn logged(dir: &str, f: impl FnOnce()) -> String {
+    use std::io::Write;
+    let path = format!("{dir}/captured.log");
+    let _ = std::io::stderr().flush();
+    // SAFETY: dup, open, dup2 and close on descriptors this test owns (stderr's, and the log file's).
+    let saved = unsafe {
+        let saved = libc::dup(2);
+        let c = std::ffi::CString::new(path.as_str()).unwrap();
+        let fd = libc::open(c.as_ptr(), libc::O_WRONLY | libc::O_CREAT | libc::O_TRUNC, 0o644 as libc::c_uint);
+        libc::dup2(fd, 2);
+        libc::close(fd);
+        saved
+    };
+    f();
+    let _ = std::io::stderr().flush();
+    // SAFETY: stderr back as it was.
+    unsafe {
+        libc::dup2(saved, 2);
+        libc::close(saved);
+    }
+    std::fs::read_to_string(&path).unwrap_or_default()
+}
+
+#[test]
+fn a_worker_that_stalls_right_after_a_wake_is_tried_again_without_a_strike() {
+    let e = setup("woke");
+    std::env::set_var("GRIMOIRE_PDF_WATCHDOG_MS", "400");
+    std::env::set_var("GRIMOIRE_PDF_TEST_HANG_PAGE", "2");
+    std::env::set_var("GRIMOIRE_PDF_TEST_WOKE", "1");
+    let src = e.drop("Planner.pdf", &pdffix::planner(3));
+    let mut ends = Vec::new();
+    let log = logged(&e.root, || ends = run_to_end(&new_id(), &src, 20));
+    std::env::remove_var("GRIMOIRE_PDF_TEST_WOKE");
+    assert_eq!(last(&ends), &SliceEnd::Done { pages: 3, blank: 1 }, "{ends:?}");
+    assert_eq!(log.matches("stalled right after a wake; tried again (no strike)").count(), 1, "{log}");
+    assert!(log.contains("(strike 1)") && log.contains("(strike 2)"), "two strikes after the one free try: {log}");
 }
