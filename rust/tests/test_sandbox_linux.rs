@@ -94,10 +94,31 @@ fn the_workers_maps_hold_nothing_of_the_writer() {
     }
     let (_g, f, len) = setup();
     let mut w = Worker::spawn(WorkKind::Pdf, Some(f.as_raw_fd()), &limits(len)).unwrap();
+    // Worker::spawn returns right after its fork: until the child's execve, /proc/<pid>/exe and maps are still
+    // this test's own binary (a copy of the writer). The handshake comes after the exec and the steps, so the
+    // worker is read only once it has said `S 1`.
+    let deadline = mono_ms() + 15_000;
+    let hello = w.read_line(512, deadline).expect("its build line");
+    assert!(hello.starts_with(b"B "), "{:?}", String::from_utf8_lossy(&hello));
+    assert_eq!(w.read_line(512, deadline).expect("its sandbox line"), b"S 1");
     let maps = std::fs::read_to_string(format!("/proc/{}/maps", w.pid)).unwrap();
     assert!(!maps.lines().any(|l| l.split_whitespace().nth(1).is_some_and(|p| p.ends_with('s') && p.starts_with("rw"))), "a shared writable mapping:\n{maps}");
+    let me = std::fs::canonicalize(std::env::current_exe().unwrap()).unwrap();
+    assert!(!maps.contains(me.to_string_lossy().as_ref()), "the writer's own binary ({me:?}) is mapped in the worker:\n{maps}");
+    // /proc/<pid>/exe is the file the worker was exec'd from: GRIMOIRE_WORK_EXE outside the Kindle build
+    // (sandbox.rs work_exe), its links resolved, as this process sees it (the worker's chroot does not change
+    // what it reads), with " (deleted)" after it when the file was replaced since (a rebuild during the run).
+    let want = std::fs::canonicalize(std::env::var_os("GRIMOIRE_WORK_EXE").expect("setup sets it")).unwrap();
     let exe = std::fs::read_link(format!("/proc/{}/exe", w.pid)).unwrap();
-    assert!(exe.to_string_lossy().contains("grimoire-headless"));
+    let seen = exe.to_string_lossy();
+    let path = seen.strip_suffix(" (deleted)").unwrap_or(&seen);
+    assert_eq!(
+        std::path::Path::new(path),
+        want.as_path(),
+        "/proc/{}/exe is {seen:?}, not the GRIMOIRE_WORK_EXE this test set ({want:?}): before the worker's execve it is \
+         the test binary ({me:?})",
+        w.pid
+    );
     w.kill_and_reap();
 }
 
