@@ -88,6 +88,16 @@ fn fnv(mut h: u64, d: &[u8]) -> u64 {
     h
 }
 
+/// The job's CPU budget in ms for a PDF of `pages` pages: the table's, or (headless and test builds)
+/// GRIMOIRE_PDF_JOB_CPU_SECS seconds.
+fn job_cpu_cap_ms(pages: u32) -> u64 {
+    #[cfg(not(feature = "kindle"))]
+    if let Some(n) = std::env::var("GRIMOIRE_PDF_JOB_CPU_SECS").ok().and_then(|v| v.parse::<u64>().ok()) {
+        return n * 1000;
+    }
+    (s1::JOB_CPU_BASE_SECS + s1::JOB_CPU_PER_PAGE_SECS * pages as u64) * 1000
+}
+
 /// The slice length: the table's, or (headless and test builds) GRIMOIRE_PDF_SLICE_PAGES.
 fn slice_pages() -> usize {
     #[cfg(not(feature = "kindle"))]
@@ -2255,13 +2265,13 @@ fn later_slice(id: &str, src: &str, abs: &str, source: &Src, mut state: State) -
         bgindex_free(&mut ix);
         return e;
     }
-    let cap_s = s1::JOB_CPU_BASE_SECS + s1::JOB_CPU_PER_PAGE_SECS * state.pages as u64;
-    if state.cpu_ms / 1000 > cap_s {
+    let cap_ms = job_cpu_cap_ms(state.pages);
+    if state.cpu_ms > cap_ms {
         // Over the job's CPU budget (s1's, a placeholder until the Scribe is measured): it stops, keeping every page
         // made, and a later scan goes on with a budget of its own; the stops end it (M10).
         state.stops += 1;
         state.cpu_ms = 0;
-        qlog!("import: %s: the job used more CPU than %d s; it stops here (%d of %d) and goes on later", id, cap_s as i32, state.stops as i32, STOPS_MAX as i32);
+        qlog!("import: %s: the job used more CPU than %d s; it stops here (%d of %d) and goes on later", id, (cap_ms / 1000) as i32, state.stops as i32, STOPS_MAX as i32);
         let kept = keep_slice(id, &bgdir, &ix, &mut state);
         bgindex_free(&mut ix);
         if !kept {

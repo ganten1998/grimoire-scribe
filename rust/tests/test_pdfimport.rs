@@ -23,8 +23,9 @@ struct Env {
     _g: std::sync::MutexGuard<'static, ()>,
 }
 
-const HOOKS: [&str; 13] = [
+const HOOKS: [&str; 14] = [
     "GRIMOIRE_PDF_TEST_WOKE",
+    "GRIMOIRE_PDF_JOB_CPU_SECS",
     "GRIMOIRE_PDF_SLICE_PAGES",
     "GRIMOIRE_PDF_BANDS",
     "GRIMOIRE_PDF_NO_MAP",
@@ -1106,4 +1107,45 @@ fn a_picked_pdfs_mark_goes_when_its_import_fails() {
     let left = std::fs::read_dir(format!("{}/import/.marks", e.root)).map(|r| r.flatten().count()).unwrap_or(0);
     assert_eq!(left, 0, "the pick's mark is left");
     assert_eq!(attempts_of(&e), "", "a pick elsewhere keeps no record of tries");
+}
+
+// ---- M2: the floor, at every slice ----
+
+#[test]
+fn a_later_slice_checks_the_storage_floor_again_and_counts_nothing() {
+    let e = setup("floor-later");
+    std::env::set_var("GRIMOIRE_PDF_SLICE_PAGES", "2");
+    let src = e.drop("Planner.pdf", &pdffix::planner(6));
+    let id = new_id();
+    assert_eq!(run_slice(&id, &src), SliceEnd::More);
+    assert_eq!(run_slice(&id, &src), SliceEnd::More);
+    // the storage fills meanwhile, down to the floor
+    std::env::set_var("GRIMOIRE_PDF_FREE_BYTES", grimoire::fsview::FS_FREE_FLOOR.to_string());
+    let end = run_slice(&id, &src);
+    std::env::remove_var("GRIMOIRE_PDF_FREE_BYTES");
+    assert_eq!(end, SliceEnd::Failed(6, 0), "the storage message");
+    assert_eq!(e.work_folders(), 0, "the space the pages took is given back");
+    assert_eq!(attempts_of(&e), "", "no room is not the file's fault: the try is taken back");
+    assert!(e.notebooks().is_empty());
+}
+
+// ---- M10: past its CPU budget a job stops and keeps its pages ----
+
+#[test]
+fn a_job_over_its_cpu_budget_stops_and_keeps_its_pages() {
+    let e = setup("cpu-stop");
+    std::env::set_var("GRIMOIRE_PDF_SLICE_PAGES", "2");
+    let src = e.drop("Planner.pdf", &pdffix::planner(4));
+    let id = new_id();
+    assert_eq!(run_slice(&id, &src), SliceEnd::More); // the probe
+    std::env::set_var("GRIMOIRE_PDF_JOB_CPU_SECS", "0");
+    let end = run_slice(&id, &src);
+    std::env::remove_var("GRIMOIRE_PDF_JOB_CPU_SECS");
+    assert!(matches!(end, SliceEnd::Failed(..)), "{end:?}");
+    assert!(keep_work_folder(&id), "the pages made are kept for a later scan");
+    let s = State::parse(&std::fs::read(format!("{}/notebooks/.import-{id}/pdf-import.ini", e.root)).unwrap()).unwrap();
+    assert_eq!((s.next, s.stops, s.open, s.cpu_ms), (3, 1, false, 0), "two pages made, one stop, a fresh budget");
+    // a later scan goes on, with a budget of its own
+    let ends = run_to_end(&id, &src, 10);
+    assert_eq!(last(&ends), &SliceEnd::Done { pages: 4, blank: 0 }, "{ends:?}");
 }
