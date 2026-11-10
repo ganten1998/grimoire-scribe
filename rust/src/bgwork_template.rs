@@ -269,8 +269,8 @@ fn write_quiet(path: &str, text: &str) -> i32 {
     let mut tmp = String::new();
     csnprintf!(&mut tmp, PATH_BUF + 64, "%s.tmp", path);
     let Some(ctmp) = cpath(&tmp) else { return -1 };
-    // SAFETY: open reads the NUL-terminated path we own; the descriptor it returns is ours alone.
-    let fd = unsafe { libc::open(ctmp.as_ptr(), libc::O_WRONLY | libc::O_CREAT | libc::O_TRUNC, 0o644 as libc::c_uint) };
+    // (never through a planted <name>.tmp link: util.rs open_rewrite_nofollow)
+    let fd = open_rewrite_nofollow(&ctmp, 0o644);
     if fd < 0 {
         return -1;
     }

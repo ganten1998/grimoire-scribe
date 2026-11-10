@@ -365,6 +365,29 @@ pub fn mkdir_p(path: &str) -> i32 {
     mkdir_one(path)
 }
 
+/// Opens `path` to be written from its start (created with mode `mode` when missing), never through a link or onto
+/// anything but a file of its own: O_NOFOLLOW, so a planted `<name>.tmp` link can no longer make root truncate and
+/// write its target, and O_NONBLOCK, so a FIFO cannot hold the save; then it must be a regular file with one link
+/// (a hard link to another file is refused before anything is cut), and only then is it emptied (security review
+/// 2026-11). The descriptor (close-on-exec), or -1 with errno.
+pub fn open_rewrite_nofollow(path: &std::ffi::CStr, mode: u32) -> i32 {
+    // SAFETY: open reads the NUL-terminated path we were given; fstat writes the struct we own; the descriptor is
+    // the caller's, or closed here.
+    unsafe {
+        let fd = libc::open(path.as_ptr(), libc::O_WRONLY | libc::O_CREAT | libc::O_NOFOLLOW | libc::O_NONBLOCK | libc::O_CLOEXEC, mode as libc::c_uint);
+        if fd < 0 {
+            return -1;
+        }
+        let mut st: libc::stat = std::mem::zeroed();
+        let own = libc::fstat(fd, &mut st) == 0 && (st.st_mode & libc::S_IFMT) == libc::S_IFREG && st.st_nlink == 1;
+        if !own || libc::ftruncate(fd, 0) != 0 {
+            libc::close(fd);
+            return -1;
+        }
+        fd
+    }
+}
+
 /// Removes a work folder Grimoire was building (`files` first, then the files of its bg/ and its own, then the
 /// folders), by descriptor and never through a link: a folder, or a bg/, that is a link is unlinked itself and
 /// never entered, so a planted link cannot make root delete the files of another folder (security review
@@ -487,7 +510,7 @@ fn write_file_atomic_in(path: &str, data: &[u8]) -> i32 {
     // SAFETY: open/write/fsync/close/rename/unlink on paths and an fd this function owns; the
     // buffers passed are our slices, with their lengths.
     unsafe {
-        let fd = libc::open(ctmp.as_ptr(), libc::O_WRONLY | libc::O_CREAT | libc::O_TRUNC, 0o644 as libc::c_uint);
+        let fd = open_rewrite_nofollow(&ctmp, 0o644);
         if fd < 0 {
             crate::qlog!("write %s: %s", &tmp, &strerror(errno()));
             return -1;
