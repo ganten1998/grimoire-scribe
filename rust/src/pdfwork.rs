@@ -1234,7 +1234,12 @@ impl Session {
                 Ok(Rec::Err(ErrCode::Password)) => return Err(StartErr::Password),
                 Ok(Rec::Err(ErrCode::Invalid)) => return Err(StartErr::Invalid),
                 Ok(Rec::Err(ErrCode::Empty)) => return Err(StartErr::Empty),
-                Ok(Rec::Err(ErrCode::Sandbox(s))) => return Err(StartErr::Sandbox(s)),
+                // A step can only fail before the handshake's S line; here the worker has parsed the PDF, so the
+                // line is a lie (a worker the PDF took over would mark the session broken and count no try).
+                Ok(Rec::Err(ErrCode::Sandbox(_))) => {
+                    self.w.kill_and_reap();
+                    return Err(StartErr::Failed("a sandbox record after the handshake"));
+                }
                 _ => {
                     self.w.kill_and_reap();
                     return Err(StartErr::Failed("unexpected record"));
@@ -1403,6 +1408,10 @@ impl Session {
                 Ok(Rec::Err(ErrCode::Panic)) => {
                     self.w.kill_and_reap();
                     return PageOutcome::Died(Death::Panic);
+                }
+                Ok(Rec::Err(ErrCode::Sandbox(_))) => {
+                    self.w.kill_and_reap();
+                    return PageOutcome::Lied("a sandbox record after the handshake");
                 }
                 Ok(Rec::Err(e)) => {
                     self.w.kill_and_reap();
