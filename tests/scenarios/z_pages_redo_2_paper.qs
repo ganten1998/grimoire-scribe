@@ -21,9 +21,9 @@ wait 200
 tap panel pages.multi
 tap panel pages.page.3
 expect editor.ticked is 1
-touch down 394 2395
+touch down 328 2395
 wait 700
-touch up 394 2395
+touch up 328 2395
 wait 100
 expect editor.pages.adding is 1
 tap panel pages.key.2

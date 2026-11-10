@@ -23,6 +23,13 @@ expect editor.pages is 3
 pentap panel pages
 wait 400
 expect editor.modal is pages
+# A page tapped again (past the double tap's 450 ms) is unticked, with no Multi-select needed.
+tap panel pages.page.1
+wait 600
+expect editor.ticked is 1
+tap panel pages.page.1
+wait 400
+expect editor.ticked is 0
 tap panel pages.multi
 tap panel pages.page.1
 tap panel pages.page.3
