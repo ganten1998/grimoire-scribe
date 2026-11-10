@@ -8,9 +8,12 @@
   loses nothing) and only the pages you changed are drawn again. The PDF is written to its file as it is made
   rather than built whole in memory, so a 2,000-page notebook's PDF no longer takes hundreds of MB; the share
   page's PDF and zip downloads are streamed the same way. A page with a coloured picture (an imported colour page,
-  a colour template) is kept in colour in the PDF; every other page stays gray. Every background process now runs
-  at a lower priority for the memory killer (an out-of-memory kill takes it before Grimoire) and with a ceiling on
-  its memory.
+  a colour template) is kept in colour in the PDF, decoded once (its PDF fits the background process's memory at
+  the Scribe's page size); every other page stays gray. A page drawn before its picture was made (a template just
+  picked) is drawn again with it at the next close, never kept white; Grimoire started again while a PDF is being
+  made (a KOReader round trip) waits for it rather than writing the same file; a download or zip that would pass
+  4 GiB fails instead of arriving broken. Every background process now runs at a lower priority for the memory
+  killer (an out-of-memory kill takes it before Grimoire) and with a ceiling on its memory.
 - **A PDF's own links work in a notebook: a planner's tabs.** Opening a book from KOReader (Open this book in
   Grimoire) now also sends the links of its pages: a finger tap on "March" goes to March. They are part of the
   page, kept in a file of their own (`doclinks.ini`, up to 16,000 links) apart from the links you draw: your links
@@ -41,9 +44,11 @@
   imported again gives back its links and page names.
 - Pictures you put in `grimoire/templates`, `grimoire/photos` or an import folder are now read by that same
   separate process, in slices, instead of by the part of Grimoire that writes files: a damaged or hostile picture
-  (cut short, enormous, a decompression bomb) is refused as before, and one that crashes the reader is marked as
-  not usable (templates and photos) or refuses its folder. Where the sandbox is not available (see
-  grimoire.log) pictures are read the old way, and the log says so once.
+  (cut short, enormous, a decompression bomb) is refused as before; one that crashes the reader is read again by a
+  fresh one, and crashing that too marks it as not usable (templates and photos), or counts one of its folder's
+  three tries. A template or photo copied in a moment ago is picked once its tile shows its preview ("Not ready
+  yet. Try again in a moment." before that). Where the sandbox is not available (see grimoire.log) pictures are
+  read the old way, and the log says so once.
 - PDFs are read by a separate process that cannot reach the files, the network or other programs (a sandboxed
   worker); a Scribe that refuses a step reads no PDF and says so in grimoire.log. A picture folder in `import/`
   now also gets a notebook name no other notebook has.

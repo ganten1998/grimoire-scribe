@@ -561,9 +561,13 @@ in `templates/.cache/`, each named by a hash of the file's name, size and time: 
 preview (P5 PGM, a sixth of the page); `<hash>.key`, a line `<hash of the file's bytes, 16 hex
 digits> <width> <height>`, from which the template's id comes (Ids), so the file need not be read
 again to use it; and an empty `<hash>.bad` for a file that is no picture it can use: its bytes are
-no picture Grimoire takes (as above), or it is bigger than 16 MB. A file that does not read when
-the previews are made (no memory for it, a read error) gets no `.bad`: a later scan tries it again.
-A file whose path is 600 bytes or longer is left out.
+no picture Grimoire takes (as above), it is bigger than 16 MB, or (since 2.1.0-beta.2) two of the
+sandboxed workers that read it ended on it in a row (one death is tried again on a fresh worker),
+or one made a call the sandbox refuses. A file that does not read when the previews are made (no
+memory for it, a read error) gets no `.bad`: a later scan tries it again. A file whose path is 600
+bytes or longer is left out. Since 2.1.0-beta.2 a template or photo is picked only once its
+`.key` is there (its preview made): the previews job's worker has then found it a picture, and the
+UI never reads or checks the file itself.
 
 New notebook and the editor's paper sheet offer the templates as tiles (their previews), behind
 the last tile, More papers... (1.1). A page given one gets its image paper (role 0, a template) at
@@ -697,8 +701,9 @@ every 10 s, and again after 5 s while a file waits):
   stored as an 8-bit gray PNG, any other page as an 8-bit RGB PNG (`bg/<pic>.png`; the pictures of equal
   content share one file). Page pictures may therefore be RGB (3 channels); older versions read them (stb_image)
   and show their luma. The Scribe draws every page picture as its luma (a page held in memory is the 4.6 MB
-  gray canvas, never the 13.8 MB RGB copy), so the mirror PDF and the share pages embed the gray render, never
-  the colour. The KOReader route's pages stay gray.
+  gray canvas, never the 13.8 MB RGB copy), and the share server's page pictures are that gray render; the
+  notebook's PDF (the mirror in `PDFs/`, the share server's PDF download, a zip's PDF entry) embeds a page on a
+  colour picture in colour, DeviceRGB (see the notebook PDF below). The KOReader route's pages stay gray.
 - **The book key** is KOReader's partial MD5 of the file (1 KiB samples at 0, 1 KiB, 4 KiB ... 1 GiB), written
   as `source=` in `notebook.ini` and `book=` in `source.ini` (`kind=paged`, a `page.<n>.<count>=<page id>` line
   per page), so the KOReader route and the import find the same notebook. The same key again: "PDF already
@@ -1761,42 +1766,70 @@ paper under it each channel is scaled by the same ratio, where it lightened it (
 toward white by the same share; a pixel the ink did not touch is the picture's own). Every other page is gray.
 Drawing a page is most of the work, so each page's stream is kept in `root/.cache/pdf/<notebook id>/p<page
 id>.z`, one file per page, written by the background mirror job only (the share server's children read it and
-never write):
+never write). Since the 2.1.0-beta.2 fix round the record is `GPZ2` (a `GPZ1` record of earlier builds of the
+line is simply drawn again):
 
 ```text
 offset  size  field
-0       4     "GPZ1"
-4       4     renderer version (bumped when drawing changes)
-8       8     FNV-1a of the Grimoire version string
+0       4     "GPZ2"
+4       4     renderer version (bumped by hand when the PDF's own drawing changes: colour, compression)
+8       8     FNV-1a of the Grimoire version string, xor the ink renderer's fingerprint (a sample page drawn with
+              every tool, as kept drawings use: a change to the ink or paper renderer changes it by itself)
 16      4     dpi, as the bits of the f32
 20      8     the page file's size
 28      8     the page file's modification time, seconds
 36      4     ... and nanoseconds
 40      4     the notebook's page width       44  4  its page height
 48      4     the page's paper kind (image papers: the picture's id is in it)
-52      4     the picture's channels by its PNG header when the record was made (3 colour, else 1)
+52      4     the picture's channels by its PNG header (3 colour, else 1; 0 for a page on no picture)
 56      4     the image's channels, in the top byte (1 or 3)
 60      4     image width      64  4  image height
 68      4     length of the stream            72  4  CRC-32 of the stream
-76      8     the page file's inode           84  4  zero
-88      ...   the zlib stream
+76      8     the page file's inode
+84      4     the notebook's paper (what a missing or unreadable page file is drawn on)
+88      8     the picture file's size (0: not there)
+96      8     the picture file's modification time, seconds
+104     4     ... and nanoseconds
+108     4     zero
+112     ...   the zlib stream
 ```
 
 All integers little endian. A record is used only when it reads, its length and CRC-32 are right, its stamp
-(bytes 4 to 47, and the inode) is the page's today, taken before the page was read, and the channels of the page's picture are what the record says: a
-changed page, a picture replaced by a gray or a colour one, another dpi or page size, a newer Grimoire, a
-damaged or truncated file, are all simply drawn again (full render on any doubt). The PDF's bytes are the same
-whether a page was drawn or found: streamed output is byte for byte a full render. A record is written
-through `p<id>.z.tmp` and a rename, without a sync: it is a cache, and a record cut short fails its checks.
-When a write fails (a full disk, a folder that cannot be made) the run goes on without the cache.
+(bytes 4 to 47, the inode and the notebook's paper) is the page's today, taken before the page was read, and
+its picture's (channels, size, time) is the picture file's today, taken before any page on it was drawn: a
+changed page, a picture made, replaced or gone, another dpi, page size or notebook paper, a newer Grimoire or
+renderer, a damaged or truncated file, are all simply drawn again (full render on any doubt). A page drawn
+while its picture was missing or did not decode (white paper, or gray in place of colour) is never kept, so
+the next PDF draws it again with its picture; and when a picture job for the notebook ends (a template, a
+photo, a page KOReader sent), the notebook's records go. The PDF's bytes are the same whether a page was drawn
+or found: streamed output is byte for byte a full render, and the cache can only make a PDF faster. A record
+is written through `p<id>.z.<pid>.tmp` and a rename, without a sync: it is a cache, and a record cut short
+fails its checks. When a write fails (a full disk, a folder that cannot be made) the run goes on without the
+cache.
 
 After a finished mirror the job prunes: the records of pages no longer in the notebook, the folders of
-notebooks that are gone, stray `share-<pid>.spool` files over an hour old, and then, past 256 MB in all, the
-oldest records first. Deleting `.cache/pdf/` loses nothing: the next mirror draws every page again.
+notebooks that are gone (and their mirror locks), stray `share-<pid>.spool` files over an hour old, and then,
+past 256 MB in all, whole notebooks, the one used longest ago first (a notebook's folder takes the time of its
+last mirror, a run that found every page counting as a use); the notebook in hand goes last, and only the
+records of its last pages. A mirror writes no record past the 256 MB (the notebook's records used or written
+in that run, in page order), so a notebook that alone is over the cap keeps its first pages' records, draws
+the same last pages at every close and writes nothing. Any background job's process also runs this prune,
+without a notebook in hand, at most once a day (its time is `.cache/pdf/.swept`), so the cache follows deleted
+notebooks with the mirror off too. Deleting `.cache/pdf/` loses nothing: the next mirror draws every page again.
 
-The PDF is written object by object to wherever it goes (a file, a connection, a zip entry), one page's
-stream in memory at a time, with the offsets kept for the xref; the mirror writes `<name>.pdf.tmp` as it goes
-and renames it over the old file when it is whole. The share server answers a PDF or zip download from a spool
-file it makes and unlinks at once (so the answer has its Content-Length), `.cache/pdf/share-<pid>.spool`; with
-no room for one it makes the file twice, once to count it and once into the connection. A zip's PDF entry is
-written with a data descriptor (flag bit 3) as stored deflate blocks, its sizes known only at its end.
+A mirror holds its notebook's lock, `.cache/pdf/<notebook id>.lock` (`flock`), for the whole job: a mirror an
+earlier run of Grimoire left running beside the one this run queued finishes first, and the newer state is
+written last (after 15 minutes of waiting the second goes on beside the first). The PDF is written object by
+object to wherever it goes (a file, a connection, a zip entry), one page's stream in memory at a time, with
+the offsets kept for the xref (64 bits, so a PDF may pass 4 GiB; one past 10 digits of offset fails); the
+mirror writes its own `<name>.pdf.<pid>.tmp` as it goes, syncs it, renames it over the old file when it is
+whole and syncs the folder. Each mirror sweeps the temporary files of mirrors that are gone from `PDFs/` and
+its folders: a `<name>.pdf.<pid>.tmp` whose process is not running (a writer killed by its cap, the kernel or
+a power cut), and an older build's `<name>.pdf.tmp` over an hour old. The share server answers a PDF or zip
+download from a spool file it makes and unlinks at once (so the answer has its Content-Length),
+`.cache/pdf/share-<pid>.spool`; with no room for one it makes the file twice, once to count it and once into
+the connection, and the second must give exactly the bytes counted (a notebook saved in between fails the
+download); a file past 4 GiB fails (its length is not said on the 32-bit Kindle). A zip's PDF entry is written
+with a data descriptor (flag bit 3) as stored deflate blocks, its sizes known only at its end. A zip has no
+zip64: an entry past 4 GiB, an entry that fails midway (its header is already out) or a central directory past
+32 bits fails the whole zip, never answered as good.

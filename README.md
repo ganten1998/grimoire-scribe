@@ -263,8 +263,9 @@ your notebooks and settings from `quire/` to `grimoire/` and removes the old Qui
   button shows a grid, it opens the picker directly.
 - **Templates**: copy PNG or JPG pictures into `grimoire/templates/` over USB while Grimoire is
   closed (upright, 3:4, 1860 x 2480 is best, light lines on white work best on e-ink). In a
-  notebook, Paper > **More layouts...** shows them; New notebook has the same button. Each notebook
-  keeps its own copy of a template it uses.
+  notebook, Paper > **More layouts...** shows them; New notebook has the same button. A template is
+  ready to pick once its tile shows its picture (Grimoire checks each new file in the background
+  first). Each notebook keeps its own copy of a template it uses.
 - **Pages you already have**: put a folder of page pictures (PNG or JPG, one per page, such as a
   PDF exported as pictures with `pdftoppm -gray -png -r 200 file.pdf page`) in
   `grimoire/import/<Name>/` and start Grimoire: it becomes the notebook <Name>, and the folder
