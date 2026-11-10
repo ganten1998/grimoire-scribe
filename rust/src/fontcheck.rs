@@ -1170,12 +1170,24 @@ pub fn check_font(data: &[u8], px: i32) -> FontOut {
     let mut next = 0usize;
     let mut spent = 0u64;
     let mut records = 0usize;
+    // The writer bounds the check itself (security review 2026-11): the worker's own word for its CPU time, and a
+    // watchdog that a record restarts, let a worker the font took over run slices for weeks (futex sleeps cost no
+    // CPU). A check is at most the slices its budget holds, and a slice at most what RLIMIT_CPU lets a worker run
+    // and one watchdog; the CPU the kernel counted for a slice's worker counts when it is more than it claimed.
+    let max_slices = job_ms / slice_ms.max(1) + 2;
+    let mut slices = 0u64;
     loop {
+        slices += 1;
+        if slices > max_slices {
+            return FontOut::Slow;
+        }
+        let cpu0 = children_cpu_ms();
         let mut w = match start_worker(data.len()) {
             Hello::Ready(w) => w,
             Hello::No(why) => return FontOut::NoWorker(why),
         };
-        let mut deadline = mono_ms() + watchdog_ms();
+        let slice_end = mono_ms() + slice_ms.max(s1::FONT_CPU_SECS * 1000) + watchdog_ms();
+        let mut deadline = (mono_ms() + watchdog_ms()).min(slice_end);
         let scale = facts.as_ref().map_or(0, |f| f.scale_pm);
         if !(w.send(&format!("F {} {} {} {} {}\n", data.len(), next, px, slice_ms, scale)) && w.send_bytes(data, deadline)) {
             let stalled = mono_ms() >= deadline;
@@ -1183,8 +1195,8 @@ pub fn check_font(data: &[u8], px: i32) -> FontOut {
             return if stalled { FontOut::Slow } else { FontOut::Dead("the worker ended") };
         }
         let started = next;
-        // one slice's records
-        loop {
+        // one slice's records (it ends at its N, with the CPU time the worker says it used)
+        let claimed = loop {
             let line = match w.read_line(1024, deadline) {
                 Ok(l) => l,
                 Err(ReadErr::Timeout) => {
@@ -1199,7 +1211,7 @@ pub fn check_font(data: &[u8], px: i32) -> FontOut {
                     return if cpu { FontOut::Slow } else { FontOut::Dead("the worker ended") };
                 }
             };
-            deadline = mono_ms() + watchdog_ms();
+            deadline = (mono_ms() + watchdog_ms()).min(slice_end);
             records += 1;
             // (4 MiB of records a job at most, DESIGN.md 4.3: a font has 65,535 glyphs, so far fewer)
             if records > 200_000 || !line.iter().all(|&c| (0x20..0x7f).contains(&c)) {
@@ -1280,8 +1292,7 @@ pub fn check_font(data: &[u8], px: i32) -> FontOut {
                         return bad(&mut w);
                     }
                     next = n as usize;
-                    spent += (ms as u64).max(1);
-                    break;
+                    break (ms as u64).max(1);
                 }
                 ("P", _, 3) => {
                     let (Some(f), Some(pw), Some(ph)) = (facts.as_ref(), num(1), num(2)) else { return bad(&mut w) };
@@ -1339,13 +1350,22 @@ pub fn check_font(data: &[u8], px: i32) -> FontOut {
                 }
                 _ => return bad(&mut w),
             }
-        }
+        };
         w.send("Q\n");
         w.finish(500);
+        spent += claimed.max(children_cpu_ms().saturating_sub(cpu0));
         if spent >= job_ms {
             return FontOut::Slow;
         }
     }
+}
+
+/// The CPU time of this process's reaped children (the workers), in ms.
+fn children_cpu_ms() -> u64 {
+    // SAFETY: ru is written by getrusage before it is read.
+    let mut ru: libc::rusage = unsafe { std::mem::zeroed() };
+    unsafe { libc::getrusage(libc::RUSAGE_CHILDREN, &mut ru) };
+    (ru.ru_utime.tv_sec as u64 + ru.ru_stime.tv_sec as u64) * 1000 + (ru.ru_utime.tv_usec as u64 + ru.ru_stime.tv_usec as u64) / 1000
 }
 
 // ---- the verdict: fonts/.cache/<key>.font ----
