@@ -680,14 +680,19 @@ Grimoire makes `import/` at startup, with a `README.txt`, if it is missing.
 
 A PDF in `import/` becomes a notebook of its pages, with no KOReader. A file in `import/<Folder>/` becomes a
 notebook in Library folder `<Folder>` (made if missing); a folder that holds PDFs and page pictures imports its
-PDFs first, then its pictures as above. A PDF picked anywhere is read in place and never moved; the others
-move to `import/done/<Name>-<YYYYMMDD-HHMMSS>.pdf` once imported. Names: the file's name without `.pdf`, numbered
-(" 2", " 3") when a notebook has it. The rules of the scan (at start, when the Library comes in front at most
-every 10 s, and again after 5 s while a file waits):
+PDFs first, then its pictures as above (a PDF refused, or tried 3 times and unchanged since, holds the pictures
+back no longer). Only a file that lies in `import/` (not `import/done/`) ever moves, to
+`import/done/<Name>-<YYYYMMDD-HHMMSS>.pdf` once imported: that is decided by where the file is, never by a mark,
+so a PDF picked anywhere else is read in place and never moved, and one picked in `import/` itself is filed in
+`done/` like a drop. Names: a name typed in New notebook's sheet (one of spaces only is none), else the file's
+name without `.pdf`, numbered (" 2", " 3") when a notebook has it. The rules of the scan (at start, when the
+Library comes in front at most every 10 s, again after 5 s while a file waits, and within 10 s of the end of a
+previous run's import):
 
 - **A file is taken when it is whole:** its size and mtime held across two looks at least 2 s apart, its mtime
-  is at least 5 s old, `%PDF-` is in its first KiB and `%%EOF` (white space after it allowed) in its last.
-  Links, dot-files, names that are not UTF-8 and paths of 600 bytes or more are skipped and counted.
+  is at least 5 s old (a stamp ahead of the clock counts as old), `%PDF-` is in its first KiB and `%%EOF` (white
+  space after it allowed) in its last; a file without that end that has not changed for a minute is taken as it
+  is. Links, dot-files, names that are not UTF-8 and paths of 600 bytes or more are skipped and counted.
 - **Pages:** one document page (image paper) per PDF page, the page fitted inside the Scribe page and centred
   on white (the crop box within the media box, turned by `/Rotate`; the scale is the smaller of the two
   ratios; the rendered size and offsets are whole pixels, as KOReader draws a page). At most 2000 pages and
@@ -701,29 +706,48 @@ every 10 s, and again after 5 s while a file waits):
   the colour. The KOReader route's pages stay gray.
 - **The book key** is KOReader's partial MD5 of the file (1 KiB samples at 0, 1 KiB, 4 KiB ... 1 GiB), written
   as `source=` in `notebook.ini` and `book=` in `source.ini` (`kind=paged`, a `page.<n>.<count>=<page id>` line
-  per page), so the KOReader route and the import find the same notebook. The same key again: "PDF already
-  imported." and the file moves to `done/`.
+  per page, and `links=1` when the import wrote `doclinks.ini`, so KOReader's Open this book does not ask for
+  the links again), so the KOReader route and the import find the same notebook. The same key again: "PDF
+  already imported." and a file of `import/` moves to `done/`. A copy of a PDF that is being imported waits for
+  that import (its job ends at once, counting nothing) and is then "already imported".
 - **Slices:** the work runs in slices of at most 25 pages or 20 s, each a background job
   (`BgKind::PdfImport` = 7) that exits "more to do" (status 3) until the last, which commits. Slice 0 probes
   (page count, caps), the others render, the last writes `source.ini`, `bg/pages.ini` and last `notebook.ini`,
   renames `notebooks/.import-<id>/` into place and moves the file. The slices' state is
   `notebooks/.import-<id>/pdf-import.ini` (`src`, `size`, `mtime`, `key`, `pages`, `next`, `pics` (the picture
-  id of each page made, hex), `blank`, `strikes`, `cpu_ms`, `owner`, `started`), which a start or a scan that
-  finds the file unchanged resumes from; a changed file removes the work.
+  id of each page made, hex), `blank`, `strikes`, `cpu_ms`, `pick`, `name`, `folder` (a pick's, kept here as in
+  its mark), `bytes` (what the pages made take), `open` (1 while a slice runs) and `stops`; 2.1.0-beta.2's
+  first builds wrote `owner` and `started`, read by nothing), which a start or a scan that finds the file
+  unchanged resumes from; a changed file removes the work. The picture index `bg/index.ini` is saved before any
+  state that names its pictures, and a slice that resumes first makes again every page from the first whose
+  picture or page file is gone. Removing a work folder deletes `pdf-import.ini` first. A slice that finds `open`
+  set counts its writer as cut off (a `stop`); a job past its CPU budget stops too, keeping its pages (it goes on
+  at a later scan with a budget of its own); at 3 stops the import fails whole. A later slice whose workers
+  cannot open the PDF three times fails it whole. Every slice checks that the pages left fit above the 100 MB
+  floor (estimated from what the pages made take), and again every 5 pages.
 - **A page that cannot be read:** its worker died or stalled twice (a strike each, in `strikes`), so it becomes
   a blank document page (`blank`), the import goes on and ends with "Imported notebook (%d pages). Some pages
-  couldn't be read." A PDF that fails before any page (no page tree, a password, the caps, the sandbox) fails
-  whole and keeps its file.
+  couldn't be read." A worker that stalls right after the Kindle woke (the wait slept through) is tried again
+  once without a strike. A PDF that fails before any page (no page tree, a password, the caps, the sandbox)
+  fails whole and keeps its file; so does one whose every page could not be read.
 - **Marks:** `import/.marks/<16 hex of the source path>` holds `state` (`making`, `waiting` or `done`), `id`,
-  `src` (the path from the storage root), `pick`, `name`, `folder`, `page`, `pages` and `at`; the coarse
-  progress a detached import leaves, rewritten at most every 20 s. `import/.attempts` also keys PDFs (a hash of
-  the file's name; the second hash is of its size and mtime): three tries, or a refusal, wait until the file
-  changes. A sandbox failure counts no try.
+  `src` (the path from the storage root), `pick`, `name`, `folder`, `page`, `pages`, `at`, and for `done` the
+  file's `size` and `mtime` (another file of that name later is a new file); the coarse progress a detached
+  import leaves, rewritten at most every 20 s. A mark goes when its import ends, whatever the end; `done` stays
+  only for a file of `import/` that could not move. A `waiting` mark (a pick made while another process held
+  the lock) is queued by the first scan that takes the lock afresh. A mark that is lost or does not read is
+  made again from `pdf-import.ini`. `import/.attempts` also keys the PDFs of `import/` (a hash of the file's path
+  under `import/`, so `A.pdf` and `Work/A.pdf` have a line each; the second hash is of its size and mtime), kept
+  for as long as the file is there: three tries, or a refusal, wait until the file changes. No room on the
+  storage, a sandbox failure and a worker that cannot start count no try; no room is tried again once 16 MB
+  more is free. A PDF picked anywhere else keeps no line (a pick is never taken again by a scan).
 - **A folder of pictures picked in place** (the picker's Import N pictures as notebook, 2.1.0-beta.2): the job's
-  path is the folder's path from the storage root (no leading `/`; the folders of `import/` have absolute ones),
-  its mark is the same file in `import/.marks/` (`pick=1`, `name`, `folder`) and goes when the notebook is made or
-  the import fails. The folder is walked by fsview and each picture opened without following a link; it is
-  never moved, marked or written to, and no attempt is recorded for it.
+  path is the folder's path from the storage root, told apart from the scan's folders by its negative dpi (a
+  pick's job is queued with `-dpi`; a scan's has an absolute path and the dpi itself), its mark is the same file
+  in `import/.marks/` (`pick=1`, `name`, `folder`) and goes when the notebook is made or the import fails. The
+  folder is walked by fsview and each picture opened without following a link; it is never moved, marked or
+  written to, and no attempt is recorded for it, unless it is a folder of `import/` itself: that one is filed in
+  `import/done/` like a drop, and the scan leaves it to its pick while the pick's job is queued or running.
 - **Links and names (lane L6):** slice 0 also asks the worker for the PDF's links (`LINKS <w> <h>`, after the page
   count), in the pixels of the Scribe page by the same transform that draws the page, and keeps what it sent in
   the work folder as `links.part` (the `L` and `Q` records, then `F`) and `names.part` (the `O` records), in the
@@ -749,8 +773,10 @@ every 10 s, and again after 5 s while a file waits):
   left links out the end says "Imported notebook (%d pages). Some links were left out." (the pages-not-read
   ending wins when both apply).
 - **One owner:** `import/.lock` (flock) is taken by the UI without blocking before it queues any import and
-  held while any is queued or running, through one close-on-exec handle; each background child (and the child
-  that finishes the queue after Grimoire closes) keeps that descriptor. No job opens it or waits for it.
+  held while any is queued or running, through one close-on-exec handle; an import's background child (and the
+  child that finishes the queue after Grimoire closes, when it has an import left) keeps that descriptor, and
+  every other child closes it. No job opens it or waits for it. An import the job queue drops (a full queue, a
+  fork that fails) is let go of at the next scan and queued again.
 
 ### Annotated pages: `root/import/.annotate/` and `source.ini` (1.1 on)
 

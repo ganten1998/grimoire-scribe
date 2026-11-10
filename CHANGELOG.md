@@ -26,13 +26,19 @@
   412", the PDF moves to `import/done/`, and a PDF already imported says so. Pages with colour are kept in
   colour (the Scribe shows gray); a page that cannot be read ends blank and the notebook says "Some pages
   couldn't be read." (a PDF with no readable page is not imported). More than 2000 pages, over 512 MB or a password are refused with a message.
+  A PDF that is refused, or fails three times, waits until the file changes; a full storage counts nothing
+  against it, and it goes once there is room. An import cut off (Grimoire closed, the Kindle off) goes on where
+  it stopped, and makes again any page whose files were lost. As for a folder of pictures, no toast says
+  "Imported notebook" when the Library shows the new card.
 - **Library > New > From a file... picks a PDF or a folder of pictures anywhere on the Kindle.** It opens Files:
   Import (with a status on every row: Waiting, "Importing: page 40 of 365", Imported, and a Look again row),
   Documents, Downloads and All storage. A tap on a PDF opens its card (size and date, Import as notebook, or Open
   its notebook when a notebook already holds the book: "has notes" shows on its row); the second tap imports it.
   A folder of pictures imports from its card (a hold or its `...`). The notebook is named as typed in the sheet,
   else as the file, and goes in the sheet's folder. The file is only read: it stays where it is, no link is ever
-  followed, and Grimoire's own notebooks, PDFs and trash are never listed.
+  followed, and Grimoire's own notebooks, PDFs and trash are never listed. (A file picked in Import itself is
+  filed in `import/done/` like a dropped one.) A file picked while an import from an earlier run is still going
+  is imported once that one is done: "Another import is still going. This one starts after it."
 - A PDF dropped in `grimoire/import/` brings its links and page names too: a planner's tabs work in the notebook
   it becomes (the PDF's internal links, including those by name, the next, previous, first and last page links,
   and links drawn as several boxes; web links are left out), and its outline names the pages. A planner with more

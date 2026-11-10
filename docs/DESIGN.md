@@ -1938,11 +1938,20 @@ no network or System V IPC (unshare), chroot into an empty directory on /tmp (ch
 and gid 62001 (checked unused), no new privileges and not dumpable, the parent-death signal, the limits
 (`RLIMIT_NOFILE` 0, `NPROC` 0, `FSIZE` 0, `CORE` 0, `AS`, `CPU`) and a seccomp allow-list (read, write, the
 mmap family, brk, futex, clock_gettime, rt_sigreturn, exit) whose violation traps into a reporter. A refused
-step marks nothing and counts no try; the session then imports no more PDFs. Off the Kindle the steps are
+step, or a worker that cannot be started, marks nothing and counts no try; the session then imports no more PDFs
+(a later slice keeps the pages it made, for the next start). The writer ignores SIGPIPE, and reads a worker's last
+records after a send that failed. The page watchdog runs on CLOCK_MONOTONIC (a sleep does not count); a page
+whose wait the Kindle slept through and that then stalls is tried again once without a strike. Off the Kindle the steps are
 skipped (plain process isolation) unless GRIMOIRE_SANDBOX=require. The worker's records are text lines of a
 fixed grammar plus pixel bands, at most 4 MiB a job besides pixels, parsed strictly (`pdfwork.rs`); every
 number the device spike (S1) sets is in the one table `sandbox::s1`, marked "set by S1". The notebook, its
-slices, marks and colour rule are in FORMAT.md, "Imports: PDFs".
+slices, marks and colour rule are in FORMAT.md, "Imports: PDFs". Two rules hold the import together (the fix round
+of 2026-11-09): whether a file may be moved is decided by where it lies (`pdfimport::in_import`), never by a mark;
+and the state never names a picture the saved index does not (the index is saved first; a resume checks the files
+and makes again what is gone). Only an import's child keeps the import lock's descriptor (`bgjob::child_setup`),
+so a compaction or a mirror that starts as the last import ends never holds it; a pick that met a lock held
+elsewhere is queued by the first scan that takes it afresh, and the tick tries the lock every 10 s while a
+previous run's detached import holds it.
 
 The links and names (lane L6) come out of the same worker. After the page count the writer sends `LINKS <w> <h>`;
 the worker walks the annotations of every page (`pdfwork.rs`, module `links`), resolves each destination to a
@@ -2065,14 +2074,17 @@ are routed in `library.rs` as the Graph's are, and two fingers down does nothing
   stats, picture counts and book keys of the rows on screen on idle ticks. The action checks the file again
   ("File changed. Try again."). The jobs that follow open the file through the same walk: a PDF is
   `pdfimport::pdf_import_queue`, a folder of pictures `bgwork_template::import_pick_queue` (marks in
-  `import/.marks/`, the source never moved or written, each picture opened `O_NOFOLLOW`).
+  `import/.marks/`, the source never moved or written, each picture opened `O_NOFOLLOW`; a pick inside
+  `grimoire/import` itself is filed in `import/done/` as a drop is, decided by where it lies).
 - **Names (D28).** The notebook takes the file's name (a folder's, for pictures) unless a name was typed in the
   sheet (`new_name_typed`), and goes in the sheet's In: folder; the paper tiles do not apply.
 - **The Import place** reads each row's status from the marks, the queue and the attempts
-  (`pdfimport::import_status`, `bgwork_template::folder_failed`) at most once a second, and redraws only the rows
+  (`pdfimport::import_status`, `bgwork_template::folder_failed`): the PDF rows' when the import's progress changes
+  (looked at at most once a second), every row's every 5 s (a folder's lists the folder), and redraws only the rows
   that changed. The staying notice of an import stays off that place (`library_import_place_up`): its rows say it.
 - **"has notes"** is the PDF's book key (KOReader's partial MD5, 12 reads of 1 KiB through the walk) compared with
-  the notebooks' `source=`; the card then offers Open its notebook.
+  the notebooks' keys (`source=`, else the book their `source.ini` names), read once for the picker's session; the
+  card then offers Open its notebook.
 - **Logs** carry counts and timings only ("files: listed N entries (M usable) in T ms"), never a name.
 
 ## Shared building blocks (2.1, lane L0)

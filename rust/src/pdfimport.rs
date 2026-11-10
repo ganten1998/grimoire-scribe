@@ -2097,7 +2097,8 @@ fn later_slice(id: &str, src: &str, abs: &str, source: &Src, mut state: State) -
         store_page_size(&mut w, &mut h);
         (w, h)
     };
-    let band_mode = read_mem_available().is_some_and(|a| a < s1::BAND_MODE_BELOW_AVAILABLE);
+    let mem = read_mem_available();
+    let band_mode = mem.is_some_and(|a| a < s1::BAND_MODE_BELOW_AVAILABLE);
     let bands = if band_mode { s1::BANDS } else { 1 };
     let mapped = can_map(std::os::fd::AsRawFd::as_raw_fd(&source.fd), source.size);
     let limits = Limits { as_bytes: worker_as_bytes(source.size, band_mode), cpu_secs: s1::SLICE_CPU_SECS, mapped, file_len: source.size };
@@ -2220,9 +2221,6 @@ fn later_slice(id: &str, src: &str, abs: &str, source: &Src, mut state: State) -
         state.next += 1;
         made += 1;
         progress().page.store(page, Ordering::Relaxed);
-        if made % 10 == 0 {
-            qlog!("import: %s: %d of %d pages", id, page as i32, state.pages as i32);
-        }
         if made % FLOOR_EVERY == 0 && state.next <= state.pages && !room_for_rest(&state) {
             qlog!("import: %s: not enough room for the %d page(s) left; nothing imported", id, (state.pages + 1 - state.next) as i32);
             end = Some(fail(id, R_STORAGE, 0));
@@ -2281,6 +2279,19 @@ fn later_slice(id: &str, src: &str, abs: &str, source: &Src, mut state: State) -
         return fail(id, R_STORAGE, 0);
     }
     bgindex_free(&mut ix);
+    // (a page's time on this Kindle, for the owner's checks: the slice's pages, its wall time, the memory it saw)
+    if made > 0 {
+        qlog!(
+            "import: %s: pages %d to %d of %d in %d ms (MemAvailable %d MB, %d band(s))",
+            id,
+            (state.next - made as u32) as i32,
+            state.next as i32 - 1,
+            state.pages as i32,
+            (mono_ms_now() - t0) as i32,
+            mem.map_or(-1, |m| (m >> 20) as i32),
+            bands as i32
+        );
+    }
     let last = state.next > state.pages;
     write_progress_mark(src, None, &state, id, state.next.saturating_sub(1), state.pages, last);
     if !last {

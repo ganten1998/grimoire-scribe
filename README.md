@@ -273,7 +273,11 @@ your notebooks and settings from `quire/` to `grimoire/` and removes the old Qui
   runs, and open the Library: a notice at the bottom says how far it is ("Importing: page 37 of 412"), and
   the notebook appears. Its pages are the PDF's pages, in colour where the PDF has colour (the Scribe shows
   them in gray). A PDF put in a folder there goes into the Library folder of that name, and the PDF moves
-  to `import/done/`. KOReader's Open this book still works for books and for the pages it draws.
+  to `import/done/`. Up to 2000 pages and 512 MB; a longer or bigger PDF, or one with a password, is refused
+  with a message, and the same PDF a second time says "PDF already imported.". A page that cannot be read
+  becomes a blank page and the end says so ("Some pages couldn't be read."); a PDF with no page that reads is
+  not imported. A PDF that fails waits until you replace it (three tries); one that found the storage full goes
+  once there is room. KOReader's Open this book still works for books and for the pages it draws.
 - **A file anywhere on the Kindle**: Library > New > **From a file...** opens Files, titled "Import a PDF or
   pictures": Import (`grimoire/import`, with what each file is doing: Waiting, "Importing: page 40 of 365",
   Imported, and a Look again row), Documents, Downloads and All storage (Grimoire's notebooks, PDFs and trash
@@ -282,7 +286,8 @@ your notebooks and settings from `quire/` to `grimoire/` and removes the old Qui
   the second tap imports it. A folder of pictures is imported from its `...` (or a finger held on it) card.
   The notebook takes the file's name unless you typed one in the New notebook sheet first, and goes in that
   sheet's folder. The file stays exactly where it was: Grimoire only reads outside its own folders, and never
-  follows a link.
+  follows a link (a file picked in Import itself is filed in `import/done/` like one dropped there). A file
+  picked while an import from an earlier run is still going is imported once that one is done.
 - **Erased ink leaves the files**: when a notebook closes, ink erased entirely is taken out of its
   page files in the background. A stroke erased only in part stays whole in the file.
 

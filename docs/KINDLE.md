@@ -458,14 +458,24 @@ file name, title or key ever appears in it: ids, page numbers, counts, timings, 
 
 - `work: sandboxed (uid 62001, chroot, netns, no new privileges, seccomp, selinux enforcing|permissive|off)`:
   once a session, at the first worker. `work: not sandboxed (...)` anywhere the steps are skipped.
-- `import: <id>: N page(s), the PDF is N KB`, `import: <id>: N of M pages` (every 10), then `import: notebook
-  <id> made of N page(s), N picture(s), N blank`.
+- `import: <id>: N page(s), the PDF is N KB` (the probe), then for each slice `import: <id>: pages A to B of M in
+  T ms (MemAvailable K MB, N band(s))` (a page's time is T over the slice's pages), then `import: notebook <id>
+  made of N page(s), N picture(s), N blank`.
 - `import: N PDF(s) queued; left as they are: ...`: a scan's counts (not yet steady, tried out, imported,
-  skipped, held elsewhere).
+  skipped, held elsewhere, waiting for room).
+- `import: <id>: its last slice was cut off (K of 3)`, `... the job used more CPU than S s; it stops here (K of 3)
+  and goes on later`, `... it stopped 3 times without finishing; nothing imported`: an import that keeps not
+  finishing ends after three stops. `... the files of the pages from N are gone; they are made again`: a resume
+  found pages without their picture or page file. `... page N of M: the worker stalled right after a wake; tried
+  again (no strike)`.
+- `import: <id>: a copy of this PDF is being imported; this one waits for its notebook`, `import: N pick(s) that
+  waited for the lock queued`, `import: PDF import <id> was dropped from the queue; ...`, `import: the import
+  from an earlier run has ended`.
 - `import: <id>: page N of M: the worker died of signal S (strike K)` or `... stalled ...` or `... made call C,
   which the sandbox does not allow` (a call to add to `sandbox::s1::allow` with the spike's numbers); after the
   second strike `... could not be read ...; it is blank`.
-- `import: <id>: the sandbox refused its step "<step>": no PDF is read and no try is counted`.
+- `import: <id>: the sandbox refused its step "<step>": no PDF is read and no try is counted`, or `import: <id>: a
+  worker could not be started (<why>): no try is counted`: either way the session imports no more PDFs.
 - Pictures (templates, photos, picture folders) are decoded by the same worker (`grimoire --work pic ...`), which
   serves up to 32 pictures and is then replaced. `work: a picture's worker ended (the worker ended|the worker
   stalled)` and `... made call C, which the sandbox does not allow`: the picture in hand is marked `.bad` (a

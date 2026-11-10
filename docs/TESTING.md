@@ -1917,8 +1917,8 @@ holds, so it takes a moment longer):
    Areas: the dotted boxes sit on the printed tabs and cells, none numbered. A tap just outside a box but within
    a finger's reach still goes to the nearest.
 2. **Load time.** A notebook whose `doclinks.ini` is at its cap (16,000 links) opens in at most 150 ms of
-   reading it (`grimoire.log` has the notebook's open time; compare with and without the file). If it takes
-   longer the plan is to load it in slices after the first page.
+   reading it (grimoire.log has no open-time line: time the tap on its card to its first page, with and without
+   the file). If it takes longer the plan is to load it in slices after the first page.
 3. **Copy page.** Copy page on a month page of a full planner takes under 300 ms and the copy's tabs work; on a
    planner already past 90% of the cap the copy has no tabs and says "Copied without links: couldn't save them."
 4. **The hold arms Select on a month page.** Hold a finger on a day cell: the lasso arms (no card opens);
@@ -1969,16 +1969,18 @@ image papers) and `grimoire.log` readable over USB or SSH. The mirror job logs o
 Automated: the unit tests (`rust/tests/test_pdfimport.rs` runs real workers over generated PDFs: pages, colour
 and gray, password, caps, hostile files, a page that kills or stalls its worker twice, resume, duplicates, bands
 against whole pages, the mapping against reading whole, the fit for every rotation and crop, the sandbox
-refusing a step), eight scenarios (`z_pdf_*.qs`), the strings' fit (`test_pdf_strings.rs`), `cargo deny`, the
-crate-date check and `tests/package_check.sh` (every crate in `rust-crates.txt`, the size guard).
+refusing a step; the fix round's: `test_import_queue.rs` for the scans, the lock and the picks), nine scenarios
+(`z_pdf_*.qs`), `tests/import_check.py`, the strings' fit (`test_pdf_strings.rs`), `cargo deny` and
+`tests/package_check.sh` (every crate in `rust-crates.txt`, the size guard). The crate-date check
+(`tools/check-crate-dates.py`) is run by hand for a tag: it needs the network.
 **Not run anywhere yet: the sandbox's real steps** (`rust/tests/test_sandbox_linux.rs` needs Linux and root; the
 CI job `sandbox` is their first run) and everything on a Scribe. The owner's checks on the Scribe (S1's numbers
 replace the placeholders in `sandbox::s1` with one commit):
 
 1. Copy a real planner PDF into `grimoire/import/` over USB, open Grimoire: "Importing: page N of M" stays at
    the bottom of the Library and the cards stay usable; at the end the card appears and no toast says so.
-   Time a page from grimoire.log (the `import: ... N of M pages` lines are 10 pages apart), and the
-   worker's memory (`VmHWM` in `/proc/<pid>/status` while it runs: `grimoire --work pdf`).
+   Time a page from grimoire.log (each slice logs `import: <id>: pages A to B of M in T ms (MemAvailable K MB,
+   N band(s))`), and the worker's memory (`VmHWM` in `/proc/<pid>/status` while it runs: `grimoire --work pdf`).
 2. grimoire.log has `work: sandboxed (uid 62001, chroot, netns, no new privileges, seccomp, selinux ...)` and no
    `the sandbox refused its step`. If a step is refused, send the log (the plan goes back to the owner, D21).
    A line `made call N, which the sandbox does not allow` names a system call the allow-list must gain.
@@ -1987,14 +1989,14 @@ replace the placeholders in `sandbox::s1` with one commit):
    coarse progress; the notebook appears once.
 4. An import across a restart resumes (kill Grimoire's process in the middle, start it: "goes on from page N").
 5. A colour PDF: its pages open in gray, the notebook's storage is larger than a gray one's, and the Library
-   and Pages view stay quick (no memory warning, `MemAvailable` in the log).
+   and Pages view stay quick (no memory warning; the slice lines give `MemAvailable`).
 6. A PDF with a broken page (or a copy with one page's content stream damaged): the notebook appears with a
    blank page and the toast "Imported notebook (N pages). Some pages couldn't be read."
 7. A PDF with a password: "PDF needs a password."; one over 2000 pages: "PDF too long: notebooks hold 2000
    pages."; the same PDF twice: "PDF already imported."; a file being copied (copy a big one over USB and
    watch) waits until it is whole.
-8. Does the private mapping of a file on `/mnt/us` work (`pdf: ... the device refuses the private mapping` would
-   say not), and what does a 100 MB PDF do to the memory?
+8. Does the private mapping of a file on `/mnt/us` work (`import: <id>: the device refuses the private mapping of
+   the PDF` would say not), and what does a 100 MB PDF do to the memory?
 
 
 ## 2.1.0-beta.2, the file picker (lane L8)
@@ -2006,7 +2008,7 @@ Run on the Scribe (the headless scenarios z_files_1 to z_files_5 and tests/l10n/
 2. **Listing and stat timings on a big `documents/`** (a few thousand files): open Documents and read grimoire.log:
    `files: listed N entries (M usable) in T ms` (counts and timings only, never a name). Note T for the first
    screen, whether "Loading..." appears (over 1 s), and whether the rows' sizes and dates arrive quickly after.
-   Send the log line and the folder's size. Also a folder of 5,000+ files: "Showing the first 5,000."
+   Send the log line and the folder's size. Also a folder of 5000+ files: "Showing the first 5000."
 3. A planner PDF in `documents/`: a tap on it opens its card beside the row ("14.2 MB, Oct 30", Import as
    notebook, Cancel); the second tap imports it, the Library comes back with "Importing: page N of M" at the
    bottom, and the card appears at the end. **The PDF is still in `documents/`, unchanged** (check over USB:
@@ -2138,3 +2140,39 @@ load's time and memory, the look on e-ink. The owner's checks:
     If Grimoire is ever killed in that moment (hold the power button the instant the first screen appears),
     the next start is in Terminess once (the log says `the last start did not finish its first screen with your
     font`), and the start after has your font back.
+
+## 2.1.0-beta.2, fix round, F1 (imports, the picker, the job queue)
+
+Automated: `rust/tests/test_import_queue.rs` (the scans, the lock, the picks that wait, the queue that drops a
+job, the notice), the fix round's tests at the end of `test_pdfimport.rs` (a pick never moved, a resume that makes
+lost pages again, a copy that waits, workers that cannot open or start, SIGPIPE, the CPU budget, a writer cut off,
+`links=1`, a stall after a wake), three in `test_browser.rs` (Back past a gone folder, a gone row, `done-old`), one
+in `test_pdflinks_import.rs` (QuadPoints), `tests/import_check.py` (a pick that waited is imported at the next
+start). On the Scribe, with grimoire.log readable over USB or SSH:
+
+1. **A refused PDF is told once.** Copy a PDF with a password into `grimoire/import/`, open the Library: "PDF needs
+   a password." once. Leave the Library and come back a few times over a minute: no second toast, and the log's
+   scan lines count it among "failed and have not changed since". Replace the file with an unlocked copy: it
+   imports.
+2. **A pick that has to wait.** Start a big import, close Grimoire in the middle (it goes on in the background),
+   open Grimoire again at once and pick another PDF in Documents: the toast "Another import is still going. This
+   one starts after it."; when the first ends (the notice goes within about 10 s of it), the picked one imports by
+   itself, and stays in Documents.
+3. **Nothing holds the lock after the last import.** Import a small PDF and, while it runs, close a big notebook
+   you wrote in (its mirror or compaction queues behind): as soon as the import ends, pick another PDF: it starts
+   at once (no wait toast; the log has no "an import from an earlier run is still going").
+4. **A file picked in Import itself** goes to `import/done/` when its notebook is made, with the name typed in the
+   sheet; the Import place, after Look again, shows it in done.
+5. **Cut off and resumed.** In the middle of a 300-page import, hold the power button until the Kindle restarts
+   (or kill Grimoire's process over SSH twice, a minute apart): the import goes on from where it was ("goes on
+   from page N"), and at the end every page has its picture (turn through the first pages). After three cuts in
+   a row the import gives up with "Couldn't import PDF (see grimoire.log)." and the log says "stopped 3 times".
+6. **Storage.** With under about 150 MB free, drop a scanned PDF of large pages: it is refused with "Couldn't import
+   PDF. Is the storage full?" before the storage runs low (the slices check the floor every 5 pages), no work folder
+   is left, and after freeing 20 MB or more the next Library visit imports it.
+7. **Sleep and wake in the middle** of an import: if the log ever says `stalled right after a wake; tried again (no
+   strike)`, the page after it should still import (send the lines around it).
+8. **Two copies of one PDF** dropped together: one notebook, one toast "PDF already imported." a moment after the
+   first import ends, both files in `done/`.
+9. **Timing a page** now comes from the slice lines: `import: <id>: pages A to B of M in T ms (MemAvailable K MB,
+   N band(s))`. Send a few for a planner and for a scanned book: they set S1's slice and CPU numbers.

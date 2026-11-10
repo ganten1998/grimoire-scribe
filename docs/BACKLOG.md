@@ -29,19 +29,35 @@ why. Newest decisions first within each section.
   change the UI process's book flow); the fallback flag set in one job child does not reach the UI or the next
   child (each finds out for itself, at the cost of one failed start), and `install_picture` on the UI thread
   starts a worker for a small template with no preview yet.
-- **The picker (lane L8)** calls `pdfimport::pdf_import_queue(&StoragePath, name, folder, dpi)`; the Import place's
-  Waiting row reads `pdfimport::detached_running()`. The runner's `pdfimport` command stands in until then.
-- **The notebook PDF (lane L9)**: MERGE-ME: the mirror and the share pages draw pages through `bgimage_render`,
-  which holds only the luma canvas, so they embed the gray render of a colour page (FORMAT.md says so); if L9's
-  streamed PDF ever embeds a page's picture file directly, a colour page is a 3-channel PNG and must be
-  converted or embedded as DeviceRGB. `child_setup` only gained the lock's descriptor; L9's caps are still to add.
-- **Not done**: the Import place's rows (L8); a card for the notebook being made;
-  an update while a detached import runs is covered only by the worker being `/proc/self/exe` (no scenario).
-- **Choices the plan did not settle**: a page's blank replacement is a white image page (shared by content);
-  the colour tolerance is 6 levels (pdfwork::GRAY_TOLERANCE); a PDF whose every page is unreadable is still a
-  notebook of blank pages; a PDF that fails before any page keeps its file and costs a try (3 tries, then it
-  waits until it changes); the "Some pages couldn't be read." ending shows even with the Library in front; a PDF
-  in a Library folder gets a toast "Imported notebook" since its card is not on the Library's top.
+- **The picker (lane L8)** and **the notebook PDF's colour and caps (lane L9)**: done in 2.1.0-beta.2 (their own
+  sections below).
+- **Not done**: a card for the notebook being made. An update while a detached import runs has no scenario: the
+  headless runner cannot make a second build to update to, and how the Kindle's package manager replaces a
+  running binary (a rename over it, or a write into it) is unknown. What holds by construction: the detached
+  child and its writer go on in the old image; on the Kindle a worker is `/proc/self/exe`, the old image too;
+  a worker that answers another build is refused as a worker that cannot start (nothing counted, the pages made
+  kept, the session's imports stop), and the next start resumes the import with the new build. To check on the
+  Scribe with a real update (TESTING.md, the fix round's checks).
+- **The CPU budget's numbers wait for S1** (`s1::JOB_CPU_BASE_SECS`, `JOB_CPU_PER_PAGE_SECS`). The mechanism is
+  built (the fix round, M10): the budget counts the job's own workers from its probe on, and a job past it stops,
+  keeping its pages, and goes on at a later scan with a fresh budget; three stops (a cut-off writer counts as
+  one) end the import whole.
+- **The fix round's choices (2026-11-09; the plan and the review left them open)**: no room is never the file's
+  fault: nothing is counted, the work folder goes (its space is what the user needs back), and the scan takes
+  the PDF again only once 16 MB more is free (a session's memory: a restart tries once); a later slice whose
+  workers cannot open the PDF three times fails the import whole (the review's "bounded"); a worker that cannot
+  start stops the session's PDF imports as a sandbox failure does (the review's "as the sandbox failure"), so a
+  worker that never starts cannot loop at every scan; a copy of a PDF being imported ends at once and is taken
+  again by the scan after that import (the review's first option for H9); a picture-folder import whose card
+  the Library shows toasts nothing, as a PDF's (D20); a picked PDF's or folder's mark goes whatever the end.
+- **Kept from L5**: a page's blank replacement is a white image page (shared by content); the colour tolerance is
+  6 levels (pdfwork::GRAY_TOLERANCE); a PDF whose every page is unreadable fails whole (the fix of L5's merge);
+  a PDF that fails before any page keeps its file and costs a try (3 tries, then it waits until it changes; a
+  pick elsewhere keeps no record); the "Some pages couldn't be read." ending shows even with the Library in front;
+  a notebook in a Library folder gets the toast "Imported notebook" since its card is not on the Library's top.
+- **The scan's prune of import/.attempts runs in the UI** (the record is otherwise the jobs' to write): it reads
+  the file again just before it writes, which leaves a few milliseconds in which a job's note can be lost. Found
+  in the fix round, not fixed: moving the prune into the jobs is a change of who owns the file.
 - **Crates**: skrifa is now a direct dependency (your own fonts, L10), pinned to the 0.46.2 hayro brings: no
   crate is added. Cargo.lock names a second skrifa and read-fonts (glifo's optional dependency), not built; the build
   has three duplicates (fearless_simd, miniz_oxide, syn), not the plan's five. flate2, smallvec and syn were
@@ -760,7 +776,6 @@ Ideas, not plans: each needs the owner's go and its own design. No code is taken
   `seed_holders`); the stroke's own seed is not checked against document links when a *fill* picks the
   document link's seed (only the user's links are; ink seeds are 32-bit hashes, a clash would be harmless
   since a document link has an area and never takes an ink box).
-- **package_check.sh** (lane L5's) should list `links` among app/grimoire.sh's required capabilities.
 
 ## Notebook PDF cache and child caps (lane L9, 2.1.0-beta.2): what waits
 
@@ -1002,10 +1017,11 @@ Ideas, not plans: each needs the owner's go and its own design. No code is taken
 
 ## The file picker (2.1.0-beta.2, lane L8): what waits
 
-- **A pick that waits has no retry.** When a previous run's detached child still holds the import lock,
-  `pdf_import_queue` and `import_pick_queue` write a `waiting` mark and return Waiting: nothing queues the file
-  again outside `grimoire/import` (the scan only walks `import/`). The user picks the file again once the notice
-  has gone. (L5's behaviour, kept; the picker shows no toast for it, as D20 asks.)
+- **A pick that waits**: fixed in the fix round (H2). The `waiting` mark is queued by the first scan that takes the
+  lock afresh, and the Library says so when a pick has to wait ("Another import is still going. This one starts
+  after it.").
+- **The Loading notice after Back during a slow listing** is cleared once any folder is read (the fix round, M18):
+  checked by reading only; a test needs a listing slower than a second in the headless runner.
 - **Folder rows count their pictures by listing the folder** (on the idle tick, one folder a tick, at most 200 ms
   each) to show "%d pictures" and to offer Import %d pictures as notebook. On a big `documents/` of big folders over
   FUSE that is unmeasured: TESTING.md has the timing check. A cheaper rule (count only when the card opens) is
