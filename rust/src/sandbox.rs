@@ -22,9 +22,14 @@
 use crate::prelude::*;
 use std::ffi::CString;
 
-/// The numbers the device spike (S1, DESIGN.md section 9) sets. ONE table: every value marked "set by S1" is
-/// a placeholder taken from the plan (4.3, 7) until the Scribe has been measured, and the spike's numbers go
-/// in here with one commit. Nothing else in the tree holds a copy of any of them.
+/// The numbers the device spike (S1, DESIGN.md section 9) sets. ONE table: nothing else in the tree holds a copy
+/// of any of them. Measured on the owner's Scribe on 2026-11-09 (Linux 4.9, 2 cores, 433 MB available with
+/// KOReader open): every sandbox step works there, a private read-only mapping of a file on /mnt/us works (so
+/// PDFs are mapped, `PDF_MAX_MAPPED`), and hayro draws a planner page in 90 ms (median; 146 ms at most) and a
+/// photo page in 230 ms (275 ms at most), using 27 to 38 MB whole and 13 to 25 MB in bands. The values marked
+/// "set by S1" were the plan's placeholders (4.3, 7) and are kept: each has 30 to 60 times the room those
+/// pages need (the page watchdog against the slowest page, the job's CPU budget against a 380-page planner's
+/// 35 s, a slice's CPU cap against its pages). A page that is one huge scan was not measured.
 pub mod s1 {
     /// A slice of a PDF import is at most this many pages ... (set by S1)
     pub const SLICE_PAGES: usize = 25;
@@ -83,7 +88,7 @@ pub mod s1 {
     /// bitmaps at the largest size, stb's edges. (set by S1)
     pub const FONT_AS_MARGIN: u64 = 64 << 20;
     /// D12's trigger: if the median planner page takes longer than this whole on the Scribe, a PDFium helper is
-    /// weighed before this goes on. Nothing in the code reads it. (set by S1)
+    /// weighed before this goes on. Nothing in the code reads it. (S1 measured 90 ms: not triggered.)
     pub const D12_TRIGGER_PAGE_MS: u32 = 2_000;
     /// The seccomp allow-list, as the spike's self-test found the calls musl really makes (the time64 calls
     /// musl tries first answer ENOSYS instead: ENOSYS_CALLS). (set by S1)
@@ -166,7 +171,9 @@ pub struct SysNums {
     pub rt_sigreturn: u32,
     pub exit: u32,
     pub exit_group: u32,
-    /// the time64 calls musl tries first on the 32-bit ARM: they answer ENOSYS
+    /// calls that answer ENOSYS instead of trapping: the time64 calls musl tries first on the 32-bit ARM, and
+    /// gettid, which only a panic's message asks for (S1 saw it trap there), so a worker that panics still
+    /// reports "E panic" and ends by its own `_exit`
     pub enosys: &'static [u32],
     /// calls that reach out, which no worker may make (the tests check they trap): socket, execve, kill,
     /// ptrace, mount, chroot
@@ -189,8 +196,8 @@ pub const ARM: SysNums = SysNums {
     rt_sigreturn: 173,
     exit: 1,
     exit_group: 248,
-    // clock_gettime64, clock_getres_time64, clock_nanosleep_time64, ppoll_time64, futex_time64
-    enosys: &[403, 406, 407, 414, 422],
+    // clock_gettime64, clock_getres_time64, clock_nanosleep_time64, ppoll_time64, futex_time64; gettid
+    enosys: &[403, 406, 407, 414, 422, 224],
     reach_out: [281, 11, 37, 26, 21, 61],
 };
 
@@ -210,7 +217,7 @@ pub const X86_64: SysNums = SysNums {
     rt_sigreturn: 15,
     exit: 60,
     exit_group: 231,
-    enosys: &[],
+    enosys: &[186], // gettid
     reach_out: [41, 59, 62, 101, 165, 161],
 };
 
@@ -230,7 +237,7 @@ pub const AARCH64: SysNums = SysNums {
     rt_sigreturn: 139,
     exit: 93,
     exit_group: 94,
-    enosys: &[],
+    enosys: &[178], // gettid
     reach_out: [198, 221, 129, 117, 40, 51],
 };
 
@@ -1187,6 +1194,19 @@ mod tests {
             // another architecture's call numbers are never taken for ours
             assert_eq!(eval_filter(&f, n.audit_arch ^ 1, al[0]), SECCOMP_RET_TRAP);
         }
+    }
+
+    // A panic's message asks for gettid (S1 saw it trap on the Scribe): it answers ENOSYS on every architecture,
+    // so a worker that panics reports "E panic" instead of dying of SIGSYS.
+    #[test]
+    fn gettid_answers_enosys() {
+        for (n, gettid) in [(&ARM, 224u32), (&X86_64, 186), (&AARCH64, 178)] {
+            assert!(n.enosys.contains(&gettid), "{gettid}");
+            let f = build_filter(n.audit_arch, &allow_list_for(n), n.enosys);
+            assert_eq!(eval_filter(&f, n.audit_arch, gettid), SECCOMP_RET_ERRNO | 38);
+        }
+        #[cfg(target_os = "linux")]
+        assert!(this_arch().enosys.contains(&(libc::SYS_gettid as u32)));
     }
 
     // The calls a worker must never make (socket, execve, kill, ptrace, mount, chroot) are not on any
