@@ -63,9 +63,28 @@ fn the_start_never_empties_a_folder_through_a_linked_request_folder() {
     let _ = std::fs::remove_dir_all(&top);
 }
 
+// (and the caches the background jobs prune: templates/.cache, whose stale previews the previews job deletes, and
+// fonts/.cache, whose entries for files that are gone the font check deletes)
+fn the_caches_are_never_pruned_through_a_link() {
+    let (root, top) = setup("caches");
+    let (v1, v2) = (victim(&top, "outside4"), victim(&top, "outside5"));
+    std::fs::create_dir_all(format!("{root}/templates")).unwrap();
+    std::os::unix::fs::symlink(&v1, format!("{root}/templates/.cache")).unwrap();
+    std::fs::create_dir_all(format!("{root}/fonts")).unwrap();
+    std::os::unix::fs::symlink(&v2, format!("{root}/fonts/.cache")).unwrap();
+    grimoire::bgwork_template::bg_template("", &format!("{root}/templates"), 300.0);
+    grimoire::userfonts::bg_font_check("", 300.0);
+    let (a, b) = (left(&v1), left(&v2));
+    eprintln!("  files left behind the linked caches: {a} of 3 (templates/.cache), {b} of 3 (fonts/.cache)");
+    assert_eq!(a, 3, "the previews job deleted files through a linked templates/.cache");
+    assert_eq!(b, 3, "the font check deleted files through a linked fonts/.cache");
+    let _ = std::fs::remove_dir_all(&top);
+}
+
 // (one test, its checks in order: the store's root is the process's)
 #[test]
 fn test_sec_work_links() {
     the_cleanup_of_a_cut_off_import_never_follows_a_link();
     the_start_never_empties_a_folder_through_a_linked_request_folder();
+    the_caches_are_never_pruned_through_a_link();
 }

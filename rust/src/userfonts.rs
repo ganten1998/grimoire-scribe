@@ -1196,7 +1196,8 @@ fn write_cache(path: &str, data: &[u8]) -> bool {
 /// 4 no worker can be had (nothing is marked), -1 it could not start.
 pub fn bg_font_check(arg: &str, dpi: f32) -> i32 {
     let cache = cache_dir();
-    if mkdir_p(&cache) != 0 {
+    // (verdicts are written and stale entries deleted there as root: never through a planted link)
+    if !no_link_below(&store_root(), &cache) || mkdir_p(&cache) != 0 {
         return -1;
     }
     let Some(st) = storage() else { return -1 };

@@ -624,7 +624,8 @@ fn make_previews(dir: &str) -> i32 {
     let photo = dir == photos;
     let mut cache = String::new();
     csnprintf!(&mut cache, 700, "%s/.cache", dir);
-    if mkdir_p(&cache) != 0 {
+    // (its previews are written and the stale ones deleted as root: never through a planted link)
+    if !no_link_below(&store_root(), &cache) || mkdir_p(&cache) != 0 {
         return -1;
     }
     let mut names = Vec::new();

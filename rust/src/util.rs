@@ -424,6 +424,24 @@ pub fn remove_work_dir(work: &std::path::Path, files: &[&std::ffi::CStr]) {
     let _ = std::fs::remove_dir(work);
 }
 
+/// Whether no component of `path` below `root` is a link (a missing one is fine: mkdir_p makes it). A cache that is
+/// pruned or written as root must not be reached through a planted link (security review 2026-11). A `path` that
+/// is not under `root` is refused.
+pub fn no_link_below(root: &str, path: &str) -> bool {
+    let Some(rest) = path.strip_prefix(root.trim_end_matches('/')) else { return false };
+    let mut at = root.trim_end_matches('/').to_string();
+    for part in rest.split('/').filter(|p| !p.is_empty()) {
+        at.push('/');
+        at.push_str(part);
+        match std::fs::symlink_metadata(&at) {
+            Ok(m) if m.file_type().is_symlink() => return false,
+            Ok(_) => {}
+            Err(_) => return true,
+        }
+    }
+    true
+}
+
 /// Empties a folder of Grimoire's (its files go, then the folder when nothing is left), by descriptor and never
 /// through a link: a folder that is a link is unlinked itself and never entered (security review 2026-11). How
 /// many files went.
