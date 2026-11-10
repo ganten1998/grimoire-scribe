@@ -3439,6 +3439,7 @@ pub fn editor_open_notebook(a: &mut App, id: &str) {
     s.open = true;
     nav_load(s.nb.id.as_str(), &mut s.nav);
     s.dl = doclinks_load(s.nb.id.as_str());
+    doclinks_prune(&mut s.dl, &s.nb); // (a tab to a page deleted since the last write is not a tab)
     // The page it opens at was read before its links were: its beta.5 links migrate now, before the
     // first tap.
     s.links_dirty = false;
@@ -4615,6 +4616,10 @@ fn pages_delete(a: &mut App) {
     if s.nav.links_writable && nav_save_links(s.nb.id.as_str(), &mut s.nav, &s.nb) != 0 {
         qlog!("index: deleted pages' links left for a later save");
     }
+    // Document links to or from the deleted pages go from the screen now (the file loses them at its next write).
+    if doclinks_prune(&mut s.dl, &s.nb) > 0 {
+        s.boxes.stale = true;
+    }
     // (the pages' files went to grimoire/trash; the view shows them gone)
     compose_all(a, RefreshMode::Full);
 }
@@ -5355,7 +5360,7 @@ fn pages_copy_to(a: &mut App, id: &str, at: i32, pids: &[u32]) {
     let nav_ok = nav_copy_pages_across(&s.nav, s.nb.id.as_str(), &out, &dst, dw as f32 / sw.max(1) as f32, dh as f32 / sh.max(1) as f32, &mut res) == 0;
     // The document links of the pages whose targets were copied too (a page out of a planner loses the tabs to
     // pages left behind); a notebook whose doclinks.ini does not write gets the pages without them.
-    let nav_ok = doclinks_copy_across(&s.dl, &out, &dst, dw as f32 / sw.max(1) as f32, dh as f32 / sh.max(1) as f32) >= 0 && nav_ok;
+    let docs_ok = doclinks_copy_across(&s.dl, &out, &dst, dw as f32 / sw.max(1) as f32, dh as f32 / sh.max(1) as f32) >= 0;
     for c in out.iter().filter(|c| c.erased) {
         if compact_note_page(id, c.to) != 0 {
             qlog!("compact: %s: p%u.qpg (a copy) could not be listed", id, c.to);
@@ -5388,6 +5393,13 @@ fn pages_copy_to(a: &mut App, id: &str, at: i32, pids: &[u32]) {
         // TRANSLATORS: a toast as Copy to notebook... is done (about 1700 px at 44 px in bold, or two lines): %d
         // pages were copied into the notebook named %s, but their page names and links could not be saved there.
         let msg = cformat!(ng_("Copied %d page to %s, without its names and links.", "Copied %d pages to %s, without their names and links.", n as i64), n, dst.name.as_str());
+        app_toast(a, &msg, 3000);
+    } else if !docs_ok {
+        let n = out.len() as i32;
+        // TRANSLATORS: a toast as Copy to notebook... is done (about 1700 px at 44 px in bold, or two lines): %d
+        // pages were copied into the notebook named %s with their names and links, but not the links the
+        // document brought (a planner's tabs: that notebook has no room for them, or its file does not read).
+        let msg = cformat!(ng_("Copied %d page to %s, without its document links.", "Copied %d pages to %s, without their document links.", n as i64), n, dst.name.as_str());
         app_toast(a, &msg, 3000);
     }
 }
@@ -9510,8 +9522,10 @@ fn phase2_surface_at(s: &EditorState, x: i32, y: i32) -> bool {
 
 /// Whether the editor has a control at (x, y) for a finger on the page: the panel, or a link there. (A sheet, a
 /// menu or the Pages view that is up takes every tap: the clock and battery is not shown then, and asks no
-/// more.) The clock and battery corner leaves a tap on a control to it, but for a link in its own corner,
-/// which is not one there: the corner's tap is the clock's, over a link too.
+/// more.) The clock and battery corner leaves a tap on a control to it, but for the user's own link in its
+/// corner, which is not a control there: the corner's tap is the clock's, over such a link too. A document
+/// link (a planner's tab: D7a, taps follow document links) is the other way round: a tab under the corner
+/// takes the tap, and the corner's toggle works where none lies (the shortcut and Settings toggle it too).
 pub fn editor_control_at(a: &App, x: f32, y: f32) -> bool {
     if crate::library::library_settings_active(a) {return true;}
     let s = ed_ref(a);
@@ -9522,7 +9536,7 @@ pub fn editor_control_at(a: &App, x: f32, y: f32) -> bool {
         return true;
     }
     if status_hit(a, x, y) {
-        return false;
+        return doc_link_under(a, x, y).is_some();
     }
     let mut l = NavLink::default();
     link_under(a, x, y, &mut l) || doc_link_under(a, x, y).is_some()

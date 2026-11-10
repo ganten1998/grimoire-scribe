@@ -234,10 +234,11 @@ your notebooks and settings from `quire/` to `grimoire/` and removes the old Qui
     labels, the clock, icons, PDFs and pictures never use it, and neither do the share pages (your browser gets
     Terminess): Grimoire never copies your font into a page, a PDF or anywhere else, and never sends it
     anywhere. It stays on this Kindle. Use fonts you have the right to use.
-  - **Back to Terminess.** Pick Terminess in the Font sheet (while a font of yours is in use the sheet's own
-    words are in Terminess, so it can always be read), or delete the font's file over USB: Grimoire is in
-    Terminess at once, and the row says "File missing." until you pick another font or put the file back,
-    which brings the font back. If a font ever stops Grimoire before its first screen is drawn, the next start
+  - **Back to Terminess.** Pick Terminess in the Font sheet and tap Done (while a font of yours is in use the
+    sheet's own words are in Terminess, so it can always be read; this also takes your font away after a start in
+    Terminess that a crash made, so the next start does not try it again), or delete the font's file over USB:
+    Grimoire is in Terminess from its next start (a running Grimoire keeps the copy it loaded), and the row says
+    "File missing." until you pick another font or put the file back, which brings the font back. If a font ever stops Grimoire before its first screen is drawn, the next start
     is in Terminess by itself, the start after tries the font once more, and after a second failure Grimoire
     leaves it alone until the file changes.
 
@@ -422,8 +423,8 @@ finger tap on "March" goes to March): see Document links.
 **Document links.** The tabs of a planner PDF are part of its pages. A tap follows one (a link you drew yourself
 comes first where they overlap); a finger held on one starts Select, as anywhere on the page. Clear page keeps
 them, a lasso around what you wrote in a day cell never takes the cell's link, and Copy page, Move to... and
-Copy to notebook... carry them (to pages that go too). The Links bar lists them as its last row, "From the PDF
-(43)", which opens them grouped by the page they go to; Areas draws their boxes dotted. They are in a file of their own
+Copy to notebook... carry them (to pages that go too). The Links bar lists them as one row, "From the PDF
+(43)" (before any Linked from rows), which opens them grouped by the page they go to; Areas draws their boxes dotted. They are in a file of their own
 (`doclinks.ini`), so an older Grimoire shows the pages and your links without them.
 
 ## Moving between versions

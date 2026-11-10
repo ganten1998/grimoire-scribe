@@ -249,8 +249,19 @@ pub fn doclinks_parse(text: &[u8]) -> Option<DocLinks> {
             }
         }
     }
-    // A link with no area is no document link (it has nowhere to be tapped): left out.
+    // A link with no area is no document link (it has nowhere to be tapped): left out. Its link line is carried
+    // with its area line (one a later version wrote in a form this one cannot read), so that the next write
+    // does not take the link from the version that wrote it.
     if has_area.iter().any(|&h| !h) {
+        for (k, l) in dl.links.iter().enumerate() {
+            if !has_area[k] {
+                if let Some(line) = lines.iter().find(|ln| link_parse(ln).is_some_and(|(p, s, _)| p == l.pid && s == l.seed)) {
+                    if !carry_line(&mut dl.unknown, line) {
+                        return None;
+                    }
+                }
+            }
+        }
         let mut k = 0;
         dl.links.retain(|_| {
             k += 1;
@@ -261,8 +272,17 @@ pub fn doclinks_parse(text: &[u8]) -> Option<DocLinks> {
     // Annotation order is file order; sorting by page keeps it.
     dl.links.sort_by_key(|l| l.pid);
     dl.compact_outlines();
+    let mut run = 0usize;
+    let mut last = 0u32;
     for l in &dl.links {
         if l.pid == 0 {
+            return None;
+        }
+        // (a page past its cap does not read, as FORMAT.md says: a file that could never be written again is
+        // not shown as if it could)
+        run = if l.pid == last { run + 1 } else { 1 };
+        last = l.pid;
+        if run > DOCLINKS_PER_PAGE {
             return None;
         }
     }
@@ -297,14 +317,28 @@ pub fn doclinks_load(id: &str) -> DocLinks {
     }
 }
 
+/// Drops the links of pages that are no longer in nb and those going to such pages, from memory (a page
+/// deleted in the Pages view leaves them in doclinks.ini until some later write). Returns how many went. The
+/// file is not touched.
+pub fn doclinks_prune(dl: &mut DocLinks, nb: &NotebookInfo) -> usize {
+    let before = dl.links.len();
+    dl.retain(|l| has_page(nb, l.pid) && has_page(nb, l.target));
+    before - dl.links.len()
+}
+
 // ---- writing ----
 
 /// The bytes link l takes in the file (its link line, its area line and its outline line).
 pub fn doclinks_link_bytes(dl: &DocLinks, l: &DocLink) -> usize {
+    link_bytes(l, dl.outline_of(l))
+}
+
+/// The bytes link l takes with this outline (a link not in a set yet has no index to ask for it by).
+fn link_bytes(l: &DocLink, outline: Option<&LinkOutline>) -> usize {
     let mut n = format!("link.{}={:08x},p{}\n", l.pid, l.seed, l.target).len();
     let r = l.area();
     n += format!("area.{}={:08x},{},{},{},{}\n", l.pid, l.seed, r.x, r.y, r.w, r.h).len();
-    if let Some(o) = dl.outline_of(l) {
+    if let Some(o) = outline {
         n += format!("outline.{}={:08x},{}\n", l.pid, l.seed, o.text()).len();
     }
     n
@@ -476,10 +510,8 @@ pub fn doclinks_copy_page(dl: &mut DocLinks, from: u32, to: u32) -> i32 {
     }
     let have = doclinks_of(dl, to).len();
     let new_bytes: usize = src.iter().map(|(l, _)| doclinks_link_bytes(dl, &DocLink { pid: to, ..*l })).sum();
-    if dl.links.len() + src.len() > DOCLINKS_MAX * DOCLINKS_WATER_PCT / 100
-        || have + src.len() > DOCLINKS_PER_PAGE
-        || doclinks_bytes(dl) + new_bytes > DOCLINKS_FILE_MAX * DOCLINKS_WATER_PCT / 100
-    {
+    // (the caps themselves: the water level's 10% is kept for exactly this)
+    if dl.links.len() + src.len() > DOCLINKS_MAX || have + src.len() > DOCLINKS_PER_PAGE || doclinks_bytes(dl) + new_bytes > DOCLINKS_FILE_MAX {
         return -1;
     }
     let mut n = 0;
@@ -529,10 +561,9 @@ pub fn doclinks_copy_across(src: &DocLinks, copies: &[PageCopy], dst: &NotebookI
     if !out.writable {
         return -1;
     }
-    let add_bytes: usize = carry.iter().map(|(l, _)| doclinks_link_bytes(&out, l)).sum();
-    if out.links.len() + carry.len() > DOCLINKS_MAX * DOCLINKS_WATER_PCT / 100
-        || doclinks_bytes(&out) + add_bytes > DOCLINKS_FILE_MAX * DOCLINKS_WATER_PCT / 100
-    {
+    // (with their outline lines: the new links have no outline index in `out` yet)
+    let add_bytes: usize = carry.iter().map(|(l, o)| link_bytes(l, o.as_ref())).sum();
+    if out.links.len() + carry.len() > DOCLINKS_MAX || doclinks_bytes(&out) + add_bytes > DOCLINKS_FILE_MAX {
         return -1;
     }
     let n = carry.len() as i32;
@@ -545,4 +576,33 @@ pub fn doclinks_copy_across(src: &DocLinks, copies: &[PageCopy], dst: &NotebookI
         return -1;
     }
     n
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Copy to notebook counts a new link's bytes with its outline line, which a link not in a set has no index to
+    /// be asked for by (the water check was blind to them).
+    #[test]
+    fn a_new_links_bytes_count_its_outline() {
+        let pts: Vec<(f32, f32)> = (0..=60)
+            .map(|i| {
+                let a = i as f32 * std::f32::consts::TAU / 60.0;
+                (60.0 + 50.0 * a.cos(), 60.0 + 50.0 * a.sin())
+            })
+            .collect();
+        let outline = LinkOutline::from_points(&pts, true, 800, 1000);
+        let mut src = DocLinks::default();
+        assert!(src.push(DocLink::new(1, 5, 2, Rect::new(0, 0, 120, 120)).unwrap(), Some(outline)));
+        let held = doclinks_link_bytes(&src, &doclinks_of(&src, 1)[0]);
+        let fresh = DocLink::new(1, 5, 2, Rect::new(0, 0, 120, 120)).unwrap();
+        assert_eq!(link_bytes(&fresh, Some(&outline)), held);
+        assert!(link_bytes(&fresh, None) < held);
+    }
+
+    #[test]
+    fn no_em_dash() {
+        assert!(!include_str!("doclinks.rs").contains('\u{2014}'));
+    }
 }

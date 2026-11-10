@@ -359,7 +359,26 @@ struct State {
     sample_keys: Vec<u64>,
     /// why the font asked for was not used, as last logged (said once, not at every look)
     said: Option<LoadErr>,
+    /// checks in a row that ended with no verdict for the font asked for (3: files left for later, 1: failed,
+    /// or 0 with the font still unchecked), and when the next check may be queued (backoff); at MAX_FAILS the
+    /// session stops checking, as with no worker
+    fails: u32,
+    retry_ms: Option<u32>,
+    /// the keys whose verdict did not read, queued for a new check once (the sheet would else ask again)
+    rechecked: Vec<u64>,
+    /// the dpi the last check was asked for (a recheck queued from a row has none of its own)
+    dpi: f32,
+    /// userfonts_job_done is applying the font: no check is queued by that (it decides what comes next)
+    holding: bool,
 }
+
+/// Checks in a row that end with no verdict before the session stops asking (H8: no check forked 29 times a
+/// second), and how long to wait after the first, second, third and fourth.
+const MAX_FAILS: u32 = 5;
+const RETRY_MS: [u32; 4] = [3_000, 15_000, 60_000, 60_000];
+/// How long after one watchdog timeout a font is checked again (a timeout right after a wake is the clock's
+/// jump, not a slow font): one retry, then the verdict stands.
+const SLOW_RETRY_S: i64 = 60;
 
 thread_local! {
     static S: RefCell<State> = RefCell::new(State::default());
@@ -610,15 +629,63 @@ pub fn userfont_resolve(f: &mut UserFont) {
         },
         _ => UserFontState::Checking,
     };
+    // A verdict that does not read (a line a later version added, a cut file) is checked again, once: the row
+    // would else say "Checking..." for good and the open sheet refresh at every look.
+    if f.state == UserFontState::Checking && !with(|st| st.rechecked.contains(&f.key)) {
+        let dpi = with(|st| {
+            st.rechecked.push(f.key);
+            st.dpi
+        });
+        queue_check("", dpi);
+    }
 }
 
 fn queue_check(arg: &str, dpi: f32) {
+    with(|st| st.dpi = dpi);
     // (one look at the folder at a time: a check that runs or waits already serves; a file it was too early
     // for is found by the look after it)
-    if with(|st| st.broken) || (arg.is_empty() && bg_pending(BgKind::FontCheck, "")) {
+    // (and not before the retry time of a check that ended with no verdict: userfonts_tick queues it then)
+    if with(|st| st.broken || st.retry_ms.is_some() || st.holding)
+        || (arg.is_empty() && bg_pending(BgKind::FontCheck, ""))
+    {
         return;
     }
-    bg_queue(BgKind::FontCheck, Some(""), Some(arg), dpi, true);
+    // (the first check of a look is what the user waits on; the rest of its fonts are one job each, behind
+    // exports, previews and the slices of a PDF import: userfonts_job_done)
+    bg_queue(BgKind::FontCheck, Some(""), Some(arg), dpi, arg != "next");
+}
+
+/// A check ended with no verdict for what was wanted: the next one waits (backoff), and a few in a row stop
+/// the checks for this session.
+fn note_failure(why: &str) {
+    with(|st| {
+        st.fails += 1;
+        if st.fails >= MAX_FAILS {
+            st.retry_ms = None;
+            if !std::mem::replace(&mut st.broken, true) {
+                qlog!("fonts: the check ended %d times with no verdict (%s): no font is checked until Grimoire starts again", st.fails as i32, why);
+            }
+        } else {
+            let wait = RETRY_MS[(st.fails as usize - 1).min(RETRY_MS.len() - 1)];
+            st.retry_ms = Some(now_ms().wrapping_add(wait).max(1));
+            qlog!("fonts: the check ended with no verdict (%s): tried again in %d s", why, (wait / 1000) as i32);
+        }
+    });
+}
+
+/// The retry time of a check that left a font with no verdict has come: the check is queued again. The Library
+/// asks every tick (a comparison when nothing waits).
+pub fn userfonts_tick(a: &mut App, now: u32) {
+    let due = with(|st| match st.retry_ms {
+        Some(t) if now.wrapping_sub(t) < 0x8000_0000 => {
+            st.retry_ms = None;
+            true
+        }
+        _ => false,
+    });
+    if due {
+        queue_check("", a.dpi);
+    }
 }
 
 /// The font files of grimoire/fonts, in name order, each with what the cache says of it: nothing big is read
@@ -659,8 +726,10 @@ pub fn userfonts_refresh(list: &mut [UserFont]) -> usize {
     let cache = cache_names();
     let broken = with(|st| st.broken);
     let mut changed = 0;
+    let rechecked = with(|st| st.rechecked.clone());
     for f in list.iter_mut().filter(|f| f.state == UserFontState::Checking) {
-        if cache.contains(&format!("{:016x}.font", f.key)) {
+        // (a verdict that did not read waits for its new check: the old file is not "a check that ended")
+        if cache.contains(&format!("{:016x}.font", f.key)) && !rechecked.contains(&f.key) {
             f.state = UserFontState::Checked;
             changed += 1;
         } else if cache.contains(&format!("{:016x}.bad", f.key)) || broken {
@@ -1009,16 +1078,28 @@ pub fn userfont_missing(rel: &str) -> UserFont {
 }
 
 /// A FontCheck job ended (bg_last_exit's code: 0 done, 3 some files were still being copied, 4 no worker could
-/// be had, anything else it died). The font settings.ini asks for is tried again if it was waiting for its
-/// check. Returns whether what draws the text changed.
+/// be had, 5 one font was checked and more are left, anything else it died). The font settings.ini asks for is
+/// tried again if it was waiting for its check, but only after a job that ended well (0, or 5 for the next
+/// one): a check that ends with no verdict for it is asked again after a retry time that grows, and a few in a
+/// row stop the checks for the session (userfonts_tick). Returns whether what draws the text changed.
 pub fn userfonts_job_done(a: &mut App, code: i32) -> bool {
+    with(|st| st.rechecked.clear());
     match code {
         0 => {}
-        3 => with(|st| st.later_ms = Some(now_ms().wrapping_add(3000))),
+        3 => {
+            with(|st| st.later_ms = Some(now_ms().wrapping_add(3000)));
+            note_failure("some files are still being copied");
+        }
         4 => {
             if !with(|st| std::mem::replace(&mut st.broken, true)) {
                 qlog!("fonts: no worker can be had (see the lines above): no font is checked until Grimoire starts again");
             }
+        }
+        5 => {
+            // (one font a job, so that an export or the next slice of a PDF import is not kept waiting for ten
+            // minutes: the rest are the next job, which ranks behind them)
+            with(|st| st.fails = 0);
+            queue_check("next", a.dpi);
         }
         _ => {
             // The writer itself died on a font: the file it was on is marked, and the rest is checked.
@@ -1033,14 +1114,28 @@ pub fn userfonts_job_done(a: &mut App, code: i32) -> bool {
             }
             qlog!("fonts: the check ended badly; %d file(s) marked unreadable", marked);
             if marked > 0 {
+                with(|st| st.fails = 0);
                 queue_check("", a.dpi);
+            } else {
+                note_failure("it failed before any verdict (is the storage full or read-only?)");
             }
         }
     }
+    let mut changed = false;
     if with(|st| st.waiting) && a.scr == ScreenId::Library {
-        return userfonts_apply(a);
+        with(|st| st.holding = true);
+        changed = userfonts_apply(a);
+        with(|st| st.holding = false);
+        // A job that ended well and the font still has no verdict: it is not in what the job walks (past the
+        // files it lists) or is not settled: no endless asking.
+        if code == 0 && with(|st| st.waiting) {
+            note_failure("the font asked for has no verdict after a check that ended well");
+        }
     }
-    false
+    if code == 0 && !with(|st| st.waiting) {
+        with(|st| st.fails = 0);
+    }
+    changed
 }
 
 /// Whether a check left files for later and it is time to look again (the Font sheet asks while it is up).
@@ -1080,6 +1175,16 @@ fn fast_stable() -> bool {
     }
 }
 
+/// How long a font waits for its second try after a first timeout. Tests (not the Kindle's build) that set the
+/// watchdog short on purpose do not wait the minute.
+fn slow_retry_s() -> i64 {
+    #[cfg(not(feature = "kindle"))]
+    if std::env::var_os("GRIMOIRE_FONT_WATCHDOG_MS").is_some() {
+        return 0;
+    }
+    SLOW_RETRY_S
+}
+
 fn write_cache(path: &str, data: &[u8]) -> bool {
     write_file_atomic(path, data) == 0
 }
@@ -1114,6 +1219,14 @@ pub fn bg_font_check(arg: &str, dpi: f32) -> i32 {
         }
     }
     let px = (44.0 * dpi / 300.0).round().clamp(8.0, 400.0) as i32;
+    // Whether a file still needs a verdict (one that a first timeout left for a retry counts: it waits).
+    let needs = |l: &Listed| {
+        name_kind(l.rel.rsplit('/').next().unwrap_or("")) == NameKind::Font
+            && l.size != 0
+            && l.size <= FONT_FILE_MAX as u64
+            && !std::path::Path::new(&cache_file(l.key, "bad")).exists()
+            && !read_verdict(l.key).is_some_and(|v| v.size == l.size)
+    };
     let (mut passed, mut refused, mut dead, mut later) = (0, 0, 0, 0);
     let wall = wall_time();
     let n = files.len();
@@ -1124,6 +1237,15 @@ pub fn bg_font_check(arg: &str, dpi: f32) -> i32 {
         let (vp, pp, bp, cp) = (cache_file(l.key, "font"), cache_file(l.key, "pgm"), cache_file(l.key, "bad"), cache_file(l.key, "checking"));
         if std::path::Path::new(&bp).exists() || read_verdict(l.key).is_some_and(|v| v.size == l.size) {
             continue;
+        }
+        // A file whose check timed out once waits a minute, then is checked again (the clock may have jumped).
+        let slow_mark = cache_file(l.key, "slow");
+        if let Ok(m) = std::fs::metadata(&slow_mark) {
+            let age = m.modified().ok().and_then(|t| std::time::SystemTime::now().duration_since(t).ok()).map_or(0, |d| d.as_secs() as i64);
+            if age < slow_retry_s() {
+                later += 1;
+                continue;
+            }
         }
         // A file still being copied waits: young, or changed between two looks.
         if !fast_stable() {
@@ -1182,14 +1304,25 @@ pub fn bg_font_check(arg: &str, dpi: f32) -> i32 {
                 refused += 1;
             }
             FontOut::Slow => {
-                qlog!("fonts: file %d of %d took too long to read (%u ms)", i as i32 + 1, n as i32, ms);
-                wrote = write_cache(&vp, verdict(VerdictKind::Slow).as_bytes());
-                refused += 1;
+                if std::path::Path::new(&slow_mark).exists() {
+                    qlog!("fonts: file %d of %d took too long to read again (%u ms)", i as i32 + 1, n as i32, ms);
+                    wrote = write_cache(&vp, verdict(VerdictKind::Slow).as_bytes());
+                    let _ = std::fs::remove_file(&slow_mark);
+                    refused += 1;
+                } else {
+                    // (a timeout may be the clock's jump after a wake: no verdict yet, one more try later)
+                    qlog!("fonts: file %d of %d took too long to read (%u ms): left for a second try", i as i32 + 1, n as i32, ms);
+                    wrote = write_cache(&slow_mark, b"");
+                    later += 1;
+                }
             }
             FontOut::Dead(why) => {
                 qlog!("fonts: file %d of %d: the check's worker ended (%s): marked unreadable", i as i32 + 1, n as i32, why);
                 let _ = std::fs::rename(&cp, &bp);
                 dead += 1;
+                if files[i + 1..].iter().any(|l| needs(l)) {
+                    return 5;
+                }
                 continue;
             }
             FontOut::Retry(why) => {
@@ -1206,6 +1339,11 @@ pub fn bg_font_check(arg: &str, dpi: f32) -> i32 {
         if !wrote {
             qlog!("fonts: a verdict could not be written. Is the storage full?");
             return -1;
+        }
+        // One font a job: the others are the next one's, which ranks behind an export or a PDF's slice.
+        if files[i + 1..].iter().any(|l| needs(l)) {
+            qlog!("fonts: file %d of %d done; more are left for the next job", i as i32 + 1, n as i32);
+            return 5;
         }
     }
     qlog!("fonts: %d passed, %d refused, %d the worker died on, %d left for later", passed, refused, dead, later);

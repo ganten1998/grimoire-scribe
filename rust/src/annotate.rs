@@ -1451,6 +1451,11 @@ pub struct BookStatus {
     pub why: AnnotateWhy,
     /// FAILED: the book has more pages than a notebook holds
     pub too_many: bool,
+    /// DONE: doclinks.ini was written in this run (the mirror PDF and the card are made again, pages added or not)
+    pub links: bool,
+    /// DONE: some of the links the plugin sent are not in doclinks.ini (a file that did not read, links over
+    /// the water level or a cap, one that could not be written)
+    pub links_out: bool,
 }
 
 /// The job: one at a time, from book_start to DONE or FAILED.
@@ -1485,6 +1490,8 @@ struct Job {
     /// import/.book/links.txt, when the plugin sent one (the links of the pages it drew and, once, of the
     /// pages already held), read at the start and built into doclinks.ini at the commit
     links: Option<BookLinks>,
+    /// some of those links did not make it into doclinks.ini
+    links_out: bool,
 }
 
 /// Pictures left to fit after a job (book_fits_tick), in their notebook.
@@ -1681,6 +1688,8 @@ fn start(j: &mut Job, asked: bool, st: &mut BookStatus) {
     }
     j.nb.source.set_bytes(j.r.book.as_bytes());
     j.links = read_book_links(&dir);
+    // (a links.txt that is there and did not read: its links are left out)
+    j.links_out = j.links.is_none() && fs::symlink_metadata(format!("{dir}/links.txt")).is_ok();
     if j.m.book.is_empty() {
         j.m.book.set_bytes(j.r.book.as_bytes());
     }
@@ -1728,6 +1737,7 @@ fn read_book_links(dir: &str) -> Option<BookLinks> {
 /// this book tries again.
 fn commit_doc_links(j: &mut Job) -> bool {
     let Some(book) = j.links.take() else { return false };
+    j.links_out = true; // (until it is whole: every way out below is a link left out)
     let mut dl = if j.made { DocLinks::default() } else { doclinks_load(j.nb.id.as_str()) };
     if !dl.writable {
         qlog!("book: %s: its doclinks.ini does not read; left as it is", &j.nb.id);
@@ -1759,10 +1769,16 @@ fn commit_doc_links(j: &mut Job) -> bool {
     let have = |p: u32| j.nb.page_ids.contains(&p);
     let st = pdflinks_fill(&mut dl, &recs, j.pw, j.ph, &have, &|pid, seed| nav_link_get(&mine, pid, seed).is_some());
     let trimmed = pdflinks_water(&mut dl);
+    // (written even with no link in it: links=1 says the file is there, which the plugin checks, so a notebook
+    // that came back without its doclinks.ini, as an older build's zip, is asked for its links again)
+    dl.file = true;
     if doclinks_save_in(&j.dir, &mut dl, &j.nb) != 0 {
         qlog!("book: %s: its document links could not be written; left out", &j.nb.id);
         return false;
     }
+    // (as the PDF import counts: a link left out for room, over a page's 1,024 or the water level; one refused as
+    // no link, such as one to its own page, is not news)
+    j.links_out = st.full + trimmed > 0;
     qlog!(
         "book: %s: %d document link(s) (%d added, %d already there, %d refused, %d trimmed)",
         &j.nb.id,
@@ -1940,6 +1956,8 @@ fn commit(j: &mut Job, st: &mut BookStatus) -> i32 {
     st.pid = open;
     st.made = j.made;
     st.added = j.ids.len() as i32;
+    st.links = links_now;
+    st.links_out = j.links_out;
     st.state = BookState::Done;
     with(|s| {
         s.last_nb = j.nb.id;

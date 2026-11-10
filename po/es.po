@@ -605,6 +605,15 @@ msgstr ""
 msgid "Couldn't open book from KOReader (see %s)."
 msgstr "No se pudo abrir el libro de KOReader (detalles en %s)."
 
+#. TRANSLATORS: in a toast, once the pages of a book KOReader sent are in its notebook, but some of
+#. the book's links (a planner's tabs) are not: there were too many, or they could not be saved.
+#: rust/src/app.rs
+#, c-format
+msgid "Added %d book page. Some links were left out."
+msgid_plural "Added %d book pages. Some links were left out."
+msgstr[0] "Se añadió %d página del libro. Se omitieron algunos enlaces."
+msgstr[1] "Se añadieron %d páginas del libro. Se omitieron algunos enlaces."
+
 #. TRANSLATORS: in a toast, once the pages of a book KOReader sent are in its notebook.
 #: rust/src/app.rs
 #, c-format
@@ -612,6 +621,12 @@ msgid "Added %d book page."
 msgid_plural "Added %d book pages."
 msgstr[0] "Se añadió %d página del libro."
 msgstr[1] "Se añadieron %d páginas del libro."
+
+#. TRANSLATORS: in a toast, once a book KOReader sent opened in its notebook with no new pages: some of
+#. the book's links (a planner's tabs) are not in it, as there were too many, or they could not be saved.
+#: rust/src/app.rs
+msgid "Some links were left out."
+msgstr "Se omitieron algunos enlaces."
 
 #. TRANSLATORS: in a toast while Grimoire puts the pages of a book KOReader sent into its
 #. notebook (a few seconds for a big book): pages done, of how many. One line of about 1700 px.
@@ -1729,6 +1744,16 @@ msgid "Copied %d page to %s, without its names and links."
 msgid_plural "Copied %d pages to %s, without their names and links."
 msgstr[0] "Se copió %d página a %s, sin sus nombres ni enlaces."
 msgstr[1] "Se copiaron %d páginas a %s, sin sus nombres ni enlaces."
+
+#. TRANSLATORS: a toast as Copy to notebook... is done (about 1700 px at 44 px in bold, or two lines): %d
+#. pages were copied into the notebook named %s with their names and links, but not the links the
+#. document brought (a planner's tabs: that notebook has no room for them, or its file does not read).
+#: rust/src/editor.rs
+#, c-format
+msgid "Copied %d page to %s, without its document links."
+msgid_plural "Copied %d pages to %s, without their document links."
+msgstr[0] "Se copió %d página a %s, sin sus enlaces del documento."
+msgstr[1] "Se copiaron %d páginas a %s, sin sus enlaces del documento."
 
 #. TRANSLATORS: the same strip for the long-press card's Redraw the area (about 1400 px at 44 px in
 #. bold): the next pen stroke draws the link's new area, and leaves no ink.
@@ -3727,6 +3752,12 @@ msgid "Couldn't update KOReader. Patch conflict or storage error?"
 msgstr ""
 "No se pudo actualizar KOReader. ¿Conflicto de parches o error de "
 "almacenamiento?"
+
+#. TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): Done on a font of the
+#. owner's own that could not be loaded just now (too little memory free, or its file changed).
+#: rust/src/library.rs
+msgid "Couldn't use that font."
+msgstr "No se pudo usar esa fuente."
 
 #. TRANSLATORS: a toast (about 1700 px at 44 px in bold) after a notebook's or a folder's menu row that
 #. leaves its pages out of the Graph of all notebooks, or shows them there again: the change could

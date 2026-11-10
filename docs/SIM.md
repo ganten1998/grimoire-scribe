@@ -877,7 +877,8 @@ PDF import hooks (headless and test builds; compiled out of the Kindle build, li
 private mapping: the worker reads the file whole), `GRIMOIRE_PDF_FREE_BYTES=N` (free storage as N bytes),
 `GRIMOIRE_PDF_WATCHDOG_MS=N` (the page watchdog), `GRIMOIRE_PDF_TEST_CRASH_PAGE=N`, `..._HANG_PAGE=N`,
 `..._ALLOC_PAGE=N`, `..._TRAP_PAGE=N` (the worker aborts, spins, allocates without bound or makes a call outside
-its allow-list when it reaches page N), `GRIMOIRE_PDF_TEST_WOKE=1` (every page's wait counts as one the Kindle
+its allow-list when it reaches page N), `GRIMOIRE_PDF_TEST_LINKS=N` (the worker aborts, N = 1, or spins, N = 2, when
+it walks the document's link annotations), `GRIMOIRE_PDF_TEST_WOKE=1` (every page's wait counts as one the Kindle
 slept through: a stall is "right after a wake", tried again once without a strike), `GRIMOIRE_PDF_JOB_CPU_SECS=N`
 (a job's CPU budget, in place of `sandbox::s1`'s),
 `GRIMOIRE_WORK_FAIL_STEP=<step>` (that sandbox step fails),

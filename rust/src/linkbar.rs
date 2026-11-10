@@ -849,6 +849,7 @@ pub fn linkbar_pointer(lb: &mut LinkBar, a: &mut App, ph: i32, ev: &InEvent, dir
         LB_CANCEL => LbResult::Cancel,
         LB_CHIP if linkbar_is_docs_row(lb, h.arg) => {
             lb.in_docs = true;
+            lb.selected = -1; // (what was looked at in the page's own rows is not a chip of this row: a tap must not commit it)
             lb.screen = 0;
             lb.paged = false;
             LbResult::Docs

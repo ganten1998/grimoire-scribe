@@ -1917,10 +1917,11 @@ holds, so it takes a moment longer):
    Areas: the dotted boxes sit on the printed tabs and cells, none numbered. A tap just outside a box but within
    a finger's reach still goes to the nearest.
 2. **Load time.** A notebook whose `doclinks.ini` is at its cap (16,000 links) opens in at most 150 ms of
-   reading it (grimoire.log has no open-time line: time the tap on its card to its first page, with and without
-   the file). If it takes longer the plan is to load it in slices after the first page.
-3. **Copy page.** Copy page on a month page of a full planner takes under 300 ms and the copy's tabs work; on a
-   planner already past 90% of the cap the copy has no tabs and says "Copied without links: couldn't save them."
+   reading it (no log line gives the open time: judge it against a notebook without the file by eye, or by the
+   time to the first page). If it takes longer the plan is to load it in slices after the first page.
+3. **Copy page.** Copy page on a month page of a full planner takes under 300 ms and the copy's tabs work (the
+   10% the import's water level leaves is Copy page's to use); on a planner at the cap itself (16,000 links, or
+   1.5 MiB, or a page already at 1,024) the copy has no tabs and says "Copied without links: couldn't save them."
 4. **The hold arms Select on a month page.** Hold a finger on a day cell: the lasso arms (no card opens);
    drawing around the writing in the cell picks up the writing and no link; a link you drew yourself there
    still opens its card on a hold.
@@ -2221,3 +2222,44 @@ end under the filter. **Not run anywhere yet: those two** (Linux as root) and ev
 7. **Live view.** While a browser watches Live view: `cat /proc/<pid>/oom_score_adj` of each viewer child (a
    child of Grimoire named `grimoire`) is `500`, and its `Max address space` soft limit is about 64 MiB above its
    `VmSize` at its start.
+
+## 2.1.0-beta.2, fix round, F3 (your own fonts and document links)
+
+None of this has run on a Scribe. Nothing here needs a debugger; read grimoire.log with `ssh` or USB.
+
+1. **A font that cannot be checked is not asked for in a loop.** Copy a font into `grimoire/fonts/` and choose it
+   (Settings > Font). Then change its time to an hour ahead of the Kindle's clock (set the file's date on the Mac
+   and copy it over USB) and start Grimoire. The Library draws in Terminess. In grimoire.log look for `bg: font
+   check of a folder (pid ...)`: one at the start, a retry about 3 s later (`fonts: the check ended with no
+   verdict ...: tried again in 3 s`), then 15 s and 60 s, and after the fifth `no font is checked until Grimoire
+   starts again`. Never a line every few hundred milliseconds. Put the clock right (or the file's date): the
+   next start checks the font and draws it.
+2. **One font at a time.** Copy five or six fonts in at once and open the Font sheet: the rows fill in one by one
+   (`fonts: file I of N done; more are left for the next job`). While they check, start an export (Share's PDF) or
+   a PDF import: it should not wait for every font. Time a notebook's PDF export with and without the five fonts
+   checking.
+3. **Terminess and Done after a crash.** If a font ever stops Grimoire before its first screen (the next start is
+   in Terminess): Settings > Font, tap Terminess (even though it already shows), Done. settings.ini has no
+   `font=file:` line any more, and the next start does not load the font. (To try it without a crashing font:
+   make a font file, choose it, hold the power button for 4 s as its first screen appears, repeat once.)
+4. **A font whose check ran out twice.** A font that takes too long (the check's watchdog is 30 s of silence, 10
+   minutes of CPU) says "Checking..." for a minute after its first timeout, then is tried once more, and only
+   then says "Took too long to read.".
+5. **A Done that cannot load.** With little memory free (many apps open on the Kindle's framework, or a 24 MB
+   font held as a sample) pick a font and Done: if it cannot load, a toast says "Couldn't use that font." and
+   Terminess draws; the choice stays in settings.ini.
+6. **A name in a font that has the letters only in its regular.** A notebook named with Cyrillic or Greek letters,
+   a font whose Regular has them and whose Bold file does not: the name is drawn by Terminess's letters where it
+   has them, and is left out where nothing has them (no empty box).
+7. **A tab under the clock corner.** A planner with a home tab in the top left corner (the clock's default corner):
+   tap the tab: it goes to its page, the clock does not toggle. Tap in the corner where no tab lies: the clock
+   toggles. Move the clock to a free corner (Display > Corner) if the tab is in the way.
+8. **Open this book in Grimoire again** on a planner already in Grimoire, after deleting a page in Grimoire and
+   opening the book once more: the page comes back and the tabs that go to it work again (the plugin asks every
+   held page's links whenever pages are added; time the "Preparing" step on a 400-page planner: it is the
+   links' walk of every page, about the first import's cost). With a book whose links are over the cap, or whose
+   `import/.book/links.txt` does not read: the toast says "Added N book pages. Some links were left out." With
+   only the links filled (no new page), the notebook's PDF in `PDFs/` is made again (its time changes).
+9. **Copy to notebook... into a notebook with no room for tabs.** The toast says "Copied N pages to X, without
+   their document links." and not "without their names and links" when the names and links did save.
+

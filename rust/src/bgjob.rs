@@ -34,7 +34,8 @@ pub enum BgKind {
     /// import (pdfimport.rs). It ends with "more to do" (exit 3) until the last slice, which commits.
     PdfImport = 7,
     /// id: none, path: "" or "recheck:<key>"; the fonts of grimoire/fonts that have no verdict yet, each checked by
-    /// the sandboxed worker (userfonts.rs, 2.1.0-beta.2). It ends 0, 3 (some files wait) or 4 (no worker).
+    /// the sandboxed worker (userfonts.rs, 2.1.0-beta.2). It ends 0, 3 (some files wait), 4 (no worker) or 5 (one font checked, more to do: the next job is queued
+    /// with the path "next", behind exports and a PDF's slices).
     FontCheck = 8,
 }
 
@@ -195,7 +196,7 @@ pub fn bg_poll_job(done_kind:Option<&mut i32>,mut done_id:Option<&mut FixedStr<S
             let (kind, notify, id, job) = with(|s| if extra { (s.extra.kind, s.extra.notify, s.extra.id, s.extra) } else { (s.running.kind, s.running_notify, s.running.id, s.running) });
             let is_pdf = kind == BgKind::PdfImport;
             // (a font check's 3: some files were still being copied and wait for the next look)
-            let ok = code == 0 || (is_pdf && (code == 2 || code == 3)) || (kind == BgKind::FontCheck && code == 3);
+            let ok = code == 0 || (is_pdf && (code == 2 || code == 3)) || (kind == BgKind::FontCheck && (code == 3 || code == 5));
             if let Some(done)=done_id.as_deref_mut(){*done=id;}
             if is_pdf && code == 3 {
                 with(|s| if extra { s.extra_pid = -1 } else { s.pid = -1 });
@@ -490,6 +491,8 @@ fn rank(j: &Job) -> i32 {
         BgKind::GraphLayout | BgKind::GraphLayoutAll => 1,
         BgKind::MirrorPdf => 2,
         BgKind::ImportFolder | BgKind::PdfImport => 3,
+        // (a font check after the first font of a look: one font a job, behind an export and a PDF's slice)
+        BgKind::FontCheck => 3,
         // (an idle warm-up of the Pages view's previews: after anything asked for, with compaction)
         BgKind::PagePreviews => 4,
         _ => 4,
@@ -676,7 +679,7 @@ fn start_job(j: Job, extra: bool) -> bool {
         // SAFETY: the child ends here without running the parent's exit handlers or flushing its
         // buffers. (A PDF import slice's 2 and 3 mean done with blank pages, and more to do; a font check's 3
         // and 4, some files wait, and no worker can be had.)
-        let says_more = (j.kind == BgKind::PdfImport && (rc == 2 || rc == 3)) || (j.kind == BgKind::FontCheck && (rc == 3 || rc == 4));
+        let says_more = (j.kind == BgKind::PdfImport && (rc == 2 || rc == 3)) || (j.kind == BgKind::FontCheck && (rc == 3 || rc == 4 || rc == 5));
         unsafe { libc::_exit(if rc == 0 { 0 } else if says_more { rc } else { 1 }) };
     }
     let beside = with(|s| {

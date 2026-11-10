@@ -201,6 +201,8 @@ pub struct LibraryState {
     font_first: usize,
     font_per_page: usize,
     font_own_rows: Vec<(usize, Rect)>,
+    /// a family was tapped on the sheet since it opened (Done then drops a font=file: that does not draw)
+    font_picked: bool,
     font_sample_how: &'static str,
     fonts_looked_ms: u32,
     /// The file picker (2.1.0-beta.2, browser.rs), open over New notebook's sheet (which stays under it: Cancel
@@ -3955,6 +3957,7 @@ fn font_list_scan(a: &mut App) {
 fn font_sheet_closed(a: &mut App) {
     crate::userfonts::userfonts_sample(a, None);
     let s = lib(a);
+    s.font_picked = false;
     s.fonts = Vec::new();
     s.font_file.clear();
     s.font_own_rows.clear();
@@ -5550,6 +5553,7 @@ fn act(a: &mut App, h: &Hit) {
             let own_on = !own.is_empty() && crate::userfonts::userfonts_in_use(&own);
             font_list_scan(a);
             let s = lib(a);
+            s.font_picked = false;
             s.font_pick = font_family();
             s.font_file = if own_on { own } else { String::new() };
             s.font_first = match s.fonts.iter().position(|f| f.rel == s.font_file) {
@@ -5563,6 +5567,7 @@ fn act(a: &mut App, h: &Hit) {
         }
         H_FONT_PICK => {
             let pick = (h.arg.max(0) as usize).min(FONT_FAMILIES.len() - 1);
+            lib(a).font_picked = true; // (a family tapped, even the one that shows: Done then takes font=file: away)
             if pick != lib(a).font_pick || !lib(a).font_file.is_empty() {
                 font_step(a, pick, None);
             }
@@ -5585,14 +5590,18 @@ fn act(a: &mut App, h: &Hit) {
         // a style change does; Cancel (Back, Esc) leaves the font as it was. One of the owner's own fonts is
         // settings.ini's font=file:<its path>; its Bold file is found again for it (font_bold= is for a hand).
         H_FONT_DONE => {
-            let (pick, own) = (lib(a).font_pick, lib(a).font_file.clone());
+            let (pick, own, picked) = (lib(a).font_pick, lib(a).font_file.clone(), lib(a).font_picked);
             font_sheet_closed(a);
             lib(a).modal = Modal::Settings;
             let was_own = a.settings.font_file.as_str().to_string();
             // Done on what draws now changes nothing: also not a font= line whose font cannot be used (a file
             // that is gone, a newer version's font), which stays as it is until another font is picked.
             let drawn_own = if crate::userfonts::userfonts_in_use(&was_own) { was_own.clone() } else { String::new() };
-            let same = own == drawn_own && (!own.is_empty() || pick == font_family());
+            // (a family picked while settings.ini asks for a font of the owner's own that does not draw now, a
+            // font a crash kept out, one still being checked or one that is gone, takes that font= line away:
+            // the next start must not try it again)
+            let drops_file = picked && own.is_empty() && !was_own.is_empty();
+            let same = !drops_file && own == drawn_own && (!own.is_empty() || pick == font_family());
             if same {
                 redraw(a, RefreshMode::Ui);
                 return;
@@ -5610,6 +5619,14 @@ fn act(a: &mut App, h: &Hit) {
                 a.settings.font_file.set(&own);
             }
             crate::userfonts::userfonts_apply(a);
+            if !own.is_empty() && !crate::userfonts::userfonts_in_use(&own) {
+                // The font did not load (too little memory, a file that changed): the setting stays, Terminess
+                // draws, and the owner is told.
+                font_set_family(0);
+                // TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): Done on a font of the
+                // owner's own that could not be loaded just now (too little memory free, or its file changed).
+                app_toast(a, tr("Couldn't use that font."), 3000);
+            }
             httpd_restyle(ui_theme() == UiTheme::Gothic); // (the share pages, if Live view is on)
             settings_save(&a.settings);
             redraw(a, RefreshMode::Full);
@@ -6591,6 +6608,7 @@ fn library_event_in(a: &mut App, ev: &InEvent) {
 }
 
 pub fn library_tick(a: &mut App, now: u32) {
+    crate::userfonts::userfonts_tick(a, now); // (a font check that ended with no verdict is queued again after its wait)
     if files_shown(a) {
         files_tick(a, now);
         return;

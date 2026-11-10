@@ -19,11 +19,13 @@
   page, kept in a file of their own (`doclinks.ini`, up to 16,000 links) apart from the links you draw: your links
   come first where they overlap a tab; Clear page keeps the tabs; a lasso around the writing in a day cell never
   picks the cell's link up; Copy page and Copy to notebook carry them (to pages that travel too). The Links bar
-  lists them as one last row, "From the PDF (43)", which opens them grouped by page; the eye draws their boxes
+  lists them as one row, "From the PDF (43)" (before any Linked from rows), which opens them grouped by page; the eye draws their boxes
   dotted. A finger held on one arms Select, as on paper. The Graph never draws them. The notebook's PDF has them
-  as links. A 2.0 build shows the pages and your own links, without the tabs. Needs the KOReader plugin of this
+  as links. A tab under the clock corner is followed (the clock's tap works where no tab lies). A 2.0 build shows
+  the pages and your own links, without the tabs. Needs the KOReader plugin of this
   version (Grimoire installs it) and a book opened once more: the links of the pages Grimoire already holds are
-  sent the first time.
+  sent the first time (and again whenever pages are added); a book whose links do not all fit says "Some links
+  were left out.".
 - A PDF dropped in `grimoire/import/` (or in a folder there, to file it in that Library folder) becomes a
   notebook of its pages, with no KOReader: a notice at the bottom of the Library says "Importing: page 37 of
   412", the PDF moves to `import/done/`, and a PDF already imported says so. Pages with colour are kept in
@@ -70,9 +72,12 @@
   words only: pages, paper labels, the clock, icons, PDFs and the share pages never change with it, and the
   file stays on the Kindle. A font is first read in the sandbox that reads PDFs and pictures, glyph by glyph,
   and Grimoire draws it only while the file is byte for byte the one that passed. Should a font ever stop
-  Grimoire before its first screen, the next start is in Terminess by itself; deleting the font's file brings
-  Terminess back too ("File missing."), and while a font of yours is in use the Font sheet's own words stay in
-  Terminess. New in `settings.ini`: `font=file:<path>` and `font_bold=`, which 2.1.0-beta.1 and older keep as
+  Grimoire before its first screen, the next start is in Terminess by itself, and Terminess then Done in the Font
+  sheet takes the font away for good; deleting the font's file brings Terminess back too ("File missing.", from
+  the next start), and while a font of yours is in use the Font sheet's own words stay in Terminess. A font that
+  cannot be checked now (a file dated ahead of the clock, a full storage) is asked again after 3 s, 15 s and
+  60 s, then not until Grimoire starts again; the fonts are checked one at a time, behind an export or a PDF
+  slice; a font whose check ran out of time gets a second try; a Done that cannot load the font says so. New in `settings.ini`: `font=file:<path>` and `font_bold=`, which 2.1.0-beta.1 and older keep as
   lines they do not know (they draw Terminess). The Kindle binary is 10.6 MB and the zip 5.5 MB with it.
 - The text cache now holds at most 4 MB of letters (it was only limited by their number), which matters for
   large letters of your own fonts.

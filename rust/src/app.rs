@@ -545,14 +545,30 @@ fn book_tick(a: &mut App) {
     book_step(150, &mut a.book);
     if a.book.state == BookState::Done {
         let nb = a.book.nb;
-        let added = a.book.made || a.book.added > 0;
+        // (links only: the notebook changed too, so that its mirror PDF, which draws the tabs, is made again)
+        let added = a.book.made || a.book.added > 0 || a.book.links;
         app_notice_clear(a, NoticeKey::Book); // (the notice saying how far it got goes)
         editor_open_notebook_at(a, nb.as_str(), a.book.pid, added);
         if a.book.added != 0 {
             let mut msg = String::new();
-            // TRANSLATORS: in a toast, once the pages of a book KOReader sent are in its notebook.
-            csnprintf!(&mut msg, 256, ng_("Added %d book page.", "Added %d book pages.", a.book.added as i64), a.book.added);
+            if a.book.links_out {
+                // TRANSLATORS: in a toast, once the pages of a book KOReader sent are in its notebook, but some of
+                // the book's links (a planner's tabs) are not: there were too many, or they could not be saved.
+                csnprintf!(&mut msg, 256, ng_("Added %d book page. Some links were left out.", "Added %d book pages. Some links were left out.", a.book.added as i64), a.book.added);
+            } else {
+                // TRANSLATORS: in a toast, once the pages of a book KOReader sent are in its notebook.
+                csnprintf!(&mut msg, 256, ng_("Added %d book page.", "Added %d book pages.", a.book.added as i64), a.book.added);
+            }
             app_toast(a, &msg, 5000);
+        } else if a.book.links_out {
+            // TRANSLATORS: in a toast, once a book KOReader sent opened in its notebook with no new pages: some of
+            // the book's links (a planner's tabs) are not in it, as there were too many, or they could not be saved.
+            app_toast(a, tr("Some links were left out."), 5000);
+        }
+        if a.book.links && a.book.added == 0 && a.settings.mirror_pdf {
+            // (the mirror PDF draws the tabs: a fill that added no page makes it again here; pages added do at close)
+            let (dpi, dir) = (a.dpi, app_mirror_dir());
+            bg_mirror_pdf(nb.as_str(), dpi, &dir, false);
         }
     } else if a.book.state == BookState::Failed {
         app_notice_clear(a, NoticeKey::Book); // (the notice saying how far it got goes)

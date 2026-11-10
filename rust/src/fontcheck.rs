@@ -544,7 +544,10 @@ fn open_face<'a>(data: &'a [u8], out: &mut Outliner, scale_pm: i32) -> Result<Op
     let mut mapped = vec![0u64; nglyphs.div_ceil(64) as usize];
     let mut count = 0;
     let mut cover = [0i32; 6];
-    for (cp, g) in cmap.mappings() {
+    // (each character through `map`, as the UI asks: on cmap groups that overlap, the group a walk of `mappings`
+    // names can differ from the glyph `map` finds, and the UI would be the first to outline that glyph)
+    for (cp, _) in cmap.mappings() {
+        let Some(g) = cmap.map(cp) else { continue };
         let g = g.to_u32();
         if g == 0 || g >= nglyphs {
             continue;

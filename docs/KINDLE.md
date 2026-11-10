@@ -404,7 +404,8 @@ it charges), and the battery's percent. Tapping the indicator, or its corner aga
 It is on the notebook page and nowhere else: not on the Library, Settings, Share or Pen feel, and not
 while a sheet, a menu, the Links bar, Link to..., a link's long-press card, Find, a keyboard or the Pages view is in front of the page, so it
 never gets in the way of another screen. The toolbar, or a link the way a finger tap would follow it,
-keeps its own tap, except that a link in the corner is not followed (the corner's tap is the clock's).
+keeps its own tap, except that one of your own links in the corner is not followed (the corner's tap is the clock's);
+a document link (a planner's tab) under the corner is followed, and the clock's tap works where none lies.
 
 One tap is one toggle, at once: the tap is decided when the finger lifts (it went down in the corner and lifts in it,
 or within 5 mm of where it landed, in under 0.8 second; the path between is not asked, so a slow, hard press

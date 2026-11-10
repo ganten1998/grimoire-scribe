@@ -948,7 +948,8 @@ The editor then opens on the page to open (else the first page added).
 
 The plugin also sends the links inside the book, to a launcher whose `# Capabilities:` line says `links` (an
 older one gets no file, and KOReader is not asked). For each page it draws in this run, plus, once per book while
-the notebook's `source.ini` lacks `links=1`, each page the notebook holds already, it asks KOReader's
+the notebook's `source.ini` lacks `links=1` (or its `doclinks.ini` is not beside it), or pages are to be added in this
+run, each page the notebook holds already, it asks KOReader's
 `getPageLinks` (a rectangle `x0 y0 x1 y1` in page space and a 0-based target `page`, or a `uri`), maps the
 rectangle with the transform that drew the page's picture, and writes `links.txt` (whole, before `request.ini`):
 
@@ -959,13 +960,15 @@ L <from> <to> <x> <y> <w> <h>              a link: book pages from 1, the rectan
 ```
 
 A link to a web address or a file, to its own page, or to a page the book lacks is left out by the plugin.
-Grimoire reads the file strictly at the start of the book job (at most 8 MiB and 200,000 links; one line it does
-not understand and the whole file is ignored, logged without its content), maps the book pages to the notebook's
+Grimoire reads the file strictly at the start of the book job (at most 8 MiB; one line it does not understand and
+the whole file is ignored, logged without its content and told in the toast, "Some links were left out."; past
+200,000 links the first are kept and the rest dropped), maps the book pages to the notebook's
 page ids through `source.ini`, scales the rectangles into page pixels as the pictures are fitted, and at the
 commit fills `doclinks.ini` (below): validated, the same link twice (same target, area within 2 px) once, trimmed
 to the water level, written before anything else, so a later failure leaves at most lines of pages that are not
-listed (dropped at the next write). Then `source.ini` says `links=1` (one more line; a 2.0 build carries it as an
-unknown line), and the plugin stops sending the held pages' links. A fill that could not write leaves `links=1`
+listed (dropped at the next write), the file written even with no link in it. Then `source.ini` says `links=1` (one
+more line; a 2.0 build carries it as an unknown line), and the plugin stops sending the held pages' links, until
+pages are to be added again. A fill that adds no page makes the mirror PDF again. A fill that could not write leaves `links=1`
 unsaid, so the next Open this book sends them again.
 
 ## Document links: `doclinks.ini` (2.1.0-beta.2 on)
@@ -985,11 +988,14 @@ whose target is not `p<id>`, with its area and outline) are carried, as links.in
 Two producers fill it: KOReader's `links.txt` (above) and the PDF import's own link annotations (Imports: PDFs).
 Both go through `pdflinks.rs`.
 
-A file over a cap, a carried line past its bounds or one that holds a NUL does not read: it shows no tabs and is
-never written over. The water level: a fill keeps the most links under 90% of the links and of the bytes (outline
+A file over a cap (a page with more than 1,024 links too), a carried line past its bounds or one that holds a NUL
+does not read: it shows no tabs and is never written over. A link whose area line a later version wrote in a form
+this one cannot read is carried whole (its link line too), not shown, and not lost at the next write. A tab to a
+page no longer in the notebook is not shown or tapped (it goes from the file at its next write). The water level: a fill keeps the most links under 90% of the links and of the bytes (outline
 lines included), the densest pages first, each page keeping its first links, so Copy page and later fills have
-room; a Copy page past it copies the page without its document links ("Copied without links: couldn't save
-them."). The writers: the book import's commit (above), Copy page and Copy to notebook. Never a page turn, Clear
+room; a Copy page or Copy to notebook that would pass the caps themselves (links, bytes with outline lines
+counted, or the page's 1,024) copies without its document links ("Copied without links: couldn't save them.",
+or "Copied %d page to %s, without its document links."). The writers: the book import's commit (above), Copy page and Copy to notebook. Never a page turn, Clear
 page, a lasso or Select. The seed is a hash of the source page and the annotation index, and never one the page's
 ink or its own links have.
 
@@ -1547,8 +1553,8 @@ marked 1.1 shipped in 1.1.0-beta.1 together with those rules, so for it the last
 | `graph-index.ini` and `graph-all.ini` (and `graph-all.ini.lock`) in the data root (2.0.0-beta.2, caches) | never read or written | the same; 1.2.0 to 2.0.0-beta.1 never read them either; a notebook another version changes is read again at the next check (Library index) |
 | `graph-omit.ini` in the data root (2.0.0-beta.2) | never read or written | the same; 1.2.0 to 2.0.0-beta.1 never read it either: every notebook is in their Graph. A folder another version renames keeps its old line, which then names no folder and leaves nothing out (Library index) |
 | `graph=0` in `notebook.ini` (2.0.0-beta.2) | dropped on its next save of `notebook.ini` (the notebook is back in the Graph) | kept, as a key it does not know: the notebook stays left out when 2.0.0-beta.2 reads it again |
-| `doclinks.ini` (links a document brought, 2.1.0-beta.2) | never read or written; the notebook shows its pages and the user's own links, editable as always, without the tabs; its raw zips leave the file out | read and kept; raw zips carry it (Document links) |
-| `links=1` in `source.ini` (2.1.0-beta.2) | carried as an unknown line | read |
+| `doclinks.ini` (links a document brought, 2.1.0-beta.2) | never read or written; the notebook shows its pages and the user's own links, editable as always, without the tabs; its raw zips leave the file out | the same: no 2.0 or 2.1.0-beta.1 build reads it, and their raw zips leave it out (a zip made there is without the tabs; the file stays in the notebook's folder) |
+| `links=1` in `source.ini` (2.1.0-beta.2) | never read: `source.ini` is not read there | carried as an unknown line, so it outlives what it says: a book page a build without it adds has no tabs (the plugin asks for the links again whenever pages are to be added), and a raw zip such a build made holds `links=1` and no `doclinks.ini` (the plugin takes `links=1` only with the file beside it) |
 | `area.` lines in `links.ini` (a link's area, 2.0.0-beta.6) | never read or written, as the file | the same; 2.0.0-beta.5 carries them as unknown lines within its limits, and a link with an area but no ink does nothing there (Links) |
 | page version 3 to 255 | set aside as `.damaged-<time>`, a blank page in its place | read-only, shown blank; copies set aside earlier come back if the page is still in the notebook |
 | a tool id of 10 or more | set aside, as above | read-only; the strokes it knows are shown |
@@ -1583,6 +1589,17 @@ marked 1.1 shipped in 1.1.0-beta.1 together with those rules, so for it the last
 | an erase stroke's layer byte and a floor marker (ext[1], 2.0.0-beta.2: Scoped erase strokes) | the marker draws nothing (off the page); a re-save zeroes ext, so a scoped group's erasure becomes ordinary there for good | kept; 1.1 to 2.0.0-beta.1 draw a scoped erasure flat (also over the ink under it, on their screen only) and keep the bytes |
 | `root/clipboard.qpg` (2.0.0-beta.2) | never read | never read (versions before 2.0.0-beta.2 look for no file in the data root) |
 | a page with none of the above | written byte for byte the same | written byte for byte the same |
+
+What 2.0.0 and 2.1.0-beta.1 do with data 2.1.0-beta.2 writes (read in their code at the tags):
+
+| new data (2.1.0-beta.2) | 2.0.0, 2.1.0-beta.1 |
+|---|---|
+| a PDF in `import/`, or picked in place | never imported. A folder of `import/` holding pictures and PDFs: they import the pictures and move the whole folder, PDFs and all, to `import/done/`, where 2.1.0-beta.2 never looks. A folder or file with no pictures is left alone |
+| an unfinished PDF import (`notebooks/.import-<id>/`) | removed at their next start, as any cut-off import ("removed what a cut-off import left"); a file picked in place is then not resumed, and its mark stays in `import/.marks/` |
+| `import/.attempts` lines keyed by a PDF, `import/.marks/` | `.attempts` is read and rewritten keeping the folders they see, so a PDF's tries and waits are forgotten (it is tried afresh); `.marks/` is never read |
+| a colour page picture (RGB) | drawn as luma by every consumer: the page, its thumbnail, the PDFs and the share pages show it gray. The file is kept |
+| the mirror PDF | a notebook with colour pages is made again there, with those pages gray (the colour comes back when 2.1.0-beta.2 makes it again) |
+| `font=file:<name>` in `settings.ini`, `font_bold=` | kept as they are (2.0.0: unknown keys; 2.1.0-beta.1: a font it does not have, drawn as Terminess, and it logs the value once); the file is never loaded there |
 
 ## Highlighter rendering in 1.2.0
 
