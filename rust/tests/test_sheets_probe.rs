@@ -697,9 +697,9 @@ fn pv_context(v: &PagesView, nav: &Nav, nb: &NotebookInfo) -> String {
 }
 
 // The management view's held-tile card (Rust only, no C counterpart): Rename and Delete are on it, and the
-// bottom row has no Delete. Rename opens Page name for the held page, holding its name, and is greyed out
-// while the names cannot be saved; Delete deletes the ticked pages when the held page is one of them,
-// else ticks the held page alone first.
+// bottom row's Delete appears once pages are ticked (issue #18) while the card's own Delete still deletes
+// the ticked pages when the held page is one of them, else ticks the held page alone first. Rename opens
+// Page name for the held page, holding its name, and is greyed out while the names cannot be saved.
 fn pages_card(p: &mut Probe) {
     let (nb, nav) = (p.nb.clone(), p.nav.clone());
     for turn in 0..2 {
@@ -711,6 +711,21 @@ fn pages_card(p: &mut Probe) {
         pagesview_draw(&mut v, &mut p.app, &nb, &nav);
         check!(pagesview_control_point(&v, "delete").is_none() && pagesview_control_point(&v, "all").is_some());
         check!(!v.hits.h.iter().any(|h| h.id == PG_DELETE));
+        // A tap on a page already ticked unticks it, without Multi-select and with it (issue #18).
+        let at = pagesview_control_point(&v, "page.1").unwrap();
+        check!(pv_tap_at(p, &mut v, &nav, at, 3000) == PvResult::None && pagesview_ticked(&v, 0));
+        check!(pv_tap_at(p, &mut v, &nav, at, 4000) == PvResult::None && !pagesview_ticked(&v, 0));
+        // Taking a tick back is not half of a double tap: the next tap ticks it again, it does not open.
+        check!(pv_tap_at(p, &mut v, &nav, at, 4050) == PvResult::None && pagesview_ticked(&v, 0));
+        check!(pv_tap_at(p, &mut v, &nav, at, 4600) == PvResult::None && !pagesview_ticked(&v, 0));
+        let at = pagesview_control_point(&v, "multi").unwrap();
+        check!(pv_tap_at(p, &mut v, &nav, at, 4700) == PvResult::None && v.multi_select);
+        let at = pagesview_control_point(&v, "page.1").unwrap();
+        check!(pv_tap_at(p, &mut v, &nav, at, 4800) == PvResult::None && pagesview_ticked(&v, 0));
+        check!(pv_tap_at(p, &mut v, &nav, at, 5400) == PvResult::None && !pagesview_ticked(&v, 0));
+        let at = pagesview_control_point(&v, "multi").unwrap();
+        check!(pv_tap_at(p, &mut v, &nav, at, 5600) == PvResult::None && !v.multi_select);
+        pagesview_draw(&mut v, &mut p.app, &nb, &nav);
         // Rename: the held page's name on Page name, the page it names kept apart from the open one.
         check!(pv_hold(p, &mut v, &nav, 2) == PvResult::None && pv_context(&v, &nav, &nb) == "2");
         for row in ["open", "link", "rename", "delete", "cancel"] {
@@ -742,6 +757,14 @@ fn pages_card(p: &mut Probe) {
         pv_hold(p, &mut v, &nav, 3);
         let at = pagesview_control_point(&v, "delete").unwrap();
         check!(pv_tap_at(p, &mut v, &nav, at, 10000) == PvResult::Delete);
+        check!(pagesview_ticked_count(&v) == 2 && pagesview_ticked(&v, 2) && pagesview_ticked(&v, 5));
+        // With no card up, the bottom row's Delete deletes the ticked pages (issue #18), and its
+        // Move to... is the same control as the card's row.
+        pagesview_draw(&mut v, &mut p.app, &nb, &nav);
+        check!(v.hits.h.iter().any(|h| h.id == PG_DELETE));
+        check!(pagesview_control_point(&v, "move-to").is_some() && pagesview_control_point(&v, "move").is_some());
+        let at = pagesview_control_point(&v, "delete").unwrap();
+        check!(pv_tap_at(p, &mut v, &nav, at, 10500) == PvResult::Delete);
         check!(pagesview_ticked_count(&v) == 2 && pagesview_ticked(&v, 2) && pagesview_ticked(&v, 5));
         // Names that cannot be saved: no Rename (greyed out), Delete still there.
         let mut ro = nav.clone();
