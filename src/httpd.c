@@ -153,6 +153,12 @@ static void reap_children(void) {
         }
 }
 
+/* SIGCHLD handler: reap any children that have exited so they don't become zombies.
+   Called from the signal handler; only async-signal-safe operations. */
+static void sigchld_handler(int sig) {
+    reap_children();
+}
+
 static void set_nonblock(int fd) { fcntl(fd, F_SETFL, fcntl(fd, F_GETFL, 0) | O_NONBLOCK); }
 
 static int httpd_start(int port, float dpi, bool gothic) {
@@ -160,6 +166,13 @@ static int httpd_start(int port, float dpi, bool gothic) {
     signal(SIGPIPE, SIG_IGN);
     g_dpi = dpi;
     g_gothic = gothic;
+    /* Set up SIGCHLD handler to reap children immediately rather than waiting for httpd_poll() */
+    struct sigaction sa;
+    memset(&sa, 0, sizeof sa);
+    sa.sa_handler = sigchld_handler;
+    sigemptyset(&sa.sa_mask);
+    sa.sa_flags = SA_RESTART;
+    sigaction(SIGCHLD, &sa, NULL);
     int fd = socket(AF_INET, SOCK_STREAM, 0);
     if (fd < 0) return -1;
     int one = 1;
