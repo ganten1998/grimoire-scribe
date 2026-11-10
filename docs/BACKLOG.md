@@ -6,10 +6,15 @@ why. Newest decisions first within each section.
 
 ## PDF import (2.1.0-beta.2, lane L5): what waits, and what is for the owner
 
-- **S1 has not run**: every number it sets is a placeholder in `sandbox::s1` (slice and job CPU caps, band mode's
-  threshold, the 512 MB and 64 MB caps, the allow-list, the 2 s D12 trigger, the pipe against memfd), with a
-  comment "set by S1". The seccomp allow-list also carries `exit_group` (musl's `_exit`), which the plan's list
-  did not name.
+- **S1 ran on the owner's Scribe (2026-11-09)**: every sandbox step works there, a private mapping of a PDF on
+  `/mnt/us` works (so PDFs are mapped), and a planner page draws in 90 ms (146 ms at most), a photo page in 230 ms,
+  in 27 to 38 MB. The plan's numbers in `sandbox::s1` were kept (30 to 60 times the room those pages need; the
+  module's header has the measurements); D12 is not triggered. Not measured: a page that is one huge scan.
+  An end-to-end import ran sandboxed on the Scribe on 2026-11-09.
+- **A picture folder when no worker can be had (2026-11-10)**: pictures fail closed on the Kindle, and such a
+  folder counts no try, so the Library shows "Couldn't import page folder (see grimoire.log)." at every scan
+  (at most every 10 s, Library in front) until the sandbox works again; a folder picked in place is not retried.
+  Only if the sandbox ever fails on a device: a quiet "no worker" ending the UI does not toast would stop it.
 - **Links and the outline (lane L6)**: DONE in 2.1.0-beta.2 (FORMAT.md, "Imports: PDFs"). Left for later: web links
   are counted and left out (the optional QR card, 8.I of the plan, is the way to keep them); the outline names
   only new notebooks' pages (a page's own name would keep it, which matters only when a fill comes in 2.2);
@@ -21,8 +26,9 @@ why. Newest decisions first within each section.
   decides which entries a 100,000-entry cap keeps.
 - **Pictures in the worker (lane L7)**: done in `picwork.rs` (`WorkKind::Picture`). Left, and why: the seccomp
   allow-list and the worker's address space for pictures (`s1::PICTURE_AS_MARGIN`, `PICTURE_SLICE`,
-  `PICTURE_CPU_SECS`, `PICTURE_WATCHDOG_MS`) are placeholders until S1 and the owner's Scribe run them (the Linux
-  `sandbox` job has the first real run of a picture in the sandbox: `pictures_decode_in_the_real_sandbox`); a
+  `PICTURE_CPU_SECS`, `PICTURE_WATCHDOG_MS`) are the plan's numbers, kept after S1 (the Linux `sandbox` tests,
+  run as root for the first time on 2026-11-10, decode a picture in the real sandbox:
+  `pictures_decode_in_the_real_sandbox`); a
   worker killed by the filter marks its picture `.bad` rather than falling back, so a call the list lacks would
   mark pictures bad on a device until it is added (the log names the call); KOReader's page PNGs and Grimoire's
   own `bg/` pictures stay decoded by the UI (a later option: re-encode KOReader's through the worker, which would
