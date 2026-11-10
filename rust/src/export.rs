@@ -204,6 +204,11 @@ impl StbBytes {
         unsafe { std::slice::from_raw_parts(self.p, self.len) }
     }
 }
+impl AsRef<[u8]> for StbBytes {
+    fn as_ref(&self) -> &[u8] {
+        self.as_slice()
+    }
+}
 impl Drop for StbBytes {
     fn drop(&mut self) {
         // SAFETY: p came from stb's malloc (STBIW_MALLOC is the C library's) and is freed once.
@@ -250,31 +255,50 @@ struct PageLinks<'a> {
 }
 
 thread_local! {
-    /// The colour picture the last coloured page drew from (notebook id, paper kind, page size): a notebook
-    /// whose pages share one picture decodes it once. Cleared when the PDF is done.
+    /// The colour picture the last coloured page drew from (notebook id, paper kind, page size), kept only
+    /// when the next page is on the same picture (a colour template's pages): such a notebook decodes it
+    /// once, and a notebook whose pages each have their own (an imported PDF's) holds one RGB copy at a
+    /// time. Cleared when the PDF is done.
     static COLOR_PIC: std::cell::RefCell<Option<(String, u32, i32, i32, BgPicture)>> = const { std::cell::RefCell::new(None) };
 }
 
-/// bgimage_render_color, a copy of the picture kept from the last page for the next.
-fn color_picture(nb: &str, paper: PaperKind, w: i32, h: i32) -> Option<BgPicture> {
-    let kept = COLOR_PIC.with(|c| {
-        c.borrow().as_ref().filter(|k| k.0 == nb && k.1 == paper.0 && k.2 == w && k.3 == h).map(|k| k.4.clone())
-    });
-    if kept.is_some() {
-        return kept;
+/// bgimage_render_color, or the copy kept from the page before when it was on this picture; a copy is
+/// kept for the next page when `keep` (it is on this picture too), and only then.
+fn color_picture(nb: &str, paper: PaperKind, w: i32, h: i32, keep: bool) -> Option<BgPicture> {
+    let kept = COLOR_PIC.with(|c| c.borrow_mut().take()).filter(|k| k.0 == nb && k.1 == paper.0 && k.2 == w && k.3 == h).map(|k| k.4);
+    // (taken out before any decode: what the page before kept is this page's to draw on, or gone)
+    let pic = match kept {
+        Some(p) => p,
+        None => bgimage_render_color(nb, paper, w, h)?,
+    };
+    if keep {
+        let mut px: Vec<u8> = Vec::new();
+        if px.try_reserve_exact(pic.px.len()).is_ok() {
+            px.extend_from_slice(&pic.px);
+            COLOR_PIC.with(|c| *c.borrow_mut() = Some((nb.to_string(), paper.0, w, h, BgPicture { px, ..pic })));
+        }
     }
-    COLOR_PIC.with(|c| *c.borrow_mut() = None);
-    let pic = bgimage_render_color(nb, paper, w, h)?;
-    COLOR_PIC.with(|c| *c.borrow_mut() = Some((nb.to_string(), paper.0, w, h, pic.clone())));
     Some(pic)
 }
 
 /// One page drawn into c (its paper kind in `paper`, its links in `links`). With `color` asked for (the
 /// notebook PDF, all layers), a page whose picture has colour also gets `color`: the page as 8-bit RGB,
 /// the picture fitted to the page and the ink drawn over it as it darkens or lightens the gray paper
-/// under it; any other page leaves it None, and the gray canvas is the page.
+/// under it; any other page leaves it None, and the gray canvas is the page. `read` is told the page's
+/// paper once the page is read, before anything of its picture is (the notebook PDF's cache takes the
+/// picture's stamp then).
 #[allow(clippy::too_many_arguments)]
-fn render_page_links(nb: &NotebookInfo, index: i32, dpi: f32, layers: i32, c: &mut Canvas, paper: Option<&mut u32>, links: Option<&mut PageLinks>, color: Option<&mut Option<Vec<u8>>>) -> i32 {
+fn render_page_links(
+    nb: &NotebookInfo,
+    index: i32,
+    dpi: f32,
+    layers: i32,
+    c: &mut Canvas,
+    paper: Option<&mut u32>,
+    links: Option<&mut PageLinks>,
+    color: Option<&mut Option<Vec<u8>>>,
+    read: Option<&mut dyn FnMut(PaperKind)>,
+) -> i32 {
     // Rendered at the notebook's page size, as the editor has the page: one an older version scaled
     // to another screen goes back to that size, and a missing or damaged page is blank paper of it.
     let mut p: Option<Box<Page>> = None;
@@ -288,15 +312,23 @@ fn render_page_links(nb: &NotebookInfo, index: i32, dpi: f32, layers: i32, c: &m
         }
         return -1;
     }
-    let p = match p {
-        Some(p) if canvas_init(c, p.w, p.h) == 0 => p,
-        other => {
-            if let Some(p) = other {
-                page_free(p);
-            }
-            return -1;
-        }
-    };
+    let Some(p) = p else { return -1 };
+    if let Some(read) = read {
+        read(p.paper);
+    }
+    // A colour page's picture first, before the page's canvas: decoded once, its luma kept in the picture
+    // cache for the gray page below (bgimage_render_color), so the decode never sits beside the canvases.
+    let colour = color.is_some() && layers == PAGE_LAYER_ALL && paper_is_image(p.paper) && bgimage_channels(nb.id.as_str(), p.paper) == 3;
+    let mut pic = None;
+    let mut next_shares = false;
+    if colour {
+        next_shares = index + 1 < nb.npages() && store_page_paper(nb, index + 1) == p.paper;
+        pic = color_picture(nb.id.as_str(), p.paper, p.w, p.h, next_shares);
+    }
+    if canvas_init(c, p.w, p.h) != 0 {
+        page_free(p);
+        return -1;
+    }
     page_render_layers(c, &p, Rect { x: 0, y: 0, w: p.w, h: p.h }, dpi, layers);
     if let Some(paper) = paper {
         *paper = p.paper.0;
@@ -305,9 +337,9 @@ fn render_page_links(nb: &NotebookInfo, index: i32, dpi: f32, layers: i32, c: &m
         links.n = nav_link_areas(links.nav, &p, nb.page_ids[index as usize], NAV_LINK_MIN_MM * dpi / 25.4, &mut links.links, &mut links.areas);
         links.doc = doclinks_targets(links.docs, &p, nb.page_ids[index as usize]);
     }
-    if let Some(color) = color.filter(|_| layers == PAGE_LAYER_ALL && paper_is_image(p.paper)) {
+    if let Some(color) = color {
         *color = None;
-        if let Some(mut pic) = color_picture(nb.id.as_str(), p.paper, p.w, p.h) {
+        if let Some(mut pic) = pic {
             // The paper alone, as the gray page has it under its ink: where the page is the paper, the
             // picture shows as it is; where ink changed it, the picture takes the same change.
             let mut cp = Canvas::default();
@@ -315,16 +347,22 @@ fn render_page_links(nb: &NotebookInfo, index: i32, dpi: f32, layers: i32, c: &m
                 page_render_layers(&mut cp, &p, Rect { x: 0, y: 0, w: p.w, h: p.h }, dpi, PAGE_LAYER_PAPER);
                 ink_over_colour(&mut pic.px, &cp.px, &c.px);
                 *color = Some(std::mem::take(&mut pic.px));
+            } else {
+                bgimage_note_missing(); // (drawn gray for want of memory: not the page, never kept)
             }
             canvas_free(&mut cp);
         }
+    }
+    if colour && !next_shares {
+        // (the next page is on another picture: this one's luma goes now, not after two more pages)
+        bgimage_drop(nb.id.as_str(), paper_image_id(p.paper));
     }
     page_free(p);
     0
 }
 
 fn render_page(nb: &NotebookInfo, index: i32, dpi: f32, layers: i32, c: &mut Canvas, paper: Option<&mut u32>) -> i32 {
-    render_page_links(nb, index, dpi, layers, c, paper, None, None)
+    render_page_links(nb, index, dpi, layers, c, paper, None, None, None)
 }
 
 /// One page rendered at full size (paper + ink) as an 8-bit grayscale PNG.
@@ -469,13 +507,15 @@ pub fn export_notebook_pdf(nb: &NotebookInfo, dpi: f32, out: &mut Buf) -> i32 {
 struct PdfOut<'a> {
     sink: &'a mut dyn Sink,
     buf: Buf,
-    /// bytes the sink has taken
-    pos: usize,
-    off: Vec<usize>,
+    /// bytes the sink has taken (64 bits on the 32-bit Kindle too: a PDF may pass 4 GiB)
+    pos: u64,
+    off: Vec<u64>,
 }
+/// The most bytes a PDF may have: its xref writes each offset in 10 digits.
+const PDF_MAX_BYTES: u64 = 9_999_999_999;
 impl PdfOut<'_> {
-    fn here(&self) -> usize {
-        self.pos + self.buf.data.len()
+    fn here(&self) -> u64 {
+        self.pos + self.buf.data.len() as u64
     }
     /// The C's OBJ(i): notes where object i starts and opens it.
     fn obj(&mut self, i: i32) {
@@ -490,7 +530,7 @@ impl PdfOut<'_> {
         if self.buf.err || !self.sink.put(&self.buf.data) {
             self.buf.err = true;
         }
-        self.pos += self.buf.data.len();
+        self.pos += self.buf.data.len() as u64;
         self.buf.data.clear();
     }
     /// A big block, straight to the sink.
@@ -499,7 +539,7 @@ impl PdfOut<'_> {
         if self.buf.err || !self.sink.put(b) {
             self.buf.err = true;
         }
-        self.pos += b.len();
+        self.pos += b.len() as u64;
     }
 }
 
@@ -649,9 +689,9 @@ pub fn export_notebook_pdf_to(nb: &NotebookInfo, dpi: f32, sink: &mut dyn Sink, 
             (pw * dpi / 72.0 + 0.5) as i32,
             (ph * dpi / 72.0 + 0.5) as i32,
             if img.ch == 3 { "DeviceRGB" } else { "DeviceGray" },
-            img.z.len() as i32
+            img.stream().len() as i32
         );
-        out.big(&img.z);
+        out.big(img.stream());
         drop(img);
         buf_printf!(&mut out.buf, "\nendstream\nendobj\n");
         out.flush();
@@ -682,13 +722,17 @@ pub fn export_notebook_pdf_to(nb: &NotebookInfo, dpi: f32, sink: &mut dyn Sink, 
         }
     }
     nav_free(&mut nav);
+    if rc == 0 && out.here() > PDF_MAX_BYTES {
+        rc = -1; // (an offset the xref cannot write: the PDF fails, never a broken one handed over as good)
+    }
     if rc == 0 {
         let xref = out.here();
         buf_printf!(&mut out.buf, "xref\n0 %d\n0000000000 65535 f \n", nobj + 1);
         for i in 1..=nobj {
-            buf_printf!(&mut out.buf, "%010zu 00000 n \n", out.off[i as usize]);
+            buf_append(&mut out.buf, format!("{:010} 00000 n \n", out.off[i as usize]).as_bytes());
         }
-        buf_printf!(&mut out.buf, "trailer\n<< /Size %d /Root 1 0 R /Info 3 0 R >>\nstartxref\n%zu\n%%%%EOF\n", nobj + 1, xref);
+        buf_printf!(&mut out.buf, "trailer\n<< /Size %d /Root 1 0 R /Info 3 0 R >>\nstartxref\n", nobj + 1);
+        buf_append(&mut out.buf, format!("{xref}\n%%EOF\n").as_bytes());
     }
     out.flush();
     COLOR_PIC.with(|c| *c.borrow_mut() = None);
@@ -727,20 +771,41 @@ fn page_image(nb: &NotebookInfo, index: i32, dpi: f32, cache: &mut Option<PdfCac
     let mut c = Canvas::default();
     let mut paper = 0u32;
     let mut color: Option<Vec<u8>> = None;
-    if render_page_links(nb, index, dpi, PAGE_LAYER_ALL, &mut c, Some(&mut paper), Some(pl), Some(&mut color)) != 0 {
+    // (the picture's stamp once the page is read, before its picture is: a picture made or replaced while
+    // the page is drawn leaves the record stale, never trusted)
+    let mut pic: Option<PicStamp> = None;
+    let mut stamp_picture = |k: PaperKind| {
+        if let Some(cache) = cache.as_mut().filter(|c| c.writes()) {
+            pic = Some(cache.picture(nb, k.0));
+        }
+    };
+    bgimage_take_missing(); // (what drew white before: not this page's)
+    if render_page_links(nb, index, dpi, PAGE_LAYER_ALL, &mut c, Some(&mut paper), Some(pl), Some(&mut color), Some(&mut stamp_picture)) != 0 {
         return None;
     }
+    // A page drawn while its picture was missing or did not decode (white paper, or gray for colour) is
+    // the PDF of this run only: never kept, so the next mirror draws it again with its picture.
+    let missing = bgimage_take_missing();
     let (w, h) = (c.w, c.h);
-    let plane: &[u8] = match &color {
-        Some(rgb) => rgb,
-        None => &c.px[..(w * h) as usize],
+    let ch = if color.is_some() { 3 } else { 1 };
+    if color.is_some() {
+        canvas_free(&mut c); // (a colour page is its RGB plane: the gray canvas goes before the compressor)
+    }
+    let z = {
+        let plane: &[u8] = match &color {
+            Some(rgb) => rgb,
+            None => &c.px[..(w * h) as usize],
+        };
+        zlib_compress(plane)
     };
-    let z = zlib_compress(plane);
-    let img = z.map(|z| PageImage { w, h, ch: if color.is_some() { 3 } else { 1 }, z: z.as_slice().to_vec() });
+    // (the pixels go before the stream is kept or sent: one copy of the page at a time)
+    drop(color);
     canvas_free(&mut c);
-    let img = img?;
-    if let (Some(cache), Some(stamp)) = (cache.as_mut(), stamp.as_ref()) {
-        cache.put(nb, pid, stamp, paper, &img);
+    let img = PageImage::new(w, h, ch, z?);
+    if let (Some(cache), Some(stamp), Some(pic)) = (cache.as_mut(), stamp.as_ref(), pic) {
+        if !missing {
+            cache.put(pid, stamp, paper, pic, &img);
+        }
     }
     Some(img)
 }
@@ -807,7 +872,9 @@ fn dos_time() -> (u16, u16) {
 }
 
 /// A zip (stored or deflated entries, CRC32, no zip64) streaming builder: with a sink, each entry goes
-/// out as it is finished and `out` is only the scratch it is built in.
+/// out as it is finished and `out` is only the scratch it is built in. An entry refused (past the
+/// format's 4 GiB, out of memory, a streamed entry whose maker failed midway) cannot be taken back from
+/// what is already out: it fails the whole zip, and zip_end says so.
 pub struct ZipWriter<'a> {
     pub out: &'a mut Buf,
     pub central: Buf,
@@ -815,14 +882,18 @@ pub struct ZipWriter<'a> {
     sink: Option<&'a mut dyn Sink>,
     /// bytes already handed to the sink
     flushed: u64,
+    /// an entry was refused or broken: the zip is no good
+    failed: bool,
 }
+/// The most a zip without zip64 can say: an offset or a size in 32 bits.
+const ZIP_MAX: u64 = 0xFFFFFFF0;
 /// (The C's zip_begin(z, out) fills a ZipWriter in place; here it makes one.)
 pub fn zip_begin(out: &mut Buf) -> ZipWriter<'_> {
-    ZipWriter { out, central: Buf::default(), count: 0, sink: None, flushed: 0 }
+    ZipWriter { out, central: Buf::default(), count: 0, sink: None, flushed: 0, failed: false }
 }
 /// A zip made into a sink as it goes, `scratch` holding one entry at a time.
 pub fn zip_begin_to<'a>(scratch: &'a mut Buf, sink: &'a mut dyn Sink) -> ZipWriter<'a> {
-    ZipWriter { out: scratch, central: Buf::default(), count: 0, sink: Some(sink), flushed: 0 }
+    ZipWriter { out: scratch, central: Buf::default(), count: 0, sink: Some(sink), flushed: 0, failed: false }
 }
 fn zip_pos(z: &ZipWriter) -> u64 {
     z.flushed + z.out.data.len() as u64
@@ -868,7 +939,8 @@ fn zip_central(z: &mut ZipWriter, name: &[u8], flags: u16, method: u16, crc: u32
 
 pub fn zip_add(z: &mut ZipWriter, name: &str, data: &[u8], deflate: bool) -> i32 {
     let len = data.len();
-    if len > 0xFFFFFFF0 || zip_pos(z) > 0xFFFFFFF0 || z.count >= 0xFFFF {
+    if len as u64 > ZIP_MAX || zip_pos(z) > ZIP_MAX || z.count >= 0xFFFF {
+        z.failed = true;
         return -1; // no zip64
     }
     let crc = crc32_of(data);
@@ -904,7 +976,11 @@ pub fn zip_add(z: &mut ZipWriter, name: &str, data: &[u8], deflate: bool) -> i32
     let rc = buf_append(o, payload);
     zip_central(z, name_bytes, 0x0800, method, crc, plen as u32, len as u32, local_off);
     zip_spill(z);
-    rc
+    if rc != 0 || z.out.err {
+        z.failed = true;
+        return -1;
+    }
+    0
 }
 
 /// The CRC-32 running state after p (start from 0xFFFFFFFF, and xor the end with it).
@@ -961,7 +1037,8 @@ impl Sink for EntrySink<'_, '_> {
 /// deflate blocks, then the descriptor; the central directory has the true sizes. Memory: one block.
 /// -1 when `fill` fails (the zip is then broken: the caller stops) or the zip is full.
 pub fn zip_add_stream(z: &mut ZipWriter, name: &str, fill: &mut dyn FnMut(&mut dyn Sink) -> i32) -> i32 {
-    if zip_pos(z) > 0xFFFFFFF0 || z.count >= 0xFFFF {
+    if zip_pos(z) > ZIP_MAX || z.count >= 0xFFFF {
+        z.failed = true;
         return -1;
     }
     let (t, d) = dos_time();
@@ -988,7 +1065,8 @@ pub fn zip_add_stream(z: &mut ZipWriter, name: &str, fill: &mut dyn FnMut(&mut d
     es.emit(true); // (the last block, empty or not)
     let (crc, size, packed) = (es.crc ^ 0xFFFFFFFF, es.size, es.packed);
     drop(es);
-    if rc != 0 || size > 0xFFFFFFF0 || packed > 0xFFFFFFF0 {
+    if rc != 0 || size > ZIP_MAX || packed > ZIP_MAX {
+        z.failed = true; // (its header and bytes are out: the zip is broken)
         return -1;
     }
     let o = &mut *z.out;
@@ -999,14 +1077,19 @@ pub fn zip_add_stream(z: &mut ZipWriter, name: &str, fill: &mut dyn FnMut(&mut d
     zip_central(z, name_bytes, 0x0808, 8, crc, packed as u32, size as u32, local_off);
     zip_spill(z);
     if z.out.err {
+        z.failed = true;
         -1
     } else {
         0
     }
 }
 
+/// The central directory and its end. -1 when the zip is no good: an entry was refused or broken, or
+/// the directory itself starts or ends past what 32 bits can say.
 pub fn zip_end(z: &mut ZipWriter) -> i32 {
-    let cd_off = zip_pos(z) as u32;
+    let at = zip_pos(z);
+    let past = at > ZIP_MAX || at + z.central.data.len() as u64 + 22 > u32::MAX as u64;
+    let cd_off = at as u32;
     buf_append(z.out, &z.central.data);
     let o = &mut *z.out;
     le32(o, 0x06054b50);
@@ -1018,7 +1101,7 @@ pub fn zip_end(z: &mut ZipWriter) -> i32 {
     le32(o, cd_off);
     let rc = buf_append(o, b"\0\0");
     zip_spill(z);
-    let bad = z.central.err || z.out.err;
+    let bad = z.central.err || z.out.err || z.failed || past;
     buf_free(&mut z.central);
     if rc != 0 || bad {
         -1
@@ -1285,9 +1368,59 @@ pub fn export_mirror_prune_folder(folder: &str, mirror_dir: &str) -> i32 {
     rc
 }
 
-/// Writes the mirror <mirror_dir>/<folder>/<name>.pdf atomically. 0 on success. It is made into
-/// `<name>.pdf.tmp` as its pages are drawn (or found in the page-stream cache, pdfcache.rs, which a
-/// finished mirror brings up to date and prunes), then synced and renamed over the old one.
+/// The temporary file a mirror writes for `path` (`<name>.pdf`): `<name>.pdf.<pid>.tmp`, this process's
+/// own, so two mirrors of one notebook (or of two notebooks of one name) never write one file.
+fn mirror_tmp(path: &str) -> String {
+    format!("{path}.{}.tmp", std::process::id())
+}
+
+/// The temporary files of mirrors that are gone, in the mirror's folder and its folders: a
+/// `<name>.pdf.<pid>.tmp` whose process is not running (killed by its cap, the kernel or a power cut),
+/// and an older build's `<name>.pdf.tmp` an hour old. A temporary file of a running process stays.
+fn mirror_sweep(mirror_dir: &str) {
+    let now = std::time::SystemTime::now();
+    let sweep_in = |dir: &std::path::Path, deeper: bool| -> Vec<std::path::PathBuf> {
+        let mut subdirs = Vec::new();
+        let Ok(rd) = std::fs::read_dir(dir) else { return subdirs };
+        for e in rd.flatten() {
+            let Ok(ft) = e.file_type() else { continue };
+            if ft.is_dir() && deeper {
+                subdirs.push(e.path());
+                continue;
+            }
+            if !ft.is_file() {
+                continue;
+            }
+            let Some(name) = e.file_name().to_str().map(|s| s.to_string()) else { continue };
+            let Some(stem) = name.strip_suffix(".tmp") else { continue };
+            let stale = if stem.ends_with(".pdf") {
+                e.metadata().ok().and_then(|m| m.modified().ok()).is_some_and(|t| now.duration_since(t).is_ok_and(|d| d.as_secs() > 3600))
+            } else {
+                match stem.rsplit_once('.') {
+                    Some((base, pid)) if base.ends_with(".pdf") && !pid.is_empty() && pid.len() <= 10 && pid.bytes().all(|c| c.is_ascii_digit()) => {
+                        let pid: i64 = pid.parse().unwrap_or(0);
+                        // SAFETY: kill with signal 0 only asks whether the process exists.
+                        pid > 0 && pid <= i32::MAX as i64 && unsafe { libc::kill(pid as libc::pid_t, 0) } != 0 && errno() == libc::ESRCH
+                    }
+                    _ => false,
+                }
+            };
+            if stale {
+                let _ = std::fs::remove_file(e.path());
+            }
+        }
+        subdirs
+    };
+    for sub in sweep_in(std::path::Path::new(mirror_dir), true) {
+        sweep_in(&sub, false);
+    }
+}
+
+/// Writes the mirror <mirror_dir>/<folder>/<name>.pdf atomically. 0 on success. It holds the notebook's
+/// mirror lock for the whole job (pdf_mirror_lock: a mirror an earlier run left running finishes first),
+/// is made into its own `<name>.pdf.<pid>.tmp` as its pages are drawn (or found in the page-stream cache,
+/// pdfcache.rs, which a finished mirror brings up to date and prunes), then synced and renamed over the
+/// old one, and the folder synced. The temporary files of mirrors that were killed are swept.
 pub fn export_mirror_pdf(nb: &NotebookInfo, dpi: f32, mirror_dir: &str) -> i32 {
     let mut sf = String::new();
     let mut sn = String::new();
@@ -1304,7 +1437,9 @@ pub fn export_mirror_pdf(nb: &NotebookInfo, dpi: f32, mirror_dir: &str) -> i32 {
         return -1;
     }
     csnprintf!(&mut path, 1000, "%s/%s.pdf", &dir, &sn);
-    let tmp = format!("{path}.tmp");
+    let lock = pdf_mirror_lock(nb.id.as_str());
+    mirror_sweep(mirror_dir);
+    let tmp = mirror_tmp(&path);
     let Some(mut sink) = FileSink::create(&tmp) else { return -1 };
     let rc = export_notebook_pdf_to(nb, dpi, &mut sink, PdfCacheMode::ReadWrite, None);
     let ok = rc == 0 && sink.sync();
@@ -1313,6 +1448,11 @@ pub fn export_mirror_pdf(nb: &NotebookInfo, dpi: f32, mirror_dir: &str) -> i32 {
         let _ = std::fs::remove_file(&tmp);
         return -1;
     }
+    // (the rename made durable, as write_file_atomic does: best effort)
+    if let Ok(d) = std::fs::File::open(&dir) {
+        let _ = d.sync_all();
+    }
     pdf_cache_prune(nb);
+    drop(lock);
     0
 }

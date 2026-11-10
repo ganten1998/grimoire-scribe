@@ -890,3 +890,6 @@ Font hooks (same builds): `GRIMOIRE_FONT_WATCHDOG_MS=N` (the font watchdog), `GR
 `GRIMOIRE_FONT_TEST_DRAW_CRASH=1` (the simulator's build only: the app ends at the first glyph a custom font
 draws, as a font that crashed its first screen would). `GRIMOIRE_IMPORT_STABLE=fast` takes a font file at the
 first look too, and `GRIMOIRE_WORK_FAIL_STEP` fails a font worker's step: no font is then checked.
+Child caps hooks (the simulator's build): `GRIMOIRE_CAPS_PROBE=<file>` (each background child appends the caps it
+took, `oom=N as=N`, for a test to read) and `GRIMOIRE_CAPS_NO_STATM=1` (a child cannot read its own size: on Linux
+it is capped at 1 GiB plus its margin).
