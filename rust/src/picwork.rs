@@ -410,19 +410,27 @@ impl PicPool {
         }
     }
 
-    /// One request: the command line, the bytes, and the first record back. `Ok(None)` means the worker's
-    /// sandbox was found unavailable (nothing was decoded: the caller falls back).
-    fn ask(&mut self, line: &str, data: &[u8]) -> Result<Option<(Vec<u8>, usize)>, &'static str> {
+    /// One request: the command line, the bytes, and the first record back. `Ok(None)` means no worker can be had
+    /// and no worker was ever given this picture (nothing was decoded: the caller falls back). `handed` says an
+    /// earlier try gave it to a worker already: a picture a worker was given is never decoded in the writer, for a
+    /// worker the picture took over could otherwise hand it to a root process (security review 2026-11).
+    fn ask(&mut self, line: &str, data: &[u8], mut handed: bool) -> Result<Option<(Vec<u8>, usize)>, &'static str> {
         let mut again = true;
         loop {
             if let Start::Fallback = self.start() {
-                return Ok(None);
+                return if handed { Err("no worker for a picture a worker was given") } else { Ok(None) };
             }
             let fresh = self.served == 0;
-            let Some(w) = self.w.as_mut() else { return Ok(None) };
+            let Some(w) = self.w.as_mut() else {
+                return if handed { Err("no worker for a picture a worker was given") } else { Ok(None) };
+            };
             self.served += 1;
             let deadline = mono_ms() + watchdog_ms();
-            let sent = w.send(line) && w.send_bytes(data, deadline);
+            // (once its command went out, the worker may read the picture: from here on it was given it)
+            let sent = w.send(line) && {
+                handed = true;
+                w.send_bytes(data, deadline)
+            };
             if !sent {
                 // an idle worker that was killed from outside: one try on a fresh one
                 let stalled = mono_ms() >= deadline;
@@ -466,10 +474,10 @@ impl PicPool {
             return PicOut::Bad("too big a file");
         }
         let cmd = format!("C {} {}\n", file_len, head.len());
-        let mut r = self.ask(&cmd, head);
+        let mut r = self.ask(&cmd, head, false);
         if let Err(why) = r {
             qlog!("work: a picture's worker ended on its header (%s); a fresh worker tries it again", why);
-            r = self.ask(&cmd, head);
+            r = self.ask(&cmd, head, true);
         }
         let line = match r {
             Ok(Some((l, _))) => l,
@@ -483,17 +491,21 @@ impl PicPool {
             Reply::Info(w, h) => PicOut::Info { w, h },
             Reply::Bad(why) => PicOut::Bad(why),
             Reply::Mem => PicOut::Retry("out of memory"),
-            Reply::Sandbox => {
-                self.drop_worker();
-                fall_back("a sandbox step failed");
-                local_check(head, file_len)
-            }
+            // A sandbox step can only fail before the handshake's S line: after the picture's bytes it is a worker
+            // that lies (one the picture took over), never a reason to read the picture in the writer.
+            Reply::Sandbox => self.late_sandbox(),
             Reply::Sigsys(n) => self.sigsys(n),
             _ => {
                 self.drop_worker();
                 PicOut::Dead("the worker broke the protocol")
             }
         }
+    }
+
+    fn late_sandbox(&mut self) -> PicOut {
+        self.drop_worker();
+        qlog!("work: a picture's worker claimed a failed sandbox step after it was given the picture: refused");
+        PicOut::Dead("the worker broke the protocol")
     }
 
     fn sigsys(&mut self, n: i32) -> PicOut {
@@ -509,11 +521,11 @@ impl PicPool {
         if data.is_empty() || data.len() > BYTES_MAX || !(1..=6000).contains(&pw) || !(1..=6000).contains(&ph) {
             return PicOut::Bad("a damaged or unsupported picture");
         }
-        match self.decode_once(data, orient, pw, ph) {
+        match self.decode_once(data, orient, pw, ph, false) {
             Ok(out) => out,
             Err(why) => {
                 qlog!("work: a picture's worker ended (%s); a fresh worker tries it again", why);
-                self.decode_once(data, orient, pw, ph).unwrap_or_else(|why| {
+                self.decode_once(data, orient, pw, ph, true).unwrap_or_else(|why| {
                     qlog!("work: a picture's worker ended (%s)", why);
                     PicOut::Dead(why)
                 })
@@ -522,18 +534,19 @@ impl PicPool {
     }
 
     /// One try of `decode`: Err when the worker ended or stalled on the picture (gone, a fresh one comes next).
-    fn decode_once(&mut self, data: &[u8], orient: bool, pw: i32, ph: i32) -> Result<PicOut, &'static str> {
-        let r = self.ask(&format!("D {} {} {} {}\n", orient as u8, pw, ph, data.len()), data);
+    /// `handed`: an earlier try gave the picture to a worker (it is then never decoded in the writer).
+    fn decode_once(&mut self, data: &[u8], orient: bool, pw: i32, ph: i32, handed: bool) -> Result<PicOut, &'static str> {
+        let r = self.ask(&format!("D {} {} {} {}\n", orient as u8, pw, ph, data.len()), data, handed);
         let line = match r {
             Ok(Some((l, _))) => l,
             Ok(None) => return Ok(local_decode(data, orient, pw, ph)),
             Err(why) => return Err(why),
         };
-        self.decoded(&line, data, orient, pw, ph)
+        self.decoded(&line, pw, ph)
     }
 
     /// The worker's answer to a `D`, and the pixels after it.
-    fn decoded(&mut self, line: &[u8], data: &[u8], orient: bool, pw: i32, ph: i32) -> Result<PicOut, &'static str> {
+    fn decoded(&mut self, line: &[u8], pw: i32, ph: i32) -> Result<PicOut, &'static str> {
         Ok(match parse_info(line) {
             Reply::Pic { sw, sh, w, h, ch } => {
                 if w != pw || h != ph || !(ch == 1 || ch == 3) || sw < 1 || sh < 1 || sw > 8192 || sh > 8192 || (sw as i64) * (sh as i64) > BG_MAX_PIXELS {
@@ -558,11 +571,7 @@ impl PicPool {
             }
             Reply::Bad(why) => PicOut::Bad(why),
             Reply::Mem => PicOut::Retry("out of memory"),
-            Reply::Sandbox => {
-                self.drop_worker();
-                fall_back("a sandbox step failed");
-                local_decode(data, orient, pw, ph)
-            }
+            Reply::Sandbox => self.late_sandbox(),
             Reply::Sigsys(n) => self.sigsys(n),
             _ => {
                 self.drop_worker();
