@@ -2650,8 +2650,7 @@ mod tests {
         assert!(v.foreign[0].label.ends_with("Renamed"),"{}",v.foreign[0].label);
         // Every arrow is one the fonts draw (Terminess has no two-way arrow: it would be a box).
         for (o,i) in [(true,true),(true,false),(false,true)] {
-            let mut out=String::new();
-            assert_eq!(font_drawable_copy(anchor_arrow(o,i),&mut out,16),0,"{:?}",anchor_arrow(o,i));
+            assert!(anchor_arrow(o,i).chars().all(|ch|font_has_glyph(FontFace::Regular,ch as u32)),"{:?}",anchor_arrow(o,i));
         }
         assert_eq!(v.foreign.iter().filter(|f|f.inc).count(),2);
         assert_eq!(v.foreign.iter().filter(|f|f.broken).count(),1);

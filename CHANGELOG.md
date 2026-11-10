@@ -83,13 +83,17 @@
   lines they do not know (they draw Terminess). The Kindle binary is 10.6 MB and the zip 5.5 MB with it.
 - The text cache now holds at most 4 MB of letters (it was only limited by their number), which matters for
   large letters of your own fonts.
+- A character no font in Grimoire can draw shows as a box instead of disappearing, so a name no longer looks cut
+  short: a notebook named 会议记录 showed only 会 in the Library (会 is in the Japanese font; 议, 记 and 录 are
+  simplified Chinese, which none of Grimoire's fonts has) and now shows 会 and three boxes; an emoji or a
+  Vietnamese letter Terminess lacks is a box too. What is meant to be unseen (zero-width characters, the joiners
+  and variation selectors inside an emoji, a flag's tags, an accent no font has) still shows nothing. To read
+  Chinese text, use a font of your own that has its letters (Settings > Font, in Classic).
 - Japanese: nearly every string is translated now (922 of 987), and several that said the wrong thing are fixed
   ("Save now" and "Select (lasso)" among them), by nebuff. The 65 still in English are 2.1's newest: most of
   this beta's new screens, What's new, the Font sheet and the folder merge.
 - The Graph's list of links sorts faster on notebooks with many links (each row's target is read once, not at
   every comparison), by nebuff.
-- A file or folder in `grimoire/import` whose name ends in Chinese or Japanese characters (or some accented letters)
-  made Grimoire close at every start; fixed.
 - Hardening: Grimoire no longer follows links planted in its own folders when it saves, cleans up or prunes its
   caches, and a late sandbox reply from the separate process that reads PDFs and pictures now counts as a failure.
 

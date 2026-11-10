@@ -970,6 +970,163 @@ fn units_to_px(st: &State, ttf: usize, gpx: f32, units: i32) -> f32 {
     face_scale(st, ttf, gpx) * units as f32
 }
 
+/// The face and size cp is drawn in under m (px asked, fpx px times m's scale), and whether that face has
+/// it. Glyphs a theme face or a family lacks (symbols, arrows, Greek, Japanese) come from Terminess at the
+/// asked size (a bold face's from its Bold), or, when Terminess lacks them too, from DotGothic16. A custom
+/// font draws the glyphs it has and that passed its check, at the sizes the check drew; every other one is
+/// borrowed the same way, ASCII too. False: no face has it (the face returned is Terminess, which lacks
+/// it). Printable ASCII is taken as there in every embedded face.
+fn pick_face(st: &mut State, m: FaceMap, px: f32, fpx: f32, cp: u32) -> (usize, f32, bool) {
+    let mut ttf = m.ttf;
+    let mut gpx = fpx;
+    let lacks = if ttf >= TTF_COUNT {
+        match own_px(st, ttf, px, fpx, cp) {
+            Some(g) if face_has(st, ttf, cp) => {
+                gpx = g;
+                false
+            }
+            _ => true,
+        }
+    } else {
+        !(0x20..0x7F).contains(&cp) && find_glyph_index(&st.font[ttf], cp) == 0
+    };
+    if !lacks {
+        return (ttf, gpx, true);
+    }
+    if ttf != TTF_TERM && ttf != TTF_TERM_BOLD {
+        ttf = m.fallback;
+        gpx = px;
+    }
+    if find_glyph_index(&st.font[ttf], cp) != 0 {
+        return (ttf, gpx, true);
+    }
+    if find_glyph_index(&st.font[TTF_JP], cp) != 0 {
+        return (TTF_JP, px, true);
+    }
+    (ttf, gpx, false)
+}
+
+/// What a character no face has shows as (2.1.0-beta.2).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Missing {
+    /// whitespace: the room of a space (U+0020), drawn as one
+    Space,
+    /// a control, format or default-ignorable character, a combining mark: nothing, and no room
+    Nothing,
+    /// anything else (a letter, an emoji, a symbol): the box (missing_box), one for each code point
+    Box,
+}
+
+/// Unicode 17.0's general categories Cc, Cf, Mn and Me (controls, format characters, nonspacing and
+/// enclosing marks: the variation selectors are Mn, the tags Cf) and its Default_Ignorable_Code_Point
+/// (besides those, the Hangul fillers and the unassigned rest of U+E0000 to U+E0FFF), as sorted ranges,
+/// first and last. Made with Python's unicodedata (unidata_version 17.0.0): every code point whose
+/// category() is one of the four, with the 17 Default_Ignorable_Code_Point ranges of
+/// DerivedCoreProperties.txt (which unicodedata does not carry) added by hand, merged where they touch.
+const UNSEEN: [(u32, u32); 378] = [
+    (0x0, 0x1F), (0x7F, 0x9F), (0xAD, 0xAD), (0x300, 0x36F), (0x483, 0x489), (0x591, 0x5BD), (0x5BF, 0x5BF),
+    (0x5C1, 0x5C2), (0x5C4, 0x5C5), (0x5C7, 0x5C7), (0x600, 0x605), (0x610, 0x61A), (0x61C, 0x61C), (0x64B, 0x65F),
+    (0x670, 0x670), (0x6D6, 0x6DD), (0x6DF, 0x6E4), (0x6E7, 0x6E8), (0x6EA, 0x6ED), (0x70F, 0x70F), (0x711, 0x711),
+    (0x730, 0x74A), (0x7A6, 0x7B0), (0x7EB, 0x7F3), (0x7FD, 0x7FD), (0x816, 0x819), (0x81B, 0x823), (0x825, 0x827),
+    (0x829, 0x82D), (0x859, 0x85B), (0x890, 0x891), (0x897, 0x89F), (0x8CA, 0x902), (0x93A, 0x93A), (0x93C, 0x93C),
+    (0x941, 0x948), (0x94D, 0x94D), (0x951, 0x957), (0x962, 0x963), (0x981, 0x981), (0x9BC, 0x9BC), (0x9C1, 0x9C4),
+    (0x9CD, 0x9CD), (0x9E2, 0x9E3), (0x9FE, 0x9FE), (0xA01, 0xA02), (0xA3C, 0xA3C), (0xA41, 0xA42), (0xA47, 0xA48),
+    (0xA4B, 0xA4D), (0xA51, 0xA51), (0xA70, 0xA71), (0xA75, 0xA75), (0xA81, 0xA82), (0xABC, 0xABC), (0xAC1, 0xAC5),
+    (0xAC7, 0xAC8), (0xACD, 0xACD), (0xAE2, 0xAE3), (0xAFA, 0xAFF), (0xB01, 0xB01), (0xB3C, 0xB3C), (0xB3F, 0xB3F),
+    (0xB41, 0xB44), (0xB4D, 0xB4D), (0xB55, 0xB56), (0xB62, 0xB63), (0xB82, 0xB82), (0xBC0, 0xBC0), (0xBCD, 0xBCD),
+    (0xC00, 0xC00), (0xC04, 0xC04), (0xC3C, 0xC3C), (0xC3E, 0xC40), (0xC46, 0xC48), (0xC4A, 0xC4D), (0xC55, 0xC56),
+    (0xC62, 0xC63), (0xC81, 0xC81), (0xCBC, 0xCBC), (0xCBF, 0xCBF), (0xCC6, 0xCC6), (0xCCC, 0xCCD), (0xCE2, 0xCE3),
+    (0xD00, 0xD01), (0xD3B, 0xD3C), (0xD41, 0xD44), (0xD4D, 0xD4D), (0xD62, 0xD63), (0xD81, 0xD81), (0xDCA, 0xDCA),
+    (0xDD2, 0xDD4), (0xDD6, 0xDD6), (0xE31, 0xE31), (0xE34, 0xE3A), (0xE47, 0xE4E), (0xEB1, 0xEB1), (0xEB4, 0xEBC),
+    (0xEC8, 0xECE), (0xF18, 0xF19), (0xF35, 0xF35), (0xF37, 0xF37), (0xF39, 0xF39), (0xF71, 0xF7E), (0xF80, 0xF84),
+    (0xF86, 0xF87), (0xF8D, 0xF97), (0xF99, 0xFBC), (0xFC6, 0xFC6), (0x102D, 0x1030), (0x1032, 0x1037),
+    (0x1039, 0x103A), (0x103D, 0x103E), (0x1058, 0x1059), (0x105E, 0x1060), (0x1071, 0x1074), (0x1082, 0x1082),
+    (0x1085, 0x1086), (0x108D, 0x108D), (0x109D, 0x109D), (0x115F, 0x1160), (0x135D, 0x135F), (0x1712, 0x1714),
+    (0x1732, 0x1733), (0x1752, 0x1753), (0x1772, 0x1773), (0x17B4, 0x17B5), (0x17B7, 0x17BD), (0x17C6, 0x17C6),
+    (0x17C9, 0x17D3), (0x17DD, 0x17DD), (0x180B, 0x180F), (0x1885, 0x1886), (0x18A9, 0x18A9), (0x1920, 0x1922),
+    (0x1927, 0x1928), (0x1932, 0x1932), (0x1939, 0x193B), (0x1A17, 0x1A18), (0x1A1B, 0x1A1B), (0x1A56, 0x1A56),
+    (0x1A58, 0x1A5E), (0x1A60, 0x1A60), (0x1A62, 0x1A62), (0x1A65, 0x1A6C), (0x1A73, 0x1A7C), (0x1A7F, 0x1A7F),
+    (0x1AB0, 0x1ADD), (0x1AE0, 0x1AEB), (0x1B00, 0x1B03), (0x1B34, 0x1B34), (0x1B36, 0x1B3A), (0x1B3C, 0x1B3C),
+    (0x1B42, 0x1B42), (0x1B6B, 0x1B73), (0x1B80, 0x1B81), (0x1BA2, 0x1BA5), (0x1BA8, 0x1BA9), (0x1BAB, 0x1BAD),
+    (0x1BE6, 0x1BE6), (0x1BE8, 0x1BE9), (0x1BED, 0x1BED), (0x1BEF, 0x1BF1), (0x1C2C, 0x1C33), (0x1C36, 0x1C37),
+    (0x1CD0, 0x1CD2), (0x1CD4, 0x1CE0), (0x1CE2, 0x1CE8), (0x1CED, 0x1CED), (0x1CF4, 0x1CF4), (0x1CF8, 0x1CF9),
+    (0x1DC0, 0x1DFF), (0x200B, 0x200F), (0x202A, 0x202E), (0x2060, 0x206F), (0x20D0, 0x20F0), (0x2CEF, 0x2CF1),
+    (0x2D7F, 0x2D7F), (0x2DE0, 0x2DFF), (0x302A, 0x302D), (0x3099, 0x309A), (0x3164, 0x3164), (0xA66F, 0xA672),
+    (0xA674, 0xA67D), (0xA69E, 0xA69F), (0xA6F0, 0xA6F1), (0xA802, 0xA802), (0xA806, 0xA806), (0xA80B, 0xA80B),
+    (0xA825, 0xA826), (0xA82C, 0xA82C), (0xA8C4, 0xA8C5), (0xA8E0, 0xA8F1), (0xA8FF, 0xA8FF), (0xA926, 0xA92D),
+    (0xA947, 0xA951), (0xA980, 0xA982), (0xA9B3, 0xA9B3), (0xA9B6, 0xA9B9), (0xA9BC, 0xA9BD), (0xA9E5, 0xA9E5),
+    (0xAA29, 0xAA2E), (0xAA31, 0xAA32), (0xAA35, 0xAA36), (0xAA43, 0xAA43), (0xAA4C, 0xAA4C), (0xAA7C, 0xAA7C),
+    (0xAAB0, 0xAAB0), (0xAAB2, 0xAAB4), (0xAAB7, 0xAAB8), (0xAABE, 0xAABF), (0xAAC1, 0xAAC1), (0xAAEC, 0xAAED),
+    (0xAAF6, 0xAAF6), (0xABE5, 0xABE5), (0xABE8, 0xABE8), (0xABED, 0xABED), (0xFB1E, 0xFB1E), (0xFE00, 0xFE0F),
+    (0xFE20, 0xFE2F), (0xFEFF, 0xFEFF), (0xFFA0, 0xFFA0), (0xFFF0, 0xFFFB), (0x101FD, 0x101FD), (0x102E0, 0x102E0),
+    (0x10376, 0x1037A), (0x10A01, 0x10A03), (0x10A05, 0x10A06), (0x10A0C, 0x10A0F), (0x10A38, 0x10A3A),
+    (0x10A3F, 0x10A3F), (0x10AE5, 0x10AE6), (0x10D24, 0x10D27), (0x10D69, 0x10D6D), (0x10EAB, 0x10EAC),
+    (0x10EFA, 0x10EFF), (0x10F46, 0x10F50), (0x10F82, 0x10F85), (0x11001, 0x11001), (0x11038, 0x11046),
+    (0x11070, 0x11070), (0x11073, 0x11074), (0x1107F, 0x11081), (0x110B3, 0x110B6), (0x110B9, 0x110BA),
+    (0x110BD, 0x110BD), (0x110C2, 0x110C2), (0x110CD, 0x110CD), (0x11100, 0x11102), (0x11127, 0x1112B),
+    (0x1112D, 0x11134), (0x11173, 0x11173), (0x11180, 0x11181), (0x111B6, 0x111BE), (0x111C9, 0x111CC),
+    (0x111CF, 0x111CF), (0x1122F, 0x11231), (0x11234, 0x11234), (0x11236, 0x11237), (0x1123E, 0x1123E),
+    (0x11241, 0x11241), (0x112DF, 0x112DF), (0x112E3, 0x112EA), (0x11300, 0x11301), (0x1133B, 0x1133C),
+    (0x11340, 0x11340), (0x11366, 0x1136C), (0x11370, 0x11374), (0x113BB, 0x113C0), (0x113CE, 0x113CE),
+    (0x113D0, 0x113D0), (0x113D2, 0x113D2), (0x113E1, 0x113E2), (0x11438, 0x1143F), (0x11442, 0x11444),
+    (0x11446, 0x11446), (0x1145E, 0x1145E), (0x114B3, 0x114B8), (0x114BA, 0x114BA), (0x114BF, 0x114C0),
+    (0x114C2, 0x114C3), (0x115B2, 0x115B5), (0x115BC, 0x115BD), (0x115BF, 0x115C0), (0x115DC, 0x115DD),
+    (0x11633, 0x1163A), (0x1163D, 0x1163D), (0x1163F, 0x11640), (0x116AB, 0x116AB), (0x116AD, 0x116AD),
+    (0x116B0, 0x116B5), (0x116B7, 0x116B7), (0x1171D, 0x1171D), (0x1171F, 0x1171F), (0x11722, 0x11725),
+    (0x11727, 0x1172B), (0x1182F, 0x11837), (0x11839, 0x1183A), (0x1193B, 0x1193C), (0x1193E, 0x1193E),
+    (0x11943, 0x11943), (0x119D4, 0x119D7), (0x119DA, 0x119DB), (0x119E0, 0x119E0), (0x11A01, 0x11A0A),
+    (0x11A33, 0x11A38), (0x11A3B, 0x11A3E), (0x11A47, 0x11A47), (0x11A51, 0x11A56), (0x11A59, 0x11A5B),
+    (0x11A8A, 0x11A96), (0x11A98, 0x11A99), (0x11B60, 0x11B60), (0x11B62, 0x11B64), (0x11B66, 0x11B66),
+    (0x11C30, 0x11C36), (0x11C38, 0x11C3D), (0x11C3F, 0x11C3F), (0x11C92, 0x11CA7), (0x11CAA, 0x11CB0),
+    (0x11CB2, 0x11CB3), (0x11CB5, 0x11CB6), (0x11D31, 0x11D36), (0x11D3A, 0x11D3A), (0x11D3C, 0x11D3D),
+    (0x11D3F, 0x11D45), (0x11D47, 0x11D47), (0x11D90, 0x11D91), (0x11D95, 0x11D95), (0x11D97, 0x11D97),
+    (0x11EF3, 0x11EF4), (0x11F00, 0x11F01), (0x11F36, 0x11F3A), (0x11F40, 0x11F40), (0x11F42, 0x11F42),
+    (0x11F5A, 0x11F5A), (0x13430, 0x13440), (0x13447, 0x13455), (0x1611E, 0x16129), (0x1612D, 0x1612F),
+    (0x16AF0, 0x16AF4), (0x16B30, 0x16B36), (0x16F4F, 0x16F4F), (0x16F8F, 0x16F92), (0x16FE4, 0x16FE4),
+    (0x1BC9D, 0x1BC9E), (0x1BCA0, 0x1BCA3), (0x1CF00, 0x1CF2D), (0x1CF30, 0x1CF46), (0x1D167, 0x1D169),
+    (0x1D173, 0x1D182), (0x1D185, 0x1D18B), (0x1D1AA, 0x1D1AD), (0x1D242, 0x1D244), (0x1DA00, 0x1DA36),
+    (0x1DA3B, 0x1DA6C), (0x1DA75, 0x1DA75), (0x1DA84, 0x1DA84), (0x1DA9B, 0x1DA9F), (0x1DAA1, 0x1DAAF),
+    (0x1E000, 0x1E006), (0x1E008, 0x1E018), (0x1E01B, 0x1E021), (0x1E023, 0x1E024), (0x1E026, 0x1E02A),
+    (0x1E08F, 0x1E08F), (0x1E130, 0x1E136), (0x1E2AE, 0x1E2AE), (0x1E2EC, 0x1E2EF), (0x1E4EC, 0x1E4EF),
+    (0x1E5EE, 0x1E5EF), (0x1E6E3, 0x1E6E3), (0x1E6E6, 0x1E6E6), (0x1E6EE, 0x1E6EF), (0x1E6F5, 0x1E6F5),
+    (0x1E8D0, 0x1E8D6), (0x1E944, 0x1E94A), (0xE0000, 0xE0FFF),
+];
+
+fn missing_as(cp: u32) -> Missing {
+    if char::from_u32(cp).is_some_and(char::is_whitespace) {
+        return Missing::Space;
+    }
+    let unseen = UNSEEN
+        .binary_search_by(|&(a, b)| {
+            if b < cp {
+                std::cmp::Ordering::Less
+            } else if a > cp {
+                std::cmp::Ordering::Greater
+            } else {
+                std::cmp::Ordering::Equal
+            }
+        })
+        .is_ok();
+    if unseen {
+        Missing::Nothing
+    } else {
+        Missing::Box
+    }
+}
+
+/// The box a visible character no face has is drawn as (2.1.0-beta.2): a hollow rectangle in a cell of
+/// Terminess at the asked size (the room the font's own missing-glyph box took before), inset 0.15 of the
+/// cell on each side, standing on the baseline, 0.6 of the line tall, its sides a 24th of the size (at least
+/// a pixel). The same in every face, weight and theme: never overprinted, whatever the face's bold. Returns
+/// the cell's advance, the box (x from the pen, y from the baseline) and its sides' width.
+fn missing_box(st: &State, px: f32) -> (f32, Rect, i32) {
+    let adv = face_scale(st, TTF_TERM, px) * hmetrics(&st.font[TTF_TERM], '0' as u32).0 as f32;
+    let inset = (adv * 0.15).round_ties_even() as i32;
+    let h = ((px * 0.6).round_ties_even() as i32).max(1);
+    let t = ((px / 24.0).round_ties_even() as i32).max(1);
+    (adv, Rect { x: inset, y: -h, w: (adv.round_ties_even() as i32 - 2 * inset).max(1), h }, t)
+}
+
 /// Lays out (and with a canvas, draws) the text from s[from] up to s[end] (None: its terminator).
 /// Measuring (no canvas) reads the advances straight from the font: no glyph is rendered or cached
 /// for it.
@@ -1005,33 +1162,29 @@ fn layout(
     let mut prev_ttf: i32 = -1;
     let mut i = from;
     while at(s, i) != 0 && end.is_none_or(|e| i < e) {
-        let cp = utf8_next(s, &mut i);
-        // Glyphs a theme face or a family lacks (symbols, arrows, Greek, Japanese) come from
-        // Terminess at the asked size (a bold face's from its Bold), or, when Terminess lacks them
-        // too, from DotGothic16.
-        let mut ttf = m.ttf;
-        let mut gpx = fpx;
-        // A custom font draws the glyphs it has and that passed its check, at the sizes the check drew;
-        // every other one is borrowed the same way, ASCII too.
-        let lacks = if ttf >= TTF_COUNT {
-            match own_px(st, ttf, px, fpx, cp) {
-                Some(g) if face_has(st, ttf, cp) => {
-                    gpx = g;
-                    false
+        let mut cp = utf8_next(s, &mut i);
+        let (mut ttf, mut gpx, has) = pick_face(st, m, px, fpx, cp);
+        // What no face has: whitespace takes a space's room, what is meant to be unseen (a control,
+        // format or default-ignorable character, a combining mark) none, anything else the box, measured
+        // as it is drawn.
+        if !has {
+            match missing_as(cp) {
+                Missing::Nothing => continue,
+                Missing::Space => {
+                    cp = 0x20;
+                    (ttf, gpx, _) = pick_face(st, m, px, fpx, cp);
                 }
-                _ => true,
-            }
-        } else {
-            cp > 0x7F && find_glyph_index(&st.font[ttf], cp) == 0
-        };
-        if lacks {
-            if ttf != TTF_TERM && ttf != TTF_TERM_BOLD {
-                ttf = m.fallback;
-                gpx = px;
-            }
-            if find_glyph_index(&st.font[ttf], cp) == 0 && find_glyph_index(&st.font[TTF_JP], cp) != 0 {
-                ttf = TTF_JP;
-                gpx = px;
+                Missing::Box => {
+                    let (adv, r, t) = missing_box(st, px);
+                    if let Some(cv) = c.as_deref_mut() {
+                        let r = Rect { x: pen.round_ties_even() as i32 + r.x, y: baseline + r.y, ..r };
+                        canvas_rect_outline(cv, r, t, gray);
+                    }
+                    pen += adv;
+                    prev = 0;
+                    prev_ttf = -1;
+                    continue;
+                }
             }
         }
         // (kerning is stb's, inside one embedded face; a custom font has none)
@@ -1110,10 +1263,11 @@ pub fn font_has_glyph(f: FontFace, cp: u32) -> bool {
         })
 }
 
-/// utf8 without the characters no face draws (every face takes what it lacks from Terminess or
-/// DotGothic16, so what neither has would show as a box: most Vietnamese letters and rare CJK
-/// characters; a custom font in use counts for what it has, so a name in Korean shows with a font
-/// that has its letters), and without the spaces that leaves doubled, first or last. Returns how many
+/// utf8 without the characters that show nothing: a control, format or default-ignorable character or a
+/// combining mark that no face has (every face takes what it lacks from Terminess or DotGothic16; a custom
+/// font in use counts for what it has), and without the spaces that leaves doubled, first or last. A visible
+/// character no face has stays (2.1.0-beta.2): it shows as a box (missing_box: most Vietnamese letters,
+/// simplified Chinese, emoji), never as nothing, so a name never looks cut short. Returns how many
 /// characters it left out: 0, and out is utf8 as it is (cut to cap between characters). Before
 /// font_init, none.
 pub fn font_drawable_copy(utf8: &str, out: &mut String, cap: usize) -> i32 {
@@ -1128,7 +1282,7 @@ pub fn font_drawable_copy(utf8: &str, out: &mut String, cap: usize) -> i32 {
         let c = i;
         let cp = utf8_next(s, &mut i);
         let n = i - c;
-        if cp > 0x7F
+        if missing_as(cp) == Missing::Nothing
             && with(|st| {
                 st.ready
                     && find_glyph_index(&st.font[TTF_TERM], cp) == 0
@@ -1627,15 +1781,20 @@ mod tests {
     }
 
     #[test]
-    fn drawable_copy_leaves_out_what_no_face_draws() {
+    fn drawable_copy_leaves_out_what_shows_nothing() {
         up();
         let mut out = String::new();
         assert_eq!(font_drawable_copy("Hello", &mut out, 20), 0);
         assert_eq!(out, "Hello");
-        // Japanese comes from DotGothic16; an emoji neither it nor Terminess has goes, and the
-        // spaces that leaves doubled, first or last go with it
-        assert_eq!(font_drawable_copy("\u{65e5}\u{672c} a \u{8a9e} b \u{3042}\u{1f600}", &mut out, 40), 1);
-        assert_eq!(out, "\u{65e5}\u{672c} a \u{8a9e} b \u{3042}");
+        // Japanese comes from DotGothic16; an emoji neither it nor Terminess has stays (it is a box,
+        // 2.1.0-beta.2), and so do whitespace and a zero-width space Terminess has
+        assert_eq!(font_drawable_copy("\u{65e5}\u{672c} a \u{8a9e} b \u{3042}\u{1f600}", &mut out, 40), 0);
+        assert_eq!(out, "\u{65e5}\u{672c} a \u{8a9e} b \u{3042}\u{1f600}");
+        assert_eq!(font_drawable_copy("a\tb\u{200b}c", &mut out, 40), 0);
+        // what shows nothing and no face has goes (a control, a format character, a combining mark, a
+        // variation selector), and the spaces that leaves doubled, first or last go with it
+        assert_eq!(font_drawable_copy("\u{feff}\u{7} a \u{2063} b\u{323}\u{2764}\u{fe0f} \u{e0067}", &mut out, 40), 6);
+        assert_eq!(out, "a b\u{2764}");
         // cut between two characters, never inside one
         assert_eq!(font_drawable_copy("\u{f1}\u{f1}\u{f1}", &mut out, 5), 0);
         assert_eq!(out, "\u{f1}\u{f1}");
@@ -1952,6 +2111,175 @@ mod tests {
         }
         assert!(with(|st| st.cache_used) < 20);
         assert!(font_measure(FontFace::Regular, 20.0, "Hello") > 0);
+    }
+
+    /// The boxes drawn in c at px on the baseline: the left x of each one's cell, found by its exact pixels
+    /// (ink on its sides, paper inside, paper beside it).
+    fn boxes_at(c: &Canvas, px: f32, baseline: i32) -> Vec<i32> {
+        let (_, r, t) = with(|st| missing_box(st, px));
+        let at = |x: i32, y: i32| c.px[(y * c.stride + x) as usize];
+        let mut found = Vec::new();
+        for x in 1..c.w - r.w - 1 {
+            let ok = (0..r.h).all(|dy| {
+                let y = baseline + r.y + dy;
+                at(x - 1, y) == 255
+                    && at(x + r.w, y) == 255
+                    && (0..r.w).all(|dx| {
+                        let side = dx < t || dx >= r.w - t || dy < t || dy >= r.h - t;
+                        at(x + dx, y) == if side { 0 } else { 255 }
+                    })
+            });
+            if ok {
+                found.push(x - r.x);
+            }
+        }
+        found
+    }
+
+    // A visible character no face has is the box (2.1.0-beta.2), measured as it is drawn: the owner's
+    // notebook 会议记录 (imported from 会议记录.pdf) showed 会 alone in the Library, as 议, 记 and 录 are
+    // simplified Chinese no face has (DotGothic16 has 会). Now it is 会 and three boxes, wider than 会 alone.
+    #[test]
+    fn a_character_no_face_has_is_a_box_measured_as_drawn() {
+        up();
+        let name = "\u{4f1a}\u{8bae}\u{8bb0}\u{5f55}";
+        assert!(font_has_glyph(FontFace::Regular, 0x4f1a));
+        assert!(name.chars().skip(1).all(|ch| !font_has_glyph(FontFace::Regular, ch as u32)));
+        for px in [26.0f32, 34.0, 44.0, 61.0] {
+            let (adv, _, _) = with(|st| missing_box(st, px));
+            let hui = with(|st| {
+                let a = face_advance(st, TTF_JP, 0x4f1a);
+                units_to_px(st, TTF_JP, px, a)
+            });
+            let w = font_measure(FontFace::Regular, px, name);
+            assert!(w > font_measure(FontFace::Regular, px, "\u{4f1a}"), "{px}");
+            assert_eq!(w, (hui + 3.0 * adv).round_ties_even() as i32, "{px}");
+            let mut c = Canvas::default();
+            canvas_init(&mut c, 400, 120);
+            assert_eq!(font_draw(&mut c, FontFace::Regular, px, 10, 90, name, 0), w);
+            let want: Vec<i32> = (0..3).map(|k| (10.0 + hui + k as f32 * adv).round_ties_even() as i32).collect();
+            assert_eq!(boxes_at(&c, px, 90), want, "{px}");
+            // 会 as it is drawn alone, nothing past the last box
+            let mut one = Canvas::default();
+            canvas_init(&mut one, 400, 120);
+            font_draw(&mut one, FontFace::Regular, px, 10, 90, "\u{4f1a}", 0);
+            for y in 0..120 {
+                for x in 0..400 {
+                    let i = (y * 400 + x) as usize;
+                    if x < want[0] {
+                        assert_eq!(c.px[i], one.px[i], "{px}: {x},{y}");
+                    } else if x >= 10 + w {
+                        assert_eq!(c.px[i], 255, "{px}: {x},{y}");
+                    }
+                }
+            }
+            // cut short to fit, the box is measured as drawn: the dots come after whole boxes
+            let long = format!("{name}\u{8bb0}\u{5f55}\u{8bb0}\u{5f55}\u{8bb0}\u{5f55}");
+            let fits = font_measure(FontFace::Regular, px, &format!("{name}..."));
+            assert!(fits < font_measure(FontFace::Regular, px, &long));
+            let mut cut = Canvas::default();
+            canvas_init(&mut cut, 400, 120);
+            font_draw_left(&mut cut, FontFace::Regular, px, Rect { x: 10, y: 0, w: fits, h: 120 }, &long, 0);
+            let (asc, desc) = (font_ascent(FontFace::Regular, px), font_descent(FontFace::Regular, px));
+            assert_eq!(boxes_at(&cut, px, (120 - (asc + desc)) / 2 + asc), want, "{px}");
+        }
+    }
+
+    // The box is drawn the same in every face, weight and theme, a custom font's too (never overprinted),
+    // and measured as drawn: a hollow rectangle in a cell of Terminess at the size asked.
+    #[test]
+    fn the_box_is_the_same_in_every_face_and_theme() {
+        use crate::fontcheck::*;
+        use std::rc::Rc;
+        up();
+        let own = || {
+            let data = Rc::new(font_family_file(font_family_find(b"literata").unwrap(), false).to_vec());
+            let facts = facts_in_process(&data).unwrap();
+            SafeFace::new(data, Rc::new(facts), false).unwrap()
+        };
+        let faces = [FontFace::Regular, FontFace::Bold, FontFace::Title, FontFace::Caps, FontFace::Fixed, FontFace::FixedBold];
+        let check = |what: &str| {
+            for f in faces {
+                for px in [12.0f32, 20.0, 34.0, 44.0, 64.0, 100.0] {
+                    let (adv, r, t) = with(|st| missing_box(st, px));
+                    assert!(t >= 1 && 2 * t < r.w && 2 * t < r.h && r.x >= 1 && r.x + r.w < adv.round() as i32, "{px}");
+                    let mut want = Canvas::default();
+                    canvas_init(&mut want, 200, 200);
+                    canvas_rect_outline(&mut want, Rect { x: 20 + r.x, y: 150 + r.y, ..r }, t, 0);
+                    for text in ["\u{8bae}", "\u{1f600}"] {
+                        let mut c = Canvas::default();
+                        canvas_init(&mut c, 200, 200);
+                        let w = font_draw(&mut c, f, px, 20, 150, text, 0);
+                        assert_eq!(w, adv.round_ties_even() as i32, "{what} {f:?} {px}");
+                        assert_eq!(font_measure(f, px, text), w, "{what} {f:?} {px}");
+                        assert!(c.px == want.px, "{what} {f:?} {px} {text}");
+                    }
+                }
+            }
+        };
+        for (i, fam) in FONT_FAMILIES.iter().enumerate() {
+            font_set_family(i);
+            check(fam.id);
+        }
+        font_set_family(0);
+        font_set_own(Some(OwnFont { regular: own(), bold: None }));
+        check("own font, overprinted bold");
+        font_set_own(None);
+        ui_set_theme(UiTheme::Gothic);
+        check("gothic");
+        ui_set_theme(UiTheme::Classic);
+    }
+
+    // What is meant to be unseen never shows as a box, even where no face has it: an emoji's ZWJ sequence
+    // is a box for each pictograph (its joiners are Terminess's, blank as before), a variation selector and a
+    // flag's tags are nothing, as are a combining mark no face has (on a letter that is drawn) and a
+    // control; whitespace no face has is a space. Measured as drawn.
+    #[test]
+    fn what_is_meant_to_be_unseen_shows_nothing() {
+        up();
+        let px = 44.0;
+        let name = "e\u{323}\u{200b}\u{1f468}\u{200d}\u{1f469}\u{200d}\u{1f467} \u{1f3f3}\u{fe0f}\u{200d}\u{1f308} \
+                    \u{1f3f4}\u{e0067}\u{e0062}\u{e0065}\u{e006e}\u{e0067}\u{e007f}\u{7}";
+        let seen = "e\u{200b}\u{1f468}\u{200d}\u{1f469}\u{200d}\u{1f467} \u{1f3f3}\u{200d}\u{1f308} \u{1f3f4}";
+        for cp in [0x323, 0xfe0f, 0xe0067, 0x7, 0x1f468, 0x1f469, 0x1f467, 0x1f3f3, 0x1f308, 0x1f3f4] {
+            assert!(!font_has_glyph(FontFace::Regular, cp), "U+{cp:04X}");
+        }
+        for theme in [UiTheme::Classic, UiTheme::Gothic] {
+            ui_set_theme(theme);
+            for f in [FontFace::Regular, FontFace::Bold, FontFace::Title] {
+                let shot = |text: &str| {
+                    let mut c = Canvas::default();
+                    canvas_init(&mut c, 900, 120);
+                    let w = font_draw(&mut c, f, px, 10, 90, text, 0);
+                    assert_eq!(w, font_measure(f, px, text), "{theme:?} {f:?}");
+                    (c, w)
+                };
+                let (a, wa) = shot(name);
+                let (b, wb) = shot(seen);
+                assert!(wa == wb && a.px == b.px, "{theme:?} {f:?}: {wa} {wb}");
+                assert_eq!(boxes_at(&a, px, 90).len(), 6, "{theme:?} {f:?}");
+                // a control is nothing; whitespace no face has (a line separator) is a space
+                assert_eq!(font_measure(f, px, "a\u{7}\u{1}b"), font_measure(f, px, "ab"), "{theme:?} {f:?}");
+                assert_eq!(font_measure(f, px, "a\u{2028}b"), font_measure(f, px, "a b"), "{theme:?} {f:?}");
+            }
+        }
+        ui_set_theme(UiTheme::Classic);
+    }
+
+    // The table of what is meant to be unseen: sorted, its ranges apart, and what it should and should not hold.
+    #[test]
+    fn the_unseen_table() {
+        assert!(UNSEEN.iter().all(|&(a, b)| a <= b && b <= 0x10FFFF));
+        assert!(UNSEEN.windows(2).all(|w| w[0].1 + 1 < w[1].0));
+        for cp in [0x0, 0x7, 0x7F, 0x9F, 0xAD, 0x300, 0x323, 0x34F, 0x20DD, 0x200B, 0x200D, 0x2060, 0x2064, 0x3164, 0xFE00, 0xFE0F, 0xFEFF, 0xE0001, 0xE0020, 0xE007F, 0xE0100, 0xE01EF, 0xE0FFF] {
+            assert_eq!(missing_as(cp), Missing::Nothing, "U+{cp:04X}");
+        }
+        for cp in [0x9, 0xA, 0x20, 0xA0, 0x1680, 0x2028, 0x2029, 0x202F, 0x205F, 0x3000] {
+            assert_eq!(missing_as(cp), Missing::Space, "U+{cp:04X}");
+        }
+        for cp in [0x41, 0xE9, 0x93E, 0x1EBF, 0x4F1A, 0x8BAE, 0xFFFD, 0x1F600, 0x1F468, 0x1F3F4, 0xD800, 0x110000] {
+            assert_eq!(missing_as(cp), Missing::Box, "U+{cp:04X}");
+        }
     }
 
     #[test]
