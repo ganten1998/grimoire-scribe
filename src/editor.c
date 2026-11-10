@@ -1159,6 +1159,17 @@ static void draw_end(App *a) {
     }
     if (S->link_mode && !stroke_is_erase(s) && link_box_too_small(a, s)) {
         // A dot or a tick for a link's box: taken back (no undo step), and the next stroke is tried.
+        // Add stroke to page as regular ink before handling as too-small link box.
+        History *h = cur_hist(a);
+        bool had_undo = h && history_can_undo(h), had_redo = h && history_can_redo(h);
+        bool was_empty = S->page->n == 0;
+        page_add(S->page, s);
+        bool kept = S->page->n && S->page->strokes[S->page->n - 1] == s;
+        if (h && kept) history_push_add(h, S->page->n - 1, s);
+        PageHistory *e = false ? entry_for(a, S->nb.page_ids[S->index]) : NULL;
+        if (e) e->to_list = true;
+        mark_changed(a);
+        if (!had_undo || had_redo || was_empty) S->panel_stale = true;
         Rect d = s->bbox;
         stroke_free(s);
         draw_page(a, d);
