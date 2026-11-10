@@ -412,7 +412,8 @@ fn map_source(l: &Limits, file_len: usize) -> Option<hayro::hayro_syntax::PdfDat
             return Some(std::sync::Arc::new(Mapped { ptr: p as *const u8, len: file_len }).into());
         }
     }
-    if file_len as u64 > s1::PDF_MAX_READ_WHOLE && !l.mapped {
+    // read whole (the writer said so, or the mapping it found to work failed here): never past the read-whole cap
+    if file_len as u64 > s1::PDF_MAX_READ_WHOLE {
         return None;
     }
     let mut v = Vec::new();
@@ -1001,6 +1002,23 @@ mod links {
                 let quads: Vec<f64> = a.get::<Array<'_>>("QuadPoints").map(|q| q.iter::<f64>().take(QUADS_MAX * 8).collect()).unwrap_or_default();
                 let rect = a.get::<hayro::hayro_syntax::object::Rect>("Rect");
                 let mut shapes: Vec<([(f64, f64); 4], bool)> = Vec::new();
+                // A quad is taken only inside the link's Rect, as the spec asks (a point within 1 pt of it), and only
+                // with an area: an all-zero quad, or one outside the Rect, is left out, and with none left the Rect
+                // is the link's area.
+                let inside = |q: &[f64]| -> bool {
+                    let Some(r) = rect else { return true };
+                    let (x0, x1) = (r.x0.min(r.x1) - 1.0, r.x0.max(r.x1) + 1.0);
+                    let (y0, y1) = (r.y0.min(r.y1) - 1.0, r.y0.max(r.y1) + 1.0);
+                    (0..4).all(|k| q[2 * k] >= x0 && q[2 * k] <= x1 && q[2 * k + 1] >= y0 && q[2 * k + 1] <= y1)
+                };
+                let has_area = |q: &[f64]| -> bool {
+                    let xs = [q[0], q[2], q[4], q[6]];
+                    let ys = [q[1], q[3], q[5], q[7]];
+                    let w = xs.iter().cloned().fold(f64::MIN, f64::max) - xs.iter().cloned().fold(f64::MAX, f64::min);
+                    let h = ys.iter().cloned().fold(f64::MIN, f64::max) - ys.iter().cloned().fold(f64::MAX, f64::min);
+                    w > 0.0 && h > 0.0
+                };
+                let quads: Vec<f64> = quads.chunks_exact(8).filter(|q| inside(q) && has_area(q)).flatten().copied().collect();
                 if quads.len() >= 8 {
                     for q in quads.chunks_exact(8) {
                         let mut c = [(0.0, 0.0); 4];
@@ -1105,6 +1123,8 @@ pub enum PageOutcome {
     Failed(ErrCode),
     /// the worker lied: refused
     Lied(&'static str),
+    /// the writer had no memory for the page's pixels: the worker did nothing wrong (a strike, as a death)
+    NoMemory,
 }
 
 #[derive(Debug)]
@@ -1153,6 +1173,10 @@ impl Session {
     /// `E sandbox <step>`.
     pub fn start(source_fd: i32, file_len: u64, limits: &Limits) -> Result<Session, StartErr> {
         let limits = Limits { file_len, ..limits.clone() };
+        // A worker that ended by itself (`E password`) has closed its pipe: the writer's next line must fail, not
+        // end the writer with SIGPIPE before it reads why (the worker inherits this, and exits on a failed write).
+        // SAFETY: setting a signal's disposition to ignore.
+        unsafe { libc::signal(libc::SIGPIPE, libc::SIG_IGN) };
         let mut w = match Worker::spawn(WorkKind::Pdf, Some(source_fd), &limits) {
             Ok(w) => w,
             Err(SpawnErr::Sandbox(step)) => return Err(StartErr::Sandbox(step.to_string())),
@@ -1181,9 +1205,8 @@ impl Session {
 
     /// The probe: the page count (the writer checks it against the caps).
     pub fn probe(&mut self) -> Result<u32, StartErr> {
-        if !self.w.send("PROBE\n") {
-            return Err(StartErr::Failed("send"));
-        }
+        // (a send that fails is read past: a worker that ended by itself said why before it went)
+        let _ = self.w.send("PROBE\n");
         let mut pages = None;
         loop {
             let deadline = mono_ms() + page_watchdog_ms();
@@ -1200,7 +1223,7 @@ impl Session {
                 return Err(StartErr::Failed("too many records"));
             }
             match parse_record(&line) {
-                Ok(Rec::Pages(n)) if pages.is_none() => pages = Some(n),
+                Ok(Rec::Pages(n)) if pages.is_none() && n > 0 => pages = Some(n),
                 Ok(Rec::ProbeDone) => {
                     let Some(n) = pages else { return Err(StartErr::Failed("no page count")) };
                     self.pages = n;
@@ -1264,16 +1287,14 @@ impl Session {
     /// Renders page `page` (from 1) fitted into w x h in `bands` bands, and assembles its pixels. The
     /// band records are checked as they come: the page, the next row, the width, the channels.
     pub fn render(&mut self, page: u32, w: i32, h: i32, bands: u32) -> PageOutcome {
-        if !self.w.send(&format!("R {page} {w} {h} {bands}\n")) {
-            let st = self.w.kill_and_reap();
-            return PageOutcome::Died(Death::Gone(st));
-        }
+        // (a send that fails is read past: the worker's last record, or the end of its pipe, says what became of it)
+        let _ = self.w.send(&format!("R {page} {w} {h} {bands}\n"));
         let (wu, hu) = (w as usize, h as usize);
         let mut px: Vec<u8> = Vec::new();
         let mut ch = 1usize;
         if px.try_reserve_exact(wu * hu).is_err() {
             self.w.kill_and_reap();
-            return PageOutcome::Lied("out of memory");
+            return PageOutcome::NoMemory;
         }
         px.resize(wu * hu, 255);
         let mut next_y = 0usize;
@@ -1315,7 +1336,7 @@ impl Session {
                     let mut band = Vec::new();
                     if band.try_reserve_exact(n).is_err() {
                         self.w.kill_and_reap();
-                        return PageOutcome::Lied("out of memory");
+                        return PageOutcome::NoMemory;
                     }
                     band.resize(n, 0u8);
                     match self.w.read_exact(&mut band, deadline) {
@@ -1334,7 +1355,7 @@ impl Session {
                         let mut rgb = Vec::new();
                         if rgb.try_reserve_exact(wu * hu * 3).is_err() {
                             self.w.kill_and_reap();
-                            return PageOutcome::Lied("out of memory");
+                            return PageOutcome::NoMemory;
                         }
                         rgb.resize(wu * hu * 3, 255u8);
                         for (i, &g) in px[..next_y * wu].iter().enumerate() {

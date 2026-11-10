@@ -751,6 +751,8 @@ pub struct Worker {
     tx: i32,
     jail: Option<String>,
     reaped: bool,
+    /// bytes read from rx ahead of the line read_line asked for (read_exact takes them first)
+    rbuf: Vec<u8>,
 }
 
 /// Why no worker could be started: not the file's fault.
@@ -901,7 +903,7 @@ impl Worker {
             libc::close(p4[1]);
             libc::close(p5[0]);
         }
-        Ok(Worker { pid, rx: p4[0], tx: p5[1], jail, reaped: false })
+        Ok(Worker { pid, rx: p4[0], tx: p5[1], jail, reaped: false, rbuf: Vec::new() })
     }
 
     /// Sends one command line to the worker.
@@ -965,9 +967,12 @@ impl Worker {
         true
     }
 
-    /// Reads exactly `buf.len()` bytes before `deadline_ms` (CLOCK_MONOTONIC milliseconds): Ok, or why not.
+    /// Reads exactly `buf.len()` bytes before `deadline_ms` (CLOCK_MONOTONIC milliseconds): Ok, or why not. What
+    /// read_line read ahead comes first.
     pub fn read_exact(&mut self, buf: &mut [u8], deadline_ms: u64) -> Result<(), ReadErr> {
-        let mut got = 0;
+        let mut got = self.rbuf.len().min(buf.len());
+        buf[..got].copy_from_slice(&self.rbuf[..got]);
+        self.rbuf.drain(..got);
         while got < buf.len() {
             let left = deadline_ms.saturating_sub(mono_ms());
             if left == 0 {
@@ -998,33 +1003,78 @@ impl Worker {
         Ok(())
     }
 
-    /// One text line (without its newline), at most `max` bytes, before the deadline. Read a byte at a time
-    /// (lines are short, and the pixels that follow a header must not be swallowed).
+    /// One text line (without its newline), at most `max` bytes, before the deadline. The pipe is read in
+    /// blocks (a 3 MiB link stream is a few hundred reads, not millions); what comes after the line (the pixels
+    /// that follow a band's header) stays in the buffer for read_exact.
     pub fn read_line(&mut self, max: usize, deadline_ms: u64) -> Result<Vec<u8>, ReadErr> {
-        let mut line = Vec::new();
+        let mut scanned = 0;
         loop {
-            let mut b = [0u8; 1];
-            self.read_exact(&mut b, deadline_ms)?;
-            if b[0] == b'\n' {
+            if let Some(i) = self.rbuf[scanned..].iter().position(|&c| c == b'\n') {
+                let at = scanned + i;
+                if at > max {
+                    return Err(ReadErr::TooLong);
+                }
+                let line = self.rbuf[..at].to_vec();
+                self.rbuf.drain(..=at);
                 return Ok(line);
             }
-            if line.len() >= max {
+            scanned = self.rbuf.len();
+            if scanned > max {
                 return Err(ReadErr::TooLong);
             }
-            line.push(b[0]);
+            let left = deadline_ms.saturating_sub(mono_ms());
+            if left == 0 {
+                return Err(ReadErr::Timeout);
+            }
+            let mut pfd = libc::pollfd { fd: self.rx, events: libc::POLLIN, revents: 0 };
+            // SAFETY: poll reads and writes the one pollfd we own.
+            let r = unsafe { libc::poll(&mut pfd, 1, left.min(1000) as libc::c_int) };
+            if r < 0 {
+                if std::io::Error::last_os_error().kind() == std::io::ErrorKind::Interrupted {
+                    continue;
+                }
+                return Err(ReadErr::End);
+            }
+            if r == 0 {
+                continue;
+            }
+            let mut block = [0u8; 4096];
+            // SAFETY: read into a buffer we own, at most its length.
+            let n = unsafe { libc::read(self.rx, block.as_mut_ptr() as *mut libc::c_void, block.len()) };
+            if n < 0 && std::io::Error::last_os_error().kind() == std::io::ErrorKind::Interrupted {
+                continue;
+            }
+            if n <= 0 {
+                return Err(ReadErr::End);
+            }
+            self.rbuf.extend_from_slice(&block[..n as usize]);
         }
     }
 
-    /// Kills the worker (if it still runs) and reaps it; its wait status, once.
+    /// Kills the worker (if it still runs) and reaps it; its wait status, once. The wait is bounded: a worker the
+    /// kernel cannot end at once (stuck in a read of the storage) is left to it after 5 s, logged, rather than
+    /// holding the writer for good.
     pub fn kill_and_reap(&mut self) -> i32 {
         if self.reaped {
             return 0;
         }
         let mut st = 0;
-        // SAFETY: kill and waitpid on the child this struct forked and has not reaped.
-        unsafe {
-            libc::kill(self.pid, libc::SIGKILL);
-            libc::waitpid(self.pid, &mut st, 0);
+        // SAFETY: kill on the child this struct forked and has not reaped.
+        unsafe { libc::kill(self.pid, libc::SIGKILL) };
+        let end = mono_ms() + 5000;
+        loop {
+            // SAFETY: waitpid on the child this struct forked and has not reaped; WNOHANG.
+            let r = unsafe { libc::waitpid(self.pid, &mut st, libc::WNOHANG) };
+            if r == self.pid || r < 0 {
+                break;
+            }
+            if mono_ms() >= end {
+                qlog!("work: worker %d did not end within 5 s of SIGKILL; left to the kernel", self.pid);
+                st = libc::SIGKILL; // (as waitpid would say of a process ended by SIGKILL)
+                break;
+            }
+            // SAFETY: usleep has no preconditions.
+            unsafe { libc::usleep(1000) };
         }
         self.reaped = true;
         self.cleanup();

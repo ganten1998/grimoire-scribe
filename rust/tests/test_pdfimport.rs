@@ -434,7 +434,7 @@ fn a_pdf_picked_anywhere_is_read_in_place_and_never_moved() {
     std::fs::create_dir_all(format!("{}/../Documents", e.root)).unwrap();
     std::fs::write(format!("{}/../Documents/Book.pdf", e.root), pdffix::planner(2)).unwrap();
     let src = "Documents/Book.pdf";
-    let m = Mark { state: MarkState::Making, id: String::new(), src: src.into(), pick: true, name: "Chosen".into(), folder: "Reading".into(), page: 0, pages: 0, at: 1 };
+    let m = Mark { state: MarkState::Making, id: String::new(), src: src.into(), pick: true, name: "Chosen".into(), folder: "Reading".into(), page: 0, pages: 0, at: 1, ..Default::default() };
     let dir = format!("{}/import/.marks", e.root);
     std::fs::create_dir_all(&dir).unwrap();
     let hash = {

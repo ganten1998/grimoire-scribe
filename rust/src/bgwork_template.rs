@@ -426,9 +426,13 @@ its previews of these files in the .cache folder."),
 files here, one picture a page, and start Grimoire. The folder's name becomes the notebook's name, \
 and the pages follow the file names in order (page-2 comes before page-10). Gray pictures import \
 faster and take less room than colour ones."),
+            // TRANSLATORS: grimoire/import/README.txt, its second paragraph: a PDF dropped here becomes a notebook.
+            // "Library" names Grimoire's own screen, as it is translated there.
             tr("A PDF, such as a planner, goes in as it is: put the file here, or in a folder here to file its \
 notebook in the Library folder of that name, and open the Library. Its pages become the notebook's \
 pages, in colour where the PDF has colour. A file still being copied waits until it is whole."),
+            // TRANSLATORS: grimoire/import/README.txt, its last paragraph. "done" is the name of a folder: keep it as
+            // it is.
             tr("Grimoire imports each folder or PDF in the background and then moves it into the done folder. Copy \
 them in over USB, or over SSH while Grimoire runs."),
         ];
@@ -1107,9 +1111,12 @@ pub fn bg_template(id: &str, src: &str, dpi: f32) -> i32 {
 // held while any is queued or running (pdfimport.rs lock_take). A start that finds it held leaves the import
 // folders for the next scan.
 
-// Removes a folder an import was building (notebooks/.import-<id>/: its files and its bg/).
+// Removes a folder an import was building (notebooks/.import-<id>/: its files and its bg/). A PDF import's state
+// goes first: a removal cut off then leaves a folder that is no one's (removed at the next start), never one that
+// resumes with its pictures gone (H7).
 fn remove_work<P: AsRef<Path>>(work: P) {
     let work = work.as_ref();
+    let _ = std::fs::remove_file(work.join("pdf-import.ini"));
     for pass in 0..2 {
         let dir = if pass == 0 { work.join("bg") } else { work.to_path_buf() };
         if let Ok(rd) = std::fs::read_dir(&dir) {
@@ -1179,6 +1186,8 @@ pub(crate) struct Attempt {
 const ATTEMPT_TRY: i32 = 0;
 const ATTEMPT_REFUSED: i32 = 1;
 const ATTEMPT_DONE: i32 = 2;
+/// a try counted that turned out not to be the file's (no room, no worker): taken back
+const ATTEMPT_UNTRY: i32 = 3;
 
 const FNV0: u64 = 14695981039346656037;
 fn fnv(mut h: u64, d: &[u8]) -> u64 {
@@ -1263,15 +1272,26 @@ fn attempts_save(a: &[Attempt]) {
 // In the child, under the lock: the folder at src (with these pictures) was tried once more, or was
 // refused, or was imported (its record goes).
 fn attempts_note(src: &str, pictures: u64, what: i32) {
+    attempts_note_key(folder_name_hash(src), pictures, what)
+}
+
+/// The same for the record keyed `nh` (a PDF's: a hash of its path under import/, pdfimport::attempt_key).
+pub(crate) fn attempts_note_key(nh: u64, pictures: u64, what: i32) {
     let mut a = attempts_load();
     let mut at: Option<usize> = None;
-    let nh = folder_name_hash(src);
     for (i, e) in a.iter().enumerate() {
         if e.name == nh {
             at = Some(i);
         }
     }
-    if what == ATTEMPT_DONE {
+    if what == ATTEMPT_UNTRY {
+        // (a refusal stays: it was the file's)
+        let Some(i) = at.filter(|&i| a[i].pictures == pictures && a[i].tries < TRIES_REFUSED) else { return };
+        a[i].tries -= 1;
+        if a[i].tries <= 0 {
+            a.swap_remove(i);
+        }
+    } else if what == ATTEMPT_DONE {
         let Some(at) = at else { return };
         a.swap_remove(at);
     } else if let Some(at) = at {
@@ -1350,15 +1370,18 @@ fn import_leftovers(act: bool, resumable: &mut Vec<String>) -> bool {
     any
 }
 
-// A fresh id for an import folder, never one this run has queued or a notebook already has: two
-// folders given the same id would become one notebook, the second folder moved to import/done
-// unimported ("made by an earlier run").
+// A fresh id for an import folder, never one this run has queued (a picture import's or a PDF import's), a
+// notebook already has, or a work folder holds: two imports given the same id would become one notebook, the
+// second folder moved to import/done unimported ("made by an earlier run"), or one's start would remove the
+// other's work folder.
 fn fresh_import_id(id: &mut String) {
     let mut dir = String::new();
     for _ in 0..8 {
         store_make_id(id);
-        let queued = with(|s| s.pending.iter().any(|p| p.as_str() == id.as_str()));
-        if !queued && !(store_notebook_dir(id, &mut dir, 600) == 0 && exists(&dir)) {
+        let queued = is_pending_id(id) || crate::pdfimport::is_pending_id(id);
+        let mut work = String::new();
+        csnprintf!(&mut work, 700, "%s/notebooks/.import-%s", &store_root(), id.as_str());
+        if !queued && !(store_notebook_dir(id, &mut dir, 600) == 0 && exists(&dir)) && !exists(&work) {
             return;
         }
     }
@@ -1375,6 +1398,8 @@ fn fresh_import_id(id: &mut String) {
 /// (pdfimport.rs); a lock held elsewhere (a previous run's detached child) leaves everything for the next
 /// scan. Returns how many were queued.
 pub fn import_scan(dpi: f32) -> i32 {
+    // (a look that was due is taken now: one that finds nothing, or the lock held elsewhere, is not due again)
+    crate::pdfimport::rescan_clear();
     let mut dir = String::new();
     root_path("import", &mut dir, 600);
     let mut names = Vec::new();
@@ -1383,8 +1408,8 @@ pub fn import_scan(dpi: f32) -> i32 {
     }
     let found = crate::pdfimport::list_pdfs();
     let folders = names.iter().filter(|n| n.as_str() != "done").count();
-    if folders == 0 && found.files.is_empty() && !import_leftovers(false, &mut Vec::new()) {
-        // nothing to do (and no lock file made for it)
+    if folders == 0 && found.files.is_empty() && !import_leftovers(false, &mut Vec::new()) && !crate::pdfimport::marks_waiting() {
+        // nothing to do: only whether a previous run's detached child still holds the lock
         crate::pdfimport::detached_check();
         return 0;
     }
@@ -1398,18 +1423,22 @@ pub fn import_scan(dpi: f32) -> i32 {
         crate::pdfimport::detached_check();
         return 0;
     }
+    // (the lock is this process's: no other process imports)
+    crate::pdfimport::detached_clear();
+    // imports the job queue dropped (a full queue, a fork that failed) are let go of, or queued again (M11)
+    crate::pdfimport::reconcile(dpi);
     let mut found = found;
+    let mut queued = 0;
     // Leftovers of an import that was cut off (Grimoire or the Kindle stopped mid-way): when the lock is
-    // taken afresh, no import runs, so they are no one's.
+    // taken afresh, no import runs, so they are no one's. The picks that waited for the lock go now (H2).
     if lock == crate::pdfimport::Lock::Fresh {
         import_leftovers(true, &mut found.resumable);
-    } else {
-        import_leftovers(false, &mut Vec::new());
+        crate::pdfimport::deferred_clear();
+        queued += crate::pdfimport::queue_waiting_marks(dpi);
     }
-    let mut queued = crate::pdfimport::scan_queue(&found, dpi, false);
-    let mut att = attempts_load();
+    queued += crate::pdfimport::scan_queue(&found, dpi, false);
+    let att = attempts_load();
     let natt = att.len();
-    let mut seen = [false; ATTEMPTS_MAX];
     let (mut empty, mut waiting, mut toolong, mut with_pdfs) = (0, 0, 0, 0);
     for name in &names {
         if name == "done" {
@@ -1423,7 +1452,6 @@ pub fn import_scan(dpi: f32) -> i32 {
         for k in 0..natt {
             if att[k].name == nh {
                 at = Some(k);
-                seen[k] = true;
             }
         }
         if with(|s| s.pending.len()) >= IMPORT_QUEUE_MAX {
@@ -1434,10 +1462,20 @@ pub fn import_scan(dpi: f32) -> i32 {
             toolong += 1;
             continue;
         }
-        // its PDFs first: the pictures wait until they are imported and have moved to done/
-        if crate::pdfimport::folder_holds_pdfs(name) {
+        // its PDFs first: the pictures wait until they are imported and have moved to done/ (a PDF refused, or
+        // tried out, holds nothing back)
+        if crate::pdfimport::folder_holds_pdfs(name, &att) {
             with_pdfs += 1;
             continue;
+        }
+        // a folder picked by hand in the Import place is that pick's while it is queued or running (M5)
+        if let Some(m) = crate::pdfimport::import_storage_path(name)
+            .and_then(|sp| String::from_utf8(sp.as_bytes().to_vec()).ok())
+            .and_then(|rel| crate::pdfimport::mark_read(&rel))
+        {
+            if m.state == crate::pdfimport::MarkState::Making && is_pending_id(&m.id) {
+                continue;
+            }
         }
         let mut pics = Vec::new();
         if list_names(&src, true, 1, &mut pics) != 0 {
@@ -1472,16 +1510,15 @@ pub fn import_scan(dpi: f32) -> i32 {
         with(|s| s.pending.push(FixedStr::from_str(&id)));
         queued += 1;
     }
-    // the records of folders no longer here (imported, or taken away) go
-    let mut kept = 0;
-    for k in 0..natt {
-        if seen[k] {
-            att[kept] = att[k];
-            kept += 1;
-        }
-    }
-    if kept != natt {
-        attempts_save(&att[..kept]);
+    // The records of folders and PDFs no longer here (imported, or taken away) go; a PDF's is kept for as long as
+    // the PDF is listed (H1: a record keyed by the PDF's path under import/). Read again first: a job may have
+    // written one since.
+    let live: std::collections::HashSet<u64> =
+        names.iter().filter(|n| n.as_str() != "done").map(|n| fnv(FNV0, n.as_bytes())).chain(found.files.iter().map(|f| fnv(FNV0, f.0.as_bytes()))).collect();
+    let now_att = attempts_load();
+    let kept: Vec<Attempt> = now_att.iter().filter(|e| live.contains(&e.name)).copied().collect();
+    if kept.len() != now_att.len() {
+        attempts_save(&kept);
     }
     // (the lock stays with the UI while anything is queued: a scan that queued nothing lets go of it)
     crate::pdfimport::pictures_wait(with_pdfs != 0);
@@ -1517,21 +1554,52 @@ pub fn import_finished(ok: bool, pages: &mut i32) -> i32 {
         with(|s| s.pending.remove(i));
         return 1;
     }
-    if ok || n == 0 {
+    if n == 0 {
         return 0;
     }
-    with(|s| s.pending.remove(0)); // the oldest failed
-    -1
+    // the oldest ended without a notebook to show: failed, or done with nothing made (it is let go of all the same:
+    // a pending id that never goes would pin the import lock)
+    with(|s| s.pending.remove(0));
+    if ok {
+        0
+    } else {
+        -1
+    }
+}
+
+/// The same for the job of import `id` (the one bg_poll_job just reported): exactly that one is let go of.
+pub fn import_finished_id(id: &str, ok: bool, pages: &mut i32) -> i32 {
+    let Some(i) = with(|s| s.pending.iter().position(|p| p.as_str() == id)) else {
+        return import_finished(ok, pages);
+    };
+    with(|s| s.pending.remove(i));
+    let mut nb = NotebookInfo::default();
+    if store_load_info(id, &mut nb) == 0 {
+        *pages = nb.npages();
+        return 1;
+    }
+    if ok {
+        0
+    } else {
+        -1
+    }
 }
 
 // Moves a folder that became notebook id to import/done/<Name>-<time>; one that cannot move is
 // marked done in place, so no later start imports it again.
 fn finish_source(src: &str, id: &str) {
+    let mut abs = src.to_string();
     if pick_active() {
-        // a folder picked in place stays where it is (its mark goes: the notebook is made)
+        // A folder picked in place stays where it is (its mark goes: the notebook is made), unless it lies in
+        // import/ itself: there it is a drop whoever chose it, and goes to import/done as the scan's would (M5).
         crate::pdfimport::mark_drop(src);
-        return;
+        let top = crate::pdfimport::under_import(src).filter(|r| !r.contains('/'));
+        match (top, crate::pdfimport::storage_root()) {
+            (Some(_), Some(root)) => abs = format!("{}/{}", root.trim_end_matches('/'), src),
+            _ => return,
+        }
     }
+    let src = abs.as_str();
     let (mut import, mut done, mut to) = (String::new(), String::new(), String::new());
     root_path("import", &mut import, 600);
     root_path("import/done", &mut done, 700);
@@ -1716,10 +1784,10 @@ fn build_notebook(id: &str, src: &str, final_: &str, names: &[String]) -> i32 {
         store_list(&mut all);
         let mut cut = FixedStr::<STORE_NAME_LEN>::new();
         let (given_name, given_folder) = pick_given();
-        copy_name(&mut cut, if given_name.is_empty() { name } else { &given_name });
+        copy_name(&mut cut, if given_name.trim().is_empty() { name } else { given_name.trim() });
         nb.name.set_cut(&crate::pdfimport::unique_import_name(cut.as_str(), &all));
+        // (the notebook names its Library folder, which lists it; folders.ini is the UI's to write: app.rs)
         if !given_folder.is_empty() && store_folder_valid(&given_folder) {
-            store_add_folder(&given_folder);
             nb.folder.set_cut(&given_folder);
         }
         nb.paper = PAPER_BLANK;
@@ -1938,8 +2006,12 @@ fn import_pick(rel: &str) -> i32 {
 /// What the picker's Import pictures as notebook says (like pdfimport::Queued).
 pub fn import_pick_queue(path: &StoragePath, name: Option<&str>, folder: Option<&str>, dpi: f32) -> crate::pdfimport::Queued {
     use crate::pdfimport::*;
-    let Ok(src) = String::from_utf8(path.as_bytes().to_vec()) else { return Queued::Refused("name") };
+    let Ok(src) = String::from_utf8(path.as_bytes().to_vec()) else {
+        qlog!("import: a picked folder's path is not UTF-8; refused");
+        return Queued::Refused("name");
+    };
     if with(|s| s.pending.len()) >= IMPORT_QUEUE_MAX {
+        qlog!("import: %d page folders are queued already; a picked folder is refused", IMPORT_QUEUE_MAX as i32);
         return Queued::Refused("busy");
     }
     // Grimoire's own folders are refused here by name (quick), and by identity when the job walks to them
@@ -1949,12 +2021,13 @@ pub fn import_pick_queue(path: &StoragePath, name: Option<&str>, folder: Option<
         if comps.len() > gc.len() && gc.iter().zip(&comps).all(|(a, b)| a.as_bytes().eq_ignore_ascii_case(b)) {
             let n = comps[gc.len()];
             if [&b"notebooks"[..], b"PDFs", b"trash"].iter().any(|r| n.eq_ignore_ascii_case(r)) {
+                qlog!("import: a picked folder lies in one of Grimoire's own folders; refused");
                 return Queued::Refused("own");
             }
         }
     }
     if let Some(m) = mark_read(&src) {
-        if m.state == MarkState::Making && !m.id.is_empty() && with(|s| s.pending.iter().any(|p| p.as_str() == m.id)) {
+        if m.state == MarkState::Making && !m.id.is_empty() && is_pending_id(&m.id) {
             return Queued::AlreadyRunning;
         }
     }
@@ -1962,34 +2035,78 @@ pub fn import_pick_queue(path: &StoragePath, name: Option<&str>, folder: Option<
         Lock::Busy(_) => true,
         Lock::Fresh => {
             import_leftovers(true, &mut Vec::new());
+            crate::pdfimport::detached_clear();
+            crate::pdfimport::queue_waiting_marks(dpi);
             false
         }
         Lock::Held => false,
     };
-    let mark = |id: &str, state: MarkState| Mark {
-        state,
-        id: id.to_string(),
-        src: src.clone(),
-        pick: true,
-        name: name.unwrap_or("").to_string(),
-        folder: folder.unwrap_or("").to_string(),
-        page: 0,
-        pages: 0,
-        at: wall_time(),
-    };
     if busy {
-        mark_write_public(&mark("", MarkState::Waiting));
+        let m = Mark { state: MarkState::Waiting, src: src.clone(), pick: true, name: name.unwrap_or("").to_string(), folder: folder.unwrap_or("").to_string(), at: wall_time(), ..Default::default() };
+        if !mark_write_public(&m) {
+            qlog!("import: a picked folder's mark could not be written; refused");
+            return Queued::Refused("mark");
+        }
+        qlog!("import: another process holds the import lock; a picked folder waits for it");
         return Queued::Waiting;
     }
+    if let Some(m) = mark_read(&src) {
+        if m.state == MarkState::Making && is_pending_id(&m.id) {
+            // (it waited, and was queued just now)
+            return Queued::Started(m.id);
+        }
+    }
+    match queue_folder_pick(&src, name.unwrap_or(""), folder.unwrap_or(""), dpi) {
+        Some(id) => Queued::Started(id),
+        None => {
+            qlog!("import: a picked folder's mark could not be written; refused");
+            lock_release_if_idle();
+            Queued::Refused("mark")
+        }
+    }
+}
+
+/// Queues the picture import of a folder picked in place (its StoragePath `src`), under the lock the UI holds:
+/// its mark (the notebook id it will be, the name and folder given), then the job. The id, or None when the mark
+/// could not be written.
+pub(crate) fn queue_folder_pick(src: &str, name: &str, folder: &str, dpi: f32) -> Option<String> {
+    use crate::pdfimport::*;
     let mut id = String::new();
     fresh_import_id(&mut id);
-    if !mark_write_public(&mark(&id, MarkState::Making)) {
-        lock_release_if_idle();
-        return Queued::Refused("mark");
+    let m = Mark { state: MarkState::Making, id: id.clone(), src: src.to_string(), pick: true, name: name.to_string(), folder: folder.to_string(), at: wall_time(), ..Default::default() };
+    if !mark_write_public(&m) {
+        return None;
     }
-    bg_queue(BgKind::ImportFolder, Some(&id), Some(&src), -dpi.abs().max(1.0), true);
+    bg_queue(BgKind::ImportFolder, Some(&id), Some(src), -dpi.abs().max(1.0), true);
     with(|s| s.pending.push(FixedStr::from_str(&id)));
-    Queued::Started(id)
+    Some(id)
+}
+
+/// Whether `id` is a picture import this process has queued or running.
+pub(crate) fn is_pending_id(id: &str) -> bool {
+    with(|s| s.pending.iter().any(|p| p.as_str() == id))
+}
+
+/// Picture imports this process holds as queued or running that the job queue no longer knows (dropped, or a fork
+/// that failed): let go of, so they never pin the lock. A folder of import/ is queued again by the next scan (its
+/// mark keeps its id); a pick waits for the lock as a pick does. Returns how many.
+pub(crate) fn reconcile_pictures() -> usize {
+    let lost: Vec<String> = with(|s| s.pending.iter().filter(|p| !bg_pending(BgKind::ImportFolder, p.as_str())).map(|p| p.as_str().to_string()).collect());
+    for id in &lost {
+        with(|s| s.pending.retain(|p| p.as_str() != id));
+        qlog!("import: page folder import %s was dropped from the queue; it is taken again", id);
+    }
+    if !lost.is_empty() {
+        // a pick among them: its mark (in import/.marks) says waiting, so the lock taken afresh queues it again
+        for m in std::fs::read_dir(format!("{}/import/.marks", store_root())).into_iter().flat_map(|rd| rd.flatten().take(256)) {
+            let Some(t) = read_file(&m.path().to_string_lossy()) else { continue };
+            let Some(mk) = crate::pdfimport::mark_parse(&t) else { continue };
+            if mk.state == crate::pdfimport::MarkState::Making && mk.pick && lost.iter().any(|l| *l == mk.id) {
+                crate::pdfimport::mark_write_public(&crate::pdfimport::Mark { state: crate::pdfimport::MarkState::Waiting, id: String::new(), at: wall_time(), ..mk });
+            }
+        }
+    }
+    lost.len()
 }
 
 /// What a row of the Import place says of the folder at `src` (its absolute path): Failed after the tries, else
@@ -2011,16 +2128,19 @@ pub(crate) fn pictures_pending() -> usize {
 pub(crate) fn attempts_snapshot() -> Vec<Attempt> {
     attempts_load()
 }
-pub(crate) fn attempts_restore(a: &[Attempt]) {
-    attempts_save(a);
-}
 /// `what`: 0 a try, 1 refused, 2 done.
+/// (a PDF of import/ by its path there, anything else by its name; the tests')
+#[cfg(test)]
 pub(crate) fn attempts_note_public(src: &str, pictures: u64, what: i32) {
-    attempts_note(src, pictures, what);
+    attempts_note_key(crate::pdfimport::attempt_key(src).unwrap_or_else(|| folder_name_hash(src)), pictures, what);
 }
-/// Whether the record of `src` (by its name) says it was tried `tries` times with these very contents.
+/// Whether the record of `src` (a PDF of import/ by its path there, anything else by its name) says it was tried
+/// `tries` times with these very contents.
 pub(crate) fn attempts_waiting(src: &str, pictures: u64, a: &[Attempt], tries: i32) -> bool {
-    let nh = folder_name_hash(src);
+    attempts_waiting_key(crate::pdfimport::attempt_key(src).unwrap_or_else(|| folder_name_hash(src)), pictures, a, tries)
+}
+/// The same for the record keyed `nh`.
+pub(crate) fn attempts_waiting_key(nh: u64, pictures: u64, a: &[Attempt], tries: i32) -> bool {
     a.iter().any(|e| e.name == nh && e.tries >= tries && e.pictures == pictures)
 }
 pub(crate) fn remove_work_public<P: AsRef<Path>>(work: P) {

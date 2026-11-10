@@ -1224,7 +1224,7 @@ pub fn app_toast(a: &mut App, msg: &str, ms: i32) {
 /// with 2.1's browser, its screens; not the Import place, whose rows say the same).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum NoticeKey {
-    /// new fonts being checked (2.1.0-beta.3), on the Font sheet above its buttons
+    /// new fonts being checked (2.1.0-beta.2), on the Font sheet above its buttons
     FontCheck,
     /// a folder being read in the file browser (2.1.0-beta.2)
     Loading,
@@ -1870,6 +1870,19 @@ fn powerd_state_now(name: &mut String, cap: usize) -> PowerdState {
     powerd_parse_state(Some(name.as_str()))
 }
 
+// A new notebook an import made: its Library folder goes into folders.ini (the UI's file: never written by a job
+// child beside it), and whether the Library shows its card now (D20: then no toast says "Imported").
+fn import_made(a: &App, id: &str) -> bool {
+    let mut nb = NotebookInfo::default();
+    if store_load_info(id, &mut nb) != 0 {
+        return false;
+    }
+    if !nb.folder.is_empty() {
+        store_add_folder(nb.folder.as_str());
+    }
+    crate::library::library_shows_folder(a, nb.folder.as_str())
+}
+
 // A PDF import ended (pdfimport.rs): what to tell the user. With the Library in front and the new card on it
 // (D20) no toast says "Imported"; elsewhere one does. One that left pages blank says so whatever is in front,
 // as it is news the card does not carry.
@@ -1880,8 +1893,7 @@ fn pdf_import_done(a: &mut App, id: &str, ok: bool) {
     match fin {
         Finished::Nothing => {}
         Finished::Imported { pages, blank, trimmed } => {
-            let mut nb = NotebookInfo::default();
-            let on_top = store_load_info(id, &mut nb) == 0 && nb.folder.is_empty();
+            let shown = import_made(a, id);
             if a.scr == ScreenId::Library && !a.asleep {
                 app_redraw_mode(a, RefreshMode::Ui); // (waking redraws it too)
             }
@@ -1893,14 +1905,14 @@ fn pdf_import_done(a: &mut App, id: &str, ok: bool) {
                 // TRANSLATORS: a PDF became a new notebook, but its document links (a planner's tabs) were more than
                 // a notebook holds and some were left out; %d is its page count. In a toast: one or two lines.
                 csnprintf!(&mut msg, 256, ng_("Imported notebook (%d page). Some links were left out.", "Imported notebook (%d pages). Some links were left out.", pages as i64), pages as i32);
-            } else if !(a.scr == ScreenId::Library && on_top) {
+            } else if !shown {
                 // TRANSLATORS: a folder of page pictures (grimoire/import/<name>) or a PDF became a new notebook.
                 csnprintf!(&mut msg, 256, ng_("Imported notebook (%d page).", "Imported notebook (%d pages).", pages as i64), pages as i32);
             }
         }
         Finished::Already => {
             // TRANSLATORS: a toast: the PDF dropped in grimoire/import (or picked) is one Grimoire made a notebook
-            // of before. The file moves to import/done.
+            // of before. A file of grimoire/import moves to import/done; a file picked elsewhere stays where it is.
             csnprintf!(&mut msg, 256, "%s", tr("PDF already imported."));
         }
         Finished::Failed(why) => match why {
@@ -1945,7 +1957,16 @@ pub fn app_import_rescan(a: &mut App, entering: bool) {
 
 // The staying notice of an import (the Library's: "Importing: page 37 of 412"), from the shared progress record
 // the writer fills, or from the coarse progress in import/.marks while a previous run's detached child imports.
+// Also: imports the job queue no longer knows are let go of (M11), and the end of a previous run's detached
+// import is seen within 10 s, its notebook shown and the files waiting taken (M8).
 fn pdf_import_tick(a: &mut App, now: u32) {
+    if (crate::pdfimport::pending_count() > 0 || crate::bgwork_template::pictures_pending() > 0) && !bg_busy() {
+        crate::pdfimport::reconcile(a.dpi);
+        crate::pdfimport::lock_release_if_idle();
+    }
+    if crate::pdfimport::detached_poll(now) && a.scr == ScreenId::Library && !a.asleep {
+        app_redraw_mode(a, RefreshMode::Ui);
+    }
     match crate::pdfimport::progress_text(now) {
         Some((page, pages)) => {
             let mut msg = String::new();
@@ -2005,12 +2026,13 @@ fn poll_jobs(a: &mut App) -> i32 {
         return r;
     }
     let mut pages = 0;
-    let got = import_finished(r > 0, &mut pages);
+    let got = crate::bgwork_template::import_finished_id(done_id.as_str(), r > 0, &mut pages);
     crate::pdfimport::lock_release_if_idle(); // (the lock is the UI's while any import is queued or running)
+    let shown = got > 0 && import_made(a, done_id.as_str());
     if got > 0 && a.scr == ScreenId::Library && !a.asleep {
         app_redraw_mode(a, RefreshMode::Ui); // (waking redraws it too)
     }
-    if got > 0 {
+    if got > 0 && !shown {
         let mut msg = String::new();
         // TRANSLATORS: a folder of page pictures (grimoire/import/<name>) became a new notebook.
         csnprintf!(&mut msg, 256, ng_("Imported notebook (%d page).", "Imported notebook (%d pages).", pages as i64), pages);

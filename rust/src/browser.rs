@@ -99,6 +99,8 @@ pub struct Row {
     /// its place in the listing's entries (for its stat)
     ix: usize,
     pub stat: Option<FsStat>,
+    /// its stat was asked for (a file gone since the listing never gets one, and is not asked again at every tick)
+    stat_tried: bool,
     /// a folder's pictures: None until counted
     pub pictures: Option<usize>,
     /// a PDF's book key: None until read; Some("") when it could not be
@@ -110,7 +112,7 @@ pub struct Row {
 
 impl Row {
     fn new(kind: RowKind, name: &str, path: StoragePath) -> Row {
-        Row { kind, name: name.to_string(), path, place: None, ix: usize::MAX, stat: None, pictures: None, key: None, notebook: None, status: RowStatus::None }
+        Row { kind, name: name.to_string(), path, place: None, ix: usize::MAX, stat: None, stat_tried: false, pictures: None, key: None, notebook: None, status: RowStatus::None }
     }
 }
 
@@ -155,9 +157,15 @@ pub struct Browser {
     free: Option<(u64, u64)>,
     /// the notebooks, for "has notes"
     books: Vec<NotebookInfo>,
-    /// the Import place's statuses are due (its rows were just built), and when they were last looked at
+    /// their book keys (a notebook's `source=`, else its source.ini's book), read once for the picker's session
+    book_keys: Option<Vec<(String, String)>>,
+    /// the Import place's statuses are due (its rows were just built), and when they were last looked at: the
+    /// PDF rows' when the import's progress changes, every row's every few seconds
     status_due: bool,
     status_at: u32,
+    status_stamp: u32,
+    /// how far the listing's entries of no known kind have been stat-ed (in slices, before the rows are built)
+    stat_from: usize,
     /// the lift of a contact that opened the card by a hold is not a tap on anything
     swallow: bool,
     /// where each row on screen was last drawn (a status or count that arrives redraws only that row)
@@ -299,6 +307,7 @@ impl Browser {
                 self.too_long = 0;
                 self.hidden = 0;
                 self.loading_since = now;
+                self.stat_from = 0;
                 self.step_listing(FS_SLICE_MS);
                 true
             }
@@ -309,12 +318,26 @@ impl Browser {
         }
     }
 
-    /// Reads the listing for at most `budget_ms`; the rows are built once it is read.
+    /// Reads the listing for at most `budget_ms`; the rows are built once it is read. An entry whose kind the
+    /// directory did not say (d_type unknown) is its stat's, within the same budget a tick: thousands of them never
+    /// hold the UI past the 20 ms rule.
     fn step_listing(&mut self, budget_ms: u32) {
         let Some(l) = self.listing.as_mut() else { return };
-        if l.step(budget_ms) {
-            self.build_rows();
+        let t0 = real_now_ms();
+        if !l.step(budget_ms) {
+            return;
         }
+        while self.stat_from < l.entries.len() {
+            if real_now_ms().wrapping_sub(t0) >= budget_ms {
+                return;
+            }
+            let i = self.stat_from;
+            if l.entries[i].kind == FsKind::Unknown {
+                l.stat(i..i + 1, u32::MAX);
+            }
+            self.stat_from += 1;
+        }
+        self.build_rows();
     }
 
     /// The tests': the folder read to its end at once.
@@ -329,11 +352,7 @@ impl Browser {
         self.capped = l.capped;
         self.hidden = l.hidden;
         self.too_long = l.too_long;
-        // (a kind d_type left unknown is its stat's)
-        let unknown: Vec<usize> = (0..l.entries.len()).filter(|&i| l.entries[i].kind == FsKind::Unknown).collect();
-        for i in unknown {
-            l.stat(i..i + 1, u32::MAX);
-        }
+        // (a kind d_type left unknown was its stat's: step_listing)
         let mut dirs: Vec<Row> = Vec::new();
         let mut pdfs: Vec<Row> = Vec::new();
         let mut odd = 0;
@@ -376,7 +395,6 @@ impl Browser {
         }
         self.ready = true;
         self.status_due = true;
-        self.loading_notice = false;
     }
 
     fn in_import_place(&self) -> bool {
@@ -405,19 +423,28 @@ impl Browser {
             self.card = None;
             return true;
         }
-        let Some(at) = self.at.clone() else { return false };
+        let Some(mut at) = self.at.clone() else { return false };
         self.listing = None;
-        if self.place_root.as_ref() == Some(&at) {
-            self.show_root();
-            return true;
-        }
-        match at.split_last() {
-            Some((parent, _)) => {
-                self.enter(parent, false, now);
+        // up to the first folder above that still opens (one renamed or deleted over USB is passed by), else the
+        // root's rows: Back and Esc always leave
+        loop {
+            if self.place_root.as_ref() == Some(&at) {
+                self.show_root();
+                return true;
             }
-            None => self.show_root(),
+            match at.split_last() {
+                Some((parent, _)) => {
+                    if self.enter(parent.clone(), false, now) {
+                        return true;
+                    }
+                    at = parent;
+                }
+                None => {
+                    self.show_root();
+                    return true;
+                }
+            }
         }
-        true
     }
 
     // ---- what a row says ----
@@ -560,11 +587,14 @@ impl Browser {
             let t0 = real_now_ms();
             for i in vis.clone() {
                 let r = &mut self.rows[i];
-                if r.kind == RowKind::Place || r.kind == RowKind::Look || r.stat.is_some() || r.ix == usize::MAX {
+                if r.kind == RowKind::Place || r.kind == RowKind::Look || r.stat.is_some() || r.stat_tried || r.ix == usize::MAX {
                     continue;
                 }
-                l.stat(r.ix..r.ix + 1, FS_SLICE_MS);
+                if !l.stat(r.ix..r.ix + 1, FS_SLICE_MS) {
+                    return changed; // (out of time: this row's stat at the next tick)
+                }
                 r.stat = l.entries.get(r.ix).and_then(|e| e.stat);
+                r.stat_tried = true;
                 changed.push(i);
                 if real_now_ms().wrapping_sub(t0) >= FS_SLICE_MS {
                     return changed;
@@ -590,8 +620,9 @@ impl Browser {
             if self.rows[i].kind == RowKind::Pdf && self.rows[i].key.is_none() && self.rows[i].stat.is_some() {
                 let p = self.rows[i].path.clone();
                 let key = self.book_key(&p);
+                let nb = self.notebook_of_key(&key);
                 let r = &mut self.rows[i];
-                r.notebook = if key.is_empty() { None } else { crate::pdfimport::notebook_id_with_key(&key, &self.books) };
+                r.notebook = nb;
                 r.key = Some(key);
                 if r.notebook.is_some() {
                     changed.push(i);
@@ -599,11 +630,23 @@ impl Browser {
                 return changed;
             }
         }
-        // the Import place's statuses, when the rows are first known and then at most once a second
+        // the Import place's statuses: every row's when the rows are first known and then every 5 s (a folder's
+        // lists it), the PDF rows' as soon as the import's progress changes (looked at at most once a second)
         if self.under_import() && (self.status_due || now.wrapping_sub(self.status_at) >= 1000) {
+            let stamp = crate::pdfimport::import_progress_stamp();
+            let all = self.status_due || now.wrapping_sub(self.status_at) >= 5000;
+            if !all && stamp == self.status_stamp {
+                return changed;
+            }
             self.status_due = false;
-            self.status_at = now;
+            self.status_stamp = stamp;
+            if all {
+                self.status_at = now;
+            }
             for i in self.visible(a_h) {
+                if !all && self.rows[i].kind != RowKind::Pdf {
+                    continue;
+                }
                 let s = self.status_of(i);
                 if self.rows[i].status != s {
                     self.rows[i].status = s;
@@ -627,6 +670,31 @@ impl Browser {
         l.entries.iter().filter(|e| matches!(e.kind, FsKind::File | FsKind::Unknown) && is_picture(&e.name)).count().min(STORE_MAX_PAGES + 1)
     }
 
+    /// The notebook that holds a book key ("has notes"): the notebooks' keys are read once for the picker's session
+    /// (a notebook's `source=`, else the book its source.ini names: one small read each), not once a row.
+    fn notebook_of_key(&mut self, key: &str) -> Option<String> {
+        if key.is_empty() {
+            return None;
+        }
+        if self.book_keys.is_none() {
+            let keys = self
+                .books
+                .iter()
+                .filter_map(|nb| {
+                    if !nb.source.is_empty() {
+                        return Some((nb.source.as_str().to_string(), nb.id.as_str().to_string()));
+                    }
+                    let mut m = AnnotateMap::default();
+                    let k = (annotate_map_load(nb.id.as_str(), &mut m) == 0 && !m.book.is_empty()).then(|| m.book.as_str().to_string());
+                    annotate_map_free(&mut m);
+                    k.map(|k| (k, nb.id.as_str().to_string()))
+                })
+                .collect();
+            self.book_keys = Some(keys);
+        }
+        self.book_keys.as_ref().and_then(|v| v.iter().find(|(k, _)| k == key).map(|(_, id)| id.clone()))
+    }
+
     /// A PDF's book key (KOReader's partial MD5, 12 reads of 1 KiB), "" when the file cannot be read.
     fn book_key(&self, p: &StoragePath) -> String {
         let Some(st) = self.storage.as_ref() else { return String::new() };
@@ -646,7 +714,8 @@ impl Browser {
         let done_dir = self.at.as_ref().is_some_and(|p| {
             self.import_path().is_some_and(|ip| {
                 let done = format!("{}/done", String::from_utf8_lossy(ip.as_bytes()));
-                p.as_bytes().len() >= done.len() && p.as_bytes()[..done.len()].eq_ignore_ascii_case(done.as_bytes())
+                let pb = p.as_bytes();
+                pb.len() >= done.len() && pb[..done.len()].eq_ignore_ascii_case(done.as_bytes()) && (pb.len() == done.len() || pb[done.len()] == b'/')
             })
         });
         match r.kind {
@@ -694,8 +763,9 @@ impl Browser {
         if r.kind == RowKind::Pdf && r.key.is_none() {
             let p = r.path.clone();
             let key = self.book_key(&p);
+            let nb = self.notebook_of_key(&key);
             let r = &mut self.rows[row];
-            r.notebook = if key.is_empty() { None } else { crate::pdfimport::notebook_id_with_key(&key, &self.books) };
+            r.notebook = nb;
             r.key = Some(key);
         }
         if self.rows[row].kind == RowKind::Dir && self.rows[row].pictures.is_none() && self.kinds.contains(&PickKind::PictureFolder) {
@@ -1220,8 +1290,12 @@ impl Browser {
         if self.toast.is_some() {
             self.flush_toast(a);
         }
-        if !was_ready && self.ready {
+        // (the Loading notice goes once a folder is read, whichever: Back during a slow listing shows another)
+        if self.ready && self.loading_notice {
+            self.loading_notice = false;
             app_notice_clear(a, NoticeKey::Loading);
+        }
+        if !was_ready && self.ready {
             self.redraw_full(a);
             return;
         }
@@ -1382,11 +1456,13 @@ mod tests {
         use std::os::unix::fs::MetadataExt;
         let (size, mtime) = (md.len(), md.mtime());
         assert_eq!(import_status(src, size, mtime), ImportStatus::Waiting);
-        let m = |state| crate::pdfimport::Mark { state, src: src.into(), pick: false, at: 1, ..Default::default() };
+        let m = |state| crate::pdfimport::Mark { state, src: src.into(), pick: false, at: 1, size, mtime, ..Default::default() };
         assert!(crate::pdfimport::mark_write_public(&m(crate::pdfimport::MarkState::Waiting)));
         assert_eq!(import_status(src, size, mtime), ImportStatus::Waiting);
         assert!(crate::pdfimport::mark_write_public(&m(crate::pdfimport::MarkState::Done)));
         assert_eq!(import_status(src, size, mtime), ImportStatus::Imported);
+        // a done mark is that file's: another file of the name since is not imported
+        assert_eq!(import_status(src, size + 1, mtime), ImportStatus::Waiting);
         crate::pdfimport::mark_drop(src);
         // three tries with these very contents: Failed, until the file changes
         let h = {

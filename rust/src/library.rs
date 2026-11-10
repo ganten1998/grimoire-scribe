@@ -4997,8 +4997,12 @@ fn kb_finished(a: &mut App, ok: bool) {
     if ok && !txt.is_empty() {
         match kbp {
             KbPurpose::NewName => {
-                lib(a).new_name.set(&txt);
-                lib(a).new_name_typed = true;
+                // (confirming the name the sheet offered is no name typed: a picked file then names its notebook, D28)
+                let s = lib(a);
+                if s.new_name_typed || txt != s.new_name.as_str() {
+                    s.new_name.set(&txt);
+                    s.new_name_typed = true;
+                }
                 back = Modal::New;
             }
             KbPurpose::Rename => {
@@ -5937,6 +5941,14 @@ fn files_shown(a: &App) -> bool {
 }
 
 /// Whether the Import place is on screen: the staying notice of an import stays off it (its rows say the same).
+/// Whether the Library is the screen, its grid of the folder `folder` showing with nothing over it (no sheet, no
+/// picker, no Graph): an import's new card is then seen as it arrives, and no toast says it (D20).
+pub fn library_shows_folder(a: &App, folder: &str) -> bool {
+    a.scr == ScreenId::Library
+        && !a.asleep
+        && a.lib.as_deref().is_some_and(|s| s.modal == Modal::None && !s.files.open && !s.map.open && !s.map_picker.open && s.cur_folder.as_str() == folder)
+}
+
 pub fn library_import_place_up(a: &App) -> bool {
     files_shown(a) && a.lib.as_deref().is_some_and(|s| s.files.import_place_up())
 }
@@ -5995,11 +6007,25 @@ fn files_result(a: &mut App, r: BrowserResult) {
                 crate::bgwork_template::import_pick_queue(p, name.as_deref(), folder.as_deref(), a.dpi)
             };
             files_close(a, true);
-            // (a start shows on the staying notice, a wait on the Import place's row: no toast says it)
-            if let Queued::Refused(_) = q {
-                let mut msg = String::new();
-                csnprintf!(&mut msg, 256, tr("Couldn't import PDF (see %s)."), "grimoire.log");
-                app_toast(a, &msg, 4000);
+            // (a start shows on the staying notice; a wait is said, as nothing else would show it for a while: it
+            // is queued once the other import has ended)
+            match q {
+                Queued::Refused(_) => {
+                    let mut msg = String::new();
+                    if pdf {
+                        csnprintf!(&mut msg, 256, tr("Couldn't import PDF (see %s)."), "grimoire.log");
+                    } else {
+                        csnprintf!(&mut msg, 256, tr("Couldn't import page folder (see %s)."), "grimoire.log");
+                    }
+                    app_toast(a, &msg, 4000);
+                }
+                Queued::Waiting => {
+                    // TRANSLATORS: a toast after a file was picked to import while an import from an earlier run is
+                    // still going (in the background): this one starts once that one is done. One line of about
+                    // 1700 px at 44 px, or two.
+                    app_toast(a, tr("Another import is still going. This one starts after it."), 6000);
+                }
+                _ => {}
             }
         }
         BrowserResult::OpenNotebook(id) => {

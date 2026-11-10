@@ -1,7 +1,7 @@
 //! One storage layer (the 2.1 plan, DESIGN.md "One storage layer"; browser.md 8 and 9): the only code that
 //! touches the Kindle's storage for the file browser and for every consumer of a user's file. Read-only for
 //! now (lane L0): the root, the walk, Grimoire's own folders by identity, StoragePath, zones, the time-sliced
-//! listing, stats and free space. Nothing reads it yet; the picker (L8) and the PDF import (L5) will.
+//! listing, stats and free space. The picker (L8) and the PDF import (L5) read through it.
 //!
 //! - One root: /mnt/us on the Kindle (when Grimoire's own folder is inside it); elsewhere GRIMOIRE_STORAGE,
 //!   a hook compiled out of the Kindle build. Never "/".

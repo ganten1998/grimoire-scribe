@@ -263,7 +263,8 @@ pub fn bg_detach_rest() {
     if pid == 0 {
         // SAFETY: setsid detaches the child from the terminal and process group it was forked in.
         unsafe { libc::setsid() };
-        child_setup();
+        // (the import lock goes with it only when it has an import to finish)
+        child_setup(jobs.iter().any(|j| is_import(j.kind)));
         // (the detached child runs the jobs left, the biggest margin of them)
         child_caps_apply(jobs.iter().map(|j| child_margin(j.kind)).max().unwrap_or(0));
         // Wait for the running export first (it writes the same folder).
@@ -273,8 +274,15 @@ pub fn bg_detach_rest() {
             unsafe { libc::usleep(200000) };
         }
         for j in &jobs {
-            // (a PDF import's slices run back to back: each ends with "more to do" until the last)
-            while run_job_guarded(j) == 3 && j.kind == BgKind::PdfImport {}
+            // (a PDF import's slices run back to back: each ends with "more to do" until the last. Each slice makes
+            // progress or ends the job; the bound is a last guard, never reached by an import of 2000 pages)
+            let mut slices = 0;
+            while j.kind == BgKind::PdfImport && slices < 4 * crate::pdfimport::PDF_MAX_PAGES && run_job_guarded(j) == 3 {
+                slices += 1;
+            }
+            if j.kind != BgKind::PdfImport {
+                run_job_guarded(j);
+            }
         }
         // SAFETY: the child ends here without running the parent's exit handlers.
         unsafe { libc::_exit(0) };
@@ -425,10 +433,17 @@ fn run_job_guarded(j: &Job) -> i32 {
     std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| run_job(j))).unwrap_or(-1)
 }
 
+/// The kinds that are imports: their children keep the import lock (the UI holds it while any is queued or
+/// running), and no other child does.
+fn is_import(kind: BgKind) -> bool {
+    matches!(kind, BgKind::PdfImport | BgKind::ImportFolder)
+}
+
 // In a forked child: let go of everything inherited from Grimoire (input devices, possibly
 // grabbed; the framebuffer; the power-service pipe), and take a name of its own so nobody
-// mistakes it for Grimoire. stdout/stderr stay: they are the log.
-fn child_setup() {
+// mistakes it for Grimoire. stdout/stderr stay: they are the log. `keep_lock`: an import's child,
+// which keeps the import lock's descriptor.
+fn child_setup(keep_lock: bool) {
     work_pump_set(None); // the pens are Grimoire's to read (common.h), never a child's
     input_forget_signal_pipe(); // (its numbers are closed below, and the jobs' files take them)
     #[cfg(target_os = "linux")]
@@ -448,9 +463,11 @@ fn child_setup() {
     if !(0..=4096).contains(&max) {
         max = 4096;
     }
-    // The import lock's descriptor stays (DESIGN.md 3.9): the child holds the very lock the UI holds, so the
-    // detached child at exit keeps it too. It is O_CLOEXEC, so no worker or script inherits it.
-    let keep = crate::pdfimport::lock_fd();
+    // The import lock's descriptor stays in an import's child (DESIGN.md 3.9): it holds the very lock the UI
+    // holds, so the detached child at exit keeps it too. Any other child closes it: a compaction, a mirror or a
+    // font check that starts as the last import ends must not hold the lock after the UI lets go of it (H2). It
+    // is O_CLOEXEC, so no worker or script inherits it.
+    let keep = if keep_lock { crate::pdfimport::lock_fd() } else { -1 };
     for fd in 3..max as i32 {
         if fd == keep {
             continue;
@@ -645,7 +662,7 @@ fn start_job(j: Job, extra: bool) -> bool {
     if pid == 0 {
         // The child only renders and writes files: no display, no input, no atexit handlers.
         child_stops_by_default(&was);
-        child_setup();
+        child_setup(is_import(j.kind));
         child_caps_apply(child_margin(j.kind)); // (oom_score_adj 500 and RLIMIT_AS, childcaps.rs)
         #[cfg(feature = "sim")]
         {
