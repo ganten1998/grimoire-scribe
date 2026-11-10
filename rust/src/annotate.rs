@@ -503,12 +503,12 @@ fn utf8_len(s: &[u8]) -> usize {
 /// A new notebook's name: the title on one line (control characters as spaces, one space between two
 /// words, none first or last), without broken UTF-8, cut to the name limit between two characters,
 /// never inside one. Every other character stays, also one the screens cannot draw (most Chinese,
-/// Korean and Vietnamese characters, rare CJK): the screens leave it out where they draw the name
+/// Korean and Vietnamese characters, rare CJK): the screens show it as a box where they draw the name
 /// (ui_name_label), and the PDF's file name keeps it. Empty when nothing is left (the caller names
 /// it Untitled).
 // Every character of the title is kept, also those the screens cannot draw (most Chinese, Korean
 // and Vietnamese characters, rare CJK): the name is also the notebook's PDF's in grimoire/PDFs,
-// which KOReader lists. Only the screens leave those out as they draw it (ui_name_label).
+// which KOReader lists. Only the screens show those as boxes as they draw it (ui_name_label).
 pub fn annotate_name(title: &[u8], out: &mut String, cap: usize) {
     if cap == 0 {
         return;
