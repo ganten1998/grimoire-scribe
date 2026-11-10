@@ -1949,9 +1949,11 @@ image papers) and `grimoire.log` readable over USB or SSH. The mirror job logs o
    hundreds of MB on a 2,000-page notebook before); try an import of 1,000 or more pages if you have one. No
    `Killed` lines in the log, and the Library and the editor never stall while the mirror runs.
 4. **The cache is disposable.** Delete `grimoire/.cache` over USB, close the notebook after a stroke: it is drawn
-   in full again and the PDF is the same. Fill the storage nearly (leave under 20 MB) and close a notebook: the
-   PDF is still made (the log may say `pdf cache: a write failed`); free the space and the next close fills the
-   cache again.
+   in full again and the PDF is the same. Fill the storage nearly (leave a little more than the notebook's PDF
+   takes, since its temporary file is made beside the old PDF before it replaces it) and close a notebook: the
+   PDF is still made (the log may say `pdf cache: a write failed`); with less room than the PDF takes the old
+   PDF stays and the log says `bg: export of <id> failed`. Free the space and the next close fills the cache
+   again.
 5. **Share downloads.** On the Share screen, download a notebook's PDF and its zip from a computer: the browser's
    progress bar counts as before (Preparing n of N, then the bytes), the file opens, and the zip's PDF entry opens
    from the zip. While it runs the Kindle's editor stays responsive. `grimoire/.cache/pdf/` has no `share-*.spool`
@@ -1959,11 +1961,11 @@ image papers) and `grimoire.log` readable over USB or SSH. The mirror job logs o
 6. **Colour.** An imported page with colour, in the PDF mirror: still colour (gray pages gray); the Scribe shows it
    in gray as before.
 7. **The caps.** Over SSH while a big mirror runs: `cat /proc/<pid>/oom_score_adj` of the `grimoire-bg` child is
-   `500`, and `grep 'Max address space' /proc/<pid>/limits` shows its soft limit about 64 MiB above the child's
-   `VmSize` at its start. Opening Share and downloading a PDF: the render child (named `grimoire`, a child of
-   Grimoire) shows `500` and about 128 MiB over its start too. Nothing in the app misbehaves at those ceilings
-   (a very dense page's mirror is the case to watch: it fails with a line in the log if 64 MiB is too tight, and
-   BACKLOG says what to loosen).
+   `500`, and `grep 'Max address space' /proc/<pid>/limits` shows its soft limit about 128 MiB above the child's
+   `VmSize` at its start (64 MiB before the fix round: see its section at the end). Opening Share and downloading
+   a PDF: the render child (named `grimoire`, a child of Grimoire) shows `500` and about 128 MiB over its start
+   too. Nothing in the app misbehaves at those ceilings (a very dense page's mirror is the case to watch: it fails
+   with a line in the log if 128 MiB is too tight, and BACKLOG says what to loosen).
 ## 2.1.0-beta.2, L5 (the safe loader and the PDF import)
 
 Automated: the unit tests (`rust/tests/test_pdfimport.rs` runs real workers over generated PDFs: pages, colour
@@ -2066,7 +2068,8 @@ and the log says so once), and the template, photo and import tests of `test_tem
 1. Copy a PNG and a JPEG into `grimoire/templates` and a photo into `grimoire/photos` over USB, open New notebook
    > the template list and a page's paper sheet: they appear with their previews, and one of each still goes onto a
    page (a template still imports; a photo still comes upright).
-2. grimoire.log has `work: sandboxed (uid 62001, ...)` once a session, and no `pictures decode in the writer` and
+2. grimoire.log has `work: sandboxed (uid 62001, ...)` once a background job that reads pictures (each job is a
+   process of its own; for PDFs it is once a session), and no `pictures decode in the writer` and
    no `made call N, which the sandbox does not allow`. If either shows, send the log (the call is added to the
    allow-list; the fallback line means the sandbox refused a step).
 3. Copy a folder of 20 phone photos (12 MP) into `grimoire/import/<Folder>`: it imports as before; time it from the
@@ -2176,3 +2179,45 @@ start). On the Scribe, with grimoire.log readable over USB or SSH:
    first import ends, both files in `done/`.
 9. **Timing a page** now comes from the slice lines: `import: <id>: pages A to B of M in T ms (MemAvailable K MB,
    N band(s))`. Send a few for a planner and for a scanned book: they set S1's slice and CPU numbers.
+
+## 2.1.0-beta.2, fix round, F2 (the notebook PDF, its cache, pictures and the caps)
+
+Automated: `rust/tests/test_pdf_colour_memory.rs` (Scribe-sized colour pages, flat and photo-like, on pictures of
+their own and on one picture: the mirror's live memory against one or two RGB copies of a page, and the margin's
+headroom), `test_pdfcache_pictures.rs` (a page drawn before its picture existed is drawn again once it does; a
+picture replaced; a picture job's end; a missing page and the notebook's paper), `test_pdfcache_cap.rs` (whole
+notebooks by last use; a notebook alone over the cap writes nothing at each close; the daily prune),
+`test_pdf_mirror_writers.rs` (a second mirror of one notebook waits and publishes last, whole; a killed writer's
+temporary file is swept), `test_zip_limit.rs` (a zip past 4 GiB, or with a broken entry, fails),
+`test_picture_jobs.rs` (a picked picture's header goes to the worker; one worker death is tried again and never
+refuses a folder; a template with no preview yet starts no worker on the UI thread), and in the CI job `sandbox`
+two more (`test_sandbox_linux.rs`): a Scribe-sized colour page mirrored under the real cap, and a worker's clean
+end under the filter. **Not run anywhere yet: those two** (Linux as root) and everything on a Scribe.
+
+1. **A colour notebook's PDF.** Import a PDF with colour pages (a colour planner, a magazine of photos), open the
+   notebook, write a stroke, close it: `PDFs/<name>.pdf` is there and its colour pages are in colour, and the log
+   says `bg: export of <id>: N pages, N drawn, T ms, VmHWM K kB` (no `bg: export of <id> failed`). Note `K`: it
+   is what the 128 MiB margin must hold beside the child's size at its start; send it with the page count.
+2. **A template picked a moment after it was copied in.** Copy a new PNG into `grimoire/templates` over USB, open
+   a page's paper sheet and tap its tile while it still shows the hourglass: the toast says "Not ready yet. Try
+   again in a moment." and nothing changes; once the tile shows its picture, a tap puts it on the page at once.
+   Grimoire never pauses on the tap (it used to start a reader right there for files up to 4 MB).
+3. **A page drawn before its picture.** With Notebook PDFs on, close a big notebook whose PDF is not made yet (a
+   few hundred pages: the export runs for minutes), open it again at once, give its last page a template (one
+   whose tile shows its picture) and write on it, and close it. The running export reaches that page before the
+   template's picture is made (its job waits behind the export) and draws it on white; when the log has the
+   second export line, open the PDF on a computer: the last page has its template (0c26d912 kept the white page
+   in the cache, and every later PDF showed it bare until the page was saved again).
+4. **Two Grimoires, one notebook.** Open a big notebook (a few hundred pages), write, close it, and at once open
+   it from KOReader (Open this book in Grimoire, which starts Grimoire again) and close it after another stroke.
+   The log says `bg: export of <id> waits for the one running`, then two export lines; the PDF on the computer
+   opens and has both strokes. `grimoire/PDFs` has no `*.tmp` file once both are done.
+5. **Pictures under memory pressure.** Copy a folder of 20 phone photos into `grimoire/import/<Folder>` while a
+   big PDF import runs: if the log says `work: a picture's worker ended (...); a fresh worker tries it again`,
+   the folder still imports (or, after two deaths in a row, waits for the next scan: `.attempts` counts one try);
+   it is never marked as refused for that.
+6. **The worker's end.** Over SSH, after an import: no `E sigsys 186` line in grimoire.log; a `made call 175`
+   line means a worker ran out of memory or panicked (send the log).
+7. **Live view.** While a browser watches Live view: `cat /proc/<pid>/oom_score_adj` of each viewer child (a
+   child of Grimoire named `grimoire`) is `500`, and its `Max address space` soft limit is about 64 MiB above its
+   `VmSize` at its start.

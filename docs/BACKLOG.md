@@ -27,8 +27,8 @@ why. Newest decisions first within each section.
   mark pictures bad on a device until it is added (the log names the call); KOReader's page PNGs and Grimoire's
   own `bg/` pictures stay decoded by the UI (a later option: re-encode KOReader's through the worker, which would
   change the UI process's book flow); the fallback flag set in one job child does not reach the UI or the next
-  child (each finds out for itself, at the cost of one failed start), and `install_picture` on the UI thread
-  starts a worker for a small template with no preview yet.
+  child (each finds out for itself, at the cost of one failed start). (`install_picture` no longer starts a worker
+  on the UI thread: a template or photo with no preview yet waits for the previews job, the fix round's M13.)
 - **The picker (lane L8)** and **the notebook PDF's colour and caps (lane L9)**: done in 2.1.0-beta.2 (their own
   sections below).
 - **Not done**: a card for the notebook being made. An update while a detached import runs has no scenario: the
@@ -785,10 +785,20 @@ Ideas, not plans: each needs the owner's go and its own design. No code is taken
 
 ## Notebook PDF cache and child caps (lane L9, 2.1.0-beta.2): what waits
 
-- **The mirror's 64 MiB margin on a very dense page.** A page with millions of points holds its strokes plus a
-  page canvas; if a real notebook's mirror fails with the cap on (the log says `export of ... failed` and the
-  child died of a failed allocation), raise `child_margin(BgKind::MirrorPdf)` in `childcaps.rs`. The 2,000-page
-  test measures a light page. Nothing measured on the device yet (TESTING L9, check 7).
+- **The mirror's 128 MiB margin on a very dense page** (64 MiB before the fix round, which a Scribe-sized colour
+  page did not fit: H3). A colour page on a near-incompressible photo-like picture measured 51 MiB, 69 when the
+  next page shares its picture (`test_pdf_colour_memory.rs`, on the Mac); a page with millions of points adds its
+  strokes. If a real notebook's mirror fails with the cap on (the log says `export of ... failed` and the child
+  died of a failed allocation), raise `child_margin(BgKind::MirrorPdf)` in `childcaps.rs`. Nothing measured on the
+  device yet (TESTING L9 check 7, and the fix round's F2 check 1); the CI job `sandbox` runs the colour page under
+  the real cap first.
+- **The colour page's decode is stb_image's** (fix round, H3): a 13 MB PNG is held whole while stb gathers its
+  compressed data and inflates it, about 50 MiB at its peak; decoding it from the file through stb's callbacks
+  would save the file's own copy. Pages on one picture keep a second RGB copy for the next page (decoding the
+  picture again for each page instead would cost seconds a page on the Kindle).
+- **One sweep is a guess** (fix round, M14): a mirror's temporary file is swept when its process is gone
+  (`kill(pid, 0)`); a pid reused by another process keeps it until that one ends too. The mirror lock waits 15
+  minutes for another mirror of the notebook, then goes on beside it.
 - **The cache is read per page even with no change.** A hit reads the page file only when the notebook has a link
   on that page; a planner with a document link on every page still reads and parses every page (no drawing). A
   per-page "links stamp" could skip that too.
@@ -798,7 +808,13 @@ Ideas, not plans: each needs the owner's go and its own design. No code is taken
 - **A zip entry is stored, not compressed** (stored deflate blocks, since the PDF's images are compressed
   already); the raw `.qpg`/PNG entries are as before.
 - **Caps are Linux only** (the host build and the simulator apply none); `RLIMIT_AS` for the share server's render
-  children is a flat 128 MiB over their start: a zip of a notebook with a very big raw page may need more.
+  children is a flat 128 MiB over their start: a zip of a notebook with a very big raw page may need more. A child
+  whose `/proc/self/statm` does not read is capped at 1 GiB plus its margin (`CHILD_VM_UNREAD`), a ceiling above
+  any UI size at a fork rather than a measured one; Live view's viewer children get 64 MiB.
+- **Not done in the fix round (F2):** the UI's own foreground export when a fork fails (bgjob: "exporting in the
+  foreground") runs uncapped and may now wait on another mirror's lock; the cache's records are still read by
+  path, not through `fsview` (the security notes); a share download made twice (no room for a spool) fails when
+  the notebook changed between the makings rather than serving the second making.
 
 ## Done
 

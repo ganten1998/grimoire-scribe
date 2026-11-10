@@ -806,12 +806,31 @@ fn spool_create() -> Option<FileSink> {
     f
 }
 
+/// The connection of a download made a second time (no room for a spool): it takes exactly the length the
+/// first making counted and said in Content-Length, and fails past it; the caller checks it got all of it.
+struct ExactSink<'a> {
+    to: &'a mut dyn Sink,
+    left: u64,
+}
+impl Sink for ExactSink<'_> {
+    fn put(&mut self, b: &[u8]) -> bool {
+        if b.len() as u64 > self.left {
+            return false; // (the file changed between the makings: never more than the length said)
+        }
+        self.left -= b.len() as u64;
+        self.to.put(b)
+    }
+}
+
 /// Answers with a file made by `make` into the sink it is given, without ever holding it whole in
 /// memory: the child makes it into a spool file (one page of the PDF, one entry of the zip in memory
 /// at a time) and sends that with its length; with no room for a spool it makes the file twice, a
-/// first time to count it and a second time into the connection. Anywhere but a render child (the
-/// fork failed: the export runs in-process) it is made into a Buf and answered as every answer is.
-/// `make` is told whether this is the first making of the file (the one that reports the pages made).
+/// first time to count it and a second time into the connection, which must give exactly that many
+/// bytes (a notebook saved between the two makings fails the download, never answers it with another
+/// length). A file past 4 GiB fails: its length is not said on the 32-bit Kindle. Anywhere but a render
+/// child (the fork failed: the export runs in-process) it is made into a Buf and answered as every
+/// answer is. `make` is told whether this is the first making of the file (the one that reports the
+/// pages made).
 fn respond_made(ctype: &str, name: Option<&[u8]>, make: &mut dyn FnMut(&mut dyn Sink, bool) -> i32) {
     if !with(|s| s.child_response) {
         let mut b = Buf::default();
@@ -848,6 +867,9 @@ fn respond_made(ctype: &str, name: Option<&[u8]>, make: &mut dyn FnMut(&mut dyn 
         len = Some(c.0);
     }
     let len = len.unwrap_or(0);
+    if len > u32::MAX as u64 {
+        return respond_text(500, tr("export failed")); // (Content-Length and the progress count in 32 bits)
+    }
     let head = response_head(200, ctype, Some(len as usize), name, None, None);
     if let Some(d) = d {
         shared(d).bytes.store(len as u32, SeqCst);
@@ -858,7 +880,10 @@ fn respond_made(ctype: &str, name: Option<&[u8]>, make: &mut dyn FnMut(&mut dyn 
         let mut sock = SocketSink { d, total: 0 };
         ok = match spool {
             Some(sp) => sp.send_all(&mut sock),
-            None => make(&mut sock, false) == 0,
+            None => {
+                let mut exact = ExactSink { to: &mut sock, left: len };
+                make(&mut exact, false) == 0 && exact.left == 0
+            }
         };
     }
     if let Some(d) = d {
@@ -2567,6 +2592,26 @@ pub fn net_ipv4_list(out: &mut [NetAddr]) -> i32 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // A download made a second time (no room for a spool) takes exactly the length the first making said:
+    // more is refused, and less is seen by the caller (the 2.1.0-beta.2 fix round, the notebook PDF's lows).
+    #[test]
+    fn a_second_making_gives_exactly_the_length_said() {
+        let mut got = Buf::default();
+        let mut to = BufSink(&mut got);
+        let mut exact = ExactSink { to: &mut to, left: 10 };
+        assert!(exact.put(b"0123"));
+        assert!(!exact.put(b"4567890"), "past the length said: refused");
+        assert!(exact.put(b"456789"));
+        assert_eq!(exact.left, 0);
+        assert!(!exact.put(b"x"));
+        assert_eq!(got.data, b"0123456789");
+        let mut got = Buf::default();
+        let mut to = BufSink(&mut got);
+        let mut short = ExactSink { to: &mut to, left: 10 };
+        assert!(short.put(b"0123"));
+        assert_eq!(short.left, 6, "a shorter second making is seen: the answer fails");
+    }
 
     fn esc(s: &[u8]) -> String {
         let mut b = Buf::default();

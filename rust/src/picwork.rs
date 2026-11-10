@@ -8,8 +8,10 @@
 //!   EXIF turn for a photo, the page fit) and answers on fd 4. It never logs.
 //! - the writer side (`PicPool`): starts a worker lazily, sends one picture at a time, validates every
 //!   record and the pixel buffer, and keeps one worker for up to `s1::PICTURE_SLICE` pictures (so a
-//!   2000-picture folder costs a few dozen execs, not 2000). A worker that dies or stalls on a picture
-//!   fails that picture alone (`PicOut::Dead`): the caller marks it `.bad`. A worker that cannot start, or
+//!   2000-picture folder costs a few dozen execs, not 2000). A worker that dies or stalls on a picture is
+//!   replaced by a fresh one, which tries the picture again; a second death in a row fails that picture
+//!   alone (`PicOut::Dead`): a template or photo is marked `.bad`, a folder's import counts one try of its
+//!   three. A call the filter refuses is final at once. A worker that cannot start, or
 //!   whose sandbox step failed, is not the picture's fault: the pool then decodes in the writer, as 2.0
 //!   did, and says so once in the log (D21).
 //!
@@ -453,6 +455,9 @@ impl PicPool {
     }
 
     /// The header check of a picture (bgimage_check): `head` is the first bytes of a file of `file_len` bytes.
+    /// A worker that ends or stalls on it is not taken as the picture's fault at once: a fresh worker tries it
+    /// again, and only a second death in a row is `Dead` (the kernel takes a worker first when memory runs
+    /// out anywhere, and one CPU limit is shared by the pictures a worker serves).
     pub fn check(&mut self, head: &[u8], file_len: usize) -> PicOut {
         if head.is_empty() {
             return PicOut::Bad(WHYS[1]);
@@ -460,7 +465,12 @@ impl PicPool {
         if head.len() > BYTES_MAX || file_len < head.len() || file_len > BYTES_MAX {
             return PicOut::Bad("too big a file");
         }
-        let r = self.ask(&format!("C {} {}\n", file_len, head.len()), head);
+        let cmd = format!("C {} {}\n", file_len, head.len());
+        let mut r = self.ask(&cmd, head);
+        if let Err(why) = r {
+            qlog!("work: a picture's worker ended on its header (%s); a fresh worker tries it again", why);
+            r = self.ask(&cmd, head);
+        }
         let line = match r {
             Ok(Some((l, _))) => l,
             Ok(None) => return local_check(head, file_len),
@@ -493,31 +503,48 @@ impl PicPool {
     }
 
     /// Decodes a picture (bgimage_decode), turned upright when `orient`, fitted onto a `pw` x `ph` page
-    /// (bgimage_normalize).
+    /// (bgimage_normalize). As `check`: a worker that ends or stalls on it gets a fresh one for a second try,
+    /// and only a second death in a row is `Dead`.
     pub fn decode(&mut self, data: &[u8], orient: bool, pw: i32, ph: i32) -> PicOut {
         if data.is_empty() || data.len() > BYTES_MAX || !(1..=6000).contains(&pw) || !(1..=6000).contains(&ph) {
             return PicOut::Bad("a damaged or unsupported picture");
         }
+        match self.decode_once(data, orient, pw, ph) {
+            Ok(out) => out,
+            Err(why) => {
+                qlog!("work: a picture's worker ended (%s); a fresh worker tries it again", why);
+                self.decode_once(data, orient, pw, ph).unwrap_or_else(|why| {
+                    qlog!("work: a picture's worker ended (%s)", why);
+                    PicOut::Dead(why)
+                })
+            }
+        }
+    }
+
+    /// One try of `decode`: Err when the worker ended or stalled on the picture (gone, a fresh one comes next).
+    fn decode_once(&mut self, data: &[u8], orient: bool, pw: i32, ph: i32) -> Result<PicOut, &'static str> {
         let r = self.ask(&format!("D {} {} {} {}\n", orient as u8, pw, ph, data.len()), data);
         let line = match r {
             Ok(Some((l, _))) => l,
-            Ok(None) => return local_decode(data, orient, pw, ph),
-            Err(why) => {
-                qlog!("work: a picture's worker ended (%s)", why);
-                return PicOut::Dead(why);
-            }
+            Ok(None) => return Ok(local_decode(data, orient, pw, ph)),
+            Err(why) => return Err(why),
         };
-        match parse_info(&line) {
+        self.decoded(&line, data, orient, pw, ph)
+    }
+
+    /// The worker's answer to a `D`, and the pixels after it.
+    fn decoded(&mut self, line: &[u8], data: &[u8], orient: bool, pw: i32, ph: i32) -> Result<PicOut, &'static str> {
+        Ok(match parse_info(line) {
             Reply::Pic { sw, sh, w, h, ch } => {
                 if w != pw || h != ph || !(ch == 1 || ch == 3) || sw < 1 || sh < 1 || sw > 8192 || sh > 8192 || (sw as i64) * (sh as i64) > BG_MAX_PIXELS {
                     self.drop_worker();
-                    return PicOut::Dead("the worker broke the protocol");
+                    return Ok(PicOut::Dead("the worker broke the protocol"));
                 }
                 let n = w as usize * h as usize * ch as usize;
                 let mut px: Vec<u8> = Vec::new();
                 if px.try_reserve_exact(n).is_err() {
                     self.drop_worker();
-                    return PicOut::Retry("out of memory");
+                    return Ok(PicOut::Retry("out of memory"));
                 }
                 px.resize(n, 0);
                 let deadline = mono_ms() + watchdog_ms();
@@ -525,7 +552,7 @@ impl PicPool {
                 if !matches!(got, Some(Ok(()))) {
                     self.drop_worker();
                     qlog!("work: a picture's worker ended while it sent the pixels");
-                    return PicOut::Dead("the worker ended");
+                    return Err("the worker ended");
                 }
                 PicOut::Pic { src_w: sw, src_h: sh, fit: BgPicture { px, w, h, ch } }
             }
@@ -541,7 +568,7 @@ impl PicPool {
                 self.drop_worker();
                 PicOut::Dead("the worker broke the protocol")
             }
-        }
+        })
     }
 }
 

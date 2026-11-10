@@ -457,7 +457,8 @@ Copy a PDF into `grimoire/import/` (see README). Device checks are in TESTING.md
 file name, title or key ever appears in it: ids, page numbers, counts, timings, reasons):
 
 - `work: sandboxed (uid 62001, chroot, netns, no new privileges, seccomp, selinux enforcing|permissive|off)`:
-  once a session, at the first worker. `work: not sandboxed (...)` anywhere the steps are skipped.
+  for PDFs once a session, at the first worker; for pictures and fonts once a background job (each job is a
+  process of its own, and says it at its first worker). `work: not sandboxed (...)` anywhere the steps are skipped.
 - `import: <id>: N page(s), the PDF is N KB` (the probe), then for each slice `import: <id>: pages A to B of M in
   T ms (MemAvailable K MB, N band(s))` (a page's time is T over the slice's pages), then `import: notebook <id>
   made of N page(s), N picture(s), N blank`.
@@ -472,14 +473,20 @@ file name, title or key ever appears in it: ids, page numbers, counts, timings, 
   waited for the lock queued`, `import: PDF import <id> was dropped from the queue; ...`, `import: the import
   from an earlier run has ended`.
 - `import: <id>: page N of M: the worker died of signal S (strike K)` or `... stalled ...` or `... made call C,
-  which the sandbox does not allow` (a call to add to `sandbox::s1::allow` with the spike's numbers); after the
-  second strike `... could not be read ...; it is blank`.
+  which the sandbox does not allow`; after the second strike `... could not be read ...; it is blank`. On the
+  Kindle call 175 (`rt_sigprocmask`) is the worker's own abort (out of memory, or a panic), not a call to add;
+  any other number is one to add to `sandbox::s1::allow` with the spike's numbers. A worker that ends cleanly
+  makes no call outside the list (`--work` ends with `_exit`), so no `E sigsys 186` (`sigaltstack`) follows a
+  worker's normal end.
 - `import: <id>: the sandbox refused its step "<step>": no PDF is read and no try is counted`, or `import: <id>: a
   worker could not be started (<why>): no try is counted`: either way the session imports no more PDFs.
 - Pictures (templates, photos, picture folders) are decoded by the same worker (`grimoire --work pic ...`), which
   serves up to 32 pictures and is then replaced. `work: a picture's worker ended (the worker ended|the worker
-  stalled)` and `... made call C, which the sandbox does not allow`: the picture in hand is marked `.bad` (a
-  template or photo) or refuses its folder. `work: pictures decode in the writer (<why>); the sandbox is
+  stalled); a fresh worker tries it again`: one death is no verdict. `work: a picture's worker ended (...)` with
+  nothing after it (a second death in a row) and `... made call C, which the sandbox does not allow`: the
+  picture in hand is marked `.bad` (a template or photo); a picture folder's import fails and counts one try of
+  its three (as for a picture the memory could not hold): only a picture at fault refuses the folder until its
+  files change. `work: pictures decode in the writer (<why>); the sandbox is
   unavailable`: once a process, when no worker could be had (a sandbox step failed, the exec did not start, the
   handshake failed): pictures then decode in the writer as in 2.0, and nothing is marked. Only a picture
   that comes from outside Grimoire and KOReader goes this way; KOReader's own page PNGs are still drawn by the UI.

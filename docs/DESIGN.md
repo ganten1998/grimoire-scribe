@@ -1365,28 +1365,45 @@ background queue) and built the whole PDF in one buffer before writing it. Now `
 PDF to any `Sink` (a Buf, a file, a count, a connection) as its objects are made: a scratch buffer holds one page's
 objects, a page's image goes to the sink straight, the xref's offsets are kept (8 bytes an object). Each page's
 Flate stream is cached in `grimoire/.cache/pdf/<id>/` under a stamp (`pdfcache.rs`; the record's layout is in
-FORMAT.md): a record that does not read or whose stamp is not the page's today is drawn again, so the cache can
-only make a PDF faster, never different (a test holds the streamed bytes equal to a render with the cache off,
-and counts the pages drawn). Links are not cached: the page is read for them only when the notebook has a link on
-it (the user's, or a document link), since they depend on `nav.ini` and `doclinks.ini`, not on the page's pixels.
-Only the mirror job writes records and prunes them (256 MB in all; deleted pages and notebooks; oldest first);
-the share server's children read.
+FORMAT.md): a record that does not read or whose stamp is not the page's today is drawn again, and a page drawn
+while its picture was missing or did not decode is never kept, so the cache can only make a PDF faster, never
+different (tests hold the streamed bytes equal to a render with the cache off, count the pages drawn, and make a
+page's picture only after a mirror drew the page without it). The stamp has the page file's identity, the
+notebook's page size and paper, the dpi, the version and the ink renderer's fingerprint; the record has the
+picture file's channels, size and time, taken before any page on it is drawn; a picture job's end takes the
+notebook's records away (as it makes the page previews again). Links are not cached: the page is read for them
+only when the notebook has a link on it (the user's, or a document link), since they depend on `nav.ini` and
+`doclinks.ini`, not on the page's pixels. Only background jobs write records and prune them (256 MB in all;
+deleted pages and notebooks; then whole notebooks by last use, the one in hand last; a notebook alone over the
+cap keeps its first pages' records and writes no more); the share server's children read. Any job's process
+prunes once a day too, so the cache follows deleted notebooks with the mirror off.
 
 A page whose picture is colour (an imported PDF's page with colour, a colour template) is embedded as DeviceRGB:
-`bgimage_render_color` decodes the picture afresh (the picture cache holds gray), and the ink drawn over it
-is applied as a change of the gray paper beneath (`ink_over_colour`). The picture's channel count is in the stamp
-and is read from the PNG header (26 bytes), so a picture replaced by a gray one is drawn again.
+`bgimage_render_color` decodes the picture once, before the page's canvases, and puts its luma in the picture
+cache for the gray page under the ink (so the picture is not decoded twice); the ink drawn over it is applied as
+a change of the gray paper beneath (`ink_over_colour`). A copy of the RGB picture is kept for the next page only
+when the next page is on the same picture (`store_page_paper`, the page file's first bytes); otherwise the page's
+luma goes from the picture cache at once. The gray canvas goes before the compressor, and the compressed stream is
+handed to the sink as the compressor made it (no copy). Measured at the Scribe's page size (1860 x 2480,
+`rust/tests/test_pdf_colour_memory.rs`): 27 MiB for flat colour pages and 51 for near-incompressible photo-like
+ones on pictures of their own, 40 and 69 when pages share one picture (0c26d912: 53 and 81, 40 and 72).
 
 The share server's PDF and zip answers are made into a spool file in the child and sent from it (so the answer has
-its Content-Length and the progress counts stay exact), or made twice (count, then send) with no room for a spool;
-a zip's PDF entry is written with a data descriptor. The mirror's PDF is `<name>.pdf.tmp`, renamed when whole.
+its Content-Length and the progress counts stay exact), or made twice (count, then send, held to the count) with no
+room for a spool; a zip's PDF entry is written with a data descriptor, and a zip whose entry fails or passes what
+32 bits can say fails whole. A mirror holds its notebook's lock (`.cache/pdf/<id>.lock`) for the whole job and
+writes its own `<name>.pdf.<pid>.tmp`, renamed when whole, the folder synced; each mirror sweeps the temporary
+files of mirrors that are gone.
 
 Every background child carries two caps (`childcaps.rs`): `oom_score_adj` 500 (the PDF worker's 1000 is lane L5's;
-the UI's is unchanged) and `RLIMIT_AS` at the child's size at fork plus a margin by kind (a streaming mirror 64 MiB;
-previews and map layouts 128; compaction and the default 256; a picture job 512, above its own tighter cap), applied
-after `child_setup` for each bgjob child, the detached child and the share server's render children (128 MiB).
-Both are Linux's; the host build applies nothing. The mirror logs its pages, how many it drew, its time and
-`VmHWM` ("bg: export of ...: N pages, D drawn, T ms, VmHWM K kB").
+the UI's is unchanged) and `RLIMIT_AS` at the child's size at fork plus a margin by kind (a streaming mirror 128 MiB,
+from the colour page measured above with about 60 MiB of headroom; previews and map layouts 128; the font check's
+writer 128, two copies of a 24 MB font; compaction and the default 256; a picture job 512, above its own tighter
+cap), applied after `child_setup` for each bgjob child, the detached child, the share server's render children
+(128 MiB) and Live view's viewer children (64 MiB). A child that cannot read its own size (`/proc/self/statm`) is
+capped at 1 GiB plus its margin, never left without one. Both caps are Linux's; the host build applies nothing.
+The CI job `sandbox` mirrors a Scribe-sized colour page under the real cap. The mirror logs its pages, how many it
+drew, its time and `VmHWM` ("bg: export of ...: N pages, D drawn, T ms, VmHWM K kB").
 
 ## Fast navigation and optional KOReader integration (1.1.0-beta.2)
 

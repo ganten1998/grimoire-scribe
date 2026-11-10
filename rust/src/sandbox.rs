@@ -693,7 +693,10 @@ fn out_line(s: &str) {
 }
 
 /// The `--work` entry, called first thing in main() before any UI start-up (no display, input, settings or log
-/// file). Returns the worker's exit status. Steps 1 to 10 of 3.7.
+/// file). Steps 1 to 10 of 3.7. Once the steps have run it ends the process itself with `_exit` and the
+/// worker's exit status, never returning: the runtime's own exit (the main thread's signal stack let go with
+/// `sigaltstack`, atexit handlers) would make calls the filter does not allow, and a clean end would read as
+/// `E sigsys 186` on the Kindle. Before the steps (arguments that do not parse) it returns 2.
 pub fn work_main(args: &[String]) -> i32 {
     let Some(a) = parse_work_args(args) else {
         return 2;
@@ -724,7 +727,8 @@ pub fn work_main(args: &[String]) -> i32 {
     soft_limits(&a.limits);
     if let Err(step) = r {
         out_line(&format!("E sandbox {step}\n"));
-        return 3;
+        // SAFETY: _exit ends the process at once, with no call the steps might refuse.
+        unsafe { libc::_exit(3) };
     }
     let sandboxed = !steps.is_empty();
     out_line(&format!("S {}\n", if sandboxed { 1 } else { 0 }));
@@ -738,7 +742,8 @@ pub fn work_main(args: &[String]) -> i32 {
         out_line("E panic\n");
         4
     });
-    rc
+    // SAFETY: _exit ends the process at once: records and pixels went out with write(2), nothing is buffered.
+    unsafe { libc::_exit(rc) }
 }
 
 // ---- the writer's side: spawning a worker ----

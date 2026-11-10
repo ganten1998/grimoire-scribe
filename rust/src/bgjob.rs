@@ -664,6 +664,7 @@ fn start_job(j: Job, extra: bool) -> bool {
         child_stops_by_default(&was);
         child_setup(is_import(j.kind));
         child_caps_apply(child_margin(j.kind)); // (oom_score_adj 500 and RLIMIT_AS, childcaps.rs)
+        pdf_cache_sweep_due(); // (once a day: the PDF cache's records of deleted notebooks, the mirror on or off)
         #[cfg(feature = "sim")]
         {
             // Tests: an export as slow as a big notebook's on the Kindle, so the next one queues.

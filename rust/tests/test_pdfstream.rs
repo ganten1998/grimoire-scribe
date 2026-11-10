@@ -104,7 +104,8 @@ fn streamed_is_a_full_render_and_the_mirror_fills_the_cache() {
     assert_eq!(first, want, "the mirror's file is the full render");
     assert_eq!(drawn, 12, "the first mirror draws every page");
     assert_eq!(records(&nb), 12);
-    assert!(!std::path::Path::new(&format!("{}/PDFs/Streamed.pdf.tmp", root().display())).exists(), "no temporary file is left");
+    let tmps = std::fs::read_dir(format!("{}/PDFs", root().display())).unwrap().flatten().filter(|e| e.file_name().to_string_lossy().ends_with(".tmp")).count();
+    assert_eq!(tmps, 0, "no temporary file is left");
     let (again, drawn) = mirror(&nb, 300.0);
     assert_eq!((again == want, drawn), (true, 0), "an unchanged notebook draws nothing");
     // the Buf route (the share server's in-process answer, the exporter tool) uses the records too
@@ -220,12 +221,12 @@ fn the_cache_prunes() {
     mirror(&a, 300.0);
     mirror(&b, 300.0);
     assert_eq!((records(&a), records(&b)), (4, 4));
-    let size = |nb: &NotebookInfo| std::fs::read_dir(cache_dir(nb)).unwrap().flatten().map(|e| e.metadata().unwrap().len()).sum::<u64>();
+    let size = |nb: &NotebookInfo| std::fs::read_dir(cache_dir(nb)).map(|d| d.flatten().map(|e| e.metadata().unwrap().len()).sum::<u64>()).unwrap_or(0);
     let total = size(&a) + size(&b);
-    // past the cap the oldest records go (A's were made first)
+    // past the cap whole notebooks go, the one used longest ago first (A's was), never the one in hand
     pdf_cache_prune_to(&b, total * 3 / 4);
     let left = size(&a) + size(&b);
-    assert!(left <= total * 3 / 4 && records(&a) < 4 && records(&b) == 4, "the oldest go first: {} {}", records(&a), records(&b));
+    assert!(left <= total * 3 / 4 && records(&a) == 0 && records(&b) == 4, "the oldest notebook goes first, whole: {} {}", records(&a), records(&b));
     // a notebook gone takes its records with it at the next prune
     let ida = a.id.as_str().to_string();
     assert_eq!(store_delete(&ida), 0);
@@ -424,8 +425,12 @@ fn children_carry_their_caps() {
         assert_eq!(plan.as_bytes, Some((100 << 20) + child_margin(kind)));
         assert!(child_margin(kind) >= 64 << 20);
     }
-    assert_eq!(child_margin(BgKind::MirrorPdf), 64 << 20, "a streaming mirror: 64 MiB");
+    assert_eq!(child_margin(BgKind::MirrorPdf), 128 << 20, "a streaming mirror: 128 MiB (a Scribe-sized colour page, test_pdf_colour_memory.rs)");
+    assert!(child_margin(BgKind::FontCheck) >= 2 * (24 << 20) + (32 << 20), "the font writer: two copies of a 24 MB font and room");
     assert_eq!(child_caps_plan(None, 1 << 20).as_bytes, None);
+    // a child that cannot read its own size is capped at 1 GiB plus its margin on Linux, never left without a cap
+    assert_eq!(child_vm_base(Some(100 << 20)), Some(100 << 20));
+    assert_eq!(child_vm_base(None), if cfg!(target_os = "linux") { Some(CHILD_VM_UNREAD) } else { None });
     // on Linux a forked child really takes them
     #[cfg(target_os = "linux")]
     {
@@ -445,6 +450,27 @@ fn children_carry_their_caps() {
         // SAFETY: waitpid on the child just forked.
         unsafe { libc::waitpid(pid, &mut st, 0) };
         assert!(libc::WIFEXITED(st) && libc::WEXITSTATUS(st) == 0, "a child's oom_score_adj and RLIMIT_AS read back");
+    }
+    // one that cannot read /proc/self/statm is capped at CHILD_VM_UNREAD plus its margin (the simulator's hook)
+    #[cfg(all(target_os = "linux", feature = "sim"))]
+    {
+        std::env::set_var("GRIMOIRE_CAPS_NO_STATM", "1");
+        // SAFETY: fork; the child only applies the caps, reads them back and _exits.
+        let pid = unsafe { libc::fork() };
+        if pid == 0 {
+            let took = child_caps_apply(64 << 20);
+            let mut lim = libc::rlimit { rlim_cur: 0, rlim_max: 0 };
+            // SAFETY: getrlimit writes one rlimit into lim.
+            unsafe { libc::getrlimit(libc::RLIMIT_AS, &mut lim) };
+            let ok = took.as_bytes == Some(CHILD_VM_UNREAD + (64 << 20)) && lim.rlim_cur as u64 == CHILD_VM_UNREAD + (64 << 20);
+            // SAFETY: _exit ends the child at once.
+            unsafe { libc::_exit(if ok { 0 } else { 1 }) };
+        }
+        std::env::remove_var("GRIMOIRE_CAPS_NO_STATM");
+        let mut st = 0;
+        // SAFETY: waitpid on the child just forked.
+        unsafe { libc::waitpid(pid, &mut st, 0) };
+        assert!(libc::WIFEXITED(st) && libc::WEXITSTATUS(st) == 0, "a child that cannot read its size is still capped");
     }
     // the children bgjob forks say what they took (the simulator's build)
     #[cfg(feature = "sim")]

@@ -16,8 +16,6 @@ use std::path::Path;
 
 /// a template file bigger than this is not taken
 const TEMPLATE_MAX_BYTES: usize = 16 << 20;
-/// the most read on the UI thread for a template's key
-const TEMPLATE_HASH_NOW: usize = 4 << 20;
 /// files of the templates folder looked at
 const MAX_TEMPLATES: usize = 500;
 /// import folders queued at one start (the job queue holds 16)
@@ -204,6 +202,7 @@ fn check_file(path: &str, max: usize, w: &mut i32, h: &mut i32, why: &mut &'stat
 }
 
 // check_file through a picture pool: the header is read by the sandboxed worker, not here (picwork.rs).
+// -2 (not -1) when the answer may differ another time: no memory for it, or two workers in a row ended on it.
 fn check_file_in(pool: &mut PicPool, path: &str, max: usize, w: &mut i32, h: &mut i32, why: &mut &'static str) -> i32 {
     *why = "the file does not read";
     if let Some(r) = pick_read(path, max.saturating_add(1)) {
@@ -231,7 +230,7 @@ fn check_file_in(pool: &mut PicPool, path: &str, max: usize, w: &mut i32, h: &mu
         Some(hd) => check_bytes(pool, hd, st.len() as usize, w, h, why),
         None => -1,
     };
-    if rc != 0 && more {
+    if rc == -1 && more {
         if let Some(all) = read_source(path, max) {
             rc = check_bytes(pool, &all, all.len(), w, h, why);
         }
@@ -239,7 +238,8 @@ fn check_file_in(pool: &mut PicPool, path: &str, max: usize, w: &mut i32, h: &mu
     rc
 }
 
-// bgimage_check, by the pool: 0 with the size, or -1 and why.
+// bgimage_check, by the pool: 0 with the size, or -1 and why (the picture is at fault), or -2 and why (no
+// memory for it, or its workers died: another time may answer otherwise).
 fn check_bytes(pool: &mut PicPool, data: &[u8], file_len: usize, w: &mut i32, h: &mut i32, why: &mut &'static str) -> i32 {
     match pool.check(data, file_len) {
         PicOut::Info { w: pw, h: ph } => {
@@ -247,9 +247,13 @@ fn check_bytes(pool: &mut PicPool, data: &[u8], file_len: usize, w: &mut i32, h:
             *h = ph;
             0
         }
-        PicOut::Bad(m) | PicOut::Retry(m) | PicOut::Dead(m) => {
+        PicOut::Bad(m) => {
             *why = m;
             -1
+        }
+        PicOut::Retry(m) | PicOut::Dead(m) => {
+            *why = m;
+            -2
         }
         PicOut::Pic { .. } => -1,
     }
@@ -860,13 +864,18 @@ pub fn photo_paper(t: &Template, nb: &NotebookInfo, ix: &BgIndex, kind: &mut Pap
 /// (BG_TEMPLATE), and a page on it draws white until then (bgimage.h: the editor redraws the page
 /// once that job is done, after bgimage_retry_missing). The id in *kind comes from a hash of the
 /// file's bytes and the page size, so installing the same file again gives the same paper, and makes
-/// its picture again if it went missing. 0, or -1 (*why, for the log: not a picture Grimoire can
-/// use, a file over 16 MB, not readable, or one over 4 MB whose preview is not made yet). The hash
-/// is the one the previews job keeps beside each preview, so nothing big is read on the UI thread:
-/// only a template of at most 4 MB with no preview yet is read here (whole, once).
+/// its picture again if it went missing. 0, or -1 (*why, for the log: a file over 16 MB, not
+/// readable, or one whose preview is not made yet). The hash and the size are the ones the previews
+/// job keeps beside each preview (its worker checked the file is a picture Grimoire takes), so
+/// nothing is read or parsed on the UI thread, and no worker is started there: a template whose
+/// preview the previews job has not made yet (or found unusable) cannot be picked until it has.
 pub fn template_install(nb: &NotebookInfo, path: &str, kind: &mut PaperKind, why: &mut &'static str) -> i32 {
     install_picture(nb, path, kind, why, false)
 }
+
+/// template_install's and photo_install's why for a file whose preview the previews job has not made yet (or
+/// found unusable): the caller may say "try again in a moment".
+pub const PREVIEW_NOT_MADE: &str = "its preview is not made yet";
 
 /// As template_install, for a photo: *kind a document page's paper on its picture, made upright.
 pub fn photo_install(nb: &NotebookInfo, path: &str, kind: &mut PaperKind, why: &mut &'static str) -> i32 {
@@ -893,26 +902,12 @@ fn install_picture(nb: &NotebookInfo, path: &str, kind: &mut PaperKind, why: &mu
     }
     let (mut w, mut h, mut pw, mut ph) = (0, 0, 0, 0);
     let mut content = 0u64;
-    let mut len = st.len() as usize;
+    let len = st.len() as usize;
     if cached_key(path, &mut content, &mut w, &mut h) != 0 {
-        if st.len() > TEMPLATE_HASH_NOW as u64 {
-            *why = "its preview is not made yet (a file over 4 MB is not read here)";
-            return -1;
-        }
-        let data = read_source(path, TEMPLATE_HASH_NOW);
-        let ok = match &data {
-            Some(d) => {
-                len = d.len();
-                check_bytes(&mut PicPool::new(), d, len, &mut w, &mut h, why) == 0
-            }
-            None => false,
-        };
-        if ok {
-            content = bgimage_content_hash(data.as_deref().unwrap_or(&[]));
-        }
-        if !ok {
-            return -1;
-        }
+        // (whether a file is a picture Grimoire takes is the sandboxed worker's to say, in the previews job:
+        // never a worker started and waited for on the UI thread, whatever the file's size)
+        *why = PREVIEW_NOT_MADE;
+        return -1;
     }
     store_notebook_page_size(nb, &mut pw, &mut ph);
     let key = picture_key(photo, content, len, pw, ph);
@@ -1100,6 +1095,10 @@ pub fn bg_template(id: &str, src: &str, dpi: f32) -> i32 {
     uncap_memory(&cap);
     if !id.is_empty() && annotate_source(id, src) {
         let _ = std::fs::remove_file(src); // a page KOReader sent: done with (above)
+    }
+    if !id.is_empty() {
+        // (the notebook's PDF page streams go, as its page previews are made again: pdfcache.rs)
+        pdf_cache_forget(id);
     }
     rc
 }
@@ -1655,7 +1654,8 @@ fn finish_source(src: &str, id: &str) {
 }
 
 // Every page's header (a millisecond or so a page), before any picture is made: a folder with a
-// page that is no picture Grimoire takes fails at once, whatever its place. IMPORT_REFUSED, or 0.
+// page that is no picture Grimoire takes fails at once, whatever its place. IMPORT_REFUSED, or 0; or
+// IMPORT_RETRY when a header could not be checked this time (no memory, its workers died: one try of three).
 fn check_pages(id: &str, src: &str, names: &[String]) -> i32 {
     let n = names.len();
     if n == 0 || n > STORE_MAX_PAGES {
@@ -1668,9 +1668,10 @@ fn check_pages(id: &str, src: &str, names: &[String]) -> i32 {
         let (mut w, mut h) = (0, 0);
         let mut why: &'static str = "";
         csnprintf!(&mut path, PATH_BUF, "%s/%s", src, name);
-        if check_file_in(&mut pool, &path, BG_SOURCE_MAX_BYTES, &mut w, &mut h, &mut why) != 0 {
+        let rc = check_file_in(&mut pool, &path, BG_SOURCE_MAX_BYTES, &mut w, &mut h, &mut why);
+        if rc != 0 {
             qlog!("import: %s: page %d of %d: %s; nothing imported", id, i + 1, n, why);
-            return IMPORT_REFUSED;
+            return if rc == -2 { IMPORT_RETRY } else { IMPORT_REFUSED };
         }
     }
     0
@@ -1711,17 +1712,18 @@ fn build_notebook(id: &str, src: &str, final_: &str, names: &[String]) -> i32 {
             let mut why: &'static str = "the file does not read";
             let mut fail = IMPORT_RETRY;
             if let Some(d) = &data {
-                // (decoded and fitted by the sandboxed worker; one that died on its picture refuses the folder)
+                // (decoded and fitted by the sandboxed worker; two in a row that died on its picture count one
+                // try of three, as a picture the memory could not hold: a picture at fault refuses the folder)
                 match pool.decode(d, false, pw, ph) {
                     PicOut::Pic { fit: f, .. } => {
                         fit = f;
                         fail = 0;
                     }
-                    PicOut::Retry(m) => {
+                    PicOut::Retry(m) | PicOut::Dead(m) => {
                         why = m;
                         fail = IMPORT_RETRY;
                     }
-                    PicOut::Bad(m) | PicOut::Dead(m) => {
+                    PicOut::Bad(m) => {
                         why = m;
                         fail = IMPORT_REFUSED;
                     }

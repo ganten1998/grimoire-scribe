@@ -5,7 +5,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: Grimoire 2.0.0-beta.1\n"
 "Report-Msgid-Bugs-To: https://github.com/ganten1998/grimoire-scribe/issues\n"
-"POT-Creation-Date: 2026-11-09 20:53-0600\n"
+"POT-Creation-Date: 2026-11-09 21:40-0600\n"
 "PO-Revision-Date: 2026-11-09 00:00+0000\n"
 "Last-Translator: draft\n"
 "Language-Team: Japanese\n"
@@ -1891,6 +1891,13 @@ msgstr "ストローク全体"
 #, c-format
 msgid "Couldn't use template (see %s)."
 msgstr "そのテンプレートは使用できませんでした (%s を参照)。"
+
+#. TRANSLATORS: in a toast (about 1700 px at 44 px in bold, or two lines): a template or photo was picked on
+#. its sheet while Grimoire is still making its preview in the background (its tile shows the hourglass);
+#. picking it again works once the tile shows its picture.
+#: rust/src/editor.rs
+msgid "Not ready yet. Try again in a moment."
+msgstr ""
 
 #. TRANSLATORS: in a toast (about 1700 px at 44 px in bold, or two lines): a photo picked on the
 #. Photos sheet could not become the page's paper; %s is the log file that says why.

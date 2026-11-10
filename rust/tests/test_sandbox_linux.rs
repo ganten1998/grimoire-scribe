@@ -240,3 +240,88 @@ fn a_font_is_checked_in_the_real_sandbox() {
     // (a forced failed step, which checks nothing and leaves the session without workers, is test_fontcheck.rs's:
     // it would take the workers away from the tests after this one)
 }
+
+// The worker's clean end (the 2.1.0-beta.2 fix round): `--work` ends with _exit, so a worker told to stop under
+// the filter makes no call outside the list on its way out (the runtime's own exit lets go of the main thread's
+// signal stack with sigaltstack, 186 on the Kindle, which would read as `E sigsys 186` at every clean end).
+#[test]
+fn a_workers_clean_end_makes_no_call_outside_the_list() {
+    if !root() {
+        return;
+    }
+    let (_g, _f, _len) = setup();
+    let mut w = Worker::spawn(WorkKind::Picture, None, &grimoire::picwork::limits()).expect("a picture worker starts sandboxed");
+    let deadline = mono_ms() + 15_000;
+    let hello = w.read_line(512, deadline).expect("its build line");
+    assert!(hello.starts_with(b"B "), "{:?}", String::from_utf8_lossy(&hello));
+    assert_eq!(w.read_line(512, deadline).expect("its sandbox line"), b"S 1");
+    assert!(w.send("Q\n"));
+    let st = w.finish(5000);
+    assert!(libc::WIFEXITED(st) && libc::WEXITSTATUS(st) == 0, "a clean end, not a signal (SIGSYS is 31): status {st:#x}");
+}
+
+// The mirror child's cap at the Scribe's page size (H3): a notebook of colour pages, each on a photo-like
+// picture of its own (an imported PDF's), and two on one picture (a colour template's), mirrored in a forked
+// child under the very RLIMIT_AS a mirror child gets (child_margin(BgKind::MirrorPdf) above its size at the
+// fork). No root needed: the cap is the child's own soft limit. rust/tests/test_pdf_colour_memory.rs measures
+// the same pages on the Mac.
+#[test]
+fn a_scribe_sized_colour_page_mirrors_under_the_mirror_childs_cap() {
+    use grimoire::prelude::*;
+    let _g = LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let (w, h) = (1860i32, 2480i32);
+    let dir = std::env::temp_dir().join(format!("grimoire-sandbox-colour-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    assert_eq!(store_init(dir.to_str().unwrap()), 0);
+    store_set_device(300.0, w, h);
+    let mut nb = NotebookInfo::default();
+    assert_eq!(store_create("Colour", "", PAPER_BLANK, &mut nb), 0);
+    for i in 1..4 {
+        assert_eq!(store_add_page(&mut nb, i, PAPER_BLANK), 0);
+    }
+    let mut bg = String::new();
+    bgimage_dir(nb.id.as_str(), &mut bg, 700);
+    assert_eq!(mkdir_p(&bg), 0);
+    for i in 0..4 {
+        let id = 0x30 + (i as u32).min(2);
+        if i <= 2 {
+            let mut seed = 777u32 + i as u32;
+            let mut px = vec![0u8; (w * h * 3) as usize];
+            for y in 0..h {
+                for x in 0..w {
+                    let at = ((y * w + x) * 3) as usize;
+                    for (c, base) in [(x * 200 / w) as u8, (y * 200 / h) as u8, ((x + y) * 100 / (w + h)) as u8].into_iter().enumerate() {
+                        seed = seed.wrapping_mul(1664525).wrapping_add(1013904223);
+                        px[at + c] = base.wrapping_add(((seed >> 24) as u8) & 31);
+                    }
+                }
+            }
+            let mut f = String::new();
+            bgimage_file(&bg, id, &mut f, 800);
+            assert_eq!(bgimage_write_png(&f, &BgPicture { px, w, h, ch: 3 }), 0);
+        }
+        assert_eq!(store_save_page(&nb, i, &page_new(w, h, paper_image(PAPER_ROLE_DOCUMENT, id))), 0);
+    }
+    let mut b = NotebookInfo::default();
+    assert_eq!(store_load_info(nb.id.as_str(), &mut b), 0);
+    let out = format!("{}/PDFs", dir.display());
+    // SAFETY: fork; the child only takes the caps, exports and _exits.
+    let pid = unsafe { libc::fork() };
+    if pid == 0 {
+        let took = child_caps_apply(child_margin(BgKind::MirrorPdf));
+        let rc = export_mirror_pdf(&b, 300.0, &out);
+        // SAFETY: _exit ends the child at once.
+        unsafe { libc::_exit(if took.as_bytes.is_none() { 3 } else if rc == 0 { 0 } else { 2 }) };
+    }
+    let mut st = 0;
+    // SAFETY: waitpid on the child just forked.
+    unsafe { libc::waitpid(pid, &mut st, 0) };
+    assert!(libc::WIFEXITED(st), "the mirror child ended by itself: status {st:#x}");
+    assert_eq!(libc::WEXITSTATUS(st), 0, "the mirror completed under its cap (2: it failed, 3: no cap was taken)");
+    let mut path = String::new();
+    export_mirror_path(&b, &out, &mut path, 1000);
+    let pdf = std::fs::read(&path).unwrap();
+    assert_eq!(String::from_utf8_lossy(&pdf).matches("/DeviceRGB").count(), 4, "every page in colour");
+    let _ = std::fs::remove_dir_all(&dir);
+}
