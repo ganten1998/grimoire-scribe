@@ -513,8 +513,10 @@ says (never a file's name or a family's: counts, sizes, timings, reasons):
 - `bg: font check of a folder (pid N)`, then for each file not checked yet `fonts: file I of N passed: S KB, G
   glyphs, K from Terminess, checked in T ms`, or `... refused (unreadable|no Latin letters|a web font)`, or `...
   took too long to read (T ms)`, or `... the check's worker ended (<why>): marked unreadable`, or `... left for
-  later (out of memory)`; then `fonts: P passed, R refused, D the worker died on, L left for later` and `bg: font
-  check pid N done`. A file under five seconds old, or changed between two looks, is left for later (it is
+  later (out of memory)`; each job checks one font (`fonts: file I of N done; more are left for the next job`),
+  and the last one ends with `fonts: in the folder, P passed, R refused, D the worker died on, L left for later, T
+  too big or empty (N font file(s) in all)`, the whole folder's tally from the verdicts kept, and `bg: font check
+  pid N done`. A file under five seconds old, or changed between two looks, is left for later (it is
   still being copied), and the Font sheet looks again after three seconds.
 - `fonts: no worker for the check (<why>); nothing is marked`, then `fonts: no worker can be had (see the lines
   above): no font is checked until Grimoire starts again`: a sandbox step failed or the worker did not start.

@@ -1228,7 +1228,7 @@ pub fn bg_font_check(arg: &str, dpi: f32) -> i32 {
             && !std::path::Path::new(&cache_file(l.key, "bad")).exists()
             && !read_verdict(l.key).is_some_and(|v| v.size == l.size)
     };
-    let (mut passed, mut refused, mut dead, mut later) = (0, 0, 0, 0);
+    let mut later = 0;
     let wall = wall_time();
     let n = files.len();
     for (i, l) in files.iter().enumerate() {
@@ -1293,7 +1293,6 @@ pub fn bg_font_check(arg: &str, dpi: f32) -> i32 {
                     ms
                 );
                 wrote = wrote && write_cache(&vp, verdict(VerdictKind::Passed(facts)).as_bytes());
-                passed += 1;
             }
             FontOut::Refused(r) => {
                 qlog!("fonts: file %d of %d refused (%s)", i as i32 + 1, n as i32, match r {
@@ -1302,14 +1301,12 @@ pub fn bg_font_check(arg: &str, dpi: f32) -> i32 {
                     Refuse::Format => "a web font",
                 });
                 wrote = write_cache(&vp, verdict(VerdictKind::Refused(r)).as_bytes());
-                refused += 1;
             }
             FontOut::Slow => {
                 if std::path::Path::new(&slow_mark).exists() {
                     qlog!("fonts: file %d of %d took too long to read again (%u ms)", i as i32 + 1, n as i32, ms);
                     wrote = write_cache(&vp, verdict(VerdictKind::Slow).as_bytes());
                     let _ = std::fs::remove_file(&slow_mark);
-                    refused += 1;
                 } else {
                     // (a timeout may be the clock's jump after a wake: no verdict yet, one more try later)
                     qlog!("fonts: file %d of %d took too long to read (%u ms): left for a second try", i as i32 + 1, n as i32, ms);
@@ -1320,7 +1317,6 @@ pub fn bg_font_check(arg: &str, dpi: f32) -> i32 {
             FontOut::Dead(why) => {
                 qlog!("fonts: file %d of %d: the check's worker ended (%s): marked unreadable", i as i32 + 1, n as i32, why);
                 let _ = std::fs::rename(&cp, &bp);
-                dead += 1;
                 if files[i + 1..].iter().any(|l| needs(l)) {
                     return 5;
                 }
@@ -1347,7 +1343,32 @@ pub fn bg_font_check(arg: &str, dpi: f32) -> i32 {
             return 5;
         }
     }
-    qlog!("fonts: %d passed, %d refused, %d the worker died on, %d left for later", passed, refused, dead, later);
+    // The folder's tally, from the verdicts the cache holds: this job checked one font at most (the fix round's
+    // M19), so its own counts would read "1 passed" after three fonts.
+    let (mut passed, mut refused, mut dead, mut waiting, mut other, mut all) = (0, 0, 0, 0, 0, 0);
+    for l in files.iter().filter(|l| name_kind(l.rel.rsplit('/').next().unwrap_or("")) == NameKind::Font) {
+        all += 1;
+        if l.size == 0 || l.size > FONT_FILE_MAX as u64 {
+            other += 1;
+        } else if std::path::Path::new(&cache_file(l.key, "bad")).exists() {
+            dead += 1;
+        } else {
+            match read_verdict(l.key).filter(|v| v.size == l.size).map(|v| v.what) {
+                Some(VerdictKind::Passed(_)) => passed += 1,
+                Some(_) => refused += 1,
+                None => waiting += 1,
+            }
+        }
+    }
+    qlog!(
+        "fonts: in the folder, %d passed, %d refused, %d the worker died on, %d left for later, %d too big or empty (%d font file(s) in all)",
+        passed,
+        refused,
+        dead,
+        waiting,
+        other,
+        all
+    );
     if later > 0 {
         3
     } else {

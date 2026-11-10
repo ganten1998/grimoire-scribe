@@ -519,8 +519,38 @@ fn one_font_a_job() {
     let verdicts = || std::fs::read_dir(format!("{r}/fonts/.cache")).unwrap().flatten().filter(|e| e.file_name().to_string_lossy().ends_with(".font")).count();
     check!(bg_font_check("", 300.0) == 5 && verdicts() == 1);
     check!(bg_font_check("next", 300.0) == 5 && verdicts() == 2);
-    check!(bg_font_check("next", 300.0) == 0 && verdicts() == 3);
-    check!(bg_font_check("next", 300.0) == 0 && verdicts() == 3);
+    // the last job's summary is the folder's, never just the one font that job checked ("1 passed")
+    let (rc, text) = with_log(&format!("{r}/last.log"), || bg_font_check("next", 300.0));
+    check!(rc == 0 && verdicts() == 3);
+    check!(text.contains("fonts: in the folder, 3 passed, 0 refused, 0 the worker died on, 0 left for later, 0 too big or empty (3 font file(s) in all)"));
+    let (rc, text) = with_log(&format!("{r}/again.log"), || bg_font_check("next", 300.0));
+    check!(rc == 0 && verdicts() == 3);
+    check!(text.contains("fonts: in the folder, 3 passed,"));
+}
+
+/// Runs `f` with stderr (the log) going to a file; the log's text.
+fn with_log<R>(path: &str, f: impl FnOnce() -> R) -> (R, String) {
+    use std::io::Write;
+    let _ = std::io::stderr().flush();
+    // SAFETY: dup, open, dup2 and close on descriptors this test owns.
+    let saved = unsafe {
+        let saved = libc::dup(2);
+        let c = std::ffi::CString::new(path).unwrap();
+        let fd = libc::open(c.as_ptr(), libc::O_WRONLY | libc::O_CREAT | libc::O_TRUNC, 0o644 as libc::c_uint);
+        libc::dup2(fd, 2);
+        libc::close(fd);
+        saved
+    };
+    let r = f();
+    let _ = std::io::stderr().flush();
+    // SAFETY: dup2 and close on the descriptor saved above.
+    unsafe {
+        libc::dup2(saved, 2);
+        libc::close(saved);
+    }
+    let text = std::fs::read_to_string(path).unwrap_or_default();
+    eprint!("{text}");
+    (r, text)
 }
 
 fn be16(v: u16) -> [u8; 2] {
