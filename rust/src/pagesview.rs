@@ -1,6 +1,7 @@
 //! pagesview.h: the editor's Pages view, which covers the screen: numbered tiles a screenful at a
 //! time. The UI reads only small cached previews; bounded background jobs render missing ones,
-//! ticks for Delete (a held tile's card: Open, Add a link, Rename, Delete), a number pad for Go to
+//! ticks for Delete (a held tile's card: Open, Add a link, Rename, Delete; or the bottom row's
+//! Delete with the pages ticked), a number pad for Go to
 //! page..., New page and Copy page. A page that holds a
 //! book page (a notebook annotated from KOReader, annotate.h) says which under its number ("p. 12"),
 //! from the notebook's source.ini, read as the view opens.
@@ -1030,19 +1031,28 @@ fn draw_footer(v:&mut PagesView,a:&mut App,screens:i32,k:i32,all:bool,undo:Optio
     let c=&mut a.screen;
     canvas_fill(c,Rect::new(0,y,aw,ah-y),255);canvas_hline(c,0,aw,y,ui_px(3.0),0);
     v.hits.h.retain(|h|h.r.y<y);
-    let side=ui_px(120.0);let gap=ui_px(12.0);
+    let side=ui_px(120.0);let wide=ui_px(260.0);let gap=ui_px(12.0);
     // (no arrows since 2.0.0-rc.12: one finger flicked sideways, or the page-turn action, turns the screen)
     // Move to... (the grip) and Copy to notebook... (the notebook) act on the ticked pages. With nothing
     // ticked, right after a move (Move to... or a drag), the grip's place is Undo, which puts them back,
     // and right after an Undo the notebook's place, beside it, is Redo, which does it again.
-    let widths=[side,side,side,side,side,ui_px(260.0),ui_px(260.0)];
-    let widths=widths.map(|w|w.min((aw-ui_px(40.0)-6*gap)/7+ui_px(60.0)));
-    let total: i32=widths.iter().sum::<i32>()+6*gap;
+    // Delete joins them while pages are ticked, so a page can go from the grid without its held card
+    // (issue #18); the card keeps its own Delete for the page under the finger.
+    let mut items:Vec<(i32,i32)>=vec![(PG_NEW,side),(PG_COPY,side),(undo.unwrap_or(PG_MOVE),wide),(redo.unwrap_or(PG_COPY_TO),side),(PG_JUMP,side),(PG_MULTI,wide),(PG_ALL,wide)];
+    if k>0 {items.push((PG_DELETE,wide));}
+    let gaps=gap*(items.len() as i32-1);
+    let natural:i32=items.iter().map(|&(_,w)|w).sum();
+    if natural+gaps>aw-ui_px(40.0) {
+        let scale=((aw-ui_px(40.0)-gaps).max(items.len() as i32*ui_px(70.0))) as f32/natural as f32;
+        for (_,w) in items.iter_mut() {*w=((*w as f32*scale) as i32).max(ui_px(60.0));}
+    }
+    let total:i32=items.iter().map(|&(_,w)|w).sum::<i32>()+gaps;
     let mut x=(aw-total)/2;
-    for (i,id) in [PG_NEW,PG_COPY,undo.unwrap_or(PG_MOVE),redo.unwrap_or(PG_COPY_TO),PG_JUMP,PG_MULTI,PG_ALL].into_iter().enumerate(){
-        let enabled=match id{PG_PREV=>v.screen>0,PG_NEXT=>v.screen<screens-1,PG_COPY=>k==1,PG_MOVE|PG_COPY_TO=>k>0,_=>true};
-        let r=Rect::new(x,y+ui_px(15.0),widths[i],ui_px(140.0));x+=widths[i]+gap;
-        let (icon,label)=match id {PG_PREV=>(IconKind::Prev,""),PG_NEW=>(IconKind::Plus,""),PG_COPY=>(IconKind::Copy,""),PG_MOVE=>(IconKind::Grip,""),PG_UNDO_MOVE|PG_UNDO_ADD=>(IconKind::Undo,""),PG_REDO=>(IconKind::Redo,""),PG_COPY_TO=>(IconKind::Notebook,""),PG_NEXT=>(IconKind::Next,""),PG_MULTI=>(IconKind::None,tr("Multi-select")),PG_ALL=>(IconKind::None,if all{tr("Select none")}else{tr("Select all")}),_=>(IconKind::Search,"")};
+    let del=cformat!(tr("Delete (%d)"),k);
+    for &(id,w) in items.iter(){
+        let enabled=match id{PG_PREV=>v.screen>0,PG_NEXT=>v.screen<screens-1,PG_COPY=>k==1,PG_MOVE|PG_COPY_TO|PG_DELETE=>k>0,_=>true};
+        let r=Rect::new(x,y+ui_px(15.0),w,ui_px(140.0));x+=w+gap;
+        let (icon,label)=match id {PG_PREV=>(IconKind::Prev,""),PG_NEW=>(IconKind::Plus,""),PG_COPY=>(IconKind::Copy,""),PG_MOVE=>(IconKind::Grip,tr("Move to...")),PG_UNDO_MOVE|PG_UNDO_ADD=>(IconKind::Undo,""),PG_REDO=>(IconKind::Redo,""),PG_COPY_TO=>(IconKind::Notebook,""),PG_NEXT=>(IconKind::Next,""),PG_MULTI=>(IconKind::None,tr("Multi-select")),PG_ALL=>(IconKind::None,if all{tr("Select none")}else{tr("Select all")}),PG_DELETE=>(IconKind::Trash,del.as_str()),_=>(IconKind::Search,"")};
         ui_button(c,r,icon,label,if !enabled{ButtonStyle::Disabled}else if id==PG_MULTI&&v.multi_select{ButtonStyle::Selected}else{ButtonStyle::Plain});
         if enabled {hits_add(&mut v.hits,r,id,0);}
     }
@@ -2002,7 +2012,10 @@ pub fn pagesview_control_point(v:&PagesView,name:&str)->Option<(f32,f32)> {
         return keyboard_key_rect(&v.kb,code,&mut r).then(||((r.x+r.w/2) as f32,(r.y+r.h/2) as f32));
     }
     let (id,arg)=match name {"link"=>(PG_CONTEXT_LINK,0),"open"=>(PG_CONTEXT_OPEN,0),"cancel"=>(PG_CONTEXT_CANCEL,0),"back"=>(PG_BACK,0),"graph"=>(PG_GRAPH,0),"list"=>(PG_LIST,0),"pages"=>(PG_TAB,0),"new"=>(PG_NEW,0),"copy"=>(PG_COPY,0),"all"=>(PG_ALL,0),"multi"=>(PG_MULTI,0),"goto"=>(PG_JUMP,0),"prev"=>(PG_PREV,0),"next"=>(PG_NEXT,0),"rename"=>(PG_CONTEXT_RENAME,0),"delete"=>(PG_CONTEXT_DELETE,0),"move-to"=>(PG_CONTEXT_MOVE,0),"copy-to"=>(PG_CONTEXT_COPY_TO,0),"move"=>(PG_MOVE,0),"copy-to-notebook"=>(PG_COPY_TO,0),"undo-move"=>(PG_UNDO_MOVE,0),"undo-add"=>(PG_UNDO_ADD,0),"redo"=>(PG_REDO,0),n if n.starts_with("page.")=>(PG_OPEN,n[5..].parse::<i32>().ok()?-1),_=>return None};
-    v.hits.h.iter().find(|h|h.id==id&&h.arg==arg).map(|h|((h.r.x+h.r.w/2)as f32,(h.r.y+h.r.h/2)as f32))
+    let find=|id:i32|v.hits.h.iter().find(|h|h.id==id&&h.arg==arg).map(|h|((h.r.x+h.r.w/2)as f32,(h.r.y+h.r.h/2)as f32));
+    // The same names find the bottom row's Delete and Move to... while no held card is up (it hides
+    // the row's hits): ticked pages, then Delete, is the grid's own way to delete them (issue #18).
+    find(id).or_else(||match name {"delete"=>find(PG_DELETE),"move-to"=>find(PG_MOVE),_=>None})
 }
 
 pub fn pagesview_grid(v:&PagesView,a:&App)->(i32,i32) {let (cols,rows,..)=geom(a,v);(cols,rows)}
