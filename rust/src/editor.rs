@@ -8891,6 +8891,10 @@ fn apply_template(a: &mut App, path: &str) {
     let s = ed(a);
     if template_install(&s.nb, path, &mut k, &mut why) != 0 {
         qlog!("editor: %s: a template could not be used: %s", s.nb.id.as_str(), why);
+        if why == PREVIEW_NOT_MADE {
+            app_toast(a, not_ready_yet(), 4000);
+            return;
+        }
         let mut msg = String::new();
         // TRANSLATORS: in a toast (about 1700 px at 44 px in bold, or two lines): a template picked
         // on the Templates sheet could not become the page's paper (or the new notebook's); %s is
@@ -8904,6 +8908,15 @@ fn apply_template(a: &mut App, path: &str) {
     }
 }
 
+// A template or photo picked a moment after it was copied in: its preview (and the check that it is a picture
+// Grimoire takes) is still being made in the background.
+fn not_ready_yet() -> &'static str {
+    // TRANSLATORS: in a toast (about 1700 px at 44 px in bold, or two lines): a template or photo was picked on
+    // its sheet while Grimoire is still making its preview in the background (its tile shows the hourglass);
+    // picking it again works once the tile shows its picture.
+    tr("Not ready yet. Try again in a moment.")
+}
+
 // A photo picked on the Photos sheet becomes the open page's paper, as a template does (templates.h:
 // a document page on its own picture, made upright in the background; Undo puts the old paper back).
 fn apply_photo(a: &mut App, path: &str) {
@@ -8912,6 +8925,10 @@ fn apply_photo(a: &mut App, path: &str) {
     let s = ed(a);
     if photo_install(&s.nb, path, &mut k, &mut why) != 0 {
         qlog!("editor: %s: a photo could not be used: %s", s.nb.id.as_str(), why);
+        if why == PREVIEW_NOT_MADE {
+            app_toast(a, not_ready_yet(), 4000);
+            return;
+        }
         let mut msg = String::new();
         // TRANSLATORS: in a toast (about 1700 px at 44 px in bold, or two lines): a photo picked on the
         // Photos sheet could not become the page's paper; %s is the log file that says why.

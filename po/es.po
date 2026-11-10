@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: Grimoire 1.0.0-beta\n"
 "Report-Msgid-Bugs-To: https://github.com/ganten1998/grimoire-scribe/issues\n"
-"POT-Creation-Date: 2026-11-09 17:22-0600\n"
+"POT-Creation-Date: 2026-11-09 20:56-0600\n"
 "PO-Revision-Date: 2026-10-20 08:02-0500\n"
 "Last-Translator: draft\n"
 "Language-Team: Spanish\n"
@@ -1897,6 +1897,13 @@ msgstr "Trazos enteros"
 #, c-format
 msgid "Couldn't use template (see %s)."
 msgstr "No se pudo usar la plantilla (detalles en %s)."
+
+#. TRANSLATORS: in a toast (about 1700 px at 44 px in bold, or two lines): a template or photo was picked on
+#. its sheet while Grimoire is still making its preview in the background (its tile shows the hourglass);
+#. picking it again works once the tile shows its picture.
+#: rust/src/editor.rs
+msgid "Not ready yet. Try again in a moment."
+msgstr "Aún no está lista. Inténtalo de nuevo en un momento."
 
 #. TRANSLATORS: in a toast (about 1700 px at 44 px in bold, or two lines): a photo picked on the
 #. Photos sheet could not become the page's paper; %s is the log file that says why.
@@ -4806,7 +4813,12 @@ msgid ""
 "fonts. Your font draws Grimoire's own words (menus, names, the keyboard); "
 "your pages, their PDFs and the pages you share never change with it. A "
 "letter your font lacks comes from Terminess."
-msgstr "Copia aquí archivos de fuentes para leer Grimoire con una fuente tuya: archivos .ttf o .otf. En Ajustes, con el estilo Clásico, toca Fuente y elígela en Tus fuentes. Tu fuente dibuja las palabras de Grimoire (menús, nombres, el teclado); tus páginas, sus PDF y las páginas que compartes nunca cambian con ella. Una letra que le falte a tu fuente viene de Terminess."
+msgstr ""
+"Copia aquí archivos de fuentes para leer Grimoire con una fuente tuya: "
+"archivos .ttf o .otf. En Ajustes, con el estilo Clásico, toca Fuente y "
+"elígela en Tus fuentes. Tu fuente dibuja las palabras de Grimoire (menús, "
+"nombres, el teclado); tus páginas, sus PDF y las páginas que compartes nunca "
+"cambian con ella. Una letra que le falte a tu fuente viene de Terminess."
 
 #. TRANSLATORS: grimoire/fonts/README.txt's second paragraph. ".cache" is a folder's name: keep it.
 #: rust/src/userfonts.rs
@@ -4816,7 +4828,12 @@ msgid ""
 "folder. Your fonts stay on this Kindle: use fonts you have the right to use. "
 "If a font ever goes wrong, delete its file here and Grimoire is back in "
 "Terminess."
-msgstr "Cópialas por USB con Grimoire cerrado. Grimoire comprueba cada fuente en segundo plano antes de usarla, y guarda lo que encontró en la carpeta .cache. Tus fuentes se quedan en este Kindle: usa fuentes que tengas derecho a usar. Si una fuente falla alguna vez, borra aquí su archivo y Grimoire vuelve a Terminess."
+msgstr ""
+"Cópialas por USB con Grimoire cerrado. Grimoire comprueba cada fuente en "
+"segundo plano antes de usarla, y guarda lo que encontró en la "
+"carpeta .cache. Tus fuentes se quedan en este Kindle: usa fuentes que tengas "
+"derecho a usar. Si una fuente falla alguna vez, borra aquí su archivo y "
+"Grimoire vuelve a Terminess."
 
 #. TRANSLATORS: months, as short as the language writes them on a date: "Oct 10, 14:32" on the
 #. Library's cards, which are narrow when the Kindle is sideways.

@@ -904,6 +904,19 @@ fn template_file(name: &str, p: &BgPicture) -> String {
     path
 }
 
+// The previews job of the templates and photos folders, as a sheet starts it when it opens: a file is picked
+// (template_install, photo_install) once its preview is made, its worker having found it a picture
+// (2.1.0-beta.2 fix round, M13: the UI thread never checks a file itself).
+fn previews() {
+    let mut t: Vec<Template> = Vec::new();
+    check!(template_scan(&mut t, DPI) == 0);
+    template_list_free(&mut t);
+    drain_jobs(None);
+    let _ = photos_scan(&mut t, DPI); // (-1 where a test made no photos folder)
+    template_list_free(&mut t);
+    drain_jobs(None);
+}
+
 fn index_entries(nb: &NotebookInfo) -> i32 {
     let mut dir = String::new();
     bgimage_dir(nb.id.as_str(), &mut dir, 700);
@@ -926,6 +939,7 @@ fn templates_same_file_same_id() {
         y += 30;
     }
     let path = template_file("Lines.png", &lines);
+    previews();
     let (mut k1, mut k2) = (PAPER_BLANK, PAPER_BLANK);
     let mut why: &'static str = "";
     check!(template_install(&nb, &path, &mut k1, &mut why) == 0);
@@ -971,6 +985,7 @@ fn templates_same_file_same_id() {
         y += 20;
     }
     let path2 = template_file("Dots.png", &dots);
+    previews();
     let mut k3 = PAPER_BLANK;
     check!(template_install(&nb, &path2, &mut k3, &mut why) == 0 && paper_is_image(k3) && k3 != k1 && index_entries(&nb) == 2);
     drain_jobs(None);
@@ -1030,6 +1045,7 @@ fn templates_collision_steps() {
     check!(store_create("Collide", "", PAPER_MEDIUM, &mut nb) == 0 && store_create("Orphan", "", PAPER_MEDIUM, &mut nb2) == 0);
     let mut g = noise(120, 160, 1);
     let path = template_file("Noise.png", &g);
+    previews();
     let d = slurp(&path).unwrap_or_default();
     let key = bgimage_source_key(&d, PW, PH);
     let mut id0 = (key as u32) & 0xFFFFFF;
@@ -1600,6 +1616,7 @@ fn notebook_on_a_template() {
         y += 25;
     }
     let path = template_file("Planner week.png", &lines);
+    previews();
     let mut why: &'static str = "";
     check!(template_start_notebook(&mut nb, &path, &mut why) == 0 && paper_is_image(nb.paper));
     let k = nb.paper;
@@ -1654,6 +1671,7 @@ fn card_drawn_again_with_its_picture() {
         y += 40;
     }
     let path = template_file("Card lines.png", &g);
+    previews();
     let (mut on, mut off) = (NotebookInfo::default(), NotebookInfo::default());
     check!(store_create("Card", "", PAPER_MEDIUM, &mut on) == 0 && store_create("Card 2", "", PAPER_MEDIUM, &mut off) == 0);
     let (mut k, mut k2) = (PAPER_BLANK, PAPER_BLANK);
@@ -1749,6 +1767,7 @@ fn card_written_meanwhile() {
         let name = format!("Meanwhile {round}.png");
         g.px[round] = 0; // (another picture each round: its own job)
         let path = template_file(&name, &g);
+        previews();
         let mut nb = NotebookInfo::default();
         check!(store_create("Meanwhile", "", PAPER_MEDIUM, &mut nb) == 0);
         *G_MEANWHILE.lock().unwrap() = Some(nb.clone());
@@ -1873,6 +1892,7 @@ fn unreadable_index_kept() {
     let (mut a, mut b) = (solid(300, 400, 1, 210), solid(300, 400, 1, 120));
     let pa = template_file("Index a.png", &a);
     let pb = template_file("Index b.png", &b);
+    previews();
     let (mut ka, mut kb, mut again) = (PAPER_BLANK, PAPER_BLANK, PAPER_BLANK);
     let mut why: &'static str = "";
     check!(template_install(&nb, &pa, &mut ka, &mut why) == 0);
@@ -2544,10 +2564,12 @@ fn photo_upright_and_its_own() {
     check!(!photo_path(&tpl));
     let (mut k, mut kt) = (PAPER_BLANK, PAPER_BLANK);
     let mut why: &'static str = "";
+    previews();
     check!(photo_install(&nb, &path, &mut k, &mut why) == 0 && paper_is_image(k) && paper_is_document(k));
     if let Some(d) = slurp(&path) {
         put_file(&tpl, &d);
     }
+    previews();
     check!(template_install(&nb, &tpl, &mut kt, &mut why) == 0 && paper_is_image(kt) && !paper_is_document(kt));
     check!(paper_image_id(kt) != paper_image_id(k));
     drain_jobs(None);

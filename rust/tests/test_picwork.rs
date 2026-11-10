@@ -200,8 +200,9 @@ fn hostile_pictures_are_refused() {
     }
 }
 
-// A worker that dies on a picture (crash, trap) or stalls on it fails that picture alone: Dead, and the pool's
-// next picture goes to a fresh worker.
+// A worker that dies on a picture (crash, trap) or stalls on it is replaced, and the fresh worker tries the
+// picture again (2.1.0-beta.2 fix round, M12): a second death in a row fails that picture alone, Dead, and the
+// pool's next picture goes to a fresh worker.
 fn a_worker_that_dies_fails_one_picture() {
     clean_env();
     let dir = tmp("dead");
@@ -215,9 +216,13 @@ fn a_worker_that_dies_fails_one_picture() {
         if hook == "GRIMOIRE_PIC_TEST_HANG" {
             std::env::set_var("GRIMOIRE_PIC_WATCHDOG_MS", "1500");
         }
-        // a fresh pool takes the hook: its worker's second picture dies
+        // a fresh pool takes the hook: its worker's second picture dies, and the next worker decodes it
         let mut pool = PicPool::new();
         check!(matches!(pool.decode(&good, false, PW, PH), PicOut::Pic { .. }));
+        check!(matches!(pool.decode(&good, false, PW, PH), PicOut::Pic { .. }));
+        // with every worker dying on its first picture, the picture fails: two deaths in a row
+        std::env::set_var(hook, "1");
+        let mut pool = PicPool::new();
         check!(matches!(pool.decode(&good, false, PW, PH), PicOut::Dead(_)));
         std::env::remove_var(hook);
         check!(matches!(pool.decode(&good, false, PW, PH), PicOut::Pic { .. })); // (a fresh worker)
