@@ -55,6 +55,12 @@ why. Newest decisions first within each section.
   a PDF that fails before any page keeps its file and costs a try (3 tries, then it waits until it changes; a
   pick elsewhere keeps no record); the "Some pages couldn't be read." ending shows even with the Library in front;
   a notebook in a Library folder gets the toast "Imported notebook" since its card is not on the Library's top.
+- **Doc drift 9's last three** (the review of 0c26d912): FORMAT.md's "so Copy page and later fills have room" (M16),
+  "a picture replaced ... simply drawn again" (H4) and the picture cache's `.bad` meaning (M12) describe code other
+  fix lanes change in the same round; they follow those fixes, not this lane's.
+- **The fork window of the lock**: a child that is no import closes its copy of the lock's descriptor first thing,
+  but for the microseconds between its fork and that close a `lock_take` sees the lock held (a pick tapped in that
+  instant waits, and is queued at the next scan). Linux 4.9 has no close-on-fork flag.
 - **The scan's prune of import/.attempts runs in the UI** (the record is otherwise the jobs' to write): it reads
   the file again just before it writes, which leaves a few milliseconds in which a job's note can be lost. Found
   in the fix round, not fixed: moving the prune into the jobs is a change of who owns the file.
@@ -1022,6 +1028,10 @@ Ideas, not plans: each needs the owner's go and its own design. No code is taken
   after it.").
 - **The Loading notice after Back during a slow listing** is cleared once any folder is read (the fix round, M18):
   checked by reading only; a test needs a listing slower than a second in the headless runner.
+- **The picker's UI-thread work** (the fix round, Low): entries of no known kind are stat-ed in 20 ms slices before
+  the rows are built; the Import place's folder rows are listed every 5 s, the PDF rows as the import's progress
+  changes; "has notes" reads the notebooks' keys once a session (one small read for each notebook without
+  `source=`, at the first PDF row, on the UI thread). None of it is timed on the Scribe (TESTING.md, L8 check 2).
 - **Folder rows count their pictures by listing the folder** (on the idle tick, one folder a tick, at most 200 ms
   each) to show "%d pictures" and to offer Import %d pictures as notebook. On a big `documents/` of big folders over
   FUSE that is unmeasured: TESTING.md has the timing check. A cheaper rule (count only when the card opens) is
