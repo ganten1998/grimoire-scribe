@@ -107,6 +107,7 @@ pub mod live_keys;
 pub mod pagesview;
 pub mod panel; // header only
 pub mod pensettings;
+pub mod settingsmenu; // Settings' categories and rows as data (Rust only)
 pub mod share;
 pub mod status; // not a port: the clock and battery corner, Rust only (2.0.0-beta.5)
 pub mod ui;
