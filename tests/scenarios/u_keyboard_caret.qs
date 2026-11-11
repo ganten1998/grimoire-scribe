@@ -43,7 +43,7 @@ tap 1726 1725
 expect library.caret is sh0|eet
 tap 1679 2205
 expect library.caret is sh|eet
-# The right arrow; at the end it moves nothing and refreshes the key alone
+# The right arrow; at the end it moves nothing and refreshes the key alone (its press and its lift, one refresh)
 tap 1726 1570
 tap 1726 1570
 tap 1726 1570
@@ -52,7 +52,7 @@ expect library.caret is sheet|
 expect display.presents not -1
 tap 1726 1570
 expect library.caret is sheet|
-expect display.presents is fast 1643 1510 167 120, fast 1643 1510 167 120
+expect display.presents is fast 1643 1510 167 120
 # Held: one at the touch-down, one at 400 ms and one every 65 ms after, to the start, where it stops
 finger 1 down 1549 1570
 frame 400

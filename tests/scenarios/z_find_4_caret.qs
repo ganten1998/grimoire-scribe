@@ -74,11 +74,12 @@ key 47 1
 expect editor.caret is bol|
 expect editor.find.1 is Árbol
 expect editor.strokes is 1
-# Esc closes Find; the page's Name this page (R) takes the same clipboard, and the same keys
-key 1 0
+# The go-to-page key closes Find; the page's Name this page (N in this root's shortcuts) takes the same
+# clipboard, and the same keys
+key 34 0
 wait 300
 expect editor.find is 0
-key 19 0
+key 49 0
 wait 300
 expect editor.keyboard is Page name
 key 47 1
@@ -89,7 +90,7 @@ key 106 0
 expect editor.caret is bol|
 key 105 0
 expect editor.caret is bo|l
-key 1 0
+tap 175 2365
 wait 300
 expect editor.keyboard is
 # Select mode's Paste still pastes the ink
