@@ -130,8 +130,8 @@ keyboard. `KB_TEXT_MAX` is 96 bytes (32 kana or kanji at 3 bytes each); check th
 and page name limits too.
 
 **Produce** `docs/beta2/JAPANESE.md` with sizes and a recommendation:
-1. **Taking the translation:** what review it needs (gate, a native read of the glossary and the
-   tightest screens with the y_all_screens captures), binary and package size cost, whether a
+1. **Taking the translation:** what it covers (gate, the glossary and the tightest screens with
+   the y_all_screens captures), binary and package size cost, whether a
    subset font (only the kanji the UI and common names use) or a smaller face is better, and how a
    contributor PR should be shaped.
 2. **Input method options** for the on-screen keyboard and Bluetooth keyboards: romaji to kana

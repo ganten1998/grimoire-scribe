@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: Grimoire 1.0.0-beta\n"
 "Report-Msgid-Bugs-To: https://github.com/ganten1998/grimoire-scribe/issues\n"
-"POT-Creation-Date: 2026-11-08 16:38-0600\n"
+"POT-Creation-Date: 2026-11-10 21:50-0500\n"
 "PO-Revision-Date: 2026-10-20 08:02-0500\n"
 "Last-Translator: draft\n"
 "Language-Team: Spanish\n"
@@ -268,7 +268,7 @@ msgstr "Selector de herramientas"
 msgid "Paper"
 msgstr "Papel"
 
-#: rust/src/actions.rs rust/src/dispmenu.rs
+#: rust/src/actions.rs rust/src/dispmenu.rs rust/src/settingsmenu.rs
 msgid "Display"
 msgstr "Pantalla"
 
@@ -334,8 +334,6 @@ msgstr "Página entera de lado"
 msgid "Clock and battery corner"
 msgstr "Esquina del reloj y la batería"
 
-#. TRANSLATORS: the Display sheet's checkbox row: two fingers swiped left on the last page add a page
-#. (off: it only says it is the last page). About 1000 px at 44 px.
 #: rust/src/actions.rs rust/src/dispmenu.rs
 msgid "Swiping past the last page adds a page"
 msgstr "Deslizar al final añade una página"
@@ -406,7 +404,7 @@ msgstr "Pantalla de reposo"
 msgid "Sleep now"
 msgstr "Reposo ahora"
 
-#: rust/src/actions.rs rust/src/library.rs
+#: rust/src/actions.rs rust/src/library.rs rust/src/settingsmenu.rs
 msgid "Gestures"
 msgstr "Gestos"
 
@@ -1014,7 +1012,7 @@ msgstr "Grano"
 msgid "Smoothing"
 msgstr "Suavizado"
 
-#. TRANSLATORS: calibration's three steps, a title each (1740 px at 77 px).
+#. TRANSLATORS: calibration's three steps, a title each.
 #: rust/src/calibrate.rs
 msgid "Calibrate the pen"
 msgstr "Calibrar el lápiz"
@@ -1147,7 +1145,17 @@ msgctxt "sleep after"
 msgid "never"
 msgstr "nunca"
 
-#. TRANSLATORS: in the Display sheet where the sliders would be (1420 px at 44 px).
+#. TRANSLATORS: the heading of the Display page's rows about the Kindle's sleep.
+#: rust/src/dispmenu.rs
+msgid "Sleep"
+msgstr "Reposo"
+
+#. TRANSLATORS: makes the open page the sleep screen (528 px at 44 px, or 34 px).
+#: rust/src/dispmenu.rs
+msgid "Pin this page"
+msgstr "Fijar esta página"
+
+#. TRANSLATORS: in the Display page where the sliders would be (1420 px at 44 px).
 #: rust/src/dispmenu.rs
 msgid "Front light controls are not available here."
 msgstr "Los controles de la luz frontal no están disponibles aquí."
@@ -1160,34 +1168,17 @@ msgstr "Este Kindle no tiene control de calidez."
 msgid "Invert colors in Grimoire (white on black)"
 msgstr "Invertir los colores en Grimoire (blanco sobre negro)"
 
-#. TRANSLATORS: the Display sheet's checkbox row: the editor, with the Kindle turned sideways, shows
-#. the whole page (off: the page's width fills the screen, as upright). About 1300 px at 44 px.
 #: rust/src/dispmenu.rs
 msgid "Sideways, show the whole page"
 msgstr "De lado, ver la página entera"
 
-#. TRANSLATORS: the heading of the Display sheet's rows about the Kindle's sleep.
 #: rust/src/dispmenu.rs
-msgid "Sleep"
-msgstr "Reposo"
+msgid "Display time as 12 hour"
+msgstr "Mostrar la hora en 12 horas"
 
 #: rust/src/dispmenu.rs
 msgid "Sleep screen: Kindle PIN (native unlock)"
 msgstr "Al dormir: PIN del Kindle (desbloqueo nativo)"
-
-#. TRANSLATORS: makes the open page the sleep screen (528 px at 44 px, or 34 px).
-#: rust/src/dispmenu.rs
-msgid "Pin this page"
-msgstr "Fijar esta página"
-
-#. TRANSLATORS: closes a sheet: under its check mark here (322 px at 34 px), on Settings 342 px
-#. at 44 px, on the keyboard 334 px at 44 px in bold.
-#. TRANSLATORS: the same button while the pens are being chosen, beside a check mark: it ends
-#. that (116 px at 34 px, as Pin).
-#: rust/src/dispmenu.rs rust/src/editor.rs rust/src/i18n.rs
-#: rust/src/keyboard.rs rust/src/library.rs rust/src/share.rs
-msgid "Done"
-msgstr "Listo"
 
 #: rust/src/dispmenu.rs
 msgid "This page is now the sleep screen"
@@ -1259,6 +1250,13 @@ msgstr "Blanco"
 msgctxt "panel"
 msgid "Pin"
 msgstr "Fijar"
+
+#. TRANSLATORS: the same button while the pens are being chosen, beside a check mark: it ends
+#. that (116 px at 34 px, as Pin).
+#: rust/src/editor.rs rust/src/i18n.rs rust/src/keyboard.rs rust/src/library.rs
+#: rust/src/share.rs
+msgid "Done"
+msgstr "Listo"
 
 #. TRANSLATORS: the tool picker's button beside Pin that starts Select mode (the lasso that selects
 #. ink to copy, cut, paste or move); 116 px at 34 px, the button widens for a longer word.
@@ -2411,7 +2409,7 @@ msgstr "Página %d de %d"
 msgid "Name: %s"
 msgstr "Nombre: %s"
 
-#. TRANSLATORS: a held page's card in the Pages view, under its icon (950 px at 34 px): give the page
+#. TRANSLATORS: a held page's sheet in the Pages view, a row (about 950 px at 34 px): give the page
 #. a name (its naming keyboard, titled Page name).
 #: rust/src/library.rs rust/src/mapview.rs rust/src/pagesview.rs
 msgid "Rename"
@@ -2916,79 +2914,12 @@ msgstr "Otra vez"
 msgid "Automatic (%s)"
 msgstr "Automático (%s)"
 
-#. TRANSLATORS: the rows of Settings: buttons with an icon (1470 px at 44 px in bold), then
-#. lines a tap changes (1530 px at 44 px) and checkboxes (1548 px at 44 px, or two lines at
-#. 34 px). Sideways they are 80 px wider.
-#: rust/src/library.rs
-msgid "Pen sensitivity (pressure + tilt per tool)"
-msgstr "Sensibilidad del lápiz (presión + inclinación por herramienta)"
-
-#: rust/src/library.rs
-msgid "Display: brightness, warmth, invert"
-msgstr "Pantalla: brillo, calidez, invertir"
-
-#. TRANSLATORS: (Settings) the row that opens the Shortcuts sheet: a keyboard's keys and a controller's
-#. buttons as shortcuts, each device's own if it has them (1470 px at 44 px in bold, as its neighbours).
-#: rust/src/library.rs
-msgid "Shortcuts: keys and controller buttons"
-msgstr "Atajos: teclas y botones del mando"
-
-#: rust/src/library.rs
-msgid "Calibrate pen and touch"
-msgstr "Calibrar el lápiz y la pantalla táctil"
-
-#. TRANSLATORS: the style Grimoire is drawn in, and the other one a tap changes to (1530 px at 44 px
-#. in Gothic; in Classic the Font chip takes the row's right end, which leaves about 1000 px).
-#: rust/src/library.rs
-msgid "Style: Gothic (tap for Classic)"
-msgstr "Estilo: Gótico (toca para cambiar a Clásico)"
-
-#: rust/src/library.rs
-msgid "Style: Classic (tap for Gothic)"
-msgstr "Estilo: Clásico (toca para cambiar a Gótico)"
-
-#. TRANSLATORS: (Settings, Classic only) the chip at the Style row's right end that opens the
-#. Font sheet, with the font in use by its short name, never translated ("Terminess",
-#. "Atkinson", "Noto Sans", "Literata"): about 450 px at 34 px in bold, beside its icon.
+#. TRANSLATORS: (Settings, Classic only) the row that opens the Font sheet, with the font in use
+#. by its short name, never translated ("Terminess", "Atkinson", "Noto Sans", "Literata").
 #: rust/src/library.rs
 #, c-format
 msgid "Font: %s"
 msgstr "Fuente: %s"
-
-#: rust/src/library.rs
-#, c-format
-msgid "Mirror PDFs to %s (USB)"
-msgstr "Copiar los PDF a %s (USB)"
-
-#. TRANSLATORS: what holding the pen's button while writing does; a tap moves to the next.
-#: rust/src/library.rs
-msgid "Holding the pen button while writing does nothing (tap to change)"
-msgstr ""
-"Mantener el botón del lápiz al escribir no hace nada (toca para cambiar)"
-
-#: rust/src/library.rs
-msgid "Holding the pen button while writing erases (tap to change)"
-msgstr "Mantener el botón del lápiz al escribir borra (toca para cambiar)"
-
-#: rust/src/library.rs
-msgid "Holding the pen button while writing highlights (tap to change)"
-msgstr "Mantener el botón del lápiz al escribir resalta (toca para cambiar)"
-
-#. TRANSLATORS: the fourth choice of the same row: while the pen's button is held, the pen
-#. draws white ink (which takes away the ink under it and keeps the paper's lines). 1530 px
-#. at 44 px, sideways 1610, or two lines at 34 px.
-#: rust/src/library.rs
-msgid "Holding the pen button while writing draws white (tap to change)"
-msgstr ""
-"Mantener el botón del lápiz al escribir dibuja en blanco (toca para cambiar)"
-
-#: rust/src/library.rs
-msgid "Turn with the Kindle (portrait and landscape)"
-msgstr "Girar con el Kindle (vertical y horizontal)"
-
-#: rust/src/library.rs
-msgid "Pinch with two fingers to zoom"
-msgstr "Pellizcar con dos dedos para hacer zoom"
 
 #. TRANSLATORS: a row of Settings, with the choice: "Automatic (English)", or a language's name.
 #: rust/src/library.rs
@@ -2996,48 +2927,10 @@ msgstr "Pellizcar con dos dedos para hacer zoom"
 msgid "Language: %s"
 msgstr "Idioma: %s"
 
-#. TRANSLATORS: Settings' last lines (34 px): after the version, the pen Grimoire found (its
-#. device's name, %s) and what it reports; then where Grimoire keeps its data (%s).
-#: rust/src/library.rs
-msgid "pen: none"
-msgstr "lápiz: ninguno"
-
 #: rust/src/library.rs
 #, c-format
-msgid "pen: %s, pressure, tilt"
-msgstr "lápiz: %s, presión, inclinación"
-
-#: rust/src/library.rs
-#, c-format
-msgid "pen: %s, pressure"
-msgstr "lápiz: %s, presión"
-
-#: rust/src/library.rs
-#, c-format
-msgid "pen: %s, tilt"
-msgstr "lápiz: %s, inclinación"
-
-#: rust/src/library.rs
-#, c-format
-msgid "pen: %s"
-msgstr "lápiz: %s"
-
-#: rust/src/library.rs
-#, c-format
-msgid "Data: %s"
-msgstr "Datos: %s"
-
-#. TRANSLATORS: Settings' bottom buttons, each a word under its icon, about 240 px at 34 px.
-#. Pair opens the Pair sheet (a Bluetooth controller: the helper on or off, pairing one; also that
-#. sheet's title), Gestures opens gesture bindings, Updates checks for a newer Grimoire.
-#: rust/src/library.rs
-msgid "Pair"
-msgstr "Emparejar"
-
-#. TRANSLATORS: the Updates sheet's title (Settings > Updates).
-#: rust/src/library.rs
-msgid "Updates"
-msgstr "Actualizaciones"
+msgid "Mirror PDFs to %s (USB)"
+msgstr "Copiar los PDF a %s (USB)"
 
 #. TRANSLATORS: the title of Settings > Font, the list of fonts Classic can be drawn in.
 #: rust/src/library.rs
@@ -3104,6 +2997,11 @@ msgstr "Buscar actualizaciones"
 #: rust/src/library.rs
 msgid "Update"
 msgstr "Actualizar"
+
+#. TRANSLATORS: the Updates sheet's title (Settings > Updates).
+#: rust/src/library.rs rust/src/settingsmenu.rs
+msgid "Updates"
+msgstr "Actualizaciones"
 
 #: rust/src/library.rs
 msgid "Searching... Put the controller in pairing mode."
@@ -3223,6 +3121,10 @@ msgstr "No hay asistente Bluetooth en grimoire/bluetooth"
 #: rust/src/library.rs
 msgid "Pair a controller..."
 msgstr "Emparejar un mando..."
+
+#: rust/src/library.rs rust/src/settingsmenu.rs
+msgid "Pair"
+msgstr "Emparejar"
 
 #: rust/src/library.rs
 msgid "Install / update Grimoire plugin"
@@ -3833,16 +3735,7 @@ msgstr "Copiar página"
 msgid "Multi-select"
 msgstr "Selección múltiple"
 
-#. TRANSLATORS: under a held page's title in the Pages view (about 900 px at 34 px): how many pages, in this
-#. notebook or others, have links to it.
-#: rust/src/pagesview.rs
-#, c-format
-msgid "Linked from %d page"
-msgid_plural "Linked from %d pages"
-msgstr[0] "Enlazada desde %d página"
-msgstr[1] "Enlazada desde %d páginas"
-
-#. TRANSLATORS: a held page's card in the Pages view, under its icon (950 px at 34 px): move the page
+#. TRANSLATORS: a held page's sheet in the Pages view, a row (about 950 px at 34 px): move the page
 #. (or the ticked pages, with how many) to another place in the notebook, on the Go to page number pad.
 #: rust/src/pagesview.rs
 #, c-format
@@ -3855,7 +3748,7 @@ msgstr[1] "Mover %d páginas a..."
 msgid "Move to..."
 msgstr "Mover a..."
 
-#. TRANSLATORS: the same card: copy the page (or the ticked pages) into another notebook, picked from
+#. TRANSLATORS: the same sheet: copy the page (or the ticked pages) into another notebook, picked from
 #. the notebooks and folders.
 #: rust/src/pagesview.rs
 #, c-format
@@ -3867,6 +3760,15 @@ msgstr[1] "Copiar %d páginas a un cuaderno..."
 #: rust/src/pagesview.rs
 msgid "Copy to notebook..."
 msgstr "Copiar a un cuaderno..."
+
+#. TRANSLATORS: under a held page's title in the Pages view (about 900 px at 34 px): how many pages, in this
+#. notebook or others, have links to it.
+#: rust/src/pagesview.rs
+#, c-format
+msgid "Linked from %d page"
+msgid_plural "Linked from %d pages"
+msgstr[0] "Enlazada desde %d página"
+msgstr[1] "Enlazada desde %d páginas"
 
 #: rust/src/pagesview.rs
 msgid "Enter a page number in this notebook."
@@ -4171,17 +4073,17 @@ msgstr "Restaurar"
 msgid "Clear"
 msgstr "Limpiar"
 
-#. TRANSLATORS: puts the tool's pen feel back as it came (328 px at 44 px, or 34 px).
-#: rust/src/pensettings.rs
-msgid "Reset tool"
-msgstr "Restablecer"
-
 #. TRANSLATORS: the title of the screen where each tool's pressure and tilt are tuned, with the
-#. tool's name (1200 px at 70 px).
+#. tool's name.
 #: rust/src/pensettings.rs
 #, c-format
 msgid "Pen feel: %s"
 msgstr "Sensibilidad: %s"
+
+#. TRANSLATORS: puts the tool's pen feel back as it came (328 px at 44 px, or 34 px).
+#: rust/src/pensettings.rs
+msgid "Reset tool"
+msgstr "Restablecer"
 
 #. TRANSLATORS: over Pen feel's test pad, which the pen draws on with the tool (1180 px at 34 px).
 #: rust/src/pensettings.rs
@@ -4209,6 +4111,79 @@ msgstr "El borrador quita trazos enteros; más presión = más alcance."
 msgid ""
 "The eraser takes away only what it touches; harder pressure = bigger reach."
 msgstr "El borrador quita solo lo que toca; más presión = más alcance."
+
+#. TRANSLATORS: what holding the pen's button while writing does; a tap moves to the next.
+#: rust/src/settingsmenu.rs
+msgid "Holding the pen button while writing does nothing (tap to change)"
+msgstr ""
+"Mantener el botón del lápiz al escribir no hace nada (toca para cambiar)"
+
+#: rust/src/settingsmenu.rs
+msgid "Holding the pen button while writing erases (tap to change)"
+msgstr "Mantener el botón del lápiz al escribir borra (toca para cambiar)"
+
+#: rust/src/settingsmenu.rs
+msgid "Holding the pen button while writing highlights (tap to change)"
+msgstr "Mantener el botón del lápiz al escribir resalta (toca para cambiar)"
+
+#: rust/src/settingsmenu.rs
+msgid "Holding the pen button while writing draws white (tap to change)"
+msgstr ""
+"Mantener el botón del lápiz al escribir dibuja en blanco (toca para cambiar)"
+
+#: rust/src/settingsmenu.rs
+msgid "Style: Gothic (tap for Classic)"
+msgstr "Estilo: Gótico (toca para cambiar a Clásico)"
+
+#: rust/src/settingsmenu.rs
+msgid "Style: Classic (tap for Gothic)"
+msgstr "Estilo: Clásico (toca para cambiar a Gótico)"
+
+#. TRANSLATORS: the row that opens Display's sheet: brightness, warmth and invert.
+#: rust/src/settingsmenu.rs
+msgid "Display: brightness, warmth, invert"
+msgstr "Pantalla: brillo, calidez, invertir"
+
+#: rust/src/settingsmenu.rs
+msgid "Turn with the Kindle (portrait and landscape)"
+msgstr "Girar con el Kindle (vertical y horizontal)"
+
+#: rust/src/settingsmenu.rs
+msgid "Pinch with two fingers to zoom"
+msgstr "Pellizcar con dos dedos para hacer zoom"
+
+#: rust/src/settingsmenu.rs
+msgid "Pen Feel"
+msgstr "Sensibilidad"
+
+#. TRANSLATORS: the row that opens Pen sensitivity's sheet: pressure and tilt, per tool.
+#: rust/src/settingsmenu.rs
+msgid "Pen sensitivity (pressure + tilt per tool)"
+msgstr "Sensibilidad del lápiz (presión + inclinación por herramienta)"
+
+#: rust/src/settingsmenu.rs
+msgid "Calibration"
+msgstr "Calibración"
+
+#: rust/src/settingsmenu.rs
+msgid "Calibrate pen and touch"
+msgstr "Calibrar el lápiz y la pantalla táctil"
+
+#: rust/src/settingsmenu.rs
+msgid "Controller"
+msgstr "Mando"
+
+#: rust/src/settingsmenu.rs
+msgid "Shortcuts: keys and controller buttons"
+msgstr "Atajos: teclas y botones del mando"
+
+#: rust/src/settingsmenu.rs
+msgid "General"
+msgstr "General"
+
+#: rust/src/settingsmenu.rs
+msgid "KOReader"
+msgstr "KOReader"
 
 #. TRANSLATORS: the Share screen's help, under the address: a line each, 1578 px at 34 px
 #. sideways (beside the QR code), 1640 upright.
@@ -4549,6 +4524,24 @@ msgstr "dic"
 msgctxt "date"
 msgid "%s %d, %02d:%02d"
 msgstr "%2$d %1$s, %3$02d:%4$02d"
+
+#. TRANSLATORS: the marker for the morning on the 12-hour clock (before noon).
+#: rust/src/util.rs
+msgctxt "date"
+msgid "AM"
+msgstr "a. m."
+
+#. TRANSLATORS: the marker for the afternoon on the 12-hour clock (after noon).
+#: rust/src/util.rs
+msgctxt "date"
+msgid "PM"
+msgstr "p. m."
+
+#: rust/src/util.rs
+#, c-format
+msgctxt "date"
+msgid "%s %d, %d:%02d %s"
+msgstr "%2$d %1$s, %3$d:%4$02d %5$s"
 
 #. TRANSLATORS: a date, "Oct 10", in a new notebook's name ("Notebook Oct 10"): the month (as
 #. above), then the day. "%2$d %1$s" is "10 Oct".
@@ -4968,6 +4961,29 @@ msgctxt "studio"
 msgid "Copied"
 msgstr "Copiado"
 
+#~ msgid "pen: none"
+#~ msgstr "lápiz: ninguno"
+
+#, c-format
+#~ msgid "pen: %s, pressure, tilt"
+#~ msgstr "lápiz: %s, presión, inclinación"
+
+#, c-format
+#~ msgid "pen: %s, pressure"
+#~ msgstr "lápiz: %s, presión"
+
+#, c-format
+#~ msgid "pen: %s, tilt"
+#~ msgstr "lápiz: %s, inclinación"
+
+#, c-format
+#~ msgid "pen: %s"
+#~ msgstr "lápiz: %s"
+
+#, c-format
+#~ msgid "Data: %s"
+#~ msgstr "Datos: %s"
+
 #~ msgid "Couldn't move folder. Is one with that name already there?"
 #~ msgstr "No se pudo mover la carpeta. ¿Ya hay una con ese nombre allí?"
 
@@ -4976,9 +4992,6 @@ msgstr "Copiado"
 
 #~ msgid "Close"
 #~ msgstr "Cerrar"
-
-#~ msgid "Controller"
-#~ msgstr "Mando"
 
 #, c-format
 #~ msgid "Mappings: %d; rejected: %d"
@@ -5257,9 +5270,6 @@ msgstr "Copiado"
 
 #~ msgid "Name in the Index"
 #~ msgstr "Nombre en el índice"
-
-#~ msgid "Back to KOReader"
-#~ msgstr "Volver a KOReader"
 
 #, c-format
 #~ msgid "Add page %d to the Index..."

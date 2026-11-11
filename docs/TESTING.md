@@ -117,8 +117,8 @@ Checked by the owner on the Kindle Scribe 2024 (firmware 5.20.1.0.2) on the beta
 KPM on 2026-11-04 and 05, the last of them 8e1bd38's (this release's code, with the version before the bump).
 What the owner reported:
 
-- On the first candidate (416686d): toasts "Good for now"; Japanese works (a native speaker's confirmation is
-  awaited); KOReader's menus good, but its battery symbol showed "JS" (fixed since: on 2026-11-05 at 03:48
+- On the first candidate (416686d): toasts "Good for now"; Japanese works; KOReader's menus good, but its
+  battery symbol showed "JS" (fixed since: on 2026-11-05 at 03:48
   KOReader's crash.log names Grimoire's own Terminess for its menus); Pages' drag had to start before the held
   page's card, and the count pad's opening 1 read as a 0 (both changed: the sections below); the keyboard was
   not tried yet.

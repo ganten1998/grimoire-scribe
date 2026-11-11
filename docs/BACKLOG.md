@@ -65,7 +65,7 @@ Built on the plan's other recommended defaults (the owner has not answered them;
 What waits: O2 (the ink row in a pen's card), O3 (size keys and the `quick-size` action, ids 105 to 107), O4 (your
 own chips), O6 (hold in the picker), O8 to O10 stay out; the live ink on the largest chips (charcoal 2, marker
 2.8, highlighter 8, eraser 12 mm) is for the owner to measure with `tools/bench-ink.c` (docs/TESTING.md): drop a
-top chip if live ink lags. The Japanese for "Hold a pen on the toolbar for its sizes." is for nebuff.
+top chip if live ink lags.
 
 ## Classic fonts (2.1.0): choices for the owner, and what waits
 
@@ -180,8 +180,6 @@ confirm or change:
   back to New notebook, and as SHORTCUTS.md's "one level a press"), the card closes. In 2.0.0 Esc on Read all's
   sheet closed What's new; the list has no on-screen way back to the card, only Esc. **Enter on the list opens
   the running version's notes**, as there is no highlighted row (the Library's sheets have none).
-- **Japanese for "This version" and "unreleased"** is empty in po/ja.po: the list shows them in English in
-  Japanese until nebuff translates them. Back reuses the Templates sheet's, already translated.
 
 ## The lasso drag (2.0.0): the owner's report of 2026-11-05, fixed; what is left for the owner
 

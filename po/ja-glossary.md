@@ -87,6 +87,7 @@ fits as `fit[ja]: ...`.
 
 - Dates: **10月10日 14:32**; a new notebook is **ノート 10月10日**. The catalog's month names
   are **1月** to **12月**; the date formats are `%1$s%2$d日, %3$02d:%4$02d` and `%1$s%2$d日`.
+  The 12-hour clock is **10月10日 午後2:32** (`%1$s%2$d日 %5$s%3$d:%4$02d`).
 - Counters follow what is counted: **%dページ**, **%dノート**, **%d冊** where a counter is needed.
   Japanese has one plural form, so `msgstr[0]` serves 0, 1 and every other count.
 - Percent keeps the English's space: **150 %**. Angles: **45°**. Decimals: **0.30 mm**, as the
