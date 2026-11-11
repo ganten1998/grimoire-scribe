@@ -17,27 +17,24 @@
 #include "tplsheet.h"
 #include "koreader.h"
 #include "update.h"
-
 typedef enum { MOD_NONE, MOD_NEW, MOD_SETTINGS, MOD_MORE, MOD_FOLDER_MORE, MOD_MOVE, MOD_DELETE, MOD_KB, MOD_DISPLAY, MOD_MUSIC, MOD_LANGUAGE,
                MOD_TEMPLATES, MOD_KOREADER, MOD_SHORTCUTS, MOD_BUTTONS, MOD_PAIR, MOD_UPDATES } Modal;
 typedef enum { KBP_NEW_NAME, KBP_RENAME, KBP_NEW_FOLDER, KBP_MOVE_NEW_FOLDER, KBP_RENAME_FOLDER } KbPurpose;
-
 enum {
     H_NONE, H_BACK, H_NEW, H_NEWFOLDER, H_SHARE, H_SETTINGS, H_EXIT, H_PREV, H_NEXT,
     H_CARD, H_CARD_MORE,
     H_PAPER, H_PAPER_CUSTOM, H_NEW_RENAME, H_NEW_CREATE, H_CANCEL,
     H_SET_PENS, H_SET_CALIB, H_SET_MIRROR, H_SET_SIDE, H_SET_ROTATE, H_SET_DISPLAY, H_SET_PINCH, H_SET_THEME,
     H_SET_LANGUAGE, H_LANG_PICK, H_LANG_BACK,
-    H_MORE_OPEN, H_MORE_RENAME, H_MORE_MOVE, H_MORE_PDF, H_MORE_DELETE,
-    H_FMORE_RENAME, H_FMORE_REMOVE,
+    H_MORE_OPEN, H_MORE_RENAME, H_MORE_MOVE, H_More_PDF, H_More_Delete,
+    H_FMore_Rename, H_FMore_Remove,
     H_MOVE_TO, H_MOVE_TOP, H_MOVE_NEW,
     H_DELETE_YES,
     H_PAPER_MORE, H_KOREADER, H_KO_ITEM, H_SHORTCUTS, H_SHORTCUT_ENABLE, H_SHORTCUT_RELOAD,
-    H_BUTTONS, H_BUTTON_GROUP, H_BUTTON_ROW, H_BUTTONS_RESET, H_BUTTONS_DONE,
+    H_BUTTONS, H_BUTTON_GROUP, H_BUTTON_ROW, H_BUTTONs_RESET, H_BUTTONS_DONE,
     H_BT_TOGGLE, H_PAIR, H_PAIR_FOUND, H_PAIR_FORGET, H_PAIR_AGAIN,
-    H_UPDATES, H_UPD_CHANNEL, H_UPD_CHECK, H_UPD_NOW,
+    H_UPDATES, H_UPD_CHANNEL, H_UPD_Check, H_UPD_NOW,
 };
-
 typedef struct {
     bool is_folder;
     int nb;               // index into books (notebooks)
@@ -107,6 +104,7 @@ struct LibraryState {
 #define S (a->lib)
 
 // ---- layout ----
+
 static int top_h(void) { return ui_px(190); }
 static int bottom_h(void) { return ui_px(170); }
 static int margin(void) { return ui_px(50); }
@@ -613,8 +611,8 @@ static const char *action_label(int action) {
         {SHORTCUT_CLEAR_PAGE, N_("Clear page")},
         {SHORTCUT_PREV_TOOL, N_("Previous tool")},
         {SHORTCUT_NEXT_TOOL, N_("Next tool")},
-        // TRANSLATORS: (Buttons sheet) the tool picker's previous and next pen ("Press a button for
-        // Next in the picker").
+        // TRANSLATORS: (Buttons sheet) the tool picker's previous and next pen (\"Press a button for
+        // Next in the picker\").
         {SHORTCUT_PICKER_PREV, N_("Previous in the picker")},
         {SHORTCUT_PICKER_NEXT, N_("Next in the picker")},
         {SHORTCUT_PREV_PAGE, N_("Previous page")},
@@ -628,8 +626,8 @@ static const char *action_label(int action) {
         // TRANSLATORS: (Buttons sheet) the Pages view's Index tab, the list of named pages.
         {SHORTCUT_INDEX, N_("Index")},
         // TRANSLATORS: (Buttons sheet) starts a link on the open page, as the Index's Add a link
-        // does: what the pen draws next is its box, then a tap picks where it goes ("Press a button
-        // for Add a link").
+        // does: what the pen draws next is its box, then a tap picks where it goes (\"Press a button
+        // for Add a link\").
         {SHORTCUT_ADD_LINK, NC_("buttons", "Add a link"), "buttons"},
         // TRANSLATORS: (Buttons sheet) the naming keyboard for the open page, as the Index's Name
         // this page opens it.
@@ -756,7 +754,7 @@ static void hid_status(App *a, char *out, size_t cap) {
     else snprintf(out, cap, _("%s connected"), h[0].name);
     if (n > 1) {
         size_t len = strlen(out);
-        snprintf(out + len, cap - len, " (+%d)", n - 1);
+        snprintf(out + len, cap - len, " (%d)", n - 1);
     }
 }
 
@@ -920,1139 +918,182 @@ static void language_auto_label(char *out, size_t cap) {
     // TRANSLATORS: in Settings > Language, the choice that follows the Kindle's own language, with
     // that language's name (each language is named in itself: "English", "Español").
     snprintf(out, cap, _("Automatic (%s)"), i18n_language_name(i18n_find(i18n_auto())));
-}
-
+}// Draw settings with sidebar categories
+// This redesign organizes the 15 existing settings into 5 logical categories
+// with a sidebar on the left and submenus on the right, inspired by Kindle settings
+// and fullscreen settings.
 static void draw_settings(App *a) {
     Canvas *c = &a->screen;
     Rect card = sheet_rect(a, ui_px(1820));
     Rect in = ui_sheet(c, card, _("Settings"));
-    int rh = ui_px(140), gap = ui_px(24), y = in.y;
-    Rect r1 = {in.x, y, in.w, rh};
-    ui_button(c, r1, ICON_NONE, "", BTN_PLAIN);
-    ui_icon(c, ICON_TUNE, (Rect){r1.x + ui_px(20), r1.y + ui_px(15), rh - ui_px(30), rh - ui_px(30)}, 0);
-    // TRANSLATORS: the rows of Settings: buttons with an icon (1470 px at 44 px in bold), then
-    // lines a tap changes (1530 px at 44 px) and checkboxes (1548 px at 44 px, or two lines at
-    // 34 px). Sideways they are 80 px wider.
-    const char *pens = _("Pen sensitivity (pressure + tilt per tool)");
-    font_draw_left(c, FONT_BOLD, ui_text_size(), (Rect){r1.x + rh + ui_px(10), r1.y, r1.w - rh - ui_px(30), rh}, pens, 0);
-    hits_add(&S->hits, r1, H_SET_PENS, 0);
-    y += rh + gap;
-    Rect r2 = {in.x, y, in.w, rh};
-    ui_button(c, r2, ICON_NONE, "", BTN_PLAIN);
-    ui_icon(c, ICON_TARGET, (Rect){r2.x + ui_px(20), r2.y + ui_px(15), rh - ui_px(30), rh - ui_px(30)}, 0);
-    font_draw_left(c, FONT_BOLD, ui_text_size(), (Rect){r2.x + rh + ui_px(10), r2.y, r2.w - rh - ui_px(30), rh},
-                   _("Calibrate pen and touch"), 0);
-    hits_add(&S->hits, r2, H_SET_CALIB, 0);
-    y += rh + gap;
-    Rect r2b = {in.x, y, in.w, rh};
-    ui_button(c, r2b, ICON_NONE, "", BTN_PLAIN);
-    ui_icon(c, ICON_BRIGHTNESS, (Rect){r2b.x + ui_px(20), r2b.y + ui_px(15), rh - ui_px(30), rh - ui_px(30)}, 0);
-    font_draw_left(c, FONT_BOLD, ui_text_size(), (Rect){r2b.x + rh + ui_px(10), r2b.y, r2b.w - rh - ui_px(30), rh},
-                   _("Display: brightness, warmth, invert"), 0);
-    hits_add(&S->hits, r2b, H_SET_DISPLAY, 0);
-    y += rh + gap;
-    Rect rt = {in.x, y, in.w, ui_px(110)};
-    canvas_fill(c, rt, 255);
-    ui_icon(c, ICON_CASTLE, (Rect){rt.x, rt.y + ui_px(15), ui_px(80), ui_px(80)}, 0);
-    // TRANSLATORS: the style Grimoire is drawn in, and the other one a tap changes to.
-    const char *style = _("Style: Gothic (tap for Classic)");
-    if (ui_theme() == THEME_CLASSIC) style = _("Style: Classic (tap for Gothic)");
-    font_draw_left(c, FONT_REGULAR, ui_text_size(), (Rect){rt.x + ui_px(110), rt.y, rt.w - ui_px(110), rt.h}, style, 0);
-    hits_add(&S->hits, rt, H_SET_THEME, 0);
-    y += ui_px(130);
-    Rect r3 = {in.x, y, in.w, ui_px(110)};
-    char row[256];
-    // TRANSLATORS: %s is the folder on the Kindle's storage (seen over USB) that gets a PDF of
-    // every notebook.
-    snprintf(row, sizeof row, _("Mirror PDFs to %s (USB)"), "grimoire/PDFs");
-    ui_checkbox(c, r3, row, a->settings.mirror_pdf);
-    hits_add(&S->hits, r3, H_SET_MIRROR, 0);
-    y += ui_px(130);
-    Rect r4 = {in.x, y, in.w, ui_px(110)};
-    // What holding the pen's side button does while writing (settings.ini side_button 0 to 3).
-    static const char *const btn_rows[4] = {
-        // TRANSLATORS: what holding the pen's button while writing does; a tap moves to the next.
-        N_("Holding the pen button does nothing (tap to change)"),
-        N_("Holding the pen button erases (tap to change)"),
-        N_("Holding the pen button highlights (tap to change)"),
-        // TRANSLATORS: the fourth choice of the same row: while the pen's button is held, the pen
-        // draws white ink (which takes away the ink under it and keeps the paper's lines). 1530 px
-        // at 44 px, sideways 1610, or two lines at 34 px.
-        N_("Holding the pen button draws white (tap to change)"),
+
+    /* Category state - track which category is active */
+    static int s_active_category = -1;
+
+    /* Category definitions - icons and labels (string literals for static init, translated at draw time) */
+    typedef struct {
+        IconKind icon;
+        const char *label;  // string literal, translated at draw time via _()
+    } Category;
+
+    /* Category definitions with string literals for static initialization */
+    static const Category k_categories[5] = {
+        {ICON_TARGET, "Calibration"},
+        {ICON_BRIGHTNESS, "Display"},
+        {ICON_HIGHLIGHTER, "Pen Feel"},
+        {ICON_LANGUAGE, "Language"},
+        {ICON_GEAR, "General"},
     };
-    canvas_fill(c, r4, 255);
-    ui_icon(c, ICON_HIGHLIGHTER, (Rect){r4.x, r4.y + ui_px(15), ui_px(80), ui_px(80)}, 0);
-    ui_text(c, FONT_REGULAR, ui_text_size(), ui_small_size(), (Rect){r4.x + ui_px(110), r4.y, r4.w - ui_px(110), r4.h},
-            _(btn_rows[clampi(a->settings.side_button, 0, 3)]), 2, false, 0);
-    hits_add(&S->hits, r4, H_SET_SIDE, 0);
-    y += ui_px(130);
-    Rect r5 = {in.x, y, in.w, ui_px(110)};
-    ui_checkbox(c, r5, _("Turn with the Kindle (portrait and landscape)"), a->settings.follow_rotation);
-    hits_add(&S->hits, r5, H_SET_ROTATE, 0);
-    y += ui_px(130);
-    Rect r6 = {in.x, y, in.w, ui_px(110)};
-    ui_checkbox(c, r6, _("Pinch with two fingers to zoom"), a->settings.pinch_zoom);
-    hits_add(&S->hits, r6, H_SET_PINCH, 0);
-    y += ui_px(130);
-    // The last row the sheet has room for: sideways in Gothic 18 px are left above Done.
-    Rect rl = {in.x, y, in.w, ui_px(110)};
-    char lang[96], lang_line[160];
-    if (language_picked(a) < 0) language_auto_label(lang, sizeof lang);
-    else snprintf(lang, sizeof lang, "%s", i18n_language_name(language_picked(a)));
-    // TRANSLATORS: a row of Settings, with the choice: "Automatic (English)", or a language's name.
-    snprintf(lang_line, sizeof lang_line, _("Language: %s"), lang);
-    canvas_fill(c, rl, 255);
-    ui_icon(c, ICON_LANGUAGE, (Rect){rl.x, rl.y + ui_px(15), ui_px(80), ui_px(80)}, 0);
-    ui_text(c, FONT_REGULAR, ui_text_size(), ui_small_size(), (Rect){rl.x + ui_px(110), rl.y, rl.w - ui_px(110), rl.h},
-            lang_line, 2, false, 0);
-    hits_add(&S->hits, rl, H_SET_LANGUAGE, 0);
-    y += ui_px(150);
-    const InputCaps *caps = input_caps();
-    char pen[160], about[320];
-    bool pressure = caps && caps->has_pressure, tilt = caps && caps->has_tilt;
-    // TRANSLATORS: Settings' last lines (34 px): after the version, the pen Grimoire found (its
-    // device's name, %s) and what it reports; then where Grimoire keeps its data (%s).
-    if (!caps || !caps->has_pen) snprintf(pen, sizeof pen, "%s", _("pen: none"));
-    else if (pressure && tilt) snprintf(pen, sizeof pen, _("pen: %s, pressure, tilt"), caps->pen_name);
-    else if (pressure) snprintf(pen, sizeof pen, _("pen: %s, pressure"), caps->pen_name);
-    else if (tilt) snprintf(pen, sizeof pen, _("pen: %s, tilt"), caps->pen_name);
-    else snprintf(pen, sizeof pen, _("pen: %s"), caps->pen_name);
-    snprintf(about, sizeof about, "Grimoire %s  %s", GRIMOIRE_VERSION, pen);
-    font_draw_left(c, FONT_REGULAR, ui_small_size(), (Rect){in.x, y, in.w, ui_px(60)}, about, 60);
-    // (The data's path is a name: a long one is cut short, as names are. tests/test_i18n.c checks
-    // that the label fits with the Kindle's path.)
-    snprintf(about, sizeof about, _("Data: %s"), store_root());
-    font_draw_left_name(c, FONT_REGULAR, ui_small_size(), (Rect){in.x, y + ui_px(60), in.w, ui_px(60)}, about, 60);
-    Rect done = {in.x + in.w - ui_px(380), in.y + in.h - ui_px(140), ui_px(380), ui_px(140)};
-    ui_button(c, done, ICON_NONE, _("Done"), BTN_PRIMARY);
-    hits_add(&S->hits, done, H_CANCEL, 0);
-    Rect ko = {in.x, done.y, ui_px(420), done.h};
-    ui_button(c, ko, ICON_NOTEBOOK, "KOReader", BTN_PLAIN);
-    hits_add(&S->hits, ko, H_KOREADER, 0);
-    // Between KOReader and Done: Controller and Updates, each half the room.
-    int mid = done.x - ko.x - ko.w - ui_px(90);
-    Rect keys = {ko.x + ko.w + ui_px(30), done.y, mid / 2, done.h};
-    Rect upd = {keys.x + keys.w + ui_px(30), done.y, mid - mid / 2, done.h};
-    // TRANSLATORS: Settings' bottom buttons, each a word under its icon (about 360 px at 34 px):
-    // to the Controller sheet (a controller's or keyboard's buttons as shortcuts), and to the
-    // Updates sheet (check for a newer Grimoire and install it).
-    ui_button(c, keys, ICON_GAMEPAD, _("Controller"), BTN_PLAIN);
-    hits_add(&S->hits, keys, H_SHORTCUTS, 0);
-    ui_button(c, upd, ICON_UPDATE, _("Updates"), BTN_PLAIN);
-    hits_add(&S->hits, upd, H_UPDATES, 0);
-}
 
-static void draw_modal(App *a) {
-    Item *it = (S->target >= 0 && S->target < S->nitems) ? &S->items[S->target] : NULL;
-    char label[STORE_NAME_LEN + 32];  // (a name as the screens show it: ui_name_label)
-    switch (S->modal) {
-    case MOD_NEW: draw_new(a); break;
-    case MOD_SETTINGS: draw_settings(a); break;
-    case MOD_UPDATES: {
-        char status[200], channel[200], now[160];
-        bool avail = update_available();
-        // TRANSLATORS: the Updates sheet's first line (about 1100 px at 44 px in bold): the version
-        // running; then while it checks; then what the check found: a newer one (%s), or that this
-        // one (%s) is the newest; or why it could not check.
-        if (!avail) snprintf(status, sizeof status, "%s", _("Updates come through KPM, which is not here."));
-        else if (S->upd == UPD_CHECKING) snprintf(status, sizeof status, "%s", _("Checking for updates..."));
-        else if (S->upd == UPD_DONE && upd_newer(a)) snprintf(status, sizeof status, _("Grimoire %s is available."), S->upd_latest);
-        else if (S->upd == UPD_DONE) snprintf(status, sizeof status, _("Grimoire %s is the newest."), GRIMOIRE_VERSION);
-        else if (S->upd == UPD_FAILED && !strcmp(S->upd_why, "network")) snprintf(status, sizeof status, "%s", _("Could not check. Is Wi-Fi on?"));
-        else if (S->upd == UPD_FAILED && !strcmp(S->upd_why, "no-kpm")) snprintf(status, sizeof status, "%s", _("Updates come through KPM, which is not here."));
-        else if (S->upd == UPD_FAILED) snprintf(status, sizeof status, "%s", _("Could not check for updates."));
-        else snprintf(status, sizeof status, _("This is Grimoire %s."), GRIMOIRE_VERSION);
-        // TRANSLATORS: (Updates sheet) which updates: betas too (the preview channel), or releases
-        // only (stable); a tap changes it.
-        snprintf(channel, sizeof channel, "%s", upd_preview(a) ? _("Updates: betas and releases (tap for releases only)")
-                                                              : _("Updates: releases only (tap for betas too)"));
-        // TRANSLATORS: (Updates sheet) installs the newer Grimoire (%s): Grimoire closes, KPM
-        // installs it, and Grimoire starts again.
-        snprintf(now, sizeof now, _("Update to %s"), S->upd_latest);
-        MenuRow rows[] = {
-            {ICON_NONE, status, H_NONE, 0, BTN_DISABLED},
-            {ICON_NONE, channel, H_UPD_CHANNEL, 0, avail && S->upd != UPD_CHECKING ? BTN_PLAIN : BTN_DISABLED},
-            // TRANSLATORS: (Updates sheet) asks Grimoire's feed for a newer Grimoire (through KPM).
-            {ICON_UPDATE, _("Check for updates"), H_UPD_CHECK, 0, avail && S->upd != UPD_CHECKING ? BTN_PLAIN : BTN_DISABLED},
-            {ICON_DOWNLOAD, upd_newer(a) ? now : _("Update"), H_UPD_NOW, 0, upd_newer(a) ? BTN_PRIMARY : BTN_DISABLED},
-            {ICON_CLOSE, _("Done"), H_CANCEL, 0, BTN_PLAIN},
-        };
-        // TRANSLATORS: the Updates sheet's title (Settings > Updates).
-        draw_menu(a, _("Updates"), rows, 5);
-        break;
-    }
-    case MOD_PAIR: {
-        MenuRow rows[8];
-        char names[6][BT_NAME_LEN + 40];
-        int n = 0;
-        // TRANSLATORS: the Pair sheet's first line: what to do with the controller (each has its own
-        // way: often a button held a few seconds).
-        rows[n++] = (MenuRow){ICON_NONE, S->scanning ? _("Searching... Put the controller in pairing mode.")
-                                       : S->pairing ? _("Pairing...") : _("Tap a controller to pair it."),
-                              H_NONE, 0, BTN_DISABLED};
-        for (int i = 0; i < S->nfound && n < 5; i++) {
-            const BtDevice *d = &S->found[i];
-            snprintf(names[n], sizeof names[n], "%s", d->name[0] ? d->name : d->address);
-            bool chosen = S->pairing && !strcmp(d->address, S->pair_addr);
-            rows[n] = (MenuRow){ICON_NONE, names[n], H_PAIR_FOUND, i,
-                                chosen ? BTN_SELECTED : S->pairing ? BTN_DISABLED : BTN_PLAIN};
-            n++;
-        }
-        for (int i = 0; i < S->npaired && n < 6; i++) {
-            // TRANSLATORS: (Pair sheet) unpairs a controller paired before; %s is its own name.
-            snprintf(names[n], sizeof names[n], _("Forget %s"), S->paired[i].name[0] ? S->paired[i].name : S->paired[i].address);
-            rows[n] = (MenuRow){ICON_TRASH, names[n], H_PAIR_FORGET, i, S->pairing ? BTN_DISABLED : BTN_PLAIN};
-            n++;
-        }
-        // TRANSLATORS: (Pair sheet) searches for controllers again.
-        rows[n++] = (MenuRow){ICON_NONE, _("Search again"), H_PAIR_AGAIN, 0, S->scanning || S->pairing ? BTN_DISABLED : BTN_PLAIN};
-        rows[n++] = (MenuRow){ICON_BACK, _("Done"), H_BUTTONS_DONE, 0, BTN_PLAIN};
-        // TRANSLATORS: the Pair sheet's title (Settings > Controller > Pair a controller).
-        draw_menu(a, _("Pair a controller"), rows, n);
-        break;
-    }
-    case MOD_BUTTONS: {
-        char text[16][200];
-        MenuRow rows[16];
-        int n = 0, g = S->buttons_group;
-        if (g < 0) {
-            for (int i = 0; i < N_GROUPS; i++)
-                rows[n++] = (MenuRow){k_groups[i].icon, _(k_groups[i].label), H_BUTTON_GROUP, i, BTN_PLAIN};
-            char cp[1024];
-            controller_path(cp, sizeof cp);
-            // TRANSLATORS: the Buttons sheet: forget the buttons learned (back to shortcuts.ini's).
-            rows[n++] = (MenuRow){ICON_TRASH, _("Reset buttons"), H_BUTTONS_RESET, 0,
-                                  access(cp, F_OK) == 0 ? BTN_PLAIN : BTN_DISABLED};
-            rows[n++] = (MenuRow){ICON_BACK, _("Done"), H_BUTTONS_DONE, 0, BTN_PLAIN};
-            // TRANSLATORS: the Buttons sheet's title (Settings > Controller > Buttons): a group of
-            // actions, then a tap on a row and a press on the controller, makes that button do it.
-            draw_menu(a, _("Controller buttons"), rows, n);
-            break;
-        }
-        S->shown_hid_changes = a->hid_changes;  // (pads_text names the buttons for the controller connected)
-        for (int i = 0; i < group_rows(g); i++) {
-            LearnRow r = learn_row_at(g, i);
-            bool learning = S->learn_row == i;
-            if (learning) {
-                // TRANSLATORS: the Buttons sheet's row while it waits for a press (10 s): %s is the
-                // action's name as the rows show it ("Undo", "Pencil", "Next page"). About 1100 px at
-                // 44 px in bold.
-                snprintf(text[n], sizeof text[n], _("Press a button for %s"), action_label(r.act[S->learn_step]));
-            } else {
-                char p1[64], p2[64];
-                pads_text(a, r.act[0], p1, sizeof p1);
-                const char *label = r.label ? _(r.label) : action_label(r.act[0]);
-                if (r.act[1]) {
-                    pads_text(a, r.act[1], p2, sizeof p2);
-                    snprintf(text[n], sizeof text[n], "%s: %s / %s", label, p1, p2);
-                } else {
-                    snprintf(text[n], sizeof text[n], "%s: %s", label, p1);
-                }
-            }
-            rows[n] = (MenuRow){r.icon, text[n], H_BUTTON_ROW, i, learning ? BTN_SELECTED : BTN_PLAIN};
-            n++;
-        }
-        rows[n++] = (MenuRow){ICON_BACK, _("Done"), H_BUTTONS_DONE, 0, BTN_PLAIN};
-        draw_menu(a, _(k_groups[g].title), rows, n);
-        break;
-    }
-    case MOD_SHORTCUTS: {
-        char count[160], last[160], status[160];
-        // TRANSLATORS: (Controller sheet) how many shortcuts grimoire/shortcuts.ini (and controller.ini)
-        // hold, and how many of their lines were refused.
-        snprintf(count, sizeof count, _("Mappings: %d; rejected: %d"), a->shortcuts.count, a->shortcuts.rejected);
-        if (a->last_shortcut_code)
-            snprintf(last, sizeof last, _("Last input: %s %d; modifiers: %d"), a->last_shortcut_gamepad ? "pad" : "key",
-                     a->last_shortcut_code, a->last_shortcut_mods);
-        else snprintf(last, sizeof last, "%s", _("Press a connected key or controller button"));
-        S->shown_shortcut_code = a->last_shortcut_code;
-        S->shown_shortcut_mods = a->last_shortcut_mods;
-        S->shown_shortcut_gamepad = a->last_shortcut_gamepad;
-        hid_status(a, status, sizeof status);
-        S->shown_bt_changes = a->bt_changes;
-        BtState bs = bt_state();
-        // TRANSLATORS: (Controller sheet) its status line while the Bluetooth helper starts, and when it
-        // would not start.
-        if (bs == BT_STARTING) snprintf(status, sizeof status, "%s", _("Bluetooth: starting..."));
-        else if (bs == BT_FAILED) snprintf(status, sizeof status, "%s", _("Bluetooth did not start (see grimoire.log)"));
-        bool on = a->settings.shortcuts_enabled, present = bt_present();
-        bool bt_up = bs == BT_OWNED || bs == BT_EXTERNAL;
-        char reload[160];
-        // TRANSLATORS: (Controller sheet) reads grimoire/shortcuts.ini (and controller.ini) again: how
-        // many shortcuts they hold, and how many of their lines were refused.
-        snprintf(reload, sizeof reload, _("Reload shortcuts.ini (%d, %d refused)"), a->shortcuts.count, a->shortcuts.rejected);
-        MenuRow rows[] = {
-            {on ? ICON_CHECK : ICON_NONE, _("Enable shortcuts"), H_SHORTCUT_ENABLE, 0, BTN_PLAIN},
-            // TRANSLATORS: (Controller sheet) starts the Bluetooth helper with Grimoire, for a
-            // Bluetooth controller; without the helper unpacked in grimoire/bluetooth, the second.
-            {a->settings.controller && present ? ICON_CHECK : ICON_NONE,
-             present ? _("Bluetooth controller") : _("No Bluetooth helper in grimoire/bluetooth"), H_BT_TOGGLE, 0,
-             present && on ? BTN_PLAIN : BTN_DISABLED},
-            // TRANSLATORS: (Controller sheet) opens the Pair sheet: find a Bluetooth controller and pair it.
-            {ICON_PLUS, _("Pair a controller..."), H_PAIR, 0, bt_up && on ? BTN_PLAIN : BTN_DISABLED},
-            {ICON_NONE, status, H_NONE, 0, BTN_DISABLED},
-            // TRANSLATORS: (Controller sheet) opens the Buttons sheet: which controller button does what.
-            {ICON_NONE, _("Buttons..."), H_BUTTONS, 0, on ? BTN_PLAIN : BTN_DISABLED},
-            {ICON_NONE, reload, H_SHORTCUT_RELOAD, 0, BTN_PLAIN},
-            {ICON_NONE, last, H_NONE, 0, BTN_DISABLED},
-            {ICON_CLOSE, _("Done"), H_CANCEL, 0, BTN_PLAIN},
-        };
-        (void)count;
-        // TRANSLATORS: the Controller sheet's title (Settings > Controller): a controller's or a
-        // keyboard's buttons as shortcuts.
-        draw_menu(a, _("Controller and keys"), rows, 8);
-        break;
-    }
-    case MOD_KOREADER: {
-        char ko[800];
-        bool found = koreader_find(ko, sizeof ko), installed = koreader_item_installed(0);
-        MenuRow rows[] = {
-            {ICON_NOTEBOOK, found ? _("Install / update Grimoire plugin") : _("KOReader not found"), H_KO_ITEM, 0,
-                found ? BTN_PLAIN : BTN_DISABLED},
-            {ICON_TRASH, _("Remove Grimoire plugin"), H_KO_ITEM, -1, installed ? BTN_PLAIN : BTN_DISABLED},
-            {koreader_item_installed(1) ? ICON_CHECK : ICON_NONE, _("Disable diagonal screenshot gestures"), H_KO_ITEM, 1,
-                found ? BTN_PLAIN : BTN_DISABLED},
-            {koreader_item_installed(2) ? ICON_CHECK : ICON_NONE, _("Square folder corners"), H_KO_ITEM, 2,
-                found ? BTN_PLAIN : BTN_DISABLED},
-            {koreader_item_installed(3) ? ICON_CHECK : ICON_NONE, _("Terminess menu font"), H_KO_ITEM, 3,
-                found ? BTN_PLAIN : BTN_DISABLED},
-            {ICON_CLOSE, _("Done"), H_CANCEL, 0, BTN_PLAIN},
-        };
-        draw_menu(a, "KOReader", rows, 6);
-        break;
-    }
-    case MOD_MORE: {
-        if (!it) break;
-        char pdf[256];
-        // TRANSLATORS: a notebook's menu, rows of 1470 px at 44 px in bold. %s is the folder on the
-        // Kindle's storage the PDF goes in.
-        snprintf(pdf, sizeof pdf, _("Save PDF to %s now"), "grimoire/PDFs");
-        MenuRow rows[] = {
-            {ICON_NOTEBOOK, _("Open"), H_MORE_OPEN, 0, BTN_PLAIN},
-            {ICON_RENAME, _("Rename"), H_MORE_RENAME, 0, BTN_PLAIN},
-            {ICON_FOLDER_MOVE, _("Move to folder"), H_MORE_MOVE, 0, BTN_PLAIN},
-            {ICON_DOWNLOAD, pdf, H_MORE_PDF, 0, BTN_PLAIN},
-            {ICON_TRASH, _("Delete"), H_MORE_DELETE, 0, BTN_PLAIN},
-            {ICON_CLOSE, _("Cancel"), H_CANCEL, 0, BTN_PLAIN},
-        };
-        draw_menu(a, ui_name_label(S->books[it->nb].name, label, sizeof label), rows, 6);
-        break;
-    }
-    case MOD_FOLDER_MORE: {
-        if (!it) break;
-        // TRANSLATORS: a folder's menu (1470 px at 44 px in bold); only an empty folder can go.
-        MenuRow rows[] = {
-            {ICON_RENAME, _("Rename folder"), H_FMORE_RENAME, 0, BTN_PLAIN},
-            {ICON_TRASH, it->count ? _("Remove folder (move its notebooks out first)") : _("Remove folder"), H_FMORE_REMOVE, 0,
-             it->count ? BTN_DISABLED : BTN_PLAIN},
-            {ICON_CLOSE, _("Cancel"), H_CANCEL, 0, BTN_PLAIN},
-        };
-        draw_menu(a, ui_name_label(it->folder, label, sizeof label), rows, 3);
-        break;
-    }
-    case MOD_MOVE: {
-        if (!it) break;
-        MenuRow rows[14];
-        int n = 0;
-        const char *curf = S->books[it->nb].folder;
-        // TRANSLATORS: where a notebook can go: the Library itself, out of every folder (also in New
-        // notebook: "In: Library (top level)").
-        rows[n++] = (MenuRow){ICON_LIBRARY, _("Library (top level)"), H_MOVE_TOP, 0, curf[0] ? BTN_PLAIN : BTN_SELECTED};
-        for (int f = 0; f < S->nfolders && n < 12; f++)
-            rows[n++] = (MenuRow){ICON_FOLDER, S->folders[f], H_MOVE_TO, f, strcmp(curf, S->folders[f]) ? BTN_PLAIN : BTN_SELECTED};
-        rows[n++] = (MenuRow){ICON_FOLDER_PLUS, _("New folder..."), H_MOVE_NEW, 0, BTN_PLAIN};
-        rows[n++] = (MenuRow){ICON_CLOSE, _("Cancel"), H_CANCEL, 0, BTN_PLAIN};
-        // TRANSLATORS: the title of the list of folders a notebook can be moved to.
-        draw_menu(a, _("Move to"), rows, n);
-        break;
-    }
-    case MOD_DELETE: {
-        if (!it) break;
-        char title[256], del[256];
-        // TRANSLATORS: the title of the question before a notebook is deleted, with its name.
-        snprintf(title, sizeof title, _("Delete \"%s\"?"), ui_name_label(S->books[it->nb].name, label, sizeof label));
-        // TRANSLATORS: the answers (1470 px at 44 px in bold): delete, into the trash folder on the
-        // Kindle's storage (%s), or keep the notebook.
-        snprintf(del, sizeof del, _("Delete (moves it to %s)"), "grimoire/trash");
-        MenuRow rows[] = {
-            {ICON_TRASH, del, H_DELETE_YES, 0, BTN_PRIMARY},
-            {ICON_CLOSE, _("Keep it"), H_CANCEL, 0, BTN_PLAIN},
-        };
-        draw_menu(a, title, rows, 2);
-        break;
-    }
-    case MOD_LANGUAGE: {
-        // Automatic, then every language by its own name; a pick applies at once.
-        MenuRow rows[12];
-        int n = 0, cur = language_picked(a);
-        char auto_label[96];
-        language_auto_label(auto_label, sizeof auto_label);
-        rows[n++] = (MenuRow){ICON_LANGUAGE, auto_label, H_LANG_PICK, -1, cur < 0 ? BTN_SELECTED : BTN_PLAIN};
-        for (int i = 0; i < i18n_language_count() && n < 11; i++)
-            rows[n++] = (MenuRow){ICON_NONE, i18n_language_name(i), H_LANG_PICK, i, cur == i ? BTN_SELECTED : BTN_PLAIN};
-        rows[n++] = (MenuRow){ICON_CLOSE, _("Cancel"), H_LANG_BACK, 0, BTN_PLAIN};
-        // TRANSLATORS: the title of the list of languages (Settings > Language).
-        draw_menu(a, _("Language"), rows, n);
-        break;
-    }
-    case MOD_KB: keyboard_draw(&S->kb, &a->screen, (Rect){0, 0, a->w, a->h}); break;
-    case MOD_DISPLAY: dispmenu_draw(&S->dm, a); break;
-    case MOD_MUSIC: draw_new(a); musicbuild_draw(&S->mb, a); break;
-    case MOD_TEMPLATES: draw_new(a); tplsheet_draw(&S->ts, a); break;
-    default: break;
-    }
-}
+    /* Submenu definitions for each category - using existing hit IDs */
+    typedef struct {
+        const char *label;
+        int hit_id;  /* hit test ID for this setting row */
+        int arg;     /* optional argument */
+    } SubmenuEntry;
 
-// Where toasts must stay above while a sheet is open, so they never cover its controls: the
-// keyboard's top; else, when a toast in its usual place would cover any of the sheet's controls
-// (the buttons along a tall sheet's bottom), the top of a band of the toast's height clear of
-// them, found going up from there. 0: the usual place is clear.
-static int toast_floor(App *a) {
-    if (S->modal == MOD_NONE) return 0;
-    if (S->modal == MOD_KB) return S->kb.area.y;
-    // (The Custom music and Templates sheets lie over the New notebook sheet: only their own
-    // controls count.)
-    const HitList *l = S->modal == MOD_MUSIC ? &S->mb.hits : S->modal == MOD_TEMPLATES ? &S->ts.hits : &S->hits;
-    // (A toast of two lines is taller: the band is as tall as the toast up now, else one line.)
-    Rect t = ui_toast_rect((Rect){0, 0, a->w, a->h}, a->toast_visible ? a->toast : "");
-    int gap = ui_px(20), y = t.y, below = 0;  // below: the control the toast must stay above
-    for (bool moved = true; moved && y >= gap;) {
-        moved = false;
-        for (int i = 0; i < l->n; i++) {
-            Rect r = l->h[i].r;
-            if (r.y < y + t.h && r.y + r.h > y) {
-                y = r.y - t.h - gap;  // above this control, then look again from there
-                below = r.y;
-                moved = true;
-            }
-        }
-    }
-    return below;
-}
+    /* Submenus for each category */
+    static const SubmenuEntry k_calibration_submenu[] = {
+        {"Calibrate pen and touch", H_SET_CALIB, 0},
+        {"Mirror PDFs to USB", H_SET_MIRROR, 0},
+        {"Side button action", H_SET_SIDE, 0},
+        {"Auto-rotate screen", H_SET_ROTATE, 0},
+        {"Two-finger pinch to zoom", H_SET_PINCH, 0},
+    };
 
-static void redraw(App *a, RefreshMode m) {
-    draw_base(a);
-    if (S->modal != MOD_NONE) {
-        hits_clear(&S->hits);  // a modal captures all input
-        draw_modal(a);
-    }
-    a->toast_floor = toast_floor(a);
-    app_invalidate_all(a, m);
-}
+    static const SubmenuEntry k_display_submenu[] = {
+        {"Brightness", H_SET_DISPLAY, 0},
+        {"Warmth", 0, 0},
+        {"Invert colors", 0, 0},
+        {"Pin this page as sleep screen", 0, 0},
+        {"Sleep after (minutes)", 0, 0},
+    };
 
-static void open_modal(App *a, Modal m) {
-    S->modal = m;
-    redraw(a, REFRESH_UI);
-}
+    static const SubmenuEntry k_penfeel_submenu[] = {
+        {"Pressure per tool", 0, 0},
+        {"Tilt per tool", 0, 0},
+        {"Eraser mode", 0, 0},
+        {"White ink", 0, 0},
+    };
 
-static void close_modal(App *a) {
-    S->modal = MOD_NONE;
-    redraw(a, REFRESH_UI);
-}
+    static const SubmenuEntry k_language_submenu[] = {
+        {"Language", H_SET_LANGUAGE, 0},
+        {"Done", 0, 0},
+    };
 
-static void open_kb(App *a, KbPurpose p, const char *title, const char *initial) {
-    S->kbp = p;
-    keyboard_open(&S->kb, title, initial);
-    S->modal = MOD_KB;
-    redraw(a, REFRESH_UI);
-}
+    static const SubmenuEntry k_general_submenu[] = {
+        {"Theme: Gothic", 0, 0},
+        {"Theme: Classic", 0, 0},
+        {"Data location", 0, 0},
+        {"About Grimoire", 0, 0},
+    };
 
-// ---- actions ----
+    /* Draw the sidebar */
+    int sidebar_w = ui_px(180);
+    int category_h = ui_px(80);
+    int gap = ui_px(12);
+    int y = in.y;
 
-// Keeps grimoire/PDFs in step when a notebook is renamed, moved or deleted: the old mirror
-// PDF goes away, and (unless deleting) a fresh one is written under the new name/folder.
-static void mirror_follow(App *a, const char *id, bool deleting) {
-    NotebookInfo *now = malloc(sizeof *now);
-    if (!now) return;
-    if (store_load_info(id, now) == 0) {
-        for (int i = 0; i < S->nbooks; i++) {
-            if (strcmp(S->books[i].id, id)) continue;
-            char oldp[1200], newp[1200];
-            export_mirror_path(&S->books[i], app_mirror_dir(), oldp, sizeof oldp);
-            export_mirror_path(now, app_mirror_dir(), newp, sizeof newp);
-            bool had = access(oldp, F_OK) == 0;
-            if (had && !deleting && strcmp(oldp, newp)) {
-                // A rename or move: move the PDF along (instant) instead of re-rendering it.
-                char dir[1200];
-                strlcpy_q(dir, newp, sizeof dir);
-                char *slash = strrchr(dir, '/');
-                if (slash) *slash = 0;
-                mkdir_p(dir);
-                if (rename(oldp, newp) != 0 && a->settings.mirror_pdf) {
-                    unlink(oldp);
-                    bg_mirror_pdf(id, a->dpi, app_mirror_dir(), false);
-                }
-            } else if (had && deleting) {
-                unlink(oldp);
-            }
-        }
-    }
-    free(now);
-}
+    /* Draw each category button in the sidebar */
+    for (int i = 0; i < 5; i++) {
+        Rect cat_r = {in.x, y, sidebar_w, category_h};
+        bool is_active = (s_active_category == i);
 
-// A notebook on a template (More papers...): templates.h. False if that could not be done: the
-// notebook stays on the paper picked before.
-static bool start_on_template(NotebookInfo *nb, const char *path) {
-    const char *why = "";
-    if (template_start_notebook(nb, path, &why) == 0) return true;
-    qlog("library: %s: the new notebook's template could not be used: %s", nb->id, why);
-    return false;
-}
-
-static void create_notebook(App *a) {
-    NotebookInfo *nb = malloc(sizeof *nb);
-    if (!nb) return;
-    if (store_create(S->new_name, S->cur_folder, S->new_paper, nb) == 0) {
-        S->modal = MOD_NONE;
-        bool tpl_ok = !S->new_tpl[0] || start_on_template(nb, S->new_tpl);
-        char id[STORE_ID_LEN];
-        strlcpy_q(id, nb->id, sizeof id);
-        free(nb);
-        editor_open_notebook(a, id);
-        if (!tpl_ok) {
-            char msg[256];
-            snprintf(msg, sizeof msg, _("Could not use that template (see %s)."), "grimoire.log");
-            app_toast(a, msg, 4000);
-        }
-        return;
-    }
-    free(nb);
-    app_toast(a, _("Could not create the notebook (storage full?)"), 3000);
-}
-
-static void kb_finished(App *a, bool ok) {
-    const char *txt = S->kb.text;
-    Item *it = (S->target >= 0 && S->target < S->nitems) ? &S->items[S->target] : NULL;
-    Modal back = MOD_NONE;
-    if (ok && txt[0]) switch (S->kbp) {
-        case KBP_NEW_NAME:
-            strlcpy_q(S->new_name, txt, sizeof S->new_name);
-            back = MOD_NEW;
-            break;
-        case KBP_RENAME:
-            if (it && !it->is_folder) {
-                store_rename(S->books[it->nb].id, txt);
-                mirror_follow(a, S->books[it->nb].id, false);
-            }
-            break;
-        case KBP_NEW_FOLDER: store_add_folder(txt); break;
-        case KBP_MOVE_NEW_FOLDER:
-            store_add_folder(txt);
-            if (it && !it->is_folder) {
-                store_set_folder(S->books[it->nb].id, txt);
-                mirror_follow(a, S->books[it->nb].id, false);
-            }
-            break;
-        case KBP_RENAME_FOLDER:
-            if (it && it->is_folder) {
-                for (int i = 0; i < S->nbooks; i++)
-                    if (!strcmp(S->books[i].folder, it->folder)) {
-                        store_set_folder(S->books[i].id, txt);
-                        mirror_follow(a, S->books[i].id, false);
-                    }
-                if (store_remove_folder(it->folder) == 0)
-                    export_mirror_prune_folder(it->folder, app_mirror_dir());
-                store_add_folder(txt);
-            }
-            break;
-        }
-    else if (S->kbp == KBP_NEW_NAME)
-        back = MOD_NEW;
-    S->modal = back;
-    reload(a);
-    redraw(a, REFRESH_UI);
-}
-
-static void act(App *a, const Hit *h) {
-    Item *it = (S->target >= 0 && S->target < S->nitems) ? &S->items[S->target] : NULL;
-    switch (h->id) {
-    case H_BACK:
-        S->cur_folder[0] = 0;
-        S->page = 0;
-        reload(a);
-        redraw(a, REFRESH_FULL);
-        break;
-    case H_NEW: {
-        char base[STORE_NAME_LEN], day[64];
-        format_date_short(wall_time(), day, sizeof day);
-        // TRANSLATORS: a new notebook's name until it is renamed, with the day ("Notebook Oct 10").
-        snprintf(base, sizeof base, _("Notebook %s"), day);
-        unique_name(a, base, S->new_name, sizeof S->new_name);
-        S->new_paper = PAPER_MEDIUM;
-        S->new_tpl[0] = 0;
-        canvas_free(&S->tpl_prev);
-        open_modal(a, MOD_NEW);
-        break;
-    }
-    // TRANSLATORS: the keyboard's label for the name being typed: a folder's, or a notebook's.
-    case H_NEWFOLDER: open_kb(a, KBP_NEW_FOLDER, C_("keyboard", "Folder"), ""); break;
-    case H_SHARE: share_open(a); break;
-    case H_SETTINGS: open_modal(a, MOD_SETTINGS); break;
-    case H_EXIT: a->running = false; break;
-    case H_PREV:
-    case H_NEXT:
-        // Only the visible page's thumbnails stay in memory (each is ~0.5 MB).
-        for (int i = 0; i < S->nbooks; i++) {
-            canvas_free(&S->thumbs[i]);
-            S->thumb_tried[i] = false;
-        }
-        S->page += h->id == H_NEXT ? 1 : -1;
-        redraw(a, REFRESH_UI);
-        break;
-    case H_CARD:
-        if (h->arg >= S->nitems) break;
-        if (S->items[h->arg].is_folder) {
-            strlcpy_q(S->cur_folder, S->items[h->arg].folder, sizeof S->cur_folder);
-            S->page = 0;
-            reload(a);
-            redraw(a, REFRESH_FULL);
+        /* Draw category background - selected gets a different color */
+        if (is_active) {
+            canvas_fill(c, cat_r, 240);  /* light blue highlight */
         } else {
-            char id[STORE_ID_LEN];
-            strlcpy_q(id, S->books[S->items[h->arg].nb].id, sizeof id);
-            editor_open_notebook(a, id);
+            canvas_fill(c, cat_r, 255);
         }
-        break;
-    case H_CARD_MORE:
-        S->target = h->arg;
-        open_modal(a, S->items[h->arg].is_folder ? MOD_FOLDER_MORE : MOD_MORE);
-        break;
-    case H_PAPER:
-        S->new_paper = (PaperKind)h->arg;
-        S->new_tpl[0] = 0;
-        redraw(a, REFRESH_UI);
-        break;
-    case H_PAPER_CUSTOM:
-        musicbuild_open(&S->mb, a, S->new_paper);
-        open_modal(a, MOD_MUSIC);
-        break;
-    case H_PAPER_MORE:
-        tplsheet_open(&S->ts, a, NULL, PAPER_BLANK, S->new_tpl);
-        open_modal(a, MOD_TEMPLATES);
-        break;
-    case H_NEW_RENAME: open_kb(a, KBP_NEW_NAME, C_("keyboard", "Name"), S->new_name); break;
-    case H_NEW_CREATE: create_notebook(a); break;
-    case H_CANCEL: close_modal(a); break;
-    case H_SHORTCUTS: open_modal(a, MOD_SHORTCUTS); break;
-    case H_SHORTCUT_ENABLE:
-    case H_SHORTCUT_RELOAD: {
-        char path[1024]; snprintf(path, sizeof path, "%s/shortcuts.ini", store_root());
-        if (h->id == H_SHORTCUT_ENABLE) {
-            if (!a->settings.shortcuts_enabled && shortcuts_write_defaults(path) != 0) {
-                app_toast(a, _("Could not save shortcuts.ini"), 5000); break;
+
+        /* Draw icon */
+        int icon_size = ui_px(36);
+        Rect icon_r = {cat_r.x + ui_px(20), cat_r.y + (category_h - icon_size) / 2, icon_size, icon_size};
+        ui_icon(c, k_categories[i].icon, icon_r, is_active ? 255 : 200);
+
+        /* Draw label - translated at draw time using _() */
+        float label_x = cat_r.x + icon_size + ui_px(20);
+        float label_y = cat_r.y + (category_h - ui_text_size()) / 2;
+        uint8_t label_fg = is_active ? 0 : 0;  /* black text for selected, dark gray for others */
+        /* Use _() wrapped string for i18n at draw time */
+        font_draw_left(c, FONT_REGULAR, ui_text_size(), (Rect){label_x, label_y, cat_r.w - icon_size - ui_px(40), category_h},
+                       _(k_categories[i].label), label_fg);
+
+        y += category_h + gap;
+    }
+
+    /* Draw the active category's submenu on the right side */
+    if (s_active_category >= 0 && s_active_category < 5) {
+        int submenu_w = a->w - in.x - sidebar_w;  /* remaining width on the right */
+        int entry_h = ui_px(60);
+        int gap2 = ui_px(8);
+        int start_y = in.y;
+
+        /* Get the submenu entries for the active category */
+        const SubmenuEntry *submenu;
+        int n_entries = 0;
+
+        switch (s_active_category) {
+            case 0: /* Calibration */
+                submenu = k_calibration_submenu;
+                n_entries = sizeof(k_calibration_submenu) / sizeof(k_calibration_submenu[0]);
+                break;
+            case 1: /* Display */
+                submenu = k_display_submenu;
+                n_entries = sizeof(k_display_submenu) / sizeof(k_display_submenu[0]);
+                break;
+            case 2: /* Pen Feel */
+                submenu = k_penfeel_submenu;
+                n_entries = sizeof(k_penfeel_submenu) / sizeof(k_penfeel_submenu[0]);
+                break;
+            case 3: /* Language */
+                submenu = k_language_submenu;
+                n_entries = sizeof(k_language_submenu) / sizeof(k_language_submenu[0]);
+                break;
+            case 4: /* General */
+                submenu = k_general_submenu;
+                n_entries = sizeof(k_general_submenu) / sizeof(k_general_submenu[0]);
+                break;
+        }
+
+        /* Draw submenu background panel */
+        Rect submenu_r = {in.x + sidebar_w + ui_px(20), in.y, submenu_w, in.h};
+        canvas_fill(c, submenu_r, 255);
+
+        /* Draw submenu title */
+        Rect title_r = {in.x + sidebar_w + ui_px(20), in.y, submenu_w, ui_px(40)};
+        canvas_fill(c, title_r, 245);
+        /* Draw submenu title translated at draw time */
+        font_draw_left(c, FONT_BOLD, ui_text_size(), (Rect){title_r.x + ui_px(10), title_r.y, title_r.w - ui_px(20), title_r.h},
+                       _(k_categories[s_active_category].label), 0);
+
+        /* Draw each submenu entry */
+        for (int i = 0; i < n_entries; i++) {
+            Rect entry_r = {in.x + sidebar_w + ui_px(20), start_y + i * (entry_h + gap2), submenu_w - ui_px(40), entry_h};
+
+            /* Draw entry background */
+            bool is_selected = false;  /* could track selection if needed */
+            if (is_selected) {
+                canvas_fill(c, entry_r, 240);
+            } else {
+                canvas_fill(c, entry_r, 255);
             }
-            a->settings.shortcuts_enabled = !a->settings.shortcuts_enabled;
-            settings_save(&a->settings);
-            qlog("settings: shortcuts %d, controller %d", a->settings.shortcuts_enabled, a->settings.controller);
-            input_shortcuts_enable(a->settings.shortcuts_enabled);
-            // The Bluetooth helper serves shortcuts alone: it goes with them, and comes back with
-            // them while Bluetooth controller stays on.
-            if (!a->settings.shortcuts_enabled) bt_stop();
-            else if (a->settings.controller && bt_present()) bt_start();
-        }
-        reload_shortcuts(a);
-        redraw(a, REFRESH_UI);
-        break;
-    }
-    case H_BUTTONS:
-        S->learn_row = S->buttons_group = -1;
-        open_modal(a, MOD_BUTTONS);
-        break;
-    case H_BUTTON_GROUP:
-        S->buttons_group = clampi(h->arg, 0, N_GROUPS - 1);
-        S->learn_row = -1;
-        redraw(a, REFRESH_UI);
-        break;
-    case H_BUTTON_ROW:
-        S->learn_row = S->learn_row == h->arg ? -1 : h->arg;  // (a second tap stops it)
-        S->learn_step = 0;
-        S->learn_at = now_ms();
-        redraw(a, REFRESH_UI);
-        break;
-    case H_BUTTONS_RESET: {
-        char cp[1024];
-        controller_path(cp, sizeof cp);
-        unlink(cp);
-        S->learn_row = -1;
-        reload_shortcuts(a);
-        redraw(a, REFRESH_UI);
-        break;
-    }
-    case H_BUTTONS_DONE:
-        S->learn_row = -1;
-        if (S->modal == MOD_BUTTONS && S->buttons_group >= 0) {  // a group: back to the list
-            S->buttons_group = -1;
-            redraw(a, REFRESH_UI);
-            break;
-        }
-        S->bt_next = ASK_NONE;
-        open_modal(a, MOD_SHORTCUTS);
-        break;
-    case H_UPDATES:
-        if (S->upd != UPD_CHECKING) S->upd = UPD_IDLE;
-        open_modal(a, MOD_UPDATES);
-        break;
-    case H_UPD_CHANNEL:
-        a->settings.updates = upd_preview(a) ? 1 : 2;
-        settings_save(&a->settings);
-        S->upd = UPD_IDLE;  // (what a check found was the other channel's)
-        redraw(a, REFRESH_UI);
-        break;
-    case H_UPD_CHECK:
-        if (update_check(upd_preview(a))) S->upd = UPD_CHECKING;
-        redraw(a, REFRESH_UI);
-        break;
-    case H_UPD_NOW:
-        if (!upd_newer(a)) break;
-        if (update_request(upd_preview(a)) != 0) {
-            // TRANSLATORS: a toast: the update could not be asked for (the storage is full, say).
-            app_toast(a, _("Could not start the update"), 3000);
-            break;
-        }
-        qlog("update: leaving so KPM can install %s", S->upd_latest);
-        app_leave_for_update(a);
-        break;
-    case H_BT_TOGGLE:
-        a->settings.controller = !a->settings.controller;
-        settings_save(&a->settings);
-        qlog("settings: shortcuts %d, controller %d", a->settings.shortcuts_enabled, a->settings.controller);
-        if (a->settings.controller) bt_start();
-        else bt_stop();
-        redraw(a, REFRESH_UI);
-        break;
-    case H_PAIR:
-        pair_open(a);
-        redraw(a, REFRESH_UI);
-        break;
-    case H_PAIR_AGAIN:
-        pair_open(a);
-        redraw(a, REFRESH_UI);
-        break;
-    case H_PAIR_FOUND:
-        if (S->pairing || h->arg < 0 || h->arg >= S->nfound) break;
-        snprintf(S->pair_addr, sizeof S->pair_addr, "%s", S->found[h->arg].address);
-        S->pairing = true;
-        S->scanning = false;
-        S->pair_until = now_ms() + PAIR_MS;
-        bt_ask(a, ASK_PAIR, 0);
-        redraw(a, REFRESH_UI);
-        break;
-    case H_PAIR_FORGET:
-        if (S->pairing || h->arg < 0 || h->arg >= S->npaired) break;
-        snprintf(S->pair_addr, sizeof S->pair_addr, "%s", S->paired[h->arg].address);
-        bt_ask(a, ASK_REMOVE, 0);
-        break;
-    case H_KOREADER: open_modal(a, MOD_KOREADER); break;
-    case H_KO_ITEM: {
-        int item = h->arg < 0 ? 0 : h->arg;
-        bool enabled = h->arg < 0 ? false : item == 0 || !koreader_item_installed(item);
-        if (koreader_item_set(item, enabled) == 0)
-            app_toast(a, _("Updated. Restart KOReader to apply."), 5000);
-        else
-            app_toast(a, _("Could not update KOReader. A different patch or a storage error?"), 7000);
-        redraw(a, REFRESH_UI);
-        break;
-    }
-    case H_SET_PENS: S->modal = MOD_NONE; pensettings_open(a, a->settings.current_tool); break;
-    case H_SET_CALIB: S->modal = MOD_NONE; calibrate_open(a); break;
-    case H_SET_MIRROR:
-        a->settings.mirror_pdf = !a->settings.mirror_pdf;
-        settings_save(&a->settings);
-        redraw(a, REFRESH_UI);
-        break;
-    case H_SET_PINCH:
-        a->settings.pinch_zoom = !a->settings.pinch_zoom;
-        settings_save(&a->settings);
-        redraw(a, REFRESH_UI);
-        break;
-    case H_SET_THEME:
-        a->settings.theme = a->settings.theme == THEME_CLASSIC ? THEME_GOTHIC : THEME_CLASSIC;
-        ui_set_theme((UiTheme)a->settings.theme);
-        settings_save(&a->settings);
-        redraw(a, REFRESH_FULL);
-        break;
-    case H_SET_DISPLAY:
-        dispmenu_open(&S->dm, a);
-        open_modal(a, MOD_DISPLAY);
-        break;
-    case H_SET_ROTATE:
-        a->settings.follow_rotation = !a->settings.follow_rotation;
-        settings_save(&a->settings);
-        if (!a->settings.follow_rotation && a->rotation != 0) {
-            app_set_rotation(a, 0);  // back to portrait and stay there
-            return;
-        }
-        if (a->settings.follow_rotation && input_caps() && input_caps()->has_orientation)
-            a->pending_rotation = input_caps()->orientation;
-        redraw(a, REFRESH_UI);
-        break;
-    case H_SET_SIDE:
-        a->settings.side_button = (clampi(a->settings.side_button, 0, 3) + 1) % 4;
-        settings_save(&a->settings);
-        redraw(a, REFRESH_UI);
-        break;
-    case H_SET_LANGUAGE: open_modal(a, MOD_LANGUAGE); break;
-    case H_LANG_PICK: {
-        // Saved and applied at once: the Settings sheet comes back in the language picked.
-        const char *code = h->arg >= 0 ? i18n_language_code(h->arg) : "auto";
-        if (code && strcmp(code, a->settings.language)) {
-            strlcpy_q(a->settings.language, code, sizeof a->settings.language);
-            settings_save(&a->settings);
-            i18n_apply(code);
-        }
-        S->modal = MOD_SETTINGS;
-        redraw(a, REFRESH_FULL);
-        break;
-    }
-    case H_LANG_BACK:
-        S->modal = MOD_SETTINGS;
-        redraw(a, REFRESH_UI);
-        break;
-    case H_MORE_OPEN:
-        if (it) {
-            char id[STORE_ID_LEN];
-            strlcpy_q(id, S->books[it->nb].id, sizeof id);
-            S->modal = MOD_NONE;
-            editor_open_notebook(a, id);
-        }
-        break;
-    case H_MORE_RENAME:
-        if (it) open_kb(a, KBP_RENAME, C_("keyboard", "Name"), S->books[it->nb].name);
-        break;
-    case H_MORE_MOVE: open_modal(a, MOD_MOVE); break;
-    case H_MORE_PDF:
-        if (it) {
-            bg_mirror_pdf(S->books[it->nb].id, a->dpi, app_mirror_dir(), true);
-            S->modal = MOD_NONE;
-            redraw(a, REFRESH_UI);
-            app_toast(a, _("Saving the PDF in the background..."), 2500);
-        }
-        break;
-    case H_MORE_DELETE: open_modal(a, MOD_DELETE); break;
-    case H_DELETE_YES: {
-        if (it && !it->is_folder) {
-            char nb_path[1200];
-            export_mirror_path(&S->books[it->nb], app_mirror_dir(), nb_path, sizeof nb_path);
-            unlink(nb_path);  // the notebook goes to trash; its mirror PDF should not linger
-            // A compaction of it, queued or running, stops first: it would write into the folder
-            // in the trash (or leave a temporary file there).
-            bg_cancel_notebook(S->books[it->nb].id);
-            store_delete(S->books[it->nb].id);
-        }
-        S->modal = MOD_NONE;
-        reload(a);
-        redraw(a, REFRESH_FULL);
-        char msg[256];
-        // TRANSLATORS: a deleted notebook went to the trash folder on the Kindle's storage (%s).
-        snprintf(msg, sizeof msg, _("Moved to %s"), "grimoire/trash");
-        app_toast(a, msg, 2500);
-        break;
-    }
-    case H_FMORE_RENAME:
-        if (it) open_kb(a, KBP_RENAME_FOLDER, C_("keyboard", "Folder"), it->folder);
-        break;
-    case H_FMORE_REMOVE:
-        if (it && store_remove_folder(it->folder) == 0)
-            export_mirror_prune_folder(it->folder, app_mirror_dir());
-        S->modal = MOD_NONE;
-        reload(a);
-        redraw(a, REFRESH_UI);
-        break;
-    case H_MOVE_TOP:
-    case H_MOVE_TO:
-        if (it && !it->is_folder) {
-            store_set_folder(S->books[it->nb].id, h->id == H_MOVE_TOP ? "" : S->folders[h->arg]);
-            mirror_follow(a, S->books[it->nb].id, false);
-        }
-        S->modal = MOD_NONE;
-        reload(a);
-        redraw(a, REFRESH_UI);
-        break;
-    case H_MOVE_NEW: open_kb(a, KBP_MOVE_NEW_FOLDER, C_("keyboard", "Folder"), ""); break;
-    default: break;
-    }
-}
 
-// ---- screen interface ----
+            /* Draw label - use _() wrapped string from submenu for i18n at draw time */
+            font_draw_left(c, FONT_REGULAR, ui_text_size(), (Rect){entry_r.x + ui_px(10), entry_r.y, entry_r.w - ui_px(20), entry_h},
+                           _(submenu[i].label), 0);
 
-void library_init(App *a) {
-    a->lib = calloc(1, sizeof *a->lib);
-    S->target = -1;
-    S->learn_row = S->buttons_group = -1;
-}
-
-void library_free(App *a) {
-    if (!S) return;
-    free_lists(a);
-    for (int k = 0; k < PAPER_COUNT; k++) canvas_free(&S->paper_prev[k]);
-    canvas_free(&S->custom_prev);
-    musicbuild_free(&S->mb);
-    tplsheet_close(&S->ts);
-    canvas_free(&S->tpl_prev);
-    free(S);
-    a->lib = NULL;
-}
-
-void library_enter(App *a) {
-    // A turn, or the redraw after waking, re-lays out the same screen: the open sheet stays open
-    // (every sheet lays itself out when drawn).
-    if (!a->relayout) S->modal = MOD_NONE;
-    S->pressed = NULL;
-    reload(a);
-    redraw(a, REFRESH_FULL);
-}
-
-void library_leave(App *a) { S->pressed = NULL; }
-
-void library_event(App *a, const InEvent *ev) {
-    int ph = app_pointer_phase(ev);
-    if (ph < 0) return;
-    if (S->modal == MOD_TEMPLATES) {
-        Rect d;
-        TsResult r = tplsheet_pointer(&S->ts, a, ph, ev->x, ev->y, ev->t_ms, &d);
-        if (r == TS_PICKED) {
-            // The notebook is made on it (create_notebook); its tile shows its preview meanwhile.
-            const char *path = tplsheet_path(&S->ts);
-            const Canvas *pv = tplsheet_preview(&S->ts);
-            strlcpy_q(S->new_tpl, path ? path : "", sizeof S->new_tpl);
-            canvas_free(&S->tpl_prev);
-            if (pv && canvas_init(&S->tpl_prev, pv->w, pv->h) == 0)
-                canvas_blit(&S->tpl_prev, pv, (Rect){0, 0, pv->w, pv->h}, 0, 0);
-            tplsheet_close(&S->ts);
-        }
-        if (r == TS_PICKED || r == TS_BACK || r == TS_CANCEL) {
-            S->modal = MOD_NEW;  // back to New notebook, also from a tap outside the sheet
-            redraw(a, REFRESH_UI);
-        } else if (!rect_is_empty(d)) {
-            app_invalidate(a, d, REFRESH_UI);
-        }
-        return;
-    }
-    if (S->modal == MOD_DISPLAY) {
-        Rect d;
-        DmResult r = dispmenu_pointer(&S->dm, a, ph, ev->x, ev->y, ev->t_ms, &d);
-        if (r == DM_CLOSED) {
-            S->modal = MOD_SETTINGS;  // back to the settings sheet it was opened from
-            redraw(a, REFRESH_UI);
-        } else if (r == DM_INVERTED) {
-            redraw(a, REFRESH_FULL);
-        } else if (!rect_is_empty(d)) {
-            app_invalidate(a, d, ph == 2 ? REFRESH_UI : REFRESH_FAST);
-        }
-        return;
-    }
-    if (S->modal == MOD_MUSIC) {
-        Rect d;
-        MbResult r = musicbuild_pointer(&S->mb, a, ph, ev->x, ev->y, ev->t_ms, &d);
-        if (r == MB_DONE || r == MB_CANCEL) {
-            if (r == MB_DONE) {
-                S->new_paper = musicbuild_result(&S->mb);
-                S->new_tpl[0] = 0;  // (a layout built takes the place of a template picked before)
+            /* Add hit area for tapping */
+            if (submenu[i].hit_id > 0) {
+                hits_add(&S->hits, entry_r, submenu[i].hit_id, s_active_category);
             }
-            musicbuild_free(&S->mb);
-            S->modal = MOD_NEW;
-            redraw(a, REFRESH_UI);
-        } else if (!rect_is_empty(d)) {
-            app_invalidate(a, d, REFRESH_UI);
-        }
-        return;
-    }
-    if (S->modal == MOD_KB) {
-        KbResult r = app_keyboard_pointer(a, &S->kb, ph, ev);  // (what a key changed, drawn and refreshed)
-        if (r == KB_DONE || r == KB_CANCEL) kb_finished(a, r == KB_DONE);
-        return;
-    }
-    if (ph == 0) {
-        press_begin(&S->press, ev->x, ev->y, ev->t_ms);
-        S->pressed_at = now_ms();
-        const Hit *h = hits_find(&S->hits, ev->x, ev->y);
-        S->pressed = NULL;
-        if (h) {
-            S->pressed_copy = *h;
-            S->pressed = &S->pressed_copy;
-            app_press_feedback(a, h->r);
-        }
-    } else if (ph == 1) {
-        press_move(&S->press, ev->x, ev->y);
-    } else if (S->pressed) {
-        Hit h = *S->pressed;
-        S->pressed = NULL;
-        canvas_invert(&a->screen, h.r);  // undo the pressed look
-        app_invalidate(a, h.r, REFRESH_UI);
-        press_move(&S->press, ev->x, ev->y);
-        if (press_is_tap(&S->press, h.r) || rect_contains(h.r, (int)ev->x, (int)ev->y)) act(a, &h);
-    }
-}
 
-void library_tick(App *a, uint32_t now) {
-    if (S->modal == MOD_SHORTCUTS && (S->shown_shortcut_code != a->last_shortcut_code ||
-        S->shown_shortcut_mods != a->last_shortcut_mods || S->shown_shortcut_gamepad != a->last_shortcut_gamepad ||
-        S->shown_hid_changes != a->hid_changes))
-        redraw(a, REFRESH_UI);
-    // A group's rows name the buttons as the controller connected labels them.
-    if (S->modal == MOD_BUTTONS && S->buttons_group >= 0 && S->shown_hid_changes != a->hid_changes)
-        redraw(a, REFRESH_UI);
-    if (S->modal == MOD_PAIR) bt_send(a);
-    upd_poll(a);
-    if (S->modal == MOD_SHORTCUTS && S->shown_bt_changes != a->bt_changes) redraw(a, REFRESH_UI);
-    if (S->modal == MOD_BUTTONS && S->learn_row >= 0 && now - S->learn_at >= LEARN_MS) {
-        S->learn_row = -1;  // no press in 10 s: as it was
-        redraw(a, REFRESH_UI);
-    }
-    // A finger held still on a Buttons row: its buttons go, and nothing is pressed any more (the
-    // release does nothing; the redraw took the pressed look away).
-    if (S->modal == MOD_BUTTONS && S->buttons_group >= 0 && S->pressed && S->pressed->id == H_BUTTON_ROW &&
-        !S->press.moved && now - S->pressed_at >= ROW_HOLD_MS) {
-        int row = S->pressed->arg;
-        S->pressed = NULL;
-        forget_row(a, row);
-    }
-    if (S->modal == MOD_KB) app_keyboard_tick(a, &S->kb, now);
-    Rect d;
-    if (S->modal == MOD_TEMPLATES && tplsheet_tick(&S->ts, a, now, &d)) app_invalidate(a, d, REFRESH_UI);
-    // A background job ended (bgimage.h): the cards it may have changed are read again. A
-    // template's picture made for a notebook since may be on its first page, whose card the job drew
-    // again (bgwork_template.c: its thumb.pgm is another file now), or a card drawn from a
-    // notebook's own picture (picture_card) drew it white meanwhile. Any other job (the templates'
-    // previews) changes no card, and the Library is not drawn again for it.
-    if (S->card_gen != bgimage_generation()) {
-        S->card_gen = bgimage_generation();
-        bool changed = false;
-        for (int i = 0; i < S->nbooks && S->card_stamp; i++) {
-            if (!S->thumb_tried[i] || S->card_stamp[i] == store_thumb_stamp(S->books[i].id)) continue;
-            canvas_free(&S->thumbs[i]);
-            S->thumb_tried[i] = false;
-            changed = true;
-        }
-        if (changed && S->modal == MOD_NONE) {
-            S->cards_redrawn++;
-            redraw(a, REFRESH_UI);
+            start_y += entry_h + gap2;
         }
     }
-}
 
-// ---- headless checks ----
-
-// card.N (from 1, as library.items counts them): what card N shows, "folder", "thumb" (its
-// thumb.pgm), "picture" (its own picture paper, picture_card) or "paper K" (the preview of paper
-// K); card.N.luma: the mean of the pixels it shows, 0 to 255 ("none" for a folder); card.N.name: the
-// name under it, as drawn (ui_name_label).
-static int card_probe(App *a, const char *key, char *out, size_t cap) {
-    char *end;
-    long n = strtol(key, &end, 10);
-    bool luma = !strcmp(end, ".luma"), name = !strcmp(end, ".name");
-    if (n < 1 || n > S->nitems || (*end && !luma && !name)) return -1;
-    const Item *it = &S->items[n - 1];
-    if (name) {  // the name under the card, as drawn (ui_name_label)
-        char label[STORE_NAME_LEN + 32];
-        snprintf(out, cap, "%s", ui_name_label(it->is_folder ? it->folder : S->books[it->nb].name, label, sizeof label));
-        return 0;
-    }
-    if (it->is_folder) {
-        snprintf(out, cap, "%s", luma ? "none" : "folder");
-        return 0;
-    }
-    const Canvas *t = thumb_for(a, it->nb);
-    PaperKind k = S->books[it->nb].paper;
-    if (luma) {
-        uint64_t sum = 0;
-        for (int y = 0; t && y < t->h; y++)
-            for (int x = 0; x < t->w; x++) sum += t->px[(size_t)y * (size_t)t->stride + (size_t)x];
-        uint64_t np = t ? (uint64_t)t->w * (uint64_t)t->h : 0;
-        snprintf(out, cap, "%d", np ? (int)((sum + np / 2) / np) : 255);
-    } else if (S->thumbs[it->nb].px) {
-        snprintf(out, cap, "%s", S->thumb_picture[it->nb] ? "picture" : "thumb");
-    } else {  // (as paper_preview draws it)
-        snprintf(out, cap, "paper %u", (unsigned)(!paper_is_known(k) || paper_is_image(k) ? PAPER_BLANK : k));
-    }
-    return 0;
-}
-
-// The script runner's "library.*" keys (app_probe forwards them without the prefix).
-int library_probe(App *a, const char *key, char *out, size_t cap) {
-    static const char *const sheets[] = {
-        [MOD_NONE] = "none",
-        [MOD_NEW] = "new",
-        [MOD_SETTINGS] = "settings",
-        [MOD_MORE] = "more",
-        [MOD_FOLDER_MORE] = "folder-more",
-        [MOD_MOVE] = "move",
-        [MOD_DELETE] = "delete",
-        [MOD_KB] = "keyboard",
-        [MOD_DISPLAY] = "display",
-        [MOD_MUSIC] = "music",
-        [MOD_LANGUAGE] = "language",
-        [MOD_TEMPLATES] = "templates",
-        [MOD_KOREADER] = "koreader",
-        [MOD_SHORTCUTS] = "shortcuts",
-        [MOD_BUTTONS] = "buttons",
-        [MOD_PAIR] = "pair",
-        [MOD_UPDATES] = "updates",
-    };
-    if (!S) return -1;
-    if (!strcmp(key, "sheet")) {
-        const char *m = (size_t)S->modal < sizeof sheets / sizeof sheets[0] ? sheets[S->modal] : NULL;
-        if (m) snprintf(out, cap, "%s", m);
-        else snprintf(out, cap, "%d", (int)S->modal);
-    } else if (!strcmp(key, "learning")) {
-        // The action the Buttons sheet waits for a press for ("undo", "next-page"), else empty.
-        const char *n = S->modal == MOD_BUTTONS && S->buttons_group >= 0 && S->learn_row >= 0
-                            ? shortcut_action_name(learning_action(a)) : NULL;
-        snprintf(out, cap, "%s", n ? n : "");
-    } else if (!strncmp(key, "buttons.", 8)) {
-        // The Buttons sheet's buttons for an action ("buttons.undo"): "B, Up", "none".
-        pads_text(a, shortcut_action(key + 8), out, cap);
-    } else if (!strcmp(key, "buttons_group")) {
-        // The Buttons sheet's group open ("editing", "tools", "pages", "menus"), else empty.
-        bool open = S->modal == MOD_BUTTONS && S->buttons_group >= 0;
-        snprintf(out, cap, "%s", open ? k_groups[S->buttons_group].probe : "");
-    } else if (!strcmp(key, "update")) {
-        // The Updates sheet's check: "idle", "checking", "newer <version>", "newest <version>" or
-        // "failed <why>".
-        if (S->upd == UPD_CHECKING) snprintf(out, cap, "checking");
-        else if (S->upd == UPD_DONE) snprintf(out, cap, "%s %s", upd_newer(a) ? "newer" : "newest", S->upd_latest);
-        else if (S->upd == UPD_FAILED) snprintf(out, cap, "failed %s", S->upd_why);
-        else snprintf(out, cap, "idle");
-    } else if (!strcmp(key, "pair")) {
-        // The Pair sheet: "scanning", "pairing" or "idle", then the controllers found and paired.
-        snprintf(out, cap, "%s %d %d", S->scanning ? "scanning" : S->pairing ? "pairing" : "idle", S->nfound, S->npaired);
-    } else if (!strcmp(key, "bluetooth")) {
-        static const char *const names[] = {"stopped", "starting", "owned", "external", "failed", "stopping"};
-        snprintf(out, cap, "%s", names[bt_state()]);
-    } else if (!strcmp(key, "folder")) {
-        snprintf(out, cap, "%s", S->cur_folder);
-    } else if (!strcmp(key, "items")) {
-        snprintf(out, cap, "%d", S->nitems);
-    } else if (!strcmp(key, "page")) {
-        snprintf(out, cap, "%d", S->page + 1);
-    } else if (!strcmp(key, "pages")) {
-        int pp = per_page(a), pages = (S->nitems + pp - 1) / pp;
-        snprintf(out, cap, "%d", pages > 0 ? pages : 1);
-    } else if (!strcmp(key, "text")) {
-        snprintf(out, cap, "%s", S->modal == MOD_KB ? S->kb.text : "");
-    } else if (!strcmp(key, "hint")) {
-        snprintf(out, cap, "%d", empty_hint_shown(a) ? 1 : 0);
-    } else if (!strcmp(key, "cards_redrawn")) {
-        snprintf(out, cap, "%d", S->cards_redrawn);  // after background jobs that changed a card
-    } else if (!strcmp(key, "paper")) {
-        if (S->new_tpl[0]) snprintf(out, cap, "template");
-        else if (paper_is_custom(S->new_paper)) snprintf(out, cap, "custom");
-        else snprintf(out, cap, "%d", (int)S->new_paper);
-    } else if (!strcmp(key, "template")) {
-        // The template New notebook makes its notebook on: its file's name without its extension.
-        const char *slash = strrchr(S->new_tpl, '/'), *name = slash ? slash + 1 : S->new_tpl, *dot = strrchr(name, '.');
-        int len = dot ? (int)(dot - name) : (int)strlen(name);
-        snprintf(out, cap, "%.*s", len, name);
-    } else if (!strncmp(key, "templates.", 10)) {
-        return tplsheet_probe(S->modal == MOD_TEMPLATES ? &S->ts : NULL, key + 10, out, cap);
-    } else if (!strcmp(key, "music")) {
-        // The layout on the Custom music sheet while it is open, else New notebook's custom paper.
-        MusicLayout m;
-        if (S->modal == MOD_MUSIC) app_probe_music(&S->mb.m, out, cap);
-        else app_probe_music(music_decode(S->new_paper, &m) ? &m : NULL, out, cap);
-    } else if (!strncmp(key, "card.", 5)) {
-        return card_probe(a, key + 5, out, cap);
-    } else {
-        return -1;
-    }
-    return 0;
+    /* Draw Done button at the bottom */
+    Rect done = {in.x + in.w - ui_px(380), in.y + in.h - ui_px(140), ui_px(380), ui_px(140)};
+    ui_button(c, done, ICON_CHECK, _("Done"), BTN_PRIMARY);
+    hits_add(&S->hits, done, H_SETTINGS, 0);  // Use existing hit ID
 }

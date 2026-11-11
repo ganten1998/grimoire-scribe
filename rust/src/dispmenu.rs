@@ -52,11 +52,12 @@ const D_CORNER: i32 = 10;
 
 pub fn dispmenu_control_point(m:&DispMenu,name:&str)->Option<(f32,f32)> {
     if !m.open{return None;}
-    let id=match name {"size"=>D_STATUS,"corner"=>D_CORNER,"done"=>D_DONE,"fit"=>D_FIT,"newpage"=>D_NEWPAGE,"time12"=>D_TIME12,"invert"=>D_INVERT,"brightness"=>D_BRIGHT,"warmth"=>D_WARM,_=>return None};
+    let id=match name {"size"=>D_STATUS,"corner"=>D_CORNER,"done"=>D_DONE,"back"=>D_BACK,"fit"=>D_FIT,"newpage"=>D_NEWPAGE,"time12"=>D_TIME12,"invert"=>D_INVERT,"brightness"=>D_BRIGHT,"warmth"=>D_WARM,_=>return None};
     m.hits.h.iter().find(|h|h.id==id).map(|h|((h.r.x+h.r.w/2)as f32,(h.r.y+h.r.h/2)as f32))
 }
 const D_NEWPAGE: i32 = 11;
 const D_TIME12: i32 = 12;
+const D_BACK: i32 = 13;
 
 /// A dragged slider's row is drawn at most this often, as Pen feel's sliders are.
 const DRAG_DRAW_MS: u32 = 80;
@@ -120,30 +121,10 @@ fn step_of(minutes: i32) -> i32 {
     best as i32
 }
 
-/// Rows: brightness, warmth, invert, sideways, new page by swiping, 12-hour time, [heading], sleep
-/// screen, [pin], sleep after.
-fn row_h(a: &App) -> i32 {
-    let rows = 9 + if editor_page_canvas(a).is_some() { 1 } else { 0 };
-    let room = a.h - ui_px(120.0) - ui_px(72.0) - ui_px(190.0) - ui_px(80.0);
-    let h = room / rows;
-    clampi(h, ui_px(100.0), ui_px(140.0))
-}
-
-fn card_rect(a: &App) -> Rect {
-    let mut w = a.w - 2 * ui_px(70.0);
-    if w > ui_px(1500.0) {
-        w = ui_px(1500.0);
-    }
-    let rows = 9 + if editor_page_canvas(a).is_some() { 1 } else { 0 };
-    let h = ui_px(120.0) + ui_px(72.0) + rows * row_h(a) + ui_px(190.0);
-    // (the card's top stays where it was before the new-page row: it grows downward by that row)
-    Rect { x: (a.w - w) / 2, y: (a.h - (h - row_h(a))) / 3, w, h }
-}
-
 pub fn dispmenu_open(m: &mut DispMenu, a: &mut App) {
     *m = DispMenu { open: true, ..Default::default() };
     light_get(&mut m.intensity, &mut m.warmth);
-    m.rect = card_rect(a);
+    m.rect = Rect::new(0, 0, a.w, a.h);
 }
 
 fn slider_for(m: &DispMenu, a: &App, which: i32, row: Rect, s: &mut Slider) {
@@ -184,105 +165,154 @@ fn draw_slider_row(m: &DispMenu, a: &mut App, which: i32, row: Rect) {
     ui_slider_draw(&mut a.screen, &s, Some(&vt));
 }
 
-/// Draws into a->screen; returns the rect covered.
+/// The frame Settings' rows wear (the Settings page's rows do), around content inset from its edge.
+fn row_frame(c: &mut Canvas, r: Rect) {
+    ui_frame(c, r, ui_px(16.0), 255, true, 0);
+    ui_frame(c, r, ui_px(16.0), 0, false, ui_px(2.0));
+}
+
+/// One row of the Display page: a slider, a checkbox, the sleep screen's choice, Pin this page, the
+/// sleep heading, or one of the clock's two cells.
+enum DRowKind {
+    Slider(i32),
+    Check { id: i32, label: String, on: bool },
+    Note(String),
+    SleepMode { label: String, can_tap: bool },
+    Pin,
+    Heading,
+    Status { id: i32, label: String, corner: i32 },
+}
+
+fn draw_drow(m: &mut DispMenu, a: &mut App, kind: &DRowKind, outer: Rect) {
+    let inner = rect_inflate(outer, -ui_px(10.0));
+    match kind {
+        DRowKind::Heading => {
+            // TRANSLATORS: the heading of the Display page's rows about the Kindle's sleep.
+            font_draw_left(&mut a.screen, FontFace::Bold, ui_text_size(), outer, tr("Sleep"), 0);
+        }
+        DRowKind::Slider(id) => {
+            row_frame(&mut a.screen, outer);
+            draw_slider_row(m, a, *id, inner);
+            hits_add(&mut m.hits, inner, *id, 0);
+        }
+        DRowKind::Check { id, label, on } => {
+            row_frame(&mut a.screen, outer);
+            ui_checkbox(&mut a.screen, inner, label, *on);
+            hits_add(&mut m.hits, inner, *id, 0);
+        }
+        DRowKind::Note(text) => {
+            row_frame(&mut a.screen, outer);
+            ui_text(&mut a.screen, FontFace::Regular, ui_text_size(), ui_small_size(), inner, text, 2, false, 0);
+        }
+        DRowKind::SleepMode { label, can_tap } => {
+            row_frame(&mut a.screen, outer);
+            let isz = inner.h * 3 / 4;
+            ui_icon(&mut a.screen, IconKind::Notebook, Rect::new(inner.x, inner.y + (inner.h - isz) / 2, isz, isz), 0);
+            ui_text(&mut a.screen, FontFace::Regular, ui_text_size(), ui_small_size(), Rect::new(inner.x + isz + ui_px(20.0), inner.y, inner.w - isz - ui_px(20.0), inner.h), label, 2, false, 0);
+            if *can_tap {
+                hits_add(&mut m.hits, inner, D_SLEEP_MODE, 0);
+            }
+        }
+        DRowKind::Pin => {
+            row_frame(&mut a.screen, outer);
+            // TRANSLATORS: makes the open page the sleep screen (528 px at 44 px, or 34 px).
+            ui_button(&mut a.screen, inner, IconKind::None, tr("Pin this page"), ButtonStyle::Plain);
+            hits_add(&mut m.hits, inner, D_PIN, 0);
+        }
+        DRowKind::Status { id, label, corner } => {
+            row_frame(&mut a.screen, outer);
+            let isz = inner.h * 3 / 4;
+            let icon = Rect::new(inner.x, inner.y + (inner.h - isz) / 2, isz, isz);
+            if *id == D_CORNER {
+                draw_corner_icon(&mut a.screen, icon, *corner);
+            } else {
+                ui_icon(&mut a.screen, IconKind::Clock, icon, 0);
+            }
+            ui_text(&mut a.screen, FontFace::Regular, ui_small_size(), ui_small_size(), Rect::new(inner.x + isz + ui_px(20.0), inner.y, inner.w - isz - ui_px(20.0), inner.h), label, 2, false, 0);
+            hits_add(&mut m.hits, inner, *id, 0);
+        }
+    }
+}
+
+/// Draws into a->screen; returns the rect covered. The Display page is a full screen, as Settings'
+/// submenus are: Back and the title above a rule, the rows below (one column, or two when the screen
+/// is short) and Done at the foot.
 pub fn dispmenu_draw(m: &mut DispMenu, a: &mut App) -> Rect {
     hits_clear(&mut m.hits);
     m.pressed = None;
-    m.rect = card_rect(a);
-    let in_ = ui_sheet(&mut a.screen, m.rect, tr("Display"));
-    let rh = row_h(a);
-    let mut y = in_.y;
+    let (aw, ah) = (a.w, a.h);
+    m.rect = Rect::new(0, 0, aw, ah);
+    let (in_, back) = crate::library::settings_submenu_page(&mut a.screen, aw, ah, tr("Display"));
+    hits_add(&mut m.hits, back, D_BACK, 0);
     let have = light_available() && m.intensity >= 0;
-    for i in 0..2 {
-        let row = Rect { x: in_.x, y, w: in_.w, h: rh };
-        y += rh; // (the C's loop step: the row is taken)
-        canvas_fill(&mut a.screen, row, 255);
-        if !have {
-            if i == 0 {
-                // TRANSLATORS: in the Display sheet where the sliders would be (1420 px at 44 px).
-                font_draw_left(&mut a.screen, FontFace::Regular, ui_text_size(), row, tr("Front light controls are not available here."), 60);
-            }
-            continue;
+    let mut rows: Vec<DRowKind> = Vec::new();
+    if !have {
+        // TRANSLATORS: in the Display page where the sliders would be (1420 px at 44 px).
+        rows.push(DRowKind::Note(tr("Front light controls are not available here.").to_string()));
+    } else {
+        rows.push(DRowKind::Slider(D_BRIGHT));
+        if m.warmth < 0 {
+            rows.push(DRowKind::Note(tr("This Kindle has no warmth control.").to_string()));
+        } else {
+            rows.push(DRowKind::Slider(D_WARM));
         }
-        if i == 1 && m.warmth < 0 {
-            // no amber LEDs on this Kindle
-            font_draw_left(&mut a.screen, FontFace::Regular, ui_text_size(), row, tr("This Kindle has no warmth control."), 60);
-            continue;
-        }
-        draw_slider_row(m, a, if i == 0 { D_BRIGHT } else { D_WARM }, row);
-        hits_add(&mut m.hits, row, if i == 0 { D_BRIGHT } else { D_WARM }, 0);
     }
-    let inv = Rect { x: in_.x, y, w: in_.w, h: rh };
-    ui_checkbox(&mut a.screen, inv, tr("Invert colors in Grimoire (white on black)"), a.settings.invert);
-    hits_add(&mut m.hits, inv, D_INVERT, 0);
-    y += rh;
-    // Sideways, the editor shows the whole page (two fingers swipe anywhere), or the page's width.
-    let fit = Rect { x: in_.x, y, w: in_.w, h: rh };
-    // TRANSLATORS: the Display sheet's checkbox row: the editor, with the Kindle turned sideways, shows
-    // the whole page (off: the page's width fills the screen, as upright). About 1300 px at 44 px.
-    ui_checkbox(&mut a.screen, fit, tr("Sideways, show the whole page"), a.settings.landscape_fit);
-    hits_add(&mut m.hits, fit, D_FIT, 0);
-    y += rh;
-    // Two fingers left on the last page add a page (on by default).
-    let np = Rect { x: in_.x, y, w: in_.w, h: rh };
-    // TRANSLATORS: the Display sheet's checkbox row: two fingers swiped left on the last page add a page
-    // (off: it only says it is the last page). About 1000 px at 44 px.
-    ui_checkbox(&mut a.screen, np, tr("Swiping past the last page adds a page"), a.settings.gesture_new_page);
-    hits_add(&mut m.hits, np, D_NEWPAGE, 0);
-    y += rh;
-    // The clock on a notebook page: 12-hour time instead of 24-hour.
-    let t12 = Rect { x: in_.x, y, w: in_.w, h: rh };
-    // TRANSLATORS: the Display sheet's checkbox row: the clock on a notebook page shows the time on
-    // the 12-hour clock ("2:32 PM") instead of the 24-hour one ("14:32"). About 850 px at 44 px.
-    ui_checkbox(&mut a.screen, t12, tr("Display time as 12 hour"), a.settings.clock_12h);
-    hits_add(&mut m.hits, t12, D_TIME12, 0);
-    y += rh;
-    // Sleep section.
-    canvas_hline(&mut a.screen, in_.x, in_.x + in_.w, y + rh / 3, ui_px(3.0), 0);
-    // TRANSLATORS: the heading of the Display sheet's rows about the Kindle's sleep.
-    font_draw_left(&mut a.screen, FontFace::Bold, ui_text_size(), Rect { x: in_.x, y: y + rh / 3 + ui_px(8.0), w: in_.w, h: rh * 2 / 3 }, tr("Sleep"), 0);
-    y += rh;
-    let mode = Rect { x: in_.x, y, w: in_.w, h: rh };
-    canvas_fill(&mut a.screen, mode, 255);
-    ui_icon(&mut a.screen, IconKind::Notebook, Rect { x: mode.x, y: mode.y + rh / 8, w: rh * 3 / 4, h: rh * 3 / 4 }, 0);
-    let label = if a.native_pin { tr("Sleep screen: Kindle PIN (native unlock)") } else { tr(K_MODE_ROWS[clampi(a.settings.sleep_mode, 0, 3) as usize]) };
-    font_draw_left(&mut a.screen, FontFace::Regular, ui_text_size(), Rect { x: mode.x + rh, y: mode.y, w: mode.w - rh, h: rh }, label, 0);
-    if !a.native_pin {
-        hits_add(&mut m.hits, mode, D_SLEEP_MODE, 0);
-    }
-    y += rh;
+    rows.push(DRowKind::Check {
+        id: D_INVERT,
+        label: tr("Invert colors in Grimoire (white on black)").to_string(),
+        on: a.settings.invert,
+    });
+    rows.push(DRowKind::Check {
+        id: D_FIT,
+        label: tr("Sideways, show the whole page").to_string(),
+        on: a.settings.landscape_fit,
+    });
+    rows.push(DRowKind::Check {
+        id: D_NEWPAGE,
+        label: tr("Swiping past the last page adds a page").to_string(),
+        on: a.settings.gesture_new_page,
+    });
+    rows.push(DRowKind::Check {
+        id: D_TIME12,
+        label: tr("Display time as 12 hour").to_string(),
+        on: a.settings.clock_12h,
+    });
+    rows.push(DRowKind::Heading);
+    let label = if a.native_pin {
+        tr("Sleep screen: Kindle PIN (native unlock)")
+    } else {
+        tr(K_MODE_ROWS[clampi(a.settings.sleep_mode, 0, 3) as usize])
+    };
+    rows.push(DRowKind::SleepMode { label: label.to_string(), can_tap: !a.native_pin });
     if editor_page_canvas(a).is_some() {
-        let pin = Rect { x: in_.x, y: y + ui_px(8.0), w: ui_px(560.0), h: rh - ui_px(16.0) };
-        // TRANSLATORS: makes the open page the sleep screen (528 px at 44 px, or 34 px).
-        ui_button(&mut a.screen, pin, IconKind::None, tr("Pin this page"), ButtonStyle::Plain);
-        hits_add(&mut m.hits, pin, D_PIN, 0);
-        y += rh;
+        rows.push(DRowKind::Pin);
     }
-    let after = Rect { x: in_.x, y, w: in_.w, h: rh };
-    draw_slider_row(m, a, D_SLEEP_AFTER, after);
-    hits_add(&mut m.hits, after, D_SLEEP_AFTER, 0);
-    let done = Rect { x: in_.x + in_.w - ui_px(360.0), y: in_.y + in_.h - ui_px(140.0), w: ui_px(360.0), h: ui_px(140.0) };
-    // TRANSLATORS: closes a sheet: under its check mark here (322 px at 34 px), on Settings 342 px
-    // at 44 px, on the keyboard 334 px at 44 px in bold.
+    rows.push(DRowKind::Slider(D_SLEEP_AFTER));
+    rows.push(DRowKind::Status {
+        id: D_STATUS,
+        label: tr(K_STATUS_ROWS[clampi(a.settings.status_size, 0, STATUS_SIZES - 1) as usize]).to_string(),
+        corner: 0,
+    });
+    rows.push(DRowKind::Status {
+        id: D_CORNER,
+        label: tr(K_CORNER_ROWS[clampi(a.settings.status_corner, 0, STATUS_CORNERS - 1) as usize]).to_string(),
+        corner: a.settings.status_corner,
+    });
+    let n = rows.len() as i32;
+    let gap = ui_px(14.0);
+    let cols = if in_.h / n.max(1) < ui_px(88.0) { 2 } else { 1 };
+    let per = (n + cols - 1) / cols;
+    let rh = ((in_.h - (per - 1) * gap) / per.max(1)).clamp(ui_px(60.0), ui_px(140.0));
+    let cw = (in_.w - (cols - 1) * gap) / cols;
+    for (k, kind) in rows.iter().enumerate() {
+        let col = k as i32 / per;
+        let ri = k as i32 % per;
+        let r = Rect::new(in_.x + col * (cw + gap), in_.y + ri * (rh + gap), cw, rh);
+        draw_drow(m, a, kind, r);
+    }
+    let done = Rect::new(aw - ui_px(50.0) - ui_px(380.0), ah - ui_px(30.0) - ui_px(120.0), ui_px(380.0), ui_px(120.0));
     ui_button(&mut a.screen, done, IconKind::Check, tr("Done"), ButtonStyle::Primary);
     hits_add(&mut m.hits, done, D_DONE, 0);
-    // The clock and battery's size and corner (status.rs), left of Done: two cells.
-    let room = Rect { x: in_.x, y: done.y, w: done.x - in_.x - ui_px(30.0), h: done.h };
-    let cw = (room.w - ui_px(20.0)) / 2;
-    let sz = Rect { x: room.x, y: room.y, w: cw, h: room.h };
-    let co = Rect { x: room.x + cw + ui_px(20.0), y: room.y, w: cw, h: room.h };
-    canvas_fill(&mut a.screen, room, 255);
-    let isz = room.h * 3 / 4;
-    ui_icon(&mut a.screen, IconKind::Clock, Rect { x: sz.x, y: sz.y + sz.h / 8, w: isz, h: isz }, 0);
-    // (At the small size throughout, so the sentences look alike: they would not fit on a line at 44 px.)
-    let cell_text = |c: &mut Canvas, cell: Rect, text: &str| {
-        ui_text(c, FontFace::Regular, ui_small_size(), ui_small_size(), Rect { x: cell.x + room.h, y: cell.y, w: cell.w - room.h, h: cell.h }, text, 2, false, 0);
-    };
-    cell_text(&mut a.screen, sz, tr(K_STATUS_ROWS[clampi(a.settings.status_size, 0, STATUS_SIZES - 1) as usize]));
-    hits_add(&mut m.hits, sz, D_STATUS, 0);
-    draw_corner_icon(&mut a.screen, Rect { x: co.x, y: co.y + co.h / 8, w: isz, h: isz }, a.settings.status_corner);
-    cell_text(&mut a.screen, co, tr(K_CORNER_ROWS[clampi(a.settings.status_corner, 0, STATUS_CORNERS - 1) as usize]));
-    hits_add(&mut m.hits, co, D_CORNER, 0);
     m.rect
 }
 
@@ -402,7 +432,7 @@ pub fn dispmenu_pointer(m: &mut DispMenu, a: &mut App, phase: i32, x: f32, y: f3
         return DmResult::None;
     }
     match h.id {
-        D_DONE => {
+        D_DONE | D_BACK => {
             m.open = false;
             *dirty = m.rect;
             return DmResult::Closed;

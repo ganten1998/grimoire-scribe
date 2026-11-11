@@ -162,6 +162,9 @@ const H_FONT_CANCEL: i32 = 92;
 // 2.1: the Merge dialog's Merge into it and Keep both (Cancel is H_CANCEL).
 const H_MERGE_INTO: i32 = 93;
 const H_MERGE_BOTH: i32 = 94;
+// 2.1: Settings' page (a full screen, the categories down its left): the category a tap picks (arg: its
+// index), whose settings the page shows.
+const H_SET_CAT: i32 = 95;
 
 #[derive(Clone, Copy, Default)]
 struct Item {
@@ -192,6 +195,12 @@ pub struct LibraryState {
     settings_return_editor: bool,
     settings_painting: bool,
     settings_editor_fit: bool,
+    /// Settings' page: the category whose settings show (0 Display, 1 Pen Feel, 2 Calibration,
+    /// 3 Controller, 4 General; H_SET_CAT).
+    settings_cat: i32,
+    /// A screen Settings opened (Pen feel, Calibration) is returning to the Library: library_enter
+    /// opens Settings again, as it was left.
+    reopen_settings: bool,
     books: Vec<NotebookInfo>,
     folders: Vec<String>,
     items: Vec<Item>,
@@ -2630,6 +2639,76 @@ fn upd_poll(a: &mut App) {
     }
 }
 
+/// A Settings submenu's full screen, as Pen feel's: Back and the title above a rule, the list's rows
+/// below (its own Done row left out: the page has Done at its foot) and Done at the foot.
+fn draw_settings_menu(a: &mut App, title: &str, rows: &[MenuRow]) {
+    let (aw, ah) = (a.w, a.h);
+    let App {
+        screen: c,
+        lib,
+        ..
+    } = a;
+    let s = lib.as_deref_mut().unwrap();
+    let (in_, back) = settings_submenu_page(c, aw, ah, title);
+    hits_add(&mut s.hits, back, H_CANCEL, 0);
+    let shown: Vec<&MenuRow> = rows
+        .iter()
+        .filter(|r| r.id != H_CANCEL && r.id != H_BUTTONS_DONE && r.id != H_GESTURES_DONE)
+        .collect();
+    let n = shown.len() as i32;
+    let gap = ui_px(14.0);
+    let rh = ((in_.h - (n - 1).max(0) * gap) / n.max(1)).clamp(ui_px(90.0), ui_px(140.0));
+    let mut y = in_.y;
+    for row in shown {
+        let r = Rect::new(in_.x, y, in_.w, rh);
+        let bg = if row.st == ButtonStyle::Selected { 0 } else { 255 };
+        ui_frame(c, r, ui_px(16.0), bg, true, 0);
+        ui_frame(
+            c,
+            r,
+            ui_px(16.0),
+            if row.st == ButtonStyle::Disabled { 170 } else { 0 },
+            false,
+            if row.st == ButtonStyle::Primary { ui_px(6.0) } else { ui_px(2.0) },
+        );
+        let fg: u8 = if row.st == ButtonStyle::Selected {
+            255
+        } else if row.st == ButtonStyle::Disabled {
+            170
+        } else {
+            0
+        };
+        let isz = ui_px(60.0);
+        if row.icon != IconKind::None {
+            ui_icon(c, row.icon, Rect::new(r.x + ui_px(22.0), r.y + (r.h - isz) / 2, isz, isz), fg);
+        }
+        let lx = r.x + isz + ui_px(44.0);
+        ui_text(
+            c,
+            FontFace::Regular,
+            ui_text_size(),
+            ui_small_size(),
+            Rect::new(lx, r.y, r.x + r.w - lx - ui_px(20.0), r.h),
+            &row.label,
+            2,
+            false,
+            fg,
+        );
+        if row.st != ButtonStyle::Disabled {
+            hits_add(&mut s.hits, r, row.id, row.arg);
+        }
+        y += rh + gap;
+    }
+    let done = Rect::new(
+        aw - ui_px(50.0) - ui_px(380.0),
+        ah - ui_px(30.0) - ui_px(120.0),
+        ui_px(380.0),
+        ui_px(120.0),
+    );
+    ui_button(c, done, IconKind::Check, tr("Done"), ButtonStyle::Primary);
+    hits_add(&mut s.hits, done, H_CANCEL, 0);
+}
+
 // A vertical list of full-width buttons inside a sheet.
 /// The sheet with its rows; returns where each row is.
 fn draw_menu(a: &mut App, title: &str, rows: &[MenuRow]) -> Vec<Rect> {
@@ -2861,7 +2940,7 @@ fn draw_bind_sheet(a: &mut App, kind: BindKind) {
             Some(i) => cformat!(tr("Buttons: %s"), &a.shortcut_profiles[i].name),
             None => tr(kind.title).to_string(),
         };
-        draw_menu(a, &title, &rows);
+        draw_settings_menu(a, &title, &rows);
     } else {
         draw_bind_group(a, kind, group as usize);
     }
@@ -2869,18 +2948,12 @@ fn draw_bind_sheet(a: &mut App, kind: BindKind) {
 
 fn draw_bind_group(a: &mut App, kind: BindKind, group: usize) {
     let n = binding_row_count(kind, group) as i32;
-    let mut rh = ui_px(140.0);
-    let mut gap = ui_px(20.0);
-    let room = a.h - 2 * ui_px(40.0) - ui_px(120.0) - ui_px(72.0);
-    if (n + 1) * (rh + gap) > room {
-        rh = clampi(room / (n + 1) - gap, ui_px(118.0), rh);
-    }
-    if (n + 1) * (rh + gap) > room {
-        gap = clampi(room / (n + 1) - rh, ui_px(10.0), gap);
-    }
-    let card = sheet_rect(a.w, a.h, ui_px(120.0) + ui_px(72.0) + (n + 1) * (rh + gap));
+    let (aw, ah) = (a.w, a.h);
     let title = tr(ACTION_GROUPS[group].title);
-    let in_ = ui_sheet(&mut a.screen, card, title);
+    let (in_, back) = settings_submenu_page(&mut a.screen, aw, ah, title);
+    hits_add(&mut lib(a).hits, back, bind_done_hit(kind), 0);
+    let gap = ui_px(14.0);
+    let rh = ((in_.h - (n - 1).max(0) * gap) / n.max(1)).clamp(ui_px(90.0), ui_px(140.0));
     for i in 0..n as usize {
         let r = binding_row_at(kind, group, i).unwrap();
         let learning = kind.modal == BUTTONS.modal
@@ -2915,15 +2988,9 @@ fn draw_bind_group(a: &mut App, kind: BindKind, group: usize) {
             thumb,
         );
     }
-    let done = Rect::new(in_.x, in_.y + n * (rh + gap), in_.w, rh);
-    let App { screen: c, lib, .. } = a;
-    ui_button(c, done, IconKind::Back, tr("Done"), ButtonStyle::Plain);
-    hits_add(
-        &mut lib.as_deref_mut().unwrap().hits,
-        done,
-        bind_done_hit(kind),
-        0,
-    );
+    let done = Rect::new(aw - ui_px(50.0) - ui_px(380.0), ah - ui_px(30.0) - ui_px(120.0), ui_px(380.0), ui_px(120.0));
+    ui_button(&mut a.screen, done, IconKind::Check, tr("Done"), ButtonStyle::Primary);
+    hits_add(&mut lib(a).hits, done, bind_done_hit(kind), 0);
 }
 
 fn draw_bind_row(
@@ -3295,11 +3362,39 @@ fn language_auto_label(out: &mut String, cap: usize) {
     );
 }
 
+/// The chrome Settings' submenus share: a full screen, a Back button at the top left, the title
+/// beside it and the rule under both, as Pen feel's. Returns the content rect and the Back button's
+/// (the caller gives it its own hit id).
+pub(crate) fn settings_submenu_page(c: &mut Canvas, aw: i32, ah: i32, title: &str) -> (Rect, Rect) {
+    canvas_fill(c, Rect::new(0, 0, aw, ah), 255);
+    let m = ui_px(50.0);
+    let th = ui_px(190.0);
+    let bh = ui_px(150.0);
+    let back = Rect::new(m, (th - bh) / 2, bh, bh);
+    ui_button(c, back, IconKind::Back, "", ButtonStyle::Plain);
+    font_draw_left(
+        c,
+        FontFace::Bold,
+        ui_title_size() * 1.1,
+        Rect::new(back.x + bh + ui_px(30.0), 0, aw - back.x - bh - ui_px(30.0) - m, th),
+        title,
+        0,
+    );
+    ui_rule(c, 0, aw, th, ui_px(4.0), 0);
+    (
+        Rect::new(m, th + ui_px(36.0), aw - 2 * m, ah - th - ui_px(36.0) - ui_px(170.0)),
+        back,
+    )
+}
+
+/// Settings' page: a full screen, its five categories down the left, the active one's settings to
+/// their right and Done at the foot. It holds the 15 settings the old sheet did, regrouped; a tap on
+/// a category shows its settings, a tap on a row does what the old sheet's did, and Done closes it.
 fn draw_settings(a: &mut App) {
     let (aw, ah) = (a.w, a.h);
+    let lang_picked = language_picked(a);
     let mut lang = String::new();
-    let mut lang_line = String::new();
-    if language_picked(a) < 0 {
+    if lang_picked < 0 {
         language_auto_label(&mut lang, 96);
     } else {
         csnprintf!(
@@ -3309,6 +3404,28 @@ fn draw_settings(a: &mut App) {
             i18n_language_name(language_picked(a)).unwrap_or("(null)")
         );
     }
+    let mut lang_line = String::new();
+    // TRANSLATORS: a row of Settings, with the choice: "Automatic (English)", or a language's name.
+    csnprintf!(&mut lang_line, 160, tr("Language: %s"), &lang);
+    let classic = ui_theme() == UiTheme::Classic;
+    let mut style_line = tr("Style: Gothic (tap for Classic)");
+    if classic {
+        style_line = tr("Style: Classic (tap for Gothic)");
+    }
+    let mut font_line = String::new();
+    if classic {
+        // TRANSLATORS: (Settings, Classic only) the row that opens the Font sheet, with the font in use
+        // by its short name, never translated ("Terminess", "Atkinson", "Noto Sans", "Literata").
+        csnprintf!(&mut font_line, 96, tr("Font: %s"), FONT_FAMILIES[font_family()].short);
+    }
+    // What holding the pen's side button does while writing (settings.ini side_button 0 to 3).
+    static BTN_ROWS: [&str; 4] = [
+        // TRANSLATORS: what holding the pen's button while writing does; a tap moves to the next.
+        n_("Holding the pen button while writing does nothing (tap to change)"),
+        n_("Holding the pen button while writing erases (tap to change)"),
+        n_("Holding the pen button while writing highlights (tap to change)"),
+        n_("Holding the pen button while writing draws white (tap to change)"),
+    ];
     let App {
         screen: c,
         lib,
@@ -3316,261 +3433,152 @@ fn draw_settings(a: &mut App) {
         ..
     } = a;
     let s = lib.as_deref_mut().unwrap();
-    let card = sheet_rect(aw, ah, ui_px(1820.0));
-    let in_ = ui_sheet(c, card, tr("Settings"));
-    // The rows that open a screen or a sheet, in the owner's order of 2026-11-04 ("the 4 top settings options
-    // should be in a different order - Display, Pen sens, Shortcuts, Calibrate"). Four rows in the height
-    // three took before (110 px each, as the lines below them), so everything under them stays where it was.
-    let rh = ui_px(110.0);
-    let gap = ui_px(13.0);
-    let mut y = in_.y;
-    // TRANSLATORS: the rows of Settings: buttons with an icon (1470 px at 44 px in bold), then
-    // lines a tap changes (1530 px at 44 px) and checkboxes (1548 px at 44 px, or two lines at
-    // 34 px). Sideways they are 80 px wider.
-    let pens = tr("Pen sensitivity (pressure + tilt per tool)");
-    let top = [
-        (IconKind::Brightness, tr("Display: brightness, warmth, invert"), H_SET_DISPLAY),
-        (IconKind::Tune, pens, H_SET_PENS),
-        // TRANSLATORS: (Settings) the row that opens the Shortcuts sheet: a keyboard's keys and a controller's
-        // buttons as shortcuts, each device's own if it has them (1470 px at 44 px in bold, as its neighbours).
-        (IconKind::Gamepad, tr("Shortcuts: keys and controller buttons"), H_SHORTCUTS),
-        (IconKind::Target, tr("Calibrate pen and touch"), H_SET_CALIB),
+    canvas_fill(c, Rect::new(0, 0, aw, ah), 255);
+    // (a tap outside every row does nothing, rather than reaching the library behind)
+    hits_add(&mut s.hits, Rect::new(0, 0, aw, ah), H_NONE, 0);
+    let pad = ui_px(56.0);
+    let title_h = ui_px(150.0);
+    font_draw_left(
+        c,
+        FontFace::Title,
+        ui_title_size(),
+        Rect::new(pad, ui_px(8.0), aw - 2 * pad, title_h),
+        tr("Settings"),
+        0,
+    );
+    canvas_fill(c, Rect::new(pad, title_h, aw - 2 * pad, ui_px(4.0)), 0);
+    let top = title_h + ui_px(36.0);
+    // TRANSLATORS: Settings' categories, down the left of its page, each with its icon: the settings they
+    // group are Display's, Pen Feel's, Calibration's, the Controller's (shortcuts, pairing, gestures) and
+    // General's (language, mirroring, KOReader, updates).
+    let cats: [(IconKind, &str); 5] = [
+        (IconKind::Brightness, tr("Display")),
+        (IconKind::Tune, tr("Pen Feel")),
+        (IconKind::Target, tr("Calibration")),
+        (IconKind::Gamepad, tr("Controller")),
+        (IconKind::Gear, tr("General")),
     ];
-    for (icon, label, id) in top {
-        let r = Rect::new(in_.x, y, in_.w, rh);
-        ui_button(c, r, IconKind::None, "", ButtonStyle::Plain);
-        ui_icon(
-            c,
-            icon,
-            Rect::new(
-                r.x + ui_px(20.0),
-                r.y + ui_px(15.0),
-                rh - ui_px(30.0),
-                rh - ui_px(30.0),
-            ),
-            0,
-        );
-        font_draw_left(
+    let side_w = (aw * 30 / 100).clamp(ui_px(320.0), ui_px(560.0));
+    let cat_h = ui_px(120.0);
+    let cat_gap = ui_px(14.0);
+    let active = clampi(s.settings_cat, 0, 4);
+    let mut y = top;
+    for (i, (icon, label)) in cats.iter().enumerate() {
+        let r = Rect::new(pad, y, side_w, cat_h);
+        let fg: u8 = if i as i32 == active {
+            canvas_fill(c, r, 0);
+            255
+        } else {
+            ui_frame(c, r, ui_px(16.0), 255, true, 0);
+            ui_frame(c, r, ui_px(16.0), 0, false, ui_px(2.0));
+            0
+        };
+        let isz = ui_px(60.0);
+        ui_icon(c, *icon, Rect::new(r.x + ui_px(22.0), r.y + (r.h - isz) / 2, isz, isz), fg);
+        ui_text(
             c,
             FontFace::Bold,
             ui_text_size(),
-            Rect::new(r.x + rh + ui_px(10.0), r.y, r.w - rh - ui_px(30.0), rh),
+            ui_small_size(),
+            Rect::new(r.x + isz + ui_px(40.0), r.y, r.w - isz - ui_px(60.0), r.h),
             label,
-            0,
+            2,
+            false,
+            fg,
         );
-        hits_add(&mut s.hits, r, id, 0);
+        hits_add(&mut s.hits, r, H_SET_CAT, i as i32);
+        y += cat_h + cat_gap;
+    }
+    struct Row {
+        icon: IconKind,
+        label: String,
+        id: i32,
+        /// Some(checked) for a line a tap ticks or unticks; None for a row that opens something else.
+        check: Option<bool>,
+    }
+    let mut rows: Vec<Row> = Vec::new();
+    match active {
+        0 => {
+            // TRANSLATORS: the row that opens Display's sheet: brightness, warmth and invert.
+            rows.push(Row { icon: IconKind::Brightness, label: tr("Display: brightness, warmth, invert").to_string(), id: H_SET_DISPLAY, check: None });
+            rows.push(Row { icon: IconKind::Castle, label: style_line.to_string(), id: H_SET_THEME, check: None });
+            if classic {
+                rows.push(Row { icon: IconKind::Font, label: font_line.clone(), id: H_SET_FONT, check: None });
+            }
+            rows.push(Row { icon: IconKind::Collapse, label: tr("Turn with the Kindle (portrait and landscape)").to_string(), id: H_SET_ROTATE, check: Some(settings.follow_rotation) });
+            rows.push(Row { icon: IconKind::Search, label: tr("Pinch with two fingers to zoom").to_string(), id: H_SET_PINCH, check: Some(settings.pinch_zoom) });
+        }
+        1 => {
+            // TRANSLATORS: the row that opens Pen sensitivity's sheet: pressure and tilt, per tool.
+            rows.push(Row { icon: IconKind::Tune, label: tr("Pen sensitivity (pressure + tilt per tool)").to_string(), id: H_SET_PENS, check: None });
+            rows.push(Row { icon: IconKind::Highlighter, label: tr(BTN_ROWS[clampi(settings.side_button, 0, 3) as usize]).to_string(), id: H_SET_SIDE, check: None });
+        }
+        2 => {
+            rows.push(Row { icon: IconKind::Target, label: tr("Calibrate pen and touch").to_string(), id: H_SET_CALIB, check: None });
+        }
+        3 => {
+            rows.push(Row { icon: IconKind::Gamepad, label: tr("Shortcuts: keys and controller buttons").to_string(), id: H_SHORTCUTS, check: None });
+            rows.push(Row { icon: IconKind::Link, label: tr("Pair").to_string(), id: H_PAIR_MENU, check: None });
+            rows.push(Row { icon: IconKind::Gestures, label: tr("Gestures").to_string(), id: H_GESTURES, check: None });
+        }
+        _ => {
+            rows.push(Row { icon: IconKind::Language, label: lang_line.clone(), id: H_SET_LANGUAGE, check: None });
+            // TRANSLATORS: %s is the folder on the Kindle's storage (seen over USB) that gets a PDF of
+            // every notebook.
+            let mirror = cformat!(tr("Mirror PDFs to %s (USB)"), "grimoire/PDFs");
+            rows.push(Row { icon: IconKind::Download, label: mirror, id: H_SET_MIRROR, check: Some(settings.mirror_pdf) });
+            rows.push(Row { icon: IconKind::Notebook, label: tr("KOReader").to_string(), id: H_KOREADER, check: None });
+            rows.push(Row { icon: IconKind::Update, label: tr("Updates").to_string(), id: H_UPDATES, check: None });
+        }
+    }
+    let content_x = pad + side_w + ui_px(48.0);
+    let content_w = aw - content_x - pad;
+    font_draw_left(
+        c,
+        FontFace::Bold,
+        ui_text_size(),
+        Rect::new(content_x, top, content_w, ui_px(70.0)),
+        cats[active as usize].1,
+        0,
+    );
+    let foot = ah - ui_px(30.0) - ui_px(120.0);
+    let list_top = top + ui_px(86.0);
+    let n = rows.len() as i32;
+    let gap = ui_px(16.0);
+    let room = foot - list_top - ui_px(20.0);
+    let mut rh = ui_px(118.0);
+    if n * (rh + gap) > room {
+        rh = clampi(room / n - gap, ui_px(90.0), rh);
+    }
+    let mut y = list_top;
+    for row in &rows {
+        let r = Rect::new(content_x, y, content_w, rh);
+        ui_frame(c, r, ui_px(16.0), 255, true, 0);
+        ui_frame(c, r, ui_px(16.0), 0, false, ui_px(2.0));
+        let isz = ui_px(60.0);
+        ui_icon(c, row.icon, Rect::new(r.x + ui_px(22.0), r.y + (r.h - isz) / 2, isz, isz), 0);
+        let lx = r.x + isz + ui_px(44.0);
+        let lr = Rect::new(lx, r.y + ui_px(8.0), r.w - (lx - r.x) - ui_px(20.0), r.h - ui_px(16.0));
+        match row.check {
+            Some(checked) => ui_checkbox(c, lr, &row.label, checked),
+            None => ui_text(
+                c,
+                FontFace::Regular,
+                ui_text_size(),
+                ui_small_size(),
+                lr,
+                &row.label,
+                2,
+                false,
+                0,
+            ),
+        }
+        hits_add(&mut s.hits, r, row.id, 0);
         y += rh + gap;
     }
-    let rt = Rect::new(in_.x, y, in_.w, ui_px(110.0));
-    canvas_fill(c, rt, 255);
-    ui_icon(
-        c,
-        IconKind::Castle,
-        Rect::new(rt.x, rt.y + ui_px(15.0), ui_px(80.0), ui_px(80.0)),
-        0,
-    );
-    // TRANSLATORS: the style Grimoire is drawn in, and the other one a tap changes to (1530 px at 44 px
-    // in Gothic; in Classic the Font chip takes the row's right end, which leaves about 1000 px).
-    let mut style = tr("Style: Gothic (tap for Classic)");
-    if ui_theme() == UiTheme::Classic {
-        style = tr("Style: Classic (tap for Gothic)");
-    }
-    // In Classic a chip at the row's right end opens the Font sheet (2.1); the rest of the row still
-    // changes the style. Gothic has no chip: its look is its own type.
-    let mut text_w = rt.w - ui_px(110.0);
-    let mut theme_r = rt;
-    if ui_theme() == UiTheme::Classic {
-        let mut label = String::new();
-        // TRANSLATORS: (Settings, Classic only) the chip at the Style row's right end that opens the
-        // Font sheet, with the font in use by its short name, never translated ("Terminess",
-        // "Atkinson", "Noto Sans", "Literata"): about 450 px at 34 px in bold, beside its icon.
-        csnprintf!(&mut label, 96, tr("Font: %s"), FONT_FAMILIES[font_family()].short);
-        let ch = ui_px(90.0);
-        // (the icon, then its label: the chip as wide as they need, up to 560 px)
-        let lx = ch + ui_px(10.0);
-        let w = lx + ui_chip_w(FontFace::Bold, ui_small_size(), &label, ch, ui_px(240.0), ui_px(560.0)) - ui_px(24.0);
-        let chip = Rect::new(rt.x + rt.w - w, rt.y + (rt.h - ch) / 2, w, ch);
-        ui_frame(c, chip, ch / 2, 255, true, 0);
-        ui_frame(c, chip, ch / 2, 0, false, ui_px(3.0));
-        ui_icon(c, IconKind::Font, Rect::new(chip.x + ui_px(16.0), chip.y + ui_px(8.0), ch - ui_px(16.0), ch - ui_px(16.0)), 0);
-        font_draw_left(c, FontFace::Bold, ui_small_size(), Rect::new(chip.x + lx, chip.y, chip.w - lx - ui_px(24.0), ch), &label, 0);
-        text_w = chip.x - ui_px(24.0) - (rt.x + ui_px(110.0));
-        theme_r.w = chip.x - ui_px(12.0) - rt.x;
-        hits_add(&mut s.hits, chip, H_SET_FONT, 0);
-    }
-    font_draw_left(
-        c,
-        FontFace::Regular,
-        ui_text_size(),
-        Rect::new(rt.x + ui_px(110.0), rt.y, text_w, rt.h),
-        style,
-        0,
-    );
-    hits_add(&mut s.hits, theme_r, H_SET_THEME, 0);
-    y += ui_px(130.0);
-    let r3 = Rect::new(in_.x, y, in_.w, ui_px(110.0));
-    let mut row = String::new();
-    // TRANSLATORS: %s is the folder on the Kindle's storage (seen over USB) that gets a PDF of
-    // every notebook.
-    csnprintf!(
-        &mut row,
-        256,
-        tr("Mirror PDFs to %s (USB)"),
-        "grimoire/PDFs"
-    );
-    ui_checkbox(c, r3, &row, settings.mirror_pdf);
-    hits_add(&mut s.hits, r3, H_SET_MIRROR, 0);
-    y += ui_px(130.0);
-    let r4 = Rect::new(in_.x, y, in_.w, ui_px(110.0));
-    // What holding the pen's side button does while writing (settings.ini side_button 0 to 3).
-    static BTN_ROWS: [&str; 4] = [
-        // TRANSLATORS: what holding the pen's button while writing does; a tap moves to the next.
-        n_("Holding the pen button while writing does nothing (tap to change)"),
-        n_("Holding the pen button while writing erases (tap to change)"),
-        n_("Holding the pen button while writing highlights (tap to change)"),
-        // TRANSLATORS: the fourth choice of the same row: while the pen's button is held, the pen
-        // draws white ink (which takes away the ink under it and keeps the paper's lines). 1530 px
-        // at 44 px, sideways 1610, or two lines at 34 px.
-        n_("Holding the pen button while writing draws white (tap to change)"),
-    ];
-    canvas_fill(c, r4, 255);
-    ui_icon(
-        c,
-        IconKind::Highlighter,
-        Rect::new(r4.x, r4.y + ui_px(15.0), ui_px(80.0), ui_px(80.0)),
-        0,
-    );
-    ui_text(
-        c,
-        FontFace::Regular,
-        ui_text_size(),
-        ui_small_size(),
-        Rect::new(r4.x + ui_px(110.0), r4.y, r4.w - ui_px(110.0), r4.h),
-        tr(BTN_ROWS[clampi(settings.side_button, 0, 3) as usize]),
-        2,
-        false,
-        0,
-    );
-    hits_add(&mut s.hits, r4, H_SET_SIDE, 0);
-    y += ui_px(130.0);
-    let r5 = Rect::new(in_.x, y, in_.w, ui_px(110.0));
-    ui_checkbox(
-        c,
-        r5,
-        tr("Turn with the Kindle (portrait and landscape)"),
-        settings.follow_rotation,
-    );
-    hits_add(&mut s.hits, r5, H_SET_ROTATE, 0);
-    y += ui_px(130.0);
-    let r6 = Rect::new(in_.x, y, in_.w, ui_px(110.0));
-    ui_checkbox(
-        c,
-        r6,
-        tr("Pinch with two fingers to zoom"),
-        settings.pinch_zoom,
-    );
-    hits_add(&mut s.hits, r6, H_SET_PINCH, 0);
-    y += ui_px(130.0);
-    // The last row the sheet has room for: sideways in Gothic 18 px are left above Done.
-    let rl = Rect::new(in_.x, y, in_.w, ui_px(110.0));
-    // TRANSLATORS: a row of Settings, with the choice: "Automatic (English)", or a language's name.
-    csnprintf!(&mut lang_line, 160, tr("Language: %s"), &lang);
-    canvas_fill(c, rl, 255);
-    ui_icon(
-        c,
-        IconKind::Language,
-        Rect::new(rl.x, rl.y + ui_px(15.0), ui_px(80.0), ui_px(80.0)),
-        0,
-    );
-    ui_text(
-        c,
-        FontFace::Regular,
-        ui_text_size(),
-        ui_small_size(),
-        Rect::new(rl.x + ui_px(110.0), rl.y, rl.w - ui_px(110.0), rl.h),
-        &lang_line,
-        2,
-        false,
-        0,
-    );
-    hits_add(&mut s.hits, rl, H_SET_LANGUAGE, 0);
-    y += ui_px(150.0);
-    let caps = input_caps();
-    let mut pen = String::new();
-    let mut about = String::new();
-    let pressure = caps.has_pressure;
-    let tilt = caps.has_tilt;
-    if !caps.has_pen {
-        // TRANSLATORS: Settings' last lines (34 px): after the version, the pen Grimoire found (its
-        // device's name, %s) and what it reports; then where Grimoire keeps its data (%s).
-        csnprintf!(&mut pen, 160, "%s", tr("pen: none"));
-    } else if pressure && tilt {
-        csnprintf!(&mut pen, 160, tr("pen: %s, pressure, tilt"), &caps.pen_name);
-    } else if pressure {
-        csnprintf!(&mut pen, 160, tr("pen: %s, pressure"), &caps.pen_name);
-    } else if tilt {
-        csnprintf!(&mut pen, 160, tr("pen: %s, tilt"), &caps.pen_name);
-    } else {
-        csnprintf!(&mut pen, 160, tr("pen: %s"), &caps.pen_name);
-    }
-    csnprintf!(&mut about, 320, "Grimoire %s  %s", GRIMOIRE_VERSION, &pen);
-    font_draw_left(
-        c,
-        FontFace::Regular,
-        ui_small_size(),
-        Rect::new(in_.x, y, in_.w, ui_px(60.0)),
-        &about,
-        60,
-    );
-    // (The data's path is a name: a long one is cut short, as names are. tests/test_i18n.c checks
-    // that the label fits with the Kindle's path.)
-    csnprintf!(&mut about, 320, tr("Data: %s"), &store_root());
-    font_draw_left_name(
-        c,
-        FontFace::Regular,
-        ui_small_size(),
-        Rect::new(in_.x, y + ui_px(60.0), in_.w, ui_px(60.0)),
-        &about,
-        60,
-    );
-    let done = Rect::new(
-        in_.x + in_.w - ui_px(380.0),
-        in_.y + in_.h - ui_px(140.0),
-        ui_px(380.0),
-        ui_px(140.0),
-    );
-    ui_button(c, done, IconKind::None, tr("Done"), ButtonStyle::Primary);
+    let done = Rect::new(aw - pad - ui_px(380.0), foot, ui_px(380.0), ui_px(120.0));
+    ui_button(c, done, IconKind::Check, tr("Done"), ButtonStyle::Primary);
     hits_add(&mut s.hits, done, H_CANCEL, 0);
-    let ko = Rect::new(in_.x, done.y, ui_px(300.0), done.h);
-    ui_button(c, ko, IconKind::Notebook, "KOReader", ButtonStyle::Plain);
-    hits_add(&mut s.hits, ko, H_KOREADER, 0);
-    // Pair, Gestures and Updates share the space between KOReader and Done.
-    let gap = ui_px(30.0);
-    let mid = done.x - ko.x - ko.w - 4 * gap;
-    let third = mid / 3;
-    let keys = Rect::new(ko.x + ko.w + gap, done.y, third, done.h);
-    let gestures = Rect::new(keys.x + keys.w + gap, done.y, third, done.h);
-    let upd = Rect::new(
-        gestures.x + gestures.w + gap,
-        done.y,
-        mid - 2 * third,
-        done.h,
-    );
-    // TRANSLATORS: Settings' bottom buttons, each a word under its icon, about 240 px at 34 px.
-    // Pair opens the Pair sheet (a Bluetooth controller: the helper on or off, pairing one; also that
-    // sheet's title), Gestures opens gesture bindings, Updates checks for a newer Grimoire.
-    ui_button(c, keys, IconKind::Link, tr("Pair"), ButtonStyle::Plain);
-    hits_add(&mut s.hits, keys, H_PAIR_MENU, 0);
-    ui_button(
-        c,
-        gestures,
-        IconKind::Gestures,
-        tr("Gestures"),
-        ButtonStyle::Plain,
-    );
-    hits_add(&mut s.hits, gestures, H_GESTURES, 0);
-    ui_button(c, upd, IconKind::Update, tr("Updates"), ButtonStyle::Plain);
-    hits_add(&mut s.hits, upd, H_UPDATES, 0);
 }
 
 /// The Font sheet's third sample line, the same in every language: digits, the punctuation Spanish
@@ -3588,10 +3596,10 @@ fn draw_font_sheet(a: &mut App) {
     let s = lib.as_deref_mut().unwrap();
     let pick = s.font_pick.min(FONT_FAMILIES.len() - 1);
     let n = FONT_FAMILIES.len() as i32;
-    let (sample_h, rh, gap, bh, pad) = (ui_px(300.0), ui_px(130.0), ui_px(16.0), ui_px(140.0), ui_px(24.0));
-    let card = sheet_rect(aw, ah, ui_px(120.0) + 2 * ui_px(36.0) + sample_h + pad + n * (rh + gap) - gap + pad + bh);
+    let (sample_h, gap, pad) = (ui_px(300.0), ui_px(16.0), ui_px(24.0));
     // TRANSLATORS: the title of Settings > Font, the list of fonts Classic can be drawn in.
-    let in_ = ui_sheet(c, card, tr("Font"));
+    let (in_, back) = settings_submenu_page(c, aw, ah, tr("Font"));
+    hits_add(&mut s.hits, back, H_FONT_CANCEL, 0);
     let sample = Rect::new(in_.x, in_.y, in_.w, sample_h);
     ui_frame(c, sample, ui_px(16.0), 0, false, ui_px(3.0));
     let fam = &FONT_FAMILIES[pick];
@@ -3609,6 +3617,8 @@ fn draw_font_sheet(a: &mut App) {
     });
     s.font_sample = sample;
     s.font_rows.clear();
+    let room = in_.h - sample_h - pad - ui_px(170.0);
+    let rh = ((room - (n - 1) * gap) / n.max(1)).clamp(ui_px(90.0), ui_px(130.0));
     let mut y = sample.y + sample.h + pad;
     for (i, f) in FONT_FAMILIES.iter().enumerate() {
         let r = Rect::new(in_.x, y, in_.w, rh);
@@ -3627,11 +3637,8 @@ fn draw_font_sheet(a: &mut App) {
         s.font_rows.push(r);
         y += rh + gap;
     }
-    let done = Rect::new(in_.x + in_.w - ui_px(380.0), in_.y + in_.h - bh, ui_px(380.0), bh);
-    let cancel = Rect::new(in_.x, done.y, ui_px(380.0), bh);
-    ui_button(c, cancel, IconKind::None, tr("Cancel"), ButtonStyle::Plain);
-    ui_button(c, done, IconKind::None, tr("Done"), ButtonStyle::Primary);
-    hits_add(&mut s.hits, cancel, H_FONT_CANCEL, 0);
+    let done = Rect::new(aw - ui_px(50.0) - ui_px(380.0), ah - ui_px(30.0) - ui_px(120.0), ui_px(380.0), ui_px(120.0));
+    ui_button(c, done, IconKind::Check, tr("Done"), ButtonStyle::Primary);
     hits_add(&mut s.hits, done, H_FONT_DONE, 0);
 }
 
@@ -3808,7 +3815,7 @@ fn draw_modal(a: &mut App) {
                 menu_row(IconKind::Close, tr("Done"), H_CANCEL, 0, ButtonStyle::Plain),
             ];
             // TRANSLATORS: the Updates sheet's title (Settings > Updates).
-            draw_menu(a, tr("Updates"), &rows);
+            draw_settings_menu(a, tr("Updates"), &rows);
         }
         Modal::Pair => {
             let s = lib(a);
@@ -3902,7 +3909,7 @@ fn draw_modal(a: &mut App) {
                 ButtonStyle::Plain,
             ));
             // TRANSLATORS: the title of the sheet that pairs a controller (Settings > Pair > Pair a controller).
-            draw_menu(a, tr("Pair a controller"), &rows);
+            draw_settings_menu(a, tr("Pair a controller"), &rows);
         }
         Modal::Buttons => draw_bind_sheet(a, BUTTONS),
         Modal::Gestures => draw_gestures_modal(a),
@@ -4057,7 +4064,7 @@ fn draw_modal(a: &mut App) {
             ];
             // TRANSLATORS: the Shortcuts sheet's title (Settings > Shortcuts): a keyboard's or a controller's
             // keys as shortcuts, each device's own if it has them.
-            draw_menu(a, tr("Shortcuts"), &rows);
+            draw_settings_menu(a, tr("Shortcuts"), &rows);
         }
         Modal::PairMenu => {
             let mut status = String::new();
@@ -4121,7 +4128,7 @@ fn draw_modal(a: &mut App) {
                 menu_row(IconKind::None, &status, H_NONE, 0, ButtonStyle::Disabled),
                 menu_row(IconKind::Close, tr("Done"), H_CANCEL, 0, ButtonStyle::Plain),
             ];
-            draw_menu(a, tr("Pair"), &rows);
+            draw_settings_menu(a, tr("Pair"), &rows);
         }
         Modal::Koreader => {
             let mut ko = String::new();
@@ -4190,7 +4197,7 @@ fn draw_modal(a: &mut App) {
                 ),
                 menu_row(IconKind::Close, tr("Done"), H_CANCEL, 0, ButtonStyle::Plain),
             ];
-            draw_menu(a, "KOReader", &rows);
+            draw_settings_menu(a, "KOReader", &rows);
         }
         Modal::More => {
             let Some(it) = it else { return };
@@ -4364,47 +4371,70 @@ fn draw_modal(a: &mut App) {
             draw_menu(a, &title, &rows);
         }
         Modal::Language => {
-            // Automatic, then every language by its own name; a pick applies at once.
-            let mut rows: Vec<MenuRow> = Vec::with_capacity(12);
+            // Automatic, then every language by its own name; a pick applies at once. A full screen, as
+            // Settings' submenus are: the page's chrome, the choices as cards in two columns, and Done.
+            let (aw, ah) = (a.w, a.h);
             let cur = language_picked(a);
             let mut auto_label = String::new();
             language_auto_label(&mut auto_label, 96);
-            rows.push(menu_row(
-                IconKind::Language,
-                &auto_label,
-                H_LANG_PICK,
-                -1,
-                if cur < 0 {
-                    ButtonStyle::Selected
-                } else {
-                    ButtonStyle::Plain
-                },
-            ));
+            let mut rows: Vec<(String, i32, bool)> = Vec::with_capacity(12);
+            rows.push((auto_label, -1, cur < 0));
             let mut i = 0;
-            while i < i18n_language_count() && rows.len() < 11 {
-                let name = i18n_language_name(i).unwrap_or("(null)");
-                rows.push(menu_row(
-                    IconKind::None,
-                    name,
-                    H_LANG_PICK,
+            while i < i18n_language_count() && rows.len() < 12 {
+                rows.push((
+                    i18n_language_name(i).unwrap_or("(null)").to_string(),
                     i,
-                    if cur == i {
-                        ButtonStyle::Selected
-                    } else {
-                        ButtonStyle::Plain
-                    },
+                    cur == i,
                 ));
                 i += 1;
             }
-            rows.push(menu_row(
-                IconKind::Close,
-                tr("Cancel"),
-                H_LANG_BACK,
-                0,
-                ButtonStyle::Plain,
-            ));
+            let App {
+                screen: c,
+                lib,
+                ..
+            } = a;
+            let s = lib.as_deref_mut().unwrap();
             // TRANSLATORS: the title of the list of languages (Settings > Language).
-            draw_menu(a, tr("Language"), &rows);
+            let (in_, back) = settings_submenu_page(c, aw, ah, tr("Language"));
+            hits_add(&mut s.hits, back, H_LANG_BACK, 0);
+            let gap = ui_px(16.0);
+            let n = rows.len() as i32;
+            let per = (n + 1) / 2;
+            let cw = (in_.w - gap) / 2;
+            let rh = ((in_.h - (per - 1) * gap) / per.max(1)).clamp(ui_px(90.0), ui_px(130.0));
+            for (k, (label, arg, selected)) in rows.iter().enumerate() {
+                let col = k as i32 / per;
+                let ri = k as i32 % per;
+                let r = Rect::new(in_.x + col * (cw + gap), in_.y + ri * (rh + gap), cw, rh);
+                let fg: u8 = if *selected {
+                    canvas_fill(c, r, 0);
+                    255
+                } else {
+                    ui_frame(c, r, ui_px(16.0), 255, true, 0);
+                    ui_frame(c, r, ui_px(16.0), 0, false, ui_px(2.0));
+                    0
+                };
+                ui_text(
+                    c,
+                    FontFace::Regular,
+                    ui_text_size(),
+                    ui_small_size(),
+                    rect_inflate(r, -ui_px(16.0)),
+                    label,
+                    2,
+                    false,
+                    fg,
+                );
+                hits_add(&mut s.hits, r, H_LANG_PICK, *arg);
+            }
+            let done = Rect::new(
+                aw - ui_px(50.0) - ui_px(380.0),
+                ah - ui_px(30.0) - ui_px(120.0),
+                ui_px(380.0),
+                ui_px(120.0),
+            );
+            ui_button(c, done, IconKind::Check, tr("Done"), ButtonStyle::Primary);
+            hits_add(&mut s.hits, done, H_LANG_BACK, 0);
         }
         Modal::Kb => {
             let (aw, ah) = (a.w, a.h);
@@ -4809,6 +4839,10 @@ fn act(a: &mut App, h: &Hit) {
         H_NEWFOLDER => open_kb(a, KbPurpose::NewFolder, c_("keyboard", "Folder"), b""),
         H_SHARE => share_open(a),
         H_SETTINGS => open_modal(a, Modal::Settings),
+        H_SET_CAT => {
+            lib(a).settings_cat = clampi(h.arg, 0, 4);
+            redraw(a, RefreshMode::Ui);
+        }
         H_EXIT => a.running = false,
         H_EXIT_YES => {
             lib(a).modal = Modal::None;
@@ -5125,11 +5159,15 @@ fn act(a: &mut App, h: &Hit) {
             redraw(a, RefreshMode::Ui);
         }
         H_SET_PENS => {
+            let from_settings = lib(a).modal == Modal::Settings && !lib(a).settings_return_editor;
+            lib(a).reopen_settings = from_settings;
             if !lib(a).settings_return_editor {lib(a).modal=Modal::None;}
             let tool = a.settings.current_tool;
             pensettings_open(a, tool);
         }
         H_SET_CALIB => {
+            let from_settings = lib(a).modal == Modal::Settings && !lib(a).settings_return_editor;
+            lib(a).reopen_settings = from_settings;
             if !lib(a).settings_return_editor {lib(a).modal=Modal::None;}
             calibrate_open(a);
         }
@@ -5805,9 +5843,14 @@ pub fn library_enter(a: &mut App) {
     // (every sheet lays itself out when drawn).
     let relayout = a.relayout;
     let s = lib(a);
+    let reopen_settings = std::mem::take(&mut s.reopen_settings);
     if !relayout {
         s.modal = Modal::None;
         s.settings_return_editor = false;
+    }
+    if reopen_settings {
+        // (Back from Pen feel or Calibration, which Settings opened: Settings again, as it was left.)
+        s.modal = Modal::Settings;
     }
     s.pressed = None;
     // What's new opens by itself once after every update (Settings.whatsnew_due, the owner's rule of
