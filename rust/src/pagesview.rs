@@ -1,6 +1,7 @@
 //! pagesview.h: the editor's Pages view, which covers the screen: numbered tiles a screenful at a
 //! time. The UI reads only small cached previews; bounded background jobs render missing ones,
-//! ticks for Delete (a held tile's card: Open, Add a link, Rename, Delete), a number pad for Go to
+//! ticks for Delete (a held tile's sheet: Open, Add a link, Rename, Delete; or the bottom row's
+//! Delete with the pages ticked), a number pad for Go to
 //! page..., New page and Copy page. A page that holds a
 //! book page (a notebook annotated from KOReader, annotate.h) says which under its number ("p. 12"),
 //! from the notebook's source.ini, read as the view opens.
@@ -1022,27 +1023,36 @@ fn redo_id(v: &PagesView, nb: &NotebookInfo, k: i32) -> Option<i32> {
     (k == 0 && pagesview_redo_offered(v, nb)).then_some(PG_REDO)
 }
 
-// The unified view's bottom row (its buttons follow the ticks: Copy page for one; a held tile's card
-// has Delete).
+// The unified view's bottom row (its buttons follow the ticks: Copy page for one, Delete for any; a
+// held tile's sheet has its own Delete for that page).
 fn draw_footer(v:&mut PagesView,a:&mut App,screens:i32,k:i32,all:bool,undo:Option<i32>,redo:Option<i32>) {
     let (aw,ah)=(a.w,a.h);
     let y=ah-ui_px(170.0);
     let c=&mut a.screen;
     canvas_fill(c,Rect::new(0,y,aw,ah-y),255);canvas_hline(c,0,aw,y,ui_px(3.0),0);
     v.hits.h.retain(|h|h.r.y<y);
-    let side=ui_px(120.0);let gap=ui_px(12.0);
+    let side=ui_px(120.0);let wide=ui_px(260.0);let gap=ui_px(12.0);
     // (no arrows since 2.0.0-rc.12: one finger flicked sideways, or the page-turn action, turns the screen)
-    // Move to... (the grip) and Copy to notebook... (the notebook) act on the ticked pages. With nothing
-    // ticked, right after a move (Move to... or a drag), the grip's place is Undo, which puts them back,
+    // Move (the grip) and Copy to notebook... (the notebook) act on the ticked pages. With nothing
+    // ticked, right after a move (Move or a drag), the grip's place is Undo, which puts them back,
     // and right after an Undo the notebook's place, beside it, is Redo, which does it again.
-    let widths=[side,side,side,side,side,ui_px(260.0),ui_px(260.0)];
-    let widths=widths.map(|w|w.min((aw-ui_px(40.0)-6*gap)/7+ui_px(60.0)));
-    let total: i32=widths.iter().sum::<i32>()+6*gap;
+    // Delete (the trash) joins them while pages are ticked, so a page can go from the grid without its
+    // held sheet (issue #18); the sheet keeps its own labelled Delete for the page under the finger.
+    // Both are icons alone in their square, as New and Copy are.
+    let mut items:Vec<(i32,i32)>=vec![(PG_NEW,side),(PG_COPY,side),(undo.unwrap_or(PG_MOVE),side),(redo.unwrap_or(PG_COPY_TO),side),(PG_JUMP,side),(PG_MULTI,wide),(PG_ALL,wide)];
+    if k>0 {items.push((PG_DELETE,side));}
+    let gaps=gap*(items.len() as i32-1);
+    let natural:i32=items.iter().map(|&(_,w)|w).sum();
+    if natural+gaps>aw-ui_px(40.0) {
+        let scale=((aw-ui_px(40.0)-gaps).max(items.len() as i32*ui_px(70.0))) as f32/natural as f32;
+        for (_,w) in items.iter_mut() {*w=((*w as f32*scale) as i32).max(ui_px(60.0));}
+    }
+    let total:i32=items.iter().map(|&(_,w)|w).sum::<i32>()+gaps;
     let mut x=(aw-total)/2;
-    for (i,id) in [PG_NEW,PG_COPY,undo.unwrap_or(PG_MOVE),redo.unwrap_or(PG_COPY_TO),PG_JUMP,PG_MULTI,PG_ALL].into_iter().enumerate(){
-        let enabled=match id{PG_PREV=>v.screen>0,PG_NEXT=>v.screen<screens-1,PG_COPY=>k==1,PG_MOVE|PG_COPY_TO=>k>0,_=>true};
-        let r=Rect::new(x,y+ui_px(15.0),widths[i],ui_px(140.0));x+=widths[i]+gap;
-        let (icon,label)=match id {PG_PREV=>(IconKind::Prev,""),PG_NEW=>(IconKind::Plus,""),PG_COPY=>(IconKind::Copy,""),PG_MOVE=>(IconKind::Grip,""),PG_UNDO_MOVE|PG_UNDO_ADD=>(IconKind::Undo,""),PG_REDO=>(IconKind::Redo,""),PG_COPY_TO=>(IconKind::Notebook,""),PG_NEXT=>(IconKind::Next,""),PG_MULTI=>(IconKind::None,tr("Multi-select")),PG_ALL=>(IconKind::None,if all{tr("Select none")}else{tr("Select all")}),_=>(IconKind::Search,"")};
+    for &(id,w) in items.iter(){
+        let enabled=match id{PG_PREV=>v.screen>0,PG_NEXT=>v.screen<screens-1,PG_COPY=>k==1,PG_MOVE|PG_COPY_TO|PG_DELETE=>k>0,_=>true};
+        let r=Rect::new(x,y+ui_px(15.0),w,ui_px(140.0));x+=w+gap;
+        let (icon,label)=match id {PG_PREV=>(IconKind::Prev,""),PG_NEW=>(IconKind::Plus,""),PG_COPY=>(IconKind::Copy,""),PG_MOVE=>(IconKind::Grip,""),PG_UNDO_MOVE|PG_UNDO_ADD=>(IconKind::Undo,""),PG_REDO=>(IconKind::Redo,""),PG_COPY_TO=>(IconKind::Notebook,""),PG_NEXT=>(IconKind::Next,""),PG_MULTI=>(IconKind::None,tr("Multi-select")),PG_ALL=>(IconKind::None,if all{tr("Select none")}else{tr("Select all")}),PG_DELETE=>(IconKind::Trash,""),_=>(IconKind::Search,"")};
         ui_button(c,r,icon,label,if !enabled{ButtonStyle::Disabled}else if id==PG_MULTI&&v.multi_select{ButtonStyle::Selected}else{ButtonStyle::Plain});
         if enabled {hits_add(&mut v.hits,r,id,0);}
     }
@@ -1173,52 +1183,76 @@ fn footer_after_ticks(v:&mut PagesView,a:&mut App,nb:&NotebookInfo,nav:&Nav,k_wa
     }
 }
 
-// A held tile's card: Open, Add a link, Rename (its naming keyboard), Move to..., Copy to notebook...,
-// Delete (those three: the ticked pages when it is one of them, else it alone) and Cancel.
+// A held tile's sheet: Open, Add a link, Rename (its naming keyboard), Move to..., Copy to notebook...,
+// Delete (those three: the ticked pages when it is one of them, else it alone) and Cancel, listed as
+// the app's other menus list their rows (ui_sheet, an icon at the left and its label beside it).
 fn draw_context(v:&mut PagesView,a:&mut App,nb:&NotebookInfo,nav:&Nav,page:i32) {
     hits_clear(&mut v.hits);
-    let card=card_rect(a,v);let w=card.w;
-    ui_frame(&mut a.screen,card,ui_px(18.0),255,true,0);
-    ui_frame(&mut a.screen,card,ui_px(18.0),0,false,ui_px(3.0));
     // Under its title, how many pages link to it, here and in other notebooks (2.0.0-beta.2; the Links bar lists them).
     let from=context_from(nb,nav,page);
-    let title_h=if from>0 {ui_px(72.0)} else {ui_px(100.0)};
-    font_draw_centered(&mut a.screen,FontFace::Bold,ui_title_size(),Rect::new(card.x,card.y,w,title_h),&cformat!(tr("Page %d"),page+1),0);
+    let k=ticked_in(v,nb.npages());
+    let del=if k>1 && pagesview_ticked(v,page) {cformat!(tr("Delete (%d)"),k)}else{tr("Delete").to_string()};
+    // TRANSLATORS: a held page's sheet in the Pages view, a row (about 950 px at 34 px): give the page
+    // a name (its naming keyboard, titled Page name).
+    let rename=tr("Rename");
+    // TRANSLATORS: a held page's sheet in the Pages view, a row (about 950 px at 34 px): move the page
+    // (or the ticked pages, with how many) to another place in the notebook, on the Go to page number pad.
+    let moving=if k>1 && pagesview_ticked(v,page) {cformat!(ng_("Move %d page to...","Move %d pages to...",k as i64),k)}else{tr("Move to...").to_string()};
+    // TRANSLATORS: the same sheet: copy the page (or the ticked pages) into another notebook, picked from
+    // the notebooks and folders.
+    let copying=if k>1 && pagesview_ticked(v,page) {cformat!(ng_("Copy %d page to notebook...","Copy %d pages to notebook...",k as i64),k)}else{tr("Copy to notebook...").to_string()};
+    let rows=[(PG_CONTEXT_OPEN,IconKind::Paper,tr("Open")),(PG_CONTEXT_LINK,IconKind::LinkPlus,tr("Add a link")),
+        (PG_CONTEXT_RENAME,IconKind::Rename,rename),(PG_CONTEXT_MOVE,IconKind::Grip,moving.as_str()),
+        (PG_CONTEXT_COPY_TO,IconKind::Notebook,copying.as_str()),(PG_CONTEXT_DELETE,IconKind::Trash,del.as_str()),
+        (PG_CONTEXT_CANCEL,IconKind::Close,tr("Cancel"))];
+    let (rh,gap,card)=card_rows(a);
+    let mut inner=ui_sheet(&mut a.screen,card,&cformat!(tr("Page %d"),page+1));
     if from>0 {
         // TRANSLATORS: under a held page's title in the Pages view (about 900 px at 34 px): how many pages, in this
         // notebook or others, have links to it.
         let line=cformat!(ng_("Linked from %d page","Linked from %d pages",from as i64),from);
-        font_draw_centered(&mut a.screen,FontFace::Regular,ui_small_size(),Rect::new(card.x,card.y+ui_px(62.0),w,ui_px(44.0)),&line,0);
+        font_draw_centered(&mut a.screen,FontFace::Regular,ui_small_size(),Rect::new(inner.x,inner.y,inner.w,ui_px(44.0)),&line,0);
+        inner.y+=ui_px(48.0);inner.h-=ui_px(48.0);
     }
-    let k=ticked_in(v,nb.npages());
-    let del=if k>1 && pagesview_ticked(v,page) {cformat!(tr("Delete (%d)"),k)}else{tr("Delete").to_string()};
-    // TRANSLATORS: a held page's card in the Pages view, under its icon (950 px at 34 px): give the page
-    // a name (its naming keyboard, titled Page name).
-    let rename=tr("Rename");
-    // TRANSLATORS: a held page's card in the Pages view, under its icon (950 px at 34 px): move the page
-    // (or the ticked pages, with how many) to another place in the notebook, on the Go to page number pad.
-    let moving=if k>1 && pagesview_ticked(v,page) {cformat!(ng_("Move %d page to...","Move %d pages to...",k as i64),k)}else{tr("Move to...").to_string()};
-    // TRANSLATORS: the same card: copy the page (or the ticked pages) into another notebook, picked from
-    // the notebooks and folders.
-    let copying=if k>1 && pagesview_ticked(v,page) {cformat!(ng_("Copy %d page to notebook...","Copy %d pages to notebook...",k as i64),k)}else{tr("Copy to notebook...").to_string()};
-    for (row,id,icon,label) in [(0,PG_CONTEXT_OPEN,IconKind::None,tr("Open")),(1,PG_CONTEXT_LINK,IconKind::LinkPlus,tr("Add a link")),
-        (2,PG_CONTEXT_RENAME,IconKind::Rename,rename),(3,PG_CONTEXT_MOVE,IconKind::Grip,moving.as_str()),
-        (4,PG_CONTEXT_COPY_TO,IconKind::Notebook,copying.as_str()),(5,PG_CONTEXT_DELETE,IconKind::Trash,del.as_str()),(6,PG_CONTEXT_CANCEL,IconKind::None,tr("Cancel"))] {
-        let rect=Rect::new(card.x+ui_px(24.0),card.y+ui_px(110.0)+row*ui_px(130.0),w-ui_px(48.0),ui_px(120.0));
+    for (i,&(id,icon,label)) in rows.iter().enumerate() {
+        let r=Rect::new(inner.x,inner.y+i as i32*(rh+gap),inner.w,rh);
         let enabled=nb.page_ids.get(page as usize).is_some() && (id!=PG_CONTEXT_RENAME || nav.writable);
-        ui_button(&mut a.screen,rect,icon,label,if enabled{ButtonStyle::Plain}else{ButtonStyle::Disabled});
-        if enabled{hits_add(&mut v.hits,rect,id,0);}
+        let fg=if enabled{0}else{170};
+        ui_frame(&mut a.screen,r,ui_px(16.0),255,true,0);
+        ui_frame(&mut a.screen,r,ui_px(16.0),fg,false,ui_px(3.0));
+        if icon!=IconKind::None {
+            ui_icon(&mut a.screen,icon,Rect::new(r.x+ui_px(20.0),r.y+ui_px(15.0),rh-ui_px(30.0),rh-ui_px(30.0)),fg);
+        }
+        let text=Rect::new(r.x+rh+ui_px(10.0),r.y,r.w-rh-ui_px(30.0),r.h);
+        font_draw_left(&mut a.screen,FontFace::Bold,ui_text_size(),text,label,fg);
+        if enabled {hits_add(&mut v.hits,r,id,0);}
     }
     a.toast_floor=card.y;
 }
 
-// Where a held tile's card is drawn: centred.
-fn card_rect(a:&App,_v:&PagesView)->Rect {
-    card_rect_at((a.w,a.h))
+// A held tile's sheet: its row height, the gap between rows, and where it is drawn. Centred, sized
+// for its seven rows and the linked-from line (the same rows the app's menus draw, so a page held
+// shows like any other list item); rows shorter when a short screen has no room for the card, as the
+// menus' do, so the last row (Cancel) never falls outside it.
+fn card_rows(a:&App)->(i32,i32,Rect) {
+    card_rows_at((a.w,a.h))
 }
-fn card_rect_at((aw,ah):(i32,i32))->Rect {
-    let w=ui_px(1000.0).min(aw-ui_px(60.0));let h=ui_px(1040.0);
-    Rect::new((aw-w)/2,(ah-h)/2,w,h)
+fn card_rect_at(at:(i32,i32))->Rect {
+    card_rows_at(at).2
+}
+fn card_rows_at((aw,ah):(i32,i32))->(i32,i32,Rect) {
+    let w=ui_px(1000.0).min(aw-ui_px(60.0));
+    // ui_sheet_inner's chrome above and below the content: the title bar and its inset on both sides
+    // (read off a card tall enough for its inner rect: a rect with no height clamps its to none).
+    let chrome=ui_px(1000.0)-ui_sheet_inner(Rect::new(0,0,w,ui_px(1000.0)),true).h;
+    let linked=ui_px(48.0);
+    // What the screen's room for the sheet leaves its rows, 40 px clear at the top and the bottom.
+    let room=ah-2*ui_px(40.0)-chrome-linked;
+    let mut rh=ui_px(140.0);let mut gap=ui_px(20.0);
+    if 7*rh+6*gap>room {rh=clampi(room/7-gap,ui_px(118.0),rh);}
+    if 7*rh+6*gap>room {gap=clampi(room/7-rh,ui_px(10.0),gap);}
+    let h=linked+7*rh+6*gap+chrome;
+    (rh,gap,Rect::new((aw-w)/2,(ah-h)/2,w,h))
 }
 
 // How many pages link to page index `page` of nb: its own pages (nav) and other notebooks' (the backlinks cache).
@@ -1444,10 +1478,18 @@ pub fn pagesview_pointer(v: &mut PagesView, a: &mut App, nb: &NotebookInfo, nav:
             if v.last_tap.is_some_and(|(page,at)|page==hit.arg && at_k.wrapping_sub(at)<=450) {
                 v.last_tap=None;return PvResult::Open;
             }
-            v.last_tap=Some((hit.arg,at_k));
             let before=v.sel.clone();
-            if !v.multi_select {v.sel.fill(false);}
-            if let Some(selected)=v.sel.get_mut(hit.arg as usize){*selected=!*selected;}
+            // A tap on a page already ticked unticks it, so a tick can be taken back without Multi-select
+            // and without a double tap (issue #18 follow-up); any other tap ticks this page alone, or in
+            // Multi-select adds it to the rest.
+            if v.sel.get(hit.arg as usize).copied().unwrap_or(false) {
+                if let Some(selected)=v.sel.get_mut(hit.arg as usize){*selected=false;}
+                v.last_tap=None; // (taking a tick back is not half of a double tap: another tap ticks it again)
+            } else {
+                v.last_tap=Some((hit.arg,at_k));
+                if !v.multi_select {v.sel.fill(false);}
+                if let Some(selected)=v.sel.get_mut(hit.arg as usize){*selected=true;}
+            }
             repaint_ticks(v,a,nb,nav,&before);
         }
         PG_LINK => return PvResult::Link,
@@ -1607,7 +1649,7 @@ fn drag_begin(v: &mut PagesView, a: &mut App, nb: &NotebookInfo, nav: &Nav, ev: 
     if page < 0 || page >= nb.npages() || slot < 0 || slot >= cols * rows {
         return;
     }
-    let card = if v.context.is_some() { card_rect(a, v) } else { RECT_EMPTY };
+    let card = if v.context.is_some() { card_rows_at((a.w, a.h)).2 } else { RECT_EMPTY };
     let pages: Vec<i32> = if pagesview_ticked(v, page) { (0..nb.npages()).filter(|&i| pagesview_ticked(v, i)).collect() } else { vec![page] };
     v.context = None;
     v.held = false;
@@ -2002,7 +2044,10 @@ pub fn pagesview_control_point(v:&PagesView,name:&str)->Option<(f32,f32)> {
         return keyboard_key_rect(&v.kb,code,&mut r).then(||((r.x+r.w/2) as f32,(r.y+r.h/2) as f32));
     }
     let (id,arg)=match name {"link"=>(PG_CONTEXT_LINK,0),"open"=>(PG_CONTEXT_OPEN,0),"cancel"=>(PG_CONTEXT_CANCEL,0),"back"=>(PG_BACK,0),"graph"=>(PG_GRAPH,0),"list"=>(PG_LIST,0),"pages"=>(PG_TAB,0),"new"=>(PG_NEW,0),"copy"=>(PG_COPY,0),"all"=>(PG_ALL,0),"multi"=>(PG_MULTI,0),"goto"=>(PG_JUMP,0),"prev"=>(PG_PREV,0),"next"=>(PG_NEXT,0),"rename"=>(PG_CONTEXT_RENAME,0),"delete"=>(PG_CONTEXT_DELETE,0),"move-to"=>(PG_CONTEXT_MOVE,0),"copy-to"=>(PG_CONTEXT_COPY_TO,0),"move"=>(PG_MOVE,0),"copy-to-notebook"=>(PG_COPY_TO,0),"undo-move"=>(PG_UNDO_MOVE,0),"undo-add"=>(PG_UNDO_ADD,0),"redo"=>(PG_REDO,0),n if n.starts_with("page.")=>(PG_OPEN,n[5..].parse::<i32>().ok()?-1),_=>return None};
-    v.hits.h.iter().find(|h|h.id==id&&h.arg==arg).map(|h|((h.r.x+h.r.w/2)as f32,(h.r.y+h.r.h/2)as f32))
+    let find=|id:i32|v.hits.h.iter().find(|h|h.id==id&&h.arg==arg).map(|h|((h.r.x+h.r.w/2)as f32,(h.r.y+h.r.h/2)as f32));
+    // The same names find the bottom row's Delete and Move to... while no held card is up (it hides
+    // the row's hits): ticked pages, then Delete, is the grid's own way to delete them (issue #18).
+    find(id).or_else(||match name {"delete"=>find(PG_DELETE),"move-to"=>find(PG_MOVE),_=>None})
 }
 
 pub fn pagesview_grid(v:&PagesView,a:&App)->(i32,i32) {let (cols,rows,..)=geom(a,v);(cols,rows)}

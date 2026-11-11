@@ -14082,7 +14082,8 @@ mod tests {
         assert_eq!(probe(&a, "drag_shown"), format!("{} {}", want.0, want.1));
         assert!(!bar_drawn(&a), "the bar is away while the box moves");
         let inked: u32 = probe(&a, "drag_inked").parse().unwrap();
-        assert!((1..=4).contains(&inked), "the halo walked only where the outline's strips were: {inked}");
+        // (the outline's four strips, and the four resize handle squares the selection showed)
+        assert!((1..=8).contains(&inked), "the halo walked only where the outline's strips and handles were: {inked}");
         assert!(layers_ok(&mut a));
         // the pen moves on: a tick before DRAG_SHOW_MS went by since the show shows nothing
         for k in 41..=50 {
@@ -14174,6 +14175,63 @@ mod tests {
         assert_eq!(probe(&a, "drag_copy"), "0");
         assert!(bar_drawn(&a));
         assert!(layers_ok(&mut a));
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    // A selection of strokes shows resize handles at its box's corners (issue #37); dragged, a handle scales
+    // the ink about the opposite corner, the box following, one undo step at the lift; a tap on a handle that
+    // never moves changes nothing.
+    #[test]
+    fn a_resize_handle_scales_the_selection_about_its_opposite_corner() {
+        let root = fhold_root("resize");
+        let mut a = fshape_app();
+        let (mut px, mut py) = (0.0, 0.0);
+        to_page(ed(&mut a), 400.0, 600.0, &mut px, &mut py);
+        sel_word(&mut a, px, py);
+        sel_toggle(&mut a);
+        sel_lasso(&mut a, 400.0, 615.0, 120.0, false, 1000);
+        app_flush(&mut a);
+        assert_eq!(ed_ref(&a).sel.state, SelState::Selected);
+        let s = ed_ref(&a);
+        let b0 = s.sel.box_;
+        let bs = box_screen(s, b0);
+        let (cx, cy) = ((bs.x + bs.w) as f32, (bs.y + bs.h) as f32);
+        // the handles are drawn: a black square at a corner, past the outline's band
+        let full = Rect { x: 0, y: 0, w: a.w, h: a.h };
+        compose(&mut a, full);
+        let at = |a: &App, x: i32, y: i32| a.screen.px[(y * a.screen.stride + x) as usize];
+        assert!(at(&a, bs.x + bs.w + 6, bs.y + bs.h + 6) < 128, "the bottom-right handle is drawn");
+        // dragged out by the box's width and height: twice as large, the opposite corner staying
+        let depth = undo_depth(&mut a);
+        let n0 = ed_ref(&a).sel.ids.len();
+        pen_event(&mut a, InType::PenDown, false, cx, cy, 2000);
+        assert_eq!(ed_ref(&a).sel.state, SelState::Dragging);
+        assert_eq!(ed_ref(&a).sel.resize_handle, 4);
+        pen_event(&mut a, InType::PenMove, false, cx + bs.w as f32, cy + bs.h as f32, 2010);
+        editor_tick(&mut a, now_ms());
+        pen_event(&mut a, InType::PenUp, false, cx + bs.w as f32, cy + bs.h as f32, 2020);
+        app_flush(&mut a);
+        assert_eq!(ed_ref(&a).sel.state, SelState::Selected);
+        assert_eq!(ed_ref(&a).sel.resize_handle, 0);
+        assert_eq!(undo_depth(&mut a), depth + 1, "one step for the resize");
+        let b1 = ed_ref(&a).sel.box_;
+        assert_eq!((b1.x, b1.y), (b0.x, b0.y), "the opposite corner stayed");
+        assert!(b1.w > b0.w + b0.w / 2 && b1.h > b0.h + b0.h / 2, "the ink was scaled up: {:?} from {:?}", b1, b0);
+        assert_eq!(ed_ref(&a).sel.ids.len(), n0);
+        assert!(layers_ok(&mut a));
+        // a tap on a handle: no step, the box as it was
+        let s = ed_ref(&a);
+        let bs = box_screen(s, s.sel.box_);
+        let (cx, cy) = ((bs.x + bs.w) as f32, (bs.y + bs.h) as f32);
+        let depth = undo_depth(&mut a);
+        pen_event(&mut a, InType::PenDown, false, cx, cy, 3000);
+        assert_eq!(ed_ref(&a).sel.resize_handle, 4);
+        pen_event(&mut a, InType::PenUp, false, cx + 2.0, cy + 2.0, 3010);
+        app_flush(&mut a);
+        assert_eq!(ed_ref(&a).sel.state, SelState::Selected);
+        assert_eq!(undo_depth(&mut a), depth);
+        assert_eq!(ed_ref(&a).sel.box_, b1);
+        assert!(bar_drawn(&a));
         std::fs::remove_dir_all(root).unwrap();
     }
 

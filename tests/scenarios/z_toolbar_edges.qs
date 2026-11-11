@@ -17,7 +17,7 @@ expect editor.panel_at.1768.138 is tool-picker
 tap 1768 1454
 wait 300
 expect editor.modal is display
-tap 1464 1858
+tap 1464 1950
 wait 300
 expect editor.modal is none
 # The foot on the bottom edge (2480 less the panel's 1734).

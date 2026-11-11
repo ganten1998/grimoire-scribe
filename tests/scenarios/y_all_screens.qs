@@ -412,20 +412,20 @@ tap library display
 wait 50
 expect library.sheet is display
 shot 07-display
-tap 930 1448
+tap 930 1546
 wait 50
 shot 08-display-sleep-1
-tap 930 1448
+tap 930 1546
 wait 50
 shot 09-display-sleep-2
-tap 930 1448
+tap 930 1546
 wait 50
 expect settings.sleep_mode is 3
 shot display-koreader-wallpaper
-tap 930 1448
+tap 930 1546
 wait 50
 expect settings.sleep_mode is 0
-tap 1462 1766
+tap 1462 1858
 wait 50
 expect library.sheet is settings
 # Pen feel: every tab (the pad drawn on in the pencil's and the calligraphy pen's: the live readout),
@@ -833,20 +833,20 @@ pentap panel display
 wait 100
 expect editor.modal is display
 shot 26-display-editor
-tap 500 1539
+tap 500 1640
 wait 100
 shot 27-display-pinned
 expect settings.sleep_mode is 1
-tap 930 1399
+tap 930 1500
 wait 50
-tap 930 1399
+tap 930 1500
 wait 50
 expect settings.sleep_mode is 3
 shot display-koreader-wallpaper
-tap 930 1399
+tap 930 1500
 wait 50
 expect settings.sleep_mode is 0
-tap 1462 1860
+tap 1462 1950
 wait 100
 expect editor.modal is none
 pentap panel next
@@ -1376,19 +1376,19 @@ expect library.sheet is settings
 tap library display
 wait 50
 expect library.sheet is display
-tap 1240 1239
+tap 1240 1339
 wait 50
-tap 1240 1239
+tap 1240 1339
 wait 50
 shot 54-display-landscape
-tap 1240 1239
+tap 1240 1339
 wait 50
 expect settings.sleep_mode is 3
 shot display-koreader-wallpaper
-tap 1240 1239
+tap 1240 1339
 wait 50
 expect settings.sleep_mode is 0
-tap 1770 1559
+tap 1770 1650
 wait 50
 expect library.sheet is settings
 tap 1240 1385
@@ -1511,7 +1511,7 @@ expect editor.modal is display
 tap 500 1126
 wait 300
 expect settings.gesture_new_page is 0
-tap 1462 1860
+tap 1462 1950
 wait 300
 expect editor.modal is none
 wait 1100
@@ -1690,7 +1690,7 @@ tap 1240 779
 wait 300
 expect settings.landscape_fit is 1
 shot 69-display-fit-on-landscape
-tap 1768 1653
+tap 1768 1735
 wait 300
 expect editor.modal is none
 # upright, the same row says where it applies
@@ -1707,7 +1707,7 @@ shot 69-display-fit-off-upright
 tap 930 986
 wait 300
 expect settings.landscape_fit is 1
-tap 1462 1860
+tap 1462 1950
 wait 300
 expect editor.modal is none
 expect settings.link_areas is 0

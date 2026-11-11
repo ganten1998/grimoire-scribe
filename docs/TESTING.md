@@ -235,7 +235,7 @@ time) and `beside pid` (the second background process).
 ## 2.0.0-beta.2, the Terminess diet (device checks pending)
 
 Automated: rust/tests/test_terminess_keep.rs (the embedded fonts hold exactly
-`assets/terminess-keep.txt`'s code points, 1,197 of Terminus's text and 84 Material Design icons; every
+`assets/terminess-keep.txt`'s code points, 1,197 of Terminus's text and 85 Material Design icons; every
 icon the sources draw is listed, is in both weights and draws ink; none of the Nerd Fonts glyphs the diet
 leaves out is listed), test_koreader.rs's fonts_follow_the_binary (KOReader's `fonts/Grimoire` written
 again when it differs, left alone when equal, made only while the Terminess patch is applied, nothing

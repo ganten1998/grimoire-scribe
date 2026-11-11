@@ -813,8 +813,11 @@ static bool go_to_page(App *a, int index) {
     S->link_mode = false;    // (a link's box is drawn on the page Add a link was asked on)
     S->settle = RECT_EMPTY;  // the whole screen is about to be redrawn anyway
     S->panel_stale = false;
-    if (!save_page(a)) { compose_all(a, REFRESH_FULL); return false; }
-    write_thumb_if_needed(a);
+    // Skip save if page not dirty: avoids fsyncs that take 147-156ms on light pages
+    // and 1194-1250ms on dense pages.
+    if (S->page_dirty && !save_page(a)) { compose_all(a, REFRESH_FULL); return false; }
+    // Skip thumbnail if not needed
+    if (S->thumb_dirty) write_thumb_if_needed(a);
     index = clampi(index, 0, S->nb.npages - 1);
     Page *np = page_at(a, index);
     if (!np) {
@@ -828,7 +831,13 @@ static bool go_to_page(App *a, int index) {
     S->info_dirty = true;
     render_page_full(a);
     view_reset(a);
-    compose_all(a, REFRESH_FULL);
+    // Use identity blit if view is unchanged: avoids full compose refresh
+    if (view_identity(a)) {
+        canvas_blit(&a->screen, &S->page_canvas, (Rect){0, 0, a->w, a->h}, 0, 0);
+        app_invalidate_all(a, REFRESH_UI);
+    } else {
+        compose_all(a, REFRESH_FULL);
+    }
     arrive_readonly(a);
     return true;
 }
@@ -1150,6 +1159,17 @@ static void draw_end(App *a) {
     }
     if (S->link_mode && !stroke_is_erase(s) && link_box_too_small(a, s)) {
         // A dot or a tick for a link's box: taken back (no undo step), and the next stroke is tried.
+        // Add stroke to page as regular ink before handling as too-small link box.
+        History *h = cur_hist(a);
+        bool had_undo = h && history_can_undo(h), had_redo = h && history_can_redo(h);
+        bool was_empty = S->page->n == 0;
+        page_add(S->page, s);
+        bool kept = S->page->n && S->page->strokes[S->page->n - 1] == s;
+        if (h && kept) history_push_add(h, S->page->n - 1, s);
+        PageHistory *e = false ? entry_for(a, S->nb.page_ids[S->index]) : NULL;
+        if (e) e->to_list = true;
+        mark_changed(a);
+        if (!had_undo || had_redo || was_empty) S->panel_stale = true;
         Rect d = s->bbox;
         stroke_free(s);
         draw_page(a, d);

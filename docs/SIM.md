@@ -287,16 +287,17 @@ orientation (Pair in Controller's place since 2.0.0-beta.2). These interior tap 
 | Gestures | 890, 1930 | 1170, 1695 |
 | Updates | 1200, 1930 | 1470, 1695 |
 | Settings Done | 1550, 1930 | 1820, 1695 |
-| Record Use (when enabled) | 500, 1650 | 810, 1340 |
-| Record Try again | 930, 1650 | 1240, 1340 |
-| Record Cancel | 1360, 1650 | 1670, 1340 |
+| Record Use (when enabled) | 430, 1645 | 740, 1335 |
+| Record Try again | 763, 1645 | 1073, 1335 |
+| Record Disable | 1096, 1645 | 1406, 1335 |
+| Record Cancel | 1429, 1645 | 1739, 1335 |
 
 The three sample slots have interior centres at x = 630 / 930 / 1230, y = 1110 upright,
 and x = 940 / 1240 / 1540, y = 800 sideways. They display samples and have no hit action.
 Use `library.ui_at.X.Y` to check a candidate hit before depending on it. Its
 values include `pair-menu` (Settings' Pair), `gestures`, `updates`, `done`, `gestures.master`,
 `gestures.group.NAME`, `gestures.row.N`, `gestures.reset`, `gestures.reset.confirm`,
-`gestures.reset.cancel`, `record.use`, `record.retry` and `record.cancel`. This is a hit-test
+`gestures.reset.cancel`, `record.use`, `record.retry`, `record.disable` and `record.cancel`. This is a hit-test
 probe, not a coordinate locator; existing unrelated coordinates above remain as documented.
 
 **Recording a gesture in a scenario.** Open Settings > Gestures and a group; verify each
@@ -309,7 +310,8 @@ saving, or the third sample runs them immediately. If the first Use discovers th
 action owns the shape, the card names it and a second Use confirms the move.
 Check `library.record.line` for the refusal or reassignment reason, and check
 `gestures.ACTION`, `gestures.shape.ACTION` and the file after success. Try again restarts the
-attempt; Cancel leaves the bindings unchanged. To exercise a failed save, use the main
+attempt; Disable saves "nothing" for the action and closes the card; Cancel leaves the bindings
+unchanged. To exercise a failed save, use the main
 scenario owner's fixture and assert that the live binding and card survive unchanged.
 
 The host tool uses the same recognizer without opening the app:
@@ -452,14 +454,14 @@ shows what the app holds.
 | `editor.ticked` | selected pages in management (tap tile selects, double tap opens) |
 | `editor.pages.grid` | actual column and row counts of the current Pages geometry |
 | `editor.pages.screen` | the Pages view's screen in front, from 1 (the Index list's in its tab), `0` while it is closed; one finger flicked sideways (12 mm within 800 ms, mostly sideways) or the page-turn actions turn it (no arrows since 2.0.0-rc.12) |
-| `editor.pages.context` | held page number while its context menu is open, else `0`; its rows are `tap panel pages.open`, `pages.link`, `pages.rename` (Page name for that page, over the grid), `pages.delete` (the ticked pages when the held one is ticked, else that page alone) and `pages.cancel` |
+| `editor.pages.context` | held page number while its context menu is open, else `0`; its rows are `tap panel pages.open`, `pages.link`, `pages.rename` (Page name for that page, over the grid), `pages.delete` (the ticked pages when the held one is ticked, else that page alone) and `pages.cancel`. With no sheet up, `pages.delete` is the bottom row's trash icon for the ticked pages (drawn only then) and `pages.move-to` its move icon |
 | `editor.pages.drag` | while a held tile is dragged (2.0.0-beta.2; held 300 ms, `DRAG_HOLD_MS`, then moved past the slop and off the tile, with no card, or moved past the slop from its card): the pages it carries, from 1 and joined by `,`, then where a lift drops them: `before N`, `end`, or `off` (over the top bar or the bottom row, where a lift moves nothing and a stay turns the screen); empty with no drag |
 | `editor.pages.undo` | `1` while the bottom row offers Undo, in Move to...'s place with nothing ticked: for the notebook's last page move (`tap panel pages.undo-move`: no page added, deleted, copied or moved since) or its last batch of new pages (`tap panel pages.undo-add`: no page changed since, none of the batch saved, named or linked, the open page not one of them), else `0` |
 | `editor.pages.undo.kind` | which Undo that is: `add`, `move`, or empty (2.0.0-beta.2) |
 | `editor.pages.redo` | `1` while there is a Redo of what the Pages view's last Undo took back (a move or a batch of new pages; the `redo` action does it, and with nothing ticked the bottom row shows it in Copy to notebook...'s place: `tap panel pages.redo`), until the pages change otherwise, else `0` (2.0.0-beta.2) |
 | `editor.pages.redo.kind` | which Redo that is: `add`, `move`, or empty (2.0.0-beta.2) |
 | `editor.pages.ticks` | the ticked pages, from 1 and joined by `,`; empty for none |
-| `editor.pages.card` | the held tile's card, `x y w h` (centred after a hold); empty while none is up |
+| `editor.pages.card` | the held tile's sheet, `x y w h` (centred after a hold, its page's actions as the app's other menus list theirs); empty while none is up |
 | `editor.pages.adding` | `1` while New page's count pad is up (New page held, or tapped with a modifier held: `key 42`, or `mods`; it opens at 1), else `0`; its keys are `tap panel pages.key.0` to `key.9`, `key.del`, `key.dec` (-), `key.inc` (+), `key.done` and `key.cancel` |
 | `editor.pages.add.done`, `editor.pages.add.done.on` | the count pad's Done as labelled ("Add 12 pages"), and `1` when it can be pressed (a count of 1 or more); empty while the pad is not up |
 | `editor.addpad` | `1` while the toolbar's count pad is up over the page (the + on the last page held 600 ms, or tapped with a modifier held, or the `new-pages` action), else `0`; its keys are `tap panel addpad.key.0` to `key.9`, `key.del`, `key.dec` (-), `key.inc` (+), `key.done` and `key.cancel`, and `editor.keyboard` and `editor.text` read it |
@@ -563,10 +565,11 @@ shows what the app holds.
 | `settings.controller` | `1` when the Bluetooth helper starts with Grimoire |
 | `settings.updates` | Settings > Updates' channel: `0` by the version, `1` releases only, `2` betas too |
 | `settings.status_on`, `settings.status_size`, `settings.status_corner` | the clock and battery corner as settings.ini stores it: `1` while it is on, its size, 0 small, 1 medium, 2 large, and its corner, 0 top left, 1 top right, 2 bottom right, 3 bottom left |
+| `settings.clock_12h` | `1` while the clock and battery corner's time is on the 12-hour clock (`Nov 14, 10:13 PM`), `0` while it is on the 24-hour one |
 | `settings.gestures`, `settings.landscape_fit`, `settings.hints`, `settings.link_areas` | the gestures' settings as settings.ini stores them: `1` while on, `landscape_fit` on by default, `hints` the one-time tips shown as a bitmask (FORMAT.md), `link_areas` `1` while the eye is on |
 | `notebook.last_page` | the open notebook's `last_page` plus 1: the page its notebook.ini reopens it on (a peek of another page never changes it); `0` with no notebook open |
 | `status.shown` | `1` while the panel holds the clock and battery corner, else `0`. A tap in the corner or the `status-toggle` shortcut turns it on at once (`settings.status_on`), but it is shown only on a notebook page with nothing in front of it (`status.front`), and only once its refresh has been sent: not while the pen is near, nor while asleep |
-| `status.text`, `status.rect` | what the corner says (`Nov 14, 22:13  87%`: the time as the Library's cards write it, then the percent, which is drawn right of the battery; the time alone when the battery cannot be read) and where it is, `x y w h` in screen pixels; both empty while it is not shown |
+| `status.text`, `status.rect` | what the corner says (`Nov 14, 22:13  87%`: the time as the Library's cards write it, or `Nov 14, 10:13 PM` with `settings.clock_12h`, then the percent, which is drawn right of the battery; the time alone when the battery cannot be read) and where it is, `x y w h` in screen pixels; both empty while it is not shown |
 | `status.icon`, `status.fill` | the battery's pixel art, `x y w h` (18 by 9 units, a unit about a tenth of the text's height: 54 by 27 px at the small size), and how many of its 12 columns of charge are lit (`10` at 87%, `1` for any charge, `0` at 0%); empty while it is not shown or has no battery |
 | `status.charging` | `1` while the corner shows its bolt, `0` while it does not; empty while it is not shown |
 | `status.zone` | the corner's square, `x y w h`, where a finger's tap finds it: 14 mm square in the corner `settings.status_corner` names (`0 0 165 165` at 300 dpi), and the indicator's box is part of the corner too while it is shown; a tap also finds the box's place in that corner with 4 mm around it, shown or not (`status_hit`) |
