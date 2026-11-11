@@ -5,7 +5,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: Grimoire 2.0.0-beta.1\n"
 "Report-Msgid-Bugs-To: https://github.com/ganten1998/grimoire-scribe/issues\n"
-"POT-Creation-Date: 2026-11-09 21:40-0600\n"
+"POT-Creation-Date: 2026-11-11 16:40-0600\n"
 "PO-Revision-Date: 2026-11-09 00:00+0000\n"
 "Last-Translator: draft\n"
 "Language-Team: Japanese\n"
@@ -2601,6 +2601,40 @@ msgstr "シフト"
 msgctxt "key"
 msgid "del"
 msgstr "削除"
+
+#. TRANSLATORS: the edit page's keys (the text line's edit key opens it), in bold at 44 px: Select all
+#. selects the whole text (a key as wide as the keyboard, 1760 px), Cut, Copy and Paste (each a third,
+#. 580 px) take the selected text to the keyboard's clipboard or type what it holds, Start and End (each
+#. half, 875 px) put the caret at the text's start and at its end.
+#: rust/src/keyboard.rs
+msgctxt "key"
+msgid "Select all"
+msgstr ""
+
+#: rust/src/keyboard.rs
+msgctxt "key"
+msgid "Cut"
+msgstr ""
+
+#: rust/src/keyboard.rs
+msgctxt "key"
+msgid "Copy"
+msgstr ""
+
+#: rust/src/keyboard.rs
+msgctxt "key"
+msgid "Paste"
+msgstr ""
+
+#: rust/src/keyboard.rs
+msgctxt "key"
+msgid "Start"
+msgstr ""
+
+#: rust/src/keyboard.rs
+msgctxt "key"
+msgid "End"
+msgstr ""
 
 #: rust/src/keyboard.rs
 msgctxt "key"

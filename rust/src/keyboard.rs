@@ -1489,6 +1489,9 @@ pub fn keyboard_pointer(kb: &mut Keyboard, phase: i32, x: f32, y: f32, t: u32, d
         // leaves the selection (or, for a tap, the caret) where it ended.
         if phase == 2 {
             kb.field_drag = false;
+            if x < 0.0 || y < 0.0 {
+                return KbResult::None; // (the off-screen cancel a second finger or the pen sends: as it was)
+            }
         }
         let to = caret_at_x(kb, x);
         let moved = caret_to(kb, to, true);
@@ -2793,6 +2796,14 @@ mod tests {
             keyboard_pointer(&mut kb, 2, x_at(5) - 3.0, y, 160, &mut d);
             assert_eq!(caret(&kb), "a[bcde|]f", "{th:?}");
             assert!(!kb.field_drag);
+            // A drag a second finger takes over ends with the off-screen cancel: the selection as it last was.
+            keyboard_pointer(&mut kb, 0, x_at(2), y, 170, &mut d);
+            keyboard_pointer(&mut kb, 1, x_at(4), y, 180, &mut d);
+            assert_eq!(keyboard_pointer(&mut kb, 2, -10000.0, -10000.0, 190, &mut d), KbResult::None);
+            assert_eq!((caret(&kb).as_str(), kb.field_drag), ("ab[cd|]ef", false));
+            keyboard_pointer(&mut kb, 0, x_at(1), y, 195, &mut d);
+            keyboard_pointer(&mut kb, 1, x_at(5) - 3.0, y, 196, &mut d);
+            keyboard_pointer(&mut kb, 2, x_at(5) - 3.0, y, 197, &mut d);
             // Drawn: the selection's box black with the letters white in it, the rest of the line as before.
             keyboard_draw(&mut kb, &mut c, screen);
             let px = |x: i32, y: i32| c.px[(y * c.stride + x) as usize];

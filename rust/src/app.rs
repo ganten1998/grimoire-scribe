@@ -957,7 +957,8 @@ fn app_event_screens(a: &mut App, ev: &InEvent) {
             return;
         }
         // A keyboard that types a name, a page or Find takes the keys that edit text (the arrows, Home and End, and
-        // Ctrl or Cmd with A, C, X and V), shortcuts on or off: none of them reaches what is under it.
+        // Ctrl or Cmd with A, C, X and V) before any shortcut: none of them reaches what is under it. (On the Kindle
+        // a keyboard is read only while Settings > Shortcuts is on.)
         if !a.asleep && !ev.gamepad && app_text_key(a, ev) {
             note_input(a);
             return;

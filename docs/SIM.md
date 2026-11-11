@@ -207,7 +207,14 @@ tilde, sharp s, oe, ae, o slash, a ring at x = 221 + 177 n; y 2205 the inverted 
 exclamation marks, the angle quotes and the middle dot at x = 570 + 177 n. On the symbols page:
 y 1725 the digits, y 1885 `! @ # $ % ^ & * ( )`, y 2045 `? , " : ; _ + = / ~`, each at x = 133 +
 177 n; y 2205 `[ ] < >`, the euro, the pound and the degree sign at x = 393 + 177 n. In Spanish
-the letters page's y 2045 row is a to l and then n tilde, ten keys at x = 133 + 177 n.
+the letters page's y 2045 row is a to l and then n tilde, ten keys at x = 133 + 177 n. The text line
+(50 1510 1760 120, what a change of the text or the caret refreshes) holds three keys at its right end on
+every page but the count pad's: the edit key 1372 1570, ◀ 1549 1570 and ▶ 1726 1570 (each 167 by 120);
+the text box is the rest, x 50 to 1279, and a tap on it puts the caret there (left of the text, its start;
+right of it, its end), a drag across it selects. The edit page: Select all 930 1751, Cut 340 1964, Copy 930
+1964, Paste 1520 1964, Start 487 2177, End 1372 2177, and along the bottom Cancel 175 2365, abc (back)
+393 2365, space 888 2365, del 1425 2365 and Done 1685 2365. Sideways the text line is 50 890 2380 120,
+with the edit key at 1837 950, ◀ 2076 950 and ▶ 2315 950, and the text box from x 50 to 1713.
 tests/scenarios/u_accents.qs types accented names with them, u_keyboard_symbols.qs a name with
 symbols, u_keyboard_caps.qs one with caps on. Sideways the shift key is at 221 1585.
 
@@ -388,6 +395,7 @@ shows what the app holds.
 | `touch.hand` | why the last session's lone finger on the notebook's ink was taken for the pen's writing hand and sent nothing: `touching` (the pen touched), `near` (it hovered, with no fresh hover sample 60 mm away) or `gone` (it had left under a second before, the finger near where it last touched); empty for a finger let through, and from the next session's first contact on (grimoire.log says the same at the lift: `touch: a finger on the page was the pen's hand: ...`) |
 | `pump.calls` | how many times long work called the work pump (`work_pump`, common.h: on the Kindle it reads the pens meanwhile) since this key was last checked, so `expect pump.calls not -1` only starts the count (the runner answers this one too) |
 | `keyboard.draws` | how many times an on-screen keyboard was drawn whole (`keyboard_draw`, keyboard.h) since this key was last checked, counted the same way (the runner answers this one too) |
+| `keyboard.clipboard` | what the keyboard's Cut or Copy took last (`keyboard_clipboard`: typed text, never the lasso's ink), empty before the first (the runner answers this one too; 2.1.0-beta.2) |
 | `screen` | `library`, `editor`, `penset` (pen feel), `calib` or `share` |
 | `toast` | the toast showing, empty if none |
 | `toast.rect` | where the visible toast is, `x y w h` in screen pixels, empty if none |
@@ -477,7 +485,7 @@ shows what the app holds.
 | `editor.page_name`, `editor.index_rows` | the open page's section name (empty if unnamed), and the notebook's named-section count |
 | `editor.pages_tab` | `pages` or `index`, the Pages view's selected tab |
 | `editor.tile.N` | the label under page N in the open Pages view, with its book-page label separated by a vertical bar when present; empty while Pages is closed |
-| `editor.keyboard`, `editor.text` | the keyboard that is up over the page and the text it holds, both empty with none: the Pages view's (its title `Page name`, the Index's naming keyboard, as Name this page and the `name-page` shortcut open it; `Go to page` while a link's page is being picked, where Go to page... is still a number pad) the Find sheet's (`Page number or name`) or New page...'s (`Name the new page`) |
+| `editor.keyboard`, `editor.text`, `editor.caret` | the keyboard that is up over the page, the text it holds and that text with its caret and selection drawn in as `library.caret` draws them, all empty with none: the Pages view's (its title `Page name`, the Index's naming keyboard, as Name this page and the `name-page` shortcut open it; `Go to page` while a link's page is being picked, where Go to page... is still a number pad) the Find sheet's (`Page number or name`) or New page...'s (`Name the new page`) |
 | `live.on`, `live.viewers`, `live.pairing` | Live view: `1` while it is on, how many computers watch, `1` while its pairing card is the screen |
 | `live.chip` | where Live view's chip is, `x y w h`, while it is on; else empty. On a notebook page it is beside the editor's panel (level with its header, on its left, or on its right at the screen's left edge) and moves with it; with a menu, sheet, bar or the Pages view in front it is empty; on the other screens it is the top right corner |
 | `live.panel` | Live view's toolbar layer as its shared frame holds it, what a browser is sent: `x y w h` (the editor's panel's rect) while it holds the panel, else empty. It stays while a menu, sheet or bar of the notebook is up beside the panel or over it, holding the screen there as the Kindle shows it, the menu's part over the panel too; it is empty off the notebook page, under the Pages view, the Graph or the notebooks' browser, and with Settings over the notebook, whose frame holds the whole screen (2.0.0, issue #16) |
@@ -580,6 +588,7 @@ shows what the app holds.
 | `library.items` | the cards in the open folder, on every page of cards: at the top level its folders and the notebooks in no folder |
 | `library.page`, `library.pages` | the page of cards (from 1) and how many there are |
 | `library.text` | the keyboard's text while it is open |
+| `library.caret` | the same with its caret drawn in as `\|` and a selection in `[` `]` (`ab\|cd`, `a[bc\|]d`), empty while no keyboard is open (2.1.0-beta.2) |
 | `library.paper` | the paper picked in New notebook, numbered as for `editor.paper` |
 | `library.music` | as `editor.music`, for New notebook's Custom music sheet and its picked paper |
 | `display.ink` | `1` while a pen stroke is marked live ink (`display_live_ink`), else `0` |
