@@ -2615,7 +2615,7 @@ void editor_tick(App *a, uint32_t now) {
     // which a sheet was in front of the page, nor one the pen pressed anything during.
     if (S->btn_down && sheet_open(a)) S->btn_used_for_ink = true;
     if (S->open && S->btn_down && !S->btn_used_for_ink && !S->btn_hold_fired && S->owner == OWN_NONE &&
-        !sheet_open(a) && now - S->btn_down_at >= 1200) {
+        !sheet_open(a) && now - S->btn_down_at >= 1200 && !S->pen_near) {
         S->btn_hold_fired = true;
         S->nclicks = 0;
         clear_page(a);
