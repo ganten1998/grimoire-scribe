@@ -96,6 +96,24 @@
   every comparison), by nebuff.
 - Hardening: Grimoire no longer follows links planted in its own folders when it saves, cleans up or prunes its
   caches, and a late sandbox reply from the separate process that reads PDFs and pictures now counts as a failure.
+- **The pen button's hold no longer clears the page by itself.** Holding the pen's button with the pen near the
+  screen cleared the page after a second, so a finger resting on the button wiped it (issues #36, #39). The pen
+  button now has no gesture until you give it one in Settings > Gestures, and a hold you recorded yourself for
+  Clear page stays. When Clear page runs from a gesture, a key or a controller button, a toast says "Page
+  cleared. Undo brings it back."; Undo does, in one step. The toolbar's broom clears as before, without a toast.
+  A `gestures.ini` that still holds the old built-in (written by 2.0.0-rc.1, or carried since) loses it.
+- **Resize a lasso selection.** The selection's box has a handle at each corner: drag one to make the ink larger
+  or smaller, the opposite corner staying where it is; the links you drew travel and scale with it, a PDF's tabs
+  stay, and Undo takes it back in one step. A drag of a selection that holds a lot of ink starts sooner (its ink
+  is drawn again once, not once for each edge of the outline) (issue #37), by nebuff.
+- **A 12-hour clock.** Settings > Display, "Display time as 12 hour": the clock in the corner of a page says
+  `Nov 14, 10:13 PM` (in Spanish `14 nov, 10:13 p. m.`); every other screen keeps the 24-hour clock. New in
+  `settings.ini`: `clock_12h`, which 2.1.0-beta.1 and older keep as a line they do not know. By nebuff.
+- **Delete pages from the Pages view's bottom row.** With pages ticked, the bottom row has a trash button that
+  deletes them, and a tap on a page already ticked unticks it (no Multi-select needed). A held page's card now
+  lists its actions as the other menus do, an icon beside each (issue #18), by nebuff.
+- **No gesture for an action.** Settings > Gestures' record card has Disable: the action keeps no gesture, a
+  built-in one included (both directions on a paired row), and its row says "no gesture" (issue #44), by nebuff.
 
 ## 2.1.0-beta.1 (2026-11-08)
 
