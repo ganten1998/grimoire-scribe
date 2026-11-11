@@ -3,13 +3,11 @@
 use crate::prelude::*;
 
 // display.h is implemented by one platform file per build, as in the C (display_fbink.c on the
-// Kindle, sim_sdl.c in the simulator; none on the host: platform_none.rs). These forward to it.
-#[cfg(feature = "kindle")]
-use crate::display_fbink as platform;
-#[cfg(not(any(feature = "kindle", feature = "sim")))]
-use crate::platform_none as platform;
-#[cfg(feature = "sim")]
-use crate::sim_sdl as platform;
+// Kindle, sim_sdl.c in the simulator; none on the host: platform_none.rs). These forward to it,
+// through the build's platform (platform.rs).
+// (the in-tree platforms' methods need the trait in scope; a registered `dyn` platform's do not)
+#[cfg_attr(feature = "external-platform", allow(unused_imports))]
+use crate::platform::{active, Platform};
 
 #[repr(i32)]
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
@@ -103,30 +101,30 @@ pub fn du_wear_presented(w: &mut DuWear, r: Rect, m: RefreshMode) {
 /// Fills portrait width/height and dpi of the panel. 0 on success.
 #[inline]
 pub fn display_open(w: &mut i32, h: &mut i32, dpi: &mut f32) -> i32 {
-    platform::display_open(w, h, dpi)
+    active().display_open(w, h, dpi)
 }
 /// Copies the rect of `screen` (same size as the display) to the panel and refreshes it.
 #[inline]
 pub fn display_present(screen: &Canvas, r: Rect, mode: RefreshMode) {
-    platform::display_present(screen, r, mode)
+    active().display_present(screen, r, mode)
 }
 /// Device rotation (quarter turns clockwise): the logical screen the app draws is mapped onto
 /// the panel accordingly. Fills the logical width/height (swapped for 1 and 3).
 #[inline]
 pub fn display_set_orientation(quarter_turns: i32, w: &mut i32, h: &mut i32) {
-    platform::display_set_orientation(quarter_turns, w, h)
+    active().display_set_orientation(quarter_turns, w, h)
 }
 /// Show Grimoire's colors inverted (white on black) when on.
 #[inline]
 pub fn display_set_invert(on: bool) {
-    platform::display_set_invert(on)
+    active().display_set_invert(on)
 }
 /// Low-latency handwriting mode (MTK pen mode on the Scribe). While on, only REFRESH_FAST
 /// should be used; any other mode turns it off first. No-op where unsupported. The editor turns it
 /// on for a stroke of ink, which marks live ink too (display_live_ink).
 #[inline]
 pub fn display_pen_mode(on: bool) {
-    platform::display_pen_mode(on)
+    active().display_pen_mode(on)
 }
 /// Live ink: a stroke being drawn with the pen (writing, erasing, the pen feel pad, the calibration's
 /// check line), on at its start and off at its end. On a colour panel every other fast refresh is
@@ -134,7 +132,7 @@ pub fn display_pen_mode(on: bool) {
 /// so pen reading never stalls. Changes nothing else (no pen mode).
 #[inline]
 pub fn display_live_ink(on: bool) {
-    platform::display_live_ink(on)
+    active().display_live_ink(on)
 }
 
 /// Which fast refreshes are live ink, the rule display_fbink.c follows (the simulator follows it
@@ -170,34 +168,34 @@ pub fn live_ink_frame(l: &mut LiveInk, mode: RefreshMode, now: u32) -> bool {
 /// status bar clock. `skip` (may be empty) is excluded, e.g. a visible toast.
 #[inline]
 pub fn display_band_overwritten(screen: &Canvas, band: Rect, skip: Rect) -> bool {
-    platform::display_band_overwritten(screen, band, skip)
+    active().display_band_overwritten(screen, band, skip)
 }
 /// This one finds a patch anywhere on screen that another process drew (a 24 px sampling grid, so
 /// a strip of the Kindle home window is caught even when it covers little of the screen).
 /// True with *where = the bounding box of the mismatching samples (padded).
 #[inline]
 pub fn display_find_overwrite(screen: &Canvas, skip: Rect, where_: &mut Rect) -> bool {
-    platform::display_find_overwrite(screen, skip, where_)
+    active().display_find_overwrite(screen, skip, where_)
 }
 /// A rect the panel shows over App.screen for good (Live view's chip, app.c): both checks leave it
 /// out, as they do a toast. RECT_EMPTY for none.
 #[inline]
 pub fn display_skip_overlay(r: Rect) {
-    platform::display_skip_overlay(r)
+    active().display_skip_overlay(r)
 }
 /// A rect the panel shows over App.screen while the clock and battery corner is up (status.rs):
 /// both checks leave it out too, apart from the Live view chip's, which has its own. RECT_EMPTY for
 /// none.
 #[inline]
 pub fn display_skip_status(r: Rect) {
-    platform::display_skip_status(r)
+    active().display_skip_status(r)
 }
 /// True while the panel's driver is in pen mode: set by the first stroke's fast frames and
 /// kept past the stroke until a grayscale refresh is due (display_fbink.rs, pen_leave), which then
 /// waits for the pen's last frame. The simulator answers with what display_pen_mode last asked.
 #[inline]
 pub fn display_pen_mode_on() -> bool {
-    platform::display_pen_mode_on()
+    active().display_pen_mode_on()
 }
 /// True once the first frame and the next 4 refreshes have all failed: the panel is not Grimoire's
 /// to drive, and it should leave. A failure after any refresh worked never counts. Polled by the
@@ -205,12 +203,12 @@ pub fn display_pen_mode_on() -> bool {
 /// dead panel is known within seconds even when nothing else draws. Always false in the simulator.
 #[inline]
 pub fn display_broken() -> bool {
-    platform::display_broken()
+    active().display_broken()
 }
 /// Blocks until pending refreshes have completed (used before exit / screenshots).
 #[inline]
 pub fn display_wait() {
-    platform::display_wait()
+    active().display_wait()
 }
 /// Finish our updates before handing the display to the screensaver/native UI. Pen mode is a
 /// device setting, so leave it explicitly even when no sleep image will be drawn.
@@ -220,30 +218,21 @@ pub fn display_sleep() {
 }
 /// Reassert normal display mode after native UI or hardware suspend may have changed it.
 pub fn display_wake() {
-    #[cfg(feature = "kindle")]
-    crate::display_fbink::display_power_reset();
-    #[cfg(not(feature = "kindle"))]
-    display_pen_mode(false);
+    active().display_power_reset()
 }
 #[inline]
 pub fn display_close() {
-    platform::display_close()
+    active().display_close()
 }
 /// Whether the last fast refresh sent may still be on the panel, its waveform not ended: a held delete's
 /// next repeat waits for it rather than queue behind it in the driver (keyboard_repeat). No display
 /// operation is issued. Never in the simulator, whose refreshes are done when they are sent.
 pub fn display_fast_busy() -> bool {
-    #[cfg(feature = "kindle")]
-    { crate::display_fbink::display_fast_busy() }
-    #[cfg(not(feature = "kindle"))]
-    { false }
+    active().display_fast_busy()
 }
 /// Cached indication for pacing non-ink trails on a colour panel. No display operation is issued.
 pub fn display_last_fast_waiting() -> bool {
-    #[cfg(feature = "kindle")]
-    { crate::display_fbink::display_last_fast_waiting() }
-    #[cfg(not(feature = "kindle"))]
-    { false }
+    active().display_last_fast_waiting()
 }
 
 #[cfg(test)]

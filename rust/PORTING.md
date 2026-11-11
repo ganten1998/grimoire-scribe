@@ -67,6 +67,7 @@ The C build's `-D` switches are cargo features:
 | `GRIMOIRE_KINDLE` | `--features kindle` (armv7 Linux only) | display_fbink, input_evdev, light_kindle |
 | `GRIMOIRE_SIM` (headless) | `--features sim` | sim_sdl (the headless runner) |
 | neither (host tools, unit tests) | no feature | platform_none |
+| none: Rust only | `--features external-platform` | another crate's (not with `kindle` or `sim`) |
 
 `#ifdef GRIMOIRE_SIM` becomes `#[cfg(feature = "sim")]`, `#ifdef GRIMOIRE_KINDLE` becomes
 `#[cfg(feature = "kindle")]`. display.rs, input.rs and light.rs hold their headers' types and
@@ -74,6 +75,30 @@ documentation, and forward every function to the build's platform module (`platf
 the platform's signatures are checked against the header. Unlike the C's host build, every module
 compiles in every build (platform_none.rs answers for the missing platform), so `cargo build` on
 the host type-checks the whole app.
+
+The platform is one interface, `platform::Platform` (platform.rs): the functions display.rs, input.rs
+and light.rs forward, under their own names. Each in-tree platform is a unit type (`Kindle`, `Sim`,
+`NoPlatform`) whose methods call its modules' functions one for one, and the forwarders call the
+build's own type, so the calls are resolved at compile time and inlined as before. A new platform
+function is added in four places: the forwarder with its documentation, the trait, and the platform
+modules (a method with a default body in the trait where most platforms have nothing to do).
+
+`external-platform` is the build for a platform kept outside this crate. That crate depends on this
+one with the feature on, implements `Platform` on a type of its own, and from its own binary:
+
+1. calls `platform::register(&ITS_PLATFORM)` (a `&'static` reference; once);
+2. sets `GRIMOIRE_ROOT` to the data directory;
+3. calls `mainloop::main(args)` on the thread that stays the app's only thread, and exits with
+   what it returns.
+
+The rules of this file hold for it as they do for the in-tree platforms: the platform's methods are
+called from that one thread and from the forked children; `input_poll` is the loop's one place to
+wait and returns early when the descriptor given to `input_watch_fd` is readable; `display_present`
+gets the whole screen's canvas and the rect to show. Until a platform is registered the build
+behaves as the host build does (no panel: `display_open` fails). The in-tree platform modules are
+not compiled in this build, light_kindle among them. tests/test_platform_external.rs runs the app
+from start to exit on a recording stand-in:
+`cargo test --features external-platform --test test_platform_external -- --test-threads=1`.
 
 ## The map
 

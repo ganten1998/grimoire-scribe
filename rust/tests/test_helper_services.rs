@@ -2,6 +2,8 @@
 // update.c's check, light_kindle.c's lipc calls), run end to end against shell stand-ins. The C
 // leaves these to tests/bt_check.sh and the launcher checks, which need the whole app; here a
 // module's own contract is checked as soon as it is translated.
+// (light_kindle is not in a build whose platform is another crate's: Cargo.toml, external-platform)
+#![cfg(not(feature = "external-platform"))]
 mod testlib;
 use grimoire::light_kindle as lk;
 use grimoire::prelude::*;

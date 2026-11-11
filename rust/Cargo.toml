@@ -19,10 +19,14 @@ autotests = true
 #   sim     GRIMOIRE_SIM: the headless runner (tests/scenarios/*.qs, docs/SIM.md).
 #   neither the host build: the library, the host tools and cargo test (the C unit tests'
 #           build, which links no platform; here the platform calls go to platform_none.rs).
+# One more, with no C twin:
+#   external-platform  the platform is another crate's: it implements platform::Platform, hands it to
+#           platform::register and calls mainloop::main (PORTING.md, Variants). Not with kindle or sim.
 [features]
 default = []
 kindle = []
 sim = []
+external-platform = []
 
 [lib]
 name = "grimoire"
