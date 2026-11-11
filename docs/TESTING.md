@@ -2301,3 +2301,55 @@ None of this has run on a Scribe. Read the screens; nothing here needs grimoire.
    thousands of glyphs), and whether it ends in "Took too long to read.".
 4. **Nothing else moved.** Japanese names, accented names, the clock and every screen in Spanish and Japanese
    draw as in 2.1.0-beta.1.
+
+## 2.1.0-beta.2, Wi-Fi networks (lane W)
+
+Settings > Wi-Fi (issue #40). Automated: `tests/test_wifi_sh.py` (make wifi-check: the helper's networks,
+current and join verbs against a fake lipc whose profileData holds passwords: none comes out, in text or in
+hex; a format it does not know and a failed read list no name; join refuses anything but a saved network
+before any change and passes a hostile name as data), `rust/src/wifi.rs`'s tests (reports fail closed; a
+switch's states, its hex argument, exit during a switch) and `tests/scenarios/z_wifi_networks.qs` (the sheet
+from the scenario helper, also run in every language and style by make l10n-check). **Not run on a Scribe.**
+
+**Probes first** (read only; the maintainer runs them over SSH with the owner's OK; copy this branch's
+`kindle/app/wifi.sh` to `/tmp/wifi.sh`). None prints a password: the masked ones replace every quoted value
+and every other letter or digit.
+
+1. `ls -l /usr/bin/lipc-hash-prop /usr/bin/lipc-probe /usr/bin/lipc-set-prop; busybox awk 'BEGIN{print 1}'`:
+   the tools the helper calls exist (else the sheet says "Saved networks could not be read.").
+2. `lipc-hash-prop 2>&1 | head -n 20; lipc-set-prop 2>&1 | head -n 20`: how a hasharray goes in (the helper
+   pipes `{}` on stdin) and that `-s` sets a string.
+3. `lipc-probe -v com.lab126.wifid 2>&1 | grep -i -e profileData -e currentEssid -e cmState` and
+   `lipc-probe -v com.lab126.cmd 2>&1 | grep -i -e ensureConnection -e wirelessEnable`: the properties exist
+   on this firmware (KOReader's Kindle backend uses all four).
+4. `printf '{}\n' | lipc-hash-prop com.lab126.wifid currentEssid 2>&1 | sed -e 's/"[^"]*"/"v"/g' -e 's/[^][{}()=:,;" ]/x/g' | tr -s x | head -n 20`,
+   then the same with `profileData`: the layout of the answer with no content (every quoted value, key and other
+   character becomes `x`: `[x] = { x = "x", x = "x", x = x }`). The reader expects quoted values (`x = "x"` or
+   `"x": "x"`) and bare numbers; an unquoted value makes it give no name (fails closed).
+5. `sh /tmp/wifi.sh networks`, connected: `current=` and `saved=` lines in hex, then `list=1`. On the Mac,
+   `sed -n 's/^\(current\|saved\)=//p' | xxd -r -p` (one per line) should give your network and every network
+   the Kindle's own Wi-Fi list shows, names with accents or Japanese too. `list=0` means probe 4's layout is not
+   the one the reader knows: send probe 4's output. A name missing from the list (one with a backslash, a quote
+   the tool escapes, or an escaped accent) says how the tool writes such names.
+6. The same with Wi-Fi off (airplane mode): `list=1` or `list=0` says whether wifid lists the saved networks
+   while the radio is off (`list=0`: the sheet asks to turn Wi-Fi on first, then reads them).
+
+**The owner's checks** (after the probes; English, then Spanish and Japanese for the words):
+
+1. Settings' bottom row reads KOReader, Pair, Wi-Fi, Gestures, Updates, Done, every word whole, upright and
+   sideways, in Gothic and Classic. Gestures and Updates open their sheets as before.
+2. Connected to Wi-Fi, open Settings > Wi-Fi: "Connected to <your network>", and the networks the Kindle has
+   saved, yours first with a check. More than seven: More networks (1 of 2) shows the rest.
+3. Tap another saved network that is in range: "Connecting to <it>..." and then "Connected to <it>" with the
+   check on it, within about 10 seconds. Share's address is the new network's; Live view pairs on it.
+4. Tap a saved network that is out of range: "Could not connect to <it>." within 45 seconds. Note what the
+   Kindle connects to afterwards on its own (the old network, none?): Grimoire switches nothing back.
+5. Wi-Fi off, open the sheet: "Wi-Fi is off" and the saved networks, or "Turn on Wi-Fi to see the saved
+   networks."; Turn on Wi-Fi connects, and the list appears. Tap a network with Wi-Fi off: the radio comes on
+   and the Kindle connects to that network.
+6. Turn off Wi-Fi from the sheet: "Wi-Fi is off", SSH and Share drop as with the Share card's button.
+7. Leave Grimoire (Exit) right after tapping a network: the Kindle still connects to it; KOReader's network
+   menu agrees.
+8. From a notebook: the toolbar's cog > Wi-Fi works the same; Done comes back to the notebook.
+9. Afterwards, grimoire.log names no network and holds no password: only lines such as `wifi: switched to a
+   saved network`. The Kindle's own Wi-Fi list is unchanged (nothing added, changed or forgotten).

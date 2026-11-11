@@ -81,6 +81,15 @@
   60 s, then not until Grimoire starts again; the fonts are checked one at a time, behind an export or a PDF
   slice; a font whose check ran out of time gets a second try; a Done that cannot load the font says so. New in `settings.ini`: `font=file:<path>` and `font_bold=`, which 2.1.0-beta.1 and older keep as
   lines they do not know (they draw Terminess). The Kindle binary is 10.6 MB and the zip 5.5 MB with it.
+- **Settings > Wi-Fi switches between the Kindle's saved networks** (issue #40). A Wi-Fi button in Settings'
+  bottom row, beside Pair, opens a sheet that turns Wi-Fi on or off, says which network the Kindle is connected
+  to, and lists the networks the Kindle has saved, that one first with a check (seven a page; More networks shows
+  the next). Tap one to switch: "Connecting to ...", then "Connected to ...", or "Could not connect to ..." when
+  the Kindle refuses it or has not connected in 45 seconds (Grimoire then changes nothing more). Switching drops
+  Share, Live view and SSH from the network you leave. Adding a network or a password stays in the Kindle's
+  settings and KOReader. No Wi-Fi password reaches the app, its files or its log (its helper keeps only the
+  networks' names from what the Kindle answers); no network is added, changed or forgotten; no network name is
+  logged.
 - The text cache now holds at most 4 MB of letters (it was only limited by their number), which matters for
   large letters of your own fonts.
 - A character no font in Grimoire can draw shows as a box instead of disappearing, so a name no longer looks cut
