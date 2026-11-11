@@ -247,7 +247,7 @@ static void render_layers(Canvas *c, const Page *p, Rect region, float dpi, int 
             stroke_brush_begin(&b, s, dpi, copy, u.x, u.y, u.w);
             for (int k = 0; k < s->n; k++) {
                 brush_add(&b, c, &s->pts[k]);
-                if ((k & 511) == 511) work_pump();
+
             }
             work_pump();
             continue;
@@ -261,7 +261,7 @@ static void render_layers(Canvas *c, const Page *p, Rect region, float dpi, int 
             }
             for (int m = pc->first; m < pc->end; m++) {
                 brush_add(&b, c, &s->pts[m]);
-                if (((m - pc->first) & 511) == 511) work_pump();
+
             }
             next = pc->end;
         }

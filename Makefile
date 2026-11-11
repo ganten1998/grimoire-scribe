@@ -24,7 +24,7 @@ BUILD   ?= build
 # The C tree's binaries (the c-* rules), apart from the app's.
 CBUILD  ?= $(BUILD)/c
 DIST    ?= dist
-HOSTCC  ?= clang
+HOSTCC  ?= gcc
 ZIG     ?= zig
 KCC     := $(ZIG) cc -target arm-linux-musleabihf -mcpu=cortex_a7
 VERSION := $(shell cat VERSION 2>/dev/null || echo 0.1.0)
@@ -393,7 +393,7 @@ test-sim:
 
 # The C tree's unit tests (core + ui only; no platform).
 TESTS := $(patsubst tests/%.c,$(CBUILD)/test/%,$(wildcard tests/test_*.c))
-# Contraction (fused multiply-add) on, as clang does by default: tests/test_golden.c's renders
+# Contraction (fused multiply-add) on, as gcc does by default: tests/test_golden.c's renders
 # were recorded so, and turning it off changes them.
 TEST_FLAGS := -O1 -g -fsanitize=address,undefined -fno-sanitize-recover=undefined -fno-omit-frame-pointer -ffp-contract=on
 c-test: $(TESTS)
