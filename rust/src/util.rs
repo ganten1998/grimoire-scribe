@@ -730,6 +730,29 @@ pub fn errno() -> i32 {
     std::io::Error::last_os_error().raw_os_error().unwrap_or(0)
 }
 
+/// errno = v, as the C assigns it: so a failed call's errno can be told from an old one
+/// (annotate.rs), or for a caller that reads it after a None (bgimage_read's). Each C library has
+/// its own name for the calling thread's slot.
+pub fn set_errno(v: i32) {
+    // SAFETY: the C library's errno slot belongs to the calling thread and lives as long as it does.
+    #[cfg(target_os = "linux")]
+    unsafe {
+        *libc::__errno_location() = v;
+    }
+    // SAFETY: the same.
+    #[cfg(target_os = "android")]
+    unsafe {
+        *libc::__errno() = v;
+    }
+    // SAFETY: the same.
+    #[cfg(any(target_os = "macos", target_os = "ios", target_os = "freebsd"))]
+    unsafe {
+        *libc::__error() = v;
+    }
+    #[cfg(not(any(target_os = "linux", target_os = "android", target_os = "macos", target_os = "ios", target_os = "freebsd")))]
+    let _ = v;
+}
+
 /// Random bytes from the system (notebook ids, pairing codes and tokens), the only place that asks
 /// for them: /dev/urandom. False when it failed, and buf is then as it was.
 pub fn random_fill(buf: &mut [u8]) -> bool {

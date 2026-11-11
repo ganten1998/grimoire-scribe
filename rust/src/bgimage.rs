@@ -390,20 +390,6 @@ fn file_exists(path: &str) -> bool {
     unsafe { libc::access(c.as_ptr(), libc::F_OK) == 0 }
 }
 
-/// errno = e, for bgimage_read's callers, which read it (util::errno) after a NULL.
-fn set_errno(e: i32) {
-    // SAFETY: the C library's errno location is valid for the calling thread.
-    #[cfg(any(target_os = "linux", target_os = "android"))]
-    unsafe {
-        *libc::__errno_location() = e;
-    }
-    // SAFETY: as above.
-    #[cfg(any(target_os = "macos", target_os = "ios", target_os = "freebsd"))]
-    unsafe {
-        *libc::__error() = e;
-    }
-}
-
 /// A Vec of n copies of v, or None when the memory is not there (the C's malloc returning NULL).
 fn try_vec<T: Clone>(n: usize, v: T) -> Option<Vec<T>> {
     let mut x = Vec::new();

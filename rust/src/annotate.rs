@@ -715,22 +715,6 @@ fn sync_dir(dir: &str) {
     unsafe { libc::fsync(f.as_raw_fd()) };
 }
 
-/// errno = v, so that a failed call's errno can be told from an old one (bgimage_read leaves EFBIG).
-fn set_errno(v: i32) {
-    // SAFETY: the C library's errno slot belongs to the calling thread and lives as long as it does.
-    #[cfg(any(target_os = "linux", target_os = "android"))]
-    unsafe {
-        *libc::__errno_location() = v;
-    }
-    // SAFETY: the same.
-    #[cfg(any(target_os = "macos", target_os = "ios", target_os = "freebsd"))]
-    unsafe {
-        *libc::__error() = v;
-    }
-    #[cfg(not(any(target_os = "linux", target_os = "android", target_os = "macos", target_os = "ios", target_os = "freebsd")))]
-    let _ = v;
-}
-
 /// <bgdir>/<id, 6 hex digits>.source.png: a picture of another size than its notebook's pages,
 /// waiting for BG_TEMPLATE to fit it (bgwork_template.c removes it then).
 fn source_file(bgdir: &str, id: u32, buf: &mut String, cap: usize) {
