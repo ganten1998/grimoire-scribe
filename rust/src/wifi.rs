@@ -581,4 +581,129 @@ mod tests {
         assert!(!wifi_available());
         fs::remove_dir_all(root).unwrap();
     }
+    #[test]
+    fn networks_come_in_hex_and_anything_else_fails_closed() {
+        let r = parse(b"wireless=1\nenabled=1\nconnected=1\ncurrent=486f6d65\nsaved=486f6d65\nsaved=e78cabe381aee5aeb6\nsaved=486f6d65\nlist=1\n").unwrap();
+        assert_eq!(r.current, Some(Some(b"Home".to_vec())));
+        // (a name twice is listed once)
+        assert_eq!(r.saved, Some(Some(vec![b"Home".to_vec(), "\u{732b}\u{306e}\u{5bb6}".as_bytes().to_vec()])));
+        let r = parse(b"wireless=0\nenabled=0\nconnected=0\ncurrent=\nlist=0\n").unwrap();
+        assert_eq!((r.current, r.saved), (Some(None), Some(None)));
+        let r = parse(b"wireless=1\nenabled=1\nconnected=1\ncurrent=\nlist=1\n").unwrap();
+        assert_eq!((r.current, r.saved), (Some(None), Some(Some(Vec::new()))));
+        // the status alone (the Share card's) says nothing of either
+        let r = parse(b"wireless=1\nenabled=1\nconnected=0\n").unwrap();
+        assert_eq!((r.current, r.saved), (None, None));
+        let head = "wireless=1\nenabled=1\nconnected=1\n";
+        let many: String = (0..65).map(|i| format!("saved={:02x}41\n", i + 0x30)).collect();
+        for bad in [
+            "wireless=1\nenabled=1\nconnected=0\ncurrent=486f6d65\n".to_string(),
+            "wireless=1\nenabled=1\nconnected=unknown\ncurrent=486f6d65\n".to_string(),
+            format!("{head}list=1\nsaved=486f6d65\n"),
+            format!("{head}saved=486f6d65\n"),
+            format!("{head}saved=486f6d65\nlist=0\n"),
+            format!("{head}current=\ncurrent=\n"),
+            format!("{head}list=1\nlist=1\n"),
+            format!("{head}saved=486F6D65\nlist=1\n"),
+            format!("{head}saved=486f6d6\nlist=1\n"),
+            format!("{head}saved=\nlist=1\n"),
+            format!("{head}saved={}\nlist=1\n", "41".repeat(33)),
+            format!("{head}saved=486f0a65\nlist=1\n"),
+            format!("{head}saved=486f7f65\nlist=1\n"),
+            format!("{head}saved=48 6f\nlist=1\n"),
+            format!("{head}psk=secret\nlist=1\n"),
+            format!("{head}{many}list=1\n"),
+        ] {
+            assert!(parse(bad.as_bytes()).is_none(), "{bad}");
+        }
+        let fine: String = (0..64).map(|i| format!("saved={:02x}41\n", i + 0x30)).collect();
+        assert_eq!(parse(format!("{head}{fine}list=1\n").as_bytes()).unwrap().saved.unwrap().unwrap().len(), 64);
+    }
+    #[test]
+    fn a_switch_names_its_network_in_hex_and_ends_connected_refused_or_late() {
+        use std::fs;
+        let root = std::env::temp_dir().join(format!("wifi-join-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&root);
+        fs::create_dir_all(&root).unwrap();
+        let (script, log, cur, done) = (root.join("helper.sh"), root.join("args"), root.join("current"), root.join("done"));
+        // A name a shell would run, were it ever taken for code (the helper runs in root: its files would land
+        // there).
+        let evil = "a'\"; touch pwned; $(touch p2)`x`".to_string();
+        assert_eq!(evil.len(), 32);
+        let far = hex(b"Far away");
+        let slow = hex(b"Slow");
+        fs::write(&script, format!(r#"echo "$*" >> '{log}'
+cd '{root}'
+case $1 in
+networks) printf 'wireless=1\nenabled=1\nconnected=1\ncurrent=486f6d65\nsaved=486f6d65\nsaved={evil}\nsaved={far}\nsaved={slow}\nlist=1\n'; sleep 0.1;;
+join) [ "$2" = {far} ] && exit 3; [ "$2" = {slow} ] || echo "$2" > '{cur}'; sleep 0.2; touch '{done}'; printf 'wireless=1\nenabled=1\nconnected=1\n';;
+current) printf 'wireless=1\nenabled=1\nconnected=1\ncurrent=%s\n' "$(cat '{cur}' 2>/dev/null || echo 486f6d65)";;
+*) printf 'wireless=1\nenabled=1\nconnected=1\n';;
+esac
+"#, log = log.display(), root = root.display(), cur = cur.display(), done = done.display(), evil = hex(evil.as_bytes()))).unwrap();
+        let settle = || {
+            let began = Instant::now();
+            while (wifi_busy() || wifi_changing()) && began.elapsed() < Duration::from_secs(5) {
+                wifi_tick();
+                std::thread::sleep(Duration::from_millis(5));
+            }
+        };
+        wifi_init(script.to_str());
+        assert!(!wifi_join(b""));
+        assert!(!wifi_join(&[b'x'; 33]));
+        // A switch asked for while the list is read waits for it, then runs.
+        assert!(wifi_request(WifiAction::Networks));
+        assert!(wifi_join(evil.as_bytes()));
+        assert!(wifi_changing());
+        settle();
+        let saved = wifi_saved().unwrap();
+        assert_eq!(saved.len(), 4);
+        assert_eq!(saved[1], evil.as_bytes());
+        // The helper's own report says connected (to Home still): no success until a read names the network.
+        assert_eq!(wifi_joining(), Some((evil.as_bytes().to_vec(), WifiJoin::Pending)));
+        assert_eq!(fs::read_to_string(&log).unwrap().lines().collect::<Vec<_>>(), ["networks", &format!("join {}", hex(evil.as_bytes()))]);
+        assert!(!root.join("pwned").exists() && !root.join("p2").exists() && !root.join("x").exists());
+        assert!(wifi_request(WifiAction::Current));
+        settle();
+        assert_eq!(wifi_joining().unwrap().1, WifiJoin::Connected);
+        assert_eq!(wifi_current().unwrap(), evil.as_bytes());
+        // One switch at a time: another while it runs is refused, and the first stays the one watched.
+        assert!(wifi_join(b"Home"));
+        assert!(!wifi_join(b"Slow"));
+        assert_eq!(wifi_joining().unwrap().0, b"Home");
+        settle();
+        // Refused by the helper (no such saved network, or wifid said no): failed at once.
+        assert!(wifi_join(b"Far away"));
+        settle();
+        assert_eq!(wifi_joining(), Some((b"Far away".to_vec(), WifiJoin::Failed)));
+        wifi_join_clear();
+        assert_eq!(wifi_joining(), None);
+        // Asked for, but no read names it: failed after JOIN_WAIT, and the tick says something changed.
+        assert!(wifi_join(b"Slow"));
+        settle();
+        assert!(wifi_request(WifiAction::Current));
+        settle();
+        assert_eq!(wifi_joining().unwrap().1, WifiJoin::Pending);
+        wifi_join_clear();
+        assert_eq!(wifi_joining().unwrap().1, WifiJoin::Pending, "a switch under way is kept");
+        STATE.with(|s| s.borrow_mut().join.as_mut().unwrap().start = Instant::now() - JOIN_WAIT - Duration::from_secs(1));
+        assert!(wifi_tick());
+        assert_eq!(wifi_joining().unwrap().1, WifiJoin::Failed);
+        // Turning the radio on or off is a new choice: the switch is forgotten.
+        assert!(wifi_join(b"Slow"));
+        settle();
+        assert!(wifi_request(WifiAction::Off));
+        assert_eq!(wifi_joining(), None);
+        settle();
+        // Exit during a switch: the helper is not killed, and finishes.
+        let _ = fs::remove_file(&done);
+        assert!(wifi_join(b"Home"));
+        wifi_free();
+        let began = Instant::now();
+        while !done.exists() && began.elapsed() < Duration::from_secs(5) {
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        assert!(done.exists(), "the switch was killed at exit");
+        fs::remove_dir_all(root).unwrap();
+    }
 }
