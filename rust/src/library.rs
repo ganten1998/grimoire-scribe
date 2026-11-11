@@ -7270,6 +7270,10 @@ pub fn library_probe(a: &mut App, key: &str, out: &mut String, cap: usize) -> i3
                 ""
             }
         );
+    } else if key == "caret" {
+        // The text with its caret (and selection) drawn in, keyboard_caret_probe; empty with no keyboard.
+        let shown = if s.modal == Modal::Kb { keyboard_caret_probe(&s.kb) } else { String::new() };
+        csnprintf!(out, cap, "%s", &shown);
     } else if key == "hint" {
         csnprintf!(out, cap, "%d", if empty_hint_shown(s) { 1 } else { 0 });
     } else if key == "cards_redrawn" {

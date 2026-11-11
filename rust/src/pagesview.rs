@@ -1977,6 +1977,9 @@ pub fn pagesview_probe(v: &PagesView, nb: &NotebookInfo, nav: &Nav, key: &str, o
         csnprintf!(out, cap, "%s", if v.open && v.kb.open { v.kb.title.as_str() } else { "" });
     } else if key == "text" {
         csnprintf!(out, cap, "%s", if v.open && v.kb.open { v.kb.text.as_str() } else { "" });
+    } else if key == "caret" {
+        let shown = if v.open && v.kb.open { keyboard_caret_probe(&v.kb) } else { String::new() };
+        csnprintf!(out, cap, "%s", &shown);
     } else if key == "index_rows" {
         csnprintf!(out, cap, "%d", if v.nav_set { nav_index(nav, nb, &mut []) } else { 0 });
     } else if let Some(rest) = key.strip_prefix("tile.") {
