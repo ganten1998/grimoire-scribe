@@ -5,8 +5,8 @@ wait 200
 expect pen.gesture is
 tap 1535 95
 wait 100
-expect library.ui_at.890.1930 is gestures
-tap 890 1930
+expect library.ui_at.1000.1930 is gestures
+tap 1000 1930
 wait 100
 expect library.sheet is gestures
 expect library.ui_at.930.749 is gestures.group.editing
