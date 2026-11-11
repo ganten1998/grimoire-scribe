@@ -1638,10 +1638,18 @@ fn disable_recording(a: &mut App) {
     if !save_gesture_map(a, next) {
         return;
     }
+    // (a pair that lost both its actions is named as its row is, "Next and previous page", as a row held says)
+    let group = lib(a).gestures_group.max(0) as usize;
+    let label = binding_row_index(GESTURES, group, action)
+        .and_then(|i| binding_row_at(GESTURES, group, i))
+        .and_then(|row| row.label)
+        .filter(|_| paired != SHORTCUT_NONE)
+        .map(tr)
+        .unwrap_or_else(|| action_label(action));
     let mut msg = String::new();
     // TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): Disable in the record
     // card removed the action's gestures; %s is the action's name ("Undo", "Next page").
-    csnprintf!(&mut msg, 200, tr("No gestures for %s now."), action_label(action));
+    csnprintf!(&mut msg, 200, tr("No gestures for %s now."), label);
     app_toast(a, &msg, 2000);
     close_record_card(a);
 }
@@ -7929,10 +7937,15 @@ mod tests {
         let _ = std::fs::remove_dir_all(&root);
         assert_eq!(store_init(root.to_str().unwrap()), 0);
         lib(&mut a).gestures_file_readable = true;
+        let group = (0..ACTION_GROUPS.len()).find(|&g| binding_row_index(GESTURES, g, SHORTCUT_NEXT_PAGE).is_some()).unwrap();
+        lib(&mut a).gestures_group = group as i32;
         open_record_card(&mut a, SHORTCUT_NEXT_PAGE);
         lib(&mut a).record_next_action = SHORTCUT_PREV_PAGE;
         act(&mut a, &Hit { id: H_RECORD_DISABLE, ..Default::default() });
         assert!(!library_record_active(&a));
+        // (the toast names the pair as its row does, both directions being gone)
+        let pair = binding_row_at(GESTURES, group, binding_row_index(GESTURES, group, SHORTCUT_NEXT_PAGE).unwrap()).unwrap();
+        assert_eq!(a.toast.as_str(), cformat!("No gestures for %s now.", pair.label.unwrap()));
         assert_eq!(gesturemap_action(&a.gestures, GestureKey::Touch { fingers: 2, kind: TouchKind::Left }), 0);
         assert_eq!(gesturemap_action(&a.gestures, GestureKey::Touch { fingers: 2, kind: TouchKind::Right }), 0);
         let mut written = Vec::new();
