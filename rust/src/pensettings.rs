@@ -353,35 +353,26 @@ fn draw_pad_frame(a: &mut App) {
 fn draw_all(a: &mut App) {
     let (aw, ah) = (a.w, a.h);
     hits_clear(&mut st(a).hits);
-    canvas_fill(&mut a.screen, Rect { x: 0, y: 0, w: aw, h: ah }, 255);
-    let m = ui_px(50.0);
-    let th = ui_px(190.0);
-    let bh = ui_px(150.0);
-    let by = (th - bh) / 2;
-    let back = Rect { x: m, y: by, w: bh, h: bh };
+    let mut title = String::new();
+    // TRANSLATORS: the title of the screen where each tool's pressure and tilt are tuned, with the
+    // tool's name.
+    csnprintf!(&mut title, 128, tr("Pen feel: %s"), tool_label(st(a).tab));
+    let page = crate::library::settings_page(&mut a.screen, aw, ah, &title, true, true);
+    let m = page.content.x;
     let tw = (aw - 2 * m - (TOOL_COUNT as i32 - 1) * ui_px(16.0)) / TOOL_COUNT as i32;
-    let ty = th + ui_px(24.0);
+    let ty = page.content.y;
     let tabh = ui_px(150.0);
     let top = ty + tabh + ui_px(70.0);
     let gs = ui_px(500.0);
     {
         let App { screen: c, ps, .. } = &mut *a;
         let s = ps.as_deref_mut().expect("Pen feel's state");
-        ui_button(c, back, IconKind::Back, "", ButtonStyle::Plain);
-        hits_add(&mut s.hits, back, H_BACK, 0);
-        let mut title = String::new();
-        // TRANSLATORS: the title of the screen where each tool's pressure and tilt are tuned, with the
-        // tool's name (1200 px at 70 px).
-        csnprintf!(&mut title, 128, tr("Pen feel: %s"), tool_label(s.tab));
-        font_draw_left(
-            c,
-            FontFace::Bold,
-            ui_title_size() * 1.1,
-            Rect { x: back.x + bh + ui_px(30.0), y: 0, w: aw - (back.x + bh + ui_px(30.0)) - m, h: th },
-            &title,
-            0,
-        );
-        ui_rule(c, 0, aw, th, ui_px(4.0), 0);
+        hits_add(&mut s.hits, page.back, H_BACK, 0);
+        hits_add(&mut s.hits, page.done, H_BACK, 0);
+        let reset = Rect { x: page.content.x, y: page.done.y, w: ui_px(360.0), h: page.done.h };
+        // TRANSLATORS: puts the tool's pen feel back as it came (328 px at 44 px, or 34 px).
+        ui_button(c, reset, IconKind::None, tr("Reset tool"), ButtonStyle::Plain);
+        hits_add(&mut s.hits, reset, H_RESET, 0);
         // Tabs.
         for (i, &t) in TOOL_ORDER.iter().enumerate() {
             let r = Rect { x: m + i as i32 * (tw + ui_px(16.0)), y: ty, w: tw, h: tabh };
@@ -451,20 +442,6 @@ fn draw_all(a: &mut App) {
         }
         y += rh;
         i += 1;
-    }
-    // The foot every Settings submenu has: Reset tool on the left, Done on the right (leaving as Back
-    // does).
-    {
-        let App { screen: c, ps, .. } = &mut *a;
-        let s = ps.as_deref_mut().expect("Pen feel's state");
-        let fy = ah - ui_px(30.0) - ui_px(120.0);
-        let reset = Rect { x: m, y: fy, w: ui_px(360.0), h: ui_px(120.0) };
-        // TRANSLATORS: puts the tool's pen feel back as it came (328 px at 44 px, or 34 px).
-        ui_button(c, reset, IconKind::None, tr("Reset tool"), ButtonStyle::Plain);
-        hits_add(&mut s.hits, reset, H_RESET, 0);
-        let done = Rect { x: aw - m - ui_px(380.0), y: fy, w: ui_px(380.0), h: ui_px(120.0) };
-        ui_button(c, done, IconKind::Check, tr("Done"), ButtonStyle::Primary);
-        hits_add(&mut s.hits, done, H_BACK, 0);
     }
     if tab != TOOL_ERASER {
         return;

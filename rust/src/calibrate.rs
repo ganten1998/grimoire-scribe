@@ -60,12 +60,12 @@ fn draw(a: &mut App) {
         let App { screen: c, cal, .. } = a;
         let st = cal.as_deref_mut().unwrap();
         hits_clear(&mut st.hits);
-        canvas_fill(c, Rect { x: 0, y: 0, w: aw, h: ah }, 255);
         let m = ui_px(60.0);
-        // TRANSLATORS: calibration's three steps, a title each (1740 px at 77 px).
+        // TRANSLATORS: calibration's three steps, a title each.
         let title = if st.phase == Phase::Pen { tr("Calibrate the pen") } else if st.phase == Phase::Touch { tr("Calibrate touch") } else { tr("Check it") };
-        let mut tr_ = Rect { x: m, y: ah / 2 - ui_px(420.0), w: aw - 2 * m, h: ui_px(110.0) };
-        font_draw_centered(c, FontFace::Bold, ui_title_size() * 1.2, tr_, title, 0);
+        // The same Settings frame every page has: Back at the top left, the step as the title.
+        let page = crate::library::settings_page(c, aw, ah, title, true, false);
+        hits_add(&mut st.hits, page.back, B_CANCEL, 0);
         let mut sub = String::new();
         if st.phase == Phase::Verify {
             // TRANSLATORS: what to do at each step of calibration, under its title (1740 px at 44 px):
@@ -77,7 +77,7 @@ fn draw(a: &mut App) {
         } else {
             csnprintf!(&mut sub, 256, tr("Tap with a finger on the center of the target (%d of %d)."), st.target + 1, NT);
         }
-        tr_.y += ui_px(120.0);
+        let mut tr_ = Rect { x: m, y: page.content.y + ui_px(60.0), w: aw - 2 * m, h: ui_px(110.0) };
         font_draw_centered(c, FontFace::Regular, ui_text_size(), tr_, &sub, 0);
         if !st.msg.is_empty() {
             tr_.y += ui_px(100.0);

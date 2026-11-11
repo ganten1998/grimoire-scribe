@@ -242,8 +242,9 @@ pub fn dispmenu_draw(m: &mut DispMenu, a: &mut App) -> Rect {
     m.pressed = None;
     let (aw, ah) = (a.w, a.h);
     m.rect = Rect::new(0, 0, aw, ah);
-    let (in_, back) = crate::library::settings_submenu_page(&mut a.screen, aw, ah, tr("Display"));
-    hits_add(&mut m.hits, back, D_BACK, 0);
+    let page = crate::library::settings_page(&mut a.screen, aw, ah, tr("Display"), true, true);
+    hits_add(&mut m.hits, page.back, D_BACK, 0);
+    let in_ = page.content;
     let have = light_available() && m.intensity >= 0;
     let mut rows: Vec<DRowKind> = Vec::new();
     if !have {
@@ -310,9 +311,7 @@ pub fn dispmenu_draw(m: &mut DispMenu, a: &mut App) -> Rect {
         let r = Rect::new(in_.x + col * (cw + gap), in_.y + ri * (rh + gap), cw, rh);
         draw_drow(m, a, kind, r);
     }
-    let done = Rect::new(aw - ui_px(50.0) - ui_px(380.0), ah - ui_px(30.0) - ui_px(120.0), ui_px(380.0), ui_px(120.0));
-    ui_button(&mut a.screen, done, IconKind::Check, tr("Done"), ButtonStyle::Primary);
-    hits_add(&mut m.hits, done, D_DONE, 0);
+    hits_add(&mut m.hits, page.done, D_DONE, 0);
     m.rect
 }
 

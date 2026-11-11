@@ -2649,8 +2649,9 @@ fn draw_settings_menu(a: &mut App, title: &str, rows: &[MenuRow]) {
         ..
     } = a;
     let s = lib.as_deref_mut().unwrap();
-    let (in_, back) = settings_submenu_page(c, aw, ah, title);
-    hits_add(&mut s.hits, back, H_CANCEL, 0);
+    let page = settings_page(c, aw, ah, title, true, true);
+    hits_add(&mut s.hits, page.back, H_CANCEL, 0);
+    let in_ = page.content;
     let shown: Vec<&MenuRow> = rows
         .iter()
         .filter(|r| r.id != H_CANCEL && r.id != H_BUTTONS_DONE && r.id != H_GESTURES_DONE)
@@ -2699,14 +2700,7 @@ fn draw_settings_menu(a: &mut App, title: &str, rows: &[MenuRow]) {
         }
         y += rh + gap;
     }
-    let done = Rect::new(
-        aw - ui_px(50.0) - ui_px(380.0),
-        ah - ui_px(30.0) - ui_px(120.0),
-        ui_px(380.0),
-        ui_px(120.0),
-    );
-    ui_button(c, done, IconKind::Check, tr("Done"), ButtonStyle::Primary);
-    hits_add(&mut s.hits, done, H_CANCEL, 0);
+    hits_add(&mut s.hits, page.done, H_CANCEL, 0);
 }
 
 // A vertical list of full-width buttons inside a sheet.
@@ -2950,8 +2944,9 @@ fn draw_bind_group(a: &mut App, kind: BindKind, group: usize) {
     let n = binding_row_count(kind, group) as i32;
     let (aw, ah) = (a.w, a.h);
     let title = tr(ACTION_GROUPS[group].title);
-    let (in_, back) = settings_submenu_page(&mut a.screen, aw, ah, title);
-    hits_add(&mut lib(a).hits, back, bind_done_hit(kind), 0);
+    let page = settings_page(&mut a.screen, aw, ah, title, true, true);
+    hits_add(&mut lib(a).hits, page.back, bind_done_hit(kind), 0);
+    let in_ = page.content;
     let gap = ui_px(14.0);
     let rh = ((in_.h - (n - 1).max(0) * gap) / n.max(1)).clamp(ui_px(90.0), ui_px(140.0));
     for i in 0..n as usize {
@@ -2988,9 +2983,7 @@ fn draw_bind_group(a: &mut App, kind: BindKind, group: usize) {
             thumb,
         );
     }
-    let done = Rect::new(aw - ui_px(50.0) - ui_px(380.0), ah - ui_px(30.0) - ui_px(120.0), ui_px(380.0), ui_px(120.0));
-    ui_button(&mut a.screen, done, IconKind::Check, tr("Done"), ButtonStyle::Primary);
-    hits_add(&mut lib(a).hits, done, bind_done_hit(kind), 0);
+    hits_add(&mut lib(a).hits, page.done, bind_done_hit(kind), 0);
 }
 
 fn draw_bind_row(
@@ -3362,29 +3355,48 @@ fn language_auto_label(out: &mut String, cap: usize) {
     );
 }
 
-/// The chrome Settings' submenus share: a full screen, a Back button at the top left, the title
-/// beside it and the rule under both, as Pen feel's. Returns the content rect and the Back button's
-/// (the caller gives it its own hit id).
-pub(crate) fn settings_submenu_page(c: &mut Canvas, aw: i32, ah: i32, title: &str) -> (Rect, Rect) {
+/// The one Settings layout, edited by variables: a full screen with the title (at the one title
+/// size) above the rule, an optional Back button at the top left, the content below, and an
+/// optional Done at the foot. The main page and every submenu are this same frame.
+pub(crate) struct SettingsPage {
+    pub content: Rect,
+    pub back: Rect,
+    pub done: Rect,
+}
+
+pub(crate) fn settings_page(
+    c: &mut Canvas,
+    aw: i32,
+    ah: i32,
+    title: &str,
+    back: bool,
+    done: bool,
+) -> SettingsPage {
     canvas_fill(c, Rect::new(0, 0, aw, ah), 255);
-    let m = ui_px(50.0);
+    let pad = ui_px(50.0);
     let th = ui_px(190.0);
     let bh = ui_px(150.0);
-    let back = Rect::new(m, (th - bh) / 2, bh, bh);
-    ui_button(c, back, IconKind::Back, "", ButtonStyle::Plain);
-    font_draw_left(
-        c,
-        FontFace::Bold,
-        ui_title_size() * 1.1,
-        Rect::new(back.x + bh + ui_px(30.0), 0, aw - back.x - bh - ui_px(30.0) - m, th),
-        title,
-        0,
-    );
+    let mut back_r = RECT_EMPTY;
+    let mut tx = pad;
+    if back {
+        back_r = Rect::new(pad, (th - bh) / 2, bh, bh);
+        ui_button(c, back_r, IconKind::Back, "", ButtonStyle::Plain);
+        tx = back_r.x + bh + ui_px(30.0);
+    }
+    // (the same title face and size on the main page and on every submenu)
+    font_draw_left(c, FontFace::Title, ui_title_size(), Rect::new(tx, 0, aw - tx - pad, th), title, 0);
     ui_rule(c, 0, aw, th, ui_px(4.0), 0);
-    (
-        Rect::new(m, th + ui_px(36.0), aw - 2 * m, ah - th - ui_px(36.0) - ui_px(170.0)),
-        back,
-    )
+    let footer = if done { ui_px(170.0) } else { ui_px(36.0) };
+    let content = Rect::new(pad, th + ui_px(36.0), aw - 2 * pad, ah - th - ui_px(36.0) - footer);
+    let done_r = if done {
+        Rect::new(aw - pad - ui_px(380.0), ah - ui_px(30.0) - ui_px(120.0), ui_px(380.0), ui_px(120.0))
+    } else {
+        RECT_EMPTY
+    };
+    if done {
+        ui_button(c, done_r, IconKind::Check, tr("Done"), ButtonStyle::Primary);
+    }
+    SettingsPage { content, back: back_r, done: done_r }
 }
 
 /// Settings' page: a full screen, its five categories down the left, the active one's settings to
@@ -3433,21 +3445,11 @@ fn draw_settings(a: &mut App) {
         ..
     } = a;
     let s = lib.as_deref_mut().unwrap();
-    canvas_fill(c, Rect::new(0, 0, aw, ah), 255);
+    let page = settings_page(c, aw, ah, tr("Settings"), false, true);
     // (a tap outside every row does nothing, rather than reaching the library behind)
     hits_add(&mut s.hits, Rect::new(0, 0, aw, ah), H_NONE, 0);
-    let pad = ui_px(56.0);
-    let title_h = ui_px(150.0);
-    font_draw_left(
-        c,
-        FontFace::Title,
-        ui_title_size(),
-        Rect::new(pad, ui_px(8.0), aw - 2 * pad, title_h),
-        tr("Settings"),
-        0,
-    );
-    canvas_fill(c, Rect::new(pad, title_h, aw - 2 * pad, ui_px(4.0)), 0);
-    let top = title_h + ui_px(36.0);
+    let pad = page.content.x;
+    let top = page.content.y;
     // TRANSLATORS: Settings' categories, down the left of its page, each with its icon: the settings they
     // group are Display's, Pen Feel's, Calibration's, the Controller's (shortcuts, pairing, gestures) and
     // General's (language, mirroring, KOReader, updates).
@@ -3541,7 +3543,7 @@ fn draw_settings(a: &mut App) {
         cats[active as usize].1,
         0,
     );
-    let foot = ah - ui_px(30.0) - ui_px(120.0);
+    let foot = page.done.y;
     let list_top = top + ui_px(86.0);
     let n = rows.len() as i32;
     let gap = ui_px(16.0);
@@ -3576,9 +3578,7 @@ fn draw_settings(a: &mut App) {
         hits_add(&mut s.hits, r, row.id, 0);
         y += rh + gap;
     }
-    let done = Rect::new(aw - pad - ui_px(380.0), foot, ui_px(380.0), ui_px(120.0));
-    ui_button(c, done, IconKind::Check, tr("Done"), ButtonStyle::Primary);
-    hits_add(&mut s.hits, done, H_CANCEL, 0);
+    hits_add(&mut s.hits, page.done, H_CANCEL, 0);
 }
 
 /// The Font sheet's third sample line, the same in every language: digits, the punctuation Spanish
@@ -3598,8 +3598,9 @@ fn draw_font_sheet(a: &mut App) {
     let n = FONT_FAMILIES.len() as i32;
     let (sample_h, gap, pad) = (ui_px(300.0), ui_px(16.0), ui_px(24.0));
     // TRANSLATORS: the title of Settings > Font, the list of fonts Classic can be drawn in.
-    let (in_, back) = settings_submenu_page(c, aw, ah, tr("Font"));
-    hits_add(&mut s.hits, back, H_FONT_CANCEL, 0);
+    let page = settings_page(c, aw, ah, tr("Font"), true, true);
+    hits_add(&mut s.hits, page.back, H_FONT_CANCEL, 0);
+    let in_ = page.content;
     let sample = Rect::new(in_.x, in_.y, in_.w, sample_h);
     ui_frame(c, sample, ui_px(16.0), 0, false, ui_px(3.0));
     let fam = &FONT_FAMILIES[pick];
@@ -3637,9 +3638,7 @@ fn draw_font_sheet(a: &mut App) {
         s.font_rows.push(r);
         y += rh + gap;
     }
-    let done = Rect::new(aw - ui_px(50.0) - ui_px(380.0), ah - ui_px(30.0) - ui_px(120.0), ui_px(380.0), ui_px(120.0));
-    ui_button(c, done, IconKind::Check, tr("Done"), ButtonStyle::Primary);
-    hits_add(&mut s.hits, done, H_FONT_DONE, 0);
+    hits_add(&mut s.hits, page.done, H_FONT_DONE, 0);
 }
 
 /// The Font sheet after a tap on a family: the screen drawn again, and the panel refreshed only where
@@ -4395,8 +4394,9 @@ fn draw_modal(a: &mut App) {
             } = a;
             let s = lib.as_deref_mut().unwrap();
             // TRANSLATORS: the title of the list of languages (Settings > Language).
-            let (in_, back) = settings_submenu_page(c, aw, ah, tr("Language"));
-            hits_add(&mut s.hits, back, H_LANG_BACK, 0);
+            let page = settings_page(c, aw, ah, tr("Language"), true, true);
+            hits_add(&mut s.hits, page.back, H_LANG_BACK, 0);
+            let in_ = page.content;
             let gap = ui_px(16.0);
             let n = rows.len() as i32;
             let per = (n + 1) / 2;
@@ -4427,14 +4427,7 @@ fn draw_modal(a: &mut App) {
                 );
                 hits_add(&mut s.hits, r, H_LANG_PICK, *arg);
             }
-            let done = Rect::new(
-                aw - ui_px(50.0) - ui_px(380.0),
-                ah - ui_px(30.0) - ui_px(120.0),
-                ui_px(380.0),
-                ui_px(120.0),
-            );
-            ui_button(c, done, IconKind::Check, tr("Done"), ButtonStyle::Primary);
-            hits_add(&mut s.hits, done, H_LANG_BACK, 0);
+            hits_add(&mut s.hits, page.done, H_LANG_BACK, 0);
         }
         Modal::Kb => {
             let (aw, ah) = (a.w, a.h);
