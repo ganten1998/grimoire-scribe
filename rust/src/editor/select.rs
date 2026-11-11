@@ -128,6 +128,8 @@ pub(super) struct SelMode {
     plan: Vec<(StrokeId, Vec<(Box<Stroke>, bool)>)>,
     /// a drag as the screen shows it (the module's head)
     dv: DragView,
+    /// resize handle being dragged (0=none, 1=top-left, 2=top-right, 3=bottom-left, 4=bottom-right)
+    resize_handle: i32,
 }
 
 /// A drag of the selection as the screen shows it, while `drag` is where the pen has taken it.
@@ -174,6 +176,9 @@ pub(super) const DRAG_SHOW_MS: u32 = PREVIEW_MS;
 const DRAG_PAUSE_MS: u32 = PREVIEW_PAUSE_MS;
 /// A show's DU refreshes: at most this many (its strips, two joined only when that covers no more).
 const DRAG_RECTS: usize = 16;
+/// Resize handle size (ui px at 300 dpi)
+pub(super) const RESIZE_HANDLE_SIZE: i32 = 20;
+
 /// How far a pen may stray from where it came down inside the selection (mm on the screen) before the box
 /// moves: a tap's wobble, not a drag (a finger's: press_move's slop, finger_slop).
 const DRAG_SLOP_MM: f32 = 1.0;
@@ -181,6 +186,28 @@ const DRAG_SLOP_MM: f32 = 1.0;
 /// press_move's slop (ui.rs): how far a finger may stray and still be held, or lifted, still.
 fn finger_slop() -> f32 {
     ui_px(30.0) as f32
+}
+
+
+/// Test if point (x, y) is on a resize handle of the selection box.
+/// Returns 0 if no handle, or 1=top-left, 2=top-right, 3=bottom-left, 4=bottom-right.
+fn resize_handle_hit(b: Rect, x: i32, y: i32) -> i32 {
+    let sz = RESIZE_HANDLE_SIZE as i32;
+    let left = x >= b.x && x < b.x + sz;
+    let right = x < b.x + b.w && x >= b.x + b.w - sz;
+    let top = y >= b.y && y < b.y + sz;
+    let bottom = y < b.y + b.h && y >= b.y + b.h - sz;
+    if left && top {
+        1
+    } else if right && top {
+        2
+    } else if left && bottom {
+        3
+    } else if right && bottom {
+        4
+    } else {
+        0
+    }
 }
 
 
@@ -794,7 +821,49 @@ pub(super) fn sel_pointer(a: &mut App, ph: i32, ev: &InEvent) {
             }
         }
         SelState::Dragging => {
-            if ph == 1 {
+            // Handle resize handles
+            if ph == 0 {
+                // Down: test if we're on a resize handle
+                let handle = resize_handle_hit(ed(a).sel.box_, ev.x as i32, ev.y as i32);
+                if handle > 0 {
+                    ed(a).sel.resize_handle = handle;
+                    return;
+                }
+            } else if ph == 1 {
+                // Move: if a resize handle is active, update the box
+                if ed(a).sel.resize_handle > 0 {
+                    let sz = RESIZE_HANDLE_SIZE as i32;
+                    let (x, y) = (ev.x as i32, ev.y as i32);
+                    let resize_handle = ed(a).sel.resize_handle;
+                    // Update box dimensions based on which handle is being dragged
+                    let mut b = ed(a).sel.box_.clone();
+                    match resize_handle {
+                        1 => { // top-left
+                            b.x = x.saturating_sub(sz);
+                            b.y = y.saturating_sub(sz);
+                            b.w = b.w.saturating_add(sz).max(10);
+                            b.h = b.h.saturating_add(sz).max(10);
+                        }
+                        2 => { // top-right
+                            b.w = (b.w - x + b.x + sz).max(10);
+                            b.h = b.h.saturating_add(sz).max(10);
+                            b.y = y.saturating_sub(sz);
+                        }
+                        3 => { // bottom-left
+                            b.x = x.saturating_sub(sz);
+                            b.w = b.w.saturating_add(sz).max(10);
+                            b.h = (b.h - y + b.y + sz).max(10);
+                        }
+                        4 => { // bottom-right
+                            b.w = (b.w - x + b.x + sz).max(10);
+                            b.h = (b.h - y + b.y + sz).max(10);
+                        }
+                        _ => {} // unknown handle state
+                    }
+                    ed(a).sel.box_ = b;
+                    ed(a).sel.drag = (0, 0);
+                    return;
+                }
                 drag_step(a, ev);
             } else {
                 drag_done(a, touch_cancelled(ev));
