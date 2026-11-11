@@ -2726,6 +2726,24 @@ pub fn app_probe(a: &mut App, key: &str, out: &mut String, cap: usize) -> i32 {
         csnprintf!(out,cap,"%d",wifi_failed() as i32);
     } else if key=="wifi.state" {
         csnprintf!(out,cap,"%s",match wifi_status(){None=>"unknown",Some(st) if !st.wireless||!st.enabled=>"off",Some(st) if st.connected==Some(true)=>"connected",Some(_)=>"on"});
+    } else if key == "wifi.current" {
+        // the network connected to, by name, as the last read had it ("" for none or not known)
+        let name = wifi_current().filter(|_| wifi_status().is_some_and(|st| st.connected == Some(true)));
+        csnprintf!(out, cap, "%s", &name.map_or(String::new(), |n| String::from_utf8_lossy(&n).into_owned()));
+    } else if key == "wifi.saved" {
+        // how many saved networks Settings > Wi-Fi read, "unread" when it could not (or has not)
+        match wifi_saved() {
+            Some(v) => csnprintf!(out, cap, "%d", v.len() as i32),
+            None => csnprintf!(out, cap, "%s", "unread"),
+        };
+    } else if key == "wifi.join" {
+        // the last switch to a saved network: "pending", "connected", "failed", "" for none
+        csnprintf!(out, cap, "%s", match wifi_joining().map(|j| j.1) {
+            None => "",
+            Some(WifiJoin::Pending) => "pending",
+            Some(WifiJoin::Connected) => "connected",
+            Some(WifiJoin::Failed) => "failed",
+        });
     } else if key == "live.on" {
         csnprintf!(out, cap, "%d", if live_on() { 1 } else { 0 });
     } else if key == "live.viewers" {

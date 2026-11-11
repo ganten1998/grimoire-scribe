@@ -40,6 +40,9 @@ enum Modal {
     /// A folder moved or renamed onto the name of one that is there (2.1, Rust only; a number of its own as
     /// Font's): Merge into it, Keep both (as "Name 2"), Cancel
     Merge = 350,
+    /// Settings > Wi-Fi (2.1.0-beta.2, Rust only; a number of its own as Merge's): the radio, the network
+    /// connected to and the Kindle's saved networks, a tap switching to one (wifi.rs)
+    Wifi = 360,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -169,6 +172,13 @@ const H_NEW_FILE: i32 = 95;
 // and the pages of them (arg: -1 back, 1 on).
 const H_FONT_OWN: i32 = 96;
 const H_FONT_PAGE: i32 = 97;
+// 2.1.0-beta.2: Settings' Wi-Fi button, and its sheet's rows: the radio (arg: WIFI_*), a saved network
+// (arg: its row, an index of WifiSheet.rows) and the next page of them. (Numbered apart from the ids other
+// work of the same release adds after 97.)
+const H_WIFI_MENU: i32 = 180;
+const H_WIFI_RADIO: i32 = 181;
+const H_WIFI_NET: i32 = 182;
+const H_WIFI_MORE: i32 = 183;
 
 #[derive(Clone, Copy, Default)]
 struct Item {
@@ -337,6 +347,8 @@ pub struct LibraryState {
     nfound: i32,
     npaired: i32,
     shown_bt_changes: u32,
+    /// Settings > Wi-Fi
+    wifi: WifiSheet,
     // The Updates sheet: its check (UPD_*), the newest version it found, why it failed.
     upd: i32,
     /// at most UPDATE_VERSION_LEN - 1 bytes
@@ -2747,6 +2759,240 @@ fn draw_menu(a: &mut App, title: &str, rows: &[MenuRow]) -> Vec<Rect> {
     rects
 }
 
+// ---- Settings > Wi-Fi (2.1.0-beta.2) ----
+
+/// The radio row's three taps (H_WIFI_RADIO's arg).
+const WIFI_RETRY: i32 = 0;
+const WIFI_ON: i32 = 1;
+const WIFI_OFF: i32 = 2;
+/// Saved networks a page: with the radio, the status, More and Done, 11 rows, which fit sideways.
+const WIFI_PAGE: usize = 7;
+
+/// What the Wi-Fi sheet was drawn from: drawn again when any of it changes.
+#[derive(Clone, Default, PartialEq)]
+struct WifiShown {
+    status: Option<WifiStatus>,
+    busy: bool,
+    failed: bool,
+    current: Option<Vec<u8>>,
+    saved: Option<Vec<Vec<u8>>>,
+    join: Option<(Vec<u8>, WifiJoin)>,
+}
+
+/// Settings > Wi-Fi: the radio, the network connected to and the Kindle's saved networks (wifi.rs, the
+/// helper kindle/app/wifi.sh). It reads only while it is up: everything as it opens, then the network
+/// connected to every 2 s while a switch is under way, or while the radio is on with no connection, for
+/// 45 s after the last tap (the Share card's watch).
+#[derive(Default)]
+struct WifiSheet {
+    check_at: u32,
+    watch_at: u32,
+    /// the saved networks were asked for once more as the radio came on (wifid may not answer while it is
+    /// off), or after a switch the helper refused
+    relisted: bool,
+    reread: bool,
+    /// the page of saved networks shown, and the names drawn, by row (H_WIFI_NET's arg)
+    page: usize,
+    rows: Vec<Vec<u8>>,
+    shown: Option<WifiShown>,
+}
+
+fn wifi_shown() -> WifiShown {
+    let status = wifi_status();
+    WifiShown {
+        status,
+        busy: wifi_changing() || (wifi_busy() && status.is_none()),
+        failed: wifi_failed(),
+        current: wifi_current().filter(|_| status.is_some_and(|st| st.connected == Some(true))),
+        saved: wifi_saved(),
+        join: wifi_joining(),
+    }
+}
+
+fn wifi_sheet_open(a: &mut App) {
+    let now = now_ms();
+    wifi_join_clear();
+    lib(a).wifi = WifiSheet { check_at: now, watch_at: now, ..WifiSheet::default() };
+    wifi_request(WifiAction::Networks);
+    open_modal(a, Modal::Wifi);
+}
+
+fn draw_wifi_sheet(a: &mut App) {
+    let w = wifi_shown();
+    let name = |n: &[u8]| String::from_utf8_lossy(n).into_owned();
+    let mut status = String::new();
+    let mut status_named = false;
+    let on = w.status.is_some_and(|st| st.wireless && st.enabled);
+    match &w.join {
+        Some((n, WifiJoin::Pending)) => {
+            // TRANSLATORS: (Settings > Wi-Fi) its status line, 1470 px at 44 px in bold or two lines at 34 px; %s
+            // is a Wi-Fi network's name as the Kindle saved it (shortened if it is long). Connecting: a switch
+            // to that network is under way; Could not connect: it did not connect in 45 seconds, or the Kindle
+            // refused it; Connected to: the network the Kindle is connected to.
+            csnprintf!(&mut status, 200, tr("Connecting to %s…"), &name(n));
+            status_named = true;
+        }
+        Some((n, WifiJoin::Failed)) if !w.busy => {
+            csnprintf!(&mut status, 200, tr("Could not connect to %s."), &name(n));
+            status_named = true;
+        }
+        _ => {}
+    }
+    if status.is_empty() {
+        let text = if w.busy {
+            tr("Checking Wi-Fi…")
+        } else if w.failed {
+            tr("Could not read or change Wi-Fi.")
+        } else {
+            match w.status {
+                Some(_) if !on => tr("Wi-Fi is off"),
+                Some(st) if st.connected == Some(true) => {
+                    if let Some(n) = &w.current {
+                        csnprintf!(&mut status, 200, tr("Connected to %s"), &name(n));
+                        status_named = true;
+                    }
+                    tr("Connected to Wi-Fi")
+                }
+                Some(st) if st.connected == Some(false) => tr("Wi-Fi is on; no connection yet"),
+                Some(_) => tr("Wi-Fi is on; connection unknown"),
+                None => tr("Wi-Fi unavailable"),
+            }
+        };
+        if status.is_empty() {
+            status.push_str(text);
+        }
+    }
+    let (radio, arg, can) = match w.status {
+        None => (tr("Retry"), WIFI_RETRY, !w.busy && wifi_available()),
+        Some(_) if on => (tr("Turn off Wi-Fi"), WIFI_OFF, !w.busy),
+        Some(_) => (tr("Turn on Wi-Fi"), WIFI_ON, !w.busy),
+    };
+    let style = |can: bool| if can { ButtonStyle::Plain } else { ButtonStyle::Disabled };
+    let mut rows = vec![
+        menu_row(IconKind::Share, radio, H_WIFI_RADIO, arg, style(can)),
+        MenuRow { name: status_named, ..menu_row(IconKind::None, &status, H_NONE, 0, ButtonStyle::Disabled) },
+    ];
+    // The saved networks, the one connected to first, a page at a time.
+    let mut names = w.saved.clone().unwrap_or_default();
+    if let Some(i) = w.current.as_ref().and_then(|c| names.iter().position(|n| n == c)) {
+        let n = names.remove(i);
+        names.insert(0, n);
+    }
+    let pages = names.len().div_ceil(WIFI_PAGE).max(1);
+    let page = lib(a).wifi.page.min(pages - 1);
+    let mut drawn = Vec::new();
+    if w.status.is_some() {
+        match &w.saved {
+            None => {
+                // TRANSLATORS: (Settings > Wi-Fi) a line in place of the saved networks: they could not be read
+                // (with the radio off, the first: they may be read only while it is on). 1470 px at 44 px in
+                // bold, or two lines at 34 px.
+                let why = if on { tr("Saved networks could not be read.") } else { tr("Turn on Wi-Fi to see the saved networks.") };
+                rows.push(menu_row(IconKind::None, why, H_NONE, 0, ButtonStyle::Disabled));
+            }
+            Some(saved) if saved.is_empty() => {
+                // TRANSLATORS: (Settings > Wi-Fi) the Kindle has no saved Wi-Fi network; Grimoire adds none itself.
+                rows.push(menu_row(IconKind::None, tr("No saved networks. Add one in Kindle settings or KOReader."), H_NONE, 0, ButtonStyle::Disabled));
+            }
+            Some(_) => {
+                for n in names.iter().skip(page * WIFI_PAGE).take(WIFI_PAGE) {
+                    let here = w.current.as_ref() == Some(n);
+                    let icon = if here { IconKind::Check } else { IconKind::None };
+                    rows.push(MenuRow { name: true, ..menu_row(icon, &name(n), H_WIFI_NET, drawn.len() as i32, style(!w.busy)) });
+                    drawn.push(n.clone());
+                }
+                if pages > 1 {
+                    let mut more = String::new();
+                    // TRANSLATORS: (Settings > Wi-Fi) the row under the saved networks when they take more than
+                    // one page: shows the next page (after the last, the first). %d of %d: this page, the pages.
+                    csnprintf!(&mut more, 96, tr("More networks (%d of %d)"), page as i32 + 1, pages as i32);
+                    rows.push(menu_row(IconKind::Next, &more, H_WIFI_MORE, 0, ButtonStyle::Plain));
+                }
+            }
+        }
+    }
+    rows.push(menu_row(IconKind::Close, tr("Done"), H_CANCEL, 0, ButtonStyle::Plain));
+    let ws = &mut lib(a).wifi;
+    ws.page = page;
+    ws.rows = drawn;
+    ws.shown = Some(w);
+    draw_menu(a, tr("Wi-Fi"), &rows);
+}
+
+fn wifi_sheet_tap(a: &mut App, id: i32, arg: i32) {
+    let now = now_ms();
+    match id {
+        H_WIFI_RADIO => {
+            let action = match arg {
+                WIFI_ON => WifiAction::On,
+                WIFI_OFF => WifiAction::Off,
+                _ => WifiAction::Networks,
+            };
+            wifi_request(action);
+        }
+        H_WIFI_NET => {
+            let ws = &lib(a).wifi;
+            let Some(n) = ws.rows.get(arg as usize).cloned() else { return };
+            // (the network connected to: nothing to switch)
+            if ws.shown.as_ref().is_some_and(|w| w.current.as_ref() == Some(&n)) {
+                return;
+            }
+            lib(a).wifi.reread = false;
+            wifi_join(&n);
+        }
+        H_WIFI_MORE => {
+            lib(a).wifi.page += 1;
+            let pages = wifi_saved().map_or(1, |s| s.len().div_ceil(WIFI_PAGE).max(1));
+            if lib(a).wifi.page >= pages {
+                lib(a).wifi.page = 0;
+            }
+        }
+        _ => return,
+    }
+    let ws = &mut lib(a).wifi;
+    ws.check_at = now;
+    ws.watch_at = now;
+    redraw(a, RefreshMode::Ui);
+}
+
+fn wifi_sheet_tick(a: &mut App, now: u32) {
+    if !wifi_busy() {
+        let st = wifi_status();
+        let join = wifi_joining().map(|j| j.1);
+        let ws = &mut lib(a).wifi;
+        match st {
+            // A switch the helper refused leaves the status unread: read everything once more. A failed read
+            // waits for Retry.
+            None => {
+                if join == Some(WifiJoin::Failed) && !ws.reread {
+                    ws.reread = true;
+                    wifi_request(WifiAction::Networks);
+                }
+            }
+            Some(st) => {
+                let on = st.wireless && st.enabled;
+                if !on {
+                    ws.relisted = false;
+                }
+                if on && wifi_saved().is_none() && !ws.relisted {
+                    ws.relisted = true;
+                    ws.check_at = now;
+                    wifi_request(WifiAction::Networks);
+                } else if now.wrapping_sub(ws.check_at) > 2000
+                    && (join == Some(WifiJoin::Pending)
+                        || (on && st.connected != Some(true) && now.wrapping_sub(ws.watch_at) < 45000))
+                {
+                    ws.check_at = now;
+                    wifi_request(WifiAction::Current);
+                }
+            }
+        }
+    }
+    if lib(a).wifi.shown.as_ref() != Some(&wifi_shown()) {
+        redraw(a, RefreshMode::Ui);
+    }
+}
+
 fn bind_group(kind: BindKind, s: &LibraryState) -> i32 {
     if kind.modal == BUTTONS.modal {
         s.buttons_group
@@ -3582,33 +3828,37 @@ fn draw_settings(a: &mut App) {
     let ko = Rect::new(in_.x, done.y, ui_px(300.0), done.h);
     ui_button(c, ko, IconKind::Notebook, "KOReader", ButtonStyle::Plain);
     hits_add(&mut s.hits, ko, H_KOREADER, 0);
-    // Pair, Gestures and Updates share the space between KOReader and Done.
+    // Pair, Wi-Fi, Gestures and Updates share the space between KOReader and Done: evenly when the longest
+    // word fits a quarter, else each as wide as its word needs with what is left shared out evenly (four as
+    // wide as "Actualizaciones" would not fit), else evenly again (a word too long for any share is cut, and
+    // the fit check says so).
     let gap = ui_px(30.0);
-    let mid = done.x - ko.x - ko.w - 4 * gap;
-    let third = mid / 3;
-    let keys = Rect::new(ko.x + ko.w + gap, done.y, third, done.h);
-    let gestures = Rect::new(keys.x + keys.w + gap, done.y, third, done.h);
-    let upd = Rect::new(
-        gestures.x + gestures.w + gap,
-        done.y,
-        mid - 2 * third,
-        done.h,
-    );
-    // TRANSLATORS: Settings' bottom buttons, each a word under its icon, about 240 px at 34 px.
-    // Pair opens the Pair sheet (a Bluetooth controller: the helper on or off, pairing one; also that
-    // sheet's title), Gestures opens gesture bindings, Updates checks for a newer Grimoire.
-    ui_button(c, keys, IconKind::Link, tr("Pair"), ButtonStyle::Plain);
-    hits_add(&mut s.hits, keys, H_PAIR_MENU, 0);
-    ui_button(
-        c,
-        gestures,
-        IconKind::Gestures,
-        tr("Gestures"),
-        ButtonStyle::Plain,
-    );
-    hits_add(&mut s.hits, gestures, H_GESTURES, 0);
-    ui_button(c, upd, IconKind::Update, tr("Updates"), ButtonStyle::Plain);
-    hits_add(&mut s.hits, upd, H_UPDATES, 0);
+    let mid = done.x - ko.x - ko.w - 5 * gap;
+    let bottom = [
+        // TRANSLATORS: Settings' bottom buttons, each a word under its icon, about 200 px at 34 px (the
+        // four share about 810 px upright; a longer word takes room from the shorter ones). Pair opens the
+        // Pair sheet (a Bluetooth controller: the helper on or off, pairing one; also that sheet's title),
+        // Wi-Fi the Wi-Fi sheet (the radio and the Kindle's saved networks), Gestures opens gesture
+        // bindings, Updates checks for a newer Grimoire.
+        (IconKind::Link, tr("Pair"), H_PAIR_MENU),
+        // TRANSLATORS: (Settings) the bottom button that opens the Wi-Fi sheet, about 200 px at 34 px under
+        // its icon; also that sheet's title, and the Share screen's button and card title.
+        (IconKind::Share, tr("Wi-Fi"), H_WIFI_MENU),
+        (IconKind::Gestures, tr("Gestures"), H_GESTURES),
+        (IconKind::Update, tr("Updates"), H_UPDATES),
+    ];
+    // (none narrower than 160 px, 13.5 mm, while that fits: a short word is still a finger's target)
+    let need = bottom.map(|(icon, label, _)| ui_button_need_w(done.h, icon, label, ButtonStyle::Plain).max(ui_px(160.0)));
+    let spare = mid - need.iter().sum::<i32>();
+    let even = need.iter().all(|&n| n <= mid / 4) || spare < 0;
+    let mut x = ko.x + ko.w + gap;
+    for (i, (icon, label, id)) in bottom.into_iter().enumerate() {
+        let w = if i == 3 { done.x - gap - x } else if even { mid / 4 } else { need[i] + spare / 4 };
+        let r = Rect::new(x, done.y, w, done.h);
+        ui_button(c, r, icon, label, ButtonStyle::Plain);
+        hits_add(&mut s.hits, r, id, 0);
+        x += w + gap;
+    }
 }
 
 /// The Font sheet's third sample line, the same in every language: digits, the punctuation Spanish
@@ -4026,6 +4276,7 @@ fn draw_modal(a: &mut App) {
         Modal::New => draw_new(a),
         Modal::Settings => draw_settings(a),
         Modal::Font => draw_font_sheet(a),
+        Modal::Wifi => draw_wifi_sheet(a),
         Modal::About => {
             let (aw, ah) = (a.w, a.h);
             let App { screen: c, lib, .. } = a;
@@ -5314,6 +5565,8 @@ fn act(a: &mut App, h: &Hit) {
         H_RECORD_CANCEL => close_record_card(a),
         H_SHORTCUTS => open_modal(a, Modal::Shortcuts),
         H_PAIR_MENU => open_modal(a, Modal::PairMenu),
+        H_WIFI_MENU => wifi_sheet_open(a),
+        H_WIFI_RADIO | H_WIFI_NET | H_WIFI_MORE => wifi_sheet_tap(a, h.id, h.arg),
         H_SHORTCUT_DEVICE => {
             // The next device listed (the first after the last), whose own shortcuts the next row is about.
             let devs = shortcut_devices(a);
@@ -6226,7 +6479,7 @@ pub fn library_back(a: &mut App) -> bool {
             lib(a).modal = Modal::Settings;
             redraw(a, RefreshMode::Ui);
         }
-        Modal::Language | Modal::Koreader | Modal::Shortcuts | Modal::PairMenu | Modal::Updates => {
+        Modal::Language | Modal::Koreader | Modal::Shortcuts | Modal::PairMenu | Modal::Updates | Modal::Wifi => {
             lib(a).modal = Modal::Settings;
             redraw(a, RefreshMode::Ui);
         }
@@ -6668,6 +6921,9 @@ pub fn library_tick(a: &mut App, now: u32) {
     if lib(a).modal == Modal::Pair {
         bt_send(lib(a));
     }
+    if lib(a).modal == Modal::Wifi {
+        wifi_sheet_tick(a, now);
+    }
     upd_poll(a);
     let s = a.lib.as_deref().unwrap();
     if s.modal == Modal::PairMenu && s.shown_bt_changes != a.bt_changes {
@@ -6947,6 +7203,8 @@ pub fn library_probe(a: &mut App, key: &str, out: &mut String, cap: usize) -> i3
         csnprintf!(out, cap, "exit");
     } else if key == "sheet" && s.modal == Modal::PairMenu {
         csnprintf!(out, cap, "pair-menu");
+    } else if key == "sheet" && s.modal == Modal::Wifi {
+        csnprintf!(out, cap, "wifi");
     } else if key == "sheet" && s.modal == Modal::Merge {
         csnprintf!(out, cap, "merge");
     } else if key == "sheet" && s.modal == Modal::Font {
@@ -7140,6 +7398,7 @@ pub fn library_probe(a: &mut App, key: &str, out: &mut String, cap: usize) -> i3
                 H_ABOUT_ROW => "about.row.", H_ABOUT_BACK => "about.back",
                 H_SET_FONT => "font", H_FONT_PICK => "font.", H_FONT_DONE => "font.done", H_FONT_CANCEL => "font.cancel",
                 H_FONT_OWN => "font.file:", H_FONT_PAGE => if hit.arg < 0 { "font.prev" } else { "font.next" },
+                H_WIFI_MENU => "wifi", H_WIFI_RADIO => "wifi.radio", H_WIFI_NET => "wifi.net.", H_WIFI_MORE => "wifi.more",
                 _ => "",
             });
             if hit.id == H_FONT_PICK {
@@ -7152,6 +7411,7 @@ pub fn library_probe(a: &mut App, key: &str, out: &mut String, cap: usize) -> i3
                 name.push_str(crate::about::notes().get(hit.arg as usize).map_or("", |e| e.versions[0]));
             }
             if hit.id == H_PAPER { name.push_str(&hit.arg.to_string()); }
+            if hit.id == H_WIFI_NET { name.push_str(&(hit.arg + 1).to_string()); }
             if hit.id == H_MOVE_TO { name.push_str(s.folders.get(hit.arg as usize).map_or("", |f| f.as_str())); }
             if matches!(hit.id, H_GESTURE_GROUP | H_BUTTON_GROUP) {
                 if let Some(group) = ACTION_GROUPS.get(hit.arg as usize) { name.push_str(group.probe); }
