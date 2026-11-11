@@ -11763,20 +11763,29 @@ pub fn editor_probe(a: &mut App, key: &str, out: &mut String, cap: usize) -> i32
         if !findsheet_probe(&s.find, k, out, cap) {
             return -1;
         }
-    } else if (key == "keyboard" || key == "text") && s.map_kb.open {
-        csnprintf!(out, cap, "%s", if key == "keyboard" { s.map_kb.title.as_str() } else { s.map_kb.text.as_str() });
-    } else if (key == "keyboard" || key == "text") && s.find.open {
-        // Its keyboard's title and what the field holds (the Pages view's, otherwise).
-        csnprintf!(out, cap, "%s", if key == "keyboard" { s.find.kb.title.as_str() } else { s.find.kb.text.as_str() });
-    } else if (key == "keyboard" || key == "text") && s.card.kb.open {
-        // Rename's (the card's).
-        csnprintf!(out, cap, "%s", if key == "keyboard" { s.card.kb.title.as_str() } else { s.card.kb.text.as_str() });
-    } else if (key == "keyboard" || key == "text") && s.add_kb.open {
-        // The toolbar's count pad's.
-        csnprintf!(out, cap, "%s", if key == "keyboard" { s.add_kb.title.as_str() } else { s.add_kb.text.as_str() });
-    } else if (key == "keyboard" || key == "text") && s.lm.kb.open {
-        // New page...'s.
-        csnprintf!(out, cap, "%s", if key == "keyboard" { s.lm.kb.title.as_str() } else { s.lm.kb.text.as_str() });
+    } else if (key == "keyboard" || key == "text" || key == "caret")
+        && (s.map_kb.open || s.find.open || s.card.kb.open || s.add_kb.open || s.lm.kb.open)
+    {
+        // The keyboard up over the page: the Graph's Rename, Find's (the Pages view's, otherwise), the card's Rename,
+        // the toolbar's count pad, New page...'s. Its title, what the field holds, or that with its caret (and a
+        // selection) drawn in (keyboard_caret_probe).
+        let kb = if s.map_kb.open {
+            &s.map_kb
+        } else if s.find.open {
+            &s.find.kb
+        } else if s.card.kb.open {
+            &s.card.kb
+        } else if s.add_kb.open {
+            &s.add_kb
+        } else {
+            &s.lm.kb
+        };
+        let shown = match key {
+            "keyboard" => kb.title.as_str().to_string(),
+            "text" => kb.text.as_str().to_string(),
+            _ => keyboard_caret_probe(kb),
+        };
+        csnprintf!(out, cap, "%s", &shown);
     } else if key == "bar" {
         // The Links bar: closed (0), open, or looking at another page (peek).
         csnprintf!(out, cap, "%s", if !s.lb.open { "0" } else if s.peek.active { "peek" } else { "open" });
@@ -12046,7 +12055,7 @@ pub fn editor_probe(a: &mut App, key: &str, out: &mut String, cap: usize) -> i32
         } else {
             csnprintf!(out, cap, "%s", "");
         }
-    } else if key == "pages_tab" || key == "picking" || key == "keyboard" || key == "text" || key.starts_with("tile.") {
+    } else if key == "pages_tab" || key == "picking" || key == "keyboard" || key == "text" || key == "caret" || key.starts_with("tile.") {
         return pagesview_probe(&s.pv, &s.nb, &s.nav, key, out, cap); // the Pages view's
     } else if let Some(k) = key.strip_prefix("templates.") {
         return tplsheet_probe(&s.ts, k, out, cap); // the Templates sheet over the page

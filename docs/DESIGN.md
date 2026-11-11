@@ -337,7 +337,7 @@ draws them. White ink and the precise eraser make them.
   type on the lift, not on the touch-down, since which kana it is is the swipe: `Keyboard.flick`
   holds the way the pressed key is swiped (0 still on it), the key's label shows that kana while
   the finger moves, and the pen may end well off the key. One modifier key (`KB_KEY_KANA_MOD`, ゛小)
-  rewrites the last character of the text instead of adding one (`change_last`, `kana_cycle`):
+  rewrites the character before the caret (the one typed last) instead of adding one (`change_last`, `kana_cycle`):
   unvoiced, voiced, half-voiced, small, round again (か が か; は ば ぱ は; つ づ っ つ; や ゃ や),
   which covers dakuten, handakuten and the small kana in one key. カ (`KB_KEY_KATA`) switches the
   pad to katakana and back (`Keyboard.kata`; the labels follow), and it types on the lift too.
@@ -361,6 +361,49 @@ draws them. White ink and the precise eraser make them.
   only what any letter does. `keyboard_open` starts every keyboard with shift off, so caps
   on ends when the keyboard closes (Find's Done with no page to go to keeps its keyboard open, and the state
   with it). A paired keyboard never reaches this state: its keys type nowhere but on the count pad.
+- The caret, the selection and the clipboard (2.1.0-beta.2, issue #36). The text has a caret,
+  `Keyboard.caret`, a byte offset at a character's first byte (or the end), and a selection's other end,
+  `Keyboard.anchor` (the caret's own with nothing selected); `keyboard_open` puts both after the text, so
+  typing a name goes on as it always did. A key types at the caret, in place of a selection
+  (`replace_selection`: a character that would not fit is not typed); delete takes the selection, or the
+  character before the caret; the kana pad's ゛小 the character before the caret. The text line holds three
+  keys at its right end on every page but the count pad's (`line_keys`, each a letter key's width, the
+  line's 120 px tall): the edit key (md-content_copy), ◀ and ▶ (the chevrons), so the text box is the line
+  left of them (`field_rect`). ◀ and ▶ move the caret a whole character, at the touch-down (as a character
+  key types), and with a selection let it go at its start or end; held, they repeat as delete does
+  (`keyboard_repeat` repeats whichever of the three is held, `can_repeat`: until the caret can go no
+  further, so a hold on ◀ at the start never starts, and delete held inside the text stops at its start).
+  A contact on the text itself (`Keyboard.field_drag`) puts the caret at the character boundary nearest to
+  it, at the touch-down, from where the line was last drawn (`caret_at_x`: left of the text, its first
+  shown character; right of it, the end), and its moves select from there to where it is; the lift leaves
+  it. The count pad's line takes none of this: its count has its caret at the end, always. The line shows
+  the text from `Keyboard.scroll`, kept so the caret is in view (`text_scroll`: from where it was, or the
+  caret if that went before it; on until the text to the caret fits; back while all the rest fits), which
+  with the caret at the end is the text's longest tail that fits, what it always showed; only what fits is
+  drawn (`shown_end`), so nothing is cut with "...". The caret after the text is drawn as it always was (5
+  px, 4 px on); between two characters it is 3 px in the space before the second, never over a letter. A
+  selection is white on a black box as tall as the caret, with no caret beside it. The edit key opens the
+  edit page (`EDIT_PAGE`, `Keyboard.prev_page`): Select all across the page, Cut, Copy and Paste, Start
+  and End (the caret to the text's start and end), in the four rows' height above a bottom row of Cancel,
+  the way back (abc, あ from the kana pad, 123 from the number pad), space, delete (as wide as Done, for
+  Spanish "borrar") and Done; the edit key is drawn pressed there and goes back too. Its keys act at the
+  lift, as the page keys do. Cut and Copy take the selection to the keyboard's own clipboard
+  (`keyboard_clipboard`, a thread-local string), never the lasso's (clipboard.rs, ink); it lasts until
+  Grimoire closes, across every keyboard, and nothing writes it to a file. Paste types it at the caret in
+  place of a selection, as much as fits, cut between characters, control characters left out as
+  `keyboard_open` leaves them out; on Go to page's number pad (or its edit page) the digits alone. Copy, and
+  Cut or Paste with nothing to do, change nothing and draw nothing. A move of the caret or the selection is
+  `KbResult::Moved`, with the text line to refresh: drawn and refreshed as a key's typing is
+  (`app_keyboard_pointer_split`, `app_keyboard_press`, `app_keyboard_tick`), but Find's rows are not made
+  again for it, the text being as it was. A key inside the line (◀, ▶) refreshes no rect of its own over the
+  line's (the line's refresh holds its pressed look), so a tap is still one refresh at the touch-down and one
+  of the key at the lift. A paired keyboard's Left, Right, Home and End (Shift held: the selection grows or
+  shrinks) and Ctrl or Cmd with A, C, X and V (not with Alt) do the same on any keyboard open but the count
+  pad (`keyboard_key_input`; `app_text_key` in app.rs, before any shortcut is looked up; a keyboard is read at
+  all only while Settings > Shortcuts is on, as for every key):
+  they reach the keyboard as Esc does, through `app_type_text`, whose touch-down on the text box now carries
+  the input too, so it is taken as a contact on no key and moves no caret. Letters typed on a paired keyboard
+  still type nothing in a field.
 - Every keyboard host (the Library's sheet, the Pages view's Page name and Go to page) hands its pen
   and finger events to `app_keyboard_pointer` and its tick to `app_keyboard_tick` (app.c), so a key
   costs the same over any screen. A sample that changes nothing (the pen resting on a key sends one
@@ -398,8 +441,9 @@ draws them. White ink and the precise eraser make them.
   text line too), a hardware keyboard's key on a count pad (`app_keyboard_press`: the digit it types is never
   the next repeat's), and `keyboard_holds_end`, which `app_sleep` and `app_switch` call for every keyboard at
   once, since the lift may never reach one then. A hardware keyboard's Backspace is not repeated: text fields
-  take no typed keys (only Esc, their Cancel), and on the count pads `hidkeys_event` drops the kernel's
-  autorepeat (value 2) as it does for every key.
+  take no typed keys (only Esc, their Cancel, and the keys that move the caret, select and copy and paste:
+  above), and on the count pads `hidkeys_event` drops the kernel's autorepeat (value 2) as it does for every
+  key; so a held arrow moves the caret once.
 
 ## Languages
 

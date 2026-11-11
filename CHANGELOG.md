@@ -90,6 +90,15 @@
   settings and KOReader. No Wi-Fi password reaches the app, its files or its log (its helper keeps only the
   networks' names from what the Kindle answers); no network is added, changed or forgotten; no network name is
   logged.
+- **The keyboard has a caret, and copy and paste for typed text** (issue #36). Every keyboard (names, renames,
+  Find, link and page names, Go to page, the kana pad) has ◀ and ▶ at the right end of its text line: they move
+  the caret a letter, and held they go on as delete does. A tap on the text puts the caret there; a drag across
+  it selects. Typing and delete act at the caret, replacing or taking a selection, and ゛小 changes the kana
+  before the caret. The key beside the arrows opens the edit page: Select all, Cut, Copy, Paste, and Start and
+  End for the caret; abc (or あ, or 123) goes back. What you cut or copy is kept until Grimoire closes and
+  pastes into any keyboard; it is apart from the lasso's ink clipboard. With a keyboard attached (and shortcuts
+  enabled), the arrows, Home and End move the caret (Shift selects) and Ctrl or Cmd with A, C, X and V select
+  all, copy, cut and paste. The count pad stays as it is.
 - The text cache now holds at most 4 MB of letters (it was only limited by their number), which matters for
   large letters of your own fonts.
 - A character no font in Grimoire can draw shows as a box instead of disappearing, so a name no longer looks cut

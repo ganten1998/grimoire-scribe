@@ -108,6 +108,13 @@ your notebooks and settings from `quire/` to `grimoire/` and removes the old Qui
 - **Delete held down** deletes one character after another, on every keyboard (names, Find, the page number
   pads, the count pad): a tap deletes one, and a finger or the pen kept on the key deletes the next after about
   0.4 s, then about 15 a second until it lifts or slides off.
+- **The caret**: every keyboard but the count pad has **◀** and **▶** at the right end of its text line, which
+  move the caret a letter (held, one after another, as delete does); a tap on the text puts the caret there
+  and a drag across it selects. Typing and delete act at the caret, and replace or take a selection. The key
+  beside them opens the edit page: **Select all**, **Cut**, **Copy**, **Paste**, and **Start** and **End** for
+  the caret. What you cut or copy stays until Grimoire closes and pastes into any keyboard; it is apart from
+  the lasso's ink. With a keyboard attached (and shortcuts enabled, below), the arrows, Home and End move the
+  caret (with Shift, they select) and Ctrl or Cmd with A, C, X and V select all, copy, cut and paste.
 - **Paper**: narrow, medium and wide rule (without or with a margin), Cornell, dot grid, graph,
   sheet music, guitar tab, blank, cross grid, isometric, hexagon, Seyes rule, and **Custom
   music**: stack treble, bass, alto, tenor, drum and plain staves, 4 to 8 line tabs and lyric

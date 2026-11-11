@@ -2389,3 +2389,35 @@ and every other letter or digit.
 8. From a notebook: the toolbar's cog > Wi-Fi works the same; Done comes back to the notebook.
 9. Afterwards, grimoire.log names no network and holds no password: only lines such as `wifi: switched to a
    saved network`. The Kindle's own Wi-Fi list is unchanged (nothing added, changed or forgotten).
+
+## 2.1.0-beta.2, last round, lane K: the keyboard's caret, and copy and paste
+
+From issue #36. Automated: the keyboard's unit tests (rust/src/keyboard.rs: typing and delete at the caret,
+the kana modifier, selections, Cut, Copy and Paste, the edit page, the text line's keys, the arrows' hold, a tap
+and a drag on the text, the line keeping the caret in view, the paired keyboard's keys, the edit page's words in
+every language), tests/scenarios/u_keyboard_caret.qs (the Library's keyboard, upright and sideways, its refreshes,
+the clipboard across keyboards, a paired keyboard's keys), u_keyboard_caret_classic.qs (Classic's shots),
+u_keyboard_caret_ja.qs and u_keyboard_caret_es.qs (the kana pad, Spanish, the fit checks) and z_find_5_caret.qs
+(Find's rows follow a paste and not a move of the caret; the lasso's ink clipboard apart). **Not run on a
+Scribe.** The owner's check, in Classic and Gothic, upright and sideways, in English, Spanish and Japanese:
+
+1. **The arrows.** Library > Folder: type a name, tap ◀ three times and type a letter: it goes in where the caret
+   is. Hold ◀: the caret steps back after about 0.4 s, then quickly, and stops at the start; hold ▶ to go back.
+   Delete takes the letter before the caret. Each tap should feel as quick as a letter key (one refresh of the
+   text line and the key, no flash of the keyboard).
+2. **A tap and a drag on the text.** Tap between two letters with the pen: the caret goes there. Draw the pen
+   across a few letters: they show white on black; type a letter and it replaces them. Try with a finger too.
+3. **The edit page.** Tap the key beside ◀ (the copy icon): Select all, Cut, Copy, Paste, Start and End.
+   Select all, Copy, then abc and type more; open the edit page and Paste. Cancel, then rename a notebook and
+   Paste there: the text is still on the clipboard. Lasso some ink and Copy it, then Paste in a keyboard: the
+   text pastes, not the ink; Select mode's Paste still pastes the ink.
+4. **Every keyboard.** The same in a notebook's Find (its rows follow a paste, not the arrows), the Pages view's
+   Name this page and Go to page (Paste there takes the digits alone), the Graph's Rename, New page..., a link
+   card's Rename, and in Japanese on the kana pad (the edit page's way back is あ; ゛小 changes the kana before
+   the caret). The count pad (New page held) has no arrows and works as before.
+5. **A paired keyboard** (Settings > Shortcuts on): in any of those keyboards, Left and Right, Home and End move
+   the caret, Shift with them selects, Ctrl+A (Cmd+A on an Apple keyboard) selects all, Ctrl+C, Ctrl+X and
+   Ctrl+V copy, cut and paste; none of them turns a page or changes a tool under the keyboard. An arrow held
+   down moves one letter (no repeat on a paired keyboard yet).
+6. **Long names.** A name longer than the line: ◀ moves the shown part when the caret reaches its left end, and
+   Start and End jump; the text never shows "...".

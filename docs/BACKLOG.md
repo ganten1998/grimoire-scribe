@@ -115,6 +115,28 @@ why. Newest decisions first within each section.
   moved to versions published before 2026-11-02 so that every crate is two weeks old at a tag on or after
   2026-11-16 (`tools/check-crate-dates.py --tag-date 2026-11-16` passes).
 
+## The keyboard's caret and text copy and paste (2.1.0-beta.2, last round, lane K): choices for the owner, and what waits
+
+Built from issue #36 (docs/DESIGN.md, Text and the keyboard). The lane chose, the owner to confirm:
+- **Where the keys are.** ◀ and ▶, and the edit key beside them (the copy icon), sit at the right end of the text
+  line on every page but the count pad's, each a letter key's width: no row was added and no key moved. The text
+  box is the line left of them (1229 px upright, 1663 sideways, where it was 1760 and 2380).
+- **The edit page** (Gboard's way): Select all, Cut, Copy, Paste, Start and End, with Cancel, abc, space, delete
+  and Done along the bottom. A range is selected by a drag across the text (pen or finger) or Shift with the
+  arrows on a paired keyboard; there is no on-screen Select toggle.
+- **Copy says nothing**, as the owner wanted no "Saved" toast (2026-11-04): the selection stays. Copy and Cut
+  with nothing selected do nothing (they do not take the whole text); Paste with nothing copied does nothing.
+- **The clipboard** lasts until Grimoire closes and is never written to a file. Go to page's number pad pastes
+  the digits alone. Control characters are left out, as a name opened on the keyboard drops them.
+
+What waits:
+- A paired keyboard's arrow held down moves the caret once: `hidkeys_event` drops the kernel's autorepeat for
+  every key (above). A repeat of its own would need a timer of held text keys.
+- Letters typed on a paired keyboard still type nothing in a field (that needs a keyboard layout).
+- No word-wise moves (Ctrl or Alt with the arrows), no double tap to select a word, and a drag selects only the
+  part of a long name the line shows (Select all, Start and End, or Shift with the arrows reach the rest).
+- Cut, Copy and Paste are never drawn disabled when they would do nothing.
+
 ## Planned, not scheduled: a sleep screen picture of Grimoire's own (the owner, 2026-11-09)
 
 The owner wants a wallpaper Grimoire sets itself, with no KOReader in it ("no koreader folder for the non
@@ -951,8 +973,9 @@ items of Document links. Left:
   Backspace auto-repeat, from the RC8 review's list. Delete held repeats on every keyboard after 400 ms, every
   65 ms, never queueing a refresh behind the panel (docs/DESIGN.md, Text and the keyboard). Left as it is: a
   hardware keyboard's held Backspace on a count pad deletes one digit, as `hidkeys_event` drops the kernel's
-  autorepeat for every key (text fields take no typed keys at all, only Esc); repeating it would let autorepeat
-  into the path every shortcut shares, for a count of a few digits.
+  autorepeat for every key (text fields take no typed keys at all, only Esc; 2.1.0-beta.2 adds the arrows, Home,
+  End and Ctrl or Cmd with A, C, X and V, so a held arrow moves the caret one letter, see below); repeating it
+  would let autorepeat into the path every shortcut shares, for a count of a few digits.
 - 2.0.0-beta.2 (unreleased, claude/b3-pv3; the owner's rulings of 2026-11-03, verbatim): (a) "The graph button if
   there is to be one shouldn't be at the top -- we had good visual soundness with 5 icons. For now just the drag
   to summon on the main menu." The Library's top bar is back to its five icons (Exit, Settings, Share, Folder,

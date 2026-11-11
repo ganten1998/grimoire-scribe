@@ -100,6 +100,7 @@ key and action twice is one line. Up and Down do nothing but in the Graph.
 | the Pages view | Left/Right its screens, Ctrl+N, Ctrl+F, Ctrl+A `select-all`, Ctrl+Z and Ctrl+Shift+Z its own Undo and Redo, P, G |
 | the Graph | the arrows `pan-*`, - and +, Ctrl+0, V `graph-view`, Ctrl+A, G |
 | Pen feel | 1 to 9 that pen's tab, 0 and E the eraser's |
+| a keyboard up (a name, Find, a page number) | Left/Right the caret a letter, Home/End to the start and end (with Shift they select), Ctrl or Cmd with A, C, X and V select all, copy, cut and paste the typed text (2.1.0-beta.2); these come before any shortcut and cannot be rebound; not on the count pad |
 
 **Esc** (`back`) eats one layer a press, the first there is: a field or pad (its Cancel), a dialog or card
 (its No or Cancel), a drag, a selection (the lasso's, then Select mode; the Pages view's ticks; the Graph's), a
