@@ -42,6 +42,7 @@ expect editor.select is selected
 expect editor.selected is 2
 expect editor.strokes is 3
 expect editor.sel_box is 345 655 470 171
+expect editor.page_sig_keep is kept
 expect editor.view is 1.00 0 0
 expect editor.scale is 1.00
 expect editor.live_matches_render is 1
@@ -52,19 +53,25 @@ pen up 817 828
 wait 100
 expect editor.select is selected
 expect editor.sel_box is 345 655 470 171
+expect display.presents not -1
 # dragged out by its width and height: the ink scaled about the top-left corner, one step at the lift
 pen down 815 826
 pen move 915 901
+wait 150
+expect display.presents is fast 10 640 1450 346
+expect editor.sel_box is 345 655 583 212
 pen move 1015 976
+wait 150
+expect display.presents is fast 330 640 728 284
 expect editor.select is dragging
 expect editor.sel_box is 345 655 698 254
+expect editor.drag_inked is 1
 pen up 1015 976
 wait 100
 expect editor.select is selected
 expect editor.undo_kind is lasso
 expect editor.sel_box is 345 655 698 254
 expect editor.strokes is 3
-expect editor.page_sig_keep is kept
 expect editor.live_matches_render is 1
 shot 02-resized
 # undo puts the page back exactly, redo scales it again

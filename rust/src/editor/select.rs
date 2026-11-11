@@ -1541,26 +1541,143 @@ fn resize_step(a: &mut App, ev: &InEvent) {
     s.sel.dv.left = true;
 }
 
-/// The screen strips a resize covers: the selection's outline and handles where they are and where they go.
-fn resize_strips(a: &App, old: Rect, new: Rect) -> Vec<Rect> {
-    let clip = lasso_clip(a);
+/// The screen rects a resize's frame covers at box b (page px): the outline's four strips and its four
+/// handles, cut to where they draw (lasso_clip).
+fn resize_frame(a: &App, b: Rect) -> Vec<Rect> {
     let s = ed_ref(a);
+    if rect_is_empty(b) || s.sel.pid != s.open_pid() {
+        return Vec::new();
+    }
+    let clip = lasso_clip(a);
+    let at = box_at(s, b, (0, 0));
     let mut v = Vec::with_capacity(8);
-    let pad = ui_px(6.0) + resize_handle_size();
-    for b in [old, new] {
-        let bb = rect_inflate(box_at(s, b, (0, 0)), pad);
-        for st in dither_strips(bb, link_band(), ui_px(1.0)) {
-            let st = rect_intersect(st, clip);
-            if !rect_is_empty(st) {
-                v.push(st);
-            }
+    for st in dither_strips(rect_inflate(at, ui_px(6.0)), link_band(), ui_px(1.0)) {
+        let st = rect_intersect(st, clip);
+        if !rect_is_empty(st) {
+            v.push(st);
+        }
+    }
+    for h in resize_handles(at, resize_handle_size()) {
+        let h = rect_intersect(rect_inflate(h, ui_px(1.0)), clip);
+        if !rect_is_empty(h) {
+            v.push(h);
         }
     }
     v
 }
 
-/// editor_tick: a resize's newest box shown, once the panel has finished the last fast refresh, as a drag's
-/// (drag_tick): the strips of the outline where it was and where it goes, a DU of their own.
+/// A frame's rects as one (screen px).
+fn frame_rect(v: &[Rect]) -> Rect {
+    v.iter().fold(RECT_EMPTY, |u, &r| rect_union(u, r))
+}
+
+/// The screen px a resize's frame at box b turns back to the page as it moves: the outline's ink (its
+/// carried link areas' thinner ones left out) and its four handles.
+fn resize_ink(a: &App, b: Rect) -> i64 {
+    let s = ed_ref(a);
+    if rect_is_empty(b) {
+        return 0;
+    }
+    let ib = rect_inflate(box_at(s, b, (0, 0)), ui_px(6.0));
+    let (w, h, t) = (ib.w as i64, ib.h as i64, link_band() as i64);
+    let band = (2 * (w + h) * t).min(w * h);
+    let sz = resize_handle_size() as i64;
+    band + 4 * sz * sz
+}
+
+/// A resize's first show: the bar and the outline's frame where they are taken away composed again over
+/// the page (one compose over both), the screen without them copied, the frame drawn at the box's newest
+/// place, and one DU over both places at once. As a drag's first show (drag_begin): with the copy, every show
+/// after it is a blit of that copy and a draw of the frame, whatever the page holds behind them (no page
+/// composed, no ink walked).
+fn resize_begin(a: &mut App, now: u32) {
+    let screen = Rect { x: 0, y: 0, w: a.w, h: a.h };
+    let bar = rect_intersect(rect_union(sel_ref(a).bar, std::mem::take(&mut ed(a).sel.stale)), screen);
+    let box0 = sel_ref(a).resize_shown;
+    let old = resize_frame(a, box0);
+    let worn = resize_ink(a, box0);
+    let gone = rect_union(bar, frame_rect(&old));
+    if !rect_is_empty(gone) {
+        // (one compose over both: composing a strip at a time walks the selection's ink again for each, the
+        // halo drawn with it, so six composes cost six walks over every selected point)
+        compose(a, gone);
+    }
+    let at = rect_intersect(lasso_clip(a), screen);
+    let mut base = Canvas::default();
+    let based = !rect_is_empty(at) && canvas_init(&mut base, at.w, at.h) == 0;
+    if based {
+        canvas_blit(&mut base, &a.screen, at, 0, 0);
+    } else {
+        qlog!("lasso: no memory for the resize's copy of the screen: each show composes its strips");
+    }
+    let s = ed(a);
+    s.sel.dv.moving = true;
+    s.sel.dv.base = based.then_some(base);
+    s.sel.dv.base_at = at;
+    s.sel.dv.samples_at_last_show = s.sel.dv.samples;
+    let new = resize_frame(a, ed_ref(a).sel.box_);
+    let r = rect_union(gone, frame_rect(&new));
+    if rect_is_empty(r) {
+        return;
+    }
+    draw_outline(a, (0, 0), r);
+    draw_resize_handles(a, (0, 0), r);
+    app_invalidate(a, r, RefreshMode::Fast);
+    app_flush(a);
+    let m = &mut ed(a).sel;
+    m.resize_shown = m.box_;
+    m.outline_rect = rect_union(m.outline_rect, r);
+    m.dv.shown_at = now;
+    m.dv.shows += 1;
+    m.dv.px += rect_area(r);
+    du_wear_add(&mut a.du_wear, gone, worn, now_ms());
+}
+
+/// A resize's next show: the frame where it was put back to the page (from the copy of the screen, or
+/// composed again where there is none), its new place drawn, one DU over both.
+fn resize_show(a: &mut App, now: u32) {
+    let was = sel_ref(a).resize_shown;
+    let to = sel_ref(a).box_;
+    let old = resize_frame(a, was);
+    let new = resize_frame(a, to);
+    let r = rect_union(frame_rect(&old), frame_rect(&new));
+    if rect_is_empty(r) {
+        return;
+    }
+    let worn = resize_ink(a, was);
+    let mut based = false;
+    {
+        let App { screen, ed, .. } = a;
+        let dv = &ed.as_deref().unwrap().sel.dv;
+        if let Some(base) = dv.base.as_ref() {
+            let at = dv.base_at;
+            let rr = rect_intersect(r, at);
+            if !rect_is_empty(rr) {
+                canvas_blit(screen, base, Rect { x: rr.x - at.x, y: rr.y - at.y, ..rr }, rr.x, rr.y);
+            }
+            based = true;
+        }
+    }
+    if !based {
+        compose(a, r); // (one compose, one walk of the selection's ink: see resize_begin)
+    }
+    draw_outline(a, (0, 0), r);
+    draw_resize_handles(a, (0, 0), r);
+    app_invalidate(a, r, RefreshMode::Fast);
+    app_flush(a);
+    let m = &mut ed(a).sel;
+    m.resize_shown = m.box_;
+    m.outline_rect = rect_union(m.outline_rect, r);
+    m.dv.shown_at = now;
+    m.dv.shows += 1;
+    m.dv.px += rect_area(r);
+    du_wear_add(&mut a.du_wear, frame_rect(&old), worn, now_ms());
+}
+
+/// editor_tick: a resize's newest box shown, once the panel has finished the last fast refresh, as a
+/// drag's (drag_tick). One DU a show, over both places at once: the box follows the pen at the panel's own
+/// rate (about 5 a second on the Kindle, its DU's length), whatever the page holds, and never one DU
+/// queued behind another.
 fn resize_tick(a: &mut App, now: u32) {
     let m = sel_ref(a);
     if m.state != SelState::Dragging || m.resize_handle == 0 || m.resize_shown == m.box_ {
@@ -1569,29 +1686,11 @@ fn resize_tick(a: &mut App, now: u32) {
     if !drag_can_show(a) || display_fast_busy() {
         return;
     }
-    // (the first move shows it; then one show after every 20 samples, or as soon as the pen kept still)
-    if m.dv.shows > 0 && m.dv.samples < m.dv.samples_at_last_show + 20 && now.wrapping_sub(m.dv.moved_at) < 120 {
-        return;
-    }
-    let (old, new) = (m.resize_shown, m.box_);
-    let mut v = resize_strips(a, old, new);
     if m.dv.shows == 0 {
-        // (the first show takes the bar away with the outline's old place)
-        let screen = Rect { x: 0, y: 0, w: a.w, h: a.h };
-        let stale = rect_intersect(std::mem::take(&mut ed(a).sel.stale), screen);
-        if !rect_is_empty(stale) {
-            v.push(stale);
-        }
-        let bar = rect_intersect(sel_ref(a).bar, screen);
-        if !rect_is_empty(bar) {
-            v.push(bar);
-        }
+        resize_begin(a, now);
+    } else {
+        resize_show(a, now);
     }
-    redraw_rects(a, v, RefreshMode::Fast);
-    let m = &mut ed(a).sel;
-    m.resize_shown = new;
-    m.dv.samples_at_last_show = m.dv.samples;
-    m.dv.shows += 1;
 }
 
 /// Whether the screen shows the page and the selection's overlay over it, so a drag's show may draw (not
@@ -1633,8 +1732,8 @@ fn drag_tick(a: &mut App, now: u32) {
     }
 }
 
-/// The drag's first move shown: the bar and the outline taken away (composed again where they were, the
-/// outline's strips alone), the screen without them copied (over the page's part of it), the outline drawn
+/// The drag's first move shown: the bar and the outline taken away (composed again where they were, one
+/// compose over both), the screen without them copied (over the page's part of it), the outline drawn
 /// at the newest place; the bar and each strip a DU of its own. DU turned the bar and the outline back to
 /// the page: their traces count toward a clean (display.rs, DuWear).
 fn drag_begin(a: &mut App, now: u32) {
@@ -1654,11 +1753,11 @@ fn drag_begin(a: &mut App, now: u32) {
     let s = ed(a);
     s.sel.dv.moving = true;
     s.sel.dv.shown = None;
-    if !rect_is_empty(bar) {
-        compose(a, bar);
-    }
-    for &r in &old {
-        compose(a, r);
+    let gone = old.iter().fold(bar, |u, &r| rect_union(u, r));
+    if !rect_is_empty(gone) {
+        // (one compose over the bar and the outline's strips together: composing them a strip at a time walks
+        // the selection's ink and its halo again for each, six walks where one does)
+        compose(a, gone);
     }
     let at = rect_intersect(lasso_clip(a), screen);
     let mut base = Canvas::default();
@@ -1677,14 +1776,11 @@ fn drag_begin(a: &mut App, now: u32) {
     let new = outline_strips(a, off);
     if based {
         draw_outline(a, off, screen);
-    } else {
-        for &r in &new {
-            compose(a, r);
-        }
+    } else if !rect_is_empty(gone) {
+        compose(a, gone);
     }
     let mut v = Vec::with_capacity(1 + old.len() + new.len());
     v.push(bar);
-    let gone = old.iter().fold(bar, |u, &r| rect_union(u, r));
     v.extend(old);
     v.extend(new);
     drag_present(a, v, now);
@@ -1722,8 +1818,9 @@ fn drag_show(a: &mut App, now: u32) {
     if based {
         draw_outline(a, off, Rect { x: 0, y: 0, w: a.w, h: a.h });
     } else {
-        for &r in old.iter().chain(new.iter()) {
-            compose(a, r);
+        let all = old.iter().chain(new.iter()).fold(RECT_EMPTY, |u, &r| rect_union(u, r));
+        if !rect_is_empty(all) {
+            compose(a, all);
         }
     }
     let gone = old.iter().fold(RECT_EMPTY, |u, &r| rect_union(u, r));
@@ -1810,39 +1907,17 @@ fn drag_done(a: &mut App, cancelled: bool) {
     redraw(a, r, RefreshMode::Ui);
 }
 
-/// The rects refreshed whole, one by one, two joined when they meet: the strips of an outline, one rect
-/// over them all would span the box's inside.
-fn redraw_rects(a: &mut App, mut v: Vec<Rect>, mode: RefreshMode) {
-    let mut i = 0;
-    while i < v.len() {
-        let mut j = i + 1;
-        while j < v.len() {
-            if rect_overlaps(v[i], v[j]) {
-                v[i] = rect_union(v[i], v[j]);
-                v.swap_remove(j);
-            } else {
-                j += 1;
-            }
-        }
-        i += 1;
-    }
-    for r in v {
-        redraw(a, r, mode);
-    }
-}
-
 /// The resize released: the selection's box `to` as the screen last showed it, scaled about the corner
 /// opposite the handle dragged (one undo step, sel_scale). A cancel, or a box the pen never changed, puts
 /// the box back as it was.
 fn resize_done(a: &mut App, cancelled: bool) {
-    let (from, to, handle, shown, shows) = {
+    let (from, to, handle, shows) = {
         let m = sel_ref(a);
-        (m.resize_box0, m.box_, m.resize_handle, m.resize_shown, m.dv.shows)
+        (m.resize_box0, m.box_, m.resize_handle, m.dv.shows)
     };
     qlog!("lasso: resize handle=%d from=%dx%d to=%dx%d shows=%u", handle, from.w, from.h, to.w, to.h, shows);
-    // (the outline where the resize last drew it, and where it ends)
+    // (the outline where the resize last drew it, and where it ends: one refresh over both, as a drag's lift)
     let before = rect_union(overlay_rect(a), std::mem::take(&mut ed(a).sel.outline_rect));
-    let mut strips = resize_strips(a, shown, to);
     let s = ed(a);
     drag_end_view(&mut s.sel);
     s.sel.state = SelState::Selected;
@@ -1852,8 +1927,8 @@ fn resize_done(a: &mut App, cancelled: bool) {
         sel_scale(a, from, to, handle);
     }
     layout_bar(a);
-    strips.push(rect_union(before, overlay_rect(a)));
-    redraw_rects(a, strips, RefreshMode::Ui);
+    let r = rect_union(before, overlay_rect(a));
+    redraw(a, r, RefreshMode::Ui);
 }
 
 fn sel_button(a: &mut App, b: SelBtn) {
