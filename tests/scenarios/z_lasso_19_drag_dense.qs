@@ -47,7 +47,8 @@ expect editor.page_sig_keep is kept
 wait 800
 expect display.presents not -1
 # 60 samples at once, 1.75 px right and 0.25 px up each: one turn of the main loop, one show of the newest place.
-# The bar goes, the outline's strips where it was, and the outline at 105 -15: nine DU, none of them the box.
+# The bar goes, the outline's strips and the selection's four resize handles where it was, and the outline at
+# 105 -15 with its handles: thirteen DU, none of them the box's inside.
 # (The first six are within the drag's 1 mm slop, 11.8 px: they move nothing, so 54 samples changed the place.)
 pen down 612.00 605.00 0.5
 pen move 613.75 604.75 0.5
@@ -116,12 +117,12 @@ expect editor.drag_samples is 54
 expect editor.drag_shows is 1
 expect editor.drag_shown is 105 -15
 expect editor.drag_copy is 1
-expect editor.drag_inked is 4
-expect display.presents is fast 10 733 1680 130, fast 510 510 207 8, fast 510 702 207 8, fast 510 518 8 184, fast 709 518 8 184, fast 615 495 207 8, fast 615 687 207 8, fast 615 503 8 184, and 1 more
+expect editor.drag_inked is 6
+expect display.presents is fast 10 733 1680 130, fast 510 510 207 8, fast 510 702 207 8, fast 510 518 8 184, fast 709 518 8 184, fast 503 503 28 28, fast 696 503 28 28, fast 503 689 28 28, and 5 more
 # the screen is what its layers make of it: the outline at the place shown, no bar (this composes the whole
 # screen again, the halo with it: one walk more)
 expect editor.layers is ok
-expect editor.drag_inked is 5
+expect editor.drag_inked is 7
 shot 01-dragging
 # 60 more: one show, eight strips (the old place's four, the new place's four), the ink not walked
 pen move 718.75 589.75 0.5
@@ -188,7 +189,7 @@ wait 200
 expect editor.drag_samples is 114
 expect editor.drag_shows is 2
 expect editor.drag_shown is 210 -30
-expect editor.drag_inked is 5
+expect editor.drag_inked is 7
 expect display.presents is fast 615 495 207 8, fast 615 687 207 8, fast 615 503 8 184, fast 814 503 8 184, fast 720 480 207 8, fast 720 672 207 8, fast 720 488 8 184, fast 919 488 8 184
 # then as the pen reports on the Kindle, a sample every few ms (200 of them): the first is due at once (its old
 # and new strips overlap, so each side is one DU), the rest every 120 ms or so as the machine's time goes; the
@@ -596,7 +597,7 @@ wait 4
 wait 200
 expect editor.drag_samples is 314
 expect editor.drag_shown is 560 -80
-expect editor.drag_inked is 5
+expect editor.drag_inked is 7
 expect display.presents has fast 720 480 209 8, fast 720 672 209 8, fast 720 488 10 184, fast 919 488 10 184
 expect editor.layers is ok
 shot 02-dragged
