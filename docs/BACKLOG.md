@@ -25,6 +25,23 @@ why. Newest decisions first within each section.
   Japanese 12-hour clock reads the month in Japanese and the rest as English writes it.
 - **Disable on a paired row's second card** clears only that direction (the first card's Disable clears both).
 
+## Settings > Wi-Fi (2.1.0-beta.2, lane W): choices for the owner, and what waits
+
+- **Not confirmed on a Scribe (2026-11-11)**: the helper's network verbs are built on KOReader's Kindle backend
+  and have not met wifid. The lipc-hash-prop output format (the reader knows quoted values and fails closed on
+  anything else), whether wifid lists the saved networks with the radio off, and whether ensureConnection
+  switches away from a network the Kindle is connected to are the read-only probes and checks at the end of
+  docs/TESTING.md ("Wi-Fi networks (lane W)"). If probe 4 shows another format, only the helper's reader changes.
+- **Choices the brief left open, taken by lane W**: the button sits in Settings' bottom row beside Pair (no other
+  place in Settings had room), which moved Gestures' tap point from x = 890 to 1000; a failed switch changes
+  nothing more (no switch back to the network before: the Kindle's own service decides, and only an explicit tap
+  changes the network); the saved networks are read from profileData (all of them, in range or not) rather than
+  a scan (KOReader's Kindle code does not use the scan list while connected, the case a switch starts from).
+- **Left for later**: the Share screen's Wi-Fi card (and Live view's pairing card) still turns the radio on and off
+  only; it could open the same list. A scan (scanList) could mark which saved networks are in range, with their
+  signal. A saved network whose name the tool writes with an escape (a backslash) is left out of the list. Adding
+  a network with its password stays out (the brief: the Kindle's settings and KOReader do it).
+
 ## PDF import (2.1.0-beta.2, lane L5): what waits, and what is for the owner
 
 - **S1 ran on the owner's Scribe (2026-11-09)**: every sandbox step works there, a private mapping of a PDF on

@@ -183,6 +183,14 @@ your notebooks and settings from `quire/` to `grimoire/` and removes the old Qui
   A small icon in the top right corner says it is on; **Stop** on
   its card turns it off, and it turns itself off after 10 minutes with nobody watching. Plain HTTP:
   use it on a network you trust.
+- **Wi-Fi networks**: **Settings > Wi-Fi** turns Wi-Fi on or off, says which network the Kindle is
+  connected to, and lists the networks the Kindle has saved, the one connected to first and checked (seven
+  a page; **More networks** shows the next). Tap one to switch to it: "Connecting to ..." until the Kindle
+  is connected to it, or "Could not connect to ..." when it refuses or has not connected in 45 seconds
+  (Grimoire changes nothing more: the Kindle's own Wi-Fi service decides what it joins next). Switching disconnects Share, Live view and SSH from
+  the network you leave. Add a network or change its password in the Kindle's settings or KOReader:
+  no Wi-Fi password reaches the app, its files or its log (its helper keeps only the networks' names), and no
+  network is added, changed or forgotten.
 - **Links**: tap the toolbar's link-plus button and draw around the area. Choose a page in this
   notebook, or **Somewhere Else** to browse folders, pick another notebook and choose its page.
   The selector starts in the current notebook's folder and shows cached page previews. Selection
@@ -320,7 +328,7 @@ Translations are under Grimoire's license, GPL-3.0-or-later.
 
 Details in [docs/EXPORT.md](docs/EXPORT.md).
 
-1. **Wi-Fi**: turn on Wi-Fi and open **Library > Share**. Point your phone's camera at the QR code
+1. **Wi-Fi**: turn on Wi-Fi (**Settings > Wi-Fi** also picks the network) and open **Library > Share**. Point your phone's camera at the QR code
    it shows, or type the address under it into any browser on the same network. Download a
    notebook as PDF or zip, single pages as PNG, or everything at once. Notebook PDFs show page
    preparation and transfer progress, then arrive in your browser's Downloads. The browser reader shows

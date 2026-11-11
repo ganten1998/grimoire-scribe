@@ -5,7 +5,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: Grimoire 2.0.0-beta.1\n"
 "Report-Msgid-Bugs-To: https://github.com/ganten1998/grimoire-scribe/issues\n"
-"POT-Creation-Date: 2026-11-11 16:39-0600\n"
+"POT-Creation-Date: 2026-11-11 17:40-0600\n"
 "PO-Revision-Date: 2026-11-09 00:00+0000\n"
 "Last-Translator: draft\n"
 "Language-Team: Japanese\n"
@@ -3103,6 +3103,95 @@ msgstr "忘れられた。"
 msgid "Couldn't forget controller"
 msgstr "コントローラーを解除できませんでした"
 
+#. TRANSLATORS: (Settings > Wi-Fi) its status line, 1470 px at 44 px in bold or two lines at 34 px; %s
+#. is a Wi-Fi network's name as the Kindle saved it (shortened if it is long). Connecting: a switch
+#. to that network is under way; Could not connect: it did not connect in 45 seconds, or the Kindle
+#. refused it; Connected to: the network the Kindle is connected to.
+#: rust/src/library.rs
+#, c-format
+msgid "Connecting to %s…"
+msgstr ""
+
+#: rust/src/library.rs
+#, c-format
+msgid "Could not connect to %s."
+msgstr ""
+
+#: rust/src/library.rs rust/src/share.rs
+msgid "Checking Wi-Fi…"
+msgstr "Wi-Fiをチェック中…"
+
+#: rust/src/library.rs rust/src/share.rs
+msgid "Could not read or change Wi-Fi."
+msgstr "Wi-Fi の読み取りまたは変更ができませんでした。"
+
+#: rust/src/library.rs rust/src/share.rs
+msgid "Wi-Fi is off"
+msgstr "Wi-Fiはオフです"
+
+#: rust/src/library.rs
+#, c-format
+msgid "Connected to %s"
+msgstr ""
+
+#: rust/src/library.rs rust/src/share.rs
+msgid "Connected to Wi-Fi"
+msgstr "Wi-Fiに接続"
+
+#: rust/src/library.rs rust/src/share.rs
+msgid "Wi-Fi is on; no connection yet"
+msgstr "Wi-Fi はオンです。まだ接続されていません"
+
+#: rust/src/library.rs rust/src/share.rs
+msgid "Wi-Fi is on; connection unknown"
+msgstr "Wi-Fi はオンです。接続が不明"
+
+#: rust/src/library.rs rust/src/share.rs
+msgid "Wi-Fi unavailable"
+msgstr "Wi-Fiは利用できません"
+
+#. TRANSLATORS: starts the share server again (388 px at 44 px, or 34 px).
+#: rust/src/library.rs rust/src/share.rs
+msgid "Retry"
+msgstr "再試行"
+
+#: rust/src/library.rs rust/src/share.rs
+msgid "Turn off Wi-Fi"
+msgstr "Wi-Fiをオフにする"
+
+#: rust/src/library.rs rust/src/share.rs
+msgid "Turn on Wi-Fi"
+msgstr "Wi-Fiをオンにする"
+
+#. TRANSLATORS: (Settings > Wi-Fi) a line in place of the saved networks: they could not be read
+#. (with the radio off, the first: they may be read only while it is on). 1470 px at 44 px in
+#. bold, or two lines at 34 px.
+#: rust/src/library.rs
+msgid "Saved networks could not be read."
+msgstr ""
+
+#: rust/src/library.rs
+msgid "Turn on Wi-Fi to see the saved networks."
+msgstr ""
+
+#. TRANSLATORS: (Settings > Wi-Fi) the Kindle has no saved Wi-Fi network; Grimoire adds none itself.
+#: rust/src/library.rs
+msgid "No saved networks. Add one in Kindle settings or KOReader."
+msgstr ""
+
+#. TRANSLATORS: (Settings > Wi-Fi) the row under the saved networks when they take more than
+#. one page: shows the next page (after the last, the first). %d of %d: this page, the pages.
+#: rust/src/library.rs
+#, c-format
+msgid "More networks (%d of %d)"
+msgstr ""
+
+#. TRANSLATORS: (Settings) the bottom button that opens the Wi-Fi sheet, about 200 px at 34 px under
+#. its icon; also that sheet's title, and the Share screen's button and card title.
+#: rust/src/library.rs rust/src/share.rs
+msgid "Wi-Fi"
+msgstr "Wi-Fi"
+
 #. TRANSLATORS: Gestures row: action and first binding plus +N, about 1300 px with a thumbnail, two lines at 34 px.
 #: rust/src/library.rs
 #, c-format
@@ -3289,9 +3378,11 @@ msgstr "ペン：%s"
 msgid "Data: %s"
 msgstr "データ：%s"
 
-#. TRANSLATORS: Settings' bottom buttons, each a word under its icon, about 240 px at 34 px.
-#. Pair opens the Pair sheet (a Bluetooth controller: the helper on or off, pairing one; also that
-#. sheet's title), Gestures opens gesture bindings, Updates checks for a newer Grimoire.
+#. TRANSLATORS: Settings' bottom buttons, each a word under its icon, about 200 px at 34 px (the
+#. four share about 810 px upright; a longer word takes room from the shorter ones). Pair opens the
+#. Pair sheet (a Bluetooth controller: the helper on or off, pairing one; also that sheet's title),
+#. Wi-Fi the Wi-Fi sheet (the radio and the Kindle's saved networks), Gestures opens gesture
+#. bindings, Updates checks for a newer Grimoire.
 #: rust/src/library.rs
 msgid "Pair"
 msgstr "ペアリング"
@@ -4631,38 +4722,6 @@ msgid "From a terminal: %s <address above>"
 msgstr "端末から: %s <上記のアドレス>"
 
 #: rust/src/share.rs
-msgid "Wi-Fi"
-msgstr "Wi-Fi"
-
-#: rust/src/share.rs
-msgid "Checking Wi-Fi…"
-msgstr "Wi-Fiをチェック中…"
-
-#: rust/src/share.rs
-msgid "Could not read or change Wi-Fi."
-msgstr "Wi-Fi の読み取りまたは変更ができませんでした。"
-
-#: rust/src/share.rs
-msgid "Wi-Fi is off"
-msgstr "Wi-Fiはオフです"
-
-#: rust/src/share.rs
-msgid "Connected to Wi-Fi"
-msgstr "Wi-Fiに接続"
-
-#: rust/src/share.rs
-msgid "Wi-Fi is on; no connection yet"
-msgstr "Wi-Fi はオンです。まだ接続されていません"
-
-#: rust/src/share.rs
-msgid "Wi-Fi is on; connection unknown"
-msgstr "Wi-Fi はオンです。接続が不明"
-
-#: rust/src/share.rs
-msgid "Wi-Fi unavailable"
-msgstr "Wi-Fiは利用できません"
-
-#: rust/src/share.rs
 msgid "Connects to saved networks."
 msgstr "保存されたネットワークに接続します。"
 
@@ -4673,19 +4732,6 @@ msgstr "Kindle 設定または KOReader で新しいネットワークを追加�
 #: rust/src/share.rs
 msgid "Turning Wi-Fi off disconnects SSH and sharing."
 msgstr "Wi-Fi をオフにすると、SSH と共有が切断されます。"
-
-#: rust/src/share.rs
-msgid "Turn on Wi-Fi"
-msgstr "Wi-Fiをオンにする"
-
-#: rust/src/share.rs
-msgid "Turn off Wi-Fi"
-msgstr "Wi-Fiをオフにする"
-
-#. TRANSLATORS: starts the share server again (388 px at 44 px, or 34 px).
-#: rust/src/share.rs
-msgid "Retry"
-msgstr "再試行"
 
 #: rust/src/share.rs
 msgid "Share over Wi-Fi"

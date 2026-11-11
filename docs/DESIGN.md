@@ -1743,11 +1743,41 @@ Nested Library folders are logical slash-separated paths stored in notebook meta
 folders.ini. Notebook IDs and physical directories stay fixed. A subtree rename validates all
 new paths and collisions before writing, retaining original metadata for rollback on write failure.
 
+## Settings > Wi-Fi (2.1.0-beta.2)
+
+Issue #40 (from #36: someone who relies on Live view among several networks): choose among the Kindle's
+saved Wi-Fi networks from Settings, in the current Settings design. The smallest safe feature: the network
+connected to, the saved networks, a switch to one, its outcome, and a clean fallback; no network is added
+(the Kindle's settings and KOReader do that) and no profile is changed or deleted.
+
+- **Where.** A Wi-Fi button in Settings' bottom row, beside Pair (both radios), opens a sheet drawn as the
+  Pair sheet is (draw_menu rows): the radio row (Turn on Wi-Fi, Turn off Wi-Fi, or Retry when the state is
+  not known), the status line, the saved networks (the one connected to first, with a check; seven a page
+  and a More networks row past seven, so it fits sideways), Done. Esc goes back to Settings. The notebook's
+  Settings has it too.
+- **Status.** "Connecting to <name>..." while a switch is under way, "Could not connect to <name>." after
+  one failed, else the Share card's lines, with "Connected to <name>" when the name is known. A network's
+  name is a name: drawn smaller or shortened as names are, never counted as cut short.
+- **A switch** is wifi_join: the helper's `join <hex>` (ensureConnection), then a read of the network
+  connected to every 2 s. It has worked once a read has the Kindle connected to that network (the helper's
+  own report right after the request still names the old one: no false success), and failed when the
+  helper refused it or after 45 s (JOIN_WAIT). Nothing switches back: the Kindle's service decides what it
+  joins next. Turning the radio on or off forgets a switch; one switch runs at a time.
+- **Reads** run only while the sheet is up (as the Share card's): everything as it opens, the saved
+  networks once more when the radio comes on if they could not be read while it was off, everything once
+  more after a refused switch, and the network connected to while a switch is under way, or for 45 s after
+  a tap while the radio is on with no connection.
+- **Passwords** never leave the helper (docs/KINDLE.md, Wi-Fi): the profileData reader keeps essid values
+  only and gives no name at all for any format it does not know. Names cross in hex and are checked again
+  in Rust (1 to 32 bytes, no control character; anything else fails the whole report closed). No name is
+  logged.
+
 ## Settings > Gestures and page finger shapes (Index phase 3)
 
-The Settings bottom row has five equal cells: KOReader, Pair (Controller until 2.0.0-beta.2), Gestures,
-Updates, Done. Pair, Gestures and Updates words have a 248 px budget at 34 px caps on the upright panel,
-in English and Spanish, in both themes. Coordinates remain pending main-scenario verification.
+The Settings bottom row has six cells: KOReader, Pair (Controller until 2.0.0-beta.2), Wi-Fi (2.1.0-beta.2),
+Gestures, Updates, Done. Pair, Wi-Fi, Gestures and Updates share about 810 px upright: evenly while the
+longest word fits a quarter (English, Japanese), else each as wide as its word needs (none under 160 px)
+with the rest shared out (Spanish: "Actualizaciones"). The tap points are in docs/SIM.md.
 Buttons and Gestures share the seven registry groups and row descriptors from `actions.rs`.
 Source masks expose every action to PEN. Hold eraser is pen-only in Gestures (hold/drag slots),
 and pan/zoom are PEN-only Pages actions 82/83 (drag slots). Keys/pads cannot learn their own

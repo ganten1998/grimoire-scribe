@@ -1047,8 +1047,8 @@ missing notebook or deleted destination page reports that it is unavailable. Exi
 continue to open the unified Index. Clear page and its Undo/Redo include cross-notebook link areas.
 The notebook toolbar's settings cog opens the main Settings menu; Done returns to the notebook.
 Settings' rows that open a screen or a sheet are, top down, Display, Pen sensitivity, Shortcuts and
-Calibrate pen and touch (the owner's order of 2026-11-04), and its bottom row KOReader, Pair, Gestures,
-Updates and Done. Shortcuts holds Enable shortcuts, each keyboard's or controller's own shortcuts,
+Calibrate pen and touch (the owner's order of 2026-11-04), and its bottom row KOReader, Pair, Wi-Fi (2.1.0-beta.2),
+Gestures, Updates and Done. Shortcuts holds Enable shortcuts, each keyboard's or controller's own shortcuts,
 Buttons... and Reload shortcuts.ini; Pair holds Bluetooth controller and Pair a controller...
 (docs/SHORTCUTS.md). Until 2.0.0-beta.2 both were one Controller sheet behind the bottom row's button.
 
@@ -1059,11 +1059,25 @@ Library > Share > Wi-Fi (also on the Live view pairing card) opens the radio con
 Wi-Fi leaves airplane mode and asks the Kindle's existing Wi-Fi service to reconnect to a saved
 network. Radio-on and connected are shown separately; the Share address and QR code appear only
 when the system has an address. Add a new network or change its password in Kindle settings or
-KOReader's normal network menu. Grimoire does not read, replace or log saved network credentials.
+KOReader's normal network menu. Grimoire does not replace or log saved network credentials, and none reaches
+the app (the helper keeps only the networks' names: below).
+
+Settings > Wi-Fi (2.1.0-beta.2, issue #40) has the same radio button (Retry when the state is not
+known), a status line ("Connected to <name>", "Connecting to <name>...", "Could not connect to
+<name>.") and the networks the Kindle has saved, the one connected to first and checked, seven a
+page with More networks for the next. A tap on a network asks the Kindle's Wi-Fi service to connect
+to it, turning the radio on first if it is off. The sheet then reads the network connected to every
+2 s, and the switch has worked once a read names that network; it has failed when the helper refuses
+it or after 45 s without it. Grimoire switches nothing back after a failure: the Kindle's own service
+decides what it joins next. The sheet reads only while it is up: the radio, the network and the saved
+networks as it opens (once more when the radio comes on, for a service that lists them only then),
+then the network connected to while a switch is under way, or for 45 s after a tap while the radio is
+on with no connection. Switching away from a network disconnects Wi-Fi SSH, sharing and Live view on it.
 
 Turn off Wi-Fi disconnects Wi-Fi SSH, sharing and Live view. It leaves notebooks usable locally.
-The app changes radio state only after an explicit button press, preserves that choice when it
-closes, and never restarts network services or changes firewall, boot or update settings.
+The app changes radio state or the network only after an explicit button press, preserves that
+choice when it closes (a switch under way is let finish), and never restarts network services or
+changes firewall, boot or update settings.
 
 The Grimoire KOReader handoff plugin no longer changes Wi-Fi at startup or duplicates the network
 menu. Use KOReader's normal network controls to enable the shared Kindle radio and choose a network.
@@ -1071,12 +1085,33 @@ The retired `grimoire_wifi_on_start` setting has no effect. Grimoire's Share con
 radio controls; they cannot connect without an available network and suitable credentials. Update
 the installed Grimoire plugin and restart KOReader to remove the old menu entries.
 
-The standalone helper uses only com.lab126.cmd/wirelessEnable and com.lab126.wifid/enable,
-matching KOReader's Kindle backend. It refuses unknown radio properties before writing, checks
-the properties again afterward, and reports failed or partial changes. A parent job bounds the
-helper to 12 seconds and kills only its own helper process group if it stalls. Status polling is
-limited to the visible Wi-Fi dialog, and stops after connecting, switching off or 45 seconds;
-Retry checks again. Physical airplane-mode transitions remain a device acceptance check.
+The standalone helper (`app/wifi.sh`) matches KOReader's Kindle backend. The radio uses only
+com.lab126.cmd/wirelessEnable and com.lab126.wifid/enable. It refuses unknown radio properties before
+writing, checks the properties again afterward, and reports failed or partial changes. The networks
+come from wifid's hasharray properties `currentEssid` (the network connected to, read only while
+cmState is CONNECTED) and `profileData` (the saved networks), read with `lipc-hash-prop` and an empty
+hasharray in, as KOReader reads them; a switch is `lipc-set-prop -s com.lab126.cmd ensureConnection
+"wifi:<essid>"`, as KOReader's network menu does when a network is picked, and the helper refuses any
+name that is not among the saved networks before it changes anything. Nothing creates, changes or
+deletes a profile.
+
+profileData's answer holds each saved network's password. It goes from lipc-hash-prop straight into
+a small awk reader inside the helper that keeps the essid values and nothing else: no password reaches
+a variable, a file, the helper's output, Grimoire's memory or a log. The reader knows one format
+(`key = "value"`, `"key": "value"` or `key: "value"`, quoted values with backslash escapes, bare
+numbers, and braces, brackets, commas and words around them); any unquoted value, a password's among
+them, makes it give no name at all, and the sheet says "Saved networks could not be read." with the
+radio controls still there. A name with a backslash (an escape it cannot undo), a control character or
+more than 32 bytes is left out. Names travel to Grimoire, and back for a switch, in hex, so no byte of
+one can break a line or be taken for code. Grimoire does not log network names (grimoire.log goes to
+public bug reports). The lipc-hash-prop output format, whether wifid lists the saved networks with the
+radio off, and whether ensureConnection switches away from a connected network are device probes and
+checks for 2.1.0-beta.2 (docs/TESTING.md).
+
+A parent job bounds the helper to 12 seconds and kills only its own helper process group if it
+stalls. Status polling is limited to the visible Wi-Fi dialog or sheet, and stops after connecting,
+switching off or 45 seconds; Retry checks again. Physical airplane-mode transitions remain a device
+acceptance check.
 
 
 ## Developing on the device

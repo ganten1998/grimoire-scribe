@@ -8,8 +8,8 @@
 wait 200
 tap 1535 95
 wait 100
-expect library.ui_at.890.1930 is gestures
-pentap 890 1930
+expect library.ui_at.1000.1930 is gestures
+pentap 1000 1930
 wait 100
 shot p6-gestures
 rotate 1
