@@ -5,12 +5,17 @@
 //!
 //! The drag on e-ink (2.0.0, the owner's report of 2026-11-05: "horrifically slow on drag with anything
 //! containing colored in or multiple strokes"): a pen sample only records the newest place (`drag_step`),
-//! and the editor's tick shows it (`drag_tick`) when the panel has finished the last fast refresh, at
-//! most every PREVIEW_MS or at once when the pen pauses, as the lasso's preview does. Its first move takes
+//! and the editor's tick shows it (`drag_tick`) once the panel has finished the last fast refresh, at most
+//! every DRAG_SHOW_MS or at once when the pen pauses (a burst of 60 samples is one show too). Its first move
+//! takes
 //! the bar away and keeps a copy of the screen without the outline (`DragView::base`); each show then puts
 //! the outline's old strips back from that copy and draws the new ones, each strip a DU of its own. Nothing
 //! is composed and no ink or halo is drawn while the box moves, so a selection of pencil shading costs what
 //! one of three words does.
+//!
+//! The box's four corners carry resize handles (issue #37): dragged, they scale the selection about the
+//! opposite corner, the strokes themselves scaled at the lift, one undo step (`resize_tick`,
+//! `resize_done`, `sel_scale`); the outline and the handles follow the pen, its strips a DU each.
 //!
 //! Not a tool id: a mode beside link making, entered from the tool picker or the bindable `select`
 //! action, left by choosing a pen, the action again, or the bar's Done.
@@ -128,6 +133,11 @@ pub(super) struct SelMode {
     plan: Vec<(StrokeId, Vec<(Box<Stroke>, bool)>)>,
     /// a drag as the screen shows it (the module's head)
     dv: DragView,
+    /// a resize of the selection's box: the corner dragged (0 none, 1 top-left, 2 top-right, 3 bottom-left,
+    /// 4 bottom-right), the box it began with, and the box it last drew (page px)
+    pub(super) resize_handle: i32,
+    resize_box0: Rect,
+    resize_shown: Rect,
 }
 
 /// A drag of the selection as the screen shows it, while `drag` is where the pen has taken it.
@@ -153,6 +163,7 @@ struct DragView {
     /// walked while the drag lasted (its halo drawn: every point of every stroke it meets)
     samples: u32,
     shows: u32,
+    samples_at_last_show: u32,
     px: i64,
     inked: u32,
 }
@@ -166,13 +177,26 @@ const PREVIEW_PAUSE_MS: u32 = 50;
 const HALO_UI: f32 = 3.0;
 /// A batch's refreshes: at most this many rects (the strokes that flipped, merged).
 const PREVIEW_RECTS: usize = 6;
+/// A show's DU refreshes: at most this many (its strips, two joined only when that covers no more).
+const DRAG_RECTS: usize = 16;
 /// A drag shows its newest place at most this often (ms), as the preview folds (on the Kindle the panel's
 /// DU, about 188 ms at room temperature, paces it first: display_fast_busy)...
 pub(super) const DRAG_SHOW_MS: u32 = PREVIEW_MS;
 /// ...or as soon as the pen has kept still this long.
 const DRAG_PAUSE_MS: u32 = PREVIEW_PAUSE_MS;
-/// A show's DU refreshes: at most this many (its strips, two joined only when that covers no more).
-const DRAG_RECTS: usize = 16;
+/// ...and after this many samples since the last show, however fast they arrive: the samples of one turn
+/// are one show.
+const DRAG_SHOW_SAMPLES: u32 = 60;
+/// A resize handle's square (ui px at 300 dpi), and the square that takes a down on it (a finger's: wider
+/// than it looks, half of it outside the box so the corner need not be hit exactly).
+fn resize_handle_size() -> i32 {
+    ui_px(28.0)
+}
+
+fn resize_handle_hit_size() -> i32 {
+    ui_px(56.0)
+}
+
 /// How far a pen may stray from where it came down inside the selection (mm on the screen) before the box
 /// moves: a tap's wobble, not a drag (a finger's: press_move's slop, finger_slop).
 const DRAG_SLOP_MM: f32 = 1.0;
@@ -180,6 +204,79 @@ const DRAG_SLOP_MM: f32 = 1.0;
 /// press_move's slop (ui.rs): how far a finger may stray and still be held, or lifted, still.
 fn finger_slop() -> f32 {
     ui_px(30.0) as f32
+}
+
+
+/// The four resize handles' squares of box b (screen px), each at a corner, half of it outside.
+fn resize_handles(b: Rect, sz: i32) -> [Rect; 4] {
+    let h = sz / 2;
+    [
+        Rect { x: b.x - h, y: b.y - h, w: sz, h: sz },
+        Rect { x: b.x + b.w - h, y: b.y - h, w: sz, h: sz },
+        Rect { x: b.x - h, y: b.y + b.h - h, w: sz, h: sz },
+        Rect { x: b.x + b.w - h, y: b.y + b.h - h, w: sz, h: sz },
+    ]
+}
+
+/// Which of box b's resize handles screen point (x, y) is on: 0 none, 1 top-left, 2 top-right, 3 bottom-left,
+/// 4 bottom-right.
+fn resize_handle_hit(b: Rect, x: i32, y: i32) -> i32 {
+    let v = resize_handles(b, resize_handle_hit_size());
+    v.iter().position(|r| rect_contains(*r, x, y)).map_or(0, |i| i as i32 + 1)
+}
+
+/// The resize handle at screen (x, y) of the selection, 0 for none (no selection, or another page's).
+fn resize_at(s: &EditorState, x: i32, y: i32) -> i32 {
+    if s.sel.state != SelState::Selected || rect_is_empty(s.sel.box_) || s.sel.pid != s.open_pid() {
+        return 0;
+    }
+    if s.open_page().is_some_and(|p| p.readonly) {
+        return 0;
+    }
+    resize_handle_hit(box_at(s, s.sel.box_, s.sel.drag), x, y)
+}
+
+/// The corner a resize by `handle` keeps still of box b (page px): the one opposite it.
+fn resize_anchor(b: Rect, handle: i32) -> (f32, f32) {
+    match handle {
+        1 => ((b.x + b.w) as f32, (b.y + b.h) as f32),
+        2 => (b.x as f32, (b.y + b.h) as f32),
+        3 => ((b.x + b.w) as f32, b.y as f32),
+        _ => (b.x as f32, b.y as f32),
+    }
+}
+
+/// The box a resize of `handle` to page point (px, py) makes of from: scaled uniformly about the opposite
+/// corner, which stays, as large as the pointer asks; each side at least a handle's width, and on the page.
+fn resize_box(s: &EditorState, from: Rect, handle: i32, px: f32, py: f32) -> Rect {
+    if from.w <= 0 || from.h <= 0 {
+        return from;
+    }
+    let (ax, ay) = resize_anchor(from, handle);
+    let (cx, cy) = match handle {
+        1 => (from.x as f32, from.y as f32),
+        2 => ((from.x + from.w) as f32, from.y as f32),
+        3 => (from.x as f32, (from.y + from.h) as f32),
+        _ => ((from.x + from.w) as f32, (from.y + from.h) as f32),
+    };
+    let (d0x, d0y) = (cx - ax, cy - ay);
+    let d0 = (d0x * d0x + d0y * d0y).sqrt();
+    if d0 < 1e-3 {
+        return from;
+    }
+    let k = ((px - ax) * (px - ax) + (py - ay) * (py - ay)).sqrt() / d0;
+    let least = ui_px(20.0) as f32 / s.zoom;
+    let kmin = (least / from.w as f32).max(least / from.h as f32).max(0.02);
+    // (the side the dragged corner is on grows toward the page's edge: the anchor is the other one)
+    let kw = if d0x > 0.0 { s.pgw as f32 - ax } else { ax } / from.w as f32;
+    let kh = if d0y > 0.0 { s.pgh as f32 - ay } else { ay } / from.h as f32;
+    let k = if k.is_finite() { k } else { 1.0 };
+    let k = k.clamp(kmin, kw.min(kh).max(kmin));
+    let w = (from.w as f32 * k).round().max(1.0) as i32;
+    let h = (from.h as f32 * k).round().max(1.0) as i32;
+    let x = if d0x > 0.0 { ax.round() as i32 } else { ax.round() as i32 - w };
+    let y = if d0y > 0.0 { ay.round() as i32 } else { ay.round() as i32 - h };
+    Rect { x: x.clamp(0, (s.pgw - w).max(0)), y: y.clamp(0, (s.pgh - h).max(0)), w, h }
 }
 
 
@@ -232,15 +329,33 @@ fn overlay_rect(a: &App) -> Rect {
     let mut r = if bar_hidden(m) { RECT_EMPTY } else { m.bar };
     if m.state != SelState::Armed && !rect_is_empty(m.box_) {
         if let Some(off) = outline_off(m) {
-            r = rect_union(r, rect_inflate(box_at(ed_ref(a), m.box_, off), link_band() + ui_px(4.0)));
+            let handles = if handles_shown(ed_ref(a)) { resize_handle_size() / 2 + ui_px(2.0) } else { 0 };
+            r = rect_union(r, rect_inflate(box_at(ed_ref(a), m.box_, off), link_band() + ui_px(4.0) + handles));
         }
     }
     r
 }
 
+/// Whether the selection's box shows its four resize handles: a selection of ink on the open page, not
+/// while a drag moves it (and not on a read-only page, which refuses the resize).
+fn handles_shown(s: &EditorState) -> bool {
+    if s.open_page().is_some_and(|p| p.readonly) {
+        return false; // (a read-only page refuses the resize)
+    }
+    match s.sel.state {
+        SelState::Selected => !rect_is_empty(s.sel.box_),
+        SelState::Dragging => s.sel.resize_handle > 0,
+        _ => false,
+    }
+}
+
 /// Where the screen shows the selection's outline (page px from the box's place): while a drag moves it,
 /// the place last shown (none while its first move takes it away); before that the box's own place.
 fn outline_off(m: &SelMode) -> Option<(i32, i32)> {
+    if m.resize_handle > 0 {
+        // (a resize moves the box itself, so it is drawn where it is)
+        return Some((0, 0));
+    }
     match m.state {
         SelState::Dragging if m.dv.moving => m.dv.shown,
         SelState::Dragging => Some((0, 0)),
@@ -250,7 +365,7 @@ fn outline_off(m: &SelMode) -> Option<(i32, i32)> {
 
 /// The bar is away while a drag moves the box (it comes back at the lift).
 fn bar_hidden(m: &SelMode) -> bool {
-    m.state == SelState::Dragging && m.dv.moving
+    m.state == SelState::Dragging && (m.dv.moving || m.resize_handle > 0)
 }
 
 /// Page rect r moved by `off`, on the screen.
@@ -277,6 +392,26 @@ fn draw_outline(a: &mut App, off: (i32, i32), r: Rect) {
     canvas_set_clip(&mut a.screen, c);
     for (b, t, h) in shapes {
         canvas_dither_rect(&mut a.screen, b, t, h);
+    }
+    a.screen.clip = clip;
+}
+
+/// The four resize handles over the selection's outline, at its box's corners, where r meets them.
+fn draw_resize_handles(a: &mut App, off: (i32, i32), r: Rect) {
+    let sz = resize_handle_size();
+    let s = ed_ref(a);
+    if rect_is_empty(s.sel.box_) {
+        return;
+    }
+    let b = box_at(s, s.sel.box_, off);
+    let clip = a.screen.clip;
+    let c = rect_intersect(r, lasso_clip(a));
+    canvas_set_clip(&mut a.screen, c);
+    for h in resize_handles(b, sz) {
+        let h = rect_intersect(h, c);
+        if !rect_is_empty(h) {
+            canvas_fill(&mut a.screen, h, 0);
+        }
     }
     a.screen.clip = clip;
 }
@@ -470,7 +605,11 @@ pub(super) fn sel_draw(a: &mut App, r: Rect) {
     let s = ed_ref(a);
     if (st == SelState::Selected || st == SelState::Dragging) && s.sel.pid == s.open_pid() {
         if let Some(off) = outline_off(&s.sel) {
+            let handles = handles_shown(s);
             draw_outline(a, off, r);
+            if handles {
+                draw_resize_handles(a, off, r);
+            }
         }
     }
     canvas_set_clip(&mut a.screen, r);
@@ -650,7 +789,9 @@ pub(super) fn sel_takes(s: &EditorState, pen: bool, x: f32, y: f32) -> bool {
     match s.sel.state {
         SelState::Off => false,
         SelState::Armed => pen || rect_contains(s.sel.bar, x as i32, y as i32),
-        SelState::Selected if !pen && sel_indices(s).is_some() => rect_contains(s.sel.bar, x as i32, y as i32) || in_grab(s, x, y),
+        SelState::Selected if !pen && sel_indices(s).is_some() => {
+            rect_contains(s.sel.bar, x as i32, y as i32) || in_grab(s, x, y) || resize_at(s, x as i32, y as i32) > 0
+        }
         _ => true,
     }
 }
@@ -704,6 +845,19 @@ pub(super) fn sel_down(a: &mut App, ev: &InEvent, pen: bool) {
     let (mut px, mut py) = (0.0, 0.0);
     to_page(s, ev.x, ev.y, &mut px, &mut py);
     if s.sel.state == SelState::Selected {
+        let handle = resize_at(s, x, y);
+        if handle > 0 {
+            // a corner handle resizes the box about its opposite corner (one undo step at the lift)
+            s.sel.state = SelState::Dragging;
+            s.sel.resize_handle = handle;
+            s.sel.resize_box0 = s.sel.box_;
+            s.sel.resize_shown = s.sel.box_;
+            s.sel.drag_from = (px, py);
+            s.sel.drag = (0, 0);
+            s.sel.outline_rect = RECT_EMPTY;
+            s.sel.dv = DragView::default();
+            return;
+        }
         if in_grab(s, ev.x, ev.y) {
             // (nothing drawn yet: a tap here, no move, leaves the screen as it is; the first move begins the
             // drag's display at the next tick, drag_tick)
@@ -793,7 +947,13 @@ pub(super) fn sel_pointer(a: &mut App, ph: i32, ev: &InEvent) {
             }
         }
         SelState::Dragging => {
-            if ph == 1 {
+            if sel_ref(a).resize_handle > 0 {
+                if ph == 1 {
+                    resize_step(a, ev);
+                } else {
+                    resize_done(a, touch_cancelled(ev));
+                }
+            } else if ph == 1 {
                 drag_step(a, ev);
             } else {
                 drag_done(a, touch_cancelled(ev));
@@ -1365,6 +1525,174 @@ fn drag_step(a: &mut App, ev: &InEvent) {
     s.sel.dv.samples += 1;
 }
 
+/// A pen sample of a resize: the box its newest place makes of the one it began with (resize_box), nothing
+/// drawn; resize_tick shows it.
+fn resize_step(a: &mut App, ev: &InEvent) {
+    let s = ed(a);
+    let (mut px, mut py) = (0.0, 0.0);
+    to_page(s, ev.x, ev.y, &mut px, &mut py);
+    let b = resize_box(s, s.sel.resize_box0, s.sel.resize_handle, px, py);
+    if b == s.sel.box_ {
+        return;
+    }
+    s.sel.box_ = b;
+    s.sel.dv.moved_at = now_ms();
+    s.sel.dv.samples += 1;
+    s.sel.dv.left = true;
+}
+
+/// The screen rects a resize's frame covers at box b (page px): the outline's four strips and its four
+/// handles, cut to where they draw (lasso_clip).
+fn resize_frame(a: &App, b: Rect) -> Vec<Rect> {
+    let s = ed_ref(a);
+    if rect_is_empty(b) || s.sel.pid != s.open_pid() {
+        return Vec::new();
+    }
+    let clip = lasso_clip(a);
+    let at = box_at(s, b, (0, 0));
+    let mut v = Vec::with_capacity(8);
+    for st in dither_strips(rect_inflate(at, ui_px(6.0)), link_band(), ui_px(1.0)) {
+        let st = rect_intersect(st, clip);
+        if !rect_is_empty(st) {
+            v.push(st);
+        }
+    }
+    for h in resize_handles(at, resize_handle_size()) {
+        let h = rect_intersect(rect_inflate(h, ui_px(1.0)), clip);
+        if !rect_is_empty(h) {
+            v.push(h);
+        }
+    }
+    v
+}
+
+/// A frame's rects as one (screen px).
+fn frame_rect(v: &[Rect]) -> Rect {
+    v.iter().fold(RECT_EMPTY, |u, &r| rect_union(u, r))
+}
+
+/// The screen px a resize's frame at box b turns back to the page as it moves: the outline's ink (its
+/// carried link areas' thinner ones left out) and its four handles.
+fn resize_ink(a: &App, b: Rect) -> i64 {
+    let s = ed_ref(a);
+    if rect_is_empty(b) {
+        return 0;
+    }
+    let ib = rect_inflate(box_at(s, b, (0, 0)), ui_px(6.0));
+    let (w, h, t) = (ib.w as i64, ib.h as i64, link_band() as i64);
+    let band = (2 * (w + h) * t).min(w * h);
+    let sz = resize_handle_size() as i64;
+    band + 4 * sz * sz
+}
+
+/// A resize's first show: the bar and the outline's frame where they are taken away composed again over
+/// the page (one compose over both), the screen without them copied, the frame drawn at the box's newest
+/// place, and one DU over both places at once. As a drag's first show (drag_begin): with the copy, every show
+/// after it is a blit of that copy and a draw of the frame, whatever the page holds behind them (no page
+/// composed, no ink walked).
+fn resize_begin(a: &mut App, now: u32) {
+    let screen = Rect { x: 0, y: 0, w: a.w, h: a.h };
+    let bar = rect_intersect(rect_union(sel_ref(a).bar, std::mem::take(&mut ed(a).sel.stale)), screen);
+    let box0 = sel_ref(a).resize_shown;
+    let old = resize_frame(a, box0);
+    let worn = resize_ink(a, box0);
+    let gone = rect_union(bar, frame_rect(&old));
+    if !rect_is_empty(gone) {
+        // (one compose over both: composing a strip at a time walks the selection's ink again for each, the
+        // halo drawn with it, so six composes cost six walks over every selected point)
+        compose(a, gone);
+    }
+    let at = rect_intersect(lasso_clip(a), screen);
+    let mut base = Canvas::default();
+    let based = !rect_is_empty(at) && canvas_init(&mut base, at.w, at.h) == 0;
+    if based {
+        canvas_blit(&mut base, &a.screen, at, 0, 0);
+    } else {
+        qlog!("lasso: no memory for the resize's copy of the screen: each show composes its strips");
+    }
+    let s = ed(a);
+    s.sel.dv.moving = true;
+    s.sel.dv.base = based.then_some(base);
+    s.sel.dv.base_at = at;
+    s.sel.dv.samples_at_last_show = s.sel.dv.samples;
+    let new = resize_frame(a, ed_ref(a).sel.box_);
+    let r = rect_union(gone, frame_rect(&new));
+    if rect_is_empty(r) {
+        return;
+    }
+    draw_outline(a, (0, 0), r);
+    draw_resize_handles(a, (0, 0), r);
+    app_invalidate(a, r, RefreshMode::Fast);
+    app_flush(a);
+    let m = &mut ed(a).sel;
+    m.resize_shown = m.box_;
+    m.outline_rect = rect_union(m.outline_rect, r);
+    m.dv.shown_at = now;
+    m.dv.shows += 1;
+    m.dv.px += rect_area(r);
+    du_wear_add(&mut a.du_wear, gone, worn, now_ms());
+}
+
+/// A resize's next show: the frame where it was put back to the page (from the copy of the screen, or
+/// composed again where there is none), its new place drawn, one DU over both.
+fn resize_show(a: &mut App, now: u32) {
+    let was = sel_ref(a).resize_shown;
+    let to = sel_ref(a).box_;
+    let old = resize_frame(a, was);
+    let new = resize_frame(a, to);
+    let r = rect_union(frame_rect(&old), frame_rect(&new));
+    if rect_is_empty(r) {
+        return;
+    }
+    let worn = resize_ink(a, was);
+    let mut based = false;
+    {
+        let App { screen, ed, .. } = a;
+        let dv = &ed.as_deref().unwrap().sel.dv;
+        if let Some(base) = dv.base.as_ref() {
+            let at = dv.base_at;
+            let rr = rect_intersect(r, at);
+            if !rect_is_empty(rr) {
+                canvas_blit(screen, base, Rect { x: rr.x - at.x, y: rr.y - at.y, ..rr }, rr.x, rr.y);
+            }
+            based = true;
+        }
+    }
+    if !based {
+        compose(a, r); // (one compose, one walk of the selection's ink: see resize_begin)
+    }
+    draw_outline(a, (0, 0), r);
+    draw_resize_handles(a, (0, 0), r);
+    app_invalidate(a, r, RefreshMode::Fast);
+    app_flush(a);
+    let m = &mut ed(a).sel;
+    m.resize_shown = m.box_;
+    m.outline_rect = rect_union(m.outline_rect, r);
+    m.dv.shown_at = now;
+    m.dv.shows += 1;
+    m.dv.px += rect_area(r);
+    du_wear_add(&mut a.du_wear, frame_rect(&old), worn, now_ms());
+}
+
+/// editor_tick: a resize's newest box shown, once the panel has finished the last fast refresh, as a
+/// drag's (drag_tick). One DU a show, over both places at once: the box follows the pen at the panel's own
+/// rate (about 5 a second on the Kindle, its DU's length), whatever the page holds, and never one DU
+/// queued behind another.
+fn resize_tick(a: &mut App, now: u32) {
+    let m = sel_ref(a);
+    if m.state != SelState::Dragging || m.resize_handle == 0 || m.resize_shown == m.box_ {
+        return;
+    }
+    if !drag_can_show(a) || display_fast_busy() {
+        return;
+    }
+    if m.dv.shows == 0 {
+        resize_begin(a, now);
+    } else {
+        resize_show(a, now);
+    }
+}
+
 /// Whether the screen shows the page and the selection's overlay over it, so a drag's show may draw (not
 /// under a sheet, the page peek or the Library's settings: what composes them does not draw the outline).
 fn drag_can_show(a: &App) -> bool {
@@ -1373,12 +1701,20 @@ fn drag_can_show(a: &App) -> bool {
 }
 
 /// editor_tick: a drag's newest place shown once the panel has finished the last fast refresh (on the Kindle,
-/// display_fast_busy: never one queued behind a DU still on the panel, so at most about 5 a second at room
-/// temperature) and DRAG_SHOW_MS went by since the last show, or the pen kept still DRAG_PAUSE_MS. The first
-/// move begins the display (drag_begin). One show a turn at most, after the turn's samples: the newest place.
+/// display_fast_busy: never one queued behind a DU still on the panel) and DRAG_SHOW_MS went by since the last
+/// show, or the pen kept still DRAG_PAUSE_MS, or DRAG_SHOW_SAMPLES samples came since the last show (a burst
+/// of samples in one turn is one show). The first move begins the display (drag_begin). One show a turn at
+/// most, after the turn's samples: the newest place.
 fn drag_tick(a: &mut App, now: u32) {
     let m = sel_ref(a);
-    if m.state != SelState::Dragging || (!m.dv.moving && m.drag == (0, 0)) || (m.dv.moving && m.dv.shown == Some(m.drag)) {
+    if m.state != SelState::Dragging {
+        return;
+    }
+    if m.resize_handle > 0 {
+        resize_tick(a, now);
+        return;
+    }
+    if (!m.dv.moving && m.drag == (0, 0)) || (m.dv.moving && m.dv.shown == Some(m.drag)) {
         return;
     }
     if !drag_can_show(a) || display_fast_busy() {
@@ -1388,28 +1724,40 @@ fn drag_tick(a: &mut App, now: u32) {
         drag_begin(a, now);
         return;
     }
-    if (now.wrapping_sub(m.dv.shown_at) as i32) >= DRAG_SHOW_MS as i32 || (now.wrapping_sub(m.dv.moved_at) as i32) >= DRAG_PAUSE_MS as i32 {
+    let by_samples = m.dv.samples >= m.dv.samples_at_last_show + DRAG_SHOW_SAMPLES;
+    let by_time = now.wrapping_sub(m.dv.shown_at) as i32 >= DRAG_SHOW_MS as i32;
+    let by_pause = now.wrapping_sub(m.dv.moved_at) as i32 >= DRAG_PAUSE_MS as i32;
+    if by_samples || by_time || by_pause {
         drag_show(a, now);
     }
 }
 
-/// The drag's first move shown: the bar and the outline taken away (composed again where they were, the
-/// outline's strips alone), the screen without them copied (over the page's part of it), the outline drawn
+/// The drag's first move shown: the bar and the outline taken away (composed again where they were, one
+/// compose over both), the screen without them copied (over the page's part of it), the outline drawn
 /// at the newest place; the bar and each strip a DU of its own. DU turned the bar and the outline back to
 /// the page: their traces count toward a clean (display.rs, DuWear).
 fn drag_begin(a: &mut App, now: u32) {
     let screen = Rect { x: 0, y: 0, w: a.w, h: a.h };
     let bar = rect_intersect(rect_union(sel_ref(a).bar, std::mem::take(&mut ed(a).sel.stale)), screen);
-    let old = outline_strips(a, (0, 0));
-    let worn = rect_area(sel_ref(a).bar) + outline_ink(a, (0, 0));
+    let mut old = outline_strips(a, (0, 0));
+    // (the selection's resize handles go with its outline, into the copy of the screen without them: a move
+    // drag has them on the screen as it begins)
+    let s = ed_ref(a);
+    let handles: Vec<Rect> = if s.sel.resize_handle == 0 && !rect_is_empty(s.sel.box_) && s.open_page().is_some_and(|p| !p.readonly) {
+        resize_handles(box_at(s, s.sel.box_, (0, 0)), resize_handle_size()).to_vec()
+    } else {
+        Vec::new()
+    };
+    let worn = rect_area(sel_ref(a).bar) + outline_ink(a, (0, 0)) + handles.iter().map(|&r| rect_area(r)).sum::<i64>();
+    old.extend(handles);
     let s = ed(a);
     s.sel.dv.moving = true;
     s.sel.dv.shown = None;
-    if !rect_is_empty(bar) {
-        compose(a, bar);
-    }
-    for &r in &old {
-        compose(a, r);
+    let gone = old.iter().fold(bar, |u, &r| rect_union(u, r));
+    if !rect_is_empty(gone) {
+        // (one compose over the bar and the outline's strips together: composing them a strip at a time walks
+        // the selection's ink and its halo again for each, six walks where one does)
+        compose(a, gone);
     }
     let at = rect_intersect(lasso_clip(a), screen);
     let mut base = Canvas::default();
@@ -1424,17 +1772,15 @@ fn drag_begin(a: &mut App, now: u32) {
     s.sel.dv.base = based.then_some(base);
     s.sel.dv.base_at = at;
     s.sel.dv.shown = Some(off);
+    s.sel.dv.samples_at_last_show = s.sel.dv.samples;
     let new = outline_strips(a, off);
     if based {
         draw_outline(a, off, screen);
-    } else {
-        for &r in &new {
-            compose(a, r);
-        }
+    } else if !rect_is_empty(gone) {
+        compose(a, gone);
     }
     let mut v = Vec::with_capacity(1 + old.len() + new.len());
     v.push(bar);
-    let gone = old.iter().fold(bar, |u, &r| rect_union(u, r));
     v.extend(old);
     v.extend(new);
     drag_present(a, v, now);
@@ -1472,8 +1818,9 @@ fn drag_show(a: &mut App, now: u32) {
     if based {
         draw_outline(a, off, Rect { x: 0, y: 0, w: a.w, h: a.h });
     } else {
-        for &r in old.iter().chain(new.iter()) {
-            compose(a, r);
+        let all = old.iter().chain(new.iter()).fold(RECT_EMPTY, |u, &r| rect_union(u, r));
+        if !rect_is_empty(all) {
+            compose(a, all);
         }
     }
     let gone = old.iter().fold(RECT_EMPTY, |u, &r| rect_union(u, r));
@@ -1538,6 +1885,10 @@ fn drag_end_view(m: &mut SelMode) {
 }
 
 fn drag_done(a: &mut App, cancelled: bool) {
+    if sel_ref(a).resize_handle > 0 {
+        resize_done(a, cancelled);
+        return;
+    }
     let (dx, dy) = sel_ref(a).drag;
     // (where the drag drew the outline and the bar on its way, as well as where it ends)
     let before = rect_union(overlay_rect(a), std::mem::take(&mut ed(a).sel.outline_rect));
@@ -1552,6 +1903,30 @@ fn drag_done(a: &mut App, cancelled: bool) {
         return;
     }
     sel_move(a, dx, dy);
+    let r = rect_union(before, overlay_rect(a));
+    redraw(a, r, RefreshMode::Ui);
+}
+
+/// The resize released: the selection's box `to` as the screen last showed it, scaled about the corner
+/// opposite the handle dragged (one undo step, sel_scale). A cancel, or a box the pen never changed, puts
+/// the box back as it was.
+fn resize_done(a: &mut App, cancelled: bool) {
+    let (from, to, handle, shows) = {
+        let m = sel_ref(a);
+        (m.resize_box0, m.box_, m.resize_handle, m.dv.shows)
+    };
+    qlog!("lasso: resize handle=%d from=%dx%d to=%dx%d shows=%u", handle, from.w, from.h, to.w, to.h, shows);
+    // (the outline where the resize last drew it, and where it ends: one refresh over both, as a drag's lift)
+    let before = rect_union(overlay_rect(a), std::mem::take(&mut ed(a).sel.outline_rect));
+    let s = ed(a);
+    drag_end_view(&mut s.sel);
+    s.sel.state = SelState::Selected;
+    s.sel.resize_handle = 0;
+    s.sel.box_ = from;
+    if !(cancelled || to == from) {
+        sel_scale(a, from, to, handle);
+    }
+    layout_bar(a);
     let r = rect_union(before, overlay_rect(a));
     redraw(a, r, RefreshMode::Ui);
 }
@@ -1690,6 +2065,35 @@ const TOO_MANY_LAYERS: &str = n_("Too many moved groups on this page: paste else
 /// The drag released: the selection moves by (dx, dy), one undo step (Move: the ink off its place, the
 /// group at the end of the page with its erasing, carried link areas moved).
 fn sel_move(a: &mut App, dx: i32, dy: i32) {
+    sel_place(a, Spot { dx: dx as f32, dy: dy as f32, scale: 1.0 });
+}
+
+/// The resize released: the selection scaled from box `from` to `to` about the corner opposite `handle`,
+/// one undo step (the ink off its place, the group scaled and put at the end of the page with its erasing,
+/// carried link areas scaled).
+fn sel_scale(a: &mut App, from: Rect, to: Rect, handle: i32) {
+    if from.w <= 0 || from.h <= 0 || to.w <= 0 || to.h <= 0 {
+        return;
+    }
+    let k = (to.w as f32 / from.w as f32).min(to.h as f32 / from.h as f32);
+    if !k.is_finite() || k <= 0.02 {
+        return;
+    }
+    let (ax, ay) = resize_anchor(from, handle);
+    sel_place(a, Spot { dx: ax - ax * k, dy: ay - ay * k, scale: k });
+}
+
+/// Page rect b put by spot (as the group's points are: x * scale + dx, y * scale + dy).
+fn spot_box(b: Rect, spot: Spot) -> Rect {
+    let mx = |v: i32| (v as f32 * spot.scale + spot.dx).round() as i32;
+    let my = |v: i32| (v as f32 * spot.scale + spot.dy).round() as i32;
+    let (x0, y0, x1, y1) = (mx(b.x), my(b.y), mx(b.x + b.w), my(b.y + b.h));
+    Rect { x: x0, y: y0, w: x1 - x0, h: y1 - y0 }
+}
+
+/// The selection put by spot: moved (a drag released) or scaled (a resize released), one undo step: the ink
+/// off its place, the group at the end of the page with its erasing, carried link areas moved or scaled.
+fn sel_place(a: &mut App, spot: Spot) {
     let dpi = a.dpi;
     if refuse_readonly(a) {
         ed(a).sel.drag = (0, 0);
@@ -1707,7 +2111,7 @@ fn sel_move(a: &mut App, dx: i32, dy: i32) {
     let mut records: Vec<(Option<LinkRec>, Option<LinkRec>)> = Vec::new();
     let mut moved_links: Vec<NavLink> = Vec::new();
     for l in &carried {
-        let Some(m) = link_placed(l, Spot { dx: dx as f32, dy: dy as f32, scale: 1.0 }, pid, l.seed, l.target.as_str(), s.pgw, s.pgh) else { continue };
+        let Some(m) = link_placed(l, spot, pid, l.seed, l.target.as_str(), s.pgw, s.pgh) else { continue };
         records.push((Some(link_rec(l)), Some(link_rec(&m))));
         moved_links.push(m);
     }
@@ -1757,7 +2161,6 @@ fn sel_move(a: &mut App, dx: i32, dy: i32) {
     let page = s.hist[ip].page.as_deref().unwrap();
     let dst_links: Vec<NavLink> = s.nav.links.iter().filter(|l| l.pid == pid).copied().collect();
     let (inkm, _) = lasso_seeds(&g, page, &seed_holders(&dst_links, &s.dl, pid), &[], &src_seeds, true);
-    let spot = Spot { dx: dx as f32, dy: dy as f32, scale: 1.0 };
     let placed = match lasso_place(&mut s.page_canvas, &g, spot, &inkm, paper.as_ref().map(|(b, st)| (b, *st)), &busy, dpi) {
         Ok(placed) => placed,
         Err(e) => {
@@ -1816,10 +2219,11 @@ fn sel_move(a: &mut App, dx: i32, dy: i32) {
     let n = page.strokes.len();
     s.sel.ids = page.strokes[n - n_added..].iter().filter(|st| stroke_is_ink(st)).map(|st| stroke_id(st)).collect();
     s.sel.links = moved_links;
-    s.sel.box_ = Rect { x: s.sel.box_.x + dx, y: s.sel.box_.y + dy, ..s.sel.box_ };
+    let b = spot_box(s.sel.box_, spot);
+    s.sel.box_ = Rect { x: b.x.clamp(0, (s.pgw - b.w).max(0)), y: b.y.clamp(0, (s.pgh - b.h).max(0)), w: b.w, h: b.h };
     s.sel.drag = (0, 0);
     s.boxes.stale = true;
-    qlog!("lasso: move n=%d carried=%d scoped=%d src_ms=%u dst_ms=%u", g.ink as i32, g.carried as i32, placed.scoped as i32, src_ms, dst_ms);
+    qlog!("lasso: place n=%d carried=%d scoped=%d scale=%d src_ms=%u dst_ms=%u", g.ink as i32, g.carried as i32, placed.scoped as i32, (spot.scale * 1000.0) as i32, src_ms, dst_ms);
     s.last_lasso_ms = (src_ms, dst_ms);
     layout_bar(a);
     show(a, dirty, RefreshMode::Ui);

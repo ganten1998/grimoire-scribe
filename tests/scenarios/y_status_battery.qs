@@ -76,18 +76,18 @@ battery 50 charging
 wait 300
 tap panel display
 wait 400
-tap 472 1860
+tap 472 1950
 wait 300
-tap 1460 1860
+tap 1460 1950
 wait 400
 expect settings.status_size is 1
 expect status.icon is 302 21 72 36
 shot 09-medium-50-charging
 tap panel display
 wait 400
-tap 472 1860
+tap 472 1950
 wait 300
-tap 1460 1860
+tap 1460 1950
 wait 400
 expect settings.status_size is 2
 expect status.icon is 401 23 108 54

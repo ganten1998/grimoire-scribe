@@ -1762,7 +1762,9 @@ A hold clears touch, shape and pen sources for the row (both members of a pair);
 recovers from an unreadable file. Learn/clear use copy-save-swap: failed persistence leaves the
 live map and record card intact.
 
-The record card keeps three sample slots, Use, Try again and Cancel. First input selects a
+The record card keeps three sample slots and Use, Try again, Disable and Cancel. Disable saves
+"nothing" for the action, the built-in defaults included (both members of a pair), so its row
+says "no gesture", then closes the card. First input selects a
 pattern, one-finger swipe, shape or pen-button gesture. Paired rows continue to the second member after saving the first. Patterns can be accepted with Use after a valid attempt;
 shapes require two consistent samples, with an optional third. Conflict and accidental-slip
 checks run before saving, with progress/refusal text in the line's own rectangle. Moving a
@@ -1817,8 +1819,11 @@ use wrapping u32 milliseconds. A click is at most 450 ms with no nib contact, mu
 are at most 350 ms from release to next press, and the result resolves 350 ms after final release.
 A single click fires immediately only when neither double nor triple is bound. Hovering holds
 begin once at 1200 ms. The recorder always waits for a possible multi-click, even when none is currently bound; runtime
-waits still depend on bindings. Clear page defaults only to hold, with the duplicate RC1
-triple/hold pair migrated to hold. Both owners tick only after the input queue is drained, so a queued release
+waits still depend on bindings. No pen slot has a built-in action since 2.1.0-beta.2 (the hold's
+Clear page fired with the pen hovering, under a finger resting on the button: issues #36, #39);
+`gesturemap_retire_old_defaults` reads the old built-ins a file holds (RC1's triple and hold pair,
+or the triple=nothing and hold pair rc.2 to 2.1.0-beta.1 wrote after it) as the new ones, unmarked,
+while a hold given Clear page alone stays the owner's. Both owners tick only after the input queue is drained, so a queued release
 cannot be mistaken for a hold. Proximity loss cancels a pending sequence and ends capture.
 
 While the card is active, PenButton, proximity, contact and lift feed only its own recognizer.
@@ -1850,6 +1855,12 @@ Clear page saves removal of the current page's links before touching its ink, th
 `ActKind::Clear` carrying the removed strokes and `LinkEdit`. A link-only page still gets this
 step. Undo/Redo applies both parts; a failed link save reverses the tentative ink operation and
 keeps the Clear step for retry. Initial Clear save failure leaves ink and history unchanged.
+Run from a gesture or a shortcut (`editor_shortcut_in`), a Clear that cleared something raises
+its own toast, "Page cleared. Undo brings it back." (4 s), in place of a shape's action name: the
+way back is one Undo. The toast is an overlay with no controls of its own (drawn at each present,
+never stored in the screen, mirrored to Live view as a layer), so it points at Undo rather than
+carrying an Undo button. The toolbar's broom, in sight as it is tapped, says nothing (the
+owner, 2026-11-04).
 
 ## Lasso select and scoped erasing (2.0.0-beta.2)
 

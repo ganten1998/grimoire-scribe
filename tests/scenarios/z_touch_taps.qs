@@ -44,9 +44,9 @@ tap 400 832
 wait 500
 expect settings.invert is 0
 expect display.presents not -1
-touch down 1464 1858
-expect display.presents is fast 1280 1788 360 140
-touch up 1464 1858
+touch down 1464 1950
+expect display.presents is fast 1280 1881 360 140
+touch up 1464 1950
 wait 300
 expect editor.modal is none
 # The panel: a finger in the gap between two buttons, or in the frame's margin beside one, takes
@@ -58,6 +58,6 @@ expect editor.panel_at.1768.1190 is
 tap 1710 1674
 wait 300
 expect editor.modal is display
-tap 1464 1858
+tap 1464 1950
 wait 300
 expect editor.modal is none

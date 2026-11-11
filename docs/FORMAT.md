@@ -1180,7 +1180,8 @@ line. Values are clamped to their ranges when read.
 | `hints` | 0 to 2147483647: a bitmask of the one-time tips already shown (bit 0 the first-open tip, 1 the first-link tip (from 2.0.0-beta.6), 3 and 4 a counter 0 to 3 of the Links bar's header hints, 7 the finger-shape reject tip, 9 (from 2.1) the quick sizes tip, set when Pen feel first opens from the toolbar or the sizes card is first used; bits 2 (the link areas tip), 5 (the first smart shape), 6 (the pan hint) and 8 (the sideways hint) were tips 2.0.0-beta.2 left out: no longer written, a file may still have them set; the other bits are for later versions). The quick sizes card writes no other key: a chosen size is the tool's own `size_min_mm` and `size_max_mm`), 0 by default. Since 2.0.0-beta.5, as `gestures` |
 | `link_areas` | 0 or 1: dotted boxes over the page show where a finger tap follows a link (the Links bar's Areas button), off by default. Since 2.0.0-beta.5, as `gestures` |
 | `status_corner` | the corner of the notebook page the clock and battery sits in (and where its tap zone is): 0 top left, the default, 1 top right, 2 bottom right, 3 bottom left (clockwise from the top left); clamped to 0..3. The Display sheet's row and the `status-corner` shortcut step it. Written after `link_areas`. Since 2.0.0-beta.5, as `gestures` |
-| `rotation_lock` | 0 follows the Kindle's rotation; 1..4 locks to the current orientation (stored as 1 plus the rotation value). The `rotation-lock` action changes it; sensor turns are ignored while locked. Written after `status_corner`. Since phase 3; earlier versions carry the unknown key. |
+| `clock_12h` | 0 or 1: the clock and battery corner's time on the 12-hour clock (`Nov 14, 10:13 PM`) instead of the 24-hour one (`Nov 14, 22:13`), off by default; the Display sheet's "Display time as 12 hour" row. Written after `status_corner`. Since 2.1.0-beta.2; older versions keep the line as one they do not know |
+| `rotation_lock` | 0 follows the Kindle's rotation; 1..4 locks to the current orientation (stored as 1 plus the rotation value). The `rotation-lock` action changes it; sensor turns are ignored while locked. Written after `clock_12h` (after `status_corner` before 2.1.0-beta.2). Since phase 3; earlier versions carry the unknown key. |
 | `gesture_new_page` | 0 or 1: two fingers left (the next page) on the last page add a page, as the next-page key does, on by default; off, the gesture only says it is the last page (Display sheet, under Sideways; the `gesture-new-page` action). Written after `rotation_lock`. Since 2.0.0-beta.5, as `gestures` |
 | `whatsnew_seen` | the version whose What's new notes were last shown or due (`2.0.0-rc.11`): the first start after an update opens them once over the Library, when the file was saved by a Grimoire before (it has `settings_version`) and this names another version, every update (since 2.0.0 whatever `whatsnew_hide` says). A file without `settings_version` (a fresh start, or one written by hand) records the running version as seen. Written after `shape_min_mm`. Since 2.0.0-rc.11, as `gestures` |
 | `whatsnew_hide` | 0 or 1: What's new's Don't show this again of 2.0.0-rc.11 to 2.0.0-beta.2, off by default; there, on, an update opened no notes by themselves (the bat in the Library's top bar still opened them). Since 2.0.0 the box is gone (the owner's rule of 2026-11-05: every update opens What's new once): the key is read and written back as it was, so those versions keep its meaning, but it is never set and not used. Written after `whatsnew_seen`. Since 2.0.0-rc.11, as `gestures` |
@@ -1236,7 +1237,7 @@ From 1.0.0-beta.2 on, `settings.ini` carries what a version does not understand:
   saved as used, because the launcher opens the firewall for the port it finds in the file.
 - A `settings_version` above its own is written back as it is.
 - The 0/1 keys (`panel_collapsed`, `mirror_pdf`, `follow_rotation`, `invert`, `pinch_zoom`,
-  `passcode_told`, `white`, `shortcuts_enabled`, `status_on`, `gestures`, `landscape_fit`, `link_areas`, and the
+  `passcode_told`, `white`, `shortcuts_enabled`, `status_on`, `clock_12h`, `gestures`, `landscape_fit`, `link_areas`, and the
   calibration's `valid` and `swap`) read any
   other value as on when it starts with a nonzero number and as off otherwise, and write it back
   as it was under the rule above.
@@ -1298,10 +1299,17 @@ before 2.0.0-beta.6 never read it.
 
 `gestures.ini`, beside the shortcut files, overlays touch and pen-button bindings and recorded
 finger shapes on the built-ins. With no file, two fingers down open the Graph, up opens the Links bar, left
-turns to the next page, and right to the previous page. The two-finger tap and one-finger directions
-have no built-in action. Three-finger patterns are available only when the panel reports at least
-three touch slots; the owner's Kindle reports two. The pen button's built-ins are
-`pen.Button.hold=clear-page`; triple-click is unassigned. RC1 files with the duplicate triple/hold Clear pair load as hold only. Custom assignments remain available.
+turns to the next page, and right to the previous page; one finger swiped left or right turns the page
+too (since 2.0.0-rc.9). The two-finger tap and one finger up or down have no built-in action.
+Three-finger patterns are available only when the panel reports at least three touch slots; the
+owner's Kindle reports two. The pen button has no built-in action since 2.1.0-beta.2: a hold fires
+with the pen hovering, and its built-in `pen.Button.hold=clear-page` (until 2.1.0-beta.1; RC1 had
+`pen.Button.triple=clear-page` too) cleared a page under a finger resting on the button. A file
+that holds the old built-ins reads as the new ones: `pen.Button.hold=clear-page` beside
+`pen.Button.triple=clear-page` (what RC1 wrote) or beside `pen.Button.triple=nothing` (what rc.2 to
+2.1.0-beta.1 wrote after reading RC1's pair) leaves both slots with nothing and unmarked, so the next
+save writes neither line. A `pen.Button.hold=clear-page` alone is the owner's choice and stays, as do
+all other assignments.
 
 The reader accepts the `shortcuts.ini` line rules: `#` and `;` comments, trimmed `key=value`, later
 duplicate keys win, case-insensitive keys, a 64 KiB file limit. The canonical writer starts with
@@ -1309,7 +1317,7 @@ these three comment lines, byte for byte:
 
 ```ini
 # Grimoire: gestures (Settings > Gestures). Built in unless a line says otherwise:
-# touch.2.down=index-map, touch.2.up=links, touch.2.left=next-page, touch.2.right=previous-page, pen.Button.hold=clear-page
+# touch.2.down=index-map, touch.2.up=links, touch.2.left=next-page, touch.2.right=previous-page
 # shape.ACTION=1,N,S1,S2[,S3]: a finger shape you drew; format 1, N samples; each sample is 32 points in drawing order, x then y as two hex digits, the larger side spanning 00-ff.
 ```
 
@@ -1337,8 +1345,9 @@ PEN, including `shortcuts` and `bluetooth-controller`. The momentary `hold-erase
 legal only in `hold` and `drag` slots; it starts erasing at button press and ends at release,
 without waiting for hold recognition. `pan` and `zoom` are registered PEN-only actions (internal
 IDs 82/83), legal only in a pen `drag` slot. A bound drag owns the contact and leaves no ink;
-an unbound or `nothing` drag keeps Settings' side-button ink choice. Built-in triple and hold
-may both own `clear-page`; this deliberate duplicate is legal. Unsupported `pen.Button2.*`
+an unbound or `nothing` drag keeps Settings' side-button ink choice. A file's triple and hold
+may both own `clear-page` (RC1's old built-ins, retired as they are read, above); no other
+duplicate is kept. Unsupported `pen.Button2.*`
 lines and all `pen.Eraser.*` lines are carried verbatim, never shown or dispatched. The eraser
 end continues to erase by contact, independently of gestures.
 

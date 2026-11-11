@@ -399,7 +399,8 @@ stays off. The old `status-mode` shortcut is retained as an alias for `status-to
 
 A finger tap in a corner of a notebook page (a 14 mm square, the top left unless you pick another, or
 where the indicator shows, with 4 mm around it, whether it is up or not) turns on a small indicator there: the time and date as Grimoire writes them elsewhere
-(`Oct 10, 14:32`), a small battery drawn in pixel art that shows the charge (and a bolt over it while
+(`Oct 10, 14:32`; Display's "Display time as 12 hour" row makes the clock say `Oct 10, 2:32 PM`,
+while every other screen keeps the 24-hour clock), a small battery drawn in pixel art that shows the charge (and a bolt over it while
 it charges), and the battery's percent. Tapping the indicator, or its corner again, turns it off.
 It is on the notebook page and nowhere else: not on the Library, Settings, Share or Pen feel, and not
 while a sheet, a menu, the Links bar, Link to..., a link's long-press card, Find, a keyboard or the Pages view is in front of the page, so it
@@ -413,8 +414,9 @@ that flattens and drifts still taps), and
 nothing makes the next tap wait. A key or controller button can do the same: the `status-toggle` action,
 and `status-corner` for the next corner (docs/SHORTCUTS.md, Buttons > Menus); with no page in front they
 change the setting and say so with a toast. Settings > Display, beside Done, has the size (small,
-medium or large) and the corner (top left, top right, bottom right, bottom left, in turn). They are
-settings.ini `status_on`, `status_size` and `status_corner` (docs/FORMAT.md).
+medium or large) and the corner (top left, top right, bottom right, bottom left, in turn), and its
+rows include "Display time as 12 hour". They are settings.ini `status_on`, `status_size`,
+`status_corner` and `clock_12h` (docs/FORMAT.md).
 
 It is drawn over the screen for each refresh and never saved into it: it is not in a page, a
 thumbnail, an export or PDF, Live view, or the sleep screen. It refreshes by itself at each minute and
@@ -637,11 +639,14 @@ checks above. Synthetic tests cannot establish real-hand acceptance or accidenta
 1. Settings > Gestures > Index > Links: record a pen double-click. The card shows the name;
    tap Use with the nib. On the page two clicks open Links after the short pause. Try again
    and Cancel also accept normal nib taps. No recording puts ink on the page.
-2. Holding the button while hovering for 1.2 s clears the page. Triple-click has no default action.
+2. Holding the button while hovering for 1.2 s does nothing until a gesture is recorded for it
+   (2.1.0-beta.2; before, it cleared the page). Triple-click has no default action either.
    Bind click to Undo and
    check its 350 ms delay while double/triple is bound, then immediate release when both are clear.
-3. Hold Clear page's row to clear its gestures. Hold stops clearing after save
-   and restart. Reset restores hold only; keep unrelated touch, shape and folder/map behavior working.
+3. Record a hovering hold for Clear page: the hold clears the page and a toast says "Page cleared.
+   Undo brings it back."; Undo does. Hold Clear page's row to clear its gestures: the hold stops
+   clearing after save and restart. Reset leaves the pen button with no action; keep unrelated
+   touch, shape and folder/map behavior working.
 4. Record Hold eraser with a hold or drag. Erasing starts at the button press without a 1.2 s
    wait, lasts until release and then normal writing returns. A click attempt gives a readable
    refusal; it must not save a tap slot. Check coexistence with a key held for erasing.

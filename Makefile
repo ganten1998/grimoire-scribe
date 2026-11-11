@@ -24,7 +24,7 @@ BUILD   ?= build
 # The C tree's binaries (the c-* rules), apart from the app's.
 CBUILD  ?= $(BUILD)/c
 DIST    ?= dist
-HOSTCC  ?= clang
+HOSTCC  ?= gcc
 ZIG     ?= zig
 KCC     := $(ZIG) cc -target arm-linux-musleabihf -mcpu=cortex_a7
 VERSION := $(shell cat VERSION 2>/dev/null || echo 0.1.0)

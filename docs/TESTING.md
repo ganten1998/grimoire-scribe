@@ -235,7 +235,7 @@ time) and `beside pid` (the second background process).
 ## 2.0.0-beta.2, the Terminess diet (device checks pending)
 
 Automated: rust/tests/test_terminess_keep.rs (the embedded fonts hold exactly
-`assets/terminess-keep.txt`'s code points, 1,197 of Terminus's text and 84 Material Design icons; every
+`assets/terminess-keep.txt`'s code points, 1,197 of Terminus's text and 85 Material Design icons; every
 icon the sources draw is listed, is in both weights and draws ink; none of the Nerd Fonts glyphs the diet
 leaves out is listed), test_koreader.rs's fonts_follow_the_binary (KOReader's `fonts/Grimoire` written
 again when it differs, left alone when equal, made only while the Terminess patch is applied, nothing
@@ -2301,3 +2301,39 @@ None of this has run on a Scribe. Read the screens; nothing here needs grimoire.
    thousands of glyphs), and whether it ends in "Took too long to read.".
 4. **Nothing else moved.** Japanese names, accented names, the clock and every screen in Spanish and Japanese
    draw as in 2.1.0-beta.1.
+
+## 2.1.0-beta.2, last round, lane M (nebuff's main merged, and Clear page)
+
+Public `main` (nebuff's work on 2.1.0-beta.1) is merged into the line, and the pen button's hold no longer clears
+the page by default. Automated: test_gesturemap (`the_built_ins`, `old_clear_page_defaults_read_as_none`),
+editor's `clear_page_from_a_gesture_or_a_key_says_so_and_undo_takes_it_back` and
+`a_resize_handle_scales_the_selection_about_its_opposite_corner`, library's
+`recording_contacts_buttons_timeout_and_rotation` (Disable), test_store and test_probe (`clock_12h`), the
+scenarios v_gestures_4b_clear, v_gestures_4_pen, v_controller_actions, z_lasso_22_resize, z_book_8_links,
+z_pages_footer_delete and i_display. **Not run on a Scribe.** The owner's check:
+
+1. **The hold does nothing now.** On a page with ink, hold the pen's button with the nib a few millimetres above
+   the screen for two seconds, then rest a finger on the button while writing: the ink stays, no toast. If the
+   page still clears, open Settings > Gestures > Editing: the Clear page row names the gesture that does it (a
+   gesture you recorded stays yours). Look in `grimoire/gestures.ini` too: a `pen.Button.hold=clear-page` there
+   alone is kept as a choice; beside `pen.Button.triple=clear-page` or `pen.Button.triple=nothing` (the old
+   built-ins an earlier version wrote) both lines are gone after the next change in Settings > Gestures.
+2. **Clear page with a gesture says so.** Settings > Gestures > Editing > Clear page, record a hold of the pen's
+   button, Use. On a page with ink, hold the button over it: the page clears and a toast at the bottom says "Page
+   cleared. Undo brings it back." for about four seconds; the toolbar's Undo brings every stroke and link back
+   at once. The broom on the toolbar clears without a toast. In Spanish the toast reads "Página limpiada.
+   Deshacer la recupera."
+3. **Disable.** Settings > Gestures > Pages > Previous / next page, then Disable on the card: the card closes,
+   a toast says "No gestures for Previous / next page now.", the row says "no gesture", and two fingers left or
+   right (or one finger) no longer turn the page. Reset brings them back. In Spanish and Japanese the card's four
+   buttons fit (Japanese shows Disable in English until nebuff translates it).
+4. **Resize a selection.** Lasso a word: four black squares sit on the box's corners. Drag the bottom-right one
+   outward: the outline follows the pen, the word is drawn larger at the lift, Undo puts it back as it was, and
+   a tap on a square that never moves changes nothing. On an imported planner, lasso writing in a day cell and
+   resize it: the cell's tab still goes where it went. A read-only page shows no squares.
+5. **The 12-hour clock.** Settings > Display, tick "Display time as 12 hour": the clock corner on a page says
+   `Nov 14, 10:13 PM`; the Library's cards keep the 24-hour time. Untick: back to `22:13`. In Spanish `p. m.`.
+6. **Pages: Delete from the bottom row.** In the Pages view, tick two pages (Multi-select): a trash button joins
+   the bottom row and deletes them; a page tapped again (not a quick double tap) unticks. Hold a page: its card
+   lists Open, Add a link, Rename, Move to..., Copy to notebook..., Delete and Cancel, each with its icon, and
+   Cancel is inside the card upright and sideways.

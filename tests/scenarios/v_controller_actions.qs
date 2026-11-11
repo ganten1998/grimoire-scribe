@@ -97,7 +97,8 @@ expect editor.panel is collapsed
 key 611 0 1
 wait 100
 expect editor.panel is expanded
-# Clear page, and undo brings the ink back
+# Clear page, and undo brings the ink back (a button clears with no broom in sight: a toast says so and
+# points at Undo, 2.1.0-beta.2)
 pen line 300 700 900 720 10 0.6 0.7
 pen line 300 900 900 920 10 0.6 0.7
 wait 100
@@ -105,7 +106,7 @@ expect editor.strokes is 2
 key 600 0 1
 wait 100
 expect editor.strokes is 0
-expect toast is
+expect toast is Page cleared. Undo brings it back.
 key 304 0 1
 wait 100
 expect editor.strokes is 2

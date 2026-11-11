@@ -4116,33 +4116,35 @@ fn erase_end_sweep(a: &mut App) {
     s.snap = Vec::new();
 }
 
-fn clear_page(a: &mut App) {
+/// Clears the open page (its ink and its links), one undo step: true when it did. A read-only page, an
+/// empty one or links that cannot be saved leave it as it was (false).
+fn clear_page(a: &mut App) -> bool {
     if refuse_readonly(a) {
-        return;
+        return false;
     }
     // (an empty page stays as it is: nothing to clear, no step, no toast)
     if ed(a).open_page().is_none_or(|p| p.strokes.is_empty())
         && nav_links_of(&ed_ref(a).nav,ed_ref(a).open_pid(),&mut 0)==0 {
-        return;
+        return false;
     }
     let s = ed(a);
-    let Some(h) = s.cur_hist() else { return };
+    let Some(h) = s.cur_hist() else { return false };
     let ip = s.page_ix().unwrap();
     let pid=s.open_pid();
     if !s.nav.links_writable {
-        app_toast(a,tr("Couldn't save links. Page unchanged."),3000);return;
+        app_toast(a,tr("Couldn't save links. Page unchanged."),3000);return false;
     }
     let mut records=Vec::new();
     let count=nav_links_of(&s.nav,pid,&mut 0) as usize;
     if count>0 {
         if records.try_reserve_exact(count).is_err() {
-            app_toast(a,tr("Couldn't save links. Page unchanged."),3000);return;
+            app_toast(a,tr("Couldn't save links. Page unchanged."),3000);return false;
         }
         for link in s.nav.links.iter().filter(|link|link.pid==pid) {records.push((Some(link_rec(link)),None));}
         for (link,_) in &records {nav_link_remove(&mut s.nav,pid,link.as_ref().unwrap().seed);}
         if nav_save_links(s.nb.id.as_str(),&mut s.nav,&s.nb)!=0 {
             nav_load(s.nb.id.as_str(),&mut s.nav);migration_reset(s);
-            app_toast(a,tr("Couldn't save links. Page unchanged."),3000);return;
+            app_toast(a,tr("Couldn't save links. Page unchanged."),3000);return false;
         }
         s.links_dirty=false;
     }
@@ -4155,8 +4157,16 @@ fn clear_page(a: &mut App) {
     render_page_full(a);
     compose_all(a, RefreshMode::Full);
     repaint_panel(a, RefreshMode::Full);
-    app_toast_dismiss(a); // (no "Page cleared": the owner, 2026-11-04; a toast left up from before goes)
+    // (the broom says nothing: the owner, 2026-11-04; a toast left up from before goes. A gesture or a
+    // shortcut says it cleared the page: editor_shortcut_in, PAGE_CLEARED)
+    app_toast_dismiss(a);
+    true
 }
+
+// TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): a gesture or a shortcut (the pen
+// button held, a finger shape, a key) cleared the page; the toolbar's Undo, or the undo gesture or key,
+// brings back everything it took, in one step.
+const PAGE_CLEARED: &str = n_("Page cleared. Undo brings it back.");
 
 // Whether a sheet is in front of the page: the Pages view, the tool picker, Custom music, Display
 // or the paper sheet. The pen's button clears no page from under one.
@@ -8105,7 +8115,9 @@ fn panel_act(a: &mut App, h: Hit) {
             let r = ed(a).paper_rect;
             app_invalidate(a, r, RefreshMode::Ui);
         }
-        P_CLEAR => clear_page(a),
+        P_CLEAR => {
+            clear_page(a);
+        }
         P_SHAPES => open_shape_menu(a),
         P_PAGES => pages_show(a),
         // The dedicated toolbar button creates a link; the upward swipe opens the Links bar.
@@ -8715,7 +8727,12 @@ fn editor_shortcut_in(a: &mut App, action: i32, x: f32, y: f32, src: ActionSrc) 
     } else if action == SHORTCUT_NEW_PAGES {
         add_pad_open(a); // the toolbar's + held: the count pad, the pages after the open one, which stays
     } else if action == SHORTCUT_CLEAR_PAGE {
-        clear_page(a); // the panel's broom: no question, one undo step
+        // As the panel's broom (no question, one undo step), but a gesture or a key is not in sight as the
+        // broom is (a pen button's hold fires with the pen hovering, a finger resting on the button: issues
+        // #36, #39), so it says the page was cleared and that Undo brings it back.
+        if clear_page(a) {
+            app_toast(a, tr(PAGE_CLEARED), 4000);
+        }
     } else if action == SHORTCUT_ZOOM_OUT || action == SHORTCUT_ZOOM_IN {
         let s = ed(a);
         let was = (s.zoom, s.ox, s.oy);
@@ -12476,6 +12493,55 @@ mod tests {
         assert!(ed_ref(&a).lb.open);
     }
 
+    // Clear page from a gesture or a key (issues #36, #39: a pen button held over the page cleared it) says
+    // so in a toast that points at Undo, and Undo takes the whole clear back in one step. The toolbar's broom,
+    // in sight as it is tapped, says nothing (the owner, 2026-11-04); an empty page clears nothing and says
+    // nothing.
+    #[test]
+    fn clear_page_from_a_gesture_or_a_key_says_so_and_undo_takes_it_back() {
+        let mut a = fshape_app();
+        let draw = |a: &mut App, t: u32| {
+            pen_event(a, InType::PenDown, false, 300.0, 600.0, t);
+            for k in 1..10 {
+                pen_event(a, InType::PenMove, false, 300.0 + 30.0 * k as f32, 600.0, t + 10 * k);
+            }
+            pen_event(a, InType::PenUp, false, 570.0, 600.0, t + 100);
+            pen_event(a, InType::PenLeave, false, 570.0, 600.0, t + 110);
+            ed(a).pen_left = now_ms().wrapping_sub(5000);
+            assert_eq!(ed_ref(a).open_page().unwrap().strokes.len(), 1);
+        };
+        let toast = |a: &App| a.toast_visible.then(|| a.toast.as_str().to_string());
+        draw(&mut a, 1000);
+        app_toast_dismiss(&mut a);
+        let depth = undo_depth(&mut a);
+        for src in [ActionSrc::Pen, ActionSrc::Key] {
+            assert!(editor_shortcut_at(&mut a, SHORTCUT_CLEAR_PAGE, 500.0, 700.0, src));
+            assert!(ed_ref(&a).open_page().unwrap().strokes.is_empty());
+            assert_eq!(toast(&a).as_deref(), Some("Page cleared. Undo brings it back."));
+            assert_eq!(undo_depth(&mut a), depth + 1, "the clear is one step");
+            undo_redo(&mut a, true);
+            assert_eq!(ed_ref(&a).open_page().unwrap().strokes.len(), 1, "Undo brings the page back");
+            assert_eq!(undo_depth(&mut a), depth);
+            app_toast_dismiss(&mut a);
+        }
+        // the broom: cleared, nothing said
+        panel_act(&mut a, Hit { id: P_CLEAR, ..Default::default() });
+        assert!(ed_ref(&a).open_page().unwrap().strokes.is_empty());
+        assert_eq!(toast(&a), None);
+        // an empty page: nothing cleared, nothing said, no step
+        let depth = undo_depth(&mut a);
+        assert!(editor_shortcut_at(&mut a, SHORTCUT_CLEAR_PAGE, 500.0, 700.0, ActionSrc::Pen));
+        assert_eq!(toast(&a), None);
+        assert_eq!(undo_depth(&mut a), depth);
+        // Spanish says it in Spanish
+        i18n_set("es");
+        undo_redo(&mut a, true);
+        assert!(editor_shortcut_at(&mut a, SHORTCUT_CLEAR_PAGE, 500.0, 700.0, ActionSrc::Key));
+        assert_eq!(toast(&a).as_deref(), Some(tr(PAGE_CLEARED)));
+        assert_ne!(tr(PAGE_CLEARED), PAGE_CLEARED);
+        i18n_set("en");
+    }
+
     #[test]
     fn clear_removes_current_page_links_and_ink_as_one_undoable_saved_change() {
         let root=std::env::temp_dir().join(format!("grimoire-clear-links-{}",std::process::id()));
@@ -12939,7 +13005,8 @@ mod tests {
     #[test]
     fn pen_momentary_eraser_starts_on_press_and_preserves_a_key_hold() {
         let mut a = fshape_app();
-        assert_eq!(gesturemap_set(&mut a.gestures, pb_key(PenBtn::Button, PenKind::Hold), SHORTCUT_HOLD_ERASER), SHORTCUT_CLEAR_PAGE);
+        // (the hold has no built-in action since 2.1.0-beta.2: nothing lost)
+        assert_eq!(gesturemap_set(&mut a.gestures, pb_key(PenBtn::Button, PenKind::Hold), SHORTCUT_HOLD_ERASER), 0);
         app_gestures_sync(&mut a);
         pen_event(&mut a, InType::PenHover, false, 400.0, 600.0, 1000);
         pen_event(&mut a, InType::PenButton, true, 400.0, 600.0, 1010);
@@ -13239,8 +13306,9 @@ mod tests {
         assert_eq!(fire(&mut a, SHORTCUT_REDO), named(SHORTCUT_REDO));
         assert_eq!(fire(&mut a, SHORTCUT_REDO), None);
         assert_eq!(ed_ref(&a).open_page().unwrap().strokes.len(), 1);
-        // Clear page clears it, named; then the page is empty: nothing
-        assert_eq!(fire(&mut a, SHORTCUT_CLEAR_PAGE), named(SHORTCUT_CLEAR_PAGE));
+        // Clear page clears it, saying so with its own toast (2.1.0-beta.2: the way back is Undo), not the
+        // shape's name; then the page is empty: nothing
+        assert_eq!(fire(&mut a, SHORTCUT_CLEAR_PAGE), Some(tr(PAGE_CLEARED).to_string()));
         assert_eq!(ed_ref(&a).open_page().unwrap().strokes.len(), 0);
         assert_eq!(fire(&mut a, SHORTCUT_CLEAR_PAGE), None);
         // Previous page: page 1, named (the cleared page as saved: this in-memory notebook has no file for it)
@@ -14082,7 +14150,8 @@ mod tests {
         assert_eq!(probe(&a, "drag_shown"), format!("{} {}", want.0, want.1));
         assert!(!bar_drawn(&a), "the bar is away while the box moves");
         let inked: u32 = probe(&a, "drag_inked").parse().unwrap();
-        assert!((1..=4).contains(&inked), "the halo walked only where the outline's strips were: {inked}");
+        // (the outline's four strips, and the four resize handle squares the selection showed)
+        assert!((1..=8).contains(&inked), "the halo walked only where the outline's strips and handles were: {inked}");
         assert!(layers_ok(&mut a));
         // the pen moves on: a tick before DRAG_SHOW_MS went by since the show shows nothing
         for k in 41..=50 {
@@ -14174,6 +14243,63 @@ mod tests {
         assert_eq!(probe(&a, "drag_copy"), "0");
         assert!(bar_drawn(&a));
         assert!(layers_ok(&mut a));
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    // A selection of strokes shows resize handles at its box's corners (issue #37); dragged, a handle scales
+    // the ink about the opposite corner, the box following, one undo step at the lift; a tap on a handle that
+    // never moves changes nothing.
+    #[test]
+    fn a_resize_handle_scales_the_selection_about_its_opposite_corner() {
+        let root = fhold_root("resize");
+        let mut a = fshape_app();
+        let (mut px, mut py) = (0.0, 0.0);
+        to_page(ed(&mut a), 400.0, 600.0, &mut px, &mut py);
+        sel_word(&mut a, px, py);
+        sel_toggle(&mut a);
+        sel_lasso(&mut a, 400.0, 615.0, 120.0, false, 1000);
+        app_flush(&mut a);
+        assert_eq!(ed_ref(&a).sel.state, SelState::Selected);
+        let s = ed_ref(&a);
+        let b0 = s.sel.box_;
+        let bs = box_screen(s, b0);
+        let (cx, cy) = ((bs.x + bs.w) as f32, (bs.y + bs.h) as f32);
+        // the handles are drawn: a black square at a corner, past the outline's band
+        let full = Rect { x: 0, y: 0, w: a.w, h: a.h };
+        compose(&mut a, full);
+        let at = |a: &App, x: i32, y: i32| a.screen.px[(y * a.screen.stride + x) as usize];
+        assert!(at(&a, bs.x + bs.w + 6, bs.y + bs.h + 6) < 128, "the bottom-right handle is drawn");
+        // dragged out by the box's width and height: twice as large, the opposite corner staying
+        let depth = undo_depth(&mut a);
+        let n0 = ed_ref(&a).sel.ids.len();
+        pen_event(&mut a, InType::PenDown, false, cx, cy, 2000);
+        assert_eq!(ed_ref(&a).sel.state, SelState::Dragging);
+        assert_eq!(ed_ref(&a).sel.resize_handle, 4);
+        pen_event(&mut a, InType::PenMove, false, cx + bs.w as f32, cy + bs.h as f32, 2010);
+        editor_tick(&mut a, now_ms());
+        pen_event(&mut a, InType::PenUp, false, cx + bs.w as f32, cy + bs.h as f32, 2020);
+        app_flush(&mut a);
+        assert_eq!(ed_ref(&a).sel.state, SelState::Selected);
+        assert_eq!(ed_ref(&a).sel.resize_handle, 0);
+        assert_eq!(undo_depth(&mut a), depth + 1, "one step for the resize");
+        let b1 = ed_ref(&a).sel.box_;
+        assert_eq!((b1.x, b1.y), (b0.x, b0.y), "the opposite corner stayed");
+        assert!(b1.w > b0.w + b0.w / 2 && b1.h > b0.h + b0.h / 2, "the ink was scaled up: {:?} from {:?}", b1, b0);
+        assert_eq!(ed_ref(&a).sel.ids.len(), n0);
+        assert!(layers_ok(&mut a));
+        // a tap on a handle: no step, the box as it was
+        let s = ed_ref(&a);
+        let bs = box_screen(s, s.sel.box_);
+        let (cx, cy) = ((bs.x + bs.w) as f32, (bs.y + bs.h) as f32);
+        let depth = undo_depth(&mut a);
+        pen_event(&mut a, InType::PenDown, false, cx, cy, 3000);
+        assert_eq!(ed_ref(&a).sel.resize_handle, 4);
+        pen_event(&mut a, InType::PenUp, false, cx + 2.0, cy + 2.0, 3010);
+        app_flush(&mut a);
+        assert_eq!(ed_ref(&a).sel.state, SelState::Selected);
+        assert_eq!(undo_depth(&mut a), depth);
+        assert_eq!(ed_ref(&a).sel.box_, b1);
+        assert!(bar_drawn(&a));
         std::fs::remove_dir_all(root).unwrap();
     }
 

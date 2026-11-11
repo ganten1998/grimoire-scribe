@@ -4,6 +4,27 @@ Work that was decided, deferred or found but not done yet. Keep this current: wh
 move it to "Done" with the version; when something is deferred, add it here with who decided and
 why. Newest decisions first within each section.
 
+## nebuff's main and Clear page (2.1.0-beta.2, lane M, 2026-11-11): what waits
+
+- **Bulk erase slowdown (issue #42) is not fixed in the app.** PR #43 ("Fix slowdown") changed the C tree only
+  (`src/page.c`: the render's work pump every 512 points instead of 128; and HOSTCC to gcc in the Makefile). The
+  app is the Rust port, whose renderer (`rust/src/page.rs`, `page_render`) still pumps every 128 points, on
+  purpose: the pump reads the pens during a long render, whose kernel buffers hold 50 to 175 ms
+  (docs/INK-PERFORMANCE.md), so a slower pump would lose pen samples rather than speed the erase. The ~3 s after a
+  bulk erase needs a trace on the Scribe (grimoire.log's erase and undo timings on a dense page) before a fix.
+- **The C tree's other main commits** (#27 to #34: the share server's route table, its NULL checks and SIGCHLD
+  handler, the page turn that skips a save of an unchanged page, the too-small link stroke kept as ink) change only
+  `src/`, which the app does not build; the Rust share server and editor have their own code for each. Their
+  behaviour in the app was not asked for and is not ported.
+- **An Undo button on the toast.** Clear page from a gesture or a key says "Page cleared. Undo brings it back."
+  The toast is an overlay with no controls (never in App.screen, a Live view layer), so a button on it would need
+  hit testing ahead of the screen's own input, a pen contact on it kept from the page, and Live view's copy. For
+  a later version if the owner wants it.
+- **Japanese for the new strings** (nebuff): "Display time as 12 hour", "Disable", the 12-hour date
+  ("%s %d, %d:%02d %s"), AM and PM (context "date"), "Page cleared. Undo brings it back.". Until then a
+  Japanese 12-hour clock reads the month in Japanese and the rest as English writes it.
+- **Disable on a paired row's second card** clears only that direction (the first card's Disable clears both).
+
 ## PDF import (2.1.0-beta.2, lane L5): what waits, and what is for the owner
 
 - **S1 ran on the owner's Scribe (2026-11-09)**: every sandbox step works there, a private mapping of a PDF on

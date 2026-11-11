@@ -59,8 +59,8 @@ no scriptlets, KOReader can open Grimoire instead (see the table).
 
 | Kindle | Status |
 |---|---|
-| Kindle Scribe (2024, 2nd gen), firmware 5.17 to 5.20.1 | **Works.** Tested daily on 5.20.1.0.2; a tester runs it on 5.20.1 (Vera). |
-| Kindle Scribe (2022, 1st gen), firmware 5.16.3 or newer | **Works.** A tester uses it daily on 5.20.1.0.2; another runs it on 5.20.1 (Vera). Same platform. If the screen is upside down, see Troubleshooting. |
+| Kindle Scribe (2024, 2nd gen), firmware 5.17 to 5.20.1 | **Works.** Used daily on 5.20.1.0.2 and runs on 5.20.1 (Vera) |
+| Kindle Scribe (2022, 1st gen), firmware 5.16.3 or newer | **Works.** Used daily on 5.20.1.0.2 and also runs on 5.20.1 (Vera). If the screen is upside down, see Troubleshooting. |
 | Kindle Scribe (2022) on firmware older than 5.16.3 | Should run, but there is no Library launcher for those older jailbreaks yet. With KOReader, it should open from KOReader's Tools > Grimoire, the plugin copied in by hand (see Does it work in KOReader?). |
 | Kindle Scribe 3 and Scribe Colorsoft (2025) | **Untested.** No public jailbreak yet. Grimoire already knows their bigger screen (1986x2648): notebooks keep their page size between these and the older Scribes (see Moving between versions). On the Colorsoft's color screen, Grimoire waits after each quick update until the screen's driver has read it, except for the pen's own ink (writing never waits), so buttons should not show striped. |
 | Paperwhite, Oasis, Basic and other Kindles without a pen | Not useful: you cannot write without the pen. |
@@ -131,8 +131,11 @@ your notebooks and settings from `quire/` to `grimoire/` and removes the old Qui
   attached, tap it with Shift, Ctrl, Alt or Cmd held) for the number pad Pages uses (at 1 at first): the pages are added
   after the page you are on, on its paper, which stays open, and the Undo in Pages takes them back while they
   are still blank. The `new-pages` shortcut opens the same pad on any page.
-- **Pen button**: hold the button while drawing to highlight (or erase; Settings). Hold it while
-  hovering to clear the page. Clear removes ink and outgoing links together (not a PDF's own links, its tabs); Undo restores both.
+- **Pen button**: hold the button while drawing to highlight (or erase; Settings). Its clicks and a
+  hold while hovering do nothing until you give them an action in Settings > Gestures (until 2.1.0-beta.1
+  the hold cleared the page, under a finger merely resting on the button). The toolbar's broom clears the
+  page: ink and outgoing links together (not a PDF's own links, its tabs); Undo restores both. Cleared by a
+  gesture or a shortcut, the page says so in a toast: "Page cleared. Undo brings it back."
 - **The Index**: swipe down with two fingers for Graph, or tap the page counter for Pages. **Graph**, **List** and
   **Pages** share one navigation bar; Back returns to the notebook. Graph always shows every linked page of
   every notebook, each notebook's pages an island with its name over it (a library with too many linked pages

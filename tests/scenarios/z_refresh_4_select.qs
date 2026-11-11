@@ -65,25 +65,25 @@ pen move 500 750
 wait 100
 # the page's gray rules where the outline went (and the bar was), drawn back by DU: dithered for now
 expect display.stale.0.300.1650.2100 not 0
-expect editor.wear is 57
+expect editor.wear is 58
 expect display.presents not -1
 pen up 500 750
 wait 300
 # nothing moved, and all of the way drawn again in grays
 expect editor.undo_kind is add
-expect display.presents is ui 10 635 1450 1158
+expect display.presents is ui 10 619 1450 1174
 expect display.stale.0.300.1650.2100 is 0
-expect editor.wear is 57
+expect editor.wear is 58
 # the pen gone: under a quarter of the screen worn, no Clean
 pen leave
 wait 400
 expect display.presents is
-expect editor.wear is 57
+expect editor.wear is 58
 # Delete: one grayscale refresh, nothing left over and nothing to clean.
 tap panel select.delete
 wait 300
 expect editor.strokes is 0
 expect display.presents is ui 10 220 1822 2220
 expect display.stale.0.300.1650.2100 is 0
-expect editor.wear is 57
+expect editor.wear is 58
 expect editor.layers is ok

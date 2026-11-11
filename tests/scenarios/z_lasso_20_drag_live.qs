@@ -376,7 +376,7 @@ pen move 997.00 550.00 0.5
 wait 4
 wait 200
 expect editor.drag_shown is 385 -55
-expect editor.drag_inked is 4
+expect editor.drag_inked is 1
 expect live.frame.stale is 0
 expect editor.layers is ok
 pen up 997.00 550.00

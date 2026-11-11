@@ -140,6 +140,9 @@ pub struct Settings {
     /// and in which corner of the page it sits: 0 top left (the default), 1 top right, 2 bottom right,
     /// 3 bottom left (settings.ini status_corner; the tap zone follows it)
     pub status_corner: i32,
+    /// The clock shows the time on the 12-hour clock (settings.ini clock_12h): "2:32 PM" instead of
+    /// "14:32". The Display sheet's "Display time as 12 hour" row.
+    pub clock_12h: bool,
     /// Rotation to hold while locked (settings.ini rotation_lock): 0 follows the Kindle, 1..=4
     /// hold the current rotation plus one. The app resolves the current orientation at lock time.
     pub rotation_lock: i32,
@@ -4454,6 +4457,7 @@ pub fn settings_default(s: &mut Settings) {
     s.status_on = true;
     s.status_size = 1;
     s.status_corner = 0;
+    s.clock_12h = false;
     s.rotation_lock = 0;
     s.gestures = true;
     s.landscape_fit = true;
@@ -4838,6 +4842,7 @@ fn settings_cb(s: &mut Settings, k: &[u8], v: &[u8]) -> bool {
         b"hints" => s.hints = keep_int("hints", v, 0, i32::MAX),
         b"link_areas" => s.link_areas = keep_bool("link_areas", v),
         b"status_corner" => s.status_corner = keep_int("status_corner", v, 0, 3),
+        b"clock_12h" => s.clock_12h = keep_bool("clock_12h", v),
         b"shapes" => s.shapes = keep_bool("shapes", v),
         b"shape_hold_ms" => s.shape_hold_ms = keep_int("shape_hold_ms", v, 300, 1500),
         b"shape_quads" => s.shape_quads = keep_int("shape_quads", v, 0, 2),
@@ -5163,6 +5168,7 @@ pub fn settings_save(s: &Settings) -> i32 {
     put_int(&mut b, "hints", s.hints);
     put_int(&mut b, "link_areas", s.link_areas as i32);
     put_int(&mut b, "status_corner", s.status_corner);
+    put_int(&mut b, "clock_12h", s.clock_12h as i32);
     put_int(&mut b, "rotation_lock", s.rotation_lock);
     put_int(&mut b, "gesture_new_page", s.gesture_new_page as i32);
     put_int(&mut b, "status_mode", s.status_mode);

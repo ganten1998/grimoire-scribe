@@ -38,7 +38,7 @@ EOF
 Fonts 3.4.0, its Terminess Nerd Font Mono, a patched build of Terminus TTF 4.49.3; SIL Open Font
 License 1.1, see `Terminess-OFL-1.1.txt`), cut down to Terminus's text glyphs and the Material
 Design icons Grimoire draws or plans: exactly the code points `terminess-keep.txt` lists, 1,197
-text and 84 icons. That is about 0.43 MB a weight instead of 2.67 MB. The icons are Material Design
+text and 85 icons. That is about 0.43 MB a weight instead of 2.67 MB. The icons are Material Design
 Icons by Pictogrammers under the Apache License 2.0 (`MaterialDesignIcons-LICENSE.txt`, which says
 where they come from, and `MaterialDesignIcons-Apache-2.0.txt`); the release ships both notices
 beside the OFL text, and the share pages serve all three, with the Gothic fonts' OFL texts, as
