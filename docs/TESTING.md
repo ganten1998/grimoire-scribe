@@ -2314,5 +2314,7 @@ second copy was recognised as imported before; two colour PDFs imported and thei
 colour; a PDF with a password was refused once, without a second toast; three fonts of his own were checked one
 job each and used; a PDF and a picture folder with Chinese and Japanese names imported; a 380-page planner opened
 from KOReader (Open this book in Grimoire) came in with its 6,363 tabs; everything else he used looked right. The
-What's new note was vetted by the owner. Still to check on a device: this release's own bundle (the test of step 6).
+What's new note was vetted by the owner. This release's own bundle (build `fafe26798d86`, KPM 2.1.1002, installed
+on 2026-11-11 over the development build, its binary byte for byte the gated one) was checked by the owner on his
+Scribe that day: good.
 
