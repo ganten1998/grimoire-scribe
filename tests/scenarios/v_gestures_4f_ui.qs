@@ -126,8 +126,8 @@ wait 100
 shot p6-pan-click-refusal-sideways
 rotate 0
 wait 100
-expect library.ui_at.930.1650 is record.retry
-pentap 930 1650
+expect library.ui_at.763.1650 is record.retry
+pentap 763 1650
 wait 100
 side on
 wait 1300
@@ -140,8 +140,8 @@ wait 100
 shot p6-pan-hold-refusal-sideways
 rotate 0
 wait 100
-expect library.ui_at.930.1650 is record.retry
-pentap 930 1650
+expect library.ui_at.763.1650 is record.retry
+pentap 763 1650
 wait 100
 side on
 pen down 800 1100 0.6
@@ -175,8 +175,8 @@ wait 100
 shot p6-zoom-click-refusal-sideways
 rotate 0
 wait 100
-expect library.ui_at.930.1650 is record.retry
-pentap 930 1650
+expect library.ui_at.763.1650 is record.retry
+pentap 763 1650
 wait 100
 side on
 wait 1300
@@ -189,8 +189,8 @@ wait 100
 shot p6-zoom-hold-refusal-sideways
 rotate 0
 wait 100
-expect library.ui_at.930.1650 is record.retry
-pentap 930 1650
+expect library.ui_at.763.1650 is record.retry
+pentap 763 1650
 wait 100
 side on
 pen down 800 1100 0.6

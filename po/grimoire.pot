@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: Grimoire 2.1.0-beta.1\n"
 "Report-Msgid-Bugs-To: https://github.com/ganten1998/grimoire-scribe/issues\n"
-"POT-Creation-Date: 2026-11-09 21:40-0600\n"
+"POT-Creation-Date: 2026-11-11 16:39-0600\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -1380,6 +1380,12 @@ msgstr ""
 msgid "Sideways, show the whole page"
 msgstr ""
 
+#. TRANSLATORS: the Display sheet's checkbox row: the clock on a notebook page shows the time on
+#. the 12-hour clock ("2:32 PM") instead of the 24-hour one ("14:32"). About 850 px at 44 px.
+#: rust/src/dispmenu.rs
+msgid "Display time as 12 hour"
+msgstr ""
+
 #. TRANSLATORS: the heading of the Display sheet's rows about the Kindle's sleep.
 #: rust/src/dispmenu.rs
 msgid "Sleep"
@@ -1606,6 +1612,7 @@ msgstr ""
 #: rust/src/editor.rs
 msgid "Couldn't save links. Page unchanged."
 msgstr ""
+
 
 #. TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): Delete in the Pages view
 #. could not delete the ticked pages (the blank page a notebook keeps could not be added).
@@ -2609,7 +2616,7 @@ msgstr ""
 msgid "Name: %s"
 msgstr ""
 
-#. TRANSLATORS: a held page's card in the Pages view, under its icon (950 px at 34 px): give the page
+#. TRANSLATORS: a held page's sheet in the Pages view, a row (about 950 px at 34 px): give the page
 #. a name (its naming keyboard, titled Page name).
 #: rust/src/library.rs rust/src/mapview.rs rust/src/pagesview.rs
 msgid "Rename"
@@ -2793,6 +2800,8 @@ msgstr ""
 msgid "Couldn't save gestures."
 msgstr ""
 
+#. TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): Disable in the record
+#. card removed the action's gestures; %s is the action's name ("Undo", "Next page").
 #: rust/src/library.rs
 #, c-format
 msgid "No gestures for %s now."
@@ -3106,6 +3115,12 @@ msgstr ""
 
 #: rust/src/library.rs
 msgid "Try again"
+msgstr ""
+
+#. TRANSLATORS: the record card's Disable button (about 290 px at 34 px in capitals): it removes
+#. every gesture for the action (the built-in ones too), so the row says "no gesture".
+#: rust/src/library.rs
+msgid "Disable"
 msgstr ""
 
 #: rust/src/library.rs
@@ -4121,16 +4136,7 @@ msgstr ""
 msgid "Multi-select"
 msgstr ""
 
-#. TRANSLATORS: under a held page's title in the Pages view (about 900 px at 34 px): how many pages, in this
-#. notebook or others, have links to it.
-#: rust/src/pagesview.rs
-#, c-format
-msgid "Linked from %d page"
-msgid_plural "Linked from %d pages"
-msgstr[0] ""
-msgstr[1] ""
-
-#. TRANSLATORS: a held page's card in the Pages view, under its icon (950 px at 34 px): move the page
+#. TRANSLATORS: a held page's sheet in the Pages view, a row (about 950 px at 34 px): move the page
 #. (or the ticked pages, with how many) to another place in the notebook, on the Go to page number pad.
 #: rust/src/pagesview.rs
 #, c-format
@@ -4143,7 +4149,7 @@ msgstr[1] ""
 msgid "Move to..."
 msgstr ""
 
-#. TRANSLATORS: the same card: copy the page (or the ticked pages) into another notebook, picked from
+#. TRANSLATORS: the same sheet: copy the page (or the ticked pages) into another notebook, picked from
 #. the notebooks and folders.
 #: rust/src/pagesview.rs
 #, c-format
@@ -4155,6 +4161,15 @@ msgstr[1] ""
 #: rust/src/pagesview.rs
 msgid "Copy to notebook..."
 msgstr ""
+
+#. TRANSLATORS: under a held page's title in the Pages view (about 900 px at 34 px): how many pages, in this
+#. notebook or others, have links to it.
+#: rust/src/pagesview.rs
+#, c-format
+msgid "Linked from %d page"
+msgid_plural "Linked from %d pages"
+msgstr[0] ""
+msgstr[1] ""
 
 #: rust/src/pagesview.rs
 msgid "Enter a page number in this notebook."
@@ -4853,6 +4868,28 @@ msgstr ""
 #, c-format
 msgctxt "date"
 msgid "%s %d, %02d:%02d"
+msgstr ""
+
+#. TRANSLATORS: the marker for the morning on the 12-hour clock (before noon).
+#: rust/src/util.rs
+msgctxt "date"
+msgid "AM"
+msgstr ""
+
+#. TRANSLATORS: the marker for the afternoon on the 12-hour clock (after noon).
+#: rust/src/util.rs
+msgctxt "date"
+msgid "PM"
+msgstr ""
+
+#. TRANSLATORS: a date and time on the 12-hour clock, "Oct 10, 2:32 PM": the month (as above),
+#. the day, the hour (1 to 12), the minutes, then AM or PM. Reorder them with %1$s, %2$d, %3$d,
+#. %4$02d and %5$s ("%2$d %1$s, %3$d:%4$02d %5$s" is "10 Oct, 2:32 PM"), using that form for
+#. all five.
+#: rust/src/util.rs
+#, c-format
+msgctxt "date"
+msgid "%s %d, %d:%02d %s"
 msgstr ""
 
 #. TRANSLATORS: a date, "Oct 10", in a new notebook's name ("Notebook Oct 10"): the month (as

@@ -3318,12 +3318,12 @@ fn draw_record_card(a: &mut App) {
         tr("Try again"),
         ButtonStyle::Plain,
     );
-    // TRANSLATORS: the record card's Disable button: it removes every gesture for the action
-    // (the built-in ones too), so the row says "no gesture".
     ui_button(
         screen,
         disable_r,
         IconKind::Ban,
+        // TRANSLATORS: the record card's Disable button (about 290 px at 34 px in capitals): it removes
+        // every gesture for the action (the built-in ones too), so the row says "no gesture".
         tr("Disable"),
         ButtonStyle::Plain,
     );
@@ -7919,7 +7919,11 @@ mod tests {
         finish_recording(&mut a);
         assert!(!library_record_active(&a));
 
-        // Disable saves "nothing" for the action and its pair, built-in defaults included.
+        // Disable saves "nothing" for the action and its pair, built-in defaults included (to a root of
+        // its own: the test's App has none, and "/gestures.ini" cannot be written).
+        let root = std::env::temp_dir().join(format!("grimoire-record-disable-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        assert_eq!(store_init(root.to_str().unwrap()), 0);
         lib(&mut a).gestures_file_readable = true;
         open_record_card(&mut a, SHORTCUT_NEXT_PAGE);
         lib(&mut a).record_next_action = SHORTCUT_PREV_PAGE;
@@ -7932,8 +7936,12 @@ mod tests {
         let written = String::from_utf8_lossy(&written);
         assert!(written.contains("touch.2.left=nothing"));
         assert!(written.contains("touch.2.right=nothing"));
+        // (and the file says so)
+        let file = std::fs::read_to_string(gesture_path()).unwrap();
+        assert!(file.contains("touch.2.left=nothing") && file.contains("touch.2.right=nothing"));
         library_free(&mut a);
         canvas_free(&mut a.screen);
+        let _ = std::fs::remove_dir_all(&root);
     }
 
     #[test]

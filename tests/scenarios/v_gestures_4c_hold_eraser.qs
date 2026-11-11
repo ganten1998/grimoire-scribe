@@ -23,8 +23,8 @@ side click 1
 wait 400
 expect library.record is wait
 expect library.record.line is Erase while held needs the button held: hold it or drag with it.
-expect library.ui_at.930.1650 is record.retry
-pentap 930 1650
+expect library.ui_at.763.1650 is record.retry
+pentap 763 1650
 wait 100
 side on
 wait 1300

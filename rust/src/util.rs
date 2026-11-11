@@ -357,10 +357,11 @@ pub fn format_time_short_12h(t: i64, buf: &mut String, cap: usize) {
         h => h,
     };
     let ampm = crate::i18n::c_("date", K_AMPM[(tm.tm_hour >= 12) as usize]);
-    // TRANSLATORS: a date and time on the 12-hour clock, "Oct 10, 2:32 PM": the month (as above), the
-    // day, the hour (1 to 12), the minutes, then AM or PM. Reorder them with %1$s, %2$d, %3$d, %4$02d
-    // and %5$s ("%2$d %1$s, %3$d:%4$02d %5$s" is "10 Oct, 2:32 PM"), using that form for all five.
     let s = crate::cformat!(
+        // TRANSLATORS: a date and time on the 12-hour clock, "Oct 10, 2:32 PM": the month (as above),
+        // the day, the hour (1 to 12), the minutes, then AM or PM. Reorder them with %1$s, %2$d, %3$d,
+        // %4$02d and %5$s ("%2$d %1$s, %3$d:%4$02d %5$s" is "10 Oct, 2:32 PM"), using that form for
+        // all five.
         crate::i18n::c_("date", "%s %d, %d:%02d %s"),
         month_short(&tm),
         tm.tm_mday,
