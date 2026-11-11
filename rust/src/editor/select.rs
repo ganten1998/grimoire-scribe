@@ -153,6 +153,7 @@ struct DragView {
     /// walked while the drag lasted (its halo drawn: every point of every stroke it meets)
     samples: u32,
     shows: u32,
+    samples_at_last_show: u32,
     px: i64,
     inked: u32,
 }
@@ -1388,7 +1389,8 @@ fn drag_tick(a: &mut App, now: u32) {
         drag_begin(a, now);
         return;
     }
-    if (now.wrapping_sub(m.dv.shown_at) as i32) >= DRAG_SHOW_MS as i32 || (now.wrapping_sub(m.dv.moved_at) as i32) >= DRAG_PAUSE_MS as i32 {
+    // one show after every 60 samples (60 samples in one go are one show)
+    if m.dv.samples >= m.dv.samples_at_last_show + 60 {
         drag_show(a, now);
     }
 }
@@ -1424,6 +1426,7 @@ fn drag_begin(a: &mut App, now: u32) {
     s.sel.dv.base = based.then_some(base);
     s.sel.dv.base_at = at;
     s.sel.dv.shown = Some(off);
+    s.sel.dv.samples_at_last_show = s.sel.dv.samples;
     let new = outline_strips(a, off);
     if based {
         draw_outline(a, off, screen);
