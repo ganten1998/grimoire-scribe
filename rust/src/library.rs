@@ -130,6 +130,8 @@ const H_GESTURES_MASTER: i32 = 63;
 const H_RECORD_USE: i32 = 64;
 const H_RECORD_RETRY: i32 = 65;
 const H_RECORD_CANCEL: i32 = 66;
+// 2.1: the record card's Disable, which saves "nothing" for its action (over the built-ins too).
+const H_RECORD_DISABLE: i32 = 95;
 const H_GESTURES_RESET_CONFIRM: i32 = 67;
 const H_GESTURES_RESET_CANCEL: i32 = 68;
 const H_ABOUT: i32 = 71;
@@ -1590,6 +1592,29 @@ fn close_record_card(a: &mut App) {
     redraw(a, RefreshMode::Ui);
 }
 
+// Disable saves "nothing" for the card's action, which also overrides a built-in default
+// (gesturemap_clear_action marks the slots set). A paired row disables both its actions.
+fn disable_recording(a: &mut App) {
+    let (action, paired) = {
+        let s = lib(a);
+        (s.record_action, s.record_next_action)
+    };
+    let mut next = a.gestures.clone();
+    gesturemap_clear_action(&mut next, action);
+    if paired != SHORTCUT_NONE {
+        gesturemap_clear_action(&mut next, paired);
+    }
+    if !save_gesture_map(a, next) {
+        return;
+    }
+    let mut msg = String::new();
+    // TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): Disable in the record
+    // card removed the action's gestures; %s is the action's name ("Undo", "Next page").
+    csnprintf!(&mut msg, 200, tr("No gestures for %s now."), action_label(action));
+    app_toast(a, &msg, 2000);
+    close_record_card(a);
+}
+
 // Paired rows learn both directions, just as Buttons does. Each Use saves its own
 // action before opening the other card; Cancel leaves an already saved binding intact.
 fn finish_recording(a: &mut App) {
@@ -1735,7 +1760,7 @@ fn record_pen_event(a: &mut App, ev: &InEvent) -> Option<bool> {
     if ev.type_ == InType::PenDown {
         let pointer = !ev.side_button && !ev.side_button2 && !lib(a).record_pen_capture
             && hits_find(&lib(a).hits, ev.x, ev.y)
-                .is_some_and(|h| matches!(h.id, H_RECORD_USE | H_RECORD_RETRY | H_RECORD_CANCEL));
+                .is_some_and(|h| matches!(h.id, H_RECORD_USE | H_RECORD_RETRY | H_RECORD_CANCEL | H_RECORD_DISABLE));
         lib(a).record_pen_pointer = pointer;
     }
     let pointer = lib(a).record_pen_pointer;
@@ -1778,7 +1803,7 @@ fn record_event(a: &mut App, ev: &InEvent) -> bool {
             return true;
         }
         let button = hits_find(&lib(a).hits, ev.x, ev.y)
-            .is_some_and(|h| matches!(h.id, H_RECORD_USE | H_RECORD_RETRY | H_RECORD_CANCEL));
+            .is_some_and(|h| matches!(h.id, H_RECORD_USE | H_RECORD_RETRY | H_RECORD_CANCEL | H_RECORD_DISABLE));
         let px100 = (a.dpi / 25.4 * 100.0).round() as i32;
         let s = lib(a);
         s.record_two_strokes_pending = !button && s.record_previous_lift.is_some_and(|lift|
@@ -3232,17 +3257,18 @@ fn draw_record_card(a: &mut App) {
     );
     let by = card.y + card.h - ui_px(150.0);
     let gap = ui_px(20.0);
-    let bw = (in_.w - 2 * gap) / 3;
+    let bw = (in_.w - 3 * gap) / 4;
     let use_r = Rect::new(in_.x, by, bw, ui_px(110.0));
     let retry_r = Rect::new(in_.x + bw + gap, by, bw, ui_px(110.0));
+    let disable_r = Rect::new(retry_r.x + bw + gap, by, bw, ui_px(110.0));
     let cancel_r = Rect::new(
-        retry_r.x + bw + gap,
+        disable_r.x + bw + gap,
         by,
-        in_.w - 2 * bw - 2 * gap,
+        in_.w - 3 * bw - 3 * gap,
         ui_px(110.0),
     );
     // TRANSLATORS: the record card's buttons; Use saves the recording, Try again clears this
-    // attempt, and Cancel returns to the Gestures sheet.
+    // attempt, Disable saves "no gesture" for the action, and Cancel returns to the Gestures sheet.
     ui_button(
         screen,
         use_r,
@@ -3261,6 +3287,15 @@ fn draw_record_card(a: &mut App) {
         tr("Try again"),
         ButtonStyle::Plain,
     );
+    // TRANSLATORS: the record card's Disable button: it removes every gesture for the action
+    // (the built-in ones too), so the row says "no gesture".
+    ui_button(
+        screen,
+        disable_r,
+        IconKind::Ban,
+        tr("Disable"),
+        ButtonStyle::Plain,
+    );
     ui_button(
         screen,
         cancel_r,
@@ -3270,6 +3305,7 @@ fn draw_record_card(a: &mut App) {
     );
     hits_add(&mut s.hits, use_r, H_RECORD_USE, 0);
     hits_add(&mut s.hits, retry_r, H_RECORD_RETRY, 0);
+    hits_add(&mut s.hits, disable_r, H_RECORD_DISABLE, 0);
     hits_add(&mut s.hits, cancel_r, H_RECORD_CANCEL, 0);
 }
 
@@ -4947,6 +4983,7 @@ fn act(a: &mut App, h: &Hit) {
         }
         H_RECORD_USE => use_recording(a),
         H_RECORD_RETRY => { let action = lib(a).record_action; open_record_card(a, action); }
+        H_RECORD_DISABLE => disable_recording(a),
         H_RECORD_CANCEL => close_record_card(a),
         H_SHORTCUTS => open_modal(a, Modal::Shortcuts),
         H_PAIR_MENU => open_modal(a, Modal::PairMenu),
@@ -6476,6 +6513,7 @@ pub fn library_probe(a: &mut App, key: &str, out: &mut String, cap: usize) -> i3
                 H_GESTURES_RESET_CONFIRM => "gestures.reset.confirm",
                 H_GESTURES_RESET_CANCEL => "gestures.reset.cancel",
                 H_RECORD_USE => "record.use", H_RECORD_RETRY => "record.retry", H_RECORD_CANCEL => "record.cancel",
+                H_RECORD_DISABLE => "record.disable",
                 H_GESTURE_GROUP => "gestures.group.", H_GESTURE_ROW => "gestures.row.",
                 H_BUTTON_GROUP => "buttons.group.", H_BUTTON_ROW => "buttons.row.",
                 H_BUTTONS_DONE => "done", H_BUTTONS_RESET => "buttons.reset",
@@ -7100,7 +7138,7 @@ mod tests {
         lib(&mut a).modal = Modal::Gestures;
         lib(&mut a).gestures_group = 0;
         open_record_card(&mut a, SHORTCUT_UNDO);
-        assert_eq!(a.lib.as_ref().unwrap().hits.h.len(), 3);
+        assert_eq!(a.lib.as_ref().unwrap().hits.h.len(), 4);
         assert_eq!(probe(&mut a, "sheet"), "gestures");
         assert_eq!(probe(&mut a, "gestures_group"), "editing");
         assert_eq!(probe(&mut a, "gestures.learning"), "undo");
@@ -7223,6 +7261,20 @@ mod tests {
         assert_eq!(lib(&mut a).record_action, SHORTCUT_ZOOM_IN);
         finish_recording(&mut a);
         assert!(!library_record_active(&a));
+
+        // Disable saves "nothing" for the action and its pair, built-in defaults included.
+        lib(&mut a).gestures_file_readable = true;
+        open_record_card(&mut a, SHORTCUT_NEXT_PAGE);
+        lib(&mut a).record_next_action = SHORTCUT_PREV_PAGE;
+        act(&mut a, &Hit { id: H_RECORD_DISABLE, ..Default::default() });
+        assert!(!library_record_active(&a));
+        assert_eq!(gesturemap_action(&a.gestures, GestureKey::Touch { fingers: 2, kind: TouchKind::Left }), 0);
+        assert_eq!(gesturemap_action(&a.gestures, GestureKey::Touch { fingers: 2, kind: TouchKind::Right }), 0);
+        let mut written = Vec::new();
+        assert!(gesturemap_format(&a.gestures, &mut written));
+        let written = String::from_utf8_lossy(&written);
+        assert!(written.contains("touch.2.left=nothing"));
+        assert!(written.contains("touch.2.right=nothing"));
         library_free(&mut a);
         canvas_free(&mut a.screen);
     }

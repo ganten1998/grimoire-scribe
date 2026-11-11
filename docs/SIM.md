@@ -286,16 +286,17 @@ orientation (Pair in Controller's place since 2.0.0-beta.2). These interior tap 
 | Gestures | 890, 1930 | 1170, 1695 |
 | Updates | 1200, 1930 | 1470, 1695 |
 | Settings Done | 1550, 1930 | 1820, 1695 |
-| Record Use (when enabled) | 500, 1650 | 810, 1340 |
-| Record Try again | 930, 1650 | 1240, 1340 |
-| Record Cancel | 1360, 1650 | 1670, 1340 |
+| Record Use (when enabled) | 430, 1645 | 740, 1335 |
+| Record Try again | 763, 1645 | 1073, 1335 |
+| Record Disable | 1096, 1645 | 1406, 1335 |
+| Record Cancel | 1429, 1645 | 1739, 1335 |
 
 The three sample slots have interior centres at x = 630 / 930 / 1230, y = 1110 upright,
 and x = 940 / 1240 / 1540, y = 800 sideways. They display samples and have no hit action.
 Use `library.ui_at.X.Y` to check a candidate hit before depending on it. Its
 values include `pair-menu` (Settings' Pair), `gestures`, `updates`, `done`, `gestures.master`,
 `gestures.group.NAME`, `gestures.row.N`, `gestures.reset`, `gestures.reset.confirm`,
-`gestures.reset.cancel`, `record.use`, `record.retry` and `record.cancel`. This is a hit-test
+`gestures.reset.cancel`, `record.use`, `record.retry`, `record.disable` and `record.cancel`. This is a hit-test
 probe, not a coordinate locator; existing unrelated coordinates above remain as documented.
 
 **Recording a gesture in a scenario.** Open Settings > Gestures and a group; verify each
@@ -308,7 +309,8 @@ saving, or the third sample runs them immediately. If the first Use discovers th
 action owns the shape, the card names it and a second Use confirms the move.
 Check `library.record.line` for the refusal or reassignment reason, and check
 `gestures.ACTION`, `gestures.shape.ACTION` and the file after success. Try again restarts the
-attempt; Cancel leaves the bindings unchanged. To exercise a failed save, use the main
+attempt; Disable saves "nothing" for the action and closes the card; Cancel leaves the bindings
+unchanged. To exercise a failed save, use the main
 scenario owner's fixture and assert that the live binding and card survive unchanged.
 
 The host tool uses the same recognizer without opening the app:
