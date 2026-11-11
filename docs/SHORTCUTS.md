@@ -309,8 +309,9 @@ read at start and when shortcuts are reloaded.
 
 Settings > Gestures records the pen button as well as fingers. Tap an action, click the
 button while hovering, or hold it / drag with it, then choose Use. The card shows the
-recognized name at 64 px, with Use, Try again and Cancel. A normal nib tap operates those
-buttons; recording draws no page ink. An occupied binding names its current action before
+recognized name at 64 px, with Use, Try again, Disable and Cancel. Disable saves nothing
+for the action, which also turns off a built-in default such as two fingers left, and the row
+says "no gesture". A normal nib tap operates those buttons; recording draws no page ink. An occupied binding names its current action before
 Use moves it, then a toast names the action that lost it. Shape recording keeps its separate
 first-Use conflict check and second-Use confirmation when that check discovers a clash.
 

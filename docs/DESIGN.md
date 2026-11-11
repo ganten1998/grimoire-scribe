@@ -1685,7 +1685,9 @@ A hold clears touch, shape and pen sources for the row (both members of a pair);
 recovers from an unreadable file. Learn/clear use copy-save-swap: failed persistence leaves the
 live map and record card intact.
 
-The record card keeps three sample slots, Use, Try again and Cancel. First input selects a
+The record card keeps three sample slots and Use, Try again, Disable and Cancel. Disable saves
+"nothing" for the action, the built-in defaults included (both members of a pair), so its row
+says "no gesture", then closes the card. First input selects a
 pattern, one-finger swipe, shape or pen-button gesture. Paired rows continue to the second member after saving the first. Patterns can be accepted with Use after a valid attempt;
 shapes require two consistent samples, with an optional third. Conflict and accidental-slip
 checks run before saving, with progress/refusal text in the line's own rectangle. Moving a
