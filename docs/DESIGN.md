@@ -83,8 +83,9 @@ A desktop simulator (SDL3) and an SDL-free headless script runner exist for deve
   pen samples becomes one refresh.
 - Refresh modes: `REFRESH_FAST` (DU, black/white, for live ink, ~188 ms measured, 294 ms cold), `REFRESH_UI`
   (GL16 partial, no flash, for UI and to settle the grays of a finished stroke),
-  `REFRESH_FULL` (GC16 flashing, page turns / screen changes / every 30 UI refreshes), and in the
-  Rust build `RefreshMode::Clean` (GC16 flashing over the given rect alone).
+  `REFRESH_FULL` (GC16 flashing, screen changes / a page turn at another view than the fitted one /
+  every 30 UI refreshes), and in the Rust build `RefreshMode::Clean` (GC16 flashing over the given
+  rect alone).
   Accumulating different modes keeps the strongest (FULL > CLEAN > UI > FAST).
 - DU wear (issue #11, display.rs `DuWear`): DU turning a pixel from black to white leaves a faint trace
   of the black, and the GL16 settle after it does not reach that pixel (a partial update drives only the
