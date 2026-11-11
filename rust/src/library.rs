@@ -2787,8 +2787,10 @@ struct WifiShown {
 struct WifiSheet {
     check_at: u32,
     watch_at: u32,
-    /// the saved networks were asked for once more as the radio came on (wifid may not answer while it is
-    /// off), or after a switch the helper refused
+    /// everything was asked for since the sheet opened (not while the Share card's last read still ran);
+    /// the saved networks once more as the radio came on (wifid may not answer while it is off), or after a
+    /// switch the helper refused
+    asked: bool,
     relisted: bool,
     reread: bool,
     /// the page of saved networks shown, and the names drawn, by row (H_WIFI_NET's arg)
@@ -2812,8 +2814,8 @@ fn wifi_shown() -> WifiShown {
 fn wifi_sheet_open(a: &mut App) {
     let now = now_ms();
     wifi_join_clear();
-    lib(a).wifi = WifiSheet { check_at: now, watch_at: now, ..WifiSheet::default() };
-    wifi_request(WifiAction::Networks);
+    let asked = wifi_request(WifiAction::Networks);
+    lib(a).wifi = WifiSheet { check_at: now, watch_at: now, asked, ..WifiSheet::default() };
     open_modal(a, Modal::Wifi);
 }
 
@@ -2960,6 +2962,9 @@ fn wifi_sheet_tick(a: &mut App, now: u32) {
         let st = wifi_status();
         let join = wifi_joining().map(|j| j.1);
         let ws = &mut lib(a).wifi;
+        if !ws.asked {
+            ws.asked = wifi_request(WifiAction::Networks);
+        }
         match st {
             // A switch the helper refused leaves the status unread: read everything once more. A failed read
             // waits for Retry.
@@ -8314,6 +8319,86 @@ mod tests {
         }
         ui_init(300.0);
         ui_set_theme(UiTheme::Gothic);
+    }
+
+    // Settings' bottom row with Wi-Fi (2.1.0-beta.2): KOReader, Pair, Wi-Fi, Gestures, Updates, Done, in that
+    // order, none over another, each of the four at least 160 px, every word whole (its need met), in every
+    // language and style, upright and sideways.
+    #[test]
+    fn settings_bottom_row_fits_wifi_in_every_language_and_style() {
+        let root = std::env::temp_dir().join(format!("grimoire-wifi-row-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        assert_eq!(store_init(root.to_str().unwrap()), 0);
+        assert_eq!(font_init(), 0);
+        for lang in ["en", "es", "ja"] {
+            for theme in [UiTheme::Gothic, UiTheme::Classic] {
+                for (w, h) in [(1860, 2480), (2480, 1860)] {
+                    ui_init(300.0);
+                    ui_set_theme(theme);
+                    i18n_set(lang);
+                    let mut a = App { w, h, dpi: 300.0, input_drained: true, ..Default::default() };
+                    assert_eq!(canvas_init(&mut a.screen, a.w, a.h), 0);
+                    library_init(&mut a);
+                    lib(&mut a).modal = Modal::Settings;
+                    hits_clear(&mut lib(&mut a).hits);
+                    draw_settings(&mut a);
+                    let at = |id: i32| a.lib.as_ref().unwrap().hits.h.iter().find(|x| x.id == id).map(|x| x.r).unwrap();
+                    let row = [H_KOREADER, H_PAIR_MENU, H_WIFI_MENU, H_GESTURES, H_UPDATES, H_CANCEL].map(at);
+                    let words = [("Pair", IconKind::Link), ("Wi-Fi", IconKind::Share), ("Gestures", IconKind::Gestures), ("Updates", IconKind::Update)];
+                    for i in 1..row.len() {
+                        assert!(row[i - 1].x + row[i - 1].w < row[i].x, "{lang} {theme:?} {w}: {i} over the one before");
+                        assert_eq!(row[i].y, row[0].y);
+                    }
+                    for (i, (word, icon)) in words.into_iter().enumerate() {
+                        let r = row[i + 1];
+                        assert!(r.w >= ui_px(160.0), "{lang} {theme:?} {w}: {word} {}", r.w);
+                        assert!(ui_button_need_w(r.h, icon, tr(word), ButtonStyle::Plain) <= r.w, "{lang} {theme:?} {w}: {word} cut");
+                    }
+                    library_free(&mut a);
+                    canvas_free(&mut a.screen);
+                }
+            }
+        }
+        i18n_set("en");
+        ui_init(300.0);
+        ui_set_theme(UiTheme::Gothic);
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    // Settings > Wi-Fi opened while the Share card's last read still runs (its own read cannot start then):
+    // it asks once that one is done, and lists the saved networks even with the radio off.
+    #[test]
+    fn wifi_sheet_reads_its_networks_after_a_read_still_running() {
+        let root = std::env::temp_dir().join(format!("grimoire-wifi-sheet-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(&root).unwrap();
+        assert_eq!(store_init(root.join("data").to_str().unwrap()), 0);
+        let script = root.join("helper.sh");
+        std::fs::write(&script, "case $1 in status) sleep 0.3;; esac\nprintf 'wireless=0\\nenabled=0\\nconnected=0\\n'\n\
+            [ \"$1\" = networks ] && printf 'current=\\nsaved=486f6d65\\nsaved=4f6666696365\\nlist=1\\n'\nexit 0\n").unwrap();
+        let mut a = pen_record_app();
+        lib(&mut a).modal = Modal::Settings;
+        wifi_init(script.to_str());
+        assert!(wifi_request(WifiAction::Status));
+        wifi_sheet_open(&mut a);
+        assert_eq!(lib(&mut a).modal, Modal::Wifi);
+        assert!(!lib(&mut a).wifi.asked);
+        let began = std::time::Instant::now();
+        while wifi_saved().is_none() && began.elapsed() < std::time::Duration::from_secs(5) {
+            wifi_tick();
+            wifi_sheet_tick(&mut a, now_ms());
+            std::thread::sleep(std::time::Duration::from_millis(5));
+        }
+        assert_eq!(wifi_saved().map(|v| v.len()), Some(2));
+        assert_eq!(wifi_status().map(|st| st.enabled), Some(false));
+        wifi_sheet_tick(&mut a, now_ms());
+        let rows: Vec<_> = a.lib.as_ref().unwrap().hits.h.iter().filter(|h| h.id == H_WIFI_NET).map(|h| h.arg).collect();
+        assert_eq!(rows, [0, 1]);
+        assert_eq!(lib(&mut a).wifi.rows, [b"Home".to_vec(), b"Office".to_vec()]);
+        wifi_init(None);
+        library_free(&mut a);
+        canvas_free(&mut a.screen);
+        let _ = std::fs::remove_dir_all(&root);
     }
 }
 

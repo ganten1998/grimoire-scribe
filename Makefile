@@ -274,7 +274,8 @@ l10n:
 # style: the Templates sheet with templates in it, over New notebook and the editor's page, on a
 # data root its "# copy:" line fills first, as make scenarios does. Then (Rust build only) the
 # unified Index, the notebook links selector, page management and backlinks scenarios from their
-# fixtures, and z_wifi.qs with and without an address, in every language and style. Under make check
+# fixtures, z_wifi.qs with and without an address, and z_wifi_networks.qs (Settings > Wi-Fi, with the keys
+# on for its Esc), in every language and style. Under make check
 # it waits for
 # the scenarios: both give their runs the same ports. With SCEN_SKIP_RUST_ONLY set (make
 # c-check), y_all_screens.qs is skipped: it visits screens only the Rust build has.

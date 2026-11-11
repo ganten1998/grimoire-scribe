@@ -10,6 +10,22 @@ tap 1535 95
 wait 100
 expect library.sheet is settings
 shot 01-settings
+# Settings' bottom row: KOReader, Pair, Wi-Fi, Gestures, Updates, Done, at the tap points docs/SIM.md gives.
+expect library.ui_at.580.1930 is pair-menu
+expect library.ui_at.770.1930 is wifi
+expect library.ui_at.1000.1930 is gestures
+expect library.ui_at.1200.1930 is updates
+expect library.ui_at.1550.1930 is done
+rotate 1
+wait 200
+expect library.ui_at.863.1695 is pair-menu
+expect library.ui_at.1070.1695 is wifi
+expect library.ui_at.1320.1695 is gestures
+expect library.ui_at.1560.1695 is updates
+expect library.ui_at.1820.1695 is done
+shot 01-settings-sideways
+rotate 0
+wait 200
 tap library wifi
 wait 300
 expect library.sheet is wifi
