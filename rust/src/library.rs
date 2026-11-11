@@ -165,6 +165,8 @@ const H_MERGE_BOTH: i32 = 94;
 // 2.1: Settings' page (a full screen, the categories down its left): the category a tap picks (arg: its
 // index), whose settings the page shows.
 const H_SET_CAT: i32 = 95;
+// A Settings submenu's Back and Done: one level up (Settings, Shortcuts or Pair), never out of Settings.
+const H_SETTINGS_BACK: i32 = 96;
 
 #[derive(Clone, Copy, Default)]
 struct Item {
@@ -2650,7 +2652,7 @@ fn draw_settings_menu(a: &mut App, title: &str, rows: &[MenuRow]) {
     } = a;
     let s = lib.as_deref_mut().unwrap();
     let page = settings_page(c, aw, ah, title, true, true);
-    hits_add(&mut s.hits, page.back, H_CANCEL, 0);
+    hits_add(&mut s.hits, page.back, H_SETTINGS_BACK, 0);
     let in_ = page.content;
     let shown: Vec<&MenuRow> = rows
         .iter()
@@ -2700,7 +2702,7 @@ fn draw_settings_menu(a: &mut App, title: &str, rows: &[MenuRow]) {
         }
         y += rh + gap;
     }
-    hits_add(&mut s.hits, page.done, H_CANCEL, 0);
+    hits_add(&mut s.hits, page.done, H_SETTINGS_BACK, 0);
 }
 
 // A vertical list of full-width buttons inside a sheet.
@@ -4935,6 +4937,16 @@ fn act(a: &mut App, h: &Hit) {
         }
         H_NEW_CREATE => create_notebook(a),
         H_CANCEL => close_modal(a),
+        // Back (and Done) on a Settings submenu: to the Settings page it was opened from, or one step
+        // back through Shortcuts / Pair, as Esc already does. It must never close Settings itself.
+        H_SETTINGS_BACK => {
+            let back = match lib(a).modal {
+                Modal::Pair => Modal::PairMenu,
+                Modal::Buttons => Modal::Shortcuts,
+                _ => Modal::Settings,
+            };
+            open_modal(a, back);
+        }
         H_GESTURES => open_gestures(a),
         H_GESTURE_GROUP => {
             let s = lib(a);
