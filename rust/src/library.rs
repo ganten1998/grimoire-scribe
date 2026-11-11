@@ -7746,9 +7746,13 @@ mod tests {
         assert_eq!(text, "pen button click");
         gesture_binding_text_for_caps(&a, SHORTCUT_UNDO, 3, &mut text);
         assert_eq!(text, "3-finger tap +1");
-        // More pen slots are still one source (including the legal built-in duplicate).
+        // Clear page has no gesture built in (2.1.0-beta.2); more pen slots are still one source.
         gesture_binding_text_for_caps(&a, SHORTCUT_CLEAR_PAGE, 2, &mut text);
-        assert_eq!(text, "pen button hold");
+        assert_eq!(text, "no gesture");
+        let triple = GestureKey::Pen { button: PenBtn::Button, kind: PenKind::Triple };
+        assert_eq!(gesturemap_set(&mut a.gestures, triple, SHORTCUT_CLEAR_PAGE), 0);
+        gesture_binding_text_for_caps(&a, SHORTCUT_CLEAR_PAGE, 2, &mut text);
+        assert_eq!(text, "pen button triple-click");
         let frames = shape_frames("Z", &Draw::default());
         let points: Vec<FsPt> = frames.iter().map(|f| FsPt { x: f.x, y: f.y }).collect();
         let mut sample = FsSample::default();

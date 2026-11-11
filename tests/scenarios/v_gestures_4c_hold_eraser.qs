@@ -30,8 +30,8 @@ side on
 wait 1300
 side off
 expect library.record is pattern pen.Button.hold
-# Hold is already the built-in Clear page slot; Use explicitly moves it.
-expect library.record.line is Now for Clear page. Use moves it here.
+# The hold has no built-in action (2.1.0-beta.2: it was Clear page): nothing to move.
+expect library.record.line is pen button hold
 expect library.ui_at.500.1650 is record.use
 pentap 500 1650
 wait 100

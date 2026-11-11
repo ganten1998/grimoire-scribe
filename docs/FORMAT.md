@@ -1299,10 +1299,17 @@ before 2.0.0-beta.6 never read it.
 
 `gestures.ini`, beside the shortcut files, overlays touch and pen-button bindings and recorded
 finger shapes on the built-ins. With no file, two fingers down open the Graph, up opens the Links bar, left
-turns to the next page, and right to the previous page. The two-finger tap and one-finger directions
-have no built-in action. Three-finger patterns are available only when the panel reports at least
-three touch slots; the owner's Kindle reports two. The pen button's built-ins are
-`pen.Button.hold=clear-page`; triple-click is unassigned. RC1 files with the duplicate triple/hold Clear pair load as hold only. Custom assignments remain available.
+turns to the next page, and right to the previous page; one finger swiped left or right turns the page
+too (since 2.0.0-rc.9). The two-finger tap and one finger up or down have no built-in action.
+Three-finger patterns are available only when the panel reports at least three touch slots; the
+owner's Kindle reports two. The pen button has no built-in action since 2.1.0-beta.2: a hold fires
+with the pen hovering, and its built-in `pen.Button.hold=clear-page` (until 2.1.0-beta.1; RC1 had
+`pen.Button.triple=clear-page` too) cleared a page under a finger resting on the button. A file
+that holds the old built-ins reads as the new ones: `pen.Button.hold=clear-page` beside
+`pen.Button.triple=clear-page` (what RC1 wrote) or beside `pen.Button.triple=nothing` (what rc.2 to
+2.1.0-beta.1 wrote after reading RC1's pair) leaves both slots with nothing and unmarked, so the next
+save writes neither line. A `pen.Button.hold=clear-page` alone is the owner's choice and stays, as do
+all other assignments.
 
 The reader accepts the `shortcuts.ini` line rules: `#` and `;` comments, trimmed `key=value`, later
 duplicate keys win, case-insensitive keys, a 64 KiB file limit. The canonical writer starts with
@@ -1310,7 +1317,7 @@ these three comment lines, byte for byte:
 
 ```ini
 # Grimoire: gestures (Settings > Gestures). Built in unless a line says otherwise:
-# touch.2.down=index-map, touch.2.up=links, touch.2.left=next-page, touch.2.right=previous-page, pen.Button.hold=clear-page
+# touch.2.down=index-map, touch.2.up=links, touch.2.left=next-page, touch.2.right=previous-page
 # shape.ACTION=1,N,S1,S2[,S3]: a finger shape you drew; format 1, N samples; each sample is 32 points in drawing order, x then y as two hex digits, the larger side spanning 00-ff.
 ```
 
@@ -1338,8 +1345,9 @@ PEN, including `shortcuts` and `bluetooth-controller`. The momentary `hold-erase
 legal only in `hold` and `drag` slots; it starts erasing at button press and ends at release,
 without waiting for hold recognition. `pan` and `zoom` are registered PEN-only actions (internal
 IDs 82/83), legal only in a pen `drag` slot. A bound drag owns the contact and leaves no ink;
-an unbound or `nothing` drag keeps Settings' side-button ink choice. Built-in triple and hold
-may both own `clear-page`; this deliberate duplicate is legal. Unsupported `pen.Button2.*`
+an unbound or `nothing` drag keeps Settings' side-button ink choice. A file's triple and hold
+may both own `clear-page` (RC1's old built-ins, retired as they are read, above); no other
+duplicate is kept. Unsupported `pen.Button2.*`
 lines and all `pen.Eraser.*` lines are carried verbatim, never shown or dispatched. The eraser
 end continues to erase by contact, independently of gestures.
 

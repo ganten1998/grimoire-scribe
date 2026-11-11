@@ -67,10 +67,12 @@ expect pen.gesture is Button.triple
 expect editor.strokes is 1
 pen line 300 700 1300 700 20 0.6 0.6
 expect editor.strokes is 2
+# A hovering hold has no built-in action either (2.1.0-beta.2: it cleared the page, issue #39): the ink stays.
 pen hover 930 1100
 side on
 wait 1300
 expect pen.gesture is Button.hold
-expect editor.strokes is 0
+expect editor.strokes is 2
+expect toast is
 side off
 expect editor.hold_eraser is 0

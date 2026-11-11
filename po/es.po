@@ -1656,6 +1656,12 @@ msgstr ""
 msgid "Couldn't save links. Page unchanged."
 msgstr "No se pudieron guardar los enlaces. Página sin cambios."
 
+#. TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): a gesture or a shortcut (the pen
+#. button held, a finger shape, a key) cleared the page; the toolbar's Undo, or the undo gesture or key,
+#. brings back everything it took, in one step.
+#: rust/src/editor.rs
+msgid "Page cleared. Undo brings it back."
+msgstr "Página limpiada. Deshacer la recupera."
 
 #. TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): Delete in the Pages view
 #. could not delete the ticked pages (the blank page a notebook keeps could not be added).

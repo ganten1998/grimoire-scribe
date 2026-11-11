@@ -131,8 +131,11 @@ your notebooks and settings from `quire/` to `grimoire/` and removes the old Qui
   attached, tap it with Shift, Ctrl, Alt or Cmd held) for the number pad Pages uses (at 1 at first): the pages are added
   after the page you are on, on its paper, which stays open, and the Undo in Pages takes them back while they
   are still blank. The `new-pages` shortcut opens the same pad on any page.
-- **Pen button**: hold the button while drawing to highlight (or erase; Settings). Hold it while
-  hovering to clear the page. Clear removes ink and outgoing links together (not a PDF's own links, its tabs); Undo restores both.
+- **Pen button**: hold the button while drawing to highlight (or erase; Settings). Its clicks and a
+  hold while hovering do nothing until you give them an action in Settings > Gestures (until 2.1.0-beta.1
+  the hold cleared the page, under a finger merely resting on the button). The toolbar's broom clears the
+  page: ink and outgoing links together (not a PDF's own links, its tabs); Undo restores both. Cleared by a
+  gesture or a shortcut, the page says so in a toast: "Page cleared. Undo brings it back."
 - **The Index**: swipe down with two fingers for Graph, or tap the page counter for Pages. **Graph**, **List** and
   **Pages** share one navigation bar; Back returns to the notebook. Graph always shows every linked page of
   every notebook, each notebook's pages an island with its name over it (a library with too many linked pages
