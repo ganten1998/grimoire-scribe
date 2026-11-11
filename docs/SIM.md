@@ -872,7 +872,7 @@ never by its place, so that it does not break when the menu gains a row (2.0.0-b
 Leave out of the Graph above Delete and Remove folder).
 
 PDF import hooks (headless and test builds; compiled out of the Kindle build, listed in the Makefile's SIM_HOOKS):
-`GRIMOIRE_IMPORT_STABLE=fast` (a file is taken at the first look: no 2 s and 5 s wait), `GRIMOIRE_PDF_SLICE_PAGES=N`
+`GRIMOIRE_IMPORT_STABLE=fast` (a file is taken at the first look: no 2 s and 5 s wait; `hold`: no PDF in `import/` is ever taken, it stays Waiting), `GRIMOIRE_PDF_SLICE_PAGES=N`
 (slices of N pages), `GRIMOIRE_PDF_BANDS=N` (N above 1: band mode), `GRIMOIRE_PDF_NO_MAP=1` (the device refuses the
 private mapping: the worker reads the file whole), `GRIMOIRE_PDF_FREE_BYTES=N` (free storage as N bytes),
 `GRIMOIRE_PDF_WATCHDOG_MS=N` (the page watchdog), `GRIMOIRE_PDF_TEST_CRASH_PAGE=N`, `..._HANG_PAGE=N`,
