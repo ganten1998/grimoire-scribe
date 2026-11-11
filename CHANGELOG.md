@@ -1,6 +1,6 @@
 # Changelog
 
-## 2.1.0-beta.2 (unreleased)
+## 2.1.0-beta.2 (2026-11-11)
 
 - **Closing a big notebook no longer redraws every page.** The PDF of a notebook (the mirror in `PDFs/`) kept
   every page drawn at every close of a changed notebook: minutes on a 400-page planner, with the one background

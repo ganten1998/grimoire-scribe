@@ -2301,3 +2301,18 @@ None of this has run on a Scribe. Read the screens; nothing here needs grimoire.
    thousands of glyphs), and whether it ends in "Took too long to read.".
 4. **Nothing else moved.** Japanese names, accented names, the clock and every screen in Spanish and Japanese
    draw as in 2.1.0-beta.1.
+
+## 2.1.0-beta.2
+
+The second 2.1 beta: everything in CHANGELOG's 2.1.0-beta.2 section. Automated: the full gate on the release
+commit with the pinned toolchain; the Linux sandbox tests ran as root for the first time (10 of 11 in a VM on
+2026-11-10, the eleventh a test's own race, rewritten since; CI's `sandbox` job is their first run there). S1 ran on
+the owner's Scribe on 2026-11-09 (every sandbox step works; a planner page in 90 ms). On the owner's Scribe, with
+the development builds of 2026-11-09 to 2026-11-11 (the last, `f8de55aa`, is this release's code but for this
+commit): a 74-page gray planner dropped in `import/` became a notebook in the sandbox with its 1,161 tabs working; a
+second copy was recognised as imported before; two colour PDFs imported and their notebooks' PDFs came out in
+colour; a PDF with a password was refused once, without a second toast; three fonts of his own were checked one
+job each and used; a PDF and a picture folder with Chinese and Japanese names imported; a 380-page planner opened
+from KOReader (Open this book in Grimoire) came in with its 6,363 tabs; everything else he used looked right. The
+What's new note was vetted by the owner. Still to check on a device: this release's own bundle (the test of step 6).
+
