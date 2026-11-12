@@ -2439,6 +2439,11 @@ round) was checked by him on his Scribe that day: good. The owner then made this
 last round (the sections above: nebuff's main with the lasso resize, Disable and the 12-hour clock; the pen button's
 hold no longer clearing the page; Settings > Wi-Fi; the keyboard's caret, cursor keys and copy and paste). Read-only
 probes on his Scribe (2026-11-11, values masked) settled the Wi-Fi helper's reader, which then listed his 10 saved
-networks and named the current one. The extended What's new was vetted by him. Still to check on a device: this
-release's bundle with the last round (the test of step 6).
+networks and named the current one. The extended What's new was vetted by him. This release's bundle with the
+last round (build `e52d37dbdf51`, from `be5a0886`, its binary byte for byte the one the gate tested) was installed
+on the owner's Scribe (firmware 5.20.1.0.2) on 2026-11-11, after a backup, with the notebooks unchanged and
+KOReader left alone. The owner then tried the last round on it: a lasso selection resized from a corner; the pen
+button held with the pen near the screen, the page staying; Disable in Settings > Gestures; the 12-hour clock; the
+keyboard's ◀ ▶ and edit keys in a rename and in Find, and its narrower text box; Settings > Wi-Fi with the saved
+networks, a switch to another and back, and the sheet with Wi-Fi off. The owner's verdict, 2026-11-12: "all good".
 
