@@ -29,7 +29,9 @@ radio_on() {
 # profileData's answer holds each saved network's password (psk): it goes from lipc-hash-prop straight
 # into the reader below, which keeps the essid values alone and nothing else, so no password reaches a
 # variable, a file, this helper's output or a log. The reader knows one format: key = "value" (or
-# "key": "value", key: "value"), values quoted with backslash escapes, numbers bare, braces, brackets,
+# "key": "value", key: "value"), values quoted with backslash escapes, numbers bare or in parentheses (the
+# Scribe's firmware 5.20.1 answers "Hash Index: N" and then tab-indented key = "value" and key = (number)
+# lines, a psk line among them, read on the owner's Scribe on 2026-11-11 with every value masked), braces, brackets,
 # commas and words without a value around them. Anything else, an unquoted value above all (a
 # password among them), makes it print no name at all ("list=0"): it fails closed. A name with a
 # backslash (an escape this cannot undo), a control character, or more than 32 bytes is left out.
@@ -69,6 +71,7 @@ $0 == "#lipc-failed" { failed = 1; next }
         }
         if (match(s, /^[ \t]+/)) { s = substr(s, RLENGTH + 1); continue }
         if (match(s, /^-?[0-9]+(\.[0-9]+)?/)) { key = ""; s = substr(s, RLENGTH + 1); continue }
+        if (match(s, /^\([A-Za-z0-9_.+-]*\)/)) { key = ""; s = substr(s, RLENGTH + 1); continue }
         if (key != "") { bad = 1; break }
         if (match(s, /^[][{}(),;=:]+/)) { s = substr(s, RLENGTH + 1); continue }
         if (match(s, /^[A-Za-z_][A-Za-z0-9_]*/)) { s = substr(s, RLENGTH + 1); continue }

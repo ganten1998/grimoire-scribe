@@ -32,6 +32,11 @@ elif name=='lipc-hash-prop':
     for i,r in enumerate(rows):
         if fmt=='json':print(json.dumps(r,ensure_ascii=False))
         elif fmt=='unquoted':print('{ '+', '.join(f'{k} = {v}' for k,v in r.items())+' }')
+        elif fmt=='kindle':
+            # the Scribe's own layout (firmware 5.20.1, read with every value masked on 2026-11-11)
+            print(f'Hash Index: {i}')
+            for k,v in r.items():print(f'\t{k} = ({v})' if isinstance(v,int) else f'\t{k} = {q(v)}')
+            print()
         else:print(f'[{i}] = {{ '+', '.join(f'{k} = {v if isinstance(v,int) else q(v)}' for k,v in r.items())+' }')
 else:
     key,value=a[-2],a[-1]
@@ -95,7 +100,7 @@ class WifiHelper(unittest.TestCase):
             for text in (r.stdout,r.stderr):
                 self.assertNotIn(psk,text);self.assertNotIn(psk.encode().hex(),text)
     def test_networks_lists_the_saved_names_in_hex_and_never_a_password(self):
-        for fmt in ('kv','json'):
+        for fmt in ('kv','json','kindle'):
             self.state(wirelessEnable=1,enable=1,profiles=self.PROFILES,current={'essid':'Home','netid':1},format=fmt)
             r=self.run_helper('networks');self.assertEqual(r.returncode,0,r.stderr)
             self.assertEqual(self.saved(r.stdout),['Home','Caf\u00e9 \u732b','Open'],fmt)
