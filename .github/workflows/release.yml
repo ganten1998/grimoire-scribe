@@ -423,6 +423,12 @@ jobs:
           rustup toolchain install "$RUST_VERSION" --profile minimal --no-self-update
           rustup default "$RUST_VERSION"
           echo "RUST_BIN=$(dirname "$(rustup which --toolchain "$RUST_VERSION" rustc)")" >> "$GITHUB_ENV"
+      - name: A tmpfs at /tmp, as the Kindle has
+        # The worker's jail is made in /tmp and the sandbox refuses anything but tmpfs there (the Kindle's /tmp is
+        # tmpfs; GitHub's runners have it on disk), so every spawn would fail at its chroot step without this.
+        run: |
+          sudo mount -t tmpfs -o size=1g,mode=1777 tmpfs /tmp
+          findmnt -no FSTYPE /tmp
       - name: The sandbox tests, as root
         run: |
           (cd rust && PATH="$RUST_BIN:$PATH" cargo fetch --locked)

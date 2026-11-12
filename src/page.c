@@ -242,12 +242,12 @@ static void render_layers(Canvas *c, const Page *p, Rect region, float dpi, int 
         int np = 0;
         const Piece *pcs = ps ? pieces_of(ps, i, &np) : NULL;
         // The pens are read as it goes (work_pump, common.h): a dense page took 1.2 s on the Kindle.
-        // Every 128 points is 3-15 ms there, depending on the tool.
+        // Every 512 points is ~3-15 ms there, depending on the tool. Batch more during page turns.
         if (!pcs) {  // whole (also when there was no memory to cut it)
             stroke_brush_begin(&b, s, dpi, copy, u.x, u.y, u.w);
             for (int k = 0; k < s->n; k++) {
                 brush_add(&b, c, &s->pts[k]);
-                if ((k & 127) == 127) work_pump();
+
             }
             work_pump();
             continue;
@@ -261,7 +261,7 @@ static void render_layers(Canvas *c, const Page *p, Rect region, float dpi, int 
             }
             for (int m = pc->first; m < pc->end; m++) {
                 brush_add(&b, c, &s->pts[m]);
-                if (((m - pc->first) & 127) == 127) work_pump();
+
             }
             next = pc->end;
         }

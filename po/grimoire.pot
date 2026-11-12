@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: Grimoire 2.1.0-beta.2\n"
 "Report-Msgid-Bugs-To: https://github.com/ganten1998/grimoire-scribe/issues\n"
-"POT-Creation-Date: 2026-11-10 15:35-0600\n"
+"POT-Creation-Date: 2026-11-11 18:19-0600\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -1380,6 +1380,12 @@ msgstr ""
 msgid "Sideways, show the whole page"
 msgstr ""
 
+#. TRANSLATORS: the Display sheet's checkbox row: the clock on a notebook page shows the time on
+#. the 12-hour clock ("2:32 PM") instead of the 24-hour one ("14:32"). About 850 px at 44 px.
+#: rust/src/dispmenu.rs
+msgid "Display time as 12 hour"
+msgstr ""
+
 #. TRANSLATORS: the heading of the Display sheet's rows about the Kindle's sleep.
 #: rust/src/dispmenu.rs
 msgid "Sleep"
@@ -1605,6 +1611,13 @@ msgstr ""
 
 #: rust/src/editor.rs
 msgid "Couldn't save links. Page unchanged."
+msgstr ""
+
+#. TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): a gesture or a shortcut (the pen
+#. button held, a finger shape, a key) cleared the page; the toolbar's Undo, or the undo gesture or key,
+#. brings back everything it took, in one step.
+#: rust/src/editor.rs
+msgid "Page cleared. Undo brings it back."
 msgstr ""
 
 #. TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): Delete in the Pages view
@@ -2558,6 +2571,40 @@ msgctxt "key"
 msgid "del"
 msgstr ""
 
+#. TRANSLATORS: the edit page's keys (the text line's edit key opens it), in bold at 44 px: Select all
+#. selects the whole text (a key as wide as the keyboard, 1760 px), Cut, Copy and Paste (each a third,
+#. 580 px) take the selected text to the keyboard's clipboard or type what it holds, Start and End (each
+#. half, 875 px) put the caret at the text's start and at its end.
+#: rust/src/keyboard.rs
+msgctxt "key"
+msgid "Select all"
+msgstr ""
+
+#: rust/src/keyboard.rs
+msgctxt "key"
+msgid "Cut"
+msgstr ""
+
+#: rust/src/keyboard.rs
+msgctxt "key"
+msgid "Copy"
+msgstr ""
+
+#: rust/src/keyboard.rs
+msgctxt "key"
+msgid "Paste"
+msgstr ""
+
+#: rust/src/keyboard.rs
+msgctxt "key"
+msgid "Start"
+msgstr ""
+
+#: rust/src/keyboard.rs
+msgctxt "key"
+msgid "End"
+msgstr ""
+
 #: rust/src/keyboard.rs
 msgctxt "key"
 msgid "space"
@@ -2609,7 +2656,7 @@ msgstr ""
 msgid "Name: %s"
 msgstr ""
 
-#. TRANSLATORS: a held page's card in the Pages view, under its icon (950 px at 34 px): give the page
+#. TRANSLATORS: a held page's sheet in the Pages view, a row (about 950 px at 34 px): give the page
 #. a name (its naming keyboard, titled Page name).
 #: rust/src/library.rs rust/src/mapview.rs rust/src/pagesview.rs
 msgid "Rename"
@@ -2793,6 +2840,8 @@ msgstr ""
 msgid "Couldn't save gestures."
 msgstr ""
 
+#. TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): Disable in the record
+#. card removed the action's gestures; %s is the action's name ("Undo", "Next page").
 #: rust/src/library.rs
 #, c-format
 msgid "No gestures for %s now."
@@ -3044,6 +3093,95 @@ msgstr ""
 msgid "Couldn't forget controller"
 msgstr ""
 
+#. TRANSLATORS: (Settings > Wi-Fi) its status line, 1470 px at 44 px in bold or two lines at 34 px; %s
+#. is a Wi-Fi network's name as the Kindle saved it (shortened if it is long). Connecting: a switch
+#. to that network is under way; Could not connect: it did not connect in 45 seconds, or the Kindle
+#. refused it; Connected to: the network the Kindle is connected to.
+#: rust/src/library.rs
+#, c-format
+msgid "Connecting to %s…"
+msgstr ""
+
+#: rust/src/library.rs
+#, c-format
+msgid "Could not connect to %s."
+msgstr ""
+
+#: rust/src/library.rs rust/src/share.rs
+msgid "Checking Wi-Fi…"
+msgstr ""
+
+#: rust/src/library.rs rust/src/share.rs
+msgid "Could not read or change Wi-Fi."
+msgstr ""
+
+#: rust/src/library.rs rust/src/share.rs
+msgid "Wi-Fi is off"
+msgstr ""
+
+#: rust/src/library.rs
+#, c-format
+msgid "Connected to %s"
+msgstr ""
+
+#: rust/src/library.rs rust/src/share.rs
+msgid "Connected to Wi-Fi"
+msgstr ""
+
+#: rust/src/library.rs rust/src/share.rs
+msgid "Wi-Fi is on; no connection yet"
+msgstr ""
+
+#: rust/src/library.rs rust/src/share.rs
+msgid "Wi-Fi is on; connection unknown"
+msgstr ""
+
+#: rust/src/library.rs rust/src/share.rs
+msgid "Wi-Fi unavailable"
+msgstr ""
+
+#. TRANSLATORS: starts the share server again (388 px at 44 px, or 34 px).
+#: rust/src/library.rs rust/src/share.rs
+msgid "Retry"
+msgstr ""
+
+#: rust/src/library.rs rust/src/share.rs
+msgid "Turn off Wi-Fi"
+msgstr ""
+
+#: rust/src/library.rs rust/src/share.rs
+msgid "Turn on Wi-Fi"
+msgstr ""
+
+#. TRANSLATORS: (Settings > Wi-Fi) a line in place of the saved networks: they could not be read
+#. (with the radio off, the first: they may be read only while it is on). 1470 px at 44 px in
+#. bold, or two lines at 34 px.
+#: rust/src/library.rs
+msgid "Saved networks could not be read."
+msgstr ""
+
+#: rust/src/library.rs
+msgid "Turn on Wi-Fi to see the saved networks."
+msgstr ""
+
+#. TRANSLATORS: (Settings > Wi-Fi) the Kindle has no saved Wi-Fi network; Grimoire adds none itself.
+#: rust/src/library.rs
+msgid "No saved networks. Add one in Kindle settings or KOReader."
+msgstr ""
+
+#. TRANSLATORS: (Settings > Wi-Fi) the row under the saved networks when they take more than
+#. one page: shows the next page (after the last, the first). %d of %d: this page, the pages.
+#: rust/src/library.rs
+#, c-format
+msgid "More networks (%d of %d)"
+msgstr ""
+
+#. TRANSLATORS: (Settings) the bottom button that opens the Wi-Fi sheet, about 200 px at 34 px under
+#. its icon; also that sheet's title, and the Share screen's button and card title.
+#: rust/src/library.rs rust/src/share.rs
+msgid "Wi-Fi"
+msgstr ""
+
 #. TRANSLATORS: Gestures row: action and first binding plus +N, about 1300 px with a thumbnail, two lines at 34 px.
 #: rust/src/library.rs
 #, c-format
@@ -3106,6 +3244,12 @@ msgstr ""
 
 #: rust/src/library.rs
 msgid "Try again"
+msgstr ""
+
+#. TRANSLATORS: the record card's Disable button (about 290 px at 34 px in capitals): it removes
+#. every gesture for the action (the built-in ones too), so the row says "no gesture".
+#: rust/src/library.rs
+msgid "Disable"
 msgstr ""
 
 #: rust/src/library.rs
@@ -3223,9 +3367,11 @@ msgstr ""
 msgid "Data: %s"
 msgstr ""
 
-#. TRANSLATORS: Settings' bottom buttons, each a word under its icon, about 240 px at 34 px.
-#. Pair opens the Pair sheet (a Bluetooth controller: the helper on or off, pairing one; also that
-#. sheet's title), Gestures opens gesture bindings, Updates checks for a newer Grimoire.
+#. TRANSLATORS: Settings' bottom buttons, each a word under its icon, about 200 px at 34 px (the
+#. four share about 810 px upright; a longer word takes room from the shorter ones). Pair opens the
+#. Pair sheet (a Bluetooth controller: the helper on or off, pairing one; also that sheet's title),
+#. Wi-Fi the Wi-Fi sheet (the radio and the Kindle's saved networks), Gestures opens gesture
+#. bindings, Updates checks for a newer Grimoire.
 #: rust/src/library.rs
 msgid "Pair"
 msgstr ""
@@ -4121,16 +4267,7 @@ msgstr ""
 msgid "Multi-select"
 msgstr ""
 
-#. TRANSLATORS: under a held page's title in the Pages view (about 900 px at 34 px): how many pages, in this
-#. notebook or others, have links to it.
-#: rust/src/pagesview.rs
-#, c-format
-msgid "Linked from %d page"
-msgid_plural "Linked from %d pages"
-msgstr[0] ""
-msgstr[1] ""
-
-#. TRANSLATORS: a held page's card in the Pages view, under its icon (950 px at 34 px): move the page
+#. TRANSLATORS: a held page's sheet in the Pages view, a row (about 950 px at 34 px): move the page
 #. (or the ticked pages, with how many) to another place in the notebook, on the Go to page number pad.
 #: rust/src/pagesview.rs
 #, c-format
@@ -4143,7 +4280,7 @@ msgstr[1] ""
 msgid "Move to..."
 msgstr ""
 
-#. TRANSLATORS: the same card: copy the page (or the ticked pages) into another notebook, picked from
+#. TRANSLATORS: the same sheet: copy the page (or the ticked pages) into another notebook, picked from
 #. the notebooks and folders.
 #: rust/src/pagesview.rs
 #, c-format
@@ -4155,6 +4292,15 @@ msgstr[1] ""
 #: rust/src/pagesview.rs
 msgid "Copy to notebook..."
 msgstr ""
+
+#. TRANSLATORS: under a held page's title in the Pages view (about 900 px at 34 px): how many pages, in this
+#. notebook or others, have links to it.
+#: rust/src/pagesview.rs
+#, c-format
+msgid "Linked from %d page"
+msgid_plural "Linked from %d pages"
+msgstr[0] ""
+msgstr[1] ""
 
 #: rust/src/pagesview.rs
 msgid "Enter a page number in this notebook."
@@ -4563,38 +4709,6 @@ msgid "From a terminal: %s <address above>"
 msgstr ""
 
 #: rust/src/share.rs
-msgid "Wi-Fi"
-msgstr ""
-
-#: rust/src/share.rs
-msgid "Checking Wi-Fi…"
-msgstr ""
-
-#: rust/src/share.rs
-msgid "Could not read or change Wi-Fi."
-msgstr ""
-
-#: rust/src/share.rs
-msgid "Wi-Fi is off"
-msgstr ""
-
-#: rust/src/share.rs
-msgid "Connected to Wi-Fi"
-msgstr ""
-
-#: rust/src/share.rs
-msgid "Wi-Fi is on; no connection yet"
-msgstr ""
-
-#: rust/src/share.rs
-msgid "Wi-Fi is on; connection unknown"
-msgstr ""
-
-#: rust/src/share.rs
-msgid "Wi-Fi unavailable"
-msgstr ""
-
-#: rust/src/share.rs
 msgid "Connects to saved networks."
 msgstr ""
 
@@ -4604,19 +4718,6 @@ msgstr ""
 
 #: rust/src/share.rs
 msgid "Turning Wi-Fi off disconnects SSH and sharing."
-msgstr ""
-
-#: rust/src/share.rs
-msgid "Turn on Wi-Fi"
-msgstr ""
-
-#: rust/src/share.rs
-msgid "Turn off Wi-Fi"
-msgstr ""
-
-#. TRANSLATORS: starts the share server again (388 px at 44 px, or 34 px).
-#: rust/src/share.rs
-msgid "Retry"
 msgstr ""
 
 #: rust/src/share.rs
@@ -4853,6 +4954,28 @@ msgstr ""
 #, c-format
 msgctxt "date"
 msgid "%s %d, %02d:%02d"
+msgstr ""
+
+#. TRANSLATORS: the marker for the morning on the 12-hour clock (before noon).
+#: rust/src/util.rs
+msgctxt "date"
+msgid "AM"
+msgstr ""
+
+#. TRANSLATORS: the marker for the afternoon on the 12-hour clock (after noon).
+#: rust/src/util.rs
+msgctxt "date"
+msgid "PM"
+msgstr ""
+
+#. TRANSLATORS: a date and time on the 12-hour clock, "Oct 10, 2:32 PM": the month (as above),
+#. the day, the hour (1 to 12), the minutes, then AM or PM. Reorder them with %1$s, %2$d, %3$d,
+#. %4$02d and %5$s ("%2$d %1$s, %3$d:%4$02d %5$s" is "10 Oct, 2:32 PM"), using that form for
+#. all five.
+#: rust/src/util.rs
+#, c-format
+msgctxt "date"
+msgid "%s %d, %d:%02d %s"
 msgstr ""
 
 #. TRANSLATORS: a date, "Oct 10", in a new notebook's name ("Notebook Oct 10"): the month (as

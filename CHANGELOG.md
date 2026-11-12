@@ -81,6 +81,24 @@
   60 s, then not until Grimoire starts again; the fonts are checked one at a time, behind an export or a PDF
   slice; a font whose check ran out of time gets a second try; a Done that cannot load the font says so. New in `settings.ini`: `font=file:<path>` and `font_bold=`, which 2.1.0-beta.1 and older keep as
   lines they do not know (they draw Terminess). The Kindle binary is 10.6 MB and the zip 5.5 MB with it.
+- **Settings > Wi-Fi switches between the Kindle's saved networks** (issue #40). A Wi-Fi button in Settings'
+  bottom row, beside Pair, opens a sheet that turns Wi-Fi on or off, says which network the Kindle is connected
+  to, and lists the networks the Kindle has saved, that one first with a check (seven a page; More networks shows
+  the next). Tap one to switch: "Connecting to ...", then "Connected to ...", or "Could not connect to ..." when
+  the Kindle refuses it or has not connected in 45 seconds (Grimoire then changes nothing more). Switching drops
+  Share, Live view and SSH from the network you leave. Adding a network or a password stays in the Kindle's
+  settings and KOReader. No Wi-Fi password reaches the app, its files or its log (its helper keeps only the
+  networks' names from what the Kindle answers); no network is added, changed or forgotten; no network name is
+  logged.
+- **The keyboard has a caret, and copy and paste for typed text** (issue #36). Every keyboard (names, renames,
+  Find, link and page names, Go to page, the kana pad) has ◀ and ▶ at the right end of its text line: they move
+  the caret a letter, and held they go on as delete does. A tap on the text puts the caret there; a drag across
+  it selects. Typing and delete act at the caret, replacing or taking a selection, and ゛小 changes the kana
+  before the caret. The key beside the arrows opens the edit page: Select all, Cut, Copy, Paste, and Start and
+  End for the caret; abc (or あ, or 123) goes back. What you cut or copy is kept until Grimoire closes and
+  pastes into any keyboard; it is apart from the lasso's ink clipboard. With a keyboard attached (and shortcuts
+  enabled), the arrows, Home and End move the caret (Shift selects) and Ctrl or Cmd with A, C, X and V select
+  all, copy, cut and paste. The count pad stays as it is.
 - The text cache now holds at most 4 MB of letters (it was only limited by their number), which matters for
   large letters of your own fonts.
 - A character no font in Grimoire can draw shows as a box instead of disappearing, so a name no longer looks cut
@@ -96,6 +114,24 @@
   every comparison), by nebuff.
 - Hardening: Grimoire no longer follows links planted in its own folders when it saves, cleans up or prunes its
   caches, and a late sandbox reply from the separate process that reads PDFs and pictures now counts as a failure.
+- **The pen button's hold no longer clears the page by itself.** Holding the pen's button with the pen near the
+  screen cleared the page after a second, so a finger resting on the button wiped it (issues #36, #39). The pen
+  button now has no gesture until you give it one in Settings > Gestures, and a hold you recorded yourself for
+  Clear page stays. When Clear page runs from a gesture, a key or a controller button, a toast says "Page
+  cleared. Undo brings it back."; Undo does, in one step. The toolbar's broom clears as before, without a toast.
+  A `gestures.ini` that still holds the old built-in (written by 2.0.0-rc.1, or carried since) loses it.
+- **Resize a lasso selection.** The selection's box has a handle at each corner: drag one to make the ink larger
+  or smaller, the opposite corner staying where it is; the links you drew travel and scale with it, a PDF's tabs
+  stay, and Undo takes it back in one step. A drag of a selection that holds a lot of ink starts sooner (its ink
+  is drawn again once, not once for each edge of the outline) (issue #37), by nebuff.
+- **A 12-hour clock.** Settings > Display, "Display time as 12 hour": the clock in the corner of a page says
+  `Nov 14, 10:13 PM` (in Spanish `14 nov, 10:13 p. m.`); every other screen keeps the 24-hour clock. New in
+  `settings.ini`: `clock_12h`, which 2.1.0-beta.1 and older keep as a line they do not know. By nebuff.
+- **Delete pages from the Pages view's bottom row.** With pages ticked, the bottom row has a trash button that
+  deletes them, and a tap on a page already ticked unticks it (no Multi-select needed). A held page's card now
+  lists its actions as the other menus do, an icon beside each (issue #18), by nebuff.
+- **No gesture for an action.** Settings > Gestures' record card has Disable: the action keeps no gesture, a
+  built-in one included (both directions on a paired row), and its row says "no gesture" (issue #44), by nebuff.
 
 ## 2.1.0-beta.1 (2026-11-08)
 

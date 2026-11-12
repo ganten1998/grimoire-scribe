@@ -4,6 +4,44 @@ Work that was decided, deferred or found but not done yet. Keep this current: wh
 move it to "Done" with the version; when something is deferred, add it here with who decided and
 why. Newest decisions first within each section.
 
+## nebuff's main and Clear page (2.1.0-beta.2, lane M, 2026-11-11): what waits
+
+- **Bulk erase slowdown (issue #42) is not fixed in the app.** PR #43 ("Fix slowdown") changed the C tree only
+  (`src/page.c`: the render's work pump every 512 points instead of 128; and HOSTCC to gcc in the Makefile). The
+  app is the Rust port, whose renderer (`rust/src/page.rs`, `page_render`) still pumps every 128 points, on
+  purpose: the pump reads the pens during a long render, whose kernel buffers hold 50 to 175 ms
+  (docs/INK-PERFORMANCE.md), so a slower pump would lose pen samples rather than speed the erase. The ~3 s after a
+  bulk erase needs a trace on the Scribe (grimoire.log's erase and undo timings on a dense page) before a fix.
+- **The C tree's other main commits** (#27 to #34: the share server's route table, its NULL checks and SIGCHLD
+  handler, the page turn that skips a save of an unchanged page, the too-small link stroke kept as ink) change only
+  `src/`, which the app does not build; the Rust share server and editor have their own code for each. Their
+  behaviour in the app was not asked for and is not ported.
+- **An Undo button on the toast.** Clear page from a gesture or a key says "Page cleared. Undo brings it back."
+  The toast is an overlay with no controls (never in App.screen, a Live view layer), so a button on it would need
+  hit testing ahead of the screen's own input, a pen contact on it kept from the page, and Live view's copy. For
+  a later version if the owner wants it.
+- **Japanese for the new strings** (nebuff): "Display time as 12 hour", "Disable", the 12-hour date
+  ("%s %d, %d:%02d %s"), AM and PM (context "date"), "Page cleared. Undo brings it back.". Until then a
+  Japanese 12-hour clock reads the month in Japanese and the rest as English writes it.
+- **Disable on a paired row's second card** clears only that direction (the first card's Disable clears both).
+
+## Settings > Wi-Fi (2.1.0-beta.2, lane W): choices for the owner, and what waits
+
+- **Not confirmed on a Scribe (2026-11-11)**: the helper's network verbs are built on KOReader's Kindle backend
+  and have not met wifid. The lipc-hash-prop output format (the reader knows quoted values and fails closed on
+  anything else), whether wifid lists the saved networks with the radio off, and whether ensureConnection
+  switches away from a network the Kindle is connected to are the read-only probes and checks at the end of
+  docs/TESTING.md ("Wi-Fi networks (lane W)"). If probe 4 shows another format, only the helper's reader changes.
+- **Choices the brief left open, taken by lane W**: the button sits in Settings' bottom row beside Pair (no other
+  place in Settings had room), which moved Gestures' tap point from x = 890 to 1000; a failed switch changes
+  nothing more (no switch back to the network before: the Kindle's own service decides, and only an explicit tap
+  changes the network); the saved networks are read from profileData (all of them, in range or not) rather than
+  a scan (KOReader's Kindle code does not use the scan list while connected, the case a switch starts from).
+- **Left for later**: the Share screen's Wi-Fi card (and Live view's pairing card) still turns the radio on and off
+  only; it could open the same list. A scan (scanList) could mark which saved networks are in range, with their
+  signal. A saved network whose name the tool writes with an escape (a backslash) is left out of the list. Adding
+  a network with its password stays out (the brief: the Kindle's settings and KOReader do it).
+
 ## PDF import (2.1.0-beta.2, lane L5): what waits, and what is for the owner
 
 - **S1 ran on the owner's Scribe (2026-11-09)**: every sandbox step works there, a private mapping of a PDF on
@@ -76,6 +114,28 @@ why. Newest decisions first within each section.
   has three duplicates (fearless_simd, miniz_oxide, syn), not the plan's five. flate2, smallvec and syn were
   moved to versions published before 2026-11-02 so that every crate is two weeks old at a tag on or after
   2026-11-16 (`tools/check-crate-dates.py --tag-date 2026-11-16` passes).
+
+## The keyboard's caret and text copy and paste (2.1.0-beta.2, last round, lane K): choices for the owner, and what waits
+
+Built from issue #36 (docs/DESIGN.md, Text and the keyboard). The lane chose, the owner to confirm:
+- **Where the keys are.** ◀ and ▶, and the edit key beside them (the copy icon), sit at the right end of the text
+  line on every page but the count pad's, each a letter key's width: no row was added and no key moved. The text
+  box is the line left of them (1229 px upright, 1663 sideways, where it was 1760 and 2380).
+- **The edit page** (Gboard's way): Select all, Cut, Copy, Paste, Start and End, with Cancel, abc, space, delete
+  and Done along the bottom. A range is selected by a drag across the text (pen or finger) or Shift with the
+  arrows on a paired keyboard; there is no on-screen Select toggle.
+- **Copy says nothing**, as the owner wanted no "Saved" toast (2026-11-04): the selection stays. Copy and Cut
+  with nothing selected do nothing (they do not take the whole text); Paste with nothing copied does nothing.
+- **The clipboard** lasts until Grimoire closes and is never written to a file. Go to page's number pad pastes
+  the digits alone. Control characters are left out, as a name opened on the keyboard drops them.
+
+What waits:
+- A paired keyboard's arrow held down moves the caret once: `hidkeys_event` drops the kernel's autorepeat for
+  every key (above). A repeat of its own would need a timer of held text keys.
+- Letters typed on a paired keyboard still type nothing in a field (that needs a keyboard layout).
+- No word-wise moves (Ctrl or Alt with the arrows), no double tap to select a word, and a drag selects only the
+  part of a long name the line shows (Select all, Start and End, or Shift with the arrows reach the rest).
+- Cut, Copy and Paste are never drawn disabled when they would do nothing.
 
 ## Planned, not scheduled: a sleep screen picture of Grimoire's own (the owner, 2026-11-09)
 
@@ -913,8 +973,9 @@ items of Document links. Left:
   Backspace auto-repeat, from the RC8 review's list. Delete held repeats on every keyboard after 400 ms, every
   65 ms, never queueing a refresh behind the panel (docs/DESIGN.md, Text and the keyboard). Left as it is: a
   hardware keyboard's held Backspace on a count pad deletes one digit, as `hidkeys_event` drops the kernel's
-  autorepeat for every key (text fields take no typed keys at all, only Esc); repeating it would let autorepeat
-  into the path every shortcut shares, for a count of a few digits.
+  autorepeat for every key (text fields take no typed keys at all, only Esc; 2.1.0-beta.2 adds the arrows, Home,
+  End and Ctrl or Cmd with A, C, X and V, so a held arrow moves the caret one letter, see below); repeating it
+  would let autorepeat into the path every shortcut shares, for a count of a few digits.
 - 2.0.0-beta.2 (unreleased, claude/b3-pv3; the owner's rulings of 2026-11-03, verbatim): (a) "The graph button if
   there is to be one shouldn't be at the top -- we had good visual soundness with 5 icons. For now just the drag
   to summon on the main menu." The Library's top bar is back to its five icons (Exit, Settings, Share, Folder,

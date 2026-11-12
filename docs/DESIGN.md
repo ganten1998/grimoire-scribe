@@ -337,7 +337,7 @@ draws them. White ink and the precise eraser make them.
   type on the lift, not on the touch-down, since which kana it is is the swipe: `Keyboard.flick`
   holds the way the pressed key is swiped (0 still on it), the key's label shows that kana while
   the finger moves, and the pen may end well off the key. One modifier key (`KB_KEY_KANA_MOD`, ゛小)
-  rewrites the last character of the text instead of adding one (`change_last`, `kana_cycle`):
+  rewrites the character before the caret (the one typed last) instead of adding one (`change_last`, `kana_cycle`):
   unvoiced, voiced, half-voiced, small, round again (か が か; は ば ぱ は; つ づ っ つ; や ゃ や),
   which covers dakuten, handakuten and the small kana in one key. カ (`KB_KEY_KATA`) switches the
   pad to katakana and back (`Keyboard.kata`; the labels follow), and it types on the lift too.
@@ -361,6 +361,49 @@ draws them. White ink and the precise eraser make them.
   only what any letter does. `keyboard_open` starts every keyboard with shift off, so caps
   on ends when the keyboard closes (Find's Done with no page to go to keeps its keyboard open, and the state
   with it). A paired keyboard never reaches this state: its keys type nowhere but on the count pad.
+- The caret, the selection and the clipboard (2.1.0-beta.2, issue #36). The text has a caret,
+  `Keyboard.caret`, a byte offset at a character's first byte (or the end), and a selection's other end,
+  `Keyboard.anchor` (the caret's own with nothing selected); `keyboard_open` puts both after the text, so
+  typing a name goes on as it always did. A key types at the caret, in place of a selection
+  (`replace_selection`: a character that would not fit is not typed); delete takes the selection, or the
+  character before the caret; the kana pad's ゛小 the character before the caret. The text line holds three
+  keys at its right end on every page but the count pad's (`line_keys`, each a letter key's width, the
+  line's 120 px tall): the edit key (md-content_copy), ◀ and ▶ (the chevrons), so the text box is the line
+  left of them (`field_rect`). ◀ and ▶ move the caret a whole character, at the touch-down (as a character
+  key types), and with a selection let it go at its start or end; held, they repeat as delete does
+  (`keyboard_repeat` repeats whichever of the three is held, `can_repeat`: until the caret can go no
+  further, so a hold on ◀ at the start never starts, and delete held inside the text stops at its start).
+  A contact on the text itself (`Keyboard.field_drag`) puts the caret at the character boundary nearest to
+  it, at the touch-down, from where the line was last drawn (`caret_at_x`: left of the text, its first
+  shown character; right of it, the end), and its moves select from there to where it is; the lift leaves
+  it. The count pad's line takes none of this: its count has its caret at the end, always. The line shows
+  the text from `Keyboard.scroll`, kept so the caret is in view (`text_scroll`: from where it was, or the
+  caret if that went before it; on until the text to the caret fits; back while all the rest fits), which
+  with the caret at the end is the text's longest tail that fits, what it always showed; only what fits is
+  drawn (`shown_end`), so nothing is cut with "...". The caret after the text is drawn as it always was (5
+  px, 4 px on); between two characters it is 3 px in the space before the second, never over a letter. A
+  selection is white on a black box as tall as the caret, with no caret beside it. The edit key opens the
+  edit page (`EDIT_PAGE`, `Keyboard.prev_page`): Select all across the page, Cut, Copy and Paste, Start
+  and End (the caret to the text's start and end), in the four rows' height above a bottom row of Cancel,
+  the way back (abc, あ from the kana pad, 123 from the number pad), space, delete (as wide as Done, for
+  Spanish "borrar") and Done; the edit key is drawn pressed there and goes back too. Its keys act at the
+  lift, as the page keys do. Cut and Copy take the selection to the keyboard's own clipboard
+  (`keyboard_clipboard`, a thread-local string), never the lasso's (clipboard.rs, ink); it lasts until
+  Grimoire closes, across every keyboard, and nothing writes it to a file. Paste types it at the caret in
+  place of a selection, as much as fits, cut between characters, control characters left out as
+  `keyboard_open` leaves them out; on Go to page's number pad (or its edit page) the digits alone. Copy, and
+  Cut or Paste with nothing to do, change nothing and draw nothing. A move of the caret or the selection is
+  `KbResult::Moved`, with the text line to refresh: drawn and refreshed as a key's typing is
+  (`app_keyboard_pointer_split`, `app_keyboard_press`, `app_keyboard_tick`), but Find's rows are not made
+  again for it, the text being as it was. A key inside the line (◀, ▶) refreshes no rect of its own over the
+  line's (the line's refresh holds its pressed look), so a tap is still one refresh at the touch-down and one
+  of the key at the lift. A paired keyboard's Left, Right, Home and End (Shift held: the selection grows or
+  shrinks) and Ctrl or Cmd with A, C, X and V (not with Alt) do the same on any keyboard open but the count
+  pad (`keyboard_key_input`; `app_text_key` in app.rs, before any shortcut is looked up; a keyboard is read at
+  all only while Settings > Shortcuts is on, as for every key):
+  they reach the keyboard as Esc does, through `app_type_text`, whose touch-down on the text box now carries
+  the input too, so it is taken as a contact on no key and moves no caret. Letters typed on a paired keyboard
+  still type nothing in a field.
 - Every keyboard host (the Library's sheet, the Pages view's Page name and Go to page) hands its pen
   and finger events to `app_keyboard_pointer` and its tick to `app_keyboard_tick` (app.c), so a key
   costs the same over any screen. A sample that changes nothing (the pen resting on a key sends one
@@ -398,8 +441,9 @@ draws them. White ink and the precise eraser make them.
   text line too), a hardware keyboard's key on a count pad (`app_keyboard_press`: the digit it types is never
   the next repeat's), and `keyboard_holds_end`, which `app_sleep` and `app_switch` call for every keyboard at
   once, since the lift may never reach one then. A hardware keyboard's Backspace is not repeated: text fields
-  take no typed keys (only Esc, their Cancel), and on the count pads `hidkeys_event` drops the kernel's
-  autorepeat (value 2) as it does for every key.
+  take no typed keys (only Esc, their Cancel, and the keys that move the caret, select and copy and paste:
+  above), and on the count pads `hidkeys_event` drops the kernel's autorepeat (value 2) as it does for every
+  key; so a held arrow moves the caret once.
 
 ## Languages
 
@@ -1743,11 +1787,41 @@ Nested Library folders are logical slash-separated paths stored in notebook meta
 folders.ini. Notebook IDs and physical directories stay fixed. A subtree rename validates all
 new paths and collisions before writing, retaining original metadata for rollback on write failure.
 
+## Settings > Wi-Fi (2.1.0-beta.2)
+
+Issue #40 (from #36: someone who relies on Live view among several networks): choose among the Kindle's
+saved Wi-Fi networks from Settings, in the current Settings design. The smallest safe feature: the network
+connected to, the saved networks, a switch to one, its outcome, and a clean fallback; no network is added
+(the Kindle's settings and KOReader do that) and no profile is changed or deleted.
+
+- **Where.** A Wi-Fi button in Settings' bottom row, beside Pair (both radios), opens a sheet drawn as the
+  Pair sheet is (draw_menu rows): the radio row (Turn on Wi-Fi, Turn off Wi-Fi, or Retry when the state is
+  not known), the status line, the saved networks (the one connected to first, with a check; seven a page
+  and a More networks row past seven, so it fits sideways), Done. Esc goes back to Settings. The notebook's
+  Settings has it too.
+- **Status.** "Connecting to <name>..." while a switch is under way, "Could not connect to <name>." after
+  one failed, else the Share card's lines, with "Connected to <name>" when the name is known. A network's
+  name is a name: drawn smaller or shortened as names are, never counted as cut short.
+- **A switch** is wifi_join: the helper's `join <hex>` (ensureConnection), then a read of the network
+  connected to every 2 s. It has worked once a read has the Kindle connected to that network (the helper's
+  own report right after the request still names the old one: no false success), and failed when the
+  helper refused it or after 45 s (JOIN_WAIT). Nothing switches back: the Kindle's service decides what it
+  joins next. Turning the radio on or off forgets a switch; one switch runs at a time.
+- **Reads** run only while the sheet is up (as the Share card's): everything as it opens, the saved
+  networks once more when the radio comes on if they could not be read while it was off, everything once
+  more after a refused switch, and the network connected to while a switch is under way, or for 45 s after
+  a tap while the radio is on with no connection.
+- **Passwords** never leave the helper (docs/KINDLE.md, Wi-Fi): the profileData reader keeps essid values
+  only and gives no name at all for any format it does not know. Names cross in hex and are checked again
+  in Rust (1 to 32 bytes, no control character; anything else fails the whole report closed). No name is
+  logged.
+
 ## Settings > Gestures and page finger shapes (Index phase 3)
 
-The Settings bottom row has five equal cells: KOReader, Pair (Controller until 2.0.0-beta.2), Gestures,
-Updates, Done. Pair, Gestures and Updates words have a 248 px budget at 34 px caps on the upright panel,
-in English and Spanish, in both themes. Coordinates remain pending main-scenario verification.
+The Settings bottom row has six cells: KOReader, Pair (Controller until 2.0.0-beta.2), Wi-Fi (2.1.0-beta.2),
+Gestures, Updates, Done. Pair, Wi-Fi, Gestures and Updates share about 810 px upright: evenly while the
+longest word fits a quarter (English, Japanese), else each as wide as its word needs (none under 160 px)
+with the rest shared out (Spanish: "Actualizaciones"). The tap points are in docs/SIM.md.
 Buttons and Gestures share the seven registry groups and row descriptors from `actions.rs`.
 Source masks expose every action to PEN. Hold eraser is pen-only in Gestures (hold/drag slots),
 and pan/zoom are PEN-only Pages actions 82/83 (drag slots). Keys/pads cannot learn their own
@@ -1762,7 +1836,9 @@ A hold clears touch, shape and pen sources for the row (both members of a pair);
 recovers from an unreadable file. Learn/clear use copy-save-swap: failed persistence leaves the
 live map and record card intact.
 
-The record card keeps three sample slots, Use, Try again and Cancel. First input selects a
+The record card keeps three sample slots and Use, Try again, Disable and Cancel. Disable saves
+"nothing" for the action, the built-in defaults included (both members of a pair), so its row
+says "no gesture", then closes the card. First input selects a
 pattern, one-finger swipe, shape or pen-button gesture. Paired rows continue to the second member after saving the first. Patterns can be accepted with Use after a valid attempt;
 shapes require two consistent samples, with an optional third. Conflict and accidental-slip
 checks run before saving, with progress/refusal text in the line's own rectangle. Moving a
@@ -1817,8 +1893,11 @@ use wrapping u32 milliseconds. A click is at most 450 ms with no nib contact, mu
 are at most 350 ms from release to next press, and the result resolves 350 ms after final release.
 A single click fires immediately only when neither double nor triple is bound. Hovering holds
 begin once at 1200 ms. The recorder always waits for a possible multi-click, even when none is currently bound; runtime
-waits still depend on bindings. Clear page defaults only to hold, with the duplicate RC1
-triple/hold pair migrated to hold. Both owners tick only after the input queue is drained, so a queued release
+waits still depend on bindings. No pen slot has a built-in action since 2.1.0-beta.2 (the hold's
+Clear page fired with the pen hovering, under a finger resting on the button: issues #36, #39);
+`gesturemap_retire_old_defaults` reads the old built-ins a file holds (RC1's triple and hold pair,
+or the triple=nothing and hold pair rc.2 to 2.1.0-beta.1 wrote after it) as the new ones, unmarked,
+while a hold given Clear page alone stays the owner's. Both owners tick only after the input queue is drained, so a queued release
 cannot be mistaken for a hold. Proximity loss cancels a pending sequence and ends capture.
 
 While the card is active, PenButton, proximity, contact and lift feed only its own recognizer.
@@ -1850,6 +1929,12 @@ Clear page saves removal of the current page's links before touching its ink, th
 `ActKind::Clear` carrying the removed strokes and `LinkEdit`. A link-only page still gets this
 step. Undo/Redo applies both parts; a failed link save reverses the tentative ink operation and
 keeps the Clear step for retry. Initial Clear save failure leaves ink and history unchanged.
+Run from a gesture or a shortcut (`editor_shortcut_in`), a Clear that cleared something raises
+its own toast, "Page cleared. Undo brings it back." (4 s), in place of a shape's action name: the
+way back is one Undo. The toast is an overlay with no controls of its own (drawn at each present,
+never stored in the screen, mirrored to Live view as a layer), so it points at Undo rather than
+carrying an Undo button. The toolbar's broom, in sight as it is tapped, says nothing (the
+owner, 2026-11-04).
 
 ## Lasso select and scoped erasing (2.0.0-beta.2)
 

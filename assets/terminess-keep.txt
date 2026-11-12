@@ -253,6 +253,7 @@ U+F05E3  # md-chart_bubble: the Graph
 U+F07CB  # md-gesture: recorded touch gestures in Settings
 U+F0F03  # md-lasso: Select mode's lasso
 U+F051F  # md-timer_sand: a page tile whose preview is being made
+U+F073A  # md-cancel: the record card's Disable
 # Icons: the editor's shapes button (rust/src/editor.rs)
 U+F0831  # md-shape: shapes on
 U+F0832  # md-shape_outline: shapes off, drawn struck through
