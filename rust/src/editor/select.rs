@@ -86,6 +86,11 @@ pub(super) struct SelMode {
     /// the bar, screen px, and its buttons
     pub(super) bar: Rect,
     pub(super) btns: Vec<(Rect, SelBtn)>,
+    /// a bar button under the contact that came down on it (its rect and what it does): shown pressed until
+    /// the lift, which acts on it (as the panel's buttons; issue #50: Copy gave no feedback at all), and put
+    /// back as it was when the lift is a cancel or has left it
+    pressed: Option<(Rect, SelBtn)>,
+    press: Press,
     /// where the bar was before it moved, still to be drawn over (the next redraw takes it)
     stale: Rect,
     /// Select mode was entered by a pen button held (its hold or drag bound to `select`), and whether it
@@ -615,6 +620,7 @@ pub(super) fn sel_draw(a: &mut App, r: Rect) {
     canvas_set_clip(&mut a.screen, r);
     let s = ed_ref(a);
     let (bar, btns, nlinks) = (s.sel.bar, s.sel.btns.clone(), s.sel.links.len());
+    let pressed = s.sel.pressed.map(|(pr, _)| pr);
     if !hidden && rect_overlaps(r, bar) {
         let c = &mut a.screen;
         ui_frame(c, bar, ui_px(24.0), 255, true, 0);
@@ -626,7 +632,16 @@ pub(super) fn sel_draw(a: &mut App, r: Rect) {
                 // (shown so the writer sees the links go along before acting).
                 label = format!("{} ({})", label, cformat!(ng_("%d link", "%d links", nlinks as i64), nlinks as i32));
             }
-            ui_button(c, *br, IconKind::None, &label, if *b == SelBtn::Done { ButtonStyle::Primary } else { ButtonStyle::Plain });
+            // (the one a contact holds drawn as the panel's pressed buttons are: its tap answers at once,
+            // and a draw made while it is held keeps the look -- issue #50)
+            let st = if pressed == Some(*br) {
+                ButtonStyle::Selected
+            } else if *b == SelBtn::Done {
+                ButtonStyle::Primary
+            } else {
+                ButtonStyle::Plain
+            };
+            ui_button(c, *br, IconKind::None, &label, st);
         }
     }
     a.screen.clip = clip;
@@ -832,9 +847,13 @@ pub(super) fn sel_down(a: &mut App, ev: &InEvent, pen: bool) {
     let (x, y) = (ev.x as i32, ev.y as i32);
     let s = ed(a);
     s.owner = Owner::Select;
-    if let Some(&(_, b)) = s.sel.btns.iter().find(|(r, _)| rect_contains(*r, x, y)) {
-        s.owner = Owner::Select; // (the rest of the contact is swallowed)
-        sel_button(a, b);
+    if let Some(&(r, b)) = s.sel.btns.iter().find(|(r, _)| rect_contains(*r, x, y)) {
+        // The press shows at once (the panel's buttons' pressed look, a DU of its own) and acts at the
+        // lift, so a button that changes nothing visible (Copy) still answers the tap (issue #50).
+        // (the rest of the contact is swallowed)
+        press_begin(&mut s.sel.press, ev.x, ev.y, ev.t_ms);
+        s.sel.pressed = Some((r, b));
+        bar_press_show(a, r);
         return;
     }
     if rect_contains(s.sel.bar, x, y) {
@@ -931,6 +950,10 @@ fn lasso_begin_at(s: &mut EditorState, px: f32, py: f32, finger: bool, t: u32, d
 
 /// The rest of a contact Select mode owns.
 pub(super) fn sel_pointer(a: &mut App, ph: i32, ev: &InEvent) {
+    if sel_ref(a).pressed.is_some() {
+        button_pointer(a, ph, ev);
+        return;
+    }
     match sel_ref(a).state {
         SelState::Lasso => {
             if sel_ref(a).finger && ev.value & TOUCH_F_BROAD != 0 {
@@ -967,6 +990,42 @@ pub(super) fn sel_pointer(a: &mut App, ph: i32, ev: &InEvent) {
     if ph == 2 {
         ed(a).owner = Owner::None;
     }
+}
+
+/// The rest of a contact on a bar button: its press stays shown until the lift, which puts the button
+/// back as it was (a Fast refresh when the contact was cancelled, a Ui one otherwise) and then acts on it
+/// when the lift is on the button and was no drag away from it -- the panel's buttons' rule, so the bar
+/// answers a tap the same way whatever it does.
+fn button_pointer(a: &mut App, ph: i32, ev: &InEvent) {
+    let Some((r, b)) = sel_ref(a).pressed else { return };
+    press_move(&mut ed(a).sel.press, ev.x, ev.y);
+    if ph == 1 {
+        return;
+    }
+    let p = ed(a).sel.press;
+    let cancelled = touch_cancelled(ev);
+    let on = rect_contains(r, ev.x as i32, ev.y as i32);
+    // (the pressed look taken off before what the button does draws from it: a Fast one when a second
+    // finger or the pen took the contact, as the panel's cancelled presses go)
+    ed(a).sel.pressed = None;
+    redraw(a, r, if cancelled { RefreshMode::Fast } else { RefreshMode::Ui });
+    if !cancelled && on && press_is_tap(&p, r) {
+        sel_button(a, b);
+    }
+    // (the owner_pointer reset the other Select contacts get at their lift, which this branch returns before)
+    ed(a).owner = Owner::None;
+}
+
+/// A bar button's pressed look, shown now: the button drawn as the panel's pressed buttons are (the
+/// draw reads `pressed`) and its rect sent as a Fast refresh, so a tap answers as a panel button's does
+/// even when what it does changes nothing on the screen (Copy: issue #50).
+fn bar_press_show(a: &mut App, r: Rect) {
+    if rect_is_empty(r) {
+        return;
+    }
+    compose(a, r);
+    live_push(&a.screen, r);
+    display_present(&a.screen, r, RefreshMode::Fast);
 }
 
 /// The lasso ends with nothing selected or pasted: its dashes (and a finger's ring) drawn away.
