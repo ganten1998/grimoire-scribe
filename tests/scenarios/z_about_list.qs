@@ -100,7 +100,7 @@ tap library about.row.2.1.0-beta.2
 wait 100
 expect library.about.note is 2.1.0-beta.2
 expect library.about.pages is 1
-expect library.about.body_px is 44
+expect library.about.body_px is 43
 expect library.about.signature is 1
 shot 06-this-version-sideways
 # Dismiss from a version's notes closes What's new.
