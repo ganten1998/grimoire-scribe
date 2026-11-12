@@ -730,9 +730,11 @@ pub(super) fn sel_off(a: &mut App) {
     if sel_ref(a).state == SelState::Off {
         return;
     }
+    // (a drag's outline_rect: every place it showed the outline and the bar by DU, drawn again in grays;
+    // its newest place counted as DU wear that the grays cannot wipe)
+    let swept = take_outline_wear(a);
     let m = sel_ref(a);
-    // (a drag's outline_rect: every place it showed the outline and the bar by DU, drawn again in grays)
-    let r = rect_union(rect_union(rect_union(rect_union(overlay_rect(a), m.lasso_rect), m.stale), m.preview_rect), m.outline_rect);
+    let r = rect_union(rect_union(rect_union(rect_union(overlay_rect(a), m.lasso_rect), m.stale), m.preview_rect), swept);
     let s = ed(a);
     if s.owner == Owner::Select {
         s.owner = Owner::None;
@@ -751,7 +753,8 @@ pub(super) fn sel_deselect(a: &mut App) {
     if !matches!(st, SelState::Selected | SelState::Dragging) {
         return;
     }
-    let r = rect_union(overlay_rect(a), std::mem::take(&mut ed(a).sel.outline_rect));
+    let swept = take_outline_wear(a);
+    let r = rect_union(overlay_rect(a), swept);
     let s = ed(a);
     s.sel.state = SelState::Armed;
     s.sel.ids.clear();
@@ -1622,6 +1625,7 @@ fn resize_begin(a: &mut App, now: u32) {
     }
     draw_outline(a, (0, 0), r);
     draw_resize_handles(a, (0, 0), r);
+    live_show(a, &[r]);
     app_invalidate(a, r, RefreshMode::Fast);
     app_flush(a);
     let m = &mut ed(a).sel;
@@ -1663,6 +1667,7 @@ fn resize_show(a: &mut App, now: u32) {
     }
     draw_outline(a, (0, 0), r);
     draw_resize_handles(a, (0, 0), r);
+    live_show(a, &[r]);
     app_invalidate(a, r, RefreshMode::Fast);
     app_flush(a);
     let m = &mut ed(a).sel;
@@ -1830,6 +1835,21 @@ fn drag_show(a: &mut App, now: u32) {
     du_wear_add(&mut a.du_wear, gone, worn, now_ms());
 }
 
+/// A show's rects pushed to Live view in one frame before the panel's refreshes, cut to the page's part
+/// of the screen (the panel has its own layer): a browser never draws the old outline back strip by strip
+/// while the panel takes them one DU at a time (issue #50: Live view showed a drag's restored strips
+/// before the new place). The screen already holds everything the show draws.
+fn live_show(a: &App, rects: &[Rect]) {
+    if !live_on() {
+        return;
+    }
+    let all = rects.iter().fold(RECT_EMPTY, |u, &r| rect_union(u, r));
+    let all = rect_intersect(all, lasso_clip(a));
+    if !rect_is_empty(all) {
+        live_push(&a.screen, all);
+    }
+}
+
 /// A drag's rects refreshed by DU, each flushed on its own (the link card's border strips' way: one rect
 /// around them all would span the gray ink inside the box), two joined only when one rect over both
 /// covers no more than they do apart (a short move's strips overlap), at most DRAG_RECTS. They join the
@@ -1858,6 +1878,7 @@ fn drag_present(a: &mut App, mut v: Vec<Rect>, now: u32) {
     if !rect_is_empty(a.dirty) {
         app_flush(a); // (what was waiting goes in its own refresh, as it would have)
     }
+    live_show(a, &v);
     let mut px = 0i64;
     let mut all = RECT_EMPTY;
     for r in v {
@@ -1871,6 +1892,31 @@ fn drag_present(a: &mut App, mut v: Vec<Rect>, now: u32) {
     m.dv.shown_at = now;
     m.dv.shows += 1;
     m.dv.px += px;
+}
+
+/// The outline the drag (or resize) has shown by fast refreshes, taken for the lift: the screen rect it
+/// swept, with its newest place counted as DU wear. The lift draws the outline away in grays, but DU leaves
+/// its trace there, which only the wear's clean reaches; without this the newest outline stayed faintly on
+/// the panel after the selection was dropped (issue #50).
+fn take_outline_wear(a: &mut App) -> Rect {
+    let (state, handle, shown, rshown) = {
+        let m = sel_ref(a);
+        (m.state, m.resize_handle, m.dv.shown, m.resize_shown)
+    };
+    let swept = std::mem::take(&mut ed(a).sel.outline_rect);
+    if !rect_is_empty(swept) {
+        let worn = if state == SelState::Dragging {
+            if handle > 0 {
+                resize_ink(a, rshown)
+            } else {
+                shown.map_or(0, |off| outline_ink(a, off))
+            }
+        } else {
+            0
+        };
+        du_wear_add(&mut a.du_wear, swept, worn, now_ms());
+    }
+    swept
 }
 
 /// The drag's display ends (its lift, or a cancel): the log's line for it, and its copy of the screen goes.
@@ -1890,8 +1936,10 @@ fn drag_done(a: &mut App, cancelled: bool) {
         return;
     }
     let (dx, dy) = sel_ref(a).drag;
-    // (where the drag drew the outline and the bar on its way, as well as where it ends)
-    let before = rect_union(overlay_rect(a), std::mem::take(&mut ed(a).sel.outline_rect));
+    // (where the drag drew the outline and the bar on its way, as well as where it ends; its newest place
+    // counted as DU wear, so the clean reaches the trace the lift's grayscale refresh leaves)
+    let swept = take_outline_wear(a);
+    let before = rect_union(overlay_rect(a), swept);
     let s = ed(a);
     drag_end_view(&mut s.sel);
     s.sel.state = SelState::Selected;
@@ -1916,8 +1964,10 @@ fn resize_done(a: &mut App, cancelled: bool) {
         (m.resize_box0, m.box_, m.resize_handle, m.dv.shows)
     };
     qlog!("lasso: resize handle=%d from=%dx%d to=%dx%d shows=%u", handle, from.w, from.h, to.w, to.h, shows);
-    // (the outline where the resize last drew it, and where it ends: one refresh over both, as a drag's lift)
-    let before = rect_union(overlay_rect(a), std::mem::take(&mut ed(a).sel.outline_rect));
+    // (the outline where the resize last drew it, and where it ends: one refresh over both, as a drag's lift;
+    // its newest frame counted as DU wear, as a drag's)
+    let swept = take_outline_wear(a);
+    let before = rect_union(overlay_rect(a), swept);
     let s = ed(a);
     drag_end_view(&mut s.sel);
     s.sel.state = SelState::Selected;
