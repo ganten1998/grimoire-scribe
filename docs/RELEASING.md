@@ -30,10 +30,13 @@ them.
 
 ## Before the tag
 
-1. **One branch, one commit.** Merge everything the release holds. Betas have been tagged on the
-   branch that built them while `main` stayed on the last stable release (v2.0.0-beta.3), and once
-   `main` was moved to the tag (v2.0.0-beta.1); which one is the owner's call. The workflow checks
-   out the tag, so either works. A stable release goes to `main` first, on both remotes.
+1. **One branch, one commit.** Merge everything the release holds. Since 2026-11-12 (#57) `main` is
+   the one line: finished work lands there through pull requests, and a release branch is cut from
+   `main` (`release/VERSION`), so the bump, What's new and TESTING commits are made there and merged
+   back into `main` once the release is out. (Before, betas were tagged on the branch that built them
+   while `main` stayed on the last stable release, or `main` was moved to the tag.) The workflow checks
+   out the tag, so the branch it sits on does not matter to it. A stable release goes to `main` first,
+   on both remotes.
 
 2. **The toolchain is the workflow's.** The three versions at the top of the workflow
    (`RUST_VERSION`, `ZIG_VERSION`, `CARGO_ZIGBUILD_VERSION`) must be what the Mac builds with, or

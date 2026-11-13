@@ -6,9 +6,10 @@ why. Newest decisions first within each section.
 
 ## After the release of 2.1.0-beta.2 (2026-11-12): what waits
 
-- **nebuff's PRs #49 (a page turn speed-up) and #52 (lasso fixes for #51) are on `main`, not in 2.1.0-beta.2**
-  (issue #54). Lane M merged `main` before they landed. They go into the line like the rest of `main`: merged
-  with their authorship, checked against 2.1, gated, and tried on a Scribe before the next release.
+- **nebuff's PRs #49 (a page turn speed-up) and #52 (lasso fixes for #51) are on `main` with 2.1.0-beta.2 since
+  #57, but in no release yet.** Try them on a Scribe before the next one: page turns at the fitted view no longer
+  flash (every 30th UI refresh does), the last three pages' drawings are kept in memory, and the lasso's lift
+  counts its outline as wear. Issue #60: a jump to the oldest of the kept pages misses it.
 - **Live view's pen-stall check is flaky on CI's macOS runners.** `tests/live_pen_stall.py`, "with the main loop
   busy, its samples still come at once", measured a raw p90 of 62.8 ms (the 60 ms the test holds the main loop)
   against its 25 ms limit on the dry run of 2026-11-12 (run 43244209271, first attempt), and 0.4 ms on the next
