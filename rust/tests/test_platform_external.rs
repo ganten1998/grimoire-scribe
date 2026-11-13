@@ -159,6 +159,9 @@ impl Platform for Recorder {
     fn sys_services(&self) -> Services {
         Services::ALL
     }
+    fn sys_device_name(&self) -> &'static str {
+        "Kindle"
+    }
 }
 
 /// Where `what` first comes in the recorded order.

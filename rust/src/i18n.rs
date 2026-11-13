@@ -65,7 +65,7 @@ pub fn ng_(one: &'static str, many: &'static str, n: i64) -> &'static str {
 // tests/test_i18n.c, to hold the two to each other). English is no catalog at all: the text as
 // the code has it.
 
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::cmp::Ordering;
 
 // Which plural form a count takes, per language (an index into the catalog's forms).
@@ -323,22 +323,67 @@ fn with<R>(f: impl FnOnce(&mut State) -> R) -> R {
     S.with(|s| f(&mut s.borrow_mut()))
 }
 
+// ---- the device's name ----
+//
+// The English and every translation call the device a Kindle. On a platform that gives another name
+// (sys_device_name, light.rs) a text that is looked up has that name in its place: "Kindle Scribe" as
+// a whole first, so the product's name does not come out as the new name with "Scribe" behind it,
+// then "Kindle". The catalogs do not change, and a translator has nothing to do. A text is made
+// once and kept for the run, as a catalog's are.
+
+thread_local! {
+    /// The name in place of "Kindle", None on the Kindle itself. (The app's one thread's, as the
+    /// language is; a forked child has its parent's.)
+    static DEVICE_NAME: Cell<Option<&'static str>> = const { Cell::new(None) };
+    /// The texts already made for the name: by the looked-up text's place in memory.
+    static NAMED: RefCell<Vec<(usize, usize, &'static str)>> = const { RefCell::new(Vec::new()) };
+}
+
+/// The device's name for every text looked up from now on. "Kindle", nothing, or a name with a "%"
+/// in it (a text is often a printf format) leaves the texts as they are.
+pub fn i18n_set_device_name(name: &str) {
+    let name = if name.is_empty() || name == "Kindle" || name.contains('%') { None } else { Some(name) };
+    if DEVICE_NAME.get() == name {
+        return;
+    }
+    DEVICE_NAME.set(name.map(|n| &*Box::leak(n.to_string().into_boxed_str())));
+    NAMED.with(|made| made.borrow_mut().clear());
+}
+
+/// `text` with `name` where it says Kindle: None when it does not say it.
+pub fn i18n_with_device_name(text: &str, name: &str) -> Option<String> {
+    text.contains("Kindle").then(|| text.replace("Kindle Scribe", name).replace("Kindle", name))
+}
+
+/// A text that lives as long as the program, as it reads on this device.
+pub fn i18n_named(text: &'static str) -> &'static str {
+    let Some(name) = DEVICE_NAME.get() else { return text };
+    let key = (text.as_ptr() as usize, text.len());
+    if let Some(named) = NAMED.with(|made| made.borrow().iter().find(|m| (m.0, m.1) == key).map(|m| m.2)) {
+        return named;
+    }
+    let Some(named) = i18n_with_device_name(text, name) else { return text };
+    let named: &'static str = Box::leak(named.into_boxed_str());
+    NAMED.with(|made| made.borrow_mut().push((key.0, key.1, named)));
+    named
+}
+
 pub fn i18n_get(msgid: &'static str) -> &'static str {
     let cat = with(|s| s.cat);
-    let Some(c) = cat else { return msgid };
+    let Some(c) = cat else { return i18n_named(msgid) };
     if msgid.is_empty() {
         return msgid;
     }
-    catalog_find(&c, None, msgid).and_then(|t| utf8(cstr(t))).unwrap_or(msgid)
+    i18n_named(catalog_find(&c, None, msgid).and_then(|t| utf8(cstr(t))).unwrap_or(msgid))
 }
 
 pub fn i18n_getc(ctx: &str, msgid: &'static str) -> &'static str {
     let cat = with(|s| s.cat);
-    let Some(c) = cat else { return msgid };
+    let Some(c) = cat else { return i18n_named(msgid) };
     if msgid.is_empty() {
         return msgid;
     }
-    catalog_find(&c, Some(ctx), msgid).and_then(|t| utf8(cstr(t))).unwrap_or(msgid)
+    i18n_named(catalog_find(&c, Some(ctx), msgid).and_then(|t| utf8(cstr(t))).unwrap_or(msgid))
 }
 
 // getnc, where the context may be none (i18n_getn's: "id" is not "\004id").
@@ -360,15 +405,11 @@ fn getnc(ctx: Option<&str>, one: &'static str, many: &'static str, n: i64) -> &'
         }
         if pos < len && t[pos] != 0 {
             if let Some(s) = utf8(cstr(&t[pos..])) {
-                return s;
+                return i18n_named(s);
             }
         }
     }
-    if n == 1 {
-        one
-    } else {
-        many
-    }
+    i18n_named(if n == 1 { one } else { many })
 }
 
 pub fn i18n_getn(one: &'static str, many: &'static str, n: i64) -> &'static str {
@@ -630,8 +671,10 @@ pub fn i18n_auto() -> &'static str {
     K_LANGS[with(|s| s.auto)].code
 }
 
-/// Sets the language for a language= value, and logs which one and why.
+/// Sets the language for a language= value, and logs which one and why. (And the device's name for
+/// the texts, which the platform knows by now: this is the first thing the app does with its text.)
 pub fn i18n_apply(setting: &str) {
+    i18n_set_device_name(crate::light::sys_device_name());
     if setting != "auto" && i18n_setting_known(setting) {
         i18n_set(setting);
         qlog!("i18n: language %s (set in Settings)", i18n_current());
@@ -673,6 +716,16 @@ pub struct I18nEntry {
 }
 
 // ---- for tests ----
+
+/// i18n_walk over the first catalog there is: for the English of every entry, which is the same in
+/// each of them, where the language in use has no catalog (the share studio's words on a device
+/// with a name of its own, httpd.rs). -1 with no catalog at all.
+pub fn i18n_walk_first(f: &mut dyn FnMut(&I18nEntry)) -> i32 {
+    match i18n_catalogs.iter().next() {
+        Some(k) => i18n_walk(k.code, f),
+        None => -1,
+    }
+}
 
 /// Calls f for every entry but the header; returns how many, or -1 if code has no valid catalog.
 pub fn i18n_walk(code: &str, f: &mut dyn FnMut(&I18nEntry)) -> i32 {
@@ -738,6 +791,41 @@ mod tests {
     // (the language is thread state: every test names the one it wants and ends in English)
     fn english() {
         i18n_set("en");
+    }
+
+    #[test]
+    fn a_device_with_another_name_is_named_in_the_texts() {
+        // The pure part (the name itself is the platform's, and one for the whole process: the
+        // scenarios set it, z_device_name_1.qs).
+        assert_eq!(i18n_with_device_name("Done", "Slate"), None);
+        assert_eq!(i18n_with_device_name("Turn with the Kindle (portrait and landscape)", "Slate").as_deref(), Some("Turn with the Slate (portrait and landscape)"));
+        assert_eq!(i18n_with_device_name("the Kindle's Wi-Fi", "Slate").as_deref(), Some("the Slate's Wi-Fi"));
+        // the product's name as a whole, not the new name with Scribe behind it
+        assert_eq!(
+            i18n_with_device_name("No pen found. %s is made for Kindle Scribe; writing needs its pen.", "Slate").as_deref(),
+            Some("No pen found. %s is made for Slate; writing needs its pen.")
+        );
+        assert_eq!(i18n_with_device_name("Kindle storage nearly full. Wake the Kindle.", "Slate").as_deref(), Some("Slate storage nearly full. Wake the Slate."));
+
+        // Looked up: in English, which has no catalog, and in a translation, which keeps the word.
+        i18n_set("en");
+        assert_eq!(tr("Rotation follows Kindle."), "Rotation follows Kindle.");
+        i18n_set_device_name("Slate");
+        assert_eq!(tr("Rotation follows Kindle."), "Rotation follows Slate.");
+        assert_eq!(tr("Done"), "Done");
+        // (made once: the same text again is the same string)
+        assert!(std::ptr::eq(tr("Rotation follows Kindle."), tr("Rotation follows Kindle.")));
+        assert_eq!(ng_("%d notebook on your Kindle", "%d notebooks on your Kindle", 2), "%d notebooks on your Slate");
+        assert!(i18n_set("es"));
+        let es = tr("Rotation follows Kindle.");
+        assert!(es.contains("Slate") && !es.contains("Kindle") && es != "Rotation follows Slate.", "{es}");
+        // A name that cannot stand in a format, and the Kindle's own, leave every text alone.
+        i18n_set_device_name("50% off");
+        assert_eq!(tr("Rotation follows Kindle."), "La rotaci\u{f3}n sigue al Kindle.");
+        i18n_set_device_name("Slate");
+        i18n_set_device_name("Kindle");
+        i18n_set("en");
+        assert_eq!(tr("Rotation follows Kindle."), "Rotation follows Kindle.");
     }
 
     #[test]
