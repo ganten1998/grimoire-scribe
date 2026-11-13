@@ -705,7 +705,9 @@ fn page_views_max() -> usize {
 }
 
 /// Puts the open page's drawing aside in memory, when its canvas is whole and the page is its file.
-fn page_view_stash(s: &mut EditorState) {
+/// `keep` is the page about to be shown: when every slot is taken, its drawing is not the one dropped
+/// (a jump to the oldest kept page would otherwise evict it just before page_view_load reads it).
+fn page_view_stash(s: &mut EditorState, keep: u32) {
     let max = page_views_max();
     if max == 0 {
         return;
@@ -734,7 +736,8 @@ fn page_view_stash(s: &mut EditorState) {
     let ms = if s.full_ms.0 == pid { s.full_ms.1 } else { 0 };
     s.page_views.retain(|v| v.pid != pid);
     while s.page_views.len() >= max {
-        let mut old = s.page_views.remove(0);
+        let i = s.page_views.iter().position(|v| v.pid != keep).unwrap_or(0);
+        let mut old = s.page_views.remove(i);
         canvas_free(&mut old.canvas);
     }
     s.page_views.push(PageView { pid, stamp, ms, canvas });
