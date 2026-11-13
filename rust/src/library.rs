@@ -3654,8 +3654,12 @@ fn draw_settings(a: &mut App) {
     // lines a tap changes (1530 px at 44 px) and checkboxes (1548 px at 44 px, or two lines at
     // 34 px). Sideways they are 80 px wider.
     let pens = tr("Pen sensitivity (pressure + tilt per tool)");
+    // (what the platform does not leave to Grimoire has no row or button here: light.rs, Services)
+    let services = sys_services();
+    // (without a front light the row is called what its sheet is: no brightness or warmth to name)
+    let display = if light_available() { tr("Display: brightness, warmth, invert") } else { tr("Display") };
     let top = [
-        (IconKind::Brightness, tr("Display: brightness, warmth, invert"), H_SET_DISPLAY),
+        (IconKind::Brightness, display, H_SET_DISPLAY),
         (IconKind::Tune, pens, H_SET_PENS),
         // TRANSLATORS: (Settings) the row that opens the Shortcuts sheet: a keyboard's keys and a controller's
         // buttons as shortcuts, each device's own if it has them (1470 px at 44 px in bold, as its neighbours).
@@ -3663,6 +3667,9 @@ fn draw_settings(a: &mut App) {
         (IconKind::Target, tr("Calibrate pen and touch"), H_SET_CALIB),
     ];
     for (icon, label, id) in top {
+        if id == H_SET_CALIB && !services.calibration {
+            continue;
+        }
         let r = Rect::new(in_.x, y, in_.w, rh);
         ui_button(c, r, IconKind::None, "", ButtonStyle::Plain);
         ui_icon(
@@ -3875,6 +3882,30 @@ fn draw_settings(a: &mut App) {
     ui_button(c, done, IconKind::None, tr("Done"), ButtonStyle::Primary);
     hits_add(&mut s.hits, done, H_CANCEL, 0);
     let ko = Rect::new(in_.x, done.y, ui_px(300.0), done.h);
+    if !(services.koreader && services.pairing && services.wifi && services.updates) {
+        // Without some of them: the buttons that are left, each as wide as its word needs (KOReader its
+        // 300 px), from the left. Gestures is always there.
+        let gap = ui_px(30.0);
+        let some = [
+            (services.koreader, IconKind::Notebook, "KOReader", H_KOREADER),
+            (services.pairing, IconKind::Link, tr("Pair"), H_PAIR_MENU),
+            (services.wifi, IconKind::Share, tr("Wi-Fi"), H_WIFI_MENU),
+            (true, IconKind::Gestures, tr("Gestures"), H_GESTURES),
+            (services.updates, IconKind::Update, tr("Updates"), H_UPDATES),
+        ];
+        let mut x = in_.x;
+        for (there, icon, label, id) in some {
+            if !there {
+                continue;
+            }
+            let w = if id == H_KOREADER { ko.w } else { ui_button_need_w(done.h, icon, label, ButtonStyle::Plain).max(ui_px(160.0)) };
+            let r = Rect::new(x, done.y, w, done.h);
+            ui_button(c, r, icon, label, ButtonStyle::Plain);
+            hits_add(&mut s.hits, r, id, 0);
+            x += w + gap;
+        }
+        return;
+    }
     ui_button(c, ko, IconKind::Notebook, "KOReader", ButtonStyle::Plain);
     hits_add(&mut s.hits, ko, H_KOREADER, 0);
     // Pair, Wi-Fi, Gestures and Updates share the space between KOReader and Done: evenly when the longest

@@ -101,6 +101,12 @@ not compiled in this build, light_kindle among them. tests/test_platform_externa
 from start to exit on a recording stand-in:
 `cargo test --features external-platform --test test_platform_external -- --test-threads=1`.
 
+A platform also says which of the device's services Grimoire looks after itself there
+(`sys_services`, light.rs: the Wi-Fi sheet, the Pair sheet, Updates, the KOReader sheet, Calibrate).
+The Kindle and the simulator answer all of them. Settings leaves out the row or button of each one
+a platform says no to; the simulator's `GRIMOIRE_SIM_NO_SERVICES` (docs/SIM.md) is that answer for
+the scenarios.
+
 ## The map
 
 Every C file has a module of the same name; a header and its .c are one module.

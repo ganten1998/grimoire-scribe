@@ -21,6 +21,45 @@ use crate::platform::{active, Platform};
 
 pub const LIGHT_MAX: i32 = 24;
 
+/// What of the device Grimoire looks after itself on a platform (`sys_services`). On the Kindle all
+/// of it. A platform whose system joins networks, pairs controllers or installs apps itself, that is
+/// not KOReader's host, or that hands over positions already calibrated says no to that one, and
+/// Settings leaves its row or button out.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Services {
+    /// the Wi-Fi sheet: the radio and the device's saved networks
+    pub wifi: bool,
+    /// the Pair sheet: the Bluetooth helper, and pairing a controller with it
+    pub pairing: bool,
+    /// Settings > Updates
+    pub updates: bool,
+    /// the KOReader sheet
+    pub koreader: bool,
+    /// Calibrate pen and touch
+    pub calibration: bool,
+}
+
+impl Services {
+    pub const ALL: Services = Services { wifi: true, pairing: true, updates: true, koreader: true, calibration: true };
+
+    /// ALL but the ones named in `off`: a list of the fields' names with commas between them
+    /// ("wifi,updates"); a name that is none of them is passed over.
+    pub fn without(off: &str) -> Services {
+        let mut s = Services::ALL;
+        for name in off.split(',') {
+            match name.trim() {
+                "wifi" => s.wifi = false,
+                "pairing" => s.pairing = false,
+                "updates" => s.updates = false,
+                "koreader" => s.koreader = false,
+                "calibration" => s.calibration = false,
+                _ => {}
+            }
+        }
+        s
+    }
+}
+
 #[inline]
 pub fn light_available() -> bool {
     active().light_available()
@@ -128,4 +167,9 @@ pub fn sys_battery_reap() {
 #[inline]
 pub fn sys_wall_clock() -> i64 {
     active().sys_wall_clock()
+}
+/// Which of the device's services Grimoire looks after itself here (`Services`).
+#[inline]
+pub fn sys_services() -> Services {
+    active().sys_services()
 }
