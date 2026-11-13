@@ -341,6 +341,37 @@ pub fn format_time_short(t: i64, buf: &mut String, cap: usize) {
     strlcpy_q(buf, &s, cap);
 }
 
+/// The 12-hour clock's morning and afternoon markers, looked up when drawn.
+static K_AMPM: [&str; 2] = [
+    // TRANSLATORS: the marker for the morning on the 12-hour clock (before noon).
+    crate::i18n::nc_("date", "AM"),
+    // TRANSLATORS: the marker for the afternoon on the 12-hour clock (after noon).
+    crate::i18n::nc_("date", "PM"),
+];
+
+/// Format a unix time as "Oct 10, 2:32 PM" (local time) into buf: the clock's 12-hour text.
+pub fn format_time_short_12h(t: i64, buf: &mut String, cap: usize) {
+    let tm = local_tm(t);
+    let hour = match tm.tm_hour % 12 {
+        0 => 12,
+        h => h,
+    };
+    let ampm = crate::i18n::c_("date", K_AMPM[(tm.tm_hour >= 12) as usize]);
+    let s = crate::cformat!(
+        // TRANSLATORS: a date and time on the 12-hour clock, "Oct 10, 2:32 PM": the month (as above),
+        // the day, the hour (1 to 12), the minutes, then AM or PM. Reorder them with %1$s, %2$d, %3$d,
+        // %4$02d and %5$s ("%2$d %1$s, %3$d:%4$02d %5$s" is "10 Oct, 2:32 PM"), using that form for
+        // all five.
+        crate::i18n::c_("date", "%s %d, %d:%02d %s"),
+        month_short(&tm),
+        tm.tm_mday,
+        hour,
+        tm.tm_min,
+        ampm
+    );
+    strlcpy_q(buf, &s, cap);
+}
+
 /// The date alone, "Oct 10", as in a new notebook's name (i18n.h's format_date_short).
 pub fn format_date_short(t: i64, buf: &mut String, cap: usize) {
     let tm = local_tm(t);

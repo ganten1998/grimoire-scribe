@@ -1,6 +1,8 @@
 # rust-only
 # generate: tests/previews_fixture.py
 # env: GRIMOIRE_KEEP_RENDER_MS=4294967294
+# env: GRIMOIRE_PAGE_VIEWS=0
+# (No drawings kept in memory: a revisit reads the drawing kept on disk, as one in another session does.)
 # A new paper on a dense page, then the notebook closed at once (the drawing is written as the page is left, before
 # any idle save): the notebook opens on its new paper, and the drawing kept, the Pages preview and the Library card
 # are of the page as it is, never of the old paper.

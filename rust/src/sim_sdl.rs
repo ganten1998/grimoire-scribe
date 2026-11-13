@@ -1332,7 +1332,8 @@ impl State {
 // (sys_activity), which it does at most once a minute. "pump.calls": how many times long work called
 // the work pump (work_pump, common.h) since this key was last checked, so a check counts what the
 // lines before it did. "keyboard.draws": how many times an on-screen keyboard was drawn
-// (keyboard_draw, keyboard.h) since this key was last checked, the same way.
+// (keyboard_draw, keyboard.h) since this key was last checked, the same way. "keyboard.clipboard": what the
+// keyboard's Cut or Copy took last (keyboard_clipboard), empty before the first.
 fn power_probe(key: &[u8], out: &mut String, cap: usize) -> bool {
     if key.starts_with(b"touch.") {
         // touchgest's: what the contact lines' fingers are doing (touchgest_probe)
@@ -1361,6 +1362,10 @@ fn power_probe(key: &[u8], out: &mut String, cap: usize) -> bool {
     }
     if key == b"keyboard.draws" {
         csnprintf!(out, cap, "%u", keyboard_draws_take());
+        return true;
+    }
+    if key == b"keyboard.clipboard" {
+        csnprintf!(out, cap, "%s", &keyboard_clipboard());
         return true;
     }
     if key != b"power.pokes" {

@@ -159,8 +159,10 @@ pub struct App {
     /// the main loop's last batch ended because no event was left queued (not at its 64 events or
     /// 8 ms): the editor's prefetch and the Links bar's hold timer wait for this
     pub input_drained: bool,
-    /// What a hardware key does to the open on-screen keyboard (Esc: its Cancel), taken by
-    /// app_keyboard_pointer at the release app_type_text sends (None the rest of the time).
+    /// What a hardware key does to the open on-screen keyboard (Esc: its Cancel; the arrows, Home, End and Ctrl or
+    /// Cmd with A, C, X and V: keyboard_key_input), taken by app_keyboard_pointer at the release app_type_text
+    /// sends (set over its touch-down too, which the keyboard then takes as a contact on no key; None the rest of
+    /// the time).
     pub kb_inject: Option<KbInput>,
 }
 
@@ -853,7 +855,9 @@ pub fn app_type_text(a: &mut App, input: KbInput) -> bool {
     let (x, y) = ((field.x + field.w / 2) as f32, (field.y + field.h / 2) as f32);
     let t = now_ms();
     let mut ev = InEvent { type_: InType::TouchDown, x, y, t_ms: t, k_ms: t, ..Default::default() };
-    a.kb_inject = None;
+    // (the input rides on the touch-down too, so a contact on the text, which puts the caret there, does not: the
+    // keyboard takes the touch-down as a contact on no key, app_keyboard_pointer_split)
+    a.kb_inject = Some(input);
     (ops(a.scr).event)(a, &ev);
     ev.type_ = InType::TouchUp;
     a.kb_inject = Some(input);
@@ -863,6 +867,16 @@ pub fn app_type_text(a: &mut App, input: KbInput) -> bool {
         return false;
     }
     true
+}
+
+/// A hardware keyboard's key on the open on-screen keyboard, when it is one that edits text (keyboard_key_input):
+/// applied through app_type_text, so it draws and refreshes as the keyboard's own keys do. False when it is not
+/// such a key, or no keyboard took it.
+fn app_text_key(a: &mut App, ev: &InEvent) -> bool {
+    match keyboard_key_input(ev.value, ev.key_mods) {
+        Some(input) => app_keyboard_area(a).is_some() && app_type_text(a, input),
+        None => false,
+    }
 }
 
 /// Shared keyboard/controller/Live view dispatch. Callers own enablement, wake gating and
@@ -939,6 +953,13 @@ fn app_event_screens(a: &mut App, ev: &InEvent) {
         }
         // A Library dialog with keys of its own (Exit Grimoire?, New notebook's Enter) takes them first.
         if !a.asleep && !ev.gamepad && crate::library::library_modal_key(a, ev.value) {
+            note_input(a);
+            return;
+        }
+        // A keyboard that types a name, a page or Find takes the keys that edit text (the arrows, Home and End, and
+        // Ctrl or Cmd with A, C, X and V) before any shortcut: none of them reaches what is under it. (On the Kindle
+        // a keyboard is read only while Settings > Shortcuts is on.)
+        if !a.asleep && !ev.gamepad && app_text_key(a, ev) {
             note_input(a);
             return;
         }
@@ -2412,7 +2433,14 @@ pub fn app_keyboard_pointer(a: &mut App, kb: &mut Keyboard, phase: i32, ev: &InE
 pub fn app_keyboard_pointer_split(a: &mut App, kb: &mut Keyboard, phase: i32, ev: &InEvent,
 ) -> (KbResult, Rect) {
     let mut d = RECT_EMPTY;
-    // (a hardware key's input, app_type_text: at the lift, instead of a key)
+    // (a hardware key's input, app_type_text: at the lift, instead of a key; its touch-down is a contact on no key,
+    // which ends a hold as any new contact does, and never one on the text, which would move the caret)
+    if phase == 0 && a.kb_inject.is_some() {
+        kb.repeat_at = 0;
+        kb.pressed_key = -1;
+        kb.field_drag = false;
+        return (KbResult::None, RECT_EMPTY);
+    }
     let mut r = match a.kb_inject.take() {
         Some(input) if phase == 2 => keyboard_input(kb, &input, &mut d),
         _ => keyboard_pointer(kb, phase, ev.x, ev.y, ev.t_ms, &mut d),
@@ -2470,6 +2498,7 @@ pub fn app_keyboard_press(a: &mut App, kb: &mut Keyboard, code: u32) -> KbResult
     if r == KbResult::Done || r == KbResult::Cancel || r == KbResult::None {
         return r;
     }
+    // (Changed, or Moved: the caret's line drawn and refreshed as the text's)
     keyboard_draw(kb, &mut a.screen, Rect { x: 0, y: 0, w: a.w, h: a.h });
     for dirty in [kb.field_dirty, kb.also_dirty, d] {
         if !rect_is_empty(dirty) {
@@ -2489,9 +2518,11 @@ pub fn app_keyboard_press(a: &mut App, kb: &mut Keyboard, code: u32) -> KbResult
 /// so a repeat 65 ms apart needs no wake of its own; with no hold this is the one test of repeat_at.)
 pub fn app_keyboard_tick(a: &mut App, kb: &mut Keyboard, now: u32) -> KbResult {
     if kb.repeat_at != 0 {
-        if keyboard_repeat(kb, now, display_fast_busy()) == KbResult::Changed {
+        // (Changed for delete's, Moved for ◀'s and ▶'s: the caret moved, the text as it was)
+        let r = keyboard_repeat(kb, now, display_fast_busy());
+        if r == KbResult::Changed || r == KbResult::Moved {
             kb_typed(a, kb);
-            return KbResult::Changed;
+            return r;
         }
     }
     if kb.settle_at == 0 || (now.wrapping_sub(kb.settle_at) as i32) < 0 {
@@ -2612,7 +2643,7 @@ pub fn app_probe(a: &mut App, key: &str, out: &mut String, cap: usize) -> i32 {
     }
     // Settings, under their settings.ini names.
     let st = &a.settings;
-    let nums: [(&str, i32); 38] = [
+    let nums: [(&str, i32); 39] = [
         ("settings.invert", st.invert as i32),
         ("settings.mirror_pdf", st.mirror_pdf as i32),
         ("settings.follow_rotation", st.follow_rotation as i32),
@@ -2628,6 +2659,7 @@ pub fn app_probe(a: &mut App, key: &str, out: &mut String, cap: usize) -> i32 {
         ("settings.controller", st.controller as i32),
         ("settings.updates", st.updates),
         ("settings.status_on", st.status_on as i32),
+        ("settings.clock_12h", st.clock_12h as i32),
         ("settings.status_mode", st.status_mode),
         ("settings.shapes", st.shapes as i32),
         ("settings.shape_hold_ms", st.shape_hold_ms),
@@ -2726,6 +2758,24 @@ pub fn app_probe(a: &mut App, key: &str, out: &mut String, cap: usize) -> i32 {
         csnprintf!(out,cap,"%d",wifi_failed() as i32);
     } else if key=="wifi.state" {
         csnprintf!(out,cap,"%s",match wifi_status(){None=>"unknown",Some(st) if !st.wireless||!st.enabled=>"off",Some(st) if st.connected==Some(true)=>"connected",Some(_)=>"on"});
+    } else if key == "wifi.current" {
+        // the network connected to, by name, as the last read had it ("" for none or not known)
+        let name = wifi_current().filter(|_| wifi_status().is_some_and(|st| st.connected == Some(true)));
+        csnprintf!(out, cap, "%s", &name.map_or(String::new(), |n| String::from_utf8_lossy(&n).into_owned()));
+    } else if key == "wifi.saved" {
+        // how many saved networks Settings > Wi-Fi read, "unread" when it could not (or has not)
+        match wifi_saved() {
+            Some(v) => csnprintf!(out, cap, "%d", v.len() as i32),
+            None => csnprintf!(out, cap, "%s", "unread"),
+        };
+    } else if key == "wifi.join" {
+        // the last switch to a saved network: "pending", "connected", "failed", "" for none
+        csnprintf!(out, cap, "%s", match wifi_joining().map(|j| j.1) {
+            None => "",
+            Some(WifiJoin::Pending) => "pending",
+            Some(WifiJoin::Connected) => "connected",
+            Some(WifiJoin::Failed) => "failed",
+        });
     } else if key == "live.on" {
         csnprintf!(out, cap, "%d", if live_on() { 1 } else { 0 });
     } else if key == "live.viewers" {

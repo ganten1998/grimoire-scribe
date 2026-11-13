@@ -235,7 +235,7 @@ time) and `beside pid` (the second background process).
 ## 2.0.0-beta.2, the Terminess diet (device checks pending)
 
 Automated: rust/tests/test_terminess_keep.rs (the embedded fonts hold exactly
-`assets/terminess-keep.txt`'s code points, 1,197 of Terminus's text and 84 Material Design icons; every
+`assets/terminess-keep.txt`'s code points, 1,197 of Terminus's text and 85 Material Design icons; every
 icon the sources draw is listed, is in both weights and draws ink; none of the Nerd Fonts glyphs the diet
 leaves out is listed), test_koreader.rs's fonts_follow_the_binary (KOReader's `fonts/Grimoire` written
 again when it differs, left alone when equal, made only while the Terminess patch is applied, nothing
@@ -2301,3 +2301,149 @@ None of this has run on a Scribe. Read the screens; nothing here needs grimoire.
    thousands of glyphs), and whether it ends in "Took too long to read.".
 4. **Nothing else moved.** Japanese names, accented names, the clock and every screen in Spanish and Japanese
    draw as in 2.1.0-beta.1.
+
+## 2.1.0-beta.2, last round, lane M (nebuff's main merged, and Clear page)
+
+Public `main` (nebuff's work on 2.1.0-beta.1) is merged into the line, and the pen button's hold no longer clears
+the page by default. Automated: test_gesturemap (`the_built_ins`, `old_clear_page_defaults_read_as_none`),
+editor's `clear_page_from_a_gesture_or_a_key_says_so_and_undo_takes_it_back` and
+`a_resize_handle_scales_the_selection_about_its_opposite_corner`, library's
+`recording_contacts_buttons_timeout_and_rotation` (Disable), test_store and test_probe (`clock_12h`), the
+scenarios v_gestures_4b_clear, v_gestures_4_pen, v_controller_actions, z_lasso_22_resize, z_book_8_links,
+z_pages_footer_delete and i_display. **Not run on a Scribe.** The owner's check:
+
+1. **The hold does nothing now.** On a page with ink, hold the pen's button with the nib a few millimetres above
+   the screen for two seconds, then rest a finger on the button while writing: the ink stays, no toast. If the
+   page still clears, open Settings > Gestures > Editing: the Clear page row names the gesture that does it (a
+   gesture you recorded stays yours). Look in `grimoire/gestures.ini` too: a `pen.Button.hold=clear-page` there
+   alone is kept as a choice; beside `pen.Button.triple=clear-page` or `pen.Button.triple=nothing` (the old
+   built-ins an earlier version wrote) both lines are gone after the next change in Settings > Gestures.
+2. **Clear page with a gesture says so.** Settings > Gestures > Editing > Clear page, record a hold of the pen's
+   button, Use. On a page with ink, hold the button over it: the page clears and a toast at the bottom says "Page
+   cleared. Undo brings it back." for about four seconds; the toolbar's Undo brings every stroke and link back
+   at once. The broom on the toolbar clears without a toast. In Spanish the toast reads "Página limpiada.
+   Deshacer la recupera."
+3. **Disable.** Settings > Gestures > Pages > Previous / next page, then Disable on the card: the card closes,
+   a toast says "No gestures for Previous / next page now.", the row says "no gesture", and two fingers left or
+   right (or one finger) no longer turn the page. Reset brings them back. In Spanish and Japanese the card's four
+   buttons fit (Japanese shows Disable in English until nebuff translates it).
+4. **Resize a selection.** Lasso a word: four black squares sit on the box's corners. Drag the bottom-right one
+   outward: the outline follows the pen, the word is drawn larger at the lift, Undo puts it back as it was, and
+   a tap on a square that never moves changes nothing. On an imported planner, lasso writing in a day cell and
+   resize it: the cell's tab still goes where it went. A read-only page shows no squares.
+5. **The 12-hour clock.** Settings > Display, tick "Display time as 12 hour": the clock corner on a page says
+   `Nov 14, 10:13 PM`; the Library's cards keep the 24-hour time. Untick: back to `22:13`. In Spanish `p. m.`.
+6. **Pages: Delete from the bottom row.** In the Pages view, tick two pages (Multi-select): a trash button joins
+   the bottom row and deletes them; a page tapped again (not a quick double tap) unticks. Hold a page: its card
+   lists Open, Add a link, Rename, Move to..., Copy to notebook..., Delete and Cancel, each with its icon, and
+   Cancel is inside the card upright and sideways.
+
+## 2.1.0-beta.2, Wi-Fi networks (lane W)
+
+Settings > Wi-Fi (issue #40). Automated: `tests/test_wifi_sh.py` (make wifi-check: the helper's networks,
+current and join verbs against a fake lipc whose profileData holds passwords: none comes out, in text or in
+hex; a format it does not know and a failed read list no name; join refuses anything but a saved network
+before any change and passes a hostile name as data), `rust/src/wifi.rs`'s tests (reports fail closed; a
+switch's states, its hex argument, exit during a switch) and `tests/scenarios/z_wifi_networks.qs` (the sheet
+from the scenario helper, also run in every language and style by make l10n-check). **Not run on a Scribe.**
+
+**Probes first** (read only; the maintainer runs them over SSH with the owner's OK; copy this branch's
+`kindle/app/wifi.sh` to `/tmp/wifi.sh`). None prints a password: the masked ones replace every quoted value
+and every other letter or digit.
+
+1. `ls -l /usr/bin/lipc-hash-prop /usr/bin/lipc-probe /usr/bin/lipc-set-prop; busybox awk 'BEGIN{print 1}'`:
+   the tools the helper calls exist (else the sheet says "Saved networks could not be read.").
+2. `lipc-hash-prop 2>&1 | head -n 20; lipc-set-prop 2>&1 | head -n 20`: how a hasharray goes in (the helper
+   pipes `{}` on stdin) and that `-s` sets a string.
+3. `lipc-probe -v com.lab126.wifid 2>&1 | grep -i -e profileData -e currentEssid -e cmState` and
+   `lipc-probe -v com.lab126.cmd 2>&1 | grep -i -e ensureConnection -e wirelessEnable`: the properties exist
+   on this firmware (KOReader's Kindle backend uses all four).
+4. `printf '{}\n' | lipc-hash-prop com.lab126.wifid currentEssid 2>&1 | sed -e 's/"[^"]*"/"v"/g' -e 's/[^][{}()=:,;" ]/x/g' | tr -s x | head -n 20`,
+   then the same with `profileData`: the layout of the answer with no content (every quoted value, key and other
+   character becomes `x`: `[x] = { x = "x", x = "x", x = x }`). The reader expects quoted values (`x = "x"` or
+   `"x": "x"`) and bare numbers; an unquoted value makes it give no name (fails closed).
+5. `sh /tmp/wifi.sh networks`, connected: `current=` and `saved=` lines in hex, then `list=1`. On the Mac,
+   `sed -n 's/^\(current\|saved\)=//p' | xxd -r -p` (one per line) should give your network and every network
+   the Kindle's own Wi-Fi list shows, names with accents or Japanese too. `list=0` means probe 4's layout is not
+   the one the reader knows: send probe 4's output. A name missing from the list (one with a backslash, a quote
+   the tool escapes, or an escaped accent) says how the tool writes such names.
+6. The same with Wi-Fi off (airplane mode): `list=1` or `list=0` says whether wifid lists the saved networks
+   while the radio is off (`list=0`: the sheet asks to turn Wi-Fi on first, then reads them).
+
+**The owner's checks** (after the probes; English, then Spanish and Japanese for the words):
+
+1. Settings' bottom row reads KOReader, Pair, Wi-Fi, Gestures, Updates, Done, every word whole, upright and
+   sideways, in Gothic and Classic. Gestures and Updates open their sheets as before.
+2. Connected to Wi-Fi, open Settings > Wi-Fi: "Connected to <your network>", and the networks the Kindle has
+   saved, yours first with a check. More than seven: More networks (1 of 2) shows the rest.
+3. Tap another saved network that is in range: "Connecting to <it>..." and then "Connected to <it>" with the
+   check on it, within about 10 seconds. Share's address is the new network's; Live view pairs on it.
+4. Tap a saved network that is out of range: "Could not connect to <it>." within 45 seconds. Note what the
+   Kindle connects to afterwards on its own (the old network, none?): Grimoire switches nothing back.
+5. Wi-Fi off, open the sheet: "Wi-Fi is off" and the saved networks, or "Turn on Wi-Fi to see the saved
+   networks."; Turn on Wi-Fi connects, and the list appears. Tap a network with Wi-Fi off: the radio comes on
+   and the Kindle connects to that network.
+6. Turn off Wi-Fi from the sheet: "Wi-Fi is off", SSH and Share drop as with the Share card's button.
+7. Leave Grimoire (Exit) right after tapping a network: the Kindle still connects to it; KOReader's network
+   menu agrees.
+8. From a notebook: the toolbar's cog > Wi-Fi works the same; Done comes back to the notebook.
+9. Afterwards, grimoire.log names no network and holds no password: only lines such as `wifi: switched to a
+   saved network`. The Kindle's own Wi-Fi list is unchanged (nothing added, changed or forgotten).
+
+## 2.1.0-beta.2, last round, lane K: the keyboard's caret, and copy and paste
+
+From issue #36. Automated: the keyboard's unit tests (rust/src/keyboard.rs: typing and delete at the caret,
+the kana modifier, selections, Cut, Copy and Paste, the edit page, the text line's keys, the arrows' hold, a tap
+and a drag on the text, the line keeping the caret in view, the paired keyboard's keys, the edit page's words in
+every language), tests/scenarios/u_keyboard_caret.qs (the Library's keyboard, upright and sideways, its refreshes,
+the clipboard across keyboards, a paired keyboard's keys), u_keyboard_caret_classic.qs (Classic's shots),
+u_keyboard_caret_ja.qs and u_keyboard_caret_es.qs (the kana pad, Spanish, the fit checks) and z_find_5_caret.qs
+(Find's rows follow a paste and not a move of the caret; the lasso's ink clipboard apart). **Not run on a
+Scribe.** The owner's check, in Classic and Gothic, upright and sideways, in English, Spanish and Japanese:
+
+1. **The arrows.** Library > Folder: type a name, tap ◀ three times and type a letter: it goes in where the caret
+   is. Hold ◀: the caret steps back after about 0.4 s, then quickly, and stops at the start; hold ▶ to go back.
+   Delete takes the letter before the caret. Each tap should feel as quick as a letter key (one refresh of the
+   text line and the key, no flash of the keyboard).
+2. **A tap and a drag on the text.** Tap between two letters with the pen: the caret goes there. Draw the pen
+   across a few letters: they show white on black; type a letter and it replaces them. Try with a finger too.
+3. **The edit page.** Tap the key beside ◀ (the copy icon): Select all, Cut, Copy, Paste, Start and End.
+   Select all, Copy, then abc and type more; open the edit page and Paste. Cancel, then rename a notebook and
+   Paste there: the text is still on the clipboard. Lasso some ink and Copy it, then Paste in a keyboard: the
+   text pastes, not the ink; Select mode's Paste still pastes the ink.
+4. **Every keyboard.** The same in a notebook's Find (its rows follow a paste, not the arrows), the Pages view's
+   Name this page and Go to page (Paste there takes the digits alone), the Graph's Rename, New page..., a link
+   card's Rename, and in Japanese on the kana pad (the edit page's way back is あ; ゛小 changes the kana before
+   the caret). The count pad (New page held) has no arrows and works as before.
+5. **A paired keyboard** (Settings > Shortcuts on): in any of those keyboards, Left and Right, Home and End move
+   the caret, Shift with them selects, Ctrl+A (Cmd+A on an Apple keyboard) selects all, Ctrl+C, Ctrl+X and
+   Ctrl+V copy, cut and paste; none of them turns a page or changes a tool under the keyboard. An arrow held
+   down moves one letter (no repeat on a paired keyboard yet).
+6. **Long names.** A name longer than the line: ◀ moves the shown part when the caret reaches its left end, and
+   Start and End jump; the text never shows "...".
+
+## 2.1.0-beta.2
+
+The second 2.1 beta: everything in CHANGELOG's 2.1.0-beta.2 section. Automated: the full gate on the release
+commit with the pinned toolchain; the Linux sandbox tests ran as root for the first time (10 of 11 in a VM on
+2026-11-10, the eleventh a test's own race, rewritten since; CI's `sandbox` job is their first run there). S1 ran on
+the owner's Scribe on 2026-11-09 (every sandbox step works; a planner page in 90 ms). On the owner's Scribe, with
+the development builds of 2026-11-09 to 2026-11-11 (the last, `f8de55aa`, is this release's code but for this
+commit): a 74-page gray planner dropped in `import/` became a notebook in the sandbox with its 1,161 tabs working; a
+second copy was recognised as imported before; two colour PDFs imported and their notebooks' PDFs came out in
+colour; a PDF with a password was refused once, without a second toast; three fonts of his own were checked one
+job each and used; a PDF and a picture folder with Chinese and Japanese names imported; a 380-page planner opened
+from KOReader (Open this book in Grimoire) came in with its 6,363 tabs; everything else he used looked right. The
+What's new note was vetted by the owner, and an earlier bundle of this release (build `fafe26798d86`, before the last
+round) was checked by him on his Scribe that day: good. The owner then made this the last beta of 2.1 and put in the
+last round (the sections above: nebuff's main with the lasso resize, Disable and the 12-hour clock; the pen button's
+hold no longer clearing the page; Settings > Wi-Fi; the keyboard's caret, cursor keys and copy and paste). Read-only
+probes on his Scribe (2026-11-11, values masked) settled the Wi-Fi helper's reader, which then listed his 10 saved
+networks and named the current one. The extended What's new was vetted by him. This release's bundle with the
+last round (build `e52d37dbdf51`, from `be5a0886`, its binary byte for byte the one the gate tested) was installed
+on the owner's Scribe (firmware 5.20.1.0.2) on 2026-11-11, after a backup, with the notebooks unchanged and
+KOReader left alone. The owner then tried the last round on it: a lasso selection resized from a corner; the pen
+button held with the pen near the screen, the page staying; Disable in Settings > Gestures; the 12-hour clock; the
+keyboard's ◀ ▶ and edit keys in a rename and in Find, and its narrower text box; Settings > Wi-Fi with the saved
+networks, a switch to another and back, and the sheet with Wi-Fi off. The owner's verdict, 2026-11-12: "all good".
+

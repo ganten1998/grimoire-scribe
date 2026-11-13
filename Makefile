@@ -24,7 +24,7 @@ BUILD   ?= build
 # The C tree's binaries (the c-* rules), apart from the app's.
 CBUILD  ?= $(BUILD)/c
 DIST    ?= dist
-HOSTCC  ?= clang
+HOSTCC  ?= gcc
 ZIG     ?= zig
 KCC     := $(ZIG) cc -target arm-linux-musleabihf -mcpu=cortex_a7
 VERSION := $(shell cat VERSION 2>/dev/null || echo 0.1.0)
@@ -172,7 +172,7 @@ SIM_HOOKS := GRIMOIRE_WIFI_SCRIPT GRIMOIRE_HOST GRIMOIRE_PASSCODE GRIMOIRE_SIM_A
              GRIMOIRE_BT_API GRIMOIRE_UPDATE_SCRIPT GRIMOIRE_UPDATE_REQUEST FAKE_UPDATE_PREVIEW FAKE_UPDATE_STABLE FAKE_UPDATE_FAIL \
              GRIMOIRE_SIM_STATS GRIMOIRE_SIM_SIZE GRIMOIRE_CHECK_FIT GRIMOIRE_LANG GRIMOIRE_L10N_DIR GRIMOIRE_ANNOTATE \
              GRIMOIRE_SLEEP_MINUTE_MS GRIMOIRE_SIM_RAWPEN GRIMOIRE_SIM_RAWPEN_MAIN GRIMOIRE_SIM_STALL_MS \
-             GRIMOIRE_LIVE_PEN_SOURCE GRIMOIRE_SIM_MAP_NOMEM GRIMOIRE_KEEP_RENDER_MS GRIMOIRE_SIM_LATE_MS GRIMOIRE_SIM_CLOCK \
+             GRIMOIRE_LIVE_PEN_SOURCE GRIMOIRE_SIM_MAP_NOMEM GRIMOIRE_KEEP_RENDER_MS GRIMOIRE_PAGE_VIEWS GRIMOIRE_SIM_LATE_MS GRIMOIRE_SIM_CLOCK \
              GRIMOIRE_SIM_DENSE_DRAW_MS GRIMOIRE_SIM_CORES GRIMOIRE_SIM_BACKLINKS_STEP_MS GRIMOIRE_CACHE_WINDOW_MS GRIMOIRE_STORAGE \
              GRIMOIRE_IMPORT_STABLE GRIMOIRE_PDF_SLICE_PAGES GRIMOIRE_PDF_BANDS GRIMOIRE_PDF_NO_MAP GRIMOIRE_PDF_FREE_BYTES GRIMOIRE_PDF_WATCHDOG_MS \
              GRIMOIRE_PDF_TEST_CRASH_PAGE GRIMOIRE_PDF_TEST_HANG_PAGE GRIMOIRE_PDF_TEST_ALLOC_PAGE GRIMOIRE_PDF_TEST_TRAP_PAGE GRIMOIRE_PDF_TEST_LINKS GRIMOIRE_PDF_TEST_WOKE GRIMOIRE_PDF_JOB_CPU_SECS GRIMOIRE_WORK_FAIL_STEP GRIMOIRE_WORK_EXE GRIMOIRE_SANDBOX \
@@ -274,7 +274,8 @@ l10n:
 # style: the Templates sheet with templates in it, over New notebook and the editor's page, on a
 # data root its "# copy:" line fills first, as make scenarios does. Then (Rust build only) the
 # unified Index, the notebook links selector, page management and backlinks scenarios from their
-# fixtures, and z_wifi.qs with and without an address, in every language and style. Under make check
+# fixtures, z_wifi.qs with and without an address, and z_wifi_networks.qs (Settings > Wi-Fi, with the keys
+# on for its Esc), in every language and style. Under make check
 # it waits for
 # the scenarios: both give their runs the same ports. With SCEN_SKIP_RUST_ONLY set (make
 # c-check), y_all_screens.qs is skipped: it visits screens only the Rust build has.

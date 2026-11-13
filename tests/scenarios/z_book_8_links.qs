@@ -102,3 +102,27 @@ expect editor.select is selected
 expect editor.selected is 1
 expect editor.sel_links is 0
 expect editor.doclinks is 2 5
+# the selection's corner handle scales the ink (2.1.0-beta.2, nebuff's resize) and leaves the tab where it was
+expect editor.view is 1.00 0 0
+expect editor.sel_box is 235 385 331 51
+pen down 566 436
+pen move 650 470
+pen move 731 512
+wait 150
+expect editor.select is dragging
+pen up 731 512
+wait 200
+expect editor.select is selected
+expect editor.undo_kind is lasso
+expect editor.selected is 1
+expect editor.sel_links is 0
+expect editor.sel_box not 235 385 331 51
+expect editor.doclinks is 2 5
+expect editor.live_matches_render is 1
+# undo puts the ink back, the tabs as they were
+tap panel select.done
+wait 100
+pentap panel undo
+wait 200
+expect editor.strokes is 1
+expect editor.doclinks is 2 5

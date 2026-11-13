@@ -140,6 +140,9 @@ pub struct Settings {
     /// and in which corner of the page it sits: 0 top left (the default), 1 top right, 2 bottom right,
     /// 3 bottom left (settings.ini status_corner; the tap zone follows it)
     pub status_corner: i32,
+    /// The clock shows the time on the 12-hour clock (settings.ini clock_12h): "2:32 PM" instead of
+    /// "14:32". The Display sheet's "Display time as 12 hour" row.
+    pub clock_12h: bool,
     /// Rotation to hold while locked (settings.ini rotation_lock): 0 follows the Kindle, 1..=4
     /// hold the current rotation plus one. The app resolves the current orientation at lock time.
     pub rotation_lock: i32,
@@ -4001,8 +4004,11 @@ pub fn store_page_cache_age_ms(nb: &NotebookInfo, pid: u32) -> u32 {
 
 /// A page whose whole drawing in the editor takes this long or longer keeps it (store_save_page_render), ms.
 /// (The previews job goes by store_page_dense instead: it keeps a dense page's drawing, however quick, and no
-/// other page's, however slow.)
-pub const STORE_KEEP_RENDER_MS: u32 = 1000;
+/// other page's, however slow.) 250 ms, down from 1 s: a page that takes a quarter of a second to draw is a
+/// quarter of a second the owner waits at every turn and open that finds no kept drawing, while keeping one
+/// costs one run-length coded canvas (tens of ms to write, a few to read). Pages quick enough to draw again
+/// without being noticed still keep nothing.
+pub const STORE_KEEP_RENDER_MS: u32 = 250;
 /// Tests: the threshold in place of STORE_KEEP_RENDER_MS (u32::MAX: none), so a unit test can count every
 /// drawing as slow (and see that the previews job still keeps no light page's).
 pub static STORE_TEST_KEEP_RENDER_MS: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(u32::MAX);
@@ -4196,17 +4202,13 @@ pub fn store_load_page_render(nb: &NotebookInfo, pid: u32, w: i32, h: i32, out: 
         return false;
     }
     let Some(data) = read_file(&image) else { return false };
-    let mut px = Vec::new();
-    if px.try_reserve_exact((w * h) as usize).is_err() {
-        return false;
-    }
-    px.resize((w * h) as usize, 0);
-    if !rle_decode(&data, &mut px) {
+    // Decoded straight into the page canvas: a page-size temporary and its copy back (9 MB at the
+    // Scribe's size) less to wait on.
+    if !rle_decode(&data, &mut out.px[..(w * h) as usize]) {
         // (a write cut short: its stamp goes, so it is drawn and kept again)
         let _ = std::fs::remove_file(stamp);
         return false;
     }
-    out.px[..(w * h) as usize].copy_from_slice(&px);
     true
 }
 // Whether page pid has a drawing kept by 2.0.0 or 2.0.1 (render_tag_is_before), current for the page file or not.
@@ -4454,6 +4456,7 @@ pub fn settings_default(s: &mut Settings) {
     s.status_on = true;
     s.status_size = 1;
     s.status_corner = 0;
+    s.clock_12h = false;
     s.rotation_lock = 0;
     s.gestures = true;
     s.landscape_fit = true;
@@ -4838,6 +4841,7 @@ fn settings_cb(s: &mut Settings, k: &[u8], v: &[u8]) -> bool {
         b"hints" => s.hints = keep_int("hints", v, 0, i32::MAX),
         b"link_areas" => s.link_areas = keep_bool("link_areas", v),
         b"status_corner" => s.status_corner = keep_int("status_corner", v, 0, 3),
+        b"clock_12h" => s.clock_12h = keep_bool("clock_12h", v),
         b"shapes" => s.shapes = keep_bool("shapes", v),
         b"shape_hold_ms" => s.shape_hold_ms = keep_int("shape_hold_ms", v, 300, 1500),
         b"shape_quads" => s.shape_quads = keep_int("shape_quads", v, 0, 2),
@@ -5163,6 +5167,7 @@ pub fn settings_save(s: &Settings) -> i32 {
     put_int(&mut b, "hints", s.hints);
     put_int(&mut b, "link_areas", s.link_areas as i32);
     put_int(&mut b, "status_corner", s.status_corner);
+    put_int(&mut b, "clock_12h", s.clock_12h as i32);
     put_int(&mut b, "rotation_lock", s.rotation_lock);
     put_int(&mut b, "gesture_new_page", s.gesture_new_page as i32);
     put_int(&mut b, "status_mode", s.status_mode);

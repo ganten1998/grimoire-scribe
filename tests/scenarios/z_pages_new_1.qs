@@ -71,7 +71,7 @@ wait 100
 expect editor.ticked is 2
 shot 02-two-ticked
 # Copy remains disabled with multiple pages selected.
-tap 592 2395
+tap 460 2395
 wait 100
 expect editor.modal is pages
 expect editor.pages is 4

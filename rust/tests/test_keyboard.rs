@@ -265,7 +265,8 @@ fn never_cut_inside_a_character() {
 // The tail of a long name steps whole characters, so the field never starts with a broken
 // one. In Gothic the field's text is all pixel-face glyphs, pure black on white; a broken
 // character would draw U+FFFD from Terminess, anti-aliased, with grays. Titles of every length
-// move where the cut falls. (47 oe overflow the field after any of these titles.)
+// move where the cut falls. (47 oe overflow the field after any of these titles.) The text box is the line left of
+// its keys (the edit key, the arrows), whose icons are Terminess's and gray at their edges.
 fn long_name_tail_is_whole_characters() {
     ui_set_theme(UiTheme::Gothic);
     let mut kb = Keyboard::default();
@@ -276,7 +277,7 @@ fn long_name_tail_is_whole_characters() {
         let title = &WORDS[..t];
         keyboard_open(&mut kb, title, many.as_bytes());
         draw(&mut kb);
-        let inside = rect_inflate(Rect { x: kb.area.x + 30, y: kb.area.y + 30, w: kb.area.w - 60, h: 120 }, -20); // inside its frame
+        let inside = rect_inflate(keyboard_field_rect(kb.area), -20); // inside its frame
         let mut grays = 0;
         G_C.with(|c| {
             let c = c.borrow();
