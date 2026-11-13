@@ -77,7 +77,9 @@ fits as `fit[ja]: ...`.
 | Sleep | **スリープ** | |
 | screensaver | **スクリーンセーバー** | |
 | Controller | **コントローラー** | |
-| pair / forget | **ペアリング / 解除** | |
+| pair / forget | **ペアリング / 解除** | A toast says what failed: **コントローラーをペアリングできませんでした**, **コントローラーを解除できませんでした**. |
+| shortcuts | **ショートカット** | Settings > Shortcuts: **ショートカット: キーとコントローラーのボタン**. |
+| Reset | **…をリセット** | The verb, not a noun: **ボタンをリセット**, **ジェスチャーをリセット**. |
 | Link | **リンク** | |
 | Index | **索引** | |
 | Pin | **固定** | |

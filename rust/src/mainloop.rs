@@ -39,7 +39,9 @@ fn heartbeat() {
     // SAFETY: open/write/close on a NUL-terminated path we own and the fd open returns; write reads
     // one byte of a static.
     unsafe {
-        let fd = libc::open(path.as_ptr(), libc::O_WRONLY | libc::O_CREAT | libc::O_TRUNC, 0o644 as libc::c_uint);
+        // (O_NOFOLLOW: /tmp is every user's, and a link planted there must not make root truncate and write its
+        // target every 2 s; security review 2026-11)
+        let fd = libc::open(path.as_ptr(), libc::O_WRONLY | libc::O_CREAT | libc::O_TRUNC | libc::O_NOFOLLOW | libc::O_CLOEXEC, 0o644 as libc::c_uint);
         if fd >= 0 {
             if libc::write(fd, b"1".as_ptr() as *const libc::c_void, 1) < 0 { /* best effort */ }
             libc::close(fd);
@@ -334,6 +336,11 @@ pub fn main(args: Vec<String>) -> i32 {
     // SAFETY: signal() with SIG_DFL, before any thread or child exists.
     unsafe {
         libc::signal(libc::SIGPIPE, libc::SIG_DFL);
+    }
+    // The safe loader's worker (sandbox.rs): a fresh exec of this binary, which takes --work before any UI
+    // start-up (no display, input, settings or log) and parses what it is given.
+    if args.get(1).is_some_and(|a| a == "--work") {
+        return crate::sandbox::work_main(&args);
     }
     for a in args.iter().skip(1) {
         if a == "--version" {

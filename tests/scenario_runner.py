@@ -53,6 +53,7 @@ class Task:
         self.copies = []            # "# copy: DIR DEST" lines
         self.generate = None        # "# generate:" line
         self.pdfs = None            # "# pdfs: N"
+        self.storage = False        # "# storage: 1": the root is a storage root, the data root its "grimoire"
         self.scenario_checks = False  # the *.tmp and # pdfs: checks after the run
         self.stderr_file = None     # stderr to this file (the fail selftests), else to the log
         self.verify = None          # fn(rc) -> [failure messages]; default: rc must be 0
@@ -89,7 +90,7 @@ def read_times(path):
 def header(path):
     """The lines of a .qs file the runner reads, as the Makefile's sed and grep read them."""
     h = {'rust_only': False, 'root': None, 'settings': [], 'copies': [], 'generate': None, 'env': [],
-         'pdfs': None}
+         'pdfs': None, 'storage': False}
     with open(path, encoding='utf-8', errors='replace') as f:
         for line in f:
             line = line.rstrip('\n')
@@ -112,6 +113,10 @@ def header(path):
             elif line.startswith('# pdfs:'):
                 if h['pdfs'] is None:
                     h['pdfs'] = line[len('# pdfs:'):].strip()
+            elif line.startswith('# storage:'):
+                # the run's root is a fixture STORAGE root (GRIMOIRE_STORAGE), Grimoire's data root the folder
+                # "grimoire" in it; "# copy:" destinations and "# generate:" work on the storage root
+                h['storage'] = line[len('# storage:'):].strip() not in ('', '0')
     return h
 
 
@@ -177,6 +182,7 @@ def scenario_tasks(args, files, times):
         t.from_root = h['root']
         t.port = True
         t.settings, t.copies, t.generate, t.pdfs = h['settings'], h['copies'], h['generate'], h['pdfs']
+        t.storage = h['storage']
         t.scenario_checks = True
         t.serial = n in args.serial
         by_name[n] = t
@@ -256,6 +262,11 @@ def listdir(path):
 
 # ---- one run ----
 
+def data_root(t):
+    """Grimoire's data root: the run's root, or (a "# storage:" run) the folder "grimoire" in it."""
+    return os.path.join(t.root, 'grimoire') if t.storage else t.root
+
+
 def prepare(t, port, log):
     """Makes the run's data root as the Makefile's loop did; False (the reason logged) on failure."""
     shutil.rmtree(t.root, ignore_errors=True)
@@ -265,9 +276,10 @@ def prepare(t, port, log):
         if subprocess.call(['cp', '-R', src, t.root], stdout=log, stderr=subprocess.STDOUT) != 0:
             t.message = f'could not copy its root {t.from_root}'
             return False
-    if t.mkdir or t.ini or t.port or t.settings or t.copies:
-        os.makedirs(t.root, exist_ok=True)
-    ini = os.path.join(t.root, 'settings.ini')
+    data = data_root(t)
+    if t.mkdir or t.ini or t.port or t.settings or t.copies or t.storage:
+        os.makedirs(data, exist_ok=True)
+    ini = os.path.join(data, 'settings.ini')
     if t.ini:
         with open(ini, 'w', encoding='utf-8') as f:
             f.write(''.join(line + '\n' for line in t.ini))
@@ -313,7 +325,9 @@ def execute(t, args, port, hooks):
             env = {k: v for k, v in os.environ.items() if k not in hooks}
             for k, v in t.env:
                 env[k] = v
-            env.update(GRIMOIRE_ROOT=t.root, GRIMOIRE_SCRIPT=t.script, GRIMOIRE_SHOTS=t.shots)
+            env.update(GRIMOIRE_ROOT=data_root(t), GRIMOIRE_SCRIPT=t.script, GRIMOIRE_SHOTS=t.shots)
+            if t.storage:
+                env['GRIMOIRE_STORAGE'] = t.root
             err = open(t.stderr_file, 'w') if t.stderr_file else subprocess.STDOUT
             try:
                 rc = subprocess.call([args.binary], env=env, stdin=subprocess.DEVNULL, stdout=log, stderr=err)
@@ -332,7 +346,7 @@ def execute(t, args, port, hooks):
                         break
                 if t.pdfs is not None:
                     got = 0
-                    for dirpath, dirnames, filenames in os.walk(os.path.join(t.root, 'PDFs')):
+                    for dirpath, dirnames, filenames in os.walk(os.path.join(data_root(t), 'PDFs')):
                         got += sum(1 for x in dirnames + filenames if x.endswith('.pdf'))
                     if str(got) != t.pdfs:
                         msgs.append(f'{n} left {got} PDFs in PDFs/, wanted {t.pdfs}')
@@ -595,6 +609,27 @@ def l10n(args, hooks):
                 n = f'fonts-{lang}-{style}'
                 task(n, 'tests/l10n/fonts.qs', f'{b}/scen/l10n/{n}',
                      [('GRIMOIRE_LANG', lang), ('GRIMOIRE_CHECK_FIT', '1')], inis[style], 4.0)
+        # Your own fonts (2.1.0-beta.2): the Font sheet over a fonts folder of fixtures, in every language: every
+        # note a row can carry, the headings and the notice; then every font taking too long.
+        for script, ini, extra, weight in (
+                ('fonts-own', ['theme=classic', 'font=file:Gone.ttf'], [('GRIMOIRE_BG_DELAY_MS', '1500')], 8.0),
+                ('fonts-own-slow', ['theme=classic'],
+                 [('GRIMOIRE_FONT_TEST_HANG', '40'), ('GRIMOIRE_FONT_WATCHDOG_MS', '400')], 6.0)):
+            h = header(f'tests/l10n/{script}.qs')
+            for lang in langs:
+                n = f'{script}-{lang}'
+                t = task(n, f'tests/l10n/{script}.qs', f'{b}/scen/l10n/{n}',
+                         [('GRIMOIRE_LANG', lang), ('GRIMOIRE_CHECK_FIT', '1'), ('GRIMOIRE_IMPORT_STABLE', 'fast')] + extra,
+                         ini, weight)
+                t.copies, t.generate = h['copies'], h['generate']
+        # The file picker (2.1.0-beta.2) over a fixture storage root, in every language and style.
+        fcopies = header('tests/l10n/files.qs')['copies']
+        for lang in langs:
+            for style in styles_for(lang):
+                n = f'files-{lang}-{style}'
+                t = task(n, 'tests/l10n/files.qs', f'{b}/scen/l10n/{n}',
+                         [('GRIMOIRE_LANG', lang), ('GRIMOIRE_CHECK_FIT', '1')], inis[style], 5.0)
+                t.copies, t.storage = fcopies, True
         # The unified Index and the cross-notebook selector (tests/index_l10n_check.py was these),
         # each from its fixture, then the Wi-Fi controls with and without an address
         # (tests/wifi_l10n_check.py was these), in every language and style.
@@ -616,6 +651,16 @@ def l10n(args, hooks):
                           ('GRIMOIRE_WIFI_SCRIPT', os.path.abspath('tests/fixtures/wifi/helper.sh')),
                           ('GRIMOIRE_SIM_ADDRS', 'wlan0=192.168.0.20' if online else '')],
                          inis[style], 4.0)
+        # Settings > Wi-Fi with the scenario helper's saved networks (its button in Settings' bottom row
+        # too), in every language and style (with the keys on, for its Esc: the header's settings line is
+        # not read here).
+        for lang in langs:
+            for style in styles_for(lang):
+                n = f'wifi-networks-{lang}-{style}'
+                task(n, 'tests/scenarios/z_wifi_networks.qs', f'{b}/scen/l10n/{n}',
+                     [('GRIMOIRE_LANG', lang), ('GRIMOIRE_CHECK_FIT', '1'),
+                      ('GRIMOIRE_WIFI_SCRIPT', os.path.abspath('tests/fixtures/wifi/helper.sh'))],
+                     inis[style] + ['shortcuts_enabled=1'], 6.0)
     for t in tasks:
         t.serial = t.name in args.serial
     run_all(tasks, args, hooks)

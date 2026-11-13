@@ -6,7 +6,9 @@
 //! grimoire.log goes into public bug reports: the names of the owner's files and folders are never
 //! logged here, only notebook ids and counts.
 
+use crate::picwork::{PicOut, PicPool};
 use crate::prelude::*;
+use crate::fsview::*;
 use std::cell::RefCell;
 use std::io::Read;
 use std::os::unix::fs::MetadataExt;
@@ -14,8 +16,6 @@ use std::path::Path;
 
 /// a template file bigger than this is not taken
 const TEMPLATE_MAX_BYTES: usize = 16 << 20;
-/// the most read on the UI thread for a template's key
-const TEMPLATE_HASH_NOW: usize = 4 << 20;
 /// files of the templates folder looked at
 const MAX_TEMPLATES: usize = 500;
 /// import folders queued at one start (the job queue holds 16)
@@ -30,10 +30,12 @@ const JOB_PATH_MAX: usize = TEMPLATE_PATH_MAX;
 const PATH_BUF: usize = 1600;
 
 // What import_folder came to: done, failed in a way that may pass (memory, a full disk), or
-// refused (a page is no picture Grimoire takes: the same pictures fail the same way).
+// refused (a page is no picture Grimoire takes: the same pictures fail the same way), or not tried
+// (no sandboxed picture worker can be had: not the folder's fault, no try is counted).
 const IMPORT_DONE: i32 = 0;
 const IMPORT_RETRY: i32 = -1;
 const IMPORT_REFUSED: i32 = -2;
+const IMPORT_LATER: i32 = -3;
 
 // The one piece of the C's file-level state: the imports this run queued.
 #[derive(Default)]
@@ -177,6 +179,9 @@ fn copy_name<const N: usize>(dst: &mut FixedStr<N>, src: &str) {
 
 // A whole picture file of at most max bytes, or None (missing, unreadable, or bigger: errno EFBIG).
 fn read_source(path: &str, max: usize) -> Option<Vec<u8>> {
+    if let Some(r) = pick_read(path, max) {
+        return r;
+    }
     bgimage_read(path, max)
 }
 
@@ -193,8 +198,26 @@ fn read_head(path: &str, max: usize) -> Option<Vec<u8>> {
 // Whether the file at path, of at most max bytes, is a picture Grimoire takes (bgimage_check), from
 // its header: in its first 64 KB, or else (metadata before it: an ICC profile, a JPEG's
 // thumbnail) anywhere in the file, read whole for that. 0 with its size, or -1 and why.
+#[cfg(test)]
 fn check_file(path: &str, max: usize, w: &mut i32, h: &mut i32, why: &mut &'static str) -> i32 {
+    check_file_in(&mut PicPool::new(), path, max, w, h, why)
+}
+
+// check_file through a picture pool: the header is read by the sandboxed worker, not here (picwork.rs).
+// -2 (not -1) when the answer may differ another time: no memory for it, or two workers in a row ended on it;
+// -3 when no sandboxed worker can be had (the sandbox is required: nothing read the picture).
+fn check_file_in(pool: &mut PicPool, path: &str, max: usize, w: &mut i32, h: &mut i32, why: &mut &'static str) -> i32 {
     *why = "the file does not read";
+    if let Some(r) = pick_read(path, max.saturating_add(1)) {
+        // (a picture picked in place: read through the walk, whole, then checked as a file's head is, by
+        // the worker like every other picture from outside Grimoire: never parsed here)
+        let Some(all) = r else { return -1 };
+        if all.len() > max {
+            *why = "too big a file";
+            return -1;
+        }
+        return check_bytes(pool, &all, all.len(), w, h, why);
+    }
     let Ok(st) = std::fs::metadata(path) else { return -1 };
     if !st.is_file() {
         return -1;
@@ -207,15 +230,40 @@ fn check_file(path: &str, max: usize, w: &mut i32, h: &mut i32, why: &mut &'stat
     let head = read_head(path, want);
     let more = head.as_ref().is_some_and(|h| h.len() == want);
     let mut rc = match &head {
-        Some(hd) => bgimage_check(hd, st.len() as usize, w, h, why),
+        Some(hd) => check_bytes(pool, hd, st.len() as usize, w, h, why),
         None => -1,
     };
-    if rc != 0 && more {
+    if rc == -1 && more {
         if let Some(all) = read_source(path, max) {
-            rc = bgimage_check(&all, all.len(), w, h, why);
+            rc = check_bytes(pool, &all, all.len(), w, h, why);
         }
     }
     rc
+}
+
+// bgimage_check, by the pool: 0 with the size, or -1 and why (the picture is at fault), or -2 and why (no
+// memory for it, or its workers died: another time may answer otherwise), or -3 (no sandboxed worker).
+fn check_bytes(pool: &mut PicPool, data: &[u8], file_len: usize, w: &mut i32, h: &mut i32, why: &mut &'static str) -> i32 {
+    match pool.check(data, file_len) {
+        PicOut::Info { w: pw, h: ph } => {
+            *w = pw;
+            *h = ph;
+            0
+        }
+        PicOut::Bad(m) => {
+            *why = m;
+            -1
+        }
+        PicOut::Retry(m) | PicOut::Dead(m) => {
+            *why = m;
+            -2
+        }
+        PicOut::NoWorker(m) => {
+            *why = m;
+            -3
+        }
+        PicOut::Pic { .. } => -1,
+    }
 }
 
 fn cpath(path: &str) -> Option<std::ffi::CString> {
@@ -228,8 +276,8 @@ fn write_quiet(path: &str, text: &str) -> i32 {
     let mut tmp = String::new();
     csnprintf!(&mut tmp, PATH_BUF + 64, "%s.tmp", path);
     let Some(ctmp) = cpath(&tmp) else { return -1 };
-    // SAFETY: open reads the NUL-terminated path we own; the descriptor it returns is ours alone.
-    let fd = unsafe { libc::open(ctmp.as_ptr(), libc::O_WRONLY | libc::O_CREAT | libc::O_TRUNC, 0o644 as libc::c_uint) };
+    // (never through a planted <name>.tmp link: util.rs open_rewrite_nofollow)
+    let fd = open_rewrite_nofollow(&ctmp, 0o644);
     if fd < 0 {
         return -1;
     }
@@ -324,7 +372,7 @@ fn uncap_memory(m: &MemCap) {
 
 // A folder's README.txt, written once when Grimoire makes the folder (in the language in use then)
 // for the owner to read on a computer: a title and paragraphs, a translated string each.
-fn write_readme(dir: &str, parts: &[&str], what: &str) {
+pub(crate) fn write_readme(dir: &str, parts: &[&str], what: &str) {
     let mut path = String::new();
     csnprintf!(&mut path, 700, "%s/README.txt", dir);
     if exists(&path) {
@@ -380,15 +428,24 @@ its previews of these files in the .cache folder."),
     root_path("import", &mut dir, 600);
     if mkdir_p(&dir) == 0 {
         // TRANSLATORS: grimoire/import/README.txt, written like the templates one: its title, then
-        // its two paragraphs. "done" is the name of a folder: keep it as it is.
+        // its three paragraphs (folders of pictures, PDFs, what happens after). "done" is the name of a
+        // folder: keep it as it is. "PDF" files are the ones Grimoire reads itself, with their pages as they
+        // are printed.
         let parts = [
             tr("Importing pages into Grimoire"),
             tr("To write on pages you already have, such as a PDF saved as pictures, put a folder of PNG or JPG \
 files here, one picture a page, and start Grimoire. The folder's name becomes the notebook's name, \
 and the pages follow the file names in order (page-2 comes before page-10). Gray pictures import \
 faster and take less room than colour ones."),
-            tr("Grimoire imports each folder in the background and then moves it into the done folder. Copy folders \
-in over USB while Grimoire is closed."),
+            // TRANSLATORS: grimoire/import/README.txt, its second paragraph: a PDF dropped here becomes a notebook.
+            // "Library" names Grimoire's own screen, as it is translated there.
+            tr("A PDF, such as a planner, goes in as it is: put the file here, or in a folder here to file its \
+notebook in the Library folder of that name, and open the Library. Its pages become the notebook's \
+pages, in colour where the PDF has colour. A file still being copied waits until it is whole."),
+            // TRANSLATORS: grimoire/import/README.txt, its last paragraph. "done" is the name of a folder: keep it as
+            // it is.
+            tr("Grimoire imports each folder or PDF in the background and then moves it into the done folder. Copy \
+them in over USB, or over SSH while Grimoire runs."),
         ];
         write_readme(&dir, &parts, "import");
     }
@@ -574,7 +631,8 @@ fn make_previews(dir: &str) -> i32 {
     let photo = dir == photos;
     let mut cache = String::new();
     csnprintf!(&mut cache, 700, "%s/.cache", dir);
-    if mkdir_p(&cache) != 0 {
+    // (its previews are written and the stale ones deleted as root: never through a planted link)
+    if !no_link_below(&store_root(), &cache) || mkdir_p(&cache) != 0 {
         return -1;
     }
     let mut names = Vec::new();
@@ -582,6 +640,7 @@ fn make_previews(dir: &str) -> i32 {
         return -1;
     }
     let nn = names.len();
+    let mut pool = PicPool::new();
     let (mut pw, mut ph) = (0, 0);
     let (mut made, mut bad, mut later) = (0, 0, 0);
     store_page_size(&mut pw, &mut ph);
@@ -613,32 +672,41 @@ fn make_previews(dir: &str) -> i32 {
         } else {
             "the file does not read"
         };
-        let mut src = BgPicture::default();
-        let mut fit = BgPicture::default();
         let mut full = Canvas::default();
         let mut small = Canvas::default();
         let bytes: &[u8] = data.as_deref().unwrap_or(&[]);
-        let mut dec = if data.is_some() {
-            bgimage_decode(bytes, &mut src, &mut why)
+        // (the picture is decoded by the sandboxed worker, upright for a photo, fitted onto the page)
+        let out = if data.is_some() {
+            pool.decode(bytes, photo, pw, ph)
         } else if too_big {
-            -1
+            PicOut::Bad(why)
         } else {
-            -2
+            PicOut::Retry(why)
         };
-        if dec == 0 && photo && bgimage_orient(&mut src, bgimage_exif_orientation(bytes)) != 0 {
-            dec = -2;
+        let mut is_bad = false;
+        let mut src_size = (0, 0);
+        let mut fit = BgPicture::default();
+        match out {
+            PicOut::Pic { src_w, src_h, fit: f } => {
+                src_size = (src_w, src_h);
+                fit = f;
+            }
+            PicOut::Bad(m) | PicOut::Dead(m) => {
+                is_bad = true;
+                why = m;
+            }
+            // (no sandboxed worker: not ready yet, never marked bad; the next scan tries it again)
+            PicOut::Retry(m) | PicOut::NoWorker(m) => why = m,
+            PicOut::Info { .. } => {}
         }
-        let ok = dec == 0
-            && bgimage_normalize(&src, pw, ph, &mut fit) == 0
-            && bgimage_luma(&fit, &mut full) == 0
-            && canvas_init(&mut small, pw / THUMB_DIV, ph / THUMB_DIV) == 0;
+        let ok = !fit.px.is_empty() && bgimage_luma(&fit, &mut full) == 0 && canvas_init(&mut small, pw / THUMB_DIV, ph / THUMB_DIV) == 0;
         if ok {
             canvas_downsample_keep_lines(&mut small, &full, 0.6);
-            let key = cformat!("%016llx %d %d\n", bgimage_content_hash(bytes), src.w, src.h);
+            let key = cformat!("%016llx %d %d\n", bgimage_content_hash(bytes), src_size.0, src_size.1);
             // (the key first: a preview has one)
             let wrote = write_quiet(&kp, &key) == 0 && store_write_pgm(&pv, &small) == 0;
             made += wrote as i32;
-        } else if dec == -1 {
+        } else if is_bad {
             qlog!(
                 "%s: file %d of %d is not a picture Grimoire can use (%s)",
                 if photo { "photos" } else { "templates" },
@@ -649,9 +717,8 @@ fn make_previews(dir: &str) -> i32 {
             write_quiet(&bp, "");
             bad += 1;
         } else {
-            later += 1; // out of memory, or the file did not read: the next scan tries again
+            later += 1; // out of memory, the file did not read, or no sandboxed worker: the next scan tries again
         }
-        bgpicture_free(&mut src);
         bgpicture_free(&mut fit);
         canvas_free(&mut full);
         canvas_free(&mut small);
@@ -674,7 +741,7 @@ fn make_previews(dir: &str) -> i32 {
     }
     qlog!(
         "%s: %d preview(s) made, %d file(s) that are no picture Grimoire can use, %d left for a later scan \
-(out of memory, or a file that did not read)",
+(out of memory, a file that did not read, or no sandboxed worker)",
         if photo { "photos" } else { "templates" },
         made,
         bad,
@@ -806,13 +873,18 @@ pub fn photo_paper(t: &Template, nb: &NotebookInfo, ix: &BgIndex, kind: &mut Pap
 /// (BG_TEMPLATE), and a page on it draws white until then (bgimage.h: the editor redraws the page
 /// once that job is done, after bgimage_retry_missing). The id in *kind comes from a hash of the
 /// file's bytes and the page size, so installing the same file again gives the same paper, and makes
-/// its picture again if it went missing. 0, or -1 (*why, for the log: not a picture Grimoire can
-/// use, a file over 16 MB, not readable, or one over 4 MB whose preview is not made yet). The hash
-/// is the one the previews job keeps beside each preview, so nothing big is read on the UI thread:
-/// only a template of at most 4 MB with no preview yet is read here (whole, once).
+/// its picture again if it went missing. 0, or -1 (*why, for the log: a file over 16 MB, not
+/// readable, or one whose preview is not made yet). The hash and the size are the ones the previews
+/// job keeps beside each preview (its worker checked the file is a picture Grimoire takes), so
+/// nothing is read or parsed on the UI thread, and no worker is started there: a template whose
+/// preview the previews job has not made yet (or found unusable) cannot be picked until it has.
 pub fn template_install(nb: &NotebookInfo, path: &str, kind: &mut PaperKind, why: &mut &'static str) -> i32 {
     install_picture(nb, path, kind, why, false)
 }
+
+/// template_install's and photo_install's why for a file whose preview the previews job has not made yet (or
+/// found unusable): the caller may say "try again in a moment".
+pub const PREVIEW_NOT_MADE: &str = "its preview is not made yet";
 
 /// As template_install, for a photo: *kind a document page's paper on its picture, made upright.
 pub fn photo_install(nb: &NotebookInfo, path: &str, kind: &mut PaperKind, why: &mut &'static str) -> i32 {
@@ -839,26 +911,12 @@ fn install_picture(nb: &NotebookInfo, path: &str, kind: &mut PaperKind, why: &mu
     }
     let (mut w, mut h, mut pw, mut ph) = (0, 0, 0, 0);
     let mut content = 0u64;
-    let mut len = st.len() as usize;
+    let len = st.len() as usize;
     if cached_key(path, &mut content, &mut w, &mut h) != 0 {
-        if st.len() > TEMPLATE_HASH_NOW as u64 {
-            *why = "its preview is not made yet (a file over 4 MB is not read here)";
-            return -1;
-        }
-        let data = read_source(path, TEMPLATE_HASH_NOW);
-        let ok = match &data {
-            Some(d) => {
-                len = d.len();
-                bgimage_check(d, len, &mut w, &mut h, why) == 0
-            }
-            None => false,
-        };
-        if ok {
-            content = bgimage_content_hash(data.as_deref().unwrap_or(&[]));
-        }
-        if !ok {
-            return -1;
-        }
+        // (whether a file is a picture Grimoire takes is the sandboxed worker's to say, in the previews job:
+        // never a worker started and waited for on the UI thread, whatever the file's size)
+        *why = PREVIEW_NOT_MADE;
+        return -1;
     }
     store_notebook_page_size(nb, &mut pw, &mut ph);
     let key = picture_key(photo, content, len, pw, ph);
@@ -987,24 +1045,28 @@ fn make_template(id: &str, src: &str, dpi: f32) -> i32 {
     bgimage_file(&dir, pic, &mut file, 800);
     let mut rc = 0;
     if !exists(&file) {
-        let mut p = BgPicture::default();
-        let mut fit = BgPicture::default();
         let mut why: &'static str = "out of memory";
-        rc = if bgimage_decode(&data, &mut p, &mut why) == 0
-            && (!photo || bgimage_orient(&mut p, bgimage_exif_orientation(&data)) == 0)
-            && bgimage_normalize(&p, pw, ph, &mut fit) == 0
-            && bgimage_write_png(&file, &fit) == 0
-        {
-            0
-        } else {
-            -1
-        };
+        let mut fit = BgPicture::default();
+        // (decoded by the sandboxed worker, upright first for a photo, fitted onto the notebook's page)
+        match PicPool::new().decode(&data, photo, pw, ph) {
+            PicOut::Pic { fit: f, .. } => {
+                fit = f;
+                if bgimage_write_png(&file, &fit) != 0 {
+                    rc = -1;
+                }
+            }
+            // (no sandboxed worker: not made now, and nothing is marked; the template is not at fault)
+            PicOut::Bad(m) | PicOut::Retry(m) | PicOut::Dead(m) | PicOut::NoWorker(m) => {
+                why = m;
+                rc = -1;
+            }
+            PicOut::Info { .. } => rc = -1,
+        }
         if rc != 0 {
             qlog!("templates: %s: bg/%06x.png could not be made (%s)", id, pic, why);
         } else {
             qlog!("templates: %s: bg/%06x.png made (%dx%d, %s)", id, pic, pw, ph, if fit.ch == 3 { "colour" } else { "gray" });
         }
-        bgpicture_free(&mut p);
         bgpicture_free(&mut fit);
         if rc == 0 {
             redraw_card(&nb, pic, dpi);
@@ -1044,50 +1106,26 @@ pub fn bg_template(id: &str, src: &str, dpi: f32) -> i32 {
     if !id.is_empty() && annotate_source(id, src) {
         let _ = std::fs::remove_file(src); // a page KOReader sent: done with (above)
     }
+    if !id.is_empty() {
+        // (the notebook's PDF page streams go, as its page previews are made again: pdfcache.rs)
+        pdf_cache_forget(id);
+    }
     rc
 }
 
 // ---- imports ----
 
-// Only one import runs at a time, in whichever process (a run's last jobs go on in a detached child
-// after Grimoire closes): grimoire/import/.lock, held while it works. A start that finds it held
-// leaves the import folders for the next start. Err(errno) (EWOULDBLOCK: it is held), or the
-// descriptor that holds the lock.
-fn import_lock(wait: bool) -> Result<i32, i32> {
-    let mut path = String::new();
-    root_path("import/.lock", &mut path, 700);
-    let Some(c) = cpath(&path) else { return Err(libc::ENOENT) };
-    // SAFETY: open reads the NUL-terminated path we own; the descriptor it returns is ours alone.
-    let fd = unsafe { libc::open(c.as_ptr(), libc::O_RDWR | libc::O_CREAT, 0o644 as libc::c_uint) };
-    if fd < 0 {
-        return Err(errno());
-    }
-    // SAFETY: flock only takes the open descriptor.
-    while unsafe { libc::flock(fd, libc::LOCK_EX | if wait { 0 } else { libc::LOCK_NB }) } != 0 {
-        let err = errno();
-        if err == libc::EINTR {
-            continue;
-        }
-        // SAFETY: close takes the descriptor opened above, which is not used again.
-        unsafe { libc::close(fd) };
-        return Err(err);
-    }
-    Ok(fd)
-}
+// Only one import runs at a time, in whichever process (a run's last jobs go on in a detached child after
+// Grimoire closes): grimoire/import/.lock, taken by the UI without blocking before it queues any import and
+// held while any is queued or running (pdfimport.rs lock_take). A start that finds it held leaves the import
+// folders for the next scan.
 
-// Removes a folder an import was building (notebooks/.import-<id>/: its files and its bg/).
+// Removes a folder an import was building (notebooks/.import-<id>/: its files and its bg/). A PDF import's state
+// goes first: a removal cut off then leaves a folder that is no one's (removed at the next start), never one that
+// resumes with its pictures gone (H7).
+// (by descriptor, never through a link: util.rs remove_work_dir)
 fn remove_work<P: AsRef<Path>>(work: P) {
-    let work = work.as_ref();
-    for pass in 0..2 {
-        let dir = if pass == 0 { work.join("bg") } else { work.to_path_buf() };
-        if let Ok(rd) = std::fs::read_dir(&dir) {
-            for e in rd {
-                let Ok(e) = e else { break };
-                let _ = std::fs::remove_file(dir.join(e.file_name()));
-            }
-        }
-        let _ = std::fs::remove_dir(&dir);
-    }
+    remove_work_dir(work.as_ref(), &[c"pdf-import.ini"]);
 }
 
 // The notebook id written in an import folder's mark, or false (none, or "done").
@@ -1138,7 +1176,7 @@ const ATTEMPTS_MAX: usize = 64;
 const TRIES_REFUSED: i32 = 99;
 
 #[derive(Clone, Copy)]
-struct Attempt {
+pub(crate) struct Attempt {
     name: u64,
     pictures: u64,
     tries: i32,
@@ -1147,6 +1185,8 @@ struct Attempt {
 const ATTEMPT_TRY: i32 = 0;
 const ATTEMPT_REFUSED: i32 = 1;
 const ATTEMPT_DONE: i32 = 2;
+/// a try counted that turned out not to be the file's (no room, no worker): taken back
+const ATTEMPT_UNTRY: i32 = 3;
 
 const FNV0: u64 = 14695981039346656037;
 fn fnv(mut h: u64, d: &[u8]) -> u64 {
@@ -1231,15 +1271,26 @@ fn attempts_save(a: &[Attempt]) {
 // In the child, under the lock: the folder at src (with these pictures) was tried once more, or was
 // refused, or was imported (its record goes).
 fn attempts_note(src: &str, pictures: u64, what: i32) {
+    attempts_note_key(folder_name_hash(src), pictures, what)
+}
+
+/// The same for the record keyed `nh` (a PDF's: a hash of its path under import/, pdfimport::attempt_key).
+pub(crate) fn attempts_note_key(nh: u64, pictures: u64, what: i32) {
     let mut a = attempts_load();
     let mut at: Option<usize> = None;
-    let nh = folder_name_hash(src);
     for (i, e) in a.iter().enumerate() {
         if e.name == nh {
             at = Some(i);
         }
     }
-    if what == ATTEMPT_DONE {
+    if what == ATTEMPT_UNTRY {
+        // (a refusal stays: it was the file's)
+        let Some(i) = at.filter(|&i| a[i].pictures == pictures && a[i].tries < TRIES_REFUSED) else { return };
+        a[i].tries -= 1;
+        if a[i].tries <= 0 {
+            a.swap_remove(i);
+        }
+    } else if what == ATTEMPT_DONE {
         let Some(at) = at else { return };
         a.swap_remove(at);
     } else if let Some(at) = at {
@@ -1266,7 +1317,7 @@ fn attempts_note(src: &str, pictures: u64, what: i32) {
 // notebook.ini is whole (that file is written last, each one before it made durable): it goes into
 // place, and its folder moves when its id comes up (the folder's mark names it). Any other is
 // removed. Whether there were any; with `act`, deals with them all.
-fn import_leftovers(act: bool) -> bool {
+fn import_leftovers(act: bool, resumable: &mut Vec<String>) -> bool {
     use std::os::unix::ffi::OsStrExt;
     let mut notebooks = String::new();
     root_path("notebooks", &mut notebooks, 600);
@@ -1290,6 +1341,12 @@ fn import_leftovers(act: bool) -> bool {
                 continue;
             };
             let id = &name[8..];
+            // A PDF import cut off between slices goes on from its state when its file is still there,
+            // unchanged (pdfimport.rs): it is not removed, and the scan queues it again.
+            if crate::pdfimport::keep_work_folder(id) {
+                resumable.push(id.to_string());
+                continue;
+            }
             let (mut work, mut ini, mut final_) = (String::new(), String::new(), String::new());
             csnprintf!(&mut work, 1000, "%s/%s", &notebooks, name);
             csnprintf!(&mut ini, 1100, "%s/notebook.ini", &work);
@@ -1312,57 +1369,78 @@ fn import_leftovers(act: bool) -> bool {
     any
 }
 
-// A fresh id for an import folder, never one this run has queued or a notebook already has: two
-// folders given the same id would become one notebook, the second folder moved to import/done
-// unimported ("made by an earlier run").
+// A fresh id for an import folder, never one this run has queued (a picture import's or a PDF import's), a
+// notebook already has, or a work folder holds: two imports given the same id would become one notebook, the
+// second folder moved to import/done unimported ("made by an earlier run"), or one's start would remove the
+// other's work folder.
 fn fresh_import_id(id: &mut String) {
     let mut dir = String::new();
     for _ in 0..8 {
         store_make_id(id);
-        let queued = with(|s| s.pending.iter().any(|p| p.as_str() == id.as_str()));
-        if !queued && !(store_notebook_dir(id, &mut dir, 600) == 0 && exists(&dir)) {
+        let queued = is_pending_id(id) || crate::pdfimport::is_pending_id(id);
+        let mut work = String::new();
+        csnprintf!(&mut work, 700, "%s/notebooks/.import-%s", &store_root(), id.as_str());
+        if !queued && !(store_notebook_dir(id, &mut dir, 600) == 0 && exists(&dir)) && !exists(&work) {
             return;
         }
     }
 }
 
-/// At startup: every folder in grimoire/import/ (but done/ and dot-folders) holding page pictures
-/// is queued to become a notebook (BG_IMPORT_FOLDER), at most 8 a start. What an import that was cut
-/// off left in notebooks/ (.import-<id>/) is put in place when it was whole, else removed. A folder
-/// tried 3 times, or refused (a page that is no picture Grimoire takes), waits until its pictures
-/// change (import/.attempts, docs/FORMAT.md). Returns how many were queued.
+/// At startup and when the Library comes in front (at most every 10 s): the PDFs in grimoire/import/ that
+/// have held still, and every folder holding page pictures (but done/ and dot-folders), are queued to become
+/// notebooks (BG_PDF_IMPORT, BG_IMPORT_FOLDER), at most 8 a scan. A folder of PDFs and pictures imports its
+/// PDFs first (into Library folder <Folder>), then its pictures as one notebook as before. What an import that
+/// was cut off left in notebooks/ (.import-<id>/) is put in place when it was whole, goes on when it is a PDF
+/// import whose file is still there unchanged, else is removed. A folder tried 3 times, or refused (a page
+/// that is no picture Grimoire takes), waits until its pictures change (import/.attempts, docs/FORMAT.md).
+/// The UI takes the import lock without blocking, once, and holds it while any import is queued or running
+/// (pdfimport.rs); a lock held elsewhere (a previous run's detached child) leaves everything for the next
+/// scan. Returns how many were queued.
 pub fn import_scan(dpi: f32) -> i32 {
+    // (a look that was due is taken now: one that finds nothing, or the lock held elsewhere, is not due again)
+    crate::pdfimport::rescan_clear();
     let mut dir = String::new();
     root_path("import", &mut dir, 600);
     let mut names = Vec::new();
     if list_names(&dir, false, 1000, &mut names) != 0 {
         names.clear();
     }
-    let folders = names.iter().filter(|n| n.as_str() != "done").count();
-    if folders == 0 && !import_leftovers(false) {
-        // nothing to do (and no lock file made for it)
+    let found = crate::pdfimport::list_pdfs();
+    let folders = names.iter().filter(|n| !n.eq_ignore_ascii_case("done")).count();
+    if folders == 0 && found.files.is_empty() && !import_leftovers(false, &mut Vec::new()) && !crate::pdfimport::marks_waiting() {
+        // nothing to do: only whether a previous run's detached child still holds the lock
+        crate::pdfimport::detached_check();
         return 0;
     }
-    let lock = match import_lock(false) {
-        Ok(fd) => fd,
-        Err(err) => {
-            if err == libc::EWOULDBLOCK {
-                qlog!("import: an import from an earlier run is still going; the import folders wait for the next start");
-            } else {
-                qlog!("import: the import lock cannot be taken (%s); the import folders wait for the next start", &strerror(err));
-            }
-            return 0;
+    let lock = crate::pdfimport::lock_take();
+    if let crate::pdfimport::Lock::Busy(err) = lock {
+        if err == libc::EWOULDBLOCK {
+            qlog!("import: an import from an earlier run is still going; the import folders wait for the next scan");
+        } else {
+            qlog!("import: the import lock cannot be taken (%s); the import folders wait for the next scan", &strerror(err));
         }
-    };
-    // Leftovers of an import that was cut off (Grimoire or the Kindle stopped mid-way): no import
-    // runs now (the lock), so they are no one's.
-    import_leftovers(true);
-    let mut att = attempts_load();
+        crate::pdfimport::detached_check();
+        return 0;
+    }
+    // (the lock is this process's: no other process imports)
+    crate::pdfimport::detached_clear();
+    // imports the job queue dropped (a full queue, a fork that failed) are let go of, or queued again (M11)
+    crate::pdfimport::reconcile(dpi);
+    let mut found = found;
+    let mut queued = 0;
+    // Leftovers of an import that was cut off (Grimoire or the Kindle stopped mid-way): when the lock is
+    // taken afresh, no import runs, so they are no one's. The picks that waited for the lock go now (H2).
+    if lock == crate::pdfimport::Lock::Fresh {
+        import_leftovers(true, &mut found.resumable);
+        crate::pdfimport::deferred_clear();
+        queued += crate::pdfimport::queue_waiting_marks(dpi);
+    }
+    queued += crate::pdfimport::scan_queue(&found, dpi, false);
+    let att = attempts_load();
     let natt = att.len();
-    let mut seen = [false; ATTEMPTS_MAX];
-    let (mut queued, mut empty, mut waiting, mut toolong) = (0, 0, 0, 0);
+    let (mut empty, mut waiting, mut toolong, mut with_pdfs) = (0, 0, 0, 0);
     for name in &names {
-        if name == "done" {
+        if name.eq_ignore_ascii_case("done") {
             continue;
         }
         let mut src = String::new();
@@ -1373,16 +1451,30 @@ pub fn import_scan(dpi: f32) -> i32 {
         for k in 0..natt {
             if att[k].name == nh {
                 at = Some(k);
-                seen[k] = true;
             }
         }
         if with(|s| s.pending.len()) >= IMPORT_QUEUE_MAX {
-            continue; // (the next start takes it)
+            continue; // (the next scan takes it)
         }
         if src.len() >= JOB_PATH_MAX {
             // it would be cut on its way to the job
             toolong += 1;
             continue;
+        }
+        // its PDFs first: the pictures wait until they are imported and have moved to done/ (a PDF refused, or
+        // tried out, holds nothing back)
+        if crate::pdfimport::folder_holds_pdfs(name, &att) {
+            with_pdfs += 1;
+            continue;
+        }
+        // a folder picked by hand in the Import place is that pick's while it is queued or running (M5)
+        if let Some(m) = crate::pdfimport::import_storage_path(name)
+            .and_then(|sp| String::from_utf8(sp.as_bytes().to_vec()).ok())
+            .and_then(|rel| crate::pdfimport::mark_read(&rel))
+        {
+            if m.state == crate::pdfimport::MarkState::Making && is_pending_id(&m.id) {
+                continue;
+            }
         }
         let mut pics = Vec::new();
         if list_names(&src, true, 1, &mut pics) != 0 {
@@ -1409,31 +1501,36 @@ pub fn import_scan(dpi: f32) -> i32 {
                 continue;
             }
         }
+        // (a scan never queues an import that is queued or running already)
+        if with(|s| s.pending.iter().any(|p| p.as_str() == id.as_str())) {
+            continue;
+        }
         bg_queue(BgKind::ImportFolder, Some(&id), Some(&src), dpi, true);
         with(|s| s.pending.push(FixedStr::from_str(&id)));
         queued += 1;
     }
-    // the records of folders no longer here (imported, or taken away) go
-    let mut kept = 0;
-    for k in 0..natt {
-        if seen[k] {
-            att[kept] = att[k];
-            kept += 1;
-        }
+    // The records of folders and PDFs no longer here (imported, or taken away) go; a PDF's is kept for as long as
+    // the PDF is listed (H1: a record keyed by the PDF's path under import/). Read again first: a job may have
+    // written one since.
+    let live: std::collections::HashSet<u64> =
+        names.iter().filter(|n| !n.eq_ignore_ascii_case("done")).map(|n| fnv(FNV0, n.as_bytes())).chain(found.files.iter().map(|f| fnv(FNV0, f.0.as_bytes()))).collect();
+    let now_att = attempts_load();
+    let kept: Vec<Attempt> = now_att.iter().filter(|e| live.contains(&e.name)).copied().collect();
+    if kept.len() != now_att.len() {
+        attempts_save(&kept);
     }
-    if kept != natt {
-        attempts_save(&att[..kept]);
-    }
-    // SAFETY: close takes the descriptor import_lock opened, which is not used again.
-    unsafe { libc::close(lock) };
-    if queued != 0 || empty != 0 || waiting != 0 || toolong != 0 {
+    // (the lock stays with the UI while anything is queued: a scan that queued nothing lets go of it)
+    crate::pdfimport::pictures_wait(with_pdfs != 0);
+    crate::pdfimport::lock_release_if_idle();
+    if queued != 0 || empty != 0 || waiting != 0 || toolong != 0 || with_pdfs != 0 {
         qlog!(
-            "import: %d folder(s) queued; left as they are: %d without page pictures, %d that failed and have not \
-changed since, %d with too long a name",
+            "import: %d import(s) queued; page folders left as they are: %d without page pictures, %d that failed and have not \
+changed since, %d with too long a name, %d waiting for their PDFs",
             queued,
             empty,
             waiting,
-            toolong
+            toolong,
+            with_pdfs
         );
     }
     queued
@@ -1456,16 +1553,52 @@ pub fn import_finished(ok: bool, pages: &mut i32) -> i32 {
         with(|s| s.pending.remove(i));
         return 1;
     }
-    if ok || n == 0 {
+    if n == 0 {
         return 0;
     }
-    with(|s| s.pending.remove(0)); // the oldest failed
-    -1
+    // the oldest ended without a notebook to show: failed, or done with nothing made (it is let go of all the same:
+    // a pending id that never goes would pin the import lock)
+    with(|s| s.pending.remove(0));
+    if ok {
+        0
+    } else {
+        -1
+    }
+}
+
+/// The same for the job of import `id` (the one bg_poll_job just reported): exactly that one is let go of.
+pub fn import_finished_id(id: &str, ok: bool, pages: &mut i32) -> i32 {
+    let Some(i) = with(|s| s.pending.iter().position(|p| p.as_str() == id)) else {
+        return import_finished(ok, pages);
+    };
+    with(|s| s.pending.remove(i));
+    let mut nb = NotebookInfo::default();
+    if store_load_info(id, &mut nb) == 0 {
+        *pages = nb.npages();
+        return 1;
+    }
+    if ok {
+        0
+    } else {
+        -1
+    }
 }
 
 // Moves a folder that became notebook id to import/done/<Name>-<time>; one that cannot move is
 // marked done in place, so no later start imports it again.
 fn finish_source(src: &str, id: &str) {
+    let mut abs = src.to_string();
+    if pick_active() {
+        // A folder picked in place stays where it is (its mark goes: the notebook is made), unless it lies in
+        // import/ itself: there it is a drop whoever chose it, and goes to import/done as the scan's would (M5).
+        crate::pdfimport::mark_drop(src);
+        let top = crate::pdfimport::under_import(src).filter(|r| !r.contains('/'));
+        match (top, crate::pdfimport::storage_root()) {
+            (Some(_), Some(root)) => abs = format!("{}/{}", root.trim_end_matches('/'), src),
+            _ => return,
+        }
+    }
+    let src = abs.as_str();
     let (mut import, mut done, mut to) = (String::new(), String::new(), String::new());
     root_path("import", &mut import, 600);
     root_path("import/done", &mut done, 700);
@@ -1521,21 +1654,29 @@ fn finish_source(src: &str, id: &str) {
 }
 
 // Every page's header (a millisecond or so a page), before any picture is made: a folder with a
-// page that is no picture Grimoire takes fails at once, whatever its place. IMPORT_REFUSED, or 0.
+// page that is no picture Grimoire takes fails at once, whatever its place. IMPORT_REFUSED, or 0; or
+// IMPORT_RETRY when a header could not be checked this time (no memory, its workers died: one try of three),
+// or IMPORT_LATER when no sandboxed worker can be had (no try).
 fn check_pages(id: &str, src: &str, names: &[String]) -> i32 {
     let n = names.len();
     if n == 0 || n > STORE_MAX_PAGES {
         qlog!("import: %s: %s page pictures; nothing imported", id, if n != 0 { "more than 2000" } else { "no" });
         return IMPORT_REFUSED;
     }
+    let mut pool = PicPool::new();
     for (i, name) in names.iter().enumerate() {
         let mut path = String::new();
         let (mut w, mut h) = (0, 0);
         let mut why: &'static str = "";
         csnprintf!(&mut path, PATH_BUF, "%s/%s", src, name);
-        if check_file(&path, BG_SOURCE_MAX_BYTES, &mut w, &mut h, &mut why) != 0 {
+        let rc = check_file_in(&mut pool, &path, BG_SOURCE_MAX_BYTES, &mut w, &mut h, &mut why);
+        if rc != 0 {
             qlog!("import: %s: page %d of %d: %s; nothing imported", id, i + 1, n, why);
-            return IMPORT_REFUSED;
+            return match rc {
+                -2 => IMPORT_RETRY,
+                -3 => IMPORT_LATER,
+                _ => IMPORT_REFUSED,
+            };
         }
     }
     0
@@ -1543,7 +1684,7 @@ fn check_pages(id: &str, src: &str, names: &[String]) -> i32 {
 
 // The notebook itself, built in notebooks/.import-<id>/ (which the Library never lists) and renamed
 // into place only once whole; anything going wrong removes it. IMPORT_DONE (its folder moved to
-// import/done), IMPORT_RETRY or IMPORT_REFUSED.
+// import/done), IMPORT_RETRY, IMPORT_REFUSED or IMPORT_LATER.
 fn build_notebook(id: &str, src: &str, final_: &str, names: &[String]) -> i32 {
     let n = names.len();
     let mut work = String::new();
@@ -1554,6 +1695,7 @@ fn build_notebook(id: &str, src: &str, final_: &str, names: &[String]) -> i32 {
     let (mut pw, mut ph) = (0, 0);
     store_page_size(&mut pw, &mut ph);
     let mut ix = BgIndex::default();
+    let mut pool = PicPool::new();
     let mut pids: Vec<u32> = Vec::new();
     let mut papers: Vec<PaperKind> = Vec::new();
     let mut nb = NotebookInfo::default();
@@ -1571,26 +1713,34 @@ fn build_notebook(id: &str, src: &str, final_: &str, names: &[String]) -> i32 {
             let mut path = String::new();
             csnprintf!(&mut path, PATH_BUF, "%s/%s", src, name);
             let data = read_source(&path, BG_SOURCE_MAX_BYTES);
-            let mut p = BgPicture::default();
             let mut fit = BgPicture::default();
             let mut why: &'static str = "the file does not read";
             let mut fail = IMPORT_RETRY;
             if let Some(d) = &data {
-                let dec = bgimage_decode(d, &mut p, &mut why);
-                fail = if dec == 0 {
-                    0
-                } else if dec == -2 {
-                    IMPORT_RETRY
-                } else {
-                    IMPORT_REFUSED
-                };
+                // (decoded and fitted by the sandboxed worker; two in a row that died on its picture count one
+                // try of three, as a picture the memory could not hold: a picture at fault refuses the folder)
+                match pool.decode(d, false, pw, ph) {
+                    PicOut::Pic { fit: f, .. } => {
+                        fit = f;
+                        fail = 0;
+                    }
+                    PicOut::Retry(m) | PicOut::Dead(m) => {
+                        why = m;
+                        fail = IMPORT_RETRY;
+                    }
+                    PicOut::Bad(m) => {
+                        why = m;
+                        fail = IMPORT_REFUSED;
+                    }
+                    // (no sandboxed worker: the folder is not at fault, and its try is taken back)
+                    PicOut::NoWorker(m) => {
+                        why = m;
+                        fail = IMPORT_LATER;
+                    }
+                    PicOut::Info { .. } => {}
+                }
             }
             drop(data);
-            if fail == 0 && bgimage_normalize(&p, pw, ph, &mut fit) != 0 {
-                why = "out of memory";
-                fail = IMPORT_RETRY;
-            }
-            bgpicture_free(&mut p);
             let mut pic = 0u32;
             let mut added = false;
             if fail == 0 && bgindex_claim(&mut ix, &bgdir, bgimage_key(&fit), &mut pic, &mut added) != 0 {
@@ -1640,7 +1790,18 @@ fn build_notebook(id: &str, src: &str, final_: &str, names: &[String]) -> i32 {
         // The notebook around them: its pages are document pages, and pages added to it are blank.
         nb.id.set(id);
         let name = src.rfind('/').map_or(src, |s| &src[s + 1..]);
-        copy_name(&mut nb.name, name); // (a long one cut between characters)
+        // (a long one cut between characters; numbered when a notebook has it, so two folders of one name
+        // never share a mirror PDF)
+        let mut all = Vec::new();
+        store_list(&mut all);
+        let mut cut = FixedStr::<STORE_NAME_LEN>::new();
+        let (given_name, given_folder) = pick_given();
+        copy_name(&mut cut, if given_name.trim().is_empty() { name } else { given_name.trim() });
+        nb.name.set_cut(&crate::pdfimport::unique_import_name(cut.as_str(), &all));
+        // (the notebook names its Library folder, which lists it; folders.ini is the UI's to write: app.rs)
+        if !given_folder.is_empty() && store_folder_valid(&given_folder) {
+            nb.folder.set_cut(&given_folder);
+        }
         nb.paper = PAPER_BLANK;
         nb.created = wall_time();
         nb.modified = nb.created;
@@ -1712,6 +1873,11 @@ fn import_folder(src: &str) -> i32 {
     } else {
         if rc == IMPORT_REFUSED {
             attempts_note(src, pictures, ATTEMPT_REFUSED);
+        } else if rc == IMPORT_LATER {
+            // (no sandboxed worker read a picture: the try counted above is taken back, and a later scan takes the
+            // folder again)
+            attempts_note(src, pictures, ATTEMPT_UNTRY);
+            qlog!("import: %s: no try is counted; a later scan takes the folder again", &id);
         }
         drop_mark(src);
     }
@@ -1720,24 +1886,288 @@ fn import_folder(src: &str) -> i32 {
 
 /// bgjob.h: the work of a BG_IMPORT_FOLDER job, in the child; 0 = done.
 pub fn bg_import_folder(path: &str, dpi: f32) -> i32 {
-    let _ = dpi;
-    let lock = match import_lock(true) {
-        Ok(fd) => fd,
-        Err(err) => {
-            qlog!("import: no lock (%s)", &strerror(err));
-            return -1;
-        }
-    };
+    // (a negative dpi marks a folder picked in place: its path is a StoragePath, read through fsview; the dpi
+    // itself is no import's)
+    let pick = dpi < 0.0;
+    // (the import lock is the UI's: it holds it while any import is queued or running, and no job opens it or
+    // waits for it, so a lock held elsewhere can never stall the queue behind it: pdfimport.rs)
     let cap = cap_memory();
-    let rc = import_folder(path);
+    let rc = if pick { import_pick(path) } else { import_folder(path) };
     uncap_memory(&cap);
-    // SAFETY: close takes the descriptor import_lock opened, which is not used again.
-    unsafe { libc::close(lock) };
     if rc == IMPORT_DONE {
         0
     } else {
         -1
     }
+}
+
+// ---- a folder of pictures picked in place (lane L8) ----
+//
+// The picker's Import pictures as notebook (browser.rs): the folder is read where it is, never moved and never
+// written to; its mark lives in import/.marks/<hash> (the PDFs' marks), and goes when the notebook is made. The
+// folder is walked by fsview (no link anywhere, one device, never Grimoire's own folders by identity) and each
+// picture is opened O_NOFOLLOW through the same walk, so a planted link is never followed. The job's path is the
+// folder's StoragePath, and its dpi is negative (import_folder's paths are the data root's, absolute or not).
+
+struct PickCtx {
+    st: FsStorage,
+    rel: String,
+    name: String,
+    folder: String,
+}
+
+thread_local! {
+    static PICK: RefCell<Option<PickCtx>> = const { RefCell::new(None) };
+}
+
+fn pick_active() -> bool {
+    PICK.with(|p| p.borrow().is_some())
+}
+
+/// The name and Library folder a pick was given ("" for the folder's name, and the top).
+fn pick_given() -> (String, String) {
+    PICK.with(|p| p.borrow().as_ref().map_or((String::new(), String::new()), |c| (c.name.clone(), c.folder.clone())))
+}
+
+/// A picture of the folder picked in place, read through the walk: None when no pick is active or the path is
+/// not in its folder (then a path is read as a path); Some(None) when it could not be read.
+fn pick_read(path: &str, max: usize) -> Option<Option<Vec<u8>>> {
+    PICK.with(|p| {
+        let p = p.borrow();
+        let c = p.as_ref()?;
+        let name = path.strip_prefix(c.rel.as_str())?.strip_prefix('/')?;
+        let sp = StoragePath::new(c.rel.as_bytes())?.join(name.as_bytes())?;
+        let fd = match c.st.open_file(&sp, true) {
+            Ok(fd) => fd,
+            Err(_) => return Some(None),
+        };
+        let mut f = std::fs::File::from(fd);
+        let mut buf: Vec<u8> = Vec::new();
+        if buf.try_reserve_exact(max.min(64 << 20)).is_err() {
+            return Some(None);
+        }
+        let _ = f.by_ref().take(max as u64).read_to_end(&mut buf);
+        Some(Some(buf))
+    })
+}
+
+/// The picture files of a folder picked in place, in natural order, at most `max`: its regular files by the
+/// walk (links, folders and anything else are left out, as are names that are not UTF-8).
+fn pick_names(st: &FsStorage, sp: &StoragePath, max: usize) -> Option<Vec<String>> {
+    let mut l = FsListing::start(st, sp, true).ok()?;
+    while !l.step(FS_SLICE_MS * 5) {}
+    let n = l.entries.len();
+    l.stat(0..n, u32::MAX);
+    let mut names: Vec<String> = l
+        .entries
+        .iter()
+        .filter(|e| e.kind == FsKind::File)
+        .filter_map(|e| std::str::from_utf8(&e.name).ok())
+        .filter(|n| picture_name(n))
+        .map(|n| n.to_string())
+        .collect();
+    names.sort_by(|a, b| natural_cmp(a, b).cmp(&0));
+    names.truncate(max);
+    Some(names)
+}
+
+/// How many pictures the folder at `sp` holds (counted through the walk, at most STORE_MAX_PAGES + 1).
+pub fn pick_picture_count(st: &FsStorage, sp: &StoragePath) -> usize {
+    pick_names(st, sp, STORE_MAX_PAGES + 1).map_or(0, |n| n.len())
+}
+
+/// The import itself, in the child, under the lock: `rel` is the folder's StoragePath. A failed one leaves no
+/// notebook, and the folder as it was.
+fn import_pick(rel: &str) -> i32 {
+    let (Some(root), Some(sp)) = (crate::pdfimport::storage_root(), StoragePath::new(rel.as_bytes())) else {
+        return IMPORT_RETRY;
+    };
+    let Ok(st) = FsStorage::open(&root, &store_root()) else {
+        return IMPORT_RETRY;
+    };
+    let mark = crate::pdfimport::mark_read(rel);
+    let (mut id, given_name, given_folder) = match &mark {
+        Some(m) => (m.id.clone(), m.name.clone(), m.folder.clone()),
+        None => (String::new(), String::new(), String::new()),
+    };
+    if id.is_empty() {
+        store_make_id(&mut id);
+    }
+    let mut final_ = String::new();
+    if store_notebook_dir(&id, &mut final_, 600) != 0 {
+        return IMPORT_RETRY;
+    }
+    if is_dir(&final_) {
+        qlog!("import: %s: made by an earlier run", &id);
+        crate::pdfimport::mark_drop(rel);
+        return IMPORT_DONE;
+    }
+    let Some(names) = pick_names(&st, &sp, STORE_MAX_PAGES + 1) else {
+        // (refused, a link, gone: nothing is named in the log)
+        qlog!("import: %s: the picked folder does not open", &id);
+        crate::pdfimport::mark_drop(rel);
+        return IMPORT_REFUSED;
+    };
+    PICK.with(|p| *p.borrow_mut() = Some(PickCtx { st, rel: rel.to_string(), name: given_name, folder: given_folder }));
+    let mut rc = check_pages(&id, rel, &names);
+    if rc == 0 {
+        rc = build_notebook(&id, rel, &final_, &names);
+    }
+    PICK.with(|p| *p.borrow_mut() = None);
+    if rc != IMPORT_DONE {
+        crate::pdfimport::mark_drop(rel);
+    }
+    rc
+}
+
+/// What the picker's Import pictures as notebook says (like pdfimport::Queued).
+pub fn import_pick_queue(path: &StoragePath, name: Option<&str>, folder: Option<&str>, dpi: f32) -> crate::pdfimport::Queued {
+    use crate::pdfimport::*;
+    let Ok(src) = String::from_utf8(path.as_bytes().to_vec()) else {
+        qlog!("import: a picked folder's path is not UTF-8; refused");
+        return Queued::Refused("name");
+    };
+    if with(|s| s.pending.len()) >= IMPORT_QUEUE_MAX {
+        qlog!("import: %d page folders are queued already; a picked folder is refused", IMPORT_QUEUE_MAX as i32);
+        return Queued::Refused("busy");
+    }
+    // Grimoire's own folders are refused here by name (quick), and by identity when the job walks to them
+    let comps: Vec<&[u8]> = path.components().collect();
+    if let Some(g) = grimoire_rel() {
+        let gc: Vec<&str> = g.split('/').collect();
+        if comps.len() > gc.len() && gc.iter().zip(&comps).all(|(a, b)| a.as_bytes().eq_ignore_ascii_case(b)) {
+            let n = comps[gc.len()];
+            if [&b"notebooks"[..], b"PDFs", b"trash"].iter().any(|r| n.eq_ignore_ascii_case(r)) {
+                qlog!("import: a picked folder lies in one of Grimoire's own folders; refused");
+                return Queued::Refused("own");
+            }
+        }
+    }
+    if let Some(m) = mark_read(&src) {
+        if m.state == MarkState::Making && !m.id.is_empty() && is_pending_id(&m.id) {
+            return Queued::AlreadyRunning;
+        }
+    }
+    let busy = match lock_take() {
+        Lock::Busy(_) => true,
+        Lock::Fresh => {
+            import_leftovers(true, &mut Vec::new());
+            crate::pdfimport::detached_clear();
+            crate::pdfimport::queue_waiting_marks(dpi);
+            false
+        }
+        Lock::Held => false,
+    };
+    if busy {
+        let m = Mark { state: MarkState::Waiting, src: src.clone(), pick: true, name: name.unwrap_or("").to_string(), folder: folder.unwrap_or("").to_string(), at: wall_time(), ..Default::default() };
+        if !mark_write_public(&m) {
+            qlog!("import: a picked folder's mark could not be written; refused");
+            return Queued::Refused("mark");
+        }
+        qlog!("import: another process holds the import lock; a picked folder waits for it");
+        return Queued::Waiting;
+    }
+    if let Some(m) = mark_read(&src) {
+        if m.state == MarkState::Making && is_pending_id(&m.id) {
+            // (it waited, and was queued just now)
+            return Queued::Started(m.id);
+        }
+    }
+    match queue_folder_pick(&src, name.unwrap_or(""), folder.unwrap_or(""), dpi) {
+        Some(id) => Queued::Started(id),
+        None => {
+            qlog!("import: a picked folder's mark could not be written; refused");
+            lock_release_if_idle();
+            Queued::Refused("mark")
+        }
+    }
+}
+
+/// Queues the picture import of a folder picked in place (its StoragePath `src`), under the lock the UI holds:
+/// its mark (the notebook id it will be, the name and folder given), then the job. The id, or None when the mark
+/// could not be written.
+pub(crate) fn queue_folder_pick(src: &str, name: &str, folder: &str, dpi: f32) -> Option<String> {
+    use crate::pdfimport::*;
+    let mut id = String::new();
+    fresh_import_id(&mut id);
+    let m = Mark { state: MarkState::Making, id: id.clone(), src: src.to_string(), pick: true, name: name.to_string(), folder: folder.to_string(), at: wall_time(), ..Default::default() };
+    if !mark_write_public(&m) {
+        return None;
+    }
+    bg_queue(BgKind::ImportFolder, Some(&id), Some(src), -dpi.abs().max(1.0), true);
+    with(|s| s.pending.push(FixedStr::from_str(&id)));
+    Some(id)
+}
+
+/// Whether `id` is a picture import this process has queued or running.
+pub(crate) fn is_pending_id(id: &str) -> bool {
+    with(|s| s.pending.iter().any(|p| p.as_str() == id))
+}
+
+/// Picture imports this process holds as queued or running that the job queue no longer knows (dropped, or a fork
+/// that failed): let go of, so they never pin the lock. A folder of import/ is queued again by the next scan (its
+/// mark keeps its id); a pick waits for the lock as a pick does. Returns how many.
+pub(crate) fn reconcile_pictures() -> usize {
+    let lost: Vec<String> = with(|s| s.pending.iter().filter(|p| !bg_pending(BgKind::ImportFolder, p.as_str())).map(|p| p.as_str().to_string()).collect());
+    for id in &lost {
+        with(|s| s.pending.retain(|p| p.as_str() != id));
+        qlog!("import: page folder import %s was dropped from the queue; it is taken again", id);
+    }
+    if !lost.is_empty() {
+        // a pick among them: its mark (in import/.marks) says waiting, so the lock taken afresh queues it again
+        for m in std::fs::read_dir(format!("{}/import/.marks", store_root())).into_iter().flat_map(|rd| rd.flatten().take(256)) {
+            let Some(t) = read_file(&m.path().to_string_lossy()) else { continue };
+            let Some(mk) = crate::pdfimport::mark_parse(&t) else { continue };
+            if mk.state == crate::pdfimport::MarkState::Making && mk.pick && lost.iter().any(|l| *l == mk.id) {
+                crate::pdfimport::mark_write_public(&crate::pdfimport::Mark { state: crate::pdfimport::MarkState::Waiting, id: String::new(), at: wall_time(), ..mk });
+            }
+        }
+    }
+    lost.len()
+}
+
+/// What a row of the Import place says of the folder at `src` (its absolute path): Failed after the tries, else
+/// Waiting (a folder is taken at the next scan).
+pub fn folder_failed(src: &str) -> bool {
+    let mut names = Vec::new();
+    if list_names(src, true, STORE_MAX_PAGES + 1, &mut names) != 0 || names.is_empty() {
+        return false;
+    }
+    attempts_waiting(src, pictures_hash(src, &names), &attempts_snapshot(), IMPORT_TRIES)
+}
+
+// ---- what pdfimport.rs shares ----
+
+/// How many picture-folder imports are queued or running.
+pub(crate) fn pictures_pending() -> usize {
+    with(|s| s.pending.len())
+}
+pub(crate) fn attempts_snapshot() -> Vec<Attempt> {
+    attempts_load()
+}
+/// `what`: 0 a try, 1 refused, 2 done.
+/// (a PDF of import/ by its path there, anything else by its name; the tests')
+#[cfg(test)]
+pub(crate) fn attempts_note_public(src: &str, pictures: u64, what: i32) {
+    attempts_note_key(crate::pdfimport::attempt_key(src).unwrap_or_else(|| folder_name_hash(src)), pictures, what);
+}
+/// Whether the record of `src` (a PDF of import/ by its path there, anything else by its name) says it was tried
+/// `tries` times with these very contents.
+pub(crate) fn attempts_waiting(src: &str, pictures: u64, a: &[Attempt], tries: i32) -> bool {
+    attempts_waiting_key(crate::pdfimport::attempt_key(src).unwrap_or_else(|| folder_name_hash(src)), pictures, a, tries)
+}
+/// The same for the record keyed `nh`.
+pub(crate) fn attempts_waiting_key(nh: u64, pictures: u64, a: &[Attempt], tries: i32) -> bool {
+    a.iter().any(|e| e.name == nh && e.tries >= tries && e.pictures == pictures)
+}
+pub(crate) fn remove_work_public<P: AsRef<Path>>(work: P) {
+    remove_work(work)
+}
+pub(crate) fn sync_dir_public(dir: &str) {
+    sync_dir(dir)
+}
+pub(crate) fn import_leftovers_public(act: bool) -> bool {
+    import_leftovers(act, &mut Vec::new())
 }
 
 #[cfg(test)]

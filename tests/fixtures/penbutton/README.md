@@ -6,6 +6,8 @@ These are text bindings for the Phase 6 headless scenarios, not device captures.
 - pan binds the first button's drag to Pan (g_gest_15_link_then_finger.qs takes a lasso over with it).
 - single binds tap to Undo while the built-in triple still requires a 350 ms wait.
 - single-now clears the triple, allowing tap to resolve at release.
+- hold-clear binds the first button's hold to Clear page, the built-in until 2.1.0-beta.1
+  (z_tool_b_button_over_sheets.qs: it clears nothing from under a sheet).
 - button2 supplies a second-button binding and an Eraser line. Unsupported slots must survive
   saves as carried lines; Button2 becomes live only with GRIMOIRE_SIM_PEN_BUTTON2=1.
 - gallery supplies multiple source bindings for row suffixes and both pen button names.

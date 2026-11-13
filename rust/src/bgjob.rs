@@ -30,6 +30,13 @@ pub enum BgKind {
     /// id: none, path: root/graph-all.ini; the Graph of all notebooks laid out from the library index
     /// (libindex) and saved by the child (2.0.0-beta.2).
     GraphLayoutAll = 6,
+    /// id: the notebook being made, path: the PDF's StoragePath; one slice of at most 25 pages or 20 s of a PDF
+    /// import (pdfimport.rs). It ends with "more to do" (exit 3) until the last slice, which commits.
+    PdfImport = 7,
+    /// id: none, path: "" or "recheck:<key>"; the fonts of grimoire/fonts that have no verdict yet, each checked by
+    /// the sandboxed worker (userfonts.rs, 2.1.0-beta.2). It ends 0, 3 (some files wait), 4 (no worker) or 5 (one font checked, more to do: the next job is queued
+    /// with the path "next", behind exports and a PDF's slices).
+    FontCheck = 8,
 }
 
 /// Queues a job (a queued duplicate, same kind, id and path, is merged). notify: report the result
@@ -150,6 +157,10 @@ pub fn bg_job_pending(kind:BgKind,id:&str,path:&str)->bool {
 fn bg_job_queued(kind:BgKind,id:&str,path:&str)->bool {
     with(|s|s.q.iter().any(|j|j.kind==kind&&j.id.as_str()==id&&j.dir.as_str()==path))
 }
+/// The exit status of the job bg_poll_job reported last (a PDF import's: 0 done, 2 done with blank pages).
+pub fn bg_last_exit() -> i32 {
+    with(|s| s.last_exit)
+}
 /// How many children run now, 0 to 2 (the runner's bg.children).
 pub fn bg_children()->i32 {
     with(|s|(s.pid>0) as i32+(s.extra_pid>0) as i32)
@@ -179,17 +190,31 @@ pub fn bg_poll_job(done_kind:Option<&mut i32>,mut done_id:Option<&mut FixedStr<S
         // status goes into our local.
         let r = unsafe { libc::waitpid(pid, &mut st, libc::WNOHANG) };
         if r == pid || r < 0 {
-            let ok = r == pid && libc::WIFEXITED(st) && libc::WEXITSTATUS(st) == 0;
-            let (kind, notify, id) = with(|s| if extra { (s.extra.kind, s.extra.notify, s.extra.id) } else { (s.running.kind, s.running_notify, s.running.id) });
+            // (a PDF import slice's exit status says more than done or failed: 2 = done, some pages blank;
+            // 3 = more slices to run: its continuation is queued behind whatever ranks higher)
+            let code = if r == pid && libc::WIFEXITED(st) { libc::WEXITSTATUS(st) } else { -1 };
+            let (kind, notify, id, job) = with(|s| if extra { (s.extra.kind, s.extra.notify, s.extra.id, s.extra) } else { (s.running.kind, s.running_notify, s.running.id, s.running) });
+            let is_pdf = kind == BgKind::PdfImport;
+            // (a font check's 3: some files were still being copied and wait for the next look)
+            let ok = code == 0 || (is_pdf && (code == 2 || code == 3)) || (kind == BgKind::FontCheck && (code == 3 || code == 5));
             if let Some(done)=done_id.as_deref_mut(){*done=id;}
+            if is_pdf && code == 3 {
+                with(|s| if extra { s.extra_pid = -1 } else { s.pid = -1 });
+                let (id, dir) = (job.id, job.dir);
+                bg_queue(BgKind::PdfImport, Some(id.as_str()), Some(dir.as_str()), job.dpi, false);
+                break; // (nothing finished: the notice and the progress record tell how far it is)
+            }
             qlog!("bg: %s pid %d %s", K_KIND_NAMES[kind as usize], pid, if ok { "done" } else { "FAILED" });
-            if notify || kind == BgKind::GraphLayout || kind == BgKind::GraphLayoutAll {
+            if notify || is_pdf || kind == BgKind::GraphLayout || kind == BgKind::GraphLayoutAll {
                 result = if ok { 1 } else { -1 };
             }
             if let Some(d) = done_kind.as_mut() {
                 **d = kind as i32;
             }
-            with(|s| if extra { s.extra_pid = -1 } else { s.pid = -1 });
+            with(|s| {
+                s.last_exit = code;
+                if extra { s.extra_pid = -1 } else { s.pid = -1 }
+            });
             break;
         }
     }
@@ -221,7 +246,15 @@ pub fn bg_detach_rest() {
     for j in &left {
         qlog!("bg: notebook work for %s left for the next run", &j.id);
     }
-    let (jobs, running) = with(|s| (s.q.clone(), s.pid));
+    let (mut jobs, running) = with(|s| (s.q.clone(), s.pid));
+    // A PDF import slice that is running goes on in the detached child too: its next slice is not queued
+    // yet, and Grimoire is no longer there to queue it.
+    let running_pdf = with(|s| (s.pid > 0 && s.running.kind == BgKind::PdfImport).then_some(s.running));
+    if let Some(j) = running_pdf {
+        if !jobs.iter().any(|q| q.kind == j.kind && q.id.as_bytes() == j.id.as_bytes()) {
+            jobs.insert(0, j);
+        }
+    }
     if jobs.is_empty() {
         return;
     }
@@ -231,7 +264,10 @@ pub fn bg_detach_rest() {
     if pid == 0 {
         // SAFETY: setsid detaches the child from the terminal and process group it was forked in.
         unsafe { libc::setsid() };
-        child_setup();
+        // (the import lock goes with it only when it has an import to finish)
+        child_setup(jobs.iter().any(|j| is_import(j.kind)));
+        // (the detached child runs the jobs left, the biggest margin of them)
+        child_caps_apply(jobs.iter().map(|j| child_margin(j.kind)).max().unwrap_or(0));
         // Wait for the running export first (it writes the same folder).
         // SAFETY: kill with signal 0 only checks that the process exists.
         while running > 0 && unsafe { libc::kill(running, 0) } == 0 {
@@ -239,7 +275,15 @@ pub fn bg_detach_rest() {
             unsafe { libc::usleep(200000) };
         }
         for j in &jobs {
-            run_job_guarded(j);
+            // (a PDF import's slices run back to back: each ends with "more to do" until the last. Each slice makes
+            // progress or ends the job; the bound is a last guard, never reached by an import of 2000 pages)
+            let mut slices = 0;
+            while j.kind == BgKind::PdfImport && slices < 4 * crate::pdfimport::PDF_MAX_PAGES && run_job_guarded(j) == 3 {
+                slices += 1;
+            }
+            if j.kind != BgKind::PdfImport {
+                run_job_guarded(j);
+            }
         }
         // SAFETY: the child ends here without running the parent's exit handlers.
         unsafe { libc::_exit(0) };
@@ -268,7 +312,7 @@ struct Job {
     notify: bool,
 }
 
-const K_KIND_NAMES: [&str; 7] = ["export", "compaction", "template", "import", "map layout", "page previews", "library map layout"];
+const K_KIND_NAMES: [&str; 9] = ["export", "compaction", "template", "import", "map layout", "page previews", "library map layout", "PDF import", "font check"];
 
 /// bgjob.c's g_q, g_n, g_pid, g_running_notify and g_running.
 struct State {
@@ -285,11 +329,13 @@ struct State {
     /// a second child could not be forked (the memory short): none is tried again until the first child is
     /// free, which then runs the batch put back in the queue (start_job)
     extra_off: bool,
+    /// the exit status of the job bg_poll_job reported last
+    last_exit: i32,
 }
 
 impl Default for State {
     fn default() -> Self {
-        State { q: Vec::new(), pid: -1, running_notify: false, running: Job::default(), extra_pid: -1, extra: Job::default(), extra_off: false }
+        State { q: Vec::new(), pid: -1, running_notify: false, running: Job::default(), extra_pid: -1, extra: Job::default(), extra_off: false, last_exit: 0 }
     }
 }
 
@@ -317,11 +363,31 @@ fn with<R>(f: impl FnOnce(&mut State) -> R) -> R {
 fn run_mirror(j: &Job) -> i32 {
     let mut nb = Box::<NotebookInfo>::default();
     let li = store_load_info(j.id.as_str(), &mut nb);
+    let (t0, drawn0) = (now_ms(), pdf_pages_rendered());
     let rc = if li == 0 { export_mirror_pdf(&nb, j.dpi, j.dir.as_str()) } else { -1 };
     if rc != 0 {
         qlog!("bg: export of %s failed (load %d, export %d)", &j.id, li, rc);
+    } else {
+        // (the mirror's time and memory, for the device check in docs/TESTING.md: pages drawn against pages
+        // found in the cache, and the child's peak resident memory)
+        qlog!(
+            "bg: export of %s: %d pages, %d drawn, %d ms, VmHWM %d kB",
+            &j.id,
+            nb.npages(),
+            pdf_pages_rendered().wrapping_sub(drawn0) as i32,
+            now_ms().wrapping_sub(t0) as i32,
+            vm_hwm_kb()
+        );
     }
     rc
+}
+
+// This process's peak resident memory in kB (Linux's VmHWM line), 0 where it is not known.
+fn vm_hwm_kb() -> i32 {
+    std::fs::read_to_string("/proc/self/status")
+        .ok()
+        .and_then(|s| s.lines().find_map(|l| l.strip_prefix("VmHWM:").and_then(|v| v.trim().trim_end_matches("kB").trim().parse::<i32>().ok())))
+        .unwrap_or(0)
 }
 
 fn run_graph(j: &Job) -> i32 {
@@ -356,6 +422,8 @@ fn run_job(j: &Job) -> i32 {
         BgKind::CompactPages => bg_compact_pages(j.id.as_str(), j.dpi),
         BgKind::Template => bg_template(j.id.as_str(), j.dir.as_str(), j.dpi),
         BgKind::ImportFolder => bg_import_folder(j.dir.as_str(), j.dpi),
+        BgKind::PdfImport => crate::pdfimport::bg_pdf_import(j.id.as_str(), j.dir.as_str()),
+        BgKind::FontCheck => crate::userfonts::bg_font_check(j.dir.as_str(), j.dpi),
     }
 }
 
@@ -366,10 +434,17 @@ fn run_job_guarded(j: &Job) -> i32 {
     std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| run_job(j))).unwrap_or(-1)
 }
 
+/// The kinds that are imports: their children keep the import lock (the UI holds it while any is queued or
+/// running), and no other child does.
+fn is_import(kind: BgKind) -> bool {
+    matches!(kind, BgKind::PdfImport | BgKind::ImportFolder)
+}
+
 // In a forked child: let go of everything inherited from Grimoire (input devices, possibly
 // grabbed; the framebuffer; the power-service pipe), and take a name of its own so nobody
-// mistakes it for Grimoire. stdout/stderr stay: they are the log.
-fn child_setup() {
+// mistakes it for Grimoire. stdout/stderr stay: they are the log. `keep_lock`: an import's child,
+// which keeps the import lock's descriptor.
+fn child_setup(keep_lock: bool) {
     work_pump_set(None); // the pens are Grimoire's to read (common.h), never a child's
     input_forget_signal_pipe(); // (its numbers are closed below, and the jobs' files take them)
     #[cfg(target_os = "linux")]
@@ -389,7 +464,15 @@ fn child_setup() {
     if !(0..=4096).contains(&max) {
         max = 4096;
     }
+    // The import lock's descriptor stays in an import's child (DESIGN.md 3.9): it holds the very lock the UI
+    // holds, so the detached child at exit keeps it too. Any other child closes it: a compaction, a mirror or a
+    // font check that starts as the last import ends must not hold the lock after the UI lets go of it (H2). It
+    // is O_CLOEXEC, so no worker or script inherits it.
+    let keep = if keep_lock { crate::pdfimport::lock_fd() } else { -1 };
     for fd in 3..max as i32 {
+        if fd == keep {
+            continue;
+        }
         // SAFETY: closing every fd above 2 in the child, as the C does; a failure (not open) is fine.
         unsafe { libc::close(fd) };
     }
@@ -407,7 +490,9 @@ fn rank(j: &Job) -> i32 {
     match j.kind {
         BgKind::GraphLayout | BgKind::GraphLayoutAll => 1,
         BgKind::MirrorPdf => 2,
-        BgKind::ImportFolder => 3,
+        BgKind::ImportFolder | BgKind::PdfImport => 3,
+        // (a font check after the first font of a look: one font a job, behind an export and a PDF's slice)
+        BgKind::FontCheck => 3,
         // (an idle warm-up of the Pages view's previews: after anything asked for, with compaction)
         BgKind::PagePreviews => 4,
         _ => 4,
@@ -580,7 +665,9 @@ fn start_job(j: Job, extra: bool) -> bool {
     if pid == 0 {
         // The child only renders and writes files: no display, no input, no atexit handlers.
         child_stops_by_default(&was);
-        child_setup();
+        child_setup(is_import(j.kind));
+        child_caps_apply(child_margin(j.kind)); // (oom_score_adj 500 and RLIMIT_AS, childcaps.rs)
+        pdf_cache_sweep_due(); // (once a day: the PDF cache's records of deleted notebooks, the mirror on or off)
         #[cfg(feature = "sim")]
         {
             // Tests: an export as slow as a big notebook's on the Kindle, so the next one queues.
@@ -590,8 +677,10 @@ fn start_job(j: Job, extra: bool) -> bool {
         }
         let rc = run_job_guarded(&j);
         // SAFETY: the child ends here without running the parent's exit handlers or flushing its
-        // buffers.
-        unsafe { libc::_exit(if rc == 0 { 0 } else { 1 }) };
+        // buffers. (A PDF import slice's 2 and 3 mean done with blank pages, and more to do; a font check's 3
+        // and 4, some files wait, and no worker can be had.)
+        let says_more = (j.kind == BgKind::PdfImport && (rc == 2 || rc == 3)) || (j.kind == BgKind::FontCheck && (rc == 3 || rc == 4 || rc == 5));
+        unsafe { libc::_exit(if rc == 0 { 0 } else if says_more { rc } else { 1 }) };
     }
     let beside = with(|s| {
         if extra {

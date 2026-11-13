@@ -54,6 +54,7 @@ pub enum SettingId {
     Gestures,
     Language,
     Mirror,
+    Wifi,
     KOReader,
     Updates,
 }
@@ -111,7 +112,7 @@ pub const STYLE_CLASSIC: &str = n_("Style: Classic (tap for Gothic)");
 /// page shows; the layout never hardcodes a category or a row.
 // TRANSLATORS: Settings' categories, down the left of its page, each with its icon: the settings
 // they group are Display's, Pen Feel's, Calibration's, the Controller's (shortcuts, pairing,
-// gestures) and General's (language, mirroring, KOReader, updates).
+// gestures) and General's (language, mirroring, Wi-Fi, KOReader, updates).
 pub static CATEGORIES: &[Category] = &[
     Category {
         title: n_("Display"),
@@ -233,6 +234,15 @@ pub static CATEGORIES: &[Category] = &[
                 show: Show::Always,
             },
             Item {
+                icon: IconKind::Share,
+                // TRANSLATORS: (Settings) the row that opens the Wi-Fi sheet: the radio and the Kindle's
+                // saved networks.
+                label: Label::Text(n_("Wi-Fi")),
+                id: SettingId::Wifi,
+                check: Check::None,
+                show: Show::Always,
+            },
+            Item {
                 icon: IconKind::Notebook,
                 label: Label::Text(n_("KOReader")),
                 id: SettingId::KOReader,
@@ -276,8 +286,8 @@ mod tests {
         assert_eq!(ids(1), vec![SettingId::PenFeel, SettingId::SideButton]);
         assert_eq!(ids(2), vec![SettingId::Calibration]);
         assert_eq!(ids(3), vec![SettingId::Shortcuts, SettingId::Pair, SettingId::Gestures]);
-        assert_eq!(ids(4), vec![SettingId::Language, SettingId::Mirror, SettingId::KOReader, SettingId::Updates]);
-        assert_eq!(CATEGORIES.iter().map(|c| c.items.len()).sum::<usize>(), 15);
+        assert_eq!(ids(4), vec![SettingId::Language, SettingId::Mirror, SettingId::Wifi, SettingId::KOReader, SettingId::Updates]);
+        assert_eq!(CATEGORIES.iter().map(|c| c.items.len()).sum::<usize>(), 16);
 
         assert_eq!(text(0, 0), "Display: brightness, warmth, invert");
         assert_eq!(text(0, 3), "Turn with the Kindle (portrait and landscape)");
@@ -287,8 +297,9 @@ mod tests {
         assert_eq!(text(3, 0), "Shortcuts: keys and controller buttons");
         assert_eq!(text(3, 1), "Pair");
         assert_eq!(text(3, 2), "Gestures");
-        assert_eq!(text(4, 2), "KOReader");
-        assert_eq!(text(4, 3), "Updates");
+        assert_eq!(text(4, 2), "Wi-Fi");
+        assert_eq!(text(4, 3), "KOReader");
+        assert_eq!(text(4, 4), "Updates");
 
         assert!(matches!(CATEGORIES[0].items[1].label, Label::Style));
         assert!(matches!(CATEGORIES[0].items[2].label, Label::Font));

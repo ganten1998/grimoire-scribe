@@ -99,6 +99,13 @@ pub struct Settings {
     /// Classic's font, an index of font.rs's FONT_FAMILIES (settings.ini font=, the family's id:
     /// terminess, atkinson, noto-sans or literata; 2.1). Gothic keeps its own faces whatever it is.
     pub font: i32,
+    /// Classic's font when it is one of the owner's own (settings.ini font=file:<path>, 2.1.0-beta.2): its
+    /// path under grimoire/fonts, "" for a family (`font`, which is then what draws when the file is missing
+    /// or has not passed its check: Terminess). userfonts.rs loads it.
+    pub font_file: FixedStr<208>,
+    /// The Bold file that goes with it (settings.ini font_bold=file:<path>), "" to let Grimoire find one: the
+    /// font's own weight axis, else a Bold file of its family beside it, else the regular overprinted.
+    pub font_bold: FixedStr<208>,
     pub pen_calib: InputCalib,
     pub touch_calib: InputCalib,
     /// The panel each calibration was made on (settings.ini pen.panel, touch.panel: WxH). A
@@ -3997,8 +4004,11 @@ pub fn store_page_cache_age_ms(nb: &NotebookInfo, pid: u32) -> u32 {
 
 /// A page whose whole drawing in the editor takes this long or longer keeps it (store_save_page_render), ms.
 /// (The previews job goes by store_page_dense instead: it keeps a dense page's drawing, however quick, and no
-/// other page's, however slow.)
-pub const STORE_KEEP_RENDER_MS: u32 = 1000;
+/// other page's, however slow.) 250 ms, down from 1 s: a page that takes a quarter of a second to draw is a
+/// quarter of a second the owner waits at every turn and open that finds no kept drawing, while keeping one
+/// costs one run-length coded canvas (tens of ms to write, a few to read). Pages quick enough to draw again
+/// without being noticed still keep nothing.
+pub const STORE_KEEP_RENDER_MS: u32 = 250;
 /// Tests: the threshold in place of STORE_KEEP_RENDER_MS (u32::MAX: none), so a unit test can count every
 /// drawing as slow (and see that the previews job still keeps no light page's).
 pub static STORE_TEST_KEEP_RENDER_MS: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(u32::MAX);
@@ -4192,17 +4202,13 @@ pub fn store_load_page_render(nb: &NotebookInfo, pid: u32, w: i32, h: i32, out: 
         return false;
     }
     let Some(data) = read_file(&image) else { return false };
-    let mut px = Vec::new();
-    if px.try_reserve_exact((w * h) as usize).is_err() {
-        return false;
-    }
-    px.resize((w * h) as usize, 0);
-    if !rle_decode(&data, &mut px) {
+    // Decoded straight into the page canvas: a page-size temporary and its copy back (9 MB at the
+    // Scribe's size) less to wait on.
+    if !rle_decode(&data, &mut out.px[..(w * h) as usize]) {
         // (a write cut short: its stamp goes, so it is drawn and kept again)
         let _ = std::fs::remove_file(stamp);
         return false;
     }
-    out.px[..(w * h) as usize].copy_from_slice(&px);
     true
 }
 // Whether page pid has a drawing kept by 2.0.0 or 2.0.1 (render_tag_is_before), current for the page file or not.
@@ -4764,13 +4770,43 @@ fn settings_cb(s: &mut Settings, k: &[u8], v: &[u8]) -> bool {
             );
         }
         b"font" => {
-            // A font this version does not have (a newer one's) draws as Terminess, and stays in the file.
-            let found = font_family_find(v);
-            if found.is_none() {
-                qlog_once!("settings: font=%s is not a font of this version: Terminess", &String::from_utf8_lossy(v).into_owned());
+            s.font_file.clear();
+            if let Some(rel) = v.strip_prefix(b"file:") {
+                // A font of the owner's own (2.1.0-beta.2): its path under grimoire/fonts. Whether the file is
+                // there and passed its check is found when it is loaded (userfonts.rs): until then, and for a
+                // path no font file can have, Terminess draws, and the line stays in the file.
+                s.font = 0;
+                match std::str::from_utf8(rel).ok().filter(|r| crate::userfonts::userfont_rel_ok(r)) {
+                    Some(r) => {
+                        s.font_file.set(r);
+                        keep_value("font", v, None);
+                    }
+                    None => {
+                        qlog_once!("settings: font=file: names no font file this version can use: Terminess");
+                        keep_value("font", v, Some(FONT_FAMILIES[0].id));
+                    }
+                }
+            } else {
+                // A font this version does not have (a newer one's) draws as Terminess, and stays in the file.
+                let found = font_family_find(v);
+                if found.is_none() {
+                    qlog_once!("settings: font=%s is not a font of this version: Terminess", &String::from_utf8_lossy(v).into_owned());
+                }
+                s.font = found.unwrap_or(0) as i32;
+                keep_value("font", v, if found.is_some() { None } else { Some(FONT_FAMILIES[0].id) });
             }
-            s.font = found.unwrap_or(0) as i32;
-            keep_value("font", v, if found.is_some() { None } else { Some(FONT_FAMILIES[0].id) });
+        }
+        b"font_bold" => {
+            // The Bold file of a custom font; anything else (empty, a value of a newer version) is not used
+            // and stays in the file.
+            s.font_bold.clear();
+            match v.strip_prefix(b"file:").and_then(|r| std::str::from_utf8(r).ok()).filter(|r| crate::userfonts::userfont_rel_ok(r)) {
+                Some(r) => {
+                    s.font_bold.set(r);
+                    keep_value("font_bold", v, None);
+                }
+                None => keep_value("font_bold", v, Some("")),
+            }
         }
         b"shortcuts_enabled" => s.shortcuts_enabled = keep_bool("shortcuts_enabled", v),
         b"controller" => s.controller = keep_bool("controller", v),
@@ -5144,8 +5180,19 @@ pub fn settings_save(s: &Settings) -> i32 {
     put(&mut b, "whatsnew_seen", s.whatsnew_seen.as_str());
     put_int(&mut b, "whatsnew_hide", s.whatsnew_hide as i32);
     put_int(&mut b, "shape_corner", s.shape_corner);
-    // 2.1: Classic's font (a value this build does not have goes back as it was, keep_value).
-    put(&mut b, "font", FONT_FAMILIES[clampi(s.font, 0, FONT_FAMILIES.len() as i32 - 1) as usize].id);
+    // 2.1: Classic's font (a value this build does not have goes back as it was, keep_value): a family's id, or
+    // file:<path> for a font of the owner's own (2.1.0-beta.2).
+    if s.font_file.is_empty() {
+        put(&mut b, "font", FONT_FAMILIES[clampi(s.font, 0, FONT_FAMILIES.len() as i32 - 1) as usize].id);
+    } else {
+        put(&mut b, "font", &format!("file:{}", s.font_file.as_str()));
+    }
+    // Its Bold file, a line only a file that names one has (or had: a value not used goes back as it was).
+    if !s.font_bold.is_empty() {
+        put(&mut b, "font_bold", &format!("file:{}", s.font_bold.as_str()));
+    } else if with(|st| st.g_kept.iter().any(|e| e.key == "font_bold")) {
+        put(&mut b, "font_bold", "");
+    }
     // Lines this build does not know, as they were; but a pen.panel or touch.panel this build could
     // not read goes once the calibration's panel is recorded (written above in its place).
     let unknown = with(|st| st.g_set_unknown.clone());

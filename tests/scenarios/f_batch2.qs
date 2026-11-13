@@ -34,17 +34,14 @@ wait 300
 shot 03-eraser-end
 # (its end also reaches the highlighter band's lower edge: only the first line is left)
 expect editor.strokes is 1
-# Holding the pen button clears with the current default binding; undo brings it back.
+# Holding the pen button does nothing by default (2.1.0-beta.2: it cleared the page, issues #36, #39; a hold
+# recorded for Clear page is v_gestures_4b_clear's).
 side on
 wait 1500
 side off
 wait 400
 expect toast is
-shot 04-cleared
-expect editor.strokes is 0
-pentap panel undo
-wait 400
-shot 05-undo-clear
+shot 04-hold-nothing
 expect editor.strokes is 1
 # pinch zoom in around the writing, write small, then pinch back out
 pinch 600 600 300 750 6

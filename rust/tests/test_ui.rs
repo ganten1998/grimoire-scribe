@@ -30,7 +30,7 @@ const ICONS: [IconKind; IconKind::COUNT - 1] = [
     IconKind::Down, IconKind::Music, IconKind::Castle, IconKind::Charcoal, IconKind::Calligraphy,
     IconKind::Language, IconKind::Pin, IconKind::Grid, IconKind::Copy, IconKind::Link,
     IconKind::Live, IconKind::Gamepad, IconKind::Update, IconKind::Clock, IconKind::Search, IconKind::Eye, IconKind::LinkPlus, IconKind::Bubbles, IconKind::Gestures, IconKind::Lasso,
-    IconKind::Hourglass, IconKind::Font,
+    IconKind::Hourglass, IconKind::Font, IconKind::Ban,
 ];
 
 fn slider_snap() {
@@ -241,9 +241,9 @@ fn pin_grid_and_hollow_icons() {
     canvas_free(&mut c);
 }
 
-// A name keeps every letter in the files; the screens leave out what the fonts cannot draw (it
-// would show as a box; Japanese has DotGothic16, an emoji has no face), and a name left with no
-// letter reads Untitled, with what is left.
+// A name keeps every letter in the files; the screens show a letter the fonts cannot draw as a box
+// (2.1.0-beta.2; Japanese has DotGothic16, an emoji or a simplified Chinese letter no face) and leave
+// out only what shows nothing, and a name left with no letter reads Untitled, with what is left.
 fn name_labels() {
     let mut buf = String::new();
     let plain = "Le Petit Prince";
@@ -252,22 +252,31 @@ fn name_labels() {
     // (the C compares the pointers: the label is the name itself when all of it is drawn)
     check!(std::ptr::eq(ui_name_label(plain, &mut buf, 200), plain) && std::ptr::eq(ui_name_label(greek, &mut buf, 200), greek));
     check!(ui_name_label("1984", &mut buf, 200).as_bytes()[0] == b'1'); // (all of it drawn: as it is)
-    // Japanese comes from DotGothic16; an emoji has no face. Vietnamese marks Terminess lacks
-    // (e with circumflex and acute, e with circumflex and dot below) are left out too.
+    // Japanese comes from DotGothic16; an emoji has no face, and Vietnamese letters Terminess lacks
+    // (e with circumflex and acute, e with circumflex and dot below) neither: each shows as a box.
     check!(font_drawable_copy("Pok\u{e9}mon \u{6f2b}\u{753b} Vol. 3", &mut buf, 200) == 0);
     check!(buf == "Pok\u{e9}mon \u{6f2b}\u{753b} Vol. 3");
-    check!(font_drawable_copy("Pok\u{e9}mon \u{1f600} Vol. 3", &mut buf, 200) == 1);
-    check!(buf == "Pok\u{e9}mon Vol. 3");
-    check!(ui_name_label("Pok\u{e9}mon \u{1f600} Vol. 3", &mut buf, 200) == "Pok\u{e9}mon Vol. 3");
+    check!(font_drawable_copy("Pok\u{e9}mon \u{1f600} Vol. 3", &mut buf, 200) == 0);
+    check!(buf == "Pok\u{e9}mon \u{1f600} Vol. 3");
+    check!(ui_name_label("Pok\u{e9}mon \u{1f600} Vol. 3", &mut buf, 200) == "Pok\u{e9}mon \u{1f600} Vol. 3");
     let ja = "\u{543e}\u{8f29}\u{306f}\u{732b}\u{3067}\u{3042}\u{308b}";
     check!(font_drawable_copy(ja, &mut buf, 200) == 0 && buf == ja);
     check!(ui_name_label(ja, &mut buf, 200) == ja);
     let numbered = cformat!("%s 2", ja);
     check!(ui_name_label(&numbered, &mut buf, 200) == numbered.as_str());
     let emoji = "\u{1f600}";
-    check!(font_drawable_copy(emoji, &mut buf, 200) == 1 && buf.is_empty());
-    check!(ui_name_label(emoji, &mut buf, 200) == "Untitled");
-    check!(ui_name_label("Ti\u{1ebf}ng Vi\u{1ec7}t", &mut buf, 200) == "Ting Vit");
+    check!(font_drawable_copy(emoji, &mut buf, 200) == 0 && buf == emoji);
+    check!(ui_name_label(emoji, &mut buf, 200) == emoji);
+    check!(ui_name_label("Ti\u{1ebf}ng Vi\u{1ec7}t", &mut buf, 200) == "Ti\u{1ebf}ng Vi\u{1ec7}t");
+    // The owner's notebook 会议记录 (2.1.0-beta.2): 会 is DotGothic16's, 议记录 no face's. The Library
+    // showed 会 alone; now the name as it is, three boxes after 会.
+    let meeting = "\u{4f1a}\u{8bae}\u{8bb0}\u{5f55}";
+    check!(std::ptr::eq(ui_name_label(meeting, &mut buf, 200), meeting));
+    // What shows nothing goes (a zero-width no-break space, an invisible separator: no face has them), and a
+    // name of nothing else reads Untitled.
+    check!(font_drawable_copy("\u{feff}\u{2063} 2", &mut buf, 200) == 2 && buf == "2");
+    check!(ui_name_label("\u{feff}\u{2063} 2", &mut buf, 200) == "Untitled 2");
+    check!(ui_name_label("\u{feff}", &mut buf, 200) == "Untitled");
     // Cut to the buffer between two characters.
     let mut small = String::new();
     check!(font_drawable_copy("ab\u{20ac}\u{20ac}", &mut small, 6) == 0 && small == "ab\u{20ac}");

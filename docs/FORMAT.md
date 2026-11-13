@@ -35,6 +35,7 @@ root/notebooks/<id>/bg/pages.ini        the image paper of each page that has on
 root/notebooks/<id>/source.ini          the book a notebook annotates, page by page (1.1; Annotated pages)
 root/notebooks/<id>/nav.ini             its named sections (1.2.0; Named sections)
 root/notebooks/<id>/links.ini           links drawn on its pages (2.0; Links)
+root/notebooks/<id>/doclinks.ini        links a document brought: a planner PDF's tabs (2.1.0-beta.2; Document links)
 root/backlinks.ini                      links between notebooks, turned around (2.0.0-beta.2; a cache: Backlinks cache)
 root/graph-index.ini                    every notebook's pages, names and links, for the Graph (2.0.0-beta.2; a cache: Library index)
 root/graph-all.ini                      the Graph of all notebooks' layout (2.0.0-beta.2; a cache: Library index)
@@ -51,10 +52,13 @@ root/bluetooth/                         the Bluetooth helper, unpacked by the ow
 root/.update-failed                     an update KPM could not install: told at the next start, then removed (2.0)
 root/templates/                         pictures the owner copies in to use as paper (Templates)
 root/photos/                            photos the owner copies in, each to be a page's paper (2.0; Photos)
+root/fonts/                             font files the owner copies in, for Classic's text (2.1.0-beta.2; Your own fonts)
+root/.font-inuse                        the crash guard of a font of the owner's own (2.1.0-beta.2; Your own fonts)
 root/import/<Name>/                     page pictures to become a notebook at the next start (Imports)
 root/import/.annotate/                  a page KOReader sends to annotate, and its request (Annotated pages)
 root/trash/                             deleted notebooks and pages, moved here, never unlinked
 root/PDFs/                              the PDF mirror (an export, not data)
+root/.cache/pdf/<id>/                   the notebook PDF's page streams, disposable (2.1.0-beta.2)
 ```
 
 `root` is `/mnt/us/grimoire` on the Kindle. A notebook id is the folder's name: letters, digits,
@@ -557,9 +561,14 @@ in `templates/.cache/`, each named by a hash of the file's name, size and time: 
 preview (P5 PGM, a sixth of the page); `<hash>.key`, a line `<hash of the file's bytes, 16 hex
 digits> <width> <height>`, from which the template's id comes (Ids), so the file need not be read
 again to use it; and an empty `<hash>.bad` for a file that is no picture it can use: its bytes are
-no picture Grimoire takes (as above), or it is bigger than 16 MB. A file that does not read when
-the previews are made (no memory for it, a read error) gets no `.bad`: a later scan tries it again.
-A file whose path is 600 bytes or longer is left out.
+no picture Grimoire takes (as above), it is bigger than 16 MB, or (since 2.1.0-beta.2) two of the
+sandboxed workers that read it ended on it in a row (one death is tried again on a fresh worker),
+or one made a call the sandbox refuses. A file that does not read when the previews are made (no
+memory for it, a read error), or that no sandboxed worker could read (the Kindle never reads a
+picture outside the sandbox), gets no `.bad`: a later scan tries it again. A file whose path is 600
+bytes or longer is left out. Since 2.1.0-beta.2 a template or photo is picked only once its
+`.key` is there (its preview made): the previews job's worker has then found it a picture, and the
+UI never reads or checks the file itself.
 
 New notebook and the editor's paper sheet offer the templates as tiles (their previews), behind
 the last tile, More papers... (1.1). A page given one gets its image paper (role 0, a template) at
@@ -585,6 +594,56 @@ upright by the JPEG's EXIF orientation (tag 0x0112 of its APP1 Exif block, read 
 first 64 KB; none, or a PNG, is taken as upright), and so is its preview. Ids: as above. Older
 versions draw such a page as any picture page (1.1 on), or blank (1.0.0-beta, which `bg/pages.ini`
 puts right again).
+
+### Your own fonts: `root/fonts/` (2.1.0-beta.2 on)
+
+Font files the owner copies in (over USB, while Grimoire is closed, or over SSH while it runs) to draw
+Classic's text in: files whose names end in `.ttf`, `.otf`, `.ttc` or `.otc` (any case; of a collection, its
+first face) and do not start with a dot, in the folder itself and in its folders one level down, at most 200
+in name order, each at most 24 MB. Files ending in `.woff` or `.woff2` are listed and never read ("Use .ttf or
+.otf."). Links are never followed, and a file whose path under the folder is longer than 200 bytes, or holds a
+control character, is left out. Grimoire makes the folder at startup, with a `README.txt`, if it is missing.
+Nothing in a notebook ever refers to a font: pages, PDFs and pictures do not change with one.
+
+`fonts/.cache/` holds what the background check found, each file named by the FNV-1a 64 hash (16 hex digits) of
+the font's path under the folder, its size and its time (`<path>/<size>/<mtime>`), so a file replaced by
+another is checked afresh. It is a cache: deleting it loses nothing, and only the background job writes it.
+
+- `<key>.font`, the verdict, text, at most 8 KiB, read strictly (an unknown line, or a number out of range,
+  makes the file no verdict and the font is checked again):
+
+  ```text
+  grimoire-font 1
+  hash=<FNV-1a 64 of the whole file, 16 hex digits>
+  size=<the file's size in bytes>
+  ok=1                            or  why=unreadable | nolatin | format | slow
+  upem=<units per em, 16 to 16384>
+  ascent=<units above the baseline>     descent=<units below it, as a magnitude>
+  scale=<how much bigger than asked its text is drawn, in thousandths: 850 to 1250>
+  weight=<its weight class, 1 to 1000>  italic=<0|1>
+  mapped=<glyphs its cmap maps>
+  wght=<least> <default> <most>   bold=<the weight its bold is drawn at>   (a weight axis only)
+  cover=<characters it has of Latin-1, Latin Extended-A, Greek, Cyrillic, kana, kanji>
+  lacks=<bits: 1 English, 2 Spanish, 4 Japanese: that language's words need letters it lacks>
+  family=<its family's name>      style=<its style's name>     (64 characters each at most)
+  skip=<glyph>,<glyph>,...        glyphs that failed the check, in order, at most 656: drawn in Terminess
+  ```
+
+  The lines after `size` are there only with `ok=1`. `ascent` and `descent` are the font's own unless they
+  are far from what its letters reach (then what they reach). Grimoire draws a font only when the bytes it
+  reads hash to `hash`; other bytes under the same name, size and time are checked again.
+- `<key>.pgm`, the preview (P5 PGM): the family's name (and its style, unless Regular) drawn in the font,
+  black on white, at the text size of the screen the check ran for.
+- `<key>.checking`, empty: a check of this file is under way.
+- `<key>.bad`, empty: the check's worker died on this file, or the check itself did. The font is not read
+  again until the file changes.
+
+`root/.font-inuse` is the crash guard, not a cache (the app itself writes it): text, a first line
+`grimoire-font-guard 1`, then at most eight lines `<key> <strikes 0|1|2> <armed 0|1>`. A font's line is armed
+before its first use in a session and removed once a screen drawn with it is on the panel. An armed line found
+at a start is a strike: that start does not draw the font; with one strike the next start tries it once more;
+with two it is left alone until the file changes (another key). A file that does not read as this is started
+afresh. Deleting it only forgets the strikes.
 
 ### Imports: `root/import/<Name>/`
 
@@ -614,13 +673,117 @@ count), each page a document page; the notebook's own paper is Blank. It is made
   keeps its folder as it was. `import/.attempts` says how each folder still in `import/` fared:
   `# ...`, then a line `<hash of the folder's name> <hash of its pictures' names, sizes and times>
   <tries>` (16 hex digits, 16 hex digits, a number) for each folder an import tried, its tries
-  counted as each starts (99 once a page was no picture Grimoire takes). A folder refused so, or
+  counted as each starts (99 once a page was no picture Grimoire takes; an import that found no
+  sandboxed worker to read its pictures counts none). A folder refused so, or
   tried at 3 starts (a full disk, an import cut off each time), waits until its pictures change: a
   file added, removed, renamed or replaced, or the folder renamed. A start drops the lines of
   folders no longer there. A start takes at most 8 folders; a folder of more than 2000 pictures is
   not imported, nor one without pictures, nor one whose path is 600 bytes or longer.
 
 Grimoire makes `import/` at startup, with a `README.txt`, if it is missing.
+
+### Imports: PDFs, `root/import/*.pdf` (2.1.0-beta.2)
+
+A PDF in `import/` becomes a notebook of its pages, with no KOReader. A file in `import/<Folder>/` becomes a
+notebook in Library folder `<Folder>` (made if missing); a folder that holds PDFs and page pictures imports its
+PDFs first, then its pictures as above (a PDF refused, or tried 3 times and unchanged since, holds the pictures
+back no longer). Only a file that lies in `import/` (not `import/done/`) ever moves, to
+`import/done/<Name>-<YYYYMMDD-HHMMSS>.pdf` once imported: that is decided by where the file is, never by a mark,
+so a PDF picked anywhere else is read in place and never moved, and one picked in `import/` itself is filed in
+`done/` like a drop. Names: a name typed in New notebook's sheet (one of spaces only is none), else the file's
+name without `.pdf`, numbered (" 2", " 3") when a notebook has it. The rules of the scan (at start, when the
+Library comes in front at most every 10 s, again after 5 s while a file waits, and within 10 s of the end of a
+previous run's import):
+
+- **A file is taken when it is whole:** its size and mtime held across two looks at least 2 s apart, its mtime
+  is at least 5 s old (a stamp ahead of the clock counts as old), `%PDF-` is in its first KiB and `%%EOF` (white
+  space after it allowed) in its last; a file without that end that has not changed for a minute is taken as it
+  is. Links, dot-files, names that are not UTF-8 and paths of 600 bytes or more are skipped and counted.
+- **Pages:** one document page (image paper) per PDF page, the page fitted inside the Scribe page and centred
+  on white (the crop box within the media box, turned by `/Rotate`; the scale is the smaller of the two
+  ratios; the rendered size and offsets are whole pixels, as KOReader draws a page). At most 2000 pages and
+  512 MB (64 MB where the device refuses a private mapping of the file), else refused: "PDF too long", "PDF too
+  big". A password refuses it too ("PDF needs a password."); an owner password alone does not.
+- **Colour:** a page whose pixels differ by no more than 6 levels between their channels (anywhere on it) is
+  stored as an 8-bit gray PNG, any other page as an 8-bit RGB PNG (`bg/<pic>.png`; the pictures of equal
+  content share one file). Page pictures may therefore be RGB (3 channels); older versions read them (stb_image)
+  and show their luma. The Scribe draws every page picture as its luma (a page held in memory is the 4.6 MB
+  gray canvas, never the 13.8 MB RGB copy), and the share server's page pictures are that gray render; the
+  notebook's PDF (the mirror in `PDFs/`, the share server's PDF download, a zip's PDF entry) embeds a page on a
+  colour picture in colour, DeviceRGB (see the notebook PDF below). The KOReader route's pages stay gray.
+- **The book key** is KOReader's partial MD5 of the file (1 KiB samples at 0, 1 KiB, 4 KiB ... 1 GiB), written
+  as `source=` in `notebook.ini` and `book=` in `source.ini` (`kind=paged`, a `page.<n>.<count>=<page id>` line
+  per page, and `links=1` when the import wrote `doclinks.ini`, so KOReader's Open this book does not ask for
+  the links again), so the KOReader route and the import find the same notebook. The same key again: "PDF
+  already imported." and a file of `import/` moves to `done/`. A copy of a PDF that is being imported waits for
+  that import (its job ends at once, counting nothing) and is then "already imported".
+- **Slices:** the work runs in slices of at most 25 pages or 20 s, each a background job
+  (`BgKind::PdfImport` = 7) that exits "more to do" (status 3) until the last, which commits. Slice 0 probes
+  (page count, caps), the others render, the last writes `source.ini`, `bg/pages.ini` and last `notebook.ini`,
+  renames `notebooks/.import-<id>/` into place and moves the file. The slices' state is
+  `notebooks/.import-<id>/pdf-import.ini` (`src`, `size`, `mtime`, `key`, `pages`, `next`, `pics` (the picture
+  id of each page made, hex), `blank`, `strikes`, `cpu_ms`, `pick`, `name`, `folder` (a pick's, kept here as in
+  its mark), `bytes` (what the pages made take), `open` (1 while a slice runs) and `stops`; 2.1.0-beta.2's
+  first builds wrote `owner` and `started`, read by nothing), which a start or a scan that finds the file
+  unchanged resumes from; a changed file removes the work. The picture index `bg/index.ini` is saved before any
+  state that names its pictures, and a slice that resumes first makes again every page from the first whose
+  picture or page file is gone. Removing a work folder deletes `pdf-import.ini` first. A slice that finds `open`
+  set counts its writer as cut off (a `stop`); a job past its CPU budget stops too, keeping its pages (it goes on
+  at a later scan with a budget of its own); at 3 stops the import fails whole. A later slice whose workers
+  cannot open the PDF three times fails it whole. Every slice checks that the pages left fit above the 100 MB
+  floor (estimated from what the pages made take), and again every 5 pages.
+- **A page that cannot be read:** its worker died or stalled twice (a strike each, in `strikes`), so it becomes
+  a blank document page (`blank`), the import goes on and ends with "Imported notebook (%d pages). Some pages
+  couldn't be read." A worker that stalls right after the Kindle woke (the wait slept through) is tried again
+  once without a strike. A PDF that fails before any page (no page tree, a password, the caps, the sandbox)
+  fails whole and keeps its file; so does one whose every page could not be read.
+- **Marks:** `import/.marks/<16 hex of the source path>` holds `state` (`making`, `waiting` or `done`), `id`,
+  `src` (the path from the storage root), `pick`, `name`, `folder`, `page`, `pages`, `at`, and for `done` the
+  file's `size` and `mtime` (another file of that name later is a new file); the coarse progress a detached
+  import leaves, rewritten at most every 20 s. A mark goes when its import ends, whatever the end; `done` stays
+  only for a file of `import/` that could not move. A `waiting` mark (a pick made while another process held
+  the lock) is queued by the first scan that takes the lock afresh. A mark that is lost or does not read is
+  made again from `pdf-import.ini`. `import/.attempts` also keys the PDFs of `import/` (a hash of the file's path
+  under `import/`, so `A.pdf` and `Work/A.pdf` have a line each; the second hash is of its size and mtime), kept
+  for as long as the file is there: three tries, or a refusal, wait until the file changes. No room on the
+  storage, a sandbox failure and a worker that cannot start count no try; no room is tried again once 16 MB
+  more is free. A PDF picked anywhere else keeps no line (a pick is never taken again by a scan).
+- **A folder of pictures picked in place** (the picker's Import N pictures as notebook, 2.1.0-beta.2): the job's
+  path is the folder's path from the storage root, told apart from the scan's folders by its negative dpi (a
+  pick's job is queued with `-dpi`; a scan's has an absolute path and the dpi itself), its mark is the same file
+  in `import/.marks/` (`pick=1`, `name`, `folder`) and goes when the notebook is made or the import fails. The
+  folder is walked by fsview and each picture opened without following a link; it is never moved, marked or
+  written to, and no attempt is recorded for it, unless it is a folder of `import/` itself: that one is filed in
+  `import/done/` like a drop, and the scan leaves it to its pick while the pick's job is queued or running.
+- **Links and names (lane L6):** slice 0 also asks the worker for the PDF's links (`LINKS <w> <h>`, after the page
+  count), in the pixels of the Scribe page by the same transform that draws the page, and keeps what it sent in
+  the work folder as `links.part` (the `L` and `Q` records, then `F`) and `names.part` (the `O` records), in the
+  worker's own record grammar, read back strictly by the last slice. The commit writes `doclinks.ini` (below) and
+  `nav.ini` from them, before `notebook.ini`, and removes the two parts. A worker that dies, stalls or lies in
+  the walk costs the notebook its links and names only (logged); the pages do not depend on it. What is read:
+  an annotation `/Subtype /Link`, not hidden (`/F` bit 2) or not viewed (bit 6); its `/A` GoTo (explicit
+  destination, or a name or string looked up in the catalog's `/Names /Dests` name tree and its PDF 1.1 `/Dests`
+  dictionary, each tried for either type), the four Named actions (`NextPage`, `PrevPage`, `FirstPage`,
+  `LastPage`, resolved to the concrete page), else its `/Dest`; an explicit destination naming its page by
+  number instead of a reference counts as a 0-based index in range; `/QuadPoints` (up to 8 quads, a link each,
+  its box as the area, a quad that is not an axis-aligned rectangle also as a closed `outline.` polygon),
+  else `/Rect`. Web links (URI) are left out and counted in the log; GoToR, Launch, JavaScript, a link with no
+  action, one whose destination does not resolve, an empty rectangle, a link to its own page and one that falls
+  off the page are left out and counted too. Walks are capped (name trees and the outline: depth 32, 100,000
+  entries and nodes, a visited set; 20,000 annotations a page; 60,000 links a PDF) and the rest is left out.
+  The areas are the mapped rectangles (floor of the minimum, ceiling of the maximum, clamped to the page, at
+  least 1 px), so a notebook exported by Grimoire and imported again gives its links back within 1 px. The
+  outline names pages: depth first, the first item that points at a page names it, a page's own name staying
+  (an import makes a new notebook, so none has one); titles are decoded from PDF text strings (UTF-16BE or LE
+  with a BOM, UTF-8 with a BOM, else PDFDocEncoding), controls become spaces, trimmed, cut at 95 bytes between
+  characters. The water level trims the densest pages first; when it (or a page's 1,024, or the worker's cap)
+  left links out the end says "Imported notebook (%d pages). Some links were left out." (the pages-not-read
+  ending wins when both apply).
+- **One owner:** `import/.lock` (flock) is taken by the UI without blocking before it queues any import and
+  held while any is queued or running, through one close-on-exec handle; an import's background child (and the
+  child that finishes the queue after Grimoire closes, when it has an import left) keeps that descriptor, and
+  every other child closes it. No job opens it or waits for it. An import the job queue drops (a full queue, a
+  fork that fails) is let go of at the next scan and queued again.
 
 ### Annotated pages: `root/import/.annotate/` and `source.ini` (1.1 on)
 
@@ -668,9 +831,9 @@ it) whatever it does with what it finds:
   newest one with no `source` line whose `source.ini` names the book (one whose `source` line an
   older version dropped). Its compaction, queued or running, stops first, as when a notebook opens.
   With none, a notebook is made for the book: named after the title (on one line, control
-  characters as spaces, one space between two words, broken UTF-8 and the characters Grimoire's
-  fonts cannot draw left out (Chinese, Japanese and Korean: they would show as boxes), cut to 95
-  bytes between two characters; Untitled, in the language in use, when nothing is left; with
+  characters as spaces, one space between two words, broken UTF-8 left out, every other character
+  kept (one Grimoire's fonts cannot draw, such as most Chinese and Korean, shows as a box on the
+  screens), cut to 95 bytes between two characters; Untitled, in the language in use, when nothing is left; with
   " 2", " 3"... added when a notebook has that name already, as two notebooks of one name would
   share a PDF), at the top level, at the device's page size, its one page the annotated one. It
   is built in `notebooks/.annotate-<id>/` (a dot-folder the Library and every older version skip)
@@ -782,6 +945,68 @@ and picture it wrote (the ids stay given up): the notebook stays as it was, and 
 The editor then opens on the page to open (else the first page added).
 
 1.0.0-beta to 2.0.0-beta.4 never read `import/.book/`; the plugin never sends to them.
+
+### Links from KOReader: `import/.book/links.txt` and `source.ini`'s `links=1` (2.1.0-beta.2 on)
+
+The plugin also sends the links inside the book, to a launcher whose `# Capabilities:` line says `links` (an
+older one gets no file, and KOReader is not asked). For each page it draws in this run, plus, once per book while
+the notebook's `source.ini` lacks `links=1` (or its `doclinks.ini` is not beside it), or pages are to be added in this
+run, each page the notebook holds already, it asks KOReader's
+`getPageLinks` (a rectangle `x0 y0 x1 y1` in page space and a 0-based target `page`, or a `uri`), maps the
+rectangle with the transform that drew the page's picture, and writes `links.txt` (whole, before `request.ini`):
+
+```
+# comment lines and blank lines are skipped
+P <w> <h>                                  the pictures' size in pixels, first, once
+L <from> <to> <x> <y> <w> <h>              a link: book pages from 1, the rectangle in those pixels, whole numbers
+```
+
+A link to a web address or a file, to its own page, or to a page the book lacks is left out by the plugin.
+Grimoire reads the file strictly at the start of the book job (at most 8 MiB; one line it does not understand and
+the whole file is ignored, logged without its content and told in the toast, "Some links were left out."; past
+200,000 links the first are kept and the rest dropped), maps the book pages to the notebook's
+page ids through `source.ini`, scales the rectangles into page pixels as the pictures are fitted, and at the
+commit fills `doclinks.ini` (below): validated, the same link twice (same target, area within 2 px) once, trimmed
+to the water level, written before anything else, so a later failure leaves at most lines of pages that are not
+listed (dropped at the next write), the file written even with no link in it. Then `source.ini` says `links=1` (one
+more line; a 2.0 build carries it as an unknown line), and the plugin stops sending the held pages' links, until
+pages are to be added again. A fill that adds no page makes the mirror PDF again. A fill that could not write leaves `links=1`
+unsaid, so the next Open this book sends them again.
+
+## Document links: `doclinks.ini` (2.1.0-beta.2 on)
+
+`notebooks/<id>/doclinks.ini` holds the links a document brought (a planner's tabs), in `links.ini`'s lines
+(`link.<page id>=<seed>,<target>`, then `area.` and `outline.` lines keyed the same), every target a page of the
+same notebook (`p<page id>`) and every link with an area. Within a page, the file's order is the annotation
+order of the document: of two equal boxes the later one wins a tap. Lines this version does not know (or a link
+whose target is not `p<id>`, with its area and outline) are carried, as links.ini's are.
+
+| | `doclinks.ini` | `links.ini` (unchanged) |
+|---|---|---|
+| links | 16,000 | 4,000 |
+| size | 1.5 MiB | 512 KiB |
+| a page | 1,024 | 64 |
+
+Two producers fill it: KOReader's `links.txt` (above) and the PDF import's own link annotations (Imports: PDFs).
+Both go through `pdflinks.rs`.
+
+A file over a cap (a page with more than 1,024 links too), a carried line past its bounds or one that holds a NUL
+does not read: it shows no tabs and is never written over. A link whose area line a later version wrote in a form
+this one cannot read is carried whole (its link line too), not shown, and not lost at the next write. A tab to a
+page no longer in the notebook is not shown or tapped (it goes from the file at its next write). The water level: a fill keeps the most links under 90% of the links and of the bytes (outline
+lines included), the densest pages first, each page keeping its first links, so Copy page and later fills have
+room; a Copy page or Copy to notebook that would pass the caps themselves (links, bytes with outline lines
+counted, or the page's 1,024) copies without its document links ("Copied without links: couldn't save them.",
+or "Copied %d page to %s, without its document links."). The writers: the book import's commit (above), Copy page and Copy to notebook. Never a page turn, Clear
+page, a lasso or Select. The seed is a hash of the source page and the annotation index, and never one the page's
+ink or its own links have.
+
+Who reads it: the editor (taps, the eye, the Links bar's "From the PDF (%d)" row, the card), Copy page and
+Copy to notebook (a link goes along when its target page does too), the notebook's PDF (a link annotation at its
+exact area) and raw zips (`raw/doclinks.ini`). Who never does: the Links bar's Linked from rows, the backlinks
+cache, the library index and the Graph, the lasso and Select, the clipboard, and the 64-a-page and
+4,000-a-notebook checks, which count the user's links only. Moving pages inside a notebook (Move to...) changes
+only the page list: links go by page id.
 
 ## Named sections: `nav.ini` (1.2.0 on)
 
@@ -955,13 +1180,14 @@ line. Values are clamped to their ranges when read.
 | `hints` | 0 to 2147483647: a bitmask of the one-time tips already shown (bit 0 the first-open tip, 1 the first-link tip (from 2.0.0-beta.6), 3 and 4 a counter 0 to 3 of the Links bar's header hints, 7 the finger-shape reject tip, 9 (from 2.1) the quick sizes tip, set when Pen feel first opens from the toolbar or the sizes card is first used; bits 2 (the link areas tip), 5 (the first smart shape), 6 (the pan hint) and 8 (the sideways hint) were tips 2.0.0-beta.2 left out: no longer written, a file may still have them set; the other bits are for later versions). The quick sizes card writes no other key: a chosen size is the tool's own `size_min_mm` and `size_max_mm`), 0 by default. Since 2.0.0-beta.5, as `gestures` |
 | `link_areas` | 0 or 1: dotted boxes over the page show where a finger tap follows a link (the Links bar's Areas button), off by default. Since 2.0.0-beta.5, as `gestures` |
 | `status_corner` | the corner of the notebook page the clock and battery sits in (and where its tap zone is): 0 top left, the default, 1 top right, 2 bottom right, 3 bottom left (clockwise from the top left); clamped to 0..3. The Display sheet's row and the `status-corner` shortcut step it. Written after `link_areas`. Since 2.0.0-beta.5, as `gestures` |
-| `clock_12h` | 0 or 1: the clock and battery corner's time on the 12-hour clock (`Nov 14, 10:13 PM`) instead of the 24-hour one (`Nov 14, 22:13`), off by default; the Display sheet's "Display time as 12 hour" row. Written after `status_corner`. Since 2.1.0-beta.1; older versions keep the line as one they do not know |
-| `rotation_lock` | 0 follows the Kindle's rotation; 1..4 locks to the current orientation (stored as 1 plus the rotation value). The `rotation-lock` action changes it; sensor turns are ignored while locked. Written after `status_corner`. Since phase 3; earlier versions carry the unknown key. |
+| `clock_12h` | 0 or 1: the clock and battery corner's time on the 12-hour clock (`Nov 14, 10:13 PM`) instead of the 24-hour one (`Nov 14, 22:13`), off by default; the Display sheet's "Display time as 12 hour" row. Written after `status_corner`. Since 2.1.0-beta.2; older versions keep the line as one they do not know |
+| `rotation_lock` | 0 follows the Kindle's rotation; 1..4 locks to the current orientation (stored as 1 plus the rotation value). The `rotation-lock` action changes it; sensor turns are ignored while locked. Written after `clock_12h` (after `status_corner` before 2.1.0-beta.2). Since phase 3; earlier versions carry the unknown key. |
 | `gesture_new_page` | 0 or 1: two fingers left (the next page) on the last page add a page, as the next-page key does, on by default; off, the gesture only says it is the last page (Display sheet, under Sideways; the `gesture-new-page` action). Written after `rotation_lock`. Since 2.0.0-beta.5, as `gestures` |
 | `whatsnew_seen` | the version whose What's new notes were last shown or due (`2.0.0-rc.11`): the first start after an update opens them once over the Library, when the file was saved by a Grimoire before (it has `settings_version`) and this names another version, every update (since 2.0.0 whatever `whatsnew_hide` says). A file without `settings_version` (a fresh start, or one written by hand) records the running version as seen. Written after `shape_min_mm`. Since 2.0.0-rc.11, as `gestures` |
 | `whatsnew_hide` | 0 or 1: What's new's Don't show this again of 2.0.0-rc.11 to 2.0.0-beta.2, off by default; there, on, an update opened no notes by themselves (the bat in the Library's top bar still opened them). Since 2.0.0 the box is gone (the owner's rule of 2026-11-05: every update opens What's new once): the key is read and written back as it was, so those versions keep its meaning, but it is never set and not used. Written after `whatsnew_seen`. Since 2.0.0-rc.11, as `gestures` |
 | `shape_corner` | 0 to 100: Smart shapes' Corner roundness, the corners of a snapped rectangle, square, quad or triangle rounded by this percentage of the largest radius the shape holds (one radius for every corner; at 100 the arcs at the ends of its tightest edge meet in its middle, so a square is a circle), 0 (Sharp) by default, clamped to 0..100. The arcs are part of the stroke's points (the stroke is ink); link areas keep sharp corners. Written after `whatsnew_hide`. Since 2.0.0-rc.12, as `gestures` |
-| `font` | Classic's font, Settings > Font: `terminess` (the default, also when the key is missing), `atkinson` (Atkinson Hyperlegible Next), `noto-sans` (Noto Sans) or `literata` (Literata). Every screen's text in Classic, the share pages' too; never a page, a paper label, the clock, a PDF or a picture, and never the icons. Gothic keeps its own faces whatever it says (the line stays). A value this version does not have (a later one's font) draws as Terminess and is written back as it was (below) until a font is picked and applied with Done. Written after `shape_corner`. Since 2.1.0; older versions keep the line as one they do not know |
+| `font` | Classic's font, Settings > Font: `terminess` (the default, also when the key is missing), `atkinson` (Atkinson Hyperlegible Next), `noto-sans` (Noto Sans) or `literata` (Literata). Every screen's text in Classic, the share pages' too; never a page, a paper label, the clock, a PDF or a picture, and never the icons. Gothic keeps its own faces whatever it says (the line stays). A value this version does not have (a later one's font) draws as Terminess and is written back as it was (below) until a font is picked and applied with Done. Written after `shape_corner`. Since 2.1.0; older versions keep the line as one they do not know. Since 2.1.0-beta.2 also `file:<path>`, a font of the owner's own by its path under `fonts/` (`file:Inter.ttf`, `file:Inter/Inter-Regular.ttf`; Your own fonts): used when the file is there, passed its check and the crash guard lets it in, else Terminess draws and the line stays as it is (the file put back brings the font back); the share pages get Terminess. 2.1.0-beta.1 reads it as a font it does not have |
+| `font_bold` | `file:<path>`: the Bold file to draw a custom `font`'s bold with, for a hand to set. The line is not there unless it was set: without it bold comes from the font's weight axis, else from the Bold file of its family in the same folder (weight 600 or more, upright), else the regular is overprinted. Any other value is not used and is written back as it was. Picking another font in Settings > Font removes it. Written after `font`. Since 2.1.0-beta.2; older versions keep the line as one they do not know |
 | `status_mode` | Retired status-strip preference. New saves write 1 (corner). Legacy 0 becomes the small enabled top-left corner, 2 becomes an off corner. There is no reserved strip or mode selector. `status-mode` is a compatibility alias for the corner toggle. |
 | `shortcuts_enabled` | 0 or 1: keyboard and controller shortcuts, off by default (`shortcuts.ini`, below). Since 2.0.0-beta.1; 1.1.0-beta.1 and 1.1.0-beta.2 keep the line and have no shortcuts, 1.0.0-beta drops it on its next save |
 | `controller` | 0 or 1: start the Bluetooth helper with Grimoire (Settings > Pair > Bluetooth controller, Settings > Controller before 2.0.0-beta.2; docs/SHORTCUTS.md), off by default; it only starts while shortcuts are on too. Since 2.0.0-beta.5; versions before keep the line (from 1.0.0-beta.2 on) or drop it (1.0.0-beta), and start nothing |
@@ -1073,10 +1299,17 @@ before 2.0.0-beta.6 never read it.
 
 `gestures.ini`, beside the shortcut files, overlays touch and pen-button bindings and recorded
 finger shapes on the built-ins. With no file, two fingers down open the Graph, up opens the Links bar, left
-turns to the next page, and right to the previous page. The two-finger tap and one-finger directions
-have no built-in action. Three-finger patterns are available only when the panel reports at least
-three touch slots; the owner's Kindle reports two. The pen button's built-ins are
-`pen.Button.hold=clear-page`; triple-click is unassigned. RC1 files with the duplicate triple/hold Clear pair load as hold only. Custom assignments remain available.
+turns to the next page, and right to the previous page; one finger swiped left or right turns the page
+too (since 2.0.0-rc.9). The two-finger tap and one finger up or down have no built-in action.
+Three-finger patterns are available only when the panel reports at least three touch slots; the
+owner's Kindle reports two. The pen button has no built-in action since 2.1.0-beta.2: a hold fires
+with the pen hovering, and its built-in `pen.Button.hold=clear-page` (until 2.1.0-beta.1; RC1 had
+`pen.Button.triple=clear-page` too) cleared a page under a finger resting on the button. A file
+that holds the old built-ins reads as the new ones: `pen.Button.hold=clear-page` beside
+`pen.Button.triple=clear-page` (what RC1 wrote) or beside `pen.Button.triple=nothing` (what rc.2 to
+2.1.0-beta.1 wrote after reading RC1's pair) leaves both slots with nothing and unmarked, so the next
+save writes neither line. A `pen.Button.hold=clear-page` alone is the owner's choice and stays, as do
+all other assignments.
 
 The reader accepts the `shortcuts.ini` line rules: `#` and `;` comments, trimmed `key=value`, later
 duplicate keys win, case-insensitive keys, a 64 KiB file limit. The canonical writer starts with
@@ -1084,7 +1317,7 @@ these three comment lines, byte for byte:
 
 ```ini
 # Grimoire: gestures (Settings > Gestures). Built in unless a line says otherwise:
-# touch.2.down=index-map, touch.2.up=links, touch.2.left=next-page, touch.2.right=previous-page, pen.Button.hold=clear-page
+# touch.2.down=index-map, touch.2.up=links, touch.2.left=next-page, touch.2.right=previous-page
 # shape.ACTION=1,N,S1,S2[,S3]: a finger shape you drew; format 1, N samples; each sample is 32 points in drawing order, x then y as two hex digits, the larger side spanning 00-ff.
 ```
 
@@ -1112,8 +1345,9 @@ PEN, including `shortcuts` and `bluetooth-controller`. The momentary `hold-erase
 legal only in `hold` and `drag` slots; it starts erasing at button press and ends at release,
 without waiting for hold recognition. `pan` and `zoom` are registered PEN-only actions (internal
 IDs 82/83), legal only in a pen `drag` slot. A bound drag owns the contact and leaves no ink;
-an unbound or `nothing` drag keeps Settings' side-button ink choice. Built-in triple and hold
-may both own `clear-page`; this deliberate duplicate is legal. Unsupported `pen.Button2.*`
+an unbound or `nothing` drag keeps Settings' side-button ink choice. A file's triple and hold
+may both own `clear-page` (RC1's old built-ins, retired as they are read, above); no other
+duplicate is kept. Unsupported `pen.Button2.*`
 lines and all `pen.Eraser.*` lines are carried verbatim, never shown or dispatched. The eraser
 end continues to erase by contact, independently of gestures.
 
@@ -1330,6 +1564,8 @@ marked 1.1 shipped in 1.1.0-beta.1 together with those rules, so for it the last
 | `graph-index.ini` and `graph-all.ini` (and `graph-all.ini.lock`) in the data root (2.0.0-beta.2, caches) | never read or written | the same; 1.2.0 to 2.0.0-beta.1 never read them either; a notebook another version changes is read again at the next check (Library index) |
 | `graph-omit.ini` in the data root (2.0.0-beta.2) | never read or written | the same; 1.2.0 to 2.0.0-beta.1 never read it either: every notebook is in their Graph. A folder another version renames keeps its old line, which then names no folder and leaves nothing out (Library index) |
 | `graph=0` in `notebook.ini` (2.0.0-beta.2) | dropped on its next save of `notebook.ini` (the notebook is back in the Graph) | kept, as a key it does not know: the notebook stays left out when 2.0.0-beta.2 reads it again |
+| `doclinks.ini` (links a document brought, 2.1.0-beta.2) | never read or written; the notebook shows its pages and the user's own links, editable as always, without the tabs; its raw zips leave the file out | the same: no 2.0 or 2.1.0-beta.1 build reads it, and their raw zips leave it out (a zip made there is without the tabs; the file stays in the notebook's folder) |
+| `links=1` in `source.ini` (2.1.0-beta.2) | never read: `source.ini` is not read there | carried as an unknown line, so it outlives what it says: a book page a build without it adds has no tabs (the plugin asks for the links again whenever pages are to be added), and a raw zip such a build made holds `links=1` and no `doclinks.ini` (the plugin takes `links=1` only with the file beside it) |
 | `area.` lines in `links.ini` (a link's area, 2.0.0-beta.6) | never read or written, as the file | the same; 2.0.0-beta.5 carries them as unknown lines within its limits, and a link with an area but no ink does nothing there (Links) |
 | page version 3 to 255 | set aside as `.damaged-<time>`, a blank page in its place | read-only, shown blank; copies set aside earlier come back if the page is still in the notebook |
 | a tool id of 10 or more | set aside, as above | read-only; the strokes it knows are shown |
@@ -1364,6 +1600,17 @@ marked 1.1 shipped in 1.1.0-beta.1 together with those rules, so for it the last
 | an erase stroke's layer byte and a floor marker (ext[1], 2.0.0-beta.2: Scoped erase strokes) | the marker draws nothing (off the page); a re-save zeroes ext, so a scoped group's erasure becomes ordinary there for good | kept; 1.1 to 2.0.0-beta.1 draw a scoped erasure flat (also over the ink under it, on their screen only) and keep the bytes |
 | `root/clipboard.qpg` (2.0.0-beta.2) | never read | never read (versions before 2.0.0-beta.2 look for no file in the data root) |
 | a page with none of the above | written byte for byte the same | written byte for byte the same |
+
+What 2.0.0 and 2.1.0-beta.1 do with data 2.1.0-beta.2 writes (read in their code at the tags):
+
+| new data (2.1.0-beta.2) | 2.0.0, 2.1.0-beta.1 |
+|---|---|
+| a PDF in `import/`, or picked in place | never imported. A folder of `import/` holding pictures and PDFs: they import the pictures and move the whole folder, PDFs and all, to `import/done/`, where 2.1.0-beta.2 never looks. A folder or file with no pictures is left alone |
+| an unfinished PDF import (`notebooks/.import-<id>/`) | removed at their next start, as any cut-off import ("removed what a cut-off import left"); a file picked in place is then not resumed, and its mark stays in `import/.marks/` |
+| `import/.attempts` lines keyed by a PDF, `import/.marks/` | `.attempts` is read and rewritten keeping the folders they see, so a PDF's tries and waits are forgotten (it is tried afresh); `.marks/` is never read |
+| a colour page picture (RGB) | drawn as luma by every consumer: the page, its thumbnail, the PDFs and the share pages show it gray. The file is kept |
+| the mirror PDF | a notebook with colour pages is made again there, with those pages gray (the colour comes back when 2.1.0-beta.2 makes it again) |
+| `font=file:<name>` in `settings.ini`, `font_bold=` | kept as they are (2.0.0: unknown keys; 2.1.0-beta.1: a font it does not have, drawn as Terminess, and it logs the value once); the file is never loaded there |
 
 ## Highlighter rendering in 1.2.0
 
@@ -1563,3 +1810,80 @@ Since 2.0.0-beta.2 a batch makes its missing previews cheapest first: pages with
 page comes last. A preview counts as made when its stamp is current and its image as long as its header says
 (one cut short is made again). Previews written by an older version are used as they are, and older versions
 use these.
+
+## The notebook PDF and its page streams: `.cache/pdf/<id>/` (2.1.0-beta.2)
+
+The PDF of a notebook (the mirror in `PDFs/`, the share server's download, a zip's PDF entry) has one image
+per page: a Flate stream of the page drawn at the notebook's size, DeviceGray, or DeviceRGB for a page whose
+picture is a colour PNG (the picture fitted to the page, the ink drawn over it: where ink darkened the gray
+paper under it each channel is scaled by the same ratio, where it lightened it (white ink) each channel moves
+toward white by the same share; a pixel the ink did not touch is the picture's own). Every other page is gray.
+Drawing a page is most of the work, so each page's stream is kept in `root/.cache/pdf/<notebook id>/p<page
+id>.z`, one file per page, written by the background mirror job only (the share server's children read it and
+never write). Since the 2.1.0-beta.2 fix round the record is `GPZ2` (a `GPZ1` record of earlier builds of the
+line is simply drawn again):
+
+```text
+offset  size  field
+0       4     "GPZ2"
+4       4     renderer version (bumped by hand when the PDF's own drawing changes: colour, compression)
+8       8     FNV-1a of the Grimoire version string, xor the ink renderer's fingerprint (a sample page drawn with
+              every tool, as kept drawings use: a change to the ink or paper renderer changes it by itself)
+16      4     dpi, as the bits of the f32
+20      8     the page file's size
+28      8     the page file's modification time, seconds
+36      4     ... and nanoseconds
+40      4     the notebook's page width       44  4  its page height
+48      4     the page's paper kind (image papers: the picture's id is in it)
+52      4     the picture's channels by its PNG header (3 colour, else 1; 0 for a page on no picture)
+56      4     the image's channels, in the top byte (1 or 3)
+60      4     image width      64  4  image height
+68      4     length of the stream            72  4  CRC-32 of the stream
+76      8     the page file's inode
+84      4     the notebook's paper (what a missing or unreadable page file is drawn on)
+88      8     the picture file's size (0: not there)
+96      8     the picture file's modification time, seconds
+104     4     ... and nanoseconds
+108     4     zero
+112     ...   the zlib stream
+```
+
+All integers little endian. A record is used only when it reads, its length and CRC-32 are right, its stamp
+(bytes 4 to 47, the inode and the notebook's paper) is the page's today, taken before the page was read, and
+its picture's (channels, size, time) is the picture file's today, taken before any page on it was drawn: a
+changed page, a picture made, replaced or gone, another dpi, page size or notebook paper, a newer Grimoire or
+renderer, a damaged or truncated file, are all simply drawn again (full render on any doubt). A page drawn
+while its picture was missing or did not decode (white paper, or gray in place of colour) is never kept, so
+the next PDF draws it again with its picture; and when a picture job for the notebook ends (a template, a
+photo, a page KOReader sent), the notebook's records go. The PDF's bytes are the same whether a page was drawn
+or found: streamed output is byte for byte a full render, and the cache can only make a PDF faster. A record
+is written through `p<id>.z.<pid>.tmp` and a rename, without a sync: it is a cache, and a record cut short
+fails its checks. When a write fails (a full disk, a folder that cannot be made) the run goes on without the
+cache.
+
+After a finished mirror the job prunes: the records of pages no longer in the notebook, the folders of
+notebooks that are gone (and their mirror locks), stray `share-<pid>.spool` files over an hour old, and then,
+past 256 MB in all, whole notebooks, the one used longest ago first (a notebook's folder takes the time of its
+last mirror, a run that found every page counting as a use); the notebook in hand goes last, and only the
+records of its last pages. A mirror writes no record past the 256 MB (the notebook's records used or written
+in that run, in page order), so a notebook that alone is over the cap keeps its first pages' records, draws
+the same last pages at every close and writes nothing. Any background job's process also runs this prune,
+without a notebook in hand, at most once a day (its time is `.cache/pdf/.swept`), so the cache follows deleted
+notebooks with the mirror off too. Deleting `.cache/pdf/` loses nothing: the next mirror draws every page again.
+
+A mirror holds its notebook's lock, `.cache/pdf/<notebook id>.lock` (`flock`), for the whole job: a mirror an
+earlier run of Grimoire left running beside the one this run queued finishes first, and the newer state is
+written last (after 15 minutes of waiting the second goes on beside the first). The PDF is written object by
+object to wherever it goes (a file, a connection, a zip entry), one page's stream in memory at a time, with
+the offsets kept for the xref (64 bits, so a PDF may pass 4 GiB; one past 10 digits of offset fails); the
+mirror writes its own `<name>.pdf.<pid>.tmp` as it goes, syncs it, renames it over the old file when it is
+whole and syncs the folder. Each mirror sweeps the temporary files of mirrors that are gone from `PDFs/` and
+its folders: a `<name>.pdf.<pid>.tmp` whose process is not running (a writer killed by its cap, the kernel or
+a power cut), and an older build's `<name>.pdf.tmp` over an hour old. The share server answers a PDF or zip
+download from a spool file it makes and unlinks at once (so the answer has its Content-Length),
+`.cache/pdf/share-<pid>.spool`; with no room for one it makes the file twice, once to count it and once into
+the connection, and the second must give exactly the bytes counted (a notebook saved in between fails the
+download); a file past 4 GiB fails (its length is not said on the 32-bit Kindle). A zip's PDF entry is written
+with a data descriptor (flag bit 3) as stored deflate blocks, its sizes known only at its end. A zip has no
+zip64: an entry past 4 GiB, an entry that fails midway (its header is already out) or a central directory past
+32 bits fails the whole zip, never answered as good.

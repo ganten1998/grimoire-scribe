@@ -1160,6 +1160,9 @@ static void draw_end(App *a) {
     if (S->link_mode && !stroke_is_erase(s) && link_box_too_small(a, s)) {
         // A dot or a tick for a link's box: taken back (no undo step), and the next stroke is tried.
         // Add stroke to page as regular ink before handling as too-small link box.
+        // (The page owns it from page_add on, or page_add freed it: its box is read first and it is
+        // never freed here.)
+        Rect d = s->bbox;
         History *h = cur_hist(a);
         bool had_undo = h && history_can_undo(h), had_redo = h && history_can_redo(h);
         bool was_empty = S->page->n == 0;
@@ -1170,8 +1173,6 @@ static void draw_end(App *a) {
         if (e) e->to_list = true;
         mark_changed(a);
         if (!had_undo || had_redo || was_empty) S->panel_stale = true;
-        Rect d = s->bbox;
-        stroke_free(s);
         draw_page(a, d);
         show(a, d, REFRESH_UI);
         // TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): after Add a link, the

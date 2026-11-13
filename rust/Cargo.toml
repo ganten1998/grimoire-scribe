@@ -8,7 +8,7 @@ version = "0.0.0"
 edition = "2021"
 rust-version = "1.97"
 publish = false
-license = "GPL-3.0-only"
+license = "GPL-3.0-or-later"
 build = "build.rs"
 autobins = false
 autotests = true
@@ -61,6 +61,13 @@ path = "src/bin/mklogo.rs"
 
 [dependencies]
 libc = "0.2"
+# The PDF import (2.1.0-beta.2, DESIGN.md 5): hayro pinned exactly; 0.9.0 is under two weeks old until
+# 2026-11-16 (D12). `png` is already in its tree (same version), used to encode the pages.
+hayro = { version = "=0.8.0", default-features = false, features = ["embed-fonts", "embed-cmaps"] }
+png = "=0.18.1"
+# Your own fonts (2.1.0-beta.2, DESIGN.md 5): the memory-safe font parser hayro-interpret already brings, at the
+# very version it brings (one skrifa in the build, never a second), with the features it asks for.
+skrifa = "=0.46.2"
 
 [build-dependencies]
 cc = "1"

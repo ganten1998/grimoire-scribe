@@ -8,7 +8,9 @@
 # tool's two widths and closes the card. A press shorter than the hold is the tap it always was, a hold that
 # moves first opens no card, and a hold on the grid (its pen pinned) opens the picker at the lift, as its tap.
 # Sizes are settings: nothing on the page, no history step.
-# (the launch repaints the whole screen 1.2 s and 3.5 s after it starts: past both before counting)
+# (the launch repaints the whole screen 1.2 s and 3.5 s after it starts: past both before counting; the clock
+# corner held still, as its minute's refresh would land among the counted ones)
+clock 1700000000
 wait 3600
 tap 965 95
 wait 200

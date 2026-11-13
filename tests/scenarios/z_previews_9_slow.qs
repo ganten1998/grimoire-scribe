@@ -1,6 +1,8 @@
 # rust-only
 # generate: tests/previews_fixture.py slow
 # env: GRIMOIRE_KEEP_RENDER_MS=0
+# env: GRIMOIRE_PAGE_VIEWS=0
+# (No drawings kept in memory: a revisit reads the drawing kept on disk, as one in another session does.)
 # A slow page under 512 KB (2.0.0-beta.2, the owner's decision of 2026-11-04: "Loading page..." from 256 KB,
 # kept drawings still from 512 KB): the previews job makes its preview and keeps no drawing of it, so opening it
 # says "Loading page..." on the panel before the drawing starts, gone once the page shows. A light page under
@@ -30,7 +32,8 @@ expect editor.page is 1
 expect editor.page_kept is 0
 expect editor.loading_toasts is 1
 expect toast is
-expect display.presents is fast 1718 1104 100 100, ui 716 1104 1102 1256, full 0 0 1860 2480
+# (a page turn at the fitted view is a UI refresh, no flash: #49, issue #31; every 30th UI refresh flashes)
+expect display.presents is fast 1718 1104 100 100, ui 716 1104 1102 1256, ui 0 0 1860 2480
 # page 3, light, never opened (no kept drawing): none
 pentap panel next
 wait 300

@@ -90,10 +90,12 @@ pub enum IconKind {
     Hourglass = 60,
     /// Settings' Font chip, in Classic (2.1, Rust only)
     Font = 61,
+    /// The record card's Disable (2.1, Rust only)
+    Ban = 62,
 }
 impl IconKind {
     /// ICON_COUNT
-    pub const COUNT: usize = 62;
+    pub const COUNT: usize = 63;
 }
 
 #[derive(Clone, Copy, Debug, Default)]
@@ -309,6 +311,7 @@ const K_ICON_CP: [u32; IconKind::COUNT] = {
     k[IconKind::Lasso as usize] = 0xF0F03; // md-lasso
     k[IconKind::Hourglass as usize] = 0xF051F; // md-timer_sand
     k[IconKind::Font as usize] = 0xF06D6; // md-format_font
+    k[IconKind::Ban as usize] = 0xF073A; // md-cancel
     k
 };
 
@@ -881,9 +884,10 @@ pub fn ui_chip_w(f: FontFace, px: f32, text: &str, h: i32, min_w: i32, max_w: i3
     ui_text_box_w(f, px, text, if gothic() { h / 2 - ui_px(7.0) } else { ui_px(24.0) }, min_w, max_w,
     )
 }
-/// A notebook's or folder's name as the screens show it: name itself when the fonts draw all of it,
-/// else without what they cannot (font_drawable_copy), and Untitled when no letter is left ("Untitled
-/// 2" for a book's title of emoji and its " 2"). The name stays whole in the files. Returns name
+/// A notebook's or folder's name as the screens show it: name itself, a letter no font has as a box
+/// (2.1.0-beta.2), else without the characters that show nothing (font_drawable_copy: a control or
+/// format character, a combining mark no font has), and Untitled when no letter is left ("Untitled 2"
+/// for a name of zero-width characters and its " 2"). The name stays whole in the files. Returns name
 /// or buf (cap bytes).
 pub fn ui_name_label<'a>(name: &'a str, buf: &'a mut String, cap: usize) -> &'a str {
     if cap == 0 || font_drawable_copy(name, buf, cap) == 0 {

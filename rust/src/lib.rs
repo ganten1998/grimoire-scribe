@@ -38,18 +38,25 @@ pub mod fbpack;
 pub mod fingershape;
 pub mod fingershape_synth;
 pub mod font;
+pub mod fontcheck; // your own fonts: the safe face, the check's worker and the writer's side of it (2.1.0-beta.2)
+pub mod userfonts; // your own fonts: grimoire/fonts, its cache, the FontCheck job, the load and the crash guard
 pub mod gesturemap; // which action each gesture does: the built-ins and gestures.ini
 pub mod hidkeys;
 pub mod i18n;
 pub mod json_min;
 pub mod koreader;
+pub mod md5; // MD5 and KOReader's partial MD5, a book's key (2.1)
 pub mod latency;
 pub mod linkoutline;
 pub mod pair;
+pub mod pdfimport; // PDFs imported without KOReader: scan, slices, commit (2.1.0-beta.2)
+pub mod pdfwork; // the PDF worker and its record protocol (2.1)
+pub mod picwork; // pictures decoded in the sandboxed worker, and the writer's side of it (2.1.0-beta.2)
 pub mod pensync;
 pub mod penbutton;
 pub mod power;
 pub mod qr;
+pub mod sandbox; // the safe loader: one worker for every untrusted parser (2.1)
 pub mod shortcuts;
 pub mod shortcut_profiles; // per-device shortcuts: root/shortcuts/<device>.ini (Rust only, 2.0.0-beta.2)
 pub mod touchgest; // the touch recognizer: contact frames in, touch, pinch and gesture events out
@@ -69,6 +76,8 @@ pub mod bgwork_template; // templates.h + bg_template, bg_import_folder
 pub mod brush;
 pub mod compact; // compact.h's surface (bodies in bgwork_compact.rs)
 pub mod export;
+pub mod childcaps; // oom_score_adj and RLIMIT_AS for every background child (2.1, lane L9)
+pub mod pdfcache; // the notebook PDF's page streams (2.1, lane L9)
 pub mod history;
 pub mod lasso; // lasso select, copy, cut, paste, move (the pure part)
 pub mod lasso_live; // the lasso's live selection preview (the pure part)
@@ -77,6 +86,8 @@ pub mod shape;
 pub mod graph;
 pub mod musicbuild;
 pub mod nav;
+pub mod doclinks; // doclinks.ini: the links a document brought (2.1, lane L4)
+pub mod pdflinks; // document links from any source: validation, seeds, fills, the water level (2.1, lane L4)
 pub mod notebookpicker;
 pub mod page;
 pub mod paper;
@@ -88,6 +99,7 @@ pub mod tplsheet;
 pub mod about; // the About sheet, What's new (Rust only, 2.0.0)
 pub mod app;
 pub mod bat; // header only
+pub mod browser; // the file picker: Library > New > From a file... (2.1.0-beta.2, lane L8)
 pub mod calibrate;
 pub mod dispmenu;
 pub mod editor;
@@ -154,6 +166,8 @@ pub mod prelude {
     pub use crate::dispmenu::*;
     pub use crate::erasersample::*;
     pub use crate::export::*;
+    pub use crate::pdfcache::*;
+    pub use crate::childcaps::*;
     pub use crate::fbcheck::*;
     pub use crate::fbpack::*;
     pub use crate::findsheet::*;
@@ -184,6 +198,8 @@ pub mod prelude {
     pub use crate::live::*;
     pub use crate::musicbuild::*;
     pub use crate::nav::*;
+    pub use crate::doclinks::*;
+    pub use crate::pdflinks::*;
     pub use crate::notebookpicker::*;
     pub use crate::mapview::*;
     pub use crate::page::*;

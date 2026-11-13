@@ -622,7 +622,9 @@ fn begin(v: &mut MapView, a: &mut App, nb: &NotebookInfo, nav: &Nav, open_pid: u
     }
     v.list_pages.extend_from_slice(&nb.page_ids);
     v.list_rows = nav.links.iter().filter(|l| nb.page_ids.contains(&l.pid)).copied().collect();
-    v.list_rows.sort_by_key(|l| (nav_external_target(l.target.as_str()).map_or(String::new(), |(id, _)| id.to_string()), l.pid, l.seed));
+    // (cached: the key parses the target and allocates its notebook id, so it is made once a row;
+    // sort_by_key would make it at every comparison, O(n log n) parses and allocations)
+    v.list_rows.sort_by_cached_key(|l| (nav_external_target(l.target.as_str()).map_or(String::new(), |(id, _)| id.to_string()), l.pid, l.seed));
     v.list_name = nb.name.as_str().to_string();
     libindex_load(); // (one file, if the first idle tick has not read it yet)
     true
@@ -652,7 +654,8 @@ fn build_one(v: &mut MapView, a: &mut App, nb: &NotebookInfo, shown: &NotebookIn
     if (around_open || v.mode == GraphMode::Around) && !around(v, around_centre(v)) {v.mode=GraphMode::All;}
     save(v);
     v.link_rows=shown_nav.links.iter().filter(|l|shown.page_ids.contains(&l.pid)).copied().collect();
-    v.link_rows.sort_by_key(|l| (nav_external_target(l.target.as_str()).map_or(String::new(),|(id,_)|id.to_string()),l.pid,l.seed));
+    // (the same cached key as list_rows's sort: one parse and allocation a row, not one a comparison)
+    v.link_rows.sort_by_cached_key(|l| (nav_external_target(l.target.as_str()).map_or(String::new(),|(id,_)|id.to_string()),l.pid,l.seed));
     v.notebook_name=shown.name.as_str().to_string();
     v.link_count=graph_nav.links.iter().filter(|l|shown.page_ids.contains(&l.pid) &&
         (l.target=="index" || nav_external_target(l.target.as_str()).is_some() || nav_link_page(l,shown)>=0)).count();
@@ -2647,8 +2650,7 @@ mod tests {
         assert!(v.foreign[0].label.ends_with("Renamed"),"{}",v.foreign[0].label);
         // Every arrow is one the fonts draw (Terminess has no two-way arrow: it would be a box).
         for (o,i) in [(true,true),(true,false),(false,true)] {
-            let mut out=String::new();
-            assert_eq!(font_drawable_copy(anchor_arrow(o,i),&mut out,16),0,"{:?}",anchor_arrow(o,i));
+            assert!(anchor_arrow(o,i).chars().all(|ch|font_has_glyph(FontFace::Regular,ch as u32)),"{:?}",anchor_arrow(o,i));
         }
         assert_eq!(v.foreign.iter().filter(|f|f.inc).count(),2);
         assert_eq!(v.foreign.iter().filter(|f|f.broken).count(),1);

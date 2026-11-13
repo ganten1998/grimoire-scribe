@@ -178,7 +178,7 @@ pub fn nav_set_name(nav: &mut Nav, pid: u32, name: &str) -> i32 {
 }
 
 // The path of one of the notebook's files.
-fn path_for(id: &str, file: &str) -> Option<String> {
+pub(crate) fn path_for(id: &str, file: &str) -> Option<String> {
     let mut dir = String::new();
     if store_notebook_dir(id, &mut dir, 600) != 0 {
         return None;
@@ -214,7 +214,7 @@ fn name_key(line: &[u8]) -> Option<(u32, &[u8])> {
 
 // A sidecar's text (None when there is no file): Ok, or Err when it is there and does not read, is
 // not a regular file, is a symlink, is over NAV_FILE_MAX or holds a NUL.
-fn read_sidecar(path: &str, cap: usize) -> Result<Option<Vec<u8>>, ()> {
+pub(crate) fn read_sidecar(path: &str, cap: usize) -> Result<Option<Vec<u8>>, ()> {
     let Ok(cpath) = std::ffi::CString::new(path) else { return Err(()) };
     // SAFETY: open of a NUL-terminated path we own; the descriptor is closed on every path below.
     let fd = unsafe { libc::open(cpath.as_ptr(), libc::O_RDONLY | libc::O_NONBLOCK | libc::O_NOFOLLOW) };
@@ -312,7 +312,7 @@ fn name_line(n: &mut Nav, line: &[u8]) -> i32 {
 }
 
 // Read the identity even when the target belongs to a future version and must be carried.
-fn link_key(line: &[u8]) -> Option<(u32, u32, &[u8])> {
+pub(crate) fn link_key(line: &[u8]) -> Option<(u32, u32, &[u8])> {
     let rest = line.strip_prefix(b"link.")?;
     let mut p = 0;
     let mut id: u64 = 0;
@@ -353,7 +353,7 @@ fn link_key(line: &[u8]) -> Option<(u32, u32, &[u8])> {
 }
 
 // link.<pid>=<seed, 1 to 8 hex digits>,<target, 1 to 15 bytes from ! to ~>
-fn link_parse(line: &[u8]) -> Option<(u32, u32, &str)> {
+pub(crate) fn link_parse(line: &[u8]) -> Option<(u32, u32, &str)> {
     let (pid, seed, target) = link_key(line)?;
     if target.is_empty() || target.len() >= NAV_TARGET_LEN {
         return None;
@@ -368,7 +368,7 @@ fn link_parse(line: &[u8]) -> Option<(u32, u32, &str)> {
 }
 
 // Parse the shared id/seed grammar through link_parse, then require four bounded decimals.
-fn area_parse(line: &[u8]) -> Option<(u32, u32, Rect)> {
+pub(crate) fn area_parse(line: &[u8]) -> Option<(u32, u32, Rect)> {
     let rest = line.strip_prefix(b"area.")?;
     let comma = rest.iter().position(|&c| c == b',')?;
     let mut key = b"link.".to_vec();
@@ -394,13 +394,13 @@ fn area_parse(line: &[u8]) -> Option<(u32, u32, Rect)> {
 pub fn nav_area_valid(r: Rect) -> bool {
     area_valid(r)
 }
-fn area_valid(r: Rect) -> bool {
+pub(crate) fn area_valid(r: Rect) -> bool {
     r.x >= 0 && r.y >= 0 && r.w > 0 && r.h > 0
         && r.x as i64 + r.w as i64 <= NAV_AREA_MAX as i64
         && r.y as i64 + r.h as i64 <= NAV_AREA_MAX as i64
 }
 
-fn outline_parse(line:&[u8])->Option<(u32,u32,LinkOutline)> {
+pub(crate) fn outline_parse(line:&[u8])->Option<(u32,u32,LinkOutline)> {
     let rest=line.strip_prefix(b"outline.")?;let comma=rest.iter().position(|&c|c==b',')?;
     let mut key=b"link.".to_vec();key.extend_from_slice(&rest[..comma]);key.extend_from_slice(b",index");
     let (pid,seed,_)=link_parse(&key)?;
@@ -593,7 +593,7 @@ pub fn nav_load_links(id: &str, nav: &mut Nav) -> i32 {
     if ok { 0 } else { -1 }
 }
 
-fn has_page(nb: &NotebookInfo, pid: u32) -> bool {
+pub(crate) fn has_page(nb: &NotebookInfo, pid: u32) -> bool {
     nb.page_ids.contains(&pid)
 }
 
@@ -697,7 +697,7 @@ fn link_put(n: &mut Nav, pid: u32, seed: u32, target: &str) -> i32 {
 }
 
 // A page target's page id: "p<id>", the id from 1 to UINT32_MAX in decimal without leading zeros.
-fn target_page(t: &[u8]) -> u32 {
+pub(crate) fn target_page(t: &[u8]) -> u32 {
     let c1 = t.get(1).copied().unwrap_or(0);
     if t.first() != Some(&b'p') || !(b'1'..=b'9').contains(&c1) {
         return 0;
@@ -1258,11 +1258,17 @@ pub fn nav_link_copy(nav: &mut Nav, from: u32, to: u32) -> i32 {
 
 /// The seed for a new ink stroke on page p (page pid): want, or the next after it that no ink stroke on
 /// p and no link of pid has, so a link's box never takes in a stroke drawn after it.
-pub fn nav_new_seed(nav: &Nav, p: &Page, pid: u32, mut want: u32) -> u32 {
+pub fn nav_new_seed(nav: &Nav, p: &Page, pid: u32, want: u32) -> u32 {
+    nav_new_seed_with(nav, None, p, pid, want)
+}
+
+/// nav_new_seed that also avoids the seeds of the page's document links (doclinks.ini), when the caller
+/// has them: ink and hand-made links never share a seed with a document link either (DESIGN 3.10).
+pub fn nav_new_seed_with(nav: &Nav, docs: Option<&DocLinks>, p: &Page, pid: u32, mut want: u32) -> u32 {
     let mut first = 0;
     let count = nav_links_of(nav, pid, &mut first);
     for _tries in 0..64 {
-        let mut taken = false;
+        let mut taken = docs.is_some_and(|d| doclinks_has_seed(d, pid, want));
         let mut i = first;
         while i < first + count && !taken {
             taken = nav.links[i as usize].seed == want;
