@@ -563,7 +563,9 @@ $(BUILD)/dist/Grimoire.zip: $(BUILD)/kindle/grimoire kindle/Grimoire.sh kindle/a
 	chmod +x $(PKG)/app/grimoire $(PKG)/app/grimoire.sh
 	python3 tools/archive.py tar $(BUILD)/dist/app.tar -C $(PKG)/app grimoire grimoire.sh bluetooth.sh wifi.sh update.sh CAPABILITIES licenses koreader
 	base64 -i assets/icon.png | tr -d '\n' > $(BUILD)/dist/icon.b64
-	id=$$(shasum $(BUILD)/dist/app.tar | cut -c1-12); \
+	id=$$(shasum $(BUILD)/dist/app.tar 2>/dev/null | cut -c1-12); \
+	[ -n "$$id" ] || id=$$(sha1sum $(BUILD)/dist/app.tar 2>/dev/null | cut -c1-12); \
+	[ -n "$$id" ] || { echo "package: no SHA-1 tool (shasum or sha1sum) to make BUILD_ID"; exit 1; }; \
 	awk -v id="$$id" 'FNR==NR { icon = $$0; next } \
 	  /^# Icon: @ICON@$$/ { print "# Icon: data:image/png;base64," icon; next } \
 	  /^BUILD_ID=@BUILD_ID@$$/ { print "BUILD_ID=" id; next } { print }' \
