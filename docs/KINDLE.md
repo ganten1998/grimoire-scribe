@@ -1139,6 +1139,10 @@ Limits of the dev copy:
 - On Linux the copy goes over GVFS; when another desktop daemon holds the Kindle's MTP
   interface (KDE's kmtpd5 does this on every plug), the script stops it for the session and
   mounts through GVFS itself.
+- What a machine is missing, `make dev` installs itself, with its own package manager: GVFS and
+  its MTP backend on Linux (`dnf`, `apt-get`, `pacman`, `zypper` or `apk`), Zig and
+  `cargo-zigbuild` for the build, and `python3`; on macOS, Zig and `python3` come from Homebrew
+  (`brew install zig`). `--no-install` leaves the machine as it is.
 
 `make dev` needs the Scribe in USB file transfer (MTP) mode, unlocked, with Allow tapped if it
 asks; MTP cannot start the app, so the first launch is a tap in the Library. When the patched

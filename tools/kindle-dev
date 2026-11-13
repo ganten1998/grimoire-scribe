@@ -18,6 +18,11 @@
 # "gio mount mtp://" is refused by newer gvfs), releasing KDE's kmtpd5 first when it holds the
 # Kindle's MTP interface (see gvfs_mount below).
 #
+# Switching computers should not start with a shopping list: what the machine is missing is
+# installed on the way -- GVFS with its MTP backend on Linux, Zig and cargo-zigbuild for the
+# build, python3 -- with the machine's own package manager (dnf, apt-get, pacman, zypper or apk
+# on Linux; brew on macOS), and only when it is missing. --no-install leaves the machine alone.
+#
 # Environment:
 #   GRIMOIRE_MTP_MOUNT  mounted Kindle folder holding documents, if auto-detection misses it
 #   ZIG                 Zig 0.16.0 for make package (default: zig on PATH)
@@ -27,6 +32,127 @@ set -eu
 HERE=$(cd "$(dirname "$0")" && pwd)
 ROOT=$(cd "$HERE/.." && pwd)
 . "$HERE/kindle-dev-lib.sh"
+
+# A fresh shell may not have the toolchains on PATH: rustup's cargo and cargo-zigbuild are in
+# ~/.cargo/bin, Homebrew's zig in /opt/homebrew/bin (or /usr/local/bin). Appended, not prepended:
+# a toolchain already on PATH keeps its place (the Makefile's RUST_BIN puts rustup's rustc ahead
+# of Homebrew's).
+case ":$PATH:" in *":$HOME/.cargo/bin:"*) ;; *) PATH=$PATH:$HOME/.cargo/bin ;; esac
+if [ "$(uname -s)" = Darwin ]; then
+    case ":$PATH:" in *":/opt/homebrew/bin:"*) ;; *) PATH=$PATH:/opt/homebrew/bin ;; esac
+    case ":$PATH:" in *":/usr/local/bin:"*) ;; *) PATH=$PATH:/usr/local/bin ;; esac
+fi
+export PATH
+
+# ---- what a fresh machine is missing ----
+# Installed with the machine's own package manager, and only when the piece is absent.
+NO_INSTALL=0
+
+have() { command -v "$1" >/dev/null 2>&1; }
+
+# as_root CMD...: run a package manager the way this machine wants it (sudo or doas when this is
+# not root).
+as_root() {
+    if [ "$(id -u)" = 0 ]; then "$@"
+    elif have sudo; then sudo "$@"
+    elif have doas; then doas "$@"
+    else "$@"
+    fi
+}
+
+# linux_pm: the Linux package manager to install with (the first found).
+linux_pm() {
+    for pm in dnf apt-get pacman zypper apk; do
+        if have "$pm"; then printf '%s\n' "$pm"; return 0; fi
+    done
+    return 1
+}
+
+# pm_install PKG...: install with linux_pm's own flags. The package names are the caller's
+# business: they differ by distribution.
+pm_install() {
+    case $(linux_pm 2>/dev/null) in
+    dnf) as_root dnf install -y "$@" ;;
+    apt-get) as_root apt-get install -y "$@" ;;
+    pacman) as_root pacman -S --needed --noconfirm "$@" ;;
+    zypper) as_root zypper --non-interactive install "$@" ;;
+    apk) as_root apk add --no-cache "$@" ;;
+    *) return 1 ;;
+    esac
+}
+
+# gvfs_mtp_backend: whether gvfs's MTP backend (gvfsd-mtp) is installed at all. Without it gio
+# lists no MTP volume, and "gio mount mtp://" says the volume "doesn't implement mount": no hint
+# about file managers or other holders helps until the distribution's package is in.
+gvfs_mtp_backend() {
+    have gvfsd-mtp && return 0
+    for f in /usr/libexec/gvfsd-mtp /usr/lib/gvfs/gvfsd-mtp /usr/lib64/gvfs/gvfsd-mtp; do
+        [ -x "$f" ] && return 0
+    done
+    return 1
+}
+
+# install_gvfs_mtp: gvfs with its MTP backend, and gvfs-fuse, the FUSE view the copy goes through.
+# A package manager this script has not met is left to the message the failure prints.
+install_gvfs_mtp() {
+    [ "$NO_INSTALL" = 0 ] || return 1
+    pm=$(linux_pm 2>/dev/null) || return 1
+    echo "kindle-dev: installing GVFS's MTP backend with $pm" >&2
+    case "$pm" in
+    dnf) pm_install gvfs gvfs-mtp gvfs-fuse ;;
+    apt-get) pm_install gvfs-backends gvfs-fuse ;;
+    pacman) pm_install gvfs gvfs-mtp gvfs-fuse ;;
+    zypper) pm_install gvfs gvfs-backend-mtp ;;
+    apk) pm_install gvfs gvfs-fuse ;;
+    *) return 1 ;;
+    esac
+}
+
+# ensure_python: python3 makes the dev launcher and works out the MTP URI.
+ensure_python() {
+    have python3 && return 0
+    [ "$NO_INSTALL" = 0 ] || return 1
+    if [ "$(uname -s)" = Darwin ]; then
+        have brew || return 1
+        echo "kindle-dev: installing python3 with brew" >&2
+        brew install python >&2 || return 1
+    else
+        pm_install python3 >&2 || return 1
+    fi
+    have python3
+}
+
+# ensure_zig: zig (0.16.0 is what the build wants) on PATH or as $ZIG's path, else installed: brew
+# on macOS, the distribution's package on Linux. A distribution's older zig fails in the build, not
+# here.
+ensure_zig() {
+    zig_bin=${ZIG:-zig}
+    command -v "$zig_bin" >/dev/null 2>&1 && return 0
+    [ -x "$zig_bin" ] && return 0
+    [ "$NO_INSTALL" = 0 ] || return 1
+    if [ "$(uname -s)" = Darwin ]; then
+        have brew || return 1
+        echo "kindle-dev: installing zig with brew" >&2
+        brew install zig >&2 || return 1
+    else
+        pm=$(linux_pm 2>/dev/null) || return 1
+        echo "kindle-dev: installing zig with $pm" >&2
+        pm_install zig >&2 || return 1
+    fi
+    command -v "$zig_bin" >/dev/null 2>&1 || [ -x "$zig_bin" ]
+}
+
+# ensure_cargo_zigbuild: cargo-zigbuild, the linker the Kindle build goes through, from crates.io
+# at the version the package rule names (no brew formula ships it).
+ensure_cargo_zigbuild() {
+    cargo zigbuild --help >/dev/null 2>&1 && return 0
+    [ "$NO_INSTALL" = 0 ] || return 1
+    have cargo || return 1
+    echo "kindle-dev: installing cargo-zigbuild with cargo" >&2
+    cargo install cargo-zigbuild --version 0.23.0 --locked >&2 || return 1
+    cargo zigbuild --help >/dev/null 2>&1
+}
+
 MOUNT=${GRIMOIRE_MTP_MOUNT:-}
 NAME=$KINDLE_DEV_NAME
 DEV_ROOT=$KINDLE_DEV_ROOT
@@ -45,6 +171,7 @@ Options:
   --root PATH    the dev data root on the Kindle (default: /mnt/us/grimoire-dev)
   --no-build     use the existing build/dist/Grimoire.zip
   --zip PATH     use another installer zip (make dist, or a release download)
+  --no-install   do not install anything, even what the copy needs
   -h, --help     this text
 
 The Scribe must be in USB file transfer (MTP) mode, unlocked, with Allow tapped if it asks.
@@ -54,6 +181,10 @@ If another desktop daemon (KDE's kmtpd5) holds the Kindle's MTP interface, the s
 for the session and mounts through GVFS. macOS does not mount MTP devices itself: use a
 third-party MTP mount and --mount, or make dev-ssh. The release's documents/Grimoire.sh and
 /mnt/us/grimoire are never touched.
+
+What the machine is missing is installed on the way, with its own package manager: GVFS and its
+MTP backend on Linux (dnf, apt-get, pacman, zypper or apk), Zig and cargo-zigbuild for the build,
+and python3 (brew on macOS). --no-install leaves the machine as it is.
 
 MTP cannot launch an app: close Grimoire (dev) if it is open, then tap "Grimoire (dev)" in the
 Library. Its first launch unpacks into the dev data root; notebooks and settings there are
@@ -68,13 +199,17 @@ while [ $# -gt 0 ]; do
     --root) DEV_ROOT=${2:?--root needs a path}; shift ;;
     --no-build) BUILD_IT=0 ;;
     --zip) ZIP=${2:?--zip needs a path}; BUILD_IT=0; shift ;;
+    --no-install) NO_INSTALL=1 ;;
     -h | --help) usage; exit 0 ;;
     *) echo "kindle-dev: unknown option $1" >&2; usage >&2; exit 2 ;;
     esac
     shift
 done
 
-command -v python3 >/dev/null 2>&1 || { echo "kindle-dev: needs python3" >&2; exit 1; }
+ensure_python || {
+    echo "kindle-dev: needs python3 (install it, or drop --no-install)." >&2
+    exit 1
+}
 command -v make >/dev/null 2>&1 || { echo "kindle-dev: needs make" >&2; exit 1; }
 
 # Values that end up in a shell line or a path in the launcher, checked before anything is
@@ -128,28 +263,66 @@ release_mtp_holder() {
     [ "$released" = 1 ]
 }
 
+# restart_mtp_monitor: gvfs's MTP volume monitor keeps a list of the devices it found, and a
+# monitor that was already running when gvfs-mtp was installed (a machine just set up) or when the
+# Kindle reconnected can leave the Kindle unlisted until the session restarts it. A systemd user
+# session starts it again; anywhere else it is D-Bus activated by the next listing.
+restart_mtp_monitor() {
+    have systemctl || return 1
+    systemctl --user restart gvfs-mtp-volume-monitor.service 2>/dev/null
+}
+
 # gvfs_mount: mount the MTP volume gvfs detected. Newer gvfs refuses a bare "gio mount mtp://"
 # ("No device specified"), so the volume's own activation root from "gio mount -l -i" is used;
 # when the device is claimed by another daemon the holder is released and the mount retried
-# once. On failure MTP_ERR holds what gio said; it is printed only if nothing mounted after all.
+# once. A volume monitor takes a moment to list a Kindle that has just been plugged in, or whose
+# backend has just been installed: the listing is tried once a second, GVFS_TRIES times, before
+# giving up, restarting the monitor after the first (GVFS_TRIES in the environment changes that
+# wait). On failure MTP_ERR holds what gio said; it is printed only if nothing mounted.
+GVFS_TRIES=${GVFS_TRIES:-6}
 gvfs_mount() {
     MTP_ERR=
-    info=$(gio mount -l -i 2>/dev/null | awk '
-        /^(Volume|Drive)\(/ { d = "" }
-        /^[ \t]*unix-device:/ { d = $0; sub(/^[^:]*:[ \t]*/, "", d) }
-        /^[ \t]*activation_root=mtp:/ { a = $0; sub(/^[ \t]*activation_root=/, "", a); print a "\t" d; exit }')
-    uri=$(printf '%s\n' "$info" | cut -f1)
-    dev=$(printf '%s\n' "$info" | cut -f2- | tr -d "'")
-    if [ -n "$uri" ]; then
-        err=$(gio mount "$uri" 2>&1) && return 0
-    else
-        err=$(gio mount mtp:// 2>&1) && return 0
-    fi
-    if [ -n "$dev" ] && release_mtp_holder "$dev"; then
-        err=$(gio mount "${uri:-mtp://}" 2>&1) && return 0
-    fi
-    MTP_ERR=${err:-GVFS could not mount the Kindle}
+    attempt=1
+    while [ "$attempt" -le "$GVFS_TRIES" ]; do
+        info=$(gio mount -l -i 2>/dev/null | awk '
+            /^(Volume|Drive)\(/ { d = "" }
+            /^[ \t]*unix-device:/ { d = $0; sub(/^[^:]*:[ \t]*/, "", d) }
+            /^[ \t]*activation_root=mtp:/ { a = $0; sub(/^[ \t]*activation_root=/, "", a); print a "\t" d; exit }')
+        uri=$(printf '%s\n' "$info" | cut -f1)
+        dev=$(printf '%s\n' "$info" | cut -f2- | tr -d "'")
+        if [ -n "$uri" ]; then
+            err=$(gio mount "$uri" 2>&1) && return 0
+        else
+            err=$(gio mount mtp:// 2>&1) && return 0
+        fi
+        if [ -n "$dev" ] && release_mtp_holder "$dev"; then
+            err=$(gio mount "${uri:-mtp://}" 2>&1) && return 0
+        fi
+        MTP_ERR=${err:-GVFS could not mount the Kindle}
+        attempt=$((attempt + 1))
+        if [ "$attempt" -le "$GVFS_TRIES" ]; then
+            if [ "$attempt" = 2 ]; then
+                echo "kindle-dev: no Kindle listed by GVFS yet, waiting" >&2
+                if restart_mtp_monitor; then
+                    echo "kindle-dev: restarted GVFS's MTP volume monitor" >&2
+                fi
+            fi
+            sleep 1
+        fi
+    done
+    return 0
 }
+
+# On Linux the copy goes through gvfs, so gio and its MTP backend have to be there before the
+# first mount attempt, not after it failed. A --mount brings its own mount: nothing of gvfs is
+# needed then.
+if [ -z "$MOUNT" ] && [ "$(uname -s)" != Darwin ]; then
+    if ! have gio || ! gvfs_mtp_backend; then
+        if install_gvfs_mtp && gvfs_mtp_backend; then
+            echo "kindle-dev: installed GVFS's MTP backend (gvfsd-mtp)"
+        fi
+    fi
+fi
 
 DEST=
 MTP_ERR=
@@ -167,9 +340,25 @@ else
     fi
 fi
 if [ -z "$DEST" ]; then
-    [ -n "$MTP_ERR" ] && echo "kindle-dev: $MTP_ERR" >&2
+    if [ -n "$MTP_ERR" ]; then
+        echo "kindle-dev: $MTP_ERR" >&2
+    fi
     if command -v lsusb >/dev/null 2>&1 && lsusb 2>/dev/null | grep -qi 'RNDIS/Ethernet Gadget'; then
         echo "kindle-dev: the Kindle is in USB networking (RNDIS) mode, not USB file transfer (MTP)." >&2
+    fi
+    if ! command -v gio >/dev/null 2>&1; then
+        echo "kindle-dev: gio is not installed, so nothing here can mount the Kindle: it comes" >&2
+        echo "kindle-dev: with glib2 and gvfs (Fedora sudo dnf install gvfs gvfs-mtp gvfs-fuse;" >&2
+        echo "kindle-dev: Debian and Ubuntu sudo apt install gvfs-backends gvfs-fuse)." >&2
+    elif ! gvfs_mtp_backend; then
+        echo "kindle-dev: GVFS has no MTP backend (gvfsd-mtp), so gio cannot mount the Kindle at all." >&2
+        echo "kindle-dev: install it: Fedora sudo dnf install gvfs gvfs-mtp gvfs-fuse; Debian and" >&2
+        echo "kindle-dev: Ubuntu sudo apt install gvfs-backends gvfs-fuse; Arch sudo pacman -S gvfs" >&2
+        echo "kindle-dev: gvfs-mtp gvfs-fuse." >&2
+    elif [ -z "${DBUS_SESSION_BUS_ADDRESS:-}" ] && [ ! -S "/run/user/$(id -u)/bus" ]; then
+        echo "kindle-dev: there is no D-Bus session bus, and GVFS mounting needs one: run make dev" >&2
+        echo "kindle-dev: from the desktop session the Kindle is plugged into (over SSH, use" >&2
+        echo "kindle-dev: make dev-ssh, which needs no mount)." >&2
     fi
     cat >&2 <<'EOF'
 kindle-dev: no mounted Kindle found over MTP.
@@ -185,14 +374,17 @@ fi
 
 if [ "$BUILD_IT" = 1 ]; then
     zig_bin=${ZIG:-zig}
+    ensure_zig
     if ! command -v "$zig_bin" >/dev/null 2>&1 && [ ! -x "$zig_bin" ]; then
-        echo "kindle-dev: Zig 0.16.0 is not on PATH." >&2
-        echo "kindle-dev: put zig on PATH, or set ZIG to the zig binary itself" >&2
-        echo "kindle-dev: (ZIG=/absolute/path/to/zig make dev), not to its folder." >&2
+        echo "kindle-dev: Zig 0.16.0 is not on PATH, and installing it did not work." >&2
+        echo "kindle-dev: install it (brew install zig on macOS), or set ZIG to the zig binary" >&2
+        echo "kindle-dev: itself (ZIG=/absolute/path/to/zig make dev), not to its folder." >&2
         exit 1
     fi
+    ensure_cargo_zigbuild
     cargo zigbuild --help >/dev/null 2>&1 || {
-        echo "kindle-dev: cargo-zigbuild is not installed (cargo install cargo-zigbuild --version 0.23.0 --locked)." >&2
+        echo "kindle-dev: cargo-zigbuild is not installed, and installing it did not work." >&2
+        echo "kindle-dev: cargo install cargo-zigbuild --version 0.23.0 --locked" >&2
         exit 1
     }
     echo "kindle-dev: building the dev installer"
