@@ -216,12 +216,10 @@ would publish. The usual causes are a different rustc, zig or cargo-zigbuild ver
 crate in `Cargo.lock`, or a path or environment that reached the binary (tests/repro_check.sh
 looks for the last kind). Fix the cause, gate, test again.
 
-The Rust workflow's first runs on GitHub were for 2.0.0-beta.2 (2026-11-05): the dry run passed and CI's files
-matched the tested bundle byte for byte, but the release run ended green with its publish job skipped (its
-condition had no status function, so the skipped docs job upstream skipped it). The files and the feed were then
-published by hand from that run's `grimoire-release` artifact, as the publish job does it. The condition is fixed;
-the next release is its first real run, so check the release's files and the `kpm` branch after it, and delete
-this paragraph once a publish job has run.
+A job that fails on the runner rather than on the code (a timing check on a busy runner, or "The job was not
+acquired by Runner" when GitHub has no macOS runner free) is run again alone, with the files of the first attempt
+kept: `gh run rerun RUN --failed -R ganten1998/grimoire-scribe`. A check that fails a second time is a failure.
+The publish job's first real run was 2.1.0-beta.2's (2026-11-12): it uploaded the files and wrote the preview feed.
 
 ## Tag and publish
 
