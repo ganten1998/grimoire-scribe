@@ -1,5 +1,7 @@
 // test_lockui.c: exercise the real native UI handover with command stand-ins: order, failure and
 // timeout. (light_kindle is compiled in every build, as the C test includes light_kindle.c.)
+// (light_kindle is not in a build whose platform is another crate's: Cargo.toml, external-platform)
+#![cfg(not(feature = "external-platform"))]
 mod testlib;
 use grimoire::light_kindle::sys_kindle_ui;
 use grimoire::prelude::*;

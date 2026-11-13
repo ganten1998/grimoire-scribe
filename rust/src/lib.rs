@@ -19,6 +19,8 @@
 
 #[cfg(all(feature = "kindle", feature = "sim"))]
 compile_error!("the kindle and sim features are two builds of the app: enable one");
+#[cfg(all(feature = "external-platform", any(feature = "kindle", feature = "sim")))]
+compile_error!("the external-platform feature takes its platform from another crate: not with kindle or sim");
 
 // ---- infrastructure (no C file of its own) ----
 pub mod actions; // action ids, registry metadata and binding groups
@@ -126,12 +128,15 @@ pub mod ui;
 // ---- wave 4: the platform and the main loop ----
 pub mod display; // display.h: the types; the functions are the build's platform's
 // light_kindle.c is plain POSIX (lipc through the shell): it builds everywhere, as tests/test_lockui.c
-// compiles it on the host; light.rs takes it as the platform on the Kindle only.
+// compiles it on the host; light.rs takes it as the platform on the Kindle only. (Not where the
+// platform is another crate's: that build brings its own and may be for a system without this one's calls.)
 pub mod input; // input.h: the same
 pub mod light; // light.h: the same
+#[cfg(not(feature = "external-platform"))]
 pub mod light_kindle;
 pub mod mainloop; // main.c
 pub mod mapview;
+pub mod platform; // the one interface display.rs, input.rs and light.rs forward to
 
 #[cfg(feature = "kindle")]
 pub mod display_fbink;
