@@ -2875,7 +2875,7 @@ fn cache_lock(path:&str)->Option<GraphCacheLock> {
     use std::os::unix::fs::OpenOptionsExt;
     use std::os::fd::AsRawFd;
     let file=std::fs::OpenOptions::new().read(true).write(true).create(true).mode(0o600)
-        .custom_flags(libc::O_NOFOLLOW|libc::O_CLOEXEC|libc::O_NONBLOCK).open(format!("{path}.lock")).ok()?;
+        .custom_flags(libc::O_NOFOLLOW|libc::O_CLOEXEC|libc::O_NONBLOCK).open(lock_file_path(&format!("{path}.lock"))).ok()?;
     if !file.metadata().ok()?.is_file(){return None;}
     // The critical section contains only a bounded cache read and atomic write; the worker computes
     // its layout before taking this lock.
