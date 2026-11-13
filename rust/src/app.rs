@@ -102,8 +102,8 @@ pub struct App {
     pub sleep_requested: bool,
     /// 0 none: a follow-up redraw after waking
     pub wake_redraw_at: u32,
-    /// when the power service was last told the user is active
-    pub last_activity_poke: u32,
+    /// when the power service was last told the user is active (None: not yet)
+    pub last_activity_poke: Option<u32>,
     /// a press waiting for the power service to announce sleep
     pub power_pressed_at: u32,
     /// asleep + power pressed: wake by then if outOfScreenSaver never came
@@ -773,10 +773,17 @@ pub fn app_pointer_phase(ev: &InEvent) -> i32 {
 fn note_input(a: &mut App) {
     a.last_input = now_ms(); // (event times can run slightly ahead of now_ms)
     a.sleep_requested = false;
-    if a.last_input.wrapping_sub(a.last_activity_poke) > 60000 {
-        a.last_activity_poke = a.last_input;
+    if activity_due(a.last_activity_poke, a.last_input) {
+        a.last_activity_poke = Some(a.last_input);
         sys_activity();
     }
+}
+
+// The first input is passed on whatever the clock reads: "last told at 0" would read as told less
+// than a minute ago on a machine up less than a minute, and for the minute after the 32-bit
+// millisecond clock starts again.
+fn activity_due(told: Option<u32>, now: u32) -> bool {
+    told.is_none_or(|at| now.wrapping_sub(at) > 60000)
 }
 
 // A keyboard or controller came or went (shortcuts on): the Shortcuts sheet's devices and the Pair sheet's
@@ -2992,6 +2999,18 @@ mod tests {
         assert_eq!(atoi(" -12x"), -12);
         assert_eq!(atoi("+7"), 7);
         assert_eq!(atoi("x"), 0);
+    }
+
+    #[test]
+    fn the_first_input_is_passed_on_whatever_the_clock_reads() {
+        // A machine up less than a minute.
+        assert!(activity_due(None, 0));
+        assert!(activity_due(None, 1000));
+        // Then at most once a minute, across the 32-bit clock's wrap too.
+        assert!(!activity_due(Some(1000), 61000));
+        assert!(activity_due(Some(1000), 61001));
+        assert!(!activity_due(Some(u32::MAX - 999), 59000));
+        assert!(activity_due(Some(u32::MAX - 999), 59001));
     }
 
     #[test]

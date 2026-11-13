@@ -63,7 +63,9 @@ still delay the runner, but do not advance app time. A `waitfor` advances them b
 round at a time, until its probe matches (tests/scenarios/z_waitfor_script_clock.qs waits so for a
 toast to go). `waitbg` keeps a real deadline and polls the jobs while app time stays still. This is
 opt-in for exact toast and refresh checks; other scenarios keep the real monotonic clock. `clock
-SECONDS` still sets only the displayed wall time.
+SECONDS` still sets only the displayed wall time. With it, `GRIMOIRE_SIM_UPTIME_MS=N` starts app
+time at N ms in place of the host's time since it started, as on a machine up that long
+(tests/scenarios/v_shortcuts_awake_boot.qs sends the first key one second after a boot).
 
 Four more:
 
@@ -643,7 +645,8 @@ or a digit, not only by punctuation or length (hence y_pagesize_1_ksc and y_page
 `# env: K=V` lines set the environment of that one scenario (values without spaces;
 r_passcode, s_passcode_once, t_passcode_left_off and z_annotate_f_passcode set `GRIMOIRE_PASSCODE`,
 as the launcher does on the Kindle, v_leave_from_editor sets `GRIMOIRE_BG_DELAY_MS`,
-v_shortcuts_awake and v_shortcuts_disabled set `GRIMOIRE_SLEEP_MINUTE_MS`, y_status_corner sets `TZ=UTC`,
+v_shortcuts_awake and v_shortcuts_disabled set `GRIMOIRE_SLEEP_MINUTE_MS`, v_shortcuts_awake_boot sets
+`GRIMOIRE_SIM_UPTIME_MS`, y_status_corner sets `TZ=UTC`,
 y_koreader_hosted sets `GRIMOIRE_HOST` as the KOReader plugin's start does and
 y_koreader_not_hosted sets it empty, y_language and z_language_kept set `GRIMOIRE_LANG`,
 y_pagesize_1_ksc sets `GRIMOIRE_SIM_SIZE=1986x2648`, and y_all_screens sets `GRIMOIRE_CHECK_FIT`
