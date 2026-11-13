@@ -3656,8 +3656,10 @@ fn draw_settings(a: &mut App) {
     let pens = tr("Pen sensitivity (pressure + tilt per tool)");
     // (what the platform does not leave to Grimoire has no row or button here: light.rs, Services)
     let services = sys_services();
+    // (without a front light the row is called what its sheet is: no brightness or warmth to name)
+    let display = if light_available() { tr("Display: brightness, warmth, invert") } else { tr("Display") };
     let top = [
-        (IconKind::Brightness, tr("Display: brightness, warmth, invert"), H_SET_DISPLAY),
+        (IconKind::Brightness, display, H_SET_DISPLAY),
         (IconKind::Tune, pens, H_SET_PENS),
         // TRANSLATORS: (Settings) the row that opens the Shortcuts sheet: a keyboard's keys and a controller's
         // buttons as shortcuts, each device's own if it has them (1470 px at 44 px in bold, as its neighbours).
