@@ -1322,13 +1322,16 @@ fn route_studio(nb: &NotebookInfo) {
     buf_printf!(&mut b, "};window.GRIMOIRE_L10N={");
     let pages = nb.npages() as i64;
     let mut n = 0;
-    i18n_walk(i18n_current(), &mut |e: &I18nEntry| {
+    let walked = i18n_walk(i18n_current(), &mut |e: &I18nEntry| {
         if e.ctx.as_bytes() != b"studio" {
             return;
         }
         let s = match e.id_plural {
             Some(plural) => i18n_getnc("studio", e.id, plural, pages),
-            None => e.str,
+            // (a word without a translation is still the studio's own, unless it names the device and
+            // the device has another name: i18n.rs, the device's name)
+            None if e.str.is_empty() => Some(i18n_named(e.id)).filter(|named| *named != e.id).unwrap_or(""),
+            None => i18n_named(e.str),
         };
         if s.is_empty() {
             return;
@@ -1341,6 +1344,26 @@ fn route_studio(nb: &NotebookInfo) {
         buf_printf!(&mut b, ":");
         json_str(&mut b, s.as_bytes());
     });
+    if walked < 0 {
+        // English has no catalog and the studio keeps its own words. The ones that name the device
+        // go to it all the same where the device has another name, read from any catalog's list.
+        i18n_walk_first(&mut |e: &I18nEntry| {
+            if e.ctx.as_bytes() != b"studio" || e.id_plural.is_some() {
+                return;
+            }
+            let named = i18n_named(e.id);
+            if named == e.id {
+                return;
+            }
+            if n > 0 {
+                buf_printf!(&mut b, ",");
+            }
+            n += 1;
+            json_str(&mut b, e.id.as_bytes());
+            buf_printf!(&mut b, ":");
+            json_str(&mut b, named.as_bytes());
+        });
+    }
     buf_printf!(&mut b, "};</script><style>");
     buf_append(&mut b, WEB_STUDIO_CSS);
     buf_printf!(&mut b, "</style><script>");

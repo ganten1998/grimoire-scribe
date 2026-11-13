@@ -106,3 +106,6 @@ pub fn sys_wall_clock() -> i64 {
 pub fn sys_services() -> Services {
     Services::ALL
 }
+pub fn sys_device_name() -> &'static str {
+    "Kindle"
+}

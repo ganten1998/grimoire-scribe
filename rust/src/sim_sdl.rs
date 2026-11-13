@@ -1149,6 +1149,15 @@ pub fn sys_services() -> Services {
         Err(_) => Services::ALL,
     }
 }
+/// "Kindle", or what GRIMOIRE_SIM_DEVICE_NAME says (docs/SIM.md): a platform whose device has
+/// another name, for the scenarios of the texts that name it.
+pub fn sys_device_name() -> &'static str {
+    static NAME: std::sync::OnceLock<&'static str> = std::sync::OnceLock::new();
+    NAME.get_or_init(|| match std::env::var("GRIMOIRE_SIM_DEVICE_NAME") {
+        Ok(name) if !name.is_empty() => Box::leak(name.into_boxed_str()),
+        _ => "Kindle",
+    })
+}
 pub fn display_broken() -> bool {
     false
 }

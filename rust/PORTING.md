@@ -107,6 +107,11 @@ The Kindle and the simulator answer all of them. Settings leaves out the row or 
 a platform says no to; the simulator's `GRIMOIRE_SIM_NO_SERVICES` (docs/SIM.md) is that answer for
 the scenarios.
 
+And it says what the device is called (`sys_device_name`). The English and the translations say
+Kindle; on a platform with another name every looked-up text has that name in its place, "Kindle
+Scribe" as a whole (i18n.rs, the device's name). No string changes for it. The simulator's
+`GRIMOIRE_SIM_DEVICE_NAME` is that name for the scenarios.
+
 ## The map
 
 Every C file has a module of the same name; a header and its .c are one module.

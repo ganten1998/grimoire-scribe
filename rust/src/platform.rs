@@ -92,6 +92,7 @@ pub trait Platform: Sync {
     fn sys_battery_reap(&self);
     fn sys_wall_clock(&self) -> i64;
     fn sys_services(&self) -> Services;
+    fn sys_device_name(&self) -> &'static str;
 }
 
 /// An in-tree platform: a unit type whose methods are its modules' functions. `$display`, `$input`
@@ -292,6 +293,10 @@ macro_rules! in_tree_platform {
             #[inline]
             fn sys_services(&self) -> Services {
                 crate::$light::sys_services()
+            }
+            #[inline]
+            fn sys_device_name(&self) -> &'static str {
+                crate::$light::sys_device_name()
             }
 
             $($more)*

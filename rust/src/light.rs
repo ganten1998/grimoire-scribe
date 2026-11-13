@@ -173,3 +173,10 @@ pub fn sys_wall_clock() -> i64 {
 pub fn sys_services() -> Services {
     active().sys_services()
 }
+/// What the device is called in Grimoire's text: "Kindle" on the Kindle, as the English and every
+/// translation say. Another name is put in its place wherever a text is looked up (i18n.rs, the
+/// device's name).
+#[inline]
+pub fn sys_device_name() -> &'static str {
+    active().sys_device_name()
+}
