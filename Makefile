@@ -172,8 +172,14 @@ SIM_HOOKS := GRIMOIRE_WIFI_SCRIPT GRIMOIRE_HOST GRIMOIRE_PASSCODE GRIMOIRE_SIM_A
              GRIMOIRE_BT_API GRIMOIRE_UPDATE_SCRIPT GRIMOIRE_UPDATE_REQUEST FAKE_UPDATE_PREVIEW FAKE_UPDATE_STABLE FAKE_UPDATE_FAIL \
              GRIMOIRE_SIM_STATS GRIMOIRE_SIM_SIZE GRIMOIRE_CHECK_FIT GRIMOIRE_LANG GRIMOIRE_L10N_DIR GRIMOIRE_ANNOTATE \
              GRIMOIRE_SLEEP_MINUTE_MS GRIMOIRE_SIM_RAWPEN GRIMOIRE_SIM_RAWPEN_MAIN GRIMOIRE_SIM_STALL_MS \
-             GRIMOIRE_LIVE_PEN_SOURCE GRIMOIRE_SIM_MAP_NOMEM GRIMOIRE_KEEP_RENDER_MS GRIMOIRE_SIM_LATE_MS GRIMOIRE_SIM_CLOCK \
-             GRIMOIRE_SIM_DENSE_DRAW_MS GRIMOIRE_SIM_CORES GRIMOIRE_SIM_BACKLINKS_STEP_MS GRIMOIRE_CACHE_WINDOW_MS GRIMOIRE_STORAGE
+             GRIMOIRE_LIVE_PEN_SOURCE GRIMOIRE_SIM_MAP_NOMEM GRIMOIRE_KEEP_RENDER_MS GRIMOIRE_PAGE_VIEWS GRIMOIRE_SIM_LATE_MS GRIMOIRE_SIM_CLOCK \
+             GRIMOIRE_SIM_DENSE_DRAW_MS GRIMOIRE_SIM_CORES GRIMOIRE_SIM_BACKLINKS_STEP_MS GRIMOIRE_CACHE_WINDOW_MS GRIMOIRE_STORAGE \
+             GRIMOIRE_IMPORT_STABLE GRIMOIRE_PDF_SLICE_PAGES GRIMOIRE_PDF_BANDS GRIMOIRE_PDF_NO_MAP GRIMOIRE_PDF_FREE_BYTES GRIMOIRE_PDF_WATCHDOG_MS \
+             GRIMOIRE_PDF_TEST_CRASH_PAGE GRIMOIRE_PDF_TEST_HANG_PAGE GRIMOIRE_PDF_TEST_ALLOC_PAGE GRIMOIRE_PDF_TEST_TRAP_PAGE GRIMOIRE_PDF_TEST_LINKS GRIMOIRE_PDF_TEST_WOKE GRIMOIRE_PDF_JOB_CPU_SECS GRIMOIRE_WORK_FAIL_STEP GRIMOIRE_WORK_EXE GRIMOIRE_SANDBOX \
+             GRIMOIRE_PIC_WATCHDOG_MS GRIMOIRE_PIC_TEST_CRASH GRIMOIRE_PIC_TEST_HANG GRIMOIRE_PIC_TEST_TRAP \
+             GRIMOIRE_FONT_WATCHDOG_MS GRIMOIRE_FONT_SLICE_MS GRIMOIRE_FONT_JOB_MS GRIMOIRE_FONT_TEST_CRASH GRIMOIRE_FONT_TEST_HANG \
+             GRIMOIRE_FONT_TEST_TRAP GRIMOIRE_FONT_TEST_DRAW_CRASH GRIMOIRE_FONT_MEM_AVAILABLE \
+             GRIMOIRE_CAPS_PROBE GRIMOIRE_CAPS_NO_STATM
 # The scenarios tap by coordinates and check English text: they run in English whatever the
 # caller's LANG says (GRIMOIRE_LANG ranks first), unless a scenario's "# env:" line sets another.
 SCEN_LANG := GRIMOIRE_LANG=en
@@ -268,7 +274,8 @@ l10n:
 # style: the Templates sheet with templates in it, over New notebook and the editor's page, on a
 # data root its "# copy:" line fills first, as make scenarios does. Then (Rust build only) the
 # unified Index, the notebook links selector, page management and backlinks scenarios from their
-# fixtures, and z_wifi.qs with and without an address, in every language and style. Under make check
+# fixtures, z_wifi.qs with and without an address, and z_wifi_networks.qs (Settings > Wi-Fi, with the keys
+# on for its Esc), in every language and style. Under make check
 # it waits for
 # the scenarios: both give their runs the same ports. With SCEN_SKIP_RUST_ONLY set (make
 # c-check), y_all_screens.qs is skipped: it visits screens only the Rust build has.
@@ -391,9 +398,23 @@ test-sim:
 	@mkdir -p $(BUILD)/test/tmp
 	$(call RCARGO,GRIMOIRE_TEST_TMP="$(abspath $(BUILD))/test/tmp") test --features sim -- --test-threads=1
 
+# The PDFs the scenarios copy (tests/fixtures/pdf/), made by the fixture writer in rust/tests/pdffix, never
+# edited by hand; rust/tests/test_pdf_fixtures.rs checks the committed bytes are what it makes now.
+.PHONY: pdf-fixtures
+pdf-fixtures:
+	@mkdir -p $(abspath tests/fixtures/pdf)
+	$(call RCARGO,GRIMOIRE_WRITE_PDF_FIXTURES="$(abspath tests/fixtures/pdf)") test --test test_pdf_fixtures
+
+# The fonts the scenarios copy (tests/fixtures/fonts/), made by the fixture writer in rust/tests/fontfix, never
+# edited by hand; rust/tests/test_font_fixtures.rs checks the committed bytes are what it makes now.
+.PHONY: font-fixtures
+font-fixtures:
+	@mkdir -p $(abspath tests/fixtures/fonts)
+	$(call RCARGO,GRIMOIRE_WRITE_FONT_FIXTURES="$(abspath tests/fixtures/fonts)") test --test test_font_fixtures
+
 # The C tree's unit tests (core + ui only; no platform).
 TESTS := $(patsubst tests/%.c,$(CBUILD)/test/%,$(wildcard tests/test_*.c))
-# Contraction (fused multiply-add) on, as gcc does by default: tests/test_golden.c's renders
+# Contraction (fused multiply-add) on, as clang does by default: tests/test_golden.c's renders
 # were recorded so, and turning it off changes them.
 TEST_FLAGS := -O1 -g -fsanitize=address,undefined -fno-sanitize-recover=undefined -fno-omit-frame-pointer -ffp-contract=on
 c-test: $(TESTS)
@@ -408,7 +429,7 @@ $(CBUILD)/test/%: tests/%.c $(wildcard tests/*.h) $(CORE_SRC) $(UI_SRC) $(GEN_SR
 # rustc makes the same binary: a local one and the release workflow's) and RKFLAGS.
 kindle: $(BUILD)/kindle/grimoire
 $(BUILD)/kindle/grimoire: FORCE
-	$(call RCARGO,$(RKENV)) zigbuild --release --target $(RKINDLE) --features kindle --bin grimoire $(RKFLAGS)
+	$(call RCARGO,$(RKENV)) zigbuild --release --locked --target $(RKINDLE) --features kindle --bin grimoire $(RKFLAGS)
 	@$(call RCOPY,$(RTARGET)/$(RKINDLE)/release/grimoire,$@)
 
 # The C tree's (zig cc).
@@ -469,7 +490,7 @@ KOPLUGIN_ZIP := KOReader plugin (optional)
 ICON_LICENSES := assets/MaterialDesignIcons-LICENSE.txt assets/MaterialDesignIcons-Apache-2.0.txt
 package: $(BUILD)/dist/Grimoire.zip
 $(BUILD)/dist/Grimoire.zip: $(BUILD)/kindle/grimoire kindle/Grimoire.sh kindle/app/grimoire.sh kindle/app/bluetooth.sh kindle/app/wifi.sh kindle/app/update.sh $(RESET_SH) \
-                           assets/icon.png kindle/README.txt LICENSE VERSION Makefile tools/archive.py $(BUILD)/dist/source-date $(wildcard assets/*-OFL-1.1.txt) $(ICON_LICENSES) \
+                           assets/icon.png kindle/README.txt LICENSE VERSION Makefile tools/archive.py tools/crate_licenses.py rust/Cargo.lock $(BUILD)/dist/source-date $(wildcard assets/*-OFL-1.1.txt) $(ICON_LICENSES) \
                            $(wildcard third_party/stb_*.h) $(VENDOR_LICENSES) $(FBINK_SRC) $(KOPLUGIN_SRC) $(KOPATCH_SRC) $(KOLEGACY_SRC) kindle/koreader/PATCHES.txt
 	rm -rf $(PKG) && mkdir -p $(PKG)/documents $(PKG)/app/licenses
 	cp $(BUILD)/kindle/grimoire kindle/app/grimoire.sh kindle/app/bluetooth.sh kindle/app/wifi.sh kindle/app/update.sh $(PKG)/app/
@@ -514,6 +535,7 @@ $(BUILD)/dist/Grimoire.zip: $(BUILD)/kindle/grimoire kindle/Grimoire.sh kindle/a
 	    echo "(share/doc/rust/COPYRIGHT-library.html, here as text):"; echo; \
 	    python3 -I -c 'import html, re, sys; t = open(sys.argv[1], encoding="utf-8").read(); t = re.sub(r"(?is)<(script|style)\b.*?</\1>", "", t); t = html.unescape(re.sub(r"<[^>]+>", "", t)); t = re.sub(r"\n{3,}", "\n\n", re.sub(r"[ \t]+\n", "\n", t)); sys.stdout.buffer.write((t.strip() + "\n").encode("utf-8"))' "$$doc"; \
 	  } > $(PKG)/app/licenses/rust-std-LICENSE.txt
+	set -e; PATH="$(RUST_BIN):$$PATH" python3 -I tools/crate_licenses.py rust $(PKG)/app/licenses/rust-crates.txt $(CARGO)
 	set -e; libc=$$(cd rust && PATH="$(RUST_BIN):$$PATH" $(CARGO) metadata --format-version 1 --frozen | \
 	    python3 -I -c 'import json, os, sys; p = [p for p in json.load(sys.stdin)["packages"] if p["name"] == "libc"]; print(len(p) == 1 and os.path.dirname(p[0]["manifest_path"]) + " " + p[0]["version"] or "")'); \
 	  dir=$${libc% *}; ver=$${libc##* }; \
@@ -651,6 +673,7 @@ rust-host:
 host-checks:
 	$(MAKE) -o $(BUILD)/host/grimoire-headless scenarios-late
 	python3 -I tests/pages_cache_check.py $(BUILD)/host/grimoire-headless $(BUILD)/pages-cache-check
+	python3 -I tests/import_check.py $(BUILD)/host/grimoire-headless $(BUILD)/import-check
 	$(MAKE) -o $(BUILD)/host/grimoire-headless mirror-cleanup-check
 	BUILD=$(BUILD) $(SCEN_LANG) tests/share_check.sh $(BUILD)/scen/b_library
 	BUILD=$(BUILD) tests/live_check.sh

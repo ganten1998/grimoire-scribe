@@ -36,7 +36,7 @@ expect display.presents not -1
 touch move 1000 640
 expect editor.pages.context is 0
 expect editor.pages.drag is 2 before 3
-expect display.presents is ui 430 214 1000 1715
+expect display.presents is ui 430 214 1000 1705
 # The same gap (page 2's right half, then page 3's left half): the bar stays, nothing is refreshed
 touch move 1040 700
 expect display.presents is

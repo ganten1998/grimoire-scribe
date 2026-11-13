@@ -4,6 +4,169 @@ Work that was decided, deferred or found but not done yet. Keep this current: wh
 move it to "Done" with the version; when something is deferred, add it here with who decided and
 why. Newest decisions first within each section.
 
+## After the release of 2.1.0-beta.2 (2026-11-12): what waits
+
+- **nebuff's PRs #49 (a page turn speed-up) and #52 (lasso fixes for #51) are on `main` with 2.1.0-beta.2 since
+  #57, but in no release yet.** Try them on a Scribe before the next one: page turns at the fitted view no longer
+  flash (every 30th UI refresh does), the last three pages' drawings are kept in memory, and the lasso's lift
+  counts its outline as wear. Issue #60: a jump to the oldest of the kept pages misses it.
+- **Live view's pen-stall check is flaky on CI's macOS runners.** `tests/live_pen_stall.py`, "with the main loop
+  busy, its samples still come at once", measured a raw p90 of 62.8 ms (the 60 ms the test holds the main loop)
+  against its 25 ms limit on the dry run of 2026-11-12 (run 43244209271, first attempt), and 0.4 ms on the next
+  attempt and on the Mac. A busy runner can starve the reader thread. Options: print the p90 and hold a looser
+  bound (as test_pdf_colour_memory.rs does with its per-copy budgets), or measure once more before it fails
+  (issue #56).
+
+## nebuff's main and Clear page (2.1.0-beta.2, lane M, 2026-11-11): what waits
+
+- **Bulk erase slowdown (issue #42) is not fixed in the app.** PR #43 ("Fix slowdown") changed the C tree only
+  (`src/page.c`: the render's work pump every 512 points instead of 128; and HOSTCC to gcc in the Makefile). The
+  app is the Rust port, whose renderer (`rust/src/page.rs`, `page_render`) still pumps every 128 points, on
+  purpose: the pump reads the pens during a long render, whose kernel buffers hold 50 to 175 ms
+  (docs/INK-PERFORMANCE.md), so a slower pump would lose pen samples rather than speed the erase. The ~3 s after a
+  bulk erase needs a trace on the Scribe (grimoire.log's erase and undo timings on a dense page) before a fix.
+- **The C tree's other main commits** (#27 to #34: the share server's route table, its NULL checks and SIGCHLD
+  handler, the page turn that skips a save of an unchanged page, the too-small link stroke kept as ink) change only
+  `src/`, which the app does not build; the Rust share server and editor have their own code for each. Their
+  behaviour in the app was not asked for and is not ported.
+- **An Undo button on the toast.** Clear page from a gesture or a key says "Page cleared. Undo brings it back."
+  The toast is an overlay with no controls (never in App.screen, a Live view layer), so a button on it would need
+  hit testing ahead of the screen's own input, a pen contact on it kept from the page, and Live view's copy. For
+  a later version if the owner wants it.
+- **Japanese for the new strings** (nebuff): "Display time as 12 hour", "Disable", the 12-hour date
+  ("%s %d, %d:%02d %s"), AM and PM (context "date"), "Page cleared. Undo brings it back.". Until then a
+  Japanese 12-hour clock reads the month in Japanese and the rest as English writes it.
+- **Disable on a paired row's second card** clears only that direction (the first card's Disable clears both).
+
+## Settings > Wi-Fi (2.1.0-beta.2, lane W): choices for the owner, and what waits
+
+- **Not confirmed on a Scribe (2026-11-11)**: the helper's network verbs are built on KOReader's Kindle backend
+  and have not met wifid. The lipc-hash-prop output format (the reader knows quoted values and fails closed on
+  anything else), whether wifid lists the saved networks with the radio off, and whether ensureConnection
+  switches away from a network the Kindle is connected to are the read-only probes and checks at the end of
+  docs/TESTING.md ("Wi-Fi networks (lane W)"). If probe 4 shows another format, only the helper's reader changes.
+- **Choices the brief left open, taken by lane W**: the button sits in Settings' bottom row beside Pair (no other
+  place in Settings had room), which moved Gestures' tap point from x = 890 to 1000; a failed switch changes
+  nothing more (no switch back to the network before: the Kindle's own service decides, and only an explicit tap
+  changes the network); the saved networks are read from profileData (all of them, in range or not) rather than
+  a scan (KOReader's Kindle code does not use the scan list while connected, the case a switch starts from).
+- **Left for later**: the Share screen's Wi-Fi card (and Live view's pairing card) still turns the radio on and off
+  only; it could open the same list. A scan (scanList) could mark which saved networks are in range, with their
+  signal. A saved network whose name the tool writes with an escape (a backslash) is left out of the list. Adding
+  a network with its password stays out (the brief: the Kindle's settings and KOReader do it).
+
+## PDF import (2.1.0-beta.2, lane L5): what waits, and what is for the owner
+
+- **S1 ran on the owner's Scribe (2026-11-09)**: every sandbox step works there, a private mapping of a PDF on
+  `/mnt/us` works (so PDFs are mapped), and a planner page draws in 90 ms (146 ms at most), a photo page in 230 ms,
+  in 27 to 38 MB. The plan's numbers in `sandbox::s1` were kept (30 to 60 times the room those pages need; the
+  module's header has the measurements); D12 is not triggered. Not measured: a page that is one huge scan.
+  An end-to-end import ran sandboxed on the Scribe on 2026-11-09.
+- **A picture folder when no worker can be had (2026-11-10)**: pictures fail closed on the Kindle, and such a
+  folder counts no try, so the Library shows "Couldn't import page folder (see grimoire.log)." at every scan
+  (at most every 10 s, Library in front) until the sandbox works again; a folder picked in place is not retried.
+  Only if the sandbox ever fails on a device: a quiet "no worker" ending the UI does not toast would stop it.
+- **Links and the outline (lane L6)**: DONE in 2.1.0-beta.2 (FORMAT.md, "Imports: PDFs"). Left for later: web links
+  are counted and left out (the optional QR card, 8.I of the plan, is the way to keep them); the outline names
+  only new notebooks' pages (a page's own name would keep it, which matters only when a fill comes in 2.2);
+  a worker caps at 60,000 links a PDF (after the water level a notebook keeps 14,400 at most, but a PDF past the
+  cap loses its later pages' links before the densest-first trim sees them); `/Next` action chains, JavaScript
+  and `/GoToR` are ignored; a Link that is hidden (`/F` bit 2) or not viewed (bit 6) is skipped (a choice the plan
+  did not settle: it would be a dead tap area over visible paper); a toast names one thing (when both blank pages
+  and left-out links apply, the pages' ending wins and the links are in the log); the name tree's walk order
+  decides which entries a 100,000-entry cap keeps.
+- **Pictures in the worker (lane L7)**: done in `picwork.rs` (`WorkKind::Picture`). Left, and why: the seccomp
+  allow-list and the worker's address space for pictures (`s1::PICTURE_AS_MARGIN`, `PICTURE_SLICE`,
+  `PICTURE_CPU_SECS`, `PICTURE_WATCHDOG_MS`) are the plan's numbers, kept after S1 (the Linux `sandbox` tests,
+  run as root for the first time on 2026-11-10, decode a picture in the real sandbox:
+  `pictures_decode_in_the_real_sandbox`); a
+  worker killed by the filter marks its picture `.bad` rather than falling back, so a call the list lacks would
+  mark pictures bad on a device until it is added (the log names the call); KOReader's page PNGs and Grimoire's
+  own `bg/` pictures stay decoded by the UI (a later option: re-encode KOReader's through the worker, which would
+  change the UI process's book flow); the no-worker flag set in one job child (on the Kindle pictures then wait;
+  elsewhere they fall back) does not reach the UI or the next child (each finds out for itself, at the cost of one
+  failed start). (`install_picture` no longer starts a worker
+  on the UI thread: a template or photo with no preview yet waits for the previews job, the fix round's M13.)
+- **The picker (lane L8)** and **the notebook PDF's colour and caps (lane L9)**: done in 2.1.0-beta.2 (their own
+  sections below).
+- **Not done**: a card for the notebook being made. An update while a detached import runs has no scenario: the
+  headless runner cannot make a second build to update to, and how the Kindle's package manager replaces a
+  running binary (a rename over it, or a write into it) is unknown. What holds by construction: the detached
+  child and its writer go on in the old image; on the Kindle a worker is `/proc/self/exe`, the old image too;
+  a worker that answers another build is refused as a worker that cannot start (nothing counted, the pages made
+  kept, the session's imports stop), and the next start resumes the import with the new build. To check on the
+  Scribe with a real update (TESTING.md, the fix round's checks).
+- **The CPU budget's numbers wait for S1** (`s1::JOB_CPU_BASE_SECS`, `JOB_CPU_PER_PAGE_SECS`). The mechanism is
+  built (the fix round, M10): the budget counts the job's own workers from its probe on, and a job past it stops,
+  keeping its pages, and goes on at a later scan with a fresh budget; three stops (a cut-off writer counts as
+  one) end the import whole.
+- **The fix round's choices (2026-11-09; the plan and the review left them open)**: no room is never the file's
+  fault: nothing is counted, the work folder goes (its space is what the user needs back), and the scan takes
+  the PDF again only once 16 MB more is free (a session's memory: a restart tries once); a later slice whose
+  workers cannot open the PDF three times fails the import whole (the review's "bounded"); a worker that cannot
+  start stops the session's PDF imports as a sandbox failure does (the review's "as the sandbox failure"), so a
+  worker that never starts cannot loop at every scan; a copy of a PDF being imported ends at once and is taken
+  again by the scan after that import (the review's first option for H9); a picture-folder import whose card
+  the Library shows toasts nothing, as a PDF's (D20); a picked PDF's or folder's mark goes whatever the end.
+- **Kept from L5**: a page's blank replacement is a white image page (shared by content); the colour tolerance is
+  6 levels (pdfwork::GRAY_TOLERANCE); a PDF whose every page is unreadable fails whole (the fix of L5's merge);
+  a PDF that fails before any page keeps its file and costs a try (3 tries, then it waits until it changes; a
+  pick elsewhere keeps no record); the "Some pages couldn't be read." ending shows even with the Library in front;
+  a notebook in a Library folder gets the toast "Imported notebook" since its card is not on the Library's top.
+- **Doc drift 9's last three** (the review of 0c26d912): FORMAT.md's "so Copy page and later fills have room" (M16),
+  "a picture replaced ... simply drawn again" (H4) and the picture cache's `.bad` meaning (M12) describe code other
+  fix lanes change in the same round; they follow those fixes, not this lane's.
+- **The fork window of the lock**: a child that is no import closes its copy of the lock's descriptor first thing,
+  but for the microseconds between its fork and that close a `lock_take` sees the lock held (a pick tapped in that
+  instant waits, and is queued at the next scan). Linux 4.9 has no close-on-fork flag.
+- **The scan's prune of import/.attempts runs in the UI** (the record is otherwise the jobs' to write): it reads
+  the file again just before it writes, which leaves a few milliseconds in which a job's note can be lost. Found
+  in the fix round, not fixed: moving the prune into the jobs is a change of who owns the file.
+- **Crates**: skrifa is now a direct dependency (your own fonts, L10), pinned to the 0.46.2 hayro brings: no
+  crate is added. Cargo.lock names a second skrifa and read-fonts (glifo's optional dependency), not built; the build
+  has three duplicates (fearless_simd, miniz_oxide, syn), not the plan's five. flate2, smallvec and syn were
+  moved to versions published before 2026-11-02 so that every crate is two weeks old at a tag on or after
+  2026-11-16 (`tools/check-crate-dates.py --tag-date 2026-11-16` passes).
+
+## The keyboard's caret and text copy and paste (2.1.0-beta.2, last round, lane K): choices for the owner, and what waits
+
+Built from issue #36 (docs/DESIGN.md, Text and the keyboard). The lane chose, the owner to confirm:
+- **Where the keys are.** ◀ and ▶, and the edit key beside them (the copy icon), sit at the right end of the text
+  line on every page but the count pad's, each a letter key's width: no row was added and no key moved. The text
+  box is the line left of them (1229 px upright, 1663 sideways, where it was 1760 and 2380).
+- **The edit page** (Gboard's way): Select all, Cut, Copy, Paste, Start and End, with Cancel, abc, space, delete
+  and Done along the bottom. A range is selected by a drag across the text (pen or finger) or Shift with the
+  arrows on a paired keyboard; there is no on-screen Select toggle.
+- **Copy says nothing**, as the owner wanted no "Saved" toast (2026-11-04): the selection stays. Copy and Cut
+  with nothing selected do nothing (they do not take the whole text); Paste with nothing copied does nothing.
+- **The clipboard** lasts until Grimoire closes and is never written to a file. Go to page's number pad pastes
+  the digits alone. Control characters are left out, as a name opened on the keyboard drops them.
+
+What waits:
+- A paired keyboard's arrow held down moves the caret once: `hidkeys_event` drops the kernel's autorepeat for
+  every key (above). A repeat of its own would need a timer of held text keys.
+- Letters typed on a paired keyboard still type nothing in a field (that needs a keyboard layout).
+- No word-wise moves (Ctrl or Alt with the arrows), no double tap to select a word, and a drag selects only the
+  part of a long name the line shows (Select all, Start and End, or Shift with the arrows reach the rest).
+- Cut, Copy and Paste are never drawn disabled when they would do nothing.
+
+## Planned, not scheduled: a sleep screen picture of Grimoire's own (the owner, 2026-11-09)
+
+The owner wants a wallpaper Grimoire sets itself, with no KOReader in it ("no koreader folder for the non
+koreader version"; "add it to the list but we aren't ready to build yet"). Today Display's "Sleep screen:
+KOReader wallpaper" shows `grimoire/koreader-sleep.png`, which only the KOReader plugin writes, at each
+hand-over from KOReader (`sendWallpaper`): KOReader's screensaver must be set to a custom image, a random image
+or a cover, and Grimoire opened from KOReader at least once; a start from the Kindle's library reuses the last
+snapshot, and with none the page shows.
+
+- **The plan:** a fifth sleep choice, "Sleep screen: a photo", from `grimoire/photos/` (the folder page
+  backgrounds already use, filled over USB): one photo picked in Display, or a random one at each sleep. The
+  photo job (bgwork_template.rs) fits it to the screen in grey in a background child and keeps the result in
+  Grimoire's own folder, so sleeping only reads a ready picture. Nothing of KOReader is read or written.
+- **To decide when it is built:** whether "KOReader wallpaper" stays for everyone or shows only when the
+  KOReader plugin is installed; fit or fill, and the background around a picture that does not fill the screen;
+  how a random pick avoids repeating.
+
 ## 2.1 foundations (lane L0, 2026-11-07): choices for the owner, and what waits
 
 Lane L0 built the shared pieces of the 2.1 plan (docs/DESIGN.md, Shared building blocks) with nothing new to
@@ -88,13 +251,111 @@ Scribe (docs/TESTING.md, 2.1.0, Classic fonts):
 
 Waits, from the 2.1 plan:
 
-- **Your own fonts** (2.1.0-beta.3, lane L10): `.ttf`/`.otf` in `grimoire/fonts`, checked in the sandbox
-  worker (L5) before the UI reads them; the Font sheet's "Built in" and "Your fonts" sections.
 - **Japanese in Classic** (2.2, nebuff): a smooth Japanese face (Noto Sans JP, +0.97 MB) beside DotGothic16.
 - **y_all_screens.qs split by screen group** so the per-font l10n runs shard (the plan's L3): the runs are
   whole for now (six more of about 80 s here).
-- **The glyph cache's 4 MB byte cap** (the plan's L3, section 7): the bundled fonts are small; it matters
-  with custom fonts.
+
+(Your own fonts and the glyph cache's 4 MB byte cap are built: 2.1.0-beta.2, lane L10, below.)
+
+## Your own fonts (2.1.0-beta.2, lane L10): choices for the owner, and what waits
+
+Built to the 2.1 plan's D30 (Done, below). **Nothing of it has run on a Scribe, and its sandbox steps have not
+run anywhere** (the CI job `sandbox` is their first run): docs/TESTING.md, "2.1.0-beta.2, L10", has the device
+checks. Where the plan did not settle a thing, what the lane chose, for the owner to confirm:
+
+- **The size of text in your font.** The plan's rule as written: capitals as tall as Terminess's, the scale
+  kept between 0.85 and 1.25, then lowered until 95 of 100 of Grimoire's strings are no wider than in
+  Terminess. It gives Noto Sans 1.06 (the bundled copy has 1.065, set by hand), Atkinson 0.96 (bundled: 1.10)
+  and Literata Bold 1.07 (bundled: 1.15): a custom font comes out a little smaller than the three that were
+  fitted screen by screen, since nothing fits a custom font's screens. If your fonts look small on the Scribe,
+  the 95 is the number to lower (`fit_strings` in fontcheck.rs); a verdict keeps the scale it was given, so
+  delete `grimoire/fonts/.cache` after changing it.
+- **The line of a font whose tables are far off.** The plan replaces an ascent or descent more than 1.5 times
+  what the letters reach. The lane measures that reach over the capitals, the digits, b d f h k l and the
+  accented capitals the font has (not the capitals alone: Literata's line would have been squashed to its
+  capitals), replaces a line less than two thirds of the reach as well (letters would stick out of it), and
+  gives a font without descenders whose descent is deeper than its capitals are tall a quarter of them.
+- **Outlines in font units**, not the plan's sixteenths of a pixel: the unscaled outline is what makes a
+  TrueType font's bitmaps stb's own byte for byte, and one outline serves every size, so the check's walk
+  covers what the UI draws at any size. A CFF font's fractional coordinates are rounded to whole units (stb's
+  own CFF reader cuts them the same).
+- **The sizes a custom font is drawn at**: 8 to 160 px of line (the UI's text is 34 to 64 px at 300 dpi, a
+  family's scale up to 1.25, and the fit steps down from there). Outside them a glyph comes from Terminess.
+- **The sample card is drawn by the font itself** (loaded when its row is tapped, under the crash guard, held
+  beside the font in use), not by a picture from the check: the sentence is in the UI's language, which the
+  check does not know. If it cannot be loaded (32 MB of fonts held already) the card shows the check's picture.
+- **The sheet's own words are Terminess only while a font of the owner's own is in use** (L3's reading of the
+  plan, kept: with a bundled font in use they stay in that font).
+- **The crash guard strikes fonts, not starts.** A start that finds a mark armed draws none of the fonts that
+  were armed (the font in use, its Bold file, the sheet's sample), and everything else as usual. So when the
+  mark was the font in use, that start is in Terminess, as the plan says; when Grimoire died while only a
+  sample was new, the font in use is still drawn at the next start, and the sample's font has the strike.
+- **Marks an earlier run left.** A `.checking` mark found when a job starts is taken away and the font checked
+  again (a power cut is not the font's fault); only a job the UI sees die on a file marks it `.bad`.
+- **A worker ended by its CPU limit is "Took too long to read."**, not "Unreadable font.".
+- **No worker at all** (a sandbox step failed): the unchecked rows say "Unreadable font." for that session
+  only; nothing is written, and the next start checks them.
+- **A truncated file can pass** when the cut is inside a table the check does not read (the names, the
+  PostScript table): it still draws every glyph, and what the UI reads later is those same bytes.
+- **Bold by a Bold file**: only one in the same folder as the font, of the same family name, weight 600 or
+  more, upright; `font_bold=` names another by hand and is forgotten when another font is picked.
+- **The preview carries the style** when it is not Regular ("Inter Bold"), so a family's files tell apart.
+- **Gothic lets the font go** (its memory too) and Classic reads it again.
+- **A folder of grimoire/fonts named as one of the storage's system folders** (`system`, `koreader`,
+  `extensions`...) is not looked into: the walk's deny-list is the storage's.
+
+What waits:
+
+- **Add a font...** (the Kindle's own fonts folder, copied in) comes with 2.2's Files (the plan's D30).
+- **The Japanese slot** (a custom or bundled smooth Japanese face in Classic, the plan's L14, with nebuff).
+  Kana and kanji of a custom font are already drawn at DotGothic16's em.
+- **Kerning for custom fonts** (GPOS pairs through read-fonts, fonts.md 7.G): none today; the bundled fonts
+  keep stb's.
+- **Tabular digits** (fonts.md 7.B) and **the other faces of a collection** (7.I: a `.ttc` gives its first).
+- **Checked fonts for PDFs that name a font they do not embed** (hayro's `font_resolver`, fonts.md 8).
+- **The verdict's `cover=` counts** (Latin-1, Extended-A, Greek, Cyrillic, kana, kanji) are written and not
+  shown anywhere yet (2.2's Files details, the Japanese slot's "has kana").
+
+From the whole-release review of 2.1.0-beta.2 (the fix round, lane F3; the review's finding IDs). Fixed there: H8,
+M17, M19, M20, the watchdog timeout that was a verdict for good (a second timeout is the verdict now), the
+Bold-only letters of a name, a Done on a font that does not load. Left, with what each costs:
+
+- **Only the regular's advances are fitted** (review, L10 item 3). `fit_strings` measures Grimoire's labels in
+  the regular face while most chrome is Bold, so more than 5 labels in 100 can end in "..." with a font whose Bold
+  is wider. The cost is a few clipped labels in a bold-heavy font; the fix is to fit on the bold's advances too
+  (fontcheck.rs, and every verdict is checked again).
+- **Outside 8 to 160 px the glyphs are Terminess's but the line metrics stay the font's** (item 6): a very small
+  or very large text in a font with a tall line leaves a gap or crowds a line. Unmeasured on the Scribe, where the
+  UI's sizes sit inside the range.
+- **A sample tap reads and hashes up to 24 MB on the UI thread** (item 7). Moving it off the UI thread needs the
+  loaded face to cross a thread (`SafeFace` holds `Rc`s), so it was not a simple change. The cost is a pause
+  (unmeasured; 24 MB over FUSE) at the tap of a very big font's row; the check job's hash is already off-thread.
+- **With a bundled family in use the sheet's chrome is that family, not Terminess** (item 8): a family without
+  the sheet's letters (or an unreadable one) can make the sheet harder to read; the plan wants Terminess only
+  while a font of the owner's own is in use, which is what is built.
+- **An italic regular pairs with an upright Bold, and a Bold file added later pairs only at the next load**
+  (item 14): `pair_of` looks at weight and family only for the regular, and the pair is found at load.
+- **A worker killed for memory, and the check writer's death, are verdicts for good** (`.bad`): a font that
+  needed more memory than the margin gave stays "Unreadable font." until its file changes, even after the
+  margin is raised. (A watchdog timeout now gets one retry.)
+- **A guard mark and a sample.** A sample that reached the panel is settled, so Done on it draws the first whole
+  screen with no mark on disk; and the Bold file and the regular are struck together (a strike on one is on
+  both). Both are the plan's 4.2.8 as built; a stricter rule is a larger state machine.
+- **A chosen font past the 200 listed files shows as "File missing."** in the sheet (the folder listing stops at
+  200 files); the font still loads at a start if it was checked, the row alone is wrong.
+- **Rows stay at "Checking..." while a failed check waits for its retry** (3 s, 15 s, 60 s, then the session
+  stops asking and the rows say "Unreadable font."): the notice says it, the row does not say why.
+- **The plan's 3.7 retry "right after a wake"** is built as one retry a minute after a first timeout, not as a
+  wake event (the UI has no wake event the check could wait for).
+
+- **The fit check cannot cover a custom font**: l10n-check runs the Font sheet over the fixtures in every
+  language, but a real font's widths are its own; labels that do not fit end in "...".
+- **Left and Right do not turn the pages of Your fonts** (the sheet's arrows do).
+- **`sandbox::s1::FONT_*`** (20 s slices, 10 min a font, 60 s of CPU a worker, a 30 s watchdog, 64 MiB over the
+  file) are the plan's numbers, placeholders until S1 measures the Scribe; `s1::WORKER_IMAGE` (11 MiB) is now
+  only about 0.9 MiB above the binary's size, which the margins absorb.
+- **A What's new line** for 2.1.0-beta.2's notes (docs/whatsnew), which the owner writes.
+- **Japanese** for the 15 new strings (nebuff): English shows until then.
 
 ## A cleared page's old picture (2.1.0): fixed; what is left for the owner
 
@@ -439,6 +700,12 @@ Decided by the lane B3 design (docs/beta2/PIXEL-LASSO.md, 2026-11-03) and its bu
 
 ## To investigate
 
+- **z_pages_find_over flakes on GitHub's runner** (the v2.1.0-beta.1 release run 42540001325, shard 6; passed on
+  rerun, and in the dry run of the same commit): line 50 saw `ui 20 1312 1820 1148, ui 0 0 1860 2480` where it
+  wants the first alone, an extra whole-screen Ui present on a slower host. It flaked under Wine's load too
+  (2026-11-07). Find what sends the whole-screen present (a tick racing the Find sheet's step) or let the
+  scenario wait for it with `waitfor`.
+
 - **Parts of the sleep picture left on the screen after a wake** (the owner's Scribe, 2026-11-05: the KOReader
   wallpaper over parts of the panel until a redraw, while the framebuffer, read over ssh, held Grimoire's screen
   whole). The owner has since seen it in KOReader alone, with Grimoire not running, so it may not be Grimoire's.
@@ -612,8 +879,76 @@ Ideas, not plans: each needs the owner's go and its own design. No code is taken
 - Promote a quiet 2.0.0 release candidate to 2.0.0 stable (the stable KPM feed updates every 1.2.0
   install).
 
+## Document links (lane L4, 2.1.0-beta.2): what waits
+
+- **Hand-made links keep 2.0's tap rule** (growth first, smallest box); widening exact-area-first to them waits
+  for the owner (DESIGN 3.10).
+- **Edit a document link.** Their card is read only (Rename the page): Change where it goes, Redraw and Delete
+  are not offered for them. A link the user wants gone is not removable in 2.1.
+- **Inside the bar's document chips, X goes back to the page's own rows** (a second X closes); a drag down from
+  the grip closes at once. Chosen because the bar has no room for a back chip beside the header's own; to
+  confirm on the Scribe.
+- **KOReader quad links.** `getPageLinks` gives rectangles only, so a KOReader-sent link has no outline; the
+  PDF route (lane L6) can pass quads through `DocRecord.quad`.
+- **The notebook PDF writes a document link at its exact area** (a user link at its 7 mm-padded one).
+- **Paste's seeds:** a pasted stroke or link avoids the seeds of the page's document links (select.rs
+  `seed_holders`); the stroke's own seed is not checked against document links when a *fill* picks the
+  document link's seed (only the user's links are; ink seeds are 32-bit hashes, a clash would be harmless
+  since a document link has an area and never takes an ink box).
+
+From the whole-release review (the fix round, lane F3). Fixed there: M16, M21 (the conservative reading) and the Low
+items of Document links. Left:
+
+- **No test pins the Links bar's dropped selection** on opening "From the PDF" (linkbar.rs): the fix is one line
+  and needs a page with both a link of its own and tabs to pin in a scenario.
+- **Older builds and the plugin's `links=1`.** `links=1` outlives a book page an older build added: those pages
+  have no tabs until pages are added again (the plugin then asks for every held page's links) or `links=1` is
+  taken out of `source.ini` by hand. A fix that cannot be wrong needs `links=` to carry the held pages' count, a
+  format change the owner has not asked for.
+
+## Notebook PDF cache and child caps (lane L9, 2.1.0-beta.2): what waits
+
+- **The mirror's 128 MiB margin on a very dense page** (64 MiB before the fix round, which a Scribe-sized colour
+  page did not fit: H3). A colour page on a near-incompressible photo-like picture measured 51 MiB, 69 when the
+  next page shares its picture (`test_pdf_colour_memory.rs`, on the Mac); a page with millions of points adds its
+  strokes. If a real notebook's mirror fails with the cap on (the log says `export of ... failed` and the child
+  died of a failed allocation), raise `child_margin(BgKind::MirrorPdf)` in `childcaps.rs`. Nothing measured on the
+  device yet (TESTING L9 check 7, and the fix round's F2 check 1); the CI job `sandbox` runs the colour page under
+  the real cap first.
+- **The colour page's decode is stb_image's** (fix round, H3): a 13 MB PNG is held whole while stb gathers its
+  compressed data and inflates it, about 50 MiB at its peak; decoding it from the file through stb's callbacks
+  would save the file's own copy. Pages on one picture keep a second RGB copy for the next page (decoding the
+  picture again for each page instead would cost seconds a page on the Kindle).
+- **One sweep is a guess** (fix round, M14): a mirror's temporary file is swept when its process is gone
+  (`kill(pid, 0)`); a pid reused by another process keeps it until that one ends too. The mirror lock waits 15
+  minutes for another mirror of the notebook, then goes on beside it.
+- **The cache is read per page even with no change.** A hit reads the page file only when the notebook has a link
+  on that page; a planner with a document link on every page still reads and parses every page (no drawing). A
+  per-page "links stamp" could skip that too.
+- **The share server never writes the cache** (the plan: background jobs only), so a download of a notebook whose
+  mirror is off, or not yet made, draws every page; the page progress shows it. Making the mirror job also
+  prepare the cache when the mirror is off would fix it.
+- **A zip entry is stored, not compressed** (stored deflate blocks, since the PDF's images are compressed
+  already); the raw `.qpg`/PNG entries are as before.
+- **Caps are Linux only** (the host build and the simulator apply none); `RLIMIT_AS` for the share server's render
+  children is a flat 128 MiB over their start: a zip of a notebook with a very big raw page may need more. A child
+  whose `/proc/self/statm` does not read is capped at 1 GiB plus its margin (`CHILD_VM_UNREAD`), a ceiling above
+  any UI size at a fork rather than a measured one; Live view's viewer children get 64 MiB.
+- **Not done in the fix round (F2):** the UI's own foreground export when a fork fails (bgjob: "exporting in the
+  foreground") runs uncapped and may now wait on another mirror's lock; the cache's records are still read by
+  path, not through `fsview` (the security notes); a share download made twice (no room for a spool) fails when
+  the notebook changed between the makings rather than serving the second making.
+
 ## Done
 
+- 2.1.0-beta.2 (unreleased, v21b2/l10-fonts; the owner, 2026-11-04: "Custom font support/More fonts in the classic
+  theme", and 2026-11-09: "Fast track everything up till beta.3 into a beta.2."): your own fonts. `.ttf` and
+  `.otf` files copied into `grimoire/fonts` are checked by the sandboxed worker (skrifa reads them; every glyph
+  is outlined under the caps and drawn at the smallest and largest size) and listed in Settings > Font under
+  "Your fonts", each by its name drawn in itself or by why it is refused; a font that passed draws Classic's
+  text through stb's own rasterizer, with Terminess for what it lacks; bold by its weight axis, a Bold file or
+  overprint; `font=file:...` and `font_bold=` in settings.ini; the crash guard in `grimoire/.font-inuse`; the
+  glyph cache capped at 4 MB. Choices and what waits: Your own fonts (2.1.0-beta.2, lane L10), above.
 - 2.1.0 (unreleased, v21/fonts; the owner, 2026-11-04: "Custom font support/More fonts in the classic theme",
   and 2026-11-07: "can we fast track anything that might be cool alongside this that was planned for 2.1 or
   future?"): More fonts in Classic. Settings' Style row has a Font chip in Classic; the Font sheet offers
@@ -651,8 +986,9 @@ Ideas, not plans: each needs the owner's go and its own design. No code is taken
   Backspace auto-repeat, from the RC8 review's list. Delete held repeats on every keyboard after 400 ms, every
   65 ms, never queueing a refresh behind the panel (docs/DESIGN.md, Text and the keyboard). Left as it is: a
   hardware keyboard's held Backspace on a count pad deletes one digit, as `hidkeys_event` drops the kernel's
-  autorepeat for every key (text fields take no typed keys at all, only Esc); repeating it would let autorepeat
-  into the path every shortcut shares, for a count of a few digits.
+  autorepeat for every key (text fields take no typed keys at all, only Esc; 2.1.0-beta.2 adds the arrows, Home,
+  End and Ctrl or Cmd with A, C, X and V, so a held arrow moves the caret one letter, see below); repeating it
+  would let autorepeat into the path every shortcut shares, for a count of a few digits.
 - 2.0.0-beta.2 (unreleased, claude/b3-pv3; the owner's rulings of 2026-11-03, verbatim): (a) "The graph button if
   there is to be one shouldn't be at the top -- we had good visual soundness with 5 icons. For now just the drag
   to summon on the main menu." The Library's top bar is back to its five icons (Exit, Settings, Share, Folder,
@@ -824,3 +1160,30 @@ Ideas, not plans: each needs the owner's go and its own design. No code is taken
   the panel's process and inherits the panel's Seyes factor (bgjob.rs, paper.rs seyes_scale), so the export
   draws at the editor's scale. What is left is to find the export's pages that a current kept drawing can stand
   for (same size, same layers) and read them back instead of drawing their strokes (above: 51 s at each close).
+
+## The file picker (2.1.0-beta.2, lane L8): what waits
+
+- **A pick that waits**: fixed in the fix round (H2). The `waiting` mark is queued by the first scan that takes the
+  lock afresh, and the Library says so when a pick has to wait ("Another import is still going. This one starts
+  after it.").
+- **The Loading notice after Back during a slow listing** is cleared once any folder is read (the fix round, M18):
+  checked by reading only; a test needs a listing slower than a second in the headless runner.
+- **The picker's UI-thread work** (the fix round, Low): entries of no known kind are stat-ed in 20 ms slices before
+  the rows are built; the Import place's folder rows are listed every 5 s, the PDF rows as the import's progress
+  changes; "has notes" reads the notebooks' keys once a session (one small read for each notebook without
+  `source=`, at the first PDF row, on the UI thread). None of it is timed on the Scribe (TESTING.md, L8 check 2).
+- **Folder rows count their pictures by listing the folder** (on the idle tick, one folder a tick, at most 200 ms
+  each) to show "%d pictures" and to offer Import %d pictures as notebook. On a big `documents/` of big folders over
+  FUSE that is unmeasured: TESTING.md has the timing check. A cheaper rule (count only when the card opens) is
+  one line in `Browser::work` if the Scribe says so.
+- **Pictures as files, fonts, the path bar, Go to, Sort, Show, View, Covers, item cards on every file, Rename,
+  Trash, Set as home, previews and "Making previews..."** are 2.2 (L11), as the plan has them; `PickKind` and
+  `PickSpec` are ready for Picture and Font.
+- **A PDF being imported still offers Import as notebook** on its card in the Import place; a second tap while it
+  runs is `AlreadyRunning` and says nothing (its row says Waiting or Importing).
+- **A picked folder's import has no progress** (the picture import never had: its row says Waiting until the
+  notebook appears).
+- **Names that are not UTF-8** are left out of the picker and counted in the log line ("N names left out"):
+  the job queue and the screens take paths as text.
+- **Not run anywhere but the headless runner**: `rust/tests/test_browser.rs` plants the odd name where the file
+  system takes one (not on macOS); the Scribe's checks are in TESTING.md.

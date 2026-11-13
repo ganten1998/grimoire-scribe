@@ -23,25 +23,28 @@ tap library font
 wait 50
 expect library.sheet is font
 expect library.font.pick is terminess
+# (no font of the owner's own: the sheet says where to copy one)
+expect library.font.rows is 0
+expect library.font.sample is family
 shot 02-font-terminess
 expect display.presents not -1
 tap library font.atkinson
 wait 50
 expect library.font.pick is atkinson
 expect font is terminess
-expect display.presents has ui 106 566 1648 600
+expect display.presents has ui 106 437 1648 636
 shot 03-font-atkinson
 expect display.presents not -1
 tap library font.noto-sans
 wait 50
 expect library.font.pick is noto-sans
-expect display.presents has ui 106 566 1648 746
+expect display.presents has ui 106 437 1648 782
 shot 04-font-noto-sans
 expect display.presents not -1
 tap library font.literata
 wait 50
 expect library.font.pick is literata
-expect display.presents has ui 106 566 1648 892
+expect display.presents has ui 106 437 1648 928
 shot 05-font-literata
 rotate 1
 wait 100

@@ -24,10 +24,16 @@ grimoire/app/BUILD_ID, CAPABILITIES   the build unpacked there; what the launche
 grimoire/app/koreader/grimoire.koplugin   KOReader's Grimoire plugin, as the app carries it
 grimoire/app/licenses/         the licenses of the fonts and code in the app
 grimoire/notebooks/<id>/notebook.ini, p<N>.qpg, thumb.pgm   (the format: docs/FORMAT.md)
+grimoire/notebooks/<id>/doclinks.ini   the links a PDF brought (a planner's tabs), apart from links.ini
+grimoire/import/.book/links.txt   the links of a book's pages, sent by the KOReader plugin with the pages
 grimoire/settings.ini, folders.ini, sleep.pgm, grimoire.log
 grimoire/.passcode-paused      legacy beta.1 marker, consumed for its recovery notice
 grimoire/.passcode-left-off    counts the starts told that a restart left the passcode off
 grimoire/.koplugin-installed   the build whose plugin went into KOReader, or "removed"
+grimoire/fonts/                font files you copy in for Classic's text (2.1.0-beta.2), with a README.txt
+grimoire/fonts/.cache/         what the background check found of each: verdict, preview, marks (deletable)
+grimoire/.font-inuse           the crash guard of a font of yours: there from before its first use in a
+                               session until a screen drawn with it is on the panel, and while it has a strike
 grimoire/trash/                deleted notebooks and pages
 grimoire/PDFs/                 PDF mirror (USB road); kept out of documents/ so the Kindle never indexes it
 ```
@@ -153,6 +159,12 @@ note that Grimoire rewrites those files) and Reset pen calibration (after a conf
 `grimoire/app/grimoire.sh --reset-calibration`), and KOReader's gestures get an Open Grimoire
 action (`grimoire_open`). Its words are its own, since KOReader's catalogs do not have them:
 English, Spanish and Japanese, picked by KOReader's language setting, English for any other.
+
+**Links through KOReader (2.1.0-beta.2).** Open this book in Grimoire also sends the PDF's internal links (a
+planner's tabs), to a launcher whose Capabilities line says `links`: KOReader's `getPageLinks` for the pages it
+draws in this run, and once per book (until the notebook's `source.ini` says `links=1`) for the pages Grimoire
+already holds, so an Open this book costs no page opens it does not need after the first. They arrive as
+`import/.book/links.txt`, and Grimoire builds `doclinks.ini` from them (docs/FORMAT.md, Links from KOReader).
 
 **How it gets into KOReader.** A fresh installation leaves KOReader untouched. Use Library >
 Settings > KOReader > Install / update Grimoire plugin, or manually copy the ZIP's
@@ -393,7 +405,8 @@ it charges), and the battery's percent. Tapping the indicator, or its corner aga
 It is on the notebook page and nowhere else: not on the Library, Settings, Share or Pen feel, and not
 while a sheet, a menu, the Links bar, Link to..., a link's long-press card, Find, a keyboard or the Pages view is in front of the page, so it
 never gets in the way of another screen. The toolbar, or a link the way a finger tap would follow it,
-keeps its own tap, except that a link in the corner is not followed (the corner's tap is the clock's).
+keeps its own tap, except that one of your own links in the corner is not followed (the corner's tap is the clock's);
+a document link (a planner's tab) under the corner is followed, and the clock's tap works where none lies.
 
 One tap is one toggle, at once: the tap is decided when the finger lifts (it went down in the corner and lifts in it,
 or within 5 mm of where it landed, in under 0.8 second; the path between is not asked, so a slow, hard press
@@ -440,6 +453,93 @@ gives it its area, and the ring stays on the page as ink. Deleting a link never 
 to 2.0.0-beta.5 (f9d13f5) keeps those links working there through their ink; links made from beta.6 on
 have no ink, so they do nothing in beta.5 until you come back. The checks to run on the Kindle are in
 docs/TESTING.md (Index phase 2).
+
+## PDF imports (2.1.0-beta.2)
+
+Copy a PDF into `grimoire/import/` (see README). Device checks are in TESTING.md. What grimoire.log says (no
+file name, title or key ever appears in it: ids, page numbers, counts, timings, reasons):
+
+- `work: sandboxed (uid 62001, chroot, netns, no new privileges, seccomp, selinux enforcing|permissive|off)`:
+  for PDFs once a session, at the first worker; for pictures and fonts once a background job (each job is a
+  process of its own, and says it at its first worker). `work: not sandboxed (...)` anywhere the steps are skipped.
+- `import: <id>: N page(s), the PDF is N KB` (the probe), then for each slice `import: <id>: pages A to B of M in
+  T ms (MemAvailable K MB, N band(s))` (a page's time is T over the slice's pages), then `import: notebook <id>
+  made of N page(s), N picture(s), N blank`.
+- `import: N PDF(s) queued; left as they are: ...`: a scan's counts (not yet steady, tried out, imported,
+  skipped, held elsewhere, waiting for room).
+- `import: <id>: its last slice was cut off (K of 3)`, `... the job used more CPU than S s; it stops here (K of 3)
+  and goes on later`, `... it stopped 3 times without finishing; nothing imported`: an import that keeps not
+  finishing ends after three stops. `... the files of the pages from N are gone; they are made again`: a resume
+  found pages without their picture or page file. `... page N of M: the worker stalled right after a wake; tried
+  again (no strike)`.
+- `import: <id>: a copy of this PDF is being imported; this one waits for its notebook`, `import: N pick(s) that
+  waited for the lock queued`, `import: PDF import <id> was dropped from the queue; ...`, `import: the import
+  from an earlier run has ended`.
+- `import: <id>: page N of M: the worker died of signal S (strike K)` or `... stalled ...` or `... made call C,
+  which the sandbox does not allow`; after the second strike `... could not be read ...; it is blank`. On the
+  Kindle call 175 (`rt_sigprocmask`) is the worker's own abort (out of memory, or a panic), not a call to add;
+  any other number is one to add to `sandbox::s1::allow` with the spike's numbers. A worker that ends cleanly
+  makes no call outside the list (`--work` ends with `_exit`), so no `E sigsys 186` (`sigaltstack`) follows a
+  worker's normal end.
+- `import: <id>: the sandbox refused its step "<step>": no PDF is read and no try is counted`, or `import: <id>: a
+  worker could not be started (<why>): no try is counted`: either way the session imports no more PDFs.
+- Pictures (templates, photos, picture folders) are decoded by the same worker (`grimoire --work pic ...`), which
+  serves up to 32 pictures and is then replaced. `work: a picture's worker ended (the worker ended|the worker
+  stalled); a fresh worker tries it again`: one death is no verdict. `work: a picture's worker ended (...)` with
+  nothing after it (a second death in a row) and `... made call C, which the sandbox does not allow`: the
+  picture in hand is marked `.bad` (a template or photo); a picture folder's import fails and counts one try of
+  its three (as for a picture the memory could not hold): only a picture at fault refuses the folder until its
+  files change. `work: pictures wait (<why>): no sandboxed worker can be had, and the writer decodes none;
+  nothing is marked and no try is counted`: once a process (each background job is one), when no worker could be
+  had (`a sandbox step failed`, `step <name>`, `the worker did not start`, `the worker did not answer`, `the worker
+  is another build`, `no handshake`). No picture is decoded then (since 2.1.0-beta.2's fail-closed change): a
+  template or photo gets no preview (`templates: ... N left for a later scan (out of memory, a file that did not
+  read, or no sandboxed worker)`) and no `.bad`; a notebook's template picture is not made (`templates: <id>:
+  bg/<pic>.png could not be made (no sandboxed worker can be had)`); a picture folder's import ends with `import:
+  <id>: page N of M: no sandboxed worker can be had; nothing imported` and `import: <id>: no try is counted; a
+  later scan takes the folder again`. Off the Kindle, where the sandbox is not required, the same failure reads
+  `work: pictures decode in the writer (<why>); the sandbox is unavailable` and the pictures decode in the writer
+  as in 2.0. Only a picture that comes from outside Grimoire and KOReader goes this way; KOReader's own page PNGs
+  are still drawn by the UI.
+- `bg: PDF import of <id> (pid N)` once per slice; `bg: PDF import pid N done`.
+
+## Your own fonts (2.1.0-beta.2)
+
+Copy `.ttf` or `.otf` files into `grimoire/fonts/` (see README). Device checks are in TESTING.md. A font is
+read first by the sandboxed worker (`grimoire --work font ...`, the same loader as PDFs and pictures: its bytes
+come down a pipe, 24 MB at most; its address space is its image, the file and 64 MiB; a slice is 20 s of its
+own CPU time, then a fresh worker goes on from the glyph the last one reached, 10 minutes in all). The UI reads
+a font only once its verdict is there, and only if the bytes it reads hash to the verdict's. What grimoire.log
+says (never a file's name or a family's: counts, sizes, timings, reasons):
+
+- `bg: font check of a folder (pid N)`, then for each file not checked yet `fonts: file I of N passed: S KB, G
+  glyphs, K from Terminess, checked in T ms`, or `... refused (unreadable|no Latin letters|a web font)`, or `...
+  took too long to read (T ms)`, or `... the check's worker ended (<why>): marked unreadable`, or `... left for
+  later (out of memory)`; each job checks one font (`fonts: file I of N done; more are left for the next job`),
+  and the last one ends with `fonts: in the folder, P passed, R refused, D the worker died on, L left for later, T
+  too big or empty (N font file(s) in all)`, the whole folder's tally from the verdicts kept, and `bg: font check
+  pid N done`. A file under five seconds old, or changed between two looks, is left for later (it is
+  still being copied), and the Font sheet looks again after three seconds.
+- `fonts: no worker for the check (<why>); nothing is marked`, then `fonts: no worker can be had (see the lines
+  above): no font is checked until Grimoire starts again`: a sandbox step failed or the worker did not start.
+  No font is read, none is marked; the rows of unchecked fonts say "Unreadable font." for this session.
+- `fonts: the check ended badly; N file(s) marked unreadable`: the background job itself died on a file.
+- `font: custom font loaded: S KB in T ms, bold by its weight axis|a Bold file|overprint, K glyph(s) from
+  Terminess, VmRSS R kB`: the font settings.ini names (or the Font sheet's sample) was read and hashed. T and R
+  are the load time and the memory to compare in TESTING.md's device checks.
+- `font: your font is not used (<why>): Terminess`, once for each reason: its file is missing, it is being
+  checked, it did not pass its check, too little memory, it could not be loaded. `font: under 100 MB of memory
+  available: your font is not loaded`. `font: the Bold file would pass 32 MB of fonts loaded: bold is
+  overprinted`. `font: a font file is not the one that was checked: checking it again` (other bytes under the
+  same name, size and time).
+- `font: the last start did not finish its first screen with your font (N mark(s)): not drawn at this start`:
+  the crash guard found a mark armed (the font in use, its Bold file or the Font sheet's sample). `font: the guard's mark could not be written: your font is not used`.
+  `font: the guard file does not read; starting it afresh`.
+- `fonts: N file(s) left out (too many, or a name too long to keep)`: over 200 files, or a path over 200 bytes.
+
+To get back to Terminess by hand: delete the font's file, or delete the `font=file:...` line of
+`grimoire/settings.ini` while Grimoire is closed. Deleting `grimoire/.font-inuse` forgets a font's strikes;
+deleting `grimoire/fonts/.cache/` has every font checked again.
 
 ## Touch gestures and the touch trace
 
@@ -539,11 +639,14 @@ checks above. Synthetic tests cannot establish real-hand acceptance or accidenta
 1. Settings > Gestures > Index > Links: record a pen double-click. The card shows the name;
    tap Use with the nib. On the page two clicks open Links after the short pause. Try again
    and Cancel also accept normal nib taps. No recording puts ink on the page.
-2. Holding the button while hovering for 1.2 s clears the page. Triple-click has no default action.
+2. Holding the button while hovering for 1.2 s does nothing until a gesture is recorded for it
+   (2.1.0-beta.2; before, it cleared the page). Triple-click has no default action either.
    Bind click to Undo and
    check its 350 ms delay while double/triple is bound, then immediate release when both are clear.
-3. Hold Clear page's row to clear its gestures. Hold stops clearing after save
-   and restart. Reset restores hold only; keep unrelated touch, shape and folder/map behavior working.
+3. Record a hovering hold for Clear page: the hold clears the page and a toast says "Page cleared.
+   Undo brings it back."; Undo does. Hold Clear page's row to clear its gestures: the hold stops
+   clearing after save and restart. Reset leaves the pen button with no action; keep unrelated
+   touch, shape and folder/map behavior working.
 4. Record Hold eraser with a hold or drag. Erasing starts at the button press without a 1.2 s
    wait, lasts until release and then normal writing returns. A click attempt gives a readable
    refusal; it must not save a tap slot. Check coexistence with a key held for erasing.
@@ -944,8 +1047,8 @@ missing notebook or deleted destination page reports that it is unavailable. Exi
 continue to open the unified Index. Clear page and its Undo/Redo include cross-notebook link areas.
 The notebook toolbar's settings cog opens the main Settings menu; Done returns to the notebook.
 Settings' rows that open a screen or a sheet are, top down, Display, Pen sensitivity, Shortcuts and
-Calibrate pen and touch (the owner's order of 2026-11-04), and its bottom row KOReader, Pair, Gestures,
-Updates and Done. Shortcuts holds Enable shortcuts, each keyboard's or controller's own shortcuts,
+Calibrate pen and touch (the owner's order of 2026-11-04), and its bottom row KOReader, Pair, Wi-Fi (2.1.0-beta.2),
+Gestures, Updates and Done. Shortcuts holds Enable shortcuts, each keyboard's or controller's own shortcuts,
 Buttons... and Reload shortcuts.ini; Pair holds Bluetooth controller and Pair a controller...
 (docs/SHORTCUTS.md). Until 2.0.0-beta.2 both were one Controller sheet behind the bottom row's button.
 
@@ -956,11 +1059,25 @@ Library > Share > Wi-Fi (also on the Live view pairing card) opens the radio con
 Wi-Fi leaves airplane mode and asks the Kindle's existing Wi-Fi service to reconnect to a saved
 network. Radio-on and connected are shown separately; the Share address and QR code appear only
 when the system has an address. Add a new network or change its password in Kindle settings or
-KOReader's normal network menu. Grimoire does not read, replace or log saved network credentials.
+KOReader's normal network menu. Grimoire does not replace or log saved network credentials, and none reaches
+the app (the helper keeps only the networks' names: below).
+
+Settings > Wi-Fi (2.1.0-beta.2, issue #40) has the same radio button (Retry when the state is not
+known), a status line ("Connected to <name>", "Connecting to <name>...", "Could not connect to
+<name>.") and the networks the Kindle has saved, the one connected to first and checked, seven a
+page with More networks for the next. A tap on a network asks the Kindle's Wi-Fi service to connect
+to it, turning the radio on first if it is off. The sheet then reads the network connected to every
+2 s, and the switch has worked once a read names that network; it has failed when the helper refuses
+it or after 45 s without it. Grimoire switches nothing back after a failure: the Kindle's own service
+decides what it joins next. The sheet reads only while it is up: the radio, the network and the saved
+networks as it opens (once more when the radio comes on, for a service that lists them only then),
+then the network connected to while a switch is under way, or for 45 s after a tap while the radio is
+on with no connection. Switching away from a network disconnects Wi-Fi SSH, sharing and Live view on it.
 
 Turn off Wi-Fi disconnects Wi-Fi SSH, sharing and Live view. It leaves notebooks usable locally.
-The app changes radio state only after an explicit button press, preserves that choice when it
-closes, and never restarts network services or changes firewall, boot or update settings.
+The app changes radio state or the network only after an explicit button press, preserves that
+choice when it closes (a switch under way is let finish), and never restarts network services or
+changes firewall, boot or update settings.
 
 The Grimoire KOReader handoff plugin no longer changes Wi-Fi at startup or duplicates the network
 menu. Use KOReader's normal network controls to enable the shared Kindle radio and choose a network.
@@ -968,12 +1085,33 @@ The retired `grimoire_wifi_on_start` setting has no effect. Grimoire's Share con
 radio controls; they cannot connect without an available network and suitable credentials. Update
 the installed Grimoire plugin and restart KOReader to remove the old menu entries.
 
-The standalone helper uses only com.lab126.cmd/wirelessEnable and com.lab126.wifid/enable,
-matching KOReader's Kindle backend. It refuses unknown radio properties before writing, checks
-the properties again afterward, and reports failed or partial changes. A parent job bounds the
-helper to 12 seconds and kills only its own helper process group if it stalls. Status polling is
-limited to the visible Wi-Fi dialog, and stops after connecting, switching off or 45 seconds;
-Retry checks again. Physical airplane-mode transitions remain a device acceptance check.
+The standalone helper (`app/wifi.sh`) matches KOReader's Kindle backend. The radio uses only
+com.lab126.cmd/wirelessEnable and com.lab126.wifid/enable. It refuses unknown radio properties before
+writing, checks the properties again afterward, and reports failed or partial changes. The networks
+come from wifid's hasharray properties `currentEssid` (the network connected to, read only while
+cmState is CONNECTED) and `profileData` (the saved networks), read with `lipc-hash-prop` and an empty
+hasharray in, as KOReader reads them; a switch is `lipc-set-prop -s com.lab126.cmd ensureConnection
+"wifi:<essid>"`, as KOReader's network menu does when a network is picked, and the helper refuses any
+name that is not among the saved networks before it changes anything. Nothing creates, changes or
+deletes a profile.
+
+profileData's answer holds each saved network's password. It goes from lipc-hash-prop straight into
+a small awk reader inside the helper that keeps the essid values and nothing else: no password reaches
+a variable, a file, the helper's output, Grimoire's memory or a log. The reader knows one format
+(`key = "value"`, `"key": "value"` or `key: "value"`, quoted values with backslash escapes, bare
+numbers, and braces, brackets, commas and words around them); any unquoted value, a password's among
+them, makes it give no name at all, and the sheet says "Saved networks could not be read." with the
+radio controls still there. A name with a backslash (an escape it cannot undo), a control character or
+more than 32 bytes is left out. Names travel to Grimoire, and back for a switch, in hex, so no byte of
+one can break a line or be taken for code. Grimoire does not log network names (grimoire.log goes to
+public bug reports). The lipc-hash-prop output format, whether wifid lists the saved networks with the
+radio off, and whether ensureConnection switches away from a connected network are device probes and
+checks for 2.1.0-beta.2 (docs/TESTING.md).
+
+A parent job bounds the helper to 12 seconds and kills only its own helper process group if it
+stalls. Status polling is limited to the visible Wi-Fi dialog or sheet, and stops after connecting,
+switching off or 45 seconds; Retry checks again. Physical airplane-mode transitions remain a device
+acceptance check.
 
 
 ## Developing on the device

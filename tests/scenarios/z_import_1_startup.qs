@@ -1,6 +1,7 @@
 # settings: status_mode=1
 # A folder of page pictures in grimoire/import/ (copied in over USB while Grimoire was closed)
-# becomes a notebook at startup, in the background: a toast says so and the Library shows it. Its
+# becomes a notebook at startup, in the background: the Library shows its card, so no toast says so
+# (D20, as for a PDF; the toast is for an import whose card is not on the screen in front). Its
 # pages are the pictures in the natural order of their names (page-1, page-2, page-10; notes.txt
 # is no picture), each a document page, and a page added after the last one is blank. A template
 # copied into grimoire/templates/ waits there for the Templates sheet.
@@ -8,12 +9,12 @@
 # copy: tests/fixtures/scen-templates templates
 # pdfs: 1
 # The import takes about a second on a quiet machine and longer on a busy one: waitbg waits for it
-# (and for the templates' previews) to end, which puts its toast up for 8 s.
+# (and for the templates' previews) to end.
 # rust-only
 waitbg
 wait 300
 shot 01-library-imported
-expect toast is Imported notebook (3 pages).
+expect toast not Imported notebook (3 pages).
 expect screen is library
 expect library.items is 1
 expect library.card.1 is thumb

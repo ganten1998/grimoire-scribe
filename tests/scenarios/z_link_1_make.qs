@@ -1,5 +1,6 @@
 # rust-only
 # root: z_bar_0_make
+# copy: tests/fixtures/penbutton/hold-clear .
 # env: GRIMOIRE_CHECK_FIT=1
 # Making a link without ink (PHASE2 6): the strip, the dashed lasso, Link to... docked away from the area, a
 # chip that picks, undo and redo, the top dock, Cancel, a zoomed view, Choose from the pages... and sideways.
@@ -15,7 +16,8 @@ expect editor.strip is new
 expect editor.link_mode is 1
 expect editor.linkto is 0
 shot 01-strip
-# While selecting a link, button holds and clicks never clear the ordinary ink.
+# While selecting a link, button holds and clicks never clear the ordinary ink (the hold given Clear page:
+# the copy above; no pen gesture is built in since 2.1.0-beta.2).
 pen hover 900 1800
 side on
 wait 1300

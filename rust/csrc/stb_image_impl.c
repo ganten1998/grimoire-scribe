@@ -49,3 +49,7 @@ size_t grimoire_stbi_jpeg_size(void) { return sizeof(stbi__jpeg); }
 // ffi_stb.rs keeps room for an stbtt_fontinfo in Rust's memory: a test holds it to this size.
 #include "stb_truetype.h"
 size_t grimoire_stbtt_fontinfo_size(void) { return sizeof(stbtt_fontinfo); }
+
+// ffi_stb.rs declares stbtt_vertex and stbtt__bitmap for stbtt_Rasterize: a test holds them to these sizes.
+size_t grimoire_stbtt_vertex_size(void) { return sizeof(stbtt_vertex); }
+size_t grimoire_stbtt_bitmap_size(void) { return sizeof(stbtt__bitmap); }

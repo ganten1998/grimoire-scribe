@@ -1003,10 +1003,17 @@ fn gestures_and_record_card_strings_fit() {
             }
             let footer = tr("One stroke, without lifting. Two turns or a loop.");
             check!(font_measure(FontFace::Regular, 34.0, footer) <= 1312);
-            // Three buttons in the sheet's 1312 px inner width, with two 20 px gaps.
-            // ui_button reserves 16 px inside the cell; no icon appears above the word.
-            for source in ["Use", "Try again", "Cancel"] {
-                check!(font_measure(FontFace::Caps, 34.0, tr(source)) <= 408);
+            // Four buttons in the sheet's 1312 px inner width, with three 20 px gaps (2.1.0-beta.2:
+            // Disable joined Use, Try again and Cancel). ui_button reserves 16 px inside the cell.
+            for source in ["Use", "Try again", "Disable", "Cancel"] {
+                let width = font_measure(FontFace::Caps, 34.0, tr(source));
+                if width > 297 {
+                    eprintln!("  {} {:?}: record card button {:?} is {} px, room 297", language, theme, tr(source), width);
+                }
+                check!(width <= 297);
+                if language == "es" {
+                    check!(tr(source) != source);
+                }
             }
         }
     }

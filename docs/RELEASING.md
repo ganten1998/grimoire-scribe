@@ -30,10 +30,13 @@ them.
 
 ## Before the tag
 
-1. **One branch, one commit.** Merge everything the release holds. Betas have been tagged on the
-   branch that built them while `main` stayed on the last stable release (v2.0.0-beta.3), and once
-   `main` was moved to the tag (v2.0.0-beta.1); which one is the owner's call. The workflow checks
-   out the tag, so either works. A stable release goes to `main` first, on both remotes.
+1. **One branch, one commit.** Merge everything the release holds. Since 2026-11-12 (#57) `main` is
+   the one line: finished work lands there through pull requests, and a release branch is cut from
+   `main` (`release/VERSION`), so the bump, What's new and TESTING commits are made there and merged
+   back into `main` once the release is out. (Before, betas were tagged on the branch that built them
+   while `main` stayed on the last stable release, or `main` was moved to the tag.) The workflow checks
+   out the tag, so the branch it sits on does not matter to it. A stable release goes to `main` first,
+   on both remotes.
 
 2. **The toolchain is the workflow's.** The three versions at the top of the workflow
    (`RUST_VERSION`, `ZIG_VERSION`, `CARGO_ZIGBUILD_VERSION`) must be what the Mac builds with, or
@@ -57,6 +60,11 @@ them.
      curl -s -A 'grimoire-release' "https://crates.io/api/v1/crates/$c" | python3 -I -c 'import json, sys; v = json.load(sys.stdin)["version"]; print(v["crate"], v["num"], v["created_at"][:10])'
    done)
    ```
+
+   `tools/check-crate-dates.py --tag-date YYYY-MM-DD` (the day the tag will be made) does the same for every
+   crate in the lock, lists those younger than two weeks at that date with the newest version old enough
+   and the `cargo update` line for each, and exits 1 if there are any. `cargo deny check` (the deny job and
+   `rust/deny.toml`) holds the licenses, the versions that appear twice and the sources.
 
    A crate that is younger goes back to its newest version older than that:
    `(cd rust && cargo update -p CRATE --precise VERSION)`, then the gate again. A crate is only ever
@@ -211,12 +219,10 @@ would publish. The usual causes are a different rustc, zig or cargo-zigbuild ver
 crate in `Cargo.lock`, or a path or environment that reached the binary (tests/repro_check.sh
 looks for the last kind). Fix the cause, gate, test again.
 
-The Rust workflow's first runs on GitHub were for 2.0.0-beta.2 (2026-11-05): the dry run passed and CI's files
-matched the tested bundle byte for byte, but the release run ended green with its publish job skipped (its
-condition had no status function, so the skipped docs job upstream skipped it). The files and the feed were then
-published by hand from that run's `grimoire-release` artifact, as the publish job does it. The condition is fixed;
-the next release is its first real run, so check the release's files and the `kpm` branch after it, and delete
-this paragraph once a publish job has run.
+A job that fails on the runner rather than on the code (a timing check on a busy runner, or "The job was not
+acquired by Runner" when GitHub has no macOS runner free) is run again alone, with the files of the first attempt
+kept: `gh run rerun RUN --failed -R ganten1998/grimoire-scribe`. A check that fails a second time is a failure.
+The publish job's first real run was 2.1.0-beta.2's (2026-11-12): it uploaded the files and wrote the preview feed.
 
 ## Tag and publish
 

@@ -8,8 +8,8 @@
 wait 200
 tap 1535 95
 wait 100
-expect library.ui_at.890.1930 is gestures
-pentap 890 1930
+expect library.ui_at.1000.1930 is gestures
+pentap 1000 1930
 wait 100
 shot p6-gestures
 rotate 1
@@ -126,8 +126,8 @@ wait 100
 shot p6-pan-click-refusal-sideways
 rotate 0
 wait 100
-expect library.ui_at.930.1650 is record.retry
-pentap 930 1650
+expect library.ui_at.763.1650 is record.retry
+pentap 763 1650
 wait 100
 side on
 wait 1300
@@ -140,8 +140,8 @@ wait 100
 shot p6-pan-hold-refusal-sideways
 rotate 0
 wait 100
-expect library.ui_at.930.1650 is record.retry
-pentap 930 1650
+expect library.ui_at.763.1650 is record.retry
+pentap 763 1650
 wait 100
 side on
 pen down 800 1100 0.6
@@ -175,8 +175,8 @@ wait 100
 shot p6-zoom-click-refusal-sideways
 rotate 0
 wait 100
-expect library.ui_at.930.1650 is record.retry
-pentap 930 1650
+expect library.ui_at.763.1650 is record.retry
+pentap 763 1650
 wait 100
 side on
 wait 1300
@@ -189,8 +189,8 @@ wait 100
 shot p6-zoom-hold-refusal-sideways
 rotate 0
 wait 100
-expect library.ui_at.930.1650 is record.retry
-pentap 930 1650
+expect library.ui_at.763.1650 is record.retry
+pentap 763 1650
 wait 100
 side on
 pen down 800 1100 0.6

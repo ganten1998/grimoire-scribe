@@ -86,6 +86,11 @@ pub(super) struct SelMode {
     /// the bar, screen px, and its buttons
     pub(super) bar: Rect,
     pub(super) btns: Vec<(Rect, SelBtn)>,
+    /// a bar button under the contact that came down on it (its rect and what it does): shown pressed until
+    /// the lift, which acts on it (as the panel's buttons; issue #50: Copy gave no feedback at all), and put
+    /// back as it was when the lift is a cancel or has left it
+    pressed: Option<(Rect, SelBtn)>,
+    press: Press,
     /// where the bar was before it moved, still to be drawn over (the next redraw takes it)
     stale: Rect,
     /// Select mode was entered by a pen button held (its hold or drag bound to `select`), and whether it
@@ -615,6 +620,7 @@ pub(super) fn sel_draw(a: &mut App, r: Rect) {
     canvas_set_clip(&mut a.screen, r);
     let s = ed_ref(a);
     let (bar, btns, nlinks) = (s.sel.bar, s.sel.btns.clone(), s.sel.links.len());
+    let pressed = s.sel.pressed.map(|(pr, _)| pr);
     if !hidden && rect_overlaps(r, bar) {
         let c = &mut a.screen;
         ui_frame(c, bar, ui_px(24.0), 255, true, 0);
@@ -626,7 +632,16 @@ pub(super) fn sel_draw(a: &mut App, r: Rect) {
                 // (shown so the writer sees the links go along before acting).
                 label = format!("{} ({})", label, cformat!(ng_("%d link", "%d links", nlinks as i64), nlinks as i32));
             }
-            ui_button(c, *br, IconKind::None, &label, if *b == SelBtn::Done { ButtonStyle::Primary } else { ButtonStyle::Plain });
+            // (the one a contact holds drawn as the panel's pressed buttons are: its tap answers at once,
+            // and a draw made while it is held keeps the look -- issue #50)
+            let st = if pressed == Some(*br) {
+                ButtonStyle::Selected
+            } else if *b == SelBtn::Done {
+                ButtonStyle::Primary
+            } else {
+                ButtonStyle::Plain
+            };
+            ui_button(c, *br, IconKind::None, &label, st);
         }
     }
     a.screen.clip = clip;
@@ -730,9 +745,11 @@ pub(super) fn sel_off(a: &mut App) {
     if sel_ref(a).state == SelState::Off {
         return;
     }
+    // (a drag's outline_rect: every place it showed the outline and the bar by DU, drawn again in grays;
+    // its newest place counted as DU wear that the grays cannot wipe)
+    let swept = take_outline_wear(a);
     let m = sel_ref(a);
-    // (a drag's outline_rect: every place it showed the outline and the bar by DU, drawn again in grays)
-    let r = rect_union(rect_union(rect_union(rect_union(overlay_rect(a), m.lasso_rect), m.stale), m.preview_rect), m.outline_rect);
+    let r = rect_union(rect_union(rect_union(rect_union(overlay_rect(a), m.lasso_rect), m.stale), m.preview_rect), swept);
     let s = ed(a);
     if s.owner == Owner::Select {
         s.owner = Owner::None;
@@ -751,7 +768,8 @@ pub(super) fn sel_deselect(a: &mut App) {
     if !matches!(st, SelState::Selected | SelState::Dragging) {
         return;
     }
-    let r = rect_union(overlay_rect(a), std::mem::take(&mut ed(a).sel.outline_rect));
+    let swept = take_outline_wear(a);
+    let r = rect_union(overlay_rect(a), swept);
     let s = ed(a);
     s.sel.state = SelState::Armed;
     s.sel.ids.clear();
@@ -829,9 +847,13 @@ pub(super) fn sel_down(a: &mut App, ev: &InEvent, pen: bool) {
     let (x, y) = (ev.x as i32, ev.y as i32);
     let s = ed(a);
     s.owner = Owner::Select;
-    if let Some(&(_, b)) = s.sel.btns.iter().find(|(r, _)| rect_contains(*r, x, y)) {
-        s.owner = Owner::Select; // (the rest of the contact is swallowed)
-        sel_button(a, b);
+    if let Some(&(r, b)) = s.sel.btns.iter().find(|(r, _)| rect_contains(*r, x, y)) {
+        // The press shows at once (the panel's buttons' pressed look, a DU of its own) and acts at the
+        // lift, so a button that changes nothing visible (Copy) still answers the tap (issue #50).
+        // (the rest of the contact is swallowed)
+        press_begin(&mut s.sel.press, ev.x, ev.y, ev.t_ms);
+        s.sel.pressed = Some((r, b));
+        bar_press_show(a, r);
         return;
     }
     if rect_contains(s.sel.bar, x, y) {
@@ -928,6 +950,10 @@ fn lasso_begin_at(s: &mut EditorState, px: f32, py: f32, finger: bool, t: u32, d
 
 /// The rest of a contact Select mode owns.
 pub(super) fn sel_pointer(a: &mut App, ph: i32, ev: &InEvent) {
+    if sel_ref(a).pressed.is_some() {
+        button_pointer(a, ph, ev);
+        return;
+    }
     match sel_ref(a).state {
         SelState::Lasso => {
             if sel_ref(a).finger && ev.value & TOUCH_F_BROAD != 0 {
@@ -964,6 +990,42 @@ pub(super) fn sel_pointer(a: &mut App, ph: i32, ev: &InEvent) {
     if ph == 2 {
         ed(a).owner = Owner::None;
     }
+}
+
+/// The rest of a contact on a bar button: its press stays shown until the lift, which puts the button
+/// back as it was (a Fast refresh when the contact was cancelled, a Ui one otherwise) and then acts on it
+/// when the lift is on the button and was no drag away from it -- the panel's buttons' rule, so the bar
+/// answers a tap the same way whatever it does.
+fn button_pointer(a: &mut App, ph: i32, ev: &InEvent) {
+    let Some((r, b)) = sel_ref(a).pressed else { return };
+    press_move(&mut ed(a).sel.press, ev.x, ev.y);
+    if ph == 1 {
+        return;
+    }
+    let p = ed(a).sel.press;
+    let cancelled = touch_cancelled(ev);
+    let on = rect_contains(r, ev.x as i32, ev.y as i32);
+    // (the pressed look taken off before what the button does draws from it: a Fast one when a second
+    // finger or the pen took the contact, as the panel's cancelled presses go)
+    ed(a).sel.pressed = None;
+    redraw(a, r, if cancelled { RefreshMode::Fast } else { RefreshMode::Ui });
+    if !cancelled && on && press_is_tap(&p, r) {
+        sel_button(a, b);
+    }
+    // (the owner_pointer reset the other Select contacts get at their lift, which this branch returns before)
+    ed(a).owner = Owner::None;
+}
+
+/// A bar button's pressed look, shown now: the button drawn as the panel's pressed buttons are (the
+/// draw reads `pressed`) and its rect sent as a Fast refresh, so a tap answers as a panel button's does
+/// even when what it does changes nothing on the screen (Copy: issue #50).
+fn bar_press_show(a: &mut App, r: Rect) {
+    if rect_is_empty(r) {
+        return;
+    }
+    compose(a, r);
+    live_push(&a.screen, r);
+    display_present(&a.screen, r, RefreshMode::Fast);
 }
 
 /// The lasso ends with nothing selected or pasted: its dashes (and a finger's ring) drawn away.
@@ -1622,6 +1684,7 @@ fn resize_begin(a: &mut App, now: u32) {
     }
     draw_outline(a, (0, 0), r);
     draw_resize_handles(a, (0, 0), r);
+    live_show(a, &[r]);
     app_invalidate(a, r, RefreshMode::Fast);
     app_flush(a);
     let m = &mut ed(a).sel;
@@ -1663,6 +1726,7 @@ fn resize_show(a: &mut App, now: u32) {
     }
     draw_outline(a, (0, 0), r);
     draw_resize_handles(a, (0, 0), r);
+    live_show(a, &[r]);
     app_invalidate(a, r, RefreshMode::Fast);
     app_flush(a);
     let m = &mut ed(a).sel;
@@ -1830,6 +1894,21 @@ fn drag_show(a: &mut App, now: u32) {
     du_wear_add(&mut a.du_wear, gone, worn, now_ms());
 }
 
+/// A show's rects pushed to Live view in one frame before the panel's refreshes, cut to the page's part
+/// of the screen (the panel has its own layer): a browser never draws the old outline back strip by strip
+/// while the panel takes them one DU at a time (issue #50: Live view showed a drag's restored strips
+/// before the new place). The screen already holds everything the show draws.
+fn live_show(a: &App, rects: &[Rect]) {
+    if !live_on() {
+        return;
+    }
+    let all = rects.iter().fold(RECT_EMPTY, |u, &r| rect_union(u, r));
+    let all = rect_intersect(all, lasso_clip(a));
+    if !rect_is_empty(all) {
+        live_push(&a.screen, all);
+    }
+}
+
 /// A drag's rects refreshed by DU, each flushed on its own (the link card's border strips' way: one rect
 /// around them all would span the gray ink inside the box), two joined only when one rect over both
 /// covers no more than they do apart (a short move's strips overlap), at most DRAG_RECTS. They join the
@@ -1858,6 +1937,7 @@ fn drag_present(a: &mut App, mut v: Vec<Rect>, now: u32) {
     if !rect_is_empty(a.dirty) {
         app_flush(a); // (what was waiting goes in its own refresh, as it would have)
     }
+    live_show(a, &v);
     let mut px = 0i64;
     let mut all = RECT_EMPTY;
     for r in v {
@@ -1871,6 +1951,31 @@ fn drag_present(a: &mut App, mut v: Vec<Rect>, now: u32) {
     m.dv.shown_at = now;
     m.dv.shows += 1;
     m.dv.px += px;
+}
+
+/// The outline the drag (or resize) has shown by fast refreshes, taken for the lift: the screen rect it
+/// swept, with its newest place counted as DU wear. The lift draws the outline away in grays, but DU leaves
+/// its trace there, which only the wear's clean reaches; without this the newest outline stayed faintly on
+/// the panel after the selection was dropped (issue #50).
+fn take_outline_wear(a: &mut App) -> Rect {
+    let (state, handle, shown, rshown) = {
+        let m = sel_ref(a);
+        (m.state, m.resize_handle, m.dv.shown, m.resize_shown)
+    };
+    let swept = std::mem::take(&mut ed(a).sel.outline_rect);
+    if !rect_is_empty(swept) {
+        let worn = if state == SelState::Dragging {
+            if handle > 0 {
+                resize_ink(a, rshown)
+            } else {
+                shown.map_or(0, |off| outline_ink(a, off))
+            }
+        } else {
+            0
+        };
+        du_wear_add(&mut a.du_wear, swept, worn, now_ms());
+    }
+    swept
 }
 
 /// The drag's display ends (its lift, or a cancel): the log's line for it, and its copy of the screen goes.
@@ -1890,8 +1995,10 @@ fn drag_done(a: &mut App, cancelled: bool) {
         return;
     }
     let (dx, dy) = sel_ref(a).drag;
-    // (where the drag drew the outline and the bar on its way, as well as where it ends)
-    let before = rect_union(overlay_rect(a), std::mem::take(&mut ed(a).sel.outline_rect));
+    // (where the drag drew the outline and the bar on its way, as well as where it ends; its newest place
+    // counted as DU wear, so the clean reaches the trace the lift's grayscale refresh leaves)
+    let swept = take_outline_wear(a);
+    let before = rect_union(overlay_rect(a), swept);
     let s = ed(a);
     drag_end_view(&mut s.sel);
     s.sel.state = SelState::Selected;
@@ -1916,8 +2023,10 @@ fn resize_done(a: &mut App, cancelled: bool) {
         (m.resize_box0, m.box_, m.resize_handle, m.dv.shows)
     };
     qlog!("lasso: resize handle=%d from=%dx%d to=%dx%d shows=%u", handle, from.w, from.h, to.w, to.h, shows);
-    // (the outline where the resize last drew it, and where it ends: one refresh over both, as a drag's lift)
-    let before = rect_union(overlay_rect(a), std::mem::take(&mut ed(a).sel.outline_rect));
+    // (the outline where the resize last drew it, and where it ends: one refresh over both, as a drag's lift;
+    // its newest frame counted as DU wear, as a drag's)
+    let swept = take_outline_wear(a);
+    let before = rect_union(overlay_rect(a), swept);
     let s = ed(a);
     drag_end_view(&mut s.sel);
     s.sel.state = SelState::Selected;
@@ -1949,6 +2058,14 @@ fn sel_button(a: &mut App, b: SelBtn) {
 // ---- the gestures ----
 
 /// The links of page pid that are not carried: their seeds (a stroke with one leaves that link).
+// The page's links as seed holders for lasso_seeds: its own and, as stand-ins that only hold a seed, its document
+// links (a pasted stroke or link never takes a seed a document link has; the lasso never carries one).
+fn seed_holders(links: &[NavLink], dl: &DocLinks, pid: u32) -> Vec<NavLink> {
+    let mut v = links.to_vec();
+    v.extend(doclinks_of(dl, pid).iter().map(|l| NavLink { pid, seed: l.seed, ..Default::default() }));
+    v
+}
+
 fn staying_link_seeds(s: &EditorState, pid: u32, carried: &[NavLink]) -> HashSet<u32> {
     s.nav.links.iter().filter(|l| l.pid == pid && !carried.iter().any(|c| c.seed == l.seed)).map(|l| l.seed).collect()
 }
@@ -2152,7 +2269,7 @@ fn sel_place(a: &mut App, spot: Spot) {
     let busy = busy_layers(s, ih, ip);
     let page = s.hist[ip].page.as_deref().unwrap();
     let dst_links: Vec<NavLink> = s.nav.links.iter().filter(|l| l.pid == pid).copied().collect();
-    let (inkm, _) = lasso_seeds(&g, page, &dst_links, &[], &src_seeds, true);
+    let (inkm, _) = lasso_seeds(&g, page, &seed_holders(&dst_links, &s.dl, pid), &[], &src_seeds, true);
     let placed = match lasso_place(&mut s.page_canvas, &g, spot, &inkm, paper.as_ref().map(|(b, st)| (b, *st)), &busy, dpi) {
         Ok(placed) => placed,
         Err(e) => {
@@ -2518,7 +2635,7 @@ pub(super) fn sel_paste(a: &mut App, at: Option<(i32, i32)>) {
             keep
         });
     }
-    let (inkm, linkm) = lasso_seeds(&gl, page, &dst_links, &[], &HashSet::new(), false);
+    let (inkm, linkm) = lasso_seeds(&gl, page, &seed_holders(&dst_links, &s.dl, pid), &[], &HashSet::new(), false);
     let mut new_links: Vec<NavLink> = Vec::new();
     for l in &gl.links {
         let target = if g.src_nb != here { nav_target_into(l.target.as_str(), &g.src_nb, &s.nb).unwrap_or_default() } else { l.target.as_str().to_string() };

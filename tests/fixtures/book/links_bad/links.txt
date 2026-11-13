@@ -1,0 +1,4 @@
+# Grimoire: the links of a book's pages
+P 1860 2480
+L 1 2 200 300 400 300
+L one two three

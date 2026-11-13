@@ -295,8 +295,8 @@ fn replace_if_same(dir: &str, path: &str, was: &[u8], data: &[u8]) -> i32 {
         return -1;
     }
     let ctmp = cstr(&tmp);
-    // SAFETY: open reads the NUL-terminated path we own.
-    let fd = unsafe { libc::open(ctmp.as_ptr(), libc::O_WRONLY | libc::O_CREAT | libc::O_TRUNC, 0o644 as libc::c_uint) };
+    // (never through a planted <name>.compact.tmp link: util.rs open_rewrite_nofollow)
+    let fd = crate::util::open_rewrite_nofollow(&ctmp, 0o644);
     if fd < 0 {
         return -1;
     }

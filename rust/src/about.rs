@@ -997,7 +997,7 @@ thread_local! {
 /// orientation, look and font, not at every draw. Each of Classic's fonts sets the notes at its own
 /// widths, so a size found in one is not the size for another.
 fn note_set(md: &'static str, bl: &[Block], aw: i32, ah: i32) -> Fit {
-    let family = if gothic() { 0 } else { font_family() };
+    let family = if gothic() { 0 } else { font_look() };
     let key = (md.as_ptr() as usize, md.len(), aw, ah, gothic(), family, ui_text_size().to_bits());
     if let Some(f) = NOTE_FIT.with_borrow(|v| v.iter().find(|e| e.0 == key).map(|e| e.1)) {
         return f;

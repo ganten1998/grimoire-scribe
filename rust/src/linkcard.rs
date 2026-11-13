@@ -58,6 +58,10 @@ pub struct LinkCard {
     /// nav_link_page: a page index, NAV_TO_INDEX, or -1 (a page gone, another version's target)
     pub page: i32,
     pub readonly: bool,
+    /// the card of a document link's chip (a planner's tabs): read only, so it offers Rename the page and
+    /// nothing that edits a link (`doc_target`: the page they go to)
+    pub doc: bool,
+    pub doc_target: u32,
     pub from_bar: bool,
     pub rows: [CardRow; 4],
     pub nrows: usize,
@@ -187,6 +191,37 @@ pub fn linkcard_set(c: &mut LinkCard, pid: u32, seeds: &[u32], nb: &NotebookInfo
         tr("Delete link").to_string()
     };
     add(c, CardRow::Delete, true, delete);
+}
+
+/// The card of a document-link chip (D7a: read only in 2.1): the target page's name and one row, Rename the page
+/// (D3: the name is the page's, everywhere), which the page's name being savable enables. No Change where it
+/// goes, Redraw or Delete: a document link is the document's. `target` is the page id the links go to.
+pub fn linkcard_set_doc(c: &mut LinkCard, pid: u32, target: u32, nb: &NotebookInfo, nav: &Nav, from_bar: bool) {
+    let kb = std::mem::take(&mut c.kb);
+    let boxes = std::mem::take(&mut c.boxes);
+    *c = LinkCard { open: true, pid, doc: true, doc_target: target, from_bar, kb, boxes, ..Default::default() };
+    c.page = nb.page_ids.iter().position(|&p| p == target).map_or(-1, |i| i as i32);
+    c.target = FixedStr::from_str(&format!("p{target}"));
+    let name = if c.page >= 0 { nav_name(nav, target) } else { "" };
+    c.title = if c.page < 0 {
+        tr("Page not here").to_string()
+    } else if name.is_empty() {
+        cformat!(tr("Page %d"), c.page + 1)
+    } else {
+        name.to_string()
+    };
+    if c.page < 0 {
+        return;
+    }
+    let label = if name.is_empty() {
+        cformat!(tr("Name page %d..."), c.page + 1)
+    } else {
+        tr("Rename the page").to_string()
+    };
+    c.rows[0] = CardRow::Rename;
+    c.enabled[0] = nav.writable;
+    c.labels[0] = label;
+    c.nrows = 1;
 }
 
 /// The card from a Links bar row (PHASE2 8.10): above the bar, 16 px over it, in the held chip's column,
@@ -390,6 +425,11 @@ pub fn linkcard_hit_name(c: &LinkCard, x: i32, y: i32) -> String {
 /// closed), "links" (how many it acts on) and "border" (how many boxes carry the heavy border now). false for
 /// another key.
 pub fn linkcard_probe(c: &LinkCard, key: &str, out: &mut String, cap: usize) -> bool {
+    if key == "doc" {
+        // 1 for the card of a document-link chip (read only: Rename the page alone), 0 otherwise.
+        csnprintf!(out, cap, "%d", (c.open && c.doc) as i32);
+        return true;
+    }
     if key == "rows" {
         let mut v = String::new();
         if c.open && c.readonly {
