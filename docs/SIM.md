@@ -282,6 +282,8 @@ physical button bounce, e-ink appearance or owner success rates.
 `GRIMOIRE_SIM_NO_SERVICES=NAME,...` makes the simulator a platform that leaves the named device
 services to its system (`wifi`, `pairing`, `updates`, `koreader`, `calibration`: light.rs,
 `Services`), so Settings can be run without their rows. The scenario harness clears it between runs.
+`GRIMOIRE_SIM_NO_LIGHT=1` makes it a device without a front light: the Display sheet says so where
+its sliders would be, and Settings calls the row Display. The scenario harness clears it between runs.
 `GRIMOIRE_TOUCH_TUNE=v1` selects the old tuning table; otherwise the simulator and runner use
 the provisional `TG_TUNE`. The scenario harness clears both hooks between runs. Synthetic
 shapes and `tests/fixtures/touch/synthetic.txt` are regression inputs, not owner evidence.

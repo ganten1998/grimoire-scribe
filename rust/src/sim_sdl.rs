@@ -1042,8 +1042,9 @@ pub fn display_set_invert(on: bool) {
 
 // ---- light.h: the simulated front light and power service ----
 
+/// There is one, unless GRIMOIRE_SIM_NO_LIGHT is set (docs/SIM.md): a device without a front light.
 pub fn light_available() -> bool {
-    true
+    std::env::var_os("GRIMOIRE_SIM_NO_LIGHT").is_none()
 }
 pub fn light_refresh() {}
 pub fn light_get(intensity: &mut i32, warmth: &mut i32) {
