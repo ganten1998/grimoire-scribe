@@ -2493,7 +2493,10 @@ pub fn input_open(screen_w: i32, screen_h: i32, dpi: f32, pen: Option<&InputCali
         with(|st| st.raw_stall_ms = stall.max(0));
     }
     if std::env::var("GRIMOIRE_SIM_CLOCK").as_deref() == Ok("script") {
-        crate::util::sim_clock_set(Some(real_now_ms()));
+        // GRIMOIRE_SIM_UPTIME_MS: the scripted clock starts there, as on a machine up that long, in
+        // place of the host's own time since it started.
+        let start = std::env::var_os("GRIMOIRE_SIM_UPTIME_MS").map_or_else(real_now_ms, |v| atoi(v.as_bytes()).max(0) as u32);
+        crate::util::sim_clock_set(Some(start));
     }
     if let Some(late) = std::env::var_os("GRIMOIRE_SIM_LATE_MS") {
         let late = atoi(late.as_bytes()).max(0) as u32;
