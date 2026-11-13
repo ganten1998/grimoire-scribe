@@ -238,7 +238,11 @@ overlaps existing ink.
 - `SelState { Off, Armed, Lasso, Selected, Dragging }` beside `LmState`. It reuses `lasso_keep`
   (LASSO_MAX 4096), `lasso_screen_pt`, `draw_lasso` and `canvas_dither_poly`; no ink, no tool id.
 - Selected: a dithered box around the selection and its carried link areas (drawn dashed), and an
-  action bar: Copy, Cut, Delete, Paste (when the clipboard holds something), "n links". A pen or
+  action bar: Copy, Cut, Delete, Paste (when the clipboard holds something), "n links". A bar button
+  shows a pressed look at the down (one fast refresh of its rect, as a panel button's, kept by any draw
+  made while it is held) and acts at the lift when that is still on it and no drag away, so a button
+  that changes nothing visible (Copy) still answers the tap (issue #50); a cancelled contact puts it back
+  as it was and acts nothing. A pen or
   finger down inside the box drags; only the outline moves (DU), clamped to the page; the strokes
   move at release. A tap outside deselects; choosing a pen leaves Select mode. A long press on
   empty page in Select mode pastes there.

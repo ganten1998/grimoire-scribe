@@ -79,11 +79,12 @@ pen leave
 wait 400
 expect display.presents is
 expect editor.wear is 57
-# Delete: one grayscale refresh, nothing left over and nothing to clean.
+# Delete: its press answers at once on the button (a fast one, as a panel button's), then one grayscale
+# refresh of the page, nothing left over and nothing to clean.
 tap panel select.delete
 wait 300
 expect editor.strokes is 0
-expect display.presents is ui 10 220 1822 2220
+expect display.presents has ui 10 220 1822 2220
 expect display.stale.0.300.1650.2100 is 0
 expect editor.wear is 57
 expect editor.layers is ok

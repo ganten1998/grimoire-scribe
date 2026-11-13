@@ -147,6 +147,10 @@ struct State {
     /// Logical area pushed with DU (dithered) and not yet repainted in grayscale: the framebuffer
     /// there legitimately differs from the canvas, so the overwrite checks skip it.
     g_live_area: Rect,
+    /// A flashing GC16 (Clean or Full) was the last refresh and may still be on the panel: the next fast
+    /// refresh waits for it (a GC16 followed straight by a DU with no fence tears the first refresh:
+    /// FBInk's fbink_cmd.c beside the activity bar, and the lasso drag's first strips after a clean).
+    g_fence_gray: bool,
     /// display_skip_overlay
     g_overlay: Rect,
     /// display_skip_status
@@ -206,6 +210,7 @@ impl State {
             g_invert: false,
             g_live: false,
             g_live_area: RECT_EMPTY,
+            g_fence_gray: false,
             g_overlay: RECT_EMPTY,
             g_status: RECT_EMPTY,
         }
@@ -475,6 +480,26 @@ fn quiet_sent(marker: u32, gray: bool) {
     Q_CV.notify_one();
 }
 
+// Waits (bounded) until the standard updates the quiet thread took on have ended: the fence a fast refresh
+// needs after a flashing GC16. Only the quiet thread waits at the driver (a second waiter on one marker
+// sits out the driver's timeout), so this waits on its books. True when none is left (or none can be
+// waited for).
+fn quiet_wait_gray(max_ms: u32) -> bool {
+    let mut q = qlock();
+    if q.fd < 0 {
+        return true;
+    }
+    let t0 = now_ms();
+    while q.gray_n > 0 {
+        if now_ms().wrapping_sub(t0) >= max_ms {
+            return false;
+        }
+        let (nq, _) = Q_IDLE.wait_timeout(q, Duration::from_millis(2)).unwrap_or_else(|e| e.into_inner());
+        q = nq;
+    }
+    true
+}
+
 // No standard update can still be on the panel.
 fn quiet_now() -> bool {
     let q = qlock();
@@ -607,6 +632,7 @@ pub fn display_power_reset() {
         s.g_ink = LiveInk::default();
         s.g_frame_known = false;
         s.g_live_area = RECT_EMPTY;
+        s.g_fence_gray = false;
         s.last_fast_wait = false;
         if s.g_fd < 0 || !s.g_st.is_mtk {
             return;
@@ -1055,6 +1081,16 @@ pub fn display_present(screen: &Canvas, r: Rect, mode: RefreshMode) {
         if rect_is_empty(r) {
             return None;
         }
+        // A fast refresh right after a flashing GC16 meets the tear FBInk documents (a GC16 + DU in
+        // quick succession with no fence): wait for the clean to end first, unless this frame is a
+        // stroke's own live ink, whose latency must never wait. One fast refresh fences the clean; the
+        // rest of its burst follows.
+        if mode == RefreshMode::Fast && s.g_fence_gray && !s.g_ink.on {
+            s.g_fence_gray = false;
+            if !quiet_wait_gray(600) {
+                qlog!("display: a clean still on the panel after 600 ms; the fast refresh follows unfenced");
+            }
+        }
         // Pen mode only tolerates DU updates; anything else must leave it first (pen_leave: the only
         // wait, for the pen's last update, which grayscale settles find long done since they run after
         // a pause). No other wait for pending DU updates here: blocking stalls input reading, the
@@ -1110,6 +1146,9 @@ pub fn display_present(screen: &Canvas, r: Rect, mode: RefreshMode) {
         }
         let ret = send_refresh(s, r, mode, wfm, flashing);
         let marker = fbink_get_last_marker();
+        if ret >= 0 && (mode == RefreshMode::Clean || mode == RefreshMode::Full) {
+            s.g_fence_gray = true;
+        }
         if ret >= 0 {
             if s.g_pen_mode {
                 s.g_pen_marker = marker;
