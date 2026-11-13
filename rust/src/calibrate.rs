@@ -53,6 +53,30 @@ fn bar(a: &App, slot: i32) -> Rect {
     Rect { x: m, y: a.h / 2 + ui_px(260.0) + slot * (h + ui_px(30.0)), w: a.w - 2 * m, h }
 }
 
+/// A calibration bar without a button frame: a submenu's content is a list, not a column of
+/// bordered buttons. Save (primary) is filled, rounded; the others are plain text on the page.
+fn draw_calib_button(c: &mut Canvas, r: Rect, icon: IconKind, label: &str, primary: bool) {
+    if primary {
+        ui_frame(c, r, ui_px(16.0), 0, true, 0);
+    }
+    let fg = if primary { 255 } else { 0 };
+    if icon != IconKind::None {
+        let isz = r.h * 2 / 3;
+        ui_icon(c, icon, Rect::new(r.x + ui_px(24.0), r.y + (r.h - isz) / 2, isz, isz), fg);
+    }
+    ui_text(
+        c,
+        FontFace::Caps,
+        ui_text_size(),
+        ui_small_size(),
+        rect_inflate(r, -ui_px(20.0)),
+        label,
+        2,
+        true,
+        fg,
+    );
+}
+
 fn draw(a: &mut App) {
     let (aw, ah) = (a.w, a.h);
     let bars = [bar(a, 0), bar(a, 1), bar(a, 2)];
@@ -63,9 +87,11 @@ fn draw(a: &mut App) {
         let m = ui_px(60.0);
         // TRANSLATORS: calibration's three steps, a title each.
         let title = if st.phase == Phase::Pen { tr("Calibrate the pen") } else if st.phase == Phase::Touch { tr("Calibrate touch") } else { tr("Check it") };
-        // The same Settings frame every page has: Back at the top left, the step as the title.
+        // The same Settings frame every page has: Back at the top left, the step as the title, and
+        // the X at the top right (it cancels, as Back does).
         let page = crate::library::settings_page(c, aw, ah, title, true, false);
         hits_add(&mut st.hits, page.back, B_CANCEL, 0);
+        hits_add(&mut st.hits, page.close, B_CANCEL, 0);
         let mut sub = String::new();
         if st.phase == Phase::Verify {
             // TRANSLATORS: what to do at each step of calibration, under its title (1740 px at 44 px):
@@ -97,11 +123,11 @@ fn draw(a: &mut App) {
             let cancel = bars[0];
             // TRANSLATORS: calibration's buttons, bars across the screen (1708 px at 44 px). While the
             // pen is calibrated, a finger works them, and the pen while touch is.
-            ui_button(c, cancel, IconKind::None, if st.phase == Phase::Pen { tr("Cancel (tap with a finger)") } else { tr("Cancel") }, ButtonStyle::Plain);
+            draw_calib_button(c, cancel, IconKind::None, if st.phase == Phase::Pen { tr("Cancel (tap with a finger)") } else { tr("Cancel") }, false);
             hits_add(&mut st.hits, cancel, B_CANCEL, 0);
             if st.phase == Phase::Touch {
                 let skip = bars[1];
-                ui_button(c, skip, IconKind::None, tr("Touch was fine: skip (tap with the pen)"), ButtonStyle::Plain);
+                draw_calib_button(c, skip, IconKind::None, tr("Touch was fine: skip (tap with the pen)"), false);
                 hits_add(&mut st.hits, skip, B_SKIP, 0);
             }
         } else {
@@ -109,9 +135,9 @@ fn draw(a: &mut App) {
             ui_frame(c, rect_inflate(st.pad, ui_px(4.0)), ui_px(14.0), 0, false, ui_px(4.0));
             // (the C's slot++ for each: save, then redo, then cancel)
             let (save, redo, cancel) = (bars[0], bars[1], bars[2]);
-            ui_button(c, save, IconKind::Check, tr("Save"), ButtonStyle::Primary);
-            ui_button(c, redo, IconKind::None, tr("Start over"), ButtonStyle::Plain);
-            ui_button(c, cancel, IconKind::None, tr("Cancel (keep the old calibration)"), ButtonStyle::Plain);
+            draw_calib_button(c, save, IconKind::Check, tr("Save"), true);
+            draw_calib_button(c, redo, IconKind::None, tr("Start over"), false);
+            draw_calib_button(c, cancel, IconKind::None, tr("Cancel (keep the old calibration)"), false);
             hits_add(&mut st.hits, save, B_SAVE, 0);
             hits_add(&mut st.hits, redo, B_REDO, 0);
             hits_add(&mut st.hits, cancel, B_CANCEL, 0);

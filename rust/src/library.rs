@@ -206,11 +206,8 @@ struct Item {
 pub struct LibraryState {
     /// Exit Grimoire?'s highlight is on No (Left and Right move it; Enter presses it)
     exit_no: bool,
-    /// The Font sheet (2.1): the family highlighted (FONT_FAMILIES; the one in use as it opens), and
-    /// where its sample card and its rows were drawn (a tap on a row refreshes only those).
+    /// The Font sheet (2.1): the family in use (FONT_FAMILIES), and where its sample card was drawn.
     font_pick: usize,
-    font_sample: Rect,
-    font_rows: Vec<Rect>,
     /// The Font sheet's own fonts (2.1.0-beta.2): the files of grimoire/fonts as the sheet found them
     /// (userfonts_scan), the one highlighted (its path under the folder; "" while a family is: font_pick), the
     /// first shown of the page on show and how many a page holds, the rows drawn (each font's index and where),
@@ -220,7 +217,7 @@ pub struct LibraryState {
     font_first: usize,
     font_per_page: usize,
     font_own_rows: Vec<(usize, Rect)>,
-    /// a family was tapped on the sheet since it opened (Done then drops a font=file: that does not draw)
+    /// a family was tapped on the sheet since it opened (an apply then drops a font=file: that does not draw)
     font_picked: bool,
     font_sample_how: &'static str,
     fonts_looked_ms: u32,
@@ -236,8 +233,8 @@ pub struct LibraryState {
     settings_return_editor: bool,
     settings_painting: bool,
     settings_editor_fit: bool,
-    /// Settings' page: the category whose settings show (0 Display, 1 Pen Feel, 2 Calibration,
-    /// 3 Controller, 4 General; H_SET_CAT).
+    /// Settings' page: the category whose settings show (0 General, 1 Display, 2 Pen Feel,
+    /// 3 Calibration, 4 Controller; H_SET_CAT).
     settings_cat: i32,
     /// A screen Settings opened (Pen feel, Calibration) is returning to the Library: library_enter
     /// opens Settings again, as it was left.
@@ -2719,8 +2716,8 @@ fn upd_poll(a: &mut App) {
     }
 }
 
-/// A Settings submenu's full screen, as Pen feel's: Back and the title above a rule, the list's rows
-/// below (its own Done row left out: the page has Done at its foot) and Done at the foot.
+/// A Settings submenu's full screen: Back and the title above a rule, the list's rows below (its own
+/// Done row left out: the page has an X at its top right instead) and an X at the top right.
 fn draw_settings_menu(a: &mut App, title: &str, rows: &[MenuRow]) {
     let (aw, ah) = (a.w, a.h);
     let App {
@@ -2729,8 +2726,9 @@ fn draw_settings_menu(a: &mut App, title: &str, rows: &[MenuRow]) {
         ..
     } = a;
     let s = lib.as_deref_mut().unwrap();
-    let page = settings_page(c, aw, ah, title, true, true);
+    let page = settings_page(c, aw, ah, title, true, false);
     hits_add(&mut s.hits, page.back, H_SETTINGS_BACK, 0);
+    hits_add(&mut s.hits, page.close, H_SETTINGS_BACK, 0);
     let in_ = page.content;
     let shown: Vec<&MenuRow> = rows
         .iter()
@@ -2742,16 +2740,11 @@ fn draw_settings_menu(a: &mut App, title: &str, rows: &[MenuRow]) {
     let mut y = in_.y;
     for row in shown {
         let r = Rect::new(in_.x, y, in_.w, rh);
-        let bg = if row.st == ButtonStyle::Selected { 0 } else { 255 };
-        ui_frame(c, r, ui_px(16.0), bg, true, 0);
-        ui_frame(
-            c,
-            r,
-            ui_px(16.0),
-            if row.st == ButtonStyle::Disabled { 170 } else { 0 },
-            false,
-            if row.st == ButtonStyle::Primary { ui_px(6.0) } else { ui_px(2.0) },
-        );
+        // A submenu is a list, not a column of buttons: only the selection is filled (rounded), and
+        // no row has a border of its own.
+        if row.st == ButtonStyle::Selected {
+            ui_frame(c, r, ui_px(16.0), 0, true, 0);
+        }
         let fg: u8 = if row.st == ButtonStyle::Selected {
             255
         } else if row.st == ButtonStyle::Disabled {
@@ -2775,7 +2768,6 @@ fn draw_settings_menu(a: &mut App, title: &str, rows: &[MenuRow]) {
         }
         y += rh + gap;
     }
-    hits_add(&mut s.hits, page.done, H_SETTINGS_BACK, 0);
 }
 
 // A vertical list of full-width buttons inside a sheet.
@@ -3257,8 +3249,9 @@ fn draw_bind_group(a: &mut App, kind: BindKind, group: usize) {
     let n = binding_row_count(kind, group) as i32;
     let (aw, ah) = (a.w, a.h);
     let title = tr(ACTION_GROUPS[group].title);
-    let page = settings_page(&mut a.screen, aw, ah, title, true, true);
+    let page = settings_page(&mut a.screen, aw, ah, title, true, false);
     hits_add(&mut lib(a).hits, page.back, bind_done_hit(kind), 0);
+    hits_add(&mut lib(a).hits, page.close, bind_done_hit(kind), 0);
     let in_ = page.content;
     let gap = ui_px(14.0);
     let rh = ((in_.h - (n - 1).max(0) * gap) / n.max(1)).clamp(ui_px(90.0), ui_px(140.0));
@@ -3296,7 +3289,6 @@ fn draw_bind_group(a: &mut App, kind: BindKind, group: usize) {
             thumb,
         );
     }
-    hits_add(&mut lib(a).hits, page.done, bind_done_hit(kind), 0);
 }
 
 fn draw_bind_row(
@@ -3312,15 +3304,10 @@ fn draw_bind_row(
     thumb: Option<FsGesture>,
 ) {
     let selected = learning;
-    ui_frame(c, r, ui_px(16.0), if selected { 0 } else { 255 }, true, 0);
-    ui_frame(
-        c,
-        r,
-        ui_px(16.0),
-        0,
-        false,
-        ui_px(if selected { 6.0 } else { 3.0 }),
-    );
+    // (a submenu's rows are a list, not buttons: only the row being learned is filled, rounded)
+    if selected {
+        ui_frame(c, r, ui_px(16.0), 0, true, 0);
+    }
     let fg = if selected { 255 } else { 0 };
     if row.icon != IconKind::None {
         ui_icon(
@@ -3684,12 +3671,15 @@ fn language_auto_label(out: &mut String, cap: usize) {
 }
 
 /// The one Settings layout, edited by variables: a full screen with the title (at the one title
-/// size) above the rule, an optional Back button at the top left, the content below, and an
-/// optional Done at the foot. The main page and every submenu are this same frame.
+/// size) above the rule, an optional Back button at the top left, an X icon alone at the top right,
+/// the content below, and an optional strip at the foot for a page's own control. The main page and
+/// every submenu are this same frame.
 pub(crate) struct SettingsPage {
     pub content: Rect,
     pub back: Rect,
-    pub done: Rect,
+    pub close: Rect,
+    /// The strip at the foot a page with a control there (Pen feel's Reset tool) leaves for it.
+    pub footer: Rect,
 }
 
 pub(crate) fn settings_page(
@@ -3698,7 +3688,7 @@ pub(crate) fn settings_page(
     ah: i32,
     title: &str,
     back: bool,
-    done: bool,
+    footer: bool,
 ) -> SettingsPage {
     canvas_fill(c, Rect::new(0, 0, aw, ah), 255);
     let pad = ui_px(50.0);
@@ -3711,20 +3701,27 @@ pub(crate) fn settings_page(
         ui_button(c, back_r, IconKind::Back, "", ButtonStyle::Plain);
         tx = back_r.x + bh + ui_px(30.0);
     }
+    // Every Settings page closes with this X alone at the top right (never a Done at the foot).
+    let close_r = Rect::new(aw - pad - bh, (th - bh) / 2, bh, bh);
+    ui_button(c, close_r, IconKind::Close, "", ButtonStyle::Plain);
     // (the same title face and size on the main page and on every submenu)
-    font_draw_left(c, FontFace::Title, ui_title_size(), Rect::new(tx, 0, aw - tx - pad, th), title, 0);
+    font_draw_left(
+        c,
+        FontFace::Title,
+        ui_title_size(),
+        Rect::new(tx, 0, (close_r.x - tx - ui_px(30.0)).max(0), th),
+        title,
+        0,
+    );
     ui_rule(c, 0, aw, th, ui_px(4.0), 0);
-    let footer = if done { ui_px(170.0) } else { ui_px(36.0) };
-    let content = Rect::new(pad, th + ui_px(36.0), aw - 2 * pad, ah - th - ui_px(36.0) - footer);
-    let done_r = if done {
-        Rect::new(aw - pad - ui_px(380.0), ah - ui_px(30.0) - ui_px(120.0), ui_px(380.0), ui_px(120.0))
+    let footer_h = if footer { ui_px(170.0) } else { ui_px(36.0) };
+    let content = Rect::new(pad, th + ui_px(36.0), aw - 2 * pad, ah - th - ui_px(36.0) - footer_h);
+    let footer_r = if footer {
+        Rect::new(pad, ah - ui_px(30.0) - ui_px(120.0), aw - 2 * pad, ui_px(120.0))
     } else {
         RECT_EMPTY
     };
-    if done {
-        ui_button(c, done_r, IconKind::Check, tr("Done"), ButtonStyle::Primary);
-    }
-    SettingsPage { content, back: back_r, done: done_r }
+    SettingsPage { content, back: back_r, close: close_r, footer: footer_r }
 }
 
 /// Maps a settings row to the hit id its action already handles: adding a row in settingsmenu.rs
@@ -3752,7 +3749,7 @@ fn setting_hit(id: settingsmenu::SettingId) -> i32 {
 }
 
 /// Settings' page: a full screen, its categories down the left, the active one's settings to
-/// their right and Done at the foot. The categories, rows, labels and icons come from
+/// their right, and the X at the top right. The categories, rows, labels and icons come from
 /// settingsmenu.rs; this function only lays them out and maps each row to its action.
 fn draw_settings(a: &mut App) {
     let (aw, ah) = (a.w, a.h);
@@ -3764,7 +3761,7 @@ fn draw_settings(a: &mut App) {
         ..
     } = a;
     let s = lib.as_deref_mut().unwrap();
-    let page = settings_page(c, aw, ah, tr("Settings"), false, true);
+    let page = settings_page(c, aw, ah, tr("Settings"), false, false);
     // (a tap outside every row does nothing, rather than reaching the library behind)
     hits_add(&mut s.hits, Rect::new(0, 0, aw, ah), H_NONE, 0);
     let pad = page.content.x;
@@ -3775,7 +3772,8 @@ fn draw_settings(a: &mut App) {
     // Room for more categories than today's five: tighten their spacing rather than running into
     // Done. With five categories this changes nothing.
     let ncat = cats.len() as i32;
-    let cat_room = page.done.y - top;
+    let content_bottom = page.content.y + page.content.h;
+    let cat_room = content_bottom - top;
     if ncat * (cat_h + cat_gap) > cat_room {
         cat_gap = ((cat_room - ncat * cat_h) / ncat).clamp(ui_px(6.0), cat_gap);
     }
@@ -3787,7 +3785,7 @@ fn draw_settings(a: &mut App) {
     for (i, cat) in cats.iter().enumerate() {
         let r = Rect::new(pad, y, side_w, cat_h);
         let fg: u8 = if i as i32 == active {
-            canvas_fill(c, r, 0);
+            ui_frame(c, r, ui_px(16.0), 0, true, 0);
             255
         } else {
             ui_frame(c, r, ui_px(16.0), 255, true, 0);
@@ -3821,7 +3819,7 @@ fn draw_settings(a: &mut App) {
         tr(cat.title),
         0,
     );
-    let foot = page.done.y;
+    let foot = content_bottom;
     let list_top = top + ui_px(86.0);
     let n = cat.items.iter().filter(|it| it.show.visible(classic)).count() as i32;
     let gap = ui_px(16.0);
@@ -3909,7 +3907,7 @@ fn draw_settings(a: &mut App) {
         hits_add(&mut s.hits, r, setting_hit(item.id), 0);
         y += rh + gap;
     }
-    hits_add(&mut s.hits, page.done, H_CANCEL, 0);
+    hits_add(&mut s.hits, page.close, H_CANCEL, 0);
 }
 
 /// The Font sheet's third sample line, the same in every language: digits, the punctuation Spanish
@@ -3974,8 +3972,9 @@ fn draw_font_own_row(c: &mut Canvas, r: Rect, f: &mut crate::userfonts::UserFont
     crate::userfonts::userfont_resolve(f);
     let usable = f.usable();
     let fg: u8 = if on { 255 } else if usable { 0 } else { 110 };
-    ui_frame(c, r, ui_px(16.0), if on { 0 } else { 255 }, true, 0);
-    ui_frame(c, r, ui_px(16.0), if usable { 0 } else { 110 }, false, ui_px(3.0));
+    if on {
+        ui_frame(c, r, ui_px(16.0), 0, true, 0);
+    }
     let mark = r.h - ui_px(30.0);
     let x = r.x + ui_px(40.0);
     // (the check mark's room is the row's own while it has none)
@@ -4017,8 +4016,8 @@ fn draw_font_own_row(c: &mut Canvas, r: Rect, f: &mut crate::userfonts::UserFont
 /// Settings > Font (2.1, Classic only): on top a sample of the font highlighted (its name at the title size,
 /// a sentence at the text size, digits and accents at the small size, all in it), then Built in: every family
 /// by its name, each drawn in itself; then Your fonts (2.1.0-beta.2): the files of grimoire/fonts, a page of
-/// them at a time (or where to copy some); the one in use with a check; then Back and Done. The sheet's own
-/// words are in the font in use until Done applies another, unless that font is one of the owner's own:
+/// them at a time (or where to copy some); the one in use with a check; then Back and Done. A tap applies a
+/// font at once, so the sheet's own words are in the font in use, unless that font is one of the owner's own:
 /// then they are Terminess, so a font that went wrong can always be taken back.
 fn draw_font_sheet(a: &mut App) {
     if font_own() {
@@ -4042,8 +4041,9 @@ fn draw_font_sheet_in(a: &mut App, applied: Option<usize>) {
     // (the two sections' labels: Built in's, and Your fonts' with its page count)
     let (lh, lh2) = (ui_px(60.0), ui_px(80.0));
     // TRANSLATORS: the title of Settings > Font, the list of fonts Classic can be drawn in.
-    let page = settings_page(c, aw, ah, tr("Font"), true, true);
+    let page = settings_page(c, aw, ah, tr("Font"), true, false);
     hits_add(&mut s.hits, page.back, H_FONT_CANCEL, 0);
+    hits_add(&mut s.hits, page.close, H_FONT_DONE, 0);
     let in_ = page.content;
     let sample = Rect::new(in_.x, in_.y, in_.w, sample_h);
     ui_frame(c, sample, ui_px(16.0), 0, false, ui_px(3.0));
@@ -4093,8 +4093,6 @@ fn draw_font_sheet_in(a: &mut App, applied: Option<usize>) {
             font_with_family(pick, || draw_sample(c, FONT_FAMILIES[pick].name, false));
         }
     }
-    s.font_sample = sample;
-    s.font_rows.clear();
     s.font_own_rows.clear();
     let built_rows = n.div_ceil(cols) as i32;
     let fixed = sample_h + lh + built_rows * (rh + gap) + lh2;
@@ -4119,8 +4117,9 @@ fn draw_font_sheet_in(a: &mut App, applied: Option<usize>) {
         let r = cell(i, y);
         let on = own_pick.is_none() && i == pick;
         let fg: u8 = if on { 255 } else { 0 };
-        ui_frame(c, r, ui_px(16.0), if on { 0 } else { 255 }, true, 0);
-        ui_frame(c, r, ui_px(16.0), 0, false, ui_px(3.0));
+        if on {
+            ui_frame(c, r, ui_px(16.0), 0, true, 0);
+        }
         let mark = rh - ui_px(30.0);
         font_with_family(i, || {
             font_draw_left(c, FontFace::Bold, ui_text_size(), Rect::new(r.x + ui_px(40.0), r.y, r.w - ui_px(80.0) - mark, rh), f.name, fg);
@@ -4129,7 +4128,6 @@ fn draw_font_sheet_in(a: &mut App, applied: Option<usize>) {
             ui_icon(c, IconKind::Check, Rect::new(r.x + r.w - ui_px(25.0) - mark, r.y + ui_px(15.0), mark, mark), fg);
         }
         hits_add(&mut s.hits, r, H_FONT_PICK, i as i32);
-        s.font_rows.push(r);
     }
     y += built_rows * (rh + gap);
     // The owner's own: the heading names the folder, with the pages' arrows at its right when the fonts
@@ -4178,41 +4176,49 @@ fn draw_font_sheet_in(a: &mut App, applied: Option<usize>) {
         }
         s.font_own_rows.push((idx, r));
     }
-    hits_add(&mut s.hits, page.done, H_FONT_DONE, 0);
 }
 
-/// Where the Font sheet drew the row of what is highlighted now (a family's, or an own font's if it is on
-/// the page shown).
-fn font_pick_row(s: &LibraryState) -> Rect {
-    if s.font_file.is_empty() {
-        return s.font_rows.get(s.font_pick).copied().unwrap_or(RECT_EMPTY);
+/// Applies what the Font sheet has highlighted now: a family (settings.ini's font=) or one of the owner's own
+/// fonts (font=file:<its path>), saved. The caller draws again in it with a Full refresh, as a style change
+/// does. A tap on a font calls this at once; X only closes the sheet. One of the owner's own fonts has its
+/// Bold file found again for it (font_bold= is for a hand). True when what draws the text changed.
+fn font_apply_pick(a: &mut App) -> bool {
+    let (pick, own, picked) = (lib(a).font_pick, lib(a).font_file.clone(), lib(a).font_picked);
+    let was_own = a.settings.font_file.as_str().to_string();
+    // What draws now changes nothing: also not a font= line whose font cannot be used (a file that is gone, a
+    // newer version's font), which stays as it is until another font is picked.
+    let drawn_own = if crate::userfonts::userfonts_in_use(&was_own) { was_own.clone() } else { String::new() };
+    // (a family picked while settings.ini asks for a font of the owner's own that does not draw now, a font a
+    // crash kept out, one still being checked or one that is gone, takes that font= line away: the next start
+    // must not try it again)
+    let drops_file = picked && own.is_empty() && !was_own.is_empty();
+    if !drops_file && own == drawn_own && (!own.is_empty() || pick == font_family()) {
+        return false;
     }
-    let at = s.fonts.iter().position(|f| f.rel == s.font_file);
-    s.font_own_rows.iter().find(|(i, _)| Some(*i) == at).map_or(RECT_EMPTY, |(_, r)| *r)
-}
-
-/// The Font sheet after a tap on a row (a family: `own` None; one of the owner's fonts: its path): the screen
-/// drawn again, and the panel refreshed only where the sample and the two rows whose highlight changed are
-/// (Ui), as What's new steps (about_step).
-fn font_step(a: &mut App, pick: usize, own: Option<String>) {
-    let was = font_pick_row(lib(a));
-    let s = lib(a);
-    s.font_pick = pick;
-    s.font_file = own.clone().unwrap_or_default();
-    // The sample of one of the owner's fonts is drawn by the font: held beside the one in use while it shows.
-    let want = own.filter(|rel| !crate::userfonts::userfonts_in_use(rel));
-    crate::userfonts::userfonts_sample(a, want.as_deref());
-    let sample = lib(a).font_sample;
-    if rect_is_empty(sample) || rect_is_empty(was) || graph_shown(a) || lib(a).settings_return_editor {
-        redraw(a, RefreshMode::Ui);
-        return;
+    if own.is_empty() {
+        a.settings.font = pick as i32;
+        a.settings.font_file.clear();
+        a.settings.font_bold.clear();
+        font_set_family(pick);
+    } else {
+        a.settings.font = 0;
+        if own != was_own {
+            a.settings.font_bold.clear();
+        }
+        a.settings.font_file.set(&own);
     }
-    draw_base(a);
-    hits_clear(&mut lib(a).hits);
-    draw_modal(a);
-    a.toast_floor = toast_floor(a);
-    let now = font_pick_row(lib(a));
-    app_invalidate(a, rect_union(sample, rect_union(was, now)), RefreshMode::Ui);
+    crate::userfonts::userfonts_apply(a);
+    if !own.is_empty() && !crate::userfonts::userfonts_in_use(&own) {
+        // The font did not load (too little memory, a file that changed): the setting stays, Terminess
+        // draws, and the owner is told.
+        font_set_family(0);
+        // TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): Done on a font of the
+        // owner's own that could not be loaded just now (too little memory free, or its file changed).
+        app_toast(a, tr("Couldn't use that font."), 3000);
+    }
+    httpd_restyle(ui_theme() == UiTheme::Gothic); // (the share pages, if Live view is on)
+    settings_save(&a.settings);
+    true
 }
 
 /// The Font sheet's staying notice while fonts are checked ("Checking 3 fonts..."), gone when none is.
@@ -5032,8 +5038,9 @@ fn draw_modal(a: &mut App) {
             } = a;
             let s = lib.as_deref_mut().unwrap();
             // TRANSLATORS: the title of the list of languages (Settings > Language).
-            let page = settings_page(c, aw, ah, tr("Language"), true, true);
+            let page = settings_page(c, aw, ah, tr("Language"), true, false);
             hits_add(&mut s.hits, page.back, H_LANG_BACK, 0);
+            hits_add(&mut s.hits, page.close, H_LANG_BACK, 0);
             let in_ = page.content;
             let gap = ui_px(16.0);
             let n = rows.len() as i32;
@@ -5045,11 +5052,9 @@ fn draw_modal(a: &mut App) {
                 let ri = k as i32 % per;
                 let r = Rect::new(in_.x + col * (cw + gap), in_.y + ri * (rh + gap), cw, rh);
                 let fg: u8 = if *selected {
-                    canvas_fill(c, r, 0);
+                    ui_frame(c, r, ui_px(16.0), 0, true, 0);
                     255
                 } else {
-                    ui_frame(c, r, ui_px(16.0), 255, true, 0);
-                    ui_frame(c, r, ui_px(16.0), 0, false, ui_px(2.0));
                     0
                 };
                 ui_text(
@@ -5065,7 +5070,6 @@ fn draw_modal(a: &mut App) {
                 );
                 hits_add(&mut s.hits, r, H_LANG_PICK, *arg);
             }
-            hits_add(&mut s.hits, page.done, H_LANG_BACK, 0);
         }
         Modal::Kb => {
             let (aw, ah) = (a.w, a.h);
@@ -5897,19 +5901,31 @@ fn act(a: &mut App, h: &Hit) {
             font_notice(a);
             redraw(a, RefreshMode::Ui);
         }
+        // A font tapped applies at once, saved: a family (and with it a font=file: that does not draw goes),
+        // or one of the owner's own fonts.
         H_FONT_PICK => {
             let pick = (h.arg.max(0) as usize).min(FONT_FAMILIES.len() - 1);
-            lib(a).font_picked = true; // (a family tapped, even the one that shows: Done then takes font=file: away)
+            lib(a).font_picked = true; // (a family tapped, even the one that shows: the apply takes font=file: away)
             if pick != lib(a).font_pick || !lib(a).font_file.is_empty() {
-                font_step(a, pick, None);
+                lib(a).font_pick = pick;
+                lib(a).font_file.clear();
+                // (a font held beside the one in use for the sample goes)
+                crate::userfonts::userfonts_sample(a, None);
+                if font_apply_pick(a) {
+                    redraw(a, RefreshMode::Full);
+                }
             }
         }
         H_FONT_OWN => {
-            let s = lib(a);
-            let rel = s.fonts.get(h.arg.max(0) as usize).filter(|f| f.usable()).map(|f| f.rel.clone());
-            if let Some(rel) = rel.filter(|r| *r != s.font_file) {
-                let pick = s.font_pick;
-                font_step(a, pick, Some(rel));
+            let rel = {
+                let s = lib(a);
+                s.fonts.get(h.arg.max(0) as usize).filter(|f| f.usable()).map(|f| f.rel.clone())
+            };
+            if let Some(rel) = rel.filter(|r| *r != lib(a).font_file) {
+                lib(a).font_file = rel;
+                if font_apply_pick(a) {
+                    redraw(a, RefreshMode::Full);
+                }
             }
         }
         H_FONT_PAGE => {
@@ -5918,50 +5934,13 @@ fn act(a: &mut App, h: &Hit) {
             s.font_first = if h.arg < 0 { s.font_first.saturating_sub(per) } else { s.font_first + per };
             redraw(a, RefreshMode::Ui);
         }
-        // Done applies the font highlighted, saved, and the screen comes back in it with a Full refresh, as
-        // a style change does; Cancel (Back, Esc) leaves the font as it was. One of the owner's own fonts is
-        // settings.ini's font=file:<its path>; its Bold file is found again for it (font_bold= is for a hand).
+        // A tap on a font applies it at once, so X only closes the sheet (a last apply changes nothing then);
+        // Back and Esc close it too, the font already the one picked.
         H_FONT_DONE => {
-            let (pick, own, picked) = (lib(a).font_pick, lib(a).font_file.clone(), lib(a).font_picked);
+            let changed = font_apply_pick(a);
             font_sheet_closed(a);
             lib(a).modal = Modal::Settings;
-            let was_own = a.settings.font_file.as_str().to_string();
-            // Done on what draws now changes nothing: also not a font= line whose font cannot be used (a file
-            // that is gone, a newer version's font), which stays as it is until another font is picked.
-            let drawn_own = if crate::userfonts::userfonts_in_use(&was_own) { was_own.clone() } else { String::new() };
-            // (a family picked while settings.ini asks for a font of the owner's own that does not draw now, a
-            // font a crash kept out, one still being checked or one that is gone, takes that font= line away:
-            // the next start must not try it again)
-            let drops_file = picked && own.is_empty() && !was_own.is_empty();
-            let same = !drops_file && own == drawn_own && (!own.is_empty() || pick == font_family());
-            if same {
-                redraw(a, RefreshMode::Ui);
-                return;
-            }
-            if own.is_empty() {
-                a.settings.font = pick as i32;
-                a.settings.font_file.clear();
-                a.settings.font_bold.clear();
-                font_set_family(pick);
-            } else {
-                a.settings.font = 0;
-                if own != was_own {
-                    a.settings.font_bold.clear();
-                }
-                a.settings.font_file.set(&own);
-            }
-            crate::userfonts::userfonts_apply(a);
-            if !own.is_empty() && !crate::userfonts::userfonts_in_use(&own) {
-                // The font did not load (too little memory, a file that changed): the setting stays, Terminess
-                // draws, and the owner is told.
-                font_set_family(0);
-                // TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): Done on a font of the
-                // owner's own that could not be loaded just now (too little memory free, or its file changed).
-                app_toast(a, tr("Couldn't use that font."), 3000);
-            }
-            httpd_restyle(ui_theme() == UiTheme::Gothic); // (the share pages, if Live view is on)
-            settings_save(&a.settings);
-            redraw(a, RefreshMode::Full);
+            redraw(a, if changed { RefreshMode::Full } else { RefreshMode::Ui });
         }
         H_FONT_CANCEL => {
             font_sheet_closed(a);
@@ -8393,15 +8372,19 @@ mod tests {
                             hits_clear(&mut lib(&mut a).hits);
                             draw_modal(&mut a);
                             let hits = &a.lib.as_ref().unwrap().hits;
-                            // (the rows, then Back at the top and Done at the foot: both bind_done_hit)
+                            // (Back at the top left and X at the top right, then the rows: the two
+                            // close the group, as Done used to)
+                            let done_hit = bind_done_hit(kind);
+                            let row_hit = bind_row_hit(kind);
                             assert_eq!(hits.h.len(), binding_row_count(kind, group) + 2);
-                            let mut bottom = 0;
-                            let last = hits.h.len() - 1;
-                            for (i, hit) in hits.h.iter().enumerate() {
+                            assert_eq!(hits.h.iter().filter(|h| h.id == done_hit).count(), 2);
+                            let mut row_bottom = 0;
+                            let mut next_row = 0;
+                            for hit in &hits.h {
                                 let r = hit.r;
                                 assert!(
-                                    r.y > bottom && r.y + r.h < h - ui_px(20.0),
-                                    "{:?} group {group} hit {i}: y {} h {} bottom {bottom} screen {h}",
+                                    r.y >= 0 && r.y + r.h < h - ui_px(20.0),
+                                    "{:?} group {group}: y {} h {} screen {h}",
                                     kind.modal,
                                     r.y,
                                     r.h
@@ -8411,26 +8394,25 @@ mod tests {
                                 let found =
                                     hits_find(hits, (r.x + r.w / 2) as f32, (r.y + r.h / 2) as f32)
                                         .unwrap();
-                                assert_eq!(
-                                    (found.id, found.arg),
-                                    // (Back at the top, the rows, then Done at the foot)
-                                    if i == 0 || i == last {
-                                        (bind_done_hit(kind), 0)
-                                    } else {
-                                        (bind_row_hit(kind), (i - 1) as i32)
-                                    }
-                                );
-                                bottom = r.y + r.h;
+                                assert_eq!((found.id, found.arg), (hit.id, hit.arg));
+                                if hit.id == done_hit {
+                                    assert_eq!(hit.arg, 0);
+                                } else {
+                                    assert_eq!(hit.id, row_hit);
+                                    assert_eq!(hit.arg, next_row);
+                                    assert!(r.y > row_bottom, "row {next_row}: y {} bottom {row_bottom}", r.y);
+                                    row_bottom = r.y + r.h;
+                                    next_row += 1;
+                                }
                             }
+                            assert_eq!(next_row, binding_row_count(kind, group) as i32);
                         }
                         bind_group_set(kind, lib(&mut a), -1);
                         hits_clear(&mut lib(&mut a).hits);
                         draw_modal(&mut a);
-                        let mut bottom = 0;
                         for hit in &a.lib.as_ref().unwrap().hits.h {
-                            assert!(hit.r.y > bottom && hit.r.y + hit.r.h < h - ui_px(20.0));
+                            assert!(hit.r.y >= 0 && hit.r.y + hit.r.h < h - ui_px(20.0));
                             assert!(hit.r.x >= 0 && hit.r.x + hit.r.w <= w);
-                            bottom = hit.r.y + hit.r.h;
                         }
                         if kind.modal == Modal::Gestures {
                             assert!(probe(&mut a, "gestures.1").starts_with("Gestures:"));
@@ -8518,7 +8500,7 @@ mod tests {
         assert_eq!(rows, [0, 1]);
         assert_eq!(lib(&mut a).wifi.rows, [b"Home".to_vec(), b"Office".to_vec()]);
         let s = a.lib.as_ref().unwrap();
-        assert_eq!(s.hits.h.iter().filter(|h| h.id == H_SETTINGS_BACK).count(), 2, "Wi-Fi: Back and Done");
+        assert_eq!(s.hits.h.iter().filter(|h| h.id == H_SETTINGS_BACK).count(), 2, "Wi-Fi: Back and X");
         assert!(!s.hits.h.iter().any(|h| h.id == H_CANCEL), "Wi-Fi: the sheet's own Done is gone");
         wifi_init(None);
         library_free(&mut a);

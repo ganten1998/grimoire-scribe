@@ -165,12 +165,6 @@ fn draw_slider_row(m: &DispMenu, a: &mut App, which: i32, row: Rect) {
     ui_slider_draw(&mut a.screen, &s, Some(&vt));
 }
 
-/// The frame Settings' rows wear (the Settings page's rows do), around content inset from its edge.
-fn row_frame(c: &mut Canvas, r: Rect) {
-    ui_frame(c, r, ui_px(16.0), 255, true, 0);
-    ui_frame(c, r, ui_px(16.0), 0, false, ui_px(2.0));
-}
-
 /// One row of the Display page: a slider, a checkbox, the sleep screen's choice, Pin this page, the
 /// sleep heading, or one of the clock's two cells.
 enum DRowKind {
@@ -191,21 +185,17 @@ fn draw_drow(m: &mut DispMenu, a: &mut App, kind: &DRowKind, outer: Rect) {
             font_draw_left(&mut a.screen, FontFace::Bold, ui_text_size(), outer, tr("Sleep"), 0);
         }
         DRowKind::Slider(id) => {
-            row_frame(&mut a.screen, outer);
             draw_slider_row(m, a, *id, inner);
             hits_add(&mut m.hits, inner, *id, 0);
         }
         DRowKind::Check { id, label, on } => {
-            row_frame(&mut a.screen, outer);
             ui_checkbox(&mut a.screen, inner, label, *on);
             hits_add(&mut m.hits, inner, *id, 0);
         }
         DRowKind::Note(text) => {
-            row_frame(&mut a.screen, outer);
             ui_text(&mut a.screen, FontFace::Regular, ui_text_size(), ui_small_size(), inner, text, 2, false, 0);
         }
         DRowKind::SleepMode { label, can_tap } => {
-            row_frame(&mut a.screen, outer);
             let isz = inner.h * 3 / 4;
             ui_icon(&mut a.screen, IconKind::Notebook, Rect::new(inner.x, inner.y + (inner.h - isz) / 2, isz, isz), 0);
             ui_text(&mut a.screen, FontFace::Regular, ui_text_size(), ui_small_size(), Rect::new(inner.x + isz + ui_px(20.0), inner.y, inner.w - isz - ui_px(20.0), inner.h), label, 2, false, 0);
@@ -214,13 +204,28 @@ fn draw_drow(m: &mut DispMenu, a: &mut App, kind: &DRowKind, outer: Rect) {
             }
         }
         DRowKind::Pin => {
-            row_frame(&mut a.screen, outer);
             // TRANSLATORS: makes the open page the sleep screen (528 px at 44 px, or 34 px).
-            ui_button(&mut a.screen, inner, IconKind::None, tr("Pin this page"), ButtonStyle::Plain);
+            let isz = inner.h * 3 / 4;
+            ui_icon(
+                &mut a.screen,
+                IconKind::Pin,
+                Rect::new(inner.x, inner.y + (inner.h - isz) / 2, isz, isz),
+                0,
+            );
+            ui_text(
+                &mut a.screen,
+                FontFace::Regular,
+                ui_text_size(),
+                ui_small_size(),
+                Rect::new(inner.x + isz + ui_px(20.0), inner.y, inner.w - isz - ui_px(20.0), inner.h),
+                tr("Pin this page"),
+                2,
+                false,
+                0,
+            );
             hits_add(&mut m.hits, inner, D_PIN, 0);
         }
         DRowKind::Status { id, label, corner } => {
-            row_frame(&mut a.screen, outer);
             let isz = inner.h * 3 / 4;
             let icon = Rect::new(inner.x, inner.y + (inner.h - isz) / 2, isz, isz);
             if *id == D_CORNER {
@@ -236,14 +241,15 @@ fn draw_drow(m: &mut DispMenu, a: &mut App, kind: &DRowKind, outer: Rect) {
 
 /// Draws into a->screen; returns the rect covered. The Display page is a full screen, as Settings'
 /// submenus are: Back and the title above a rule, the rows below (one column, or two when the screen
-/// is short) and Done at the foot.
+/// is short) and X at the top right.
 pub fn dispmenu_draw(m: &mut DispMenu, a: &mut App) -> Rect {
     hits_clear(&mut m.hits);
     m.pressed = None;
     let (aw, ah) = (a.w, a.h);
     m.rect = Rect::new(0, 0, aw, ah);
-    let page = crate::library::settings_page(&mut a.screen, aw, ah, tr("Display"), true, true);
+    let page = crate::library::settings_page(&mut a.screen, aw, ah, tr("Display"), true, false);
     hits_add(&mut m.hits, page.back, D_BACK, 0);
+    hits_add(&mut m.hits, page.close, D_DONE, 0);
     let in_ = page.content;
     let have = light_available() && m.intensity >= 0;
     let mut rows: Vec<DRowKind> = Vec::new();
@@ -311,7 +317,6 @@ pub fn dispmenu_draw(m: &mut DispMenu, a: &mut App) -> Rect {
         let r = Rect::new(in_.x + col * (cw + gap), in_.y + ri * (rh + gap), cw, rh);
         draw_drow(m, a, kind, r);
     }
-    hits_add(&mut m.hits, page.done, D_DONE, 0);
     m.rect
 }
 

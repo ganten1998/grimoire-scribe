@@ -327,7 +327,14 @@ fn draw_pad_bare(a: &mut App) {
     ui_frame(c, rect_inflate(s.pad, ui_px(4.0)), ui_px(14.0), 0, false, ui_px(4.0));
     // TRANSLATORS: the button that wipes Pen feel's test pad (174 px at 44 px, or 34 px).
     // TRANSLATORS: on the eraser tab, restore the handwritten practice ink (174 px at 34 px).
-    ui_button(c, clear_rect(s.pad), IconKind::None, if s.tab == TOOL_ERASER { tr("Reset pad") } else { tr("Clear") }, ButtonStyle::Plain);
+    font_draw_centered(
+        c,
+        FontFace::Caps,
+        ui_text_size(),
+        clear_rect(s.pad),
+        if s.tab == TOOL_ERASER { tr("Reset pad") } else { tr("Clear") },
+        0,
+    );
 }
 
 // Capture the bare paper before seeding the eraser targets or white-ink swatch as ink.
@@ -368,18 +375,25 @@ fn draw_all(a: &mut App) {
         let App { screen: c, ps, .. } = &mut *a;
         let s = ps.as_deref_mut().expect("Pen feel's state");
         hits_add(&mut s.hits, page.back, H_BACK, 0);
-        hits_add(&mut s.hits, page.done, H_BACK, 0);
-        let reset = Rect { x: page.content.x, y: page.done.y, w: ui_px(360.0), h: page.done.h };
+        hits_add(&mut s.hits, page.close, H_BACK, 0);
+        let reset = Rect { x: page.footer.x, y: page.footer.y, w: ui_px(360.0), h: page.footer.h };
         // TRANSLATORS: puts the tool's pen feel back as it came (328 px at 44 px, or 34 px).
-        ui_button(c, reset, IconKind::None, tr("Reset tool"), ButtonStyle::Plain);
+        font_draw_centered(c, FontFace::Caps, ui_text_size(), reset, tr("Reset tool"), 0);
         hits_add(&mut s.hits, reset, H_RESET, 0);
         // Tabs.
         for (i, &t) in TOOL_ORDER.iter().enumerate() {
             let r = Rect { x: m + i as i32 * (tw + ui_px(16.0)), y: ty, w: tw, h: tabh };
-            // With this many tools the tabs are icons only; the title names the selected one.
-            ui_button(c, r, ui_tool_icon(t.0), "", if s.tab == t { ButtonStyle::Selected } else { ButtonStyle::Plain });
+            // With this many tools the tabs are icons only; the title names the selected one. A
+            // submenu's selections are not buttons: only the tool in use is filled, rounded.
+            let on = s.tab == t;
+            if on {
+                ui_frame(c, r, ui_px(16.0), 0, true, 0);
+            }
+            ui_icon(c, ui_tool_icon(t.0), rect_inflate(r, -ui_px(14.0)), if on { 255 } else { 0 });
             hits_add(&mut s.hits, r, H_TAB, t.0);
         }
+        // A rule between the tools and the pressure curve and test pad below, as the one over the sliders.
+        canvas_hline(c, m, aw - m, ty + tabh + ui_px(35.0), ui_px(3.0), 0);
         // Graph + pad.
         s.graph = Rect { x: m + ui_px(10.0), y: top, w: gs, h: gs };
         s.pad = Rect { x: s.graph.x + gs + ui_px(70.0), y: top, w: aw - m - (s.graph.x + gs + ui_px(70.0)), h: gs };
@@ -406,7 +420,7 @@ fn draw_all(a: &mut App) {
     let mut y = st(a).readout.y + st(a).readout.h + ui_px(30.0);
     canvas_hline(&mut a.screen, m, aw - m, y, ui_px(3.0), 0);
     y += ui_px(16.0);
-    let avail = ah - y - ui_px(190.0); // (the foot: Reset tool and Done, as Settings' submenus have)
+    let avail = ah - y - ui_px(190.0); // (the foot: Reset tool, as Settings' pages leave it)
     let mut count = 0;
     for p in pi.iter() {
         count += visible_param(p, tab) as i32;
@@ -424,11 +438,6 @@ fn draw_all(a: &mut App) {
         }
         let ns = st(a).nsliders;
         let outer = Rect { x: m, y, w: aw - 2 * m, h: rh };
-        {
-            let c = &mut a.screen;
-            ui_frame(c, outer, ui_px(16.0), 255, true, 0);
-            ui_frame(c, outer, ui_px(16.0), 0, false, ui_px(2.0));
-        }
         {
             let s = st(a);
             s.slider_rows[ns as usize] = rect_inflate(outer, -ui_px(10.0));
@@ -470,7 +479,21 @@ fn draw_all(a: &mut App) {
     ];
     for i in 0..2 {
         let r = Rect { x: row.x + name_w + i * (cw + g), y: row.y, w: cw, h: row.h };
-        ui_button(c, r, IconKind::None, c_("eraser", MODES[i as usize]), if eraser_mode == i { ButtonStyle::Selected } else { ButtonStyle::Plain });
+        let on = eraser_mode == i;
+        if on {
+            ui_frame(c, r, ui_px(16.0), 0, true, 0);
+        }
+        ui_text(
+            c,
+            FontFace::Caps,
+            ui_text_size(),
+            ui_small_size(),
+            rect_inflate(r, -ui_px(16.0)),
+            c_("eraser", MODES[i as usize]),
+            2,
+            true,
+            if on { 255 } else { 0 },
+        );
         hits_add(&mut s.hits, r, H_ERASER_MODE, i);
     }
     y = row.y + row.h;

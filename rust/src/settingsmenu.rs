@@ -111,9 +111,52 @@ pub const STYLE_CLASSIC: &str = n_("Style: Classic (tap for Gothic)");
 /// The Settings page, category by category and row by row. Keep this table in the order the
 /// page shows; the layout never hardcodes a category or a row.
 // TRANSLATORS: Settings' categories, down the left of its page, each with its icon: the settings
-// they group are Display's, Pen Feel's, Calibration's, the Controller's (shortcuts, pairing,
-// gestures) and General's (language, mirroring, Wi-Fi, KOReader, updates).
+// they group are General's (language, mirroring, Wi-Fi, KOReader, updates), Display's, Pen Feel's,
+// Calibration's and the Controller's (shortcuts, pairing, gestures).
 pub static CATEGORIES: &[Category] = &[
+    Category {
+        title: n_("General"),
+        icon: IconKind::Gear,
+        items: &[
+            Item {
+                icon: IconKind::Language,
+                label: Label::Language,
+                id: SettingId::Language,
+                check: Check::None,
+                show: Show::Always,
+            },
+            Item {
+                icon: IconKind::Download,
+                label: Label::Mirror,
+                id: SettingId::Mirror,
+                check: Check::MirrorPdf,
+                show: Show::Always,
+            },
+            Item {
+                icon: IconKind::Share,
+                // TRANSLATORS: (Settings) the row that opens the Wi-Fi submenu: the radio and the Kindle's
+                // saved networks.
+                label: Label::Text(n_("Wi-Fi")),
+                id: SettingId::Wifi,
+                check: Check::None,
+                show: Show::Always,
+            },
+            Item {
+                icon: IconKind::Notebook,
+                label: Label::Text(n_("KOReader")),
+                id: SettingId::KOReader,
+                check: Check::None,
+                show: Show::Always,
+            },
+            Item {
+                icon: IconKind::Update,
+                label: Label::Text(n_("Updates")),
+                id: SettingId::Updates,
+                check: Check::None,
+                show: Show::Always,
+            },
+        ],
+    },
     Category {
         title: n_("Display"),
         icon: IconKind::Brightness,
@@ -215,49 +258,6 @@ pub static CATEGORIES: &[Category] = &[
             },
         ],
     },
-    Category {
-        title: n_("General"),
-        icon: IconKind::Gear,
-        items: &[
-            Item {
-                icon: IconKind::Language,
-                label: Label::Language,
-                id: SettingId::Language,
-                check: Check::None,
-                show: Show::Always,
-            },
-            Item {
-                icon: IconKind::Download,
-                label: Label::Mirror,
-                id: SettingId::Mirror,
-                check: Check::MirrorPdf,
-                show: Show::Always,
-            },
-            Item {
-                icon: IconKind::Share,
-                // TRANSLATORS: (Settings) the row that opens the Wi-Fi submenu: the radio and the Kindle's
-                // saved networks.
-                label: Label::Text(n_("Wi-Fi")),
-                id: SettingId::Wifi,
-                check: Check::None,
-                show: Show::Always,
-            },
-            Item {
-                icon: IconKind::Notebook,
-                label: Label::Text(n_("KOReader")),
-                id: SettingId::KOReader,
-                check: Check::None,
-                show: Show::Always,
-            },
-            Item {
-                icon: IconKind::Update,
-                label: Label::Text(n_("Updates")),
-                id: SettingId::Updates,
-                check: Check::None,
-                show: Show::Always,
-            },
-        ],
-    },
 ];
 
 #[cfg(test)]
@@ -280,36 +280,36 @@ mod tests {
         assert_eq!(CATEGORIES.len(), 5);
         assert_eq!(
             CATEGORIES.iter().map(|c| c.title).collect::<Vec<_>>(),
-            vec!["Display", "Pen Feel", "Calibration", "Controller", "General"]
+            vec!["General", "Display", "Pen Feel", "Calibration", "Controller"]
         );
-        assert_eq!(ids(0), vec![SettingId::Display, SettingId::Theme, SettingId::Font, SettingId::Rotate, SettingId::Pinch]);
-        assert_eq!(ids(1), vec![SettingId::PenFeel, SettingId::SideButton]);
-        assert_eq!(ids(2), vec![SettingId::Calibration]);
-        assert_eq!(ids(3), vec![SettingId::Shortcuts, SettingId::Pair, SettingId::Gestures]);
-        assert_eq!(ids(4), vec![SettingId::Language, SettingId::Mirror, SettingId::Wifi, SettingId::KOReader, SettingId::Updates]);
+        assert_eq!(ids(0), vec![SettingId::Language, SettingId::Mirror, SettingId::Wifi, SettingId::KOReader, SettingId::Updates]);
+        assert_eq!(ids(1), vec![SettingId::Display, SettingId::Theme, SettingId::Font, SettingId::Rotate, SettingId::Pinch]);
+        assert_eq!(ids(2), vec![SettingId::PenFeel, SettingId::SideButton]);
+        assert_eq!(ids(3), vec![SettingId::Calibration]);
+        assert_eq!(ids(4), vec![SettingId::Shortcuts, SettingId::Pair, SettingId::Gestures]);
         assert_eq!(CATEGORIES.iter().map(|c| c.items.len()).sum::<usize>(), 16);
 
-        assert_eq!(text(0, 0), "Display: brightness, warmth, invert");
-        assert_eq!(text(0, 3), "Turn with the Kindle (portrait and landscape)");
-        assert_eq!(text(0, 4), "Pinch with two fingers to zoom");
-        assert_eq!(text(1, 0), "Pen sensitivity (pressure + tilt per tool)");
-        assert_eq!(text(2, 0), "Calibrate pen and touch");
-        assert_eq!(text(3, 0), "Shortcuts: keys and controller buttons");
-        assert_eq!(text(3, 1), "Pair");
-        assert_eq!(text(3, 2), "Gestures");
-        assert_eq!(text(4, 2), "Wi-Fi");
-        assert_eq!(text(4, 3), "KOReader");
-        assert_eq!(text(4, 4), "Updates");
+        assert_eq!(text(0, 2), "Wi-Fi");
+        assert_eq!(text(0, 3), "KOReader");
+        assert_eq!(text(0, 4), "Updates");
+        assert_eq!(text(1, 0), "Display: brightness, warmth, invert");
+        assert_eq!(text(1, 3), "Turn with the Kindle (portrait and landscape)");
+        assert_eq!(text(1, 4), "Pinch with two fingers to zoom");
+        assert_eq!(text(2, 0), "Pen sensitivity (pressure + tilt per tool)");
+        assert_eq!(text(3, 0), "Calibrate pen and touch");
+        assert_eq!(text(4, 0), "Shortcuts: keys and controller buttons");
+        assert_eq!(text(4, 1), "Pair");
+        assert_eq!(text(4, 2), "Gestures");
 
-        assert!(matches!(CATEGORIES[0].items[1].label, Label::Style));
-        assert!(matches!(CATEGORIES[0].items[2].label, Label::Font));
-        assert!(matches!(CATEGORIES[0].items[2].show, Show::ClassicOnly));
-        assert!(matches!(CATEGORIES[0].items[3].check, Check::FollowRotation));
-        assert!(matches!(CATEGORIES[0].items[4].check, Check::PinchZoom));
-        assert!(matches!(CATEGORIES[1].items[1].label, Label::SideButton));
-        assert!(matches!(CATEGORIES[4].items[0].label, Label::Language));
-        assert!(matches!(CATEGORIES[4].items[1].label, Label::Mirror));
-        assert!(matches!(CATEGORIES[4].items[1].check, Check::MirrorPdf));
+        assert!(matches!(CATEGORIES[1].items[1].label, Label::Style));
+        assert!(matches!(CATEGORIES[1].items[2].label, Label::Font));
+        assert!(matches!(CATEGORIES[1].items[2].show, Show::ClassicOnly));
+        assert!(matches!(CATEGORIES[1].items[3].check, Check::FollowRotation));
+        assert!(matches!(CATEGORIES[1].items[4].check, Check::PinchZoom));
+        assert!(matches!(CATEGORIES[2].items[1].label, Label::SideButton));
+        assert!(matches!(CATEGORIES[0].items[0].label, Label::Language));
+        assert!(matches!(CATEGORIES[0].items[1].label, Label::Mirror));
+        assert!(matches!(CATEGORIES[0].items[1].check, Check::MirrorPdf));
         assert_eq!(SIDE_BUTTON_LABELS.len(), 4);
     }
 }
