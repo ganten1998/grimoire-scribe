@@ -34,10 +34,19 @@ fn the_built_ins() {
         check!(gesturemap_action(&m, touch(3, kind)) == 0 && one);
         check!(!gesturemap_is_set(&m, touch(2, kind)));
     }
-    check!(gesturemap_action(&m, pen(PenBtn::Button, PenKind::Triple)) == 0);
-    check!(gesturemap_action(&m, pen(PenBtn::Button, PenKind::Hold)) == SHORTCUT_CLEAR_PAGE);
-    check!(gesturemap_action(&m, pen(PenBtn::Button2, PenKind::Triple)) == 0);
+    // The pen's button has no built-in (2.1.0-beta.2): its hold fired Clear page with the pen hovering.
+    for &kind in &[PenKind::Tap, PenKind::Double, PenKind::Triple, PenKind::Hold, PenKind::Drag] {
+        check!(gesturemap_action(&m, pen(PenBtn::Button, kind)) == 0);
+        check!(gesturemap_action(&m, pen(PenBtn::Button2, kind)) == 0);
+        check!(!gesturemap_is_set(&m, pen(PenBtn::Button, kind)));
+    }
+    check!(gesturemap_key_for(&m, SHORTCUT_CLEAR_PAGE, ActionSrc::Pen).is_none());
     check!(m.refused == 0 && gesturemap_carried(&m).is_empty());
+    // The built-ins write nothing but the header, and the header names no pen gesture.
+    let mut text = Vec::new();
+    check!(gesturemap_format(&m, &mut text));
+    let text = String::from_utf8_lossy(&text).to_string();
+    check!(text.lines().all(|l| l.starts_with('#')) && !text.contains("pen."));
     // The retired Index list's name loads as the Graph's, and is written as index-map.
     let (m, n) = parsed("touch.3.up=index\n");
     check!(n == 0 && gesturemap_action(&m, touch(3, TouchKind::Up)) == SHORTCUT_INDEX_MAP);
@@ -106,7 +115,7 @@ fn pen_and_shape_lines_are_carried() {
     check!(gesturemap_action(&m, pen(PenBtn::Button2, PenKind::Tap)) == 0);
     check!(gesturemap_action(&m, pen(PenBtn::Eraser, PenKind::Drag)) == 0);
     check!(gesturemap_action(&m, pen(PenBtn::Button, PenKind::Drag)) == GESTURE_ZOOM);
-    check!(gesturemap_action(&m, pen(PenBtn::Button, PenKind::Hold)) == SHORTCUT_CLEAR_PAGE); // its built-in
+    check!(gesturemap_action(&m, pen(PenBtn::Button, PenKind::Hold)) == 0); // its built-in: none
     check!(
         gesturemap_carried(&m)
             == b"pen.button2.TAP=nothing\npen.Eraser.drag=pan\nshape.Undo=2,3,aa,bb,cc\nshape.frobnicate=2,2,00,11\npen.Button.hold=frobnicate\npen.Button3.tap=undo\n"
@@ -171,6 +180,8 @@ fn key_for_order() {
     check!(gesturemap_key_for(&m, SHORTCUT_REDO, ActionSrc::Touch).is_none());
     check!(gesturemap_key_for(&m, SHORTCUT_NONE, ActionSrc::Touch).is_none());
     check!(gesturemap_key_for(&m, SHORTCUT_INDEX_MAP, ActionSrc::Key).is_none() && gesturemap_key_for(&m, SHORTCUT_INDEX_MAP, ActionSrc::Pad).is_none());
+    check!(gesturemap_key_for(&m, SHORTCUT_CLEAR_PAGE, ActionSrc::Pen).is_none());
+    let (m, _) = parsed("pen.Button.hold=clear-page\n");
     check!(gesturemap_key_for(&m, SHORTCUT_CLEAR_PAGE, ActionSrc::Pen) == Some(pen(PenBtn::Button, PenKind::Hold)));
     let (m, _) = parsed("touch.3.left=undo\ntouch.3.up=undo\n");
     check!(gesturemap_key_for(&m, SHORTCUT_UNDO, ActionSrc::Touch) == Some(touch(3, TouchKind::Up)));
@@ -381,9 +392,9 @@ fn pen_forward_carry_refusal_is_atomic() {
     check!(gesturemap_action(&m, pen(PenBtn::Button, PenKind::Hold)) == SHORTCUT_UNDO);
     check!(gesturemap_is_set(&m, pen(PenBtn::Button, PenKind::Hold)) && gesturemap_carried(&m).is_empty());
     check!(gesturemap_parse(&mut m, b"  pen.Button.hold = future-action  \n") == 0);
-    check!(gesturemap_action(&m, pen(PenBtn::Button, PenKind::Hold)) == SHORTCUT_CLEAR_PAGE);
+    check!(gesturemap_action(&m, pen(PenBtn::Button, PenKind::Hold)) == 0); // (its built-in: none)
     check!(gesturemap_carried(&m) == b"  pen.Button.hold = future-action  \n");
-    check!(gesturemap_set(&mut m, pen(PenBtn::Button, PenKind::Hold), SHORTCUT_REDO) == SHORTCUT_CLEAR_PAGE);
+    check!(gesturemap_set(&mut m, pen(PenBtn::Button, PenKind::Hold), SHORTCUT_REDO) == 0);
     check!(gesturemap_carried(&m).is_empty());
 }
 
@@ -416,31 +427,67 @@ fn pen_carry_limits_and_read_failures() {
         let mut m = GestureMap::default();
         check!(gesturemap_load(&mut m, &path) == -1 && !m.writable);
         check!(gesturemap_parse(&mut m, b"pen.Button.hold=undo\n") == 1);
-        check!(gesturemap_action(&m, pen(PenBtn::Button, PenKind::Hold)) == SHORTCUT_CLEAR_PAGE);
+        check!(gesturemap_action(&m, pen(PenBtn::Button, PenKind::Hold)) == 0);
         check!(gesturemap_save(&m, &path) == -1 && std::fs::symlink_metadata(&path).unwrap().file_type().is_symlink());
         check!(gesturemap_reset(&mut m, &path) == 0 && m.writable);
         std::fs::remove_dir_all(dir).unwrap();
     }
 }
 
-fn rc1_duplicate_clear_default_migrates_to_hold_only() {
+// The old Clear page built-ins a file holds read as the new built-ins (2.1.0-beta.2: none on the pen's button):
+// RC1's pair (triple and hold both clear-page) and the pair every version from rc.2 to 2.1.0-beta.1 wrote
+// back after reading it (triple nothing, hold clear-page). Both slots end with nothing, unmarked, and the
+// next save writes neither line; other lines stay. A hold the owner gave Clear page, alone, stays theirs,
+// and stays across a save and a load (a re-recorded hold is not taken for the old pair again).
+fn old_clear_page_defaults_read_as_none() {
     let dir=std::env::temp_dir().join(format!("grimoire-clear-migration-{}",std::process::id()));
-    std::fs::create_dir_all(&dir).unwrap();let path=dir.join("gestures.ini");
-    std::fs::write(&path,b"pen.Button.triple=clear-page\npen.Button.hold=clear-page\npen.Button.double=undo\n").unwrap();
+    std::fs::create_dir_all(&dir).unwrap();let path=dir.join("gestures.ini");let p=path.to_str().unwrap();
+    for old in ["pen.Button.triple=clear-page\npen.Button.hold=clear-page\n",
+                "pen.Button.triple=nothing\npen.Button.hold=clear-page\n",
+                "pen.Button.hold=clear-page\npen.Button.triple=nothing\n"] {
+        std::fs::write(&path,format!("{old}pen.Button.double=undo\ntouch.2.tap=redo\n")).unwrap();
+        let mut m=GestureMap::default();
+        check!(gesturemap_load(&mut m,p)==0);
+        for kind in [PenKind::Triple,PenKind::Hold] {
+            check!(gesturemap_action(&m,pen(PenBtn::Button,kind))==0);
+            check!(!gesturemap_is_set(&m,pen(PenBtn::Button,kind)));
+        }
+        check!(gesturemap_key_for(&m,SHORTCUT_CLEAR_PAGE,ActionSrc::Pen).is_none());
+        check!(gesturemap_action(&m,pen(PenBtn::Button,PenKind::Double))==SHORTCUT_UNDO);
+        check!(gesturemap_action(&m,touch(2,TouchKind::Tap))==SHORTCUT_REDO);
+        check!(gesturemap_save(&m,p)>=0);
+        let text=std::fs::read_to_string(&path).unwrap();
+        check!(!text.contains("pen.Button.triple") && !text.contains("pen.Button.hold"));
+        check!(text.contains("pen.Button.double=undo\n") && text.contains("touch.2.tap=redo\n"));
+        // the owner then records Clear page on the hold: theirs, from the next start on too
+        check!(gesturemap_set(&mut m,pen(PenBtn::Button,PenKind::Hold),SHORTCUT_CLEAR_PAGE)==0);
+        check!(gesturemap_save(&m,p)>=0);
+        let mut back=GestureMap::default();
+        check!(gesturemap_load(&mut back,p)==0);
+        check!(gesturemap_action(&back,pen(PenBtn::Button,PenKind::Hold))==SHORTCUT_CLEAR_PAGE);
+    }
+    // A hold given Clear page alone, or beside another triple, is a choice: it stays.
+    for mine in ["pen.Button.hold=clear-page\n","pen.Button.triple=undo\npen.Button.hold=clear-page\n"] {
+        std::fs::write(&path,mine).unwrap();
+        let mut m=GestureMap::default();
+        check!(gesturemap_load(&mut m,p)==0);
+        check!(gesturemap_action(&m,pen(PenBtn::Button,PenKind::Hold))==SHORTCUT_CLEAR_PAGE);
+        check!(gesturemap_is_set(&m,pen(PenBtn::Button,PenKind::Hold)));
+        check!(gesturemap_save(&m,p)>=0&&std::fs::read_to_string(&path).unwrap().contains("pen.Button.hold=clear-page\n"));
+    }
+    // A hold the owner turned off stays off; a triple given Clear page alone stays.
+    std::fs::write(&path,b"pen.Button.hold=nothing\npen.Button.triple=clear-page\n").unwrap();
     let mut m=GestureMap::default();
-    check!(gesturemap_load(&mut m,path.to_str().unwrap())==0);
-    check!(gesturemap_action(&m,pen(PenBtn::Button,PenKind::Triple))==0);
-    check!(gesturemap_action(&m,pen(PenBtn::Button,PenKind::Hold))==SHORTCUT_CLEAR_PAGE);
-    check!(gesturemap_action(&m,pen(PenBtn::Button,PenKind::Double))==SHORTCUT_UNDO);
-    check!(gesturemap_save(&m,path.to_str().unwrap())==0);
-    check!(std::fs::read_to_string(&path).unwrap().contains("pen.Button.triple=nothing"));
+    check!(gesturemap_load(&mut m,p)==0);
+    check!(gesturemap_action(&m,pen(PenBtn::Button,PenKind::Hold))==0&&gesturemap_is_set(&m,pen(PenBtn::Button,PenKind::Hold)));
+    check!(gesturemap_action(&m,pen(PenBtn::Button,PenKind::Triple))==SHORTCUT_CLEAR_PAGE);
     std::fs::remove_dir_all(dir).unwrap();
 }
 
 #[test]
 fn test_gesturemap() {
     run!(the_built_ins);
-    run!(rc1_duplicate_clear_default_migrates_to_hold_only);
+    run!(old_clear_page_defaults_read_as_none);
     run!(a_line_overrides_and_nothing_turns_off);
     run!(refused_lines_are_counted);
     run!(hold_eraser_is_not_a_touch_action);

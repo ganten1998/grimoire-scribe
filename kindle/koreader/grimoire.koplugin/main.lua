@@ -54,6 +54,13 @@ naming them (docs/FORMAT.md, Whole books), and hands over with --book (the launc
 capability). Grimoire adds them to the book's notebook in book order and opens the page the reader
 was on. The book's own notebook is found by reading Grimoire's files (source.ini), never written.
 
+A planner's tabs and any other internal links of the PDF go along (the launcher's "links" capability): the
+links of the pages it draws in this run, and, once per book (while the notebook's source.ini lacks
+links=1), of the pages Grimoire already holds, as import/.book/links.txt (docs/FORMAT.md, Links from
+KOReader). KOReader's getPageLinks gives each link's rectangle in page space and the 0-based page it goes
+to; the plugin maps the rectangle with the transform that drew the page's picture. Links to a web address or
+a file are left out.
+
 What this plugin logs (KOReader's crash.log goes into bug reports too) never names a book, its title
 or its file: page numbers and counts only.
 ]]
@@ -622,7 +629,7 @@ function Grimoire:prepare(need)
         self:tell(caps.hosted and too_old[need] or "too_old")
         return nil
     end
-    return launcher, busy
+    return launcher, busy, caps
 end
 
 -- Tools > Grimoire > Open Grimoire, and the gesture.
@@ -732,13 +739,45 @@ end
 -- already), on none of a reader's zoom, crop or scroll: Annotate's page and every page of Open this
 -- book. gamma and last: the reader's contrast (drawPage's last argument is the colour saturation since
 -- KOReader 2024, the render mode before: each as the reader passes it).
-local function draw_whole_page(doc, bb, w, h, page, gamma, last)
-    local Geom = require("ui/geometry")
+local function whole_page_transform(doc, w, h, page)
     local native = doc:getNativePageDimensions(page)
     local zoom = math.min(w / native.w, h / native.h)
     local dim = doc:getPageDimensions(page, zoom, 0)
-    doc:drawPage(bb, math.floor((w - dim.w) / 2), math.floor((h - dim.h) / 2),
-        Geom:new{ x = 0, y = 0, w = dim.w, h = dim.h }, page, zoom, 0, gamma or 1, last)
+    return zoom, math.floor((w - dim.w) / 2), math.floor((h - dim.h) / 2), dim
+end
+
+local function draw_whole_page(doc, bb, w, h, page, gamma, last)
+    local Geom = require("ui/geometry")
+    local zoom, ox, oy, dim = whole_page_transform(doc, w, h, page)
+    doc:drawPage(bb, ox, oy, Geom:new{ x = 0, y = 0, w = dim.w, h = dim.h }, page, zoom, 0, gamma or 1, last)
+end
+
+-- The internal links of page `page` of a paged document as lines of links.txt ("L <from> <to> <x> <y> <w> <h>",
+-- pages from 1, the rectangle in the picture's pixels: draw_whole_page's own transform, rounded outward and
+-- kept inside the w x h picture). KOReader's getPageLinks gives x0, y0, x1, y1 in page space and a 0-based
+-- `page`; a link to a web address or a file (`uri`, no `page`), to its own page or to one the book lacks
+-- is left out. Any failure of KOReader's gives no links for the page, never an error.
+local function page_link_lines(doc, w, h, page, pages)
+    local lines = {}
+    if not doc.getPageLinks then return lines end
+    local ok, links = pcall(doc.getPageLinks, doc, page)
+    if not ok or type(links) ~= "table" then return lines end
+    local okt, zoom, ox, oy = pcall(whole_page_transform, doc, w, h, page)
+    if not okt then return lines end
+    for _, link in ipairs(links) do
+        local to = type(link) == "table" and not link.uri and tonumber(link.page)
+        if to and link.x0 and link.y0 and link.x1 and link.y1 then
+            to = math.floor(to) + 1
+            local x0 = math.max(0, math.floor(ox + math.min(link.x0, link.x1) * zoom))
+            local y0 = math.max(0, math.floor(oy + math.min(link.y0, link.y1) * zoom))
+            local x1 = math.min(w, math.ceil(ox + math.max(link.x0, link.x1) * zoom))
+            local y1 = math.min(h, math.ceil(oy + math.max(link.y0, link.y1) * zoom))
+            if to >= 1 and to <= pages and to ~= page and x1 > x0 and y1 > y0 then
+                table.insert(lines, string.format("L %d %d %d %d %d %d", page, to, x0, y0, x1 - x0, y1 - y0))
+            end
+        end
+    end
+    return lines
 end
 
 -- A paged reader's settings that would draw its pages as they are not (reflowed, the scan cleaned up,
@@ -881,11 +920,14 @@ local WHOLE = { pdf = true, djvu = true, djv = true, cbz = true, cbt = true, xps
 -- The book pages the notebook of this book holds already, for a book of `pages` pages (source.ini in
 -- the notebook's folder: book=<key>, then a page.<book page>.<pages>=<page id> line for each), as a
 -- set; empty when it has none. Only files are read: Grimoire does the rest.
+-- Second answer: whether every notebook of the book says links=1 (its document links were filled), false for
+-- none.
 function Grimoire:pagesHeld(key, pages)
     local held = {}
+    local found, all_linked = false, true
     local root = self.us .. "/grimoire/notebooks"
     local ok, iter, dir_obj = pcall(lfs.dir, root)
-    if not ok then return held end
+    if not ok then return held, false end
     for name in iter, dir_obj do
         if name:sub(1, 1) ~= "." then
             local f = io.open(root .. "/" .. name .. "/source.ini", "r")
@@ -895,10 +937,16 @@ function Grimoire:pagesHeld(key, pages)
                 for page, of in text:gmatch("\npage%.(%d+)%.(%d+)=%d+") do
                     if tonumber(of) == pages then held[tonumber(page)] = true end
                 end
+                found = true
+                -- links=1 counts only with the notebook's doclinks.ini beside it (a zip an older build made
+                -- leaves the file out and keeps the line)
+                local dl = io.open(root .. "/" .. name .. "/doclinks.ini", "r")
+                if dl then dl:close() end
+                if not dl or not ("\n" .. text):find("\nlinks=1\r?\n") then all_linked = false end
             end
         end
     end
-    return held
+    return held, found and all_linked
 end
 
 -- Tools > Grimoire > Open this book in Grimoire (a paged book open), and its gesture.
@@ -1027,7 +1075,7 @@ function Grimoire:sendBook(b)
         self:tell("book_too_big")
         return
     end
-    local launcher, busy = self:prepare("book")
+    local launcher, busy, caps = self:prepare("book")
     if not launcher then
         done()
         return
@@ -1041,7 +1089,20 @@ function Grimoire:sendBook(b)
         return
     end
     empty_dir(dir)
-    local held = self:pagesHeld(b.key, pages)
+    local held, linked = self:pagesHeld(b.key, pages)
+    -- Pages are to be added in this run: the held pages' links are asked for again, as a page deleted and added
+    -- again is a target the held pages' tabs lost (links=1 is a latch that cannot tell), and one an older
+    -- build added had no links asked for. The fill takes a link it holds already once.
+    local todo_count = 0
+    for p = 1, pages do
+        if not held[p] then todo_count = todo_count + 1 end
+    end
+    if todo_count > 0 then linked = false end
+    -- The links of the pages drawn in this run, and once per book those of the pages already held (KOReader
+    -- restarts at each hand-over, so its page cache is cold: asking every page at every Open this book would
+    -- cost a 400-page planner 400 page opens each time). Only for a launcher that says it takes them.
+    local want_links = caps and caps.links and true or false
+    local link_lines = {}
     local todo = {}
     for p = 1, pages do
         if not held[p] then table.insert(todo, p) end
@@ -1068,6 +1129,10 @@ function Grimoire:sendBook(b)
                     return bb:writePNG(tmp)
                 end)
                 bb:free()
+                if want_links and ran then
+                    -- (KOReader has the page open now: its links cost the least here)
+                    for _, line in ipairs(page_link_lines(b.doc, w, h, p, pages)) do table.insert(link_lines, line) end
+                end
                 if not ran then error(wrote, 0) end
                 if wrote == false or not is_nonempty_file(tmp) then error(why or "no file, or an empty one", 0) end
                 if not os.rename(tmp, png) then error("it could not be renamed into place", 0) end
@@ -1076,6 +1141,13 @@ function Grimoire:sendBook(b)
                 os.remove(tmp)
                 failed = string.format("page %d of %d: %s", p, pages, tostring(err))
                 break
+            end
+        end
+        if want_links and not (stopped or failed) and not linked then
+            for p = 1, pages do
+                if held[p] then
+                    for _, line in ipairs(page_link_lines(b.doc, w, h, p, pages)) do table.insert(link_lines, line) end
+                end
             end
         end
         put_back()
@@ -1095,7 +1167,13 @@ function Grimoire:sendBook(b)
             }
             for _, p in ipairs(todo) do table.insert(lines, string.format("picture.%d=page-%d.png", p, p)) end
             request = table.concat(lines, "\n") .. "\n"
-            if not write_whole(dir .. "/request.ini", request) then failed = "the request could not be written" end
+            -- (links.txt first, whole: the request is what tells Grimoire the folder is complete)
+            if want_links and (#link_lines > 0 or not linked) then
+                local text = "# Grimoire: the links of a book's pages, from KOReader's Grimoire plugin (docs/FORMAT.md)\n"
+                    .. string.format("P %d %d\n", w, h) .. table.concat(link_lines, "\n") .. (#link_lines > 0 and "\n" or "")
+                if not write_whole(dir .. "/links.txt", text) then failed = "the links could not be written" end
+            end
+            if not failed and not write_whole(dir .. "/request.ini", request) then failed = "the request could not be written" end
         end
         if stopped or failed then
             empty_dir(dir)

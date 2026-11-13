@@ -3,41 +3,50 @@ pages pg index f288110dfb73a082
 pages pg many index 0 (screen 0) fc76c5f1c052ddbc
 pages pg many index 1 (screen 1) b9d8bd40d9aa2997
 pages pg many index 2 (screen 1) b9d8bd40d9aa2997
-pages pg name only 1 81029bfb27124d7a
+pages pg name only 1 20f6235c3823808a
 pages pg readonly index ffe34176b21c21fe
 pages pg unreadable index f21bc2df79c2135b
 pages pc index 4041f661bdfeb406
 pages pc many index 0 (screen 0) 676741f1a66ca45d
 pages pc many index 1 (screen 1) de7933d07bd63368
 pages pc many index 2 (screen 1) de7933d07bd63368
-pages pc name only 1 492fa57f640966e6
+pages pc name only 1 cc94c2d18d31eb1c
 pages pc readonly index 1caca4574be0b664
 pages pc unreadable index a79be2aff87a8cc1
 pages lg index c76c2b847b600510
 pages lg many index 0 (screen 0) fd5e643b2f794790
 pages lg many index 1 (screen 1) 7872641cdf1e2ff3
 pages lg many index 2 (screen 1) 7872641cdf1e2ff3
-pages lg name only 1 c10799d6d2dd68a8
+pages lg name only 1 53168b57c2bd1c14
 pages lg readonly index 90f4cbeb554d3474
 pages lg unreadable index f7a3e6c348cf0aaf
 pages lc index e625df6a2fe81542
 pages lc many index 0 (screen 0) 68aebda02fe8eccd
 pages lc many index 1 (screen 1) 960597b0f4abd2e8
 pages lc many index 2 (screen 1) 960597b0f4abd2e8
-pages lc name only 1 79d0709b2e478780
+pages lc name only 1 c3d703b4292c2334
 pages lc readonly index 14a822ea334e5b5f
 pages lc unreadable index f75fcd39f3352873
 pages tap 11 1 -> 0 target 30 tab 1 screen 0 idx 0 ticked 0 kb 0 f288110dfb73a082
-pages tap 12 0 -> 0 target 30 tab 1 screen 0 idx 0 ticked 0 kb 1 d5c4be8632445c26
-pages lang en pg 22c3d6a589c9f186
-pages lang en pc 1c1111965ab7eb98
-pages lang en lg ba5416ee02389a5b
-pages lang en lc eb3fe503bf50b98f
-pages lang es pg 6421c2660f8eaa11
-pages lang es pc 24498200fbd6698d
-pages lang es lg 599d01c8a0b9e97f
-pages lang es lc cc3a421c499bbb55
-pages lang ja pg 954d0eaca5689571
-pages lang ja pc cdee8012ad214732
-pages lang ja lg 738890d3a23455af
-pages lang ja lc 43bd8d99e19fff34
+pages tap 12 0 -> 0 target 30 tab 1 screen 0 idx 0 ticked 0 kb 1 af3cca045e6c603e
+pages lang en pg c0a2d99b1ec166c7
+pages lang en pc a0a0a5ce0deb3cc3
+pages lang en lg 18492451e83842e8
+pages lang en lc d482c494264b906c
+pages lang es pg ade7ef26f15bf93c
+pages lang es pc cb92a2d36fd23167
+pages lang es lg d74bbc0091995bd5
+pages lang es lc 6f01b1e835aedbb4
+pages lang ja pg 4b5a0b30faa8a2c8
+pages lang ja pc 43f8c6b3d0b411e0
+pages lang ja lg 58cfc70fe534893d
+pages lang ja lc faaaba3275d22b91
+# The number pad (Go to page) has the text line's keys and caret (2.1.0-beta.2): its screens' pixels, not its results.
+pages pg jump 6dd9ee8a8ae1f6ce
+pages pc jump a7178e41e97a8d3b
+pages lg jump 43707992c301f326
+pages lc jump 698a99d50d9abd66
+pages typed '12' -> 2 target 11 kb 0 text '12' cf1afa766a4df1a8
+pages typed '31' -> 0 target 11 kb 1 text '31' 6586d99e6aefd96a
+pages typed '0' -> 0 target 11 kb 1 text '0' 28e4e0f571c7ddda
+pages typed '7x' -> 2 target 6 kb 0 text '7' 4c5f16e0913a5098

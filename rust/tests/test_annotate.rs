@@ -387,7 +387,7 @@ fn names() {
     annotate_name(b"ab\xe2\x82\xac", &mut ends, 5); // "ab" + a 3-byte character: it does not fit whole
     check!(ends == "ab");
     // Every letter stays, also what Grimoire's screens cannot draw (the name is the PDF's too; only
-    // the screens leave that out, ui_name_label): Greek, Cyrillic, Japanese, Vietnamese.
+    // the screens show that as a box, ui_name_label): Greek, Cyrillic, Japanese, Vietnamese.
     annotate_name("Война αβ 戦争".as_bytes(), &mut out, STORE_NAME_LEN);
     check!(out == "Война αβ 戦争");
     annotate_name("Pokémon 漫画 Vol. 3".as_bytes(), &mut out, STORE_NAME_LEN);

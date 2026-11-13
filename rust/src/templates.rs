@@ -43,6 +43,7 @@ pub use crate::bgwork_template::{
     photo_path,
     photo_install,
     photo_paper,
+    PREVIEW_NOT_MADE,
     import_scan,
     import_finished,
     natural_cmp,

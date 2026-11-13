@@ -7,8 +7,8 @@ wait 200
 expect pen.gesture is
 tap 1535 95
 wait 100
-expect library.ui_at.890.1930 is gestures
-tap 890 1930
+expect library.ui_at.1000.1930 is gestures
+tap 1000 1930
 wait 100
 expect library.sheet is gestures
 expect library.ui_at.930.1069 is gestures.group.pages
@@ -24,16 +24,16 @@ expect library.record is wait
 tapn 2 930 1100
 expect library.record is wait
 expect library.record.line is Hold the pen button and drag with it.
-expect library.ui_at.930.1650 is record.retry
-pentap 930 1650
+expect library.ui_at.763.1650 is record.retry
+pentap 763 1650
 wait 100
 pen hover 930 1100
 side click 1
 wait 400
 expect library.record is wait
 expect library.record.line is Hold the pen button and drag with it.
-expect library.ui_at.930.1650 is record.retry
-pentap 930 1650
+expect library.ui_at.763.1650 is record.retry
+pentap 763 1650
 wait 100
 side on
 expect display.presents not -1

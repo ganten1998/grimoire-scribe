@@ -327,7 +327,8 @@ pub fn findsheet_pointer(f: &mut FindSheet, a: &mut App, nb: &NotebookInfo, nav:
             *dirty = d;
             FsResult::Changed
         }
-        KbResult::None => {
+        // (the caret or a selection moved: the text, and so the rows, as they were)
+        KbResult::None | KbResult::Moved => {
             *dirty = d;
             FsResult::None
         }

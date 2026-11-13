@@ -100,6 +100,7 @@ key and action twice is one line. Up and Down do nothing but in the Graph.
 | the Pages view | Left/Right its screens, Ctrl+N, Ctrl+F, Ctrl+A `select-all`, Ctrl+Z and Ctrl+Shift+Z its own Undo and Redo, P, G |
 | the Graph | the arrows `pan-*`, - and +, Ctrl+0, V `graph-view`, Ctrl+A, G |
 | Pen feel | 1 to 9 that pen's tab, 0 and E the eraser's |
+| a keyboard up (a name, Find, a page number) | Left/Right the caret a letter, Home/End to the start and end (with Shift they select), Ctrl or Cmd with A, C, X and V select all, copy, cut and paste the typed text (2.1.0-beta.2); these come before any shortcut and cannot be rebound; not on the count pad |
 
 **Esc** (`back`) eats one layer a press, the first there is: a field or pad (its Cancel), a dialog or card
 (its No or Cancel), a drag, a selection (the lasso's, then Select mode; the Pages view's ticks; the Graph's), a
@@ -207,7 +208,8 @@ Actions, in the Buttons sheet's groups:
   it), `hold-eraser` (Erase while held: while its key or button is down, a stroke the pen starts
   erases as its eraser end does, by the eraser's mode; one under way when it is let go keeps
   erasing), `eraser-mode` (Whole strokes and Precise in turn, which a toast says), `white` (white
-  ink on and off), `clear-page` (as the toolbar's broom: no question, one undo step).
+  ink on and off), `clear-page` (as the toolbar's broom: no question, one undo step; from a key,
+  button or gesture a toast says "Page cleared. Undo brings it back.").
 - **Tools**: `tool:pencil`, `tool:mech`, `tool:charcoal`, `tool:ballpoint`, `tool:fineliner`,
   `tool:marker`, `tool:fountain`, `tool:calligraphy`, `tool:highlighter`, `previous-tool`,
   `next-tool`, `picker-previous`, `picker-next` (the Buttons sheet's Previous / next in the picker).
@@ -319,8 +321,10 @@ The five slots are click (`tap`), double-click, triple-click, hold and drag. A c
 most 450 ms without nib contact. When double or triple is bound, a single click waits 350 ms
 after release. Without either, it acts at release. For double/triple, each next press must be
 within 350 ms of the previous release; recognition resolves 350 ms after the final release.
-The built-in triple-click and a 1.2 s hovering hold both clear the page; clearing the Clear
-page row removes both. Leaving pen proximity cancels an unfinished click sequence.
+No slot has a built-in action (2.1.0-beta.2: a 1.2 s hovering hold cleared the page, and
+fired under a finger resting on the button). Clear page from any gesture or shortcut says so in
+a toast that points at Undo, which brings the page back in one step; the toolbar's broom says
+nothing. Leaving pen proximity cancels an unfinished click sequence.
 
 Erase while held is pen-only in this sheet. Record a hold or drag for it: it erases from the
 button's press to its release, with no 1.2 s wait; short clicks can still have their own action.
@@ -353,9 +357,8 @@ touch.2.tap=undo
 touch.1.right=go-back
 # the pen button's double-click opens Links
 pen.Button.double=links
-# disable both clear-page built-ins
-pen.Button.triple=nothing
-pen.Button.hold=nothing
+# clear the page with three clicks of the pen's button (no pen gesture is built in)
+pen.Button.triple=clear-page
 # holding the button while moving the nib pans instead of drawing
 pen.Button.drag=pan
 ```

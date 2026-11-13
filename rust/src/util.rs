@@ -357,10 +357,11 @@ pub fn format_time_short_12h(t: i64, buf: &mut String, cap: usize) {
         h => h,
     };
     let ampm = crate::i18n::c_("date", K_AMPM[(tm.tm_hour >= 12) as usize]);
-    // TRANSLATORS: a date and time on the 12-hour clock, "Oct 10, 2:32 PM": the month (as above), the
-    // day, the hour (1 to 12), the minutes, then AM or PM. Reorder them with %1$s, %2$d, %3$d, %4$02d
-    // and %5$s ("%2$d %1$s, %3$d:%4$02d %5$s" is "10 Oct, 2:32 PM"), using that form for all five.
     let s = crate::cformat!(
+        // TRANSLATORS: a date and time on the 12-hour clock, "Oct 10, 2:32 PM": the month (as above),
+        // the day, the hour (1 to 12), the minutes, then AM or PM. Reorder them with %1$s, %2$d, %3$d,
+        // %4$02d and %5$s ("%2$d %1$s, %3$d:%4$02d %5$s" is "10 Oct, 2:32 PM"), using that form for
+        // all five.
         crate::i18n::c_("date", "%s %d, %d:%02d %s"),
         month_short(&tm),
         tm.tm_mday,
@@ -393,6 +394,141 @@ pub fn mkdir_p(path: &str) -> i32 {
         }
     }
     mkdir_one(path)
+}
+
+/// Opens `path` to be written from its start (created with mode `mode` when missing), never through a link or onto
+/// anything but a file of its own: O_NOFOLLOW, so a planted `<name>.tmp` link can no longer make root truncate and
+/// write its target, and O_NONBLOCK, so a FIFO cannot hold the save; then it must be a regular file with one link
+/// (a hard link to another file is refused before anything is cut), and only then is it emptied (security review
+/// 2026-11). The descriptor (close-on-exec), or -1 with errno.
+pub fn open_rewrite_nofollow(path: &std::ffi::CStr, mode: u32) -> i32 {
+    // SAFETY: open reads the NUL-terminated path we were given; fstat writes the struct we own; the descriptor is
+    // the caller's, or closed here.
+    unsafe {
+        let fd = libc::open(path.as_ptr(), libc::O_WRONLY | libc::O_CREAT | libc::O_NOFOLLOW | libc::O_NONBLOCK | libc::O_CLOEXEC, mode as libc::c_uint);
+        if fd < 0 {
+            return -1;
+        }
+        let mut st: libc::stat = std::mem::zeroed();
+        let own = libc::fstat(fd, &mut st) == 0 && (st.st_mode & libc::S_IFMT) == libc::S_IFREG && st.st_nlink == 1;
+        if !own || libc::ftruncate(fd, 0) != 0 {
+            libc::close(fd);
+            return -1;
+        }
+        fd
+    }
+}
+
+/// Removes a work folder Grimoire was building (`files` first, then the files of its bg/ and its own, then the
+/// folders), by descriptor and never through a link: a folder, or a bg/, that is a link is unlinked itself and
+/// never entered, so a planted link cannot make root delete the files of another folder (security review
+/// 2026-11). A folder left inside (not Grimoire's) stays, and so does the work folder then.
+pub fn remove_work_dir(work: &std::path::Path, files: &[&std::ffi::CStr]) {
+    use std::os::unix::ffi::OsStrExt;
+    let Ok(c) = std::ffi::CString::new(work.as_os_str().as_bytes()) else { return };
+    // SAFETY: open reads the NUL-terminated path we own; the descriptor is closed below.
+    let fd = unsafe { libc::open(c.as_ptr(), libc::O_RDONLY | libc::O_DIRECTORY | libc::O_NOFOLLOW | libc::O_CLOEXEC) };
+    if fd < 0 {
+        // a link (or no folder at all): the entry itself goes, never what it points at
+        if std::fs::symlink_metadata(work).is_ok_and(|m| !m.is_dir()) {
+            let _ = std::fs::remove_file(work);
+        }
+        return;
+    }
+    for f in files {
+        // SAFETY: unlinkat on the descriptor we own and a NUL-terminated name.
+        unsafe { libc::unlinkat(fd, f.as_ptr(), 0) };
+    }
+    // SAFETY: openat on the descriptor we own; the descriptor it returns is closed below.
+    let bg = unsafe { libc::openat(fd, c"bg".as_ptr(), libc::O_RDONLY | libc::O_DIRECTORY | libc::O_NOFOLLOW | libc::O_CLOEXEC) };
+    if bg >= 0 {
+        unlink_files_at(bg);
+        // SAFETY: closing the descriptor opened above, then removing the folder by its name in ours.
+        unsafe {
+            libc::close(bg);
+            libc::unlinkat(fd, c"bg".as_ptr(), libc::AT_REMOVEDIR);
+        }
+    }
+    unlink_files_at(fd);
+    // SAFETY: closing the descriptor opened above.
+    unsafe { libc::close(fd) };
+    let _ = std::fs::remove_dir(work);
+}
+
+/// Whether no component of `path` below `root` is a link (a missing one is fine: mkdir_p makes it). A cache that is
+/// pruned or written as root must not be reached through a planted link (security review 2026-11). A `path` that
+/// is not under `root` is refused.
+pub fn no_link_below(root: &str, path: &str) -> bool {
+    let Some(rest) = path.strip_prefix(root.trim_end_matches('/')) else { return false };
+    let mut at = root.trim_end_matches('/').to_string();
+    for part in rest.split('/').filter(|p| !p.is_empty()) {
+        at.push('/');
+        at.push_str(part);
+        match std::fs::symlink_metadata(&at) {
+            Ok(m) if m.file_type().is_symlink() => return false,
+            Ok(_) => {}
+            Err(_) => return true,
+        }
+    }
+    true
+}
+
+/// Empties a folder of Grimoire's (its files go, then the folder when nothing is left), by descriptor and never
+/// through a link: a folder that is a link is unlinked itself and never entered (security review 2026-11). How
+/// many files went.
+pub fn empty_dir_nofollow(dir: &std::path::Path) -> i32 {
+    use std::os::unix::ffi::OsStrExt;
+    let Ok(c) = std::ffi::CString::new(dir.as_os_str().as_bytes()) else { return 0 };
+    // SAFETY: open reads the NUL-terminated path we own; the descriptor is closed below.
+    let fd = unsafe { libc::open(c.as_ptr(), libc::O_RDONLY | libc::O_DIRECTORY | libc::O_NOFOLLOW | libc::O_CLOEXEC) };
+    if fd < 0 {
+        if std::fs::symlink_metadata(dir).is_ok_and(|m| !m.is_dir()) {
+            let _ = std::fs::remove_file(dir);
+        }
+        return 0;
+    }
+    let n = unlink_files_at(fd);
+    // SAFETY: closing the descriptor opened above.
+    unsafe { libc::close(fd) };
+    let _ = std::fs::remove_dir(dir);
+    n
+}
+
+/// Unlinks every entry of the folder open at `fd` that is not a folder (a link is unlinked, never followed): how
+/// many went.
+fn unlink_files_at(fd: i32) -> i32 {
+    // SAFETY: fdopendir takes a duplicate of our descriptor, which closedir closes; readdir's entries are read
+    // before the next readdir call.
+    let names = unsafe {
+        let d2 = libc::dup(fd);
+        if d2 < 0 {
+            return 0;
+        }
+        let d = libc::fdopendir(d2);
+        if d.is_null() {
+            libc::close(d2);
+            return 0;
+        }
+        let mut names = Vec::new();
+        loop {
+            let e = libc::readdir(d);
+            if e.is_null() {
+                break;
+            }
+            let n = std::ffi::CStr::from_ptr((*e).d_name.as_ptr()).to_owned();
+            if n.as_bytes() != b"." && n.as_bytes() != b".." {
+                names.push(n);
+            }
+        }
+        libc::closedir(d);
+        names
+    };
+    let mut gone = 0;
+    for n in names {
+        // SAFETY: unlinkat on the descriptor we own and a NUL-terminated name (a folder fails: EISDIR).
+        gone += (unsafe { libc::unlinkat(fd, n.as_ptr(), 0) } == 0) as i32;
+    }
+    gone
 }
 
 fn mkdir_one(p: &str) -> i32 {
@@ -447,7 +583,7 @@ fn write_file_atomic_in(path: &str, data: &[u8]) -> i32 {
     // SAFETY: open/write/fsync/close/rename/unlink on paths and an fd this function owns; the
     // buffers passed are our slices, with their lengths.
     unsafe {
-        let fd = libc::open(ctmp.as_ptr(), libc::O_WRONLY | libc::O_CREAT | libc::O_TRUNC, 0o644 as libc::c_uint);
+        let fd = open_rewrite_nofollow(&ctmp, 0o644);
         if fd < 0 {
             crate::qlog!("write %s: %s", &tmp, &strerror(errno()));
             return -1;

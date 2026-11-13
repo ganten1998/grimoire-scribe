@@ -16,7 +16,7 @@ expect library.ui_at.930.568 is pen-feel
 expect library.ui_at.930.691 is shortcuts
 expect library.ui_at.930.814 is calibrate
 expect library.ui_at.580.1930 is pair-menu
-expect library.ui_at.890.1930 is gestures
+expect library.ui_at.1000.1930 is gestures
 rotate 1
 wait 200
 expect library.sheet is settings

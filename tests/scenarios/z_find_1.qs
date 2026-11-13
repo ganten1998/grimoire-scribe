@@ -36,7 +36,8 @@ expect editor.find is 0
 expect editor.modal is none
 expect editor.page is 3
 expect editor.back is 1 1
-expect display.presents is fast 36 1328 1788 124, full 0 0 1860 2480
+# (a page turn at the fitted view is a UI refresh, no flash: #49, issue #31; every 30th UI refresh flashes)
+expect display.presents is fast 36 1328 1788 124, ui 0 0 1860 2480
 key 48 0
 wait 300
 expect editor.page is 1

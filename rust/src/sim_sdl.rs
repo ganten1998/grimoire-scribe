@@ -1332,7 +1332,8 @@ impl State {
 // (sys_activity), which it does at most once a minute. "pump.calls": how many times long work called
 // the work pump (work_pump, common.h) since this key was last checked, so a check counts what the
 // lines before it did. "keyboard.draws": how many times an on-screen keyboard was drawn
-// (keyboard_draw, keyboard.h) since this key was last checked, the same way.
+// (keyboard_draw, keyboard.h) since this key was last checked, the same way. "keyboard.clipboard": what the
+// keyboard's Cut or Copy took last (keyboard_clipboard), empty before the first.
 fn power_probe(key: &[u8], out: &mut String, cap: usize) -> bool {
     if key.starts_with(b"touch.") {
         // touchgest's: what the contact lines' fingers are doing (touchgest_probe)
@@ -1361,6 +1362,10 @@ fn power_probe(key: &[u8], out: &mut String, cap: usize) -> bool {
     }
     if key == b"keyboard.draws" {
         csnprintf!(out, cap, "%u", keyboard_draws_take());
+        return true;
+    }
+    if key == b"keyboard.clipboard" {
+        csnprintf!(out, cap, "%s", &keyboard_clipboard());
         return true;
     }
     if key != b"power.pokes" {
@@ -2211,6 +2216,23 @@ fn script_step_in(st: &mut State) -> Step {
             SIM_STORAGE_FULL.store(b == b"full", Ordering::Relaxed);
             if b != b"full" && b != b"ok" {
                 st.expect_unknown_line();
+            }
+        } else if a == b"pdfimport" {
+            // pdfimport PATH [NAME [FOLDER]]: the picker's entry (lane L8) with no picker: imports the PDF at
+            // PATH (relative to the storage root, GRIMOIRE_STORAGE or the folder around the data root), read
+            // in place and never moved, named NAME (words joined by _ for spaces) into Library folder FOLDER.
+            // A lock held by a detached import leaves it waiting (the Import place's Waiting).
+            let t = String::from_utf8_lossy(b).into_owned();
+            let w: Vec<&str> = t.split_whitespace().collect();
+            let unspace = |x: &str| x.replace('_', " ");
+            match w.first().and_then(|p| crate::fsview::StoragePath::new(p.as_bytes())) {
+                Some(sp) => {
+                    let name = w.get(1).map(|x| unspace(x));
+                    let folder = w.get(2).map(|x| unspace(x));
+                    let r = crate::pdfimport::pdf_import_queue(&sp, name.as_deref(), folder.as_deref(), store_dpi());
+                    qlog!("script: pdfimport: %s", &format!("{r:?}"));
+                }
+                None => st.expect_unknown_line(),
             }
         } else if a == b"powerd" {
             // powerd STATE: what the power service reports from now on (active, screenSaver, ...)
