@@ -1,3 +1,5 @@
+# env: GRIMOIRE_PAGE_VIEWS=0
+# (No drawings kept in memory: a revisit reads the drawing kept on disk, as one in another session does.)
 # settings: shortcuts_enabled=1
 # rust-only
 # generate: tests/previews_fixture.py

@@ -1,6 +1,8 @@
 # rust-only
 # generate: tests/previews_fixture.py
 # env: GRIMOIRE_KEEP_RENDER_MS=4294967294
+# env: GRIMOIRE_PAGE_VIEWS=0
+# (No drawings kept in memory: a revisit reads the drawing kept on disk, as one in another session does.)
 # No slow opening to qualify this page: density at save time is sufficient. Leaving before idle
 # must keep the final canvas; an immediate first revisit reads it, with exactly the new ink.
 wait 300

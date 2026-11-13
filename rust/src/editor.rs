@@ -694,9 +694,22 @@ struct PageView {
 /// The pages left this session whose drawings are kept in memory (4.6 MB each at the Scribe's page
 /// size): the three newest, so turning back a page or two is instant.
 const PAGE_VIEWS_MAX: usize = 3;
+/// PAGE_VIEWS_MAX, or what a scenario asks for: the simulator takes GRIMOIRE_PAGE_VIEWS (0 keeps none, so a
+/// scenario of the kept drawing on disk reaches the disk on a revisit, as on a page left in another session).
+fn page_views_max() -> usize {
+    #[cfg(feature = "sim")]
+    if let Some(n) = std::env::var("GRIMOIRE_PAGE_VIEWS").ok().and_then(|v| v.parse().ok()) {
+        return n;
+    }
+    PAGE_VIEWS_MAX
+}
 
 /// Puts the open page's drawing aside in memory, when its canvas is whole and the page is its file.
 fn page_view_stash(s: &mut EditorState) {
+    let max = page_views_max();
+    if max == 0 {
+        return;
+    }
     if s.page_canvas.px.is_empty() || s.canvas_page != s.open_page_ref() || s.picture_missing || s.page_dirty {
         return;
     }
@@ -720,7 +733,7 @@ fn page_view_stash(s: &mut EditorState) {
     canvas.clip = s.page_canvas.clip;
     let ms = if s.full_ms.0 == pid { s.full_ms.1 } else { 0 };
     s.page_views.retain(|v| v.pid != pid);
-    if s.page_views.len() == PAGE_VIEWS_MAX {
+    while s.page_views.len() >= max {
         let mut old = s.page_views.remove(0);
         canvas_free(&mut old.canvas);
     }
@@ -11995,6 +12008,13 @@ pub fn editor_probe(a: &mut App, key: &str, out: &mut String, cap: usize) -> i32
     } else if key == "erase_strokes" {
         let n = if has_page { s.open_page().unwrap().strokes.iter().filter(|x| stroke_is_erase(x)).count() as i32 } else { 0 };
         csnprintf!(out, cap, "%d", n);
+    } else if key == "page_in_memory" {
+        // Whether the open page's drawing is among those kept in memory this session (PageView), for the
+        // page file as it is now: a page turned back to came up from it.
+        let pid = if has_page { s.open_pid() } else { 0 };
+        let stamp = if pid != 0 { store_page_source_identity(&s.nb, pid) } else { None };
+        let on = stamp.is_some_and(|st| s.page_views.iter().any(|v| v.pid == pid && v.stamp == st));
+        csnprintf!(out, cap, "%d", on as i32);
     } else if key == "page_kept" {
         // Whether the open page came up from its kept drawing instead of being drawn stroke by stroke.
         csnprintf!(out, cap, "%d", s.page_kept as i32);
