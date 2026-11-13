@@ -1140,6 +1140,14 @@ pub fn sys_battery_reap() {}
 pub fn sys_wall_clock() -> i64 {
     with(|st| st.clock).unwrap_or_else(wall_time)
 }
+/// All of them, as on the Kindle, but the ones GRIMOIRE_SIM_NO_SERVICES names (docs/SIM.md): a
+/// platform that leaves those to its system, for the scenarios of Settings without their rows.
+pub fn sys_services() -> Services {
+    match std::env::var("GRIMOIRE_SIM_NO_SERVICES") {
+        Ok(off) => Services::without(&off),
+        Err(_) => Services::ALL,
+    }
+}
 pub fn display_broken() -> bool {
     false
 }

@@ -156,6 +156,9 @@ impl Platform for Recorder {
     fn sys_wall_clock(&self) -> i64 {
         wall_time()
     }
+    fn sys_services(&self) -> Services {
+        Services::ALL
+    }
 }
 
 /// Where `what` first comes in the recorded order.
