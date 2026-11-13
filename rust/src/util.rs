@@ -365,6 +365,29 @@ pub fn mkdir_p(path: &str) -> i32 {
     mkdir_one(path)
 }
 
+/// Where a lock file is opened. Its natural place is beside what it guards, and that is where it stays unless
+/// GRIMOIRE_LOCKS names a folder: a data folder on a file system without advisory locks (flock answers "not
+/// implemented" on some FUSE and network mounts) cannot hold one, so whoever starts the app there names a folder
+/// that can. The lock is then `<that folder>/<hash>.lock`, the hash being of the natural path, so each natural
+/// path keeps one lock file of its own there and every process of the app agrees on it. The folder is made when
+/// missing; its lock files are empty and are never pruned. Unset, empty, or a folder that cannot be made: the
+/// natural path, unchanged.
+pub fn lock_file_path(natural: &str) -> String {
+    let Some(dir) = std::env::var_os("GRIMOIRE_LOCKS").and_then(|d| d.into_string().ok()).filter(|d| !d.is_empty()) else {
+        return natural.to_string();
+    };
+    let dir = dir.trim_end_matches('/'); // ("/" alone becomes "": the lock is then "/<hash>.lock")
+    if !dir.is_empty() && mkdir_p(dir) != 0 {
+        return natural.to_string();
+    }
+    // FNV-1a, 64 bits
+    let mut h: u64 = 14695981039346656037;
+    for &b in natural.as_bytes() {
+        h = (h ^ b as u64).wrapping_mul(1099511628211);
+    }
+    format!("{dir}/{h:016x}.lock")
+}
+
 /// Opens `path` to be written from its start (created with mode `mode` when missing), never through a link or onto
 /// anything but a file of its own: O_NOFOLLOW, so a planted `<name>.tmp` link can no longer make root truncate and
 /// write its target, and O_NONBLOCK, so a FIFO cannot hold the save; then it must be a regular file with one link

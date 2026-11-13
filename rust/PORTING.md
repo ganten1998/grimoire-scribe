@@ -87,7 +87,8 @@ modules (a method with a default body in the trait where most platforms have not
 one with the feature on, implements `Platform` on a type of its own, and from its own binary:
 
 1. calls `platform::register(&ITS_PLATFORM)` (a `&'static` reference; once);
-2. sets `GRIMOIRE_ROOT` to the data directory;
+2. sets `GRIMOIRE_ROOT` to the data directory (and, when that directory is on a file system without
+   advisory locks, `GRIMOIRE_LOCKS` to a folder that has them: `util::lock_file_path`);
 3. calls `mainloop::main(args)` on the thread that stays the app's only thread, and exits with
    what it returns.
 

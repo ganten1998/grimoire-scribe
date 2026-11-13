@@ -399,7 +399,7 @@ pub fn pdf_mirror_lock(id: &str) -> Option<MirrorLock> {
         return None;
     }
     use std::os::unix::fs::OpenOptionsExt;
-    let f = std::fs::OpenOptions::new().read(true).write(true).create(true).truncate(false).custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK).open(format!("{root}/{id}.lock")).ok()?;
+    let f = std::fs::OpenOptions::new().read(true).write(true).create(true).truncate(false).custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK).open(lock_file_path(&format!("{root}/{id}.lock"))).ok()?;
     let t0 = now_ms();
     let mut said = false;
     loop {

@@ -486,6 +486,11 @@ draws them. White ink and the precise eraser make them.
 
 ## On-disk layout (root = /mnt/us/grimoire on Kindle, $GRIMOIRE_ROOT or ./grimoire-data in sim)
 
+Lock files (`import/.lock`, `graph.ini.lock`, `graph-all.ini.lock`, `.cache/pdf/<id>.lock`) sit beside what
+they guard. A root on a file system without advisory locks cannot hold them: `GRIMOIRE_LOCKS` then names a
+folder that can, and each lock is `<that folder>/<hash of its natural path>.lock` (`util::lock_file_path`).
+Unset on the Kindle.
+
 ```
 root/settings.ini              current tool, panel, every tool's params, calibration and the
                                panel it was made on, sleep, style, language, port... (unknown

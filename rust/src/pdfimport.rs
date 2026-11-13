@@ -284,12 +284,12 @@ pub enum Lock {
 }
 
 /// Takes `import/.lock` without blocking, once, and keeps the handle (O_CLOEXEC, so no script and no worker
-/// inherits it) while any import is queued or running. Never blocks.
+/// inherits it) while any import is queued or running. Never blocks. (The file is where `lock_file_path` says.)
 pub fn lock_take() -> Lock {
     if LOCK.with(|l| l.get()) >= 0 {
         return Lock::Held;
     }
-    let path = root_path("import/.lock");
+    let path = lock_file_path(&root_path("import/.lock"));
     let Ok(c) = std::ffi::CString::new(path) else { return Lock::Busy(libc::ENOENT) };
     // SAFETY: open reads the NUL-terminated path we own; the descriptor it returns is ours alone.
     let fd = unsafe { libc::open(c.as_ptr(), libc::O_RDWR | libc::O_CREAT | libc::O_CLOEXEC, 0o644 as libc::c_uint) };
