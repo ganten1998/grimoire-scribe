@@ -3,6 +3,7 @@
 
 use crate::prelude::*;
 use crate::about::AboutView;
+use crate::browser::{Browser, BrowserResult, PickKind, PickSpec};
 
 #[repr(i32)]
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -39,6 +40,9 @@ enum Modal {
     /// A folder moved or renamed onto the name of one that is there (2.1, Rust only; a number of its own as
     /// Font's): Merge into it, Keep both (as "Name 2"), Cancel
     Merge = 350,
+    /// Settings > Wi-Fi (2.1.0-beta.2, Rust only; a number of its own as Merge's): the radio, the network
+    /// connected to and the Kindle's saved networks, a tap switching to one (wifi.rs)
+    Wifi = 360,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -131,7 +135,7 @@ const H_RECORD_USE: i32 = 64;
 const H_RECORD_RETRY: i32 = 65;
 const H_RECORD_CANCEL: i32 = 66;
 // 2.1: the record card's Disable, which saves "nothing" for its action (over the built-ins too).
-const H_RECORD_DISABLE: i32 = 95;
+const H_RECORD_DISABLE: i32 = 98;
 const H_GESTURES_RESET_CONFIRM: i32 = 67;
 const H_GESTURES_RESET_CANCEL: i32 = 68;
 const H_ABOUT: i32 = 71;
@@ -164,6 +168,19 @@ const H_FONT_CANCEL: i32 = 92;
 // 2.1: the Merge dialog's Merge into it and Keep both (Cancel is H_CANCEL).
 const H_MERGE_INTO: i32 = 93;
 const H_MERGE_BOTH: i32 = 94;
+// 2.1.0-beta.2: New notebook's From a file... (the file picker over it).
+const H_NEW_FILE: i32 = 95;
+// 2.1.0-beta.2: the Font sheet's rows of the owner's own fonts (arg: the font, an index of LibraryState.fonts),
+// and the pages of them (arg: -1 back, 1 on).
+const H_FONT_OWN: i32 = 96;
+const H_FONT_PAGE: i32 = 97;
+// 2.1.0-beta.2: Settings' Wi-Fi button, and its sheet's rows: the radio (arg: WIFI_*), a saved network
+// (arg: its row, an index of WifiSheet.rows) and the next page of them. (Numbered apart from the ids other
+// work of the same release adds after 97.)
+const H_WIFI_MENU: i32 = 180;
+const H_WIFI_RADIO: i32 = 181;
+const H_WIFI_NET: i32 = 182;
+const H_WIFI_MORE: i32 = 183;
 
 #[derive(Clone, Copy, Default)]
 struct Item {
@@ -187,6 +204,24 @@ pub struct LibraryState {
     font_pick: usize,
     font_sample: Rect,
     font_rows: Vec<Rect>,
+    /// The Font sheet's own fonts (2.1.0-beta.2): the files of grimoire/fonts as the sheet found them
+    /// (userfonts_scan), the one highlighted (its path under the folder; "" while a family is: font_pick), the
+    /// first shown of the page on show and how many a page holds, the rows drawn (each font's index and where),
+    /// how the sample was drawn (the runner's probe), and when the cache was last looked at.
+    fonts: Vec<crate::userfonts::UserFont>,
+    font_file: String,
+    font_first: usize,
+    font_per_page: usize,
+    font_own_rows: Vec<(usize, Rect)>,
+    /// a family was tapped on the sheet since it opened (Done then drops a font=file: that does not draw)
+    font_picked: bool,
+    font_sample_how: &'static str,
+    fonts_looked_ms: u32,
+    /// The file picker (2.1.0-beta.2, browser.rs), open over New notebook's sheet (which stays under it: Cancel
+    /// and Esc at the picker's root come back to it), and whether the sheet's name was typed (D28: a typed name is
+    /// the imported notebook's, else the file's own).
+    files: Browser,
+    new_name_typed: bool,
     /// The Merge dialog (2.1): the folder that was moved or renamed, and the path it would take, which is
     /// the name of a folder already there
     merge_old: FixedStr<STORE_NAME_LEN>,
@@ -314,6 +349,8 @@ pub struct LibraryState {
     nfound: i32,
     npaired: i32,
     shown_bt_changes: u32,
+    /// Settings > Wi-Fi
+    wifi: WifiSheet,
     // The Updates sheet: its check (UPD_*), the newest version it found, why it failed.
     upd: i32,
     /// at most UPDATE_VERSION_LEN - 1 bytes
@@ -1048,6 +1085,12 @@ fn draw_new(a: &mut App) {
     let more = Rect::new(cancel.x + bw + ui_px(30.0), cancel.y, bw, bh);
     ui_button(c, more, IconKind::None, tr("More layouts..."), if tpl { ButtonStyle::Selected } else { ButtonStyle::Plain });
     hits_add(&mut s.hits, more, H_PAPER_MORE, PAPER_BLANK.0 as i32);
+    // From a file... (the file picker) beside it: a PDF or a folder of pictures becomes a notebook.
+    let file = Rect::new(more.x + bw + ui_px(30.0), cancel.y, bw, bh);
+    // TRANSLATORS: New notebook's button (348 px at 44 px, or 34 px, or two lines of that): it opens the file picker
+    // to make a notebook of a PDF or a folder of pictures anywhere on the Kindle.
+    ui_button(c, file, IconKind::None, tr("From a file..."), ButtonStyle::Plain);
+    hits_add(&mut s.hits, file, H_NEW_FILE, 0);
 }
 
 /// A row of draw_menu's list (the C's MenuRow, its label owned).
@@ -1607,10 +1650,18 @@ fn disable_recording(a: &mut App) {
     if !save_gesture_map(a, next) {
         return;
     }
+    // (a pair that lost both its actions is named as its row is, "Next and previous page", as a row held says)
+    let group = lib(a).gestures_group.max(0) as usize;
+    let label = binding_row_index(GESTURES, group, action)
+        .and_then(|i| binding_row_at(GESTURES, group, i))
+        .and_then(|row| row.label)
+        .filter(|_| paired != SHORTCUT_NONE)
+        .map(tr)
+        .unwrap_or_else(|| action_label(action));
     let mut msg = String::new();
     // TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): Disable in the record
     // card removed the action's gestures; %s is the action's name ("Undo", "Next page").
-    csnprintf!(&mut msg, 200, tr("No gestures for %s now."), action_label(action));
+    csnprintf!(&mut msg, 200, tr("No gestures for %s now."), label);
     app_toast(a, &msg, 2000);
     close_record_card(a);
 }
@@ -2741,6 +2792,245 @@ fn draw_menu(a: &mut App, title: &str, rows: &[MenuRow]) -> Vec<Rect> {
     rects
 }
 
+// ---- Settings > Wi-Fi (2.1.0-beta.2) ----
+
+/// The radio row's three taps (H_WIFI_RADIO's arg).
+const WIFI_RETRY: i32 = 0;
+const WIFI_ON: i32 = 1;
+const WIFI_OFF: i32 = 2;
+/// Saved networks a page: with the radio, the status, More and Done, 11 rows, which fit sideways.
+const WIFI_PAGE: usize = 7;
+
+/// What the Wi-Fi sheet was drawn from: drawn again when any of it changes.
+#[derive(Clone, Default, PartialEq)]
+struct WifiShown {
+    status: Option<WifiStatus>,
+    busy: bool,
+    failed: bool,
+    current: Option<Vec<u8>>,
+    saved: Option<Vec<Vec<u8>>>,
+    join: Option<(Vec<u8>, WifiJoin)>,
+}
+
+/// Settings > Wi-Fi: the radio, the network connected to and the Kindle's saved networks (wifi.rs, the
+/// helper kindle/app/wifi.sh). It reads only while it is up: everything as it opens, then the network
+/// connected to every 2 s while a switch is under way, or while the radio is on with no connection, for
+/// 45 s after the last tap (the Share card's watch).
+#[derive(Default)]
+struct WifiSheet {
+    check_at: u32,
+    watch_at: u32,
+    /// everything was asked for since the sheet opened (not while the Share card's last read still ran);
+    /// the saved networks once more as the radio came on (wifid may not answer while it is off), or after a
+    /// switch the helper refused
+    asked: bool,
+    relisted: bool,
+    reread: bool,
+    /// the page of saved networks shown, and the names drawn, by row (H_WIFI_NET's arg)
+    page: usize,
+    rows: Vec<Vec<u8>>,
+    shown: Option<WifiShown>,
+}
+
+fn wifi_shown() -> WifiShown {
+    let status = wifi_status();
+    WifiShown {
+        status,
+        busy: wifi_changing() || (wifi_busy() && status.is_none()),
+        failed: wifi_failed(),
+        current: wifi_current().filter(|_| status.is_some_and(|st| st.connected == Some(true))),
+        saved: wifi_saved(),
+        join: wifi_joining(),
+    }
+}
+
+fn wifi_sheet_open(a: &mut App) {
+    let now = now_ms();
+    wifi_join_clear();
+    let asked = wifi_request(WifiAction::Networks);
+    lib(a).wifi = WifiSheet { check_at: now, watch_at: now, asked, ..WifiSheet::default() };
+    open_modal(a, Modal::Wifi);
+}
+
+fn draw_wifi_sheet(a: &mut App) {
+    let w = wifi_shown();
+    let name = |n: &[u8]| String::from_utf8_lossy(n).into_owned();
+    let mut status = String::new();
+    let mut status_named = false;
+    let on = w.status.is_some_and(|st| st.wireless && st.enabled);
+    match &w.join {
+        Some((n, WifiJoin::Pending)) => {
+            // TRANSLATORS: (Settings > Wi-Fi) its status line, 1470 px at 44 px in bold or two lines at 34 px; %s
+            // is a Wi-Fi network's name as the Kindle saved it (shortened if it is long). Connecting: a switch
+            // to that network is under way; Could not connect: it did not connect in 45 seconds, or the Kindle
+            // refused it; Connected to: the network the Kindle is connected to.
+            csnprintf!(&mut status, 200, tr("Connecting to %s…"), &name(n));
+            status_named = true;
+        }
+        Some((n, WifiJoin::Failed)) if !w.busy => {
+            csnprintf!(&mut status, 200, tr("Could not connect to %s."), &name(n));
+            status_named = true;
+        }
+        _ => {}
+    }
+    if status.is_empty() {
+        let text = if w.busy {
+            tr("Checking Wi-Fi…")
+        } else if w.failed {
+            tr("Could not read or change Wi-Fi.")
+        } else {
+            match w.status {
+                Some(_) if !on => tr("Wi-Fi is off"),
+                Some(st) if st.connected == Some(true) => {
+                    if let Some(n) = &w.current {
+                        csnprintf!(&mut status, 200, tr("Connected to %s"), &name(n));
+                        status_named = true;
+                    }
+                    tr("Connected to Wi-Fi")
+                }
+                Some(st) if st.connected == Some(false) => tr("Wi-Fi is on; no connection yet"),
+                Some(_) => tr("Wi-Fi is on; connection unknown"),
+                None => tr("Wi-Fi unavailable"),
+            }
+        };
+        if status.is_empty() {
+            status.push_str(text);
+        }
+    }
+    let (radio, arg, can) = match w.status {
+        None => (tr("Retry"), WIFI_RETRY, !w.busy && wifi_available()),
+        Some(_) if on => (tr("Turn off Wi-Fi"), WIFI_OFF, !w.busy),
+        Some(_) => (tr("Turn on Wi-Fi"), WIFI_ON, !w.busy),
+    };
+    let style = |can: bool| if can { ButtonStyle::Plain } else { ButtonStyle::Disabled };
+    let mut rows = vec![
+        menu_row(IconKind::Share, radio, H_WIFI_RADIO, arg, style(can)),
+        MenuRow { name: status_named, ..menu_row(IconKind::None, &status, H_NONE, 0, ButtonStyle::Disabled) },
+    ];
+    // The saved networks, the one connected to first, a page at a time.
+    let mut names = w.saved.clone().unwrap_or_default();
+    if let Some(i) = w.current.as_ref().and_then(|c| names.iter().position(|n| n == c)) {
+        let n = names.remove(i);
+        names.insert(0, n);
+    }
+    let pages = names.len().div_ceil(WIFI_PAGE).max(1);
+    let page = lib(a).wifi.page.min(pages - 1);
+    let mut drawn = Vec::new();
+    if w.status.is_some() {
+        match &w.saved {
+            None => {
+                // TRANSLATORS: (Settings > Wi-Fi) a line in place of the saved networks: they could not be read
+                // (with the radio off, the first: they may be read only while it is on). 1470 px at 44 px in
+                // bold, or two lines at 34 px.
+                let why = if on { tr("Saved networks could not be read.") } else { tr("Turn on Wi-Fi to see the saved networks.") };
+                rows.push(menu_row(IconKind::None, why, H_NONE, 0, ButtonStyle::Disabled));
+            }
+            Some(saved) if saved.is_empty() => {
+                // TRANSLATORS: (Settings > Wi-Fi) the Kindle has no saved Wi-Fi network; Grimoire adds none itself.
+                rows.push(menu_row(IconKind::None, tr("No saved networks. Add one in Kindle settings or KOReader."), H_NONE, 0, ButtonStyle::Disabled));
+            }
+            Some(_) => {
+                for n in names.iter().skip(page * WIFI_PAGE).take(WIFI_PAGE) {
+                    let here = w.current.as_ref() == Some(n);
+                    let icon = if here { IconKind::Check } else { IconKind::None };
+                    rows.push(MenuRow { name: true, ..menu_row(icon, &name(n), H_WIFI_NET, drawn.len() as i32, style(!w.busy)) });
+                    drawn.push(n.clone());
+                }
+                if pages > 1 {
+                    let mut more = String::new();
+                    // TRANSLATORS: (Settings > Wi-Fi) the row under the saved networks when they take more than
+                    // one page: shows the next page (after the last, the first). %d of %d: this page, the pages.
+                    csnprintf!(&mut more, 96, tr("More networks (%d of %d)"), page as i32 + 1, pages as i32);
+                    rows.push(menu_row(IconKind::Next, &more, H_WIFI_MORE, 0, ButtonStyle::Plain));
+                }
+            }
+        }
+    }
+    rows.push(menu_row(IconKind::Close, tr("Done"), H_CANCEL, 0, ButtonStyle::Plain));
+    let ws = &mut lib(a).wifi;
+    ws.page = page;
+    ws.rows = drawn;
+    ws.shown = Some(w);
+    draw_menu(a, tr("Wi-Fi"), &rows);
+}
+
+fn wifi_sheet_tap(a: &mut App, id: i32, arg: i32) {
+    let now = now_ms();
+    match id {
+        H_WIFI_RADIO => {
+            let action = match arg {
+                WIFI_ON => WifiAction::On,
+                WIFI_OFF => WifiAction::Off,
+                _ => WifiAction::Networks,
+            };
+            wifi_request(action);
+        }
+        H_WIFI_NET => {
+            let ws = &lib(a).wifi;
+            let Some(n) = ws.rows.get(arg as usize).cloned() else { return };
+            // (the network connected to: nothing to switch)
+            if ws.shown.as_ref().is_some_and(|w| w.current.as_ref() == Some(&n)) {
+                return;
+            }
+            lib(a).wifi.reread = false;
+            wifi_join(&n);
+        }
+        H_WIFI_MORE => {
+            lib(a).wifi.page += 1;
+            let pages = wifi_saved().map_or(1, |s| s.len().div_ceil(WIFI_PAGE).max(1));
+            if lib(a).wifi.page >= pages {
+                lib(a).wifi.page = 0;
+            }
+        }
+        _ => return,
+    }
+    let ws = &mut lib(a).wifi;
+    ws.check_at = now;
+    ws.watch_at = now;
+    redraw(a, RefreshMode::Ui);
+}
+
+fn wifi_sheet_tick(a: &mut App, now: u32) {
+    if !wifi_busy() {
+        let st = wifi_status();
+        let join = wifi_joining().map(|j| j.1);
+        let ws = &mut lib(a).wifi;
+        if !ws.asked {
+            ws.asked = wifi_request(WifiAction::Networks);
+        }
+        match st {
+            // A switch the helper refused leaves the status unread: read everything once more. A failed read
+            // waits for Retry.
+            None => {
+                if join == Some(WifiJoin::Failed) && !ws.reread {
+                    ws.reread = true;
+                    wifi_request(WifiAction::Networks);
+                }
+            }
+            Some(st) => {
+                let on = st.wireless && st.enabled;
+                if !on {
+                    ws.relisted = false;
+                }
+                if on && wifi_saved().is_none() && !ws.relisted {
+                    ws.relisted = true;
+                    ws.check_at = now;
+                    wifi_request(WifiAction::Networks);
+                } else if now.wrapping_sub(ws.check_at) > 2000
+                    && (join == Some(WifiJoin::Pending)
+                        || (on && st.connected != Some(true) && now.wrapping_sub(ws.watch_at) < 45000))
+                {
+                    ws.check_at = now;
+                    wifi_request(WifiAction::Current);
+                }
+            }
+        }
+    }
+    if lib(a).wifi.shown.as_ref() != Some(&wifi_shown()) {
+        redraw(a, RefreshMode::Ui);
+    }
+}
+
 fn bind_group(kind: BindKind, s: &LibraryState) -> i32 {
     if kind.modal == BUTTONS.modal {
         s.buttons_group
@@ -3287,12 +3577,12 @@ fn draw_record_card(a: &mut App) {
         tr("Try again"),
         ButtonStyle::Plain,
     );
-    // TRANSLATORS: the record card's Disable button: it removes every gesture for the action
-    // (the built-in ones too), so the row says "no gesture".
     ui_button(
         screen,
         disable_r,
         IconKind::Ban,
+        // TRANSLATORS: the record card's Disable button (about 290 px at 34 px in capitals): it removes
+        // every gesture for the action (the built-in ones too), so the row says "no gesture".
         tr("Disable"),
         ButtonStyle::Plain,
     );
@@ -3417,10 +3707,13 @@ fn draw_settings(a: &mut App) {
     let mut theme_r = rt;
     if ui_theme() == UiTheme::Classic {
         let mut label = String::new();
+        // (one of the owner's own fonts by its family's name, cut short as a name is)
+        let own_name = crate::userfonts::userfonts_in_use_name();
         // TRANSLATORS: (Settings, Classic only) the chip at the Style row's right end that opens the
         // Font sheet, with the font in use by its short name, never translated ("Terminess",
-        // "Atkinson", "Noto Sans", "Literata"): about 450 px at 34 px in bold, beside its icon.
-        csnprintf!(&mut label, 96, tr("Font: %s"), FONT_FAMILIES[font_family()].short);
+        // "Atkinson", "Noto Sans", "Literata"; one of your own fonts by its family's name, cut short
+        // if it is long): about 450 px at 34 px in bold, beside its icon.
+        csnprintf!(&mut label, 96, tr("Font: %s"), own_name.as_deref().unwrap_or(FONT_FAMILIES[font_family()].short));
         let ch = ui_px(90.0);
         // (the icon, then its label: the chip as wide as they need, up to 560 px)
         let lx = ch + ui_px(10.0);
@@ -3429,7 +3722,11 @@ fn draw_settings(a: &mut App) {
         ui_frame(c, chip, ch / 2, 255, true, 0);
         ui_frame(c, chip, ch / 2, 0, false, ui_px(3.0));
         ui_icon(c, IconKind::Font, Rect::new(chip.x + ui_px(16.0), chip.y + ui_px(8.0), ch - ui_px(16.0), ch - ui_px(16.0)), 0);
-        font_draw_left(c, FontFace::Bold, ui_small_size(), Rect::new(chip.x + lx, chip.y, chip.w - lx - ui_px(24.0), ch), &label, 0);
+        if own_name.is_some() {
+            font_draw_left_name(c, FontFace::Bold, ui_small_size(), Rect::new(chip.x + lx, chip.y, chip.w - lx - ui_px(24.0), ch), &label, 0);
+        } else {
+            font_draw_left(c, FontFace::Bold, ui_small_size(), Rect::new(chip.x + lx, chip.y, chip.w - lx - ui_px(24.0), ch), &label, 0);
+        }
         text_w = chip.x - ui_px(24.0) - (rt.x + ui_px(110.0));
         theme_r.w = chip.x - ui_px(12.0) - rt.x;
         hits_add(&mut s.hits, chip, H_SET_FONT, 0);
@@ -3580,75 +3877,248 @@ fn draw_settings(a: &mut App) {
     let ko = Rect::new(in_.x, done.y, ui_px(300.0), done.h);
     ui_button(c, ko, IconKind::Notebook, "KOReader", ButtonStyle::Plain);
     hits_add(&mut s.hits, ko, H_KOREADER, 0);
-    // Pair, Gestures and Updates share the space between KOReader and Done.
+    // Pair, Wi-Fi, Gestures and Updates share the space between KOReader and Done: evenly when the longest
+    // word fits a quarter, else each as wide as its word needs with what is left shared out evenly (four as
+    // wide as "Actualizaciones" would not fit), else evenly again (a word too long for any share is cut, and
+    // the fit check says so).
     let gap = ui_px(30.0);
-    let mid = done.x - ko.x - ko.w - 4 * gap;
-    let third = mid / 3;
-    let keys = Rect::new(ko.x + ko.w + gap, done.y, third, done.h);
-    let gestures = Rect::new(keys.x + keys.w + gap, done.y, third, done.h);
-    let upd = Rect::new(
-        gestures.x + gestures.w + gap,
-        done.y,
-        mid - 2 * third,
-        done.h,
-    );
-    // TRANSLATORS: Settings' bottom buttons, each a word under its icon, about 240 px at 34 px.
-    // Pair opens the Pair sheet (a Bluetooth controller: the helper on or off, pairing one; also that
-    // sheet's title), Gestures opens gesture bindings, Updates checks for a newer Grimoire.
-    ui_button(c, keys, IconKind::Link, tr("Pair"), ButtonStyle::Plain);
-    hits_add(&mut s.hits, keys, H_PAIR_MENU, 0);
-    ui_button(
-        c,
-        gestures,
-        IconKind::Gestures,
-        tr("Gestures"),
-        ButtonStyle::Plain,
-    );
-    hits_add(&mut s.hits, gestures, H_GESTURES, 0);
-    ui_button(c, upd, IconKind::Update, tr("Updates"), ButtonStyle::Plain);
-    hits_add(&mut s.hits, upd, H_UPDATES, 0);
+    let mid = done.x - ko.x - ko.w - 5 * gap;
+    let bottom = [
+        // TRANSLATORS: Settings' bottom buttons, each a word under its icon, about 200 px at 34 px (the
+        // four share about 810 px upright; a longer word takes room from the shorter ones). Pair opens the
+        // Pair sheet (a Bluetooth controller: the helper on or off, pairing one; also that sheet's title),
+        // Wi-Fi the Wi-Fi sheet (the radio and the Kindle's saved networks), Gestures opens gesture
+        // bindings, Updates checks for a newer Grimoire.
+        (IconKind::Link, tr("Pair"), H_PAIR_MENU),
+        // TRANSLATORS: (Settings) the bottom button that opens the Wi-Fi sheet, about 200 px at 34 px under
+        // its icon; also that sheet's title, and the Share screen's button and card title.
+        (IconKind::Share, tr("Wi-Fi"), H_WIFI_MENU),
+        (IconKind::Gestures, tr("Gestures"), H_GESTURES),
+        (IconKind::Update, tr("Updates"), H_UPDATES),
+    ];
+    // (none narrower than 160 px, 13.5 mm, while that fits: a short word is still a finger's target)
+    let need = bottom.map(|(icon, label, _)| ui_button_need_w(done.h, icon, label, ButtonStyle::Plain).max(ui_px(160.0)));
+    let spare = mid - need.iter().sum::<i32>();
+    let even = need.iter().all(|&n| n <= mid / 4) || spare < 0;
+    let mut x = ko.x + ko.w + gap;
+    for (i, (icon, label, id)) in bottom.into_iter().enumerate() {
+        let w = if i == 3 { done.x - gap - x } else if even { mid / 4 } else { need[i] + spare / 4 };
+        let r = Rect::new(x, done.y, w, done.h);
+        ui_button(c, r, icon, label, ButtonStyle::Plain);
+        hits_add(&mut s.hits, r, id, 0);
+        x += w + gap;
+    }
 }
 
 /// The Font sheet's third sample line, the same in every language: digits, the punctuation Spanish
 /// opens with, the angle quotes, and accented letters (Japanese comes from DotGothic16 in every font).
 const FONT_SAMPLE_CHARS: &str = "0123456789  \u{bf}? \u{a1}! \u{ab}\u{bb}  \u{e1}\u{e9}\u{ed}\u{f3}\u{fa} \u{f1} \u{e7} \u{fc} \u{df} \u{20ac}";
 
-/// Settings > Font (2.1, Classic only): on top a sample of the family highlighted (its name at the
-/// title size, a sentence at the text size, digits and accents at the small size, all in it), then
-/// every family by its name, each drawn in itself, the one in use with a check, then Cancel and Done.
-/// The sheet's own words are in the font in use until Done applies another.
+/// What a row of the owner's own fonts says under the font's name: that it is being checked, why it cannot be
+/// used, that some of the language's letters come from Terminess, or nothing.
+fn font_row_note(f: &crate::userfonts::UserFont) -> String {
+    use crate::userfonts::{FontWhy, UserFontState};
+    let mut out = String::new();
+    match &f.state {
+        // TRANSLATORS: (Settings > Font, a row of Your fonts) the font file is being checked in the background
+        // before Grimoire uses it. Each of these row notes: about 900 px at 34 px, one line.
+        UserFontState::Checking => out.push_str(tr("Checking...")),
+        UserFontState::Checked => {}
+        UserFontState::Ready(facts, _) => {
+            if facts.lacks >> i18n_find(i18n_current()).clamp(0, 15) & 1 == 1 {
+                // TRANSLATORS: (a row of Your fonts) the font can be used, but lacks some letters of the
+                // language Grimoire is in: those are drawn in Terminess (the built-in font's name, kept).
+                out.push_str(tr("Some letters come from Terminess."));
+            }
+        }
+        // TRANSLATORS: (a row of Your fonts, greyed) the file is no font Grimoire can read: damaged, empty,
+        // or one whose letters draw nothing.
+        UserFontState::No(FontWhy::Unreadable) => out.push_str(tr("Unreadable font.")),
+        UserFontState::No(FontWhy::TooBig) => {
+            // TRANSLATORS: (a row of Your fonts, greyed) the font file is bigger than Grimoire takes; %d is 24.
+            csnprintf!(&mut out, 96, tr("Too big (over %d MB)."), (crate::fontcheck::FONT_FILE_MAX >> 20) as i32);
+        }
+        // TRANSLATORS: (a row of Your fonts, greyed) a symbol font, or one without the letters A to Z.
+        UserFontState::No(FontWhy::NoLatin) => out.push_str(tr("No Latin letters.")),
+        // TRANSLATORS: (a row of Your fonts, greyed) a web font (.woff, .woff2): Grimoire takes .ttf and .otf
+        // files. The two endings are file kinds: keep them as they are.
+        UserFontState::No(FontWhy::Format) => out.push_str(tr("Use .ttf or .otf.")),
+        // TRANSLATORS: (a row of Your fonts, greyed) checking the font took longer than Grimoire allows.
+        UserFontState::No(FontWhy::Slow) => out.push_str(tr("Took too long to read.")),
+        // TRANSLATORS: (a row of Your fonts, greyed) the font Grimoire was set to is no longer in the folder.
+        UserFontState::No(FontWhy::Missing) => out.push_str(tr("File missing.")),
+    }
+    out
+}
+
+/// The check's preview (black on white) drawn into r: at its left, centred up and down, cut at r's right;
+/// on a highlighted row white on black.
+fn draw_font_preview(c: &mut Canvas, r: Rect, p: &Canvas, on: bool) {
+    let dy = r.y + (r.h - p.h) / 2;
+    let area = rect_intersect(rect_intersect(Rect::new(r.x, dy, p.w.min(r.w), p.h), r), c.clip);
+    for y in area.y..area.y + area.h {
+        for x in area.x..area.x + area.w {
+            let v = p.px[((y - dy) * p.stride + (x - r.x)) as usize];
+            let d = &mut c.px[(y * c.stride + x) as usize];
+            *d = if on { (*d).max(255 - v) } else { (*d).min(v) };
+        }
+    }
+}
+
+/// A row of the owner's own fonts: the font's name drawn in itself (the picture the check made: the UI never
+/// opens the file to list it), under it the file's name and what is to be said of it, in Terminess. A file that
+/// cannot be used is greyed, with its name alone.
+fn draw_font_own_row(c: &mut Canvas, r: Rect, f: &mut crate::userfonts::UserFont, on: bool, applied: bool) {
+    crate::userfonts::userfont_resolve(f);
+    let usable = f.usable();
+    let fg: u8 = if on { 255 } else if usable { 0 } else { 110 };
+    ui_frame(c, r, ui_px(16.0), if on { 0 } else { 255 }, true, 0);
+    ui_frame(c, r, ui_px(16.0), if usable { 0 } else { 110 }, false, ui_px(3.0));
+    let mark = r.h - ui_px(30.0);
+    let x = r.x + ui_px(40.0);
+    // (the check mark's room is the row's own while it has none)
+    let w = r.w - ui_px(80.0) - if applied { mark } else { 0 };
+    let top = Rect::new(x, r.y + ui_px(8.0), w, r.h - ui_px(58.0));
+    let bottom = Rect::new(x, r.y + r.h - ui_px(54.0), w, ui_px(46.0));
+    let note = font_row_note(f);
+    let file = f.rel.rsplit('/').next().unwrap_or("").to_string();
+    let base = f.base().to_string();
+    let drawn = match crate::userfonts::userfont_preview(f) {
+        Some(p) => {
+            draw_font_preview(c, top, p, on);
+            true
+        }
+        None => false,
+    };
+    if !drawn {
+        font_draw_left_name(c, FontFace::FixedBold, ui_text_size(), top, &base, fg);
+    }
+    let nw = if note.is_empty() { 0 } else { font_measure(FontFace::Fixed, ui_small_size(), &note) };
+    if usable {
+        // The file's own name, cut short as names are, then the note at the row's right. In a narrow row
+        // (sideways, two abreast) the name keeps three tenths of the line and the note is set smaller to fit.
+        let gap = if nw > 0 { ui_px(30.0) } else { 0 };
+        let room = (w - nw - gap).max(w * 3 / 10).min(w);
+        font_draw_left_name(c, FontFace::Fixed, ui_small_size(), Rect::new(x, bottom.y, room, bottom.h), &file, fg);
+        if nw > 0 {
+            let nr = (w - room - gap).max(0).min(nw);
+            ui_text(c, FontFace::Fixed, ui_small_size(), ui_small_size() * 0.7, Rect::new(x + w - nr, bottom.y, nr, bottom.h), &note, 1, false, fg);
+        }
+    } else {
+        font_draw_left(c, FontFace::Fixed, ui_small_size(), bottom, &note, fg);
+    }
+    if applied {
+        ui_icon(c, IconKind::Check, Rect::new(r.x + r.w - ui_px(25.0) - mark, r.y + ui_px(15.0), mark, mark), fg);
+    }
+}
+
+/// Settings > Font (2.1, Classic only): on top a sample of the font highlighted (its name at the title size,
+/// a sentence at the text size, digits and accents at the small size, all in it), then Built in: every family
+/// by its name, each drawn in itself; then Your fonts (2.1.0-beta.2): the files of grimoire/fonts, a page of
+/// them at a time (or where to copy some); the one in use with a check; then Cancel and Done. The sheet's own
+/// words are in the font in use until Done applies another, unless that font is one of the owner's own:
+/// then they are Terminess, so a font that went wrong can always be taken back.
 fn draw_font_sheet(a: &mut App) {
+    if font_own() {
+        font_with_family(0, || draw_font_sheet_in(a, None));
+    } else {
+        let applied = font_family();
+        draw_font_sheet_in(a, Some(applied));
+    }
+}
+
+fn draw_font_sheet_in(a: &mut App, applied: Option<usize>) {
     let (aw, ah) = (a.w, a.h);
-    let applied = font_family();
+    let own_applied = a.settings.font_file.as_str().to_string();
     let App { screen: c, lib, .. } = a;
     let s = lib.as_deref_mut().unwrap();
     let pick = s.font_pick.min(FONT_FAMILIES.len() - 1);
-    let n = FONT_FAMILIES.len() as i32;
+    let n = FONT_FAMILIES.len();
+    // Sideways the rows stand two abreast.
+    let cols: usize = if aw > ah { 2 } else { 1 };
     let (sample_h, rh, gap, bh, pad) = (ui_px(300.0), ui_px(130.0), ui_px(16.0), ui_px(140.0), ui_px(24.0));
-    let card = sheet_rect(aw, ah, ui_px(120.0) + 2 * ui_px(36.0) + sample_h + pad + n * (rh + gap) - gap + pad + bh);
+    // (a section's label; the second holds the pager; and above the buttons the room the staying notice
+    // takes, "Checking 3 fonts...", clear of every control)
+    let (lh, lh2, band) = (ui_px(60.0), ui_px(80.0), ui_px(150.0));
+    let built_rows = n.div_ceil(cols) as i32;
+    let fixed = sample_h + lh + built_rows * (rh + gap) + lh2 + band + bh;
+    let full = sheet_rect(aw, ah, i32::MAX / 2);
+    let chrome = full.h - ui_sheet_inner(full, true).h;
+    let rows_max = ((full.h - chrome - fixed + gap) / (rh + gap)).max(1) as usize;
+    let per_page = rows_max * cols;
+    let nown = s.fonts.len();
+    s.font_per_page = per_page;
+    if s.font_first >= nown {
+        s.font_first = nown.saturating_sub(1) / per_page * per_page;
+    }
+    s.font_first -= s.font_first % per_page;
+    let first = s.font_first;
+    let shown = nown.saturating_sub(first).min(per_page);
+    let own_rows = if nown == 0 { 1 } else { shown.div_ceil(cols).max(1) } as i32;
+    let card = sheet_rect(aw, ah, chrome + fixed + own_rows * (rh + gap) - gap);
     // TRANSLATORS: the title of Settings > Font, the list of fonts Classic can be drawn in.
     let in_ = ui_sheet(c, card, tr("Font"));
     let sample = Rect::new(in_.x, in_.y, in_.w, sample_h);
     ui_frame(c, sample, ui_px(16.0), 0, false, ui_px(3.0));
-    let fam = &FONT_FAMILIES[pick];
     let tx = sample.x + pad;
     let tw = sample.w - 2 * pad;
     // TRANSLATORS: the Font sheet's sample sentence, drawn in each font at 44 px, at most two lines of
     // about 1600 px: a sentence that uses many of your language's letters (English: a pangram; Spanish
     // could be "La cigüeña tocaba el saxofón detrás del palenque de paja.").
     let sentence = tr("The quick brown fox jumps over the lazy dog.");
-    font_with_family(pick, || {
-        font_draw_left(c, FontFace::Title, ui_title_size(), Rect::new(tx, sample.y + ui_px(16.0), tw, ui_px(90.0)), fam.name, 0);
+    let own_pick = if s.font_file.is_empty() { None } else { s.fonts.iter().position(|f| f.rel == s.font_file) };
+    let draw_sample = |c: &mut Canvas, name: &str, named: bool| {
+        let title = Rect::new(tx, sample.y + ui_px(16.0), tw, ui_px(90.0));
+        if named {
+            font_draw_left_name(c, FontFace::Title, ui_title_size(), title, name, 0);
+        } else {
+            font_draw_left(c, FontFace::Title, ui_title_size(), title, name, 0);
+        }
         font_draw_wrapped(c, FontFace::Regular, ui_text_size(), Rect::new(tx, sample.y + ui_px(106.0), tw, ui_px(124.0)),
             sentence, 2, ui_px(62.0), false, 0);
         font_draw_left(c, FontFace::Regular, ui_small_size(), Rect::new(tx, sample.y + ui_px(230.0), tw, ui_px(56.0)), FONT_SAMPLE_CHARS, 0);
-    });
+    };
+    match own_pick {
+        Some(i) => {
+            // A font of the owner's own: drawn by the font itself when it is loaded (the one in use, or the
+            // sample this sheet holds); else by the picture the check made of its name.
+            crate::userfonts::userfont_resolve(&mut s.fonts[i]);
+            let name = s.fonts[i].family();
+            let rel = s.fonts[i].rel.clone();
+            if crate::userfonts::userfonts_in_use(&rel) {
+                s.font_sample_how = "own";
+                font_with_own(false, || draw_sample(c, &name, true));
+            } else if crate::userfonts::userfonts_sample_is(&rel) {
+                s.font_sample_how = "own";
+                font_with_own(true, || draw_sample(c, &name, true));
+            } else {
+                s.font_sample_how = "preview";
+                let f = &mut s.fonts[i];
+                let base = f.base().to_string();
+                if let Some(p) = crate::userfonts::userfont_preview(f) {
+                    draw_font_preview(c, Rect::new(tx, sample.y + ui_px(16.0), tw, ui_px(124.0)), p, false);
+                }
+                font_draw_left_name(c, FontFace::Fixed, ui_small_size(), Rect::new(tx, sample.y + ui_px(230.0), tw, ui_px(56.0)), &base, 0);
+            }
+        }
+        None => {
+            s.font_sample_how = "family";
+            font_with_family(pick, || draw_sample(c, FONT_FAMILIES[pick].name, false));
+        }
+    }
     s.font_sample = sample;
     s.font_rows.clear();
-    let mut y = sample.y + sample.h + pad;
+    s.font_own_rows.clear();
+    let cw = (in_.w - (cols as i32 - 1) * gap) / cols as i32;
+    let cell = |i: usize, top: i32| Rect::new(in_.x + (i % cols) as i32 * (cw + gap), top + (i / cols) as i32 * (rh + gap), cw, rh);
+    let mut y = sample.y + sample.h;
+    // TRANSLATORS: (Settings > Font) the heading over the fonts that come with Grimoire. 34 px bold, about
+    // 800 px.
+    font_draw_left(c, FontFace::Bold, ui_small_size(), Rect::new(in_.x, y, in_.w, lh), tr("Built in"), 0);
+    y += lh;
     for (i, f) in FONT_FAMILIES.iter().enumerate() {
-        let r = Rect::new(in_.x, y, in_.w, rh);
-        let on = i == pick;
+        let r = cell(i, y);
+        let on = own_pick.is_none() && i == pick;
         let fg: u8 = if on { 255 } else { 0 };
         ui_frame(c, r, ui_px(16.0), if on { 0 } else { 255 }, true, 0);
         ui_frame(c, r, ui_px(16.0), 0, false, ui_px(3.0));
@@ -3656,12 +4126,58 @@ fn draw_font_sheet(a: &mut App) {
         font_with_family(i, || {
             font_draw_left(c, FontFace::Bold, ui_text_size(), Rect::new(r.x + ui_px(40.0), r.y, r.w - ui_px(80.0) - mark, rh), f.name, fg);
         });
-        if i == applied {
+        if applied == Some(i) {
             ui_icon(c, IconKind::Check, Rect::new(r.x + r.w - ui_px(25.0) - mark, r.y + ui_px(15.0), mark, mark), fg);
         }
         hits_add(&mut s.hits, r, H_FONT_PICK, i as i32);
         s.font_rows.push(r);
-        y += rh + gap;
+    }
+    y += built_rows * (rh + gap);
+    // The owner's own: the heading names the folder, with the pages' arrows at its right when the fonts
+    // take more than one.
+    let mut heading = String::new();
+    // TRANSLATORS: (Settings > Font) the heading over the fonts the owner copied onto the Kindle; %s is
+    // their folder there, grimoire/fonts. 34 px bold, about 800 px.
+    csnprintf!(&mut heading, 160, tr("Your fonts (%s)"), "grimoire/fonts");
+    let pages = nown.div_ceil(per_page).max(1);
+    let hw = if pages > 1 { in_.w - ui_px(420.0) } else { in_.w };
+    font_draw_left(c, FontFace::Bold, ui_small_size(), Rect::new(in_.x, y, hw, lh2), &heading, 0);
+    if pages > 1 {
+        let (bw, bh2) = (ui_px(130.0), lh2 - ui_px(10.0));
+        let prev = Rect::new(in_.x + in_.w - ui_px(400.0), y + ui_px(4.0), bw, bh2);
+        let next = Rect::new(in_.x + in_.w - bw, y + ui_px(4.0), bw, bh2);
+        let page = first / per_page;
+        ui_button(c, prev, IconKind::Prev, "", if page > 0 { ButtonStyle::Plain } else { ButtonStyle::Disabled });
+        ui_button(c, next, IconKind::Next, "", if page + 1 < pages { ButtonStyle::Plain } else { ButtonStyle::Disabled });
+        let count = format!("{}/{}", page + 1, pages);
+        font_draw_centered(c, FontFace::Fixed, ui_small_size(), Rect::new(prev.x + bw, prev.y, next.x - prev.x - bw, bh2), &count, 0);
+        if page > 0 {
+            hits_add(&mut s.hits, prev, H_FONT_PAGE, -1);
+        }
+        if page + 1 < pages {
+            hits_add(&mut s.hits, next, H_FONT_PAGE, 1);
+        }
+    }
+    y += lh2;
+    if nown == 0 {
+        let mut line = String::new();
+        // TRANSLATORS: (Settings > Font, under Your fonts while the folder is empty) how to add a font: %s is
+        // the folder on the Kindle's storage, grimoire/fonts. ".ttf" and ".otf" are file kinds: keep them.
+        // Up to two lines of about 1600 px at 44 px, or at 34 px.
+        csnprintf!(&mut line, 256, tr("Copy .ttf or .otf files into %s over USB."), "grimoire/fonts");
+        ui_text(c, FontFace::Regular, ui_text_size(), ui_small_size(), Rect::new(in_.x, y, in_.w, rh), &line, 2, false, 0);
+    }
+    for k in 0..shown {
+        let idx = first + k;
+        let r = cell(k, y);
+        let f = &mut s.fonts[idx];
+        let on = own_pick == Some(idx);
+        let applied_own = !own_applied.is_empty() && f.rel == own_applied && crate::userfonts::userfonts_in_use(&own_applied);
+        draw_font_own_row(c, r, f, on, applied_own);
+        if f.usable() {
+            hits_add(&mut s.hits, r, H_FONT_OWN, idx as i32);
+        }
+        s.font_own_rows.push((idx, r));
     }
     let done = Rect::new(in_.x + in_.w - ui_px(380.0), in_.y + in_.h - bh, ui_px(380.0), bh);
     let cancel = Rect::new(in_.x, done.y, ui_px(380.0), bh);
@@ -3671,14 +4187,29 @@ fn draw_font_sheet(a: &mut App) {
     hits_add(&mut s.hits, done, H_FONT_DONE, 0);
 }
 
-/// The Font sheet after a tap on a family: the screen drawn again, and the panel refreshed only where
-/// the sample and the two rows whose highlight changed are (Ui), as What's new steps (about_step).
-fn font_step(a: &mut App, pick: usize) {
+/// Where the Font sheet drew the row of what is highlighted now (a family's, or an own font's if it is on
+/// the page shown).
+fn font_pick_row(s: &LibraryState) -> Rect {
+    if s.font_file.is_empty() {
+        return s.font_rows.get(s.font_pick).copied().unwrap_or(RECT_EMPTY);
+    }
+    let at = s.fonts.iter().position(|f| f.rel == s.font_file);
+    s.font_own_rows.iter().find(|(i, _)| Some(*i) == at).map_or(RECT_EMPTY, |(_, r)| *r)
+}
+
+/// The Font sheet after a tap on a row (a family: `own` None; one of the owner's fonts: its path): the screen
+/// drawn again, and the panel refreshed only where the sample and the two rows whose highlight changed are
+/// (Ui), as What's new steps (about_step).
+fn font_step(a: &mut App, pick: usize, own: Option<String>) {
+    let was = font_pick_row(lib(a));
     let s = lib(a);
-    let was = s.font_pick;
     s.font_pick = pick;
-    let (sample, rows) = (s.font_sample, s.font_rows.clone());
-    if rect_is_empty(sample) || rows.len() <= was.max(pick) || graph_shown(a) || lib(a).settings_return_editor {
+    s.font_file = own.clone().unwrap_or_default();
+    // The sample of one of the owner's fonts is drawn by the font: held beside the one in use while it shows.
+    let want = own.filter(|rel| !crate::userfonts::userfonts_in_use(rel));
+    crate::userfonts::userfonts_sample(a, want.as_deref());
+    let sample = lib(a).font_sample;
+    if rect_is_empty(sample) || rect_is_empty(was) || graph_shown(a) || lib(a).settings_return_editor {
         redraw(a, RefreshMode::Ui);
         return;
     }
@@ -3686,7 +4217,89 @@ fn font_step(a: &mut App, pick: usize) {
     hits_clear(&mut lib(a).hits);
     draw_modal(a);
     a.toast_floor = toast_floor(a);
-    app_invalidate(a, rect_union(sample, rect_union(rows[was], rows[pick])), RefreshMode::Ui);
+    let now = font_pick_row(lib(a));
+    app_invalidate(a, rect_union(sample, rect_union(was, now)), RefreshMode::Ui);
+}
+
+/// The Font sheet's staying notice while fonts are checked ("Checking 3 fonts..."), gone when none is.
+fn font_notice(a: &mut App) {
+    let n = crate::userfonts::userfonts_checking(&lib(a).fonts);
+    if lib(a).modal != Modal::Font || n == 0 {
+        app_notice_clear(a, NoticeKey::FontCheck);
+        return;
+    }
+    let mut msg = String::new();
+    // TRANSLATORS: the notice that stays above the Font sheet's buttons while the fonts copied into
+    // grimoire/fonts are checked in the background, with how many are left. One line of about 1700 px at 44 px
+    // bold.
+    csnprintf!(&mut msg, 160, ng_("Checking %d font...", "Checking %d fonts...", n as i64), n as i32);
+    app_notice(a, NoticeKey::FontCheck, &msg);
+}
+
+/// The Font sheet's list read again from grimoire/fonts (as it opens, and when a check left files that were
+/// still being copied): the fonts not checked yet go to the background job. The font settings.ini names stays
+/// listed when its file is gone ("File missing.").
+fn font_list_scan(a: &mut App) {
+    let dpi = a.dpi;
+    let mut list = crate::userfonts::userfonts_scan(dpi);
+    let chosen = a.settings.font_file.as_str().to_string();
+    if !chosen.is_empty() && !list.iter().any(|f| f.rel == chosen) {
+        list.push(crate::userfonts::userfont_missing(&chosen));
+    }
+    let s = lib(a);
+    s.fonts = list;
+    s.fonts_looked_ms = now_ms();
+}
+
+/// Leaves the Font sheet's own state behind (Done, Cancel, or the sheet closed with the Library): the sample
+/// font, the list and the notice.
+fn font_sheet_closed(a: &mut App) {
+    crate::userfonts::userfonts_sample(a, None);
+    let s = lib(a);
+    s.font_picked = false;
+    s.fonts = Vec::new();
+    s.font_file.clear();
+    s.font_own_rows.clear();
+    app_notice_clear(a, NoticeKey::FontCheck);
+}
+
+/// While the Font sheet is up: the rows of fonts being checked fill in as their verdicts land (the cache is
+/// looked at twice a second, a listing of one small folder), and the folder is read again when a check left
+/// files for later.
+fn font_sheet_tick(a: &mut App, now: u32) {
+    if crate::userfonts::userfonts_look_again(now) {
+        font_list_scan(a);
+        font_notice(a);
+        redraw(a, RefreshMode::Ui);
+        return;
+    }
+    if now.wrapping_sub(lib(a).fonts_looked_ms) < 500 {
+        return;
+    }
+    lib(a).fonts_looked_ms = now;
+    if crate::userfonts::userfonts_refresh(&mut lib(a).fonts) > 0 {
+        font_notice(a);
+        redraw(a, RefreshMode::Ui);
+    }
+}
+
+/// A font check ended (app.rs's poll_jobs): the Font sheet, if it is up, shows what it found at once; and when
+/// the font settings.ini asks for was waiting for it and draws from now on (`changed`), the Library is drawn
+/// again in it, with a Full refresh as a change of font makes.
+pub fn library_fonts_checked(a: &mut App, changed: bool) {
+    if a.lib.is_none() || a.scr != ScreenId::Library {
+        return;
+    }
+    if lib(a).modal == Modal::Font {
+        crate::userfonts::userfonts_refresh(&mut lib(a).fonts);
+        font_notice(a);
+    }
+    if changed {
+        httpd_restyle(ui_theme() == UiTheme::Gothic);
+        redraw(a, RefreshMode::Full);
+    } else if lib(a).modal == Modal::Font {
+        redraw(a, RefreshMode::Ui);
+    }
 }
 
 // The item MORE, MOVE and DELETE act on (S->target), if it is one.
@@ -3712,6 +4325,7 @@ fn draw_modal(a: &mut App) {
         Modal::New => draw_new(a),
         Modal::Settings => draw_settings(a),
         Modal::Font => draw_font_sheet(a),
+        Modal::Wifi => draw_wifi_sheet(a),
         Modal::About => {
             let (aw, ah) = (a.w, a.h);
             let App { screen: c, lib, .. } = a;
@@ -4518,6 +5132,13 @@ fn toast_floor(a: &App) -> i32 {
 }
 
 fn redraw(a: &mut App, m: RefreshMode) {
+    if files_shown(a) {
+        let mut b = std::mem::take(&mut lib(a).files);
+        b.draw(a);
+        lib(a).files = b;
+        app_invalidate_all(a, m);
+        return;
+    }
     if graph_shown(a) {
         graph_draw(a);
         a.toast_floor = 0;
@@ -4679,7 +5300,12 @@ fn kb_finished(a: &mut App, ok: bool) {
     if ok && !txt.is_empty() {
         match kbp {
             KbPurpose::NewName => {
-                lib(a).new_name.set(&txt);
+                // (confirming the name the sheet offered is no name typed: a picked file then names its notebook, D28)
+                let s = lib(a);
+                if s.new_name_typed || txt != s.new_name.as_str() {
+                    s.new_name.set(&txt);
+                    s.new_name_typed = true;
+                }
                 back = Modal::New;
             }
             KbPurpose::Rename => {
@@ -4836,6 +5462,7 @@ fn act(a: &mut App, h: &Hit) {
             let mut new_name = FixedStr::<STORE_NAME_LEN>::new();
             unique_name(s, &base, &mut new_name);
             s.new_name = new_name;
+            s.new_name_typed = false;
             s.new_paper = PAPER_NARROW_NM;
             s.new_tpl.clear();
             canvas_free(&mut s.tpl_prev);
@@ -4943,6 +5570,7 @@ fn act(a: &mut App, h: &Hit) {
             );
         }
         H_NEW_CREATE => create_notebook(a),
+        H_NEW_FILE => files_open(a),
         H_CANCEL => close_modal(a),
         H_GESTURES => open_gestures(a),
         H_GESTURE_GROUP => {
@@ -4987,6 +5615,8 @@ fn act(a: &mut App, h: &Hit) {
         H_RECORD_CANCEL => close_record_card(a),
         H_SHORTCUTS => open_modal(a, Modal::Shortcuts),
         H_PAIR_MENU => open_modal(a, Modal::PairMenu),
+        H_WIFI_MENU => wifi_sheet_open(a),
+        H_WIFI_RADIO | H_WIFI_NET | H_WIFI_MORE => wifi_sheet_tap(a, h.id, h.arg),
         H_SHORTCUT_DEVICE => {
             // The next device listed (the first after the last), whose own shortcuts the next row is about.
             let devs = shortcut_devices(a);
@@ -5191,6 +5821,7 @@ fn act(a: &mut App, h: &Hit) {
             } else {
                 UiTheme::Gothic
             });
+            crate::userfonts::userfonts_apply(a); // (Classic's own font, if it has one; Gothic holds none)
             httpd_restyle(ui_theme() == UiTheme::Gothic);
             settings_save(&a.settings);
             redraw(a, RefreshMode::Full);
@@ -5219,31 +5850,92 @@ fn act(a: &mut App, h: &Hit) {
             redraw(a, RefreshMode::Ui);
         }
         H_SET_FONT => {
-            lib(a).font_pick = font_family();
-            open_modal(a, Modal::Font);
+            // The sheet opens on the font in use: one of the owner's own, or a family. It looks into
+            // grimoire/fonts as it opens (new files go to the background check).
+            let own = a.settings.font_file.as_str().to_string();
+            let own_on = !own.is_empty() && crate::userfonts::userfonts_in_use(&own);
+            font_list_scan(a);
+            let s = lib(a);
+            s.font_picked = false;
+            s.font_pick = font_family();
+            s.font_file = if own_on { own } else { String::new() };
+            s.font_first = match s.fonts.iter().position(|f| f.rel == s.font_file) {
+                Some(i) if !s.font_file.is_empty() => i,
+                _ => 0,
+            };
+            s.font_per_page = 1;
+            lib(a).modal = Modal::Font;
+            font_notice(a);
+            redraw(a, RefreshMode::Ui);
         }
         H_FONT_PICK => {
             let pick = (h.arg.max(0) as usize).min(FONT_FAMILIES.len() - 1);
-            if pick != lib(a).font_pick {
-                font_step(a, pick);
+            lib(a).font_picked = true; // (a family tapped, even the one that shows: Done then takes font=file: away)
+            if pick != lib(a).font_pick || !lib(a).font_file.is_empty() {
+                font_step(a, pick, None);
             }
         }
-        // Done applies the family highlighted, saved, and the screen comes back in it with a Full refresh, as
-        // a style change does; Cancel (Back, Esc) leaves the font as it was.
-        H_FONT_DONE => {
-            let pick = lib(a).font_pick;
-            lib(a).modal = Modal::Settings;
-            if pick != font_family() {
-                a.settings.font = pick as i32;
-                font_set_family(pick);
-                httpd_restyle(ui_theme() == UiTheme::Gothic); // (the share pages, if Live view is on)
-                settings_save(&a.settings);
-                redraw(a, RefreshMode::Full);
-            } else {
-                redraw(a, RefreshMode::Ui);
+        H_FONT_OWN => {
+            let s = lib(a);
+            let rel = s.fonts.get(h.arg.max(0) as usize).filter(|f| f.usable()).map(|f| f.rel.clone());
+            if let Some(rel) = rel.filter(|r| *r != s.font_file) {
+                let pick = s.font_pick;
+                font_step(a, pick, Some(rel));
             }
+        }
+        H_FONT_PAGE => {
+            let s = lib(a);
+            let per = s.font_per_page.max(1);
+            s.font_first = if h.arg < 0 { s.font_first.saturating_sub(per) } else { s.font_first + per };
+            redraw(a, RefreshMode::Ui);
+        }
+        // Done applies the font highlighted, saved, and the screen comes back in it with a Full refresh, as
+        // a style change does; Cancel (Back, Esc) leaves the font as it was. One of the owner's own fonts is
+        // settings.ini's font=file:<its path>; its Bold file is found again for it (font_bold= is for a hand).
+        H_FONT_DONE => {
+            let (pick, own, picked) = (lib(a).font_pick, lib(a).font_file.clone(), lib(a).font_picked);
+            font_sheet_closed(a);
+            lib(a).modal = Modal::Settings;
+            let was_own = a.settings.font_file.as_str().to_string();
+            // Done on what draws now changes nothing: also not a font= line whose font cannot be used (a file
+            // that is gone, a newer version's font), which stays as it is until another font is picked.
+            let drawn_own = if crate::userfonts::userfonts_in_use(&was_own) { was_own.clone() } else { String::new() };
+            // (a family picked while settings.ini asks for a font of the owner's own that does not draw now, a
+            // font a crash kept out, one still being checked or one that is gone, takes that font= line away:
+            // the next start must not try it again)
+            let drops_file = picked && own.is_empty() && !was_own.is_empty();
+            let same = !drops_file && own == drawn_own && (!own.is_empty() || pick == font_family());
+            if same {
+                redraw(a, RefreshMode::Ui);
+                return;
+            }
+            if own.is_empty() {
+                a.settings.font = pick as i32;
+                a.settings.font_file.clear();
+                a.settings.font_bold.clear();
+                font_set_family(pick);
+            } else {
+                a.settings.font = 0;
+                if own != was_own {
+                    a.settings.font_bold.clear();
+                }
+                a.settings.font_file.set(&own);
+            }
+            crate::userfonts::userfonts_apply(a);
+            if !own.is_empty() && !crate::userfonts::userfonts_in_use(&own) {
+                // The font did not load (too little memory, a file that changed): the setting stays, Terminess
+                // draws, and the owner is told.
+                font_set_family(0);
+                // TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): Done on a font of the
+                // owner's own that could not be loaded just now (too little memory free, or its file changed).
+                app_toast(a, tr("Couldn't use that font."), 3000);
+            }
+            httpd_restyle(ui_theme() == UiTheme::Gothic); // (the share pages, if Live view is on)
+            settings_save(&a.settings);
+            redraw(a, RefreshMode::Full);
         }
         H_FONT_CANCEL => {
+            font_sheet_closed(a);
             lib(a).modal = Modal::Settings;
             redraw(a, RefreshMode::Ui);
         }
@@ -5556,6 +6248,142 @@ fn graph_event(a: &mut App, ev: &InEvent) {
     graph_result(a, r);
 }
 
+// ---- the file picker (2.1.0-beta.2, browser.rs) ----
+//
+// New notebook > From a file... opens Files in pick mode over New notebook's sheet, which stays under it. The
+// picker draws and takes the contacts, and says what was asked (BrowserResult); this does it: a PDF or a folder
+// of pictures is queued as an import (named as typed in the sheet, else by its file; into the sheet's In: folder),
+// a PDF a notebook already holds opens that notebook, Back at the picker's root comes back to the sheet.
+
+/// The file picker is up: its keys and contacts are its own.
+fn files_shown(a: &App) -> bool {
+    a.scr == ScreenId::Library && a.lib.as_deref().is_some_and(|s| s.files.open)
+}
+
+/// Whether the Import place is on screen: the staying notice of an import stays off it (its rows say the same).
+/// Whether the Library is the screen, its grid of the folder `folder` showing with nothing over it (no sheet, no
+/// picker, no Graph): an import's new card is then seen as it arrives, and no toast says it (D20).
+pub fn library_shows_folder(a: &App, folder: &str) -> bool {
+    a.scr == ScreenId::Library
+        && !a.asleep
+        && a.lib.as_deref().is_some_and(|s| s.modal == Modal::None && !s.files.open && !s.map.open && !s.map_picker.open && s.cur_folder.as_str() == folder)
+}
+
+pub fn library_import_place_up(a: &App) -> bool {
+    files_shown(a) && a.lib.as_deref().is_some_and(|s| s.files.import_place_up())
+}
+
+fn with_files<R>(a: &mut App, f: impl FnOnce(&mut Browser, &mut App) -> R) -> R {
+    let mut b = std::mem::take(&mut lib(a).files);
+    let r = f(&mut b, a);
+    lib(a).files = b;
+    r
+}
+
+fn files_open(a: &mut App) {
+    let ok = with_files(a, |b, _| b.open_pick(PickSpec { kinds: &[PickKind::Pdf, PickKind::PictureFolder] }));
+    if !ok {
+        // (no storage to browse: the sheet stays)
+        app_toast(a, tr("Couldn't open folder."), 3000);
+        return;
+    }
+    lib(a).pressed = None;
+    a.toast_floor = 0;
+    redraw(a, RefreshMode::Full);
+    input_touch_context(library_touch_view(a));
+}
+
+/// The picker closed: back to New notebook's sheet (a cancel) or the Library (an import started).
+fn files_close(a: &mut App, to_library: bool) {
+    let s = lib(a);
+    s.files.close();
+    if to_library {
+        s.modal = Modal::None;
+    }
+    app_notice_clear(a, NoticeKey::Loading);
+    if to_library {
+        reload(a);
+    }
+    redraw(a, RefreshMode::Full);
+}
+
+fn files_result(a: &mut App, r: BrowserResult) {
+    use crate::pdfimport::Queued;
+    let (name, folder) = {
+        let s = lib(a);
+        (
+            (s.new_name_typed && !s.new_name.is_empty()).then(|| s.new_name.as_str().to_string()),
+            (!s.cur_folder.is_empty()).then(|| s.cur_folder.as_str().to_string()),
+        )
+    };
+    match r {
+        BrowserResult::None => {}
+        BrowserResult::Cancel => files_close(a, false),
+        BrowserResult::Pdf(ref p) | BrowserResult::Pictures(ref p) => {
+            let pdf = matches!(r, BrowserResult::Pdf(_));
+            let q = if pdf {
+                crate::pdfimport::pdf_import_queue(p, name.as_deref(), folder.as_deref(), a.dpi)
+            } else {
+                crate::bgwork_template::import_pick_queue(p, name.as_deref(), folder.as_deref(), a.dpi)
+            };
+            files_close(a, true);
+            // (a start shows on the staying notice; a wait is said, as nothing else would show it for a while: it
+            // is queued once the other import has ended)
+            match q {
+                Queued::Refused(_) => {
+                    let mut msg = String::new();
+                    if pdf {
+                        csnprintf!(&mut msg, 256, tr("Couldn't import PDF (see %s)."), "grimoire.log");
+                    } else {
+                        csnprintf!(&mut msg, 256, tr("Couldn't import page folder (see %s)."), "grimoire.log");
+                    }
+                    app_toast(a, &msg, 4000);
+                }
+                Queued::Waiting => {
+                    // TRANSLATORS: a toast after a file was picked to import while an import from an earlier run is
+                    // still going (in the background): this one starts once that one is done. One line of about
+                    // 1700 px at 44 px, or two.
+                    app_toast(a, tr("Another import is still going. This one starts after it."), 6000);
+                }
+                _ => {}
+            }
+        }
+        BrowserResult::OpenNotebook(id) => {
+            files_close(a, true);
+            editor_open_notebook(a, &id);
+        }
+        BrowserResult::LookAgain => {
+            import_scan(a.dpi);
+            with_files(a, |b, a| {
+                b.relist(now_ms());
+                b.draw(a);
+            });
+            app_invalidate_all(a, RefreshMode::Ui);
+        }
+    }
+}
+
+fn files_event(a: &mut App, ev: &InEvent) {
+    let ph = app_pointer_phase(ev);
+    if ph < 0 {
+        return; // (two fingers down does nothing here: the Graph's gesture belongs to the Notebooks place)
+    }
+    let r = with_files(a, |b, a| b.pointer(a, ph, ev));
+    files_result(a, r);
+}
+
+/// Esc: the card closes, else up one level, and at the root the picker cancels. Always taken.
+fn files_back(a: &mut App) -> bool {
+    if !with_files(a, |b, a| b.back(a)) {
+        files_close(a, false);
+    }
+    true
+}
+
+fn files_tick(a: &mut App, now: u32) {
+    with_files(a, |b, a| b.tick(a, now));
+}
+
 // Two fingers down over the Library (or whatever gestures.ini binds to index-map) open the Graph; no other
 // gesture does anything here.
 fn library_gesture(a: &mut App, ev: &InEvent) {
@@ -5578,6 +6406,16 @@ pub fn library_shortcut(a: &mut App, action: i32) -> bool {
     if action == SHORTCUT_SAVE {
         library_save(a);
         return true;
+    }
+    if files_shown(a) {
+        match action {
+            SHORTCUT_BACK | SHORTCUT_GO_BACK | SHORTCUT_CLOSE_MENU => return files_back(a),
+            SHORTCUT_PREV_PAGE | SHORTCUT_NEXT_PAGE => {
+                with_files(a, |b, a| b.turn_key(a, action == SHORTCUT_NEXT_PAGE));
+                return true;
+            }
+            _ => return false,
+        }
     }
     if graph_shown(a) {
         // The Graph's own keys first: pans, zoom, Fit, its view, Select all, Enter, and Esc's selection.
@@ -5652,6 +6490,9 @@ pub fn library_back(a: &mut App) -> bool {
         return false;
     }
     let tap = |a: &mut App, id: i32| act(a, &Hit { id, ..Default::default() });
+    if files_shown(a) {
+        return files_back(a);
+    }
     if library_record_active(a) {
         tap(a, H_RECORD_CANCEL);
         return true;
@@ -5688,7 +6529,7 @@ pub fn library_back(a: &mut App) -> bool {
             lib(a).modal = Modal::Settings;
             redraw(a, RefreshMode::Ui);
         }
-        Modal::Language | Modal::Koreader | Modal::Shortcuts | Modal::PairMenu | Modal::Updates => {
+        Modal::Language | Modal::Koreader | Modal::Shortcuts | Modal::PairMenu | Modal::Updates | Modal::Wifi => {
             lib(a).modal = Modal::Settings;
             redraw(a, RefreshMode::Ui);
         }
@@ -5713,7 +6554,7 @@ pub fn library_back(a: &mut App) -> bool {
 /// Grimoire?'s Enter (the highlighted answer), Left and Right (the highlight) and Esc (No), and New notebook's
 /// Enter (Create). True when it took the key; Exit Grimoire? takes every key (nothing behind it acts).
 pub fn library_modal_key(a: &mut App, code: i32) -> bool {
-    if a.scr != ScreenId::Library || graph_shown(a) || library_record_active(a) {
+    if a.scr != ScreenId::Library || graph_shown(a) || files_shown(a) || library_record_active(a) {
         return false;
     }
     let Some(s) = a.lib.as_deref_mut() else { return false };
@@ -5841,6 +6682,16 @@ pub fn library_enter(a: &mut App) {
     // A turn, or the redraw after waking, re-lays out the same screen: the open sheet stays open
     // (every sheet lays itself out when drawn).
     let relayout = a.relayout;
+    if !relayout {
+        if lib(a).modal == Modal::Font {
+            font_sheet_closed(a);
+        }
+        // The font settings.ini asks for, if its check ended while a notebook was open: from now on (never in
+        // the middle of a page).
+        if crate::userfonts::userfonts_waiting() && crate::userfonts::userfonts_apply(a) {
+            httpd_restyle(ui_theme() == UiTheme::Gothic);
+        }
+    }
     let s = lib(a);
     if !relayout {
         s.modal = Modal::None;
@@ -5859,6 +6710,11 @@ pub fn library_enter(a: &mut App) {
         s.modal = Modal::About;
     }
     reload(a);
+    // PDFs copied into grimoire/import/ while Grimoire ran: looked at when the Library comes in front, at most
+    // every 10 s (pdfimport.rs; not on a re-layout).
+    if !relayout {
+        crate::app::app_import_rescan(a, true);
+    }
     // (Back from a notebook the Graph opened: the Graph again, as it was left)
     if !relayout && std::mem::take(&mut lib(a).map_return) {
         if let Some(keep) = lib(a).map_keep.take() {
@@ -5870,6 +6726,10 @@ pub fn library_enter(a: &mut App) {
 }
 
 pub fn library_leave(a: &mut App) {
+    if !a.relayout && a.lib.as_deref().is_some_and(|s| s.files.open) {
+        lib(a).files.close();
+        app_notice_clear(a, NoticeKey::Loading);
+    }
     if !a.relayout && a.lib.as_deref().is_some_and(|s| s.map.open || s.map_picker.open) {
         // (the Graph saves its layout as it closes; a notebook it opened has kept what Back needs)
         let s = lib(a);
@@ -5917,6 +6777,10 @@ pub fn library_event(a: &mut App, ev: &InEvent) {
 
 fn library_event_in(a: &mut App, ev: &InEvent) {
     if library_record_active(a) && record_event(a, ev) {
+        return;
+    }
+    if files_shown(a) {
+        files_event(a, ev);
         return;
     }
     if graph_shown(a) {
@@ -6047,6 +6911,14 @@ fn library_event_in(a: &mut App, ev: &InEvent) {
 }
 
 pub fn library_tick(a: &mut App, now: u32) {
+    crate::userfonts::userfonts_tick(a, now); // (a font check that ended with no verdict is queued again after its wait)
+    if files_shown(a) {
+        files_tick(a, now);
+        return;
+    }
+    if lib(a).modal == Modal::Font && !graph_shown(a) {
+        font_sheet_tick(a, now);
+    }
     if graph_shown(a) {
         graph_tick(a, now);
         return;
@@ -6098,6 +6970,9 @@ pub fn library_tick(a: &mut App, now: u32) {
     }
     if lib(a).modal == Modal::Pair {
         bt_send(lib(a));
+    }
+    if lib(a).modal == Modal::Wifi {
+        wifi_sheet_tick(a, now);
     }
     upd_poll(a);
     let s = a.lib.as_deref().unwrap();
@@ -6309,6 +7184,16 @@ pub fn library_probe(a: &mut App, key: &str, out: &mut String, cap: usize) -> i3
     if a.lib.is_none() {
         return -1;
     }
+    // The file picker (2.1.0-beta.2): the files.* keys (docs/SIM.md).
+    if let Some(k) = key.strip_prefix("files.") {
+        let h = a.h;
+        let mut text = String::new();
+        if !lib(a).files.probe(h, k, &mut text) {
+            return -1;
+        }
+        csnprintf!(out, cap, "%s", &text);
+        return 0;
+    }
     // The Graph opened from the Library (2.0.0-beta.2): the editor's map.* keys (docs/SIM.md), map.picker its
     // notebooks' browser (past the caps), map.keep 1 while a notebook it opened is in front; graph.omitted the
     // Library's notebooks the Graph of all notebooks leaves out (by their own setting or a folder's).
@@ -6368,13 +7253,52 @@ pub fn library_probe(a: &mut App, key: &str, out: &mut String, cap: usize) -> i3
         csnprintf!(out, cap, "exit");
     } else if key == "sheet" && s.modal == Modal::PairMenu {
         csnprintf!(out, cap, "pair-menu");
+    } else if key == "sheet" && s.modal == Modal::Wifi {
+        csnprintf!(out, cap, "wifi");
     } else if key == "sheet" && s.modal == Modal::Merge {
         csnprintf!(out, cap, "merge");
     } else if key == "sheet" && s.modal == Modal::Font {
         csnprintf!(out, cap, "font");
     } else if key == "font.pick" {
-        // The Font sheet's family highlighted, by its settings.ini id; "" while the sheet is not up.
-        csnprintf!(out, cap, "%s", if s.modal == Modal::Font { FONT_FAMILIES[s.font_pick.min(FONT_FAMILIES.len() - 1)].id } else { "" });
+        // The Font sheet's font highlighted, by its settings.ini value (a family's id, or file:<path> for one of
+        // the owner's own); "" while the sheet is not up.
+        if s.modal != Modal::Font {
+            csnprintf!(out, cap, "%s", "");
+        } else if s.font_file.is_empty() {
+            csnprintf!(out, cap, "%s", FONT_FAMILIES[s.font_pick.min(FONT_FAMILIES.len() - 1)].id);
+        } else {
+            csnprintf!(out, cap, "file:%s", &s.font_file);
+        }
+    } else if key == "font.rows" {
+        // The Font sheet's own fonts: how many files of grimoire/fonts it lists.
+        csnprintf!(out, cap, "%d", s.fonts.len() as i32);
+    } else if key == "font.checking" {
+        csnprintf!(out, cap, "%d", crate::userfonts::userfonts_checking(&s.fonts) as i32); // of them, still being checked
+    } else if key == "font.shown" {
+        // The rows of own fonts on the page shown, by their paths, joined by "|"; font.page is "2/3".
+        let v: Vec<&str> = s.font_own_rows.iter().filter_map(|(i, _)| s.fonts.get(*i)).map(|f| f.rel.as_str()).collect();
+        csnprintf!(out, cap, "%s", &v.join("|"));
+    } else if key == "font.page" {
+        let per = s.font_per_page.max(1);
+        csnprintf!(out, cap, "%d/%d", (s.font_first / per + 1) as i32, s.fonts.len().div_ceil(per).max(1) as i32);
+    } else if key == "font.sample" {
+        // How the sample card was drawn: "family", "own" (by the owner's font itself) or "preview" (by the
+        // picture the check made); "" while the sheet is not up.
+        csnprintf!(out, cap, "%s", if s.modal == Modal::Font { s.font_sample_how } else { "" });
+    } else if let Some(rel) = key.strip_prefix("font.state.") {
+        // An own font's row by its path: "ready", "checking", "unreadable", "toobig", "nolatin", "format",
+        // "slow" or "missing"; "" for a file the sheet does not list. font.note.<path> is what the row says.
+        let mut f = s.fonts.iter().find(|f| f.rel == rel).cloned();
+        if let Some(f) = f.as_mut() {
+            crate::userfonts::userfont_resolve(f);
+        }
+        csnprintf!(out, cap, "%s", f.as_ref().map_or("", |f| f.state_name()));
+    } else if let Some(rel) = key.strip_prefix("font.note.") {
+        let mut f = s.fonts.iter().find(|f| f.rel == rel).cloned();
+        if let Some(f) = f.as_mut() {
+            crate::userfonts::userfont_resolve(f);
+        }
+        csnprintf!(out, cap, "%s", &f.as_ref().map_or(String::new(), font_row_note));
     } else if key == "sheet" {
         match SHEETS.get(s.modal as usize) {
             Some(m) => csnprintf!(out, cap, "%s", *m),
@@ -6517,22 +7441,28 @@ pub fn library_probe(a: &mut App, key: &str, out: &mut String, cap: usize) -> i3
                 H_GESTURE_GROUP => "gestures.group.", H_GESTURE_ROW => "gestures.row.",
                 H_BUTTON_GROUP => "buttons.group.", H_BUTTON_ROW => "buttons.row.",
                 H_BUTTONS_DONE => "done", H_BUTTONS_RESET => "buttons.reset",
-                H_PAPER => "paper.", H_PAPER_CUSTOM => "paper.custom", H_PAPER_MORE => "paper.more", H_NEW_RENAME => "new.rename",
+                H_PAPER => "paper.", H_PAPER_CUSTOM => "paper.custom", H_PAPER_MORE => "paper.more", H_NEW_RENAME => "new.rename", H_NEW_FILE => "new.file",
                 H_EXIT_YES => "exit.yes", H_EXIT_NO => "exit.no",
                 H_MERGE_INTO => "merge.into", H_MERGE_BOTH => "merge.both",
                 H_BACK => "back", H_ABOUT => "about", H_ABOUT_CLOSE => "about.close",
                 H_ABOUT_PREV => "about.prev", H_ABOUT_NEXT => "about.next", H_ABOUT_MORE => "about.more",
                 H_ABOUT_ROW => "about.row.", H_ABOUT_BACK => "about.back",
                 H_SET_FONT => "font", H_FONT_PICK => "font.", H_FONT_DONE => "font.done", H_FONT_CANCEL => "font.cancel",
+                H_FONT_OWN => "font.file:", H_FONT_PAGE => if hit.arg < 0 { "font.prev" } else { "font.next" },
+                H_WIFI_MENU => "wifi", H_WIFI_RADIO => "wifi.radio", H_WIFI_NET => "wifi.net.", H_WIFI_MORE => "wifi.more",
                 _ => "",
             });
             if hit.id == H_FONT_PICK {
                 name.push_str(FONT_FAMILIES.get(hit.arg as usize).map_or("", |f| f.id));
             }
+            if hit.id == H_FONT_OWN {
+                name.push_str(s.fonts.get(hit.arg as usize).map_or("", |f| f.rel.as_str()));
+            }
             if hit.id == H_ABOUT_ROW {
                 name.push_str(crate::about::notes().get(hit.arg as usize).map_or("", |e| e.versions[0]));
             }
             if hit.id == H_PAPER { name.push_str(&hit.arg.to_string()); }
+            if hit.id == H_WIFI_NET { name.push_str(&(hit.arg + 1).to_string()); }
             if hit.id == H_MOVE_TO { name.push_str(s.folders.get(hit.arg as usize).map_or("", |f| f.as_str())); }
             if matches!(hit.id, H_GESTURE_GROUP | H_BUTTON_GROUP) {
                 if let Some(group) = ACTION_GROUPS.get(hit.arg as usize) { name.push_str(group.probe); }
@@ -6651,6 +7581,10 @@ pub fn library_probe(a: &mut App, key: &str, out: &mut String, cap: usize) -> i3
                 ""
             }
         );
+    } else if key == "caret" {
+        // The text with its caret (and selection) drawn in, keyboard_caret_probe; empty with no keyboard.
+        let shown = if s.modal == Modal::Kb { keyboard_caret_probe(&s.kb) } else { String::new() };
+        csnprintf!(out, cap, "%s", &shown);
     } else if key == "hint" {
         csnprintf!(out, cap, "%d", if empty_hint_shown(s) { 1 } else { 0 });
     } else if key == "cards_redrawn" {
@@ -7089,9 +8023,13 @@ mod tests {
         assert_eq!(text, "pen button click");
         gesture_binding_text_for_caps(&a, SHORTCUT_UNDO, 3, &mut text);
         assert_eq!(text, "3-finger tap +1");
-        // More pen slots are still one source (including the legal built-in duplicate).
+        // Clear page has no gesture built in (2.1.0-beta.2); more pen slots are still one source.
         gesture_binding_text_for_caps(&a, SHORTCUT_CLEAR_PAGE, 2, &mut text);
-        assert_eq!(text, "pen button hold");
+        assert_eq!(text, "no gesture");
+        let triple = GestureKey::Pen { button: PenBtn::Button, kind: PenKind::Triple };
+        assert_eq!(gesturemap_set(&mut a.gestures, triple, SHORTCUT_CLEAR_PAGE), 0);
+        gesture_binding_text_for_caps(&a, SHORTCUT_CLEAR_PAGE, 2, &mut text);
+        assert_eq!(text, "pen button triple-click");
         let frames = shape_frames("Z", &Draw::default());
         let points: Vec<FsPt> = frames.iter().map(|f| FsPt { x: f.x, y: f.y }).collect();
         let mut sample = FsSample::default();
@@ -7262,12 +8200,21 @@ mod tests {
         finish_recording(&mut a);
         assert!(!library_record_active(&a));
 
-        // Disable saves "nothing" for the action and its pair, built-in defaults included.
+        // Disable saves "nothing" for the action and its pair, built-in defaults included (to a root of
+        // its own: the test's App has none, and "/gestures.ini" cannot be written).
+        let root = std::env::temp_dir().join(format!("grimoire-record-disable-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        assert_eq!(store_init(root.to_str().unwrap()), 0);
         lib(&mut a).gestures_file_readable = true;
+        let group = (0..ACTION_GROUPS.len()).find(|&g| binding_row_index(GESTURES, g, SHORTCUT_NEXT_PAGE).is_some()).unwrap();
+        lib(&mut a).gestures_group = group as i32;
         open_record_card(&mut a, SHORTCUT_NEXT_PAGE);
         lib(&mut a).record_next_action = SHORTCUT_PREV_PAGE;
         act(&mut a, &Hit { id: H_RECORD_DISABLE, ..Default::default() });
         assert!(!library_record_active(&a));
+        // (the toast names the pair as its row does, both directions being gone)
+        let pair = binding_row_at(GESTURES, group, binding_row_index(GESTURES, group, SHORTCUT_NEXT_PAGE).unwrap()).unwrap();
+        assert_eq!(a.toast.as_str(), cformat!("No gestures for %s now.", pair.label.unwrap()));
         assert_eq!(gesturemap_action(&a.gestures, GestureKey::Touch { fingers: 2, kind: TouchKind::Left }), 0);
         assert_eq!(gesturemap_action(&a.gestures, GestureKey::Touch { fingers: 2, kind: TouchKind::Right }), 0);
         let mut written = Vec::new();
@@ -7275,8 +8222,12 @@ mod tests {
         let written = String::from_utf8_lossy(&written);
         assert!(written.contains("touch.2.left=nothing"));
         assert!(written.contains("touch.2.right=nothing"));
+        // (and the file says so)
+        let file = std::fs::read_to_string(gesture_path()).unwrap();
+        assert!(file.contains("touch.2.left=nothing") && file.contains("touch.2.right=nothing"));
         library_free(&mut a);
         canvas_free(&mut a.screen);
+        let _ = std::fs::remove_dir_all(&root);
     }
 
     #[test]
@@ -7450,12 +8401,94 @@ mod tests {
         ui_init(300.0);
         ui_set_theme(UiTheme::Gothic);
     }
+
+    // Settings' bottom row with Wi-Fi (2.1.0-beta.2): KOReader, Pair, Wi-Fi, Gestures, Updates, Done, in that
+    // order, none over another, each of the four at least 160 px, every word whole (its need met), in every
+    // language and style, upright and sideways.
+    #[test]
+    fn settings_bottom_row_fits_wifi_in_every_language_and_style() {
+        let root = std::env::temp_dir().join(format!("grimoire-wifi-row-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        assert_eq!(store_init(root.to_str().unwrap()), 0);
+        assert_eq!(font_init(), 0);
+        for lang in ["en", "es", "ja"] {
+            for theme in [UiTheme::Gothic, UiTheme::Classic] {
+                for (w, h) in [(1860, 2480), (2480, 1860)] {
+                    ui_init(300.0);
+                    ui_set_theme(theme);
+                    i18n_set(lang);
+                    let mut a = App { w, h, dpi: 300.0, input_drained: true, ..Default::default() };
+                    assert_eq!(canvas_init(&mut a.screen, a.w, a.h), 0);
+                    library_init(&mut a);
+                    lib(&mut a).modal = Modal::Settings;
+                    hits_clear(&mut lib(&mut a).hits);
+                    draw_settings(&mut a);
+                    let at = |id: i32| a.lib.as_ref().unwrap().hits.h.iter().find(|x| x.id == id).map(|x| x.r).unwrap();
+                    let row = [H_KOREADER, H_PAIR_MENU, H_WIFI_MENU, H_GESTURES, H_UPDATES, H_CANCEL].map(at);
+                    let words = [("Pair", IconKind::Link), ("Wi-Fi", IconKind::Share), ("Gestures", IconKind::Gestures), ("Updates", IconKind::Update)];
+                    for i in 1..row.len() {
+                        assert!(row[i - 1].x + row[i - 1].w < row[i].x, "{lang} {theme:?} {w}: {i} over the one before");
+                        assert_eq!(row[i].y, row[0].y);
+                    }
+                    for (i, (word, icon)) in words.into_iter().enumerate() {
+                        let r = row[i + 1];
+                        assert!(r.w >= ui_px(160.0), "{lang} {theme:?} {w}: {word} {}", r.w);
+                        assert!(ui_button_need_w(r.h, icon, tr(word), ButtonStyle::Plain) <= r.w, "{lang} {theme:?} {w}: {word} cut");
+                    }
+                    library_free(&mut a);
+                    canvas_free(&mut a.screen);
+                }
+            }
+        }
+        i18n_set("en");
+        ui_init(300.0);
+        ui_set_theme(UiTheme::Gothic);
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    // Settings > Wi-Fi opened while the Share card's last read still runs (its own read cannot start then):
+    // it asks once that one is done, and lists the saved networks even with the radio off.
+    #[test]
+    fn wifi_sheet_reads_its_networks_after_a_read_still_running() {
+        let root = std::env::temp_dir().join(format!("grimoire-wifi-sheet-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(&root).unwrap();
+        assert_eq!(store_init(root.join("data").to_str().unwrap()), 0);
+        let script = root.join("helper.sh");
+        std::fs::write(&script, "case $1 in status) sleep 0.3;; esac\nprintf 'wireless=0\\nenabled=0\\nconnected=0\\n'\n\
+            [ \"$1\" = networks ] && printf 'current=\\nsaved=486f6d65\\nsaved=4f6666696365\\nlist=1\\n'\nexit 0\n").unwrap();
+        let mut a = pen_record_app();
+        lib(&mut a).modal = Modal::Settings;
+        wifi_init(script.to_str());
+        assert!(wifi_request(WifiAction::Status));
+        wifi_sheet_open(&mut a);
+        assert_eq!(lib(&mut a).modal, Modal::Wifi);
+        assert!(!lib(&mut a).wifi.asked);
+        let began = std::time::Instant::now();
+        while wifi_saved().is_none() && began.elapsed() < std::time::Duration::from_secs(5) {
+            wifi_tick();
+            wifi_sheet_tick(&mut a, now_ms());
+            std::thread::sleep(std::time::Duration::from_millis(5));
+        }
+        assert_eq!(wifi_saved().map(|v| v.len()), Some(2));
+        assert_eq!(wifi_status().map(|st| st.enabled), Some(false));
+        wifi_sheet_tick(&mut a, now_ms());
+        let rows: Vec<_> = a.lib.as_ref().unwrap().hits.h.iter().filter(|h| h.id == H_WIFI_NET).map(|h| h.arg).collect();
+        assert_eq!(rows, [0, 1]);
+        assert_eq!(lib(&mut a).wifi.rows, [b"Home".to_vec(), b"Office".to_vec()]);
+        wifi_init(None);
+        library_free(&mut a);
+        canvas_free(&mut a.screen);
+        let _ = std::fs::remove_dir_all(&root);
+    }
 }
 
 /// Resolve a runner tap through the same hit names used by ui_at probes.
 pub fn library_control_point(a:&mut App,name:&str)->Option<(f32,f32)> {
     if name.starts_with("music.") {return musicbuild_control_point(&a.lib.as_deref()?.mb,name);}
     if name.starts_with("ui_has.") {return None;}
+    // The file picker: files.back, files.row.N, files.more.N, files.item.NAME, files.prev, files.next, files.card.*
+    if let Some(n)=name.strip_prefix("files.") {return a.lib.as_deref()?.files.point(n);}
     // The Display sheet's controls while it is open ("display.done", "display.fit").
     if let Some(n)=name.strip_prefix("display.") {return dispmenu_control_point(&a.lib.as_deref()?.dm,n);}
     // The Graph opened from the Library: its controls (map.back, map.view, ...) and its notebooks' browser's

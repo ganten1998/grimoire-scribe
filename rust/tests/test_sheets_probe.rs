@@ -705,6 +705,10 @@ fn pages_card(p: &mut Probe) {
     for turn in 0..2 {
         let (w, h) = dims(turn);
         p.screen(w, h);
+        // (the panel turns with the screen, as a rotation turns it: a tap that ticks a page presents the
+        // bottom row, which the headless build's panel, opened upright, would otherwise not hold sideways)
+        let (mut pw, mut ph) = (0, 0);
+        grimoire::display::display_set_orientation(turn, &mut pw, &mut ph);
         let mut v = PagesView::default();
         v.unified = true;
         assert!(pagesview_open(&mut v, &mut p.app, &nb, &nav, 0));
@@ -775,6 +779,8 @@ fn pages_card(p: &mut Probe) {
         check!(pagesview_control_point(&v, "rename").is_none() && pagesview_control_point(&v, "delete").is_some());
         pagesview_free(&mut v);
     }
+    let (mut pw, mut ph) = (0, 0);
+    grimoire::display::display_set_orientation(0, &mut pw, &mut ph); // (upright again for the sections after)
 }
 
 // A scripted sequence of taps, as the editor would see them: what each says, and the view's state.

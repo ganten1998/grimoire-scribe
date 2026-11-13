@@ -2755,6 +2755,8 @@ fn take_viewer(fd: i32, fast: bool) -> bool {
     // allocates and uses stb, which the PORTING.md fork rules allow (the quiet thread holds no lock then).
     let pid = unsafe { libc::fork() };
     if pid == 0 {
+        crate::pdfimport::lock_close_in_child(); // (the import lock is the UI's: DESIGN.md 3.9)
+        child_caps_apply(VIEWER_CHILD_MARGIN); // (oom_score_adj 500 and RLIMIT_AS, as every child: childcaps.rs)
         // The main loop's state stays as it is for the viewer: it reads the frame and its own
         // marks, and the other slot's pipe end closes with every other fd.
         fence(SeqCst);

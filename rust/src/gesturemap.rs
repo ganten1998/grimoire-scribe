@@ -88,9 +88,11 @@ fn tk(k: TouchKind) -> usize {
 }
 
 /// The built-ins only: two fingers down open the Graph, up the Links bar, left and right turn the page;
-/// one finger swiped left or right turns the page too (2.0.0-rc.9: easier, and what readers expect);
-/// holding the pen's button clears the page; triple click is unassigned.
-/// Two- and three-finger taps and one finger's other gestures do nothing.
+/// one finger swiped left or right turns the page too (2.0.0-rc.9: easier, and what readers expect).
+/// The pen's button has none (2.1.0-beta.2): its hold fires with the pen hovering, so a finger resting
+/// on the button cleared the page (issues #36, #39); no destructive action is built in on a hover, and
+/// Clear page on a gesture is the owner's choice. Two- and three-finger taps and one finger's other
+/// gestures do nothing.
 pub fn gesturemap_defaults(m: &mut GestureMap) {
     let pen_button2 = m.pen_button2;
     *m = GestureMap::default();
@@ -102,7 +104,6 @@ pub fn gesturemap_defaults(m: &mut GestureMap) {
     m.touch[0][tk(TouchKind::Right)] = SHORTCUT_PREV_PAGE;
     m.touch1[tk(TouchKind::Left)] = SHORTCUT_NEXT_PAGE;
     m.touch1[tk(TouchKind::Right)] = SHORTCUT_PREV_PAGE;
-    m.pen[PenBtn::Button as usize][PenKind::Hold as usize] = SHORTCUT_CLEAR_PAGE;
 }
 
 /// Set the hardware capability before loading the map. Reload to activate carried Button2 lines.
@@ -231,7 +232,8 @@ impl GestureMap {
             if !pen_live(self, other_button) { continue; }
             for &(_, other_kind) in &K_PEN_KINDS {
                 if (button, kind) == (other_button, other_kind) { continue; }
-                // The two historical Clear page defaults are the sole duplicate exception on read.
+                // The two historical Clear page defaults are the sole duplicate exception on read
+                // (gesturemap_load retires them).
                 let builtin_pair = reading && action == SHORTCUT_CLEAR_PAGE
                     && button == PenBtn::Button && other_button == PenBtn::Button
                     && matches!(kind, PenKind::Triple | PenKind::Hold)
@@ -290,12 +292,10 @@ impl GestureMap {
                     }
                     None if name_like(value) => {
                         // Commit the fallback only after carrying succeeded: refusal is atomic.
+                        // The slot falls back to its built-in: none, for every pen slot since
+                        // 2.1.0-beta.2 (gesturemap_defaults).
                         if !self.carry(key, line) { return false; }
-                        let built_in = if btn == PenBtn::Button
-                            && kind == PenKind::Hold {
-                            SHORTCUT_CLEAR_PAGE
-                        } else { 0 };
-                        self.pen[btn as usize][kind as usize] = built_in;
+                        self.pen[btn as usize][kind as usize] = 0;
                         self.pen_set[btn as usize][kind as usize] = false;
                         true
                     }
@@ -374,20 +374,33 @@ pub fn gesturemap_load(m: &mut GestureMap, path: &str) -> i32 {
     match crate::shortcuts::ini_read_bounded(path, GESTURES_CAP) {
         Ok(Some(text)) => {
             let refused = gesturemap_parse(m, &text);
-            // RC1 saved both historical defaults. Retire only that duplicate pair; custom
-            // assignments to either gesture remain available.
-            let button = PenBtn::Button as usize;
-            if m.pen[button][PenKind::Triple as usize] == SHORTCUT_CLEAR_PAGE
-                && m.pen[button][PenKind::Hold as usize] == SHORTCUT_CLEAR_PAGE {
-                m.pen[button][PenKind::Triple as usize] = 0;
-                m.pen_set[button][PenKind::Triple as usize] = true;
-            }
+            gesturemap_retire_old_defaults(m);
             refused
         },
         Ok(None) => 0,
         Err(()) => {
             m.writable = false;
             -1}
+    }
+}
+
+/// The old Clear page built-ins a file holds, read as this version's built-ins (the pen's button has
+/// none since 2.1.0-beta.2). RC1 wrote both of its own to the file: `pen.Button.triple=clear-page` and
+/// `pen.Button.hold=clear-page`. Every version from rc.2 to 2.1.0-beta.1 read that pair as the hold alone
+/// and wrote it back as `pen.Button.triple=nothing` beside `pen.Button.hold=clear-page`. Either pair is a
+/// map nobody changed, so both slots go back to the built-in, nothing, unmarked: the next save writes
+/// neither line. A `pen.Button.hold=clear-page` with no triple line beside it is the owner's own choice
+/// (recorded in Settings > Gestures, or written by hand) and stays, as does any other triple.
+fn gesturemap_retire_old_defaults(m: &mut GestureMap) {
+    let b = PenBtn::Button as usize;
+    let (triple, hold) = (PenKind::Triple as usize, PenKind::Hold as usize);
+    let old_triple = m.pen_set[b][triple] && matches!(m.pen[b][triple], 0 | SHORTCUT_CLEAR_PAGE);
+    let old_hold = m.pen_set[b][hold] && m.pen[b][hold] == SHORTCUT_CLEAR_PAGE;
+    if old_triple && old_hold {
+        for k in [triple, hold] {
+            m.pen[b][k] = 0;
+            m.pen_set[b][k] = false;
+        }
     }
 }
 
@@ -500,7 +513,7 @@ pub fn gesturemap_carried(m: &GestureMap) -> &[u8] {
 pub const GM_SHAPES_MAX: usize = FS_SHAPES_MAX;
 const HEADER: &str = concat!(
     "# Grimoire: gestures (Settings > Gestures). Built in unless a line says otherwise:\n",
-    "# touch.2.down=index-map, touch.2.up=links, touch.2.left=next-page, touch.2.right=previous-page, pen.Button.hold=clear-page\n",
+    "# touch.2.down=index-map, touch.2.up=links, touch.2.left=next-page, touch.2.right=previous-page\n",
     "# shape.ACTION=1,N,S1,S2[,S3]: a finger shape you drew; format 1, N samples; each sample is 32 points in drawing order, x then y as two hex digits, the larger side spanning 00-ff.\n",
 );
 

@@ -157,6 +157,18 @@ fonts for the family and `httpd_restyle` (the style and font changed while the s
 the l10n runner's `classic-<font>` styles and tests/l10n/fonts.qs. The C tree draws Classic in Terminess and
 keeps a `font=` line as one it does not know; `make c-check` runs as before.
 
+Your own fonts (2.1.0-beta.2, docs/DESIGN.md, Your own fonts) are Rust only: `fontcheck.rs` (the safe face:
+skrifa's outlines under the caps, drawn by `stbtt_Rasterize`, which ffi_stb.rs declares with `stbtt_vertex`
+and `stbtt__bitmap`; the font worker, `WorkKind::Font`; the writer's `check_font`; the verdict file),
+`userfonts.rs` (grimoire/fonts, its cache, `BgKind::FontCheck`, the load, the crash guard), font.rs's custom
+face slots (`OwnFont`, `font_set_own`, `font_own`, `font_set_sample`, `font_with_own`, `font_own_bytes`,
+`font_own_drawn`, `font_look`) and its cache's byte cap, the Settings keys `font=file:...` and `font_bold`,
+library.rs's Built in and Your fonts sections, childcaps.rs's margin for the job, sandbox.rs's `s1::FONT_*`
+numbers, the probes `font.guard`, `font.own.*` and `library.font.*`, the font hooks (docs/SIM.md), the
+fixtures of rust/tests/fontfix and the l10n runner's fonts-own runs. skrifa is a direct dependency, pinned to
+the version hayro brings. The C tree draws Classic in Terminess and keeps `font=file:...` as a line it does
+not know.
+
 ### Not ported
 
 - The SDL3 window simulator (`grimoire-sim`, GRIMOIRE_SIM_SDL): a development aid no check runs.

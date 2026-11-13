@@ -1,5 +1,138 @@
 # Changelog
 
+## 2.1.0-beta.2 (2026-11-11)
+
+- **Closing a big notebook no longer redraws every page.** The PDF of a notebook (the mirror in `PDFs/`) kept
+  every page drawn at every close of a changed notebook: minutes on a 400-page planner, with the one background
+  queue held. Each page's image is now kept in `grimoire/.cache/pdf/` (256 MB in all, disposable: deleting it
+  loses nothing) and only the pages you changed are drawn again. The PDF is written to its file as it is made
+  rather than built whole in memory, so a 2,000-page notebook's PDF no longer takes hundreds of MB; the share
+  page's PDF and zip downloads are streamed the same way. A page with a coloured picture (an imported colour page,
+  a colour template) is kept in colour in the PDF, decoded once (its PDF fits the background process's memory at
+  the Scribe's page size); every other page stays gray. A page drawn before its picture was made (a template just
+  picked) is drawn again with it at the next close, never kept white; Grimoire started again while a PDF is being
+  made (a KOReader round trip) waits for it rather than writing the same file; a download or zip that would pass
+  4 GiB fails instead of arriving broken. Every background process now runs at a lower priority for the memory
+  killer (an out-of-memory kill takes it before Grimoire) and with a ceiling on its memory.
+- **A PDF's own links work in a notebook: a planner's tabs.** Opening a book from KOReader (Open this book in
+  Grimoire) now also sends the links of its pages: a finger tap on "March" goes to March. They are part of the
+  page, kept in a file of their own (`doclinks.ini`, up to 16,000 links) apart from the links you draw: your links
+  come first where they overlap a tab; Clear page keeps the tabs; a lasso around the writing in a day cell never
+  picks the cell's link up; Copy page and Copy to notebook carry them (to pages that travel too). The Links bar
+  lists them as one row, "From the PDF (43)" (before any Linked from rows), which opens them grouped by page; the eye draws their boxes
+  dotted. A finger held on one arms Select, as on paper. The Graph never draws them. The notebook's PDF has them
+  as links. A tab under the clock corner is followed (the clock's tap works where no tab lies). A 2.0 build shows
+  the pages and your own links, without the tabs. Needs the KOReader plugin of this
+  version (Grimoire installs it) and a book opened once more: the links of the pages Grimoire already holds are
+  sent the first time (and again whenever pages are added); a book whose links do not all fit says "Some links
+  were left out.".
+- A PDF dropped in `grimoire/import/` (or in a folder there, to file it in that Library folder) becomes a
+  notebook of its pages, with no KOReader: a notice at the bottom of the Library says "Importing: page 37 of
+  412", the PDF moves to `import/done/`, and a PDF already imported says so. Pages with colour are kept in
+  colour (the Scribe shows gray); a page that cannot be read ends blank and the notebook says "Some pages
+  couldn't be read." (a PDF with no readable page is not imported). More than 2000 pages, over 512 MB or a password are refused with a message.
+  A PDF that is refused, or fails three times, waits until the file changes; a full storage counts nothing
+  against it, and it goes once there is room. An import cut off (Grimoire closed, the Kindle off) goes on where
+  it stopped, and makes again any page whose files were lost. As for a folder of pictures, no toast says
+  "Imported notebook" when the Library shows the new card.
+- **Library > New > From a file... picks a PDF or a folder of pictures anywhere on the Kindle.** It opens Files:
+  Import (with a status on every row: Waiting, "Importing: page 40 of 365", Imported, and a Look again row),
+  Documents, Downloads and All storage. A tap on a PDF opens its card (size and date, Import as notebook, or Open
+  its notebook when a notebook already holds the book: "has notes" shows on its row); the second tap imports it.
+  A folder of pictures imports from its card (a hold or its `...`). The notebook is named as typed in the sheet,
+  else as the file, and goes in the sheet's folder. The file is only read: it stays where it is, no link is ever
+  followed, and Grimoire's own notebooks, PDFs and trash are never listed. (A file picked in Import itself is
+  filed in `import/done/` like a dropped one.) A file picked while an import from an earlier run is still going
+  is imported once that one is done: "Another import is still going. This one starts after it."
+- A PDF dropped in `grimoire/import/` brings its links and page names too: a planner's tabs work in the notebook
+  it becomes (the PDF's internal links, including those by name, the next, previous, first and last page links,
+  and links drawn as several boxes; web links are left out), and its outline names the pages. A planner with more
+  links than a notebook holds (14,400) keeps the most on every page and trims the busiest pages, and the end
+  says "Imported notebook (%d pages). Some links were left out.". A notebook Grimoire exported as a PDF and
+  imported again gives back its links and page names.
+- Pictures you put in `grimoire/templates`, `grimoire/photos` or an import folder are now read by that same
+  separate process, in slices, instead of by the part of Grimoire that writes files: a damaged or hostile picture
+  (cut short, enormous, a decompression bomb) is refused as before; one that crashes the reader is read again by a
+  fresh one, and crashing that too marks it as not usable (templates and photos), or counts one of its folder's
+  three tries. A template or photo copied in a moment ago is picked once its tile shows its preview ("Not ready
+  yet. Try again in a moment." before that). On the Kindle a picture is never read outside that process: should it
+  ever be unavailable (grimoire.log says why, once), a template or photo waits for its preview and is never marked
+  as not usable, and a picture folder stays in `import/` and is tried again at every look without using up its
+  tries.
+- PDFs are read by a separate process that cannot reach the files, the network or other programs (a sandboxed
+  worker); a Scribe that refuses a step reads no PDF and says so in grimoire.log. A picture folder in `import/`
+  now also gets a notebook name no other notebook has.
+- package-check's size guard is now 11 MB for the Kindle binary and 6 MB for the zip (was 10.5 MB and 5.5 MB):
+  the PDF engine, its safe worker and the file picker brought the binary to 10.45 MB before your own fonts.
+- **Your own fonts in Classic.** Copy `.ttf` or `.otf` files into `grimoire/fonts` over USB (a family in a
+  folder of its own is fine) and open Settings > Font: under "Your fonts" each file shows its name drawn in
+  itself once Grimoire has checked it in the background ("Checking 3 fonts..." stays above the buttons
+  meanwhile), or its row says why it cannot be used: "Unreadable font.", "Too big (over 24 MB).", "No Latin
+  letters.", "Use .ttf or .otf." or "Took too long to read.". Tap one to see the sample in it, Done to use it.
+  Bold comes from the font's weight axis, else from the Bold file of the same family beside it, else from a
+  thicker print of the regular; a letter the font lacks comes from Terminess. Your font draws Grimoire's own
+  words only: pages, paper labels, the clock, icons, PDFs and the share pages never change with it, and the
+  file stays on the Kindle. A font is first read in the sandbox that reads PDFs and pictures, glyph by glyph,
+  and Grimoire draws it only while the file is byte for byte the one that passed. Should a font ever stop
+  Grimoire before its first screen, the next start is in Terminess by itself, and Terminess then Done in the Font
+  sheet takes the font away for good; deleting the font's file brings Terminess back too ("File missing.", from
+  the next start), and while a font of yours is in use the Font sheet's own words stay in Terminess. A font that
+  cannot be checked now (a file dated ahead of the clock, a full storage) is asked again after 3 s, 15 s and
+  60 s, then not until Grimoire starts again; the fonts are checked one at a time, behind an export or a PDF
+  slice; a font whose check ran out of time gets a second try; a Done that cannot load the font says so. New in `settings.ini`: `font=file:<path>` and `font_bold=`, which 2.1.0-beta.1 and older keep as
+  lines they do not know (they draw Terminess). The Kindle binary is 10.6 MB and the zip 5.5 MB with it.
+- **Settings > Wi-Fi switches between the Kindle's saved networks** (issue #40). A Wi-Fi button in Settings'
+  bottom row, beside Pair, opens a sheet that turns Wi-Fi on or off, says which network the Kindle is connected
+  to, and lists the networks the Kindle has saved, that one first with a check (seven a page; More networks shows
+  the next). Tap one to switch: "Connecting to ...", then "Connected to ...", or "Could not connect to ..." when
+  the Kindle refuses it or has not connected in 45 seconds (Grimoire then changes nothing more). Switching drops
+  Share, Live view and SSH from the network you leave. Adding a network or a password stays in the Kindle's
+  settings and KOReader. No Wi-Fi password reaches the app, its files or its log (its helper keeps only the
+  networks' names from what the Kindle answers); no network is added, changed or forgotten; no network name is
+  logged.
+- **The keyboard has a caret, and copy and paste for typed text** (issue #36). Every keyboard (names, renames,
+  Find, link and page names, Go to page, the kana pad) has ◀ and ▶ at the right end of its text line: they move
+  the caret a letter, and held they go on as delete does. A tap on the text puts the caret there; a drag across
+  it selects. Typing and delete act at the caret, replacing or taking a selection, and ゛小 changes the kana
+  before the caret. The key beside the arrows opens the edit page: Select all, Cut, Copy, Paste, and Start and
+  End for the caret; abc (or あ, or 123) goes back. What you cut or copy is kept until Grimoire closes and
+  pastes into any keyboard; it is apart from the lasso's ink clipboard. With a keyboard attached (and shortcuts
+  enabled), the arrows, Home and End move the caret (Shift selects) and Ctrl or Cmd with A, C, X and V select
+  all, copy, cut and paste. The count pad stays as it is.
+- The text cache now holds at most 4 MB of letters (it was only limited by their number), which matters for
+  large letters of your own fonts.
+- A character no font in Grimoire can draw shows as a box instead of disappearing, so a name no longer looks cut
+  short: a notebook named 会议记录 showed only 会 in the Library (会 is in the Japanese font; 议, 记 and 录 are
+  simplified Chinese, which none of Grimoire's fonts has) and now shows 会 and three boxes; an emoji or a
+  Vietnamese letter Terminess lacks is a box too. What is meant to be unseen (zero-width characters, the joiners
+  and variation selectors inside an emoji, a flag's tags, an accent no font has) still shows nothing. To read
+  Chinese text, use a font of your own that has its letters (Settings > Font, in Classic).
+- Japanese: nearly every string is translated now (922 of 987), and several that said the wrong thing are fixed
+  ("Save now" and "Select (lasso)" among them), by nebuff. The 65 still in English are 2.1's newest: most of
+  this beta's new screens, What's new, the Font sheet and the folder merge.
+- The Graph's list of links sorts faster on notebooks with many links (each row's target is read once, not at
+  every comparison), by nebuff.
+- Hardening: Grimoire no longer follows links planted in its own folders when it saves, cleans up or prunes its
+  caches, and a late sandbox reply from the separate process that reads PDFs and pictures now counts as a failure.
+- **The pen button's hold no longer clears the page by itself.** Holding the pen's button with the pen near the
+  screen cleared the page after a second, so a finger resting on the button wiped it (issues #36, #39). The pen
+  button now has no gesture until you give it one in Settings > Gestures, and a hold you recorded yourself for
+  Clear page stays. When Clear page runs from a gesture, a key or a controller button, a toast says "Page
+  cleared. Undo brings it back."; Undo does, in one step. The toolbar's broom clears as before, without a toast.
+  A `gestures.ini` that still holds the old built-in (written by 2.0.0-rc.1, or carried since) loses it.
+- **Resize a lasso selection.** The selection's box has a handle at each corner: drag one to make the ink larger
+  or smaller, the opposite corner staying where it is; the links you drew travel and scale with it, a PDF's tabs
+  stay, and Undo takes it back in one step. A drag of a selection that holds a lot of ink starts sooner (its ink
+  is drawn again once, not once for each edge of the outline) (issue #37), by nebuff.
+- **A 12-hour clock.** Settings > Display, "Display time as 12 hour": the clock in the corner of a page says
+  `Nov 14, 10:13 PM` (in Spanish `14 nov, 10:13 p. m.`); every other screen keeps the 24-hour clock. New in
+  `settings.ini`: `clock_12h`, which 2.1.0-beta.1 and older keep as a line they do not know. By nebuff.
+- **Delete pages from the Pages view's bottom row.** With pages ticked, the bottom row has a trash button that
+  deletes them, and a tap on a page already ticked unticks it (no Multi-select needed). A held page's card now
+  lists its actions as the other menus do, an icon beside each (issue #18), by nebuff.
+- **No gesture for an action.** Settings > Gestures' record card has Disable: the action keeps no gesture, a
+  built-in one included (both directions on a paired row), and its row says "no gesture" (issue #44), by nebuff.
+
 ## 2.1.0-beta.1 (2026-11-08)
 
 - A cleared page, or a page given a new paper, template or photo, no longer shows its old picture (2.0.0 and

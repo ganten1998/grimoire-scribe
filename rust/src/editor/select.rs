@@ -2058,6 +2058,14 @@ fn sel_button(a: &mut App, b: SelBtn) {
 // ---- the gestures ----
 
 /// The links of page pid that are not carried: their seeds (a stroke with one leaves that link).
+// The page's links as seed holders for lasso_seeds: its own and, as stand-ins that only hold a seed, its document
+// links (a pasted stroke or link never takes a seed a document link has; the lasso never carries one).
+fn seed_holders(links: &[NavLink], dl: &DocLinks, pid: u32) -> Vec<NavLink> {
+    let mut v = links.to_vec();
+    v.extend(doclinks_of(dl, pid).iter().map(|l| NavLink { pid, seed: l.seed, ..Default::default() }));
+    v
+}
+
 fn staying_link_seeds(s: &EditorState, pid: u32, carried: &[NavLink]) -> HashSet<u32> {
     s.nav.links.iter().filter(|l| l.pid == pid && !carried.iter().any(|c| c.seed == l.seed)).map(|l| l.seed).collect()
 }
@@ -2261,7 +2269,7 @@ fn sel_place(a: &mut App, spot: Spot) {
     let busy = busy_layers(s, ih, ip);
     let page = s.hist[ip].page.as_deref().unwrap();
     let dst_links: Vec<NavLink> = s.nav.links.iter().filter(|l| l.pid == pid).copied().collect();
-    let (inkm, _) = lasso_seeds(&g, page, &dst_links, &[], &src_seeds, true);
+    let (inkm, _) = lasso_seeds(&g, page, &seed_holders(&dst_links, &s.dl, pid), &[], &src_seeds, true);
     let placed = match lasso_place(&mut s.page_canvas, &g, spot, &inkm, paper.as_ref().map(|(b, st)| (b, *st)), &busy, dpi) {
         Ok(placed) => placed,
         Err(e) => {
@@ -2627,7 +2635,7 @@ pub(super) fn sel_paste(a: &mut App, at: Option<(i32, i32)>) {
             keep
         });
     }
-    let (inkm, linkm) = lasso_seeds(&gl, page, &dst_links, &[], &HashSet::new(), false);
+    let (inkm, linkm) = lasso_seeds(&gl, page, &seed_holders(&dst_links, &s.dl, pid), &[], &HashSet::new(), false);
     let mut new_links: Vec<NavLink> = Vec::new();
     for l in &gl.links {
         let target = if g.src_nb != here { nav_target_into(l.target.as_str(), &g.src_nb, &s.nb).unwrap_or_default() } else { l.target.as_str().to_string() };

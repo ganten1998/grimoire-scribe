@@ -1,0 +1,9 @@
+# Grimoire: the links of a book's pages, from KOReader's Grimoire plugin (docs/FORMAT.md)
+P 1860 2480
+L 1 2 200 300 400 300
+L 1 3 700 300 400 300
+L 2 1 200 300 400 300
+L 2 3 800 1200 300 300
+L 3 1 100 100 200 200
+L 2 2 10 10 50 50
+L 2 9 10 10 50 50

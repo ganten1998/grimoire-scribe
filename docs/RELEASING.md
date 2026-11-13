@@ -58,6 +58,11 @@ them.
    done)
    ```
 
+   `tools/check-crate-dates.py --tag-date YYYY-MM-DD` (the day the tag will be made) does the same for every
+   crate in the lock, lists those younger than two weeks at that date with the newest version old enough
+   and the `cargo update` line for each, and exits 1 if there are any. `cargo deny check` (the deny job and
+   `rust/deny.toml`) holds the licenses, the versions that appear twice and the sources.
+
    A crate that is younger goes back to its newest version older than that:
    `(cd rust && cargo update -p CRATE --precise VERSION)`, then the gate again. A crate is only ever
    moved to a version that is old enough. Both commands are in a subshell on purpose: the next step

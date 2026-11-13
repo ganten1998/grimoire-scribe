@@ -332,6 +332,13 @@ local function paged_doc(b)
         assert(page >= 1 and page <= b.pages and rotation == 0)
         return { x = 0, y = 0, w = math.floor(b.native.w * zoom + 0.5), h = math.floor(b.native.h * zoom + 0.5) }
     end
+    -- KOReader's links of a page: x0, y0, x1, y1 in page space and a 0-based `page`, or a `uri`; counted.
+    function doc.getPageLinks(_, page)
+        assert(page >= 1 and page <= b.pages, "a page of the book")
+        table.insert(W.link_calls, page)
+        if b.links_error then error("getPageLinks: no page", 0) end
+        return b.links and b.links[page] or {}
+    end
     function doc.drawPage(_, target, x, y, rect, page, zoom, rotation, gamma, last)
         draw_args_ok(gamma, last)
         table.insert(W.drawn, string.format("drawPage %d %d %dx%d %d %.4f %d %s %s", x, y, rect.w, rect.h,
@@ -456,6 +463,7 @@ local function world(name)
         menus = 0,
         unpack_writes = "#!/bin/sh\n# Capabilities: guard hosted annotate\n",
         drawn = {},
+        link_calls = {},
         freed = 0,
         logs = {},
         wrote = {},
@@ -563,6 +571,13 @@ local function new_ui(in_book)
                     assert((page == b.page or (b.whole and page >= 1 and page <= b.pages)) and rotation == 0)
                     return { x = 0, y = 0, w = math.floor(b.native.w * zoom + 0.5), h = math.floor(b.native.h * zoom + 0.5) }
                 end
+            -- KOReader's links of a page: x0, y0, x1, y1 in page space and a 0-based `page`, or a `uri`; counted.
+            function doc.getPageLinks(_, page)
+                assert(page >= 1 and page <= b.pages, "a page of the book")
+                table.insert(W.link_calls, page)
+                if b.links_error then error("getPageLinks: no page", 0) end
+                return b.links and b.links[page] or {}
+            end
                 function doc.drawPage(_, target, x, y, rect, page, zoom, rotation, gamma, last)
                     draw_args_ok(gamma, last)
                     table.insert(W.drawn, string.format("drawPage %d %d %dx%d %d %.4f %d %s %s", x, y, rect.w, rect.h,
@@ -1963,6 +1978,125 @@ do -- More pages than a notebook holds: refused before anything is drawn.
     koreader(true):onOpenBookInGrimoire()
     check("book of 2001 pages: refused", told("This book has more pages than a Grimoire notebook holds (2000).")
         and not drew("drawPage") and not wrapped())
+end
+
+-- ---- the links of a book's pages (links.txt, the launcher's "links" capability) ----
+
+local LINKS_CAPS = "#!/bin/sh\n# Capabilities: guard hosted annotate book links\n"
+local function link_calls() -- the pages getPageLinks was asked for, sorted, joined by spaces
+    local c = {}
+    for _, p in ipairs(W.link_calls) do table.insert(c, p) end
+    table.sort(c)
+    return table.concat(c, " ")
+end
+local function book_with_links(pages, page, links)
+    W.book.pages, W.book.page, W.book.whole = pages, page, true
+    W.book.links = links
+end
+-- (page space: 612 x 792 points drawn at 3.0392 into the 1860 x 2480 page, 36 px down)
+local ABOUT_LINKS = {
+    [1] = { { x0 = 60, y0 = 80, x1 = 120.5, y1 = 120.5, page = 1 }, -- to page 2
+            { uri = "https://example.org/" },                       -- the web: left out
+            { x0 = 0, y0 = 0, x1 = 10, y1 = 10, page = 0 },          -- its own page: left out
+            { x0 = 0, y0 = 0, x1 = 10, y1 = 10, page = 99 } },       -- a page the book lacks: left out
+    [2] = { { x0 = 300, y0 = 400, x1 = 360, y1 = 430, page = 2 } },  -- page 2 to page 3
+    [3] = { { x0 = 10, y0 = 10, x1 = 70, y1 = 40, page = 0 } },      -- page 3 to page 1
+    [4] = { { x0 = 0, y0 = 0, x1 = 10, y1 = 10, page = 0 } },
+}
+local function count_lines(text) local _, n = text:gsub("\nL ", "\nL ") return n end
+
+do -- A launcher that takes links: the links of the pages drawn in this run (1, 3 and 4), and once the pages
+    -- held already (2), as links.txt in the picture's pixels, before the request; each page asked once.
+    world("book-links")
+    W.unpack_writes = LINKS_CAPS
+    book_with_links(4, 2, ABOUT_LINKS)
+    notebook_of(W.book.md5, 4, { 2 })
+    koreader(true):onOpenBookInGrimoire()
+    local s = "book links"
+    check(s .. ": every page asked once, the drawn ones and the held one", link_calls() == "1 2 3 4")
+    local text = read_all(book_dir() .. "/links.txt") or ""
+    check(s .. ": the picture's size first", text:find("\nP 1860 2480\n", 1, true) ~= nil)
+    check(s .. ": page 1's link to page 2 at its place in the picture", text:find("\nL 1 2 182 279 185 124\n", 1, true) ~= nil)
+    check(s .. ": held page 2's link to page 3", text:find("\nL 2 3 911 1251 184 92\n", 1, true) ~= nil)
+    check(s .. ": page 3's link to page 1", text:find("\nL 3 1 30 66 183 92\n", 1, true) ~= nil)
+    check(s .. ": the web, its own page and a page the book lacks left out", not text:find("example", 1, true)
+        and not text:find("\nL 1 1 ", 1, true) and count_lines(text) == 4)
+    check(s .. ": in the folder with the pictures and the request", book_files() == "links.txt page-1.png page-3.png page-4.png request.ini")
+    check(s .. ": the hand-over", wrapped())
+    logs_name_no_book(s)
+end
+
+do -- A notebook that says links=1 holds its links, but pages are to be added in this run (1, 3 and 4): a page
+    -- deleted and added again is a target the held pages' tabs lost, so every held page's links are asked again.
+    world("book-links-once")
+    W.unpack_writes = LINKS_CAPS
+    book_with_links(4, 2, ABOUT_LINKS)
+    notebook_of(W.book.md5, 4, { 2 })
+    local nb = W.us .. "/grimoire/notebooks/20261026-100000-abcd/source.ini"
+    write(nb, read_all(nb) .. "links=1\n")
+    write(W.us .. "/grimoire/notebooks/20261026-100000-abcd/doclinks.ini", "# Grimoire: links a document brought\n")
+    koreader(true):onOpenBookInGrimoire()
+    local s = "book links, again with pages to add"
+    check(s .. ": the held page is asked again with the drawn ones", link_calls() == "1 2 3 4")
+end
+
+do -- Everything held and filled: nothing to draw, nothing asked, no links.txt.
+    world("book-links-none")
+    W.unpack_writes = LINKS_CAPS
+    book_with_links(2, 1, ABOUT_LINKS)
+    notebook_of(W.book.md5, 2, { 1, 2 })
+    local nb = W.us .. "/grimoire/notebooks/20261026-100000-abcd/source.ini"
+    write(nb, read_all(nb) .. "links=1\n")
+    write(W.us .. "/grimoire/notebooks/20261026-100000-abcd/doclinks.ini", "# Grimoire: links a document brought\n")
+    koreader(true):onOpenBookInGrimoire()
+    local s = "book links, all held and filled"
+    check(s .. ": nothing asked", link_calls() == "")
+    check(s .. ": no links.txt, a request with no pictures", book_files() == "request.ini")
+end
+
+do -- links=1 with no doclinks.ini beside it (a zip an older build made keeps the line and leaves the file out): not filled.
+    world("book-links-nofile")
+    W.unpack_writes = LINKS_CAPS
+    book_with_links(2, 1, ABOUT_LINKS)
+    notebook_of(W.book.md5, 2, { 1, 2 })
+    local nb = W.us .. "/grimoire/notebooks/20261026-100000-abcd/source.ini"
+    write(nb, read_all(nb) .. "links=1\n")
+    koreader(true):onOpenBookInGrimoire()
+    local s = "book links, links=1 without its file"
+    check(s .. ": every held page asked again", link_calls() == "1 2")
+    check(s .. ": links.txt and the request", book_files() == "links.txt request.ini")
+end
+
+do -- Everything held, links not filled yet (an older Grimoire made the notebook): the one backfill, links.txt alone.
+    world("book-links-backfill")
+    W.unpack_writes = LINKS_CAPS
+    book_with_links(3, 1, ABOUT_LINKS)
+    notebook_of(W.book.md5, 3, { 1, 2, 3 })
+    koreader(true):onOpenBookInGrimoire()
+    local s = "book links, the backfill"
+    check(s .. ": every held page asked once", link_calls() == "1 2 3")
+    check(s .. ": links.txt and the request, no pictures", book_files() == "links.txt request.ini")
+end
+
+do -- An older launcher (no "links" in its Capabilities line) gets no links.txt, and KOReader is not asked.
+    world("book-links-older")
+    W.unpack_writes = BOOK_CAPS
+    book_with_links(3, 1, ABOUT_LINKS)
+    koreader(true):onOpenBookInGrimoire()
+    local s = "book links, an older launcher"
+    check(s .. ": no page's links asked", link_calls() == "")
+    check(s .. ": no links.txt", book_files() == "page-1.png page-2.png page-3.png request.ini")
+end
+
+do -- KOReader's getPageLinks failing gives no links for the page: the pages still go, links.txt holds its size alone.
+    world("book-links-error")
+    W.unpack_writes = LINKS_CAPS
+    book_with_links(2, 1, ABOUT_LINKS)
+    W.book.links_error = true
+    koreader(true):onOpenBookInGrimoire()
+    local s = "book links, KOReader's call failing"
+    check(s .. ": the pages and the request went", book_request() ~= nil and wrapped())
+    check(s .. ": links.txt has the size and no link", (read_all(book_dir() .. "/links.txt") or "x"):find("\nL ", 1, true) == nil)
 end
 
 do -- The file browser's Open with... > Grimoire: the files it takes, then a PDF opened for its pages,
