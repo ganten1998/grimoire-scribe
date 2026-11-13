@@ -46,7 +46,8 @@ impl RefreshMode {
 // black to white keeps a faint trace of the black (DU ghosting). The grayscale settle that follows
 // (GL16, a partial update) does not reach it: a partial update drives only the pixels whose value
 // changed, and DU already wrote that pixel's final white. So the traces of erased ink and of the
-// toolbar's old places stay until a flashing refresh (a page turn, the Library and back). DuWear
+// toolbar's old places stay until a flashing refresh (a page turn at another than the fitted view, the
+// Library and back, or the 30th UI refresh). DuWear
 // counts the screen area fast refreshes turned back toward the paper (the eraser's, a dragged
 // selection's); past a quarter of the screen the editor cleans where they were with one Clean
 // refresh, at a pause. Writing is not counted: DU turning white paper black leaves no trace.

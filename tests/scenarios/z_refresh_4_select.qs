@@ -69,21 +69,23 @@ expect editor.wear is 58
 expect display.presents not -1
 pen up 500 750
 wait 300
-# nothing moved, and all of the way drawn again in grays
+# nothing moved, and all of the way drawn again in grays; the lift counts the outline's newest place as DU
+# wear the grays cannot wipe (#52), one more than the drag's 58
 expect editor.undo_kind is add
 expect display.presents is ui 10 619 1450 1174
 expect display.stale.0.300.1650.2100 is 0
-expect editor.wear is 58
+expect editor.wear is 59
 # the pen gone: under a quarter of the screen worn, no Clean
 pen leave
 wait 400
 expect display.presents is
-expect editor.wear is 58
-# Delete: one grayscale refresh, nothing left over and nothing to clean.
+expect editor.wear is 59
+# Delete: its press answers at once on the button (a fast one, as a panel button's), then one grayscale
+# refresh of the page, nothing left over and nothing to clean.
 tap panel select.delete
 wait 300
 expect editor.strokes is 0
-expect display.presents is ui 10 220 1822 2220
+expect display.presents has ui 10 220 1822 2220
 expect display.stale.0.300.1650.2100 is 0
-expect editor.wear is 58
+expect editor.wear is 59
 expect editor.layers is ok

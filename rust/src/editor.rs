@@ -420,6 +420,8 @@ pub struct EditorState {
 
     /// the C's hist, nhist
     hist: Vec<PageHistory>,
+    /// the drawings of pages left this session (PageView): turned back to, they are not drawn again
+    page_views: Vec<PageView>,
 
     // Pointer ownership: which input started the current gesture and what it does.
     owner: Owner,
@@ -677,6 +679,89 @@ fn ed_ref(a: &App) -> &EditorState {
 /// pointers (canvas_page). Compared, never dereferenced.
 fn page_ref(p: &Page) -> usize {
     p as *const Page as usize
+}
+
+/// The whole drawing of a page left this session, kept in memory: a page turned back to shows it rather
+/// than drawing every stroke again (seconds on a dense page). `stamp` is the page file's identity when
+/// it was drawn (store_page_source_identity): a page written since is drawn again. `ms` is how long its
+/// last whole drawing took (full_ms), so a slow page still keeps its drawing on disk when it is left.
+struct PageView {
+    pid: u32,
+    stamp: String,
+    ms: u32,
+    canvas: Canvas,
+}
+/// The pages left this session whose drawings are kept in memory (4.6 MB each at the Scribe's page
+/// size): the three newest, so turning back a page or two is instant.
+const PAGE_VIEWS_MAX: usize = 3;
+/// PAGE_VIEWS_MAX, or what a scenario asks for: the simulator takes GRIMOIRE_PAGE_VIEWS (0 keeps none, so a
+/// scenario of the kept drawing on disk reaches the disk on a revisit, as on a page left in another session).
+fn page_views_max() -> usize {
+    #[cfg(feature = "sim")]
+    if let Some(n) = std::env::var("GRIMOIRE_PAGE_VIEWS").ok().and_then(|v| v.parse().ok()) {
+        return n;
+    }
+    PAGE_VIEWS_MAX
+}
+
+/// Puts the open page's drawing aside in memory, when its canvas is whole and the page is its file.
+fn page_view_stash(s: &mut EditorState) {
+    let max = page_views_max();
+    if max == 0 {
+        return;
+    }
+    if s.page_canvas.px.is_empty() || s.canvas_page != s.open_page_ref() || s.picture_missing || s.page_dirty {
+        return;
+    }
+    let pid = s.open_pid();
+    if pid == 0 {
+        return;
+    }
+    let Some(stamp) = store_page_source_identity(&s.nb, pid) else { return };
+    // The page is already kept as it is (turned back to, then away again): no copy of it again.
+    if s.page_views.iter().any(|v| {
+        v.pid == pid && v.stamp == stamp && v.canvas.w == s.page_canvas.w && v.canvas.h == s.page_canvas.h
+            && v.canvas.px.len() == s.page_canvas.px.len()
+    }) {
+        return;
+    }
+    let mut canvas = Canvas::default();
+    if canvas_init(&mut canvas, s.page_canvas.w, s.page_canvas.h) != 0 {
+        return;
+    }
+    canvas.px.copy_from_slice(&s.page_canvas.px);
+    canvas.clip = s.page_canvas.clip;
+    let ms = if s.full_ms.0 == pid { s.full_ms.1 } else { 0 };
+    s.page_views.retain(|v| v.pid != pid);
+    while s.page_views.len() >= max {
+        let mut old = s.page_views.remove(0);
+        canvas_free(&mut old.canvas);
+    }
+    s.page_views.push(PageView { pid, stamp, ms, canvas });
+}
+
+/// The drawing page pid was left with this session, copied into the page canvas, when the page file is
+/// still the one drawn: how long that drawing took, ms (full_ms), or None when there is none.
+fn page_view_load(s: &mut EditorState, pid: u32) -> Option<u32> {
+    let stamp = store_page_source_identity(&s.nb, pid)?;
+    let i = s.page_views.iter().position(|v| {
+        v.pid == pid && v.stamp == stamp && v.canvas.w == s.page_canvas.w && v.canvas.h == s.page_canvas.h
+            && v.canvas.px.len() == s.page_canvas.px.len()
+    })?;
+    s.page_canvas.px.copy_from_slice(&s.page_views[i].canvas.px);
+    let ms = s.page_views[i].ms;
+    if i + 1 != s.page_views.len() {
+        let v = s.page_views.remove(i);
+        s.page_views.push(v);
+    }
+    Some(ms)
+}
+
+/// Forgets every drawing kept in memory (the page size changed, or the notebook closed).
+fn page_views_clear(s: &mut EditorState) {
+    for mut v in s.page_views.drain(..) {
+        canvas_free(&mut v.canvas);
+    }
 }
 
 impl EditorState {
@@ -3234,6 +3319,10 @@ fn go_to_page(a: &mut App, index: i32) -> bool {
         app_toast(a, tr("Couldn't open page"), 3000);
         return false;
     };
+    // The page left keeps its drawing in memory; the page come to takes its own back if it was left this
+    // session and its file is still the one drawn (a dense page then shows at once, not seconds later).
+    page_view_stash(s);
+    let kept_ms = page_view_load(s, np);
     live_reset();
     a.live_processed = 0;
     a.live_processed_ms = 0;
@@ -3242,9 +3331,30 @@ fn go_to_page(a: &mut App, index: i32) -> bool {
     s.index = index;
     s.nb.last_page = index;
     s.info_dirty = true;
-    render_page_open(a);
+    match kept_ms {
+        Some(ms) => {
+            // render_page_full's bookkeeping, without its drawing: the page canvas already holds the page.
+            s.canvas_page = s.open_page_ref();
+            s.boxes.stale = true;
+            s.picture_missing = false;
+            s.page_kept = false;
+            s.full_ms = (np, ms);
+            base_reset(s);
+            let pid = s.open_pid();
+            s.preview_saved_ms = now_ms().wrapping_sub(store_page_cache_age_ms(&s.nb, pid).min(cache_window_ms()));
+            s.caches_pending = false;
+            if s.open_page().is_some_and(|p| paper_is_image(p.paper)) {
+                s.paper_stale = true;
+            }
+        }
+        None => render_page_open(a),
+    }
     view_reset(a);
-    compose_all(a, RefreshMode::Full);
+    // A page at the fitted view (100% upright, no offset) is the screen whole, blitted in compose: a
+    // partial (GL16) refresh rather than GC16's flash of the whole panel, which cost 147 ms on a light
+    // page and 1250 ms on a dense one (issue #31). Another view (zoomed, another page size) is composed
+    // as before. The 30th UI refresh flashes anyway (app_invalidate_all), so ghosts still clear.
+    compose_all(a, if view_identity(a) { RefreshMode::Ui } else { RefreshMode::Full });
     arrive_readonly(a);
     true
 }
@@ -3261,6 +3371,7 @@ fn use_page_size(s: &mut EditorState) {
     s.pgh = h;
     canvas_free(&mut s.page_canvas);
     canvas_free(&mut s.base);
+    page_views_clear(s);
     s.base_page = 0;
     s.canvas_page = 0;
     for k in 0..PAPER_COUNT as usize {
@@ -3386,6 +3497,7 @@ fn close_notebook(a: &mut App) {
             unlisted
         );
     }
+    page_views_clear(s);
     s.free_histories();
     s.paper = SharedPaper::default();
     canvas_free(&mut s.image_prev); // (it may have drawn a picture white: made again from the file)
@@ -7423,12 +7535,12 @@ fn find_close(a: &mut App) {
 }
 
 // A row, or Done on the first one: the sheet closes, the page it was asked on goes on the back list and the page
-// asked for opens (go_to_page's own Full).
+// asked for opens (go_to_page's own draw of the screen).
 fn find_go(a: &mut App, index: i32) {
     find_drop(ed(a));
     if ed_ref(a).pv.open {
         // (opened over the Pages view: it closes on that page, as its Go to page did)
-        // (a page that does not open: go_to_page drew the screen whole without the view, in its own Full)
+        // (a page that does not open: go_to_page drew the screen whole without the view, in its own draw)
         pagesview_close(&mut ed(a).pv);
     }
     go_to_page_pushing(a, index);
@@ -8765,8 +8877,9 @@ fn editor_shortcut_in(a: &mut App, action: i32, x: f32, y: f32, src: ActionSrc) 
                 s.ox = ox;
                 s.oy = if down { 0.0 } else { (s.pgh as f32 - height / zoom).max(0.0) } - top / zoom;
                 view_clamp(a);
-                // go_to_page's pending GC16 also carries this view at the preserved zoom.
-                compose_all(a, RefreshMode::Ui);
+                // go_to_page's draw carries the page at the fitted view; the view restored over it is composed
+                // again here, flashed whole unless it is that same fitted view.
+                compose_all(a, if view_identity(a) { RefreshMode::Ui } else { RefreshMode::Full });
             }
         } else {
             let was = (zoom, ox, ed_ref(a).oy);
@@ -11895,6 +12008,13 @@ pub fn editor_probe(a: &mut App, key: &str, out: &mut String, cap: usize) -> i32
     } else if key == "erase_strokes" {
         let n = if has_page { s.open_page().unwrap().strokes.iter().filter(|x| stroke_is_erase(x)).count() as i32 } else { 0 };
         csnprintf!(out, cap, "%d", n);
+    } else if key == "page_in_memory" {
+        // Whether the open page's drawing is among those kept in memory this session (PageView), for the
+        // page file as it is now: a page turned back to came up from it.
+        let pid = if has_page { s.open_pid() } else { 0 };
+        let stamp = if pid != 0 { store_page_source_identity(&s.nb, pid) } else { None };
+        let on = stamp.is_some_and(|st| s.page_views.iter().any(|v| v.pid == pid && v.stamp == st));
+        csnprintf!(out, cap, "%d", on as i32);
     } else if key == "page_kept" {
         // Whether the open page came up from its kept drawing instead of being drawn stroke by stroke.
         csnprintf!(out, cap, "%d", s.page_kept as i32);
@@ -12192,6 +12312,42 @@ mod tests {
         s.preview_saved_ms = now_ms().wrapping_sub(30_000);
         mark_changed(s);
         (root, a)
+    }
+
+    // A page turned back to is the drawing it was left with, not every stroke drawn again (seconds on a dense
+    // page): the canvas is kept in memory while the page file is the one it was drawn from.
+    #[test]
+    fn a_page_turned_back_to_shows_its_drawing_from_memory() {
+        let root = std::env::temp_dir().join(format!("grimoire-page-views-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        store_init(root.to_str().unwrap());
+        let mut nb = NotebookInfo::default();
+        assert_eq!(store_create("Views", "", PAPER_BLANK, &mut nb), 0);
+        assert_eq!(store_add_page(&mut nb, 1, PAPER_BLANK), 0);
+        assert_eq!(store_add_page(&mut nb, 2, PAPER_BLANK), 0);
+        let mut a = fshape_app();
+        let s = ed(&mut a);
+        s.nb = nb;
+        let e = s.entry_for(s.nb.page_ids[2]).unwrap();
+        s.hist[e].page = Some(page_new(s.pgw, s.pgh, PAPER_BLANK));
+        s.index = 0;
+        s.page = Some(s.nb.page_ids[0]);
+        s.page_dirty = false;
+        assert_eq!(store_save_page(&s.nb, 0, s.open_page().unwrap()), 0);
+        render_page_full(&mut a);
+        view_reset(&mut a);
+        let s = ed(&mut a);
+        s.page_canvas.px[0] = 0; // a mark no stroke of this page draws
+        assert!(go_to_page(&mut a, 1));
+        assert_eq!(ed_ref(&a).page_views.len(), 1);
+        assert_eq!(ed_ref(&a).page_views[0].pid, 1);
+        assert!(go_to_page(&mut a, 0));
+        assert_eq!(ed_ref(&a).page_canvas.px[0], 0, "the drawing kept in memory came back, not a fresh render");
+        // The page left again, then back: still kept, and still whole for the page.
+        assert!(go_to_page(&mut a, 1));
+        assert!(go_to_page(&mut a, 0));
+        assert_eq!(ed_ref(&a).page_canvas.px[0], 0);
+        std::fs::remove_dir_all(root).unwrap();
     }
 
     #[cfg(unix)]
