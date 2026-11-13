@@ -54,6 +54,42 @@ extern unsigned int live_js_len;
 extern unsigned char live_css[];
 extern unsigned int live_css_len;
 
+// Route table entry for path matching.
+typedef struct route_table_entry {
+    const char *prefix;
+    int prefix_len;
+    void (*handler)(const char *path, const char *query);
+} route_table_entry;
+
+// Forward declarations for route handlers (defined later in the file).
+void route_live(const char *path, const char *query);
+void route_font(const char *name);
+void route_icon_svg(void);
+void route_touch_icon(void);
+
+// Route table: ordered list of path prefixes and their handlers.
+// The route() function looks up the path in this table and calls the matching handler.
+// Only handlers with matching signature (void path, query) are included.
+static const route_table_entry route_table[] = {
+    {"/live", 5, route_live},
+    {NULL, 0, NULL},
+};
+
+// Look up |path| in the route table and return the matching handler,
+// or NULL if no prefix matches.
+static void (*route_match(const char *path))(const char *path, const char *query) {
+    for (int i = 0; route_table[i].prefix != NULL; i++) {
+        if (strncmp(path, route_table[i].prefix, route_table[i].prefix_len) == 0) {
+            return route_table[i].handler;
+        }
+    }
+
+
+
+    return NULL;
+}
+
+
 // Small, anonymous shared records let the parent answer progress while a child renders.
 // No notebook contents, temporary files, or second download are needed. Retain the last 32
 // records; queued/running jobs cannot be recycled, including a child not yet reaped.
@@ -153,6 +189,12 @@ static void reap_children(void) {
         }
 }
 
+/* SIGCHLD handler: reap any children that have exited so they don't become zombies.
+   Called from the signal handler; only async-signal-safe operations. */
+static void sigchld_handler(int sig) {
+    reap_children();
+}
+
 static void set_nonblock(int fd) { fcntl(fd, F_SETFL, fcntl(fd, F_GETFL, 0) | O_NONBLOCK); }
 
 static int httpd_start(int port, float dpi, bool gothic) {
@@ -160,15 +202,22 @@ static int httpd_start(int port, float dpi, bool gothic) {
     signal(SIGPIPE, SIG_IGN);
     g_dpi = dpi;
     g_gothic = gothic;
+    /* Set up SIGCHLD handler to reap children immediately rather than waiting for httpd_poll() */
+    struct sigaction sa;
+    memset(&sa, 0, sizeof sa);
+    sa.sa_handler = sigchld_handler;
+    sigemptyset(&sa.sa_mask);
+    sa.sa_flags = SA_RESTART;
+    sigaction(SIGCHLD, &sa, NULL);
     int fd = socket(AF_INET, SOCK_STREAM, 0);
     if (fd < 0) return -1;
     int one = 1;
     setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &one, sizeof one);
-    struct sockaddr_in sa = {0};
-    sa.sin_family = AF_INET;
-    sa.sin_port = htons((uint16_t)port);
-    sa.sin_addr.s_addr = htonl(INADDR_ANY);
-    if (bind(fd, (struct sockaddr *)&sa, sizeof sa) != 0 || listen(fd, 64) != 0) {
+    struct sockaddr_in sa_addr = {0};
+    sa_addr.sin_family = AF_INET;
+    sa_addr.sin_port = htons((uint16_t)port);
+    sa_addr.sin_addr.s_addr = htonl(INADDR_ANY);
+    if (bind(fd, (struct sockaddr *)&sa_addr, sizeof sa_addr) != 0 || listen(fd, 64) != 0) {
         qlog("httpd: bind/listen on %d failed: %s", port, strerror(errno));
         close(fd);
         return -1;
@@ -349,6 +398,8 @@ static void respond_bytes(int code, const char *ctype, const void *data, size_t 
                                           : code == 400 ? "Bad Request" : code == 503 ? "Service Unavailable"
                                           : code == 302 ? "Found" : code == 401 ? "Unauthorized"
                                           : code == 403 ? "Forbidden" : "Internal Server Error";
+    if (!g_cur) return;
+    if (!ctype) return;
     Buf *o = &g_cur->out;
     buf_printf(o, "HTTP/1.0 %d %s\r\nContent-Type: %s\r\nContent-Length: %zu\r\nConnection: close\r\n"
                   "Cache-Control: %s\r\n%s", code, reason, ctype, len, cache ? cache : "no-store", extra ? extra : "");
@@ -377,7 +428,7 @@ static void respond_bytes(int code, const char *ctype, const void *data, size_t 
         buf_free(o);
         return;
     }
-    if (len) buf_append(o, data, len);
+    if (len && data) buf_append(o, data, len);
     g_cur->st = C_WRITING;
     g_cur->sent = 0;
 }
@@ -484,7 +535,7 @@ static void page_head(Buf *b, const char *title) {
 
 // The fonts the pages use: the binary's own copies, cached by the browser for a year (the
 // version in the URL changes when they could).
-static void route_font(const char *name) {
+void route_font(const char *name) {
     static const struct {
         const char *name;
         const unsigned char *data;
@@ -866,7 +917,7 @@ static void route_live_page(const char *query) {
     buf_free(&b);
 }
 
-static void route_live(const char *path, const char *query) {
+void route_live(const char *path, const char *query) {
     if (!strcmp(path, "/live") || !strcmp(path, "/live/")) return route_live_page(query);
     if (!(g_owners & HTTPD_LIVE)) return respond_text(404, _("not found"));
     if (!strcmp(path, "/live/pair")) {
@@ -901,7 +952,7 @@ static void route_live(const char *path, const char *query) {
 }
 
 // The browser's icon for the pages: the bat in a square, black, or light where the browser is dark.
-static void route_icon_svg(void) {
+void route_icon_svg(void) {
     Buf b = {0};
     buf_printf(&b, "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 %g %d %d' shape-rendering='crispEdges'>"
                    "<style>path{fill:#111}@media (prefers-color-scheme:dark){path{fill:#eee}}</style><path d='",
@@ -914,7 +965,7 @@ static void route_icon_svg(void) {
 
 // The icon a phone keeps for the pages (an iPhone's home screen or bookmarks): the bat in blocks of
 // 4 px, black on white, 180 px square.
-static void route_touch_icon(void) {
+void route_touch_icon(void) {
     enum { S = 180, K = 4 };
     Canvas c;
     if (canvas_init(&c, S, S) != 0) return respond_text(500, "no memory");
@@ -934,6 +985,14 @@ static void route(char *path) {
     if (q) {
         strlcpy_q(query, q + 1, sizeof query);
         *q = 0;
+    }
+    url_decode(path);
+    if (strstr(path, "..")) return respond_text(400, "bad path");
+    // Look up path in route table
+    void (*handler)(const char *path, const char *query) = route_match(path);
+    if (handler != NULL) {
+        handler(path, query);
+        return;
     }
     url_decode(path);
     if (strstr(path, "..")) return respond_text(400, "bad path");

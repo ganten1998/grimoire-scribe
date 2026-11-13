@@ -988,6 +988,22 @@ fn gesture_keys() {
     check!(settings_load(&mut t) == 0 && t.status_corner == 0);
     check!(write_file_atomic(&path, b"invert=1\n") == 0);
     check!(settings_load(&mut t) == 0 && t.status_corner == 0);
+    // The clock's 12-hour time (clock_12h, 2.1.0-beta.2): off by default, written right after status_corner,
+    // read back; another value is on when it starts with a nonzero number and goes back as it was.
+    settings_default(&mut s);
+    check!(!s.clock_12h);
+    check!(settings_save(&s) == 0 && has_pins_line(&path, "clock_12h=0"));
+    let text = read_file(&path).unwrap_or_default();
+    let at = |k: &str| text.windows(k.len()).position(|w| w == k.as_bytes());
+    check!(at("status_corner=") < at("clock_12h=") && at("clock_12h=") < at("rotation_lock="));
+    s.clock_12h = true;
+    check!(settings_save(&s) == 0 && has_pins_line(&path, "clock_12h=1"));
+    check!(settings_load(&mut t) == 0 && t.clock_12h);
+    check!(write_file_atomic(&path, b"clock_12h=7\n") == 0);
+    check!(settings_load(&mut t) == 0 && t.clock_12h);
+    check!(settings_save(&t) == 0 && has_pins_line(&path, "clock_12h=7"));
+    check!(write_file_atomic(&path, b"invert=1\n") == 0);
+    check!(settings_load(&mut t) == 0 && !t.clock_12h);
     // upgraded: version 3 exactly, a file that exists, no gestures key
     check!(write_file_atomic(&path, b"settings_version=3\ninvert=1\n") == 0);
     check!(settings_load(&mut t) == 0 && t.upgraded);

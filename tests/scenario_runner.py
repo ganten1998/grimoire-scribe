@@ -651,6 +651,16 @@ def l10n(args, hooks):
                           ('GRIMOIRE_WIFI_SCRIPT', os.path.abspath('tests/fixtures/wifi/helper.sh')),
                           ('GRIMOIRE_SIM_ADDRS', 'wlan0=192.168.0.20' if online else '')],
                          inis[style], 4.0)
+        # Settings > Wi-Fi with the scenario helper's saved networks (its button in Settings' bottom row
+        # too), in every language and style (with the keys on, for its Esc: the header's settings line is
+        # not read here).
+        for lang in langs:
+            for style in styles_for(lang):
+                n = f'wifi-networks-{lang}-{style}'
+                task(n, 'tests/scenarios/z_wifi_networks.qs', f'{b}/scen/l10n/{n}',
+                     [('GRIMOIRE_LANG', lang), ('GRIMOIRE_CHECK_FIT', '1'),
+                      ('GRIMOIRE_WIFI_SCRIPT', os.path.abspath('tests/fixtures/wifi/helper.sh'))],
+                     inis[style] + ['shortcuts_enabled=1'], 6.0)
     for t in tasks:
         t.serial = t.name in args.serial
     run_all(tasks, args, hooks)

@@ -1,11 +1,14 @@
 # settings: status_mode=1
 # storage: 1
+# env: GRIMOIRE_IMPORT_STABLE=hold
 # copy: tests/fixtures/files .
 # generate: tests/files_hostile.py
 # The picker over a hostile tree: links to /etc, to "..", to a PDF, to a folder of pictures and to Grimoire's
 # notebooks, a FIFO named .pdf, a name with ':' and one that is not UTF-8. Links, the FIFO and the odd name are
 # not listed; nothing is entered or opened through a link; the plain files and folders are. A mirror PDF and a
 # trashed file are not offered anywhere, and a job that names one (here the runner's pdfimport) is refused.
+# import/Waiting.pdf stays Waiting (GRIMOIRE_IMPORT_STABLE=hold): a run that reached its 5 s age imported it,
+# which made the last count 1 on a slow CI runner.
 # rust-only
 wait 300
 tap library new

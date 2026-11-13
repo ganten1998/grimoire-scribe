@@ -891,6 +891,19 @@ fn fast_stable() -> bool {
     }
 }
 
+/// GRIMOIRE_IMPORT_STABLE=hold (tests, never the Kindle's build): no PDF in import/ ever counts as steady, so one a
+/// scenario keeps there stays Waiting however long the scenario runs.
+fn hold_stable() -> bool {
+    #[cfg(not(feature = "kindle"))]
+    {
+        std::env::var("GRIMOIRE_IMPORT_STABLE").is_ok_and(|v| v == "hold")
+    }
+    #[cfg(feature = "kindle")]
+    {
+        false
+    }
+}
+
 /// Whether the lock is held by another process: the Import place says Waiting.
 pub fn detached_running() -> bool {
     ui(|u| u.detached)
@@ -976,7 +989,7 @@ pub fn scan_queue(found: &Found, dpi: f32, lock_busy: bool) -> i32 {
             tried_out += 1;
             continue;
         }
-        let steady = ui(|u| {
+        let steady = !hold_stable() && ui(|u| {
             let (g, a) = if fast_stable() { (0, 0) } else { (STABLE_GAP_MS, STABLE_AGE_S) };
             time_stable(&mut u.seen, key, *size, *mtime, now, wall, g, a)
         });

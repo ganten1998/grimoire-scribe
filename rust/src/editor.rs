@@ -420,6 +420,8 @@ pub struct EditorState {
 
     /// the C's hist, nhist
     hist: Vec<PageHistory>,
+    /// the drawings of pages left this session (PageView): turned back to, they are not drawn again
+    page_views: Vec<PageView>,
 
     // Pointer ownership: which input started the current gesture and what it does.
     owner: Owner,
@@ -677,6 +679,89 @@ fn ed_ref(a: &App) -> &EditorState {
 /// pointers (canvas_page). Compared, never dereferenced.
 fn page_ref(p: &Page) -> usize {
     p as *const Page as usize
+}
+
+/// The whole drawing of a page left this session, kept in memory: a page turned back to shows it rather
+/// than drawing every stroke again (seconds on a dense page). `stamp` is the page file's identity when
+/// it was drawn (store_page_source_identity): a page written since is drawn again. `ms` is how long its
+/// last whole drawing took (full_ms), so a slow page still keeps its drawing on disk when it is left.
+struct PageView {
+    pid: u32,
+    stamp: String,
+    ms: u32,
+    canvas: Canvas,
+}
+/// The pages left this session whose drawings are kept in memory (4.6 MB each at the Scribe's page
+/// size): the three newest, so turning back a page or two is instant.
+const PAGE_VIEWS_MAX: usize = 3;
+/// PAGE_VIEWS_MAX, or what a scenario asks for: the simulator takes GRIMOIRE_PAGE_VIEWS (0 keeps none, so a
+/// scenario of the kept drawing on disk reaches the disk on a revisit, as on a page left in another session).
+fn page_views_max() -> usize {
+    #[cfg(feature = "sim")]
+    if let Some(n) = std::env::var("GRIMOIRE_PAGE_VIEWS").ok().and_then(|v| v.parse().ok()) {
+        return n;
+    }
+    PAGE_VIEWS_MAX
+}
+
+/// Puts the open page's drawing aside in memory, when its canvas is whole and the page is its file.
+fn page_view_stash(s: &mut EditorState) {
+    let max = page_views_max();
+    if max == 0 {
+        return;
+    }
+    if s.page_canvas.px.is_empty() || s.canvas_page != s.open_page_ref() || s.picture_missing || s.page_dirty {
+        return;
+    }
+    let pid = s.open_pid();
+    if pid == 0 {
+        return;
+    }
+    let Some(stamp) = store_page_source_identity(&s.nb, pid) else { return };
+    // The page is already kept as it is (turned back to, then away again): no copy of it again.
+    if s.page_views.iter().any(|v| {
+        v.pid == pid && v.stamp == stamp && v.canvas.w == s.page_canvas.w && v.canvas.h == s.page_canvas.h
+            && v.canvas.px.len() == s.page_canvas.px.len()
+    }) {
+        return;
+    }
+    let mut canvas = Canvas::default();
+    if canvas_init(&mut canvas, s.page_canvas.w, s.page_canvas.h) != 0 {
+        return;
+    }
+    canvas.px.copy_from_slice(&s.page_canvas.px);
+    canvas.clip = s.page_canvas.clip;
+    let ms = if s.full_ms.0 == pid { s.full_ms.1 } else { 0 };
+    s.page_views.retain(|v| v.pid != pid);
+    while s.page_views.len() >= max {
+        let mut old = s.page_views.remove(0);
+        canvas_free(&mut old.canvas);
+    }
+    s.page_views.push(PageView { pid, stamp, ms, canvas });
+}
+
+/// The drawing page pid was left with this session, copied into the page canvas, when the page file is
+/// still the one drawn: how long that drawing took, ms (full_ms), or None when there is none.
+fn page_view_load(s: &mut EditorState, pid: u32) -> Option<u32> {
+    let stamp = store_page_source_identity(&s.nb, pid)?;
+    let i = s.page_views.iter().position(|v| {
+        v.pid == pid && v.stamp == stamp && v.canvas.w == s.page_canvas.w && v.canvas.h == s.page_canvas.h
+            && v.canvas.px.len() == s.page_canvas.px.len()
+    })?;
+    s.page_canvas.px.copy_from_slice(&s.page_views[i].canvas.px);
+    let ms = s.page_views[i].ms;
+    if i + 1 != s.page_views.len() {
+        let v = s.page_views.remove(i);
+        s.page_views.push(v);
+    }
+    Some(ms)
+}
+
+/// Forgets every drawing kept in memory (the page size changed, or the notebook closed).
+fn page_views_clear(s: &mut EditorState) {
+    for mut v in s.page_views.drain(..) {
+        canvas_free(&mut v.canvas);
+    }
 }
 
 impl EditorState {
@@ -3234,6 +3319,10 @@ fn go_to_page(a: &mut App, index: i32) -> bool {
         app_toast(a, tr("Couldn't open page"), 3000);
         return false;
     };
+    // The page left keeps its drawing in memory; the page come to takes its own back if it was left this
+    // session and its file is still the one drawn (a dense page then shows at once, not seconds later).
+    page_view_stash(s);
+    let kept_ms = page_view_load(s, np);
     live_reset();
     a.live_processed = 0;
     a.live_processed_ms = 0;
@@ -3242,9 +3331,30 @@ fn go_to_page(a: &mut App, index: i32) -> bool {
     s.index = index;
     s.nb.last_page = index;
     s.info_dirty = true;
-    render_page_open(a);
+    match kept_ms {
+        Some(ms) => {
+            // render_page_full's bookkeeping, without its drawing: the page canvas already holds the page.
+            s.canvas_page = s.open_page_ref();
+            s.boxes.stale = true;
+            s.picture_missing = false;
+            s.page_kept = false;
+            s.full_ms = (np, ms);
+            base_reset(s);
+            let pid = s.open_pid();
+            s.preview_saved_ms = now_ms().wrapping_sub(store_page_cache_age_ms(&s.nb, pid).min(cache_window_ms()));
+            s.caches_pending = false;
+            if s.open_page().is_some_and(|p| paper_is_image(p.paper)) {
+                s.paper_stale = true;
+            }
+        }
+        None => render_page_open(a),
+    }
     view_reset(a);
-    compose_all(a, RefreshMode::Full);
+    // A page at the fitted view (100% upright, no offset) is the screen whole, blitted in compose: a
+    // partial (GL16) refresh rather than GC16's flash of the whole panel, which cost 147 ms on a light
+    // page and 1250 ms on a dense one (issue #31). Another view (zoomed, another page size) is composed
+    // as before. The 30th UI refresh flashes anyway (app_invalidate_all), so ghosts still clear.
+    compose_all(a, if view_identity(a) { RefreshMode::Ui } else { RefreshMode::Full });
     arrive_readonly(a);
     true
 }
@@ -3261,6 +3371,7 @@ fn use_page_size(s: &mut EditorState) {
     s.pgh = h;
     canvas_free(&mut s.page_canvas);
     canvas_free(&mut s.base);
+    page_views_clear(s);
     s.base_page = 0;
     s.canvas_page = 0;
     for k in 0..PAPER_COUNT as usize {
@@ -3386,6 +3497,7 @@ fn close_notebook(a: &mut App) {
             unlisted
         );
     }
+    page_views_clear(s);
     s.free_histories();
     s.paper = SharedPaper::default();
     canvas_free(&mut s.image_prev); // (it may have drawn a picture white: made again from the file)
@@ -4116,33 +4228,35 @@ fn erase_end_sweep(a: &mut App) {
     s.snap = Vec::new();
 }
 
-fn clear_page(a: &mut App) {
+/// Clears the open page (its ink and its links), one undo step: true when it did. A read-only page, an
+/// empty one or links that cannot be saved leave it as it was (false).
+fn clear_page(a: &mut App) -> bool {
     if refuse_readonly(a) {
-        return;
+        return false;
     }
     // (an empty page stays as it is: nothing to clear, no step, no toast)
     if ed(a).open_page().is_none_or(|p| p.strokes.is_empty())
         && nav_links_of(&ed_ref(a).nav,ed_ref(a).open_pid(),&mut 0)==0 {
-        return;
+        return false;
     }
     let s = ed(a);
-    let Some(h) = s.cur_hist() else { return };
+    let Some(h) = s.cur_hist() else { return false };
     let ip = s.page_ix().unwrap();
     let pid=s.open_pid();
     if !s.nav.links_writable {
-        app_toast(a,tr("Couldn't save links. Page unchanged."),3000);return;
+        app_toast(a,tr("Couldn't save links. Page unchanged."),3000);return false;
     }
     let mut records=Vec::new();
     let count=nav_links_of(&s.nav,pid,&mut 0) as usize;
     if count>0 {
         if records.try_reserve_exact(count).is_err() {
-            app_toast(a,tr("Couldn't save links. Page unchanged."),3000);return;
+            app_toast(a,tr("Couldn't save links. Page unchanged."),3000);return false;
         }
         for link in s.nav.links.iter().filter(|link|link.pid==pid) {records.push((Some(link_rec(link)),None));}
         for (link,_) in &records {nav_link_remove(&mut s.nav,pid,link.as_ref().unwrap().seed);}
         if nav_save_links(s.nb.id.as_str(),&mut s.nav,&s.nb)!=0 {
             nav_load(s.nb.id.as_str(),&mut s.nav);migration_reset(s);
-            app_toast(a,tr("Couldn't save links. Page unchanged."),3000);return;
+            app_toast(a,tr("Couldn't save links. Page unchanged."),3000);return false;
         }
         s.links_dirty=false;
     }
@@ -4155,8 +4269,16 @@ fn clear_page(a: &mut App) {
     render_page_full(a);
     compose_all(a, RefreshMode::Full);
     repaint_panel(a, RefreshMode::Full);
-    app_toast_dismiss(a); // (no "Page cleared": the owner, 2026-11-04; a toast left up from before goes)
+    // (the broom says nothing: the owner, 2026-11-04; a toast left up from before goes. A gesture or a
+    // shortcut says it cleared the page: editor_shortcut_in, PAGE_CLEARED)
+    app_toast_dismiss(a);
+    true
 }
+
+// TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): a gesture or a shortcut (the pen
+// button held, a finger shape, a key) cleared the page; the toolbar's Undo, or the undo gesture or key,
+// brings back everything it took, in one step.
+const PAGE_CLEARED: &str = n_("Page cleared. Undo brings it back.");
 
 // Whether a sheet is in front of the page: the Pages view, the tool picker, Custom music, Display
 // or the paper sheet. The pen's button clears no page from under one.
@@ -7413,12 +7535,12 @@ fn find_close(a: &mut App) {
 }
 
 // A row, or Done on the first one: the sheet closes, the page it was asked on goes on the back list and the page
-// asked for opens (go_to_page's own Full).
+// asked for opens (go_to_page's own draw of the screen).
 fn find_go(a: &mut App, index: i32) {
     find_drop(ed(a));
     if ed_ref(a).pv.open {
         // (opened over the Pages view: it closes on that page, as its Go to page did)
-        // (a page that does not open: go_to_page drew the screen whole without the view, in its own Full)
+        // (a page that does not open: go_to_page drew the screen whole without the view, in its own draw)
         pagesview_close(&mut ed(a).pv);
     }
     go_to_page_pushing(a, index);
@@ -8105,7 +8227,9 @@ fn panel_act(a: &mut App, h: Hit) {
             let r = ed(a).paper_rect;
             app_invalidate(a, r, RefreshMode::Ui);
         }
-        P_CLEAR => clear_page(a),
+        P_CLEAR => {
+            clear_page(a);
+        }
         P_SHAPES => open_shape_menu(a),
         P_PAGES => pages_show(a),
         // The dedicated toolbar button creates a link; the upward swipe opens the Links bar.
@@ -8715,7 +8839,12 @@ fn editor_shortcut_in(a: &mut App, action: i32, x: f32, y: f32, src: ActionSrc) 
     } else if action == SHORTCUT_NEW_PAGES {
         add_pad_open(a); // the toolbar's + held: the count pad, the pages after the open one, which stays
     } else if action == SHORTCUT_CLEAR_PAGE {
-        clear_page(a); // the panel's broom: no question, one undo step
+        // As the panel's broom (no question, one undo step), but a gesture or a key is not in sight as the
+        // broom is (a pen button's hold fires with the pen hovering, a finger resting on the button: issues
+        // #36, #39), so it says the page was cleared and that Undo brings it back.
+        if clear_page(a) {
+            app_toast(a, tr(PAGE_CLEARED), 4000);
+        }
     } else if action == SHORTCUT_ZOOM_OUT || action == SHORTCUT_ZOOM_IN {
         let s = ed(a);
         let was = (s.zoom, s.ox, s.oy);
@@ -8748,8 +8877,9 @@ fn editor_shortcut_in(a: &mut App, action: i32, x: f32, y: f32, src: ActionSrc) 
                 s.ox = ox;
                 s.oy = if down { 0.0 } else { (s.pgh as f32 - height / zoom).max(0.0) } - top / zoom;
                 view_clamp(a);
-                // go_to_page's pending GC16 also carries this view at the preserved zoom.
-                compose_all(a, RefreshMode::Ui);
+                // go_to_page's draw carries the page at the fitted view; the view restored over it is composed
+                // again here, flashed whole unless it is that same fitted view.
+                compose_all(a, if view_identity(a) { RefreshMode::Ui } else { RefreshMode::Full });
             }
         } else {
             let was = (zoom, ox, ed_ref(a).oy);
@@ -11746,20 +11876,29 @@ pub fn editor_probe(a: &mut App, key: &str, out: &mut String, cap: usize) -> i32
         if !findsheet_probe(&s.find, k, out, cap) {
             return -1;
         }
-    } else if (key == "keyboard" || key == "text") && s.map_kb.open {
-        csnprintf!(out, cap, "%s", if key == "keyboard" { s.map_kb.title.as_str() } else { s.map_kb.text.as_str() });
-    } else if (key == "keyboard" || key == "text") && s.find.open {
-        // Its keyboard's title and what the field holds (the Pages view's, otherwise).
-        csnprintf!(out, cap, "%s", if key == "keyboard" { s.find.kb.title.as_str() } else { s.find.kb.text.as_str() });
-    } else if (key == "keyboard" || key == "text") && s.card.kb.open {
-        // Rename's (the card's).
-        csnprintf!(out, cap, "%s", if key == "keyboard" { s.card.kb.title.as_str() } else { s.card.kb.text.as_str() });
-    } else if (key == "keyboard" || key == "text") && s.add_kb.open {
-        // The toolbar's count pad's.
-        csnprintf!(out, cap, "%s", if key == "keyboard" { s.add_kb.title.as_str() } else { s.add_kb.text.as_str() });
-    } else if (key == "keyboard" || key == "text") && s.lm.kb.open {
-        // New page...'s.
-        csnprintf!(out, cap, "%s", if key == "keyboard" { s.lm.kb.title.as_str() } else { s.lm.kb.text.as_str() });
+    } else if (key == "keyboard" || key == "text" || key == "caret")
+        && (s.map_kb.open || s.find.open || s.card.kb.open || s.add_kb.open || s.lm.kb.open)
+    {
+        // The keyboard up over the page: the Graph's Rename, Find's (the Pages view's, otherwise), the card's Rename,
+        // the toolbar's count pad, New page...'s. Its title, what the field holds, or that with its caret (and a
+        // selection) drawn in (keyboard_caret_probe).
+        let kb = if s.map_kb.open {
+            &s.map_kb
+        } else if s.find.open {
+            &s.find.kb
+        } else if s.card.kb.open {
+            &s.card.kb
+        } else if s.add_kb.open {
+            &s.add_kb
+        } else {
+            &s.lm.kb
+        };
+        let shown = match key {
+            "keyboard" => kb.title.as_str().to_string(),
+            "text" => kb.text.as_str().to_string(),
+            _ => keyboard_caret_probe(kb),
+        };
+        csnprintf!(out, cap, "%s", &shown);
     } else if key == "bar" {
         // The Links bar: closed (0), open, or looking at another page (peek).
         csnprintf!(out, cap, "%s", if !s.lb.open { "0" } else if s.peek.active { "peek" } else { "open" });
@@ -11869,6 +12008,13 @@ pub fn editor_probe(a: &mut App, key: &str, out: &mut String, cap: usize) -> i32
     } else if key == "erase_strokes" {
         let n = if has_page { s.open_page().unwrap().strokes.iter().filter(|x| stroke_is_erase(x)).count() as i32 } else { 0 };
         csnprintf!(out, cap, "%d", n);
+    } else if key == "page_in_memory" {
+        // Whether the open page's drawing is among those kept in memory this session (PageView), for the
+        // page file as it is now: a page turned back to came up from it.
+        let pid = if has_page { s.open_pid() } else { 0 };
+        let stamp = if pid != 0 { store_page_source_identity(&s.nb, pid) } else { None };
+        let on = stamp.is_some_and(|st| s.page_views.iter().any(|v| v.pid == pid && v.stamp == st));
+        csnprintf!(out, cap, "%d", on as i32);
     } else if key == "page_kept" {
         // Whether the open page came up from its kept drawing instead of being drawn stroke by stroke.
         csnprintf!(out, cap, "%d", s.page_kept as i32);
@@ -12029,7 +12175,7 @@ pub fn editor_probe(a: &mut App, key: &str, out: &mut String, cap: usize) -> i32
         } else {
             csnprintf!(out, cap, "%s", "");
         }
-    } else if key == "pages_tab" || key == "picking" || key == "keyboard" || key == "text" || key.starts_with("tile.") {
+    } else if key == "pages_tab" || key == "picking" || key == "keyboard" || key == "text" || key == "caret" || key.starts_with("tile.") {
         return pagesview_probe(&s.pv, &s.nb, &s.nav, key, out, cap); // the Pages view's
     } else if let Some(k) = key.strip_prefix("templates.") {
         return tplsheet_probe(&s.ts, k, out, cap); // the Templates sheet over the page
@@ -12166,6 +12312,42 @@ mod tests {
         s.preview_saved_ms = now_ms().wrapping_sub(30_000);
         mark_changed(s);
         (root, a)
+    }
+
+    // A page turned back to is the drawing it was left with, not every stroke drawn again (seconds on a dense
+    // page): the canvas is kept in memory while the page file is the one it was drawn from.
+    #[test]
+    fn a_page_turned_back_to_shows_its_drawing_from_memory() {
+        let root = std::env::temp_dir().join(format!("grimoire-page-views-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        store_init(root.to_str().unwrap());
+        let mut nb = NotebookInfo::default();
+        assert_eq!(store_create("Views", "", PAPER_BLANK, &mut nb), 0);
+        assert_eq!(store_add_page(&mut nb, 1, PAPER_BLANK), 0);
+        assert_eq!(store_add_page(&mut nb, 2, PAPER_BLANK), 0);
+        let mut a = fshape_app();
+        let s = ed(&mut a);
+        s.nb = nb;
+        let e = s.entry_for(s.nb.page_ids[2]).unwrap();
+        s.hist[e].page = Some(page_new(s.pgw, s.pgh, PAPER_BLANK));
+        s.index = 0;
+        s.page = Some(s.nb.page_ids[0]);
+        s.page_dirty = false;
+        assert_eq!(store_save_page(&s.nb, 0, s.open_page().unwrap()), 0);
+        render_page_full(&mut a);
+        view_reset(&mut a);
+        let s = ed(&mut a);
+        s.page_canvas.px[0] = 0; // a mark no stroke of this page draws
+        assert!(go_to_page(&mut a, 1));
+        assert_eq!(ed_ref(&a).page_views.len(), 1);
+        assert_eq!(ed_ref(&a).page_views[0].pid, 1);
+        assert!(go_to_page(&mut a, 0));
+        assert_eq!(ed_ref(&a).page_canvas.px[0], 0, "the drawing kept in memory came back, not a fresh render");
+        // The page left again, then back: still kept, and still whole for the page.
+        assert!(go_to_page(&mut a, 1));
+        assert!(go_to_page(&mut a, 0));
+        assert_eq!(ed_ref(&a).page_canvas.px[0], 0);
+        std::fs::remove_dir_all(root).unwrap();
     }
 
     #[cfg(unix)]
@@ -12474,6 +12656,55 @@ mod tests {
         a.settings.gestures = false;
         assert!(editor_shortcut(&mut a, SHORTCUT_TWO_FINGER_UP));
         assert!(ed_ref(&a).lb.open);
+    }
+
+    // Clear page from a gesture or a key (issues #36, #39: a pen button held over the page cleared it) says
+    // so in a toast that points at Undo, and Undo takes the whole clear back in one step. The toolbar's broom,
+    // in sight as it is tapped, says nothing (the owner, 2026-11-04); an empty page clears nothing and says
+    // nothing.
+    #[test]
+    fn clear_page_from_a_gesture_or_a_key_says_so_and_undo_takes_it_back() {
+        let mut a = fshape_app();
+        let draw = |a: &mut App, t: u32| {
+            pen_event(a, InType::PenDown, false, 300.0, 600.0, t);
+            for k in 1..10 {
+                pen_event(a, InType::PenMove, false, 300.0 + 30.0 * k as f32, 600.0, t + 10 * k);
+            }
+            pen_event(a, InType::PenUp, false, 570.0, 600.0, t + 100);
+            pen_event(a, InType::PenLeave, false, 570.0, 600.0, t + 110);
+            ed(a).pen_left = now_ms().wrapping_sub(5000);
+            assert_eq!(ed_ref(a).open_page().unwrap().strokes.len(), 1);
+        };
+        let toast = |a: &App| a.toast_visible.then(|| a.toast.as_str().to_string());
+        draw(&mut a, 1000);
+        app_toast_dismiss(&mut a);
+        let depth = undo_depth(&mut a);
+        for src in [ActionSrc::Pen, ActionSrc::Key] {
+            assert!(editor_shortcut_at(&mut a, SHORTCUT_CLEAR_PAGE, 500.0, 700.0, src));
+            assert!(ed_ref(&a).open_page().unwrap().strokes.is_empty());
+            assert_eq!(toast(&a).as_deref(), Some("Page cleared. Undo brings it back."));
+            assert_eq!(undo_depth(&mut a), depth + 1, "the clear is one step");
+            undo_redo(&mut a, true);
+            assert_eq!(ed_ref(&a).open_page().unwrap().strokes.len(), 1, "Undo brings the page back");
+            assert_eq!(undo_depth(&mut a), depth);
+            app_toast_dismiss(&mut a);
+        }
+        // the broom: cleared, nothing said
+        panel_act(&mut a, Hit { id: P_CLEAR, ..Default::default() });
+        assert!(ed_ref(&a).open_page().unwrap().strokes.is_empty());
+        assert_eq!(toast(&a), None);
+        // an empty page: nothing cleared, nothing said, no step
+        let depth = undo_depth(&mut a);
+        assert!(editor_shortcut_at(&mut a, SHORTCUT_CLEAR_PAGE, 500.0, 700.0, ActionSrc::Pen));
+        assert_eq!(toast(&a), None);
+        assert_eq!(undo_depth(&mut a), depth);
+        // Spanish says it in Spanish
+        i18n_set("es");
+        undo_redo(&mut a, true);
+        assert!(editor_shortcut_at(&mut a, SHORTCUT_CLEAR_PAGE, 500.0, 700.0, ActionSrc::Key));
+        assert_eq!(toast(&a).as_deref(), Some(tr(PAGE_CLEARED)));
+        assert_ne!(tr(PAGE_CLEARED), PAGE_CLEARED);
+        i18n_set("en");
     }
 
     #[test]
@@ -12939,7 +13170,8 @@ mod tests {
     #[test]
     fn pen_momentary_eraser_starts_on_press_and_preserves_a_key_hold() {
         let mut a = fshape_app();
-        assert_eq!(gesturemap_set(&mut a.gestures, pb_key(PenBtn::Button, PenKind::Hold), SHORTCUT_HOLD_ERASER), SHORTCUT_CLEAR_PAGE);
+        // (the hold has no built-in action since 2.1.0-beta.2: nothing lost)
+        assert_eq!(gesturemap_set(&mut a.gestures, pb_key(PenBtn::Button, PenKind::Hold), SHORTCUT_HOLD_ERASER), 0);
         app_gestures_sync(&mut a);
         pen_event(&mut a, InType::PenHover, false, 400.0, 600.0, 1000);
         pen_event(&mut a, InType::PenButton, true, 400.0, 600.0, 1010);
@@ -13239,8 +13471,9 @@ mod tests {
         assert_eq!(fire(&mut a, SHORTCUT_REDO), named(SHORTCUT_REDO));
         assert_eq!(fire(&mut a, SHORTCUT_REDO), None);
         assert_eq!(ed_ref(&a).open_page().unwrap().strokes.len(), 1);
-        // Clear page clears it, named; then the page is empty: nothing
-        assert_eq!(fire(&mut a, SHORTCUT_CLEAR_PAGE), named(SHORTCUT_CLEAR_PAGE));
+        // Clear page clears it, saying so with its own toast (2.1.0-beta.2: the way back is Undo), not the
+        // shape's name; then the page is empty: nothing
+        assert_eq!(fire(&mut a, SHORTCUT_CLEAR_PAGE), Some(tr(PAGE_CLEARED).to_string()));
         assert_eq!(ed_ref(&a).open_page().unwrap().strokes.len(), 0);
         assert_eq!(fire(&mut a, SHORTCUT_CLEAR_PAGE), None);
         // Previous page: page 1, named (the cleared page as saved: this in-memory notebook has no file for it)
@@ -14082,7 +14315,8 @@ mod tests {
         assert_eq!(probe(&a, "drag_shown"), format!("{} {}", want.0, want.1));
         assert!(!bar_drawn(&a), "the bar is away while the box moves");
         let inked: u32 = probe(&a, "drag_inked").parse().unwrap();
-        assert!((1..=4).contains(&inked), "the halo walked only where the outline's strips were: {inked}");
+        // (the outline's four strips, and the four resize handle squares the selection showed)
+        assert!((1..=8).contains(&inked), "the halo walked only where the outline's strips and handles were: {inked}");
         assert!(layers_ok(&mut a));
         // the pen moves on: a tick before DRAG_SHOW_MS went by since the show shows nothing
         for k in 41..=50 {
@@ -14174,6 +14408,63 @@ mod tests {
         assert_eq!(probe(&a, "drag_copy"), "0");
         assert!(bar_drawn(&a));
         assert!(layers_ok(&mut a));
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    // A selection of strokes shows resize handles at its box's corners (issue #37); dragged, a handle scales
+    // the ink about the opposite corner, the box following, one undo step at the lift; a tap on a handle that
+    // never moves changes nothing.
+    #[test]
+    fn a_resize_handle_scales_the_selection_about_its_opposite_corner() {
+        let root = fhold_root("resize");
+        let mut a = fshape_app();
+        let (mut px, mut py) = (0.0, 0.0);
+        to_page(ed(&mut a), 400.0, 600.0, &mut px, &mut py);
+        sel_word(&mut a, px, py);
+        sel_toggle(&mut a);
+        sel_lasso(&mut a, 400.0, 615.0, 120.0, false, 1000);
+        app_flush(&mut a);
+        assert_eq!(ed_ref(&a).sel.state, SelState::Selected);
+        let s = ed_ref(&a);
+        let b0 = s.sel.box_;
+        let bs = box_screen(s, b0);
+        let (cx, cy) = ((bs.x + bs.w) as f32, (bs.y + bs.h) as f32);
+        // the handles are drawn: a black square at a corner, past the outline's band
+        let full = Rect { x: 0, y: 0, w: a.w, h: a.h };
+        compose(&mut a, full);
+        let at = |a: &App, x: i32, y: i32| a.screen.px[(y * a.screen.stride + x) as usize];
+        assert!(at(&a, bs.x + bs.w + 6, bs.y + bs.h + 6) < 128, "the bottom-right handle is drawn");
+        // dragged out by the box's width and height: twice as large, the opposite corner staying
+        let depth = undo_depth(&mut a);
+        let n0 = ed_ref(&a).sel.ids.len();
+        pen_event(&mut a, InType::PenDown, false, cx, cy, 2000);
+        assert_eq!(ed_ref(&a).sel.state, SelState::Dragging);
+        assert_eq!(ed_ref(&a).sel.resize_handle, 4);
+        pen_event(&mut a, InType::PenMove, false, cx + bs.w as f32, cy + bs.h as f32, 2010);
+        editor_tick(&mut a, now_ms());
+        pen_event(&mut a, InType::PenUp, false, cx + bs.w as f32, cy + bs.h as f32, 2020);
+        app_flush(&mut a);
+        assert_eq!(ed_ref(&a).sel.state, SelState::Selected);
+        assert_eq!(ed_ref(&a).sel.resize_handle, 0);
+        assert_eq!(undo_depth(&mut a), depth + 1, "one step for the resize");
+        let b1 = ed_ref(&a).sel.box_;
+        assert_eq!((b1.x, b1.y), (b0.x, b0.y), "the opposite corner stayed");
+        assert!(b1.w > b0.w + b0.w / 2 && b1.h > b0.h + b0.h / 2, "the ink was scaled up: {:?} from {:?}", b1, b0);
+        assert_eq!(ed_ref(&a).sel.ids.len(), n0);
+        assert!(layers_ok(&mut a));
+        // a tap on a handle: no step, the box as it was
+        let s = ed_ref(&a);
+        let bs = box_screen(s, s.sel.box_);
+        let (cx, cy) = ((bs.x + bs.w) as f32, (bs.y + bs.h) as f32);
+        let depth = undo_depth(&mut a);
+        pen_event(&mut a, InType::PenDown, false, cx, cy, 3000);
+        assert_eq!(ed_ref(&a).sel.resize_handle, 4);
+        pen_event(&mut a, InType::PenUp, false, cx + 2.0, cy + 2.0, 3010);
+        app_flush(&mut a);
+        assert_eq!(ed_ref(&a).sel.state, SelState::Selected);
+        assert_eq!(undo_depth(&mut a), depth);
+        assert_eq!(ed_ref(&a).sel.box_, b1);
+        assert!(bar_drawn(&a));
         std::fs::remove_dir_all(root).unwrap();
     }
 

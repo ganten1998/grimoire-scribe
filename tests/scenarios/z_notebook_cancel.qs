@@ -1,5 +1,6 @@
 # rust-only
 # generate: tests/notebook_links_fixture.py
+# copy: tests/fixtures/penbutton/hold-clear .
 # env: GRIMOIRE_CHECK_FIT=1
 wait 300
 tap library folder.Void
@@ -9,7 +10,7 @@ pen line 1000 1100 1400 1300 20 0.6 0.6
 pen leave
 tap panel linkto.elsewhere
 expect editor.destination.folder is Void
-# Clear gestures must not act through the destination browser.
+# Clear gestures must not act through the destination browser (the hold given Clear page: the copy above).
 side on
 wait 1300
 side off

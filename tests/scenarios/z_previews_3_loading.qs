@@ -1,6 +1,8 @@
 # rust-only
 # generate: tests/previews_fixture.py
 # env: GRIMOIRE_KEEP_RENDER_MS=0
+# env: GRIMOIRE_PAGE_VIEWS=0
+# (No drawings kept in memory: a revisit reads the drawing kept on disk, as one in another session does.)
 # Opening a dense page with no kept drawing to read back (2.0.0-beta.2): "Loading page..." reaches the panel
 # before the drawing starts (its own refresh, ahead of the page's), and is gone once the page shows. A light
 # page never shows it, nor does the dense page once it opens from its kept drawing (GRIMOIRE_KEEP_RENDER_MS=0
@@ -32,13 +34,14 @@ expect editor.page is 1
 expect editor.page_kept is 0
 expect editor.loading_toasts is 2
 expect toast is
-expect display.presents is fast 1718 1104 100 100, ui 716 1104 1102 1256, full 0 0 1860 2480
+# (a page turn at the fitted view is a UI refresh, no flash: #49, issue #31; every 30th UI refresh flashes)
+expect display.presents is fast 1718 1104 100 100, ui 716 1104 1102 1256, ui 0 0 1860 2480
 # page 2, light: none
 pentap panel next
 wait 300
 expect editor.page is 2
 expect editor.loading_toasts is 2
-expect display.presents is fast 1718 1280 100 100, full 0 0 1860 2480
+expect display.presents is fast 1718 1280 100 100, ui 0 0 1860 2480
 # page 1 again: from the drawing it kept as it opened, quickly, so none
 pentap panel previous
 wait 300
@@ -46,5 +49,5 @@ expect editor.page is 1
 expect editor.page_kept is 1
 expect editor.loading_toasts is 2
 expect toast is
-expect display.presents is fast 1718 1104 100 100, full 0 0 1860 2480
+expect display.presents is fast 1718 1104 100 100, ui 0 0 1860 2480
 quit

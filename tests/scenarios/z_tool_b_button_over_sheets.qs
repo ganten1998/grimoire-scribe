@@ -1,9 +1,11 @@
 # settings: status_mode=1
-# The pen's button clears the page only from the page itself. Held 1.2 s (or clicked three times)
+# The pen's button clears the page only from the page itself. Its hold given Clear page (the owner's
+# gestures.ini: no pen gesture is built in since 2.1.0-beta.2), held 1.2 s (or clicked three times)
 # while a sheet is in front of it (the tool picker, in Pin mode too, the Display sheet), or while
 # the pen taps the panel's buttons, it clears nothing, also once the sheet is closed with the
-# button still down. Held over the bare page it still clears it (undoable). (side_button=3: the
-# hand that draws white keeps a finger on the button.)
+# button still down. Held over the bare page it still clears it (undoable, and a toast says so).
+# (side_button=3: the hand that draws white keeps a finger on the button.)
+# copy: tests/fixtures/penbutton/hold-clear .
 # settings: mirror_pdf=0
 # settings: side_button=3
 # rust-only
@@ -77,7 +79,7 @@ wait 200
 expect editor.modal is display
 expect editor.strokes is 1
 expect toast is
-tap 1462 1860
+tap 1462 1950
 wait 200
 expect editor.modal is none
 # Over the bare page: the hold clears it, and undo brings it back
@@ -85,7 +87,7 @@ side on
 wait 1500
 side off
 wait 200
-expect toast is
+expect toast is Page cleared. Undo brings it back.
 expect editor.strokes is 0
 pentap panel undo
 wait 300
