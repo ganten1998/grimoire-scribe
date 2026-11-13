@@ -6,14 +6,15 @@ why. Newest decisions first within each section.
 
 ## After the release of 2.1.0-beta.2 (2026-11-12): what waits
 
-- **nebuff's PR #49 (a page turn speed-up, 095b43a6) is on public `main`, not in 2.1.0-beta.2.** Lane M merged
-  `main` before it landed. It goes into the line like the rest of `main`: merged with its authorship, checked
-  against 2.1, and tried on the Scribe before anything public carries it.
+- **nebuff's PRs #49 (a page turn speed-up) and #52 (lasso fixes for #51) are on `main`, not in 2.1.0-beta.2**
+  (issue #54). Lane M merged `main` before they landed. They go into the line like the rest of `main`: merged
+  with their authorship, checked against 2.1, gated, and tried on a Scribe before the next release.
 - **Live view's pen-stall check is flaky on CI's macOS runners.** `tests/live_pen_stall.py`, "with the main loop
   busy, its samples still come at once", measured a raw p90 of 62.8 ms (the 60 ms the test holds the main loop)
   against its 25 ms limit on the dry run of 2026-11-12 (run 43244209271, first attempt), and 0.4 ms on the next
   attempt and on the Mac. A busy runner can starve the reader thread. Options: print the p90 and hold a looser
-  bound (as test_pdf_colour_memory.rs does with its per-copy budgets), or measure once more before it fails.
+  bound (as test_pdf_colour_memory.rs does with its per-copy budgets), or measure once more before it fails
+  (issue #56).
 
 ## nebuff's main and Clear page (2.1.0-beta.2, lane M, 2026-11-11): what waits
 
