@@ -175,7 +175,7 @@ const H_NEW_FILE: i32 = 95;
 // and the pages of them (arg: -1 back, 1 on).
 const H_FONT_OWN: i32 = 96;
 const H_FONT_PAGE: i32 = 97;
-// 2.1.0-beta.2: Settings' Wi-Fi button, and its sheet's rows: the radio (arg: WIFI_*), a saved network
+// 2.1.0-beta.2: Settings' Wi-Fi button, and its submenu's rows: the radio (arg: WIFI_*), a saved network
 // (arg: its row, an index of WifiSheet.rows) and the next page of them. (Numbered apart from the ids other
 // work of the same release adds after 97.)
 const H_WIFI_MENU: i32 = 180;
@@ -2764,17 +2764,12 @@ fn draw_settings_menu(a: &mut App, title: &str, rows: &[MenuRow]) {
             ui_icon(c, row.icon, Rect::new(r.x + ui_px(22.0), r.y + (r.h - isz) / 2, isz, isz), fg);
         }
         let lx = r.x + isz + ui_px(44.0);
-        ui_text(
-            c,
-            FontFace::Regular,
-            ui_text_size(),
-            ui_small_size(),
-            Rect::new(lx, r.y, r.x + r.w - lx - ui_px(20.0), r.h),
-            &row.label,
-            2,
-            false,
-            fg,
-        );
+        let lr = Rect::new(lx, r.y, r.x + r.w - lx - ui_px(20.0), r.h);
+        if row.name {
+            ui_text_name(c, FontFace::Regular, ui_text_size(), ui_small_size(), lr, &row.label, 2, fg);
+        } else {
+            ui_text(c, FontFace::Regular, ui_text_size(), ui_small_size(), lr, &row.label, 2, false, fg);
+        }
         if row.st != ButtonStyle::Disabled {
             hits_add(&mut s.hits, r, row.id, row.arg);
         }
@@ -2875,10 +2870,10 @@ fn draw_menu(a: &mut App, title: &str, rows: &[MenuRow]) -> Vec<Rect> {
 const WIFI_RETRY: i32 = 0;
 const WIFI_ON: i32 = 1;
 const WIFI_OFF: i32 = 2;
-/// Saved networks a page: with the radio, the status, More and Done, 11 rows, which fit sideways.
+/// Saved networks a page: with the radio, the status and More, 10 rows, which fit the full-page submenu.
 const WIFI_PAGE: usize = 7;
 
-/// What the Wi-Fi sheet was drawn from: drawn again when any of it changes.
+/// What the Wi-Fi submenu was drawn from: drawn again when any of it changes.
 #[derive(Clone, Default, PartialEq)]
 struct WifiShown {
     status: Option<WifiStatus>,
@@ -2890,14 +2885,14 @@ struct WifiShown {
 }
 
 /// Settings > Wi-Fi: the radio, the network connected to and the Kindle's saved networks (wifi.rs, the
-/// helper kindle/app/wifi.sh). It reads only while it is up: everything as it opens, then the network
-/// connected to every 2 s while a switch is under way, or while the radio is on with no connection, for
-/// 45 s after the last tap (the Share card's watch).
+/// helper kindle/app/wifi.sh), as a full-page Settings submenu. It reads only while it is up: everything as
+/// it opens, then the network connected to every 2 s while a switch is under way, or while the radio is on
+/// with no connection, for 45 s after the last tap (the Share card's watch).
 #[derive(Default)]
 struct WifiSheet {
     check_at: u32,
     watch_at: u32,
-    /// everything was asked for since the sheet opened (not while the Share card's last read still ran);
+    /// everything was asked for since the submenu opened (not while the Share card's last read still ran);
     /// the saved networks once more as the radio came on (wifid may not answer while it is off), or after a
     /// switch the helper refused
     asked: bool,
@@ -3023,12 +3018,11 @@ fn draw_wifi_sheet(a: &mut App) {
             }
         }
     }
-    rows.push(menu_row(IconKind::Close, tr("Done"), H_CANCEL, 0, ButtonStyle::Plain));
     let ws = &mut lib(a).wifi;
     ws.page = page;
     ws.rows = drawn;
     ws.shown = Some(w);
-    draw_menu(a, tr("Wi-Fi"), &rows);
+    draw_settings_menu(a, tr("Wi-Fi"), &rows);
 }
 
 fn wifi_sheet_tap(a: &mut App, id: i32, arg: i32) {
@@ -8523,6 +8517,9 @@ mod tests {
         let rows: Vec<_> = a.lib.as_ref().unwrap().hits.h.iter().filter(|h| h.id == H_WIFI_NET).map(|h| h.arg).collect();
         assert_eq!(rows, [0, 1]);
         assert_eq!(lib(&mut a).wifi.rows, [b"Home".to_vec(), b"Office".to_vec()]);
+        let s = a.lib.as_ref().unwrap();
+        assert_eq!(s.hits.h.iter().filter(|h| h.id == H_SETTINGS_BACK).count(), 2, "Wi-Fi: Back and Done");
+        assert!(!s.hits.h.iter().any(|h| h.id == H_CANCEL), "Wi-Fi: the sheet's own Done is gone");
         wifi_init(None);
         library_free(&mut a);
         canvas_free(&mut a.screen);

@@ -235,7 +235,7 @@ pub static CATEGORIES: &[Category] = &[
             },
             Item {
                 icon: IconKind::Share,
-                // TRANSLATORS: (Settings) the row that opens the Wi-Fi sheet: the radio and the Kindle's
+                // TRANSLATORS: (Settings) the row that opens the Wi-Fi submenu: the radio and the Kindle's
                 // saved networks.
                 label: Label::Text(n_("Wi-Fi")),
                 id: SettingId::Wifi,
