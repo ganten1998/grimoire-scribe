@@ -15,8 +15,9 @@
 //! writer's empty directory on /tmp; setgroups(0), setgid and setuid to a uid of its own; no_new_privs and not
 //! dumpable; the parent-death signal (set after the uid change, then getppid checked); rlimits (NOFILE 0,
 //! NPROC 0, FSIZE 0, CORE 0, AS, CPU); a seccomp allow-list in which futex passes only as a private wait, wake or
-//! wait-bitset; a call outside it traps into a reporter, but for the few that answer ENOSYS. The worker then
-//! makes one allowed futex call before it says `S 1`.
+//! wait-bitset and mmap and mprotect only for a mapping not asked executable; a call outside it traps into a
+//! reporter, but for the few that answer ENOSYS. The worker then makes one allowed call of each of those three
+//! kinds before it says `S 1`.
 //!
 //! Off the Kindle (the simulator, CI, the Mac, not root) the steps that need root or Linux are skipped with
 //! one log line (plain process isolation); the Linux CI job runs the real ones as root.
@@ -263,8 +264,8 @@ pub fn this_arch() -> &'static SysNums {
 /// The allow-list: read, write, the mmap family with mprotect and madvise, brk, futex, clock_gettime,
 /// rt_sigreturn, exit and exit_group (the C library's `_exit` ends the process through it, and it only ever
 /// ends the worker itself). Which of mprotect, madvise and brk the allocator uses differs between the Kindle's
-/// build and the Linux test build; the list holds them all. futex is also judged by an argument
-/// (`build_filter`).
+/// build and the Linux test build; the list holds them all. futex, mmap and mprotect are also judged by an
+/// argument (`build_filter`).
 pub fn allow_list_for(n: &SysNums) -> Vec<u32> {
     vec![n.read, n.write, n.mmap, n.munmap, n.mremap, n.madvise, n.mprotect, n.brk, n.futex, n.clock_gettime, n.rt_sigreturn, n.exit, n.exit_group]
 }
@@ -312,29 +313,32 @@ pub const fn arg_lo(i: u32) -> u32 {
     16 + 8 * i
 }
 
-/// Where a jump of the filter leads: the block that returns ALLOW, the one that returns ERRNO(ENOSYS), or the
-/// one that judges futex by its operation.
+/// Where a jump of the filter leads: the block that returns ALLOW, the one that returns ERRNO(ENOSYS), the one
+/// that judges futex by its operation, or the one that judges mmap and mprotect by the protection asked.
 #[derive(Clone, Copy)]
 enum To {
     Allow,
     Errno,
     Futex,
+    Prot,
 }
 
 /// The filter for the table `n`: an arch check (another arch: trap), then one jump per number of `allow`, in
 /// its order (read and write first: the calls a worker makes most), to ALLOW, one per number of `enosys` to
 /// ERRNO(ENOSYS), and everything else TRAPs. A number that is not in `allow` is never allowed. The table says
-/// which number is futex: it goes to block F, which allows the call only when the low 32 bits of its second
-/// argument are one of `FUTEX_ALLOWED`, and traps it otherwise as any call outside the list. Every jump goes
-/// forward and is taken on a match only (`jf` is 0 everywhere), resolved from the blocks' places once they are
-/// known.
+/// which numbers are judged by an argument too: futex goes to block F, which allows the call only when the low
+/// 32 bits of its second argument are one of `FUTEX_ALLOWED`; mmap (mmap2 on the 32-bit ARM) and mprotect go to
+/// block P, which allows the call only when `PROT_EXEC` is clear in the low 32 bits of its third. Either traps
+/// otherwise, as any call outside the list. Every jump goes forward and is taken on a match only (`jf` is 0
+/// everywhere), resolved from the blocks' places once they are known.
 ///
 /// ```text
 /// LD [4]; JEQ arch (jt 1); RET TRAP; LD [0]
-/// JEQ <each number of allow, in order>  -> A, or F for futex
+/// JEQ <each number of allow, in order>  -> A, or F for futex, or P for mmap and mprotect
 /// JEQ <each number of enosys>           -> E
 /// RET TRAP
 /// E: RET ERRNO|38
+/// P: LD [32]; JSET 4 (jt 1); RET ALLOW; RET TRAP
 /// F: LD [24]; JEQ 128 -> A; JEQ 129 -> A; JEQ 137 -> A; RET TRAP
 /// A: RET ALLOW
 /// ```
@@ -354,7 +358,14 @@ pub fn build_filter(n: &SysNums, allow: &[u32], enosys: &[u32]) -> Vec<BpfIns> {
         v.push(BpfIns { code: BPF_JEQ_K, jt: 0, jf: 0, k });
     };
     for &s in allow {
-        jeq(&mut v, s, if s == n.futex { To::Futex } else { To::Allow });
+        let to = if s == n.futex {
+            To::Futex
+        } else if s == n.mmap || s == n.mprotect {
+            To::Prot
+        } else {
+            To::Allow
+        };
+        jeq(&mut v, s, to);
     }
     for &s in enosys {
         jeq(&mut v, s, To::Errno);
@@ -362,6 +373,11 @@ pub fn build_filter(n: &SysNums, allow: &[u32], enosys: &[u32]) -> Vec<BpfIns> {
     v.push(ret(SECCOMP_RET_TRAP));
     let errno_at = v.len();
     v.push(ret(SECCOMP_RET_ERRNO | 38)); // ENOSYS
+    let prot_at = v.len();
+    v.push(ld(arg_lo(2))); // the protection asked
+    v.push(BpfIns { code: BPF_JSET_K, jt: 1, jf: 0, k: PROT_EXEC });
+    v.push(ret(SECCOMP_RET_ALLOW));
+    v.push(ret(SECCOMP_RET_TRAP));
     let futex_at = v.len();
     v.push(ld(arg_lo(1))); // the operation
     for op in FUTEX_ALLOWED {
@@ -375,6 +391,7 @@ pub fn build_filter(n: &SysNums, allow: &[u32], enosys: &[u32]) -> Vec<BpfIns> {
             To::Allow => allow_at,
             To::Errno => errno_at,
             To::Futex => futex_at,
+            To::Prot => prot_at,
         };
         let off = target - (at + 1);
         assert!(off < 256, "a jump is one byte");
@@ -702,16 +719,25 @@ mod linux {
     }
 
     /// The filter's own check, on every start, once the kernel has taken the program: one futex wake on a local
-    /// word (nobody waits, so it returns 0). It returns as it would with no filter, and a result that is not
-    /// success fails the step. On a kernel that does not show the filter the operation where the filter reads
-    /// it, the call traps instead, and the reporter's line comes in place of the worker's `S` line: the writers
-    /// take that as no worker, before a byte of any file is read.
+    /// word (nobody waits, so it returns 0), and one anonymous private page mapped to read and write, set to
+    /// read only with mprotect, and unmapped (4096 bytes; the kernel rounds it to its page). Each returns as it
+    /// would with no filter, and a result that is not success fails the step. On a kernel that does not show the
+    /// filter an argument where the filter reads it, the call traps instead, and the reporter's line comes in
+    /// place of the worker's `S` line: the writers take that as no worker, before a byte of any file is read.
     fn filter_self_check() -> Result<(), i32> {
         let word: u32 = 0;
         // SAFETY: a futex wake on a word of our own that nobody waits on.
         let r = unsafe { libc::syscall(libc::SYS_futex, &word as *const u32, (FUTEX_WAKE | FUTEX_PRIVATE_FLAG) as libc::c_long, 1 as libc::c_long) };
         if r != 0 {
             return Err(errno());
+        }
+        // SAFETY: an anonymous private page of our own, which nothing else points into, mapped, set to read
+        // only and unmapped.
+        unsafe {
+            let p = libc::mmap(std::ptr::null_mut(), 4096, libc::PROT_READ | libc::PROT_WRITE, libc::MAP_PRIVATE | libc::MAP_ANONYMOUS, -1, 0);
+            if p == libc::MAP_FAILED || libc::mprotect(p, 4096, libc::PROT_READ) != 0 || libc::munmap(p, 4096) != 0 {
+                return Err(errno());
+            }
         }
         Ok(())
     }
@@ -1411,6 +1437,37 @@ mod tests {
         }
     }
 
+    // mmap (mmap2 on the 32-bit ARM) and mprotect pass only for a mapping not asked executable: bit 2 of the low
+    // 32 bits of the call's third argument. The calls judged by number alone do not look at theirs.
+    #[test]
+    fn a_mapping_asked_executable_traps() {
+        for n in [&ARM, &X86_64, &AARCH64] {
+            let f = build_filter(n, &allow_list_for(n), n.enosys);
+            let verdict = |nr: u32, third: u64| eval_filter_args(&f, n.audit_arch, nr, &[0, 4096, third, 0x22, u64::MAX, 0]);
+            for nr in [n.mmap, n.mprotect] {
+                for prot in 0..=3u64 {
+                    assert_eq!(verdict(nr, prot), SECCOMP_RET_ALLOW, "call {nr}, protection {prot}");
+                }
+                for prot in [4u64, 5, 6, 7, 0x0100_0004, 0xffff_ffff] {
+                    assert_eq!(verdict(nr, prot), SECCOMP_RET_TRAP, "call {nr}, protection {prot:#x}");
+                }
+                // the high half of the argument is not read
+                assert_eq!(verdict(nr, 0xffff_ffff_0000_0003), SECCOMP_RET_ALLOW, "call {nr}");
+                assert_eq!(verdict(nr, 0x0000_0003_0000_0004), SECCOMP_RET_TRAP, "call {nr}");
+            }
+            // read's and write's third argument is a count
+            for nr in [n.read, n.write] {
+                assert_eq!(verdict(nr, 4), SECCOMP_RET_ALLOW, "call {nr}");
+            }
+            for nr in [n.munmap, n.mremap, n.madvise, n.brk] {
+                for third in [0u64, 4, 7, u64::MAX] {
+                    assert_eq!(verdict(nr, third), SECCOMP_RET_ALLOW, "call {nr}, third argument {third:#x}");
+                }
+            }
+            assert_eq!(PROT_EXEC, 4);
+        }
+    }
+
     // The program is one the kernel's checker takes (Linux 4.9, seccomp_check_filter): only the four opcodes
     // (a 32-bit load at a fixed offset, a jump on equal, a jump on a set bit, a return), every load at the
     // number, the architecture or the low half of the second or third argument, every jump forward and inside
@@ -1433,8 +1490,8 @@ mod tests {
                 }
             }
             assert_eq!(f.last().map(|i| i.code), Some(0x06));
-            // (its size: the head, a compare a number, a trap, the two returns and futex's block)
-            assert_eq!(f.len(), if n.audit_arch == ARM.audit_arch { 31 } else { 26 });
+            // (its size: the head, a compare a number, a trap, the two returns and the two blocks)
+            assert_eq!(f.len(), if n.audit_arch == ARM.audit_arch { 35 } else { 30 });
             assert_eq!((arg_lo(1), arg_lo(2)), (24, 32));
             for (nr, args) in [(n.futex, [0, 129, 1, 0, 0, 0]), (n.mmap, [0, 4096, 3, 0x22, u64::MAX, 0]), (n.mprotect, [0, 4096, 1, 0, 0, 0]), (n.munmap, [0, 4096, 0, 0, 0, 0])] {
                 assert_eq!(eval_filter_args(&f, n.audit_arch, nr, &args), SECCOMP_RET_ALLOW, "{nr}");

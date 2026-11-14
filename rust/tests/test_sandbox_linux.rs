@@ -338,6 +338,21 @@ fn a_futex_call_outside_the_list_kills_the_worker() {
     }
 }
 
+// A mapping asked executable, by mmap or by mprotect, ends the worker, and the report names the call.
+#[test]
+fn an_executable_mapping_kills_the_worker() {
+    let (_g, f, len) = setup_filter();
+    if !filter_is_on(&f, len) {
+        return;
+    }
+    for (hook, call) in [("execmap", this_arch().mmap), ("execprot", this_arch().mprotect)] {
+        match page_after_hook(&f, len, hook) {
+            PageOutcome::Died(Death::Sigsys(n)) => assert_eq!(n, call, "{hook}"),
+            other => panic!("{hook}: {other:?}"),
+        }
+    }
+}
+
 // (the guard: the three operations one thread can issue, and the standard library's own wake, pass)
 #[test]
 fn the_futex_calls_a_worker_can_make_pass() {
