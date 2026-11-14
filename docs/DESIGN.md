@@ -2104,7 +2104,22 @@ and the state never names a picture the saved index does not (the index is saved
 and makes again what is gone). Only an import's child keeps the import lock's descriptor (`bgjob::child_setup`),
 so a compaction or a mirror that starts as the last import ends never holds it; a pick that met a lock held
 elsewhere is queued by the first scan that takes it afresh, and the tick tries the lock every 10 s while a
-previous run's detached import holds it.
+previous run's detached import holds it. The lock is a plain file at its own name (`pdfimport::lock_take`): it
+is opened without following a link (`O_NOFOLLOW`, and `O_NONBLOCK` as the other lock files), must be a regular
+file with one name, and once locked must still be the file at its name (`lock_is_at`), else the lock is asked
+for once more and then given up. What else is found at the name is never removed and never followed. Only
+`EWOULDBLOCK` means another process imports, and only then does a pick wait; a lock that cannot be taken for
+any other reason refuses a pick with the message for a file that cannot be imported, and leaves no mark. A third
+rule joined the two above in the hardening round of 2026-11: a file's path is kept in its mark and state as it
+is, and a path those files cannot hold (a line break in a name, `pdfimport::name_storable`) is refused where it
+comes in: the scan, the picker's rows, a pick, the job. `in_import` asks the folder itself where a path spells
+`import` in another case (`pdfimport::under_import`), and the scan's first look at a PDF opens it through the
+same walk as the job and reads only the file it listed (`read_ends`). The job reads its PDF through the file it
+opened, and a file of `import/` is moved to `done/` by its name, so the name is looked at once more just before
+the move (`finish_pdf`): it must still hold the file that was read (the lock's own test of a name against an
+open file, and the size and time the file was opened with), else nothing moves, nothing is marked done, and
+the next scan takes what is at the name; the try stays counted, so this cannot repeat without end. The record a
+notebook keeps of its file takes its key and its hash from the one file the last slice has open.
 
 The links and names (lane L6) come out of the same worker. After the page count the writer sends `LINKS <w> <h>`;
 the worker walks the annotations of every page (`pdfwork.rs`, module `links`), resolves each destination to a
@@ -2248,9 +2263,16 @@ are routed in `library.rs` as the Graph's are, and two fingers down does nothing
   (`pdfimport::import_status`, `bgwork_template::folder_failed`): the PDF rows' when the import's progress changes
   (looked at at most once a second), every row's every 5 s (a folder's lists the folder), and redraws only the rows
   that changed. The staying notice of an import stays off that place (`library_import_place_up`): its rows say it.
-- **"has notes"** is the PDF's book key (KOReader's partial MD5, 12 reads of 1 KiB through the walk) compared with
-  the notebooks' keys (`source=`, else the book their `source.ini` names), read once for the picker's session; the
-  card then offers Open its notebook.
+- **"has notes"** is the PDF's book key (KOReader's partial MD5, 12 reads of 1 KiB through the walk) and its size
+  (one descriptor) compared with the keys the notebooks hold and the records of their files
+  (`pdfimport::key_holders`: `source=`, else the book their `source.ini` names, else the key of its `file=` line;
+  one small read a notebook, once for the picker's session). No file is read whole in the UI, so the row states
+  what the key and the size can say (`pdfimport::key_match`), and the card has three cases. A notebook holds the
+  key with a record of the file's size: "has notes", and the card offers Open its notebook and Import as
+  notebook (the import reads the whole file and gives the exact answer: "PDF already imported." for that very
+  file, a notebook of its own for another). A notebook holds the key with no record (one made before the
+  records, or from KOReader): "has notes", Open its notebook, as before. Only notebooks whose records are of
+  another size hold the key, or none does: no tag, Import as notebook.
 - **Logs** carry counts and timings only ("files: listed N entries (M usable) in T ms"), never a name.
 
 ## Shared building blocks (2.1, lane L0)

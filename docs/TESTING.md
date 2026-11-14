@@ -2583,3 +2583,81 @@ text that changed:
    that each crate was that old.
 3. Search the file for `hayro `: its entry is there, with the version `rust/Cargo.lock` names. Nothing
    else in the file changed.
+
+## Hardening round (2026-11), import: the file record, names, the import folder, the first look and the lock
+
+"PDF already imported." is said of the very file: a notebook made from a PDF keeps the SHA-256 and the size of
+its file, and a PDF that has a notebook's key is compared with that record. The path of a file being imported
+is kept as it is, and a path with a line break in a name is left where it is. A folder spelled like
+`grimoire/import` in another case counts as the import folder only when it is that folder. The scan's first look
+at a dropped PDF, and the import's lock file, are opened without following a link and checked to be the file at
+their name. Automated: the unit tests of `pdfimport.rs` (the record's grammar, the decision over the notebooks
+that hold a key, the two "same folder" functions, the paths a mark and a state keep);
+`rust/tests/test_sec_import_key.rs` (three PDFs of one book key: the record, the second notebook, a notebook
+without a record, the picker's cards, KOReader's request by the key, and a file that takes a PDF's name while
+that PDF is read, which is left for the next scan); `rust/tests/test_sec_import_io.rs` (a
+folder spelled like import, the look after a link, another file or a FIFO was put at the name, the lock file
+as a link, a FIFO, a folder or a file with a second name, a pick while the lock cannot be taken, and what
+reads as an import still going); `rust/tests/test_sec_import_names.rs`, `rust/tests/test_import_queue.rs`,
+`rust/tests/test_pdfimport.rs` and `rust/tests/test_browser.rs` (names with a line break, a tab or a C1
+character; in `test_import_queue.rs` also the scan that imports a file which took the name of a PDF being
+imported); and the scenario
+`tests/scenarios/z_files_3_imports.qs` (the has-notes card, and Import as notebook on it). CI's `sandbox` job
+also runs `test_sec_import_names.rs` and `test_sec_import_io.rs`, on Linux as root, where the file system tells
+names apart by case; the unit jobs run on a file system that folds case.
+
+**Not run on a Scribe.**
+
+Three things only the Scribe can say: how long a big PDF takes to read whole, and whether its storage gives
+a file one identity by its name and by an open file (the scan's look, the import lock and the move to
+`import/done` all compare the two). Steps 1 to 3, 7 and 8 must pass before a release holds this round's
+import commits. The owner's check:
+
+1. **A big PDF, the first time.** Copy the biggest PDF at hand (300 MB or more if there is one) into
+   `grimoire/import`. It is taken within about 10 s of the copy ending, as before. When the notice reaches
+   its last page ("Importing: page N of N") it stays there while the file is read once more: note for how
+   long. Afterwards `grimoire.log` has `import: <id>: its file read for its record: N KB in T ms`. Write T
+   down (the estimate is 20 to 45 s for 512 MB; it was not measured). No line says `its last slice was cut
+   off`.
+2. **Writing meanwhile.** During that last page, write a line with the pen in another notebook: it feels as
+   usual.
+3. **The same PDF again.** Copy the same file into `grimoire/import` under another name. It says "PDF
+   already imported." and goes to `import/done`; for a big file only after
+   `import: <id>: its file read to compare with a notebook's record: N KB in T ms`. Note the wait.
+4. **The record stays.** `grimoire/notebooks/<id>/source.ini` of step 1's notebook has a line starting
+   `file=sha256:`. Open that PDF in KOReader and use Open this book in Grimoire: it opens that notebook, and
+   the line is still there afterwards.
+5. **A notebook from an earlier version.** Copy in the PDF of a notebook that 2.1.0 or 2.1.0-beta.2
+   imported: "PDF already imported.", as before, and its `source.ini` gets no `file=` line.
+6. **Files.** Library > New > From a file..., to a folder holding a copy of step 1's PDF: its row says "has
+   notes" and its card offers Open its notebook, Import as notebook and Cancel. Open its notebook opens it;
+   Import as notebook says "PDF already imported.". The PDF of step 5 offers Open its notebook and Cancel
+   only.
+7. **A small PDF after a restart.** Start Grimoire and copy a small PDF into `grimoire/import`: it is taken
+   within about 10 s, and once it is a notebook the file is in `import/done`. `grimoire.log` has no
+   `the import lock cannot be taken` line, no `differs from its listing` line and no
+   `no longer holds the file that was read` line, and the scan's line counts `0 that differ from their
+   listing`. This step decides whether the three checks suit the Scribe's storage: the first line would mean
+   that no import starts there, the second that every PDF waits a minute, the third that an imported PDF
+   stays in `import/` and is read again up to three times.
+8. **A second start during an import.** Start a long import, close Grimoire while it runs and open it
+   again: the notice goes on. Pick another PDF in Files: "Another import is still going. This one starts
+   after it.", and it starts once the first has ended.
+9. **A pick in the import folder.** Files > All storage > grimoire > import, pick a PDF there: it becomes a
+   notebook, the file is in `import/done` afterwards, and it is not imported a second time.
+10. **Optional, another spelling.** With Grimoire closed, rename `grimoire/import` to `Import` (in two
+    steps, through another name). Start Grimoire, Files > All storage > grimoire > Import: pick a PDF, then
+    a folder of pictures. One notebook each, both filed in `done`, and none a second time after leaving the
+    Library and coming back. Rename the folder back.
+11. **Optional, an edited copy.** A copy of step 1's PDF, saved again by another program with something
+    appended, can have the book's key and another content (the key reads 1 KiB at a few fixed places: a copy
+    that changed one of them, or grew past the next, has a key of its own). Copy it into `grimoire/import`:
+    it becomes a notebook of its own ("<Name> 2"). The step counts only when `grimoire.log` then has
+    `import: <id>: a notebook holds this PDF's key but was made from another file; this one is imported`:
+    without that line the copy had another key and the step showed nothing. With it, open step 1's PDF (the
+    first file, not the copy) in KOReader and use Open this book in Grimoire: it opens step 1's notebook,
+    not the copy's.
+
+If step 1's T is long enough to matter, or step 2 shows the pen lagging, see the BACKLOG entry on the import's
+whole-file read ("Hardening round (2026-11), import: what waits"). If step 7 shows any of its three lines, do
+not release: send grimoire.log.

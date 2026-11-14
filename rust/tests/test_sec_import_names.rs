@@ -51,9 +51,36 @@ fn done_in_any_case_is_not_scanned() {
     assert_eq!(names, vec!["New.pdf"], "the scan lists a PDF of import/Done, which no import may ever move");
 }
 
+// A mark and an import's state keep a path on one line, so a path with a line feed or a carriage return in a name
+// cannot be kept and read back as itself: the scan leaves such a PDF, and such a folder, where they are and counts
+// them. Every other character is a name's own: a tab and U+0085 are listed as any name is.
+fn a_name_with_a_line_break_is_left_out() {
+    let root = setup("breaks");
+    let imp = format!("{root}/import");
+    std::fs::create_dir_all(format!("{imp}/Trip")).unwrap();
+    let folder = std::fs::create_dir_all(format!("{imp}/Tr\rip")).is_ok();
+    let mut made = Vec::new();
+    for n in ["a\nb.pdf", "ab.pdf", "t\tx.pdf", "c\u{85}d.pdf", "Tr\rip/x.pdf", "Trip/y.pdf", "Icon\r"] {
+        match std::fs::write(format!("{imp}/{n}"), b"%PDF-1.4\n") {
+            Ok(()) => made.push(n),
+            Err(e) => eprintln!("  skipped {n:?}: this file system refuses the name ({e})"),
+        }
+    }
+    let found = list_pdfs();
+    let names: Vec<&str> = found.files.iter().map(|f| f.0.as_str()).collect();
+    eprintln!("  listed: {names:?}, skipped: {}", found.skipped);
+    let want: Vec<&str> = ["ab.pdf", "c\u{85}d.pdf", "t\tx.pdf", "Trip/y.pdf"].into_iter().filter(|n| made.contains(n)).collect();
+    assert_eq!(names, want, "the scan lists a PDF whose path a mark cannot keep");
+    // (the PDF and the folder: a file that is no PDF is never counted, whatever its name)
+    let counted = made.contains(&"a\nb.pdf") as usize + folder as usize;
+    assert_eq!(found.skipped, counted);
+    assert!(found.pdf_folders.iter().all(|f| f == "Trip"), "{:?}", found.pdf_folders);
+}
+
 // (one test, its checks in order: the store's root is the process's)
 #[test]
 fn test_sec_import_names() {
     names_that_end_inside_a_character_do_not_crash_the_scan();
     done_in_any_case_is_not_scanned();
+    a_name_with_a_line_break_is_left_out();
 }

@@ -298,7 +298,10 @@ your notebooks and settings from `quire/` to `grimoire/` and removes the old Qui
   Imported, and a Look again row), Documents, Downloads and All storage (Grimoire's notebooks, PDFs and trash
   are never listed). A tap on a folder opens it; a tap on a PDF opens its card ("14.2 MB, Oct 30" and Import as
   notebook, or Open its notebook when a notebook already holds that book; "has notes" shows on its row), and
-  the second tap imports it. A folder of pictures is imported from its `...` (or a finger held on it) card.
+  the second tap imports it. A notebook made from a PDF remembers its file, so the card of such a PDF offers
+  Import as notebook beside Open its notebook: the very same file says "PDF already imported.", and another
+  file that only looks like the book to KOReader's key (an edited copy, say) becomes a notebook of its own.
+  A folder of pictures is imported from its `...` (or a finger held on it) card.
   The notebook takes the file's name unless you typed one in the New notebook sheet first, and goes in that
   sheet's folder. The file stays exactly where it was: Grimoire only reads outside its own folders, and never
   follows a link (a file picked in Import itself is filed in `import/done/` like one dropped there). A file
