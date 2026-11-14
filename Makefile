@@ -9,6 +9,7 @@
 #   make dev       build a separate "Grimoire (dev)" and copy it over MTP (tools/kindle-dev)
 #   make dev-ssh   build, patch and start a separate "Grimoire (dev)" over SSH (tools/kindle-dev-ssh;
 #                  --release replaces the release launcher instead)
+#   make wifieap   local WPA2/WPA3-Enterprise test AP on this computer (tools/wifieap)
 #   make dist      complete installable bundle       -> dist/Grimoire-VERSION-COMMIT/
 #   make check     make rust-check (tests + scenarios + the languages + share server + exporter +
 #                  ARM build) + the zip, its launchers, the dev launcher's patch, the KPM package
@@ -61,7 +62,7 @@ HDRS := $(wildcard src/*.h) third_party/qrcodegen/qrcodegen.h VERSION Makefile
 SDL_CFLAGS := $(shell pkg-config --cflags sdl3 2>/dev/null)
 SDL_LIBS   := $(shell pkg-config --libs sdl3 2>/dev/null)
 
-.PHONY: all sim headless test tools tablet kindle package dev dev-ssh dev-check scenarios check clean icon logo l10n l10n-check
+.PHONY: all sim headless test tools tablet kindle package dev dev-ssh dev-check wifieap scenarios check clean icon logo l10n l10n-check
 .PHONY: c-headless c-test c-tools c-kindle c-check c-package c-icon c-logo
 all: sim headless test tools kindle dist
 
@@ -362,6 +363,14 @@ dev-ssh:
 # (tests/kindle_dev_check.sh).
 dev-check: package
 	tests/kindle_dev_check.sh $(BUILD)/dist/Grimoire.zip
+
+# A local WPA2/WPA3-Enterprise (PEAP/MSCHAPv2) test AP beside the current Wi-Fi connection: a second
+# virtual interface on the same channel, so the existing link stays up when the driver allows
+# AP + managed. It offers both Enterprise AKMs with PMF optional; WIFI_EAP_WPA3_ONLY=1 makes it
+# WPA3-Enterprise only. Test credentials: SSID Grimoire-Test-EAP, identity student, password
+# test-password.
+wifieap:
+	tools/wifieap
 
 # The C tree's: tools/grimoire-export.c, mkicon.c and mklogo.c (the same bytes as the Rust ones).
 c-tools: $(CBUILD)/host/grimoire-export

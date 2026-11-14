@@ -83,8 +83,9 @@ wpa_cmd() {
 }
 # One wpa_cli session against the supplicant, with the commands on its stdin (never in its arguments,
 # so a password is not in any argv). It tries the control sockets wifid is known to use, and prints
-# nothing: it succeeds when the session ran and at least $1 commands answered OK with no FAIL. The
-# output, which may echo a command, stays in this function and is never printed.
+# nothing: it succeeds when the session ran and at least $1 commands answered OK (wpa_cli puts its
+# prompt before each answer) with no FAIL. The output, which may echo a command, stays in this
+# function and is never printed.
 wpa_input() {
     want=${1:-1}
     wpa_path=$(command -v wpa_cli 2>/dev/null) || wpa_path=
@@ -95,6 +96,11 @@ wpa_input() {
     fi
     [ -n "$wpa_path" ] || return 1
     inp=$(cat) || return 1
+    # End the interactive session explicitly. Without this, wpa_cli can sit waiting for another
+    # command (or re-trying a dead socket) until timeout kills it, losing the answers to the
+    # commands that already ran. quit itself needs no answer.
+    inp="$inp
+quit"
     for wpa_dir in /var/run/wpa_supplicant /run/wpa_supplicant /var/run/wifi /run/wifi ''; do
         if [ -n "$wpa_dir" ]; then
             [ -e "$wpa_dir/wlan0" ] || continue
@@ -103,18 +109,21 @@ wpa_input() {
             set -- -i wlan0
         fi
         if command -v timeout >/dev/null 2>&1; then
-            wpa_out=$(printf '%s\n' "$inp" | timeout 2 "$wpa_path" "$@" 2>/dev/null)
+            wpa_out=$(printf '%s\n' "$inp" | timeout 3 "$wpa_path" "$@" 2>/dev/null)
         else
             wpa_out=$(printf '%s\n' "$inp" | "$wpa_path" "$@" 2>/dev/null)
         fi
-        oks=$(printf '%s\n' "$wpa_out" | grep -c '^OK$')
-        fails=$(printf '%s\n' "$wpa_out" | grep -c '^FAIL')
+        # Normalize wpa_cli's interactive answer before counting: the prompt can be "> OK",
+        # ">OK" or followed by a CR, and trailing spaces must not hide an OK or FAIL.
+        wpa_lines=$(printf '%s\n' "$wpa_out" | tr -d '\r' | sed 's/^[[:space:]]*> *//; s/[[:space:]]*$//')
+        oks=$(printf '%s\n' "$wpa_lines" | grep -c '^OK$')
+        fails=$(printf '%s\n' "$wpa_lines" | grep -c '^FAIL')
         if [ "$fails" -eq 0 ] && [ "$oks" -ge "$want" ]; then
-            unset inp wpa_out oks fails
+            unset inp wpa_out wpa_lines oks fails
             return 0
         fi
     done
-    unset inp wpa_out oks fails
+    unset inp wpa_out wpa_lines oks fails
     return 1
 }
 # cmState is asynchronous: wifid may take a moment to leave CONNECTED after either request.
@@ -229,7 +238,7 @@ current() {
 # scanList hasharray is read as KOReader reads it; anything this reader does not know fails the whole
 # scan (no list) rather than guessing a security type. A name with a backslash, a control character or
 # more than 32 bytes is left out; the strongest BSSID of a name stands for it.
-# security is open, wep, wpa, wpa2, wpa3, owe, enterprise, or unknown.
+# security is open, wep, wpa, wpa2, wpa3, owe, enterprise, enterprise192, or unknown.
 nearby() {
     { printf '{}\n' | lipc-hash-prop com.lab126.wifid scanList 2>/dev/null || echo '#lipc-failed'; } |
         LC_ALL=C awk '
@@ -254,7 +263,12 @@ function flush(   i, b, h, u, sec, kn) {
         h = h sprintf("%02x", b)
     }
     u = toupper(km)
-    if (u ~ /ENTERPRISE|8021X|IEEE8021X|EAP|SUITE|192/) sec = "enterprise"
+    # WPA3-Enterprise 192-bit (WPA-EAP-SUITE-B-192) needs EAP-TLS and GCMP-256, not PEAP/MSCHAPv2:
+    # it is named apart so the sheet can say it is not supported rather than try it.
+    # An AP that also offers SHA-256 EAP supports the non-192-bit profile even if it advertises
+    # SUITE-B-192 alongside it; only a 192-bit-only AP stays gated.
+    if (u ~ /SUITE|192/ && u !~ /WPA-EAP-SHA256/) sec = "enterprise192"
+    else if (u ~ /ENTERPRISE|8021X|IEEE8021X|EAP/) sec = "enterprise"
     else if (u ~ /OWE|ENHANCED.OPEN/) sec = "owe"
     else if (u ~ /WPA3|SAE/) sec = "wpa3"
     else if (u ~ /WPA2/) sec = "wpa2"
@@ -332,25 +346,30 @@ case "${1:-}" in
         nearby
         ;;
     add)
-        # add <essid> <open|wpa|wpa2|eap>: create a profile and ask the radio to connect, then read
-        # the networks back. Open takes no secret. WPA/WPA2 takes the PSK on stdin (Grimoire derives
-        # it; a direct caller may send a passphrase, which wpa_passphrase turns into the PSK where the
-        # firmware has it). EAP takes the username on stdin's first line and the password on its
-        # second; it creates a WPA2-Enterprise PEAP/MSCHAPv2 network through wpa_cli, whose commands
-        # carry them on its stdin, never in an argument. Every secret is wiped and none is printed or
-        # logged. The profile hash for WPA/WPA2 (holding only the PSK, never the passphrase) goes to
-        # createProfile on stdin, so no secret is in any argument. A failure leaves the profiles as
-        # they were. Each failure has its own exit, so the app's log can name the step (nothing here
-        # ever names the network): 1 the radio could not be read or turned on, 18 no valid PSK (a
-        # malformed one, or wpa_passphrase missing/unexpected output), 19 wifid refused the profile,
-        # 20 no read came back after the change, 26 no wpa_cli or control socket for EAP, 27 the
-        # supplicant refused the EAP network.
+        # add <essid> <open|wpa|wpa2|wpa3|eap>: create a profile and ask the radio to connect, then
+        # read the networks back. Open takes no secret. WPA/WPA2 takes the PSK on stdin (Grimoire
+        # derives it; a direct caller may send a passphrase, which wpa_passphrase turns into the PSK
+        # where the firmware has it). WPA3-Personal takes its passphrase on stdin and creates a SAE
+        # network through wpa_cli: SAE needs the passphrase itself, not the PBKDF2 PSK. EAP takes the
+        # username on stdin's first line and the password on its second; it creates a PEAP/MSCHAPv2
+        # network through wpa_cli that is capable of PMF, so it joins both WPA2-Enterprise and
+        # WPA3-Enterprise (non-192-bit). wpa_cli's commands carry every secret on its stdin, never in
+        # an argument. Every secret is wiped and none is printed or logged. The profile hash for
+        # WPA/WPA2 (holding only the PSK, never the passphrase) goes to createProfile on stdin, so no
+        # secret is in any argument. A failure leaves the profiles as they were. Each failure has its
+        # own exit, so the app's log can name the step (nothing here ever names the network): 1 the
+        # radio could not be read or turned on, 18 no valid PSK (a malformed one, or wpa_passphrase
+        # missing/unexpected output), 19 wifid refused the profile, 20 no read came back after the
+        # change, 26 no wpa_cli or control socket, 27 the supplicant refused the network, 28 the
+        # supplicant does not list SAE (WPA3-Personal) as a capability.
         essid=${2-}; method=${3-}
-        case "$method" in open|wpa|wpa2|eap) ;; *) exit 2;; esac
+        case "$method" in open|wpa|wpa2|wpa3|eap) ;; *) exit 2;; esac
         case "$essid" in ''|*[[:cntrl:]]*) exit 2;; esac
         [ "${#essid}" -le 32 ] || exit 2
         read_radio || exit 1
         radio_on || exit 1
+        # (quoted for wpa_cli's parser; no shell ever evaluates the values)
+        q() { printf '%s' "$1" | sed 's/\\/\\\\/g; s/"/\\"/g'; }
         if [ "$method" = eap ]; then
             IFS= read -r identity || exit 2
             IFS= read -r password || { unset identity; exit 2; }
@@ -359,28 +378,81 @@ case "${1:-}" in
             [ "${#identity}" -le 128 ] && [ "${#password}" -le 128 ] || { unset identity password; exit 2; }
             nid=$(wpa_cmd add_network 2>/dev/null | sed -n 's/^\([0-9][0-9]*\)$/\1/p' | tail -n 1)
             case "$nid" in ''|*[!0-9]*) unset identity password; exit 26;; esac
-            # (quoted for wpa_cli's parser; no shell ever evaluates the values)
-            q() { printf '%s' "$1" | sed 's/\\/\\\\/g; s/"/\\"/g'; }
+            # WPA3-Enterprise (non-192-bit) is the same EAP exchange with SHA-256 AKM and protected
+            # management frames. Both AKMs are offered so the same profile still joins a WPA2-Enterprise
+            # network; PMF stays optional (1), which an AP that requires it accepts. A supplicant too
+            # old to know WPA-EAP-SHA256 keeps WPA-EAP alone. 192-bit (WPA-EAP-SUITE-B-192) is not used.
+            caps=$(wpa_cmd get_capability key_mgmt 2>/dev/null) || caps=
+            if printf '%s\n' "$caps" | grep -qw WPA-EAP-SHA256; then
+                kmgmt='"WPA-EAP WPA-EAP-SHA256"'
+            else
+                kmgmt=WPA-EAP
+            fi
             qid=$(q "$identity")
             qpass=$(q "$password")
             qessid=$(q "$essid")
             cmds=$(printf 'set_network %s ssid "%s"
-set_network %s key_mgmt WPA-EAP
+set_network %s key_mgmt %s
 set_network %s eap PEAP
 set_network %s identity "%s"
 set_network %s password "%s"
 set_network %s phase2 "auth=MSCHAPV2"
+set_network %s ieee80211w 1
 enable_network %s
 select_network %s
-' "$nid" "$qessid" "$nid" "$nid" "$nid" "$qid" "$nid" "$qpass" "$nid" "$nid" "$nid")
-            if ! printf '%s\n' "$cmds" | wpa_input 8; then
+' "$nid" "$qessid" "$nid" "$kmgmt" "$nid" "$nid" "$qid" "$nid" "$qpass" "$nid" "$nid" "$nid" "$nid" "$nid")
+            if ! printf '%s\n' "$cmds" | wpa_input 9; then
                 printf 'remove_network %s\n' "$nid" | wpa_input 1 || true
-                unset identity password qid qpass qessid cmds
+                unset identity password caps qid qpass qessid cmds kmgmt
                 exit 27
             fi
             # Best effort: a supplicant that cannot save still has the live network.
             printf 'save_config\n' | wpa_input 1 || true
-            unset identity password qid qpass qessid cmds
+            # Hand the supplicant profile to wifid too: its connection manager runs DHCP and reports
+            # cmState, which the sheet watches. Without this the 4-way handshake finishes but the
+            # device never gets an address.
+            lipc-set-prop -s com.lab126.cmd ensureConnection "wifi:$essid" >/dev/null 2>&1 || true
+            unset identity password caps qid qpass qessid cmds kmgmt
+            report_retry || exit 20
+            current
+            essids profileData
+            exit 0
+        fi
+        if [ "$method" = wpa3 ]; then
+            IFS= read -r password || exit 2
+            case "$password" in ''|*[![:print:]]*) unset password; exit 2;; esac
+            [ "${#password}" -ge 8 ] && [ "${#password}" -le 63 ] || { unset password; exit 2; }
+            # A supplicant without SAE cannot join this network at all: name that step rather than
+            # creating a profile that never works. An empty answer means the capability query itself
+            # is unavailable (an older wpa_cli): try the network rather than refuse it.
+            caps=$(wpa_cmd get_capability key_mgmt 2>/dev/null) || caps=
+            if [ -n "$caps" ] && ! printf '%s\n' "$caps" | grep -qw SAE; then
+                unset password caps
+                exit 28
+            fi
+            # Best effort: offer both SAE password-to-element methods, for an AP that only takes H2E.
+            printf 'set sae_pwe 2\n' | wpa_input 1 || true
+            nid=$(wpa_cmd add_network 2>/dev/null | sed -n 's/^\([0-9][0-9]*\)$/\1/p' | tail -n 1)
+            case "$nid" in ''|*[!0-9]*) unset password caps; exit 26;; esac
+            qpass=$(q "$password")
+            qessid=$(q "$essid")
+            cmds=$(printf 'set_network %s ssid "%s"
+set_network %s key_mgmt SAE
+set_network %s psk "%s"
+set_network %s ieee80211w 2
+enable_network %s
+select_network %s
+' "$nid" "$qessid" "$nid" "$nid" "$qpass" "$nid" "$nid" "$nid")
+            if ! printf '%s\n' "$cmds" | wpa_input 6; then
+                printf 'remove_network %s\n' "$nid" | wpa_input 1 || true
+                unset password caps qpass qessid cmds
+                exit 27
+            fi
+            # Best effort: a supplicant that cannot save still has the live network.
+            printf 'save_config\n' | wpa_input 1 || true
+            # As for EAP: wifid must own the connection afterwards so DHCP and cmState follow.
+            lipc-set-prop -s com.lab126.cmd ensureConnection "wifi:$essid" >/dev/null 2>&1 || true
+            unset password caps qpass qessid cmds
             report_retry || exit 20
             current
             essids profileData

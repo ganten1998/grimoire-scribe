@@ -219,6 +219,7 @@ const H_WIFI_OTHER_OPEN: i32 = 191;
 const H_WIFI_OTHER_WPA: i32 = 192;
 const H_WIFI_OTHER_CANCEL: i32 = 193;
 const H_WIFI_OTHER_EAP: i32 = 194;
+const H_WIFI_OTHER_WPA3: i32 = 195;
 
 // 2.1: Settings' page (a full screen, the categories down its left): the category a tap picks (arg: its
 // index), whose settings the page shows.
@@ -3159,6 +3160,7 @@ fn wifi_security_name(sec: WifiSecurity) -> &'static str {
         WifiSecurity::Wpa3 => "WPA3",
         WifiSecurity::Owe => "OWE",
         WifiSecurity::Enterprise => tr("Enterprise"),
+        WifiSecurity::Enterprise192 => tr("Enterprise 192-bit"),
         WifiSecurity::Unknown => tr("Unknown"),
     }
 }
@@ -3627,8 +3629,25 @@ fn draw_wifi_sheet(a: &mut App) {
     ws.shown = Some(w);
 }
 
-/// Start the username then password flow for a WPA2-Enterprise network. The username is typed on the
-/// normal keyboard, the password on the masked one; both live only in WifiSheet until the add.
+/// Ask for a hidden or scanned network's password, on the masked keyboard, then `wifi_add` it with
+/// `security` (WPA/WPA2, or WPA3-Personal).
+fn wifi_password_start(a: &mut App, n: Vec<u8>, security: WifiSecurity) {
+    let mut title = String::new();
+    let shown = String::from_utf8_lossy(&n).into_owned();
+    // TRANSLATORS: the password keyboard's title for a Wi-Fi network; %s is its name.
+    csnprintf!(&mut title, 200, tr("Password for %s"), &shown);
+    lib(a).wifi.add = Some(WifiNetwork {
+        essid: n,
+        security,
+        signal: 0,
+        signal_max: 1,
+        known: false,
+    });
+    open_kb_secret(a, KbPurpose::WifiPassword, &title);
+}
+
+/// Start the username then password flow for a WPA2/WPA3-Enterprise network. The username is typed
+/// on the normal keyboard, the password on the masked one; both live only in WifiSheet until the add.
 fn wifi_eap_start(a: &mut App, n: WifiNetwork) {
     let mut title = String::new();
     let shown = String::from_utf8_lossy(&n.essid).into_owned();
@@ -3658,8 +3677,10 @@ fn draw_wifi_other_page(a: &mut App) {
         menu_row(IconKind::None, tr("Open network"), H_WIFI_OTHER_OPEN, 0, ButtonStyle::Plain),
         // TRANSLATORS: (Settings > Wi-Fi > Other...) the choice for a hidden WPA or WPA2 network.
         menu_row(IconKind::None, tr("WPA/WPA2 password"), H_WIFI_OTHER_WPA, 0, ButtonStyle::Plain),
-        // TRANSLATORS: (Settings > Wi-Fi > Other...) the choice for a hidden WPA2-Enterprise network.
-        menu_row(IconKind::None, tr("WPA2-Enterprise"), H_WIFI_OTHER_EAP, 0, ButtonStyle::Plain),
+        // TRANSLATORS: (Settings > Wi-Fi > Other...) the choice for a hidden WPA3-Personal network.
+        menu_row(IconKind::None, tr("WPA3 password"), H_WIFI_OTHER_WPA3, 0, ButtonStyle::Plain),
+        // TRANSLATORS: (Settings > Wi-Fi > Other...) the choice for a hidden WPA2- or WPA3-Enterprise network.
+        menu_row(IconKind::None, tr("WPA2/WPA3-Enterprise"), H_WIFI_OTHER_EAP, 0, ButtonStyle::Plain),
         menu_row(IconKind::Close, tr("Cancel"), H_WIFI_OTHER_CANCEL, 0, ButtonStyle::Plain),
     ];
     // TRANSLATORS: the title of the page that adds a hidden Wi-Fi network by name.
@@ -3750,18 +3771,12 @@ fn wifi_sheet_tap(a: &mut App, id: i32, arg: i32) {
         }
         H_WIFI_OTHER_WPA => {
             let Some(n) = lib(a).wifi.other.clone() else { return };
-            let mut title = String::new();
-            let shown = String::from_utf8_lossy(&n).into_owned();
-            // TRANSLATORS: the password keyboard's title for a Wi-Fi network; %s is its name.
-            csnprintf!(&mut title, 200, tr("Password for %s"), &shown);
-            lib(a).wifi.add = Some(WifiNetwork {
-                essid: n,
-                security: WifiSecurity::Wpa2,
-                signal: 0,
-                signal_max: 1,
-                known: false,
-            });
-            open_kb_secret(a, KbPurpose::WifiPassword, &title);
+            wifi_password_start(a, n, WifiSecurity::Wpa2);
+            return;
+        }
+        H_WIFI_OTHER_WPA3 => {
+            let Some(n) = lib(a).wifi.other.clone() else { return };
+            wifi_password_start(a, n, WifiSecurity::Wpa3);
             return;
         }
         H_WIFI_OTHER_EAP => {
@@ -3823,13 +3838,8 @@ fn wifi_sheet_tap(a: &mut App, id: i32, arg: i32) {
                         // TRANSLATORS: (Settings > Wi-Fi) the toast while an open network's profile is being created.
                         app_toast(a, tr("Adding network…"), 2000);
                     }
-                    WifiSecurity::Wpa | WifiSecurity::Wpa2 => {
-                        let mut title = String::new();
-                        let shown = String::from_utf8_lossy(&n.essid).into_owned();
-                        // TRANSLATORS: the password keyboard's title for a Wi-Fi network; %s is its name.
-                        csnprintf!(&mut title, 200, tr("Password for %s"), &shown);
-                        lib(a).wifi.add = Some(n.clone());
-                        open_kb_secret(a, KbPurpose::WifiPassword, &title);
+                    WifiSecurity::Wpa | WifiSecurity::Wpa2 | WifiSecurity::Wpa3 => {
+                        wifi_password_start(a, n.essid.clone(), n.security);
                         return;
                     }
                     WifiSecurity::Enterprise => {
@@ -6710,7 +6720,8 @@ fn act(a: &mut App, h: &Hit) {
         H_PAIR_MENU => open_modal(a, Modal::PairMenu),
         H_WIFI_MENU => wifi_sheet_open(a),
         H_WIFI_RADIO | H_WIFI_NET | H_WIFI_MORE | H_WIFI_TAB | H_WIFI_SCAN | H_WIFI_NEAR | H_WIFI_DELETE
-        | H_WIFI_OTHER | H_WIFI_OTHER_OPEN | H_WIFI_OTHER_WPA | H_WIFI_OTHER_EAP | H_WIFI_OTHER_CANCEL => {
+        | H_WIFI_OTHER | H_WIFI_OTHER_OPEN | H_WIFI_OTHER_WPA | H_WIFI_OTHER_WPA3 | H_WIFI_OTHER_EAP
+        | H_WIFI_OTHER_CANCEL => {
             wifi_sheet_tap(a, h.id, h.arg)
         }
         H_SHORTCUT_DEVICE => {
@@ -8612,7 +8623,8 @@ pub fn library_probe(a: &mut App, key: &str, out: &mut String, cap: usize) -> i3
                 H_WIFI_TAB => "wifi.tab", H_WIFI_SCAN => "wifi.scan", H_WIFI_NEAR => "wifi.near.",
                 H_WIFI_DELETE => "wifi.delete.", H_WIFI_OTHER => "wifi.other",
                 H_WIFI_OTHER_OPEN => "wifi.other.open", H_WIFI_OTHER_WPA => "wifi.other.wpa",
-                H_WIFI_OTHER_EAP => "wifi.other.eap", H_WIFI_OTHER_CANCEL => "wifi.other.cancel",
+                H_WIFI_OTHER_WPA3 => "wifi.other.wpa3", H_WIFI_OTHER_EAP => "wifi.other.eap",
+                H_WIFI_OTHER_CANCEL => "wifi.other.cancel",
                 _ => "",
             });
             if hit.id == H_FONT_PICK {
@@ -9982,6 +9994,28 @@ mod tests {
         kb_finished(&mut a, false);
         assert_eq!(a.lib.as_ref().unwrap().modal, Modal::Wifi);
         assert_eq!(a.lib.as_ref().unwrap().wifi.eap_user, None);
+        library_free(&mut a);
+        canvas_free(&mut a.screen);
+    }
+
+    #[test]
+    fn a_scanned_wpa3_network_asks_for_its_password_and_keeps_its_security() {
+        let mut a = pen_record_app();
+        lib(&mut a).modal = Modal::Wifi;
+        lib(&mut a).wifi.near = vec![WifiNetwork {
+            essid: b"Home 3".to_vec(),
+            security: WifiSecurity::Wpa3,
+            signal: 2,
+            signal_max: 5,
+            known: false,
+        }];
+        wifi_sheet_tap(&mut a, H_WIFI_NEAR, 0);
+        assert_eq!(a.lib.as_ref().unwrap().kbp, KbPurpose::WifiPassword);
+        assert!(a.lib.as_ref().unwrap().kb.secret);
+        assert_eq!(
+            a.lib.as_ref().unwrap().wifi.add.as_ref().map(|n| n.security),
+            Some(WifiSecurity::Wpa3)
+        );
         library_free(&mut a);
         canvas_free(&mut a.screen);
     }

@@ -1801,11 +1801,13 @@ row shows a three-bar signal icon, filled for the strength, and a small lock whe
 saved row has a trash button at its right that deletes that profile at once. The connected row is filled black
 with a white rule inside its edge; tapping it again disconnects, keeping the radio on. While Nearby is idle, a
 quiet scan every 20 s updates the list in place: it never clears it or moves a name that is still there. Other...
-types a hidden network's name, then asks whether it is Open, WPA/WPA2 with a masked password, or WPA2-Enterprise
-with a username and masked password. Enterprise add uses PEAP/MSCHAPv2 through `wpa_cli` (credentials on stdin)
-because wifid's `createProfile` enterprise arguments are not probed; the profile lives in the supplicant, not
-Saved networks, and `save_config` is best effort. WEP, WPA3, OWE, WPA3-Enterprise, EAP-TTLS and EAP-TLS stay out.
-No CA-certificate choice ships yet, so PEAP does not validate the school's certificate.
+types a hidden network's name, then asks whether it is Open, WPA/WPA2 with a masked password, WPA3-Personal with
+a masked password, or WPA2/WPA3-Enterprise with a username and masked password. Enterprise add uses
+PEAP/MSCHAPv2 through `wpa_cli` (credentials on stdin), with PMF optional and the SHA-256 AKM offered, so it
+joins WPA2-Enterprise and WPA3-Enterprise (non-192-bit); the profile lives in the supplicant, not Saved
+networks, and `save_config` is best effort. WPA3-Personal uses SAE through `wpa_cli`, with PMF required and its
+passphrase on stdin. WEP, OWE, WPA3-Enterprise 192-bit, EAP-TTLS and EAP-TLS stay out. No CA-certificate choice
+ships yet, so PEAP does not validate the school's certificate.
 
 - **Where.** A Wi-Fi row in Settings opens a full-page sheet drawn as its other submenus are. The status line
   and the radio control (Turn on Wi-Fi, Turn off Wi-Fi, or Retry) sit over the top buttons: Rescan, Other...
@@ -1824,9 +1826,12 @@ No CA-certificate choice ships yet, so PEAP does not validate the school's certi
   one failed, else the Share card's lines, with "Connected to <name>" when the name is known. A failed Add says
   "Could not add the network." (wifi_add_failed) rather than the generic read error, and a failed trash tap
   "Could not forget the network." (wifi_delete_failed); a later successful read clears either.
-- **Add and delete.** A scan result that is not saved opens the masked keyboard for WPA/WPA2, or is added  at once when Open; Other... takes a hidden name, then Open, or WPA/WPA2 and its password. `wifi_add` derives
-  the PSK (PBKDF2-HMAC-SHA1 over the passphrase and the name) and sends its 64 hex digits on the helper's
-  stdin, never in argv; the helper also takes a passphrase there for a direct call.
+- **Add and delete.** A scan result that is not saved opens the masked keyboard for WPA/WPA2 or
+  WPA3-Personal, or is added at once when Open; Other... takes a hidden name, then Open, WPA/WPA2, WPA3
+  or WPA2/WPA3-Enterprise and its password. `wifi_add` derives the WPA/WPA2 PSK (PBKDF2-HMAC-SHA1 over
+  the passphrase and the name) and sends its 64 hex digits on the helper's stdin, never in argv;
+  WPA3-Personal sends the passphrase itself there (SAE needs it); the helper also takes a passphrase
+  there for a direct call.
   A saved row's trash calls `wifi_delete` directly, with no Yes/No page; the helper tries wifid's
   `deleteProfile` property by name (older firmware), then by the profile's integer `netid` (from
   `profileData`, or `netidValue` when it is absent; the Scribe's wifid), then the supplicant's own

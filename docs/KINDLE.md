@@ -1058,25 +1058,28 @@ Buttons... and Reload shortcuts.ini; Pair holds Bluetooth controller and Pair a 
 Library > Share > Wi-Fi (also on the Live view pairing card) opens the radio controls. Turn on
 Wi-Fi leaves airplane mode and asks the Kindle's existing Wi-Fi service to reconnect to a saved
 network. Radio-on and connected are shown separately; the Share address and QR code appear only
-when the system has an address. Settings > Wi-Fi can scan for nearby networks, add an Open or
-WPA/WPA2-Personal one with its password, or a WPA2-Enterprise (PEAP/MSCHAPv2) one with its username and
-password, and delete a saved profile with its row's trash button. WPA3, WEP, OWE and WPA3-Enterprise stay
-with Kindle settings or KOReader. Grimoire does not replace or log saved network credentials, and none
-reaches the app (the helper keeps only the networks' names: below).
+when the system has an address. Settings > Wi-Fi can scan for nearby networks, add an Open,
+WPA/WPA2- or WPA3-Personal one with its password, or a WPA2/WPA3-Enterprise (PEAP/MSCHAPv2) one with
+its username and password, and delete a saved profile with its row's trash button. WEP, OWE and
+WPA3-Enterprise 192-bit stay with Kindle settings or KOReader. Grimoire does not replace or log saved
+network credentials, and none reaches the app (the helper keeps only the networks' names: below).
 
 Settings > Wi-Fi (2.1.0-beta.2, issue #40) opens on Nearby. The status line and the radio button (Retry
 when the state is not known) sit over Rescan, Other... and Saved networks; the sheet scans by itself once
 the radio is on. Each network has a three-bar signal icon, filled for its strength, and a small lock when it
 is not Open; the scan's strongest come first, then the names the Kindle knows. A tap connects a saved name or
-adds an unsaved Open, WPA/WPA2-Personal or WPA2-Enterprise one. The connected row is filled black with a white rule inside its
-edge and white bars; a tap on it again disconnects without turning the radio off. Other... types a hidden
-network's name and asks Open, WPA/WPA2 or WPA2-Enterprise; a password is typed on the keyboard's masked page and never shown.
-A WPA2-Enterprise add asks for the username on the normal keyboard, then the password on the masked one.
-It uses PEAP with MSCHAPv2 through the supplicant's `wpa_cli` control interface; both values travel only on
-stdin, and the profile lives in the supplicant rather than wifid's saved list, so it may not appear under Saved
+adds an unsaved Open, WPA/WPA2-Personal, WPA3-Personal or WPA2/WPA3-Enterprise one. The connected row is
+filled black with a white rule inside its edge and white bars; a tap on it again disconnects without turning
+the radio off. Other... types a hidden network's name and asks Open, WPA/WPA2, WPA3 or WPA2/WPA3-Enterprise;
+a password is typed on the keyboard's masked page and never shown. A WPA2/WPA3-Enterprise add asks for the
+username on the normal keyboard, then the password on the masked one. It uses PEAP with MSCHAPv2 through the
+supplicant's `wpa_cli` control interface, with PMF optional and the SHA-256 AKM offered, so it joins both
+WPA2-Enterprise and WPA3-Enterprise (non-192-bit); both values travel only on stdin, and the profile lives in
+the supplicant rather than wifid's saved list, so it may not appear under Saved
 networks (the sheet still watches it like a switch). `save_config` is best effort. There is no CA-certificate
 field yet, so PEAP does not validate the school's server certificate; use it only on a network you trust.
-WPA3-Enterprise, EAP-TTLS and EAP-TLS are not created.
+WPA3-Enterprise 192-bit, EAP-TTLS and EAP-TLS are not created. WPA3-Personal uses SAE through `wpa_cli` with
+PMF required; its passphrase reaches the helper only on stdin (SAE needs it, not the PSK).
 The keyboard stays over the Wi-Fi page, as it does over the rest of Settings. Saved networks lists the Kindle's
 profiles, the connected one first, eight a page with More; a tap connects (or disconnects, on the connected
 row), and the trash button on a row deletes that profile at once. Disconnect puts wifid's connection manager
@@ -1093,7 +1096,7 @@ that network; it has failed when the helper refuses it or after 45 s without it.
 watched the same way. A failed hidden-network add
 says "Could not add the network.", not the generic read error; the log names the helper's exit (18 no valid
 PSK, 19 the profile refused, 20 no read back, 26 no wpa_cli or control socket, 27 the supplicant refused the
-enterprise network). A delete that fails says "Could not forget
+network, 28 the supplicant does not list SAE). A delete that fails says "Could not forget
 the network.", its log exit naming the step (21 the radio, 23 no read back, 24 no netid could be read,
 25 wifid still had the profile after the netid write). Grimoire switches nothing back after a
 failure: the Kindle's own service decides what it joins next. The sheet reads only while it is up: the
@@ -1123,9 +1126,10 @@ hasharray in, as KOReader reads them; a switch is `lipc-set-prop -s com.lab126.c
 "wifi:<essid>"`, as KOReader's network menu does when a network is picked, and the helper refuses any
 name that is not among the saved networks before it changes anything. Add and Delete are the only profile
 changes: `add` creates an Open, WPA or WPA2 profile from the PSK on stdin (or a passphrase, for a direct
-call) and asks wifid to connect, or a WPA2-Enterprise PEAP/MSCHAPv2 network through `wpa_cli` from the
-username and password on stdin; `delete` removes the named saved profile. WPA3, OWE, WEP, WPA3-Enterprise,
-EAP-TTLS and EAP-TLS profiles are never created.
+call) and asks wifid to connect, a WPA3-Personal SAE profile from its passphrase on stdin through `wpa_cli`,
+or a WPA2/WPA3-Enterprise PEAP/MSCHAPv2 network through `wpa_cli` from the username and password on
+stdin; `delete` removes the named saved profile. OWE, WEP, WPA3-Enterprise 192-bit, EAP-TTLS and EAP-TLS
+profiles are never created.
 
 profileData's answer holds each saved network's password. It goes from lipc-hash-prop straight into
 a small awk reader inside the helper that keeps the essid values and nothing else: no password reaches
@@ -1135,10 +1139,12 @@ numbers, and braces, brackets, commas and words around them); any unquoted value
 them, makes it give no name at all, and the sheet says "Saved networks could not be read." with the
 radio controls still there. A name with a backslash (an escape it cannot undo), a control character or
 more than 32 bytes is left out. Names travel to Grimoire, and back for a switch, in hex, so no byte of
-one can break a line or be taken for code. Adding derives the WPA PSK in Grimoire (PBKDF2-HMAC-SHA1 over the passphrase and the name, 4096
-rounds, 256 bits) and sends its 64 hex digits on the helper's stdin (never an argument); the helper also
-takes a passphrase there for a direct call, through `wpa_passphrase` where the firmware has it. It pipes the
-profile hasharray to `createProfile`; forgetting is `deleteProfile <essid>` on older firmware, or
+one can break a line or be taken for code. Adding derives the WPA PSK in Grimoire (PBKDF2-HMAC-SHA1 over
+the passphrase and the name, 4096 rounds, 256 bits) and sends its 64 hex digits on the helper's stdin
+(never an argument); the helper also takes a passphrase there for a direct call, through
+`wpa_passphrase` where the firmware has it. WPA3-Personal sends the passphrase itself there instead:
+SAE derives its password element from it, and the PBKDF2 PSK would not do. It pipes the profile hasharray
+to `createProfile`; forgetting is `deleteProfile <essid>` on older firmware, or
 `deleteProfile <netid>` (the profile's integer id, read from profileData) on the Scribe. The app wipes its
 passphrase copy after deriving the PSK, the helper wipes what it receives, and neither is printed, logged or kept.
 An enterprise add's credentials go from Grimoire to the helper on stdin and then to `wpa_cli` on its stdin;

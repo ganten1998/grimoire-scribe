@@ -2344,14 +2344,15 @@ Settings > Wi-Fi (issue #40). Automated: `tests/test_wifi_sh.py` (make wifi-chec
 current, join, scan, add, delete and disconnect verbs against a fake lipc whose profileData holds passwords:
 none comes out, in text or in hex; a format it does not know and a failed read list no name; join refuses
 anything but a saved network before any change; add sends only the derived PSK on stdin and its profile hash holds
-only that PSK; an EAP add sends the username and password only on stdin and quotes them into wpa_cli's stdin,
-and its profile need not be in wifid's list; disconnect keeps the radio on, sets the manager's manual mode first, tries `cmDisconnect` with and without the current profile and then `wpa_cli`, pins the drop and disables the supplicant's network once the link is down, re-enables it and restores auto when it cannot, and its exit names the failed step; hostile names stay data), `rust/src/wifi.rs`'s
+only that PSK; a WPA3 add sends the passphrase only on stdin, with SAE and PMF required; an EAP add sends the
+username and password only on stdin, offers the SHA-256 AKM with optional PMF (or falls back when the
+supplicant lacks it), and its profile need not be in wifid's list; disconnect keeps the radio on, sets the manager's manual mode first, tries `cmDisconnect` with and without the current profile and then `wpa_cli`, pins the drop and disables the supplicant's network once the link is down, re-enables it and restores auto when it cannot, and its exit names the failed step; hostile names stay data), `rust/src/wifi.rs`'s
 tests (reports fail closed; a switch's states, its hex argument, exit during a switch; add's stdin and delete's
 name; a quiet scan keeps order and only adds/removes names; a change cancels a running scan; an Add failure
 is named) and `tests/scenarios/z_wifi_networks.qs` (the sheet from the scenario helper: the automatic scan,
 Rescan, add Open, the row's trash, switch, disconnect, reconnect, refuse, and Other... with a hidden WPA/WPA2
 password; also run in every language and style by make l10n-check). PSK add/delete were checked on the owner's
-Scribe; EAP is not yet checked on a device.
+Scribe; EAP and WPA3 are not yet checked on a device.
 
 **Probes first** (read only; the maintainer runs them over SSH with the owner's OK). Run
 `sh tools/kindle-wifi-probe.sh > wifi-probe.txt`; it never scans, changes the radio, or creates, changes or
@@ -2382,11 +2383,20 @@ turn Wi-Fi on first when it does not).
    Wrong password: the profile is still added (the Kindle's service refuses the connection), and the sheet
    says "Could not connect to <it>." within 45 seconds. If the hidden add itself fails, the status says "Could not add the network.", not the generic
    "Could not read or change Wi-Fi." The `wifi:` log line then names the helper's exit: 18 the passphrase never
-   became a PSK, 19 wifid refused the profile, 20 no read came back.
-4b. On a school WPA2-Enterprise network: choose it (or Other... > WPA2-Enterprise), type the username, then the
-   password on the masked keyboard. The network connects and is watched like a switch; the log names no
-   username or password. Without wpa_cli the helper exits 26; a supplicant refusal, 27. The profile may not
-   appear in Saved: it is the supplicant's, not wifid's, and that is expected.
+   became a PSK, 19 wifid refused the profile, 20 no read came back. A WPA3-Personal network (hostapd
+   `wpa_key_mgmt=SAE`, `ieee80211w=2`) asks for its password on the masked page and joins; a supplicant that
+   does not list SAE exits 28 and adds nothing.
+4b. On a school WPA2- or WPA3-Enterprise network: choose it (or Other... > WPA2/WPA3-Enterprise), type the
+   username, then the password on the masked keyboard. The helper offers the SHA-256 AKM with PMF optional, so
+   the same profile joins WPA2-Enterprise and WPA3-Enterprise (non-192-bit; hostapd `wpa_key_mgmt=WPA-EAP-SHA256`,
+   `ieee80211w=2`). The network connects and is watched like a switch; the log names no username or password.
+   Without wpa_cli the helper exits 26; a supplicant refusal, 27. The profile may not appear in Saved: it is the
+   supplicant's, not wifid's, and that is expected. WPA3-Enterprise 192-bit is not created: it needs EAP-TLS.
+   For a local test AP, `make wifieap` starts hostapd on a second virtual interface on this computer's
+   current Wi-Fi channel using WPA2/WPA3-Enterprise (`WPA-EAP` and `WPA-EAP-SHA256`, PMF optional),
+   SSID `Grimoire-Test-EAP`, identity `student` and password `test-password`; `WIFI_EAP_WPA3_ONLY=1`
+   makes it WPA3-Enterprise only (`WPA-EAP-SHA256`, PMF required). It needs hostapd, iw and openssl,
+   and keeps the existing connection up when the driver supports AP + managed on one channel.
 5. Saved networks: the profiles, the connected one first, with the trash button at each row's right. Tap one
    trash: that profile leaves the Kindle's list at once, with no question; the Kindle's own Wi-Fi menu agrees.
    If the delete fails, the status says "Could not forget the network." (not the generic read error) and the

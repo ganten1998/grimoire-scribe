@@ -15,13 +15,17 @@ root=Path(__file__).parent
 state=json.loads((root/'state').read_text())
 with (root/'writes').open('a') as f:f.write('wpa_cli='+sys.argv[-1]+'\n')
 with (root/'wpa-argv').open('a') as f:f.write(json.dumps(sys.argv)+'\n')
+if 'get_capability' in sys.argv:
+    print(state.get('cap_key_mgmt','WPA-PSK WPA-EAP WPA-EAP-SHA256 SAE'));sys.exit(0)
 if not any(c in sys.argv for c in ('list_networks','remove_network','save_config','disable_network','enable_network','disconnect','status','add_network')):
     # an interactive session: the commands (and any secret in them) arrive on stdin, never in argv
     cmds=sys.stdin.read().splitlines()
     with (root/'wpa-commands').open('a') as f:f.write('\n'.join(cmds)+'\n')
+    # The real wpa_cli prints its prompt before each answer in an interactive session.
     for line in cmds:
-        if state.get('wpa_fail_command') and line.startswith(state['wpa_fail_command']):print('FAIL')
-        else:print('OK')
+        if state.get('wpa_fail_command') and line.startswith(state['wpa_fail_command']):print('> FAIL')
+        elif state.get('wpa_prompt')=='cr':sys.stdout.write('>OK\r\n')
+        else:print('> OK')
     sys.exit(0)
 if 'add_network' in sys.argv:
     print(state.get('next_id',0));sys.exit(0)
@@ -363,19 +367,64 @@ class WifiHelper(unittest.TestCase):
         self.assertEqual(r.returncode,0,r.stderr)
         cmds=(self.root/'wpa-commands').read_text()
         self.assertIn('set_network 0 ssid "School"',cmds)
-        self.assertIn('set_network 0 key_mgmt WPA-EAP',cmds)
+        self.assertIn('set_network 0 key_mgmt "WPA-EAP WPA-EAP-SHA256"',cmds)
         self.assertIn('set_network 0 eap PEAP',cmds)
         self.assertIn('set_network 0 identity "student@example.edu"',cmds)
         self.assertIn('set_network 0 password "school secret \\"with quotes\\""',cmds)
         self.assertIn('set_network 0 phase2 "auth=MSCHAPV2"',cmds)
+        self.assertIn('set_network 0 ieee80211w 1',cmds)
         self.assertIn('enable_network 0',cmds)
         self.assertIn('select_network 0',cmds)
         self.assertIn('save_config',cmds)
+        # The interactive session must end itself; EOF alone can leave wpa_cli waiting.
+        self.assertTrue(cmds.rstrip().endswith('quit'),cmds)
         self.assertEqual(self.writes().count('wpa_cli=add_network'),1)
         for text in (r.stdout,r.stderr):
             self.assertNotIn(user,text);self.assertNotIn(pw,text)
         argv=(self.root/'wpa-argv').read_text()
         self.assertNotIn(user,argv);self.assertNotIn(pw,argv)
+    def test_add_eap_reads_crlf_prompts(self):
+        self.state(wirelessEnable=1,enable=1,profiles=self.PROFILES,wpa_prompt='cr')
+        r=self.run_helper('add','School','eap',data='student@example.edu\nsecret\n')
+        self.assertEqual(r.returncode,0,r.stderr)
+        self.assertNotIn('student@example.edu',r.stdout);self.assertNotIn('secret',r.stdout)
+    def test_add_eap_falls_back_when_the_supplicant_lacks_sha256(self):
+        self.state(wirelessEnable=1,enable=1,profiles=self.PROFILES,cap_key_mgmt='WPA-PSK WPA-EAP NONE')
+        r=self.run_helper('add','School','eap',data='student@example.edu\nsecret\n')
+        self.assertEqual(r.returncode,0,r.stderr)
+        cmds=(self.root/'wpa-commands').read_text()
+        self.assertIn('set_network 0 key_mgmt WPA-EAP\n',cmds)
+        self.assertNotIn('WPA-EAP-SHA256',cmds)
+        self.assertIn('set_network 0 ieee80211w 1',cmds)
+    def test_add_wpa3_sends_the_passphrase_only_on_stdin_and_uses_sae(self):
+        # The fake prints the real interactive form ("> OK"), which the helper must count.
+        self.state(wirelessEnable=1,enable=1,profiles=self.PROFILES)
+        pw='correct horse wifi'
+        r=self.run_helper('add','New 3','wpa3',data=pw+'\n')
+        self.assertEqual(r.returncode,0,r.stderr)
+        cmds=(self.root/'wpa-commands').read_text()
+        self.assertIn('set_network 0 ssid "New 3"',cmds)
+        self.assertIn('set_network 0 key_mgmt SAE',cmds)
+        # SAE needs the passphrase itself, not the PSK wpa_passphrase derives from it.
+        self.assertIn('set_network 0 psk "correct horse wifi"',cmds)
+        self.assertIn('set_network 0 ieee80211w 2',cmds)
+        self.assertIn('enable_network 0',cmds)
+        self.assertIn('select_network 0',cmds)
+        self.assertIn('save_config',cmds)
+        self.assertFalse((self.root/'create-stdin').exists(),'WPA3 never goes through wifid createProfile')
+        for text in (r.stdout,r.stderr):
+            self.assertNotIn(pw,text)
+        argv=(self.root/'wpa-argv').read_text()
+        self.assertNotIn(pw,argv)
+        self.assertEqual(self.run_helper('add','New 3','wpa3',data='short\n').returncode,2)
+        self.assertEqual(self.run_helper('add','New 3','wpa3',data='x'*64+'\n').returncode,2)
+        self.assertEqual(self.run_helper('add','New 3','wpa3',data='has\ttab\n').returncode,2)
+    def test_add_wpa3_names_a_supplicant_without_sae(self):
+        self.state(wirelessEnable=1,enable=1,profiles=self.PROFILES,cap_key_mgmt='WPA-PSK WPA-EAP WPA-EAP-SHA256')
+        r=self.run_helper('add','New 3','wpa3',data='password123\n')
+        self.assertEqual(r.returncode,28)
+        self.assertFalse((self.root/'wpa-commands').exists())
+        self.assertNotIn('password123',r.stdout);self.assertNotIn('password123',r.stderr)
     def test_add_eap_names_the_step_it_failed_at_and_rejects_bad_values(self):
         self.state(wirelessEnable=1,enable=1)
         p=self.root/'wpa_cli';p.unlink()
@@ -463,6 +512,17 @@ class WifiHelper(unittest.TestCase):
         self.assertIn('deleteProfile=7',self.writes())
         self.assertEqual(self.saved(r.stdout),[])
         self.no_password(r)
+    def test_scan_names_wpa3_enterprise_192_bit_apart(self):
+        self.state(wirelessEnable=1,enable=1,scan_list=[
+            {'essid':'SAE','signal':5,'signal_max':5,'key_mgmt':'SAE','known':'no'},
+            {'essid':'WPA3-EAP','signal':4,'signal_max':5,'key_mgmt':'WPA-EAP-SHA256','known':'no'},
+            {'essid':'192','signal':3,'signal_max':5,'key_mgmt':'WPA-EAP-SUITE-B-192','known':'no'},
+            {'essid':'Mixed','signal':2,'signal_max':5,'key_mgmt':'WPA-EAP-SHA256 WPA-EAP-SUITE-B-192','known':'no'},
+        ])
+        r=self.run_helper('scan');self.assertEqual(r.returncode,0,r.stderr)
+        self.assertEqual(self.near(r.stdout),[
+            ('SAE',5,5,'wpa3','0'),('WPA3-EAP',4,5,'enterprise','0'),('192',3,5,'enterprise192','0'),
+            ('Mixed',2,5,'enterprise','0')])
     def test_a_hostile_name_is_data_in_a_scan_too(self):
         name="$(touch injected) `touch i2`;x"
         self.state(wirelessEnable=1,enable=1,scan_list=[{'essid':name,'signal':4,'signal_max':5,'key_mgmt':'WPA2','known':'no'}])

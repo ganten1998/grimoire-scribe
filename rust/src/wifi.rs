@@ -73,6 +73,9 @@ pub enum WifiSecurity {
     Wpa3,
     Owe,
     Enterprise,
+    /// WPA3-Enterprise 192-bit (WPA-EAP-SUITE-B-192): EAP-TLS and GCMP-256, which this helper does
+    /// not create; kept apart so the sheet says so instead of trying PEAP on it
+    Enterprise192,
     #[default]
     Unknown,
 }
@@ -86,6 +89,7 @@ impl WifiSecurity {
             "wpa3" => Self::Wpa3,
             "owe" => Self::Owe,
             "enterprise" => Self::Enterprise,
+            "enterprise192" => Self::Enterprise192,
             _ => Self::Unknown,
         }
     }
@@ -116,8 +120,9 @@ struct Job {
     /// WifiAction::Add: the network the profile was created for, so the sheet can watch its
     /// connection like a switch (None: any other action)
     added: Option<Vec<u8>>,
-    /// WifiAction::Add with EAP: the profile is in the supplicant, not in wifid's saved list
-    eap: bool,
+    /// WifiAction::Add with EAP or WPA3-Personal: the profile is in the supplicant, not in wifid's
+    /// saved list
+    supplicant: bool,
 }
 #[derive(Default)]
 struct State {
@@ -152,10 +157,10 @@ struct State {
 }
 struct Adding {
     essid: Vec<u8>,
-    /// the 64 lower-case hex digits of the WPA/WPA2 PSK (zeros for Open and EAP); the passphrase is
-    /// not kept
-    key: [u8; 64],
-    /// the EAP identity and password (empty for Open and WPA/WPA2), wiped after they reach the helper
+    /// the 64 lower-case hex digits of the WPA/WPA2 PSK, the WPA3-Personal passphrase (SAE needs it
+    /// itself), or empty for Open; wiped after it reaches the helper
+    key: Vec<u8>,
+    /// the EAP identity and password (empty otherwise), wiped after they reach the helper
     user: Vec<u8>,
     pass: Vec<u8>,
     security: WifiSecurity,
@@ -232,13 +237,18 @@ pub fn wifi_scan_failed() -> bool {
     STATE.with(|s| s.borrow().scan_failed)
 }
 /// Create a profile, then read the networks back. For WPA/WPA2, `pass` is the passphrase: its PSK is
-/// derived here and only those 64 hex digits go to the helper, on stdin. None is taken for Open.
-/// False when the security mode is not one this helper creates, or the values are not ones wifid takes.
+/// derived here and only those 64 hex digits go to the helper, on stdin. For WPA3-Personal the
+/// passphrase itself goes to the helper on stdin (SAE derives its password element from it, not from
+/// the PSK). None is taken for Open. False when the security mode is not one this helper creates, or
+/// the values are not ones the helper takes.
 pub fn wifi_add(essid: &[u8], pass: &[u8], security: WifiSecurity) -> bool {
     if essid.is_empty()
         || essid.len() > 32
         || essid.iter().any(|&b| b < 0x20 || b == 0x7f)
-        || !matches!(security, WifiSecurity::Open | WifiSecurity::Wpa | WifiSecurity::Wpa2)
+        || !matches!(
+            security,
+            WifiSecurity::Open | WifiSecurity::Wpa | WifiSecurity::Wpa2 | WifiSecurity::Wpa3
+        )
     {
         return false;
     }
@@ -247,10 +257,11 @@ pub fn wifi_add(essid: &[u8], pass: &[u8], security: WifiSecurity) -> bool {
     {
         return false;
     }
-    let key = if security == WifiSecurity::Open {
-        [0u8; 64]
-    } else {
-        crate::wpa::psk_hex(pass, essid)
+    let key = match security {
+        WifiSecurity::Open => Vec::new(),
+        // SAE takes the passphrase itself; a PSK would make the password element disagree with the AP's.
+        WifiSecurity::Wpa3 => pass.to_vec(),
+        _ => crate::wpa::psk_hex(pass, essid).to_vec(),
     };
     STATE.with(|s| s.borrow_mut().add_failed = false);
     let was = STATE.with(|s| {
@@ -277,9 +288,10 @@ pub fn wifi_add(essid: &[u8], pass: &[u8], security: WifiSecurity) -> bool {
     false
 }
 
-/// Create a WPA2-Enterprise network (PEAP/MSCHAPv2), then read the networks back. `user` and `pass`
-/// go to the helper on stdin, never in argv; the helper feeds them to wpa_cli's stdin. The profile is
-/// in the supplicant rather than wifid's saved list, so it is not expected in that list afterwards.
+/// Create a WPA2- or WPA3-Enterprise network (PEAP/MSCHAPv2, with PMF optional so both join), then read
+/// the networks back. `user` and `pass` go to the helper on stdin, never in argv; the helper feeds them
+/// to wpa_cli's stdin. The profile is in the supplicant rather than wifid's saved list, so it is not
+/// expected in that list afterwards. WPA3-Enterprise 192-bit needs EAP-TLS, which is not created.
 /// False when a value is not one the supplicant takes, or another change is under way.
 pub fn wifi_add_eap(essid: &[u8], user: &[u8], pass: &[u8]) -> bool {
     if essid.is_empty()
@@ -298,7 +310,7 @@ pub fn wifi_add_eap(essid: &[u8], user: &[u8], pass: &[u8]) -> bool {
     let was = STATE.with(|s| {
         s.borrow_mut().add.replace(Adding {
             essid: essid.to_vec(),
-            key: [0u8; 64],
+            key: Vec::new(),
             user: user.to_vec(),
             pass: pass.to_vec(),
             security: WifiSecurity::Enterprise,
@@ -469,7 +481,7 @@ pub fn wifi_request(action: WifiAction) -> bool {
         command.arg(&s.script).arg(verb);
         // 0 no stdin, 1 the PSK, 2 the EAP username and password
         let mut feed = 0u8;
-        let mut eap = false;
+        let mut supplicant = false;
         let mut added = None;
         match action {
             WifiAction::Join => {
@@ -487,6 +499,7 @@ pub fn wifi_request(action: WifiAction) -> bool {
                     WifiSecurity::Open => "open",
                     WifiSecurity::Wpa => "wpa",
                     WifiSecurity::Wpa2 => "wpa2",
+                    WifiSecurity::Wpa3 => "wpa3",
                     WifiSecurity::Enterprise => "eap",
                     _ => return false,
                 });
@@ -494,7 +507,11 @@ pub fn wifi_request(action: WifiAction) -> bool {
                     WifiSecurity::Open => {}
                     WifiSecurity::Enterprise => {
                         feed = 2;
-                        eap = true;
+                        supplicant = true;
+                    }
+                    WifiSecurity::Wpa3 => {
+                        feed = 1;
+                        supplicant = true;
                     }
                     _ => feed = 1,
                 }
@@ -584,7 +601,7 @@ pub fn wifi_request(action: WifiAction) -> bool {
             failed: false,
             action,
             added,
-            eap,
+            supplicant,
         });
         true
     })
@@ -886,11 +903,12 @@ pub fn wifi_tick() -> bool {
         // A profile that took is watched like a switch: the sheet says it is connecting, and names
         // it failed when no connection to it comes (a refusal already failed above). A profile that
         // is not among the saved networks afterwards did not stick: that is a failed add, however
-        // happily the helper exited.
+        // happily the helper exited. EAP and WPA3-Personal are the supplicant's profiles, not wifid's,
+        // so they are not expected in that list.
         if job.action == WifiAction::Add {
             if let Some(r) = &report {
                 if let Some(added) = &job.added {
-                    if !job.eap && matches!(&r.saved, Some(Some(list)) if !list.iter().any(|x| x == added)) {
+                    if !job.supplicant && matches!(&r.saved, Some(Some(list)) if !list.iter().any(|x| x == added)) {
                         s.add_failed = true;
                         qlog!("wifi: the added network is not among the saved networks (helper exit %d)", code.unwrap_or(-1));
                     } else if r.status.connected != Some(true)
@@ -1168,6 +1186,10 @@ mod tests {
                 known: false,
             }]))
         );
+        // WPA3-Enterprise 192-bit is named apart so the sheet can keep it gated.
+        let ent192 = parse(b"wireless=1\nenabled=1\nconnected=0\nscan=ok\nnear=576f726b,1,5,enterprise192,0\nnear_end=1\n").unwrap();
+        let Some(ScanReport::List(n)) = ent192.scan else { panic!("scan") };
+        assert_eq!(n[0].security, WifiSecurity::Enterprise192);
         let head = "wireless=1\nenabled=1\nconnected=0\n";
         let many: String = (0..65).map(|i| format!("near={:02x}41,1,5,open,0\n", i + 0x30)).collect();
         for bad in [
@@ -1364,6 +1386,56 @@ esac
         assert_eq!(fs::read_to_string(&args).unwrap().lines().last(), Some("delete Home"));
         assert!(!wifi_add(b"New", b"short", WifiSecurity::Wpa2));
         assert!(!wifi_add(b"New", b"", WifiSecurity::Wpa3));
+        wifi_free();
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn a_wpa3_add_sends_the_passphrase_only_on_stdin_and_does_not_need_a_saved_profile() {
+        use std::fs;
+        let root = std::env::temp_dir().join(format!("wifi-add-wpa3-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&root);
+        fs::create_dir_all(&root).unwrap();
+        let (script, args, input) = (root.join("helper.sh"), root.join("args"), root.join("input"));
+        fs::write(
+            &script,
+            format!(
+                r#"echo "$*" >> '{args}'
+case $1 in
+ add) cat > '{input}'; printf 'wireless=1\nenabled=1\nconnected=1\ncurrent=486f6d652033\nlist=1\n';;
+ *) printf 'wireless=1\nenabled=1\nconnected=0\ncurrent=\nlist=1\n';;
+esac
+"#,
+                args = args.display(),
+                input = input.display()
+            ),
+        )
+        .unwrap();
+        let settle = || {
+            let began = Instant::now();
+            while (wifi_busy() || wifi_changing()) && began.elapsed() < Duration::from_secs(5) {
+                wifi_tick();
+                std::thread::sleep(Duration::from_millis(5));
+            }
+        };
+        wifi_init(script.to_str());
+        let secret = b"correct horse wifi";
+        assert!(wifi_add(b"Home 3", secret, WifiSecurity::Wpa3));
+        settle();
+        assert_eq!(fs::read_to_string(&args).unwrap().trim(), "add Home 3 wpa3");
+        assert_eq!(fs::read(&input).unwrap(), b"correct horse wifi\n");
+        assert!(!fs::read_to_string(&args).unwrap().contains("correct horse"));
+        // SAE takes the passphrase itself, not the PBKDF2 PSK the helper's WPA path would use.
+        assert_ne!(
+            fs::read(&input).unwrap(),
+            [crate::wpa::psk_hex(secret, b"Home 3").as_slice(), b"\n"].concat()
+        );
+        assert!(!wifi_add_failed());
+        assert_eq!(wifi_current().as_deref(), Some(b"Home 3".as_slice()));
+        // A passphrase SAE cannot take never reaches the helper.
+        assert!(!wifi_add(b"Home 3", b"short", WifiSecurity::Wpa3));
+        assert!(!wifi_add(b"Home 3", &[b'x'; 64], WifiSecurity::Wpa3));
+        assert!(!wifi_add(b"Home 3", b"line\nbreak", WifiSecurity::Wpa3));
         wifi_free();
         fs::remove_dir_all(root).unwrap();
     }
