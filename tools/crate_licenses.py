@@ -1,8 +1,9 @@
 #!/usr/bin/env python3 -I
-"""app/licenses/rust-crates.txt (2.1.0-beta.2, DESIGN.md 5, D22): the licenses of the Rust crates the Kindle
-binary is built from, and the notices of the data hayro carries (Foxit's standard fonts, Adobe's CMaps, the ICC
-profiles). Written at package time from `cargo metadata --frozen` for the Kindle target, so it names exactly the
-crates Cargo.lock holds; tests/package_check.sh checks every one of them is in it.
+"""app/licenses/rust-crates.txt (2.1.0-beta.2, DESIGN.md 5, D22): the licenses of the Rust crates Cargo.lock
+names for the Kindle binary (all of them: built in, build time only, or named and not compiled), and the notices
+of the data hayro carries (Foxit's standard fonts, Adobe's CMaps, the ICC profiles). Written at package time from
+`cargo metadata --frozen` for the Kindle target, so it names exactly the crates Cargo.lock holds;
+tests/package_check.sh checks every one of them is in it.
 
 A crate offered under "A OR B" is taken under the first of MIT, Zlib, BSD-3-Clause, Unlicense, 0BSD and
 Apache-2.0 it offers (the shortest text; the copyright lines stay), as the licenses allow a recipient to choose;
@@ -73,10 +74,11 @@ def main():
     )
     pk = sorted((p for p in meta["packages"] if p["name"] != "grimoire"), key=lambda p: (p["name"], p["version"]))
     lines = [
-        "From the Rust crates the Grimoire binary is built from (cargo's Cargo.lock decides them; each was at least",
-        "two weeks old at its release: docs/RELEASING.md). Each is listed with its version, the license it is used",
-        "under and that license's text as the crate ships it. The hayro crates (PDF reading) also carry data with",
-        "licenses of its own, which follow the crates.",
+        "From the Rust crates Cargo.lock names for the Grimoire binary. Every one is listed: those it is built",
+        "from, the few that only run while it is built, and the few the lock names that are not compiled in. Each",
+        "was at least two weeks old at its release (docs/RELEASING.md). Each is listed with its version, the",
+        "license it is used under and that license's text as the crate ships it. The hayro crates (PDF reading)",
+        "also carry data with licenses of its own, which follow the crates.",
         "",
     ]
     for p in pk:

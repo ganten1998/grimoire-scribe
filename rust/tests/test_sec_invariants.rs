@@ -15,6 +15,7 @@ const DESIGN: File = ("docs/DESIGN.md", include_str!("../../docs/DESIGN.md"));
 const BACKLOG: File = ("docs/BACKLOG.md", include_str!("../../docs/BACKLOG.md"));
 const PDFWORK: File = ("rust/src/pdfwork.rs", include_str!("../src/pdfwork.rs"));
 const FONTCHECK: File = ("rust/src/fontcheck.rs", include_str!("../src/fontcheck.rs"));
+const LICENSES_TOOL: File = ("tools/crate_licenses.py", include_str!("../../tools/crate_licenses.py"));
 const CARGO_TOML: File = ("rust/Cargo.toml", include_str!("../Cargo.toml"));
 const CARGO_LOCK: File = ("rust/Cargo.lock", include_str!("../Cargo.lock"));
 const DENY_TOML: File = ("rust/deny.toml", include_str!("../deny.toml"));
@@ -358,5 +359,7 @@ fn the_docs_no_longer_say_what_the_code_does_not() {
     let mut fails = Vec::new();
     // the crates: glifo is the optional one (vello_cpu's), and skrifa is glifo's plain dependency
     gone(&mut fails, BACKLOG, "glifo's optional dependency");
+    // licenses/rust-crates.txt lists every crate the lock names, not only the ones built in
+    gone(&mut fails, LICENSES_TOOL, "the Grimoire binary is built from (cargo's Cargo.lock decides them");
     none_failed(&fails, "the documents and comments");
 }
