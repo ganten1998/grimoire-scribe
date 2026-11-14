@@ -688,10 +688,11 @@ itself only renames a `.checking` mark to `.bad` when that job died.
   the verdict's number, how the earlier checks ended, and the bytes they were of. A mark that does not read
   as that is no mark and is removed (an empty file, which is what the mark was while verdicts were numbered
   1, so a mark left from then never makes one check the second of two); a mark that names other bytes is
-  no earlier check of this file. The mark goes when a verdict is written, whatever it says; beside a `.bad`
-  it stays until the file changes or goes, when it goes with the key's other entries. Every version that
-  reads `fonts/.cache/` knows the mark by its name and time (2.1.0-beta.2 on); older versions never open
-  the folder.
+  no earlier check of this file. A mark dated ahead of the clock (the clock was set back since) is written
+  again, so the wait is a minute from then and never longer. The mark goes when a verdict is written,
+  whatever it says; beside a `.bad` it stays until the file changes or goes, when it goes with the key's
+  other entries. Every version that reads `fonts/.cache/` knows the mark by its name and time
+  (2.1.0-beta.2 on); older versions never open the folder.
 - `<key>.bad`, empty: the check's worker died on this file, or the check itself did. The font is not read
   again until the file changes.
 

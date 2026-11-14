@@ -778,6 +778,29 @@ impl SlowMark {
     }
 }
 
+/// What a mark's time says at `now`, with `retry_s` to wait between two tries.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum SlowWait {
+    /// the wait is over: the file is checked again
+    Due,
+    /// not yet
+    Wait,
+    /// the mark is dated ahead of the clock (the clock was set back since): the job gives it the time of now,
+    /// so the file waits `retry_s` from here and never without end
+    Ahead,
+}
+
+fn slow_wait(now: std::time::SystemTime, mark: std::time::SystemTime, retry_s: i64) -> SlowWait {
+    if retry_s <= 0 {
+        return SlowWait::Due;
+    }
+    match now.duration_since(mark) {
+        Ok(age) if age.as_secs() < retry_s as u64 => SlowWait::Wait,
+        Ok(_) => SlowWait::Due,
+        Err(_) => SlowWait::Ahead,
+    }
+}
+
 /// The mark a first try left at `path`, with its time. What is there and does not read as this version's mark
 /// (or is no plain file) is no mark and goes.
 fn slow_mark_read(path: &str) -> Option<(SlowMark, std::time::SystemTime)> {
@@ -1689,11 +1712,20 @@ pub fn bg_font_check(arg: &str, dpi: f32) -> i32 {
         // clock may have jumped; a measured draw time is not taken on one reading).
         let slow_mark = cache_file(l.key, "slow");
         let first = slow_mark_read(&slow_mark);
-        if let Some((_, t)) = &first {
-            let age = std::time::SystemTime::now().duration_since(*t).ok().map_or(0, |d| d.as_secs() as i64);
-            if age < slow_retry_s() {
-                later += 1;
-                continue;
+        if let Some((m, t)) = &first {
+            match slow_wait(std::time::SystemTime::now(), *t, slow_retry_s()) {
+                SlowWait::Due => {}
+                SlowWait::Wait => {
+                    later += 1;
+                    continue;
+                }
+                SlowWait::Ahead => {
+                    // (written again, the mark has the time of now; if it cannot be, the file is checked now)
+                    if write_cache(&slow_mark, m.to_text().as_bytes()) {
+                        later += 1;
+                        continue;
+                    }
+                }
             }
         }
         let first = first.map(|(m, _)| m);
@@ -2003,6 +2035,25 @@ mod tests {
         assert!(both.saw(&a, true) && both.saw(&a, false));
         // other bytes under the same key start afresh
         assert_eq!(SlowMark::with(Some(both), b, true), SlowMark { time: true, glyphs: false, hash: b });
+    }
+
+    // The wait for the second try, with no clock read: under the wait it waits, at it and past it it is due,
+    // and a mark dated ahead of the clock is neither (the job dates it now, so it waits from there).
+    #[test]
+    fn a_slow_marks_wait_ends() {
+        let t = |s: u64| std::time::UNIX_EPOCH + std::time::Duration::from_secs(1_800_000_000 + s);
+        let now = t(1000);
+        assert_eq!(slow_wait(now, now, SLOW_RETRY_S), SlowWait::Wait);
+        assert_eq!(slow_wait(now, t(1000 - SLOW_RETRY_S as u64 + 1), SLOW_RETRY_S), SlowWait::Wait);
+        assert_eq!(slow_wait(now, t(1000 - SLOW_RETRY_S as u64), SLOW_RETRY_S), SlowWait::Due);
+        assert_eq!(slow_wait(now, t(0), SLOW_RETRY_S), SlowWait::Due);
+        assert_eq!(slow_wait(now, std::time::UNIX_EPOCH, SLOW_RETRY_S), SlowWait::Due);
+        assert_eq!(slow_wait(now, t(1001), SLOW_RETRY_S), SlowWait::Ahead);
+        assert_eq!(slow_wait(now, t(1000 + 86_400), SLOW_RETRY_S), SlowWait::Ahead);
+        // (no wait at all, as under the tests' watchdog: due whatever the mark's time)
+        for mark in [t(0), now, t(5000)] {
+            assert_eq!(slow_wait(now, mark, 0), SlowWait::Due);
+        }
     }
 
     #[test]

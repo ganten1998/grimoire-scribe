@@ -762,10 +762,13 @@ fn with_ext(r: &str, ext: &str) -> Vec<std::path::PathBuf> {
     std::fs::read_dir(format!("{r}/fonts/.cache")).unwrap().flatten().map(|e| e.path()).filter(|p| p.extension().is_some_and(|x| x == ext)).collect()
 }
 
-/// Gives a file the time `secs` before now. The tests of the second try move a mark's time and never wait: a
-/// mark set back only gets older while a test runs.
-fn set_time(file: &std::path::Path, secs: u64) {
-    let t = std::time::SystemTime::now() - std::time::Duration::from_secs(secs);
+/// Gives a file the time `secs` before now (or after it, for a negative number). The tests of the second try
+/// move a mark's time and never wait: a mark set back only gets older while a test runs, and one set a day
+/// ahead stays ahead.
+fn set_time(file: &std::path::Path, secs: i64) {
+    let now = std::time::SystemTime::now();
+    let d = std::time::Duration::from_secs(secs.unsigned_abs());
+    let t = if secs >= 0 { now - d } else { now + d };
     std::fs::File::options().write(true).open(file).unwrap().set_modified(t).unwrap();
 }
 
@@ -788,10 +791,19 @@ fn slow_glyphs_through_the_job() {
     check!(rc == 3);
     check!(text.contains("fonts: file 1 of 1: glyphs take too long to draw (a letter or digit, slowest ") && text.contains(" us): left for a second try"));
     check!(with_ext(&r, "slow").len() == 1 && std::fs::read_dir(format!("{r}/fonts/.cache")).unwrap().count() == 1);
-    check!(state_of(&listed(), "Slow.ttf") == "checking");
-    // within the minute: it waits, and no worker is started for it
+    // (no worker can be had from here to the second check: whatever the clock says, nothing below checks the
+    // font before its mark is set back)
     std::env::set_var("GRIMOIRE_WORK_EXE", "/nonexistent/grimoire");
+    check!(state_of(&listed(), "Slow.ttf") == "checking");
+    // A mark dated ahead of the clock (the clock was set back since): the font waits, no worker is asked for
+    // (the job would say 4), and the mark is given the time of now, so the wait is a minute from here and no
+    // longer.
+    let mark = with_ext(&r, "slow")[0].clone();
+    let text = std::fs::read(&mark).unwrap();
+    set_time(&mark, -86_400);
     check!(job() == 3);
+    check!(std::fs::metadata(&mark).and_then(|m| m.modified()).is_ok_and(|t| t <= std::time::SystemTime::now()));
+    check!(std::fs::read(&mark).is_ok_and(|b| b == text));
     std::env::set_var("GRIMOIRE_WORK_EXE", bin());
     check!(with_ext(&r, "slow").len() == 1 && std::fs::read_dir(format!("{r}/fonts/.cache")).unwrap().count() == 1);
     // the minute over: the second check agrees
