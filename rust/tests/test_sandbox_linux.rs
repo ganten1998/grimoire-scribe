@@ -470,6 +470,78 @@ fn the_hand_typed_numbers_match_libc() {
     assert_eq!(arg_lo(2) as usize, std::mem::offset_of!(libc::seccomp_data, args) + 2 * std::mem::size_of::<u64>());
 }
 
+// A worker the writer gave a jail holds every step, whatever its own environment says (it is empty): started
+// by hand with a jail that does not exist, it reports the step that failed and reads nothing. No root needed:
+// without it an earlier step fails, and is reported the same way.
+#[test]
+fn a_worker_given_a_jail_holds_every_step() {
+    let _g = LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let me = std::process::id().to_string();
+    let jail = format!("/tmp/grimoire-no-such-jail-{me}");
+    assert!(std::fs::metadata(&jail).is_err(), "{jail} exists");
+    let exe = std::ffi::CString::new(env!("CARGO_BIN_EXE_grimoire-headless")).unwrap();
+    // (the worker's own command line: the writer's pid is this process's, so the parent-death step holds)
+    let words: Vec<std::ffi::CString> =
+        ["grimoire", "--work", "pdf", &me, "1073741824", "30", "read", "0", &jail].iter().map(|w| std::ffi::CString::new(*w).unwrap()).collect();
+    let mut argv: Vec<*const libc::c_char> = words.iter().map(|w| w.as_ptr()).collect();
+    argv.push(std::ptr::null());
+    let envp: [*const libc::c_char; 1] = [std::ptr::null()];
+    let mut p = [0i32; 2];
+    let mut out = Vec::new();
+    let mut st = 0;
+    // SAFETY: a pipe, and a fork whose child only arranges descriptors 0 to 5 and execs the worker (every
+    // pointer it uses was made before the fork); the parent reads the pipe to its end and reaps the child.
+    unsafe {
+        assert_eq!(libc::pipe(p.as_mut_ptr()), 0);
+        let pid = libc::fork();
+        assert!(pid >= 0);
+        if pid == 0 {
+            let dn = libc::fcntl(libc::open(c"/dev/null".as_ptr(), libc::O_RDWR), libc::F_DUPFD, 10);
+            let w = libc::fcntl(p[1], libc::F_DUPFD, 10);
+            if dn < 0 || w < 0 {
+                libc::_exit(126);
+            }
+            for fd in [0, 1, 2, 3, 5] {
+                if libc::dup2(dn, fd) != fd {
+                    libc::_exit(126);
+                }
+            }
+            if libc::dup2(w, 4) != 4 {
+                libc::_exit(126);
+            }
+            for fd in 6..1024 {
+                libc::close(fd);
+            }
+            libc::execve(exe.as_ptr(), argv.as_ptr(), envp.as_ptr());
+            libc::_exit(127);
+        }
+        libc::close(p[1]);
+        let mut buf = [0u8; 512];
+        loop {
+            let n = libc::read(p[0], buf.as_mut_ptr() as *mut libc::c_void, buf.len());
+            if n < 0 && std::io::Error::last_os_error().kind() == std::io::ErrorKind::Interrupted {
+                continue;
+            }
+            if n <= 0 {
+                break;
+            }
+            out.extend_from_slice(&buf[..n as usize]);
+        }
+        libc::close(p[0]);
+        libc::waitpid(pid, &mut st, 0);
+    }
+    let text = String::from_utf8_lossy(&out).into_owned();
+    let mut lines = text.lines();
+    let (build, sandbox) = (lines.next().unwrap_or(""), lines.next().unwrap_or(""));
+    assert!(build.starts_with("B "), "{text:?}");
+    assert!(sandbox.starts_with("E sandbox "), "the worker's sandbox line: {text:?}");
+    // SAFETY: geteuid has no preconditions.
+    if unsafe { libc::geteuid() } == 0 {
+        assert_eq!(sandbox, "E sandbox chroot", "{text:?}");
+    }
+    assert!(libc::WIFEXITED(st) && libc::WEXITSTATUS(st) == 3, "status {st:#x}");
+}
+
 // The mirror child's cap at the Scribe's page size (H3): a notebook of colour pages, each on a photo-like
 // picture of its own (an imported PDF's), and two on one picture (a colour template's), mirrored in a forked
 // child under the very RLIMIT_AS a mirror child gets (child_margin(BgKind::MirrorPdf) above its size at the

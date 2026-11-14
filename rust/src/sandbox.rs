@@ -19,8 +19,10 @@
 //! reporter, but for the few that answer ENOSYS. The worker then makes one allowed call of each of those three
 //! kinds before it says `S 1`.
 //!
-//! Off the Kindle (the simulator, CI, the Mac, not root) the steps that need root or Linux are skipped with
-//! one log line (plain process isolation); the Linux CI job runs the real ones as root.
+//! Off the Kindle a failed step refuses nothing unless the writer requires the sandbox (GRIMOIRE_SANDBOX=require:
+//! it then makes the worker's jail, and a worker given a jail holds every step): macOS has none of the steps
+//! (plain process isolation), and a Linux build takes the ones that work without root (no new privileges, the
+//! limits, the allow-list) and has no chroot. The Linux CI job runs them all as root, required.
 
 use crate::prelude::*;
 use std::ffi::CString;
@@ -456,6 +458,13 @@ pub fn required_for(kindle: bool, ask: Option<&str>) -> bool {
     kindle || ask == Some("require")
 }
 
+/// Whether this worker must hold every step: where this build requires the sandbox, when a test injects a
+/// failure, and whenever the writer made it a jail (the writer does so only where it requires the sandbox; a
+/// worker's own environment is empty).
+pub fn worker_holds_every_step(required_here: bool, injected: bool, jail_given: bool) -> bool {
+    required_here || injected || jail_given
+}
+
 /// What a writer takes as the sandbox line of a worker's handshake: `S 1` (the steps are in place) anywhere,
 /// `S 0` (a build without the steps) only where the sandbox is not required.
 pub fn sandbox_line_ok_for(sandboxed: bool, required: bool) -> bool {
@@ -866,7 +875,7 @@ pub fn work_main(args: &[String]) -> i32 {
     }
     out_line(&format!("B {}\n", build_id()));
     let fail = injected_failure(&a);
-    let required = sandbox_required() || fail.is_some();
+    let required = worker_holds_every_step(sandbox_required(), fail.is_some(), a.jail.is_some());
     let mut steps = standard_steps(&a);
     if let Some(name) = fail.as_deref() {
         // an injected failure takes the place of the named step (or comes first in a build with none)
@@ -1637,6 +1646,25 @@ mod tests {
         assert_eq!(sigsys_line(b"E sigsys 123456"), Some(123456));
         for bad in ["E sigsys", "E sigsys ", "E sigsys x", "E sigsys 1 2", "E sigsys 1234567", "S 1", "E sigsys 240 ", "E sigsys -1", "E sigsys +1", " E sigsys 1"] {
             assert_eq!(sigsys_line(bad.as_bytes()), None, "{bad:?}");
+        }
+    }
+
+    // A worker holds every step where its build requires the sandbox, when a failure is injected, and whenever
+    // the writer gave it a jail; only a worker with none of the three goes on past a failed step.
+    #[test]
+    fn the_worker_holds_every_step_where_the_writer_requires_it() {
+        // (required here, a failure injected, a jail given) and whether every step is held
+        for (required_here, injected, jail_given, want) in [
+            (false, false, false, false),
+            (true, false, false, true),
+            (false, true, false, true),
+            (false, false, true, true),
+            (true, true, false, true),
+            (true, false, true, true),
+            (false, true, true, true),
+            (true, true, true, true),
+        ] {
+            assert_eq!(worker_holds_every_step(required_here, injected, jail_given), want, "{required_here} {injected} {jail_given}");
         }
     }
 
