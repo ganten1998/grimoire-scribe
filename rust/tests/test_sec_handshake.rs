@@ -139,8 +139,8 @@ fn font_has_no_worker(want: &str) -> i32 {
     (got != format!("NoWorker({want:?})")) as i32
 }
 
-// R8-4. Where the sandbox is required a worker that says `S 0` is refused before the writer sends it a command
-// or a byte of the file.
+// Where the sandbox is required a worker that says `S 0` is refused before the writer sends it a command or a
+// byte of the file.
 fn a_pdf_worker_that_is_not_sandboxed_is_refused_where_required() {
     let Some(s) = case("pdf-s0", SAYS_S0_THEN_WAITS, Ask::Require, |dir| pdf_start_is(dir, "Worker(\"the worker is not sandboxed\")")) else {
         return;
@@ -180,8 +180,8 @@ fn where_the_sandbox_is_not_required_s0_is_taken() {
     check!(s.handed);
 }
 
-// R1d. The filter's report in place of the sandbox line: no worker, not the file's fault, and the log names
-// the call for each of the three writers.
+// The filter's report in place of the sandbox line: no worker, not the file's fault, and the log names the call
+// for each of the three writers.
 fn a_refused_call_in_place_of_the_sandbox_line_is_logged_with_its_number() {
     const WHY: &str = "the worker made a call the sandbox does not allow";
     if let Some(s) = case("pdf-sigsys", SAYS_SIGSYS_240, Ask::Require, |dir| pdf_start_is(dir, &format!("Worker({WHY:?})"))) {
@@ -202,8 +202,8 @@ fn a_refused_call_in_place_of_the_sandbox_line_is_logged_with_its_number() {
     }
 }
 
-// R1d. The same report while the PDF is opened: a counted try, as any unexpected record there, and the log
-// names the call.
+// The same report while the PDF is opened: a counted try, as any unexpected record there, and the log names the
+// call.
 fn a_refused_call_at_the_probe_is_logged_with_its_number() {
     let Some(s) = case("pdf-probe-sigsys", SAYS_S1_THEN_SIGSYS_192, Ask::AsItIs, |dir| {
         let mut s = match pdf_session(dir) {
@@ -224,8 +224,7 @@ fn a_refused_call_at_the_probe_is_logged_with_its_number() {
     check!(s.log.contains("work: a PDF's worker made call 192, which the sandbox does not allow"));
 }
 
-// R1d. And in the link walk: the notebook gets no links, as for any other end of the walk, and the log names
-// the call.
+// And in the link walk: the notebook gets no links, as for any other end of the walk, and the log names the call.
 fn a_refused_call_in_the_link_walk_is_logged_with_its_number() {
     let Some(s) = case("pdf-links-sigsys", ANSWERS_THE_PROBE_THEN_SIGSYS_125, Ask::AsItIs, |dir| {
         let mut s = match pdf_session(dir) {
