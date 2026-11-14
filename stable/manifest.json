@@ -7,21 +7,21 @@
     "grimoire": {
       "name": "Grimoire",
       "author": "Ganten",
-      "description": "Handwriting notebooks for the jailbroken Kindle Scribe. 2.0.0",
+      "description": "Handwriting notebooks for the jailbroken Kindle Scribe. 2.1.0",
       "artifacts": [
         {
-          "url": "https://github.com/ganten1998/grimoire-scribe/releases/download/v2.0.0/grimoire_2.0.9999_kindlehf.kpkg",
+          "url": "https://github.com/ganten1998/grimoire-scribe/releases/download/v2.1.0/grimoire_2.1.9999_kindlehf.kpkg",
           "version": [
             2,
-            0,
+            1,
             9999
           ],
           "dependencies": [],
           "supported_platforms": [
             "kindlehf"
           ],
-          "grimoire_version": "2.0.0",
-          "sha256": "04df9c8b4959124d430f626795ceb744812826ce685f28ef1f6c626abcfc8670"
+          "grimoire_version": "2.1.0",
+          "sha256": "90c3f2bc4f773ebf789b0acd446b28768618507ad43b3260287c09f4a670adc6"
         }
       ]
     }
