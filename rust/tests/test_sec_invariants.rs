@@ -179,6 +179,14 @@ fn the_docs_follow_the_font_checks_verdicts_and_limits() {
     }
     stands_on(&mut fails, TESTING, "`STATE_FREE_FLOOR`, 4 MB", USERFONTS, "const STATE_FREE_FLOOR: u64 = 4 << 20;");
     stands_on(&mut fails, TESTING, "`STATE_FILES_FLOOR`, 512 files", USERFONTS, "const STATE_FILES_FLOOR: u64 = 512;");
+    stands_on(&mut fails, TESTING, "at least 512 inodes free", USERFONTS, "const STATE_FILES_FLOOR: u64 = 512;");
+    // the other two placeholders the device checks name with their values: the own folder's place, and the
+    // size a draw is timed at (the largest the UI draws)
+    stands_on(&mut fails, TESTING, "`STATE_BASE` in `userfonts.rs`, `/var/local/grimoire`", USERFONTS, "const STATE_BASE: &str = \"/var/local/grimoire\";");
+    for (f, words) in [(TESTING, "`FONT_TIME_PX` in `fontcheck.rs`, 160 px"), (BACKLOG, "(`FONT_TIME_PX`, 160 px)")] {
+        stands_on(&mut fails, f, words, FONTCHECK, "pub const FONT_TIME_PX: f32 = FONT_PX_MAX;");
+        stands_on(&mut fails, f, words, FONTCHECK, "pub const FONT_PX_MAX: f32 = 160.0;");
+    }
     none_failed(&fails, "your own fonts: verdicts and limits");
 }
 

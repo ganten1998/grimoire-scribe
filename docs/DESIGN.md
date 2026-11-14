@@ -2173,10 +2173,11 @@ its bytes.** Four parts keep it (`fontcheck.rs`, `userfonts.rs`, `font.rs`):
   regular and the bold by the axis) and by the calls the UI makes at a glyph's first use (the face's lookup,
   its outline, the rasterizer at 160 px), and times each such draw in the worker's CPU time against a glyph
   limit (`s1::FONT_GLYPH_CPU_MS`, 20 ms, a placeholder until the Scribe's figures are in; a build that is
-  not the Kindle's takes 5 s). A draw over the limit is measured again, up to three times, and the
-  smallest counts. A glyph over it that is no letter or digit is listed with the ones that fail and comes
-  from Terminess; a letter or a digit over it, or more listed glyphs than one in a hundred when the ones
-  that fail are not that many by themselves, makes the font one that takes too long. The glyphs listed can
+  not the Kindle's takes 5 s). A draw over the limit is measured again, up to three times in all, and the
+  smallest counts; one that came out over four times the limit is not measured again. A glyph over the
+  limit that is no letter or digit is listed with the ones that fail and comes from Terminess; a letter or
+  a digit over it, or more listed glyphs than one in a hundred when the ones that fail are not that many by
+  themselves, makes the font one that takes too long. The glyphs listed can
   therefore differ between two checks of one file when a glyph's draw is near the limit. The writer counts
   the listed glyphs across slices. It works in slices of 20 s of its own CPU time
   (`s1::FONT_SLICE_CPU_SECS`), each a fresh worker that gets the bytes again and goes on from the glyph
@@ -2237,7 +2238,8 @@ Tests: `test_fontcheck.rs` (real workers: good TrueType, variable and CFF fonts;
 format's depth, a symbol cmap, a web font, letters that draw nothing, wild glyphs, a line ten ems tall, random
 byte flips; a killed worker leaves `.bad`; a hung one is slow; slices come to one slice's verdict; a replaced
 file is checked again; the listing; a file still being copied waits; 20,000 glyphs; the glyph limit, by a test
-charge and never by a real clock), `test_sec_font_verdict.rs` (where verdicts are kept), `test_fontguard.rs` (the
+charge and never by a real clock; the mark of a first try), `test_sec_font_verdict.rs` (where verdicts are
+kept, and what a folder that cannot keep them comes to), `test_fontguard.rs` (the
 guard start by start, with the app killed at a custom font's first glyph), `font.rs` (stb's bitmaps byte for
 byte; a custom font draws as the same file embedded; the cache's cap), `fontcheck.rs` and `userfonts.rs` (the
 verdict and guard files read strictly; the strike rules), `test_sandbox_linux.rs` (the check in the real

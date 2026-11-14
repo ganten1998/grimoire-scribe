@@ -361,19 +361,35 @@ SHA-256, and the glyph limit; docs/TESTING.md has the device checks, none of whi
 
 - **A design in which the UI never reads a font of the owner's own** (the worker draws the glyph bitmaps the
   UI needs) waits.
-- **The glyph time limit** (`s1::FONT_GLYPH_CPU_MS`, 20 ms) **and the size it is measured at** (160 px) are
-  placeholders until the Scribe's figures are in (TESTING.md); the verdict's number moves with the limit. So
+- **The glyph time limit** (`s1::FONT_GLYPH_CPU_MS`, 20 ms) **and the size it is measured at**
+  (`FONT_TIME_PX`, 160 px) are placeholders until the Scribe's figures are in (TESTING.md); the verdict's number moves with the limit. So
   are the floors of free room in Grimoire's own folder (`STATE_FREE_FLOOR`, `STATE_FILES_FLOOR` in
   userfonts.rs) and the folder's place (`STATE_BASE`).
 - **A limit on the summed draw time of a font's letters and digits**: the check logs the sum, no rule yet.
-- **After an update that checks every font again, the font in use could be checked first.** It waits because
-  the font would then load before its family's Bold file has passed, and bold would be overprinted until the
-  next start: the Bold file has to be found again when its check ends.
+- **Bold stays overprinted for the session when the Bold file passes its check after the font in use was
+  loaded.** A family's Bold file (or the file `font_bold=` names) is looked for once, when the font is
+  loaded, and fonts are checked in name order. So after an update that checks every font again, a family
+  whose Bold file sorts after the font in use (`Name.ttf` with `NameBold.ttf`, `X-Medium` with `X-SemiBold`)
+  draws bold as the regular overprinted until the next start; the usual `X-Bold` beside `X-Regular` is not
+  affected (Bold sorts first). What it takes: the Bold file looked for again when a check ends well and the
+  font in use has no bold face (`userfonts_job_done`, with a test through the app). docs/TESTING.md's
+  device check asks for a look at it.
+- **After an update that checks every font again, the font in use could be checked first.** It waits for the
+  entry above: the font would then load before its family's Bold file has passed in every family, not only
+  in those whose Bold file sorts later.
 - **Hashing a font while it is read** (one pass, not two), if the load time on the Scribe asks for it.
 - **Removing `/var/local/grimoire` when the package is removed** (today: by hand, KINDLE.md).
 - **A font with a slow glyph ahead of its broken ones** ends as "Took too long to read." (after its second
   check) where the broken glyphs alone would have made it "Unreadable font.": the check ends at the first
   count that is too many, and says what it knows then.
+- **Small leftovers in Grimoire's own folder are not removed**: the empty folder of a data root whose
+  removal was cut off between two steps, the folder of a data root that is gone when more than 64 names
+  stand before it, and a second folder for one data folder that was named by two paths. An empty folder
+  with no `root` file cannot be told from one another data root's job is making at that moment, so it is
+  left. What holds in the end is the free-room test before every check.
+- **The parent of Grimoire's own folder is not tested** (`/var/local` on the Kindle): the code holds the
+  folder itself and the two below it to "root's, and no one else can write it", and the parent is the
+  device check's (TESTING.md).
 
 From the whole-release review of 2.1.0-beta.2 (the fix round, lane F3; the review's finding IDs). Fixed there: H8,
 M17, M19, M20, the watchdog timeout that was a verdict for good (a second timeout is the verdict now), the

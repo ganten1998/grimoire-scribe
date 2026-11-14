@@ -417,8 +417,13 @@ impl VerdictDir {
     /// Opens the folder, or says why not. In Grimoire's own folder the walk goes name by name from the base's
     /// parent, which is the system's: the base, this data root's folder (`root_tag`) and its `fonts`, each made
     /// when `make` (the job alone asks; the UI never writes there), opened without following a link, and held to
-    /// be this user's with no write bit for anyone else. In the cache: the folder made when `make`, as the job
-    /// always made it, then opened; no owner and no mode is asked of it.
+    /// be this user's with no write bit for anyone else. The test asks who can write a folder: one that is
+    /// there and that others can read is taken, and only the folders made here are 0700. The parent itself is
+    /// opened by its path and held to nothing: what stands at the base's name must pass the test whoever put
+    /// it there, so a parent that others can write can cost the verdicts (no font is then checked) and cannot
+    /// supply one. What the parent must be on a device is that device's check (docs/TESTING.md). In the cache:
+    /// the folder made when `make`, as the job always made it, then opened; no owner and no mode is asked of
+    /// it.
     fn open(make: bool) -> Result<VerdictDir, &'static str> {
         let Some(base) = state_base() else {
             let cache = cache_dir();

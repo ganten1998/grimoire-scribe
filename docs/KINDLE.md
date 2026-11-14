@@ -526,12 +526,15 @@ a font only once its verdict is there, and only if the bytes it reads hash to th
 What the check found of a font, its verdict, is kept on the Kindle itself and not on the storage (from the
 verdicts numbered 2 on, FORMAT.md; 2.1.0 kept its own in `grimoire/fonts/.cache/`):
 `/var/local/grimoire/<16 hex digits>/fonts/<key>.font`, a few hundred bytes a font (at most 200 files of 8 KiB
-for a data folder), in folders only root can enter. The 16 digits name the data folder (a second one, a
+for a data folder), in folders Grimoire makes for root alone (mode 0700; a folder that is already there is used
+only while it is root's and no one else can write it). The 16 digits name the data folder (a second one, a
 development copy, has its own, and the file `root` beside `fonts` says which folder it is of); what was kept for
 a data folder that is gone is removed at the next check. The previews and marks stay in `grimoire/fonts/.cache/`,
 and a verdict counts only with its preview (or, for a font the check refused, its `.no` file) there. So after the
 update each font is checked once more (Grimoire reads in Terminess until the font in use has passed again), and
-after a factory reset, or with the storage moved to another Kindle, once more there. `/var/local/grimoire` is
+after a factory reset, or with the storage moved to another Kindle, once more there. A font whose check's
+worker died (its `.bad` file in `grimoire/fonts/.cache/`) is not checked again by this: it stays out until
+its file changes or the cache is deleted. `/var/local/grimoire` is
 left when Grimoire is removed; `rm -r /var/local/grimoire` over SSH, with Grimoire closed, removes it, at the
 price of one more check of every font. A `.font` file in `grimoire/fonts/.cache/` is 2.1.0's: it is not read,
 and 2.1.0 finds it again if you go back.

@@ -644,7 +644,8 @@ itself only renames a `.checking` mark to `.bad` when that job died.
   in `fonts/.cache/`).
   On the Kindle it is outside the storage, in `/var/local/grimoire/<16 hex digits>/fonts/`: the 16 digits
   are the FNV-1a 64 hash of the data root's path (each data root has its folder there, and the file `root`
-  beside `fonts/` holds the root's path), the folders are root's alone (mode 0700), and nothing under
+  beside `fonts/` holds the root's path). Grimoire makes these folders for root alone (mode 0700); one
+  that is already there is used only while it is root's and no one else can write it. Nothing under
   `root/fonts/` decides whether a font is read. A build that names no folder of its own (the simulator
   without `GRIMOIRE_STATE`, docs/SIM.md) keeps it in `fonts/.cache/`, as before. Either way a verdict counts
   only with its companion in `fonts/.cache/`: a pass with `<key>.pgm`, a refusal with `<key>.no`.
