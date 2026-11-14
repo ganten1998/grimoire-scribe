@@ -1525,6 +1525,25 @@ fn live_frame_stale(a: Option<&mut App>, key: &[u8], out: &mut String, cap: usiz
     true
 }
 
+/// "libindex.*": how far the library index (libindex.rs: every notebook's pages, names and links, for
+/// the Graph of all notebooks) has got, whatever screen is up. "libindex.complete" 1 once its check of
+/// every notebook is through (opening a notebook starts one), 0 before the first and while one runs;
+/// "libindex.reads" how many times it has read a notebook from its files since Grimoire started (the
+/// backlinks cache's check comes first, so 0 until that is through); "libindex.books" the notebooks it
+/// holds read. A waitfor on them waits for the index itself, where a fixed wait guessed how many idle
+/// ticks the machine would give it. Read only: no file is read, nothing is counted again.
+fn libindex_probe(key: &[u8], out: &mut String, cap: usize) -> bool {
+    let Some(key) = key.strip_prefix(b"libindex.") else { return false };
+    let v = match key {
+        b"complete" => libindex_complete() as usize,
+        b"reads" => libindex_reads() as usize,
+        b"books" => libindex_with(|e| e.iter().filter(|e| e.readable()).count()),
+        _ => return false,
+    };
+    csnprintf!(out, cap, "%u", v as u32);
+    true
+}
+
 /// app_probe, which the C reaches through g_probe_app: the App the main loop handed the poll, none
 /// before there is one (the C's NULL g_probe_app: -1). Every key app_probe answers is ASCII, so a
 /// key in bytes that are not UTF-8 is unknown there too.
@@ -1574,6 +1593,7 @@ fn expect_check_as(gone: bool, mut a: Option<&mut App>) {
         && !live_frame_stale(a.as_deref_mut(), &key, &mut got, GOT_CAP)
         && !live_stale(a.as_deref_mut(), &key, &mut got, GOT_CAP)
         && !power_probe(&key, &mut got, GOT_CAP)
+        && !libindex_probe(&key, &mut got, GOT_CAP)
         && probe_app(a, &key, &mut got, GOT_CAP) != 0
     {
         err(&bformat("expect failed (line %d): unknown key \"%s\"\n", &[B::D(line), B::S(&key)]));
@@ -3693,6 +3713,65 @@ mod tests {
         let doc = std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/../docs/SIM.md")).unwrap();
         let para = doc.split("\n\n").find(|p| p.starts_with("`GRIMOIRE_SIM_CLOCK=script`")).unwrap();
         assert!(para.contains("`side click`"), "the scripted clock's paragraph does not name side click: {para}");
+    }
+
+    #[test]
+    fn the_library_index_probes_follow_its_check() {
+        fresh();
+        let base = std::env::var("GRIMOIRE_TEST_TMP").map(std::path::PathBuf::from).unwrap_or_else(|_| std::env::temp_dir());
+        let root = base.join(format!("sim-libindex-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        assert_eq!(store_init(root.to_str().unwrap()), 0);
+        let probe = |key: &str| {
+            let mut got = String::new();
+            libindex_probe(key.as_bytes(), &mut got, GOT_CAP).then_some(got)
+        };
+        for name in ["A", "B", "C"] {
+            let mut nb = NotebookInfo::default();
+            assert_eq!(store_create(name, "", PAPER_BLANK, &mut nb), 0);
+        }
+        // Before its first check: nothing read, not complete.
+        assert_eq!((probe("libindex.complete"), probe("libindex.reads"), probe("libindex.books")),
+            (Some("0".into()), Some("0".into()), Some("0".into())));
+        // One notebook read a tick: the count follows, and complete comes with the check's end alone.
+        let mut seen = vec![0u32];
+        let mut ticks = 0;
+        while libindex_step() {
+            ticks += 1;
+            assert!(ticks < 1000);
+            let reads: u32 = probe("libindex.reads").unwrap().parse().unwrap();
+            assert!(reads == *seen.last().unwrap() || reads == seen.last().unwrap() + 1, "{reads} after {seen:?}");
+            if reads != *seen.last().unwrap() {
+                seen.push(reads);
+            }
+            if reads < 3 {
+                assert_eq!(probe("libindex.complete"), Some("0".into()));
+            }
+        }
+        assert_eq!(seen, [0, 1, 2, 3]);
+        assert_eq!((probe("libindex.complete"), probe("libindex.reads"), probe("libindex.books")),
+            (Some("1".into()), Some("3".into()), Some("3".into())));
+        // A notebook opened starts a check again (editor_open_notebook: libindex_revalidate): not complete
+        // until it is through, and nothing is read again where no file changed.
+        libindex_revalidate();
+        assert_eq!(probe("libindex.complete"), Some("0".into()));
+        while libindex_step() {}
+        assert_eq!((probe("libindex.complete"), probe("libindex.reads")), (Some("1".into()), Some("3".into())));
+        // An expect and a waitfor read them (the runner answers these keys, with no App); an unknown one fails.
+        for (line, failed) in [("expect libindex.books is 3", 0), ("waitfor libindex.complete is 1", 0), ("expect libindex.nope is 1", 1)] {
+            let before = with(|st| st.expect_failed);
+            with(|st| st.expect_read(line.as_bytes()));
+            expect_check(None);
+            assert!(!with(|st| st.expect.pending), "{line}");
+            assert_eq!(with(|st| st.expect_failed) - before, failed, "{line}");
+        }
+        // and docs/SIM.md lists the three
+        let doc = std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/../docs/SIM.md")).unwrap();
+        let row = doc.lines().find(|l| l.starts_with("| `libindex.complete`")).expect("docs/SIM.md has no libindex row");
+        for key in ["`libindex.reads`", "`libindex.books`"] {
+            assert!(row.contains(key), "the libindex row does not name {key}: {row}");
+        }
+        let _ = std::fs::remove_dir_all(&root);
     }
 
     #[test]
