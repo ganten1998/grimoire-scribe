@@ -2341,54 +2341,75 @@ z_pages_footer_delete and i_display. **Not run on a Scribe.** The owner's check:
 ## 2.1.0-beta.2, Wi-Fi networks (lane W)
 
 Settings > Wi-Fi (issue #40). Automated: `tests/test_wifi_sh.py` (make wifi-check: the helper's networks,
-current and join verbs against a fake lipc whose profileData holds passwords: none comes out, in text or in
-hex; a format it does not know and a failed read list no name; join refuses anything but a saved network
-before any change and passes a hostile name as data), `rust/src/wifi.rs`'s tests (reports fail closed; a
-switch's states, its hex argument, exit during a switch) and `tests/scenarios/z_wifi_networks.qs` (the sheet
-from the scenario helper, also run in every language and style by make l10n-check). **Not run on a Scribe.**
+current, join, scan, add, delete and disconnect verbs against a fake lipc whose profileData holds passwords:
+none comes out, in text or in hex; a format it does not know and a failed read list no name; join refuses
+anything but a saved network before any change; add sends only the derived PSK on stdin and its profile hash holds
+only that PSK; an EAP add sends the username and password only on stdin and quotes them into wpa_cli's stdin,
+and its profile need not be in wifid's list; disconnect keeps the radio on, sets the manager's manual mode first, tries `cmDisconnect` with and without the current profile and then `wpa_cli`, pins the drop and disables the supplicant's network once the link is down, re-enables it and restores auto when it cannot, and its exit names the failed step; hostile names stay data), `rust/src/wifi.rs`'s
+tests (reports fail closed; a switch's states, its hex argument, exit during a switch; add's stdin and delete's
+name; a quiet scan keeps order and only adds/removes names; a change cancels a running scan; an Add failure
+is named) and `tests/scenarios/z_wifi_networks.qs` (the sheet from the scenario helper: the automatic scan,
+Rescan, add Open, the row's trash, switch, disconnect, reconnect, refuse, and Other... with a hidden WPA/WPA2
+password; also run in every language and style by make l10n-check). PSK add/delete were checked on the owner's
+Scribe; EAP is not yet checked on a device.
 
-**Probes first** (read only; the maintainer runs them over SSH with the owner's OK; copy this branch's
-`kindle/app/wifi.sh` to `/tmp/wifi.sh`). None prints a password: the masked ones replace every quoted value
-and every other letter or digit.
-
-1. `ls -l /usr/bin/lipc-hash-prop /usr/bin/lipc-probe /usr/bin/lipc-set-prop; busybox awk 'BEGIN{print 1}'`:
-   the tools the helper calls exist (else the sheet says "Saved networks could not be read.").
-2. `lipc-hash-prop 2>&1 | head -n 20; lipc-set-prop 2>&1 | head -n 20`: how a hasharray goes in (the helper
-   pipes `{}` on stdin) and that `-s` sets a string.
-3. `lipc-probe -v com.lab126.wifid 2>&1 | grep -i -e profileData -e currentEssid -e cmState` and
-   `lipc-probe -v com.lab126.cmd 2>&1 | grep -i -e ensureConnection -e wirelessEnable`: the properties exist
-   on this firmware (KOReader's Kindle backend uses all four).
-4. `printf '{}\n' | lipc-hash-prop com.lab126.wifid currentEssid 2>&1 | sed -e 's/"[^"]*"/"v"/g' -e 's/[^][{}()=:,;" ]/x/g' | tr -s x | head -n 20`,
-   then the same with `profileData`: the layout of the answer with no content (every quoted value, key and other
-   character becomes `x`: `[x] = { x = "x", x = "x", x = x }`). The reader expects quoted values (`x = "x"` or
-   `"x": "x"`) and bare numbers; an unquoted value makes it give no name (fails closed).
-5. `sh /tmp/wifi.sh networks`, connected: `current=` and `saved=` lines in hex, then `list=1`. On the Mac,
-   `sed -n 's/^\(current\|saved\)=//p' | xxd -r -p` (one per line) should give your network and every network
-   the Kindle's own Wi-Fi list shows, names with accents or Japanese too. `list=0` means probe 4's layout is not
-   the one the reader knows: send probe 4's output. A name missing from the list (one with a backslash, a quote
-   the tool escapes, or an escaped accent) says how the tool writes such names.
-6. The same with Wi-Fi off (airplane mode): `list=1` or `list=0` says whether wifid lists the saved networks
-   while the radio is off (`list=0`: the sheet asks to turn Wi-Fi on first, then reads them).
+**Probes first** (read only; the maintainer runs them over SSH with the owner's OK). Run
+`sh tools/kindle-wifi-probe.sh > wifi-probe.txt`; it never scans, changes the radio, or creates, changes or
+deletes a profile, and masks every value. Paste the result into the table in `docs/WIFI-PHASE0.md`. It reports
+the firmware and radio, `profileCount`, `scanState`, whether `wpa_passphrase` exists (Grimoire derives its
+own PSK, so add does not need it; the helper's direct passphrase path does), which LIPC properties
+are present, and the masked shape of `currentEssid`, `profileData` and `scanList`. The helper's reader needs
+quoted values and bare numbers (an unquoted value makes it list no name); a `list=0` or a scan that does not
+parse means the reader needs that shape. Also check the same `networks` and `scan` verbs with the radio off:
+`list=1` or `list=0`, and `scan=off`, say whether wifid answers while the radio is off (the sheet asks to
+turn Wi-Fi on first when it does not).
 
 **The owner's checks** (after the probes; English, then Spanish and Japanese for the words):
 
-1. Settings' bottom row reads KOReader, Pair, Wi-Fi, Gestures, Updates, Done, every word whole, upright and
-   sideways, in Gothic and Classic. Gestures and Updates open their sheets as before.
-2. Connected to Wi-Fi, open Settings > Wi-Fi: "Connected to <your network>", and the networks the Kindle has
-   saved, yours first with a check. More than seven: More networks (1 of 2) shows the rest.
-3. Tap another saved network that is in range: "Connecting to <it>..." and then "Connected to <it>" with the
-   check on it, within about 10 seconds. Share's address is the new network's; Live view pairs on it.
-4. Tap a saved network that is out of range: "Could not connect to <it>." within 45 seconds. Note what the
+1. Settings' Wi-Fi row opens the sheet on Nearby; its status, top buttons and rows fit upright and sideways,
+   in Gothic and Classic, in English, Spanish and Japanese, with every word whole. Esc goes back to Settings.
+2. Connected to Wi-Fi, open Settings > Wi-Fi: it scans without a tap, names the network connected to, and
+   lists what is near. Each row's three-bar icon fills for its strength, and secured networks have the small
+   drawn lock (not a missing-glyph box); the connected row is filled black with a white rule inside it and
+   white bars. Rescan replaces the list.
+3. Leave Nearby idle for 20 s or more: the list stays up and does not reload or jump. A network that appears
+   is added at the end, one that leaves disappears, and the changed bars update in place. A failed quiet scan
+   leaves the list as it was; Rescan still clears and scans afresh. While it is refreshing, tap a network:
+   the action must happen at once, not after the scan, and the next refresh waits 20 s after that scan.
+4. Tap an unsaved Open network and an unsaved WPA2-Personal one: Open is added at once, WPA2 opens the masked
+   keyboard over the still-visible Wi-Fi page. A password with a quote, a backslash and a space works; an
+   8-character and a 63-character password work. The network appears in Saved, and the Kindle connects to it.
+   Wrong password: the profile is still added (the Kindle's service refuses the connection), and the sheet
+   says "Could not connect to <it>." within 45 seconds. If the hidden add itself fails, the status says "Could not add the network.", not the generic
+   "Could not read or change Wi-Fi." The `wifi:` log line then names the helper's exit: 18 the passphrase never
+   became a PSK, 19 wifid refused the profile, 20 no read came back.
+4b. On a school WPA2-Enterprise network: choose it (or Other... > WPA2-Enterprise), type the username, then the
+   password on the masked keyboard. The network connects and is watched like a switch; the log names no
+   username or password. Without wpa_cli the helper exits 26; a supplicant refusal, 27. The profile may not
+   appear in Saved: it is the supplicant's, not wifid's, and that is expected.
+5. Saved networks: the profiles, the connected one first, with the trash button at each row's right. Tap one
+   trash: that profile leaves the Kindle's list at once, with no question; the Kindle's own Wi-Fi menu agrees.
+   If the delete fails, the status says "Could not forget the network." (not the generic read error) and the
+   `wifi:` log line names the helper's exit: 21 the radio, 23 no read came back, 24 no netid could be
+   read, 25 wifid still had the profile after the netid write.
+6. Tap another saved network that is in range: "Connecting to <it>..." and then "Connected to <it>" with its
+   row filled, within about 10 seconds. Share's address is the new network's; Live view pairs on it.
+7. Tap the filled connected row again: it disconnects with the radio still on and its row no longer filled.
+   Tap it again (or another saved network) to reconnect; SSH, Share and Live view follow the connection.
+8. Tap a saved network that is out of range: "Could not connect to <it>." within 45 seconds. Note what the
    Kindle connects to afterwards on its own (the old network, none?): Grimoire switches nothing back.
-5. Wi-Fi off, open the sheet: "Wi-Fi is off" and the saved networks, or "Turn on Wi-Fi to see the saved
-   networks."; Turn on Wi-Fi connects, and the list appears. Tap a network with Wi-Fi off: the radio comes on
-   and the Kindle connects to that network.
-6. Turn off Wi-Fi from the sheet: "Wi-Fi is off", SSH and Share drop as with the Share card's button.
-7. Leave Grimoire (Exit) right after tapping a network: the Kindle still connects to it; KOReader's network
+9. Wi-Fi off, open the sheet: "Wi-Fi is off", Nearby asks to turn it on, and Saved says it cannot be read.
+   Turn on Wi-Fi connects and starts the scan by itself; the lists appear. Opening the sheet never turns the
+   radio on.
+10. Other...: type a hidden network's name; the Wi-Fi page stays under the keyboard. Choose Open, WPA/WPA2
+   and its masked password, or WPA2-Enterprise and its username then masked password. A hidden WPA2 network
+   joins and appears in Saved; a wrong password is reported as any other failed connection.
+11. Turn off Wi-Fi from the sheet: "Wi-Fi is off", SSH and Share drop as with the Share card's button.
+12. Leave Grimoire (Exit) right after tapping a network: the Kindle still connects to it; KOReader's network
    menu agrees.
-8. From a notebook: the toolbar's cog > Wi-Fi works the same; Done comes back to the notebook.
-9. Afterwards, grimoire.log names no network and holds no password: only lines such as `wifi: switched to a
-   saved network`. The Kindle's own Wi-Fi list is unchanged (nothing added, changed or forgotten).
+13. From a notebook: the toolbar's cog > Wi-Fi works the same; Back comes back to the notebook.
+14. Afterwards, grimoire.log names no network and holds no password: only lines such as `wifi: switched to a
+   saved network`. The Kindle's own Wi-Fi list differs only by the networks added and the one deleted above.
 
 ## 2.1.0-beta.2, last round, lane K: the keyboard's caret, and copy and paste
 

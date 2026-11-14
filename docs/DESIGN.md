@@ -405,6 +405,10 @@ draws them. White ink and the precise eraser make them.
   they reach the keyboard as Esc does, through `app_type_text`, whose touch-down on the text box now carries
   the input too, so it is taken as a contact on no key and moves no caret. Letters typed on a paired keyboard
   still type nothing in a field.
+- On the Library, the sheet a keyboard was opened from stays drawn under it, the Wi-Fi page included:
+  `LibraryState.kb_parent` names that sheet, and `draw_modal` draws it before `keyboard_draw` puts the keys
+  over its lower half. The keys take every contact; the page below is not a tap target while they are up.
+  (The editor's pages, Find and the Pages view already keep their page under their keyboards.)
 - Every keyboard host (the Library's sheet, the Pages view's Page name and Go to page) hands its pen
   and finger events to `app_keyboard_pointer` and its tick to `app_keyboard_tick` (app.c), so a key
   costs the same over any screen. A sample that changes nothing (the pen resting on a key sends one
@@ -1791,31 +1795,83 @@ new paths and collisions before writing, retaining original metadata for rollbac
 ## Settings > Wi-Fi (2.1.0-beta.2)
 
 Issue #40 (from #36: someone who relies on Live view among several networks): choose among the Kindle's
-saved Wi-Fi networks from Settings, in the current Settings design. The smallest safe feature: the network
-connected to, the saved networks, a switch to one, its outcome, and a clean fallback; no network is added
-(the Kindle's settings and KOReader do that) and no profile is changed or deleted.
+saved Wi-Fi networks from Settings, in the current Settings design. Nearby networks come first: opening the
+sheet finds them (when the radio is on), with Rescan, Other... and Saved networks above the list. Each scan
+row shows a three-bar signal icon, filled for the strength, and a small lock when the network is not open. A
+saved row has a trash button at its right that deletes that profile at once. The connected row is filled black
+with a white rule inside its edge; tapping it again disconnects, keeping the radio on. While Nearby is idle, a
+quiet scan every 20 s updates the list in place: it never clears it or moves a name that is still there. Other...
+types a hidden network's name, then asks whether it is Open, WPA/WPA2 with a masked password, or WPA2-Enterprise
+with a username and masked password. Enterprise add uses PEAP/MSCHAPv2 through `wpa_cli` (credentials on stdin)
+because wifid's `createProfile` enterprise arguments are not probed; the profile lives in the supplicant, not
+Saved networks, and `save_config` is best effort. WEP, WPA3, OWE, WPA3-Enterprise, EAP-TTLS and EAP-TLS stay out.
+No CA-certificate choice ships yet, so PEAP does not validate the school's certificate.
 
-- **Where.** A Wi-Fi button in Settings' bottom row, beside Pair (both radios), opens a sheet drawn as the
-  Pair sheet is (draw_menu rows): the radio row (Turn on Wi-Fi, Turn off Wi-Fi, or Retry when the state is
-  not known), the status line, the saved networks (the one connected to first, with a check; seven a page
-  and a More networks row past seven, so it fits sideways), Done. Esc goes back to Settings. The notebook's
-  Settings has it too.
+- **Where.** A Wi-Fi row in Settings opens a full-page sheet drawn as its other submenus are. The status line
+  and the radio control (Turn on Wi-Fi, Turn off Wi-Fi, or Retry) sit over the top buttons: Rescan, Other...
+  and Saved networks. Nearby is the page it opens on; it scans once the radio is on, Rescan scans again, and an
+  idle Nearby asks for a quiet scan every 20 s (WIFI_REFRESH_MS). Saved networks shows the Kindle's saved
+  profiles, the one connected to first, eight a page with More, and
+  each row's trash button. Tapping Saved networks again returns to Nearby. Esc goes back to Settings. The
+  notebook's Settings has it too.
+- **Rows.** A network's name is a name: drawn smaller or shortened as names are, never counted as cut short.
+  Under it are what the sheet knows (Connected or Saved) and its security. The three signal bars fill from the
+  scan's `signal` against `signal_max`; a saved network no scan has measured shows the bars unlit. The lock is
+  over the icon's lower right for every security but Open, drawn from its shackle and body because the icon
+  font's lock is not in every face. The connected network's row is filled black with a white rule inside its
+  edge (its bars stay white); a tap on it calls the helper's disconnect.
 - **Status.** "Connecting to <name>..." while a switch is under way, "Could not connect to <name>." after
-  one failed, else the Share card's lines, with "Connected to <name>" when the name is known. A network's
-  name is a name: drawn smaller or shortened as names are, never counted as cut short.
+  one failed, else the Share card's lines, with "Connected to <name>" when the name is known. A failed Add says
+  "Could not add the network." (wifi_add_failed) rather than the generic read error, and a failed trash tap
+  "Could not forget the network." (wifi_delete_failed); a later successful read clears either.
+- **Add and delete.** A scan result that is not saved opens the masked keyboard for WPA/WPA2, or is added  at once when Open; Other... takes a hidden name, then Open, or WPA/WPA2 and its password. `wifi_add` derives
+  the PSK (PBKDF2-HMAC-SHA1 over the passphrase and the name) and sends its 64 hex digits on the helper's
+  stdin, never in argv; the helper also takes a passphrase there for a direct call.
+  A saved row's trash calls `wifi_delete` directly, with no Yes/No page; the helper tries wifid's
+  `deleteProfile` property by name (older firmware), then by the profile's integer `netid` (from
+  `profileData`, or `netidValue` when it is absent; the Scribe's wifid), then the supplicant's own
+  network, and counts the profile gone only when a fresh read no longer
+  lists it. Add and delete both read the networks back. Duplicate names are handled by wifid's own profile rules and the next read (no guessed merge in the
+  app). A profile that is not among the saved networks afterwards did not stick: that is a failed add. The
+  add's exits name the step in the log: 18 no valid PSK, 19 wifid refused the profile,
+  20 no read came back after the change. The
+  keyboard draws over the Wi-Fi page, which stays on the panel under it.
 - **A switch** is wifi_join: the helper's `join <hex>` (ensureConnection), then a read of the network
   connected to every 2 s. It has worked once a read has the Kindle connected to that network (the helper's
   own report right after the request still names the old one: no false success), and failed when the
   helper refused it or after 45 s (JOIN_WAIT). Nothing switches back: the Kindle's service decides what it
-  joins next. Turning the radio on or off forgets a switch; one switch runs at a time.
+  joins next. Turning the radio on or off forgets a switch; one switch runs at a time. A profile that took
+  joins the same watch (the helper already asked wifid to connect): the sheet says it is connecting until a
+  read names it, or names it failed.
+- **Disconnect** is the helper's `disconnect`, called from a tap on the connected row. Wi-Fi stays on. It
+  first puts wifid's connection manager in its manual `cmConnMode`, so it does not join the profile again
+  the moment the link drops, then writes `cmDisconnect` with the current `cmProfile` (some firmware ignores
+  it without that name), then without a name, then asks wpa_supplicant with `wpa_cli … disconnect` (with a
+  two-second bound, and the known control-socket paths tried). Once the link is down it pins the drop with
+  `wpa_cli disconnect` and disables that network at the supplicant, since the supplicant can reassociate on
+  its own within a moment, and so can a bare reconnect from wifid. It waits for `cmState` to leave
+  CONNECTED, looks once more a second later, and requires the report to say connected=0. A later join, add
+  or turn-on asks wifid to connect, which manages its own networks. A failure re-enables the network and
+  asks for `cmConnMode auto` again, keeping the last known status and saying "Could not disconnect." rather
+  than the generic read error; the helper's exit names the failed step in the log (10 radio, 11 connection
+  state, 12 no route took, 13 it came back past the disconnect pin, 17 it came back past the disable too,
+  15 it came back with no usable `wpa_cli` at all, 14 no final read). Joining, adding and turning the radio
+  on restore `auto` too. It is a change like a switch: one at a time, and success clears the current name.
 - **Reads** run only while the sheet is up (as the Share card's): everything as it opens, the saved
   networks once more when the radio comes on if they could not be read while it was off, everything once
-  more after a refused switch, and the network connected to while a switch is under way, or for 45 s after
-  a tap while the radio is on with no connection.
+  more after a refused switch, the network connected to while a switch is under way, or for 45 s after
+  a tap while the radio is on with no connection. A quiet scan of Nearby runs every 20 s while it is idle
+  with a list; `wifi_scan_quiet` keeps the old order and merges each name's new signal, security and known
+  flag, drops names that left, and appends new ones. Its failure leaves the old list and says nothing. A tap
+  on Rescan while it runs accepts it as the rescan instead of clearing the list. A tap on any change (join,
+  add, delete, disconnect, radio) cancels a running scan and starts at once; the 20 s wait starts when a
+  scan's answer returns, so a slow scan is never followed straight away by another one.
 - **Passwords** never leave the helper (docs/KINDLE.md, Wi-Fi): the profileData reader keeps essid values
-  only and gives no name at all for any format it does not know. Names cross in hex and are checked again
-  in Rust (1 to 32 bytes, no control character; anything else fails the whole report closed). No name is
-  logged.
+  only and gives no name at all for any format it does not know. A password goes from the masked keyboard to
+  the helper's stdin, is turned into a PSK, and is wiped from the keyboard on Done/Cancel; it is never in
+  argv, the environment, output, logs or scenario recordings, and the keyboard's probe returns empty for a
+  secret. Names cross in hex and are checked again in Rust (1 to 32 bytes, no control character; anything
+  else fails the whole report closed). No name is logged.
 
 ## Settings > Gestures and page finger shapes (Index phase 3)
 

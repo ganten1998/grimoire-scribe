@@ -73,6 +73,10 @@ enum KbPurpose {
     NewFolder = 2,     // KBP_NEW_FOLDER
     MoveNewFolder = 3, // KBP_MOVE_NEW_FOLDER
     RenameFolder = 4,  // KBP_RENAME_FOLDER
+    WifiPassword = 5,  // the Wi-Fi sheet's masked password entry
+    WifiName = 6,      // the Wi-Fi sheet's hidden network name entry
+    WifiEapUser = 7,   // the Wi-Fi sheet's enterprise username entry
+    WifiEapPassword = 8, // the Wi-Fi sheet's masked enterprise password entry
 }
 
 const H_NONE: i32 = 0;
@@ -203,6 +207,18 @@ const H_WIFI_MORE: i32 = 183;
 // 2.1: Settings' Sleep & Clock buttons (the Display sheet's sleep and clock rows, on pages of their own).
 const H_SET_SLEEP: i32 = 184;
 const H_SET_CLOCK: i32 = 185;
+// Settings > Wi-Fi's top controls and lists: Nearby/Saved (arg: 0 or 1), Rescan, Other... (a hidden
+// network), a saved row's trash (arg: a row), and a network a scan found (arg: an index of
+// WifiSheet.near). The saved rows keep H_WIFI_NET.
+const H_WIFI_TAB: i32 = 186;
+const H_WIFI_SCAN: i32 = 187;
+const H_WIFI_NEAR: i32 = 188;
+const H_WIFI_DELETE: i32 = 189;
+const H_WIFI_OTHER: i32 = 190;
+const H_WIFI_OTHER_OPEN: i32 = 191;
+const H_WIFI_OTHER_WPA: i32 = 192;
+const H_WIFI_OTHER_CANCEL: i32 = 193;
+const H_WIFI_OTHER_EAP: i32 = 194;
 
 // 2.1: Settings' page (a full screen, the categories down its left): the category a tap picks (arg: its
 // index), whose settings the page shows.
@@ -395,6 +411,9 @@ pub struct LibraryState {
     modal: Modal,
     kbp: KbPurpose,
     kb: Keyboard,
+    /// the sheet the keyboard was opened over: it stays drawn under its keys (Settings' and the
+    /// Wi-Fi sheet's keyboards never close their page)
+    kb_parent: Modal,
     dm: DispMenu,
     /// item index for MORE / MOVE / DELETE
     target: i32,
@@ -3011,8 +3030,16 @@ fn draw_menu(a: &mut App, title: &str, rows: &[MenuRow]) -> Vec<Rect> {
 const WIFI_RETRY: i32 = 0;
 const WIFI_ON: i32 = 1;
 const WIFI_OFF: i32 = 2;
-/// Saved networks a page: with the radio, the status and More, 10 rows, which fit the full-page submenu.
-const WIFI_PAGE: usize = 7;
+/// Settings > Wi-Fi's three views: the scan's networks first, the saved ones, and Other...'s hidden
+/// network.
+const WIFI_VIEW_NEARBY: usize = 0;
+const WIFI_VIEW_SAVED: usize = 1;
+const WIFI_VIEW_OTHER: usize = 2;
+/// Networks a page; a ninth row is More networks when there are more.
+const WIFI_PAGE: usize = 8;
+const WIFI_NEAR_PAGE: usize = 8;
+/// While the nearby page is idle, it asks for a quiet scan this often.
+const WIFI_REFRESH_MS: u32 = 20_000;
 
 /// What the Wi-Fi submenu was drawn from: drawn again when any of it changes.
 #[derive(Clone, Default, PartialEq)]
@@ -3022,13 +3049,19 @@ struct WifiShown {
     failed: bool,
     current: Option<Vec<u8>>,
     saved: Option<Vec<Vec<u8>>>,
+    nearby: Option<Vec<WifiNetwork>>,
+    scanning: bool,
+    scan_failed: bool,
+    add_failed: bool,
+    delete_failed: bool,
+    disconnect_failed: bool,
     join: Option<(Vec<u8>, WifiJoin)>,
 }
 
-/// Settings > Wi-Fi: the radio, the network connected to and the Kindle's saved networks (wifi.rs, the
-/// helper kindle/app/wifi.sh), as a full-page Settings submenu. It reads only while it is up: everything as
-/// it opens, then the network connected to every 2 s while a switch is under way, or while the radio is on
-/// with no connection, for 45 s after the last tap (the Share card's watch).
+/// Settings > Wi-Fi: nearby networks first, with Rescan, Other... and Saved networks above them. It
+/// reads only while it is open, and is all a full-page Settings submenu: the radio and what is
+/// connected, the scan's networks, the saved networks with a trash button each, and a hidden
+/// network's name and security. Opening it starts a scan once the radio is on.
 #[derive(Default)]
 struct WifiSheet {
     check_at: u32,
@@ -3039,9 +3072,24 @@ struct WifiSheet {
     asked: bool,
     relisted: bool,
     reread: bool,
-    /// the page of saved networks shown, and the names drawn, by row (H_WIFI_NET's arg)
+    /// WIFI_VIEW_*: Nearby, Saved, or Other...
+    view: usize,
+    /// the page shown, and the saved names or nearby networks drawn, by row (H_WIFI_NET/H_WIFI_NEAR's arg)
     page: usize,
     rows: Vec<Vec<u8>>,
+    near: Vec<WifiNetwork>,
+    /// the network whose password or enterprise username is being typed, and a hidden network's name
+    /// while Other... is open. The enterprise username waits here between its keyboard and the
+    /// password's; it is wiped when the sheet resumes.
+    add: Option<WifiNetwork>,
+    eap_user: Option<Vec<u8>>,
+    other: Option<Vec<u8>>,
+    /// a scan is due as soon as the radio is on (opening the sheet, turning it on, or adding a network)
+    scan_auto: bool,
+    /// when the nearby list was last scanned, and a quiet refresh is in flight whose 20 s wait starts
+    /// when its answer comes back
+    refresh_at: u32,
+    refresh_wait: bool,
     shown: Option<WifiShown>,
 }
 
@@ -3053,6 +3101,13 @@ fn wifi_shown() -> WifiShown {
         failed: wifi_failed(),
         current: wifi_current().filter(|_| status.is_some_and(|st| st.connected == Some(true))),
         saved: wifi_saved(),
+        nearby: wifi_nearby(),
+        // (a quiet refresh keeps the list and its Rescan button as they are)
+        scanning: wifi_scanning() && !wifi_scan_quieting(),
+        scan_failed: wifi_scan_failed(),
+        add_failed: wifi_add_failed(),
+        delete_failed: wifi_delete_failed(),
+        disconnect_failed: wifi_disconnect_failed(),
         join: wifi_joining(),
     }
 }
@@ -3061,12 +3116,264 @@ fn wifi_sheet_open(a: &mut App) {
     let now = now_ms();
     wifi_join_clear();
     let asked = wifi_request(WifiAction::Networks);
-    lib(a).wifi = WifiSheet { check_at: now, watch_at: now, asked, ..WifiSheet::default() };
+    lib(a).wifi = WifiSheet {
+        check_at: now,
+        watch_at: now,
+        asked,
+        view: WIFI_VIEW_NEARBY,
+        scan_auto: true,
+        refresh_at: now,
+        ..WifiSheet::default()
+    };
     open_modal(a, Modal::Wifi);
 }
 
+/// Back from the password keyboard: the Wi-Fi page stays open, its nearby list fresh.
+fn wifi_sheet_resume(a: &mut App) {
+    let now = now_ms();
+    let parent = lib(a).kb_parent;
+    let s = lib(a);
+    s.modal = if matches!(parent, Modal::None | Modal::Kb) { Modal::Wifi } else { parent };
+    s.kb_parent = Modal::None;
+    s.wifi.add = None;
+    if let Some(mut u) = s.wifi.eap_user.take() {
+        u.fill(0);
+    }
+    s.wifi.other = None;
+    s.wifi.view = WIFI_VIEW_NEARBY;
+    s.wifi.page = 0;
+    s.wifi.scan_auto = true;
+    s.wifi.refresh_at = now;
+    s.wifi.refresh_wait = false;
+    s.wifi.check_at = now;
+    s.wifi.watch_at = now;
+    redraw(a, RefreshMode::Ui);
+}
+
+fn wifi_security_name(sec: WifiSecurity) -> &'static str {
+    match sec {
+        WifiSecurity::Open => tr("Open"),
+        WifiSecurity::Wep => "WEP",
+        WifiSecurity::Wpa => "WPA",
+        WifiSecurity::Wpa2 => "WPA2",
+        WifiSecurity::Wpa3 => "WPA3",
+        WifiSecurity::Owe => "OWE",
+        WifiSecurity::Enterprise => tr("Enterprise"),
+        WifiSecurity::Unknown => tr("Unknown"),
+    }
+}
+
+/// The three bars a scan's signal fills: a third, two thirds, or all three.
+fn wifi_bars(signal: i32, signal_max: i32) -> i32 {
+    if signal <= 0 || signal_max <= 0 {
+        return 0;
+    }
+    let pct = (signal as i64 * 100 / signal_max as i64).clamp(0, 100);
+    if pct >= 70 {
+        3
+    } else if pct >= 35 {
+        2
+    } else {
+        1
+    }
+}
+
+/// A lock drawn from its shackle and body: the icon font's lock glyph is not in every face.
+fn draw_wifi_lock(c: &mut Canvas, r: Rect, fg: u8, bg: u8) {
+    let shackle = Rect::new(r.x + ui_px(7.0), r.y + ui_px(2.0), r.w - ui_px(14.0), r.h - ui_px(12.0));
+    canvas_round_rect(c, shackle, ui_px(8.0), fg, false, ui_px(3.0));
+    let body = Rect::new(r.x + ui_px(2.0), r.y + ui_px(14.0), r.w - ui_px(4.0), r.h - ui_px(16.0));
+    canvas_round_rect(c, body, ui_px(3.0), fg, true, 0);
+    let hole = Rect::new(r.x + r.w / 2 - ui_px(2.0), r.y + ui_px(18.0), ui_px(4.0), ui_px(7.0));
+    canvas_round_rect(c, hole, ui_px(1.0), bg, true, 0);
+}
+
+/// The Wi-Fi signal beside a network: three bars, the lit ones its strength, and a small lock over
+/// their lower right when the network is not open. `signal` None draws all three unlit (a saved
+/// network no scan has measured).
+fn draw_wifi_icon(c: &mut Canvas, r: Rect, signal: Option<(i32, i32)>, secure: bool, fg: u8, card_bg: u8) {
+    let gap = ui_px(5.0);
+    let bw = (r.w * 16 / 100).max(ui_px(5.0));
+    let base = r.y + r.h - ui_px(9.0);
+    let heights = [r.h * 32 / 100, r.h * 52 / 100, r.h * 72 / 100];
+    let lit = signal.map_or(0, |(s, m)| wifi_bars(s, m));
+    for (i, h) in heights.iter().enumerate() {
+        let x = r.x + ui_px(5.0) + i as i32 * (bw + gap);
+        let bar = Rect::new(x, base - *h, bw, *h);
+        let gray = if (i as i32) < lit {
+            fg
+        } else if fg == 0 {
+            165
+        } else {
+            95
+        };
+        ui_frame(c, bar, ui_px(3.0), gray, true, 0);
+    }
+    if secure {
+        let lr = Rect::new(
+            r.x + r.w - ui_px(30.0),
+            r.y + r.h - ui_px(33.0),
+            ui_px(31.0),
+            ui_px(31.0),
+        );
+        ui_frame(c, rect_inflate(lr, ui_px(3.0)), ui_px(4.0), card_bg, true, 0);
+        draw_wifi_lock(c, lr, fg, card_bg);
+    }
+}
+
+/// One network row: its signal and lock at the left, its name, what the Kindle knows of it under
+/// that, and a saved network's trash button at the right.
+struct WifiRow<'a> {
+    name: &'a str,
+    security: Option<WifiSecurity>,
+    signal: Option<(i32, i32)>,
+    saved: bool,
+    current: bool,
+    enabled: bool,
+    id: i32,
+    arg: i32,
+    /// H_WIFI_DELETE's arg for a saved row's trash button, None for no button
+    trash: Option<i32>,
+}
+
+fn draw_wifi_row(c: &mut Canvas, hits: &mut HitList, r: Rect, row: &WifiRow) {
+    let st = if row.current {
+        ButtonStyle::Selected
+    } else if row.enabled {
+        ButtonStyle::Plain
+    } else {
+        ButtonStyle::Disabled
+    };
+    let fg: u8 = if row.current {
+        255
+    } else if row.enabled {
+        0
+    } else {
+        170
+    };
+    let card_bg: u8 = if row.current { 0 } else { 255 };
+    settings_card(c, r, st);
+    // The connected card is filled black: a white rule inside its edge sets it apart without
+    // changing the white bars of its signal.
+    if row.current {
+        ui_frame(c, rect_inflate(r, -ui_px(7.0)), ui_px(10.0), 255, false, ui_px(4.0));
+    }
+    // (before the trash, so the trash is the hit over the row it sits in)
+    if row.enabled && row.id != H_NONE {
+        hits_add(hits, r, row.id, row.arg);
+    }
+    let isz = (r.h - ui_px(20.0)).clamp(ui_px(64.0), ui_px(90.0));
+    let ir = Rect::new(r.x + settings_pad(), r.y + (r.h - isz) / 2, isz, isz);
+    let secure = row.security.is_some_and(|s| s != WifiSecurity::Open);
+    draw_wifi_icon(c, ir, row.signal, secure, fg, card_bg);
+    let mut right = r.x + r.w - settings_pad();
+    if let Some(arg) = row.trash {
+        let bs = (r.h - ui_px(30.0)).clamp(ui_px(70.0), ui_px(96.0));
+        let br = Rect::new(right - bs, r.y + (r.h - bs) / 2, bs, bs);
+        ui_button(c, br, IconKind::Trash, "", ButtonStyle::Plain);
+        // (after the row, so the trash is the hit over it)
+        hits_add(hits, br, H_WIFI_DELETE, arg);
+        right = br.x - ui_px(18.0);
+    }
+    let tx = ir.x + ir.w + settings_gap();
+    let mut sub = String::new();
+    if row.current {
+        sub.push_str(tr("Connected"));
+    } else if row.saved {
+        sub.push_str(tr("Saved"));
+    }
+    if let Some(sec) = row.security {
+        if !sub.is_empty() {
+            sub.push_str(" \u{b7} ");
+        }
+        sub.push_str(wifi_security_name(sec));
+    }
+    let text_w = (right - tx).max(0);
+    if sub.is_empty() {
+        ui_text_name(c, FontFace::Bold, ui_text_size(), ui_small_size(), Rect::new(tx, r.y, text_w, r.h), row.name, 1, fg);
+    } else {
+        ui_text_name(
+            c,
+            FontFace::Bold,
+            ui_text_size(),
+            ui_small_size(),
+            Rect::new(tx, r.y + ui_px(12.0), text_w, r.h - ui_px(56.0)),
+            row.name,
+            1,
+            fg,
+        );
+        ui_text(
+            c,
+            FontFace::Regular,
+            ui_small_size(),
+            ui_small_size() * 0.8,
+            Rect::new(tx, r.y + r.h - ui_px(54.0), text_w, ui_px(42.0)),
+            &sub,
+            1,
+            false,
+            fg,
+        );
+    }
+}
+
+fn draw_wifi_message(c: &mut Canvas, r: Rect, text: &str) {
+    settings_card(c, r, ButtonStyle::Disabled);
+    ui_text(
+        c,
+        FontFace::Regular,
+        ui_text_size(),
+        ui_small_size(),
+        rect_inflate(r, -settings_pad()),
+        text,
+        2,
+        false,
+        170,
+    );
+}
+
+fn draw_wifi_more(c: &mut Canvas, hits: &mut HitList, r: Rect, text: &str) {
+    settings_card(c, r, ButtonStyle::Plain);
+    let tx = r.x + settings_pad();
+    ui_text(
+        c,
+        FontFace::Regular,
+        ui_text_size(),
+        ui_small_size(),
+        Rect::new(tx, r.y, r.x + r.w - tx - 3 * settings_pad(), r.h),
+        text,
+        1,
+        false,
+        0,
+    );
+    let isz = ui_px(52.0);
+    ui_icon(
+        c,
+        IconKind::Next,
+        Rect::new(r.x + r.w - settings_pad() - isz, r.y + (r.h - isz) / 2, isz, isz),
+        0,
+    );
+    hits_add(hits, r, H_WIFI_MORE, 0);
+}
+
+/// The rects of n rows in the Wi-Fi list, never smaller than a touch target and leaving the gap
+/// between them.
+fn wifi_row_rects(in_: Rect, n: usize) -> Vec<Rect> {
+    let n = n.max(1);
+    let gap = ui_px(14.0);
+    let rh = ((in_.h - (n as i32 - 1) * gap) / n as i32).clamp(ui_px(92.0), ui_px(154.0));
+    (0..n)
+        .map(|i| Rect::new(in_.x, in_.y + i as i32 * (rh + gap), in_.w, rh))
+        .collect()
+}
+
+/// Settings > Wi-Fi: the radio's state and the three controls over whichever list is open.
 fn draw_wifi_sheet(a: &mut App) {
+    if lib(a).wifi.view == WIFI_VIEW_OTHER {
+        draw_wifi_other_page(a);
+        return;
+    }
     let w = wifi_shown();
+    let auto_scan = lib(a).wifi.scan_auto;
     let name = |n: &[u8]| String::from_utf8_lossy(n).into_owned();
     let mut status = String::new();
     let mut status_named = false;
@@ -3090,7 +3397,17 @@ fn draw_wifi_sheet(a: &mut App) {
         let text = if w.busy {
             tr("Checking Wi-Fi…")
         } else if w.failed {
-            tr("Could not read or change Wi-Fi.")
+            if wifi_add_failed() {
+                tr("Could not add the network.")
+            } else if wifi_delete_failed() {
+                // TRANSLATORS: (Settings > Wi-Fi) the status when a saved network's profile could not be deleted.
+                tr("Could not forget the network.")
+            } else {
+                tr("Could not read or change Wi-Fi.")
+            }
+        } else if w.disconnect_failed {
+            // (the helper failed to drop the link; the status still describes the connection it kept)
+            tr("Could not disconnect.")
         } else {
             match w.status {
                 Some(_) if !on => tr("Wi-Fi is off"),
@@ -3116,54 +3433,248 @@ fn draw_wifi_sheet(a: &mut App) {
         Some(_) => (tr("Turn on Wi-Fi"), WIFI_ON, !w.busy),
     };
     let style = |can: bool| if can { ButtonStyle::Plain } else { ButtonStyle::Disabled };
-    let mut rows = vec![
-        menu_row(IconKind::Share, radio, H_WIFI_RADIO, arg, style(can)),
-        MenuRow { name: status_named, ..menu_row(IconKind::None, &status, H_NONE, 0, ButtonStyle::Disabled) },
-    ];
-    // The saved networks, the one connected to first, a page at a time.
-    let mut names = w.saved.clone().unwrap_or_default();
-    if let Some(i) = w.current.as_ref().and_then(|c| names.iter().position(|n| n == c)) {
-        let n = names.remove(i);
-        names.insert(0, n);
+    let view = lib(a).wifi.view.min(WIFI_VIEW_SAVED);
+    let (aw, ah) = (a.w, a.h);
+    let App { screen: c, lib, .. } = a;
+    let s = lib.as_deref_mut().unwrap();
+    // TRANSLATORS: the title of Settings > Wi-Fi.
+    let page = settings_page(c, aw, ah, tr("Wi-Fi"), true, false);
+    hits_add(&mut s.hits, page.back, H_SETTINGS_BACK, 0);
+    hits_add(&mut s.hits, page.close, H_SETTINGS_CLOSE, 0);
+    let in_ = page.content;
+    let status_h = ui_px(110.0);
+    let gap = ui_px(16.0);
+    let radio_w = ui_px(390.0).min(in_.w / 2);
+    let status_r = Rect::new(in_.x, in_.y, in_.w - radio_w - gap, status_h);
+    ui_text(
+        c,
+        if status_named { FontFace::Bold } else { FontFace::Regular },
+        ui_text_size(),
+        ui_small_size(),
+        status_r,
+        &status,
+        2,
+        false,
+        0,
+    );
+    let radio_r = Rect::new(in_.x + in_.w - radio_w, in_.y, radio_w, status_h);
+    ui_button(c, radio_r, IconKind::Share, radio, style(can));
+    if can {
+        hits_add(&mut s.hits, radio_r, H_WIFI_RADIO, arg);
     }
-    let pages = names.len().div_ceil(WIFI_PAGE).max(1);
-    let page = lib(a).wifi.page.min(pages - 1);
+    let by = in_.y + status_h + ui_px(18.0);
+    let bh = ui_px(130.0);
+    let bw = (in_.w - 2 * gap) / 3;
+    let scan_r = Rect::new(in_.x, by, bw, bh);
+    let other_r = Rect::new(in_.x + bw + gap, by, bw, bh);
+    let saved_r = Rect::new(in_.x + 2 * (bw + gap), by, in_.w - 2 * (bw + gap), bh);
+    let scan_can = on && !w.scanning && !w.busy;
+    // TRANSLATORS: (Settings > Wi-Fi) the button above the nearby networks that scans again.
+    ui_button(c, scan_r, IconKind::Search, tr("Rescan"), style(scan_can));
+    if scan_can {
+        hits_add(&mut s.hits, scan_r, H_WIFI_SCAN, 0);
+    }
+    // TRANSLATORS: (Settings > Wi-Fi) the button above the networks that adds a hidden network by name.
+    ui_button(c, other_r, IconKind::Plus, tr("Other..."), ButtonStyle::Plain);
+    hits_add(&mut s.hits, other_r, H_WIFI_OTHER, 0);
+    // TRANSLATORS: (Settings > Wi-Fi) the button above the networks that shows the Kindle's saved ones;
+    // tapped while they are shown, it goes back to the nearby ones.
+    ui_button(
+        c,
+        saved_r,
+        IconKind::Check,
+        tr("Saved networks"),
+        if view == WIFI_VIEW_SAVED { ButtonStyle::Selected } else { ButtonStyle::Plain },
+    );
+    hits_add(&mut s.hits, saved_r, H_WIFI_TAB, WIFI_VIEW_SAVED as i32);
+    let list = Rect::new(
+        in_.x,
+        by + bh + ui_px(22.0),
+        in_.w,
+        (ah - ui_px(36.0) - (by + bh + ui_px(22.0))).max(0),
+    );
+    let mut page_no = s.wifi.page;
     let mut drawn = Vec::new();
-    if w.status.is_some() {
-        match &w.saved {
-            None => {
-                // TRANSLATORS: (Settings > Wi-Fi) a line in place of the saved networks: they could not be read
-                // (with the radio off, the first: they may be read only while it is on). 1470 px at 44 px in
-                // bold, or two lines at 34 px.
-                let why = if on { tr("Saved networks could not be read.") } else { tr("Turn on Wi-Fi to see the saved networks.") };
-                rows.push(menu_row(IconKind::None, why, H_NONE, 0, ButtonStyle::Disabled));
-            }
-            Some(saved) if saved.is_empty() => {
-                // TRANSLATORS: (Settings > Wi-Fi) the Kindle has no saved Wi-Fi network; Grimoire adds none itself.
-                rows.push(menu_row(IconKind::None, tr("No saved networks. Add one in Kindle settings or KOReader."), H_NONE, 0, ButtonStyle::Disabled));
-            }
-            Some(_) => {
-                for n in names.iter().skip(page * WIFI_PAGE).take(WIFI_PAGE) {
-                    let here = w.current.as_ref() == Some(n);
-                    let icon = if here { IconKind::Check } else { IconKind::None };
-                    rows.push(MenuRow { name: true, ..menu_row(icon, &name(n), H_WIFI_NET, drawn.len() as i32, style(!w.busy)) });
-                    drawn.push(n.clone());
-                }
-                if pages > 1 {
-                    let mut more = String::new();
-                    // TRANSLATORS: (Settings > Wi-Fi) the row under the saved networks when they take more than
-                    // one page: shows the next page (after the last, the first). %d of %d: this page, the pages.
-                    csnprintf!(&mut more, 96, tr("More networks (%d of %d)"), page as i32 + 1, pages as i32);
-                    rows.push(menu_row(IconKind::Next, &more, H_WIFI_MORE, 0, ButtonStyle::Plain));
-                }
-            }
+    let mut near = Vec::new();
+    let mut info: Option<String> = None;
+    let mut more: Option<String> = None;
+    let mut page_nets: Vec<WifiNetwork> = Vec::new();
+    let mut page_names: Vec<Vec<u8>> = Vec::new();
+    if view == WIFI_VIEW_NEARBY {
+        // The networks a scan found, the connected one first, then the saved ones, then by signal.
+        let mut networks = w.nearby.clone().unwrap_or_default();
+        networks.sort_by(|a, b| {
+            let key = |n: &WifiNetwork| {
+                let here = w.current.as_ref() == Some(&n.essid);
+                let saved = w.saved.as_ref().is_some_and(|s| s.iter().any(|x| x == &n.essid));
+                // (no signal key: a 20 s refresh must not reorder the list as strength changes)
+                (!here, !saved)
+            };
+            key(a).cmp(&key(b))
+        });
+        let pages = networks.len().div_ceil(WIFI_NEAR_PAGE).max(1);
+        page_no = page_no.min(pages - 1);
+        if !on {
+            // TRANSLATORS: (Settings > Wi-Fi) the nearby list while the radio is off.
+            info = Some(tr("Turn on Wi-Fi to see nearby networks.").to_string());
+        } else if w.scanning || (auto_scan && w.nearby.is_none()) {
+            // TRANSLATORS: (Settings > Wi-Fi) the nearby list while its scan runs.
+            info = Some(tr("Scanning for networks…").to_string());
+        } else if w.scan_failed {
+            // TRANSLATORS: (Settings > Wi-Fi) the nearby list when the last scan could not run or its answer
+            // was not one this reader knows.
+            info = Some(tr("Could not scan for networks.").to_string());
+        } else if w.nearby.as_ref().is_some_and(|v| v.is_empty()) {
+            // TRANSLATORS: (Settings > Wi-Fi) the nearby list when no network is near.
+            info = Some(tr("No networks found.").to_string());
+        } else if w.nearby.is_none() {
+            // TRANSLATORS: (Settings > Wi-Fi) the nearby list before its first scan has an answer.
+            info = Some(tr("Tap Rescan to look for networks.").to_string());
+        } else {
+            page_nets = networks.iter().skip(page_no * WIFI_NEAR_PAGE).take(WIFI_NEAR_PAGE).cloned().collect();
+        }
+        if page_no + 1 < pages {
+            let mut text = String::new();
+            // TRANSLATORS: (Settings > Wi-Fi) the row under a page of networks a scan found; %d of %d: this
+            // page, the pages. A tap shows the next page (after the last, the first).
+            csnprintf!(&mut text, 96, tr("More networks (%d of %d)"), page_no as i32 + 1, pages as i32);
+            more = Some(text);
+        }
+    } else {
+        // The saved networks, the one connected to first, a page at a time, each with its trash button.
+        let mut names = w.saved.clone().unwrap_or_default();
+        if let Some(i) = w.current.as_ref().and_then(|c| names.iter().position(|n| n == c)) {
+            let n = names.remove(i);
+            names.insert(0, n);
+        }
+        let pages = names.len().div_ceil(WIFI_PAGE).max(1);
+        page_no = page_no.min(pages - 1);
+        if w.saved.is_none() {
+            let why = if on {
+                // TRANSLATORS: (Settings > Wi-Fi) a line in place of the saved networks when they could not be read.
+                tr("Saved networks could not be read.")
+            } else {
+                // TRANSLATORS: (Settings > Wi-Fi) a line in place of the saved networks while the radio is off.
+                tr("Turn on Wi-Fi to see the saved networks.")
+            };
+            info = Some(why.to_string());
+        } else if names.is_empty() {
+            // TRANSLATORS: (Settings > Wi-Fi) the Kindle has no saved Wi-Fi network; Grimoire adds none itself.
+            info = Some(tr("No saved networks. Add one with Other... or in Kindle settings.").to_string());
+        } else {
+            page_names = names.iter().skip(page_no * WIFI_PAGE).take(WIFI_PAGE).cloned().collect();
+        }
+        if page_no + 1 < pages {
+            let mut text = String::new();
+            // TRANSLATORS: (Settings > Wi-Fi) the row under the saved networks when they take more than one
+            // page: shows the next page (after the last, the first). %d of %d: this page, the pages.
+            csnprintf!(&mut text, 96, tr("More networks (%d of %d)"), page_no as i32 + 1, pages as i32);
+            more = Some(text);
         }
     }
-    let ws = &mut lib(a).wifi;
-    ws.page = page;
+    let n = page_nets.len() + page_names.len() + usize::from(info.is_some()) + usize::from(more.is_some());
+    let rects = wifi_row_rects(list, n);
+    let mut i = 0;
+    if let Some(text) = info {
+        draw_wifi_message(c, rects[i], &text);
+        i += 1;
+    }
+    for net in &page_nets {
+        let here = w.current.as_ref() == Some(&net.essid);
+        let saved = w.saved.as_ref().is_some_and(|s| s.iter().any(|x| x == &net.essid));
+        let label = name(&net.essid);
+        let row = WifiRow {
+            name: &label,
+            security: Some(net.security),
+            signal: Some((net.signal, net.signal_max)),
+            saved,
+            current: here,
+            enabled: net.security != WifiSecurity::Unknown || saved,
+            id: H_WIFI_NEAR,
+            arg: near.len() as i32,
+            trash: None,
+        };
+        draw_wifi_row(c, &mut s.hits, rects[i], &row);
+        near.push(net.clone());
+        i += 1;
+    }
+    for saved_name in &page_names {
+        let here = w.current.as_ref() == Some(saved_name);
+        let nearby = w.nearby.as_ref().and_then(|v| v.iter().find(|n| &n.essid == saved_name));
+        let label = name(saved_name);
+        let row = WifiRow {
+            name: &label,
+            security: nearby.map(|n| n.security),
+            signal: nearby.map(|n| (n.signal, n.signal_max)),
+            saved: true,
+            current: here,
+            enabled: !w.busy,
+            id: H_WIFI_NET,
+            arg: drawn.len() as i32,
+            trash: (!w.busy).then_some(drawn.len() as i32),
+        };
+        draw_wifi_row(c, &mut s.hits, rects[i], &row);
+        drawn.push(saved_name.clone());
+        i += 1;
+    }
+    if let Some(text) = more {
+        draw_wifi_more(c, &mut s.hits, rects[i], &text);
+    }
+    let ws = &mut s.wifi;
+    ws.page = page_no;
     ws.rows = drawn;
+    ws.near = near;
     ws.shown = Some(w);
-    draw_settings_menu(a, tr("Wi-Fi"), &rows);
+}
+
+/// Start the username then password flow for a WPA2-Enterprise network. The username is typed on the
+/// normal keyboard, the password on the masked one; both live only in WifiSheet until the add.
+fn wifi_eap_start(a: &mut App, n: WifiNetwork) {
+    let mut title = String::new();
+    let shown = String::from_utf8_lossy(&n.essid).into_owned();
+    // TRANSLATORS: the keyboard's title for a school/enterprise Wi-Fi username; %s is its name.
+    csnprintf!(&mut title, 200, tr("Username for %s"), &shown);
+    let ws = &mut lib(a).wifi;
+    ws.add = Some(n);
+    if let Some(mut u) = ws.eap_user.take() {
+        u.fill(0);
+    }
+    open_kb(a, KbPurpose::WifiEapUser, &title, b"");
+}
+
+/// Other...'s page: the typed hidden network's name, then whether it is open or takes a password.
+fn draw_wifi_other_page(a: &mut App) {
+    let name = lib(a).wifi.other.clone().unwrap_or_default();
+    let mut label = String::new();
+    let shown = String::from_utf8_lossy(&name).into_owned();
+    // TRANSLATORS: (Settings > Wi-Fi > Other...) the hidden network whose security is being picked; %s is its name.
+    csnprintf!(&mut label, 240, tr("Network: %s"), &shown);
+    let rows = vec![
+        MenuRow {
+            name: true,
+            ..menu_row(IconKind::None, &label, H_NONE, 0, ButtonStyle::Disabled)
+        },
+        // TRANSLATORS: (Settings > Wi-Fi > Other...) the choice for a hidden network with no password.
+        menu_row(IconKind::None, tr("Open network"), H_WIFI_OTHER_OPEN, 0, ButtonStyle::Plain),
+        // TRANSLATORS: (Settings > Wi-Fi > Other...) the choice for a hidden WPA or WPA2 network.
+        menu_row(IconKind::None, tr("WPA/WPA2 password"), H_WIFI_OTHER_WPA, 0, ButtonStyle::Plain),
+        // TRANSLATORS: (Settings > Wi-Fi > Other...) the choice for a hidden WPA2-Enterprise network.
+        menu_row(IconKind::None, tr("WPA2-Enterprise"), H_WIFI_OTHER_EAP, 0, ButtonStyle::Plain),
+        menu_row(IconKind::Close, tr("Cancel"), H_WIFI_OTHER_CANCEL, 0, ButtonStyle::Plain),
+    ];
+    // TRANSLATORS: the title of the page that adds a hidden Wi-Fi network by name.
+    draw_settings_menu(a, tr("Other network"), &rows);
+}
+
+/// A tap on the connected row: drop that network and leave the radio on.
+fn wifi_disconnect_tapped(a: &mut App) {
+    if wifi_disconnect() {
+        // TRANSLATORS: (Settings > Wi-Fi) the toast while the network connected to is dropped.
+        app_toast(a, tr("Disconnecting…"), 2000);
+    } else {
+        // TRANSLATORS: (Settings > Wi-Fi) the toast when the network cannot be disconnected now.
+        app_toast(a, tr("Could not disconnect."), 3000);
+    }
 }
 
 fn wifi_sheet_tap(a: &mut App, id: i32, arg: i32) {
@@ -3175,21 +3686,175 @@ fn wifi_sheet_tap(a: &mut App, id: i32, arg: i32) {
                 WIFI_OFF => WifiAction::Off,
                 _ => WifiAction::Networks,
             };
+            if action == WifiAction::On {
+                let ws = &mut lib(a).wifi;
+                ws.scan_auto = true;
+                ws.view = WIFI_VIEW_NEARBY;
+                ws.page = 0;
+            } else if action == WifiAction::Off {
+                lib(a).wifi.scan_auto = false;
+            }
             wifi_request(action);
+        }
+        H_WIFI_TAB => {
+            let ws = &mut lib(a).wifi;
+            if arg == WIFI_VIEW_SAVED as i32 {
+                ws.view = if ws.view == WIFI_VIEW_SAVED { WIFI_VIEW_NEARBY } else { WIFI_VIEW_SAVED };
+                if ws.view == WIFI_VIEW_NEARBY && ws.near.is_empty() {
+                    ws.scan_auto = true;
+                }
+            } else {
+                ws.view = WIFI_VIEW_NEARBY;
+            }
+            ws.page = 0;
+            ws.other = None;
+        }
+        H_WIFI_SCAN => {
+            let ws = &mut lib(a).wifi;
+            ws.view = WIFI_VIEW_NEARBY;
+            ws.page = 0;
+            ws.other = None;
+            ws.scan_auto = false;
+            if !wifi_scan() {
+                // TRANSLATORS: (Settings > Wi-Fi) the toast when a scan cannot be asked for now.
+                app_toast(a, tr("Could not scan for networks."), 3000);
+                return;
+            }
+            ws.refresh_wait = true;
+        }
+        H_WIFI_OTHER => {
+            // (the page under the keyboard is still the nearby one; the name makes the security page)
+            {
+                let ws = &mut lib(a).wifi;
+                ws.other = None;
+                ws.page = 0;
+            }
+            // TRANSLATORS: the keyboard's title for a hidden Wi-Fi network's name.
+            open_kb(a, KbPurpose::WifiName, tr("Hidden network name"), b"");
+            return;
+        }
+        H_WIFI_OTHER_OPEN => {
+            let Some(n) = lib(a).wifi.other.clone() else { return };
+            if !wifi_add(&n, b"", WifiSecurity::Open) {
+                // TRANSLATORS: (Settings > Wi-Fi) the toast when a network profile could not be created.
+                app_toast(a, tr("Could not add the network."), 3000);
+                return;
+            }
+            let ws = &mut lib(a).wifi;
+            ws.view = WIFI_VIEW_NEARBY;
+            ws.other = None;
+            ws.page = 0;
+            ws.scan_auto = true;
+            // TRANSLATORS: (Settings > Wi-Fi) the toast while a hidden network's profile is being created.
+            app_toast(a, tr("Adding network…"), 2000);
+        }
+        H_WIFI_OTHER_WPA => {
+            let Some(n) = lib(a).wifi.other.clone() else { return };
+            let mut title = String::new();
+            let shown = String::from_utf8_lossy(&n).into_owned();
+            // TRANSLATORS: the password keyboard's title for a Wi-Fi network; %s is its name.
+            csnprintf!(&mut title, 200, tr("Password for %s"), &shown);
+            lib(a).wifi.add = Some(WifiNetwork {
+                essid: n,
+                security: WifiSecurity::Wpa2,
+                signal: 0,
+                signal_max: 1,
+                known: false,
+            });
+            open_kb_secret(a, KbPurpose::WifiPassword, &title);
+            return;
+        }
+        H_WIFI_OTHER_EAP => {
+            let Some(n) = lib(a).wifi.other.clone() else { return };
+            wifi_eap_start(
+                a,
+                WifiNetwork {
+                    essid: n,
+                    security: WifiSecurity::Enterprise,
+                    signal: 0,
+                    signal_max: 1,
+                    known: false,
+                },
+            );
+        }
+        H_WIFI_OTHER_CANCEL => {
+            let ws = &mut lib(a).wifi;
+            ws.view = WIFI_VIEW_NEARBY;
+            ws.other = None;
+            ws.page = 0;
+        }
+        H_WIFI_DELETE => {
+            let ws = &lib(a).wifi;
+            let Some(n) = ws.rows.get(arg as usize).cloned() else { return };
+            if !wifi_delete(&n) {
+                // TRANSLATORS: (Settings > Wi-Fi) the toast when a saved network could not be forgotten.
+                app_toast(a, tr("Could not forget the network."), 3000);
+                return;
+            }
+            // TRANSLATORS: (Settings > Wi-Fi) the toast while a saved network's profile is being deleted.
+            app_toast(a, tr("Forgetting network…"), 2000);
         }
         H_WIFI_NET => {
             let ws = &lib(a).wifi;
             let Some(n) = ws.rows.get(arg as usize).cloned() else { return };
-            // (the network connected to: nothing to switch)
+            // (the network connected to: tapping it again disconnects, keeping the radio on)
             if ws.shown.as_ref().is_some_and(|w| w.current.as_ref() == Some(&n)) {
+                wifi_disconnect_tapped(a);
                 return;
             }
             lib(a).wifi.reread = false;
             wifi_join(&n);
         }
+        H_WIFI_NEAR => {
+            let ws = &lib(a).wifi;
+            let Some(n) = ws.near.get(arg as usize).cloned() else { return };
+            if ws.shown.as_ref().is_some_and(|w| w.current.as_ref() == Some(&n.essid)) {
+                wifi_disconnect_tapped(a);
+                return;
+            }
+            if !n.known && !ws.shown.as_ref().is_some_and(|w| w.saved.as_ref().is_some_and(|s| s.iter().any(|x| x == &n.essid))) {
+                match n.security {
+                    WifiSecurity::Open => {
+                        if !wifi_add(&n.essid, b"", WifiSecurity::Open) {
+                            // TRANSLATORS: (Settings > Wi-Fi) the toast when a network profile could not be created.
+                            app_toast(a, tr("Could not add the network."), 3000);
+                            return;
+                        }
+                        // TRANSLATORS: (Settings > Wi-Fi) the toast while an open network's profile is being created.
+                        app_toast(a, tr("Adding network…"), 2000);
+                    }
+                    WifiSecurity::Wpa | WifiSecurity::Wpa2 => {
+                        let mut title = String::new();
+                        let shown = String::from_utf8_lossy(&n.essid).into_owned();
+                        // TRANSLATORS: the password keyboard's title for a Wi-Fi network; %s is its name.
+                        csnprintf!(&mut title, 200, tr("Password for %s"), &shown);
+                        lib(a).wifi.add = Some(n.clone());
+                        open_kb_secret(a, KbPurpose::WifiPassword, &title);
+                        return;
+                    }
+                    WifiSecurity::Enterprise => {
+                        wifi_eap_start(a, n.clone());
+                        return;
+                    }
+                    _ => {
+                        // TRANSLATORS: (Settings > Wi-Fi) a scanned network Grimoire cannot add yet.
+                        app_toast(a, tr("This network's security is not supported yet."), 3500);
+                        return;
+                    }
+                }
+            } else {
+                lib(a).wifi.reread = false;
+                wifi_join(&n.essid);
+            }
+        }
         H_WIFI_MORE => {
             lib(a).wifi.page += 1;
-            let pages = wifi_saved().map_or(1, |s| s.len().div_ceil(WIFI_PAGE).max(1));
+            let view = lib(a).wifi.view;
+            let pages = if view == WIFI_VIEW_SAVED {
+                wifi_saved().map_or(1, |s| s.len().div_ceil(WIFI_PAGE).max(1))
+            } else {
+                wifi_nearby().map_or(1, |s| s.len().div_ceil(WIFI_NEAR_PAGE).max(1))
+            };
             if lib(a).wifi.page >= pages {
                 lib(a).wifi.page = 0;
             }
@@ -3199,10 +3864,21 @@ fn wifi_sheet_tap(a: &mut App, id: i32, arg: i32) {
     let ws = &mut lib(a).wifi;
     ws.check_at = now;
     ws.watch_at = now;
+    // (a tap is activity: the next quiet refresh waits 20 s from it)
+    ws.refresh_at = now;
     redraw(a, RefreshMode::Ui);
 }
 
 fn wifi_sheet_tick(a: &mut App, now: u32) {
+    // A quiet scan's 20 s wait starts when its answer is in, not when it was asked for: a scan that
+    // takes 20 s must not be followed by another one straight away.
+    {
+        let ws = &mut lib(a).wifi;
+        if ws.refresh_wait && !wifi_scanning() {
+            ws.refresh_wait = false;
+            ws.refresh_at = now;
+        }
+    }
     if !wifi_busy() {
         let st = wifi_status();
         let join = wifi_joining().map(|j| j.1);
@@ -3224,10 +3900,23 @@ fn wifi_sheet_tick(a: &mut App, now: u32) {
                 if !on {
                     ws.relisted = false;
                 }
-                if on && wifi_saved().is_none() && !ws.relisted {
+                if on && ws.scan_auto && !wifi_scanning() {
+                    ws.scan_auto = false;
+                    ws.refresh_at = now;
+                    ws.refresh_wait = wifi_scan();
+                } else if on && wifi_saved().is_none() && !ws.relisted {
                     ws.relisted = true;
                     ws.check_at = now;
                     wifi_request(WifiAction::Networks);
+                } else if on
+                    && ws.view == WIFI_VIEW_NEARBY
+                    && !wifi_scanning()
+                    && wifi_nearby().is_some()
+                    && now.wrapping_sub(ws.refresh_at) >= WIFI_REFRESH_MS
+                {
+                    // Keep the list: only its changed names are merged in when the scan returns.
+                    ws.refresh_at = now;
+                    ws.refresh_wait = wifi_scan_quiet();
                 } else if now.wrapping_sub(ws.check_at) > 2000
                     && (join == Some(WifiJoin::Pending)
                         || (on && st.connected != Some(true) && now.wrapping_sub(ws.watch_at) < 45000))
@@ -5116,6 +5805,15 @@ fn draw_modal(a: &mut App) {
         Modal::DeviceInfo => draw_device(a),
         Modal::LinkQr => draw_link(a),
         Modal::Kb => {
+            // The page the keyboard was opened over stays on the panel, the keys over its lower half.
+            let parent = lib(a).kb_parent;
+            if parent != Modal::None && parent != Modal::Kb {
+                lib(a).modal = parent;
+                draw_modal(a);
+                lib(a).modal = Modal::Kb;
+                // (the keys take every contact: the page below is drawn, not tapped)
+                hits_clear(&mut lib(a).hits);
+            }
             let (aw, ah) = (a.w, a.h);
             let App { screen, lib, .. } = a;
             let s = lib.as_deref_mut().unwrap();
@@ -5452,10 +6150,46 @@ pub(crate) fn settings_skip_reopen(a: &mut App) {
 
 fn open_kb(a: &mut App, p: KbPurpose, title: &str, initial: &[u8]) {
     let s = lib(a);
+    if s.modal != Modal::Kb {
+        s.kb_parent = s.modal;
+    }
     s.kbp = p;
     keyboard_open(&mut s.kb, title, initial);
     s.modal = Modal::Kb;
     redraw(a, RefreshMode::Ui);
+}
+
+fn open_kb_secret(a: &mut App, p: KbPurpose, title: &str) {
+    let s = lib(a);
+    if s.modal != Modal::Kb {
+        s.kb_parent = s.modal;
+    }
+    s.kbp = p;
+    keyboard_open_secret(&mut s.kb, title);
+    s.modal = Modal::Kb;
+    redraw(a, RefreshMode::Ui);
+}
+
+/// Whether a sheet is one of Settings' pages (the keyboard goes back to it, drawn unchanged).
+fn settings_sheet(m: Modal) -> bool {
+    matches!(
+        m,
+        Modal::Settings
+            | Modal::Display
+            | Modal::Language
+            | Modal::SideButton
+            | Modal::EraserMode
+            | Modal::DeviceInfo
+            | Modal::LinkQr
+            | Modal::Updates
+            | Modal::Shortcuts
+            | Modal::PairMenu
+            | Modal::Pair
+            | Modal::Buttons
+            | Modal::Gestures
+            | Modal::Font
+            | Modal::Wifi
+    )
 }
 
 // ---- actions ----
@@ -5547,7 +6281,99 @@ fn kb_finished(a: &mut App, ok: bool) {
     let txt = s.kb.text.as_str().to_string();
     let it = target_item(s);
     let kbp = s.kbp;
-    let mut back = Modal::None;
+    if kbp == KbPurpose::WifiName {
+        let parent = if s.kb_parent == Modal::Kb { Modal::Wifi } else { s.kb_parent };
+        let name = s.kb.text.as_bytes().to_vec();
+        if ok {
+            if name.is_empty() || name.len() > 32 {
+                // TRANSLATORS: (Settings > Wi-Fi > Other...) the hidden network name is empty or longer
+                // than a Wi-Fi name can be.
+                app_toast(a, tr("Use a network name of 1 to 32 characters."), 3500);
+            } else {
+                let s = lib(a);
+                s.wifi.other = Some(name);
+                s.wifi.view = WIFI_VIEW_OTHER;
+                s.wifi.page = 0;
+            }
+        }
+        lib(a).modal = parent;
+        redraw(a, RefreshMode::Ui);
+        return;
+    }
+    if kbp == KbPurpose::WifiEapUser {
+        let user = s.kb.text.as_bytes().to_vec();
+        let parent = if s.kb_parent == Modal::Kb { Modal::Wifi } else { s.kb_parent };
+        s.kb.text.clear();
+        s.kb.caret = 0;
+        s.kb.anchor = 0;
+        let valid = ok && !user.is_empty() && user.len() <= 128 && !user.iter().any(|&b| b < 0x20 || b == 0x7f);
+        if !valid {
+            let mut user = user;
+            user.fill(0);
+            if ok {
+                // TRANSLATORS: (Settings > Wi-Fi) the enterprise username is empty, a control
+                // character, or longer than 128 bytes.
+                app_toast(a, tr("Use a username of 1 to 128 characters."), 3500);
+            }
+            lib(a).modal = parent;
+            redraw(a, RefreshMode::Ui);
+            return;
+        }
+        let title = {
+            let mut t = String::new();
+            if let Some(n) = s.wifi.add.as_ref() {
+                let shown = String::from_utf8_lossy(&n.essid);
+                // TRANSLATORS: the password keyboard's title for a school/enterprise Wi-Fi network;
+                // %s is its name.
+                csnprintf!(&mut t, 200, tr("Password for %s"), shown.as_ref());
+            }
+            t
+        };
+        s.wifi.eap_user = Some(user);
+        open_kb_secret(a, KbPurpose::WifiEapPassword, &title);
+        return;
+    }
+    if kbp == KbPurpose::WifiPassword {
+        let pending = s.wifi.add.take();
+        let mut pass = s.kb.text.as_bytes().to_vec();
+        // (the password lives only in that Vec now; the keyboard's bytes go too)
+        s.kb.text.clear();
+        s.kb.caret = 0;
+        s.kb.anchor = 0;
+        if ok {
+            if let Some(n) = pending {
+                if !wifi_add(&n.essid, &pass, n.security) {
+                    app_toast(a, tr("Could not add the network."), 3000);
+                }
+            }
+        }
+        pass.fill(0);
+        wifi_sheet_resume(a);
+        return;
+    }
+    if kbp == KbPurpose::WifiEapPassword {
+        let pending = s.wifi.add.take();
+        let mut user = s.wifi.eap_user.take();
+        let mut pass = s.kb.text.as_bytes().to_vec();
+        s.kb.text.clear();
+        s.kb.caret = 0;
+        s.kb.anchor = 0;
+        if ok {
+            if let (Some(n), Some(u)) = (pending.as_ref(), user.as_ref()) {
+                if !wifi_add_eap(&n.essid, u, &pass) {
+                    app_toast(a, tr("Could not add the network."), 3000);
+                }
+            }
+        }
+        pass.fill(0);
+        if let Some(mut u) = user.take() {
+            u.fill(0);
+        }
+        wifi_sheet_resume(a);
+        return;
+    }
+    let parent = s.kb_parent;
+    let mut back = if settings_sheet(parent) { parent } else { Modal::None };
     if ok && !txt.is_empty() {
         match kbp {
             KbPurpose::NewName => {
@@ -5586,6 +6412,7 @@ fn kb_finished(a: &mut App, ok: bool) {
                     }
                 }
             }
+            KbPurpose::WifiPassword | KbPurpose::WifiName | KbPurpose::WifiEapUser | KbPurpose::WifiEapPassword => {}
             KbPurpose::RenameFolder => {
                 if let Some(it) = it.filter(|it| it.is_folder) {
                     let mut dest = FixedStr::new();
@@ -5882,7 +6709,10 @@ fn act(a: &mut App, h: &Hit) {
         H_SHORTCUTS => open_modal(a, Modal::Shortcuts),
         H_PAIR_MENU => open_modal(a, Modal::PairMenu),
         H_WIFI_MENU => wifi_sheet_open(a),
-        H_WIFI_RADIO | H_WIFI_NET | H_WIFI_MORE => wifi_sheet_tap(a, h.id, h.arg),
+        H_WIFI_RADIO | H_WIFI_NET | H_WIFI_MORE | H_WIFI_TAB | H_WIFI_SCAN | H_WIFI_NEAR | H_WIFI_DELETE
+        | H_WIFI_OTHER | H_WIFI_OTHER_OPEN | H_WIFI_OTHER_WPA | H_WIFI_OTHER_EAP | H_WIFI_OTHER_CANCEL => {
+            wifi_sheet_tap(a, h.id, h.arg)
+        }
         H_SHORTCUT_DEVICE => {
             // The next device listed (the first after the last), whose own shortcuts the next row is about.
             let devs = shortcut_devices(a);
@@ -7779,6 +8609,10 @@ pub fn library_probe(a: &mut App, key: &str, out: &mut String, cap: usize) -> i3
                 H_SET_FONT => "font", H_FONT_PICK => "font.", H_FONT_DONE => "font.done", H_FONT_CANCEL => "font.cancel",
                 H_FONT_OWN => "font.file:", H_FONT_PAGE => if hit.arg < 0 { "font.prev" } else { "font.next" },
                 H_WIFI_MENU => "wifi", H_WIFI_RADIO => "wifi.radio", H_WIFI_NET => "wifi.net.", H_WIFI_MORE => "wifi.more",
+                H_WIFI_TAB => "wifi.tab", H_WIFI_SCAN => "wifi.scan", H_WIFI_NEAR => "wifi.near.",
+                H_WIFI_DELETE => "wifi.delete.", H_WIFI_OTHER => "wifi.other",
+                H_WIFI_OTHER_OPEN => "wifi.other.open", H_WIFI_OTHER_WPA => "wifi.other.wpa",
+                H_WIFI_OTHER_EAP => "wifi.other.eap", H_WIFI_OTHER_CANCEL => "wifi.other.cancel",
                 _ => "",
             });
             if hit.id == H_FONT_PICK {
@@ -7792,6 +8626,9 @@ pub fn library_probe(a: &mut App, key: &str, out: &mut String, cap: usize) -> i3
             }
             if hit.id == H_PAPER { name.push_str(&hit.arg.to_string()); }
             if hit.id == H_WIFI_NET { name.push_str(&(hit.arg + 1).to_string()); }
+            if hit.id == H_WIFI_NEAR { name.push_str(&(hit.arg + 1).to_string()); }
+            if hit.id == H_WIFI_TAB { name.push_str(if hit.arg == 0 { ".near" } else { ".saved" }); }
+            if hit.id == H_WIFI_DELETE { name.push_str(&(hit.arg + 1).to_string()); }
             if hit.id == H_MOVE_TO { name.push_str(s.folders.get(hit.arg as usize).map_or("", |f| f.as_str())); }
             if matches!(hit.id, H_GESTURE_GROUP | H_BUTTON_GROUP) {
                 if let Some(group) = ACTION_GROUPS.get(hit.arg as usize) { name.push_str(group.probe); }
@@ -9089,13 +9926,117 @@ mod tests {
         assert_eq!(wifi_saved().map(|v| v.len()), Some(2));
         assert_eq!(wifi_status().map(|st| st.enabled), Some(false));
         wifi_sheet_tick(&mut a, now_ms());
+        // Nearby opens first; Saved is the top-right button, and its rows carry a trash button each.
+        wifi_sheet_tap(&mut a, H_WIFI_TAB, WIFI_VIEW_SAVED as i32);
         let rows: Vec<_> = a.lib.as_ref().unwrap().hits.h.iter().filter(|h| h.id == H_WIFI_NET).map(|h| h.arg).collect();
+        let trash: Vec<_> = a.lib.as_ref().unwrap().hits.h.iter().filter(|h| h.id == H_WIFI_DELETE).map(|h| h.arg).collect();
         assert_eq!(rows, [0, 1]);
+        assert_eq!(trash, [0, 1]);
+        let hit = a.lib.as_ref().unwrap().hits.h.iter().find(|h| h.id == H_WIFI_DELETE && h.arg == 0).unwrap().r;
+        assert_eq!(hits_find(&a.lib.as_ref().unwrap().hits, (hit.x + hit.w / 2) as f32, (hit.y + hit.h / 2) as f32).map(|h| h.id), Some(H_WIFI_DELETE));
         assert_eq!(lib(&mut a).wifi.rows, [b"Home".to_vec(), b"Office".to_vec()]);
         let s = a.lib.as_ref().unwrap();
         assert_eq!(s.hits.h.iter().filter(|h| h.id == H_SETTINGS_BACK).count(), 1, "Wi-Fi: Back");
         assert_eq!(s.hits.h.iter().filter(|h| h.id == H_SETTINGS_CLOSE).count(), 1, "Wi-Fi: X");
         assert!(!s.hits.h.iter().any(|h| h.id == H_CANCEL), "Wi-Fi: the sheet's own Done is gone");
+        // Its password keyboard draws over the Wi-Fi page, which stays open under it.
+        let ws = &mut lib(&mut a).wifi;
+        ws.other = Some(b"Hidden".to_vec());
+        ws.view = WIFI_VIEW_OTHER;
+        lib(&mut a).modal = Modal::Wifi;
+        open_kb_secret(&mut a, KbPurpose::WifiPassword, "Password");
+        assert_eq!(a.lib.as_ref().unwrap().kb_parent, Modal::Wifi);
+        hits_clear(&mut lib(&mut a).hits);
+        draw_modal(&mut a);
+        assert!(!rect_is_empty(a.lib.as_ref().unwrap().kb.area), "the keys are over the page");
+        assert!(a.lib.as_ref().unwrap().hits.h.is_empty(), "the page under them is not tapped");
+        keyboard_close(&mut lib(&mut a).kb);
+        lib(&mut a).modal = Modal::Wifi;
+        wifi_init(None);
+        library_free(&mut a);
+        canvas_free(&mut a.screen);
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn the_enterprise_flow_asks_for_a_username_then_a_masked_password() {
+        let mut a = pen_record_app();
+        lib(&mut a).modal = Modal::Wifi;
+        wifi_eap_start(
+            &mut a,
+            WifiNetwork {
+                essid: b"School".to_vec(),
+                security: WifiSecurity::Enterprise,
+                signal: 0,
+                signal_max: 1,
+                known: false,
+            },
+        );
+        assert_eq!(a.lib.as_ref().unwrap().modal, Modal::Kb);
+        assert_eq!(a.lib.as_ref().unwrap().kbp, KbPurpose::WifiEapUser);
+        lib(&mut a).kb.text.set("student@example.edu");
+        kb_finished(&mut a, true);
+        assert_eq!(a.lib.as_ref().unwrap().kbp, KbPurpose::WifiEapPassword);
+        assert!(a.lib.as_ref().unwrap().kb.secret);
+        assert_eq!(a.lib.as_ref().unwrap().wifi.eap_user.as_deref(), Some(b"student@example.edu".as_slice()));
+        kb_finished(&mut a, false);
+        assert_eq!(a.lib.as_ref().unwrap().modal, Modal::Wifi);
+        assert_eq!(a.lib.as_ref().unwrap().wifi.eap_user, None);
+        library_free(&mut a);
+        canvas_free(&mut a.screen);
+    }
+
+    // The nearby page refreshes itself after 20 s of quiet: the scan is asked for without clearing
+    // the list, and only its answer changes the rows.
+    #[test]
+    fn the_nearby_page_asks_for_a_quiet_scan_after_twenty_seconds() {
+        let root = std::env::temp_dir().join(format!("grimoire-wifi-refresh-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(&root).unwrap();
+        assert_eq!(store_init(root.join("data").to_str().unwrap()), 0);
+        let script = root.join("helper.sh");
+        let scans = root.join("scans");
+        std::fs::write(
+            &script,
+            format!(
+                r#"printf 'wireless=1\nenabled=1\nconnected=1\n'
+case $1 in
+ scan) echo scan >> '{}'; printf 'scan=ok\nnear=486f6d65,4,5,wpa2,1\nnear_end=1\n';;
+ networks) printf 'current=486f6d65\nsaved=486f6d65\nlist=1\n';;
+ *) printf 'current=486f6d65\n';;
+esac
+"#,
+                scans.display()
+            ),
+        )
+        .unwrap();
+        let mut a = pen_record_app();
+        lib(&mut a).modal = Modal::Settings;
+        wifi_init(script.to_str());
+        wifi_sheet_open(&mut a);
+        let settle = |a: &mut App, scans: &std::path::Path, want: usize| {
+            let began = std::time::Instant::now();
+            while began.elapsed() < std::time::Duration::from_secs(5) {
+                wifi_tick();
+                wifi_sheet_tick(a, now_ms());
+                let n = std::fs::read_to_string(scans).unwrap_or_default().lines().count();
+                if !wifi_busy() && wifi_nearby().is_some() && n >= want {
+                    return;
+                }
+                std::thread::sleep(std::time::Duration::from_millis(5));
+            }
+            panic!("the helper did not finish its scans");
+        };
+        settle(&mut a, &scans, 1);
+        let before = wifi_nearby().unwrap();
+        let now = now_ms();
+        lib(&mut a).wifi.refresh_at = now.wrapping_sub(WIFI_REFRESH_MS);
+        wifi_sheet_tick(&mut a, now);
+        assert!(wifi_scan_quieting(), "the idle page asks for a quiet refresh");
+        assert_eq!(wifi_nearby(), Some(before), "the list stays while it runs");
+        settle(&mut a, &scans, 2);
+        assert!(!wifi_scan_quieting());
+        assert_eq!(std::fs::read_to_string(&scans).unwrap().lines().count(), 2);
         wifi_init(None);
         library_free(&mut a);
         canvas_free(&mut a.screen);

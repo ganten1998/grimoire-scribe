@@ -107,6 +107,8 @@ pub const KB_REPEAT_BATCH: u32 = 3;
 #[derive(Clone, Copy, Debug, Default)]
 pub struct Keyboard {
     pub open: bool,
+    /// a password: its text is drawn masked, never copied, and wiped when the keyboard closes
+    pub secret: bool,
     pub title: FixedStr<64>,
     pub text: FixedStr<KB_TEXT_MAX>,
     /// the shift key's state (keyboard_open starts every keyboard with it off)
@@ -549,6 +551,9 @@ fn paste(kb: &mut Keyboard) -> bool {
 /// The text with the caret drawn in as `|` and a selection in `[` `]` (`ab|cd`, `a[bc|]d`): the headless
 /// runner's `library.caret` and `editor.caret` (docs/SIM.md).
 pub fn keyboard_caret_probe(kb: &Keyboard) -> String {
+    if kb.secret {
+        return String::new(); // (a password never reaches a probe, a log or a scenario)
+    }
     let b = kb.text.as_bytes();
     let (s, e) = keyboard_selection(kb);
     let c = kb.caret.min(b.len());
@@ -847,7 +852,7 @@ pub fn keyboard_input(kb: &mut Keyboard, input: &KbInput, dirty: &mut Rect) -> K
     let code = match *input {
         KbInput::Cancel if kb.page == 4 => return keyboard_press(kb, KB_KEY_CANCEL, dirty),
         KbInput::Cancel => {
-            kb.open = false;
+            keyboard_close(kb);
             *dirty = kb.area;
             return KbResult::Cancel;
         }
@@ -1086,6 +1091,7 @@ fn layout_page(area: Rect, page: i32, keys: &mut [Key; MAX_KEYS]) -> usize {
 pub fn keyboard_open(kb: &mut Keyboard, title: &str, initial: &[u8]) {
     *kb = Keyboard::default();
     kb.open = true;
+    kb.secret = false;
     kb.pressed_key = -1;
     kb.flick = 0;
     copy_text(&mut kb.title, title.as_bytes());
@@ -1123,8 +1129,20 @@ fn set_count(kb: &mut Keyboard, n: i32) {
 }
 
 pub fn keyboard_close(kb: &mut Keyboard) {
+    if kb.secret {
+        kb.text.clear();
+        kb.caret = 0;
+        kb.anchor = 0;
+    }
+    kb.secret = false;
     kb.open = false;
     kb.repeat_at = 0;
+}
+
+/// A password keyboard: the same keys, with the text masked, and no copy, cut or paste.
+pub fn keyboard_open_secret(kb: &mut Keyboard, title: &str) {
+    keyboard_open(kb, title, b"");
+    kb.secret = true;
 }
 
 // What a key shows: a name for the named keys, else its character as it would type now (in
@@ -1323,16 +1341,23 @@ pub fn keyboard_draw(kb: &mut Keyboard, c: &mut Canvas, screen: Rect) -> Rect {
         font_draw_left(c, FontFace::Bold, ts, Rect { x: f.x + ui_px(24.0), y: f.y, w: tr.x - f.x - ui_px(24.0), h: f.h }, title, 0);
     }
     // The text from kb.scroll, as much as fits: the caret always in view (text_scroll), and with it at the end, as
-    // it is while a name is typed, the text's tail, as it always was.
-    norm(kb);
+    // it is while a name is typed, the text's tail, as it always was. A password is drawn as stars, one for each
+    // character, and its selection and its bytes never reach the screen.
     let room = tr.w - ui_px(20.0);
-    kb.scroll = text_scroll(kb, face, size, room);
-    let text = kb.text.as_str();
-    let at = kb.scroll;
-    let end = shown_end(text, at, face, size, room);
+    let masked;
+    let (text, at, end) = if kb.secret {
+        masked = "*".repeat(kb.text.as_str().chars().count());
+        (masked.as_str(), 0, masked.len())
+    } else {
+        norm(kb);
+        kb.scroll = text_scroll(kb, face, size, room);
+        let text = kb.text.as_str();
+        let at = kb.scroll;
+        (text, at, shown_end(text, at, face, size, room))
+    };
     font_draw_left(c, face, size, tr, &text[at..end], 0);
     let x_of = |off: usize| tr.x + font_measure(face, size, &text[at..off.clamp(at, end)]);
-    let (s0, s1) = keyboard_selection(kb);
+    let (s0, s1) = if kb.secret { (0, 0) } else { keyboard_selection(kb) };
     let (v0, v1) = (s0.clamp(at, end), s1.clamp(at, end));
     if s0 < s1 {
         // A selection: white on a black box, as the line's height the caret takes (no caret beside it).
@@ -1608,6 +1633,15 @@ pub fn keyboard_press(kb: &mut Keyboard, code: u32, dirty: &mut Rect) -> KbResul
     if !kb.open || count_done_off(kb, code) {
         return KbResult::None;
     }
+    // A password is typed and deleted; it is never selected, copied, cut or pasted.
+    if kb.secret
+        && matches!(
+            code,
+            KB_KEY_EDIT | KB_KEY_SELECT_ALL | KB_KEY_CUT | KB_KEY_COPY | KB_KEY_PASTE | KB_KEY_START | KB_KEY_END
+        )
+    {
+        return KbResult::None;
+    }
     if kb.page == 4 && code != KB_KEY_CANCEL && code != KB_KEY_DONE {
         // The count pad: digits, del, - and + change the count; it stays a number from 0 to count_max. While
         // the count is the 1 it opened with (count_fresh), a digit replaces it and del clears it.
@@ -1636,12 +1670,12 @@ pub fn keyboard_press(kb: &mut Keyboard, code: u32, dirty: &mut Rect) -> KbResul
     }
     match code {
         KB_KEY_CANCEL => {
-            kb.open = false;
+            keyboard_close(kb);
             *dirty = kb.area;
             return KbResult::Cancel;
         }
         KB_KEY_DONE => {
-            kb.open = false;
+            kb.open = false; // (the caller takes a secret's text, then wipes it)
             *dirty = kb.area;
             return KbResult::Done;
         }
@@ -2914,6 +2948,28 @@ mod tests {
         for (code, m) in [(30, 0), (46, shift), (47, ctrl | alt), (103, 0), (108, 0), (1, 0), (28, 0), (14, 0)] {
             assert_eq!(keyboard_key_input(code, m), None, "key {code} mods {m}");
         }
+    }
+
+    /// A password keyboard shows stars, never exposes its text to a probe, and takes no edit or clipboard key; its
+    /// text is wiped when it closes.
+    #[test]
+    fn a_password_is_masked_and_never_copied() {
+        G_CLIP.with(|c| c.borrow_mut().clear());
+        let mut kb = Keyboard::default();
+        keyboard_open_secret(&mut kb, "Password");
+        kb.text.set("hunter2");
+        kb.caret = 7;
+        let mut d = RECT_EMPTY;
+        for code in [KB_KEY_EDIT, KB_KEY_SELECT_ALL, KB_KEY_COPY, KB_KEY_CUT, KB_KEY_PASTE] {
+            assert_eq!(keyboard_press(&mut kb, code, &mut d), KbResult::None, "key {code}");
+        }
+        assert_eq!(keyboard_clipboard(), "");
+        assert_eq!(keyboard_caret_probe(&kb), "");
+        assert_eq!(keyboard_press(&mut kb, KB_KEY_DONE, &mut d), KbResult::Done);
+        assert_eq!(kb.text.as_str(), "hunter2", "the caller takes it before wiping it");
+        keyboard_close(&mut kb);
+        assert!(kb.text.is_empty());
+        assert!(!kb.secret);
     }
 
     /// Every edit key's word, and the text line's icons, fit their keys in English and Spanish, upright and sideways,

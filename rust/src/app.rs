@@ -2768,6 +2768,15 @@ pub fn app_probe(a: &mut App, key: &str, out: &mut String, cap: usize) -> i32 {
             Some(v) => csnprintf!(out, cap, "%d", v.len() as i32),
             None => csnprintf!(out, cap, "%s", "unread"),
         };
+    } else if key == "wifi.near" {
+        match wifi_nearby() {
+            Some(v) => csnprintf!(out, cap, "%d", v.len() as i32),
+            None => csnprintf!(out, cap, "%s", "none"),
+        };
+    } else if key == "wifi.scanning" {
+        csnprintf!(out, cap, "%d", wifi_scanning() as i32);
+    } else if key == "wifi.scan.failed" {
+        csnprintf!(out, cap, "%d", wifi_scan_failed() as i32);
     } else if key == "wifi.join" {
         // the last switch to a saved network: "pending", "connected", "failed", "" for none
         csnprintf!(out, cap, "%s", match wifi_joining().map(|j| j.1) {
