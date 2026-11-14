@@ -61,7 +61,10 @@ is when it times it by the script's own clock: `touch` lines are stamped by thei
 job runs. Each `wait MS` advances those timers by exactly MS; host work and `GRIMOIRE_SIM_LATE_MS`
 still delay the runner, but do not advance app time. A `waitfor` advances them by what it idled, a
 round at a time, until its probe matches (tests/scenarios/z_waitfor_script_clock.qs waits so for a
-toast to go). `waitbg` keeps a real deadline and polls the jobs while app time stays still. This is
+toast to go). A `side click` advances them by its own time, its presses and the gaps between them
+(80 ms for one click), as its events come due: so a `wait` after it is that long after the release
+by the app's own timers, however late the machine ends it (tests/scenarios/v_gestures_4e_single.qs
+checks a single click's wait for a second one so). `waitbg` keeps a real deadline and polls the jobs while app time stays still. This is
 opt-in for exact toast and refresh checks; other scenarios keep the real monotonic clock. `clock
 SECONDS` still sets only the displayed wall time. With it, `GRIMOIRE_SIM_UPTIME_MS=N` starts app
 time at N ms in place of the host's time since it started, as on a machine up that long
@@ -100,7 +103,7 @@ GRIMOIRE_ROOT=/tmp/q GRIMOIRE_SCRIPT=tests/scenarios/a_notebook.qs GRIMOIRE_SHOT
 | `pen curve X Y R STEPS P [TURNS] [tx ty]` | cursive-like loops |
 | `eraser line X0 Y0 X1 Y1 STEPS` | the same with the eraser end |
 | `side on` / `side off` | hold/release the first side button; existing event sequence is unchanged |
-| `side click N [GAP_MS] [PRESS_MS]` | N hovering button clicks; defaults: 150 ms release-to-next-press gap, 80 ms press |
+| `side click N [GAP_MS] [PRESS_MS]` | N hovering button clicks; defaults: 150 ms release-to-next-press gap, 80 ms press. The next line is read once the last release is delivered: the runner sleeps up to each event's time, and with `GRIMOIRE_SIM_CLOCK=script` moves app time on by just that |
 | `side2 on` / `side2 off`, `side2 click N [GAP_MS] [PRESS_MS]` | the second button, enabled by `GRIMOIRE_SIM_PEN_BUTTON2=1` |
 | `mods N` | the modifier keys held from here on (KEYMOD_* bits: 1 Ctrl, 2 Shift, 4 Alt, 8 Meta; `mods 0` lets go), in order with the events before it: every pen and touch event carries them, as a paired keyboard's Shift held while tapping (z_pages_add_1_batch), and `hidkeys_mods_held` reads them, as Shift or Alt held as a lasso begins (z_lasso_14_exact_toggle) |
 | `key CODE MODS [PAD]` | a key press (Linux evdev code, KEYMOD_* bits), a controller's when PAD is 1. A modifier (29, 97 Ctrl; 42, 54 Shift; 56, 100 Alt; 125, 126 Meta) is held instead, no event of its own, as input_evdev.rs reads a keyboard: every key, pen and touch event carries it until its `keyup`; `hidkeys_mods_held` follows it too (z_lasso_16_exact_shift_key) |

@@ -2700,7 +2700,16 @@ fn poll_in(ev: &mut InEvent, timeout_ms: i32, mut a: Option<&mut App>) -> i32 {
         // timeout 0 still drains every due event, including releases after a slow frame.
         if timeout_ms != 0 {
             let left = due.wrapping_sub(now_ms()) as i32;
-            if left > 0 { sleep_ms(if timeout_ms < 0 { left } else { left.min(timeout_ms) }); }
+            if left > 0 {
+                let step = if timeout_ms < 0 { left } else { left.min(timeout_ms) };
+                sleep_ms(step);
+                // GRIMOIRE_SIM_CLOCK=script: app time stands still while the runner sleeps, and the
+                // click's events are stamped by it, so the click's own time moves it on, as a wait's
+                // does (else its release would never come due, and no line after it be read).
+                if let Some(at) = crate::util::sim_clock() {
+                    crate::util::sim_clock_set(Some(at.wrapping_add(step as u32)));
+                }
+            }
             if with(|st| st.q_pop(ev)) { return 1; }
         }
         return 0;
@@ -3640,6 +3649,50 @@ mod tests {
             assert!(now_ms().wrapping_sub(1090) <= 50);
         }
         assert_eq!((with(|st| st.line_no), now_ms()), (3, 1140));
+    }
+
+    #[test]
+    fn a_side_click_moves_the_script_clock_by_its_own_time_and_the_script_reads_on() {
+        fresh();
+        script("side-clock", "side click 2 150 80\nwait 200\nquit\n");
+        let _clock = ScriptClock;
+        crate::util::sim_clock_set(Some(5000));
+        // The hover and the first press come at once; each later event when the runner has slept up to
+        // it, app time moved on to just its stamp, however long the host took over each round. (Without
+        // that the first release never came due: app time stood at the press, and nothing after the
+        // click was read.)
+        let mut ev = InEvent::default();
+        let mut got = Vec::new();
+        for _ in 0..60 {
+            if got.len() == 5 {
+                break;
+            }
+            if input_poll(&mut ev, 30) == 1 {
+                got.push((ev.type_, ev.side_button, ev.t_ms - 5000, now_ms() - 5000));
+            }
+        }
+        assert_eq!(got, [
+            (InType::PenHover, false, 0, 0),
+            (InType::PenButton, true, 0, 0),
+            (InType::PenButton, false, 80, 80),
+            (InType::PenButton, true, 230, 230),
+            (InType::PenButton, false, 310, 310),
+        ]);
+        assert!(with(|st| st.side_click_until.is_none()));
+        // The wait after it moves app time on by its 200 ms and no more: what the app times from the
+        // release (a single click's wait for a second one) is as far along at the next line as the
+        // script says, on any machine.
+        for _ in 0..100 {
+            if input_poll(&mut ev, 30) == 1 {
+                break;
+            }
+            assert!(now_ms() - 5000 <= 510, "{}", now_ms());
+        }
+        assert_eq!((ev.type_, now_ms() - 5000), (InType::Quit, 510));
+        // docs/SIM.md says so where it describes the scripted clock
+        let doc = std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/../docs/SIM.md")).unwrap();
+        let para = doc.split("\n\n").find(|p| p.starts_with("`GRIMOIRE_SIM_CLOCK=script`")).unwrap();
+        assert!(para.contains("`side click`"), "the scripted clock's paragraph does not name side click: {para}");
     }
 
     #[test]
