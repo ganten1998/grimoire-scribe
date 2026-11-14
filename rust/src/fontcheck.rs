@@ -1382,8 +1382,8 @@ fn children_cpu_ms() -> u64 {
 /// What the `.font` file says of a font file: the whole file's hash and size, and what the check found.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Verdict {
-    /// FNV-1a 64 of the whole file, and its size: the UI loads a font only when the bytes it read are these
-    pub hash: u64,
+    /// SHA-256 of the whole file, and its size: the UI loads a font only when the bytes it read are these
+    pub hash: [u8; 32],
     pub size: u64,
     pub what: VerdictKind,
 }
@@ -1398,19 +1398,20 @@ pub enum VerdictKind {
 /// A `.font` file is at most this long (656 glyph numbers, two names, a dozen short lines).
 pub const VERDICT_MAX: usize = 8 << 10;
 
-/// FNV-1a 64 over a font's whole bytes.
-pub fn font_hash(data: &[u8]) -> u64 {
-    let mut h: u64 = 14695981039346656037;
-    for &b in data {
-        h = (h ^ b as u64).wrapping_mul(1099511628211);
-    }
-    h
+/// The number in a `.font` file's first line. It stands for the text and for the check's rules together: a
+/// verdict of another number is no verdict, and the font is checked again. Bump it whenever the text changes
+/// or the rules do (what the check refuses, a limit it measures by).
+pub const VERDICT_NUMBER: u32 = 2;
+
+/// SHA-256 over a font's whole bytes (sha256.rs).
+pub fn font_hash(data: &[u8]) -> [u8; 32] {
+    crate::sha256::sha256(data)
 }
 
 impl Verdict {
     /// The file's text.
     pub fn to_text(&self) -> String {
-        let mut s = format!("grimoire-font 1\nhash={:016x}\nsize={}\n", self.hash, self.size);
+        let mut s = format!("grimoire-font {VERDICT_NUMBER}\nhash={}\nsize={}\n", crate::sha256::hex32(&self.hash), self.size);
         match &self.what {
             VerdictKind::Refused(r) => {
                 s.push_str(match r {
@@ -1449,7 +1450,7 @@ impl Verdict {
         }
         let text = std::str::from_utf8(text).ok()?;
         let mut lines = text.split('\n');
-        if lines.next()? != "grimoire-font 1" {
+        if lines.next()? != format!("grimoire-font {VERDICT_NUMBER}") {
             return None;
         }
         let (mut hash, mut size, mut why, mut ok) = (None, None, None, false);
@@ -1461,7 +1462,7 @@ impl Verdict {
             }
             let (k, v) = l.split_once('=')?;
             match k {
-                "hash" if v.len() == 16 && v.bytes().all(|c| c.is_ascii_digit() || (b'a'..=b'f').contains(&c)) => hash = u64::from_str_radix(v, 16).ok(),
+                "hash" => hash = Some(crate::sha256::unhex32(v)?),
                 "size" => size = number(v).map(|n| n as u64),
                 "why" => {
                     why = Some(match v {
@@ -1637,11 +1638,14 @@ mod tests {
             lacks: 4,
             cover: [96, 128, 0, 0, 0, 0],
         };
-        let v = Verdict { hash: 0x0123_4567_89ab_cdef, size: 54321, what: VerdictKind::Passed(f) };
+        let hash: [u8; 32] = std::array::from_fn(|i| (i as u8).wrapping_mul(37).wrapping_add(0xab));
+        let digits = crate::sha256::hex32(&hash);
+        let v = Verdict { hash, size: 54321, what: VerdictKind::Passed(f) };
         let text = v.to_text();
+        assert!(text.starts_with(&format!("grimoire-font 2\nhash={digits}\nsize=54321\n")), "{text}");
         assert_eq!(Verdict::parse(text.as_bytes()), Some(v.clone()));
         for (kind, word) in [(VerdictKind::Refused(Refuse::NoLatin), "nolatin"), (VerdictKind::Slow, "slow")] {
-            let r = Verdict { hash: 1, size: 2, what: kind };
+            let r = Verdict { hash: [7; 32], size: 2, what: kind };
             assert!(r.to_text().contains(word));
             assert_eq!(Verdict::parse(r.to_text().as_bytes()), Some(r));
         }
@@ -1653,9 +1657,18 @@ mod tests {
             text.replace("skip=3,77,4000", "skip=77,3"),
             text.replace("skip=3,77,4000", "skip=70000"),
             text.replace("bold=700", "bold=300"),
-            text.replace("grimoire-font 1", "grimoire-font 2"),
+            // (the number of an earlier version's text, and of a later one's)
+            text.replace("grimoire-font 2", "grimoire-font 1"),
+            text.replace("grimoire-font 2", "grimoire-font 3"),
+            text.replace("grimoire-font 2", "grimoire-font 02"),
             text.replace("ok=1\n", ""),
-            text.replace("hash=0123456789abcdef", "hash=xyz"),
+            text.replace(&digits, "xyz"),
+            // (the hash is the 64 lower-case hex digits of a SHA-256: not 16 digits, not 63 or 65, no capital)
+            text.replace(&digits, &digits[..16]),
+            text.replace(&digits, &digits[..63]),
+            text.replace(&digits, &format!("{digits}0")),
+            text.replace(&digits, &digits.replacen('b', "B", 1)),
+            text.replace(&format!("hash={digits}\n"), ""),
             text.replace("size=54321", "size=0"),
             text.replace("ascent=950", "ascent=-950"),
             format!("{text}why=slow\n"),
@@ -1664,6 +1677,14 @@ mod tests {
         }
         assert_eq!(Verdict::parse(&vec![b'a'; VERDICT_MAX + 1]), None);
         assert_eq!(Verdict::parse(b""), None);
+    }
+
+    #[test]
+    fn the_verdicts_hash_is_the_files_sha256() {
+        // (FIPS 180-4's vector for "abc", which `shasum -a 256` gives too)
+        assert_eq!(crate::sha256::hex32(&font_hash(b"abc")), "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad");
+        let v = Verdict { hash: font_hash(b"abc"), size: 3, what: VerdictKind::Slow };
+        assert!(v.to_text().contains("\nhash=ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad\n"));
     }
 
     #[test]

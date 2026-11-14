@@ -538,7 +538,7 @@ pub enum UserFontState {
     /// checked: its verdict is there, not read yet (userfont_resolve reads it)
     Checked,
     /// it passed: what the check learned, and the hash its bytes must have
-    Ready(Rc<FaceFacts>, u64),
+    Ready(Rc<FaceFacts>, [u8; 32]),
     No(FontWhy),
 }
 
