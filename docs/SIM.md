@@ -254,7 +254,9 @@ Cancel 1240 1675. The editor's tool button is 2388 358.
 `side click 2` is a double-click with 80 ms presses and 150 ms release-to-next-press gaps.
 With a double or triple slot bound, follow the final release with `wait 400` before checking
 dispatch: the recognizer waits 350 ms. Without either multi-click slot a single click acts at
-release. Triple-click requires each next press within 350 ms of the preceding release (the old
+release. A check that the click has NOT acted yet (a `wait` shorter than the 350 ms, then the check)
+holds on any machine only with `GRIMOIRE_SIM_CLOCK=script`: by the real clock a wait that ends late,
+as on a loaded machine, ends after the click acted (v_gestures_4e_single, issue #86). Triple-click requires each next press within 350 ms of the preceding release (the old
 three-clicks-within-1.2-seconds rule is retired). `side on`, `wait 1200`, `side off` records a
 hovering hold; `side on`, `pen down`, `pen move`, `pen up`, `side off` records a drag. Existing
 `side on/off` scripts retain their event sequence; the helper additionally establishes hover.

@@ -219,8 +219,11 @@ scenario-times: scenarios
 # check is through, the hold on a row past the long press). Late waits do not slow the backlinks check
 # itself, as a slow runner did: the scenario's own GRIMOIRE_SIM_BACKLINKS_STEP_MS does, in both runs,
 # and its waitfor waits for the rows however long the check takes.
+# v_gestures_4e_single checks what one click of the pen's side button has NOT done yet, 200 ms after it:
+# by the script's clock (GRIMOIRE_SIM_CLOCK=script), which a late wait does not move, where by the real
+# clock a wait that ended late ended after the click had acted (issue #86).
 LATE_SCENARIOS := y_status_press s_shape_4_guards z_pages_drag_hold u_keyboard_hold_delete y_status_corner z_rc8_pages_refresh \
-  z_links_3_bar_learns
+  z_links_3_bar_learns v_gestures_4e_single
 .PHONY: scenarios-late
 scenarios-late: $(BUILD)/host/grimoire-headless
 	@echo "== the scenarios again with every wait 400 ms late: $(LATE_SCENARIOS)"
