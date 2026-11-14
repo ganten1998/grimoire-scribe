@@ -147,7 +147,7 @@ pub const FD_SOURCE: i32 = 3;
 pub const FD_OUT: i32 = 4;
 pub const FD_IN: i32 = 5;
 
-// ---- the seccomp allow-list (classic BPF over the calls' numbers) ----
+// ---- the seccomp allow-list (classic BPF over the calls' numbers and, for three of them, one argument) ----
 
 pub const SECCOMP_RET_TRAP: u32 = 0x0003_0000;
 pub const SECCOMP_RET_ERRNO: u32 = 0x0005_0000;
@@ -172,8 +172,9 @@ pub struct SysNums {
     pub exit: u32,
     pub exit_group: u32,
     /// calls that answer ENOSYS instead of trapping: the time64 calls musl tries first on the 32-bit ARM, and
-    /// gettid, which only a panic's message asks for (S1 saw it trap there), so a worker that panics still
-    /// reports "E panic" and ends by its own `_exit`
+    /// gettid, which only a panic's message asks for (S1 saw it trap there): with it answered, a build that
+    /// unwinds (the simulator, tests) says "E panic" and ends by its own `_exit`, and the Kindle's build, which
+    /// aborts on a panic, is seen as its abort (KINDLE.md, call 175) and not as a call to add
     pub enosys: &'static [u32],
     /// calls that reach out, which no worker may make (the tests check they trap): socket, execve, kill,
     /// ptrace, mount, chroot
@@ -257,9 +258,10 @@ pub fn this_arch() -> &'static SysNums {
     }
 }
 
-/// The design's allow-list (3.7 step 9): read, write, the mmap family (musl's allocator also needs mprotect and
-/// madvise), brk, futex, clock_gettime, rt_sigreturn and exit. exit_group is on it too: musl's `_exit` ends the
-/// process through it, and it only ever ends the worker itself.
+/// The allow-list: read, write, the mmap family with mprotect and madvise, brk, futex, clock_gettime,
+/// rt_sigreturn, exit and exit_group (the C library's `_exit` ends the process through it, and it only ever
+/// ends the worker itself). Which of mprotect, madvise and brk the allocator uses differs between the Kindle's
+/// build and the Linux test build; the list holds them all.
 pub fn allow_list_for(n: &SysNums) -> Vec<u32> {
     vec![n.read, n.write, n.mmap, n.munmap, n.mremap, n.madvise, n.mprotect, n.brk, n.futex, n.clock_gettime, n.rt_sigreturn, n.exit, n.exit_group]
 }
@@ -282,51 +284,120 @@ pub struct BpfIns {
 
 const BPF_LD_W_ABS: u16 = 0x20;
 const BPF_JEQ_K: u16 = 0x15;
+const BPF_JSET_K: u16 = 0x45;
 const BPF_RET_K: u16 = 0x06;
 
-/// An arch check (another arch: trap), then one jump per allowed number to ALLOW, one per ENOSYS number to
-/// ERRNO(ENOSYS), and everything else TRAPs.
-pub fn build_filter(arch: u32, allow: &[u32], enosys: &[u32]) -> Vec<BpfIns> {
-    let n = allow.len() + enosys.len();
-    assert!(n < 240, "a jump is one byte");
+/// The futex operations one thread of Rust and a C library issues, as the words of the call's second argument:
+/// a wait, a wake and a wait-bitset, each on a private futex (128, 129, 137). The standard library waits with
+/// 137 and wakes with 129; a C library's locks wait with 128 and wake with 129; the other words belong to waits
+/// and wakes that need a second thread, which a worker has no way to make. Typed by hand, as the tables are
+/// (macOS's libc has none of them; a test on Linux holds them to libc's).
+pub const FUTEX_WAIT: u32 = 0;
+pub const FUTEX_WAKE: u32 = 1;
+pub const FUTEX_WAIT_BITSET: u32 = 9;
+pub const FUTEX_PRIVATE_FLAG: u32 = 128;
+pub const FUTEX_ALLOWED: [u32; 3] = [FUTEX_WAIT | FUTEX_PRIVATE_FLAG, FUTEX_WAKE | FUTEX_PRIVATE_FLAG, FUTEX_WAIT_BITSET | FUTEX_PRIVATE_FLAG];
+
+/// The bit of a mapping's protection (the third argument of mmap and of mprotect) that asks for it executable.
+pub const PROT_EXEC: u32 = 4;
+
+/// Where the kernel's `seccomp_data` holds the low 32 bits of a call's argument `i` (0 to 5): the call's number
+/// is at 0, the architecture at 4, the instruction pointer at 8, then six 64-bit slots. Every architecture
+/// named here is little-endian (the arch check runs first), so the low half of a slot comes first; on the
+/// 32-bit one it is the whole argument. The filter never reads a high half.
+pub const fn arg_lo(i: u32) -> u32 {
+    16 + 8 * i
+}
+
+/// Where a jump of the filter leads: the block that returns ALLOW or the one that returns ERRNO(ENOSYS).
+#[derive(Clone, Copy)]
+enum To {
+    Allow,
+    Errno,
+}
+
+/// The filter for the table `n`: an arch check (another arch: trap), then one jump per number of `allow`, in
+/// its order (read and write first: the calls a worker makes most), to ALLOW, one per number of `enosys` to
+/// ERRNO(ENOSYS), and everything else TRAPs. A number that is not in `allow` is never allowed. Every jump goes
+/// forward and is taken on a match only (`jf` is 0 everywhere), resolved from the blocks' places once they are
+/// known.
+///
+/// ```text
+/// LD [4]; JEQ arch (jt 1); RET TRAP; LD [0]
+/// JEQ <each number of allow, in order>  -> A
+/// JEQ <each number of enosys>           -> E
+/// RET TRAP
+/// E: RET ERRNO|38
+/// A: RET ALLOW
+/// ```
+pub fn build_filter(n: &SysNums, allow: &[u32], enosys: &[u32]) -> Vec<BpfIns> {
+    let ld = |k: u32| BpfIns { code: BPF_LD_W_ABS, jt: 0, jf: 0, k };
+    let ret = |k: u32| BpfIns { code: BPF_RET_K, jt: 0, jf: 0, k };
     let mut v = vec![
-        BpfIns { code: BPF_LD_W_ABS, jt: 0, jf: 0, k: 4 }, // seccomp_data.arch
-        BpfIns { code: BPF_JEQ_K, jt: 1, jf: 0, k: arch },
-        BpfIns { code: BPF_RET_K, jt: 0, jf: 0, k: SECCOMP_RET_TRAP },
-        BpfIns { code: BPF_LD_W_ABS, jt: 0, jf: 0, k: 0 }, // seccomp_data.nr
+        ld(4), // seccomp_data.arch
+        BpfIns { code: BPF_JEQ_K, jt: 1, jf: 0, k: n.audit_arch },
+        ret(SECCOMP_RET_TRAP),
+        ld(0), // seccomp_data.nr
     ];
-    let first = v.len();
-    let trap_at = first + n;
-    let allow_at = trap_at + 1;
-    let errno_at = trap_at + 2;
-    for (i, &s) in allow.iter().enumerate() {
-        let here = first + i;
-        v.push(BpfIns { code: BPF_JEQ_K, jt: (allow_at - (here + 1)) as u8, jf: 0, k: s });
+    // the compares, each with the block it jumps to (its offset is written below)
+    let mut jumps: Vec<(usize, To)> = Vec::new();
+    let mut jeq = |v: &mut Vec<BpfIns>, k: u32, to: To| {
+        jumps.push((v.len(), to));
+        v.push(BpfIns { code: BPF_JEQ_K, jt: 0, jf: 0, k });
+    };
+    for &s in allow {
+        jeq(&mut v, s, To::Allow);
     }
-    for (i, &s) in enosys.iter().enumerate() {
-        let here = first + allow.len() + i;
-        v.push(BpfIns { code: BPF_JEQ_K, jt: (errno_at - (here + 1)) as u8, jf: 0, k: s });
+    for &s in enosys {
+        jeq(&mut v, s, To::Errno);
     }
-    v.push(BpfIns { code: BPF_RET_K, jt: 0, jf: 0, k: SECCOMP_RET_TRAP });
-    v.push(BpfIns { code: BPF_RET_K, jt: 0, jf: 0, k: SECCOMP_RET_ALLOW });
-    v.push(BpfIns { code: BPF_RET_K, jt: 0, jf: 0, k: SECCOMP_RET_ERRNO | 38 }); // ENOSYS
+    v.push(ret(SECCOMP_RET_TRAP));
+    let errno_at = v.len();
+    v.push(ret(SECCOMP_RET_ERRNO | 38)); // ENOSYS
+    let allow_at = v.len();
+    v.push(ret(SECCOMP_RET_ALLOW));
+    for (at, to) in jumps {
+        let target = match to {
+            To::Allow => allow_at,
+            To::Errno => errno_at,
+        };
+        let off = target - (at + 1);
+        assert!(off < 256, "a jump is one byte");
+        v[at].jt = off as u8;
+    }
     v
 }
 
-/// A tiny classic-BPF interpreter for the three instruction kinds above, so the filter's verdicts are tested
-/// on any host.
-pub fn eval_filter(f: &[BpfIns], arch: u32, nr: u32) -> u32 {
+/// A tiny classic-BPF interpreter for the instruction kinds above, over the call as the kernel shows it to a
+/// filter (`seccomp_data`: the architecture, the number and the six arguments), so the filter's verdicts are
+/// tested on any host. A load at 16 to 60 reads half of an argument (the low half of `args[i]` at `arg_lo(i)`,
+/// the high half 4 further on); the instruction pointer (8 and 12) reads as 0.
+pub fn eval_filter_args(f: &[BpfIns], arch: u32, nr: u32, args: &[u64; 6]) -> u32 {
     let (mut pc, mut a) = (0usize, 0u32);
     loop {
         let i = f[pc];
         pc += 1;
         match i.code {
-            BPF_LD_W_ABS => a = if i.k == 4 { arch } else { nr },
+            BPF_LD_W_ABS => {
+                a = match i.k {
+                    0 => nr,
+                    4 => arch,
+                    8 | 12 => 0,
+                    k @ 16..=60 if k % 4 == 0 => (args[((k - 16) / 8) as usize] >> (8 * (k % 8))) as u32,
+                    k => panic!("a load outside seccomp_data: {k}"),
+                }
+            }
             BPF_JEQ_K => pc += if a == i.k { i.jt as usize } else { i.jf as usize },
+            BPF_JSET_K => pc += if a & i.k != 0 { i.jt as usize } else { i.jf as usize },
             BPF_RET_K => return i.k,
             c => panic!("bad BPF op {c}"),
         }
     }
+}
+
+/// The same for a call whose arguments are all 0.
+pub fn eval_filter(f: &[BpfIns], arch: u32, nr: u32) -> u32 {
+    eval_filter_args(f, arch, nr, &[0; 6])
 }
 
 // ---- the steps, and the fail-closed rule ----
@@ -603,7 +674,7 @@ mod linux {
             libc::sigaddset(&mut set, libc::SIGSYS);
             libc::sigprocmask(libc::SIG_UNBLOCK, &set, std::ptr::null_mut());
         }
-        let f = build_filter(this_arch().audit_arch, &s1::allow(), &enosys_calls());
+        let f = build_filter(this_arch(), &s1::allow(), &enosys_calls());
         let mut raw: Vec<libc::sock_filter> = f.iter().map(|i| libc::sock_filter { code: i.code, jt: i.jt, jf: i.jf, k: i.k }).collect();
         let prog = libc::sock_fprog { len: raw.len() as u16, filter: raw.as_mut_ptr() };
         // SAFETY: the kernel copies the program at this call; prog and raw live until it returns.
@@ -1236,13 +1307,25 @@ mod tests {
     use super::*;
     use std::cell::Cell;
 
+    /// A call of the allow-list as a worker makes it: futex as a private wake, mmap and mprotect for a mapping
+    /// to read and write, any other with arguments of 0 (it is judged by its number alone).
+    fn plain_args(n: &SysNums, nr: u32) -> [u64; 6] {
+        let mut a = [0u64; 6];
+        if nr == n.futex {
+            a[1] = (FUTEX_WAKE | FUTEX_PRIVATE_FLAG) as u64;
+        } else if nr == n.mmap || nr == n.mprotect {
+            a[2] = 3;
+        }
+        a
+    }
+
     #[test]
     fn filter_verdicts() {
         for n in [&ARM, &X86_64, &AARCH64] {
             let (al, en) = (allow_list_for(n), n.enosys.to_vec());
-            let f = build_filter(n.audit_arch, &al, &en);
+            let f = build_filter(n, &al, &en);
             for &s in &al {
-                assert_eq!(eval_filter(&f, n.audit_arch, s), SECCOMP_RET_ALLOW, "{s}");
+                assert_eq!(eval_filter_args(&f, n.audit_arch, s, &plain_args(n, s)), SECCOMP_RET_ALLOW, "{s}");
             }
             for &s in &en {
                 assert_eq!(eval_filter(&f, n.audit_arch, s), SECCOMP_RET_ERRNO | 38, "{s}");
@@ -1254,16 +1337,54 @@ mod tests {
             }
             // another architecture's call numbers are never taken for ours
             assert_eq!(eval_filter(&f, n.audit_arch ^ 1, al[0]), SECCOMP_RET_TRAP);
+            // a number that is not in the list given is never allowed, whatever the table says of it
+            let short: Vec<u32> = al.iter().copied().filter(|&s| s != n.futex && s != n.mmap).collect();
+            let g = build_filter(n, &short, &en);
+            for s in [n.futex, n.mmap] {
+                assert_eq!(eval_filter_args(&g, n.audit_arch, s, &plain_args(n, s)), SECCOMP_RET_TRAP, "{s}");
+            }
+        }
+    }
+
+    // The program is one the kernel's checker takes (Linux 4.9, seccomp_check_filter): only the four opcodes
+    // (a 32-bit load at a fixed offset, a jump on equal, a jump on a set bit, a return), every load at the
+    // number, the architecture or the low half of the second or third argument, every jump forward and inside
+    // the program, taken on a match only, and a return at the end. And the calls the worker itself makes right
+    // after the filter is on (a private futex wake; a page mapped to read and write, set to read only, and
+    // unmapped) pass it.
+    #[test]
+    fn the_filter_is_one_the_kernel_takes() {
+        for n in [&ARM, &X86_64, &AARCH64] {
+            let f = build_filter(n, &allow_list_for(n), n.enosys);
+            assert!(f.len() <= 4096);
+            for (at, i) in f.iter().enumerate() {
+                assert!([0x20u16, 0x15, 0x45, 0x06].contains(&i.code), "opcode {:#x} at {at}", i.code);
+                if i.code == 0x20 {
+                    assert!([0, 4, arg_lo(1), arg_lo(2)].contains(&i.k), "a load at {} (instruction {at})", i.k);
+                }
+                if i.code == 0x15 || i.code == 0x45 {
+                    assert_eq!(i.jf, 0, "instruction {at}");
+                    assert!(at + 1 + (i.jt as usize) < f.len(), "the jump at {at} leaves the program");
+                }
+            }
+            assert_eq!(f.last().map(|i| i.code), Some(0x06));
+            // (its size: the head, a compare a number, a trap and the two returns)
+            assert_eq!(f.len(), if n.audit_arch == ARM.audit_arch { 26 } else { 21 });
+            assert_eq!((arg_lo(1), arg_lo(2)), (24, 32));
+            for (nr, args) in [(n.futex, [0, 129, 1, 0, 0, 0]), (n.mmap, [0, 4096, 3, 0x22, u64::MAX, 0]), (n.mprotect, [0, 4096, 1, 0, 0, 0]), (n.munmap, [0, 4096, 0, 0, 0, 0])] {
+                assert_eq!(eval_filter_args(&f, n.audit_arch, nr, &args), SECCOMP_RET_ALLOW, "{nr}");
+            }
         }
     }
 
     // A panic's message asks for gettid (S1 saw it trap on the Scribe): it answers ENOSYS on every architecture,
-    // so a worker that panics reports "E panic" instead of dying of SIGSYS.
+    // so a worker that panics is reported as a panic ("E panic" where the build unwinds, its abort on the Kindle)
+    // and never as a missing call.
     #[test]
     fn gettid_answers_enosys() {
         for (n, gettid) in [(&ARM, 224u32), (&X86_64, 186), (&AARCH64, 178)] {
             assert!(n.enosys.contains(&gettid), "{gettid}");
-            let f = build_filter(n.audit_arch, &allow_list_for(n), n.enosys);
+            let f = build_filter(n, &allow_list_for(n), n.enosys);
             assert_eq!(eval_filter(&f, n.audit_arch, gettid), SECCOMP_RET_ERRNO | 38);
         }
         #[cfg(target_os = "linux")]
@@ -1275,7 +1396,7 @@ mod tests {
     #[test]
     fn the_calls_that_reach_out_are_trapped() {
         for n in [&ARM, &X86_64, &AARCH64] {
-            let f = build_filter(n.audit_arch, &allow_list_for(n), n.enosys);
+            let f = build_filter(n, &allow_list_for(n), n.enosys);
             for nr in n.reach_out {
                 assert!(!allow_list_for(n).contains(&nr), "{nr}");
                 assert_eq!(eval_filter(&f, n.audit_arch, nr), SECCOMP_RET_TRAP, "{nr}");
@@ -1320,6 +1441,11 @@ mod tests {
                 libc::SYS_chroot as u32
             ]
         );
+        assert_eq!(
+            [FUTEX_WAIT, FUTEX_WAKE, FUTEX_WAIT_BITSET, FUTEX_PRIVATE_FLAG, PROT_EXEC],
+            [libc::FUTEX_WAIT as u32, libc::FUTEX_WAKE as u32, libc::FUTEX_WAIT_BITSET as u32, libc::FUTEX_PRIVATE_FLAG as u32, libc::PROT_EXEC as u32]
+        );
+        assert_eq!(arg_lo(0) as usize, std::mem::offset_of!(libc::seccomp_data, args));
     }
 
     // The fail-closed rule, with no Linux needed: a step that fails stops a required run at that step (nothing
