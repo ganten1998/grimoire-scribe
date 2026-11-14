@@ -75,7 +75,8 @@ static HELD: AtomicBool = AtomicBool::new(false);
 
 /// A held writer's work pump (the renderer calls it after every stroke): once its notebook's cache holds five
 /// records, which is as its sixth page is drawn, the writer stops itself, until the test sends SIGCONT (or
-/// kills it). Once: later calls of the same page still see five records.
+/// kills it). Once: later calls of the same page still see five records. A test that sends SIGCONT waits for
+/// the stop first (waitpid with WUNTRACED): the records are there a moment before the writer stops.
 fn hold_at_five() {
     if HELD.load(Ordering::Relaxed) {
         return;
@@ -187,6 +188,15 @@ fn a_second_writer_waits_and_publishes_last() {
     let a = mirror_child(&nb, &dir, true);
     let mut kids = Children(vec![a]);
     wait_until("A to reach its sixth page", || records(&nb) == 5 && temps(&dir).len() == 1);
+    // ... and to have stopped there. The five records are on disk a moment before A stops itself, and a
+    // SIGCONT sent to a writer that has not stopped yet is lost: the stop is waited for as the event it is.
+    let mut st = 0;
+    // SAFETY: waitpid on the child forked above; WUNTRACED also reports its stop.
+    let got = unsafe { libc::waitpid(a, &mut st, libc::WUNTRACED) };
+    if got == a && !libc::WIFSTOPPED(st) {
+        kids.0.clear(); // (A ended and is reaped: nothing is left to kill)
+    }
+    assert!(got == a && libc::WIFSTOPPED(st), "A stops itself at its sixth page (waitpid {got}, status {st:#x})");
     // writer B (Grimoire started again, the notebook changed and closed): the same notebook, one page fewer
     let mut nb_b = nb.clone();
     nb_b.page_ids.remove(5);
@@ -199,7 +209,6 @@ fn a_second_writer_waits_and_publishes_last() {
     // A goes on: it writes the rest of its PDF into its own temporary file
     // SAFETY: SIGCONT to the child forked above, which stopped itself.
     assert_eq!(unsafe { libc::kill(a, libc::SIGCONT) }, 0);
-    let mut st = 0;
     // SAFETY: waitpid on the children forked above.
     unsafe { libc::waitpid(a, &mut st, 0) };
     assert!(libc::WIFEXITED(st) && libc::WEXITSTATUS(st) == 0, "A's mirror is written");
