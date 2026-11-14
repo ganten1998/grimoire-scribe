@@ -120,6 +120,22 @@ pub fn planner_content(k: usize) -> String {
     c
 }
 
+/// Three PDFs that are equal in every sampled KiB: KOReader's partial MD5 reads 1 KiB at 0, at 1 KiB and at
+/// 4 KiB of a file shorter than 16 KiB, and the three agree in each, so they have one book key. A; B, of A's
+/// length, which differs from A only in the gray of page 2's block; C, which is longer than A. Two planner-sized
+/// pages each. Page 1's content is padded with comment lines, so page 2's content, the one place they differ,
+/// begins past 5 KiB; each file ends before 16 KiB (a file that reaches it has one more sample). The block of
+/// page 2 (the planner's block: user x 60..360, y 400..520) is gray 0.25 in A, 0.75 in B and 0.50 in C.
+pub fn shared_key_set() -> (Vec<u8>, Vec<u8>, Vec<u8>) {
+    let mut first = planner_content(1);
+    while first.len() < 5 * 1024 {
+        first.push_str("% this line only makes page 1 long: page 2 begins past the sampled KiB\n");
+    }
+    let second = |gray: &str, more: &str| format!("{gray} {gray} {gray} rg 60 400 300 120 re f\n0 G 2 w 20 20 380 555 re S\nBT /F1 18 Tf 40 540 Td (Page 2) Tj ET\n{more}");
+    let file = |gray: &str, more: &str| make(&[PageSpec::new(420.0, 595.0, &first), PageSpec::new(420.0, 595.0, &second(gray, more))]);
+    (file("0.25", ""), file("0.75", ""), file("0.50", "% and this page is a line longer than the others'\n"))
+}
+
 /// Three pages: gray, then one with a red box and a pale yellow band, then gray again.
 pub fn colour() -> Vec<u8> {
     let gray = |k| PageSpec::new(420.0, 595.0, &planner_content(k));

@@ -26,7 +26,13 @@
 //! - Colour (the owner's change to D18): a page with colour is stored as an 8-bit RGB PNG, a page that is
 //!   gray within `pdfwork::GRAY_TOLERANCE` as an 8-bit gray one. The Scribe shows both in gray (bgimage
 //!   decodes either to its luma at load and keeps only that), so the UI never holds the 13.8 MB RGB copy.
-//! - No file name, title or key reaches grimoire.log: ids, page numbers, counts, timings and reasons.
+//! - "Imported before" is said of the very file: a notebook keeps a record of the file it was made from (its
+//!   SHA-256, its size and its key: one line of source.ini, `FileRecord`), and a PDF that has a notebook's key is
+//!   compared with it (`key_holders`, `key_match`). The same file ends "PDF already imported."; another file
+//!   with that key becomes a notebook of its own, which carries the key in its record alone, so the book's first
+//!   notebook stays the one KOReader's route finds. A notebook without a record goes by its key. The whole file
+//!   is read in the writer only (once at the commit, and before that only for a file of a record's size).
+//! - No file name, title, key or hash reaches grimoire.log: ids, page numbers, counts, sizes, timings and reasons.
 
 use crate::fsview::*;
 use crate::md5::*;
@@ -1876,21 +1882,143 @@ pub fn unique_import_name(base: &str, all: &[NotebookInfo]) -> String {
     base.to_string()
 }
 
-/// A notebook already holds this book key (its `source=`, or a `source.ini` that names it).
-fn notebook_with_key(key: &str, all: &[NotebookInfo]) -> bool {
-    notebook_id_with_key(key, all).is_some()
+// ---- the file a notebook was made from ----
+
+/// The record a notebook keeps of the file it was made from: one line of its source.ini,
+/// `file=sha256:<64 hex>:<size in bytes>:<the book key, 32 hex>` (docs/FORMAT.md). It is of the file as it was
+/// read when the notebook was made.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct FileRecord {
+    /// the SHA-256 of the whole file, 64 lower-case hex digits
+    pub sha256: String,
+    pub size: u64,
+    /// the book key (KOReader's partial MD5), 32 lower-case hex digits
+    pub key: String,
 }
 
-/// The notebook that holds this book key, when one does (the picker's "has notes" and Open its notebook).
-pub fn notebook_id_with_key(key: &str, all: &[NotebookInfo]) -> Option<String> {
-    all.iter().find(|nb| {
-        nb.source.as_bytes() == key.as_bytes() || (nb.source.is_empty() && {
-            let mut m = AnnotateMap::default();
-            let r = annotate_map_load(nb.id.as_str(), &mut m) == 0 && m.book.as_bytes() == key.as_bytes();
-            annotate_map_free(&mut m);
-            r
-        })
-    }).map(|nb| nb.id.as_str().to_string())
+fn lower_hex(s: &str, len: usize) -> bool {
+    s.len() == len && s.bytes().all(|c| matches!(c, b'0'..=b'9' | b'a'..=b'f'))
+}
+
+/// The record's line, without its line end (130 bytes at most).
+pub fn file_record_line(r: &FileRecord) -> String {
+    format!("file=sha256:{}:{}:{}", r.sha256, r.size, r.key)
+}
+
+/// Reads a record's line strictly: `file=`, then four fields split by `:`. The first is `sha256`; the hash is 64
+/// characters of 0-9a-f; the size is decimal digits alone, 1 or more, with no leading zero, and fits 64 bits; the
+/// key is 32 characters of 0-9a-f. Anything else (another algorithm's name, upper case, a field missing or one
+/// too many, a space) is None: a notebook with such a line has no record for this version.
+pub fn file_record_parse(line: &str) -> Option<FileRecord> {
+    let mut f = line.strip_prefix("file=")?.split(':');
+    let (alg, sha, size, key) = (f.next()?, f.next()?, f.next()?, f.next()?);
+    if f.next().is_some() || alg != "sha256" || !lower_hex(sha, 64) || !lower_hex(key, 32) {
+        return None;
+    }
+    if size.is_empty() || size.starts_with('0') || !size.bytes().all(|c| c.is_ascii_digit()) {
+        return None;
+    }
+    Some(FileRecord { sha256: sha.to_string(), size: size.parse().ok()?, key: key.to_string() })
+}
+
+/// A notebook that holds a book key, and the record of its file when it has one that names that key.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct KeyHolder {
+    pub id: String,
+    pub key: String,
+    pub rec: Option<FileRecord>,
+}
+
+/// The notebooks that hold a book key, in `all`'s order (store_list's: newest modified first). A notebook holds
+/// a key by the first of these that applies: its notebook.ini's `source=`; with no `source` line, its source.ini's
+/// `book=` (an older version dropped the `source` line); with neither, the key its file record names (the second
+/// notebook of a key carries it there alone). `rec` is the notebook's record when it reads and names that key.
+/// With `only`, the holders of that key alone, and a notebook whose `source` is another key is passed by without
+/// reading its source.ini; without, every notebook's source.ini is read once (the picker's session). Small reads
+/// only: no file is hashed here.
+pub fn key_holders(all: &[NotebookInfo], only: Option<&str>) -> Vec<KeyHolder> {
+    let mut out = Vec::new();
+    for nb in all {
+        let source = nb.source.as_str();
+        if only.is_some_and(|k| !source.is_empty() && source != k) {
+            continue;
+        }
+        let mut m = AnnotateMap::default();
+        let (book, rec) = if annotate_map_load(nb.id.as_str(), &mut m) == 0 {
+            (m.book.as_str().to_string(), m.extra.as_str().lines().find_map(file_record_parse))
+        } else {
+            (String::new(), None)
+        };
+        annotate_map_free(&mut m);
+        let key = if !source.is_empty() {
+            source.to_string()
+        } else if !book.is_empty() {
+            book
+        } else if let Some(r) = &rec {
+            r.key.clone()
+        } else {
+            continue;
+        };
+        if only.is_some_and(|k| k != key) {
+            continue;
+        }
+        let rec = rec.filter(|r| r.key == key);
+        out.push(KeyHolder { id: nb.id.as_str().to_string(), key, rec });
+    }
+    out
+}
+
+/// What the notebooks that hold a PDF's key say of the PDF.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum KeyMatch {
+    /// no notebook is of this file: none holds the key, or every one that does has a record of another file
+    None,
+    /// this notebook's record is of this very file (its size and its hash)
+    Same(String),
+    /// this notebook holds the key and has no record: the key decides, as it did before records
+    KeyOnly(String),
+    /// this notebook's record has the file's size, and no hash was given: only the hash can tell
+    SizeOnly(String),
+}
+
+/// Pure. `holders` are the holders of one key; `size` and `sha` are the PDF's. In this order: with a hash, a
+/// holder whose record has this size and this hash is `Same`; without one, a holder whose record has this size
+/// is `SizeOnly`; else the first holder without a record is `KeyOnly`; else `None`.
+pub fn key_match(holders: &[KeyHolder], size: u64, sha: Option<&str>) -> KeyMatch {
+    let of_size = |h: &&KeyHolder| h.rec.as_ref().is_some_and(|r| r.size == size && sha.is_none_or(|s| r.sha256 == s));
+    if let Some(h) = holders.iter().find(of_size) {
+        return if sha.is_some() { KeyMatch::Same(h.id.clone()) } else { KeyMatch::SizeOnly(h.id.clone()) };
+    }
+    match holders.iter().find(|h| h.rec.is_none()) {
+        Some(h) => KeyMatch::KeyOnly(h.id.clone()),
+        None => KeyMatch::None,
+    }
+}
+
+/// SHA-256 of the first `len` bytes of an open file, as hex: pread from 0 in pieces of 256 KiB (a heap buffer),
+/// EINTR tried again, the descriptor's offset untouched. None on a read error or when the file ends before `len`.
+/// It parses nothing, and runs in the writer (a background child), never in the UI process.
+fn file_sha256(fd: i32, len: u64) -> Option<String> {
+    const PIECE: usize = 256 << 10;
+    let mut buf: Vec<u8> = Vec::new();
+    buf.try_reserve_exact(PIECE).ok()?;
+    buf.resize(PIECE, 0);
+    let mut h = crate::sha256::Sha256::new();
+    let mut at = 0u64;
+    while at < len {
+        let want = (len - at).min(PIECE as u64) as usize;
+        // SAFETY: pread writes at most `want` bytes into buf, which holds PIECE; fd is the caller's open descriptor.
+        let n = unsafe { libc::pread(fd, buf.as_mut_ptr() as *mut libc::c_void, want, at as libc::off_t) };
+        if n < 0 && errno() == libc::EINTR {
+            continue;
+        }
+        if n <= 0 {
+            return None;
+        }
+        h.update(&buf[..n as usize]);
+        at += n as u64;
+    }
+    Some(crate::sha256::sha256_hex(&h.finish()))
 }
 
 /// Another import in flight (another work folder) holds this key.
@@ -2193,12 +2321,27 @@ fn first_slice(id: &str, src: &str, abs: &str, source: &Src, mark: Option<&Mark>
     let key = partial_md5_fd(std::os::fd::AsRawFd::as_raw_fd(&source.fd));
     let mut all = Vec::new();
     store_list(&mut all);
-    if notebook_with_key(&key, &all) {
+    // "Imported before" is said of this very file. The notebooks that hold its key decide: one whose record has
+    // this file's size is asked again with the whole file's hash, one without a record goes by the key, and when
+    // every holder's record is of another file this one is imported (docs/FORMAT.md, the book key).
+    let holders = key_holders(&all, Some(&key));
+    let mut held = key_match(&holders, source.size, None);
+    if matches!(held, KeyMatch::SizeOnly(_)) {
+        let t0 = mono_ms_now();
+        let sha = file_sha256(std::os::fd::AsRawFd::as_raw_fd(&source.fd), source.size);
+        qlog!("import: %s: its file read to compare with a notebook's record: %d KB in %d ms", id, (source.size >> 10) as i32, (mono_ms_now() - t0) as i32);
+        // (a file that cannot be read whole is not the same file: asked with a hash that equals no record)
+        held = key_match(&holders, source.size, Some(sha.as_deref().unwrap_or("")));
+    }
+    if matches!(held, KeyMatch::Same(_) | KeyMatch::KeyOnly(_)) {
         qlog!("import: %s: this PDF was imported before; nothing made", id);
         finish_pdf(abs, src, id, source.size, source.mtime); // (only a file of import/ moves)
         note_try(src, stable_hash, A_DONE);
         set_result(id, R_ALREADY, 0, 0);
         return SliceEnd::Already;
+    }
+    if !holders.is_empty() {
+        qlog!("import: %s: a notebook holds this PDF's key but was made from another file; this one is imported", id);
     }
     if in_flight_with_key(&key, id) {
         // A copy of this PDF is being imported. Waiting for its notebook here would hold this job (and, in the
@@ -2736,6 +2879,27 @@ fn commit(id: &str, src: &str, abs: &str, state: &State, source: &Src, pw: i32, 
     let papers: Vec<PaperKind> = state.pics.iter().map(|&p| paper_image(PAPER_ROLE_DOCUMENT, p)).collect();
     let mut all = Vec::new();
     store_list(&mut all);
+    // The record of its file: the whole file's SHA-256, read once here, in the last slice. One notebook holds a
+    // book's bare key (`source=` in notebook.ini, `book=` in source.ini), the first: KOReader's route and every
+    // earlier build go by those two lines alone. A notebook made while another holds the key carries neither,
+    // and the key in its record only.
+    let shared = !key_holders(&all, Some(&state.key)).is_empty();
+    let t0 = mono_ms_now();
+    let record = file_sha256(std::os::fd::AsRawFd::as_raw_fd(&source.fd), source.size)
+        .map(|sha| file_record_line(&FileRecord { sha256: sha, size: source.size, key: state.key.clone() }))
+        // (a line this version would not read back is not written)
+        .filter(|line| file_record_parse(line).is_some());
+    match (&record, shared) {
+        (Some(_), _) => qlog!("import: %s: its file read for its record: %d KB in %d ms", id, (source.size >> 10) as i32, (mono_ms_now() - t0) as i32),
+        (None, false) => qlog!("import: %s: its file could not be read whole; the notebook keeps no file record", id),
+        (None, true) => {
+            // (without a record this notebook could not be told from the one that holds the key)
+            qlog!("import: %s: its file could not be read whole and another notebook holds its key; nothing imported", id);
+            remove_work_folder(id);
+            mark_drop(src);
+            return fail(id, R_FAILED, 0);
+        }
+    }
     let mut nb = NotebookInfo::default();
     nb.id.set(id);
     nb.name.set_cut(&import_name(&state.name, src, &all));
@@ -2751,13 +2915,22 @@ fn commit(id: &str, src: &str, abs: &str, state: &State, source: &Src, pw: i32, 
     nb.next_page_id = state.pages + 1;
     nb.page_w = pw;
     nb.page_h = ph;
-    nb.source.set(&state.key);
+    if !shared {
+        nb.source.set(&state.key);
+    }
     // the links and names the first slice read (links.part, names.part): doclinks.ini and nav.ini, before
     // notebook.ini is written
     let (links_written, trimmed) = fold_links(id, &work, &nb, pw, ph);
     let mut m = AnnotateMap::default();
-    m.book.set(&state.key);
+    if !shared {
+        m.book.set(&state.key);
+    }
     m.kind.set("paged");
+    // (annotate.rs writes the lines it does not know back after the page lines, and so does every version since
+    // 1.1: the record rides there)
+    if let Some(line) = &record {
+        m.extra.set(&format!("{line}\n"));
+    }
     // (the book's links are in doclinks.ini already: KOReader's Open this book does not ask for them again,
     // which could add each a second time where the two mappers differ: M22)
     m.links = links_written;
@@ -3003,6 +3176,91 @@ mod tests {
         assert!(!same_folder_entry(None, b, "import", &never));
         assert!(!same_folder_entry(a, None, "import", &never));
         assert!(!same_folder_entry(None, None, "import", &never));
+    }
+
+    const SHA_A: &str = "5e54918cec7ac9735b8f0e82c1ee75b9f0afef2eadca2998bdb313d4444c75c3";
+    const SHA_B: &str = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855";
+    const KEY: &str = "0123456789abcdef0123456789abcdef";
+
+    #[test]
+    fn a_file_record_reads_strictly() {
+        let r = FileRecord { sha256: SHA_A.into(), size: 6009, key: KEY.into() };
+        let line = file_record_line(&r);
+        assert_eq!(line, format!("file=sha256:{SHA_A}:6009:{KEY}"));
+        assert_eq!(file_record_parse(&line), Some(r));
+        // the biggest size is 20 digits: the line is 130 bytes at most
+        let big = FileRecord { sha256: SHA_A.into(), size: u64::MAX, key: KEY.into() };
+        assert_eq!(file_record_line(&big).len(), 130);
+        assert_eq!(file_record_parse(&file_record_line(&big)), Some(big));
+        assert_eq!(file_record_parse(&format!("file=sha256:{SHA_A}:1:{KEY}")).map(|r| r.size), Some(1));
+        let refused = [
+            format!("file=md5:{KEY}:6009:{KEY}"),                       // another algorithm's name
+            format!("file=SHA256:{SHA_A}:6009:{KEY}"),
+            format!("file=sha256:{}:6009:{KEY}", SHA_A.to_uppercase()), // upper case
+            format!("file=sha256:{SHA_A}:6009:{}", KEY.to_uppercase()),
+            format!("file=sha256:{}:6009:{KEY}", &SHA_A[1..]),          // a hash too short, too long, not hex
+            format!("file=sha256:{SHA_A}0:6009:{KEY}"),
+            format!("file=sha256:{}g:6009:{KEY}", &SHA_A[1..]),
+            format!("file=sha256:{SHA_A}:6009:{}", &KEY[1..]),          // a key too short, too long
+            format!("file=sha256:{SHA_A}:6009:{KEY}0"),
+            format!("file=sha256:{SHA_A}:6009"),                        // a field missing
+            format!("file=sha256:{SHA_A}::{KEY}"),
+            format!("file=sha256:{SHA_A}:6009:{KEY}:"),                 // a field too many
+            format!("file=sha256:{SHA_A}:6009:{KEY}:x"),
+            format!("file=sha256:{SHA_A}:0:{KEY}"),                     // no size, a leading zero, a sign, a space
+            format!("file=sha256:{SHA_A}:06009:{KEY}"),
+            format!("file=sha256:{SHA_A}:+6009:{KEY}"),
+            format!("file=sha256:{SHA_A}: 6009:{KEY}"),
+            format!("file=sha256:{SHA_A}:6009x:{KEY}"),
+            format!("file=sha256:{SHA_A}:18446744073709551616:{KEY}"),  // past 64 bits
+            format!("file=sha256:{SHA_A}:6009:{KEY} "),                 // anything around the line
+            format!(" file=sha256:{SHA_A}:6009:{KEY}"),
+            format!("file=sha256:{SHA_A}:6009:{KEY}\r"),
+            format!("File=sha256:{SHA_A}:6009:{KEY}"),
+            format!("sha256:{SHA_A}:6009:{KEY}"),
+            "file=".to_string(),
+            String::new(),
+        ];
+        for line in &refused {
+            assert_eq!(file_record_parse(line), None, "{line:?}");
+        }
+    }
+
+    // The decision, as a table: the holders of one key against a PDF's size and, when it was read, its hash.
+    #[test]
+    fn the_holders_of_a_key_say_whether_a_pdf_is_theirs() {
+        let rec = |sha: &str, size: u64| Some(FileRecord { sha256: sha.into(), size, key: KEY.into() });
+        let h = |id: &str, rec: Option<FileRecord>| KeyHolder { id: id.into(), key: KEY.into(), rec };
+        // no holder: no notebook is of this file
+        assert_eq!(key_match(&[], 100, None), KeyMatch::None);
+        assert_eq!(key_match(&[], 100, Some(SHA_A)), KeyMatch::None);
+        // a holder without a record: the key decides, with or without a hash
+        let old = [h("old", None)];
+        assert_eq!(key_match(&old, 100, None), KeyMatch::KeyOnly("old".into()));
+        assert_eq!(key_match(&old, 100, Some(SHA_A)), KeyMatch::KeyOnly("old".into()));
+        // a holder with a record of this size: only the hash can tell
+        let one = [h("a", rec(SHA_A, 100))];
+        assert_eq!(key_match(&one, 100, None), KeyMatch::SizeOnly("a".into()));
+        assert_eq!(key_match(&one, 100, Some(SHA_A)), KeyMatch::Same("a".into()));
+        assert_eq!(key_match(&one, 100, Some(SHA_B)), KeyMatch::None);
+        // (a file that could not be read whole is asked with a hash that equals no record)
+        assert_eq!(key_match(&one, 100, Some("")), KeyMatch::None);
+        // a record of another size is of another file, whatever the hash
+        assert_eq!(key_match(&one, 101, None), KeyMatch::None);
+        assert_eq!(key_match(&one, 101, Some(SHA_A)), KeyMatch::None);
+        // a mix, in the list's order: the record that fits comes before the holder without one, wherever it stands
+        let mix = [h("old", None), h("b", rec(SHA_B, 100)), h("a", rec(SHA_A, 100)), h("older", None)];
+        assert_eq!(key_match(&mix, 100, None), KeyMatch::SizeOnly("b".into()));
+        assert_eq!(key_match(&mix, 100, Some(SHA_A)), KeyMatch::Same("a".into()));
+        assert_eq!(key_match(&mix, 100, Some(SHA_B)), KeyMatch::Same("b".into()));
+        // no record fits: the first holder without a record
+        assert_eq!(key_match(&mix, 7, None), KeyMatch::KeyOnly("old".into()));
+        assert_eq!(key_match(&mix, 100, Some("")), KeyMatch::KeyOnly("old".into()));
+        // every holder has a record, and none is of this file
+        let all = [h("b", rec(SHA_B, 100)), h("a", rec(SHA_A, 200))];
+        assert_eq!(key_match(&all, 100, Some(SHA_A)), KeyMatch::None);
+        assert_eq!(key_match(&all, 300, None), KeyMatch::None);
+        assert_eq!(key_match(&all, 200, None), KeyMatch::SizeOnly("a".into()));
     }
 
     #[test]
