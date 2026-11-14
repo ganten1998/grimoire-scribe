@@ -71,6 +71,11 @@ hayro = { version = "=0.8.0", default-features = false, features = ["embed-fonts
 png = "=0.18.1"
 # Your own fonts (2.1.0-beta.2, DESIGN.md 5): the memory-safe font parser hayro-interpret already brings, at the
 # very version it brings (one skrifa in the build, never a second), with the features it asks for.
+# Cargo.lock also names skrifa 0.44 and read-fonts 0.41: they are glifo's, and glifo is vello_cpu's optional
+# text renderer. The lock names it because vello_cpu's `std` and `png` features mention it; it is compiled
+# only with vello_cpu's `text` feature, which hayro does not ask for. deny.toml bans glifo, so the deny job
+# fails if a build would ever take it, and tests/test_sec_invariants.rs holds the lock, this pin and that
+# ban together.
 skrifa = "=0.46.2"
 
 [build-dependencies]

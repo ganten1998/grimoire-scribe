@@ -125,7 +125,9 @@ why. Newest decisions first within each section.
   the file again just before it writes, which leaves a few milliseconds in which a job's note can be lost. Found
   in the fix round, not fixed: moving the prune into the jobs is a change of who owns the file.
 - **Crates**: skrifa is now a direct dependency (your own fonts, L10), pinned to the 0.46.2 hayro brings: no
-  crate is added. Cargo.lock names a second skrifa and read-fonts (glifo's optional dependency), not built; the build
+  crate is added. Cargo.lock names a second skrifa and read-fonts (glifo's, and glifo is vello_cpu's optional text
+  renderer, compiled only with a feature hayro does not ask for), not built: deny.toml bans glifo, so the deny job
+  fails if a build would take it; the build
   has three duplicates (fearless_simd, miniz_oxide, syn), not the plan's five. flate2, smallvec and syn were
   moved to versions published before 2026-11-02 so that every crate is two weeks old at a tag on or after
   2026-11-16 (`tools/check-crate-dates.py --tag-date 2026-11-16` passes).

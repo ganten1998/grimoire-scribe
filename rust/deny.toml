@@ -23,9 +23,15 @@ wildcards = "deny"
 #  - fearless_simd: the rasterizer's SIMD layer (vello) and hayro's image code pin two majors of it
 #  - miniz_oxide: the png crate (through fdeflate and flate2) and zune-jpeg's inflate take two releases
 #  - syn: the derive crates of two generations (build time only; nothing of it is in the binary)
-# Cargo.lock also names a second skrifa and read-fonts (glifo's optional dependency): not built with the
-# features Grimoire asks of hayro, so not a duplicate of the build. Your own fonts (2.1.0-beta.2) use the one
-# skrifa there is, pinned in Cargo.toml to the very version hayro brings, so no crate is added for them.
+# Cargo.lock also names a second skrifa and read-fonts. They are glifo's, and glifo is vello_cpu's optional
+# text renderer: the lock names it because vello_cpu's `std` and `png` features mention it, and it is
+# compiled only with vello_cpu's `text` feature, which hayro does not ask for. So they are no duplicates
+# of the build, and glifo is banned below: this check fails, with the reason, if a build would ever take
+# it. Your own fonts (2.1.0-beta.2) use the one skrifa there is, pinned in Cargo.toml to the very version
+# hayro brings, so no crate is added for them.
+deny = [
+    { crate = "glifo", reason = "vello_cpu's optional text renderer: it would bring a second skrifa and read-fonts into the build; hayro does not ask for it" },
+]
 skip = [
     { crate = "fearless_simd@0.7.0", reason = "an older major, pulled in by the rasterizer's SIMD layer" },
     { crate = "fearless_simd@1.2.0", reason = "the newer major, pulled in by hayro's image code" },
