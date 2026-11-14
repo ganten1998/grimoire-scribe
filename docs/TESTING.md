@@ -2613,9 +2613,14 @@ import commits. The owner's check:
     steps, through another name). Start Grimoire, Files > All storage > grimoire > Import: pick a PDF, then
     a folder of pictures. One notebook each, both filed in `done`, and none a second time after leaving the
     Library and coming back. Rename the folder back.
-11. **Optional, an edited copy.** A PDF saved again by another program with something appended, when its
-    first pages are unchanged, has the book's key and another content: it becomes a notebook of its own
-    ("<Name> 2"), and KOReader's Open this book in Grimoire still opens the first.
+11. **Optional, an edited copy.** A copy of step 1's PDF, saved again by another program with something
+    appended, can have the book's key and another content (the key reads 1 KiB at a few fixed places: a copy
+    that changed one of them, or grew past the next, has a key of its own). Copy it into `grimoire/import`:
+    it becomes a notebook of its own ("<Name> 2"). The step counts only when `grimoire.log` then has
+    `import: <id>: a notebook holds this PDF's key but was made from another file; this one is imported`:
+    without that line the copy had another key and the step showed nothing. With it, open step 1's PDF (the
+    first file, not the copy) in KOReader and use Open this book in Grimoire: it opens step 1's notebook,
+    not the copy's.
 
 If step 1's T is long enough to matter, or step 2 shows the pen lagging, see the BACKLOG entry on the import's
 whole-file read ("Hardening round (2026-11), import: what waits"). If step 7 shows any of its three lines, do
