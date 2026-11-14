@@ -4,6 +4,12 @@
 
 - Housekeeping: the separate process that reads PDFs, pictures and fonts is held to a narrower set of
   system calls and is started only with all of its descriptors in place. No change in the app.
+- **Your own fonts: a stricter background check.** What the check found of a font is now kept on the
+  Kindle itself (`/var/local/grimoire`, a few hundred bytes a font) and tied to the font file by its
+  SHA-256. The check also times each glyph as Grimoire will draw it: a glyph that would take too long is
+  drawn in Terminess, and a font whose letters would is "Took too long to read.". Each font is checked
+  once more after the update, and Grimoire reads in Terminess until the font in use has passed again.
+  Deleting `grimoire/fonts/.cache` still has every font checked again.
 
 ## 2.1.0 (2026-11-13)
 

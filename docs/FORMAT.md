@@ -608,13 +608,20 @@ Nothing in a notebook ever refers to a font: pages, PDFs and pictures do not cha
 `fonts/.cache/` holds what the background check found, each file named by the FNV-1a 64 hash (16 hex digits) of
 the font's path under the folder, its size and its time (`<path>/<size>/<mtime>`), so a file replaced by
 another is checked afresh. It is a cache: deleting it loses nothing, and only the background job writes it.
+Deleting it has every font checked again.
 
 - `<key>.font`, the verdict, text, at most 8 KiB, read strictly (an unknown line, or a number out of range,
-  makes the file no verdict and the font is checked again):
+  makes the file no verdict and the font is checked again). Where it is kept depends on the build (2.1.1 on).
+  On the Kindle it is outside the storage, in `/var/local/grimoire/<16 hex digits>/fonts/`: the 16 digits
+  are the FNV-1a 64 hash of the data root's path (each data root has its folder there, and the file `root`
+  beside `fonts/` holds the root's path), the folders are root's alone (mode 0700), and nothing under
+  `root/fonts/` decides whether a font is read. A build that names no folder of its own (the simulator
+  without `GRIMOIRE_STATE`, docs/SIM.md) keeps it in `fonts/.cache/`, as before. Either way a verdict counts
+  only with its companion in `fonts/.cache/`: a pass with `<key>.pgm`, a refusal with `<key>.no`.
 
   ```text
-  grimoire-font 1
-  hash=<FNV-1a 64 of the whole file, 16 hex digits>
+  grimoire-font 2
+  hash=<SHA-256 of the whole file, 64 lower-case hex digits: what sha256sum prints>
   size=<the file's size in bytes>
   ok=1                            or  why=unreadable | nolatin | format | slow
   upem=<units per em, 16 to 16384>
@@ -626,15 +633,23 @@ another is checked afresh. It is a cache: deleting it loses nothing, and only th
   cover=<characters it has of Latin-1, Latin Extended-A, Greek, Cyrillic, kana, kanji>
   lacks=<bits: 1 English, 2 Spanish, 4 Japanese: that language's words need letters it lacks>
   family=<its family's name>      style=<its style's name>     (64 characters each at most)
-  skip=<glyph>,<glyph>,...        glyphs that failed the check, in order, at most 656: drawn in Terminess
+  skip=<glyph>,<glyph>,...        glyphs that failed the check or take too long to draw, in order, at most
+                                  656: drawn in Terminess
   ```
 
   The lines after `size` are there only with `ok=1`. `ascent` and `descent` are the font's own unless they
   are far from what its letters reach (then what they reach). Grimoire draws a font only when the bytes it
-  reads hash to `hash`; other bytes under the same name, size and time are checked again.
+  reads hash to `hash`; other bytes under the same name, size and time are checked again. The first line's
+  number stands for the text and for the check's rules together: 2.1.0 wrote `grimoire-font 1` with a
+  16-digit FNV-1a 64 `hash`, which is no verdict now, so each font is checked once more after the update.
+  On the Kindle a `<key>.font` in `fonts/.cache/` is 2.1.0's: it is not read and not written, and goes when
+  its font file does.
 - `<key>.pgm`, the preview (P5 PGM): the family's name (and its style, unless Regular) drawn in the font,
   black on white, at the text size of the screen the check ran for.
+- `<key>.no`, empty (2.1.1 on): the check refused this file; its verdict says why.
 - `<key>.checking`, empty: a check of this file is under way.
+- `<key>.slow`, empty: a check of this file ran out of time once, or found glyphs that take too long to
+  draw. The file is checked once more a minute later, and the mark goes when a verdict is written.
 - `<key>.bad`, empty: the check's worker died on this file, or the check itself did. The font is not read
   again until the file changes.
 
@@ -1611,6 +1626,12 @@ What 2.0.0 and 2.1.0-beta.1 do with data 2.1.0-beta.2 writes (read in their code
 | a colour page picture (RGB) | drawn as luma by every consumer: the page, its thumbnail, the PDFs and the share pages show it gray. The file is kept |
 | the mirror PDF | a notebook with colour pages is made again there, with those pages gray (the colour comes back when 2.1.0-beta.2 makes it again) |
 | `font=file:<name>` in `settings.ini`, `font_bold=` | kept as they are (2.0.0: unknown keys; 2.1.0-beta.1: a font it does not have, drawn as Terminess, and it logs the value once); the file is never loaded there |
+
+What 2.1.0 does with data 2.1.1 writes:
+
+| new data (2.1.1) | 2.1.0 |
+|---|---|
+| a font's verdict (`grimoire-font 2`; on the Kindle in `/var/local/grimoire`), `fonts/.cache/<key>.no` | 2.1.0 never looks outside the storage: on the Kindle it keeps and reads its own `fonts/.cache/<key>.font`, which 2.1.1 never reads there and leaves alone, so a font it had checked is ready at once. Where 2.1.1 keeps its verdicts in `fonts/.cache/`, 2.1.0 takes `grimoire-font 2` as no verdict and checks the font once. `<key>.no` is a name it does not read; it goes with its font file |
 
 ## Highlighter rendering in 1.2.0
 

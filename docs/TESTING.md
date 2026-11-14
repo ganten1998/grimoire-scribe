@@ -2511,3 +2511,57 @@ table and on CI's kernel run. Use the bundle built with the pinned toolchain (do
    line in `import/.attempts` goes with the copy. Install the build without this round's two filter
    commits before judging anything else.
 10. **Later.** The same steps again whenever the build's rustc or zig version moves (docs/RELEASING.md).
+
+## Hardening round (2026-11), fonts: where a check's result is kept, its hash, and a glyph's draw time
+
+What the background check found of a font (its verdict) is kept on the Kindle itself, in
+`/var/local/grimoire`, and tied to the font file by its SHA-256; and the check times each glyph as Grimoire
+will draw it. Automated: the tests of `rust/src/sha256.rs`, `rust/tests/test_sec_font_verdict.rs`, the
+functions of `rust/tests/test_fontcheck.rs` about the glyph limit, the unit tests of `fontcheck.rs` and
+`userfonts.rs`, and (Linux, root, CI's `sandbox` job) the font test of `rust/tests/test_sandbox_linux.rs`.
+
+**Not run on a Scribe, and it must be before a release.** This change can leave a Kindle with no custom font
+(if Grimoire's own folder cannot be used there), can refuse a font that works today or hand some of its
+glyphs to Terminess (the time limit), and changes what the sandboxed worker does for every glyph. Three
+numbers in it are placeholders that wait for the answers below: the glyph limit (`s1::FONT_GLYPH_CPU_MS` in
+`sandbox.rs`, 20 ms) and the two floors of free room (`STATE_FREE_FLOOR`, 4 MB, and `STATE_FILES_FLOOR`, 512
+files, beside `STATE_BASE` in `userfonts.rs`).
+
+1. **Before installing, over SSH, with 2.1.0 still on.** `mount | grep /var/local`, `df -k /var/local`,
+   `df -i /var/local`, `ls -ld /var/local`. Write the answers here. /var/local must be a file system of its
+   own that keeps its files across a restart (not the tmpfs at /var), writable by root, with well over 4 MB
+   and a few hundred inodes free. If it is not, stop: the place (`STATE_BASE`) and the floors beside it are
+   set from these numbers before a release. Also keep 2.1.0's grimoire.log lines `fonts: file I of N passed:
+   ... checked in T ms` and `font: custom font loaded: S KB in T ms`.
+2. **The update.** Install, start Grimoire with a font of your own in use. The Library is in Terminess at
+   first; the font comes back by itself with one redraw once its check has passed (how long?). Settings >
+   Font shows "Checking..." rows meanwhile. grimoire.log has one `fonts: file I of N passed: ...` line a
+   font, and no `work: a font's worker made call N`, no `marked unreadable`, no `cannot be kept`.
+3. **Where it is kept.** `ls -ld /var/local/grimoire /var/local/grimoire/* /var/local/grimoire/*/fonts`
+   (three folders, `drwx------`, root, and the file `root`); `ls -l /var/local/grimoire/*/fonts` (one small
+   `.font` a font); `head -3` of one says `grimoire-font 2` and a 64-digit `hash=`, which is `sha256sum` of
+   the font file. `ls /mnt/us/grimoire/fonts/.cache` has a `.pgm` a font (a `.no` for one the check
+   refused), and 2.1.0's `.font` files untouched.
+4. **The next start, and the hash's cost.** Close and start Grimoire: the font draws on the first screen and
+   the log has no `bg: font check` line. Read `font: custom font loaded: S KB in T ms` and compare T with
+   2.1.0's from step 1, with the largest font you have (10 MB or more if you can). Tap that font's row in
+   Settings > Font: how long until the sample shows?
+5. **After a restart of the Kindle**: as step 4 (the folder survived).
+6. **The glyph figures.** For each font read `slowest glyph T us` and `letters and digits L us` in its pass
+   line. Are the numbers fine-grained (not all multiples of 1000 or 10000)? If they are all multiples, the
+   clock is too coarse for this limit: say so. Write down the slowest glyph of the fonts you want to keep:
+   the limit (20 ms now) should be at least three times that.
+7. **Steadiness.** Delete `grimoire/fonts/.cache` (Grimoire closed) and start: every font is checked again.
+   Do it three times: just after a restart, after ten minutes of writing, and on the charger. Are a font's
+   `slowest glyph` figures within a factor of two of each other?
+8. **Heavy fonts.** A large CJK variable font and two or three heavy display fonts: `checked in T ms`
+   against 2.1.0's figure from step 1 (how much slower is the check?), any `(W too slow to draw)` with W
+   above 0, any `left for a second try` followed a minute later by a pass or by `take too long to draw
+   again`. A font that ends "Took too long to read." but draws fine: note its figures.
+9. **By hand.** `rm -r /var/local/grimoire` with Grimoire closed: the next start checks every font once and
+   nothing else changes. If you run a second data folder (a development copy): /var/local/grimoire has one
+   folder for each.
+10. **With the other hardening changes of this release in the same build**, run steps 2 and 8 once more:
+    the worker's narrower system calls and this change's walk are in the same process.
+11. When a firmware update next arrives: is /var/local/grimoire still there? (If not, fonts are checked once
+    more: note it in KINDLE.md.)

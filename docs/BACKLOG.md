@@ -332,6 +332,25 @@ What waits:
 - **The verdict's `cover=` counts** (Latin-1, Extended-A, Greek, Cyrillic, kana, kanji) are written and not
   shown anywhere yet (2.2's Files details, the Japanese slot's "has kana").
 
+From the hardening round of 2026-11 (the check's verdicts in Grimoire's own folder, tied to the file by its
+SHA-256, and the glyph limit; docs/TESTING.md has the device checks, none of which has run):
+
+- **A design in which the UI never reads a font of the owner's own** (the worker draws the glyph bitmaps the
+  UI needs) waits.
+- **The glyph time limit** (`s1::FONT_GLYPH_CPU_MS`, 20 ms) **and the size it is measured at** (160 px) are
+  placeholders until the Scribe's figures are in (TESTING.md); the verdict's number moves with the limit. So
+  are the floors of free room in Grimoire's own folder (`STATE_FREE_FLOOR`, `STATE_FILES_FLOOR` in
+  userfonts.rs) and the folder's place (`STATE_BASE`).
+- **A limit on the summed draw time of a font's letters and digits**: the check logs the sum, no rule yet.
+- **After an update that checks every font again, the font in use could be checked first.** It waits because
+  the font would then load before its family's Bold file has passed, and bold would be overprinted until the
+  next start: the Bold file has to be found again when its check ends.
+- **Hashing a font while it is read** (one pass, not two), if the load time on the Scribe asks for it.
+- **Removing `/var/local/grimoire` when the package is removed** (today: by hand, KINDLE.md).
+- **A font with a slow glyph ahead of its broken ones** ends as "Took too long to read." (after its second
+  check) where the broken glyphs alone would have made it "Unreadable font.": the check ends at the first
+  count that is too many, and says what it knows then.
+
 From the whole-release review of 2.1.0-beta.2 (the fix round, lane F3; the review's finding IDs). Fixed there: H8,
 M17, M19, M20, the watchdog timeout that was a verdict for good (a second timeout is the verdict now), the
 Bold-only letters of a name, a Done on a font that does not load. Left, with what each costs:

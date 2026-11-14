@@ -549,7 +549,8 @@ root/notebooks/<id>/p<pageid>.qpg  binary page (see docs/FORMAT.md)
 root/notebooks/<id>/p<pageid>.qpg.damaged-<time>   a page that could not be read, kept
 root/notebooks/<id>/thumb.pgm      binary PGM thumbnail of page 1 (P5)
 root/trash/<id>/               deleted notebooks are moved here, never unlinked
-root/fonts/, fonts/.cache/     the owner's own fonts and what the check found of them (Your own fonts)
+root/fonts/, fonts/.cache/     the owner's own fonts, and the check's previews and marks (Your own fonts)
+/var/local/grimoire/<16 hex digits>/fonts/   the check's verdicts for a data root, outside it (the Kindle; Your own fonts)
 root/.font-inuse               the crash guard of a font of the owner's own (Your own fonts)
 root/PDFs/<folder>/<name>.pdf  the PDF mirror (an export, not data)
 root/.cache/pdf/<id>/          the notebook PDF's page streams (disposable; docs/FORMAT.md)
@@ -2138,7 +2139,18 @@ its bytes.** Four parts keep it (`fontcheck.rs`, `userfonts.rs`, `font.rs`):
   the cmap's groups could name another glyph where groups overlap), at each location the UI uses (the default, and the bold's when the
   font has a weight axis that reaches 100 above its default: 700, or its heaviest), outlining under the caps
   and drawing at both sizes; a glyph that fails is listed and comes from Terminess, and more than one in a
-  hundred is "Unreadable font.". It works in slices of 20 s of its own CPU time (`s1::FONT_SLICE_CPU_SECS`),
+  hundred is "Unreadable font.". The walk goes through the faces the UI itself will make (`SafeFace`, the
+  regular and the bold by the axis) and by the calls the UI makes at a glyph's first use (the face's lookup,
+  its outline, the rasterizer at 160 px), and times each such draw in the worker's CPU time against a glyph
+  limit (2.1.1; `s1::FONT_GLYPH_CPU_MS`, 20 ms, a placeholder until the Scribe's figures are in; a build
+  that is not the Kindle's takes 5 s). A draw over the limit is measured again, up to three times, and the
+  smallest counts. A glyph over it that is no letter or digit is listed with the ones that fail and comes
+  from Terminess; a letter or a digit over it, or more listed glyphs than one in a hundred when the ones
+  that fail are not that many by themselves, makes the font one that takes too long. Such a result rests on
+  a measured time, so it is not taken on one reading: the font is checked once more a minute later, and only
+  when the second check agrees is it "Took too long to read.". The glyphs listed can therefore differ
+  between two checks of one file when a glyph's draw is near the limit. The writer counts the listed glyphs
+  across slices. It works in slices of 20 s of its own CPU time (`s1::FONT_SLICE_CPU_SECS`),
   each a fresh worker that gets the bytes again and goes on from the glyph index the last reached, 10 minutes
   in all, then "Took too long to read."; a worker silent for 30 s is killed and is the same. It settles the
   font's scale (capitals as tall as Terminess's, 0.592 of the line, between 0.85 and 1.25, then lowered a
@@ -2148,13 +2160,24 @@ its bytes.** Four parts keep it (`fontcheck.rs`, `userfonts.rs`, `font.rs`):
   and the preview's pixels; the writer validates every number.
 - **The writer** (`BgKind::FontCheck`, one job for every unchecked file, each read whole through `fsview`'s
   walk) writes `<key>.checking` before a font and the verdict `<key>.font` with the preview after it
-  (FORMAT.md, "Your own fonts"). A worker that dies on a font leaves `<key>.bad` and the others go on; a job
+  (FORMAT.md, "Your own fonts"). The verdict goes where the build keeps verdicts (2.1.1; `VerdictDir` in
+  `userfonts.rs`): on the Kindle a folder of Grimoire's own outside the data root, `/var/local/grimoire`,
+  with a folder for each data root; in a build that names no such folder (`GRIMOIRE_STATE` unset), the
+  cache, as before. The own folder is walked name by name, by descriptor, from its parent: each name is
+  made by the job with mode 0700 when missing, opened without following a link, and must be a folder of the
+  app's user that no one else can write; verdicts are read and written from that descriptor. When it cannot
+  be used, or its file system has too little room, the job ends with status 6 before any worker starts:
+  nothing is marked, and the session checks no more fonts (the ones that have their verdicts go on
+  loading). The previews and the marks stay in the cache, and a verdict counts only with its companion
+  there (a pass with its preview, a refusal with `<key>.no`), so deleting `fonts/.cache` has every font
+  checked again wherever the verdicts are. A worker that dies on a font leaves `<key>.bad` and the others go on; a job
   that itself dies has its `.checking` mark turned into `.bad` by the UI, which queues the rest again. A
   sandbox step that fails, or a worker that cannot start, marks nothing: the job ends with status 4 and the
   session checks no more fonts. A file still being copied (under 5 s old, or changed between two looks 2 s
   apart) waits: status 3, and the Font sheet looks again.
 - **The UI** lists the folder without opening a font (the rows are the check's previews), and loads one only
-  with a passing verdict whose `hash` is the FNV-1a 64 of the bytes it just read; another file under the same
+  with a passing verdict, read from where verdicts are kept and with its preview in the cache, whose `hash`
+  is the SHA-256 (`sha256.rs`) of the bytes it just read; another file under the same
   name, size and time is checked again (`recheck:<key>`). It holds at most 32 MB of font files (the Bold file
   gives way to overprint first), loads none under 100 MB of available memory, and none in Gothic. `font.rs`
   keeps four face slots after the embedded files (the font in use and its bold, the Font sheet's sample and
@@ -2179,7 +2202,8 @@ Tests: `test_fontcheck.rs` (real workers: good TrueType, variable and CFF fonts;
 `rust/tests/fontfix`: truncations, a cmap past the end, composites that include each other, CFF subroutines past the
 format's depth, a symbol cmap, a web font, letters that draw nothing, wild glyphs, a line ten ems tall, random
 byte flips; a killed worker leaves `.bad`; a hung one is slow; slices come to one slice's verdict; a replaced
-file is checked again; the listing; a file still being copied waits; 20,000 glyphs), `test_fontguard.rs` (the
+file is checked again; the listing; a file still being copied waits; 20,000 glyphs; the glyph limit, by a test
+charge and never by a real clock), `test_sec_font_verdict.rs` (where verdicts are kept), `test_fontguard.rs` (the
 guard start by start, with the app killed at a custom font's first glyph), `font.rs` (stb's bitmaps byte for
 byte; a custom font draws as the same file embedded; the cache's cap), `fontcheck.rs` and `userfonts.rs` (the
 verdict and guard files read strictly; the strike rules), `test_sandbox_linux.rs` (the check in the real
