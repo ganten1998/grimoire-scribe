@@ -540,6 +540,8 @@ Unset on the Kindle.
 root/settings.ini              current tool, panel, every tool's params, calibration and the
                                panel it was made on, sleep, style, language, port... (unknown
                                keys kept)
+root/settings.ini.unread       a settings.ini that was there but could not be read, kept aside;
+                               never read
 root/folders.ini               the folder names, one per line
 root/sleep.pgm                 the pinned sleep screen (P5)
 root/notebooks/<id>/notebook.ini   name, folder, paper, created, modified, last_page,
@@ -562,6 +564,26 @@ root/.koplugin-installed       the build whose KOReader plugin went into koreade
 All writes are atomic: write `<file>.tmp`, fsync, rename. Page saves happen about 2 s after the
 last pen-up, at every press of the power button, on page change, on leaving the editor and on
 exit. `store_add_page` never writes over an existing `p<id>.qpg`: it takes the next free id.
+
+Reads of the data folder take plain files only. What is read there through `util::read_file`,
+`util::read_file_max` or `util::open_read_nofollow` (the store's files, the pictures, the template and
+import scans, the marks, the share zip's raw copies) is read only when the entry at the name itself is a
+plain file (a link, a folder or anything else there reads as a file that is not there), and the open never
+waits. Folders on the way to a file may be links (the data root, `notebooks/`, a platform's folders, a
+test's folder): only the last name is held to this. The small text files are read up to a limit
+(`util::read_file_max`: settings.ini, notebook.ini, folders.ini, bg/pages.ini and bg/index.ini 1 MiB; an
+import folder's mark 4 KiB; import/.attempts 64 KiB; a PGM 64,000,064 bytes, its largest picture and a
+header); page files and pictures have none of `read_file`'s own. A settings.ini that is there but was not
+read is moved to `settings.ini.unread` before the next save. An entry at a page's name that is no plain
+file is set aside as a damaged page is. The system's own files (/proc, /sys, the Kindle's locale file) are
+read with `util::read_system_file`, which follows links. The scans of `import/`, `templates/` and
+`photos/` take only real folders and plain files. Temporary files named after the process
+(`<name>.<pid>`, the mirror's `<name>.pdf.<pid>.tmp`) are made afresh (`util::create_fresh_nofollow`):
+what stands at the name is removed, never opened. `mkdir_p` takes an existing entry as the folder, a link
+to one included; code that prunes or empties a folder of Grimoire's checks that folder first
+(`util::no_link_below`, `pdfcache::real_dirs`, the previews' sweep). The mirror's sweep of stale
+temporaries works in the mirror folder the user chose. A few readers still open their files by path
+(docs/BACKLOG.md, "Hardening round (2026-11), storage reads: what waits").
 
 The page size: a new notebook gets the device's (`store_set_device`), and
 `store_notebook_page_size` is what every reader and writer of its pages asks. A notebook.ini
