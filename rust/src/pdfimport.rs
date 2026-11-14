@@ -3133,6 +3133,33 @@ mod tests {
         assert!(State::parse(ok.replace("src=grimoire/import/A.pdf", "src=grimoire/import/a\tb.pdf").as_bytes()).is_some());
     }
 
+    // The two writers refuse such a path themselves, whoever asks: a state and a mark of it are never on storage.
+    #[test]
+    fn a_path_with_a_line_break_is_written_to_no_state_and_no_mark() {
+        let base = std::env::var("GRIMOIRE_TEST_TMP").map(std::path::PathBuf::from).unwrap_or_else(|_| std::env::temp_dir());
+        let root = base.join(format!("grimoire-pdfimport-writers-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        let r = root.to_str().unwrap().to_string();
+        std::fs::create_dir_all(&root).unwrap();
+        assert_eq!(store_init(&r), 0);
+        let id = "20260101-000000-abcd";
+        assert_eq!(mkdir_p(&work_dir(id)), 0);
+        let marks = || std::fs::read_dir(root_path(MARKS_DIR)).map(|d| d.flatten().count()).unwrap_or(0);
+        for bad in ["grimoire/import/a\nb.pdf", "grimoire/import/a\rb.pdf", "grimoire/import/Tr\nip/x.pdf"] {
+            assert!(!state_write(id, &State { src: bad.into(), ..sample_state() }), "{bad:?}");
+            assert!(!exists(&state_path(id)), "{bad:?}: a state was written");
+            assert!(!mark_write(&Mark { state: MarkState::Waiting, src: bad.into(), pick: true, ..Default::default() }), "{bad:?}");
+            assert_eq!(marks(), 0, "{bad:?}: a mark was written");
+        }
+        // (and both write a path they can read back)
+        let good = State { src: "grimoire/import/t\tx.pdf".into(), ..sample_state() };
+        assert!(state_write(id, &good));
+        assert_eq!(state_read(id).map(|s| s.src), Some(good.src.clone()));
+        assert!(mark_write(&Mark { state: MarkState::Waiting, src: good.src.clone(), pick: true, ..Default::default() }));
+        assert_eq!(mark_read(&good.src).map(|m| m.src), Some(good.src));
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
     fn sample_state() -> State {
         State {
             src: "grimoire/import/A.pdf".into(),

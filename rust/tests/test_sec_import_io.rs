@@ -517,3 +517,47 @@ fn the_lock_is_taken_when_the_import_folder_is_missing() {
     assert_eq!(e.notebooks(), ["Book"], "{said:?}");
     assert!(e.there("documents/Book.pdf"), "a file picked elsewhere stays where it is");
 }
+
+// Whether another process's import is still going is asked by trying the lock, and only a lock that another
+// holder has (EWOULDBLOCK) says so. A lock that cannot be taken for another reason is no import: the Library
+// shows no other import as going, and a scan that cannot take it says the same.
+#[test]
+fn only_a_lock_held_elsewhere_reads_as_an_import_still_going() {
+    let e = setup("lock-detached");
+    let mut c = Checks::default();
+    let natural = format!("{}/import/.lock", e.root);
+    // the lock file itself, held through another descriptor, as an earlier run's import holds it
+    let other = held(&natural);
+    c.that(detached_check() && detached_running(), "the lock file held elsewhere is an import still going");
+    drop(other);
+    c.that(!detached_check() && !detached_running(), "and none once it is let go");
+    lock_release_if_idle();
+
+    // what cannot be taken for another reason: a link at the lock's name, to a file another holder has locked
+    std::fs::remove_file(&natural).unwrap();
+    let outside = format!("{}-outside", e.storage);
+    let _ = std::fs::remove_dir_all(&outside);
+    std::fs::create_dir_all(&outside).unwrap();
+    let elsewhere = format!("{outside}/held-elsewhere");
+    let other = held(&elsewhere);
+    std::os::unix::fs::symlink(&elsewhere, &natural).unwrap();
+    c.that(!detached_check(), "a lock that cannot be taken for another reason is no import still going");
+    c.that(!detached_running(), "and the Library is told of none");
+    // a scan with a PDF to take: it queues nothing, and takes no other import to be going either
+    e.put("grimoire/import/Book.pdf", &pdffix::planner(2));
+    let q = grimoire::bgwork_template::import_scan(DPI);
+    let said = drain();
+    c.that(q == 0 && e.notebooks().is_empty(), format!("a scan that cannot take the lock imports nothing: {q} queued, {said:?}"));
+    c.that(!detached_running(), "the scan takes no other import to be going");
+    c.that(marks(&e).is_empty() && e.there("grimoire/import/Book.pdf"), "the PDF waits where it is, with no mark");
+    drop(other);
+
+    // with the link gone the next scan takes the PDF
+    std::fs::remove_file(&natural).unwrap();
+    grimoire::bgwork_template::import_scan(DPI);
+    let said = drain();
+    lock_release_if_idle();
+    c.that(e.notebooks() == ["Book"], format!("with a lock file that can be taken, the scan imports: {said:?}"));
+    let _ = std::fs::remove_dir_all(&outside);
+    c.done();
+}

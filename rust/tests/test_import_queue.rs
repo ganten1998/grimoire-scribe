@@ -673,3 +673,34 @@ fn a_waiting_mark_that_is_not_its_paths_own_is_dropped() {
     drain();
     assert_eq!(e.notebooks(), ["ab"]);
 }
+
+// A folder of import/ whose own name holds a line break: the scan leaves out every PDF in it (their paths cannot
+// be kept), so its pictures do not wait for them. They import as a folder's pictures always did, and that import
+// files the whole folder, the PDF with it (docs/FORMAT.md says so).
+#[test]
+fn the_pictures_of_a_folder_named_with_a_line_break_do_not_wait_for_its_pdf() {
+    let e = setup("folder-line-break");
+    std::env::set_var("GRIMOIRE_IMPORT_STABLE", "fast");
+    let dir = format!("{}/import/Sc\nans", e.root);
+    if std::fs::create_dir(&dir).is_err() {
+        eprintln!("  skipped: this file system refuses a line feed in a name");
+        return;
+    }
+    for k in 1..=2 {
+        let p = BgPicture { px: vec![120u8; 150 * 200], w: 150, h: 200, ch: 1 };
+        std::fs::write(format!("{dir}/page-{k}.png"), encode_png(&p).unwrap()).unwrap();
+    }
+    std::fs::write(format!("{dir}/x.pdf"), pdffix::planner(1)).unwrap();
+    assert!(list_pdfs().files.is_empty(), "the scan lists no PDF of a folder so named");
+    let mut made = Vec::new();
+    for _ in 0..3 {
+        grimoire::bgwork_template::import_scan(DPI);
+        drain();
+        made.push(e.notebooks().len());
+    }
+    assert_eq!(made, [1, 1, 1], "the first scan takes the pictures, and no scan makes another notebook");
+    let mut nb = Vec::new();
+    store_list(&mut nb);
+    assert_eq!(nb[0].npages(), 2, "the notebook is the two pictures'");
+    assert!(!std::path::Path::new(&dir).exists(), "the folder was filed");
+}

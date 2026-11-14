@@ -1178,3 +1178,22 @@ fn a_name_with_a_tab_or_a_c1_character_resumes_as_itself() {
         assert_eq!(e.done_files(), done, "{name:?}: filed in import/done");
     }
 }
+
+// A slice given a path with a line break refuses it itself, first: nothing is opened, counted or written for a
+// path that no state could keep (the scan and the picker leave such a path out before any job is queued).
+#[test]
+fn a_slice_given_a_path_with_a_line_break_refuses_it_itself() {
+    let e = setup("slice-line-break");
+    let name = "a\nb.pdf";
+    if std::fs::write(format!("{}/import/{name}", e.root), pdffix::planner(2)).is_err() {
+        eprintln!("  skipped: this file system refuses a line feed in a name");
+        return;
+    }
+    let id = new_id();
+    let end = run_slice(&id, &format!("grimoire/import/{name}"));
+    assert_eq!(end, SliceEnd::Failed(1, 0), "refused as a path, before the file is looked at"); // R_FAILED
+    assert_eq!(e.work_folders(), 0, "no work folder is made");
+    assert!(!std::path::Path::new(&format!("{}/import/.attempts", e.root)).exists(), "no try is counted");
+    assert!(std::path::Path::new(&format!("{}/import/{name}", e.root)).exists() && e.done_files() == 0, "the file stays where it is");
+    assert!(e.notebooks().is_empty());
+}
