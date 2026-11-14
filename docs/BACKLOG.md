@@ -766,6 +766,11 @@ Decided by the lane B3 design (docs/beta2/PIXEL-LASSO.md, 2026-11-03) and its bu
   `ui 0 0 1860 2480` after what they expect. Eight more begin such a stretch within 3.5 s by the sum of their
   waits and passed at every lateness tried, 0 to 600 ms: g_gest_1, g_gest_10_forgiving, s_shape_2_fire,
   t_touch_1_contacts, v_actions_screen, v_gestures_4d_pan, v_gestures_4d_zoom and z_bar_3b_press_taken_over.
+  A fourth kind depends on the machine's clock: y_live_toolbar_menus shows the clock corner (`status_mode=1`)
+  and has no `clock` line to hold it still, so the corner's refresh at a minute's change falls into a checked
+  stretch (`ui 6 6 478 66` after what line 37 expects) whenever the run starts about 2 s before a minute ends:
+  once in a `make check` of 2026-11-14 (started 06:05:57.9), and each time it is started so on purpose, at
+  16d11bca as well. Not fixed yet.
 
 - **The stroke eraser on very dense pages.** Taking a stroke out of the middle still draws what was
   under it again (undo and redo of it are instant since rc.10). On a 1,090-stroke page that can take
