@@ -1,7 +1,25 @@
 use grimoire::prelude::*;
+
+// The store's folder, named by this process's id: in GRIMOIRE_TEST_TMP (make test empties it before each run),
+// else in the system's temporary folder, which nobody empties.
+fn scratch() -> std::path::PathBuf {
+    let base = std::env::var("GRIMOIRE_TEST_TMP").map(std::path::PathBuf::from).unwrap_or_else(|_| std::env::temp_dir());
+    base.join(format!("grimoire-subfolders-{}", std::process::id()))
+}
+
+// An earlier run's store under the same name (a process id comes round again, and a run stopped half way left
+// its folder): it had got as far as renaming School to College, which the store refuses a second time.
+fn an_earlier_runs_store_is_left(root: &std::path::Path) {
+    std::fs::create_dir_all(root).unwrap();
+    assert_eq!(store_init(root.to_str().unwrap()), 0);
+    assert_eq!(store_add_folder("College/Physics/Empty"), 0);
+}
+
 #[test]
 fn nested_destinations_keep_notebooks_and_empty_folders_reachable() {
-    let root = std::env::temp_dir().join(format!("grimoire-subfolders-{}", std::process::id()));
+    let root = scratch();
+    an_earlier_runs_store_is_left(&root);
+    let _ = std::fs::remove_dir_all(&root); // (never an earlier run's store: see above)
     std::fs::create_dir_all(&root).unwrap();
     assert_eq!(store_init(root.to_str().unwrap()), 0);
     let mut nb = NotebookInfo::default();

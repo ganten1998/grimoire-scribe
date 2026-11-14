@@ -2,7 +2,11 @@ use grimoire::prelude::*;
 
 #[test]
 fn shape_outline_survives_save_copy_redraw_and_restoration_without_corner_hits() {
-    let root=std::env::temp_dir().join(format!("link-outline-{}",std::process::id()));
+    // (in GRIMOIRE_TEST_TMP, which make test empties before each run, and never an earlier run's store: a
+    // process id comes round again, and a run stopped half way left its folder)
+    let base=std::env::var("GRIMOIRE_TEST_TMP").map(std::path::PathBuf::from).unwrap_or_else(|_|std::env::temp_dir());
+    let root=base.join(format!("link-outline-{}",std::process::id()));
+    let _=std::fs::remove_dir_all(&root);
     std::fs::create_dir_all(&root).unwrap();
     assert_eq!(store_init(root.to_str().unwrap()),0);store_set_device(300.0,800,1000);
     let mut nb=NotebookInfo::default();assert_eq!(store_create("Outlines","",PAPER_NARROW_NM,&mut nb),0);
