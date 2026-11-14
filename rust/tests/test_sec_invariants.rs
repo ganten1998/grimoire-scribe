@@ -49,6 +49,15 @@ fn present(fails: &mut Vec<String>, f: File, name: &str) {
     }
 }
 
+/// A sentence that stands on another: while `f` says `words`, `on` must still say `base`. It fails the day the
+/// base is reworded or goes (what it said has changed), so that the sentence standing on it is read again and
+/// follows. A sentence that was itself reworded is no longer held here.
+fn stands_on(fails: &mut Vec<String>, f: File, words: &str, on: File, base: &str) {
+    if flat(f.1).contains(words) && !flat(on.1).contains(base) {
+        fails.push(format!("{} says \"{words}\", and {} no longer says \"{base}\": the first is to follow", f.0, on.0));
+    }
+}
+
 /// The end of a test: every failed pin, or none.
 fn none_failed(fails: &[String], what: &str) {
     assert!(fails.is_empty(), "{what}: {} failed\n  {}\n", fails.len(), fails.join("\n  "));
@@ -397,6 +406,26 @@ fn the_docs_no_longer_say_what_the_code_does_not() {
     gone(&mut fails, BACKLOG, "placeholders until S1 measures the Scribe");
     gone(&mut fails, SANDBOX_TESTS, "HAVE NOT BEEN RUN");
     gone(&mut fails, SANDBOX_TESTS, "and a forced failed step falls back and says so");
+    // the steps that have run on a Scribe are 2.1.0-beta.2's: the narrower system-call rules that came after
+    // have a check of their own, which the sandbox round's sections list as not yet run. Two sentences said
+    // "the steps have run" without that limit; the two that replace them stand on those sections, so the day
+    // the check has run and its sections say so, these fail until they follow.
+    gone(&mut fails, SANDBOX_TESTS, "steps themselves have run on a Scribe (sandbox.rs, `s1`).");
+    gone(&mut fails, BACKLOG, "the steps have (S1, and the imports, pictures and fonts of 2.1.0-beta.2).");
+    stands_on(
+        &mut fails,
+        SANDBOX_TESTS,
+        "wait for their check there (docs/TESTING.md, \"Hardening round (2026-11), sandbox\")",
+        TESTING,
+        "**Not run on a Scribe, and it must be before a release**",
+    );
+    stands_on(
+        &mut fails,
+        BACKLOG,
+        "are the entry \"The Scribe check of this round has not run\", above",
+        BACKLOG,
+        "- **The Scribe check of this round has not run**",
+    );
     // the crates: glifo is the optional one (vello_cpu's), and skrifa is glifo's plain dependency
     gone(&mut fails, BACKLOG, "glifo's optional dependency");
     // licenses/rust-crates.txt lists every crate the lock names, not only the ones built in

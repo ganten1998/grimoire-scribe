@@ -86,10 +86,10 @@ at once (macOS: 5); it stays off until a run passes there (docs/BACKLOG.md).
 
 **Tests that read the documents.** A docs-only pull request runs no test, and a few tests read the
 documents: `rust/tests/test_sec_invariants.rs` (DESIGN.md, FORMAT.md, KINDLE.md, TESTING.md and BACKLOG.md:
-sentences about the safe loader that must not come back, and the names `RECORDS_MAX_BYTES` and
-`<key>.slow`), `mapview.rs` (the Graph's keys) and `test_scenarios.rs` with `sim_sdl.rs` (SIM.md). After
-rewording a sentence they hold, run `make test-sim` by hand: otherwise the push to main is the first run
-to say so.
+sentences about the safe loader that must not come back, the names `RECORDS_MAX_BYTES` and `<key>.slow`,
+and a few sentences that hold only while another one stands), `mapview.rs` (the Graph's keys) and
+`test_scenarios.rs` with `sim_sdl.rs` (SIM.md). After rewording a sentence they hold, run `make test-sim`
+by hand: otherwise the push to main is the first run to say so.
 
 **The required check.** Branch protection on `main` must require the `gate` job, and only it (one
 setting, made once on GitHub: Settings, Branches, the rule for `main`, Require status checks, `gate`).

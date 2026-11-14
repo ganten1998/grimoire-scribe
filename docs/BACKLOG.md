@@ -159,8 +159,9 @@ why. Newest decisions first within each section.
   not numbers. Not changed: a reader finds the subject by its heading.
 - **A docs-only pull request runs no test**, and a few tests read the documents (docs/TESTING.md, "Tests
   that read the documents"): a reworded sentence they hold is first caught on the push to main.
-- **The Linux tests of the sandbox's steps have not run on a Scribe** (they need cargo); the steps have
-  (S1, and the imports, pictures and fonts of 2.1.0-beta.2).
+- **The Linux tests of the sandbox's steps have not run on a Scribe** (they need cargo); the steps have, as
+  they were in 2.1.0-beta.2 (S1, and that beta's imports, pictures and fonts). The narrower system-call rules
+  that came after are the entry "The Scribe check of this round has not run", above.
 
 ## The keyboard's caret and text copy and paste (2.1.0-beta.2, last round, lane K): choices for the owner, and what waits
 
