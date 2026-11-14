@@ -81,10 +81,54 @@ fn the_caches_are_never_pruned_through_a_link() {
     let _ = std::fs::remove_dir_all(&top);
 }
 
+/// The files of a folder, by name, with their bytes.
+fn files_of(dir: &std::path::Path) -> Vec<(String, Vec<u8>)> {
+    let mut v: Vec<(String, Vec<u8>)> =
+        std::fs::read_dir(dir).unwrap().flatten().map(|e| (e.file_name().to_string_lossy().into_owned(), std::fs::read(e.path()).unwrap())).collect();
+    v.sort();
+    v
+}
+
+// (hardening round 2026-11: in import/ only a real folder is a folder of pictures. A link there is left as it
+// is: the scan takes nothing from it and writes no mark into it.)
+fn a_scan_never_takes_a_linked_folder() {
+    let (root, top) = setup("scan-linked");
+    let outside = top.join("outside-pictures");
+    std::fs::create_dir_all(&outside).unwrap();
+    std::fs::write(outside.join("a.png"), b"no picture").unwrap();
+    std::os::unix::fs::symlink(&outside, format!("{root}/import/Linked")).unwrap();
+    let before = files_of(&outside);
+    assert_eq!(import_scan(300.0), 0, "nothing is queued for a linked folder");
+    assert_eq!(files_of(&outside), before, "the folder behind the link is as it was (no mark written into it)");
+    assert!(std::fs::symlink_metadata(format!("{root}/import/Linked")).unwrap().file_type().is_symlink());
+    let _ = std::fs::remove_dir_all(&top);
+}
+
+// (and the import job itself, handed such a path: it reads nothing there and makes nothing)
+fn a_folder_job_never_reads_a_linked_folder() {
+    let (root, top) = setup("job-linked");
+    let outside = top.join("outside-pictures");
+    std::fs::create_dir_all(&outside).unwrap();
+    std::fs::write(outside.join("a.png"), b"no picture").unwrap();
+    let mut id = String::new();
+    store_make_id(&mut id);
+    std::fs::write(outside.join(".grimoire-import"), format!("{id}\n")).unwrap();
+    let link = format!("{root}/import/Linked");
+    std::os::unix::fs::symlink(&outside, &link).unwrap();
+    let before = files_of(&outside);
+    assert_eq!(bg_import_folder(&link, 300.0), 0, "the job ends with nothing to do");
+    assert_eq!(files_of(&outside), before, "the folder behind the link is as it was");
+    assert_eq!(left(std::path::Path::new(&format!("{root}/notebooks"))), 0, "no notebook is made");
+    assert!(std::fs::symlink_metadata(&link).unwrap().file_type().is_symlink(), "the link is as it was");
+    let _ = std::fs::remove_dir_all(&top);
+}
+
 // (one test, its checks in order: the store's root is the process's)
 #[test]
 fn test_sec_work_links() {
     the_cleanup_of_a_cut_off_import_never_follows_a_link();
     the_start_never_empties_a_folder_through_a_linked_request_folder();
     the_caches_are_never_pruned_through_a_link();
+    a_scan_never_takes_a_linked_folder();
+    a_folder_job_never_reads_a_linked_folder();
 }

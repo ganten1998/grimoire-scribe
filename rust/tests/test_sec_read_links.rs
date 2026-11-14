@@ -8,7 +8,7 @@ mod testlib;
 use grimoire::prelude::*;
 use std::os::unix::fs::{symlink, FileTypeExt};
 use std::path::{Path, PathBuf};
-use testlib::never_waits;
+use testlib::{waits_on, Checks};
 
 /// A fresh scratch folder for one test, named with the process id.
 fn top(name: &str) -> PathBuf {
@@ -100,48 +100,54 @@ fn a_storage_read_takes_plain_files_only() {
     std::fs::create_dir_all(&root).unwrap();
     let outside = t.join("outside.ini");
     std::fs::write(&outside, b"marker=outside-only\n").unwrap();
+    let mut c = Checks::default();
     let link = root.join("link.ini");
     symlink(&outside, &link).unwrap();
-    assert_eq!(read_file(text(&link)), None, "a link to a file");
+    c.that(read_file(text(&link)).is_none(), "a link to a file reads as no file");
     let ghost = root.join("ghost.ini");
     symlink(t.join("nowhere"), &ghost).unwrap();
-    assert_eq!(read_file(text(&ghost)), None, "a dangling link");
+    c.that(read_file(text(&ghost)).is_none(), "a dangling link reads as no file");
     let folder = root.join("folder.ini");
     std::fs::create_dir(&folder).unwrap();
-    assert_eq!(read_file(text(&folder)), None, "a folder");
+    c.that(read_file(text(&folder)).is_none(), "a folder reads as no file");
     let plain = root.join("plain.ini");
     std::fs::write(&plain, b"name=Plain\n").unwrap();
-    assert_eq!(read_file(text(&plain)).as_deref(), Some(&b"name=Plain\n"[..]));
+    c.that(read_file(text(&plain)).as_deref() == Some(&b"name=Plain\n"[..]), "a plain file reads");
     // the same file through a folder that is a link
     let way = t.join("way");
     symlink(&root, &way).unwrap();
-    assert_eq!(read_file(text(&way.join("plain.ini"))).as_deref(), Some(&b"name=Plain\n"[..]));
+    c.that(read_file(text(&way.join("plain.ini"))).as_deref() == Some(&b"name=Plain\n"[..]), "a plain file behind a linked folder reads");
     // a second name of the file
     let hard = root.join("hard.ini");
     std::fs::hard_link(&plain, &hard).unwrap();
-    assert_eq!(read_file(text(&hard)).as_deref(), Some(&b"name=Plain\n"[..]));
+    c.that(read_file(text(&hard)).as_deref() == Some(&b"name=Plain\n"[..]), "a second name of a plain file reads");
     // the system's own files: links followed, as before
-    assert_eq!(read_system_file(text(&link)).as_deref(), Some(&b"marker=outside-only\n"[..]));
-    assert_eq!(std::fs::read(&outside).unwrap(), b"marker=outside-only\n");
+    c.that(read_system_file(text(&link)).as_deref() == Some(&b"marker=outside-only\n"[..]), "the system read follows a link");
+    c.that(std::fs::read(&outside).unwrap() == b"marker=outside-only\n", "the file outside is as it was");
+    c.done();
     let _ = std::fs::remove_dir_all(&t);
 }
 
 // No read of the data folder waits: a FIFO at a file's name reads as a file that is not there, at once.
-// (never_waits: a call that did wait is let go after 30 s, and the test fails.)
+// (waits_on: a call that did wait is let go after 30 s, and its check fails.)
 #[test]
 fn a_storage_read_never_waits_on_a_fifo() {
     let t = top("fifo");
     let root = t.join("root");
     store_at(&root);
+    let mut c = Checks::default();
     let pipe = root.join("pipe.png");
     fifo_at(&pipe);
-    assert_eq!(never_waits(&pipe, || read_file(text(&pipe))), None);
+    let (r, waited) = waits_on(&pipe, || read_file(text(&pipe)));
+    c.that(!waited && r.is_none(), "read_file of a FIFO is None, at once");
+    let (r, waited) = waits_on(&pipe, || bgimage_read(text(&pipe), 1 << 20));
+    c.that(!waited && r.is_none(), "bgimage_read of a FIFO is None, at once");
     // settings.ini: the language is read from it before the app starts
     let settings = root.join("settings.ini");
     fifo_at(&settings);
     let mut lang = String::from("?");
-    never_waits(&settings, || settings_language(&mut lang, 16));
-    assert_eq!(lang, "");
+    let (_, waited) = waits_on(&settings, || settings_language(&mut lang, 16));
+    c.that(!waited && lang.is_empty(), "settings_language with settings.ini a FIFO is \"\", at once");
     std::fs::remove_file(&settings).unwrap();
     // a notebook with no page size in its notebook.ini takes it from its page files: the listing reads them
     let dir = root.join("notebooks/nb-fifo");
@@ -150,19 +156,21 @@ fn a_storage_read_never_waits_on_a_fifo() {
     let page = dir.join("p1.qpg");
     fifo_at(&page);
     let mut list = Vec::new();
-    assert_eq!(never_waits(&page, || store_list(&mut list)), 0);
+    let (rc, waited) = waits_on(&page, || store_list(&mut list));
+    c.that(!waited && rc == 0, "store_list with a page file a FIFO lists, at once");
     assert_eq!(list.len(), 1);
-    assert_eq!((list[0].name.as_str(), list[0].page_w, list[0].page_h), ("Pipe", 600, 800), "listed at the device's size");
+    c.that((list[0].name.as_str(), list[0].page_w, list[0].page_h) == ("Pipe", 600, 800), "the notebook is listed at the device's size");
     // the page itself: a blank page, and the entry is set aside as a damaged page is
     let nb = list[0].clone();
     let mut out = None;
-    assert_eq!(never_waits(&page, || store_load_page(&nb, 0, 600, 800, &mut out)), 0);
-    assert!(out.is_some_and(|p| p.strokes.is_empty()), "a blank page");
-    assert!(std::fs::symlink_metadata(&page).is_err(), "nothing is left at the page's name");
+    let (rc, waited) = waits_on(&page, || store_load_page(&nb, 0, 600, 800, &mut out));
+    c.that(!waited && rc == 0, "store_load_page of a FIFO opens, at once");
+    c.that(out.is_some_and(|p| p.strokes.is_empty()), "as a blank page");
+    c.that(std::fs::symlink_metadata(&page).is_err(), "nothing is left at the page's name");
     let aside = named(&dir, "p1.qpg.damaged-");
-    assert_eq!(aside.len(), 1, "{aside:?}");
-    assert!(std::fs::symlink_metadata(&aside[0]).unwrap().file_type().is_fifo(), "the entry itself was set aside");
-    assert_eq!(store_take_corrupt_count(), 1);
+    c.that(aside.len() == 1 && std::fs::symlink_metadata(&aside[0]).unwrap().file_type().is_fifo(), "the entry itself was set aside");
+    c.that(store_take_corrupt_count() == 1, "and counted as a damaged page is");
+    c.done();
     let _ = std::fs::remove_dir_all(&t);
 }
 
@@ -185,28 +193,28 @@ fn a_page_entry_that_is_no_plain_file_is_set_aside() {
     std::fs::remove_file(&p2).unwrap();
     symlink(&outside, &p2).unwrap();
     assert_eq!(store_take_corrupt_count(), 0);
+    let mut c = Checks::default();
     for (index, path) in [(0, &p1), (1, &p2)] {
         let page = load(&nb, index);
-        assert!(page.strokes.is_empty(), "page {} opens blank", index + 1);
-        assert!(std::fs::symlink_metadata(path).is_err(), "nothing is left at page {}'s name", index + 1);
+        c.that(page.strokes.is_empty(), &format!("page {} opens blank", index + 1));
+        c.that(std::fs::symlink_metadata(path).is_err(), &format!("nothing is left at page {}'s name", index + 1));
     }
     let (a1, a2) = (named(&dir, &format!("p{}.qpg.damaged-", nb.page_ids[0])), named(&dir, &format!("p{}.qpg.damaged-", nb.page_ids[1])));
-    assert_eq!((a1.len(), a2.len()), (1, 1), "one entry set aside for each: {a1:?} {a2:?}");
-    assert!(std::fs::symlink_metadata(&a1[0]).unwrap().is_dir(), "the folder, as it was");
-    assert!(is_link(&a2[0]), "the link, as it was");
-    assert_eq!(store_take_corrupt_count(), 2, "each is counted, as a damaged page is");
+    c.that(a1.len() == 1 && std::fs::symlink_metadata(&a1[0]).unwrap().is_dir(), "the folder is set aside, as it was");
+    c.that(a2.len() == 1 && is_link(&a2[0]), "the link is set aside, as it was");
+    c.that(store_take_corrupt_count() == 2, "each is counted, as a damaged page is");
     // each page then saves, as a plain file of its own
     for (index, path) in [(0, &p1), (1, &p2)] {
         let mut page = page_new(600, 800, PAPER_BLANK);
         page_add(&mut page, wave(90 + index as u32, 300.0));
-        assert_eq!(store_save_page(&nb, index, &page), 0);
-        assert!(is_plain(path));
-        assert_eq!(load(&nb, index).strokes.len(), 1);
+        c.that(store_save_page(&nb, index, &page) == 0 && is_plain(path), &format!("page {} then saves as a plain file", index + 1));
+        c.that(load(&nb, index).strokes.len() == 1, &format!("page {} reads back what was saved", index + 1));
     }
-    assert!(std::fs::read(&outside).unwrap() == good, "the file outside is as it was");
+    c.that(std::fs::read(&outside).unwrap() == good, "the file outside is as it was");
     // the third page, untouched, has its ink
-    assert_eq!(load(&nb, 2).strokes.len(), 3);
-    assert_eq!(store_take_corrupt_count(), 0);
+    c.that(load(&nb, 2).strokes.len() == 3, "the untouched page has its ink");
+    c.that(store_take_corrupt_count() == 0, "and nothing more is counted");
+    c.done();
     let _ = std::fs::remove_dir_all(&t);
 }
 
@@ -333,29 +341,28 @@ fn a_linked_settings_ini_is_not_read_and_is_kept() {
     let text_outside = b"# Grimoire settings\nmarker=outside-only\nlanguage=es\n";
     std::fs::write(&outside, text_outside).unwrap();
     symlink(&outside, &ini).unwrap();
+    let mut c = Checks::default();
     let mut lang = String::from("?");
     settings_language(&mut lang, 16);
-    assert_eq!(lang, "");
+    c.that(lang.is_empty(), "the language is not read from it");
     let mut s = Settings::default();
-    assert_eq!(settings_load(&mut s), 1);
-    assert_eq!(settings_save(&s), 0);
-    assert!(is_plain(&ini));
-    assert!(!holds(&std::fs::read(&ini).unwrap(), b"outside-only"), "nothing of the file outside is saved back");
-    assert!(is_link(&aside) && std::fs::read_link(&aside).unwrap() == outside, "the entry is kept aside, as it was");
-    assert_eq!(std::fs::read(&outside).unwrap(), text_outside);
+    c.that(settings_load(&mut s) == 1, "settings_load says the settings were not read");
+    c.that(settings_save(&s) == 0 && is_plain(&ini), "the settings then save, as a plain file");
+    c.that(!holds(&std::fs::read(&ini).unwrap(), b"outside-only"), "nothing of the file outside is saved back");
+    c.that(is_link(&aside) && std::fs::read_link(&aside).is_ok_and(|to| to == outside), "the entry is kept as settings.ini.unread, as it was");
+    c.that(std::fs::read(&outside).unwrap() == text_outside, "the file outside is as it was");
     // (what was saved reads)
-    assert_eq!(settings_load(&mut s), 0);
+    c.that(settings_load(&mut s) == 0, "what was saved reads");
     // a second round, with another link: the first one kept stays
     let second = t.join("second.ini");
     std::fs::write(&second, b"marker=second-only\n").unwrap();
     std::fs::remove_file(&ini).unwrap();
     symlink(&second, &ini).unwrap();
-    assert_eq!(settings_load(&mut s), 1);
-    assert_eq!(settings_save(&s), 0);
-    assert!(is_plain(&ini) && !holds(&std::fs::read(&ini).unwrap(), b"-only"));
-    assert!(is_link(&aside) && std::fs::read_link(&aside).unwrap() == outside, "settings.ini.unread is still the first");
-    assert_eq!(std::fs::read(&second).unwrap(), b"marker=second-only\n");
-    assert_eq!(std::fs::read(&outside).unwrap(), text_outside);
+    c.that(settings_load(&mut s) == 1, "second round: not read");
+    c.that(settings_save(&s) == 0 && is_plain(&ini) && !holds(&std::fs::read(&ini).unwrap(), b"-only"), "second round: saved, with nothing of either file");
+    c.that(is_link(&aside) && std::fs::read_link(&aside).is_ok_and(|to| to == outside), "settings.ini.unread is still the first");
+    c.that(std::fs::read(&second).unwrap() == b"marker=second-only\n" && std::fs::read(&outside).unwrap() == text_outside, "both files outside are as they were");
+    c.done();
     let _ = std::fs::remove_dir_all(&t);
 }
 
@@ -371,30 +378,61 @@ fn an_ini_over_the_limit_is_not_read() {
     settings_default(&mut s);
     let lines = format!("# Grimoire settings\nmirror_pdf={}\n", !s.mirror_pdf as i32);
     std::fs::write(&ini, padded(lines.as_bytes(), MIB)).unwrap();
+    let mut c = Checks::default();
     let mut got = Settings::default();
-    assert_eq!(settings_load(&mut got), 0, "exactly 1 MiB reads");
-    assert_eq!(got.mirror_pdf, !s.mirror_pdf);
+    c.that(settings_load(&mut got) == 0 && got.mirror_pdf != s.mirror_pdf, "a settings.ini of exactly 1 MiB reads");
     let long = padded(lines.as_bytes(), MIB + 1);
     std::fs::write(&ini, &long).unwrap();
-    assert_eq!(settings_load(&mut got), 1, "one byte more does not");
-    assert_eq!(got.mirror_pdf, s.mirror_pdf, "the defaults are used");
-    assert_eq!(settings_save(&got), 0);
-    assert!(std::fs::read(&aside).unwrap() == long, "the long file is kept, byte for byte");
-    assert!(is_plain(&ini) && std::fs::metadata(&ini).unwrap().len() < 100_000);
+    c.that(settings_load(&mut got) == 1 && got.mirror_pdf == s.mirror_pdf, "one byte more is not read: the defaults are used");
+    c.that(settings_save(&got) == 0, "the settings then save");
+    c.that(std::fs::read(&aside).is_ok_and(|kept| kept == long), "the long file is kept as settings.ini.unread, byte for byte");
+    c.that(is_plain(&ini) && std::fs::metadata(&ini).unwrap().len() < 100_000, "and settings.ini is this build's");
     // notebook.ini
     let nb = book("Long", 1, PAPER_BLANK);
     let nbini = nb_dir(&root, &nb).join("notebook.ini");
     let wrote = std::fs::read(&nbini).unwrap();
     std::fs::write(&nbini, padded(&wrote, MIB)).unwrap();
     let mut info = NotebookInfo::default();
-    assert_eq!(store_load_info(nb.id.as_str(), &mut info), 0, "exactly 1 MiB reads");
-    assert_eq!(info.name.as_str(), "Long");
+    c.that(store_load_info(nb.id.as_str(), &mut info) == 0 && info.name.as_str() == "Long", "a notebook.ini of exactly 1 MiB reads");
     let long = padded(&wrote, MIB + 1);
     std::fs::write(&nbini, &long).unwrap();
-    assert_eq!(store_load_info(nb.id.as_str(), &mut info), -1, "one byte more does not");
+    c.that(store_load_info(nb.id.as_str(), &mut info) == -1, "one byte more is not read");
     let mut list = Vec::new();
-    assert_eq!(store_list(&mut list), 0);
-    assert!(list.is_empty());
-    assert!(std::fs::read(&nbini).unwrap() == long, "the file is as it was");
+    c.that(store_list(&mut list) == 0 && list.is_empty(), "and the notebook is left out of the Library");
+    c.that(std::fs::read(&nbini).unwrap() == long, "its notebook.ini is as it was");
+    c.done();
+    let _ = std::fs::remove_dir_all(&t);
+}
+
+/// errno as the C library has it for this thread.
+fn errno() -> i32 {
+    std::io::Error::last_os_error().raw_os_error().unwrap_or(0)
+}
+
+// A picture is read when the entry at its name is a plain file, of at most the size its caller takes.
+#[test]
+fn a_picture_is_never_read_through_a_link() {
+    let t = top("picture");
+    let root = t.join("root");
+    std::fs::create_dir_all(&root).unwrap();
+    let outside = t.join("outside.png");
+    let png: Vec<u8> = b"\x89PNG\r\n\x1a\n".iter().copied().chain((0..200u8).cycle().take(1000)).collect();
+    std::fs::write(&outside, &png).unwrap();
+    let link = root.join("000001.png");
+    symlink(&outside, &link).unwrap();
+    assert_eq!(bgimage_read(text(&link), 1 << 20), None, "a link to a picture");
+    assert!(bgimage_read(text(&outside), 1 << 20).as_deref() == Some(&png[..]), "the file itself");
+    assert!(bgimage_read(text(&outside), png.len()).as_deref() == Some(&png[..]), "at its size");
+    // one byte over what the caller takes
+    assert_eq!(bgimage_read(text(&outside), png.len() - 1), None);
+    assert_eq!(errno(), libc::EFBIG);
+    // a folder, and nothing at all, read as a missing file
+    let folder = root.join("000002.png");
+    std::fs::create_dir(&folder).unwrap();
+    assert_eq!(bgimage_read(text(&folder), 1 << 20), None);
+    assert_eq!(errno(), libc::ENOENT);
+    assert_eq!(bgimage_read(text(&root.join("000003.png")), 1 << 20), None);
+    assert_eq!(errno(), libc::ENOENT);
+    assert_eq!(std::fs::read(&outside).unwrap(), png);
     let _ = std::fs::remove_dir_all(&t);
 }

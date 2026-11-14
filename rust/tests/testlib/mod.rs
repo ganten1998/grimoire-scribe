@@ -104,6 +104,14 @@ pub fn tl_tmp() -> String {
 /// running after 30 s does a helper thread open the FIFO (both ends at once, which never waits), hold it a
 /// moment and close it, so that `f` returns; the test then fails.
 pub fn never_waits<R>(fifo: &std::path::Path, f: impl FnOnce() -> R) -> R {
+    let (r, waited) = waits_on(fifo, f);
+    assert!(!waited, "the call waited on the FIFO at {}", fifo.display());
+    r
+}
+
+/// never_waits without its assertion: what `f` returned, and whether it had to be let go (it waited on the
+/// FIFO). For a test that checks several calls and names each one that waited.
+pub fn waits_on<R>(fifo: &std::path::Path, f: impl FnOnce() -> R) -> (R, bool) {
     use std::os::unix::ffi::OsStrExt;
     use std::sync::atomic::AtomicBool;
     use std::sync::mpsc::RecvTimeoutError;
@@ -129,6 +137,22 @@ pub fn never_waits<R>(fifo: &std::path::Path, f: impl FnOnce() -> R) -> R {
     let r = f();
     let _ = tx.send(());
     let _ = helper.join();
-    assert!(!rescued.load(Ordering::SeqCst), "the call waited on the FIFO at {}", fifo.display());
-    r
+    (r, rescued.load(Ordering::SeqCst))
+}
+
+/// Checks of one test that all run: a failed one is printed and does not hide the next, and the test fails at
+/// the end naming each (done). For a test whose parts each pin a change of their own. (check! and done()
+/// above count for the whole binary, which holds one test; this is for a binary of several.)
+#[derive(Default)]
+pub struct Checks(Vec<String>);
+impl Checks {
+    pub fn that(&mut self, ok: bool, what: &str) {
+        if !ok {
+            eprintln!("  FAIL: {what}");
+            self.0.push(what.to_string());
+        }
+    }
+    pub fn done(self) {
+        assert!(self.0.is_empty(), "{} check(s) failed: {:?}", self.0.len(), self.0);
+    }
 }

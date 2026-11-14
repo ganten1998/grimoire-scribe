@@ -405,29 +405,31 @@ pub fn bgpicture_free(p: &mut BgPicture) {
 // ---- reading ----
 
 /// A whole file of at most max bytes, read into a buffer of its size (caller frees), or NULL:
-/// missing or no regular file, or bigger than max (errno EFBIG), or unreadable.
+/// missing or no regular file, or bigger than max (errno EFBIG), or unreadable. The entry at the name itself
+/// must be the regular file (a link there is not followed), and the open never waits (util.rs
+/// open_read_nofollow).
 /// (None leaves errno as the C does: ENOENT, EFBIG, EIO, ENOMEM or what open and read set.)
 pub fn bgimage_read(path: &str, max: usize) -> Option<Vec<u8>> {
-    let Ok(cpath) = CString::new(path) else {
-        set_errno(libc::ENOENT);
-        return None;
+    use std::os::fd::AsRawFd;
+    let (f, md) = match open_read_nofollow(path) {
+        Ok(x) => x,
+        Err(e) => {
+            // (no regular file is the helper's EINVAL, and a path with a NUL has no errno of its own: both read
+            // as a missing file, as they always did; anything else is what the open said)
+            set_errno(match e.raw_os_error() {
+                Some(libc::EINVAL) | None => libc::ENOENT,
+                Some(n) => n,
+            });
+            return None;
+        }
     };
-    // SAFETY: open reads the NUL-terminated path we own.
-    let fd = unsafe { libc::open(cpath.as_ptr(), libc::O_RDONLY) };
-    if fd < 0 {
-        return None;
-    }
-    // SAFETY: stat is plain data; fstat fills it from our open fd.
-    let mut st: libc::stat = unsafe { std::mem::zeroed() };
+    let fd = f.as_raw_fd();
     let mut buf: Option<Vec<u8>> = None;
     let mut err = 0;
-    // SAFETY: fstat writes one stat into our local through a valid pointer.
-    if unsafe { libc::fstat(fd, &mut st) } != 0 || (st.st_mode & libc::S_IFMT) != libc::S_IFREG || st.st_size < 0 {
-        err = libc::ENOENT;
-    } else if st.st_size as u64 > max as u64 {
+    if md.len() > max as u64 {
         err = libc::EFBIG;
     } else {
-        let n = st.st_size as usize;
+        let n = md.len() as usize;
         let mut v: Vec<u8> = Vec::new();
         if v.try_reserve_exact(if n != 0 { n } else { 1 }).is_ok() {
             v.resize(n, 0);
@@ -455,8 +457,7 @@ pub fn bgimage_read(path: &str, max: usize) -> Option<Vec<u8>> {
             err = libc::ENOMEM;
         }
     }
-    // SAFETY: fd is ours and open.
-    unsafe { libc::close(fd) };
+    drop(f); // (closed before errno is set)
     if buf.is_none() {
         set_errno(err);
     }
