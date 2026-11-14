@@ -5,8 +5,9 @@
 // A "gone" pin is a phrase a file must no longer hold: a sentence that said what the code does not do. It catches
 // the old words coming back (a merge settled the wrong way), not the old meaning in new words. A "present" pin is
 // a name the code itself has (a constant, a file's name), never prose, so a reworded sentence does not fail here.
-// A phrase is looked for in the file with every run of white space made one space, so a paragraph wrapped anew is
-// the same text. Each test gathers every pin that fails and prints them together.
+// A phrase is looked for in the file with every run of white space made one space, and in a source file without
+// the marks that open its comment lines, so a paragraph or a comment wrapped anew is the same text. Each test
+// gathers every pin that fails and prints them together.
 //
 // A docs-only pull request runs no test: docs/TESTING.md, "Tests that read the documents".
 #![cfg(feature = "sim")]
@@ -31,14 +32,29 @@ const CARGO_TOML: File = ("rust/Cargo.toml", include_str!("../Cargo.toml"));
 const CARGO_LOCK: File = ("rust/Cargo.lock", include_str!("../Cargo.lock"));
 const DENY_TOML: File = ("rust/deny.toml", include_str!("../deny.toml"));
 
-/// The text with every run of white space (a line's end too) made one space.
-fn flat(text: &str) -> String {
-    text.split_whitespace().collect::<Vec<_>>().join(" ")
+/// A file's text with every run of white space (a line's end too) made one space. In a file that is no document
+/// the mark that opens a comment's line is left out first (`//`, `///` and `//!` in Rust, `#` elsewhere), so a
+/// comment wrapped anew is the same text, as a document's paragraph is.
+fn flat(f: File) -> String {
+    let marks: &[&str] = if f.0.ends_with(".md") {
+        &[]
+    } else if f.0.ends_with(".rs") {
+        &["//!", "///", "//"]
+    } else {
+        &["#"]
+    };
+    let mut words = Vec::new();
+    for line in f.1.lines() {
+        let line = line.trim_start();
+        let text = marks.iter().find_map(|m| line.strip_prefix(m)).unwrap_or(line);
+        words.extend(text.split_whitespace());
+    }
+    words.join(" ")
 }
 
 /// A gone pin: the file no longer holds the phrase.
 fn gone(fails: &mut Vec<String>, f: File, phrase: &str) {
-    let n = flat(f.1).matches(phrase).count();
+    let n = flat(f).matches(phrase).count();
     if n != 0 {
         fails.push(format!("{} still says, {n} time(s): {phrase}", f.0));
     }
@@ -46,7 +62,7 @@ fn gone(fails: &mut Vec<String>, f: File, phrase: &str) {
 
 /// A present pin: the file names what the code has.
 fn present(fails: &mut Vec<String>, f: File, name: &str) {
-    if !flat(f.1).contains(name) {
+    if !flat(f).contains(name) {
         fails.push(format!("{} does not name {name}", f.0));
     }
 }
@@ -55,7 +71,7 @@ fn present(fails: &mut Vec<String>, f: File, name: &str) {
 /// base is reworded or goes (what it said has changed), so that the sentence standing on it is read again and
 /// follows. A sentence that was itself reworded is no longer held here.
 fn stands_on(fails: &mut Vec<String>, f: File, words: &str, on: File, base: &str) {
-    if flat(f.1).contains(words) && !flat(on.1).contains(base) {
+    if flat(f).contains(words) && !flat(on).contains(base) {
         fails.push(format!("{} says \"{words}\", and {} no longer says \"{base}\": the first is to follow", f.0, on.0));
     }
 }
@@ -86,7 +102,7 @@ fn the_docs_name_the_record_cap_with_its_size_and_not_as_a_jobs() {
     // file holds characters of more than one byte).
     let cap = grimoire::pdfwork::RECORDS_MAX_BYTES;
     let (name, size) = ("RECORDS_MAX_BYTES", format!("{} MiB", cap >> 20));
-    let design = flat(DESIGN.1);
+    let design = flat(DESIGN);
     match design.find(name) {
         None => fails.push(format!("{} does not name {name}", DESIGN.0)),
         Some(at) => {
@@ -383,7 +399,6 @@ fn the_one_skrifa_is_the_one_hayro_brings() {
 fn the_docs_no_longer_say_what_the_code_does_not() {
     let mut fails = Vec::new();
     // picking a template or photo reads none of its bytes on the UI thread (test_picture_jobs.rs holds the code)
-    // (the phrase ends at "is": the old comment broke its line there)
     gone(&mut fails, TEMPLATES, "only a small file it has not seen yet is");
     // what a build off the Kindle takes of the sandbox (sandbox.rs: standard_steps, apply_steps, sandboxed_line)
     gone(&mut fails, DESIGN, "Off the Kindle the steps are skipped");
