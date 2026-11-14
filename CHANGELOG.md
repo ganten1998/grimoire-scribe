@@ -1,5 +1,7 @@
 # Changelog
 
+## 2.1.1 (unreleased)
+
 ## 2.1.0 (2026-11-13)
 
 - The first stable release of 2.1: 2.1.0-beta.2 with the changes below, now on the stable channel too (KPM
