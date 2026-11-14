@@ -8,8 +8,24 @@ use grimoire::prelude::*;
 use std::os::unix::fs::PermissionsExt;
 use testlib::*;
 
+/// The test's scratch folder, named by this process's id.
+fn scratch() -> String {
+    format!("{}/lock-ui-{}", tl_tmp(), std::process::id())
+}
+
+// An earlier run's folder under the same name (a process id comes round again, and the scratch folder
+// outlived the run): its `calls` holds that run's lines. native_ui_boundary's stand-ins append to
+// `calls`, so it starts from a folder of its own making, or it would read those lines before its own.
+fn an_earlier_runs_folder_is_left() {
+    let dir = scratch();
+    check!(mkdir_p(&dir) == 0);
+    let stale = "killall -CONT awesome\nlipc com.lab126.pillow disableEnablePillow enable\n";
+    check!(write_file_atomic(&format!("{}/calls", dir), stale.as_bytes()) == 0);
+}
+
 fn native_ui_boundary() {
-    let dir = format!("{}/lock-ui-{}", tl_tmp(), std::process::id());
+    let dir = scratch();
+    let _ = std::fs::remove_dir_all(&dir); // (never an earlier run's files: see above)
     check!(mkdir_p(&dir) == 0);
     let log = format!("{}/calls", dir);
     std::env::set_var("LOCK_TEST_LOG", &log);
@@ -51,6 +67,7 @@ fn chmod(path: &str, mode: u32) -> bool {
 
 #[test]
 fn test_lockui() {
+    run!(an_earlier_runs_folder_is_left);
     run!(native_ui_boundary);
     done();
 }

@@ -53,7 +53,10 @@ binaries (`BUILD=build/c`). Never run a GUI binary as a check, and never touch t
 check.
 
 The unit tests read `GRIMOIRE_TEST_TMP` as the C's do (test_store writes to its `../out`); `make test`
-sets it to `build/test/tmp`. Without it `tl_tmp()` is a `grimoire-test` folder in the system's
+sets it to `build/test/tmp`, which each half (`test-host`, `test-sim`) empties before it starts, as
+`make c-test` empties `build/c/test/tmp`: the tests name their folders there by process id, and a
+process id comes round again (issue #85). So no two test runs at once in one worktree: give a second
+its own `BUILD`. Without it `tl_tmp()` is a `grimoire-test` folder in the system's
 temporary directory (the C's `/tmp` put `../out` at `/out`), and `.cargo/config.toml` sets
 `RUST_TEST_THREADS=1`, so a plain `cargo test` here runs one test at a time and passes, as
 `cargo test --features sim` does.

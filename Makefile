@@ -389,16 +389,30 @@ $(CBUILD)/host/mklogo: tools/mklogo.c $(CORE_SRC) $(GEN_SRC) $(HDRS)
 # the headless build (--features sim), whose tests check the runner itself, the Share screen and
 # the pen that reports tilt.
 # (test-host and test-sim are the two halves, which CI runs as two jobs.)
+# Each half starts with its scratch folder (GRIMOIRE_TEST_TMP, $(BUILD)/test/tmp) empty: the tests name
+# their folders in it by process id, and a process id comes round again, so what an earlier run left
+# there met a later run's test (one that appends to a file, or expects none). TEST_TMP_EMPTY removes
+# that folder alone and makes it again: not $(BUILD)/test, which holds the tests' out folder. No link is
+# followed (rm removes a link, never what it names: tests leave links to /etc there). A folder a test
+# stopped half way left read-only is made writable first, or rm could not empty it.
+# The halves run one after another, here and under make check (where nothing else uses the folder), and
+# on runners of their own in CI. Two test runs at once in one worktree would empty each other's folder:
+# give the second a BUILD of its own.
 .PHONY: test-host test-sim
+define TEST_TMP_EMPTY
+$(if $(strip $(1)),,$(error TEST_TMP_EMPTY: no build folder))if [ -d "$(1)/test/tmp" ] && [ ! -L "$(1)/test/tmp" ]; then \
+	  find "$(1)/test/tmp" -type d ! -perm -700 -exec chmod u+rwx {} \; ; fi; \
+	rm -rf "$(1)/test/tmp" && mkdir -p "$(1)/test/tmp"
+endef
 test:
 	@$(MAKE) --no-print-directory test-host
 	@$(MAKE) --no-print-directory test-sim
 	@echo "ALL TESTS PASSED"
 test-host:
-	@mkdir -p $(BUILD)/test/tmp
+	@$(call TEST_TMP_EMPTY,$(BUILD))
 	$(call RCARGO,GRIMOIRE_TEST_TMP="$(abspath $(BUILD))/test/tmp") test -- --test-threads=1
 test-sim:
-	@mkdir -p $(BUILD)/test/tmp
+	@$(call TEST_TMP_EMPTY,$(BUILD))
 	$(call RCARGO,GRIMOIRE_TEST_TMP="$(abspath $(BUILD))/test/tmp") test --features sim -- --test-threads=1
 
 # The PDFs the scenarios copy (tests/fixtures/pdf/), made by the fixture writer in rust/tests/pdffix, never
@@ -421,6 +435,7 @@ TESTS := $(patsubst tests/%.c,$(CBUILD)/test/%,$(wildcard tests/test_*.c))
 # were recorded so, and turning it off changes them.
 TEST_FLAGS := -O1 -g -fsanitize=address,undefined -fno-sanitize-recover=undefined -fno-omit-frame-pointer -ffp-contract=on
 c-test: $(TESTS)
+	@$(call TEST_TMP_EMPTY,$(CBUILD))
 	@set -e; for t in $(TESTS); do echo "== $$t"; GRIMOIRE_TEST_TMP=$(CBUILD)/test/tmp $$t; done; echo "ALL TESTS PASSED"
 $(CBUILD)/test/%: tests/%.c $(wildcard tests/*.h) $(CORE_SRC) $(UI_SRC) $(GEN_SRC) $(HDRS)
 	@mkdir -p $(CBUILD)/test/tmp
