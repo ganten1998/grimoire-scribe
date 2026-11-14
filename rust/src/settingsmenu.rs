@@ -35,6 +35,7 @@ pub enum Label {
     Font,
     Language,
     SideButton,
+    Eraser,
     Mirror,
 }
 
@@ -49,6 +50,7 @@ pub enum SettingId {
     SleepClock,
     PenFeel,
     SideButton,
+    EraserMode,
     Calibration,
     Shortcuts,
     Pair,
@@ -96,13 +98,37 @@ impl Show {
     }
 }
 
-/// What holding the pen's side button does while writing (settings.ini side_button 0 to 3).
+/// What holding the pen's side button does while writing (settings.ini side_button 0 to 3): the row's
+/// short name, then the submenu's labels.
+pub static SIDE_BUTTON_NAMES: [&str; 4] = [
+    // TRANSLATORS: Settings' Pen category, the row that opens the pen button's choices, with the
+    // choice in use: "Pen button: Nothing".
+    n_("Nothing"),
+    n_("Erases"),
+    n_("Highlights"),
+    n_("Draws white"),
+];
 pub static SIDE_BUTTON_LABELS: [&str; 4] = [
-    // TRANSLATORS: what holding the pen's button while writing does; a tap moves to the next.
-    n_("Holding the pen button while writing does nothing (tap to change)"),
-    n_("Holding the pen button while writing erases (tap to change)"),
-    n_("Holding the pen button while writing highlights (tap to change)"),
-    n_("Holding the pen button while writing draws white (tap to change)"),
+    // TRANSLATORS: the pen button submenu's four choices, what holding the pen's button while writing does.
+    n_("Nothing while writing"),
+    n_("Erases while writing"),
+    n_("Highlights while writing"),
+    n_("Draws white while writing"),
+];
+
+/// What the eraser does (settings.ini eraser_mode 0 or 1): the row's short name, then the submenu's
+/// labels.
+pub static ERASER_NAMES: [&str; 2] = [
+    // TRANSLATORS: Settings' Pen category, the row that opens the eraser's choices, with the choice in
+    // use: "Eraser: Whole strokes".
+    n_("Whole strokes"),
+    n_("Precise"),
+];
+pub static ERASER_LABELS: [&str; 2] = [
+    // TRANSLATORS: the eraser submenu's two choices: it takes every stroke it touches away whole, or
+    // only what it touches (as white ink does).
+    n_("Takes away whole strokes"),
+    n_("Takes away only what it touches"),
 ];
 
 /// The style row's two labels: the current theme, and the one a tap switches to.
@@ -112,9 +138,10 @@ pub const STYLE_CLASSIC: &str = n_("Style: Classic (tap for Gothic)");
 /// The Settings page, category by category and row by row. Keep this table in the order the
 /// page shows; the layout never hardcodes a category or a row.
 // TRANSLATORS: Settings' categories, down the left of its page, each with its icon: General's
-// (language, updates), Display's (front light, appearance, theme, font, rotation, zoom), Sleep &
-// Clock's (sleep screen, timer, clock), the Pen's (pen feel, its button, calibration), Controls'
-// (shortcuts, pairing, gestures) and System's (Wi-Fi, KOReader, USB PDF mirroring).
+// (language, updates, Wi-Fi), Display's (front light, appearance, theme, font, rotation, zoom), Sleep &
+// Clock's (sleep screen, timer, clock), the Pen's (tool settings, its button, the eraser, calibration),
+// Controls'
+// (shortcuts, pairing, gestures) and System's (KOReader, USB PDF mirroring).
 pub static CATEGORIES: &[Category] = &[
     Category {
         title: n_("General"),
@@ -131,6 +158,15 @@ pub static CATEGORIES: &[Category] = &[
                 icon: IconKind::Update,
                 label: Label::Text(n_("Updates")),
                 id: SettingId::Updates,
+                check: Check::None,
+                show: Show::Always,
+            },
+            Item {
+                icon: IconKind::Share,
+                // TRANSLATORS: (Settings) the row that opens the Wi-Fi submenu: the radio and the Kindle's
+                // saved networks.
+                label: Label::Text(n_("Wi-Fi")),
+                id: SettingId::Wifi,
                 check: Check::None,
                 show: Show::Always,
             },
@@ -197,8 +233,8 @@ pub static CATEGORIES: &[Category] = &[
         items: &[
             Item {
                 icon: IconKind::Tune,
-                // TRANSLATORS: the row that opens Pen sensitivity's sheet: pressure and tilt, per tool.
-                label: Label::Text(n_("Pen sensitivity (pressure + tilt per tool)")),
+                // TRANSLATORS: the row that opens Tool Settings' sheet: pressure and tilt, per tool.
+                label: Label::Text(n_("Tool Settings: pressure and tilt per tool")),
                 id: SettingId::PenFeel,
                 check: Check::None,
                 show: Show::Always,
@@ -207,6 +243,14 @@ pub static CATEGORIES: &[Category] = &[
                 icon: IconKind::Highlighter,
                 label: Label::SideButton,
                 id: SettingId::SideButton,
+                check: Check::None,
+                show: Show::Always,
+            },
+            Item {
+                icon: IconKind::Eraser,
+                // TRANSLATORS: the row that opens the eraser's choices: whole strokes, or precise.
+                label: Label::Eraser,
+                id: SettingId::EraserMode,
                 check: Check::None,
                 show: Show::Always,
             },
@@ -251,15 +295,6 @@ pub static CATEGORIES: &[Category] = &[
         icon: IconKind::Grid,
         items: &[
             Item {
-                icon: IconKind::Share,
-                // TRANSLATORS: (Settings) the row that opens the Wi-Fi submenu: the radio and the Kindle's
-                // saved networks.
-                label: Label::Text(n_("Wi-Fi")),
-                id: SettingId::Wifi,
-                check: Check::None,
-                show: Show::Always,
-            },
-            Item {
                 icon: IconKind::Notebook,
                 label: Label::Text(n_("KOReader")),
                 id: SettingId::KOReader,
@@ -299,22 +334,22 @@ mod tests {
             CATEGORIES.iter().map(|c| c.title).collect::<Vec<_>>(),
             vec!["General", "Display", "Sleep & Clock", "Pen", "Controls", "System"]
         );
-        assert_eq!(ids(0), vec![SettingId::Language, SettingId::Updates]);
+        assert_eq!(ids(0), vec![SettingId::Language, SettingId::Updates, SettingId::Wifi]);
         assert_eq!(ids(1), vec![SettingId::Display, SettingId::Theme, SettingId::Font, SettingId::Rotate, SettingId::Pinch]);
         assert_eq!(ids(2), vec![SettingId::SleepClock]);
-        assert_eq!(ids(3), vec![SettingId::PenFeel, SettingId::SideButton, SettingId::Calibration]);
+        assert_eq!(ids(3), vec![SettingId::PenFeel, SettingId::SideButton, SettingId::EraserMode, SettingId::Calibration]);
         assert_eq!(ids(4), vec![SettingId::Shortcuts, SettingId::Pair, SettingId::Gestures]);
-        assert_eq!(ids(5), vec![SettingId::Wifi, SettingId::KOReader, SettingId::Mirror]);
-        assert_eq!(CATEGORIES.iter().map(|c| c.items.len()).sum::<usize>(), 17);
+        assert_eq!(ids(5), vec![SettingId::KOReader, SettingId::Mirror]);
+        assert_eq!(CATEGORIES.iter().map(|c| c.items.len()).sum::<usize>(), 18);
 
         assert_eq!(text(2, 0), "Sleep and clock: screen, timer, clock");
-        assert_eq!(text(5, 0), "Wi-Fi");
-        assert_eq!(text(5, 1), "KOReader");
+        assert_eq!(text(0, 2), "Wi-Fi");
+        assert_eq!(text(5, 0), "KOReader");
         assert_eq!(text(1, 0), "Display: brightness, warmth, invert");
         assert_eq!(text(1, 3), "Turn with the Kindle (portrait and landscape)");
         assert_eq!(text(1, 4), "Pinch with two fingers to zoom");
-        assert_eq!(text(3, 0), "Pen sensitivity (pressure + tilt per tool)");
-        assert_eq!(text(3, 2), "Calibrate pen and touch");
+        assert_eq!(text(3, 0), "Tool Settings: pressure and tilt per tool");
+        assert_eq!(text(3, 3), "Calibrate pen and touch");
         assert_eq!(text(4, 0), "Shortcuts: keys and controller buttons");
         assert_eq!(text(4, 1), "Pair");
         assert_eq!(text(4, 2), "Gestures");
@@ -325,9 +360,11 @@ mod tests {
         assert!(matches!(CATEGORIES[1].items[3].check, Check::FollowRotation));
         assert!(matches!(CATEGORIES[1].items[4].check, Check::PinchZoom));
         assert!(matches!(CATEGORIES[3].items[1].label, Label::SideButton));
+        assert!(matches!(CATEGORIES[3].items[2].label, Label::Eraser));
         assert!(matches!(CATEGORIES[0].items[0].label, Label::Language));
-        assert!(matches!(CATEGORIES[5].items[2].label, Label::Mirror));
-        assert!(matches!(CATEGORIES[5].items[2].check, Check::MirrorPdf));
-        assert_eq!(SIDE_BUTTON_LABELS.len(), 4);
+        assert!(matches!(CATEGORIES[5].items[1].label, Label::Mirror));
+        assert!(matches!(CATEGORIES[5].items[1].check, Check::MirrorPdf));
+        assert_eq!((SIDE_BUTTON_NAMES.len(), SIDE_BUTTON_LABELS.len()), (4, 4));
+        assert_eq!((ERASER_NAMES.len(), ERASER_LABELS.len()), (2, 2));
     }
 }

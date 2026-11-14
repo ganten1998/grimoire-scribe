@@ -44,6 +44,11 @@ enum Modal {
     /// Settings > Wi-Fi (2.1.0-beta.2, Rust only; a number of its own as Merge's): the radio, the network
     /// connected to and the Kindle's saved networks, a tap switching to one (wifi.rs)
     Wifi = 360,
+    /// Settings > Pen > the pen button (Rust only; a number of its own as Wifi's): what holding the
+    /// side button while writing does, as Language's list of choices
+    SideButton = 370,
+    /// Settings > Pen > the eraser (Rust only): whole strokes, or precise
+    EraserMode = 380,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -93,6 +98,11 @@ const H_SET_THEME: i32 = 23;
 const H_SET_LANGUAGE: i32 = 24;
 const H_LANG_PICK: i32 = 25;
 const H_LANG_BACK: i32 = 26;
+const H_SIDE_PICK: i32 = 120;
+const H_SIDE_BACK: i32 = 121;
+const H_SET_ERASER: i32 = 122;
+const H_ERASER_PICK: i32 = 123;
+const H_ERASER_BACK: i32 = 124;
 const H_MORE_OPEN: i32 = 27;
 const H_MORE_RENAME: i32 = 28;
 const H_MORE_MOVE: i32 = 29;
@@ -3739,6 +3749,7 @@ fn setting_hit(id: settingsmenu::SettingId) -> i32 {
         Pinch => H_SET_PINCH,
         PenFeel => H_SET_PENS,
         SideButton => H_SET_SIDE,
+        EraserMode => H_SET_ERASER,
         Calibration => H_SET_CALIB,
         Shortcuts => H_SHORTCUTS,
         Pair => H_PAIR_MENU,
@@ -3878,7 +3889,28 @@ fn draw_settings(a: &mut App) {
                 &label_buf
             }
             settingsmenu::Label::SideButton => {
-                tr(settingsmenu::SIDE_BUTTON_LABELS[clampi(settings.side_button, 0, 3) as usize])
+                label_buf.clear();
+                // TRANSLATORS: Settings' Pen category row that opens the pen button's choices, with the
+                // choice in use ("Pen button: Erases").
+                csnprintf!(
+                    &mut label_buf,
+                    160,
+                    tr("Pen button: %s"),
+                    tr(settingsmenu::SIDE_BUTTON_NAMES[clampi(settings.side_button, 0, 3) as usize])
+                );
+                &label_buf
+            }
+            settingsmenu::Label::Eraser => {
+                label_buf.clear();
+                // TRANSLATORS: Settings' Pen category row that opens the eraser's choices, with the one in
+                // use ("Eraser: Whole strokes").
+                csnprintf!(
+                    &mut label_buf,
+                    160,
+                    tr("Eraser: %s"),
+                    tr(settingsmenu::ERASER_NAMES[clampi(settings.eraser_mode, 0, 1) as usize])
+                );
+                &label_buf
             }
             settingsmenu::Label::Mirror => {
                 label_buf.clear();
@@ -5074,6 +5106,26 @@ fn draw_modal(a: &mut App) {
                 hits_add(&mut s.hits, r, H_LANG_PICK, *arg);
             }
         }
+        Modal::SideButton => {
+            let cur = clampi(a.settings.side_button, 0, 3);
+            let rows: Vec<(String, i32, bool)> = settingsmenu::SIDE_BUTTON_LABELS
+                .iter()
+                .enumerate()
+                .map(|(i, label)| (tr(label).to_string(), i as i32, i as i32 == cur))
+                .collect();
+            // TRANSLATORS: the title of the list of what the pen's button does while writing (Settings > Pen).
+            draw_pick_sheet(a, tr("Pen button"), &rows, H_SIDE_PICK, H_SIDE_BACK);
+        }
+        Modal::EraserMode => {
+            let cur = clampi(a.settings.eraser_mode, 0, 1);
+            let rows: Vec<(String, i32, bool)> = settingsmenu::ERASER_LABELS
+                .iter()
+                .enumerate()
+                .map(|(i, label)| (tr(label).to_string(), i as i32, i as i32 == cur))
+                .collect();
+            // TRANSLATORS: the title of the list of what the eraser does (Settings > Pen).
+            draw_pick_sheet(a, tr("Eraser"), &rows, H_ERASER_PICK, H_ERASER_BACK);
+        }
         Modal::Kb => {
             let (aw, ah) = (a.w, a.h);
             let App { screen, lib, .. } = a;
@@ -5174,6 +5226,46 @@ fn redraw(a: &mut App, m: RefreshMode) {
     }
     a.toast_floor = toast_floor(a);
     app_invalidate_all(a, m);
+}
+
+/// A Settings submenu of choices, as Language's: the page's chrome, the choices as cards in two
+/// columns (the chosen one filled), and a tap picking one. `rows` is (label, arg, chosen).
+fn draw_pick_sheet(a: &mut App, title: &str, rows: &[(String, i32, bool)], pick: i32, back: i32) {
+    let (aw, ah) = (a.w, a.h);
+    let App { screen: c, lib, .. } = a;
+    let s = lib.as_deref_mut().unwrap();
+    let page = settings_page(c, aw, ah, title, true, false);
+    hits_add(&mut s.hits, page.back, back, 0);
+    hits_add(&mut s.hits, page.close, back, 0);
+    let in_ = page.content;
+    let gap = ui_px(16.0);
+    let n = rows.len() as i32;
+    let per = (n + 1) / 2;
+    let cw = (in_.w - gap) / 2;
+    let rh = ((in_.h - (per - 1) * gap) / per.max(1)).clamp(ui_px(90.0), ui_px(130.0));
+    for (k, (label, arg, selected)) in rows.iter().enumerate() {
+        let col = k as i32 / per;
+        let ri = k as i32 % per;
+        let r = Rect::new(in_.x + col * (cw + gap), in_.y + ri * (rh + gap), cw, rh);
+        let fg: u8 = if *selected {
+            ui_frame(c, r, ui_px(16.0), 0, true, 0);
+            255
+        } else {
+            0
+        };
+        ui_text(
+            c,
+            FontFace::Regular,
+            ui_text_size(),
+            ui_small_size(),
+            rect_inflate(r, -ui_px(16.0)),
+            label,
+            2,
+            false,
+            fg,
+        );
+        hits_add(&mut s.hits, r, pick, *arg);
+    }
 }
 
 fn open_modal(a: &mut App, m: Modal) {
@@ -5887,9 +5979,34 @@ fn act(a: &mut App, h: &Hit) {
             }
             redraw(a, RefreshMode::Ui);
         }
-        H_SET_SIDE => {
-            a.settings.side_button = (clampi(a.settings.side_button, 0, 3) + 1) % 4;
-            settings_save(&a.settings);
+        // What the pen's button does: its own list, as Language's, rather than a row that cycles.
+        H_SET_SIDE => open_modal(a, Modal::SideButton),
+        H_SIDE_PICK => {
+            let pick = clampi(h.arg, 0, 3);
+            if a.settings.side_button != pick {
+                a.settings.side_button = pick;
+                settings_save(&a.settings);
+            }
+            lib(a).modal = Modal::Settings;
+            redraw(a, RefreshMode::Ui);
+        }
+        H_SIDE_BACK => {
+            lib(a).modal = Modal::Settings;
+            redraw(a, RefreshMode::Ui);
+        }
+        // What the eraser does: whole strokes, or precise (settings.ini eraser_mode).
+        H_SET_ERASER => open_modal(a, Modal::EraserMode),
+        H_ERASER_PICK => {
+            let pick = clampi(h.arg, 0, 1);
+            if a.settings.eraser_mode != pick {
+                a.settings.eraser_mode = pick;
+                settings_save(&a.settings);
+            }
+            lib(a).modal = Modal::Settings;
+            redraw(a, RefreshMode::Ui);
+        }
+        H_ERASER_BACK => {
+            lib(a).modal = Modal::Settings;
             redraw(a, RefreshMode::Ui);
         }
         H_SET_FONT => {
@@ -6547,7 +6664,8 @@ pub fn library_back(a: &mut App) -> bool {
             lib(a).modal = Modal::Settings;
             redraw(a, RefreshMode::Ui);
         }
-        Modal::Language | Modal::Koreader | Modal::Shortcuts | Modal::PairMenu | Modal::Updates | Modal::Wifi => {
+        Modal::Language | Modal::Koreader | Modal::Shortcuts | Modal::PairMenu | Modal::Updates | Modal::Wifi
+        | Modal::SideButton | Modal::EraserMode => {
             lib(a).modal = Modal::Settings;
             redraw(a, RefreshMode::Ui);
         }
@@ -7322,6 +7440,10 @@ pub fn library_probe(a: &mut App, key: &str, out: &mut String, cap: usize) -> i3
             crate::userfonts::userfont_resolve(f);
         }
         csnprintf!(out, cap, "%s", &f.as_ref().map_or(String::new(), font_row_note));
+    } else if key == "sheet" && s.modal == Modal::SideButton {
+        csnprintf!(out, cap, "pen-button");
+    } else if key == "sheet" && s.modal == Modal::EraserMode {
+        csnprintf!(out, cap, "eraser-mode");
     } else if key == "sheet" {
         match SHEETS.get(s.modal as usize) {
             Some(m) => csnprintf!(out, cap, "%s", *m),
@@ -8438,15 +8560,15 @@ mod tests {
         ui_set_theme(UiTheme::Gothic);
     }
 
-    // Settings' page with Wi-Fi (2.1.0-beta.2): the System category lists it beside KOReader and
-    // Mirror, as a whole row in every language and style, upright and sideways.
+    // Settings' page with Wi-Fi: the General category lists it beside Language and Updates, as a whole
+    // row in every language and style, upright and sideways.
     #[test]
-    fn settings_system_lists_wifi_in_every_language_and_style() {
+    fn settings_general_lists_wifi_in_every_language_and_style() {
         let root = std::env::temp_dir().join(format!("grimoire-wifi-row-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&root);
         assert_eq!(store_init(root.to_str().unwrap()), 0);
         assert_eq!(font_init(), 0);
-        let system = settingsmenu::CATEGORIES
+        let general = settingsmenu::CATEGORIES
             .iter()
             .position(|c| c.items.iter().any(|it| it.id == settingsmenu::SettingId::Wifi))
             .expect("the Wi-Fi row's category") as i32;
@@ -8460,7 +8582,7 @@ mod tests {
                     assert_eq!(canvas_init(&mut a.screen, a.w, a.h), 0);
                     library_init(&mut a);
                     lib(&mut a).modal = Modal::Settings;
-                    lib(&mut a).settings_cat = system;
+                    lib(&mut a).settings_cat = general;
                     hits_clear(&mut lib(&mut a).hits);
                     draw_settings(&mut a);
                     let row = a.lib.as_ref().unwrap().hits.h.iter().find(|x| x.id == H_WIFI_MENU).map(|x| x.r)
@@ -8518,6 +8640,65 @@ mod tests {
             assert!(dispmenu_control_point(&dm, name).is_none(), "Sleep & Clock shows {name}");
         }
         lib(&mut a).dm = dm;
+        library_free(&mut a);
+        canvas_free(&mut a.screen);
+        i18n_set("en");
+        ui_init(300.0);
+        ui_set_theme(UiTheme::Gothic);
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    // Settings > Pen (2.1): the pen button's choices and the eraser's, each opening its own list as
+    // Language does; a pick is saved and comes back to Settings.
+    #[test]
+    fn pen_settings_rows_open_their_choice_sheets() {
+        let root = std::env::temp_dir().join(format!("grimoire-pen-choices-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        assert_eq!(store_init(root.to_str().unwrap()), 0);
+        assert_eq!(font_init(), 0);
+        ui_init(300.0);
+        ui_set_theme(UiTheme::Gothic);
+        i18n_set("en");
+        let mut a = App { w: 1860, h: 2480, dpi: 300.0, input_drained: true, ..Default::default() };
+        assert_eq!(canvas_init(&mut a.screen, a.w, a.h), 0);
+        library_init(&mut a);
+        a.settings.side_button = 0;
+        a.settings.eraser_mode = 0;
+        lib(&mut a).modal = Modal::Settings;
+        lib(&mut a).settings_cat = 3;
+        hits_clear(&mut lib(&mut a).hits);
+        draw_settings(&mut a);
+        for id in [H_SET_PENS, H_SET_SIDE, H_SET_ERASER] {
+            assert!(
+                a.lib.as_ref().unwrap().hits.h.iter().any(|h| h.id == id),
+                "the Pen row {id}"
+            );
+        }
+        act(&mut a, &Hit { r: RECT_EMPTY, id: H_SET_SIDE, arg: 0 });
+        assert_eq!(lib(&mut a).modal, Modal::SideButton);
+        let pick = a
+            .lib
+            .as_ref()
+            .unwrap()
+            .hits
+            .h
+            .iter()
+            .find(|h| h.id == H_SIDE_PICK && h.arg == 2)
+            .map(|h| h.r)
+            .expect("the pen's Highlights choice");
+        act(&mut a, &Hit { r: pick, id: H_SIDE_PICK, arg: 2 });
+        assert_eq!(a.settings.side_button, 2);
+        assert_eq!(lib(&mut a).modal, Modal::Settings);
+
+        act(&mut a, &Hit { r: RECT_EMPTY, id: H_SET_ERASER, arg: 0 });
+        assert_eq!(lib(&mut a).modal, Modal::EraserMode);
+        assert!(
+            a.lib.as_ref().unwrap().hits.h.iter().any(|h| h.id == H_ERASER_PICK && h.arg == 1),
+            "the eraser's Precise choice"
+        );
+        act(&mut a, &Hit { r: RECT_EMPTY, id: H_ERASER_PICK, arg: 1 });
+        assert_eq!(a.settings.eraser_mode, 1);
+        assert_eq!(lib(&mut a).modal, Modal::Settings);
         library_free(&mut a);
         canvas_free(&mut a.screen);
         i18n_set("en");

@@ -392,8 +392,10 @@ fn draw_all(a: &mut App) {
             ui_icon(c, ui_tool_icon(t.0), rect_inflate(r, -ui_px(14.0)), if on { 255 } else { 0 });
             hits_add(&mut s.hits, r, H_TAB, t.0);
         }
-        // A rule between the tools and the pressure curve and test pad below, as the one over the sliders.
-        canvas_hline(c, m, aw - m, ty + tabh + ui_px(35.0), ui_px(3.0), 0);
+        // A rule between the tools and the pressure curve and test pad below, as the one over the
+        // sliders. The curve's "ink" and the pad's label sit ui_px(14) above their tops, so 28 px under
+        // the tabs leaves the rule as far from them as from the tools.
+        canvas_hline(c, m, aw - m, ty + tabh + ui_px(28.0), ui_px(3.0), 0);
         // Graph + pad.
         s.graph = Rect { x: m + ui_px(10.0), y: top, w: gs, h: gs };
         s.pad = Rect { x: s.graph.x + gs + ui_px(70.0), y: top, w: aw - m - (s.graph.x + gs + ui_px(70.0)), h: gs };
