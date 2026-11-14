@@ -92,6 +92,7 @@ tap library new.file
 wait 300
 tap library files.item.documents
 wait 500
+waitfor files.keyed.3 is 1
 shot 03-has-notes
 expect files.notes.3 is 1
 tap library files.item.Planner.pdf
@@ -110,6 +111,7 @@ tap library new.file
 wait 300
 tap library files.item.documents
 wait 500
+waitfor files.keyed.3 is 1
 expect files.notes.3 is 1
 tap library files.item.Planner.pdf
 wait 200
