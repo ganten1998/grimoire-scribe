@@ -3,9 +3,11 @@
 //! - the folder: grimoire/fonts/, made at start with a README.txt. `.ttf`, `.otf`, `.ttc` and `.otc` files in
 //!   it and in its folders one level down, at most 200, read through fsview's walk (no link is followed).
 //! - the cache: grimoire/fonts/.cache/<key>.font (the verdict, fontcheck.rs), .pgm (the font's name drawn in
-//!   itself), .checking (a check under way) and .bad (the check's worker died on it). <key> is the FNV-1a hash
-//!   of the file's path under the folder, its size and its time, as a template's preview is keyed, so a file
-//!   replaced by another is checked afresh. Written by the background job only; deleting it loses nothing.
+//!   itself), .checking (a check under way), .bad (the check's worker died on it) and .slow (one check ran out
+//!   of time: FORMAT.md). <key> is the FNV-1a hash of the file's path under the folder, its size and its time,
+//!   as a template's preview is keyed, so a file replaced by another is checked afresh. Written by the
+//!   background job, but for the UI's rename of a .checking mark to .bad when that job died; deleting it loses
+//!   nothing.
 //! - the job (`bg_font_check`, BgKind::FontCheck): the writer. It reads each unchecked file whole, hands the
 //!   bytes to the sandboxed worker, validates what comes back and writes the verdict. It parses nothing.
 //! - the UI's side: the list the Font sheet shows (`userfonts_scan`), the load of a font that passed
@@ -1192,8 +1194,9 @@ fn write_cache(path: &str, data: &[u8]) -> bool {
 /// BgKind::FontCheck, in the background child: every font file of grimoire/fonts that has no verdict yet is
 /// read whole and checked by the sandboxed worker (fontcheck.rs), one after another, and its verdict and
 /// preview written to the cache. `arg` is "" or "recheck:<key>" (that file's verdict is stale: it is checked
-/// again). `dpi` sizes the preview. Returns 0 done, 3 some files wait (still being copied, or no memory now),
-/// 4 no worker can be had (nothing is marked), -1 it could not start.
+/// again). `dpi` sizes the preview. Returns 0 done, 3 some files wait (still being copied, no memory now, or
+/// left for their second try), 4 no worker can be had (nothing is marked), 5 one font was checked and more are
+/// left for the next job, -1 it could not start, or a mark or a verdict could not be written.
 pub fn bg_font_check(arg: &str, dpi: f32) -> i32 {
     let cache = cache_dir();
     // (verdicts are written and stale entries deleted there as root: never through a planted link)

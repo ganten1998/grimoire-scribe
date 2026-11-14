@@ -607,7 +607,8 @@ Nothing in a notebook ever refers to a font: pages, PDFs and pictures do not cha
 
 `fonts/.cache/` holds what the background check found, each file named by the FNV-1a 64 hash (16 hex digits) of
 the font's path under the folder, its size and its time (`<path>/<size>/<mtime>`), so a file replaced by
-another is checked afresh. It is a cache: deleting it loses nothing, and only the background job writes it.
+another is checked afresh. It is a cache: deleting it loses nothing. The background job writes it; the app itself
+only renames a `.checking` mark to `.bad` when that job died.
 
 - `<key>.font`, the verdict, text, at most 8 KiB, read strictly (an unknown line, or a number out of range,
   makes the file no verdict and the font is checked again):
@@ -637,6 +638,12 @@ another is checked afresh. It is a cache: deleting it loses nothing, and only th
 - `<key>.checking`, empty: a check of this file is under way.
 - `<key>.bad`, empty: the check's worker died on this file, or the check itself did. The font is not read
   again until the file changes.
+- `<key>.slow`, empty: one check of this file ran out of time. With no verdict beside it the file is
+  checked once more, a minute or more later (a timeout right after a wake is the clock's, not the
+  font's), and a second timeout writes the verdict `why=slow` and removes the mark. Otherwise the mark
+  stays, beside the verdict or `.bad`, until the file changes or goes, when it goes with the key's other
+  entries. Every version that reads `fonts/.cache/` knows the mark (2.1.0-beta.2 on); older versions
+  never open the folder.
 
 `root/.font-inuse` is the crash guard, not a cache (the app itself writes it): text, a first line
 `grimoire-font-guard 1`, then at most eight lines `<key> <strikes 0|1|2> <armed 0|1>`. A font's line is armed

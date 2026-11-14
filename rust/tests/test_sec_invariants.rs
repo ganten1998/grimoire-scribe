@@ -12,10 +12,12 @@
 type File = (&'static str, &'static str);
 
 const DESIGN: File = ("docs/DESIGN.md", include_str!("../../docs/DESIGN.md"));
+const FORMAT: File = ("docs/FORMAT.md", include_str!("../../docs/FORMAT.md"));
 const KINDLE: File = ("docs/KINDLE.md", include_str!("../../docs/KINDLE.md"));
 const BACKLOG: File = ("docs/BACKLOG.md", include_str!("../../docs/BACKLOG.md"));
 const PDFWORK: File = ("rust/src/pdfwork.rs", include_str!("../src/pdfwork.rs"));
 const FONTCHECK: File = ("rust/src/fontcheck.rs", include_str!("../src/fontcheck.rs"));
+const USERFONTS: File = ("rust/src/userfonts.rs", include_str!("../src/userfonts.rs"));
 const SANDBOX: File = ("rust/src/sandbox.rs", include_str!("../src/sandbox.rs"));
 const TEMPLATES: File = ("rust/src/bgwork_template.rs", include_str!("../src/bgwork_template.rs"));
 const LICENSES_TOOL: File = ("tools/crate_licenses.py", include_str!("../../tools/crate_licenses.py"));
@@ -356,7 +358,8 @@ fn the_one_skrifa_is_the_one_hayro_brings() {
     none_failed(&fails, "the one skrifa");
 }
 
-// Sentences that said what the code does not do, each gone from the file that held it.
+// Sentences that said what the code does not do, each gone from the file that held it, and one file name the
+// code writes that FORMAT.md did not list.
 #[test]
 fn the_docs_no_longer_say_what_the_code_does_not() {
     let mut fails = Vec::new();
@@ -373,6 +376,14 @@ fn the_docs_no_longer_say_what_the_code_does_not() {
     gone(&mut fails, DESIGN, "rt_sigreturn, exit) whose violation traps into a reporter");
     // a panic in the Kindle's build is an abort, not an "E panic" line (Cargo.toml: panic = "abort")
     gone(&mut fails, SANDBOX, "reports \"E panic\"");
+    // your own fonts: the second try and its mark, and who writes fonts/.cache (userfonts.rs: bg_font_check,
+    // userfonts_job_done)
+    gone(&mut fails, FORMAT, "and only the background job writes it.");
+    gone(&mut fails, DESIGN, "in all, then \"Took too long to read.\"");
+    gone(&mut fails, KINDLE, "took too long to read (T ms)`, or");
+    gone(&mut fails, USERFONTS, "Written by the background job only");
+    gone(&mut fails, USERFONTS, "(nothing is marked), -1 it could not start");
+    present(&mut fails, FORMAT, "`<key>.slow`");
     // the crates: glifo is the optional one (vello_cpu's), and skrifa is glifo's plain dependency
     gone(&mut fails, BACKLOG, "glifo's optional dependency");
     // licenses/rust-crates.txt lists every crate the lock names, not only the ones built in

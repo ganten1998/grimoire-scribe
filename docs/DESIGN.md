@@ -2148,7 +2148,9 @@ its bytes.** Four parts keep it (`fontcheck.rs`, `userfonts.rs`, `font.rs`):
   and drawing at both sizes; a glyph that fails is listed and comes from Terminess, and more than one in a
   hundred is "Unreadable font.". It works in slices of 20 s of its own CPU time (`s1::FONT_SLICE_CPU_SECS`),
   each a fresh worker that gets the bytes again and goes on from the glyph index the last reached, 10 minutes
-  in all, then "Took too long to read."; a worker silent for 30 s is killed and is the same. It settles the
+  in all; a worker silent for 30 s is killed and counts as out of time too. A first check that runs out of time
+  writes no verdict: the file is checked once more, a minute or more later (`<key>.slow`), and a second is
+  "Took too long to read.". It settles the
   font's scale (capitals as tall as Terminess's, 0.592 of the line, between 0.85 and 1.25, then lowered a
   hundredth at a time until 95 of 100 of Grimoire's strings, in every language, are no wider than Terminess
   draws them, measured as `font.rs` measures: advances only), says which languages need letters the font
