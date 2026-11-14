@@ -15,6 +15,7 @@ const DESIGN: File = ("docs/DESIGN.md", include_str!("../../docs/DESIGN.md"));
 const BACKLOG: File = ("docs/BACKLOG.md", include_str!("../../docs/BACKLOG.md"));
 const PDFWORK: File = ("rust/src/pdfwork.rs", include_str!("../src/pdfwork.rs"));
 const FONTCHECK: File = ("rust/src/fontcheck.rs", include_str!("../src/fontcheck.rs"));
+const TEMPLATES: File = ("rust/src/bgwork_template.rs", include_str!("../src/bgwork_template.rs"));
 const LICENSES_TOOL: File = ("tools/crate_licenses.py", include_str!("../../tools/crate_licenses.py"));
 const CARGO_TOML: File = ("rust/Cargo.toml", include_str!("../Cargo.toml"));
 const CARGO_LOCK: File = ("rust/Cargo.lock", include_str!("../Cargo.lock"));
@@ -357,6 +358,9 @@ fn the_one_skrifa_is_the_one_hayro_brings() {
 #[test]
 fn the_docs_no_longer_say_what_the_code_does_not() {
     let mut fails = Vec::new();
+    // picking a template or photo reads none of its bytes on the UI thread (test_picture_jobs.rs holds the code)
+    // (the phrase ends at "is": the old comment broke its line there)
+    gone(&mut fails, TEMPLATES, "only a small file it has not seen yet is");
     // the crates: glifo is the optional one (vello_cpu's), and skrifa is glifo's plain dependency
     gone(&mut fails, BACKLOG, "glifo's optional dependency");
     // licenses/rust-crates.txt lists every crate the lock names, not only the ones built in
