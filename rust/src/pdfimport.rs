@@ -2384,7 +2384,10 @@ fn first_slice(id: &str, src: &str, abs: &str, source: &Src, mark: Option<&Mark>
     if matches!(held, KeyMatch::SizeOnly(_)) {
         let t0 = mono_ms_now();
         let sha = file_sha256(std::os::fd::AsRawFd::as_raw_fd(&source.fd), source.size);
-        qlog!("import: %s: its file read to compare with a notebook's record: %d KB in %d ms", id, (source.size >> 10) as i32, (mono_ms_now() - t0) as i32);
+        match &sha {
+            Some(_) => qlog!("import: %s: its file read to compare with a notebook's record: %d KB in %d ms", id, (source.size >> 10) as i32, (mono_ms_now() - t0) as i32),
+            None => qlog!("import: %s: its file could not be read whole to compare with a notebook's record", id),
+        }
         // (a file that cannot be read whole is not the same file: asked with a hash that equals no record)
         held = key_match(&holders, source.size, Some(sha.as_deref().unwrap_or("")));
     }
