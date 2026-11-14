@@ -18,7 +18,8 @@
 //!
 //! Records (worker to writer, text lines of a fixed grammar, at most 4 MiB a job besides the pixels):
 //!   `B <version> <protocol>`        the build, first line
-//!   `S <0|1>`                       whether the sandbox steps ran
+//!   `S <0|1>`                       1 when this build has the sandbox steps (each held, where the sandbox is
+//!                                   required); the writer takes 0 only where the sandbox is not required
 //!   `P <pages>`                     the probe's page count
 //!   `K`                             the probe is done
 //!   `G <page> <y0> <w> <h> <ch>`    then w*h*ch bytes: a band of a page (rows y0 .. y0+h), 1 channel when
@@ -1195,7 +1196,12 @@ impl Session {
         }
         let line = w.read_line(512, deadline).map_err(|_| StartErr::Worker("no sandbox line"))?;
         match parse_record(&line) {
-            Ok(Rec::Sandboxed(on)) => sandboxed = on,
+            Ok(Rec::Sandboxed(on)) if sandbox_line_ok(on) => sandboxed = on,
+            // (`S 0` where the sandbox is required: no worker, before a command or a byte of the file is sent)
+            Ok(Rec::Sandboxed(_)) => {
+                w.kill_and_reap();
+                return Err(StartErr::Worker("the worker is not sandboxed"));
+            }
             Ok(Rec::Err(ErrCode::Sandbox(step))) => {
                 w.kill_and_reap();
                 return Err(StartErr::Sandbox(step));

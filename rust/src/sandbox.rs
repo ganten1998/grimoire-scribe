@@ -353,6 +353,17 @@ pub fn required_for(kindle: bool, ask: Option<&str>) -> bool {
     kindle || ask == Some("require")
 }
 
+/// What a writer takes as the sandbox line of a worker's handshake: `S 1` (the steps are in place) anywhere,
+/// `S 0` (a build without the steps) only where the sandbox is not required.
+pub fn sandbox_line_ok_for(sandboxed: bool, required: bool) -> bool {
+    sandboxed || !required
+}
+
+/// The same, for this process (`sandbox_required`).
+pub fn sandbox_line_ok(sandboxed: bool) -> bool {
+    sandbox_line_ok_for(sandboxed, sandbox_required())
+}
+
 /// Runs the steps in order. A step that fails stops the run with its name when `required` (the worker then
 /// parses nothing: no byte of the source has been read yet); when not required it is noted and the next one
 /// still runs. `note(name, ok, detail)` hears every step.
@@ -1350,6 +1361,15 @@ mod tests {
         assert!(!required_for(false, None));
         assert!(!required_for(false, Some("off")));
         assert!(required_for(false, Some("require")));
+    }
+
+    // The sandbox line of a handshake: `S 1` is taken anywhere, `S 0` only where the sandbox is not required.
+    #[test]
+    fn the_sandbox_line_must_be_s1_where_required() {
+        assert!(sandbox_line_ok_for(true, true));
+        assert!(sandbox_line_ok_for(true, false));
+        assert!(sandbox_line_ok_for(false, false));
+        assert!(!sandbox_line_ok_for(false, true));
     }
 
     #[test]
