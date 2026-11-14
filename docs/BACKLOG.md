@@ -8,9 +8,10 @@ why. Newest decisions first within each section.
 
 - **Issues open at the release**: #78 (the download check can miss the "preparing" state; pull request #81) and
   #79 (the colour PDF memory test, by 0.4 MiB on one run; pull request #83) wait for their merge. Found on the
-  release day: #84 and #86 (scenarios that give the machine a fixed real time: the Graph of all notebooks' two, and
-  the single side click's) and #85 (the unit tests' scratch folder is never emptied, so a process id that comes
-  round again meets an earlier run's files). #56 (Live view's pen-stall check) was fixed by #82 (Done, below).
+  release day and fixed since (Done, below): #84 and #86 (scenarios that gave the machine a fixed real time: the
+  Graph of all notebooks' two, and the single side click's) and #85 (the unit tests' scratch folder was never
+  emptied, so a process id that came round again met an earlier run's files). #56 (Live view's pen-stall check)
+  was fixed by #82 (Done, below).
   nebuff's: #55 (Japanese: the strings still untranslated show in English), and the Settings redesign, #45, #64,
   #65 and #66.
 - **From 2.1.0-beta.2 into 2.1.0**: nebuff's #49 (page turns at the fitted view without a flash, the last three
@@ -753,9 +754,15 @@ Decided by the lane B3 design (docs/beta2/PIXEL-LASSO.md, 2026-11-03) and its bu
   `dist/ld-linux-armhf.so.3 --library-path dist dist/main.bin --daemon` from its folder, so
   `pgrep -f kindle-hid-passthrough` cannot find it and bluetooth.sh now finds Grimoire's copy by its
   folder. Confirm on the device with the helper running: `tr '\0' ' ' < /proc/<pid>/cmdline`.
-- **Other scenarios timed by the real time between their lines.** `GRIMOIRE_SIM_LATE_MS` shows them
-  (`make scenarios SCEN_ENV=GRIMOIRE_SIM_LATE_MS=60`); make check runs only the two that failed on the
-  release runner that way (`LATE_SCENARIOS`). v_gestures_4e_single failed once there too (2.0.0-beta.0).
+- **Other scenarios timed by the real time between their lines.** `GRIMOIRE_SIM_LATE_MS` shows the ones a
+  late wait breaks (`make scenarios SCEN_ENV=GRIMOIRE_SIM_LATE_MS=60`, or 400 as `make scenarios-late` runs
+  its list; make check runs only that list, `LATE_SCENARIOS`). It does not show the ones that give a fixed
+  wait to work done on idle ticks, which come slower on a loaded runner: `GRIMOIRE_SIM_BACKLINKS_STEP_MS`
+  shows those that wait for the backlinks cache or, after it, the library index
+  (`make scenarios SCEN_ENV=GRIMOIRE_SIM_BACKLINKS_STEP_MS=200`). The three that failed on the 2.1.0 release
+  day wait for the state now, or run by the script's clock (2.1.1: Done, below); the rest have not been gone
+  through. Of the scenarios that click the pen's side button, v_gestures_4e_single was the only one that
+  checks what has NOT happened yet after a wait; the others check what has, which a late wait cannot break.
 
 - **The stroke eraser on very dense pages.** Taking a stroke out of the middle still draws what was
   under it again (undo and redo of it are instant since rc.10). On a 1,090-stroke page that can take
@@ -938,6 +945,32 @@ items of Document links. Left:
 
 ## Done
 
+- 2.1.1 (unreleased, 84-test-flakes; issues #84, #85 and #86, all found on the day 2.1.0 was released): three
+  checks no longer depend on the speed of the machine or on an earlier run.
+  - `z_map_all_2_big` and `z_map_all_3_reading` wait for the library index and the Graph themselves (`waitfor`),
+    where they gave the index 8 s and 20 s. It reads a notebook an idle tick, after the backlinks cache's own
+    check, and on the runner that failed the ticks came about four a second: 34 of 50 and 83 of 120 notebooks
+    read when the waits ended. The runner answers three new keys for it, `libindex.complete`, `libindex.reads`
+    and `libindex.books` (docs/SIM.md), on any screen. With every tick of the backlinks check 200 ms longer
+    (`SCEN_ENV=GRIMOIRE_SIM_BACKLINKS_STEP_MS=200`) the old scripts fail as they did on the runner and the new
+    ones pass. Each `waitfor` has its 60 s, so each scenario waits in two or more steps (the backlinks check,
+    then the index, then the Graph).
+  - `v_gestures_4e_single` runs by the script's clock (`GRIMOIRE_SIM_CLOCK=script`), so its check that a single
+    click has NOT acted yet comes 200 ms after the click's release however late the wait before it ends (with
+    every wait 400 ms late the old script fails as on the runner and the new one passes; `make scenarios-late`
+    runs it so from now on). For that a `side click` now moves the script's clock on by its own time: its
+    events are stamped by that clock, which stood still while the runner slept up to them, so the release
+    never came due and no line after the click was read (why the scenario never ended with that clock
+    before). Runner only: the pen button's timing in the app (penbutton.rs) is as it was.
+  - `make test` (each half) and `make c-test` empty their scratch folder (`build/test/tmp`, `build/c/test/tmp`)
+    before they start, and `test_lockui`, whose stand-in commands append to a file there, removes its own folder
+    first (it now starts from a planted earlier run's file, and fails without the removal as it did in the
+    report). The folder is `rm -rf`'d by its own name, a link never followed, after folders a stopped test left
+    read-only are made writable. Nothing else in the Makefile uses the folder, and the two halves never run at
+    once (one recipe, in order; CI gives each a runner). Not changed: `test_subfolders`, `test_link_outline`,
+    one test of `test_gesturemap` and the Linux-only `test_sandbox_linux` keep a folder named by process id in
+    the system's temporary folder, which the Makefile does not empty; the first two remove theirs when they
+    pass, the third writes its file afresh.
 - After 2.1.0-beta.2 (unreleased, 56-live-pen-stall-flake; issue #56, the pen-stall check's p90 of 62.8 ms on the
   dry run of 2026-11-12, run 43244209271's first attempt): `tests/live_pen_stall.py` measures the pen viewer's own
   reader once more when its first run misses a check, and the second run decides; the 25 ms bound stays. A miss
