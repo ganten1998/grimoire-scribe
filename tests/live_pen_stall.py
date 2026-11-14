@@ -10,7 +10,10 @@
 #           which leave only when it reads the pens: in bursts, up to a stall late.
 #   after:  the pen viewer's own reader of the node, whatever the main loop does.
 # Prints both, and fails unless the viewer's own reader delivers nearly every frame, its 90th
-# percentile is under 25 ms, and it beats the ring's median. Standard library only.
+# percentile is under 25 ms, and it beats the ring's median. A raw run that misses is measured once
+# more, and the second run decides: a busy machine (CI's macOS runner, issue #56) can keep the
+# feeder, the pen viewer or the reader here off the CPU for longer than the main loop is held, once,
+# while samples that wait for the main loop wait in every run. Standard library only.
 # usage: live_pen_stall.py <port> <grimoire-headless> <out dir>
 import http.client, os, re, shutil, signal, struct, subprocess, sys, threading, time
 
@@ -57,8 +60,8 @@ def stats(xs):
     return xs[(len(xs) - 1) // 2], xs[int((len(xs) - 1) * 0.9)], xs[-1]
 
 
-def run(mode):
-    d = os.path.join(OUT, mode)
+def run(mode, name=None):
+    d = os.path.join(OUT, name or mode)
     shutil.rmtree(d, ignore_errors=True)
     os.makedirs(os.path.join(d, 'root'))
     shutil.copytree(os.path.join(HERE, 'fixtures', 'index'), os.path.join(d, 'root'), dirs_exist_ok=True)
@@ -120,10 +123,12 @@ def run(mode):
         time.sleep(0.3)  # (the viewer has opened its node)
         fds = [os.open(p, os.O_RDWR | os.O_NONBLOCK) for p in (fifo_main, fifo_viewer)]
         sent = set()
+        lag = 0.0  # how far the feeder itself fell behind its frames' times (ms): the machine's share
         start = time.monotonic()
         for i in range(FRAMES):
             while time.monotonic() < start + i * FRAME_MS / 1000:
                 time.sleep(0.0005)
+            lag = max(lag, (time.monotonic() - start) * 1000 - i * FRAME_MS)
             sec, usec = mono()
             x, y = 300 + i, 600 + (i % 50)
             ev = [(3, 0, x), (3, 1, y)]
@@ -145,7 +150,7 @@ def run(mode):
             os.close(fd)
         conn.close()
         got = [((now - ident) & 0xFFFFFFFF) / 1000 for now, ident in arrivals if ident in sent]
-        return len(sent), len({i for _, i in arrivals if i in sent}), got
+        return len(sent), len({i for _, i in arrivals if i in sent}), got, lag
     finally:
         app.send_signal(signal.SIGTERM)
         try:
@@ -154,17 +159,30 @@ def run(mode):
             app.kill()
 
 
-results = {}
-for mode in ('ring', 'raw'):
-    res = run(mode)
+def measure(mode, name=None):
+    res = run(mode, name)
     if res is None:
         sys.exit(1)
-    results[mode] = res
-    n, delivered, delays = res
+    n, delivered, delays, _ = res
     s = stats(delays)
     print('     %-5s %d of %d frames delivered; frame to browser p50 / p90 / max %s ms (main loop held %d ms a read)'
           % (mode, delivered, n, ' / '.join('%.1f' % v for v in s) if s else '...', STALL_MS))
-ring, raw = stats(results['ring'][2]), stats(results['raw'][2])
+    return res
+
+
+def raw_ok(res, ring):
+    n, delivered, delays, _ = res
+    raw = stats(delays)
+    return delivered >= 0.95 * n and bool(raw) and raw[1] < 25 and bool(ring) and raw[1] < ring[0]
+
+
+results = {mode: measure(mode) for mode in ('ring', 'raw')}
+ring = stats(results['ring'][2])
+if not raw_ok(results['raw'], ring):
+    print('     (the raw run missed, the feeder itself up to %.1f ms behind its frames: measured once more)'
+          % results['raw'][3])
+    results['raw'] = measure('raw', 'raw-again')
+raw = stats(results['raw'][2])
 check('the pen viewer reads the raw node itself: nearly every frame comes (%d of %d)' % results['raw'][1::-1],
       results['raw'][1] >= 0.95 * results['raw'][0])
 check('with the main loop busy, its samples still come at once (p90 %.1f ms, under 25)' % (raw[1] if raw else -1),
