@@ -2,6 +2,11 @@
 
 ## 2.1.1 (unreleased)
 
+- Hardening: Grimoire reads the files in its own folders only when they are plain files, with size limits
+  on the small text files, and makes its temporary files afresh each time. A `settings.ini` it cannot
+  read is kept as `settings.ini.unread` rather than written over. A picture or folder in `templates/`,
+  `photos/` or `import/` that is a link is no longer taken: copy the file in.
+
 ## 2.1.0 (2026-11-13)
 
 - The first stable release of 2.1: 2.1.0-beta.2 with the changes below, now on the stable channel too (KPM
