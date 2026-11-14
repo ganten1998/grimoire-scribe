@@ -5,7 +5,10 @@
 // whose bg/ is one, made the UI delete every file in that folder, anywhere on the device. Planting the link needs a
 // way to make one on /mnt/us (another program on the Kindle, a shell; never MTP), which is the precondition.
 #![cfg(feature = "sim")]
+mod testlib;
+
 use grimoire::prelude::*;
+use testlib::Checks;
 
 fn setup(name: &str) -> (String, std::path::PathBuf) {
     let base = std::env::var("GRIMOIRE_TEST_TMP").map(std::path::PathBuf::from).unwrap_or_else(|_| std::env::temp_dir());
@@ -91,21 +94,22 @@ fn files_of(dir: &std::path::Path) -> Vec<(String, Vec<u8>)> {
 
 // (hardening round 2026-11: in import/ only a real folder is a folder of pictures. A link there is left as it
 // is: the scan takes nothing from it and writes no mark into it.)
-fn a_scan_never_takes_a_linked_folder() {
+fn a_scan_never_takes_a_linked_folder(c: &mut Checks) {
     let (root, top) = setup("scan-linked");
     let outside = top.join("outside-pictures");
     std::fs::create_dir_all(&outside).unwrap();
     std::fs::write(outside.join("a.png"), b"no picture").unwrap();
     std::os::unix::fs::symlink(&outside, format!("{root}/import/Linked")).unwrap();
     let before = files_of(&outside);
-    assert_eq!(import_scan(300.0), 0, "nothing is queued for a linked folder");
-    assert_eq!(files_of(&outside), before, "the folder behind the link is as it was (no mark written into it)");
-    assert!(std::fs::symlink_metadata(format!("{root}/import/Linked")).unwrap().file_type().is_symlink());
+    c.that(import_scan(300.0) == 0, "a scan queues nothing for a linked folder");
+    // (looked at right after the scan: the scan writes its mark itself, before any job runs)
+    c.that(files_of(&outside) == before, "a scan leaves the folder behind the link as it was (no mark written into it)");
+    c.that(std::fs::symlink_metadata(format!("{root}/import/Linked")).is_ok_and(|m| m.file_type().is_symlink()), "a scan leaves the link as it was");
     let _ = std::fs::remove_dir_all(&top);
 }
 
 // (and the import job itself, handed such a path: it reads nothing there and makes nothing)
-fn a_folder_job_never_reads_a_linked_folder() {
+fn a_folder_job_never_reads_a_linked_folder(c: &mut Checks) {
     let (root, top) = setup("job-linked");
     let outside = top.join("outside-pictures");
     std::fs::create_dir_all(&outside).unwrap();
@@ -116,10 +120,10 @@ fn a_folder_job_never_reads_a_linked_folder() {
     let link = format!("{root}/import/Linked");
     std::os::unix::fs::symlink(&outside, &link).unwrap();
     let before = files_of(&outside);
-    assert_eq!(bg_import_folder(&link, 300.0), 0, "the job ends with nothing to do");
-    assert_eq!(files_of(&outside), before, "the folder behind the link is as it was");
-    assert_eq!(left(std::path::Path::new(&format!("{root}/notebooks"))), 0, "no notebook is made");
-    assert!(std::fs::symlink_metadata(&link).unwrap().file_type().is_symlink(), "the link is as it was");
+    c.that(bg_import_folder(&link, 300.0) == 0, "the folder job ends with nothing to do");
+    c.that(files_of(&outside) == before, "the folder job leaves the folder behind the link as it was");
+    c.that(left(std::path::Path::new(&format!("{root}/notebooks"))) == 0, "the folder job makes no notebook");
+    c.that(std::fs::symlink_metadata(&link).is_ok_and(|m| m.file_type().is_symlink()), "the folder job leaves the link as it was");
     let _ = std::fs::remove_dir_all(&top);
 }
 
@@ -129,6 +133,9 @@ fn test_sec_work_links() {
     the_cleanup_of_a_cut_off_import_never_follows_a_link();
     the_start_never_empties_a_folder_through_a_linked_request_folder();
     the_caches_are_never_pruned_through_a_link();
-    a_scan_never_takes_a_linked_folder();
-    a_folder_job_never_reads_a_linked_folder();
+    // (these two run every check and name each that fails)
+    let mut c = Checks::default();
+    a_scan_never_takes_a_linked_folder(&mut c);
+    a_folder_job_never_reads_a_linked_folder(&mut c);
+    c.done();
 }
