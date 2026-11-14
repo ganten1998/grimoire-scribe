@@ -2,10 +2,11 @@
 // held against the code and Cargo.lock.
 //
 // Every test here reads files of the tree as text (include_str!): no process, no environment variable, no clock.
-// A "gone" pin is a phrase a file must no longer hold: a sentence that said what the code does not do. A
-// "present" pin is a name the code itself has (a constant, a file's name), never prose, so a reworded sentence
-// does not fail here. A phrase is looked for in the file with every run of white space made one space, so a
-// paragraph wrapped anew is the same text. Each test gathers every pin that fails and prints them together.
+// A "gone" pin is a phrase a file must no longer hold: a sentence that said what the code does not do. It catches
+// the old words coming back (a merge settled the wrong way), not the old meaning in new words. A "present" pin is
+// a name the code itself has (a constant, a file's name), never prose, so a reworded sentence does not fail here.
+// A phrase is looked for in the file with every run of white space made one space, so a paragraph wrapped anew is
+// the same text. Each test gathers every pin that fails and prints them together.
 //
 // A docs-only pull request runs no test: docs/TESTING.md, "Tests that read the documents".
 #![cfg(feature = "sim")]
@@ -63,17 +64,21 @@ fn none_failed(fails: &[String], what: &str) {
     assert!(fails.is_empty(), "{what}: {} failed\n  {}\n", fails.len(), fails.join("\n  "));
 }
 
-// The limit on record lines is counted for each worker (`Session::rec_bytes`, set to 0 at every start), and a job
-// is many workers. The documents and comments said "a job"; they say "a worker" now, and DESIGN.md names the
-// constant beside its size, so a changed number fails here until the sentence follows it.
-// (rust/tests/test_sec_records_cap.rs holds the rule itself: the cap ends a worker, and the next starts afresh.)
+// The limit on record lines is counted for each worker (`Session::rec_bytes`, set to 0 at every start, after the
+// handshake's two lines), and a job is many workers. The documents and comments said "a job". What this test
+// holds of that: those old wordings are gone, and DESIGN.md names the constant beside its size, so a changed
+// number fails here until the sentence follows it. It does not hold the new wording: a sentence that said "a job"
+// again in other words would pass. The rule itself is held against the code by
+// rust/tests/test_sec_records_cap.rs: the cap ends a worker, and the next starts afresh.
 #[test]
-fn the_record_cap_is_a_workers_and_the_docs_say_so() {
+fn the_docs_name_the_record_cap_with_its_size_and_not_as_a_jobs() {
     let mut fails = Vec::new();
     gone(&mut fails, DESIGN, "4 MiB a job");
     gone(&mut fails, PDFWORK, "4 MiB a job");
     gone(&mut fails, PDFWORK, "The records of one job");
     gone(&mut fails, PDFWORK, "the job's records");
+    // (the list under that heading begins with the handshake's two lines, which are read before the count starts)
+    gone(&mut fails, PDFWORK, "4 MiB a worker besides the pixels)");
     // (the font check counts lines, never bytes: its comment claimed the PDF worker's cap)
     gone(&mut fails, FONTCHECK, "4 MiB of records");
     // DESIGN.md names the constant, and its size stands within 200 bytes of the name (bytes, not characters: the

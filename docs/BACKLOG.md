@@ -153,7 +153,7 @@ why. Newest decisions first within each section.
   of time once is "Took too long to read." without a second try. For the fonts work.
 - **The record cap stays a worker's** (4 MiB of record lines each, `RECORDS_MAX_BYTES`). A total across a
   job's workers was weighed and not built: only a job's first worker comes near the cap, an honest job's
-  lines at the caps come to about 3.7 MiB, and a total would need a count kept in `pdf-import.ini`.
+  lines at the caps come to about 3.6 MiB, and a total would need a count kept in `pdf-import.ini`.
 - **Source comments cite numbered sections of a DESIGN.md** ("DESIGN.md 3.7", "4.3", "section 9": about 40
   places in rust/, tools/ and the workflow). They are the 2.1 plan's sections; docs/DESIGN.md has headings,
   not numbers. Not changed: a reader finds the subject by its heading.

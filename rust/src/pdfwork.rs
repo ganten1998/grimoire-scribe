@@ -17,7 +17,8 @@
 //!                                   `futexok`, `futexbad`, `execmap`, `execprot`, `panic`)
 //!   `Q`                             end
 //!
-//! Records (worker to writer, text lines of a fixed grammar, at most 4 MiB a worker besides the pixels):
+//! Records (worker to writer, text lines of a fixed grammar, at most 4 MiB a worker besides the pixels and the
+//! handshake's two lines, `B` and `S`):
 //!   `B <version> <protocol>`        the build, first line
 //!   `S <0|1>`                       1 when this build has the sandbox steps (each held, where the sandbox is
 //!                                   required); the writer takes 0 only where the sandbox is not required
