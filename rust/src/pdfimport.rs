@@ -222,17 +222,85 @@ pub(crate) fn import_storage_path(rel: &str) -> Option<StoragePath> {
 }
 
 /// The path of a source under Grimoire's import folder (`Book.pdf`, `Work/Book.pdf`), None for a source
-/// anywhere else and for `import/done/` (compared without case, as the storage is).
+/// anywhere else and for `import/done/` (done in any case, as the storage may keep it). A path whose folders
+/// are spelled as Grimoire's own are is in import with no system call: every path the scan builds, and every
+/// path under the picker's Import place. One spelled in another case is in import only when it is that folder
+/// (`same_import_folder`): on a storage that folds case it is, on one that tells names apart it is not.
 pub(crate) fn under_import(src: &str) -> Option<&str> {
-    let g = grimoire_rel()?;
+    under_import_of(src, &grimoire_rel()?, &same_import_folder)
+}
+
+/// Pure. `same(given)` is asked only when the prefix equals Grimoire's own without ASCII case but not byte for
+/// byte; `given` is that prefix as the path spells it, without its last slash.
+fn under_import_of<'a>(src: &'a str, g: &str, same: &dyn Fn(&str) -> bool) -> Option<&'a str> {
     let pre = format!("{}/import/", g.trim_matches('/'));
     let b = src.as_bytes();
+    // (necessary, not sufficient: the same letters in any case)
     if b.len() <= pre.len() || !b[..pre.len()].eq_ignore_ascii_case(pre.as_bytes()) {
         return None;
     }
     let rest = src.get(pre.len()..)?;
     let first = rest.split('/').next().unwrap_or("");
-    (!first.eq_ignore_ascii_case("done") && !rest.is_empty()).then_some(rest)
+    if first.eq_ignore_ascii_case("done") || rest.is_empty() {
+        return None;
+    }
+    if b[..pre.len()] != *pre.as_bytes() && !same(src.get(..pre.len() - 1)?) {
+        return None;
+    }
+    Some(rest)
+}
+
+/// The entries of a folder that the "same folder" question reads at most (a parent with more is not judged).
+const SAME_FOLDER_LIST_MAX: usize = 5000;
+
+/// Whether `given`, a path from the storage root that equals `<Grimoire's folder>/import` without ASCII case,
+/// names that very folder. Component by component from the root: one spelled as Grimoire's own is the same; one
+/// spelled otherwise is judged in its parent (`same_folder_entry`), by the two spellings' identities and, when
+/// those differ, by the parent's names. Anything that does not read says no: the file is then read in place,
+/// never moved, and keeps no record of tries. No answer is remembered: two lstat calls for each component
+/// spelled otherwise, and a listing only when they disagree.
+fn same_import_folder(given: &str) -> bool {
+    let (Some(root), Some(g)) = (storage_root(), grimoire_rel()) else { return false };
+    let own = format!("{}/import", g.trim_matches('/'));
+    if own.split('/').count() != given.split('/').count() {
+        return false;
+    }
+    // a real folder's identity (a link is none: nothing is followed)
+    let identity = |path: &str| std::fs::symlink_metadata(path).ok().filter(|md| md.file_type().is_dir()).map(|md| (md.dev(), md.ino()));
+    let mut parent = root.trim_end_matches('/').to_string();
+    for (o, s) in own.split('/').zip(given.split('/')) {
+        if o != s {
+            let names = || {
+                use std::os::unix::ffi::OsStrExt;
+                let mut v: Vec<Vec<u8>> = Vec::new();
+                for e in std::fs::read_dir(&parent).ok()? {
+                    if v.len() >= SAME_FOLDER_LIST_MAX {
+                        return None;
+                    }
+                    v.push(e.ok()?.file_name().as_bytes().to_vec());
+                }
+                Some(v)
+            };
+            if !same_folder_entry(identity(&format!("{parent}/{o}")), identity(&format!("{parent}/{s}")), o, &names) {
+                return false;
+            }
+        }
+        // (the folder above the next component is Grimoire's own, shown to be the one given)
+        parent.push('/');
+        parent.push_str(o);
+    }
+    true
+}
+
+/// Pure: whether two spellings of one name in one folder are the same folder. `own` and `other` are each
+/// spelling's (device, inode) where lstat found a real folder (None for anything else and for an error);
+/// `names` lists the parent (None when it does not read). Equal identities are one folder, with no listing.
+/// Other identities are still one folder when the parent holds exactly one entry of that name without ASCII
+/// case (the storage takes both spellings as that entry, and may number it differently by each); with two or
+/// more they are two folders. A number alone never says "another folder".
+fn same_folder_entry(own: Option<(u64, u64)>, other: Option<(u64, u64)>, own_name: &str, names: &dyn Fn() -> Option<Vec<Vec<u8>>>) -> bool {
+    let (Some(a), Some(b)) = (own, other) else { return false };
+    a == b || names().is_some_and(|n| n.iter().filter(|n| n.eq_ignore_ascii_case(own_name.as_bytes())).count() == 1)
 }
 
 /// Whether a file may be moved (to import/done) or written beside: only when it lies in Grimoire's import folder.
@@ -2755,6 +2823,58 @@ mod tests {
             assert!(s.text().contains(&format!("\nsrc={src}\n")), "{src:?}");
             assert_eq!(State::parse(s.text().as_bytes()).map(|s| s.src).as_deref(), Some(src));
         }
+    }
+
+    // Whether a file may move to import/done is decided by its folder: the letters of `<grimoire>/import/` in any
+    // case are needed, and where the case differs the folder itself is asked.
+    #[test]
+    fn a_folder_spelled_like_import_is_import_only_when_it_is_that_folder() {
+        let never = |_: &str| -> bool { panic!("the exact spelling asks nothing of the storage") };
+        assert_eq!(under_import_of("grimoire/import/x.pdf", "grimoire", &never), Some("x.pdf"));
+        assert_eq!(under_import_of("grimoire/import/Work/x.pdf", "grimoire", &never), Some("Work/x.pdf"));
+        // spelled otherwise: the folder decides, and is asked by the spelling given, without its last slash
+        assert_eq!(under_import_of("Grimoire/Import/x.pdf", "grimoire", &|_| false), None);
+        assert_eq!(under_import_of("Grimoire/Import/x.pdf", "grimoire", &|_| true), Some("x.pdf"));
+        let asked = std::cell::RefCell::new(Vec::new());
+        let note = |g: &str| {
+            asked.borrow_mut().push(g.to_string());
+            true
+        };
+        assert_eq!(under_import_of("GRIMOIRE/import/Work/x.pdf", "grimoire", &note), Some("Work/x.pdf"));
+        assert_eq!(*asked.borrow(), ["GRIMOIRE/import"]);
+        // done in any case is never import, whatever the folder says, and nothing is asked for it
+        for src in ["grimoire/import/DONE/x.pdf", "grimoire/import/done/x.pdf", "Grimoire/Import/Done/x.pdf", "Grimoire/Import/done"] {
+            assert_eq!(under_import_of(src, "grimoire", &never), None, "{src}");
+        }
+        // other letters are another place; so are the folder itself and what lies beside it
+        for src in ["grimoire/imports/x.pdf", "documents/x.pdf", "grimoire/import", "grimoire/import/", "grimoire/Import", "x/grimoire/import/x.pdf", ""] {
+            assert_eq!(under_import_of(src, "grimoire", &never), None, "{src}");
+        }
+        // Grimoire's folder deeper in the storage
+        assert_eq!(under_import_of("apps/grimoire/import/x.pdf", "apps/grimoire", &never), Some("x.pdf"));
+        assert_eq!(under_import_of("Apps/grimoire/import/x.pdf", "apps/grimoire", &|g| g == "Apps/grimoire/import"), Some("x.pdf"));
+    }
+
+    #[test]
+    fn two_spellings_are_one_folder_when_the_parent_holds_one_entry() {
+        let never = || -> Option<Vec<Vec<u8>>> { panic!("equal identities are one folder without a listing") };
+        let names = |n: &[&str]| -> Option<Vec<Vec<u8>>> { Some(n.iter().map(|s| s.as_bytes().to_vec()).collect()) };
+        let (a, b) = (Some((7, 100)), Some((7, 200)));
+        // one identity: the same folder
+        assert!(same_folder_entry(a, a, "import", &never));
+        // two identities and one entry of that name: the storage takes both spellings as that entry
+        assert!(same_folder_entry(a, b, "import", &|| names(&["notebooks", "Import", "settings.ini"])));
+        assert!(same_folder_entry(a, b, "import", &|| names(&["import"])));
+        // two entries: two folders
+        assert!(!same_folder_entry(a, b, "import", &|| names(&["import", "Import"])));
+        assert!(!same_folder_entry(a, b, "import", &|| names(&["IMPORT", "import", "Import"])));
+        // no entry of that name, or a parent that does not list: not judged the same
+        assert!(!same_folder_entry(a, b, "import", &|| names(&["imports", "notebooks"])));
+        assert!(!same_folder_entry(a, b, "import", &|| None));
+        // a spelling that is no real folder (missing, a link, an error): never the same, and nothing is listed
+        assert!(!same_folder_entry(None, b, "import", &never));
+        assert!(!same_folder_entry(a, None, "import", &never));
+        assert!(!same_folder_entry(None, None, "import", &never));
     }
 
     #[test]
