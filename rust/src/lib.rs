@@ -48,6 +48,7 @@ pub mod i18n;
 pub mod json_min;
 pub mod koreader;
 pub mod md5; // MD5 and KOReader's partial MD5, a book's key (2.1)
+pub mod sha256; // SHA-256, the digest of a file's whole contents (2.1.1)
 pub mod latency;
 pub mod linkoutline;
 pub mod pair;
