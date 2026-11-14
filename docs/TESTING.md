@@ -84,6 +84,15 @@ release run is never cancelled. The repository variable `GRIMOIRE_CI_LINUX=true`
 unit, the shards and l10n to Linux runners, which start sooner and of which a free plan runs far more
 at once (macOS: 5); it stays off until a run passes there (docs/BACKLOG.md).
 
+**Tests that read the documents.** A docs-only pull request runs no test, and a few tests read the
+documents: `rust/tests/test_sec_invariants.rs` (DESIGN.md, FORMAT.md, KINDLE.md, TESTING.md, BACKLOG.md and
+RELEASING.md: sentences about the safe loader and the font check that must not come back, the names
+`RECORDS_MAX_BYTES`, `<key>.slow` and `<key>.no`, the font check's glyph limit with its figure, the number in
+a font verdict's first line, and a few sentences that hold only while another one stands), `mapview.rs` (the
+Graph's keys) and
+`test_scenarios.rs` with `sim_sdl.rs` (SIM.md). After rewording a sentence they hold, run `make test-sim`
+by hand: otherwise the push to main is the first run to say so.
+
 **The required check.** Branch protection on `main` must require the `gate` job, and only it (one
 setting, made once on GitHub: Settings, Branches, the rule for `main`, Require status checks, `gate`).
 Before this split the only job was `package`; a rule that still requires `package` lets a pull request
@@ -1976,9 +1985,12 @@ refusing a step; the fix round's: `test_import_queue.rs` for the scans, the lock
 (`z_pdf_*.qs`), `tests/import_check.py`, the strings' fit (`test_pdf_strings.rs`), `cargo deny` and
 `tests/package_check.sh` (every crate in `rust-crates.txt`, the size guard). The crate-date check
 (`tools/check-crate-dates.py`) is run by hand for a tag: it needs the network.
-**Not run anywhere yet: the sandbox's real steps** (`rust/tests/test_sandbox_linux.rs` needs Linux and root; the
-CI job `sandbox` is their first run) and everything on a Scribe. The owner's checks on the Scribe (S1's numbers
-replace the placeholders in `sandbox::s1` with one commit):
+The tests of the sandbox's real steps (`rust/tests/test_sandbox_linux.rs`, which needs Linux and root) run in the
+CI job `sandbox`, which the gate requires; they first ran as root on 2026-11-10, in a VM. The test file itself has
+not run on a Scribe; the steps have, as they were in 2.1.0-beta.2 (S1 on 2026-11-09, and the imports of the
+section "2.1.0-beta.2" below), and the narrower system-call rules that came after have a check of their own
+("Hardening round (2026-11), sandbox", below). The owner's checks on the Scribe, as written before those runs
+(S1's numbers are in the header of `sandbox::s1`; the plan's values were kept):
 
 1. Copy a real planner PDF into `grimoire/import/` over USB, open Grimoire: "Importing: page N of M" stays at
    the bottom of the Library and the cards stay usable; at the end the card appears and no toast says so.
@@ -2064,8 +2076,8 @@ a hostile corpus of truncated, enormous and decompression-bomb pictures is refus
 worker that crashes or stalls on a picture fails that picture alone, 70 pictures cross slices, a template whose
 worker dies is marked bad), `test_picwork_fallback.rs` (a forced sandbox failure: pictures decode in the writer
 and the log says so once), and the template, photo and import tests of `test_templates.rs`, unchanged.
-**Not run anywhere yet: a picture in the sandbox's real steps** (`pictures_decode_in_the_real_sandbox` in
-`test_sandbox_linux.rs`, the CI job `sandbox`) and everything on a Scribe. The owner's checks:
+`pictures_decode_in_the_real_sandbox` (in `test_sandbox_linux.rs`) runs in the CI job `sandbox`, as root; what
+has run on a Scribe is in the section "2.1.0-beta.2" below. The owner's checks:
 
 1. Copy a PNG and a JPEG into `grimoire/templates` and a photo into `grimoire/photos` over USB, open New notebook
    > the template list and a page's paper sheet: they appear with their previews, and one of each still goes onto a
@@ -2073,8 +2085,8 @@ and the log says so once), and the template, photo and import tests of `test_tem
 2. grimoire.log has `work: sandboxed (uid 62001, ...)` once a background job that reads pictures (each job is a
    process of its own; for PDFs it is once a session), and no `pictures decode in the writer` (since pictures
    fail closed: no `pictures wait`) and no `made call N, which the sandbox does not allow`. If either shows, send
-   the log (the call is added to the allow-list, but for 240, 192 and 125 (the hardening round's section at the
-   end); the other line means the sandbox refused a step).
+   the log (the call is added to the allow-list, but for 240, 192 and 125 ("Hardening round (2026-11), sandbox",
+   below); the other line means the sandbox refused a step).
 3. Copy a folder of 20 phone photos (12 MP) into `grimoire/import/<Folder>`: it imports as before; time it from the
    log (`import: ... N of M pages`) against 2.0.0, and watch `MemAvailable`: the slices are 32 pictures a worker.
 4. Put a broken `.png` (cut a real one in half) in `grimoire/templates`: it is listed as unusable as in 2.0, and
@@ -2099,9 +2111,9 @@ fonts; a custom font draws each character as the same file embedded; the glyph c
 `fontcheck.rs` and `userfonts.rs` (the verdict and guard files read strictly), the scenarios
 `y_fonts_own_1_sheet`, `y_fonts_own_2_missing` and `z_fonts_own_kept`, and `make l10n-check`'s `fonts-own` and
 `fonts-own-slow` runs (every row note, the headings and the notice in every language, upright and sideways).
-**Not run anywhere yet: a font in the sandbox's real steps** (`a_font_is_checked_in_the_real_sandbox` in
-`test_sandbox_linux.rs`, the CI job `sandbox`), **and everything on a Scribe**: the check's speed there, the
-load's time and memory, the look on e-ink. The owner's checks:
+`a_font_is_checked_in_the_real_sandbox` (in `test_sandbox_linux.rs`) runs in the CI job `sandbox`, as root; what
+has run on a Scribe is in the section "2.1.0-beta.2" below. The check's speed there, the load's time and memory
+and the look on e-ink are the owner's checks:
 
 1. Copy a downloaded `.ttf` (any text font: Inter, EB Garamond) into `grimoire/fonts` over USB, open Grimoire,
    Settings (Classic) > Font. Under "Your fonts (grimoire/fonts)" the file first says "Checking..." with
@@ -2140,7 +2152,7 @@ load's time and memory, the look on e-ink. The owner's checks:
    back and open Grimoire: your font again.
 9. **The sandbox.** grimoire.log has `work: sandboxed (uid 62001, ...)` and no `fonts: no worker for the check`
    and no `made call N, which the sandbox does not allow` (if either shows, send the log: a call is then added
-   to the allow-list, but for 240, 192 and 125 (the hardening round's section at the end), with the spike's
+   to the allow-list, but for 240, 192 and 125 ("Hardening round (2026-11), sandbox", below), with the spike's
    numbers, and until then no font is checked, none is marked).
 10. **The crash guard** cannot be provoked without a font that crashes Grimoire; its marks can be watched:
     while your font's first screen is being drawn `grimoire/.font-inuse` exists, and it is gone a moment after.
@@ -2196,7 +2208,8 @@ temporary file is swept), `test_zip_limit.rs` (a zip past 4 GiB, or with a broke
 `test_picture_jobs.rs` (a picked picture's header goes to the worker; one worker death is tried again and never
 refuses a folder; a template with no preview yet starts no worker on the UI thread), and in the CI job `sandbox`
 two more (`test_sandbox_linux.rs`): a Scribe-sized colour page mirrored under the real cap, and a worker's clean
-end under the filter. **Not run anywhere yet: those two** (Linux as root) and everything on a Scribe.
+end under the filter. Those two run there, as root; what has run on a Scribe is in the section "2.1.0-beta.2"
+below.
 
 1. **A colour notebook's PDF.** Import a PDF with colour pages (a colour planner, a magazine of photos), open the
    notebook, write a stroke, close it: `PDFs/<name>.pdf` is there and its colour pages are in colour, and the log
@@ -2511,6 +2524,67 @@ table and on CI's kernel run. Use the bundle built with the pinned toolchain (do
    line in `import/.attempts` goes with the copy. Install the build without this round's two filter
    commits before judging anything else.
 10. **Later.** The same steps again whenever the build's rustc or zig version moves (docs/RELEASING.md).
+
+## Hardening round (2026-11), storage reads and temporaries: device checks
+
+Automated: the unit tests of `util.rs`, `store.rs` and `bgwork_template.rs`, `rust/tests/test_sec_read_links.rs`,
+`test_sec_pid_tmp.rs` and `test_sec_work_links.rs` (links, FIFOs, folders and sizes on the host's file system).
+What they cannot show is the Scribe's own storage, so this round ships only once these are done on a Scribe:
+
+1. **Before installing, over SSH.** Keep a copy of the settings:
+   `cp /mnt/us/grimoire/settings.ini /mnt/us/grimoire/settings.ini.before`. Then ask the storage what it
+   takes, in a folder of its own, with Grimoire closed:
+   `mkdir /mnt/us/grimoire/.probe && cd /mnt/us/grimoire/.probe && echo x > f`, then
+   `ln -s f s; echo "symlink $?"`, `ln f h; echo "hard link $?"`, `mkfifo p || mknod p p; echo "fifo $?"`,
+   `ls -la`, and to tidy: `rm -f s h p f; cd /; rmdir /mnt/us/grimoire/.probe`. Write the three answers
+   into docs/KINDLE.md (this also answers item 5 of "the file picker (lane L8)" above). If all three are
+   refused, links and FIFOs cannot exist on the Scribe's storage: steps 2 to 8 are then a check that
+   nothing changed, and of this round only the size limits act there.
+2. **Install, start once, and touch nothing yet.** Do not change a setting and do not write on a page.
+   Read `grimoire.log`: there must be no line `settings: settings.ini is there but was not read`, no
+   `store: skipping unreadable notebook`, and no `is no plain file`. The Library lists every notebook, as
+   many as before. The battery and the clock corner show, and the language is as before.
+   If any of that is wrong: close Grimoire, install the previous build, and if
+   `/mnt/us/grimoire/settings.ini.unread` exists, `mv` it back over `settings.ini` (or use
+   `settings.ini.before`). Send the log.
+3. Open a notebook with ink: the ink is there, the pen lands where it points (the calibration was read),
+   pages turn. Open the Pages view of the largest notebook: the tiles fill as fast as before. Add a page
+   and undo it.
+4. A page on a template and a page of an imported picture or PDF show their pictures. New notebook, Paper:
+   Templates and Photos list their files with previews.
+5. Copy a folder of two or three pictures into `grimoire/import/`: it becomes a notebook as before.
+6. Change a notebook with the PDF mirror on and close it: `grimoire/PDFs/<name>.pdf` is new, no `.tmp` is
+   left in `PDFs/`, and the log has no `write ... .tmp` line.
+7. Leave a dense page and open it again: it comes back as fast as before (its kept drawing), and the
+   notebook's card in the Library is current.
+8. Change a setting, close Grimoire, start it again: the setting is kept, and there is no
+   `settings.ini.unread` in `/mnt/us/grimoire`. Remove `settings.ini.before`.
+9. Only if step 1 said the storage takes symlinks, with Grimoire closed:
+   `ln -s /etc/hostname /mnt/us/grimoire/templates/linked.png`, start Grimoire, New notebook, Paper: no
+   `linked` among the templates. Remove the link.
+
+## Hardening round (2026-11), invariants: the documents and the build's crate rule
+
+What the documents and comments say of the safe loader was brought in line with the code (the limit on a
+worker's record lines, what a build off the Kindle takes of the sandbox, what the UI reads of a PDF, the
+font check's second try and its mark, who writes `fonts/.cache`, where the sandbox's tests have run), and
+`rust/deny.toml` now bans the one crate that would bring a second skrifa into the build. No code path
+changes: the app behaves as before. Automated: `rust/tests/test_sec_invariants.rs` (the sentences, the
+allow-list's of the sandbox round among them, `Cargo.lock` against `deny.toml`, and the skrifa pin),
+`rust/tests/test_sec_records_cap.rs` (a worker past the cap is ended and the next starts afresh), and
+CI's `deny` job.
+
+No check on a Scribe is needed for this round's invariants. One look, for the owner, at the one shipped
+text that changed:
+
+1. Install the build. Connect the Scribe over USB and open `grimoire/app/licenses/rust-crates.txt` on the
+   computer.
+2. The file begins "From the Rust crates Cargo.lock names for the Grimoire binary." and then says that
+   every crate is listed, the ones not compiled in among them. Of the crates' age it gives the rule for a
+   release (two weeks old on the day of the tag) and where an exception is recorded, and no longer says
+   that each crate was that old.
+3. Search the file for `hayro `: its entry is there, with the version `rust/Cargo.lock` names. Nothing
+   else in the file changed.
 
 ## Hardening round (2026-11), fonts: where a check's result is kept, its hash, and a glyph's draw time
 

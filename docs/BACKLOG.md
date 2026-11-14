@@ -125,7 +125,9 @@ why. Newest decisions first within each section.
   the file again just before it writes, which leaves a few milliseconds in which a job's note can be lost. Found
   in the fix round, not fixed: moving the prune into the jobs is a change of who owns the file.
 - **Crates**: skrifa is now a direct dependency (your own fonts, L10), pinned to the 0.46.2 hayro brings: no
-  crate is added. Cargo.lock names a second skrifa and read-fonts (glifo's optional dependency), not built; the build
+  crate is added. Cargo.lock names a second skrifa and read-fonts (glifo's, and glifo is vello_cpu's optional text
+  renderer, compiled only with a feature hayro does not ask for), not built: deny.toml bans glifo, so the deny job
+  fails if a build would take it; the build
   has three duplicates (fearless_simd, miniz_oxide, syn), not the plan's five. flate2, smallvec and syn were
   moved to versions published before 2026-11-02 so that every crate is two weeks old at a tag on or after
   2026-11-16 (`tools/check-crate-dates.py --tag-date 2026-11-16` passes).
@@ -143,6 +145,27 @@ why. Newest decisions first within each section.
   without being asked so, which the filter's rule does not see: the start of a worker would then clear the
   flag before its exec. Not built: no test host can show it failing first.
 - **`sandbox::s1` numbers** are unchanged by this round.
+
+## Hardening round (2026-11), invariants: what waits
+
+- **The record cap stays a worker's** (4 MiB of record lines each, `RECORDS_MAX_BYTES`). A total across a
+  job's workers was weighed and not built: only a job's first worker comes near the cap, an honest job's
+  lines at the caps come to about 3.6 MiB, and a total would need a count kept in `pdf-import.ini`.
+- **Source comments cite numbered sections of a DESIGN.md** ("DESIGN.md 3.7", "4.3", "section 9": about 40
+  places in rust/, tools/ and the workflow). They are the 2.1 plan's sections; docs/DESIGN.md has headings,
+  not numbers. Not changed: a reader finds the subject by its heading.
+- **A docs-only pull request runs no test**, and a few tests read the documents (docs/TESTING.md, "Tests
+  that read the documents"): a reworded sentence they hold is first caught on the push to main.
+- **The Linux tests of the sandbox's steps have not run on a Scribe** (they need cargo); the steps have, as
+  they were in 2.1.0-beta.2 (S1, and that beta's imports, pictures and fonts). The narrower system-call rules
+  that came after are the entry "The Scribe check of this round has not run", above.
+- **Three sentences outside this round's lines are still loose**, and no test holds them. docs/DESIGN.md, the
+  safe loader, and `sandbox.rs` (`sandbox_line_ok_for`): "`S 1` (the steps are in place)"; a Linux build that
+  does not require the sandbox says `S 1` as soon as it has the steps, also when one failed and was passed
+  over (`pdfwork.rs`'s header has the exact form). `sandbox.rs`, `s1::FONT_JOB_CPU_SECS`: "past it the font
+  is "Took too long to read."", where a first timeout only leaves the font for its second try.
+  docs/TESTING.md, "2.1.0-beta.2, L9", step 7: "see its section at the end" for the fix round's section,
+  which other sections now follow.
 
 ## The keyboard's caret and text copy and paste (2.1.0-beta.2, last round, lane K): choices for the owner, and what waits
 
@@ -275,9 +298,10 @@ Waits, from the 2.1 plan:
 
 ## Your own fonts (2.1.0-beta.2, lane L10): choices for the owner, and what waits
 
-Built to the 2.1 plan's D30 (Done, below). **Nothing of it has run on a Scribe, and its sandbox steps have not
-run anywhere** (the CI job `sandbox` is their first run): docs/TESTING.md, "2.1.0-beta.2, L10", has the device
-checks. Where the plan did not settle a thing, what the lane chose, for the owner to confirm:
+Built to the 2.1 plan's D30 (Done, below). Its check runs in the real sandbox in the CI job `sandbox`
+(`a_font_is_checked_in_the_real_sandbox`), and fonts were checked and used on the owner's Scribe with
+2.1.0-beta.2's development builds (docs/TESTING.md, "2.1.0-beta.2"); docs/TESTING.md, "2.1.0-beta.2, L10", has
+the device checks. Where the plan did not settle a thing, what the lane chose, for the owner to confirm:
 
 - **The size of text in your font.** The plan's rule as written: capitals as tall as Terminess's, the scale
   kept between 0.85 and 1.25, then lowered until 95 of 100 of Grimoire's strings are no wider than in
@@ -387,8 +411,8 @@ Bold-only letters of a name, a Done on a font that does not load. Left, with wha
   language, but a real font's widths are its own; labels that do not fit end in "...".
 - **Left and Right do not turn the pages of Your fonts** (the sheet's arrows do).
 - **`sandbox::s1::FONT_*`** (20 s slices, 10 min a font, 60 s of CPU a worker, a 30 s watchdog, 64 MiB over the
-  file) are the plan's numbers, placeholders until S1 measures the Scribe; `s1::WORKER_IMAGE` (11 MiB) is now
-  only about 0.9 MiB above the binary's size, which the margins absorb.
+  file) are the plan's numbers, kept: S1 (2026-11-09) measured PDF pages, not a font's check; `s1::WORKER_IMAGE`
+  (11 MiB) is now only about 0.9 MiB above the binary's size, which the margins absorb.
 - **A What's new line** for 2.1.0-beta.2's notes (docs/whatsnew), which the owner writes.
 - **Japanese** for the 15 new strings (nebuff): English shows until then.
 
@@ -1280,3 +1304,20 @@ items of Document links. Left:
   the job queue and the screens take paths as text.
 - **Not run anywhere but the headless runner**: `rust/tests/test_browser.rs` plants the odd name where the file
   system takes one (not on macOS); the Scribe's checks are in TESTING.md.
+
+## Hardening round (2026-11), storage reads: what waits
+
+- The other reads by path take the plain-file read (`util::open_read_nofollow`): the clipboard, the
+  compaction's list, the shortcut files, one read in the fonts' cache, the PDF cache's records. The
+  compaction's list goes first: it is read at every start, before the first frame
+  (`compact_queue_listed`), and the start is fully under the rule only once it is.
+- The folders a scan lists (the import folders, the marks) are read through the storage walk, as picked
+  folders are.
+- A page file that is there but does not read fails to open rather than opening blank; with it, a size
+  limit on page files.
+- `mkdir_p` stays as it is (an existing entry counts as the folder): the data root, a platform's folders
+  and the tests' folders may sit behind a link.
+- Tidy-up: the PDF cache's and the share spool's own "made afresh" onto `util::create_fresh_nofollow`;
+  `nav.rs` `read_sidecar` onto `util::open_read_nofollow`.
+- If no other lane has taken them by the merge: the marks in `pdfimport.rs` read with their own limits,
+  and the link tests run as root in CI's sandbox job.

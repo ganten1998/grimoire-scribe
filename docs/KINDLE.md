@@ -462,7 +462,8 @@ file name, title or key ever appears in it: ids, page numbers, counts, timings, 
 
 - `work: sandboxed (uid 62001, chroot, netns, no new privileges, seccomp, selinux enforcing|permissive|off)`:
   for PDFs once a session, at the first worker; for pictures and fonts once a background job (each job is a
-  process of its own, and says it at its first worker). `work: not sandboxed (...)` anywhere the steps are skipped.
+  process of its own, and says it at its first worker). `work: not sandboxed (...)` wherever the sandbox is not
+  required (never on the Kindle).
 - `import: <id>: N page(s), the PDF is N KB` (the probe), then for each slice `import: <id>: pages A to B of M in
   T ms (MemAvailable K MB, N band(s))` (a page's time is T over the slice's pages), then `import: notebook <id>
   made of N page(s), N picture(s), N blank`.
@@ -540,10 +541,12 @@ What grimoire.log says (never a file's name or a family's: counts, sizes, timing
   glyphs, K from Terminess (W too slow to draw), slowest glyph T us, letters and digits L us, checked in T ms`
   (the two figures are microseconds of the worker's CPU time for one glyph's draw at the largest size: the
   dearest glyph of the font, and its letters and digits added up), or `... refused (unreadable|no Latin
-  letters|a web font)`, or `... took too long to read (T ms)`, or `...: glyphs take too long to draw (a letter
-  or digit, slowest T us | W glyph(s), slowest T us): left for a second try` and, when the check a minute later
-  agrees, `...: glyphs take too long to draw again (...)` (the row then says "Took too long to read."), or `...
-  the check's worker ended (<why>): marked unreadable`, or `... left for
+  letters|a web font)`, or `... took too long to read (T ms): left for a second try` (no verdict yet: the file
+  is checked again a minute or more later) and at that try `... took too long to read again (T ms)` (the
+  verdict), or `...: glyphs take too long to draw (a letter or digit, slowest T us | W glyph(s), slowest T
+  us): left for a second try` and, when the check a minute or more later agrees, `...: glyphs take too long to
+  draw again (...)` (the verdict: the row then says "Took too long to read."), or `... the check's worker
+  ended (<why>): marked unreadable`, or `... left for
   later (out of memory)`; each job checks one font (`fonts: file I of N done; more are left for the next job`),
   and the last one ends with `fonts: in the folder, P passed, R refused, D the worker died on, L left for later, T
   too big or empty (N font file(s) in all)`, the whole folder's tally from the verdicts kept, and `bg: font check
@@ -748,6 +751,33 @@ checks above. Synthetic tests cannot establish real-hand acceptance or accidenta
   damage. A set-aside page that is no longer in the page list can be put
   back by hand, with Grimoire closed: rename it to `p<n>.qpg` and add `<n>` to the `pages=` line
   of its `notebook.ini`.
+- **A file of the `grimoire` folder that is no plain file, or too long** (2.1.1): Grimoire reads its
+  settings, notebooks, pages, pictures and import folders only when the entry at the name is a plain file,
+  and the small text files only up to a size (docs/FORMAT.md, Files, names the files; a few others are
+  still opened by path). grimoire.log says what it did:
+  - `store: <path> is no plain file, set aside; starting blank` (or `could not set aside`): the entry at
+    a page's name was a folder, a link or something else. It was renamed `p<n>.qpg.damaged-<t>`, the
+    entry itself, and the page opened blank, with the toast of a damaged page. It stays there: Grimoire
+    never reads it or brings it back by itself.
+  - `store: <path> is no plain file; read as a blank page` (once per run): the same entry met by an
+    export (a PDF, a preview), which changes nothing.
+  - `store: skipping unreadable notebook <id>`: also a notebook whose `notebook.ini` is no plain file or
+    is longer than 1 MiB. Nothing in its folder is touched; it is back in the Library once the file reads.
+  - `settings: settings.ini is there but was not read (no plain file of at most 1048576 bytes, or it did
+    not open); the defaults are used`: at the start. Nothing is written over it:
+  - `settings: the settings.ini that was not read is kept as settings.ini.unread`: at the first save,
+    the entry was moved aside as it was. With Grimoire closed, look at it, and copy it back over
+    `settings.ini` if it is the file wanted (as a plain file under 1 MiB); else delete it.
+  - `settings: settings.ini.unread is there already and stays; the settings.ini that was not read is
+    replaced` (once per run): an earlier one was kept already, so this one was written over.
+  - `settings: the settings.ini that was not read cannot be set aside (<error>); nothing is saved over
+    it`: the settings are not saved until the entry is moved or removed by hand.
+  - `import: the folder is no folder of its own; left as it is`: an entry of `grimoire/import` that is
+    no real folder (a link to one, say) was handed to an import. Nothing was read or made; copy the
+    folder in to import it.
+
+  The Scribe's storage: symlinks, hard links, FIFOs: (the owner's answer, the date, the firmware; from
+  step 1 of docs/TESTING.md, "Hardening round (2026-11), storage reads and temporaries: device checks").
 - **`device passcode: left off by an earlier session`** in grimoire.log: the Kindle restarted while
   Grimoire had the passcode paused (see The Device Passcode); Grimoire logs it at that start and the
   next two while it stays off, with no notice on the screen (since 2.0.0-beta.2). Turn it back on in

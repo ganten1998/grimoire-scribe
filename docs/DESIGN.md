@@ -540,6 +540,8 @@ Unset on the Kindle.
 root/settings.ini              current tool, panel, every tool's params, calibration and the
                                panel it was made on, sleep, style, language, port... (unknown
                                keys kept)
+root/settings.ini.unread       a settings.ini that was there but could not be read, kept aside;
+                               never read
 root/folders.ini               the folder names, one per line
 root/sleep.pgm                 the pinned sleep screen (P5)
 root/notebooks/<id>/notebook.ini   name, folder, paper, created, modified, last_page,
@@ -563,6 +565,26 @@ root/.koplugin-installed       the build whose KOReader plugin went into koreade
 All writes are atomic: write `<file>.tmp`, fsync, rename. Page saves happen about 2 s after the
 last pen-up, at every press of the power button, on page change, on leaving the editor and on
 exit. `store_add_page` never writes over an existing `p<id>.qpg`: it takes the next free id.
+
+Reads of the data folder take plain files only. What is read there through `util::read_file`,
+`util::read_file_max` or `util::open_read_nofollow` (the store's files, the pictures, the template and
+import scans, the marks, the share zip's raw copies) is read only when the entry at the name itself is a
+plain file (a link, a folder or anything else there reads as a file that is not there), and the open never
+waits. Folders on the way to a file may be links (the data root, `notebooks/`, a platform's folders, a
+test's folder): only the last name is held to this. The small text files are read up to a limit
+(`util::read_file_max`: settings.ini, notebook.ini, folders.ini, bg/pages.ini and bg/index.ini 1 MiB; an
+import folder's mark 4 KiB; import/.attempts 64 KiB; a PGM 64,000,064 bytes, its largest picture and a
+header); page files and pictures have none of `read_file`'s own. A settings.ini that is there but was not
+read is moved to `settings.ini.unread` before the next save. An entry at a page's name that is no plain
+file is set aside as a damaged page is. The system's own files (/proc, /sys, the Kindle's locale file) are
+read with `util::read_system_file`, which follows links. The scans of `import/`, `templates/` and
+`photos/` take only real folders and plain files. Temporary files named after the process
+(`<name>.<pid>`, the mirror's `<name>.pdf.<pid>.tmp`) are made afresh (`util::create_fresh_nofollow`):
+what stands at the name is removed, never opened. `mkdir_p` takes an existing entry as the folder, a link
+to one included; code that prunes or empties a folder of Grimoire's checks that folder first
+(`util::no_link_below`, `pdfcache::real_dirs`, the previews' sweep). The mirror's sweep of stale
+temporaries works in the mirror folder the user chose. A few readers still open their files by path
+(docs/BACKLOG.md, "Hardening round (2026-11), storage reads: what waits").
 
 The page size: a new notebook gets the device's (`store_set_device`), and
 `store_notebook_page_size` is what every reader and writer of its pages asks. A notebook.ini
@@ -2045,7 +2067,9 @@ The binding design is docs/beta2/LASSO-DESIGN.md; this is where it lives in the 
 ## The safe loader and the PDF import (2.1.0-beta.2, lane L5)
 
 PDFs are untrusted, and Grimoire runs as root, so no process that writes files parses one. The import is three
-processes: the UI (queues, shows the notice, never reads the PDF beyond the ends of the file), the writer (a
+processes: the UI (queues, shows the notice, and never parses a PDF: it reads the first and the last KiB of a file
+the scan found, to see that it is whole, and, in the picker, up to twelve 1 KiB samples for the book key, which it
+hashes), the writer (a
 background job child: opens the file through `fsview`'s walk, owns the work folder, validates every record
 and writes the files) and the worker, a fresh exec of the same binary (`grimoire --work pdf ...`, taken
 before any UI start-up) that inherits nothing: descriptors 0 to 5 only (0 to 2 on /dev/null, 3 the PDF, read
@@ -2065,9 +2089,15 @@ step, or a worker that cannot be started, marks nothing and counts no try; the s
 steps are in place; `S 0` is a build without them, macOS); where the sandbox is required the writers take only
 `S 1`, and a worker is started only with descriptors 0 to 5 in place. The writer ignores SIGPIPE, and reads a worker's last
 records after a send that failed. The page watchdog runs on CLOCK_MONOTONIC (a sleep does not count); a page
-whose wait the Kindle slept through and that then stalls is tried again once without a strike. Off the Kindle the steps are
-skipped (plain process isolation) unless GRIMOIRE_SANDBOX=require. The worker's records are text lines of a
-fixed grammar plus pixel bands, at most 4 MiB a job besides pixels, parsed strictly (`pdfwork.rs`); every
+whose wait the Kindle slept through and that then stalls is tried again once without a strike. Off the Kindle a
+failed step refuses nothing unless the writer requires the sandbox (GRIMOIRE_SANDBOX=require: on Linux it then makes
+the worker's jail, and a worker given a jail holds every step, as on the Kindle). macOS has none of the steps (plain
+process isolation); a Linux build that does not require the sandbox still takes the steps that work without root (no
+new privileges, the limits and the allow-list among them) and has no chroot. The worker's records are text lines of
+a fixed grammar plus pixel bands, parsed strictly (`pdfwork.rs`). The writer ends a worker whose record lines pass
+4 MiB (`RECORDS_MAX_BYTES`: counted for each worker, the pixels and the handshake's two lines apart), and a job is
+many workers: a fresh one for each slice, and after each one that died or stalled. Only the first comes near the
+cap, with the links and the names; the others send the page count, a line a band and a line a page. Every
 number the device spike (S1) sets is in the one table `sandbox::s1`, marked "set by S1". The notebook, its
 slices, marks and colour rule are in FORMAT.md, "Imports: PDFs". Two rules hold the import together (the fix round
 of 2026-11-09): whether a file may be moved is decided by where it lies (`pdfimport::in_import`), never by a mark;
@@ -2146,13 +2176,14 @@ its bytes.** Four parts keep it (`fontcheck.rs`, `userfonts.rs`, `font.rs`):
   that is not the Kindle's takes 5 s). A draw over the limit is measured again, up to three times, and the
   smallest counts. A glyph over it that is no letter or digit is listed with the ones that fail and comes
   from Terminess; a letter or a digit over it, or more listed glyphs than one in a hundred when the ones
-  that fail are not that many by themselves, makes the font one that takes too long. Such a result rests on
-  a measured time, so it is not taken on one reading: the font is checked once more a minute later, and only
-  when the second check agrees is it "Took too long to read.". The glyphs listed can therefore differ
-  between two checks of one file when a glyph's draw is near the limit. The writer counts the listed glyphs
-  across slices. It works in slices of 20 s of its own CPU time (`s1::FONT_SLICE_CPU_SECS`),
-  each a fresh worker that gets the bytes again and goes on from the glyph index the last reached, 10 minutes
-  in all, then "Took too long to read."; a worker silent for 30 s is killed and is the same. It settles the
+  that fail are not that many by themselves, makes the font one that takes too long. The glyphs listed can
+  therefore differ between two checks of one file when a glyph's draw is near the limit. The writer counts
+  the listed glyphs across slices. It works in slices of 20 s of its own CPU time
+  (`s1::FONT_SLICE_CPU_SECS`), each a fresh worker that gets the bytes again and goes on from the glyph
+  index the last reached, 10 minutes in all; a worker silent for 30 s is killed and counts as out of time
+  too. A check that runs out of time, or finds the font one that takes too long, rests on a measured time,
+  so it is not taken on one reading: a first such check writes no verdict, the file is checked once more, a
+  minute or more later (`<key>.slow`), and a second such check is "Took too long to read.". It settles the
   font's scale (capitals as tall as Terminess's, 0.592 of the line, between 0.85 and 1.25, then lowered a
   hundredth at a time until 95 of 100 of Grimoire's strings, in every language, are no wider than Terminess
   draws them, measured as `font.rs` measures: advances only), says which languages need letters the font

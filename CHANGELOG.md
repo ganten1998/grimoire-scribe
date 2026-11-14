@@ -2,8 +2,16 @@
 
 ## 2.1.1 (unreleased)
 
+- Hardening: Grimoire reads the files in its own folders only when they are plain files, with size limits
+  on the small text files, and makes its temporary files afresh each time. A `settings.ini` it cannot
+  read is kept as `settings.ini.unread` rather than written over. A picture or folder in `templates/`,
+  `photos/` or `import/` that is a link is no longer taken: copy the file in.
 - Housekeeping: the separate process that reads PDFs, pictures and fonts is held to a narrower set of
   system calls and is started only with all of its descriptors in place. No change in the app.
+- Housekeeping: the documents of the safe loader and of your own fonts say what the code does (the limit
+  on a worker's record lines, what a build off the Kindle takes of the sandbox, the font check's second
+  try), `licenses/rust-crates.txt` says it lists every crate `Cargo.lock` names, and the crate check
+  refuses by name the one crate that would bring a second font parser into the build. No change in the app.
 - **Your own fonts: a stricter background check.** What the check found of a font is now kept on the
   Kindle itself (`/var/local/grimoire`, a few hundred bytes a font) and tied to the font file by its
   SHA-256. The check also times each glyph as Grimoire will draw it: a glyph that would take too long is

@@ -3,15 +3,17 @@
 //! - the folder: grimoire/fonts/, made at start with a README.txt. `.ttf`, `.otf`, `.ttc` and `.otc` files in
 //!   it and in its folders one level down, at most 200, read through fsview's walk (no link is followed).
 //! - the cache: grimoire/fonts/.cache/<key>.pgm (the font's name drawn in itself), .no (the check refused the
-//!   file), .checking (a check under way), .slow (a check that took too long, once) and .bad (the check's worker
-//!   died on it). <key> is the FNV-1a hash of the file's path under the folder, its size and its time, as a
-//!   template's preview is keyed, so a file replaced by another is checked afresh. Written by the background
-//!   job only; deleting it loses nothing, and has every font checked again.
+//!   file), .checking (a check under way), .bad (the check's worker died on it) and .slow (one check ran out of
+//!   time, or found glyphs too slow to draw: FORMAT.md). <key> is the FNV-1a hash of the file's path under the
+//!   folder, its size and its time, as a template's preview is keyed, so a file replaced by another is checked
+//!   afresh. Written by the background job, but for the UI's rename of a .checking mark to .bad when that job
+//!   died; deleting it loses nothing, and has every font checked again.
 //! - the verdicts (`VerdictDir`): <key>.font (fontcheck.rs), what the check found of a file. Where the build has
 //!   a folder of its own outside the storage (the Kindle: /var/local/grimoire; elsewhere GRIMOIRE_STATE), they
 //!   are kept there, in a folder for each data root, and nothing under grimoire/fonts decides whether a font is
 //!   read. A build without such a folder keeps them in the cache, beside the previews. Either way a verdict
-//!   counts only with its companion in the cache: a pass with its .pgm, a refusal with its .no.
+//!   counts only with its companion in the cache: a pass with its .pgm, a refusal with its .no. Written by the
+//!   background job alone.
 //! - the job (`bg_font_check`, BgKind::FontCheck): the writer. It reads each unchecked file whole, hands the
 //!   bytes to the sandboxed worker, validates what comes back and writes the verdict. It parses nothing.
 //! - the UI's side: the list the Font sheet shows (`userfonts_scan`), the load of a font that passed
@@ -1550,9 +1552,10 @@ fn write_cache(path: &str, data: &[u8]) -> bool {
 /// read whole and checked by the sandboxed worker (fontcheck.rs), one after another, its preview (or its
 /// `.no`) written to the cache and its verdict to where verdicts are kept (`VerdictDir`). `arg` is "" or
 /// "recheck:<key>" (that file's verdict is stale: it is checked again). `dpi` sizes the preview. Returns 0
-/// done, 3 some files wait (still being copied, or no memory now), 4 no worker can be had (nothing is marked),
-/// 6 what a check finds cannot be kept (Grimoire's own folder cannot be used, or has too little room: nothing
-/// is checked and nothing is marked), -1 it could not start.
+/// done, 3 some files wait (still being copied, no memory now, or left for their second try), 4 no worker can
+/// be had (nothing is marked), 5 one font was checked and more are left for the next job, 6 what a check finds
+/// cannot be kept (Grimoire's own folder cannot be used, or has too little room: nothing is checked and
+/// nothing is marked), -1 it could not start, or a mark, a companion or a verdict could not be written.
 pub fn bg_font_check(arg: &str, dpi: f32) -> i32 {
     let cache = cache_dir();
     // (its files are written and stale entries deleted there as root: never through a planted link)
