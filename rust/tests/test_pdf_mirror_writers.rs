@@ -3,11 +3,12 @@
 //! mirror of the same notebook waits for the first (the notebook's mirror lock), each writes a temporary
 //! file of its own (`<name>.pdf.<pid>.tmp`), and the newer state is published last, whole. A writer that is
 //! killed leaves its temporary file, which the next mirror of any notebook sweeps. The first writer is held
-//! midway by a page file that is a FIFO (it blocks reading its sixth page, as a slow draw would hold it).
+//! midway by its own work pump: it stops itself as it draws its sixth page (as a slow draw would hold it), until
+//! the test lets it go on.
 
 use grimoire::prelude::*;
-use std::io::Write;
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 fn root() -> PathBuf {
     let root = PathBuf::from(std::env::var("GRIMOIRE_TEST_TMP").unwrap_or_else(|_| std::env::temp_dir().to_string_lossy().into_owned()))
@@ -49,9 +50,17 @@ fn full(nb: &NotebookInfo) -> Vec<u8> {
     b.data
 }
 
-fn records(nb: &NotebookInfo) -> usize {
-    let dir = PathBuf::from(pdf_cache_root()).join(nb.id.as_str());
+/// A notebook's folder in the page-stream cache.
+fn cache_dir(nb: &NotebookInfo) -> PathBuf {
+    PathBuf::from(pdf_cache_root()).join(nb.id.as_str())
+}
+
+fn records_in(dir: &std::path::Path) -> usize {
     std::fs::read_dir(dir).map(|d| d.flatten().filter(|e| e.file_name().to_string_lossy().ends_with(".z")).count()).unwrap_or(0)
+}
+
+fn records(nb: &NotebookInfo) -> usize {
+    records_in(&cache_dir(nb))
 }
 
 /// The temporary files in the mirror's folder.
@@ -59,19 +68,28 @@ fn temps(dir: &str) -> Vec<String> {
     std::fs::read_dir(dir).map(|d| d.flatten().map(|e| e.file_name().to_string_lossy().into_owned()).filter(|n| n.ends_with(".tmp")).collect()).unwrap_or_default()
 }
 
-/// The page file made a FIFO: a reader blocks until the page's bytes are written into it. Returns them.
-fn hold_page(nb: &NotebookInfo, index: usize) -> (String, Vec<u8>) {
-    let file = format!("{}/notebooks/{}/p{}.qpg", root().display(), nb.id.as_str(), nb.page_ids[index]);
-    let bytes = std::fs::read(&file).unwrap();
-    std::fs::remove_file(&file).unwrap();
-    let c = std::ffi::CString::new(file.clone()).unwrap();
-    // SAFETY: mkfifo reads the NUL-terminated path.
-    assert_eq!(unsafe { libc::mkfifo(c.as_ptr(), 0o644) }, 0);
-    (file, bytes)
+/// The cache folder of the notebook a held writer mirrors (set before the fork), and whether that writer has
+/// held already (in the writer's own memory: each is forked with it false).
+static HOLD_DIR: std::sync::Mutex<Option<PathBuf>> = std::sync::Mutex::new(None);
+static HELD: AtomicBool = AtomicBool::new(false);
+
+/// A held writer's work pump (the renderer calls it after every stroke): once its notebook's cache holds five
+/// records, which is as its sixth page is drawn, the writer stops itself, until the test sends SIGCONT (or
+/// kills it). Once: later calls of the same page still see five records.
+fn hold_at_five() {
+    if HELD.load(Ordering::Relaxed) {
+        return;
+    }
+    let five = HOLD_DIR.lock().unwrap_or_else(|e| e.into_inner()).as_deref().is_some_and(|d| records_in(d) == 5);
+    if five {
+        HELD.store(true, Ordering::Relaxed);
+        // SAFETY: raise stops this process, the forked writer; it goes on at SIGCONT.
+        unsafe { libc::raise(libc::SIGSTOP) };
+    }
 }
 
 /// The children a part forked: killed and reaped when it ends without having reaped them (a failed assertion
-/// would otherwise leave a writer blocked on its FIFO, holding the test's output open).
+/// would otherwise leave a writer stopped, holding the test's output open).
 struct Children(Vec<i32>);
 impl Drop for Children {
     fn drop(&mut self) {
@@ -86,11 +104,18 @@ impl Drop for Children {
     }
 }
 
-/// A mirror of nb in a forked child, as bgjob runs it. Exit status 0: export_mirror_pdf said 0; 7: -1.
-fn mirror_child(nb: &NotebookInfo, dir: &str) -> i32 {
+/// A mirror of nb in a forked child, as bgjob runs it. Exit status 0: export_mirror_pdf said 0; 7: -1. With
+/// `hold`, the child stops itself as it draws its sixth page (hold_at_five).
+fn mirror_child(nb: &NotebookInfo, dir: &str, hold: bool) -> i32 {
+    if hold {
+        *HOLD_DIR.lock().unwrap_or_else(|e| e.into_inner()) = Some(cache_dir(nb));
+    }
     // SAFETY: fork; the child only exports and _exits.
     let pid = unsafe { libc::fork() };
     if pid == 0 {
+        if hold {
+            work_pump_set(Some(hold_at_five));
+        }
         let rc = export_mirror_pdf(nb, 300.0, dir);
         // SAFETY: _exit ends the child at once.
         unsafe { libc::_exit(if rc == 0 { 0 } else { 7 }) };
@@ -159,24 +184,21 @@ fn a_second_writer_waits_and_publishes_last() {
     assert_eq!(xref_misses(&earlier), Some((0, 33)));
     std::fs::remove_dir_all(pdf_cache_root()).unwrap(); // (a new version: every page is drawn again)
     // writer A (the mirror an earlier run of Grimoire left running): held at its sixth page
-    let (fifo, bytes) = hold_page(&nb, 5);
-    let a = mirror_child(&nb, &dir);
+    let a = mirror_child(&nb, &dir, true);
     let mut kids = Children(vec![a]);
     wait_until("A to reach its sixth page", || records(&nb) == 5 && temps(&dir).len() == 1);
     // writer B (Grimoire started again, the notebook changed and closed): the same notebook, one page fewer
     let mut nb_b = nb.clone();
     nb_b.page_ids.remove(5);
     let want_b = full(&nb_b);
-    let b = mirror_child(&nb_b, &dir);
+    let b = mirror_child(&nb_b, &dir, false);
     kids.0.push(b);
     std::thread::sleep(std::time::Duration::from_millis(600));
     assert!(ended(b).is_none(), "B waits for A (the notebook's mirror lock)");
     assert!(std::fs::read(&pdf).unwrap() == earlier, "nothing is published meanwhile");
-    // A goes on: its page arrives, it writes the rest of its PDF into its own temporary file
-    {
-        let mut w = std::fs::OpenOptions::new().write(true).open(&fifo).unwrap();
-        w.write_all(&bytes).unwrap();
-    }
+    // A goes on: it writes the rest of its PDF into its own temporary file
+    // SAFETY: SIGCONT to the child forked above, which stopped itself.
+    assert_eq!(unsafe { libc::kill(a, libc::SIGCONT) }, 0);
     let mut st = 0;
     // SAFETY: waitpid on the children forked above.
     unsafe { libc::waitpid(a, &mut st, 0) };
@@ -189,9 +211,6 @@ fn a_second_writer_waits_and_publishes_last() {
     assert!(last == want_b, "the newer state is the one published, last");
     assert_eq!(xref_misses(&last), Some((0, 30)), "and it is whole");
     assert!(temps(&dir).is_empty(), "no temporary file is left: {:?}", temps(&dir));
-    // (the page file is a FIFO no more)
-    std::fs::remove_file(&fifo).unwrap();
-    std::fs::write(&fifo, &bytes).unwrap();
 }
 
 fn r_display() -> String {
@@ -201,8 +220,7 @@ fn r_display() -> String {
 fn a_killed_writers_temporary_file_is_swept() {
     let nb = book("Killed", 10);
     let dir = format!("{}/PDFs", r_display());
-    let (fifo, bytes) = hold_page(&nb, 5);
-    let a = mirror_child(&nb, &dir);
+    let a = mirror_child(&nb, &dir, true);
     let kids = Children(vec![a]);
     wait_until("the writer to reach its sixth page", || records(&nb) == 5 && !temps(&dir).is_empty());
     let left = temps(&dir);
@@ -227,6 +245,4 @@ fn a_killed_writers_temporary_file_is_swept() {
     assert_eq!(export_mirror_pdf(&other, 300.0, &dir), 0);
     assert!(!std::path::Path::new(&legacy).exists());
     std::fs::remove_file(&mine).unwrap();
-    std::fs::remove_file(&fifo).unwrap();
-    std::fs::write(&fifo, &bytes).unwrap();
 }

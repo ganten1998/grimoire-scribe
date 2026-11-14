@@ -3109,6 +3109,24 @@ fn load_page_with(
                 with(|s| s.g_restored_pages += 1);
             }
         }
+    } else if std::fs::symlink_metadata(&path).is_ok_and(|m| !m.is_file()) {
+        // An entry at the page's name that is no plain file (a folder, a link) is not read, and is set aside
+        // as a damaged page is, the entry itself: left there, the blank page shown in its place could not be
+        // saved over a folder, and would be saved in place of a link with nothing said. (A plain file that did
+        // not read stays where it is, as before.)
+        let mut aside = String::new();
+        csnprintf!(&mut aside, 760, "%s.damaged-%lld", &path, wall_time());
+        let rc = std::fs::rename(&path, &aside);
+        qlog!(
+            "store: %s is no plain file, %s; starting blank",
+            &path,
+            if rc.is_ok() {
+                "set aside"
+            } else {
+                "could not set aside"
+            }
+        );
+        with(|s| s.g_corrupt_pages += 1);
     }
     let mut p = match p {
         Some(p) => p,
@@ -3142,6 +3160,8 @@ pub fn store_read_page(nb: &NotebookInfo, index: i32, out: &mut Option<Box<Page>
                 side_restore(nb, pid, pg);
             }
         }
+    } else if std::fs::symlink_metadata(&path).is_ok_and(|m| !m.is_file()) {
+        qlog_once!("store: %s is no plain file; read as a blank page", &path);
     }
     let mut p = match p {
         Some(p) => p,
@@ -3710,7 +3730,7 @@ fn page_deserialize_with(buf: &[u8], out: &mut Option<Box<Page>>, pump: bool) ->
 /// u16 paper, w, h), the rest unread. None for a file that has none (missing, cut short, damage).
 fn page_file_size(path: &str) -> Option<(i32, i32)> {
     let mut b = [0u8; 16];
-    let mut f = std::fs::File::open(path).ok()?;
+    let (mut f, _) = open_read_nofollow(path).ok()?;
     let got = matches!(f.read(&mut b), Ok(16));
     if !got || &b[..4] != b"QPG1" {
         return None;

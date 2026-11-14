@@ -381,7 +381,9 @@ pub fn format_date_short(t: i64, buf: &mut String, cap: usize) {
     strlcpy_q(buf, &s, cap);
 }
 
-/// Path helpers (POSIX). mkdir -p; returns 0 on success.
+/// Path helpers (POSIX). mkdir -p; returns 0 on success. An existing entry, a link to a folder included, is taken
+/// as it is (the data root, a platform's folders and a test's folder may sit behind one); code that prunes or
+/// empties a folder of Grimoire's checks that folder first.
 pub fn mkdir_p(path: &str) -> i32 {
     // The C copies into a 1024-byte buffer and refuses a path that fills it.
     if path.len() >= 1023 {
@@ -440,6 +442,25 @@ pub fn open_rewrite_nofollow(path: &std::ffi::CStr, mode: u32) -> i32 {
         }
         fd
     }
+}
+
+/// A file made afresh for writing: whatever stands at the name (a stale temporary, or anything else) is
+/// removed first, the entry itself and never what it may point at, and nothing that was there is opened.
+pub fn create_fresh_nofollow(path: &str) -> std::io::Result<std::fs::File> {
+    use std::os::unix::fs::OpenOptionsExt;
+    let open = || std::fs::OpenOptions::new().write(true).create_new(true).custom_flags(libc::O_NOFOLLOW | libc::O_CLOEXEC).open(path);
+    // (nothing in the way: one call to the storage, as a plain create was)
+    let first = match open() {
+        Ok(f) => return Ok(f),
+        Err(e) => e,
+    };
+    // (whatever the error was: with an entry at the name it goes and the open is tried once more; a folder
+    // there does not go, and that error is the answer)
+    if std::fs::symlink_metadata(path).is_err() {
+        return Err(first);
+    }
+    std::fs::remove_file(path)?;
+    open()
 }
 
 /// Removes a work folder Grimoire was building (`files` first, then the files of its bg/ and its own, then the
@@ -761,9 +782,65 @@ pub fn work_pump_mark() {
     }
 }
 
-/// Reads a whole file; None on failure. (The C returns what it read when a read fails midway, as
-/// fread does; so does this.)
+/// A file of the data folder opened for reading: the entry at the name itself must be a plain file (a link
+/// there is not followed, a folder or anything else is refused), and the open never waits. Folders on the way
+/// may be links. The file and what fstat says of it. O_NONBLOCK stays set: a caller that hands the descriptor
+/// on clears it first.
+pub fn open_read_nofollow(path: &str) -> std::io::Result<(std::fs::File, std::fs::Metadata)> {
+    use std::os::unix::fs::OpenOptionsExt;
+    // (std adds O_CLOEXEC and retries EINTR)
+    let f = std::fs::OpenOptions::new().read(true).custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK | libc::O_NOCTTY).open(path)?;
+    let md = f.metadata()?;
+    if !md.is_file() {
+        return Err(std::io::Error::from_raw_os_error(libc::EINVAL));
+    }
+    Ok((f, md))
+}
+
+/// A whole file of the data folder, or None: read_file for files with no limit of their own (pages, pictures,
+/// previews), read_file_max for the small text files. Plain files only (open_read_nofollow). (The C returns
+/// what it read when a read fails midway, as fread does; so do these.)
 pub fn read_file(path: &str) -> Option<Vec<u8>> {
+    use std::io::Read;
+    let (mut f, _) = open_read_nofollow(path).ok()?;
+    let mut buf = Vec::new();
+    // (Straight into the buffer, sized from the file's length and grown as needed: a page file is
+    // megabytes, read in a handful of calls rather than one per 4 KB with a copy each. EINTR is
+    // retried. No memory for it is the C's NULL; after another error buf keeps what was read, as
+    // the C's fread leaves it.)
+    if let Err(e) = f.read_to_end(&mut buf) {
+        if e.kind() == std::io::ErrorKind::OutOfMemory {
+            return None;
+        }
+    }
+    Some(buf)
+}
+
+/// read_file for a file of at most `cap` bytes: a longer one is None, with nothing of it read.
+pub fn read_file_max(path: &str, cap: usize) -> Option<Vec<u8>> {
+    use std::io::Read;
+    let (f, md) = open_read_nofollow(path).ok()?;
+    // (sizes compared as u64, and never cap + 1 as a usize)
+    if md.len() > cap as u64 {
+        return None;
+    }
+    let mut buf = Vec::new();
+    buf.try_reserve_exact(md.len() as usize).ok()?;
+    // (one byte past the limit is asked for: a file that grew since the fstat is told from one that fits)
+    if let Err(e) = f.take((cap as u64).saturating_add(1)).read_to_end(&mut buf) {
+        if e.kind() == std::io::ErrorKind::OutOfMemory {
+            return None;
+        }
+    }
+    if buf.len() as u64 > cap as u64 {
+        return None;
+    }
+    Some(buf)
+}
+
+/// A whole file that is not the data folder's (the system's own: /proc, /sys, the Kindle's locale file; a
+/// developer's input to the simulator): read as before, links followed.
+pub fn read_system_file(path: &str) -> Option<Vec<u8>> {
     use std::io::Read;
     let mut f = std::fs::File::open(path).ok()?;
     let mut buf = Vec::new();
@@ -1051,5 +1128,151 @@ mod tests {
             }
         }
         assert!(found.is_empty(), "use crate::util::random_fill instead: {found:?}");
+    }
+
+    // A scratch folder of one test's own (under GRIMOIRE_TEST_TMP when the Makefile sets it).
+    fn scratch(name: &str) -> std::path::PathBuf {
+        let base = std::env::var("GRIMOIRE_TEST_TMP").map(std::path::PathBuf::from).unwrap_or_else(|_| std::env::temp_dir());
+        let dir = base.join(format!("grimoire-util-{}-{name}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+    fn text(p: &std::path::Path) -> &str {
+        p.to_str().unwrap()
+    }
+    fn fifo_at(p: &std::path::Path) {
+        let c = std::ffi::CString::new(text(p)).unwrap();
+        // SAFETY: mkfifo reads the NUL-terminated path we own.
+        assert_eq!(unsafe { libc::mkfifo(c.as_ptr(), 0o644) }, 0);
+    }
+
+    // The data folder's open takes a plain file at the name and nothing else, and never waits; a folder on the
+    // way may be a link.
+    #[test]
+    fn open_read_nofollow_takes_plain_files_only() {
+        use std::os::fd::AsRawFd;
+        let d = scratch("open");
+        let plain = d.join("plain.ini");
+        std::fs::write(&plain, b"twelve bytes").unwrap();
+        let (f, md) = open_read_nofollow(text(&plain)).unwrap();
+        assert_eq!(md.len(), 12);
+        assert!(md.is_file());
+        // SAFETY: fcntl reads the flags of the descriptor `f` owns.
+        let (fl, fd) = unsafe { (libc::fcntl(f.as_raw_fd(), libc::F_GETFL), libc::fcntl(f.as_raw_fd(), libc::F_GETFD)) };
+        assert!(fl >= 0 && fl & libc::O_NONBLOCK != 0, "O_NONBLOCK stays set: {fl:#x}");
+        assert!(fd >= 0 && fd & libc::FD_CLOEXEC != 0, "close-on-exec: {fd:#x}");
+        drop(f);
+        let link = d.join("link.ini");
+        std::os::unix::fs::symlink(&plain, &link).unwrap();
+        assert!(open_read_nofollow(text(&link)).is_err(), "a link to a plain file");
+        let ghost = d.join("ghost.ini");
+        std::os::unix::fs::symlink(d.join("nowhere"), &ghost).unwrap();
+        assert!(open_read_nofollow(text(&ghost)).is_err(), "a dangling link");
+        let folder = d.join("folder");
+        std::fs::create_dir(&folder).unwrap();
+        let e = open_read_nofollow(text(&folder)).err().expect("a folder");
+        assert_eq!(e.raw_os_error(), Some(libc::EINVAL));
+        // (a FIFO no one writes to: the answer comes at once, or this test would never end)
+        let pipe = d.join("pipe.ini");
+        fifo_at(&pipe);
+        let e = open_read_nofollow(text(&pipe)).err().expect("a FIFO");
+        assert_eq!(e.raw_os_error(), Some(libc::EINVAL));
+        assert!(open_read_nofollow(text(&d.join("missing.ini"))).is_err_and(|e| e.kind() == std::io::ErrorKind::NotFound));
+        // the same plain file through a folder that is a link
+        let way = d.join("way");
+        std::os::unix::fs::symlink(&d, &way).unwrap();
+        let (_, md) = open_read_nofollow(text(&way.join("plain.ini"))).unwrap();
+        assert_eq!(md.len(), 12);
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    // The data folder's read gives a file's bytes whatever its length, and the bounded one gives them up to
+    // its limit and nothing of a longer file.
+    #[test]
+    fn read_file_is_the_files_bytes() {
+        const MIB: usize = 1 << 20;
+        let d = scratch("read");
+        let p = d.join("bytes");
+        let mut x: u32 = 0x2545F491;
+        let all: Vec<u8> = (0..5 * MIB + 321)
+            .map(|_| {
+                x ^= x << 13;
+                x ^= x >> 17;
+                x ^= x << 5;
+                (x >> 11) as u8
+            })
+            .collect();
+        for n in [0, 1, 8191, 8192, 8193, MIB - 1, MIB, MIB + 1, all.len()] {
+            std::fs::write(&p, &all[..n]).unwrap();
+            let want = std::fs::read(&p).unwrap();
+            assert_eq!(want.len(), n);
+            assert!(read_file(text(&p)).as_deref() == Some(&want[..]), "read_file of {n} bytes");
+            assert!(read_system_file(text(&p)).as_deref() == Some(&want[..]), "read_system_file of {n} bytes");
+            assert!(read_file_max(text(&p), usize::MAX).as_deref() == Some(&want[..]), "read_file_max of {n} bytes, no limit");
+            let capped = read_file_max(text(&p), MIB);
+            if n <= MIB {
+                assert!(capped.as_deref() == Some(&want[..]), "read_file_max of {n} bytes, up to 1 MiB");
+            } else {
+                assert!(capped.is_none(), "read_file_max of {n} bytes, over 1 MiB");
+            }
+        }
+        // the limit is the file's own length, to the byte
+        std::fs::write(&p, b"abc").unwrap();
+        assert_eq!(read_file_max(text(&p), 3).as_deref(), Some(&b"abc"[..]));
+        assert_eq!(read_file_max(text(&p), 2), None);
+        assert_eq!(read_file_max(text(&p), 0), None);
+        std::fs::write(&p, b"").unwrap();
+        assert_eq!(read_file_max(text(&p), 0).as_deref(), Some(&b""[..]));
+        assert_eq!(read_file(text(&d.join("missing"))), None);
+        assert_eq!(read_file_max(text(&d.join("missing")), MIB), None);
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    // A file made afresh takes the name for itself: what stood there goes, and is never opened or written.
+    #[test]
+    fn create_fresh_nofollow_never_opens_what_is_there() {
+        use std::io::Write;
+        use std::os::unix::fs::MetadataExt;
+        let d = scratch("fresh");
+        let outside = d.join("outside.ini");
+        std::fs::write(&outside, b"marker=outside-only\n").unwrap();
+        let at = d.join("work.tmp");
+        let plain = |p: &std::path::Path| std::fs::symlink_metadata(p).is_ok_and(|m| m.file_type().is_file() && m.nlink() == 1);
+        // nothing at the name
+        create_fresh_nofollow(text(&at)).unwrap().write_all(b"one").unwrap();
+        assert_eq!(std::fs::read(&at).unwrap(), b"one");
+        // a stale file of an earlier run: made anew, not written onto
+        create_fresh_nofollow(text(&at)).unwrap().write_all(b"2").unwrap();
+        assert_eq!(std::fs::read(&at).unwrap(), b"2");
+        // a link: the link goes, what it named stays as it was
+        std::fs::remove_file(&at).unwrap();
+        std::os::unix::fs::symlink(&outside, &at).unwrap();
+        create_fresh_nofollow(text(&at)).unwrap().write_all(b"three").unwrap();
+        assert!(plain(&at) && std::fs::read(&at).unwrap() == b"three");
+        assert_eq!(std::fs::read(&outside).unwrap(), b"marker=outside-only\n");
+        // a dangling link: nothing is made where it pointed
+        std::fs::remove_file(&at).unwrap();
+        std::os::unix::fs::symlink(d.join("nowhere"), &at).unwrap();
+        create_fresh_nofollow(text(&at)).unwrap().write_all(b"four").unwrap();
+        assert!(plain(&at) && !d.join("nowhere").exists());
+        // a second name of another file: that file keeps its bytes
+        std::fs::remove_file(&at).unwrap();
+        std::fs::hard_link(&outside, &at).unwrap();
+        create_fresh_nofollow(text(&at)).unwrap().write_all(b"five").unwrap();
+        assert!(plain(&at) && std::fs::read(&at).unwrap() == b"five");
+        assert_eq!(std::fs::read(&outside).unwrap(), b"marker=outside-only\n");
+        // a FIFO no one reads: replaced by a plain file, at once
+        std::fs::remove_file(&at).unwrap();
+        fifo_at(&at);
+        create_fresh_nofollow(text(&at)).unwrap().write_all(b"six").unwrap();
+        assert!(plain(&at) && std::fs::read(&at).unwrap() == b"six");
+        // a folder: refused, and it stays
+        std::fs::remove_file(&at).unwrap();
+        std::fs::create_dir(&at).unwrap();
+        std::fs::write(at.join("kept"), b"k").unwrap();
+        assert!(create_fresh_nofollow(text(&at)).is_err());
+        assert!(at.is_dir() && at.join("kept").exists());
+        let _ = std::fs::remove_dir_all(&d);
     }
 }
