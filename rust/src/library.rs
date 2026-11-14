@@ -3906,8 +3906,8 @@ fn draw_settings(a: &mut App) {
     } = a;
     let s = lib.as_deref_mut().unwrap();
     let page = settings_page(c, aw, ah, tr("Settings"), false, false);
-    // (a tap outside every row does nothing, rather than reaching the library behind)
-    hits_add(&mut s.hits, Rect::new(0, 0, aw, ah), H_NONE, 0);
+    // (a tap outside every row finds no hit and does nothing: never a hit over the whole page, whose
+    // press feedback would invert the screen and refresh it whole)
     let pad = page.content.x;
     let top = page.content.y;
     let cats = &settingsmenu::CATEGORIES;
@@ -8780,6 +8780,52 @@ mod tests {
                 }
             }
         }
+        i18n_set("en");
+        ui_init(300.0);
+        ui_set_theme(UiTheme::Gothic);
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    // A tap on Settings' white space does nothing at all: the page must not carry a shield hit over
+    // all of it, which would be found, invert the whole screen as press feedback, and refresh it
+    // whole at the lift (a full-screen flash on every tap between the rows).
+    #[test]
+    fn a_tap_on_settings_white_space_refreshes_nothing() {
+        let root = std::env::temp_dir().join(format!("grimoire-settings-blank-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        assert_eq!(store_init(root.to_str().unwrap()), 0);
+        assert_eq!(font_init(), 0);
+        ui_init(300.0);
+        ui_set_theme(UiTheme::Gothic);
+        i18n_set("en");
+        let mut a = App { w: 1860, h: 2480, dpi: 300.0, input_drained: true, ..Default::default() };
+        assert_eq!(canvas_init(&mut a.screen, a.w, a.h), 0);
+        library_init(&mut a);
+        lib(&mut a).modal = Modal::Settings;
+        lib(&mut a).settings_cat = 2;
+        hits_clear(&mut lib(&mut a).hits);
+        draw_settings(&mut a);
+        // Any point no row covers (a gap between the cards, or the title bar).
+        let mut blank = None;
+        'scan: for y in (0..a.h).step_by(8) {
+            for x in (0..a.w).step_by(8) {
+                if hits_find(&a.lib.as_ref().unwrap().hits, x as f32, y as f32).is_none() {
+                    blank = Some((x as f32, y as f32));
+                    break 'scan;
+                }
+            }
+        }
+        let (x, y) = blank.expect("Settings' white space (a full-screen hit covers the page)");
+        a.dirty = RECT_EMPTY;
+        library_event(&mut a, &InEvent { type_: InType::TouchDown, x, y, t_ms: 1000, ..Default::default() });
+        assert!(a.lib.as_ref().unwrap().pressed.is_none(), "white space took a press (it would invert the screen)");
+        assert!(rect_is_empty(a.dirty), "white space asked for a refresh");
+        library_event(&mut a, &InEvent { type_: InType::TouchUp, x, y, t_ms: 1040, ..Default::default() });
+        assert!(a.lib.as_ref().unwrap().pressed.is_none());
+        assert!(rect_is_empty(a.dirty), "white space refreshed the screen");
+        assert_eq!(a.lib.as_ref().unwrap().modal, Modal::Settings);
+        library_free(&mut a);
+        canvas_free(&mut a.screen);
         i18n_set("en");
         ui_init(300.0);
         ui_set_theme(UiTheme::Gothic);

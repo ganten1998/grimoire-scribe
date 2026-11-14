@@ -82,7 +82,7 @@ const N_SLEEP_STEPS: i32 = K_SLEEP_STEPS.len() as i32;
 
 /// The sleep screen row, one sentence per choice (settings.ini sleep_mode 0, 1, 2).
 static K_MODE_ROWS: [&str; 4] = [
-    // TRANSLATORS: the Sleep & Clock sheet's sleep screen row, which a tap moves to the next choice:
+    // TRANSLATORS: the Sleep settings page's sleep screen row, which a tap moves to the next choice:
     // what the Kindle shows while it sleeps. About 1280 px at 44 px, upright and sideways.
     n_("Sleep screen: the page I'm on (tap to change)"),
     n_("Sleep screen: a pinned page (tap to change)"),
@@ -91,18 +91,18 @@ static K_MODE_ROWS: [&str; 4] = [
 ];
 
 /// The clock and battery's size (settings.ini status_size 0, 1, 2) and corner (status_corner 0, 1, 2, 3):
-/// two rows on Sleep & Clock's page, each a tap that moves to the next choice, one sentence for each
+/// two rows on the Clock settings page, each a tap that moves to the next choice, one sentence for each
 /// choice so a language can put its words in order. Each has room for an icon and two lines of text at
 /// 34 px.
 static K_STATUS_ROWS: [&str; 3] = [
-    // TRANSLATORS: the Sleep & Clock sheet's row for how large the clock and battery on a notebook page
+    // TRANSLATORS: the Clock settings page's row for how large the clock and battery on a notebook page
     // are, which a tap moves to the next size. Two lines of about 365 px at 34 px.
     n_("Clock size: small"),
     n_("Clock size: medium"),
     n_("Clock size: large"),
 ];
 static K_CORNER_ROWS: [&str; 4] = [
-    // TRANSLATORS: the Sleep & Clock sheet's row under the clock's size: which corner of a notebook page
+    // TRANSLATORS: the Clock settings page's row under the clock's size: which corner of a notebook page
     // the clock and battery sit in, which a tap moves to the next (clockwise). Two lines of about 365 px
     // at 34 px.
     n_("Clock corner: top left"),
@@ -152,6 +152,7 @@ pub fn dispmenu_open_sleep(m: &mut DispMenu, a: &mut App) {
 pub fn dispmenu_open_clock(m: &mut DispMenu, a: &mut App) {
     dispmenu_open(m, a);
     m.page = DmPage::Clock;
+    crate::status::status_preview_prepare();
 }
 
 fn slider_for(m: &DispMenu, a: &App, which: i32, row: Rect, s: &mut Slider) {
@@ -269,6 +270,21 @@ fn draw_drow(m: &mut DispMenu, a: &mut App, kind: &DRowKind, outer: Rect) {
     }
 }
 
+/// The Clock page's live sample: a notebook page in a card, with the clock and battery at the size
+/// and in the corner the rows below choose, so a tap on either shows its choice at once.
+fn draw_clock_preview(a: &mut App, r: Rect) {
+    crate::library::settings_card(&mut a.screen, r, ButtonStyle::Plain);
+    let pad = crate::library::settings_pad();
+    let page = Rect::new(r.x + pad, r.y + pad, r.w - 2 * pad, r.h - 2 * pad);
+    if page.w <= 0 || page.h <= 0 {
+        return;
+    }
+    // The page itself is square, unlike the card around it.
+    ui_frame(&mut a.screen, page, 0, 255, true, 0);
+    ui_frame(&mut a.screen, page, 0, 0, false, ui_px(2.0));
+    crate::status::status_preview(&mut a.screen, page, a.settings.status_size, a.settings.status_corner, a.settings.clock_12h);
+}
+
 /// Draws into a->screen; returns the rect covered. Either page is a full screen, as Settings'
 /// submenus are: Back and the title above a rule, the rows below (one column, or two when the screen
 /// is short) and X at the top right.
@@ -287,7 +303,8 @@ pub fn dispmenu_draw(m: &mut DispMenu, a: &mut App) -> Rect {
     let page = crate::library::settings_page(&mut a.screen, aw, ah, title, true, false);
     hits_add(&mut m.hits, page.back, D_BACK, 0);
     hits_add(&mut m.hits, page.close, D_DONE, 0);
-    let in_ = page.content;
+    let mut in_ = page.content;
+    let gap = ui_px(16.0);
     let mut rows: Vec<DRowKind> = Vec::new();
     match m.page {
         DmPage::Display => {
@@ -332,6 +349,10 @@ pub fn dispmenu_draw(m: &mut DispMenu, a: &mut App) -> Rect {
             rows.push(DRowKind::Slider(D_SLEEP_AFTER));
         }
         DmPage::Clock => {
+            // A page's own corner: the sample above the rows, with the room for three rows kept below.
+            let ph = (in_.h * 55 / 100).clamp(ui_px(200.0), ui_px(900.0));
+            draw_clock_preview(a, Rect::new(in_.x, in_.y, in_.w, ph));
+            in_ = Rect::new(in_.x, in_.y + ph + gap, in_.w, (in_.h - ph - gap).max(0));
             rows.push(DRowKind::Check {
                 id: D_TIME12,
                 label: tr("Display time as 12 hour").to_string(),
@@ -350,7 +371,6 @@ pub fn dispmenu_draw(m: &mut DispMenu, a: &mut App) -> Rect {
         }
     }
     let n = rows.len() as i32;
-    let gap = ui_px(16.0);
     let cols = if in_.h / n.max(1) < ui_px(88.0) { 2 } else { 1 };
     let per = (n + cols - 1) / cols;
     let rh = ((in_.h - (per - 1) * gap) / per.max(1)).clamp(ui_px(60.0), ui_px(140.0));

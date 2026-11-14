@@ -453,6 +453,34 @@ fn draw(c: &mut Canvas, l: &Layout) {
     }
 }
 
+/// Reads the battery for the Clock settings page's preview: the indicator itself is not on the panel
+/// there, so its own tick never reads one. Called as that page opens (never while drawing).
+pub fn status_preview_prepare() {
+    read_battery();
+}
+
+/// A sample of the indicator on a notebook page in r, at `size` and in `corner`, for Settings' Clock
+/// page: a size, corner or 12-hour change shows there at once. Draws only, from the battery last read
+/// (status_preview_prepare): no refresh and no state.
+pub fn status_preview(c: &mut Canvas, r: Rect, size: i32, corner: i32, twelve: bool) {
+    if r.w <= 0 || r.h <= 0 {
+        return;
+    }
+    let b = with(|s| s.battery);
+    let mut l = layout_of(size, corner, r.w, r.h, sys_wall_clock(), twelve, &b);
+    l.rect.x += r.x;
+    l.rect.y += r.y;
+    l.time_r.x += r.x;
+    l.time_r.y += r.y;
+    l.pct_r.x += r.x;
+    l.pct_r.y += r.y;
+    if let Some(icon) = l.icon.as_mut() {
+        icon.x += r.x;
+        icon.y += r.y;
+    }
+    draw(c, &l);
+}
+
 /// The square a tap finds in the corner the setting names: 14 mm.
 pub fn status_square(a: &App) -> Rect {
     let side = (ZONE_MM * a.dpi / 25.4).round() as i32;
@@ -1286,6 +1314,41 @@ mod tests {
             let icon = l.icon.unwrap();
             assert!(icon.y - l.rect.y >= ui_px(3.0) && l.rect.h >= l.unit * ICON_UH + 2 * ui_px(3.0));
         }
+    }
+
+    // Settings' Clock page's sample: the indicator at the size and in the corner the rows choose.
+    #[test]
+    fn the_preview_draws_the_indicator_in_the_chosen_corner() {
+        utc();
+        up();
+        with(|s| s.battery = Battery { percent: 87, charging: false });
+        let r = Rect { x: 200, y: 300, w: 1200, h: 600 };
+        let ink = |c: &Canvas, x0: i32, y0: i32, x1: i32, y1: i32| {
+            let mut n = 0;
+            for y in y0..y1 {
+                for x in x0..x1 {
+                    if c.px[(y * c.stride + x) as usize] < 128 {
+                        n += 1;
+                    }
+                }
+            }
+            n
+        };
+        let (mx, my) = (r.x + r.w / 2, r.y + r.h / 2);
+
+        let mut c = Canvas::default();
+        assert_eq!(canvas_init(&mut c, 1600, 1200), 0);
+        status_preview(&mut c, r, 1, 0, false);
+        assert!(ink(&c, r.x, r.y, mx, my) > 100, "the clock is in the top left");
+        assert_eq!(ink(&c, mx, my, r.x + r.w, r.y + r.h), 0, "and nowhere else");
+        canvas_free(&mut c);
+
+        let mut c = Canvas::default();
+        assert_eq!(canvas_init(&mut c, 1600, 1200), 0);
+        status_preview(&mut c, r, 1, 2, false);
+        assert!(ink(&c, mx, my, r.x + r.w, r.y + r.h) > 100, "the clock is in the bottom right");
+        assert_eq!(ink(&c, r.x, r.y, mx, my), 0, "and nowhere else");
+        canvas_free(&mut c);
     }
 
     #[test]
