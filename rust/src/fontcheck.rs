@@ -82,6 +82,8 @@ pub const FONT_TIME_PX: f32 = FONT_PX_MAX;
 pub const FONT_SKIP_MAX: usize = 656;
 /// Characters of a family or style name kept.
 pub const FONT_NAME_CHARS: usize = 64;
+/// The most a `cover` count says (characters a font has of one script).
+pub const FONT_COVER_MAX: i32 = 100_000;
 /// The line a font's own em of kana and kanji is drawn at: DotGothic16's em over its line, so Japanese takes
 /// the room it takes today whatever face draws it.
 pub const FONT_CJK_EM: f32 = 0.691;
@@ -1514,7 +1516,7 @@ pub fn check_font(data: &[u8], px: i32) -> FontOut {
                     let Some(f) = facts.as_mut() else { return bad(&mut w) };
                     for i in 0..6 {
                         let Some(n) = num(2 + i) else { return bad(&mut w) };
-                        f.cover[i] = n.min(100_000) as i32;
+                        f.cover[i] = n.min(FONT_COVER_MAX as i64) as i32;
                     }
                 }
                 ("F", "lacks", 3) => {
@@ -1708,24 +1710,26 @@ impl Verdict {
                 s.push_str(&format!("cover={} {} {} {} {} {}\n", f.cover[0], f.cover[1], f.cover[2], f.cover[3], f.cover[4], f.cover[5]));
                 s.push_str(&format!("lacks={}\n", f.lacks));
                 s.push_str(&format!("family={}\nstyle={}\n", f.family, f.style));
-                if !f.skip.is_empty() {
-                    s.push_str("skip=");
-                    s.push_str(&f.skip.iter().map(|g| g.to_string()).collect::<Vec<_>>().join(","));
-                    s.push('\n');
-                }
+                // (always there, and the last line: a pass that lacks it is a text that was cut)
+                s.push_str("skip=");
+                s.push_str(&f.skip.iter().map(|g| g.to_string()).collect::<Vec<_>>().join(","));
+                s.push('\n');
             }
         }
         s
     }
 
-    /// Reads a `.font` file's bytes, strictly: every line known, every number in range, or None (the font is
-    /// then checked again). Nothing here trusts the file, wherever it is kept: in a build without a folder of
-    /// its own (userfonts.rs) it sits on storage a computer can write.
-    pub fn parse(text: &[u8]) -> Option<Verdict> {
-        if text.len() > VERDICT_MAX {
+    /// Reads a `.font` file's bytes, strictly: every line known, every number in range, and the bytes exactly
+    /// the text `to_text` writes for what they say (each line there once and in its place, a pass down to its
+    /// `skip=` line, a refusal with nothing after its `why=`), or None (the font is then checked again). So a
+    /// text cut short anywhere, a key given twice and a line out of place are each no verdict. Nothing here
+    /// trusts the file, wherever it is kept: in a build without a folder of its own (userfonts.rs) it sits on
+    /// storage a computer can write.
+    pub fn parse(bytes: &[u8]) -> Option<Verdict> {
+        if bytes.len() > VERDICT_MAX {
             return None;
         }
-        let text = std::str::from_utf8(text).ok()?;
+        let text = std::str::from_utf8(bytes).ok()?;
         let mut lines = text.split('\n');
         if lines.next()? != format!("grimoire-font {VERDICT_NUMBER}") {
             return None;
@@ -1777,7 +1781,8 @@ impl Verdict {
                 "family" => f.family = v.chars().filter(|c| !c.is_control()).take(FONT_NAME_CHARS).collect(),
                 "style" => f.style = v.chars().filter(|c| !c.is_control()).take(FONT_NAME_CHARS).collect(),
                 "skip" => {
-                    for g in v.split(',') {
+                    // (an empty list is a pass that skips no glyph)
+                    for g in v.split(',').filter(|_| !v.is_empty()) {
                         let g = number(g).filter(|&g| g <= 65_535)? as u16;
                         f.skip.push(g);
                     }
@@ -1796,14 +1801,20 @@ impl Verdict {
                     Some((_, def, hi)) => f.bold_at == 0 || (def < f.bold_at && f.bold_at <= hi),
                     None => f.bold_at == 0,
                 };
-                if !f.sane() || !axis_ok {
+                // (the ranges the writer holds a worker's figures to: check_font)
+                let counts_ok = (1..=65_535).contains(&f.mapped) && f.cover.iter().all(|c| (0..=FONT_COVER_MAX).contains(c));
+                if !f.sane() || !axis_ok || !counts_ok {
                     return None;
                 }
                 VerdictKind::Passed(f)
             }
             _ => return None,
         };
-        Some(Verdict { hash, size, what })
+        // Exactly the text this version writes for it. What was read above is a verdict only when writing it
+        // again gives these very bytes: every line there once and in its place, no number spelt another way,
+        // nothing after a refusal's reason, and a pass whole down to its last line.
+        let v = Verdict { hash, size, what };
+        (v.to_text().as_bytes() == bytes).then_some(v)
     }
 }
 
@@ -1962,6 +1973,101 @@ mod tests {
         }
         assert_eq!(Verdict::parse(&vec![b'a'; VERDICT_MAX + 1]), None);
         assert_eq!(Verdict::parse(b""), None);
+    }
+
+    // A verdict is exactly a text this version writes. A text cut anywhere (at a line's end too) is none: a pass
+    // ends with its `skip=` line, which is there with no glyph skipped as well. A key given twice, a line
+    // missing, out of place or added, a refusal with anything after its reason, and the counts the writer
+    // holds a worker to (`mapped`, `cover`, `italic`, `weight`, `lacks`) out of their ranges are none either.
+    #[test]
+    fn a_verdict_is_exactly_a_text_the_check_writes() {
+        let hash: [u8; 32] = std::array::from_fn(|i| (i as u8).wrapping_mul(11).wrapping_add(5));
+        let facts = |skip: Vec<u16>, axis: bool| FaceFacts {
+            upem: 2048,
+            ascent: 1900,
+            descent: -500,
+            scale_pm: 1000,
+            weight: 400,
+            italic: true,
+            wght: axis.then_some((300, 400, 800)),
+            bold_at: if axis { 700 } else { 0 },
+            mapped: 65_535,
+            skip,
+            family: "A Family = of Its Own".into(),
+            style: String::new(),
+            lacks: 0xFFFF,
+            cover: [FONT_COVER_MAX, 0, 1, 2, 3, 4],
+        };
+        let pass = |skip: Vec<u16>, axis: bool| Verdict { hash, size: FONT_FILE_MAX as u64, what: VerdictKind::Passed(facts(skip, axis)) };
+        let texts: Vec<String> = vec![
+            pass(vec![3, 77, 4000], true).to_text(),
+            pass(Vec::new(), true).to_text(),
+            pass(vec![65_535], false).to_text(),
+            pass((0..FONT_SKIP_MAX as u16).collect(), false).to_text(),
+            Verdict { hash, size: 1, what: VerdictKind::Refused(Refuse::Unreadable) }.to_text(),
+            Verdict { hash, size: 1, what: VerdictKind::Refused(Refuse::Format) }.to_text(),
+            Verdict { hash, size: 1, what: VerdictKind::Slow }.to_text(),
+        ];
+        for text in &texts {
+            assert!(text.len() <= VERDICT_MAX);
+            let v = Verdict::parse(text.as_bytes()).unwrap_or_else(|| panic!("{text}"));
+            assert_eq!(v.to_text(), *text);
+            // cut anywhere: after any byte, so at every line's end too
+            for cut in 0..text.len() {
+                assert_eq!(Verdict::parse(&text.as_bytes()[..cut]), None, "cut at {cut} of {text}");
+            }
+            // one more line's end, a line given twice, a line left out, two lines the other way round
+            assert_eq!(Verdict::parse(format!("{text}\n").as_bytes()), None);
+            let lines: Vec<&str> = text.split_inclusive('\n').collect();
+            for i in 0..lines.len() {
+                let mut twice = lines.clone();
+                twice.insert(i, lines[i]);
+                assert_eq!(Verdict::parse(twice.concat().as_bytes()), None, "line {i} twice in {text}");
+                let mut without = lines.clone();
+                without.remove(i);
+                assert_eq!(Verdict::parse(without.concat().as_bytes()), None, "line {i} left out of {text}");
+                if i + 1 < lines.len() {
+                    let mut swapped = lines.clone();
+                    swapped.swap(i, i + 1);
+                    assert_eq!(Verdict::parse(swapped.concat().as_bytes()), None, "lines {i} and {} swapped in {text}", i + 1);
+                }
+            }
+        }
+        // a pass says which glyphs it skips even when it skips none, in its last line
+        assert!(texts[1].ends_with("\nstyle=\nskip=\n"), "{}", texts[1]);
+        assert_eq!(Verdict::parse(texts[1].as_bytes()).map(|v| v.what), Some(VerdictKind::Passed(facts(Vec::new(), true))));
+        // a refusal is its three lines after the first, and nothing of a face after them
+        let slow = &texts[6];
+        for more in ["upem=1000\n", "skip=\n", "skip=9,1\n", "ok=1\n", "why=slow\n", "why=unreadable\n"] {
+            assert_eq!(Verdict::parse(format!("{slow}{more}").as_bytes()), None, "{more}");
+        }
+        // the counts, held to what the writer holds a worker's to
+        let text = &texts[0];
+        for (good, bad) in [
+            ("mapped=65535", "mapped=65536"),
+            ("mapped=65535", "mapped=0"),
+            ("mapped=65535", "mapped=999999999"),
+            ("cover=100000 0 1 2 3 4", "cover=100001 0 1 2 3 4"),
+            ("cover=100000 0 1 2 3 4", "cover=100000 0 1 2 3 999999999"),
+            ("cover=100000 0 1 2 3 4", "cover=100000 0 1 2 3"),
+            ("italic=1", "italic=2"),
+            ("weight=400", "weight=0"),
+            ("weight=400", "weight=1001"),
+            ("lacks=65535", "lacks=65536"),
+            ("skip=3,77,4000", "skip=3,77,4000,"),
+            ("skip=3,77,4000", "skip=3,,77,4000"),
+            ("skip=3,77,4000", "skip=3,77,04000"),
+            ("size=25165824", "size=025165824"),
+            ("family=A Family = of Its Own", "family=A Family\t= of Its Own"),
+        ] {
+            assert!(text.contains(good), "{good}");
+            assert_eq!(Verdict::parse(text.replace(good, bad).as_bytes()), None, "{bad}");
+        }
+        // (a name is 64 characters at most, as the writer cuts it)
+        let long = text.replace("family=A Family = of Its Own", &format!("family={}", "n".repeat(FONT_NAME_CHARS + 1)));
+        assert_eq!(Verdict::parse(long.as_bytes()), None);
+        let fits = text.replace("family=A Family = of Its Own", &format!("family={}", "n".repeat(FONT_NAME_CHARS)));
+        assert!(Verdict::parse(fits.as_bytes()).is_some());
     }
 
     #[test]

@@ -637,8 +637,10 @@ its size and its time (`<path>/<size>/<mtime>`), so a file replaced by another i
 cache: deleting it loses nothing, and has every font checked again. The background job writes it; the app
 itself only renames a `.checking` mark to `.bad` when that job died.
 
-- `<key>.font`, the verdict, text, at most 8 KiB, read strictly (an unknown line, or a number out of range,
-  makes the file no verdict and the font is checked again). Where it is kept depends on the build (2.1.1 on).
+- `<key>.font`, the verdict, text, at most 8 KiB, read strictly: it is a verdict only when it is, byte for
+  byte, a text the check writes (every line below there once and in this order, every number in range and
+  written as below, nothing after the last line). Anything else, a text cut short at a line's end among
+  them, is no verdict, and the font is checked again. Where it is kept depends on the build (2.1.1 on).
   On the Kindle it is outside the storage, in `/var/local/grimoire/<16 hex digits>/fonts/`: the 16 digits
   are the FNV-1a 64 hash of the data root's path (each data root has its folder there, and the file `root`
   beside `fonts/` holds the root's path), the folders are root's alone (mode 0700), and nothing under
@@ -655,18 +657,21 @@ itself only renames a `.checking` mark to `.bad` when that job died.
   ascent=<units above the baseline>     descent=<units below it, as a magnitude>
   scale=<how much bigger than asked its text is drawn, in thousandths: 850 to 1250>
   weight=<its weight class, 1 to 1000>  italic=<0|1>
-  mapped=<glyphs its cmap maps>
+  mapped=<glyphs its cmap maps, 1 to 65535>
   wght=<least> <default> <most>   bold=<the weight its bold is drawn at>   (a weight axis only)
-  cover=<characters it has of Latin-1, Latin Extended-A, Greek, Cyrillic, kana, kanji>
+  cover=<characters it has of Latin-1, Latin Extended-A, Greek, Cyrillic, kana, kanji: at most 100000 each>
   lacks=<bits: 1 English, 2 Spanish, 4 Japanese: that language's words need letters it lacks>
   family=<its family's name>      style=<its style's name>     (64 characters each at most)
   skip=<glyph>,<glyph>,...        glyphs that failed the check or take too long to draw, in order, at most
-                                  656: drawn in Terminess
+                                  656: drawn in Terminess. The last line of a pass, there (empty after
+                                  the `=`) when no glyph is skipped
   ```
 
-  The lines after `size` are there only with `ok=1`. `ascent` and `descent` are the font's own unless they
-  are far from what its letters reach (then what they reach). Grimoire draws a font only when the bytes it
-  reads hash to `hash`; other bytes under the same name, size and time are checked again. The first line's
+  A refusal ends with its `why=` line. The lines from `upem` on are there only with `ok=1`, and then all
+  of them are, each on a line of its own (`wght` and `bold` only for a font with a weight axis). `ascent`
+  and `descent` are the font's own unless they are far from what its letters reach (then what they reach).
+  Grimoire draws a font only when the bytes it reads hash to `hash`; other bytes under the same name, size
+  and time are checked again. The first line's
   number stands for the text and for the check's rules together: 2.1.0 wrote `grimoire-font 1` with a
   16-digit FNV-1a 64 `hash`, which is no verdict now, so each font is checked once more after the update.
   On the Kindle a `<key>.font` in `fonts/.cache/` is 2.1.0's: it is not read and not written, and goes when

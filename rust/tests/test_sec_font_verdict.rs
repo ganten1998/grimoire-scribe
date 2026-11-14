@@ -180,11 +180,12 @@ fn verdict_text(font: &[u8]) -> String {
     Verdict { hash: font_hash(font), size: font.len() as u64, what: VerdictKind::Passed(facts) }.to_text()
 }
 
-/// The text 2.1 wrote for the same font: its first line and its hash line were other ones.
+/// The text 2.1 wrote for the same font: its first line and its hash line were other ones, and it had no
+/// `skip=` line for a font that skips no glyph.
 fn verdict_text_2_1(font: &[u8]) -> String {
     let now = verdict_text(font);
     let rest: Vec<&str> = now.splitn(3, '\n').collect();
-    format!("grimoire-font 1\nhash={:016x}\n{}", fnv(font), rest[2])
+    format!("grimoire-font 1\nhash={:016x}\n{}", fnv(font), rest[2].strip_suffix("skip=\n").unwrap_or(rest[2]))
 }
 
 /// A small picture file, as a preview is one.
