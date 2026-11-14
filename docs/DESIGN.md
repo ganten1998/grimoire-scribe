@@ -2066,7 +2066,10 @@ steps are in place; `S 0` is a build without them, macOS); where the sandbox is 
 records after a send that failed. The page watchdog runs on CLOCK_MONOTONIC (a sleep does not count); a page
 whose wait the Kindle slept through and that then stalls is tried again once without a strike. Off the Kindle the steps are
 skipped (plain process isolation) unless GRIMOIRE_SANDBOX=require. The worker's records are text lines of a
-fixed grammar plus pixel bands, at most 4 MiB a job besides pixels, parsed strictly (`pdfwork.rs`); every
+fixed grammar plus pixel bands, parsed strictly (`pdfwork.rs`). The writer ends a worker whose record lines pass
+4 MiB (`RECORDS_MAX_BYTES`: counted for each worker, the pixels and the handshake's two lines apart), and a job
+is many workers: a fresh one for each slice, and after each one that died or stalled. Only the first comes near
+the cap, with the links and the names; the others send the page count, a line a band and a line a page. Every
 number the device spike (S1) sets is in the one table `sandbox::s1`, marked "set by S1". The notebook, its
 slices, marks and colour rule are in FORMAT.md, "Imports: PDFs". Two rules hold the import together (the fix round
 of 2026-11-09): whether a file may be moved is decided by where it lies (`pdfimport::in_import`), never by a mark;

@@ -17,7 +17,7 @@
 //!                                   `futexok`, `futexbad`, `execmap`, `execprot`, `panic`)
 //!   `Q`                             end
 //!
-//! Records (worker to writer, text lines of a fixed grammar, at most 4 MiB a job besides the pixels):
+//! Records (worker to writer, text lines of a fixed grammar, at most 4 MiB a worker besides the pixels):
 //!   `B <version> <protocol>`        the build, first line
 //!   `S <0|1>`                       1 when this build has the sandbox steps (each held, where the sandbox is
 //!                                   required); the writer takes 0 only where the sandbox is not required
@@ -50,7 +50,8 @@ pub fn page_watchdog_ms() -> u64 {
     s1::PAGE_WATCHDOG_MS as u64
 }
 
-/// The records of one job, besides pixels.
+/// The record lines of one worker (a `Session`), besides pixels and the handshake's two lines. Only a job's first
+/// worker comes near it (the links and names); the others send the page count, a line a band and a line a page.
 pub const RECORDS_MAX_BYTES: usize = 4 << 20;
 
 /// A page is stored gray when no pixel's channels differ by more than this (8-bit levels), colour (8-bit
@@ -758,7 +759,8 @@ mod links {
     /// Records leave in blocks, so a planner's thousands of links are not thousands of writes.
     struct Out {
         buf: String,
-        /// bytes sent so far (the job's records have 4 MiB in all: links stop at 3)
+        /// bytes sent so far (a worker's records have 4 MiB in all, RECORDS_MAX_BYTES: links stop at 3, which leaves
+        /// room for the names and the counts that follow them)
         bytes: usize,
     }
     impl Out {
