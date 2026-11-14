@@ -10,12 +10,6 @@ why. Newest decisions first within each section.
   #57, but in no release yet.** Try them on a Scribe before the next one: page turns at the fitted view no longer
   flash (every 30th UI refresh does), the last three pages' drawings are kept in memory, and the lasso's lift
   counts its outline as wear. Issue #60: a jump to the oldest of the kept pages misses it.
-- **Live view's pen-stall check is flaky on CI's macOS runners.** `tests/live_pen_stall.py`, "with the main loop
-  busy, its samples still come at once", measured a raw p90 of 62.8 ms (the 60 ms the test holds the main loop)
-  against its 25 ms limit on the dry run of 2026-11-12 (run 43244209271, first attempt), and 0.4 ms on the next
-  attempt and on the Mac. A busy runner can starve the reader thread. Options: print the p90 and hold a looser
-  bound (as test_pdf_colour_memory.rs does with its per-copy budgets), or measure once more before it fails
-  (issue #56).
 
 ## nebuff's main and Clear page (2.1.0-beta.2, lane M, 2026-11-11): what waits
 
@@ -941,6 +935,16 @@ items of Document links. Left:
 
 ## Done
 
+- After 2.1.0-beta.2 (unreleased, 56-live-pen-stall-flake; issue #56, the pen-stall check's p90 of 62.8 ms on the
+  dry run of 2026-11-12, run 43244209271's first attempt): `tests/live_pen_stall.py` measures the pen viewer's own
+  reader once more when its first run misses a check, and the second run decides; the 25 ms bound stays. A miss
+  prints how far the feeder itself fell behind its 4 ms frames, the machine's share of the wait. In this test the
+  viewer waits for the main loop only where it is meant to (its one pen-down, held while the loop handles an
+  event: `LIVE_RAW_HOLD`), so samples that wait for the main loop wait in every run: with every run's samples
+  taken from the ring the check still fails (p90 118 ms, both runs). The failing attempt's runner was slow
+  throughout (the ring's p50 124 ms, against 74 to 95 ms on the Mac). On the Mac at background priority
+  (`taskpolicy -b`, which keeps every process of the test off the CPU at times, the app's among them) the feeder
+  fell up to 1.4 s behind and the raw p90 reached 178 to 841 ms in three runs of four.
 - 2.1.0-beta.2 (unreleased, v21b2/l10-fonts; the owner, 2026-11-04: "Custom font support/More fonts in the classic
   theme", and 2026-11-09: "Fast track everything up till beta.3 into a beta.2."): your own fonts. `.ttf` and
   `.otf` files copied into `grimoire/fonts` are checked by the sandboxed worker (skrifa reads them; every glyph
