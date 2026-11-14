@@ -22,6 +22,8 @@ const MAX_TEMPLATES: usize = 500;
 const IMPORT_QUEUE_MAX: usize = 8;
 /// in an import folder: the notebook it becomes ("done <id>" once made)
 const IMPORT_MARK: &str = ".grimoire-import";
+/// a mark (an import folder's, or one of import/.marks) is read up to this size: it is a line or two
+const IMPORT_MARK_MAX: usize = 4 << 10;
 /// starts that try a folder whose pictures stay the same
 const IMPORT_TRIES: i32 = 3;
 /// what a background job's path holds (bgjob.c): a longer one is cut
@@ -139,8 +141,16 @@ fn exists(path: &str) -> bool {
     Path::new(path).exists()
 }
 
+// Whether the entry at path is a folder of its own: a link to a folder is not.
+fn real_dir(path: &str) -> bool {
+    std::fs::symlink_metadata(path).is_ok_and(|m| m.is_dir())
+}
+
 // The entries of dir that are picture files (pictures) or folders (!pictures), in natural order,
-// at most max. 0, or -1 without the folder (errno says why).
+// at most max. 0, or -1 without the folder (errno says why). An entry counts by what it is itself: only a
+// plain file is a picture and only a real folder is a folder. A link (to a file, to a folder, to nothing), a
+// FIFO or anything else is in neither list, as a dot-entry is: a file or a folder that is a link is copied in
+// to be taken. (dir itself may be reached through a link.)
 // (A name that is not UTF-8 is left out: the job queue and the screens take paths as text, so such
 // a file could not be used anyway; a Kindle's storage writes UTF-8 names.)
 fn list_names(dir: &str, pictures: bool, max: usize, out: &mut Vec<String>) -> i32 {
@@ -159,9 +169,11 @@ fn list_names(dir: &str, pictures: bool, max: usize, out: &mut Vec<String>) -> i
         if pictures && !picture_name(name) {
             continue;
         }
-        let mut path = String::new();
-        csnprintf!(&mut path, PATH_BUF, "%s/%s", dir, name);
-        if is_dir(&path) == pictures {
+        // (the entry's own type, by a stat of the entry that follows no link: one call an entry. Not
+        // file_type(), which is the type the listing reports: pdfimport.rs list_pdfs asks the same way.)
+        let Ok(md) = e.metadata() else { continue };
+        let ft = md.file_type();
+        if !(if pictures { ft.is_file() } else { ft.is_dir() }) {
             continue;
         }
         out.push(name.to_string());
@@ -185,9 +197,10 @@ fn read_source(path: &str, max: usize) -> Option<Vec<u8>> {
     bgimage_read(path, max)
 }
 
-// The first `max` bytes of a file (all of it if it is shorter), or None.
+// The first `max` bytes of a file (all of it if it is shorter), or None. A plain file only (util.rs
+// open_read_nofollow).
 fn read_head(path: &str, max: usize) -> Option<Vec<u8>> {
-    let f = std::fs::File::open(path).ok()?;
+    let (f, _) = open_read_nofollow(path).ok()?;
     let mut buf: Vec<u8> = Vec::new();
     buf.try_reserve_exact(max).ok()?;
     // (fread gives what it read before a failure)
@@ -1128,11 +1141,12 @@ fn remove_work<P: AsRef<Path>>(work: P) {
     remove_work_dir(work.as_ref(), &[c"pdf-import.ini"]);
 }
 
-// The notebook id written in an import folder's mark, or false (none, or "done").
+// The notebook id written in an import folder's mark, or false (none, or "done"). A mark is a line: one
+// longer than IMPORT_MARK_MAX is not read.
 fn read_mark(src: &str, id: &mut String, done: &mut bool) -> bool {
     let mut path = String::new();
     csnprintf!(&mut path, PATH_BUF, "%s/%s", src, IMPORT_MARK);
-    let t = read_file(&path);
+    let t = read_file_max(&path, IMPORT_MARK_MAX);
     *done = t.as_ref().is_some_and(|t| t.starts_with(b"done"));
     let mut ok = false;
     if let Some(t) = &t {
@@ -1174,6 +1188,8 @@ fn drop_mark(src: &str) {
 // start, and its failure shows once.
 const ATTEMPTS_MAX: usize = 64;
 const TRIES_REFUSED: i32 = 99;
+/// import/.attempts is read up to this size (it is at most ATTEMPTS_MAX lines of 37 bytes and a header)
+const ATTEMPTS_FILE_MAX: usize = 64 << 10;
 
 #[derive(Clone, Copy)]
 pub(crate) struct Attempt {
@@ -1233,7 +1249,7 @@ fn attempts_load() -> Vec<Attempt> {
     let mut path = String::new();
     root_path("import/.attempts", &mut path, 700);
     let mut a: Vec<Attempt> = Vec::new();
-    let Some(t) = read_file(&path) else { return a };
+    let Some(t) = read_file_max(&path, ATTEMPTS_FILE_MAX) else { return a };
     let t = &t[..t.iter().position(|&c| c == 0).unwrap_or(t.len())];
     // (strtok_r on "\n": empty lines are not lines)
     for line in t.split(|&c| c == b'\n').filter(|l| !l.is_empty()) {
@@ -1834,8 +1850,13 @@ fn build_notebook(id: &str, src: &str, final_: &str, names: &[String]) -> i32 {
 
 // The import itself, under the lock. A failed one leaves no notebook, and the folder as it was.
 fn import_folder(src: &str) -> i32 {
-    if !is_dir(src) {
-        qlog!("import: the folder is gone (an earlier run imported it)");
+    if !real_dir(src) {
+        // (nothing is made, no failure is shown and no try is counted, either way)
+        if std::fs::symlink_metadata(src).is_err() {
+            qlog!("import: the folder is gone (an earlier run imported it)");
+        } else {
+            qlog!("import: the folder is no folder of its own; left as it is");
+        }
         return IMPORT_DONE;
     }
     let mut id = String::new();
@@ -2116,7 +2137,7 @@ pub(crate) fn reconcile_pictures() -> usize {
     if !lost.is_empty() {
         // a pick among them: its mark (in import/.marks) says waiting, so the lock taken afresh queues it again
         for m in std::fs::read_dir(format!("{}/import/.marks", store_root())).into_iter().flat_map(|rd| rd.flatten().take(256)) {
-            let Some(t) = read_file(&m.path().to_string_lossy()) else { continue };
+            let Some(t) = read_file_max(&m.path().to_string_lossy(), IMPORT_MARK_MAX) else { continue };
             let Some(mk) = crate::pdfimport::mark_parse(&t) else { continue };
             if mk.state == crate::pdfimport::MarkState::Making && mk.pick && lost.iter().any(|l| *l == mk.id) {
                 crate::pdfimport::mark_write_public(&crate::pdfimport::Mark { state: crate::pdfimport::MarkState::Waiting, id: String::new(), at: wall_time(), ..mk });
@@ -2311,6 +2332,14 @@ mod tests {
         for d in ["zeta", "alpha-10", "alpha-9", ".dot", "done.png"] {
             std::fs::create_dir(format!("{dir}/{d}")).unwrap();
         }
+        // what is no plain file and no real folder is in neither list: a link to a folder, to a picture and
+        // to nothing, and a FIFO
+        std::os::unix::fs::symlink(format!("{dir}/zeta"), format!("{dir}/linkdir")).unwrap();
+        std::os::unix::fs::symlink(format!("{dir}/page-2.PNG"), format!("{dir}/link.png")).unwrap();
+        std::os::unix::fs::symlink(format!("{dir}/nowhere.png"), format!("{dir}/ghost.png")).unwrap();
+        let pipe = std::ffi::CString::new(format!("{dir}/pipe.png")).unwrap();
+        // SAFETY: mkfifo reads the NUL-terminated path we own.
+        assert_eq!(unsafe { libc::mkfifo(pipe.as_ptr(), 0o644) }, 0);
         let mut names = Vec::new();
         assert_eq!(list_names(&dir, true, 100, &mut names), 0);
         assert_eq!(names, ["b.jpeg", "c.pgm", "Page-1.jpg", "page-2.PNG", "page-10.png"]);
@@ -2322,6 +2351,69 @@ mod tests {
         assert_eq!(list_names(&format!("{dir}/missing"), true, 2, &mut names), -1);
         assert!(names.is_empty());
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    // A file's head is read when the entry at its name is a plain file.
+    #[test]
+    fn a_head_is_read_from_a_plain_file_only() {
+        let dir = scratch("head");
+        let file = format!("{dir}/a.png");
+        std::fs::write(&file, b"0123456789").unwrap();
+        assert_eq!(read_head(&file, 4).as_deref(), Some(&b"0123"[..]));
+        assert_eq!(read_head(&file, 64).as_deref(), Some(&b"0123456789"[..]));
+        let link = format!("{dir}/link.png");
+        std::os::unix::fs::symlink(&file, &link).unwrap();
+        assert_eq!(read_head(&link, 4), None);
+        assert_eq!(read_head(&format!("{dir}/missing.png"), 4), None);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    // An import folder's mark is read up to its limit: a longer file is not read.
+    #[test]
+    fn a_mark_has_a_limit() {
+        let r = scratch("mark-limit");
+        assert_eq!(store_init(&r), 0);
+        let src = format!("{r}/import/Pages");
+        std::fs::create_dir_all(&src).unwrap();
+        let mut want = String::new();
+        store_make_id(&mut want);
+        let (mut id, mut done) = (String::new(), false);
+        // a mark as an import writes it, then one just at the limit: both read
+        let mark = format!("{src}/{IMPORT_MARK}");
+        let mut text = format!("{want}\n").into_bytes();
+        std::fs::write(&mark, &text).unwrap();
+        assert!(read_mark(&src, &mut id, &mut done) && id == want && !done);
+        text.resize(IMPORT_MARK_MAX, b'\n');
+        std::fs::write(&mark, &text).unwrap();
+        id.clear();
+        assert!(read_mark(&src, &mut id, &mut done) && id == want);
+        // one byte past it: not read
+        text.push(b'\n');
+        std::fs::write(&mark, &text).unwrap();
+        id.clear();
+        assert!(!read_mark(&src, &mut id, &mut done) && id.is_empty() && !done);
+        let _ = std::fs::remove_dir_all(&r);
+    }
+
+    // import/.attempts is read up to its limit: a longer file is not read.
+    #[test]
+    fn the_attempts_have_a_limit() {
+        let r = scratch("attempts-limit");
+        assert_eq!(store_init(&r), 0);
+        std::fs::create_dir_all(format!("{r}/import")).unwrap();
+        // one record, then the same record in a file past the limit
+        let attempts = format!("{r}/import/.attempts");
+        let mut text = b"# Grimoire: import folders tried (docs/FORMAT.md)\n00000000000000aa 00000000000000bb 2\n".to_vec();
+        std::fs::write(&attempts, &text).unwrap();
+        let a = attempts_load();
+        assert_eq!(a.len(), 1);
+        assert_eq!((a[0].name, a[0].pictures, a[0].tries), (0xaa, 0xbb, 2));
+        while text.len() <= ATTEMPTS_FILE_MAX {
+            text.extend_from_slice(b"# a line that is no record\n");
+        }
+        std::fs::write(&attempts, &text).unwrap();
+        assert!(attempts_load().is_empty());
+        let _ = std::fs::remove_dir_all(&r);
     }
 
     #[test]

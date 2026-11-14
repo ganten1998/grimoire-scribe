@@ -721,6 +721,33 @@ checks above. Synthetic tests cannot establish real-hand acceptance or accidenta
   damage. A set-aside page that is no longer in the page list can be put
   back by hand, with Grimoire closed: rename it to `p<n>.qpg` and add `<n>` to the `pages=` line
   of its `notebook.ini`.
+- **A file of the `grimoire` folder that is no plain file, or too long** (2.1.1): Grimoire reads its
+  settings, notebooks, pages, pictures and import folders only when the entry at the name is a plain file,
+  and the small text files only up to a size (docs/FORMAT.md, Files, names the files; a few others are
+  still opened by path). grimoire.log says what it did:
+  - `store: <path> is no plain file, set aside; starting blank` (or `could not set aside`): the entry at
+    a page's name was a folder, a link or something else. It was renamed `p<n>.qpg.damaged-<t>`, the
+    entry itself, and the page opened blank, with the toast of a damaged page. It stays there: Grimoire
+    never reads it or brings it back by itself.
+  - `store: <path> is no plain file; read as a blank page` (once per run): the same entry met by an
+    export (a PDF, a preview), which changes nothing.
+  - `store: skipping unreadable notebook <id>`: also a notebook whose `notebook.ini` is no plain file or
+    is longer than 1 MiB. Nothing in its folder is touched; it is back in the Library once the file reads.
+  - `settings: settings.ini is there but was not read (no plain file of at most 1048576 bytes, or it did
+    not open); the defaults are used`: at the start. Nothing is written over it:
+  - `settings: the settings.ini that was not read is kept as settings.ini.unread`: at the first save,
+    the entry was moved aside as it was. With Grimoire closed, look at it, and copy it back over
+    `settings.ini` if it is the file wanted (as a plain file under 1 MiB); else delete it.
+  - `settings: settings.ini.unread is there already and stays; the settings.ini that was not read is
+    replaced` (once per run): an earlier one was kept already, so this one was written over.
+  - `settings: the settings.ini that was not read cannot be set aside (<error>); nothing is saved over
+    it`: the settings are not saved until the entry is moved or removed by hand.
+  - `import: the folder is no folder of its own; left as it is`: an entry of `grimoire/import` that is
+    no real folder (a link to one, say) was handed to an import. Nothing was read or made; copy the
+    folder in to import it.
+
+  The Scribe's storage: symlinks, hard links, FIFOs: (the owner's answer, the date, the firmware; from
+  step 1 of docs/TESTING.md, "Hardening round (2026-11), storage reads and temporaries: device checks").
 - **`device passcode: left off by an earlier session`** in grimoire.log: the Kindle restarted while
   Grimoire had the passcode paused (see The Device Passcode); Grimoire logs it at that start and the
   next two while it stays off, with no notice on the screen (since 2.0.0-beta.2). Turn it back on in

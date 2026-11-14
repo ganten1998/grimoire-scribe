@@ -131,14 +131,14 @@ pub fn battery_from_sysfs(root: &str) -> Option<Battery> {
     for name in names {
         let dir = cformat!("%s/%s", root, &name);
         let is_battery =
-            read_file(&cformat!("%s/type", &dir)).is_some_and(|t| String::from_utf8_lossy(&t).trim().eq_ignore_ascii_case("battery"));
+            read_system_file(&cformat!("%s/type", &dir)).is_some_and(|t| String::from_utf8_lossy(&t).trim().eq_ignore_ascii_case("battery"));
         if !is_battery {
             continue;
         }
-        let Some(percent) = read_file(&cformat!("%s/capacity", &dir)).and_then(|c| battery_parse_number(&c)) else {
+        let Some(percent) = read_system_file(&cformat!("%s/capacity", &dir)).and_then(|c| battery_parse_number(&c)) else {
             continue;
         };
-        let charging = read_file(&cformat!("%s/status", &dir)).is_some_and(|s| battery_parse_charging(&s));
+        let charging = read_system_file(&cformat!("%s/status", &dir)).is_some_and(|s| battery_parse_charging(&s));
         return Some(Battery { percent: clampi(percent, 0, 100), charging });
     }
     None

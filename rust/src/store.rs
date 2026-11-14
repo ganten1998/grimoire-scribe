@@ -224,6 +224,9 @@ struct State {
     /// unknown lines past the bound, logged once per load
     g_set_dropped: i32,
     g_kept: Vec<Kept>,
+    /// settings_load found a settings.ini that it could not read (no plain file, too long, or it did not open):
+    /// settings_save moves that entry aside before it writes, and never writes over it.
+    g_set_unread: bool,
     /// how many notebook.ini files store_load_info has read (store_info_reads)
     g_info_reads: u32,
 }
@@ -243,6 +246,7 @@ impl State {
             g_set_unknown: Vec::new(),
             g_set_dropped: 0,
             g_kept: Vec::new(),
+            g_set_unread: false,
             g_info_reads: 0,
         }
     }
@@ -694,12 +698,17 @@ macro_rules! qlog_once {
 
 // ---- tiny ini ----
 
+/// settings.ini and notebook.ini are read up to this size, and no version writes one longer (docs/FORMAT.md):
+/// Grimoire writes a settings.ini under 100 KB and a notebook.ini under 30 KB. folders.ini and a notebook's
+/// bg/pages.ini are read up to it too.
+const STORE_INI_MAX: usize = 1 << 20;
+
 /// The lines of an ini file as (key, value) to cb, which keeps what it knows and sends the rest to
 /// its own list of unknown lines (the C's IniCb and IniUnknown): so keys a newer version wrote can
 /// be written back (docs/FORMAT.md). Comment lines and lines with no '=' are skipped; a value loses
-/// one trailing CR.
+/// one trailing CR. -1 for a file that is not read: missing, no plain file, or longer than STORE_INI_MAX.
 fn ini_parse_file(path: &str, cb: &mut dyn FnMut(&[u8], &[u8])) -> i32 {
-    let Some(txt) = read_file(path) else { return -1 ;
+    let Some(txt) = read_file_max(path, STORE_INI_MAX) else { return -1 ;
     };
     for line in c_lines(&txt) {
         let Some(eq) = line.iter().position(|&b| b == b'=') else { continue ;
@@ -770,6 +779,7 @@ pub fn store_root() -> String {
 pub fn store_init(root: &str) -> i32 {
     with(|s| {
         strlcpy_q(&mut s.g_root, root, 512);
+        s.g_set_unread = false; // (another root's settings.ini)
     });
     if mkdir_p(root) != 0 {
         qlog!("store: cannot create %s", root);
@@ -1149,12 +1159,12 @@ fn side_set(s: &mut Side, pid: u32, kind: u32) -> i32 {
 }
 
 /// Reads <bgdir>/pages.ini: lines p<page id>=<paper value>, for image papers only. 0 (no file: an
-/// empty list), or -1 when it is there but does not read, or there is no memory for it: then nothing
-/// may be saved over it, or every other page's entry would go.
+/// empty list), or -1 when it is there but does not read (longer than STORE_INI_MAX too), or there is no
+/// memory for it: then nothing may be saved over it, or every other page's entry would go.
 fn side_load(bgdir: &str, s: &mut Side) -> i32 {
     *s = Side::default();
     let path = side_path(bgdir);
-    let Some(txt) = read_file(&path) else {
+    let Some(txt) = read_file_max(&path, STORE_INI_MAX) else {
         return if access_ok(&path) { -1 } else { 0 };
     };
     let mut rc = 0;
@@ -1610,7 +1620,7 @@ type FolderName = FixedStr<STORE_NAME_LEN>;
 fn load_folders_ini() -> Vec<FolderName> {
     let path = cformat!("%s/folders.ini", &g_root());
     let mut out = Vec::new();
-    let Some(txt) = read_file(&path) else {
+    let Some(txt) = read_file_max(&path, STORE_INI_MAX) else {
         return out;
     };
     let mut first = true;
@@ -2472,11 +2482,11 @@ pub fn store_redo_add_pages(nb: &mut NotebookInfo, u: &PageAddUndo) -> i32 {
     for &pid in &u.added {
         work_pump(); // (each page is an fsync'd write, as the batch's were)
         let path = page_path(nb, pid);
-        match std::fs::read(&path) {
-            Ok(d) if d == u.blank => continue,
-            Ok(_) => bail!(),
-            Err(e) if e.raw_os_error() != Some(libc::ENOENT) => bail!(),
-            Err(_) => {}
+        match read_file(&path) {
+            Some(d) if d == u.blank => continue,
+            Some(_) => bail!(),
+            None if !nothing_at(&path) => bail!(),
+            None => {}
         }
         if write_file_atomic(&path, &u.blank) != 0 {
             bail!();
@@ -2515,7 +2525,7 @@ pub fn store_redo_add_pages(nb: &mut NotebookInfo, u: &PageAddUndo) -> i32 {
 pub fn store_page_paper(nb: &NotebookInfo, index: i32) -> PaperKind {
     let Some(&pid) = nb.page_ids.get(index.max(0) as usize).filter(|_| index >= 0) else { return nb.paper };
     let mut b = [0u8; 20];
-    let Ok(mut f) = std::fs::File::open(page_path(nb, pid)) else { return nb.paper };
+    let Ok((mut f, _)) = open_read_nofollow(&page_path(nb, pid)) else { return nb.paper };
     let mut got = 0;
     while got < b.len() {
         match f.read(&mut b[got..]) {
@@ -2541,9 +2551,12 @@ pub fn store_page_paper(nb: &NotebookInfo, index: i32) -> PaperKind {
 /// it was (or not there at all, which holds nothing either). One page drawn on, even with the ink erased
 /// again, is not.
 pub fn store_added_pages_untouched(nb: &NotebookInfo, u: &PageAddUndo) -> bool {
-    u.added.iter().all(|&pid| match std::fs::read(page_path(nb, pid)) {
-        Ok(d) => d == u.blank,
-        Err(e) => e.raw_os_error() == Some(libc::ENOENT),
+    u.added.iter().all(|&pid| {
+        let path = page_path(nb, pid);
+        match read_file(&path) {
+            Some(d) => d == u.blank,
+            None => nothing_at(&path),
+        }
     })
 }
 
@@ -3109,6 +3122,24 @@ fn load_page_with(
                 with(|s| s.g_restored_pages += 1);
             }
         }
+    } else if std::fs::symlink_metadata(&path).is_ok_and(|m| !m.is_file()) {
+        // An entry at the page's name that is no plain file (a folder, a link) is not read, and is set aside
+        // as a damaged page is, the entry itself: left there, the blank page shown in its place could not be
+        // saved over a folder, and would be saved in place of a link with nothing said. (A plain file that did
+        // not read stays where it is, as before.)
+        let mut aside = String::new();
+        csnprintf!(&mut aside, 760, "%s.damaged-%lld", &path, wall_time());
+        let rc = std::fs::rename(&path, &aside);
+        qlog!(
+            "store: %s is no plain file, %s; starting blank",
+            &path,
+            if rc.is_ok() {
+                "set aside"
+            } else {
+                "could not set aside"
+            }
+        );
+        with(|s| s.g_corrupt_pages += 1);
     }
     let mut p = match p {
         Some(p) => p,
@@ -3142,6 +3173,8 @@ pub fn store_read_page(nb: &NotebookInfo, index: i32, out: &mut Option<Box<Page>
                 side_restore(nb, pid, pg);
             }
         }
+    } else if std::fs::symlink_metadata(&path).is_ok_and(|m| !m.is_file()) {
+        qlog_once!("store: %s is no plain file; read as a blank page", &path);
     }
     let mut p = match p {
         Some(p) => p,
@@ -3196,7 +3229,7 @@ fn page_file_opens(path: &str) -> bool {
 /// writes a page whose image paper it does not know.
 fn page_file_v1_blank(path: &str) -> bool {
     let mut b = [0u8; 8];
-    let Ok(mut f) = std::fs::File::open(path) else {
+    let Ok((mut f, _)) = open_read_nofollow(path) else {
         return false;
     };
     let got = matches!(f.read(&mut b), Ok(8));
@@ -3710,7 +3743,7 @@ fn page_deserialize_with(buf: &[u8], out: &mut Option<Box<Page>>, pump: bool) ->
 /// u16 paper, w, h), the rest unread. None for a file that has none (missing, cut short, damage).
 fn page_file_size(path: &str) -> Option<(i32, i32)> {
     let mut b = [0u8; 16];
-    let mut f = std::fs::File::open(path).ok()?;
+    let (mut f, _) = open_read_nofollow(path).ok()?;
     let got = matches!(f.read(&mut b), Ok(16));
     if !got || &b[..4] != b"QPG1" {
         return None;
@@ -3727,6 +3760,11 @@ fn page_file_size(path: &str) -> Option<(i32, i32)> {
 /// access(path, F_OK) == 0
 fn access_ok(path: &str) -> bool {
     std::fs::metadata(path).is_ok()
+}
+
+/// Whether nothing at all stands at path: no file, and no link, folder or other entry either.
+fn nothing_at(path: &str) -> bool {
+    matches!(std::fs::symlink_metadata(path), Err(e) if e.raw_os_error() == Some(libc::ENOENT))
 }
 
 // ---- thumbnails ----
@@ -3755,22 +3793,27 @@ fn pgm_bytes(t: &Canvas) -> Option<Vec<u8>> {
 
 // The page previews are a disposable cache: written to a per-process name and renamed into place,
 // never fsynced (a torn file fails its stamp or its size check and is made again). Each fsync on the
-// Kindle waits 15-25 ms.
+// Kindle waits 15-25 ms. The file at the per-process name is made afresh (util.rs create_fresh_nofollow):
+// what stands there, a leftover of an earlier process or anything else, is removed, never opened or written.
 fn write_cache_file(path: &str, data: &[u8]) -> i32 {
+    use std::io::Write;
     #[cfg(feature = "sim")]
     if crate::util::SIM_STORAGE_FULL.load(std::sync::atomic::Ordering::Relaxed) {
         return -1;
     }
-    if std::fs::write(path, data).is_err() {
+    if create_fresh_nofollow(path).and_then(|mut f| f.write_all(data)).is_err() {
         let _ = std::fs::remove_file(path);
         return -1;
     }
     0
 }
 
+/// A PGM is read up to this size: the largest picture load_pgm takes (8000 x 8000) and a header.
+const PGM_FILE_MAX: usize = 8000 * 8000 + 64;
+
 fn load_pgm(path: &str, out: &mut Canvas) -> i32 {
     *out = Canvas::default();
-    let Some(d) = read_file(path) else { return -1 };
+    let Some(d) = read_file_max(path, PGM_FILE_MAX) else { return -1 };
     let len = d.len();
     let Some((w, h, mx, off)) = scan_p5_header(&d) else {
         return -1;
@@ -3860,7 +3903,7 @@ fn preview_stamp(source: &str) -> Option<String> {
 fn preview_tag(path:&str)->Option<String> {
     use std::io::Read;
     let mut text=String::new();
-    std::fs::File::open(path).ok()?.take(256).read_to_string(&mut text).ok()?;
+    open_read_nofollow(path).ok()?.0.take(256).read_to_string(&mut text).ok()?;
     (text.len()<256).then_some(text)
 }
 // Directory timestamps can have coarse resolution. Publish an opaque change token so an
@@ -3952,10 +3995,10 @@ pub fn store_page_preview_ok(nb: &NotebookInfo, pid: u32) -> bool {
     if store_page_preview_fresh(nb, pid).is_none() {
         return false;
     }
-    let Ok(mut f) = std::fs::File::open(&image) else { return false };
+    let Ok((mut f, md)) = open_read_nofollow(&image) else { return false };
     let mut head = [0u8; 32];
     let Ok(n) = f.read(&mut head) else { return false };
-    let Ok(len) = f.metadata().map(|m| m.len()) else { return false };
+    let len = md.len();
     match scan_p5_header(&head[..n]) {
         Some((w, h, 255, off)) if w > 0 && h > 0 && w <= 400 && h <= 500 => len >= (off + 1 + (w * h) as usize) as u64,
         _ => false,
@@ -4980,6 +5023,16 @@ pub fn settings_load(s: &mut Settings) -> i32 {
     } else {
         1
     };
+    // A settings.ini that is there but was not read is never saved over: the defaults below are used, and
+    // settings_save moves the entry aside before it writes.
+    let unread = rc != 0 && std::fs::symlink_metadata(&path).is_ok();
+    with(|st| st.g_set_unread = unread);
+    if unread {
+        qlog_once!(
+            "settings: settings.ini is there but was not read (no plain file of at most %d bytes, or it did not open); the defaults are used",
+            STORE_INI_MAX
+        );
+    }
     let dropped = with(|st| st.g_set_dropped);
     if dropped != 0 {
         qlog!(
@@ -5210,7 +5263,50 @@ pub fn settings_save(s: &Settings) -> i32 {
             b.extend_from_slice(&l[..len]);
         }
     }
-    write_file_atomic(&path, &b)
+    // The settings.ini that settings_load found but could not read is kept: it moves to settings.ini.unread
+    // first (the entry itself: what a link names is untouched), and comes back if the save then fails. An
+    // earlier settings.ini.unread stays (the first one kept is the one most likely to be the user's own
+    // file), and the entry is then replaced. No version reads settings.ini.unread (docs/FORMAT.md).
+    let unread = with(|st| st.g_set_unread);
+    let aside = cformat!("%s.unread", &path);
+    let mut moved = false;
+    if unread {
+        let not_found = |e: &std::io::Error| e.kind() == std::io::ErrorKind::NotFound;
+        match std::fs::symlink_metadata(&aside) {
+            Ok(_) => qlog_once!("settings: settings.ini.unread is there already and stays; the settings.ini that was not read is replaced"),
+            Err(e) if not_found(&e) => match std::fs::rename(&path, &aside) {
+                Ok(()) => moved = true,
+                Err(e) if not_found(&e) => {} // (gone since the load: nothing to keep)
+                Err(e) => {
+                    qlog!(
+                        "settings: the settings.ini that was not read cannot be set aside (%s); nothing is saved over it",
+                        &strerror(e.raw_os_error().unwrap_or(0))
+                    );
+                    return -1;
+                }
+            },
+            Err(e) => {
+                // (whether one is kept already cannot be told: nothing is moved or written)
+                qlog!(
+                    "settings: the settings.ini that was not read cannot be set aside (%s); nothing is saved over it",
+                    &strerror(e.raw_os_error().unwrap_or(0))
+                );
+                return -1;
+            }
+        }
+    }
+    let rc = write_file_atomic(&path, &b);
+    if unread {
+        if rc == 0 {
+            with(|st| st.g_set_unread = false);
+        } else if moved && std::fs::rename(&aside, &path).is_ok() {
+            moved = false; // (back where it was: this save did not happen, and the next one tries again)
+        }
+        if moved {
+            qlog!("settings: the settings.ini that was not read is kept as settings.ini.unread");
+        }
+    }
+    rc
 }
 
 #[cfg(test)]
@@ -5613,6 +5709,138 @@ mod tests {
         );
         assert_eq!(b, b"name=a\xffb\nn=5 |");
     }
+
+    // ---- hardening round 2026-11: plain-file reads ----
+
+    fn plain_root(tag: &str) -> std::path::PathBuf {
+        let base = std::env::var("GRIMOIRE_TEST_TMP").map(std::path::PathBuf::from).unwrap_or_else(|_| std::env::temp_dir());
+        let r = base.join(format!("grimoire-store-plain-{tag}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&r);
+        assert_eq!(store_init(r.to_str().unwrap()), 0);
+        store_set_device(300.0, 600, 800);
+        r
+    }
+
+    // A settings.ini that was not read is moved aside before the save, and is back at its name when that save
+    // fails: the next save moves it aside again and writes.
+    #[test]
+    fn a_failed_save_puts_the_unread_settings_back() {
+        let r = plain_root("unread");
+        let (ini, aside) = (r.join("settings.ini"), r.join("settings.ini.unread"));
+        std::fs::create_dir(&ini).unwrap();
+        std::fs::write(ini.join("kept"), b"k").unwrap();
+        let mut s = Settings::default();
+        assert_eq!(settings_load(&mut s), 1);
+        crate::util::FAIL_WRITE_AT.with(|c| c.set(1));
+        assert_eq!(settings_save(&s), -1);
+        assert!(ini.is_dir() && ini.join("kept").exists(), "the entry is back at its name");
+        assert!(std::fs::symlink_metadata(&aside).is_err(), "and nothing is left aside");
+        assert_eq!(settings_save(&s), 0);
+        assert!(std::fs::symlink_metadata(&ini).unwrap().is_file());
+        assert!(aside.is_dir() && aside.join("kept").exists(), "the entry is kept aside, as it was");
+        // (read again: a settings.ini of this build's, with nothing to keep aside)
+        assert_eq!(settings_load(&mut s), 0);
+        assert_eq!(settings_save(&s), 0);
+        let _ = std::fs::remove_dir_all(&r);
+    }
+
+    // The reads of a file's first bytes take a plain file at the name itself, as the whole-file read does.
+    #[test]
+    fn a_page_files_first_bytes_are_read_from_a_plain_file_only() {
+        let r = plain_root("v1blank");
+        let file = r.join("outside.qpg");
+        std::fs::write(&file, [b'Q', b'P', b'G', b'1', 1, 0, PAPER_BLANK.0 as u8, 0]).unwrap();
+        let link = r.join("p1.qpg");
+        std::os::unix::fs::symlink(&file, &link).unwrap();
+        assert!(page_file_v1_blank(file.to_str().unwrap()));
+        assert!(!page_file_v1_blank(link.to_str().unwrap()));
+        let _ = std::fs::remove_dir_all(&r);
+    }
+
+    #[test]
+    fn a_stamp_is_read_from_a_plain_file_only() {
+        let r = plain_root("tag");
+        let file = r.join("outside.stamp");
+        std::fs::write(&file, b"1:2:3").unwrap();
+        let link = r.join("p1.stamp");
+        std::os::unix::fs::symlink(&file, &link).unwrap();
+        assert_eq!(preview_tag(file.to_str().unwrap()).as_deref(), Some("1:2:3"));
+        assert_eq!(preview_tag(link.to_str().unwrap()), None);
+        let _ = std::fs::remove_dir_all(&r);
+    }
+
+    #[test]
+    fn a_page_files_size_is_read_from_a_plain_file_only() {
+        let r = plain_root("size");
+        let file = r.join("outside.qpg");
+        let mut head = b"QPG1".to_vec();
+        head.extend_from_slice(&[1, 0, PAPER_BLANK.0 as u8, 0]);
+        head.extend_from_slice(&700u32.to_le_bytes());
+        head.extend_from_slice(&900u32.to_le_bytes());
+        std::fs::write(&file, &head).unwrap();
+        let link = r.join("p1.qpg");
+        std::os::unix::fs::symlink(&file, &link).unwrap();
+        assert_eq!(page_file_size(file.to_str().unwrap()), Some((700, 900)));
+        assert_eq!(page_file_size(link.to_str().unwrap()), None);
+        let _ = std::fs::remove_dir_all(&r);
+    }
+
+    // The small lists are read up to STORE_INI_MAX, to the byte: a longer one is not read.
+    #[test]
+    fn pages_ini_has_a_limit() {
+        let r = plain_root("pages-limit");
+        let bg = r.join("bg");
+        std::fs::create_dir_all(&bg).unwrap();
+        let (bg, kind) = (bg.to_str().unwrap(), paper_image(PAPER_ROLE_TEMPLATE, 1).0);
+        let mut text = format!("# Grimoire: the image paper of each page that has one (docs/FORMAT.md)\np1={kind}\n#").into_bytes();
+        text.resize(STORE_INI_MAX - 1, b'x');
+        text.push(b'\n');
+        std::fs::write(side_path(bg), &text).unwrap();
+        let mut s = Side::default();
+        assert_eq!(side_load(bg, &mut s), 0, "exactly the limit reads");
+        assert_eq!(side_get(&s, 1), Some(kind));
+        text.insert(text.len() - 1, b'x');
+        std::fs::write(side_path(bg), &text).unwrap();
+        assert_eq!(side_load(bg, &mut s), -1, "one byte more is there but does not read");
+        assert!(s.e.is_empty());
+        let _ = std::fs::remove_dir_all(&r);
+    }
+
+    #[test]
+    fn folders_ini_has_a_limit() {
+        let r = plain_root("folders-limit");
+        let path = r.join("folders.ini");
+        let mut text = b"# Grimoire folders\nSchool\n".to_vec();
+        text.resize(STORE_INI_MAX - 1, b'x');
+        text.push(b'\n');
+        std::fs::write(&path, &text).unwrap();
+        let f = load_folders_ini();
+        assert_eq!(f.len(), 2, "exactly the limit reads");
+        assert_eq!(f[0].as_str(), "School");
+        text.insert(text.len() - 1, b'x');
+        std::fs::write(&path, &text).unwrap();
+        assert!(load_folders_ini().is_empty(), "one byte more reads as no list");
+        let _ = std::fs::remove_dir_all(&r);
+    }
+
+    // A PGM is read up to PGM_FILE_MAX: a longer file is not read.
+    #[test]
+    fn a_pgm_has_a_limit() {
+        let r = plain_root("pgm-limit");
+        let path = r.join("picture.pgm");
+        std::fs::write(&path, b"P5\n2 2\n255\n\x10\x20\x30\x40").unwrap();
+        let p = path.to_str().unwrap();
+        let mut c = Canvas::default();
+        assert_eq!(store_read_pgm(p, &mut c), 0);
+        assert_eq!((c.w, c.h, c.px[3]), (2, 2, 0x40));
+        // (lengthened without writing: the file's own bytes still start it)
+        let f = std::fs::OpenOptions::new().write(true).open(&path).unwrap();
+        f.set_len(PGM_FILE_MAX as u64).unwrap();
+        assert_eq!(store_read_pgm(p, &mut c), 0, "exactly the limit reads");
+        f.set_len(PGM_FILE_MAX as u64 + 1).unwrap();
+        assert_eq!(store_read_pgm(p, &mut c), -1, "one byte more does not");
+        let _ = std::fs::remove_dir_all(&r);
+    }
 }
 
 /// Visible-page preview jobs render outside the UI process, with bounded work and stale-write checks.
@@ -5729,6 +5957,8 @@ pub fn store_invalidate_page_previews(id:&str) {
 }
 pub fn store_cleanup_preview_work(id:&str,pid:i32) {
     let Some(dir)=notebook_dir(id.as_bytes())else{return};let path=format!("{dir}/.page-previews");
+    // (only in a folder of the notebook's own: one that is a link is left alone, with what it holds)
+    if !std::fs::symlink_metadata(&path).is_ok_and(|m|m.is_dir()) {return;}
     let Ok(entries)=std::fs::read_dir(path)else{return};
     for e in entries.flatten(){let name=e.file_name();let name=name.to_string_lossy();if name.ends_with(&format!(".{pid}"))||name.ends_with(&format!(".{pid}.tmp")){let _=std::fs::remove_file(e.path());}}
 }

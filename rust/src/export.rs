@@ -75,14 +75,15 @@ pub struct FileSink {
     failed: bool,
 }
 impl FileSink {
-    /// Creates (truncating) the file. None when it cannot be (the simulator's full storage too).
+    /// Makes the file afresh: what stands at the name is removed, never opened or written (util.rs
+    /// create_fresh_nofollow). None when it cannot be (the simulator's full storage too).
     pub fn create(path: &str) -> Option<FileSink> {
         #[cfg(feature = "sim")]
         if crate::util::SIM_STORAGE_FULL.load(std::sync::atomic::Ordering::Relaxed) {
             qlog!("write %s: %s (simulated: storage full)", path, &strerror(libc::ENOSPC));
             return None;
         }
-        match std::fs::File::create(path) {
+        match create_fresh_nofollow(path) {
             Ok(f) => Some(FileSink { f, len: 0, failed: false }),
             Err(e) => {
                 qlog!("write %s: %s", path, &strerror(e.raw_os_error().unwrap_or(0)));
