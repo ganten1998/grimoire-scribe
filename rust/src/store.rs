@@ -3784,13 +3784,15 @@ fn pgm_bytes(t: &Canvas) -> Option<Vec<u8>> {
 
 // The page previews are a disposable cache: written to a per-process name and renamed into place,
 // never fsynced (a torn file fails its stamp or its size check and is made again). Each fsync on the
-// Kindle waits 15-25 ms.
+// Kindle waits 15-25 ms. The file at the per-process name is made afresh (util.rs create_fresh_nofollow):
+// what stands there, a leftover of an earlier process or anything else, is removed, never opened or written.
 fn write_cache_file(path: &str, data: &[u8]) -> i32 {
+    use std::io::Write;
     #[cfg(feature = "sim")]
     if crate::util::SIM_STORAGE_FULL.load(std::sync::atomic::Ordering::Relaxed) {
         return -1;
     }
-    if std::fs::write(path, data).is_err() {
+    if create_fresh_nofollow(path).and_then(|mut f| f.write_all(data)).is_err() {
         let _ = std::fs::remove_file(path);
         return -1;
     }
