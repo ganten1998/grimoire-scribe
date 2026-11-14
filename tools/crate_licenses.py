@@ -75,10 +75,11 @@ def main():
     pk = sorted((p for p in meta["packages"] if p["name"] != "grimoire"), key=lambda p: (p["name"], p["version"]))
     lines = [
         "From the Rust crates Cargo.lock names for the Grimoire binary. Every one is listed: those it is built",
-        "from, the few that only run while it is built, and the few the lock names that are not compiled in. Each",
-        "was at least two weeks old at its release (docs/RELEASING.md). Each is listed with its version, the",
-        "license it is used under and that license's text as the crate ships it. The hayro crates (PDF reading)",
-        "also carry data with licenses of its own, which follow the crates.",
+        "from, those that only run while it is built, and the few the lock names that are not compiled in. The",
+        "rule for a release is that each is at least two weeks old on the day of the tag (docs/RELEASING.md); an",
+        "exception made for a release is recorded in docs/TESTING.md. Each is listed with its version, the license",
+        "it is used under and that license's text as the crate ships it. The hayro crates (PDF reading) also carry",
+        "data with licenses of its own, which follow the crates.",
         "",
     ]
     for p in pk:

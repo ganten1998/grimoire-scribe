@@ -19,6 +19,7 @@ const FORMAT: File = ("docs/FORMAT.md", include_str!("../../docs/FORMAT.md"));
 const KINDLE: File = ("docs/KINDLE.md", include_str!("../../docs/KINDLE.md"));
 const TESTING: File = ("docs/TESTING.md", include_str!("../../docs/TESTING.md"));
 const BACKLOG: File = ("docs/BACKLOG.md", include_str!("../../docs/BACKLOG.md"));
+const RELEASING: File = ("docs/RELEASING.md", include_str!("../../docs/RELEASING.md"));
 const PDFWORK: File = ("rust/src/pdfwork.rs", include_str!("../src/pdfwork.rs"));
 const FONTCHECK: File = ("rust/src/fontcheck.rs", include_str!("../src/fontcheck.rs"));
 const USERFONTS: File = ("rust/src/userfonts.rs", include_str!("../src/userfonts.rs"));
@@ -442,5 +443,29 @@ fn the_docs_no_longer_say_what_the_code_does_not() {
     gone(&mut fails, BACKLOG, "glifo's optional dependency");
     // licenses/rust-crates.txt lists every crate the lock names, not only the ones built in
     gone(&mut fails, LICENSES_TOOL, "the Grimoire binary is built from (cargo's Cargo.lock decides them");
+    // the same file gives the two-week rule for crates as the rule of a release and says where an exception is
+    // recorded: while the tool writes that, RELEASING.md has the rule and TESTING.md has a release's exception
+    stands_on(
+        &mut fails,
+        LICENSES_TOOL,
+        "two weeks old on the day of the tag (docs/RELEASING.md)",
+        RELEASING,
+        "**Every crate is at least two weeks old.**",
+    );
+    stands_on(
+        &mut fails,
+        LICENSES_TOOL,
+        "exception made for a release is recorded in docs/TESTING.md",
+        TESTING,
+        "crate-age rule (two weeks at the tag) was waived",
+    );
+    // and while TESTING.md's look at the shipped file quotes its first words, the tool writes them
+    stands_on(
+        &mut fails,
+        TESTING,
+        "The file begins \"From the Rust crates Cargo.lock names for the Grimoire binary.\"",
+        LICENSES_TOOL,
+        "\"From the Rust crates Cargo.lock names for the Grimoire binary.",
+    );
     none_failed(&fails, "the documents and comments");
 }

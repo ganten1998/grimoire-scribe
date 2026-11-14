@@ -85,9 +85,9 @@ unit, the shards and l10n to Linux runners, which start sooner and of which a fr
 at once (macOS: 5); it stays off until a run passes there (docs/BACKLOG.md).
 
 **Tests that read the documents.** A docs-only pull request runs no test, and a few tests read the
-documents: `rust/tests/test_sec_invariants.rs` (DESIGN.md, FORMAT.md, KINDLE.md, TESTING.md and BACKLOG.md:
-sentences about the safe loader that must not come back, the names `RECORDS_MAX_BYTES` and `<key>.slow`,
-and a few sentences that hold only while another one stands), `mapview.rs` (the Graph's keys) and
+documents: `rust/tests/test_sec_invariants.rs` (DESIGN.md, FORMAT.md, KINDLE.md, TESTING.md, BACKLOG.md and
+RELEASING.md: sentences about the safe loader that must not come back, the names `RECORDS_MAX_BYTES` and
+`<key>.slow`, and a few sentences that hold only while another one stands), `mapview.rs` (the Graph's keys) and
 `test_scenarios.rs` with `sim_sdl.rs` (SIM.md). After rewording a sentence they hold, run `make test-sim`
 by hand: otherwise the push to main is the first run to say so.
 
@@ -2577,7 +2577,9 @@ text that changed:
 
 1. Install the build. Connect the Scribe over USB and open `grimoire/app/licenses/rust-crates.txt` on the
    computer.
-2. Its first sentence begins "From the Rust crates Cargo.lock names for the Grimoire binary." and says
-   that every crate is listed, the ones not compiled in among them.
+2. The file begins "From the Rust crates Cargo.lock names for the Grimoire binary." and then says that
+   every crate is listed, the ones not compiled in among them. Of the crates' age it gives the rule for a
+   release (two weeks old on the day of the tag) and where an exception is recorded, and no longer says
+   that each crate was that old.
 3. Search the file for `hayro `: its entry is there, with the version `rust/Cargo.lock` names. Nothing
    else in the file changed.
