@@ -544,7 +544,7 @@ fn lat_reset(s: &mut State) {
 // follow it.
 fn panel_temp(out: &mut String, cap: usize) {
     csnprintf!(out, cap, "?");
-    let Some(data) = read_file("/proc/hwtcon/temp") else { return };
+    let Some(data) = read_system_file("/proc/hwtcon/temp") else { return };
     // fgets: the first line, newline included, at most cap - 1 bytes; nothing read leaves "?"
     let mut line = &data[..data.len().min(cap.saturating_sub(1))];
     if let Some(nl) = line.iter().position(|&b| b == b'\n') {

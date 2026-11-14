@@ -2398,7 +2398,7 @@ fn script_step(mut a: Option<&mut App>) {
             }
             Step::Strokes(path,n,hold,from)=>{
                 let mut page=None;
-                let data=read_file(path.as_str());
+                let data=read_system_file(path.as_str());
                 if data.is_none() || page_deserialize(data.as_deref().unwrap_or(&[]),&mut page)!=0 || page.as_ref().is_none_or(|p|p.readonly) || a.as_ref().is_none_or(|a|a.scr!=ScreenId::Editor) {
                     with(|st|{err(format!("expect failed (line {}): cannot replay strokes from {}\n",st.line_no,path.as_str()).as_bytes());st.expect_total+=1;st.expect_failed+=1;});
                     continue;

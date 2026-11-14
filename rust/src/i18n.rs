@@ -266,7 +266,7 @@ fn sim_catalog(code: &str) -> Option<&'static [u8]> {
     }
     let mut path = String::new();
     csnprintf!(&mut path, 1024, "%s/%s.mo", &*dir.to_string_lossy(), code);
-    let d: Option<&'static [u8]> = read_file(&path).map(|v| {
+    let d: Option<&'static [u8]> = read_system_file(&path).map(|v| {
         // (a file of 4 GB or more reads as empty, as the C's uint32_t size does)
         let v: &'static [u8] = Box::leak(v.into_boxed_slice());
         if v.len() < u32::MAX as usize {
@@ -650,7 +650,7 @@ pub fn i18n_detect_from(kindle_locale: Option<&str>, why: &mut String, cap: usiz
 pub fn i18n_detect() {
     #[cfg(feature = "kindle")]
     let (text, missing) = {
-        let text = read_file("/var/local/system/locale");
+        let text = read_system_file("/var/local/system/locale");
         let missing = if text.is_none() { "; /var/local/system/locale cannot be read" } else { "" };
         (text, missing)
     };

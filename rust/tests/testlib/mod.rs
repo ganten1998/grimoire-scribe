@@ -99,3 +99,60 @@ pub fn tl_tmp() -> String {
         dir.to_string_lossy().into_owned()
     })
 }
+
+/// Runs `f`, which must not wait on the FIFO at `fifo`. A passing run waits for nothing. Only if `f` is still
+/// running after 30 s does a helper thread open the FIFO (both ends at once, which never waits), hold it a
+/// moment and close it, so that `f` returns; the test then fails.
+pub fn never_waits<R>(fifo: &std::path::Path, f: impl FnOnce() -> R) -> R {
+    let (r, waited) = waits_on(fifo, f);
+    assert!(!waited, "the call waited on the FIFO at {}", fifo.display());
+    r
+}
+
+/// never_waits without its assertion: what `f` returned, and whether it had to be let go (it waited on the
+/// FIFO). For a test that checks several calls and names each one that waited.
+pub fn waits_on<R>(fifo: &std::path::Path, f: impl FnOnce() -> R) -> (R, bool) {
+    use std::os::unix::ffi::OsStrExt;
+    use std::sync::atomic::AtomicBool;
+    use std::sync::mpsc::RecvTimeoutError;
+    use std::sync::Arc;
+    let path = std::ffi::CString::new(fifo.as_os_str().as_bytes()).unwrap();
+    let rescued = Arc::new(AtomicBool::new(false));
+    let (tx, rx) = std::sync::mpsc::channel::<()>();
+    let flag = rescued.clone();
+    let helper = std::thread::spawn(move || {
+        // (a disconnect is `f` panicking: no rescue; only the time running out is one)
+        if rx.recv_timeout(std::time::Duration::from_secs(30)) == Err(RecvTimeoutError::Timeout) {
+            flag.store(true, Ordering::SeqCst);
+            // SAFETY: open reads the NUL-terminated path we own; the descriptor is closed below.
+            let fd = unsafe { libc::open(path.as_ptr(), libc::O_RDWR | libc::O_NONBLOCK) };
+            std::thread::sleep(std::time::Duration::from_millis(200));
+            if fd >= 0 {
+                // SAFETY: closing the descriptor opened above.
+                unsafe { libc::close(fd) };
+            }
+        }
+    });
+    // (on the test's own thread: the store's state is the thread's)
+    let r = f();
+    let _ = tx.send(());
+    let _ = helper.join();
+    (r, rescued.load(Ordering::SeqCst))
+}
+
+/// Checks of one test that all run: a failed one is printed and does not hide the next, and the test fails at
+/// the end naming each (done). For a test whose parts each pin a change of their own. (check! and done()
+/// above count for the whole binary, which holds one test; this is for a binary of several.)
+#[derive(Default)]
+pub struct Checks(Vec<String>);
+impl Checks {
+    pub fn that(&mut self, ok: bool, what: &str) {
+        if !ok {
+            eprintln!("  FAIL: {what}");
+            self.0.push(what.to_string());
+        }
+    }
+    pub fn done(self) {
+        assert!(self.0.is_empty(), "{} check(s) failed: {:?}", self.0.len(), self.0);
+    }
+}

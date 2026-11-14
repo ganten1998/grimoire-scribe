@@ -2511,3 +2511,41 @@ table and on CI's kernel run. Use the bundle built with the pinned toolchain (do
    line in `import/.attempts` goes with the copy. Install the build without this round's two filter
    commits before judging anything else.
 10. **Later.** The same steps again whenever the build's rustc or zig version moves (docs/RELEASING.md).
+
+## Hardening round (2026-11), storage reads and temporaries: device checks
+
+Automated: the unit tests of `util.rs`, `store.rs` and `bgwork_template.rs`, `rust/tests/test_sec_read_links.rs`,
+`test_sec_pid_tmp.rs` and `test_sec_work_links.rs` (links, FIFOs, folders and sizes on the host's file system).
+What they cannot show is the Scribe's own storage, so this round ships only once these are done on a Scribe:
+
+1. **Before installing, over SSH.** Keep a copy of the settings:
+   `cp /mnt/us/grimoire/settings.ini /mnt/us/grimoire/settings.ini.before`. Then ask the storage what it
+   takes, in a folder of its own, with Grimoire closed:
+   `mkdir /mnt/us/grimoire/.probe && cd /mnt/us/grimoire/.probe && echo x > f`, then
+   `ln -s f s; echo "symlink $?"`, `ln f h; echo "hard link $?"`, `mkfifo p || mknod p p; echo "fifo $?"`,
+   `ls -la`, and to tidy: `rm -f s h p f; cd /; rmdir /mnt/us/grimoire/.probe`. Write the three answers
+   into docs/KINDLE.md (this also answers item 5 of "the file picker (lane L8)" above). If all three are
+   refused, links and FIFOs cannot exist on the Scribe's storage: steps 2 to 8 are then a check that
+   nothing changed, and of this round only the size limits act there.
+2. **Install, start once, and touch nothing yet.** Do not change a setting and do not write on a page.
+   Read `grimoire.log`: there must be no line `settings: settings.ini is there but was not read`, no
+   `store: skipping unreadable notebook`, and no `is no plain file`. The Library lists every notebook, as
+   many as before. The battery and the clock corner show, and the language is as before.
+   If any of that is wrong: close Grimoire, install the previous build, and if
+   `/mnt/us/grimoire/settings.ini.unread` exists, `mv` it back over `settings.ini` (or use
+   `settings.ini.before`). Send the log.
+3. Open a notebook with ink: the ink is there, the pen lands where it points (the calibration was read),
+   pages turn. Open the Pages view of the largest notebook: the tiles fill as fast as before. Add a page
+   and undo it.
+4. A page on a template and a page of an imported picture or PDF show their pictures. New notebook, Paper:
+   Templates and Photos list their files with previews.
+5. Copy a folder of two or three pictures into `grimoire/import/`: it becomes a notebook as before.
+6. Change a notebook with the PDF mirror on and close it: `grimoire/PDFs/<name>.pdf` is new, no `.tmp` is
+   left in `PDFs/`, and the log has no `write ... .tmp` line.
+7. Leave a dense page and open it again: it comes back as fast as before (its kept drawing), and the
+   notebook's card in the Library is current.
+8. Change a setting, close Grimoire, start it again: the setting is kept, and there is no
+   `settings.ini.unread` in `/mnt/us/grimoire`. Remove `settings.ini.before`.
+9. Only if step 1 said the storage takes symlinks, with Grimoire closed:
+   `ln -s /etc/hostname /mnt/us/grimoire/templates/linked.png`, start Grimoire, New notebook, Paper: no
+   `linked` among the templates. Remove the link.
