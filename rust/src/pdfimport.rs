@@ -1921,6 +1921,13 @@ pub fn file_record_parse(line: &str) -> Option<FileRecord> {
     Some(FileRecord { sha256: sha.to_string(), size: size.parse().ok()?, key: key.to_string() })
 }
 
+/// A notebook's record among the lines of its source.ini that annotate.rs keeps as they are (`AnnotateMap.extra`):
+/// the first line that reads as one. Each line is judged by itself, as bytes, so a kept line that is no UTF-8
+/// does not hide a record beside it.
+fn record_among(kept: &[u8]) -> Option<FileRecord> {
+    kept.split(|&c| c == b'\n').find_map(|line| file_record_parse(std::str::from_utf8(line).ok()?))
+}
+
 /// A notebook that holds a book key, and the record of its file when it has one that names that key.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct KeyHolder {
@@ -1945,7 +1952,7 @@ pub fn key_holders(all: &[NotebookInfo], only: Option<&str>) -> Vec<KeyHolder> {
         }
         let mut m = AnnotateMap::default();
         let (book, rec) = if annotate_map_load(nb.id.as_str(), &mut m) == 0 {
-            (m.book.as_str().to_string(), m.extra.as_str().lines().find_map(file_record_parse))
+            (m.book.as_str().to_string(), record_among(m.extra.as_bytes()))
         } else {
             (String::new(), None)
         };
@@ -3224,6 +3231,24 @@ mod tests {
         for line in &refused {
             assert_eq!(file_record_parse(line), None, "{line:?}");
         }
+    }
+
+    // The record is the first kept line that reads as one, whatever stands around it.
+    #[test]
+    fn a_record_is_found_among_the_kept_lines() {
+        let line = format!("file=sha256:{SHA_A}:6009:{KEY}");
+        let rec = Some(FileRecord { sha256: SHA_A.into(), size: 6009, key: KEY.into() });
+        assert_eq!(record_among(format!("{line}\n").as_bytes()), rec);
+        assert_eq!(record_among(format!("later=1\n{line}\nother=2\n").as_bytes()), rec);
+        // a kept line that is no UTF-8 does not hide the record after it
+        let mut odd = b"note=caf\xe9\n".to_vec();
+        odd.extend_from_slice(format!("{line}\n").as_bytes());
+        assert_eq!(record_among(&odd), rec);
+        // the first that reads: a line of another form is passed by, a second record is not looked at
+        let two = format!("file=md5:{KEY}:6009:{KEY}\n{line}\nfile=sha256:{SHA_B}:7:{KEY}\n");
+        assert_eq!(record_among(two.as_bytes()), rec);
+        assert_eq!(record_among(b""), None);
+        assert_eq!(record_among(b"later=1\nfile=sha256:short:1:x\n"), None);
     }
 
     // The decision, as a table: the holders of one key against a PDF's size and, when it was read, its hash.

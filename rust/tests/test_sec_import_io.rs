@@ -307,8 +307,9 @@ fn a_file_that_differs_from_its_listing_is_taken_after_a_minute_unchanged() {
     assert_eq!(e.notebooks(), ["Book"]);
 }
 
-// A FIFO put at the name after the listing is not opened to be read: not a byte is taken from it. (Neither run can
-// block: the FIFO has a writer, this test, and holds more than a look asks for.)
+// A FIFO put at the name after the listing is not read: the look opens it without waiting, finds it is no file and
+// takes not a byte from it. (No run of this test can block: the FIFO has a writer, the test itself, and holds
+// more than a look asks for.)
 #[test]
 fn a_fifo_put_in_after_the_listing_is_not_read() {
     use std::os::fd::{AsRawFd, FromRawFd, OwnedFd};
