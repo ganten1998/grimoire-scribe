@@ -2106,7 +2106,12 @@ rule joined the two above in the hardening round of 2026-11: a file's path is ke
 is, and a path those files cannot hold (a line break in a name, `pdfimport::name_storable`) is refused where it
 comes in: the scan, the picker's rows, a pick, the job. `in_import` asks the folder itself where a path spells
 `import` in another case (`pdfimport::under_import`), and the scan's first look at a PDF opens it through the
-same walk as the job and reads only the file it listed (`read_ends`).
+same walk as the job and reads only the file it listed (`read_ends`). The job reads its PDF through the file it
+opened, and a file of `import/` is moved to `done/` by its name, so the name is looked at once more just before
+the move (`finish_pdf`): it must still hold the file that was read (the lock's own test of a name against an
+open file, and the size and time the file was opened with), else nothing moves, nothing is marked done, and
+the next scan takes what is at the name; the try stays counted, so this cannot repeat without end. The record a
+notebook keeps of its file takes its key and its hash from the one file the last slice has open.
 
 The links and names (lane L6) come out of the same worker. After the page count the writer sends `LINKS <w> <h>`;
 the worker walks the annotations of every page (`pdfwork.rs`, module `links`), resolves each destination to a
