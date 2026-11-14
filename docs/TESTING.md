@@ -2447,3 +2447,17 @@ button held with the pen near the screen, the page staying; Disable in Settings 
 keyboard's ◀ ▶ and edit keys in a rename and in Find, and its narrower text box; Settings > Wi-Fi with the saved
 networks, a switch to another and back, and the sheet with Wi-Fi off. The owner's verdict, 2026-11-12: "all good".
 
+## 2.1.0
+
+The first stable release of 2.1: 2.1.0-beta.2 (above) with everything in CHANGELOG's 2.1.0 section, released from
+`main`. Automated: the full gate on the release commit with the pinned toolchain. On 2026-11-13 the owner reported
+"the current beta has been checked and is ready", and chose to release `main` as 2.1.0 on the stable channel. The
+crate-age rule (two weeks at the tag) was waived again for this release by the owner on 2026-11-13: crc32fast 1.5.4,
+hayro-cmap 0.1.1 and hayro-postscript 0.2.0 are younger (all are two weeks old on 2026-11-16). They are three of the
+four of 2.1.0-beta.2's waiver; the fourth, log 0.4.35 (2026-10-30), is two weeks old at this tag
+(`tools/check-crate-dates.py --tag-date 2026-11-13` lists these three alone). This release's bundle (build `7df9b236a418`, from `1a7f306e`, its binary byte for byte
+the one the gate tested) was installed on the owner's Scribe (firmware 5.20.1.0.2) on 2026-11-13, after a backup,
+with the notebooks unchanged and KOReader left alone. Until then that Scribe ran 2.1.0-beta.2's build
+`e52d37dbdf51`, so this was its first run of what came after that beta. The owner was asked to look at What's new
+on the first start, page turns at the fitted view and back a page or two, the lasso's bar and a dragged
+selection, and whatever else is in daily use. The owner's verdict, 2026-11-13: "it looks fine."

@@ -4,12 +4,18 @@ Work that was decided, deferred or found but not done yet. Keep this current: wh
 move it to "Done" with the version; when something is deferred, add it here with who decided and
 why. Newest decisions first within each section.
 
-## After the release of 2.1.0-beta.2 (2026-11-12): what waits
+## After the release of 2.1.0 (2026-11-13): what waits
 
-- **nebuff's PRs #49 (a page turn speed-up) and #52 (lasso fixes for #51) are on `main` with 2.1.0-beta.2 since
-  #57, but in no release yet.** Try them on a Scribe before the next one: page turns at the fitted view no longer
-  flash (every 30th UI refresh does), the last three pages' drawings are kept in memory, and the lasso's lift
-  counts its outline as wear. Issue #60: a jump to the oldest of the kept pages misses it.
+- **Issues open at the release**: #78 (the download check can miss the "preparing" state; pull request #81) and
+  #79 (the colour PDF memory test, by 0.4 MiB on one run; pull request #83) wait for their merge. Found on the
+  release day: #84 and #86 (scenarios that give the machine a fixed real time: the Graph of all notebooks' two, and
+  the single side click's) and #85 (the unit tests' scratch folder is never emptied, so a process id that comes
+  round again meets an earlier run's files). #56 (Live view's pen-stall check) was fixed by #82 (Done, below).
+  nebuff's: #55 (Japanese: the strings still untranslated show in English), and the Settings redesign, #45, #64,
+  #65 and #66.
+- **From 2.1.0-beta.2 into 2.1.0**: nebuff's #49 (page turns at the fitted view without a flash, the last three
+  pages' drawings kept in memory), #52 (lasso fixes for #50 and #51) and #67 (issue #60), which the owner reported
+  checked on 2026-11-13.
 
 ## nebuff's main and Clear page (2.1.0-beta.2, lane M, 2026-11-11): what waits
 
@@ -657,12 +663,6 @@ Decided by the lane B3 design (docs/beta2/PIXEL-LASSO.md, 2026-11-03) and its bu
 
 ## In progress
 
-- **2.0.0-beta.2** (owner, 2026-11-02; briefs docs/beta2/BRIEFS.md): all four lanes merged into
-  claude/beta2, each reviewed and gated on its own; not on a Kindle yet. Move to... and Copy to
-  notebook... (lane A); lasso Select with Copy, Cut, Delete, Paste and drag, scoped erase strokes and
-  root/clipboard.qpg, linked items copied with their links (lane B, docs/beta2/LASSO-DESIGN.md); backlinks,
-  Graph anchors, broken targets, Back across notebooks (lane C); the macOS CI flakes and the Bluetooth
-  helper stop (lane E); Live view PiP in Firefox 159+. Study: docs/beta2/JAPANESE.md.
 - **The panel's page count does not fit four-digit pages** (b3-padd2 agent, 2026-11-03, found by the fit check):
   "1995 / 2000" needs 162 px and the toolbar's page chip has 112, so it is cut short in a notebook of 1000 pages
   or more (z_pages_add_6_toolbar_limit stays on page 1 for that reason). A smaller size for long counts, or the
@@ -690,7 +690,10 @@ Decided by the lane B3 design (docs/beta2/PIXEL-LASSO.md, 2026-11-03) and its bu
   `~/KindleLab/volume-rc8`): a Kindle-side controller that survives crashes and logs why it stops,
   never holds the power service awake, the Mac mount behaving like a drive (no `._` files, unmounts
   when the Kindle leaves), and a read-only guard on Grimoire's live files while it runs. Install
-  with the owner present: `install_mac.sh`, then `install_usb_daemon.sh` on the Kindle.
+  with the owner present: `install_mac.sh`, then `install_usb_daemon.sh` on the Kindle. The earlier
+  Mac service (`com.ganten.kindle-volume`) was stopped and disabled on 2026-11-13: it holds the one MTP
+  session the Kindle allows and retries every few seconds, so OpenMTP connected only when it won the race
+  (`manage.py start` turns it back on).
 
 ## To investigate
 

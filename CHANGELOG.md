@@ -1,5 +1,29 @@
 # Changelog
 
+## 2.1.1 (unreleased)
+
+## 2.1.0 (2026-11-13)
+
+- The first stable release of 2.1: 2.1.0-beta.2 with the changes below, now on the stable channel too (KPM
+  2.1.9999; a preview subscriber is offered it as well). A 2.0.0 install gets everything in the 2.1.0-beta.1 and
+  2.1.0-beta.2 sections with it. Fixes come as 2.1.1, 2.1.2 and so on, new features as 2.2.
+- Page turns at the fitted view no longer flash, and turning back a page or two is instant (nebuff, #49). A page
+  turn at the fitted view is a grayscale refresh without a flash (a turn at another view, the Library and back, and
+  every 30th refresh still flash, which also cleans what fast refreshes left). The whole drawings of the last three
+  pages you left are kept in memory (4.6 MB each), so turning back to one shows it at once rather than drawing
+  every stroke again; a page written since is drawn again. A jump to the oldest of the three is shown from memory
+  too (issue #60, nebuff, #67): it had been put aside before it was read.
+- The lasso's bar answers every tap, and a drag leaves fewer traces (nebuff, #52, issues #50 and #51). A bar button
+  shows a pressed look as the pen or finger comes down and acts at the lift, so Copy, which changes nothing on the
+  screen, still shows it was tapped; a contact that slides off a button does nothing. The first fast refresh after
+  a flashing one now waits for it to end (the two on the panel at once tore the drag's first strips), and the
+  outline a drag leaves counts toward the cleaning of fast refreshes' traces.
+- The first pen, touch or key press in the Kindle's first minute after a restart counts as activity for its sleep
+  timer, as every later one does (issue #74). It was not passed on to the power service until a minute had gone.
+- Grimoire's core can be built for another device, with that device's parts in a crate of their own (#61, #62,
+  #70, #71). On a Kindle nothing changes.
+- `make dev` and `tools/kindle-dev` work on more Macs and on Linux (nebuff, #76).
+
 ## 2.1.0-beta.2 (2026-11-11)
 
 - **Closing a big notebook no longer redraws every page.** The PDF of a notebook (the mirror in `PDFs/`) kept
