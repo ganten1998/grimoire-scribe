@@ -1044,11 +1044,8 @@ fn fread(f: &mut std::fs::File, buf: &mut [u8]) -> (usize, bool) {
 }
 
 pub fn bgimage_content_hash_file(path: &str, hash: &mut u64, len: &mut usize) -> i32 {
-    let Ok(mut f) = std::fs::File::open(path) else { return -1 };
-    let Ok(md) = f.metadata() else { return -1 };
-    if !md.is_file() {
-        return -1;
-    }
+    // (a plain file at the name itself: util.rs open_read_nofollow)
+    let Ok((mut f, md)) = open_read_nofollow(path) else { return -1 };
     let total = md.len() as usize;
     let mut got = 0usize;
     let mut h = mix(seed("grimoire file 1"), total as u64);
@@ -1285,13 +1282,17 @@ fn c_strtou_hex(s: &[u8], max: u64) -> (u64, usize) {
     (if neg { v.wrapping_neg() & max } else { v }, i)
 }
 
+/// bg/index.ini is read up to this size (a line a picture, 24 bytes each).
+const BG_INDEX_MAX: usize = 1 << 20;
+
 /// Reads <bgdir>/index.ini (none: empty). 0, or -1: out of memory, or the file is there but does
-/// not read (then nothing may be saved over it: it would lose the ids it lists).
+/// not read, longer than BG_INDEX_MAX included (then nothing may be saved over it: it would lose the ids
+/// it lists).
 pub fn bgindex_load(bgdir: &str, ix: &mut BgIndex) -> i32 {
     *ix = BgIndex::default();
     let mut path = String::new();
     index_path(bgdir, &mut path, 700);
-    let Some(txt) = read_file(&path) else {
+    let Some(txt) = read_file_max(&path, BG_INDEX_MAX) else {
         return if file_exists(&path) { -1 } else { 0 }; // there but unreadable: not to be saved over
     };
     // (the text is a C string: it ends at a NUL)
@@ -1500,7 +1501,7 @@ pub fn bgimage_channels(nb: &str, k: PaperKind) -> i32 {
     }
     bgimage_file(&dir, paper_image_id(k), &mut path, 800);
     let mut head = [0u8; 26];
-    let Ok(mut f) = std::fs::File::open(&path) else { return 1 };
+    let Ok((mut f, _)) = open_read_nofollow(&path) else { return 1 };
     if f.read_exact(&mut head).is_err() || head[..8] != PNG_SIG {
         return 1;
     }

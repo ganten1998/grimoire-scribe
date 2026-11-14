@@ -170,6 +170,11 @@ fn a_storage_read_never_waits_on_a_fifo() {
     let aside = named(&dir, "p1.qpg.damaged-");
     c.that(aside.len() == 1 && std::fs::symlink_metadata(&aside[0]).unwrap().file_type().is_fifo(), "the entry itself was set aside");
     c.that(store_take_corrupt_count() == 1, "and counted as a damaged page is");
+    // what a notebook's card was drawn from, read from thumb.src beside it
+    let src = dir.join("thumb.src");
+    fifo_at(&src);
+    let (r, waited) = waits_on(&src, || store_thumb_source("nb-fifo"));
+    c.that(!waited && r.is_none(), "store_thumb_source with thumb.src a FIFO is None, at once");
     c.done();
     let _ = std::fs::remove_dir_all(&t);
 }
@@ -434,5 +439,145 @@ fn a_picture_is_never_read_through_a_link() {
     assert_eq!(bgimage_read(text(&root.join("000003.png")), 1 << 20), None);
     assert_eq!(errno(), libc::ENOENT);
     assert_eq!(std::fs::read(&outside).unwrap(), png);
+    let _ = std::fs::remove_dir_all(&t);
+}
+
+/// A file moved out of the data folder to `outside`, with a link to it left at its name.
+fn move_out_and_link(file: &Path, outside: &Path) {
+    std::fs::rename(file, outside).unwrap();
+    symlink(outside, file).unwrap();
+}
+
+fn canvas_of(nb: &NotebookInfo, index: i32) -> Canvas {
+    let page = load(nb, index);
+    let mut c = Canvas::default();
+    assert_eq!(canvas_init(&mut c, page.w, page.h), 0);
+    page_render(&mut c, &page, Rect::new(0, 0, page.w, page.h), 300.0);
+    c
+}
+
+// The reads of a file's first bytes (a page's paper, a preview's header, a picture's hash and colour type, the
+// blank pages a batch added) take a plain file at the name itself, as the whole-file read does.
+#[test]
+fn header_reads_take_plain_files_only() {
+    let t = top("headers");
+    let root = t.join("root");
+    store_at(&root);
+    let mut c = Checks::default();
+    let nb = book("Headers", 2, PAPER_BLANK);
+    let dir = nb_dir(&root, &nb);
+    // a page's paper, read from its file's start
+    let mut grid = page_new(600, 800, PAPER_GRID);
+    page_add(&mut grid, wave(7, 200.0));
+    assert_eq!(store_save_page(&nb, 1, &grid), 0);
+    c.that(store_page_paper(&nb, 1) == PAPER_GRID, "a page's paper is read from its file");
+    move_out_and_link(&dir.join(format!("p{}.qpg", nb.page_ids[1])), &t.join("outside.qpg"));
+    c.that(store_page_paper(&nb, 1) == PAPER_BLANK, "a page file that is a link gives the notebook's paper");
+    // a preview's header
+    store_save_page_preview(&nb, nb.page_ids[0], &canvas_of(&nb, 0));
+    c.that(store_page_preview_ok(&nb, nb.page_ids[0]), "a preview just saved is whole and current");
+    move_out_and_link(&dir.join(".page-previews/p1.pgm"), &t.join("outside.pgm"));
+    c.that(!store_page_preview_ok(&nb, nb.page_ids[0]), "a preview that is a link is not");
+    // a picture's hash
+    let picture = t.join("outside.png");
+    std::fs::write(&picture, vec![7u8; 5000]).unwrap();
+    let (mut hash, mut len) = (0u64, 0usize);
+    c.that(bgimage_content_hash_file(text(&picture), &mut hash, &mut len) == 0 && len == 5000, "a plain file is hashed");
+    let link = root.join("linked.png");
+    symlink(&picture, &link).unwrap();
+    c.that(bgimage_content_hash_file(text(&link), &mut hash, &mut len) == -1, "a link is not hashed");
+    c.that(bgimage_content_hash_file(text(&dir), &mut hash, &mut len) == -1, "a folder is not hashed");
+    // a kept picture's colour type, from its PNG header (26 bytes: the signature, IHDR, the colour type last)
+    let (mut bgdir, mut file) = (String::new(), String::new());
+    assert_eq!(bgimage_dir(nb.id.as_str(), &mut bgdir, 700), 0);
+    std::fs::create_dir_all(&bgdir).unwrap();
+    bgimage_file(&bgdir, 1, &mut file, 800);
+    let mut head = b"\x89PNG\r\n\x1a\n\0\0\0\x0dIHDR".to_vec();
+    head.extend_from_slice(&600u32.to_be_bytes());
+    head.extend_from_slice(&800u32.to_be_bytes());
+    head.extend_from_slice(&[8, 2]);
+    assert_eq!(head.len(), 26);
+    std::fs::write(&file, &head).unwrap();
+    let paper = paper_image(PAPER_ROLE_TEMPLATE, 1);
+    c.that(bgimage_channels(nb.id.as_str(), paper) == 3, "a colour picture's header is read from its file");
+    move_out_and_link(Path::new(&file), &t.join("outside-colour.png"));
+    c.that(bgimage_channels(nb.id.as_str(), paper) == 1, "a picture that is a link reads as no colour picture");
+    // the blank pages a batch added: untouched only as plain files, and written again only where nothing stands
+    let mut nb2 = book("Added", 1, PAPER_BLANK);
+    let dir2 = nb_dir(&root, &nb2);
+    let mut undo = None;
+    assert_eq!(store_add_pages(&mut nb2, 1, 2, PAPER_BLANK, &mut undo), 0);
+    let u = undo.unwrap();
+    let added = dir2.join(format!("p{}.qpg", u.added[0]));
+    let blank = t.join("outside-blank.qpg");
+    c.that(store_added_pages_untouched(&nb2, &u), "pages just added are untouched");
+    move_out_and_link(&added, &blank);
+    c.that(!store_added_pages_untouched(&nb2, &u), "an added page that is a link is not counted as untouched");
+    std::fs::remove_file(&added).unwrap();
+    std::fs::rename(&blank, &added).unwrap();
+    assert_eq!(store_undo_add_pages(&mut nb2, &u), 0);
+    assert!(std::fs::symlink_metadata(&added).is_err());
+    std::fs::write(&blank, &u.blank).unwrap();
+    symlink(&blank, &added).unwrap();
+    let was = nb2.page_ids.clone();
+    c.that(store_redo_add_pages(&mut nb2, &u) == -1 && nb2.page_ids == was, "the redo is refused with a link at an added page's name");
+    c.that(is_link(&added) && std::fs::read(&blank).unwrap() == u.blank, "and the link and its file are as they were");
+    std::fs::remove_file(&added).unwrap();
+    c.that(store_redo_add_pages(&mut nb2, &u) == 0 && is_plain(&added), "with nothing at the name the redo writes the page");
+    c.done();
+    let _ = std::fs::remove_dir_all(&t);
+}
+
+// The sweep of a previews job's leftovers works only in a .page-previews that is a folder of the notebook's own.
+#[test]
+fn the_preview_sweep_stays_in_its_own_folder() {
+    let t = top("sweep");
+    let root = t.join("root");
+    store_at(&root);
+    let pid = 4242;
+    let mut c = Checks::default();
+    // a real folder: this process id's leftovers go, another's stay
+    let nb = book("Own", 1, PAPER_BLANK);
+    let cache = nb_dir(&root, &nb).join(".page-previews");
+    std::fs::create_dir_all(&cache).unwrap();
+    for f in ["x.4242", "x.4242.tmp", "x.777", "p1.pgm"] {
+        std::fs::write(cache.join(f), b"x").unwrap();
+    }
+    store_cleanup_preview_work(nb.id.as_str(), pid);
+    let mut left: Vec<String> = std::fs::read_dir(&cache).unwrap().flatten().map(|e| e.file_name().to_string_lossy().into_owned()).collect();
+    left.sort();
+    c.that(left == ["p1.pgm", "x.777"], "in the notebook's own folder the job's leftovers are removed");
+    // a .page-previews that is a link: nothing behind it is removed
+    let other = book("Linked", 1, PAPER_BLANK);
+    let outside = t.join("outside");
+    std::fs::create_dir_all(&outside).unwrap();
+    for f in ["keep.4242", "keep.4242.tmp"] {
+        std::fs::write(outside.join(f), b"not Grimoire's").unwrap();
+    }
+    symlink(&outside, nb_dir(&root, &other).join(".page-previews")).unwrap();
+    store_cleanup_preview_work(other.id.as_str(), pid);
+    c.that(outside.join("keep.4242").exists() && outside.join("keep.4242.tmp").exists(), "behind a linked .page-previews nothing is removed");
+    c.done();
+    let _ = std::fs::remove_dir_all(&t);
+}
+
+// A notebook's picture index (bg/index.ini) is read up to 1 MiB, to the byte: a longer one is there but does
+// not read, so nothing is saved over it.
+#[test]
+fn the_picture_index_has_a_limit() {
+    let t = top("index");
+    let bg = t.join("bg");
+    std::fs::create_dir_all(&bg).unwrap();
+    let mut textv = b"# Grimoire background pictures: id=key (docs/FORMAT.md)\n000001=00000000000000aa\n#".to_vec();
+    textv.resize(MIB - 1, b'x');
+    textv.push(b'\n');
+    std::fs::write(bg.join("index.ini"), &textv).unwrap();
+    let mut c = Checks::default();
+    let mut ix = BgIndex::default();
+    c.that(bgindex_load(text(&bg), &mut ix) == 0 && ix.e.len() == 1 && ix.e[0].id == 1 && ix.e[0].key == 0xaa, "an index of exactly 1 MiB reads");
+    textv.insert(textv.len() - 1, b'x');
+    std::fs::write(bg.join("index.ini"), &textv).unwrap();
+    c.that(bgindex_load(text(&bg), &mut ix) == -1 && ix.e.is_empty(), "one byte more is there but does not read");
+    c.done();
     let _ = std::fs::remove_dir_all(&t);
 }
