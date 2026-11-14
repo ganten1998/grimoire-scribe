@@ -194,3 +194,31 @@ fn a_folder_whose_name_starts_with_done_is_not_imported() {
     assert!(b.probe(2480, "status.1", &mut o));
     assert_ne!(o, "imported", "a PDF in import/done-old is not imported");
 }
+
+// A path with a line break in a name cannot be handed to an import (its mark and state keep a path on one line),
+// so such a PDF or folder is not a row; a tab is a name's own character, and its rows are there.
+#[test]
+fn names_with_a_line_break_are_not_rows() {
+    ui_init(300.0);
+    i18n_set("en");
+    let root = plain_tree("line-breaks");
+    let mut made = Vec::new();
+    for (name, folder) in [("a\nb.pdf", false), ("Sc\nans", true), ("t\tx.pdf", false), ("Sc\tans", true), ("plain.pdf", false)] {
+        let p = format!("{root}/documents/{name}");
+        let ok = if folder { std::fs::create_dir_all(&p).is_ok() } else { std::fs::write(&p, b"%PDF-1.4\n").is_ok() };
+        if ok {
+            made.push(name);
+        } else {
+            eprintln!("  skipped {name:?}: this file system refuses the name");
+        }
+    }
+    let mut b = open();
+    assert!(b.go(sp("documents")));
+    let rows: Vec<String> = b.rows.iter().map(|r| r.name.clone()).collect();
+    for name in ["t\tx.pdf", "Sc\tans", "plain.pdf"] {
+        assert_eq!(rows.iter().any(|r| r == name), made.contains(&name), "{name:?}: {rows:?}");
+    }
+    for name in ["a\nb.pdf", "Sc\nans"] {
+        assert!(!rows.iter().any(|r| r == name), "{name:?} is a row: {rows:?}");
+    }
+}

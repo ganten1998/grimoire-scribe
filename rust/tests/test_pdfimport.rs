@@ -1149,3 +1149,32 @@ fn a_job_over_its_cpu_budget_stops_and_keeps_its_pages() {
     let ends = run_to_end(&id, &src, 10);
     assert_eq!(last(&ends), &SliceEnd::Done { pages: 4, blank: 0 }, "{ends:?}");
 }
+
+// ---- names: the state keeps the path as it is ----
+
+// A name with a tab or a C1 control character is the file's own name: the state between slices holds the path
+// itself, so the work folder of an import that was cut off is kept and goes on with that file.
+#[test]
+fn a_name_with_a_tab_or_a_c1_character_resumes_as_itself() {
+    let e = setup("odd-names");
+    std::env::set_var("GRIMOIRE_PDF_SLICE_PAGES", "1");
+    let mut done = 0;
+    // (two PDFs of other pages: the second is not the first again)
+    for (name, pages) in [("c\u{85}d.pdf", 2u32), ("t\tx.pdf", 3)] {
+        if std::fs::write(format!("{}/import/{name}", e.root), pdffix::planner(pages as usize)).is_err() {
+            eprintln!("  skipped {name:?}: this file system refuses the name");
+            continue;
+        }
+        let src = format!("grimoire/import/{name}");
+        let id = new_id();
+        assert_eq!(run_slice(&id, &src), SliceEnd::More, "{name:?}: the probe");
+        let s = State::parse(&std::fs::read(format!("{}/notebooks/.import-{id}/pdf-import.ini", e.root)).unwrap()).unwrap();
+        assert_eq!(s.src, src, "the state names another path than the one imported");
+        assert!(keep_work_folder(&id), "{name:?}: the work folder of an import that stopped here is not kept");
+        let ends = run_to_end(&id, &src, 10);
+        assert_eq!(last(&ends), &SliceEnd::Done { pages, blank: 0 }, "{name:?}: {ends:?}");
+        assert!(!std::path::Path::new(&format!("{}/import/{name}", e.root)).exists(), "{name:?} is still in import/");
+        done += 1;
+        assert_eq!(e.done_files(), done, "{name:?}: filed in import/done");
+    }
+}

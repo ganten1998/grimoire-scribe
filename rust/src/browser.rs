@@ -363,6 +363,14 @@ impl Browser {
                 odd += 1;
                 continue;
             };
+            // (a folder or a PDF whose path an import cannot keep, pdfimport::name_storable, is no row either: counted
+            // with the odd names)
+            if !crate::pdfimport::name_storable(name) {
+                if e.kind == FsKind::Dir || (e.kind == FsKind::File && self.kinds.contains(&PickKind::Pdf) && is_pdf(&e.name)) {
+                    odd += 1;
+                }
+                continue;
+            }
             let Some(path) = at.join(&e.name) else { continue };
             match e.kind {
                 FsKind::Dir => {

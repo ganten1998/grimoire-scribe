@@ -371,8 +371,16 @@ fn mark_path(src: &str) -> String {
     root_path(&format!("{}/{}", MARKS_DIR, mark_hash(src)))
 }
 
+/// A label (an id, a name given, a Library folder) as a line of a mark or a state holds it: no control character.
+/// The path of the file is never cleaned: it is kept as it is, or not at all (`name_storable`).
 fn clean_field(s: &str) -> String {
     s.chars().filter(|c| !c.is_control()).collect()
+}
+
+/// Whether a path can be kept in a mark or an import's state and read back as itself: no line feed and no
+/// carriage return in it (the two characters a line of those files cannot hold).
+pub fn name_storable(s: &str) -> bool {
+    !s.contains(['\n', '\r'])
 }
 
 pub fn mark_text(m: &Mark) -> String {
@@ -384,7 +392,7 @@ pub fn mark_text(m: &Mark) -> String {
             MarkState::Done => "done",
         },
         clean_field(&m.id),
-        clean_field(&m.src),
+        m.src,
         m.pick as u8,
         clean_field(&m.name),
         clean_field(&m.folder),
@@ -396,7 +404,7 @@ pub fn mark_text(m: &Mark) -> String {
     )
 }
 
-/// Reads a mark strictly (at most 4 KiB, known keys, an id the store takes).
+/// Reads a mark strictly (at most 4 KiB, known keys, an id the store takes, a path that reads back as itself).
 pub fn mark_parse(t: &[u8]) -> Option<Mark> {
     if t.len() > MARK_MAX {
         return None;
@@ -428,7 +436,13 @@ pub fn mark_parse(t: &[u8]) -> Option<Mark> {
                 }
                 m.id = v.to_string();
             }
-            "src" => m.src = v.to_string(),
+            "src" => {
+                // (a line never holds a line feed; a carriage return inside one is no path a mark was given)
+                if !name_storable(v) {
+                    return None;
+                }
+                m.src = v.to_string();
+            }
             "pick" => m.pick = v == "1",
             "name" => m.name = v.to_string(),
             "folder" => m.folder = v.to_string(),
@@ -459,6 +473,10 @@ pub fn sandbox_broken_in_progress() -> bool {
 }
 
 fn mark_write(m: &Mark) -> bool {
+    if !name_storable(&m.src) {
+        qlog!("import: a path that holds a line break is never imported; refused");
+        return false;
+    }
     let dir = root_path(MARKS_DIR);
     if mkdir_p(&dir) != 0 {
         return false;
@@ -528,7 +546,7 @@ impl State {
         let strikes = self.strikes.iter().map(|(p, n)| format!("{p}:{n}")).collect::<Vec<_>>().join(",");
         format!(
             "# Grimoire: a PDF import in progress (docs/FORMAT.md)\nsrc={}\nsize={}\nmtime={}\nkey={}\npages={}\nnext={}\npics={}\nblank={}\nstrikes={}\ncpu_ms={}\npick={}\nname={}\nfolder={}\nbytes={}\nopen={}\nstops={}\n",
-            clean_field(&self.src),
+            self.src,
             self.size,
             self.mtime,
             self.key,
@@ -567,6 +585,10 @@ impl State {
             let (k, v) = line.split_once('=')?;
             match k {
                 "src" => {
+                    // (as mark_parse: a carriage return inside the line is no path a state was given)
+                    if !name_storable(v) {
+                        return None;
+                    }
                     s.src = v.to_string();
                     have |= 1;
                 }
@@ -623,6 +645,9 @@ fn state_read(id: &str) -> Option<State> {
 }
 
 fn state_write(id: &str, s: &State) -> bool {
+    if !name_storable(&s.src) {
+        return false;
+    }
     write_file_atomic(&state_path(id), s.text().as_bytes()) == 0
 }
 
@@ -789,7 +814,8 @@ fn is_pdf_name(n: &str) -> bool {
 }
 
 /// The PDFs of import/ (top level, and one folder down), no links, regular files only, sorted by the
-/// comparator the browser and the font list use.
+/// comparator the browser and the font list use. A PDF or a folder whose name a mark cannot keep
+/// (`name_storable`) is left out and counted.
 pub fn list_pdfs() -> Found {
     let mut f = Found::default();
     let dir = root_path("import");
@@ -815,7 +841,15 @@ pub fn list_pdfs() -> Found {
     }
     top.sort_by(|a, b| name_cmp(&a.0, &b.0));
     for (name, md) in top {
-        if md.is_file() && is_pdf_name(&name) {
+        let pdf = md.is_file() && is_pdf_name(&name);
+        if !name_storable(&name) {
+            // (a PDF or a folder only: a stray file of no kind never makes the scan's line print at every scan)
+            if pdf || md.is_dir() {
+                f.skipped += 1;
+            }
+            continue;
+        }
+        if pdf {
             f.files.push((name, String::new(), md.len(), md.mtime()));
         } else if md.is_dir() {
             let Ok(rd) = std::fs::read_dir(format!("{dir}/{name}")) else { continue };
@@ -829,7 +863,7 @@ pub fn list_pdfs() -> Found {
                     continue;
                 }
                 let Ok(ft) = e.file_type() else { continue };
-                if ft.is_symlink() || !ft.is_file() {
+                if ft.is_symlink() || !ft.is_file() || !name_storable(&n) {
                     f.skipped += 1;
                     continue;
                 }
@@ -851,12 +885,16 @@ pub fn list_pdfs() -> Found {
 
 /// Whether a folder of import/ still holds PDFs that can be imported (its pictures wait for them). A PDF that
 /// was refused or failed its tries and has not changed since, or one imported already that could not move,
-/// holds nothing back: the pictures then import as they did before 2.1.
+/// holds nothing back: the pictures then import as they did before 2.1. Nor does a PDF the scan leaves out for
+/// its name or its folder's (`name_storable`): the pictures never wait for a PDF that is not imported.
 pub(crate) fn folder_holds_pdfs(name: &str, attempts: &[crate::bgwork_template::Attempt]) -> bool {
+    if !name_storable(name) {
+        return false;
+    }
     let Ok(rd) = std::fs::read_dir(root_path(&format!("import/{name}"))) else { return false };
     rd.flatten().take(1000).any(|e| {
         let Some(n) = e.file_name().to_str().map(str::to_string) else { return false };
-        if !is_pdf_name(&n) || !e.file_type().is_ok_and(|t| t.is_file()) {
+        if !is_pdf_name(&n) || !name_storable(&n) || !e.file_type().is_ok_and(|t| t.is_file()) {
             return false;
         }
         let Ok(md) = e.metadata() else { return false };
@@ -1057,13 +1095,23 @@ pub fn marks_waiting() -> bool {
     waiting_marks().next().is_some()
 }
 
+/// The waiting marks, each its path's own: a mark is named by the hash of the path it holds, and a waiting one
+/// filed under another name is removed here and not returned (an earlier build kept a cleaned path under the hash
+/// of the true one: such a mark named another file, and no end of that file's import ever dropped it).
 fn waiting_marks() -> impl Iterator<Item = Mark> {
     std::fs::read_dir(root_path(MARKS_DIR))
         .into_iter()
         .flat_map(|rd| rd.flatten().take(256))
-        .filter_map(|e| read_file(&e.path().to_string_lossy()))
-        .filter_map(|t| mark_parse(&t))
-        .filter(|m| m.state == MarkState::Waiting)
+        .filter_map(|e| read_file(&e.path().to_string_lossy()).map(|t| (e, t)))
+        .filter_map(|(e, t)| mark_parse(&t).map(|m| (e, m)))
+        .filter(|(_, m)| m.state == MarkState::Waiting)
+        .filter_map(|(e, m)| {
+            if e.file_name().to_str() == Some(mark_hash(&m.src).as_str()) {
+                return Some(m);
+            }
+            let _ = std::fs::remove_file(e.path());
+            None
+        })
 }
 
 /// When the UI takes the lock afresh: the picks that waited for it are queued now (a PDF as a PDF import, a
@@ -1155,6 +1203,11 @@ pub fn pdf_import_queue(path: &StoragePath, name: Option<&str>, folder: Option<&
         qlog!("import: a picked PDF's path is not UTF-8; refused");
         return Queued::Refused("name");
     };
+    // (before the lock is asked for and before any mark: nothing ever waits under a path a mark cannot keep)
+    if !name_storable(&src) {
+        qlog!("import: a picked PDF's path holds a line break; refused");
+        return Queued::Refused("name");
+    }
     if session_broken() {
         qlog!("import: a picked PDF is not imported this session (the sandbox refused a step; see the log above)");
         return Queued::Refused("sandbox");
@@ -1882,6 +1935,11 @@ fn log_worker_failure(id: &str, why: &str) {
 /// commits.
 pub fn run_slice(id: &str, src: &str) -> SliceEnd {
     ignore_sigpipe();
+    // (a path no state can keep is refused where it comes in, the scan's and the pick's; here nothing is written)
+    if !name_storable(src) {
+        qlog!("import: %s: its path holds a line break; nothing imported", id);
+        return fail(id, R_FAILED, 0);
+    }
     let mark = mark_read(src);
     let Some(abs) = StoragePath::new(src.as_bytes()).and_then(|sp| abs_of(&sp)) else { return fail(id, R_FAILED, 0) };
     let source = match open_source(src) {
@@ -2615,6 +2673,28 @@ mod tests {
         assert!(mark_parse(&vec![b'a'; 5000]).is_none());
         assert!(mark_parse(b"state=making\nid=../../etc\n").is_none());
         assert!(mark_parse(b"state=making\npage=x\n").is_none());
+        // a path with a carriage return inside its line is no path a mark was given
+        assert!(mark_parse(b"state=waiting\nsrc=documents/a\rb.pdf\npick=1\n").is_none());
+        // (a line that ends CR LF is a line: the file was edited where lines end so)
+        assert_eq!(mark_parse(b"state=waiting\r\nsrc=documents/ab.pdf\r\n").map(|m| m.src).as_deref(), Some("documents/ab.pdf"));
+        // a label is still cleaned as it is written; the path never is
+        let odd = Mark { state: MarkState::Making, src: "documents/t\tx.pdf".into(), name: "My\tbook\n".into(), folder: "Wo\u{85}rk".into(), ..Default::default() };
+        let back = mark_parse(mark_text(&odd).as_bytes()).expect("parses");
+        assert_eq!((back.src.as_str(), back.name.as_str(), back.folder.as_str()), ("documents/t\tx.pdf", "Mybook", "Work"));
+    }
+
+    #[test]
+    fn a_path_with_a_line_break_cannot_be_kept() {
+        for ok in ["", "grimoire/import/A.pdf", "documents/t\tx.pdf", "documents/c\u{85}d.pdf", "documents/\u{7f}\u{9f}.pdf", "documents/\u{2028}.pdf"] {
+            assert!(name_storable(ok), "{ok:?}");
+        }
+        for bad in ["a\nb.pdf", "a\rb.pdf", "documents/Tr\rip/x.pdf", "Icon\r", "\n", "x.pdf\n"] {
+            assert!(!name_storable(bad), "{bad:?}");
+        }
+        // a state says so too: one that names such a path does not read
+        let ok = sample_state().text();
+        assert!(State::parse(ok.replace("src=grimoire/import/A.pdf", "src=grimoire/import/a\rb.pdf").as_bytes()).is_none());
+        assert!(State::parse(ok.replace("src=grimoire/import/A.pdf", "src=grimoire/import/a\tb.pdf").as_bytes()).is_some());
     }
 
     fn sample_state() -> State {
@@ -2662,6 +2742,19 @@ mod tests {
         assert!(State::parse(ok.replace("0123456789abcdef0123456789abcdef", "xyz").as_bytes()).is_none());
         assert!(State::parse(&vec![b'#'; STATE_MAX + 1]).is_none());
         assert!(State::parse(b"src=x\n").is_none());
+    }
+
+    // A mark and a state hold the path of their file as it is: a tab and a C1 control character are a name's own.
+    #[test]
+    fn a_path_is_kept_as_it_is_in_a_mark_and_a_state() {
+        for src in ["grimoire/import/t\tx.pdf", "documents/c\u{85}d.pdf", "documents/\u{7f}.pdf"] {
+            let m = Mark { state: MarkState::Waiting, src: src.into(), pick: true, ..Default::default() };
+            assert!(mark_text(&m).contains(&format!("\nsrc={src}\n")), "{src:?}");
+            assert_eq!(mark_parse(mark_text(&m).as_bytes()).map(|m| m.src).as_deref(), Some(src));
+            let s = State { src: src.into(), ..sample_state() };
+            assert!(s.text().contains(&format!("\nsrc={src}\n")), "{src:?}");
+            assert_eq!(State::parse(s.text().as_bytes()).map(|s| s.src).as_deref(), Some(src));
+        }
     }
 
     #[test]
