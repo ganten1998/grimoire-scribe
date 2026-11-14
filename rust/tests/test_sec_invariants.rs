@@ -12,9 +12,11 @@
 type File = (&'static str, &'static str);
 
 const DESIGN: File = ("docs/DESIGN.md", include_str!("../../docs/DESIGN.md"));
+const KINDLE: File = ("docs/KINDLE.md", include_str!("../../docs/KINDLE.md"));
 const BACKLOG: File = ("docs/BACKLOG.md", include_str!("../../docs/BACKLOG.md"));
 const PDFWORK: File = ("rust/src/pdfwork.rs", include_str!("../src/pdfwork.rs"));
 const FONTCHECK: File = ("rust/src/fontcheck.rs", include_str!("../src/fontcheck.rs"));
+const SANDBOX: File = ("rust/src/sandbox.rs", include_str!("../src/sandbox.rs"));
 const TEMPLATES: File = ("rust/src/bgwork_template.rs", include_str!("../src/bgwork_template.rs"));
 const LICENSES_TOOL: File = ("tools/crate_licenses.py", include_str!("../../tools/crate_licenses.py"));
 const CARGO_TOML: File = ("rust/Cargo.toml", include_str!("../Cargo.toml"));
@@ -361,6 +363,16 @@ fn the_docs_no_longer_say_what_the_code_does_not() {
     // picking a template or photo reads none of its bytes on the UI thread (test_picture_jobs.rs holds the code)
     // (the phrase ends at "is": the old comment broke its line there)
     gone(&mut fails, TEMPLATES, "only a small file it has not seen yet is");
+    // what a build off the Kindle takes of the sandbox (sandbox.rs: standard_steps, apply_steps, sandboxed_line)
+    gone(&mut fails, DESIGN, "Off the Kindle the steps are skipped");
+    gone(&mut fails, KINDLE, "anywhere the steps are skipped");
+    gone(&mut fails, SANDBOX, "the steps that need root or Linux are skipped");
+    // what the UI process reads of a PDF (pdfimport.rs: read_ends; browser.rs: book_key)
+    gone(&mut fails, DESIGN, "never reads the PDF beyond the ends of the file");
+    // the allow-list as allow_list_for has it, and the calls that answer ENOSYS (build_filter)
+    gone(&mut fails, DESIGN, "rt_sigreturn, exit) whose violation traps into a reporter");
+    // a panic in the Kindle's build is an abort, not an "E panic" line (Cargo.toml: panic = "abort")
+    gone(&mut fails, SANDBOX, "reports \"E panic\"");
     // the crates: glifo is the optional one (vello_cpu's), and skrifa is glifo's plain dependency
     gone(&mut fails, BACKLOG, "glifo's optional dependency");
     // licenses/rust-crates.txt lists every crate the lock names, not only the ones built in

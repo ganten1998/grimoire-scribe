@@ -461,7 +461,8 @@ file name, title or key ever appears in it: ids, page numbers, counts, timings, 
 
 - `work: sandboxed (uid 62001, chroot, netns, no new privileges, seccomp, selinux enforcing|permissive|off)`:
   for PDFs once a session, at the first worker; for pictures and fonts once a background job (each job is a
-  process of its own, and says it at its first worker). `work: not sandboxed (...)` anywhere the steps are skipped.
+  process of its own, and says it at its first worker). `work: not sandboxed (...)` wherever the sandbox is not
+  required (never on the Kindle).
 - `import: <id>: N page(s), the PDF is N KB` (the probe), then for each slice `import: <id>: pages A to B of M in
   T ms (MemAvailable K MB, N band(s))` (a page's time is T over the slice's pages), then `import: notebook <id>
   made of N page(s), N picture(s), N blank`.
