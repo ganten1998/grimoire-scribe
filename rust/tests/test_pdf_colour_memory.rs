@@ -18,6 +18,9 @@ const MIB: u64 = 1 << 20;
 /// PNG), then one RGB copy of the page (13.8 MB) beside the compressor's output. Measured on the Mac
 /// (2026-11-09): 51 MiB for the photo-like pages, 27 for the planner's; 0c26d912 took 81 and 53 (two
 /// decodes a page and a kept copy of every picture), and 72 and 40 on one picture (now 69 and 40).
+/// Since issue 79 (2026-11-13) the compressor's output is in pieces (zpieces.rs), not stb's one block of
+/// 24 MiB for 13.9 MB of data: 50 MiB for the photo-like pages and 56 on one picture, and the same where
+/// every large realloc moves its block (it was 63 and 81 there: the block was held twice while it grew).
 const ONE_COPY_BUDGET: u64 = 64 * MIB;
 /// Pages on one picture keep a copy of it for the next page (one decode for all): a second RGB copy.
 const TWO_COPIES_BUDGET: u64 = 80 * MIB;
@@ -196,7 +199,8 @@ fn scribe_sized_colour_pages_mirror_within_the_mirror_childs_margin() {
         let budget = if shared { TWO_COPIES_BUDGET } else { ONE_COPY_BUDGET };
         // (the per-copy budgets are what the owner's Mac measured: macOS's own allocator reports more on older
         // systems, 72 and 84 MiB on GitHub's macOS runner for 51 and 69 here, so they are printed, not held; what
-        // the device needs is the margin below, with headroom)
+        // the device needs is the margin below, with headroom. Those two readings, and a 96 that failed the
+        // headroom once, were from before issue 79: with stb's output block in them, moved or not)
         if cfg!(target_vendor = "apple") && live > budget {
             println!("NOTE {name}: {} MiB, over the {} MiB of {} RGB cop{} of the page measured on the owner's Mac", live / MIB, budget / MIB, if shared { "two" } else { "one" }, if shared { "ies" } else { "y" });
         }

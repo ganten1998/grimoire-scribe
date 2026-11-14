@@ -1421,7 +1421,10 @@ copied too); the notebook PDF and raw zips carry them.
 Closing a changed notebook used to draw every page again (minutes for a 400-page planner, holding the one
 background queue) and built the whole PDF in one buffer before writing it. Now `export_notebook_pdf_to` writes the
 PDF to any `Sink` (a Buf, a file, a count, a connection) as its objects are made: a scratch buffer holds one page's
-objects, a page's image goes to the sink straight, the xref's offsets are kept (8 bytes an object). Each page's
+objects, a page's image goes to the sink straight, the xref's offsets are kept (8 bytes an object). The stream is
+made by `zpieces.rs`: the bytes of stb's `stbi_zlib_compress`, gathered in pieces of 256 KiB that are never
+grown, where stb's one doubling block ended at 24 MiB for a colour page of 13.9 MB that hardly compresses (and
+was held twice wherever the allocator moved it to grow it: issue 79). Each page's
 Flate stream is cached in `grimoire/.cache/pdf/<id>/` under a stamp (`pdfcache.rs`; the record's layout is in
 FORMAT.md): a record that does not read or whose stamp is not the page's today is drawn again, and a page drawn
 while its picture was missing or did not decode is never kept, so the cache can only make a PDF faster, never
