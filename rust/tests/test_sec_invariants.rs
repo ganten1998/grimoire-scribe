@@ -431,6 +431,13 @@ fn the_docs_no_longer_say_what_the_code_does_not() {
         BACKLOG,
         "- **The Scribe check of this round has not run**",
     );
+    // four sentences of TESTING.md sent the reader to the sandbox round's section by its place ("at the end",
+    // "the round above"), and other rounds' sections have come to stand after it: they name it now, and the
+    // name must be a heading of the file
+    gone(&mut fails, TESTING, "sandbox\", at the end)");
+    gone(&mut fails, TESTING, "the hardening round's section at the end");
+    gone(&mut fails, TESTING, "of the round above");
+    stands_on(&mut fails, TESTING, "(\"Hardening round (2026-11), sandbox\", below)", TESTING, "## Hardening round (2026-11), sandbox: ");
     // the crates: glifo is the optional one (vello_cpu's), and skrifa is glifo's plain dependency
     gone(&mut fails, BACKLOG, "glifo's optional dependency");
     // licenses/rust-crates.txt lists every crate the lock names, not only the ones built in

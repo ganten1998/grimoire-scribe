@@ -1987,7 +1987,7 @@ The tests of the sandbox's real steps (`rust/tests/test_sandbox_linux.rs`, which
 CI job `sandbox`, which the gate requires; they first ran as root on 2026-11-10, in a VM. The test file itself has
 not run on a Scribe; the steps have, as they were in 2.1.0-beta.2 (S1 on 2026-11-09, and the imports of the
 section "2.1.0-beta.2" below), and the narrower system-call rules that came after have a check of their own
-("Hardening round (2026-11), sandbox", at the end). The owner's checks on the Scribe, as written before those runs
+("Hardening round (2026-11), sandbox", below). The owner's checks on the Scribe, as written before those runs
 (S1's numbers are in the header of `sandbox::s1`; the plan's values were kept):
 
 1. Copy a real planner PDF into `grimoire/import/` over USB, open Grimoire: "Importing: page N of M" stays at
@@ -2083,8 +2083,8 @@ has run on a Scribe is in the section "2.1.0-beta.2" below. The owner's checks:
 2. grimoire.log has `work: sandboxed (uid 62001, ...)` once a background job that reads pictures (each job is a
    process of its own; for PDFs it is once a session), and no `pictures decode in the writer` (since pictures
    fail closed: no `pictures wait`) and no `made call N, which the sandbox does not allow`. If either shows, send
-   the log (the call is added to the allow-list, but for 240, 192 and 125 (the hardening round's section at the
-   end); the other line means the sandbox refused a step).
+   the log (the call is added to the allow-list, but for 240, 192 and 125 ("Hardening round (2026-11), sandbox",
+   below); the other line means the sandbox refused a step).
 3. Copy a folder of 20 phone photos (12 MP) into `grimoire/import/<Folder>`: it imports as before; time it from the
    log (`import: ... N of M pages`) against 2.0.0, and watch `MemAvailable`: the slices are 32 pictures a worker.
 4. Put a broken `.png` (cut a real one in half) in `grimoire/templates`: it is listed as unusable as in 2.0, and
@@ -2150,7 +2150,7 @@ and the look on e-ink are the owner's checks:
    back and open Grimoire: your font again.
 9. **The sandbox.** grimoire.log has `work: sandboxed (uid 62001, ...)` and no `fonts: no worker for the check`
    and no `made call N, which the sandbox does not allow` (if either shows, send the log: a call is then added
-   to the allow-list, but for 240, 192 and 125 (the hardening round's section at the end), with the spike's
+   to the allow-list, but for 240, 192 and 125 ("Hardening round (2026-11), sandbox", below), with the spike's
    numbers, and until then no font is checked, none is marked).
 10. **The crash guard** cannot be provoked without a font that crashes Grimoire; its marks can be watched:
     while your font's first screen is being drawn `grimoire/.font-inuse` exists, and it is gone a moment after.
@@ -2568,7 +2568,7 @@ worker's record lines, what a build off the Kindle takes of the sandbox, what th
 font check's second try and its mark, who writes `fonts/.cache`, where the sandbox's tests have run), and
 `rust/deny.toml` now bans the one crate that would bring a second skrifa into the build. No code path
 changes: the app behaves as before. Automated: `rust/tests/test_sec_invariants.rs` (the sentences, the
-allow-list's of the round above among them, `Cargo.lock` against `deny.toml`, and the skrifa pin),
+allow-list's of the sandbox round among them, `Cargo.lock` against `deny.toml`, and the skrifa pin),
 `rust/tests/test_sec_records_cap.rs` (a worker past the cap is ended and the next starts afresh), and
 CI's `deny` job.
 
