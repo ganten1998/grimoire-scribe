@@ -216,6 +216,31 @@ fn start(root: &str, script: &str, env: &[(&str, &str)]) -> (Option<i32>, String
 
 const OWN: &str = "# Grimoire settings\ntheme=classic\nfont=file:Mine.ttf\nwhatsnew_seen=9.9.9\n";
 
+/// Runs `f` with stderr (the log) going to a file; the log's text.
+fn with_log<R>(path: &str, f: impl FnOnce() -> R) -> (R, String) {
+    use std::io::Write;
+    let _ = std::io::stderr().flush();
+    // SAFETY: dup, open, dup2 and close on descriptors this test owns.
+    let saved = unsafe {
+        let saved = libc::dup(2);
+        let c = std::ffi::CString::new(path).unwrap();
+        let fd = libc::open(c.as_ptr(), libc::O_WRONLY | libc::O_CREAT | libc::O_TRUNC, 0o644 as libc::c_uint);
+        libc::dup2(fd, 2);
+        libc::close(fd);
+        saved
+    };
+    let r = f();
+    let _ = std::io::stderr().flush();
+    // SAFETY: dup2 and close on the descriptor saved above.
+    unsafe {
+        libc::dup2(saved, 2);
+        libc::close(saved);
+    }
+    let text = std::fs::read_to_string(path).unwrap_or_default();
+    eprint!("{text}");
+    (r, text)
+}
+
 // A verdict is read only from Grimoire's own folder: a `.font` file in the cache, with its preview beside it,
 // is not one, whether it is the text an earlier version wrote there or this version's own text for the very
 // file. No check can produce anything here (no worker starts), so the row stays "checking" throughout.
@@ -534,6 +559,52 @@ fn too_little_room_checks_nothing() {
     std::env::remove_var("GRIMOIRE_STATE_FREE_BYTES");
 }
 
+// Grimoire's own folder is there, is this user's and has room, and takes no write (its file system went
+// read-only, say): nothing is checked. The job finds out before any worker starts and before any mark is written
+// (6), and says why; nothing is left in the cache or in the folder, and a font checked before still loads. Once
+// the folder takes a write again the font is checked.
+fn a_folder_that_takes_no_write_checks_nothing() {
+    clean_env();
+    // SAFETY: geteuid takes no arguments.
+    if unsafe { libc::geteuid() } == 0 {
+        // (root writes into a folder whatever its mode says: this case needs a user who cannot)
+        eprintln!("    not run as root: no folder refuses root a write by its mode");
+        return;
+    }
+    let r = root("nowrite");
+    let state = own_folder("nowrite");
+    put(&r, "A.ttf", &ttf(&test_font("Regular", 400)));
+    check!(job() == 0);
+    let mut other = test_font("Regular", 400);
+    other.family = "Another".into();
+    put(&r, "B.ttf", &ttf(&other));
+    let cache = format!("{r}/fonts/.cache");
+    let fonts = format!("{}/fonts", tag_dir(&state, &r));
+    let (cache_before, fonts_before) = (names(&cache), names(&fonts));
+    chmod(&fonts, 0o500);
+    // (no worker could be had either: the job must end before it asks for one, which would be a 4)
+    std::env::set_var("GRIMOIRE_WORK_EXE", NO_WORKER);
+    let (rc, text) = with_log(&format!("{r}/nowrite.log"), || bg_font_check("", 300.0));
+    check!(rc == 6);
+    check!(text.contains("fonts: what the check finds cannot be kept (it takes no write); nothing is marked"));
+    check!(!text.contains("passed") && !text.contains("could not be written") && !text.contains("no worker"));
+    check!(names(&cache) == cache_before && names(&fonts) == fonts_before);
+    check!(loads("A.ttf") == Ok("overprint"));
+    check!(userfonts_try_load("B.ttf", "") == Err(LoadErr::Checking));
+    check!(wait_job() == 6);
+    check!(names(&cache) == cache_before && names(&fonts) == fonts_before);
+    // with every font checked the job writes nothing there and asks nothing of the folder
+    std::fs::remove_file(format!("{r}/fonts/B.ttf")).unwrap();
+    check!(job() == 0);
+    put(&r, "B.ttf", &ttf(&other));
+    // the folder takes a write again: the font is checked, and nothing of the probe is left
+    chmod(&fonts, 0o700);
+    std::env::set_var("GRIMOIRE_WORK_EXE", BIN);
+    check!(job() == 0);
+    check!(loads("B.ttf") == Ok("overprint"));
+    check!(names(&fonts).len() == 2 && names(&fonts).iter().all(|n| n.ends_with(".font")));
+}
+
 // A build that names no folder of its own keeps its verdicts in the cache, as before, and asks nothing of that
 // folder's owner or mode (a platform may keep its data on a file system that has neither).
 fn without_a_folder_of_its_own_the_cache_keeps_verdicts() {
@@ -598,6 +669,7 @@ fn test_sec_font_verdict() {
     run!(an_earlier_versions_verdict_is_left_alone);
     run!(the_fonts_cache_deleted_checks_again);
     run!(too_little_room_checks_nothing);
+    run!(a_folder_that_takes_no_write_checks_nothing);
     run!(without_a_folder_of_its_own_the_cache_keeps_verdicts);
     run!(the_app_says_once_that_nothing_can_be_kept);
     done();

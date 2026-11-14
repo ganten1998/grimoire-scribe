@@ -245,6 +245,10 @@ const STATE_ROOT_BYTES: usize = 1024;
 const NOT_THERE: &str = "it is not there";
 const NOT_MADE: &str = "it cannot be made";
 const NOT_OWN: &str = "it is not Grimoire's own";
+const NO_WRITE: &str = "it takes no write";
+/// The file the job writes and removes to see that Grimoire's own folder takes a write (no verdict's name:
+/// one a cut-off job left goes with the next job's sweep).
+const WRITE_PROBE: &str = ".probe";
 
 /// The folder of Grimoire's own that the verdicts are kept under: the Kindle's always; in any other build the
 /// absolute path GRIMOIRE_STATE names. None: this build has no such folder, and the verdicts stay beside the
@@ -493,6 +497,18 @@ impl VerdictDir {
             free = v;
         }
         enough_room(free, sv.f_files as u64, sv.f_favail as u64)
+    }
+
+    /// Whether the folder takes a write, asked before a font is checked whose verdict could then not be kept:
+    /// in Grimoire's own folder a small file is written as a verdict is (made, synced, renamed) and removed
+    /// again. The cache is not asked here: the job writes its `.checking` mark there before every check.
+    fn takes_a_write(&self) -> bool {
+        if !self.private() {
+            return true;
+        }
+        let wrote = write_at(&self.fd, WRITE_PROBE, b"", 0o600);
+        unlink_at(&self.fd, WRITE_PROBE, false);
+        wrote
     }
 }
 
@@ -1645,8 +1661,9 @@ fn write_cache(path: &str, data: &[u8]) -> bool {
 /// "recheck:<key>" (that file's verdict is stale: it is checked again). `dpi` sizes the preview. Returns 0
 /// done, 3 some files wait (still being copied, no memory now, or left for their second try), 4 no worker can
 /// be had (nothing is marked), 5 one font was checked and more are left for the next job, 6 what a check finds
-/// cannot be kept (Grimoire's own folder cannot be used, or has too little room: nothing is checked and
-/// nothing is marked), -1 it could not start, or a mark, a companion or a verdict could not be written.
+/// cannot be kept (Grimoire's own folder cannot be used, has too little room or takes no write: nothing is
+/// checked and nothing is marked), -1 it could not start, or a mark, a companion or a verdict could not be
+/// written.
 pub fn bg_font_check(arg: &str, dpi: f32) -> i32 {
     let cache = cache_dir();
     // (its files are written and stale entries deleted there as root: never through a planted link)
@@ -1744,6 +1761,12 @@ pub fn bg_font_check(arg: &str, dpi: f32) -> i32 {
         // needs no room).
         if !vd.room() {
             qlog!("fonts: what the check finds cannot be kept (too little room); nothing is marked");
+            return 6;
+        }
+        // Nor in a folder that is there, is Grimoire's own and has room, and takes no write: a whole check
+        // would end with nowhere to keep what it found.
+        if !vd.takes_a_write() {
+            qlog!("fonts: what the check finds cannot be kept (%s); nothing is marked", NO_WRITE);
             return 6;
         }
         if !write_cache(&cp, b"") {

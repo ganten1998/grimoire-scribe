@@ -559,8 +559,8 @@ What grimoire.log says (never a file's name or a family's: counts, sizes, timing
 - `fonts: what the check finds cannot be kept (<why>); nothing is marked`, then `fonts: what the check finds
   cannot be kept (see the line above): no font is checked until Grimoire starts again`: `/var/local/grimoire`
   cannot be used (it is not there, it cannot be made, it is not Grimoire's own: a name on the way is a link, is
-  not root's, or can be written by others) or its file system has too little room. No font is read, none is
-  marked; the rows of unchecked fonts say "Unreadable font." for this session, and fonts that have their
+  not root's, or can be written by others), its file system has too little room, or it takes no write (a file
+  system that went read-only). No font is read, none is marked; the rows of unchecked fonts say "Unreadable font." for this session, and fonts that have their
   verdicts go on working. `fonts: N data folder(s) are gone: what was kept for them is removed from Grimoire's
   own folder`.
 - `fonts: the check ended badly; N file(s) marked unreadable`: the background job itself died on a file.
