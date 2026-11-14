@@ -347,32 +347,81 @@ pub enum Lock {
     Fresh,
     /// this process holds it already (an import is queued or running)
     Held,
-    /// another process holds it (a previous run's detached child still importing), or it cannot be opened
+    /// not taken, and the errno says why. EWOULDBLOCK: another process holds it (a previous run's detached child
+    /// still importing), and what was asked for waits for that import. Anything else: the lock file cannot be
+    /// opened or is not a plain file at its own name, and nothing waits for it.
     Busy(i32),
 }
 
+/// The lock file, opened to be locked: never through a link, never anything but a plain file with one name
+/// (what util::open_rewrite_nofollow asks of every file saved on that storage). O_NONBLOCK, as the two other lock
+/// files have, so nothing that is not a file can hold the open; the descriptor is never read or written. The
+/// descriptor, or an errno (EINVAL for what is no plain file of one name: it is left as it is).
+fn lock_open(path: &std::ffi::CStr) -> Result<i32, i32> {
+    // SAFETY: open reads the NUL-terminated path we were given; fstat writes the struct we own; the descriptor
+    // is the caller's, or closed here.
+    unsafe {
+        let fd = libc::open(path.as_ptr(), libc::O_RDWR | libc::O_CREAT | libc::O_NOFOLLOW | libc::O_NOCTTY | libc::O_NONBLOCK | libc::O_CLOEXEC, 0o644 as libc::c_uint);
+        if fd < 0 {
+            return Err(std::io::Error::last_os_error().raw_os_error().unwrap_or(libc::EIO));
+        }
+        let mut st: libc::stat = std::mem::zeroed();
+        if libc::fstat(fd, &mut st) != 0 || (st.st_mode & libc::S_IFMT) != libc::S_IFREG || st.st_nlink != 1 {
+            libc::close(fd);
+            return Err(libc::EINVAL);
+        }
+        Ok(fd)
+    }
+}
+
+/// Whether `fd` is the plain file that `path` names now: both stat, both are regular files (the name itself:
+/// lstat follows no link), and they are one device and inode.
+pub fn lock_is_at(fd: i32, path: &std::ffi::CStr) -> bool {
+    // SAFETY: fstat and lstat write the structs we own; path is NUL-terminated.
+    unsafe {
+        let (mut a, mut b): (libc::stat, libc::stat) = (std::mem::zeroed(), std::mem::zeroed());
+        libc::fstat(fd, &mut a) == 0
+            && libc::lstat(path.as_ptr(), &mut b) == 0
+            && (a.st_mode & libc::S_IFMT) == libc::S_IFREG
+            && (b.st_mode & libc::S_IFMT) == libc::S_IFREG
+            && a.st_dev == b.st_dev
+            && a.st_ino == b.st_ino
+    }
+}
+
 /// Takes `import/.lock` without blocking, once, and keeps the handle (O_CLOEXEC, so no script and no worker
-/// inherits it) while any import is queued or running. Never blocks. (The file is where `lock_file_path` says.)
+/// inherits it) while any import is queued or running. Never blocks. (The file is where `lock_file_path` says;
+/// a missing import/ is made, as writing a mark makes import/.marks.) The file locked must still be the one at
+/// its name once it is locked: when it is not (the name was given to another file meanwhile) the handle is let
+/// go and the lock is asked for once more, and after two such rounds it is not taken (ESTALE). Whatever else is
+/// found at the lock's name is never removed and never followed.
 pub fn lock_take() -> Lock {
     if LOCK.with(|l| l.get()) >= 0 {
         return Lock::Held;
     }
+    mkdir_p(&root_path("import"));
     let path = lock_file_path(&root_path("import/.lock"));
     let Ok(c) = std::ffi::CString::new(path) else { return Lock::Busy(libc::ENOENT) };
-    // SAFETY: open reads the NUL-terminated path we own; the descriptor it returns is ours alone.
-    let fd = unsafe { libc::open(c.as_ptr(), libc::O_RDWR | libc::O_CREAT | libc::O_CLOEXEC, 0o644 as libc::c_uint) };
-    if fd < 0 {
-        return Lock::Busy(std::io::Error::last_os_error().raw_os_error().unwrap_or(libc::EIO));
-    }
-    // SAFETY: flock only takes the open descriptor.
-    if unsafe { libc::flock(fd, libc::LOCK_EX | libc::LOCK_NB) } != 0 {
-        let e = std::io::Error::last_os_error().raw_os_error().unwrap_or(libc::EIO);
-        // SAFETY: closing the descriptor opened above.
+    for _ in 0..2 {
+        let fd = match lock_open(&c) {
+            Ok(fd) => fd,
+            Err(e) => return Lock::Busy(e),
+        };
+        // SAFETY: flock only takes the open descriptor.
+        if unsafe { libc::flock(fd, libc::LOCK_EX | libc::LOCK_NB) } != 0 {
+            let e = std::io::Error::last_os_error().raw_os_error().unwrap_or(libc::EIO);
+            // SAFETY: closing the descriptor opened above.
+            unsafe { libc::close(fd) };
+            return Lock::Busy(e);
+        }
+        if lock_is_at(fd, &c) {
+            LOCK.with(|l| l.set(fd));
+            return Lock::Fresh;
+        }
+        // SAFETY: closing the descriptor opened above (its lock goes with it: it is not the file at the name).
         unsafe { libc::close(fd) };
-        return Lock::Busy(e);
     }
-    LOCK.with(|l| l.set(fd));
-    Lock::Fresh
+    Lock::Busy(libc::ESTALE)
 }
 
 /// The lock's descriptor, or -1: what `child_setup` keeps open in a bgjob child and the detached child, so
@@ -1331,7 +1380,7 @@ pub enum Queued {
     Waiting,
     /// this very file is queued or running already
     AlreadyRunning,
-    /// not a file this can import
+    /// not a file this can import, or ("lock") the import lock cannot be taken: the log says which
     Refused(&'static str),
 }
 
@@ -1370,6 +1419,11 @@ pub fn pdf_import_queue(path: &StoragePath, name: Option<&str>, folder: Option<&
         }
     }
     match lock_take() {
+        Lock::Busy(e) if e != libc::EWOULDBLOCK => {
+            // (no import holds the lock: nothing is recorded as waiting for one to end)
+            qlog!("import: the import lock cannot be taken (%s); a picked PDF is refused", &strerror(e));
+            return Queued::Refused("lock");
+        }
         Lock::Busy(_) => {
             let m = Mark { state: MarkState::Waiting, src: src.clone(), pick: true, name: name.unwrap_or("").to_string(), folder: folder.unwrap_or("").to_string(), at: wall_time(), ..Default::default() };
             if !mark_write(&m) {
@@ -1494,14 +1548,15 @@ fn detached_progress() -> Option<(u32, u32)> {
 }
 
 /// Whether the previous run's detached child is still going (the lock is held elsewhere): checked by trying
-/// the lock now and then. Returns true while it holds it.
+/// the lock now and then. Returns true while it holds it. (A lock that cannot be taken for another reason is no
+/// import still going.)
 pub fn detached_check() -> bool {
     if lock_fd() >= 0 {
         ui(|u| u.detached = false);
         return false;
     }
     let busy = match lock_take() {
-        Lock::Busy(_) => true,
+        Lock::Busy(e) => e == libc::EWOULDBLOCK,
         Lock::Fresh => {
             lock_release_if_idle();
             false

@@ -2049,6 +2049,10 @@ pub fn import_pick_queue(path: &StoragePath, name: Option<&str>, folder: Option<
         }
     }
     let busy = match lock_take() {
+        Lock::Busy(e) if e != libc::EWOULDBLOCK => {
+            qlog!("import: the import lock cannot be taken (%s); a picked folder is refused", &strerror(e));
+            return Queued::Refused("lock");
+        }
         Lock::Busy(_) => true,
         Lock::Fresh => {
             import_leftovers(true, &mut Vec::new());

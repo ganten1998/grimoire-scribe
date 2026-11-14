@@ -343,3 +343,176 @@ fn a_fifo_put_in_after_the_listing_is_not_read() {
     assert!(!sooner, "what is no file asks for no sooner look");
     assert!(marks(&e).is_empty() && e.notebooks().is_empty());
 }
+
+// ---- the import lock ----
+
+/// A file locked through a descriptor of this test's own (as another process's import would hold it).
+fn held(path: &str) -> std::fs::File {
+    use std::os::fd::AsRawFd;
+    let f = std::fs::OpenOptions::new().create(true).truncate(false).read(true).write(true).open(path).unwrap();
+    // SAFETY: flock on a descriptor this test owns.
+    assert_eq!(unsafe { libc::flock(f.as_raw_fd(), libc::LOCK_EX | libc::LOCK_NB) }, 0);
+    f
+}
+
+fn is_plain_file(path: &str) -> bool {
+    std::fs::symlink_metadata(path).is_ok_and(|m| m.is_file())
+}
+
+// The import lock is one plain file at its own name: it is opened without following a link, anything else found
+// at its name is left as it is and the lock is then not taken, and only another process's lock reads as "an
+// import is still going" (EWOULDBLOCK). The same holds for the lock file of a GRIMOIRE_LOCKS folder.
+#[test]
+fn the_import_lock_is_a_plain_file_at_its_own_name() {
+    use std::os::unix::fs::symlink;
+    let e = setup("lock-file");
+    let mut c = Checks::default();
+    let natural = format!("{}/import/.lock", e.root);
+    let outside = format!("{}-outside", e.storage);
+    let _ = std::fs::remove_dir_all(&outside);
+    std::fs::create_dir_all(&outside).unwrap();
+    let clear = |at: &str| {
+        lock_release_if_idle();
+        let _ = std::fs::remove_file(at).or_else(|_| std::fs::remove_dir(at));
+    };
+
+    // 1. a link to a file that is not there, outside the storage: not followed, and its target is not made
+    let target = format!("{outside}/made-through-a-link");
+    symlink(&target, &natural).unwrap();
+    let got = lock_take();
+    c.that(matches!(got, Lock::Busy(_)), format!("1: a link at the lock's name is not taken: {got:?}"));
+    c.that(lock_fd() == -1, "1: nothing is held");
+    c.that(std::fs::symlink_metadata(&target).is_err(), "1: the link's target was not made");
+    clear(&natural);
+    let _ = std::fs::remove_file(&target);
+
+    // 2. a link to a file another holder has locked: that is no import still going
+    let elsewhere = format!("{outside}/held-elsewhere");
+    let other = held(&elsewhere);
+    symlink(&elsewhere, &natural).unwrap();
+    let got = lock_take();
+    c.that(matches!(got, Lock::Busy(err) if err != libc::EWOULDBLOCK), format!("2: a link to a locked file does not read as another import: {got:?} (EWOULDBLOCK is {})", libc::EWOULDBLOCK));
+    c.that(lock_fd() == -1, "2: nothing is held");
+    clear(&natural);
+    drop(other);
+
+    // 3. a FIFO, a folder, a file with a second name
+    let cs = std::ffi::CString::new(natural.as_str()).unwrap();
+    // SAFETY: mkfifo reads the NUL-terminated path we own.
+    assert_eq!(unsafe { libc::mkfifo(cs.as_ptr(), 0o600) }, 0);
+    let got = lock_take();
+    c.that(matches!(got, Lock::Busy(_)) && lock_fd() == -1, format!("3: a FIFO at the lock's name is not taken: {got:?}"));
+    clear(&natural);
+    std::fs::create_dir(&natural).unwrap();
+    let got = lock_take();
+    c.that(matches!(got, Lock::Busy(_)) && lock_fd() == -1, format!("3: a folder at the lock's name is not taken: {got:?}"));
+    clear(&natural);
+    let second = format!("{}/import/.lock.second-name", e.root);
+    std::fs::write(&natural, b"").unwrap();
+    std::fs::hard_link(&natural, &second).unwrap();
+    let got = lock_take();
+    c.that(matches!(got, Lock::Busy(_)) && lock_fd() == -1, format!("3: a file with a second name is not taken: {got:?}"));
+    c.that(is_plain_file(&natural) && is_plain_file(&second), "3: what was at the name is left as it was");
+    clear(&natural);
+    let _ = std::fs::remove_file(&second);
+
+    // 4. the same in a folder named for lock files
+    let locks = format!("{outside}/locks");
+    std::env::set_var("GRIMOIRE_LOCKS", &locks);
+    let there = lock_file_path(&natural);
+    c.that(there.starts_with(&locks), format!("4: the lock file is in the named folder: {there}"));
+    let target = format!("{outside}/made-through-a-link-in-the-folder");
+    symlink(&target, &there).unwrap();
+    let got = lock_take();
+    c.that(matches!(got, Lock::Busy(_)) && lock_fd() == -1, format!("4: a link at the folder's lock file is not taken: {got:?}"));
+    c.that(std::fs::symlink_metadata(&target).is_err(), "4: the link's target was not made");
+    clear(&there);
+    let _ = std::fs::remove_file(&target);
+    let got = lock_take();
+    c.that(got == Lock::Fresh, format!("4: with the link gone the lock is taken: {got:?}"));
+    c.that(is_plain_file(&there), "4: the lock file is a plain file in the named folder");
+    c.that(std::fs::symlink_metadata(&natural).is_err(), "4: import/ holds no lock file");
+    lock_release_if_idle();
+    std::env::remove_var("GRIMOIRE_LOCKS");
+
+    // 5. whether a descriptor is the plain file at a name (what the lock asks of itself once it is locked)
+    let got = lock_take();
+    c.that(got == Lock::Fresh && is_plain_file(&natural), format!("5: the lock is taken at its own name: {got:?}"));
+    let fd = lock_fd();
+    c.that(lock_is_at(fd, &cs), "5: the file just locked is the one at its name");
+    // the locked file under another name, and its own name a link to it: the name is a link, not the file
+    let moved = format!("{}/import/.lock.moved", e.root);
+    std::fs::rename(&natural, &moved).unwrap();
+    symlink(&moved, &natural).unwrap();
+    c.that(!lock_is_at(fd, &cs), "5: a name that is a link to that very file is not the file");
+    // the name removed
+    std::fs::remove_file(&natural).unwrap();
+    c.that(!lock_is_at(fd, &cs), "5: a name that is gone is not the file");
+    // another file at the name
+    std::fs::write(&natural, b"").unwrap();
+    c.that(!lock_is_at(fd, &cs), "5: another file at the name is not the file");
+    // its own name again
+    std::fs::rename(&moved, &natural).unwrap();
+    c.that(lock_is_at(fd, &cs), "5: back at its name, it is the file again");
+    c.that(!lock_is_at(-1, &cs), "5: no descriptor is no file");
+
+    // a lock file deleted while the lock is held: still held, and made again at the next take
+    std::fs::remove_file(&natural).unwrap();
+    c.that(lock_take() == Lock::Held, "the lock is still this process's");
+    lock_release_if_idle();
+    c.that(lock_fd() == -1 && std::fs::symlink_metadata(&natural).is_err(), "let go, and no file is left");
+    let got = lock_take();
+    c.that(got == Lock::Fresh && is_plain_file(&natural), format!("the lock file is made again: {got:?}"));
+
+    lock_release_if_idle();
+    let _ = std::fs::remove_dir_all(&outside);
+    c.done();
+}
+
+// A pick made while the lock cannot be taken for another reason than an import still going is refused, with the
+// message the Library has for it: nothing is left waiting for a lock that will not come free.
+#[test]
+fn a_pick_is_refused_when_the_lock_cannot_be_taken() {
+    let e = setup("lock-refused");
+    let mut c = Checks::default();
+    e.put("documents/Book.pdf", &pdffix::planner(2));
+    for (k, v) in [(1, 40u8), (2, 90u8)] {
+        e.put(&format!("documents/Scans/page-{k}.png"), &picture(v));
+    }
+    let outside = format!("{}-outside", e.storage);
+    let _ = std::fs::remove_dir_all(&outside);
+    std::fs::create_dir_all(&outside).unwrap();
+    let elsewhere = format!("{outside}/held-elsewhere");
+    let other = held(&elsewhere);
+    std::os::unix::fs::symlink(&elsewhere, format!("{}/import/.lock", e.root)).unwrap();
+
+    let q = pdf_import_queue(&StoragePath::new(b"documents/Book.pdf").unwrap(), None, None, DPI);
+    c.that(q == Queued::Refused("lock"), format!("the PDF's pick is refused: {q:?}"));
+    c.that(marks(&e).is_empty(), format!("no mark is left for it: {:?}", marks(&e)));
+    c.that(!detached_running(), "no other import is taken to be going");
+    let q = grimoire::bgwork_template::import_pick_queue(&StoragePath::new(b"documents/Scans").unwrap(), None, None, DPI);
+    c.that(q == Queued::Refused("lock"), format!("the folder's pick is refused: {q:?}"));
+    c.that(marks(&e).is_empty(), format!("no mark is left for it: {:?}", marks(&e)));
+    c.that(!detached_running(), "no other import is taken to be going");
+    drain();
+    c.that(e.notebooks().is_empty(), "nothing was imported");
+    drop(other);
+    lock_release_if_idle();
+    let _ = std::fs::remove_dir_all(&outside);
+    c.done();
+}
+
+// The lock file lives in import/, which may be missing (deleted over USB while Grimoire runs): taking the lock
+// makes the folder, as writing a mark makes import/.marks.
+#[test]
+fn the_lock_is_taken_when_the_import_folder_is_missing() {
+    let e = setup("lock-no-folder");
+    e.put("documents/Book.pdf", &pdffix::planner(2));
+    std::fs::remove_dir_all(format!("{}/import", e.root)).unwrap();
+    let q = pdf_import_queue(&StoragePath::new(b"documents/Book.pdf").unwrap(), None, None, DPI);
+    let said = drain();
+    lock_release_if_idle();
+    assert!(matches!(q, Queued::Started(_)), "{q:?}");
+    assert_eq!(e.notebooks(), ["Book"], "{said:?}");
+    assert!(e.there("documents/Book.pdf"), "a file picked elsewhere stays where it is");
+}
