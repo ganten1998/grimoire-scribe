@@ -1999,7 +1999,7 @@ section "2.1.0-beta.2" below), and the narrower system-call rules that came afte
 2. grimoire.log has `work: sandboxed (uid 62001, chroot, netns, no new privileges, seccomp, selinux ...)` and no
    `the sandbox refused its step`. If a step is refused, send the log (the plan goes back to the owner, D21).
    A line `made call N, which the sandbox does not allow` names a system call the allow-list must gain.
-   (Not 240, 192 or 125: see "Hardening round (2026-11), sandbox" at the end.)
+   (Not 240, 192 or 125: see "Hardening round (2026-11), sandbox", below.)
 3. Sleep the Scribe in the middle of a big import: it must not fail (the watchdog counts monotonic time).
    Quit Grimoire in the middle: the import finishes in the background; start it again and the notice shows the
    coarse progress; the notebook appears once.

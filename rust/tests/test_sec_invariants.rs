@@ -115,20 +115,23 @@ fn the_docs_name_the_record_cap_with_its_size_and_not_as_a_jobs() {
     // (the font check counts lines, never bytes: its comment claimed the PDF worker's cap)
     gone(&mut fails, FONTCHECK, "4 MiB of records");
     // DESIGN.md names the constant, and its size stands within 200 bytes of the name (bytes, not characters: the
-    // file holds characters of more than one byte).
+    // file holds characters of more than one byte). One mention with its size is enough: a second mention
+    // elsewhere in the document, far from any size, does not fail this.
     let cap = grimoire::pdfwork::RECORDS_MAX_BYTES;
     let (name, size) = ("RECORDS_MAX_BYTES", format!("{} MiB", cap >> 20));
     let design = flat(DESIGN);
-    match design.find(name) {
-        None => fails.push(format!("{} does not name {name}", DESIGN.0)),
-        Some(at) => {
-            let b = design.as_bytes();
+    let b = design.as_bytes();
+    let mut mentions = design.match_indices(name).map(|(at, _)| at).peekable();
+    if mentions.peek().is_none() {
+        fails.push(format!("{} does not name {name}", DESIGN.0));
+    } else {
+        let near = mentions.any(|at| {
             let (from, to) = (at.saturating_sub(200), (at + name.len() + 200).min(b.len()));
             // (the size as a whole number: "4 MiB" is not found in "64 MiB")
-            let near = (from..to.saturating_sub(size.len() - 1)).any(|i| b[i..].starts_with(size.as_bytes()) && (i == 0 || !b[i - 1].is_ascii_digit()));
-            if cap % (1 << 20) != 0 || !near {
-                fails.push(format!("{} names {name} without its size, \"{size}\", within 200 bytes of it", DESIGN.0));
-            }
+            (from..to.saturating_sub(size.len() - 1)).any(|i| b[i..].starts_with(size.as_bytes()) && (i == 0 || !b[i - 1].is_ascii_digit()))
+        });
+        if cap % (1 << 20) != 0 || !near {
+            fails.push(format!("{} names {name} without its size, \"{size}\", within 200 bytes of it", DESIGN.0));
         }
     }
     none_failed(&fails, "the record cap in the documents");
@@ -508,13 +511,16 @@ fn the_docs_no_longer_say_what_the_code_does_not() {
         BACKLOG,
         "- **The Scribe check of this round has not run**",
     );
-    // four sentences of TESTING.md sent the reader to the sandbox round's section by its place ("at the end",
+    // five sentences of TESTING.md sent the reader to the sandbox round's section by its place ("at the end",
     // "the round above"), and other rounds' sections have come to stand after it: they name it now, and the
-    // name must be a heading of the file
+    // name must be a heading of the file. ("of the round above" is held as the whole clause it stood in: the
+    // four words alone could be any later sentence's.)
     gone(&mut fails, TESTING, "sandbox\", at the end)");
+    gone(&mut fails, TESTING, "sandbox\" at the end");
     gone(&mut fails, TESTING, "the hardening round's section at the end");
-    gone(&mut fails, TESTING, "of the round above");
+    gone(&mut fails, TESTING, "allow-list's of the round above among them");
     stands_on(&mut fails, TESTING, "(\"Hardening round (2026-11), sandbox\", below)", TESTING, "## Hardening round (2026-11), sandbox: ");
+    stands_on(&mut fails, TESTING, "see \"Hardening round (2026-11), sandbox\", below.", TESTING, "## Hardening round (2026-11), sandbox: ");
     // the crates: glifo is the optional one (vello_cpu's), and skrifa is glifo's plain dependency
     gone(&mut fails, BACKLOG, "glifo's optional dependency");
     // licenses/rust-crates.txt lists every crate the lock names, not only the ones built in
