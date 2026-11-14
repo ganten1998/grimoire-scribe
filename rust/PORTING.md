@@ -93,7 +93,8 @@ one with the feature on, implements `Platform` on a type of its own, and from it
 2. sets `GRIMOIRE_ROOT` to the data directory (and, when that directory is on a file system without
    advisory locks, `GRIMOIRE_LOCKS` to a folder that has them: `util::lock_file_path`). A platform with a
    folder of its own that only the app's user can write names it in `GRIMOIRE_STATE` (an absolute path: the
-   font check's verdicts are kept there; unset, they stay in `fonts/.cache`), and one that knows its CPU
+   font check's verdicts are kept there; unset or empty, they stay in `fonts/.cache`; any other value is a
+   folder that cannot be made, and no font is then checked), and one that knows its CPU
    sets `GRIMOIRE_FONT_GLYPH_US`, the CPU time one glyph's draw may take in the font check (docs/SIM.md);
 3. calls `mainloop::main(args)` on the thread that stays the app's only thread, and exits with
    what it returns.

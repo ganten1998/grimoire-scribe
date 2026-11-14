@@ -937,9 +937,11 @@ draws by the bold through the weight axis; `from`: every glyph from that index o
 slow and none compares a real clock with a real limit.
 `GRIMOIRE_STATE=<absolute path>` (any build but the Kindle's, whose folder is fixed) names a folder of
 Grimoire's own outside the data root: the font check's verdicts are then kept there, in a folder for each
-data root, and read only while every folder on the way is this user's and no one else can write it; unset,
-they stay in `fonts/.cache`. `GRIMOIRE_STATE_FREE_BYTES=N` (same builds) is the room free there, as the check
-reads it before it checks a font.
+data root, and read only while every folder on the way is this user's and no one else can write it; unset
+or empty, they stay in `fonts/.cache`. A value that is no absolute path names no folder and is not the
+cache either: it is a folder that cannot be made, and no font is checked (the job's status 6).
+`GRIMOIRE_STATE_FREE_BYTES=N` (same builds) is the room free there, as the check reads it before it checks
+a font.
 Child caps hooks (the simulator's build): `GRIMOIRE_CAPS_PROBE=<file>` (each background child appends the caps it
 took, `oom=N as=N`, for a test to read) and `GRIMOIRE_CAPS_NO_STATM=1` (a child cannot read its own size: on Linux
 it is capped at 1 GiB plus its margin).

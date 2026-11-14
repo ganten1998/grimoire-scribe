@@ -623,8 +623,8 @@ fn without_a_folder_of_its_own_the_cache_keeps_verdicts() {
     std::env::set_var("GRIMOIRE_WORK_EXE", NO_WORKER);
     check!(loads("Mine.ttf") == Ok("overprint"));
     check!(state_of("Mine.ttf") == "ready");
-    // (a name that is no absolute path names no folder)
-    std::env::set_var("GRIMOIRE_STATE", "not/absolute");
+    // (an empty name is no name: the cache, as with none)
+    std::env::set_var("GRIMOIRE_STATE", "");
     check!(loads("Mine.ttf") == Ok("overprint"));
     std::env::remove_var("GRIMOIRE_STATE");
     std::env::set_var("GRIMOIRE_WORK_EXE", BIN);
@@ -632,6 +632,41 @@ fn without_a_folder_of_its_own_the_cache_keeps_verdicts() {
     for dir in [cache, format!("{r}/fonts"), r.clone()] {
         chmod(&dir, 0o755);
     }
+}
+
+// A name that is set and is no absolute path asked for a folder of Grimoire's own and names none: it is a folder
+// that cannot be made, never the cache. A verdict the cache holds (written while no folder was named) is not
+// read under such a name, the job ends before any worker starts (6) and says why, nothing is marked, and
+// nothing is made under the working directory.
+fn a_name_that_is_no_absolute_path_is_not_the_cache() {
+    use std::os::unix::ffi::OsStrExt;
+    clean_env();
+    let r = root("noname");
+    put(&r, "Mine.ttf", &ttf(&test_font("Regular", 400)));
+    check!(job() == 0);
+    check!(loads("Mine.ttf") == Ok("overprint"));
+    let cache = format!("{r}/fonts/.cache");
+    let before = names(&cache);
+    check!(with_ext(&cache, ".font").len() == 1 && before.len() == 2);
+    let relative = format!("fontverdict-{}-relative", std::process::id());
+    let nested = format!("{relative}/state");
+    let not_text = std::ffi::OsStr::from_bytes(b"/fontverdict-\xff-state").to_os_string();
+    for name in [std::ffi::OsString::from(&relative), std::ffi::OsString::from(&nested), std::ffi::OsString::from("."), not_text] {
+        eprintln!("    {name:?}");
+        std::env::set_var("GRIMOIRE_STATE", &name);
+        check!(userfonts_try_load("Mine.ttf", "") == Err(LoadErr::Checking));
+        check!(wait_job() == 6);
+        let (rc, text) = with_log(&format!("{r}/noname.log"), || bg_font_check("", 300.0));
+        check!(rc == 6);
+        check!(text.contains("fonts: what the check finds cannot be kept (it cannot be made); nothing is marked"));
+        check!(names(&cache) == before);
+        check!(std::fs::symlink_metadata(&relative).is_err());
+    }
+    // with no name the cache's verdict is read as before
+    std::env::remove_var("GRIMOIRE_STATE");
+    std::env::set_var("GRIMOIRE_WORK_EXE", NO_WORKER);
+    check!(loads("Mine.ttf") == Ok("overprint"));
+    std::env::set_var("GRIMOIRE_WORK_EXE", BIN);
 }
 
 // The app, when its own folder cannot be used: it says so once, checks no font in that session and marks none;
@@ -671,6 +706,7 @@ fn test_sec_font_verdict() {
     run!(too_little_room_checks_nothing);
     run!(a_folder_that_takes_no_write_checks_nothing);
     run!(without_a_folder_of_its_own_the_cache_keeps_verdicts);
+    run!(a_name_that_is_no_absolute_path_is_not_the_cache);
     run!(the_app_says_once_that_nothing_can_be_kept);
     done();
 }

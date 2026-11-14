@@ -251,9 +251,11 @@ const NO_WRITE: &str = "it takes no write";
 const WRITE_PROBE: &str = ".probe";
 
 /// The folder of Grimoire's own that the verdicts are kept under: the Kindle's always; in any other build the
-/// absolute path GRIMOIRE_STATE names. None: this build has no such folder, and the verdicts stay beside the
-/// previews in fonts/.cache, by design (a platform kept outside this crate may hold its data on a file system
-/// without owners and modes).
+/// one GRIMOIRE_STATE names. None (the variable unset, or empty): this build has no such folder, and the
+/// verdicts stay beside the previews in fonts/.cache, by design (a platform kept outside this crate may hold
+/// its data on a file system without owners and modes). A value that is set and is no absolute path asked
+/// for a folder and names none: it is given as it is (one that is not text, as no name at all), and
+/// `VerdictDir::open` says that it cannot be made. Nothing then falls back to the cache.
 fn state_base() -> Option<String> {
     #[cfg(feature = "kindle")]
     {
@@ -261,7 +263,8 @@ fn state_base() -> Option<String> {
     }
     #[cfg(not(feature = "kindle"))]
     {
-        std::env::var("GRIMOIRE_STATE").ok().filter(|p| p.starts_with('/'))
+        let name = std::env::var_os("GRIMOIRE_STATE").filter(|p| !p.is_empty())?;
+        Some(name.into_string().unwrap_or_default())
     }
 }
 
@@ -435,6 +438,10 @@ impl VerdictDir {
             }
             return Ok(VerdictDir { fd: open_dir(&cache, true).ok_or(NOT_THERE)?, own: None });
         };
+        // (only an absolute path names the folder: nothing is ever made under the working directory)
+        if !base.starts_with('/') {
+            return Err(NOT_MADE);
+        }
         let base = base.trim_end_matches('/');
         let Some((parent, name)) = base.rsplit_once('/').filter(|(_, n)| !n.is_empty() && *n != "." && *n != "..") else { return Err(NOT_MADE) };
         let parent = open_dir(if parent.is_empty() { "/" } else { parent }, false).ok_or(NOT_THERE)?;
