@@ -13,6 +13,7 @@ expect settings.landscape_fit is 1
 expect settings.hints is 0
 expect settings.link_areas is 0
 expect notebook.last_page is 0
+expect libindex.reads is 0
 expect main.longest_unpumped_ms not -1
 expect touch.contacts is 0
 expect touch.class is none

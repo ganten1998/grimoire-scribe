@@ -10,6 +10,7 @@ expect touch.contacts is 9
 expect settings.gestures is 0
 expect settings.hints is 4
 expect notebook.last_page is 7
+expect libindex.complete is 1
 expect main.longest_unpumped_ms is 99999
 expect editor.panel_at.1768.594 is undo
 expect editor.scrolls is 1 1

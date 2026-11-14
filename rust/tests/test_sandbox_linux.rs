@@ -103,6 +103,7 @@ fn the_workers_maps_hold_nothing_of_the_writer() {
     assert_eq!(String::from_utf8_lossy(&w.read_line(512, deadline).expect("its sandbox line")), "S 1");
     let maps = std::fs::read_to_string(format!("/proc/{}/maps", w.pid)).unwrap();
     assert!(!maps.lines().any(|l| l.split_whitespace().nth(1).is_some_and(|p| p.ends_with('s') && p.starts_with("rw"))), "a shared writable mapping:\n{maps}");
+    assert!(!maps.lines().any(|l| l.split_whitespace().nth(1).is_some_and(|p| p.contains('w') && p.contains('x'))), "a mapping both writable and executable:\n{maps}");
     let me = std::fs::canonicalize(std::env::current_exe().unwrap()).unwrap();
     assert!(!maps.contains(me.to_string_lossy().as_ref()), "the writer's own binary ({me:?}) is mapped in the worker:\n{maps}");
     // /proc/<pid>/exe is the file the worker was exec'd from: GRIMOIRE_WORK_EXE outside the Kindle build
@@ -279,6 +280,266 @@ fn a_workers_clean_end_makes_no_call_outside_the_list() {
     assert!(w.send("Q\n"));
     let st = w.finish(5000);
     assert!(libc::WIFEXITED(st) && libc::WEXITSTATUS(st) == 0, "a clean end, not a signal (SIGSYS is 31): status {st:#x}");
+}
+
+// ---- the hardening round (2026-11): futex, mmap and mprotect are judged by an argument ----
+// These need the filter and no jail, so they also run without root where a worker loads the filter without it.
+
+/// As `setup`, for the tests that need the filter only: a process that is not root asks for no sandbox (no
+/// jail is needed, and a Linux worker still loads the filter without root).
+fn setup_filter() -> (std::sync::MutexGuard<'static, ()>, std::fs::File, u64) {
+    let r = setup();
+    // SAFETY: geteuid has no preconditions.
+    if unsafe { libc::geteuid() } != 0 {
+        std::env::remove_var("GRIMOIRE_SANDBOX");
+    }
+    r
+}
+
+/// Whether a worker runs under the filter here: a session whose `trap` hook makes a call outside the list
+/// must end with the filter's report. As root it does, or the test fails; without root a host that loads no
+/// filter is skipped, with a line saying so.
+fn filter_is_on(f: &std::fs::File, len: u64) -> bool {
+    let on = matches!(page_after_hook(f, len, "trap"), PageOutcome::Died(Death::Sigsys(n)) if n as i64 == libc::SYS_getpid as i64);
+    if !on {
+        // SAFETY: geteuid has no preconditions.
+        assert!(unsafe { libc::geteuid() } != 0, "as root a worker runs under the filter");
+        eprintln!("skipped: this host loads no filter without root");
+    }
+    on
+}
+
+/// How page 1 of the planner ends in a worker told to run `hook` when it reaches that page.
+fn page_after_hook(f: &std::fs::File, len: u64, hook: &str) -> PageOutcome {
+    let mut s = Session::start(f.as_raw_fd(), len, &limits(len)).expect("a worker starts");
+    assert_eq!(s.probe(), Ok(2));
+    assert!(s.hook(hook, 1));
+    s.render(1, 600, 800, 1)
+}
+
+/// A file of `bytes` in the tests' folder (`setup` made it), opened afresh.
+fn file_of(name: &str, bytes: &[u8]) -> (std::fs::File, u64) {
+    let p = std::env::temp_dir().join(format!("grimoire-sandbox-{}/{name}", std::process::id()));
+    std::fs::write(&p, bytes).unwrap();
+    (std::fs::File::open(&p).unwrap(), bytes.len() as u64)
+}
+
+// A futex operation outside the three a worker can make (a requeue between two words of its own) ends the worker,
+// and the report names futex.
+#[test]
+fn a_futex_call_outside_the_list_kills_the_worker() {
+    let (_g, f, len) = setup_filter();
+    if !filter_is_on(&f, len) {
+        return;
+    }
+    match page_after_hook(&f, len, "futexbad") {
+        PageOutcome::Died(Death::Sigsys(n)) => assert_eq!(n, this_arch().futex),
+        other => panic!("{other:?}"),
+    }
+}
+
+// A mapping asked executable, by mmap or by mprotect, ends the worker, and the report names the call.
+#[test]
+fn an_executable_mapping_kills_the_worker() {
+    let (_g, f, len) = setup_filter();
+    if !filter_is_on(&f, len) {
+        return;
+    }
+    for (hook, call) in [("execmap", this_arch().mmap), ("execprot", this_arch().mprotect)] {
+        match page_after_hook(&f, len, hook) {
+            PageOutcome::Died(Death::Sigsys(n)) => assert_eq!(n, call, "{hook}"),
+            other => panic!("{hook}: {other:?}"),
+        }
+    }
+}
+
+// (the guard: the three operations one thread can issue, and the standard library's own wake, pass)
+#[test]
+fn the_futex_calls_a_worker_can_make_pass() {
+    let (_g, f, len) = setup_filter();
+    if !filter_is_on(&f, len) {
+        return;
+    }
+    match page_after_hook(&f, len, "futexok") {
+        PageOutcome::Page(p) => assert_eq!((p.w, p.h, p.ch), (600, 800, 1)),
+        other => panic!("{other:?}"),
+    }
+}
+
+// (the guard: a panic that unwinds under the filter makes no call outside the list, and is reported as one)
+#[test]
+fn a_panic_under_the_filter_is_reported_as_a_panic() {
+    let (_g, f, len) = setup_filter();
+    if !filter_is_on(&f, len) {
+        return;
+    }
+    match page_after_hook(&f, len, "panic") {
+        PageOutcome::Died(Death::Panic) => {}
+        other => panic!("{other:?}"),
+    }
+}
+
+// (the guard: the work no other test runs under the real filter. A colour page in bands, the link walk, a PDF
+// read whole instead of mapped, a PDF with a password, and JPEG pictures, one turned upright.)
+#[test]
+fn the_work_a_worker_does_passes_the_filter() {
+    use grimoire::picwork::{in_fallback, PicOut, PicPool};
+    let (_g, f, len) = setup_filter();
+    if !filter_is_on(&f, len) {
+        return;
+    }
+    let (cf, clen) = file_of("colour.pdf", &pdffix::colour());
+    let mut s = Session::start(cf.as_raw_fd(), clen, &limits(clen)).expect("a worker starts");
+    assert_eq!(s.probe(), Ok(3));
+    match s.render(2, 600, 800, 4) {
+        PageOutcome::Page(p) => assert_eq!((p.w, p.h, p.ch), (600, 800, 3)),
+        other => panic!("the colour page in bands: {other:?}"),
+    }
+    s.end();
+    let (tf, tlen) = file_of("tabs.pdf", &pdffix::tabs());
+    let mut s = Session::start(tf.as_raw_fd(), tlen, &limits(tlen)).expect("a worker starts");
+    assert_eq!(s.probe(), Ok(4));
+    match s.links(600, 800) {
+        Ok(got) => assert!(!got.links.is_empty(), "the walk found no link"),
+        Err(why) => panic!("the link walk: {why}"),
+    }
+    s.end();
+    let (rf, rlen) = file_of("read.pdf", &pdffix::planner(2));
+    let mut s = Session::start(rf.as_raw_fd(), rlen, &Limits { mapped: false, ..limits(rlen) }).expect("a worker starts");
+    assert_eq!(s.probe(), Ok(2));
+    assert!(matches!(s.render(1, 600, 800, 1), PageOutcome::Page(_)), "a PDF read whole");
+    s.end();
+    let (lf, llen) = file_of("locked.pdf", &pdffix::encrypted_planner(2, "secret", "owner"));
+    let mut s = Session::start(lf.as_raw_fd(), llen, &limits(llen)).expect("a worker starts");
+    assert_eq!(s.probe(), Err(StartErr::Password));
+    drop(s);
+    let fix = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures/bgimage");
+    let mut pool = PicPool::new();
+    let jpeg = std::fs::read(format!("{fix}/base_420.jpg")).unwrap();
+    assert!(matches!(pool.decode(&jpeg, false, 300, 400), PicOut::Pic { src_w: 67, src_h: 39, .. }));
+    // (24 x 16 with orientation 6: upright it is 16 x 24)
+    let turned = std::fs::read(format!("{fix}/exif_le_6.jpg")).unwrap();
+    assert!(matches!(pool.decode(&turned, true, 300, 400), PicOut::Pic { src_w: 16, src_h: 24, .. }));
+    assert!(!in_fallback(), "the pictures were decoded by a worker");
+}
+
+// (the guard: sandbox.rs types its numbers by hand, and this job is where they are first held to libc's)
+#[test]
+fn the_hand_typed_numbers_match_libc() {
+    let n = this_arch();
+    assert_eq!(
+        [n.read, n.write, n.munmap, n.mremap, n.madvise, n.mprotect, n.brk, n.futex, n.clock_gettime, n.rt_sigreturn, n.exit, n.exit_group],
+        [
+            libc::SYS_read as u32,
+            libc::SYS_write as u32,
+            libc::SYS_munmap as u32,
+            libc::SYS_mremap as u32,
+            libc::SYS_madvise as u32,
+            libc::SYS_mprotect as u32,
+            libc::SYS_brk as u32,
+            libc::SYS_futex as u32,
+            libc::SYS_clock_gettime as u32,
+            libc::SYS_rt_sigreturn as u32,
+            libc::SYS_exit as u32,
+            libc::SYS_exit_group as u32
+        ]
+    );
+    #[cfg(target_arch = "arm")]
+    assert_eq!(n.mmap, libc::SYS_mmap2 as u32);
+    #[cfg(not(target_arch = "arm"))]
+    assert_eq!(n.mmap, libc::SYS_mmap as u32);
+    assert_eq!(
+        n.reach_out,
+        [libc::SYS_socket as u32, libc::SYS_execve as u32, libc::SYS_kill as u32, libc::SYS_ptrace as u32, libc::SYS_mount as u32, libc::SYS_chroot as u32]
+    );
+    assert!(n.enosys.contains(&(libc::SYS_gettid as u32)));
+    assert_eq!(
+        [FUTEX_WAIT, FUTEX_WAKE, FUTEX_WAIT_BITSET, FUTEX_PRIVATE_FLAG, PROT_EXEC],
+        [libc::FUTEX_WAIT as u32, libc::FUTEX_WAKE as u32, libc::FUTEX_WAIT_BITSET as u32, libc::FUTEX_PRIVATE_FLAG as u32, libc::PROT_EXEC as u32]
+    );
+    assert_eq!(
+        FUTEX_ALLOWED,
+        [
+            (libc::FUTEX_WAIT | libc::FUTEX_PRIVATE_FLAG) as u32,
+            (libc::FUTEX_WAKE | libc::FUTEX_PRIVATE_FLAG) as u32,
+            (libc::FUTEX_WAIT_BITSET | libc::FUTEX_PRIVATE_FLAG) as u32
+        ]
+    );
+    // where the filter reads an argument: the low half of args[i] in the kernel's own struct
+    assert_eq!(arg_lo(0) as usize, std::mem::offset_of!(libc::seccomp_data, args));
+    assert_eq!(arg_lo(2) as usize, std::mem::offset_of!(libc::seccomp_data, args) + 2 * std::mem::size_of::<u64>());
+}
+
+// A worker the writer gave a jail holds every step, whatever its own environment says (it is empty): started
+// by hand with a jail that does not exist, it reports the step that failed and reads nothing. No root needed:
+// without it an earlier step fails, and is reported the same way.
+#[test]
+fn a_worker_given_a_jail_holds_every_step() {
+    let _g = LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let me = std::process::id().to_string();
+    let jail = format!("/tmp/grimoire-no-such-jail-{me}");
+    assert!(std::fs::metadata(&jail).is_err(), "{jail} exists");
+    let exe = std::ffi::CString::new(env!("CARGO_BIN_EXE_grimoire-headless")).unwrap();
+    // (the worker's own command line: the writer's pid is this process's, so the parent-death step holds)
+    let words: Vec<std::ffi::CString> =
+        ["grimoire", "--work", "pdf", &me, "1073741824", "30", "read", "0", &jail].iter().map(|w| std::ffi::CString::new(*w).unwrap()).collect();
+    let mut argv: Vec<*const libc::c_char> = words.iter().map(|w| w.as_ptr()).collect();
+    argv.push(std::ptr::null());
+    let envp: [*const libc::c_char; 1] = [std::ptr::null()];
+    let mut p = [0i32; 2];
+    let mut out = Vec::new();
+    let mut st = 0;
+    // SAFETY: a pipe, and a fork whose child only arranges descriptors 0 to 5 and execs the worker (every
+    // pointer it uses was made before the fork); the parent reads the pipe to its end and reaps the child.
+    unsafe {
+        assert_eq!(libc::pipe(p.as_mut_ptr()), 0);
+        let pid = libc::fork();
+        assert!(pid >= 0);
+        if pid == 0 {
+            let dn = libc::fcntl(libc::open(c"/dev/null".as_ptr(), libc::O_RDWR), libc::F_DUPFD, 10);
+            let w = libc::fcntl(p[1], libc::F_DUPFD, 10);
+            if dn < 0 || w < 0 {
+                libc::_exit(126);
+            }
+            for fd in [0, 1, 2, 3, 5] {
+                if libc::dup2(dn, fd) != fd {
+                    libc::_exit(126);
+                }
+            }
+            if libc::dup2(w, 4) != 4 {
+                libc::_exit(126);
+            }
+            for fd in 6..1024 {
+                libc::close(fd);
+            }
+            libc::execve(exe.as_ptr(), argv.as_ptr(), envp.as_ptr());
+            libc::_exit(127);
+        }
+        libc::close(p[1]);
+        let mut buf = [0u8; 512];
+        loop {
+            let n = libc::read(p[0], buf.as_mut_ptr() as *mut libc::c_void, buf.len());
+            if n < 0 && std::io::Error::last_os_error().kind() == std::io::ErrorKind::Interrupted {
+                continue;
+            }
+            if n <= 0 {
+                break;
+            }
+            out.extend_from_slice(&buf[..n as usize]);
+        }
+        libc::close(p[0]);
+        libc::waitpid(pid, &mut st, 0);
+    }
+    let text = String::from_utf8_lossy(&out).into_owned();
+    let mut lines = text.lines();
+    let (build, sandbox) = (lines.next().unwrap_or(""), lines.next().unwrap_or(""));
+    assert!(build.starts_with("B "), "{text:?}");
+    assert!(sandbox.starts_with("E sandbox "), "the worker's sandbox line: {text:?}");
+    // SAFETY: geteuid has no preconditions.
+    if unsafe { libc::geteuid() } == 0 {
+        assert_eq!(sandbox, "E sandbox chroot", "{text:?}");
+    }
+    assert!(libc::WIFEXITED(st) && libc::WEXITSTATUS(st) == 3, "status {st:#x}");
 }
 
 // The mirror child's cap at the Scribe's page size (H3): a notebook of colour pages, each on a photo-like

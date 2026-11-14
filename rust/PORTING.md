@@ -53,7 +53,10 @@ binaries (`BUILD=build/c`). Never run a GUI binary as a check, and never touch t
 check.
 
 The unit tests read `GRIMOIRE_TEST_TMP` as the C's do (test_store writes to its `../out`); `make test`
-sets it to `build/test/tmp`. Without it `tl_tmp()` is a `grimoire-test` folder in the system's
+sets it to `build/test/tmp`, which each half (`test-host`, `test-sim`) empties before it starts, as
+`make c-test` empties `build/c/test/tmp`: the tests name their folders there by process id, and a
+process id comes round again (issue #85). So no two test runs at once in one worktree: give a second
+its own `BUILD`. Without it `tl_tmp()` is a `grimoire-test` folder in the system's
 temporary directory (the C's `/tmp` put `../out` at `/out`), and `.cargo/config.toml` sets
 `RUST_TEST_THREADS=1`, so a plain `cargo test` here runs one test at a time and passes, as
 `cargo test --features sim` does.
@@ -91,6 +94,12 @@ one with the feature on, implements `Platform` on a type of its own, and from it
    advisory locks, `GRIMOIRE_LOCKS` to a folder that has them: `util::lock_file_path`);
 3. calls `mainloop::main(args)` on the thread that stays the app's only thread, and exits with
    what it returns.
+
+A worker (`<binary> --work ...`, sandbox.rs) is a fresh exec of that binary: its `main` hands `--work`
+to `mainloop::main` before it starts a thread or opens anything, as the in-tree binaries do. On Linux
+the worker's filter lets it wait and wake only on private futexes and map nothing executable, which one
+thread of Rust and a C library never needs more than; a platform's start-up code must not need more
+there.
 
 The rules of this file hold for it as they do for the in-tree platforms: the platform's methods are
 called from that one thread and from the forked children; `input_poll` is the loop's one place to
