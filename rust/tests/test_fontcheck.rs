@@ -757,6 +757,23 @@ fn a_glyph_too_slow_to_draw() {
     std::env::remove_var("GRIMOIRE_FONT_GLYPH_US");
 }
 
+/// The files of a data root's fonts cache with this extension.
+fn with_ext(r: &str, ext: &str) -> Vec<std::path::PathBuf> {
+    std::fs::read_dir(format!("{r}/fonts/.cache")).unwrap().flatten().map(|e| e.path()).filter(|p| p.extension().is_some_and(|x| x == ext)).collect()
+}
+
+/// Gives a file the time `secs` before now. The tests of the second try move a mark's time and never wait: a
+/// mark set back only gets older while a test runs.
+fn set_time(file: &std::path::Path, secs: u64) {
+    let t = std::time::SystemTime::now() - std::time::Duration::from_secs(secs);
+    std::fs::File::options().write(true).open(file).unwrap().set_modified(t).unwrap();
+}
+
+/// Two minutes back: the minute a font waits for its second try is over.
+fn set_back(mark: &std::path::Path) {
+    set_time(mark, 120);
+}
+
 // In the folder: a font whose letters take too long to draw is not judged on one measure. The first check
 // leaves a mark and no verdict; a minute later it is checked again, and only then is it "Took too long to
 // read.". A second check that passes stands, and the mark goes.
@@ -764,13 +781,6 @@ fn slow_glyphs_through_the_job() {
     clean_env();
     std::env::set_var("GRIMOIRE_FONT_GLYPH_US", LIMIT_US.to_string());
     let f = test_font("Regular", 400);
-    let with_ext = |r: &str, ext: &str| -> Vec<std::path::PathBuf> {
-        std::fs::read_dir(format!("{r}/fonts/.cache")).unwrap().flatten().map(|e| e.path()).filter(|p| p.extension().is_some_and(|x| x == ext)).collect()
-    };
-    let set_back = |mark: &std::path::Path| {
-        let old = std::time::SystemTime::now() - std::time::Duration::from_secs(120);
-        std::fs::File::options().write(true).open(mark).unwrap().set_modified(old).unwrap();
-    };
     let r = root("slowglyphs");
     put(&r, "Slow.ttf", &ttf(&f));
     slow_charge("slow", glyph_index(&f, 'A'), LIMIT_US + 1);
@@ -823,6 +833,146 @@ fn slow_glyphs_through_the_job() {
     std::env::remove_var("GRIMOIRE_FONT_GLYPH_US");
 }
 
+/// The key of the one font file in the folder, from the listing (the check a scan queues finds no worker and
+/// leaves nothing).
+fn only_key() -> u64 {
+    std::env::set_var("GRIMOIRE_WORK_EXE", "/nonexistent/grimoire");
+    let l = userfonts_scan(300.0);
+    wait_job();
+    std::env::set_var("GRIMOIRE_WORK_EXE", bin());
+    assert_eq!(l.len(), 1);
+    l[0].key
+}
+
+/// What a version that wrote verdicts numbered 1 can leave in the cache for a key: an empty `.slow` mark, three
+/// days old (it kept the mark of a first timeout beside the verdict of a second check that passed), its verdict
+/// and a preview. Returns the mark's path, and the verdict's with its text.
+fn leftovers_of_verdict_1(r: &str, key: u64, size: usize) -> (std::path::PathBuf, std::path::PathBuf, String) {
+    let cache = format!("{r}/fonts/.cache");
+    std::fs::create_dir_all(&cache).unwrap();
+    let mark = std::path::PathBuf::from(format!("{cache}/{key:016x}.slow"));
+    std::fs::write(&mark, b"").unwrap();
+    set_time(&mark, 3 * 86_400);
+    let text = format!("grimoire-font 1\nhash=0123456789abcdef\nsize={size}\nok=1\nupem=1000\nascent=800\ndescent=200\nscale=1000\nweight=400\nitalic=0\nmapped=95\ncover=0 0 0 0 0 0\nlacks=0\nfamily=Grimoire Test\nstyle=Regular\n");
+    let font = std::path::PathBuf::from(format!("{cache}/{key:016x}.font"));
+    std::fs::write(&font, &text).unwrap();
+    std::fs::write(format!("{cache}/{key:016x}.pgm"), b"P5\n8 8\n255\n").unwrap();
+    (mark, font, text)
+}
+
+// The mark of a first try counts only as what it is: this check's (it holds the verdict's number), of these
+// very bytes (their SHA-256), and of the kind of result the next check comes to. An empty mark that a version
+// with verdicts numbered 1 left in the cache is no first try: the one check after the update that finds a
+// letter too slow to draw, or runs out of time, leaves the font for its second try. A check out of time and
+// a check that found slow glyphs do not make a verdict together, and a mark of other bytes is no mark. No
+// step waits on a clock: a mark is made old with set_modified, and the timeouts are the test watchdog's.
+fn a_first_trys_mark_counts_only_for_its_own_check() {
+    use grimoire::sha256::{hex32, sha256};
+    clean_env();
+    std::env::set_var("GRIMOIRE_FONT_GLYPH_US", LIMIT_US.to_string());
+    let f = test_font("Regular", 400);
+    let bytes = ttf(&f);
+    let a = glyph_index(&f, 'A');
+    let digest = hex32(&sha256(&bytes));
+    let mark_says = |r: &str, kinds: &str| {
+        let m = with_ext(r, "slow");
+        m.len() == 1 && std::fs::read(&m[0]).is_ok_and(|b| b == format!("grimoire-font 2 slow {kinds} {digest}\n").as_bytes())
+    };
+    let verdict = |r: &str| with_ext(r, "font").first().and_then(|p| std::fs::read_to_string(p).ok()).unwrap_or_default();
+    let hang = |on: bool| {
+        if on {
+            std::env::set_var("GRIMOIRE_FONT_TEST_HANG", "40");
+            std::env::set_var("GRIMOIRE_FONT_WATCHDOG_MS", "700");
+        } else {
+            std::env::remove_var("GRIMOIRE_FONT_TEST_HANG");
+            std::env::remove_var("GRIMOIRE_FONT_WATCHDOG_MS");
+        }
+    };
+
+    // The leftovers, then one check that finds a letter too slow to draw: a first try, no verdict.
+    let r = root("left-glyphs");
+    put(&r, "Left.ttf", &bytes);
+    let (mark, old_verdict, old_text) = leftovers_of_verdict_1(&r, only_key(), bytes.len());
+    slow_charge("slow", a, LIMIT_US + 1);
+    let (rc, text) = with_log(&format!("{r}/first.log"), job);
+    check!(rc == 3);
+    check!(text.contains(" us): left for a second try") && !text.contains("again"));
+    check!(std::fs::read_to_string(&old_verdict).is_ok_and(|t| t == old_text) && with_ext(&r, "no").is_empty() && with_ext(&r, "bad").is_empty());
+    check!(mark_says(&r, "glyphs"));
+    // (a minute later the second check agrees: the verdict, and the mark goes)
+    set_back(&mark);
+    let (rc, text) = with_log(&format!("{r}/second.log"), job);
+    check!(rc == 0 && text.contains("glyphs take too long to draw again"));
+    check!(verdict(&r).starts_with("grimoire-font 2\n") && verdict(&r).contains("\nwhy=slow\n") && with_ext(&r, "slow").is_empty());
+    std::env::remove_var("GRIMOIRE_FONT_TEST_SLOW");
+
+    // The leftovers, then one check that runs out of time: a first try too. (Under the test watchdog the wait
+    // for the second try is none.)
+    let r = root("left-time");
+    put(&r, "Left.ttf", &bytes);
+    let (_, old_verdict, old_text) = leftovers_of_verdict_1(&r, only_key(), bytes.len());
+    hang(true);
+    let (rc, text) = with_log(&format!("{r}/first.log"), job);
+    check!(rc == 3);
+    check!(text.contains(" ms): left for a second try") && !text.contains("again"));
+    check!(std::fs::read_to_string(&old_verdict).is_ok_and(|t| t == old_text) && with_ext(&r, "no").is_empty());
+    check!(mark_says(&r, "time"));
+    let (rc, text) = with_log(&format!("{r}/second.log"), job);
+    check!(rc == 0 && text.contains("took too long to read again"));
+    check!(verdict(&r).contains("\nwhy=slow\n") && with_ext(&r, "slow").is_empty());
+    hang(false);
+
+    // One check out of time, then one that finds a letter too slow: one reading of each kind is no verdict.
+    // The second reading of a kind is.
+    let r = root("mixed-time-first");
+    put(&r, "Mixed.ttf", &bytes);
+    hang(true);
+    check!(job() == 3 && mark_says(&r, "time"));
+    hang(false);
+    slow_charge("slow", a, LIMIT_US + 1);
+    set_back(&with_ext(&r, "slow")[0]);
+    let (rc, text) = with_log(&format!("{r}/second.log"), job);
+    check!(rc == 3);
+    check!(text.contains("glyphs take too long to draw (a letter or digit, slowest ") && text.contains(" us): left for a second try") && !text.contains("again"));
+    check!(mark_says(&r, "time,glyphs") && with_ext(&r, "font").is_empty() && with_ext(&r, "no").is_empty());
+    set_back(&with_ext(&r, "slow")[0]);
+    let (rc, text) = with_log(&format!("{r}/third.log"), job);
+    check!(rc == 0 && text.contains("glyphs take too long to draw again"));
+    check!(verdict(&r).contains("\nwhy=slow\n") && with_ext(&r, "slow").is_empty());
+    // (and the other way round: slow glyphs first, then one check out of time)
+    let r = root("mixed-glyphs-first");
+    put(&r, "Mixed.ttf", &bytes);
+    check!(job() == 3 && mark_says(&r, "glyphs"));
+    std::env::remove_var("GRIMOIRE_FONT_TEST_SLOW");
+    hang(true);
+    let (rc, text) = with_log(&format!("{r}/second.log"), job);
+    check!(rc == 3);
+    check!(text.contains(" ms): left for a second try") && !text.contains("again"));
+    check!(mark_says(&r, "time,glyphs") && with_ext(&r, "font").is_empty());
+    let (rc, text) = with_log(&format!("{r}/third.log"), job);
+    check!(rc == 0 && text.contains("took too long to read again"));
+    check!(verdict(&r).contains("\nwhy=slow\n") && with_ext(&r, "slow").is_empty());
+    hang(false);
+
+    // A mark of other bytes (another file had this name, size and time), a mark of another verdict number, and
+    // a mark with a word this version does not write: each is no first try, and goes.
+    let other = hex32(&sha256(b"another file"));
+    for (i, text) in [format!("grimoire-font 2 slow glyphs {other}\n"), format!("grimoire-font 3 slow glyphs {digest}\n"), format!("grimoire-font 2 slow often {digest}\n"), format!("grimoire-font 2 slow glyphs {digest}")].iter().enumerate() {
+        let r = root(&format!("not-its-mark-{i}"));
+        put(&r, "Other.ttf", &bytes);
+        let key = only_key();
+        let mark = std::path::PathBuf::from(format!("{r}/fonts/.cache/{key:016x}.slow"));
+        std::fs::write(&mark, text).unwrap();
+        set_back(&mark);
+        slow_charge("slow", a, LIMIT_US + 1);
+        let (rc, log) = with_log(&format!("{r}/first.log"), job);
+        check!(rc == 3 && log.contains(" us): left for a second try") && !log.contains("again"));
+        check!(mark_says(&r, "glyphs") && with_ext(&r, "font").is_empty() && with_ext(&r, "no").is_empty());
+    }
+    std::env::remove_var("GRIMOIRE_FONT_TEST_SLOW");
+    std::env::remove_var("GRIMOIRE_FONT_GLYPH_US");
+}
+
 // The command a worker takes is this build's alone: one of the grammar before (six fields) is refused, and so
 // is a glyph limit of nothing.
 fn the_worker_refuses_a_command_of_another_grammar() {
@@ -868,6 +1018,7 @@ fn test_fontcheck() {
     run!(the_walk_times_the_faces_own_draw);
     run!(a_glyph_too_slow_to_draw);
     run!(slow_glyphs_through_the_job);
+    run!(a_first_trys_mark_counts_only_for_its_own_check);
     run!(the_worker_refuses_a_command_of_another_grammar);
     // (last: it leaves the session without workers, as a failed step does)
     run!(a_failed_sandbox_step_checks_nothing);

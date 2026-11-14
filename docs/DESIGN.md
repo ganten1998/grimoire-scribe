@@ -2183,7 +2183,10 @@ its bytes.** Four parts keep it (`fontcheck.rs`, `userfonts.rs`, `font.rs`):
   index the last reached, 10 minutes in all; a worker silent for 30 s is killed and counts as out of time
   too. A check that runs out of time, or finds the font one that takes too long, rests on a measured time,
   so it is not taken on one reading: a first such check writes no verdict, the file is checked once more, a
-  minute or more later (`<key>.slow`), and a second such check is "Took too long to read.". It settles the
+  minute or more later, and only a check that ends the way an earlier check of the same bytes did is "Took
+  too long to read.". The mark `<key>.slow` says how the earlier checks ended and of which bytes, under the
+  verdict's number: one check out of time and one that found slow glyphs are not two that agree, and a mark
+  of another number (an earlier version's) is no mark. It settles the
   font's scale (capitals as tall as Terminess's, 0.592 of the line, between 0.85 and 1.25, then lowered a
   hundredth at a time until 95 of 100 of Grimoire's strings, in every language, are no wider than Terminess
   draws them, measured as `font.rs` measures: advances only), says which languages need letters the font

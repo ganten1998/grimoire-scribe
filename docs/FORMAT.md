@@ -675,12 +675,23 @@ itself only renames a `.checking` mark to `.bad` when that job died.
   black on white, at the text size of the screen the check ran for.
 - `<key>.no`, empty (2.1.1 on): the check refused this file; its verdict says why.
 - `<key>.checking`, empty: a check of this file is under way.
-- `<key>.slow`, empty: one check of this file ran out of time, or found glyphs that take too long to draw.
-  No verdict is written then: the file is checked once more, a minute or more later (a timeout right after
-  a wake is the clock's, not the font's), and when that check too runs out of time or finds such glyphs it
-  writes the verdict `why=slow`. The mark goes when a verdict is written, whatever it says; beside a `.bad`
+- `<key>.slow`, one line of text: a check of this file ran out of time, or found glyphs that take too long
+  to draw. No verdict is written then: the file is checked once more, a minute or more later (a timeout
+  right after a wake is the clock's, not the font's), and a check that ends the way an earlier one did
+  writes the verdict `why=slow`. One check out of time and one that found such glyphs are not two that
+  agree: the font is left for one more try. The line is
+
+  ```text
+  grimoire-font 2 slow <time | glyphs | time,glyphs> <SHA-256 of the whole font file, 64 hex digits>
+  ```
+
+  the verdict's number, how the earlier checks ended, and the bytes they were of. A mark that does not read
+  as that is no mark and is removed (an empty file, which is what the mark was while verdicts were numbered
+  1, so a mark left from then never makes one check the second of two); a mark that names other bytes is
+  no earlier check of this file. The mark goes when a verdict is written, whatever it says; beside a `.bad`
   it stays until the file changes or goes, when it goes with the key's other entries. Every version that
-  reads `fonts/.cache/` knows the mark (2.1.0-beta.2 on); older versions never open the folder.
+  reads `fonts/.cache/` knows the mark by its name and time (2.1.0-beta.2 on); older versions never open
+  the folder.
 - `<key>.bad`, empty: the check's worker died on this file, or the check itself did. The font is not read
   again until the file changes.
 

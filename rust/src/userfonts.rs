@@ -723,6 +723,74 @@ const RETRY_MS: [u32; 4] = [3_000, 15_000, 60_000, 60_000];
 /// jump, not a slow font): one retry, then the verdict stands. The same for a first check that found glyphs
 /// too slow to draw: a measured time is not taken on one reading.
 const SLOW_RETRY_S: i64 = 60;
+/// A `.slow` mark is at most this long (one line: `SlowMark`).
+const SLOW_MARK_MAX: usize = 128;
+
+/// What a `<key>.slow` mark says: a check of these very bytes (their SHA-256) came to a result that rests on a
+/// measured time and wrote no verdict: it ran out of time (`time`), it found glyphs too slow to draw
+/// (`glyphs`), or one check did the one and another the other. A later check that ends the way one before it
+/// did is the verdict; one result of each kind is not. The mark is one line of text,
+/// `grimoire-font <the verdict's number> slow <time|glyphs|time,glyphs> <64 hex digits>`: a mark that does not
+/// read as that (an empty one, as written with verdicts numbered 1; one of another number) is no mark, so
+/// what an earlier version left never makes one check the second of two.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct SlowMark {
+    time: bool,
+    glyphs: bool,
+    hash: [u8; 32],
+}
+
+impl SlowMark {
+    fn to_text(self) -> String {
+        let kinds = match (self.time, self.glyphs) {
+            (true, true) => "time,glyphs",
+            (true, false) => "time",
+            _ => "glyphs",
+        };
+        format!("grimoire-font {VERDICT_NUMBER} slow {kinds} {}\n", crate::sha256::hex32(&self.hash))
+    }
+
+    /// Reads a mark's bytes, strictly: this version's one line, or None.
+    fn parse(text: &[u8]) -> Option<SlowMark> {
+        let line = std::str::from_utf8(text).ok()?.strip_suffix('\n')?;
+        let p: Vec<&str> = line.split(' ').collect();
+        if p.len() != 5 || p[0] != "grimoire-font" || p[1] != VERDICT_NUMBER.to_string() || p[2] != "slow" {
+            return None;
+        }
+        let (time, glyphs) = match p[3] {
+            "time" => (true, false),
+            "glyphs" => (false, true),
+            "time,glyphs" => (true, true),
+            _ => return None,
+        };
+        Some(SlowMark { time, glyphs, hash: crate::sha256::unhex32(p[4])? })
+    }
+
+    /// Whether a check of these bytes ended this way before (`time`: out of time; else slow glyphs).
+    fn saw(&self, hash: &[u8; 32], time: bool) -> bool {
+        self.hash == *hash && if time { self.time } else { self.glyphs }
+    }
+
+    /// The mark after one more such result for the bytes of `hash`: what was seen of the same bytes stays.
+    fn with(before: Option<SlowMark>, hash: [u8; 32], time: bool) -> SlowMark {
+        let same = before.filter(|m| m.hash == hash);
+        SlowMark { time: time || same.is_some_and(|m| m.time), glyphs: !time || same.is_some_and(|m| m.glyphs), hash }
+    }
+}
+
+/// The mark a first try left at `path`, with its time. What is there and does not read as this version's mark
+/// (or is no plain file) is no mark and goes.
+fn slow_mark_read(path: &str) -> Option<(SlowMark, std::time::SystemTime)> {
+    let md = std::fs::symlink_metadata(path).ok()?;
+    let mark = if md.is_file() { read_file_max(path, SLOW_MARK_MAX).and_then(|b| SlowMark::parse(&b)) } else { None };
+    match mark {
+        Some(m) => Some((m, md.modified().unwrap_or(std::time::UNIX_EPOCH))),
+        None => {
+            let _ = std::fs::remove_file(path);
+            None
+        }
+    }
+}
 
 thread_local! {
     static S: RefCell<State> = RefCell::new(State::default());
@@ -1534,8 +1602,8 @@ fn fast_stable() -> bool {
     }
 }
 
-/// How long a font waits for its second try after a first timeout. Tests (not the Kindle's build) that set the
-/// watchdog short on purpose do not wait the minute.
+/// How long a font waits for its second try. Tests (not the Kindle's build) that set the watchdog short on
+/// purpose do not wait the minute.
 fn slow_retry_s() -> i64 {
     #[cfg(not(feature = "kindle"))]
     if std::env::var_os("GRIMOIRE_FONT_WATCHDOG_MS").is_some() {
@@ -1598,7 +1666,7 @@ pub fn bg_font_check(arg: &str, dpi: f32) -> i32 {
         vd.sweep(&keep);
     }
     let px = (44.0 * dpi / 300.0).round().clamp(8.0, 400.0) as i32;
-    // Whether a file still needs a verdict (one that a first timeout left for a retry counts: it waits).
+    // Whether a file still needs a verdict (one that a check left for its second try counts: it waits).
     let needs = |l: &Listed| {
         name_kind(l.rel.rsplit('/').next().unwrap_or("")) == NameKind::Font
             && l.size != 0
@@ -1617,15 +1685,18 @@ pub fn bg_font_check(arg: &str, dpi: f32) -> i32 {
         if std::path::Path::new(&bp).exists() || verdict_for(&vd, l.key, l.size).is_some() {
             continue;
         }
-        // A file whose check timed out once waits a minute, then is checked again (the clock may have jumped).
+        // A file a check left for its second try waits a minute, then is checked again (after a timeout the
+        // clock may have jumped; a measured draw time is not taken on one reading).
         let slow_mark = cache_file(l.key, "slow");
-        if let Ok(m) = std::fs::metadata(&slow_mark) {
-            let age = m.modified().ok().and_then(|t| std::time::SystemTime::now().duration_since(t).ok()).map_or(0, |d| d.as_secs() as i64);
+        let first = slow_mark_read(&slow_mark);
+        if let Some((_, t)) = &first {
+            let age = std::time::SystemTime::now().duration_since(*t).ok().map_or(0, |d| d.as_secs() as i64);
             if age < slow_retry_s() {
                 later += 1;
                 continue;
             }
         }
+        let first = first.map(|(m, _)| m);
         // A file still being copied waits: young, or changed between two looks.
         if !fast_stable() {
             if wall - l.mtime < crate::pdfimport::STABLE_AGE_S {
@@ -1656,7 +1727,7 @@ pub fn bg_font_check(arg: &str, dpi: f32) -> i32 {
         let out = check_font(&data, px);
         let ms = real_now_ms().wrapping_sub(t);
         // A verdict is kept with its companion in the cache, written first (verdict_for): a pass after its
-        // preview, a refusal after its `.no`. A mark a first timeout left goes with any verdict.
+        // preview, a refusal after its `.no`. A mark a first try left goes with any verdict.
         let keep_verdict = |what: VerdictKind| {
             let pass = matches!(what, VerdictKind::Passed(_));
             let kept = (pass || write_cache(&np, b"")) && vd.write(l.key, Verdict { hash, size: l.size, what }.to_text().as_bytes());
@@ -1702,27 +1773,25 @@ pub fn bg_font_check(arg: &str, dpi: f32) -> i32 {
                 wrote = keep_verdict(VerdictKind::Refused(r));
             }
             FontOut::Slow => {
-                if std::path::Path::new(&slow_mark).exists() {
+                if first.is_some_and(|m| m.saw(&hash, true)) {
                     qlog!("fonts: file %d of %d took too long to read again (%u ms)", i as i32 + 1, n as i32, ms);
                     wrote = keep_verdict(VerdictKind::Slow);
-                    let _ = std::fs::remove_file(&slow_mark);
                 } else {
                     // (a timeout may be the clock's jump after a wake: no verdict yet, one more try later)
                     qlog!("fonts: file %d of %d took too long to read (%u ms): left for a second try", i as i32 + 1, n as i32, ms);
-                    wrote = write_cache(&slow_mark, b"");
+                    wrote = write_cache(&slow_mark, SlowMark::with(first, hash, true).to_text().as_bytes());
                     later += 1;
                 }
             }
             FontOut::SlowGlyphs { letter, slow, slowest_us } => {
                 // (a refusal that rests on a measured time: as a timeout, it takes two checks that agree)
                 let what = if letter { format!("a letter or digit, slowest {slowest_us} us") } else { format!("{slow} glyph(s), slowest {slowest_us} us") };
-                if std::path::Path::new(&slow_mark).exists() {
+                if first.is_some_and(|m| m.saw(&hash, false)) {
                     qlog!("fonts: file %d of %d: glyphs take too long to draw again (%s)", i as i32 + 1, n as i32, &what);
                     wrote = keep_verdict(VerdictKind::Slow);
-                    let _ = std::fs::remove_file(&slow_mark);
                 } else {
                     qlog!("fonts: file %d of %d: glyphs take too long to draw (%s): left for a second try", i as i32 + 1, n as i32, &what);
-                    wrote = write_cache(&slow_mark, b"");
+                    wrote = write_cache(&slow_mark, SlowMark::with(first, hash, false).to_text().as_bytes());
                     later += 1;
                 }
             }
@@ -1883,6 +1952,57 @@ mod tests {
         guard_arm(&mut full, 99);
         assert_eq!(full.len(), 8);
         assert!(full.iter().any(|g| g.key == 99 && g.armed) && !full.iter().any(|g| g.key == 0));
+    }
+
+    // A first try's mark is this version's one line or nothing: an empty file (as written with verdicts
+    // numbered 1), another number, another word, a cut line are each no mark.
+    #[test]
+    fn a_slow_mark_reads_strictly() {
+        let hash: [u8; 32] = std::array::from_fn(|i| (i as u8).wrapping_mul(29).wrapping_add(3));
+        let digits = crate::sha256::hex32(&hash);
+        for (time, glyphs, kinds) in [(true, false, "time"), (false, true, "glyphs"), (true, true, "time,glyphs")] {
+            let m = SlowMark { time, glyphs, hash };
+            assert_eq!(m.to_text(), format!("grimoire-font {VERDICT_NUMBER} slow {kinds} {digits}\n"));
+            assert_eq!(SlowMark::parse(m.to_text().as_bytes()), Some(m));
+            assert!(m.to_text().len() <= SLOW_MARK_MAX);
+        }
+        let good = SlowMark { time: true, glyphs: false, hash }.to_text();
+        for bad in [
+            String::new(),
+            "\n".to_string(),
+            good.trim_end().to_string(),
+            format!("{good}\n"),
+            good.replace(&format!("grimoire-font {VERDICT_NUMBER} "), &format!("grimoire-font {} ", VERDICT_NUMBER - 1)),
+            good.replace(&format!("grimoire-font {VERDICT_NUMBER} "), &format!("grimoire-font {} ", VERDICT_NUMBER + 1)),
+            good.replace(" slow ", " fast "),
+            good.replace(" time ", " glyphs,time "),
+            good.replace(" time ", " time,time "),
+            good.replace(" time ", "  "),
+            good.replace(&digits, &digits[..63]),
+            good.replace(&digits, &digits.to_uppercase()),
+            good.replace(' ', "  "),
+        ] {
+            assert_eq!(SlowMark::parse(bad.as_bytes()), None, "{bad:?}");
+        }
+    }
+
+    // What a second result makes of a mark: the same kind of result for the same bytes is the verdict; the
+    // other kind, or the same kind for other bytes, is one more first try.
+    #[test]
+    fn a_second_try_agrees_only_with_its_own_kind_and_bytes() {
+        let (a, b) = ([1u8; 32], [2u8; 32]);
+        let timed = SlowMark::with(None, a, true);
+        assert_eq!(timed, SlowMark { time: true, glyphs: false, hash: a });
+        assert!(timed.saw(&a, true) && !timed.saw(&a, false) && !timed.saw(&b, true));
+        let slow = SlowMark::with(None, a, false);
+        assert!(slow.saw(&a, false) && !slow.saw(&a, true) && !slow.saw(&b, false));
+        // one of each: both are remembered, so the third result is the second of its kind whichever it is
+        let both = SlowMark::with(Some(timed), a, false);
+        assert_eq!(both, SlowMark { time: true, glyphs: true, hash: a });
+        assert_eq!(both, SlowMark::with(Some(slow), a, true));
+        assert!(both.saw(&a, true) && both.saw(&a, false));
+        // other bytes under the same key start afresh
+        assert_eq!(SlowMark::with(Some(both), b, true), SlowMark { time: true, glyphs: false, hash: b });
     }
 
     #[test]

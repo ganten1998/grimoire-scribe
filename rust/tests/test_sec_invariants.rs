@@ -159,8 +159,16 @@ fn the_docs_follow_the_font_checks_verdicts_and_limits() {
     gone(&mut fails, FORMAT, "With no verdict beside it the file is checked once more");
     gone(&mut fails, FORMAT, "Otherwise the mark stays, beside the verdict");
     gone(&mut fails, BACKLOG, "mark outlives its second try");
-    // the second try is told once, for a check that ran out of time and for one that found glyphs too slow
+    // the mark is one line under the verdict's number, with how the earlier checks ended and of which bytes
+    // (`SlowMark` in userfonts.rs): it is no longer an empty file, and FORMAT.md gives the line with the number
+    // the code writes
+    gone(&mut fails, FORMAT, "`<key>.slow`, empty");
+    present(&mut fails, FORMAT, &format!("grimoire-font {} slow <time | glyphs | time,glyphs> <SHA-256 of the whole font file", grimoire::fontcheck::VERDICT_NUMBER));
+    // the second try is told once, for a check that ran out of time and for one that found glyphs too slow,
+    // and the two kinds of result do not make a verdict together
     gone(&mut fails, DESIGN, "(`<key>.slow`), and a second is \"Took too long to read.\"");
+    gone(&mut fails, DESIGN, "and a second such check is \"Took too long to read.\"");
+    gone(&mut fails, FORMAT, "when that check too runs out of time or finds such glyphs");
     // the limits: the glyph limit with its figure, wherever a document gives it; the floors while they stand
     let ms = format!("{} ms", grimoire::sandbox::s1::FONT_GLYPH_CPU_MS);
     for f in [DESIGN, TESTING, BACKLOG] {

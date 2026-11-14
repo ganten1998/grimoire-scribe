@@ -545,8 +545,9 @@ What grimoire.log says (never a file's name or a family's: counts, sizes, timing
   is checked again a minute or more later) and at that try `... took too long to read again (T ms)` (the
   verdict), or `...: glyphs take too long to draw (a letter or digit, slowest T us | W glyph(s), slowest T
   us): left for a second try` and, when the check a minute or more later agrees, `...: glyphs take too long to
-  draw again (...)` (the verdict: the row then says "Took too long to read."), or `... the check's worker
-  ended (<why>): marked unreadable`, or `... left for
+  draw again (...)` (the verdict: the row then says "Took too long to read."; a timeout and slow glyphs do
+  not make a verdict together, each is `left for a second try` until one of the two has shown twice), or
+  `... the check's worker ended (<why>): marked unreadable`, or `... left for
   later (out of memory)`; each job checks one font (`fonts: file I of N done; more are left for the next job`),
   and the last one ends with `fonts: in the folder, P passed, R refused, D the worker died on, L left for later, T
   too big or empty (N font file(s) in all)`, the whole folder's tally from the verdicts kept, and `bg: font check
