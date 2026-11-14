@@ -718,7 +718,8 @@ struct State {
 const MAX_FAILS: u32 = 5;
 const RETRY_MS: [u32; 4] = [3_000, 15_000, 60_000, 60_000];
 /// How long after one watchdog timeout a font is checked again (a timeout right after a wake is the clock's
-/// jump, not a slow font): one retry, then the verdict stands.
+/// jump, not a slow font): one retry, then the verdict stands. The same for a first check that found glyphs
+/// too slow to draw: a measured time is not taken on one reading.
 const SLOW_RETRY_S: i64 = 60;
 
 thread_local! {
@@ -1664,7 +1665,7 @@ pub fn bg_font_check(arg: &str, dpi: f32) -> i32 {
         };
         let mut wrote = true;
         match out {
-            FontOut::Passed { facts, preview, w, h } => {
+            FontOut::Passed { facts, preview, w, h, slow, slowest_us, letters_us } => {
                 let mut c = Canvas::default();
                 if canvas_init(&mut c, w, h) != 0 {
                     // (a verdict counts only with its preview: none can be made now, so none is written)
@@ -1675,12 +1676,15 @@ pub fn bg_font_check(arg: &str, dpi: f32) -> i32 {
                         c.px[y * c.stride as usize..y * c.stride as usize + w as usize].copy_from_slice(&preview[y * w as usize..(y + 1) * w as usize]);
                     }
                     qlog!(
-                        "fonts: file %d of %d passed: %d KB, %d glyphs, %d from Terminess, checked in %u ms",
+                        "fonts: file %d of %d passed: %d KB, %d glyphs, %d from Terminess (%d too slow to draw), slowest glyph %d us, letters and digits %d us, checked in %u ms",
                         i as i32 + 1,
                         n as i32,
                         (l.size / 1024) as i32,
                         facts.mapped,
                         facts.skip.len() as i32,
+                        slow as i32,
+                        slowest_us.min(i32::MAX as u64) as i32,
+                        letters_us.min(i32::MAX as u64) as i32,
                         ms
                     );
                     wrote = store_write_pgm(&pp, &c) == 0 && keep_verdict(VerdictKind::Passed(facts));
@@ -1702,6 +1706,19 @@ pub fn bg_font_check(arg: &str, dpi: f32) -> i32 {
                 } else {
                     // (a timeout may be the clock's jump after a wake: no verdict yet, one more try later)
                     qlog!("fonts: file %d of %d took too long to read (%u ms): left for a second try", i as i32 + 1, n as i32, ms);
+                    wrote = write_cache(&slow_mark, b"");
+                    later += 1;
+                }
+            }
+            FontOut::SlowGlyphs { letter, slow, slowest_us } => {
+                // (a refusal that rests on a measured time: as a timeout, it takes two checks that agree)
+                let what = if letter { format!("a letter or digit, slowest {slowest_us} us") } else { format!("{slow} glyph(s), slowest {slowest_us} us") };
+                if std::path::Path::new(&slow_mark).exists() {
+                    qlog!("fonts: file %d of %d: glyphs take too long to draw again (%s)", i as i32 + 1, n as i32, &what);
+                    wrote = keep_verdict(VerdictKind::Slow);
+                    let _ = std::fs::remove_file(&slow_mark);
+                } else {
+                    qlog!("fonts: file %d of %d: glyphs take too long to draw (%s): left for a second try", i as i32 + 1, n as i32, &what);
                     wrote = write_cache(&slow_mark, b"");
                     later += 1;
                 }

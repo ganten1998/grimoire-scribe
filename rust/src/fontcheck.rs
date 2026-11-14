@@ -10,17 +10,21 @@
 //!   the file ever reaches stb's parser. The check and font.rs draw through the very same functions.
 //! - the worker's side (`worker_run`, `WorkKind::Font` of sandbox.rs): the check. It takes one font's bytes on
 //!   fd 5 and answers on fd 4: what the face is (metrics, weight, names), then every glyph the cmap maps,
-//!   outlined at each location the UI uses and drawn at the UI's smallest and largest sizes, in slices of CPU
+//!   drawn through the very faces the UI will make (`SafeFace`: the regular, and the bold by the weight axis)
+//!   at the UI's largest size, which is timed against the glyph limit, and at its smallest, in slices of CPU
 //!   time resumed by glyph index, then a preview of the font's name in itself. It never logs.
 //! - the writer's side (`check_font`): one font through as many workers as it takes slices, every record
 //!   validated, into a verdict (`Verdict`, the `.font` file's text) or a reason to mark the file.
 //!
 //! Commands (writer to worker, one line; `F` is followed by `len` bytes):
-//!   `F <len> <start> <px> <slice ms> <scale>`   check the font from glyph index `start`; `px` is the preview's
-//!                                       size; `scale` is 0 for the first slice, which settles the font's
-//!                                       scale, and that scale for the slices after it
+//!   `F <len> <start> <px> <slice ms> <scale> <glyph us>`   check the font from glyph index `start`; `px` is the
+//!                                       preview's size; `scale` is 0 for the first slice, which settles the
+//!                                       font's scale, and that scale for the slices after it; `glyph us` is
+//!                                       the CPU time one glyph's draw may take, in microseconds
 //!   `H <hook> <n>`                      a test hook (headless and test builds only: `crash`, `hang`, `trap` at
 //!                                       glyph index n)
+//!   `H <hook> <n> <us>`                 the test charge (the same builds: `slow`, `slowonce`, `slowbold`,
+//!                                       `slowfrom`: glyph n's draw is counted `us` microseconds dearer)
 //!   `Q`                                 end
 //!
 //! Records (worker to writer, text lines of a fixed grammar; numbers are decimal, without sign):
@@ -30,11 +34,15 @@
 //!   `F wght <min> <default> <max> <bold at>`   only for a font with a weight axis
 //!   `F cover <6 counts>`, `F lacks <bits>`, `F family <hex>`, `F style <hex>`
 //!   `K <glyph>`                         a glyph that failed: it comes from Terminess
+//!   `K <glyph> slow <us>`               a glyph (no letter or digit) whose draw took `us`, over the limit: it
+//!                                       comes from Terminess too
 //!   `G <next>`                          still working (the watchdog's sign of life)
-//!   `N <next> <cpu ms>`                 the slice is over, more to do
+//!   `N <next> <cpu ms> <slowest us> <letters us>`   the slice is over, more to do; the dearest draw among its
+//!                                       glyphs that draw, and its letters' and digits' draws in all
 //!   `P <w> <h>` then w * h bytes        the preview, top row first
-//!   `D <cpu ms>`                        done
+//!   `D <cpu ms> <slowest us> <letters us>`   done (the last slice's figures)
 //!   `E bad <n>`                         the font is at fault (n: `Refuse`)
+//!   `E slow <glyph> <us>`               a letter's or a digit's draw took `us`, over the limit
 //!   `E mem`, `E protocol`, `E sandbox <step>`, `E sigsys <call>`, `E panic`
 
 use crate::ffi_stb::*;
@@ -67,6 +75,9 @@ pub const FONT_DRAW_MEMORY: usize = 256 << 10;
 /// Terminess. The check draws every glyph at both.
 pub const FONT_PX_MIN: f32 = 8.0;
 pub const FONT_PX_MAX: f32 = 160.0;
+/// The line height a glyph's draw is timed at: the largest font.rs may ask for (`own_px`), so the limit holds
+/// for every draw the UI can make.
+pub const FONT_TIME_PX: f32 = FONT_PX_MAX;
 /// The most glyphs of a font that may fail and come from Terminess: 1% of the 65,535 a font can hold.
 pub const FONT_SKIP_MAX: usize = 656;
 /// Characters of a family or style name kept.
@@ -381,11 +392,13 @@ fn location_for(font: &FontRef, wght: f32) -> Vec<NormalizedCoord> {
 struct Opened<'a> {
     font: FontRef<'a>,
     glyphs: OutlineGlyphCollection<'a>,
-    /// the locations the UI uses: the default, then the bold's (a weight axis only)
-    locations: Vec<Vec<NormalizedCoord>>,
     facts: FaceFacts,
     /// one bit per glyph id: the cmap maps to it
     mapped: Vec<u64>,
+    /// by glyph id: the first character the cmap maps to it (0 for a glyph nothing maps to)
+    first_cp: Vec<u32>,
+    /// the glyphs of A to Z, a to z and 0 to 9, in order
+    letters: Vec<u32>,
 }
 
 fn bit(set: &[u64], i: u32) -> bool {
@@ -542,6 +555,7 @@ fn open_face<'a>(data: &'a [u8], out: &mut Outliner, scale_pm: i32) -> Result<Op
     // The glyphs the cmap maps (a glyph nothing maps to is never drawn: Grimoire shapes nothing), and what
     // the font covers.
     let mut mapped = vec![0u64; nglyphs.div_ceil(64) as usize];
+    let mut first_cp = vec![0u32; nglyphs as usize];
     let mut count = 0;
     let mut cover = [0i32; 6];
     // (each character through `map`, as the UI asks: on cmap groups that overlap, the group a walk of `mappings`
@@ -556,6 +570,7 @@ fn open_face<'a>(data: &'a [u8], out: &mut Outliner, scale_pm: i32) -> Result<Op
         if *w >> (g % 64) & 1 == 0 {
             *w |= 1 << (g % 64);
             count += 1;
+            first_cp[g as usize] = cp;
         }
         let k = match cp {
             0xA0..=0xFF => 0,
@@ -582,7 +597,10 @@ fn open_face<'a>(data: &'a [u8], out: &mut Outliner, scale_pm: i32) -> Result<Op
     } else {
         facts.scale_pm = scale_pm.clamp(850, 1250);
     }
-    Ok(Opened { font, glyphs, locations, facts, mapped })
+    let mut letters: Vec<u32> = (b'A'..=b'Z').chain(b'a'..=b'z').chain(b'0'..=b'9').map(|c| ascii[c as usize]).collect();
+    letters.sort_unstable();
+    letters.dedup();
+    Ok(Opened { font, glyphs, facts, mapped, first_cp, letters })
 }
 
 /// A custom font's text against Terminess's, over every string of every language Grimoire speaks: the scale
@@ -692,10 +710,31 @@ pub fn facts_in_process(data: &[u8]) -> Result<FaceFacts, Refuse> {
 /// The glyphs the cmap maps that fail the walk, in this very process: for the tests, as facts_in_process.
 #[cfg(not(feature = "kindle"))]
 pub fn glyphs_failing_in_process(data: &[u8]) -> Result<Vec<u32>, Refuse> {
+    Ok(glyphs_slow_in_process(data, u64::MAX, None)?.0)
+}
+
+/// The walk in this very process with a glyph limit of `limit_us` and a test charge: the glyphs that fail it,
+/// the ones whose draw is over the limit, and the dearest draw among the glyphs that draw. For the tests of
+/// the walk's arithmetic, as facts_in_process.
+#[cfg(not(feature = "kindle"))]
+pub fn glyphs_slow_in_process(data: &[u8], limit_us: u64, hook: Option<TestSlow>) -> Result<(Vec<u32>, Vec<u32>, u64), Refuse> {
+    let data = Rc::new(data.to_vec());
     let mut out = Outliner::new().ok_or(Refuse::Unreadable)?;
-    let o = open_face(data, &mut out, 0)?;
-    let n = o.mapped.len() as u32 * 64;
-    Ok((0..n).filter(|&g| bit(&o.mapped, g) && !glyph_draws(&o, &mut out, g)).collect())
+    let o = open_face(&data, &mut out, 0)?;
+    let faces = faces_of(&data, &o).ok_or(Refuse::Unreadable)?;
+    TEST_SLOW.set(hook);
+    TEST_CHARGE.set(0);
+    let (mut broken, mut slow, mut sums) = (Vec::new(), Vec::new(), Sums::default());
+    for g in (0..o.mapped.len() as u32 * 64).filter(|&g| bit(&o.mapped, g)) {
+        match glyph_walk(&o, &faces, &mut out, g, limit_us, &mut sums) {
+            Walked::Fine => {}
+            Walked::Broken => broken.push(g),
+            Walked::Slow(_) => slow.push(g),
+        }
+    }
+    TEST_SLOW.set(None);
+    TEST_CHARGE.set(0);
+    Ok((broken, slow, sums.slowest_us))
 }
 
 // ---- the worker's side ----
@@ -777,6 +816,80 @@ fn cpu_ms() -> u64 {
     ts.tv_sec as u64 * 1000 + ts.tv_nsec as u64 / 1_000_000
 }
 
+/// This process's CPU time so far, in microseconds: the clock a glyph's draw is timed by (the same clock, the
+/// same call as cpu_ms).
+fn cpu_us() -> u64 {
+    // SAFETY: ts is written by clock_gettime before it is read.
+    let mut ts: libc::timespec = unsafe { std::mem::zeroed() };
+    unsafe { libc::clock_gettime(libc::CLOCK_PROCESS_CPUTIME_ID, &mut ts) };
+    ts.tv_sec as u64 * 1_000_000 + ts.tv_nsec as u64 / 1000
+}
+
+/// The largest number a record carries (`number` reads nine digits).
+const RECORD_MAX: u64 = 999_999_999;
+
+/// The test charge (headless and test builds only; the Kindle's binary has none of it): a pretend cost, in
+/// microseconds of CPU, that a glyph's draw is counted dearer by, so that a test decides what is "slow" and no
+/// test compares a real clock with a real limit. Which draws it is added to:
+#[cfg(not(feature = "kindle"))]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum TestSlowKind {
+    /// every draw of the glyph
+    Always,
+    /// the first timed draw of the glyph only
+    Once,
+    /// the glyph's draws by a face away from the default location (the bold through the weight axis)
+    Bold,
+    /// every draw of every glyph from that index on
+    From,
+}
+
+#[cfg(not(feature = "kindle"))]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct TestSlow {
+    pub kind: TestSlowKind,
+    pub glyph: u32,
+    pub us: u64,
+}
+
+#[cfg(not(feature = "kindle"))]
+thread_local! {
+    static TEST_SLOW: std::cell::Cell<Option<TestSlow>> = const { std::cell::Cell::new(None) };
+    /// the microseconds charged since the walk last took them
+    static TEST_CHARGE: std::cell::Cell<u64> = const { std::cell::Cell::new(0) };
+}
+
+/// Adds the test charge for a draw of `gid` by a face (`away` from the default location or not), when the
+/// hook names it. Called from `SafeFace::outline_into`, the UI's own function, on purpose: a walk that went
+/// around `SafeFace` would no longer see the charge.
+#[cfg(not(feature = "kindle"))]
+fn test_charge(gid: u32, away: bool) {
+    let Some(h) = TEST_SLOW.get() else { return };
+    let hit = match h.kind {
+        TestSlowKind::Always | TestSlowKind::Once => gid == h.glyph,
+        TestSlowKind::Bold => gid == h.glyph && away,
+        TestSlowKind::From => gid >= h.glyph,
+    };
+    if hit {
+        TEST_CHARGE.set(TEST_CHARGE.get().saturating_add(h.us));
+        if h.kind == TestSlowKind::Once {
+            TEST_SLOW.set(None);
+        }
+    }
+}
+
+/// The test charge since it was last taken (always 0 in the Kindle's build).
+fn take_test_charge() -> u64 {
+    #[cfg(not(feature = "kindle"))]
+    {
+        TEST_CHARGE.replace(0)
+    }
+    #[cfg(feature = "kindle")]
+    {
+        0
+    }
+}
+
 #[derive(Clone, Copy, Default)]
 #[cfg_attr(feature = "kindle", allow(dead_code))]
 struct Hooks {
@@ -812,26 +925,89 @@ fn hex(s: &str) -> String {
     s.bytes().map(|b| format!("{b:02x}")).collect()
 }
 
-/// One glyph at every location the UI uses, outlined under the caps and drawn at the smallest and the largest
-/// size: whether all of it worked.
-fn glyph_draws(o: &Opened, out: &mut Outliner, gid: u32) -> bool {
+/// The faces the UI will make of a font that passes (userfonts.rs's load): the regular, and the bold through
+/// the weight axis when the font has that location. None when the regular cannot be made.
+fn faces_of(data: &Rc<Vec<u8>>, o: &Opened) -> Option<Vec<SafeFace>> {
+    let facts = Rc::new(o.facts.clone());
+    let mut faces = vec![SafeFace::new(data.clone(), facts.clone(), false)?];
+    if o.facts.bold_at != 0 {
+        faces.extend(SafeFace::new(data.clone(), facts, true));
+    }
+    Some(faces)
+}
+
+/// What the walk found of one glyph.
+enum Walked {
+    Fine,
+    /// it does not draw, or its advance is no number a line can hold
+    Broken,
+    /// it draws, in this many microseconds of CPU: more than a glyph may take
+    Slow(u64),
+}
+
+/// What a slice's walk adds up, over the glyphs that draw: the dearest draw, and the letters' and digits'
+/// draws in all (each glyph at the dearer of its faces), in microseconds of CPU.
+#[derive(Default)]
+struct Sums {
+    slowest_us: u64,
+    letters_us: u64,
+}
+
+/// One glyph through each face the UI will draw it by, as the UI draws it at first use (font.rs's own_glyph:
+/// the face's lookup, its outline under the caps, stb's rasterizer), at the largest size and timed in CPU
+/// time; then, not timed, at the smallest size from the same vertices. A draw over `limit_us` is measured
+/// again, up to three times, and the smallest counts (one far over, four times the limit, is not tried again).
+/// A glyph that does not draw is broken whatever it cost; a face over the limit ends the glyph's walk.
+fn glyph_walk(o: &Opened, faces: &[SafeFace], out: &mut Outliner, gid: u32, limit_us: u64, sums: &mut Sums) -> Walked {
     let line = o.facts.line();
-    for loc in &o.locations {
-        match out.outline(&o.glyphs, gid, loc, line) {
-            Ok(None) => {}
-            Ok(Some(b)) => {
-                for px in [FONT_PX_MIN, FONT_PX_MAX] {
-                    if rasterize(&mut out.verts, b, px / line as f32).is_none() {
-                        return false;
-                    }
-                }
+    let cp = o.first_cp.get(gid as usize).copied().unwrap_or(0);
+    let (mut broken, mut slow, mut dearest) = (false, None, 0u64);
+    for face in faces {
+        let (mut best, mut tries) = (u64::MAX, 0);
+        let drawn = loop {
+            let t = cpu_us();
+            // (the lookup's answer decides nothing here: it is run because the UI runs it)
+            let _ = face.find(cp);
+            let drawn = match face.outline_into(out, gid) {
+                Ok(Some(b)) => rasterize(&mut out.verts, b, FONT_TIME_PX / line as f32).map(|_| Some(b)),
+                Ok(None) => Some(None),
+                Err(_) => None,
+            };
+            let cost = cpu_us().saturating_sub(t).saturating_add(take_test_charge());
+            best = best.min(cost);
+            tries += 1;
+            if drawn.is_none() || best <= limit_us || cost > limit_us.saturating_mul(4) || tries >= 3 {
+                break drawn;
             }
-            Err(_) => return false,
+        };
+        let small = match drawn {
+            Some(Some(b)) => rasterize(&mut out.verts, b, FONT_PX_MIN / line as f32).is_some(),
+            Some(None) => true,
+            None => false,
+        };
+        if !small {
+            broken = true;
+            break;
+        }
+        dearest = dearest.max(best);
+        if best > limit_us {
+            slow = Some(best);
+            break;
         }
     }
     // (its advance is what the UI measures by: a number a line can hold)
     let adv = o.font.glyph_metrics(Size::unscaled(), LocationRef::default()).advance_width(GlyphId::new(gid));
-    matches!(adv, Some(a) if a.is_finite() && a >= 0.0 && a <= (FONT_BOX_LINES * line) as f32)
+    if broken || !matches!(adv, Some(a) if a.is_finite() && a >= 0.0 && a <= (FONT_BOX_LINES * line) as f32) {
+        return Walked::Broken;
+    }
+    sums.slowest_us = sums.slowest_us.max(dearest);
+    if o.letters.binary_search(&gid).is_ok() {
+        sums.letters_us = sums.letters_us.saturating_add(dearest);
+    }
+    match slow {
+        Some(us) => Walked::Slow(us),
+        None => Walked::Fine,
+    }
 }
 
 /// The preview: the font's family name drawn in the font itself at `px` (as text of that size is drawn, at
@@ -903,8 +1079,9 @@ fn preview(o: &Opened, out: &mut Outliner, px: f32) -> Option<(Vec<u8>, i32, i32
     Some((cut, w, h))
 }
 
-/// The check of one font from glyph index `start`: the records it sends.
-fn check_one(data: &[u8], start: usize, px: f32, slice_ms: u64, scale_pm: i32, hooks: &Hooks) {
+/// The check of one font from glyph index `start`, a glyph's draw held to `limit_us` of CPU: the records it
+/// sends. It counts no skipped glyphs: the writer does, which alone sees every slice.
+fn check_one(data: &Rc<Vec<u8>>, start: usize, px: f32, slice_ms: u64, scale_pm: i32, limit_us: u64, hooks: &Hooks) {
     let t0 = cpu_ms();
     let Some(mut out) = Outliner::new() else {
         say("E mem\n");
@@ -928,27 +1105,34 @@ fn check_one(data: &[u8], start: usize, px: f32, slice_ms: u64, scale_pm: i32, h
         say(&format!("F family {}\n", hex(&f.family)));
         say(&format!("F style {}\n", hex(&f.style)));
     }
+    // The faces the UI will make of these bytes: the walk goes through them.
+    let Some(faces) = faces_of(data, &o) else {
+        say("E bad 0\n");
+        return;
+    };
     let nglyphs = o.mapped.len() as u32 * 64;
-    let mut failed = 0usize;
+    let mut sums = Sums::default();
     let mut beat = cpu_ms();
     let mut gid = start as u32;
     while gid < nglyphs {
         if bit(&o.mapped, gid) {
             run_hooks(hooks, gid as usize);
-            if !glyph_draws(&o, &mut out, gid) {
-                failed += 1;
-                if failed > FONT_SKIP_MAX {
-                    say("E bad 0\n");
+            match glyph_walk(&o, &faces, &mut out, gid, limit_us, &mut sums) {
+                Walked::Fine => {}
+                Walked::Broken => say(&format!("K {gid}\n")),
+                // (a letter or a digit that takes too long: not a font to read by, as one that does not draw)
+                Walked::Slow(us) if o.letters.binary_search(&gid).is_ok() => {
+                    say(&format!("E slow {gid} {}\n", us.min(RECORD_MAX)));
                     return;
                 }
-                say(&format!("K {gid}\n"));
+                Walked::Slow(us) => say(&format!("K {gid} slow {}\n", us.min(RECORD_MAX))),
             }
         }
         gid += 1;
         if gid.is_multiple_of(16) {
             let now = cpu_ms();
             if now.saturating_sub(t0) >= slice_ms && gid < nglyphs {
-                say(&format!("N {gid} {}\n", now.saturating_sub(t0)));
+                say(&format!("N {gid} {} {} {}\n", now.saturating_sub(t0).min(RECORD_MAX), sums.slowest_us.min(RECORD_MAX), sums.letters_us.min(RECORD_MAX)));
                 return;
             }
             if now.saturating_sub(beat) >= 1000 {
@@ -967,7 +1151,7 @@ fn check_one(data: &[u8], start: usize, px: f32, slice_ms: u64, scale_pm: i32, h
             return;
         }
     }
-    say(&format!("D {}\n", cpu_ms().saturating_sub(t0)));
+    say(&format!("D {} {} {}\n", cpu_ms().saturating_sub(t0).min(RECORD_MAX), sums.slowest_us.min(RECORD_MAX), sums.letters_us.min(RECORD_MAX)));
 }
 
 /// The worker's loop (after sandbox.rs's steps): one font, in as many `F` commands as the writer sends.
@@ -977,20 +1161,35 @@ pub fn worker_run(_l: &Limits) -> i32 {
     while let Some(cmd) = read_line_fd(FD_IN) {
         let t: Vec<&str> = cmd.split(' ').collect();
         match t.as_slice() {
-            ["F", len, start, px, slice, scale] => {
-                let (Some(len), Some(start), Some(px), Some(slice), Some(scale)) = (number(len), number(start), number(px), number(slice), number(scale)) else {
+            ["F", len, start, px, slice, scale, glyph_us] => {
+                let (Some(len), Some(start), Some(px), Some(slice), Some(scale), Some(glyph_us)) = (number(len), number(start), number(px), number(slice), number(scale), number(glyph_us)) else {
                     say("E protocol\n");
                     return 1;
                 };
                 let scale_ok = if start == 0 { scale == 0 } else { (850..=1250).contains(&scale) };
-                if len == 0 || len > FONT_FILE_MAX || start > 65_535 || !(8..=400).contains(&px) || slice == 0 || !scale_ok {
+                if len == 0 || len > FONT_FILE_MAX || start > 65_535 || !(8..=400).contains(&px) || slice == 0 || !scale_ok || glyph_us == 0 {
                     say("E protocol\n");
                     return 1;
                 }
                 let Some(data) = read_bytes_fd(FD_IN, len) else {
                     return 1;
                 };
-                check_one(&data, start, px as f32, slice as u64, scale as i32, &hooks);
+                check_one(&Rc::new(data), start, px as f32, slice as u64, scale as i32, glyph_us as u64, &hooks);
+            }
+            #[cfg(not(feature = "kindle"))]
+            ["H", hook, n, us] => {
+                let kind = match *hook {
+                    "slow" => Some(TestSlowKind::Always),
+                    "slowonce" => Some(TestSlowKind::Once),
+                    "slowbold" => Some(TestSlowKind::Bold),
+                    "slowfrom" => Some(TestSlowKind::From),
+                    _ => None,
+                };
+                let (Some(kind), Some(n), Some(us)) = (kind, number(n), number(us)) else {
+                    say("E protocol\n");
+                    return 1;
+                };
+                TEST_SLOW.set(Some(TestSlow { kind, glyph: n as u32, us: us as u64 }));
             }
             #[cfg(not(feature = "kindle"))]
             ["H", hook, n] => {
@@ -1029,12 +1228,17 @@ pub fn warm_up() {
 /// What a font came to.
 #[derive(Debug)]
 pub enum FontOut {
-    /// it passed: what the check learned, and the preview (w x h gray pixels, top row first)
-    Passed { facts: FaceFacts, preview: Vec<u8>, w: i32, h: i32 },
+    /// it passed: what the check learned, and the preview (w x h gray pixels, top row first); how many of the
+    /// glyphs it skips were too slow to draw, the dearest draw among the glyphs that draw, and the letters' and
+    /// digits' draws in all (microseconds of CPU at FONT_TIME_PX)
+    Passed { facts: FaceFacts, preview: Vec<u8>, w: i32, h: i32, slow: u32, slowest_us: u64, letters_us: u64 },
     /// the font is at fault: the same bytes give the same answer
     Refused(Refuse),
     /// it took longer than a font may ("Took too long to read.")
     Slow,
+    /// its glyphs take longer to draw than a font's may: measured, so a second check must agree. A letter or a
+    /// digit was over the limit (`letter`), or more glyphs than a font may skip were (`slow` of them)
+    SlowGlyphs { letter: bool, slow: u32, slowest_us: u64 },
     /// the worker died or broke the protocol on it: it is marked bad
     Dead(&'static str),
     /// the memory was not there: another time it may be; nothing is marked
@@ -1070,6 +1274,27 @@ fn budget_ms() -> (u64, u64) {
         }
     }
     (slice, job)
+}
+
+/// The CPU time one glyph's draw may take, in microseconds: the table's number on the Kindle. Any other build
+/// has no figure for its CPU and takes 5 s, which no real font reaches, unless GRIMOIRE_FONT_GLYPH_US names one
+/// (1 to 999999999; anything else is the default, before a worker hears of it).
+fn glyph_limit_us() -> u64 {
+    #[cfg(feature = "kindle")]
+    {
+        s1::FONT_GLYPH_CPU_MS * 1000
+    }
+    #[cfg(not(feature = "kindle"))]
+    {
+        std::env::var("GRIMOIRE_FONT_GLYPH_US").ok().and_then(|v| v.parse::<u64>().ok()).filter(|v| (1..=RECORD_MAX).contains(v)).unwrap_or(5_000_000)
+    }
+}
+
+/// Whether `n` skipped glyphs are more than a font of `mapped` glyphs may have: over FONT_SKIP_MAX, or more
+/// than one in a hundred. The one rule for glyphs that do not draw and glyphs too slow to draw, counted by the
+/// writer across slices.
+fn too_many(n: usize, mapped: i32) -> bool {
+    n > FONT_SKIP_MAX || n * 100 > mapped.max(1) as usize
 }
 
 /// The limits of a font worker for a file of `len` bytes (4.3: its image, the file, 64 MiB).
@@ -1148,6 +1373,21 @@ fn start_worker(len: usize) -> Hello {
             w.send(&format!("H {hook} {n}\n"));
         }
     }
+    // (the test charge: GRIMOIRE_FONT_TEST_SLOW=<slow|once|bold|from>:<glyph>:<us>)
+    #[cfg(not(feature = "kindle"))]
+    if let Ok(v) = std::env::var("GRIMOIRE_FONT_TEST_SLOW") {
+        let p: Vec<&str> = v.split(':').collect();
+        let hook = match p.first().copied() {
+            Some("slow") => "slow",
+            Some("once") => "slowonce",
+            Some("bold") => "slowbold",
+            Some("from") => "slowfrom",
+            _ => "",
+        };
+        if let (false, 3, Some(n), Some(us)) = (hook.is_empty(), p.len(), p.get(1).and_then(|x| number(x)), p.get(2).and_then(|x| number(x))) {
+            w.send(&format!("H {hook} {n} {us}\n"));
+        }
+    }
     Hello::Ready(w)
 }
 
@@ -1174,8 +1414,13 @@ pub fn check_font(data: &[u8], px: i32) -> FontOut {
     }
     let px = px.clamp(8, 400);
     let (slice_ms, job_ms) = budget_ms();
+    let limit_us = glyph_limit_us();
     let mut facts: Option<FaceFacts> = None;
+    // the glyphs that come from Terminess, in order: `broken` of them do not draw, `slow` take too long to
     let mut skip: Vec<u16> = Vec::new();
+    let (mut broken, mut slow) = (0usize, 0usize);
+    // the dearest draw the workers reported, and the letters' and digits' draws in all, across slices
+    let (mut slowest_us, mut letters_us) = (0u64, 0u64);
     let mut next = 0usize;
     let mut spent = 0u64;
     let mut records = 0usize;
@@ -1198,7 +1443,7 @@ pub fn check_font(data: &[u8], px: i32) -> FontOut {
         let slice_end = mono_ms() + slice_ms.max(s1::FONT_CPU_SECS * 1000) + watchdog_ms();
         let mut deadline = (mono_ms() + watchdog_ms()).min(slice_end);
         let scale = facts.as_ref().map_or(0, |f| f.scale_pm);
-        if !(w.send(&format!("F {} {} {} {} {}\n", data.len(), next, px, slice_ms, scale)) && w.send_bytes(data, deadline)) {
+        if !(w.send(&format!("F {} {} {} {} {} {}\n", data.len(), next, px, slice_ms, scale, limit_us)) && w.send_bytes(data, deadline)) {
             let stalled = mono_ms() >= deadline;
             w.kill_and_reap();
             return if stalled { FontOut::Slow } else { FontOut::Dead("the worker ended") };
@@ -1283,10 +1528,25 @@ pub fn check_font(data: &[u8], px: i32) -> FontOut {
                         f.style = text;
                     }
                 }
-                ("K", _, 2) => {
+                ("K", _, 2) | ("K", _, 4) => {
                     let Some(g) = num(1).filter(|&g| (next as i64..=65_535).contains(&g)) else { return bad(&mut w) };
-                    if facts.is_none() || skip.last().is_some_and(|&l| l as i64 >= g) || skip.len() >= FONT_SKIP_MAX {
+                    let Some(mapped) = facts.as_ref().map(|f| f.mapped) else { return bad(&mut w) };
+                    if skip.last().is_some_and(|&l| l as i64 >= g) {
                         return bad(&mut w);
+                    }
+                    if t.len() == 4 {
+                        let Some(us) = num(3).filter(|_| t[2] == "slow") else { return bad(&mut w) };
+                        slowest_us = slowest_us.max(us as u64);
+                        slow += 1;
+                    } else {
+                        broken += 1;
+                    }
+                    // More skipped glyphs than a font may have end the check at once, as a verdict and never
+                    // as a broken worker: unreadable when the ones that do not draw are too many by
+                    // themselves, else too slow. (Before the push: `skip` never passes FONT_SKIP_MAX.)
+                    if too_many(broken + slow, mapped) {
+                        w.kill_and_reap();
+                        return if too_many(broken, mapped) { FontOut::Refused(Refuse::Unreadable) } else { FontOut::SlowGlyphs { letter: false, slow: slow as u32, slowest_us } };
                     }
                     skip.push(g as u16);
                 }
@@ -1295,12 +1555,14 @@ pub fn check_font(data: &[u8], px: i32) -> FontOut {
                         return bad(&mut w);
                     }
                 }
-                ("N", _, 3) => {
-                    let (Some(n), Some(ms)) = (num(1), num(2)) else { return bad(&mut w) };
+                ("N", _, 5) => {
+                    let (Some(n), Some(ms), Some(dearest), Some(letters)) = (num(1), num(2), num(3), num(4)) else { return bad(&mut w) };
                     if facts.is_none() || n as usize <= next || n > 65_535 {
                         return bad(&mut w);
                     }
                     next = n as usize;
+                    slowest_us = slowest_us.max(dearest as u64);
+                    letters_us = letters_us.saturating_add(letters as u64);
                     break (ms as u64).max(1);
                 }
                 ("P", _, 3) => {
@@ -1321,20 +1583,24 @@ pub fn check_font(data: &[u8], px: i32) -> FontOut {
                         return FontOut::Dead("the worker ended while it sent the preview");
                     }
                     // then its last line, and it is done
-                    let done = w.read_line(64, mono_ms() + watchdog_ms()).ok().map(|l| String::from_utf8_lossy(&l).into_owned());
-                    let fine = done.as_deref().and_then(|d| d.strip_prefix("D ")).and_then(number).is_some();
+                    let done = w.read_line(64, mono_ms() + watchdog_ms()).ok().map(|l| String::from_utf8_lossy(&l).into_owned()).unwrap_or_default();
+                    let d: Vec<&str> = done.split(' ').collect();
+                    let last = if d.len() == 4 && d[0] == "D" { number(d[1]).and(number(d[2])).zip(number(d[3])) } else { None };
                     w.send("Q\n");
                     w.finish(500);
-                    if !fine {
+                    let Some((dearest, letters)) = last else {
                         return FontOut::Dead("the worker broke the protocol");
-                    }
+                    };
+                    slowest_us = slowest_us.max(dearest as u64);
+                    letters_us = letters_us.saturating_add(letters as u64);
                     let mut f = f.clone();
-                    // More than one glyph in a hundred broken: not a font to read by.
-                    if skip.len() * 100 > f.mapped.max(1) as usize {
-                        return FontOut::Refused(Refuse::Unreadable);
+                    // More than one glyph in a hundred skipped: not a font to read by. (The second lock: the
+                    // `K` records already ended such a check.)
+                    if too_many(skip.len(), f.mapped) {
+                        return if too_many(broken, f.mapped) { FontOut::Refused(Refuse::Unreadable) } else { FontOut::SlowGlyphs { letter: false, slow: slow as u32, slowest_us } };
                     }
                     f.skip = skip;
-                    return FontOut::Passed { facts: f, preview: pixels, w: pw as i32, h: ph as i32 };
+                    return FontOut::Passed { facts: f, preview: pixels, w: pw as i32, h: ph as i32, slow: slow as u32, slowest_us, letters_us };
                 }
                 ("E", "bad", 3) => {
                     let why = match num(2) {
@@ -1346,6 +1612,15 @@ pub fn check_font(data: &[u8], px: i32) -> FontOut {
                     w.send("Q\n");
                     w.finish(500);
                     return FontOut::Refused(why);
+                }
+                ("E", "slow", 4) => {
+                    let (Some(_), Some(us)) = (num(2).filter(|&g| (next as i64..=65_535).contains(&g)), num(3)) else { return bad(&mut w) };
+                    if facts.is_none() {
+                        return bad(&mut w);
+                    }
+                    w.send("Q\n");
+                    w.finish(500);
+                    return FontOut::SlowGlyphs { letter: true, slow: slow as u32 + 1, slowest_us: slowest_us.max(us as u64) };
                 }
                 ("E", "mem", 2) => {
                     w.kill_and_reap();
@@ -1599,19 +1874,27 @@ impl SafeFace {
         Some((g, adv.round_ties_even() as i32))
     }
 
+    /// Glyph `gid`'s outline at this face's location into `out.verts`, in font units, under the caps: its box,
+    /// None for a glyph with no ink, or why it is not drawn. The bytes are read afresh at every call.
+    pub(crate) fn outline_into(&self, out: &mut Outliner, gid: u32) -> Result<Option<UnitBox>, GlyphErr> {
+        #[cfg(not(feature = "kindle"))]
+        test_charge(gid, self.coords.iter().any(|c| *c != NormalizedCoord::ZERO));
+        let font = FontRef::from_index(&self.data, 0).map_err(|_| GlyphErr::Draw)?;
+        let glyphs = font.outline_glyphs();
+        out.outline(&glyphs, gid, &self.coords, self.facts.line())
+    }
+
     /// Glyph `gid` at a line height of `px`, outlined through `out` (the one outline buffer the UI keeps): its
     /// bitmap (empty for a glyph with no ink), None when the size is outside what the check drew or the outline
-    /// does not pass the caps (nothing is drawn then).
+    /// does not pass the caps (nothing is drawn then). It must stay these two calls, `outline_into` and then
+    /// `rasterize`: the check times them (glyph_walk), and what it timed is what this costs.
     pub fn bitmap(&self, out: &mut Outliner, gid: u32, px: f32) -> Option<Bitmap> {
         if !(FONT_PX_MIN..=FONT_PX_MAX).contains(&px) {
             return None;
         }
-        let line = self.facts.line();
-        let font = FontRef::from_index(&self.data, 0).ok()?;
-        let glyphs = font.outline_glyphs();
-        match out.outline(&glyphs, gid, &self.coords, line) {
+        match self.outline_into(out, gid) {
             Ok(None) => Some(Bitmap::default()),
-            Ok(Some(b)) => rasterize(&mut out.verts, b, px / line as f32),
+            Ok(Some(b)) => rasterize(&mut out.verts, b, px / self.facts.line() as f32),
             Err(_) => None,
         }
     }
@@ -1686,6 +1969,44 @@ mod tests {
         assert_eq!(crate::sha256::hex32(&font_hash(b"abc")), "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad");
         let v = Verdict { hash: font_hash(b"abc"), size: 3, what: VerdictKind::Slow };
         assert!(v.to_text().contains("\nhash=ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad\n"));
+    }
+
+    // The verdict's number stands for the check's rules too, and the glyph limit is one of them: whoever changes
+    // the limit bumps the number, so that fonts judged by the old limit are checked again.
+    #[test]
+    fn the_verdicts_number_follows_the_checks_rules() {
+        assert_eq!(
+            (VERDICT_NUMBER, s1::FONT_GLYPH_CPU_MS),
+            (2, 20),
+            "the glyph limit (sandbox.rs, s1::FONT_GLYPH_CPU_MS) and the verdict's number (VERDICT_NUMBER) move together: a change of the limit needs a bump of the number, and then both here"
+        );
+    }
+
+    // The one rule for skipped glyphs, which the writer applies across slices: over FONT_SKIP_MAX, or more than
+    // one in a hundred of the glyphs mapped.
+    #[test]
+    fn too_many_skipped_glyphs_end_a_check() {
+        assert_eq!(FONT_SKIP_MAX, 656);
+        // the cap by itself (a count of mapped glyphs no font has): 656 pass, the 657th does not
+        assert!(!too_many(656, i32::MAX));
+        assert!(too_many(657, i32::MAX));
+        // in a font as big as a font can be, one in a hundred comes first: 655 pass
+        assert!(!too_many(655, 65_535));
+        assert!(too_many(656, 65_535) && too_many(657, 65_535));
+        // one in a hundred: 40 of 4,095 pass, the 41st does not
+        assert!(!too_many(40, 4095));
+        assert!(too_many(41, 4095));
+        assert!(!too_many(1, 100) && too_many(2, 100) && !too_many(2, 200));
+        // a font of fewer than a hundred glyphs has room for none
+        assert!(!too_many(0, 95));
+        assert!(too_many(1, 95));
+        assert!(too_many(1, 0) && !too_many(0, 0));
+        // glyphs that do not draw alone, against those with the slow ones: 30 broken and 11 slow of 4,095 are
+        // too many together (the font takes too long), and the broken ones alone are not (it is not unreadable)
+        let (broken, slow, mapped) = (30, 11, 4095);
+        assert!(too_many(broken + slow, mapped) && !too_many(broken, mapped));
+        let (broken, slow, mapped) = (41, 0, 4095);
+        assert!(too_many(broken + slow, mapped) && too_many(broken, mapped));
     }
 
     #[test]
