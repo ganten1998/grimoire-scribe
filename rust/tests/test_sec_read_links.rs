@@ -259,3 +259,142 @@ fn a_data_folder_behind_a_link_still_works() {
     assert!(std::fs::read(pdfs.join("Linked.pdf")).unwrap().starts_with(b"%PDF"));
     let _ = std::fs::remove_dir_all(&t);
 }
+
+/// Every plain file under `dir` (links are not followed), with its bytes.
+fn plain_files(dir: &Path) -> Vec<(PathBuf, Vec<u8>)> {
+    let mut out = Vec::new();
+    for e in std::fs::read_dir(dir).unwrap().flatten() {
+        let ft = e.file_type().unwrap();
+        if ft.is_dir() {
+            out.extend(plain_files(&e.path()));
+        } else if ft.is_file() {
+            out.push((e.path(), std::fs::read(e.path()).unwrap()));
+        }
+    }
+    out
+}
+
+fn holds(bytes: &[u8], what: &[u8]) -> bool {
+    bytes.windows(what.len()).any(|w| w == what)
+}
+
+/// `text` (whole lines), then one comment line that makes it `len` bytes long.
+fn padded(text: &[u8], len: usize) -> Vec<u8> {
+    let mut v = text.to_vec();
+    assert!(v.len() + 2 <= len);
+    v.push(b'#');
+    v.resize(len - 1, b'x');
+    v.push(b'\n');
+    v
+}
+
+const MIB: usize = 1 << 20;
+
+// A notebook.ini that is a link is not read: the notebook is left out of the Library, and nothing in its
+// folder is written, moved or removed.
+#[test]
+fn a_linked_notebook_ini_is_not_read_or_saved_back() {
+    let t = top("nbini");
+    let root = t.join("root");
+    store_at(&root);
+    let nb = book("Real", 1, PAPER_BLANK);
+    let dir = nb_dir(&root, &nb);
+    let ini = dir.join("notebook.ini");
+    // (no page size: a notebook.ini that reads without one is written again with it)
+    let outside = t.join("outside.ini");
+    let text_outside = b"# Grimoire notebook\nname=Outside\nmarker=outside-only\npaper=4\ncreated=5\nmodified=5\nlast_page=0\nnext_page_id=2\npages=1\n";
+    std::fs::write(&outside, text_outside).unwrap();
+    std::fs::remove_file(&ini).unwrap();
+    symlink(&outside, &ini).unwrap();
+    let before = plain_files(&dir);
+    let mut list = Vec::new();
+    assert_eq!(store_list(&mut list), 0);
+    assert!(list.is_empty(), "listed: {:?}", list.iter().map(|n| n.name.as_str().to_string()).collect::<Vec<_>>());
+    assert_eq!(store_page_totals(), Some((0, 0)));
+    let mut info = NotebookInfo::default();
+    assert_eq!(store_load_info(nb.id.as_str(), &mut info), -1);
+    assert!(is_link(&ini), "the entry is as it was");
+    let after = plain_files(&dir);
+    assert!(after == before, "the notebook's files are as they were");
+    assert!(!after.iter().any(|(_, b)| holds(b, b"outside-only")), "nothing of the file outside is in the notebook's folder");
+    assert_eq!(std::fs::read(&outside).unwrap(), text_outside);
+    let _ = std::fs::remove_dir_all(&t);
+}
+
+// A settings.ini that is a link is not read: the defaults are used, and the entry is kept as
+// settings.ini.unread when the settings are next saved. The first one kept stays.
+#[test]
+fn a_linked_settings_ini_is_not_read_and_is_kept() {
+    let t = top("setini");
+    let root = t.join("root");
+    store_at(&root);
+    let (ini, aside) = (root.join("settings.ini"), root.join("settings.ini.unread"));
+    let outside = t.join("outside.ini");
+    let text_outside = b"# Grimoire settings\nmarker=outside-only\nlanguage=es\n";
+    std::fs::write(&outside, text_outside).unwrap();
+    symlink(&outside, &ini).unwrap();
+    let mut lang = String::from("?");
+    settings_language(&mut lang, 16);
+    assert_eq!(lang, "");
+    let mut s = Settings::default();
+    assert_eq!(settings_load(&mut s), 1);
+    assert_eq!(settings_save(&s), 0);
+    assert!(is_plain(&ini));
+    assert!(!holds(&std::fs::read(&ini).unwrap(), b"outside-only"), "nothing of the file outside is saved back");
+    assert!(is_link(&aside) && std::fs::read_link(&aside).unwrap() == outside, "the entry is kept aside, as it was");
+    assert_eq!(std::fs::read(&outside).unwrap(), text_outside);
+    // (what was saved reads)
+    assert_eq!(settings_load(&mut s), 0);
+    // a second round, with another link: the first one kept stays
+    let second = t.join("second.ini");
+    std::fs::write(&second, b"marker=second-only\n").unwrap();
+    std::fs::remove_file(&ini).unwrap();
+    symlink(&second, &ini).unwrap();
+    assert_eq!(settings_load(&mut s), 1);
+    assert_eq!(settings_save(&s), 0);
+    assert!(is_plain(&ini) && !holds(&std::fs::read(&ini).unwrap(), b"-only"));
+    assert!(is_link(&aside) && std::fs::read_link(&aside).unwrap() == outside, "settings.ini.unread is still the first");
+    assert_eq!(std::fs::read(&second).unwrap(), b"marker=second-only\n");
+    assert_eq!(std::fs::read(&outside).unwrap(), text_outside);
+    let _ = std::fs::remove_dir_all(&t);
+}
+
+// settings.ini and notebook.ini are read up to 1 MiB, to the byte. A longer settings.ini is kept aside at the
+// next save; a notebook with a longer notebook.ini is left out of the Library, its file untouched.
+#[test]
+fn an_ini_over_the_limit_is_not_read() {
+    let t = top("limit");
+    let root = t.join("root");
+    store_at(&root);
+    let (ini, aside) = (root.join("settings.ini"), root.join("settings.ini.unread"));
+    let mut s = Settings::default();
+    settings_default(&mut s);
+    let lines = format!("# Grimoire settings\nmirror_pdf={}\n", !s.mirror_pdf as i32);
+    std::fs::write(&ini, padded(lines.as_bytes(), MIB)).unwrap();
+    let mut got = Settings::default();
+    assert_eq!(settings_load(&mut got), 0, "exactly 1 MiB reads");
+    assert_eq!(got.mirror_pdf, !s.mirror_pdf);
+    let long = padded(lines.as_bytes(), MIB + 1);
+    std::fs::write(&ini, &long).unwrap();
+    assert_eq!(settings_load(&mut got), 1, "one byte more does not");
+    assert_eq!(got.mirror_pdf, s.mirror_pdf, "the defaults are used");
+    assert_eq!(settings_save(&got), 0);
+    assert!(std::fs::read(&aside).unwrap() == long, "the long file is kept, byte for byte");
+    assert!(is_plain(&ini) && std::fs::metadata(&ini).unwrap().len() < 100_000);
+    // notebook.ini
+    let nb = book("Long", 1, PAPER_BLANK);
+    let nbini = nb_dir(&root, &nb).join("notebook.ini");
+    let wrote = std::fs::read(&nbini).unwrap();
+    std::fs::write(&nbini, padded(&wrote, MIB)).unwrap();
+    let mut info = NotebookInfo::default();
+    assert_eq!(store_load_info(nb.id.as_str(), &mut info), 0, "exactly 1 MiB reads");
+    assert_eq!(info.name.as_str(), "Long");
+    let long = padded(&wrote, MIB + 1);
+    std::fs::write(&nbini, &long).unwrap();
+    assert_eq!(store_load_info(nb.id.as_str(), &mut info), -1, "one byte more does not");
+    let mut list = Vec::new();
+    assert_eq!(store_list(&mut list), 0);
+    assert!(list.is_empty());
+    assert!(std::fs::read(&nbini).unwrap() == long, "the file is as it was");
+    let _ = std::fs::remove_dir_all(&t);
+}

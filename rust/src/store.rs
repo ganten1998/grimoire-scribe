@@ -224,6 +224,9 @@ struct State {
     /// unknown lines past the bound, logged once per load
     g_set_dropped: i32,
     g_kept: Vec<Kept>,
+    /// settings_load found a settings.ini that it could not read (no plain file, too long, or it did not open):
+    /// settings_save moves that entry aside before it writes, and never writes over it.
+    g_set_unread: bool,
     /// how many notebook.ini files store_load_info has read (store_info_reads)
     g_info_reads: u32,
 }
@@ -243,6 +246,7 @@ impl State {
             g_set_unknown: Vec::new(),
             g_set_dropped: 0,
             g_kept: Vec::new(),
+            g_set_unread: false,
             g_info_reads: 0,
         }
     }
@@ -694,12 +698,16 @@ macro_rules! qlog_once {
 
 // ---- tiny ini ----
 
+/// settings.ini and notebook.ini are read up to this size, and no version writes one longer (docs/FORMAT.md):
+/// Grimoire writes a settings.ini under 100 KB and a notebook.ini under 30 KB.
+const STORE_INI_MAX: usize = 1 << 20;
+
 /// The lines of an ini file as (key, value) to cb, which keeps what it knows and sends the rest to
 /// its own list of unknown lines (the C's IniCb and IniUnknown): so keys a newer version wrote can
 /// be written back (docs/FORMAT.md). Comment lines and lines with no '=' are skipped; a value loses
-/// one trailing CR.
+/// one trailing CR. -1 for a file that is not read: missing, no plain file, or longer than STORE_INI_MAX.
 fn ini_parse_file(path: &str, cb: &mut dyn FnMut(&[u8], &[u8])) -> i32 {
-    let Some(txt) = read_file(path) else { return -1 ;
+    let Some(txt) = read_file_max(path, STORE_INI_MAX) else { return -1 ;
     };
     for line in c_lines(&txt) {
         let Some(eq) = line.iter().position(|&b| b == b'=') else { continue ;
@@ -770,6 +778,7 @@ pub fn store_root() -> String {
 pub fn store_init(root: &str) -> i32 {
     with(|s| {
         strlcpy_q(&mut s.g_root, root, 512);
+        s.g_set_unread = false; // (another root's settings.ini)
     });
     if mkdir_p(root) != 0 {
         qlog!("store: cannot create %s", root);
@@ -5000,6 +5009,16 @@ pub fn settings_load(s: &mut Settings) -> i32 {
     } else {
         1
     };
+    // A settings.ini that is there but was not read is never saved over: the defaults below are used, and
+    // settings_save moves the entry aside before it writes.
+    let unread = rc != 0 && std::fs::symlink_metadata(&path).is_ok();
+    with(|st| st.g_set_unread = unread);
+    if unread {
+        qlog_once!(
+            "settings: settings.ini is there but was not read (no plain file of at most %d bytes, or it did not open); the defaults are used",
+            STORE_INI_MAX
+        );
+    }
     let dropped = with(|st| st.g_set_dropped);
     if dropped != 0 {
         qlog!(
@@ -5230,7 +5249,50 @@ pub fn settings_save(s: &Settings) -> i32 {
             b.extend_from_slice(&l[..len]);
         }
     }
-    write_file_atomic(&path, &b)
+    // The settings.ini that settings_load found but could not read is kept: it moves to settings.ini.unread
+    // first (the entry itself: what a link names is untouched), and comes back if the save then fails. An
+    // earlier settings.ini.unread stays (the first one kept is the one most likely to be the user's own
+    // file), and the entry is then replaced. No version reads settings.ini.unread (docs/FORMAT.md).
+    let unread = with(|st| st.g_set_unread);
+    let aside = cformat!("%s.unread", &path);
+    let mut moved = false;
+    if unread {
+        let not_found = |e: &std::io::Error| e.kind() == std::io::ErrorKind::NotFound;
+        match std::fs::symlink_metadata(&aside) {
+            Ok(_) => qlog_once!("settings: settings.ini.unread is there already and stays; the settings.ini that was not read is replaced"),
+            Err(e) if not_found(&e) => match std::fs::rename(&path, &aside) {
+                Ok(()) => moved = true,
+                Err(e) if not_found(&e) => {} // (gone since the load: nothing to keep)
+                Err(e) => {
+                    qlog!(
+                        "settings: the settings.ini that was not read cannot be set aside (%s); nothing is saved over it",
+                        &strerror(e.raw_os_error().unwrap_or(0))
+                    );
+                    return -1;
+                }
+            },
+            Err(e) => {
+                // (whether one is kept already cannot be told: nothing is moved or written)
+                qlog!(
+                    "settings: the settings.ini that was not read cannot be set aside (%s); nothing is saved over it",
+                    &strerror(e.raw_os_error().unwrap_or(0))
+                );
+                return -1;
+            }
+        }
+    }
+    let rc = write_file_atomic(&path, &b);
+    if unread {
+        if rc == 0 {
+            with(|st| st.g_set_unread = false);
+        } else if moved && std::fs::rename(&aside, &path).is_ok() {
+            moved = false; // (back where it was: this save did not happen, and the next one tries again)
+        }
+        if moved {
+            qlog!("settings: the settings.ini that was not read is kept as settings.ini.unread");
+        }
+    }
+    rc
 }
 
 #[cfg(test)]
@@ -5632,6 +5694,40 @@ mod tests {
             &[raw(b"a\xffb"), val(5), raw(b"")],
         );
         assert_eq!(b, b"name=a\xffb\nn=5 |");
+    }
+
+    // ---- hardening round 2026-11: plain-file reads ----
+
+    fn plain_root(tag: &str) -> std::path::PathBuf {
+        let base = std::env::var("GRIMOIRE_TEST_TMP").map(std::path::PathBuf::from).unwrap_or_else(|_| std::env::temp_dir());
+        let r = base.join(format!("grimoire-store-plain-{tag}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&r);
+        assert_eq!(store_init(r.to_str().unwrap()), 0);
+        store_set_device(300.0, 600, 800);
+        r
+    }
+
+    // A settings.ini that was not read is moved aside before the save, and is back at its name when that save
+    // fails: the next save moves it aside again and writes.
+    #[test]
+    fn a_failed_save_puts_the_unread_settings_back() {
+        let r = plain_root("unread");
+        let (ini, aside) = (r.join("settings.ini"), r.join("settings.ini.unread"));
+        std::fs::create_dir(&ini).unwrap();
+        std::fs::write(ini.join("kept"), b"k").unwrap();
+        let mut s = Settings::default();
+        assert_eq!(settings_load(&mut s), 1);
+        crate::util::FAIL_WRITE_AT.with(|c| c.set(1));
+        assert_eq!(settings_save(&s), -1);
+        assert!(ini.is_dir() && ini.join("kept").exists(), "the entry is back at its name");
+        assert!(std::fs::symlink_metadata(&aside).is_err(), "and nothing is left aside");
+        assert_eq!(settings_save(&s), 0);
+        assert!(std::fs::symlink_metadata(&ini).unwrap().is_file());
+        assert!(aside.is_dir() && aside.join("kept").exists(), "the entry is kept aside, as it was");
+        // (read again: a settings.ini of this build's, with nothing to keep aside)
+        assert_eq!(settings_load(&mut s), 0);
+        assert_eq!(settings_save(&s), 0);
+        let _ = std::fs::remove_dir_all(&r);
     }
 }
 
