@@ -203,7 +203,7 @@ fn a_pdf_that_only_shares_a_books_key_becomes_a_notebook_of_its_own() {
     let (id_a, ends) = import_all(&e.drop("A.pdf", &a));
     assert_eq!(last(&ends), &DONE, "{ends:?}");
     let (id_b, ends) = import_all(&e.drop("B.pdf", &b));
-    assert_eq!(last(&ends), &DONE, "a file that only shares the book's key was taken for the book: {ends:?}");
+    assert_eq!(last(&ends), &DONE, "the second file of the key did not become a notebook of its own: {ends:?}");
     let names: Vec<String> = e.notebooks().iter().map(|n| n.name.as_str().to_string()).collect();
     assert!(names.len() == 2 && names.contains(&"A".to_string()) && names.contains(&"B".to_string()), "{names:?}");
     // each notebook's page 2 is its own file's
