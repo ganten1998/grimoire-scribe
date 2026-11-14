@@ -1976,9 +1976,12 @@ refusing a step; the fix round's: `test_import_queue.rs` for the scans, the lock
 (`z_pdf_*.qs`), `tests/import_check.py`, the strings' fit (`test_pdf_strings.rs`), `cargo deny` and
 `tests/package_check.sh` (every crate in `rust-crates.txt`, the size guard). The crate-date check
 (`tools/check-crate-dates.py`) is run by hand for a tag: it needs the network.
-**Not run anywhere yet: the sandbox's real steps** (`rust/tests/test_sandbox_linux.rs` needs Linux and root; the
-CI job `sandbox` is their first run) and everything on a Scribe. The owner's checks on the Scribe (S1's numbers
-replace the placeholders in `sandbox::s1` with one commit):
+The tests of the sandbox's real steps (`rust/tests/test_sandbox_linux.rs`, which needs Linux and root) run in the
+CI job `sandbox`, which the gate requires; they first ran as root on 2026-11-10, in a VM. The test file itself has
+not run on a Scribe; the steps have, as they were in 2.1.0-beta.2 (S1 on 2026-11-09, and the imports of the
+section "2.1.0-beta.2" below), and the narrower system-call rules that came after have a check of their own
+("Hardening round (2026-11), sandbox", at the end). The owner's checks on the Scribe, as written before those runs
+(S1's numbers are in the header of `sandbox::s1`; the plan's values were kept):
 
 1. Copy a real planner PDF into `grimoire/import/` over USB, open Grimoire: "Importing: page N of M" stays at
    the bottom of the Library and the cards stay usable; at the end the card appears and no toast says so.
@@ -2064,8 +2067,8 @@ a hostile corpus of truncated, enormous and decompression-bomb pictures is refus
 worker that crashes or stalls on a picture fails that picture alone, 70 pictures cross slices, a template whose
 worker dies is marked bad), `test_picwork_fallback.rs` (a forced sandbox failure: pictures decode in the writer
 and the log says so once), and the template, photo and import tests of `test_templates.rs`, unchanged.
-**Not run anywhere yet: a picture in the sandbox's real steps** (`pictures_decode_in_the_real_sandbox` in
-`test_sandbox_linux.rs`, the CI job `sandbox`) and everything on a Scribe. The owner's checks:
+`pictures_decode_in_the_real_sandbox` (in `test_sandbox_linux.rs`) runs in the CI job `sandbox`, as root; what
+has run on a Scribe is in the section "2.1.0-beta.2" below. The owner's checks:
 
 1. Copy a PNG and a JPEG into `grimoire/templates` and a photo into `grimoire/photos` over USB, open New notebook
    > the template list and a page's paper sheet: they appear with their previews, and one of each still goes onto a
@@ -2099,9 +2102,9 @@ fonts; a custom font draws each character as the same file embedded; the glyph c
 `fontcheck.rs` and `userfonts.rs` (the verdict and guard files read strictly), the scenarios
 `y_fonts_own_1_sheet`, `y_fonts_own_2_missing` and `z_fonts_own_kept`, and `make l10n-check`'s `fonts-own` and
 `fonts-own-slow` runs (every row note, the headings and the notice in every language, upright and sideways).
-**Not run anywhere yet: a font in the sandbox's real steps** (`a_font_is_checked_in_the_real_sandbox` in
-`test_sandbox_linux.rs`, the CI job `sandbox`), **and everything on a Scribe**: the check's speed there, the
-load's time and memory, the look on e-ink. The owner's checks:
+`a_font_is_checked_in_the_real_sandbox` (in `test_sandbox_linux.rs`) runs in the CI job `sandbox`, as root; what
+has run on a Scribe is in the section "2.1.0-beta.2" below. The check's speed there, the load's time and memory
+and the look on e-ink are the owner's checks:
 
 1. Copy a downloaded `.ttf` (any text font: Inter, EB Garamond) into `grimoire/fonts` over USB, open Grimoire,
    Settings (Classic) > Font. Under "Your fonts (grimoire/fonts)" the file first says "Checking..." with
@@ -2196,7 +2199,8 @@ temporary file is swept), `test_zip_limit.rs` (a zip past 4 GiB, or with a broke
 `test_picture_jobs.rs` (a picked picture's header goes to the worker; one worker death is tried again and never
 refuses a folder; a template with no preview yet starts no worker on the UI thread), and in the CI job `sandbox`
 two more (`test_sandbox_linux.rs`): a Scribe-sized colour page mirrored under the real cap, and a worker's clean
-end under the filter. **Not run anywhere yet: those two** (Linux as root) and everything on a Scribe.
+end under the filter. Those two run there, as root; what has run on a Scribe is in the section "2.1.0-beta.2"
+below.
 
 1. **A colour notebook's PDF.** Import a PDF with colour pages (a colour planner, a magazine of photos), open the
    notebook, write a stroke, close it: `PDFs/<name>.pdf` is there and its colour pages are in colour, and the log

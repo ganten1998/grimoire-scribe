@@ -277,9 +277,10 @@ Waits, from the 2.1 plan:
 
 ## Your own fonts (2.1.0-beta.2, lane L10): choices for the owner, and what waits
 
-Built to the 2.1 plan's D30 (Done, below). **Nothing of it has run on a Scribe, and its sandbox steps have not
-run anywhere** (the CI job `sandbox` is their first run): docs/TESTING.md, "2.1.0-beta.2, L10", has the device
-checks. Where the plan did not settle a thing, what the lane chose, for the owner to confirm:
+Built to the 2.1 plan's D30 (Done, below). Its check runs in the real sandbox in the CI job `sandbox`
+(`a_font_is_checked_in_the_real_sandbox`), and fonts were checked and used on the owner's Scribe with
+2.1.0-beta.2's development builds (docs/TESTING.md, "2.1.0-beta.2"); docs/TESTING.md, "2.1.0-beta.2, L10", has
+the device checks. Where the plan did not settle a thing, what the lane chose, for the owner to confirm:
 
 - **The size of text in your font.** The plan's rule as written: capitals as tall as Terminess's, the scale
   kept between 0.85 and 1.25, then lowered until 95 of 100 of Grimoire's strings are no wider than in
@@ -370,8 +371,8 @@ Bold-only letters of a name, a Done on a font that does not load. Left, with wha
   language, but a real font's widths are its own; labels that do not fit end in "...".
 - **Left and Right do not turn the pages of Your fonts** (the sheet's arrows do).
 - **`sandbox::s1::FONT_*`** (20 s slices, 10 min a font, 60 s of CPU a worker, a 30 s watchdog, 64 MiB over the
-  file) are the plan's numbers, placeholders until S1 measures the Scribe; `s1::WORKER_IMAGE` (11 MiB) is now
-  only about 0.9 MiB above the binary's size, which the margins absorb.
+  file) are the plan's numbers, kept: S1 (2026-11-09) measured PDF pages, not a font's check; `s1::WORKER_IMAGE`
+  (11 MiB) is now only about 0.9 MiB above the binary's size, which the margins absorb.
 - **A What's new line** for 2.1.0-beta.2's notes (docs/whatsnew), which the owner writes.
 - **Japanese** for the 15 new strings (nebuff): English shows until then.
 

@@ -14,12 +14,14 @@ type File = (&'static str, &'static str);
 const DESIGN: File = ("docs/DESIGN.md", include_str!("../../docs/DESIGN.md"));
 const FORMAT: File = ("docs/FORMAT.md", include_str!("../../docs/FORMAT.md"));
 const KINDLE: File = ("docs/KINDLE.md", include_str!("../../docs/KINDLE.md"));
+const TESTING: File = ("docs/TESTING.md", include_str!("../../docs/TESTING.md"));
 const BACKLOG: File = ("docs/BACKLOG.md", include_str!("../../docs/BACKLOG.md"));
 const PDFWORK: File = ("rust/src/pdfwork.rs", include_str!("../src/pdfwork.rs"));
 const FONTCHECK: File = ("rust/src/fontcheck.rs", include_str!("../src/fontcheck.rs"));
 const USERFONTS: File = ("rust/src/userfonts.rs", include_str!("../src/userfonts.rs"));
 const SANDBOX: File = ("rust/src/sandbox.rs", include_str!("../src/sandbox.rs"));
 const TEMPLATES: File = ("rust/src/bgwork_template.rs", include_str!("../src/bgwork_template.rs"));
+const SANDBOX_TESTS: File = ("rust/tests/test_sandbox_linux.rs", include_str!("test_sandbox_linux.rs"));
 const LICENSES_TOOL: File = ("tools/crate_licenses.py", include_str!("../../tools/crate_licenses.py"));
 const CARGO_TOML: File = ("rust/Cargo.toml", include_str!("../Cargo.toml"));
 const CARGO_LOCK: File = ("rust/Cargo.lock", include_str!("../Cargo.lock"));
@@ -384,6 +386,15 @@ fn the_docs_no_longer_say_what_the_code_does_not() {
     gone(&mut fails, USERFONTS, "Written by the background job only");
     gone(&mut fails, USERFONTS, "(nothing is marked), -1 it could not start");
     present(&mut fails, FORMAT, "`<key>.slow`");
+    // where the tests of the sandbox's real steps have run (CI's sandbox job), and where the steps have
+    gone(&mut fails, TESTING, "Not run anywhere yet: the sandbox's real steps");
+    gone(&mut fails, TESTING, "Not run anywhere yet: a picture in the sandbox's real steps");
+    gone(&mut fails, TESTING, "Not run anywhere yet: a font in the sandbox's real steps");
+    gone(&mut fails, TESTING, "Not run anywhere yet: those two");
+    gone(&mut fails, BACKLOG, "and its sandbox steps have not run anywhere");
+    gone(&mut fails, BACKLOG, "placeholders until S1 measures the Scribe");
+    gone(&mut fails, SANDBOX_TESTS, "HAVE NOT BEEN RUN");
+    gone(&mut fails, SANDBOX_TESTS, "and a forced failed step falls back and says so");
     // the crates: glifo is the optional one (vello_cpu's), and skrifa is glifo's plain dependency
     gone(&mut fails, BACKLOG, "glifo's optional dependency");
     // licenses/rust-crates.txt lists every crate the lock names, not only the ones built in

@@ -1,7 +1,8 @@
 // test_sandbox_linux.rs: the safe loader's real steps (2.1.0-beta.2, DESIGN.md 3.7 and 4.2; areas/pdf.md 3.1).
 // They need Linux and root (namespaces, chroot, setuid, seccomp), so they run in the CI job `sandbox`
 // (.github/workflows/release.yml: sudo, GRIMOIRE_SANDBOX=require) and are skipped anywhere else, with a line
-// saying so. THEY HAVE NOT BEEN RUN ON THIS MAC OR ON A KINDLE: the first CI run is their first run.
+// saying so. These tests have not run on a Mac (they need Linux) or on a Kindle (they need cargo); the sandbox's
+// steps themselves have run on a Scribe (sandbox.rs, `s1`).
 #![cfg(all(target_os = "linux", feature = "sim"))]
 mod fontfix;
 mod pdffix;
@@ -200,7 +201,8 @@ fn the_filter_is_the_one_the_tests_evaluate() {
 }
 
 // Pictures (lane L7): decoded in the real sandbox, a trap ends the worker and refuses the picture (never a
-// fallback to the writer's own decode), and a forced failed step falls back and says so.
+// fallback to the writer's own decode). What a failed step does to pictures is test_picwork_closed.rs's (where
+// the sandbox is required) and test_picwork_fallback.rs's (where it is not).
 #[test]
 fn pictures_decode_in_the_real_sandbox() {
     use grimoire::picwork::*;
