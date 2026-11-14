@@ -704,3 +704,34 @@ fn the_pictures_of_a_folder_named_with_a_line_break_do_not_wait_for_its_pdf() {
     assert_eq!(nb[0].npages(), 2, "the notebook is the two pictures'");
     assert!(!std::path::Path::new(&dir).exists(), "the folder was filed");
 }
+
+// A file that takes a PDF's name while that PDF is being imported, through the scan and its jobs as the app
+// runs them: the PDF that was read becomes its notebook, the file at the name is not moved to import/done and not
+// marked, and the next scan lists it and imports it as the file it is. (The file is put at the name through
+// pdfimport's seam for the tests, in the job's own process, where the import is about to file its PDF.)
+#[test]
+fn the_next_scan_imports_a_file_that_took_the_name_of_a_pdf_being_imported() {
+    let e = setup("name-taken-scan");
+    std::env::set_var("GRIMOIRE_IMPORT_STABLE", "fast");
+    e.put("grimoire/import/Book.pdf", &pdffix::planner(2));
+    let other = pdffix::planner(3);
+    let (at, tmp) = (format!("{}/import/Book.pdf", e.root), format!("{}/import/.incoming", e.root));
+    std::fs::write(&tmp, &other).unwrap();
+    sim_before_filing(move || std::fs::rename(&tmp, &at).unwrap());
+    let q1 = grimoire::bgwork_template::import_scan(DPI);
+    let said1 = drain();
+    // (the jobs are this process's children, each with a copy of the seam: from here on it does nothing)
+    sim_before_filing(|| ());
+    let after1 = (e.notebooks(), std::fs::read(format!("{}/import/Book.pdf", e.root)).ok(), e.names("grimoire/import/done"), e.marks());
+    let q2 = grimoire::bgwork_template::import_scan(DPI);
+    let said2 = drain();
+    lock_release_if_idle();
+    assert_eq!((q1, said1.as_slice()), (1, &["Imported { pages: 2, blank: 0, trimmed: 0 }".to_string()][..]), "the PDF that was read became its notebook");
+    assert_eq!(after1.0, ["Book"]);
+    assert!(after1.1.as_deref() == Some(&other[..]), "the file that took the name is still at it");
+    assert!(after1.2.is_empty() && after1.3.is_empty(), "it was not filed in import/done, and no mark says it was imported: {:?}, {:?}", after1.2, after1.3);
+    assert_eq!((q2, said2.as_slice()), (1, &["Imported { pages: 3, blank: 0, trimmed: 0 }".to_string()][..]), "the next scan imports the file at the name");
+    assert_eq!(e.notebooks(), ["Book", "Book 2"]);
+    assert_eq!(e.names("grimoire/import/done").len(), 1, "and files it");
+    assert!(!std::path::Path::new(&format!("{}/import/Book.pdf", e.root)).exists() && e.attempts().is_empty() && e.marks().is_empty(), "nothing of it is left in import/");
+}

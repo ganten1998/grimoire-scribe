@@ -2563,9 +2563,11 @@ that hold a key, the two "same folder" functions, the paths a mark and a state k
 without a record, the picker's cards, KOReader's request by the key, and a file that takes a PDF's name while
 that PDF is read, which is left for the next scan); `rust/tests/test_sec_import_io.rs` (a
 folder spelled like import, the look after a link, another file or a FIFO was put at the name, the lock file
-as a link, a FIFO, a folder or a file with a second name, a pick while the lock cannot be taken);
-`rust/tests/test_sec_import_names.rs`, `rust/tests/test_import_queue.rs`, `rust/tests/test_pdfimport.rs` and
-`rust/tests/test_browser.rs` (names with a line break, a tab or a C1 character); and the scenario
+as a link, a FIFO, a folder or a file with a second name, a pick while the lock cannot be taken, and what
+reads as an import still going); `rust/tests/test_sec_import_names.rs`, `rust/tests/test_import_queue.rs`,
+`rust/tests/test_pdfimport.rs` and `rust/tests/test_browser.rs` (names with a line break, a tab or a C1
+character; in `test_import_queue.rs` also the scan that imports a file which took the name of a PDF being
+imported); and the scenario
 `tests/scenarios/z_files_3_imports.qs` (the has-notes card, and Import as notebook on it). CI's `sandbox` job
 also runs `test_sec_import_names.rs` and `test_sec_import_io.rs`, on Linux as root, where the file system tells
 names apart by case; the unit jobs run on a file system that folds case.
