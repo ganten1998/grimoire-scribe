@@ -909,7 +909,9 @@ it walks the document's link annotations), `GRIMOIRE_PDF_TEST_WOKE=1` (every pag
 slept through: a stall is "right after a wake", tried again once without a strike), `GRIMOIRE_PDF_JOB_CPU_SECS=N`
 (a job's CPU budget, in place of `sandbox::s1`'s),
 `GRIMOIRE_WORK_FAIL_STEP=<step>` (that sandbox step fails),
-`GRIMOIRE_SANDBOX=require` (the steps are required, as on the Kindle) and `GRIMOIRE_WORK_EXE=<path>` (the binary a
+`GRIMOIRE_SANDBOX=require` (the steps are required, as on the Kindle: a worker that says `S 0` is then refused, so
+on a host without the steps, macOS, no PDF is imported, pictures wait and no font is checked) and
+`GRIMOIRE_WORK_EXE=<path>` (the binary a
 worker execs: a test's own executable is a test harness).
 Picture hooks (same builds): `GRIMOIRE_PIC_WATCHDOG_MS=N` (the picture watchdog), `GRIMOIRE_PIC_TEST_CRASH=N`,
 `..._HANG=N`, `..._TRAP=N` (a picture worker aborts, spins or makes a call outside its allow-list on its N-th

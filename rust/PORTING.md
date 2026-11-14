@@ -92,6 +92,12 @@ one with the feature on, implements `Platform` on a type of its own, and from it
 3. calls `mainloop::main(args)` on the thread that stays the app's only thread, and exits with
    what it returns.
 
+A worker (`<binary> --work ...`, sandbox.rs) is a fresh exec of that binary: its `main` hands `--work`
+to `mainloop::main` before it starts a thread or opens anything, as the in-tree binaries do. On Linux
+the worker's filter lets it wait and wake only on private futexes and map nothing executable, which one
+thread of Rust and a C library never needs more than; a platform's start-up code must not need more
+there.
+
 The rules of this file hold for it as they do for the in-tree platforms: the platform's methods are
 called from that one thread and from the forked children; `input_poll` is the loop's one place to
 wait and returns early when the descriptor given to `input_watch_fd` is readable; `display_present`

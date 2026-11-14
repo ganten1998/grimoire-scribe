@@ -13,12 +13,14 @@
 //!                                   pixels of a w x h Scribe page (the same fit as `R`); asked once, after PROBE
 //!   `R <page> <w> <h> <bands>`      page n (from 1) fitted and centred on a w x h white page, in 1 band
 //!                                   (whole) or in that many bands
-//!   `H <hook> <page>`               a test hook (headless and test builds only: `crash`, `hang`, `alloc`, `trap`)
+//!   `H <hook> <page>`               a test hook (headless and test builds only: `crash`, `hang`, `alloc`, `trap`,
+//!                                   `futexok`, `futexbad`, `execmap`, `execprot`, `panic`)
 //!   `Q`                             end
 //!
 //! Records (worker to writer, text lines of a fixed grammar, at most 4 MiB a job besides the pixels):
 //!   `B <version> <protocol>`        the build, first line
-//!   `S <0|1>`                       whether the sandbox steps ran
+//!   `S <0|1>`                       1 when this build has the sandbox steps (each held, where the sandbox is
+//!                                   required); the writer takes 0 only where the sandbox is not required
 //!   `P <pages>`                     the probe's page count
 //!   `K`                             the probe is done
 //!   `G <page> <y0> <w> <h> <ch>`    then w*h*ch bytes: a band of a page (rows y0 .. y0+h), 1 channel when
@@ -459,6 +461,17 @@ struct Hooks {
     trap: u32,
     /// dies (1) or spins (2) when asked for the links
     links: u32,
+    /// makes the futex calls one thread can make: a private wake, wait and wait-bitset, and the standard
+    /// library's own wake (Linux; nothing elsewhere)
+    futexok: u32,
+    /// makes another futex call: a requeue between two words of its own (Linux; nothing elsewhere)
+    futexbad: u32,
+    /// maps a page to read and execute (Linux; nothing elsewhere)
+    execmap: u32,
+    /// maps a page to read and write, then sets it to read and execute (Linux; nothing elsewhere)
+    execprot: u32,
+    /// panics
+    panic: u32,
 }
 
 /// Warms up what would touch the filesystem or entropy after the chroot (3.7, step 1): std's CPU feature
@@ -610,6 +623,11 @@ pub fn worker_run(l: &Limits) -> i32 {
                     "alloc" => hooks.alloc = p,
                     "trap" => hooks.trap = p,
                     "links" => hooks.links = p,
+                    "futexok" => hooks.futexok = p,
+                    "futexbad" => hooks.futexbad = p,
+                    "execmap" => hooks.execmap = p,
+                    "execprot" => hooks.execprot = p,
+                    "panic" => hooks.panic = p,
                     _ => {
                         say("E protocol\n");
                         return 1;
@@ -666,9 +684,57 @@ fn run_hooks(h: &Hooks, page: u32) {
         }
         std::hint::black_box(&big);
     }
+    if h.panic == page {
+        panic!("the panic hook");
+    }
+    run_call_hooks(h, page);
 }
 #[cfg(feature = "kindle")]
 fn run_hooks(_h: &Hooks, _page: u32) {}
+
+/// (off Linux the four hooks below do nothing)
+#[cfg(all(not(target_os = "linux"), not(feature = "kindle")))]
+fn run_call_hooks(h: &Hooks, page: u32) {
+    let _ = (h.futexok, h.futexbad, h.execmap, h.execprot, page);
+}
+
+/// The hooks that make system calls for the tests of the filter under a real kernel (test_sandbox_linux.rs).
+/// Written with libc's constants, not sandbox.rs's, so those tests also hold the hand-typed values to the
+/// kernel's.
+#[cfg(all(target_os = "linux", not(feature = "kindle")))]
+fn run_call_hooks(h: &Hooks, page: u32) {
+    let (word, other) = (0u32, 0u32);
+    let (w, o) = (&word as *const u32, &other as *const u32);
+    let no_time = std::ptr::null::<libc::timespec>();
+    if h.futexok == page {
+        // SAFETY: futex calls on a word of our own that holds 0: the wake finds nobody waiting, and each wait
+        // expects 1, so it returns at once (the word is not 1).
+        unsafe {
+            libc::syscall(libc::SYS_futex, w, libc::FUTEX_WAKE | libc::FUTEX_PRIVATE_FLAG, 1);
+            libc::syscall(libc::SYS_futex, w, libc::FUTEX_WAIT | libc::FUTEX_PRIVATE_FLAG, 1, no_time);
+            libc::syscall(libc::SYS_futex, w, libc::FUTEX_WAIT_BITSET | libc::FUTEX_PRIVATE_FLAG, 1, no_time, std::ptr::null::<u32>(), !0u32);
+        }
+        // (the standard library's own wake)
+        std::sync::Condvar::new().notify_all();
+    }
+    if h.futexbad == page {
+        // SAFETY: a requeue of nobody between two words of our own (it wakes 0 and moves 0).
+        unsafe { libc::syscall(libc::SYS_futex, w, libc::FUTEX_REQUEUE | libc::FUTEX_PRIVATE_FLAG, 0, 0usize, o) };
+    }
+    if h.execmap == page {
+        // SAFETY: an anonymous private page of our own; nothing is done with it.
+        unsafe { libc::mmap(std::ptr::null_mut(), 4096, libc::PROT_READ | libc::PROT_EXEC, libc::MAP_PRIVATE | libc::MAP_ANONYMOUS, -1, 0) };
+    }
+    if h.execprot == page {
+        // SAFETY: an anonymous private page of our own, then its protection changed; nothing is done with it.
+        unsafe {
+            let p = libc::mmap(std::ptr::null_mut(), 4096, libc::PROT_READ | libc::PROT_WRITE, libc::MAP_PRIVATE | libc::MAP_ANONYMOUS, -1, 0);
+            if p != libc::MAP_FAILED {
+                libc::mprotect(p, 4096, libc::PROT_READ | libc::PROT_EXEC);
+            }
+        }
+    }
+}
 
 // ====================================================================================================
 // The link walk (areas/pdf.md 5.1; the walk caps are 4.3's: depth 32, 100,000 entries, a visited set)
@@ -1163,6 +1229,14 @@ pub enum StartErr {
     Failed(&'static str),
 }
 
+/// A worker the filter ended at its start, at the probe or in the link walk (a page's is `Death::Sigsys`, which
+/// the import logs): the log names the call, in the words the pictures' and the fonts' writers use, and the
+/// caller gets the reason.
+fn refused_call(n: u32) -> &'static str {
+    crate::qlog!("work: a PDF's worker made call %d, which the sandbox does not allow", n as i32);
+    "the worker made a call the sandbox does not allow"
+}
+
 pub struct Session {
     w: Worker,
     rec_bytes: usize,
@@ -1195,10 +1269,19 @@ impl Session {
         }
         let line = w.read_line(512, deadline).map_err(|_| StartErr::Worker("no sandbox line"))?;
         match parse_record(&line) {
-            Ok(Rec::Sandboxed(on)) => sandboxed = on,
+            Ok(Rec::Sandboxed(on)) if sandbox_line_ok(on) => sandboxed = on,
+            // (`S 0` where the sandbox is required: no worker, before a command or a byte of the file is sent)
+            Ok(Rec::Sandboxed(_)) => {
+                w.kill_and_reap();
+                return Err(StartErr::Worker("the worker is not sandboxed"));
+            }
             Ok(Rec::Err(ErrCode::Sandbox(step))) => {
                 w.kill_and_reap();
                 return Err(StartErr::Sandbox(step));
+            }
+            Ok(Rec::Err(ErrCode::Sigsys(n))) => {
+                w.kill_and_reap();
+                return Err(StartErr::Worker(refused_call(n)));
             }
             _ => return Err(StartErr::Worker("handshake")),
         }
@@ -1240,6 +1323,10 @@ impl Session {
                     self.w.kill_and_reap();
                     return Err(StartErr::Failed("a sandbox record after the handshake"));
                 }
+                Ok(Rec::Err(ErrCode::Sigsys(n))) => {
+                    self.w.kill_and_reap();
+                    return Err(StartErr::Failed(refused_call(n)));
+                }
                 _ => {
                     self.w.kill_and_reap();
                     return Err(StartErr::Failed("unexpected record"));
@@ -1277,6 +1364,10 @@ impl Session {
                         self.w.kill_and_reap();
                         return Err(v.0);
                     }
+                }
+                Ok(Rec::Err(ErrCode::Sigsys(n))) => {
+                    self.w.kill_and_reap();
+                    return Err(refused_call(n));
                 }
                 _ => {
                     self.w.kill_and_reap();

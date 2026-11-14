@@ -1987,6 +1987,7 @@ replace the placeholders in `sandbox::s1` with one commit):
 2. grimoire.log has `work: sandboxed (uid 62001, chroot, netns, no new privileges, seccomp, selinux ...)` and no
    `the sandbox refused its step`. If a step is refused, send the log (the plan goes back to the owner, D21).
    A line `made call N, which the sandbox does not allow` names a system call the allow-list must gain.
+   (Not 240, 192 or 125: see "Hardening round (2026-11), sandbox" at the end.)
 3. Sleep the Scribe in the middle of a big import: it must not fail (the watchdog counts monotonic time).
    Quit Grimoire in the middle: the import finishes in the background; start it again and the notice shows the
    coarse progress; the notebook appears once.
@@ -2072,7 +2073,8 @@ and the log says so once), and the template, photo and import tests of `test_tem
 2. grimoire.log has `work: sandboxed (uid 62001, ...)` once a background job that reads pictures (each job is a
    process of its own; for PDFs it is once a session), and no `pictures decode in the writer` (since pictures
    fail closed: no `pictures wait`) and no `made call N, which the sandbox does not allow`. If either shows, send
-   the log (the call is added to the allow-list; the other line means the sandbox refused a step).
+   the log (the call is added to the allow-list, but for 240, 192 and 125 (the hardening round's section at the
+   end); the other line means the sandbox refused a step).
 3. Copy a folder of 20 phone photos (12 MP) into `grimoire/import/<Folder>`: it imports as before; time it from the
    log (`import: ... N of M pages`) against 2.0.0, and watch `MemAvailable`: the slices are 32 pictures a worker.
 4. Put a broken `.png` (cut a real one in half) in `grimoire/templates`: it is listed as unusable as in 2.0, and
@@ -2138,7 +2140,8 @@ load's time and memory, the look on e-ink. The owner's checks:
    back and open Grimoire: your font again.
 9. **The sandbox.** grimoire.log has `work: sandboxed (uid 62001, ...)` and no `fonts: no worker for the check`
    and no `made call N, which the sandbox does not allow` (if either shows, send the log: a call is then added
-   to the allow-list with the spike's numbers, and until then no font is checked, none is marked).
+   to the allow-list, but for 240, 192 and 125 (the hardening round's section at the end), with the spike's
+   numbers, and until then no font is checked, none is marked).
 10. **The crash guard** cannot be provoked without a font that crashes Grimoire; its marks can be watched:
     while your font's first screen is being drawn `grimoire/.font-inuse` exists, and it is gone a moment after.
     If Grimoire is ever killed in that moment (hold the power button the instant the first screen appears),
@@ -2461,3 +2464,50 @@ with the notebooks unchanged and KOReader left alone. Until then that Scribe ran
 `e52d37dbdf51`, so this was its first run of what came after that beta. The owner was asked to look at What's new
 on the first start, page turns at the fitted view and back a page or two, the lasso's bar and a dragged
 selection, and whatever else is in daily use. The owner's verdict, 2026-11-13: "it looks fine."
+
+## Hardening round (2026-11), sandbox: the worker's system calls, its start and its handshake
+
+The worker that reads PDFs, pictures and fonts is held to a narrower use of three system calls (futex only
+as a private wait or wake; mmap and mprotect only for a mapping not asked executable), is started only with
+all six of its descriptors in place, and is taken by the writers only when it says it is sandboxed where
+the sandbox is required. Before its handshake the worker makes one allowed call of each of the three kinds,
+so a kernel on which the rule is wrong ends it there, before a file is read: nothing is then marked and no
+try is counted. Automated: the unit tests of `sandbox.rs` (the filter of all three architectures, evaluated
+with arguments), `rust/tests/test_sec_spawn_fds.rs`, `rust/tests/test_sec_handshake.rs`, and in CI's
+`sandbox` job `rust/tests/test_sandbox_linux.rs` (the rule refusing and allowing under a real kernel, and
+real PDFs, pictures and fonts under it, on x86-64).
+
+**Not run on a Scribe, and it must be before a release**: CI runs x86-64, another C library and a
+development build; the Scribe runs armv7, a static release build and kernel 4.9. What the run below shows:
+that the Scribe's kernel takes the filter, that it sees the three calls' arguments where the filter reads
+them, and that real imports, pictures and fonts never meet the rule. What it cannot show: that a refused
+operation is refused on the Scribe (the Kindle build has no test hooks); that rests on the tests of the ARM
+table and on CI's kernel run. Use the bundle built with the pinned toolchain (docs/RELEASING.md), and
+**copies under new names** for every file below, so that a mark made by a failing check lands on a copy.
+
+1. **A worker starts.** Copy one PNG under a new name (`check-1.png`) into `grimoire/templates`. Open
+   Grimoire, New notebook, the template list: its preview appears. grimoire.log has `work: sandboxed (uid
+   62001, chroot, netns, no new privileges, seccomp, ...)` and none of: `made call`, `pictures wait`,
+   `refused its step`. If one of them shows, stop here and go to step 9: nothing of yours was marked.
+2. **A photo.** Copy a phone photo under a new name into `grimoire/photos`: its preview appears, upright.
+3. **A planner.** Copy a PDF that imported before, under a new name, into `grimoire/import/`: it becomes a
+   notebook with every page drawn (no "Some pages couldn't be read."), and its tabs work.
+4. **Colour, and a password.** A colour or photo PDF under a new name imports; a PDF with a password says
+   "PDF needs a password." once, as before.
+5. **A picture folder.** A folder of three pictures under a new name in `grimoire/import/` becomes a
+   notebook.
+6. **Fonts.** Copy one TTF and one OTF font you use, under new names, into `grimoire/fonts`: each is
+   checked and can be picked, as before (the section "2.1.0-beta.2, L10" says where).
+7. **The log, after all of it.** No line with `made call` (240, 192 or 125 would be this round's rule; any
+   other number is as before), `the PDF could not be opened`, `a worker could not open the PDF`, `a worker
+   could not be started`, `pictures wait`, `fonts: no worker for the check` or `refused its step`.
+8. **Two values to note** (over SSH, with Grimoire running; they change nothing): `cat
+   /proc/sys/net/core/bpf_jit_enable` (a number, or no such file), and `for p in $(pidof grimoire); do cat
+   /proc/$p/personality; done` (expected `00800000` on every line; if a line reads `00c00000`, send it: a
+   follow-up waits on that value, docs/BACKLOG.md).
+9. **If any step failed:** do not release. Send grimoire.log. Then delete the copies (and the notebooks
+   made from them), and delete the `.bad` files made during the check in `grimoire/templates/.cache`,
+   `grimoire/photos/.cache` and `grimoire/fonts/.cache` (empty files; the caches lose nothing). A copy's
+   line in `import/.attempts` goes with the copy. Install the build without this round's two filter
+   commits before judging anything else.
+10. **Later.** The same steps again whenever the build's rustc or zig version moves (docs/RELEASING.md).

@@ -2053,9 +2053,16 @@ failed step sends `E sandbox <step>` and exits before a byte of the PDF is read:
 no network or System V IPC (unshare), chroot into an empty directory on /tmp (checked to be tmpfs), the uid
 and gid 62001 (checked unused), no new privileges and not dumpable, the parent-death signal, the limits
 (`RLIMIT_NOFILE` 0, `NPROC` 0, `FSIZE` 0, `CORE` 0, `AS`, `CPU`) and a seccomp allow-list (read, write, the
-mmap family, brk, futex, clock_gettime, rt_sigreturn, exit) whose violation traps into a reporter. A refused
+mmap family with mprotect and madvise, brk, futex, clock_gettime, rt_sigreturn, exit and exit_group), in which
+futex passes only as a private wait, wake or wait-bitset and mmap and mprotect only for a mapping not asked
+executable. Any other call traps into a reporter, but for the few that answer ENOSYS instead (the time64 calls
+musl tries first on the 32-bit ARM, and gettid). Before the `S 1` of its handshake the worker makes one allowed
+call of each of the three kinds, so a kernel that does not show the filter their arguments ends the worker
+there. A refused
 step, or a worker that cannot be started, marks nothing and counts no try; the session then imports no more PDFs
-(a later slice keeps the pages it made, for the next start). The writer ignores SIGPIPE, and reads a worker's last
+(a later slice keeps the pages it made, for the next start). The handshake is two lines, the build and `S 1` (the
+steps are in place; `S 0` is a build without them, macOS); where the sandbox is required the writers take only
+`S 1`, and a worker is started only with descriptors 0 to 5 in place. The writer ignores SIGPIPE, and reads a worker's last
 records after a send that failed. The page watchdog runs on CLOCK_MONOTONIC (a sleep does not count); a page
 whose wait the Kindle slept through and that then stalls is tried again once without a strike. Off the Kindle the steps are
 skipped (plain process isolation) unless GRIMOIRE_SANDBOX=require. The worker's records are text lines of a

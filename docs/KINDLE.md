@@ -478,21 +478,31 @@ file name, title or key ever appears in it: ids, page numbers, counts, timings, 
 - `import: <id>: page N of M: the worker died of signal S (strike K)` or `... stalled ...` or `... made call C,
   which the sandbox does not allow`; after the second strike `... could not be read ...; it is blank`. On the
   Kindle call 175 (`rt_sigprocmask`) is the worker's own abort (out of memory, or a panic), not a call to add;
+  240, 192 and 125 (futex, mmap2, mprotect) are on the list and are refused only for a futex operation other
+  than a private wait or wake, or for a mapping asked executable: nothing is added for them, send the log;
   any other number is one to add to `sandbox::s1::allow` with the spike's numbers. A worker that ends cleanly
   makes no call outside the list (`--work` ends with `_exit`), so no `E sigsys 186` (`sigaltstack`) follows a
-  worker's normal end.
+  worker's normal end. The same call is named by `work: a PDF's worker made call C, which the sandbox does not
+  allow` when it comes at a worker's start (then with `a worker could not be started`) or while the PDF is opened
+  (then with `the PDF could not be opened` or `a worker could not open the PDF`).
 - `import: <id>: the sandbox refused its step "<step>": no PDF is read and no try is counted`, or `import: <id>: a
-  worker could not be started (<why>): no try is counted`: either way the session imports no more PDFs.
+  worker could not be started (<why>): no try is counted`: either way the session imports no more PDFs (`<why>`
+  is one of `start`, `no handshake`, `build mismatch`, `handshake`, `no sandbox line`, `the worker is not
+  sandboxed`, `the worker made a call the sandbox does not allow`).
 - Pictures (templates, photos, picture folders) are decoded by the same worker (`grimoire --work pic ...`), which
   serves up to 32 pictures and is then replaced. `work: a picture's worker ended (the worker ended|the worker
   stalled); a fresh worker tries it again`: one death is no verdict. `work: a picture's worker ended (...)` with
-  nothing after it (a second death in a row) and `... made call C, which the sandbox does not allow`: the
+  nothing after it (a second death in a row) and `... made call C, which the sandbox does not allow` (240, 192
+  and 125 as for PDFs): the
   picture in hand is marked `.bad` (a template or photo); a picture folder's import fails and counts one try of
   its three (as for a picture the memory could not hold): only a picture at fault refuses the folder until its
-  files change. `work: pictures wait (<why>): no sandboxed worker can be had, and the writer decodes none;
+  files change. When `... made call C ...` is followed by `work: pictures wait (the worker made a call the sandbox
+  does not allow)`, the call came at a worker's start, with no picture in hand: nothing is marked and no try is
+  counted. `work: pictures wait (<why>): no sandboxed worker can be had, and the writer decodes none;
   nothing is marked and no try is counted`: once a process (each background job is one), when no worker could be
   had (`a sandbox step failed`, `step <name>`, `the worker did not start`, `the worker did not answer`, `the worker
-  is another build`, `no handshake`). No picture is decoded then (since 2.1.0-beta.2's fail-closed change): a
+  is another build`, `no handshake`, `the worker is not sandboxed`, `the worker made a call the sandbox does not
+  allow`). No picture is decoded then (since 2.1.0-beta.2's fail-closed change): a
   template or photo gets no preview (`templates: ... N left for a later scan (out of memory, a file that did not
   read, or no sandboxed worker)`) and no `.bad`; a notebook's template picture is not made (`templates: <id>:
   bg/<pic>.png could not be made (no sandboxed worker can be had)`); a picture folder's import ends with `import:
