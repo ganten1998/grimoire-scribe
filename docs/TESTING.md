@@ -2560,7 +2560,8 @@ at a dropped PDF, and the import's lock file, are opened without following a lin
 their name. Automated: the unit tests of `pdfimport.rs` (the record's grammar, the decision over the notebooks
 that hold a key, the two "same folder" functions, the paths a mark and a state keep);
 `rust/tests/test_sec_import_key.rs` (three PDFs of one book key: the record, the second notebook, a notebook
-without a record, the picker's cards, KOReader's request by the key); `rust/tests/test_sec_import_io.rs` (a
+without a record, the picker's cards, KOReader's request by the key, and a file that takes a PDF's name while
+that PDF is read, which is left for the next scan); `rust/tests/test_sec_import_io.rs` (a
 folder spelled like import, the look after a link, another file or a FIFO was put at the name, the lock file
 as a link, a FIFO, a folder or a file with a second name, a pick while the lock cannot be taken);
 `rust/tests/test_sec_import_names.rs`, `rust/tests/test_import_queue.rs`, `rust/tests/test_pdfimport.rs` and
@@ -2572,8 +2573,9 @@ names apart by case; the unit jobs run on a file system that folds case.
 **Not run on a Scribe.**
 
 Three things only the Scribe can say: how long a big PDF takes to read whole, and whether its storage gives
-a file one identity by its name and by an open file (the scan's look and the import lock both compare the
-two). Steps 1 to 3, 7 and 8 must pass before a release holds this round's import commits. The owner's check:
+a file one identity by its name and by an open file (the scan's look, the import lock and the move to
+`import/done` all compare the two). Steps 1 to 3, 7 and 8 must pass before a release holds this round's
+import commits. The owner's check:
 
 1. **A big PDF, the first time.** Copy the biggest PDF at hand (300 MB or more if there is one) into
    `grimoire/import`. It is taken within about 10 s of the copy ending, as before. When the notice reaches
@@ -2596,8 +2598,12 @@ two). Steps 1 to 3, 7 and 8 must pass before a release holds this round's import
    Import as notebook says "PDF already imported.". The PDF of step 5 offers Open its notebook and Cancel
    only.
 7. **A small PDF after a restart.** Start Grimoire and copy a small PDF into `grimoire/import`: it is taken
-   within about 10 s. `grimoire.log` has no `the import lock cannot be taken` line, no
-   `differs from its listing` line, and the scan's line counts `0 that differ from their listing`.
+   within about 10 s, and once it is a notebook the file is in `import/done`. `grimoire.log` has no
+   `the import lock cannot be taken` line, no `differs from its listing` line and no
+   `no longer holds the file that was read` line, and the scan's line counts `0 that differ from their
+   listing`. This step decides whether the three checks suit the Scribe's storage: the first line would mean
+   that no import starts there, the second that every PDF waits a minute, the third that an imported PDF
+   stays in `import/` and is read again up to three times.
 8. **A second start during an import.** Start a long import, close Grimoire while it runs and open it
    again: the notice goes on. Pick another PDF in Files: "Another import is still going. This one starts
    after it.", and it starts once the first has ended.
@@ -2612,5 +2618,5 @@ two). Steps 1 to 3, 7 and 8 must pass before a release holds this round's import
     ("<Name> 2"), and KOReader's Open this book in Grimoire still opens the first.
 
 If step 1's T is long enough to matter, or step 2 shows the pen lagging, see the BACKLOG entry on the import's
-whole-file read ("Hardening round (2026-11), import: what waits"). If step 7 shows either line, do not release:
-send grimoire.log.
+whole-file read ("Hardening round (2026-11), import: what waits"). If step 7 shows any of its three lines, do
+not release: send grimoire.log.

@@ -722,7 +722,13 @@ PDFs first, then its pictures as above (a PDF refused, or tried 3 times and unch
 back no longer). Only a file that lies in `import/` (not `import/done/`) ever moves, to
 `import/done/<Name>-<YYYYMMDD-HHMMSS>.pdf` once imported: that is decided by where the file is, never by a mark,
 so a PDF picked anywhere else is read in place and never moved, and one picked in `import/` itself is filed in
-`done/` like a drop. A path that spells Grimoire's folder or `import` in another case lies in `import/` only
+`done/` like a drop. And only the file that was read moves: the import reads through the file it opened, and
+just before the move it looks at the name once more. When the name no longer holds that file (the same device
+and inode, with the size and mtime it was opened with: another file was put there meanwhile, or the file
+changed, or it is gone), nothing moves and no `done` mark is written; what is at the name is taken by the next
+scan as the file it is. Such an end leaves its try counted in `import/.attempts` (below), so a name that never
+holds the file read is tried three times with those contents and then waits until the file changes. A path
+that spells Grimoire's folder or `import` in another case lies in `import/` only
 where the storage takes both spellings as one folder (the Scribe's does); on a storage that tells names apart by
 case they are two folders, and the file stays where it is. Names: a name typed in New notebook's sheet (one of
 spaces only is none), else the file's name without `.pdf`, numbered (" 2", " 3") when a notebook has it. The

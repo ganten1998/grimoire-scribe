@@ -380,19 +380,25 @@ fn lock_open(path: &std::ffi::CStr) -> Result<i32, i32> {
     }
 }
 
-/// Whether `fd` is the plain file that `path` names now: both stat, both are regular files (the name itself:
-/// lstat follows no link), and they are one device and inode.
-pub fn lock_is_at(fd: i32, path: &std::ffi::CStr) -> bool {
+/// What lstat says of `path` when `fd` is the plain file that name holds now: both stat, both are regular files
+/// (the name itself: lstat follows no link), and they are one device and inode. None for anything else.
+fn at_its_name(fd: i32, path: &std::ffi::CStr) -> Option<libc::stat> {
     // SAFETY: fstat and lstat write the structs we own; path is NUL-terminated.
     unsafe {
         let (mut a, mut b): (libc::stat, libc::stat) = (std::mem::zeroed(), std::mem::zeroed());
-        libc::fstat(fd, &mut a) == 0
+        (libc::fstat(fd, &mut a) == 0
             && libc::lstat(path.as_ptr(), &mut b) == 0
             && (a.st_mode & libc::S_IFMT) == libc::S_IFREG
             && (b.st_mode & libc::S_IFMT) == libc::S_IFREG
             && a.st_dev == b.st_dev
-            && a.st_ino == b.st_ino
+            && a.st_ino == b.st_ino)
+            .then_some(b)
     }
+}
+
+/// Whether `fd` is the plain file that `path` names now (`at_its_name`).
+pub fn lock_is_at(fd: i32, path: &std::ffi::CStr) -> bool {
+    at_its_name(fd, path).is_some()
 }
 
 /// Takes `import/.lock` without blocking, once, and keeps the handle (O_CLOEXEC, so no script and no worker
@@ -1816,6 +1822,31 @@ fn open_source(src: &str) -> Result<Src, &'static str> {
     Ok(Src { fd, size: md.st_size as u64, mtime: md.st_mtime as i64 })
 }
 
+/// Whether the name `abs` still holds the file an import opened and read: the open file is the plain file at
+/// that name (`at_its_name`: the name itself, one device and inode), and the name has the size and the time the
+/// file was opened with. A name that is gone, a link, another file, or that file changed since, is not it.
+fn source_at_its_name(source: &Src, abs: &str) -> bool {
+    use std::os::fd::AsRawFd;
+    std::ffi::CString::new(abs)
+        .ok()
+        .and_then(|c| at_its_name(source.fd.as_raw_fd(), &c))
+        .is_some_and(|st| st.st_size as u64 == source.size && st.st_mtime as i64 == source.mtime)
+}
+
+// (tests) What runs once, in this thread, as an import is about to file its PDF: its file has been read, and its
+// name is about to be looked at again. Set by `sim_before_filing`; the Kindle's build has neither.
+#[cfg(feature = "sim")]
+thread_local! {
+    static BEFORE_FILING: std::cell::RefCell<Option<Box<dyn FnOnce()>>> = const { std::cell::RefCell::new(None) };
+}
+
+/// (tests) `f` runs once, in this thread, as the next import files its PDF (`finish_pdf`): after the file was
+/// read, before its name is looked at again. No test has to wait for that moment.
+#[cfg(feature = "sim")]
+pub fn sim_before_filing(f: impl FnOnce() + 'static) {
+    BEFORE_FILING.with(|b| *b.borrow_mut() = Some(Box::new(f)));
+}
+
 /// Whether the private read-only mapping the worker needs works on this storage (the S1 spike's question).
 fn can_map(fd: i32, len: u64) -> bool {
     if len == 0 {
@@ -2141,11 +2172,27 @@ fn check_made_pages(work: &str, bgdir: &str, ix: &mut BgIndex, state: &mut State
 
 /// Moves a PDF that became a notebook to import/done/<Name>-<YYYYMMDD-HHMMSS>.pdf; one that cannot move is
 /// marked done in place, with its size and mtime, so no later start imports that very file again. Only a file
-/// that lies in import/ ever moves: any other stays where it is, whatever a mark or a state says (H6).
-fn finish_pdf(abs: &str, src: &str, id: &str, size: u64, mtime: i64) {
+/// that lies in import/ ever moves: any other stays where it is, whatever a mark or a state says (H6). And only
+/// the file the import read (`source`, its open file): the name is looked at once more here, just before the
+/// move, and when it no longer holds that file (another was put there while this one was read, or it changed, or
+/// it is gone) nothing moves and nothing is marked done. What is at the name then waits for the next scan, which
+/// takes it as the file it is.
+///
+/// Returns whether the name's entry is dealt with. False (left for the next scan): the caller leaves the try
+/// counted, so a name that never holds the file read is tried PDF_TRIES times with those contents and no more.
+fn finish_pdf(abs: &str, src: &str, id: &str, source: &Src) -> bool {
+    #[cfg(feature = "sim")]
+    if let Some(f) = BEFORE_FILING.with(|b| b.borrow_mut().take()) {
+        f();
+    }
     if !in_import(src) {
         mark_drop(src);
-        return;
+        return true;
+    }
+    if !source_at_its_name(source, abs) {
+        qlog!("import: %s: its PDF's name no longer holds the file that was read; nothing moves to import/done, and the next scan takes what is at that name", id);
+        mark_drop(src);
+        return false;
     }
     let done = root_path("import/done");
     let stem = Path::new(abs).file_stem().and_then(|s| s.to_str()).unwrap_or("import").to_string();
@@ -2169,11 +2216,12 @@ fn finish_pdf(abs: &str, src: &str, id: &str, size: u64, mtime: i64) {
         crate::bgwork_template::sync_dir_public(&root_path("import"));
         // (the mark would only ever say "done" for a file that is not there)
         mark_drop(src);
-        return;
+        return true;
     }
-    let m = Mark { state: MarkState::Done, id: id.to_string(), src: src.to_string(), size, mtime, ..Default::default() };
+    let m = Mark { state: MarkState::Done, id: id.to_string(), src: src.to_string(), size: source.size, mtime: source.mtime, ..Default::default() };
     mark_write(&m);
     qlog!("import: %s: its PDF could not move to import/done; marked as imported", id);
+    true
 }
 
 fn fail(id: &str, reason: u32, arg: u32) -> SliceEnd {
@@ -2342,8 +2390,10 @@ fn first_slice(id: &str, src: &str, abs: &str, source: &Src, mark: Option<&Mark>
     }
     if matches!(held, KeyMatch::Same(_) | KeyMatch::KeyOnly(_)) {
         qlog!("import: %s: this PDF was imported before; nothing made", id);
-        finish_pdf(abs, src, id, source.size, source.mtime); // (only a file of import/ moves)
-        note_try(src, stable_hash, A_DONE);
+        // (only a file of import/ moves, and only while its name still holds the file read here)
+        if finish_pdf(abs, src, id, source) {
+            note_try(src, stable_hash, A_DONE);
+        }
         set_result(id, R_ALREADY, 0, 0);
         return SliceEnd::Already;
     }
@@ -2877,8 +2927,10 @@ fn commit(id: &str, src: &str, abs: &str, state: &State, source: &Src, pw: i32, 
         // made by a run cut off before its file moved
         qlog!("import: %s: made by an earlier run; its PDF moves now", id);
         remove_work_folder(id);
-        finish_pdf(abs, src, id, source.size, source.mtime); // (only a file of import/ moves)
-        note_try(src, 0, A_DONE);
+        // (only a file of import/ moves, and only while its name still holds the file this slice opened)
+        if finish_pdf(abs, src, id, source) {
+            note_try(src, 0, A_DONE);
+        }
         return SliceEnd::Done { pages: state.pages, blank: state.blank.len() as u32 };
     }
     let n = state.pages as usize;
@@ -2971,9 +3023,11 @@ fn commit(id: &str, src: &str, abs: &str, state: &State, source: &Src, pw: i32, 
     crate::bgwork_template::sync_dir_public(&root_path("notebooks"));
     let blank = state.blank.len() as u32;
     qlog!("import: notebook %s made of %d page(s), %d picture(s), %d blank", id, n as i32, state.pics.iter().collect::<std::collections::HashSet<_>>().len() as i32, blank as i32);
-    // a file of import/ goes to import/done, whoever chose it (M5); any other stays where it is (H6)
-    finish_pdf(abs, src, id, source.size, source.mtime);
-    note_try(src, 0, A_DONE);
+    // a file of import/ goes to import/done, whoever chose it (M5); any other stays where it is (H6), and so does
+    // whatever took this file's name while it was read (the next scan takes that as the file it is)
+    if finish_pdf(abs, src, id, source) {
+        note_try(src, 0, A_DONE);
+    }
     set_result(id, if blank > 0 { R_DONE } else { R_NONE }, trimmed, blank);
     SliceEnd::Done { pages: state.pages, blank }
 }

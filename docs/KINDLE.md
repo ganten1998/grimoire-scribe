@@ -478,7 +478,12 @@ file name, title, key or hash ever appears in it: ids, page numbers, counts, siz
   record). T is the time to note for a big PDF. `import: <id>: a notebook holds this PDF's key but was made from
   another file; this one is imported`: it becomes a notebook of its own. `import: <id>: its file could not be
   read whole; the notebook keeps no file record`, or `... could not be read whole and another notebook holds its
-  key; nothing imported`: the storage failed a read in the last slice.
+  key; nothing imported`: the storage failed a read in the last slice. `import: <id>: its PDF's name no longer
+  holds the file that was read; nothing moves to import/done, and the next scan takes what is at that name`:
+  another file was put at the PDF's name while it was imported, or the file changed or was taken away; the
+  import's own end (its notebook, or "PDF already imported.") stands. On a Scribe at rest this line never
+  shows (a storage that names one file differently by its name and by an open file would show it at every
+  import, three times a file: send the log).
 - `import: a path that holds a line break is never imported; refused`, `import: a picked PDF's path holds a line
   break; refused` and `import: <id>: its path holds a line break; nothing imported`: a name with a line feed or
   a carriage return in it (a FAT storage cannot hold one). `import: the import lock cannot be taken (<why>); a

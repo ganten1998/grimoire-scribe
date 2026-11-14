@@ -81,6 +81,18 @@ impl Env {
     fn done_files(&self) -> usize {
         std::fs::read_dir(format!("{}/import/done", self.root)).map(|r| r.flatten().count()).unwrap_or(0)
     }
+    /// Whether a file of import/done holds exactly these bytes.
+    fn filed(&self, bytes: &[u8]) -> bool {
+        std::fs::read_dir(format!("{}/import/done", self.root)).is_ok_and(|r| r.flatten().any(|e| std::fs::read(e.path()).is_ok_and(|b| b == bytes)))
+    }
+    /// The marks in import/.marks, as text.
+    fn marks(&self) -> Vec<String> {
+        std::fs::read_dir(format!("{}/import/.marks", self.root)).map(|r| r.flatten().filter_map(|e| std::fs::read_to_string(e.path()).ok()).collect()).unwrap_or_default()
+    }
+    /// The path of import/<name> on the host.
+    fn at(&self, name: &str) -> String {
+        format!("{}/import/{name}", self.root)
+    }
     /// A file of notebook `id` (notebook.ini, source.ini), as text.
     fn ini(&self, id: &str, file: &str) -> String {
         std::fs::read_to_string(format!("{}/notebooks/{id}/{file}", self.root)).unwrap_or_default()
@@ -381,5 +393,137 @@ fn the_card_of_a_pdf_follows_the_record() {
         let (ga, gc) = (block_gray(&e.root, &id_a), block_gray(&e.root, &id_c));
         c.that((ga - GRAY_A).abs() <= 2 && (gc - GRAY_C).abs() <= 2, format!("each notebook's page 2 is its own file's: {ga} and {gc}"));
     }
+    c.done();
+}
+
+// ---- the file that is filed is the file that was read ----
+
+fn set_mtime(path: &str, secs: i64) {
+    let c = std::ffi::CString::new(path).unwrap();
+    let tv = [libc::timeval { tv_sec: secs as libc::time_t, tv_usec: 0 }, libc::timeval { tv_sec: secs as libc::time_t, tv_usec: 0 }];
+    // SAFETY: utimes reads the path and the two timevals we own.
+    assert_eq!(unsafe { libc::utimes(c.as_ptr(), tv.as_ptr()) }, 0);
+}
+
+/// One time for a file and for the file that takes its name (so the two differ in nothing a listing shows).
+const T: i64 = 1_700_000_000;
+
+/// `other` takes the name import/<name> as the next import is about to file its PDF: written now, under a name of
+/// its own (so it is a file of its own number), given the time `mtime` when one is named, and renamed over the
+/// name at that moment (pdfimport's seam for the tests: nothing waits for it).
+fn takes_the_name_at_filing(e: &Env, name: &str, other: &[u8], mtime: Option<i64>) {
+    let (at, tmp) = (e.at(name), e.at(".incoming"));
+    std::fs::write(&tmp, other).unwrap();
+    if let Some(t) = mtime {
+        set_mtime(&tmp, t);
+    }
+    sim_before_filing(move || std::fs::rename(&tmp, &at).unwrap());
+}
+
+// An import reads its file whole before it files it (to compare it with a notebook's record, or to make the
+// record), and a file of import/ is filed by its name. The name is looked at once more just before the move: it
+// must still hold the file that was read (that very file, with the size and the time it was opened with). What
+// took the name meanwhile is not moved and not marked: it stays in import/, and the next scan imports it as the
+// file it is.
+#[test]
+fn a_file_that_took_the_name_while_the_first_was_read_is_left_for_the_next_scan() {
+    let e = setup("name-taken");
+    let mut c = Checks::default();
+    let (a, b, cc, _) = the_set();
+    let (_, ends) = import_all(&e.drop("A.pdf", &a));
+    assert_eq!(last(&ends), &DONE, "{ends:?}");
+    assert!(e.done_files() == 1 && e.filed(&a));
+
+    // 1. "imported before": A's bytes again, and B (A's key, length and time, other bytes) takes the name
+    let src = e.drop("Again.pdf", &a);
+    set_mtime(&e.at("Again.pdf"), T);
+    takes_the_name_at_filing(&e, "Again.pdf", &b, Some(T));
+    let (_, ends) = import_all(&src);
+    c.that(last(&ends) == &SliceEnd::Already, format!("1: the file that was read is the book's own: {ends:?}"));
+    c.that(std::fs::read(e.at("Again.pdf")).is_ok_and(|x| x == b), "1: the file that took the name is still at it");
+    c.that(e.done_files() == 1 && !e.filed(&b), format!("1: it was not filed in import/done ({} file(s) there)", e.done_files()));
+    c.that(e.marks().is_empty(), format!("1: no mark says it was imported: {:?}", e.marks()));
+    c.that(e.notebooks().len() == 1, "1: one notebook so far");
+    // the next scan's import of that name takes the file that is there
+    let (id_b, ends) = import_all(&src);
+    c.that(last(&ends) == &DONE, format!("1: the file at the name is imported as itself: {ends:?}"));
+    if last(&ends) == &DONE {
+        let g = block_gray(&e.root, &id_b);
+        c.that((g - GRAY_B).abs() <= 2, format!("1: its notebook's page 2 is its own: {g}, wanted {GRAY_B}"));
+    }
+    c.that(e.filed(&b) && !std::path::Path::new(&e.at("Again.pdf")).exists(), "1: and is filed once it was imported");
+
+    // 2. a first import: C becomes a notebook, and a file of another length takes its name while C is read
+    let other = pdffix::planner(3);
+    let src = e.drop("Long.pdf", &cc);
+    takes_the_name_at_filing(&e, "Long.pdf", &other, None);
+    let before = e.done_files();
+    let (id_c, ends) = import_all(&src);
+    c.that(last(&ends) == &DONE, format!("2: the file that was read became a notebook: {ends:?}"));
+    if last(&ends) == &DONE {
+        let g = block_gray(&e.root, &id_c);
+        c.that((g - GRAY_C).abs() <= 2, format!("2: of its own pages: {g}, wanted {GRAY_C}"));
+    }
+    c.that(std::fs::read(e.at("Long.pdf")).is_ok_and(|x| x == other), "2: the file that took the name is still at it");
+    c.that(e.done_files() == before && !e.filed(&other), "2: it was not filed in import/done");
+    c.that(e.marks().is_empty(), format!("2: no mark says it was imported: {:?}", e.marks()));
+    let (_, ends) = import_all(&src);
+    c.that(last(&ends) == &SliceEnd::Done { pages: 3, blank: 0 }, format!("2: the file at the name is imported as itself: {ends:?}"));
+    c.that(e.filed(&other), "2: and is filed once it was imported");
+
+    // 3. the file itself, with more written to it while it was read: no longer the file that was read
+    let grown = pdffix::planner(1);
+    let src = e.drop("Grown.pdf", &grown);
+    let at = e.at("Grown.pdf");
+    sim_before_filing(move || {
+        use std::io::Write;
+        std::fs::OpenOptions::new().append(true).open(&at).unwrap().write_all(b"\n% more\n").unwrap();
+    });
+    let before = e.done_files();
+    let (_, ends) = import_all(&src);
+    c.that(last(&ends) == &SliceEnd::Done { pages: 1, blank: 0 }, format!("3: {ends:?}"));
+    c.that(std::fs::read(e.at("Grown.pdf")).is_ok_and(|x| x.len() == grown.len() + 8), "3: the file that changed is still at its name");
+    c.that(e.done_files() == before && e.marks().is_empty(), "3: it was not filed, and no mark says it was imported");
+
+    // 4. the name gone while the file was read: nothing to file, and no mark is left for a file that is not there
+    let src = e.drop("Gone.pdf", &pdffix::planner(2));
+    let at = e.at("Gone.pdf");
+    sim_before_filing(move || std::fs::remove_file(&at).unwrap());
+    let before = e.done_files();
+    let (_, ends) = import_all(&src);
+    c.that(last(&ends) == &DONE, format!("4: {ends:?}"));
+    c.that(e.done_files() == before && e.marks().is_empty(), format!("4: nothing filed and no mark left: {:?}", e.marks()));
+    c.done();
+}
+
+// A name that never holds the file that was read is not taken at every scan for ever. Each such end leaves its try
+// counted, so the file is tried PDF_TRIES times with those contents, as a file that keeps failing is, and then
+// waits until it changes. (Here an equal copy takes the name each time. On a device it would take a storage that
+// named one file differently by its name and by an open file: docs/TESTING.md has the check for that.)
+#[test]
+fn a_name_that_never_holds_the_file_read_is_tried_three_times_and_no_more() {
+    let e = setup("name-never");
+    let mut c = Checks::default();
+    let (a, _, _, _) = the_set();
+    let (_, ends) = import_all(&e.drop("A.pdf", &a));
+    assert_eq!(last(&ends), &DONE, "{ends:?}");
+    let src = e.drop("Same.pdf", &a);
+    set_mtime(&e.at("Same.pdf"), T);
+    for k in 1..=PDF_TRIES {
+        takes_the_name_at_filing(&e, "Same.pdf", &a, Some(T));
+        let (_, ends) = import_all(&src);
+        c.that(last(&ends) == &SliceEnd::Already, format!("try {k}: {ends:?}"));
+        let status = import_status(&src, a.len() as u64, T);
+        let want = if k < PDF_TRIES { ImportStatus::Waiting } else { ImportStatus::Failed };
+        c.that(status == want, format!("after try {k} of {PDF_TRIES} the row says {status:?}, wanted {want:?}"));
+    }
+    c.that(std::fs::read(e.at("Same.pdf")).is_ok_and(|x| x == a), "the file is still at its name");
+    c.that(e.done_files() == 1 && e.marks().is_empty(), "it was never filed, and no mark says it was imported");
+    c.that(e.notebooks().len() == 1, "one notebook");
+    // the same name with a file that stays is filed as before, and its record of tries goes with it
+    std::fs::write(e.at("Same.pdf"), &a).unwrap();
+    let (_, ends) = import_all(&src);
+    c.that(last(&ends) == &SliceEnd::Already && e.done_files() == 2, format!("a file that stays at its name is filed: {ends:?}"));
+    c.that(!std::fs::read_to_string(format!("{}/import/.attempts", e.root)).is_ok_and(|t| t.lines().any(|l| !l.starts_with('#'))), "no record of tries is left");
     c.done();
 }
