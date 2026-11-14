@@ -218,17 +218,6 @@ fn read_listed(st: &FsStorage, l: &Listed) -> Option<Vec<u8>> {
     (buf.len() as u64 == l.size && after.same(&before)).then_some(buf)
 }
 
-/// A small file of the cache, at most `max` bytes (a longer one is not Grimoire's).
-fn read_small(path: &str, max: u64) -> Option<Vec<u8>> {
-    let md = std::fs::symlink_metadata(path).ok()?;
-    if !md.is_file() || md.len() > max {
-        return None;
-    }
-    let mut buf = Vec::new();
-    std::fs::File::open(path).ok()?.take(max + 1).read_to_end(&mut buf).ok()?;
-    (buf.len() as u64 <= max).then_some(buf)
-}
-
 // ---- where the check's results are kept ----
 
 /// Grimoire's own folder on the Kindle, outside the storage: a constant, which no environment variable moves.
@@ -849,7 +838,8 @@ fn with<R>(f: impl FnOnce(&mut State) -> R) -> R {
 fn guard_load(st: &mut State) -> &mut Vec<GuardEntry> {
     if st.guard.is_none() {
         let path = guard_path();
-        let read = read_small(&path, 1024);
+        // (a plain file of at most the guard's size, opened at its name without following a link)
+        let read = read_file_max(&path, 1024);
         let mut marks = match read.as_deref().map(guard_parse) {
             Some(Some(m)) => m,
             Some(None) => {
