@@ -2066,7 +2066,9 @@ The binding design is docs/beta2/LASSO-DESIGN.md; this is where it lives in the 
 ## The safe loader and the PDF import (2.1.0-beta.2, lane L5)
 
 PDFs are untrusted, and Grimoire runs as root, so no process that writes files parses one. The import is three
-processes: the UI (queues, shows the notice, never reads the PDF beyond the ends of the file), the writer (a
+processes: the UI (queues, shows the notice, and never parses a PDF: it reads the first and the last KiB of a file
+the scan found, to see that it is whole, and, in the picker, up to twelve 1 KiB samples for the book key, which it
+hashes), the writer (a
 background job child: opens the file through `fsview`'s walk, owns the work folder, validates every record
 and writes the files) and the worker, a fresh exec of the same binary (`grimoire --work pdf ...`, taken
 before any UI start-up) that inherits nothing: descriptors 0 to 5 only (0 to 2 on /dev/null, 3 the PDF, read
@@ -2086,9 +2088,15 @@ step, or a worker that cannot be started, marks nothing and counts no try; the s
 steps are in place; `S 0` is a build without them, macOS); where the sandbox is required the writers take only
 `S 1`, and a worker is started only with descriptors 0 to 5 in place. The writer ignores SIGPIPE, and reads a worker's last
 records after a send that failed. The page watchdog runs on CLOCK_MONOTONIC (a sleep does not count); a page
-whose wait the Kindle slept through and that then stalls is tried again once without a strike. Off the Kindle the steps are
-skipped (plain process isolation) unless GRIMOIRE_SANDBOX=require. The worker's records are text lines of a
-fixed grammar plus pixel bands, at most 4 MiB a job besides pixels, parsed strictly (`pdfwork.rs`); every
+whose wait the Kindle slept through and that then stalls is tried again once without a strike. Off the Kindle a
+failed step refuses nothing unless the writer requires the sandbox (GRIMOIRE_SANDBOX=require: on Linux it then makes
+the worker's jail, and a worker given a jail holds every step, as on the Kindle). macOS has none of the steps (plain
+process isolation); a Linux build that does not require the sandbox still takes the steps that work without root (no
+new privileges, the limits and the allow-list among them) and has no chroot. The worker's records are text lines of
+a fixed grammar plus pixel bands, parsed strictly (`pdfwork.rs`). The writer ends a worker whose record lines pass
+4 MiB (`RECORDS_MAX_BYTES`: counted for each worker, the pixels and the handshake's two lines apart), and a job is
+many workers: a fresh one for each slice, and after each one that died or stalled. Only the first comes near the
+cap, with the links and the names; the others send the page count, a line a band and a line a page. Every
 number the device spike (S1) sets is in the one table `sandbox::s1`, marked "set by S1". The notebook, its
 slices, marks and colour rule are in FORMAT.md, "Imports: PDFs". Two rules hold the import together (the fix round
 of 2026-11-09): whether a file may be moved is decided by where it lies (`pdfimport::in_import`), never by a mark;
@@ -2162,7 +2170,9 @@ its bytes.** Four parts keep it (`fontcheck.rs`, `userfonts.rs`, `font.rs`):
   and drawing at both sizes; a glyph that fails is listed and comes from Terminess, and more than one in a
   hundred is "Unreadable font.". It works in slices of 20 s of its own CPU time (`s1::FONT_SLICE_CPU_SECS`),
   each a fresh worker that gets the bytes again and goes on from the glyph index the last reached, 10 minutes
-  in all, then "Took too long to read."; a worker silent for 30 s is killed and is the same. It settles the
+  in all; a worker silent for 30 s is killed and counts as out of time too. A first check that runs out of time
+  writes no verdict: the file is checked once more, a minute or more later (`<key>.slow`), and a second is
+  "Took too long to read.". It settles the
   font's scale (capitals as tall as Terminess's, 0.592 of the line, between 0.85 and 1.25, then lowered a
   hundredth at a time until 95 of 100 of Grimoire's strings, in every language, are no wider than Terminess
   draws them, measured as `font.rs` measures: advances only), says which languages need letters the font
