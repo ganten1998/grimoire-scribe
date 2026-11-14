@@ -14,7 +14,9 @@
 //! a byte of the source is read): oom_score_adj 1000; unshare(CLONE_NEWNET | CLONE_NEWIPC); chroot to the
 //! writer's empty directory on /tmp; setgroups(0), setgid and setuid to a uid of its own; no_new_privs and not
 //! dumpable; the parent-death signal (set after the uid change, then getppid checked); rlimits (NOFILE 0,
-//! NPROC 0, FSIZE 0, CORE 0, AS, CPU); a seccomp allow-list whose violation traps into a reporter.
+//! NPROC 0, FSIZE 0, CORE 0, AS, CPU); a seccomp allow-list in which futex passes only as a private wait, wake or
+//! wait-bitset; a call outside it traps into a reporter, but for the few that answer ENOSYS. The worker then
+//! makes one allowed futex call before it says `S 1`.
 //!
 //! Off the Kindle (the simulator, CI, the Mac, not root) the steps that need root or Linux are skipped with
 //! one log line (plain process isolation); the Linux CI job runs the real ones as root.
@@ -261,7 +263,8 @@ pub fn this_arch() -> &'static SysNums {
 /// The allow-list: read, write, the mmap family with mprotect and madvise, brk, futex, clock_gettime,
 /// rt_sigreturn, exit and exit_group (the C library's `_exit` ends the process through it, and it only ever
 /// ends the worker itself). Which of mprotect, madvise and brk the allocator uses differs between the Kindle's
-/// build and the Linux test build; the list holds them all.
+/// build and the Linux test build; the list holds them all. futex is also judged by an argument
+/// (`build_filter`).
 pub fn allow_list_for(n: &SysNums) -> Vec<u32> {
     vec![n.read, n.write, n.mmap, n.munmap, n.mremap, n.madvise, n.mprotect, n.brk, n.futex, n.clock_gettime, n.rt_sigreturn, n.exit, n.exit_group]
 }
@@ -309,25 +312,30 @@ pub const fn arg_lo(i: u32) -> u32 {
     16 + 8 * i
 }
 
-/// Where a jump of the filter leads: the block that returns ALLOW or the one that returns ERRNO(ENOSYS).
+/// Where a jump of the filter leads: the block that returns ALLOW, the one that returns ERRNO(ENOSYS), or the
+/// one that judges futex by its operation.
 #[derive(Clone, Copy)]
 enum To {
     Allow,
     Errno,
+    Futex,
 }
 
 /// The filter for the table `n`: an arch check (another arch: trap), then one jump per number of `allow`, in
 /// its order (read and write first: the calls a worker makes most), to ALLOW, one per number of `enosys` to
-/// ERRNO(ENOSYS), and everything else TRAPs. A number that is not in `allow` is never allowed. Every jump goes
+/// ERRNO(ENOSYS), and everything else TRAPs. A number that is not in `allow` is never allowed. The table says
+/// which number is futex: it goes to block F, which allows the call only when the low 32 bits of its second
+/// argument are one of `FUTEX_ALLOWED`, and traps it otherwise as any call outside the list. Every jump goes
 /// forward and is taken on a match only (`jf` is 0 everywhere), resolved from the blocks' places once they are
 /// known.
 ///
 /// ```text
 /// LD [4]; JEQ arch (jt 1); RET TRAP; LD [0]
-/// JEQ <each number of allow, in order>  -> A
+/// JEQ <each number of allow, in order>  -> A, or F for futex
 /// JEQ <each number of enosys>           -> E
 /// RET TRAP
 /// E: RET ERRNO|38
+/// F: LD [24]; JEQ 128 -> A; JEQ 129 -> A; JEQ 137 -> A; RET TRAP
 /// A: RET ALLOW
 /// ```
 pub fn build_filter(n: &SysNums, allow: &[u32], enosys: &[u32]) -> Vec<BpfIns> {
@@ -346,7 +354,7 @@ pub fn build_filter(n: &SysNums, allow: &[u32], enosys: &[u32]) -> Vec<BpfIns> {
         v.push(BpfIns { code: BPF_JEQ_K, jt: 0, jf: 0, k });
     };
     for &s in allow {
-        jeq(&mut v, s, To::Allow);
+        jeq(&mut v, s, if s == n.futex { To::Futex } else { To::Allow });
     }
     for &s in enosys {
         jeq(&mut v, s, To::Errno);
@@ -354,12 +362,19 @@ pub fn build_filter(n: &SysNums, allow: &[u32], enosys: &[u32]) -> Vec<BpfIns> {
     v.push(ret(SECCOMP_RET_TRAP));
     let errno_at = v.len();
     v.push(ret(SECCOMP_RET_ERRNO | 38)); // ENOSYS
+    let futex_at = v.len();
+    v.push(ld(arg_lo(1))); // the operation
+    for op in FUTEX_ALLOWED {
+        jeq(&mut v, op, To::Allow);
+    }
+    v.push(ret(SECCOMP_RET_TRAP));
     let allow_at = v.len();
     v.push(ret(SECCOMP_RET_ALLOW));
     for (at, to) in jumps {
         let target = match to {
             To::Allow => allow_at,
             To::Errno => errno_at,
+            To::Futex => futex_at,
         };
         let off = target - (at + 1);
         assert!(off < 256, "a jump is one byte");
@@ -682,7 +697,23 @@ mod linux {
         if r != 0 {
             return Err(errno());
         }
+        filter_self_check()?;
         Ok(format!("seccomp allow-list, {} instructions", raw.len()))
+    }
+
+    /// The filter's own check, on every start, once the kernel has taken the program: one futex wake on a local
+    /// word (nobody waits, so it returns 0). It returns as it would with no filter, and a result that is not
+    /// success fails the step. On a kernel that does not show the filter the operation where the filter reads
+    /// it, the call traps instead, and the reporter's line comes in place of the worker's `S` line: the writers
+    /// take that as no worker, before a byte of any file is read.
+    fn filter_self_check() -> Result<(), i32> {
+        let word: u32 = 0;
+        // SAFETY: a futex wake on a word of our own that nobody waits on.
+        let r = unsafe { libc::syscall(libc::SYS_futex, &word as *const u32, (FUTEX_WAKE | FUTEX_PRIVATE_FLAG) as libc::c_long, 1 as libc::c_long) };
+        if r != 0 {
+            return Err(errno());
+        }
+        Ok(())
     }
 
     /// Whether /etc/passwd and /etc/group list no entry with this id (the writer checks it once).
@@ -1346,6 +1377,40 @@ mod tests {
         }
     }
 
+    // futex passes only as a private wait (128), wake (129) or wait-bitset (137): the low 32 bits of the call's
+    // second argument, whatever the high half and the other arguments hold. Any other word traps.
+    #[test]
+    fn futex_passes_only_as_a_private_wait_or_wake() {
+        for n in [&ARM, &X86_64, &AARCH64] {
+            let f = build_filter(n, &allow_list_for(n), n.enosys);
+            let verdict = |args: [u64; 6]| eval_filter_args(&f, n.audit_arch, n.futex, &args);
+            for cmd in 0..=13u64 {
+                // (no flag, the private flag, the realtime-clock flag, both)
+                for flags in [0u64, 128, 256, 384] {
+                    let op = cmd | flags;
+                    let want = if [128, 129, 137].contains(&op) { SECCOMP_RET_ALLOW } else { SECCOMP_RET_TRAP };
+                    assert_eq!(verdict([0, op, 0, 0, 0, 0]), want, "operation word {op}");
+                }
+            }
+            for op in [129 | 0x1_0000, 129 | 512, 0x8000_0081, 0xffff_ffff] {
+                assert_eq!(verdict([0, op, 0, 0, 0, 0]), SECCOMP_RET_TRAP, "operation word {op:#x}");
+            }
+            // the high half of the argument is not read
+            assert_eq!(verdict([0, 0xdead_beef_0000_0081, 0, 0, 0, 0]), SECCOMP_RET_ALLOW);
+            assert_eq!(verdict([0, 0x0000_0081_0000_0006, 0, 0, 0, 0]), SECCOMP_RET_TRAP);
+            // nor any other argument
+            assert_eq!(verdict([129, 3, 0, 0, 0, 0]), SECCOMP_RET_TRAP);
+            assert_eq!(verdict([0, 3, 129, 0, 0, 0]), SECCOMP_RET_TRAP);
+            assert_eq!(verdict([u64::MAX, 137, u64::MAX, u64::MAX, u64::MAX, u64::MAX]), SECCOMP_RET_ALLOW);
+            assert_eq!(FUTEX_ALLOWED, [128, 129, 137]);
+        }
+        // the 32-bit ARM's futex_time64 answers ENOSYS whatever its arguments, as the other time64 calls do
+        let f = build_filter(&ARM, &allow_list_for(&ARM), ARM.enosys);
+        for args in [[0u64; 6], [0, 129, 0, 0, 0, 0], [0, 3, 0, 0, 0, 0]] {
+            assert_eq!(eval_filter_args(&f, ARM.audit_arch, 422, &args), SECCOMP_RET_ERRNO | 38);
+        }
+    }
+
     // The program is one the kernel's checker takes (Linux 4.9, seccomp_check_filter): only the four opcodes
     // (a 32-bit load at a fixed offset, a jump on equal, a jump on a set bit, a return), every load at the
     // number, the architecture or the low half of the second or third argument, every jump forward and inside
@@ -1368,8 +1433,8 @@ mod tests {
                 }
             }
             assert_eq!(f.last().map(|i| i.code), Some(0x06));
-            // (its size: the head, a compare a number, a trap and the two returns)
-            assert_eq!(f.len(), if n.audit_arch == ARM.audit_arch { 26 } else { 21 });
+            // (its size: the head, a compare a number, a trap, the two returns and futex's block)
+            assert_eq!(f.len(), if n.audit_arch == ARM.audit_arch { 31 } else { 26 });
             assert_eq!((arg_lo(1), arg_lo(2)), (24, 32));
             for (nr, args) in [(n.futex, [0, 129, 1, 0, 0, 0]), (n.mmap, [0, 4096, 3, 0x22, u64::MAX, 0]), (n.mprotect, [0, 4096, 1, 0, 0, 0]), (n.munmap, [0, 4096, 0, 0, 0, 0])] {
                 assert_eq!(eval_filter_args(&f, n.audit_arch, nr, &args), SECCOMP_RET_ALLOW, "{nr}");

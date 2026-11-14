@@ -324,6 +324,20 @@ fn file_of(name: &str, bytes: &[u8]) -> (std::fs::File, u64) {
     (std::fs::File::open(&p).unwrap(), bytes.len() as u64)
 }
 
+// A futex operation outside the three a worker can make (a requeue between two words of its own) ends the worker,
+// and the report names futex.
+#[test]
+fn a_futex_call_outside_the_list_kills_the_worker() {
+    let (_g, f, len) = setup_filter();
+    if !filter_is_on(&f, len) {
+        return;
+    }
+    match page_after_hook(&f, len, "futexbad") {
+        PageOutcome::Died(Death::Sigsys(n)) => assert_eq!(n, this_arch().futex),
+        other => panic!("{other:?}"),
+    }
+}
+
 // (the guard: the three operations one thread can issue, and the standard library's own wake, pass)
 #[test]
 fn the_futex_calls_a_worker_can_make_pass() {
