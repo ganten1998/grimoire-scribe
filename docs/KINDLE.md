@@ -711,9 +711,10 @@ checks above. Synthetic tests cannot establish real-hand acceptance or accidenta
   damage. A set-aside page that is no longer in the page list can be put
   back by hand, with Grimoire closed: rename it to `p<n>.qpg` and add `<n>` to the `pages=` line
   of its `notebook.ini`.
-- **A file of the `grimoire` folder that is no plain file, or too long** (2.1.1): Grimoire reads its files
-  only when the entry at the name is a plain file, and the small text files only up to a size
-  (docs/FORMAT.md, Files). grimoire.log says what it did:
+- **A file of the `grimoire` folder that is no plain file, or too long** (2.1.1): Grimoire reads its
+  settings, notebooks, pages, pictures and import folders only when the entry at the name is a plain file,
+  and the small text files only up to a size (docs/FORMAT.md, Files, names the files; a few others are
+  still opened by path). grimoire.log says what it did:
   - `store: <path> is no plain file, set aside; starting blank` (or `could not set aside`): the entry at
     a page's name was a folder, a link or something else. It was renamed `p<n>.qpg.damaged-<t>`, the
     entry itself, and the page opened blank, with the toast of a damaged page. It stays there: Grimoire

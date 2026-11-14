@@ -1198,7 +1198,9 @@ items of Document links. Left:
 ## Hardening round (2026-11), storage reads: what waits
 
 - The other reads by path take the plain-file read (`util::open_read_nofollow`): the clipboard, the
-  compaction's list, the shortcut files, one read in the fonts' cache, the PDF cache's records.
+  compaction's list, the shortcut files, one read in the fonts' cache, the PDF cache's records. The
+  compaction's list goes first: it is read at every start, before the first frame
+  (`compact_queue_listed`), and the start is fully under the rule only once it is.
 - The folders a scan lists (the import folders, the marks) are read through the storage walk, as picked
   folders are.
 - A page file that is there but does not read fails to open rather than opening blank; with it, a size

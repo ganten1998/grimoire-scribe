@@ -66,10 +66,15 @@ root/.cache/pdf/<id>/                   the notebook PDF's page streams, disposa
 `-` and `_` only. Page ids are positive numbers; the order of the pages is the `pages` key of
 `notebook.ini`, not the numbers. Every file is written atomically (`<file>.tmp`, fsync, rename).
 
-From 2.1.1 on Grimoire reads a file of these folders only when the entry at its name is a plain file: a
+From 2.1.1 on Grimoire reads these files only when the entry at the name is a plain file: `settings.ini`,
+`folders.ini`, `sleep.pgm`, a notebook's `notebook.ini`, page files, `thumb.pgm`, previews and `bg/`, the
+pictures and folders of `templates/`, `photos/` and `import/`, the import marks and `import/.attempts`. A
 link there (to a file, to a folder or to nothing), a folder or anything else reads as a file that is not
 there. A folder on the way to a file may be a link (`root` itself, `notebooks/`): only the last name is
-held to this. The small text files are read up to a size, and a longer one is not read: `settings.ini`,
+held to this. Some other files of the listing are still opened by path (docs/BACKLOG.md, "Hardening round
+(2026-11), storage reads: what waits").
+
+The small text files are read up to a size, and a longer one is not read: `settings.ini`,
 `notebook.ini`, `folders.ini`, `bg/index.ini` and `bg/pages.ini` up to 1 MiB (1,048,576 bytes), an import
 folder's mark up to 4 KiB, `import/.attempts` up to 64 KiB, and a PGM (`thumb.pgm`, `sleep.pgm`, a preview)
 up to 64,000,064 bytes (its largest picture, 8000 x 8000, and a header). Page files and pictures have no
