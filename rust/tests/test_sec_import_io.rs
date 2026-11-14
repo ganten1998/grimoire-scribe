@@ -203,3 +203,143 @@ fn a_folder_spelled_like_import_is_import_only_when_it_is_that_folder() {
     }
     c.done();
 }
+
+// ---- the scan's first look at a dropped PDF ----
+
+fn set_mtime(path: &str, secs: i64) {
+    let c = std::ffi::CString::new(path).unwrap();
+    let tv = [libc::timeval { tv_sec: secs as libc::time_t, tv_usec: 0 }, libc::timeval { tv_sec: secs as libc::time_t, tv_usec: 0 }];
+    // SAFETY: utimes reads the path and the two timevals we own.
+    assert_eq!(unsafe { libc::utimes(c.as_ptr(), tv.as_ptr()) }, 0);
+}
+
+fn marks(e: &Env) -> Vec<String> {
+    std::fs::read_dir(format!("{}/import/.marks", e.root)).map(|r| r.flatten().filter_map(|e| std::fs::read_to_string(e.path()).ok()).collect()).unwrap_or_default()
+}
+
+// The scan looks at the first and last KiB of a steady PDF before it queues it. The look opens the file the way
+// the import itself does (no link followed) and reads only the file that was listed. A link put at the name after
+// the listing is not a file: nothing is read through it, nothing is queued, and no sooner look is asked for.
+#[test]
+fn a_link_put_in_after_the_listing_is_not_read() {
+    let e = setup("look-link");
+    e.put("grimoire/import/Book.pdf", &pdffix::planner(2));
+    // (a whole PDF of the listed file's length: a look through the link would find nothing amiss)
+    e.put("documents/Other.pdf", &pdffix::planner(2));
+    let found = list_pdfs();
+    assert_eq!(found.files.len(), 1);
+    let at = format!("{}/import/Book.pdf", e.root);
+    std::fs::remove_file(&at).unwrap();
+    std::os::unix::fs::symlink(format!("{}/documents/Other.pdf", e.storage), &at).unwrap();
+    assert_eq!(lock_take(), Lock::Fresh);
+    let q = scan_queue(&found, DPI, false);
+    let (left, pending) = (marks(&e), pending_count());
+    let sooner = scan_due(now_ms().wrapping_add(60_000), false);
+    let said = drain();
+    lock_release_if_idle();
+    assert_eq!(q, 0, "the scan queued what the link names: {said:?}");
+    assert!(left.is_empty() && pending == 0, "{left:?}, {pending} pending");
+    assert!(!sooner, "what is no file asks for no sooner look");
+    assert!(e.notebooks().is_empty());
+    assert!(e.there("documents/Other.pdf"));
+}
+
+/// import/Book.pdf listed, then another PDF of its length and time renamed over it: the listing the scan is given
+/// names a file that is no longer the one at that name.
+fn listed_then_swapped(e: &Env) -> Found {
+    let a = pdffix::planner(2);
+    // (the same PDF with another digit on its first page: one length, other bytes)
+    let mut b = a.clone();
+    let digit = b.windows(8).position(|w| w == b"(Page 1)").expect("page 1's text") + 6;
+    b[digit] = b'7';
+    assert!(a.len() == b.len() && a != b);
+    let (at, tmp) = (format!("{}/import/Book.pdf", e.root), format!("{}/import/B.tmp", e.root));
+    std::fs::write(&at, &a).unwrap();
+    // written before the listing (under a name the scan does not list), so it is a file of its own number
+    std::fs::write(&tmp, &b).unwrap();
+    set_mtime(&at, 1_700_000_000);
+    set_mtime(&tmp, 1_700_000_000);
+    let found = list_pdfs();
+    assert_eq!(found.files.len(), 1);
+    std::fs::rename(&tmp, &at).unwrap();
+    found
+}
+
+// Another file put at the name after the listing (same length, same time) is not the file that was listed: this
+// scan leaves it and asks for a look 5 s on, and the scan that lists the folder again takes it.
+#[test]
+fn another_file_put_in_after_the_listing_waits_for_the_next_look() {
+    let e = setup("look-swap");
+    let found = listed_then_swapped(&e);
+    assert_eq!(lock_take(), Lock::Fresh);
+    let q1 = scan_queue(&found, DPI, false);
+    let again = scan_due(now_ms().wrapping_add(WAIT_RESCAN_MS + 1), false);
+    let said1 = drain();
+    // the next look lists the folder again
+    let _ = lock_take();
+    let q2 = scan_queue(&list_pdfs(), DPI, false);
+    let said2 = drain();
+    lock_release_if_idle();
+    assert_eq!(q1, 0, "the scan took a file that is not the one it listed: {said1:?}");
+    assert!(again, "a look is due 5 s on");
+    assert_eq!(q2, 1, "the next listing's file is taken: {said2:?}");
+    assert_eq!(e.notebooks(), ["Book"]);
+}
+
+// A file that keeps differing from its listing (the same listing given again and again here; on a device, a
+// storage that named one file differently by its name and by an open file) is not left for ever: unchanged for
+// a minute, it is imported as it is, as a PDF without its end marker is. The clock is the test's own.
+#[test]
+fn a_file_that_differs_from_its_listing_is_taken_after_a_minute_unchanged() {
+    let e = setup("look-minute");
+    let found = listed_then_swapped(&e);
+    assert_eq!(lock_take(), Lock::Fresh);
+    let t0 = 5_000_000u32;
+    let mut queued = Vec::new();
+    for dt in [0u32, 30_000, 61_000] {
+        grimoire::util::sim_clock_set(Some(t0 + dt));
+        queued.push(scan_queue(&found, DPI, false));
+    }
+    grimoire::util::sim_clock_set(None);
+    let said = drain();
+    lock_release_if_idle();
+    assert_eq!(queued, vec![0, 0, 1], "{said:?}");
+    assert_eq!(e.notebooks(), ["Book"]);
+}
+
+// A FIFO put at the name after the listing is not opened to be read: not a byte is taken from it. (Neither run can
+// block: the FIFO has a writer, this test, and holds more than a look asks for.)
+#[test]
+fn a_fifo_put_in_after_the_listing_is_not_read() {
+    use std::os::fd::{AsRawFd, FromRawFd, OwnedFd};
+    let e = setup("look-fifo");
+    let pdf = pdffix::planner(4);
+    assert!(pdf.len() >= 2048, "{}", pdf.len());
+    e.put("grimoire/import/Book.pdf", &pdf);
+    let found = list_pdfs();
+    assert_eq!(found.files.len(), 1);
+    let at = format!("{}/import/Book.pdf", e.root);
+    std::fs::remove_file(&at).unwrap();
+    let c = std::ffi::CString::new(at.as_str()).unwrap();
+    // SAFETY: mkfifo and open read the NUL-terminated path we own; the descriptor is this test's alone.
+    let fifo = unsafe {
+        assert_eq!(libc::mkfifo(c.as_ptr(), 0o600), 0);
+        let fd = libc::open(c.as_ptr(), libc::O_RDWR | libc::O_NONBLOCK);
+        assert!(fd >= 0);
+        OwnedFd::from_raw_fd(fd)
+    };
+    let filled = vec![b'x'; 2048];
+    // SAFETY: write reads the buffer we own; read below writes into one we own.
+    assert_eq!(unsafe { libc::write(fifo.as_raw_fd(), filled.as_ptr() as *const libc::c_void, filled.len()) }, 2048);
+    assert_eq!(lock_take(), Lock::Fresh);
+    let q = scan_queue(&found, DPI, false);
+    let sooner = scan_due(now_ms().wrapping_add(60_000), false);
+    let said = drain();
+    lock_release_if_idle();
+    let mut buf = vec![0u8; 4096];
+    let left = unsafe { libc::read(fifo.as_raw_fd(), buf.as_mut_ptr() as *mut libc::c_void, buf.len()) };
+    assert_eq!(q, 0, "{said:?}");
+    assert_eq!(left, 2048, "the scan read from the FIFO");
+    assert!(!sooner, "what is no file asks for no sooner look");
+    assert!(marks(&e).is_empty() && e.notebooks().is_empty());
+}

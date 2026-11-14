@@ -774,16 +774,61 @@ pub fn looks_complete(head: &[u8], tail: &[u8]) -> bool {
     tail[..end].ends_with(b"%%EOF") || has(&tail[end.saturating_sub(1024)..end], b"%%EOF") && tail[end.saturating_sub(8)..end].ends_with(b"EOF")
 }
 
-fn read_ends(path: &str, size: u64) -> Option<(Vec<u8>, Vec<u8>)> {
-    use std::io::{Read, Seek, SeekFrom};
-    let mut f = std::fs::File::open(path).ok()?;
+/// What the scan's look at a listed PDF found.
+enum Ends {
+    /// the first and the last KiB of the file that was listed
+    Read(Vec<u8>, Vec<u8>),
+    /// a file is there, but not the one listed (another device, inode, size or time)
+    Changed,
+    /// the file or the storage does not read just now
+    Unreadable,
+    /// no file the import opens: a link, a FIFO, a folder, another device, a refused place, or gone
+    NotAFile,
+}
+
+/// `buf` filled from `fd` at `off` (pread: the descriptor's offset is untouched); false for a short or failed read.
+fn pread_exact(fd: i32, buf: &mut [u8], off: u64) -> bool {
+    let mut got = 0;
+    while got < buf.len() {
+        // SAFETY: pread writes at most the bytes left of buf into it; fd is the caller's open descriptor.
+        let n = unsafe { libc::pread(fd, buf[got..].as_mut_ptr() as *mut libc::c_void, buf.len() - got, (off + got as u64) as libc::off_t) };
+        if n < 0 && errno() == libc::EINTR {
+            continue;
+        }
+        if n <= 0 {
+            return false;
+        }
+        got += n as usize;
+    }
+    true
+}
+
+/// The scan's look at a PDF it listed: its first and last KiB. The file is opened as the import itself opens it
+/// (fsview's walk: no link followed anywhere, a regular file on the storage's device, opened without waiting),
+/// and is read only when it is the file the listing saw (`listed`: its size, mtime, device and inode).
+fn read_ends(st: &FsStorage, sp: &StoragePath, listed: (u64, i64, u64, u64)) -> Ends {
+    use std::os::fd::AsRawFd;
+    let fd = match st.open_file(sp, false) {
+        Ok(fd) => fd,
+        Err(FsErr::Io(_)) => return Ends::Unreadable,
+        Err(_) => return Ends::NotAFile,
+    };
+    // SAFETY: md is written by fstat before it is read.
+    let mut md: libc::stat = unsafe { std::mem::zeroed() };
+    if unsafe { libc::fstat(fd.as_raw_fd(), &mut md) } != 0 {
+        return Ends::Unreadable;
+    }
+    let (size, mtime, dev, ino) = listed;
+    if (md.st_size as u64, md.st_mtime as i64, md.st_dev as u64, md.st_ino as u64) != (size, mtime, dev, ino) {
+        return Ends::Changed;
+    }
     let mut head = vec![0u8; 1024.min(size as usize)];
-    f.read_exact(&mut head).ok()?;
     let from = size.saturating_sub(1024);
-    f.seek(SeekFrom::Start(from)).ok()?;
     let mut tail = vec![0u8; (size - from) as usize];
-    f.read_exact(&mut tail).ok()?;
-    Some((head, tail))
+    if !pread_exact(fd.as_raw_fd(), &mut head, 0) || !pread_exact(fd.as_raw_fd(), &mut tail, from) {
+        return Ends::Unreadable;
+    }
+    Ends::Read(head, tail)
 }
 
 // ---- the UI's side: what is queued, what is seen ----
@@ -866,8 +911,9 @@ pub fn pictures_wait(on: bool) {
 /// What a scan found to do.
 #[derive(Default, Debug)]
 pub struct Found {
-    /// loose files and those of `import/<Folder>/`: (path under import/, folder, size, mtime)
-    pub files: Vec<(String, String, u64, i64)>,
+    /// loose files and those of `import/<Folder>/`: (path under import/, folder, size, mtime, device, inode), the
+    /// last four as the listing saw the file (a directory entry's own: no link followed)
+    pub files: Vec<(String, String, u64, i64, u64, u64)>,
     /// folders (names) that hold PDFs: their pictures wait until the PDFs are done
     pub pdf_folders: Vec<String>,
     /// work folders a cut-off import left that can go on (their ids)
@@ -918,7 +964,7 @@ pub fn list_pdfs() -> Found {
             continue;
         }
         if pdf {
-            f.files.push((name, String::new(), md.len(), md.mtime()));
+            f.files.push((name, String::new(), md.len(), md.mtime(), md.dev(), md.ino()));
         } else if md.is_dir() {
             let Ok(rd) = std::fs::read_dir(format!("{dir}/{name}")) else { continue };
             let mut inner: Vec<(String, std::fs::Metadata)> = Vec::new();
@@ -944,7 +990,7 @@ pub fn list_pdfs() -> Found {
             }
             inner.sort_by(|a, b| name_cmp(&a.0, &b.0));
             for (n, md) in inner {
-                f.files.push((format!("{name}/{n}"), name.clone(), md.len(), md.mtime()));
+                f.files.push((format!("{name}/{n}"), name.clone(), md.len(), md.mtime(), md.dev(), md.ino()));
             }
         }
     }
@@ -1023,6 +1069,10 @@ pub fn scan_queue(found: &Found, dpi: f32, lock_busy: bool) -> i32 {
     progress(); // (the shared record is made before any fork)
     let mut queued = 0;
     let (mut waiting, mut tried_out, mut already_made, mut skipped_busy, mut no_room) = (0, 0, 0, 0, 0);
+    // (the looks that found another file than the one listed, and those that found no file)
+    let (mut differ, mut not_files) = (0, 0);
+    // the storage the looks open their files through: opened once a scan, when the first steady file needs it
+    let mut storage: Option<Option<FsStorage>> = None;
     ui(|u| u.rescan_at = None);
     if session_broken() {
         qlog!("import: PDFs are not imported this session (the sandbox refused a step; see the log above)");
@@ -1055,7 +1105,7 @@ pub fn scan_queue(found: &Found, dpi: f32, lock_busy: bool) -> i32 {
         queued += 1;
     }
     let free = if ui(|u| u.room_wait.is_empty()) { None } else { free_bytes() };
-    for (rel, folder, size, mtime) in &found.files {
+    for (rel, folder, size, mtime, dev, ino) in &found.files {
         let Some(sp) = import_storage_path(rel) else { continue };
         let Ok(src) = String::from_utf8(sp.as_bytes().to_vec()) else { continue };
         if src.len() >= FS_PATH_MAX || is_queued(&src) {
@@ -1089,7 +1139,6 @@ pub fn scan_queue(found: &Found, dpi: f32, lock_busy: bool) -> i32 {
             }
         }
         let key = fnv(FNV0, src.as_bytes());
-        let abs = format!("{}/import/{}", store_root(), rel);
         let stable_hash = fnv(fnv(FNV0, &size.to_ne_bytes()), &mtime.to_ne_bytes());
         if attempt_key(&src).is_some_and(|k| crate::bgwork_template::attempts_waiting_key(k, stable_hash, &attempts, PDF_TRIES)) {
             tried_out += 1;
@@ -1103,31 +1152,55 @@ pub fn scan_queue(found: &Found, dpi: f32, lock_busy: bool) -> i32 {
             waiting += 1;
             continue;
         }
-        let ok = read_ends(&abs, *size).is_some_and(|(h, t)| looks_complete(&h, &t));
-        if !ok {
-            if ui(|u| unchanged_ms(&u.seen, key, now)) < INCOMPLETE_GIVE_UP_MS {
-                waiting += 1;
+        // (when the storage cannot be opened, no file reads this scan)
+        let st = storage.get_or_insert_with(|| storage_root().and_then(|r| FsStorage::open(&r, &store_root()).ok()));
+        let look = st.as_ref().map_or(Ends::Unreadable, |st| read_ends(st, &sp, (*size, *mtime, *dev, *ino)));
+        let (ok, other) = match look {
+            Ends::Read(h, t) => (looks_complete(&h, &t), false),
+            Ends::Unreadable => (false, false),
+            // (its entry in the table of files seen stays, or the minute below would never pass: a file that
+            // really was replaced is listed as itself by the look 5 s on, and read then)
+            Ends::Changed => (false, true),
+            Ends::NotAFile => {
+                // never taken "as it is", and no sooner look is asked for it: the next scan lists the folder again
+                not_files += 1;
                 continue;
             }
-            qlog!("import: a PDF without its end marker has not changed for a minute; it is imported as it is");
+        };
+        if !ok {
+            if ui(|u| unchanged_ms(&u.seen, key, now)) < INCOMPLETE_GIVE_UP_MS {
+                if other {
+                    differ += 1;
+                } else {
+                    waiting += 1;
+                }
+                continue;
+            }
+            if other {
+                qlog!("import: a PDF that differs from its listing has not changed for a minute; it is imported as it is");
+            } else {
+                qlog!("import: a PDF without its end marker has not changed for a minute; it is imported as it is");
+            }
         }
         if queue_one(&src, "", folder, false, dpi) {
             queued += 1;
         }
     }
-    if waiting > 0 {
+    if waiting > 0 || differ > 0 {
         ui(|u| u.rescan_at = Some(now.wrapping_add(WAIT_RESCAN_MS)));
     }
-    if queued != 0 || waiting != 0 || tried_out != 0 || found.skipped != 0 || already_made != 0 || skipped_busy != 0 || no_room != 0 {
+    if queued != 0 || waiting != 0 || tried_out != 0 || found.skipped != 0 || already_made != 0 || skipped_busy != 0 || no_room != 0 || differ != 0 || not_files != 0 {
         qlog!(
-            "import: %d PDF(s) queued; left as they are: %d not yet steady, %d that failed and have not changed since, %d imported already, %d skipped (links or odd names), %d while the lock is held elsewhere, %d waiting for room",
+            "import: %d PDF(s) queued; left as they are: %d not yet steady, %d that failed and have not changed since, %d imported already, %d skipped (links or odd names), %d while the lock is held elsewhere, %d waiting for room, %d that differ from their listing, %d no longer files",
             queued,
             waiting,
             tried_out,
             already_made,
             found.skipped as i32,
             skipped_busy,
-            no_room
+            no_room,
+            differ,
+            not_files
         );
     }
     queued
