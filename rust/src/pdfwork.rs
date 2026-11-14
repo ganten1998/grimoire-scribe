@@ -1164,6 +1164,14 @@ pub enum StartErr {
     Failed(&'static str),
 }
 
+/// A worker the filter ended at its start, at the probe or in the link walk (a page's is `Death::Sigsys`, which
+/// the import logs): the log names the call, in the words the pictures' and the fonts' writers use, and the
+/// caller gets the reason.
+fn refused_call(n: u32) -> &'static str {
+    crate::qlog!("work: a PDF's worker made call %d, which the sandbox does not allow", n as i32);
+    "the worker made a call the sandbox does not allow"
+}
+
 pub struct Session {
     w: Worker,
     rec_bytes: usize,
@@ -1206,6 +1214,10 @@ impl Session {
                 w.kill_and_reap();
                 return Err(StartErr::Sandbox(step));
             }
+            Ok(Rec::Err(ErrCode::Sigsys(n))) => {
+                w.kill_and_reap();
+                return Err(StartErr::Worker(refused_call(n)));
+            }
             _ => return Err(StartErr::Worker("handshake")),
         }
         Ok(Session { w, rec_bytes: 0, sandboxed, pages: 0 })
@@ -1246,6 +1258,10 @@ impl Session {
                     self.w.kill_and_reap();
                     return Err(StartErr::Failed("a sandbox record after the handshake"));
                 }
+                Ok(Rec::Err(ErrCode::Sigsys(n))) => {
+                    self.w.kill_and_reap();
+                    return Err(StartErr::Failed(refused_call(n)));
+                }
                 _ => {
                     self.w.kill_and_reap();
                     return Err(StartErr::Failed("unexpected record"));
@@ -1283,6 +1299,10 @@ impl Session {
                         self.w.kill_and_reap();
                         return Err(v.0);
                     }
+                }
+                Ok(Rec::Err(ErrCode::Sigsys(n))) => {
+                    self.w.kill_and_reap();
+                    return Err(refused_call(n));
                 }
                 _ => {
                     self.w.kill_and_reap();

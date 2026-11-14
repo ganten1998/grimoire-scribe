@@ -1122,6 +1122,10 @@ fn start_worker(len: usize) -> Hello {
                 return Some("a sandbox step failed");
             }
         }
+        if let Some(n) = sigsys_line(&line) {
+            qlog!("work: a font's worker made call %d, which the sandbox does not allow", n as i32);
+            return Some("the worker made a call the sandbox does not allow");
+        }
         Some("no handshake")
     })();
     match hello {

@@ -1,4 +1,5 @@
-// test_sec_handshake.rs (hardening round 2026-11): what the three writers take as a worker's sandbox line.
+// test_sec_handshake.rs (hardening round 2026-11): what the three writers take as a worker's sandbox line, and that
+// the filter's report is logged with its call wherever it comes.
 //
 // The writers are this process's (pdfwork::Session, picwork::PicPool, fontcheck::check_font); the worker is a
 // stand-in, a shell script that says a handshake's lines. Every stand-in makes a file `started` first, and the
@@ -26,11 +27,12 @@ struct Seen {
     handed: bool,
 }
 
-/// GRIMOIRE_SANDBOX for a case: required, or not.
+/// GRIMOIRE_SANDBOX for a case: required, not required, or as the environment has it.
 #[derive(Clone, Copy)]
 enum Ask {
     Require,
     Not,
+    AsItIs,
 }
 
 /// Runs `f` in a forked child against a stand-in worker whose script goes on with `body` after it made
@@ -56,6 +58,7 @@ fn case(name: &str, body: &str, ask: Ask, f: impl FnOnce(&str) -> i32) -> Option
         match ask {
             Ask::Require => std::env::set_var("GRIMOIRE_SANDBOX", "require"),
             Ask::Not => std::env::remove_var("GRIMOIRE_SANDBOX"),
+            Ask::AsItIs => {}
         }
         std::env::set_var("GRIMOIRE_WORK_EXE", &script);
         f(&dir)
@@ -75,6 +78,10 @@ fn case(name: &str, body: &str, ask: Ask, f: impl FnOnce(&str) -> i32) -> Option
 
 /// The stand-ins' scripts, after `started`.
 const SAYS_S0_THEN_WAITS: &str = "printf 'B %s\\nS 0\\n' '@BUILD@' >&4\nIFS= read -r line <&5 && : > '@DIR@/handed'\n";
+const SAYS_SIGSYS_240: &str = "printf 'B %s\\nE sigsys 240\\n' '@BUILD@' >&4\n";
+const SAYS_S1_THEN_SIGSYS_192: &str = "printf 'B %s\\nS 1\\n' '@BUILD@' >&4\nIFS= read -r line <&5\nprintf 'E sigsys 192\\n' >&4\n";
+const ANSWERS_THE_PROBE_THEN_SIGSYS_125: &str =
+    "printf 'B %s\\nS 1\\n' '@BUILD@' >&4\nIFS= read -r line <&5\nprintf 'P 2\\nK\\n' >&4\nIFS= read -r line <&5\nprintf 'E sigsys 125\\n' >&4\n";
 
 /// A PDF session on a two-page planner written into the case's folder.
 fn pdf_session(dir: &str) -> Result<Session, StartErr> {
@@ -173,11 +180,85 @@ fn where_the_sandbox_is_not_required_s0_is_taken() {
     check!(s.handed);
 }
 
+// R1d. The filter's report in place of the sandbox line: no worker, not the file's fault, and the log names
+// the call for each of the three writers.
+fn a_refused_call_in_place_of_the_sandbox_line_is_logged_with_its_number() {
+    const WHY: &str = "the worker made a call the sandbox does not allow";
+    if let Some(s) = case("pdf-sigsys", SAYS_SIGSYS_240, Ask::Require, |dir| pdf_start_is(dir, &format!("Worker({WHY:?})"))) {
+        check!(s.code == 0);
+        check!(s.started);
+        check!(s.log.contains("work: a PDF's worker made call 240, which the sandbox does not allow"));
+    }
+    if let Some(s) = case("pic-sigsys", SAYS_SIGSYS_240, Ask::Require, picture_waits) {
+        check!(s.code == 0);
+        check!(s.started);
+        check!(s.log.contains("work: a picture's worker made call 240, which the sandbox does not allow"));
+        check!(s.log.contains(&format!("work: pictures wait ({WHY})")));
+    }
+    if let Some(s) = case("font-sigsys", SAYS_SIGSYS_240, Ask::Require, |_| font_has_no_worker(WHY)) {
+        check!(s.code == 0);
+        check!(s.started);
+        check!(s.log.contains("work: a font's worker made call 240, which the sandbox does not allow"));
+    }
+}
+
+// R1d. The same report while the PDF is opened: a counted try, as any unexpected record there, and the log
+// names the call.
+fn a_refused_call_at_the_probe_is_logged_with_its_number() {
+    let Some(s) = case("pdf-probe-sigsys", SAYS_S1_THEN_SIGSYS_192, Ask::AsItIs, |dir| {
+        let mut s = match pdf_session(dir) {
+            Ok(s) => s,
+            Err(e) => {
+                forkcase::note(&format!("Session::start: {e:?}"));
+                return 2;
+            }
+        };
+        let r = s.probe();
+        forkcase::note(&format!("the probe: {r:?}"));
+        (r != Err(StartErr::Failed("the worker made a call the sandbox does not allow"))) as i32
+    }) else {
+        return;
+    };
+    check!(s.code == 0);
+    check!(s.started);
+    check!(s.log.contains("work: a PDF's worker made call 192, which the sandbox does not allow"));
+}
+
+// R1d. And in the link walk: the notebook gets no links, as for any other end of the walk, and the log names
+// the call.
+fn a_refused_call_in_the_link_walk_is_logged_with_its_number() {
+    let Some(s) = case("pdf-links-sigsys", ANSWERS_THE_PROBE_THEN_SIGSYS_125, Ask::AsItIs, |dir| {
+        let mut s = match pdf_session(dir) {
+            Ok(s) => s,
+            Err(e) => {
+                forkcase::note(&format!("Session::start: {e:?}"));
+                return 2;
+            }
+        };
+        let pages = s.probe();
+        forkcase::note(&format!("the probe: {pages:?}"));
+        if pages != Ok(2) {
+            return 3;
+        }
+        let r = s.links(600, 800).map(|got| got.links.len());
+        forkcase::note(&format!("the links: {r:?}"));
+        (r != Err("the worker made a call the sandbox does not allow")) as i32
+    }) else {
+        return;
+    };
+    check!(s.code == 0);
+    check!(s.started);
+    check!(s.log.contains("work: a PDF's worker made call 125, which the sandbox does not allow"));
+}
+
 #[test]
 fn test_sec_handshake() {
     run!(a_pdf_worker_that_is_not_sandboxed_is_refused_where_required);
     run!(a_picture_worker_that_is_not_sandboxed_is_refused_where_required);
     run!(a_font_worker_that_is_not_sandboxed_is_refused_where_required);
     run!(where_the_sandbox_is_not_required_s0_is_taken);
+    run!(a_refused_call_in_place_of_the_sandbox_line_is_logged_with_its_number);
+    run!(a_refused_call_at_the_probe_is_logged_with_its_number);
+    run!(a_refused_call_in_the_link_walk_is_logged_with_its_number);
     done();
 }

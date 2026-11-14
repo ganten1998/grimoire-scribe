@@ -364,6 +364,16 @@ pub fn sandbox_line_ok(sandboxed: bool) -> bool {
     sandbox_line_ok_for(sandboxed, sandbox_required())
 }
 
+/// The filter's report as a worker's line, read strictly: `E sigsys ` followed by the call's number in one to
+/// six digits and nothing else.
+pub fn sigsys_line(line: &[u8]) -> Option<u32> {
+    let d = line.strip_prefix(b"E sigsys ")?;
+    if d.is_empty() || d.len() > 6 || !d.iter().all(u8::is_ascii_digit) {
+        return None;
+    }
+    std::str::from_utf8(d).ok()?.parse().ok()
+}
+
 /// Runs the steps in order. A step that fails stops the run with its name when `required` (the worker then
 /// parses nothing: no byte of the source has been read yet); when not required it is noted and the next one
 /// still runs. `note(name, ok, detail)` hears every step.
@@ -1370,6 +1380,16 @@ mod tests {
         assert!(sandbox_line_ok_for(true, false));
         assert!(sandbox_line_ok_for(false, false));
         assert!(!sandbox_line_ok_for(false, true));
+    }
+
+    #[test]
+    fn a_filter_report_line_is_read_strictly() {
+        assert_eq!(sigsys_line(b"E sigsys 0"), Some(0));
+        assert_eq!(sigsys_line(b"E sigsys 240"), Some(240));
+        assert_eq!(sigsys_line(b"E sigsys 123456"), Some(123456));
+        for bad in ["E sigsys", "E sigsys ", "E sigsys x", "E sigsys 1 2", "E sigsys 1234567", "S 1", "E sigsys 240 ", "E sigsys -1", "E sigsys +1", " E sigsys 1"] {
+            assert_eq!(sigsys_line(bad.as_bytes()), None, "{bad:?}");
+        }
     }
 
     #[test]
