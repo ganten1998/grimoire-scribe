@@ -162,6 +162,13 @@ why. Newest decisions first within each section.
 - **The Linux tests of the sandbox's steps have not run on a Scribe** (they need cargo); the steps have, as
   they were in 2.1.0-beta.2 (S1, and that beta's imports, pictures and fonts). The narrower system-call rules
   that came after are the entry "The Scribe check of this round has not run", above.
+- **Three sentences outside this round's lines are still loose**, and no test holds them. docs/DESIGN.md, the
+  safe loader, and `sandbox.rs` (`sandbox_line_ok_for`): "`S 1` (the steps are in place)"; a Linux build that
+  does not require the sandbox says `S 1` as soon as it has the steps, also when one failed and was passed
+  over (`pdfwork.rs`'s header has the exact form). `sandbox.rs`, `s1::FONT_JOB_CPU_SECS`: "past it the font
+  is "Took too long to read."", where a first timeout only leaves the font for its second try.
+  docs/TESTING.md, "2.1.0-beta.2, L9", step 7: "see its section at the end" for the fix round's section,
+  which other sections now follow.
 
 ## The keyboard's caret and text copy and paste (2.1.0-beta.2, last round, lane K): choices for the owner, and what waits
 
