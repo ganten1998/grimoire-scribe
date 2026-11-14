@@ -769,7 +769,10 @@ waits, and within 10 s of the end of a previous run's import):
   `file=sha256:<the SHA-256 of the whole file, 64 lower-case hex digits>:<its size in bytes>:<the book key, 32
   lower-case hex digits>`, 130 bytes at most. It is read strictly: another algorithm's name, upper case, a field
   missing or one too many, a size of 0 or with a leading zero or past 64 bits, anything around it, is no record
-  for this version. The record is of the file as it was read when the notebook was made, and promises no more.
+  for this version. The record is of the file as it was read when the notebook was made, and promises no more:
+  its hash and its key are both of the file the last slice has open (the slice reads the key again from that
+  file, and an import whose file has another key by then ends with nothing made and leaves the file where it
+  is).
   A notebook holds a key by its `source=` line; with no such line, by its `source.ini`'s `book=`; with neither,
   by the key its record names. A PDF whose key a notebook holds is compared with the records:
   - the same file again (a record of its size and of its SHA-256, for which the file is read whole) is "PDF

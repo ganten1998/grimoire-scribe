@@ -2902,9 +2902,15 @@ fn fold_links(id: &str, work: &str, nb: &NotebookInfo, pw: i32, ph: i32) -> (boo
 fn commit(id: &str, src: &str, abs: &str, state: &State, source: &Src, pw: i32, ph: i32) -> SliceEnd {
     let work = work_dir(id);
     let bgdir = format!("{work}/bg");
-    // the file must be the one the slices read
+    // the file must be the one the slices read: its name still opens to the first slice's size and time, and this
+    // slice's own open file has the first slice's key. The record made below pairs that key with the hash of
+    // this open file, so both are of one file: a file that took the name between two slices, with the same size
+    // and time and another key, ends the import here.
     let again = open_source(src);
-    if again.as_ref().map_or(true, |s| s.size != state.size || s.mtime != state.mtime) || source.size != state.size {
+    if again.as_ref().map_or(true, |s| s.size != state.size || s.mtime != state.mtime)
+        || source.size != state.size
+        || partial_md5_fd(std::os::fd::AsRawFd::as_raw_fd(&source.fd)) != state.key
+    {
         qlog!("import: %s: the PDF changed under the import; nothing imported", id);
         remove_work_folder(id);
         mark_drop(src);

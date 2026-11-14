@@ -527,3 +527,56 @@ fn a_name_that_never_holds_the_file_read_is_tried_three_times_and_no_more() {
     c.that(!std::fs::read_to_string(format!("{}/import/.attempts", e.root)).is_ok_and(|t| t.lines().any(|l| !l.starts_with('#'))), "no record of tries is left");
     c.done();
 }
+
+// ---- the record's key and its hash are of one file ----
+
+// An import that goes on after a stop takes the file at its path by its size and time. The record written at its
+// end holds the first slice's key beside the hash of the file the last slice read, so the last slice reads the
+// key again from that very file: when it is another key, the file is not the one the import began with, and the
+// import ends with nothing made. The file stays where it is, and the next scan imports it as the file it is.
+#[test]
+fn a_record_is_never_one_files_hash_beside_another_files_key() {
+    let e = setup("record-one-file");
+    std::env::set_var("GRIMOIRE_PDF_SLICE_PAGES", "1");
+    let mut c = Checks::default();
+    let a = pdffix::planner(3);
+    // (the same PDF with another digit on its first page: one length, another key)
+    let mut b = a.clone();
+    let digit = b.windows(8).position(|w| w == b"(Page 1)").expect("page 1's text") + 6;
+    b[digit] = b'7';
+    assert!(a.len() == b.len() && key_of(&a) != key_of(&b), "one length, two keys");
+    let src = e.drop("Book.pdf", &a);
+    set_mtime(&e.at("Book.pdf"), T);
+    let mut id = String::new();
+    store_make_id(&mut id);
+    // the probe and the first page are of A
+    assert_eq!(run_slice(&id, &src), SliceEnd::More, "the probe");
+    assert_eq!(run_slice(&id, &src), SliceEnd::More, "page 1");
+    // B takes the name between two slices, with A's length and time
+    std::fs::write(e.at(".incoming"), &b).unwrap();
+    set_mtime(&e.at(".incoming"), T);
+    std::fs::rename(e.at(".incoming"), e.at("Book.pdf")).unwrap();
+    let mut ends = Vec::new();
+    for _ in 0..10 {
+        let end = run_slice(&id, &src);
+        let more = end == SliceEnd::More;
+        ends.push(end);
+        if !more {
+            break;
+        }
+    }
+    c.that(matches!(last(&ends), SliceEnd::Failed(..)), format!("the import ends with nothing made: {ends:?}"));
+    let records: Vec<String> = e.notebooks().iter().flat_map(|n| e.ini(n.id.as_str(), "source.ini").lines().filter(|l| l.starts_with("file=")).map(str::to_string).collect::<Vec<_>>()).collect();
+    c.that(e.notebooks().is_empty(), format!("no notebook was made of the two files' pages (its record would be {records:?})"));
+    c.that(!std::path::Path::new(&format!("{}/notebooks/.import-{id}", e.root)).exists(), "its work folder is gone");
+    c.that(std::fs::read(e.at("Book.pdf")).is_ok_and(|x| x == b) && e.done_files() == 0, "the file at the name stays in import/");
+    c.that(e.marks().is_empty(), format!("no mark is left: {:?}", e.marks()));
+    // the next scan's import of that name: B, whole, with a record of its own key and hash
+    let (id_b, ends) = import_all(&src);
+    c.that(last(&ends) == &SliceEnd::Done { pages: 3, blank: 0 }, format!("the file at the name is imported as itself: {ends:?}"));
+    let line = format!("file=sha256:{}:{}:{}", sha256_of(&b), b.len(), key_of(&b));
+    let text = e.ini(&id_b, "source.ini");
+    c.that(text.lines().any(|l| l == line), format!("its record is of its own key and hash:\n{text}\nwanted: {line}"));
+    c.that(e.notebooks().len() == 1 && e.filed(&b), "one notebook, and its file is filed");
+    c.done();
+}
