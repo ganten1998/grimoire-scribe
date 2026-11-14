@@ -182,6 +182,8 @@ const H_WIFI_MENU: i32 = 180;
 const H_WIFI_RADIO: i32 = 181;
 const H_WIFI_NET: i32 = 182;
 const H_WIFI_MORE: i32 = 183;
+// 2.1: Settings' Sleep & Clock button (the Display sheet's sleep and clock rows, on a page of their own).
+const H_SET_SLEEP: i32 = 184;
 
 // 2.1: Settings' page (a full screen, the categories down its left): the category a tap picks (arg: its
 // index), whose settings the page shows.
@@ -233,8 +235,8 @@ pub struct LibraryState {
     settings_return_editor: bool,
     settings_painting: bool,
     settings_editor_fit: bool,
-    /// Settings' page: the category whose settings show (0 General, 1 Display, 2 Pen Feel,
-    /// 3 Calibration, 4 Controller; H_SET_CAT).
+    /// Settings' page: the category whose settings show (0 General, 1 Display, 2 Sleep & Clock,
+    /// 3 Pen, 4 Controls, 5 System; H_SET_CAT).
     settings_cat: i32,
     /// A screen Settings opened (Pen feel, Calibration) is returning to the Library: library_enter
     /// opens Settings again, as it was left.
@@ -3730,6 +3732,7 @@ fn setting_hit(id: settingsmenu::SettingId) -> i32 {
     use settingsmenu::SettingId::*;
     match id {
         Display => H_SET_DISPLAY,
+        SleepClock => H_SET_SLEEP,
         Theme => H_SET_THEME,
         Font => H_SET_FONT,
         Rotate => H_SET_ROTATE,
@@ -3769,8 +3772,8 @@ fn draw_settings(a: &mut App) {
     let cats = &settingsmenu::CATEGORIES;
     let side_w = (aw * 30 / 100).clamp(ui_px(320.0), ui_px(560.0));
     let (mut cat_h, mut cat_gap) = (ui_px(120.0), ui_px(14.0));
-    // Room for more categories than today's five: tighten their spacing rather than running into
-    // Done. With five categories this changes nothing.
+    // Room for more categories than today's six: tighten their spacing rather than running into
+    // Done. With six categories this changes nothing.
     let ncat = cats.len() as i32;
     let content_bottom = page.content.y + page.content.h;
     let cat_room = content_bottom - top;
@@ -5865,6 +5868,13 @@ fn act(a: &mut App, h: &Hit) {
             lib(a).dm = dm;
             open_modal(a, Modal::Display);
         }
+        // Settings' Sleep & Clock (2.1): the sleep screen, the timer and the clock, on their own page.
+        H_SET_SLEEP => {
+            let mut dm = std::mem::take(&mut lib(a).dm);
+            dispmenu_open_sleep(&mut dm, a);
+            lib(a).dm = dm;
+            open_modal(a, Modal::Display);
+        }
         H_SET_ROTATE => {
             a.settings.follow_rotation = !a.settings.follow_rotation;
             settings_save(&a.settings);
@@ -7440,6 +7450,7 @@ pub fn library_probe(a: &mut App, key: &str, out: &mut String, cap: usize) -> i3
                 H_FMORE_RENAME=>"fmore.rename",H_FMORE_MOVE=>"fmore.move",H_FMORE_REMOVE=>"fmore.remove",
                 H_MOVE_TOP=>"move.top",H_MOVE_TO=>"move.to.",H_MOVE_NEW=>"move.new",H_MOVE_PREV=>"move.prev",H_MOVE_NEXT=>"move.next",
                 H_SET_PENS => "pen-feel", H_SET_CALIB => "calibrate", H_SET_DISPLAY => "display",
+                H_SET_SLEEP => "sleep-clock",
                 H_KOREADER => "ko", H_SHORTCUTS => "shortcuts", H_PAIR_MENU => "pair-menu", H_GESTURES => "gestures",
                 H_SHORTCUT_DEVICE => "shortcuts.device", H_SHORTCUT_OWN => "shortcuts.own", H_SHORTCUT_RELOAD => "shortcuts.reload",
                 H_UPDATES => "updates", H_CANCEL => "done", H_GESTURES_MASTER => "gestures.master",
@@ -8427,15 +8438,15 @@ mod tests {
         ui_set_theme(UiTheme::Gothic);
     }
 
-    // Settings' page with Wi-Fi (2.1.0-beta.2): the General category lists it beside Language, Mirror,
-    // KOReader and Updates, as a whole row in every language and style, upright and sideways.
+    // Settings' page with Wi-Fi (2.1.0-beta.2): the System category lists it beside KOReader and
+    // Mirror, as a whole row in every language and style, upright and sideways.
     #[test]
-    fn settings_general_lists_wifi_in_every_language_and_style() {
+    fn settings_system_lists_wifi_in_every_language_and_style() {
         let root = std::env::temp_dir().join(format!("grimoire-wifi-row-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&root);
         assert_eq!(store_init(root.to_str().unwrap()), 0);
         assert_eq!(font_init(), 0);
-        let general = settingsmenu::CATEGORIES
+        let system = settingsmenu::CATEGORIES
             .iter()
             .position(|c| c.items.iter().any(|it| it.id == settingsmenu::SettingId::Wifi))
             .expect("the Wi-Fi row's category") as i32;
@@ -8449,7 +8460,7 @@ mod tests {
                     assert_eq!(canvas_init(&mut a.screen, a.w, a.h), 0);
                     library_init(&mut a);
                     lib(&mut a).modal = Modal::Settings;
-                    lib(&mut a).settings_cat = general;
+                    lib(&mut a).settings_cat = system;
                     hits_clear(&mut lib(&mut a).hits);
                     draw_settings(&mut a);
                     let row = a.lib.as_ref().unwrap().hits.h.iter().find(|x| x.id == H_WIFI_MENU).map(|x| x.r)
@@ -8463,6 +8474,52 @@ mod tests {
                 }
             }
         }
+        i18n_set("en");
+        ui_init(300.0);
+        ui_set_theme(UiTheme::Gothic);
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    // Settings' Sleep & Clock row: the sleep screen, the sleep timer and the clock on a page of their
+    // own, apart from Display's light and appearance rows.
+    #[test]
+    fn settings_sleep_and_clock_opens_its_own_page() {
+        let root = std::env::temp_dir().join(format!("grimoire-sleep-clock-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        assert_eq!(store_init(root.to_str().unwrap()), 0);
+        assert_eq!(font_init(), 0);
+        ui_init(300.0);
+        ui_set_theme(UiTheme::Gothic);
+        i18n_set("en");
+        let mut a = App { w: 1860, h: 2480, dpi: 300.0, input_drained: true, ..Default::default() };
+        assert_eq!(canvas_init(&mut a.screen, a.w, a.h), 0);
+        library_init(&mut a);
+        lib(&mut a).modal = Modal::Settings;
+        lib(&mut a).settings_cat = 2;
+        hits_clear(&mut lib(&mut a).hits);
+        draw_settings(&mut a);
+        assert!(
+            a.lib.as_ref().unwrap().hits.h.iter().any(|h| h.id == H_SET_SLEEP),
+            "the Sleep & Clock row"
+        );
+        act(&mut a, &Hit { r: RECT_EMPTY, id: H_SET_SLEEP, arg: 0 });
+        let (modal, page) = {
+            let s = lib(&mut a);
+            (s.modal, s.dm.page)
+        };
+        assert_eq!(modal, Modal::Display);
+        assert_eq!(page, crate::dispmenu::DmPage::SleepClock);
+        let mut dm = std::mem::take(&mut lib(&mut a).dm);
+        dispmenu_draw(&mut dm, &mut a);
+        for name in ["size", "corner", "time12"] {
+            assert!(dispmenu_control_point(&dm, name).is_some(), "Sleep & Clock lost {name}");
+        }
+        for name in ["brightness", "invert", "fit"] {
+            assert!(dispmenu_control_point(&dm, name).is_none(), "Sleep & Clock shows {name}");
+        }
+        lib(&mut a).dm = dm;
+        library_free(&mut a);
+        canvas_free(&mut a.screen);
         i18n_set("en");
         ui_init(300.0);
         ui_set_theme(UiTheme::Gothic);

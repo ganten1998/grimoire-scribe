@@ -1,5 +1,6 @@
-//! dispmenu.h: the Display sheet (front light brightness + warmth, invert Grimoire's colors).
-//! A modal hosted by the editor and the library; it draws itself and handles pointer input.
+//! dispmenu.h: Settings' Display and Sleep & Clock sheets (front light and appearance; sleep
+//! screen, timer and clock). A modal hosted by the editor and the library; it draws itself and
+//! handles pointer input.
 
 // dispmenu.c: the Display sheet: front light, invert, and sleep (screen + timeout).
 
@@ -17,8 +18,18 @@ pub enum DmResult {
     Refit = 4,
 }
 
+/// Which of Settings' two sheets it is: Display's front light and appearance, or Sleep & Clock's
+/// sleep screen, timer and clock. The editor hosts the Display one alone.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum DmPage {
+    #[default]
+    Display,
+    SleepClock,
+}
+
 #[derive(Clone, Debug, Default)]
 pub struct DispMenu {
+    pub page: DmPage,
     pub open: bool,
     pub rect: Rect,
     pub hits: HitList,
@@ -68,28 +79,29 @@ const N_SLEEP_STEPS: i32 = K_SLEEP_STEPS.len() as i32;
 
 /// The sleep screen row, one sentence per choice (settings.ini sleep_mode 0, 1, 2).
 static K_MODE_ROWS: [&str; 4] = [
-    // TRANSLATORS: the Display sheet's sleep screen row, which a tap moves to the next choice: what
-    // the Kindle shows while it sleeps. About 1280 px at 44 px, upright and sideways.
+    // TRANSLATORS: the Sleep & Clock sheet's sleep screen row, which a tap moves to the next choice:
+    // what the Kindle shows while it sleeps. About 1280 px at 44 px, upright and sideways.
     n_("Sleep screen: the page I'm on (tap to change)"),
     n_("Sleep screen: a pinned page (tap to change)"),
     n_("Sleep screen: the Kindle's own screensaver (tap to change)"),
     n_("Sleep screen: KOReader wallpaper (tap to change)"),
 ];
 
-/// The clock and battery's size (settings.ini status_size 0, 1, 2) and corner (status_corner 0, 1, 2, 3): two
-/// cells side by side in the room beside Done, each a tap that moves to the next choice, one sentence for
-/// each choice so a language can put its words in order. Each has 505 px for an icon and two lines of text
-/// at 34 px, about 365 px a line.
+/// The clock and battery's size (settings.ini status_size 0, 1, 2) and corner (status_corner 0, 1, 2, 3):
+/// two rows on Sleep & Clock's page, each a tap that moves to the next choice, one sentence for each
+/// choice so a language can put its words in order. Each has room for an icon and two lines of text at
+/// 34 px.
 static K_STATUS_ROWS: [&str; 3] = [
-    // TRANSLATORS: the Display sheet's cell beside Done: how large the clock and battery on a notebook page are,
-    // which a tap moves to the next size. Two lines of about 365 px at 34 px.
+    // TRANSLATORS: the Sleep & Clock sheet's row for how large the clock and battery on a notebook page
+    // are, which a tap moves to the next size. Two lines of about 365 px at 34 px.
     n_("Clock size: small"),
     n_("Clock size: medium"),
     n_("Clock size: large"),
 ];
 static K_CORNER_ROWS: [&str; 4] = [
-    // TRANSLATORS: the Display sheet's cell beside Done and the clock's size: which corner of a notebook page the
-    // clock and battery sit in, which a tap moves to the next (clockwise). Two lines of about 365 px at 34 px.
+    // TRANSLATORS: the Sleep & Clock sheet's row under the clock's size: which corner of a notebook page
+    // the clock and battery sit in, which a tap moves to the next (clockwise). Two lines of about 365 px
+    // at 34 px.
     n_("Clock corner: top left"),
     n_("Clock corner: top right"),
     n_("Clock corner: bottom right"),
@@ -127,12 +139,18 @@ pub fn dispmenu_open(m: &mut DispMenu, a: &mut App) {
     m.rect = Rect::new(0, 0, a.w, a.h);
 }
 
+/// Settings > Sleep & Clock: the same sheet, on its sleep and clock page.
+pub fn dispmenu_open_sleep(m: &mut DispMenu, a: &mut App) {
+    dispmenu_open(m, a);
+    m.page = DmPage::SleepClock;
+}
+
 fn slider_for(m: &DispMenu, a: &App, which: i32, row: Rect, s: &mut Slider) {
     *s = Slider { step: 1.0, unit: "", ..Default::default() };
     if which == D_SLEEP_AFTER {
         s.min = 0.0;
         s.max = (N_SLEEP_STEPS - 1) as f32;
-        // TRANSLATORS: the Display sheet's sliders, each left of its value ("12", "5 min", "never"):
+        // TRANSLATORS: the sheets' sliders, each left of its value ("12", "5 min", "never"):
         // about 440 px at 44 px beside a time in Gothic (460 in Classic), 520 beside a number.
         s.label = tr("Sleep after");
         s.value = step_of(a.settings.sleep_minutes) as f32;
@@ -165,25 +183,20 @@ fn draw_slider_row(m: &DispMenu, a: &mut App, which: i32, row: Rect) {
     ui_slider_draw(&mut a.screen, &s, Some(&vt));
 }
 
-/// One row of the Display page: a slider, a checkbox, the sleep screen's choice, Pin this page, the
-/// sleep heading, or one of the clock's two cells.
+/// One row of either page: a slider, a checkbox, the sleep screen's choice, Pin this page, or one
+/// of the clock's two cells.
 enum DRowKind {
     Slider(i32),
     Check { id: i32, label: String, on: bool },
     Note(String),
     SleepMode { label: String, can_tap: bool },
     Pin,
-    Heading,
     Status { id: i32, label: String, corner: i32 },
 }
 
 fn draw_drow(m: &mut DispMenu, a: &mut App, kind: &DRowKind, outer: Rect) {
     let inner = rect_inflate(outer, -ui_px(10.0));
     match kind {
-        DRowKind::Heading => {
-            // TRANSLATORS: the heading of the Display page's rows about the Kindle's sleep.
-            font_draw_left(&mut a.screen, FontFace::Bold, ui_text_size(), outer, tr("Sleep"), 0);
-        }
         DRowKind::Slider(id) => {
             draw_slider_row(m, a, *id, inner);
             hits_add(&mut m.hits, inner, *id, 0);
@@ -239,7 +252,7 @@ fn draw_drow(m: &mut DispMenu, a: &mut App, kind: &DRowKind, outer: Rect) {
     }
 }
 
-/// Draws into a->screen; returns the rect covered. The Display page is a full screen, as Settings'
+/// Draws into a->screen; returns the rect covered. Either page is a full screen, as Settings'
 /// submenus are: Back and the title above a rule, the rows below (one column, or two when the screen
 /// is short) and X at the top right.
 pub fn dispmenu_draw(m: &mut DispMenu, a: &mut App) -> Rect {
@@ -247,64 +260,75 @@ pub fn dispmenu_draw(m: &mut DispMenu, a: &mut App) -> Rect {
     m.pressed = None;
     let (aw, ah) = (a.w, a.h);
     m.rect = Rect::new(0, 0, aw, ah);
-    let page = crate::library::settings_page(&mut a.screen, aw, ah, tr("Display"), true, false);
+    // TRANSLATORS: the title of Settings' Sleep & Clock sheet: the sleep screen, the timer and the
+    // clock and battery on the page.
+    let title = match m.page {
+        DmPage::Display => tr("Display"),
+        DmPage::SleepClock => tr("Sleep & Clock"),
+    };
+    let page = crate::library::settings_page(&mut a.screen, aw, ah, title, true, false);
     hits_add(&mut m.hits, page.back, D_BACK, 0);
     hits_add(&mut m.hits, page.close, D_DONE, 0);
     let in_ = page.content;
-    let have = light_available() && m.intensity >= 0;
     let mut rows: Vec<DRowKind> = Vec::new();
-    if !have {
-        // TRANSLATORS: in the Display page where the sliders would be (1420 px at 44 px).
-        rows.push(DRowKind::Note(tr("Front light controls are not available here.").to_string()));
-    } else {
-        rows.push(DRowKind::Slider(D_BRIGHT));
-        if m.warmth < 0 {
-            rows.push(DRowKind::Note(tr("This Kindle has no warmth control.").to_string()));
-        } else {
-            rows.push(DRowKind::Slider(D_WARM));
+    match m.page {
+        DmPage::Display => {
+            let have = light_available() && m.intensity >= 0;
+            if !have {
+                // TRANSLATORS: in the Display page where the sliders would be (1420 px at 44 px).
+                rows.push(DRowKind::Note(tr("Front light controls are not available here.").to_string()));
+            } else {
+                rows.push(DRowKind::Slider(D_BRIGHT));
+                if m.warmth < 0 {
+                    rows.push(DRowKind::Note(tr("This Kindle has no warmth control.").to_string()));
+                } else {
+                    rows.push(DRowKind::Slider(D_WARM));
+                }
+            }
+            rows.push(DRowKind::Check {
+                id: D_INVERT,
+                label: tr("Invert colors in Grimoire (white on black)").to_string(),
+                on: a.settings.invert,
+            });
+            rows.push(DRowKind::Check {
+                id: D_FIT,
+                label: tr("Sideways, show the whole page").to_string(),
+                on: a.settings.landscape_fit,
+            });
+            rows.push(DRowKind::Check {
+                id: D_NEWPAGE,
+                label: tr("Swiping past the last page adds a page").to_string(),
+                on: a.settings.gesture_new_page,
+            });
+        }
+        DmPage::SleepClock => {
+            let label = if a.native_pin {
+                tr("Sleep screen: Kindle PIN (native unlock)")
+            } else {
+                tr(K_MODE_ROWS[clampi(a.settings.sleep_mode, 0, 3) as usize])
+            };
+            rows.push(DRowKind::SleepMode { label: label.to_string(), can_tap: !a.native_pin });
+            if editor_page_canvas(a).is_some() {
+                rows.push(DRowKind::Pin);
+            }
+            rows.push(DRowKind::Slider(D_SLEEP_AFTER));
+            rows.push(DRowKind::Check {
+                id: D_TIME12,
+                label: tr("Display time as 12 hour").to_string(),
+                on: a.settings.clock_12h,
+            });
+            rows.push(DRowKind::Status {
+                id: D_STATUS,
+                label: tr(K_STATUS_ROWS[clampi(a.settings.status_size, 0, STATUS_SIZES - 1) as usize]).to_string(),
+                corner: 0,
+            });
+            rows.push(DRowKind::Status {
+                id: D_CORNER,
+                label: tr(K_CORNER_ROWS[clampi(a.settings.status_corner, 0, STATUS_CORNERS - 1) as usize]).to_string(),
+                corner: a.settings.status_corner,
+            });
         }
     }
-    rows.push(DRowKind::Check {
-        id: D_INVERT,
-        label: tr("Invert colors in Grimoire (white on black)").to_string(),
-        on: a.settings.invert,
-    });
-    rows.push(DRowKind::Check {
-        id: D_FIT,
-        label: tr("Sideways, show the whole page").to_string(),
-        on: a.settings.landscape_fit,
-    });
-    rows.push(DRowKind::Check {
-        id: D_NEWPAGE,
-        label: tr("Swiping past the last page adds a page").to_string(),
-        on: a.settings.gesture_new_page,
-    });
-    rows.push(DRowKind::Check {
-        id: D_TIME12,
-        label: tr("Display time as 12 hour").to_string(),
-        on: a.settings.clock_12h,
-    });
-    rows.push(DRowKind::Heading);
-    let label = if a.native_pin {
-        tr("Sleep screen: Kindle PIN (native unlock)")
-    } else {
-        tr(K_MODE_ROWS[clampi(a.settings.sleep_mode, 0, 3) as usize])
-    };
-    rows.push(DRowKind::SleepMode { label: label.to_string(), can_tap: !a.native_pin });
-    if editor_page_canvas(a).is_some() {
-        rows.push(DRowKind::Pin);
-    }
-    rows.push(DRowKind::Slider(D_SLEEP_AFTER));
-    rows.push(DRowKind::Status {
-        id: D_STATUS,
-        label: tr(K_STATUS_ROWS[clampi(a.settings.status_size, 0, STATUS_SIZES - 1) as usize]).to_string(),
-        corner: 0,
-    });
-    rows.push(DRowKind::Status {
-        id: D_CORNER,
-        label: tr(K_CORNER_ROWS[clampi(a.settings.status_corner, 0, STATUS_CORNERS - 1) as usize]).to_string(),
-        corner: a.settings.status_corner,
-    });
     let n = rows.len() as i32;
     let gap = ui_px(14.0);
     let cols = if in_.h / n.max(1) < ui_px(88.0) { 2 } else { 1 };
