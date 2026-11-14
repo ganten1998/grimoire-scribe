@@ -670,7 +670,7 @@ pub fn status_toggle(a: &mut App) {
     }
 }
 
-/// Settings > Sleep & Clock > the size row: the next size, small to medium to large and round.
+/// Settings > Sleep & Clock > Clock settings > the size row: the next size, small to medium to large and round.
 pub fn status_cycle_size(a: &mut App) {
     a.settings.status_size = (a.settings.status_size + 1) % STATUS_SIZES;
     save_later();

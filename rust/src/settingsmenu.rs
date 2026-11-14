@@ -47,7 +47,8 @@ pub enum SettingId {
     Font,
     Rotate,
     Pinch,
-    SleepClock,
+    SleepSettings,
+    ClockSettings,
     PenFeel,
     SideButton,
     EraserMode,
@@ -60,6 +61,7 @@ pub enum SettingId {
     Wifi,
     KOReader,
     Updates,
+    AboutDevice,
 }
 
 /// The state a check row shows, or None for a row drawn as text.
@@ -141,7 +143,7 @@ pub const STYLE_CLASSIC: &str = n_("Style: Classic (tap for Gothic)");
 // (language, updates, Wi-Fi), Display's (front light, appearance, theme, font, rotation, zoom), Sleep &
 // Clock's (sleep screen, timer, clock), the Pen's (tool settings, its button, the eraser, calibration),
 // Controls'
-// (shortcuts, pairing, gestures) and System's (KOReader, USB PDF mirroring).
+// (shortcuts, pairing, gestures) and System's (KOReader, USB PDF mirroring, about the device).
 pub static CATEGORIES: &[Category] = &[
     Category {
         title: n_("General"),
@@ -217,15 +219,26 @@ pub static CATEGORIES: &[Category] = &[
     Category {
         title: n_("Sleep & Clock"),
         icon: IconKind::Clock,
-        items: &[Item {
-            icon: IconKind::Clock,
-            // TRANSLATORS: the row that opens Sleep & Clock's sheet: the sleep screen, the sleep
-            // timer, and the clock and battery on the page.
-            label: Label::Text(n_("Sleep and clock: screen, timer, clock")),
-            id: SettingId::SleepClock,
-            check: Check::None,
-            show: Show::Always,
-        }],
+        items: &[
+            Item {
+                icon: IconKind::Hourglass,
+                // TRANSLATORS: the row that opens the sleep settings' page: the sleep screen and the
+                // timer.
+                label: Label::Text(n_("Sleep settings")),
+                id: SettingId::SleepSettings,
+                check: Check::None,
+                show: Show::Always,
+            },
+            Item {
+                icon: IconKind::Clock,
+                // TRANSLATORS: the row that opens the clock settings' page: the clock and battery on a
+                // notebook page.
+                label: Label::Text(n_("Clock settings")),
+                id: SettingId::ClockSettings,
+                check: Check::None,
+                show: Show::Always,
+            },
+        ],
     },
     Category {
         title: n_("Pen"),
@@ -308,6 +321,15 @@ pub static CATEGORIES: &[Category] = &[
                 check: Check::MirrorPdf,
                 show: Show::Always,
             },
+            Item {
+                icon: IconKind::Castle,
+                // TRANSLATORS: the row that opens About: what this Kindle is, its screen, and the
+                // storage used.
+                label: Label::Text(n_("About: device and storage")),
+                id: SettingId::AboutDevice,
+                check: Check::None,
+                show: Show::Always,
+            },
         ],
     },
 ];
@@ -336,15 +358,17 @@ mod tests {
         );
         assert_eq!(ids(0), vec![SettingId::Language, SettingId::Updates, SettingId::Wifi]);
         assert_eq!(ids(1), vec![SettingId::Display, SettingId::Theme, SettingId::Font, SettingId::Rotate, SettingId::Pinch]);
-        assert_eq!(ids(2), vec![SettingId::SleepClock]);
+        assert_eq!(ids(2), vec![SettingId::SleepSettings, SettingId::ClockSettings]);
         assert_eq!(ids(3), vec![SettingId::PenFeel, SettingId::SideButton, SettingId::EraserMode, SettingId::Calibration]);
         assert_eq!(ids(4), vec![SettingId::Shortcuts, SettingId::Pair, SettingId::Gestures]);
-        assert_eq!(ids(5), vec![SettingId::KOReader, SettingId::Mirror]);
-        assert_eq!(CATEGORIES.iter().map(|c| c.items.len()).sum::<usize>(), 18);
+        assert_eq!(ids(5), vec![SettingId::KOReader, SettingId::Mirror, SettingId::AboutDevice]);
+        assert_eq!(CATEGORIES.iter().map(|c| c.items.len()).sum::<usize>(), 20);
 
-        assert_eq!(text(2, 0), "Sleep and clock: screen, timer, clock");
+        assert_eq!(text(2, 0), "Sleep settings");
+        assert_eq!(text(2, 1), "Clock settings");
         assert_eq!(text(0, 2), "Wi-Fi");
         assert_eq!(text(5, 0), "KOReader");
+        assert_eq!(text(5, 2), "About: device and storage");
         assert_eq!(text(1, 0), "Display: brightness, warmth, invert");
         assert_eq!(text(1, 3), "Turn with the Kindle (portrait and landscape)");
         assert_eq!(text(1, 4), "Pinch with two fingers to zoom");

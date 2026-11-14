@@ -1536,6 +1536,18 @@ fn free_bytes() -> Option<u64> {
     (unsafe { libc::statvfs(c.as_ptr(), &mut sv) } == 0).then(|| sv.f_bavail as u64 * sv.f_frsize as u64)
 }
 
+/// The storage the data root is on: its size and the bytes free (statvfs's f_blocks and f_bavail),
+/// None when the system cannot tell.
+pub(crate) fn storage_space() -> Option<(u64, u64)> {
+    let c = std::ffi::CString::new(store_root()).ok()?;
+    // SAFETY: sv is written by statvfs before it is read; c is NUL-terminated.
+    let mut sv: libc::statvfs = unsafe { std::mem::zeroed() };
+    if unsafe { libc::statvfs(c.as_ptr(), &mut sv) } != 0 {
+        return None;
+    }
+    Some((sv.f_blocks as u64 * sv.f_frsize as u64, sv.f_bavail as u64 * sv.f_frsize as u64))
+}
+
 struct Src {
     fd: std::os::fd::OwnedFd,
     size: u64,

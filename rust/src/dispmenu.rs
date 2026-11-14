@@ -1,5 +1,5 @@
-//! dispmenu.h: Settings' Display and Sleep & Clock sheets (front light and appearance; sleep
-//! screen, timer and clock). A modal hosted by the editor and the library; it draws itself and
+//! dispmenu.h: Settings' Display, Sleep and Clock sheets (front light and appearance; sleep screen
+//! and timer; clock and battery). A modal hosted by the editor and the library; it draws itself and
 //! handles pointer input.
 
 // dispmenu.c: the Display sheet: front light, invert, and sleep (screen + timeout).
@@ -16,15 +16,18 @@ pub enum DmResult {
     Inverted = 3,  // DM_INVERTED
     /// Sideways, show the whole page was flipped (settings.landscape_fit): the host lays the page out again
     Refit = 4,
+    /// The X: close the sheet and the Settings it was opened from (the editor treats it as Closed)
+    ClosedAll = 5,
 }
 
-/// Which of Settings' two sheets it is: Display's front light and appearance, or Sleep & Clock's
-/// sleep screen, timer and clock. The editor hosts the Display one alone.
+/// Which of Settings' sheets it is: Display's front light and appearance, Sleep's screen and timer,
+/// or Clock's clock and battery. The editor hosts the Display one alone.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum DmPage {
     #[default]
     Display,
-    SleepClock,
+    Sleep,
+    Clock,
 }
 
 #[derive(Clone, Debug, Default)]
@@ -63,7 +66,7 @@ const D_CORNER: i32 = 10;
 
 pub fn dispmenu_control_point(m:&DispMenu,name:&str)->Option<(f32,f32)> {
     if !m.open{return None;}
-    let id=match name {"size"=>D_STATUS,"corner"=>D_CORNER,"done"=>D_DONE,"back"=>D_BACK,"fit"=>D_FIT,"newpage"=>D_NEWPAGE,"time12"=>D_TIME12,"invert"=>D_INVERT,"brightness"=>D_BRIGHT,"warmth"=>D_WARM,_=>return None};
+    let id=match name {"size"=>D_STATUS,"corner"=>D_CORNER,"done"=>D_DONE,"back"=>D_BACK,"fit"=>D_FIT,"newpage"=>D_NEWPAGE,"time12"=>D_TIME12,"sleep"=>D_SLEEP_MODE,"pin"=>D_PIN,"sleep_after"=>D_SLEEP_AFTER,"invert"=>D_INVERT,"brightness"=>D_BRIGHT,"warmth"=>D_WARM,_=>return None};
     m.hits.h.iter().find(|h|h.id==id).map(|h|((h.r.x+h.r.w/2)as f32,(h.r.y+h.r.h/2)as f32))
 }
 const D_NEWPAGE: i32 = 11;
@@ -139,10 +142,16 @@ pub fn dispmenu_open(m: &mut DispMenu, a: &mut App) {
     m.rect = Rect::new(0, 0, a.w, a.h);
 }
 
-/// Settings > Sleep & Clock: the same sheet, on its sleep and clock page.
+/// Settings > Sleep & Clock > Sleep settings: the same sheet, on its sleep page.
 pub fn dispmenu_open_sleep(m: &mut DispMenu, a: &mut App) {
     dispmenu_open(m, a);
-    m.page = DmPage::SleepClock;
+    m.page = DmPage::Sleep;
+}
+
+/// Settings > Sleep & Clock > Clock settings: the same sheet, on its clock page.
+pub fn dispmenu_open_clock(m: &mut DispMenu, a: &mut App) {
+    dispmenu_open(m, a);
+    m.page = DmPage::Clock;
 }
 
 fn slider_for(m: &DispMenu, a: &App, which: i32, row: Rect, s: &mut Slider) {
@@ -195,14 +204,22 @@ enum DRowKind {
 }
 
 fn draw_drow(m: &mut DispMenu, a: &mut App, kind: &DRowKind, outer: Rect) {
-    let inner = rect_inflate(outer, -ui_px(10.0));
+    // A card's content keeps a card's padding from its border (the switch keeps its own at the right).
+    let pad = crate::library::settings_pad();
+    let inner = Rect::new(outer.x + pad, outer.y + ui_px(10.0), outer.w - 2 * pad, outer.h - ui_px(20.0));
+    // Every control of either sheet is one of Settings' cards (a note is not a control).
+    if !matches!(kind, DRowKind::Note(_)) {
+        crate::library::settings_card(&mut a.screen, outer, ButtonStyle::Plain);
+    }
     match kind {
         DRowKind::Slider(id) => {
             draw_slider_row(m, a, *id, inner);
             hits_add(&mut m.hits, inner, *id, 0);
         }
         DRowKind::Check { id, label, on } => {
-            ui_checkbox(&mut a.screen, inner, label, *on);
+            let lr = Rect::new(inner.x, inner.y, (inner.w - ui_px(170.0)).max(0), inner.h);
+            ui_text(&mut a.screen, FontFace::Regular, ui_text_size(), ui_small_size(), lr, label, 2, false, 0);
+            crate::library::settings_switch(&mut a.screen, outer, *on);
             hits_add(&mut m.hits, inner, *id, 0);
         }
         DRowKind::Note(text) => {
@@ -260,11 +277,12 @@ pub fn dispmenu_draw(m: &mut DispMenu, a: &mut App) -> Rect {
     m.pressed = None;
     let (aw, ah) = (a.w, a.h);
     m.rect = Rect::new(0, 0, aw, ah);
-    // TRANSLATORS: the title of Settings' Sleep & Clock sheet: the sleep screen, the timer and the
-    // clock and battery on the page.
+    // TRANSLATORS: the titles of Settings' Sleep and Clock pages: the sleep screen and timer; the clock
+    // and battery on the page.
     let title = match m.page {
         DmPage::Display => tr("Display"),
-        DmPage::SleepClock => tr("Sleep & Clock"),
+        DmPage::Sleep => tr("Sleep settings"),
+        DmPage::Clock => tr("Clock settings"),
     };
     let page = crate::library::settings_page(&mut a.screen, aw, ah, title, true, false);
     hits_add(&mut m.hits, page.back, D_BACK, 0);
@@ -301,7 +319,7 @@ pub fn dispmenu_draw(m: &mut DispMenu, a: &mut App) -> Rect {
                 on: a.settings.gesture_new_page,
             });
         }
-        DmPage::SleepClock => {
+        DmPage::Sleep => {
             let label = if a.native_pin {
                 tr("Sleep screen: Kindle PIN (native unlock)")
             } else {
@@ -312,6 +330,8 @@ pub fn dispmenu_draw(m: &mut DispMenu, a: &mut App) -> Rect {
                 rows.push(DRowKind::Pin);
             }
             rows.push(DRowKind::Slider(D_SLEEP_AFTER));
+        }
+        DmPage::Clock => {
             rows.push(DRowKind::Check {
                 id: D_TIME12,
                 label: tr("Display time as 12 hour").to_string(),
@@ -330,7 +350,7 @@ pub fn dispmenu_draw(m: &mut DispMenu, a: &mut App) -> Rect {
         }
     }
     let n = rows.len() as i32;
-    let gap = ui_px(14.0);
+    let gap = ui_px(16.0);
     let cols = if in_.h / n.max(1) < ui_px(88.0) { 2 } else { 1 };
     let per = (n + cols - 1) / cols;
     let rh = ((in_.h - (per - 1) * gap) / per.max(1)).clamp(ui_px(60.0), ui_px(140.0));
@@ -460,7 +480,12 @@ pub fn dispmenu_pointer(m: &mut DispMenu, a: &mut App, phase: i32, x: f32, y: f3
         return DmResult::None;
     }
     match h.id {
-        D_DONE | D_BACK => {
+        D_DONE => {
+            m.open = false;
+            *dirty = m.rect;
+            return DmResult::ClosedAll;
+        }
+        D_BACK => {
             m.open = false;
             *dirty = m.rect;
             return DmResult::Closed;

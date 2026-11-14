@@ -49,6 +49,10 @@ enum Modal {
     SideButton = 370,
     /// Settings > Pen > the eraser (Rust only): whole strokes, or precise
     EraserMode = 380,
+    /// Settings > System > About (Rust only): what this Kindle is, the storage used, and its links
+    DeviceInfo = 390,
+    /// Settings > System > About > Ko-fi or GitHub (Rust only): the link as a QR code a phone scans
+    LinkQr = 395,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -103,6 +107,11 @@ const H_SIDE_BACK: i32 = 121;
 const H_SET_ERASER: i32 = 122;
 const H_ERASER_PICK: i32 = 123;
 const H_ERASER_BACK: i32 = 124;
+const H_SET_DEVICE: i32 = 125;
+const H_DEVICE_BACK: i32 = 126;
+const H_LINK_KOFI: i32 = 127;
+const H_LINK_GITHUB: i32 = 128;
+const H_LINK_BACK: i32 = 129;
 const H_MORE_OPEN: i32 = 27;
 const H_MORE_RENAME: i32 = 28;
 const H_MORE_MOVE: i32 = 29;
@@ -132,7 +141,6 @@ const H_PAIR_FORGET: i32 = 52;
 const H_PAIR_AGAIN: i32 = 53;
 const H_UPDATES: i32 = 54;
 const H_UPD_CHANNEL: i32 = 55;
-const H_UPD_CHECK: i32 = 56;
 const H_UPD_NOW: i32 = 57;
 const H_MOVE_PREV: i32 = 69;
 const H_MOVE_NEXT: i32 = 70;
@@ -192,14 +200,17 @@ const H_WIFI_MENU: i32 = 180;
 const H_WIFI_RADIO: i32 = 181;
 const H_WIFI_NET: i32 = 182;
 const H_WIFI_MORE: i32 = 183;
-// 2.1: Settings' Sleep & Clock button (the Display sheet's sleep and clock rows, on a page of their own).
+// 2.1: Settings' Sleep & Clock buttons (the Display sheet's sleep and clock rows, on pages of their own).
 const H_SET_SLEEP: i32 = 184;
+const H_SET_CLOCK: i32 = 185;
 
 // 2.1: Settings' page (a full screen, the categories down its left): the category a tap picks (arg: its
 // index), whose settings the page shows.
 const H_SET_CAT: i32 = 100;
 // A Settings submenu's Back and Done: one level up (Settings, Shortcuts or Pair), never out of Settings.
 const H_SETTINGS_BACK: i32 = 101;
+/// Every Settings page's X: the whole of Settings closes (a submenu's Back stays one step back).
+const H_SETTINGS_CLOSE: i32 = 102;
 
 #[derive(Clone, Copy, Default)]
 struct Item {
@@ -248,6 +259,8 @@ pub struct LibraryState {
     /// Settings' page: the category whose settings show (0 General, 1 Display, 2 Sleep & Clock,
     /// 3 Pen, 4 Controls, 5 System; H_SET_CAT).
     settings_cat: i32,
+    /// About's link page: which link's QR code shows (1 Ko-fi, 2 GitHub).
+    device_link: i32,
     /// A screen Settings opened (Pen feel, Calibration) is returning to the Library: library_enter
     /// opens Settings again, as it was left.
     reopen_settings: bool,
@@ -2728,6 +2741,132 @@ fn upd_poll(a: &mut App) {
     }
 }
 
+/// The room a Settings card keeps between its border and what it draws, and between an icon and its
+/// text: one measure from the main page to the two-column sheets.
+pub(crate) fn settings_pad() -> i32 {
+    ui_px(30.0)
+}
+pub(crate) fn settings_gap() -> i32 {
+    ui_px(24.0)
+}
+
+/// A Settings card: the one shape a row, a choice or a control sits in, from the main page to About.
+/// The chosen one is filled; the rest are outlined (a disabled one in gray), all at one radius.
+pub(crate) fn settings_card(c: &mut Canvas, r: Rect, st: ButtonStyle) {
+    match st {
+        ButtonStyle::Selected => ui_frame(c, r, ui_px(16.0), 0, true, 0),
+        ButtonStyle::Disabled => ui_frame(c, r, ui_px(16.0), 170, false, ui_px(3.0)),
+        _ => ui_frame(c, r, ui_px(16.0), 0, false, ui_px(3.0)),
+    }
+}
+
+/// A Settings card of segments (Pen feel's tools, its eraser choices): one outline around all of
+/// them, a rule between each two, and the one picked filled—square to its neighbours, following the
+/// card's rounded end where it has one. Returns where each segment is.
+pub(crate) fn settings_strip(c: &mut Canvas, r: Rect, n: i32, on: i32) -> Vec<Rect> {
+    let n = n.max(1);
+    let w = r.w / n;
+    let seg = |i: i32| -> Rect {
+        let x = r.x + i * w;
+        Rect { x, y: r.y, w: if i == n - 1 { r.x + r.w - x } else { w }, h: r.h }
+    };
+    if (0..n).contains(&on) {
+        let s = seg(on);
+        let rad = ui_px(16.0);
+        if n == 1 {
+            canvas_round_rect(c, s, rad, 0, true, 0);
+        } else if on == 0 {
+            canvas_round_rect(c, s, rad, 0, true, 0);
+            canvas_fill(c, Rect { x: s.x + rad, y: s.y, w: s.w - rad, h: s.h }, 0);
+        } else if on == n - 1 {
+            canvas_fill(c, Rect { x: s.x, y: s.y, w: s.w - rad, h: s.h }, 0);
+            canvas_round_rect(c, s, rad, 0, true, 0);
+        } else {
+            canvas_fill(c, s, 0);
+        }
+    }
+    settings_card(c, r, ButtonStyle::Plain);
+    for i in 1..n {
+        canvas_vline(c, r.x + i * w, r.y, r.y + r.h, ui_px(3.0), 0);
+    }
+    (0..n).map(seg).collect()
+}
+
+/// Settings' switch, at the right end of its card: a track with the knob at the side its state is on,
+/// as Updates' branch has it and every on/off row in Settings.
+pub(crate) fn settings_switch(c: &mut Canvas, r: Rect, on: bool) {
+    // (shorter rows, as the two-column sheets have, get a smaller switch: the same shape to scale)
+    let sw_h = ui_px(62.0).min(r.h - ui_px(12.0)).max(ui_px(24.0));
+    let sw_w = sw_h * 120 / 62;
+    let track = Rect::new(r.x + r.w - ui_px(30.0) - sw_w, r.y + (r.h - sw_h) / 2, sw_w, sw_h);
+    ui_frame(c, track, sw_h / 2, 0, on, ui_px(3.0));
+    let kw = sw_h * 46 / 62;
+    let inset = sw_h * 8 / 62;
+    let kx = if on { track.x + track.w - kw - inset } else { track.x + inset };
+    ui_frame(c, Rect::new(kx, track.y + (track.h - kw) / 2, kw, kw), kw / 2, if on { 255 } else { 0 }, true, 0);
+}
+
+/// Settings > Updates: one Update button that carries the version, and a switch for the branch the
+/// updates come from (Preview: betas and releases; Stable: releases only). The check runs as the
+/// page opens, so the version it shows is the feed's, not the last visit's.
+fn draw_updates(a: &mut App) {
+    let (aw, ah) = (a.w, a.h);
+    let preview = upd_preview(a);
+    let App { screen: c, lib, .. } = a;
+    let s = lib.as_deref_mut().unwrap();
+    let page = settings_page(c, aw, ah, tr("Updates"), true, false);
+    hits_add(&mut s.hits, page.back, H_SETTINGS_BACK, 0);
+    hits_add(&mut s.hits, page.close, H_SETTINGS_CLOSE, 0);
+    let in_ = page.content;
+    let avail = update_available();
+    let (upd, newer, latest, why) = (s.upd, upd_newer(s), s.upd_latest.clone(), s.upd_why.clone());
+    // The button says what the check found, and the version is on it either way; a failed check's
+    // button is the way to ask again.
+    let mut label = String::new();
+    let st = if upd == UPD_CHECKING {
+        csnprintf!(&mut label, 200, "%s", tr("Checking for updates..."));
+        ButtonStyle::Disabled
+    } else if !avail || (upd == UPD_FAILED && why == "no-kpm") {
+        csnprintf!(&mut label, 200, "%s", tr("Updates come through KPM, which is not here."));
+        ButtonStyle::Disabled
+    } else if upd == UPD_DONE && newer {
+        // TRANSLATORS: Settings > Updates' button when the check found a newer Grimoire (%s): a tap
+        // closes Grimoire, KPM installs it, and Grimoire starts again.
+        csnprintf!(&mut label, 200, tr("Update to %s"), &latest);
+        ButtonStyle::Primary
+    } else if upd == UPD_DONE {
+        csnprintf!(&mut label, 200, tr("Grimoire %s is the newest."), GRIMOIRE_VERSION);
+        ButtonStyle::Disabled
+    } else if upd == UPD_FAILED && why == "network" {
+        csnprintf!(&mut label, 200, "%s", tr("Could not check. Is Wi-Fi on?"));
+        ButtonStyle::Plain
+    } else if upd == UPD_FAILED {
+        csnprintf!(&mut label, 200, "%s", tr("Could not check for updates."));
+        ButtonStyle::Plain
+    } else {
+        csnprintf!(&mut label, 200, "%s", tr("Check for updates"));
+        ButtonStyle::Plain
+    };
+    let br = Rect::new(in_.x, in_.y, in_.w, ui_px(150.0));
+    ui_button(c, br, if newer { IconKind::Download } else { IconKind::Update }, &label, st);
+    if st != ButtonStyle::Disabled {
+        hits_add(&mut s.hits, br, H_UPD_NOW, 0);
+    }
+    // The branch, as a switch: on (Preview) for betas and releases, off (Stable) for releases only.
+    let row = Rect::new(in_.x, br.y + br.h + ui_px(24.0), in_.w, ui_px(140.0));
+    ui_frame(c, row, ui_px(16.0), 0, false, ui_px(3.0));
+    // TRANSLATORS: Settings > Updates, the row whose switch picks the branch updates come from.
+    font_draw_left(c, FontFace::Regular, ui_text_size(), rect_inflate(row, -ui_px(30.0)), tr("Update branch"), 0);
+    settings_switch(c, row, preview);
+    // TRANSLATORS: Settings > Updates, the branch the switch is on: Preview gets betas and releases,
+    // Stable only releases.
+    let branch = if preview { tr("Preview") } else { tr("Stable") };
+    let bw = font_measure(FontFace::Bold, ui_text_size(), branch);
+    let sx = row.x + row.w - ui_px(30.0) - ui_px(120.0);
+    font_draw_left(c, FontFace::Bold, ui_text_size(), Rect::new(sx - ui_px(24.0) - bw, row.y, bw, row.h), branch, 0);
+    hits_add(&mut s.hits, row, H_UPD_CHANNEL, 0);
+}
+
 /// A Settings submenu's full screen: Back and the title above a rule, the list's rows below (its own
 /// Done row left out: the page has an X at its top right instead) and an X at the top right.
 fn draw_settings_menu(a: &mut App, title: &str, rows: &[MenuRow]) {
@@ -2740,23 +2879,20 @@ fn draw_settings_menu(a: &mut App, title: &str, rows: &[MenuRow]) {
     let s = lib.as_deref_mut().unwrap();
     let page = settings_page(c, aw, ah, title, true, false);
     hits_add(&mut s.hits, page.back, H_SETTINGS_BACK, 0);
-    hits_add(&mut s.hits, page.close, H_SETTINGS_BACK, 0);
+    hits_add(&mut s.hits, page.close, H_SETTINGS_CLOSE, 0);
     let in_ = page.content;
     let shown: Vec<&MenuRow> = rows
         .iter()
         .filter(|r| r.id != H_CANCEL && r.id != H_BUTTONS_DONE && r.id != H_GESTURES_DONE)
         .collect();
     let n = shown.len() as i32;
-    let gap = ui_px(14.0);
+    let gap = ui_px(16.0);
     let rh = ((in_.h - (n - 1).max(0) * gap) / n.max(1)).clamp(ui_px(90.0), ui_px(140.0));
     let mut y = in_.y;
     for row in shown {
         let r = Rect::new(in_.x, y, in_.w, rh);
-        // A submenu is a list, not a column of buttons: only the selection is filled (rounded), and
-        // no row has a border of its own.
-        if row.st == ButtonStyle::Selected {
-            ui_frame(c, r, ui_px(16.0), 0, true, 0);
-        }
+        // A submenu is a list of Settings' cards: the selection is filled, the rest outlined.
+        settings_card(c, r, row.st);
         let fg: u8 = if row.st == ButtonStyle::Selected {
             255
         } else if row.st == ButtonStyle::Disabled {
@@ -2765,11 +2901,12 @@ fn draw_settings_menu(a: &mut App, title: &str, rows: &[MenuRow]) {
             0
         };
         let isz = ui_px(60.0);
+        let mut lx = r.x + settings_pad();
         if row.icon != IconKind::None {
-            ui_icon(c, row.icon, Rect::new(r.x + ui_px(22.0), r.y + (r.h - isz) / 2, isz, isz), fg);
+            ui_icon(c, row.icon, Rect::new(lx, r.y + (r.h - isz) / 2, isz, isz), fg);
+            lx += isz + settings_gap();
         }
-        let lx = r.x + isz + ui_px(44.0);
-        let lr = Rect::new(lx, r.y, r.x + r.w - lx - ui_px(20.0), r.h);
+        let lr = Rect::new(lx, r.y, r.x + r.w - lx - settings_pad(), r.h);
         if row.name {
             ui_text_name(c, FontFace::Regular, ui_text_size(), ui_small_size(), lr, &row.label, 2, fg);
         } else {
@@ -3263,7 +3400,7 @@ fn draw_bind_group(a: &mut App, kind: BindKind, group: usize) {
     let title = tr(ACTION_GROUPS[group].title);
     let page = settings_page(&mut a.screen, aw, ah, title, true, false);
     hits_add(&mut lib(a).hits, page.back, bind_done_hit(kind), 0);
-    hits_add(&mut lib(a).hits, page.close, bind_done_hit(kind), 0);
+    hits_add(&mut lib(a).hits, page.close, H_SETTINGS_CLOSE, 0);
     let in_ = page.content;
     let gap = ui_px(14.0);
     let rh = ((in_.h - (n - 1).max(0) * gap) / n.max(1)).clamp(ui_px(90.0), ui_px(140.0));
@@ -3316,27 +3453,18 @@ fn draw_bind_row(
     thumb: Option<FsGesture>,
 ) {
     let selected = learning;
-    // (a submenu's rows are a list, not buttons: only the row being learned is filled, rounded)
-    if selected {
-        ui_frame(c, r, ui_px(16.0), 0, true, 0);
-    }
+    // (a submenu's rows are Settings' cards: the row being learned is filled, the rest outlined)
+    settings_card(c, r, if selected { ButtonStyle::Selected } else { ButtonStyle::Plain });
     let fg = if selected { 255 } else { 0 };
+    let pad = settings_pad();
+    let mut text_x = r.x + pad;
     if row.icon != IconKind::None {
-        ui_icon(
-            c,
-            row.icon,
-            Rect::new(
-                r.x + ui_px(20.0),
-                r.y + ui_px(15.0),
-                rh - ui_px(30.0),
-                rh - ui_px(30.0),
-            ),
-            fg,
-        );
+        let isz = rh - ui_px(30.0);
+        ui_icon(c, row.icon, Rect::new(r.x + pad, r.y + ui_px(15.0), isz, isz), fg);
+        text_x += isz + settings_gap();
     }
     let thumb_w = if thumb.is_some() { ui_px(120.0) } else { 0 };
-    let text_x = r.x + rh + ui_px(10.0);
-    let text_w = r.w - rh - ui_px(30.0) - thumb_w;
+    let text_w = r.x + r.w - text_x - pad - thumb_w;
     ui_text(
         c,
         FontFace::Bold,
@@ -3742,7 +3870,8 @@ fn setting_hit(id: settingsmenu::SettingId) -> i32 {
     use settingsmenu::SettingId::*;
     match id {
         Display => H_SET_DISPLAY,
-        SleepClock => H_SET_SLEEP,
+        SleepSettings => H_SET_SLEEP,
+        ClockSettings => H_SET_CLOCK,
         Theme => H_SET_THEME,
         Font => H_SET_FONT,
         Rotate => H_SET_ROTATE,
@@ -3759,6 +3888,7 @@ fn setting_hit(id: settingsmenu::SettingId) -> i32 {
         Wifi => H_WIFI_MENU,
         KOReader => H_KOREADER,
         Updates => H_UPDATES,
+        AboutDevice => H_SET_DEVICE,
     }
 }
 
@@ -3782,7 +3912,7 @@ fn draw_settings(a: &mut App) {
     let top = page.content.y;
     let cats = &settingsmenu::CATEGORIES;
     let side_w = (aw * 30 / 100).clamp(ui_px(320.0), ui_px(560.0));
-    let (mut cat_h, mut cat_gap) = (ui_px(120.0), ui_px(14.0));
+    let (mut cat_h, mut cat_gap) = (ui_px(120.0), ui_px(16.0));
     // Room for more categories than today's six: tighten their spacing rather than running into
     // Done. With six categories this changes nothing.
     let ncat = cats.len() as i32;
@@ -3798,22 +3928,18 @@ fn draw_settings(a: &mut App) {
     let mut y = top;
     for (i, cat) in cats.iter().enumerate() {
         let r = Rect::new(pad, y, side_w, cat_h);
-        let fg: u8 = if i as i32 == active {
-            ui_frame(c, r, ui_px(16.0), 0, true, 0);
-            255
-        } else {
-            ui_frame(c, r, ui_px(16.0), 255, true, 0);
-            ui_frame(c, r, ui_px(16.0), 0, false, ui_px(2.0));
-            0
-        };
+        let on = i as i32 == active;
+        settings_card(c, r, if on { ButtonStyle::Selected } else { ButtonStyle::Plain });
+        let fg: u8 = if on { 255 } else { 0 };
         let isz = ui_px(60.0);
-        ui_icon(c, cat.icon, Rect::new(r.x + ui_px(22.0), r.y + (r.h - isz) / 2, isz, isz), fg);
+        let lx = r.x + settings_pad() + isz + settings_gap();
+        ui_icon(c, cat.icon, Rect::new(r.x + settings_pad(), r.y + (r.h - isz) / 2, isz, isz), fg);
         ui_text(
             c,
             FontFace::Bold,
             ui_text_size(),
             ui_small_size(),
-            Rect::new(r.x + isz + ui_px(40.0), r.y, r.w - isz - ui_px(60.0), r.h),
+            Rect::new(lx, r.y, r.x + r.w - lx - settings_pad(), r.h),
             tr(cat.title),
             2,
             false,
@@ -3847,12 +3973,14 @@ fn draw_settings(a: &mut App) {
     let mut y = list_top;
     for item in cat.items.iter().filter(|it| it.show.visible(classic)) {
         let r = Rect::new(content_x, y, content_w, rh);
-        ui_frame(c, r, ui_px(16.0), 255, true, 0);
-        ui_frame(c, r, ui_px(16.0), 0, false, ui_px(2.0));
+        settings_card(c, r, ButtonStyle::Plain);
         let isz = ui_px(60.0);
-        ui_icon(c, item.icon, Rect::new(r.x + ui_px(22.0), r.y + (r.h - isz) / 2, isz, isz), 0);
-        let lx = r.x + isz + ui_px(44.0);
-        let lr = Rect::new(lx, r.y + ui_px(8.0), r.w - (lx - r.x) - ui_px(20.0), r.h - ui_px(16.0));
+        let mut lx = r.x + settings_pad();
+        if item.icon != IconKind::None {
+            ui_icon(c, item.icon, Rect::new(lx, r.y + (r.h - isz) / 2, isz, isz), 0);
+            lx += isz + settings_gap();
+        }
+        let lr = Rect::new(lx, r.y + ui_px(8.0), r.x + r.w - lx - settings_pad(), r.h - ui_px(16.0));
         let label: &str = match item.label {
             settingsmenu::Label::Text(msgid) => tr(msgid),
             settingsmenu::Label::Style => tr(if classic {
@@ -3926,7 +4054,12 @@ fn draw_settings(a: &mut App) {
             }
         };
         match item.check.value(settings) {
-            Some(checked) => ui_checkbox(c, lr, label, checked),
+            Some(checked) => {
+                // An on/off row reads as Updates' branch does: its label, and the switch at the card's right.
+                let lrr = Rect::new(lr.x, lr.y, (lr.w - ui_px(170.0)).max(0), lr.h);
+                ui_text(c, FontFace::Regular, ui_text_size(), ui_small_size(), lrr, label, 2, false, 0);
+                settings_switch(c, r, checked);
+            }
             None => ui_text(
                 c,
                 FontFace::Regular,
@@ -4007,13 +4140,11 @@ fn draw_font_own_row(c: &mut Canvas, r: Rect, f: &mut crate::userfonts::UserFont
     crate::userfonts::userfont_resolve(f);
     let usable = f.usable();
     let fg: u8 = if on { 255 } else if usable { 0 } else { 110 };
-    if on {
-        ui_frame(c, r, ui_px(16.0), 0, true, 0);
-    }
+    settings_card(c, r, if on { ButtonStyle::Selected } else if usable { ButtonStyle::Plain } else { ButtonStyle::Disabled });
     let mark = r.h - ui_px(30.0);
-    let x = r.x + ui_px(40.0);
+    let x = r.x + settings_pad();
     // (the check mark's room is the row's own while it has none)
-    let w = r.w - ui_px(80.0) - if applied { mark } else { 0 };
+    let w = r.x + r.w - x - settings_pad() - if applied { mark } else { 0 };
     let top = Rect::new(x, r.y + ui_px(8.0), w, r.h - ui_px(58.0));
     let bottom = Rect::new(x, r.y + r.h - ui_px(54.0), w, ui_px(46.0));
     let note = font_row_note(f);
@@ -4152,12 +4283,10 @@ fn draw_font_sheet_in(a: &mut App, applied: Option<usize>) {
         let r = cell(i, y);
         let on = own_pick.is_none() && i == pick;
         let fg: u8 = if on { 255 } else { 0 };
-        if on {
-            ui_frame(c, r, ui_px(16.0), 0, true, 0);
-        }
+        settings_card(c, r, if on { ButtonStyle::Selected } else { ButtonStyle::Plain });
         let mark = rh - ui_px(30.0);
         font_with_family(i, || {
-            font_draw_left(c, FontFace::Bold, ui_text_size(), Rect::new(r.x + ui_px(40.0), r.y, r.w - ui_px(80.0) - mark, rh), f.name, fg);
+            font_draw_left(c, FontFace::Bold, ui_text_size(), Rect::new(r.x + settings_pad(), r.y, r.w - 2 * settings_pad() - mark, rh), f.name, fg);
         });
         if applied == Some(i) {
             ui_icon(c, IconKind::Check, Rect::new(r.x + r.w - ui_px(25.0) - mark, r.y + ui_px(15.0), mark, mark), fg);
@@ -4390,111 +4519,7 @@ fn draw_modal(a: &mut App) {
                 hits_add(&mut s.hits, *r, H_ABOUT_ROW, *i as i32);
             }
         }
-        Modal::Updates => {
-            let mut status = String::new();
-            let mut channel = String::new();
-            let mut now = String::new();
-            let avail = update_available();
-            let s = lib(a);
-            let (upd, newer, latest, why) =
-                (s.upd, upd_newer(s), s.upd_latest.clone(), s.upd_why.clone());
-            if !avail {
-                // TRANSLATORS: the Updates sheet's first line (about 1100 px at 44 px in bold): the version
-                // running; then while it checks; then what the check found: a newer one (%s), or that this
-                // one (%s) is the newest; or why it could not check.
-                csnprintf!(
-                    &mut status,
-                    200,
-                    "%s",
-                    tr("Updates come through KPM, which is not here.")
-                );
-            } else if upd == UPD_CHECKING {
-                csnprintf!(&mut status, 200, "%s", tr("Checking for updates..."));
-            } else if upd == UPD_DONE && newer {
-                csnprintf!(&mut status, 200, tr("Grimoire %s is available."), &latest);
-            } else if upd == UPD_DONE {
-                csnprintf!(
-                    &mut status,
-                    200,
-                    tr("Grimoire %s is the newest."),
-                    GRIMOIRE_VERSION
-                );
-            } else if upd == UPD_FAILED && why == "network" {
-                csnprintf!(&mut status, 200, "%s", tr("Could not check. Is Wi-Fi on?"));
-            } else if upd == UPD_FAILED && why == "no-kpm" {
-                csnprintf!(
-                    &mut status,
-                    200,
-                    "%s",
-                    tr("Updates come through KPM, which is not here.")
-                );
-            } else if upd == UPD_FAILED {
-                csnprintf!(&mut status, 200, "%s", tr("Could not check for updates."));
-            } else {
-                csnprintf!(
-                    &mut status,
-                    200,
-                    tr("This is Grimoire %s."),
-                    GRIMOIRE_VERSION
-                );
-            }
-            // TRANSLATORS: (Updates sheet) which updates: betas too (the preview channel), or releases
-            // only (stable); a tap changes it.
-            csnprintf!(
-                &mut channel,
-                200,
-                "%s",
-                if upd_preview(a) {
-                    tr("Updates: betas and releases (tap for releases only)")
-                } else {
-                    tr("Updates: releases only (tap for betas too)")
-                }
-            );
-            // TRANSLATORS: (Updates sheet) installs the newer Grimoire (%s): Grimoire closes, KPM
-            // installs it, and Grimoire starts again.
-            csnprintf!(&mut now, 160, tr("Update to %s"), &latest);
-            let can = avail && upd != UPD_CHECKING;
-            let rows = [
-                menu_row(IconKind::None, &status, H_NONE, 0, ButtonStyle::Disabled),
-                menu_row(
-                    IconKind::None,
-                    &channel,
-                    H_UPD_CHANNEL,
-                    0,
-                    if can {
-                        ButtonStyle::Plain
-                    } else {
-                        ButtonStyle::Disabled
-                    },
-                ),
-                // TRANSLATORS: (Updates sheet) asks Grimoire's feed for a newer Grimoire (through KPM).
-                menu_row(
-                    IconKind::Update,
-                    tr("Check for updates"),
-                    H_UPD_CHECK,
-                    0,
-                    if can {
-                        ButtonStyle::Plain
-                    } else {
-                        ButtonStyle::Disabled
-                    },
-                ),
-                menu_row(
-                    IconKind::Download,
-                    if newer { now.as_str() } else { tr("Update") },
-                    H_UPD_NOW,
-                    0,
-                    if newer {
-                        ButtonStyle::Primary
-                    } else {
-                        ButtonStyle::Disabled
-                    },
-                ),
-                menu_row(IconKind::Close, tr("Done"), H_CANCEL, 0, ButtonStyle::Plain),
-            ];
-            // TRANSLATORS: the Updates sheet's title (Settings > Updates).
-            draw_settings_menu(a, tr("Updates"), &rows);
-        }
+        Modal::Updates => draw_updates(a),
         Modal::Pair => {
             let s = lib(a);
             let mut rows: Vec<MenuRow> = Vec::with_capacity(8);
@@ -5050,8 +5075,7 @@ fn draw_modal(a: &mut App) {
         }
         Modal::Language => {
             // Automatic, then every language by its own name; a pick applies at once. A full screen, as
-            // Settings' submenus are: the page's chrome, the choices as cards in two columns, and Done.
-            let (aw, ah) = (a.w, a.h);
+            // Settings' submenus are: the page's chrome and the choices as cards in two columns.
             let cur = language_picked(a);
             let mut auto_label = String::new();
             language_auto_label(&mut auto_label, 96);
@@ -5066,45 +5090,8 @@ fn draw_modal(a: &mut App) {
                 ));
                 i += 1;
             }
-            let App {
-                screen: c,
-                lib,
-                ..
-            } = a;
-            let s = lib.as_deref_mut().unwrap();
             // TRANSLATORS: the title of the list of languages (Settings > Language).
-            let page = settings_page(c, aw, ah, tr("Language"), true, false);
-            hits_add(&mut s.hits, page.back, H_LANG_BACK, 0);
-            hits_add(&mut s.hits, page.close, H_LANG_BACK, 0);
-            let in_ = page.content;
-            let gap = ui_px(16.0);
-            let n = rows.len() as i32;
-            let per = (n + 1) / 2;
-            let cw = (in_.w - gap) / 2;
-            let rh = ((in_.h - (per - 1) * gap) / per.max(1)).clamp(ui_px(90.0), ui_px(130.0));
-            for (k, (label, arg, selected)) in rows.iter().enumerate() {
-                let col = k as i32 / per;
-                let ri = k as i32 % per;
-                let r = Rect::new(in_.x + col * (cw + gap), in_.y + ri * (rh + gap), cw, rh);
-                let fg: u8 = if *selected {
-                    ui_frame(c, r, ui_px(16.0), 0, true, 0);
-                    255
-                } else {
-                    0
-                };
-                ui_text(
-                    c,
-                    FontFace::Regular,
-                    ui_text_size(),
-                    ui_small_size(),
-                    rect_inflate(r, -ui_px(16.0)),
-                    label,
-                    2,
-                    false,
-                    fg,
-                );
-                hits_add(&mut s.hits, r, H_LANG_PICK, *arg);
-            }
+            draw_pick_sheet(a, tr("Language"), &rows, H_LANG_PICK, H_LANG_BACK);
         }
         Modal::SideButton => {
             let cur = clampi(a.settings.side_button, 0, 3);
@@ -5126,6 +5113,8 @@ fn draw_modal(a: &mut App) {
             // TRANSLATORS: the title of the list of what the eraser does (Settings > Pen).
             draw_pick_sheet(a, tr("Eraser"), &rows, H_ERASER_PICK, H_ERASER_BACK);
         }
+        Modal::DeviceInfo => draw_device(a),
+        Modal::LinkQr => draw_link(a),
         Modal::Kb => {
             let (aw, ah) = (a.w, a.h);
             let App { screen, lib, .. } = a;
@@ -5228,6 +5217,136 @@ fn redraw(a: &mut App, m: RefreshMode) {
     app_invalidate_all(a, m);
 }
 
+/// The device's name for About: the Kindle's own model (its device tree, else /proc/usid's model
+/// code, its first 6 characters: never the serial number), or this computer's.
+fn device_name() -> String {
+    // (the reads are here for the Kindle build and are type-checked by every build; a computer has
+    // neither file, so the host and the simulator show their own line)
+    if cfg!(feature = "kindle") {
+        if let Ok(raw) = std::fs::read("/proc/device-tree/model") {
+            let name: String = raw.iter().take_while(|&&c| c != 0).map(|&c| c as char).collect();
+            let name = name.trim();
+            if !name.is_empty() {
+                return name.to_string();
+            }
+        }
+        if let Ok(f) = std::fs::File::open("/proc/usid") {
+            use std::io::Read;
+            let mut b = Vec::with_capacity(6);
+            let _ = f.take(6).read_to_end(&mut b);
+            let code: String = b.iter().map(|&c| if c.is_ascii_alphanumeric() { c as char } else { '?' }).collect();
+            if !code.is_empty() {
+                return format!("Kindle ({code})");
+            }
+        }
+        return tr("Kindle").to_string();
+    }
+    // TRANSLATORS: Settings > System > About, the device's name on a computer (the Kindle build names
+    // the Kindle's own model).
+    tr("This computer").to_string()
+}
+
+/// The two links About shows a QR code of (its Links rows open them).
+const ABOUT_KOFI_URL: &str = "https://ko-fi.com/B0B7EF4TJ";
+const ABOUT_GITHUB_URL: &str = "https://github.com/ganten1998/grimoire-scribe";
+
+/// Settings > System > About: what this device is, its version, a bar of the storage used (the data
+/// root's filesystem) with the free room under it, and the links. One text size for the lines under
+/// the name, as the rest of Settings.
+fn draw_device(a: &mut App) {
+    let (aw, ah) = (a.w, a.h);
+    let App { screen: c, lib, .. } = a;
+    let s = lib.as_deref_mut().unwrap();
+    let page = settings_page(c, aw, ah, tr("About"), true, false);
+    hits_add(&mut s.hits, page.back, H_DEVICE_BACK, 0);
+    hits_add(&mut s.hits, page.close, H_SETTINGS_CLOSE, 0);
+    let in_ = page.content;
+    let px = ui_text_size();
+    let name = device_name();
+    font_draw_left(c, FontFace::Bold, ui_title_size(), Rect::new(in_.x, in_.y, in_.w, ui_px(110.0)), &name, 0);
+    let mut ver = String::new();
+    csnprintf!(&mut ver, 96, tr("Grimoire %s"), GRIMOIRE_VERSION);
+    font_draw_left(c, FontFace::Regular, px, Rect::new(in_.x, in_.y + ui_px(115.0), in_.w, ui_px(70.0)), &ver, 0);
+    let mut y = in_.y + ui_px(260.0);
+    match crate::pdfimport::storage_space() {
+        Some((total, free)) => {
+            let used = total.saturating_sub(free);
+            let (used_s, total_s, free_s) = (
+                crate::browser::size_label(used),
+                crate::browser::size_label(total),
+                crate::browser::size_label(free),
+            );
+            let mut used_line = String::new();
+            csnprintf!(&mut used_line, 256, tr("Storage: %s of %s used"), used_s.as_str(), total_s.as_str());
+            font_draw_left(c, FontFace::Regular, px, Rect::new(in_.x, y, in_.w, ui_px(70.0)), &used_line, 0);
+            // The bar runs the page's full width; the fill inside it is rounded as the bar is, so
+            // the progress ends in a pill rather than a square corner.
+            let bar = Rect::new(in_.x, y + ui_px(95.0), in_.w, ui_px(72.0));
+            ui_frame(c, bar, bar.h / 2, 0, false, ui_px(3.0));
+            let inner = rect_inflate(bar, -ui_px(10.0));
+            let filled = if total > 0 { (inner.w as u64 * used / total) as i32 } else { 0 };
+            if filled > 0 {
+                let fr = Rect::new(inner.x, inner.y, filled.min(inner.w), inner.h);
+                ui_frame(c, fr, fr.h / 2, 0, true, 0);
+            }
+            let mut free_line = String::new();
+            csnprintf!(&mut free_line, 160, tr("%s free"), free_s.as_str());
+            font_draw_left(c, FontFace::Regular, px, Rect::new(in_.x, bar.y + bar.h + ui_px(26.0), in_.w, ui_px(70.0)), &free_line, 0);
+            y = bar.y + bar.h + ui_px(102.0);
+        }
+        None => {
+            // TRANSLATORS: Settings > System > About, where the storage bar would be when the system
+            // cannot tell the storage's size.
+            font_draw_left(c, FontFace::Regular, px, Rect::new(in_.x, y, in_.w, ui_px(70.0)), tr("Storage: not available"), 0);
+            y += ui_px(102.0);
+        }
+    }
+    // The links, as rows a tap opens on their own page with a QR code a phone scans.
+    y += ui_px(40.0);
+    // TRANSLATORS: Settings > System > About, the heading over the two links (Ko-fi and GitHub).
+    font_draw_left(c, FontFace::Bold, px, Rect::new(in_.x, y, in_.w, ui_px(70.0)), tr("Links"), 0);
+    y += ui_px(90.0);
+    // TRANSLATORS: Settings > System > About, the two links (Ko-fi, where Grimoire can be supported, and
+    // GitHub, where its source is); each row opens a page with a QR code of the link.
+    for (label, hit) in [(tr("Ko-fi"), H_LINK_KOFI), (tr("GitHub"), H_LINK_GITHUB)] {
+        let r = Rect::new(in_.x, y, in_.w, ui_px(130.0));
+        settings_card(c, r, ButtonStyle::Plain);
+        font_draw_left(
+            c,
+            FontFace::Regular,
+            px,
+            Rect::new(r.x + settings_pad(), r.y, r.w - 2 * settings_pad(), r.h),
+            label,
+            0,
+        );
+        hits_add(&mut s.hits, r, hit, 0);
+        y += r.h + ui_px(20.0);
+    }
+}
+
+/// Settings > System > About's Ko-fi or GitHub: the link as a QR code, with the address under it.
+fn draw_link(a: &mut App) {
+    let (aw, ah) = (a.w, a.h);
+    let App { screen: c, lib, .. } = a;
+    let s = lib.as_deref_mut().unwrap();
+    let (title, url) = if s.device_link == 2 {
+        (tr("GitHub"), ABOUT_GITHUB_URL)
+    } else {
+        (tr("Ko-fi"), ABOUT_KOFI_URL)
+    };
+    let page = settings_page(c, aw, ah, title, true, false);
+    hits_add(&mut s.hits, page.back, H_LINK_BACK, 0);
+    hits_add(&mut s.hits, page.close, H_SETTINGS_CLOSE, 0);
+    let in_ = page.content;
+    // TRANSLATORS: Settings > System > About > Ko-fi or GitHub, above the link's QR code.
+    font_draw_left(c, FontFace::Regular, ui_text_size(), Rect::new(in_.x, in_.y, in_.w, ui_px(70.0)), tr("Scan with a phone's camera"), 0);
+    let top = in_.y + ui_px(110.0);
+    let side = (in_.h - ui_px(300.0)).min(in_.w);
+    let sym = crate::qr::ui_qr(c, Rect::new(in_.x + (in_.w - side) / 2, top, side, side), url, false);
+    let ty = if rect_is_empty(sym) { top } else { sym.y + sym.h + ui_px(30.0) };
+    ui_text(c, FontFace::Regular, ui_text_size(), ui_small_size(), Rect::new(in_.x, ty, in_.w, ui_px(90.0)), url, 2, true, 0);
+}
+
 /// A Settings submenu of choices, as Language's: the page's chrome, the choices as cards in two
 /// columns (the chosen one filled), and a tap picking one. `rows` is (label, arg, chosen).
 fn draw_pick_sheet(a: &mut App, title: &str, rows: &[(String, i32, bool)], pick: i32, back: i32) {
@@ -5236,7 +5355,7 @@ fn draw_pick_sheet(a: &mut App, title: &str, rows: &[(String, i32, bool)], pick:
     let s = lib.as_deref_mut().unwrap();
     let page = settings_page(c, aw, ah, title, true, false);
     hits_add(&mut s.hits, page.back, back, 0);
-    hits_add(&mut s.hits, page.close, back, 0);
+    hits_add(&mut s.hits, page.close, H_SETTINGS_CLOSE, 0);
     let in_ = page.content;
     let gap = ui_px(16.0);
     let n = rows.len() as i32;
@@ -5247,12 +5366,8 @@ fn draw_pick_sheet(a: &mut App, title: &str, rows: &[(String, i32, bool)], pick:
         let col = k as i32 / per;
         let ri = k as i32 % per;
         let r = Rect::new(in_.x + col * (cw + gap), in_.y + ri * (rh + gap), cw, rh);
-        let fg: u8 = if *selected {
-            ui_frame(c, r, ui_px(16.0), 0, true, 0);
-            255
-        } else {
-            0
-        };
+        settings_card(c, r, if *selected { ButtonStyle::Selected } else { ButtonStyle::Plain });
+        let fg: u8 = if *selected { 255 } else { 0 };
         ui_text(
             c,
             FontFace::Regular,
@@ -5307,6 +5422,32 @@ fn close_modal(a: &mut App) {
     }
     lib(a).modal = Modal::None;
     redraw(a, RefreshMode::Ui);
+}
+
+/// The X on any Settings page, or on a screen Settings opened: the whole of Settings closes, back
+/// to the Library—or to the editor it was opened over. Back still goes one step back.
+fn close_settings(a: &mut App, mode: RefreshMode) {
+    if lib(a).settings_return_editor {
+        let changed = lib(a).settings_editor_fit != a.settings.landscape_fit;
+        lib(a).settings_return_editor = false;
+        lib(a).modal = Modal::None;
+        library_leave(a);
+        if changed {
+            editor_fit_changed(a, true);
+        }
+        crate::editor::editor_settings_background(a);
+        app_invalidate_all(a, mode);
+        return;
+    }
+    lib(a).modal = Modal::None;
+    redraw(a, mode);
+}
+
+/// Pen feel's X: Settings must not reopen behind the screen it came from (its Back still does).
+pub(crate) fn settings_skip_reopen(a: &mut App) {
+    if let Some(s) = a.lib.as_deref_mut() {
+        s.reopen_settings = false;
+    }
 }
 
 fn open_kb(a: &mut App, p: KbPurpose, title: &str, initial: &[u8]) {
@@ -5686,6 +5827,7 @@ fn act(a: &mut App, h: &Hit) {
         H_NEW_CREATE => create_notebook(a),
         H_NEW_FILE => files_open(a),
         H_CANCEL => close_modal(a),
+        H_SETTINGS_CLOSE => close_settings(a, RefreshMode::Ui),
         // Back (and Done) on a Settings submenu: to the Settings page it was opened from, or one step
         // back through Shortcuts / Pair, as Esc already does. It must never close Settings itself.
         H_SETTINGS_BACK => {
@@ -5821,35 +5963,46 @@ fn act(a: &mut App, h: &Hit) {
             open_modal(a, back);
         }
         H_UPDATES => {
-            let s = lib(a);
-            if s.upd != UPD_CHECKING {
-                s.upd = UPD_IDLE;
+            // Opening the page runs the check (one already under way finishes first).
+            if lib(a).upd != UPD_CHECKING {
+                lib(a).upd = UPD_IDLE;
+                if update_check(upd_preview(a)) {
+                    lib(a).upd = UPD_CHECKING;
+                }
             }
             open_modal(a, Modal::Updates);
         }
         H_UPD_CHANNEL => {
-            a.settings.updates = if upd_preview(a) { 1 } else { 2 };
+            let preview = !upd_preview(a);
+            a.settings.updates = if preview { 2 } else { 1 };
             settings_save(&a.settings);
-            lib(a).upd = UPD_IDLE; // (what a check found was the other channel's)
-            redraw(a, RefreshMode::Ui);
-        }
-        H_UPD_CHECK => {
-            if update_check(upd_preview(a)) {
-                lib(a).upd = UPD_CHECKING;
+            // What the last check found was the other branch's: ask this one now (a check already
+            // under way is left to finish).
+            if !update_checking() {
+                lib(a).upd = UPD_IDLE;
+                if update_check(preview) {
+                    lib(a).upd = UPD_CHECKING;
+                }
             }
             redraw(a, RefreshMode::Ui);
         }
         H_UPD_NOW => {
-            if !upd_newer(lib(a)) {
+            if upd_newer(lib(a)) {
+                if update_request(upd_preview(a)) != 0 {
+                    // TRANSLATORS: a toast: the update could not be asked for (the storage is full, say).
+                    app_toast(a, tr("Couldn't start update"), 3000);
+                    return;
+                }
+                qlog!("update: leaving so KPM can install %s", &lib(a).upd_latest);
+                app_leave_for_update(a);
                 return;
             }
-            if update_request(upd_preview(a)) != 0 {
-                // TRANSLATORS: a toast: the update could not be asked for (the storage is full, say).
-                app_toast(a, tr("Couldn't start update"), 3000);
-                return;
+            // Nothing newer (a failed or idle check): the button asks again.
+            let preview = upd_preview(a);
+            if update_check(preview) {
+                lib(a).upd = UPD_CHECKING;
             }
-            qlog!("update: leaving so KPM can install %s", &lib(a).upd_latest);
-            app_leave_for_update(a);
+            redraw(a, RefreshMode::Ui);
         }
         H_BT_TOGGLE => {
             a.settings.controller = !a.settings.controller;
@@ -5960,10 +6113,16 @@ fn act(a: &mut App, h: &Hit) {
             lib(a).dm = dm;
             open_modal(a, Modal::Display);
         }
-        // Settings' Sleep & Clock (2.1): the sleep screen, the timer and the clock, on their own page.
+        // Settings' Sleep & Clock (2.1): the sleep screen and timer, and the clock, on pages of their own.
         H_SET_SLEEP => {
             let mut dm = std::mem::take(&mut lib(a).dm);
             dispmenu_open_sleep(&mut dm, a);
+            lib(a).dm = dm;
+            open_modal(a, Modal::Display);
+        }
+        H_SET_CLOCK => {
+            let mut dm = std::mem::take(&mut lib(a).dm);
+            dispmenu_open_clock(&mut dm, a);
             lib(a).dm = dm;
             open_modal(a, Modal::Display);
         }
@@ -6007,6 +6166,20 @@ fn act(a: &mut App, h: &Hit) {
         }
         H_ERASER_BACK => {
             lib(a).modal = Modal::Settings;
+            redraw(a, RefreshMode::Ui);
+        }
+        // About: what this Kindle is, the storage used, and its links (their QR pages back to About).
+        H_SET_DEVICE => open_modal(a, Modal::DeviceInfo),
+        H_DEVICE_BACK => {
+            lib(a).modal = Modal::Settings;
+            redraw(a, RefreshMode::Ui);
+        }
+        H_LINK_KOFI | H_LINK_GITHUB => {
+            lib(a).device_link = if h.id == H_LINK_GITHUB { 2 } else { 1 };
+            open_modal(a, Modal::LinkQr);
+        }
+        H_LINK_BACK => {
+            lib(a).modal = Modal::DeviceInfo;
             redraw(a, RefreshMode::Ui);
         }
         H_SET_FONT => {
@@ -6064,10 +6237,10 @@ fn act(a: &mut App, h: &Hit) {
         // A tap on a font applies it at once, so X only closes the sheet (a last apply changes nothing then);
         // Back and Esc close it too, the font already the one picked.
         H_FONT_DONE => {
+            // (the font applied as it was tapped; the X closes all of Settings too)
             let changed = font_apply_pick(a);
             font_sheet_closed(a);
-            lib(a).modal = Modal::Settings;
-            redraw(a, if changed { RefreshMode::Full } else { RefreshMode::Ui });
+            close_settings(a, if changed { RefreshMode::Full } else { RefreshMode::Ui });
         }
         H_FONT_CANCEL => {
             font_sheet_closed(a);
@@ -6664,8 +6837,12 @@ pub fn library_back(a: &mut App) -> bool {
             lib(a).modal = Modal::Settings;
             redraw(a, RefreshMode::Ui);
         }
+        Modal::LinkQr => {
+            lib(a).modal = Modal::DeviceInfo;
+            redraw(a, RefreshMode::Ui);
+        }
         Modal::Language | Modal::Koreader | Modal::Shortcuts | Modal::PairMenu | Modal::Updates | Modal::Wifi
-        | Modal::SideButton | Modal::EraserMode => {
+        | Modal::SideButton | Modal::EraserMode | Modal::DeviceInfo => {
             lib(a).modal = Modal::Settings;
             redraw(a, RefreshMode::Ui);
         }
@@ -6972,7 +7149,9 @@ fn library_event_in(a: &mut App, ev: &InEvent) {
             dispmenu_pointer(&mut dm, a, ph, ev.x, ev.y, ev.t_ms, &mut d)
         };
         lib(a).dm = dm;
-        if r == DmResult::Closed {
+        if r == DmResult::ClosedAll {
+            close_settings(a, RefreshMode::Ui); // the X closes all of Settings
+        } else if r == DmResult::Closed {
             lib(a).modal = Modal::Settings; // back to the settings sheet it was opened from
             redraw(a, RefreshMode::Ui);
         } else if r == DmResult::Inverted {
@@ -7444,6 +7623,10 @@ pub fn library_probe(a: &mut App, key: &str, out: &mut String, cap: usize) -> i3
         csnprintf!(out, cap, "pen-button");
     } else if key == "sheet" && s.modal == Modal::EraserMode {
         csnprintf!(out, cap, "eraser-mode");
+    } else if key == "sheet" && s.modal == Modal::DeviceInfo {
+        csnprintf!(out, cap, "about-device");
+    } else if key == "sheet" && s.modal == Modal::LinkQr {
+        csnprintf!(out, cap, "about-link");
     } else if key == "sheet" {
         match SHEETS.get(s.modal as usize) {
             Some(m) => csnprintf!(out, cap, "%s", *m),
@@ -7572,11 +7755,11 @@ pub fn library_probe(a: &mut App, key: &str, out: &mut String, cap: usize) -> i3
                 H_FMORE_RENAME=>"fmore.rename",H_FMORE_MOVE=>"fmore.move",H_FMORE_REMOVE=>"fmore.remove",
                 H_MOVE_TOP=>"move.top",H_MOVE_TO=>"move.to.",H_MOVE_NEW=>"move.new",H_MOVE_PREV=>"move.prev",H_MOVE_NEXT=>"move.next",
                 H_SET_PENS => "pen-feel", H_SET_CALIB => "calibrate", H_SET_DISPLAY => "display",
-                H_SET_SLEEP => "sleep-clock",
+                H_SET_SLEEP => "sleep-clock", H_SET_CLOCK => "clock-settings",
                 H_KOREADER => "ko", H_SHORTCUTS => "shortcuts", H_PAIR_MENU => "pair-menu", H_GESTURES => "gestures",
                 H_SHORTCUT_DEVICE => "shortcuts.device", H_SHORTCUT_OWN => "shortcuts.own", H_SHORTCUT_RELOAD => "shortcuts.reload",
                 H_UPDATES => "updates", H_CANCEL => "done", H_GESTURES_MASTER => "gestures.master",
-                H_UPD_CHANNEL => "updates.channel", H_UPD_CHECK => "updates.check", H_UPD_NOW => "updates.now",
+                H_UPD_CHANNEL => "updates.channel", H_UPD_NOW => "updates.now",
                 H_SET_ROTATE => "rotate", H_SHORTCUT_ENABLE => "shortcuts.enable", H_BT_TOGGLE => "bluetooth",
                 H_PAIR => "pair", H_BUTTONS => "buttons",
                 H_GESTURES_RESET => "gestures.reset", H_GESTURES_DONE => "done",
@@ -8505,12 +8688,13 @@ mod tests {
                             hits_clear(&mut lib(&mut a).hits);
                             draw_modal(&mut a);
                             let hits = &a.lib.as_ref().unwrap().hits;
-                            // (Back at the top left and X at the top right, then the rows: the two
-                            // close the group, as Done used to)
+                            // (Back at the top left closes the group, as Done used to; the X at the top
+                            // right closes all of Settings; then the rows)
                             let done_hit = bind_done_hit(kind);
                             let row_hit = bind_row_hit(kind);
                             assert_eq!(hits.h.len(), binding_row_count(kind, group) + 2);
-                            assert_eq!(hits.h.iter().filter(|h| h.id == done_hit).count(), 2);
+                            assert_eq!(hits.h.iter().filter(|h| h.id == done_hit).count(), 1);
+                            assert_eq!(hits.h.iter().filter(|h| h.id == H_SETTINGS_CLOSE).count(), 1);
                             let mut row_bottom = 0;
                             let mut next_row = 0;
                             for hit in &hits.h {
@@ -8528,7 +8712,7 @@ mod tests {
                                     hits_find(hits, (r.x + r.w / 2) as f32, (r.y + r.h / 2) as f32)
                                         .unwrap();
                                 assert_eq!((found.id, found.arg), (hit.id, hit.arg));
-                                if hit.id == done_hit {
+                                if hit.id == done_hit || hit.id == H_SETTINGS_CLOSE {
                                     assert_eq!(hit.arg, 0);
                                 } else {
                                     assert_eq!(hit.id, row_hit);
@@ -8602,10 +8786,10 @@ mod tests {
         let _ = std::fs::remove_dir_all(&root);
     }
 
-    // Settings' Sleep & Clock row: the sleep screen, the sleep timer and the clock on a page of their
-    // own, apart from Display's light and appearance rows.
+    // Settings' Sleep & Clock category: two rows, each a page of its own—the sleep screen and timer,
+    // the clock and battery—apart from Display's light and appearance rows.
     #[test]
-    fn settings_sleep_and_clock_opens_its_own_page() {
+    fn settings_sleep_and_clock_open_their_own_pages() {
         let root = std::env::temp_dir().join(format!("grimoire-sleep-clock-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&root);
         assert_eq!(store_init(root.to_str().unwrap()), 0);
@@ -8620,26 +8804,42 @@ mod tests {
         lib(&mut a).settings_cat = 2;
         hits_clear(&mut lib(&mut a).hits);
         draw_settings(&mut a);
-        assert!(
-            a.lib.as_ref().unwrap().hits.h.iter().any(|h| h.id == H_SET_SLEEP),
-            "the Sleep & Clock row"
-        );
+        let hits = &a.lib.as_ref().unwrap().hits;
+        assert!(hits.h.iter().any(|h| h.id == H_SET_SLEEP), "the Sleep settings row");
+        assert!(hits.h.iter().any(|h| h.id == H_SET_CLOCK), "the Clock settings row");
+
         act(&mut a, &Hit { r: RECT_EMPTY, id: H_SET_SLEEP, arg: 0 });
-        let (modal, page) = {
+        {
             let s = lib(&mut a);
-            (s.modal, s.dm.page)
-        };
-        assert_eq!(modal, Modal::Display);
-        assert_eq!(page, crate::dispmenu::DmPage::SleepClock);
+            assert_eq!(s.modal, Modal::Display);
+            assert_eq!(s.dm.page, crate::dispmenu::DmPage::Sleep);
+        }
+        let mut dm = std::mem::take(&mut lib(&mut a).dm);
+        dispmenu_draw(&mut dm, &mut a);
+        for name in ["sleep", "sleep_after"] {
+            assert!(dispmenu_control_point(&dm, name).is_some(), "Sleep settings lost {name}");
+        }
+        for name in ["size", "corner", "time12", "brightness", "invert", "fit"] {
+            assert!(dispmenu_control_point(&dm, name).is_none(), "Sleep settings shows {name}");
+        }
+        lib(&mut a).dm = dm;
+
+        act(&mut a, &Hit { r: RECT_EMPTY, id: H_SET_CLOCK, arg: 0 });
+        {
+            let s = lib(&mut a);
+            assert_eq!(s.modal, Modal::Display);
+            assert_eq!(s.dm.page, crate::dispmenu::DmPage::Clock);
+        }
         let mut dm = std::mem::take(&mut lib(&mut a).dm);
         dispmenu_draw(&mut dm, &mut a);
         for name in ["size", "corner", "time12"] {
-            assert!(dispmenu_control_point(&dm, name).is_some(), "Sleep & Clock lost {name}");
+            assert!(dispmenu_control_point(&dm, name).is_some(), "Clock settings lost {name}");
         }
-        for name in ["brightness", "invert", "fit"] {
-            assert!(dispmenu_control_point(&dm, name).is_none(), "Sleep & Clock shows {name}");
+        for name in ["sleep", "sleep_after", "brightness", "invert", "fit"] {
+            assert!(dispmenu_control_point(&dm, name).is_none(), "Clock settings shows {name}");
         }
         lib(&mut a).dm = dm;
+
         library_free(&mut a);
         canvas_free(&mut a.screen);
         i18n_set("en");
@@ -8707,6 +8907,115 @@ mod tests {
         let _ = std::fs::remove_dir_all(&root);
     }
 
+    // Settings > System > About: the device's page with its screen, version and storage bar, Back
+    // returning to Settings.
+    #[test]
+    fn settings_about_shows_the_device_and_its_storage() {
+        let root = std::env::temp_dir().join(format!("grimoire-about-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        assert_eq!(store_init(root.to_str().unwrap()), 0);
+        assert_eq!(font_init(), 0);
+        ui_init(300.0);
+        ui_set_theme(UiTheme::Gothic);
+        i18n_set("en");
+        let mut a = App { w: 1860, h: 2480, dpi: 300.0, input_drained: true, ..Default::default() };
+        assert_eq!(canvas_init(&mut a.screen, a.w, a.h), 0);
+        library_init(&mut a);
+        lib(&mut a).modal = Modal::Settings;
+        lib(&mut a).settings_cat = 5;
+        hits_clear(&mut lib(&mut a).hits);
+        draw_settings(&mut a);
+        assert!(
+            a.lib.as_ref().unwrap().hits.h.iter().any(|h| h.id == H_SET_DEVICE),
+            "the About row"
+        );
+        act(&mut a, &Hit { r: RECT_EMPTY, id: H_SET_DEVICE, arg: 0 });
+        assert_eq!(lib(&mut a).modal, Modal::DeviceInfo);
+        assert!(
+            a.lib.as_ref().unwrap().hits.h.iter().any(|h| h.id == H_DEVICE_BACK),
+            "About's Back"
+        );
+        assert!(crate::pdfimport::storage_space().is_some(), "the storage's size and free room");
+        assert!(
+            a.lib.as_ref().unwrap().hits.h.iter().any(|h| h.id == H_LINK_KOFI)
+                && a.lib.as_ref().unwrap().hits.h.iter().any(|h| h.id == H_LINK_GITHUB),
+            "About's links"
+        );
+        act(&mut a, &Hit { r: RECT_EMPTY, id: H_LINK_KOFI, arg: 0 });
+        assert_eq!((lib(&mut a).modal, lib(&mut a).device_link), (Modal::LinkQr, 1));
+        assert!(
+            a.lib.as_ref().unwrap().hits.h.iter().any(|h| h.id == H_LINK_BACK),
+            "the link's Back"
+        );
+        act(&mut a, &Hit { r: RECT_EMPTY, id: H_LINK_BACK, arg: 0 });
+        assert_eq!(lib(&mut a).modal, Modal::DeviceInfo);
+        act(&mut a, &Hit { r: RECT_EMPTY, id: H_LINK_GITHUB, arg: 0 });
+        assert_eq!((lib(&mut a).modal, lib(&mut a).device_link), (Modal::LinkQr, 2));
+        act(&mut a, &Hit { r: RECT_EMPTY, id: H_LINK_BACK, arg: 0 });
+        assert_eq!(lib(&mut a).modal, Modal::DeviceInfo);
+        act(&mut a, &Hit { r: RECT_EMPTY, id: H_DEVICE_BACK, arg: 0 });
+        assert_eq!(lib(&mut a).modal, Modal::Settings);
+        // The X closes all of Settings, from a submenu as from the main page.
+        act(&mut a, &Hit { r: RECT_EMPTY, id: H_SET_DEVICE, arg: 0 });
+        assert!(
+            a.lib.as_ref().unwrap().hits.h.iter().any(|h| h.id == H_SETTINGS_CLOSE),
+            "About's X"
+        );
+        act(&mut a, &Hit { r: RECT_EMPTY, id: H_SETTINGS_CLOSE, arg: 0 });
+        assert_eq!(lib(&mut a).modal, Modal::None, "the X closes all of Settings");
+        library_free(&mut a);
+        canvas_free(&mut a.screen);
+        i18n_set("en");
+        ui_init(300.0);
+        ui_set_theme(UiTheme::Gothic);
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    // Settings > Updates: one button that carries the version, and a switch for the branch updates come
+    // from; opening the page starts the check (with no KPM here, the button says so), and the switch
+    // flips and saves.
+    #[test]
+    fn settings_updates_has_one_button_and_the_branch_switch() {
+        let root = std::env::temp_dir().join(format!("grimoire-updates-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        assert_eq!(store_init(root.to_str().unwrap()), 0);
+        assert_eq!(font_init(), 0);
+        ui_init(300.0);
+        ui_set_theme(UiTheme::Gothic);
+        i18n_set("en");
+        let mut a = App { w: 1860, h: 2480, dpi: 300.0, input_drained: true, ..Default::default() };
+        assert_eq!(canvas_init(&mut a.screen, a.w, a.h), 0);
+        library_init(&mut a);
+        lib(&mut a).modal = Modal::Settings;
+        lib(&mut a).settings_cat = 0;
+        hits_clear(&mut lib(&mut a).hits);
+        draw_settings(&mut a);
+        act(&mut a, &Hit { r: RECT_EMPTY, id: H_UPDATES, arg: 0 });
+        assert_eq!(lib(&mut a).modal, Modal::Updates);
+        let hits = &a.lib.as_ref().unwrap().hits;
+        assert!(hits.h.iter().any(|h| h.id == H_SETTINGS_BACK), "Updates' Back");
+        assert!(hits.h.iter().any(|h| h.id == H_UPD_CHANNEL), "the branch switch");
+        assert!(
+            !hits.h.iter().any(|h| h.id == H_UPD_NOW),
+            "without KPM the Update button is disabled"
+        );
+        assert_eq!(a.lib.as_ref().unwrap().upd, UPD_IDLE, "the check ran and found no KPM");
+        let was = a.settings.updates;
+        act(&mut a, &Hit { r: RECT_EMPTY, id: H_UPD_CHANNEL, arg: 0 });
+        assert_ne!(a.settings.updates, was, "the switch saves its branch");
+        assert_ne!(a.settings.updates, 0, "a picked branch is explicit");
+        assert_eq!(lib(&mut a).modal, Modal::Updates);
+        assert!(a.lib.as_ref().unwrap().hits.h.iter().any(|h| h.id == H_UPD_CHANNEL));
+        act(&mut a, &Hit { r: RECT_EMPTY, id: H_SETTINGS_BACK, arg: 0 });
+        assert_eq!(lib(&mut a).modal, Modal::Settings);
+        library_free(&mut a);
+        canvas_free(&mut a.screen);
+        i18n_set("en");
+        ui_init(300.0);
+        ui_set_theme(UiTheme::Gothic);
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
     // Settings > Wi-Fi opened while the Share card's last read still runs (its own read cannot start then):
     // it asks once that one is done, and lists the saved networks even with the radio off.
     #[test]
@@ -8738,7 +9047,8 @@ mod tests {
         assert_eq!(rows, [0, 1]);
         assert_eq!(lib(&mut a).wifi.rows, [b"Home".to_vec(), b"Office".to_vec()]);
         let s = a.lib.as_ref().unwrap();
-        assert_eq!(s.hits.h.iter().filter(|h| h.id == H_SETTINGS_BACK).count(), 2, "Wi-Fi: Back and X");
+        assert_eq!(s.hits.h.iter().filter(|h| h.id == H_SETTINGS_BACK).count(), 1, "Wi-Fi: Back");
+        assert_eq!(s.hits.h.iter().filter(|h| h.id == H_SETTINGS_CLOSE).count(), 1, "Wi-Fi: X");
         assert!(!s.hits.h.iter().any(|h| h.id == H_CANCEL), "Wi-Fi: the sheet's own Done is gone");
         wifi_init(None);
         library_free(&mut a);

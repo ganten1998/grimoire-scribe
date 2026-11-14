@@ -10968,7 +10968,7 @@ fn owner_pointer(a: &mut App, ph: i32, ev: &InEvent, pen: bool) {
                     app_invalidate(a, d, RefreshMode::Ui);
                 }
                 app_toast_dismiss(a);
-            } else if r == DmResult::Closed {
+            } else if r == DmResult::Closed || r == DmResult::ClosedAll {
                 compose(a, d);
                 app_invalidate(a, d, RefreshMode::Ui);
             } else if !rect_is_empty(d) {

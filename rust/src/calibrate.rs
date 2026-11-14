@@ -21,6 +21,8 @@ const B_NONE: i32 = 0;
 const B_CANCEL: i32 = 1;
 const B_SKIP: i32 = 2;
 const B_SAVE: i32 = 3;
+/// The X at the top right: cancel (as Back does) and close all of Settings.
+const B_CLOSE: i32 = 5;
 const B_REDO: i32 = 4;
 
 /// The screen's state (calibrate.c's, which app.h keeps opaque): calibrate_init makes it, in a.cal.
@@ -88,10 +90,10 @@ fn draw(a: &mut App) {
         // TRANSLATORS: calibration's three steps, a title each.
         let title = if st.phase == Phase::Pen { tr("Calibrate the pen") } else if st.phase == Phase::Touch { tr("Calibrate touch") } else { tr("Check it") };
         // The same Settings frame every page has: Back at the top left, the step as the title, and
-        // the X at the top right (it cancels, as Back does).
+        // the X at the top right (it cancels, as Back does, and closes all of Settings).
         let page = crate::library::settings_page(c, aw, ah, title, true, false);
         hits_add(&mut st.hits, page.back, B_CANCEL, 0);
-        hits_add(&mut st.hits, page.close, B_CANCEL, 0);
+        hits_add(&mut st.hits, page.close, B_CLOSE, 0);
         let mut sub = String::new();
         if st.phase == Phase::Verify {
             // TRANSLATORS: what to do at each step of calibration, under its title (1740 px at 44 px):
@@ -309,6 +311,11 @@ pub fn calibrate_event(a: &mut App, ev: &InEvent) {
                 restore_old(a);
                 leave_to(a);
             }
+            B_CLOSE => {
+                restore_old(a);
+                crate::library::settings_skip_reopen(a);
+                leave_to(a);
+            }
             _ => {}
         }
         return;
@@ -320,8 +327,11 @@ pub fn calibrate_event(a: &mut App, ev: &InEvent) {
     if !target_input {
         // The other input operates the buttons.
         let b = button_at(a, ev.x, ev.y);
-        if b == B_CANCEL {
+        if b == B_CANCEL || b == B_CLOSE {
             restore_old(a);
+            if b == B_CLOSE {
+                crate::library::settings_skip_reopen(a);
+            }
             leave_to(a);
         } else if b == B_SKIP {
             s(a).new_touch = InputCalib::default();

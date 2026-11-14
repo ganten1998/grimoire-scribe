@@ -13,6 +13,8 @@ const H_CLEAR: i32 = 4;
 const H_SLIDER: i32 = 5;
 const H_PAD: i32 = 6;
 const H_ERASER_MODE: i32 = 7;
+/// The X at the top right: back to the screen Settings was opened over, closing all of Settings.
+const H_CLOSE: i32 = 8;
 
 /// The screen's state (pensettings.c's, which app.h keeps opaque): pensettings_init makes it, in a.ps.
 /// Its fields are the translator's, from the C struct, by the rules of PORTING.md.
@@ -325,13 +327,17 @@ fn draw_pad_bare(a: &mut App) {
         y += pitch;
     }
     ui_frame(c, rect_inflate(s.pad, ui_px(4.0)), ui_px(14.0), 0, false, ui_px(4.0));
+    // The pad's action is a card of its own, as Reset tool is: filled white over the ruled paper.
+    let clear = clear_rect(s.pad);
+    ui_frame(c, clear, ui_px(16.0), 255, true, 0);
+    crate::library::settings_card(c, clear, ButtonStyle::Plain);
     // TRANSLATORS: the button that wipes Pen feel's test pad (174 px at 44 px, or 34 px).
     // TRANSLATORS: on the eraser tab, restore the handwritten practice ink (174 px at 34 px).
     font_draw_centered(
         c,
         FontFace::Caps,
         ui_text_size(),
-        clear_rect(s.pad),
+        clear,
         if s.tab == TOOL_ERASER { tr("Reset pad") } else { tr("Clear") },
         0,
     );
@@ -366,36 +372,50 @@ fn draw_all(a: &mut App) {
     csnprintf!(&mut title, 128, tr("Pen feel: %s"), tool_label(st(a).tab));
     let page = crate::library::settings_page(&mut a.screen, aw, ah, &title, true, true);
     let m = page.content.x;
-    let tw = (aw - 2 * m - (TOOL_COUNT as i32 - 1) * ui_px(16.0)) / TOOL_COUNT as i32;
     let ty = page.content.y;
     let tabh = ui_px(150.0);
-    let top = ty + tabh + ui_px(70.0);
+    // (the tools' strip runs the page's full width; the curve and pad leave a little room above
+    // them for their labels)
+    let top = ty + tabh + ui_px(60.0);
     let gs = ui_px(500.0);
     {
         let App { screen: c, ps, .. } = &mut *a;
         let s = ps.as_deref_mut().expect("Pen feel's state");
         hits_add(&mut s.hits, page.back, H_BACK, 0);
-        hits_add(&mut s.hits, page.close, H_BACK, 0);
-        let reset = Rect { x: page.footer.x, y: page.footer.y, w: ui_px(360.0), h: page.footer.h };
+        hits_add(&mut s.hits, page.close, H_CLOSE, 0);
+        let pad = crate::library::settings_pad();
+        let label = tr("Reset tool");
+        // The footer's action is a card that fits its label, at the page's left (no room left over
+        // at its right).
+        let reset = Rect {
+            x: page.footer.x,
+            y: page.footer.y,
+            w: font_measure(FontFace::Caps, ui_text_size(), label) + 2 * pad,
+            h: page.footer.h,
+        };
+        crate::library::settings_card(c, reset, ButtonStyle::Plain);
         // TRANSLATORS: puts the tool's pen feel back as it came (328 px at 44 px, or 34 px).
-        font_draw_centered(c, FontFace::Caps, ui_text_size(), reset, tr("Reset tool"), 0);
+        font_draw_left(
+            c,
+            FontFace::Caps,
+            ui_text_size(),
+            Rect::new(reset.x + pad, reset.y + ui_px(10.0), reset.w - 2 * pad, reset.h - ui_px(20.0)),
+            label,
+            0,
+        );
         hits_add(&mut s.hits, reset, H_RESET, 0);
-        // Tabs.
+        // The tools are one card divided into segments, not a row of separate cards: the tool in
+        // use is the strip's dark segment, and one rule separates each two.
+        let strip = Rect { x: m, y: ty, w: aw - 2 * m, h: tabh };
+        let sel = TOOL_ORDER.iter().position(|&t| t == s.tab).map(|i| i as i32).unwrap_or(-1);
+        let segs = crate::library::settings_strip(c, strip, TOOL_COUNT as i32, sel);
         for (i, &t) in TOOL_ORDER.iter().enumerate() {
-            let r = Rect { x: m + i as i32 * (tw + ui_px(16.0)), y: ty, w: tw, h: tabh };
-            // With this many tools the tabs are icons only; the title names the selected one. A
-            // submenu's selections are not buttons: only the tool in use is filled, rounded.
+            let r = segs[i];
+            // With this many tools the tabs are icons only; the title names the selected one.
             let on = s.tab == t;
-            if on {
-                ui_frame(c, r, ui_px(16.0), 0, true, 0);
-            }
             ui_icon(c, ui_tool_icon(t.0), rect_inflate(r, -ui_px(14.0)), if on { 255 } else { 0 });
             hits_add(&mut s.hits, r, H_TAB, t.0);
         }
-        // A rule between the tools and the pressure curve and test pad below, as the one over the
-        // sliders. The curve's "ink" and the pad's label sit ui_px(14) above their tops, so 28 px under
-        // the tabs leaves the rule as far from them as from the tools.
-        canvas_hline(c, m, aw - m, ty + tabh + ui_px(28.0), ui_px(3.0), 0);
         // Graph + pad.
         s.graph = Rect { x: m + ui_px(10.0), y: top, w: gs, h: gs };
         s.pad = Rect { x: s.graph.x + gs + ui_px(70.0), y: top, w: aw - m - (s.graph.x + gs + ui_px(70.0)), h: gs };
@@ -465,8 +485,6 @@ fn draw_all(a: &mut App) {
     let s = ps.as_deref_mut().expect("Pen feel's state");
     let row = Rect { x: m, y: y + ui_px(24.0), w: aw - 2 * m, h: ui_px(120.0) };
     let name_w = row.w * 42 / 100;
-    let g = ui_px(20.0);
-    let cw = (row.w - name_w - g) / 2;
     // TRANSLATORS: Pen feel's eraser tab: the name of the row that picks how the eraser works, left
     // of its two choices, as a slider's name is left of it (720 px at 44 px, or two lines at 34 px).
     let name = tr("Eraser:");
@@ -479,12 +497,13 @@ fn draw_all(a: &mut App) {
         // it touches, as white ink does, keeping the paper's lines (468 px at 44 px).
         nc_("eraser", "Precise"),
     ];
+    // The two choices are one card divided into segments, as the tools are: the one in use is its
+    // dark segment, and one rule separates them.
+    let strip = Rect { x: row.x + name_w, y: row.y, w: row.w - name_w, h: row.h };
+    let segs = crate::library::settings_strip(c, strip, 2, eraser_mode);
     for i in 0..2 {
-        let r = Rect { x: row.x + name_w + i * (cw + g), y: row.y, w: cw, h: row.h };
+        let r = segs[i as usize];
         let on = eraser_mode == i;
-        if on {
-            ui_frame(c, r, ui_px(16.0), 0, true, 0);
-        }
         ui_text(
             c,
             FontFace::Caps,
@@ -877,6 +896,13 @@ pub fn pensettings_event(a: &mut App, ev: &InEvent) {
     }
     match h.id {
         H_BACK => {
+            let s = st(a);
+            let to = if s.ret == ScreenId::Penset { ScreenId::Library } else { s.ret };
+            app_switch(a, to);
+        }
+        H_CLOSE => {
+            // The X closes all of Settings too: nothing reopens behind Pen feel.
+            crate::library::settings_skip_reopen(a);
             let s = st(a);
             let to = if s.ret == ScreenId::Penset { ScreenId::Library } else { s.ret };
             app_switch(a, to);
