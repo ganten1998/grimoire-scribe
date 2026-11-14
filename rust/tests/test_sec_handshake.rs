@@ -118,7 +118,15 @@ fn pdf_start_is(dir: &str, want: &str) -> i32 {
     (got != want) as i32
 }
 
-fn picture_waits(dir: &str) -> i32 {
+/// The session's mark once a picture's or a font's worker was refused (`session_broken`: a sandbox step failed,
+/// and no more PDF or font work is queued this session): 0 when it is as `broken` says, 2 when it is not (the
+/// outcome itself was the one wanted).
+fn mark_is(broken: bool) -> i32 {
+    forkcase::note(&format!("session_broken: {}", session_broken()));
+    2 * (session_broken() != broken) as i32
+}
+
+fn picture_waits(dir: &str, broken: bool) -> i32 {
     let bytes = small_png(dir);
     let out = PicPool::new().decode(&bytes, false, 300, 400);
     let got = match &out {
@@ -126,21 +134,28 @@ fn picture_waits(dir: &str) -> i32 {
         o => format!("{o:?}"),
     };
     forkcase::note(&format!("PicPool::decode: {got}; in_fallback: {}", in_fallback()));
-    !(matches!(out, PicOut::NoWorker(_)) && in_fallback()) as i32
+    if !(matches!(out, PicOut::NoWorker(_)) && in_fallback()) {
+        return 1;
+    }
+    mark_is(broken)
 }
 
-fn font_has_no_worker(want: &str) -> i32 {
+fn font_has_no_worker(want: &str, broken: bool) -> i32 {
     let out = check_font(&fontfix::ttf(&fontfix::test_font("Regular", 400)), 44);
     let got = match &out {
         FontOut::Passed { .. } => "Passed".to_string(),
         o => format!("{o:?}"),
     };
     forkcase::note(&format!("check_font: {got}"));
-    (got != format!("NoWorker({want:?})")) as i32
+    if got != format!("NoWorker({want:?})") {
+        return 1;
+    }
+    mark_is(broken)
 }
 
 // Where the sandbox is required a worker that says `S 0` is refused before the writer sends it a command or a
-// byte of the file.
+// byte of the file. For the pictures and the fonts it is a sandbox failure, as a failed step is: the session is
+// marked.
 fn a_pdf_worker_that_is_not_sandboxed_is_refused_where_required() {
     let Some(s) = case("pdf-s0", SAYS_S0_THEN_WAITS, Ask::Require, |dir| pdf_start_is(dir, "Worker(\"the worker is not sandboxed\")")) else {
         return;
@@ -151,7 +166,7 @@ fn a_pdf_worker_that_is_not_sandboxed_is_refused_where_required() {
 }
 
 fn a_picture_worker_that_is_not_sandboxed_is_refused_where_required() {
-    let Some(s) = case("pic-s0", SAYS_S0_THEN_WAITS, Ask::Require, picture_waits) else {
+    let Some(s) = case("pic-s0", SAYS_S0_THEN_WAITS, Ask::Require, |dir| picture_waits(dir, true)) else {
         return;
     };
     check!(s.code == 0);
@@ -161,7 +176,7 @@ fn a_picture_worker_that_is_not_sandboxed_is_refused_where_required() {
 }
 
 fn a_font_worker_that_is_not_sandboxed_is_refused_where_required() {
-    let Some(s) = case("font-s0", SAYS_S0_THEN_WAITS, Ask::Require, |_| font_has_no_worker("the worker is not sandboxed")) else {
+    let Some(s) = case("font-s0", SAYS_S0_THEN_WAITS, Ask::Require, |_| font_has_no_worker("the worker is not sandboxed", true)) else {
         return;
     };
     check!(s.code == 0);
@@ -181,7 +196,7 @@ fn where_the_sandbox_is_not_required_s0_is_taken() {
 }
 
 // The filter's report in place of the sandbox line: no worker, not the file's fault, and the log names the call
-// for each of the three writers.
+// for each of the three writers. It is not a failed step: the session is not marked.
 fn a_refused_call_in_place_of_the_sandbox_line_is_logged_with_its_number() {
     const WHY: &str = "the worker made a call the sandbox does not allow";
     if let Some(s) = case("pdf-sigsys", SAYS_SIGSYS_240, Ask::Require, |dir| pdf_start_is(dir, &format!("Worker({WHY:?})"))) {
@@ -189,13 +204,13 @@ fn a_refused_call_in_place_of_the_sandbox_line_is_logged_with_its_number() {
         check!(s.started);
         check!(s.log.contains("work: a PDF's worker made call 240, which the sandbox does not allow"));
     }
-    if let Some(s) = case("pic-sigsys", SAYS_SIGSYS_240, Ask::Require, picture_waits) {
+    if let Some(s) = case("pic-sigsys", SAYS_SIGSYS_240, Ask::Require, |dir| picture_waits(dir, false)) {
         check!(s.code == 0);
         check!(s.started);
         check!(s.log.contains("work: a picture's worker made call 240, which the sandbox does not allow"));
         check!(s.log.contains(&format!("work: pictures wait ({WHY})")));
     }
-    if let Some(s) = case("font-sigsys", SAYS_SIGSYS_240, Ask::Require, |_| font_has_no_worker(WHY)) {
+    if let Some(s) = case("font-sigsys", SAYS_SIGSYS_240, Ask::Require, |_| font_has_no_worker(WHY, false)) {
         check!(s.code == 0);
         check!(s.started);
         check!(s.log.contains("work: a font's worker made call 240, which the sandbox does not allow"));
