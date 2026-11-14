@@ -167,6 +167,64 @@ why. Newest decisions first within each section.
   docs/TESTING.md, "2.1.0-beta.2, L9", step 7: "see its section at the end" for the fix round's section,
   which other sections now follow.
 
+## Hardening round (2026-11), import: what waits
+
+- **The Scribe check of this round has not run** (docs/TESTING.md, "Hardening round (2026-11), import"). Its
+  steps 1 to 3 say how long a big PDF takes to read whole; steps 7 and 8 say whether the Scribe's storage gives a
+  file one identity by its name and by an open file, which the scan's look, the import lock and the move to
+  `import/done` all compare (if it did not, every dropped PDF would wait a minute, no import would start, and
+  an imported PDF would stay in `import/` and be read again up to three times). No release holds this round's
+  import commits until those have run.
+- **Confirm Open its notebook with the file record.** In Files, a PDF whose key and size match a notebook's
+  record opens that notebook without reading the file whole; compare the whole file in the background before
+  opening, and drop Import as notebook from that card then.
+- **Carry the file record on the KOReader route.** Open this book in Grimoire finds a book's notebook by its
+  key; let it confirm with the record where one exists.
+- **A pick of a PDF whose key a notebook without a record holds.** Today it says "PDF already imported."; the
+  owner decides whether a pick should import it as a notebook of its own.
+- **A book whose first notebook was deleted.** A notebook made while another holds the key carries the key in
+  its record alone. If the first is then deleted and the book's file is imported again, another notebook still
+  holds the key, so the new one is made that way too, and KOReader's Open this book in Grimoire then starts a
+  notebook of its own. That notebook is KOReader's route's, so it has the bare key and no file record: from
+  then on the key alone decides for every file of that key ("PDF already imported.", and a file of `import/`
+  goes to `done/`), as it does for a notebook made before this round, until that notebook is deleted. The
+  owner decides whether the import should give the bare key (`source=`, `book=`) to a new notebook when no
+  notebook has those two lines (the book's file, imported again, would then be the notebook KOReader opens,
+  with a record); the entry above, on a pick whose key a notebook without a record holds, is the other half
+  of the same question.
+- **The import's whole-file read.** Measured on the Scribe at the owner's check; if its time or its use of
+  memory asks for it, spread it over the slices or release its cached pages as it goes.
+- **Endings without a test.** A file that cannot be read whole (at the start, where it then counts as another
+  file than the record's; in the last slice, where the notebook is made without a record, or the import fails
+  when another notebook holds the key), and the import lock's second round (the name given to another file
+  between the lock and the check): nothing but a failing read, or a race, reaches them. A seam for the tests
+  could, as `pdfimport::sim_before_filing` does for the move to `import/done`.
+- **File an imported PDF by its open file.** The import looks at the PDF's name once more just before the
+  move to `import/done`, and the look and the move are two steps. Where the storage offers a move that names
+  the open file itself, the two become one; else, look at what arrived in `done/` and put back what is not
+  the file that was read.
+- **The record of an import that went on after a stop.** The last slice checks its file's key against the
+  first slice's. Two files of one key, size and time are not told apart there: the pages may be of both, and
+  the record is of the last slice's file (docs/FORMAT.md says the record promises no more). Keeping the first
+  slice's hash in the import's state (`pdf-import.ini`) would tell them apart, at the price of a second
+  whole-file read.
+- **A folder's pictures and a PDF the scan's look leaves.** A PDF that the look finds to be no file the import
+  opens (counted as "no longer files": a folder of `import/` whose name the storage walk refuses, such as one
+  ending in `.sdr`) is never queued, and the folder's pictures still wait for it (`folder_holds_pdfs` knows
+  the names the scan leaves out, not this). They waited before this round too, when the PDF failed at every
+  scan. Give `folder_holds_pdfs` the look's answer for such a folder.
+- **The import's small files and the bounded read.** The marks and an import's state are read through
+  `util::read_file`, which since the storage reads takes plain files only; they have limits of their own when
+  parsed (a mark is 4 KiB at most), not when read. Read them with `util::read_file_max`, and the last slice's
+  `links.part` and `names.part` with it too (today `std::fs::read`, then a size check). The storage reads'
+  list below names the marks as well; the lock file's own open could share `util`'s plain-file open.
+- **The picker's own test of "under import"** compares names without case; on a storage that tells names
+  apart, rows of a folder only spelled like import would show a status.
+- **Picture folders with a line break in their name** are still imported by the picture scan; give
+  `list_names` the same rule as the PDFs' (`pdfimport::name_storable`), with the storage work.
+- **A link at a folder above the import lock** belongs with the storage work: the lock file itself is opened
+  without following a link, the folders above it by their names.
+
 ## The keyboard's caret and text copy and paste (2.1.0-beta.2, last round, lane K): choices for the owner, and what waits
 
 Built from issue #36 (docs/DESIGN.md, Text and the keyboard). The lane chose, the owner to confirm:
@@ -1303,8 +1361,9 @@ items of Document links. Left:
   checked by reading only; a test needs a listing slower than a second in the headless runner.
 - **The picker's UI-thread work** (the fix round, Low): entries of no known kind are stat-ed in 20 ms slices before
   the rows are built; the Import place's folder rows are listed every 5 s, the PDF rows as the import's progress
-  changes; "has notes" reads the notebooks' keys once a session (one small read for each notebook without
-  `source=`, at the first PDF row, on the UI thread). None of it is timed on the Scribe (TESTING.md, L8 check 2).
+  changes; "has notes" reads the notebooks' keys and file records once a session (one small read for each
+  notebook, at the first PDF row, on the UI thread: since the hardening round of 2026-11 also for a notebook with
+  `source=`, whose record is in its `source.ini`). None of it is timed on the Scribe (TESTING.md, L8 check 2).
 - **Folder rows count their pictures by listing the folder** (on the idle tick, one folder a tick, at most 200 ms
   each) to show "%d pictures" and to offer Import %d pictures as notebook. On a big `documents/` of big folders over
   FUSE that is unmeasured: TESTING.md has the timing check. A cheaper rule (count only when the card opens) is

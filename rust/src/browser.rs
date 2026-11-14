@@ -107,12 +107,15 @@ pub struct Row {
     key: Option<String>,
     /// the notebook that holds this PDF (its id), once the key is known
     pub notebook: Option<String>,
+    /// that notebook was found by a record of this file's size (not by the key alone): only the whole file can
+    /// say it is the same, so the card offers Import as notebook as well, and the import gives the answer
+    pub also_import: bool,
     pub status: RowStatus,
 }
 
 impl Row {
     fn new(kind: RowKind, name: &str, path: StoragePath) -> Row {
-        Row { kind, name: name.to_string(), path, place: None, ix: usize::MAX, stat: None, stat_tried: false, pictures: None, key: None, notebook: None, status: RowStatus::None }
+        Row { kind, name: name.to_string(), path, place: None, ix: usize::MAX, stat: None, stat_tried: false, pictures: None, key: None, notebook: None, also_import: false, status: RowStatus::None }
     }
 }
 
@@ -157,8 +160,9 @@ pub struct Browser {
     free: Option<(u64, u64)>,
     /// the notebooks, for "has notes"
     books: Vec<NotebookInfo>,
-    /// their book keys (a notebook's `source=`, else its source.ini's book), read once for the picker's session
-    book_keys: Option<Vec<(String, String)>>,
+    /// the keys they hold and the records of their files (pdfimport::key_holders), read once for the picker's
+    /// session
+    book_keys: Option<Vec<crate::pdfimport::KeyHolder>>,
     /// the Import place's statuses are due (its rows were just built), and when they were last looked at: the
     /// PDF rows' when the import's progress changes, every row's every few seconds
     status_due: bool,
@@ -363,6 +367,14 @@ impl Browser {
                 odd += 1;
                 continue;
             };
+            // (a folder or a PDF whose path an import cannot keep, pdfimport::name_storable, is no row either: counted
+            // with the odd names)
+            if !crate::pdfimport::name_storable(name) {
+                if e.kind == FsKind::Dir || (e.kind == FsKind::File && self.kinds.contains(&PickKind::Pdf) && is_pdf(&e.name)) {
+                    odd += 1;
+                }
+                continue;
+            }
             let Some(path) = at.join(&e.name) else { continue };
             match e.kind {
                 FsKind::Dir => {
@@ -621,10 +633,11 @@ impl Browser {
         for i in vis {
             if self.rows[i].kind == RowKind::Pdf && self.rows[i].key.is_none() && self.rows[i].stat.is_some() {
                 let p = self.rows[i].path.clone();
-                let key = self.book_key(&p);
-                let nb = self.notebook_of_key(&key);
+                let (key, size) = self.book_key(&p);
+                let (nb, also) = self.notebook_of_key(&key, size);
                 let r = &mut self.rows[i];
                 r.notebook = nb;
+                r.also_import = also;
                 r.key = Some(key);
                 if r.notebook.is_some() {
                     changed.push(i);
@@ -672,41 +685,37 @@ impl Browser {
         l.entries.iter().filter(|e| matches!(e.kind, FsKind::File | FsKind::Unknown) && is_picture(&e.name)).count().min(STORE_MAX_PAGES + 1)
     }
 
-    /// The notebook that holds a book key ("has notes"): the notebooks' keys are read once for the picker's session
-    /// (a notebook's `source=`, else the book its source.ini names: one small read each), not once a row.
-    fn notebook_of_key(&mut self, key: &str) -> Option<String> {
+    /// The notebook that holds a PDF of this key and size ("has notes"), and whether it was found by a record of
+    /// that size. The notebooks' keys and records are read once for the picker's session (one small read each),
+    /// not once a row, and no file is read whole here: a notebook whose record has this size is the PDF's and the
+    /// card also offers the import (which compares the whole file); one without a record goes by the key, as
+    /// before; one whose record is of another size was made from another file and does not count.
+    fn notebook_of_key(&mut self, key: &str, size: u64) -> (Option<String>, bool) {
+        use crate::pdfimport::{key_holders, key_match, KeyHolder, KeyMatch};
         if key.is_empty() {
-            return None;
+            return (None, false);
         }
-        if self.book_keys.is_none() {
-            let keys = self
-                .books
-                .iter()
-                .filter_map(|nb| {
-                    if !nb.source.is_empty() {
-                        return Some((nb.source.as_str().to_string(), nb.id.as_str().to_string()));
-                    }
-                    let mut m = AnnotateMap::default();
-                    let k = (annotate_map_load(nb.id.as_str(), &mut m) == 0 && !m.book.is_empty()).then(|| m.book.as_str().to_string());
-                    annotate_map_free(&mut m);
-                    k.map(|k| (k, nb.id.as_str().to_string()))
-                })
-                .collect();
-            self.book_keys = Some(keys);
+        let all = self.book_keys.get_or_insert_with(|| key_holders(&self.books, None));
+        let of_key: Vec<KeyHolder> = all.iter().filter(|h| h.key == key).cloned().collect();
+        match key_match(&of_key, size, None) {
+            KeyMatch::SizeOnly(id) => (Some(id), true),
+            KeyMatch::KeyOnly(id) | KeyMatch::Same(id) => (Some(id), false),
+            KeyMatch::None => (None, false),
         }
-        self.book_keys.as_ref().and_then(|v| v.iter().find(|(k, _)| k == key).map(|(_, id)| id.clone()))
     }
 
-    /// A PDF's book key (KOReader's partial MD5, 12 reads of 1 KiB), "" when the file cannot be read.
-    fn book_key(&self, p: &StoragePath) -> String {
-        let Some(st) = self.storage.as_ref() else { return String::new() };
-        match st.open_file(p, true) {
-            Ok(fd) => {
-                use std::os::fd::AsRawFd;
-                crate::md5::partial_md5_fd(fd.as_raw_fd())
-            }
-            Err(_) => String::new(),
+    /// A PDF's book key (KOReader's partial MD5, 12 reads of 1 KiB) and its size, from one descriptor; "" when
+    /// the file cannot be read.
+    fn book_key(&self, p: &StoragePath) -> (String, u64) {
+        let Some(st) = self.storage.as_ref() else { return (String::new(), 0) };
+        let Ok(fd) = st.open_file(p, true) else { return (String::new(), 0) };
+        use std::os::fd::AsRawFd;
+        // SAFETY: md is written by fstat before it is read; the descriptor is this function's.
+        let mut md: libc::stat = unsafe { std::mem::zeroed() };
+        if unsafe { libc::fstat(fd.as_raw_fd(), &mut md) } != 0 {
+            return (String::new(), 0);
         }
+        (crate::md5::partial_md5_fd(fd.as_raw_fd()), md.st_size as u64)
     }
 
     /// What the Import place says of row `i`, from the marks, the queue and the attempts.
@@ -756,7 +765,8 @@ impl Browser {
 
     // ---- the item card ----
 
-    fn open_card(&mut self, row: usize) {
+    /// A row's card, as a tap on a PDF or a hold on a folder opens it (the tests' too: it needs no screen).
+    pub fn open_card(&mut self, row: usize) {
         let Some(r) = self.rows.get(row) else { return };
         if !matches!(r.kind, RowKind::Pdf | RowKind::Dir) {
             return;
@@ -764,10 +774,11 @@ impl Browser {
         // a PDF's book key is read now if the tick has not yet
         if r.kind == RowKind::Pdf && r.key.is_none() {
             let p = r.path.clone();
-            let key = self.book_key(&p);
-            let nb = self.notebook_of_key(&key);
+            let (key, size) = self.book_key(&p);
+            let (nb, also) = self.notebook_of_key(&key, size);
             let r = &mut self.rows[row];
             r.notebook = nb;
+            r.also_import = also;
             r.key = Some(key);
         }
         if self.rows[row].kind == RowKind::Dir && self.rows[row].pictures.is_none() && self.kinds.contains(&PickKind::PictureFolder) {
@@ -790,7 +801,10 @@ impl Browser {
                     // TRANSLATORS: a PDF's card in the file picker: a notebook already holds this book, and this opens it
                     // (a row of about 800 px at 44 px).
                     rows.push((B_CARD_NOTEBOOK, IconKind::Notebook, tr("Open its notebook").to_string()));
-                } else {
+                }
+                // (with a notebook found by its record's size, both: the import says "PDF already imported." of the
+                // same file, and makes a notebook of another)
+                if r.notebook.is_none() || r.also_import {
                     // TRANSLATORS: a PDF's card in the file picker: this makes a notebook of its pages (a row of about 800 px at 44 px).
                     rows.push((B_CARD_IMPORT, IconKind::Download, tr("Import as notebook").to_string()));
                 }
@@ -1364,7 +1378,7 @@ impl Browser {
             }
             _ => {
                 let Some((what, n)) = key.split_once('.') else { return false };
-                if !matches!(what, "row" | "sub" | "status" | "notes" | "kind" | "item" | "pictures") {
+                if !matches!(what, "row" | "sub" | "status" | "notes" | "keyed" | "kind" | "item" | "pictures") {
                     return false;
                 }
                 let r = if what == "item" { self.rows.iter().find(|r| r.name == n || r.name == n.replace('_', " ")) } else { nth(n) };
@@ -1374,6 +1388,7 @@ impl Browser {
                     "sub" => out.push_str(&self.row_sub(r)),
                     "status" => out.push_str(Self::status_key(&r.status)),
                     "notes" => out.push_str(if r.notebook.is_some() { "1" } else { "0" }),
+                    "keyed" => out.push_str(if r.key.is_some() { "1" } else { "0" }),
                     "pictures" => out.push_str(&r.pictures.map_or(String::new(), |n| n.to_string())),
                     _ => out.push_str(match r.kind {
                         RowKind::Place => "place",

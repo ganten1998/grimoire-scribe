@@ -12,6 +12,18 @@
   on a worker's record lines, what a build off the Kindle takes of the sandbox, the font check's second
   try), `licenses/rust-crates.txt` says it lists every crate `Cargo.lock` names, and the crate check
   refuses by name the one crate that would bring a second font parser into the build. No change in the app.
+- **"PDF already imported." now means that very file.** A notebook made from a PDF keeps the SHA-256 and
+  size of its file (one line in its `source.ini`), and a PDF with the same book key is compared with it. The
+  same file says "PDF already imported." as before; a different file with that key (an edited copy, say)
+  becomes a notebook of its own, and KOReader's Open this book in Grimoire keeps opening the first.
+  Notebooks made before this version, or from KOReader, go by the key as before. In Files, a PDF that a
+  notebook already holds offers Import as notebook beside Open its notebook. A big PDF is read once more at
+  the end of its import (the notice stays on its last page meanwhile).
+- The import handles odd names and places more strictly: a file's path is kept exactly as it is while it is
+  imported (a name with unusual characters goes on correctly after an interruption), a path with a line
+  break in a name is left where it is, a file picked from a folder that is only spelled like
+  `grimoire/import` stays where it is, and the import's lock file and its first look at a dropped PDF are
+  opened without following links.
 - **Your own fonts: a stricter background check.** What the check found of a font is now kept on the
   Kindle itself (`/var/local/grimoire`, a few hundred bytes a font) and tied to the font file by its
   SHA-256. The check also times each glyph as Grimoire will draw it: a glyph that would take too long is
