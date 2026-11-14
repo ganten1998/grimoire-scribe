@@ -1,6 +1,7 @@
 //! export.h: turning notebooks into files people can use elsewhere. Pure (no UI);
 //! shared by the app, the share server, and the host-side tools/grimoire-export CLI.
-//! Compression uses stbi_zlib_compress from third_party/stb_image_write.h.
+//! Compression is zpieces.rs: the bytes of stbi_zlib_compress (third_party/stb_image_write.h), never in
+//! one growing block.
 
 use crate::prelude::*;
 
@@ -232,16 +233,9 @@ fn png_to_mem(c: &Canvas) -> Option<StbBytes> {
     Some(StbBytes { p, len: len as usize })
 }
 
-/// stbi_zlib_compress of data at the quality the exports use (8).
-fn zlib_compress(data: &[u8]) -> Option<StbBytes> {
-    let mut zl: libc::c_int = 0;
-    // SAFETY: stb reads data_len bytes of data (the parameter is not const, but stb never writes
-    // through it); zl receives the size of the block it returns.
-    let z = unsafe { crate::ffi_stb::stbi_zlib_compress(data.as_ptr() as *mut u8, data.len() as libc::c_int, &mut zl, 8) };
-    if z.is_null() {
-        return None;
-    }
-    Some(StbBytes { p: z, len: zl as usize })
+/// The zlib stream of data at the quality the exports use (8): stbi_zlib_compress's bytes, in pieces.
+fn zlib_compress(data: &[u8]) -> Option<crate::zpieces::ZStream> {
+    crate::zpieces::zlib_compress(data, 8)
 }
 
 // ---- rendering helpers ----
@@ -693,9 +687,11 @@ pub fn export_notebook_pdf_to(nb: &NotebookInfo, dpi: f32, sink: &mut dyn Sink, 
             (pw * dpi / 72.0 + 0.5) as i32,
             (ph * dpi / 72.0 + 0.5) as i32,
             if img.ch == 3 { "DeviceRGB" } else { "DeviceGray" },
-            img.stream().len() as i32
+            img.stream_len() as i32
         );
-        out.big(img.stream());
+        for piece in img.pieces() {
+            out.big(piece);
+        }
         drop(img);
         buf_printf!(&mut out.buf, "\nendstream\nendobj\n");
         out.flush();
@@ -948,18 +944,15 @@ pub fn zip_add(z: &mut ZipWriter, name: &str, data: &[u8], deflate: bool) -> i32
         return -1; // no zip64
     }
     let crc = crc32_of(data);
-    let mut payload: &[u8] = data;
     let mut method: u16 = 0;
-    let zbuf = if deflate && len > 64 { zlib_compress(data) } else { None };
+    let mut plen = len;
+    // Zip wants raw deflate: the zlib stream without its 2-byte header and 4-byte adler32 trailer,
+    // and only where that is shorter than the data.
+    let zbuf = if deflate && len > 64 { zlib_compress(data).filter(|zb| zb.len() > 6 && zb.len() - 6 < len) } else { None };
     if let Some(zb) = &zbuf {
-        // Zip wants raw deflate: drop the 2-byte zlib header and 4-byte adler32 trailer.
-        let zl = zb.len;
-        if zl > 6 && zl - 6 < len {
-            payload = &zb.as_slice()[2..zl - 4];
-            method = 8;
-        }
+        plen = zb.len() - 6;
+        method = 8;
     }
-    let plen = payload.len();
     let (t, d) = dos_time();
     let nl = name.len() as u16;
     let name_bytes = &name.as_bytes()[..nl as usize];
@@ -977,7 +970,10 @@ pub fn zip_add(z: &mut ZipWriter, name: &str, data: &[u8], deflate: bool) -> i32
     le16(o, nl);
     le16(o, 0);
     buf_append(o, name_bytes);
-    let rc = buf_append(o, payload);
+    let rc = match &zbuf {
+        Some(zb) => zb.range(2, zb.len() - 4).map(|piece| buf_append(o, piece)).min().unwrap_or(0),
+        None => buf_append(o, data),
+    };
     zip_central(z, name_bytes, 0x0800, method, crc, plen as u32, len as u32, local_off);
     zip_spill(z);
     if rc != 0 || z.out.err {

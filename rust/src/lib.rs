@@ -80,6 +80,7 @@ pub mod compact; // compact.h's surface (bodies in bgwork_compact.rs)
 pub mod export;
 pub mod childcaps; // oom_score_adj and RLIMIT_AS for every background child (2.1, lane L9)
 pub mod pdfcache; // the notebook PDF's page streams (2.1, lane L9)
+pub mod zpieces; // stb's zlib compressor with the same bytes out, in pieces of a fixed size (issue 79)
 pub mod history;
 pub mod lasso; // lasso select, copy, cut, paste, move (the pure part)
 pub mod lasso_live; // the lasso's live selection preview (the pure part)

@@ -15,6 +15,7 @@
 //! more, so an unchanged notebook draws the same pages at every close and writes nothing.
 
 use crate::prelude::*;
+use crate::zpieces::ZStream;
 use std::io::Write;
 use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering};
 
@@ -99,16 +100,19 @@ pub struct PageImage {
     pub h: i32,
     /// 1 (DeviceGray) or 3 (DeviceRGB)
     pub ch: u8,
-    /// the zlib stream of the rows: a record's bytes, or the compressor's own block (never copied)
-    z: Box<dyn AsRef<[u8]>>,
+    /// the zlib stream of the rows: a record's bytes, or the compressor's own pieces (never copied)
+    z: ZStream,
 }
 impl PageImage {
-    pub fn new(w: i32, h: i32, ch: u8, z: impl AsRef<[u8]> + 'static) -> PageImage {
-        PageImage { w, h, ch, z: Box::new(z) }
+    pub fn new(w: i32, h: i32, ch: u8, z: ZStream) -> PageImage {
+        PageImage { w, h, ch, z }
     }
-    /// The zlib stream.
-    pub fn stream(&self) -> &[u8] {
-        (*self.z).as_ref()
+    /// The zlib stream's length, and the stream piece after piece.
+    pub fn stream_len(&self) -> usize {
+        self.z.len()
+    }
+    pub fn pieces(&self) -> impl Iterator<Item = &[u8]> + '_ {
+        self.z.pieces()
     }
 }
 
@@ -263,14 +267,15 @@ impl PdfCache {
         if !self.write || self.off {
             return;
         }
-        let z = img.stream();
-        let len = (HEAD + z.len()) as u64;
+        let zlen = img.stream_len();
+        let len = (HEAD + zlen) as u64;
         if self.kept + len > self.cap {
             let _ = std::fs::remove_file(self.record_path(pid));
             return;
         }
-        let head = serialize_head(stamp, paper, pic, img, z.len(), crc32(z));
-        if !self.write_record(pid, &head, z) {
+        let crc = !img.pieces().fold(0xFFFFFFFFu32, crc32_run);
+        let head = serialize_head(stamp, paper, pic, img, zlen, crc);
+        if !self.write_record(pid, &head, img) {
             self.off = true;
             qlog!("pdf cache: a write failed; this run goes on without it");
             return;
@@ -278,7 +283,7 @@ impl PdfCache {
         self.kept += len;
     }
 
-    fn write_record(&self, pid: u32, head: &[u8], z: &[u8]) -> bool {
+    fn write_record(&self, pid: u32, head: &[u8], img: &PageImage) -> bool {
         if FULL.load(Ordering::Relaxed) || !real_dirs(&self.dir) || !real_dirs(&pdf_cache_root()) || mkdir_p(&self.dir) != 0 {
             return false;
         }
@@ -287,7 +292,9 @@ impl PdfCache {
         let ok = (|| -> std::io::Result<()> {
             let mut f = create_fresh(&tmp)?;
             f.write_all(head)?;
-            f.write_all(z)?;
+            for piece in img.pieces() {
+                f.write_all(piece)?;
+            }
             f.flush()
         })()
         .is_ok();
@@ -299,15 +306,18 @@ impl PdfCache {
     }
 }
 
-fn crc32(p: &[u8]) -> u32 {
-    let mut c = 0xFFFFFFFFu32;
+/// The CRC-32's running state after p (start from 0xFFFFFFFF; the CRC is its complement at the end).
+fn crc32_run(mut c: u32, p: &[u8]) -> u32 {
     for &b in p {
         c ^= b as u32;
         for _ in 0..8 {
             c = if c & 1 != 0 { 0xEDB88320 ^ (c >> 1) } else { c >> 1 };
         }
     }
-    !c
+    c
+}
+fn crc32(p: &[u8]) -> u32 {
+    !crc32_run(0xFFFFFFFF, p)
 }
 
 fn serialize_head(st: &PdfStamp, paper: u32, pic: PicStamp, img: &PageImage, zlen: usize, crc: u32) -> Vec<u8> {
@@ -377,7 +387,7 @@ fn parse(mut d: Vec<u8>) -> Option<Record> {
         return None;
     }
     d.drain(..HEAD); // (the stream, without a second copy of it)
-    Some(Record { stamp, paper, pic, img: PageImage::new(w, h, ch, d) })
+    Some(Record { stamp, paper, pic, img: PageImage::new(w, h, ch, ZStream::from_vec(d)) })
 }
 
 /// A held lock on one notebook's mirror (`.cache/pdf/<id>.lock`): let go when dropped.
