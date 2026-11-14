@@ -2,6 +2,9 @@
 
 ## 2.1.1 (unreleased)
 
+- Housekeeping: the separate process that reads PDFs, pictures and fonts is held to a narrower set of
+  system calls and is started only with all of its descriptors in place. No change in the app.
+
 ## 2.1.0 (2026-11-13)
 
 - The first stable release of 2.1: 2.1.0-beta.2 with the changes below, now on the stable channel too (KPM

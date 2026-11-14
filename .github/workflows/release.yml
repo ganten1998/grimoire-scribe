@@ -18,6 +18,8 @@ env:
   # the same bytes (tests/repro_check.sh holds the build to that), so these are the versions the
   # maintainer's Mac must run before a release is tagged: docs/RELEASING.md, Before the tag.
   # Each is at least two weeks older than the release it builds.
+  # Moving RUST_VERSION or ZIG_VERSION also means the worker's Scribe check again
+  # (docs/RELEASING.md, What the workflow pins).
   RUST_VERSION: '1.97.1'
   ZIG_VERSION: '0.16.0'
   CARGO_ZIGBUILD_VERSION: '0.23.0'
@@ -434,7 +436,7 @@ jobs:
           (cd rust && PATH="$RUST_BIN:$PATH" cargo fetch --locked)
           cd rust
           sudo -E env "PATH=$RUST_BIN:$PATH" "HOME=$HOME" GRIMOIRE_SANDBOX=require \
-            cargo test --locked --features sim --test test_sandbox_linux -- --test-threads=1 --nocapture
+            cargo test --locked --features sim --test test_sandbox_linux --test test_sec_spawn_fds --test test_sec_handshake -- --test-threads=1 --nocapture
 
   gate:
     # The one required check: every job of this run passed (a docs-only pull request: the docs job).

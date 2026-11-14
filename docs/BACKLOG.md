@@ -128,6 +128,20 @@ why. Newest decisions first within each section.
   moved to versions published before 2026-11-02 so that every crate is two weeks old at a tag on or after
   2026-11-16 (`tools/check-crate-dates.py --tag-date 2026-11-16` passes).
 
+## Hardening round (2026-11), sandbox: what waits
+
+- **The Scribe check of this round has not run** (docs/TESTING.md, "Hardening round (2026-11), sandbox").
+  No release holds the two filter commits until it has.
+- **The log names a refused call, not its argument.** `made call 240` says the futex rule refused an
+  operation, not which one. If it ever shows on a Scribe, the reporter can be taught to print it.
+- **brk, madvise and mprotect stay on the allow-list as they were.** The Linux test build's allocator uses
+  them; whether the Kindle build's does was not measured. Measure on the Scribe, then narrow by
+  architecture.
+- **The personality value of step 8.** If a Scribe reports `00c00000`, mappings there are executable
+  without being asked so, which the filter's rule does not see: the start of a worker would then clear the
+  flag before its exec. Not built: no test host can show it failing first.
+- **`sandbox::s1` numbers** are unchanged by this round.
+
 ## The keyboard's caret and text copy and paste (2.1.0-beta.2, last round, lane K): choices for the owner, and what waits
 
 Built from issue #36 (docs/DESIGN.md, Text and the keyboard). The lane chose, the owner to confirm:
