@@ -677,9 +677,9 @@ fn start_job(j: Job, extra: bool) -> bool {
         }
         let rc = run_job_guarded(&j);
         // SAFETY: the child ends here without running the parent's exit handlers or flushing its
-        // buffers. (A PDF import slice's 2 and 3 mean done with blank pages, and more to do; a font check's 3
-        // and 4, some files wait, and no worker can be had.)
-        let says_more = (j.kind == BgKind::PdfImport && (rc == 2 || rc == 3)) || (j.kind == BgKind::FontCheck && (rc == 3 || rc == 4 || rc == 5));
+        // buffers. (A PDF import slice's 2 and 3 mean done with blank pages, and more to do; a font check's 3,
+        // 4, 5 and 6, some files wait, no worker can be had, more fonts are left, and what it finds cannot be kept.)
+        let says_more = (j.kind == BgKind::PdfImport && (rc == 2 || rc == 3)) || (j.kind == BgKind::FontCheck && (rc == 3 || rc == 4 || rc == 5 || rc == 6));
         unsafe { libc::_exit(if rc == 0 { 0 } else if says_more { rc } else { 1 }) };
     }
     let beside = with(|s| {

@@ -2,10 +2,16 @@
 //!
 //! - the folder: grimoire/fonts/, made at start with a README.txt. `.ttf`, `.otf`, `.ttc` and `.otc` files in
 //!   it and in its folders one level down, at most 200, read through fsview's walk (no link is followed).
-//! - the cache: grimoire/fonts/.cache/<key>.font (the verdict, fontcheck.rs), .pgm (the font's name drawn in
-//!   itself), .checking (a check under way) and .bad (the check's worker died on it). <key> is the FNV-1a hash
-//!   of the file's path under the folder, its size and its time, as a template's preview is keyed, so a file
-//!   replaced by another is checked afresh. Written by the background job only; deleting it loses nothing.
+//! - the cache: grimoire/fonts/.cache/<key>.pgm (the font's name drawn in itself), .no (the check refused the
+//!   file), .checking (a check under way), .slow (a check that took too long, once) and .bad (the check's worker
+//!   died on it). <key> is the FNV-1a hash of the file's path under the folder, its size and its time, as a
+//!   template's preview is keyed, so a file replaced by another is checked afresh. Written by the background
+//!   job only; deleting it loses nothing, and has every font checked again.
+//! - the verdicts (`VerdictDir`): <key>.font (fontcheck.rs), what the check found of a file. Where the build has
+//!   a folder of its own outside the storage (the Kindle: /var/local/grimoire; elsewhere GRIMOIRE_STATE), they
+//!   are kept there, in a folder for each data root, and nothing under grimoire/fonts decides whether a font is
+//!   read. A build without such a folder keeps them in the cache, beside the previews. Either way a verdict
+//!   counts only with its companion in the cache: a pass with its .pgm, a refusal with its .no.
 //! - the job (`bg_font_check`, BgKind::FontCheck): the writer. It reads each unchecked file whole, hands the
 //!   bytes to the sandboxed worker, validates what comes back and writes the verdict. It parses nothing.
 //! - the UI's side: the list the Font sheet shows (`userfonts_scan`), the load of a font that passed
@@ -23,7 +29,11 @@ use crate::fontcheck::*;
 use crate::fsview::*;
 use crate::prelude::*;
 use std::cell::RefCell;
+use std::collections::HashSet;
+use std::ffi::CString;
 use std::io::Read;
+use std::os::fd::{AsRawFd, FromRawFd, OwnedFd};
+use std::os::unix::fs::MetadataExt;
 use std::rc::Rc;
 
 /// A font's path under grimoire/fonts is at most this long (settings.ini keeps it: font=file:<path>).
@@ -217,8 +227,339 @@ fn read_small(path: &str, max: u64) -> Option<Vec<u8>> {
     (buf.len() as u64 <= max).then_some(buf)
 }
 
-fn read_verdict(key: u64) -> Option<Verdict> {
-    Verdict::parse(&read_small(&cache_file(key, "font"), VERDICT_MAX as u64)?)
+// ---- where the check's results are kept ----
+
+/// Grimoire's own folder on the Kindle, outside the storage: a constant, which no environment variable moves.
+#[cfg(feature = "kindle")]
+const STATE_BASE: &str = "/var/local/grimoire";
+/// The room that folder's file system must have free before a font is checked: bytes, and files (inodes).
+/// Placeholders until the Scribe's figures are in (docs/TESTING.md).
+const STATE_FREE_FLOOR: u64 = 4 << 20;
+const STATE_FILES_FLOOR: u64 = 512;
+/// The folders of other data roots looked at in a job, and how long a `root` file is at most.
+const STATE_ROOTS_MAX: usize = 64;
+const STATE_ROOT_BYTES: usize = 1024;
+
+const NOT_THERE: &str = "it is not there";
+const NOT_MADE: &str = "it cannot be made";
+const NOT_OWN: &str = "it is not Grimoire's own";
+
+/// The folder of Grimoire's own that the verdicts are kept under: the Kindle's always; in any other build the
+/// absolute path GRIMOIRE_STATE names. None: this build has no such folder, and the verdicts stay beside the
+/// previews in fonts/.cache, by design (a platform kept outside this crate may hold its data on a file system
+/// without owners and modes).
+fn state_base() -> Option<String> {
+    #[cfg(feature = "kindle")]
+    {
+        Some(STATE_BASE.to_string())
+    }
+    #[cfg(not(feature = "kindle"))]
+    {
+        std::env::var("GRIMOIRE_STATE").ok().filter(|p| p.starts_with('/'))
+    }
+}
+
+/// A data root's folder in Grimoire's own: the FNV-1a 64 hash of its path without trailing slashes, 16 hex
+/// digits. Each data root has one, so a second root on one device keeps its verdicts apart.
+fn root_tag(root: &str) -> String {
+    let mut h: u64 = 14695981039346656037;
+    for b in root.trim_end_matches('/').bytes() {
+        h = (h ^ b as u64).wrapping_mul(1099511628211);
+    }
+    format!("{h:016x}")
+}
+
+/// Whether a file system with this much free (bytes, and files of `files` in all) has room for what a check
+/// finds. One that counts no files (`files` 0) is not refused for it.
+fn enough_room(free_bytes: u64, files: u64, files_free: u64) -> bool {
+    free_bytes >= STATE_FREE_FLOOR && (files == 0 || files_free >= STATE_FILES_FLOOR)
+}
+
+/// Whether the folder behind a descriptor is this user's and no one else may write it.
+fn own_dir(fd: &OwnedFd) -> bool {
+    // SAFETY: st is written by fstat before it is read; geteuid takes no arguments.
+    unsafe {
+        let mut st: libc::stat = std::mem::zeroed();
+        libc::fstat(fd.as_raw_fd(), &mut st) == 0 && (st.st_mode & libc::S_IFMT) == libc::S_IFDIR && st.st_uid == libc::geteuid() && st.st_mode & 0o022 == 0
+    }
+}
+
+/// The folder `name` of the folder `at`, by descriptor: made first when `make` (mode 0700; one that is there is
+/// fine), opened without following a link, and held to `own_dir`. Or why not.
+fn own_dir_at(at: &OwnedFd, name: &str, make: bool) -> Result<OwnedFd, &'static str> {
+    let c = CString::new(name).map_err(|_| NOT_MADE)?;
+    // SAFETY: mkdirat and openat on a descriptor we hold and a NUL-terminated name; the descriptor openat gives
+    // is owned from here on.
+    unsafe {
+        if make && libc::mkdirat(at.as_raw_fd(), c.as_ptr(), 0o700 as libc::mode_t) != 0 && errno() != libc::EEXIST {
+            return Err(NOT_MADE);
+        }
+        let fd = libc::openat(at.as_raw_fd(), c.as_ptr(), libc::O_RDONLY | libc::O_DIRECTORY | libc::O_NOFOLLOW | libc::O_CLOEXEC);
+        if fd < 0 {
+            return Err(if errno() == libc::ENOENT { NOT_THERE } else { NOT_OWN });
+        }
+        let fd = OwnedFd::from_raw_fd(fd);
+        if own_dir(&fd) {
+            Ok(fd)
+        } else {
+            Err(NOT_OWN)
+        }
+    }
+}
+
+/// A folder by its path (links in the path are followed unless `nofollow`, which holds for its last name).
+fn open_dir(path: &str, nofollow: bool) -> Option<OwnedFd> {
+    let c = CString::new(path).ok()?;
+    let flags = libc::O_RDONLY | libc::O_DIRECTORY | libc::O_CLOEXEC | if nofollow { libc::O_NOFOLLOW } else { 0 };
+    // SAFETY: open reads the NUL-terminated path we own; the descriptor is owned from here on.
+    unsafe {
+        let fd = libc::open(c.as_ptr(), flags);
+        (fd >= 0).then(|| OwnedFd::from_raw_fd(fd))
+    }
+}
+
+/// The names in a folder we hold a descriptor of (never `.` or `..`), at most `cap` of them.
+fn names_at(dir: &OwnedFd, cap: usize) -> Vec<String> {
+    let mut out = Vec::new();
+    // SAFETY: the duplicate is the stream's from fdopendir on (closedir closes it, never `dir`); each entry is
+    // read before the next readdir; d_name is NUL-terminated.
+    unsafe {
+        let fd = libc::fcntl(dir.as_raw_fd(), libc::F_DUPFD_CLOEXEC, 0);
+        if fd < 0 {
+            return out;
+        }
+        let d = libc::fdopendir(fd);
+        if d.is_null() {
+            libc::close(fd);
+            return out;
+        }
+        // (the duplicate shares the folder's place with every earlier look)
+        libc::rewinddir(d);
+        while out.len() < cap {
+            let e = libc::readdir(d);
+            if e.is_null() {
+                break;
+            }
+            if let Ok(n) = std::ffi::CStr::from_ptr((*e).d_name.as_ptr()).to_str() {
+                if n != "." && n != ".." {
+                    out.push(n.to_string());
+                }
+            }
+        }
+        libc::closedir(d);
+    }
+    out
+}
+
+/// A small file of a folder we hold a descriptor of, at most `max` bytes, never through a link: None when it is
+/// no regular file, is longer, does not read, or (`own`) is not this user's.
+fn read_at(dir: &OwnedFd, name: &str, max: usize, own: bool) -> Option<Vec<u8>> {
+    let c = CString::new(name).ok()?;
+    // SAFETY: openat on a descriptor we hold and a NUL-terminated name; the descriptor it gives is the File's.
+    let f = unsafe {
+        let fd = libc::openat(dir.as_raw_fd(), c.as_ptr(), libc::O_RDONLY | libc::O_NOFOLLOW | libc::O_NONBLOCK | libc::O_CLOEXEC);
+        if fd < 0 {
+            return None;
+        }
+        std::fs::File::from_raw_fd(fd)
+    };
+    let md = f.metadata().ok()?;
+    // SAFETY: geteuid takes no arguments.
+    if !md.is_file() || md.len() > max as u64 || (own && md.uid() != unsafe { libc::geteuid() }) {
+        return None;
+    }
+    let mut buf = Vec::new();
+    f.take(max as u64 + 1).read_to_end(&mut buf).ok()?;
+    (buf.len() <= max).then_some(buf)
+}
+
+/// Writes the file `name` of a folder we hold a descriptor of, whole: `<name>.tmp` is opened as
+/// util::open_rewrite_nofollow opens a file (never through a link; a regular file with one name, and only then
+/// emptied), made with `mode` when missing, written, synced and renamed onto `name`. False when a step fails:
+/// the `.tmp` is then unlinked and `name` is as it was.
+fn write_at(dir: &OwnedFd, name: &str, data: &[u8], mode: u32) -> bool {
+    use std::io::Write;
+    let (Ok(to), Ok(tmp)) = (CString::new(name), CString::new(format!("{name}.tmp"))) else { return false };
+    let d = dir.as_raw_fd();
+    // SAFETY: openat, fstat, ftruncate, fsync, renameat and unlinkat on a descriptor we hold, NUL-terminated
+    // names and a struct we own; the descriptor openat gives is the File's, closed before the rename.
+    unsafe {
+        let fd = libc::openat(d, tmp.as_ptr(), libc::O_WRONLY | libc::O_CREAT | libc::O_NOFOLLOW | libc::O_NONBLOCK | libc::O_CLOEXEC, mode as libc::c_uint);
+        let mut ok = fd >= 0;
+        if ok {
+            let mut f = std::fs::File::from_raw_fd(fd);
+            let mut st: libc::stat = std::mem::zeroed();
+            ok = libc::fstat(fd, &mut st) == 0 && (st.st_mode & libc::S_IFMT) == libc::S_IFREG && st.st_nlink == 1 && libc::ftruncate(fd, 0) == 0;
+            ok = ok && f.write_all(data).is_ok() && libc::fsync(fd) == 0;
+        }
+        if ok && libc::renameat(d, tmp.as_ptr(), d, to.as_ptr()) == 0 {
+            return true;
+        }
+        libc::unlinkat(d, tmp.as_ptr(), 0);
+        false
+    }
+}
+
+fn unlink_at(dir: &OwnedFd, name: &str, folder: bool) -> bool {
+    let Ok(c) = CString::new(name) else { return false };
+    // SAFETY: unlinkat on a descriptor we hold and a NUL-terminated name.
+    unsafe { libc::unlinkat(dir.as_raw_fd(), c.as_ptr(), if folder { libc::AT_REMOVEDIR } else { 0 }) == 0 }
+}
+
+/// The folder the verdicts are in, held by descriptor: every verdict is read and written from it, never by a
+/// path. Two modes, one code path: Grimoire's own folder where the build has one (`state_base`), the cache
+/// where it has none.
+struct VerdictDir {
+    fd: OwnedFd,
+    /// in Grimoire's own folder: that folder, and this data root's in it (the job's upkeep works by them)
+    own: Option<(OwnedFd, OwnedFd)>,
+}
+
+impl VerdictDir {
+    /// Opens the folder, or says why not. In Grimoire's own folder the walk goes name by name from the base's
+    /// parent, which is the system's: the base, this data root's folder (`root_tag`) and its `fonts`, each made
+    /// when `make` (the job alone asks; the UI never writes there), opened without following a link, and held to
+    /// be this user's with no write bit for anyone else. In the cache: the folder made when `make`, as the job
+    /// always made it, then opened; no owner and no mode is asked of it.
+    fn open(make: bool) -> Result<VerdictDir, &'static str> {
+        let Some(base) = state_base() else {
+            let cache = cache_dir();
+            if make && (!no_link_below(&store_root(), &cache) || mkdir_p(&cache) != 0) {
+                return Err(NOT_MADE);
+            }
+            return Ok(VerdictDir { fd: open_dir(&cache, true).ok_or(NOT_THERE)?, own: None });
+        };
+        let base = base.trim_end_matches('/');
+        let Some((parent, name)) = base.rsplit_once('/').filter(|(_, n)| !n.is_empty() && *n != "." && *n != "..") else { return Err(NOT_MADE) };
+        let parent = open_dir(if parent.is_empty() { "/" } else { parent }, false).ok_or(NOT_THERE)?;
+        // (never util::mkdir_p here: it takes any name that is there as made, and makes folders others can read)
+        let base = own_dir_at(&parent, name, make)?;
+        let tag = own_dir_at(&base, &root_tag(&store_root()), make)?;
+        let fd = own_dir_at(&tag, "fonts", make)?;
+        Ok(VerdictDir { fd, own: Some((base, tag)) })
+    }
+
+    /// Whether this is Grimoire's own folder (not the cache).
+    fn private(&self) -> bool {
+        self.own.is_some()
+    }
+
+    /// The verdict kept under `key`, read strictly (in Grimoire's own folder it must be this user's file too).
+    fn read(&self, key: u64) -> Option<Verdict> {
+        Verdict::parse(&read_at(&self.fd, &format!("{key:016x}.font"), VERDICT_MAX, self.private())?)
+    }
+
+    fn write(&self, key: u64, text: &[u8]) -> bool {
+        write_at(&self.fd, &format!("{key:016x}.font"), text, if self.private() { 0o600 } else { 0o644 })
+    }
+
+    fn remove(&self, key: u64) {
+        unlink_at(&self.fd, &format!("{key:016x}.font"), false);
+    }
+
+    /// The names in the folder (capped as `cache_names` is).
+    fn names(&self) -> HashSet<String> {
+        names_at(&self.fd, 4 * FONT_FILES_MAX + 64).into_iter().collect()
+    }
+
+    /// What is there for files that are gone (a name whose part before the first dot is not in `keep`) goes,
+    /// and so does a `.tmp` a cut-off write left.
+    fn sweep(&self, keep: &HashSet<String>) {
+        for n in self.names() {
+            if !keep.contains(n.split('.').next().unwrap_or("")) || n.ends_with(".tmp") {
+                unlink_at(&self.fd, &n, false);
+            }
+        }
+    }
+
+    /// Whether what a check finds can be kept: the cache is not asked (a write there says so itself);
+    /// Grimoire's own folder must have `enough_room`. A file system that does not answer counts as roomy.
+    /// Tests (not the Kindle's build) set the free bytes with GRIMOIRE_STATE_FREE_BYTES.
+    fn room(&self) -> bool {
+        if !self.private() {
+            return true;
+        }
+        // SAFETY: sv is written by fstatvfs before it is read.
+        let mut sv: libc::statvfs = unsafe { std::mem::zeroed() };
+        if unsafe { libc::fstatvfs(self.fd.as_raw_fd(), &mut sv) } != 0 {
+            return true;
+        }
+        #[allow(unused_mut)]
+        let mut free = (sv.f_bavail as u64).saturating_mul(sv.f_frsize as u64);
+        #[cfg(not(feature = "kindle"))]
+        if let Some(v) = std::env::var("GRIMOIRE_STATE_FREE_BYTES").ok().and_then(|v| v.parse::<u64>().ok()) {
+            free = v;
+        }
+        enough_room(free, sv.f_files as u64, sv.f_favail as u64)
+    }
+}
+
+/// The verdict kept for the file of this key and size. It counts only with its companion in fonts/.cache: a
+/// pass with its preview (`<key>.pgm`), a refusal with `<key>.no`. So deleting grimoire/fonts/.cache has every
+/// font checked again wherever the verdicts are kept, and a companion alone never passes a font.
+fn verdict_for(vd: &VerdictDir, key: u64, size: u64) -> Option<Verdict> {
+    let v = vd.read(key).filter(|v| v.size == size)?;
+    let companion = cache_file(key, if matches!(v.what, VerdictKind::Passed(_)) { "pgm" } else { "no" });
+    std::fs::symlink_metadata(companion).is_ok_and(|m| m.is_file()).then_some(v)
+}
+
+/// The names of the verdicts kept (none when their folder cannot be opened: every font is then "checking",
+/// and the job says why).
+fn verdict_names() -> HashSet<String> {
+    VerdictDir::open(false).map(|vd| vd.names()).unwrap_or_default()
+}
+
+/// The job's upkeep of Grimoire's own folder: this data root's folder names its root (the file `root`: the
+/// path and a newline), and the folder of a data root that is gone is removed, so the folder holds what the
+/// roots that exist need and no more. Another root's folder goes only when its `root` reads (this user's
+/// file, an absolute path, no control character), nothing is at that path, and the folder holds nothing but
+/// what Grimoire put there; every step is by descriptor, never by a path and never through a link.
+fn own_upkeep(base: &OwnedFd, tag: &OwnedFd) {
+    let root = store_root();
+    let root = root.trim_end_matches('/');
+    let line = format!("{root}\n");
+    if read_at(tag, "root", STATE_ROOT_BYTES, true).as_deref() != Some(line.as_bytes()) {
+        write_at(tag, "root", line.as_bytes(), 0o600);
+    }
+    let mine = root_tag(root);
+    let mut gone = 0;
+    for name in names_at(base, STATE_ROOTS_MAX) {
+        if name == mine || name.len() != 16 || !name.bytes().all(|c| c.is_ascii_digit() || (b'a'..=b'f').contains(&c)) {
+            continue;
+        }
+        let Ok(other) = own_dir_at(base, &name, false) else { continue };
+        let Some(text) = read_at(&other, "root", STATE_ROOT_BYTES, true).and_then(|b| String::from_utf8(b).ok()) else { continue };
+        let path = text.strip_suffix('\n').unwrap_or(&text);
+        if !path.starts_with('/') || path.chars().any(|c| c.is_control()) {
+            continue;
+        }
+        if !matches!(std::fs::symlink_metadata(path), Err(e) if e.raw_os_error() == Some(libc::ENOENT)) {
+            continue;
+        }
+        let inside = names_at(&other, 8);
+        if inside.iter().any(|n| !matches!(n.as_str(), "root" | "root.tmp" | "fonts")) {
+            continue;
+        }
+        if inside.iter().any(|n| n == "fonts") {
+            let Ok(fonts) = own_dir_at(&other, "fonts", false) else { continue };
+            for f in names_at(&fonts, 4 * FONT_FILES_MAX + 64) {
+                unlink_at(&fonts, &f, false);
+            }
+            drop(fonts);
+            if !unlink_at(&other, "fonts", true) {
+                continue;
+            }
+        }
+        unlink_at(&other, "root.tmp", false);
+        unlink_at(&other, "root", false);
+        drop(other);
+        if unlink_at(base, &name, true) {
+            gone += 1;
+        }
+    }
+    if gone > 0 {
+        qlog!("fonts: %d data folder(s) are gone: what was kept for them is removed from Grimoire's own folder", gone);
+    }
 }
 
 // ---- the crash guard: grimoire/.font-inuse ----
@@ -581,7 +922,7 @@ impl UserFont {
     }
 }
 
-/// The names in the cache folder: which keys have a verdict, and which are marked bad.
+/// The names in the cache folder: which keys have a preview or a `.no`, and which are marked bad.
 fn cache_names() -> std::collections::HashSet<String> {
     let mut names = std::collections::HashSet::new();
     if let Ok(rd) = std::fs::read_dir(cache_dir()) {
@@ -594,7 +935,13 @@ fn cache_names() -> std::collections::HashSet<String> {
     names
 }
 
-fn state_from(l: &Listed, cache: &std::collections::HashSet<String>) -> UserFontState {
+/// Whether a key has a verdict by the names alone: its `.font` among the verdicts kept, and its companion (the
+/// preview, or `.no`) in the cache.
+fn checked_by_names(key: u64, verdicts: &HashSet<String>, cache: &HashSet<String>) -> bool {
+    verdicts.contains(&format!("{key:016x}.font")) && (cache.contains(&format!("{key:016x}.pgm")) || cache.contains(&format!("{key:016x}.no")))
+}
+
+fn state_from(l: &Listed, verdicts: &HashSet<String>, cache: &HashSet<String>) -> UserFontState {
     if name_kind(l.rel.rsplit('/').next().unwrap_or("")) == NameKind::Web {
         return UserFontState::No(FontWhy::Format);
     }
@@ -604,7 +951,7 @@ fn state_from(l: &Listed, cache: &std::collections::HashSet<String>) -> UserFont
     if l.size == 0 || guard_out(l.key) {
         return UserFontState::No(FontWhy::Unreadable);
     }
-    if cache.contains(&format!("{:016x}.font", l.key)) {
+    if checked_by_names(l.key, verdicts, cache) {
         return UserFontState::Checked;
     }
     if cache.contains(&format!("{:016x}.bad", l.key)) || with(|st| st.broken) {
@@ -619,15 +966,15 @@ pub fn userfont_resolve(f: &mut UserFont) {
     if f.state != UserFontState::Checked {
         return;
     }
-    f.state = match read_verdict(f.key) {
-        Some(v) if v.size == f.size => match v.what {
+    f.state = match VerdictDir::open(false).ok().and_then(|vd| verdict_for(&vd, f.key, f.size)) {
+        Some(v) => match v.what {
             VerdictKind::Passed(facts) => UserFontState::Ready(Rc::new(facts), v.hash),
             VerdictKind::Refused(Refuse::Unreadable) => UserFontState::No(FontWhy::Unreadable),
             VerdictKind::Refused(Refuse::NoLatin) => UserFontState::No(FontWhy::NoLatin),
             VerdictKind::Refused(Refuse::Format) => UserFontState::No(FontWhy::Format),
             VerdictKind::Slow => UserFontState::No(FontWhy::Slow),
         },
-        _ => UserFontState::Checking,
+        None => UserFontState::Checking,
     };
     // A verdict that does not read (a line a later version added, a cut file) is checked again, once: the row
     // would else say "Checking..." for good and the open sheet refresh at every look.
@@ -706,10 +1053,10 @@ pub fn userfonts_scan(dpi: f32) -> Vec<UserFont> {
             guard_save(&marks);
         }
     });
-    let cache = cache_names();
+    let (verdicts, cache) = (verdict_names(), cache_names());
     let list: Vec<UserFont> = files
         .iter()
-        .map(|l| UserFont { rel: l.rel.clone(), key: l.key, size: l.size, state: state_from(l, &cache), preview: Canvas::default(), preview_tried: false })
+        .map(|l| UserFont { rel: l.rel.clone(), key: l.key, size: l.size, state: state_from(l, &verdicts, &cache), preview: Canvas::default(), preview_tried: false })
         .collect();
     if list.iter().any(|f| f.state == UserFontState::Checking) {
         queue_check("", dpi);
@@ -723,13 +1070,13 @@ pub fn userfonts_refresh(list: &mut [UserFont]) -> usize {
     if !list.iter().any(|f| f.state == UserFontState::Checking) {
         return 0;
     }
-    let cache = cache_names();
+    let (verdicts, cache) = (verdict_names(), cache_names());
     let broken = with(|st| st.broken);
     let mut changed = 0;
     let rechecked = with(|st| st.rechecked.clone());
     for f in list.iter_mut().filter(|f| f.state == UserFontState::Checking) {
         // (a verdict that did not read waits for its new check: the old file is not "a check that ended")
-        if cache.contains(&format!("{:016x}.font", f.key)) && !rechecked.contains(&f.key) {
+        if checked_by_names(f.key, &verdicts, &cache) && !rechecked.contains(&f.key) {
             f.state = UserFontState::Checked;
             changed += 1;
         } else if cache.contains(&format!("{:016x}.bad", f.key)) || broken {
@@ -809,7 +1156,7 @@ fn load_file(st: &FsStorage, rel: &str, dpi: f32, room: usize) -> Result<Loaded,
     if name_kind(rel.rsplit('/').next().unwrap_or("")) != NameKind::Font || l.size == 0 || l.size > FONT_FILE_MAX as u64 || guard_out(l.key) {
         return Err(LoadErr::Refused);
     }
-    let Some(v) = read_verdict(l.key).filter(|v| v.size == l.size) else {
+    let Some(v) = VerdictDir::open(false).ok().and_then(|vd| verdict_for(&vd, l.key, l.size)) else {
         let bad = std::path::Path::new(&cache_file(l.key, "bad")).exists();
         if bad {
             return Err(LoadErr::Refused);
@@ -839,10 +1186,11 @@ fn pair_of(rel: &str, facts: &FaceFacts) -> Option<String> {
     }
     let folder = |r: &str| r.rfind('/').map_or(String::new(), |i| r[..i].to_string());
     let (files, _) = list_fonts();
+    let vd = VerdictDir::open(false).ok()?;
     let mut best: Option<(i32, String)> = None;
     for l in files.iter().filter(|l| l.rel != rel && folder(&l.rel) == folder(rel) && l.size <= FONT_FILE_MAX as u64) {
-        let Some(Verdict { what: VerdictKind::Passed(f), size, .. }) = read_verdict(l.key) else { continue };
-        if size != l.size || f.italic || f.weight < 600 || !f.family.eq_ignore_ascii_case(&facts.family) {
+        let Some(Verdict { what: VerdictKind::Passed(f), .. }) = verdict_for(&vd, l.key, l.size) else { continue };
+        if f.italic || f.weight < 600 || !f.family.eq_ignore_ascii_case(&facts.family) {
             continue;
         }
         let d = (f.weight - 700).abs();
@@ -1078,7 +1426,8 @@ pub fn userfont_missing(rel: &str) -> UserFont {
 }
 
 /// A FontCheck job ended (bg_last_exit's code: 0 done, 3 some files were still being copied, 4 no worker could
-/// be had, 5 one font was checked and more are left, anything else it died). The font settings.ini asks for is
+/// be had, 5 one font was checked and more are left, 6 what a check finds cannot be kept, anything else it
+/// died). The font settings.ini asks for is
 /// tried again if it was waiting for its check, but only after a job that ended well (0, or 5 for the next
 /// one): a check that ends with no verdict for it is asked again after a retry time that grows, and a few in a
 /// row stop the checks for the session (userfonts_tick). Returns whether what draws the text changed.
@@ -1093,6 +1442,13 @@ pub fn userfonts_job_done(a: &mut App, code: i32) -> bool {
         4 => {
             if !with(|st| std::mem::replace(&mut st.broken, true)) {
                 qlog!("fonts: no worker can be had (see the lines above): no font is checked until Grimoire starts again");
+            }
+        }
+        6 => {
+            // (Grimoire's own folder cannot be used: as with no worker, nothing is marked and the session
+            // checks no more fonts; the fonts that have their verdicts go on working)
+            if !with(|st| std::mem::replace(&mut st.broken, true)) {
+                qlog!("fonts: what the check finds cannot be kept (see the line above): no font is checked until Grimoire starts again");
             }
         }
         5 => {
@@ -1117,7 +1473,7 @@ pub fn userfonts_job_done(a: &mut App, code: i32) -> bool {
                 with(|st| st.fails = 0);
                 queue_check("", a.dpi);
             } else {
-                note_failure("it failed before any verdict (is the storage full or read-only?)");
+                note_failure("it failed before any verdict (is the storage, or Grimoire's own folder, full or read-only?)");
             }
         }
     }
@@ -1190,23 +1546,38 @@ fn write_cache(path: &str, data: &[u8]) -> bool {
 }
 
 /// BgKind::FontCheck, in the background child: every font file of grimoire/fonts that has no verdict yet is
-/// read whole and checked by the sandboxed worker (fontcheck.rs), one after another, and its verdict and
-/// preview written to the cache. `arg` is "" or "recheck:<key>" (that file's verdict is stale: it is checked
-/// again). `dpi` sizes the preview. Returns 0 done, 3 some files wait (still being copied, or no memory now),
-/// 4 no worker can be had (nothing is marked), -1 it could not start.
+/// read whole and checked by the sandboxed worker (fontcheck.rs), one after another, its preview (or its
+/// `.no`) written to the cache and its verdict to where verdicts are kept (`VerdictDir`). `arg` is "" or
+/// "recheck:<key>" (that file's verdict is stale: it is checked again). `dpi` sizes the preview. Returns 0
+/// done, 3 some files wait (still being copied, or no memory now), 4 no worker can be had (nothing is marked),
+/// 6 what a check finds cannot be kept (Grimoire's own folder cannot be used, or has too little room: nothing
+/// is checked and nothing is marked), -1 it could not start.
 pub fn bg_font_check(arg: &str, dpi: f32) -> i32 {
     let cache = cache_dir();
-    // (verdicts are written and stale entries deleted there as root: never through a planted link)
+    // (its files are written and stale entries deleted there as root: never through a planted link)
     if !no_link_below(&store_root(), &cache) || mkdir_p(&cache) != 0 {
         return -1;
+    }
+    let vd = match VerdictDir::open(true) {
+        Ok(vd) => vd,
+        Err(why) if state_base().is_some() => {
+            // (before any worker starts and before any mark is written; the folder's path is never logged)
+            qlog!("fonts: what the check finds cannot be kept (%s); nothing is marked", why);
+            return 6;
+        }
+        Err(_) => return -1,
+    };
+    if let Some((base, tag)) = &vd.own {
+        own_upkeep(base, tag);
     }
     let Some(st) = storage() else { return -1 };
     let (files, _) = list_fonts();
     let t0 = real_now_ms();
-    // What is in the cache for files that are gone (or changed) goes; so do marks an earlier run left.
-    if let Some(key) = arg.strip_prefix("recheck:").filter(|k| k.len() == 16 && k.bytes().all(|c| c.is_ascii_hexdigit())) {
-        for ext in ["font", "pgm", "bad"] {
-            let _ = std::fs::remove_file(format!("{cache}/{key}.{ext}"));
+    // What is kept for files that are gone (or changed) goes; so do marks an earlier run left.
+    if let Some(key) = arg.strip_prefix("recheck:").filter(|k| k.len() == 16 && k.bytes().all(|c| c.is_ascii_hexdigit())).and_then(|k| u64::from_str_radix(k, 16).ok()) {
+        vd.remove(key);
+        for ext in ["pgm", "no", "bad", "slow"] {
+            let _ = std::fs::remove_file(cache_file(key, ext));
         }
     }
     let keep: std::collections::HashSet<String> = files.iter().map(|l| format!("{:016x}", l.key)).collect();
@@ -1219,6 +1590,9 @@ pub fn bg_font_check(arg: &str, dpi: f32) -> i32 {
             let _ = std::fs::remove_file(format!("{cache}/{n}"));
         }
     }
+    if vd.private() {
+        vd.sweep(&keep);
+    }
     let px = (44.0 * dpi / 300.0).round().clamp(8.0, 400.0) as i32;
     // Whether a file still needs a verdict (one that a first timeout left for a retry counts: it waits).
     let needs = |l: &Listed| {
@@ -1226,7 +1600,7 @@ pub fn bg_font_check(arg: &str, dpi: f32) -> i32 {
             && l.size != 0
             && l.size <= FONT_FILE_MAX as u64
             && !std::path::Path::new(&cache_file(l.key, "bad")).exists()
-            && !read_verdict(l.key).is_some_and(|v| v.size == l.size)
+            && verdict_for(&vd, l.key, l.size).is_none()
     };
     let mut later = 0;
     let wall = wall_time();
@@ -1235,8 +1609,8 @@ pub fn bg_font_check(arg: &str, dpi: f32) -> i32 {
         if name_kind(l.rel.rsplit('/').next().unwrap_or("")) != NameKind::Font || l.size == 0 || l.size > FONT_FILE_MAX as u64 {
             continue;
         }
-        let (vp, pp, bp, cp) = (cache_file(l.key, "font"), cache_file(l.key, "pgm"), cache_file(l.key, "bad"), cache_file(l.key, "checking"));
-        if std::path::Path::new(&bp).exists() || read_verdict(l.key).is_some_and(|v| v.size == l.size) {
+        let (pp, np, bp, cp) = (cache_file(l.key, "pgm"), cache_file(l.key, "no"), cache_file(l.key, "bad"), cache_file(l.key, "checking"));
+        if std::path::Path::new(&bp).exists() || verdict_for(&vd, l.key, l.size).is_some() {
             continue;
         }
         // A file whose check timed out once waits a minute, then is checked again (the clock may have jumped).
@@ -1259,6 +1633,12 @@ pub fn bg_font_check(arg: &str, dpi: f32) -> i32 {
                 sleep_ms((crate::pdfimport::STABLE_GAP_MS - since) as i32);
             }
         }
+        // Nothing is checked whose verdict could not be kept (fonts that have theirs go on loading: reading
+        // needs no room).
+        if !vd.room() {
+            qlog!("fonts: what the check finds cannot be kept (too little room); nothing is marked");
+            return 6;
+        }
         if !write_cache(&cp, b"") {
             return -1;
         }
@@ -1271,28 +1651,40 @@ pub fn bg_font_check(arg: &str, dpi: f32) -> i32 {
         let t = real_now_ms();
         let out = check_font(&data, px);
         let ms = real_now_ms().wrapping_sub(t);
-        let verdict = |what: VerdictKind| Verdict { hash, size: l.size, what }.to_text();
+        // A verdict is kept with its companion in the cache, written first (verdict_for): a pass after its
+        // preview, a refusal after its `.no`. A mark a first timeout left goes with any verdict.
+        let keep_verdict = |what: VerdictKind| {
+            let pass = matches!(what, VerdictKind::Passed(_));
+            let kept = (pass || write_cache(&np, b"")) && vd.write(l.key, Verdict { hash, size: l.size, what }.to_text().as_bytes());
+            if kept {
+                let _ = std::fs::remove_file(&slow_mark);
+                let _ = std::fs::remove_file(if pass { &np } else { &pp });
+            }
+            kept
+        };
         let mut wrote = true;
         match out {
             FontOut::Passed { facts, preview, w, h } => {
                 let mut c = Canvas::default();
-                if canvas_init(&mut c, w, h) == 0 {
+                if canvas_init(&mut c, w, h) != 0 {
+                    // (a verdict counts only with its preview: none can be made now, so none is written)
+                    qlog!("fonts: file %d of %d left for later (out of memory)", i as i32 + 1, n as i32);
+                    later += 1;
+                } else {
                     for y in 0..h as usize {
                         c.px[y * c.stride as usize..y * c.stride as usize + w as usize].copy_from_slice(&preview[y * w as usize..(y + 1) * w as usize]);
                     }
-                    // (the preview first: a verdict has one)
-                    wrote = store_write_pgm(&pp, &c) == 0;
+                    qlog!(
+                        "fonts: file %d of %d passed: %d KB, %d glyphs, %d from Terminess, checked in %u ms",
+                        i as i32 + 1,
+                        n as i32,
+                        (l.size / 1024) as i32,
+                        facts.mapped,
+                        facts.skip.len() as i32,
+                        ms
+                    );
+                    wrote = store_write_pgm(&pp, &c) == 0 && keep_verdict(VerdictKind::Passed(facts));
                 }
-                qlog!(
-                    "fonts: file %d of %d passed: %d KB, %d glyphs, %d from Terminess, checked in %u ms",
-                    i as i32 + 1,
-                    n as i32,
-                    (l.size / 1024) as i32,
-                    facts.mapped,
-                    facts.skip.len() as i32,
-                    ms
-                );
-                wrote = wrote && write_cache(&vp, verdict(VerdictKind::Passed(facts)).as_bytes());
             }
             FontOut::Refused(r) => {
                 qlog!("fonts: file %d of %d refused (%s)", i as i32 + 1, n as i32, match r {
@@ -1300,12 +1692,12 @@ pub fn bg_font_check(arg: &str, dpi: f32) -> i32 {
                     Refuse::NoLatin => "no Latin letters",
                     Refuse::Format => "a web font",
                 });
-                wrote = write_cache(&vp, verdict(VerdictKind::Refused(r)).as_bytes());
+                wrote = keep_verdict(VerdictKind::Refused(r));
             }
             FontOut::Slow => {
                 if std::path::Path::new(&slow_mark).exists() {
                     qlog!("fonts: file %d of %d took too long to read again (%u ms)", i as i32 + 1, n as i32, ms);
-                    wrote = write_cache(&vp, verdict(VerdictKind::Slow).as_bytes());
+                    wrote = keep_verdict(VerdictKind::Slow);
                     let _ = std::fs::remove_file(&slow_mark);
                 } else {
                     // (a timeout may be the clock's jump after a wake: no verdict yet, one more try later)
@@ -1334,7 +1726,7 @@ pub fn bg_font_check(arg: &str, dpi: f32) -> i32 {
         }
         let _ = std::fs::remove_file(&cp);
         if !wrote {
-            qlog!("fonts: a verdict could not be written. Is the storage full?");
+            qlog!("fonts: what the check found could not be written. Is the storage, or Grimoire's own folder, full?");
             return -1;
         }
         // One font a job: the others are the next one's, which ranks behind an export or a PDF's slice.
@@ -1343,7 +1735,7 @@ pub fn bg_font_check(arg: &str, dpi: f32) -> i32 {
             return 5;
         }
     }
-    // The folder's tally, from the verdicts the cache holds: this job checked one font at most (the fix round's
+    // The folder's tally, from the verdicts kept: this job checked one font at most (the fix round's
     // M19), so its own counts would read "1 passed" after three fonts.
     let (mut passed, mut refused, mut dead, mut waiting, mut other, mut all) = (0, 0, 0, 0, 0, 0);
     for l in files.iter().filter(|l| name_kind(l.rel.rsplit('/').next().unwrap_or("")) == NameKind::Font) {
@@ -1353,7 +1745,7 @@ pub fn bg_font_check(arg: &str, dpi: f32) -> i32 {
         } else if std::path::Path::new(&cache_file(l.key, "bad")).exists() {
             dead += 1;
         } else {
-            match read_verdict(l.key).filter(|v| v.size == l.size).map(|v| v.what) {
+            match verdict_for(&vd, l.key, l.size).map(|v| v.what) {
                 Some(VerdictKind::Passed(_)) => passed += 1,
                 Some(_) => refused += 1,
                 None => waiting += 1,
@@ -1471,6 +1863,35 @@ mod tests {
         guard_arm(&mut full, 99);
         assert_eq!(full.len(), 8);
         assert!(full.iter().any(|g| g.key == 99 && g.armed) && !full.iter().any(|g| g.key == 0));
+    }
+
+    #[test]
+    fn room_below_the_floor_is_not_enough() {
+        let (bytes, files) = (STATE_FREE_FLOOR, STATE_FILES_FLOOR);
+        assert!(enough_room(bytes, 100_000, files));
+        assert!(enough_room(u64::MAX, u64::MAX, u64::MAX));
+        // under the byte floor, whatever the files
+        assert!(!enough_room(bytes - 1, 100_000, 100_000));
+        assert!(!enough_room(0, 0, 0));
+        // under the file floor
+        assert!(!enough_room(bytes, 100_000, files - 1));
+        assert!(!enough_room(u64::MAX, 100_000, 0));
+        // a file system that counts no files is not refused for having none free
+        assert!(enough_room(bytes, 0, 0));
+    }
+
+    #[test]
+    fn a_data_roots_tag_ignores_a_trailing_slash() {
+        let t = root_tag("/mnt/us/grimoire");
+        assert_eq!(t.len(), 16);
+        assert!(t.bytes().all(|c| c.is_ascii_digit() || (b'a'..=b'f').contains(&c)));
+        assert_eq!(t, root_tag("/mnt/us/grimoire/"));
+        assert_eq!(t, root_tag("/mnt/us/grimoire//"));
+        assert_ne!(t, root_tag("/mnt/us/grimoire-dev"));
+        assert_ne!(t, root_tag("/mnt/us/Grimoire"));
+        // (FNV-1a 64 of the path's bytes: the offset basis for no bytes at all)
+        assert_eq!(root_tag(""), "cbf29ce484222325");
+        assert_eq!(root_tag("a"), "af63dc4c8601ec8c");
     }
 
     #[test]

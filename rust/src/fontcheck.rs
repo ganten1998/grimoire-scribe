@@ -1377,7 +1377,7 @@ fn children_cpu_ms() -> u64 {
     (ru.ru_utime.tv_sec as u64 + ru.ru_stime.tv_sec as u64) * 1000 + (ru.ru_utime.tv_usec as u64 + ru.ru_stime.tv_usec as u64) / 1000
 }
 
-// ---- the verdict: fonts/.cache/<key>.font ----
+// ---- the verdict: <key>.font, in the folder userfonts.rs keeps verdicts in ----
 
 /// What the `.font` file says of a font file: the whole file's hash and size, and what the check found.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -1443,7 +1443,8 @@ impl Verdict {
     }
 
     /// Reads a `.font` file's bytes, strictly: every line known, every number in range, or None (the font is
-    /// then checked again). Nothing here trusts the file: it sits on storage a computer can write.
+    /// then checked again). Nothing here trusts the file, wherever it is kept: in a build without a folder of
+    /// its own (userfonts.rs) it sits on storage a computer can write.
     pub fn parse(text: &[u8]) -> Option<Verdict> {
         if text.len() > VERDICT_MAX {
             return None;

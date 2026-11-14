@@ -17,7 +17,9 @@ fn bin() -> &'static str {
     env!("CARGO_BIN_EXE_grimoire-headless")
 }
 
-const HOOKS: [&str; 9] = [
+const HOOKS: [&str; 11] = [
+    "GRIMOIRE_STATE",
+    "GRIMOIRE_STATE_FREE_BYTES",
     "GRIMOIRE_FONT_TEST_CRASH",
     "GRIMOIRE_FONT_TEST_HANG",
     "GRIMOIRE_FONT_TEST_TRAP",
