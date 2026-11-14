@@ -6,9 +6,11 @@
 # Cancel and a tap outside it give the view back as it was (its screen, its ticks), refreshing
 # only what the sheet covered; a row picked goes to that page and the view closes on it. New page held opens its
 # count pad at 1: Done at once adds one page, a digit replaces the 1.
+# (past the two launch repaints, at 1.2 s and 3.5 s, which refresh the whole screen: the stretch counted at Cancel
+# ended about 3 s after the start, and a slower runner reached the 3.5 s one inside it, issue #93)
 # (the clock corner held still: its minute's refresh would land among the counted ones)
 clock 1700000000
-wait 300
+wait 3600
 tap library folder.Void
 tap library notebook.A
 tap panel pages

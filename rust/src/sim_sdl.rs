@@ -1525,6 +1525,25 @@ fn live_frame_stale(a: Option<&mut App>, key: &[u8], out: &mut String, cap: usiz
     true
 }
 
+/// "libindex.*": how far the library index (libindex.rs: every notebook's pages, names and links, for
+/// the Graph of all notebooks) has got, whatever screen is up. "libindex.complete" 1 once its check of
+/// every notebook is through (opening a notebook starts one), 0 before the first and while one runs;
+/// "libindex.reads" how many times it has read a notebook from its files since Grimoire started (the
+/// backlinks cache's check comes first, so 0 until that is through); "libindex.books" the notebooks it
+/// holds read. A waitfor on them waits for the index itself, where a fixed wait guessed how many idle
+/// ticks the machine would give it. Read only: no file is read, nothing is counted again.
+fn libindex_probe(key: &[u8], out: &mut String, cap: usize) -> bool {
+    let Some(key) = key.strip_prefix(b"libindex.") else { return false };
+    let v = match key {
+        b"complete" => libindex_complete() as usize,
+        b"reads" => libindex_reads() as usize,
+        b"books" => libindex_with(|e| e.iter().filter(|e| e.readable()).count()),
+        _ => return false,
+    };
+    csnprintf!(out, cap, "%u", v as u32);
+    true
+}
+
 /// app_probe, which the C reaches through g_probe_app: the App the main loop handed the poll, none
 /// before there is one (the C's NULL g_probe_app: -1). Every key app_probe answers is ASCII, so a
 /// key in bytes that are not UTF-8 is unknown there too.
@@ -1574,6 +1593,7 @@ fn expect_check_as(gone: bool, mut a: Option<&mut App>) {
         && !live_frame_stale(a.as_deref_mut(), &key, &mut got, GOT_CAP)
         && !live_stale(a.as_deref_mut(), &key, &mut got, GOT_CAP)
         && !power_probe(&key, &mut got, GOT_CAP)
+        && !libindex_probe(&key, &mut got, GOT_CAP)
         && probe_app(a, &key, &mut got, GOT_CAP) != 0
     {
         err(&bformat("expect failed (line %d): unknown key \"%s\"\n", &[B::D(line), B::S(&key)]));
@@ -2700,7 +2720,16 @@ fn poll_in(ev: &mut InEvent, timeout_ms: i32, mut a: Option<&mut App>) -> i32 {
         // timeout 0 still drains every due event, including releases after a slow frame.
         if timeout_ms != 0 {
             let left = due.wrapping_sub(now_ms()) as i32;
-            if left > 0 { sleep_ms(if timeout_ms < 0 { left } else { left.min(timeout_ms) }); }
+            if left > 0 {
+                let step = if timeout_ms < 0 { left } else { left.min(timeout_ms) };
+                sleep_ms(step);
+                // GRIMOIRE_SIM_CLOCK=script: app time stands still while the runner sleeps, and the
+                // click's events are stamped by it, so the click's own time moves it on, as a wait's
+                // does (else its release would never come due, and no line after it be read).
+                if let Some(at) = crate::util::sim_clock() {
+                    crate::util::sim_clock_set(Some(at.wrapping_add(step as u32)));
+                }
+            }
             if with(|st| st.q_pop(ev)) { return 1; }
         }
         return 0;
@@ -3640,6 +3669,109 @@ mod tests {
             assert!(now_ms().wrapping_sub(1090) <= 50);
         }
         assert_eq!((with(|st| st.line_no), now_ms()), (3, 1140));
+    }
+
+    #[test]
+    fn a_side_click_moves_the_script_clock_by_its_own_time_and_the_script_reads_on() {
+        fresh();
+        script("side-clock", "side click 2 150 80\nwait 200\nquit\n");
+        let _clock = ScriptClock;
+        crate::util::sim_clock_set(Some(5000));
+        // The hover and the first press come at once; each later event when the runner has slept up to
+        // it, app time moved on to just its stamp, however long the host took over each round. (Without
+        // that the first release never came due: app time stood at the press, and nothing after the
+        // click was read.)
+        let mut ev = InEvent::default();
+        let mut got = Vec::new();
+        for _ in 0..60 {
+            if got.len() == 5 {
+                break;
+            }
+            if input_poll(&mut ev, 30) == 1 {
+                got.push((ev.type_, ev.side_button, ev.t_ms - 5000, now_ms() - 5000));
+            }
+        }
+        assert_eq!(got, [
+            (InType::PenHover, false, 0, 0),
+            (InType::PenButton, true, 0, 0),
+            (InType::PenButton, false, 80, 80),
+            (InType::PenButton, true, 230, 230),
+            (InType::PenButton, false, 310, 310),
+        ]);
+        assert!(with(|st| st.side_click_until.is_none()));
+        // The wait after it moves app time on by its 200 ms and no more: what the app times from the
+        // release (a single click's wait for a second one) is as far along at the next line as the
+        // script says, on any machine.
+        for _ in 0..100 {
+            if input_poll(&mut ev, 30) == 1 {
+                break;
+            }
+            assert!(now_ms() - 5000 <= 510, "{}", now_ms());
+        }
+        assert_eq!((ev.type_, now_ms() - 5000), (InType::Quit, 510));
+        // docs/SIM.md says so where it describes the scripted clock
+        let doc = std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/../docs/SIM.md")).unwrap();
+        let para = doc.split("\n\n").find(|p| p.starts_with("`GRIMOIRE_SIM_CLOCK=script`")).unwrap();
+        assert!(para.contains("`side click`"), "the scripted clock's paragraph does not name side click: {para}");
+    }
+
+    #[test]
+    fn the_library_index_probes_follow_its_check() {
+        fresh();
+        let base = std::env::var("GRIMOIRE_TEST_TMP").map(std::path::PathBuf::from).unwrap_or_else(|_| std::env::temp_dir());
+        let root = base.join(format!("sim-libindex-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        assert_eq!(store_init(root.to_str().unwrap()), 0);
+        let probe = |key: &str| {
+            let mut got = String::new();
+            libindex_probe(key.as_bytes(), &mut got, GOT_CAP).then_some(got)
+        };
+        for name in ["A", "B", "C"] {
+            let mut nb = NotebookInfo::default();
+            assert_eq!(store_create(name, "", PAPER_BLANK, &mut nb), 0);
+        }
+        // Before its first check: nothing read, not complete.
+        assert_eq!((probe("libindex.complete"), probe("libindex.reads"), probe("libindex.books")),
+            (Some("0".into()), Some("0".into()), Some("0".into())));
+        // One notebook read a tick: the count follows, and complete comes with the check's end alone.
+        let mut seen = vec![0u32];
+        let mut ticks = 0;
+        while libindex_step() {
+            ticks += 1;
+            assert!(ticks < 1000);
+            let reads: u32 = probe("libindex.reads").unwrap().parse().unwrap();
+            assert!(reads == *seen.last().unwrap() || reads == seen.last().unwrap() + 1, "{reads} after {seen:?}");
+            if reads != *seen.last().unwrap() {
+                seen.push(reads);
+            }
+            if reads < 3 {
+                assert_eq!(probe("libindex.complete"), Some("0".into()));
+            }
+        }
+        assert_eq!(seen, [0, 1, 2, 3]);
+        assert_eq!((probe("libindex.complete"), probe("libindex.reads"), probe("libindex.books")),
+            (Some("1".into()), Some("3".into()), Some("3".into())));
+        // A notebook opened starts a check again (editor_open_notebook: libindex_revalidate): not complete
+        // until it is through, and nothing is read again where no file changed.
+        libindex_revalidate();
+        assert_eq!(probe("libindex.complete"), Some("0".into()));
+        while libindex_step() {}
+        assert_eq!((probe("libindex.complete"), probe("libindex.reads")), (Some("1".into()), Some("3".into())));
+        // An expect and a waitfor read them (the runner answers these keys, with no App); an unknown one fails.
+        for (line, failed) in [("expect libindex.books is 3", 0), ("waitfor libindex.complete is 1", 0), ("expect libindex.nope is 1", 1)] {
+            let before = with(|st| st.expect_failed);
+            with(|st| st.expect_read(line.as_bytes()));
+            expect_check(None);
+            assert!(!with(|st| st.expect.pending), "{line}");
+            assert_eq!(with(|st| st.expect_failed) - before, failed, "{line}");
+        }
+        // and docs/SIM.md lists the three
+        let doc = std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/../docs/SIM.md")).unwrap();
+        let row = doc.lines().find(|l| l.starts_with("| `libindex.complete`")).expect("docs/SIM.md has no libindex row");
+        for key in ["`libindex.reads`", "`libindex.books`"] {
+            assert!(row.contains(key), "the libindex row does not name {key}: {row}");
+        }
+        let _ = std::fs::remove_dir_all(&root);
     }
 
     #[test]
