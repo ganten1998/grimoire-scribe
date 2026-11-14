@@ -640,7 +640,8 @@ itself only renames a `.checking` mark to `.bad` when that job died.
 - `<key>.font`, the verdict, text, at most 8 KiB, read strictly: it is a verdict only when it is, byte for
   byte, a text the check writes (every line below there once and in this order, every number in range and
   written as below, nothing after the last line). Anything else, a text cut short at a line's end among
-  them, is no verdict, and the font is checked again. Where it is kept depends on the build (2.1.1 on).
+  them, is no verdict, and the font is checked again. Where it is kept depends on the build (from the verdicts numbered 2 on; those numbered 1 were always
+  in `fonts/.cache/`).
   On the Kindle it is outside the storage, in `/var/local/grimoire/<16 hex digits>/fonts/`: the 16 digits
   are the FNV-1a 64 hash of the data root's path (each data root has its folder there, and the file `root`
   beside `fonts/` holds the root's path), the folders are root's alone (mode 0700), and nothing under
@@ -678,7 +679,7 @@ itself only renames a `.checking` mark to `.bad` when that job died.
   its font file does.
 - `<key>.pgm`, the preview (P5 PGM): the family's name (and its style, unless Regular) drawn in the font,
   black on white, at the text size of the screen the check ran for.
-- `<key>.no`, empty (2.1.1 on): the check refused this file; its verdict says why.
+- `<key>.no`, empty (from the verdicts numbered 2 on): the check refused this file; its verdict says why.
 - `<key>.checking`, empty: a check of this file is under way.
 - `<key>.slow`, one line of text: a check of this file ran out of time, or found glyphs that take too long
   to draw. No verdict is written then: the file is checked once more, a minute or more later (a timeout
@@ -1694,11 +1695,12 @@ What 2.0.0 and 2.1.0-beta.1 do with data 2.1.0-beta.2 writes (read in their code
 | the mirror PDF | a notebook with colour pages is made again there, with those pages gray (the colour comes back when 2.1.0-beta.2 makes it again) |
 | `font=file:<name>` in `settings.ini`, `font_bold=` | kept as they are (2.0.0: unknown keys; 2.1.0-beta.1: a font it does not have, drawn as Terminess, and it logs the value once); the file is never loaded there |
 
-What 2.1.0 does with data 2.1.1 writes:
+What 2.1.0 does with what a version that numbers its font verdicts 2 writes (read in its code at the tag):
 
-| new data (2.1.1) | 2.1.0 |
+| new data (font verdicts numbered 2) | 2.1.0 |
 |---|---|
-| a font's verdict (`grimoire-font 2`; on the Kindle in `/var/local/grimoire`), `fonts/.cache/<key>.no` | 2.1.0 never looks outside the storage: on the Kindle it keeps and reads its own `fonts/.cache/<key>.font`, which 2.1.1 never reads there and leaves alone, so a font it had checked is ready at once. Where 2.1.1 keeps its verdicts in `fonts/.cache/`, 2.1.0 takes `grimoire-font 2` as no verdict and checks the font once. `<key>.no` is a name it does not read; it goes with its font file |
+| a font's verdict (`grimoire-font 2`; on the Kindle in `/var/local/grimoire`), `fonts/.cache/<key>.no` | 2.1.0 never looks outside the storage: on the Kindle it keeps and reads its own `fonts/.cache/<key>.font`, which the later version never reads there and leaves alone, so a font 2.1.0 had checked is ready at once. Where the later version keeps its verdicts in `fonts/.cache/`, 2.1.0 takes `grimoire-font 2` as no verdict and checks the font once. `<key>.no` is a name it does not read; it goes with its font file |
+| `fonts/.cache/<key>.slow` with its line of text | 2.1.0 knows the mark by its name and time and never reads what it holds: it takes it as the mark of a first check of its own that ran out of time |
 
 ## Highlighter rendering in 1.2.0
 

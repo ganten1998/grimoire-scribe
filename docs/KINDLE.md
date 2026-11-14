@@ -523,7 +523,8 @@ come down a pipe, 24 MB at most; its address space is its image, the file and 64
 own CPU time, then a fresh worker goes on from the glyph the last one reached, 10 minutes in all). The UI reads
 a font only once its verdict is there, and only if the bytes it reads hash to the verdict's (their SHA-256).
 
-What the check found of a font, its verdict, is kept on the Kindle itself and not on the storage (2.1.1 on):
+What the check found of a font, its verdict, is kept on the Kindle itself and not on the storage (from the
+verdicts numbered 2 on, FORMAT.md; 2.1.0 kept its own in `grimoire/fonts/.cache/`):
 `/var/local/grimoire/<16 hex digits>/fonts/<key>.font`, a few hundred bytes a font (at most 200 files of 8 KiB
 for a data folder), in folders only root can enter. The 16 digits name the data folder (a second one, a
 development copy, has its own, and the file `root` beside `fonts` says which folder it is of); what was kept for

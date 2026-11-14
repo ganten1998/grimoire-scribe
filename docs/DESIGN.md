@@ -2172,8 +2172,8 @@ its bytes.** Four parts keep it (`fontcheck.rs`, `userfonts.rs`, `font.rs`):
   hundred is "Unreadable font.". The walk goes through the faces the UI itself will make (`SafeFace`, the
   regular and the bold by the axis) and by the calls the UI makes at a glyph's first use (the face's lookup,
   its outline, the rasterizer at 160 px), and times each such draw in the worker's CPU time against a glyph
-  limit (2.1.1; `s1::FONT_GLYPH_CPU_MS`, 20 ms, a placeholder until the Scribe's figures are in; a build
-  that is not the Kindle's takes 5 s). A draw over the limit is measured again, up to three times, and the
+  limit (`s1::FONT_GLYPH_CPU_MS`, 20 ms, a placeholder until the Scribe's figures are in; a build that is
+  not the Kindle's takes 5 s). A draw over the limit is measured again, up to three times, and the
   smallest counts. A glyph over it that is no letter or digit is listed with the ones that fail and comes
   from Terminess; a letter or a digit over it, or more listed glyphs than one in a hundred when the ones
   that fail are not that many by themselves, makes the font one that takes too long. The glyphs listed can
@@ -2194,8 +2194,8 @@ its bytes.** Four parts keep it (`fontcheck.rs`, `userfonts.rs`, `font.rs`):
   and the preview's pixels; the writer validates every number.
 - **The writer** (`BgKind::FontCheck`, one job for every unchecked file, each read whole through `fsview`'s
   walk) writes `<key>.checking` before a font and the verdict `<key>.font` with the preview after it
-  (FORMAT.md, "Your own fonts"). The verdict goes where the build keeps verdicts (2.1.1; `VerdictDir` in
-  `userfonts.rs`): on the Kindle a folder of Grimoire's own outside the data root, `/var/local/grimoire`,
+  (FORMAT.md, "Your own fonts"). The verdict goes where the build keeps verdicts (`VerdictDir` in
+  `userfonts.rs`; so from the verdicts numbered 2 on): on the Kindle a folder of Grimoire's own outside the data root, `/var/local/grimoire`,
   with a folder for each data root; in a build that names no such folder (`GRIMOIRE_STATE` unset), the
   cache, as before. The own folder is walked name by name, by descriptor, from its parent: each name is
   made by the job with mode 0700 when missing, opened without following a link, and must be a folder of the
