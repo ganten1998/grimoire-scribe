@@ -4,6 +4,18 @@
 
 - Housekeeping: the separate process that reads PDFs, pictures and fonts is held to a narrower set of
   system calls and is started only with all of its descriptors in place. No change in the app.
+- **"PDF already imported." now means that very file.** A notebook made from a PDF keeps the SHA-256 and
+  size of its file (one line in its `source.ini`), and a PDF with the same book key is compared with it. The
+  same file says "PDF already imported." as before; a different file with that key (an edited copy, say)
+  becomes a notebook of its own, and KOReader's Open this book in Grimoire keeps opening the first.
+  Notebooks made before this version, or from KOReader, go by the key as before. In Files, a PDF that a
+  notebook already holds offers Import as notebook beside Open its notebook. A big PDF is read once more at
+  the end of its import (the notice stays on its last page meanwhile).
+- The import handles odd names and places more strictly: a file's path is kept exactly as it is while it is
+  imported (a name with unusual characters goes on correctly after an interruption), a path with a line
+  break in a name is left where it is, a file picked from a folder that is only spelled like
+  `grimoire/import` stays where it is, and the import's lock file and its first look at a dropped PDF are
+  opened without following links.
 
 ## 2.1.0 (2026-11-13)
 

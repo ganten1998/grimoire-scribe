@@ -457,7 +457,7 @@ docs/TESTING.md (Index phase 2).
 ## PDF imports (2.1.0-beta.2)
 
 Copy a PDF into `grimoire/import/` (see README). Device checks are in TESTING.md. What grimoire.log says (no
-file name, title or key ever appears in it: ids, page numbers, counts, timings, reasons):
+file name, title, key or hash ever appears in it: ids, page numbers, counts, sizes, timings, reasons):
 
 - `work: sandboxed (uid 62001, chroot, netns, no new privileges, seccomp, selinux enforcing|permissive|off)`:
   for PDFs once a session, at the first worker; for pictures and fonts once a background job (each job is a
@@ -466,7 +466,27 @@ file name, title or key ever appears in it: ids, page numbers, counts, timings, 
   T ms (MemAvailable K MB, N band(s))` (a page's time is T over the slice's pages), then `import: notebook <id>
   made of N page(s), N picture(s), N blank`.
 - `import: N PDF(s) queued; left as they are: ...`: a scan's counts (not yet steady, tried out, imported,
-  skipped, held elsewhere, waiting for room).
+  skipped, held elsewhere, waiting for room, and at its end `N that differ from their listing, N no longer
+  files`: the scan's look at a steady PDF opens it without following a link and reads only the file it listed;
+  both counts are 0 on a Scribe at rest). `import: a PDF that differs from its listing has not changed for a
+  minute; it is imported as it is`: a PDF whose look kept finding another file than the listing's for a minute
+  (a storage that names one file differently by its name and by an open file would show this for every PDF:
+  send the log).
+- `import: <id>: its file read for its record: N KB in T ms` (the last slice read the whole file once, for the
+  record the notebook keeps of it: FORMAT.md, the file record) and `import: <id>: its file read to compare with
+  a notebook's record: N KB in T ms` (at its start, only for a PDF with the key and the size of a notebook's
+  record). T is the time to note for a big PDF. `import: <id>: a notebook holds this PDF's key but was made from
+  another file; this one is imported`: it becomes a notebook of its own. `import: <id>: its file could not be
+  read whole; the notebook keeps no file record`, or `... could not be read whole and another notebook holds its
+  key; nothing imported`: the storage failed a read in the last slice.
+- `import: a path that holds a line break is never imported; refused`, `import: a picked PDF's path holds a line
+  break; refused` and `import: <id>: its path holds a line break; nothing imported`: a name with a line feed or
+  a carriage return in it (a FAT storage cannot hold one). `import: the import lock cannot be taken (<why>); a
+  picked PDF is refused` (or `a picked folder is refused`, or `the import folders wait for the next scan`): the
+  lock file `grimoire/import/.lock` cannot be opened (`Symbolic link loop`: a link is at its name, and is not
+  followed), or what is at its name is not a plain file of one name (`Invalid argument`), or it stopped being
+  the file at its name twice while it was taken (`Stale file handle`). Nothing is removed for it: look at what
+  is at that name over USB.
 - `import: <id>: its last slice was cut off (K of 3)`, `... the job used more CPU than S s; it stops here (K of 3)
   and goes on later`, `... it stopped 3 times without finishing; nothing imported`: an import that keeps not
   finishing ends after three stops. `... the files of the pages from N are gone; they are made again`: a resume

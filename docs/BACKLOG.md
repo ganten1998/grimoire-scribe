@@ -144,6 +144,38 @@ why. Newest decisions first within each section.
   flag before its exec. Not built: no test host can show it failing first.
 - **`sandbox::s1` numbers** are unchanged by this round.
 
+## Hardening round (2026-11), import: what waits
+
+- **The Scribe check of this round has not run** (docs/TESTING.md, "Hardening round (2026-11), import"). Its
+  steps 1 to 3 say how long a big PDF takes to read whole; steps 7 and 8 say whether the Scribe's storage gives a
+  file one identity by its name and by an open file, which the scan's look and the import lock both compare (if
+  it did not, every dropped PDF would wait a minute, and no import would start). No release holds this round's
+  import commits until those have run.
+- **Confirm Open its notebook with the file record.** In Files, a PDF whose key and size match a notebook's
+  record opens that notebook without reading the file whole; compare the whole file in the background before
+  opening, and drop Import as notebook from that card then.
+- **Carry the file record on the KOReader route.** Open this book in Grimoire finds a book's notebook by its
+  key; let it confirm with the record where one exists.
+- **A pick of a PDF whose key a notebook without a record holds.** Today it says "PDF already imported."; the
+  owner decides whether a pick should import it as a notebook of its own.
+- **A book whose first notebook was deleted.** A notebook made while another holds the key carries the key in
+  its record alone. If the first is then deleted and the book's file is imported again, another notebook still
+  holds the key, so the new one is made that way too, and KOReader's Open this book in Grimoire then starts a
+  notebook of its own. The owner decides whether the import should give the bare key (`source=`, `book=`) to a
+  new notebook when no notebook has those two lines.
+- **The import's whole-file read.** Measured on the Scribe at the owner's check; if its time or its use of
+  memory asks for it, spread it over the slices or release its cached pages as it goes.
+- **Two endings without a test.** A file that cannot be read whole in the last slice (the notebook made without
+  a record, or the import failed when another notebook holds the key), and the import lock's second round (the
+  name given to another file between the lock and the check): nothing but a failing read, or a race, reaches
+  them. A test hook could.
+- **The picker's own test of "under import"** compares names without case; on a storage that tells names
+  apart, rows of a folder only spelled like import would show a status.
+- **Picture folders with a line break in their name** are still imported by the picture scan; give
+  `list_names` the same rule as the PDFs' (`pdfimport::name_storable`), with the storage work.
+- **A link at a folder above the import lock** belongs with the storage work: the lock file itself is opened
+  without following a link, the folders above it by their names.
+
 ## The keyboard's caret and text copy and paste (2.1.0-beta.2, last round, lane K): choices for the owner, and what waits
 
 Built from issue #36 (docs/DESIGN.md, Text and the keyboard). The lane chose, the owner to confirm:
@@ -1244,8 +1276,9 @@ items of Document links. Left:
   checked by reading only; a test needs a listing slower than a second in the headless runner.
 - **The picker's UI-thread work** (the fix round, Low): entries of no known kind are stat-ed in 20 ms slices before
   the rows are built; the Import place's folder rows are listed every 5 s, the PDF rows as the import's progress
-  changes; "has notes" reads the notebooks' keys once a session (one small read for each notebook without
-  `source=`, at the first PDF row, on the UI thread). None of it is timed on the Scribe (TESTING.md, L8 check 2).
+  changes; "has notes" reads the notebooks' keys and file records once a session (one small read for each
+  notebook, at the first PDF row, on the UI thread: since the hardening round of 2026-11 also for a notebook with
+  `source=`, whose record is in its `source.ini`). None of it is timed on the Scribe (TESTING.md, L8 check 2).
 - **Folder rows count their pictures by listing the folder** (on the idle tick, one folder a tick, at most 200 ms
   each) to show "%d pictures" and to offer Import %d pictures as notebook. On a big `documents/` of big folders over
   FUSE that is unmeasured: TESTING.md has the timing check. A cheaper rule (count only when the card opens) is
