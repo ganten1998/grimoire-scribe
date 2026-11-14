@@ -461,7 +461,8 @@ file name, title, key or hash ever appears in it: ids, page numbers, counts, siz
 
 - `work: sandboxed (uid 62001, chroot, netns, no new privileges, seccomp, selinux enforcing|permissive|off)`:
   for PDFs once a session, at the first worker; for pictures and fonts once a background job (each job is a
-  process of its own, and says it at its first worker). `work: not sandboxed (...)` anywhere the steps are skipped.
+  process of its own, and says it at its first worker). `work: not sandboxed (...)` wherever the sandbox is not
+  required (never on the Kindle).
 - `import: <id>: N page(s), the PDF is N KB` (the probe), then for each slice `import: <id>: pages A to B of M in
   T ms (MemAvailable K MB, N band(s))` (a page's time is T over the slice's pages), then `import: notebook <id>
   made of N page(s), N picture(s), N blank`.
@@ -552,7 +553,9 @@ says (never a file's name or a family's: counts, sizes, timings, reasons):
 
 - `bg: font check of a folder (pid N)`, then for each file not checked yet `fonts: file I of N passed: S KB, G
   glyphs, K from Terminess, checked in T ms`, or `... refused (unreadable|no Latin letters|a web font)`, or `...
-  took too long to read (T ms)`, or `... the check's worker ended (<why>): marked unreadable`, or `... left for
+  took too long to read (T ms): left for a second try` (no verdict yet: the file is checked again a minute or more
+  later) and at that try `... took too long to read again (T ms)` (the verdict), or `... the check's worker ended
+  (<why>): marked unreadable`, or `... left for
   later (out of memory)`; each job checks one font (`fonts: file I of N done; more are left for the next job`),
   and the last one ends with `fonts: in the folder, P passed, R refused, D the worker died on, L left for later, T
   too big or empty (N font file(s) in all)`, the whole folder's tally from the verdicts kept, and `bg: font check

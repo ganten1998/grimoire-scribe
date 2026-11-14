@@ -1222,7 +1222,8 @@ pub fn check_font(data: &[u8], px: i32) -> FontOut {
             };
             deadline = (mono_ms() + watchdog_ms()).min(slice_end);
             records += 1;
-            // (4 MiB of records a job at most, DESIGN.md 4.3: a font has 65,535 glyphs, so far fewer)
+            // (a check takes at most 200,000 record lines, each of at most 1,024 bytes: a font has 65,535 glyphs and at
+            // most 656 skips, so far fewer)
             if records > 200_000 || !line.iter().all(|&c| (0x20..0x7f).contains(&c)) {
                 w.kill_and_reap();
                 return FontOut::Dead("the worker broke the protocol");
