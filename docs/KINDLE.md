@@ -496,7 +496,9 @@ file name, title or key ever appears in it: ids, page numbers, counts, timings, 
   and 125 as for PDFs): the
   picture in hand is marked `.bad` (a template or photo); a picture folder's import fails and counts one try of
   its three (as for a picture the memory could not hold): only a picture at fault refuses the folder until its
-  files change. `work: pictures wait (<why>): no sandboxed worker can be had, and the writer decodes none;
+  files change. When `... made call C ...` is followed by `work: pictures wait (the worker made a call the sandbox
+  does not allow)`, the call came at a worker's start, with no picture in hand: nothing is marked and no try is
+  counted. `work: pictures wait (<why>): no sandboxed worker can be had, and the writer decodes none;
   nothing is marked and no try is counted`: once a process (each background job is one), when no worker could be
   had (`a sandbox step failed`, `step <name>`, `the worker did not start`, `the worker did not answer`, `the worker
   is another build`, `no handshake`, `the worker is not sandboxed`, `the worker made a call the sandbox does not
