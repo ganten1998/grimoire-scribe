@@ -808,9 +808,39 @@ fn work_exe() -> String {
     }
 }
 
+/// In the child between fork and exec: a close-on-exec copy of `fd` at 10 or above, so the numbers 0 to 5 are
+/// free to be taken. A copy that cannot be made ends the child (status 127): no worker is exec'd.
+///
+/// # Safety
+/// Only in a forked child before its exec: it ends the process on a failure.
+unsafe fn park_or_exit(fd: i32) -> i32 {
+    let r = libc::fcntl(fd, libc::F_DUPFD_CLOEXEC, 10);
+    if r < 0 {
+        libc::_exit(127);
+    }
+    r
+}
+
+/// In the child between fork and exec: `from` on the number `to` (dup2 leaves the copy without the close-on-exec
+/// flag). Tried until it returns its target, at most 8 times (an interrupted call; errno is not read here), then
+/// the child ends (status 127): no worker is exec'd.
+///
+/// # Safety
+/// Only in a forked child before its exec: it ends the process on a failure.
+unsafe fn dup2_or_exit(from: i32, to: i32) {
+    for _ in 0..8 {
+        if libc::dup2(from, to) == to {
+            return;
+        }
+    }
+    libc::_exit(127);
+}
+
 impl Worker {
-    /// Starts a worker: a fresh exec of this binary with descriptors 0 to 5 only. `source` is the PDF
-    /// (read only), None for kinds that take none.
+    /// Starts a worker: a fresh exec of this binary with descriptors 0 to 5 only, each put in place by a checked
+    /// step whatever descriptors the writer itself holds; when one cannot be, no worker is exec'd (the writer
+    /// reads the end of the pipe at the handshake). `source` is the PDF (read only), None for kinds that take
+    /// none.
     pub fn spawn(kind: WorkKind, source: Option<i32>, limits: &Limits) -> Result<Worker, SpawnErr> {
         #[cfg(target_os = "linux")]
         let jail = if sandbox_required() {
@@ -830,24 +860,6 @@ impl Worker {
         };
         #[cfg(not(target_os = "linux"))]
         let jail: Option<String> = None;
-        let mut p4 = [0i32; 2];
-        let mut p5 = [0i32; 2];
-        // SAFETY: pipe2 fills the two-int arrays we own.
-        #[cfg(target_os = "linux")]
-        let ok = unsafe { libc::pipe2(p4.as_mut_ptr(), libc::O_CLOEXEC) == 0 && libc::pipe2(p5.as_mut_ptr(), libc::O_CLOEXEC) == 0 };
-        #[cfg(not(target_os = "linux"))]
-        let ok = unsafe {
-            let r = libc::pipe(p4.as_mut_ptr()) == 0 && libc::pipe(p5.as_mut_ptr()) == 0;
-            if r {
-                for fd in [p4[0], p4[1], p5[0], p5[1]] {
-                    libc::fcntl(fd, libc::F_SETFD, libc::FD_CLOEXEC);
-                }
-            }
-            r
-        };
-        if !ok {
-            return Err(SpawnErr::Start);
-        }
         let exe = work_exe();
         let mut argv_s = vec![
             "grimoire".to_string(),
@@ -862,44 +874,74 @@ impl Worker {
             jail.clone().unwrap_or_else(|| "-".to_string()),
         ];
         argv_s.extend(injected_arg());
+        // (the command line first: when it cannot be built nothing is open yet)
         let (Ok(cexe), Ok(cargs)) = (CString::new(exe), argv_s.iter().map(|s| CString::new(s.as_str())).collect::<Result<Vec<_>, _>>()) else {
             return Err(SpawnErr::Start);
         };
         let mut argv: Vec<*const libc::c_char> = cargs.iter().map(|c| c.as_ptr()).collect();
         argv.push(std::ptr::null());
         let envp: [*const libc::c_char; 1] = [std::ptr::null()];
+        // /dev/null for the worker's 0 to 2, opened here, before the pipes: the child opens nothing.
+        // SAFETY: open reads a NUL-terminated literal.
+        let dn = unsafe { libc::open(c"/dev/null".as_ptr(), libc::O_RDWR | libc::O_CLOEXEC) };
+        if dn < 0 {
+            return Err(SpawnErr::Start);
+        }
+        let mut p4 = [-1i32; 2];
+        let mut p5 = [-1i32; 2];
+        // SAFETY: pipe2 fills the two-int arrays we own.
+        #[cfg(target_os = "linux")]
+        let ok = unsafe { libc::pipe2(p4.as_mut_ptr(), libc::O_CLOEXEC) == 0 && libc::pipe2(p5.as_mut_ptr(), libc::O_CLOEXEC) == 0 };
+        #[cfg(not(target_os = "linux"))]
+        let ok = unsafe {
+            let r = libc::pipe(p4.as_mut_ptr()) == 0 && libc::pipe(p5.as_mut_ptr()) == 0;
+            if r {
+                for fd in [p4[0], p4[1], p5[0], p5[1]] {
+                    libc::fcntl(fd, libc::F_SETFD, libc::FD_CLOEXEC);
+                }
+            }
+            r
+        };
+        // what this function opened, closed again when the start goes no further (an end never made is -1)
+        let close_all = |fds: &[i32]| {
+            for &fd in fds {
+                if fd >= 0 {
+                    // SAFETY: closing descriptors this function opened.
+                    unsafe { libc::close(fd) };
+                }
+            }
+        };
+        if !ok {
+            close_all(&[dn, p4[0], p4[1], p5[0], p5[1]]);
+            return Err(SpawnErr::Start);
+        }
         // SAFETY: fork, as PORTING.md's process model has it. The child only rearranges descriptors and execs
         // (or _exits); every pointer it uses was made before the fork.
         let pid = unsafe { libc::fork() };
         if pid < 0 {
-            for fd in [p4[0], p4[1], p5[0], p5[1]] {
-                // SAFETY: closing descriptors this function opened.
-                unsafe { libc::close(fd) };
-            }
+            close_all(&[dn, p4[0], p4[1], p5[0], p5[1]]);
             return Err(SpawnErr::Start);
         }
         if pid == 0 {
-            // SAFETY: in the child after fork: only async-signal-safe calls, on descriptors we own.
+            // SAFETY: in the child after fork: only async-signal-safe calls, on descriptors this function opened or
+            // was given. Every step is checked: a worker is exec'd with all six descriptors in place or not at all.
             unsafe {
-                let dn = libc::open(c"/dev/null".as_ptr(), libc::O_RDWR);
-                // park what must survive above the numbers it will take
-                let src = source.map(|s| libc::fcntl(s, libc::F_DUPFD, 10));
-                let w4 = libc::fcntl(p4[1], libc::F_DUPFD, 10);
-                let r5 = libc::fcntl(p5[0], libc::F_DUPFD, 10);
+                // park what must survive above the numbers it will take (close-on-exec: no copy crosses the exec)
+                let dn = park_or_exit(dn);
+                let src = source.map(|s| park_or_exit(s));
+                let w4 = park_or_exit(p4[1]);
+                let r5 = park_or_exit(p5[0]);
                 for fd in 0..3 {
-                    libc::dup2(dn, fd);
+                    dup2_or_exit(dn, fd);
                 }
-                if let Some(s) = src {
-                    libc::dup2(s, FD_SOURCE);
-                    libc::close(s);
-                } else {
-                    libc::close(FD_SOURCE);
+                match src {
+                    Some(s) => dup2_or_exit(s, FD_SOURCE),
+                    None => {
+                        libc::close(FD_SOURCE);
+                    }
                 }
-                libc::dup2(w4, FD_OUT);
-                libc::dup2(r5, FD_IN);
-                libc::close(w4);
-                libc::close(r5);
-                libc::close(dn);
+                dup2_or_exit(w4, FD_OUT);
+                dup2_or_exit(r5, FD_IN);
                 let mut max = libc::sysconf(libc::_SC_OPEN_MAX);
                 if !(0..=4096).contains(&max) {
                     max = 4096;
@@ -911,11 +953,8 @@ impl Worker {
                 libc::_exit(127);
             }
         }
-        // SAFETY: closing the child's ends in the parent.
-        unsafe {
-            libc::close(p4[1]);
-            libc::close(p5[0]);
-        }
+        // the child's ends, and /dev/null, in the parent
+        close_all(&[dn, p4[1], p5[0]]);
         Ok(Worker { pid, rx: p4[0], tx: p5[1], jail, reaped: false, rbuf: Vec::new() })
     }
 
