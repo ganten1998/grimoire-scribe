@@ -146,6 +146,22 @@ why. Newest decisions first within each section.
   flag before its exec. Not built: no test host can show it failing first.
 - **`sandbox::s1` numbers** are unchanged by this round.
 
+## Hardening round (2026-11), invariants: what waits
+
+- **A `<key>.slow` mark outlives its second try.** A font that passes (or is refused) on its second try
+  keeps the mark beside its verdict until the file changes, so a later check of the same key that runs out
+  of time once is "Took too long to read." without a second try. For the fonts work.
+- **The record cap stays a worker's** (4 MiB of record lines each, `RECORDS_MAX_BYTES`). A total across a
+  job's workers was weighed and not built: only a job's first worker comes near the cap, an honest job's
+  lines at the caps come to about 3.7 MiB, and a total would need a count kept in `pdf-import.ini`.
+- **Source comments cite numbered sections of a DESIGN.md** ("DESIGN.md 3.7", "4.3", "section 9": about 40
+  places in rust/, tools/ and the workflow). They are the 2.1 plan's sections; docs/DESIGN.md has headings,
+  not numbers. Not changed: a reader finds the subject by its heading.
+- **A docs-only pull request runs no test**, and a few tests read the documents (docs/TESTING.md, "Tests
+  that read the documents"): a reworded sentence they hold is first caught on the push to main.
+- **The Linux tests of the sandbox's steps have not run on a Scribe** (they need cargo); the steps have
+  (S1, and the imports, pictures and fonts of 2.1.0-beta.2).
+
 ## The keyboard's caret and text copy and paste (2.1.0-beta.2, last round, lane K): choices for the owner, and what waits
 
 Built from issue #36 (docs/DESIGN.md, Text and the keyboard). The lane chose, the owner to confirm:

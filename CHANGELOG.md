@@ -4,6 +4,10 @@
 
 - Housekeeping: the separate process that reads PDFs, pictures and fonts is held to a narrower set of
   system calls and is started only with all of its descriptors in place. No change in the app.
+- Housekeeping: the documents of the safe loader and of your own fonts say what the code does (the limit
+  on a worker's record lines, what a build off the Kindle takes of the sandbox, the font check's second
+  try), `licenses/rust-crates.txt` says it lists every crate `Cargo.lock` names, and the crate check
+  refuses by name the one crate that would bring a second font parser into the build. No change in the app.
 
 ## 2.1.0 (2026-11-13)
 

@@ -84,6 +84,13 @@ release run is never cancelled. The repository variable `GRIMOIRE_CI_LINUX=true`
 unit, the shards and l10n to Linux runners, which start sooner and of which a free plan runs far more
 at once (macOS: 5); it stays off until a run passes there (docs/BACKLOG.md).
 
+**Tests that read the documents.** A docs-only pull request runs no test, and a few tests read the
+documents: `rust/tests/test_sec_invariants.rs` (DESIGN.md, FORMAT.md, KINDLE.md, TESTING.md and BACKLOG.md:
+sentences about the safe loader that must not come back, and the names `RECORDS_MAX_BYTES` and
+`<key>.slow`), `mapview.rs` (the Graph's keys) and `test_scenarios.rs` with `sim_sdl.rs` (SIM.md). After
+rewording a sentence they hold, run `make test-sim` by hand: otherwise the push to main is the first run
+to say so.
+
 **The required check.** Branch protection on `main` must require the `gate` job, and only it (one
 setting, made once on GitHub: Settings, Branches, the rule for `main`, Require status checks, `gate`).
 Before this split the only job was `package`; a rule that still requires `package` lets a pull request
@@ -2515,3 +2522,24 @@ table and on CI's kernel run. Use the bundle built with the pinned toolchain (do
    line in `import/.attempts` goes with the copy. Install the build without this round's two filter
    commits before judging anything else.
 10. **Later.** The same steps again whenever the build's rustc or zig version moves (docs/RELEASING.md).
+
+## Hardening round (2026-11), invariants: the documents and the build's crate rule
+
+What the documents and comments say of the safe loader was brought in line with the code (the limit on a
+worker's record lines, what a build off the Kindle takes of the sandbox, what the UI reads of a PDF, the
+font check's second try and its mark, who writes `fonts/.cache`, where the sandbox's tests have run), and
+`rust/deny.toml` now bans the one crate that would bring a second skrifa into the build. No code path
+changes: the app behaves as before. Automated: `rust/tests/test_sec_invariants.rs` (the sentences, the
+allow-list's of the round above among them, `Cargo.lock` against `deny.toml`, and the skrifa pin),
+`rust/tests/test_sec_records_cap.rs` (a worker past the cap is ended and the next starts afresh), and
+CI's `deny` job.
+
+No check on a Scribe is needed for this round's invariants. One look, for the owner, at the one shipped
+text that changed:
+
+1. Install the build. Connect the Scribe over USB and open `grimoire/app/licenses/rust-crates.txt` on the
+   computer.
+2. Its first sentence begins "From the Rust crates Cargo.lock names for the Grimoire binary." and says
+   that every crate is listed, the ones not compiled in among them.
+3. Search the file for `hayro `: its entry is there, with the version `rust/Cargo.lock` names. Nothing
+   else in the file changed.

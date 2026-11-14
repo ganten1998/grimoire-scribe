@@ -6,6 +6,8 @@
 // "present" pin is a name the code itself has (a constant, a file's name), never prose, so a reworded sentence
 // does not fail here. A phrase is looked for in the file with every run of white space made one space, so a
 // paragraph wrapped anew is the same text. Each test gathers every pin that fails and prints them together.
+//
+// A docs-only pull request runs no test: docs/TESTING.md, "Tests that read the documents".
 #![cfg(feature = "sim")]
 
 /// A file of the tree: its path from the repository's root (for the messages) and its text.
