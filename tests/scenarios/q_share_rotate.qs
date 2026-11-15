@@ -35,7 +35,7 @@ expect watching is 1
 shot 05-share-after-wake
 wait 2000
 # Done
-tap 1540 2105
+tap share done
 wait 700
 expect screen is library
 expect watching is 0
@@ -52,7 +52,7 @@ shot 07-share-landscape-again
 wait 1500
 rotate 0
 wait 700
-tap 1540 2105
+tap share done
 wait 700
 expect screen is library
 quit

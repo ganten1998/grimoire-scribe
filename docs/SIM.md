@@ -225,8 +225,8 @@ Settings 1535 95. Its five buttons widen together for a longer word, up to 220 p
 (the same sideways), so a language with wider top-bar words moves them (docs/TRANSLATING.md).
 Hosted by KOReader they move left, as Back to KOReader takes the room it needs. Settings' rows
 are at x 930: Pen sensitivity y 460, Calibrate 620, Display 780, Style 930, Mirror PDFs 1060, the
-pen button's row 1190, Turn with the Kindle 1320, Pinch 1450 and Language 1580. Upright from the
-Library, the Display sheet's "Sideways, show the whole page" row is 930 1032, its sleep screen row 930 1308, and its clock and battery size cell 472 1626 and corner cell 997 1626, beside its Done at 1460 1626 (in a notebook the sheet has the Pin this page row too, so they are 472 1720, 997 1720 and 1460 1720). The Language list
+pen button's row 1190, Rotation 1320, Pinch 1450 and Language 1580. Upright from the
+Library, the Display sheet's "Sideways, show the whole page" row is 930 608, its sleep screen row 930 1308, and its clock and battery size cell 472 1626 and corner cell 997 1626, beside its Done at 1460 1626 (in a notebook the sheet has the Pin this page row too, so they are 472 1720, 997 1720 and 1460 1720). The Language list
 has Automatic at 930 785, English 930 945, Español 930 1105, 日本語 930 1265 and Cancel 930 1425. Pen feel's tabs
 are at x = 130 + 177 n, y 289, in the order pencil, mechanical pencil, charcoal, ballpoint,
 fineliner, marker, fountain pen, calligraphy pen, highlighter, eraser. Sideways (2480x1860): the

@@ -63,18 +63,6 @@ fn s(a: &mut App) -> &mut ShareState {
     a.share.as_deref_mut().unwrap()
 }
 
-// The help under the address, a line each, and last the command line of a script that pulls
-// everything (k_pull).
-const K_HELP: [&str; 3] = [
-    // TRANSLATORS: the Share screen's help, under the address: a line each, 1578 px at 34 px
-    // sideways (beside the QR code), 1640 upright.
-    n_("Pages as PNG, notebooks as PDF or zip, folders and everything as zip."),
-    n_("Effects: transparent, recolored or filtered copies of any page."),
-    n_("Same Wi-Fi network only. Keep this screen open while downloading."),
-];
-const K_PULL: &str = "tools/grimoire-pull --http";
-const N_HELP: usize = K_HELP.len() + 1;
-
 // The screen checks its own layout as it draws, and logs a "share: layout:" line for anything that
 // does not fit (tests/share_check.sh fails on any): a line too wide for its column (which
 // font_draw_centered would cut short), or a part of the screen outside the card or over another.
@@ -85,11 +73,20 @@ fn draw_line(c: &mut Canvas, f: FontFace, px: f32, r: Rect, s: &str, gray: u8) -
     let w = font_measure(f, px, s);
     #[cfg(feature = "sim")]
     if w > r.w {
-        qlog!("share: layout: '%s' is cut to fit (%d px wide, room for %d)", s, w, r.w);
+        qlog!(
+            "share: layout: '%s' is cut to fit (%d px wide, room for %d)",
+            s,
+            w,
+            r.w
+        );
     }
     #[cfg(not(feature = "sim"))]
     if w > r.w {
-        qlog!("share: layout: a line is cut to fit (%d px wide, room for %d)", w, r.w);
+        qlog!(
+            "share: layout: a line is cut to fit (%d px wide, room for %d)",
+            w,
+            r.w
+        );
     }
     font_draw_centered(c, f, px, r, s, gray);
     r.y + r.h
@@ -148,13 +145,34 @@ fn draw_counter(a: &mut App) {
     };
     if !live {
         // TRANSLATORS: how many downloads the Share screen has answered since it opened.
-        csnprintf!(&mut text, 96, tr("Downloads served: %d"), httpd_requests_served());
+        csnprintf!(
+            &mut text,
+            96,
+            tr("Downloads served: %d"),
+            httpd_requests_served()
+        );
     } else {
         // TRANSLATORS: Live view's pairing card: how many computers watch the screen now.
-        csnprintf!(&mut text, 96, ng_("%d computer watching", "%d computers watching", viewers as i64), viewers);
+        csnprintf!(
+            &mut text,
+            96,
+            ng_(
+                "%d computer watching",
+                "%d computers watching",
+                viewers as i64
+            ),
+            viewers
+        );
     }
     canvas_fill(&mut a.screen, counter, 255);
-    draw_line(&mut a.screen, FontFace::Regular, ui_text_size(), counter, &text, 0);
+    draw_line(
+        &mut a.screen,
+        FontFace::Regular,
+        ui_text_size(),
+        counter,
+        &text,
+        0,
+    );
 }
 
 // Whether a phone can reach this address: the launcher opens the share port on wlan0 only. In the
@@ -169,7 +187,14 @@ fn phone_reachable(ifname: &str) -> bool {
 
 fn url_of(a: &mut App, ad: &NetAddr, out: &mut String, cap: usize) {
     let live = s(a).live;
-    csnprintf!(out, cap, "http://%s:%d%s", &ad.ip, a.settings.http_port, if live { "/live" } else { "" });
+    csnprintf!(
+        out,
+        cap,
+        "http://%s:%d%s",
+        &ad.ip,
+        a.settings.http_port,
+        if live { "/live" } else { "" }
+    );
 }
 
 // The code as shown: two groups of three digits ("482 913").
@@ -212,13 +237,22 @@ fn text_height(a: &mut App, n: i32) -> i32 {
             + ui_px(170.0)
             + N_LIVE_HELP as i32 * ui_px(70.0);
     }
-    ui_px(110.0) + ui_px(150.0) + (n - 1) * ui_px(70.0) + ui_px(30.0) + N_HELP as i32 * ui_px(70.0)
+    ui_px(110.0) + ui_px(150.0) + (n - 1) * ui_px(70.0) + ui_px(30.0)
 }
 
 // The text block from y down, centered in the column [x, x + w): the caption, url (the first
 // address, the very string in the code) in big type, a line per other address, the help. Returns
 // the bottom of its last line.
-fn draw_text(a: &mut App, x: i32, w: i32, y: i32, url: &str, ad: &[NetAddr], n: i32, qr: bool) -> i32 {
+fn draw_text(
+    a: &mut App,
+    x: i32,
+    w: i32,
+    y: i32,
+    url: &str,
+    ad: &[NetAddr],
+    n: i32,
+    qr: bool,
+) -> i32 {
     let mut y = y;
     let mut other = String::new();
     let mut text = String::new();
@@ -228,15 +262,57 @@ fn draw_text(a: &mut App, x: i32, w: i32, y: i32, url: &str, ad: &[NetAddr], n: 
     if !qr {
         caption = tr("On your computer, open this in a browser:");
     }
-    draw_line(&mut a.screen, FontFace::Regular, ui_text_size(), Rect { x, y, w, h: ui_px(80.0) }, caption, 0);
+    draw_line(
+        &mut a.screen,
+        FontFace::Regular,
+        ui_text_size(),
+        Rect {
+            x,
+            y,
+            w,
+            h: ui_px(80.0),
+        },
+        caption,
+        0,
+    );
     y += ui_px(110.0);
-    draw_line(&mut a.screen, FontFace::Bold, ui_title_size() * 1.5f32, Rect { x, y, w, h: ui_px(140.0) }, url, 0);
+    draw_line(
+        &mut a.screen,
+        FontFace::Bold,
+        ui_title_size() * 1.5f32,
+        Rect {
+            x,
+            y,
+            w,
+            h: ui_px(140.0),
+        },
+        url,
+        0,
+    );
     y += ui_px(150.0);
     for i in 1..listed(a, n) {
         url_of(a, &ad[i as usize], &mut other, 64);
         // TRANSLATORS: another address the Kindle answers at, and its network interface ("usb0").
-        csnprintf!(&mut text, 160, tr("Also: %s (%s)"), &other, &ad[i as usize].ifname);
-        draw_line(&mut a.screen, FontFace::Regular, ui_small_size(), Rect { x, y, w, h: ui_px(64.0) }, &text, 0);
+        csnprintf!(
+            &mut text,
+            160,
+            tr("Also: %s (%s)"),
+            &other,
+            &ad[i as usize].ifname
+        );
+        draw_line(
+            &mut a.screen,
+            FontFace::Regular,
+            ui_small_size(),
+            Rect {
+                x,
+                y,
+                w,
+                h: ui_px(64.0),
+            },
+            &text,
+            0,
+        );
         y += ui_px(70.0);
     }
     y += ui_px(30.0);
@@ -247,7 +323,12 @@ fn draw_text(a: &mut App, x: i32, w: i32, y: i32, url: &str, ad: &[NetAddr], n: 
             &mut a.screen,
             FontFace::Regular,
             ui_text_size(),
-            Rect { x, y, w, h: ui_px(80.0) },
+            Rect {
+                x,
+                y,
+                w,
+                h: ui_px(80.0),
+            },
             // TRANSLATORS: Live view's pairing card, over the code a computer types (1640 px at 44 px
             // upright, 1578 sideways).
             tr("Then type this code:"),
@@ -255,14 +336,31 @@ fn draw_text(a: &mut App, x: i32, w: i32, y: i32, url: &str, ad: &[NetAddr], n: 
         );
         y += ui_px(80.0);
         code_shown(&pair_code(), &mut shown, 16);
-        end = draw_line(&mut a.screen, FontFace::Bold, ui_title_size() * 1.8f32, Rect { x, y, w, h: ui_px(160.0) }, &shown, 0);
+        end = draw_line(
+            &mut a.screen,
+            FontFace::Bold,
+            ui_title_size() * 1.8f32,
+            Rect {
+                x,
+                y,
+                w,
+                h: ui_px(160.0),
+            },
+            &shown,
+            0,
+        );
         y += ui_px(170.0);
         for i in 0..N_LIVE_HELP {
             end = draw_line(
                 &mut a.screen,
                 FontFace::Regular,
                 ui_small_size(),
-                Rect { x, y, w, h: ui_px(64.0) },
+                Rect {
+                    x,
+                    y,
+                    w,
+                    h: ui_px(64.0),
+                },
                 tr(K_LIVE_HELP[i]),
                 60,
             );
@@ -270,27 +368,26 @@ fn draw_text(a: &mut App, x: i32, w: i32, y: i32, url: &str, ad: &[NetAddr], n: 
         }
         return end;
     }
-    for i in 0..N_HELP {
-        if i == N_HELP - 1 {
-            // TRANSLATORS: the last help line, with the command a computer pulls everything with.
-            csnprintf!(&mut text, 160, tr("From a terminal: %s <address above>"), K_PULL);
-        }
-        end = draw_line(
-            &mut a.screen,
-            FontFace::Regular,
-            ui_small_size(),
-            Rect { x, y, w, h: ui_px(64.0) },
-            if i < N_HELP - 1 { tr(K_HELP[i]) } else { &text },
-            60,
-        );
-        y += ui_px(70.0);
-    }
     end
+}
+
+/// The box side that draws `data` dark modules at the same size on Share and in Live view, even
+/// though their addresses encode as different QR versions. The quiet zone is included in the box.
+fn qr_side(across: i32, data: i32, target: i32, room: i32) -> i32 {
+    if across <= 0 || data <= 0 {
+        return 0;
+    }
+    let m = ((target + data / 2) / data).max(1).min(room / across);
+    if m < 1 {
+        0
+    } else {
+        across * m
+    }
 }
 
 // The QR code of the first address when a phone can reach it (the Wi-Fi icon when none can, say
 // over USBNetwork only), then the text. Portrait stacks them above the counter; landscape puts
-// the code on the left and the text, counter and buttons on the right.
+// the code on the left and the text and counter on the right.
 fn draw_addresses(a: &mut App, in_: Rect, ad: &[NetAddr], n: i32) {
     let mut url = String::new();
     let mut qr = String::new();
@@ -301,12 +398,28 @@ fn draw_addresses(a: &mut App, in_: Rect, ad: &[NetAddr], n: i32) {
     } else {
         csnprintf!(&mut qr, 128, "%s", &url);
     }
-    let qn = if phone_reachable(ad[0].ifname.as_str()) { ui_qr_modules(&qr) } else { 0 }; // modules across, 0: no code
-    // grimoire.log goes to public bug reports (kindle/README.txt asks for it): it names the
-    // interface and the port, never the address. Only the simulator logs the address too, for
-    // tests/share_check.sh, which reads the code back from a screenshot and compares.
+    let qn = if phone_reachable(ad[0].ifname.as_str()) {
+        ui_qr_modules(&qr)
+    } else {
+        0
+    }; // modules across, 0: no code
+    let qn_data = if qn != 0 {
+        crate::qr::ui_qr_data_modules(&qr)
+    } else {
+        0
+    };
+    // The dark part of the code is this size on both Share and Live view; the quiet zone around it
+    // makes the drawing box a little larger for the shorter address.
+    let qr_target = ui_px(666.0);
+       // grimoire.log goes to public bug reports (kindle/README.txt asks for it): it names the
+       // interface and the port, never the address. Only the simulator logs the address too, for
+       // tests/share_check.sh, which reads the code back from a screenshot and compares.
     if qn != 0 {
-        qlog!("share: QR code for the %s address, port %d", &ad[0].ifname, a.settings.http_port);
+        qlog!(
+            "share: QR code for the %s address, port %d",
+            &ad[0].ifname,
+            a.settings.http_port
+        );
     } else {
         qlog!(
             "share: no Wi-Fi address, so no QR code; showing the %s address, port %d",
@@ -318,7 +431,11 @@ fn draw_addresses(a: &mut App, in_: Rect, ad: &[NetAddr], n: i32) {
     {
         qlog!(
             "share: (simulator) %s %s (%s)",
-            if qn != 0 { "the code holds" } else { "the address shown is" },
+            if qn != 0 {
+                "the code holds"
+            } else {
+                "the address shown is"
+            },
             if qn != 0 { &qr } else { &url },
             &ad[0].ifname
         );
@@ -337,146 +454,382 @@ fn draw_addresses(a: &mut App, in_: Rect, ad: &[NetAddr], n: i32) {
     if a.w <= a.h {
         let mut y = in_.y + ui_px(360.0);
         if qn != 0 {
-            let mod_ = clampi((bottom - top - gap - text_h) / qn, ui_px(10.0), ui_px(16.0));
-            let sym = ui_qr(&mut a.screen, Rect { x: in_.x, y: top, w: in_.w, h: qn * mod_ }, &qr, negative);
+            let room = (bottom - top - gap - text_h).min(in_.w);
+            let side = qr_side(qn, qn_data, qr_target, room);
+            let sym = ui_qr(
+                &mut a.screen,
+                Rect {
+                    x: in_.x,
+                    y: top,
+                    w: in_.w,
+                    h: side,
+                },
+                &qr,
+                negative,
+            );
             placed(a, "the code", sym);
             if !rect_is_empty(sym) {
                 y = sym.y + sym.h + gap;
             }
         } else {
-            let icon = Rect { x: in_.x + in_.w / 2 - ui_px(130.0), y: in_.y + ui_px(40.0), w: ui_px(260.0), h: ui_px(260.0) };
+            let icon = Rect {
+                x: in_.x + in_.w / 2 - ui_px(130.0),
+                y: in_.y + ui_px(40.0),
+                w: ui_px(260.0),
+                h: ui_px(260.0),
+            };
             ui_icon(&mut a.screen, IconKind::Share, icon, 0);
             placed(a, "the icon", icon);
         }
         let end = draw_text(a, in_.x, in_.w, y, &url, ad, n, qn > 0);
-        placed(a, "the text", Rect { x: in_.x, y, w: in_.w, h: end - y });
+        placed(
+            a,
+            "the text",
+            Rect {
+                x: in_.x,
+                y,
+                w: in_.w,
+                h: end - y,
+            },
+        );
         return;
     }
     let lx = in_.x + ui_px(30.0);
-    let mod_ = if qn != 0 { clampi((bottom - top) / qn, ui_px(10.0), ui_px(16.0)) } else { 0 };
-    let left = if qn != 0 { qn * mod_ } else { ui_px(260.0) };
+    let room = (bottom - top).min(in_.w * 45 / 100);
+    let side = if qn != 0 {
+        qr_side(qn, qn_data, qr_target, room)
+    } else {
+        0
+    };
+    let left = if qn != 0 { side } else { ui_px(260.0) };
     let col = lx + left + ui_px(60.0);
     let col_w = in_.x + in_.w - col;
     if qn != 0 {
-        let sym = ui_qr(&mut a.screen, Rect { x: lx, y: top, w: left, h: left }, &qr, negative);
+        let sym = ui_qr(
+            &mut a.screen,
+            Rect {
+                x: lx,
+                y: top,
+                w: left,
+                h: left,
+            },
+            &qr,
+            negative,
+        );
         placed(a, "the code", sym);
     } else {
-        let icon = Rect { x: lx, y: in_.y + ui_px(40.0), w: left, h: left };
+        let icon = Rect {
+            x: lx,
+            y: in_.y + ui_px(40.0),
+            w: left,
+            h: left,
+        };
         ui_icon(&mut a.screen, IconKind::Share, icon, 0);
         placed(a, "the icon", icon);
     }
     let st = s(a);
-    st.counter = Rect { x: col, y: st.counter.y, w: col_w, h: st.counter.h };
+    st.counter = Rect {
+        x: col,
+        y: st.counter.y,
+        w: col_w,
+        h: st.counter.h,
+    };
     let end = draw_text(a, col, col_w, top, &url, ad, n, qn > 0);
-    placed(a, "the text", Rect { x: col, y: top, w: col_w, h: end - top });
+    placed(
+        a,
+        "the text",
+        Rect {
+            x: col,
+            y: top,
+            w: col_w,
+            h: end - top,
+        },
+    );
 }
 
 fn draw_wifi(a: &mut App) {
     hits_clear(&mut s(a).hits);
-    canvas_fill(&mut a.screen,Rect::new(0,0,a.w,a.h),255);
-    let card=Rect::new(ui_px(70.0),(a.h-ui_px(1060.0))/2,a.w-ui_px(140.0),ui_px(1060.0));
-    let r=ui_sheet(&mut a.screen,card,tr("Wi-Fi"));
-    let state=wifi_status();let busy=wifi_changing()||(wifi_busy()&&state.is_none());let failed=wifi_failed();
-    let text=if busy {tr("Checking Wi-Fi…")} else if failed {tr("Could not read or change Wi-Fi.")}
-        else {match state {
-            Some(st) if !st.wireless||!st.enabled=>tr("Wi-Fi is off"),
-            Some(st) if st.connected==Some(true)=>tr("Connected to Wi-Fi"),
-            Some(st) if st.connected==Some(false)=>tr("Wi-Fi is on; no connection yet"),
-            Some(_)=>tr("Wi-Fi is on; connection unknown"),None=>tr("Wi-Fi unavailable"),
-        }};
-    font_draw_centered(&mut a.screen,FontFace::Bold,ui_text_size(),Rect::new(r.x,r.y,r.w,ui_px(130.0)),text,0);
-    for (i,text) in [tr("Connects to saved networks."),tr("Add new networks in Kindle settings or KOReader."),tr("Turning Wi-Fi off disconnects SSH and sharing.")].into_iter().enumerate() {
-        font_draw_left(&mut a.screen,FontFace::Regular,ui_small_size(),Rect::new(r.x,r.y+ui_px(150.0+i as f32*80.0),r.w,ui_px(70.0)),text,0);
+    let page = crate::library::settings_page(&mut a.screen, a.w, a.h, tr("Wi-Fi"), false, false);
+    hits_add(&mut s(a).hits, page.close, H_WIFI_DONE, 0);
+    let in_ = page.content;
+    let state = wifi_status();
+    let busy = wifi_changing() || (wifi_busy() && state.is_none());
+    let failed = wifi_failed();
+    let text = if busy {
+        tr("Checking Wi-Fi…")
+    } else if failed {
+        tr("Could not read or change Wi-Fi.")
+    } else {
+        match state {
+            Some(st) if !st.wireless || !st.enabled => tr("Wi-Fi is off"),
+            Some(st) if st.connected == Some(true) => tr("Connected to Wi-Fi"),
+            Some(st) if st.connected == Some(false) => tr("Wi-Fi is on; no connection yet"),
+            Some(_) => tr("Wi-Fi is on; connection unknown"),
+            None => tr("Wi-Fi unavailable"),
+        }
+    };
+    let status = Rect::new(in_.x, in_.y, in_.w, ui_px(170.0));
+    crate::library::settings_card(&mut a.screen, status, ButtonStyle::Plain);
+    let isz = ui_px(70.0);
+    let icon = Rect::new(
+        status.x + crate::library::settings_pad(),
+        status.y + (status.h - isz) / 2,
+        isz,
+        isz,
+    );
+    ui_icon(&mut a.screen, IconKind::Share, icon, 0);
+    font_draw_left(
+        &mut a.screen,
+        FontFace::Bold,
+        ui_text_size(),
+        Rect::new(
+            icon.x + icon.w + crate::library::settings_gap(),
+            status.y,
+            status.x + status.w
+                - icon.x
+                - icon.w
+                - crate::library::settings_gap()
+                - crate::library::settings_pad(),
+            status.h,
+        ),
+        text,
+        0,
+    );
+    let help = Rect::new(
+        in_.x,
+        status.y + status.h + crate::library::settings_gap(),
+        in_.w,
+        ui_px(280.0),
+    );
+    crate::library::settings_card(&mut a.screen, help, ButtonStyle::Plain);
+    for (i, line) in [
+        tr("Connects to saved networks."),
+        tr("Add new networks in Kindle settings or KOReader."),
+        tr("Turning Wi-Fi off disconnects SSH and sharing."),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        font_draw_left(
+            &mut a.screen,
+            FontFace::Regular,
+            ui_small_size(),
+            Rect::new(
+                help.x + crate::library::settings_pad(),
+                help.y + crate::library::settings_pad() + i as i32 * ui_px(70.0),
+                help.w - 2 * crate::library::settings_pad(),
+                ui_px(70.0),
+            ),
+            line,
+            0,
+        );
     }
-    let gap=ui_px(30.0);let width=(r.w-gap)/2;let bh=ui_px(150.0);
-    for (id,label,col,row,enabled) in [(H_WIFI_ON,tr("Turn on Wi-Fi"),0,0,!busy&&state.is_some()),
-        (H_WIFI_OFF,tr("Turn off Wi-Fi"),1,0,!busy&&state.is_some()),
-        (H_WIFI_CHECK,tr("Retry"),0,1,!busy),(H_WIFI_DONE,tr("Done"),1,1,true)] {
-        let hit=Rect::new(r.x+col*(width+gap),r.y+r.h-2*bh-gap+row*(bh+gap),width,bh);
-        ui_button(&mut a.screen,hit,IconKind::None,label,if !enabled{ButtonStyle::Disabled}else if id==H_WIFI_DONE{ButtonStyle::Primary}else{ButtonStyle::Plain});
-        if enabled {hits_add(&mut s(a).hits,hit,id,0);}
+    let bh = ui_px(150.0);
+    let gap = crate::library::settings_gap();
+    let bw = ((in_.w - 2 * gap) / 3).min(ui_px(520.0));
+    let by = help.y + help.h + gap;
+    let x0 = in_.x + (in_.w - (3 * bw + 2 * gap)) / 2;
+    for (i, id, label, enabled) in [
+        (0, H_WIFI_ON, tr("Turn on Wi-Fi"), !busy && state.is_some()),
+        (
+            1,
+            H_WIFI_OFF,
+            tr("Turn off Wi-Fi"),
+            !busy && state.is_some(),
+        ),
+        (2, H_WIFI_CHECK, tr("Retry"), !busy),
+    ] {
+        let hit = Rect::new(x0 + i * (bw + gap), by, bw, bh);
+        ui_button(
+            &mut a.screen,
+            hit,
+            IconKind::None,
+            label,
+            if enabled {
+                ButtonStyle::Plain
+            } else {
+                ButtonStyle::Disabled
+            },
+        );
+        if enabled {
+            hits_add(&mut s(a).hits, hit, id, 0);
+        }
     }
-    s(a).wifi_paint=Some((state,busy,failed));
+    s(a).wifi_paint = Some((state, busy, failed));
 }
 fn draw(a: &mut App) {
-    if s(a).wifi_open {draw_wifi(a);return;}
+    if s(a).wifi_open {
+        draw_wifi(a);
+        return;
+    }
 
     hits_clear(&mut s(a).hits);
     s(a).parts.clear();
-    let (w, h) = (a.w, a.h);
-    canvas_fill(&mut a.screen, Rect { x: 0, y: 0, w, h }, 255);
-    let m = ui_px(70.0);
-    let card = Rect { x: m, y: ui_px(260.0), w: w - 2 * m, h: h - ui_px(520.0) };
     let (live, started) = {
         let st = s(a);
         (st.live, st.started)
     };
-    // TRANSLATORS: the Share screen's title.
-    let in_ = ui_sheet(&mut a.screen, card, if live { tr("Live view") } else { tr("Share over Wi-Fi") });
-    s(a).counter = Rect { x: in_.x, y: in_.y + in_.h - ui_px(330.0), w: in_.w, h: ui_px(80.0) };
+    // Share and Live view's pairing card are the same Settings frame: the title and X above the
+    // rule, the code and address on the page, and one row of actions at the foot.
+    let page = crate::library::settings_page(
+        &mut a.screen,
+        a.w,
+        a.h,
+        if live {
+            tr("Live view")
+        } else {
+            tr("Share over Wi-Fi")
+        },
+        false,
+        false,
+    );
+    hits_add(&mut s(a).hits, page.close, H_DONE, 0);
+    let in_ = page.content;
+    let bh = ui_px(150.0);
+    let gap = crate::library::settings_gap();
+    let by = in_.y + in_.h - bh;
     let mut ad = [NetAddr::default(); MAX_SHOWN];
     let n = if started { net_ipv4_list(&mut ad) } else { 0 };
-    if n > 0 {
-        draw_addresses(a, in_, &ad, n);
+    let has_code = n > 0 && phone_reachable(ad[0].ifname.as_str());
+    let hero_h = if n == 0 {
+        ui_px(760.0)
+    } else if has_code {
+        if a.w <= a.h {
+            ui_px(1680.0)
+        } else {
+            ui_px(1080.0)
+        }
+    } else if a.w <= a.h {
+        ui_px(1280.0)
     } else {
-        let mut y = in_.y + ui_px(40.0);
-        let icon = Rect { x: in_.x + in_.w / 2 - ui_px(130.0), y, w: ui_px(260.0), h: ui_px(260.0) };
-        ui_icon(&mut a.screen, IconKind::Share, icon, 0);
+        ui_px(1200.0)
+    };
+    let hero = Rect::new(in_.x, in_.y, in_.w, hero_h.min(in_.h - bh - gap).max(0));
+    let hero_in = rect_inflate(hero, -crate::library::settings_pad());
+    s(a).counter = Rect {
+        x: hero_in.x,
+        y: by - gap - ui_px(80.0),
+        w: hero_in.w,
+        h: ui_px(80.0),
+    };
+    if n > 0 {
+        draw_addresses(a, hero_in, &ad, n);
+    } else {
+        let mut y = hero_in.y + ui_px(40.0);
+        let icon = Rect {
+            x: hero_in.x + hero_in.w / 2 - ui_px(130.0),
+            y,
+            w: ui_px(260.0),
+            h: ui_px(260.0),
+        };
+        ui_icon(
+            &mut a.screen,
+            if live {
+                IconKind::Live
+            } else {
+                IconKind::Share
+            },
+            icon,
+            0,
+        );
         placed(a, "the icon", icon);
         y += ui_px(320.0);
         let y0 = y;
         // TRANSLATORS: the Share screen without an address (1640 px at 64 px), and what to do (at
         // 44 px); Retry is the button's name.
-        let what = if started { if wifi_available(){tr("No Wi-Fi connection yet")}else{tr("Turn on Wi-Fi on the Kindle first")} } else { tr("Could not start the server") };
-        let then = if started { if wifi_available(){tr("Tap Wi-Fi to connect to a saved network.")}else{tr("Then tap Retry.")} } else { tr("Is another app using the port? Try again.") };
-        draw_line(&mut a.screen, FontFace::Bold, ui_title_size(), Rect { x: in_.x, y, w: in_.w, h: ui_px(100.0) }, what, 0);
+        let what = if started {
+            if wifi_available() {
+                tr("No Wi-Fi connection yet")
+            } else {
+                tr("Turn on Wi-Fi on the Kindle first")
+            }
+        } else {
+            tr("Could not start the server")
+        };
+        let then = if started {
+            if wifi_available() {
+                tr("Tap Wi-Fi to connect to a saved network.")
+            } else {
+                tr("Then tap Retry.")
+            }
+        } else {
+            tr("Is another app using the port? Try again.")
+        };
+        draw_line(
+            &mut a.screen,
+            FontFace::Bold,
+            ui_title_size(),
+            Rect {
+                x: hero_in.x,
+                y,
+                w: hero_in.w,
+                h: ui_px(100.0),
+            },
+            what,
+            0,
+        );
         y += ui_px(110.0);
-        let end = draw_line(&mut a.screen, FontFace::Regular, ui_text_size(), Rect { x: in_.x, y, w: in_.w, h: ui_px(80.0) }, then, 60);
-        placed(a, "the text", Rect { x: in_.x, y: y0, w: in_.w, h: end - y0 });
+        let end = draw_line(
+            &mut a.screen,
+            FontFace::Regular,
+            ui_text_size(),
+            Rect {
+                x: hero_in.x,
+                y,
+                w: hero_in.w,
+                h: ui_px(80.0),
+            },
+            then,
+            60,
+        );
+        placed(
+            a,
+            "the text",
+            Rect {
+                x: hero_in.x,
+                y: y0,
+                w: hero_in.w,
+                h: end - y0,
+            },
+        );
     }
     if started {
         draw_counter(a);
         let counter = s(a).counter;
         placed(a, "the counter", counter);
     }
-    let bw = ui_px(420.0);
-    let bh = ui_px(150.0);
-    let done = Rect { x: in_.x + in_.w - bw, y: in_.y + in_.h - bh, w: bw, h: bh };
-    ui_button(&mut a.screen, done, IconKind::Check, tr("Done"), ButtonStyle::Primary);
-    hits_add(&mut s(a).hits, done, H_DONE, 0);
-    placed(a, "Done", done);
+    // The actions are Settings cards too: the primary one, Wi-Fi, and Retry or Stop beside it.
+    let mut actions: Vec<(i32, IconKind, &'static str)> = Vec::new();
     if live {
-        // Stop, beside Done (Retry, when there is no address, goes between them).
-        let stop = Rect { x: in_.x, y: in_.y + in_.h - bh, w: bw, h: bh };
-        // TRANSLATORS: Live view's pairing card: turns Live view off (388 px at 44 px, or 34 px).
-        ui_button(&mut a.screen, stop, IconKind::Close, tr("Stop"), ButtonStyle::Plain);
-        hits_add(&mut s(a).hits, stop, H_STOP, 0);
-        placed(a, "Stop", stop);
-    }
-    if n == 0 && live && !wifi_available() {
-        let retry = Rect { x: in_.x + (in_.w - bw) / 2, y: in_.y + in_.h - bh, w: bw, h: bh };
-        ui_button(&mut a.screen, retry, IconKind::None, tr("Retry"), ButtonStyle::Plain);
-        hits_add(&mut s(a).hits, retry, H_RETRY, 0);
-        placed(a, "Retry", retry);
-    } else if n > 0 && !live {
-        // Live view starts here: it uses the same server, on the same Wi-Fi.
-        let live_btn = Rect { x: in_.x, y: in_.y + in_.h - bh, w: bw, h: bh };
+        // TRANSLATORS: Live view's pairing card: turns Live view off.
+        actions.push((H_STOP, IconKind::Close, tr("Stop")));
+        if n == 0 {
+            // TRANSLATORS: starts the share server again.
+            actions.push((H_RETRY, IconKind::None, tr("Retry")));
+        }
+    } else if n > 0 {
         // TRANSLATORS: the Share screen's button that turns Live view on (or shows its card while it
-        // is on): 388 px at 44 px, or 34 px under its icon.
-        ui_button(&mut a.screen, live_btn, IconKind::Live, tr("Live view"), ButtonStyle::Plain);
-        hits_add(&mut s(a).hits, live_btn, H_LIVE, 0);
-        placed(a, "Live view", live_btn);
-    } else if n == 0 && !live {
-        let retry = Rect { x: in_.x, y: in_.y + in_.h - bh, w: bw, h: bh };
-        // TRANSLATORS: starts the share server again (388 px at 44 px, or 34 px).
-        ui_button(&mut a.screen, retry, IconKind::None, tr("Retry"), ButtonStyle::Plain);
-        hits_add(&mut s(a).hits, retry, H_RETRY, 0);
-        placed(a, "Retry", retry);
+        // is on).
+        actions.push((H_LIVE, IconKind::Live, tr("Live view")));
+    } else {
+        // TRANSLATORS: starts the share server again.
+        actions.push((H_RETRY, IconKind::None, tr("Retry")));
     }
     if wifi_available() {
-        let r=Rect::new(in_.x+(in_.w-bw)/2,in_.y+in_.h-bh,bw,bh);
-        ui_button(&mut a.screen,r,IconKind::None,tr("Wi-Fi"),ButtonStyle::Plain);
-        hits_add(&mut s(a).hits,r,H_WIFI,0);placed(a,"Wi-Fi",r);
+        actions.push((H_WIFI, IconKind::Share, tr("Wi-Fi")));
+    }
+    let nacts = actions.len() as i32;
+    let bw = if nacts > 0 {
+        ((in_.w - gap * (nacts - 1)) / nacts).min(ui_px(520.0))
+    } else {
+        0
+    };
+    let ax = in_.x + (in_.w - (nacts * bw + (nacts - 1) * gap)) / 2;
+    for (i, (id, icon, label)) in actions.into_iter().enumerate() {
+        let r = Rect::new(ax + i as i32 * (bw + gap), by, bw, bh);
+        ui_button(&mut a.screen, r, icon, label, ButtonStyle::Plain);
+        hits_add(&mut s(a).hits, r, id, 0);
+        placed(a, label, r);
     }
     check_layout(a, in_);
 }
@@ -576,21 +929,51 @@ pub fn share_sleep(a: &mut App) {
 // sleeping Kindle need not show its address. The wake lays the screen out again (share_enter).
 /// Share's sleep screen when no page is shown
 pub fn share_draw_asleep(a: &mut App) {
-    let (w, h) = (a.w, a.h);
     let live = s(a).live;
-    canvas_fill(&mut a.screen, Rect { x: 0, y: 0, w, h }, 255);
-    let m = ui_px(70.0);
-    let card = Rect { x: m, y: ui_px(260.0), w: w - 2 * m, h: h - ui_px(520.0) };
-    let in_ = ui_sheet(&mut a.screen, card, if live { tr("Live view") } else { tr("Share over Wi-Fi") });
+    let page = crate::library::settings_page(
+        &mut a.screen,
+        a.w,
+        a.h,
+        if live {
+            tr("Live view")
+        } else {
+            tr("Share over Wi-Fi")
+        },
+        false,
+        false,
+    );
+    let in_ = page.content;
+    let card = Rect::new(in_.x, in_.y, in_.w, ui_px(640.0));
     ui_icon(
         &mut a.screen,
-        if live { IconKind::Live } else { IconKind::Share },
-        Rect { x: in_.x + in_.w / 2 - ui_px(130.0), y: in_.y + ui_px(40.0), w: ui_px(260.0), h: ui_px(260.0) },
+        if live {
+            IconKind::Live
+        } else {
+            IconKind::Share
+        },
+        Rect {
+            x: in_.x + in_.w / 2 - ui_px(130.0),
+            y: card.y + ui_px(50.0),
+            w: ui_px(260.0),
+            h: ui_px(260.0),
+        },
         0,
     );
-    let y = in_.y + ui_px(360.0);
+    let y = card.y + ui_px(350.0);
     // TRANSLATORS: the Share screen as the Kindle's sleep screen.
-    draw_line(&mut a.screen, FontFace::Bold, ui_title_size(), Rect { x: in_.x, y, w: in_.w, h: ui_px(100.0) }, tr("Asleep"), 0);
+    draw_line(
+        &mut a.screen,
+        FontFace::Bold,
+        ui_title_size(),
+        Rect {
+            x: in_.x,
+            y,
+            w: in_.w,
+            h: ui_px(100.0),
+        },
+        tr("Asleep"),
+        0,
+    );
     if live {
         return;
     }
@@ -598,7 +981,12 @@ pub fn share_draw_asleep(a: &mut App) {
         &mut a.screen,
         FontFace::Regular,
         ui_text_size(),
-        Rect { x: in_.x, y: y + ui_px(110.0), w: in_.w, h: ui_px(80.0) },
+        Rect {
+            x: in_.x,
+            y: y + ui_px(110.0),
+            w: in_.w,
+            h: ui_px(80.0),
+        },
         tr("Wake the Kindle to share again."),
         60,
     );
@@ -629,7 +1017,9 @@ pub fn share_event(a: &mut App, ev: &InEvent) {
     if app_pointer_phase(ev) != 2 {
         return;
     }
-    let Some(h) = hits_find(&s(a).hits, ev.x, ev.y).copied() else { return };
+    let Some(h) = hits_find(&s(a).hits, ev.x, ev.y).copied() else {
+        return;
+    };
     let back = {
         let ret = s(a).ret;
         if ret == ScreenId::Share {
@@ -639,13 +1029,29 @@ pub fn share_event(a: &mut App, ev: &InEvent) {
         }
     };
     if h.id == H_WIFI {
-        s(a).wifi_open=true;s(a).wifi_paint=None;s(a).wifi_check_at=now_ms();s(a).wifi_watch_at=now_ms();
-        wifi_request(WifiAction::Status);draw(a);app_invalidate_all(a,RefreshMode::Ui);
-    } else if h.id==H_WIFI_ON||h.id==H_WIFI_OFF||h.id==H_WIFI_CHECK {
-        let action=if h.id==H_WIFI_ON{WifiAction::On}else if h.id==H_WIFI_OFF{WifiAction::Off}else{WifiAction::Status};
-        wifi_request(action);s(a).wifi_check_at=now_ms();s(a).wifi_watch_at=now_ms();draw(a);app_invalidate_all(a,RefreshMode::Ui);
-    } else if h.id==H_WIFI_DONE {
-        s(a).wifi_open=false;if !s(a).started {start(a);}draw(a);app_invalidate_all(a,RefreshMode::Ui);
+        // The same Wi-Fi submenu Settings has, not a second, smaller copy: Back and its X return
+        // here when it was opened from Share.
+        crate::library::library_open_wifi_from_share(a);
+    } else if h.id == H_WIFI_ON || h.id == H_WIFI_OFF || h.id == H_WIFI_CHECK {
+        let action = if h.id == H_WIFI_ON {
+            WifiAction::On
+        } else if h.id == H_WIFI_OFF {
+            WifiAction::Off
+        } else {
+            WifiAction::Status
+        };
+        wifi_request(action);
+        s(a).wifi_check_at = now_ms();
+        s(a).wifi_watch_at = now_ms();
+        draw(a);
+        app_invalidate_all(a, RefreshMode::Ui);
+    } else if h.id == H_WIFI_DONE {
+        s(a).wifi_open = false;
+        if !s(a).started {
+            start(a);
+        }
+        draw(a);
+        app_invalidate_all(a, RefreshMode::Ui);
     } else if h.id == H_DONE {
         app_switch(a, back);
     } else if h.id == H_LIVE {
@@ -676,32 +1082,66 @@ pub fn share_back(a: &mut App) -> bool {
         return true;
     }
     let ret = s(a).ret;
-    app_switch(a, if ret == ScreenId::Share { ScreenId::Library } else { ret });
+    app_switch(
+        a,
+        if ret == ScreenId::Share {
+            ScreenId::Library
+        } else {
+            ret
+        },
+    );
     true
 }
 
 pub fn share_tick(a: &mut App, now: u32) {
     httpd_poll();
     if s(a).wifi_open {
-        if !wifi_busy()&&!wifi_failed()&&now.wrapping_sub(s(a).wifi_check_at)>2000
-            &&now.wrapping_sub(s(a).wifi_watch_at)<45000
-            &&wifi_status().is_some_and(|st|st.wireless&&st.enabled&&st.connected!=Some(true)) {
-            s(a).wifi_check_at=now;wifi_request(WifiAction::Status);
+        if !wifi_busy()
+            && !wifi_failed()
+            && now.wrapping_sub(s(a).wifi_check_at) > 2000
+            && now.wrapping_sub(s(a).wifi_watch_at) < 45000
+            && wifi_status()
+                .is_some_and(|st| st.wireless && st.enabled && st.connected != Some(true))
+        {
+            s(a).wifi_check_at = now;
+            wifi_request(WifiAction::Status);
         }
-        if s(a).wifi_paint!=Some((wifi_status(),wifi_changing()||(wifi_busy()&&wifi_status().is_none()),wifi_failed())) {draw(a);app_invalidate_all(a,RefreshMode::Ui);}
+        if s(a).wifi_paint
+            != Some((
+                wifi_status(),
+                wifi_changing() || (wifi_busy() && wifi_status().is_none()),
+                wifi_failed(),
+            ))
+        {
+            draw(a);
+            app_invalidate_all(a, RefreshMode::Ui);
+        }
         return;
     }
-    if wifi_available()&&now.wrapping_sub(s(a).address_check_at)>2000 {
-        s(a).address_check_at=now;let mut addresses=Vec::new();net_ipv4_addrs(&mut addresses,MAX_SHOWN as i32);
-        let key=addresses.join(",");
-        if key!=s(a).address_key {s(a).address_key=key;draw(a);app_invalidate_all(a,RefreshMode::Ui);}
+    if wifi_available() && now.wrapping_sub(s(a).address_check_at) > 2000 {
+        s(a).address_check_at = now;
+        let mut addresses = Vec::new();
+        net_ipv4_addrs(&mut addresses, MAX_SHOWN as i32);
+        let key = addresses.join(",");
+        if key != s(a).address_key {
+            s(a).address_key = key;
+            draw(a);
+            app_invalidate_all(a, RefreshMode::Ui);
+        }
     }
     if s(a).live {
         if httpd_live_pairings() != s(a).pairings {
             // A browser paired: the card's work is done (app.c says who is watching once its stream
             // starts).
             let ret = s(a).ret;
-            app_switch(a, if ret == ScreenId::Share { ScreenId::Library } else { ret });
+            app_switch(
+                a,
+                if ret == ScreenId::Share {
+                    ScreenId::Library
+                } else {
+                    ret
+                },
+            );
             return;
         }
         // A new code once five wrong ones used this one up, or a while before it runs out.
@@ -736,8 +1176,27 @@ pub fn share_tick(a: &mut App, now: u32) {
 }
 
 /// Test selectors resolve only visible controls, just like the screen's pointer handler.
-pub fn share_control_point(a:&App,name:&str)->Option<(f32,f32)> {
-    let id=match name {"wifi"=>H_WIFI,"wifi.on"=>H_WIFI_ON,"wifi.off"=>H_WIFI_OFF,"wifi.retry"=>H_WIFI_CHECK,"wifi.done"=>H_WIFI_DONE,"done"=>H_DONE,_=>return None};
-    a.share.as_ref()?.hits.h.iter().find(|h|h.id==id).map(|h|((h.r.x+h.r.w/2)as f32,(h.r.y+h.r.h/2)as f32))
+pub fn share_control_point(a: &App, name: &str) -> Option<(f32, f32)> {
+    let id = match name {
+        "wifi" => H_WIFI,
+        "wifi.on" => H_WIFI_ON,
+        "wifi.off" => H_WIFI_OFF,
+        "wifi.retry" => H_WIFI_CHECK,
+        "wifi.done" => H_WIFI_DONE,
+        "done" => H_DONE,
+        "live" => H_LIVE,
+        "stop" => H_STOP,
+        "retry" => H_RETRY,
+        _ => return None,
+    };
+    a.share
+        .as_ref()?
+        .hits
+        .h
+        .iter()
+        .find(|h| h.id == id)
+        .map(|h| ((h.r.x + h.r.w / 2) as f32, (h.r.y + h.r.h / 2) as f32))
 }
-pub fn share_wifi_open(a:&App)->bool {a.scr==ScreenId::Share&&a.share.as_ref().is_some_and(|s|s.wifi_open)}
+pub fn share_wifi_open(a: &App) -> bool {
+    crate::library::library_wifi_from_share(a)
+}

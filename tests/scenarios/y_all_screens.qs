@@ -527,11 +527,11 @@ tap 1345 95
 wait 300
 expect screen is share
 shot 18-share
-tap 318 2100
+tap share live
 wait 300
 expect live.pairing is 1
 shot 18-live-card
-tap 318 2100
+tap share stop
 wait 100
 expect screen is library
 expect live.on is 0

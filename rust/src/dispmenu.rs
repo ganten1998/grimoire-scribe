@@ -55,7 +55,6 @@ pub struct DispMenu {
 
 const D_BRIGHT: i32 = 1;
 const D_WARM: i32 = 2;
-const D_INVERT: i32 = 3;
 const D_SLEEP_MODE: i32 = 4;
 const D_PIN: i32 = 5;
 const D_SLEEP_AFTER: i32 = 6;
@@ -66,7 +65,7 @@ const D_CORNER: i32 = 10;
 
 pub fn dispmenu_control_point(m:&DispMenu,name:&str)->Option<(f32,f32)> {
     if !m.open{return None;}
-    let id=match name {"size"=>D_STATUS,"corner"=>D_CORNER,"done"=>D_DONE,"back"=>D_BACK,"fit"=>D_FIT,"newpage"=>D_NEWPAGE,"time12"=>D_TIME12,"sleep"=>D_SLEEP_MODE,"pin"=>D_PIN,"sleep_after"=>D_SLEEP_AFTER,"invert"=>D_INVERT,"brightness"=>D_BRIGHT,"warmth"=>D_WARM,_=>return None};
+    let id=match name {"size"=>D_STATUS,"corner"=>D_CORNER,"done"=>D_DONE,"back"=>D_BACK,"fit"=>D_FIT,"newpage"=>D_NEWPAGE,"time12"=>D_TIME12,"sleep"=>D_SLEEP_MODE,"pin"=>D_PIN,"sleep_after"=>D_SLEEP_AFTER,"brightness"=>D_BRIGHT,"warmth"=>D_WARM,_=>return None};
     m.hits.h.iter().find(|h|h.id==id).map(|h|((h.r.x+h.r.w/2)as f32,(h.r.y+h.r.h/2)as f32))
 }
 const D_NEWPAGE: i32 = 11;
@@ -321,11 +320,6 @@ pub fn dispmenu_draw(m: &mut DispMenu, a: &mut App) -> Rect {
                 }
             }
             rows.push(DRowKind::Check {
-                id: D_INVERT,
-                label: tr("Invert colors in Grimoire (white on black)").to_string(),
-                on: a.settings.invert,
-            });
-            rows.push(DRowKind::Check {
                 id: D_FIT,
                 label: tr("Sideways, show the whole page").to_string(),
                 on: a.settings.landscape_fit,
@@ -509,13 +503,6 @@ pub fn dispmenu_pointer(m: &mut DispMenu, a: &mut App, phase: i32, x: f32, y: f3
             m.open = false;
             *dirty = m.rect;
             return DmResult::Closed;
-        }
-        D_INVERT => {
-            a.settings.invert = !a.settings.invert;
-            settings_save(&a.settings);
-            display_set_invert(a.settings.invert);
-            dispmenu_draw(m, a);
-            return DmResult::Inverted;
         }
         D_FIT => {
             a.settings.landscape_fit = !a.settings.landscape_fit;

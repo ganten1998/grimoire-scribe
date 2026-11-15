@@ -46,14 +46,22 @@ wait 800
 expect wifi.saved is 16
 expect wifi.current is Open
 shot 03b-added
-# Saved networks: the trash button at the right of the first row forgets the Open network just added.
+# Saved networks: the newly added Open network is the last row; its trash button forgets it.
 tap library wifi.tab.saved
 wait 300
 shot 03c-saved
-tap library wifi.delete.1
+drag touch 930 1700 930 850 6
+wait 100
+shot 03c-scrolled
+tap library wifi.delete.16
 wait 800
 expect wifi.saved is 15
 expect wifi.current is Home
+# Back to the top of Saved for the switch tests.
+tap library wifi.tab.saved
+wait 100
+tap library wifi.tab.saved
+wait 100
 shot 03d-forgotten
 # A tap on the second row (Studio 5 GHz) switches to it: Connecting to..., then connected once a read says so.
 tap library wifi.net.2
@@ -65,12 +73,12 @@ expect wifi.join is connected
 expect wifi.current is Studio 5 GHz
 shot 05-switched
 # Tapping the connected saved network again disconnects it and leaves Wi-Fi on.
-tap library wifi.net.1
+tap library wifi.net.2
 wait 800
 expect wifi.state is on
 expect wifi.current is
 shot 05a-disconnected
-# Saved networks still knows it: the second row reconnects to Studio.
+# Saved networks still knows it: the same row reconnects to Studio.
 tap library wifi.net.2
 wait 2500
 expect wifi.current is Studio 5 GHz

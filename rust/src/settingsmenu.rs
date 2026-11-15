@@ -44,6 +44,7 @@ pub enum Label {
 pub enum SettingId {
     Display,
     Theme,
+    DarkMode,
     Font,
     Rotate,
     Pinch,
@@ -71,6 +72,7 @@ pub enum Check {
     FollowRotation,
     PinchZoom,
     MirrorPdf,
+    DarkMode,
 }
 
 impl Check {
@@ -80,6 +82,7 @@ impl Check {
             Check::FollowRotation => Some(s.follow_rotation),
             Check::PinchZoom => Some(s.pinch_zoom),
             Check::MirrorPdf => Some(s.mirror_pdf),
+            Check::DarkMode => Some(s.invert),
         }
     }
 }
@@ -133,14 +136,15 @@ pub static ERASER_LABELS: [&str; 2] = [
     n_("Takes away only what it touches"),
 ];
 
-/// The style row's two labels: the current theme, and the one a tap switches to.
-pub const STYLE_GOTHIC: &str = n_("Style: Gothic (tap for Classic)");
-pub const STYLE_CLASSIC: &str = n_("Style: Classic (tap for Gothic)");
+/// The style row's two labels: the current theme in parentheses, as Rotation names its two
+/// orientations.
+pub const STYLE_GOTHIC: &str = n_("Style (Gothic)");
+pub const STYLE_CLASSIC: &str = n_("Style (Classic)");
 
 /// The Settings page, category by category and row by row. Keep this table in the order the
 /// page shows; the layout never hardcodes a category or a row.
 // TRANSLATORS: Settings' categories, down the left of its page, each with its icon: General's
-// (language, updates, Wi-Fi), Display's (front light, appearance, theme, font, rotation, zoom), Sleep &
+// (language, updates, Wi-Fi), Display's (front light, theme, dark mode, font, rotation, zoom), Sleep &
 // Clock's (sleep screen, timer, clock), the Pen's (tool settings, its button, the eraser, calibration),
 // Controls'
 // (shortcuts, pairing, gestures) and System's (KOReader, USB PDF mirroring, about the device).
@@ -180,8 +184,8 @@ pub static CATEGORIES: &[Category] = &[
         items: &[
             Item {
                 icon: IconKind::Brightness,
-                // TRANSLATORS: the row that opens Display's sheet: brightness, warmth and invert.
-                label: Label::Text(n_("Display: brightness, warmth, invert")),
+                // TRANSLATORS: the row that opens Display's sheet: brightness and warmth.
+                label: Label::Text(n_("Display: brightness, warmth")),
                 id: SettingId::Display,
                 check: Check::None,
                 show: Show::Always,
@@ -194,6 +198,14 @@ pub static CATEGORIES: &[Category] = &[
                 show: Show::Always,
             },
             Item {
+                icon: IconKind::Invert,
+                // TRANSLATORS: the row that turns Grimoire's dark mode (white on black) on or off.
+                label: Label::Text(n_("Dark mode")),
+                id: SettingId::DarkMode,
+                check: Check::DarkMode,
+                show: Show::Always,
+            },
+            Item {
                 icon: IconKind::Font,
                 label: Label::Font,
                 id: SettingId::Font,
@@ -202,7 +214,7 @@ pub static CATEGORIES: &[Category] = &[
             },
             Item {
                 icon: IconKind::Collapse,
-                label: Label::Text(n_("Turn with the Kindle (portrait and landscape)")),
+                label: Label::Text(n_("Rotation (portrait and landscape)")),
                 id: SettingId::Rotate,
                 check: Check::FollowRotation,
                 show: Show::Always,
@@ -357,32 +369,36 @@ mod tests {
             vec!["General", "Display", "Sleep & Clock", "Pen", "Controls", "System"]
         );
         assert_eq!(ids(0), vec![SettingId::Language, SettingId::Updates, SettingId::Wifi]);
-        assert_eq!(ids(1), vec![SettingId::Display, SettingId::Theme, SettingId::Font, SettingId::Rotate, SettingId::Pinch]);
+        assert_eq!(ids(1), vec![SettingId::Display, SettingId::Theme, SettingId::DarkMode, SettingId::Font, SettingId::Rotate, SettingId::Pinch]);
         assert_eq!(ids(2), vec![SettingId::SleepSettings, SettingId::ClockSettings]);
         assert_eq!(ids(3), vec![SettingId::PenFeel, SettingId::SideButton, SettingId::EraserMode, SettingId::Calibration]);
         assert_eq!(ids(4), vec![SettingId::Shortcuts, SettingId::Pair, SettingId::Gestures]);
         assert_eq!(ids(5), vec![SettingId::KOReader, SettingId::Mirror, SettingId::AboutDevice]);
-        assert_eq!(CATEGORIES.iter().map(|c| c.items.len()).sum::<usize>(), 20);
+        assert_eq!(CATEGORIES.iter().map(|c| c.items.len()).sum::<usize>(), 21);
 
         assert_eq!(text(2, 0), "Sleep settings");
         assert_eq!(text(2, 1), "Clock settings");
         assert_eq!(text(0, 2), "Wi-Fi");
         assert_eq!(text(5, 0), "KOReader");
         assert_eq!(text(5, 2), "About: device and storage");
-        assert_eq!(text(1, 0), "Display: brightness, warmth, invert");
-        assert_eq!(text(1, 3), "Turn with the Kindle (portrait and landscape)");
-        assert_eq!(text(1, 4), "Pinch with two fingers to zoom");
+        assert_eq!(text(1, 0), "Display: brightness, warmth");
+        assert_eq!(text(1, 2), "Dark mode");
+        assert_eq!(text(1, 4), "Rotation (portrait and landscape)");
+        assert_eq!(text(1, 5), "Pinch with two fingers to zoom");
         assert_eq!(text(3, 0), "Tool Settings: pressure and tilt per tool");
         assert_eq!(text(3, 3), "Calibrate pen and touch");
         assert_eq!(text(4, 0), "Shortcuts: keys and controller buttons");
         assert_eq!(text(4, 1), "Pair");
         assert_eq!(text(4, 2), "Gestures");
 
+        assert_eq!(STYLE_GOTHIC, "Style (Gothic)");
+        assert_eq!(STYLE_CLASSIC, "Style (Classic)");
         assert!(matches!(CATEGORIES[1].items[1].label, Label::Style));
-        assert!(matches!(CATEGORIES[1].items[2].label, Label::Font));
-        assert!(matches!(CATEGORIES[1].items[2].show, Show::ClassicOnly));
-        assert!(matches!(CATEGORIES[1].items[3].check, Check::FollowRotation));
-        assert!(matches!(CATEGORIES[1].items[4].check, Check::PinchZoom));
+        assert!(matches!(CATEGORIES[1].items[2].check, Check::DarkMode));
+        assert!(matches!(CATEGORIES[1].items[3].label, Label::Font));
+        assert!(matches!(CATEGORIES[1].items[3].show, Show::ClassicOnly));
+        assert!(matches!(CATEGORIES[1].items[4].check, Check::FollowRotation));
+        assert!(matches!(CATEGORIES[1].items[5].check, Check::PinchZoom));
         assert!(matches!(CATEGORIES[3].items[1].label, Label::SideButton));
         assert!(matches!(CATEGORIES[3].items[2].label, Label::Eraser));
         assert!(matches!(CATEGORIES[0].items[0].label, Label::Language));

@@ -1230,7 +1230,7 @@ What only the Scribe and a real browser can show:
    connected" for 1.5 s; tap Done while it is up, and the browser shows it as the card closes. Again, but wait
    for it to go before Done: it does not come back. (That toast comes at most once in 30 s: turn the device
    off and wait between the two.)
-8. **Inverted.** With Invert colors on (Settings > Display), the browser's toast is inverted with the rest of
+8. **Inverted.** With Dark mode on (Settings > Display), the browser's toast is inverted with the rest of
    the picture, as on the Kindle (white with black words), and the browser's Invert colors switch turns it
    with the picture.
 
@@ -1446,11 +1446,12 @@ What only the Scribe and a real browser can show:
 
 1. **Display.** Pair a browser and open a notebook. Tap the toolbar's Display button: the Display sheet opens on
    the Kindle and in the browser, and the toolbar stays beside it in the browser, as on the Kindle. Drag
-   Brightness, tick or untick "Swiping past the last page adds a page", then tap Invert colors twice: the toolbar
+   Brightness, tick or untick "Swiping past the last page adds a page", then close the sheet and tap Dark mode twice in
+   Settings > Display: the toolbar
    stays in the browser the whole time (inverted with the rest while the colors are). Tap Done: the sheet goes
    from both and the toolbar is unchanged.
 2. **Settings.** Tap the toolbar's Settings button: the browser shows the Settings sheet as the Kindle does, over
-   most of the toolbar, and any strip of the toolbar it leaves at its right. Change a row (Turn with the Kindle, say, and back),
+   most of the toolbar, and any strip of the toolbar it leaves at its right. Change a row (Rotation, say, and back),
    open Display from it and drag Brightness, then go back and tap Done: at every step the browser shows what the
    Kindle shows, and after Done the toolbar is in the browser as before.
 3. **Over the toolbar.** Drag the toolbar to the middle of the page and open Display again: the sheet covers the
@@ -1592,7 +1593,7 @@ On the Scribe (a 2022 or 2024 Scribe, with a build of this branch):
    refresh shows text (no grays). (The page draws them a little smaller than the app now does: x1.05, x1.0
    and x1.12 there, x1.10, x1.065 and x1.15 here.) Say if another of its fonts (Inter, Fira Sans, Source
    Serif 4) should take one's place.
-2. **Pick each font.** Settings in Classic: the Style row reads "Style: Classic (tap for Gothic)" with "Font:
+2. **Pick each font.** Settings in Classic: the Style row reads "Style (Classic)" with "Font:
    Terminess" in a chip at its right end; a tap left of the chip still changes the style. Tap the chip: the
    Font sheet, Terminess highlighted and checked. Tap each family: only the sample and the two rows redraw,
    without a flash, and the sample's name, sentence and digits are in that family. Done on Atkinson: one full
@@ -2348,7 +2349,8 @@ only that PSK; a WPA3 add sends the passphrase only on stdin, with SAE and PMF r
 username and password only on stdin, offers the SHA-256 AKM with optional PMF (or falls back when the
 supplicant lacks it), and its profile need not be in wifid's list; disconnect keeps the radio on, sets the manager's manual mode first, tries `cmDisconnect` with and without the current profile and then `wpa_cli`, pins the drop and disables the supplicant's network once the link is down, re-enables it and restores auto when it cannot, and its exit names the failed step; hostile names stay data), `rust/src/wifi.rs`'s
 tests (reports fail closed; a switch's states, its hex argument, exit during a switch; add's stdin and delete's
-name; a quiet scan keeps order and only adds/removes names; a change cancels a running scan; an Add failure
+name; a saved report that brackets the connected profile is shown once and plainly, in its own order; a quiet
+scan keeps order and only adds/removes names; a change cancels a running scan; an Add failure
 is named) and `tests/scenarios/z_wifi_networks.qs` (the sheet from the scenario helper: the automatic scan,
 Rescan, add Open, the row's trash, switch, disconnect, reconnect, scroll to Far away and refuse, and Other...
 with a hidden WPA/WPA2 password; also run in every language and style by make l10n-check). PSK add/delete were checked on the owner's
@@ -2398,7 +2400,8 @@ turn Wi-Fi on first when it does not).
    SSID `Grimoire-Test-EAP`, identity `student` and password `test-password`; `WIFI_EAP_WPA3_ONLY=1`
    makes it WPA3-Enterprise only (`WPA-EAP-SHA256`, PMF required). It needs hostapd, iw and openssl,
    and keeps the existing connection up when the driver supports AP + managed on one channel.
-5. Saved networks: the profiles, the connected one first, with the trash button at each row's right. Tap one
+5. Saved networks: the profiles in the Kindle's order, each an ordinary row with the trash button at its right;
+   the connected one is named in the status line, not moved or marked in the list. Tap one
    trash: that profile leaves the Kindle's list at once, with no question; the Kindle's own Wi-Fi menu agrees.
    If the delete fails, the status says "Could not forget the network." (not the generic read error) and the
    `wifi:` log line names the helper's exit: 21 the radio, 23 no read came back, 24 no netid could be

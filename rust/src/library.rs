@@ -206,6 +206,8 @@ const H_WIFI_NET: i32 = 182;
 // 2.1: Settings' Sleep & Clock buttons (the Display sheet's sleep and clock rows, on pages of their own).
 const H_SET_SLEEP: i32 = 184;
 const H_SET_CLOCK: i32 = 185;
+// Settings > Display's Dark mode toggle (the invert setting, moved out of the Display sheet).
+const H_SET_DARK: i32 = 196;
 // Settings > Wi-Fi's top controls and lists: Nearby/Saved (arg: 0 or 1), Rescan, Other... (a hidden
 // network), a saved row's trash (arg: a row), and a network a scan found (arg: an index of
 // WifiSheet.near). The saved rows keep H_WIFI_NET.
@@ -402,6 +404,8 @@ pub struct LibraryState {
     shown_bt_changes: u32,
     /// Settings > Wi-Fi
     wifi: WifiSheet,
+    /// The Wi-Fi submenu was opened from Share's bottom button: Back or X returns to Share.
+    share_wifi_return: bool,
     // The Updates sheet: its check (UPD_*), the newest version it found, why it failed.
     upd: i32,
     /// at most UPDATE_VERSION_LEN - 1 bytes
@@ -3142,6 +3146,24 @@ fn wifi_sheet_open(a: &mut App) {
     open_modal(a, Modal::Wifi);
 }
 
+/// Share's Wi-Fi button opens the same Settings > Wi-Fi submenu; closing it returns to Share.
+pub(crate) fn library_open_wifi_from_share(a: &mut App) {
+    if a.scr != ScreenId::Library {
+        app_switch(a, ScreenId::Library);
+    }
+    let s = lib(a);
+    s.share_wifi_return = true;
+    s.settings_return_editor = false;
+    wifi_sheet_open(a);
+}
+
+/// Whether the Wi-Fi submenu on screen was opened from Share (the app probe's wifi.open).
+pub(crate) fn library_wifi_from_share(a: &App) -> bool {
+    a.lib
+        .as_deref()
+        .is_some_and(|s| s.share_wifi_return && s.modal == Modal::Wifi)
+}
+
 /// Back from the password keyboard: the Wi-Fi page stays open, its nearby list fresh.
 fn wifi_sheet_resume(a: &mut App) {
     let now = now_ms();
@@ -3429,6 +3451,42 @@ fn wifi_clip_hits(hits: &mut HitList, from: usize, clip: Rect) {
     }
 }
 
+/// A name without the square brackets the Kindle puts around the connected profile. The brackets
+/// are a marker, not part of the network's name; an empty pair is left alone.
+fn wifi_unwrapped(name: &[u8]) -> &[u8] {
+    match name.strip_prefix(b"[").and_then(|n| n.strip_suffix(b"]")) {
+        Some(inner) if !inner.is_empty() => inner,
+        _ => name,
+    }
+}
+
+/// Whether `name` is the network the Kindle is connected to, allowing for the brackets the
+/// Kindle may put around the connected profile's name.
+fn wifi_is_current(name: &[u8], current: Option<&[u8]>) -> bool {
+    current.is_some_and(|c| wifi_unwrapped(c) == wifi_unwrapped(name))
+}
+
+/// The saved rows to show: the Kindle's order, with no connected network moved to the top. When
+/// the Kindle lists a bracketed name and its plain name as saved, the bracketed one is the
+/// connected marker, not a second profile. Keep the plain profile for its actions; a bracketed
+/// name with no plain form is kept (its label is still drawn without the brackets).
+fn wifi_saved_rows(saved: &[Vec<u8>]) -> Vec<Vec<u8>> {
+    let mut rows: Vec<Vec<u8>> = Vec::new();
+    let mut labels: Vec<&[u8]> = Vec::new();
+    for name in saved {
+        let label = wifi_unwrapped(name);
+        if label.len() != name.len() && saved.iter().any(|other| other.as_slice() == label) {
+            continue;
+        }
+        if labels.contains(&label) {
+            continue;
+        }
+        labels.push(label);
+        rows.push(name.clone());
+    }
+    rows
+}
+
 /// Settings > Wi-Fi: the radio's state and the three controls over whichever list is open.
 fn draw_wifi_sheet(a: &mut App) {
     if lib(a).wifi.view == WIFI_VIEW_OTHER {
@@ -3437,7 +3495,7 @@ fn draw_wifi_sheet(a: &mut App) {
     }
     let w = wifi_shown();
     let auto_scan = lib(a).wifi.scan_auto;
-    let name = |n: &[u8]| String::from_utf8_lossy(n).into_owned();
+    let name = |n: &[u8]| String::from_utf8_lossy(wifi_unwrapped(n)).into_owned();
     let mut status = String::new();
     let mut status_named = false;
     let on = w.status.is_some_and(|st| st.wireless && st.enabled);
@@ -3591,12 +3649,9 @@ fn draw_wifi_sheet(a: &mut App) {
             all_nets = networks;
         }
     } else {
-        // The saved networks, the one connected to first, each with its trash button.
-        let mut names = w.saved.clone().unwrap_or_default();
-        if let Some(i) = w.current.as_ref().and_then(|c| names.iter().position(|n| n == c)) {
-            let n = names.remove(i);
-            names.insert(0, n);
-        }
+        // The saved networks, in the Kindle's order, each with its trash button. The connected one
+        // keeps its place and is drawn as the Connected card there, not moved to the top.
+        let names = wifi_saved_rows(w.saved.as_deref().unwrap_or_default());
         if w.saved.is_none() {
             let why = if on {
                 // TRANSLATORS: (Settings > Wi-Fi) a line in place of the saved networks when they could not be read.
@@ -3628,7 +3683,6 @@ fn draw_wifi_sheet(a: &mut App) {
             if rect_is_empty(rect_intersect(r, list)) {
                 continue;
             }
-            let here = w.current.as_ref() == Some(&net.essid);
             let saved = w.saved.as_ref().is_some_and(|s| s.iter().any(|x| x == &net.essid));
             let label = name(&net.essid);
             let row = WifiRow {
@@ -3636,7 +3690,8 @@ fn draw_wifi_sheet(a: &mut App) {
                 security: Some(net.security),
                 signal: Some((net.signal, net.signal_max)),
                 saved,
-                current: here,
+                // The Connected card is the saved list's; a nearby row stays an ordinary row.
+                current: false,
                 enabled: net.security != WifiSecurity::Unknown || saved,
                 id: H_WIFI_NEAR,
                 arg: i as i32,
@@ -3649,9 +3704,9 @@ fn draw_wifi_sheet(a: &mut App) {
             if rect_is_empty(rect_intersect(r, list)) {
                 continue;
             }
-            let here = w.current.as_ref() == Some(saved_name);
             let nearby = w.nearby.as_ref().and_then(|v| v.iter().find(|n| &n.essid == saved_name));
             let label = name(saved_name);
+            let here = wifi_is_current(saved_name, w.current.as_deref());
             let row = WifiRow {
                 name: &label,
                 security: nearby.map(|n| n.security),
@@ -3916,8 +3971,9 @@ fn wifi_sheet_tap(a: &mut App, id: i32, arg: i32) {
         H_WIFI_NET => {
             let ws = &lib(a).wifi;
             let Some(n) = ws.rows.get(arg as usize).cloned() else { return };
-            // (the network connected to: tapping it again disconnects, keeping the radio on)
-            if ws.shown.as_ref().is_some_and(|w| w.current.as_ref() == Some(&n)) {
+            // (the network connected to: tapping it again disconnects, keeping the radio on; the
+            // Kindle may bracket the connected profile's name, so compare it unwrapped)
+            if wifi_is_current(&n, ws.shown.as_ref().and_then(|w| w.current.as_deref())) {
                 wifi_disconnect_tapped(a);
                 return;
             }
@@ -3927,7 +3983,7 @@ fn wifi_sheet_tap(a: &mut App, id: i32, arg: i32) {
         H_WIFI_NEAR => {
             let ws = &lib(a).wifi;
             let Some(n) = ws.near.get(arg as usize).cloned() else { return };
-            if ws.shown.as_ref().is_some_and(|w| w.current.as_ref() == Some(&n.essid)) {
+            if wifi_is_current(&n.essid, ws.shown.as_ref().and_then(|w| w.current.as_deref())) {
                 wifi_disconnect_tapped(a);
                 return;
             }
@@ -4675,6 +4731,7 @@ fn setting_hit(id: settingsmenu::SettingId) -> i32 {
         SleepSettings => H_SET_SLEEP,
         ClockSettings => H_SET_CLOCK,
         Theme => H_SET_THEME,
+        DarkMode => H_SET_DARK,
         Font => H_SET_FONT,
         Rotate => H_SET_ROTATE,
         Pinch => H_SET_PINCH,
@@ -6634,6 +6691,11 @@ fn folder_follow(a: &mut App, old: &str) {
 }
 
 fn act(a: &mut App, h: &Hit) {
+    if lib(a).share_wifi_return && matches!(h.id, H_SETTINGS_BACK | H_SETTINGS_CLOSE) {
+        lib(a).share_wifi_return = false;
+        app_switch(a, ScreenId::Share);
+        return;
+    }
     let it = target_item(lib(a));
     match h.id {
         H_BACK => {
@@ -7049,6 +7111,13 @@ fn act(a: &mut App, h: &Hit) {
             });
             crate::userfonts::userfonts_apply(a); // (Classic's own font, if it has one; Gothic holds none)
             httpd_restyle(ui_theme() == UiTheme::Gothic);
+            settings_save(&a.settings);
+            redraw(a, RefreshMode::Full);
+        }
+        H_SET_DARK => {
+            a.settings.invert = !a.settings.invert;
+            display_set_invert(a.settings.invert);
+            live_set_invert(a.settings.invert);
             settings_save(&a.settings);
             redraw(a, RefreshMode::Full);
         }
@@ -7742,6 +7811,11 @@ pub fn library_back(a: &mut App) -> bool {
     if a.lib.is_none() {
         return false;
     }
+    if lib(a).share_wifi_return && lib(a).modal == Modal::Wifi {
+        lib(a).share_wifi_return = false;
+        app_switch(a, ScreenId::Share);
+        return true;
+    }
     let tap = |a: &mut App, id: i32| act(a, &Hit { id, ..Default::default() });
     if files_shown(a) {
         return files_back(a);
@@ -7814,6 +7888,11 @@ pub fn library_back(a: &mut App) -> bool {
 pub fn library_modal_key(a: &mut App, code: i32) -> bool {
     if a.scr != ScreenId::Library || graph_shown(a) || files_shown(a) || library_record_active(a) {
         return false;
+    }
+    if code == 1 && lib(a).share_wifi_return && lib(a).modal == Modal::Wifi {
+        lib(a).share_wifi_return = false;
+        app_switch(a, ScreenId::Share);
+        return true;
     }
     let Some(s) = a.lib.as_deref_mut() else { return false };
     const ENTER: i32 = 28;
@@ -7955,6 +8034,7 @@ pub fn library_enter(a: &mut App) {
     if !relayout {
         s.modal = Modal::None;
         s.settings_return_editor = false;
+        s.share_wifi_return = false;
     }
     if reopen_settings {
         // (Back from Pen feel or Calibration, which Settings opened: Settings again, as it was left.)
@@ -8708,6 +8788,7 @@ pub fn library_probe(a: &mut App, key: &str, out: &mut String, cap: usize) -> i3
                 H_SHORTCUT_DEVICE => "shortcuts.device", H_SHORTCUT_OWN => "shortcuts.own", H_SHORTCUT_RELOAD => "shortcuts.reload",
                 H_UPDATES => "updates", H_CANCEL => "done", H_GESTURES_MASTER => "gestures.master",
                 H_UPD_CHANNEL => "updates.channel", H_UPD_NOW => "updates.now",
+                H_SET_DARK => "dark",
                 H_SET_ROTATE => "rotate", H_SHORTCUT_ENABLE => "shortcuts.enable", H_BT_TOGGLE => "bluetooth",
                 H_PAIR => "pair", H_BUTTONS => "buttons",
                 H_GESTURES_RESET => "gestures.reset", H_GESTURES_DONE => "done",
@@ -10293,6 +10374,47 @@ esac
         }
         assert!(!scans.exists(), "a supplicant-owned link is not scanned");
         assert!(!wifi_scanning());
+        wifi_init(None);
+        library_free(&mut a);
+        canvas_free(&mut a.screen);
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    // The Kindle can report the connected profile as a bracketed second name. The saved list shows
+    // it once, plainly, in the Kindle's order, and does not make the connected row special.
+    #[test]
+    fn saved_networks_are_plain_deduplicated_and_keep_their_order() {
+        let root = std::env::temp_dir().join(format!("grimoire-wifi-plain-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(&root).unwrap();
+        assert_eq!(store_init(root.join("data").to_str().unwrap()), 0);
+        let script = root.join("helper.sh");
+        std::fs::write(
+            &script,
+            r#"case $1 in
+ networks) printf 'wireless=1\nenabled=1\nconnected=1\ncurrent=5b486f6d655d\nsaved=4f6666696365\nsaved=5b486f6d655d\nsaved=486f6d65\nlist=1\n';;
+ scan) printf 'scan=off\n';;
+ *) printf 'wireless=1\nenabled=1\nconnected=1\ncurrent=5b486f6d655d\n';;
+esac
+"#,
+        )
+        .unwrap();
+        let mut a = pen_record_app();
+        lib(&mut a).modal = Modal::Settings;
+        wifi_init(script.to_str());
+        wifi_sheet_open(&mut a);
+        let began = std::time::Instant::now();
+        while wifi_saved().is_none() && began.elapsed() < std::time::Duration::from_secs(5) {
+            wifi_tick();
+            wifi_sheet_tick(&mut a, now_ms());
+            std::thread::sleep(std::time::Duration::from_millis(5));
+        }
+        assert_eq!(wifi_saved().map(|v| v.len()), Some(3), "the raw report still has both names");
+        assert!(wifi_is_current(b"Home", Some(b"[Home]")));
+        assert!(wifi_is_current(b"[Home]", Some(b"Home")));
+        assert!(!wifi_is_current(b"Office", Some(b"[Home]")));
+        wifi_sheet_tap(&mut a, H_WIFI_TAB, WIFI_VIEW_SAVED as i32);
+        assert_eq!(lib(&mut a).wifi.rows, [b"Office".to_vec(), b"Home".to_vec()]);
         wifi_init(None);
         library_free(&mut a);
         canvas_free(&mut a.screen);

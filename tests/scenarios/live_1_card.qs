@@ -11,7 +11,7 @@ wait 300
 expect screen is share
 expect live.on is 0
 shot 01-share
-tap 318 2100
+tap share live
 wait 300
 # live_check holds here
 expect screen is share
@@ -19,7 +19,7 @@ expect live.on is 1
 expect live.pairing is 1
 expect live.viewers is 0
 shot 02-card
-tap 1538 2100
+tap share done
 wait 300
 expect screen is library
 expect live.on is 1
@@ -28,11 +28,11 @@ expect live.chip is 1814 4 42 42
 shot 03-library-chip
 tap 1345 95
 wait 300
-tap 318 2100
+tap share live
 wait 300
 expect live.pairing is 1
 expect live.on is 1
-tap 318 2100
+tap share stop
 wait 300
 expect screen is library
 expect live.on is 0
