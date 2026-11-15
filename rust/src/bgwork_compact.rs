@@ -54,12 +54,13 @@ fn list_path(id: &str, buf: &mut String, cap: usize) -> i32 {
     0
 }
 
-// The whole of the list file at `path`: None with *err -1 when there is no such file, -2 when it is
-// there but could not be read to its end (a read error, no memory).
+// The whole of the list file at `path`: None with *err -1 when nothing is at its name, -2 when something
+// is there but does not open as a plain file (a link, to a file or to nothing, is not followed, and a FIFO
+// is never waited on: util::open_read_nofollow) or could not be read to its end (a read error, no memory).
 fn list_text(path: &str, err: &mut i32) -> Option<Vec<u8>> {
     use std::io::Read;
-    let mut f = match std::fs::File::open(path) {
-        Ok(f) => f,
+    let mut f = match open_read_nofollow(path) {
+        Ok((f, _)) => f,
         Err(e) => {
             *err = if e.raw_os_error() == Some(libc::ENOENT) { -1 } else { -2 };
             return None;

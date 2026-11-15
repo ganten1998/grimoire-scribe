@@ -581,3 +581,39 @@ fn the_picture_index_has_a_limit() {
     c.done();
     let _ = std::fs::remove_dir_all(&t);
 }
+
+// ---- the readers the round left by path (issue #118) ----
+
+// A notebook's compaction list (erased.txt, read for every notebook at every start) is read when the entry at its
+// name is a plain file. A link there or a FIFO is a list that is there and does not read: it may list pages (the
+// pass is tried, and leaves it as it is) and nothing is written over it. No read of it waits.
+#[test]
+fn the_compaction_list_takes_a_plain_file_only() {
+    let t = top("erased");
+    let root = t.join("root");
+    store_at(&root);
+    let nb = book("Erased", 1, PAPER_BLANK);
+    let id = nb.id.as_str();
+    let list = nb_dir(&root, &nb).join("erased.txt");
+    let mut c = Checks::default();
+    c.that(!compact_listed(id) && compact_note_page(id, 3) == 0 && compact_listed(id) && is_plain(&list), "a list of its own is written and read");
+    // a link to a list outside
+    let outside = t.join("outside.txt");
+    move_out_and_link(&list, &outside);
+    let kept = std::fs::read(&outside).unwrap();
+    c.that(compact_listed(id), "a list that is a link may list pages");
+    c.that(compact_note_page(id, 5) == -1, "a page is not noted in it");
+    c.that(is_link(&list) && std::fs::read(&outside).unwrap() == kept, "the link and the file outside are as they were");
+    std::fs::remove_file(&list).unwrap();
+    // a FIFO
+    fifo_at(&list);
+    let (listed, waited) = waits_on(&list, || compact_listed(id));
+    c.that(!waited && listed, "a list that is a FIFO is one that does not read, at once");
+    let (rc, waited) = waits_on(&list, || compact_note_page(id, 5));
+    c.that(!waited && rc == -1, "and nothing is written over it, at once");
+    std::fs::remove_file(&list).unwrap();
+    c.that(!compact_listed(id), "with nothing at the name nothing is listed");
+    c.done();
+    let _ = std::fs::remove_dir_all(&t);
+}
+
