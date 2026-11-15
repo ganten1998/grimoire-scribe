@@ -532,6 +532,216 @@ pub fn ui_button_need_w(h: i32, icon: IconKind, label: &str, st: ButtonStyle) ->
     font_measure(FontFace::Caps, ts, label) + 2 * label_inset(carved(ui_px(90.0), h), st)
 }
 
+// ---- rows and lists: the one Settings row design ----
+
+/// The room a card keeps between its border and what it draws (a row's icon, a page's heading).
+pub fn ui_row_pad() -> i32 {
+    ui_px(30.0)
+}
+/// The room between a row's icon and its label.
+pub fn ui_row_gap() -> i32 {
+    ui_px(24.0)
+}
+/// The room between two rows of a list.
+pub fn ui_row_space() -> i32 {
+    ui_px(16.0)
+}
+
+/// A Settings card: the one shape a row, a choice or a control sits in, from the main page to About.
+/// The chosen one is filled; the rest are outlined (a disabled one in gray), all at one radius.
+pub fn ui_card(c: &mut Canvas, r: Rect, st: ButtonStyle) {
+    match st {
+        ButtonStyle::Selected => ui_frame(c, r, ui_px(16.0), 0, true, 0),
+        ButtonStyle::Disabled => ui_frame(c, r, ui_px(16.0), 170, false, ui_px(3.0)),
+        _ => ui_frame(c, r, ui_px(16.0), 0, false, ui_px(3.0)),
+    }
+}
+
+/// Settings' switch, at the right end of its card: a track with the knob at the side its state is on,
+/// as Updates' branch has it and every on/off row in Settings.
+pub fn ui_switch(c: &mut Canvas, r: Rect, on: bool) {
+    // (shorter rows, as the two-column sheets have, get a smaller switch: the same shape to scale)
+    let sw_h = ui_px(62.0).min(r.h - ui_px(12.0)).max(ui_px(24.0));
+    let sw_w = sw_h * 120 / 62;
+    let track = Rect::new(r.x + r.w - ui_px(30.0) - sw_w, r.y + (r.h - sw_h) / 2, sw_w, sw_h);
+    ui_frame(c, track, sw_h / 2, 0, on, ui_px(3.0));
+    let kw = sw_h * 46 / 62;
+    let inset = sw_h * 8 / 62;
+    let kx = if on { track.x + track.w - kw - inset } else { track.x + inset };
+    ui_frame(c, Rect::new(kx, track.y + (track.h - kw) / 2, kw, kw), kw / 2, if on { 255 } else { 0 }, true, 0);
+}
+/// One row of any list drawn in the app's design: Settings' page, its submenus, the Display sheet.
+/// An icon, a label, and an on/off switch at the right end when the row is a choice.
+///
+/// A list never draws a row itself: it lays out `ui_row_page`'s rects and calls `ui_row`, so a new
+/// item needs no drawing code at all and looks like every other row in the app.
+#[derive(Clone, Copy, Debug)]
+pub struct Row<'a> {
+    pub icon: IconKind,
+    pub label: &'a str,
+    /// Plain, Selected (filled), Disabled (gray) or Primary.
+    pub style: ButtonStyle,
+    /// Bold for a heading of a list (Settings' categories), Regular for a row's label.
+    pub font: FontFace,
+    /// Some(on): an on/off switch at the right end, and the label keeps clear of it.
+    pub switch: Option<bool>,
+    /// true: the label holds a name from the device (ui_text_name's rules).
+    pub name: bool,
+}
+
+impl<'a> Row<'a> {
+    /// A row that opens a page or a sheet.
+    pub const fn new(icon: IconKind, label: &'a str) -> Row<'a> {
+        Row { icon, label, style: ButtonStyle::Plain, font: FontFace::Regular, switch: None, name: false }
+    }
+    /// An on/off row, its switch at the right end.
+    pub const fn toggled(icon: IconKind, label: &'a str, on: bool) -> Row<'a> {
+        Row { icon, label, style: ButtonStyle::Plain, font: FontFace::Regular, switch: Some(on), name: false }
+    }
+    /// The row in use in a list of choices (a filled card, white on black).
+    pub const fn selected(icon: IconKind, label: &'a str) -> Row<'a> {
+        Row { icon, label, style: ButtonStyle::Selected, font: FontFace::Regular, switch: None, name: false }
+    }
+    pub const fn bold(mut self) -> Row<'a> {
+        self.font = FontFace::Bold;
+        self
+    }
+    pub const fn named(mut self) -> Row<'a> {
+        self.name = true;
+        self
+    }
+}
+
+/// The one row every list draws: the card, its icon, its label, and the switch of an on/off row.
+/// The label takes the room left between the icon and the switch and follows its rules (ui_text):
+/// one line at the text size, a smaller size, or two lines before a translation is ever cut short.
+pub fn ui_row(c: &mut Canvas, r: Rect, row: &Row) {
+    if r.w <= 0 || r.h <= 0 {
+        return;
+    }
+    ui_card(c, r, row.style);
+    let fg: u8 = if row.style == ButtonStyle::Selected {
+        255
+    } else if row.style == ButtonStyle::Disabled {
+        170
+    } else {
+        0
+    };
+    let isz = ui_px(60.0);
+    let mut lx = r.x + ui_row_pad();
+    if row.icon != IconKind::None {
+        ui_icon(c, row.icon, Rect::new(lx, r.y + (r.h - isz) / 2, isz, isz), fg);
+        lx += isz + ui_row_gap();
+    }
+    let mut lw = r.x + r.w - lx - ui_row_pad();
+    if let Some(on) = row.switch {
+        // (the switch keeps its own room at the card's right, as Settings' first page has it)
+        lw = (lw - ui_px(170.0)).max(0);
+        ui_switch(c, r, on);
+    }
+    let lr = Rect::new(lx, r.y, lw.max(0), r.h);
+    if row.name {
+        ui_text_name(c, row.font, ui_text_size(), ui_small_size(), lr, row.label, 2, fg);
+    } else {
+        ui_text(c, row.font, ui_text_size(), ui_small_size(), lr, row.label, 2, false, fg);
+    }
+}
+
+/// A page of rows laid out by `ui_row_page`: where each shows, which of the list it is, and the
+/// arrows when the list takes more than one page.
+#[derive(Clone, Debug, Default)]
+pub struct RowPage {
+    pub rows: Vec<Rect>,
+    /// The index in the list of the first row shown.
+    pub first: usize,
+    pub page: i32,
+    pub pages: i32,
+    pub prev: Rect,
+    pub next: Rect,
+}
+
+// How many rows fit h px at a comfortable height, and (when the list needs it) shorter rows and a
+// narrower gap down to a touch target, then the rows one page holds.
+fn row_fit(h: i32, n: usize, pref_h: i32, min_h: i32) -> (i32, i32, usize) {
+    if n == 0 {
+        return (pref_h.max(1), ui_row_space(), 1);
+    }
+    let n = n as i32;
+    let min_h = clampi(min_h, ui_px(72.0), pref_h.max(1));
+    let mut rh = pref_h.max(1);
+    let mut gap = ui_row_space();
+    if n * (rh + gap) > h {
+        rh = clampi(h / n - gap, min_h, rh);
+    }
+    if n * (rh + gap) > h {
+        gap = clampi(h / n - rh, ui_px(10.0), gap);
+    }
+    let per = (((h + gap) / (rh + gap)).max(1)) as usize;
+    (rh, gap, per)
+}
+
+fn row_pages(n: usize, per: usize) -> i32 {
+    if n == 0 {
+        1
+    } else {
+        (n.div_ceil(per.max(1))) as i32
+    }
+}
+
+/// The rows of a list in `area`, as many as fit, paged when they do not: the layout every Settings
+/// page and submenu shares. The caller keeps `page` (clamped here, and written back), draws each
+/// rect with `ui_row`, and adds the hits. Adding an item to a list never changes this or its page.
+pub fn ui_row_page(area: Rect, n: usize, page: i32, pref_h: i32, min_h: i32) -> RowPage {
+    let nav_h = ui_px(110.0);
+    let (mut rh, mut gap, mut per) = row_fit(area.h, n, pref_h, min_h);
+    let mut pages = row_pages(n, per);
+    let mut paged = pages > 1;
+    if paged {
+        // A paged list keeps a strip at the foot for its arrows, and fits the rows above it.
+        let (rh2, gap2, per2) = row_fit((area.h - nav_h).max(1), n, pref_h, min_h);
+        rh = rh2;
+        gap = gap2;
+        per = per2;
+        pages = row_pages(n, per);
+        paged = pages > 1;
+    }
+    let page = clampi(page, 0, pages - 1);
+    let first = page as usize * per;
+    let shown = n.saturating_sub(first).min(per);
+    let mut rows = Vec::with_capacity(shown);
+    for i in 0..shown {
+        rows.push(Rect::new(area.x, area.y + i as i32 * (rh + gap), area.w, rh));
+    }
+    let (prev, next) = if paged {
+        let bw = ui_px(130.0);
+        let bh = ui_px(90.0);
+        let y = area.y + area.h - bh;
+        (Rect::new(area.x, y, bw, bh), Rect::new(area.x + area.w - bw, y, bw, bh))
+    } else {
+        (RECT_EMPTY, RECT_EMPTY)
+    };
+    RowPage { rows, first, page, pages, prev, next }
+}
+
+/// The arrows and the page count under a paged list (ui_row_page's prev and next). A tap on them
+/// is the caller's hit; an arrow with no page that way is drawn disabled.
+pub fn ui_row_pager(c: &mut Canvas, p: &RowPage) {
+    if p.pages <= 1 {
+        return;
+    }
+    ui_button(c, p.prev, IconKind::Prev, "", if p.page > 0 { ButtonStyle::Plain } else { ButtonStyle::Disabled });
+    ui_button(c, p.next, IconKind::Next, "", if p.page + 1 < p.pages { ButtonStyle::Plain } else { ButtonStyle::Disabled });
+    let count = format!("{}/{}", p.page + 1, p.pages);
+    font_draw_centered(
+        c,
+        FontFace::Fixed,
+        ui_small_size(),
+        Rect::new(p.prev.x + p.prev.w, p.prev.y, (p.next.x - p.prev.x - p.prev.w).max(0), p.prev.h),
+        &count,
+        0,
+    );
+}
+
 /// Horizontal slider: label + value text on the left, track on the right.
 /// value_text may be NULL (then "%.2f unit" is shown).
 #[derive(Clone, Copy, Debug, Default)]
@@ -1212,5 +1422,45 @@ mod tests {
         let mut buf = String::new();
         assert_eq!(ui_name_label("Notebook 3", &mut buf, 64), "Notebook 3");
         assert_eq!(ui_name_label("Notebook", &mut buf, 0), "Notebook");
+    }
+
+    // A list fits whole at a comfortable height, then shortens its rows, then pages: any number of
+    // items gets the same row design, and no row ever leaves the area.
+    #[test]
+    fn a_list_fits_shortens_then_pages() {
+        ui_init(300.0);
+        let area = Rect { x: 40, y: 100, w: 1000, h: 1200 };
+        let few = ui_row_page(area, 4, 0, 118, 90);
+        assert_eq!((few.pages, few.rows.len(), few.first, few.page), (1, 4, 0, 0));
+        assert_eq!(few.rows[0].h, 118);
+        assert!(rect_is_empty(few.prev) && rect_is_empty(few.next));
+
+        let many = ui_row_page(area, 60, 0, 118, 90);
+        let per = many.rows.len();
+        assert!(per > 0);
+        assert_eq!(many.pages, 60usize.div_ceil(per) as i32);
+        assert!(many.pages > 1 && !rect_is_empty(many.prev) && !rect_is_empty(many.next));
+        for r in &many.rows {
+            assert!(r.h >= 90 && r.y >= area.y && r.y + r.h <= area.y + area.h);
+        }
+        // every page shows its own slice: each item once, and the last page holds what is left
+        let mut seen = 0;
+        for p in 0..many.pages {
+            let page = ui_row_page(area, 60, p, 118, 90);
+            assert_eq!(page.page, p);
+            assert_eq!(page.first, seen);
+            seen += page.rows.len();
+            for r in &page.rows {
+                assert!(r.y + r.h <= area.y + area.h);
+            }
+        }
+        assert_eq!(seen, 60);
+        // a page past the last is the last, never a blank page
+        let last = ui_row_page(area, 60, many.pages + 3, 118, 90);
+        assert_eq!(last.page, many.pages - 1);
+        assert_eq!(last.first + last.rows.len(), 60);
+        // and no items at all is one empty page, not a division by zero
+        let none = ui_row_page(area, 0, 0, 118, 90);
+        assert_eq!((none.pages, none.rows.len()), (1, 0));
     }
 }

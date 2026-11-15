@@ -1,9 +1,21 @@
 //! Settings' categories and rows as data: the backend of the Settings page.
 //!
-//! `library::draw_settings` is layout only. To add a row, add an `Item` here and handle its
-//! `SettingId` in `library::setting_hit` (plus `library::act` if it needs a new action). To add
-//! a category, add a `Category` here: the sidebar, its title and the layout follow automatically.
-//! `Show::ClassicOnly` hides a row in Gothic, as the Font row already is.
+//! Adding a row is one `Item` line in the table below, picked by what the row does:
+//!
+//! * `Item::open(icon, label, id)` — a row that opens a page or a sheet;
+//! * `Item::toggle(icon, label, id, check)` — an on/off row with its switch at the right;
+//! * `Item::value(icon, label, id)` — a row whose label is built from the current setting
+//!   (`Label::Style`, `Label::Font`, ...), and `Item::value_toggle` for one with a switch too;
+//! * `.classic_only()` — a row Gothic hides.
+//!
+//! Then add its `SettingId` to `library::setting_hit` (and its action to `library::act` if it is a
+//! new kind of action). Nothing draws the row itself: `library::draw_settings` lays the list out
+//! with `ui::ui_row_page` and draws every rect with `ui::ui_row`, the one row design in the app, so
+//! a new item looks like every other one and the page fits or pages a longer list by itself.
+//!
+//! Adding a category is one `Category::new(...)` line in `CATEGORIES`: the sidebar, its title and
+//! the layout follow automatically, and so do the submenus built from `MenuRow`s (they are drawn with
+//! the same `ui_row`). `Show::ClassicOnly` hides a row in Gothic, as the Font row already is.
 
 use crate::i18n::n_;
 use crate::store::Settings;
@@ -16,6 +28,13 @@ pub struct Category {
     pub items: &'static [Item],
 }
 
+impl Category {
+    /// A category: its title (a msgid), the icon by its name in the sidebar, and its rows.
+    pub const fn new(title: &'static str, icon: IconKind, items: &'static [Item]) -> Category {
+        Category { title, icon, items }
+    }
+}
+
 /// One setting row in a category, top to bottom.
 pub struct Item {
     pub icon: IconKind,
@@ -24,6 +43,29 @@ pub struct Item {
     /// A ticked/unticked line, or None for a row that opens a screen.
     pub check: Check,
     pub show: Show,
+}
+
+impl Item {
+    /// A row that opens a page or a sheet, its `label` shown as it is.
+    pub const fn open(icon: IconKind, label: &'static str, id: SettingId) -> Item {
+        Item { icon, label: Label::Text(label), id, check: Check::None, show: Show::Always }
+    }
+    /// An on/off row: a switch at its right end, and `check` its state.
+    pub const fn toggle(icon: IconKind, label: &'static str, id: SettingId, check: Check) -> Item {
+        Item { icon, label: Label::Text(label), id, check, show: Show::Always }
+    }
+    /// A row whose label is built from the current settings (`Label::Style`, `Label::Font`, ...).
+    pub const fn value(icon: IconKind, label: Label, id: SettingId) -> Item {
+        Item { icon, label, id, check: Check::None, show: Show::Always }
+    }
+    /// A row that both shows a value and is an on/off choice (Mirror PDFs, with its switch).
+    pub const fn value_toggle(icon: IconKind, label: Label, id: SettingId, check: Check) -> Item {
+        Item { icon, label, id, check, show: Show::Always }
+    }
+    /// A row only the Classic style shows (Gothic has no such control).
+    pub const fn classic_only(self) -> Item {
+        Item { show: Show::ClassicOnly, ..self }
+    }
 }
 
 /// Where a row's label comes from. Text is a msgid, translated as it is drawn; the other kinds
@@ -149,201 +191,51 @@ pub const STYLE_CLASSIC: &str = n_("Style (Classic)");
 // Controls'
 // (shortcuts, pairing, gestures) and System's (KOReader, USB PDF mirroring, about the device).
 pub static CATEGORIES: &[Category] = &[
-    Category {
-        title: n_("General"),
-        icon: IconKind::Gear,
-        items: &[
-            Item {
-                icon: IconKind::Language,
-                label: Label::Language,
-                id: SettingId::Language,
-                check: Check::None,
-                show: Show::Always,
-            },
-            Item {
-                icon: IconKind::Update,
-                label: Label::Text(n_("Updates")),
-                id: SettingId::Updates,
-                check: Check::None,
-                show: Show::Always,
-            },
-            Item {
-                icon: IconKind::Share,
-                // TRANSLATORS: (Settings) the row that opens the Wi-Fi submenu: the radio and the Kindle's
-                // saved networks.
-                label: Label::Text(n_("Wi-Fi")),
-                id: SettingId::Wifi,
-                check: Check::None,
-                show: Show::Always,
-            },
-        ],
-    },
-    Category {
-        title: n_("Display"),
-        icon: IconKind::Brightness,
-        items: &[
-            Item {
-                icon: IconKind::Brightness,
-                // TRANSLATORS: the row that opens Display's sheet: brightness and warmth.
-                label: Label::Text(n_("Display: brightness, warmth")),
-                id: SettingId::Display,
-                check: Check::None,
-                show: Show::Always,
-            },
-            Item {
-                icon: IconKind::Castle,
-                label: Label::Style,
-                id: SettingId::Theme,
-                check: Check::None,
-                show: Show::Always,
-            },
-            Item {
-                icon: IconKind::Invert,
-                // TRANSLATORS: the row that turns Grimoire's dark mode (white on black) on or off.
-                label: Label::Text(n_("Dark mode")),
-                id: SettingId::DarkMode,
-                check: Check::DarkMode,
-                show: Show::Always,
-            },
-            Item {
-                icon: IconKind::Font,
-                label: Label::Font,
-                id: SettingId::Font,
-                check: Check::None,
-                show: Show::ClassicOnly,
-            },
-            Item {
-                icon: IconKind::Collapse,
-                label: Label::Text(n_("Rotation (portrait and landscape)")),
-                id: SettingId::Rotate,
-                check: Check::FollowRotation,
-                show: Show::Always,
-            },
-            Item {
-                icon: IconKind::Search,
-                label: Label::Text(n_("Pinch with two fingers to zoom")),
-                id: SettingId::Pinch,
-                check: Check::PinchZoom,
-                show: Show::Always,
-            },
-        ],
-    },
-    Category {
-        title: n_("Sleep & Clock"),
-        icon: IconKind::Clock,
-        items: &[
-            Item {
-                icon: IconKind::Hourglass,
-                // TRANSLATORS: the row that opens the sleep settings' page: the sleep screen and the
-                // timer.
-                label: Label::Text(n_("Sleep settings")),
-                id: SettingId::SleepSettings,
-                check: Check::None,
-                show: Show::Always,
-            },
-            Item {
-                icon: IconKind::Clock,
-                // TRANSLATORS: the row that opens the clock settings' page: the clock and battery on a
-                // notebook page.
-                label: Label::Text(n_("Clock settings")),
-                id: SettingId::ClockSettings,
-                check: Check::None,
-                show: Show::Always,
-            },
-        ],
-    },
-    Category {
-        title: n_("Pen"),
-        icon: IconKind::Tune,
-        items: &[
-            Item {
-                icon: IconKind::Tune,
-                // TRANSLATORS: the row that opens Tool Settings' sheet: pressure and tilt, per tool.
-                label: Label::Text(n_("Tool Settings: pressure and tilt per tool")),
-                id: SettingId::PenFeel,
-                check: Check::None,
-                show: Show::Always,
-            },
-            Item {
-                icon: IconKind::Highlighter,
-                label: Label::SideButton,
-                id: SettingId::SideButton,
-                check: Check::None,
-                show: Show::Always,
-            },
-            Item {
-                icon: IconKind::Eraser,
-                // TRANSLATORS: the row that opens the eraser's choices: whole strokes, or precise.
-                label: Label::Eraser,
-                id: SettingId::EraserMode,
-                check: Check::None,
-                show: Show::Always,
-            },
-            Item {
-                icon: IconKind::Target,
-                label: Label::Text(n_("Calibrate pen and touch")),
-                id: SettingId::Calibration,
-                check: Check::None,
-                show: Show::Always,
-            },
-        ],
-    },
-    Category {
-        title: n_("Controls"),
-        icon: IconKind::Gamepad,
-        items: &[
-            Item {
-                icon: IconKind::Gamepad,
-                label: Label::Text(n_("Shortcuts: keys and controller buttons")),
-                id: SettingId::Shortcuts,
-                check: Check::None,
-                show: Show::Always,
-            },
-            Item {
-                icon: IconKind::Link,
-                label: Label::Text(n_("Pair")),
-                id: SettingId::Pair,
-                check: Check::None,
-                show: Show::Always,
-            },
-            Item {
-                icon: IconKind::Gestures,
-                label: Label::Text(n_("Gestures")),
-                id: SettingId::Gestures,
-                check: Check::None,
-                show: Show::Always,
-            },
-        ],
-    },
-    Category {
-        title: n_("System"),
-        icon: IconKind::Grid,
-        items: &[
-            Item {
-                icon: IconKind::Notebook,
-                label: Label::Text(n_("KOReader")),
-                id: SettingId::KOReader,
-                check: Check::None,
-                show: Show::Always,
-            },
-            Item {
-                icon: IconKind::Download,
-                label: Label::Mirror,
-                id: SettingId::Mirror,
-                check: Check::MirrorPdf,
-                show: Show::Always,
-            },
-            Item {
-                icon: IconKind::Castle,
-                // TRANSLATORS: the row that opens About: what this Kindle is, its screen, and the
-                // storage used.
-                label: Label::Text(n_("About: device and storage")),
-                id: SettingId::AboutDevice,
-                check: Check::None,
-                show: Show::Always,
-            },
-        ],
-    },
+    Category::new(n_("General"), IconKind::Gear, &[
+        Item::value(IconKind::Language, Label::Language, SettingId::Language),
+        Item::open(IconKind::Update, n_("Updates"), SettingId::Updates),
+        // TRANSLATORS: (Settings) the row that opens the Wi-Fi submenu: the radio and the Kindle's
+        // saved networks.
+        Item::open(IconKind::Share, n_("Wi-Fi"), SettingId::Wifi),
+    ]),
+    Category::new(n_("Display"), IconKind::Brightness, &[
+        // TRANSLATORS: the row that opens Display's sheet: brightness and warmth.
+        Item::open(IconKind::Brightness, n_("Display: brightness, warmth"), SettingId::Display),
+        Item::value(IconKind::Castle, Label::Style, SettingId::Theme),
+        // TRANSLATORS: the row that turns Grimoire's dark mode (white on black) on or off.
+        Item::toggle(IconKind::Invert, n_("Dark mode"), SettingId::DarkMode, Check::DarkMode),
+        Item::value(IconKind::Font, Label::Font, SettingId::Font).classic_only(),
+        Item::toggle(IconKind::Collapse, n_("Rotation (portrait and landscape)"), SettingId::Rotate, Check::FollowRotation),
+        Item::toggle(IconKind::Search, n_("Pinch with two fingers to zoom"), SettingId::Pinch, Check::PinchZoom),
+    ]),
+    Category::new(n_("Sleep & Clock"), IconKind::Clock, &[
+        // TRANSLATORS: the row that opens the sleep settings' page: the sleep screen and the
+        // timer.
+        Item::open(IconKind::Hourglass, n_("Sleep settings"), SettingId::SleepSettings),
+        // TRANSLATORS: the row that opens the clock settings' page: the clock and battery on a
+        // notebook page.
+        Item::open(IconKind::Clock, n_("Clock settings"), SettingId::ClockSettings),
+    ]),
+    Category::new(n_("Pen"), IconKind::Tune, &[
+        // TRANSLATORS: the row that opens Tool Settings' sheet: pressure and tilt, per tool.
+        Item::open(IconKind::Tune, n_("Tool Settings: pressure and tilt per tool"), SettingId::PenFeel),
+        Item::value(IconKind::Highlighter, Label::SideButton, SettingId::SideButton),
+        // TRANSLATORS: the row that opens the eraser's choices: whole strokes, or precise.
+        Item::value(IconKind::Eraser, Label::Eraser, SettingId::EraserMode),
+        Item::open(IconKind::Target, n_("Calibrate pen and touch"), SettingId::Calibration),
+    ]),
+    Category::new(n_("Controls"), IconKind::Gamepad, &[
+        Item::open(IconKind::Gamepad, n_("Shortcuts: keys and controller buttons"), SettingId::Shortcuts),
+        Item::open(IconKind::Link, n_("Pair"), SettingId::Pair),
+        Item::open(IconKind::Gestures, n_("Gestures"), SettingId::Gestures),
+    ]),
+    Category::new(n_("System"), IconKind::Grid, &[
+        Item::open(IconKind::Notebook, n_("KOReader"), SettingId::KOReader),
+        Item::value_toggle(IconKind::Download, Label::Mirror, SettingId::Mirror, Check::MirrorPdf),
+        // TRANSLATORS: the row that opens About: what this Kindle is, its screen, and the
+        // storage used.
+        Item::open(IconKind::Castle, n_("About: device and storage"), SettingId::AboutDevice),
+    ]),
 ];
 
 #[cfg(test)]
@@ -359,6 +251,28 @@ mod tests {
             Label::Text(s) => s,
             _ => "",
         }
+    }
+
+    // Adding a row is one constructor line: it brings its icon, label, action, check and theme
+    // with it, and the page draws it as every other row.
+    #[test]
+    fn a_row_is_one_line_of_data() {
+        let open = Item::open(IconKind::Gear, "Example", SettingId::Display);
+        assert!(matches!(open.label, Label::Text("Example")));
+        assert!(matches!(open.check, Check::None));
+        assert!(matches!(open.show, Show::Always));
+
+        let toggle = Item::toggle(IconKind::Invert, "Example", SettingId::DarkMode, Check::DarkMode);
+        assert!(matches!(toggle.check, Check::DarkMode));
+        assert!(matches!(toggle.show, Show::Always));
+
+        let value = Item::value(IconKind::Castle, Label::Style, SettingId::Theme);
+        assert!(matches!(value.label, Label::Style));
+        assert!(matches!(value.classic_only().show, Show::ClassicOnly));
+
+        let both = Item::value_toggle(IconKind::Download, Label::Mirror, SettingId::Mirror, Check::MirrorPdf);
+        assert!(matches!(both.label, Label::Mirror));
+        assert!(matches!(both.check, Check::MirrorPdf));
     }
 
     #[test]

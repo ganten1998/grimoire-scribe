@@ -217,9 +217,8 @@ fn draw_drow(m: &mut DispMenu, a: &mut App, kind: &DRowKind, outer: Rect) {
             hits_add(&mut m.hits, inner, *id, 0);
         }
         DRowKind::Check { id, label, on } => {
-            let lr = Rect::new(inner.x, inner.y, (inner.w - ui_px(170.0)).max(0), inner.h);
-            ui_text(&mut a.screen, FontFace::Regular, ui_text_size(), ui_small_size(), lr, label, 2, false, 0);
-            crate::library::settings_switch(&mut a.screen, outer, *on);
+            // An on/off row of the same design as Settings' own (ui_row).
+            crate::ui::ui_row(&mut a.screen, outer, &crate::ui::Row::toggled(IconKind::None, label, *on));
             hits_add(&mut m.hits, inner, *id, 0);
         }
         DRowKind::Note(text) => {

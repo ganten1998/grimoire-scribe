@@ -4,6 +4,7 @@
 use crate::prelude::*;
 use crate::about::AboutView;
 use crate::settingsmenu;
+use crate::ui::{ui_row, ui_row_page, ui_row_pager, Row as UiRow};
 use crate::browser::{Browser, BrowserResult, PickKind, PickSpec};
 
 #[repr(i32)]
@@ -51,7 +52,7 @@ enum Modal {
     EraserMode = 380,
     /// Settings > System > About (Rust only): what this Kindle is, the storage used, and its links
     DeviceInfo = 390,
-    /// Settings > System > About > Ko-fi or GitHub (Rust only): the link as a QR code a phone scans
+    /// Settings > System > About > a link (Rust only): the link as a QR code a phone scans
     LinkQr = 395,
 }
 
@@ -113,8 +114,8 @@ const H_ERASER_PICK: i32 = 123;
 const H_ERASER_BACK: i32 = 124;
 const H_SET_DEVICE: i32 = 125;
 const H_DEVICE_BACK: i32 = 126;
-const H_LINK_KOFI: i32 = 127;
-const H_LINK_GITHUB: i32 = 128;
+const H_LINK: i32 = 127;
+const H_LINK_PAGE: i32 = 128;
 const H_LINK_BACK: i32 = 129;
 const H_MORE_OPEN: i32 = 27;
 const H_MORE_RENAME: i32 = 28;
@@ -197,6 +198,11 @@ const H_NEW_FILE: i32 = 95;
 // and the pages of them (arg: -1 back, 1 on).
 const H_FONT_OWN: i32 = 96;
 const H_FONT_PAGE: i32 = 97;
+// The page arrows of Settings' lists (ui_row_page): the categories down the left, the rows of the open
+// category, and a submenu's rows (arg: -1 back, 1 on).
+const H_SET_CAT_PAGE: i32 = 130;
+const H_SET_ROWS_PAGE: i32 = 131;
+const H_SETTINGS_PAGE: i32 = 132;
 // 2.1.0-beta.2: Settings' Wi-Fi button, and its submenu's rows: the radio (arg: WIFI_*), a saved network
 // (arg: its row, an index of WifiSheet.rows). (Numbered apart from the ids other work of the same release
 // adds after 97.)
@@ -275,9 +281,20 @@ pub struct LibraryState {
     settings_painting: bool,
     settings_editor_fit: bool,
     /// Settings' page: the category whose settings show (0 General, 1 Display, 2 Sleep & Clock,
-    /// 3 Pen, 4 Controls, 5 System; H_SET_CAT).
+    /// 3 Pen, 4 Controls, 5 System; H_SET_CAT), and the page each of its lists is on (ui_row_page):
+    /// the categories, the open category's rows, and the submenu's rows (whose title keys the last,
+    /// so another submenu starts at its first page).
     settings_cat: i32,
-    /// About's link page: which link's QR code shows (1 Ko-fi, 2 GitHub).
+    settings_cat_page: i32,
+    /// The category the category page was last laid out for: opening Settings or picking one brings
+    /// its page on screen, while a tap on the page arrows stays on the page it asked for.
+    settings_cat_shown: i32,
+    settings_rows_page: i32,
+    settings_menu_page: i32,
+    settings_menu_title: String,
+    /// About's links: the page its list is on, and the link whose QR code shows (its index in
+    /// ABOUT_LINKS).
+    device_links_page: i32,
     device_link: i32,
     /// A screen Settings opened (Pen feel, Calibration) is returning to the Library: library_enter
     /// opens Settings again, as it was left.
@@ -2764,24 +2781,11 @@ fn upd_poll(a: &mut App) {
     }
 }
 
-/// The room a Settings card keeps between its border and what it draws, and between an icon and its
-/// text: one measure from the main page to the two-column sheets.
-pub(crate) fn settings_pad() -> i32 {
-    ui_px(30.0)
-}
-pub(crate) fn settings_gap() -> i32 {
-    ui_px(24.0)
-}
-
-/// A Settings card: the one shape a row, a choice or a control sits in, from the main page to About.
-/// The chosen one is filled; the rest are outlined (a disabled one in gray), all at one radius.
-pub(crate) fn settings_card(c: &mut Canvas, r: Rect, st: ButtonStyle) {
-    match st {
-        ButtonStyle::Selected => ui_frame(c, r, ui_px(16.0), 0, true, 0),
-        ButtonStyle::Disabled => ui_frame(c, r, ui_px(16.0), 170, false, ui_px(3.0)),
-        _ => ui_frame(c, r, ui_px(16.0), 0, false, ui_px(3.0)),
-    }
-}
+/// Settings' card and its measures are the app's design system, in ui.rs: the main page, every
+/// submenu and the Display sheet draw the same cards and rows from these.
+pub(crate) use crate::ui::{
+    ui_card as settings_card, ui_row_gap as settings_gap, ui_row_pad as settings_pad,
+};
 
 /// A Settings card of segments (Pen feel's tools, its eraser choices): one outline around all of
 /// them, a rule between each two, and the one picked filled—square to its neighbours, following the
@@ -2815,19 +2819,7 @@ pub(crate) fn settings_strip(c: &mut Canvas, r: Rect, n: i32, on: i32) -> Vec<Re
     (0..n).map(seg).collect()
 }
 
-/// Settings' switch, at the right end of its card: a track with the knob at the side its state is on,
-/// as Updates' branch has it and every on/off row in Settings.
-pub(crate) fn settings_switch(c: &mut Canvas, r: Rect, on: bool) {
-    // (shorter rows, as the two-column sheets have, get a smaller switch: the same shape to scale)
-    let sw_h = ui_px(62.0).min(r.h - ui_px(12.0)).max(ui_px(24.0));
-    let sw_w = sw_h * 120 / 62;
-    let track = Rect::new(r.x + r.w - ui_px(30.0) - sw_w, r.y + (r.h - sw_h) / 2, sw_w, sw_h);
-    ui_frame(c, track, sw_h / 2, 0, on, ui_px(3.0));
-    let kw = sw_h * 46 / 62;
-    let inset = sw_h * 8 / 62;
-    let kx = if on { track.x + track.w - kw - inset } else { track.x + inset };
-    ui_frame(c, Rect::new(kx, track.y + (track.h - kw) / 2, kw, kw), kw / 2, if on { 255 } else { 0 }, true, 0);
-}
+pub(crate) use crate::ui::ui_switch as settings_switch;
 
 /// Settings > Updates: one Update button that carries the version, and a switch for the branch the
 /// updates come from (Preview: betas and releases; Stable: releases only). The check runs as the
@@ -2908,37 +2900,30 @@ fn draw_settings_menu(a: &mut App, title: &str, rows: &[MenuRow]) {
         .iter()
         .filter(|r| r.id != H_CANCEL && r.id != H_BUTTONS_DONE && r.id != H_GESTURES_DONE)
         .collect();
-    let n = shown.len() as i32;
-    let gap = ui_px(16.0);
-    let rh = ((in_.h - (n - 1).max(0) * gap) / n.max(1)).clamp(ui_px(90.0), ui_px(140.0));
-    let mut y = in_.y;
-    for row in shown {
-        let r = Rect::new(in_.x, y, in_.w, rh);
-        // A submenu is a list of Settings' cards: the selection is filled, the rest outlined.
-        settings_card(c, r, row.st);
-        let fg: u8 = if row.st == ButtonStyle::Selected {
-            255
-        } else if row.st == ButtonStyle::Disabled {
-            170
-        } else {
-            0
-        };
-        let isz = ui_px(60.0);
-        let mut lx = r.x + settings_pad();
-        if row.icon != IconKind::None {
-            ui_icon(c, row.icon, Rect::new(lx, r.y + (r.h - isz) / 2, isz, isz), fg);
-            lx += isz + settings_gap();
-        }
-        let lr = Rect::new(lx, r.y, r.x + r.w - lx - settings_pad(), r.h);
-        if row.name {
-            ui_text_name(c, FontFace::Regular, ui_text_size(), ui_small_size(), lr, &row.label, 2, fg);
-        } else {
-            ui_text(c, FontFace::Regular, ui_text_size(), ui_small_size(), lr, &row.label, 2, false, fg);
-        }
+    // A submenu is the same page of rows as Settings' main page: the selection is filled, the rest
+    // outlined, and a list longer than the screen is paged rather than squeezed.
+    if s.settings_menu_title != title {
+        s.settings_menu_title.clear();
+        s.settings_menu_title.push_str(title);
+        s.settings_menu_page = 0;
+    }
+    let list = ui_row_page(in_, shown.len(), s.settings_menu_page, ui_px(140.0), ui_px(90.0));
+    s.settings_menu_page = list.page;
+    for (r, row) in list.rows.iter().zip(shown[list.first..list.first + list.rows.len()].iter()) {
+        let mut rr = UiRow::new(row.icon, &row.label);
+        rr.style = row.st;
+        rr.name = row.name;
+        ui_row(c, *r, &rr);
         if row.st != ButtonStyle::Disabled {
-            hits_add(&mut s.hits, r, row.id, row.arg);
+            hits_add(&mut s.hits, *r, row.id, row.arg);
         }
-        y += rh + gap;
+    }
+    ui_row_pager(c, &list);
+    if list.page > 0 {
+        hits_add(&mut s.hits, list.prev, H_SETTINGS_PAGE, -1);
+    }
+    if list.page + 1 < list.pages {
+        hits_add(&mut s.hits, list.next, H_SETTINGS_PAGE, 1);
     }
 }
 
@@ -4771,41 +4756,41 @@ fn draw_settings(a: &mut App) {
     let top = page.content.y;
     let cats = &settingsmenu::CATEGORIES;
     let side_w = (aw * 30 / 100).clamp(ui_px(320.0), ui_px(560.0));
-    let (mut cat_h, mut cat_gap) = (ui_px(120.0), ui_px(16.0));
-    // Room for more categories than today's six: tighten their spacing rather than running into
-    // Done. With six categories this changes nothing.
     let ncat = cats.len() as i32;
     let content_bottom = page.content.y + page.content.h;
-    let cat_room = content_bottom - top;
-    if ncat * (cat_h + cat_gap) > cat_room {
-        cat_gap = ((cat_room - ncat * cat_h) / ncat).clamp(ui_px(6.0), cat_gap);
-    }
-    if ncat * (cat_h + cat_gap) > cat_room {
-        cat_h = ((cat_room - ncat * cat_gap) / ncat).clamp(ui_px(72.0), cat_h);
-    }
+    let cat_area = Rect::new(pad, top, side_w, content_bottom - top);
+    // A list is a page of ui_row's (ui_row_page): the same card, icon, label and spacing whether
+    // there are six categories or sixty, and its own page arrows when they no longer fit.
     let active = clampi(s.settings_cat, 0, ncat - 1);
-    let mut y = top;
-    for (i, cat) in cats.iter().enumerate() {
-        let r = Rect::new(pad, y, side_w, cat_h);
-        let on = i as i32 == active;
-        settings_card(c, r, if on { ButtonStyle::Selected } else { ButtonStyle::Plain });
-        let fg: u8 = if on { 255 } else { 0 };
-        let isz = ui_px(60.0);
-        let lx = r.x + settings_pad() + isz + settings_gap();
-        ui_icon(c, cat.icon, Rect::new(r.x + settings_pad(), r.y + (r.h - isz) / 2, isz, isz), fg);
-        ui_text(
-            c,
-            FontFace::Bold,
-            ui_text_size(),
-            ui_small_size(),
-            Rect::new(lx, r.y, r.x + r.w - lx - settings_pad(), r.h),
-            tr(cat.title),
-            2,
-            false,
-            fg,
-        );
+    let mut cat_page = ui_row_page(cat_area, cats.len(), s.settings_cat_page, ui_px(120.0), ui_px(72.0));
+    // (the open category is brought on screen when it changes: the page arrows stay free to page
+    // the categories themselves)
+    if s.settings_cat_shown != active {
+        s.settings_cat_shown = active;
+        if !cat_page.rows.is_empty()
+            && !(cat_page.first..cat_page.first + cat_page.rows.len()).contains(&(active as usize))
+        {
+            let per = cat_page.rows.len().max(1);
+            cat_page = ui_row_page(cat_area, cats.len(), (active as usize / per) as i32, ui_px(120.0), ui_px(72.0));
+        }
+    }
+    s.settings_cat_page = cat_page.page;
+    for (i, cat) in cats.iter().enumerate().skip(cat_page.first).take(cat_page.rows.len()) {
+        let r = cat_page.rows[i - cat_page.first];
+        let row = UiRow::new(cat.icon, tr(cat.title)).bold();
+        let row = UiRow {
+            style: if i as i32 == active { ButtonStyle::Selected } else { ButtonStyle::Plain },
+            ..row
+        };
+        ui_row(c, r, &row);
         hits_add(&mut s.hits, r, H_SET_CAT, i as i32);
-        y += cat_h + cat_gap;
+    }
+    ui_row_pager(c, &cat_page);
+    if cat_page.page > 0 {
+        hits_add(&mut s.hits, cat_page.prev, H_SET_CAT_PAGE, -1);
+    }
+    if cat_page.page + 1 < cat_page.pages {
+        hits_add(&mut s.hits, cat_page.next, H_SET_CAT_PAGE, 1);
     }
     let cat = &cats[active as usize];
     let content_x = pad + side_w + ui_px(48.0);
@@ -4818,28 +4803,14 @@ fn draw_settings(a: &mut App) {
         tr(cat.title),
         0,
     );
-    let foot = content_bottom;
     let list_top = top + ui_px(86.0);
-    let n = cat.items.iter().filter(|it| it.show.visible(classic)).count() as i32;
-    let gap = ui_px(16.0);
-    let room = foot - list_top - ui_px(20.0);
-    let mut rh = ui_px(118.0);
-    if n > 0 && n * (rh + gap) > room {
-        rh = clampi(room / n - gap, ui_px(90.0), rh);
-    }
+    let shown: Vec<&settingsmenu::Item> = cat.items.iter().filter(|it| it.show.visible(classic)).collect();
+    let list_area = Rect::new(content_x, list_top, content_w, content_bottom - list_top - ui_px(20.0));
+    let list = ui_row_page(list_area, shown.len(), s.settings_rows_page, ui_px(118.0), ui_px(90.0));
+    s.settings_rows_page = list.page;
     let mut label_buf = String::new();
     let mut lang_buf = String::new();
-    let mut y = list_top;
-    for item in cat.items.iter().filter(|it| it.show.visible(classic)) {
-        let r = Rect::new(content_x, y, content_w, rh);
-        settings_card(c, r, ButtonStyle::Plain);
-        let isz = ui_px(60.0);
-        let mut lx = r.x + settings_pad();
-        if item.icon != IconKind::None {
-            ui_icon(c, item.icon, Rect::new(lx, r.y + (r.h - isz) / 2, isz, isz), 0);
-            lx += isz + settings_gap();
-        }
-        let lr = Rect::new(lx, r.y + ui_px(8.0), r.x + r.w - lx - settings_pad(), r.h - ui_px(16.0));
+    for (r, item) in list.rows.iter().zip(shown[list.first..list.first + list.rows.len()].iter()) {
         let label: &str = match item.label {
             settingsmenu::Label::Text(msgid) => tr(msgid),
             settingsmenu::Label::Style => tr(if classic {
@@ -4912,27 +4883,21 @@ fn draw_settings(a: &mut App) {
                 &label_buf
             }
         };
-        match item.check.value(settings) {
-            Some(checked) => {
-                // An on/off row reads as Updates' branch does: its label, and the switch at the card's right.
-                let lrr = Rect::new(lr.x, lr.y, (lr.w - ui_px(170.0)).max(0), lr.h);
-                ui_text(c, FontFace::Regular, ui_text_size(), ui_small_size(), lrr, label, 2, false, 0);
-                settings_switch(c, r, checked);
-            }
-            None => ui_text(
-                c,
-                FontFace::Regular,
-                ui_text_size(),
-                ui_small_size(),
-                lr,
-                label,
-                2,
-                false,
-                0,
-            ),
-        }
-        hits_add(&mut s.hits, r, setting_hit(item.id), 0);
-        y += rh + gap;
+        // The icon, the label and any switch are ui_row's: one design for every row in Settings,
+        // whether it opens a page or is a choice.
+        let row = match item.check.value(settings) {
+            Some(on) => UiRow::toggled(item.icon, label, on),
+            None => UiRow::new(item.icon, label),
+        };
+        ui_row(c, *r, &row);
+        hits_add(&mut s.hits, *r, setting_hit(item.id), 0);
+    }
+    ui_row_pager(c, &list);
+    if list.page > 0 {
+        hits_add(&mut s.hits, list.prev, H_SET_ROWS_PAGE, -1);
+    }
+    if list.page + 1 < list.pages {
+        hits_add(&mut s.hits, list.next, H_SET_ROWS_PAGE, 1);
     }
     hits_add(&mut s.hits, page.close, H_CANCEL, 0);
 }
@@ -6114,9 +6079,23 @@ fn device_name() -> String {
     tr("This computer").to_string()
 }
 
-/// The two links About shows a QR code of (its Links rows open them).
-const ABOUT_KOFI_URL: &str = "https://ko-fi.com/B0B7EF4TJ";
-const ABOUT_GITHUB_URL: &str = "https://github.com/ganten1998/grimoire-scribe";
+/// One of Settings > System > About's links: the name its row shows and the address its page shows
+/// as a QR code. A link is one line in ABOUT_LINKS: About lists them, pages the list when it
+/// outgrows the screen (ui_row_page), and opens each on its own page. Its row is named
+/// about.link.N for scenarios, N its place here (from 0), so add new links at the end.
+struct AboutLink {
+    name: &'static str,
+    url: &'static str,
+}
+
+/// The links About lists, in order. Names are msgids, translated as they are drawn; no other code
+/// changes when one is added here.
+static ABOUT_LINKS: &[AboutLink] = &[
+    AboutLink { name: n_("Ko-fi"), url: "https://ko-fi.com/B0B7EF4TJ" },
+    AboutLink { name: n_("Grimoire GitHub"), url: "https://github.com/ganten1998/grimoire-scribe" },
+    AboutLink { name: n_("Nebuff's GitHub"), url: "https://github.com/nebuff" },
+    AboutLink { name: n_("Gantan's GitHub"), url: "https://github.com/ganten1998" },
+];
 
 /// Settings > System > About: what this device is, its version, a bar of the storage used (the data
 /// root's filesystem) with the free room under it, and the links. One text size for the lines under
@@ -6169,50 +6148,46 @@ fn draw_device(a: &mut App) {
             y += ui_px(102.0);
         }
     }
-    // The links, as rows a tap opens on their own page with a QR code a phone scans.
+    // The links, as rows a tap opens on their own page with a QR code a phone scans. The list pages
+    // when it outgrows the screen (ui_row_page), so a new link is one line in ABOUT_LINKS.
     y += ui_px(40.0);
-    // TRANSLATORS: Settings > System > About, the heading over the two links (Ko-fi and GitHub).
+    // TRANSLATORS: Settings > System > About, the heading over its links (Ko-fi, GitHub, ...).
     font_draw_left(c, FontFace::Bold, px, Rect::new(in_.x, y, in_.w, ui_px(70.0)), tr("Links"), 0);
     y += ui_px(90.0);
-    // TRANSLATORS: Settings > System > About, the two links (Ko-fi, where Grimoire can be supported, and
-    // GitHub, where its source is); each row opens a page with a QR code of the link.
-    for (label, hit) in [(tr("Ko-fi"), H_LINK_KOFI), (tr("GitHub"), H_LINK_GITHUB)] {
-        let r = Rect::new(in_.x, y, in_.w, ui_px(130.0));
-        settings_card(c, r, ButtonStyle::Plain);
-        font_draw_left(
-            c,
-            FontFace::Regular,
-            px,
-            Rect::new(r.x + settings_pad(), r.y, r.w - 2 * settings_pad(), r.h),
-            label,
-            0,
-        );
-        hits_add(&mut s.hits, r, hit, 0);
-        y += r.h + ui_px(20.0);
+    let area = Rect::new(in_.x, y, in_.w, (in_.y + in_.h - y).max(0));
+    let list = ui_row_page(area, ABOUT_LINKS.len(), s.device_links_page, ui_px(130.0), ui_px(90.0));
+    s.device_links_page = list.page;
+    for (r, i) in list.rows.iter().zip(list.first..list.first + list.rows.len()) {
+        let link = &ABOUT_LINKS[i];
+        ui_row(c, *r, &UiRow::new(IconKind::None, tr(link.name)));
+        hits_add(&mut s.hits, *r, H_LINK, i as i32);
+    }
+    ui_row_pager(c, &list);
+    if list.pages > 1 {
+        hits_add(&mut s.hits, list.prev, H_LINK_PAGE, -1);
+        hits_add(&mut s.hits, list.next, H_LINK_PAGE, 1);
     }
 }
 
-/// Settings > System > About's Ko-fi or GitHub: the link as a QR code, with the address under it.
+/// Settings > System > About's link: its name as the page's title, its address as a QR code with the
+/// address under it.
 fn draw_link(a: &mut App) {
     let (aw, ah) = (a.w, a.h);
     let App { screen: c, lib, .. } = a;
     let s = lib.as_deref_mut().unwrap();
-    let (title, url) = if s.device_link == 2 {
-        (tr("GitHub"), ABOUT_GITHUB_URL)
-    } else {
-        (tr("Ko-fi"), ABOUT_KOFI_URL)
-    };
-    let page = settings_page(c, aw, ah, title, true, false);
+    let i = (s.device_link.max(0) as usize).min(ABOUT_LINKS.len().saturating_sub(1));
+    let link = &ABOUT_LINKS[i];
+    let page = settings_page(c, aw, ah, tr(link.name), true, false);
     hits_add(&mut s.hits, page.back, H_LINK_BACK, 0);
     hits_add(&mut s.hits, page.close, H_SETTINGS_CLOSE, 0);
     let in_ = page.content;
-    // TRANSLATORS: Settings > System > About > Ko-fi or GitHub, above the link's QR code.
+    // TRANSLATORS: Settings > System > About > a link, above the link's QR code.
     font_draw_left(c, FontFace::Regular, ui_text_size(), Rect::new(in_.x, in_.y, in_.w, ui_px(70.0)), tr("Scan with a phone's camera"), 0);
     let top = in_.y + ui_px(110.0);
     let side = (in_.h - ui_px(300.0)).min(in_.w);
-    let sym = crate::qr::ui_qr(c, Rect::new(in_.x + (in_.w - side) / 2, top, side, side), url, false);
+    let sym = crate::qr::ui_qr(c, Rect::new(in_.x + (in_.w - side) / 2, top, side, side), link.url, false);
     let ty = if rect_is_empty(sym) { top } else { sym.y + sym.h + ui_px(30.0) };
-    ui_text(c, FontFace::Regular, ui_text_size(), ui_small_size(), Rect::new(in_.x, ty, in_.w, ui_px(90.0)), url, 2, true, 0);
+    ui_text(c, FontFace::Regular, ui_text_size(), ui_small_size(), Rect::new(in_.x, ty, in_.w, ui_px(90.0)), link.url, 2, true, 0);
 }
 
 /// A Settings submenu of choices, as Language's: the page's chrome, the choices as cards in two
@@ -6696,6 +6671,11 @@ fn act(a: &mut App, h: &Hit) {
         app_switch(a, ScreenId::Share);
         return;
     }
+    // The page arrows are the only taps that keep a submenu on its page: any other tap opens, closes
+    // or changes the list, which starts again at its first page (a longer list drawn by ui_row_page).
+    if !matches!(h.id, H_SETTINGS_PAGE | H_SET_CAT_PAGE | H_SET_ROWS_PAGE) {
+        lib(a).settings_menu_page = 0;
+    }
     let it = target_item(lib(a));
     match h.id {
         H_BACK => {
@@ -6725,9 +6705,30 @@ fn act(a: &mut App, h: &Hit) {
         // TRANSLATORS: the keyboard's label for the name being typed: a folder's, or a notebook's.
         H_NEWFOLDER => open_kb(a, KbPurpose::NewFolder, c_("keyboard", "Folder"), b""),
         H_SHARE => share_open(a),
-        H_SETTINGS => open_modal(a, Modal::Settings),
+        H_SETTINGS => {
+            let s = lib(a);
+            s.settings_cat_page = 0;
+            s.settings_cat_shown = -1;
+            s.settings_rows_page = 0;
+            s.settings_menu_page = 0;
+            open_modal(a, Modal::Settings);
+        }
         H_SET_CAT => {
-            lib(a).settings_cat = clampi(h.arg, 0, settingsmenu::CATEGORIES.len() as i32 - 1);
+            let s = lib(a);
+            s.settings_cat = clampi(h.arg, 0, settingsmenu::CATEGORIES.len() as i32 - 1);
+            s.settings_rows_page = 0;
+            redraw(a, RefreshMode::Ui);
+        }
+        H_SET_CAT_PAGE | H_SET_ROWS_PAGE | H_SETTINGS_PAGE => {
+            let s = lib(a);
+            let page = if h.id == H_SET_CAT_PAGE {
+                &mut s.settings_cat_page
+            } else if h.id == H_SET_ROWS_PAGE {
+                &mut s.settings_rows_page
+            } else {
+                &mut s.settings_menu_page
+            };
+            *page += h.arg;
             redraw(a, RefreshMode::Ui);
         }
         H_EXIT => a.running = false,
@@ -7183,14 +7184,21 @@ fn act(a: &mut App, h: &Hit) {
             redraw(a, RefreshMode::Ui);
         }
         // About: what this Kindle is, the storage used, and its links (their QR pages back to About).
-        H_SET_DEVICE => open_modal(a, Modal::DeviceInfo),
+        H_SET_DEVICE => {
+            lib(a).device_links_page = 0;
+            open_modal(a, Modal::DeviceInfo);
+        },
         H_DEVICE_BACK => {
             lib(a).modal = Modal::Settings;
             redraw(a, RefreshMode::Ui);
         }
-        H_LINK_KOFI | H_LINK_GITHUB => {
-            lib(a).device_link = if h.id == H_LINK_GITHUB { 2 } else { 1 };
+        H_LINK => {
+            lib(a).device_link = clampi(h.arg, 0, ABOUT_LINKS.len() as i32 - 1);
             open_modal(a, Modal::LinkQr);
+        }
+        H_LINK_PAGE => {
+            lib(a).device_links_page += h.arg;
+            redraw(a, RefreshMode::Ui);
         }
         H_LINK_BACK => {
             lib(a).modal = Modal::DeviceInfo;
@@ -8805,8 +8813,13 @@ pub fn library_probe(a: &mut App, key: &str, out: &mut String, cap: usize) -> i3
                 H_BACK => "back", H_ABOUT => "about", H_ABOUT_CLOSE => "about.close",
                 H_ABOUT_PREV => "about.prev", H_ABOUT_NEXT => "about.next", H_ABOUT_MORE => "about.more",
                 H_ABOUT_ROW => "about.row.", H_ABOUT_BACK => "about.back",
+                H_LINK => "about.link.", H_LINK_PAGE => if hit.arg < 0 { "about.link.prev" } else { "about.link.next" },
                 H_SET_FONT => "font", H_FONT_PICK => "font.", H_FONT_DONE => "font.done", H_FONT_CANCEL => "font.cancel",
                 H_FONT_OWN => "font.file:", H_FONT_PAGE => if hit.arg < 0 { "font.prev" } else { "font.next" },
+                H_SET_CAT => "settings.cat.",
+                H_SET_CAT_PAGE => if hit.arg < 0 { "settings.cat.prev" } else { "settings.cat.next" },
+                H_SET_ROWS_PAGE => if hit.arg < 0 { "settings.row.prev" } else { "settings.row.next" },
+                H_SETTINGS_PAGE => if hit.arg < 0 { "settings.page.prev" } else { "settings.page.next" },
                 H_WIFI_MENU => "wifi", H_WIFI_RADIO => "wifi.radio", H_WIFI_NET => "wifi.net.",
                 H_WIFI_TAB => "wifi.tab", H_WIFI_SCAN => "wifi.scan", H_WIFI_NEAR => "wifi.near.",
                 H_WIFI_DELETE => "wifi.delete.", H_WIFI_OTHER => "wifi.other",
@@ -8824,9 +8837,11 @@ pub fn library_probe(a: &mut App, key: &str, out: &mut String, cap: usize) -> i3
             if hit.id == H_ABOUT_ROW {
                 name.push_str(crate::about::notes().get(hit.arg as usize).map_or("", |e| e.versions[0]));
             }
+            if hit.id == H_LINK { name.push_str(&hit.arg.to_string()); }
             if hit.id == H_PAPER { name.push_str(&hit.arg.to_string()); }
             if hit.id == H_WIFI_NET { name.push_str(&(hit.arg + 1).to_string()); }
             if hit.id == H_WIFI_NEAR { name.push_str(&(hit.arg + 1).to_string()); }
+            if hit.id == H_SET_CAT { name.push_str(&hit.arg.to_string()); }
             if hit.id == H_WIFI_TAB { name.push_str(if hit.arg == 0 { ".near" } else { ".saved" }); }
             if hit.id == H_WIFI_DELETE { name.push_str(&(hit.arg + 1).to_string()); }
             if hit.id == H_MOVE_TO { name.push_str(s.folders.get(hit.arg as usize).map_or("", |f| f.as_str())); }
@@ -9823,6 +9838,73 @@ mod tests {
         let _ = std::fs::remove_dir_all(&root);
     }
 
+    // Adding a row to settingsmenu.rs is all a row needs: the page draws every visible item with the
+    // one shared row design and gives it its hit, in both styles and both orientations. A list
+    // longer than the screen is paged, and every page draws only the rows it holds.
+    #[test]
+    fn every_settings_row_is_drawn_and_tappable() {
+        let root = std::env::temp_dir().join(format!("grimoire-settings-rows-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        assert_eq!(store_init(root.to_str().unwrap()), 0);
+        assert_eq!(font_init(), 0);
+        i18n_set("en");
+        for theme in [UiTheme::Gothic, UiTheme::Classic] {
+            for (w, h) in [(1860, 2480), (2480, 1860)] {
+                ui_init(300.0);
+                ui_set_theme(theme);
+                let mut a = App { w, h, dpi: 300.0, input_drained: true, ..Default::default() };
+                assert_eq!(canvas_init(&mut a.screen, a.w, a.h), 0);
+                library_init(&mut a);
+                lib(&mut a).modal = Modal::Settings;
+                for (ci, cat) in settingsmenu::CATEGORIES.iter().enumerate() {
+                    let want: Vec<i32> = cat
+                        .items
+                        .iter()
+                        .filter(|it| it.show.visible(theme == UiTheme::Classic))
+                        .map(|it| setting_hit(it.id))
+                        .collect();
+                    let mut got: Vec<i32> = Vec::new();
+                    lib(&mut a).settings_cat = ci as i32;
+                    lib(&mut a).settings_cat_page = 0;
+                    for page in 0..=want.len() {
+                        lib(&mut a).settings_rows_page = page as i32;
+                        hits_clear(&mut lib(&mut a).hits);
+                        draw_settings(&mut a);
+                        let s = a.lib.as_ref().unwrap();
+                        // (a page past the last is clamped to the last: stop before counting it twice)
+                        if s.settings_rows_page != page as i32 {
+                            break;
+                        }
+                        for hit in &s.hits.h {
+                            assert!(
+                                hit.r.x >= 0 && hit.r.x + hit.r.w <= w && hit.r.y >= 0 && hit.r.y + hit.r.h <= h,
+                                "{theme:?} {w}x{h} {}: a hit off the screen",
+                                cat.title
+                            );
+                            if want.contains(&hit.id) {
+                                got.push(hit.id);
+                            }
+                        }
+                    }
+                    for id in &want {
+                        assert!(
+                            got.contains(id),
+                            "{theme:?} {w}x{h} {}: a row was not drawn or not tappable",
+                            cat.title
+                        );
+                    }
+                    assert_eq!(got.len(), want.len(), "{theme:?} {w}x{h} {}: a row drawn twice", cat.title);
+                }
+                library_free(&mut a);
+                canvas_free(&mut a.screen);
+            }
+        }
+        i18n_set("en");
+        ui_init(300.0);
+        ui_set_theme(UiTheme::Gothic);
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
     // A tap on Settings' white space does nothing at all: the page must not carry a shield hit over
     // all of it, which would be found, invert the whole screen as press feedback, and refresh it
     // whole at the lift (a full-screen flash on every tap between the rows).
@@ -10019,20 +10101,20 @@ mod tests {
             "About's Back"
         );
         assert!(crate::pdfimport::storage_space().is_some(), "the storage's size and free room");
-        assert!(
-            a.lib.as_ref().unwrap().hits.h.iter().any(|h| h.id == H_LINK_KOFI)
-                && a.lib.as_ref().unwrap().hits.h.iter().any(|h| h.id == H_LINK_GITHUB),
-            "About's links"
-        );
-        act(&mut a, &Hit { r: RECT_EMPTY, id: H_LINK_KOFI, arg: 0 });
-        assert_eq!((lib(&mut a).modal, lib(&mut a).device_link), (Modal::LinkQr, 1));
+        let links: Vec<i32> = a.lib.as_ref().unwrap().hits.h.iter().filter(|h| h.id == H_LINK).map(|h| h.arg).collect();
+        assert_eq!(links, (0..ABOUT_LINKS.len() as i32).collect::<Vec<_>>(), "About's links");
+        assert_eq!(ABOUT_LINKS[1].name, "Grimoire GitHub");
+        assert_eq!(ABOUT_LINKS[2].url, "https://github.com/nebuff");
+        assert_eq!(ABOUT_LINKS[3].url, "https://github.com/ganten1998");
+        act(&mut a, &Hit { r: RECT_EMPTY, id: H_LINK, arg: 0 });
+        assert_eq!((lib(&mut a).modal, lib(&mut a).device_link), (Modal::LinkQr, 0));
         assert!(
             a.lib.as_ref().unwrap().hits.h.iter().any(|h| h.id == H_LINK_BACK),
             "the link's Back"
         );
         act(&mut a, &Hit { r: RECT_EMPTY, id: H_LINK_BACK, arg: 0 });
         assert_eq!(lib(&mut a).modal, Modal::DeviceInfo);
-        act(&mut a, &Hit { r: RECT_EMPTY, id: H_LINK_GITHUB, arg: 0 });
+        act(&mut a, &Hit { r: RECT_EMPTY, id: H_LINK, arg: 2 });
         assert_eq!((lib(&mut a).modal, lib(&mut a).device_link), (Modal::LinkQr, 2));
         act(&mut a, &Hit { r: RECT_EMPTY, id: H_LINK_BACK, arg: 0 });
         assert_eq!(lib(&mut a).modal, Modal::DeviceInfo);
