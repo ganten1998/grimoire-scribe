@@ -1348,17 +1348,14 @@ items of Document links. Left:
 
 ## Hardening round (2026-11), storage reads: what waits
 
-- The other reads by path take the plain-file read (`util::open_read_nofollow`): the clipboard, the
-  compaction's list, the shortcut files, one read in the fonts' cache, the PDF cache's records. The
-  compaction's list goes first: it is read at every start, before the first frame
-  (`compact_queue_listed`), and the start is fully under the rule only once it is.
+- The one reader left that opens by path, in your own fonts (`userfonts.rs` `read_small`: a font's verdict
+  and the crash guard, after an `lstat` that refuses a link), takes the plain-file read
+  (`util::open_read_nofollow`) with the change that owns that file (#111).
 - The folders a scan lists (the import folders, the marks) are read through the storage walk, as picked
   folders are.
 - A page file that is there but does not read fails to open rather than opening blank; with it, a size
   limit on page files.
 - `mkdir_p` stays as it is (an existing entry counts as the folder): the data root, a platform's folders
   and the tests' folders may sit behind a link.
-- Tidy-up: the PDF cache's and the share spool's own "made afresh" onto `util::create_fresh_nofollow`;
-  `nav.rs` `read_sidecar` onto `util::open_read_nofollow`.
 - If no other lane has taken them by the merge: the marks in `pdfimport.rs` read with their own limits,
   and the link tests run as root in CI's sandbox job.

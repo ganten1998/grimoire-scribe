@@ -67,12 +67,15 @@ root/.cache/pdf/<id>/                   the notebook PDF's page streams, disposa
 `notebook.ini`, not the numbers. Every file is written atomically (`<file>.tmp`, fsync, rename).
 
 From 2.1.1 on Grimoire reads these files only when the entry at the name is a plain file: `settings.ini`,
-`folders.ini`, `sleep.pgm`, a notebook's `notebook.ini`, page files, `thumb.pgm`, previews and `bg/`, the
-pictures and folders of `templates/`, `photos/` and `import/`, the import marks and `import/.attempts`. A
-link there (to a file, to a folder or to nothing), a folder or anything else reads as a file that is not
-there. A folder on the way to a file may be a link (`root` itself, `notebooks/`): only the last name is
-held to this. Some other files of the listing are still opened by path (docs/BACKLOG.md, "Hardening round
-(2026-11), storage reads: what waits").
+`folders.ini`, `sleep.pgm`, a notebook's `notebook.ini`, page files, `erased.txt`, `thumb.pgm`, previews and
+`bg/`, the pictures and folders of `templates/`, `photos/` and `import/`, the import marks and
+`import/.attempts`, `clipboard.qpg`, the shortcut files (`shortcuts.ini`, `controller.ini`, `shortcuts/`,
+`gestures.ini`, `live-keys.ini`) and the PDF cache's records. A link there (to a file, to a folder or to
+nothing), a folder or anything else reads as a file that is not there; for `erased.txt` and the shortcut files
+it is a file that is there and does not read, as their sections say. A folder on the way to a file may be a
+link (`root` itself, `notebooks/`): only the last name is held to this. Your own fonts' check results and
+crash guard are still opened by path, after a look at the entry that does not follow a link (docs/BACKLOG.md,
+"Hardening round (2026-11), storage reads: what waits").
 
 The small text files are read up to a size, and a longer one is not read: `settings.ini`,
 `notebook.ini`, `folders.ini`, `bg/index.ini` and `bg/pages.ini` up to 1 MiB (1,048,576 bytes), an import
@@ -299,8 +302,9 @@ zip, a `grimoire-pull` copy or an older version.
   later pass or for the version that can: one that does not read, one of another size than its
   notebook's (compacted once the editor writes it at the notebook's size), and one holding data
   1.1 reads past. So does a page it could not write. The list goes once it is empty. A list that
-  is there but does not read (a read error) is never written over: the editor tries again at its
-  next save, and compaction leaves it as it is.
+  is there but does not read (a read error, or from 2.1.1 on an entry at its name that is no plain
+  file: a link, to a file or to nothing, or a FIFO) is never written over: the editor tries again at
+  its next save, and compaction leaves it as it is.
 - Opening the notebook stops its compaction first, whether it waits or runs, and so does Grimoire
   leaving (a notebook it closes as it leaves is not compacted then): a page is never left half
   written (each is its old file or its new one), and the list keeps the pages that are not done.
@@ -1350,7 +1354,9 @@ earlier ignore it; 1.2.0 and the 2.0 betas read it. A line naming an action a ve
 (2.0.0-beta.5 added fifteen) is refused and counted there, and the other lines still load. From
 2.0.0-beta.5 on, a file that binds none of the D-pad's four directions (`pad.Up`, `Down`, `Left`,
 `Right`: no earlier version read a D-pad, so none wrote them) gets the starter file's D-pad lines in
-memory; the file is not changed.
+memory; the file is not changed. From 2.1.1 on an entry at its name that is no plain file (a link, to a
+file or to nothing, or a FIFO) is a file that is there and does not read, as one over the 64 KiB limit
+is: no mappings come from it. The other shortcut files below are read the same way.
 
 `controller.ini` (2.0.0-beta.5 on), beside it, holds the controller buttons learned in Settings >
 Shortcuts > Buttons (Settings > Controller > Buttons before 2.0.0-beta.2): `# ...` lines, then `pad.<button>=<action>` lines in `shortcuts.ini`'s grammar,
@@ -1963,7 +1969,8 @@ offset  size  field
 112     ...   the zlib stream
 ```
 
-All integers little endian. A record is used only when it reads, its length and CRC-32 are right, its stamp
+All integers little endian. A record is used only when it reads (from 2.1.1 on, a plain file at its name of
+at most 112 bytes and 128 MiB, its header and the largest stream), its length and CRC-32 are right, its stamp
 (bytes 4 to 47, the inode and the notebook's paper) is the page's today, taken before the page was read, and
 its picture's (channels, size, time) is the picture file's today, taken before any page on it was drawn: a
 changed page, a picture made, replaced or gone, another dpi, page size or notebook paper, a newer Grimoire or
