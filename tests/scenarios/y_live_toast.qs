@@ -92,8 +92,7 @@ expect live.toast is
 # a toast raised over the card is not in the frame, nor after it once it went
 tap 1345 95
 wait 300
-tap share live
-wait 300
+expect screen is share
 expect live.pairing is 1
 hid attach pad Pad
 wait 100

@@ -75,8 +75,7 @@ expect screen is library
 expect live.chip is 1814 4 42 42
 tap 1345 95
 wait 300
-tap share live
-wait 300
+expect screen is share
 expect live.pairing is 1
 tap share stop
 wait 300

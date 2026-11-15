@@ -856,8 +856,14 @@ fn invite(a: &mut App) {
     st.code_at = now_ms();
 }
 
-/// switch to SCR_SHARE (returns to prev_scr)
+/// switch to SCR_SHARE (returns to prev_scr). While Live view is on, Share opens its pairing card
+/// directly, the same card the Live view button shows.
 pub fn share_open(a: &mut App) {
+    if live_on() {
+        s(a).wifi_open = false;
+        share_open_live(a);
+        return;
+    }
     let scr = a.scr;
     let st = s(a);
     st.ret = scr;

@@ -1,7 +1,7 @@
 # settings: status_mode=1
 # Live view's pairing card: Share's Live view button turns it on (the chip shows, its code and QR
-# code on the card); Done keeps it on; Share's button shows the card again while it is on; Stop
-# turns it off. tests/live_check.sh holds a copy at the card (its "live_check holds here" line)
+# code on the card); Done keeps it on; Share opens the card directly while it is on; Stop turns it
+# off. tests/live_check.sh holds a copy at the card (its "live_check holds here" line)
 # while it pairs as a browser.
 # env: GRIMOIRE_SIM_ADDRS=en0=192.168.0.20
 wait 300
@@ -28,8 +28,7 @@ expect live.chip is 1814 4 42 42
 shot 03-library-chip
 tap 1345 95
 wait 300
-tap share live
-wait 300
+expect screen is share
 expect live.pairing is 1
 expect live.on is 1
 tap share stop
