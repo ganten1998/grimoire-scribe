@@ -8841,8 +8841,20 @@ pub fn library_probe(a: &mut App, key: &str, out: &mut String, cap: usize) -> i3
                 H_WIFI_OTHER_OPEN => "wifi.other.open", H_WIFI_OTHER_WPA => "wifi.other.wpa",
                 H_WIFI_OTHER_WPA3 => "wifi.other.wpa3", H_WIFI_OTHER_EAP => "wifi.other.eap",
                 H_WIFI_OTHER_CANCEL => "wifi.other.cancel",
+                // (the new Settings page's rows and submenus that had no name: its Back and X, and the
+                // choice lists that open from a row)
+                H_SETTINGS_BACK => "settings.back", H_SETTINGS_CLOSE => "settings.close",
+                H_SET_LANGUAGE => "language", H_LANG_PICK => "language.", H_LANG_BACK => "language.back",
+                H_SET_SIDE => "pen-button", H_SIDE_PICK => "pen-button.", H_SIDE_BACK => "pen-button.back",
+                H_SET_ERASER => "eraser-mode", H_ERASER_PICK => "eraser-mode.", H_ERASER_BACK => "eraser-mode.back",
+                H_SET_PINCH => "pinch", H_SET_MIRROR => "mirror",
+                H_SET_DEVICE => "about-device", H_DEVICE_BACK => "about-device.back",
                 _ => "",
             });
+            if hit.id == H_LANG_PICK {
+                name.push_str(i18n_language_code(hit.arg).unwrap_or("auto"));
+            }
+            if matches!(hit.id, H_SIDE_PICK | H_ERASER_PICK) { name.push_str(&hit.arg.to_string()); }
             if hit.id == H_FONT_PICK {
                 name.push_str(FONT_FAMILIES.get(hit.arg as usize).map_or("", |f| f.id));
             }
