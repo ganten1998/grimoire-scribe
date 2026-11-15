@@ -112,7 +112,8 @@ tap library done
 expect editor.settings.sheet is settings
 tap library display
 expect editor.settings.sheet is display
-expect status.shown is 1
+# The clock corner belongs to the notebook page: not drawn over Settings' Display sheet.
+expect status.shown is 0
 expect editor.screen_composed is 1
 key 45 0
 expect editor.settings.sheet is settings

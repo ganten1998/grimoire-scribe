@@ -1,0 +1,355 @@
+#!/bin/sh
+# wifieap: run a WPA2/WPA3-Enterprise (PEAP/MSCHAPv2) test AP on this computer.
+#
+#   make wifieap
+#
+# The AP is a second virtual interface on the current Wi-Fi channel, so the existing Wi-Fi
+# connection stays up when the driver supports AP + managed on one channel. Test credentials
+# are fixed: SSID Grimoire-Test-EAP, identity student, password test-password.
+#
+# Environment:
+#   WIFI_EAP_IFACE     managed Wi-Fi interface to put the AP beside (default: the first iw lists)
+#   WIFI_EAP_AP_IFACE  name for the virtual AP interface (default: grimap0)
+#   WIFI_EAP_SSID      network name (default: Grimoire-Test-EAP)
+#   WIFI_EAP_HIDDEN    1 to hide the SSID (Other... is then the only way in); 0 (default) to show it
+#   WIFI_EAP_WPA3_ONLY 1 for WPA3-Enterprise only; 0 (default) also offers WPA2-Enterprise
+#   WIFI_EAP_WPA2_ONLY 1 for WPA2-Enterprise only; 0 (default, and cannot be combined with WPA3_ONLY)
+#   WIFI_EAP_PMF       0 disabled, 1 optional, 2 required (default: 2 with WPA3 only, 0 with WPA2 only, else 1)
+#   WIFI_EAP_DEBUG     1 for hostapd's verbose handshake log; 0 (default) is quieter
+#
+# Needs hostapd, dnsmasq, iw, openssl, and sudo unless run as root.
+set -eu
+
+SSID=${WIFI_EAP_SSID:-Grimoire-Test-EAP}
+HIDDEN=${WIFI_EAP_HIDDEN:-0}
+IDENTITY=student
+PASSWORD=test-password
+AP_IFACE=${WIFI_EAP_AP_IFACE:-grimap0}
+WPA3_ONLY=${WIFI_EAP_WPA3_ONLY:-0}
+WPA2_ONLY=${WIFI_EAP_WPA2_ONLY:-0}
+WIFI_EAP_PMF=${WIFI_EAP_PMF:-}
+WIFI_EAP_DEBUG=${WIFI_EAP_DEBUG:-0}
+
+usage() {
+    cat <<'EOF'
+wifieap: start a WPA2/WPA3-Enterprise (PEAP/MSCHAPv2) test AP on this computer.
+
+  make wifieap
+
+The run creates a second virtual AP interface on the current Wi-Fi channel and keeps it up until
+Ctrl-C, so the existing Wi-Fi connection stays up when the driver supports AP + managed on one
+channel. By default it offers WPA2-Enterprise and WPA3-Enterprise with PMF optional; set
+WIFI_EAP_WPA3_ONLY=1 for WPA3-Enterprise only, with PMF required.
+
+Test credentials:
+  SSID      Grimoire-Test-EAP
+  Identity  student
+  Password  test-password
+
+Environment:
+  WIFI_EAP_IFACE     managed Wi-Fi interface to put the AP beside (default: the first iw lists)
+  WIFI_EAP_AP_IFACE  name for the virtual AP interface (default: grimap0)
+  WIFI_EAP_SSID      network name (default: Grimoire-Test-EAP)
+  WIFI_EAP_HIDDEN    1 to hide the SSID (Other... is then the only way in); 0 (default) to show it
+  WIFI_EAP_WPA3_ONLY 1 for WPA3-Enterprise only; 0 (default) also offers WPA2-Enterprise
+  WIFI_EAP_WPA2_ONLY 1 for WPA2-Enterprise only; 0 (default, and cannot be combined with WPA3_ONLY)
+  WIFI_EAP_PMF       0 disabled, 1 optional, 2 required (default: 2 with WPA3 only, 0 with WPA2 only, else 1)
+  WIFI_EAP_DEBUG     1 for hostapd's verbose handshake log; 0 (default) is quieter
+
+Needs hostapd, dnsmasq, iw, openssl, and sudo unless run as root.
+
+The AP also runs a small DHCP server on 10.42.0.1/24 so clients get an address; it does not
+provide Internet access.
+EOF
+}
+
+case "${1:-}" in
+    "") ;;
+    -h|--help) usage; exit 0 ;;
+    *) usage >&2; exit 2 ;;
+esac
+case "$WPA3_ONLY" in
+    0|1) ;;
+    *) echo "wifieap: WIFI_EAP_WPA3_ONLY must be 0 or 1." >&2; exit 2 ;;
+esac
+case "$WPA2_ONLY" in
+    0|1) ;;
+    *) echo "wifieap: WIFI_EAP_WPA2_ONLY must be 0 or 1." >&2; exit 2 ;;
+esac
+if [ "$WPA3_ONLY" = 1 ] && [ "$WPA2_ONLY" = 1 ]; then
+    echo "wifieap: WIFI_EAP_WPA3_ONLY and WIFI_EAP_WPA2_ONLY cannot both be 1." >&2
+    exit 2
+fi
+case "$WIFI_EAP_DEBUG" in
+    0|1) ;;
+    *) echo "wifieap: WIFI_EAP_DEBUG must be 0 or 1." >&2; exit 2 ;;
+esac
+case "$WIFI_EAP_PMF" in
+    ''|0|1|2) ;;
+    *) echo "wifieap: WIFI_EAP_PMF must be 0, 1 or 2." >&2; exit 2 ;;
+esac
+case "$HIDDEN" in
+    0|1) ;;
+    *) echo "wifieap: WIFI_EAP_HIDDEN must be 0 or 1." >&2; exit 2 ;;
+esac
+case "$SSID" in
+    ''|*[[:cntrl:]]*) echo "wifieap: WIFI_EAP_SSID must be 1 to 32 printable characters." >&2; exit 2 ;;
+esac
+[ "${#SSID}" -le 32 ] || { echo "wifieap: WIFI_EAP_SSID is longer than 32 bytes." >&2; exit 2; }
+if [ "$WPA3_ONLY" = 1 ] && [ "$WIFI_EAP_PMF" = 0 ]; then
+    echo "wifieap: WPA3-Enterprise needs PMF; WIFI_EAP_PMF=0 cannot be combined with WPA3_ONLY." >&2
+    exit 2
+fi
+
+for tool in hostapd dnsmasq iw openssl; do
+    command -v "$tool" >/dev/null 2>&1 || {
+        echo "wifieap: $tool is not installed." >&2
+        case $tool in
+            hostapd) echo "wifieap: Fedora: sudo dnf install hostapd; Debian/Ubuntu: sudo apt install hostapd" >&2 ;;
+            dnsmasq) echo "wifieap: Fedora: sudo dnf install dnsmasq; Debian/Ubuntu: sudo apt install dnsmasq" >&2 ;;
+            iw) echo "wifieap: Fedora: sudo dnf install iw; Debian/Ubuntu: sudo apt install iw" >&2 ;;
+            openssl) echo "wifieap: Fedora: sudo dnf install openssl; Debian/Ubuntu: sudo apt install openssl" >&2 ;;
+        esac
+        exit 1
+    }
+done
+if [ "$(id -u)" -ne 0 ] && ! command -v sudo >/dev/null 2>&1; then
+    echo "wifieap: needs root or sudo to create the AP interface and run hostapd." >&2
+    exit 1
+fi
+
+as_root() {
+    if [ "$(id -u)" -eq 0 ]; then
+        "$@"
+    else
+        sudo -- "$@"
+    fi
+}
+
+if [ -n "${WIFI_EAP_IFACE:-}" ]; then
+    IFACE=$WIFI_EAP_IFACE
+else
+    IFACE=
+    for candidate in $(iw dev | awk '$1 == "Interface" { print $2 }'); do
+        t=$(iw dev "$candidate" info 2>/dev/null | sed -n 's/^[[:space:]]*type //p' | head -n 1)
+        [ "$t" = managed ] && { IFACE=$candidate; break; }
+    done
+fi
+[ -n "${IFACE:-}" ] || {
+    echo "wifieap: no Wi-Fi interface found; set WIFI_EAP_IFACE." >&2
+    exit 1
+}
+INFO=$(iw dev "$IFACE" info 2>/dev/null) || {
+    echo "wifieap: $IFACE is not a Wi-Fi interface." >&2
+    exit 1
+}
+TYPE=$(printf '%s\n' "$INFO" | sed -n 's/^[[:space:]]*type //p' | head -n 1)
+[ "$TYPE" = managed ] || {
+    echo "wifieap: $IFACE is $TYPE, not a managed Wi-Fi interface." >&2
+    echo "wifieap: set WIFI_EAP_IFACE to the connected Wi-Fi interface." >&2
+    exit 1
+}
+
+case "$AP_IFACE" in
+    ''|*[!A-Za-z0-9_.-]*) echo "wifieap: invalid AP interface name: $AP_IFACE" >&2; exit 2 ;;
+esac
+[ "${#AP_IFACE}" -le 15 ] || {
+    echo "wifieap: AP interface name is longer than 15 bytes." >&2
+    exit 2
+}
+if iw dev "$AP_IFACE" info >/dev/null 2>&1; then
+    echo "wifieap: $AP_IFACE already exists; delete it or set WIFI_EAP_AP_IFACE." >&2
+    exit 1
+fi
+
+CHANNEL=$(printf '%s\n' "$INFO" | sed -n 's/.*channel \([0-9][0-9]*\).*/\1/p' | head -n 1)
+if [ -n "$CHANNEL" ]; then
+    if [ "$CHANNEL" -ge 36 ]; then
+        HW_MODE=a
+        BAND='5 GHz'
+    else
+        HW_MODE=g
+        BAND='2.4 GHz'
+    fi
+else
+    CHANNEL=6
+    HW_MODE=g
+    BAND='2.4 GHz'
+fi
+
+TMP=
+CREATED_AP=0
+FIREWALL_ADDED=0
+FIREWALL_ZONE=
+cleanup() {
+    status=$?
+    trap - EXIT INT TERM
+    if [ -n "${TMP:-}" ] && [ -s "$TMP/dnsmasq.pid" ]; then
+        DHCP_LEFTOVER=$(as_root cat "$TMP/dnsmasq.pid" 2>/dev/null || true)
+        if [ -n "$DHCP_LEFTOVER" ]; then
+            as_root kill "$DHCP_LEFTOVER" >/dev/null 2>&1 || true
+        fi
+    fi
+    if [ -n "${DHCP_PID:-}" ]; then
+        kill "$DHCP_PID" >/dev/null 2>&1 || true
+    fi
+    if [ "${FIREWALL_ADDED:-0}" = 1 ]; then
+        as_root firewall-cmd --zone=trusted --remove-interface="$AP_IFACE" >/dev/null 2>&1 || true
+        case "$FIREWALL_ZONE" in
+            ''|'no zone'|trusted) ;;
+            *) as_root firewall-cmd --zone="$FIREWALL_ZONE" --add-interface="$AP_IFACE" >/dev/null 2>&1 || true ;;
+        esac
+    fi
+    if [ "${CREATED_AP:-0}" = 1 ]; then
+        as_root ip addr del 10.42.0.1/24 dev "$AP_IFACE" >/dev/null 2>&1 || true
+        as_root iw dev "$AP_IFACE" del >/dev/null 2>&1 || true
+    fi
+    if [ -n "${TMP:-}" ]; then
+        rm -rf "$TMP"
+    fi
+    exit "$status"
+}
+trap cleanup EXIT
+trap 'exit 130' INT TERM
+
+TMP=$(mktemp -d "${TMPDIR:-/tmp}/grimoire-wifieap.XXXXXX")
+umask 077
+mkdir -p "$TMP/ctrl"
+
+echo "wifieap: making the test certificates..."
+if ! openssl req -x509 -newkey rsa:2048 -nodes -days 3650 \
+        -subj "/CN=Grimoire Test EAP CA" \
+        -keyout "$TMP/ca.key" -out "$TMP/ca.pem" >/dev/null 2>"$TMP/openssl.err"; then
+    echo "wifieap: openssl could not make the CA certificate." >&2
+    cat "$TMP/openssl.err" >&2
+    exit 1
+fi
+if ! openssl req -newkey rsa:2048 -nodes \
+        -subj "/CN=grimoire-test" \
+        -keyout "$TMP/server.key" -out "$TMP/server.csr" >/dev/null 2>"$TMP/openssl.err"; then
+    echo "wifieap: openssl could not make the server key." >&2
+    cat "$TMP/openssl.err" >&2
+    exit 1
+fi
+if ! openssl x509 -req -in "$TMP/server.csr" -CA "$TMP/ca.pem" -CAkey "$TMP/ca.key" \
+        -CAcreateserial -days 3650 -out "$TMP/server.pem" >/dev/null 2>"$TMP/openssl.err"; then
+    echo "wifieap: openssl could not sign the server certificate." >&2
+    cat "$TMP/openssl.err" >&2
+    exit 1
+fi
+rm -f "$TMP/openssl.err"
+
+cat > "$TMP/eap-users" <<EOF
+# Phase 1: any identity may use PEAP. Phase 2: the test account.
+* PEAP
+"$IDENTITY" MSCHAPV2 "$PASSWORD" [2]
+EOF
+
+if [ "$WPA3_ONLY" = 1 ]; then
+    KEY_MGMT='WPA-EAP-SHA256'
+    PMF=${WIFI_EAP_PMF:-2}
+    SECURITY='WPA3-Enterprise only (WPA-EAP-SHA256)'
+elif [ "$WPA2_ONLY" = 1 ]; then
+    KEY_MGMT='WPA-EAP'
+    PMF=${WIFI_EAP_PMF:-0}
+    SECURITY='WPA2-Enterprise only (WPA-EAP)'
+else
+    KEY_MGMT='WPA-EAP WPA-EAP-SHA256'
+    PMF=${WIFI_EAP_PMF:-1}
+    SECURITY='WPA2/WPA3-Enterprise (WPA-EAP and WPA-EAP-SHA256)'
+fi
+case "$PMF" in
+    0) PMF_TEXT='PMF disabled' ;;
+    1) PMF_TEXT='PMF optional' ;;
+    2) PMF_TEXT='PMF required' ;;
+esac
+SECURITY="$SECURITY, $PMF_TEXT"
+
+cat > "$TMP/hostapd.conf" <<EOF
+interface=$AP_IFACE
+driver=nl80211
+ctrl_interface=$TMP/ctrl
+ssid=$SSID
+ignore_broadcast_ssid=$HIDDEN
+hw_mode=$HW_MODE
+channel=$CHANNEL
+wmm_enabled=1
+auth_algs=1
+wpa=2
+ieee8021x=1
+eapol_version=2
+wpa_key_mgmt=$KEY_MGMT
+rsn_pairwise=CCMP
+ieee80211w=$PMF
+eap_server=1
+eap_user_file=$TMP/eap-users
+ca_cert=$TMP/ca.pem
+server_cert=$TMP/server.pem
+private_key=$TMP/server.key
+EOF
+
+echo "wifieap: creating $AP_IFACE beside $IFACE (channel $CHANNEL)..."
+if ! as_root iw dev "$IFACE" interface add "$AP_IFACE" type __ap; then
+    # Some drivers reserve the name briefly after the previous AP interface was deleted.
+    sleep 1
+    as_root iw dev "$IFACE" interface add "$AP_IFACE" type __ap
+fi
+CREATED_AP=1
+if command -v nmcli >/dev/null 2>&1; then
+    as_root nmcli device set "$AP_IFACE" managed no >/dev/null 2>&1 || true
+fi
+# hostapd brings the AP interface up; some drivers refuse an early ip link set up.
+as_root ip addr replace 10.42.0.1/24 dev "$AP_IFACE"
+
+# firewalld can otherwise drop the clients' DHCP broadcasts before dnsmasq sees them.
+if command -v firewall-cmd >/dev/null 2>&1 && firewall-cmd --state >/dev/null 2>&1; then
+    FIREWALL_ZONE=$(firewall-cmd --get-zone-of-interface="$AP_IFACE" 2>/dev/null || true)
+    case "$FIREWALL_ZONE" in
+        trusted) ;;
+        *)
+            as_root firewall-cmd --zone=trusted --add-interface="$AP_IFACE" >/dev/null 2>&1 && FIREWALL_ADDED=1 || true
+            ;;
+    esac
+fi
+
+DHCP_PID=
+DHCP_DEBUG=
+[ "$WIFI_EAP_DEBUG" = 1 ] && DHCP_DEBUG=--log-dhcp
+(
+    # dnsmasq cannot bind its DHCP socket while the AP interface is down, so wait for hostapd.
+    n=0
+    while [ "$n" -lt 100 ]; do
+        ip link show "$AP_IFACE" 2>/dev/null | grep -q 'state UP' && break
+        n=$((n + 1))
+        sleep 0.1
+    done
+    as_root dnsmasq --conf-file=/dev/null --no-daemon --bind-dynamic \
+        --interface="$AP_IFACE" \
+        --dhcp-range=10.42.0.10,10.42.0.100,255.255.255.0,1h \
+        --dhcp-option=3,10.42.0.1 --dhcp-option=6,10.42.0.1 \
+        --dhcp-authoritative --no-resolv --no-hosts $DHCP_DEBUG \
+        --pid-file="$TMP/dnsmasq.pid" --dhcp-leasefile="$TMP/dhcp.leases" \
+        --log-facility="$TMP/dnsmasq.log" &
+    sleep 0.5
+    dhcp_pid=$(as_root cat "$TMP/dnsmasq.pid" 2>/dev/null || true)
+    if [ -z "$dhcp_pid" ] || ! as_root kill -0 "$dhcp_pid" 2>/dev/null; then
+        echo "wifieap: dnsmasq could not start; see $TMP/dnsmasq.log" >&2
+    fi
+) &
+DHCP_PID=$!
+
+HIDDEN_NOTE=
+[ "$HIDDEN" = 1 ] && HIDDEN_NOTE=' (hidden)'
+cat <<EOF
+wifieap: Enterprise test AP
+  SSID:      $SSID$HIDDEN_NOTE
+  Identity:  $IDENTITY
+  Password:  $PASSWORD
+  Security:  $SECURITY
+  Interface: $AP_IFACE on $IFACE, channel $CHANNEL ($BAND)
+  Address:   10.42.0.1/24, DHCP 10.42.0.10-100 (no Internet)
+  Stop:      Ctrl-C
+EOF
+HOSTAPD_FLAGS=
+[ "$WIFI_EAP_DEBUG" = 1 ] && HOSTAPD_FLAGS=-dd
+as_root "$(command -v hostapd)" $HOSTAPD_FLAGS "$TMP/hostapd.conf"

@@ -157,9 +157,11 @@ fn grimoires_folders_by_identity() {
     check!(st.open_dir(&sp(b"grimoire/PDFs/School"), false).is_ok());
     check!(st.open_dir(&sp(b"grimoire/PDFs/School"), true).err() == Some(FsErr::Refused));
     check!(st.open_file(&sp(b"grimoire/PDFs/School/x.pdf"), true).err() == Some(FsErr::Refused));
-    let ci = std::path::Path::new(&format!("{g}/pdfs")).exists();
+    // A pick never reaches Grimoire's PDFs by a name cased differently: the zone refuses the name
+    // in any case (zones_by_name_in_any_case), before the walk looks for it, so this is Refused on
+    // a case-sensitive storage too (where the lower-case folder is not there to be found).
     let lower = st.open_dir(&sp(b"grimoire/pdfs/School"), true).err();
-    check!(lower == Some(if ci { FsErr::Refused } else { FsErr::NotFound }));
+    check!(lower == Some(FsErr::Refused));
     check!(st.open_file(&sp(b"grimoire/pdfs/School/x.pdf"), true).is_err());
     check!(st.open_dir(&sp(b"grimoire/notebooks"), false).err() == Some(FsErr::Refused));
     check!(st.open_dir(&sp(b"Grimoire/NOTEBOOKS/abc"), false).is_err());

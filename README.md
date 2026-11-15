@@ -186,8 +186,8 @@ your notebooks and settings from `quire/` to `grimoire/` and removes the old Qui
   its card turns it off, and it turns itself off after 10 minutes with nobody watching. Plain HTTP:
   use it on a network you trust.
 - **Wi-Fi networks**: **Settings > Wi-Fi** turns Wi-Fi on or off, says which network the Kindle is
-  connected to, and lists the networks the Kindle has saved, the one connected to first and checked (seven
-  a page; **More networks** shows the next). Tap one to switch to it: "Connecting to ..." until the Kindle
+  connected to, and lists the networks the Kindle has saved in their own order; the list scrolls. The
+  status line names the connected network. Tap one to switch to it: "Connecting to ..." until the Kindle
   is connected to it, or "Could not connect to ..." when it refuses or has not connected in 45 seconds
   (Grimoire changes nothing more: the Kindle's own Wi-Fi service decides what it joins next). Switching disconnects Share, Live view and SSH from
   the network you leave. Add a network or change its password in the Kindle's settings or KOReader:

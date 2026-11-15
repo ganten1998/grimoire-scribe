@@ -99,7 +99,7 @@ fn two_strikes_then_terminess_until_the_file_changes() {
     check!(code == Some(0));
     check!(guard(&r) == vec![GuardEntry { key, strikes: 2, armed: false }]);
     // every start after: Terminess, and the Font sheet says the font cannot be used
-    let sheet = "wait 100\nexpect font is terminess\ntap 1535 95\nwait 50\ntap library font\nwait 50\nexpect library.font.state.Mine.ttf is unreadable\n\
+    let sheet = "wait 100\nexpect font is terminess\ntap library settings\nwait 50\ntap library settings.cat.1\nwait 50\ntap library font\nwait 50\nexpect library.font.state.Mine.ttf is unreadable\n\
 expect library.ui_has.font.file:Mine.ttf is 0\ntap library font.cancel\nwait 50\nquit\n";
     let (code, _, out) = start(&r, sheet, false);
     check!(code == Some(0));
@@ -120,7 +120,7 @@ expect library.ui_has.font.file:Mine.ttf is 0\ntap library font.cancel\nwait 50\
     // (the old file's strikes are still on record, in no one's way; the Font sheet's look at the folder forgets
     // them, and lists the font as one to use)
     check!(guard(&r) == vec![GuardEntry { key, strikes: 2, armed: false }]);
-    let sheet = "wait 100\nexpect font is file:Mine.ttf\ntap 1535 95\nwait 50\ntap library font\nwait 50\nexpect library.font.state.Mine.ttf is ready\n\
+    let sheet = "wait 100\nexpect font is file:Mine.ttf\ntap library settings\nwait 50\ntap library settings.cat.1\nwait 50\ntap library font\nwait 50\nexpect library.font.state.Mine.ttf is ready\n\
 expect library.font.pick is file:Mine.ttf\nexpect font.guard is\ntap library font.cancel\nwait 50\nquit\n";
     let (code, _, out) = start(&r, sheet, false);
     check!(code == Some(0));
@@ -223,8 +223,8 @@ fn done_on_terminess_after_a_strike_takes_the_font_away() {
     let r = prepared("undo");
     let (code, signal, _) = start(&r, IN_USE, true);
     check!(code.is_none() && signal == Some(libc::SIGABRT));
-    let undo = "wait 200\nexpect font is terminess\ntap 1535 95\nwait 50\ntap library font\nwait 50\ntap library font.terminess\nwait 50\ntap library font.done\nwait 100\n\
-tap library done\nwait 50\nquit\n";
+    let undo = "wait 200\nexpect font is terminess\ntap library settings\nwait 50\ntap library settings.cat.1\nwait 50\ntap library font\nwait 50\ntap library font.terminess\nwait 50\ntap library font.done\nwait 100\n\
+quit\n";
     let (code, _, out) = start(&r, undo, false);
     check!(code == Some(0));
     if code != Some(0) {
@@ -245,7 +245,7 @@ fn a_verdict_that_does_not_read_is_checked_again() {
     let verdict = std::fs::read_dir(&cache).unwrap().flatten().map(|e| e.path()).find(|p| p.extension().is_some_and(|e| e == "font")).unwrap();
     let text = std::fs::read_to_string(&verdict).unwrap();
     std::fs::write(&verdict, format!("{text}future=1\n")).unwrap();
-    let sheet = "wait 200\ntap 1535 95\nwait 50\ntap library font\nwait 300\nwaitbg\nwait 600\nexpect library.font.state.Mine.ttf is ready\n\
+    let sheet = "wait 200\ntap library settings\nwait 50\ntap library settings.cat.1\nwait 50\ntap library font\nwait 300\nwaitbg\nwait 600\nexpect library.font.state.Mine.ttf is ready\n\
 wait 3000\ntap library font.cancel\nwait 50\nquit\n";
     let (code, _, out) = start_env(&r, sheet, &[("GRIMOIRE_IMPORT_STABLE", "fast")]);
     check!(code == Some(0));

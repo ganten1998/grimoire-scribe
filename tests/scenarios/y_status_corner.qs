@@ -99,14 +99,14 @@ pen leave
 wait 200
 expect settings.status_on is 1
 expect display.presents not -1
-# Display previews the clock live while its controls change; a tap
-# in the corner is the sheet's, not the clock's. Display: the size, in a cell beside Done (the editor's sheet
-# has the Pin this page row, so it is a row taller than the Library's).
+# The Display sheet covers the clock corner; a tap in the corner is the sheet's, not the clock's, and the
+# clock comes back when the sheet closes. Display: the size, in a cell beside Done (the editor's sheet has
+# the Pin this page row, so it is a row taller than the Library's).
 tap panel display
 wait 400
 expect editor.modal is display
 expect status.front is 0
-expect status.shown is 1
+expect status.shown is 0
 tap 70 70
 wait 300
 expect editor.modal is none
@@ -114,12 +114,12 @@ expect settings.status_on is 1
 expect status.shown is 1
 tap panel display
 wait 400
-expect status.shown is 1
+expect status.shown is 0
 expect display.presents not -1
 tap 472 1950
 wait 300
 expect settings.status_size is 1
-expect status.shown is 1
+expect status.shown is 0
 tap 472 1950
 wait 300
 expect settings.status_size is 2

@@ -130,8 +130,8 @@
   lines they do not know (they draw Terminess). The Kindle binary is 10.6 MB and the zip 5.5 MB with it.
 - **Settings > Wi-Fi switches between the Kindle's saved networks** (issue #40). A Wi-Fi button in Settings'
   bottom row, beside Pair, opens a sheet that turns Wi-Fi on or off, says which network the Kindle is connected
-  to, and lists the networks the Kindle has saved, that one first with a check (seven a page; More networks shows
-  the next). Tap one to switch: "Connecting to ...", then "Connected to ...", or "Could not connect to ..." when
+  to, and lists the networks the Kindle has saved in their own order; the status line names the connected network and
+  the list scrolls. Tap one to switch: "Connecting to ...", then "Connected to ...", or "Could not connect to ..." when
   the Kindle refuses it or has not connected in 45 seconds (Grimoire then changes nothing more). Switching drops
   Share, Live view and SSH from the network you leave. Adding a network or a password stays in the Kindle's
   settings and KOReader. No Wi-Fi password reaches the app, its files or its log (its helper keeps only the
