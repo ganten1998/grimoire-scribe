@@ -49,6 +49,19 @@ pub fn quicksize_current(t: ToolKind, p: &ToolParams) -> Option<usize> {
     quicksize_presets(t).iter().position(|&hi| (p.size_max_mm - hi).abs() < 0.005)
 }
 
+/// The chip a size key steps `p` to (size-smaller, size-larger; 2.2): the next one down or up from its max, a max
+/// within 0.005 mm of a chip counting as that chip (as quicksize_current), a max between two chips (one tuned in
+/// Pen feel) going to the one of the two that way. None past the last chip that way (the size stays), and for a
+/// max that is not a number.
+pub fn quicksize_step(t: ToolKind, p: &ToolParams, larger: bool) -> Option<usize> {
+    let (chips, cur) = (quicksize_presets(t), p.size_max_mm);
+    if larger {
+        chips.iter().position(|&hi| hi > cur + 0.005)
+    } else {
+        chips.iter().rposition(|&hi| hi < cur - 0.005)
+    }
+}
+
 /// Chip `i` written into `p`: size_max_mm is the chip's width, size_min_mm the chip's width times the tool's
 /// current min/max ratio (its default ratio when the current max is 0 or not finite), rounded to 0.01 and
 /// clamped to 0.10 .. the width; the eleven other fields as they were.
@@ -503,6 +516,55 @@ mod tests {
                 let mut twice = once;
                 quicksize_apply(t, &mut twice, i);
                 assert!((0..ToolParams::COUNT).all(|f| once.get(f).to_bits() == twice.get(f).to_bits()), "{} chip {i}", tool_name(t));
+            }
+        }
+    }
+
+    /// The size keys' step (2.2), for every tool (each has chips): from each chip to the next one up or down, a max
+    /// within 0.005 of a chip counting as it; from a max between two chips to the one of the two that way; from under
+    /// the first chip up to it and from over the last down to it; nothing past either end (the size stays), nor for
+    /// a max that is not a number. Presses again and again walk every chip once and stop at the end.
+    #[test]
+    fn a_size_key_steps_to_the_next_chip() {
+        for k in 0..TOOL_COUNT {
+            let t = ToolKind(k as i32);
+            let chips = quicksize_presets(t);
+            for i in 0..QS_CHIPS {
+                let mut p = defaults(t);
+                quicksize_apply(t, &mut p, i);
+                for off in [0.0, -0.004, 0.004] {
+                    p.size_max_mm = chips[i] + off;
+                    let up = if i + 1 < QS_CHIPS { Some(i + 1) } else { None };
+                    assert_eq!(quicksize_step(t, &p, true), up, "{} up from chip {i} {off:+}", tool_name(t));
+                    assert_eq!(quicksize_step(t, &p, false), i.checked_sub(1), "{} down from chip {i} {off:+}", tool_name(t));
+                }
+            }
+            let mut p = defaults(t);
+            for i in 0..QS_CHIPS - 1 {
+                p.size_max_mm = (chips[i] + chips[i + 1]) / 2.0;
+                assert_eq!(quicksize_step(t, &p, true), Some(i + 1), "{} up from between {i} and {}", tool_name(t), i + 1);
+                assert_eq!(quicksize_step(t, &p, false), Some(i), "{} down from between {i} and {}", tool_name(t), i + 1);
+            }
+            p.size_max_mm = chips[0] / 2.0;
+            assert_eq!((quicksize_step(t, &p, true), quicksize_step(t, &p, false)), (Some(0), None), "{} under the first", tool_name(t));
+            p.size_max_mm = chips[QS_CHIPS - 1] + 1.0;
+            assert_eq!((quicksize_step(t, &p, true), quicksize_step(t, &p, false)), (None, Some(QS_CHIPS - 1)), "{} over the last", tool_name(t));
+            p.size_max_mm = f32::NAN;
+            assert_eq!((quicksize_step(t, &p, true), quicksize_step(t, &p, false)), (None, None), "{} not a number", tool_name(t));
+            // up from the smallest and down from the largest, a press at a time, as a chip tap applies each
+            for larger in [true, false] {
+                let mut p = defaults(t);
+                quicksize_apply(t, &mut p, if larger { 0 } else { QS_CHIPS - 1 });
+                let mut seen = vec![p.size_max_mm];
+                while let Some(i) = quicksize_step(t, &p, larger) {
+                    quicksize_apply(t, &mut p, i);
+                    seen.push(p.size_max_mm);
+                    assert!(seen.len() <= QS_CHIPS);
+                }
+                if !larger {
+                    seen.reverse();
+                }
+                assert_eq!(seen, chips.to_vec(), "{}", tool_name(t));
             }
         }
     }
