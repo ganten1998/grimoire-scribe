@@ -5932,3 +5932,19 @@ msgstr "Copiado"
 
 #~ msgid "Back to KOReader"
 #~ msgstr "Volver a KOReader"
+
+#. TRANSLATORS: Files' row for grimoire/fonts, the fonts copied for Classic's text (44 px in a row of 150 px).
+#: rust/src/browser.rs
+msgid "Fonts"
+msgstr "Fuentes"
+
+#. TRANSLATORS: Files' row for the Kindle's own fonts folder (the fonts its reader uses), which Grimoire
+#. only looks in (44 px in a row of 150 px).
+#: rust/src/browser.rs
+msgid "Kindle fonts"
+msgstr "Fuentes del Kindle"
+
+#. TRANSLATORS: Files' row for grimoire/trash, where deleted notebooks and pages go (44 px in a row of 150 px).
+#: rust/src/browser.rs
+msgid "Trash"
+msgstr "Papelera"

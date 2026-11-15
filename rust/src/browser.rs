@@ -1,15 +1,17 @@
-//! The file picker (2.1.0-beta.2, lane L8; DESIGN.md 2.2, 2.8, 3.2, 3.6; areas/browser.md Phase 1): Library > New >
-//! From a file... opens Files in pick mode, hosted by the Library as a mode the way it hosts the Graph. It shows
-//! a root of four places (Import, Documents, Downloads, All storage), the folders under them and, in them, the
-//! PDFs and folders a task can use: a tap on a folder enters it, a tap on a PDF opens its card (the one place a
-//! tap offers choices: an import can be 400 pages, and the card is the confirmation), a hold on a folder (or its
-//! `...`) opens the card that imports its pictures. The Import place lists `grimoire/import` with a status on
-//! each row and a Look again row.
+//! The file browser (2.1.0-beta.2, lane L8; 2.2, lane L11b; DESIGN.md 2.2, 2.8, 3.2, 3.6; areas/browser.md Phases 1
+//! and 2), hosted by the Library as a mode the way it hosts the Graph. Two modes. Pick mode: Library > New > From a
+//! file... asks for a PDF or a folder of pictures; its root has four places (Import, Documents, Downloads, All
+//! storage), the folders under them and, in them, the PDFs and folders a task can use: a tap on a folder enters
+//! it, a tap on a PDF opens its card (the one place a tap offers choices: an import can be 400 pages, and the card
+//! is the confirmation), a hold on a folder (or its `...`) opens the card that imports its pictures. The Import
+//! place lists `grimoire/import` with a status on each row and a Look again row. Place mode (2.2): Files, opened
+//! from the Library's Files card or the `files` action, where the user browses: its root adds Grimoire's own
+//! places (Templates, Photos, Fonts, PDF copies, Trash) and the Kindle's fonts, every one read only here.
 //!
 //! Everything it reads of the storage goes through fsview.rs: the walk (no link anywhere, one device, Grimoire's
-//! notebooks, PDFs and trash refused by identity), listings of names and kinds only in slices of at most 20 ms,
-//! stats and book keys only for the rows on screen. The storage outside Grimoire's folders is read only, here and
-//! in the jobs that follow a pick. No file or folder name reaches grimoire.log.
+//! notebooks refused by identity, and in pick mode its PDFs and trash too), listings of names and kinds only in
+//! slices of at most 20 ms, stats and book keys only for the rows on screen. The storage outside Grimoire's folders
+//! is read only, here and in the jobs that follow a pick. No file or folder name reaches grimoire.log.
 //!
 //! The model (`Browser`'s rows, listing and statuses) needs no screen: the tests drive it with `list_now`.
 
@@ -28,17 +30,57 @@ const B_CARD_PICTURES: i32 = 8;
 const B_CARD_NOTEBOOK: i32 = 9;
 const B_CARD_CANCEL: i32 = 10;
 
-/// What a task can pick (browser.md 4.3: 2.2 adds Picture and Font).
+/// What a task can pick, or Files lists as usable (browser.md 4.3).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum PickKind {
     Pdf,
     PictureFolder,
+    /// a picture file (.png, .jpg, .jpeg, .pgm, as templates take them)
+    Picture,
+    /// a font file (.ttf, .otf)
+    Font,
 }
 
-/// What the picker was asked for.
-#[derive(Clone, Copy, Debug)]
+/// Pick mode (a task asks for a file) or place mode (Files: the user browses).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum BrowseMode {
+    #[default]
+    Pick,
+    Place,
+}
+
+/// What the browser was asked for: the kinds it offers, its title (translated by the caller), the folder it opens
+/// at (None: its root) and its mode.
+#[derive(Clone, Debug)]
 pub struct PickSpec {
     pub kinds: &'static [PickKind],
+    pub title: &'static str,
+    pub start: Option<StoragePath>,
+    pub mode: BrowseMode,
+}
+
+impl PickSpec {
+    /// New notebook's From a file...: a PDF or a folder of pictures to import.
+    pub fn import() -> PickSpec {
+        PickSpec {
+            kinds: &[PickKind::Pdf, PickKind::PictureFolder],
+            // TRANSLATORS: the title of the file picker opened by New notebook's From a file... (the Library's header,
+            // about 1400 px at 56 px).
+            title: tr("Import a PDF or pictures"),
+            start: None,
+            mode: BrowseMode::Pick,
+        }
+    }
+
+    /// Files, the place (2.2): every kind Grimoire can use, from its root.
+    pub fn place() -> PickSpec {
+        PickSpec {
+            kinds: &[PickKind::Pdf, PickKind::PictureFolder, PickKind::Picture, PickKind::Font],
+            title: tr("Files"),
+            start: None,
+            mode: BrowseMode::Place,
+        }
+    }
 }
 
 /// What a step of the picker says to its host.
@@ -67,12 +109,58 @@ pub enum RowKind {
     Look,
 }
 
+/// A root row's place. Pick mode's root has Import, Documents, Downloads and All storage; place mode's has them all
+/// (Grimoire's and the Kindle's folders only when they are there).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum PlaceKind {
     Import,
     Documents,
     Downloads,
+    Templates,
+    Photos,
+    Fonts,
+    KindleFonts,
+    PdfCopies,
+    Trash,
     All,
+}
+
+/// The root's places in order, each with its folder: in Grimoire's folder (`true`) or at the storage root.
+const PLACES: [(PlaceKind, bool, &str); 10] = [
+    (PlaceKind::Import, true, "import"),
+    (PlaceKind::Documents, false, "documents"),
+    (PlaceKind::Downloads, false, "Downloads"),
+    (PlaceKind::Templates, true, "templates"),
+    (PlaceKind::Photos, true, "photos"),
+    (PlaceKind::Fonts, true, "fonts"),
+    (PlaceKind::KindleFonts, false, "fonts"),
+    (PlaceKind::PdfCopies, true, "PDFs"),
+    (PlaceKind::Trash, true, "trash"),
+    (PlaceKind::All, false, ""),
+];
+
+/// A root row's name for the runner's `files.item.NAME` (the label drawn is translated): English, and the Kindle's
+/// folders by their own names.
+fn place_name(k: PlaceKind) -> &'static str {
+    match k {
+        PlaceKind::Import => "Import",
+        PlaceKind::Documents => "documents",
+        PlaceKind::Downloads => "Downloads",
+        PlaceKind::Templates => "Templates",
+        PlaceKind::Photos => "Photos",
+        PlaceKind::Fonts => "Fonts",
+        PlaceKind::KindleFonts => "Kindle fonts",
+        PlaceKind::PdfCopies => "PDF copies",
+        PlaceKind::Trash => "Trash",
+        PlaceKind::All => "All storage",
+    }
+}
+
+/// Whether `p` is `base` or inside it, comparing names without regard to ASCII case (as a case-insensitive
+/// storage finds them), name by name.
+fn path_under(p: &StoragePath, base: &StoragePath) -> bool {
+    let (pb, bb) = (p.as_bytes(), base.as_bytes());
+    bb.is_empty() || (pb.len() >= bb.len() && pb[..bb.len()].eq_ignore_ascii_case(bb) && (pb.len() == bb.len() || pb[bb.len()] == b'/'))
 }
 
 /// What an Import place row says (its probe name in parentheses).
@@ -134,6 +222,9 @@ struct Card {
 #[derive(Default)]
 pub struct Browser {
     pub open: bool,
+    /// pick mode or place mode (Files), and the header's title
+    pub mode: BrowseMode,
+    title: &'static str,
     kinds: Vec<PickKind>,
     /// None: the root's four rows; else the folder shown
     at: Option<StoragePath>,
@@ -212,7 +303,8 @@ fn u(v: f32) -> i32 {
 impl Browser {
     // ---- opening and listing ----
 
-    /// Opens the picker at its root. False when there is no storage to browse.
+    /// Opens the browser at its root, or at the spec's start when that opens. False when there is no storage to
+    /// browse.
     pub fn open_pick(&mut self, spec: PickSpec) -> bool {
         *self = Browser::default();
         let Some((root, grimoire)) = root_dir() else { return false };
@@ -220,10 +312,23 @@ impl Browser {
         self.free = st.free_bytes().zip(st.total_bytes());
         self.storage = Some(st);
         self.kinds = spec.kinds.to_vec();
+        self.mode = spec.mode;
+        self.title = spec.title;
         self.open = true;
         store_list(&mut self.books);
         self.show_root();
+        if let Some(p) = spec.start {
+            let from_root = self.rows.iter().any(|r| r.kind == RowKind::Place && r.path == p);
+            if !self.enter(p, from_root, now_ms()) {
+                self.toast = None; // (a start that does not open is the root, said by nothing)
+            }
+        }
         true
+    }
+
+    /// The walk's pick flag: pick mode also refuses Grimoire's PDFs and trash, which Files shows read only.
+    fn pick(&self) -> bool {
+        self.mode == BrowseMode::Pick
     }
 
     pub fn close(&mut self) {
@@ -235,7 +340,35 @@ impl Browser {
     }
 
     fn import_path(&self) -> Option<StoragePath> {
-        StoragePath::new(format!("{}/import", self.storage.as_ref()?.grimoire_rel()?.to_string_lossy()).as_bytes())
+        self.place_path(PlaceKind::Import)
+    }
+
+    /// A place's folder: in Grimoire's folder (when it is inside the storage) or at the storage root.
+    fn place_path(&self, k: PlaceKind) -> Option<StoragePath> {
+        let &(_, own, name) = PLACES.iter().find(|p| p.0 == k)?;
+        if !own {
+            return StoragePath::new(name.as_bytes());
+        }
+        StoragePath::new(format!("{}/{name}", self.storage.as_ref()?.grimoire_rel()?.to_string_lossy()).as_bytes())
+    }
+
+    /// The root's places in this mode, in order.
+    fn mode_places(&self) -> &'static [PlaceKind] {
+        match self.mode {
+            BrowseMode::Pick => &[PlaceKind::Import, PlaceKind::Documents, PlaceKind::Downloads, PlaceKind::All],
+            BrowseMode::Place => &[
+                PlaceKind::Import,
+                PlaceKind::Documents,
+                PlaceKind::Downloads,
+                PlaceKind::Templates,
+                PlaceKind::Photos,
+                PlaceKind::Fonts,
+                PlaceKind::KindleFonts,
+                PlaceKind::PdfCopies,
+                PlaceKind::Trash,
+                PlaceKind::All,
+            ],
+        }
     }
 
     /// Enters the folder `p` as a tap on it would (the tests'): false, with the toast, when the walk refuses it.
@@ -269,24 +402,18 @@ impl Browser {
         self.too_long = 0;
         self.hidden = 0;
         let mut rows = Vec::new();
+        let pick = self.pick();
         let Some(st) = self.storage.as_ref() else { return };
-        let import = self.import_path();
-        if let Some(p) = import {
-            let mut r = Row::new(RowKind::Place, "Import", p);
-            r.place = Some(PlaceKind::Import);
-            rows.push(r);
-        }
-        for (name, kind) in [("documents", PlaceKind::Documents), ("Downloads", PlaceKind::Downloads)] {
-            let Some(p) = StoragePath::new(name.as_bytes()) else { continue };
-            if st.stat(&p, true).is_ok_and(|s| s.mode & libc::S_IFMT as u32 == libc::S_IFDIR as u32) {
-                let mut r = Row::new(RowKind::Place, name, p);
-                r.place = Some(kind);
+        // Import and All storage always; every other place when its folder is there (and opens: a link is no place)
+        for &k in self.mode_places() {
+            let Some(p) = self.place_path(k) else { continue };
+            let always = matches!(k, PlaceKind::Import | PlaceKind::All);
+            if always || st.stat(&p, pick).is_ok_and(|s| s.mode & libc::S_IFMT as u32 == libc::S_IFDIR as u32) {
+                let mut r = Row::new(RowKind::Place, place_name(k), p);
+                r.place = Some(k);
                 rows.push(r);
             }
         }
-        let mut r = Row::new(RowKind::Place, "All storage", StoragePath::root());
-        r.place = Some(PlaceKind::All);
-        rows.push(r);
         self.rows = rows;
         self.ready = true;
         self.free = st.free_bytes().zip(st.total_bytes());
@@ -295,8 +422,9 @@ impl Browser {
     /// Enters folder `p` (a root row's place when `from_root`). False, with the toast "Couldn't open folder.", when
     /// the walk refuses it (a link, another device, one of Grimoire's own folders, gone).
     fn enter(&mut self, p: StoragePath, from_root: bool, now: u32) -> bool {
+        let pick = self.pick();
         let Some(st) = self.storage.as_ref() else { return false };
-        match FsListing::start(st, &p, true) {
+        match FsListing::start(st, &p, pick) {
             Ok(l) => {
                 if from_root {
                     self.place_root = Some(p.clone());
@@ -418,10 +546,7 @@ impl Browser {
     /// Under grimoire/import (the Import place or a folder in it), where rows carry statuses.
     fn under_import(&self) -> bool {
         match (self.at.as_ref(), self.import_path()) {
-            (Some(p), Some(i)) => {
-                let (pb, ib) = (p.as_bytes(), i.as_bytes());
-                pb.len() >= ib.len() && pb[..ib.len()].eq_ignore_ascii_case(ib) && (pb.len() == ib.len() || pb[ib.len()] == b'/')
-            }
+            (Some(p), Some(i)) => path_under(p, &i),
             _ => false,
         }
     }
@@ -484,6 +609,16 @@ impl Browser {
             PlaceKind::Downloads => tr("Downloads"),
             // TRANSLATORS: the file picker's row for the whole Kindle storage, less Grimoire's own notebooks (44 px in a row).
             PlaceKind::All => tr("All storage"),
+            PlaceKind::Templates => tr("Templates"),
+            PlaceKind::Photos => tr("Photos"),
+            // TRANSLATORS: Files' row for grimoire/fonts, the fonts copied for Classic's text (44 px in a row of 150 px).
+            PlaceKind::Fonts => tr("Fonts"),
+            // TRANSLATORS: Files' row for the Kindle's own fonts folder (the fonts its reader uses), which Grimoire
+            // only looks in (44 px in a row of 150 px).
+            PlaceKind::KindleFonts => tr("Kindle fonts"),
+            PlaceKind::PdfCopies => tr("PDF copies"),
+            // TRANSLATORS: Files' row for grimoire/trash, where deleted notebooks and pages go (44 px in a row of 150 px).
+            PlaceKind::Trash => tr("Trash"),
         }
     }
 
@@ -547,35 +682,32 @@ impl Browser {
         }
     }
 
-    /// The path line: Files, the place, then the folders below it.
-    fn crumbs(&self) -> String {
-        let Some(at) = self.at.as_ref() else { return String::new() };
-        let files = tr("Files");
-        let comps: Vec<String> = at.components().map(|c| String::from_utf8_lossy(c).into_owned()).collect();
-        let import = self.import_path();
-        let mut skip = 0;
-        let place = if let Some(i) = import.as_ref().filter(|i| at.as_bytes().len() >= i.as_bytes().len() && at.as_bytes()[..i.as_bytes().len()].eq_ignore_ascii_case(i.as_bytes())) {
-            skip = i.components().count();
-            Some(PlaceKind::Import)
-        } else if comps.first().is_some_and(|c| c.eq_ignore_ascii_case("documents")) {
-            skip = 1;
-            Some(PlaceKind::Documents)
-        } else if comps.first().is_some_and(|c| c.eq_ignore_ascii_case("Downloads")) {
-            skip = 1;
-            Some(PlaceKind::Downloads)
-        } else {
-            Some(PlaceKind::All)
-        };
-        let mut out = files.to_string();
-        if let Some(k) = place {
-            out.push_str(" > ");
-            out.push_str(Self::place_label(k));
-        }
-        for c in comps.iter().skip(skip) {
-            out.push_str(" > ");
-            out.push_str(c);
+    /// The path's parts, each with the folder a tap on it opens: Files (its root: None), the place the folder is in,
+    /// then the folders below it.
+    fn crumb_list(&self) -> Vec<(String, Option<StoragePath>)> {
+        let Some(at) = self.at.as_ref() else { return Vec::new() };
+        let mut out = vec![(tr("Files").to_string(), None)];
+        // the place: the one of this mode whose folder holds this one, the nearest (All storage holds every one)
+        let (k, base) = self
+            .mode_places()
+            .iter()
+            .filter_map(|&k| self.place_path(k).map(|p| (k, p)))
+            .filter(|(_, p)| path_under(at, p))
+            .max_by_key(|(_, p)| p.as_bytes().len())
+            .unwrap_or((PlaceKind::All, StoragePath::root()));
+        out.push((Self::place_label(k).to_string(), Some(base.clone())));
+        let mut p = base;
+        for c in at.components().skip(p.components().count()) {
+            let Some(next) = p.join(c) else { break };
+            out.push((String::from_utf8_lossy(c).into_owned(), Some(next.clone())));
+            p = next;
         }
         out
+    }
+
+    /// The path line: Files, the place, then the folders below it.
+    fn crumbs(&self) -> String {
+        self.crumb_list().into_iter().map(|c| c.0).collect::<Vec<_>>().join(" > ")
     }
 
     // ---- the idle tick: stats, counts, keys and statuses for the rows on screen ----
@@ -675,7 +807,7 @@ impl Browser {
     /// The pictures a folder holds (counted through the walk).
     fn count_pictures(&self, p: &StoragePath) -> usize {
         let Some(st) = self.storage.as_ref() else { return 0 };
-        let Ok(mut l) = FsListing::start(st, p, true) else { return 0 };
+        let Ok(mut l) = FsListing::start(st, p, self.pick()) else { return 0 };
         let t0 = real_now_ms();
         while !l.step(FS_SLICE_MS) {
             if real_now_ms().wrapping_sub(t0) > 200 {
@@ -708,7 +840,7 @@ impl Browser {
     /// the file cannot be read.
     fn book_key(&self, p: &StoragePath) -> (String, u64) {
         let Some(st) = self.storage.as_ref() else { return (String::new(), 0) };
-        let Ok(fd) = st.open_file(p, true) else { return (String::new(), 0) };
+        let Ok(fd) = st.open_file(p, self.pick()) else { return (String::new(), 0) };
         use std::os::fd::AsRawFd;
         // SAFETY: md is written by fstat before it is read; the descriptor is this function's.
         let mut md: libc::stat = unsafe { std::mem::zeroed() };
@@ -834,7 +966,7 @@ impl Browser {
     /// Checks the row again before acting on it ("File changed. Try again."): its stat now against the listing's.
     fn unchanged(&mut self, row: usize) -> bool {
         let (Some(st), Some(r)) = (self.storage.as_ref(), self.rows.get(row)) else { return false };
-        match (r.stat, st.stat(&r.path, true)) {
+        match (r.stat, st.stat(&r.path, self.pick())) {
             (Some(was), Ok(now)) if r.kind == RowKind::Pdf => was.same(&now),
             (_, Ok(now)) => now.mode & libc::S_IFMT as u32 == libc::S_IFDIR as u32,
             _ => false,
@@ -859,9 +991,7 @@ impl Browser {
         let back = Rect::new(m, by, bh, bh);
         ui_button(c, back, IconKind::Back, "", ButtonStyle::Plain);
         hits_add(&mut self.hits, back, B_BACK, 0);
-        // TRANSLATORS: the title of the file picker opened by New notebook's From a file... (the Library's header,
-        // about 1400 px at 56 px).
-        let title = tr("Import a PDF or pictures");
+        let title = self.title;
         let tx = back.x + back.w + u(40.0);
         ui_text(c, FontFace::Title, ui_title_size() * 1.2, ui_small_size(), Rect::new(tx, 0, aw - tx - m, th), title, 2, false, 0);
         ui_rule(c, 0, aw, th, u(4.0), 0);
@@ -954,6 +1084,11 @@ impl Browser {
             (RowKind::Place, Some(PlaceKind::Import)) => IconKind::Download,
             (RowKind::Place, Some(PlaceKind::Documents)) => IconKind::Folder,
             (RowKind::Place, Some(PlaceKind::Downloads)) => IconKind::Download,
+            (RowKind::Place, Some(PlaceKind::Templates)) => IconKind::Paper,
+            (RowKind::Place, Some(PlaceKind::Photos)) => IconKind::Paper,
+            (RowKind::Place, Some(PlaceKind::Fonts | PlaceKind::KindleFonts)) => IconKind::Font,
+            (RowKind::Place, Some(PlaceKind::PdfCopies)) => IconKind::Copy,
+            (RowKind::Place, Some(PlaceKind::Trash)) => IconKind::Trash,
             (RowKind::Place, _) => IconKind::Library,
             (RowKind::Dir, _) => IconKind::Folder,
             (RowKind::Pdf, _) => IconKind::Paper,
@@ -1505,7 +1640,7 @@ mod tests {
         std::fs::create_dir_all(format!("{base}/grimoire/import/Sub")).unwrap();
         std::fs::create_dir_all(format!("{base}/documents")).unwrap();
         let mut b = Browser::default();
-        assert!(b.open_pick(PickSpec { kinds: &[PickKind::Pdf, PickKind::PictureFolder] }));
+        assert!(b.open_pick(PickSpec::import()));
         assert!(!b.import_place_up());
         assert!(b.go(StoragePath::new(b"grimoire/import").unwrap()));
         assert!(b.import_place_up());
@@ -1513,6 +1648,47 @@ mod tests {
         assert!(!b.import_place_up());
         assert!(b.go(StoragePath::new(b"documents").unwrap()));
         assert!(!b.import_place_up());
+    }
+
+    fn sp(s: &str) -> StoragePath {
+        StoragePath::new(s.as_bytes()).unwrap()
+    }
+
+    fn row_names(b: &Browser) -> Vec<String> {
+        b.rows.iter().map(|r| r.name.clone()).collect()
+    }
+
+    // Files' root (2.2): place mode lists Import, the Kindle's folders, Grimoire's places and the Kindle's fonts that
+    // are there, and All storage, in that order; pick mode keeps its own four. Grimoire's PDFs and trash open in
+    // place mode (read only), never in pick mode; the path line names the place.
+    #[test]
+    fn the_place_root_lists_grimoire_places_and_the_kindles_folders() {
+        let (base, _g) = storage("placeroot");
+        for d in ["documents/Books", "grimoire/templates", "grimoire/photos", "grimoire/fonts", "fonts", "grimoire/PDFs/School", "grimoire/trash"] {
+            std::fs::create_dir_all(format!("{base}/{d}")).unwrap();
+        }
+        std::fs::write(format!("{base}/grimoire/PDFs/School/x.pdf"), b"%PDF-1.4\n").unwrap();
+        i18n_set("en");
+        let mut b = Browser::default();
+        assert!(b.open_pick(PickSpec::place()));
+        assert_eq!(b.mode, BrowseMode::Place);
+        assert_eq!(row_names(&b), ["Import", "documents", "Templates", "Photos", "Fonts", "Kindle fonts", "PDF copies", "Trash", "All storage"]);
+        let labels: Vec<String> = b.rows.iter().map(|r| b.row_label(r)).collect();
+        assert_eq!(labels[5], "Kindle fonts");
+        assert_eq!(b.row_sub(&b.rows[5]), "fonts");
+        assert_eq!(b.row_sub(&b.rows[4]), "grimoire/fonts");
+        assert!(b.go(sp("grimoire/PDFs/School")));
+        assert_eq!(row_names(&b), ["x.pdf"]);
+        assert_eq!(b.crumbs(), "Files > PDF copies > School");
+        assert!(b.go(sp("documents/Books")));
+        assert_eq!(b.crumbs(), "Files > Documents > Books");
+        assert!(b.go(sp("grimoire/trash")));
+        let mut p = Browser::default();
+        assert!(p.open_pick(PickSpec::import()));
+        assert_eq!(p.mode, BrowseMode::Pick);
+        assert_eq!(row_names(&p), ["Import", "documents", "All storage"]);
+        assert!(!p.go(sp("grimoire/PDFs/School")));
+        assert!(!p.go(sp("grimoire/trash")));
     }
 
     #[test]

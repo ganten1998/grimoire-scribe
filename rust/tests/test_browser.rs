@@ -3,7 +3,7 @@
 // UTF-8 (where the file system takes one); a path of 599 bytes and names that would make 600. A link is never
 // listed, entered or opened, Grimoire's notebooks, PDFs and trash are never offered, a long path is counted.
 #![cfg(feature = "sim")]
-use grimoire::browser::{Browser, PickKind, PickSpec};
+use grimoire::browser::{Browser, PickSpec};
 use grimoire::fsview::*;
 use grimoire::prelude::*;
 use std::os::unix::ffi::OsStrExt;
@@ -52,7 +52,7 @@ fn names(b: &Browser) -> Vec<String> {
 
 fn open() -> Browser {
     let mut b = Browser::default();
-    assert!(b.open_pick(PickSpec { kinds: &[PickKind::Pdf, PickKind::PictureFolder] }));
+    assert!(b.open_pick(PickSpec::import()));
     b
 }
 

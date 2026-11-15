@@ -5,7 +5,7 @@ use crate::prelude::*;
 use crate::about::AboutView;
 use crate::settingsmenu;
 use crate::ui::{ui_row, ui_row_page, ui_row_pager, Row as UiRow};
-use crate::browser::{Browser, BrowserResult, PickKind, PickSpec};
+use crate::browser::{Browser, BrowserResult, PickSpec};
 
 #[repr(i32)]
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -7626,7 +7626,7 @@ fn with_files<R>(a: &mut App, f: impl FnOnce(&mut Browser, &mut App) -> R) -> R 
 }
 
 fn files_open(a: &mut App) {
-    let ok = with_files(a, |b, _| b.open_pick(PickSpec { kinds: &[PickKind::Pdf, PickKind::PictureFolder] }));
+    let ok = with_files(a, |b, _| b.open_pick(PickSpec::import()));
     if !ok {
         // (no storage to browse: the sheet stays)
         app_toast(a, tr("Couldn't open folder."), 3000);
