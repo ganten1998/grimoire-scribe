@@ -13,7 +13,8 @@
 #   WIFI_EAP_SSID      network name (default: Grimoire-Test-EAP)
 #   WIFI_EAP_HIDDEN    1 to hide the SSID (Other... is then the only way in); 0 (default) to show it
 #   WIFI_EAP_WPA3_ONLY 1 for WPA3-Enterprise only; 0 (default) also offers WPA2-Enterprise
-#   WIFI_EAP_PMF       0 disabled, 1 optional, 2 required (default: 2 with WPA3 only, else 1)
+#   WIFI_EAP_WPA2_ONLY 1 for WPA2-Enterprise only; 0 (default, and cannot be combined with WPA3_ONLY)
+#   WIFI_EAP_PMF       0 disabled, 1 optional, 2 required (default: 2 with WPA3 only, 0 with WPA2 only, else 1)
 #   WIFI_EAP_DEBUG     1 for hostapd's verbose handshake log; 0 (default) is quieter
 #
 # Needs hostapd, dnsmasq, iw, openssl, and sudo unless run as root.
@@ -25,6 +26,7 @@ IDENTITY=student
 PASSWORD=test-password
 AP_IFACE=${WIFI_EAP_AP_IFACE:-grimap0}
 WPA3_ONLY=${WIFI_EAP_WPA3_ONLY:-0}
+WPA2_ONLY=${WIFI_EAP_WPA2_ONLY:-0}
 WIFI_EAP_PMF=${WIFI_EAP_PMF:-}
 WIFI_EAP_DEBUG=${WIFI_EAP_DEBUG:-0}
 
@@ -50,7 +52,8 @@ Environment:
   WIFI_EAP_SSID      network name (default: Grimoire-Test-EAP)
   WIFI_EAP_HIDDEN    1 to hide the SSID (Other... is then the only way in); 0 (default) to show it
   WIFI_EAP_WPA3_ONLY 1 for WPA3-Enterprise only; 0 (default) also offers WPA2-Enterprise
-  WIFI_EAP_PMF       0 disabled, 1 optional, 2 required (default: 2 with WPA3 only, else 1)
+  WIFI_EAP_WPA2_ONLY 1 for WPA2-Enterprise only; 0 (default, and cannot be combined with WPA3_ONLY)
+  WIFI_EAP_PMF       0 disabled, 1 optional, 2 required (default: 2 with WPA3 only, 0 with WPA2 only, else 1)
   WIFI_EAP_DEBUG     1 for hostapd's verbose handshake log; 0 (default) is quieter
 
 Needs hostapd, dnsmasq, iw, openssl, and sudo unless run as root.
@@ -69,6 +72,14 @@ case "$WPA3_ONLY" in
     0|1) ;;
     *) echo "wifieap: WIFI_EAP_WPA3_ONLY must be 0 or 1." >&2; exit 2 ;;
 esac
+case "$WPA2_ONLY" in
+    0|1) ;;
+    *) echo "wifieap: WIFI_EAP_WPA2_ONLY must be 0 or 1." >&2; exit 2 ;;
+esac
+if [ "$WPA3_ONLY" = 1 ] && [ "$WPA2_ONLY" = 1 ]; then
+    echo "wifieap: WIFI_EAP_WPA3_ONLY and WIFI_EAP_WPA2_ONLY cannot both be 1." >&2
+    exit 2
+fi
 case "$WIFI_EAP_DEBUG" in
     0|1) ;;
     *) echo "wifieap: WIFI_EAP_DEBUG must be 0 or 1." >&2; exit 2 ;;
@@ -118,7 +129,11 @@ as_root() {
 if [ -n "${WIFI_EAP_IFACE:-}" ]; then
     IFACE=$WIFI_EAP_IFACE
 else
-    IFACE=$(iw dev | awk '$1 == "Interface" { print $2; exit }')
+    IFACE=
+    for candidate in $(iw dev | awk '$1 == "Interface" { print $2 }'); do
+        t=$(iw dev "$candidate" info 2>/dev/null | sed -n 's/^[[:space:]]*type //p' | head -n 1)
+        [ "$t" = managed ] && { IFACE=$candidate; break; }
+    done
 fi
 [ -n "${IFACE:-}" ] || {
     echo "wifieap: no Wi-Fi interface found; set WIFI_EAP_IFACE." >&2
@@ -164,6 +179,8 @@ fi
 
 TMP=
 CREATED_AP=0
+FIREWALL_ADDED=0
+FIREWALL_ZONE=
 cleanup() {
     status=$?
     trap - EXIT INT TERM
@@ -175,6 +192,13 @@ cleanup() {
     fi
     if [ -n "${DHCP_PID:-}" ]; then
         kill "$DHCP_PID" >/dev/null 2>&1 || true
+    fi
+    if [ "${FIREWALL_ADDED:-0}" = 1 ]; then
+        as_root firewall-cmd --zone=trusted --remove-interface="$AP_IFACE" >/dev/null 2>&1 || true
+        case "$FIREWALL_ZONE" in
+            ''|'no zone'|trusted) ;;
+            *) as_root firewall-cmd --zone="$FIREWALL_ZONE" --add-interface="$AP_IFACE" >/dev/null 2>&1 || true ;;
+        esac
     fi
     if [ "${CREATED_AP:-0}" = 1 ]; then
         as_root ip addr del 10.42.0.1/24 dev "$AP_IFACE" >/dev/null 2>&1 || true
@@ -225,6 +249,10 @@ if [ "$WPA3_ONLY" = 1 ]; then
     KEY_MGMT='WPA-EAP-SHA256'
     PMF=${WIFI_EAP_PMF:-2}
     SECURITY='WPA3-Enterprise only (WPA-EAP-SHA256)'
+elif [ "$WPA2_ONLY" = 1 ]; then
+    KEY_MGMT='WPA-EAP'
+    PMF=${WIFI_EAP_PMF:-0}
+    SECURITY='WPA2-Enterprise only (WPA-EAP)'
 else
     KEY_MGMT='WPA-EAP WPA-EAP-SHA256'
     PMF=${WIFI_EAP_PMF:-1}
@@ -272,6 +300,17 @@ if command -v nmcli >/dev/null 2>&1; then
 fi
 # hostapd brings the AP interface up; some drivers refuse an early ip link set up.
 as_root ip addr replace 10.42.0.1/24 dev "$AP_IFACE"
+
+# firewalld can otherwise drop the clients' DHCP broadcasts before dnsmasq sees them.
+if command -v firewall-cmd >/dev/null 2>&1 && firewall-cmd --state >/dev/null 2>&1; then
+    FIREWALL_ZONE=$(firewall-cmd --get-zone-of-interface="$AP_IFACE" 2>/dev/null || true)
+    case "$FIREWALL_ZONE" in
+        trusted) ;;
+        *)
+            as_root firewall-cmd --zone=trusted --add-interface="$AP_IFACE" >/dev/null 2>&1 && FIREWALL_ADDED=1 || true
+            ;;
+    esac
+fi
 
 DHCP_PID=
 DHCP_DEBUG=

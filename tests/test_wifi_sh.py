@@ -3,6 +3,7 @@
 import json
 import os
 from pathlib import Path
+import shutil
 import subprocess
 import tempfile
 import unittest
@@ -48,7 +49,7 @@ if 'enable_network' in sys.argv:
     for _id in [a for a in sys.argv[1:] if a.isdigit()]:
         if _id in state.get('disabled',[]):state['disabled'].remove(_id)
 if sys.argv[-1]=='disconnect':state['linked']=False
-if sys.argv[-1]=='status':print('bssid=00:11:22:33:44:55\nssid=Fake\nid=0\nwpa_state=COMPLETED')
+if sys.argv[-1]=='status':print(state.get('wpa_status','bssid=00:11:22:33:44:55\nssid=Fake\nid=0\nwpa_state=COMPLETED'))
 (root/'state').write_text(json.dumps(state))
 '''
 FAKE=r'''#!/usr/bin/env python3
@@ -122,6 +123,8 @@ class WifiHelper(unittest.TestCase):
         for name in ('lipc-get-prop','lipc-set-prop','lipc-hash-prop'):
             p=self.root/name;p.write_text(FAKE);p.chmod(0o755)
         p=self.root/'wpa_cli';p.write_text(FAKE_WPA);p.chmod(0o755)
+        # Run a copy so the helper's .supplicant-wifi marker lands in this temporary tree, not the repo.
+        self.helper=self.root/'wifi.sh';shutil.copyfile(SCRIPT,self.helper)
         # wpa_passphrase prints the passphrase in its comment line, as the real one does; the helper must
         # never let that line reach its own output. It hashes from stdin, so the passphrase is not in argv.
         p=self.root/'wpa_passphrase'
@@ -134,7 +137,8 @@ class WifiHelper(unittest.TestCase):
         self.assertEqual((self.root/'profiles').read_text(),'saved networks must not change')
         self.tmp.cleanup()
     def state(self,**values):(self.root/'state').write_text(json.dumps(values))
-    def run_helper(self,verb,*args,data=None):return subprocess.run(['sh',str(SCRIPT),verb,*args],env=self.env,text=True,input=data,capture_output=True,timeout=5)
+    # The disconnect path can spend about 4.5 s in its own bounded waits; 5 s was too tight under load.
+    def run_helper(self,verb,*args,data=None):return subprocess.run(['sh',str(self.helper),verb,*args],env=self.env,text=True,input=data,capture_output=True,timeout=10)
     def writes(self):return (self.root/'writes').read_text().splitlines() if (self.root/'writes').exists() else []
     def test_status_is_read_only_and_does_not_claim_a_connection(self):
         r=self.run_helper('status');self.assertEqual(r.returncode,0);self.assertEqual(r.stdout,'wireless=0\nenabled=0\nconnected=0\n');self.assertEqual(self.writes(),[])
@@ -236,6 +240,19 @@ class WifiHelper(unittest.TestCase):
             # read as KOReader reads them: an empty hasharray in
             self.assertEqual((self.root/'hash-stdin').read_text().strip(),'{}')
         self.assertEqual(self.writes(),[])
+    def test_current_reads_a_completed_eap_status_in_its_real_spelling(self):
+        # wpa_cli status uses WPA2/IEEE 802.1X (or WPA3/IEEE 802.1X and SAE), never the
+        # configuration token WPA-EAP, so the helper must recognize both when it reads Current.
+        for akm in ('WPA2/IEEE 802.1X','WPA3/IEEE 802.1X','SAE'):
+            self.state(wirelessEnable=1,enable=1,linked=False,current={'essid':'','netid':-1},
+                       wpa_status='bssid=00:11:22:33:44:55\nssid=School\nid=0\nkey_mgmt='+akm+
+'wpa_state=COMPLETED\nip_address=10.42.0.24')
+            (self.root/'.supplicant-wifi').touch()
+            r=self.run_helper('current');self.assertEqual(r.returncode,0,(akm,r.stderr))
+            self.assertEqual(r.stdout,'wireless=1\nenabled=1\nconnected=1\ncurrent='+'School'.encode().hex()+'\n',akm)
+        self.state(wirelessEnable=1,enable=1,linked=False,current={'essid':'','netid':-1},
+                   wpa_status='ssid=School\nkey_mgmt=WPA2/IEEE 802.1X\nwpa_state=COMPLETED\nip_address=0.0.0.0')
+        self.assertEqual(self.run_helper('current').stdout,'wireless=1\nenabled=1\nconnected=0\ncurrent=\n')
     def test_the_network_connected_to_is_named_only_while_connected(self):
         self.state(wirelessEnable=0,enable=0,profiles=self.PROFILES,current={'essid':'Home','netid':1})
         r=self.run_helper('current');self.assertEqual(r.returncode,0)
@@ -376,6 +393,14 @@ class WifiHelper(unittest.TestCase):
         self.assertIn('enable_network 0',cmds)
         self.assertIn('select_network 0',cmds)
         self.assertIn('save_config',cmds)
+        # Exactly the nine commands in the first session: one argument too many makes printf
+        # repeat the block with empty fields, whose set_network ssid "" would clear the profile
+        # after select_network. (A second session follows for save_config.)
+        lines=cmds.splitlines()
+        first=lines[:lines.index('quit')]
+        self.assertEqual(len([l for l in first if l.startswith('set_network ')]),7,cmds)
+        self.assertEqual(len(first),9,cmds)
+        self.assertNotIn('set_network  ssid',cmds)
         # The interactive session must end itself; EOF alone can leave wpa_cli waiting.
         self.assertTrue(cmds.rstrip().endswith('quit'),cmds)
         self.assertEqual(self.writes().count('wpa_cli=add_network'),1)

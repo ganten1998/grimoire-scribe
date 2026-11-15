@@ -7,6 +7,13 @@
 # firewall or boot settings are changed. The caller bounds execution in a child process.
 set -u
 get() { lipc-get-prop "$@" 2>/dev/null; }
+# Set only for an EAP/WPA3 profile made through wpa_cli. It holds no name or secret; it lets
+# status/current read the supplicant when wifid says it is not connected, without changing the
+# behavior of wifid-managed WPA/WPA2 networks.
+case "$0" in
+    */*) supplicant_marker=${0%/*}/.supplicant-wifi ;;
+    *) supplicant_marker=.supplicant-wifi ;;
+esac
 read_radio() {
     wireless=$(get -i com.lab126.cmd wirelessEnable) || return 1
     enabled=$(get -i com.lab126.wifid enable) || return 1
@@ -20,6 +27,11 @@ report() {
     if [ "$wireless:$enabled" = 1:1 ]; then
         cm=$(get -s com.lab126.wifid cmState) || cm=unknown
         case "$cm" in CONNECTED) connected=1;; unknown|'') connected=unknown;; esac
+        # wifid does not own the EAP and WPA3 profiles made through wpa_cli; its cmState can stay
+        # disconnected after the supplicant has completed the 4-way. Read that state too.
+        if [ "$connected" = 0 ] && [ -f "$supplicant_marker" ] && wpa_connected; then
+            connected=1
+        fi
     fi
     printf 'wireless=%s\nenabled=%s\nconnected=%s\n' "$wireless" "$enabled" "$connected"
 }
@@ -126,6 +138,67 @@ quit"
     unset inp wpa_out wpa_lines oks fails
     return 1
 }
+wpa_ready() {
+    wpa_state=$(wpa_cmd status 2>/dev/null) || return 1
+    case "$wpa_state" in
+        *"wpa_state=COMPLETED"*)
+            # wpa_cli status names an EAP AKM "WPA2/IEEE 802.1X" or "WPA3/IEEE 802.1X", not
+            # the network block's "WPA-EAP"; accept both forms, and SAE for WPA3-Personal.
+            case "$wpa_state" in
+                *"key_mgmt=SAE"*|*"key_mgmt=FT-SAE"*|*"key_mgmt=WPA-EAP"*|*"key_mgmt=WPA-EAP-SHA256"*|*"IEEE 802.1X"*)
+                    unset wpa_state
+                    return 0
+                    ;;
+            esac
+            ;;
+    esac
+    unset wpa_state
+    return 1
+}
+# A completed supplicant 4-way is not enough for the sheet: wait until DHCP has an address.
+wpa_connected() {
+    wpa_ready || return 1
+    wpa_state=$(wpa_cmd status 2>/dev/null) || return 1
+    wpa_ip=$(printf '%s\n' "$wpa_state" | sed -n 's/^ip_address=//p' | head -n 1)
+    case "$wpa_ip" in
+        ''|0.0.0.0) unset wpa_state wpa_ip; return 1;;
+    esac
+    unset wpa_state wpa_ip
+    return 0
+}
+# A bounded DHCP client for the supplicant-created EAP/WPA3 profile: wifid starts DHCP only for
+# profiles it creates. Output is discarded; no network name or secret is involved.
+dhcp_client() {
+    for dhcp_candidate in /sbin/udhcpc /usr/sbin/udhcpc /usr/bin/udhcpc /bin/udhcpc \
+                          /sbin/dhcpcd /usr/sbin/dhcpcd /usr/bin/dhcpcd \
+                          /sbin/dhclient /usr/sbin/dhclient /usr/bin/dhclient; do
+        [ -x "$dhcp_candidate" ] || continue
+        case "$dhcp_candidate" in
+            *udhcpc) "$dhcp_candidate" -i wlan0 -b -q -n -t 5 -T 2 >/dev/null 2>&1 ;;
+            *dhcpcd) "$dhcp_candidate" -q -t 15 wlan0 >/dev/null 2>&1 ;;
+            *dhclient) "$dhcp_candidate" -1 -timeout 15 wlan0 >/dev/null 2>&1 ;;
+        esac
+        return 0
+    done
+    if command -v busybox >/dev/null 2>&1; then
+        busybox udhcpc -i wlan0 -b -q -n -t 5 -T 2 >/dev/null 2>&1
+    fi
+}
+# The helper must not wait for the 4-way: the app watches Current after the profile is added.
+# Run this in the background, long enough for the EAP exchange, then obtain an address.
+dhcp_later() {
+    # Never run a DHCP client in a test or on a build host; the Kindle mount says it is the device.
+    [ -d /mnt/us ] || return 0
+    dhcp_i=0
+    while [ "$dhcp_i" -lt 60 ]; do
+        if wpa_ready; then
+            dhcp_client
+            return
+        fi
+        sleep 0.5
+        dhcp_i=$((dhcp_i + 1))
+    done
+}
 # cmState is asynchronous: wifid may take a moment to leave CONNECTED after either request.
 wait_disconnected() {
     i=0
@@ -229,7 +302,19 @@ END {
 # The network connected to, in hex, or nothing (not connected, or not known).
 current() {
     if [ "$connected" = 1 ]; then
-        printf 'current=%s\n' "$(essids currentEssid | sed -n 's/^saved=//p' | head -n 1)"
+        current_hex=$(essids currentEssid | sed -n 's/^saved=//p' | head -n 1)
+        if [ -z "$current_hex" ] && [ -f "$supplicant_marker" ]; then
+            # A supplicant-created profile is not in wifid's currentEssid. Read the name from the
+            # supplicant and print it only as hex, never as text.
+            supplicant_status=$(wpa_cmd status 2>/dev/null) || supplicant_status=
+            supplicant_name=$(printf '%s\n' "$supplicant_status" | sed -n 's/^ssid=//p' | head -n 1)
+            if [ -n "$supplicant_name" ]; then
+                current_hex=$(printf '%s' "$supplicant_name" | od -An -tx1 | tr -d ' \n')
+            fi
+            unset supplicant_status supplicant_name
+        fi
+        printf 'current=%s\n' "$current_hex"
+        unset current_hex
     else
         printf 'current=\n'
     fi
@@ -391,6 +476,9 @@ case "${1:-}" in
             qid=$(q "$identity")
             qpass=$(q "$password")
             qessid=$(q "$essid")
+            # Exactly one argument per placeholder: an extra $nid here makes printf repeat
+            # the whole block with empty fields, and the repeated "set_network $nid ssid \"\""
+            # clears the SSID just after select_network (the 4-way then never gets a 2/4).
             cmds=$(printf 'set_network %s ssid "%s"
 set_network %s key_mgmt %s
 set_network %s eap PEAP
@@ -400,7 +488,7 @@ set_network %s phase2 "auth=MSCHAPV2"
 set_network %s ieee80211w 1
 enable_network %s
 select_network %s
-' "$nid" "$qessid" "$nid" "$kmgmt" "$nid" "$nid" "$qid" "$nid" "$qpass" "$nid" "$nid" "$nid" "$nid" "$nid")
+' "$nid" "$qessid" "$nid" "$kmgmt" "$nid" "$nid" "$qid" "$nid" "$qpass" "$nid" "$nid" "$nid" "$nid")
             if ! printf '%s\n' "$cmds" | wpa_input 9; then
                 printf 'remove_network %s\n' "$nid" | wpa_input 1 || true
                 unset identity password caps qid qpass qessid cmds kmgmt
@@ -408,14 +496,14 @@ select_network %s
             fi
             # Best effort: a supplicant that cannot save still has the live network.
             printf 'save_config\n' | wpa_input 1 || true
-            # Hand the supplicant profile to wifid too: its connection manager runs DHCP and reports
-            # cmState, which the sheet watches. Without this the 4-way handshake finishes but the
-            # device never gets an address.
-            lipc-set-prop -s com.lab126.cmd ensureConnection "wifi:$essid" >/dev/null 2>&1 || true
+            # wifid does not run DHCP for a profile it did not create. Let the supplicant finish the
+            # 4-way, then obtain an address in the background; the app watches Current meanwhile.
+            ( dhcp_later ) </dev/null >/dev/null 2>&1 &
             unset identity password caps qid qpass qessid cmds kmgmt
             report_retry || exit 20
             current
             essids profileData
+            : > "$supplicant_marker" 2>/dev/null || true
             exit 0
         fi
         if [ "$method" = wpa3 ]; then
@@ -450,14 +538,17 @@ select_network %s
             fi
             # Best effort: a supplicant that cannot save still has the live network.
             printf 'save_config\n' | wpa_input 1 || true
-            # As for EAP: wifid must own the connection afterwards so DHCP and cmState follow.
-            lipc-set-prop -s com.lab126.cmd ensureConnection "wifi:$essid" >/dev/null 2>&1 || true
+            # As for EAP: the supplicant owns this profile, so obtain its address here.
+            ( dhcp_later ) </dev/null >/dev/null 2>&1 &
             unset password caps qpass qessid cmds
             report_retry || exit 20
             current
             essids profileData
+            : > "$supplicant_marker" 2>/dev/null || true
             exit 0
         fi
+        # A wifid-managed profile replaces any supplicant-owned EAP/WPA3 profile.
+        rm -f "$supplicant_marker" 2>/dev/null || true
         if [ "$method" = open ]; then
             secured=no; psk=""
         else
@@ -571,6 +662,7 @@ select_network %s
         # down at all, 14 the last read could not be made.
         read_radio || exit 10
         [ "$wireless:$enabled" = 1:1 ] || exit 0
+        rm -f "$supplicant_marker" 2>/dev/null || true
         cm=$(get -s com.lab126.wifid cmState) || exit 11
         if [ "$cm" = CONNECTED ]; then
             cm_mode manual
@@ -641,6 +733,7 @@ select_network %s
         essid=$(essids profileData "$hex")
         [ -n "$essid" ] || exit 3
         radio_on || exit 1
+        rm -f "$supplicant_marker" 2>/dev/null || true
         lipc-set-prop -s com.lab126.cmd ensureConnection "wifi:$essid" >/dev/null 2>&1 || exit 1
         report_retry || exit 1
         ;;
