@@ -163,13 +163,6 @@ fn real_dirs(dir: &str) -> bool {
     ok(dir) && (parent.is_empty() || ok(parent))
 }
 
-/// A file of the cache created afresh, never through a link (O_EXCL after any stale one goes).
-fn create_fresh(path: &str) -> std::io::Result<std::fs::File> {
-    use std::os::unix::fs::OpenOptionsExt;
-    let _ = std::fs::remove_file(path);
-    std::fs::OpenOptions::new().write(true).create_new(true).custom_flags(libc::O_NOFOLLOW | libc::O_CLOEXEC).open(path)
-}
-
 fn page_file(nb: &NotebookInfo, pid: u32) -> String {
     let mut dir = String::new();
     store_notebook_dir(nb.id.as_str(), &mut dir, 700);
@@ -289,7 +282,8 @@ impl PdfCache {
         let path = self.record_path(pid);
         let tmp = format!("{path}.{}.tmp", std::process::id());
         let ok = (|| -> std::io::Result<()> {
-            let mut f = create_fresh(&tmp)?;
+            // (made afresh: whatever stands at the name goes, the entry itself, and is never opened)
+            let mut f = create_fresh_nofollow(&tmp)?;
             f.write_all(head)?;
             f.write_all(z)?;
             f.flush()
@@ -458,7 +452,7 @@ pub fn pdf_cache_sweep_due() {
     if !due || !std::path::Path::new(&root).is_dir() || !real_dirs(&root) {
         return;
     }
-    if create_fresh(&stamp).is_ok() {
+    if create_fresh_nofollow(&stamp).is_ok() {
         prune_in(&root, None, CAP.load(Ordering::Relaxed));
     }
 }
