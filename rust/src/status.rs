@@ -528,7 +528,7 @@ thread_local! {
 
 /// Whether the panel should hold the indicator now: it is on, and the page is in front.
 fn wanted(a: &App) -> bool {
-    a.settings.status_on && (page_in_front(a) || crate::editor::editor_status_preview(a))
+    a.settings.status_on && page_in_front(a)
 }
 
 // ---- the pen, a finger, the shortcut ----
@@ -552,11 +552,17 @@ pub fn status_tapped() -> bool {
     with(|s| s.tapped)
 }
 
-/// Whether the corner must hold its refreshes back: the pen is near, a stroke or another gesture
-/// is in progress, or the driver is in pen mode.
+/// Whether painting the corner must hold its refreshes back: the pen is near, a stroke or another
+/// gesture is in progress, or the driver is in pen mode.
 fn status_busy(a: &App) -> bool {
-    if crate::editor::editor_status_preview(a) {return a.pen_action_down || editor_busy(a);}
     with(|s| s.pen_near) || editor_busy(a) || display_pen_mode_on()
+}
+
+/// Whether taking the corner down must wait: a stroke or another gesture is in progress, or the driver
+/// is in pen mode. The pen merely being near does not hold the take-down back: a sheet opened under it
+/// must not keep the corner over the sheet.
+fn status_taking_down(a: &App) -> bool {
+    editor_busy(a) || display_pen_mode_on()
 }
 
 /// A finger's events, before the screen sees them (it sees them all as ever; the corner only
@@ -755,12 +761,13 @@ pub fn status_save_now(a: &App) {
 
 /// From app_tick, awake: reads the battery now and then and asks for a refresh when the minute or
 /// the battery is not what the panel shows, or when the indicator is on the panel and the page no
-/// longer wants it there (a sheet opened, the screen changed: only its own rect is taken down).
+/// longer wants it there (a sheet opened, the screen changed: only its own rect is taken down, even
+/// with the pen near).
 pub fn status_tick(a: &mut App, now: u32) {
     sys_battery_reap(); // (a reading under way ends, or is stopped, even with the corner off or held back)
     let want = wanted(a);
     let drawn = with(|s| s.drawn);
-    if (!want && rect_is_empty(drawn)) || status_busy(a) {
+    if (!want && rect_is_empty(drawn)) || (want && status_busy(a)) || (!want && status_taking_down(a)) {
         return;
     }
     if !want {
@@ -921,10 +928,10 @@ pub fn status_flush(a: &mut App) {
 }
 
 fn flush_corner(a: &mut App) {
-    if with(|s| s.pending.is_empty()) || status_busy(a) {
+    let on = wanted(a);
+    if with(|s| s.pending.is_empty()) || (on && status_busy(a)) || (!on && status_taking_down(a)) {
         return;
     }
-    let on = wanted(a);
     if !on && rect_is_empty(with(|s| s.drawn)) {
         with(|s| s.pending.clear()); // nothing of it is on the panel: nothing to take down
         return;

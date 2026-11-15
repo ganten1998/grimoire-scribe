@@ -146,7 +146,8 @@ A desktop simulator (SDL3) and an SDL-free headless script runner exist for deve
   is never the pen's hand), a stroke or another gesture is in progress (`editor_busy`), or the driver is in
   pen mode (`display_pen_mode_on`: it stays so past a stroke until a grayscale refresh is due, and
   that refresh waits for the pen's last frame, so a refresh of the corner must not be the one that
-  ends it). A finger tap in the 14 mm corner square, or on the box's place with 4 mm around it (shown or
+  ends it). Taking it down is not held back by the pen merely being near: a sheet opened under the pen
+  must not keep the corner over the sheet. A finger tap in the 14 mm corner square, or on the box's place with 4 mm around it (shown or
   not: `status_hit`), turns it on and off: decided at the lift, with the
   finger down in the zone, on no control (`editor_control_at`: the panel, or a link, but
   not one of your own in the corner; a document link in the corner is a control: D7a, taps follow document links), lifted in the square (or within 5 mm of where it landed) and under 800 ms, whatever the fingertip did between (the path is not asked: a hard press drifts); every decision is one `grimoire.log` line; the screen
