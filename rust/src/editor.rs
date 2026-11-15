@@ -1778,9 +1778,10 @@ pub fn editor_status_changed(a: &mut App) {
     } else if let Some(s) = a.ed.as_deref_mut() { s.view_w = 0; }
 }
 
-/// A read-only live preview of the corner while adjusting it in Display.
+/// A read-only live preview of the corner while adjusting it in Display, while the Display sheet is
+/// the editor's own: Settings' sheets (the Display sheet among them) are not the page, and the corner
+/// is never drawn over them.
 pub fn editor_status_preview(a:&App)->bool {
-    if crate::library::library_status_preview(a) {return true;}
     a.scr==ScreenId::Editor && !crate::library::library_settings_active(a)
         && a.ed.as_deref().is_some_and(|s|s.open && s.dm.open)
 }

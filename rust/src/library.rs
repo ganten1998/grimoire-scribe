@@ -10583,8 +10583,5 @@ pub fn library_keyboard_area(a: &App) -> Option<Rect> {
 pub fn library_settings_active(a:&App)->bool {
     a.scr==ScreenId::Editor && a.lib.as_deref().is_some_and(|s|s.settings_return_editor && !s.settings_painting)
 }
-pub fn library_status_preview(a:&App)->bool {
-    a.scr==ScreenId::Editor && a.lib.as_deref().is_some_and(|s|s.settings_return_editor && s.modal==Modal::Display)
-}
 pub fn library_settings_redraw(a:&mut App) {redraw(a,RefreshMode::Ui);}
 pub fn library_settings_back(a:&mut App) {close_modal(a);}
