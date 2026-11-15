@@ -19,6 +19,8 @@ pub struct WifiStatus {
     pub wireless: bool,
     pub enabled: bool,
     pub connected: Option<bool>,
+    /// an EAP/WPA3-Personal profile created through the supplicant is the active one
+    pub supplicant: bool,
 }
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum WifiAction {
@@ -654,6 +656,7 @@ fn unhex(h: &str) -> Option<Vec<u8>> {
 fn parse(bytes: &[u8]) -> Option<Report> {
     let text = std::str::from_utf8(bytes).ok()?;
     let (mut w, mut e, mut c) = (None, None, None);
+    let mut sup: Option<bool> = None;
     let mut current: Option<Option<Vec<u8>>> = None;
     let mut list: Option<bool> = None;
     let mut saved: Vec<Vec<u8>> = Vec::new();
@@ -668,6 +671,8 @@ fn parse(bytes: &[u8]) -> Option<Report> {
             "connected=0" if c.is_none() => c = Some(Some(false)),
             "connected=1" if c.is_none() => c = Some(Some(true)),
             "connected=unknown" if c.is_none() => c = Some(None),
+            "supplicant=0" if sup.is_none() => sup = Some(false),
+            "supplicant=1" if sup.is_none() => sup = Some(true),
             "list=0" | "list=1" if list.is_none() => list = Some(line == "list=1"),
             "scan=off" if scan.is_none() => scan = Some(ScanReport::Off),
             "scan=ok" if scan.is_none() => scan = Some(ScanReport::List(Vec::new())),
@@ -733,6 +738,7 @@ fn parse(bytes: &[u8]) -> Option<Report> {
             wireless,
             enabled,
             connected,
+            supplicant: sup.unwrap_or(false),
         },
         current,
         saved: list.map(|l| l.then_some(saved)),
@@ -999,6 +1005,10 @@ mod tests {
                 .connected,
             None
         );
+        let supplicant = parse(b"wireless=1\nenabled=1\nconnected=1\nsupplicant=1\n")
+            .unwrap()
+            .status;
+        assert!(supplicant.supplicant);
         for bad in [
             "wireless=0\nenabled=1\nconnected=1\n",
             "wireless=1\nenabled=1\nconnected=0\nwireless=0\n",

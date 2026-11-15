@@ -18,7 +18,7 @@ with (root/'writes').open('a') as f:f.write('wpa_cli='+sys.argv[-1]+'\n')
 with (root/'wpa-argv').open('a') as f:f.write(json.dumps(sys.argv)+'\n')
 if 'get_capability' in sys.argv:
     print(state.get('cap_key_mgmt','WPA-PSK WPA-EAP WPA-EAP-SHA256 SAE'));sys.exit(0)
-if not any(c in sys.argv for c in ('list_networks','remove_network','save_config','disable_network','enable_network','disconnect','status','add_network')):
+if not any(c in sys.argv for c in ('list_networks','remove_network','save_config','disable_network','enable_network','disconnect','status','add_network','scan')):
     # an interactive session: the commands (and any secret in them) arrive on stdin, never in argv
     cmds=sys.stdin.read().splitlines()
     with (root/'wpa-commands').open('a') as f:f.write('\n'.join(cmds)+'\n')
@@ -240,6 +240,24 @@ class WifiHelper(unittest.TestCase):
             # read as KOReader reads them: an empty hasharray in
             self.assertEqual((self.root/'hash-stdin').read_text().strip(),'{}')
         self.assertEqual(self.writes(),[])
+    def test_supplicant_profiles_appear_under_saved_and_can_be_joined_and_forgotten(self):
+        self.state(wirelessEnable=1,enable=1,linked=False,profiles=[],
+                   wpa_networks=[{'id':0,'ssid':'School'}],
+                   wpa_status='ssid=School\nkey_mgmt=WPA2/IEEE 802.1X\nwpa_state=COMPLETED')
+        (self.root/'.supplicant-wifi').touch()
+        r=self.run_helper('networks');self.assertEqual(r.returncode,0,r.stderr)
+        self.assertIn('School',self.saved(r.stdout));self.no_password(r)
+        self.assertTrue((self.root/'.supplicant-profiles').exists(),'the old active marker migrates')
+        (self.root/'wpa-commands').unlink(missing_ok=True)
+        (self.root/'writes').unlink(missing_ok=True)
+        r=self.run_helper('join','School'.encode().hex());self.assertEqual(r.returncode,0,r.stderr)
+        self.assertIn('select_network 0',(self.root/'wpa-commands').read_text())
+        self.assertNotIn('ensureConnection=wifi:School',self.writes())
+        self.assertIn('cmConnMode=manual',self.writes())
+        r=self.run_helper('delete','School');self.assertEqual(r.returncode,0,r.stderr)
+        self.assertEqual([p['ssid'] for p in json.loads((self.root/'state').read_text()).get('wpa_networks',[])],[])
+        self.assertFalse((self.root/'.supplicant-profiles').exists())
+        self.assertFalse((self.root/'.supplicant-wifi').exists())
     def test_current_reads_a_completed_eap_status_in_its_real_spelling(self):
         # wpa_cli status uses WPA2/IEEE 802.1X (or WPA3/IEEE 802.1X and SAE), never the
         # configuration token WPA-EAP, so the helper must recognize both when it reads Current.
@@ -249,10 +267,38 @@ class WifiHelper(unittest.TestCase):
 'wpa_state=COMPLETED\nip_address=10.42.0.24')
             (self.root/'.supplicant-wifi').touch()
             r=self.run_helper('current');self.assertEqual(r.returncode,0,(akm,r.stderr))
-            self.assertEqual(r.stdout,'wireless=1\nenabled=1\nconnected=1\ncurrent='+'School'.encode().hex()+'\n',akm)
+            self.assertEqual(r.stdout,'wireless=1\nenabled=1\nconnected=1\nsupplicant=1\ncurrent='+'School'.encode().hex()+'\n',akm)
+        # The 4-way is the link the sheet watches; an external DHCP client need not have populated
+        # wpa_cli's ip_address for the connection to be real.
         self.state(wirelessEnable=1,enable=1,linked=False,current={'essid':'','netid':-1},
                    wpa_status='ssid=School\nkey_mgmt=WPA2/IEEE 802.1X\nwpa_state=COMPLETED\nip_address=0.0.0.0')
-        self.assertEqual(self.run_helper('current').stdout,'wireless=1\nenabled=1\nconnected=0\ncurrent=\n')
+        self.assertEqual(self.run_helper('current').stdout,'wireless=1\nenabled=1\nconnected=1\nsupplicant=1\ncurrent='+'School'.encode().hex()+'\n')
+    def test_probe_read_keeps_only_event_names_and_numbers(self):
+        raw=(
+            '<3>CTRL-EVENT-DISCONNECTED bssid=aa:bb:cc:dd:ee:ff ssid="School Secret" reason=3 locally_generated=1\n'
+            '<3>CTRL-EVENT-TERMINATING\n'
+            '<3>CTRL-EVENT-SCAN-STARTED\n'
+            '<3>CTRL-EVENT-SSID-TEMP-DISABLED id=0 ssid="School Secret" auth_failures=1 duration=10 reason=WRONG_KEY\n'
+            '<3>CTRL-EVENT-CONNECTED - Connection to aa:bb:cc:dd:ee:ff completed [id=0 id_str="School Secret"]\n'
+            'garbage School Secret\n'
+        )
+        r=self.run_helper('probe-read',data=raw)
+        self.assertEqual(r.returncode,0,r.stderr)
+        self.assertEqual(r.stdout,'')
+        log=(self.root/'.supplicant-events.log').read_text()
+        self.assertIn('wifi: supplicant CTRL-EVENT-DISCONNECTED reason=3 locally_generated=1',log)
+        self.assertIn('wifi: supplicant CTRL-EVENT-TERMINATING',log)
+        self.assertIn('wifi: supplicant CTRL-EVENT-SCAN-STARTED',log)
+        self.assertIn('wifi: supplicant CTRL-EVENT-SSID-TEMP-DISABLED id=0 auth_failures=1 duration=10',log)
+        self.assertIn('wifi: supplicant CTRL-EVENT-CONNECTED id=0',log)
+        self.assertNotIn('School',log);self.assertNotIn('aa:bb:',log);self.assertNotIn('garbage',log)
+    def test_current_prefers_the_supplicant_profile_over_a_stale_wifid_connection(self):
+        # wifid can leave cmState pointing at an old network while the supplicant owns the EAP one.
+        self.state(wirelessEnable=1,enable=1,linked=True,current={'essid':'Old','netid':9},
+                   wpa_status='bssid=00:11:22:33:44:55\nssid=School\nid=0\nkey_mgmt=WPA3/IEEE 802.1X\nwpa_state=COMPLETED\nip_address=10.42.0.24')
+        (self.root/'.supplicant-wifi').touch()
+        r=self.run_helper('current');self.assertEqual(r.returncode,0,r.stderr)
+        self.assertEqual(r.stdout,'wireless=1\nenabled=1\nconnected=1\nsupplicant=1\ncurrent='+'School'.encode().hex()+'\n')
     def test_the_network_connected_to_is_named_only_while_connected(self):
         self.state(wirelessEnable=0,enable=0,profiles=self.PROFILES,current={'essid':'Home','netid':1})
         r=self.run_helper('current');self.assertEqual(r.returncode,0)
@@ -390,20 +436,32 @@ class WifiHelper(unittest.TestCase):
         self.assertIn('set_network 0 password "school secret \\"with quotes\\""',cmds)
         self.assertIn('set_network 0 phase2 "auth=MSCHAPV2"',cmds)
         self.assertIn('set_network 0 ieee80211w 1',cmds)
+        self.assertIn('set_network 0 scan_ssid 1',cmds)
+        # A supplicant background scan can leave the link and use a stale channel list.
+        self.assertIn('set_network 0 bgscan ""',cmds)
         self.assertIn('enable_network 0',cmds)
         self.assertIn('select_network 0',cmds)
         self.assertIn('save_config',cmds)
-        # Exactly the nine commands in the first session: one argument too many makes printf
+        # No separate wildcard scan: it can land after the 4-way and make the client deauth.
+        self.assertNotIn('wpa_cli=scan',self.writes())
+        # Exactly the ten commands in the first session: one argument too many makes printf
         # repeat the block with empty fields, whose set_network ssid "" would clear the profile
         # after select_network. (A second session follows for save_config.)
-        lines=cmds.splitlines()
+        main=cmds[cmds.index('set_network 0 ssid'):]
+        lines=main.splitlines()
         first=lines[:lines.index('quit')]
-        self.assertEqual(len([l for l in first if l.startswith('set_network ')]),7,cmds)
-        self.assertEqual(len(first),9,cmds)
+        self.assertEqual(len([l for l in first if l.startswith('set_network ')]),8,cmds)
+        self.assertEqual(len(first),10,cmds)
         self.assertNotIn('set_network  ssid',cmds)
         # The interactive session must end itself; EOF alone can leave wpa_cli waiting.
         self.assertTrue(cmds.rstrip().endswith('quit'),cmds)
         self.assertEqual(self.writes().count('wpa_cli=add_network'),1)
+        # wifid's automatic manager must not rejoin its own profile over the EAP one. radio_on sets
+        # automatic mode first; the manual write must come after it and nothing may undo it.
+        writes=self.writes()
+        self.assertIn('cmConnMode=manual',writes)
+        self.assertNotIn('cmConnMode=auto',writes[writes.index('cmConnMode=manual')+1:])
+        self.assertTrue((self.root/'.supplicant-wifi').exists())
         for text in (r.stdout,r.stderr):
             self.assertNotIn(user,text);self.assertNotIn(pw,text)
         argv=(self.root/'wpa-argv').read_text()
@@ -421,6 +479,7 @@ class WifiHelper(unittest.TestCase):
         self.assertIn('set_network 0 key_mgmt WPA-EAP\n',cmds)
         self.assertNotIn('WPA-EAP-SHA256',cmds)
         self.assertIn('set_network 0 ieee80211w 1',cmds)
+        self.assertIn('cmConnMode=manual',self.writes())
     def test_add_wpa3_sends_the_passphrase_only_on_stdin_and_uses_sae(self):
         # The fake prints the real interactive form ("> OK"), which the helper must count.
         self.state(wirelessEnable=1,enable=1,profiles=self.PROFILES)
@@ -433,9 +492,14 @@ class WifiHelper(unittest.TestCase):
         # SAE needs the passphrase itself, not the PSK wpa_passphrase derives from it.
         self.assertIn('set_network 0 psk "correct horse wifi"',cmds)
         self.assertIn('set_network 0 ieee80211w 2',cmds)
+        self.assertIn('set_network 0 scan_ssid 1',cmds)
+        self.assertIn('set_network 0 bgscan ""',cmds)
+        self.assertNotIn('wpa_cli=scan',self.writes())
         self.assertIn('enable_network 0',cmds)
         self.assertIn('select_network 0',cmds)
         self.assertIn('save_config',cmds)
+        self.assertIn('cmConnMode=manual',self.writes())
+        self.assertTrue((self.root/'.supplicant-wifi').exists())
         self.assertFalse((self.root/'create-stdin').exists(),'WPA3 never goes through wifid createProfile')
         for text in (r.stdout,r.stderr):
             self.assertNotIn(pw,text)
@@ -460,6 +524,8 @@ class WifiHelper(unittest.TestCase):
         self.state(wirelessEnable=1,enable=1,wpa_fail_command='set_network 0 password')
         r=self.run_helper('add','School','eap',data='student@example.edu\nsecret\n')
         self.assertEqual(r.returncode,27)
+        self.assertIn('cmConnMode=manual',self.writes())
+        self.assertIn('cmConnMode=auto',self.writes())
         self.assertNotIn('student@example.edu',r.stdout);self.assertNotIn('secret',r.stdout)
         # Nothing invalid reaches the supplicant at all.
         (self.root/'wpa-commands').unlink(missing_ok=True)

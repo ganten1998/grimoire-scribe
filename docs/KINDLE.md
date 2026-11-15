@@ -1075,18 +1075,24 @@ a password is typed on the keyboard's masked page and never shown. A WPA2/WPA3-E
 username on the normal keyboard, then the password on the masked one. It uses PEAP with MSCHAPv2 through the
 supplicant's `wpa_cli` control interface, with PMF optional and the SHA-256 AKM offered, so it joins both
 WPA2-Enterprise and WPA3-Enterprise (non-192-bit); both values travel only on stdin, and the profile lives in
-the supplicant rather than wifid's saved list, so it may not appear under Saved
-networks (the sheet still watches it like a switch). `save_config` is best effort. There is no CA-certificate
+the supplicant rather than wifid's saved list; a persistent no-secret marker makes the helper list it
+under Saved too, and a tap selects or removes it through `wpa_cli`. `save_config` is best effort. There is no CA-certificate
 field yet, so PEAP does not validate the school's server certificate; use it only on a network you trust.
 WPA3-Enterprise 192-bit, EAP-TTLS and EAP-TLS are not created. WPA3-Personal uses SAE through `wpa_cli` with
-PMF required; its passphrase reaches the helper only on stdin (SAE needs it, not the PSK).
+PMF required; its passphrase reaches the helper only on stdin (SAE needs it, not the PSK). Both supplicant-owned
+profiles disable the supplicant's background scan, whose learned channel list can otherwise take the link
+off-channel and make it deauthenticate. A bounded `wpa_cli` watcher starts after the completed 4-way, detached in its own session, and appends
+sanitized supplicant events and state snapshots to `.supplicant-events.log` in the app folder. A drop
+shows `CTRL-EVENT-DISCONNECTED` with its numeric reason and whether `CTRL-EVENT-TERMINATING` followed;
+the watcher never records a name, BSSID or credential.
 The keyboard stays over the Wi-Fi page, as it does over the rest of Settings. Saved networks lists the Kindle's
 profiles, the connected one first, eight a page with More; a tap connects (or disconnects, on the connected
 row), and the trash button on a row deletes that profile at once. Disconnect puts wifid's connection manager
 in manual mode (so it does not rejoin the profile at once), asks `cmDisconnect` with the current profile, then  without a name, then asks wpa_supplicant with `wpa_cli … disconnect`; it waits until `cmState` reports the link
   gone, then pins the drop with `wpa_cli disconnect` and disables that network at the supplicant, the radio stays
   on, and a failure re-enables the network, restores automatic mode and says "Could not disconnect." Joining,
-adding or turning the radio on restores automatic mode too. A
+adding a wifid-managed profile, or turning the radio on restores automatic mode; an EAP or WPA3 supplicant
+profile leaves the manager manual while it owns the link. A
 quiet scan runs every 20 s while Nearby
 is idle: the list stays as it is, and only names that joined or left change; a Rescan still starts a fresh
 list. A tap on a network or another control cancels a scan already running and acts at once, so scanning
@@ -1149,7 +1155,8 @@ to `createProfile`; forgetting is `deleteProfile <essid>` on older firmware, or
 passphrase copy after deriving the PSK, the helper wipes what it receives, and neither is printed, logged or kept.
 An enterprise add's credentials go from Grimoire to the helper on stdin and then to `wpa_cli` on its stdin;
 the helper quotes them for its parser and never prints or logs them. The profile is the supplicant's, not one
-wifid lists in profileData, so the sheet does not expect it there; `save_config` is best effort. There is no
+wifid lists in profileData; the helper lists it under Saved and rejoins or removes it through `wpa_cli`
+without exposing its name in a command argument. `save_config` is best effort. There is no
 CA-certificate choice yet, so PEAP's server certificate is not validated; the WPA2-Enterprise path is for a
 trusted school network until that ships.
 Grimoire does not log network names (grimoire.log goes to public bug reports). The lipc-hash-prop output

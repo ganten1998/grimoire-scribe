@@ -101,13 +101,13 @@ tap 1637 2182
 tap 223 2182
 tap 930 1240
 wait 200
-pen down 300 1300 0.6
-pen move 600 1320 0.6
-pen move 900 1340 0.6
+pen down 300 1000 0.6
+pen move 600 1020 0.6
+pen move 900 1040 0.6
 expect display.ink is 1
 expect display.pen_mode is 0
 expect display.last_fast is ink
-pen up 900 1340
+pen up 900 1040
 wait 100
 expect display.ink is 0
 expect screen is calib

@@ -1806,7 +1806,8 @@ a masked password, or WPA2/WPA3-Enterprise with a username and masked password. 
 PEAP/MSCHAPv2 through `wpa_cli` (credentials on stdin), with PMF optional and the SHA-256 AKM offered, so it
 joins WPA2-Enterprise and WPA3-Enterprise (non-192-bit); the profile lives in the supplicant, not Saved
 networks, and `save_config` is best effort. WPA3-Personal uses SAE through `wpa_cli`, with PMF required and its
-passphrase on stdin. WEP, OWE, WPA3-Enterprise 192-bit, EAP-TTLS and EAP-TLS stay out. No CA-certificate choice
+passphrase on stdin. Both disable the supplicant's background scan, whose learned channel list can take the link
+off-channel. WEP, OWE, WPA3-Enterprise 192-bit, EAP-TTLS and EAP-TLS stay out. No CA-certificate choice
 ships yet, so PEAP does not validate the school's certificate.
 
 - **Where.** A Wi-Fi row in Settings opens a full-page sheet drawn as its other submenus are. The status line

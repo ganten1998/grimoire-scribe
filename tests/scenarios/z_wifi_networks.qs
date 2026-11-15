@@ -4,7 +4,7 @@
 # env: GRIMOIRE_CHECK_FIT=1
 # Settings > Wi-Fi (2.1.0-beta.2): nearby networks first (the sheet scans as soon as the radio is on),
 # with Rescan, Other... and Saved networks above them. The scenario helper (tests/fixtures/wifi/helper.sh)
-# has nine saved networks, listed only while the radio is on, and Far away refusing a switch.
+# has fifteen saved networks, listed only while the radio is on, and Far away refusing a switch.
 # make l10n-check runs it in every language and style, for the fit check.
 wait 200
 tap 1535 95
@@ -29,7 +29,7 @@ shot 02-off
 tap library wifi.radio
 wait 800
 expect wifi.state is connected
-expect wifi.saved is 9
+expect wifi.saved is 15
 expect wifi.current is Home
 expect wifi.scanning is 0
 expect wifi.scan.failed is 0
@@ -43,7 +43,7 @@ expect wifi.near is 5
 # The unsaved Open network is added with no password.
 tap library wifi.near.5
 wait 800
-expect wifi.saved is 10
+expect wifi.saved is 16
 expect wifi.current is Open
 shot 03b-added
 # Saved networks: the trash button at the right of the first row forgets the Open network just added.
@@ -52,7 +52,7 @@ wait 300
 shot 03c-saved
 tap library wifi.delete.1
 wait 800
-expect wifi.saved is 9
+expect wifi.saved is 15
 expect wifi.current is Home
 shot 03d-forgotten
 # A tap on the second row (Studio 5 GHz) switches to it: Connecting to..., then connected once a read says so.
@@ -80,11 +80,11 @@ wait 200
 shot 05-switched-sideways
 rotate 0
 wait 200
-# The second page, with Far away, which refuses: Could not connect to Far away.
-tap library wifi.more
+# The saved list scrolls: drag it up to Far away, which refuses: Could not connect to Far away.
+drag touch 930 1700 930 850 6
 wait 100
-shot 06-page-2
-tap library wifi.net.1
+shot 06-scrolled
+tap library wifi.net.15
 wait 600
 expect wifi.join is failed
 expect wifi.current is Studio 5 GHz
@@ -135,7 +135,7 @@ tap 1382 1725
 shot 11-other-password
 tap 1643 2365
 wait 800
-expect wifi.saved is 10
+expect wifi.saved is 16
 expect wifi.current is hidden
 shot 12-other-added
 tap library wifi.radio

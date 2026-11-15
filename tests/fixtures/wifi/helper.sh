@@ -1,7 +1,8 @@
 #!/bin/sh
 # Scenario-only radio and saved networks, private to the synthetic data root (kindle/app/wifi.sh's
-# verbs and report). Nine saved networks, two pages of Settings > Wi-Fi: Home, Studio 5 GHz, Café Lumière,
-# 猫の家, a name of 32 bytes, Library guest, Phone hotspot, Train Wi-Fi and Far away, which refuses a switch.
+# verbs and report). Fifteen saved networks, all in Settings > Wi-Fi (the list scrolls when they do not
+# fit): Home, Studio 5 GHz, Café Lumière, 猫の家, a name of 32 bytes, Library guest, Phone hotspot,
+# Train Wi-Fi, Guest 1 to Guest 6 and Far away, which refuses a switch.
 # Like wifid perhaps, it lists them only while the radio is on; on, it is connected to Home until a switch.
 set -eu
 file=$GRIMOIRE_ROOT/wifi-state
@@ -11,7 +12,8 @@ state=$(cat "$file" 2>/dev/null || echo 0)
 linked=$(cat "$GRIMOIRE_ROOT/wifi-connected" 2>/dev/null || echo "$state")
 saved='486f6d65 53747564696f20352047487a 436166c3a9204c756d69c3a87265 e78cabe381aee5aeb6
 5570737461697273206f666669636520657874656e6465722035472032303234 4c696272617279206775657374
-50686f6e6520686f7473706f74 547261696e2057692d4669 4661722061776179'
+50686f6e6520686f7473706f74 547261696e2057692d4669 47756573742031 47756573742032 47756573742033
+47756573742034 47756573742035 47756573742036 4661722061776179'
 case "$1" in
     on) state=1; linked=1; echo "$state" > "$file"; echo "$linked" > "$GRIMOIRE_ROOT/wifi-connected";;
     off) state=0; linked=0; echo "$state" > "$file"; echo "$linked" > "$GRIMOIRE_ROOT/wifi-connected";;

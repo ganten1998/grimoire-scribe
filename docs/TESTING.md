@@ -2350,8 +2350,8 @@ supplicant lacks it), and its profile need not be in wifid's list; disconnect ke
 tests (reports fail closed; a switch's states, its hex argument, exit during a switch; add's stdin and delete's
 name; a quiet scan keeps order and only adds/removes names; a change cancels a running scan; an Add failure
 is named) and `tests/scenarios/z_wifi_networks.qs` (the sheet from the scenario helper: the automatic scan,
-Rescan, add Open, the row's trash, switch, disconnect, reconnect, refuse, and Other... with a hidden WPA/WPA2
-password; also run in every language and style by make l10n-check). PSK add/delete were checked on the owner's
+Rescan, add Open, the row's trash, switch, disconnect, reconnect, scroll to Far away and refuse, and Other...
+with a hidden WPA/WPA2 password; also run in every language and style by make l10n-check). PSK add/delete were checked on the owner's
 Scribe; EAP and WPA3 are not yet checked on a device.
 
 **Probes first** (read only; the maintainer runs them over SSH with the owner's OK). Run
@@ -2390,8 +2390,9 @@ turn Wi-Fi on first when it does not).
    username, then the password on the masked keyboard. The helper offers the SHA-256 AKM with PMF optional, so
    the same profile joins WPA2-Enterprise and WPA3-Enterprise (non-192-bit; hostapd `wpa_key_mgmt=WPA-EAP-SHA256`,
    `ieee80211w=2`). The network connects and is watched like a switch; the log names no username or password.
-   Without wpa_cli the helper exits 26; a supplicant refusal, 27. The profile may not appear in Saved: it is the
-   supplicant's, not wifid's, and that is expected. WPA3-Enterprise 192-bit is not created: it needs EAP-TLS.
+   Without wpa_cli the helper exits 26; a supplicant refusal, 27. The profile appears in Saved; tapping it
+   rejoins it through `wpa_cli`, and its trash button removes both the supplicant network and the marker.
+   WPA3-Enterprise 192-bit is not created: it needs EAP-TLS.
    For a local test AP, `make wifieap` starts hostapd on a second virtual interface on this computer's
    current Wi-Fi channel using WPA2/WPA3-Enterprise (`WPA-EAP` and `WPA-EAP-SHA256`, PMF optional),
    SSID `Grimoire-Test-EAP`, identity `student` and password `test-password`; `WIFI_EAP_WPA3_ONLY=1`
@@ -2401,7 +2402,8 @@ turn Wi-Fi on first when it does not).
    trash: that profile leaves the Kindle's list at once, with no question; the Kindle's own Wi-Fi menu agrees.
    If the delete fails, the status says "Could not forget the network." (not the generic read error) and the
    `wifi:` log line names the helper's exit: 21 the radio, 23 no read came back, 24 no netid could be
-   read, 25 wifid still had the profile after the netid write.
+   read, 25 wifid still had the profile after the netid write. The list scrolls by dragging; there is no
+   More networks row.
 6. Tap another saved network that is in range: "Connecting to <it>..." and then "Connected to <it>" with its
    row filled, within about 10 seconds. Share's address is the new network's; Live view pairs on it.
 7. Tap the filled connected row again: it disconnects with the radio still on and its row no longer filled.
