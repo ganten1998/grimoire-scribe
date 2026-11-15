@@ -1448,14 +1448,12 @@ fn draw_panel(a: &mut App) {
     }
     s.panel_cells.push(rp);
     y += btn_h() + gap();
-    let mut lab = String::new();
     // (a page the Links bar is looking at shows its own number)
-    csnprintf!(&mut lab, 32, "%d / %d", if s.peek.active { s.peek.index } else { s.index } + 1, s.nb.npages());
-    let lr = Rect { x: x - ui_px(6.0), y, w: w + ui_px(12.0), h: label_h() ,
+    let lab = panel_page_label(if s.peek.active { s.peek.index } else { s.index } + 1, s.nb.npages(), g_fit());
+    let lr = Rect { x: x - ui_px(6.0), y, w: panel_chip_w(), h: label_h() ,
     };
     ui_frame(c, lr, ui_px(10.0), 0, false, ui_px(2.0)); // a tappable chip: opens Pages
-    let fit = g_fit();
-    font_draw_centered(c, FontFace::Bold, ui_small_size() * (if fit.scale < 1.0 { fit.scale } else { 1.0 }), lr, &lab, 0,
+    font_draw_centered(c, FontFace::Bold, panel_chip_px(g_fit()), lr, &lab, 0,
     );
     hits_add(&mut s.hits, lr, P_PAGES, 0);
     s.panel_cells.push(lr);
@@ -11648,6 +11646,10 @@ pub fn editor_probe(a: &mut App, key: &str, out: &mut String, cap: usize) -> i32
         csnprintf!(out, cap, "%d", if s.open { s.hist.len() as i32 } else { 0 });
     } else if key == "pages" {
         csnprintf!(out, cap, "%d", if s.open { s.nb.npages() } else { 0 });
+    } else if key == "page_chip" {
+        // The panel's page chip as drawn now (draw_panel), empty with no notebook open.
+        let page = if s.peek.active { s.peek.index } else { s.index } + 1;
+        csnprintf!(out, cap, "%s", &if s.open { panel_page_label(page, s.nb.npages(), g_fit()) } else { String::new() });
     } else if key == "notebook_last_page" {
         // (app_probe's "notebook.last_page": what a reopen lands on, kept apart from the open page)
         csnprintf!(out, cap, "%d", if s.open { s.nb.last_page + 1 } else { 0 });

@@ -762,10 +762,6 @@ Decided by the lane B3 design (docs/beta2/PIXEL-LASSO.md, 2026-11-03) and its bu
 
 ## In progress
 
-- **The panel's page count does not fit four-digit pages** (b3-padd2 agent, 2026-11-03, found by the fit check):
-  "1995 / 2000" needs 162 px and the toolbar's page chip has 112, so it is cut short in a notebook of 1000 pages
-  or more (z_pages_add_6_toolbar_limit stays on page 1 for that reason). A smaller size for long counts, or the
-  current page alone, would fit.
 - **Pages: the count pad's - and + do not repeat when held** (b3-padd agent, 2026-11-03; the brief made it
   optional): one step per tap, and Up and Down on a keyboard repeat only as the keyboard sends repeats
   (Grimoire ignores key repeats).
@@ -1050,6 +1046,17 @@ items of Document links. Left:
 
 ## Done
 
+- 2.1.1 (unreleased, 119-editor-page-count-pad; issue #119): three items that touch the editor.
+  - The panel's page chip fits any count (In progress since 2026-11-03, found by the fit check): it shows the
+    page and the count where they fit it at its size, and the page alone where they do not (panel.rs,
+    panel_page_label). Four-digit counts never fit whole ("1995 / 2000" needs 142 to 172 px by the font upright,
+    the chip has 112), and three-digit ones did not either from some page in every font upright (in Gothic from
+    "20 / 200"): all were cut short with "...". Of the two ways this entry offered, the page alone keeps the
+    chip's size, readable at arm's length on the panel; the whole count made small enough to fit would be two
+    thirds to three quarters of it at "9999 / 9999". A count that fits is drawn as before. test_panel checks
+    counts up to 9999 / 9999 on both Scribes' screens, upright and sideways, with 0 to 3 pens pinned, in Gothic
+    and in Classic with each font; z_pages_add_6_toolbar_limit (now on the last page too, upright and sideways)
+    and z_pages_add_7_toolbar_full (now with the fit check) read the chip (`editor.page_chip`, docs/SIM.md).
 - 2.1.1 (unreleased, 84-test-flakes; issues #84, #85 and #86, found on the day 2.1.0 was released, and #93, the
   day after): four checks no longer depend on the speed of the machine or on an earlier run.
   - `z_map_all_2_big` and `z_map_all_3_reading` wait for the library index and the Graph themselves (`waitfor`),

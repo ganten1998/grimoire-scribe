@@ -6,8 +6,9 @@
 # The toolbar's count pad at the limit, in Spanish (owner, 2026-11-03): a notebook holds 2000 pages, so the pad
 # takes at most what is left, and a digit past it leaves the count there, which shows how many fit (no toast), as
 # the Pages view's pad does. Once full, the new-pages key (the + held opens the pad through the same path) says so
-# instead of opening the pad, and so does the Pages view's New page tapped. (Page 1 here: the panel's page count
-# "1995 / 2000" does not fit its chip, docs/BACKLOG.md.) Then a small notebook: the toolbar's pad in the singular, and New page tapped
+# instead of opening the pad, and so does the Pages view's New page tapped. The panel's page chip shows the page
+# and the count where they fit, and the page alone where they do not (#119): "1 / 2000", then "2000" on the last
+# page, upright and sideways. Then a small notebook: the toolbar's pad in the singular, and New page tapped
 # in the Pages view, which stays, the tile marked new. Every text fits without being cut short.
 wait 300
 tap library folder.Void
@@ -30,8 +31,21 @@ wait 300
 expect editor.addpad is 0
 expect editor.pages is 2000
 expect editor.page is 1
+expect editor.page_chip is 1 / 2000
 expect toast is
 shot 02-added
+# The last page: four digits, the page alone on the chip, upright and sideways
+key 37 0
+wait 300
+expect editor.page is 2000
+expect editor.page_chip is 2000
+rotate 1
+wait 300
+expect editor.page_chip is 2000
+shot 02b-last-sideways
+rotate 0
+wait 300
+expect editor.page_chip is 2000
 # Full: the new-pages key says so and opens no pad
 key 49 0
 wait 200

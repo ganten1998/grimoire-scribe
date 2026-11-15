@@ -174,10 +174,45 @@ fn picker_step_walks_the_nine() {
     check!(picker_step(&s, true) == TOOL_MARKER && picker_step(&s, false) == TOOL_BALLPOINT);
 }
 
+// The page chip's text (#119), on both Scribes' screens upright and sideways, with 0 to 3 pens pinned, in Gothic
+// and in Classic with each font of Settings > Font: it always fits the chip, as the page and the count where
+// they fit (every count under 100 pages), else as the page alone, the widest of which, 9999, fits too. Digits
+// only: no language changes it.
+fn the_page_chip_fits_every_count() {
+    check!(font_init() == 0);
+    let styles = [(UiTheme::Gothic, 0), (UiTheme::Classic, 0), (UiTheme::Classic, 1), (UiTheme::Classic, 2), (UiTheme::Classic, 3)];
+    check!(styles.len() == 1 + FONT_FAMILIES.len());
+    for (theme, family) in styles {
+        ui_set_theme(theme);
+        font_set_family(family);
+        for h in [2480, 1860, 2648, 1986] {
+            for pins in 0..=PANEL_PINS_MAX as i32 {
+                let f = panel_fit(h, pins);
+                for (page, n) in [(1, 1), (9, 99), (99, 99), (10, 100), (100, 150), (999, 999), (1, 1000), (1995, 2000), (2000, 2000), (9999, 9999)] {
+                    let lab = panel_page_label(page, n, f);
+                    let w = font_measure(FontFace::Bold, panel_chip_px(f), &lab);
+                    if w > panel_chip_w() || (lab != format!("{page} / {n}") && lab != page.to_string()) {
+                        eprintln!("  style {:?}/{family} at {h} px with {pins} pins: \"{lab}\" is {w} px", theme as i32);
+                    }
+                    check!(w <= panel_chip_w());
+                    check!(lab == format!("{page} / {n}") || lab == page.to_string());
+                }
+                check!(panel_page_label(99, 99, f) == "99 / 99");
+                check!(panel_page_label(1995, 2000, f) == "1995");
+                check!(panel_page_label(9999, 9999, f) == "9999");
+            }
+        }
+    }
+    check!(panel_chip_w() == ui_px(112.0));
+    font_set_family(0);
+    ui_set_theme(UiTheme::Gothic);
+}
+
 #[test]
 fn test_panel() {
     ui_init(300.0);
     run!(fits_both_scribes_both_ways);
+    run!(the_page_chip_fits_every_count);
     run!(shrinks_to_fit_a_short_screen);
     run!(three_pins_roundtrip_and_a_fourth_is_refused);
     run!(next_tool_walks_the_panels_pens);

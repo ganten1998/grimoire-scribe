@@ -51,6 +51,30 @@ pub fn panel_head_h(f: PanelFit) -> i32 {
 pub fn panel_label_h(f: PanelFit) -> i32 {
     ui_px(60.0 * f.scale)
 }
+/// The page chip under previous (it opens Pages): the buttons' width (the panel's, less 14 px each side) and
+/// 6 px more each side.
+#[inline]
+pub fn panel_chip_w() -> i32 {
+    panel_w() - ui_px(28.0) + ui_px(12.0)
+}
+/// The page chip's text size: the small size, smaller with the panel where panel_fit shrinks it.
+#[inline]
+pub fn panel_chip_px(f: PanelFit) -> f32 {
+    ui_small_size() * if f.scale < 1.0 { f.scale } else { 1.0 }
+}
+/// The page chip's text for page `page` (from 1) of `npages`: "12 / 40", or the page alone, "1995", where that
+/// does not fit the chip at its size (#119: four-digit counts in every font, and three-digit ones in most). The
+/// page keeps the chip's size, readable at arm's length, where the whole count made small enough to fit would
+/// be two thirds to three quarters of it at "9999 / 9999"; Pages, which the chip opens, says the count in its
+/// title.
+pub fn panel_page_label(page: i32, npages: i32, f: PanelFit) -> String {
+    let mut lab = String::new();
+    csnprintf!(&mut lab, 32, "%d / %d", page, npages);
+    if font_measure(FontFace::Bold, panel_chip_px(f), &lab) > panel_chip_w() {
+        csnprintf!(&mut lab, 32, "%d", page);
+    }
+    lab
+}
 
 /// The header, the buttons (pins of them pinned pens) each with the gap under it, the page label,
 /// the 3 dividers. Must match draw_panel.

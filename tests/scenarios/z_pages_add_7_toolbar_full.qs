@@ -1,18 +1,20 @@
 # rust-only
 # generate: tests/add_pages_fixture.py
+# env: GRIMOIRE_CHECK_FIT=1
 # settings: shortcuts_enabled=1
 # copy: tests/fixtures/new-pages-key .
 # The toolbar's + at the limit (owner, 2026-11-03): held on the last page of a notebook with room for five, the
 # pad takes at most five; once the notebook is full, the + held on its last page says so and opens no pad (its
 # press let go), and a plain tap on it says it could not add a page, as before. Opening one of the batch's pages
-# (going to it) makes it a page in use: the Pages view no longer offers the batch's Undo. (No fit check here: the
-# panel's page count "1995 / 2000" does not fit its chip, docs/BACKLOG.md.)
+# (going to it) makes it a page in use: the Pages view no longer offers the batch's Undo. The panel's page chip
+# shows the page alone, as four-digit counts do not fit it whole (#119).
 wait 300
 tap library folder.Void
 tap library notebook.F
 key 37 0
 wait 300
 expect editor.page is 1995
+expect editor.page_chip is 1995
 touch down 1768 1330
 wait 700
 touch up 1768 1330
