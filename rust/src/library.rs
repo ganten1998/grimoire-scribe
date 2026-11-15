@@ -4804,7 +4804,13 @@ fn draw_settings(a: &mut App) {
         0,
     );
     let list_top = top + ui_px(86.0);
-    let shown: Vec<&settingsmenu::Item> = cat.items.iter().filter(|it| it.show.visible(classic)).collect();
+    // (what the platform does not leave to Grimoire has no row here: light.rs, Services)
+    let services = sys_services();
+    let shown: Vec<&settingsmenu::Item> = cat
+        .items
+        .iter()
+        .filter(|it| it.show.visible(classic, services))
+        .collect();
     let list_area = Rect::new(content_x, list_top, content_w, content_bottom - list_top - ui_px(20.0));
     let list = ui_row_page(list_area, shown.len(), s.settings_rows_page, ui_px(118.0), ui_px(90.0));
     s.settings_rows_page = list.page;
@@ -4813,6 +4819,14 @@ fn draw_settings(a: &mut App) {
     for (r, item) in list.rows.iter().zip(shown[list.first..list.first + list.rows.len()].iter()) {
         let label: &str = match item.label {
             settingsmenu::Label::Text(msgid) => tr(msgid),
+            settingsmenu::Label::Display => {
+                // (without a front light the row is called what its sheet is: no brightness or warmth to name)
+                tr(if light_available() {
+                    settingsmenu::DISPLAY_WITH_LIGHT
+                } else {
+                    settingsmenu::DISPLAY_NO_LIGHT
+                })
+            }
             settingsmenu::Label::Style => tr(if classic {
                 settingsmenu::STYLE_CLASSIC
             } else {
@@ -9860,7 +9874,7 @@ mod tests {
                     let want: Vec<i32> = cat
                         .items
                         .iter()
-                        .filter(|it| it.show.visible(theme == UiTheme::Classic))
+                        .filter(|it| it.show.visible(theme == UiTheme::Classic, sys_services()))
                         .map(|it| setting_hit(it.id))
                         .collect();
                     let mut got: Vec<i32> = Vec::new();

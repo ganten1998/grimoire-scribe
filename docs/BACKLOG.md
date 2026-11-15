@@ -4,18 +4,20 @@ Work that was decided, deferred or found but not done yet. Keep this current: wh
 move it to "Done" with the version; when something is deferred, add it here with who decided and
 why. Newest decisions first within each section.
 
-## After the release of 2.1.0-beta.2 (2026-11-12): what waits
+## After the release of 2.1.0 (2026-11-13): what waits
 
-- **nebuff's PRs #49 (a page turn speed-up) and #52 (lasso fixes for #51) are on `main` with 2.1.0-beta.2 since
-  #57, but in no release yet.** Try them on a Scribe before the next one: page turns at the fitted view no longer
-  flash (every 30th UI refresh does), the last three pages' drawings are kept in memory, and the lasso's lift
-  counts its outline as wear. Issue #60: a jump to the oldest of the kept pages misses it.
-- **Live view's pen-stall check is flaky on CI's macOS runners.** `tests/live_pen_stall.py`, "with the main loop
-  busy, its samples still come at once", measured a raw p90 of 62.8 ms (the 60 ms the test holds the main loop)
-  against its 25 ms limit on the dry run of 2026-11-12 (run 43244209271, first attempt), and 0.4 ms on the next
-  attempt and on the Mac. A busy runner can starve the reader thread. Options: print the p90 and hold a looser
-  bound (as test_pdf_colour_memory.rs does with its per-copy budgets), or measure once more before it fails
-  (issue #56).
+- **Issues open at the release**: #78 (the download check can miss the "preparing" state; pull request #81) and
+  #79 (the colour PDF memory test, by 0.4 MiB on one run; pull request #83) wait for their merge. Found on the
+  release day and fixed since (Done, below): #84 and #86 (scenarios that gave the machine a fixed real time: the
+  Graph of all notebooks' two, and the single side click's) and #85 (the unit tests' scratch folder was never
+  emptied, so a process id that came round again met an earlier run's files); and #93, found the day after (the
+  Find sheet over the Pages view's scenario counted its refreshes across the launch's second repaint). #56 (Live
+  view's pen-stall check) was fixed by #82 (Done, below).
+  nebuff's: #55 (Japanese: the strings still untranslated show in English), and the Settings redesign, #45, #64,
+  #65 and #66.
+- **From 2.1.0-beta.2 into 2.1.0**: nebuff's #49 (page turns at the fitted view without a flash, the last three
+  pages' drawings kept in memory), #52 (lasso fixes for #50 and #51) and #67 (issue #60), which the owner reported
+  checked on 2026-11-13.
 
 ## nebuff's main and Clear page (2.1.0-beta.2, lane M, 2026-11-11): what waits
 
@@ -123,10 +125,108 @@ why. Newest decisions first within each section.
   the file again just before it writes, which leaves a few milliseconds in which a job's note can be lost. Found
   in the fix round, not fixed: moving the prune into the jobs is a change of who owns the file.
 - **Crates**: skrifa is now a direct dependency (your own fonts, L10), pinned to the 0.46.2 hayro brings: no
-  crate is added. Cargo.lock names a second skrifa and read-fonts (glifo's optional dependency), not built; the build
+  crate is added. Cargo.lock names a second skrifa and read-fonts (glifo's, and glifo is vello_cpu's optional text
+  renderer, compiled only with a feature hayro does not ask for), not built: deny.toml bans glifo, so the deny job
+  fails if a build would take it; the build
   has three duplicates (fearless_simd, miniz_oxide, syn), not the plan's five. flate2, smallvec and syn were
   moved to versions published before 2026-11-02 so that every crate is two weeks old at a tag on or after
   2026-11-16 (`tools/check-crate-dates.py --tag-date 2026-11-16` passes).
+
+## Hardening round (2026-11), sandbox: what waits
+
+- **The Scribe check of this round has not run** (docs/TESTING.md, "Hardening round (2026-11), sandbox").
+  No release holds the two filter commits until it has.
+- **The log names a refused call, not its argument.** `made call 240` says the futex rule refused an
+  operation, not which one. If it ever shows on a Scribe, the reporter can be taught to print it.
+- **brk, madvise and mprotect stay on the allow-list as they were.** The Linux test build's allocator uses
+  them; whether the Kindle build's does was not measured. Measure on the Scribe, then narrow by
+  architecture.
+- **The personality value of step 8.** If a Scribe reports `00c00000`, mappings there are executable
+  without being asked so, which the filter's rule does not see: the start of a worker would then clear the
+  flag before its exec. Not built: no test host can show it failing first.
+- **`sandbox::s1` numbers** are unchanged by this round.
+
+## Hardening round (2026-11), invariants: what waits
+
+- **A `<key>.slow` mark outlives its second try.** A font that passes (or is refused) on its second try
+  keeps the mark beside its verdict until the file changes, so a later check of the same key that runs out
+  of time once is "Took too long to read." without a second try. For the fonts work.
+- **The record cap stays a worker's** (4 MiB of record lines each, `RECORDS_MAX_BYTES`). A total across a
+  job's workers was weighed and not built: only a job's first worker comes near the cap, an honest job's
+  lines at the caps come to about 3.6 MiB, and a total would need a count kept in `pdf-import.ini`.
+- **Source comments cite numbered sections of a DESIGN.md** ("DESIGN.md 3.7", "4.3", "section 9": about 40
+  places in rust/, tools/ and the workflow). They are the 2.1 plan's sections; docs/DESIGN.md has headings,
+  not numbers. Not changed: a reader finds the subject by its heading.
+- **A docs-only pull request runs no test**, and a few tests read the documents (docs/TESTING.md, "Tests
+  that read the documents"): a reworded sentence they hold is first caught on the push to main.
+- **The Linux tests of the sandbox's steps have not run on a Scribe** (they need cargo); the steps have, as
+  they were in 2.1.0-beta.2 (S1, and that beta's imports, pictures and fonts). The narrower system-call rules
+  that came after are the entry "The Scribe check of this round has not run", above.
+- **Three sentences outside this round's lines are still loose**, and no test holds them. docs/DESIGN.md, the
+  safe loader, and `sandbox.rs` (`sandbox_line_ok_for`): "`S 1` (the steps are in place)"; a Linux build that
+  does not require the sandbox says `S 1` as soon as it has the steps, also when one failed and was passed
+  over (`pdfwork.rs`'s header has the exact form). `sandbox.rs`, `s1::FONT_JOB_CPU_SECS`: "past it the font
+  is "Took too long to read."", where a first timeout only leaves the font for its second try.
+  docs/TESTING.md, "2.1.0-beta.2, L9", step 7: "see its section at the end" for the fix round's section,
+  which other sections now follow.
+
+## Hardening round (2026-11), import: what waits
+
+- **The Scribe check of this round has not run** (docs/TESTING.md, "Hardening round (2026-11), import"). Its
+  steps 1 to 3 say how long a big PDF takes to read whole; steps 7 and 8 say whether the Scribe's storage gives a
+  file one identity by its name and by an open file, which the scan's look, the import lock and the move to
+  `import/done` all compare (if it did not, every dropped PDF would wait a minute, no import would start, and
+  an imported PDF would stay in `import/` and be read again up to three times). No release holds this round's
+  import commits until those have run.
+- **Confirm Open its notebook with the file record.** In Files, a PDF whose key and size match a notebook's
+  record opens that notebook without reading the file whole; compare the whole file in the background before
+  opening, and drop Import as notebook from that card then.
+- **Carry the file record on the KOReader route.** Open this book in Grimoire finds a book's notebook by its
+  key; let it confirm with the record where one exists.
+- **A pick of a PDF whose key a notebook without a record holds.** Today it says "PDF already imported."; the
+  owner decides whether a pick should import it as a notebook of its own.
+- **A book whose first notebook was deleted.** A notebook made while another holds the key carries the key in
+  its record alone. If the first is then deleted and the book's file is imported again, another notebook still
+  holds the key, so the new one is made that way too, and KOReader's Open this book in Grimoire then starts a
+  notebook of its own. That notebook is KOReader's route's, so it has the bare key and no file record: from
+  then on the key alone decides for every file of that key ("PDF already imported.", and a file of `import/`
+  goes to `done/`), as it does for a notebook made before this round, until that notebook is deleted. The
+  owner decides whether the import should give the bare key (`source=`, `book=`) to a new notebook when no
+  notebook has those two lines (the book's file, imported again, would then be the notebook KOReader opens,
+  with a record); the entry above, on a pick whose key a notebook without a record holds, is the other half
+  of the same question.
+- **The import's whole-file read.** Measured on the Scribe at the owner's check; if its time or its use of
+  memory asks for it, spread it over the slices or release its cached pages as it goes.
+- **Endings without a test.** A file that cannot be read whole (at the start, where it then counts as another
+  file than the record's; in the last slice, where the notebook is made without a record, or the import fails
+  when another notebook holds the key), and the import lock's second round (the name given to another file
+  between the lock and the check): nothing but a failing read, or a race, reaches them. A seam for the tests
+  could, as `pdfimport::sim_before_filing` does for the move to `import/done`.
+- **File an imported PDF by its open file.** The import looks at the PDF's name once more just before the
+  move to `import/done`, and the look and the move are two steps. Where the storage offers a move that names
+  the open file itself, the two become one; else, look at what arrived in `done/` and put back what is not
+  the file that was read.
+- **The record of an import that went on after a stop.** The last slice checks its file's key against the
+  first slice's. Two files of one key, size and time are not told apart there: the pages may be of both, and
+  the record is of the last slice's file (docs/FORMAT.md says the record promises no more). Keeping the first
+  slice's hash in the import's state (`pdf-import.ini`) would tell them apart, at the price of a second
+  whole-file read.
+- **A folder's pictures and a PDF the scan's look leaves.** A PDF that the look finds to be no file the import
+  opens (counted as "no longer files": a folder of `import/` whose name the storage walk refuses, such as one
+  ending in `.sdr`) is never queued, and the folder's pictures still wait for it (`folder_holds_pdfs` knows
+  the names the scan leaves out, not this). They waited before this round too, when the PDF failed at every
+  scan. Give `folder_holds_pdfs` the look's answer for such a folder.
+- **The import's small files and the bounded read.** The marks and an import's state are read through
+  `util::read_file`, which since the storage reads takes plain files only; they have limits of their own when
+  parsed (a mark is 4 KiB at most), not when read. Read them with `util::read_file_max`, and the last slice's
+  `links.part` and `names.part` with it too (today `std::fs::read`, then a size check). The storage reads'
+  list below names the marks as well; the lock file's own open could share `util`'s plain-file open.
+- **The picker's own test of "under import"** compares names without case; on a storage that tells names
+  apart, rows of a folder only spelled like import would show a status.
+- **Picture folders with a line break in their name** are still imported by the picture scan; give
+  `list_names` the same rule as the PDFs' (`pdfimport::name_storable`), with the storage work.
+- **A link at a folder above the import lock** belongs with the storage work: the lock file itself is opened
+  without following a link, the folders above it by their names.
 
 ## The keyboard's caret and text copy and paste (2.1.0-beta.2, last round, lane K): choices for the owner, and what waits
 
@@ -259,9 +359,10 @@ Waits, from the 2.1 plan:
 
 ## Your own fonts (2.1.0-beta.2, lane L10): choices for the owner, and what waits
 
-Built to the 2.1 plan's D30 (Done, below). **Nothing of it has run on a Scribe, and its sandbox steps have not
-run anywhere** (the CI job `sandbox` is their first run): docs/TESTING.md, "2.1.0-beta.2, L10", has the device
-checks. Where the plan did not settle a thing, what the lane chose, for the owner to confirm:
+Built to the 2.1 plan's D30 (Done, below). Its check runs in the real sandbox in the CI job `sandbox`
+(`a_font_is_checked_in_the_real_sandbox`), and fonts were checked and used on the owner's Scribe with
+2.1.0-beta.2's development builds (docs/TESTING.md, "2.1.0-beta.2"); docs/TESTING.md, "2.1.0-beta.2, L10", has
+the device checks. Where the plan did not settle a thing, what the lane chose, for the owner to confirm:
 
 - **The size of text in your font.** The plan's rule as written: capitals as tall as Terminess's, the scale
   kept between 0.85 and 1.25, then lowered until 95 of 100 of Grimoire's strings are no wider than in
@@ -352,8 +453,8 @@ Bold-only letters of a name, a Done on a font that does not load. Left, with wha
   language, but a real font's widths are its own; labels that do not fit end in "...".
 - **Left and Right do not turn the pages of Your fonts** (the sheet's arrows do).
 - **`sandbox::s1::FONT_*`** (20 s slices, 10 min a font, 60 s of CPU a worker, a 30 s watchdog, 64 MiB over the
-  file) are the plan's numbers, placeholders until S1 measures the Scribe; `s1::WORKER_IMAGE` (11 MiB) is now
-  only about 0.9 MiB above the binary's size, which the margins absorb.
+  file) are the plan's numbers, kept: S1 (2026-11-09) measured PDF pages, not a font's check; `s1::WORKER_IMAGE`
+  (11 MiB) is now only about 0.9 MiB above the binary's size, which the margins absorb.
 - **A What's new line** for 2.1.0-beta.2's notes (docs/whatsnew), which the owner writes.
 - **Japanese** for the 15 new strings (nebuff): English shows until then.
 
@@ -661,12 +762,6 @@ Decided by the lane B3 design (docs/beta2/PIXEL-LASSO.md, 2026-11-03) and its bu
 
 ## In progress
 
-- **2.0.0-beta.2** (owner, 2026-11-02; briefs docs/beta2/BRIEFS.md): all four lanes merged into
-  claude/beta2, each reviewed and gated on its own; not on a Kindle yet. Move to... and Copy to
-  notebook... (lane A); lasso Select with Copy, Cut, Delete, Paste and drag, scoped erase strokes and
-  root/clipboard.qpg, linked items copied with their links (lane B, docs/beta2/LASSO-DESIGN.md); backlinks,
-  Graph anchors, broken targets, Back across notebooks (lane C); the macOS CI flakes and the Bluetooth
-  helper stop (lane E); Live view PiP in Firefox 159+. Study: docs/beta2/JAPANESE.md.
 - **The panel's page count does not fit four-digit pages** (b3-padd2 agent, 2026-11-03, found by the fit check):
   "1995 / 2000" needs 162 px and the toolbar's page chip has 112, so it is cut short in a notebook of 1000 pages
   or more (z_pages_add_6_toolbar_limit stays on page 1 for that reason). A smaller size for long counts, or the
@@ -694,15 +789,12 @@ Decided by the lane B3 design (docs/beta2/PIXEL-LASSO.md, 2026-11-03) and its bu
   `~/KindleLab/volume-rc8`): a Kindle-side controller that survives crashes and logs why it stops,
   never holds the power service awake, the Mac mount behaving like a drive (no `._` files, unmounts
   when the Kindle leaves), and a read-only guard on Grimoire's live files while it runs. Install
-  with the owner present: `install_mac.sh`, then `install_usb_daemon.sh` on the Kindle.
+  with the owner present: `install_mac.sh`, then `install_usb_daemon.sh` on the Kindle. The earlier
+  Mac service (`com.ganten.kindle-volume`) was stopped and disabled on 2026-11-13: it holds the one MTP
+  session the Kindle allows and retries every few seconds, so OpenMTP connected only when it won the race
+  (`manage.py start` turns it back on).
 
 ## To investigate
-
-- **z_pages_find_over flakes on GitHub's runner** (the v2.1.0-beta.1 release run 42540001325, shard 6; passed on
-  rerun, and in the dry run of the same commit): line 50 saw `ui 20 1312 1820 1148, ui 0 0 1860 2480` where it
-  wants the first alone, an extra whole-screen Ui present on a slower host. It flaked under Wine's load too
-  (2026-11-07). Find what sends the whole-screen present (a tick racing the Find sheet's step) or let the
-  scenario wait for it with `waitfor`.
 
 - **Parts of the sleep picture left on the screen after a wake** (the owner's Scribe, 2026-11-05: the KOReader
   wallpaper over parts of the panel until a redraw, while the framebuffer, read over ssh, held Grimoire's screen
@@ -754,9 +846,28 @@ Decided by the lane B3 design (docs/beta2/PIXEL-LASSO.md, 2026-11-03) and its bu
   `dist/ld-linux-armhf.so.3 --library-path dist dist/main.bin --daemon` from its folder, so
   `pgrep -f kindle-hid-passthrough` cannot find it and bluetooth.sh now finds Grimoire's copy by its
   folder. Confirm on the device with the helper running: `tr '\0' ' ' < /proc/<pid>/cmdline`.
-- **Other scenarios timed by the real time between their lines.** `GRIMOIRE_SIM_LATE_MS` shows them
-  (`make scenarios SCEN_ENV=GRIMOIRE_SIM_LATE_MS=60`); make check runs only the two that failed on the
-  release runner that way (`LATE_SCENARIOS`). v_gestures_4e_single failed once there too (2.0.0-beta.0).
+- **Other scenarios timed by the real time between their lines.** `GRIMOIRE_SIM_LATE_MS` shows the ones a
+  late wait breaks (`make scenarios SCEN_ENV=GRIMOIRE_SIM_LATE_MS=60`, or 400 as `make scenarios-late` runs
+  its list; make check runs only that list, `LATE_SCENARIOS`). It does not show the ones that give a fixed
+  wait to work done on idle ticks, which come slower on a loaded runner: `GRIMOIRE_SIM_BACKLINKS_STEP_MS`
+  shows those that wait for the backlinks cache or, after it, the library index
+  (`make scenarios SCEN_ENV=GRIMOIRE_SIM_BACKLINKS_STEP_MS=200`). The three that failed on the 2.1.0 release
+  day wait for the state now, or run by the script's clock (2.1.1: Done, below); the rest have not been gone
+  through. Of the scenarios that click the pen's side button, v_gestures_4e_single was the only one that
+  checks what has NOT happened yet after a wait; the others check what has, which a late wait cannot break.
+  A third kind checks a stretch of `display.presents` with `is` that can begin before the launch's second
+  repaint (a `ui` of the whole screen 3.5 s after the start, docs/SIM.md): z_pages_find_over did (#93: Done,
+  below), and beginning with `wait 3600` is the cure. Three more do, not fixed yet: with every wait 175 to 275 ms
+  late (`make scenarios SCEN_ENV=GRIMOIRE_SIM_LATE_MS=225`; at 400, as `make scenarios-late` runs, they pass)
+  z_lasso_22_resize (lines 61 and 65), y_live_toolbar_menus (line 37) and z_pages_drag (line 57) each see
+  `ui 0 0 1860 2480` after what they expect. Eight more begin such a stretch within 3.5 s by the sum of their
+  waits and passed at every lateness tried, 0 to 600 ms: g_gest_1, g_gest_10_forgiving, s_shape_2_fire,
+  t_touch_1_contacts, v_actions_screen, v_gestures_4d_pan, v_gestures_4d_zoom and z_bar_3b_press_taken_over.
+  A fourth kind depends on the machine's clock: y_live_toolbar_menus shows the clock corner (`status_mode=1`)
+  and has no `clock` line to hold it still, so the corner's refresh at a minute's change falls into a checked
+  stretch (`ui 6 6 478 66` after what line 37 expects) whenever the run starts about 2 s before a minute ends:
+  once in a `make check` of 2026-11-14 (started 06:05:57.9), and each time it is started so on purpose, at
+  16d11bca as well. Not fixed yet.
 
 - **The stroke eraser on very dense pages.** Taking a stroke out of the middle still draws what was
   under it again (undo and redo of it are instant since rc.10). On a 1,090-stroke page that can take
@@ -939,6 +1050,54 @@ items of Document links. Left:
 
 ## Done
 
+- 2.1.1 (unreleased, 84-test-flakes; issues #84, #85 and #86, found on the day 2.1.0 was released, and #93, the
+  day after): four checks no longer depend on the speed of the machine or on an earlier run.
+  - `z_map_all_2_big` and `z_map_all_3_reading` wait for the library index and the Graph themselves (`waitfor`),
+    where they gave the index 8 s and 20 s. It reads a notebook an idle tick, after the backlinks cache's own
+    check, which takes a tick a notebook itself and a few more (each has a links.ini to read: about 54 and 125
+    ticks, measured with each of them 200 ms longer). On the runner that failed the idle ticks came about ten a
+    second, and 34 of 50 and 83 of 120 notebooks were read when the waits ended. The runner answers three new keys
+    for it, `libindex.complete`, `libindex.reads` and `libindex.books` (docs/SIM.md), on any screen. With every
+    tick of the backlinks check 200 ms longer (`SCEN_ENV=GRIMOIRE_SIM_BACKLINKS_STEP_MS=200`) the old scripts fail
+    as they did on the runner and the new ones pass. Each `waitfor` has its 60 s, so each scenario waits in two or
+    more steps (the backlinks check, then the index, then the Graph).
+  - `v_gestures_4e_single` runs by the script's clock (`GRIMOIRE_SIM_CLOCK=script`), so its check that a single
+    click has NOT acted yet comes 200 ms after the click's release however late the wait before it ends (with
+    every wait 400 ms late the old script fails as on the runner and the new one passes; `make scenarios-late`
+    runs it so from now on). For that a `side click` now moves the script's clock on by its own time: its
+    events are stamped by that clock, which stood still while the runner slept up to them, so the release
+    never came due and no line after the click was read (why the scenario never ended with that clock
+    before). Runner only: the pen button's timing in the app (penbutton.rs) is as it was.
+  - `make test` (each half) and `make c-test` empty their scratch folder (`build/test/tmp`, `build/c/test/tmp`)
+    before they start, and `test_lockui`, whose stand-in commands append to a file there, removes its own folder
+    first (it now starts from a planted earlier run's file, and fails without the removal as it did in the
+    report). The folder is `rm -rf`'d by its own name, a link never followed, after folders a stopped test left
+    read-only are made writable. Nothing else in the Makefile uses the folder, and the two halves never run at
+    once (one recipe, in order; CI gives each a runner). `test_subfolders` and `test_link_outline` kept their
+    store in the system's temporary folder, which the Makefile does not empty, and removed it only when they
+    passed: they name it in the scratch folder now and remove it first (`test_subfolders` starts from a planted
+    earlier run's store, and fails at its rename without the removal). Not changed: one test of
+    `test_gesturemap` and the Linux-only `test_sandbox_linux` keep a folder named by process id in the system's
+    temporary folder; both write their file afresh.
+  - `z_pages_find_over` begins with `wait 3600`, as its two sister scenarios and two dozen others do. The second,
+    whole-screen `ui` its check at Cancel saw on a slower runner (`ui 20 1312 1820 1148, ui 0 0 1860 2480`, on the
+    v2.1.0-beta.1 release run and on pull request #91's; it flaked under Wine's load on 2026-11-07 too) was the
+    launch's second repaint, not the Find sheet's or the Pages view's doing: the main loop repaints the whole
+    screen 1.2 s and 3.5 s after the start (mainloop.rs, for the Kindle's own last frame), and the stretch the
+    scenario counts ended about 3 s after the start, so a machine half a second slower reached the 3.5 s one
+    inside it. With every wait 80, 100 or 120 ms late (`SCEN_ENV=GRIMOIRE_SIM_LATE_MS=100`) the old script fails
+    as on the runner (at 150 and more it passes again: the repaint comes before the stretch) and the new one
+    passes at each. The app is unchanged. docs/SIM.md says so now where it describes `display.presents`.
+- After 2.1.0-beta.2 (unreleased, 56-live-pen-stall-flake; issue #56, the pen-stall check's p90 of 62.8 ms on the
+  dry run of 2026-11-12, run 43244209271's first attempt): `tests/live_pen_stall.py` measures the pen viewer's own
+  reader once more when its first run misses a check, and the second run decides; the 25 ms bound stays. A miss
+  prints how far the feeder itself fell behind its 4 ms frames, the machine's share of the wait. In this test the
+  viewer waits for the main loop only where it is meant to (its one pen-down, held while the loop handles an
+  event: `LIVE_RAW_HOLD`), so samples that wait for the main loop wait in every run: with every run's samples
+  taken from the ring the check still fails (p90 118 ms, both runs). The failing attempt's runner was slow
+  throughout (the ring's p50 124 ms, against 74 to 95 ms on the Mac). On the Mac at background priority
+  (`taskpolicy -b`, which keeps every process of the test off the CPU at times, the app's among them) the feeder
+  fell up to 1.4 s behind and the raw p90 reached 178 to 841 ms in three runs of four.
 - 2.1.0-beta.2 (unreleased, v21b2/l10-fonts; the owner, 2026-11-04: "Custom font support/More fonts in the classic
   theme", and 2026-11-09: "Fast track everything up till beta.3 into a beta.2."): your own fonts. `.ttf` and
   `.otf` files copied into `grimoire/fonts` are checked by the sandboxed worker (skrifa reads them; every glyph
@@ -1168,8 +1327,9 @@ items of Document links. Left:
   checked by reading only; a test needs a listing slower than a second in the headless runner.
 - **The picker's UI-thread work** (the fix round, Low): entries of no known kind are stat-ed in 20 ms slices before
   the rows are built; the Import place's folder rows are listed every 5 s, the PDF rows as the import's progress
-  changes; "has notes" reads the notebooks' keys once a session (one small read for each notebook without
-  `source=`, at the first PDF row, on the UI thread). None of it is timed on the Scribe (TESTING.md, L8 check 2).
+  changes; "has notes" reads the notebooks' keys and file records once a session (one small read for each
+  notebook, at the first PDF row, on the UI thread: since the hardening round of 2026-11 also for a notebook with
+  `source=`, whose record is in its `source.ini`). None of it is timed on the Scribe (TESTING.md, L8 check 2).
 - **Folder rows count their pictures by listing the folder** (on the idle tick, one folder a tick, at most 200 ms
   each) to show "%d pictures" and to offer Import %d pictures as notebook. On a big `documents/` of big folders over
   FUSE that is unmeasured: TESTING.md has the timing check. A cheaper rule (count only when the card opens) is
@@ -1185,3 +1345,20 @@ items of Document links. Left:
   the job queue and the screens take paths as text.
 - **Not run anywhere but the headless runner**: `rust/tests/test_browser.rs` plants the odd name where the file
   system takes one (not on macOS); the Scribe's checks are in TESTING.md.
+
+## Hardening round (2026-11), storage reads: what waits
+
+- The other reads by path take the plain-file read (`util::open_read_nofollow`): the clipboard, the
+  compaction's list, the shortcut files, one read in the fonts' cache, the PDF cache's records. The
+  compaction's list goes first: it is read at every start, before the first frame
+  (`compact_queue_listed`), and the start is fully under the rule only once it is.
+- The folders a scan lists (the import folders, the marks) are read through the storage walk, as picked
+  folders are.
+- A page file that is there but does not read fails to open rather than opening blank; with it, a size
+  limit on page files.
+- `mkdir_p` stays as it is (an existing entry counts as the folder): the data root, a platform's folders
+  and the tests' folders may sit behind a link.
+- Tidy-up: the PDF cache's and the share spool's own "made afresh" onto `util::create_fresh_nofollow`;
+  `nav.rs` `read_sidecar` onto `util::open_read_nofollow`.
+- If no other lane has taken them by the merge: the marks in `pdfimport.rs` read with their own limits,
+  and the link tests run as root in CI's sandbox job.

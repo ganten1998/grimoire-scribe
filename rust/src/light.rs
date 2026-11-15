@@ -13,34 +13,71 @@ thread_local! {
 }
 
 // light.h is implemented by light_kindle.c on the Kindle and by the simulator (sim_sdl.c); host
-// builds link none (platform_none.rs). These forward to it.
-#[cfg(feature = "kindle")]
-use crate::light_kindle as platform;
-#[cfg(not(any(feature = "kindle", feature = "sim")))]
-use crate::platform_none as platform;
-#[cfg(feature = "sim")]
-use crate::sim_sdl as platform;
+// builds link none (platform_none.rs). These forward to it, through the build's platform
+// (platform.rs).
+// (the in-tree platforms' methods need the trait in scope; a registered `dyn` platform's do not)
+#[cfg_attr(feature = "external-platform", allow(unused_imports))]
+use crate::platform::{active, Platform};
 
 pub const LIGHT_MAX: i32 = 24;
 
+/// What of the device Grimoire looks after itself on a platform (`sys_services`). On the Kindle all
+/// of it. A platform whose system joins networks, pairs controllers or installs apps itself, that is
+/// not KOReader's host, or that hands over positions already calibrated says no to that one, and
+/// Settings leaves its row or button out.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Services {
+    /// the Wi-Fi sheet: the radio and the device's saved networks
+    pub wifi: bool,
+    /// the Pair sheet: the Bluetooth helper, and pairing a controller with it
+    pub pairing: bool,
+    /// Settings > Updates
+    pub updates: bool,
+    /// the KOReader sheet
+    pub koreader: bool,
+    /// Calibrate pen and touch
+    pub calibration: bool,
+}
+
+impl Services {
+    pub const ALL: Services = Services { wifi: true, pairing: true, updates: true, koreader: true, calibration: true };
+
+    /// ALL but the ones named in `off`: a list of the fields' names with commas between them
+    /// ("wifi,updates"); a name that is none of them is passed over.
+    pub fn without(off: &str) -> Services {
+        let mut s = Services::ALL;
+        for name in off.split(',') {
+            match name.trim() {
+                "wifi" => s.wifi = false,
+                "pairing" => s.pairing = false,
+                "updates" => s.updates = false,
+                "koreader" => s.koreader = false,
+                "calibration" => s.calibration = false,
+                _ => {}
+            }
+        }
+        s
+    }
+}
+
 #[inline]
 pub fn light_available() -> bool {
-    platform::light_available()
+    active().light_available()
 }
 /// Asks the power service for the levels (blocks: two lipc runs, 95-191 ms on the Scribe 2). Once, at
 /// the start, before the pens are opened; light_get asks again only while the brightness is unknown.
 #[inline]
 pub fn light_refresh() {
-    platform::light_refresh()
+    active().light_refresh()
 ;
     let (mut intensity, mut warmth) = (-1, -1);
-    platform::light_get(&mut intensity, &mut warmth);
+    active().light_get(&mut intensity, &mut warmth);
     LIGHT_CACHE.set((intensity, warmth));
 }
 /// Current levels (0..LIGHT_MAX) as last read or set; -1 where unknown.
 #[inline]
 pub fn light_get(intensity: &mut i32, warmth: &mut i32) {
-    platform::light_get(intensity, warmth)
+    active().light_get(intensity, warmth)
 ;
     LIGHT_CACHE.set((*intensity, *warmth));
 }
@@ -52,13 +89,13 @@ pub fn light_cached() -> (i32, i32) {
 }
 #[inline]
 pub fn light_set_intensity(level: i32) {
-    platform::light_set_intensity(level)
+    active().light_set_intensity(level)
 ;
     LIGHT_CACHE.set((level.clamp(0, LIGHT_MAX), LIGHT_CACHE.get().1));
 }
 #[inline]
 pub fn light_set_warmth(level: i32) {
-    platform::light_set_warmth(level)
+    active().light_set_warmth(level)
 ;
     LIGHT_CACHE.set((LIGHT_CACHE.get().0, level.clamp(0, LIGHT_MAX)));
 }
@@ -70,7 +107,7 @@ pub fn light_warmth() -> i32 {
     if cached >= 0 {
         cached
     } else {
-        platform::light_warmth()
+        active().light_warmth()
 }
 }
 
@@ -80,7 +117,7 @@ pub fn light_warmth() -> i32 {
 /// "Sleep after: never" policy has to be applied again afterwards.
 #[inline]
 pub fn sys_request_sleep() {
-    platform::sys_request_sleep()
+    active().sys_request_sleep()
 }
 /// The power service's state, best effort (`lipc-get-prop -s com.lab126.powerd state`): 0 with e.g.
 /// active, screenSaver, readyToSuspend or suspended in `out`, or -1 if it cannot be read. Blocks
@@ -88,23 +125,23 @@ pub fn sys_request_sleep() {
 /// never on the drawing path.
 #[inline]
 pub fn sys_powerd_state(out: &mut String, cap: usize) -> i32 {
-    platform::sys_powerd_state(out, cap)
+    active().sys_powerd_state(out, cap)
 }
 /// Resume / pause the Kindle's window manager (only if the launcher paused it): the Kindle's own
 /// screensaver can only show while it runs.
 #[inline]
 pub fn sys_kindle_ui(run: bool) -> bool {
-    platform::sys_kindle_ui(run)
+    active().sys_kindle_ui(run)
 }
 /// Keep the power service from sleeping on its own (only for "Sleep after: never").
 #[inline]
 pub fn sys_prevent_sleep(prevent: bool) {
-    platform::sys_prevent_sleep(prevent)
+    active().sys_prevent_sleep(prevent)
 }
 /// Tell the power service the user is active (Grimoire grabs the pen and touch, so it cannot see).
 #[inline]
 pub fn sys_activity() {
-    platform::sys_activity()
+    active().sys_activity()
 }
 /// The battery for the clock and battery corner (status.rs): its percent (-1 when unknown) and
 /// whether it charges. On the Kindle: the kernel's power supply class, else the power service
@@ -115,7 +152,7 @@ pub fn sys_activity() {
 /// command set.
 #[inline]
 pub fn sys_battery() -> Battery {
-    platform::sys_battery()
+    active().sys_battery()
 }
 /// Ends a battery reading under way in the background, without waiting (or stops one that took
 /// too long), whether or not the corner asks for the battery now: status_tick calls it each tick
@@ -124,10 +161,22 @@ pub fn sys_battery() -> Battery {
 /// to do where readings do not run in the background.
 #[inline]
 pub fn sys_battery_reap() {
-    platform::sys_battery_reap()
+    active().sys_battery_reap()
 }
 /// The wall clock, unix seconds: what the corner shows (the simulator's script can set it).
 #[inline]
 pub fn sys_wall_clock() -> i64 {
-    platform::sys_wall_clock()
+    active().sys_wall_clock()
+}
+/// Which of the device's services Grimoire looks after itself here (`Services`).
+#[inline]
+pub fn sys_services() -> Services {
+    active().sys_services()
+}
+/// What the device is called in Grimoire's text: "Kindle" on the Kindle, as the English and every
+/// translation say. Another name is put in its place wherever a text is looked up (i18n.rs, the
+/// device's name).
+#[inline]
+pub fn sys_device_name() -> &'static str {
+    active().sys_device_name()
 }

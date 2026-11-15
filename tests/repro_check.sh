@@ -63,7 +63,7 @@ for f in dist/Grimoire.zip "dist/Grimoire-$VERSION.zip" dist/KOReader-patches.zi
     check "$f: the same bytes as $BUILD/$f" cmp -s "$R/a/$f" "$BUILD/$f"
 done
 ID=$(build_id "$R/a/dist/Grimoire.zip")
-check "BUILD_ID is the app tar's checksum ($ID)" [ "$ID" = "$(shasum "$R/a/dist/app.tar" | cut -c1-12)" ]
+check "BUILD_ID is the app tar's checksum ($ID)" [ "$ID" = "$( (shasum "$R/a/dist/app.tar" 2>/dev/null || sha1sum "$R/a/dist/app.tar") | cut -c1-12)" ]
 check "BUILD_ID is the same in both clean builds" [ "$(build_id "$R/b/dist/Grimoire.zip")" = "$ID" ]
 check "BUILD_ID is the same as in $BUILD" [ "$(build_id "$BUILD/dist/Grimoire.zip")" = "$ID" ]
 

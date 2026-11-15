@@ -520,3 +520,12 @@ pub fn sys_battery_reap() {
 pub fn sys_wall_clock() -> i64 {
     wall_time()
 }
+
+/// The Kindle: Grimoire looks after all of them.
+pub fn sys_services() -> Services {
+    Services::ALL
+}
+
+pub fn sys_device_name() -> &'static str {
+    "Kindle"
+}

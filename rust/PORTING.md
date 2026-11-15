@@ -53,7 +53,10 @@ binaries (`BUILD=build/c`). Never run a GUI binary as a check, and never touch t
 check.
 
 The unit tests read `GRIMOIRE_TEST_TMP` as the C's do (test_store writes to its `../out`); `make test`
-sets it to `build/test/tmp`. Without it `tl_tmp()` is a `grimoire-test` folder in the system's
+sets it to `build/test/tmp`, which each half (`test-host`, `test-sim`) empties before it starts, as
+`make c-test` empties `build/c/test/tmp`: the tests name their folders there by process id, and a
+process id comes round again (issue #85). So no two test runs at once in one worktree: give a second
+its own `BUILD`. Without it `tl_tmp()` is a `grimoire-test` folder in the system's
 temporary directory (the C's `/tmp` put `../out` at `/out`), and `.cargo/config.toml` sets
 `RUST_TEST_THREADS=1`, so a plain `cargo test` here runs one test at a time and passes, as
 `cargo test --features sim` does.
@@ -67,6 +70,7 @@ The C build's `-D` switches are cargo features:
 | `GRIMOIRE_KINDLE` | `--features kindle` (armv7 Linux only) | display_fbink, input_evdev, light_kindle |
 | `GRIMOIRE_SIM` (headless) | `--features sim` | sim_sdl (the headless runner) |
 | neither (host tools, unit tests) | no feature | platform_none |
+| none: Rust only | `--features external-platform` | another crate's (not with `kindle` or `sim`) |
 
 `#ifdef GRIMOIRE_SIM` becomes `#[cfg(feature = "sim")]`, `#ifdef GRIMOIRE_KINDLE` becomes
 `#[cfg(feature = "kindle")]`. display.rs, input.rs and light.rs hold their headers' types and
@@ -74,6 +78,56 @@ documentation, and forward every function to the build's platform module (`platf
 the platform's signatures are checked against the header. Unlike the C's host build, every module
 compiles in every build (platform_none.rs answers for the missing platform), so `cargo build` on
 the host type-checks the whole app.
+
+The platform is one interface, `platform::Platform` (platform.rs): the functions display.rs, input.rs
+and light.rs forward, under their own names. Each in-tree platform is a unit type (`Kindle`, `Sim`,
+`NoPlatform`) whose methods call its modules' functions one for one, and the forwarders call the
+build's own type, so the calls are resolved at compile time and inlined as before. A new platform
+function is added in four places: the forwarder with its documentation, the trait, and the platform
+modules (a method with a default body in the trait where most platforms have nothing to do).
+
+`external-platform` is the build for a platform kept outside this crate. That crate depends on this
+one with the feature on, implements `Platform` on a type of its own, and from its own binary:
+
+1. calls `platform::register(&ITS_PLATFORM)` (a `&'static` reference; once);
+2. sets `GRIMOIRE_ROOT` to the data directory (and, when that directory is on a file system without
+   advisory locks, `GRIMOIRE_LOCKS` to a folder that has them: `util::lock_file_path`);
+3. calls `mainloop::main(args)` on the thread that stays the app's only thread, and exits with
+   what it returns.
+
+A worker (`<binary> --work ...`, sandbox.rs) is a fresh exec of that binary: its `main` hands `--work`
+to `mainloop::main` before it starts a thread or opens anything, as the in-tree binaries do. On Linux
+the worker's filter lets it wait and wake only on private futexes and map nothing executable, which one
+thread of Rust and a C library never needs more than; a platform's start-up code must not need more
+there.
+
+The rules of this file hold for it as they do for the in-tree platforms: the platform's methods are
+called from that one thread and from the forked children; `input_poll` is the loop's one place to
+wait and returns early when the descriptor given to `input_watch_fd` is readable; `display_present`
+gets the whole screen's canvas and the rect to show. Until a platform is registered the build
+behaves as the host build does (no panel: `display_open` fails). The in-tree platform modules are
+not compiled in this build, light_kindle among them. tests/test_platform_external.rs runs the app
+from start to exit on a recording stand-in:
+`cargo test --features external-platform --test test_platform_external -- --test-threads=1`.
+
+A platform also says which of the device's services Grimoire looks after itself there
+(`sys_services`, light.rs: the Wi-Fi sheet, the Pair sheet, Updates, the KOReader sheet, Calibrate).
+The Kindle and the simulator answer all of them. Settings leaves out the row or button of each one
+a platform says no to; the simulator's `GRIMOIRE_SIM_NO_SERVICES` (docs/SIM.md) is that answer for
+the scenarios.
+
+And it says what the device is called (`sys_device_name`). The English and the translations say
+Kindle; on a platform with another name every looked-up text has that name in its place, "Kindle
+Scribe" as a whole (i18n.rs, the device's name). No string changes for it. The simulator's
+`GRIMOIRE_SIM_DEVICE_NAME` is that name for the scenarios.
+
+A platform reads its own system files (under /proc or /sys, a locale file) with
+`util::read_system_file`, which follows links as any read does. `util::read_file` is for the data
+folder: since 2.1.1 it takes a plain file at the name itself (a link there reads as a file that is
+not there) and never waits, with `util::read_file_max` for the small text files (docs/DESIGN.md,
+On-disk layout). The data folder and the folders on the way to a file may sit behind links, as
+before. Platform code kept outside this crate that calls `util::read_file` on a system file compiles
+as it did and reads differently: such a call becomes `util::read_system_file`.
 
 ## The map
 

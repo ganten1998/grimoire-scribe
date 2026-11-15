@@ -705,7 +705,9 @@ fn page_views_max() -> usize {
 }
 
 /// Puts the open page's drawing aside in memory, when its canvas is whole and the page is its file.
-fn page_view_stash(s: &mut EditorState) {
+/// `keep` is the page about to be shown: when every slot is taken, its drawing is not the one dropped
+/// (a jump to the oldest kept page would otherwise evict it just before page_view_load reads it).
+fn page_view_stash(s: &mut EditorState, keep: u32) {
     let max = page_views_max();
     if max == 0 {
         return;
@@ -734,7 +736,8 @@ fn page_view_stash(s: &mut EditorState) {
     let ms = if s.full_ms.0 == pid { s.full_ms.1 } else { 0 };
     s.page_views.retain(|v| v.pid != pid);
     while s.page_views.len() >= max {
-        let mut old = s.page_views.remove(0);
+        let i = s.page_views.iter().position(|v| v.pid != keep).unwrap_or(0);
+        let mut old = s.page_views.remove(i);
         canvas_free(&mut old.canvas);
     }
     s.page_views.push(PageView { pid, stamp, ms, canvas });
@@ -3321,7 +3324,9 @@ fn go_to_page(a: &mut App, index: i32) -> bool {
     };
     // The page left keeps its drawing in memory; the page come to takes its own back if it was left this
     // session and its file is still the one drawn (a dense page then shows at once, not seconds later).
-    page_view_stash(s);
+    // Its drawing is never the one the page left takes, even when that fills every slot (a jump to the
+    // oldest kept page, issue #60).
+    page_view_stash(s, np);
     let kept_ms = page_view_load(s, np);
     live_reset();
     a.live_processed = 0;
@@ -12325,11 +12330,17 @@ mod tests {
         assert_eq!(store_create("Views", "", PAPER_BLANK, &mut nb), 0);
         assert_eq!(store_add_page(&mut nb, 1, PAPER_BLANK), 0);
         assert_eq!(store_add_page(&mut nb, 2, PAPER_BLANK), 0);
+        assert_eq!(store_add_page(&mut nb, 3, PAPER_BLANK), 0);
         let mut a = fshape_app();
         let s = ed(&mut a);
         s.nb = nb;
-        let e = s.entry_for(s.nb.page_ids[2]).unwrap();
-        s.hist[e].page = Some(page_new(s.pgw, s.pgh, PAPER_BLANK));
+        let ids = s.nb.page_ids.clone();
+        for pid in ids {
+            let e = s.entry_for(pid).unwrap();
+            if s.hist[e].page.is_none() {
+                s.hist[e].page = Some(page_new(s.pgw, s.pgh, PAPER_BLANK));
+            }
+        }
         s.index = 0;
         s.page = Some(s.nb.page_ids[0]);
         s.page_dirty = false;
@@ -12347,6 +12358,19 @@ mod tests {
         assert!(go_to_page(&mut a, 1));
         assert!(go_to_page(&mut a, 0));
         assert_eq!(ed_ref(&a).page_canvas.px[0], 0);
+        // A jump to the oldest kept page (issue #60): with every slot full, the page left takes another
+        // slot, never the one of the page come to, which the load would otherwise find empty and draw again.
+        page_views_clear(ed(&mut a));
+        for i in 0..4 {
+            if i != 0 {
+                assert!(go_to_page(&mut a, i));
+            }
+            ed(&mut a).page_canvas.px[0] = 100 + i as u8; // a mark of this page alone
+        }
+        assert_eq!(ed_ref(&a).page_views.len(), PAGE_VIEWS_MAX);
+        assert_eq!(ed_ref(&a).page_views.iter().map(|v| v.pid).collect::<Vec<_>>(), vec![1, 2, 3]);
+        assert!(go_to_page(&mut a, 0));
+        assert_eq!(ed_ref(&a).page_canvas.px[0], 100, "the oldest kept page came back, not a fresh render");
         std::fs::remove_dir_all(root).unwrap();
     }
 

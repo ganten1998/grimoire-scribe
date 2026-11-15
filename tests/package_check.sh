@@ -107,7 +107,7 @@ first=$(grep -an '^# Capabilities:' "$S" | head -n 1 | cut -d: -f1)
 check "the header's Capabilities line is the first in the file (line $first)" is "$first" 6
 ID=$(sed -n 's/^BUILD_ID=//p' "$B/script.sh")
 check "BUILD_ID is 12 hex digits ($ID)" sh -c 'printf "%s\n" "$1" | grep -qxE "[0-9a-f]{12}"' sh "$ID"
-check "BUILD_ID is the archive's checksum" is "$(shasum "$B/app.tar" | cut -c1-12)" "$ID"
+check "BUILD_ID is the archive's checksum" is "$( (shasum "$B/app.tar" 2>/dev/null || sha1sum "$B/app.tar") | cut -c1-12)" "$ID"
 
 # The app inside.
 tar -tf "$B/app.tar" >"$B/app.list" 2>/dev/null && tar -xf "$B/app.tar" -C "$B/app" 2>/dev/null

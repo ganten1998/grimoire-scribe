@@ -457,16 +457,45 @@ docs/TESTING.md (Index phase 2).
 ## PDF imports (2.1.0-beta.2)
 
 Copy a PDF into `grimoire/import/` (see README). Device checks are in TESTING.md. What grimoire.log says (no
-file name, title or key ever appears in it: ids, page numbers, counts, timings, reasons):
+file name, title, key or hash ever appears in it: ids, page numbers, counts, sizes, timings, reasons):
 
 - `work: sandboxed (uid 62001, chroot, netns, no new privileges, seccomp, selinux enforcing|permissive|off)`:
   for PDFs once a session, at the first worker; for pictures and fonts once a background job (each job is a
-  process of its own, and says it at its first worker). `work: not sandboxed (...)` anywhere the steps are skipped.
+  process of its own, and says it at its first worker). `work: not sandboxed (...)` wherever the sandbox is not
+  required (never on the Kindle).
 - `import: <id>: N page(s), the PDF is N KB` (the probe), then for each slice `import: <id>: pages A to B of M in
   T ms (MemAvailable K MB, N band(s))` (a page's time is T over the slice's pages), then `import: notebook <id>
   made of N page(s), N picture(s), N blank`.
 - `import: N PDF(s) queued; left as they are: ...`: a scan's counts (not yet steady, tried out, imported,
-  skipped, held elsewhere, waiting for room).
+  skipped, held elsewhere, waiting for room, and at its end `N that differ from their listing, N no longer
+  files`: the scan's look at a steady PDF opens it without following a link and reads only the file it listed;
+  both counts are 0 on a Scribe at rest). `import: a PDF that differs from its listing has not changed for a
+  minute; it is imported as it is`: a PDF whose look kept finding another file than the listing's for a minute
+  (a storage that names one file differently by its name and by an open file would show this for every PDF:
+  send the log).
+- `import: <id>: its file read for its record: N KB in T ms` (the last slice read the whole file once, for the
+  record the notebook keeps of it: FORMAT.md, the file record) and `import: <id>: its file read to compare with
+  a notebook's record: N KB in T ms` (at its start, only for a PDF with the key and the size of a notebook's
+  record). T is the time to note for a big PDF. `import: <id>: a notebook holds this PDF's key but was made from
+  another file; this one is imported`: it becomes a notebook of its own. `import: <id>: its file could not be
+  read whole; the notebook keeps no file record`, or `... could not be read whole and another notebook holds its
+  key; nothing imported`: the storage failed a read in the last slice; `import: <id>: its file could not be read
+  whole to compare with a notebook's record`: it failed one at the start, and the PDF then counts as another
+  file than the record's (the line with N KB and T ms is logged only for a file that was read whole).
+  `import: <id>: its PDF's name no longer
+  holds the file that was read; nothing moves to import/done, and the next scan takes what is at that name`:
+  another file was put at the PDF's name while it was imported, or the file changed or was taken away; the
+  import's own end (its notebook, or "PDF already imported.") stands. On a Scribe at rest this line never
+  shows (a storage that names one file differently by its name and by an open file would show it at every
+  import, three times a file: send the log).
+- `import: a path that holds a line break is never imported; refused`, `import: a picked PDF's path holds a line
+  break; refused` and `import: <id>: its path holds a line break; nothing imported`: a name with a line feed or
+  a carriage return in it (a FAT storage cannot hold one). `import: the import lock cannot be taken (<why>); a
+  picked PDF is refused` (or `a picked folder is refused`, or `the import folders wait for the next scan`): the
+  lock file `grimoire/import/.lock` cannot be opened (`Symbolic link loop`: a link is at its name, and is not
+  followed), or what is at its name is not a plain file of one name (`Invalid argument`), or it stopped being
+  the file at its name twice while it was taken (`Stale file handle`). Nothing is removed for it: look at what
+  is at that name over USB.
 - `import: <id>: its last slice was cut off (K of 3)`, `... the job used more CPU than S s; it stops here (K of 3)
   and goes on later`, `... it stopped 3 times without finishing; nothing imported`: an import that keeps not
   finishing ends after three stops. `... the files of the pages from N are gone; they are made again`: a resume
@@ -478,21 +507,31 @@ file name, title or key ever appears in it: ids, page numbers, counts, timings, 
 - `import: <id>: page N of M: the worker died of signal S (strike K)` or `... stalled ...` or `... made call C,
   which the sandbox does not allow`; after the second strike `... could not be read ...; it is blank`. On the
   Kindle call 175 (`rt_sigprocmask`) is the worker's own abort (out of memory, or a panic), not a call to add;
+  240, 192 and 125 (futex, mmap2, mprotect) are on the list and are refused only for a futex operation other
+  than a private wait or wake, or for a mapping asked executable: nothing is added for them, send the log;
   any other number is one to add to `sandbox::s1::allow` with the spike's numbers. A worker that ends cleanly
   makes no call outside the list (`--work` ends with `_exit`), so no `E sigsys 186` (`sigaltstack`) follows a
-  worker's normal end.
+  worker's normal end. The same call is named by `work: a PDF's worker made call C, which the sandbox does not
+  allow` when it comes at a worker's start (then with `a worker could not be started`) or while the PDF is opened
+  (then with `the PDF could not be opened` or `a worker could not open the PDF`).
 - `import: <id>: the sandbox refused its step "<step>": no PDF is read and no try is counted`, or `import: <id>: a
-  worker could not be started (<why>): no try is counted`: either way the session imports no more PDFs.
+  worker could not be started (<why>): no try is counted`: either way the session imports no more PDFs (`<why>`
+  is one of `start`, `no handshake`, `build mismatch`, `handshake`, `no sandbox line`, `the worker is not
+  sandboxed`, `the worker made a call the sandbox does not allow`).
 - Pictures (templates, photos, picture folders) are decoded by the same worker (`grimoire --work pic ...`), which
   serves up to 32 pictures and is then replaced. `work: a picture's worker ended (the worker ended|the worker
   stalled); a fresh worker tries it again`: one death is no verdict. `work: a picture's worker ended (...)` with
-  nothing after it (a second death in a row) and `... made call C, which the sandbox does not allow`: the
+  nothing after it (a second death in a row) and `... made call C, which the sandbox does not allow` (240, 192
+  and 125 as for PDFs): the
   picture in hand is marked `.bad` (a template or photo); a picture folder's import fails and counts one try of
   its three (as for a picture the memory could not hold): only a picture at fault refuses the folder until its
-  files change. `work: pictures wait (<why>): no sandboxed worker can be had, and the writer decodes none;
+  files change. When `... made call C ...` is followed by `work: pictures wait (the worker made a call the sandbox
+  does not allow)`, the call came at a worker's start, with no picture in hand: nothing is marked and no try is
+  counted. `work: pictures wait (<why>): no sandboxed worker can be had, and the writer decodes none;
   nothing is marked and no try is counted`: once a process (each background job is one), when no worker could be
   had (`a sandbox step failed`, `step <name>`, `the worker did not start`, `the worker did not answer`, `the worker
-  is another build`, `no handshake`). No picture is decoded then (since 2.1.0-beta.2's fail-closed change): a
+  is another build`, `no handshake`, `the worker is not sandboxed`, `the worker made a call the sandbox does not
+  allow`). No picture is decoded then (since 2.1.0-beta.2's fail-closed change): a
   template or photo gets no preview (`templates: ... N left for a later scan (out of memory, a file that did not
   read, or no sandboxed worker)`) and no `.bad`; a notebook's template picture is not made (`templates: <id>:
   bg/<pic>.png could not be made (no sandboxed worker can be had)`); a picture folder's import ends with `import:
@@ -514,7 +553,9 @@ says (never a file's name or a family's: counts, sizes, timings, reasons):
 
 - `bg: font check of a folder (pid N)`, then for each file not checked yet `fonts: file I of N passed: S KB, G
   glyphs, K from Terminess, checked in T ms`, or `... refused (unreadable|no Latin letters|a web font)`, or `...
-  took too long to read (T ms)`, or `... the check's worker ended (<why>): marked unreadable`, or `... left for
+  took too long to read (T ms): left for a second try` (no verdict yet: the file is checked again a minute or more
+  later) and at that try `... took too long to read again (T ms)` (the verdict), or `... the check's worker ended
+  (<why>): marked unreadable`, or `... left for
   later (out of memory)`; each job checks one font (`fonts: file I of N done; more are left for the next job`),
   and the last one ends with `fonts: in the folder, P passed, R refused, D the worker died on, L left for later, T
   too big or empty (N font file(s) in all)`, the whole folder's tally from the verdicts kept, and `bg: font check
@@ -711,6 +752,33 @@ checks above. Synthetic tests cannot establish real-hand acceptance or accidenta
   damage. A set-aside page that is no longer in the page list can be put
   back by hand, with Grimoire closed: rename it to `p<n>.qpg` and add `<n>` to the `pages=` line
   of its `notebook.ini`.
+- **A file of the `grimoire` folder that is no plain file, or too long** (2.1.1): Grimoire reads its
+  settings, notebooks, pages, pictures and import folders only when the entry at the name is a plain file,
+  and the small text files only up to a size (docs/FORMAT.md, Files, names the files; a few others are
+  still opened by path). grimoire.log says what it did:
+  - `store: <path> is no plain file, set aside; starting blank` (or `could not set aside`): the entry at
+    a page's name was a folder, a link or something else. It was renamed `p<n>.qpg.damaged-<t>`, the
+    entry itself, and the page opened blank, with the toast of a damaged page. It stays there: Grimoire
+    never reads it or brings it back by itself.
+  - `store: <path> is no plain file; read as a blank page` (once per run): the same entry met by an
+    export (a PDF, a preview), which changes nothing.
+  - `store: skipping unreadable notebook <id>`: also a notebook whose `notebook.ini` is no plain file or
+    is longer than 1 MiB. Nothing in its folder is touched; it is back in the Library once the file reads.
+  - `settings: settings.ini is there but was not read (no plain file of at most 1048576 bytes, or it did
+    not open); the defaults are used`: at the start. Nothing is written over it:
+  - `settings: the settings.ini that was not read is kept as settings.ini.unread`: at the first save,
+    the entry was moved aside as it was. With Grimoire closed, look at it, and copy it back over
+    `settings.ini` if it is the file wanted (as a plain file under 1 MiB); else delete it.
+  - `settings: settings.ini.unread is there already and stays; the settings.ini that was not read is
+    replaced` (once per run): an earlier one was kept already, so this one was written over.
+  - `settings: the settings.ini that was not read cannot be set aside (<error>); nothing is saved over
+    it`: the settings are not saved until the entry is moved or removed by hand.
+  - `import: the folder is no folder of its own; left as it is`: an entry of `grimoire/import` that is
+    no real folder (a link to one, say) was handed to an import. Nothing was read or made; copy the
+    folder in to import it.
+
+  The Scribe's storage: symlinks, hard links, FIFOs: (the owner's answer, the date, the firmware; from
+  step 1 of docs/TESTING.md, "Hardening round (2026-11), storage reads and temporaries: device checks").
 - **`device passcode: left off by an earlier session`** in grimoire.log: the Kindle restarted while
   Grimoire had the passcode paused (see The Device Passcode); Grimoire logs it at that start and the
   next two while it stays off, with no notice on the screen (since 2.0.0-beta.2). Turn it back on in
@@ -1194,6 +1262,10 @@ Limits of the dev copy:
 - On Linux the copy goes over GVFS; when another desktop daemon holds the Kindle's MTP
   interface (KDE's kmtpd5 does this on every plug), the script stops it for the session and
   mounts through GVFS itself.
+- What a machine is missing, `make dev` installs itself, with its own package manager: GVFS and
+  its MTP backend on Linux (`dnf`, `apt-get`, `pacman`, `zypper` or `apk`), Zig and
+  `cargo-zigbuild` for the build, and `python3`; on macOS, Zig and `python3` come from Homebrew
+  (`brew install zig`). `--no-install` leaves the machine as it is.
 
 `make dev` needs the Scribe in USB file transfer (MTP) mode, unlocked, with Allow tapped if it
 asks; MTP cannot start the app, so the first launch is a tap in the Library. When the patched

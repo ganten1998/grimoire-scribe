@@ -61,9 +61,14 @@ is when it times it by the script's own clock: `touch` lines are stamped by thei
 job runs. Each `wait MS` advances those timers by exactly MS; host work and `GRIMOIRE_SIM_LATE_MS`
 still delay the runner, but do not advance app time. A `waitfor` advances them by what it idled, a
 round at a time, until its probe matches (tests/scenarios/z_waitfor_script_clock.qs waits so for a
-toast to go). `waitbg` keeps a real deadline and polls the jobs while app time stays still. This is
+toast to go). A `side click` advances them by its own time, its presses and the gaps between them
+(80 ms for one click), as its events come due: so a `wait` after it is that long after the release
+by the app's own timers, however late the machine ends it (tests/scenarios/v_gestures_4e_single.qs
+checks a single click's wait for a second one so). `waitbg` keeps a real deadline and polls the jobs while app time stays still. This is
 opt-in for exact toast and refresh checks; other scenarios keep the real monotonic clock. `clock
-SECONDS` still sets only the displayed wall time.
+SECONDS` still sets only the displayed wall time. With it, `GRIMOIRE_SIM_UPTIME_MS=N` starts app
+time at N ms in place of the host's time since it started, as on a machine up that long
+(tests/scenarios/v_shortcuts_awake_boot.qs sends the first key one second after a boot).
 
 Four more:
 
@@ -98,7 +103,7 @@ GRIMOIRE_ROOT=/tmp/q GRIMOIRE_SCRIPT=tests/scenarios/a_notebook.qs GRIMOIRE_SHOT
 | `pen curve X Y R STEPS P [TURNS] [tx ty]` | cursive-like loops |
 | `eraser line X0 Y0 X1 Y1 STEPS` | the same with the eraser end |
 | `side on` / `side off` | hold/release the first side button; existing event sequence is unchanged |
-| `side click N [GAP_MS] [PRESS_MS]` | N hovering button clicks; defaults: 150 ms release-to-next-press gap, 80 ms press |
+| `side click N [GAP_MS] [PRESS_MS]` | N hovering button clicks; defaults: 150 ms release-to-next-press gap, 80 ms press. The next line is read once the last release is delivered: the runner sleeps up to each event's time, and with `GRIMOIRE_SIM_CLOCK=script` moves app time on by just that |
 | `side2 on` / `side2 off`, `side2 click N [GAP_MS] [PRESS_MS]` | the second button, enabled by `GRIMOIRE_SIM_PEN_BUTTON2=1` |
 | `mods N` | the modifier keys held from here on (KEYMOD_* bits: 1 Ctrl, 2 Shift, 4 Alt, 8 Meta; `mods 0` lets go), in order with the events before it: every pen and touch event carries them, as a paired keyboard's Shift held while tapping (z_pages_add_1_batch), and `hidkeys_mods_held` reads them, as Shift or Alt held as a lasso begins (z_lasso_14_exact_toggle) |
 | `key CODE MODS [PAD]` | a key press (Linux evdev code, KEYMOD_* bits), a controller's when PAD is 1. A modifier (29, 97 Ctrl; 42, 54 Shift; 56, 100 Alt; 125, 126 Meta) is held instead, no event of its own, as input_evdev.rs reads a keyboard: every key, pen and touch event carries it until its `keyup`; `hidkeys_mods_held` follows it too (z_lasso_16_exact_shift_key) |
@@ -249,7 +254,9 @@ Cancel 1240 1675. The editor's tool button is 2388 358.
 `side click 2` is a double-click with 80 ms presses and 150 ms release-to-next-press gaps.
 With a double or triple slot bound, follow the final release with `wait 400` before checking
 dispatch: the recognizer waits 350 ms. Without either multi-click slot a single click acts at
-release. Triple-click requires each next press within 350 ms of the preceding release (the old
+release. A check that the click has NOT acted yet (a `wait` shorter than the 350 ms, then the check)
+holds on any machine only with `GRIMOIRE_SIM_CLOCK=script`: by the real clock a wait that ends late,
+as on a loaded machine, ends after the click acted (v_gestures_4e_single, issue #86). Triple-click requires each next press within 350 ms of the preceding release (the old
 three-clicks-within-1.2-seconds rule is retired). `side on`, `wait 1200`, `side off` records a
 hovering hold; `side on`, `pen down`, `pen move`, `pen up`, `side off` records a drag. Existing
 `side on/off` scripts retain their event sequence; the helper additionally establishes hover.
@@ -279,6 +286,14 @@ physical button bounce, e-ink appearance or owner success rates.
 | `trace FILE` | Replay `F` contact frames and `P` pen states on their kernel-time deltas using the shared trace parser; advances ticks between frames. Recorded `E` decisions are evidence, not injected actions. |
 
 `GRIMOIRE_SIM_TOUCH_SLOTS=N` selects the simulated panel's slot capability.
+`GRIMOIRE_SIM_NO_SERVICES=NAME,...` makes the simulator a platform that leaves the named device
+services to its system (`wifi`, `pairing`, `updates`, `koreader`, `calibration`: light.rs,
+`Services`), so Settings can be run without their rows. The scenario harness clears it between runs.
+`GRIMOIRE_SIM_NO_LIGHT=1` makes it a device without a front light: the Display sheet says so where
+its sliders would be, and Settings calls the row Display. The scenario harness clears it between runs.
+`GRIMOIRE_SIM_DEVICE_NAME=NAME` makes the simulator a platform whose device is called NAME: every
+text that is looked up says NAME where it says Kindle (i18n.rs, the device's name). The scenario
+harness clears it between runs.
 `GRIMOIRE_TOUCH_TUNE=v1` selects the old tuning table; otherwise the simulator and runner use
 the provisional `TG_TUNE`. The scenario harness clears both hooks between runs. Synthetic
 shapes and `tests/fixtures/touch/synthetic.txt` are regression inputs, not owner evidence.
@@ -352,7 +367,7 @@ card's `files.card.import`, `files.card.open`, `files.card.pictures`, `files.car
 | `files.crumbs` | the path line ("Files > Documents > Books"), empty at the root |
 | `files.ready` | `1` once the folder is read; `files.rows` the rows in all, `files.page`, `files.pages`, `files.per_page` |
 | `files.hidden` | entries left out of the folder (links, refused folders, paths too long); `files.capped` `1` at 5,000 entries |
-| `files.row.N`, `files.item.NAME` | a row's name as drawn; `files.sub.N` its second line; `files.kind.N` (`place`, `folder`, `pdf`, `look`); `files.status.N` (`waiting`, `importing`, `failed`, `imported` or empty); `files.notes.N` (`1` with "has notes"); `files.pictures.N` (a folder's count, empty before it is counted) |
+| `files.row.N`, `files.item.NAME` | a row's name as drawn; `files.sub.N` its second line; `files.kind.N` (`place`, `folder`, `pdf`, `look`); `files.status.N` (`waiting`, `importing`, `failed`, `imported` or empty); `files.notes.N` (`1` with "has notes"); `files.keyed.N` (`1` once the PDF's book key was read, which an idle tick does for the rows on screen: `files.notes.N` is settled then); `files.pictures.N` (a folder's count, empty before it is counted) |
 | `files.card` | the open card: `pdf`, `folder` or empty; `files.card.details` its first line, `files.card.rows` its rows joined by `|` |
 | `storage.exists.PATH`, `storage.size.PATH`, `storage.names.DIR` | on the storage root: whether a path is there (a link counts as itself), a file's size (-1 without it), a folder's names sorted and joined by `|` |
 
@@ -390,6 +405,7 @@ shows what the app holds.
 | `watching` | `1` while input_poll also watches the share server's socket, else `0` (the runner answers this one too) |
 | `power.pokes` | how many times the app told the power service someone is here: at most once a minute, for pen, touch, or a key while shortcuts are on (the runner answers this one too) |
 | `main.longest_unpumped_ms` | the longest stretch between two reads of input or pump calls since this key was last checked, presents and file saves left out: `ok` under the runner's bound of 250 ms (host time of a debug build: it catches a missing pump, not the Kindle's ~100 ms), else the stretch in ms. The check starts the count again, so `expect main.longest_unpumped_ms not -1` only starts it (the runner answers this one too) |
+| `libindex.complete`, `libindex.reads`, `libindex.books` | the library index (every notebook's pages, names and links, for the Graph of all notebooks; `libindex.rs`), whatever screen is up: `libindex.complete` is `1` once its check of every notebook is through (opening a notebook starts one), `0` before the first and while one runs; `libindex.reads` how many times it has read a notebook from its files since Grimoire started (one an idle tick, after the backlinks cache's own check: `0` until that is through); `libindex.books` the notebooks it holds read. `waitfor libindex.complete is 1` waits for the index itself, however slow the machine's idle ticks come (tests/scenarios/z_map_all_2_big.qs), where a fixed `wait` guesses (the runner answers these too) |
 | `bg.busy`, `bg.children` | `1` while a background job (an export, a compaction, page previews) runs or waits, else `0`; and how many background processes run now: `0`, `1`, or `2` while a second makes a view's page previews beside the first (2.0.0-beta.2; never two over the same pages) |
 | `touch.contacts` | contacts down now, as touchgest follows them (the contact lines' fingers; the runner answers the `touch.` keys) |
 | `touch.class` | what they are doing: `none`, `one` (one finger's stream), `landing` (two fingers, not committed yet), `zoom`, `pan`, `swipe`, `tap` (a two-finger tap waiting for its last finger), `suppressed` (every contact waits to lift, or the pen's hand is held) |
@@ -604,7 +620,7 @@ shows what the app holds.
 | `display.pen_mode` | `1` while the app asks for MTK pen mode (the editor's ink strokes only), else `0` |
 | `display.last_fast` | `ink` if the last fast refresh was live ink, `wait` if a color panel would have waited for the driver's read after it (docs/DESIGN.md), empty before any |
 | `display.last_fast_rect` | where the last fast refresh was, `x y w h` in screen pixels, empty before any |
-| `display.presents` | the refreshes sent since this key was last checked, in order, each its mode (`fast`, `ui`, `full`, or `clean`: a flash of that rect alone, display.rs) and `x y w h`, joined by `, ` (`fast 50 1510 1760 120, fast 138 1970 167 150`), with `, and N more` past the eighth; empty for none. The check starts the count again, so `expect display.presents not -1` only starts it |
+| `display.presents` | the refreshes sent since this key was last checked, in order, each its mode (`fast`, `ui`, `full`, or `clean`: a flash of that rect alone, display.rs) and `x y w h`, joined by `, ` (`fast 50 1510 1760 120, fast 138 1970 167 150`), with `, and N more` past the eighth; empty for none. The check starts the count again, so `expect display.presents not -1` only starts it. The launch's two repaints are among them, each a `ui` of the whole screen, 1.2 s and 3.5 s after the start (mainloop.rs): a scenario that checks a stretch with `is` begins with `wait 3600`, past both, or a slower machine reaches the second one inside the stretch (tests/scenarios/z_pages_find_over.qs, issue #93) |
 | `display.stale.X.Y.W.H` | how many pixels of that screen rect the simulated panel shows other than the app's screen holds them now: grays a fast refresh left dithered, or a change never sent. `0` where every change went out and settled. Keep the rect clear of the toast and the clock corner, which the panel shows over the screen |
 
 The `editor.` and `library.` keys answer on any screen: the editor's describe the open notebook,
@@ -636,7 +652,8 @@ or a digit, not only by punctuation or length (hence y_pagesize_1_ksc and y_page
 `# env: K=V` lines set the environment of that one scenario (values without spaces;
 r_passcode, s_passcode_once, t_passcode_left_off and z_annotate_f_passcode set `GRIMOIRE_PASSCODE`,
 as the launcher does on the Kindle, v_leave_from_editor sets `GRIMOIRE_BG_DELAY_MS`,
-v_shortcuts_awake and v_shortcuts_disabled set `GRIMOIRE_SLEEP_MINUTE_MS`, y_status_corner sets `TZ=UTC`,
+v_shortcuts_awake and v_shortcuts_disabled set `GRIMOIRE_SLEEP_MINUTE_MS`, v_shortcuts_awake_boot sets
+`GRIMOIRE_SIM_UPTIME_MS`, y_status_corner sets `TZ=UTC`,
 y_koreader_hosted sets `GRIMOIRE_HOST` as the KOReader plugin's start does and
 y_koreader_not_hosted sets it empty, y_language and z_language_kept set `GRIMOIRE_LANG`,
 y_pagesize_1_ksc sets `GRIMOIRE_SIM_SIZE=1986x2648`, and y_all_screens sets `GRIMOIRE_CHECK_FIT`
@@ -899,7 +916,9 @@ it walks the document's link annotations), `GRIMOIRE_PDF_TEST_WOKE=1` (every pag
 slept through: a stall is "right after a wake", tried again once without a strike), `GRIMOIRE_PDF_JOB_CPU_SECS=N`
 (a job's CPU budget, in place of `sandbox::s1`'s),
 `GRIMOIRE_WORK_FAIL_STEP=<step>` (that sandbox step fails),
-`GRIMOIRE_SANDBOX=require` (the steps are required, as on the Kindle) and `GRIMOIRE_WORK_EXE=<path>` (the binary a
+`GRIMOIRE_SANDBOX=require` (the steps are required, as on the Kindle: a worker that says `S 0` is then refused, so
+on a host without the steps, macOS, no PDF is imported, pictures wait and no font is checked) and
+`GRIMOIRE_WORK_EXE=<path>` (the binary a
 worker execs: a test's own executable is a test harness).
 Picture hooks (same builds): `GRIMOIRE_PIC_WATCHDOG_MS=N` (the picture watchdog), `GRIMOIRE_PIC_TEST_CRASH=N`,
 `..._HANG=N`, `..._TRAP=N` (a picture worker aborts, spins or makes a call outside its allow-list on its N-th

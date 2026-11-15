@@ -169,11 +169,11 @@ $(CBUILD)/host/grimoire-headless: $(CORE_SRC) $(UI_SRC) $(APP_SRC) $(SIM_PLAT) $
 # its root has finished. Each run's output is in build/scen-logs/NAME.log; one line per run is
 # printed as it ends, the failed runs' logs whole at the end, then "SCENARIOS FAILED: ..." as before.
 SIM_HOOKS := GRIMOIRE_WIFI_SCRIPT GRIMOIRE_HOST GRIMOIRE_PASSCODE GRIMOIRE_SIM_ADDRS GRIMOIRE_HTTPD_DELAY_MS GRIMOIRE_BG_DELAY_MS GRIMOIRE_SIM_PRESSURE \
-             GRIMOIRE_SIM_PEN_BUTTON2 GRIMOIRE_SIM_TOUCH_SLOTS GRIMOIRE_TOUCH_TUNE SIM_TOUCH_SLOTS TOUCH_TUNE \
+             GRIMOIRE_SIM_PEN_BUTTON2 GRIMOIRE_SIM_TOUCH_SLOTS GRIMOIRE_SIM_NO_SERVICES GRIMOIRE_SIM_NO_LIGHT GRIMOIRE_SIM_DEVICE_NAME GRIMOIRE_TOUCH_TUNE SIM_TOUCH_SLOTS TOUCH_TUNE \
              GRIMOIRE_BT_API GRIMOIRE_UPDATE_SCRIPT GRIMOIRE_UPDATE_REQUEST FAKE_UPDATE_PREVIEW FAKE_UPDATE_STABLE FAKE_UPDATE_FAIL \
              GRIMOIRE_SIM_STATS GRIMOIRE_SIM_SIZE GRIMOIRE_CHECK_FIT GRIMOIRE_LANG GRIMOIRE_L10N_DIR GRIMOIRE_ANNOTATE \
              GRIMOIRE_SLEEP_MINUTE_MS GRIMOIRE_SIM_RAWPEN GRIMOIRE_SIM_RAWPEN_MAIN GRIMOIRE_SIM_STALL_MS \
-             GRIMOIRE_LIVE_PEN_SOURCE GRIMOIRE_SIM_MAP_NOMEM GRIMOIRE_KEEP_RENDER_MS GRIMOIRE_PAGE_VIEWS GRIMOIRE_SIM_LATE_MS GRIMOIRE_SIM_CLOCK \
+             GRIMOIRE_LIVE_PEN_SOURCE GRIMOIRE_SIM_MAP_NOMEM GRIMOIRE_KEEP_RENDER_MS GRIMOIRE_PAGE_VIEWS GRIMOIRE_SIM_LATE_MS GRIMOIRE_SIM_CLOCK GRIMOIRE_SIM_UPTIME_MS \
              GRIMOIRE_SIM_DENSE_DRAW_MS GRIMOIRE_SIM_CORES GRIMOIRE_SIM_BACKLINKS_STEP_MS GRIMOIRE_CACHE_WINDOW_MS GRIMOIRE_STORAGE \
              GRIMOIRE_IMPORT_STABLE GRIMOIRE_PDF_SLICE_PAGES GRIMOIRE_PDF_BANDS GRIMOIRE_PDF_NO_MAP GRIMOIRE_PDF_FREE_BYTES GRIMOIRE_PDF_WATCHDOG_MS \
              GRIMOIRE_PDF_TEST_CRASH_PAGE GRIMOIRE_PDF_TEST_HANG_PAGE GRIMOIRE_PDF_TEST_ALLOC_PAGE GRIMOIRE_PDF_TEST_TRAP_PAGE GRIMOIRE_PDF_TEST_LINKS GRIMOIRE_PDF_TEST_WOKE GRIMOIRE_PDF_JOB_CPU_SECS GRIMOIRE_WORK_FAIL_STEP GRIMOIRE_WORK_EXE GRIMOIRE_SANDBOX \
@@ -220,8 +220,11 @@ scenario-times: scenarios
 # check is through, the hold on a row past the long press). Late waits do not slow the backlinks check
 # itself, as a slow runner did: the scenario's own GRIMOIRE_SIM_BACKLINKS_STEP_MS does, in both runs,
 # and its waitfor waits for the rows however long the check takes.
+# v_gestures_4e_single checks what one click of the pen's side button has NOT done yet, 200 ms after it:
+# by the script's clock (GRIMOIRE_SIM_CLOCK=script), which a late wait does not move, where by the real
+# clock a wait that ended late ended after the click had acted (issue #86).
 LATE_SCENARIOS := y_status_press s_shape_4_guards z_pages_drag_hold u_keyboard_hold_delete y_status_corner z_rc8_pages_refresh \
-  z_links_3_bar_learns
+  z_links_3_bar_learns v_gestures_4e_single
 .PHONY: scenarios-late
 scenarios-late: $(BUILD)/host/grimoire-headless
 	@echo "== the scenarios again with every wait 400 ms late: $(LATE_SCENARIOS)"
@@ -395,16 +398,30 @@ $(CBUILD)/host/mklogo: tools/mklogo.c $(CORE_SRC) $(GEN_SRC) $(HDRS)
 # the headless build (--features sim), whose tests check the runner itself, the Share screen and
 # the pen that reports tilt.
 # (test-host and test-sim are the two halves, which CI runs as two jobs.)
+# Each half starts with its scratch folder (GRIMOIRE_TEST_TMP, $(BUILD)/test/tmp) empty: the tests name
+# their folders in it by process id, and a process id comes round again, so what an earlier run left
+# there met a later run's test (one that appends to a file, or expects none). TEST_TMP_EMPTY removes
+# that folder alone and makes it again: not $(BUILD)/test, which holds the tests' out folder. No link is
+# followed (rm removes a link, never what it names: tests leave links to /etc there). A folder a test
+# stopped half way left read-only is made writable first, or rm could not empty it.
+# The halves run one after another, here and under make check (where nothing else uses the folder), and
+# on runners of their own in CI. Two test runs at once in one worktree would empty each other's folder:
+# give the second a BUILD of its own.
 .PHONY: test-host test-sim
+define TEST_TMP_EMPTY
+$(if $(strip $(1)),,$(error TEST_TMP_EMPTY: no build folder))if [ -d "$(1)/test/tmp" ] && [ ! -L "$(1)/test/tmp" ]; then \
+	  find "$(1)/test/tmp" -type d ! -perm -700 -exec chmod u+rwx {} \; ; fi; \
+	rm -rf "$(1)/test/tmp" && mkdir -p "$(1)/test/tmp"
+endef
 test:
 	@$(MAKE) --no-print-directory test-host
 	@$(MAKE) --no-print-directory test-sim
 	@echo "ALL TESTS PASSED"
 test-host:
-	@mkdir -p $(BUILD)/test/tmp
+	@$(call TEST_TMP_EMPTY,$(BUILD))
 	$(call RCARGO,GRIMOIRE_TEST_TMP="$(abspath $(BUILD))/test/tmp") test -- --test-threads=1
 test-sim:
-	@mkdir -p $(BUILD)/test/tmp
+	@$(call TEST_TMP_EMPTY,$(BUILD))
 	$(call RCARGO,GRIMOIRE_TEST_TMP="$(abspath $(BUILD))/test/tmp") test --features sim -- --test-threads=1
 
 # The PDFs the scenarios copy (tests/fixtures/pdf/), made by the fixture writer in rust/tests/pdffix, never
@@ -427,6 +444,7 @@ TESTS := $(patsubst tests/%.c,$(CBUILD)/test/%,$(wildcard tests/test_*.c))
 # were recorded so, and turning it off changes them.
 TEST_FLAGS := -O1 -g -fsanitize=address,undefined -fno-sanitize-recover=undefined -fno-omit-frame-pointer -ffp-contract=on
 c-test: $(TESTS)
+	@$(call TEST_TMP_EMPTY,$(CBUILD))
 	@set -e; for t in $(TESTS); do echo "== $$t"; GRIMOIRE_TEST_TMP=$(CBUILD)/test/tmp $$t; done; echo "ALL TESTS PASSED"
 $(CBUILD)/test/%: tests/%.c $(wildcard tests/*.h) $(CORE_SRC) $(UI_SRC) $(GEN_SRC) $(HDRS)
 	@mkdir -p $(CBUILD)/test/tmp
@@ -572,9 +590,9 @@ $(BUILD)/dist/Grimoire.zip: $(BUILD)/kindle/grimoire kindle/Grimoire.sh kindle/a
 	chmod +x $(PKG)/app/grimoire $(PKG)/app/grimoire.sh
 	python3 tools/archive.py tar $(BUILD)/dist/app.tar -C $(PKG)/app grimoire grimoire.sh bluetooth.sh wifi.sh update.sh CAPABILITIES licenses koreader
 	base64 -i assets/icon.png | tr -d '\n' > $(BUILD)/dist/icon.b64
-	# (shasum on a Mac; coreutils' sha1sum on Linux: the same SHA-1, 12 characters of it)
-	id=$$({ shasum $(BUILD)/dist/app.tar 2>/dev/null || sha1sum $(BUILD)/dist/app.tar; } | cut -c1-12); \
-	[ -n "$$id" ] || { echo "package: needs shasum or sha1sum" >&2; exit 1; }; \
+	id=$$(shasum $(BUILD)/dist/app.tar 2>/dev/null | cut -c1-12); \
+	[ -n "$$id" ] || id=$$(sha1sum $(BUILD)/dist/app.tar 2>/dev/null | cut -c1-12); \
+	[ -n "$$id" ] || { echo "package: no SHA-1 tool (shasum or sha1sum) to make BUILD_ID"; exit 1; }; \
 	awk -v id="$$id" 'FNR==NR { icon = $$0; next } \
 	  /^# Icon: @ICON@$$/ { print "# Icon: data:image/png;base64," icon; next } \
 	  /^BUILD_ID=@BUILD_ID@$$/ { print "BUILD_ID=" id; next } { print }' \

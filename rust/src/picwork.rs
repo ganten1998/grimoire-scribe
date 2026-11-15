@@ -404,14 +404,23 @@ impl PicPool {
             }
             let line = w.read_line(512, deadline).ok()?;
             let s = String::from_utf8_lossy(&line).into_owned();
-            if s == "S 0" || s == "S 1" {
+            if s == "S 1" || (s == "S 0" && sandbox_line_ok(false)) {
                 return Some(Ok(()));
+            }
+            if s == "S 0" {
+                // (a worker without the steps where the sandbox is required: a sandbox failure, as a failed step is)
+                session_set_broken();
+                return Some(Err("the worker is not sandboxed"));
             }
             if let Some(step) = s.strip_prefix("E sandbox ") {
                 if step.len() < 32 && step.bytes().all(|c| c.is_ascii_lowercase()) {
                     session_set_broken();
                     return Some(Err("a sandbox step failed"));
                 }
+            }
+            if let Some(n) = sigsys_line(&line) {
+                qlog!("work: a picture's worker made call %d, which the sandbox does not allow", n as i32);
+                return Some(Err("the worker made a call the sandbox does not allow"));
             }
             Some(Err("no handshake"))
         })();

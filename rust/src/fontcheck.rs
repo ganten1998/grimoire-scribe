@@ -1107,8 +1107,13 @@ fn start_worker(len: usize) -> Hello {
         }
         let line = w.read_line(512, deadline).ok()?;
         let s = String::from_utf8_lossy(&line).into_owned();
-        if s == "S 0" || s == "S 1" {
+        if s == "S 1" || (s == "S 0" && sandbox_line_ok(false)) {
             return Some("");
+        }
+        if s == "S 0" {
+            // (a worker without the steps where the sandbox is required: a sandbox failure, as a failed step is)
+            session_set_broken();
+            return Some("the worker is not sandboxed");
         }
         if let Some(step) = s.strip_prefix("E sandbox ") {
             if step.len() < 32 && step.bytes().all(|c| c.is_ascii_lowercase()) {
@@ -1116,6 +1121,10 @@ fn start_worker(len: usize) -> Hello {
                 session_set_broken();
                 return Some("a sandbox step failed");
             }
+        }
+        if let Some(n) = sigsys_line(&line) {
+            qlog!("work: a font's worker made call %d, which the sandbox does not allow", n as i32);
+            return Some("the worker made a call the sandbox does not allow");
         }
         Some("no handshake")
     })();
@@ -1213,7 +1222,8 @@ pub fn check_font(data: &[u8], px: i32) -> FontOut {
             };
             deadline = (mono_ms() + watchdog_ms()).min(slice_end);
             records += 1;
-            // (4 MiB of records a job at most, DESIGN.md 4.3: a font has 65,535 glyphs, so far fewer)
+            // (a check takes at most 200,000 record lines, each of at most 1,024 bytes: a font has 65,535 glyphs and at
+            // most 656 skips, so far fewer)
             if records > 200_000 || !line.iter().all(|&c| (0x20..0x7f).contains(&c)) {
                 w.kill_and_reap();
                 return FontOut::Dead("the worker broke the protocol");

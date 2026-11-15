@@ -36,11 +36,6 @@ Free software under the GPL-3.0. Not affiliated with or endorsed by Amazon.
 The pages above were drawn on a Kindle Scribe in Grimoire; the last picture is Live view, the
 Kindle's screen in a computer's browser as you write.
 
-> **Pre-release 2.1.0-beta.2.** The second beta of 2.1: Grimoire is in daily use on a Kindle Scribe, and
-> every build passes several hundred automated checks, but it is a beta: it autosaves every stroke and
-> keeps damaged files instead of overwriting them, and you should still copy your notebooks off now and
-> then (Library > Share makes that one click).
-
 ## Support Grimoire
 
 Grimoire is free, open source and made by one person, with a lot of care. If it has earned a place
@@ -303,7 +298,10 @@ your notebooks and settings from `quire/` to `grimoire/` and removes the old Qui
   Imported, and a Look again row), Documents, Downloads and All storage (Grimoire's notebooks, PDFs and trash
   are never listed). A tap on a folder opens it; a tap on a PDF opens its card ("14.2 MB, Oct 30" and Import as
   notebook, or Open its notebook when a notebook already holds that book; "has notes" shows on its row), and
-  the second tap imports it. A folder of pictures is imported from its `...` (or a finger held on it) card.
+  the second tap imports it. A notebook made from a PDF remembers its file, so the card of such a PDF offers
+  Import as notebook beside Open its notebook: the very same file says "PDF already imported.", and another
+  file that only looks like the book to KOReader's key (an edited copy, say) becomes a notebook of its own.
+  A folder of pictures is imported from its `...` (or a finger held on it) card.
   The notebook takes the file's name unless you typed one in the New notebook sheet first, and goes in that
   sheet's folder. The file stays exactly where it was: Grimoire only reads outside its own folders, and never
   follows a link (a file picked in Import itself is filed in `import/done/` like one dropped there). A file

@@ -333,6 +333,10 @@ change together, and the dry run above compares them.
 | actions | commit SHAs: `actions/checkout` v4.4.0, `setup-python` v5.6.0, `upload-artifact` v4.6.2, `download-artifact` v4.3.0 | the SHA |
 | the vendored C | `third_party/`, in the tree | git |
 
+After moving `RUST_VERSION` or `ZIG_VERSION`, run the Scribe check of docs/TESTING.md, "Hardening round
+(2026-11), sandbox", again before a tag: the system calls a worker makes come from the standard library
+and the C library those two bring.
+
 Not pinned: the Homebrew test tools (gettext, luajit, ImageMagick, ShellCheck, luacheck) and the
 runner image's Node and Xcode. They run checks and the host build; none of them makes a byte of a
 release file (the Kindle binary is rustc and zig, the zips and the package are Python and the tree).

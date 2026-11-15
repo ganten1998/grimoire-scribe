@@ -6,7 +6,8 @@
 //! * `Item::toggle(icon, label, id, check)` — an on/off row with its switch at the right;
 //! * `Item::value(icon, label, id)` — a row whose label is built from the current setting
 //!   (`Label::Style`, `Label::Font`, ...), and `Item::value_toggle` for one with a switch too;
-//! * `.classic_only()` — a row Gothic hides.
+//! * `.classic_only()` — a row Gothic hides; `.when(Show::Wifi)` — one a platform that leaves
+//!   that service to its system leaves out (`Show`, light.rs's `Services`).
 //!
 //! Then add its `SettingId` to `library::setting_hit` (and its action to `library::act` if it is a
 //! new kind of action). Nothing draws the row itself: `library::draw_settings` lays the list out
@@ -18,6 +19,7 @@
 //! the same `ui_row`). `Show::ClassicOnly` hides a row in Gothic, as the Font row already is.
 
 use crate::i18n::n_;
+use crate::light::Services;
 use crate::store::Settings;
 use crate::ui::IconKind;
 
@@ -66,6 +68,10 @@ impl Item {
     pub const fn classic_only(self) -> Item {
         Item { show: Show::ClassicOnly, ..self }
     }
+    /// A row only where the platform leaves that service to Grimoire (`Show::Wifi`, `Show::Calibration`).
+    pub const fn when(self, show: Show) -> Item {
+        Item { show, ..self }
+    }
 }
 
 /// Where a row's label comes from. Text is a msgid, translated as it is drawn; the other kinds
@@ -73,6 +79,8 @@ impl Item {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Label {
     Text(&'static str),
+    /// The Display row: brightness and warmth where there is a front light, its sheet's title where not.
+    Display,
     Style,
     Font,
     Language,
@@ -129,18 +137,29 @@ impl Check {
     }
 }
 
-/// Whether a row is shown in both themes, or in Classic only.
+/// Whether a row is shown: in both themes or in Classic only, and where the platform leaves its service
+/// to Grimoire (`Services`, light.rs: the Kindle, the simulator and the host all of them).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Show {
     Always,
     ClassicOnly,
+    Wifi,
+    Pairing,
+    Updates,
+    KOReader,
+    Calibration,
 }
 
 impl Show {
-    pub fn visible(self, classic: bool) -> bool {
+    pub fn visible(self, classic: bool, services: Services) -> bool {
         match self {
             Show::Always => true,
             Show::ClassicOnly => classic,
+            Show::Wifi => services.wifi,
+            Show::Pairing => services.pairing,
+            Show::Updates => services.updates,
+            Show::KOReader => services.koreader,
+            Show::Calibration => services.calibration,
         }
     }
 }
@@ -183,6 +202,11 @@ pub static ERASER_LABELS: [&str; 2] = [
 pub const STYLE_GOTHIC: &str = n_("Style (Gothic)");
 pub const STYLE_CLASSIC: &str = n_("Style (Classic)");
 
+/// The Display row's label where there is a front light to name, and where there is none (the sheet's own
+/// title then: no brightness or warmth).
+pub const DISPLAY_WITH_LIGHT: &str = n_("Display: brightness, warmth");
+pub const DISPLAY_NO_LIGHT: &str = n_("Display");
+
 /// The Settings page, category by category and row by row. Keep this table in the order the
 /// page shows; the layout never hardcodes a category or a row.
 // TRANSLATORS: Settings' categories, down the left of its page, each with its icon: General's
@@ -193,14 +217,14 @@ pub const STYLE_CLASSIC: &str = n_("Style (Classic)");
 pub static CATEGORIES: &[Category] = &[
     Category::new(n_("General"), IconKind::Gear, &[
         Item::value(IconKind::Language, Label::Language, SettingId::Language),
-        Item::open(IconKind::Update, n_("Updates"), SettingId::Updates),
+        Item::open(IconKind::Update, n_("Updates"), SettingId::Updates).when(Show::Updates),
         // TRANSLATORS: (Settings) the row that opens the Wi-Fi submenu: the radio and the Kindle's
         // saved networks.
-        Item::open(IconKind::Share, n_("Wi-Fi"), SettingId::Wifi),
+        Item::open(IconKind::Share, n_("Wi-Fi"), SettingId::Wifi).when(Show::Wifi),
     ]),
     Category::new(n_("Display"), IconKind::Brightness, &[
         // TRANSLATORS: the row that opens Display's sheet: brightness and warmth.
-        Item::open(IconKind::Brightness, n_("Display: brightness, warmth"), SettingId::Display),
+        Item::value(IconKind::Brightness, Label::Display, SettingId::Display),
         Item::value(IconKind::Castle, Label::Style, SettingId::Theme),
         // TRANSLATORS: the row that turns Grimoire's dark mode (white on black) on or off.
         Item::toggle(IconKind::Invert, n_("Dark mode"), SettingId::DarkMode, Check::DarkMode),
@@ -222,15 +246,15 @@ pub static CATEGORIES: &[Category] = &[
         Item::value(IconKind::Highlighter, Label::SideButton, SettingId::SideButton),
         // TRANSLATORS: the row that opens the eraser's choices: whole strokes, or precise.
         Item::value(IconKind::Eraser, Label::Eraser, SettingId::EraserMode),
-        Item::open(IconKind::Target, n_("Calibrate pen and touch"), SettingId::Calibration),
+        Item::open(IconKind::Target, n_("Calibrate pen and touch"), SettingId::Calibration).when(Show::Calibration),
     ]),
     Category::new(n_("Controls"), IconKind::Gamepad, &[
         Item::open(IconKind::Gamepad, n_("Shortcuts: keys and controller buttons"), SettingId::Shortcuts),
-        Item::open(IconKind::Link, n_("Pair"), SettingId::Pair),
+        Item::open(IconKind::Link, n_("Pair"), SettingId::Pair).when(Show::Pairing),
         Item::open(IconKind::Gestures, n_("Gestures"), SettingId::Gestures),
     ]),
     Category::new(n_("System"), IconKind::Grid, &[
-        Item::open(IconKind::Notebook, n_("KOReader"), SettingId::KOReader),
+        Item::open(IconKind::Notebook, n_("KOReader"), SettingId::KOReader).when(Show::KOReader),
         Item::value_toggle(IconKind::Download, Label::Mirror, SettingId::Mirror, Check::MirrorPdf),
         // TRANSLATORS: the row that opens About: what this Kindle is, its screen, and the
         // storage used.
@@ -273,6 +297,12 @@ mod tests {
         let both = Item::value_toggle(IconKind::Download, Label::Mirror, SettingId::Mirror, Check::MirrorPdf);
         assert!(matches!(both.label, Label::Mirror));
         assert!(matches!(both.check, Check::MirrorPdf));
+
+        let gated = Item::open(IconKind::Share, "Example", SettingId::Wifi).when(Show::Wifi);
+        assert!(matches!(gated.show, Show::Wifi));
+        assert!(Show::Always.visible(false, Services::ALL));
+        assert!(!Show::Wifi.visible(false, Services::without("wifi")));
+        assert!(Show::Wifi.visible(false, Services::ALL));
     }
 
     #[test]
@@ -295,7 +325,12 @@ mod tests {
         assert_eq!(text(0, 2), "Wi-Fi");
         assert_eq!(text(5, 0), "KOReader");
         assert_eq!(text(5, 2), "About: device and storage");
-        assert_eq!(text(1, 0), "Display: brightness, warmth");
+        assert!(matches!(CATEGORIES[1].items[0].label, Label::Display));
+        assert!(matches!(CATEGORIES[0].items[1].show, Show::Updates));
+        assert!(matches!(CATEGORIES[0].items[2].show, Show::Wifi));
+        assert!(matches!(CATEGORIES[3].items[3].show, Show::Calibration));
+        assert!(matches!(CATEGORIES[4].items[1].show, Show::Pairing));
+        assert!(matches!(CATEGORIES[5].items[0].show, Show::KOReader));
         assert_eq!(text(1, 2), "Dark mode");
         assert_eq!(text(1, 4), "Rotation (portrait and landscape)");
         assert_eq!(text(1, 5), "Pinch with two fingers to zoom");

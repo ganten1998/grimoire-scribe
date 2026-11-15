@@ -80,7 +80,14 @@ pub fn archive(files: &[NoteFile]) -> Vec<Entry> {
 /// The built-in notes' archive (archive of NOTE_FILES).
 pub fn notes() -> &'static [Entry] {
     static ARCHIVE: OnceLock<Vec<Entry>> = OnceLock::new();
-    ARCHIVE.get_or_init(|| archive(NOTE_FILES))
+    // (the notes call the device a Kindle, as every text does: i18n.rs, the device's name)
+    ARCHIVE.get_or_init(|| {
+        let mut entries = archive(NOTE_FILES);
+        for e in &mut entries {
+            e.md = crate::i18n::i18n_named(e.md);
+        }
+        entries
+    })
 }
 
 /// The entry with version's notes, else the newest (0): the card shows a version without notes of

@@ -5,14 +5,11 @@ use crate::prelude::*;
 
 // input.h is implemented by one platform file per build, as in the C: input_evdev.c on the Kindle,
 // sim_sdl.c in the simulator; host builds (tools, tests) link none (platform_none.rs). The functions
-// below forward to it, so the header's documentation stays here and the platform's signatures are
-// checked against it.
-#[cfg(feature = "kindle")]
-use crate::input_evdev as platform;
-#[cfg(not(any(feature = "kindle", feature = "sim")))]
-use crate::platform_none as platform;
-#[cfg(feature = "sim")]
-use crate::sim_sdl as platform;
+// below forward to it through the build's platform (platform.rs), so the header's documentation
+// stays here and the platform's signatures are checked against it.
+// (the in-tree platforms' methods need the trait in scope; a registered `dyn` platform's do not)
+#[cfg_attr(feature = "external-platform", allow(unused_imports))]
+use crate::platform::{active, Platform};
 
 /// Maps a device axis pair, normalized to 0..1 over the device's absinfo range, to screen
 /// px:  if swap_xy, (u,v) = (ny, nx) else (nx, ny);  sx = ax*u + bx;  sy = ay*v + by.
@@ -178,37 +175,37 @@ pub struct InputCaps {
 /// dpi: the screen's (display_open's), for touchgest's millimetre thresholds.
 #[inline]
 pub fn input_open(screen_w: i32, screen_h: i32, dpi: f32, pen: Option<&InputCalib>, touch: Option<&InputCalib>) -> i32 {
-    platform::input_open(screen_w, screen_h, dpi, pen, touch)
+    active().input_open(screen_w, screen_h, dpi, pen, touch)
 }
 /// NULL leaves that mapping unchanged; pass input_default_calib's values to reset one.
 #[inline]
 pub fn input_set_calib(pen: Option<&InputCalib>, touch: Option<&InputCalib>) {
-    platform::input_set_calib(pen, touch)
+    active().input_set_calib(pen, touch)
 }
 /// The default (uncalibrated) mapping guess, so calibrate.c can show/compare it.
 #[inline]
 pub fn input_default_calib(pen: Option<&mut InputCalib>, touch: Option<&mut InputCalib>) {
-    platform::input_default_calib(pen, touch)
+    active().input_default_calib(pen, touch)
 }
 #[inline]
 pub fn input_caps() -> InputCaps {
-    platform::input_caps()
+    active().input_caps()
 }
 /// Returns 1 and fills ev if an event is ready within timeout_ms (0 = non-blocking,
 /// -1 = forever), else 0. Never blocks once events are queued.
 #[inline]
 pub fn input_poll(ev: &mut InEvent, timeout_ms: i32) -> i32 {
-    platform::input_poll(ev, timeout_ms)
+    active().input_poll(ev, timeout_ms)
 }
 /// Extra fd to wake input_poll (e.g. the HTTP share server socket); -1 to clear.
 /// When it becomes readable, input_poll returns 0 early.
 #[inline]
 pub fn input_watch_fd(fd: i32) {
-    platform::input_watch_fd(fd)
+    active().input_watch_fd(fd)
 }
 #[inline]
 pub fn input_shortcuts_enable(enabled: bool) {
-    platform::input_shortcuts_enable(enabled)
+    active().input_shortcuts_enable(enabled)
 }
 /// The optional keyboards and controllers watched now, none while shortcuts are off: their names
 /// (as hid_name), whether each is a controller, whether another app holds it, whether it is a
@@ -226,23 +223,23 @@ pub struct InputHid {
 }
 #[inline]
 pub fn input_hids(out: &mut [InputHid]) -> i32 {
-    platform::input_hids(out)
+    active().input_hids(out)
 }
 /// Logical screen rotation (quarter turns clockwise of the device): events are reported in the
 /// rotated screen's coordinates from now on. Calibration stays in panel coordinates.
 #[inline]
 pub fn input_set_orientation(quarter_turns: i32) {
-    platform::input_set_orientation(quarter_turns)
+    active().input_set_orientation(quarter_turns)
 }
 /// Panel (unrotated) coordinates of a logical screen point, for calibration targets.
 #[inline]
 pub fn input_logical_to_panel(lx: f32, ly: f32, px: &mut f32, py: &mut f32) {
-    platform::input_logical_to_panel(lx, ly, px, py)
+    active().input_logical_to_panel(lx, ly, px, py)
 }
 /// Release pen and touch to native UI, or take them back and reset stale contacts after any wake.
 #[inline]
 pub fn input_set_grab(grab: bool) -> bool {
-    platform::input_set_grab(grab)
+    active().input_set_grab(grab)
 }
 /// Where the pen hovers, for Live view: fn gets the screen px (after the turn) at each of the raw
 /// digitizer's frames while the pen is near and not touching; NULL stops it. On the Kindle the pen
@@ -253,7 +250,7 @@ pub fn input_set_grab(grab: bool) -> bool {
 /// with or without this hook.
 #[inline]
 pub fn input_hover_hook(f: Option<fn(f32, f32)>) {
-    platform::input_hover_hook(f)
+    active().input_hover_hook(f)
 }
 /// Called before a pen event is queued, including during work_pump; NULL removes it. On the Kindle
 /// it also gets the raw digitizer's hover (input_hover_hook's place, as an IN_PEN_HOVER event that is
@@ -261,30 +258,27 @@ pub fn input_hover_hook(f: Option<fn(f32, f32)>) {
 /// simulator: before each event is taken). Neither callback may wait, allocate or log.
 #[inline]
 pub fn input_sample_hook(sample: Option<fn(&mut InEvent)>, batch: Option<fn()>) {
-    platform::input_sample_hook(sample, batch)
+    active().input_sample_hook(sample, batch)
 }
 /// What the screen in front allows a two-finger drag (touchgest.rs): which axes the page scrolls on,
 /// whether a pinch may zoom, whether gestures are on, whether a keyboard is up. The editor pushes it
 /// as these change.
 #[inline]
 pub fn input_touch_context(v: TgView) {
-    platform::input_touch_context(v)
+    active().input_touch_context(v)
 }
 /// Appends the touch frames, the pen's coming and going and the gestures' outcomes to the file at
 /// path (grimoire/touch-trace.txt, opted into with an empty grimoire/touch-trace), while input is
 /// grabbed; None stops it. Never the pen's place. Only the Kindle writes one.
 #[inline]
 pub fn input_touch_trace(path: Option<&str>) {
-    platform::input_touch_trace(path)
+    active().input_touch_trace(path)
 }
 /// Appends an editor-side event (such as a finger-shape result) to the opt-in trace. Platforms that
 /// do not write touch traces ignore it.
 #[inline]
 pub fn input_touch_trace_event(line: &str) {
-    #[cfg(any(feature = "kindle", feature = "sim"))]
-    platform::input_touch_trace_event(line);
-    #[cfg(not(any(feature = "kindle", feature = "sim")))]
-    let _ = line;
+    active().input_touch_trace_event(line)
 }
 /// Live view's pen viewers read the raw digitizer themselves (live.rs): where its node is and how
 /// its frames map onto the screen, as this module places its own events. false while there is none
@@ -292,16 +286,16 @@ pub fn input_touch_trace_event(line: &str) {
 /// in CLOCK_MONOTONIC, or the pen and touch not Grimoire's (input_set_grab).
 #[inline]
 pub fn input_raw_pen(out: &mut LiveRawMap) -> bool {
-    platform::input_raw_pen(out)
+    active().input_raw_pen(out)
 }
 /// In a forked child, before it closes what it inherited: the stop handler (SIGTERM, SIGINT,
 /// SIGHUP) writes nowhere from now on. The handler stays as it was, but the signal pipe's numbers
 /// go to the files the child opens next, and a stop would write a byte into one of them.
 #[inline]
 pub fn input_forget_signal_pipe() {
-    platform::input_forget_signal_pipe()
+    active().input_forget_signal_pipe()
 }
 #[inline]
 pub fn input_close() {
-    platform::input_close()
+    active().input_close()
 }

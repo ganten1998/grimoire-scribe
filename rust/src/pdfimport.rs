@@ -26,7 +26,13 @@
 //! - Colour (the owner's change to D18): a page with colour is stored as an 8-bit RGB PNG, a page that is
 //!   gray within `pdfwork::GRAY_TOLERANCE` as an 8-bit gray one. The Scribe shows both in gray (bgimage
 //!   decodes either to its luma at load and keeps only that), so the UI never holds the 13.8 MB RGB copy.
-//! - No file name, title or key reaches grimoire.log: ids, page numbers, counts, timings and reasons.
+//! - "Imported before" is said of the very file: a notebook keeps a record of the file it was made from (its
+//!   SHA-256, its size and its key: one line of source.ini, `FileRecord`), and a PDF that has a notebook's key is
+//!   compared with it (`key_holders`, `key_match`). The same file ends "PDF already imported."; another file
+//!   with that key becomes a notebook of its own, which carries the key in its record alone, so the book's first
+//!   notebook stays the one KOReader's route finds. A notebook without a record goes by its key. The whole file
+//!   is read in the writer only (once at the commit, and before that only for a file of a record's size).
+//! - No file name, title, key or hash reaches grimoire.log: ids, page numbers, counts, sizes, timings and reasons.
 
 use crate::fsview::*;
 use crate::md5::*;
@@ -222,17 +228,85 @@ pub(crate) fn import_storage_path(rel: &str) -> Option<StoragePath> {
 }
 
 /// The path of a source under Grimoire's import folder (`Book.pdf`, `Work/Book.pdf`), None for a source
-/// anywhere else and for `import/done/` (compared without case, as the storage is).
+/// anywhere else and for `import/done/` (done in any case, as the storage may keep it). A path whose folders
+/// are spelled as Grimoire's own are is in import with no system call: every path the scan builds, and every
+/// path under the picker's Import place. One spelled in another case is in import only when it is that folder
+/// (`same_import_folder`): on a storage that folds case it is, on one that tells names apart it is not.
 pub(crate) fn under_import(src: &str) -> Option<&str> {
-    let g = grimoire_rel()?;
+    under_import_of(src, &grimoire_rel()?, &same_import_folder)
+}
+
+/// Pure. `same(given)` is asked only when the prefix equals Grimoire's own without ASCII case but not byte for
+/// byte; `given` is that prefix as the path spells it, without its last slash.
+fn under_import_of<'a>(src: &'a str, g: &str, same: &dyn Fn(&str) -> bool) -> Option<&'a str> {
     let pre = format!("{}/import/", g.trim_matches('/'));
     let b = src.as_bytes();
+    // (necessary, not sufficient: the same letters in any case)
     if b.len() <= pre.len() || !b[..pre.len()].eq_ignore_ascii_case(pre.as_bytes()) {
         return None;
     }
     let rest = src.get(pre.len()..)?;
     let first = rest.split('/').next().unwrap_or("");
-    (!first.eq_ignore_ascii_case("done") && !rest.is_empty()).then_some(rest)
+    if first.eq_ignore_ascii_case("done") || rest.is_empty() {
+        return None;
+    }
+    if b[..pre.len()] != *pre.as_bytes() && !same(src.get(..pre.len() - 1)?) {
+        return None;
+    }
+    Some(rest)
+}
+
+/// The entries of a folder that the "same folder" question reads at most (a parent with more is not judged).
+const SAME_FOLDER_LIST_MAX: usize = 5000;
+
+/// Whether `given`, a path from the storage root that equals `<Grimoire's folder>/import` without ASCII case,
+/// names that very folder. Component by component from the root: one spelled as Grimoire's own is the same; one
+/// spelled otherwise is judged in its parent (`same_folder_entry`), by the two spellings' identities and, when
+/// those differ, by the parent's names. Anything that does not read says no: the file is then read in place,
+/// never moved, and keeps no record of tries. No answer is remembered: two lstat calls for each component
+/// spelled otherwise, and a listing only when they disagree.
+fn same_import_folder(given: &str) -> bool {
+    let (Some(root), Some(g)) = (storage_root(), grimoire_rel()) else { return false };
+    let own = format!("{}/import", g.trim_matches('/'));
+    if own.split('/').count() != given.split('/').count() {
+        return false;
+    }
+    // a real folder's identity (a link is none: nothing is followed)
+    let identity = |path: &str| std::fs::symlink_metadata(path).ok().filter(|md| md.file_type().is_dir()).map(|md| (md.dev(), md.ino()));
+    let mut parent = root.trim_end_matches('/').to_string();
+    for (o, s) in own.split('/').zip(given.split('/')) {
+        if o != s {
+            let names = || {
+                use std::os::unix::ffi::OsStrExt;
+                let mut v: Vec<Vec<u8>> = Vec::new();
+                for e in std::fs::read_dir(&parent).ok()? {
+                    if v.len() >= SAME_FOLDER_LIST_MAX {
+                        return None;
+                    }
+                    v.push(e.ok()?.file_name().as_bytes().to_vec());
+                }
+                Some(v)
+            };
+            if !same_folder_entry(identity(&format!("{parent}/{o}")), identity(&format!("{parent}/{s}")), o, &names) {
+                return false;
+            }
+        }
+        // (the folder above the next component is Grimoire's own, shown to be the one given)
+        parent.push('/');
+        parent.push_str(o);
+    }
+    true
+}
+
+/// Pure: whether two spellings of one name in one folder are the same folder. `own` and `other` are each
+/// spelling's (device, inode) where lstat found a real folder (None for anything else and for an error);
+/// `names` lists the parent (None when it does not read). Equal identities are one folder, with no listing.
+/// Other identities are still one folder when the parent holds exactly one entry of that name without ASCII
+/// case (the storage takes both spellings as that entry, and may number it differently by each); with two or
+/// more they are two folders. A number alone never says "another folder".
+fn same_folder_entry(own: Option<(u64, u64)>, other: Option<(u64, u64)>, own_name: &str, names: &dyn Fn() -> Option<Vec<Vec<u8>>>) -> bool {
+    let (Some(a), Some(b)) = (own, other) else { return false };
+    a == b || names().is_some_and(|n| n.iter().filter(|n| n.eq_ignore_ascii_case(own_name.as_bytes())).count() == 1)
 }
 
 /// Whether a file may be moved (to import/done) or written beside: only when it lies in Grimoire's import folder.
@@ -279,32 +353,87 @@ pub enum Lock {
     Fresh,
     /// this process holds it already (an import is queued or running)
     Held,
-    /// another process holds it (a previous run's detached child still importing), or it cannot be opened
+    /// not taken, and the errno says why. EWOULDBLOCK: another process holds it (a previous run's detached child
+    /// still importing), and what was asked for waits for that import. Anything else: the lock file cannot be
+    /// opened or is not a plain file at its own name, and nothing waits for it.
     Busy(i32),
 }
 
+/// The lock file, opened to be locked: never through a link, never anything but a plain file with one name
+/// (what util::open_rewrite_nofollow asks of every file saved on that storage). O_NONBLOCK, as the two other lock
+/// files have, so nothing that is not a file can hold the open; the descriptor is never read or written. The
+/// descriptor, or an errno (EINVAL for what is no plain file of one name: it is left as it is).
+fn lock_open(path: &std::ffi::CStr) -> Result<i32, i32> {
+    // SAFETY: open reads the NUL-terminated path we were given; fstat writes the struct we own; the descriptor
+    // is the caller's, or closed here.
+    unsafe {
+        let fd = libc::open(path.as_ptr(), libc::O_RDWR | libc::O_CREAT | libc::O_NOFOLLOW | libc::O_NOCTTY | libc::O_NONBLOCK | libc::O_CLOEXEC, 0o644 as libc::c_uint);
+        if fd < 0 {
+            return Err(std::io::Error::last_os_error().raw_os_error().unwrap_or(libc::EIO));
+        }
+        let mut st: libc::stat = std::mem::zeroed();
+        if libc::fstat(fd, &mut st) != 0 || (st.st_mode & libc::S_IFMT) != libc::S_IFREG || st.st_nlink != 1 {
+            libc::close(fd);
+            return Err(libc::EINVAL);
+        }
+        Ok(fd)
+    }
+}
+
+/// What lstat says of `path` when `fd` is the plain file that name holds now: both stat, both are regular files
+/// (the name itself: lstat follows no link), and they are one device and inode. None for anything else.
+fn at_its_name(fd: i32, path: &std::ffi::CStr) -> Option<libc::stat> {
+    // SAFETY: fstat and lstat write the structs we own; path is NUL-terminated.
+    unsafe {
+        let (mut a, mut b): (libc::stat, libc::stat) = (std::mem::zeroed(), std::mem::zeroed());
+        (libc::fstat(fd, &mut a) == 0
+            && libc::lstat(path.as_ptr(), &mut b) == 0
+            && (a.st_mode & libc::S_IFMT) == libc::S_IFREG
+            && (b.st_mode & libc::S_IFMT) == libc::S_IFREG
+            && a.st_dev == b.st_dev
+            && a.st_ino == b.st_ino)
+            .then_some(b)
+    }
+}
+
+/// Whether `fd` is the plain file that `path` names now (`at_its_name`).
+pub fn lock_is_at(fd: i32, path: &std::ffi::CStr) -> bool {
+    at_its_name(fd, path).is_some()
+}
+
 /// Takes `import/.lock` without blocking, once, and keeps the handle (O_CLOEXEC, so no script and no worker
-/// inherits it) while any import is queued or running. Never blocks.
+/// inherits it) while any import is queued or running. Never blocks. (The file is where `lock_file_path` says;
+/// a missing import/ is made, as writing a mark makes import/.marks.) The file locked must still be the one at
+/// its name once it is locked: when it is not (the name was given to another file meanwhile) the handle is let
+/// go and the lock is asked for once more, and after two such rounds it is not taken (ESTALE). Whatever else is
+/// found at the lock's name is never removed and never followed.
 pub fn lock_take() -> Lock {
     if LOCK.with(|l| l.get()) >= 0 {
         return Lock::Held;
     }
-    let path = root_path("import/.lock");
+    mkdir_p(&root_path("import"));
+    let path = lock_file_path(&root_path("import/.lock"));
     let Ok(c) = std::ffi::CString::new(path) else { return Lock::Busy(libc::ENOENT) };
-    // SAFETY: open reads the NUL-terminated path we own; the descriptor it returns is ours alone.
-    let fd = unsafe { libc::open(c.as_ptr(), libc::O_RDWR | libc::O_CREAT | libc::O_CLOEXEC, 0o644 as libc::c_uint) };
-    if fd < 0 {
-        return Lock::Busy(std::io::Error::last_os_error().raw_os_error().unwrap_or(libc::EIO));
-    }
-    // SAFETY: flock only takes the open descriptor.
-    if unsafe { libc::flock(fd, libc::LOCK_EX | libc::LOCK_NB) } != 0 {
-        let e = std::io::Error::last_os_error().raw_os_error().unwrap_or(libc::EIO);
-        // SAFETY: closing the descriptor opened above.
+    for _ in 0..2 {
+        let fd = match lock_open(&c) {
+            Ok(fd) => fd,
+            Err(e) => return Lock::Busy(e),
+        };
+        // SAFETY: flock only takes the open descriptor.
+        if unsafe { libc::flock(fd, libc::LOCK_EX | libc::LOCK_NB) } != 0 {
+            let e = std::io::Error::last_os_error().raw_os_error().unwrap_or(libc::EIO);
+            // SAFETY: closing the descriptor opened above.
+            unsafe { libc::close(fd) };
+            return Lock::Busy(e);
+        }
+        if lock_is_at(fd, &c) {
+            LOCK.with(|l| l.set(fd));
+            return Lock::Fresh;
+        }
+        // SAFETY: closing the descriptor opened above (its lock goes with it: it is not the file at the name).
         unsafe { libc::close(fd) };
-        return Lock::Busy(e);
     }
-    LOCK.with(|l| l.set(fd));
-    Lock::Fresh
+    Lock::Busy(libc::ESTALE)
 }
 
 /// The lock's descriptor, or -1: what `child_setup` keeps open in a bgjob child and the detached child, so
@@ -371,8 +500,16 @@ fn mark_path(src: &str) -> String {
     root_path(&format!("{}/{}", MARKS_DIR, mark_hash(src)))
 }
 
+/// A label (an id, a name given, a Library folder) as a line of a mark or a state holds it: no control character.
+/// The path of the file is never cleaned: it is kept as it is, or not at all (`name_storable`).
 fn clean_field(s: &str) -> String {
     s.chars().filter(|c| !c.is_control()).collect()
+}
+
+/// Whether a path can be kept in a mark or an import's state and read back as itself: no line feed and no
+/// carriage return in it (the two characters a line of those files cannot hold).
+pub fn name_storable(s: &str) -> bool {
+    !s.contains(['\n', '\r'])
 }
 
 pub fn mark_text(m: &Mark) -> String {
@@ -384,7 +521,7 @@ pub fn mark_text(m: &Mark) -> String {
             MarkState::Done => "done",
         },
         clean_field(&m.id),
-        clean_field(&m.src),
+        m.src,
         m.pick as u8,
         clean_field(&m.name),
         clean_field(&m.folder),
@@ -396,7 +533,7 @@ pub fn mark_text(m: &Mark) -> String {
     )
 }
 
-/// Reads a mark strictly (at most 4 KiB, known keys, an id the store takes).
+/// Reads a mark strictly (at most 4 KiB, known keys, an id the store takes, a path that reads back as itself).
 pub fn mark_parse(t: &[u8]) -> Option<Mark> {
     if t.len() > MARK_MAX {
         return None;
@@ -428,7 +565,13 @@ pub fn mark_parse(t: &[u8]) -> Option<Mark> {
                 }
                 m.id = v.to_string();
             }
-            "src" => m.src = v.to_string(),
+            "src" => {
+                // (a line never holds a line feed; a carriage return inside one is no path a mark was given)
+                if !name_storable(v) {
+                    return None;
+                }
+                m.src = v.to_string();
+            }
             "pick" => m.pick = v == "1",
             "name" => m.name = v.to_string(),
             "folder" => m.folder = v.to_string(),
@@ -459,6 +602,10 @@ pub fn sandbox_broken_in_progress() -> bool {
 }
 
 fn mark_write(m: &Mark) -> bool {
+    if !name_storable(&m.src) {
+        qlog!("import: a path that holds a line break is never imported; refused");
+        return false;
+    }
     let dir = root_path(MARKS_DIR);
     if mkdir_p(&dir) != 0 {
         return false;
@@ -528,7 +675,7 @@ impl State {
         let strikes = self.strikes.iter().map(|(p, n)| format!("{p}:{n}")).collect::<Vec<_>>().join(",");
         format!(
             "# Grimoire: a PDF import in progress (docs/FORMAT.md)\nsrc={}\nsize={}\nmtime={}\nkey={}\npages={}\nnext={}\npics={}\nblank={}\nstrikes={}\ncpu_ms={}\npick={}\nname={}\nfolder={}\nbytes={}\nopen={}\nstops={}\n",
-            clean_field(&self.src),
+            self.src,
             self.size,
             self.mtime,
             self.key,
@@ -567,6 +714,10 @@ impl State {
             let (k, v) = line.split_once('=')?;
             match k {
                 "src" => {
+                    // (as mark_parse: a carriage return inside the line is no path a state was given)
+                    if !name_storable(v) {
+                        return None;
+                    }
                     s.src = v.to_string();
                     have |= 1;
                 }
@@ -623,6 +774,9 @@ fn state_read(id: &str) -> Option<State> {
 }
 
 fn state_write(id: &str, s: &State) -> bool {
+    if !name_storable(&s.src) {
+        return false;
+    }
     write_file_atomic(&state_path(id), s.text().as_bytes()) == 0
 }
 
@@ -681,16 +835,61 @@ pub fn looks_complete(head: &[u8], tail: &[u8]) -> bool {
     tail[..end].ends_with(b"%%EOF") || has(&tail[end.saturating_sub(1024)..end], b"%%EOF") && tail[end.saturating_sub(8)..end].ends_with(b"EOF")
 }
 
-fn read_ends(path: &str, size: u64) -> Option<(Vec<u8>, Vec<u8>)> {
-    use std::io::{Read, Seek, SeekFrom};
-    let mut f = std::fs::File::open(path).ok()?;
+/// What the scan's look at a listed PDF found.
+enum Ends {
+    /// the first and the last KiB of the file that was listed
+    Read(Vec<u8>, Vec<u8>),
+    /// a file is there, but not the one listed (another device, inode, size or time)
+    Changed,
+    /// the file or the storage does not read just now
+    Unreadable,
+    /// no file the import opens: a link, a FIFO, a folder, another device, a refused place, or gone
+    NotAFile,
+}
+
+/// `buf` filled from `fd` at `off` (pread: the descriptor's offset is untouched); false for a short or failed read.
+fn pread_exact(fd: i32, buf: &mut [u8], off: u64) -> bool {
+    let mut got = 0;
+    while got < buf.len() {
+        // SAFETY: pread writes at most the bytes left of buf into it; fd is the caller's open descriptor.
+        let n = unsafe { libc::pread(fd, buf[got..].as_mut_ptr() as *mut libc::c_void, buf.len() - got, (off + got as u64) as libc::off_t) };
+        if n < 0 && errno() == libc::EINTR {
+            continue;
+        }
+        if n <= 0 {
+            return false;
+        }
+        got += n as usize;
+    }
+    true
+}
+
+/// The scan's look at a PDF it listed: its first and last KiB. The file is opened as the import itself opens it
+/// (fsview's walk: no link followed anywhere, a regular file on the storage's device, opened without waiting),
+/// and is read only when it is the file the listing saw (`listed`: its size, mtime, device and inode).
+fn read_ends(st: &FsStorage, sp: &StoragePath, listed: (u64, i64, u64, u64)) -> Ends {
+    use std::os::fd::AsRawFd;
+    let fd = match st.open_file(sp, false) {
+        Ok(fd) => fd,
+        Err(FsErr::Io(_)) => return Ends::Unreadable,
+        Err(_) => return Ends::NotAFile,
+    };
+    // SAFETY: md is written by fstat before it is read.
+    let mut md: libc::stat = unsafe { std::mem::zeroed() };
+    if unsafe { libc::fstat(fd.as_raw_fd(), &mut md) } != 0 {
+        return Ends::Unreadable;
+    }
+    let (size, mtime, dev, ino) = listed;
+    if (md.st_size as u64, md.st_mtime as i64, md.st_dev as u64, md.st_ino as u64) != (size, mtime, dev, ino) {
+        return Ends::Changed;
+    }
     let mut head = vec![0u8; 1024.min(size as usize)];
-    f.read_exact(&mut head).ok()?;
     let from = size.saturating_sub(1024);
-    f.seek(SeekFrom::Start(from)).ok()?;
     let mut tail = vec![0u8; (size - from) as usize];
-    f.read_exact(&mut tail).ok()?;
-    Some((head, tail))
+    if !pread_exact(fd.as_raw_fd(), &mut head, 0) || !pread_exact(fd.as_raw_fd(), &mut tail, from) {
+        return Ends::Unreadable;
+    }
+    Ends::Read(head, tail)
 }
 
 // ---- the UI's side: what is queued, what is seen ----
@@ -773,8 +972,9 @@ pub fn pictures_wait(on: bool) {
 /// What a scan found to do.
 #[derive(Default, Debug)]
 pub struct Found {
-    /// loose files and those of `import/<Folder>/`: (path under import/, folder, size, mtime)
-    pub files: Vec<(String, String, u64, i64)>,
+    /// loose files and those of `import/<Folder>/`: (path under import/, folder, size, mtime, device, inode), the
+    /// last four as the listing saw the file (a directory entry's own: no link followed)
+    pub files: Vec<(String, String, u64, i64, u64, u64)>,
     /// folders (names) that hold PDFs: their pictures wait until the PDFs are done
     pub pdf_folders: Vec<String>,
     /// work folders a cut-off import left that can go on (their ids)
@@ -789,7 +989,8 @@ fn is_pdf_name(n: &str) -> bool {
 }
 
 /// The PDFs of import/ (top level, and one folder down), no links, regular files only, sorted by the
-/// comparator the browser and the font list use.
+/// comparator the browser and the font list use. A PDF or a folder whose name a mark cannot keep
+/// (`name_storable`) is left out and counted.
 pub fn list_pdfs() -> Found {
     let mut f = Found::default();
     let dir = root_path("import");
@@ -815,8 +1016,16 @@ pub fn list_pdfs() -> Found {
     }
     top.sort_by(|a, b| name_cmp(&a.0, &b.0));
     for (name, md) in top {
-        if md.is_file() && is_pdf_name(&name) {
-            f.files.push((name, String::new(), md.len(), md.mtime()));
+        let pdf = md.is_file() && is_pdf_name(&name);
+        if !name_storable(&name) {
+            // (a PDF or a folder only: a stray file of no kind never makes the scan's line print at every scan)
+            if pdf || md.is_dir() {
+                f.skipped += 1;
+            }
+            continue;
+        }
+        if pdf {
+            f.files.push((name, String::new(), md.len(), md.mtime(), md.dev(), md.ino()));
         } else if md.is_dir() {
             let Ok(rd) = std::fs::read_dir(format!("{dir}/{name}")) else { continue };
             let mut inner: Vec<(String, std::fs::Metadata)> = Vec::new();
@@ -829,7 +1038,7 @@ pub fn list_pdfs() -> Found {
                     continue;
                 }
                 let Ok(ft) = e.file_type() else { continue };
-                if ft.is_symlink() || !ft.is_file() {
+                if ft.is_symlink() || !ft.is_file() || !name_storable(&n) {
                     f.skipped += 1;
                     continue;
                 }
@@ -842,7 +1051,7 @@ pub fn list_pdfs() -> Found {
             }
             inner.sort_by(|a, b| name_cmp(&a.0, &b.0));
             for (n, md) in inner {
-                f.files.push((format!("{name}/{n}"), name.clone(), md.len(), md.mtime()));
+                f.files.push((format!("{name}/{n}"), name.clone(), md.len(), md.mtime(), md.dev(), md.ino()));
             }
         }
     }
@@ -851,12 +1060,16 @@ pub fn list_pdfs() -> Found {
 
 /// Whether a folder of import/ still holds PDFs that can be imported (its pictures wait for them). A PDF that
 /// was refused or failed its tries and has not changed since, or one imported already that could not move,
-/// holds nothing back: the pictures then import as they did before 2.1.
+/// holds nothing back: the pictures then import as they did before 2.1. Nor does a PDF the scan leaves out for
+/// its name or its folder's (`name_storable`): the pictures never wait for a PDF that is not imported.
 pub(crate) fn folder_holds_pdfs(name: &str, attempts: &[crate::bgwork_template::Attempt]) -> bool {
+    if !name_storable(name) {
+        return false;
+    }
     let Ok(rd) = std::fs::read_dir(root_path(&format!("import/{name}"))) else { return false };
     rd.flatten().take(1000).any(|e| {
         let Some(n) = e.file_name().to_str().map(str::to_string) else { return false };
-        if !is_pdf_name(&n) || !e.file_type().is_ok_and(|t| t.is_file()) {
+        if !is_pdf_name(&n) || !name_storable(&n) || !e.file_type().is_ok_and(|t| t.is_file()) {
             return false;
         }
         let Ok(md) = e.metadata() else { return false };
@@ -917,6 +1130,10 @@ pub fn scan_queue(found: &Found, dpi: f32, lock_busy: bool) -> i32 {
     progress(); // (the shared record is made before any fork)
     let mut queued = 0;
     let (mut waiting, mut tried_out, mut already_made, mut skipped_busy, mut no_room) = (0, 0, 0, 0, 0);
+    // (the looks that found another file than the one listed, and those that found no file)
+    let (mut differ, mut not_files) = (0, 0);
+    // the storage the looks open their files through: opened once a scan, when the first steady file needs it
+    let mut storage: Option<Option<FsStorage>> = None;
     ui(|u| u.rescan_at = None);
     if session_broken() {
         qlog!("import: PDFs are not imported this session (the sandbox refused a step; see the log above)");
@@ -949,7 +1166,7 @@ pub fn scan_queue(found: &Found, dpi: f32, lock_busy: bool) -> i32 {
         queued += 1;
     }
     let free = if ui(|u| u.room_wait.is_empty()) { None } else { free_bytes() };
-    for (rel, folder, size, mtime) in &found.files {
+    for (rel, folder, size, mtime, dev, ino) in &found.files {
         let Some(sp) = import_storage_path(rel) else { continue };
         let Ok(src) = String::from_utf8(sp.as_bytes().to_vec()) else { continue };
         if src.len() >= FS_PATH_MAX || is_queued(&src) {
@@ -983,7 +1200,6 @@ pub fn scan_queue(found: &Found, dpi: f32, lock_busy: bool) -> i32 {
             }
         }
         let key = fnv(FNV0, src.as_bytes());
-        let abs = format!("{}/import/{}", store_root(), rel);
         let stable_hash = fnv(fnv(FNV0, &size.to_ne_bytes()), &mtime.to_ne_bytes());
         if attempt_key(&src).is_some_and(|k| crate::bgwork_template::attempts_waiting_key(k, stable_hash, &attempts, PDF_TRIES)) {
             tried_out += 1;
@@ -997,31 +1213,55 @@ pub fn scan_queue(found: &Found, dpi: f32, lock_busy: bool) -> i32 {
             waiting += 1;
             continue;
         }
-        let ok = read_ends(&abs, *size).is_some_and(|(h, t)| looks_complete(&h, &t));
-        if !ok {
-            if ui(|u| unchanged_ms(&u.seen, key, now)) < INCOMPLETE_GIVE_UP_MS {
-                waiting += 1;
+        // (when the storage cannot be opened, no file reads this scan)
+        let st = storage.get_or_insert_with(|| storage_root().and_then(|r| FsStorage::open(&r, &store_root()).ok()));
+        let look = st.as_ref().map_or(Ends::Unreadable, |st| read_ends(st, &sp, (*size, *mtime, *dev, *ino)));
+        let (ok, other) = match look {
+            Ends::Read(h, t) => (looks_complete(&h, &t), false),
+            Ends::Unreadable => (false, false),
+            // (its entry in the table of files seen stays, or the minute below would never pass: a file that
+            // really was replaced is listed as itself by the look 5 s on, and read then)
+            Ends::Changed => (false, true),
+            Ends::NotAFile => {
+                // never taken "as it is", and no sooner look is asked for it: the next scan lists the folder again
+                not_files += 1;
                 continue;
             }
-            qlog!("import: a PDF without its end marker has not changed for a minute; it is imported as it is");
+        };
+        if !ok {
+            if ui(|u| unchanged_ms(&u.seen, key, now)) < INCOMPLETE_GIVE_UP_MS {
+                if other {
+                    differ += 1;
+                } else {
+                    waiting += 1;
+                }
+                continue;
+            }
+            if other {
+                qlog!("import: a PDF that differs from its listing has not changed for a minute; it is imported as it is");
+            } else {
+                qlog!("import: a PDF without its end marker has not changed for a minute; it is imported as it is");
+            }
         }
         if queue_one(&src, "", folder, false, dpi) {
             queued += 1;
         }
     }
-    if waiting > 0 {
+    if waiting > 0 || differ > 0 {
         ui(|u| u.rescan_at = Some(now.wrapping_add(WAIT_RESCAN_MS)));
     }
-    if queued != 0 || waiting != 0 || tried_out != 0 || found.skipped != 0 || already_made != 0 || skipped_busy != 0 || no_room != 0 {
+    if queued != 0 || waiting != 0 || tried_out != 0 || found.skipped != 0 || already_made != 0 || skipped_busy != 0 || no_room != 0 || differ != 0 || not_files != 0 {
         qlog!(
-            "import: %d PDF(s) queued; left as they are: %d not yet steady, %d that failed and have not changed since, %d imported already, %d skipped (links or odd names), %d while the lock is held elsewhere, %d waiting for room",
+            "import: %d PDF(s) queued; left as they are: %d not yet steady, %d that failed and have not changed since, %d imported already, %d skipped (links or odd names), %d while the lock is held elsewhere, %d waiting for room, %d that differ from their listing, %d no longer files",
             queued,
             waiting,
             tried_out,
             already_made,
             found.skipped as i32,
             skipped_busy,
-            no_room
+            no_room,
+            differ,
+            not_files
         );
     }
     queued
@@ -1057,13 +1297,23 @@ pub fn marks_waiting() -> bool {
     waiting_marks().next().is_some()
 }
 
+/// The waiting marks, each its path's own: a mark is named by the hash of the path it holds, and a waiting one
+/// filed under another name is removed here and not returned (an earlier build kept a cleaned path under the hash
+/// of the true one: such a mark named another file, and no end of that file's import ever dropped it).
 fn waiting_marks() -> impl Iterator<Item = Mark> {
     std::fs::read_dir(root_path(MARKS_DIR))
         .into_iter()
         .flat_map(|rd| rd.flatten().take(256))
-        .filter_map(|e| read_file(&e.path().to_string_lossy()))
-        .filter_map(|t| mark_parse(&t))
-        .filter(|m| m.state == MarkState::Waiting)
+        .filter_map(|e| read_file(&e.path().to_string_lossy()).map(|t| (e, t)))
+        .filter_map(|(e, t)| mark_parse(&t).map(|m| (e, m)))
+        .filter(|(_, m)| m.state == MarkState::Waiting)
+        .filter_map(|(e, m)| {
+            if e.file_name().to_str() == Some(mark_hash(&m.src).as_str()) {
+                return Some(m);
+            }
+            let _ = std::fs::remove_file(e.path());
+            None
+        })
 }
 
 /// When the UI takes the lock afresh: the picks that waited for it are queued now (a PDF as a PDF import, a
@@ -1142,7 +1392,7 @@ pub enum Queued {
     Waiting,
     /// this very file is queued or running already
     AlreadyRunning,
-    /// not a file this can import
+    /// not a file this can import, or ("lock") the import lock cannot be taken: the log says which
     Refused(&'static str),
 }
 
@@ -1155,6 +1405,11 @@ pub fn pdf_import_queue(path: &StoragePath, name: Option<&str>, folder: Option<&
         qlog!("import: a picked PDF's path is not UTF-8; refused");
         return Queued::Refused("name");
     };
+    // (before the lock is asked for and before any mark: nothing ever waits under a path a mark cannot keep)
+    if !name_storable(&src) {
+        qlog!("import: a picked PDF's path holds a line break; refused");
+        return Queued::Refused("name");
+    }
     if session_broken() {
         qlog!("import: a picked PDF is not imported this session (the sandbox refused a step; see the log above)");
         return Queued::Refused("sandbox");
@@ -1176,6 +1431,11 @@ pub fn pdf_import_queue(path: &StoragePath, name: Option<&str>, folder: Option<&
         }
     }
     match lock_take() {
+        Lock::Busy(e) if e != libc::EWOULDBLOCK => {
+            // (no import holds the lock: nothing is recorded as waiting for one to end)
+            qlog!("import: the import lock cannot be taken (%s); a picked PDF is refused", &strerror(e));
+            return Queued::Refused("lock");
+        }
         Lock::Busy(_) => {
             let m = Mark { state: MarkState::Waiting, src: src.clone(), pick: true, name: name.unwrap_or("").to_string(), folder: folder.unwrap_or("").to_string(), at: wall_time(), ..Default::default() };
             if !mark_write(&m) {
@@ -1300,14 +1560,15 @@ fn detached_progress() -> Option<(u32, u32)> {
 }
 
 /// Whether the previous run's detached child is still going (the lock is held elsewhere): checked by trying
-/// the lock now and then. Returns true while it holds it.
+/// the lock now and then. Returns true while it holds it. (A lock that cannot be taken for another reason is no
+/// import still going.)
 pub fn detached_check() -> bool {
     if lock_fd() >= 0 {
         ui(|u| u.detached = false);
         return false;
     }
     let busy = match lock_take() {
-        Lock::Busy(_) => true,
+        Lock::Busy(e) => e == libc::EWOULDBLOCK,
         Lock::Fresh => {
             lock_release_if_idle();
             false
@@ -1573,6 +1834,31 @@ fn open_source(src: &str) -> Result<Src, &'static str> {
     Ok(Src { fd, size: md.st_size as u64, mtime: md.st_mtime as i64 })
 }
 
+/// Whether the name `abs` still holds the file an import opened and read: the open file is the plain file at
+/// that name (`at_its_name`: the name itself, one device and inode), and the name has the size and the time the
+/// file was opened with. A name that is gone, a link, another file, or that file changed since, is not it.
+fn source_at_its_name(source: &Src, abs: &str) -> bool {
+    use std::os::fd::AsRawFd;
+    std::ffi::CString::new(abs)
+        .ok()
+        .and_then(|c| at_its_name(source.fd.as_raw_fd(), &c))
+        .is_some_and(|st| st.st_size as u64 == source.size && st.st_mtime as i64 == source.mtime)
+}
+
+// (tests) What runs once, in this thread, as an import is about to file its PDF: its file has been read, and its
+// name is about to be looked at again. Set by `sim_before_filing`; the Kindle's build has neither.
+#[cfg(feature = "sim")]
+thread_local! {
+    static BEFORE_FILING: std::cell::RefCell<Option<Box<dyn FnOnce()>>> = const { std::cell::RefCell::new(None) };
+}
+
+/// (tests) `f` runs once, in this thread, as the next import files its PDF (`finish_pdf`): after the file was
+/// read, before its name is looked at again. No test has to wait for that moment.
+#[cfg(feature = "sim")]
+pub fn sim_before_filing(f: impl FnOnce() + 'static) {
+    BEFORE_FILING.with(|b| *b.borrow_mut() = Some(Box::new(f)));
+}
+
 /// Whether the private read-only mapping the worker needs works on this storage (the S1 spike's question).
 fn can_map(fd: i32, len: u64) -> bool {
     if len == 0 {
@@ -1639,21 +1925,150 @@ pub fn unique_import_name(base: &str, all: &[NotebookInfo]) -> String {
     base.to_string()
 }
 
-/// A notebook already holds this book key (its `source=`, or a `source.ini` that names it).
-fn notebook_with_key(key: &str, all: &[NotebookInfo]) -> bool {
-    notebook_id_with_key(key, all).is_some()
+// ---- the file a notebook was made from ----
+
+/// The record a notebook keeps of the file it was made from: one line of its source.ini,
+/// `file=sha256:<64 hex>:<size in bytes>:<the book key, 32 hex>` (docs/FORMAT.md). It is of the file as it was
+/// read when the notebook was made.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct FileRecord {
+    /// the SHA-256 of the whole file, 64 lower-case hex digits
+    pub sha256: String,
+    pub size: u64,
+    /// the book key (KOReader's partial MD5), 32 lower-case hex digits
+    pub key: String,
 }
 
-/// The notebook that holds this book key, when one does (the picker's "has notes" and Open its notebook).
-pub fn notebook_id_with_key(key: &str, all: &[NotebookInfo]) -> Option<String> {
-    all.iter().find(|nb| {
-        nb.source.as_bytes() == key.as_bytes() || (nb.source.is_empty() && {
-            let mut m = AnnotateMap::default();
-            let r = annotate_map_load(nb.id.as_str(), &mut m) == 0 && m.book.as_bytes() == key.as_bytes();
-            annotate_map_free(&mut m);
-            r
-        })
-    }).map(|nb| nb.id.as_str().to_string())
+fn lower_hex(s: &str, len: usize) -> bool {
+    s.len() == len && s.bytes().all(|c| matches!(c, b'0'..=b'9' | b'a'..=b'f'))
+}
+
+/// The record's line, without its line end (130 bytes at most).
+pub fn file_record_line(r: &FileRecord) -> String {
+    format!("file=sha256:{}:{}:{}", r.sha256, r.size, r.key)
+}
+
+/// Reads a record's line strictly: `file=`, then four fields split by `:`. The first is `sha256`; the hash is 64
+/// characters of 0-9a-f; the size is decimal digits alone, 1 or more, with no leading zero, and fits 64 bits; the
+/// key is 32 characters of 0-9a-f. Anything else (another algorithm's name, upper case, a field missing or one
+/// too many, a space) is None: a notebook with such a line has no record for this version.
+pub fn file_record_parse(line: &str) -> Option<FileRecord> {
+    let mut f = line.strip_prefix("file=")?.split(':');
+    let (alg, sha, size, key) = (f.next()?, f.next()?, f.next()?, f.next()?);
+    if f.next().is_some() || alg != "sha256" || !lower_hex(sha, 64) || !lower_hex(key, 32) {
+        return None;
+    }
+    if size.is_empty() || size.starts_with('0') || !size.bytes().all(|c| c.is_ascii_digit()) {
+        return None;
+    }
+    Some(FileRecord { sha256: sha.to_string(), size: size.parse().ok()?, key: key.to_string() })
+}
+
+/// A notebook's record among the lines of its source.ini that annotate.rs keeps as they are (`AnnotateMap.extra`):
+/// the first line that reads as one. Each line is judged by itself, as bytes, so a kept line that is no UTF-8
+/// does not hide a record beside it.
+fn record_among(kept: &[u8]) -> Option<FileRecord> {
+    kept.split(|&c| c == b'\n').find_map(|line| file_record_parse(std::str::from_utf8(line).ok()?))
+}
+
+/// A notebook that holds a book key, and the record of its file when it has one that names that key.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct KeyHolder {
+    pub id: String,
+    pub key: String,
+    pub rec: Option<FileRecord>,
+}
+
+/// The notebooks that hold a book key, in `all`'s order (store_list's: newest modified first). A notebook holds
+/// a key by the first of these that applies: its notebook.ini's `source=`; with no `source` line, its source.ini's
+/// `book=` (an older version dropped the `source` line); with neither, the key its file record names (the second
+/// notebook of a key carries it there alone). `rec` is the notebook's record when it reads and names that key.
+/// With `only`, the holders of that key alone, and a notebook whose `source` is another key is passed by without
+/// reading its source.ini; without, every notebook's source.ini is read once (the picker's session). Small reads
+/// only: no file is hashed here.
+pub fn key_holders(all: &[NotebookInfo], only: Option<&str>) -> Vec<KeyHolder> {
+    let mut out = Vec::new();
+    for nb in all {
+        let source = nb.source.as_str();
+        if only.is_some_and(|k| !source.is_empty() && source != k) {
+            continue;
+        }
+        let mut m = AnnotateMap::default();
+        let (book, rec) = if annotate_map_load(nb.id.as_str(), &mut m) == 0 {
+            (m.book.as_str().to_string(), record_among(m.extra.as_bytes()))
+        } else {
+            (String::new(), None)
+        };
+        annotate_map_free(&mut m);
+        let key = if !source.is_empty() {
+            source.to_string()
+        } else if !book.is_empty() {
+            book
+        } else if let Some(r) = &rec {
+            r.key.clone()
+        } else {
+            continue;
+        };
+        if only.is_some_and(|k| k != key) {
+            continue;
+        }
+        let rec = rec.filter(|r| r.key == key);
+        out.push(KeyHolder { id: nb.id.as_str().to_string(), key, rec });
+    }
+    out
+}
+
+/// What the notebooks that hold a PDF's key say of the PDF.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum KeyMatch {
+    /// no notebook is of this file: none holds the key, or every one that does has a record of another file
+    None,
+    /// this notebook's record is of this very file (its size and its hash)
+    Same(String),
+    /// this notebook holds the key and has no record: the key decides, as it did before records
+    KeyOnly(String),
+    /// this notebook's record has the file's size, and no hash was given: only the hash can tell
+    SizeOnly(String),
+}
+
+/// Pure. `holders` are the holders of one key; `size` and `sha` are the PDF's. In this order: with a hash, a
+/// holder whose record has this size and this hash is `Same`; without one, a holder whose record has this size
+/// is `SizeOnly`; else the first holder without a record is `KeyOnly`; else `None`.
+pub fn key_match(holders: &[KeyHolder], size: u64, sha: Option<&str>) -> KeyMatch {
+    let of_size = |h: &&KeyHolder| h.rec.as_ref().is_some_and(|r| r.size == size && sha.is_none_or(|s| r.sha256 == s));
+    if let Some(h) = holders.iter().find(of_size) {
+        return if sha.is_some() { KeyMatch::Same(h.id.clone()) } else { KeyMatch::SizeOnly(h.id.clone()) };
+    }
+    match holders.iter().find(|h| h.rec.is_none()) {
+        Some(h) => KeyMatch::KeyOnly(h.id.clone()),
+        None => KeyMatch::None,
+    }
+}
+
+/// SHA-256 of the first `len` bytes of an open file, as hex: pread from 0 in pieces of 256 KiB (a heap buffer),
+/// EINTR tried again, the descriptor's offset untouched. None on a read error or when the file ends before `len`.
+/// It parses nothing, and runs in the writer (a background child), never in the UI process.
+fn file_sha256(fd: i32, len: u64) -> Option<String> {
+    const PIECE: usize = 256 << 10;
+    let mut buf: Vec<u8> = Vec::new();
+    buf.try_reserve_exact(PIECE).ok()?;
+    buf.resize(PIECE, 0);
+    let mut h = crate::sha256::Sha256::new();
+    let mut at = 0u64;
+    while at < len {
+        let want = (len - at).min(PIECE as u64) as usize;
+        // SAFETY: pread writes at most `want` bytes into buf, which holds PIECE; fd is the caller's open descriptor.
+        let n = unsafe { libc::pread(fd, buf.as_mut_ptr() as *mut libc::c_void, want, at as libc::off_t) };
+        if n < 0 && errno() == libc::EINTR {
+            continue;
+        }
+        if n <= 0 {
+            return None;
+        }
+        h.update(&buf[..n as usize]);
+        at += n as u64;
+    }
+    Some(crate::sha256::sha256_hex(&h.finish()))
 }
 
 /// Another import in flight (another work folder) holds this key.
@@ -1769,11 +2184,27 @@ fn check_made_pages(work: &str, bgdir: &str, ix: &mut BgIndex, state: &mut State
 
 /// Moves a PDF that became a notebook to import/done/<Name>-<YYYYMMDD-HHMMSS>.pdf; one that cannot move is
 /// marked done in place, with its size and mtime, so no later start imports that very file again. Only a file
-/// that lies in import/ ever moves: any other stays where it is, whatever a mark or a state says (H6).
-fn finish_pdf(abs: &str, src: &str, id: &str, size: u64, mtime: i64) {
+/// that lies in import/ ever moves: any other stays where it is, whatever a mark or a state says (H6). And only
+/// the file the import read (`source`, its open file): the name is looked at once more here, just before the
+/// move, and when it no longer holds that file (another was put there while this one was read, or it changed, or
+/// it is gone) nothing moves and nothing is marked done. What is at the name then waits for the next scan, which
+/// takes it as the file it is.
+///
+/// Returns whether the name's entry is dealt with. False (left for the next scan): the caller leaves the try
+/// counted, so a name that never holds the file read is tried PDF_TRIES times with those contents and no more.
+fn finish_pdf(abs: &str, src: &str, id: &str, source: &Src) -> bool {
+    #[cfg(feature = "sim")]
+    if let Some(f) = BEFORE_FILING.with(|b| b.borrow_mut().take()) {
+        f();
+    }
     if !in_import(src) {
         mark_drop(src);
-        return;
+        return true;
+    }
+    if !source_at_its_name(source, abs) {
+        qlog!("import: %s: its PDF's name no longer holds the file that was read; nothing moves to import/done, and the next scan takes what is at that name", id);
+        mark_drop(src);
+        return false;
     }
     let done = root_path("import/done");
     let stem = Path::new(abs).file_stem().and_then(|s| s.to_str()).unwrap_or("import").to_string();
@@ -1797,11 +2228,12 @@ fn finish_pdf(abs: &str, src: &str, id: &str, size: u64, mtime: i64) {
         crate::bgwork_template::sync_dir_public(&root_path("import"));
         // (the mark would only ever say "done" for a file that is not there)
         mark_drop(src);
-        return;
+        return true;
     }
-    let m = Mark { state: MarkState::Done, id: id.to_string(), src: src.to_string(), size, mtime, ..Default::default() };
+    let m = Mark { state: MarkState::Done, id: id.to_string(), src: src.to_string(), size: source.size, mtime: source.mtime, ..Default::default() };
     mark_write(&m);
     qlog!("import: %s: its PDF could not move to import/done; marked as imported", id);
+    true
 }
 
 fn fail(id: &str, reason: u32, arg: u32) -> SliceEnd {
@@ -1894,6 +2326,11 @@ fn log_worker_failure(id: &str, why: &str) {
 /// commits.
 pub fn run_slice(id: &str, src: &str) -> SliceEnd {
     ignore_sigpipe();
+    // (a path no state can keep is refused where it comes in, the scan's and the pick's; here nothing is written)
+    if !name_storable(src) {
+        qlog!("import: %s: its path holds a line break; nothing imported", id);
+        return fail(id, R_FAILED, 0);
+    }
     let mark = mark_read(src);
     let Some(abs) = StoragePath::new(src.as_bytes()).and_then(|sp| abs_of(&sp)) else { return fail(id, R_FAILED, 0) };
     let source = match open_source(src) {
@@ -1951,12 +2388,32 @@ fn first_slice(id: &str, src: &str, abs: &str, source: &Src, mark: Option<&Mark>
     let key = partial_md5_fd(std::os::fd::AsRawFd::as_raw_fd(&source.fd));
     let mut all = Vec::new();
     store_list(&mut all);
-    if notebook_with_key(&key, &all) {
+    // "Imported before" is said of this very file. The notebooks that hold its key decide: one whose record has
+    // this file's size is asked again with the whole file's hash, one without a record goes by the key, and when
+    // every holder's record is of another file this one is imported (docs/FORMAT.md, the book key).
+    let holders = key_holders(&all, Some(&key));
+    let mut held = key_match(&holders, source.size, None);
+    if matches!(held, KeyMatch::SizeOnly(_)) {
+        let t0 = mono_ms_now();
+        let sha = file_sha256(std::os::fd::AsRawFd::as_raw_fd(&source.fd), source.size);
+        match &sha {
+            Some(_) => qlog!("import: %s: its file read to compare with a notebook's record: %d KB in %d ms", id, (source.size >> 10) as i32, (mono_ms_now() - t0) as i32),
+            None => qlog!("import: %s: its file could not be read whole to compare with a notebook's record", id),
+        }
+        // (a file that cannot be read whole is not the same file: asked with a hash that equals no record)
+        held = key_match(&holders, source.size, Some(sha.as_deref().unwrap_or("")));
+    }
+    if matches!(held, KeyMatch::Same(_) | KeyMatch::KeyOnly(_)) {
         qlog!("import: %s: this PDF was imported before; nothing made", id);
-        finish_pdf(abs, src, id, source.size, source.mtime); // (only a file of import/ moves)
-        note_try(src, stable_hash, A_DONE);
+        // (only a file of import/ moves, and only while its name still holds the file read here)
+        if finish_pdf(abs, src, id, source) {
+            note_try(src, stable_hash, A_DONE);
+        }
         set_result(id, R_ALREADY, 0, 0);
         return SliceEnd::Already;
+    }
+    if !holders.is_empty() {
+        qlog!("import: %s: a notebook holds this PDF's key but was made from another file; this one is imported", id);
     }
     if in_flight_with_key(&key, id) {
         // A copy of this PDF is being imported. Waiting for its notebook here would hold this job (and, in the
@@ -2460,9 +2917,15 @@ fn fold_links(id: &str, work: &str, nb: &NotebookInfo, pw: i32, ph: i32) -> (boo
 fn commit(id: &str, src: &str, abs: &str, state: &State, source: &Src, pw: i32, ph: i32) -> SliceEnd {
     let work = work_dir(id);
     let bgdir = format!("{work}/bg");
-    // the file must be the one the slices read
+    // the file must be the one the slices read: its name still opens to the first slice's size and time, and this
+    // slice's own open file has the first slice's key. The record made below pairs that key with the hash of
+    // this open file, so both are of one file: a file that took the name between two slices, with the same size
+    // and time and another key, ends the import here.
     let again = open_source(src);
-    if again.as_ref().map_or(true, |s| s.size != state.size || s.mtime != state.mtime) || source.size != state.size {
+    if again.as_ref().map_or(true, |s| s.size != state.size || s.mtime != state.mtime)
+        || source.size != state.size
+        || partial_md5_fd(std::os::fd::AsRawFd::as_raw_fd(&source.fd)) != state.key
+    {
         qlog!("import: %s: the PDF changed under the import; nothing imported", id);
         remove_work_folder(id);
         mark_drop(src);
@@ -2485,8 +2948,10 @@ fn commit(id: &str, src: &str, abs: &str, state: &State, source: &Src, pw: i32, 
         // made by a run cut off before its file moved
         qlog!("import: %s: made by an earlier run; its PDF moves now", id);
         remove_work_folder(id);
-        finish_pdf(abs, src, id, source.size, source.mtime); // (only a file of import/ moves)
-        note_try(src, 0, A_DONE);
+        // (only a file of import/ moves, and only while its name still holds the file this slice opened)
+        if finish_pdf(abs, src, id, source) {
+            note_try(src, 0, A_DONE);
+        }
         return SliceEnd::Done { pages: state.pages, blank: state.blank.len() as u32 };
     }
     let n = state.pages as usize;
@@ -2494,6 +2959,27 @@ fn commit(id: &str, src: &str, abs: &str, state: &State, source: &Src, pw: i32, 
     let papers: Vec<PaperKind> = state.pics.iter().map(|&p| paper_image(PAPER_ROLE_DOCUMENT, p)).collect();
     let mut all = Vec::new();
     store_list(&mut all);
+    // The record of its file: the whole file's SHA-256, read once here, in the last slice. One notebook holds a
+    // book's bare key (`source=` in notebook.ini, `book=` in source.ini), the first: KOReader's route and every
+    // earlier build go by those two lines alone. A notebook made while another holds the key carries neither,
+    // and the key in its record only.
+    let shared = !key_holders(&all, Some(&state.key)).is_empty();
+    let t0 = mono_ms_now();
+    let record = file_sha256(std::os::fd::AsRawFd::as_raw_fd(&source.fd), source.size)
+        .map(|sha| file_record_line(&FileRecord { sha256: sha, size: source.size, key: state.key.clone() }))
+        // (a line this version would not read back is not written)
+        .filter(|line| file_record_parse(line).is_some());
+    match (&record, shared) {
+        (Some(_), _) => qlog!("import: %s: its file read for its record: %d KB in %d ms", id, (source.size >> 10) as i32, (mono_ms_now() - t0) as i32),
+        (None, false) => qlog!("import: %s: its file could not be read whole; the notebook keeps no file record", id),
+        (None, true) => {
+            // (without a record this notebook could not be told from the one that holds the key)
+            qlog!("import: %s: its file could not be read whole and another notebook holds its key; nothing imported", id);
+            remove_work_folder(id);
+            mark_drop(src);
+            return fail(id, R_FAILED, 0);
+        }
+    }
     let mut nb = NotebookInfo::default();
     nb.id.set(id);
     nb.name.set_cut(&import_name(&state.name, src, &all));
@@ -2509,13 +2995,22 @@ fn commit(id: &str, src: &str, abs: &str, state: &State, source: &Src, pw: i32, 
     nb.next_page_id = state.pages + 1;
     nb.page_w = pw;
     nb.page_h = ph;
-    nb.source.set(&state.key);
+    if !shared {
+        nb.source.set(&state.key);
+    }
     // the links and names the first slice read (links.part, names.part): doclinks.ini and nav.ini, before
     // notebook.ini is written
     let (links_written, trimmed) = fold_links(id, &work, &nb, pw, ph);
     let mut m = AnnotateMap::default();
-    m.book.set(&state.key);
+    if !shared {
+        m.book.set(&state.key);
+    }
     m.kind.set("paged");
+    // (annotate.rs writes the lines it does not know back after the page lines, and so does every version since
+    // 1.1: the record rides there)
+    if let Some(line) = &record {
+        m.extra.set(&format!("{line}\n"));
+    }
     // (the book's links are in doclinks.ini already: KOReader's Open this book does not ask for them again,
     // which could add each a second time where the two mappers differ: M22)
     m.links = links_written;
@@ -2549,9 +3044,11 @@ fn commit(id: &str, src: &str, abs: &str, state: &State, source: &Src, pw: i32, 
     crate::bgwork_template::sync_dir_public(&root_path("notebooks"));
     let blank = state.blank.len() as u32;
     qlog!("import: notebook %s made of %d page(s), %d picture(s), %d blank", id, n as i32, state.pics.iter().collect::<std::collections::HashSet<_>>().len() as i32, blank as i32);
-    // a file of import/ goes to import/done, whoever chose it (M5); any other stays where it is (H6)
-    finish_pdf(abs, src, id, source.size, source.mtime);
-    note_try(src, 0, A_DONE);
+    // a file of import/ goes to import/done, whoever chose it (M5); any other stays where it is (H6), and so does
+    // whatever took this file's name while it was read (the next scan takes that as the file it is)
+    if finish_pdf(abs, src, id, source) {
+        note_try(src, 0, A_DONE);
+    }
     set_result(id, if blank > 0 { R_DONE } else { R_NONE }, trimmed, blank);
     SliceEnd::Done { pages: state.pages, blank }
 }
@@ -2627,6 +3124,55 @@ mod tests {
         assert!(mark_parse(&vec![b'a'; 5000]).is_none());
         assert!(mark_parse(b"state=making\nid=../../etc\n").is_none());
         assert!(mark_parse(b"state=making\npage=x\n").is_none());
+        // a path with a carriage return inside its line is no path a mark was given
+        assert!(mark_parse(b"state=waiting\nsrc=documents/a\rb.pdf\npick=1\n").is_none());
+        // (a line that ends CR LF is a line: the file was edited where lines end so)
+        assert_eq!(mark_parse(b"state=waiting\r\nsrc=documents/ab.pdf\r\n").map(|m| m.src).as_deref(), Some("documents/ab.pdf"));
+        // a label is still cleaned as it is written; the path never is
+        let odd = Mark { state: MarkState::Making, src: "documents/t\tx.pdf".into(), name: "My\tbook\n".into(), folder: "Wo\u{85}rk".into(), ..Default::default() };
+        let back = mark_parse(mark_text(&odd).as_bytes()).expect("parses");
+        assert_eq!((back.src.as_str(), back.name.as_str(), back.folder.as_str()), ("documents/t\tx.pdf", "Mybook", "Work"));
+    }
+
+    #[test]
+    fn a_path_with_a_line_break_cannot_be_kept() {
+        for ok in ["", "grimoire/import/A.pdf", "documents/t\tx.pdf", "documents/c\u{85}d.pdf", "documents/\u{7f}\u{9f}.pdf", "documents/\u{2028}.pdf"] {
+            assert!(name_storable(ok), "{ok:?}");
+        }
+        for bad in ["a\nb.pdf", "a\rb.pdf", "documents/Tr\rip/x.pdf", "Icon\r", "\n", "x.pdf\n"] {
+            assert!(!name_storable(bad), "{bad:?}");
+        }
+        // a state says so too: one that names such a path does not read
+        let ok = sample_state().text();
+        assert!(State::parse(ok.replace("src=grimoire/import/A.pdf", "src=grimoire/import/a\rb.pdf").as_bytes()).is_none());
+        assert!(State::parse(ok.replace("src=grimoire/import/A.pdf", "src=grimoire/import/a\tb.pdf").as_bytes()).is_some());
+    }
+
+    // The two writers refuse such a path themselves, whoever asks: a state and a mark of it are never on storage.
+    #[test]
+    fn a_path_with_a_line_break_is_written_to_no_state_and_no_mark() {
+        let base = std::env::var("GRIMOIRE_TEST_TMP").map(std::path::PathBuf::from).unwrap_or_else(|_| std::env::temp_dir());
+        let root = base.join(format!("grimoire-pdfimport-writers-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        let r = root.to_str().unwrap().to_string();
+        std::fs::create_dir_all(&root).unwrap();
+        assert_eq!(store_init(&r), 0);
+        let id = "20260101-000000-abcd";
+        assert_eq!(mkdir_p(&work_dir(id)), 0);
+        let marks = || std::fs::read_dir(root_path(MARKS_DIR)).map(|d| d.flatten().count()).unwrap_or(0);
+        for bad in ["grimoire/import/a\nb.pdf", "grimoire/import/a\rb.pdf", "grimoire/import/Tr\nip/x.pdf"] {
+            assert!(!state_write(id, &State { src: bad.into(), ..sample_state() }), "{bad:?}");
+            assert!(!exists(&state_path(id)), "{bad:?}: a state was written");
+            assert!(!mark_write(&Mark { state: MarkState::Waiting, src: bad.into(), pick: true, ..Default::default() }), "{bad:?}");
+            assert_eq!(marks(), 0, "{bad:?}: a mark was written");
+        }
+        // (and both write a path they can read back)
+        let good = State { src: "grimoire/import/t\tx.pdf".into(), ..sample_state() };
+        assert!(state_write(id, &good));
+        assert_eq!(state_read(id).map(|s| s.src), Some(good.src.clone()));
+        assert!(mark_write(&Mark { state: MarkState::Waiting, src: good.src.clone(), pick: true, ..Default::default() }));
+        assert_eq!(mark_read(&good.src).map(|m| m.src), Some(good.src));
+        let _ = std::fs::remove_dir_all(&root);
     }
 
     fn sample_state() -> State {
@@ -2674,6 +3220,174 @@ mod tests {
         assert!(State::parse(ok.replace("0123456789abcdef0123456789abcdef", "xyz").as_bytes()).is_none());
         assert!(State::parse(&vec![b'#'; STATE_MAX + 1]).is_none());
         assert!(State::parse(b"src=x\n").is_none());
+    }
+
+    // A mark and a state hold the path of their file as it is: a tab and a C1 control character are a name's own.
+    #[test]
+    fn a_path_is_kept_as_it_is_in_a_mark_and_a_state() {
+        for src in ["grimoire/import/t\tx.pdf", "documents/c\u{85}d.pdf", "documents/\u{7f}.pdf"] {
+            let m = Mark { state: MarkState::Waiting, src: src.into(), pick: true, ..Default::default() };
+            assert!(mark_text(&m).contains(&format!("\nsrc={src}\n")), "{src:?}");
+            assert_eq!(mark_parse(mark_text(&m).as_bytes()).map(|m| m.src).as_deref(), Some(src));
+            let s = State { src: src.into(), ..sample_state() };
+            assert!(s.text().contains(&format!("\nsrc={src}\n")), "{src:?}");
+            assert_eq!(State::parse(s.text().as_bytes()).map(|s| s.src).as_deref(), Some(src));
+        }
+    }
+
+    // Whether a file may move to import/done is decided by its folder: the letters of `<grimoire>/import/` in any
+    // case are needed, and where the case differs the folder itself is asked.
+    #[test]
+    fn a_folder_spelled_like_import_is_import_only_when_it_is_that_folder() {
+        let never = |_: &str| -> bool { panic!("the exact spelling asks nothing of the storage") };
+        assert_eq!(under_import_of("grimoire/import/x.pdf", "grimoire", &never), Some("x.pdf"));
+        assert_eq!(under_import_of("grimoire/import/Work/x.pdf", "grimoire", &never), Some("Work/x.pdf"));
+        // spelled otherwise: the folder decides, and is asked by the spelling given, without its last slash
+        assert_eq!(under_import_of("Grimoire/Import/x.pdf", "grimoire", &|_| false), None);
+        assert_eq!(under_import_of("Grimoire/Import/x.pdf", "grimoire", &|_| true), Some("x.pdf"));
+        let asked = std::cell::RefCell::new(Vec::new());
+        let note = |g: &str| {
+            asked.borrow_mut().push(g.to_string());
+            true
+        };
+        assert_eq!(under_import_of("GRIMOIRE/import/Work/x.pdf", "grimoire", &note), Some("Work/x.pdf"));
+        assert_eq!(*asked.borrow(), ["GRIMOIRE/import"]);
+        // done in any case is never import, whatever the folder says, and nothing is asked for it
+        for src in ["grimoire/import/DONE/x.pdf", "grimoire/import/done/x.pdf", "Grimoire/Import/Done/x.pdf", "Grimoire/Import/done"] {
+            assert_eq!(under_import_of(src, "grimoire", &never), None, "{src}");
+        }
+        // other letters are another place; so are the folder itself and what lies beside it
+        for src in ["grimoire/imports/x.pdf", "documents/x.pdf", "grimoire/import", "grimoire/import/", "grimoire/Import", "x/grimoire/import/x.pdf", ""] {
+            assert_eq!(under_import_of(src, "grimoire", &never), None, "{src}");
+        }
+        // Grimoire's folder deeper in the storage
+        assert_eq!(under_import_of("apps/grimoire/import/x.pdf", "apps/grimoire", &never), Some("x.pdf"));
+        assert_eq!(under_import_of("Apps/grimoire/import/x.pdf", "apps/grimoire", &|g| g == "Apps/grimoire/import"), Some("x.pdf"));
+    }
+
+    #[test]
+    fn two_spellings_are_one_folder_when_the_parent_holds_one_entry() {
+        let never = || -> Option<Vec<Vec<u8>>> { panic!("equal identities are one folder without a listing") };
+        let names = |n: &[&str]| -> Option<Vec<Vec<u8>>> { Some(n.iter().map(|s| s.as_bytes().to_vec()).collect()) };
+        let (a, b) = (Some((7, 100)), Some((7, 200)));
+        // one identity: the same folder
+        assert!(same_folder_entry(a, a, "import", &never));
+        // two identities and one entry of that name: the storage takes both spellings as that entry
+        assert!(same_folder_entry(a, b, "import", &|| names(&["notebooks", "Import", "settings.ini"])));
+        assert!(same_folder_entry(a, b, "import", &|| names(&["import"])));
+        // two entries: two folders
+        assert!(!same_folder_entry(a, b, "import", &|| names(&["import", "Import"])));
+        assert!(!same_folder_entry(a, b, "import", &|| names(&["IMPORT", "import", "Import"])));
+        // no entry of that name, or a parent that does not list: not judged the same
+        assert!(!same_folder_entry(a, b, "import", &|| names(&["imports", "notebooks"])));
+        assert!(!same_folder_entry(a, b, "import", &|| None));
+        // a spelling that is no real folder (missing, a link, an error): never the same, and nothing is listed
+        assert!(!same_folder_entry(None, b, "import", &never));
+        assert!(!same_folder_entry(a, None, "import", &never));
+        assert!(!same_folder_entry(None, None, "import", &never));
+    }
+
+    const SHA_A: &str = "5e54918cec7ac9735b8f0e82c1ee75b9f0afef2eadca2998bdb313d4444c75c3";
+    const SHA_B: &str = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855";
+    const KEY: &str = "0123456789abcdef0123456789abcdef";
+
+    #[test]
+    fn a_file_record_reads_strictly() {
+        let r = FileRecord { sha256: SHA_A.into(), size: 6009, key: KEY.into() };
+        let line = file_record_line(&r);
+        assert_eq!(line, format!("file=sha256:{SHA_A}:6009:{KEY}"));
+        assert_eq!(file_record_parse(&line), Some(r));
+        // the biggest size is 20 digits: the line is 130 bytes at most
+        let big = FileRecord { sha256: SHA_A.into(), size: u64::MAX, key: KEY.into() };
+        assert_eq!(file_record_line(&big).len(), 130);
+        assert_eq!(file_record_parse(&file_record_line(&big)), Some(big));
+        assert_eq!(file_record_parse(&format!("file=sha256:{SHA_A}:1:{KEY}")).map(|r| r.size), Some(1));
+        let refused = [
+            format!("file=md5:{KEY}:6009:{KEY}"),                       // another algorithm's name
+            format!("file=SHA256:{SHA_A}:6009:{KEY}"),
+            format!("file=sha256:{}:6009:{KEY}", SHA_A.to_uppercase()), // upper case
+            format!("file=sha256:{SHA_A}:6009:{}", KEY.to_uppercase()),
+            format!("file=sha256:{}:6009:{KEY}", &SHA_A[1..]),          // a hash too short, too long, not hex
+            format!("file=sha256:{SHA_A}0:6009:{KEY}"),
+            format!("file=sha256:{}g:6009:{KEY}", &SHA_A[1..]),
+            format!("file=sha256:{SHA_A}:6009:{}", &KEY[1..]),          // a key too short, too long
+            format!("file=sha256:{SHA_A}:6009:{KEY}0"),
+            format!("file=sha256:{SHA_A}:6009"),                        // a field missing
+            format!("file=sha256:{SHA_A}::{KEY}"),
+            format!("file=sha256:{SHA_A}:6009:{KEY}:"),                 // a field too many
+            format!("file=sha256:{SHA_A}:6009:{KEY}:x"),
+            format!("file=sha256:{SHA_A}:0:{KEY}"),                     // no size, a leading zero, a sign, a space
+            format!("file=sha256:{SHA_A}:06009:{KEY}"),
+            format!("file=sha256:{SHA_A}:+6009:{KEY}"),
+            format!("file=sha256:{SHA_A}: 6009:{KEY}"),
+            format!("file=sha256:{SHA_A}:6009x:{KEY}"),
+            format!("file=sha256:{SHA_A}:18446744073709551616:{KEY}"),  // past 64 bits
+            format!("file=sha256:{SHA_A}:6009:{KEY} "),                 // anything around the line
+            format!(" file=sha256:{SHA_A}:6009:{KEY}"),
+            format!("file=sha256:{SHA_A}:6009:{KEY}\r"),
+            format!("File=sha256:{SHA_A}:6009:{KEY}"),
+            format!("sha256:{SHA_A}:6009:{KEY}"),
+            "file=".to_string(),
+            String::new(),
+        ];
+        for line in &refused {
+            assert_eq!(file_record_parse(line), None, "{line:?}");
+        }
+    }
+
+    // The record is the first kept line that reads as one, whatever stands around it.
+    #[test]
+    fn a_record_is_found_among_the_kept_lines() {
+        let line = format!("file=sha256:{SHA_A}:6009:{KEY}");
+        let rec = Some(FileRecord { sha256: SHA_A.into(), size: 6009, key: KEY.into() });
+        assert_eq!(record_among(format!("{line}\n").as_bytes()), rec);
+        assert_eq!(record_among(format!("later=1\n{line}\nother=2\n").as_bytes()), rec);
+        // a kept line that is no UTF-8 does not hide the record after it
+        let mut odd = b"note=caf\xe9\n".to_vec();
+        odd.extend_from_slice(format!("{line}\n").as_bytes());
+        assert_eq!(record_among(&odd), rec);
+        // the first that reads: a line of another form is passed by, a second record is not looked at
+        let two = format!("file=md5:{KEY}:6009:{KEY}\n{line}\nfile=sha256:{SHA_B}:7:{KEY}\n");
+        assert_eq!(record_among(two.as_bytes()), rec);
+        assert_eq!(record_among(b""), None);
+        assert_eq!(record_among(b"later=1\nfile=sha256:short:1:x\n"), None);
+    }
+
+    // The decision, as a table: the holders of one key against a PDF's size and, when it was read, its hash.
+    #[test]
+    fn the_holders_of_a_key_say_whether_a_pdf_is_theirs() {
+        let rec = |sha: &str, size: u64| Some(FileRecord { sha256: sha.into(), size, key: KEY.into() });
+        let h = |id: &str, rec: Option<FileRecord>| KeyHolder { id: id.into(), key: KEY.into(), rec };
+        // no holder: no notebook is of this file
+        assert_eq!(key_match(&[], 100, None), KeyMatch::None);
+        assert_eq!(key_match(&[], 100, Some(SHA_A)), KeyMatch::None);
+        // a holder without a record: the key decides, with or without a hash
+        let old = [h("old", None)];
+        assert_eq!(key_match(&old, 100, None), KeyMatch::KeyOnly("old".into()));
+        assert_eq!(key_match(&old, 100, Some(SHA_A)), KeyMatch::KeyOnly("old".into()));
+        // a holder with a record of this size: only the hash can tell
+        let one = [h("a", rec(SHA_A, 100))];
+        assert_eq!(key_match(&one, 100, None), KeyMatch::SizeOnly("a".into()));
+        assert_eq!(key_match(&one, 100, Some(SHA_A)), KeyMatch::Same("a".into()));
+        assert_eq!(key_match(&one, 100, Some(SHA_B)), KeyMatch::None);
+        // (a file that could not be read whole is asked with a hash that equals no record)
+        assert_eq!(key_match(&one, 100, Some("")), KeyMatch::None);
+        // a record of another size is of another file, whatever the hash
+        assert_eq!(key_match(&one, 101, None), KeyMatch::None);
+        assert_eq!(key_match(&one, 101, Some(SHA_A)), KeyMatch::None);
+        // a mix, in the list's order: the record that fits comes before the holder without one, wherever it stands
+        let mix = [h("old", None), h("b", rec(SHA_B, 100)), h("a", rec(SHA_A, 100)), h("older", None)];
+        assert_eq!(key_match(&mix, 100, None), KeyMatch::SizeOnly("b".into()));
+        assert_eq!(key_match(&mix, 100, Some(SHA_A)), KeyMatch::Same("a".into()));
+        assert_eq!(key_match(&mix, 100, Some(SHA_B)), KeyMatch::Same("b".into()));
+        // no record fits: the first holder without a record
+        assert_eq!(key_match(&mix, 7, None), KeyMatch::KeyOnly("old".into()));
+        assert_eq!(key_match(&mix, 100, Some("")), KeyMatch::KeyOnly("old".into()));
+        // every holder has a record, and none is of this file
+        let all = [h("b", rec(SHA_B, 100)), h("a", rec(SHA_A, 200))];
+        assert_eq!(key_match(&all, 100, Some(SHA_A)), KeyMatch::None);
+        assert_eq!(key_match(&all, 300, None), KeyMatch::None);
+        assert_eq!(key_match(&all, 200, None), KeyMatch::SizeOnly("a".into()));
     }
 
     #[test]

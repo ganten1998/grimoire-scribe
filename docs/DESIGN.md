@@ -535,10 +535,17 @@ draws them. White ink and the precise eraser make them.
 
 ## On-disk layout (root = /mnt/us/grimoire on Kindle, $GRIMOIRE_ROOT or ./grimoire-data in sim)
 
+Lock files (`import/.lock`, `graph.ini.lock`, `graph-all.ini.lock`, `.cache/pdf/<id>.lock`) sit beside what
+they guard. A root on a file system without advisory locks cannot hold them: `GRIMOIRE_LOCKS` then names a
+folder that can, and each lock is `<that folder>/<hash of its natural path>.lock` (`util::lock_file_path`).
+Unset on the Kindle.
+
 ```
 root/settings.ini              current tool, panel, every tool's params, calibration and the
                                panel it was made on, sleep, style, language, port... (unknown
                                keys kept)
+root/settings.ini.unread       a settings.ini that was there but could not be read, kept aside;
+                               never read
 root/folders.ini               the folder names, one per line
 root/sleep.pgm                 the pinned sleep screen (P5)
 root/notebooks/<id>/notebook.ini   name, folder, paper, created, modified, last_page,
@@ -561,6 +568,26 @@ root/.koplugin-installed       the build whose KOReader plugin went into koreade
 All writes are atomic: write `<file>.tmp`, fsync, rename. Page saves happen about 2 s after the
 last pen-up, at every press of the power button, on page change, on leaving the editor and on
 exit. `store_add_page` never writes over an existing `p<id>.qpg`: it takes the next free id.
+
+Reads of the data folder take plain files only. What is read there through `util::read_file`,
+`util::read_file_max` or `util::open_read_nofollow` (the store's files, the pictures, the template and
+import scans, the marks, the share zip's raw copies) is read only when the entry at the name itself is a
+plain file (a link, a folder or anything else there reads as a file that is not there), and the open never
+waits. Folders on the way to a file may be links (the data root, `notebooks/`, a platform's folders, a
+test's folder): only the last name is held to this. The small text files are read up to a limit
+(`util::read_file_max`: settings.ini, notebook.ini, folders.ini, bg/pages.ini and bg/index.ini 1 MiB; an
+import folder's mark 4 KiB; import/.attempts 64 KiB; a PGM 64,000,064 bytes, its largest picture and a
+header); page files and pictures have none of `read_file`'s own. A settings.ini that is there but was not
+read is moved to `settings.ini.unread` before the next save. An entry at a page's name that is no plain
+file is set aside as a damaged page is. The system's own files (/proc, /sys, the Kindle's locale file) are
+read with `util::read_system_file`, which follows links. The scans of `import/`, `templates/` and
+`photos/` take only real folders and plain files. Temporary files named after the process
+(`<name>.<pid>`, the mirror's `<name>.pdf.<pid>.tmp`) are made afresh (`util::create_fresh_nofollow`):
+what stands at the name is removed, never opened. `mkdir_p` takes an existing entry as the folder, a link
+to one included; code that prunes or empties a folder of Grimoire's checks that folder first
+(`util::no_link_below`, `pdfcache::real_dirs`, the previews' sweep). The mirror's sweep of stale
+temporaries works in the mirror folder the user chose. A few readers still open their files by path
+(docs/BACKLOG.md, "Hardening round (2026-11), storage reads: what waits").
 
 The page size: a new notebook gets the device's (`store_set_device`), and
 `store_notebook_page_size` is what every reader and writer of its pages asks. A notebook.ini
@@ -2101,7 +2128,9 @@ The binding design is docs/beta2/LASSO-DESIGN.md; this is where it lives in the 
 ## The safe loader and the PDF import (2.1.0-beta.2, lane L5)
 
 PDFs are untrusted, and Grimoire runs as root, so no process that writes files parses one. The import is three
-processes: the UI (queues, shows the notice, never reads the PDF beyond the ends of the file), the writer (a
+processes: the UI (queues, shows the notice, and never parses a PDF: it reads the first and the last KiB of a file
+the scan found, to see that it is whole, and, in the picker, up to twelve 1 KiB samples for the book key, which it
+hashes), the writer (a
 background job child: opens the file through `fsview`'s walk, owns the work folder, validates every record
 and writes the files) and the worker, a fresh exec of the same binary (`grimoire --work pdf ...`, taken
 before any UI start-up) that inherits nothing: descriptors 0 to 5 only (0 to 2 on /dev/null, 3 the PDF, read
@@ -2110,13 +2139,26 @@ failed step sends `E sandbox <step>` and exits before a byte of the PDF is read:
 no network or System V IPC (unshare), chroot into an empty directory on /tmp (checked to be tmpfs), the uid
 and gid 62001 (checked unused), no new privileges and not dumpable, the parent-death signal, the limits
 (`RLIMIT_NOFILE` 0, `NPROC` 0, `FSIZE` 0, `CORE` 0, `AS`, `CPU`) and a seccomp allow-list (read, write, the
-mmap family, brk, futex, clock_gettime, rt_sigreturn, exit) whose violation traps into a reporter. A refused
+mmap family with mprotect and madvise, brk, futex, clock_gettime, rt_sigreturn, exit and exit_group), in which
+futex passes only as a private wait, wake or wait-bitset and mmap and mprotect only for a mapping not asked
+executable. Any other call traps into a reporter, but for the few that answer ENOSYS instead (the time64 calls
+musl tries first on the 32-bit ARM, and gettid). Before the `S 1` of its handshake the worker makes one allowed
+call of each of the three kinds, so a kernel that does not show the filter their arguments ends the worker
+there. A refused
 step, or a worker that cannot be started, marks nothing and counts no try; the session then imports no more PDFs
-(a later slice keeps the pages it made, for the next start). The writer ignores SIGPIPE, and reads a worker's last
+(a later slice keeps the pages it made, for the next start). The handshake is two lines, the build and `S 1` (the
+steps are in place; `S 0` is a build without them, macOS); where the sandbox is required the writers take only
+`S 1`, and a worker is started only with descriptors 0 to 5 in place. The writer ignores SIGPIPE, and reads a worker's last
 records after a send that failed. The page watchdog runs on CLOCK_MONOTONIC (a sleep does not count); a page
-whose wait the Kindle slept through and that then stalls is tried again once without a strike. Off the Kindle the steps are
-skipped (plain process isolation) unless GRIMOIRE_SANDBOX=require. The worker's records are text lines of a
-fixed grammar plus pixel bands, at most 4 MiB a job besides pixels, parsed strictly (`pdfwork.rs`); every
+whose wait the Kindle slept through and that then stalls is tried again once without a strike. Off the Kindle a
+failed step refuses nothing unless the writer requires the sandbox (GRIMOIRE_SANDBOX=require: on Linux it then makes
+the worker's jail, and a worker given a jail holds every step, as on the Kindle). macOS has none of the steps (plain
+process isolation); a Linux build that does not require the sandbox still takes the steps that work without root (no
+new privileges, the limits and the allow-list among them) and has no chroot. The worker's records are text lines of
+a fixed grammar plus pixel bands, parsed strictly (`pdfwork.rs`). The writer ends a worker whose record lines pass
+4 MiB (`RECORDS_MAX_BYTES`: counted for each worker, the pixels and the handshake's two lines apart), and a job is
+many workers: a fresh one for each slice, and after each one that died or stalled. Only the first comes near the
+cap, with the links and the names; the others send the page count, a line a band and a line a page. Every
 number the device spike (S1) sets is in the one table `sandbox::s1`, marked "set by S1". The notebook, its
 slices, marks and colour rule are in FORMAT.md, "Imports: PDFs". Two rules hold the import together (the fix round
 of 2026-11-09): whether a file may be moved is decided by where it lies (`pdfimport::in_import`), never by a mark;
@@ -2124,7 +2166,22 @@ and the state never names a picture the saved index does not (the index is saved
 and makes again what is gone). Only an import's child keeps the import lock's descriptor (`bgjob::child_setup`),
 so a compaction or a mirror that starts as the last import ends never holds it; a pick that met a lock held
 elsewhere is queued by the first scan that takes it afresh, and the tick tries the lock every 10 s while a
-previous run's detached import holds it.
+previous run's detached import holds it. The lock is a plain file at its own name (`pdfimport::lock_take`): it
+is opened without following a link (`O_NOFOLLOW`, and `O_NONBLOCK` as the other lock files), must be a regular
+file with one name, and once locked must still be the file at its name (`lock_is_at`), else the lock is asked
+for once more and then given up. What else is found at the name is never removed and never followed. Only
+`EWOULDBLOCK` means another process imports, and only then does a pick wait; a lock that cannot be taken for
+any other reason refuses a pick with the message for a file that cannot be imported, and leaves no mark. A third
+rule joined the two above in the hardening round of 2026-11: a file's path is kept in its mark and state as it
+is, and a path those files cannot hold (a line break in a name, `pdfimport::name_storable`) is refused where it
+comes in: the scan, the picker's rows, a pick, the job. `in_import` asks the folder itself where a path spells
+`import` in another case (`pdfimport::under_import`), and the scan's first look at a PDF opens it through the
+same walk as the job and reads only the file it listed (`read_ends`). The job reads its PDF through the file it
+opened, and a file of `import/` is moved to `done/` by its name, so the name is looked at once more just before
+the move (`finish_pdf`): it must still hold the file that was read (the lock's own test of a name against an
+open file, and the size and time the file was opened with), else nothing moves, nothing is marked done, and
+the next scan takes what is at the name; the try stays counted, so this cannot repeat without end. The record a
+notebook keeps of its file takes its key and its hash from the one file the last slice has open.
 
 The links and names (lane L6) come out of the same worker. After the page count the writer sends `LINKS <w> <h>`;
 the worker walks the annotations of every page (`pdfwork.rs`, module `links`), resolves each destination to a
@@ -2190,7 +2247,9 @@ its bytes.** Four parts keep it (`fontcheck.rs`, `userfonts.rs`, `font.rs`):
   and drawing at both sizes; a glyph that fails is listed and comes from Terminess, and more than one in a
   hundred is "Unreadable font.". It works in slices of 20 s of its own CPU time (`s1::FONT_SLICE_CPU_SECS`),
   each a fresh worker that gets the bytes again and goes on from the glyph index the last reached, 10 minutes
-  in all, then "Took too long to read."; a worker silent for 30 s is killed and is the same. It settles the
+  in all; a worker silent for 30 s is killed and counts as out of time too. A first check that runs out of time
+  writes no verdict: the file is checked once more, a minute or more later (`<key>.slow`), and a second is
+  "Took too long to read.". It settles the
   font's scale (capitals as tall as Terminess's, 0.592 of the line, between 0.85 and 1.25, then lowered a
   hundredth at a time until 95 of 100 of Grimoire's strings, in every language, are no wider than Terminess
   draws them, measured as `font.rs` measures: advances only), says which languages need letters the font
@@ -2266,9 +2325,16 @@ are routed in `library.rs` as the Graph's are, and two fingers down does nothing
   (`pdfimport::import_status`, `bgwork_template::folder_failed`): the PDF rows' when the import's progress changes
   (looked at at most once a second), every row's every 5 s (a folder's lists the folder), and redraws only the rows
   that changed. The staying notice of an import stays off that place (`library_import_place_up`): its rows say it.
-- **"has notes"** is the PDF's book key (KOReader's partial MD5, 12 reads of 1 KiB through the walk) compared with
-  the notebooks' keys (`source=`, else the book their `source.ini` names), read once for the picker's session; the
-  card then offers Open its notebook.
+- **"has notes"** is the PDF's book key (KOReader's partial MD5, 12 reads of 1 KiB through the walk) and its size
+  (one descriptor) compared with the keys the notebooks hold and the records of their files
+  (`pdfimport::key_holders`: `source=`, else the book their `source.ini` names, else the key of its `file=` line;
+  one small read a notebook, once for the picker's session). No file is read whole in the UI, so the row states
+  what the key and the size can say (`pdfimport::key_match`), and the card has three cases. A notebook holds the
+  key with a record of the file's size: "has notes", and the card offers Open its notebook and Import as
+  notebook (the import reads the whole file and gives the exact answer: "PDF already imported." for that very
+  file, a notebook of its own for another). A notebook holds the key with no record (one made before the
+  records, or from KOReader): "has notes", Open its notebook, as before. Only notebooks whose records are of
+  another size hold the key, or none does: no tag, Import as notebook.
 - **Logs** carry counts and timings only ("files: listed N entries (M usable) in T ms"), never a name.
 
 ## Shared building blocks (2.1, lane L0)

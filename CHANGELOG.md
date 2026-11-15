@@ -1,5 +1,52 @@
 # Changelog
 
+## 2.1.1 (unreleased)
+
+- Hardening: Grimoire reads the files in its own folders only when they are plain files, with size limits
+  on the small text files, and makes its temporary files afresh each time. A `settings.ini` it cannot
+  read is kept as `settings.ini.unread` rather than written over. A picture or folder in `templates/`,
+  `photos/` or `import/` that is a link is no longer taken: copy the file in.
+- Housekeeping: the separate process that reads PDFs, pictures and fonts is held to a narrower set of
+  system calls and is started only with all of its descriptors in place. No change in the app.
+- Housekeeping: the documents of the safe loader and of your own fonts say what the code does (the limit
+  on a worker's record lines, what a build off the Kindle takes of the sandbox, the font check's second
+  try), `licenses/rust-crates.txt` says it lists every crate `Cargo.lock` names, and the crate check
+  refuses by name the one crate that would bring a second font parser into the build. No change in the app.
+- **"PDF already imported." now means that very file.** A notebook made from a PDF keeps the SHA-256 and
+  size of its file (one line in its `source.ini`), and a PDF with the same book key is compared with it. The
+  same file says "PDF already imported." as before; a different file with that key (an edited copy, say)
+  becomes a notebook of its own, and KOReader's Open this book in Grimoire keeps opening the first.
+  Notebooks made before this version, or from KOReader, go by the key as before. In Files, a PDF that a
+  notebook already holds offers Import as notebook beside Open its notebook. A big PDF is read once more at
+  the end of its import (the notice stays on its last page meanwhile).
+- The import handles odd names and places more strictly: a file's path is kept exactly as it is while it is
+  imported (a name with unusual characters goes on correctly after an interruption), a path with a line
+  break in a name is left where it is, a file picked from a folder that is only spelled like
+  `grimoire/import` stays where it is, and the import's lock file and its first look at a dropped PDF are
+  opened without following links.
+
+## 2.1.0 (2026-11-13)
+
+- The first stable release of 2.1: 2.1.0-beta.2 with the changes below, now on the stable channel too (KPM
+  2.1.9999; a preview subscriber is offered it as well). A 2.0.0 install gets everything in the 2.1.0-beta.1 and
+  2.1.0-beta.2 sections with it. Fixes come as 2.1.1, 2.1.2 and so on, new features as 2.2.
+- Page turns at the fitted view no longer flash, and turning back a page or two is instant (nebuff, #49). A page
+  turn at the fitted view is a grayscale refresh without a flash (a turn at another view, the Library and back, and
+  every 30th refresh still flash, which also cleans what fast refreshes left). The whole drawings of the last three
+  pages you left are kept in memory (4.6 MB each), so turning back to one shows it at once rather than drawing
+  every stroke again; a page written since is drawn again. A jump to the oldest of the three is shown from memory
+  too (issue #60, nebuff, #67): it had been put aside before it was read.
+- The lasso's bar answers every tap, and a drag leaves fewer traces (nebuff, #52, issues #50 and #51). A bar button
+  shows a pressed look as the pen or finger comes down and acts at the lift, so Copy, which changes nothing on the
+  screen, still shows it was tapped; a contact that slides off a button does nothing. The first fast refresh after
+  a flashing one now waits for it to end (the two on the panel at once tore the drag's first strips), and the
+  outline a drag leaves counts toward the cleaning of fast refreshes' traces.
+- The first pen, touch or key press in the Kindle's first minute after a restart counts as activity for its sleep
+  timer, as every later one does (issue #74). It was not passed on to the power service until a minute had gone.
+- Grimoire's core can be built for another device, with that device's parts in a crate of their own (#61, #62,
+  #70, #71). On a Kindle nothing changes.
+- `make dev` and `tools/kindle-dev` work on more Macs and on Linux (nebuff, #76).
+
 ## 2.1.0-beta.2 (2026-11-11)
 
 - **Closing a big notebook no longer redraws every page.** The PDF of a notebook (the mirror in `PDFs/`) kept
