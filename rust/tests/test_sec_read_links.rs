@@ -657,3 +657,46 @@ fn the_clipboard_takes_a_plain_file_only() {
     let _ = std::fs::remove_dir_all(&t);
 }
 
+// The shortcut files (shortcuts.ini, controller.ini, a device's own, gestures.ini, live-keys.ini) are read when the
+// entry at the name is a plain file of at most 64 KiB. A link there (to a file or to nothing), a FIFO or a longer
+// file is a file that is there and does not read: no mappings from it, and nothing is written over it. No read
+// waits.
+#[test]
+fn the_shortcut_files_take_a_plain_file_only() {
+    let t = top("shortcuts");
+    let root = t.join("root");
+    std::fs::create_dir_all(&root).unwrap();
+    let ini = root.join("shortcuts.ini");
+    let lines = b"key.e=undo\n";
+    let outside = t.join("outside.ini");
+    std::fs::write(&outside, lines).unwrap();
+    let mut c = Checks::default();
+    let mut m = Shortcuts::default();
+    std::fs::write(&ini, lines).unwrap();
+    shortcuts_load(&mut m, text(&ini));
+    c.that(m.count == 1 && m.rejected == 0, "a shortcuts.ini of its own is read");
+    std::fs::remove_file(&ini).unwrap();
+    symlink(&outside, &ini).unwrap();
+    shortcuts_load(&mut m, text(&ini));
+    c.that(m.count == 0 && m.rejected == 1, "a shortcuts.ini that is a link is not read");
+    std::fs::remove_file(&ini).unwrap();
+    fifo_at(&ini);
+    let (_, waited) = waits_on(&ini, || shortcuts_load(&mut m, text(&ini)));
+    c.that(!waited && m.count == 0 && m.rejected == 1, "a shortcuts.ini that is a FIFO is not read, at once");
+    std::fs::remove_file(&ini).unwrap();
+    std::fs::write(&ini, padded(lines, 65536)).unwrap();
+    shortcuts_load(&mut m, text(&ini));
+    c.that(m.count == 1 && m.rejected == 0, "a shortcuts.ini of exactly 64 KiB reads");
+    std::fs::write(&ini, padded(lines, 65537)).unwrap();
+    shortcuts_load(&mut m, text(&ini));
+    c.that(m.count == 0 && m.rejected == 1, "one byte more is not read");
+    // gestures.ini, through the same reader: one that does not read is never saved over
+    let g = root.join("gestures.ini");
+    symlink(&outside, &g).unwrap();
+    let mut gm = GestureMap::default();
+    c.that(gesturemap_load(&mut gm, text(&g)) == -1 && !gm.writable, "a gestures.ini that is a link is not read, and not written over");
+    c.that(std::fs::read(&outside).unwrap() == lines, "the file outside is as it was");
+    c.done();
+    let _ = std::fs::remove_dir_all(&t);
+}
+
