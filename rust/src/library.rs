@@ -3607,7 +3607,7 @@ fn draw_wifi_sheet(a: &mut App) {
         let mut networks = w.nearby.clone().unwrap_or_default();
         networks.sort_by(|a, b| {
             let key = |n: &WifiNetwork| {
-                let here = w.current.as_ref() == Some(&n.essid);
+                let here = wifi_is_current(&n.essid, w.current.as_deref());
                 let saved = w.saved.as_ref().is_some_and(|s| s.iter().any(|x| x == &n.essid));
                 // (no signal key: a 20 s refresh must not reorder the list as strength changes)
                 (!here, !saved)
@@ -3675,8 +3675,9 @@ fn draw_wifi_sheet(a: &mut App) {
                 security: Some(net.security),
                 signal: Some((net.signal, net.signal_max)),
                 saved,
-                // The Connected card is the saved list's; a nearby row stays an ordinary row.
-                current: false,
+                // The network connected to is drawn as the Connected card here too, as in the saved
+                // list (the Kindle may bracket the connected profile's name).
+                current: wifi_is_current(&net.essid, w.current.as_deref()),
                 enabled: net.security != WifiSecurity::Unknown || saved,
                 id: H_WIFI_NEAR,
                 arg: i as i32,
