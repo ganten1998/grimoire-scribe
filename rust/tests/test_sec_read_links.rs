@@ -617,3 +617,43 @@ fn the_compaction_list_takes_a_plain_file_only() {
     let _ = std::fs::remove_dir_all(&t);
 }
 
+/// A lasso group of one stroke, for the clipboard.
+fn group() -> Group {
+    Group { w: 600, h: 800, strokes: vec![wave(5, 200.0)], links: Vec::new(), box_: Rect::new(60, 200, 360, 30), src_nb: "nb-clip".into(), src_pid: 1, ink: 1, carried: 0 }
+}
+
+// The lasso's clipboard (clipboard.qpg) is read, for a paste and for the copy a Cut keeps, when the entry at its
+// name is a plain file of at most CLIP_MAX_BYTES: a link there is not followed, a FIFO is no clipboard at once,
+// and a longer file is not read.
+#[test]
+fn the_clipboard_takes_a_plain_file_only() {
+    let t = top("clipboard");
+    let root = t.join("root");
+    store_at(&root);
+    let clip = PathBuf::from(clipboard_path());
+    let mut c = Checks::default();
+    assert_eq!(clipboard_write(&group()), 0);
+    let bytes = std::fs::read(&clip).unwrap();
+    c.that(clipboard_read().is_some_and(|g| g.strokes.len() == 1), "a clipboard of its own reads");
+    c.that(clipboard_snapshot().as_deref() == Some(&bytes[..]), "and a Cut keeps its bytes");
+    // a link to a clipboard outside
+    let outside = t.join("outside.qpg");
+    move_out_and_link(&clip, &outside);
+    c.that(clipboard_read().is_none(), "a clipboard that is a link is not read");
+    c.that(clipboard_snapshot().is_none(), "and a Cut keeps none of it");
+    c.that(clipboard_restore(None) == 0 && std::fs::symlink_metadata(&clip).is_err(), "putting back no clipboard removes the link itself");
+    c.that(std::fs::read(&outside).unwrap() == bytes, "the file outside is as it was");
+    // a FIFO
+    fifo_at(&clip);
+    let (none, waited) = waits_on(&clip, || clipboard_read().is_none());
+    c.that(!waited && none, "a clipboard that is a FIFO is none, at once");
+    let (none, waited) = waits_on(&clip, || clipboard_snapshot().is_none());
+    c.that(!waited && none, "and a Cut keeps none, at once");
+    std::fs::remove_file(&clip).unwrap();
+    // one byte over the limit
+    std::fs::File::create(&clip).unwrap().set_len(CLIP_MAX_BYTES as u64 + 1).unwrap();
+    c.that(clipboard_read().is_none() && clipboard_snapshot().is_none(), "a clipboard over CLIP_MAX_BYTES is not read");
+    c.done();
+    let _ = std::fs::remove_dir_all(&t);
+}
+
