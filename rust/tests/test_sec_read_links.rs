@@ -700,3 +700,41 @@ fn the_shortcut_files_take_a_plain_file_only() {
     let _ = std::fs::remove_dir_all(&t);
 }
 
+// The PDF cache's records (.cache/pdf/<id>/p<page id>.z) are read when the entry at the name is a plain file of at
+// most a record's largest size. A link there or a FIFO is a record that does not read: the page is drawn again,
+// its new record replaces the entry itself, and no read waits.
+#[test]
+fn a_pdf_cache_record_takes_a_plain_file_only() {
+    let t = top("pdfcache");
+    let root = t.join("root");
+    store_at(&root);
+    let nb = book("Cached", 2, PAPER_BLANK);
+    let pdfs = root.join("PDFs");
+    // (a mirror: the pages it drew)
+    let mirror = || {
+        let before = pdf_pages_rendered();
+        assert_eq!(export_mirror_pdf(&nb, 300.0, text(&pdfs)), 0);
+        pdf_pages_rendered() - before
+    };
+    let rec = PathBuf::from(pdf_cache_root()).join(nb.id.as_str()).join(format!("p{}.z", nb.page_ids[0]));
+    let mut c = Checks::default();
+    c.that(mirror() == 2 && is_plain(&rec), "the first mirror draws both pages and keeps their records");
+    c.that(mirror() == 0, "the next finds both");
+    // a link to the page's own record, moved outside: it would be used, were it read
+    let outside = t.join("outside.z");
+    move_out_and_link(&rec, &outside);
+    let kept = std::fs::read(&outside).unwrap();
+    c.that(mirror() == 1, "a record that is a link is not read: its page is drawn");
+    c.that(is_plain(&rec) && std::fs::read(&outside).unwrap() == kept, "its new record replaced the link itself, and the file outside is as it was");
+    // a FIFO
+    std::fs::remove_file(&rec).unwrap();
+    fifo_at(&rec);
+    let (drawn, waited) = waits_on(&rec, mirror);
+    c.that(!waited && drawn == 1 && is_plain(&rec), "a record that is a FIFO is not read, at once, and is replaced");
+    // one byte over the largest record (its header and the largest stream)
+    std::fs::remove_file(&rec).unwrap();
+    std::fs::File::create(&rec).unwrap().set_len(PDF_RECORD_MAX as u64 + 1).unwrap();
+    c.that(mirror() == 1, "a record over the largest size is not read");
+    c.done();
+    let _ = std::fs::remove_dir_all(&t);
+}
