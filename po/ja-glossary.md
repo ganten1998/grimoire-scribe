@@ -84,12 +84,35 @@ fits as `fit[ja]: ...`.
 | Index | **索引** | |
 | Pin | **固定** | |
 | Live view | **ライブビュー** | |
+| Dismiss (What's new) | **閉じる** | It closes the card. |
+| Disable | **無効にする** | The record card's button. |
+| unreleased / This version | **未リリース / このバージョン** | What's new's list of versions. |
+
+## Files, the PDF import and fonts
+
+| English | Japanese | Notes |
+| --- | --- | --- |
+| Import | **インポート** | The file picker's first row, and the verb: **インポート中**, **インポート済み**. |
+| Documents / Downloads | **ドキュメント / ダウンロード** | The file picker's rows. |
+| All storage | **すべてのストレージ** | |
+| Look again | **もう一度探す** | |
+| %d picture | **%d枚の画像** | Pictures are counted in 枚. |
+| Waiting / Imported | **待機中 / インポート済み** | A row of the Import place. |
+| has notes | **ノートあり** | A PDF's tag in the file picker. |
+| document links | **文書のリンク** | The links a PDF brings (a planner's tabs). |
+| done | **done** | The folder's name: kept. |
+| Font | **フォント** | Settings > Font, and the chip **フォント: %s**. |
+| Built in | **内蔵フォント** | The heading over Grimoire's own fonts. |
+| Your fonts | **自分のフォント** | The heading over the owner's fonts: **自分のフォント (%s)**. |
+| merge / keep both | **統合する / 両方残す** | The folder dialog's answers; **両方残す（「…」として）**. |
 
 ## Dates, counters and numbers
 
 - Dates: **10月10日 14:32**; a new notebook is **ノート 10月10日**. The catalog's month names
   are **1月** to **12月**; the date formats are `%1$s%2$d日, %3$02d:%4$02d` and `%1$s%2$d日`.
-- Counters follow what is counted: **%dページ**, **%dノート**, **%d冊** where a counter is needed.
+- The 12-hour clock puts **午前** or **午後** before the hour: **10月10日 午後2:32**, its format
+  `%1$s%2$d日 %5$s%3$d:%4$02d` (all five arguments numbered, as they are moved).
+- Counters follow what is counted: **%dページ**, **%dノート**, **%d冊**, **%d枚** for pictures.
   Japanese has one plural form, so `msgstr[0]` serves 0, 1 and every other count.
 - Percent keeps the English's space: **150 %**. Angles: **45°**. Decimals: **0.30 mm**, as the
   code writes them.
@@ -97,6 +120,8 @@ fits as `fit[ja]: ...`.
   format or a path.
 
 ## Fonts and characters
+
+The Font sheet's sample sentence is **今日はいい天気ですね。コーヒーでも飲みながら、本を読みましょう。**
 
 Every character must be in DotGothic16 or one of the Latin faces. DotGothic16 covers the kana,
 the JIS kanji and the punctuation used here; a rare kanji outside it is left out where a name is
