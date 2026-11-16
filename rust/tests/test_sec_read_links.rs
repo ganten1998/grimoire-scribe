@@ -684,6 +684,66 @@ fn the_compaction_list_has_a_limit() {
     let _ = std::fs::remove_dir_all(&t);
 }
 
+// A notebook's links.ini and doclinks.ini, as its nav.ini (test_nav.rs), are read only as plain files: a link there
+// (to a file that would read, or to nothing) or a FIFO is a file that is there and does not read, at once. None of
+// its links is used, no link is added or saved, and the entry is left as it is (DESIGN.md's storage paragraph).
+#[test]
+fn the_link_sidecars_take_a_plain_file_only() {
+    let t = top("sidecars");
+    let root = t.join("root");
+    store_at(&root);
+    let nb = book("Sidecars", 2, PAPER_BLANK);
+    let id = nb.id.as_str();
+    let (p1, p2) = (nb.page_ids[0], nb.page_ids[1]);
+    let dir = nb_dir(&root, &nb);
+    let mut c = Checks::default();
+    // one link in each, of their own
+    let mut n = Nav::default();
+    nav_init(&mut n);
+    c.that(nav_load_links(id, &mut n) == 0 && nav_link_set(&mut n, p1, 0x77, "index") == 0 && nav_save_links(id, &mut n, &nb) == 0, "a links.ini of its own is written");
+    nav_free(&mut n);
+    let mut doc = doclinks_text(&DocLinks::default(), None);
+    doc.extend_from_slice(format!("link.{p1}=00000077,p{p2}\narea.{p1}=00000077,10,10,50,50\n").as_bytes());
+    std::fs::write(dir.join("doclinks.ini"), &doc).unwrap();
+    // (what a read of each gives: its links, and whether one more link is taken and saved)
+    let links_ini = || {
+        let mut n = Nav::default();
+        nav_init(&mut n);
+        let rc = nav_load_links(id, &mut n);
+        let got = (rc, n.links.len(), nav_link_set(&mut n, p2, 0x78, "index") == 0 && nav_save_links(id, &mut n, &nb) == 0);
+        nav_free(&mut n);
+        got
+    };
+    let doclinks_ini = || {
+        let mut dl = doclinks_load(id);
+        (dl.links.len(), doclinks_save(id, &mut dl, &nb) == 0)
+    };
+    c.that(links_ini() == (0, 1, true), "a links.ini of its own reads and takes a link");
+    c.that(doclinks_ini() == (1, true), "a doclinks.ini of its own reads and is saved");
+    let unread = |name: &str| if name == "links.ini" { links_ini() == (-1, 0, false) } else { doclinks_ini() == (0, false) };
+    for name in ["links.ini", "doclinks.ini"] {
+        let at = dir.join(name);
+        // a link to the file itself, moved outside
+        let outside = t.join(format!("outside-{name}"));
+        move_out_and_link(&at, &outside);
+        let kept = std::fs::read(&outside).unwrap();
+        c.that(unread(name), &format!("a {name} that is a link is there and does not read"));
+        c.that(is_link(&at) && std::fs::read(&outside).unwrap() == kept, &format!("the link at {name} and its file are as they were"));
+        std::fs::remove_file(&at).unwrap();
+        // a link to nothing
+        symlink(t.join("nowhere"), &at).unwrap();
+        c.that(unread(name) && is_link(&at), &format!("a {name} that is a link to nothing is one too, and stays"));
+        std::fs::remove_file(&at).unwrap();
+        // a FIFO
+        fifo_at(&at);
+        let (none, waited) = waits_on(&at, || unread(name));
+        c.that(!waited && none && std::fs::symlink_metadata(&at).is_ok_and(|m| m.file_type().is_fifo()), &format!("a {name} that is a FIFO is one too, at once"));
+        std::fs::remove_file(&at).unwrap();
+    }
+    c.done();
+    let _ = std::fs::remove_dir_all(&t);
+}
+
 /// A lasso group of one stroke, for the clipboard.
 fn group() -> Group {
     Group { w: 600, h: 800, strokes: vec![wave(5, 200.0)], links: Vec::new(), box_: Rect::new(60, 200, 360, 30), src_nb: "nb-clip".into(), src_pid: 1, ink: 1, carried: 0 }
