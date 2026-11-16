@@ -158,15 +158,25 @@ pub fn clipboard_parse(buf: &[u8]) -> Option<Group> {
     })
 }
 
+/// The clipboard file's bytes: a plain file at its name (a link there is not followed, and the open never
+/// waits: util::open_read_nofollow) of at most CLIP_MAX_BYTES, read whole; None otherwise, and when a read
+/// fails midway.
+fn clipboard_file() -> Option<Vec<u8>> {
+    use std::io::Read;
+    let (f, md) = open_read_nofollow(&clipboard_path()).ok()?;
+    if md.len() > CLIP_MAX_BYTES as u64 {
+        return None;
+    }
+    let mut buf = Vec::new();
+    // (one byte past the limit is asked for: a file that grew since the fstat is told from one that fits)
+    f.take(CLIP_MAX_BYTES as u64 + 1).read_to_end(&mut buf).ok()?;
+    (buf.len() <= CLIP_MAX_BYTES).then_some(buf)
+}
+
 /// The clipboard file as it is now (its bytes, or None when there is none), so a Cut that copied and then
 /// could not take its selection off restores it with clipboard_restore: a refused Cut changes nothing.
 pub fn clipboard_snapshot() -> Option<Vec<u8>> {
-    let path = clipboard_path();
-    let meta = std::fs::metadata(&path).ok()?;
-    if !meta.is_file() || meta.len() as usize > CLIP_MAX_BYTES {
-        return None;
-    }
-    std::fs::read(&path).ok()
+    clipboard_file()
 }
 
 /// Puts back a clipboard_snapshot: its bytes (atomically), or no clipboard at all. -1 when it could not.
@@ -184,10 +194,5 @@ pub fn clipboard_restore(old: Option<&[u8]>) -> i32 {
 
 /// The clipboard read, or None when there is none or it does not read.
 pub fn clipboard_read() -> Option<Group> {
-    let path = clipboard_path();
-    let meta = std::fs::metadata(&path).ok()?;
-    if meta.len() as usize > CLIP_MAX_BYTES {
-        return None;
-    }
-    clipboard_parse(&std::fs::read(&path).ok()?)
+    clipboard_parse(&clipboard_file()?)
 }

@@ -1754,6 +1754,11 @@ fn finish_recording(a: &mut App) {
     }
 }
 
+/// Whether the Library shows no sheet, dialog or keyboard (a PDF fill's pages go in then: app.rs).
+pub fn library_at_rest(a: &App) -> bool {
+    a.lib.as_deref().is_none_or(|s| s.modal == Modal::None)
+}
+
 /// Whether the Library currently owns the raw gesture recording context.
 pub fn library_record_active(a: &App) -> bool {
     a.lib.as_deref().is_some_and(|s| s.modal == Modal::Gestures && s.record_action != SHORTCUT_NONE)
@@ -6110,7 +6115,7 @@ static ABOUT_LINKS: &[AboutLink] = &[
     AboutLink { name: n_("Ko-fi"), url: "https://ko-fi.com/B0B7EF4TJ" },
     AboutLink { name: n_("Grimoire GitHub"), url: "https://github.com/ganten1998/grimoire-scribe" },
     AboutLink { name: n_("Nebuff's GitHub"), url: "https://github.com/nebuff" },
-    AboutLink { name: n_("Gantan's GitHub"), url: "https://github.com/ganten1998" },
+    AboutLink { name: n_("Ganten's GitHub"), url: "https://github.com/ganten1998" },
 ];
 
 /// Settings > System > About: what this device is, its version, a bar of the storage used (the data
@@ -9687,7 +9692,16 @@ mod tests {
     fn the_buttons_groups_rows() {
         assert_eq!(N_GROUPS, 7);
         assert_eq!(group_row_count(0), 11); // (Select, 2.0.0-beta.2)
-        assert_eq!(group_row_count(1), TOOL_PENS as usize + 2);
+        // the nine pens, Previous / next tool and in the picker, Smaller / larger size (2.2: the size keys)
+        assert_eq!(group_row_count(1), TOOL_PENS as usize + 3);
+        assert_eq!(group_row_count(1), GROUP_ROWS_MAX);
+        let size = learn_row_at(1, TOOL_PENS as usize + 2).unwrap();
+        assert_eq!((size.label, size.act), (Some("Smaller / larger size"), [SHORTCUT_SIZE_SMALLER, SHORTCUT_SIZE_LARGER]));
+        assert_eq!((binding_row_count(BUTTONS, 1), binding_row_count(GESTURES, 1)), (12, 12));
+        assert_eq!(binding_row_index(BUTTONS, 1, SHORTCUT_SIZE_LARGER), Some(11));
+        assert_eq!(binding_row_index(GESTURES, 1, SHORTCUT_SIZE_SMALLER), Some(11));
+        // (quick-size has no row: it is bound by name)
+        assert!((0..N_GROUPS).all(|g| binding_row_index(BUTTONS, g, SHORTCUT_QUICK_SIZE).is_none()));
         // Zoom and scrolling are Pages rows; Index owns links and naming.
         assert_eq!(group_row_count(2), 11);
         assert_eq!(binding_row_count(BUTTONS, 2), 9);
@@ -9714,6 +9728,43 @@ mod tests {
                     assert_ne!(action_label(act), "?", "group {g} row {i}");
                 }
             }
+        }
+    }
+
+    /// The size keys' row (2.2), last in Tools on both pages, upright and sideways: Gestures names it with its
+    /// gesture ("Smaller / larger size: no gesture"), and Buttons has a twelfth row to tap, which learns the smaller
+    /// size's button first, as every paired row does.
+    #[test]
+    fn the_size_keys_row_is_last_in_tools_on_both_pages() {
+        assert_eq!(font_init(), 0);
+        ui_init(300.0);
+        for (w, h) in [(1860, 2480), (2480, 1860)] {
+            let mut a = App { w, h, dpi: 300.0, ..Default::default() };
+            assert_eq!(canvas_init(&mut a.screen, w, h), 0);
+            library_init(&mut a);
+            gesturemap_defaults(&mut a.gestures);
+            lib(&mut a).modal = Modal::Gestures;
+            lib(&mut a).gestures_group = GROUP_TOOLS as i32;
+            hits_clear(&mut lib(&mut a).hits);
+            draw_modal(&mut a);
+            assert_eq!(probe(&mut a, "gestures_group"), "tools");
+            assert_eq!(probe(&mut a, "gestures.12"), "Smaller / larger size: no gesture");
+            assert_eq!(probe(&mut a, "ui_has.gestures.row.12"), "1");
+            assert_eq!(probe(&mut a, "ui_has.gestures.row.13"), "0");
+            lib(&mut a).modal = Modal::Buttons;
+            bind_group_set(BUTTONS, lib(&mut a), GROUP_TOOLS as i32);
+            hits_clear(&mut lib(&mut a).hits);
+            draw_modal(&mut a);
+            assert_eq!(probe(&mut a, "buttons_group"), "tools");
+            assert_eq!(probe(&mut a, "ui_has.buttons.row.12"), "1");
+            assert_eq!(probe(&mut a, "ui_has.buttons.row.13"), "0");
+            lib(&mut a).learn_row = 11;
+            lib(&mut a).learn_step = 0;
+            assert_eq!(probe(&mut a, "learning"), "size-smaller");
+            lib(&mut a).learn_step = 1;
+            assert_eq!(probe(&mut a, "learning"), "size-larger");
+            library_free(&mut a);
+            canvas_free(&mut a.screen);
         }
     }
 
@@ -10136,6 +10187,15 @@ mod tests {
         assert_eq!(ABOUT_LINKS[1].name, "Grimoire GitHub");
         assert_eq!(ABOUT_LINKS[2].url, "https://github.com/nebuff");
         assert_eq!(ABOUT_LINKS[3].url, "https://github.com/ganten1998");
+        // (a person's GitHub link is named after the account it opens: "Ganten's GitHub" for ganten1998)
+        assert_eq!(ABOUT_LINKS[3].name, "Ganten's GitHub");
+        for link in ABOUT_LINKS {
+            let Some(account) = link.url.strip_prefix("https://github.com/").filter(|p| !p.contains('/')) else {
+                continue;
+            };
+            let owner = link.name.split('\'').next().unwrap_or("").to_lowercase();
+            assert!(account.starts_with(&owner), "{} opens {}", link.name, link.url);
+        }
         act(&mut a, &Hit { r: RECT_EMPTY, id: H_LINK, arg: 0 });
         assert_eq!((lib(&mut a).modal, lib(&mut a).device_link), (Modal::LinkQr, 0));
         assert!(
