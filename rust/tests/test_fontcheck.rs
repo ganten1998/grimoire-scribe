@@ -341,6 +341,58 @@ fn slow_fonts_and_slices() {
     check!(!mark.exists());
 }
 
+// Files' preview of a font (2.2, issue #145): the worker opens the face and draws the fixed sample on a white
+// picture of the size asked for (two lines, "Aa" and "Abc 123", each centred), without the check's walk; the same
+// font gives the same picture, a variable and a CFF one are drawn too. A font the check refuses is refused here the
+// same way, a WOFF2 by its format; a worker that never answers is the watchdog's (Slow), one that traps or crashes
+// ended (Dead). Sizes outside the protocol's are refused before any worker.
+fn a_fonts_sample_is_drawn_by_the_worker() {
+    clean_env();
+    let (w, h) = (300, 400);
+    let good = ttf(&test_font("Regular", 400));
+    let px = match font_sample(&good, w, h) {
+        Ok(px) => px,
+        Err(e) => panic!("the sample: {e:?}"),
+    };
+    check!(px.len() == (w * h) as usize);
+    let dark_rows: Vec<usize> = (0..h as usize).filter(|&y| px[y * w as usize..(y + 1) * w as usize].iter().any(|&v| v < 128)).collect();
+    check!(!dark_rows.is_empty());
+    // two lines of ink, apart: a run of rows with ink, a gap, another run
+    let runs = dark_rows.windows(2).filter(|p| p[1] != p[0] + 1).count() + 1;
+    check!(runs == 2);
+    // centred: the ink's left and right margins differ by little
+    let cols: Vec<usize> = (0..w as usize).filter(|&x| (0..h as usize).any(|y| px[y * w as usize + x] < 128)).collect();
+    let (l, r) = (cols[0], w as usize - 1 - cols[cols.len() - 1]);
+    check!(l.abs_diff(r) < 40);
+    // the same font, the same picture; a variable font and a CFF one are drawn too
+    check!(font_sample(&good, w, h).ok() == Some(px.clone()));
+    check!(matches!(font_sample(&ttf(&test_font_variable()), w, h), Ok(p) if p.iter().any(|&v| v < 128)));
+    check!(matches!(font_sample(&otf(&test_font("Regular", 400), 2, false), w, h), Ok(p) if p.iter().any(|&v| v < 128)));
+    // refused as the check refuses
+    check!(matches!(font_sample(&woff2(), w, h), Err(FontOut::Refused(Refuse::Format))));
+    check!(matches!(font_sample(&ttf(&symbol_cmap()), w, h), Err(FontOut::Refused(Refuse::NoLatin))));
+    check!(matches!(font_sample(&ttf(&empty_letters()), w, h), Err(FontOut::Refused(Refuse::Unreadable))));
+    check!(matches!(font_sample(b"not a font at all", w, h), Err(FontOut::Refused(_))));
+    // sizes the protocol does not take: refused here
+    check!(matches!(font_sample(&good, 7, h), Err(FontOut::Refused(_))));
+    check!(matches!(font_sample(&good, w, 801), Err(FontOut::Refused(_))));
+    // a worker that hangs on the sample: the watchdog's; one that traps or crashes: ended
+    std::env::set_var("GRIMOIRE_FONT_TEST_HANG", "0");
+    std::env::set_var("GRIMOIRE_FONT_WATCHDOG_MS", "500");
+    let t = std::time::Instant::now();
+    check!(matches!(font_sample(&good, w, h), Err(FontOut::Slow)));
+    check!(t.elapsed().as_millis() >= 400 && t.elapsed().as_secs() < 20);
+    std::env::remove_var("GRIMOIRE_FONT_TEST_HANG");
+    std::env::remove_var("GRIMOIRE_FONT_WATCHDOG_MS");
+    std::env::set_var("GRIMOIRE_FONT_TEST_CRASH", "0");
+    check!(matches!(font_sample(&good, w, h), Err(FontOut::Dead(_))));
+    std::env::remove_var("GRIMOIRE_FONT_TEST_CRASH");
+    // (the check's hooks at glyph 0 never fire there: glyph 0 is no character's)
+    std::env::set_var("GRIMOIRE_FONT_TEST_HANG", "0");
+    check!(matches!(check_font(&good, 44), FontOut::Passed { .. }));
+    std::env::remove_var("GRIMOIRE_FONT_TEST_HANG");
+}
+
 // A sandbox step that fails is not the font's fault: nothing is checked, nothing is marked, the job says no
 // worker can be had (4), and a worker that cannot start at all is the same.
 fn a_failed_sandbox_step_checks_nothing() {
@@ -625,6 +677,7 @@ fn test_fontcheck() {
     run!(twenty_thousand_glyphs_are_checked);
     run!(one_font_a_job);
     run!(the_walk_and_the_ui_read_the_cmap_the_same_way);
+    run!(a_fonts_sample_is_drawn_by_the_worker);
     // (last: it leaves the session without workers, as a failed step does)
     run!(a_failed_sandbox_step_checks_nothing);
     done();

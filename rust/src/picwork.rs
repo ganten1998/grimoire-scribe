@@ -326,6 +326,9 @@ fn no_worker(why: &str) {
 pub struct PicPool {
     w: Option<Worker>,
     served: usize,
+    /// pictures are never decoded in the writer, whatever the sandbox's state (Files' previews, 2.2): with no
+    /// worker a picture waits (`PicOut::NoWorker`), as it does where the sandbox is required
+    worker_only: bool,
 }
 
 impl Default for PicPool {
@@ -367,7 +370,13 @@ fn without_worker(handed: bool) -> Result<Asked, &'static str> {
 
 impl PicPool {
     pub fn new() -> PicPool {
-        PicPool { w: None, served: 0 }
+        PicPool { w: None, served: 0, worker_only: false }
+    }
+
+    /// A pool whose pictures only a worker decodes (Files' previews of the user's files, 2.2): no fallback to the
+    /// writer's own decode, on the Mac and in the simulator too.
+    pub fn worker_only() -> PicPool {
+        PicPool { w: None, served: 0, worker_only: true }
     }
 
     fn start(&mut self) -> Start {
@@ -466,11 +475,11 @@ impl PicPool {
         let mut again = true;
         loop {
             if let Start::NoWorker = self.start() {
-                return without_worker(handed);
+                return if self.worker_only { Ok(Asked::Wait) } else { without_worker(handed) };
             }
             let fresh = self.served == 0;
             let Some(w) = self.w.as_mut() else {
-                return without_worker(handed);
+                return if self.worker_only { Ok(Asked::Wait) } else { without_worker(handed) };
             };
             self.served += 1;
             let deadline = mono_ms() + watchdog_ms();
