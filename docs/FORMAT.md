@@ -1194,11 +1194,16 @@ or the one it found holding every page. When the import ends:
 
 An end that comes while the Kindle sleeps, or while a fill's pages go in, is taken once that is over. A book page
 under another page count than the request's (two engines may count a broken PDF's pages differently) is found
-under the one count the notebook's pages name. An import that fails
-fails the book as above: "Couldn't add book pages. Is the storage full?" for no room, "Book too long: notebooks hold
-2000 pages." for more pages than a notebook holds, else "Couldn't open book from KOReader (see grimoire.log)." (the
-import's own lines in the log say why). A book opened in KOReader before 2.2 keeps the pages KOReader drew, gray;
-the pages added through version 2 are the import's, in colour where the PDF has colour.
+under the one count the notebook's pages name.
+
+An import that fails says the import's own toast, whatever is in front, as for the same file dropped in
+`import/`: "PDF needs a password.", "PDF too big: over N MB.", "PDF too long: notebooks hold 2000 pages.",
+"Couldn't import PDF. Is the storage full?", else "Couldn't import PDF (see grimoire.log)." (the import's lines in
+the log say why). A request that ends before any import fails as a book does: one that does not read, or whose
+path the walk refuses, with "Couldn't open book from KOReader (see grimoire.log).", and one whose `pages` is more
+than a notebook holds with "Book too long: notebooks hold 2000 pages.". A book opened in KOReader before 2.2 keeps
+the pages KOReader drew, gray; the pages added through version 2 are the import's, in colour where the PDF has
+colour.
 
 1.0.0-beta to 2.0.0-beta.4 never read `import/.book/`; the plugin never sends to them. 2.0.0-beta.5 to 2.1 read
 version 1 alone: a version 2 request does not read there (the book's failure, the folder emptied), and the plugin

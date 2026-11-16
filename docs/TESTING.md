@@ -2986,8 +2986,10 @@ of KOReader's pages 1 and 3 filled by the planner's path, open at book page 2), 
 version 1 request, as a DjVu's, taken as before), `y_koreader_pdf_4_whatsnew.qs` (the first start after an update
 is a hand-over that fills a notebook: What's new closes, then the pages go in and the notebook opens),
 `y_koreader_pdf_5_elsewhere.qs` (a notebook of the user's own in front at the end: the import's toast, and the
-book's card opens at book page 3), `y_koreader_pdf_6_sheet.qs` (the same with a sheet up) and
-`y_koreader_pdf_7_asleep.qs` (the end taken at the wake).
+book's card opens at book page 3), `y_koreader_pdf_6_sheet.qs` (the same with a sheet up),
+`y_koreader_pdf_7_asleep.qs` (the end taken at the wake), `y_koreader_pdf_8_password.qs` (a PDF the import
+refuses says the import's "PDF needs a password.") and `y_koreader_pdf_9_refused.qs` (a path the walk refuses
+says the book's failure).
 
 **Not run on a Scribe.** The owner's check, on a build of this branch (a planner PDF with coloured tabs, more than
 20 pages, that Grimoire never saw; a second, long PDF, of a few hundred pages; a DjVu or CBZ book):

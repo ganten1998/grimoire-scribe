@@ -2306,9 +2306,11 @@ front. The Library's cards (`library_cards_in_front`: no sheet, no Files, no Gra
 out): the notebook opens at that page, with version 1's toasts. Anything else: nothing opens over it, the import's
 own toast shows (`pdf_import_told`), and the page is kept as the one the notebook opens at (`book_pdf_keep_page`:
 `last_page` alone, and never for the notebook the editor has open). An end that comes while the Kindle sleeps or a
-fill's pages go in is taken after. An import that fails fails the book. An import that is neither queued, waiting for
-the lock nor going in, and told nothing, for 3 s (a fill whose notebook changed meanwhile) ends on the book's
-notebook as it is. The plugin keeps
+fill's pages go in is taken after. An import that fails fails the book, and says the import's own toast
+("PDF needs a password.", "PDF too big: over N MB." and the others of `pdf_import_told`); a request that ends
+before any import (it does not read, or the walk refuses its path) says the book's. An import that is neither
+queued, waiting for the lock nor going in, and told nothing, for 3 s (a fill whose notebook changed meanwhile) ends
+on the book's notebook as it is. The plugin keeps
 version 1 for DjVu, comics and XPS, for a PDF outside the storage, and for a PDF that needs a password, which it asks
 of a MuPDF document of its own: MuPDF answers by trying the empty password, which would make the reader's document
 forget the one it was given.

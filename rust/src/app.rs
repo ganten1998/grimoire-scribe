@@ -615,7 +615,13 @@ fn book_tick(a: &mut App) {
         if !a.book.pdf {
             app_notice_clear(a, NoticeKey::Book); // (the notice saying how far it got goes)
         }
-        book_failed(a);
+        // A PDF handed over by its path that its import refused says the import's own words, whatever is in front
+        // ("PDF needs a password.", "PDF too big: over N MB.", and the others: pdf_import_told). A path refused
+        // before any import, and every version 1 failure, says the book's.
+        match if a.book.pdf { book_pdf_told() } else { None } {
+            Some((id, fin @ crate::pdfimport::Finished::Failed(_))) => pdf_import_told(a, &id, fin),
+            _ => book_failed(a),
+        }
     } else if !a.book.pdf {
         book_progress(a, now_ms());
     }

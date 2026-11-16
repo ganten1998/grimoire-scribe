@@ -287,13 +287,10 @@ the name rules, the busy check and the copy job (`BgKind::CopyFile`). Nothing on
   does not have.
 - **The reader's contrast is not sent**: a PDF by its path is drawn at its own contrast, where version 1 drew it at
   the reader's. A `gamma=` line waits with the darker lines import option.
-- **Failures say the book's words** ("Couldn't open book from KOReader (see grimoire.log).", "Couldn't add book
-  pages. Is the storage full?", "Book too long: notebooks hold 2000 pages."), not the import's own ("PDF needs a
-  password.", "PDF too big: over N MB."), which the log carries. The owner may prefer the import's.
 - **The password question** opens the PDF a second time in KOReader (a MuPDF document of the plugin's own, through
   `ffi/mupdf`'s `openDocument`, `needsPassword` and `close`, as KOReader's own PDF reader calls them): read in
   KOReader's code, not run on a Kindle. Where it fails the plugin sends the PDF by its path, and a PDF that needs a
-  password then fails in Grimoire with the book's toast.
+  password then fails in Grimoire with "PDF needs a password.".
 - **A PDF KOReader opens from `grimoire/import`** is filed in `import/done/` once imported, as any pick there is;
   KOReader then no longer finds it at its path. (The scan would take it from there anyway.)
 - **Grimoire stopped while the import runs** (the launcher's watchdog, a crash) leaves the import to its detached
