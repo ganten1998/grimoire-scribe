@@ -8,7 +8,8 @@
 wait 300
 expect library.items is 4
 expect library.card.2.name is Beta
-# the second card (Beta, a notebook): the middle of its page, upright
+# the second card (Beta, a notebook): the middle of its page, upright (by its place: the card's name is no control
+# once its menu covers it, and the lift must land where the press did)
 touch down 929 632
 wait 800
 expect library.sheet is more

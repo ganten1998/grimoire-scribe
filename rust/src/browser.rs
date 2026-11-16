@@ -1511,7 +1511,8 @@ impl Browser {
             ui_frame(c, r, u(16.0), 0, false, u(3.0));
             ui_icon(c, icon, Rect::new(r.x + u(24.0), r.y + (r.h - iw) / 2, iw, iw), 0);
             let tx = r.x + u(24.0) + iw + u(14.0);
-            font_draw_left_name(c, FontFace::Bold, small, Rect::new(tx, r.y, r.x + r.w - tx - u(20.0), r.h), label, 0);
+            // (a word, not a name: the fit check hears of one cut short)
+            font_draw_left(c, FontFace::Bold, small, Rect::new(tx, r.y, r.x + r.w - tx - u(20.0), r.h), label, 0);
             r
         };
         let show = chip(c, band.x + band.w, IconKind::Eye, self.show_label());
