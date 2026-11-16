@@ -40,6 +40,9 @@ const COPY_CHUNK: usize = 64 << 10;
 /// The temporary name begins and ends so (`.grimoire-copy-<pid>.part`): a dot-name, which no listing shows.
 const TMP_HEAD: &str = ".grimoire-copy-";
 const TMP_TAIL: &str = ".part";
+/// A temporary file untouched this long is a dead copy's, whatever runs under its process id now (after a
+/// restart that number often belongs to another process): a live copy writes it every 64 KiB.
+const TMP_STALE_SECS: i64 = 3600;
 
 /// The job's path: the source as listed ("<dev>.<ino>.<size>.<mtime>:") and its storage path, None when the path
 /// is not text or the whole would not fit the job's 600 bytes.
@@ -265,8 +268,9 @@ fn fill(src: &mut std::fs::File, out: std::fs::File, listed: &FsStat) -> Result<
     Ok(n)
 }
 
-/// Temporary files of copies that died with their process (a killed child): gone, so nothing stays behind. One
-/// whose process still runs (a detached child finishing a copy at exit) is left to it.
+/// Temporary files of copies that died with their process (a killed child, a restart): gone, so nothing stays
+/// behind. One whose process still runs (a detached child finishing a copy at exit) is left to it, unless nothing
+/// has written it for an hour (TMP_STALE_SECS: its process id is someone else's now).
 fn sweep_stale(d: i32) {
     // SAFETY: dup of our descriptor; fdopendir takes the duplicate, closedir closes it; readdir's entries are read
     // before the next call.
@@ -294,13 +298,22 @@ fn sweep_stale(d: i32) {
         libc::closedir(dir);
         v
     };
+    let now = wall_time();
     for n in names {
         let pid = std::str::from_utf8(n.to_bytes())
             .ok()
             .and_then(|s| s.strip_prefix(TMP_HEAD)?.strip_suffix(TMP_TAIL)?.parse::<i32>().ok())
             .filter(|&p| p > 0);
         // SAFETY: kill with signal 0 only asks whether the process exists.
-        if pid.is_some_and(|p| p != std::process::id() as i32 && unsafe { libc::kill(p, 0) } != 0 && errno() == libc::ESRCH) {
+        let dead = |p: i32| unsafe { libc::kill(p, 0) } != 0 && errno() == libc::ESRCH;
+        let untouched = || {
+            // SAFETY: a stat is plain data, written by fstatat (no link followed) before it is read.
+            let mut st: libc::stat = unsafe { std::mem::zeroed() };
+            // SAFETY: fstatat on our descriptor and a NUL-terminated name, into st.
+            let r = unsafe { libc::fstatat(d, n.as_ptr(), &mut st, libc::AT_SYMLINK_NOFOLLOW) };
+            r == 0 && now - (st.st_mtime as i64) > TMP_STALE_SECS
+        };
+        if pid.is_some_and(|p| p != std::process::id() as i32 && (dead(p) || untouched())) {
             // SAFETY: unlinkat on our descriptor and a NUL-terminated name (the entry itself, never followed).
             unsafe { libc::unlinkat(d, n.as_ptr(), 0) };
         }

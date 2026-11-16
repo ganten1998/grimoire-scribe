@@ -2397,9 +2397,12 @@ their own work), so nothing a user sees changed.
   storage path, under 600 bytes). The job opens the source again through the walk, checks it is the file listed
   and that there is room, writes `.grimoire-copy-<pid>.part` in the folder (made when missing), checks the source
   ended as listed, syncs, and renames with no replace to the source's name (" 2" when taken). Any failure
-  removes the temporary file; one a killed copy left is removed by the next copy into that folder (unless its
-  process still runs). It ends 0 or 1 only: the one message for a failed copy needs no more. Its child's margin is
-  64 MiB (one 64 KiB buffer). The app's tick takes its end apart from the PDF mirror's (no "PDF saved").
+  removes the temporary file; one a killed copy left is removed by the next copy into that folder, unless its
+  process still runs and has written it within the hour (after a restart its process id is often another
+  process's). It ends 0 or 1 only: the one message for a failed copy needs no more. Its child's margin is 64 MiB
+  (one 64 KiB buffer). The app's tick takes its end apart from the PDF mirror's (no "PDF saved").
+- **Waits on the UI thread**: each sync of these writes (the record, the folders) is followed by `work_pump()`, as
+  util's atomic write does between its steps, so the pens are read between waits of 15-25 ms each.
 - **Logs** (no names, docs/KINDLE.md): the zone a rename, trash or restore acted in, a notebook's id, a copy's
   size and time, the reason a copy was refused, an errno when a call failed, and once a session the fallback.
 - **Tests**: `fsview.rs`'s unit tests (the name rules, the trash's names, the record read strictly, what an import

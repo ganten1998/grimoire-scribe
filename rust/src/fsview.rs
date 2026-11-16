@@ -1043,10 +1043,13 @@ fn hex4() -> String {
     format!("{:02x}{:02x}", b[0], b[1])
 }
 
-/// Best effort: what was renamed in or out of the folder open at `fd` is on the storage.
+/// Best effort: what was renamed in or out of the folder open at `fd` is on the storage. The pens are read after
+/// it (work_pump, as util's atomic write does between its steps: on the Kindle each fsync waits 15-25 ms); in a
+/// background child that does nothing.
 pub(crate) fn sync_dir(fd: i32) {
     // SAFETY: fsync on a descriptor the caller owns.
     unsafe { libc::fsync(fd) };
+    crate::util::work_pump();
 }
 
 /// Opens `name` in `dirfd` as a folder (O_DIRECTORY|O_NOFOLLOW).
@@ -1080,6 +1083,7 @@ fn write_record(wfd: i32, from: &StoragePath, time: i64) -> Result<(), i32> {
     use std::io::Write;
     let r = f.write_all(&trash_record_text(from, time)).and_then(|_| f.sync_all());
     drop(f);
+    crate::util::work_pump();
     r.map_err(|e| {
         unlink_at(wfd, &c, 0);
         e.raw_os_error().unwrap_or(libc::EIO)

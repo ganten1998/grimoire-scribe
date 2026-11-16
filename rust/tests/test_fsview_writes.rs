@@ -626,7 +626,13 @@ fn the_copy_job() {
     check!(read(&g, "fonts/font.ttf") == read(&root, "documents/font.ttf"));
     let left = names(&fonts);
     check!(left.len() == 2 && left.contains(&"font.ttf".to_string()) && left.iter().any(|n| format!("{fonts}/{n}") == live));
-    std::fs::remove_file(&live).unwrap();
+    // ... unless nothing has written it for over an hour: after a restart its process id is often another's
+    let f2 = std::fs::OpenOptions::new().write(true).open(&live).unwrap();
+    f2.set_modified(std::time::SystemTime::now() - std::time::Duration::from_secs(7200)).unwrap();
+    drop(f2);
+    check!(bg_copy_file("fonts", &arg(&f, "documents/font.ttf")) == 0);
+    check!(names(&fonts) == ["font 2.ttf", "font.ttf"]);
+    std::fs::remove_file(format!("{fonts}/font 2.ttf")).unwrap();
     // the folder made where it is missing
     std::fs::remove_dir_all(format!("{g}/photos")).unwrap();
     check!(bg_copy_file("photos", &arg(&f, "documents/font.ttf")) == 0);
