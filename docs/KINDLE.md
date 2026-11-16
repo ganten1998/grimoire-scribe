@@ -695,9 +695,11 @@ deleting `grimoire/fonts/.cache/` has every font checked again.
 ## Files: rename, trash, restore and copy (2.2, the storage layer)
 
 Grimoire can rename, trash, restore and copy files inside its own `import/`, `templates/`, `photos/` and
-`fonts/` folders (docs/DESIGN.md, Files' storage writes). On screen so far only the copy is used: a picture's Use
-as template and Use as photo in Files, and the Templates and Photos sheets' From a file... tile (docs/DESIGN.md,
-From a file... and Use as template). grimoire.log says (never a file's name: the folder, sizes, timings, reasons):
+`fonts/` folders (docs/DESIGN.md, Files' storage writes). Files' cards rename and delete, and its Trash place
+restores and shows the trash's size (docs/DESIGN.md, Files: rename, delete and restore); the copy is a picture's
+Use as template and Use as photo in Files, and the Templates and Photos sheets' From a file... tile
+(docs/DESIGN.md, From a file... and Use as template). grimoire.log says (never a file's name: the folder, sizes,
+timings, reasons):
 
 - `files: an item of <folder> was renamed`, `files: an item of <folder> went to the trash`, `files: an item went
   back to <folder>`, and `files: notebook <id> came back from the trash`. A deleted item is in
@@ -715,6 +717,17 @@ From a file... and Use as template). grimoire.log says (never a file's name: the
   the next number free), to rename by hand. A crash in the middle of one leaves it the same way.
 - `files: a trash entry that held nothing was removed`: Restore on an entry a trash cut off by a crash left (its
   record alone, or an empty folder); the item never left its folder.
+- `files: the trash holds N entries, N files, N KB (read in T ms)`: Files' root or its Trash place read the
+  trash's size (once a session, and again after a delete or a restore), a slice at a time; T is the time of the
+  slices added up. `files: notebook <id> is back, its notebook.ini did not read`: a restored notebook whose own
+  file could not be read: it is back in `notebooks/`, the Library does not list it, and no toast named a folder
+  for it. `files: notebook <id> is back under a name another notebook of its folder has: the new name could not be
+  written`: its " 2" could not be saved (a full storage), so two notebooks of that folder have one name until one
+  is renamed.
+- `fonts: a rename in Files: what the check found of N font file(s) went with them`: a font file, or a folder of
+  them, was renamed in Files, and N verdicts went to the new names' keys, so those fonts are not checked again (0:
+  none was kept for it, a file not checked yet). With a font Settings names, `font: custom font loaded: ...`
+  follows, the font read again from its new path.
 - `bg: file copy of <folder> (pid N)`, then `bg: a file copied into <folder>: N KB in T ms` or `bg: a file not
   copied into <folder>: <why>` (among them: no room: the storage would keep less than 100 MB; it changed since it
   was listed, or while it was copied; it is over N MB; a name too long; it is no plain file; a link on its way; a

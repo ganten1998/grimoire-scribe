@@ -4,6 +4,53 @@ Work that was decided, deferred or found but not done yet. Keep this current: wh
 move it to "Done" with the version; when something is deferred, add it here with who decided and
 why. Newest decisions first within each section.
 
+## Files' rename, delete and restore (2.2, issue #144): what waits
+
+Built: Rename and Delete on the cards inside Grimoire's folders for the user's files, the name rules' words, Delete's
+question, "Importing now.", a folder card's check by identity, the Trash place's sizes and the trash's on its row,
+Restore for files, folders and notebooks, the font in use (docs/DESIGN.md, "Files: rename, delete and restore").
+Waiting:
+
+- **Not in 2.2** (the owner's decision): Move (Import to Templates or Photos by kind, between them, to Import)
+  and New folder in Import. **Never**: Empty (the trash is cleaned over USB). **Not built**: Restore for a page
+  (its place in its notebook was never kept; an optional extra in the plan).
+- **A held item's row is not greyed**: its card still offers Rename and Delete, and each says "Importing now." when
+  tapped (the busy check is one per tap, not one per row drawn).
+- **The Delete question's wait is a fixed time**: an answer counts 450 ms after the question's frame was sent to the
+  panel (`PEN_REOPEN_MS`, docs/DESIGN.md, "The question is seen before it is answered"), not when the panel says the
+  frame is up. A frame takes about 270 ms to show at room temperature and longer in the cold
+  (docs/INK-PERFORMANCE.md); the driver's books know when a grayscale update has ended, and only display_fbink.rs
+  reads them (`display_fast_busy` tells of fast updates alone). Asking the display would make the wait exact. Not
+  timed on the Scribe (TESTING.md, the device checks' step 2 has the two taps). The Library's own question is asked
+  once, as it opens: turned while it is up, it is drawn at its new place and its Delete answers at once, where Files'
+  is asked anew.
+- **A name taken on rename** says "That name is taken." and keeps the keyboard up with the name; the plan's "offer
+  Name 2" is not built (Restore does give " 2").
+- **Names the keyboard cannot show as they are** are not offered to it: 96 bytes and more ("Name too long."), or
+  with a control character ("Name can't contain U+0009"). Rename them over USB.
+- **The trash past 5,000 entries**: the Trash place lists the newest 5,000 (its listing reads the whole folder, a
+  slice at a time, and lets the oldest go); the older ones are reached over USB. The size walk counts every entry.
+- **The size walk** runs once a session (from Files' root or its Trash place) and again, whole, after each delete or
+  restore (a slice a tick, while the root or the Trash place shows; the rows keep the sizes they had meanwhile).
+  Adding and taking one entry's bytes in place would spare the walks, at the price of a total that can drift from
+  what is on the storage. A row whose entry the walk did not see (put there over USB since) shows no size, and is
+  looked up again each tick among the walk's entries (at most a screen of rows, each against at most the trash's
+  names). A trash changed over USB while Files is open is measured again only at the next write. Not timed on the
+  Scribe (TESTING.md, "2.2, Files' rename, delete and restore (issue #144): device checks").
+- **A folder named as Grimoire's on a storage that keeps case apart**: the allow-list knows Grimoire's folders by
+  name without regard to ASCII case (fsview's zones, from the storage writes), so a second folder such as
+  `Grimoire/photos` beside the real one would be offered Rename and Delete too. Everything stays inside the user's
+  own files and can be restored; knowing the folders by identity, as notebooks and the trash are known, is the
+  storage layer's to add.
+- **A trash entry's row** says its size and date, not what it is (a notebook, a file), and a file restored as " 2"
+  is told with its folder alone: both would need new words.
+- **The font in use** (Settings' `font`, and its `font_bold`): Delete refuses it ("Font in use."), and Rename takes
+  the setting and what its check found along. Left: a Bold file Grimoire found by itself (no `font_bold` line) can
+  be deleted, and bold is then the regular overprinted from the next start; a font renamed or deleted over USB
+  leaves the setting as it was, as before ("File missing." in the Font sheet). A folder of fonts renamed has its
+  files listed and stat-ed at once on the UI thread (a font folder is small; at most 5,000 names).
+- **Japanese** for the new words: nebuff's (#55); they show in English until then.
+
 ## Files (2.2, issue #124): what waits
 
 Built: place mode, the Files card (hidden until "Show Files in Library"; the last card of the Library's top
@@ -14,10 +61,7 @@ each for its own issue:
 - **Home**: `home=` in settings.ini (any Library or Kindle folder), Set as home in the Go to sheet and on a
   folder's card, Reset home to Notebooks, opening at home at each start, "Home folder not found.". Today `home`
   (the action) goes to the Library's top (`library_home`, where a set home starts).
-- **Rename and Trash on screen** in Grimoire's writable folders (Import, Templates, Photos, Fonts), with the name
-  rules and "Importing now.", on the storage layer's writes (issue #117); **Restore** on the trash's rows
-  (`RowKind::Trashed`) for files and notebooks, never Empty; the trash's size on its row. Pages in the trash are
-  listed by their notebook's name; their Restore is optional.
+- **Rename and Trash on screen** and **Restore** in the Trash place: built with issue #144 (above).
 - **Previews and the Covers view** (`files_view=covers`, read today as the list and kept), "Making previews...",
   the cache and its prune; the details a card can only have from the worker (a PDF's pages, a picture's size, a
   font's sample and coverage).
@@ -75,35 +119,31 @@ as template). Waiting:
 ## Files' storage writes (2.2, issue #117): what waits
 
 The storage layer writes now (docs/DESIGN.md, Files' storage writes): rename, trash with its record, restore,
-the name rules, the busy check and the copy job (`BgKind::CopyFile`). Nothing on screen calls them yet.
+the name rules, the busy check and the copy job (`BgKind::CopyFile`). Files' cards and its Trash place call rename,
+trash and restore since issue #144, and a picture's Use as template and Use as photo and the From a file... tiles
+call the copy since issue #146 (each its own section, above).
 
 - **The screens' part** (the Files place and its cards, the Trash place, the From a file... tiles, Add a
   font...):
-  - Their words for each refusal: "File changed. Try again." (`Changed`), "Importing now." (`Busy`), "Name can't
-    contain %s" (`NameRule::Char`) and words for the other rules (empty, too long, a space at either end, a dot at
-    the start or the end, the extension kept), a name taken on rename (`Exists`: offer " 2"), "Couldn't restore.
-    Folder gone." (`FolderGone`), an entry whose record does not read (`BadRecord`), "Restored to %s.", an entry
-    a cut-off trash left, removed with nothing put back (`Restored::Nothing`), and "Couldn't copy file. Is the
-    storage full?" for a failed copy with no sentence of its own (the job's exit status names the others since
-    issue #146). None is a string yet.
-  - The Trash place (issue #124) lists through `fsview_trash_entries` and reads, for the rows on screen, a
-    file's record (`FsStorage::trash_record`) and a notebook's `trash/<entry>/notebook.ini` (no store function
-    reads a notebook there yet); Restore on its rows waits. The Trash's size on its row is a walk of its own, not
-    built. FsListing keeps at most 5,000 names in the order the storage gives them, and the trash only grows
-    (every deleted page is an entry), so past 5,000 the place would sort an arbitrary 5,000, not the newest: the
-    screens decide what it shows then.
-  - After a notebook's restore: the Library's list read again, and `libindex_revalidate()` (or the index's next
-    check) brings it back to the Graph; its mirror PDF is made at its next change.
+  - The refusals' words came with issue #144 (rename, trash, restore; "Restored to %s.", and nothing said for an
+    entry a cut-off trash left) and, for a copy, with issue #146: "Couldn't copy file. Is the storage full?" for a
+    failed copy with no sentence of its own (the job's exit status names the others).
+  - The Trash place's Restore, its sizes, and the Library read again after a notebook's restore (with
+    `libindex_revalidate()` in `store_restored`) came with issue #144; a restored notebook's mirror PDF is made at
+    its next change. The trash only grows (every deleted page is an entry): past 5,000 entries its listing
+    (`FsListing::start_trash`) keeps the newest 5,000, so what was deleted last is always listed.
   - A copy's end: `poll_jobs` (app.rs) returns at `BgKind::CopyFile` without a toast; the tile's or the Font
     sheet's code reads `bg_last_exit()` there, and has the template list or the font check look again.
-  - A held item: its row greyed and its card's Rename and Delete saying "Importing now.", from `FsStorage::busy`.
 - **Not built** (the plan's later parts, or not in this lane): Move (Import to Templates or Photos by kind,
   between them, to Import) and New folder in Import (the owner decides whether they are 2.2's); Restore for a
   page (its place in its notebook was never kept); `store_delete` writing the record form for a notebook (2.2
   reads that form and writes the old name, `<id>-<time>`). Empty trash never comes (the owner cleans it over USB).
-- **Only imports count as busy.** A template job reads its picture by path when it starts; a rename or trash of
-  that picture just before makes the job fail (it says so), and is not refused. The screens can add it if it
-  shows.
+- **What counts as busy**: what an import works on, and since issue #144 a template or photo picked for a page
+  until the job that copies its picture into the notebook has ended (`bg_job_pictures`). Not the source of a copy
+  into Grimoire's folders (`BgKind::CopyFile`: Use as template, Use as photo and the From a file... tiles since
+  issue #146): that job refuses a source that changed or is gone and leaves nothing behind, so a picture of
+  Grimoire's folders renamed or deleted in Files before its copy has opened it is not copied ("File changed. Try
+  again.").
 - **The fallback's last moment.** Where the storage refuses the no-replace flag, a rename reserves the new name
   and renames over its own reservation only (DESIGN.md, Never an overwrite), since files come over USB and the
   copy job renames while Grimoire runs. Left: a writer that opens the empty reserved file by its name between the

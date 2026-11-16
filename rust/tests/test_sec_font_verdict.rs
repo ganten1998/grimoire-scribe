@@ -7,6 +7,8 @@
 // deleting the cache still has every font checked again. A build that names no such folder keeps its verdicts in
 // the cache as before, with no test of owners or modes.
 //
+// A font renamed in Files keeps its verdict, renamed to the new name's key (issue #144).
+//
 // Every font goes through a real worker (a fresh exec of the headless runner, GRIMOIRE_WORK_EXE) and the real
 // job, in this process or forked by a scan as the app forks it; two cases start the app itself. One #[test], its
 // cases in order: they change the environment and the store's root, which are the process's.
@@ -705,6 +707,82 @@ expect library.font.state.Mine.ttf is unreadable\nexpect library.font.checking i
     remove_any(&state);
 }
 
+// A font renamed in Files keeps what its check found (issue #144): by the SHA-256 in its verdict the renamed file is
+// the same file, so it needs no new check. With no worker to be had, the font under its new name is ready and
+// loads (its bytes hash to the verdict's), where the verdicts are in Grimoire's own folder and where they are in
+// the cache; so does the font of a renamed folder. The verdict under the new name's key is the very text the check
+// wrote, the old key's is gone, and so for the preview. A file renamed with nothing carried, as over USB, has no
+// verdict under its new name and waits for a check: the carry is what spares it.
+fn a_renamed_font_keeps_its_verdict() {
+    for own in [true, false] {
+        clean_env();
+        let r = root(if own { "renamed" } else { "renamed-cache" });
+        let state = own.then(|| own_folder("renamed"));
+        put(&r, "Mine.ttf", &ttf(&test_font("Regular", 400)));
+        std::fs::create_dir_all(format!("{r}/fonts/Fam")).unwrap();
+        put(&r, "Fam/In.ttf", &ttf(&test_font("Bold", 700)));
+        check!(job() == 0);
+        let cache = format!("{r}/fonts/.cache");
+        let verdicts = state.as_ref().map_or(cache.clone(), |s| format!("{}/fonts", tag_dir(s, &r)));
+        let was = key_of("Mine.ttf");
+        let text = std::fs::read(format!("{verdicts}/{was:016x}.font")).unwrap_or_default();
+        check!(!text.is_empty());
+        std::env::set_var("GRIMOIRE_WORK_EXE", NO_WORKER);
+        // renamed in Files: the storage's rename, then what the check found goes with the file
+        std::fs::rename(format!("{r}/fonts/Mine.ttf"), format!("{r}/fonts/Yours.ttf")).unwrap();
+        userfonts_renamed("Mine.ttf", "Yours.ttf");
+        check!(loads("Yours.ttf") == Ok("overprint"));
+        check!(state_of("Yours.ttf") == "ready");
+        let now = key_of("Yours.ttf");
+        check!(now != was);
+        check!(std::fs::read(format!("{verdicts}/{now:016x}.font")).is_ok_and(|t| t == text));
+        check!(!std::path::Path::new(&format!("{verdicts}/{was:016x}.font")).exists());
+        check!(std::path::Path::new(&format!("{cache}/{now:016x}.pgm")).exists());
+        check!(!std::path::Path::new(&format!("{cache}/{was:016x}.pgm")).exists());
+        // the app's next start on this data root, Settings naming the new path: the font draws on its first screen
+        // and no check is run (there is no worker to be had)
+        std::fs::write(format!("{r}/settings.ini"), OWN.replace("Mine.ttf", "Yours.ttf")).unwrap();
+        let script = "wait 100\nexpect font is file:Yours.ttf\nexpect settings.font is file:Yours.ttf\nexpect font.own.drawn is 1\nquit\n";
+        let mut env = vec![("GRIMOIRE_WORK_EXE", NO_WORKER)];
+        if let Some(s) = &state {
+            env.push(("GRIMOIRE_STATE", s.as_str()));
+        }
+        let (code, out) = start(&r, script, &env);
+        check!(code == Some(0));
+        check!(!out.contains("bg: font check of"));
+        if code != Some(0) {
+            eprintln!("{out}");
+        }
+        // a folder renamed: its font too
+        std::fs::rename(format!("{r}/fonts/Fam"), format!("{r}/fonts/Family")).unwrap();
+        userfonts_renamed("Fam", "Family");
+        check!(loads("Family/In.ttf").is_ok());
+        check!(state_of("Family/In.ttf") == "ready");
+        check!(with_ext(&verdicts, ".font").len() == 2);
+        // out of its folder, too
+        std::fs::rename(format!("{r}/fonts/Family/In.ttf"), format!("{r}/fonts/Swap.ttf")).unwrap();
+        userfonts_renamed("Family/In.ttf", "Swap.ttf");
+        check!(loads("Swap.ttf").is_ok());
+        // the hash still ties a verdict to its bytes: a verdict that ends up under the key of other bytes (another
+        // font of the same size and time put at the old name, then "renamed") loads nothing
+        let other = ttf(&test_font("Bolt", 700));
+        let swap = std::fs::metadata(format!("{r}/fonts/Swap.ttf")).unwrap();
+        check!(other.len() as u64 == swap.len());
+        std::fs::write(format!("{r}/fonts/Forged.ttf"), &other).unwrap();
+        std::fs::File::options().write(true).open(format!("{r}/fonts/Forged.ttf")).and_then(|f| f.set_modified(swap.modified().unwrap())).unwrap();
+        std::fs::remove_file(format!("{r}/fonts/Swap.ttf")).unwrap();
+        userfonts_renamed("Swap.ttf", "Forged.ttf");
+        check!(loads("Forged.ttf") == Err(LoadErr::Checking));
+        // renamed with nothing carried, as over USB: no verdict under the new name, and it waits for a check
+        std::fs::rename(format!("{r}/fonts/Yours.ttf"), format!("{r}/fonts/Usb.ttf")).unwrap();
+        check!(loads("Usb.ttf") == Err(LoadErr::Checking));
+        std::env::set_var("GRIMOIRE_WORK_EXE", BIN);
+        check!(job() == 0);
+        // (checked again, it loads; the Bold file of its family, renamed beside it above, is found by its family)
+        check!(loads("Usb.ttf") == Ok("a Bold file"));
+    }
+}
+
 #[test]
 fn test_sec_font_verdict() {
     run!(only_grimoires_own_folder_is_read);
@@ -718,6 +796,7 @@ fn test_sec_font_verdict() {
     run!(a_folder_that_takes_no_write_checks_nothing);
     run!(without_a_folder_of_its_own_the_cache_keeps_verdicts);
     run!(a_name_that_is_no_absolute_path_is_not_the_cache);
+    run!(a_renamed_font_keeps_its_verdict);
     run!(the_app_says_once_that_nothing_can_be_kept);
     done();
 }

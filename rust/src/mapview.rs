@@ -1497,8 +1497,10 @@ fn paint(v: &mut MapView, a: &mut App, nav: &Nav, mode: RefreshMode) {
     mapview_draw(v, a, nav, full(v));
     app_invalidate(a, full(v), mode);
 }
-/// A pen's second tap on the node it selected counts after this long (a stylus bounce is shorter).
-const PEN_REOPEN_MS: u32 = 450;
+/// A pen's second tap on the node it selected counts after this long (a stylus bounce is shorter). The one time
+/// the app waits before a second tap at one place counts: a question that asks before something is deleted takes
+/// its answer this long after its frame, too (app.rs app_asked_seen).
+pub const PEN_REOPEN_MS: u32 = 450;
 
 pub fn mapview_pointer(v: &mut MapView, a: &mut App, nav: &Nav, phase: i32, e: &InEvent) -> MapResult {
     v.last_input_ms = e.t_ms;

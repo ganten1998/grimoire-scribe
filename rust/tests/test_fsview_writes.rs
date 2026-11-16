@@ -2,8 +2,9 @@
 // a rename that never replaces an entry (renameat2's flag where Linux has it, and the fallback forced through a
 // test seam so a run anywhere takes it too), a rename that changes only the case, the trash with its record and
 // restore for a file, a folder and a notebook (both the name store_delete gives and the record form), a name taken
-// on restore, the record read strictly, the busy check, and the copy job with the floor, a write that fails, and a
-// source that changes. Every refusal of the allow-list. Nothing on screen calls these yet.
+// on restore, the record read strictly, the busy check (an import's files, and a picture a page still waits for),
+// and the copy job with the floor, a write that fails, and a source that changes. Every refusal of the allow-list.
+// The trash's sizes, read a slice at a time, and its listing past the cap (issue #144).
 #![cfg(feature = "sim")]
 mod testlib;
 use grimoire::bgwork_copy::*;
@@ -368,6 +369,42 @@ fn what_an_import_holds_stays() {
     check!(st.restore(&back) == Ok(Restored::File(sp("grimoire/import/Trip/p2.png"))));
 }
 
+// A template or photo picked for a page is held until the job that copies its picture into the notebook has ended
+// (BgKind::Template with the notebook's id, the file by its path under Grimoire's folder): not renamed, not trashed.
+// The other templates are free, and so is every one while only the previews job (no notebook, the whole folder its
+// path) waits. The jobs wait in the queue behind another, so none runs; once the copy leaves it, the file is free.
+fn what_a_page_still_needs_stays() {
+    let (root, g) = tree();
+    std::fs::write(format!("{root}/grimoire/photos/beach.jpg"), b"a photo").unwrap();
+    let st = open(&root, &g);
+    let mirror = format!("{root}/mirror");
+    bg_queue(BgKind::MirrorPdf, Some("20261115-000000-dead"), Some(&mirror), 300.0, false);
+    check!(bg_children() == 1);
+    // the previews job alone holds nothing
+    let templates = format!("{g}/templates");
+    bg_queue(BgKind::Template, Some(""), Some(&templates), 300.0, false);
+    check!(!st.busy(&sp("grimoire/templates/a.png")));
+    let (a, beach) = (format!("{g}/templates/a.png"), format!("{g}/photos/beach.jpg"));
+    bg_queue(BgKind::Template, Some("20261115-000000-beef"), Some(&a), 300.0, false);
+    bg_queue(BgKind::Template, Some("20261115-000000-beef"), Some(&beach), 300.0, false);
+    check!(bg_children() == 1);
+    for p in ["grimoire/templates/a.png", "grimoire/photos/beach.jpg"] {
+        let s = stat_of(&st, p);
+        check!(st.busy(&sp(p)));
+        check!(st.rename(&sp(p), &s, if p.ends_with(".png") { b"z.png" } else { b"z.jpg" }) == Err(FsWriteErr::Busy));
+        check!(st.trash(&sp(p), &s) == Err(FsWriteErr::Busy));
+    }
+    check!(!st.busy(&sp("grimoire/templates/b.png")));
+    check!(names(&format!("{g}/templates")) == ["a.png", "b.png"] && names(&format!("{g}/trash")).is_empty());
+    check!(bg_unqueue(BgKind::Template, "20261115-000000-beef", &a));
+    check!(bg_unqueue(BgKind::Template, "20261115-000000-beef", &beach));
+    check!(bg_unqueue(BgKind::Template, "", &templates));
+    settle();
+    let s = stat_of(&st, "grimoire/templates/a.png");
+    check!(!st.busy(&sp("grimoire/templates/a.png")));
+    check!(st.rename(&sp("grimoire/templates/a.png"), &s, b"z.png").is_ok());
+}
+
 // A file and a folder to the trash and back: one rename each way (the same inode), the record beside the item
 // (where it was, when), the trash listing it by the time in its name, its folder in the trash gone after the
 // restore. Both ways of renaming.
@@ -704,6 +741,105 @@ fn the_copy_job() {
     check!(names(&format!("{g}/photos")).len() == 2);
 }
 
+// The trash's sizes (issue #144), read a slice at a time: each entry's bytes (a file's or folder's entry its item's,
+// not its record's; a notebook's folder at any depth; a page's file), the total, a link anywhere neither followed
+// nor counted, nothing deeper than 16 folders entered; an entry's size is told only once it is read to its end.
+fn the_trash_sizes() {
+    let (root, g) = tree();
+    let o = outside();
+    std::fs::write(format!("{o}/big"), vec![b'x'; 50_000]).unwrap();
+    let st = open(&root, &g);
+    let photo = sp("grimoire/photos/beach.jpg");
+    std::fs::write(format!("{root}/grimoire/photos/beach.jpg"), vec![b'p'; 3000]).unwrap();
+    let a = st.trash(&photo, &stat_of(&st, "grimoire/photos/beach.jpg")).unwrap();
+    std::fs::create_dir_all(format!("{root}/grimoire/import/Trip/deep")).unwrap();
+    std::fs::write(format!("{root}/grimoire/import/Trip/deep/x.png"), vec![b'd'; 50]).unwrap();
+    symlink(format!("{o}/big"), format!("{root}/grimoire/import/Trip/link.png")).unwrap();
+    let b = st.trash(&sp("grimoire/import/Trip"), &stat_of(&st, "grimoire/import/Trip")).unwrap();
+    let t = format!("{g}/trash");
+    let nb = "20261101-000000-0001-1790000000";
+    std::fs::create_dir_all(format!("{t}/{nb}/pages")).unwrap();
+    std::fs::write(format!("{t}/{nb}/notebook.ini"), vec![b'n'; 120]).unwrap();
+    std::fs::write(format!("{t}/{nb}/pages/p1.qpg"), vec![b'q'; 1000]).unwrap();
+    std::fs::write(format!("{t}/20261101-000000-0001-p3-1790000500"), vec![b'g'; 777]).unwrap();
+    symlink(format!("{o}/big"), format!("{t}/notes-link")).unwrap();
+    let mut deep = format!("{t}/deep");
+    for _ in 0..18 {
+        deep.push_str("/d");
+    }
+    std::fs::create_dir_all(&deep).unwrap();
+    std::fs::write(format!("{deep}/far"), vec![b'f'; 9999]).unwrap();
+    std::fs::write(format!("{t}/deep/near"), vec![b'n'; 10]).unwrap();
+    // a clock a millisecond a call, and slices of 2: the walk takes many steps, and stops between them
+    let mut s = st.trash_sizes().unwrap();
+    let mut now = 0u32;
+    let mut clock = || {
+        now += 1;
+        now
+    };
+    let mut steps = 0;
+    let mut told_early = false;
+    while !s.step_clocked(2, &mut clock) {
+        steps += 1;
+        // (an entry being read is not told: only one read to its end)
+        told_early |= s.size_of(b.as_slice()).is_some_and(|n| n != 3 + 3 + 50);
+        check!(steps < 10_000);
+    }
+    check!(steps > 3 && !told_early);
+    check!(s.size_of(&a) == Some(3000));
+    // Trip: p1 and p2 (3 and 3 bytes, the tree's), deep/x.png (50); its link not counted
+    check!(s.size_of(&b) == Some(3 + 3 + 50));
+    check!(s.size_of(nb.as_bytes()) == Some(1120));
+    check!(s.size_of(b"20261101-000000-0001-p3-1790000500") == Some(777));
+    check!(s.size_of(b"notes-link") == Some(0));
+    // (nothing deeper than 16 folders is entered)
+    check!(s.size_of(b"deep") == Some(10));
+    check!(s.size_of(b"no such entry").is_none());
+    check!(s.total == 3000 + 56 + 1120 + 777 + 10);
+    check!(s.done && s.step(FS_SLICE_MS));
+}
+
+// The trash's own listing past the cap (issue #144): read to the folder's end a slice at a time, it keeps the 5,000
+// entries fsview_trash_entries puts first (the newest by the time in each name; a name of no known form goes before
+// any other), and says it is capped. A plain listing of the same folder stops at the first 5,000 the storage gives.
+fn the_trash_lists_its_newest_past_the_cap() {
+    let (root, g) = tree();
+    let t = format!("{g}/trash");
+    let n = 2 * FS_LIST_MAX + 300;
+    for i in 0..n {
+        std::fs::write(format!("{t}/20261101-000000-0001-p{}-{}", i + 1, 1_700_000_000 + i), b"").unwrap();
+    }
+    for odd in ["notes", "zzz", "a b"] {
+        std::fs::write(format!("{t}/{odd}"), b"").unwrap();
+    }
+    let st = open(&root, &g);
+    let mut l = FsListing::start_trash(&st).unwrap();
+    let mut now = 0u32;
+    let mut clock = || {
+        now += 1;
+        now
+    };
+    let mut steps = 0;
+    while !l.step_clocked(20, &mut clock) {
+        steps += 1;
+        check!(l.entries.len() <= 2 * FS_LIST_MAX);
+        check!(steps < 100_000);
+    }
+    check!(steps > 3);
+    check!(l.capped && l.entries.len() == FS_LIST_MAX);
+    let kept = fsview_trash_entries(&l.entries);
+    check!(kept.iter().all(|e| e.kind == TrashKind::Page));
+    check!(kept[0].time == 1_700_000_000 + n as i64 - 1);
+    check!(kept[FS_LIST_MAX - 1].time == 1_700_000_000 + (n - FS_LIST_MAX) as i64);
+    // (a trash under the cap is listed whole, the names of no known form too)
+    for i in 0..n - 10 {
+        std::fs::remove_file(format!("{t}/20261101-000000-0001-p{}-{}", i + 1, 1_700_000_000 + i)).unwrap();
+    }
+    let mut l = FsListing::start_trash(&st).unwrap();
+    while !l.step(FS_SLICE_MS) {}
+    check!(!l.capped && l.entries.len() == 13);
+}
+
 #[test]
 fn test_fsview_writes() {
     run!(writes_stay_in_grimoires_folders);
@@ -713,12 +849,15 @@ fn test_fsview_writes() {
     run!(a_rename_cut_off_half_way);
     run!(a_trash_cut_off_before_its_item_moved);
     run!(what_an_import_holds_stays);
+    run!(what_a_page_still_needs_stays);
     run!(trash_and_restore_a_file_and_a_folder);
     run!(a_name_taken_on_restore);
     run!(a_restore_refused);
     run!(notebooks_and_pages_in_the_trash);
     run!(the_copy_request);
     run!(the_copy_job);
+    run!(the_trash_sizes);
+    run!(the_trash_lists_its_newest_past_the_cap);
     std::env::remove_var("GRIMOIRE_STORAGE");
     let _ = std::fs::remove_dir_all(format!("{}/fsw-storage", tl_tmp()));
     let _ = std::fs::remove_dir_all(format!("{}/fsw-outside", tl_tmp()));

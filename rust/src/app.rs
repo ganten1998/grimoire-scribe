@@ -166,6 +166,25 @@ pub struct App {
     /// sends (set over its touch-down too, which the keyboard then takes as a contact on no key; None the rest of
     /// the time).
     pub kb_inject: Option<KbInput>,
+    /// The question on the screen that asks before something is deleted (app_ask), and how far its frame is:
+    /// drawn, or on the panel since when. A contact answers it only once it has been shown (app_asked_seen).
+    pub asked: Asked,
+}
+
+/// A question that asks before something is deleted (`Delete "name"?`, Files' and the Library's) must be seen
+/// before it is answered: the tap that opens it changes what the next tap lands on at once, and the panel shows
+/// the question later, so the second of two taps at one place would answer a question nobody saw. The screen
+/// says it drew one (app_ask), app_flush notes when the frame that carries it goes to the panel, and the screen
+/// lets go a contact that came down before it was shown (app_asked_seen).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum Asked {
+    /// no question asked: nothing is held back
+    #[default]
+    No,
+    /// drawn into App.screen, its frame not sent yet
+    Drawn,
+    /// its frame went to the panel then (now_ms)
+    Shown(u32),
 }
 
 
@@ -2493,6 +2512,9 @@ fn app_flush_in(a: &mut App) {
     live_toast_sync(a, overlay, reached, noticed.is_some());
     display_present(&a.screen, a.dirty, m);
     du_wear_presented(&mut a.du_wear, a.dirty, m);
+    if a.asked == Asked::Drawn {
+        a.asked = Asked::Shown(now_ms()); // (a question's frame is on its way to the panel: app_asked_seen)
+    }
     if overlay {
         canvas_blit(&mut a.screen, &a.toast_under, Rect { x: 0, y: 0, w: a.toast_rect.w, h: a.toast_rect.h ,
             }, a.toast_rect.x, a.toast_rect.y,
@@ -2572,6 +2594,31 @@ pub fn app_press_release(a: &mut App, pressed: &mut Option<Rect>) -> Rect {
             r
         }
         None => RECT_EMPTY,
+    }
+}
+
+/// A question that asks before something is deleted was just drawn into a.screen for the first time, or at a new
+/// place, and its place invalidated in the same call (Asked): it has not been shown. The next present is the
+/// frame that carries it (app_flush presents all that is dirty); app_asked_seen is false until then.
+pub fn app_ask(a: &mut App) {
+    a.asked = Asked::Drawn;
+}
+
+/// Whether the contact that comes down as `ev` can be an answer to the question app_ask named: the question's
+/// frame has gone to the panel, and the contact came down PEN_REOPEN_MS or more after it did, which is how long
+/// the Graph too waits before a second tap at one place counts (the panel takes about 270 ms of it to show a
+/// frame, docs/INK-PERFORMANCE.md; the second of two taps at one place comes sooner than the rest). By the
+/// kernel's time of the contact's frame where the kernel says (InEvent.k_ms: a contact read late came down when
+/// the kernel saw it, not when the app got to it), else by when it was read. A screen lets go a contact this is
+/// false for, down to its lift: it answers nothing, and the question stays.
+pub fn app_asked_seen(a: &App, ev: &InEvent) -> bool {
+    match a.asked {
+        Asked::No => true,
+        Asked::Drawn => false,
+        Asked::Shown(at) => {
+            let down = if ev.k_ms != 0 { ev.k_ms } else { ev.t_ms };
+            down.wrapping_sub(at) as i32 >= PEN_REOPEN_MS as i32
+        }
     }
 }
 
@@ -3278,6 +3325,51 @@ mod tests {
         let mut out = String::new();
         assert_eq!(app_probe(a, key, &mut out, 256), 0, "{key}");
         out
+    }
+
+    /// A question that asks before something is deleted (app_ask) has been shown once a present carried it, and is
+    /// answered only by a contact that came down PEN_REOPEN_MS or more after that present: by the kernel's time
+    /// of the contact where it says, else by when it was read. A flush that presents nothing shows nothing, nor
+    /// does one held back by the sleep screen; a later present does not move the time; with nothing asked,
+    /// nothing is held back.
+    #[test]
+    fn a_question_is_answered_once_its_frame_went_to_the_panel() {
+        let mut a = notice_app();
+        let down = |t_ms: u32, k_ms: u32| InEvent { type_: InType::TouchDown, t_ms, k_ms, ..Default::default() };
+        assert_eq!(a.asked, Asked::No);
+        assert!(app_asked_seen(&a, &down(5, 0)), "nothing asked");
+        app_ask(&mut a);
+        assert_eq!(a.asked, Asked::Drawn);
+        let late = now_ms().wrapping_add(60_000);
+        assert!(!app_asked_seen(&a, &down(late, 0)) && !app_asked_seen(&a, &down(late, late)), "not on the panel: no contact answers");
+        app_flush(&mut a);
+        assert_eq!(a.asked, Asked::Drawn, "a flush with nothing to present showed nothing");
+        let r = Rect { x: 100, y: 100, w: 400, h: 300 };
+        a.asleep = true;
+        app_invalidate(&mut a, r, RefreshMode::Ui);
+        app_flush(&mut a);
+        assert_eq!(a.asked, Asked::Drawn, "the sleep screen is up: nothing went out");
+        a.asleep = false;
+        let before = now_ms();
+        app_flush(&mut a);
+        let Asked::Shown(at) = a.asked else { panic!("the present that carried it: {:?}", a.asked) };
+        assert!(at.wrapping_sub(before) < 5000);
+        assert!(!app_asked_seen(&a, &down(at.wrapping_sub(1), 0)));
+        assert!(!app_asked_seen(&a, &down(at, 0)));
+        assert!(!app_asked_seen(&a, &down(at.wrapping_add(PEN_REOPEN_MS - 1), 0)));
+        assert!(app_asked_seen(&a, &down(at.wrapping_add(PEN_REOPEN_MS), 0)));
+        // the kernel's time of the contact, where it says: read late, it came down before the question was shown
+        assert!(!app_asked_seen(&a, &down(at.wrapping_add(9_000), at.wrapping_sub(3))));
+        assert!(!app_asked_seen(&a, &down(at.wrapping_add(9_000), at.wrapping_add(PEN_REOPEN_MS - 1))));
+        assert!(app_asked_seen(&a, &down(at.wrapping_add(9_000), at.wrapping_add(PEN_REOPEN_MS))));
+        // a later present (a toast going, a row redrawn) is not its frame
+        app_invalidate(&mut a, r, RefreshMode::Ui);
+        app_flush(&mut a);
+        assert_eq!(a.asked, Asked::Shown(at));
+        // asked anew (another question, or this one at a new place): not shown again until its own frame
+        app_ask(&mut a);
+        assert!(!app_asked_seen(&a, &down(at.wrapping_add(PEN_REOPEN_MS), 0)));
+        canvas_free(&mut a.screen);
     }
 
     /// Shown at the next flush; drawn again only for a new text, at most once every 2 s; none of it counted
