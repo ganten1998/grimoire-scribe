@@ -1,6 +1,7 @@
 // test_picwork_fallback.rs: with the sandbox unavailable where it is not required (the Mac, the simulator, tests),
-// pictures fall back to the writer's own decode and say so in the log (D21). Where it is required they wait
-// instead (test_picwork_closed.rs). Its own binary: the fallback holds for the rest of the process.
+// pictures fall back to the writer's own decode and say so in the log (D21), but for a worker-only pool (Files'
+// previews, 2.2), whose pictures wait. Where it is required they wait instead (test_picwork_closed.rs). Its own
+// binary: the fallback holds for the rest of the process.
 #![cfg(feature = "sim")]
 mod testlib;
 use grimoire::picwork::*;
@@ -50,6 +51,11 @@ fn fallback_decodes_and_says_so() {
     check!(text.matches("pictures decode in the writer").count() == 1); // (once)
     // a hostile picture is refused in the fallback too
     check!(matches!(pool.decode(b"no picture", false, 300, 400), PicOut::Bad(_)));
+    // Files' previews (2.2) take a pool that only a worker decodes for: here, with none to be had, a picture waits as
+    // it does where the sandbox is required, never decoded in the writer
+    let mut only = PicPool::worker_only();
+    check!(matches!(only.decode(&bytes, true, 300, 400), PicOut::NoWorker(_)));
+    check!(matches!(only.check(&bytes, bytes.len()), PicOut::NoWorker(_)));
 }
 
 #[test]

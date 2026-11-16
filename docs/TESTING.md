@@ -89,7 +89,8 @@ documents: `rust/tests/test_sec_invariants.rs` (DESIGN.md, FORMAT.md, KINDLE.md,
 RELEASING.md: sentences about the safe loader and the font check that must not come back, the names
 `RECORDS_MAX_BYTES`, `<key>.slow` and `<key>.no`, the font check's glyph limit with its figure, the number in
 a font verdict's first line and in a `<key>.slow` mark's line, the font check's other placeholders with
-their values, and a few sentences that hold only while another one stands), `mapview.rs` (the Graph's keys)
+their values, a few sentences that hold only while another one stands, and what must not come back about
+Files' rename, delete and restore), `mapview.rs` (the Graph's keys)
 and
 `test_scenarios.rs` with `sim_sdl.rs` (SIM.md). After rewording a sentence they hold, run `make test-sim`
 by hand: otherwise the push to main is the first run to say so.
@@ -2748,8 +2749,9 @@ the fallback's check and its rename, a case-only rename, a rename and a trash st
 trash and restore of a file, a folder and a notebook in both forms, a name taken, refused restores, the copy with
 its floor, a failed write and a source that changes). On the Mac only the fallback rename runs (the new name
 reserved, then `renameat` over the reservation); CI's Linux job (`sandbox`) runs the same file with the kernel's
-`RENAME_NOREPLACE` on its tmpfs. Nothing on screen calls these writes yet, so the Scribe's part is three
-questions about its storage, asked over SSH (Grimoire closed unless a step says otherwise). Their answers decide
+`RENAME_NOREPLACE` on its tmpfs. The Scribe's part here is three questions about its storage, asked over SSH
+(Grimoire closed unless a step says otherwise); Files' screens on these writes have their own section (issue #144,
+below). Their answers decide
 what runs there and whether "File changed. Try again." can come for no reason; they are due before the first
 screen that uses the writes ships (issue #100 tracks the device checks before a release). Write the answers into
 docs/KINDLE.md (How it fits in).
@@ -2838,8 +2840,11 @@ that sends links again would add a second copy of a link to a page the fill adde
 of this branch:
 
 1. **KOReader's notebook.** In KOReader, open a planner PDF with tabs that Grimoire never imported (one of more
-   than ten pages), go to its third page and use Open this book in Grimoire. Write a line on that page. Note the
-   notebook's page count on its card (the pages KOReader sent), and leave Grimoire for KOReader.
+   than ten pages), go to its third page and use Annotate this page in Grimoire, then do the same on two or three
+   more of its pages. (KOReader draws these. With this build's plugin, Open this book in Grimoire hands a PDF
+   over by its path and its notebook holds every page at once: the check for issue #142, below.) Write a line on
+   the third page. Note the notebook's page count on its card (the pages KOReader sent), and leave Grimoire for
+   KOReader.
 2. **The same file dropped.** Over USB, copy that very file (from where KOReader opened it, unchanged) into
    `grimoire/import`, and start Grimoire. Within about 10 s the notice counts the missing pages ("Importing: page
    N of M", M the book's pages less the notebook's), then "Adding book pages: N of M" for a moment, and the end
@@ -2860,8 +2865,12 @@ of this branch:
    PDF again, and while the notice counts, tap the notebook's card: it opens, as it is. Go back to the Library:
    "Adding book pages: N of M" shows for a moment, then "Added N book pages."; the card opens it, filled again.
 6. **KOReader while a fill waits.** Delete a few pages again, drop a copy of the PDF, and before its notice ends
-   leave Grimoire for KOReader; there, use Open this book in Grimoire: the book opens on the reader's page at once,
-   with no toast over it. Go back to the Library: the fill's pages go in ("Added N book pages.").
+   leave Grimoire for KOReader; there, use Open this book in Grimoire. With this build's plugin the PDF goes by
+   its path: the Library comes up (saying "Another import is still going. This one starts after it." while the
+   first import still runs), the fill's pages go in ("Added N book pages."), and the notebook then opens on the
+   reader's page, with no page added twice. (With a plugin from before 2.2, which draws the pages itself, the
+   book opens on the reader's page at once, with no toast over it, and the fill's pages go in once the Library is
+   back in front.)
 7. **KOReader again.** Open the PDF in KOReader and use Open this book in Grimoire on a page the fill added: it
    opens that page, adds no page, and no tab doubles.
 
@@ -2892,7 +2901,7 @@ What only the storage can tell, on the Scribe:
    (with many notebooks, on the last screen). Hold it 0.6 s: its menu; Hide from Library takes it away, and the row
    comes back in the picker's root.
 5. **PDF copies and Trash**: Files > PDF copies lists the mirror PDFs read only, and a mirror PDF's card opens its
-   notebook; Files > Trash lists deleted notebooks by name and date, newest first, and none opens.
+   notebook; Files > Trash lists deleted notebooks by name, size and date, newest first, and none opens.
 6. **Rotate** the Scribe in Files: the path bar, its chips, the rows and the Go to sheet lay out again.
 
 ## Hardening round (2026-11), fonts: where a check's result is kept, its hash, and a glyph's draw time
@@ -2963,3 +2972,240 @@ steps 1, 5 and 11 answer; and the two floors of free room beside it (`STATE_FREE
     the worker's narrower system calls and this change's walk are in the same process.
 11. When a firmware update next arrives: is /var/local/grimoire still there? (If not, fonts are checked once
     more: note it in KINDLE.md.)
+
+## 2.2, From a file... and Use as template (issue #146): device checks
+
+Not run on a Scribe yet. The scenarios `files_8_use_as`, `files_9_copy_room`, `files_9_copy_refused`,
+`z_tpl_c_from_file_library`, `z_tpl_d_from_file_full`, `z_tpl_e_from_file_editor`, `z_tpl_f_from_file_press` and
+`z_tpl_g_from_file_keys` cover the logic (docs/DESIGN.md, From a file... and Use as
+template), with the floor and a failing write simulated. What only the Scribe can tell:
+
+1. **A photo from the Kindle**: copy a JPG of a few MB into `documents/` over USB. In a notebook, Paper > Photos... >
+   From a file... > Documents > the photo > Use as photo: the sheet comes back, its last tile an hourglass while
+   the copy runs, then the photo's tile (waiting, then its preview), and a tap makes it the page's paper. Note how
+   long the copy and the preview took (grimoire.log: `bg: a file copied into photos: N KB in T ms`, then the
+   previews job), that the pen and the sheet stay quick meanwhile, and that the page, a stroke written before and
+   Undo are as they were.
+2. **The same over New notebook**: New > More layouts... > From a file... > a PNG > Use as template: the template's
+   tile comes, and Create makes the notebook on it.
+3. **Files**: a picture's card in Documents offers Use as template and Use as photo; each says "Copied to
+   Templates." (or Photos) once it is in, and a second copy of the same picture is "<name> 2" in that folder.
+4. **Nearly full storage** (optional, only with a storage to spare that can be filled and emptied safely): with
+   under 100 MB free plus the picture's size, Use as template says "Couldn't copy file. Is the storage full?" at
+   once, and grimoire.log says `files: a copy into templates was refused: no room: ...`; nothing is left in
+   `grimoire/templates` (no `.grimoire-copy-*.part`).
+5. **Rotate** the Scribe with the picker up over a notebook's page: it lays out again and Back returns to the sheet.
+6. **A picture over 16 MB** (a large scan, or any big file named .png): Use as template in Files says "Too big
+   (over 16 MB)." at once, grimoire.log says `files: a copy into templates was refused: it is over 16 MB`, and
+   nothing is added to `grimoire/templates`. The same from a sheet's From a file..., where the picker stays up.
+
+## 2.2, KOReader hands a PDF over by its path (issue #142): device checks
+
+KOReader's Open this book in Grimoire on a PDF, to a launcher whose Capabilities line says `pdf`, names the PDF by
+its path (`import/.book/request.ini` version 2) and draws nothing. Grimoire takes the path through the storage walk
+to the PDF import, as a file picked in Files: the import draws the pages (in colour where the PDF has colour) and
+finds the links, and fills a notebook KOReader made through version 1 with the pages it lacks. Nothing is held for
+it: the import's notice counts and the Library stays usable. When it ends the page the reader was on opens if the
+user is still on the Library with its cards in front; else nothing opens, the import's toast shows, and the book's
+card opens at that page. DjVu, comics, XPS, a PDF that needs a password, a PDF at a path Grimoire does not take, one
+over 512 MiB, one changed since KOReader first opened it, and any PDF to an older launcher go by version 1, KOReader
+drawing them; Annotate this page stays version 1.
+
+Automated: `rust/tests/test_annotate.rs` (`book_request_parsing`: version 2 read strictly, version 1 unchanged),
+`rust/tests/test_koreader_pdf.rs` (a new notebook at the reader's page with its record, its colour kept, a fill of a
+version 1 notebook keeping KOReader's pages, "already imported" ending on the page, ten paths the walk refuses, a
+PDF the import refuses, the import's end told once and the reader's page kept as the page the notebook opens at, a
+hand-over behind another run's import and behind a queued one, the notebook whose record is of the file for three
+files of one key, a notebook without a record taken for any file of its key, the file the import opened deciding
+when the name changed hands after the start, a fill stopped by a rename, a fill's end kept while its filing slice
+ends), `tests/koplugin_test.lua` (a PDF by its path from the reader and from Open with..., the same PDF to a 2.1
+launcher, a DjVu, Annotate this page, a PDF that needs a password, the question failing and its log line, version 1
+for every path Grimoire's walk refuses (hidden, `.sdr`, system and own folders, a linked folder, a link, 600 bytes,
+not UTF-8) with version 2 beside each, a PDF over 512 MiB, a PDF changed since KOReader first opened it),
+`tests/package_check.sh` (the launcher's `pdf`) and the scenarios `tests/scenarios/y_koreader_pdf_1_new.qs` (the
+hand-over on a storage root: the import's notice, New notebook opening and closing meanwhile, the notebook open at
+book page 3), `y_koreader_pdf_2_fill.qs` (z_pdf_11's notebook of KOReader's pages 1 and 3 filled by the planner's
+path, open at book page 2), `y_koreader_pdf_3_djvu.qs` (a version 1 request, as a DjVu's, taken as before),
+`y_koreader_pdf_4_whatsnew.qs` (the first start after an update is a hand-over that fills a notebook: What's new
+closes, then the pages go in and the notebook opens), `y_koreader_pdf_5_elsewhere.qs` (a notebook of the user's own
+in front at the end: the import's toast, and the book's card opens at book page 3), `y_koreader_pdf_6_sheet.qs` (the
+same with a sheet up), `y_koreader_pdf_7_asleep.qs` (the end taken at the wake), `y_koreader_pdf_8_password.qs` (a
+PDF the import refuses says the import's "PDF needs a password."), `y_koreader_pdf_9_refused.qs` (a path the walk
+refuses says the book's failure), `y_koreader_pdf_10_queued.qs` (behind a dropped PDF's import: the toast that says
+it waits, then both notebooks), `y_koreader_pdf_11_already.qs` (a book whose notebook holds every page: opened at
+the reader's page, nothing made), `y_koreader_pdf_12_pressed.qs` (a finger held on a Library button at the end: the
+notebook opens, and the lift does nothing on the page), `y_koreader_pdf_13_came_back.qs` (back on the Library after
+a visit to a notebook: nothing opens, the import's toast shows, and the card opens at book page 3) and
+`y_koreader_pdf_14_fill_waits.qs` (a fill of the book's notebook from a dropped copy waits: it goes in, the book's
+own import then finds every page there, and the notebook opens at book page 2).
+
+**Not run on a Scribe.** The owner's check, on a build of this branch (a planner PDF with coloured tabs, more than
+20 pages, that Grimoire never saw; a second, long PDF, of a few hundred pages; a DjVu or CBZ book):
+
+1. **The plugin updated.** Install the build. Start Grimoire from the Library once and use Settings > KOReader >
+   Install / update Grimoire plugin, then quit KOReader and start it again from its Library item. The second line
+   of `grimoire/app/grimoire.sh` is `# Capabilities: guard hosted annotate book links pdf`.
+2. **A PDF by its path.** In KOReader, open the planner, go to its page 7 and use Tools > Grimoire > Open this book
+   in Grimoire. KOReader shows "Preparing Grimoire..." alone (no "Preparing page N of M for Grimoire..."), then
+   Grimoire's Library with "Importing: page N of M" at the bottom. Leave the Library alone: the notebook then opens
+   at page 7 (the page chip says 7) with "Added M book pages.". Note the time from the tap in KOReader to the page.
+   `koreader/crash.log` has `Grimoire: a PDF of M pages sent by its path, to open at page 7`; `grimoire.log` has
+   `book: the PDF KOReader named goes to the PDF import (<id>); its page 7 of M opens once that ends`, the import's
+   own lines (`import: <id>: M page(s), ...`, with the worker sandboxed), and `book: <id>: M page(s) added by the
+   PDF import (a new notebook), opens at its page 7`. A line `book: the book key KOReader sent is not its file's`
+   means the two keys differ: send the log.
+3. **Colour and tabs.** A tab on the page works (eye on: each drawn once). Back in the Library (the notebook
+   closed), copy the notebook's PDF from `grimoire/PDFs` to a computer over USB: the planner's coloured pages are in
+   colour there (the Scribe shows them gray).
+4. **Back to KOReader.** Library > Back to KOReader: the same planner at page 7. The PDF is where it was, unmoved.
+5. **The Library stays usable.** In KOReader, open the long PDF, go to its page 30 and use Open this book in
+   Grimoire. While "Importing: page N of M" counts, open New notebook and cancel it, open Settings and close it,
+   then open the planner's notebook and write a line: every tap acts at once, and the pen is as quick as ever. When
+   the import ends the planner's page stays in front, with "Imported notebook (M pages)." over it. Back in the
+   Library the long PDF's card is there; tap it: it opens at page 30.
+6. **A book opened before.** In KOReader, in another PDF Grimoire never saw, use Annotate this page in Grimoire on
+   its page 3 and write a line; back in KOReader, annotate its page 9 too (crash.log: `page 9 of M sent to
+   annotate`: Annotate stays version 1). Then go to its page 5 and use Open this book in Grimoire: the notice
+   counts the pages the notebook lacks (M less 2), "Adding book pages: N of M" shows for a moment as they go in,
+   and the notebook opens at page 5 with "Added M-2 book pages."; pages 3 and 9 are KOReader's (gray, the line on
+   page 3), the rest Grimoire's, and the Library has one card for the book. `grimoire.log` has `import: <id>:
+   notebook <nb> lacks M-2 of the book's M page(s): they are added to it` and `import: notebook <nb> filled`.
+7. **Whole already.** Back in KOReader, Open this book in Grimoire on page 12 of that same PDF: the notebook opens
+   at page 12 at once, with no toast (`import: <id>: this PDF was imported before; nothing made`, then `book: <nb>:
+   0 page(s) added by the PDF import (its notebook), opens at its page 12`).
+8. **The first start after an update.** Delete a few pages of that notebook in the Pages view and leave Grimoire.
+   Over USB, in `grimoire/settings.ini`, change the `whatsnew_seen=` line to a version other than this build's
+   (`whatsnew_seen=2.0.0`), so that What's new is due at the next start, as after an update. From KOReader use
+   Open this book in Grimoire on that PDF. Grimoire comes up with What's new over the Library. Wait a minute: the
+   sheet is still up, and `grimoire.log` has `the pages for notebook <nb> are made; they go in once the Library is
+   in front`. Tap Dismiss: it closes at once, "Adding book pages: N of M" shows for a moment, and the notebook
+   opens at the reader's page with "Added N book pages.".
+9. **Behind another import.** Delete the long PDF's notebook, hand the long PDF over again from KOReader, and
+   while "Importing: page N of M" counts use Library > Back to KOReader (its import goes on by itself). In
+   KOReader, open a PDF Grimoire never saw and use Open this book in Grimoire: the Library says "Another import
+   is still going. This one starts after it." and stays usable; `grimoire.log` has `book: the PDF KOReader named
+   waits for an import of an earlier run`. Stay on the Library: within about 10 s of the first import's end
+   (`import: the import from an earlier run has ended`) the second starts, and its notebook opens at the reader's
+   page.
+10. **An edited copy.** On a computer, add a line to the end of a copy of the planner (`printf '%%edited\n' >>
+    planner.pdf`), check that its key is the planner's (the command of the fill check above, step 4), and put it
+    on the Kindle in the planner's place over USB. In KOReader, Open this book in Grimoire: a second card is made
+    for it (`import: <id>: a notebook holds this PDF's key but was made from another file; this one is
+    imported`). Once more: no third card, the second notebook opens at the reader's page (`this PDF was imported
+    before`). Put the first file back and hand it over: the first notebook opens, with the lines written in it.
+11. **A DjVu still by version 1.** Open the DjVu or CBZ book in KOReader and use Open this book in Grimoire:
+    "Preparing page N of M for Grimoire... Tap to stop." shows as before, and the notebook opens at the reader's
+    page (`book: <id>: N page(s) of M to add, ...` in `grimoire.log`), with taps held for the few seconds its pages
+    take, as before.
+12. **A PDF with a password** (when one is at hand): Open this book in Grimoire draws its pages in KOReader as a
+    DjVu's are, and crash.log has `Grimoire: this PDF needs a password: KOReader draws its pages`. The plugin's
+    question (a MuPDF document of its own, opened and closed) has never run on a device: after steps 2 to 10,
+    search crash.log for `Grimoire: could not ask whether this PDF needs a password`. If the line is there for a
+    PDF that needs none, the question fails on this KOReader (the PDFs still go by their path): send the log.
+13. **A PDF where Grimoire does not read.** Copy the planner into `koreader/` (or into any folder whose name
+    begins with a dot) and open it there in KOReader: Open this book in Grimoire draws its pages in KOReader, as
+    before 2.2, and crash.log has `Grimoire: this PDF is not sent by its path (a system folder): KOReader draws
+    its pages`.
+
+No line of `grimoire.log` or `crash.log` from these steps names a book, its file or its title.
+
+## 2.2, Files' rename, delete and restore (issue #144): device checks
+
+Not run on a Scribe yet. Automated: `browser.rs`'s unit tests, `test_fsview_writes.rs`'s trash sizes and listing,
+`test_sec_font_verdict.rs`'s renamed font and the scenarios `files_8_rename` to `files_18_delete_twice`
+(docs/DESIGN.md, Files: rename, delete and restore). On the
+Mac only the storage writes' fallback rename runs, so what only the Scribe's storage can tell comes after the three
+checks of "2.2, Files' storage writes (issue #117): device checks" above (whether its storage takes the no-replace
+rename, whether a move into the trash is one rename, whether the numbers a check compares stay put). Then, with
+Grimoire open and Files' card shown (New > From a file... > Show Files in Library), on a copy of a picture put in
+`grimoire/templates` over USB first (say `Probe.png`):
+
+1. **Rename**: Files > Templates > Probe.png's card > Rename: the keyboard holds `Probe.png` with the caret before
+   `.png`. Type `:` and Done: "Name can't contain :" and the keyboard stays; delete it, type `2` and Done: the row is
+   `Probe2.png`. Over SSH, `ls /mnt/us/grimoire/templates` shows `Probe2.png` and no `Probe.png`, and grimoire.log has
+   `files: an item of templates was renamed` (no name). Rename it to a template's name already there: "That name
+   is taken.", and that file is unchanged (`stat -c '%i %s %Y'` before and after).
+2. **Delete**: its card > Delete: the question `Delete "Probe2.png"?` comes up as the Library's does for a
+   notebook, and Keep it leaves the file. With the file on the first row of its folder, upright, tap the card's
+   Delete twice quickly at one place: the question is up and the file is where it was (the second tap answered
+   nothing: say if the question went, or the file did). Then its Delete (moves it to grimoire/trash): "Moved to
+   grimoire/trash", the row is gone, and
+   `ls -a /mnt/us/grimoire/trash/files-*` shows `Probe2.png` beside `.grimoire-trash`, whose `from=` line is
+   `grimoire/templates/Probe2.png`. The inode is the one it had in `templates` (one rename, as step 2 of #117's
+   checks found).
+3. **The Trash's size**: Files' root: the Trash row says `grimoire/trash, N` once its walk is through; note how long
+   it took (grimoire.log, `files: the trash holds N entries, N files, N KB (read in T ms)`) and whether the root
+   stayed quick meanwhile. Compare N with `du -sk /mnt/us/grimoire/trash` (the walk counts file sizes, `du` blocks:
+   close, not equal).
+4. **Restore**: Files > Trash: the picture's row (its own name, its size, today's date) > Restore: "Restored to
+   grimoire/templates.", and `Probe2.png` is back in `templates` with the same inode; its `files-...` folder is gone
+   from the trash. Then delete a notebook in the Library and restore it from Files > Trash: it is back in the
+   Library at once, with its pages and links.
+5. **Held by an import**: copy a PDF of several pages into `grimoire/import` over USB, and while its notice says
+   "Importing: page ...", open its card in Files > Import: Rename and Delete each say "Importing now." and the file
+   stays.
+6. **The font in use**: in Classic, with a font of your own picked in Settings > Font, open Files > Fonts and its
+   card. Delete says "Font in use." and the file stays. Rename it (add a letter): the screen stays in the font,
+   `settings.ini` has `font=file:<the new name>`, and grimoire.log has `fonts: a rename in Files: what the check
+   found of 1 font file(s) went with them`, then `font: custom font loaded: ...`, and no `bg: font check` line
+   after them. `ls /var/local/grimoire/*/fonts` shows as many `.font` files as before the rename. Close and start
+   Grimoire: the font draws on the first screen and the log has no `bg: font check` line. (On the Kindle the
+   verdicts are in Grimoire's own folder, where this rename is the one thing the app itself does: say if the log
+   has 0 in place of 1.)
+
+Tidy: delete `Probe2.png` from `templates` over USB (or keep it as a template).
+
+## 2.2, Files' previews and the Covers view (issue #145): device checks
+
+Not run on a Scribe yet. The unit tests (`bgwork_previews.rs`: the key, the `.info`, the prune, a preview's time),
+the job tests through a real worker (`rust/tests/test_file_previews.rs`), `test_browser.rs` (only the screen's
+files asked for, a tile that comes back, the tiles drawn together) and the Covers scenarios `files_8_covers` to
+`files_14_covers_use_as` cover the logic on the Mac, where the simulated panel counts the refreshes
+(`display.presents`); CI's Linux job makes a preview of each kind, and has the filter end a worker, in the real
+sandbox (`test_sandbox_linux.rs`). What only the Scribe can tell (read grimoire.log over SSH; it names no file):
+
+1. **A big mixed folder, and the previews' times**: put about 40 files in a folder of `documents/` (PDFs, one of
+   them a planner of a few hundred pages and over 100 MB; phone photos of 12 MP, and one of 40 MP or more; a few
+   fonts, one of them a CJK font near 20 MB). Files > Documents > that folder, View: Covers. Note how long until
+   every tile of the first screen shows its preview, and whether "Making previews..." comes after a second and
+   goes when the last one lands. Send the lines `file previews: a pdf|picture|font made in T ms (the worker's peak
+   N kB, this job's M kB)`: T for each kind, the slowest, and the peaks; and every `gave no preview (slow)` line
+   with what the file was. A preview has 3 s (a PDF's page, a font's sample) or 6 s (a picture), numbers derived
+   from the import's watchdogs and not yet measured: a real file of an ordinary size that runs out of them means
+   the numbers are too tight.
+2. **The panel**: while a screen's previews arrive, the tiles change in groups (all at once when they come within
+   2 s, else about every 2 s), never tile by tile, and never with a flash of the whole screen; look for ghosting
+   on the tiles after several screens, and note whether the next page turn after about thirty refreshes is the one
+   that flashes.
+3. **Memory**: while the first screen's previews are being made, `grep MemAvailable /proc/meminfo` a few times and
+   `dmesg | tail` after: no process killed, Grimoire's own memory (`grep VmRSS /proc/$(pidof grimoire)/status`)
+   about the same before and after (a screen of previews is about 1 MB).
+4. **Turning screens**: on a folder of a few hundred pictures, turn three screens quickly: only the screens shown
+   get `made` lines (count them: nine a screen upright), the pen and the page turns stay quick meanwhile. Turn back
+   to the first screen: its tiles show their previews again within a moment (hourglasses first, then the previews
+   together), with no new `made` line, and the turn itself is not held up (the cache is read a few files a tick).
+   The same after Sort, after Show, and after a rotation.
+5. **A folder past 5,000 files** in Covers: "Showing the first 5000." under the path, and only the screen shown is
+   made (nine lines).
+6. **Refused and slow**: a text file renamed `x.pdf`, and a truncated JPEG: each tile shows its kind's icon and the
+   log says `has no preview (refused), marked` once; entering the folder again makes no new line for them. A file
+   that runs out of its time says `gave no preview (slow) ...; one more try at another visit` the first time, and
+   `has no preview (slow), marked` when the folder is entered again; after that it is not tried.
+7. **Behind other work**: start a PDF import of a few hundred pages (or an export), then open a folder in Covers:
+   the import's pages go on at their pace (its notice counts on), the tiles wait as hourglasses, and the previews
+   come once the import is done. In Files > Import, in Covers, the tile of the PDF being imported says
+   "Importing: page N of M" under its name.
+8. **A card over arriving previews**: tap a tile while its screen's previews are still coming, wait until the log
+   shows the last `made` line, close the card: every tile shows its preview, none stays an hourglass.
+9. **Sleep and wake** while previews are being made (the power button): after the wake every tile shows a preview
+   or its icon, none stays an hourglass, and entering the folder again makes what is missing.
+10. **The cache**: with Grimoire closed, `du -sh /mnt/us/grimoire/.cache/files` and `ls | wc -l` there after the
+    checks above (a preview is 120,015 bytes, its `.info` under a kilobyte). Delete a previewed file over USB and
+    the sweep's stamp (`rm /mnt/us/grimoire/.cache/files/.swept`), then open any folder with a file not yet
+    previewed in Covers: the log says `1 preview(s) of files that are gone or changed dropped from
+    the cache`, and note how long that job took beside its `made in T ms`. The prune: the cache passes 64 MiB at
+    about 559 previews (some 62 screens); the line to see then is `file previews: the cache pruned: N file(s) (M
+    kB) removed of K`, after which about 419 previews are left. Then delete the folder; reopen Files in Covers:
+    the previews are made again.
+11. **Rotate** in Covers: ten tiles sideways, the previews there again after a moment, the card of a tile beside
+    it.

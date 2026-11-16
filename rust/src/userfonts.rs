@@ -6,14 +6,16 @@
 //!   file), .checking (a check under way), .bad (the check's worker died on it) and .slow (one check ran out of
 //!   time, or found glyphs too slow to draw: FORMAT.md). <key> is the FNV-1a hash of the file's path under the
 //!   folder, its size and its time, as a template's preview is keyed, so a file replaced by another is checked
-//!   afresh. Written by the background job, but for the UI's rename of a .checking mark to .bad when that job
-//!   died; deleting it loses nothing, and has every font checked again.
+//!   afresh. Written by the background job, but for two renames of the UI's: a .checking mark to .bad when that
+//!   job died, and the .pgm, .no, .bad and .slow of a font renamed in Files to its new key (`userfonts_renamed`).
+//!   Deleting it loses nothing, and has every font checked again.
 //! - the verdicts (`VerdictDir`): <key>.font (fontcheck.rs), what the check found of a file. Where the build has
 //!   a folder of its own outside the storage (the Kindle: /var/local/grimoire; elsewhere GRIMOIRE_STATE), they
 //!   are kept there, in a folder for each data root, and nothing under grimoire/fonts decides whether a font is
 //!   read. A build without such a folder keeps them in the cache, beside the previews. Either way a verdict
 //!   counts only with its companion in the cache: a pass with its .pgm, a refusal with its .no. Written by the
-//!   background job alone.
+//!   background job alone; the UI renames one, with its companions, to the key of a file renamed in Files
+//!   (`userfonts_renamed`), and writes nothing into it.
 //! - the job (`bg_font_check`, BgKind::FontCheck): the writer. It reads each unchecked file whole, hands the
 //!   bytes to the sandboxed worker, validates what comes back and writes the verdict. It parses nothing.
 //! - the UI's side: the list the Font sheet shows (`userfonts_scan`), the load of a font that passed
@@ -427,7 +429,8 @@ struct VerdictDir {
 impl VerdictDir {
     /// Opens the folder, or says why not. In Grimoire's own folder the walk goes name by name from the base's
     /// parent, which is the system's: the base, this data root's folder (`root_tag`) and its `fonts`, each made
-    /// when `make` (the job alone asks; the UI never writes there), opened without following a link, and held to
+    /// when `make` (the job alone asks; the UI makes nothing there and writes no file's text: it only renames a
+    /// verdict to the key of a file renamed in Files), opened without following a link, and held to
     /// be this user's with no write bit for anyone else. The test asks who can write a folder: one that is
     /// there and that others can read is taken, and only the folders made here are 0700. The parent itself is
     /// opened by its path and held to nothing: what stands at the base's name must pass the test whoever put
@@ -473,6 +476,14 @@ impl VerdictDir {
 
     fn remove(&self, key: u64) {
         unlink_at(&self.fd, &format!("{key:016x}.font"), false);
+    }
+
+    /// The verdict kept under `old` is kept under `new` from now on (`userfonts_renamed`: its file has a new
+    /// name): one rename in the folder, by descriptor. The text stays what the check wrote.
+    fn rename(&self, old: u64, new: u64) -> bool {
+        let (Ok(a), Ok(b)) = (CString::new(format!("{old:016x}.font")), CString::new(format!("{new:016x}.font"))) else { return false };
+        // SAFETY: renameat on a descriptor we hold and two NUL-terminated names.
+        unsafe { libc::renameat(self.fd.as_raw_fd(), a.as_ptr(), self.fd.as_raw_fd(), b.as_ptr()) == 0 }
     }
 
     /// The names in the folder (capped as `cache_names` is).
@@ -531,6 +542,43 @@ fn verdict_for(vd: &VerdictDir, key: u64, size: u64) -> Option<Verdict> {
     let v = vd.read(key).filter(|v| v.size == size)?;
     let companion = cache_file(key, if matches!(v.what, VerdictKind::Passed(_)) { "pgm" } else { "no" });
     std::fs::symlink_metadata(companion).is_ok_and(|m| m.is_file()).then_some(v)
+}
+
+/// Files renamed a file or a folder of grimoire/fonts (browser.rs, issue #144): `old` and `new` are its paths
+/// under the fonts folder. What the check found of each font file goes with it, so the file is not checked again:
+/// a key is the file's path, size and time, and a rename changes the path alone, so its verdict is renamed from
+/// the old key to the new one where the verdicts are kept, and its companions in the cache with it (the preview or
+/// `.no`, and a `.bad` or `.slow` mark). Nothing is written into a verdict: the text stays the job's own, and the
+/// SHA-256 in it still ties it to the file's bytes, which every load compares as before (a verdict that ends up
+/// under the key of other bytes loads nothing, and has that file checked). A folder: every font file in it (fonts
+/// are read one folder down). The UI calls this, the one time it renames what the job wrote; what cannot be
+/// carried (the job swept it meanwhile) is checked again in the background, as a file renamed over USB is.
+pub fn userfonts_renamed(old: &str, new: &str) {
+    let (Some(st), Some(sp)) = (storage(), StoragePath::new(new.as_bytes())) else { return };
+    let Ok(s) = st.stat(&sp, false) else { return };
+    let mut keys: Vec<(u64, u64)> = Vec::new();
+    if s.mode & libc::S_IFMT as u32 == libc::S_IFDIR as u32 {
+        if new.contains('/') {
+            return;
+        }
+        let (mut files, mut left_out) = (Vec::new(), 0);
+        list_folder(&st, &sp, &mut files, None, &mut left_out);
+        keys.extend(files.iter().filter_map(|l| Some((key_of(&format!("{old}/{}", l.rel.rsplit_once('/')?.1), l.size, l.mtime), l.key))));
+    } else {
+        keys.push((key_of(old, s.size, s.mtime), key_of(new, s.size, s.mtime)));
+    }
+    let vd = VerdictDir::open(false).ok();
+    let cache = no_link_below(&store_root(), &cache_dir());
+    let mut carried = 0;
+    for (from, to) in keys.into_iter().filter(|(from, to)| from != to) {
+        if cache {
+            for ext in ["pgm", "no", "bad", "slow"] {
+                let _ = std::fs::rename(cache_file(from, ext), cache_file(to, ext));
+            }
+        }
+        carried += vd.as_ref().is_some_and(|vd| vd.rename(from, to)) as i32;
+    }
+    qlog!("fonts: a rename in Files: what the check found of %d font file(s) went with them", carried);
 }
 
 /// The names of the verdicts kept (none when their folder cannot be opened: every font is then "checking",

@@ -26,6 +26,7 @@ grimoire/app/licenses/         the licenses of the fonts and code in the app
 grimoire/notebooks/<id>/notebook.ini, p<N>.qpg, thumb.pgm   (the format: docs/FORMAT.md)
 grimoire/notebooks/<id>/doclinks.ini   the links a PDF brought (a planner's tabs), apart from links.ini
 grimoire/import/.book/links.txt   the links of a book's pages, sent by the KOReader plugin with the pages
+grimoire/import/.book/request.ini a book the plugin sent: its pictures (version 1), or a PDF by its path (version 2)
 grimoire/settings.ini, folders.ini, sleep.pgm, grimoire.log
 grimoire/.passcode-paused      legacy beta.1 marker, consumed for its recovery notice
 grimoire/.passcode-left-off    counts the starts told that a restart left the passcode off
@@ -166,6 +167,61 @@ planner's tabs), to a launcher whose Capabilities line says `links`: KOReader's 
 draws in this run, and once per book (until the notebook's `source.ini` says `links=1`) for the pages Grimoire
 already holds, so an Open this book costs no page opens it does not need after the first. They arrive as
 `import/.book/links.txt`, and Grimoire builds `doclinks.ini` from them (docs/FORMAT.md, Links from KOReader).
+
+**PDFs by their path (2.2).** To a Grimoire whose `app/grimoire.sh` Capabilities line says `pdf`, Open this book in
+Grimoire on a PDF draws nothing: the plugin names the file in `import/.book/request.ini` (version 2) and hands over at
+once. Grimoire's own PDF import draws the pages (in colour where the PDF has colour) and finds the links, as for a PDF
+dropped in `grimoire/import`: the Library's notice counts the pages ("Importing: page N of M") and the Library stays
+usable. When the import ends the page the reader was on opens, if the user is still on the Library with its cards in
+front; with a notebook, a sheet, Files or the Graph in front, or after a visit to a notebook, nothing opens by itself:
+the import's toast shows, and the book's card opens at that page. A book opened before 2.2 keeps the pages KOReader
+drew, and the pages it lacks come from the import. DjVu, comics, XPS, a PDF that needs a password, a PDF Grimoire does
+not take by its path (outside `/mnt/us`, in a hidden, `.sdr` or system folder such as `koreader/`, in Grimoire's own
+folders, through a link, over 512 MiB) and a PDF changed since KOReader first opened it go as before, KOReader drawing
+them. The plugin must be updated (Library > Settings > KOReader > Install / update Grimoire plugin) and KOReader
+restarted: an older plugin keeps sending version 1, which this Grimoire still takes. crash.log says (no file name,
+title or key):
+
+- `Grimoire: a PDF of N pages sent by its path, to open at page P`;
+- `Grimoire: this PDF needs a password: KOReader draws its pages`;
+- `Grimoire: this PDF is not sent by its path (<why>): KOReader draws its pages`, where why is `outside the Kindle's
+  storage`, `a name a request cannot hold`, `a path too long`, `a path that is not plain`, `a hidden or .sdr
+  folder`, `a system folder`, `one of Grimoire's own folders`, `a link on the way`, `another device` or `a file over
+  512 MiB`;
+- `Grimoire: this PDF changed since KOReader first opened it: KOReader draws its pages` (the key KOReader keeps for
+  the book is not its file's now);
+- `Grimoire: could not ask whether this PDF needs a password; it goes by its path`: the question itself failed on
+  this KOReader (its MuPDF has other names, or could not open the file a second time). The plugin's question has
+  not run on a device yet: send the log if this line shows.
+
+grimoire.log says (no file name, title or key):
+
+- `book: the PDF KOReader named goes to the PDF import (<id>); its page P of N opens once that ends` (or `... is
+  being imported already; ...`, or `... waits for an import of an earlier run; ...`), with `book: other imports go
+  first; this one starts after them` when another import is ahead of it (the toast "Another import is still going.
+  This one starts after it." says so), then the import's own lines
+  (PDF imports, below), then `book: <nb>: N page(s) added by the PDF import (a new notebook|its notebook), opens at
+  its page K`.
+- `book: the PDF KOReader named is not in the Kindle's storage; nothing opened`, `book: the PDF KOReader named
+  is reached through a link|is on another device|lies where Grimoire does not read (a hidden or system folder, or
+  one of its own)|is not there|is no plain file|could not be opened; nothing opened`, `book: the PDF KOReader named
+  could not be read; nothing opened`, and `book: the PDF KOReader named could not go to the PDF import (name|
+  sandbox|own|lock|mark); nothing opened`: the path or the file was refused before any import.
+- `book: the book key KOReader sent is not its file's; the file's is used`: the key KOReader keeps for the book is
+  not the one its file has now (a file changed since KOReader first opened it, say). The notebook is the import's
+  to choose, from the file as it is: the import's lines say which (`this PDF was imported before`, `notebook <nb>
+  lacks ...`, or `a notebook holds this PDF's key but was made from another file; this one is imported` for an
+  edited copy, which becomes a notebook once).
+- `book: the PDF import failed (the lines above say why); nothing opened`, `book: the PDF import found the PDF
+  imported before, but named no notebook that is there; nothing opened`, `book: the PDF import ended without a word;
+  the book's notebook opens as it is` (a fill whose notebook was renamed or moved meanwhile) and `book: the PDF
+  import ended without a notebook; nothing opened`.
+- `book: <nb>: the reader's page could not be kept as the page it opens at`: the import ended with something else
+  in front, and the notebook's `notebook.ini` could not be written (or no longer holds that page); the notebook
+  opens where it would have.
+- `book: the request does not read (<why>); nothing opened`, for a version 2 request: `no file named`, `a file named
+  twice`, `a version 2 request names a key twice`, `its file's path is not absolute`, `... is too long`, `... holds a
+  control character`, `... is not UTF-8`, `a version 2 request names a picture`.
 
 **How it gets into KOReader.** A fresh installation leaves KOReader untouched. Use Library >
 Settings > KOReader > Install / update Grimoire plugin, or manually copy the ZIP's
@@ -641,8 +697,11 @@ deleting `grimoire/fonts/.cache/` has every font checked again.
 ## Files: rename, trash, restore and copy (2.2, the storage layer)
 
 Grimoire can rename, trash, restore and copy files inside its own `import/`, `templates/`, `photos/` and
-`fonts/` folders (docs/DESIGN.md, Files' storage writes). Nothing on screen uses these yet; once the screens
-come, grimoire.log says (never a file's name: the folder, sizes, timings, reasons):
+`fonts/` folders (docs/DESIGN.md, Files' storage writes). Files' cards rename and delete, and its Trash place
+restores and shows the trash's size (docs/DESIGN.md, Files: rename, delete and restore); the copy is a picture's
+Use as template and Use as photo in Files, and the Templates and Photos sheets' From a file... tile
+(docs/DESIGN.md, From a file... and Use as template). grimoire.log says (never a file's name: the folder, sizes,
+timings, reasons):
 
 - `files: an item of <folder> was renamed`, `files: an item of <folder> went to the trash`, `files: an item went
   back to <folder>`, and `files: notebook <id> came back from the trash`. A deleted item is in
@@ -660,11 +719,63 @@ come, grimoire.log says (never a file's name: the folder, sizes, timings, reason
   the next number free), to rename by hand. A crash in the middle of one leaves it the same way.
 - `files: a trash entry that held nothing was removed`: Restore on an entry a trash cut off by a crash left (its
   record alone, or an empty folder); the item never left its folder.
+- `files: the trash holds N entries, N files, N KB (read in T ms)`: Files' root or its Trash place read the
+  trash's size (once a session, and again after a delete or a restore), a slice at a time; T is the time of the
+  slices added up. `files: notebook <id> is back, its notebook.ini did not read`: a restored notebook whose own
+  file could not be read: it is back in `notebooks/`, the Library does not list it, and no toast named a folder
+  for it. `files: notebook <id> is back under a name another notebook of its folder has: the new name could not be
+  written`: its " 2" could not be saved (a full storage), so two notebooks of that folder have one name until one
+  is renamed.
+- `fonts: a rename in Files: what the check found of N font file(s) went with them`: a font file, or a folder of
+  them, was renamed in Files, and N verdicts went to the new names' keys, so those fonts are not checked again (0:
+  none was kept for it, a file not checked yet). With a font Settings names, `font: custom font loaded: ...`
+  follows, the font read again from its new path.
 - `bg: file copy of <folder> (pid N)`, then `bg: a file copied into <folder>: N KB in T ms` or `bg: a file not
   copied into <folder>: <why>` (among them: no room: the storage would keep less than 100 MB; it changed since it
-  was listed, or while it was copied; it is no plain file; a link on its way; a system error's own words), and
-  `bg: file copy pid N done` or `FAILED`. A copy cut off leaves `.grimoire-copy-<pid>.part` in the folder, which
-  the next copy into it removes.
+  was listed, or while it was copied; it is over N MB; a name too long; it is no plain file; a link on its way; a
+  system error's own words), and `bg: file copy pid N done` or `FAILED`. A copy cut off leaves
+  `.grimoire-copy-<pid>.part` in the folder, which the next copy into it removes. On screen a copy that was not
+  made says "Too big (over 16 MB).", "Path too long." or "File changed. Try again." for those causes and "Couldn't
+  copy file. Is the storage full?" for any other, and one that went in "Copied to Templates." (or Photos), unless
+  that folder's sheet is up, which shows the new picture.
+- `files: a copy into <folder> was refused: <why>`: Use as template or Use as photo refused before any job (it is
+  over N MB: a template or a photo is at most 16; its path is too long for a job; no room: the storage would keep
+  less than 100 MB; a place it is not taken from; a system error's own words), with the same sentences on screen. A
+  file changed since it was listed says "File changed. Try again." and logs nothing.
+- `templates: <folder> read again after a copy (N files, one|none new)`: a Templates or Photos sheet whose From a
+  file... tile waited for a copy, once the copy ended; `one new` is the picture copied in (its tile waits for its
+  preview as a picture copied over USB does), `none new` a copy that failed.
+
+## Files: previews and the Covers view (2.2)
+
+Files' View chip, Covers, shows a folder as a grid of previews, each made by the sandboxed worker in the
+background (docs/DESIGN.md, "Files: previews and the Covers view") and kept in `grimoire/.cache/files/`, which may
+be deleted at any time (the previews are made again). That folder holds, for each file a Covers screen showed, the
+file's path and a small picture of it (a PDF's first page, the picture, a font's sample) until the file is gone and
+the cache's daily sweep ran, or the folder is deleted. A preview is work behind everything else Grimoire does in
+the background (an export, the PDF copies, an import, a font check), and is given 3 s (a PDF's page, a font) or 6 s
+(a picture) at most. grimoire.log says, for each file of the screen that had none (never a file's name: the kind,
+timings, memory, reasons):
+
+- `bg: file previews of a file (pid N)`, then `bg: file previews pid N done` or `FAILED`.
+- `file previews: a pdf|picture|font made in T ms (the worker's peak N kB, this job's M kB)`: T is the whole job (the
+  worker's start, the file read or mapped, the page or picture or sample drawn, the cache written); the worker's
+  peak is its resident memory at most.
+- `file previews: a pdf|picture|font gave no preview (slow|ended) in T ms; one more try at another visit`: the
+  worker ran out of the preview's time on the file, or ended on it, for the first time. The tile shows the kind's
+  icon for this visit; the next time the folder is opened in Covers the file is tried once more.
+- `file previews: a pdf|picture|font has no preview (refused|slow|ended), marked, in T ms`: the worker refused the
+  file (no file of that kind it reads, a password, too big for its worker), or it was the second try in a row that
+  ran out of time or ended. The tile shows the kind's icon, and the file is not tried again until it changes.
+- `file previews: nothing made (<why>)`: no sandboxed worker could be had, no memory, the storage is nearly full,
+  the Kindle slept while the page was waited for, or the file changed since it was listed (among others: it is not
+  there, a link on its way). Nothing is written; the next visit asks again.
+- `file previews: N preview(s) of files that are gone or changed dropped from the cache`: the sweep, once a day and
+  whenever the cache is past a limit.
+- `file previews: the cache pruned: N file(s) (M kB) removed of K`: past 2,000 files or 64 MB, the oldest go.
+- `file previews: the cache holds N file(s) more than are looked at`: the folder holds over 8,000 files (it never
+  does by itself); deleting it puts that right.
+- `bg: N file preview(s) dropped (Grimoire ends)`: previews still queued when Grimoire closed; none is made after.
 
 ## Touch gestures and the touch trace
 

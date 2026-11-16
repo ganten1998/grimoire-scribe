@@ -284,6 +284,69 @@ fn a_font_is_checked_in_the_real_sandbox() {
     // it would take the workers away from the tests after this one)
 }
 
+// Files' previews (2.2, issue #145): the job makes a preview of each kind through the real sandbox, a PDF's first
+// page, a picture and a font's sample (the font worker's `T`, its glyphs walked under the check's glyph limit),
+// each a 300 x 400 picture with ink in it in the cache, with every call each worker makes on the allow-list; a file
+// a worker refuses is marked. Nothing falls back to the writer. A worker the filter ends on a file (a call outside
+// the list: here each kind's test trap) is a try, as a page's strike is in an import: its first death writes no
+// mark, the second in a row does, and neither breaks the session.
+#[test]
+fn previews_are_made_in_the_real_sandbox() {
+    use grimoire::bgwork_previews::*;
+    if !root() {
+        return;
+    }
+    let (_g, _f, _len) = setup();
+    for h in ["GRIMOIRE_PIC_TEST_TRAP", "GRIMOIRE_FONT_TEST_TRAP"] {
+        std::env::remove_var(h);
+    }
+    let base = std::env::temp_dir().join(format!("grimoire-sandbox-{}/previews", std::process::id()));
+    let _ = std::fs::remove_dir_all(&base);
+    let dir = base.join("documents");
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::create_dir_all(base.join("grimoire")).unwrap();
+    let px: Vec<u8> = (0..120 * 90).map(|i| if i % 120 < 60 { 20 } else { 230 }).collect();
+    assert_eq!(grimoire::bgimage::bgimage_write_png(dir.join("p.png").to_str().unwrap(), &grimoire::bgimage::BgPicture { px, w: 120, h: 90, ch: 1 }), 0);
+    std::fs::write(dir.join("a.pdf"), pdffix::planner(2)).unwrap();
+    std::fs::write(dir.join("f.ttf"), fontfix::ttf(&fontfix::test_font("Regular", 400))).unwrap();
+    std::fs::write(dir.join("junk.pdf"), pdffix::junk()).unwrap();
+    std::env::set_var("GRIMOIRE_STORAGE", &base);
+    assert_eq!(grimoire::store::store_init(base.join("grimoire").to_str().unwrap()), 0);
+    let st = grimoire::fsview::FsStorage::open(base.to_str().unwrap(), base.join("grimoire").to_str().unwrap()).unwrap();
+    for (name, made) in [("a.pdf", true), ("p.png", true), ("f.ttf", true), ("junk.pdf", false)] {
+        let p = grimoire::fsview::StoragePath::new(format!("documents/{name}").as_bytes()).unwrap();
+        let s = st.stat(&p, false).unwrap();
+        let arg = format!("{}.{}.{}.{}:documents/{name}", s.dev, s.ino, s.size, s.mtime);
+        assert_eq!(bg_file_preview(&arg), 0, "{name}");
+        match preview_cached(&p, &s) {
+            Cached::Preview(c) if made => {
+                assert_eq!((c.w, c.h), (PREVIEW_W, PREVIEW_H), "{name}");
+                assert!(c.px.iter().any(|&v| v < 128), "{name}: no ink");
+            }
+            Cached::NoPreview if !made => {}
+            _ => panic!("{name}: not what the worker should have made"),
+        }
+    }
+    assert!(!grimoire::picwork::in_fallback(), "the picture was decoded by a worker");
+    assert!(!session_broken(), "every worker held its sandbox");
+    // the filter ends the worker on the file: a try on record, then the mark
+    for (from, name, hook, at) in [("p.png", "p2.png", "GRIMOIRE_PIC_TEST_TRAP", "1"), ("f.ttf", "f2.ttf", "GRIMOIRE_FONT_TEST_TRAP", "0"), ("a.pdf", "a2.pdf", "GRIMOIRE_PDF_TEST_TRAP_PAGE", "1")] {
+        std::fs::copy(dir.join(from), dir.join(name)).unwrap();
+        let p = grimoire::fsview::StoragePath::new(format!("documents/{name}").as_bytes()).unwrap();
+        let s = st.stat(&p, false).unwrap();
+        let arg = format!("{}.{}.{}.{}:documents/{name}", s.dev, s.ino, s.size, s.mtime);
+        std::env::set_var(hook, at);
+        assert_eq!(bg_file_preview(&arg), 0, "{name}");
+        assert_eq!(preview_info(&p, &s).map(|i| i.made), Some(Made::Once(NoPreview::Ended)), "{name}: the first death is a try");
+        assert!(matches!(preview_cached(&p, &s), Cached::Nothing), "{name}");
+        assert_eq!(bg_file_preview(&arg), 0, "{name}");
+        assert_eq!(preview_info(&p, &s).map(|i| i.made), Some(Made::None(NoPreview::Ended)), "{name}: the second is the mark");
+        std::env::remove_var(hook);
+        // (and without the trap the same bytes under another name are previewed: the file was never at fault)
+    }
+    assert!(!session_broken(), "a worker the filter ended is the worker's end, not the sandbox's");
+}
+
 // The worker's clean end (the 2.1.0-beta.2 fix round): `--work` ends with _exit, so a worker told to stop under
 // the filter makes no call outside the list on its way out (the runtime's own exit lets go of the main thread's
 // signal stack with sigaltstack, 186 on the Kindle, which would read as `E sigsys 186` at every clean end).

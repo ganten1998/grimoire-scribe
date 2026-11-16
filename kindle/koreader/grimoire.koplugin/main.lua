@@ -54,6 +54,14 @@ naming them (docs/FORMAT.md, Whole books), and hands over with --book (the launc
 capability). Grimoire adds them to the book's notebook in book order and opens the page the reader
 was on. The book's own notebook is found by reading Grimoire's files (source.ini), never written.
 
+A PDF goes by its path instead, to a launcher whose Capabilities line says "pdf" (2.2): the request
+(version 2) names the file, nothing is drawn and no link is asked for, and Grimoire's own PDF import
+draws its pages (in colour) and finds its links, then opens the page the reader was on. A PDF that
+needs a password, one at a path Grimoire does not take (outside the Kindle's storage, in a hidden,
+.sdr or system folder, through a link), one changed since KOReader first opened it, every other
+format, and any PDF to an older launcher go as above (version 1), so a book that opened before
+still opens. Annotate this page stays as it is for every format.
+
 A planner's tabs and any other internal links of the PDF go along (the launcher's "links" capability): the
 links of the pages it draws in this run, and, once per book (while the notebook's source.ini lacks
 links=1), of the pages Grimoire already holds, as import/.book/links.txt (docs/FORMAT.md, Links from
@@ -917,6 +925,58 @@ end
 -- other reflowable books have no pages of their own (they change with the font), so not those.
 local WHOLE = { pdf = true, djvu = true, djv = true, cbz = true, cbt = true, xps = true, oxps = true }
 
+-- Whether the PDF at path needs a password to open, asked of a document of its own: never of the reader's, as
+-- MuPDF answers by trying the empty password, which would make it forget the one the reader was given. Every
+-- call is inside a pcall (the module, the open, the question, the close), so nothing here can stop KOReader.
+-- False when it cannot tell (this KOReader opens no such document, or its MuPDF has other names): the log says
+-- so, without the error's text, which could name the file, and the PDF then goes by its path.
+local function needs_password(path)
+    local doc
+    local ok, need = pcall(function()
+        doc = require("ffi/mupdf").openDocument(path)
+        return doc:needsPassword()
+    end)
+    if doc then pcall(doc.close, doc) end
+    if not ok then
+        logger.warn("Grimoire: could not ask whether this PDF needs a password; it goes by its path")
+    end
+    return ok and need == true
+end
+
+-- Whether s is well-formed UTF-8 (Grimoire does not read a request whose path is not).
+local function is_utf8(s)
+    local i, n = 1, #s
+    while i <= n do
+        local c = s:byte(i)
+        local len
+        if c < 0x80 then len = 1
+        elseif c >= 0xC2 and c <= 0xDF then len = 2
+        elseif c >= 0xE0 and c <= 0xEF then len = 3
+        elseif c >= 0xF0 and c <= 0xF4 then len = 4
+        else return false end
+        for k = 1, len - 1 do
+            local b = s:byte(i + k)
+            if not b or b < 0x80 or b > 0xBF then return false end
+        end
+        local b = len > 2 and s:byte(i + 1)
+        if (c == 0xE0 and b < 0xA0) or (c == 0xED and b > 0x9F) or (c == 0xF0 and b < 0x90) or (c == 0xF4 and b > 0x8F) then
+            return false
+        end
+        i = i + len
+    end
+    return true
+end
+
+-- The folders at the top of the Kindle's storage that Grimoire never reads (its fsview.rs, SYSTEM), and those of
+-- its own folder a picked file never comes from (OWN_REFUSED and OWN_NOT_PICKED), in lower case.
+local STORAGE_SYSTEM = { system = true, extensions = true, koreader = true, mrpackages = true, usbnet = true,
+    libkh = true, linkss = true, linkfonts = true, kindle_hid_passthrough = true }
+local GRIMOIRE_OWN = { app = true, notebooks = true, bluetooth = true, pdfs = true, trash = true }
+-- A path below the storage that Grimoire takes is shorter than this, in bytes (FS_PATH_MAX).
+local STORAGE_PATH_MAX = 600
+-- Grimoire's PDF import refuses a file over this size ("PDF too big": PDF_MAX_MAPPED, 512 MiB).
+local PDF_MAX_BYTES = 512 * 1024 * 1024
+
 -- The book pages the notebook of this book holds already, for a book of `pages` pages (source.ini in
 -- the notebook's folder: book=<key>, then a page.<book page>.<pages>=<page id> line for each), as a
 -- set; empty when it has none. Only files are read: Grimoire does the rest.
@@ -949,6 +1009,74 @@ function Grimoire:pagesHeld(key, pages)
     return held, found and all_linked
 end
 
+-- Why Grimoire would not take the PDF at file by its path, in a few words for the log (never the path), or nil
+-- when it would. Grimoire walks to the file as it does to one picked in Files (its fsview.rs): inside the Kindle's
+-- storage, no "." or ".." or empty part, no hidden name and no .sdr folder on the way, none of the storage's
+-- system folders (koreader/ among them) nor Grimoire's own, no link followed, everything on the storage's own
+-- device, a path of well-formed UTF-8 under 600 bytes with no control character, and a file of 512 MiB at most.
+-- The same rules are applied here to the path as it is written, and to what the folders on it are now, so that a
+-- PDF Grimoire would refuse is never sent by its path.
+function Grimoire:pathRefused(file)
+    if file:sub(1, #self.us + 1) ~= self.us .. "/" then return "outside the Kindle's storage" end
+    local rel = file:sub(#self.us + 2)
+    if file:find("%c") or not is_utf8(file) then return "a name a request cannot hold" end
+    if #rel >= STORAGE_PATH_MAX then return "a path too long" end
+    local parts = {}
+    for part in (rel .. "/"):gmatch("([^/]*)/") do
+        if part == "" or part == "." or part == ".." then return "a path that is not plain" end
+        if part:sub(1, 1) == "." or part:lower():sub(-4) == ".sdr" then return "a hidden or .sdr folder" end
+        table.insert(parts, part)
+    end
+    if STORAGE_SYSTEM[parts[1]:lower()] then return "a system folder" end
+    if parts[1]:lower() == "grimoire" and parts[2] and GRIMOIRE_OWN[parts[2]:lower()] then
+        return "one of Grimoire's own folders"
+    end
+    -- what is on the storage now: a link on the way (a linked folder, or the file itself), another device
+    local root = lfs.attributes(self.us)
+    local at = self.us
+    for _, part in ipairs(parts) do
+        at = at .. "/" .. part
+        if lfs.symlinkattributes and lfs.symlinkattributes(at, "mode") == "link" then return "a link on the way" end
+    end
+    local here = lfs.attributes(file)
+    if type(root) == "table" and type(here) == "table" and root.dev and here.dev and root.dev ~= here.dev then
+        return "another device"
+    end
+    local size = lfs.attributes(file, "size")
+    if type(size) == "number" and size > PDF_MAX_BYTES then return "a file over 512 MiB" end
+    return nil
+end
+
+-- The path a version 2 request names a PDF by (a Grimoire whose launcher says "pdf" draws the PDF's pages
+-- itself, docs/FORMAT.md): file, when it is a PDF by its name at a path Grimoire takes (pathRefused), that is
+-- still the file KOReader knows by key, and that needs no password (Grimoire cannot ask for one; KOReader, which
+-- was given it, draws such a PDF itself). nil for anything else: it goes by version 1, KOReader drawing its
+-- pages, so a book that opened before 2.2 still opens. The log says why, without the path.
+function Grimoire:pathOfPDF(file, key)
+    if type(file) ~= "string" then return nil end
+    local ext = file:match("%.([^./]+)$")
+    if not (ext and ext:lower() == "pdf") then return nil end
+    local why = self:pathRefused(file)
+    if why then
+        logger.info("Grimoire: this PDF is not sent by its path (" .. why .. "): KOReader draws its pages")
+        return nil
+    end
+    -- KOReader keeps the key it first read from a book's file, and the book's notebook is found by it; Grimoire's
+    -- import reads the key from the file as it is now. A file changed since (the two keys differ) would become
+    -- another notebook there: it stays with its notebook, by version 1.
+    local has_util, util = pcall(require, "util")
+    local got, now = pcall(function() return has_util and util.partialMD5 and util.partialMD5(file) end)
+    if got and key_ok(now) and key_ok(key) and now ~= key then
+        logger.info("Grimoire: this PDF changed since KOReader first opened it: KOReader draws its pages")
+        return nil
+    end
+    if needs_password(file) then
+        logger.info("Grimoire: this PDF needs a password: KOReader draws its pages")
+        return nil
+    end
+    return file
+end
+
 -- Tools > Grimoire > Open this book in Grimoire (a paged book open), and its gesture.
 function Grimoire:onOpenBookInGrimoire()
     if handing_over then return true end
@@ -977,7 +1105,7 @@ function Grimoire:onOpenBookInGrimoire()
     if last == nil then last = self.ui.view.render_mode end
     logger.info("Grimoire: open the whole book")
     self:sendBook{ doc = self.ui.document, key = key, title = self:bookTitle(), page = self:currentPage(),
-        gamma = state.gamma, last = last, reader = true }
+        gamma = state.gamma, last = last, reader = true, file = self.ui.document.file }
     return true
 end
 
@@ -1057,16 +1185,17 @@ function Grimoire:openFile(file)
         last = tonumber(setting("render_mode")) or 0
     end
     logger.info("Grimoire: open a whole book from the file browser")
-    self:sendBook{ doc = doc, key = key, title = title, page = page, gamma = gamma, last = last, close = function()
-        DocumentRegistry:closeDocument(file)
-    end }
+    self:sendBook{ doc = doc, key = key, title = title, page = page, gamma = gamma, last = last, file = file,
+        close = function() DocumentRegistry:closeDocument(file) end }
 end
 
 -- Every page of book b (doc, key, title, page: the one to open; gamma, last: a reader's contrast;
--- reader: doc is the reader's own, its settings set aside while it draws; close: done with doc) that
--- its notebook does not hold, drawn into grimoire/import/.book/page-<n>.png under a progress message
--- that a tap stops, then the request naming them, then the hand-over (--book). Each file is written
--- whole (a temporary file, then a rename), and anything stopped or failed leaves the folder empty.
+-- reader: doc is the reader's own, its settings set aside while it draws; file: its path; close: done
+-- with doc) that its notebook does not hold, drawn into grimoire/import/.book/page-<n>.png under a
+-- progress message that a tap stops, then the request naming them, then the hand-over (--book). Each
+-- file is written whole (a temporary file, then a rename), and anything stopped or failed leaves the
+-- folder empty. A PDF, to a launcher that says "pdf", goes by its path instead (request.ini version 2):
+-- nothing is drawn and no link is asked for, as Grimoire's own PDF import draws its pages and finds them.
 function Grimoire:sendBook(b)
     local function done() if b.close then pcall(b.close) end end
     local pages = math.floor(b.doc:getPageCount())
@@ -1089,6 +1218,35 @@ function Grimoire:sendBook(b)
         return
     end
     empty_dir(dir)
+    local path = caps and caps.pdf and self:pathOfPDF(b.file, b.key)
+    if path then
+        done()
+        local at = math.max(1, math.min(b.page or 1, pages))
+        local request = table.concat({
+            "# Grimoire: a whole book to open, from KOReader's Grimoire plugin (docs/FORMAT.md)",
+            "version=2",
+            "book=" .. b.key,
+            "file=" .. path,
+            "title=" .. b.title,
+            string.format("pages=%d", pages),
+            string.format("page=%d", at),
+            "kind=paged",
+            string.format("time=%d", os.time()),
+        }, "\n") .. "\n"
+        if not write_whole(dir .. "/request.ini", request) then
+            empty_dir(dir)
+            logger.warn("Grimoire: could not save the book's request")
+            self:tell("book_failed")
+            return
+        end
+        logger.info("Grimoire: a PDF of", pages, "pages sent by its path, to open at page", at)
+        busy = InfoMessage:new{ text = T("preparing") }
+        UIManager:show(busy)
+        UIManager:forceRePaint()
+        -- "Preparing Grimoire..." stays up until Grimoire draws.
+        self:handOver(launcher, busy, " --book")
+        return
+    end
     local held, linked = self:pagesHeld(b.key, pages)
     -- Pages are to be added in this run: the held pages' links are asked for again, as a page deleted and added
     -- again is a target the held pages' tabs lost (links=1 is a latch that cannot tell), and one an older

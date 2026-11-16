@@ -191,7 +191,7 @@ pub struct Settings {
     /// clears it.
     pub files_card: bool,
     /// Files' order (files_sort, FILES_SORT_NAMES: name, newest, size), what it lists (files_show,
-    /// FILES_SHOW_NAMES: usable files or all) and how (files_view, FILES_VIEW_NAMES: list). Each line is absent
+    /// FILES_SHOW_NAMES: usable files or all) and how (files_view, FILES_VIEW_NAMES: list or covers). Each line is absent
     /// at its default (the first name), and a value this build does not have is used as the default and
     /// written back as it was.
     pub files_sort: i32,
@@ -203,8 +203,8 @@ pub struct Settings {
 pub const FILES_SORT_NAMES: [&str; 3] = ["name", "newest", "size"];
 /// files_show's: the files Grimoire can use, or every file.
 pub const FILES_SHOW_NAMES: [&str; 2] = ["usable", "all"];
-/// files_view's: a list (Covers, which needs previews, comes later: a later version's value is kept as it was).
-pub const FILES_VIEW_NAMES: [&str; 1] = ["list"];
+/// files_view's: a list, or the previews in a grid (Covers, 2.2, issue #145).
+pub const FILES_VIEW_NAMES: [&str; 2] = ["list", "covers"];
 
 // ---- state ----
 
@@ -1569,6 +1569,44 @@ pub fn store_delete(id: &str) -> i32 {
         graph_omit_prune(); // (its folder may be gone with it)
     }
     rc
+}
+
+/// A notebook back from the trash (Files' Restore: fsview's restore put `notebooks/<id>` back, from a name
+/// store_delete gave it): a name another notebook of its Library folder has (in any ASCII case, as their PDF copies
+/// would be one file on the Kindle's storage) gets " 2", " 3" and so on, cut to fit; its modified time stays, so it
+/// goes back to its place in the Library's order. The Graph's index reads the notebooks again. Its info, as it is
+/// now, in `out`, and the Library as it is now in `all` (read here once, for the names taken: the caller needs no
+/// read of its own). 0; -1 when its notebook.ini does not read (`out` is left as it was: the Library does not list
+/// such a notebook); -2 when its new name could not be written (`out` has it under its own name, in its folder).
+pub fn store_restored(id: &str, out: &mut NotebookInfo, all: &mut Vec<NotebookInfo>) -> i32 {
+    let mut nb = NotebookInfo::default();
+    let read = store_load_info(id, &mut nb) == 0;
+    store_list(all);
+    libindex_revalidate();
+    if !read {
+        return -1;
+    }
+    *out = nb.clone();
+    let taken = |n: &[u8]| all.iter().any(|o| o.id != nb.id && o.folder == nb.folder && o.name.as_bytes().eq_ignore_ascii_case(n));
+    if taken(nb.name.as_bytes()) {
+        let base = nb.name.as_str().to_string();
+        let free = (2..1000).map(|k| {
+            let suffix = format!(" {k}");
+            format!("{}{suffix}", cut_at_bytes(&base, STORE_NAME_LEN - 1 - suffix.len()))
+        });
+        if let Some(name) = free.into_iter().find(|n| !taken(n.as_bytes())) {
+            clean_line(&mut nb.name, name.as_bytes());
+            if write_info(&nb) != 0 {
+                return -2;
+            }
+            if let Some(o) = all.iter_mut().find(|o| o.id == nb.id) {
+                o.name = nb.name.clone();
+            }
+            *out = nb;
+            libindex_revalidate();
+        }
+    }
+    0
 }
 
 fn cmp_modified(x: &NotebookInfo, y: &NotebookInfo) -> Ordering {

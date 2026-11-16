@@ -1,0 +1,56 @@
+# The Templates and Photos sheets end with a From a file... tile in Rust (2.2, #146): the empty sheets and the page that
+# holds the tile. Only these raster hashes differ; the layouts, page counts and every result keep the C baseline.
+# The tile's label is drawn in each language, so a language's empty-sheet lines follow its "From a file...": when that
+# translation changes, look at the 16 sheets again and record their lines (the ja lines were, when #136 translated it).
+tplsheet empty0 en pg templates 3399a45822c3f285
+tplsheet empty0 en pg photos 7635faf5eedf4d43
+tplsheet empty0 en pc templates 8f0750b27266a6ad
+tplsheet empty0 en pc photos f5095e82bb0cb435
+tplsheet empty0 en lg templates 97b3e62621062a78
+tplsheet empty0 en lg photos ea2312be1da935b6
+tplsheet empty0 en lc templates 538a613011ac87aa
+tplsheet empty0 en lc photos bcc9ea14f167dcda
+tplsheet empty0 es pg templates 67386b50731c0607
+tplsheet empty0 es pg photos c8a33ef1f014f8db
+tplsheet empty0 es pc templates 9c010fd3f60fe019
+tplsheet empty0 es pc photos 3ce36937545000a9
+tplsheet empty0 es lg templates 2f898989c3d7df06
+tplsheet empty0 es lg photos ab4a8dba62126326
+tplsheet empty0 es lc templates 358116d2baba3d22
+tplsheet empty0 es lc photos 321f3c3da68b5236
+tplsheet empty0 ja pg templates 730768a78a5a9688
+tplsheet empty0 ja pg photos e703c14807c5e929
+tplsheet empty0 ja pc templates 9d8826afb8003acb
+tplsheet empty0 ja pc photos 031d462cb450e0a5
+tplsheet empty0 ja lg templates 783d283f840a332f
+tplsheet empty0 ja lg photos b0450805dbb0b0cc
+tplsheet empty0 ja lc templates 11eb1b764b37ab04
+tplsheet empty0 ja lc photos 9c47abc1cc453172
+tplsheet empty1 en pg templates 07fe1fbf994f9c85
+tplsheet empty1 en pg photos 7635faf5eedf4d43
+tplsheet empty1 en pc templates 1f2c78da83551a1e
+tplsheet empty1 en pc photos f5095e82bb0cb435
+tplsheet empty1 en lg templates c41400270df91878
+tplsheet empty1 en lg photos ea2312be1da935b6
+tplsheet empty1 en lc templates 1f2528f9153140a5
+tplsheet empty1 en lc photos bcc9ea14f167dcda
+tplsheet empty1 es pg templates 9aea6c8d78910007
+tplsheet empty1 es pg photos c8a33ef1f014f8db
+tplsheet empty1 es pc templates 0117ed74e47ef23b
+tplsheet empty1 es pc photos 3ce36937545000a9
+tplsheet empty1 es lg templates 200423b4922e3506
+tplsheet empty1 es lg photos ab4a8dba62126326
+tplsheet empty1 es lc templates faa5ff5f59b11ba8
+tplsheet empty1 es lc photos 321f3c3da68b5236
+tplsheet empty1 ja pg templates 3bcde40541f88c23
+tplsheet empty1 ja pg photos e703c14807c5e929
+tplsheet empty1 ja pc templates 4c7cc5cc36266a94
+tplsheet empty1 ja pc photos 031d462cb450e0a5
+tplsheet empty1 ja lg templates a5d914d61f3e6270
+tplsheet empty1 ja lg photos b0450805dbb0b0cc
+tplsheet empty1 ja lc templates ce189e2c7db83277
+tplsheet empty1 ja lc photos 9c47abc1cc453172
+tplsheet pg turn 1 -> 1 page 2 7d02ff8031d4fcca
+tplsheet pc turn 1 -> 1 page 2 99db4c77f84e3f5d
+tplsheet lg turn 1 -> 1 page 2 3a38c1575e568e53
+tplsheet lc turn 1 -> 1 page 2 4a7df40c17332e1a

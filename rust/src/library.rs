@@ -1057,7 +1057,8 @@ fn draw_base(a: &mut App) {
     );
 }
 
-fn sheet_rect(aw: i32, ah: i32, mut h: i32) -> Rect {
+/// Where a sheet `h` px tall goes on a screen (Files' Delete question is drawn in the same place: browser.rs).
+pub(crate) fn sheet_rect(aw: i32, ah: i32, mut h: i32) -> Rect {
     let m = ui_px(70.0);
     if h > ah - 2 * ui_px(40.0) {
         h = ah - 2 * ui_px(40.0); // landscape: keep it on screen
@@ -1806,6 +1807,13 @@ fn finish_recording(a: &mut App) {
 /// Whether the Library shows no sheet, dialog or keyboard (a PDF fill's pages go in then: app.rs).
 pub fn library_at_rest(a: &App) -> bool {
     a.lib.as_deref().is_none_or(|s| s.modal == Modal::None)
+}
+
+/// Whether the Library's own cards are in front with nothing over them: the Library is the screen, with no sheet,
+/// no Files and no Graph up. Where a PDF KOReader handed over by its path opens its notebook once its import ends
+/// (app.rs, book_tick); with anything else in front it opens nothing.
+pub fn library_cards_in_front(a: &App) -> bool {
+    a.scr == ScreenId::Library && a.lib.as_deref().is_none_or(|s| s.modal == Modal::None && !s.files.open && !s.map.open && !s.map_picker.open)
 }
 
 /// Whether the Library currently owns the raw gesture recording context.
@@ -7432,7 +7440,10 @@ fn act(a: &mut App, h: &Hit) {
                 app_toast_dismiss(a); // (no toast while it is made: the owner, 2026-11-04; "PDF saved" says when)
             }
         }
-        H_MORE_DELETE => open_modal(a, Modal::Delete),
+        H_MORE_DELETE => {
+            open_modal(a, Modal::Delete);
+            app_ask(a); // (drawn, not shown yet: its Delete waits until it has been, library_event_in)
+        }
         H_MORE_GRAPH | H_FMORE_GRAPH => {
             // (arg: 1 leaves it out, 0 shows it again)
             let omit = h.arg != 0;
@@ -7699,6 +7710,13 @@ pub fn library_shows_folder(a: &App, folder: &str) -> bool {
         && a.lib.as_deref().is_some_and(|s| s.modal == Modal::None && !s.files.open && !s.map.open && !s.map_picker.open && s.cur_folder.as_str() == folder)
 }
 
+/// The folder of the Templates sheet in front over New notebook (the picker not over it), None for none: a copy into
+/// it that ends is shown there, with no toast (app.rs).
+pub fn library_sheet_folder(a: &App) -> Option<crate::bgwork_copy::CopyTo> {
+    let s = a.lib.as_deref().filter(|s| a.scr == ScreenId::Library && s.modal == Modal::Templates && s.ts.open && !s.files.open)?;
+    Some(tplsheet_folder(&s.ts))
+}
+
 pub fn library_import_place_up(a: &App) -> bool {
     files_shown(a) && a.lib.as_deref().is_some_and(|s| s.files.import_place_up())
 }
@@ -7721,11 +7739,25 @@ fn files_open(a: &mut App) {
     files_opened(a, ok);
 }
 
+/// The Templates sheet's From a file... (2.2, #146): the picture pick over the sheet, which stays under it (Back at
+/// the picker's root, and a copy asked, come back to it).
+fn files_open_picture(a: &mut App, to: crate::bgwork_copy::CopyTo) {
+    let prefs = files_prefs(a);
+    let ok = with_files(a, |b, _| b.open(PickSpec::picture(to), prefs));
+    files_opened(a, ok);
+}
+
 /// Files, the place (2.2): from the Files card, its menu's Open, and the `files` action (whether or not the card is
 /// in the Library), over the Library as it is.
 fn files_open_place(a: &mut App) {
     let prefs = files_prefs(a);
-    let ok = with_files(a, |b, _| b.open(PickSpec::place(), prefs));
+    let view = a.settings.files_view;
+    let ok = with_files(a, |b, _| {
+        let ok = b.open(PickSpec::place(), prefs);
+        // (Files' View, the list or Covers: the place's alone, a picker is always a list)
+        b.set_view(view);
+        ok
+    });
     files_opened(a, ok);
 }
 
@@ -7751,10 +7783,20 @@ fn files_close(a: &mut App, to_library: bool) {
         s.modal = Modal::None;
     }
     app_notice_clear(a, NoticeKey::Loading);
+    app_notice_clear(a, NoticeKey::Previews);
     if to_library {
         reload(a);
     }
     redraw(a, RefreshMode::Full);
+}
+
+/// What a toast says when an import that was asked for has to wait for another: a file picked while an import of
+/// an earlier run is still going, and a PDF KOReader handed over by its path behind any other import (app.rs).
+pub fn library_import_waits_text() -> &'static str {
+    // TRANSLATORS: a toast after a file was picked to import while an import from an earlier run is
+    // still going (in the background): this one starts once that one is done. One line of about
+    // 1700 px at 44 px, or two.
+    tr("Another import is still going. This one starts after it.")
 }
 
 fn files_result(a: &mut App, r: BrowserResult) {
@@ -7790,12 +7832,7 @@ fn files_result(a: &mut App, r: BrowserResult) {
                     }
                     app_toast(a, &msg, 4000);
                 }
-                Queued::Waiting => {
-                    // TRANSLATORS: a toast after a file was picked to import while an import from an earlier run is
-                    // still going (in the background): this one starts once that one is done. One line of about
-                    // 1700 px at 44 px, or two.
-                    app_toast(a, tr("Another import is still going. This one starts after it."), 6000);
-                }
+                Queued::Waiting => app_toast(a, library_import_waits_text(), 6000),
                 _ => {}
             }
         }
@@ -7803,11 +7840,12 @@ fn files_result(a: &mut App, r: BrowserResult) {
             files_close(a, true);
             editor_open_notebook(a, &id);
         }
-        // Files' Sort or Show chip: kept for the next time Files opens
+        // Files' Sort, Show or View chip: kept for the next time Files opens
         BrowserResult::Prefs => {
-            let prefs = lib(a).files.prefs;
+            let (prefs, view) = (lib(a).files.prefs, lib(a).files.view());
             a.settings.files_sort = prefs.sort;
             a.settings.files_show = prefs.show;
+            a.settings.files_view = view;
             settings_save(&a.settings);
         }
         // "Show Files in Library": the card is the Library's last from now on (the browser drew its root without the row)
@@ -7816,6 +7854,17 @@ fn files_result(a: &mut App, r: BrowserResult) {
             settings_save(&a.settings);
             reload(a);
         }
+        // A picture's Use as template or Use as photo (#146): the copy job runs. Files stays as it is (the app's tick
+        // says when the copy ends); the picture pick goes back to the Templates sheet under it, whose From a file...
+        // tile waits for the copy and then shows the new template
+        BrowserResult::Copying(_) => {
+            if lib(a).files.mode == BrowseMode::Pick {
+                tplsheet_copy_asked(&mut lib(a).ts);
+                files_close(a, false);
+            }
+        }
+        // Files' Restore put a notebook back (2.2, issue #144): the Library under Files is read again at once
+        BrowserResult::NotebookBack(_) => reload(a),
         BrowserResult::LookAgain => {
             import_scan(a.dpi);
             with_files(a, |b, a| {
@@ -8337,7 +8386,9 @@ fn library_event_in(a: &mut App, ev: &InEvent) {
             tplsheet_close(&mut ts);
         }
         lib(a).ts = ts;
-        if r == TsResult::Picked || r == TsResult::Back || r == TsResult::Cancel {
+        if r == TsResult::FromFile {
+            files_open_picture(a, crate::bgwork_copy::CopyTo::Templates);
+        } else if r == TsResult::Picked || r == TsResult::Back || r == TsResult::Cancel {
             lib(a).modal = Modal::New; // back to New notebook, also from a tap outside the sheet
             redraw(a, RefreshMode::Ui);
         } else if !rect_is_empty(d) {
@@ -8415,10 +8466,14 @@ fn library_event_in(a: &mut App, ev: &InEvent) {
         return;
     }
     if ph == 0 {
+        // The question before a notebook is deleted takes its Delete once it has been shown, never before
+        // (app_asked_seen): a contact that came down on that row sooner answers nothing, down to its lift. Keep it
+        // moves nothing, and answers at once.
+        let unseen = modal == Modal::Delete && !app_asked_seen(a, ev);
         let s = lib(a);
         press_begin(&mut s.press, ev.x, ev.y, ev.t_ms);
         s.pressed_at = now_ms();
-        let h = hits_find(&s.hits, ev.x, ev.y).copied();
+        let h = hits_find(&s.hits, ev.x, ev.y).copied().filter(|h| !(unseen && h.id == H_DELETE_YES));
         s.pressed = None;
         if let Some(h) = h {
             s.pressed = Some(h);
@@ -8979,7 +9034,7 @@ pub fn library_probe(a: &mut App, key: &str, out: &mut String, cap: usize) -> i3
             name.push_str(match hit.id {
                 H_NEW=>"new",H_NEWFOLDER=>"new-folder",H_SETTINGS=>"settings",H_SHARE=>"share",H_EXIT=>"exit",
                 H_MORE_OPEN=>"more.open",H_MORE_RENAME=>"more.rename",H_MORE_PDF=>"more.pdf",H_MORE_DELETE=>"more.delete",
-                H_MORE_GRAPH=>"more.graph",H_FMORE_GRAPH=>"fmore.graph",
+                H_MORE_GRAPH=>"more.graph",H_FMORE_GRAPH=>"fmore.graph",H_DELETE_YES=>"delete.yes",
                 H_SET_THEME=>"theme",H_NEW_CREATE=>"create",H_MORE_MOVE=>"more.move",
                 H_FMORE_RENAME=>"fmore.rename",H_FMORE_MOVE=>"fmore.move",H_FMORE_REMOVE=>"fmore.remove",
                 H_MOVE_TOP=>"move.top",H_MOVE_TO=>"move.to.",H_MOVE_NEW=>"move.new",H_MOVE_PREV=>"move.prev",H_MOVE_NEXT=>"move.next",
@@ -9561,6 +9616,73 @@ mod tests {
         let mut on_disk = Settings::default();
         settings_load(&mut on_disk);
         assert!(!on_disk.files_card);
+        library_free(&mut a);
+        canvas_free(&mut a.screen);
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    // The question before a notebook is deleted takes its Delete only once it has been shown (issue #144: the guard
+    // Files' own question has, app_asked_seen): a contact that came down on that row before the question's frame
+    // went to the panel, or sooner than PEN_REOPEN_MS after it, deletes nothing and leaves the question up. Keep it
+    // moves nothing and answers at once, as before; a tap on its Delete after that deletes, as before.
+    #[test]
+    fn a_notebooks_delete_question_takes_its_delete_once_shown() {
+        let root = std::env::temp_dir().join(format!("grimoire-delete-seen-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        assert_eq!(store_init(root.to_str().unwrap()), 0);
+        let mut nb = NotebookInfo::default();
+        assert_eq!(store_create("A", "", PAPER_BLANK, &mut nb), 0);
+        let mut a = pen_record_app();
+        a.scr = ScreenId::Library;
+        settings_default(&mut a.settings);
+        lib(&mut a).modal = Modal::None;
+        reload(&mut a);
+        redraw(&mut a, RefreshMode::Ui);
+        let centre = |a: &mut App, id: i32| {
+            let h = lib(a).hits.h.iter().find(|h| h.id == id).copied().unwrap_or_else(|| panic!("no control {id}"));
+            ((h.r.x + h.r.w / 2) as f32, (h.r.y + h.r.h / 2) as f32)
+        };
+        let tap = |a: &mut App, (x, y): (f32, f32), t_ms: u32, k_ms: u32| {
+            for type_ in [InType::TouchDown, InType::TouchUp] {
+                library_event_in(a, &InEvent { type_, x, y, t_ms, k_ms, ..Default::default() });
+            }
+        };
+        let ask = |a: &mut App| {
+            act(a, &Hit { id: H_CARD_MORE, arg: 0, ..Default::default() });
+            assert_eq!(lib(a).modal, Modal::More);
+            let p = centre(a, H_MORE_DELETE);
+            tap(a, p, 1000, 0);
+            assert_eq!((lib(a).modal, a.asked), (Modal::Delete, Asked::Drawn));
+        };
+        ask(&mut a);
+        let yes = centre(&mut a, H_DELETE_YES);
+        for t in [1000, now_ms().wrapping_add(60_000)] {
+            tap(&mut a, yes, t, 0);
+            assert!(lib(&mut a).modal == Modal::Delete && lib(&mut a).books.len() == 1 && lib(&mut a).pressed.is_none(), "before its frame");
+        }
+        app_flush(&mut a);
+        let Asked::Shown(at) = a.asked else { panic!("{:?}", a.asked) };
+        for (t, k) in [(at, 0), (at.wrapping_add(PEN_REOPEN_MS - 1), 0), (at.wrapping_add(9_000), at.wrapping_sub(5))] {
+            tap(&mut a, yes, t, k);
+            assert!(lib(&mut a).modal == Modal::Delete && lib(&mut a).books.len() == 1, "too soon after its frame: {t} (kernel {k}), shown at {at}");
+        }
+        // Keep it at once
+        let keep = centre(&mut a, H_CANCEL);
+        tap(&mut a, keep, at, 0);
+        assert!(lib(&mut a).modal == Modal::None && lib(&mut a).books.len() == 1);
+        // asked again: Keep it even before the frame, as before
+        ask(&mut a);
+        let keep = centre(&mut a, H_CANCEL);
+        tap(&mut a, keep, 1000, 0);
+        assert!(lib(&mut a).modal == Modal::None && lib(&mut a).books.len() == 1);
+        // and its Delete, once shown
+        ask(&mut a);
+        app_flush(&mut a);
+        let Asked::Shown(at) = a.asked else { panic!("{:?}", a.asked) };
+        let yes = centre(&mut a, H_DELETE_YES);
+        tap(&mut a, yes, at.wrapping_add(PEN_REOPEN_MS), 0);
+        assert!(lib(&mut a).modal == Modal::None && lib(&mut a).books.is_empty(), "its Delete, once shown");
+        assert_eq!(a.toast.as_str(), "Moved to grimoire/trash");
         library_free(&mut a);
         canvas_free(&mut a.screen);
         let _ = std::fs::remove_dir_all(&root);
@@ -10962,6 +11084,11 @@ pub fn library_control_point(a:&mut App,name:&str)->Option<(f32,f32)> {
     if name.starts_with("ui_has.") {return None;}
     // The file picker: files.back, files.row.N, files.more.N, files.item.NAME, files.prev, files.next, files.card.*
     if let Some(n)=name.strip_prefix("files.") {return a.lib.as_deref()?.files.point(n);}
+    // The Templates sheet over New notebook (2.2): templates.from_file, templates.back
+    if let Some(n)=name.strip_prefix("templates.") {
+        let s=a.lib.as_deref()?;
+        return (s.modal==Modal::Templates && !s.files.open).then(||tplsheet_point(&s.ts,n)).flatten();
+    }
     // The Display sheet's controls while it is open ("display.done", "display.fit").
     if let Some(n)=name.strip_prefix("display.") {return dispmenu_control_point(&a.lib.as_deref()?.dm,n);}
     // The Graph opened from the Library: its controls (map.back, map.view, ...) and its notebooks' browser's
@@ -11020,6 +11147,10 @@ fn turn(a: &mut App, next: bool) {
 /// input goes (app_type_text).
 pub fn library_keyboard_area(a: &App) -> Option<Rect> {
     let s = a.lib.as_deref()?;
+    if s.files.open {
+        // (Files' rename keyboard, 2.2: Files takes every contact while it is up)
+        return s.files.keyboard_area();
+    }
     (s.modal == Modal::Kb && s.kb.open && !rect_is_empty(s.kb.area)).then_some(s.kb.area)
 }
 

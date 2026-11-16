@@ -14,8 +14,9 @@ use std::io::Read;
 use std::os::unix::fs::MetadataExt;
 use std::path::Path;
 
-/// a template file bigger than this is not taken
-const TEMPLATE_MAX_BYTES: usize = 16 << 20;
+/// a template file bigger than this is not taken, and neither is a photo (so no copy of one is made into either
+/// folder: bgwork_copy.rs, "Too big (over 16 MB).")
+pub const TEMPLATE_MAX_BYTES: usize = 16 << 20;
 /// files of the templates folder looked at
 const MAX_TEMPLATES: usize = 500;
 /// import folders queued at one start (the job queue holds 16)

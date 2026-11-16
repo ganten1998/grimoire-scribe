@@ -6,7 +6,16 @@
 //! is the confirmation), a hold on a folder (or its `...`) opens the card that imports its pictures. The Import
 //! place lists `grimoire/import` with a status on each row and a Look again row. Place mode (2.2): Files, opened
 //! from the Library's Files card or the `files` action, where the user browses: its root adds Grimoire's own
-//! places (Templates, Photos, Fonts, PDF copies, Trash) and the Kindle's fonts, every one read only here.
+//! places (Templates, Photos, Fonts, PDF copies, Trash) and the Kindle's fonts. Inside Grimoire's folders for the
+//! user's files (import, templates, photos, fonts) a card renames a file or folder, with the rename keyboard, or
+//! moves it to the trash after asking as the Library asks before a notebook goes (the font Settings names is not
+//! deleted, and renamed it stays the font); the Trash place puts an entry back (Restore) and shows each entry's
+//! size and the trash's own (issue #144). After such a write the rows follow from the listing held: the folder
+//! shown is not read again (a font renamed has its check's results and its setting follow, and a notebook restored
+//! has the Library read: DESIGN.md says what each reads). A picture's card copies it into Grimoire's templates or
+//! photos (Use as template, Use as photo: the copy job, bgwork_copy.rs), and the Templates and Photos sheets' From
+//! a file... tile opens the picture pick (2.2, issue #146): pictures only, its card offering that sheet's copy.
+//! Everything else is read only.
 //!
 //! Everything it reads of the storage goes through fsview.rs: the walk (no link anywhere, one device, Grimoire's
 //! notebooks refused by identity, and in pick mode its PDFs and trash too), listings of names and kinds only in
@@ -15,6 +24,8 @@
 //!
 //! The model (`Browser`'s rows, listing and statuses) needs no screen: the tests drive it with `list_now`.
 
+use crate::bgwork_copy::{copy_refusal, copy_request, CopyFail, CopyTo};
+use crate::bgwork_previews::{CoverTiles, TileShow, PREVIEW_H, PREVIEW_W};
 use crate::fsview::*;
 use crate::prelude::*;
 
@@ -35,6 +46,23 @@ const B_CRUMB: i32 = 11;
 const B_SORT: i32 = 12;
 const B_SHOW: i32 = 13;
 const B_GOTO: i32 = 14;
+// A picture's card (#146): Use as template, Use as photo. (The ids are used by name only, here and by the runner,
+// which taps `card.template` and `card.photo`: to move them, change the one number. No two ids may be equal.)
+const B_CARD_TEMPLATE: i32 = 15;
+const B_CARD_PHOTO: i32 = B_CARD_TEMPLATE + 1;
+// Files (2.2, issue #144): a card's Rename and Delete (inside Grimoire's folders for the user's files), a trash
+// entry's Restore, and the Delete question's Delete. They are numbered from a base of their own, away from the ids
+// above: an id added after B_GOTO by another change does not meet them, and they all move by changing B_WRITE.
+const B_WRITE: i32 = 40;
+const B_CARD_RENAME: i32 = B_WRITE;
+const B_CARD_TRASH: i32 = B_WRITE + 1;
+const B_CARD_RESTORE: i32 = B_WRITE + 2;
+const B_DELETE_YES: i32 = B_WRITE + 3;
+// Files' View chip (2.2, issue #145): List or Covers. The ids of the Covers work are a block of their own, from 60:
+// other Files work adds ids beside the ones above, and a hit id must be one thing only (a branch that finds a number
+// taken moves its own).
+const B_COVERS: i32 = 60;
+const B_VIEW: i32 = B_COVERS;
 
 /// What a task can pick, or Files lists as usable.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -56,17 +84,19 @@ pub enum BrowseMode {
 }
 
 /// What the browser was asked for: the kinds it offers, its title (translated by the caller), the folder it opens
-/// at (None: its root) and its mode.
+/// at (None: its root), its mode, and for the picture pick the folder a picture picked is copied into (its card's
+/// one copy).
 #[derive(Clone, Debug)]
 pub struct PickSpec {
     pub kinds: &'static [PickKind],
     pub title: &'static str,
     pub start: Option<StoragePath>,
     pub mode: BrowseMode,
+    pub to: Option<CopyTo>,
 }
 
 /// What the Library's settings say of Files (settings.ini files_card, files_sort, files_show), handed to the
-/// browser as it opens.
+/// browser as it opens. (files_view is not here: `Browser::set_view`.)
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct FilesPrefs {
     /// the Files card is in the Library (the root then has no "Show Files in Library" row)
@@ -87,6 +117,7 @@ impl PickSpec {
             title: tr("Import a PDF or pictures"),
             start: None,
             mode: BrowseMode::Pick,
+            to: None,
         }
     }
 
@@ -97,6 +128,21 @@ impl PickSpec {
             title: tr("Files"),
             start: None,
             mode: BrowseMode::Place,
+            to: None,
+        }
+    }
+
+    /// The Templates or Photos sheet's From a file... (2.2, #146): a picture, copied into grimoire/templates or
+    /// grimoire/photos.
+    pub fn picture(to: CopyTo) -> PickSpec {
+        PickSpec {
+            kinds: &[PickKind::Picture],
+            // TRANSLATORS: (also) the title of the file picker the Templates and Photos sheets' From a file... tile
+            // opens, to pick a picture to copy in (the Library's header, about 1400 px at 56 px).
+            title: tr("From a file..."),
+            start: None,
+            mode: BrowseMode::Pick,
+            to: Some(to),
         }
     }
 }
@@ -117,8 +163,118 @@ pub enum BrowserResult {
     LookAgain,
     /// the root's "Show Files in Library" row: the host puts the Files card in the Library (files_card=1)
     ShowInLibrary,
-    /// Files' Sort or Show chip changed `prefs`: the host saves them (files_sort, files_show)
+    /// Files' Sort, Show or View chip changed `prefs` or the view: the host saves them (files_sort, files_show, and
+    /// files_view from `Browser::view`)
     Prefs,
+    /// A picture's Use as template or Use as photo (#146): the copy job was asked to copy it into this folder (the
+    /// app's tick says when it ends); the picture pick is done
+    Copying(CopyTo),
+    /// Files' Restore put this notebook (its id) back: the host reads the Library again at once
+    NotebookBack(String),
+}
+
+/// What follows a refused act of a card (its toast said why): the keyboard stays up with the name, to be put right;
+/// the folder is read again (the item changed since it was listed); or nothing more.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Then {
+    Keyboard,
+    Relist,
+    Nothing,
+}
+
+/// Which act a storage write's refusal answers.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Act {
+    Rename,
+    Trash,
+    Restore,
+}
+
+/// The file or folder the rename keyboard is up for: its path, its stat when its card opened, and whether it is a
+/// folder.
+#[derive(Clone, Debug)]
+struct Renaming {
+    path: StoragePath,
+    stat: FsStat,
+    dir: bool,
+}
+
+/// The first control character in a name (U+0000 to U+001F, U+007F to U+009F: what the keyboard leaves out of a
+/// text it is opened with, and what a name on the Kindle's storage should not hold), None for a name with none.
+fn control_in(name: &[u8]) -> Option<u32> {
+    String::from_utf8_lossy(name).chars().find(|c| c.is_control()).map(|c| c as u32)
+}
+
+/// What the screen says of a name the rules refuse (`fsview_name_check`'s first rule broken; `old` the name it had,
+/// `new` the one typed).
+pub fn name_refusal(rule: NameRule, old: &[u8], new: &[u8]) -> String {
+    match rule {
+        // TRANSLATORS: a toast over the rename keyboard in Files: the name holds something a name in Grimoire's
+        // folders on the Kindle's storage cannot (%s: a character, one of / \ : * ? " < > |; a control character
+        // written as U+0009; or the ending .sdr, which the Kindle's reader keeps for a book's own folder). One line
+        // of about 1500 px at 44 px.
+        NameRule::Char(c) => cformat!(tr("Name can't contain %s"), (c as char).to_string().as_str()),
+        NameRule::Control => cformat!(tr("Name can't contain %s"), format!("U+{:04X}", control_in(new).unwrap_or(0)).as_str()),
+        // TRANSLATORS: a toast over the rename keyboard in Files: the name typed begins or ends with a space. One line
+        // of about 1500 px at 44 px.
+        NameRule::LeadingSpace | NameRule::TrailingSpace => tr("Name can't start or end with a space.").to_string(),
+        // TRANSLATORS: a toast over the rename keyboard in Files: the name typed begins with a dot (which hides a file)
+        // or ends with one. One line of about 1500 px at 44 px.
+        NameRule::LeadingDot | NameRule::TrailingDot => tr("Name can't start or end with a dot.").to_string(),
+        NameRule::Extension => {
+            let ext = old.iter().rposition(|&c| c == b'.').map_or(String::new(), |i| String::from_utf8_lossy(&old[i..]).into_owned());
+            // TRANSLATORS: a toast over the rename keyboard in Files: a file's new name must end as its old one did
+            // (%s: its extension with the dot, such as .png). One line of about 1500 px at 44 px.
+            cformat!(tr("Keep the extension %s."), ext.as_str())
+        }
+        // TRANSLATORS: a toast in Files: the name is longer than a name can be there (255 bytes), or, as Rename is
+        // tapped, longer than Grimoire's keyboard can hold to edit (95 bytes). One line of about 1000 px at 44 px.
+        NameRule::TooLong => tr("Name too long.").to_string(),
+        // (an empty name is no rename: the keyboard closes and nothing is done)
+        NameRule::Empty => tr("Couldn't rename.").to_string(),
+    }
+}
+
+/// What the screen says of a new name the rules allow and Grimoire's folders do not (fsview's allow-list): a name
+/// ending in `.sdr` (the Kindle's reader keeps a book's data in such a folder, and no listing shows one), else a
+/// name Grimoire keeps for itself there (`done` in `import`, where imports file their originals).
+fn zone_refusal(new: &[u8]) -> String {
+    if new.len() >= 4 && new[new.len() - 4..].eq_ignore_ascii_case(b".sdr") {
+        return cformat!(tr("Name can't contain %s"), ".sdr");
+    }
+    tr("That name is taken.").to_string()
+}
+
+/// What the screen says of a storage write's refusal, and what follows it.
+fn refusal(e: FsWriteErr, act: Act, old: &[u8], new: &[u8]) -> (String, Then) {
+    let s = |t: &str| t.to_string();
+    match (e, act) {
+        (FsWriteErr::Changed, _) => (s(tr("File changed. Try again.")), Then::Relist),
+        // TRANSLATORS: a toast in Files: an import is working on this file or folder (or the folder it is in), so it
+        // is not renamed, moved to the trash or put back now. One line of about 1000 px at 44 px.
+        (FsWriteErr::Busy, _) => (s(tr("Importing now.")), Then::Nothing),
+        (FsWriteErr::Name(rule), _) => (name_refusal(rule, old, new), Then::Keyboard),
+        // TRANSLATORS: a toast over the rename keyboard in Files: another file or folder in this folder has the name
+        // typed (nothing is ever replaced), or Grimoire keeps that name for itself there. One line of about 1500 px
+        // at 44 px.
+        (FsWriteErr::Exists, Act::Rename) => (s(tr("That name is taken.")), Then::Keyboard),
+        (FsWriteErr::TooLong, Act::Rename) => (s(tr("Path too long.")), Then::Keyboard),
+        // (a place or a name the allow-list refuses: the typed name stays, to be changed)
+        (FsWriteErr::Refused, Act::Rename) => (s(tr("Couldn't rename.")), Then::Keyboard),
+        // TRANSLATORS: a toast in Files' Trash: the item could not go back, as every name it could take there (its
+        // own, then with " 2" up to " 99"), or its notebook's id, is taken. One line of about 1500 px at 44 px.
+        (FsWriteErr::Exists, Act::Restore) => (s(tr("Couldn't restore. Name taken.")), Then::Relist),
+        // TRANSLATORS: a toast in Files' Trash: the folder the item came from is not there any more. One line of
+        // about 1500 px at 44 px.
+        (FsWriteErr::FolderGone, _) => (s(tr("Couldn't restore. Folder gone.")), Then::Nothing),
+        // TRANSLATORS: a toast in Files: renaming the file or folder failed (grimoire.log says why). One line.
+        (_, Act::Rename) => (s(tr("Couldn't rename.")), Then::Relist),
+        // TRANSLATORS: a toast in Files: moving the file or folder to the trash failed (grimoire.log says why). One line.
+        (_, Act::Trash) => (s(tr("Couldn't move to trash.")), Then::Relist),
+        // TRANSLATORS: a toast in Files' Trash: the entry could not be put back (its record does not read, or the
+        // place it names is not one Grimoire writes in). One line.
+        (_, Act::Restore) => (s(tr("Couldn't restore.")), Then::Relist),
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -137,8 +293,8 @@ pub enum RowKind {
     Font,
     Other,
     Link,
-    /// an entry of Grimoire's trash, listed read only by the time in its name (a notebook by its name): never
-    /// entered, no card yet (Restore comes later, with the storage's writes)
+    /// an entry of Grimoire's trash, listed by the time in its name (a notebook by its name) with its size: never
+    /// entered; a file's, a folder's or a notebook's card offers Restore alone (2.2, issue #144), a page has none
     Trashed,
 }
 
@@ -242,6 +398,8 @@ pub struct Row {
     /// what the card's details say of the file beyond its size and date, once known without reading it here (a
     /// font's family, from its check's verdict): None until looked, "" for nothing
     detail: Option<String>,
+    /// a trash entry's bytes, and the root's Trash row's (the whole trash), once the trash's size walk has them
+    size: Option<u64>,
 }
 
 impl Row {
@@ -264,6 +422,7 @@ impl Row {
             dir: kind == RowKind::Dir,
             trash: None,
             detail: None,
+            size: None,
         }
     }
 }
@@ -279,6 +438,14 @@ struct Card {
     stat: Option<FsStat>,
     /// Files' Go to sheet (2.2) in place of a row's card
     goto: bool,
+    /// the Delete question in place of the row's card (issue #144): `Delete "name"?`, asked as the Library asks it
+    /// of a notebook, after the card's Delete and before anything is moved
+    confirm: bool,
+    /// the question: the card row whose tap opened it (the card's Delete, where the finger was; empty when no tap
+    /// did), which the question's Delete is never drawn under; and where the question was when the app was last
+    /// told it had been drawn (app_ask: it takes no answer before it has been shown), empty before
+    opener: Rect,
+    asked: Rect,
     rect: Rect,
     hits: HitList,
     /// the pointer went down inside it
@@ -293,6 +460,8 @@ pub struct Browser {
     pub mode: BrowseMode,
     title: &'static str,
     kinds: Vec<PickKind>,
+    /// the picture pick's folder (PickSpec.to)
+    to: Option<CopyTo>,
     /// the Library's settings for Files, as it opened (and as changed since)
     pub prefs: FilesPrefs,
     /// the rows were made from the listing (and, once ready, are the rows shown)
@@ -343,24 +512,61 @@ pub struct Browser {
     status_stamp: u32,
     /// how far the listing's entries of no known kind have been stat-ed (in slices, before the rows are built)
     stat_from: usize,
-    /// the lift of a contact that opened the card by a hold is not a tap on anything
+    /// the lift of a contact that opened the card by a hold is not a tap on anything; nor is a contact that came
+    /// down on the Delete question before it had been shown (app_asked_seen)
     swallow: bool,
     /// where each row on screen was last drawn (a status or count that arrives redraws only that row)
     row_rects: Vec<(usize, Rect)>,
     /// something to say to the user once drawn (a toast)
     pub toast: Option<&'static str>,
+    /// Files (2.2, issue #144): the rename keyboard, and the item it is up for
+    kb: Keyboard,
+    renaming: Option<Renaming>,
+    /// the trash's size walk (the root's Trash row, the Trash place's rows), begun when first wanted and read a slice
+    /// a tick; begun once (a trash that cannot be read gives no sizes), and again after each write
+    sizes: Option<TrashSizes>,
+    sizes_tried: bool,
+    /// the fonts Settings names (issue #144): Classic's own font and its Bold file, each a path under grimoire/fonts
+    /// as settings.ini keeps it ("" for none). The host's, noted before a card acts: Delete refuses such a file (and
+    /// a folder that holds one), and Rename takes the names along
+    pub fonts_named: [String; 2],
+    /// a rename inside grimoire/fonts just done: the item's path under that folder before and after, for the host
+    /// (`font_follows`: what its check found goes with it, and Settings has `fonts_named` as it is now)
+    font_renamed: Option<(String, String)>,
+    /// Covers (2.2, issue #145): Files' View setting (FILES_VIEW_NAMES's index: 1 Covers, the previews in a grid),
+    /// set by the host once Files is open (`set_view`); the previews of the files on screen; the screen's width as
+    /// last drawn (the grid's columns); since when a preview of the screen is being made, and whether the notice
+    /// says so
+    view: i32,
+    covers: CoverTiles,
+    aw: i32,
+    making_since: Option<u32>,
+    making_notice: bool,
+    /// what each tile on screen was drawn saying under its name (the Import place's status), by its row
+    tile_said: Vec<(usize, String)>,
+    /// when the tiles were last drawn for the panel (the screen, or the tiles that had changed): COVERS_REFRESH_MS
+    /// counts from it, by the tick's clock (a whole draw is timed by the tick after it: `tiles_drawn`)
+    tiles_at: u32,
+    tiles_drawn: bool,
+    /// the tiles the last whole draw found changed since they were drawn before (a card opened or closed over
+    /// them refreshes them with its own rect)
+    tiles_stale: Rect,
 }
+
+/// Covers: while a screen's previews are still coming, the tiles that changed are drawn together at most once this
+/// often (the staying notice's own interval, app.rs NOTICE_EVERY_MS); once the screen's set is complete, at once.
+pub const COVERS_REFRESH_MS: u32 = 2000;
 
 fn root_dir() -> Option<(String, String)> {
     let root = crate::pdfimport::storage_root()?;
     Some((root, store_root()))
 }
 
-fn is_pdf(n: &[u8]) -> bool {
+pub(crate) fn is_pdf(n: &[u8]) -> bool {
     n.len() > 4 && n[n.len() - 4..].eq_ignore_ascii_case(b".pdf")
 }
 
-fn is_font(n: &[u8]) -> bool {
+pub(crate) fn is_font(n: &[u8]) -> bool {
     [b".ttf".as_slice(), b".otf"].iter().any(|e| n.len() > e.len() && n[n.len() - e.len()..].eq_ignore_ascii_case(e))
 }
 
@@ -390,7 +596,7 @@ fn sort_rows(rows: &mut [Row], how: i32) {
     });
 }
 
-fn is_picture(n: &[u8]) -> bool {
+pub(crate) fn is_picture(n: &[u8]) -> bool {
     [b".png".as_slice(), b".jpg", b".jpeg", b".pgm"].iter().any(|e| n.len() > e.len() && n[n.len() - e.len()..].eq_ignore_ascii_case(e))
 }
 
@@ -444,10 +650,11 @@ fn root_listing(st: &FsStorage, pick: bool, clock: &mut dyn FnMut() -> u32) -> O
     Some(l)
 }
 
-// (how many times this thread asked for the Files card's free space: a test's)
+// (how many times this thread asked for the Files card's free space, and began reading a folder: the tests')
 #[cfg(test)]
 thread_local! {
     pub static FREE_LINE_READS: std::cell::Cell<u32> = const { std::cell::Cell::new(0) };
+    static FOLDER_READS: std::cell::Cell<u32> = const { std::cell::Cell::new(0) };
 }
 
 /// The storage's free space as Files' root says it, for the Library's Files card (2.2); None with no storage to
@@ -476,15 +683,23 @@ impl Browser {
     /// Opens the browser at its root, or at the spec's start when that opens, with the Library's settings for
     /// Files. False when there is no storage to browse.
     pub fn open(&mut self, spec: PickSpec, prefs: FilesPrefs) -> bool {
+        self.covers.forget();
         *self = Browser::default();
         self.prefs = prefs;
         let Some((root, grimoire)) = root_dir() else { return false };
+        // Files deletes into Grimoire's trash, which is cleaned over USB. A trash removed whole there is made again
+        // as Files opens, as every start makes it: without it each Delete (the Library's too) would fail until
+        // Grimoire started again. Made only where nothing stands (a link there is left alone, and refused later).
+        if spec.mode == BrowseMode::Place {
+            let _ = std::fs::create_dir(format!("{}/trash", grimoire.trim_end_matches('/')));
+        }
         let Ok(st) = FsStorage::open(&root, &grimoire) else { return false };
         self.free = st.free_bytes().zip(st.total_bytes());
         self.storage = Some(st);
         self.kinds = spec.kinds.to_vec();
         self.mode = spec.mode;
         self.title = spec.title;
+        self.to = spec.to;
         self.open = true;
         store_list(&mut self.books);
         self.show_root();
@@ -498,14 +713,33 @@ impl Browser {
     }
 
     /// The walk's pick flag: pick mode also refuses Grimoire's PDFs and trash, which Files shows read only.
+    /// Files' View setting (settings.ini files_view, FILES_VIEW_NAMES's index: 0 the list, 1 Covers), given by the
+    /// host once Files is open and read back when the View chip changes it (`BrowserResult::Prefs`). It is the
+    /// browser's own, not a field of `FilesPrefs`: a picker opened anywhere is a list, whatever it is given.
+    pub fn set_view(&mut self, view: i32) {
+        self.view = view.clamp(0, 1);
+        if self.view == 0 {
+            // (the list: the previews still queued are taken back; the one running ends by itself in seconds)
+            self.covers.forget();
+        }
+    }
+
+    pub fn view(&self) -> i32 {
+        self.view
+    }
+
     fn pick(&self) -> bool {
         self.mode == BrowseMode::Pick
     }
 
     pub fn close(&mut self) {
+        self.covers.forget();
         self.listing = None;
+        self.sizes = None;
         self.storage = None;
         self.card = None;
+        keyboard_close(&mut self.kb);
+        self.renaming = None;
         self.open = false;
         self.rows = Vec::new();
     }
@@ -523,9 +757,16 @@ impl Browser {
         StoragePath::new(format!("{}/{name}", self.storage.as_ref()?.grimoire_rel()?.to_string_lossy()).as_bytes())
     }
 
-    /// The root's places in this mode, in order.
+    /// Whether this browser offers what an import takes (a PDF, a folder of pictures): the picture pick does not.
+    fn imports(&self) -> bool {
+        self.kinds.contains(&PickKind::Pdf) || self.kinds.contains(&PickKind::PictureFolder)
+    }
+
+    /// The root's places in this mode, in order. (The picture pick has no Import: that place is the imports', its rows
+    /// their statuses and Look again.)
     fn mode_places(&self) -> &'static [PlaceKind] {
         match self.mode {
+            BrowseMode::Pick if !self.imports() => &[PlaceKind::Documents, PlaceKind::Downloads, PlaceKind::All],
             BrowseMode::Pick => &[PlaceKind::Import, PlaceKind::Documents, PlaceKind::Downloads, PlaceKind::All],
             BrowseMode::Place => &[
                 PlaceKind::Import,
@@ -564,6 +805,7 @@ impl Browser {
     }
 
     fn show_root(&mut self) {
+        self.covers.forget();
         self.at = None;
         self.place_root = None;
         self.listing = None;
@@ -602,11 +844,17 @@ impl Browser {
     fn enter(&mut self, p: StoragePath, from_root: bool, now: u32) -> bool {
         let pick = self.pick();
         let Some(st) = self.storage.as_ref() else { return false };
-        match FsListing::start(st, &p, pick) {
+        #[cfg(test)]
+        FOLDER_READS.with(|n| n.set(n.get() + 1));
+        // (the Trash place: its listing keeps the newest entries past the cap, so what was just deleted is listed)
+        let trash = !pick && self.place_path(PlaceKind::Trash).is_some_and(|t| t == p);
+        match if trash { FsListing::start_trash(st) } else { FsListing::start(st, &p, pick) } {
             Ok(l) => {
                 if from_root {
                     self.place_root = Some(p.clone());
                 }
+                // (a visit begins: what the last asked for is forgotten, its queued previews with it)
+                self.covers.forget();
                 self.listing = Some(l);
                 self.at = Some(p);
                 self.rows = Vec::new();
@@ -672,6 +920,7 @@ impl Browser {
         let place = self.mode == BrowseMode::Place;
         let show_all = place && self.prefs.show == 1;
         let pdfs = self.kinds.contains(&PickKind::Pdf);
+        let pictures = self.kinds.contains(&PickKind::Picture);
         let (Some(l), Some(at)) = (self.listing.as_mut(), self.at.clone()) else { return };
         self.capped = l.capped;
         self.hidden = l.hidden;
@@ -685,11 +934,12 @@ impl Browser {
                 odd += 1;
                 continue;
             };
-            // pick mode: folders and PDFs; Files: pictures and fonts too, and with Show all every file and link
+            // pick mode: folders and its kinds (PDFs, or pictures); Files: pictures and fonts too, and with Show all
+            // every file and link
             let kind = match e.kind {
                 FsKind::Dir => RowKind::Dir,
                 FsKind::File if pdfs && is_pdf(&e.name) => RowKind::Pdf,
-                FsKind::File if place && is_picture(&e.name) => RowKind::Picture,
+                FsKind::File if pictures && is_picture(&e.name) => RowKind::Picture,
                 FsKind::File if place && is_font(&e.name) => RowKind::Font,
                 FsKind::File if show_all => RowKind::Other,
                 FsKind::Link if show_all => RowKind::Link,
@@ -825,7 +1075,7 @@ impl Browser {
     /// rows before is dropped (its row number names another file now); an open card follows the file it was opened
     /// for to its row (and its screen), with what was read of it since, or closes when that file is not listed now.
     fn set_rows(&mut self, mut rows: Vec<Row>) {
-        if self.in_import_place() {
+        if self.in_import_place() && self.imports() {
             if let Some(at) = self.at.clone() {
                 rows.push(Row::new(RowKind::Look, "Look again", at));
             }
@@ -903,6 +1153,71 @@ impl Browser {
         self.build_rows();
     }
 
+    /// A card's act changed one entry of the folder shown (issue #144): the listing is told, and the rows are made
+    /// again from it as Sort and Show make them. Nothing is read again: reading and stat-ing a folder of thousands at
+    /// one go would hold the UI. `new` is the entry's new name, None when it is gone (into the trash, or back out of
+    /// it). The rows keep what they had read of their files, and the screen stays where it was. False when the
+    /// listing does not hold the entry (`reread` then reads the folder again, in its slices).
+    fn entry_changed(&mut self, old: &[u8], new: Option<&[u8]>) -> bool {
+        if !self.built {
+            return false;
+        }
+        let (Some(l), Some(at)) = (self.listing.as_mut(), self.at.clone()) else { return false };
+        let Some(i) = l.entries.iter().position(|e| e.name == old) else { return false };
+        match new {
+            Some(n) => l.entries[i].name = n.to_vec(),
+            // (no row is made of this kind: build_rows and the trash's rows pass over it; its stat is known, so it
+            // is never asked again)
+            None => l.entries[i].kind = FsKind::Other,
+        }
+        // a row is its entry in the listing (`ix`): what the others had read stays theirs
+        let had: std::collections::HashMap<usize, Row> = self.rows.iter().filter(|r| r.ix != usize::MAX && r.ix != i).map(|r| (r.ix, r.clone())).collect();
+        // (the rows on screen meanwhile, should another order's stats take a tick more: without the item, or with
+        // its new name)
+        match new.and_then(|n| Some((std::str::from_utf8(n).ok()?, at.join(n)?))) {
+            Some((name, path)) => {
+                if let Some(r) = self.rows.iter_mut().find(|r| r.ix == i) {
+                    r.name = name.to_string();
+                    r.path = path;
+                    r.detail = None;
+                }
+            }
+            None => self.rows.retain(|r| r.ix != i),
+        }
+        let (keep, said) = (self.screen, self.toast.take());
+        self.card = None;
+        self.rebuild();
+        if self.next.is_some() {
+            self.sort_step(FS_SLICE_MS);
+        }
+        for r in self.rows.iter_mut().chain(self.next.iter_mut().flatten()) {
+            if let Some(o) = had.get(&r.ix) {
+                let stat = r.stat.or(o.stat);
+                *r = Row { stat, ..o.clone() };
+            }
+        }
+        self.screen = keep;
+        self.toast = said;
+        true
+    }
+
+    /// The folder shown read again from the storage, in the listing's slices (a tick at a time, with its notice):
+    /// after an act that found the item changed, or that the listing could not follow. Never at one go. A folder
+    /// that is itself gone gives way to the nearest one above that opens, as Back finds it.
+    fn reread(&mut self) {
+        self.card = None;
+        match self.at.clone() {
+            Some(p) => {
+                let said = self.toast.take();
+                if !self.enter(p, false, now_ms()) {
+                    self.up(now_ms());
+                }
+                self.toast = said;
+            }
+            None => self.show_root(),
+        }
+    }
+
     fn in_import_place(&self) -> bool {
         self.at.as_ref().is_some_and(|p| self.import_path().is_some_and(|i| *p == i))
     }
@@ -962,9 +1277,44 @@ impl Browser {
     }
 
     fn per_page(&self, a_h: i32) -> usize {
+        if self.in_covers() {
+            let (cols, rows) = self.grid(a_h);
+            return (cols * rows) as usize;
+        }
         let top = u(190.0) + u(40.0) + self.band_h() + u(10.0);
         let room = a_h - top - u(170.0) - u(20.0);
         (room / u(150.0)).max(1) as usize
+    }
+
+    /// Whether the folder shown is in the Covers view (2.2): Files' View says so, inside a place, not the trash (which
+    /// keeps its own list). The picker's pick mode and Files' root are always lists.
+    fn in_covers(&self) -> bool {
+        self.mode == BrowseMode::Place && self.view == 1 && self.at.is_some() && !self.in_trash_place()
+    }
+
+    /// The Covers grid's area (where the rows go) for a screen `aw` x `a_h`: its top, width and height.
+    fn grid_room(&self, aw: i32, a_h: i32) -> (i32, i32, i32) {
+        let top = u(190.0) + u(40.0) + self.band_h() + u(10.0);
+        (top, aw - 2 * u(50.0), a_h - top - u(170.0) - u(20.0))
+    }
+
+    /// The Covers grid (columns, rows) for a screen `a_h` tall, as wide as last drawn (before the first draw, a page's
+    /// shape): tiles of at least 440 x 520 px, a 300 x 400 preview and its name under it.
+    fn grid(&self, a_h: i32) -> (i32, i32) {
+        let aw = if self.aw > 0 { self.aw } else { a_h * 3 / 4 };
+        let (_, w, h) = self.grid_room(aw, a_h);
+        let gap = u(30.0);
+        (((w + gap) / (u(440.0) + gap)).max(1), ((h + gap) / (u(520.0) + gap)).max(1))
+    }
+
+    /// The rect of the k-th tile of the screen in the Covers grid.
+    fn tile_rect(&self, k: usize, aw: i32, a_h: i32) -> Rect {
+        let (cols, rows) = self.grid(a_h);
+        let (top, w, h) = self.grid_room(aw, a_h);
+        let gap = u(30.0);
+        let (tw, th) = ((w - (cols - 1) * gap) / cols, (h - (rows - 1) * gap) / rows);
+        let (c, r) = (k as i32 % cols, k as i32 / cols);
+        Rect::new(u(50.0) + c * (tw + gap), top + r * (th + gap), tw, th)
     }
 
     pub fn pages(&self, a_h: i32) -> usize {
@@ -1015,6 +1365,9 @@ impl Browser {
             RowKind::Place => match r.place {
                 Some(PlaceKind::Import) => format!("{}", String::from_utf8_lossy(r.path.as_bytes())),
                 Some(PlaceKind::All) => String::new(),
+                // (the trash's size beside its path, once its walk is through: it is cleaned over USB; an empty
+                // trash has none to say, where a size label would round it up to "1 KB")
+                Some(PlaceKind::Trash) if r.size.is_some_and(|b| b > 0) => format!("{}, {}", r.path.to_string_lossy(), size_label(r.size.unwrap_or(0))),
                 _ => String::from_utf8_lossy(r.path.as_bytes()).into_owned(),
             },
             RowKind::Look | RowKind::ShowCard => String::new(),
@@ -1023,12 +1376,20 @@ impl Browser {
             // TRANSLATORS: Files with Show all: the second line of a row that is a link, which Grimoire never follows
             // (34 px, under the link's name).
             RowKind::Link => tr("link, not followed").to_string(),
-            RowKind::Trashed if r.when > 0 => {
-                let mut day = String::new();
-                format_date_short(r.when, &mut day, 64);
-                day
+            // (its size once the trash's walk has it, and the date in its name)
+            RowKind::Trashed => {
+                let mut parts = Vec::new();
+                // (an entry that holds no bytes, an empty page file or a name of another form, shows no size)
+                if let Some(b) = r.size.filter(|&b| b > 0) {
+                    parts.push(size_label(b));
+                }
+                if r.when > 0 {
+                    let mut day = String::new();
+                    format_date_short(r.when, &mut day, 64);
+                    parts.push(day);
+                }
+                parts.join(", ")
             }
-            RowKind::Trashed => String::new(),
             RowKind::Dir => match r.pictures {
                 Some(n) if n > 0 => {
                     // TRANSLATORS: a folder in the file picker that holds pictures; %d is how many (small text under its name).
@@ -1133,6 +1494,22 @@ impl Browser {
                 }
             }
         }
+        // Covers: the screen's PDFs, pictures and fonts looked up in the cache once their stats are in, and asked for
+        // when it has nothing, each its own job, in the listed order; never another screen's (one turned away from
+        // takes its queued jobs back)
+        if self.in_covers() {
+            let on: Vec<(StoragePath, FsStat)> = vis
+                .clone()
+                .filter_map(|i| {
+                    let r = &self.rows[i];
+                    matches!(r.kind, RowKind::Pdf | RowKind::Picture | RowKind::Font).then_some(())?;
+                    Some((r.path.clone(), r.stat?))
+                })
+                .collect();
+            self.covers.screen(&on);
+            // (read from the cache, or asked for, a slice a tick: a screen back from another is read again)
+            self.covers.step(FS_SLICE_MS);
+        }
         // Files: a trash entry's name, a font's family (from its check's verdict), one a tick
         for i in vis.clone() {
             if self.rows[i].kind == RowKind::Trashed && self.rows[i].title.is_none() {
@@ -1141,6 +1518,10 @@ impl Browser {
                 changed.push(i);
                 return changed;
             }
+        }
+        // Files: the trash's sizes, a slice a tick, for the root's Trash row and the Trash place's rows on screen
+        if self.sizes_step(vis.clone(), &mut changed) {
+            return changed;
         }
         // picture counts, one folder a tick
         if self.kinds.contains(&PickKind::PictureFolder) {
@@ -1396,14 +1777,43 @@ impl Browser {
         }
         let Some(r) = self.card_row(card) else { return (String::new(), Vec::new()) };
         let mut rows: Vec<(i32, i32, IconKind, String)> = Vec::new();
+        if card.confirm {
+            // the Delete question, in the Library's own words for a notebook: where it goes, or keep it
+            // TRANSLATORS: in Files too, the answers to the question before a file or folder of Grimoire's own folders
+            // is deleted: into the trash folder on the Kindle's storage (%s), from where Files' Trash can put it back,
+            // or keep it (1470 px at 44 px in bold).
+            rows.push((B_DELETE_YES, 0, IconKind::Trash, cformat!(tr("Delete (moves it to %s)"), self.trash_label().as_str())));
+            rows.push((B_CARD_CANCEL, 0, IconKind::Close, tr("Keep it").to_string()));
+            // TRANSLATORS: in Files too, the title of the question before a file or folder is deleted, with its name.
+            return (cformat!(tr("Delete \"%s\"?"), r.name.as_str()), rows);
+        }
         let details;
         // (Files: no import from Grimoire's PDF copies or trash, as the picker never offers them)
         let importable = self.pick() || self.storage.as_ref().is_some_and(|st| st.zone(&r.path, true) != FsZone::Refused);
         match r.kind {
+            // a picture (#146): its copies into Grimoire's templates and photos (the picture pick's one, first)
+            RowKind::Picture => {
+                details = if self.pick() { self.row_sub_plain(r) } else { self.card_details(r) };
+                for to in [CopyTo::Templates, CopyTo::Photos] {
+                    if importable && self.offers_copy(r, to) {
+                        let (id, icon, label) = if to == CopyTo::Templates {
+                            // TRANSLATORS: a picture's card in Files (and in the picker the Templates sheet's From a
+                            // file... opens): this copies it into grimoire/templates, to write on as paper (a row of
+                            // about 800 px at 44 px).
+                            (B_CARD_TEMPLATE, IconKind::Paper, tr("Use as template"))
+                        } else {
+                            // TRANSLATORS: a picture's card in Files (and in the picker the Photos sheet's From a
+                            // file... opens): this copies it into grimoire/photos, to be a page's own picture (a row
+                            // of about 800 px at 44 px).
+                            (B_CARD_PHOTO, IconKind::Image, tr("Use as photo"))
+                        };
+                        rows.push((id, 0, icon, label.to_string()));
+                    }
+                }
+            }
             // Files (2.2): what the file is, its size and date (and its family for a font of Grimoire's whose check
-            // passed); Use as template, Use as photo and Add to fonts wait for the copy job (with the From a file...
-            // tiles)
-            RowKind::Picture | RowKind::Font | RowKind::Other => {
+            // passed); Add to fonts comes with the Font sheet's Add a font...
+            RowKind::Font | RowKind::Other => {
                 details = self.card_details(r);
             }
             RowKind::Pdf => {
@@ -1420,6 +1830,16 @@ impl Browser {
                     rows.push((B_CARD_IMPORT, 0, IconKind::Download, tr("Import as notebook").to_string()));
                 }
             }
+            // a trash entry's (2.2, issue #144): what it is, its size and date, and Restore alone (no Empty, no delete:
+            // the trash is cleaned over USB)
+            RowKind::Trashed => {
+                let sub = self.row_sub(r);
+                let label = self.row_label(r);
+                details = if sub.is_empty() { label } else { format!("{label}, {sub}") };
+                // TRANSLATORS: a trash entry's card in Files: puts the file, folder or notebook back where it was (a row
+                // of about 800 px at 44 px).
+                rows.push((B_CARD_RESTORE, 0, IconKind::Undo, tr("Restore").to_string()));
+            }
             _ => {
                 details = r.name.clone();
                 rows.push((B_CARD_OPEN, 0, IconKind::Folder, tr("Open").to_string()));
@@ -1431,8 +1851,27 @@ impl Browser {
                 }
             }
         }
+        // inside Grimoire's folders for the user's files (2.2, issue #144): Rename, and Delete into the trash
+        if self.writable(r) {
+            rows.push((B_CARD_RENAME, 0, IconKind::Rename, tr("Rename").to_string()));
+            // (it asks first, as the Library's Delete does: `Delete "name"?`, above)
+            // TRANSLATORS: in Files too, a card's row for a file or folder of Grimoire's own folders: it asks, then
+            // moves it to the trash (a row of about 800 px at 44 px).
+            rows.push((B_CARD_TRASH, 0, IconKind::Trash, tr("Delete").to_string()));
+        }
         rows.push((B_CARD_CANCEL, 0, IconKind::Close, tr("Cancel").to_string()));
         (details, rows)
+    }
+
+    /// Whether a picture's card offers its copy into `to` (#146): in the picture pick only the pick's own, and never
+    /// into the folder the picture is in already (there it is a template, or a photo, as it is).
+    fn offers_copy(&self, r: &Row, to: CopyTo) -> bool {
+        let place = if to == CopyTo::Templates { PlaceKind::Templates } else { PlaceKind::Photos };
+        let there = match (r.path.split_last(), self.place_path(place)) {
+            (Some((dir, _)), Some(p)) => dir.as_bytes().eq_ignore_ascii_case(p.as_bytes()),
+            _ => false,
+        };
+        self.to.is_none_or(|t| t == to) && !there
     }
 
     /// A Files card's details: what the file is, then its size and date, and what is known of it without reading
@@ -1500,15 +1939,307 @@ impl Browser {
         format!("{}, {}", size_label(s.size), day)
     }
 
-    /// Checks the file a card was opened for again before acting on it ("File changed. Try again."): its stat now
-    /// against the one it had then (false once its row is not listed).
+    /// Checks the file or folder a card was opened for again before acting on it ("File changed. Try again."): by
+    /// its path and its identity. A file: its device, inode, size and time now against its stat then. A folder: the
+    /// same folder (device and inode), not just some folder at that path (its size and time change with what is put
+    /// in it). False once its row is not listed, or when its stat then is not known.
     fn unchanged(&self, c: &Card) -> bool {
-        let (Some(st), Some(r)) = (self.storage.as_ref(), self.card_row(c)) else { return false };
-        match (c.stat, st.stat(&c.path, self.pick())) {
-            (Some(was), Ok(now)) if r.kind != RowKind::Dir => was.same(&now),
-            (_, Ok(now)) => now.mode & libc::S_IFMT as u32 == libc::S_IFDIR as u32,
-            _ => false,
+        let (Some(st), Some(_)) = (self.storage.as_ref(), self.card_row(c)) else { return false };
+        let (Some(was), Ok(now)) = (c.stat, st.stat(&c.path, self.pick())) else { return false };
+        let dir = |s: &FsStat| s.mode & libc::S_IFMT as u32 == libc::S_IFDIR as u32;
+        if dir(&was) || dir(&now) {
+            return dir(&was) && dir(&now) && (was.dev, was.ino) == (now.dev, now.ino);
         }
+        was.same(&now)
+    }
+
+    /// Which part of the font `rel` (a path under grimoire/fonts as Settings names it: `Mine.ttf`, `Inter/Mine.ttf`)
+    /// the item at `p` is: 0 its first name (the file itself, or the folder it is in), 1 the file in that folder.
+    /// None when the item is neither. By identity (device and inode), as a card knows its item: on a storage that
+    /// folds case the setting may spell the name another way, and on one that does not, a name that differs only
+    /// by case is another file.
+    fn font_part(&self, p: &StoragePath, stat: &FsStat, rel: &str) -> Option<usize> {
+        let (st, fonts) = (self.storage.as_ref()?, self.place_path(PlaceKind::Fonts)?);
+        if rel.is_empty() || !path_under(p, &fonts) {
+            return None;
+        }
+        let mut at = fonts;
+        for (i, name) in rel.split('/').enumerate() {
+            at = at.join(name.as_bytes())?;
+            if st.stat(&at, false).is_ok_and(|s| (s.dev, s.ino) == (stat.dev, stat.ino)) {
+                return Some(i);
+            }
+        }
+        None
+    }
+
+    /// Whether the item is a font Settings names (Classic's own font, or its Bold file), or the folder that holds
+    /// one: not deleted ("Font in use."), since Settings would be left naming a file that is gone.
+    fn font_in_use(&self, p: &StoragePath, stat: &FsStat) -> bool {
+        self.fonts_named.iter().any(|rel| self.font_part(p, stat, rel).is_some())
+    }
+
+    /// An item's path under grimoire/fonts (`Inter/Mine.ttf`), None for one that is not inside that folder.
+    fn font_rel(&self, p: &StoragePath) -> Option<String> {
+        let fonts = self.place_path(PlaceKind::Fonts)?;
+        let rest = p.as_bytes().get(fonts.as_bytes().len() + 1..).filter(|r| !r.is_empty() && path_under(p, &fonts))?;
+        String::from_utf8(rest.to_vec()).ok()
+    }
+
+    /// Whether a row's card offers Rename and Delete: Files only, a file or folder inside Grimoire's folders for the
+    /// user's files (fsview's allow-list: what is inside import, templates, photos and fonts; never elsewhere).
+    fn writable(&self, r: &Row) -> bool {
+        self.mode == BrowseMode::Place
+            && matches!(r.kind, RowKind::Pdf | RowKind::Dir | RowKind::Picture | RowKind::Font | RowKind::Other)
+            && self.storage.as_ref().is_some_and(|st| st.can_write(&r.path))
+    }
+
+    /// Whether a row is a trash entry Restore can put back: a file's or folder's (`files-...`) or a notebook's. A
+    /// page, and a name of no known form, are listed only.
+    fn restorable(r: &Row) -> bool {
+        r.kind == RowKind::Trashed && r.trash.as_ref().is_some_and(|t| matches!(t.kind, TrashKind::File | TrashKind::Notebook))
+    }
+
+    /// The trash, as the Delete row and its toast name it (Grimoire's own folder's, relative to the storage).
+    fn trash_label(&self) -> String {
+        self.place_path(PlaceKind::Trash).map_or_else(|| "grimoire/trash".to_string(), |p| p.to_string_lossy())
+    }
+
+    /// The open card's item, checked again before an act: its path and its stat then. Err: what the toast says, and
+    /// the folder is read again.
+    fn card_item(&self) -> Result<(StoragePath, FsStat), (String, Then)> {
+        let changed = || (tr("File changed. Try again.").to_string(), Then::Relist);
+        let c = self.card.as_ref().filter(|c| !c.goto).ok_or_else(changed)?;
+        if !self.unchanged(c) {
+            return Err(changed());
+        }
+        Ok((c.path.clone(), c.stat.ok_or_else(changed)?))
+    }
+
+    /// Rename on the open card (the tests' as the row's): the item checked again, not held by an import, and then
+    /// the keyboard's item from now on. A name the keyboard cannot show exactly as it is is not offered to it, and
+    /// the toast says why: one too long for it to hold (its end would be cut away), or one with a control character
+    /// (which it leaves out), so a Done can never rename a file to a name nobody typed. Err: what the toast says,
+    /// and what follows.
+    fn rename_begin(&mut self) -> Result<Vec<u8>, (String, Then)> {
+        let (path, stat) = self.card_item()?;
+        let st = self.storage.as_ref().ok_or((tr("Couldn't rename.").to_string(), Then::Nothing))?;
+        if st.busy(&path) {
+            return Err((tr("Importing now.").to_string(), Then::Nothing));
+        }
+        let name = path.split_last().map(|(_, n)| n.to_vec()).unwrap_or_default();
+        if name.len() >= KB_TEXT_MAX {
+            return Err((name_refusal(NameRule::TooLong, &name, &name), Then::Nothing));
+        }
+        let mut shown = Keyboard::default();
+        keyboard_open(&mut shown, "", &name);
+        if shown.text.as_bytes() != name.as_slice() {
+            let why = if control_in(&name).is_some() { name_refusal(NameRule::Control, &name, &name) } else { tr("Couldn't rename.").to_string() };
+            return Err((why, Then::Nothing));
+        }
+        let dir = stat.mode & libc::S_IFMT as u32 == libc::S_IFDIR as u32;
+        self.renaming = Some(Renaming { path, stat, dir });
+        Ok(name)
+    }
+
+    /// The keyboard's name `new` for the item it is up for. The name it has (Done with nothing typed) renames
+    /// nothing and checks nothing: None. Else the name rules first (their words), then the allow-list for the new
+    /// name (its words: the keyboard stays), then fsview's rename, which never replaces and checks the item and
+    /// the imports again: its new path, and its row under the new name (`entry_changed`).
+    pub fn rename_to(&mut self, new: &[u8]) -> Result<Option<StoragePath>, (String, Then)> {
+        let rn = self.renaming.clone().ok_or((tr("Couldn't rename.").to_string(), Then::Nothing))?;
+        let (folder, old) = rn.path.split_last().map(|(f, n)| (f, n.to_vec())).unwrap_or_default();
+        if new == old.as_slice() {
+            return Ok(None);
+        }
+        if let Err(rule) = fsview_name_check(&old, new, rn.dir) {
+            return Err((name_refusal(rule, &old, new), Then::Keyboard));
+        }
+        let st = self.storage.as_ref().ok_or((tr("Couldn't rename.").to_string(), Then::Nothing))?;
+        if folder.join(new).is_some_and(|to| !st.can_write(&to)) {
+            return Err((zone_refusal(new), Then::Keyboard));
+        }
+        // a font Settings names (or the folder it is in) takes its setting along: the names as they will be, which
+        // Settings must be able to keep (a path too long for it is refused before anything is renamed)
+        let mut named = self.fonts_named.clone();
+        for rel in named.iter_mut() {
+            let Some(part) = self.font_part(&rn.path, &rn.stat, rel) else { continue };
+            let mut names: Vec<&str> = rel.split('/').collect();
+            let Ok(name) = std::str::from_utf8(new) else { continue };
+            names[part] = name;
+            let moved = names.join("/");
+            if !crate::userfonts::userfont_rel_ok(&moved) {
+                return Err((name_refusal(NameRule::TooLong, &old, new), Then::Keyboard));
+            }
+            *rel = moved;
+        }
+        let to = st.rename(&rn.path, &rn.stat, new).map_err(|e| refusal(e, Act::Rename, &old, new))?;
+        self.fonts_named = named;
+        self.font_renamed = self.font_rel(&rn.path).zip(self.font_rel(&to));
+        if !self.entry_changed(&old, Some(new)) {
+            self.reread();
+        }
+        Ok(Some(to))
+    }
+
+    /// The host's part of a rename inside grimoire/fonts (`font_renamed`): what the font check found of the file
+    /// (of a folder's files) goes to its new name, so that it is not checked again; and when Settings named it,
+    /// settings.ini has the new path (`fonts_named`) and the font is applied from it, still drawing.
+    fn font_follows(&mut self, a: &mut App) {
+        let Some((old, new)) = self.font_renamed.take() else { return };
+        crate::userfonts::userfonts_renamed(&old, &new);
+        let [font, bold] = &self.fonts_named;
+        if a.settings.font_file.as_str() != font || a.settings.font_bold.as_str() != bold {
+            a.settings.font_file.set(font);
+            a.settings.font_bold.set(bold);
+            settings_save(&a.settings);
+            crate::userfonts::userfonts_apply(a);
+        }
+    }
+
+    /// The fonts Settings names, noted before a card or the rename keyboard acts (`fonts_named`).
+    fn note_fonts(&mut self, a: &App) {
+        self.fonts_named = [a.settings.font_file.as_str().to_string(), a.settings.font_bold.as_str().to_string()];
+    }
+
+    /// Delete on the open card: the item checked again and not held; then the card asks, as the Library asks before a
+    /// notebook goes (`Delete "name"?`, with the Library's two answers). Nothing is moved until its Delete is tapped
+    /// (`trash_card`). Err: what the toast says, and what follows.
+    fn delete_ask(&mut self) -> Result<(), (String, Then)> {
+        let (path, stat) = self.card_item()?;
+        let st = self.storage.as_ref().ok_or((tr("Couldn't move to trash.").to_string(), Then::Nothing))?;
+        if st.busy(&path) {
+            return Err((tr("Importing now.").to_string(), Then::Nothing));
+        }
+        if self.font_in_use(&path, &stat) {
+            return Err((Self::in_use_words(), Then::Nothing));
+        }
+        if let Some(c) = self.card.as_mut() {
+            c.confirm = true;
+        }
+        Ok(())
+    }
+
+    fn in_use_words() -> String {
+        // TRANSLATORS: a toast in Files: this font file (or a folder that holds it) is not deleted, because Settings
+        // has it as the font Grimoire is read in, or as that font's Bold file (pick another font in Settings > Font
+        // first). One line of about 1000 px at 44 px.
+        tr("Font in use.").to_string()
+    }
+
+    /// The Delete question's title for a sheet whose title has `w` px: `Delete "name"?`, the name cut with "..."
+    /// until the whole fits in either face a sheet's title is drawn in (a file's name can be 255 bytes).
+    fn delete_title(name: &str, w: i32) -> String {
+        let title = |n: &str| cformat!(tr("Delete \"%s\"?"), n);
+        let wide = |t: &str| font_measure(FontFace::Title, ui_title_size(), t).max(font_measure(FontFace::Bold, ui_title_size(), t));
+        let mut t = title(name);
+        let mut n = name.chars().count();
+        while n > 1 && wide(&t) > w {
+            n -= 1;
+            t = title(&format!("{}...", name.chars().take(n).collect::<String>()));
+        }
+        t
+    }
+
+    /// The Delete question's Delete: the item checked again, then into the trash with its record (fsview's trash,
+    /// which checks the item and the imports again), and its row gone from the rows (`entry_changed`). The toast:
+    /// where it went.
+    fn trash_card(&mut self) -> Result<String, (String, Then)> {
+        let (path, stat) = self.card_item()?;
+        // (asked again here: the question may have stood a while, and nothing of a font in use is ever moved)
+        if self.font_in_use(&path, &stat) {
+            return Err((Self::in_use_words(), Then::Nothing));
+        }
+        let st = self.storage.as_ref().ok_or((tr("Couldn't move to trash.").to_string(), Then::Nothing))?;
+        st.trash(&path, &stat).map_err(|e| refusal(e, Act::Trash, b"", b""))?;
+        self.sizes_again();
+        if !path.split_last().is_some_and(|(_, name)| self.entry_changed(name, None)) {
+            self.reread();
+        }
+        // TRANSLATORS: a toast in Files: the file or folder went to the trash folder on the Kindle's storage (%s).
+        Ok(cformat!(tr("Moved to %s"), self.trash_label().as_str()))
+    }
+
+    /// Restore on the open card of a trash entry: the entry checked again, then put back by fsview's restore (a file
+    /// or folder where its record says, " 2" when the name is taken; a notebook to the Library, given " 2" there by
+    /// the store when its name is taken); its row is gone from the Trash place's rows (`entry_changed`). The toast
+    /// (none when the entry held nothing to put back), and the notebook put back, for the host.
+    fn restore_card(&mut self) -> Result<(Option<String>, Option<String>), (String, Then)> {
+        let (path, _) = self.card_item()?;
+        let entry = path.split_last().map(|(_, n)| n.to_vec()).unwrap_or_default();
+        let st = self.storage.as_ref().ok_or((tr("Couldn't restore.").to_string(), Then::Nothing))?;
+        let done = st.restore(&entry).map_err(|e| refusal(e, Act::Restore, b"", b""))?;
+        self.sizes_again();
+        if !self.entry_changed(&entry, None) {
+            self.reread();
+        }
+        // TRANSLATORS: a toast in Files' Trash: the item is back; %s is where (a folder on the Kindle's storage, such
+        // as grimoire/photos, or the Library folder of a notebook). One line.
+        let back_to = |w: &str| cformat!(tr("Restored to %s."), w);
+        Ok(match done {
+            Restored::File(p) => (Some(back_to(&p.split_last().map_or_else(String::new, |(f, _)| f.to_string_lossy()))), None),
+            Restored::Notebook(id) => {
+                // (the store reads the Library once for the names taken, and that is the list here from now on)
+                let mut nb = NotebookInfo::default();
+                let rc = store_restored(&id, &mut nb, &mut self.books);
+                self.book_keys = None;
+                match rc {
+                    -1 => qlog!("files: notebook %s is back, its notebook.ini did not read", &id),
+                    -2 => qlog!("files: notebook %s is back under a name another notebook of its folder has: the new name could not be written", &id),
+                    _ => {}
+                }
+                // (a page in the trash is listed by its notebook's name, which is known again now)
+                for r in self.rows.iter_mut().filter(|r| r.trash.as_ref().is_some_and(|t| t.kind == TrashKind::Page)) {
+                    r.title = None;
+                }
+                // (one whose notebook.ini did not read has no Library folder to name, and the Library does not list
+                // it: nothing is claimed)
+                let folder = if nb.folder.is_empty() { tr("Notebooks").to_string() } else { nb.folder.as_str().to_string() };
+                ((rc != -1).then(|| back_to(&folder)), Some(id))
+            }
+            Restored::Nothing => (None, None),
+        })
+    }
+
+    /// The trash's sizes are read again (a write changed the trash).
+    fn sizes_again(&mut self) {
+        self.sizes = None;
+        self.sizes_tried = false;
+    }
+
+    /// Whether the screen shows sizes of the trash: Files' root with its Trash row, or the Trash place.
+    fn wants_sizes(&self) -> bool {
+        self.mode == BrowseMode::Place && ((self.at.is_none() && self.rows.iter().any(|r| r.place == Some(PlaceKind::Trash))) || self.in_trash_place())
+    }
+
+    /// One slice of the trash's size walk, and the rows in `vis` whose size it has now (into `changed`). True when it
+    /// read (the tick's slice is spent).
+    fn sizes_step(&mut self, vis: std::ops::Range<usize>, changed: &mut Vec<usize>) -> bool {
+        if !self.wants_sizes() {
+            return false;
+        }
+        if self.sizes.is_none() && !self.sizes_tried {
+            self.sizes_tried = true;
+            self.sizes = self.storage.as_ref().and_then(|st| st.trash_sizes().ok());
+        }
+        let Some(s) = self.sizes.as_mut() else { return false };
+        let read = !s.done;
+        if read {
+            s.step(FS_SLICE_MS);
+        }
+        for i in vis {
+            let r = &self.rows[i];
+            let size = match (r.kind, r.place) {
+                (RowKind::Trashed, _) if r.size.is_none() => s.size_of(r.name.as_bytes()),
+                (RowKind::Place, Some(PlaceKind::Trash)) if r.size.is_none() && s.done => Some(s.total),
+                _ => None,
+            };
+            if size.is_some() {
+                self.rows[i].size = size;
+                changed.push(i);
+            }
+        }
+        read
     }
 
     // ---- drawing ----
@@ -1519,6 +2250,7 @@ impl Browser {
         self.row_rects.clear();
         self.drawn.clear();
         let (aw, ah) = (a.w, a.h);
+        self.aw = aw;
         let per = self.per_page(ah);
         self.per_last = per;
         self.screen = self.screen.min(self.rows.len().saturating_sub(1) / per);
@@ -1576,17 +2308,31 @@ impl Browser {
             // TRANSLATORS: a folder in the file picker with nothing in it a PDF import can use (one line, 44 px, centred).
             font_draw_centered(c, FontFace::Bold, ui_text_size(), Rect::new(m, y0 + u(120.0), aw - 2 * m, u(100.0)), tr("Nothing here to use."), 0);
         }
+        let covers = self.in_covers();
+        // (Covers: what the tiles were drawn showing before this draw; the ones that changed are its stale ones)
+        let before = (self.covers.take_shown(), std::mem::take(&mut self.tile_said));
+        self.tiles_stale = RECT_EMPTY;
+        self.tiles_drawn = true;
         for k in 0..per {
             let i = first + k;
             if i >= self.rows.len() {
                 break;
             }
-            let r = Rect::new(m, y0 + k as i32 * u(150.0), aw - 2 * m, u(150.0) - u(12.0));
-            self.draw_row(&mut a.screen, r, i);
+            // (Covers: a tile of the grid, tapped and held as a row is; no "..." of its own)
+            let r = if covers { self.tile_rect(k, aw, ah) } else { Rect::new(m, y0 + k as i32 * u(150.0), aw - 2 * m, u(150.0) - u(12.0)) };
+            if covers {
+                self.draw_tile(&mut a.screen, r, i);
+                let was = before.0.iter().find(|(p, _)| *p == self.rows[i].path).map(|(_, show)| (*show, before.1.iter().find(|(j, _)| *j == i).map_or("", |(_, t)| t.as_str())));
+                if was.is_some_and(|w| w != (self.tile_show(i), self.tile_says(i).as_str())) {
+                    self.tiles_stale = rect_union(self.tiles_stale, rect_inflate(r, u(4.0)));
+                }
+            } else {
+                self.draw_row(&mut a.screen, r, i);
+            }
             self.row_rects.push((i, r));
             self.drawn.push(self.rows[i].name.clone());
             hits_add(&mut self.hits, r, B_ROW, i as i32);
-            if self.has_card(i) {
+            if !covers && self.has_card(i) {
                 let mr = Rect::new(r.x + r.w - u(130.0), r.y + u(14.0), u(110.0), r.h - u(28.0));
                 hits_add(&mut self.hits, mr, B_MORE, i as i32);
             }
@@ -1613,6 +2359,16 @@ impl Browser {
             self.draw_card(a);
         }
         a.toast_floor = 0;
+        // the rename keyboard over it all (2.2, issue #144); a toast stays above its keys
+        if self.kb.open {
+            keyboard_draw(&mut self.kb, &mut a.screen, Rect::new(0, 0, aw, ah));
+            a.toast_floor = self.kb.area.y;
+        }
+    }
+
+    /// The rename keyboard's area while it is up (where a hardware key's input goes, app_type_text), None otherwise.
+    pub fn keyboard_area(&self) -> Option<Rect> {
+        (self.open && self.kb.open && !rect_is_empty(self.kb.area)).then_some(self.kb.area)
     }
 
     /// Files' path bar (2.2): the path's parts on the left, each a target the bar's height (a tap on one opens it;
@@ -1640,9 +2396,11 @@ impl Browser {
         } else {
             let show = chip(c, band.x + band.w, IconKind::Eye, self.show_label());
             let sort = chip(c, show.x - u(20.0), IconKind::Sort, self.sort_label());
+            let view = chip(c, sort.x - u(20.0), IconKind::Grid, self.view_label());
             hits_add(&mut self.hits, show, B_SHOW, 0);
             hits_add(&mut self.hits, sort, B_SORT, 0);
-            sort.x - u(30.0)
+            hits_add(&mut self.hits, view, B_VIEW, 0);
+            view.x - u(30.0)
         };
         // the path's parts in the room left
         let room = Rect::new(band.x, band.y, room_end - band.x, band.h);
@@ -1715,6 +2473,19 @@ impl Browser {
         }
     }
 
+    /// The View chip's word: the view in use (a tap takes the other).
+    fn view_label(&self) -> &'static str {
+        if self.view == 1 {
+            // TRANSLATORS: Files' View chip on its path bar while the files show as a grid of their previews (one word
+            // of about 220 px at 34 px in bold; a tap shows them as a list).
+            tr("Covers")
+        } else {
+            // TRANSLATORS: Files' View chip on its path bar while the files show as a list of rows (one word of about
+            // 220 px at 34 px in bold; a tap shows a grid of their previews). Also the Graph's List tab.
+            tr("List")
+        }
+    }
+
     fn show_label(&self) -> &'static str {
         if self.prefs.show == 1 {
             // TRANSLATORS: Files' Show chip on its path bar: every file is listed (others greyed, never opened), at
@@ -1728,14 +2499,12 @@ impl Browser {
     }
 
     fn has_card(&self, i: usize) -> bool {
-        self.rows.get(i).is_some_and(|r| matches!(r.kind, RowKind::Pdf | RowKind::Dir | RowKind::Picture | RowKind::Font | RowKind::Other))
+        self.rows.get(i).is_some_and(|r| matches!(r.kind, RowKind::Pdf | RowKind::Dir | RowKind::Picture | RowKind::Font | RowKind::Other) || Self::restorable(r))
     }
 
-    fn draw_row(&self, c: &mut Canvas, r: Rect, i: usize) {
-        let row = &self.rows[i];
-        canvas_fill(c, Rect::new(r.x - u(4.0), r.y - u(4.0), r.w + u(8.0), r.h + u(8.0)), 255);
-        ui_frame(c, r, u(12.0), 0, false, u(3.0));
-        let icon = match (row.kind, row.place) {
+    /// A row's icon (a list row's, a Covers tile's without a preview).
+    fn row_icon(row: &Row) -> IconKind {
+        match (row.kind, row.place) {
             (RowKind::Place, Some(PlaceKind::Import)) => IconKind::Download,
             (RowKind::Place, Some(PlaceKind::Documents)) => IconKind::Folder,
             (RowKind::Place, Some(PlaceKind::Downloads)) => IconKind::Download,
@@ -1756,10 +2525,16 @@ impl Browser {
             (RowKind::Trashed, _) if row.trash.as_ref().is_some_and(|t| t.kind == TrashKind::File) => IconKind::FileOther,
             (RowKind::Trashed, _) if row.dir => IconKind::Notebook,
             (RowKind::Trashed, _) => IconKind::Paper,
-        };
+        }
+    }
+
+    fn draw_row(&self, c: &mut Canvas, r: Rect, i: usize) {
+        let row = &self.rows[i];
+        canvas_fill(c, Rect::new(r.x - u(4.0), r.y - u(4.0), r.w + u(8.0), r.h + u(8.0)), 255);
+        ui_frame(c, r, u(12.0), 0, false, u(3.0));
         // (a file Grimoire cannot use, and a link, greyed: Show all lists them so the folder is seen whole)
         let ink = if matches!(row.kind, RowKind::Other | RowKind::Link) { 110 } else { 0 };
-        ui_icon(c, icon, Rect::new(r.x + u(20.0), r.y + u(20.0), u(90.0), r.h - u(40.0)), ink);
+        ui_icon(c, Self::row_icon(row), Rect::new(r.x + u(20.0), r.y + u(20.0), u(90.0), r.h - u(40.0)), ink);
         let right = if self.has_card(i) { u(150.0) } else { u(30.0) };
         let tx = r.x + u(140.0);
         let tw = r.w - u(140.0) - right;
@@ -1799,13 +2574,93 @@ impl Browser {
         }
     }
 
-    /// Row `i` again, alone (a count, status or key arrived): the rect to refresh, empty when it is not on screen.
+    /// What row `i`'s Covers tile shows now: a PDF's, a picture's or a font's preview once it is there, the hourglass
+    /// until then (its stat still to come, its file to be looked up, its job queued or running), else its kind's icon
+    /// (a folder, any other file, a file gone, one whose job ended without a preview).
+    fn tile_show(&self, i: usize) -> TileShow {
+        let r = &self.rows[i];
+        if !matches!(r.kind, RowKind::Pdf | RowKind::Picture | RowKind::Font) {
+            return TileShow::Icon;
+        }
+        match r.stat {
+            Some(s) => self.covers.show(&r.path, &s),
+            None if !r.stat_tried && r.ix != usize::MAX => TileShow::Loading,
+            None => TileShow::Icon,
+        }
+    }
+
+    /// What row `i`'s Covers tile says under its name: the Import place's status, as the list's row says it under
+    /// its name (waiting, the page an import is on, failed, imported); nothing anywhere else.
+    fn tile_says(&self, i: usize) -> String {
+        let r = &self.rows[i];
+        if matches!(r.kind, RowKind::Pdf | RowKind::Dir) && self.under_import() && r.status != RowStatus::None {
+            self.status_text(&r.status)
+        } else {
+            String::new()
+        }
+    }
+
+    /// A Covers tile (2.2): the file's preview in a box of its shape (at most its size, so a preview is drawn pixel for
+    /// pixel), the hourglass while it is to come, else the kind's icon; its name under it, and under that what the
+    /// list's row says of an import.
+    fn draw_tile(&mut self, c: &mut Canvas, r: Rect, i: usize) {
+        canvas_fill(c, rect_inflate(r, u(4.0)), 255);
+        let name_h = u(70.0);
+        let pic = Rect::new(r.x, r.y, r.w, r.h - name_h - u(10.0));
+        let s = (pic.w as f32 / PREVIEW_W as f32).min(pic.h as f32 / PREVIEW_H as f32).min(1.0);
+        let (bw, bh) = ((PREVIEW_W as f32 * s) as i32, (PREVIEW_H as f32 * s) as i32);
+        // (the box and its name together, in the middle of the tile)
+        let bx = Rect::new(pic.x + (pic.w - bw) / 2, pic.y + ((pic.h - bh) / 2).max(0), bw, bh);
+        let show = self.tile_show(i);
+        let says = self.tile_says(i);
+        let row = &self.rows[i];
+        let ink = if matches!(row.kind, RowKind::Other | RowKind::Link) { 110 } else { 0 };
+        match show {
+            TileShow::Preview => {
+                if let Some(p) = row.stat.and_then(|st| self.covers.preview(&row.path, &st)) {
+                    canvas_blit_fit(c, p, bx);
+                }
+            }
+            TileShow::Loading => ui_tile_loading(c, bx),
+            TileShow::Icon => {
+                let s = bx.w.min(bx.h) / 2;
+                ui_icon(c, Self::row_icon(row), Rect::new(bx.x + (bx.w - s) / 2, bx.y + (bx.h - s) / 2, s, s), ink);
+            }
+        }
+        ui_frame(c, bx, u(8.0), 0, false, u(3.0));
+        // the name right under its box: centred on it when it fits the tile, else cut as names are
+        let label = self.row_label(row);
+        let lw = font_measure(FontFace::Bold, ui_small_size(), &label);
+        let lx = if lw <= r.w { (bx.x + bx.w / 2 - lw / 2).clamp(r.x, r.x + r.w - lw) } else { r.x };
+        let name = Rect::new(lx, bx.y + bx.h + u(10.0), lw.min(r.w), name_h);
+        font_draw_left_name(c, FontFace::Bold, ui_small_size(), name, &label, ink);
+        // (the status in what is left of the tile under the name, on two lines at most)
+        let under = Rect::new(r.x, name.y + name.h, r.w, r.y + r.h - name.y - name.h);
+        if !says.is_empty() && under.h > 0 {
+            ui_text(c, FontFace::Regular, ui_small_size(), ui_small_size() * 0.8, under, &says, 2, false, ink);
+        }
+        let p = row.path.clone();
+        self.covers.note(&p, show);
+        self.tile_said.retain(|(j, _)| *j != i);
+        self.tile_said.push((i, says));
+    }
+
+    /// Row `i` again, alone (a count, status or key arrived; in Covers, its preview): the rect to refresh, empty when
+    /// it is not on screen.
     pub fn redraw_row(&mut self, a: &mut App, i: usize) -> Rect {
         let Some(&(_, r)) = self.row_rects.iter().find(|(k, _)| *k == i) else { return RECT_EMPTY };
-        if self.card.is_some() {
-            return RECT_EMPTY; // (the card covers it: the next draw has it right)
+        if self.card.is_some() || self.kb.open {
+            return RECT_EMPTY; // (the card or the keyboard covers it: the next draw has it right)
         }
-        self.draw_row(&mut a.screen, r, i);
+        if self.in_covers() {
+            self.draw_tile(&mut a.screen, r, i);
+        } else {
+            self.draw_row(&mut a.screen, r, i);
+        }
+        // (a press under way on it keeps its pressed look, so the lift that takes the look off leaves it plain)
+        if let Some(p) = self.pressed_rect.filter(|p| rect_overlaps(*p, r)) {
+            canvas_invert(&mut a.screen, p);
+        }
         rect_inflate(r, u(4.0))
     }
 
@@ -1816,6 +2671,33 @@ impl Browser {
         }
         let (details, mut lines) = self.card_lines(&card);
         let (aw, ah) = (a.w, a.h);
+        if card.confirm {
+            // the Delete question, drawn as the Library draws it for a notebook: its sheet, its title, its two rows
+            let (rh, gap) = (u(140.0), u(20.0));
+            let mut rect = crate::library::sheet_rect(aw, ah, u(120.0) + u(72.0) + lines.len() as i32 * (rh + gap));
+            // (its Delete, the first row, clear of the card row that opened it: question_dy)
+            let first = ui_sheet_inner(rect, true);
+            rect.y += Self::question_dy(rect, Rect::new(first.x, first.y, first.w, rh), card.opener, ah);
+            // Drawn for the first time, or at a new place (the screen turned): not shown yet, and no contact answers
+            // it until it has been (card_pointer). Every draw of it is invalidated in the same call.
+            if rect != card.asked {
+                app_ask(a);
+            }
+            let name = self.card_row(&card).map_or(String::new(), |r| r.name.clone());
+            let c = &mut a.screen;
+            let inner = ui_sheet(c, rect, &Self::delete_title(&name, rect.w - u(160.0)));
+            let mut hits = HitList::default();
+            for (i, (id, arg, icon, label)) in lines.iter().enumerate() {
+                let r = Rect::new(inner.x, inner.y + i as i32 * (rh + gap), inner.w, rh);
+                ui_frame(c, r, u(16.0), 255, true, 0);
+                ui_frame(c, r, u(16.0), 0, false, if *id == B_DELETE_YES { u(6.0) } else { u(3.0) });
+                ui_icon(c, *icon, Rect::new(r.x + u(20.0), r.y + u(15.0), rh - u(30.0), rh - u(30.0)), 0);
+                font_draw_left(c, FontFace::Bold, ui_text_size(), Rect::new(r.x + rh + u(10.0), r.y, r.w - rh - u(30.0), r.h), label, 0);
+                hits_add(&mut hits, r, *id, *arg);
+            }
+            self.card = Some(Card { rect, hits, asked: rect, ..card });
+            return;
+        }
         let cw = (aw - 2 * u(40.0)).min(u(980.0));
         let rh = u(130.0);
         let gap = u(12.0);
@@ -1842,7 +2724,8 @@ impl Browser {
         let mut y = inner.y + u(80.0);
         for (id, arg, icon, label) in &lines {
             let r = Rect::new(inner.x, y, inner.w, rh);
-            let primary = matches!(*id, B_CARD_IMPORT | B_CARD_PICTURES | B_CARD_NOTEBOOK);
+            // (a picture's copy is the task's action in the picture pick; in Files neither of its two is first)
+            let primary = matches!(*id, B_CARD_IMPORT | B_CARD_PICTURES | B_CARD_NOTEBOOK | B_CARD_RESTORE) || (self.pick() && matches!(*id, B_CARD_TEMPLATE | B_CARD_PHOTO));
             ui_frame(c, r, u(16.0), 255, true, 0);
             ui_frame(c, r, u(16.0), 0, false, if primary { u(6.0) } else { u(3.0) });
             ui_icon(c, *icon, Rect::new(r.x + u(20.0), r.y + u(15.0), rh - u(30.0), rh - u(30.0)), 0);
@@ -1851,6 +2734,26 @@ impl Browser {
             y += rh + gap;
         }
         self.card = Some(Card { rect, hits, ..card });
+    }
+
+    /// How far down (negative: up) the Delete question's sheet moves from the Library's place for it, so that its
+    /// Delete row `row` is clear of `opener`, the card row whose tap opened the question, by a tap's slop (ui.rs
+    /// press_move's): the second of two taps at one place then lands on no Delete, wherever the card was drawn. The
+    /// smaller of the two moves that keep the sheet on a screen `ah` tall; 0 when the row is clear where it is,
+    /// when no tap opened the question, or when neither move fits.
+    fn question_dy(sheet: Rect, row: Rect, opener: Rect, ah: i32) -> i32 {
+        let keep = rect_inflate(opener, u(30.0));
+        if rect_is_empty(opener) || !rect_overlaps(row, keep) {
+            return 0;
+        }
+        let (down, up) = (keep.y + keep.h - row.y, keep.y - (row.y + row.h));
+        let fits = |dy: i32| sheet.y + dy >= u(40.0) && sheet.y + sheet.h + dy <= ah - u(40.0);
+        match (fits(down), fits(up)) {
+            (true, true) if down <= -up => down,
+            (true, false) => down,
+            (_, true) => up,
+            _ => 0,
+        }
     }
 
     /// Where the card is (to refresh it alone), empty with none.
@@ -1862,6 +2765,15 @@ impl Browser {
 
     /// A pen or finger on the screen (phase 0 down, 1 move, 2 up).
     pub fn pointer(&mut self, a: &mut App, ph: i32, ev: &InEvent) -> BrowserResult {
+        if self.kb.open {
+            // (a key costs what it does on the Library's keyboard: what it changed, refreshed alone)
+            match app_keyboard_pointer(a, &mut self.kb, ph, ev) {
+                KbResult::Done => self.rename_done(a),
+                KbResult::Cancel => self.rename_close(a),
+                _ => {}
+            }
+            return BrowserResult::None;
+        }
         if self.card.is_some() {
             return self.card_pointer(a, ph, ev);
         }
@@ -1930,6 +2842,16 @@ impl Browser {
                     }
                 }
             }
+            // the View chip: List or Covers, the first row on screen kept on screen
+            B_VIEW => {
+                let first = self.screen * self.per_page(ah);
+                self.set_view(if self.view == 1 { 0 } else { 1 });
+                self.card = None;
+                self.drop_press();
+                self.screen = first / self.per_page(ah);
+                self.redraw(a, RefreshMode::Ui);
+                return BrowserResult::Prefs;
+            }
             B_SORT | B_SHOW => {
                 if h.id == B_SORT {
                     self.prefs.sort = (self.prefs.sort.clamp(0, 2) + 1) % 3;
@@ -1982,6 +2904,11 @@ impl Browser {
                         self.open_card(i);
                         self.show_card(a);
                     }
+                    // a trash entry Restore can put back: its card (a page, and a name of no known form, do nothing)
+                    RowKind::Trashed if Self::restorable(&row) => {
+                        self.open_card(i);
+                        self.show_card(a);
+                    }
                     RowKind::Link | RowKind::Trashed => {}
                 }
             }
@@ -1990,22 +2917,30 @@ impl Browser {
         BrowserResult::None
     }
 
-    /// The card opened or changed: the screen drawn into the panel's buffer, and the card's rect alone refreshed.
+    /// The card opened or changed: the screen drawn into the panel's buffer, and the card's rect alone refreshed
+    /// (with the Covers tiles that draw found changed since they were last drawn: a preview that came).
     fn show_card(&mut self, a: &mut App) {
         self.draw(a);
-        let r = self.card_rect();
+        let r = rect_union(self.card_rect(), self.tiles_stale);
         app_invalidate(a, r, RefreshMode::Ui);
     }
 
     fn card_pointer(&mut self, a: &mut App, ph: i32, ev: &InEvent) -> BrowserResult {
         if self.swallow && ph >= 0 {
-            // (the contact that held a row open the card: its lift is nothing)
+            // (the contact that held a row open the card, or came down on a question not shown yet: its lift is nothing)
             if ph == 2 {
                 self.swallow = false;
             }
             return BrowserResult::None;
         }
         let Some(card) = self.card.as_mut() else { return BrowserResult::None };
+        if ph == 0 && card.confirm && !app_asked_seen(a, ev) {
+            // The Delete question has not been shown, or only just: this contact came down on what was there before it
+            // (the second of two taps on the card's Delete). It answers nothing, down to its lift, wherever it
+            // landed: not Delete, not Keep it, and outside the sheet it does not close the question.
+            self.swallow = true;
+            return BrowserResult::None;
+        }
         if ph == 0 {
             press_begin(&mut self.press, ev.x, ev.y, ev.t_ms);
             card.inside = rect_contains(card.rect, ev.x as i32, ev.y as i32);
@@ -2043,6 +2978,7 @@ impl Browser {
             return BrowserResult::None;
         }
         let path = card.path.clone();
+        self.note_fonts(a);
         match h.id {
             B_CARD_CANCEL => self.close_card(a),
             B_GOTO => {
@@ -2064,28 +3000,187 @@ impl Browser {
                 }
                 BrowserResult::None
             }
-            B_CARD_IMPORT | B_CARD_PICTURES | B_CARD_NOTEBOOK => {
+            B_CARD_IMPORT | B_CARD_PICTURES | B_CARD_NOTEBOOK | B_CARD_TEMPLATE | B_CARD_PHOTO => {
                 let Some(c) = self.card.take() else { return BrowserResult::None };
                 if !self.unchanged(&c) {
-                    // the file changed since it was listed: the folder is read again
-                    // TRANSLATORS: a toast in the file picker: the file tapped was changed or replaced since its
-                    // folder was listed; the folder is read again. One line of about 1000 px at 44 px.
-                    self.toast = Some(tr("File changed. Try again."));
-                    let at = self.at.clone();
-                    if let Some(p) = at {
-                        self.enter(p, false, now_ms());
-                    }
-                    self.redraw_full(a);
-                    self.flush_toast(a);
-                    return BrowserResult::None;
+                    return self.changed_since(a);
                 }
                 match h.id {
                     B_CARD_IMPORT => BrowserResult::Pdf(path),
                     B_CARD_PICTURES => BrowserResult::Pictures(path),
+                    B_CARD_TEMPLATE => self.copy_in(a, &c, CopyTo::Templates),
+                    B_CARD_PHOTO => self.copy_in(a, &c, CopyTo::Photos),
                     _ => self.card_row(&c).and_then(|r| r.notebook.clone()).map_or(BrowserResult::None, BrowserResult::OpenNotebook),
                 }
             }
+            // Rename: the keyboard with the name, its caret before a file's extension (which the rules keep)
+            B_CARD_RENAME => {
+                match self.rename_begin() {
+                    Ok(name) => {
+                        self.card = None;
+                        let dir = self.renaming.as_ref().is_some_and(|r| r.dir);
+                        let title = if dir { c_("keyboard", "Folder") } else { c_("keyboard", "Name") };
+                        keyboard_open(&mut self.kb, title, &name);
+                        if !dir {
+                            if let Some(i) = name.iter().rposition(|&c| c == b'.').filter(|&i| i > 0 && i + 1 < name.len()) {
+                                self.kb.caret = i;
+                                self.kb.anchor = i;
+                            }
+                        }
+                        self.redraw(a, RefreshMode::Ui);
+                    }
+                    Err((msg, then)) => self.refused(a, &msg, then),
+                }
+                BrowserResult::None
+            }
+            // Delete asks first: the card becomes the question, and only its Delete moves the item
+            B_CARD_TRASH => {
+                match self.delete_ask() {
+                    Ok(()) => {
+                        // (where the finger is: the question's Delete is drawn clear of this row)
+                        if let Some(c) = self.card.as_mut() {
+                            c.opener = h.r;
+                        }
+                        self.redraw(a, RefreshMode::Ui);
+                    }
+                    Err((msg, then)) => self.refused(a, &msg, then),
+                }
+                BrowserResult::None
+            }
+            B_DELETE_YES => {
+                match self.trash_card() {
+                    Ok(msg) => {
+                        self.redraw_full(a);
+                        app_toast(a, &msg, 2500);
+                    }
+                    Err((msg, then)) => self.refused(a, &msg, then),
+                }
+                BrowserResult::None
+            }
+            B_CARD_RESTORE => match self.restore_card() {
+                Ok((msg, nb)) => {
+                    self.redraw_full(a);
+                    if let Some(m) = msg {
+                        app_toast(a, &m, 2500);
+                    }
+                    nb.map_or(BrowserResult::None, BrowserResult::NotebookBack)
+                }
+                Err((msg, then)) => {
+                    self.refused(a, &msg, then);
+                    BrowserResult::None
+                }
+            },
             _ => BrowserResult::None,
+        }
+    }
+
+    /// What a refused act says and does after it: the toast (above the keyboard while it stays), then the keyboard
+    /// kept up with the name, the folder read again, or nothing more.
+    fn refused(&mut self, a: &mut App, msg: &str, then: Then) {
+        match then {
+            Then::Keyboard if self.renaming.is_some() => {
+                self.kb.open = true;
+                keyboard_draw(&mut self.kb, &mut a.screen, Rect::new(0, 0, a.w, a.h));
+                app_invalidate(a, self.kb.area, RefreshMode::Fast);
+                a.toast_floor = self.kb.area.y;
+            }
+            Then::Relist => {
+                keyboard_close(&mut self.kb);
+                self.renaming = None;
+                self.reread();
+                self.redraw_full(a);
+            }
+            _ => {
+                keyboard_close(&mut self.kb);
+                self.renaming = None;
+                self.card = None;
+                self.redraw(a, RefreshMode::Ui);
+            }
+        }
+        app_toast(a, msg, 3000);
+    }
+
+    /// The rename keyboard's Done: an empty name is no rename (the keyboard closes, as the Library's do), and neither
+    /// is the name as it was (nothing typed: nothing is checked or done); else the name is checked and the item
+    /// renamed, and its row has its new name in the rows' order (`entry_changed`: the folder is not read again). A
+    /// name the rules refuse, or one taken, keeps the keyboard up with it.
+    fn rename_done(&mut self, a: &mut App) {
+        let text = self.kb.text.as_bytes().to_vec();
+        if text.is_empty() {
+            self.rename_close(a);
+            return;
+        }
+        self.note_fonts(a);
+        match self.rename_to(&text) {
+            Ok(None) => self.rename_close(a),
+            Ok(Some(_)) => {
+                keyboard_close(&mut self.kb);
+                self.renaming = None;
+                // (a font renamed: its check's result and, if Settings named it, its setting go with it)
+                self.font_follows(a);
+                self.redraw_full(a);
+            }
+            Err((msg, then)) => self.refused(a, &msg, then),
+        }
+    }
+
+    /// The rename keyboard's Cancel (and Esc, Back): it closes, nothing renamed.
+    fn rename_close(&mut self, a: &mut App) {
+        keyboard_close(&mut self.kb);
+        self.renaming = None;
+        self.redraw(a, RefreshMode::Ui);
+    }
+
+    /// The file a card acts on changed since its folder was listed: said, and the folder read again.
+    fn changed_since(&mut self, a: &mut App) -> BrowserResult {
+        // TRANSLATORS: a toast in the file picker: the file tapped was changed or replaced since its
+        // folder was listed; the folder is read again. One line of about 1000 px at 44 px.
+        self.toast = Some(tr("File changed. Try again."));
+        let at = self.at.clone();
+        if let Some(p) = at {
+            self.enter(p, false, now_ms());
+        }
+        self.redraw_full(a);
+        self.flush_toast(a);
+        BrowserResult::None
+    }
+
+    /// Use as template, Use as photo (#146): the file card `c` was opened for, checked again, asked of the copy job
+    /// into Grimoire's templates or photos (`copy_request`: the walk, the file as listed, its size, the free-space
+    /// floor). The card is closed; a refusal is said now (`copy_refusal`: nothing was copied, and no job runs), the
+    /// copy's end by the app's tick when the job ends. The card's rect goes out with the Covers tiles that changed
+    /// while it was open, as when Cancel closes it (`close_card`).
+    fn copy_in(&mut self, a: &mut App, c: &Card, to: CopyTo) -> BrowserResult {
+        let asked = match (self.storage.as_ref(), c.stat) {
+            (Some(st), Some(listed)) => copy_request(st, &c.path, &listed, to),
+            _ => Err(FsWriteErr::Changed),
+        };
+        match asked {
+            Ok(()) => {
+                // (the picture pick ends here: its host closes it; Files stays, the card gone)
+                if !self.pick() {
+                    self.draw(a);
+                    app_invalidate(a, rect_union(c.rect, self.tiles_stale), RefreshMode::Ui);
+                }
+                BrowserResult::Copying(to)
+            }
+            // (changed since it was listed: said, and the folder read again; every other refusal by its own sentence)
+            Err(FsWriteErr::Changed) => self.changed_since(a),
+            Err(e) => {
+                let why = match e {
+                    FsWriteErr::NoRoom => "no room: the storage would keep less than 100 MB".to_string(),
+                    FsWriteErr::Refused => "a place it is not taken from".to_string(),
+                    FsWriteErr::TooLong => "its path is too long for a job".to_string(),
+                    FsWriteErr::TooBig => format!("it is over {} MB", to.max_bytes() >> 20),
+                    FsWriteErr::Io(n) => strerror(n),
+                    other => format!("{other:?}"),
+                };
+                qlog!("files: a copy into %s was refused: %s", to.folder(), &why);
+                self.draw(a);
+                app_invalidate(a, rect_union(c.rect, self.tiles_stale), RefreshMode::Ui);
+                app_toast(a, &copy_refusal(CopyFail::of_request(e), to), 3000);
+                BrowserResult::None
+            }
         }
     }
 
@@ -2093,7 +3188,8 @@ impl Browser {
         let r = self.card_rect();
         self.card = None;
         self.draw(a);
-        app_invalidate(a, r, RefreshMode::Ui);
+        // (the previews that landed while the card was open are in this draw: their tiles go out with its rect)
+        app_invalidate(a, rect_union(r, self.tiles_stale), RefreshMode::Ui);
         BrowserResult::None
     }
 
@@ -2119,7 +3215,8 @@ impl Browser {
         true
     }
 
-    fn turn(&mut self, next: bool, ah: i32) {
+    /// The pager's turn (Prev or Next) for a screen `ah` tall; the tests' too (it needs no screen).
+    pub fn turn(&mut self, next: bool, ah: i32) {
         let pages = self.pages(ah);
         self.card = None;
         if next && self.screen + 1 < pages {
@@ -2131,6 +3228,9 @@ impl Browser {
 
     /// Left and Right (the pager's keys).
     pub fn turn_key(&mut self, a: &mut App, next: bool) {
+        if self.kb.open {
+            return; // (the rows under the keyboard stay as they are)
+        }
         let before = self.screen;
         self.turn(next, a.h);
         if self.screen != before {
@@ -2156,12 +3256,19 @@ impl Browser {
     /// The `files` action while the browser is up (2.2): its root, the card closed.
     pub fn to_root(&mut self, a: &mut App) {
         self.card = None;
+        keyboard_close(&mut self.kb);
+        self.renaming = None;
         self.show_root();
         self.redraw_full(a);
     }
 
-    /// Esc: the card, else up one level. False at the root rows (the host cancels).
+    /// Esc: the rename keyboard (its Cancel), else the card, else up one level. False at the root rows (the host
+    /// cancels).
     pub fn back(&mut self, a: &mut App) -> bool {
+        if self.kb.open {
+            self.rename_close(a);
+            return true;
+        }
         if self.card.is_some() {
             self.close_card(a);
             return true;
@@ -2178,6 +3285,10 @@ impl Browser {
         if !self.open {
             return;
         }
+        if self.kb.open {
+            // (delete held down, and the keys' grayscale refresh after a pause in typing, as the Library's keyboard)
+            app_keyboard_tick(a, &mut self.kb, now);
+        }
         self.hold_check(a, now);
         let was_ready = self.ready;
         let was_sorting = self.next.is_some();
@@ -2185,6 +3296,7 @@ impl Browser {
         if self.toast.is_some() {
             self.flush_toast(a);
         }
+        self.previews_notice(a, now);
         // (busy: a folder being read, or Files' rows being sorted by newest or size)
         let busy = !self.ready || self.next.is_some();
         // (the Loading notice goes once a folder is read, whichever: Back during a slow listing shows another)
@@ -2209,12 +3321,78 @@ impl Browser {
             }
             return;
         }
+        // Covers: the tiles that changed (a preview that came, a job that ended without one, a status) are drawn
+        // together, never one refresh a file: at once when the screen's set is complete, else at most once every
+        // COVERS_REFRESH_MS; each time as one Ui of their union that fills in by itself (app_invalidate_filling:
+        // counted, and never the refresh that becomes the cleaning flash).
+        if self.in_covers() {
+            if std::mem::take(&mut self.tiles_drawn) {
+                self.tiles_at = now;
+            }
+            if let Some(due) = self.tiles_due(now) {
+                let mut d = RECT_EMPTY;
+                for i in due {
+                    d = rect_union(d, self.redraw_row(a, i));
+                }
+                self.tiles_at = now;
+                app_invalidate_filling(a, d);
+            }
+            return;
+        }
         let mut d = RECT_EMPTY;
         for i in changed {
             d = rect_union(d, self.redraw_row(a, i));
         }
         if !rect_is_empty(d) {
             app_invalidate(a, d, RefreshMode::Ui);
+        }
+    }
+
+    /// Covers: the rows whose tiles are to be drawn again now, None when there is nothing to draw yet. A tile has
+    /// changed when it would show or say something else than it was last drawn with. The changed ones are due all
+    /// together: once the screen's set is complete (no file of it whose stat is still to come or that is still to be
+    /// looked up, no job of it queued or running), or COVERS_REFRESH_MS after the tiles were last drawn. Never under an open card (its close draws
+    /// them).
+    pub fn tiles_due(&self, now: u32) -> Option<Vec<usize>> {
+        if !self.in_covers() || self.card.is_some() {
+            return None;
+        }
+        let changed: Vec<usize> = self
+            .row_rects
+            .iter()
+            .filter_map(|&(i, _)| {
+                let row = self.rows.get(i)?;
+                let was = (self.covers.shown(&row.path)?, self.tile_said.iter().find(|(j, _)| *j == i).map_or("", |(_, t)| t.as_str()));
+                (was != (self.tile_show(i), self.tile_says(i).as_str())).then_some(i)
+            })
+            .collect();
+        // (not complete: a file whose stat is still to come, one to be looked up, or a job queued or running)
+        let coming = |r: &Row| matches!(r.kind, RowKind::Pdf | RowKind::Picture | RowKind::Font) && r.stat.is_none() && !r.stat_tried && r.ix != usize::MAX;
+        let pending = self.covers.pending() || self.row_rects.iter().any(|&(i, _)| self.rows.get(i).is_some_and(coming));
+        if changed.is_empty() || (pending && now.wrapping_sub(self.tiles_at) < COVERS_REFRESH_MS) {
+            return None;
+        }
+        Some(changed)
+    }
+
+    /// The staying notice "Making previews..." while a preview of the Covers screen is being made, once that has gone
+    /// on for a second (a screen whose previews come at once says nothing), and away when none is. Not while the
+    /// screen's jobs only wait behind other work (an import, an export, a font check: that work's own notice shows).
+    fn previews_notice(&mut self, a: &mut App, now: u32) {
+        let making = self.in_covers() && self.covers.making() && bg_kind_running(BgKind::FilePreviews);
+        if !making {
+            self.making_since = None;
+        } else if self.making_since.is_none() {
+            self.making_since = Some(now);
+        }
+        if making && !self.making_notice && self.making_since.is_some_and(|t| now.wrapping_sub(t) >= 1000) {
+            self.making_notice = true;
+            // TRANSLATORS: the staying notice while Files makes the previews of the files on screen in its Covers view
+            // (one line, about 700 px at 44 px).
+            app_notice(a, NoticeKey::Previews, tr("Making previews..."));
+        } else if !making && self.making_notice {
+            self.making_notice = false;
+            app_notice_clear(a, NoticeKey::Previews);
         }
     }
 
@@ -2247,15 +3425,20 @@ impl Browser {
             "card" => out.push_str(&match &self.card {
                 None => String::new(),
                 Some(c) if c.goto => "goto".to_string(),
+                Some(c) if c.confirm && self.card_row(c).is_some() => "delete".to_string(),
                 Some(c) => match self.card_row(c).map(|r| r.kind) {
                     None => String::new(),
                     Some(RowKind::Pdf) => "pdf".to_string(),
                     Some(RowKind::Picture) => "picture".to_string(),
                     Some(RowKind::Font) => "font".to_string(),
                     Some(RowKind::Other) => "other".to_string(),
+                    Some(RowKind::Trashed) => "trashed".to_string(),
                     _ => "folder".to_string(),
                 },
             }),
+            // (the rename keyboard, 2.2: up or not, and its text)
+            "keyboard" => out.push_str(if self.kb.open { "1" } else { "0" }),
+            "text" => out.push_str(if self.kb.open { self.kb.text.as_str() } else { "" }),
             "card.details" => {
                 if let Some(c) = &self.card {
                     out.push_str(&self.card_lines(c).0);
@@ -2272,12 +3455,40 @@ impl Browser {
             "order" => out.push_str(&self.rows.iter().map(|r| r.name.as_str()).collect::<Vec<_>>().join("|")),
             // (the rows as last drawn on the screen, by name: Sort's rows change on screen once, when ready)
             "drawn" => out.push_str(&self.drawn.join("|")),
+            // Covers (2.2): the view, what each tile on screen was last drawn showing (p a preview, l the hourglass, i
+            // an icon; empty in the list), whether a preview of the screen is being made, and the files asked for
+            "view" => out.push_str(FILES_VIEW_NAMES[self.view.clamp(0, 1) as usize]),
+            "tiles" => {
+                if self.in_covers() {
+                    let shown: String = self.row_rects.iter().map(|(i, _)| self.rows.get(*i).and_then(|r| self.covers.shown(&r.path)).map_or('-', |t| t.letter())).collect();
+                    out.push_str(&shown);
+                }
+            }
+            // (what each tile on screen would show now, drawn yet or not: the tiles that changed are drawn together)
+            "covers" => {
+                if self.in_covers() {
+                    let now: String = self.visible(a_h).map(|i| self.tile_show(i).letter()).collect();
+                    out.push_str(&now);
+                }
+            }
+            "making" => out.push_str(if self.covers.making() { "1" } else { "0" }),
+            "asked" => out.push_str(&self.covers.asked().to_string()),
             _ => {
                 let Some((what, n)) = key.split_once('.') else { return false };
+                // (Covers: what the tile of the N-th row on screen was last drawn saying under its name; empty in the list)
+                if what == "says" {
+                    let Some(i) = n.parse::<usize>().ok().filter(|&k| k >= 1).map(|k| self.screen * per + k - 1) else { return true };
+                    if self.in_covers() {
+                        out.push_str(self.tile_said.iter().find(|(j, _)| *j == i).map_or("", |(_, t)| t.as_str()));
+                    }
+                    return true;
+                }
                 if !matches!(what, "row" | "sub" | "status" | "notes" | "keyed" | "kind" | "item" | "pictures") {
                     return false;
                 }
-                let r = if what == "item" { self.rows.iter().find(|r| r.name == n || r.name == n.replace('_', " ")) } else { nth(n) };
+                // (a row by its number on screen, or anywhere by its name: item.NAME, and sub.NAME for a row's second line)
+                let by_name = what == "item" || (what == "sub" && n.parse::<usize>().is_err());
+                let r = if by_name { self.rows.iter().find(|r| r.name == n || r.name == n.replace('_', " ")) } else { nth(n) };
                 let Some(r) = r else { return true };
                 match what {
                     "row" | "item" => out.push_str(&self.row_label(r)),
@@ -2309,16 +3520,27 @@ impl Browser {
     }
 
     /// The point a runner tap on a control named so lands on (docs/SIM.md): back, prev, next, row.N, more.N,
-    /// item.NAME, and the card's import, open, pictures, notebook and cancel.
+    /// item.NAME, and the card's import, open, pictures, notebook, template, photo, rename, trash, restore and
+    /// cancel; the Delete question's delete (its Keep it is cancel) and, while the question is up, opener: where the
+    /// card's Delete that opened it was tapped (a second tap at the first's place).
     pub fn point(&self, name: &str) -> Option<(f32, f32)> {
         let centre = |h: &Hit| ((h.r.x + h.r.w / 2) as f32, (h.r.y + h.r.h / 2) as f32);
         if let Some(c) = &self.card {
+            if name == "card.opener" {
+                return (c.confirm && !rect_is_empty(c.opener)).then(|| centre(&Hit { r: c.opener, ..Default::default() }));
+            }
             let id = match name {
                 "card.import" => B_CARD_IMPORT,
                 "card.open" => B_CARD_OPEN,
                 "card.pictures" => B_CARD_PICTURES,
                 "card.notebook" => B_CARD_NOTEBOOK,
+                "card.template" => B_CARD_TEMPLATE,
+                "card.photo" => B_CARD_PHOTO,
                 "card.cancel" => B_CARD_CANCEL,
+                "card.rename" => B_CARD_RENAME,
+                "card.trash" => B_CARD_TRASH,
+                "card.delete" => B_DELETE_YES,
+                "card.restore" => B_CARD_RESTORE,
                 _ => 0,
             };
             if id != 0 {
@@ -2336,6 +3558,7 @@ impl Browser {
             "next" => find(B_NEXT, 0),
             "sort" => find(B_SORT, 0),
             "show" => find(B_SHOW, 0),
+            "view" => find(B_VIEW, 0),
             _ => {
                 let (what, n) = name.split_once('.')?;
                 // the rows on screen, in order: their B_ROW hits
@@ -2582,12 +3805,13 @@ mod tests {
         assert!(b.goto[4].1 == sp("audible") && !b.goto[4].3 && b.goto[1].3);
     }
 
-    // Files' item cards (2.2): a picture, a font and another file say what they are, with their size and date, and
-    // offer nothing yet but Cancel; a PDF offers its import; a PDF of the PDF copies opens the notebook it was written
-    // from and is never imported; a link has no card. The trash lists its entries read only, the newest first, a
-    // notebook by its own name and a page by its notebook's.
+    // Files' item cards (2.2): a picture, a font and another file say what they are, with their size and date; a
+    // picture offers Use as template and Use as photo (#146), a font and another file nothing yet but Cancel; a PDF
+    // offers its import; a PDF of the PDF copies opens the notebook it was written from and is never imported; a link
+    // has no card. The trash lists its entries, the newest first, a notebook by its own name and a page by its
+    // notebook's; a notebook's has a card (Restore, issue #144), a page's none.
     #[test]
-    fn files_cards_say_what_a_file_is_and_the_trash_is_read_only() {
+    fn files_cards_say_what_a_file_is_and_the_trash_lists_its_entries() {
         let (base, _g) = storage("cards");
         let d = format!("{base}/documents/Sorted");
         std::fs::create_dir_all(&d).unwrap();
@@ -2622,7 +3846,7 @@ mod tests {
         assert_eq!(r0, ["Import as notebook", "Cancel"]);
         let (d1, r1) = card(&mut b, 1);
         assert!(d1.starts_with("Picture, 2 KB, "), "{d1}");
-        assert_eq!(r1, ["Cancel"]);
+        assert_eq!(r1, ["Use as template", "Use as photo", "Cancel"]);
         let (d2, r2) = card(&mut b, 2);
         assert!(d2.starts_with("Font, 1 KB, "), "{d2}");
         assert_eq!(r2, ["Cancel"]);
@@ -2644,7 +3868,8 @@ mod tests {
         }
         let labels: Vec<String> = b.rows.iter().map(|r| b.row_label(r)).collect();
         assert_eq!(labels, ["Newer", "Gamma", "Old"]);
-        assert!(b.rows.iter().all(|r| r.kind == RowKind::Trashed && !b.has_card(0)));
+        assert!(b.rows.iter().all(|r| r.kind == RowKind::Trashed));
+        assert!(b.has_card(0) && !b.has_card(1) && b.has_card(2), "notebooks have a card, a page none");
         assert!(b.rows[0].dir && !b.rows[1].dir);
     }
 
@@ -2797,7 +4022,8 @@ mod tests {
     // (`<id>-<time>`), a page (`<id>-p<page>-<time>`) and a name of another form. The rows are the listing's entries in
     // its order (the newest first by the time in each name, the other form last), with its times; a file shows the
     // name its record holds, a notebook its own, a page its notebook's; the entry with no record and the other form
-    // show their own names, and only the other form has no date.
+    // show their own names, and only the other form has no date (nor a size: it is empty). A card (Restore, issue #144) on
+    // the files' entries and the notebook's, none on the page's or the other form's.
     #[test]
     fn the_trash_place_lists_both_forms_through_fsviews_listing() {
         let (base, _g) = storage("trashforms");
@@ -2843,8 +4069,10 @@ mod tests {
         let labels: Vec<String> = b.rows.iter().map(|r| b.row_label(r)).collect();
         assert_eq!(labels, ["Grid.png", "Kept", "beach.jpg", bare, "Gamma", "notes"]);
         assert!(b.rows[..5].iter().all(|r| r.when > 0 && !b.row_sub(r).is_empty()));
-        assert!(b.rows[5].when == 0 && b.row_sub(&b.rows[5]).is_empty());
-        assert!(b.rows.iter().enumerate().all(|(i, r)| r.kind == RowKind::Trashed && !b.has_card(i)));
+        assert!(b.rows[5].when == 0 && b.rows[5].size == Some(0) && b.row_sub(&b.rows[5]).is_empty(), "no date, and no bytes to say");
+        assert!(b.rows.iter().all(|r| r.kind == RowKind::Trashed));
+        let cards: Vec<bool> = (0..b.rows.len()).map(|i| b.has_card(i)).collect();
+        assert_eq!(cards, [true, true, true, true, false, false]);
     }
 
     // Show all in a folder of 6,000 links (the listing keeps 5,000 of their names): no more than 5,000 rows, and
@@ -2907,6 +4135,941 @@ mod tests {
         assert!(b.point("sort").is_none() && b.point("show").is_none());
         assert!(b.point("crumb.2").is_some(), "the path's parts are there");
         canvas_free(&mut a.screen);
+    }
+
+    // A trash past the listing's cap (every deleted page is an entry, and the trash only grows): the Trash place lists
+    // the newest 5,000 by the time in each name, never the first 5,000 the storage gives, so the photo deleted a moment
+    // ago is its first row and can be restored; the entries let go are the oldest, and "Showing the first 5000." is
+    // said.
+    #[test]
+    fn the_trash_place_keeps_the_newest_past_the_cap() {
+        let (base, _g) = storage("trashcap");
+        let (t, ph) = (format!("{base}/grimoire/trash"), format!("{base}/grimoire/photos"));
+        std::fs::create_dir_all(&ph).unwrap();
+        std::fs::write(format!("{ph}/beach.jpg"), b"a photo").unwrap();
+        let old = FS_LIST_MAX + 200;
+        for i in 0..old {
+            std::fs::write(format!("{t}/20261101-000000-0001-p{}-{}", i + 1, 1_700_000_000 + i), b"").unwrap();
+        }
+        i18n_set("en");
+        let mut b = Browser::default();
+        assert!(b.open(PickSpec::place(), FilesPrefs { card: true, ..Default::default() }));
+        assert!(b.go(sp("grimoire/photos")));
+        b.open_card(row_of(&b, "beach.jpg"));
+        assert!(b.trash_card().is_ok());
+        assert!(b.go(sp("grimoire/trash")));
+        assert_eq!(b.rows.len(), FS_LIST_MAX);
+        assert!(b.capped, "Showing the first 5000.");
+        assert!(b.rows[0].name.starts_with("files-") && b.has_card(0), "the photo just deleted is the first row: {}", b.rows[0].name);
+        let oldest_kept = b.rows.iter().map(|r| r.when).min().unwrap();
+        assert_eq!(oldest_kept, 1_700_000_000 + 201, "the 201 oldest entries are the ones let go");
+        b.open_card(0);
+        assert_eq!(b.restore_card(), Ok((Some("Restored to grimoire/photos.".to_string()), None)));
+        assert!(std::path::Path::new(&format!("{ph}/beach.jpg")).exists());
+    }
+
+    // The card a row opens, in the tests: its details and the labels of its rows.
+    fn card_of(b: &mut Browser, i: usize) -> (String, Vec<String>) {
+        b.open_card(i);
+        let c = b.card.clone().expect("a card");
+        let (d, rows) = b.card_lines(&c);
+        (d, rows.into_iter().map(|r| r.3).collect())
+    }
+
+    fn row_of(b: &Browser, name: &str) -> usize {
+        b.rows.iter().position(|r| r.name == name).unwrap_or_else(|| panic!("no row {name}: {:?}", row_names(b)))
+    }
+
+    fn card_named(b: &mut Browser, name: &str) -> (String, Vec<String>) {
+        let i = row_of(b, name);
+        card_of(b, i)
+    }
+
+    // A folder card's check before acting is by identity (issue #144; #132's final verify): the folder the card was
+    // opened for, swapped for another folder of the same name (removed, and another renamed to it), is refused, as a
+    // file is; the same folder with a file put in it since (its size and time changed) is still the one.
+    #[test]
+    fn a_folder_cards_check_is_by_the_folders_identity() {
+        let (base, _g) = storage("swapfolder");
+        let imp = format!("{base}/grimoire/import");
+        for d in ["Trip", "Other"] {
+            std::fs::create_dir_all(format!("{imp}/{d}")).unwrap();
+            std::fs::write(format!("{imp}/{d}/p1.png"), b"a picture").unwrap();
+        }
+        i18n_set("en");
+        for spec in [PickSpec::place(), PickSpec::import()] {
+            let mut b = Browser::default();
+            assert!(b.open(spec, FilesPrefs { card: true, ..Default::default() }));
+            assert!(b.go(sp("grimoire/import")));
+            let i = row_of(&b, "Trip");
+            b.open_card(i);
+            let c = b.card.clone().expect("a folder's card");
+            assert!(b.unchanged(&c), "nothing changed yet");
+            std::fs::write(format!("{imp}/Trip/p2.png"), b"another").unwrap();
+            assert!(b.unchanged(&c), "the same folder, with a file more");
+            std::fs::rename(format!("{imp}/Trip"), format!("{imp}/Was")).unwrap();
+            std::fs::rename(format!("{imp}/Other"), format!("{imp}/Trip")).unwrap();
+            assert!(!b.unchanged(&c), "another folder at the path is not the one the card was opened for");
+            // (back as it was, for the other mode)
+            std::fs::rename(format!("{imp}/Trip"), format!("{imp}/Other")).unwrap();
+            std::fs::rename(format!("{imp}/Was"), format!("{imp}/Trip")).unwrap();
+            std::fs::remove_file(format!("{imp}/Trip/p2.png")).unwrap();
+        }
+    }
+
+    // What the screen says of each refusal (pure): a rule broken names its rule, the character for one a name cannot
+    // hold; each storage refusal its words and what follows (the keyboard stays for a name, the folder is read again
+    // for a change).
+    #[test]
+    fn each_refusal_has_its_words() {
+        i18n_set("en");
+        let n = |r: NameRule, new: &[u8]| name_refusal(r, b"Grid.png", new);
+        assert_eq!(n(NameRule::Char(b':'), b"a:b.png"), "Name can't contain :");
+        assert_eq!(n(NameRule::Char(b'"'), b"a\"b.png"), "Name can't contain \"");
+        assert_eq!(n(NameRule::Control, b"a\tb.png"), "Name can't contain U+0009");
+        assert_eq!(n(NameRule::Control, "a\u{85}b.png".as_bytes()), "Name can't contain U+0085");
+        assert_eq!(n(NameRule::LeadingSpace, b" a.png"), "Name can't start or end with a space.");
+        assert_eq!(n(NameRule::TrailingSpace, b"a.png "), "Name can't start or end with a space.");
+        assert_eq!(n(NameRule::LeadingDot, b".a.png"), "Name can't start or end with a dot.");
+        assert_eq!(n(NameRule::TrailingDot, b"a.png."), "Name can't start or end with a dot.");
+        assert_eq!(n(NameRule::Extension, b"a.jpg"), "Keep the extension .png.");
+        assert_eq!(n(NameRule::TooLong, b"x"), "Name too long.");
+        assert_eq!(zone_refusal(b"Sub.SDR"), "Name can't contain .sdr");
+        assert_eq!(zone_refusal(b"done"), "That name is taken.");
+        let r = |e: FsWriteErr, act: Act| refusal(e, act, b"Grid.png", b"Lines.png");
+        assert_eq!(r(FsWriteErr::Changed, Act::Rename), ("File changed. Try again.".to_string(), Then::Relist));
+        assert_eq!(r(FsWriteErr::Busy, Act::Trash), ("Importing now.".to_string(), Then::Nothing));
+        assert_eq!(r(FsWriteErr::Busy, Act::Rename), ("Importing now.".to_string(), Then::Nothing));
+        assert_eq!(r(FsWriteErr::Exists, Act::Rename), ("That name is taken.".to_string(), Then::Keyboard));
+        assert_eq!(r(FsWriteErr::Refused, Act::Rename), ("Couldn't rename.".to_string(), Then::Keyboard));
+        assert_eq!(r(FsWriteErr::Name(NameRule::Char(b'*')), Act::Rename), ("Name can't contain *".to_string(), Then::Keyboard));
+        assert_eq!(r(FsWriteErr::TooLong, Act::Rename), ("Path too long.".to_string(), Then::Keyboard));
+        assert_eq!(r(FsWriteErr::Io(5), Act::Rename), ("Couldn't rename.".to_string(), Then::Relist));
+        assert_eq!(r(FsWriteErr::Refused, Act::Trash), ("Couldn't move to trash.".to_string(), Then::Relist));
+        assert_eq!(r(FsWriteErr::Exists, Act::Restore), ("Couldn't restore. Name taken.".to_string(), Then::Relist));
+        assert_eq!(r(FsWriteErr::FolderGone, Act::Restore), ("Couldn't restore. Folder gone.".to_string(), Then::Nothing));
+        assert_eq!(r(FsWriteErr::BadRecord, Act::Restore), ("Couldn't restore.".to_string(), Then::Relist));
+    }
+
+    // Rename on a template's card (issue #144): Rename and Delete only inside Grimoire's folders for the user's files
+    // (and in Files, not the picker); each name rule refused with its words and nothing renamed, a name taken refused
+    // (nothing replaced), an empty name nothing, a good name renamed in place; the card's check comes first.
+    #[test]
+    fn rename_on_a_card_keeps_the_rules_and_never_replaces() {
+        let (base, _g) = storage("rename");
+        let t = format!("{base}/grimoire/templates");
+        std::fs::create_dir_all(format!("{t}/Sub")).unwrap();
+        std::fs::create_dir_all(format!("{base}/documents")).unwrap();
+        std::fs::create_dir_all(format!("{base}/grimoire/import/done")).unwrap();
+        std::fs::write(format!("{t}/Grid.png"), b"grid").unwrap();
+        std::fs::write(format!("{t}/Lines.png"), b"lines").unwrap();
+        std::fs::write(format!("{base}/documents/a.pdf"), b"%PDF-1.4\n").unwrap();
+        i18n_set("en");
+        let mut b = Browser::default();
+        assert!(b.open(PickSpec::place(), FilesPrefs { card: true, ..Default::default() }));
+        // read-only places and Grimoire's own folders themselves: no Rename, no Delete
+        assert!(b.go(sp("documents")));
+        assert_eq!(card_of(&mut b, 0).1, ["Import as notebook", "Cancel"]);
+        assert!(b.go(sp("grimoire/import")));
+        assert_eq!(card_named(&mut b, "done").1, ["Open", "Cancel"]);
+        assert!(b.go(sp("grimoire")));
+        assert_eq!(card_named(&mut b, "import").1, ["Open", "Cancel"]);
+        // a template's card (a picture's: its copy into photos first, #146), and a folder's in templates
+        assert!(b.go(sp("grimoire/templates")));
+        assert_eq!(card_named(&mut b, "Sub").1, ["Open", "Rename", "Delete", "Cancel"]);
+        assert_eq!(card_named(&mut b, "Grid.png").1, ["Use as photo", "Rename", "Delete", "Cancel"]);
+        assert_eq!(b.rename_begin(), Ok(b"Grid.png".to_vec()));
+        assert_eq!(b.rename_to(b"Grid.png"), Ok(None), "Done with nothing typed renames nothing");
+        for (bad, says) in [
+            (&b"Gr:id.png"[..], "Name can't contain :"),
+            (b"Grid/2.png", "Name can't contain /"),
+            (b"Gr\x01id.png", "Name can't contain U+0001"),
+            (b" Grid.png", "Name can't start or end with a space."),
+            (b"Grid.png ", "Name can't start or end with a space."),
+            (b".Grid.png", "Name can't start or end with a dot."),
+            (b"Grid.png.", "Name can't start or end with a dot."),
+            (b"Grid.jpg", "Keep the extension .png."),
+            (b"Grid", "Keep the extension .png."),
+        ] {
+            assert_eq!(b.rename_to(bad), Err((says.to_string(), Then::Keyboard)), "{}", String::from_utf8_lossy(bad));
+        }
+        let long = [vec![b'x'; 252], b".png".to_vec()].concat();
+        assert_eq!(b.rename_to(&long), Err(("Name too long.".to_string(), Then::Keyboard)));
+        assert_eq!(b.rename_to(b"Lines.png"), Err(("That name is taken.".to_string(), Then::Keyboard)));
+        assert_eq!(std::fs::read(format!("{t}/Lines.png")).unwrap(), b"lines", "nothing replaced");
+        assert_eq!(b.rename_to(b"Grid 2.PNG"), Ok(Some(sp("grimoire/templates/Grid 2.PNG"))));
+        assert_eq!(std::fs::read(format!("{t}/Grid 2.PNG")).unwrap(), b"grid");
+        assert!(!std::path::Path::new(&format!("{t}/Grid.png")).exists());
+        // a card on a file changed since it was listed: nothing, and the folder is read again
+        b.relist(now_ms());
+        b.open_card(row_of(&b, "Lines.png"));
+        std::fs::write(format!("{t}/Lines.png"), b"lines, longer now").unwrap();
+        assert_eq!(b.rename_begin(), Err(("File changed. Try again.".to_string(), Then::Relist)));
+        // the picker (pick mode) offers no Rename or Delete, even in Grimoire's import
+        std::fs::write(format!("{base}/grimoire/import/Book.pdf"), b"%PDF-1.4\n").unwrap();
+        let mut p = Browser::default();
+        assert!(p.open(PickSpec::import(), FilesPrefs { card: true, ..Default::default() }));
+        assert!(p.go(sp("grimoire/import")));
+        assert_eq!(card_named(&mut p, "Book.pdf").1, ["Import as notebook", "Cancel"]);
+    }
+
+    // The font in use (issue #144). Settings names Classic's own font, and its Bold file, by their paths under
+    // grimoire/fonts. Delete of such a file, or of the folder that holds one, is refused ("Font in use.") before its
+    // question and at the question's Delete, and nothing is moved; another font is deleted as any file. Rename
+    // takes the names along: the font's own file, its Bold file, and the folder they are in each leave
+    // `fonts_named` with the new path, and say what was renamed for the host. A new name that would make a path
+    // Settings cannot keep is refused before anything is renamed.
+    #[test]
+    fn the_font_in_use_is_not_deleted_and_a_rename_takes_its_setting_along() {
+        let (base, _g) = storage("fontinuse");
+        let f = format!("{base}/grimoire/fonts");
+        std::fs::create_dir_all(format!("{f}/Fam")).unwrap();
+        for n in ["Mine.ttf", "Mine-Bold.ttf", "Other.ttf", "Fam/In.ttf", "Fam/In-Bold.ttf"] {
+            std::fs::write(format!("{f}/{n}"), format!("the bytes of {n}")).unwrap();
+        }
+        let names = |d: &str| {
+            let mut v: Vec<String> = std::fs::read_dir(d).unwrap().flatten().map(|e| e.file_name().to_string_lossy().into_owned()).collect();
+            v.sort();
+            v
+        };
+        i18n_set("en");
+        let mut b = Browser::default();
+        assert!(b.open(PickSpec::place(), FilesPrefs { card: true, ..Default::default() }));
+        b.fonts_named = ["Mine.ttf".to_string(), "Mine-Bold.ttf".to_string()];
+        assert!(b.go(sp("grimoire/fonts")));
+        let in_use = Err(("Font in use.".to_string(), Then::Nothing));
+        for name in ["Mine.ttf", "Mine-Bold.ttf"] {
+            b.open_card(row_of(&b, name));
+            assert_eq!(b.delete_ask(), in_use, "{name}: refused before its question");
+            assert!(b.card.as_ref().is_some_and(|c| !c.confirm));
+            assert_eq!(b.trash_card(), Err(("Font in use.".to_string(), Then::Nothing)), "{name}: and at the question's Delete");
+        }
+        assert_eq!(names(&f), ["Fam", "Mine-Bold.ttf", "Mine.ttf", "Other.ttf"], "nothing moved");
+        assert!(names(&format!("{base}/grimoire/trash")).is_empty());
+        // a font Settings does not name goes as any file
+        b.open_card(row_of(&b, "Other.ttf"));
+        assert!(b.delete_ask().is_ok() && b.trash_card().is_ok());
+        // rename: the font's own file, then its Bold file
+        b.open_card(row_of(&b, "Mine.ttf"));
+        assert_eq!(b.rename_begin(), Ok(b"Mine.ttf".to_vec()));
+        assert!(b.rename_to(b"Yours.ttf").is_ok());
+        assert_eq!(b.fonts_named, ["Yours.ttf", "Mine-Bold.ttf"]);
+        assert_eq!(b.font_renamed.take(), Some(("Mine.ttf".to_string(), "Yours.ttf".to_string())));
+        b.open_card(row_of(&b, "Mine-Bold.ttf"));
+        assert_eq!(b.rename_begin(), Ok(b"Mine-Bold.ttf".to_vec()));
+        assert!(b.rename_to(b"Yours-Bold.ttf").is_ok());
+        assert_eq!(b.fonts_named, ["Yours.ttf", "Yours-Bold.ttf"]);
+        assert_eq!(b.font_renamed.take(), Some(("Mine-Bold.ttf".to_string(), "Yours-Bold.ttf".to_string())));
+        // under its new name it is still the font in use
+        b.open_card(row_of(&b, "Yours.ttf"));
+        assert_eq!(b.delete_ask(), in_use);
+        // a font in a folder: the folder that holds it is not deleted, and renamed it takes both names along
+        b.fonts_named = ["Fam/In.ttf".to_string(), "Fam/In-Bold.ttf".to_string()];
+        b.open_card(row_of(&b, "Fam"));
+        assert_eq!(b.delete_ask(), in_use, "the folder holds the font in use");
+        assert_eq!(b.rename_begin(), Ok(b"Fam".to_vec()));
+        let long = "F".repeat(95);
+        assert!(b.rename_to(b"Family").is_ok());
+        assert_eq!(b.fonts_named, ["Family/In.ttf", "Family/In-Bold.ttf"]);
+        assert_eq!(b.font_renamed.take(), Some(("Fam".to_string(), "Family".to_string())));
+        assert!(b.go(sp("grimoire/fonts/Family")));
+        b.open_card(row_of(&b, "In.ttf"));
+        assert_eq!(b.rename_begin(), Ok(b"In.ttf".to_vec()));
+        assert!(b.rename_to(b"Inner.ttf").is_ok());
+        assert_eq!(b.fonts_named, ["Family/Inner.ttf", "Family/In-Bold.ttf"]);
+        assert_eq!(b.font_renamed.take(), Some(("Family/In.ttf".to_string(), "Family/Inner.ttf".to_string())));
+        // a path Settings cannot keep (over 200 bytes): refused, the keyboard kept, nothing renamed
+        assert!(b.go(sp("grimoire/fonts")));
+        let deep = format!("{}.ttf", "D".repeat(120));
+        std::fs::write(format!("{f}/Family/{deep}"), b"a font of a long name").unwrap();
+        b.fonts_named = [format!("Family/{deep}"), String::new()];
+        b.open_card(row_of(&b, "Family"));
+        assert_eq!(b.rename_begin(), Ok(b"Family".to_vec()));
+        assert_eq!(b.rename_to(long.as_bytes()), Err(("Name too long.".to_string(), Then::Keyboard)));
+        assert_eq!(names(&f), ["Family", "Yours-Bold.ttf", "Yours.ttf"]);
+        assert!(b.font_renamed.is_none());
+        // a file elsewhere of a font's name is no font in use
+        std::fs::create_dir_all(format!("{base}/grimoire/templates")).unwrap();
+        std::fs::write(format!("{base}/grimoire/templates/Yours.ttf"), b"not in fonts").unwrap();
+        b.fonts_named = ["Yours.ttf".to_string(), String::new()];
+        b.prefs.show = 1;
+        assert!(b.go(sp("grimoire/templates")));
+        b.open_card(row_of(&b, "Yours.ttf"));
+        assert_eq!(b.delete_ask(), Ok(()));
+    }
+
+    // The trash folder removed whole over USB (the way the trash is cleaned) is made again as Files opens (issue
+    // #144): Delete works, where it said "Couldn't move to trash." until Grimoire started again. A link standing at
+    // its name is left as it is, and nothing is moved through it.
+    #[test]
+    fn a_trash_removed_over_usb_is_made_again_as_files_opens() {
+        let (base, _g) = storage("notrash");
+        let (ph, trash) = (format!("{base}/grimoire/photos"), format!("{base}/grimoire/trash"));
+        std::fs::create_dir_all(&ph).unwrap();
+        std::fs::write(format!("{ph}/beach.jpg"), b"a photo").unwrap();
+        std::fs::write(format!("{ph}/hill.jpg"), b"a hill").unwrap();
+        let _ = std::fs::remove_dir_all(&trash);
+        i18n_set("en");
+        let mut b = Browser::default();
+        assert!(b.open(PickSpec::place(), FilesPrefs { card: true, ..Default::default() }));
+        assert!(std::path::Path::new(&trash).is_dir());
+        assert!(b.go(sp("grimoire/photos")));
+        b.open_card(row_of(&b, "beach.jpg"));
+        assert!(b.delete_ask().is_ok());
+        assert_eq!(b.trash_card(), Ok("Moved to grimoire/trash".to_string()));
+        // a link at its name: not followed, not replaced, and Delete is refused
+        let elsewhere = format!("{base}/elsewhere");
+        std::fs::create_dir_all(&elsewhere).unwrap();
+        std::fs::remove_dir_all(&trash).unwrap();
+        std::os::unix::fs::symlink(&elsewhere, &trash).unwrap();
+        let mut b = Browser::default();
+        assert!(b.open(PickSpec::place(), FilesPrefs { card: true, ..Default::default() }));
+        assert!(std::fs::symlink_metadata(&trash).unwrap().file_type().is_symlink());
+        assert!(b.go(sp("grimoire/photos")));
+        b.open_card(row_of(&b, "hill.jpg"));
+        assert!(b.delete_ask().is_ok());
+        assert_eq!(b.trash_card(), Err(("Couldn't move to trash.".to_string(), Then::Relist)));
+        assert!(std::fs::read_dir(&elsewhere).unwrap().next().is_none() && std::path::Path::new(&format!("{ph}/hill.jpg")).exists());
+        std::fs::remove_file(&trash).unwrap();
+    }
+
+    // An empty trash says no size (issue #144): the root's Trash row shows its path alone once the walk is through
+    // (a size label rounds 0 up to "1 KB", which read as something left after the trash was cleaned over USB), and
+    // an entry of no bytes shows no size; with something in it, the size is there.
+    #[test]
+    fn an_empty_trash_says_no_size() {
+        let (base, _g) = storage("emptytrash");
+        let ph = format!("{base}/grimoire/photos");
+        std::fs::create_dir_all(&ph).unwrap();
+        std::fs::create_dir_all(format!("{base}/grimoire/trash")).unwrap();
+        std::fs::write(format!("{ph}/beach.jpg"), vec![b'b'; 3000]).unwrap();
+        i18n_set("en");
+        // (the screen's measures, so that the root's rows are all on its first screen)
+        let mut a = screen_app();
+        canvas_free(&mut a.screen);
+        let mut b = Browser::default();
+        assert!(b.open(PickSpec::place(), FilesPrefs { card: true, ..Default::default() }));
+        let trash = row_of(&b, "Trash");
+        for _ in 0..8 {
+            b.work(2480, now_ms());
+        }
+        assert_eq!(b.rows[trash].size, Some(0), "the walk is through");
+        assert_eq!(b.row_sub(&b.rows[trash]), "grimoire/trash");
+        // a page's empty file in it: still nothing to say, on the root's row and on its own
+        std::fs::write(format!("{base}/grimoire/trash/20261101-000000-0001-p3-1790000500"), b"").unwrap();
+        b.sizes_again();
+        assert!(b.go(sp("grimoire/trash")));
+        for _ in 0..8 {
+            b.work(2480, now_ms());
+        }
+        assert_eq!(b.rows[0].size, Some(0));
+        let mut day = String::new();
+        format_date_short(1790000500, &mut day, 64);
+        assert_eq!(b.row_sub(&b.rows[0]), day, "its date alone");
+        // with a photo in it, the size shows
+        assert!(b.go(sp("grimoire/photos")));
+        b.open_card(row_of(&b, "beach.jpg"));
+        assert!(b.delete_ask().is_ok() && b.trash_card().is_ok());
+        b.show_root();
+        let trash = row_of(&b, "Trash");
+        for _ in 0..8 {
+            b.work(2480, now_ms());
+        }
+        assert_eq!(b.row_sub(&b.rows[trash]), "grimoire/trash, 3 KB");
+    }
+
+    // No freeze after a write (issue #144): a rename, a delete and a restore change their one row from the listing
+    // Files holds, as Sort and Show remake the rows, and the folder is not read again (reading and stat-ing a folder
+    // of thousands at one go held the UI). So no folder is begun to be read by the three acts, a file put there
+    // behind Files' back is not listed by them, the renamed row sits where its new name belongs (by name, and by
+    // size once sorted so), the rows keep what they had read, and the screen stays where it was.
+    #[test]
+    fn a_write_changes_its_row_without_reading_the_folder_again() {
+        let (base, _g) = storage("inplace");
+        let t = format!("{base}/grimoire/templates");
+        std::fs::create_dir_all(format!("{t}/Sub")).unwrap();
+        for (n, size) in [("Grid.png", 1000), ("Lines.png", 3000), ("Zeta.png", 2000)] {
+            std::fs::write(format!("{t}/{n}"), vec![b'x'; size]).unwrap();
+        }
+        i18n_set("en");
+        let mut b = Browser::default();
+        assert!(b.open(PickSpec::place(), FilesPrefs { card: true, ..Default::default() }));
+        assert!(b.go(sp("grimoire/templates")));
+        assert_eq!(row_names(&b), ["Sub", "Grid.png", "Lines.png", "Zeta.png"]);
+        let reads = FOLDER_READS.with(|n| n.get());
+        std::fs::write(format!("{t}/Behind.png"), b"put there over USB, after the listing").unwrap();
+        let zeta = row_of(&b, "Zeta.png");
+        b.rows[zeta].detail = Some("read before".to_string());
+        // rename: the row moves to where its name belongs
+        b.open_card(row_of(&b, "Grid.png"));
+        assert_eq!(b.rename_begin(), Ok(b"Grid.png".to_vec()));
+        assert_eq!(b.rename_to(b"Omega.png"), Ok(Some(sp("grimoire/templates/Omega.png"))));
+        assert_eq!(row_names(&b), ["Sub", "Lines.png", "Omega.png", "Zeta.png"]);
+        assert!(b.card.is_none() && b.ready && b.next.is_none());
+        assert_eq!(b.rows[row_of(&b, "Omega.png")].path, sp("grimoire/templates/Omega.png"));
+        assert_eq!(b.rows[row_of(&b, "Zeta.png")].detail.as_deref(), Some("read before"), "the other rows keep what they read");
+        // its card acts on the renamed file
+        b.open_card(row_of(&b, "Omega.png"));
+        assert!(b.unchanged(&b.card.clone().unwrap()));
+        // delete: the row goes
+        assert_eq!(b.delete_ask(), Ok(()));
+        assert!(b.trash_card().is_ok());
+        assert_eq!(row_names(&b), ["Sub", "Lines.png", "Zeta.png"]);
+        // sorted by size, a rename keeps that order (every row had its stat: the new order is there at once)
+        b.prefs.sort = 2;
+        b.rebuild();
+        b.list_now();
+        assert_eq!(row_names(&b), ["Sub", "Lines.png", "Zeta.png"]);
+        b.open_card(row_of(&b, "Zeta.png"));
+        assert_eq!(b.rename_begin(), Ok(b"Zeta.png".to_vec()));
+        assert!(b.rename_to(b"Alpha.png").is_ok());
+        assert_eq!(row_names(&b), ["Sub", "Lines.png", "Alpha.png"]);
+        assert!(b.next.is_none(), "no order is left being made");
+        // Show remakes the rows from the same listing: the deleted file does not come back, the new names stay
+        b.prefs.sort = 0;
+        b.prefs.show = 1;
+        b.rebuild();
+        assert_eq!(row_names(&b), ["Sub", "Alpha.png", "Lines.png"]);
+        assert_eq!(FOLDER_READS.with(|n| n.get()), reads, "no folder was read again");
+        // the screen stays where it was (a second screen of rows)
+        b.per_last = 2;
+        b.screen = 1;
+        b.open_card(row_of(&b, "Lines.png"));
+        assert_eq!(b.rename_begin(), Ok(b"Lines.png".to_vec()));
+        assert!(b.rename_to(b"Lines2.png").is_ok());
+        assert_eq!(b.screen, 1);
+        // the Trash place: Restore takes its row away, the others keep their names and sizes
+        std::fs::write(format!("{t}/Extra.png"), vec![b'e'; 500]).unwrap();
+        b.relist(now_ms());
+        b.open_card(row_of(&b, "Extra.png"));
+        assert!(b.delete_ask().is_ok() && b.trash_card().is_ok());
+        assert!(b.go(sp("grimoire/trash")));
+        for _ in 0..16 {
+            b.work(2480, now_ms());
+        }
+        // (both went within one second: their order in the trash is by their names there, which end in random digits)
+        let labels = |b: &Browser| {
+            let mut v = b.rows.iter().map(|r| (b.row_label(r), r.size)).collect::<Vec<_>>();
+            v.sort();
+            v
+        };
+        assert_eq!(labels(&b), [("Extra.png".to_string(), Some(500)), ("Omega.png".to_string(), Some(1000))]);
+        let reads = FOLDER_READS.with(|n| n.get());
+        let extra = b.rows.iter().position(|r| b.row_label(r) == "Extra.png").unwrap();
+        b.open_card(extra);
+        assert_eq!(b.restore_card(), Ok((Some("Restored to grimoire/templates.".to_string()), None)));
+        assert_eq!(labels(&b), [("Omega.png".to_string(), Some(1000))], "its name and size were not read again");
+        assert_eq!(FOLDER_READS.with(|n| n.get()), reads, "the trash was not listed again");
+        // an act the listing cannot follow reads the folder again, in slices: never at one go
+        assert!(!b.entry_changed(b"no such entry", None));
+        b.reread();
+        assert_eq!(FOLDER_READS.with(|n| n.get()), reads + 1);
+        // and when the folder shown is itself gone, the nearest one above that opens is shown
+        assert!(b.go(sp("grimoire/templates/Sub")));
+        std::fs::remove_dir(format!("{t}/Sub")).unwrap();
+        b.reread();
+        assert_eq!(b.at, Some(sp("grimoire/templates")));
+        assert!(b.toast.is_none());
+    }
+
+    // Rename never changes a name nobody typed (issue #144). A name the keyboard cannot show as it is is not offered
+    // to it, and the toast says why: a control character (which the keyboard leaves out of its text: before, Done
+    // then renamed the file to the name without it), or 96 bytes and more (its end would be cut away). Done with the
+    // name as it was renames nothing and checks nothing, even on a file changed since. A name the rules allow and
+    // Grimoire's folders do not says which (an ending the Kindle's reader keeps, a name Grimoire keeps) and keeps the
+    // keyboard up; a folder's name taken says so in words that fit a folder.
+    #[test]
+    fn rename_never_changes_a_name_nobody_typed() {
+        let (base, _g) = storage("renameshown");
+        let t = format!("{base}/grimoire/templates");
+        std::fs::create_dir_all(format!("{t}/Sub")).unwrap();
+        std::fs::create_dir_all(format!("{t}/Other")).unwrap();
+        std::fs::create_dir_all(format!("{base}/grimoire/import/Work")).unwrap();
+        let (long, fits) = (format!("{}.png", "L".repeat(92)), format!("{}.png", "F".repeat(91)));
+        for n in ["a\tb.png", "c\u{85}d.png", "Grid.png", long.as_str(), fits.as_str()] {
+            std::fs::write(format!("{t}/{n}"), b"a picture").unwrap();
+        }
+        let names = |d: &str| {
+            let mut v: Vec<String> = std::fs::read_dir(d).unwrap().flatten().map(|e| e.file_name().to_string_lossy().into_owned()).collect();
+            v.sort();
+            v
+        };
+        let before = names(&t);
+        i18n_set("en");
+        let mut b = Browser::default();
+        assert!(b.open(PickSpec::place(), FilesPrefs { card: true, ..Default::default() }));
+        assert!(b.go(sp("grimoire/templates")));
+        for (name, says) in [("a\tb.png", "Name can't contain U+0009"), ("c\u{85}d.png", "Name can't contain U+0085"), (long.as_str(), "Name too long.")] {
+            b.open_card(row_of(&b, name));
+            assert_eq!(b.rename_begin(), Err((says.to_string(), Then::Nothing)), "{name:?}");
+            assert!(b.renaming.is_none());
+        }
+        b.open_card(row_of(&b, &fits));
+        assert_eq!(b.rename_begin(), Ok(fits.clone().into_bytes()), "95 bytes: the keyboard holds it whole");
+        // nothing typed: nothing renamed, nothing checked (the file changed since its card opened)
+        b.open_card(row_of(&b, "Grid.png"));
+        assert_eq!(b.rename_begin(), Ok(b"Grid.png".to_vec()));
+        std::fs::write(format!("{t}/Grid.png"), b"a picture, longer now").unwrap();
+        assert_eq!(b.rename_to(b"Grid.png"), Ok(None));
+        assert_eq!(b.rename_to(b"Grid2.png"), Err(("File changed. Try again.".to_string(), Then::Relist)));
+        // the allow-list's refusals say which rule, and keep the keyboard
+        b.relist(now_ms());
+        b.open_card(row_of(&b, "Sub"));
+        assert_eq!(b.rename_begin(), Ok(b"Sub".to_vec()));
+        assert_eq!(b.rename_to(b"Sub.sdr"), Err(("Name can't contain .sdr".to_string(), Then::Keyboard)));
+        assert_eq!(b.rename_to(b"Sub.SDR"), Err(("Name can't contain .sdr".to_string(), Then::Keyboard)));
+        assert_eq!(b.rename_to(b"Other"), Err(("That name is taken.".to_string(), Then::Keyboard)));
+        assert!(b.go(sp("grimoire/import")));
+        b.open_card(row_of(&b, "Work"));
+        assert_eq!(b.rename_begin(), Ok(b"Work".to_vec()));
+        assert_eq!(b.rename_to(b"done"), Err(("That name is taken.".to_string(), Then::Keyboard)));
+        assert_eq!(b.rename_to(b"Done"), Err(("That name is taken.".to_string(), Then::Keyboard)));
+        assert_eq!(names(&t), before, "nothing was renamed");
+        assert_eq!(names(&format!("{base}/grimoire/import")), ["Work"]);
+    }
+
+    // Delete asks first (issue #144): the card's Delete moves nothing; the card becomes the Library's question for a
+    // notebook (`Delete "name"?`, "Delete (moves it to grimoire/trash)", "Keep it"), drawn as the Library's sheet, and
+    // only its Delete moves the item. Keep it, a tap outside and Back leave the file where it was. A file changed
+    // since its card opened is refused before anything is asked.
+    #[test]
+    fn delete_asks_first_and_only_its_delete_moves_the_item() {
+        let (base, _g) = storage("deleteasks");
+        let ph = format!("{base}/grimoire/photos");
+        std::fs::create_dir_all(&ph).unwrap();
+        std::fs::write(format!("{ph}/beach.jpg"), vec![b'b'; 3000]).unwrap();
+        std::fs::write(format!("{ph}/hill.jpg"), vec![b'h'; 100]).unwrap();
+        i18n_set("en");
+        let mut a = screen_app();
+        let mut b = Browser::default();
+        assert!(b.open(PickSpec::place(), FilesPrefs { card: true, ..Default::default() }));
+        assert!(b.go(sp("grimoire/photos")));
+        // (a photo's card: its copy into templates first, #146)
+        assert_eq!(card_named(&mut b, "beach.jpg").1, ["Use as template", "Rename", "Delete", "Cancel"]);
+        b.draw(&mut a);
+        assert!(b.point("card.trash").is_some() && b.point("card.delete").is_none());
+        let card_rect = b.card_rect();
+        assert_eq!(b.delete_ask(), Ok(()));
+        assert!(std::path::Path::new(&format!("{ph}/beach.jpg")).exists(), "asked: nothing moved yet");
+        let c = b.card.clone().expect("the question");
+        let (title, rows) = b.card_lines(&c);
+        assert_eq!(title, "Delete \"beach.jpg\"?");
+        assert_eq!(rows.iter().map(|r| r.3.as_str()).collect::<Vec<_>>(), ["Delete (moves it to grimoire/trash)", "Keep it"]);
+        let mut out = String::new();
+        assert!(b.probe(2480, "card", &mut out) && out == "delete", "{out}");
+        b.draw(&mut a);
+        assert!(b.point("card.delete").is_some() && b.point("card.cancel").is_some() && b.point("card.trash").is_none());
+        assert!(b.card_rect().w > card_rect.w, "a sheet as the Library's, wider than a row's card");
+        // Keep it (the card closed): the photo stays
+        b.card = None;
+        assert!(std::path::Path::new(&format!("{ph}/beach.jpg")).exists());
+        // asked again, and its Delete: into the trash
+        b.open_card(row_of(&b, "beach.jpg"));
+        assert_eq!(b.delete_ask(), Ok(()));
+        assert_eq!(b.trash_card(), Ok("Moved to grimoire/trash".to_string()));
+        assert!(!std::path::Path::new(&format!("{ph}/beach.jpg")).exists());
+        // a file changed since its card opened: refused before the question
+        b.relist(now_ms());
+        b.open_card(row_of(&b, "hill.jpg"));
+        std::fs::write(format!("{ph}/hill.jpg"), b"another hill, longer").unwrap();
+        assert_eq!(b.delete_ask(), Err(("File changed. Try again.".to_string(), Then::Relist)));
+        assert!(b.card.as_ref().is_some_and(|c| !c.confirm));
+        // a name too long for a sheet's title is cut, the question mark kept
+        let long = Browser::delete_title(&"m".repeat(200), 1500);
+        assert!(long.starts_with("Delete \"mmm") && long.ends_with("...\"?") && font_measure(FontFace::Bold, ui_title_size(), &long) <= 1500, "{long}");
+        canvas_free(&mut a.screen);
+    }
+
+    // Delete on a photo's card, then Restore on its entry in the Trash place (issue #144): the photo goes to the trash
+    // with its record ("Moved to grimoire/trash"), the Trash place lists it by its own name with a card that offers
+    // Restore alone, and Restore puts it back ("Restored to grimoire/photos."), with " 2" when the name was taken
+    // meanwhile. A page in the trash has no card.
+    #[test]
+    fn delete_then_restore_from_the_trash_place() {
+        let (base, _g) = storage("trashrestore");
+        let ph = format!("{base}/grimoire/photos");
+        std::fs::create_dir_all(&ph).unwrap();
+        std::fs::create_dir_all(format!("{base}/grimoire/trash")).unwrap();
+        std::fs::write(format!("{ph}/beach.jpg"), vec![b'b'; 3000]).unwrap();
+        let mut nb = NotebookInfo::default();
+        assert_eq!(store_create("Gamma", "", PAPER_BLANK, &mut nb), 0);
+        std::fs::write(format!("{base}/grimoire/trash/{}-p3-1790000500", nb.id.as_str()), b"").unwrap();
+        i18n_set("en");
+        let mut b = Browser::default();
+        assert!(b.open(PickSpec::place(), FilesPrefs { card: true, ..Default::default() }));
+        assert!(b.go(sp("grimoire/photos")));
+        b.open_card(row_of(&b, "beach.jpg"));
+        assert_eq!(b.trash_card(), Ok("Moved to grimoire/trash".to_string()));
+        assert!(!std::path::Path::new(&format!("{ph}/beach.jpg")).exists());
+        assert!(b.go(sp("grimoire/trash")));
+        for _ in 0..16 {
+            b.work(2480, now_ms());
+        }
+        let labels: Vec<String> = b.rows.iter().map(|r| b.row_label(r)).collect();
+        assert_eq!(labels, ["beach.jpg", "Gamma"]);
+        assert!(b.has_card(0) && !b.has_card(1), "a page has no card");
+        let (d, rows) = card_of(&mut b, 0);
+        assert!(d.starts_with("beach.jpg, 3 KB, "), "its size is the photo's, not its record's: {d}");
+        assert_eq!(rows, ["Restore", "Cancel"]);
+        assert_eq!(b.restore_card(), Ok((Some("Restored to grimoire/photos.".to_string()), None)));
+        assert_eq!(std::fs::read(format!("{ph}/beach.jpg")).unwrap().len(), 3000);
+        // again, with a photo of that name come in meanwhile: " 2"
+        b.relist(now_ms());
+        assert!(b.go(sp("grimoire/photos")));
+        b.open_card(row_of(&b, "beach.jpg"));
+        assert!(b.trash_card().is_ok());
+        std::fs::write(format!("{ph}/beach.jpg"), b"another").unwrap();
+        assert!(b.go(sp("grimoire/trash")));
+        b.open_card(0);
+        assert_eq!(b.restore_card(), Ok((Some("Restored to grimoire/photos.".to_string()), None)));
+        assert_eq!(std::fs::read(format!("{ph}/beach 2.jpg")).unwrap().len(), 3000);
+        assert_eq!(std::fs::read(format!("{ph}/beach.jpg")).unwrap(), b"another");
+    }
+
+    // A notebook the Library deleted (store_delete's name, `<id>-<time>`) comes back through Files' Restore (issue
+    // #144): its card offers Restore, and the host is told the id (it reads the Library again); its name taken in its
+    // Library folder meanwhile, it comes back as " 2" there, and keeps its place in the Library's order.
+    #[test]
+    fn a_notebook_the_library_deleted_comes_back() {
+        let (base, _g) = storage("nbrestore");
+        std::fs::create_dir_all(format!("{base}/grimoire/trash")).unwrap();
+        let mut nb = NotebookInfo::default();
+        assert_eq!(store_create("Alpha", "School", PAPER_BLANK, &mut nb), 0);
+        let id = nb.id.as_str().to_string();
+        let modified = nb.modified;
+        assert_eq!(store_delete(&id), 0);
+        let mut again = NotebookInfo::default();
+        assert_eq!(store_create("alpha", "School", PAPER_BLANK, &mut again), 0);
+        // (a page of it, deleted earlier: listed by its notebook's name once that is in the Library again)
+        let page = format!("{id}-p3-1700000000");
+        std::fs::write(format!("{base}/grimoire/trash/{page}"), b"").unwrap();
+        i18n_set("en");
+        let mut b = Browser::default();
+        assert!(b.open(PickSpec::place(), FilesPrefs { card: true, ..Default::default() }));
+        assert!(b.go(sp("grimoire/trash")));
+        for _ in 0..8 {
+            b.work(2480, now_ms());
+        }
+        assert_eq!(b.row_label(&b.rows[0]), "Alpha");
+        assert_eq!(b.row_label(&b.rows[1]), page, "its notebook is not in the Library: the entry's own name");
+        assert_eq!(card_of(&mut b, 0).1, ["Restore", "Cancel"]);
+        assert_eq!(b.restore_card(), Ok((Some("Restored to School.".to_string()), Some(id.clone()))));
+        for _ in 0..8 {
+            b.work(2480, now_ms());
+        }
+        assert_eq!(b.rows.iter().map(|r| b.row_label(r)).collect::<Vec<_>>(), ["Alpha 2"], "the page by its notebook's name now");
+        let mut all = Vec::new();
+        store_list(&mut all);
+        let back = all.iter().find(|n| n.id.as_str() == id).expect("in the Library again");
+        assert_eq!((back.name.as_str(), back.folder.as_str(), back.modified), ("Alpha 2", "School", modified));
+    }
+
+    // A restored notebook the store could not finish (issue #144): one whose notebook.ini does not read is back in
+    // notebooks/ and the Library does not list it, so no toast names a folder for it (it said "Restored to
+    // Notebooks." whatever its folder had been); one whose " 2" name could not be written is back under its own name,
+    // and the toast names its own folder. The Library is read once for it, by the store.
+    #[test]
+    fn a_restore_the_store_could_not_finish_says_what_is_true() {
+        let (base, _g) = storage("nbhalf");
+        let trash = format!("{base}/grimoire/trash");
+        let mut made = |name: &str| {
+            let mut nb = NotebookInfo::default();
+            assert_eq!(store_create(name, "School", PAPER_BLANK, &mut nb), 0);
+            nb.id.as_str().to_string()
+        };
+        let (broken, twin) = (made("Broken"), made("Twin"));
+        assert_eq!(store_delete(&broken), 0);
+        assert_eq!(store_delete(&twin), 0);
+        let again = made("Twin");
+        let entry = |id: &str| std::fs::read_dir(&trash).unwrap().flatten().map(|e| e.file_name().to_string_lossy().into_owned()).find(|n| n.starts_with(id)).unwrap();
+        std::fs::remove_file(format!("{trash}/{}/notebook.ini", entry(&broken))).unwrap();
+        i18n_set("en");
+        let mut b = Browser::default();
+        assert!(b.open(PickSpec::place(), FilesPrefs { card: true, ..Default::default() }));
+        assert!(b.go(sp("grimoire/trash")));
+        b.open_card(row_of(&b, &entry(&broken)));
+        assert_eq!(b.restore_card(), Ok((None, Some(broken.clone()))), "no folder is claimed for it");
+        assert!(std::path::Path::new(&format!("{base}/grimoire/notebooks/{broken}")).is_dir(), "it is back in notebooks/ all the same");
+        assert_eq!(b.books.iter().map(|n| n.id.as_str()).collect::<Vec<_>>(), [again.as_str()]);
+        // the " 2" cannot be written (the store's next write fails): back under its own name, in its own folder
+        b.open_card(row_of(&b, &entry(&twin)));
+        crate::util::FAIL_WRITE_AT.with(|n| n.set(1));
+        let r = b.restore_card();
+        crate::util::FAIL_WRITE_AT.with(|n| n.set(0));
+        assert_eq!(r, Ok((Some("Restored to School.".to_string()), Some(twin.clone()))));
+        let twins: Vec<(&str, &str)> = b.books.iter().filter(|n| n.name.as_str() == "Twin").map(|n| (n.name.as_str(), n.folder.as_str())).collect();
+        assert_eq!(twins, [("Twin", "School"), ("Twin", "School")], "the browser's list is the store's, read once");
+    }
+
+    // A finger's tap at (x, y): its down, come down at `k` by the kernel's time (0: nobody says, as on the runner) and
+    // read at `t`, and its lift, through the browser's contacts.
+    fn tap_at(b: &mut Browser, a: &mut App, (x, y): (f32, f32), t: u32, k: u32) -> BrowserResult {
+        let ev = |type_| InEvent { type_, x, y, t_ms: t, k_ms: k, ..Default::default() };
+        b.pointer(a, 0, &ev(InType::TouchDown));
+        b.pointer(a, 2, &ev(InType::TouchUp))
+    }
+
+    // Delete's question must be seen before it is answered (issue #144: the second of two taps at one place on the
+    // card's Delete had moved the item with the question never seen). The tap on the card's Delete opens the question
+    // and moves nothing. Until the question's frame has gone to the panel no contact answers it, wherever it lands:
+    // where the first tap was, on its Delete, on Keep it, outside the sheet. Nor does one that came down sooner than
+    // PEN_REOPEN_MS after the frame, by the kernel's time of the contact where it says (a contact read late came down
+    // when the kernel saw it). The question stays up and the item where it was. A tap after that answers as before:
+    // Keep it and a tap outside close it, its Delete moves the item. On a folder's card (Open and Import above its
+    // Delete), a picture's (its copies above its Rename, #146: both in a folder of photos, one in templates) and a
+    // font's (Rename, Delete and Cancel alone), each on a first row; and the question's Delete is not where the first
+    // tap was.
+    #[test]
+    fn the_delete_question_is_answered_only_once_it_has_been_shown() {
+        let (base, _g) = storage("deleteseen");
+        let ph = format!("{base}/grimoire/photos");
+        std::fs::create_dir_all(format!("{ph}/Atlas")).unwrap();
+        std::fs::write(format!("{ph}/Atlas/p1.png"), b"p").unwrap();
+        for (d, n) in [("templates", "Grid.png"), ("fonts", "Plain.ttf")] {
+            std::fs::create_dir_all(format!("{base}/grimoire/{d}")).unwrap();
+            std::fs::write(format!("{base}/grimoire/{d}/{n}"), b"x").unwrap();
+        }
+        i18n_set("en");
+        let mut a = screen_app();
+        #[cfg(feature = "sim")]
+        {
+            let (mut w, mut h) = (a.w, a.h);
+            crate::sim_sdl::display_set_orientation(0, &mut w, &mut h);
+        }
+        let there = |p: &str| std::path::Path::new(p).exists();
+        let up = |b: &Browser| b.card.as_ref().is_some_and(|c| c.confirm);
+        for (folder, name, rows) in [
+            ("grimoire/photos", "Atlas", &["Open", "Import 1 picture as notebook", "Rename", "Delete", "Cancel"][..]),
+            ("grimoire/photos/Atlas", "p1.png", &["Use as template", "Use as photo", "Rename", "Delete", "Cancel"][..]),
+            ("grimoire/templates", "Grid.png", &["Use as photo", "Rename", "Delete", "Cancel"][..]),
+            ("grimoire/fonts", "Plain.ttf", &["Rename", "Delete", "Cancel"][..]),
+        ] {
+            let item = format!("{base}/{folder}/{name}");
+            let mut b = Browser::default();
+            assert!(b.open(PickSpec::place(), FilesPrefs { card: true, ..Default::default() }));
+            assert!(b.go(sp(folder)));
+            assert_eq!(row_of(&b, name), 0, "a first row");
+            b.draw(&mut a);
+            b.open_card(0);
+            b.draw(&mut a);
+            assert_eq!(b.card_lines(&b.card.clone().unwrap()).1.iter().map(|r| r.3.as_str()).collect::<Vec<_>>(), rows);
+            let first = b.point("card.trash").expect("the card's Delete");
+            let row = b.card.as_ref().unwrap().hits.h.iter().find(|h| h.id == B_CARD_TRASH).unwrap().r;
+            assert_eq!(b.point("card.opener"), None, "no question yet");
+            let t0 = now_ms();
+            tap_at(&mut b, &mut a, first, t0, 0);
+            assert!(up(&b) && there(&item), "{name}: the first tap asks");
+            assert_eq!(a.asked, Asked::Drawn, "drawn, and not on the panel yet");
+            assert_eq!((b.card.as_ref().unwrap().opener, b.point("card.opener")), (row, Some(first)));
+            let (yes, keep, outside) = (b.point("card.delete").unwrap(), b.point("card.cancel").unwrap(), (930.0, 60.0));
+            let yes_row = b.card.as_ref().unwrap().hits.h.iter().find(|h| h.id == B_DELETE_YES).unwrap().r;
+            assert!(!rect_contains(yes_row, first.0 as i32, first.1 as i32), "{name}: its Delete is not where the first tap was");
+            // before its frame went out: nothing, whenever the contact says it came down
+            for at in [first, yes, keep, outside] {
+                for t in [t0, t0.wrapping_add(60_000)] {
+                    assert_eq!(tap_at(&mut b, &mut a, at, t, 0), BrowserResult::None);
+                    assert!(up(&b) && there(&item) && !b.swallow, "{name}: a tap at {at:?} before the question was shown");
+                }
+            }
+            // the frame goes to the panel
+            app_flush(&mut a);
+            let Asked::Shown(shown) = a.asked else { panic!("the flush presents it: {:?}", a.asked) };
+            let soon = shown.wrapping_add(PEN_REOPEN_MS - 1);
+            let seen = shown.wrapping_add(PEN_REOPEN_MS);
+            for at in [first, yes, keep, outside] {
+                // too soon after it; and read late, having come down before the frame by the kernel's time
+                for (t, k) in [(shown, 0), (soon, 0), (shown.wrapping_add(9_000), shown.wrapping_sub(5)), (shown.wrapping_add(9_000), soon)] {
+                    assert_eq!(tap_at(&mut b, &mut a, at, t, k), BrowserResult::None);
+                    assert!(up(&b) && there(&item) && !b.swallow, "{name}: a tap at {at:?}, {t} (kernel {k}), shown at {shown}");
+                }
+            }
+            assert_eq!(a.asked, Asked::Shown(shown), "drawn again where it was, it is not asked anew");
+            // seen: a tap outside closes it, Keep it too, and nothing moved
+            tap_at(&mut b, &mut a, outside, seen, 0);
+            assert!(b.card.is_none() && there(&item), "{name}: a tap outside, once shown");
+            b.open_card(0);
+            b.draw(&mut a);
+            tap_at(&mut b, &mut a, first, seen, 0);
+            assert!(up(&b) && a.asked == Asked::Drawn, "{name}: asked again, drawn anew");
+            app_flush(&mut a);
+            let Asked::Shown(shown) = a.asked else { panic!("{:?}", a.asked) };
+            tap_at(&mut b, &mut a, keep, shown.wrapping_add(9_000), shown.wrapping_add(PEN_REOPEN_MS));
+            assert!(b.card.is_none() && there(&item), "{name}: Keep it, once shown");
+            // and its Delete, once shown, moves the item
+            b.open_card(0);
+            b.draw(&mut a);
+            tap_at(&mut b, &mut a, first, seen, 0);
+            app_flush(&mut a);
+            let Asked::Shown(shown) = a.asked else { panic!("{:?}", a.asked) };
+            assert!(up(&b) && there(&item));
+            tap_at(&mut b, &mut a, yes, shown.wrapping_add(PEN_REOPEN_MS), 0);
+            assert!(b.card.is_none() && !there(&item), "{name}: its Delete, once shown, moves it");
+            assert_eq!(a.toast.as_str(), "Moved to grimoire/trash");
+            // (the next folder's item is inside this one: back out of the trash)
+            let entry = std::fs::read_dir(format!("{base}/grimoire/trash")).unwrap().next().unwrap().unwrap().file_name();
+            assert!(b.storage.as_ref().unwrap().restore(entry.as_encoded_bytes()).is_ok() && there(&item));
+        }
+        canvas_free(&mut a.screen);
+    }
+
+    // The question's Delete is never drawn under the card row that opened it (issue #144), wherever the card was and
+    // however many rows it has above its Delete: for every row of a screen, upright and sideways, of a folder of fonts
+    // (cards of three rows: Rename, Delete, Cancel), of one of pictures (four: their copy above Rename, #146), of one
+    // that begins with two folders (one with pictures to import, so its card has a row more) and of one of pictures
+    // with both copies (five), the card's Delete lies a tap's slop clear of the question's Delete, and the sheet is
+    // the Library's, on the screen, moved up or down by no more than that takes. Some cards lie over the Library's
+    // place for the question's Delete, or within the slop of it, and there the sheet has moved; a question no tap
+    // opened (a test's) is in the Library's place.
+    #[test]
+    fn the_delete_questions_delete_is_not_under_the_row_that_opened_it() {
+        let (base, _g) = storage("deleteplace");
+        let g = format!("{base}/grimoire");
+        std::fs::create_dir_all(format!("{g}/photos/Atlas")).unwrap();
+        std::fs::create_dir_all(format!("{g}/photos/Birds")).unwrap();
+        std::fs::create_dir_all(format!("{g}/templates")).unwrap();
+        std::fs::create_dir_all(format!("{g}/fonts")).unwrap();
+        for i in 0..12 {
+            std::fs::write(format!("{g}/photos/c{i:02}.jpg"), b"x").unwrap();
+            std::fs::write(format!("{g}/photos/Birds/p{i:02}.png"), b"x").unwrap();
+            std::fs::write(format!("{g}/templates/t{i:02}.png"), b"x").unwrap();
+            std::fs::write(format!("{g}/fonts/f{i:02}.ttf"), b"x").unwrap();
+        }
+        i18n_set("en");
+        assert_eq!(font_init(), 0);
+        ui_init(300.0);
+        let mut moved = Vec::new();
+        let mut heights = std::collections::BTreeSet::new();
+        for (w, h) in [(1860, 2480), (2480, 1860)] {
+            let mut a = App { w, h, dpi: 300.0, ..Default::default() };
+            assert_eq!(canvas_init(&mut a.screen, w, h), 0);
+            for folder in ["grimoire/fonts", "grimoire/templates", "grimoire/photos", "grimoire/photos/Birds"] {
+                let mut b = Browser::default();
+                assert!(b.open(PickSpec::place(), FilesPrefs { card: true, ..Default::default() }));
+                assert!(b.go(sp(folder)));
+                b.draw(&mut a);
+                let on_screen = b.row_rects.len();
+                assert!(on_screen >= 8, "{on_screen} rows");
+                for i in 0..on_screen {
+                    b.open_card(i);
+                    b.draw(&mut a);
+                    let opener = b.card.as_ref().unwrap().hits.h.iter().find(|h| h.id == B_CARD_TRASH).expect("the card's Delete").r;
+                    heights.insert(b.card.as_ref().unwrap().hits.h.len());
+                    assert_eq!(b.delete_ask(), Ok(()));
+                    b.draw(&mut a);
+                    let place = b.card_rect();
+                    assert_eq!(place, crate::library::sheet_rect(w, h, place.h), "no tap opened it: the Library's place");
+                    // (as the tap on the card's Delete notes it: card_pointer)
+                    b.card.as_mut().unwrap().opener = opener;
+                    b.draw(&mut a);
+                    let c = b.card.as_ref().unwrap();
+                    let yes = c.hits.h.iter().find(|h| h.id == B_DELETE_YES).unwrap().r;
+                    let at = format!("{w}x{h} {folder} row {i}");
+                    assert!(!rect_overlaps(yes, rect_inflate(opener, u(30.0))), "{at}: Delete {yes:?} under the card's {opener:?}");
+                    assert!(c.rect.y >= u(40.0) && c.rect.y + c.rect.h <= h - u(40.0), "{at}: {:?}", c.rect);
+                    assert_eq!((c.rect.x, c.rect.w, c.rect.h), (place.x, place.w, place.h));
+                    if c.rect.y != place.y {
+                        let was = Rect { y: yes.y - (c.rect.y - place.y), ..yes };
+                        assert!(rect_overlaps(was, rect_inflate(opener, u(30.0))), "{at}: moved for nothing");
+                        assert!(yes.y == opener.y + opener.h + u(30.0) || yes.y + yes.h == opener.y - u(30.0), "{at}: moved by more than it takes");
+                        moved.push((w, folder, i));
+                    }
+                    b.card = None;
+                }
+            }
+            canvas_free(&mut a.screen);
+        }
+        assert_eq!(heights.into_iter().collect::<Vec<_>>(), [3, 4, 5], "cards of three, four and five rows were asked");
+        // (where it moves today: upright, for the cards of the first two rows of fonts, of a first row's picture and
+        // of a first row's folder with nothing to import, which lie over the Library's place for it; sideways, for a
+        // first row's font, whose card's Delete ends within the slop of it, and for a fifth row's picture with both
+        // copies, whose card is drawn above its row)
+        let today = [
+            (1860, "grimoire/fonts", 0),
+            (1860, "grimoire/fonts", 1),
+            (1860, "grimoire/templates", 0),
+            (1860, "grimoire/photos", 0),
+            (2480, "grimoire/fonts", 0),
+            (2480, "grimoire/photos/Birds", 4),
+        ];
+        assert_eq!(moved, today);
+        // neither way fits (a screen too short for the sheet to move): where it was
+        let (sheet, row) = (Rect::new(70, 50, 1720, 512), Rect::new(110, 220, 1640, 140));
+        assert_eq!(Browser::question_dy(sheet, row, Rect::new(400, 200, 900, 130), 620), 0);
+        assert_eq!(Browser::question_dy(sheet, row, RECT_EMPTY, 2480), 0);
+        assert_eq!(Browser::question_dy(sheet, row, Rect::new(400, 500, 900, 130), 2480), 0, "clear as it is");
+    }
+
+    // A picture's card copies it into Grimoire's templates or photos (2.2, #146). In Files: Use as template and Use as
+    // photo, but never the copy into the folder the picture is already in, and neither in a place a pick never takes
+    // from (Grimoire's PDF copies). Inside Grimoire's folders for the user's files Rename and Delete follow the copies
+    // (issue #144): a template's card is Use as photo, Rename, Delete, Cancel, and a picture in a folder of its own
+    // there has both copies above them. In the picture pick a Templates or Photos sheet's From a file... opens: that
+    // sheet's copy alone, then Cancel, in Grimoire's folders too (the pick renames and deletes nothing).
+    #[test]
+    fn a_pictures_card_offers_the_copies_into_templates_and_photos() {
+        let (base, _g) = storage("useas");
+        for d in ["documents/Pics", "grimoire/templates", "grimoire/photos", "grimoire/photos/Trip", "grimoire/PDFs"] {
+            std::fs::create_dir_all(format!("{base}/{d}")).unwrap();
+        }
+        for f in ["documents/Pics/a.png", "grimoire/templates/t.png", "grimoire/photos/p.jpg", "grimoire/photos/Trip/q.png", "grimoire/PDFs/odd.png"] {
+            std::fs::write(format!("{base}/{f}"), b"a picture").unwrap();
+        }
+        i18n_set("en");
+        let rows = |b: &mut Browser, i: usize| -> Vec<String> {
+            b.open_card(i);
+            let c = b.card.clone().expect("a card");
+            b.card_lines(&c).1.into_iter().map(|r| r.3).collect()
+        };
+        let mut b = Browser::default();
+        assert!(b.open(PickSpec::place(), FilesPrefs { card: true, ..Default::default() }));
+        assert!(b.go(sp("documents/Pics")));
+        assert_eq!(rows(&mut b, 0), ["Use as template", "Use as photo", "Cancel"]);
+        assert!(b.go(sp("grimoire/templates")));
+        assert_eq!(rows(&mut b, 0), ["Use as photo", "Rename", "Delete", "Cancel"]);
+        assert!(b.go(sp("grimoire/photos")));
+        assert_eq!(row_names(&b), ["Trip", "p.jpg"]);
+        assert_eq!(rows(&mut b, 1), ["Use as template", "Rename", "Delete", "Cancel"]);
+        assert!(b.go(sp("grimoire/photos/Trip")));
+        assert_eq!(rows(&mut b, 0), ["Use as template", "Use as photo", "Rename", "Delete", "Cancel"]);
+        assert!(b.go(sp("grimoire/PDFs")));
+        assert_eq!(rows(&mut b, 0), ["Cancel"]);
+        for (to, want, own) in [(CopyTo::Templates, "Use as template", "grimoire/photos/Trip"), (CopyTo::Photos, "Use as photo", "grimoire/templates")] {
+            let mut p = Browser::default();
+            assert!(p.open(PickSpec::picture(to), FilesPrefs { card: true, ..Default::default() }));
+            assert!(p.go(sp("documents/Pics")));
+            assert_eq!(rows(&mut p, 0), [want, "Cancel"]);
+            assert!(p.go(sp(own)));
+            assert_eq!(rows(&mut p, 0), [want, "Cancel"], "the pick in {own}: no Rename, no Delete");
+        }
+        // the card's file is checked again before either copy is asked ("File changed. Try again."): a picture
+        // written again since its folder was listed is no longer the card's
+        assert!(b.go(sp("documents/Pics")));
+        b.open_card(0);
+        let c = b.card.clone().expect("a card");
+        assert!(b.unchanged(&c));
+        std::fs::write(format!("{base}/documents/Pics/a.png"), b"another picture, a longer one").unwrap();
+        assert!(!b.unchanged(&c));
+    }
+
+    // The picture pick (2.2, #146): its root has no Import (that place is the imports', with their statuses and Look
+    // again), and a folder lists its folders and the pictures the template job takes (.png, .jpg, .jpeg, .pgm, in any
+    // case), nothing else.
+    #[test]
+    fn the_picture_pick_lists_folders_and_pictures() {
+        let (base, _g) = storage("picpick");
+        let d = format!("{base}/documents/Pics");
+        std::fs::create_dir_all(format!("{d}/Sub")).unwrap();
+        for n in ["a.png", "B.JPG", "c.jpeg", "d.pgm", "e.pdf", "f.ttf", "g.txt"] {
+            std::fs::write(format!("{d}/{n}"), b"x").unwrap();
+        }
+        i18n_set("en");
+        let mut b = Browser::default();
+        assert!(b.open(PickSpec::picture(CopyTo::Photos), FilesPrefs { card: true, ..Default::default() }));
+        assert_eq!(b.mode, BrowseMode::Pick);
+        assert_eq!(row_names(&b), ["documents", "All storage"]);
+        assert!(b.go(sp("documents/Pics")));
+        assert_eq!(row_names(&b), ["Sub", "a.png", "B.JPG", "c.jpeg", "d.pgm"]);
+        assert!(b.rows[1..].iter().all(|r| r.kind == RowKind::Picture));
     }
 
     #[test]

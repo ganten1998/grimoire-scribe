@@ -30,8 +30,10 @@
 //!   SHA-256, its size and its key: one line of source.ini, `FileRecord`), and a PDF that has a notebook's key is
 //!   compared with it (`key_holders`, `key_match`). The same file ends "PDF already imported."; another file
 //!   with that key becomes a notebook of its own, which carries the key in its record alone, so the book's first
-//!   notebook stays the one KOReader's route finds. A notebook without a record goes by its key. The whole file
-//!   is read in the writer only (once at the commit, and before that only for a file of a record's size).
+//!   notebook stays the one KOReader's version 1 route finds (a PDF KOReader hands over by its path is this
+//!   import's: it ends on the notebook of its own file, which the import names, `ended_notebook`). A notebook
+//!   without a record goes by its key. The whole file is read in the writer only (once at the commit, and before
+//!   that only for a file of a record's size).
 //! - A fill (2.2): the same PDF again, while its notebook lacks some of the book's pages, adds those pages to
 //!   that notebook instead of saying "PDF already imported." (`fill_plan`). The writer draws the pages as an
 //!   import's, in the work folder, at the notebook's own page size, and never writes the notebook: its last slice
@@ -153,7 +155,14 @@ struct Progress {
     broken: AtomicU32,
     /// the job `page` and `pages` are for (a hash of its id), stored at the start of every slice
     page_for: AtomicU32,
+    /// an R_ALREADY result's notebook: the id of the notebook this very PDF was found in, as bytes (shorter than
+    /// STORE_ID_LEN, the rest zero), four to a word. The UI checks it names a notebook before it uses it
+    /// (`already_notebook`)
+    nb: [AtomicU32; NB_WORDS],
 }
+
+/// The words of `Progress.nb`: STORE_ID_LEN bytes.
+const NB_WORDS: usize = STORE_ID_LEN.div_ceil(4);
 
 // the reasons a job ends with
 const R_NONE: u32 = 0;
@@ -194,7 +203,8 @@ fn progress() -> &'static Progress {
         }
         p.get()
     });
-    // SAFETY: at is a page-aligned, zeroed, live mapping at least 32 bytes long; Progress is atomics only.
+    // SAFETY: at is a page-aligned, zeroed, live mapping of 4096 bytes, more than Progress takes (60); Progress is
+    // atomics only.
     unsafe { &*(at as *const Progress) }
 }
 
@@ -203,11 +213,41 @@ fn id_hash(id: &str) -> u32 {
 }
 
 fn set_result(id: &str, reason: u32, arg: u32, blank: u32) {
+    set_result_in(id, reason, arg, blank, "");
+}
+
+/// The same, with the notebook an R_ALREADY result names (`nb`; empty for every other result).
+fn set_result_in(id: &str, reason: u32, arg: u32, blank: u32, nb: &str) {
     let p = progress();
     p.reason.store(reason, Ordering::Relaxed);
     p.arg.store(arg, Ordering::Relaxed);
     p.blank.store(blank, Ordering::Relaxed);
+    let b = nb.as_bytes();
+    for (i, w) in p.nb.iter().enumerate() {
+        let mut word = [0u8; 4];
+        for (k, c) in word.iter_mut().enumerate() {
+            *c = b.get(i * 4 + k).copied().unwrap_or(0);
+        }
+        w.store(u32::from_le_bytes(word), Ordering::Relaxed);
+    }
     p.result_for.store(id_hash(id), Ordering::Release);
+}
+
+/// The notebook import `id` found its PDF in, when it ended "PDF already imported.": the one whose record is of
+/// that very file, or the one that holds the file's key with no record (`key_match`), as the import's own open of
+/// the file decided. So whoever asked for the import (KOReader's hand-over by path: annotate.rs) opens that
+/// notebook, and never works the choice out again from another open of the file. None when the result is another
+/// job's or another end's, or when what the record holds is no notebook that is there (the writer is a child that
+/// may be wrong). Valid from the job's end until the next job's.
+pub fn already_notebook(id: &str) -> Option<String> {
+    let p = progress();
+    if p.result_for.load(Ordering::Acquire) != id_hash(id) || p.reason.load(Ordering::Relaxed) != R_ALREADY {
+        return None;
+    }
+    let bytes: Vec<u8> = p.nb.iter().flat_map(|w| w.load(Ordering::Relaxed).to_le_bytes()).take_while(|&c| c != 0).collect();
+    let nb = String::from_utf8(bytes).ok()?;
+    let mut dir = String::new();
+    (!nb.is_empty() && nb.len() < STORE_ID_LEN && store_notebook_dir(&nb, &mut dir, 700) == 0 && exists(&format!("{dir}/notebook.ini"))).then_some(nb)
 }
 
 /// The page and count the notice shows, and the job they are for: stored when a slice starts (and as pages are
@@ -1064,12 +1104,25 @@ pub fn is_queued(src: &str) -> bool {
     ui(|u| u.queued.iter().any(|q| q == src) || u.ready.iter().any(|r| r.1 == src))
 }
 
+/// The PDF (its StoragePath's text) of import `id`, while this process holds it as queued or running.
+pub fn queued_src(id: &str) -> Option<String> {
+    ui(|u| u.pending.iter().position(|p| p == id).and_then(|i| u.queued.get(i).cloned()))
+}
+
+/// Whether the PDF at `src` is still on its way to a notebook in this process: queued or running, its pages made
+/// and waiting to go in, going in now, or a pick that waits for the lock (its mark in import/.marks).
+pub fn in_flight(src: &str) -> bool {
+    is_queued(src)
+        || COMMIT.with(|c| c.borrow().as_ref().is_some_and(|c| c.src == src))
+        || mark_read(src).is_some_and(|m| m.state == MarkState::Waiting)
+}
+
 /// Resets what the UI side remembers (tests: as a new start), the shared record and a fill's commit with it.
 pub fn ui_reset() {
     ui(|u| *u = Ui::default());
     COMMIT.with(|c| *c.borrow_mut() = None);
     let p = progress();
-    for a in [&p.page, &p.pages, &p.result_for, &p.reason, &p.arg, &p.blank, &p.broken, &p.page_for] {
+    for a in [&p.page, &p.pages, &p.result_for, &p.reason, &p.arg, &p.blank, &p.broken, &p.page_for].into_iter().chain(&p.nb) {
         a.store(0, Ordering::Relaxed);
     }
 }
@@ -2009,7 +2062,7 @@ pub fn sim_before_filing(f: impl FnOnce() + 'static) {
 }
 
 /// Whether the private read-only mapping the worker needs works on this storage (the S1 spike's question).
-fn can_map(fd: i32, len: u64) -> bool {
+pub(crate) fn can_map(fd: i32, len: u64) -> bool {
     if len == 0 {
         return false;
     }
@@ -2478,7 +2531,7 @@ fn ignore_sigpipe() {
 }
 
 #[cfg(not(feature = "kindle"))]
-fn test_hooks() -> Vec<(&'static str, u32)> {
+pub(crate) fn test_hooks() -> Vec<(&'static str, u32)> {
     let mut v = Vec::new();
     for (name, var) in [
         ("crash", "GRIMOIRE_PDF_TEST_CRASH_PAGE"),
@@ -2494,7 +2547,7 @@ fn test_hooks() -> Vec<(&'static str, u32)> {
     v
 }
 #[cfg(feature = "kindle")]
-fn test_hooks() -> Vec<(&'static str, u32)> {
+pub(crate) fn test_hooks() -> Vec<(&'static str, u32)> {
     Vec::new()
 }
 
@@ -2635,7 +2688,8 @@ fn first_slice(id: &str, src: &str, abs: &str, source: &Src, mark: Option<&Mark>
             if finish_pdf(abs, src, id, source) {
                 note_try(src, stable_hash, A_DONE);
             }
-            set_result(id, R_ALREADY, 0, 0);
+            // (which notebook: for KOReader's hand-over by path, which opens it)
+            set_result_in(id, R_ALREADY, 0, 0, nb);
             return SliceEnd::Already;
         }
     } else if !holders.is_empty() {
@@ -3586,29 +3640,76 @@ pub fn fill_holds(nb: &str) -> bool {
 /// (Nothing until then, and for a fill that was not put in: the log says why).
 pub fn fill_tick(free: bool, dpi: f32) -> Finished {
     let t0 = mono_ms_now();
+    TOLD.with(|t| *t.borrow_mut() = None);
     let mut c = match COMMIT.with(|c| c.borrow_mut().take()) {
         Some(c) => c,
         None => {
             if !free {
                 return Finished::Nothing;
             }
-            let Some((id, src)) = ui(|u| u.ready.iter().find(|r| !bg_notebook_busy(&r.2)).map(|r| (r.0.clone(), r.1.clone()))) else {
+            let Some((id, src, nb)) = ui(|u| u.ready.iter().find(|r| !bg_notebook_busy(&r.2)).cloned()) else {
                 return Finished::Nothing;
             };
             ui(|u| u.ready.retain(|r| r.0 != id));
             match commit_begin(&id, &src) {
                 Ok(c) => c,
-                Err(f) => return f,
+                Err(f) => return told(&src, &nb, f),
             }
         }
     };
     match commit_step(&mut c, t0, dpi) {
-        Some(f) => f,
+        Some(f) => told(&c.src, &c.st.fill, f),
         None => {
             COMMIT.with(|x| *x.borrow_mut() = Some(c));
             Finished::Nothing
         }
     }
+}
+
+thread_local! {
+    /// The PDF whose fill the last fill_tick told of, and the notebook that fill was for (`fill_told_src`,
+    /// `fill_told_nb`).
+    static TOLD: RefCell<Option<(String, String)>> = const { RefCell::new(None) };
+}
+
+fn told(src: &str, nb: &str, f: Finished) -> Finished {
+    if f != Finished::Nothing {
+        TOLD.with(|t| *t.borrow_mut() = Some((src.to_string(), nb.to_string())));
+    }
+    f
+}
+
+/// The PDF (its StoragePath's text) of the fill the last fill_tick ended, when it said anything: so a fill that
+/// KOReader's hand-over by path started is told by the book job (annotate.rs), not by the import's own toast.
+pub fn fill_told_src() -> Option<String> {
+    TOLD.with(|t| t.borrow().as_ref().map(|t| t.0.clone()))
+}
+
+/// The notebook that fill was for: where a commit found every page there already (`Finished::Already`), the
+/// notebook that holds them.
+pub fn fill_told_nb() -> Option<String> {
+    TOLD.with(|t| t.borrow().as_ref().map(|t| t.1.clone()).filter(|nb| !nb.is_empty()))
+}
+
+/// The notebook an import's end is about, for whoever asked for that import and opens its notebook (KOReader's
+/// hand-over by path: annotate.rs): the one a new import made (`id`, its job), the one a fill went to, and for "PDF
+/// already imported." the one the import found the PDF in (`already_notebook`; for a fill's commit, which has no
+/// job, the fill's own notebook). The import's choice, from its own open of the file. Asked as the end is told.
+pub fn ended_notebook(id: &str, fin: &Finished) -> Option<String> {
+    match fin {
+        Finished::Imported { .. } => Some(id.to_string()),
+        Finished::Filled { nb, .. } => Some(nb.clone()),
+        Finished::Already if id.is_empty() => fill_told_nb(),
+        Finished::Already => already_notebook(id),
+        _ => None,
+    }
+}
+
+/// The notebook a fill of the PDF at `src` is for, while its pages wait to go in or go in now (the import's own
+/// choice, from the fill's state). KOReader's hand-over by path notes it, so a fill that ends without a word (its
+/// notebook renamed or moved meanwhile) still ends on that notebook.
+pub fn fill_target(src: &str) -> Option<String> {
+    ui(|u| u.ready.iter().find(|r| r.1 == src).map(|r| r.2.clone())).or_else(|| COMMIT.with(|c| c.borrow().as_ref().filter(|c| c.src == src).map(|c| c.st.fill.clone())))
 }
 
 /// A fill that ends without its pages going in (or, past its notebook.ini, without the rest): the log says why once,

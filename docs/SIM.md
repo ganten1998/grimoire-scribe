@@ -137,6 +137,7 @@ GRIMOIRE_ROOT=/tmp/q GRIMOIRE_SCRIPT=tests/scenarios/a_notebook.qs GRIMOIRE_SHOT
 | `clock SECONDS` | the time the clock and battery corner shows, in unix seconds (`clock 1700000000` is 2023-11-14 22:13:20 UTC), kept where the script puts it: it does not run on; `clock real` is the machine's clock again |
 | `battery PERCENT [charging]` | the battery that corner shows (a pixel art battery with the percent beside it), 0 to 100, with the bolt over it when `charging` follows; `battery none` is a battery that cannot be read. The simulator starts at 100 and not charging |
 | `storage full`, `storage ok` | from now on every file write fails, as on a full userstore, or works again |
+| `storage move SRC DST` | on a `# storage: 1` run's storage root, the entry SRC renamed to DST (each a path from the root, `_` for a space), as a writer over USB would while Grimoire runs: nothing replaced (DST taken fails the line), the entry itself renamed (a link is moved, never followed); a path that is no storage path fails the line too (2.2, files_12_swap) |
 | `quit` | quit (end of script also quits) |
 
 The clock and battery corner (docs/KINDLE.md; src status.rs, the Rust build only) reads the simulated
@@ -368,9 +369,20 @@ Taps: `tap library files.back`, `files.prev`, `files.next`, `files.row.N` (the N
 `files.more.N` (its `...`), `files.item.NAME` (the row of that name, `_` for a space; the root's rows by their
 English names: `Import`, `documents`, `Downloads`, `Templates`, `Photos`, `Fonts`, `Kindle_fonts`, `PDF_copies`,
 `Trash`, `All_storage`, `Show_Files_in_Library`), and the open card's `files.card.import`, `files.card.open`,
-`files.card.pictures`, `files.card.notebook`, `files.card.cancel`. In Files: `files.crumb.N` (the Nth part of the
-path bar, from 1: Files, the place, then each folder; the last opens the Go to sheet), `files.sort` and
-`files.show` (its chips), and `files.goto.N` (the Go to sheet's Nth row).
+`files.card.pictures`, `files.card.notebook`, `files.card.template` and `files.card.photo` (a picture's Use as template
+and Use as photo), `files.card.cancel`, and in Files `files.card.rename`,
+`files.card.trash` (Delete, which asks first), `files.card.delete` (the Delete question's Delete; its Keep it is
+`files.card.cancel`), `files.card.opener` (while that question is up: where the card's Delete that opened it was
+tapped, for a second tap at the place of the first) and `files.card.restore` (a trash entry's). The rename keyboard
+is the Library's: its keys are tapped where they are drawn (as for New folder's), and Esc (keys on) or Back is its
+Cancel. A Library notebook's Delete confirmation is `tap library delete.yes`. A Delete question takes its answer
+once it has been shown, 450 ms after its frame went to the panel (docs/DESIGN.md, "The question is seen before it is
+answered"): a script waits `wait 500` between the tap that opens one and its answer (Files' Delete, Keep it or a tap
+outside; the Library's `delete.yes`), and tests/scenarios/files_18_delete_twice.qs, which taps sooner on purpose,
+runs on the script's clock. In Files: `files.crumb.N` (the Nth part of the
+path bar, from 1: Files, the place, then each folder; the last opens the Go to sheet), `files.sort`,
+`files.show` and `files.view` (its chips), and `files.goto.N` (the Go to sheet's Nth row). In the Covers view
+`files.row.N` and `files.item.NAME` tap a tile (it has no `...`).
 
 | key | value |
 |---|---|
@@ -379,10 +391,14 @@ path bar, from 1: Files, the place, then each folder; the last opens the Go to s
 | `files.crumbs` | the path line ("Files > Documents > Books"), empty at the root |
 | `files.ready` | `1` once the folder is read; `files.rows` the rows in all, `files.page`, `files.pages`, `files.per_page` |
 | `files.hidden` | entries left out of the folder (links, refused folders, paths too long); `files.capped` `1` at 5,000 entries |
-| `files.row.N`, `files.item.NAME` | a row's name as drawn; `files.sub.N` its second line; `files.kind.N` (`place`, `folder`, `pdf`, `look`, `show` for "Show Files in Library", and in Files `picture`, `font`, `other`, `link`, `trashed`); `files.status.N` (`waiting`, `importing`, `failed`, `imported` or empty); `files.notes.N` (`1` with "has notes"); `files.keyed.N` (`1` once the PDF's book key was read, which an idle tick does for the rows on screen: `files.notes.N` is settled then); `files.pictures.N` (a folder's count, empty before it is counted) |
-| `files.card` | the open card: `pdf`, `folder`, in Files `picture`, `font`, `other` or `goto` (the Go to sheet), or empty; `files.card.details` its first line (the Go to sheet's title), `files.card.rows` its rows joined by `|` |
+| `files.row.N`, `files.item.NAME` | a row's name as drawn; `files.sub.N` its second line (`files.sub.NAME` the row of that name's: `files.sub.Trash` the root's Trash row, its path and, once the trash's walk is through, its size); `files.kind.N` (`place`, `folder`, `pdf`, `look`, `show` for "Show Files in Library", and in Files `picture`, `font`, `other`, `link`, `trashed`); `files.status.N` (`waiting`, `importing`, `failed`, `imported` or empty); `files.notes.N` (`1` with "has notes"); `files.keyed.N` (`1` once the PDF's book key was read, which an idle tick does for the rows on screen: `files.notes.N` is settled then); `files.pictures.N` (a folder's count, empty before it is counted) |
+| `files.card` | the open card: `pdf`, `folder`, in Files `picture`, `font`, `other`, `trashed` (a trash entry's), `delete` (the Delete question a card's Delete opens) or `goto` (the Go to sheet), or empty; `files.card.details` its first line (the Go to sheet's title, the question's `Delete "name"?`), `files.card.rows` its rows joined by `|` |
+| `files.keyboard`, `files.text` | `1` while Files' rename keyboard is up, else `0`; the name it holds (empty when it is not up) |
 | `files.sort`, `files.show` | Files' order (`name`, `newest`, `size`) and what it lists (`usable`, `all`), as settings.ini has them; `files.sorting` `1` while a new order's stats come in |
 | `files.order`, `files.drawn` | the rows' names in order, joined by `|`; the rows' names as last drawn on the screen (a new order shows there once, when ready) |
+| `files.view`, `files.tiles` | Files' view (`list`, `covers`), as settings.ini has it; in the Covers view what each tile on the screen was last drawn showing, a letter each in order: `p` its preview, `l` the hourglass (its preview to come), `i` its kind's icon (a folder, another file, one the worker refused or gave nothing for); empty in the list (2.2). The tiles that changed are drawn together (at once when the screen's set is complete, else every 2 s at most), so `files.tiles` follows `files.covers` |
+| `files.covers`, `files.says.N` | in the Covers view, what each tile on the screen would show now, drawn yet or not (the same letters); and what the Nth tile on the screen was last drawn saying under its name (the Import place's status, `Importing: page 3 of 12`), empty for none and in the list |
+| `files.making`, `files.asked` | `1` while a preview the Covers screen asked for is queued or running ("Making previews..." stays while one is being made, after its first second); how many files were looked at since the folder was entered, a file the cache had included, one whose queued job was taken back not |
 | `storage.exists.PATH`, `storage.size.PATH`, `storage.names.DIR` | on the storage root: whether a path is there (a link counts as itself), a file's size (-1 without it), a folder's names sorted and joined by `|` |
 
 ### Checks
@@ -478,7 +494,7 @@ shows what the app holds.
 | `editor.stroke_start` | where the open page's newest stroke starts, in page px rounded, `x y`; empty with no stroke |
 | `editor.stroke_points` | sample count of the newest stored stroke, zero with no stroke |
 | `editor.stroke_tip` | the newest stroke's tip variant (src/brush.h: 0 its tool's first tip, 1 the vertical highlighter); empty with no stroke |
-| `editor.modal` | what is in front of the page: `none`, `add-pad` (the toolbar's count pad), `find` (the Find sheet), `card` (the long-press card, or Rename's keyboard over it), `linkto` (Link to..., or New page...'s keyboard over it), `links` (the Links bar), `tools` (the tool picker), `paper` (Paper for this page), `music` (Custom music), `display` (the Display sheet) or `pages` (the Pages view) |
+| `editor.modal` | what is in front of the page: `none`, `add-pad` (the toolbar's count pad), `find` (the Find sheet), `card` (the long-press card, or Rename's keyboard over it), `linkto` (Link to..., or New page...'s keyboard over it), `links` (the Links bar), `tools` (the tool picker), `paper` (Paper for this page), `music` (Custom music), `display` (the Display sheet), `templates` (the Templates or Photos sheet), `files` (the picture pick its From a file... tile opens, 2.2) or `pages` (the Pages view) |
 | `editor.layers` | whether the screen is what its layers make of it: `ok`, or `X Y`, the first pixel that differs from the screen composed again whole (the page, the panel and then each menu that is up in its order) by more than 64 gray levels (the edges of a frame drawn again over itself differ by a little). A panel drawn over a sheet, the Find sheet's keyboard or the Links bar shows here. The check leaves the screen as it composed it, so it says what was wrong once |
 | `editor.wear` | the DU wear not cleaned yet (display.rs `DuWear`, issue #11): the screen area fast refreshes turned back to paper (the erasers, a dragged selection), in thousandths of the screen, with ` owed` while a toolbar drag owes a clean; past 250 the next pause cleans it with one `clean` refresh, then `0` |
 | `editor.panel_at.X.Y` | the name of the panel's button at screen point (X, Y) (the panel's names, above; between two buttons or in the frame's margin beside one, the nearest, as a finger there takes it), empty for none (a greyed-out button), after settling a stale panel as a tap would: the way to check what a raw coordinate hits. Empty while no notebook is open |
@@ -560,6 +576,7 @@ shows what the app holds.
 | `editor.music` | the Custom music layout on the Custom music sheet while it is open, else the page's if its paper is custom, else empty: the systems per page, a colon, then the parts top to bottom (`treble`, `bass`, `alto`, `tenor`, `drums`, `plain`, `tab4` to `tab7`, `lyrics`), e.g. `4: treble tab6 bass` |
 | `editor.music_max` | while the editor's Custom music sheet is open, the most systems its layout fits on the page it is for (that page's height), else empty |
 | `library.sheet` | what is open over the cards: `none`, `new` (New notebook), `settings`, `more` (a notebook's menu), `folder-more` (a folder's menu), `move` (Move to), `delete`, `keyboard`, `display`, `music`, `koreader`, `language` (Settings > Language's list), `shortcuts` (Settings > Shortcuts), `buttons` (its Buttons sheet), `pair-menu` (Settings > Pair, 2.0.0-beta.2), `pair` (its Pair a controller... sheet), `wifi` (Settings > Wi-Fi, 2.1.0-beta.2), `updates`, `gestures`, `about` (What's new, Rust only), `font` (Settings > Font, Classic only: 2.1), `merge` (a folder moved or renamed onto a name that is there: 2.1; hits `merge.into`, `merge.both`, Cancel is `done`), `files-more` (the Files card's menu, 2.2) or `exit` (Exit Grimoire?, Esc at the top level: 2.0.0-beta.2) |
+| `templates.count`, `templates.ready` | the Templates (or Photos) sheet in front, over New notebook or the page: how many templates it offers, and how many of those have their previews; `templates.page`, `templates.pages` its pages of tiles (from 1), `templates.selected` the selected tile's name, `templates.names` the tiles' names in order joined by `\|`, `templates.copying` `1` while its From a file... tile waits for a copy (2.2), all empty while it is closed. `tap library templates.from_file` (over New notebook) and `tap panel templates.from_file` (over the page) tap that tile, `templates.back` its Back. Over the page the picture pick it opens is the editor's: its `files.*` keys and taps are the Library's, asked as `tap panel files.item.NAME` and so on |
 | `library.font.pick` | the Font sheet's highlighted font, by its settings.ini value: a family's id, or `file:<path>` for one of the owner's own (the font in use as the sheet opens; a tap on a row moves it and applies that font at once); empty while the sheet is not up (2.1) |
 | `library.font.rows`, `library.font.checking` | the Font sheet's own fonts (2.1.0-beta.2): how many files of grimoire/fonts it lists, and how many of them are still being checked |
 | `library.font.state.PATH`, `library.font.note.PATH` | an own font's row by its path under grimoire/fonts: `ready`, `checking`, `unreadable`, `toobig`, `nolatin`, `format`, `slow` or `missing` (empty for a file the sheet does not list), and what the row says under the name ("Unreadable font.", "Some letters come from Terminess.", empty) |
@@ -928,7 +945,9 @@ PDF import hooks (headless and test builds; compiled out of the Kindle build, li
 `GRIMOIRE_IMPORT_STABLE=fast` (a file is taken at the first look: no 2 s and 5 s wait; `hold`: no PDF in `import/` is ever taken, it stays Waiting), `GRIMOIRE_PDF_SLICE_PAGES=N`
 (slices of N pages), `GRIMOIRE_PDF_BANDS=N` (N above 1: band mode), `GRIMOIRE_PDF_NO_MAP=1` (the device refuses the
 private mapping: the worker reads the file whole), `GRIMOIRE_PDF_FREE_BYTES=N` (free storage as N bytes),
-`GRIMOIRE_PDF_WATCHDOG_MS=N` (the page watchdog), `GRIMOIRE_PDF_TEST_CRASH_PAGE=N`, `..._HANG_PAGE=N`,
+`GRIMOIRE_PDF_WATCHDOG_MS=N` (the page watchdog), `GRIMOIRE_COPY_FREE_BYTES=N` (the copy job's free storage as N
+bytes: its floor is 100 MB after the copy, `FS_FREE_FLOOR`), `GRIMOIRE_COPY_FAIL_AFTER=N` (the copy job's writes fail as
+on a full storage once N bytes are written), `GRIMOIRE_PDF_TEST_CRASH_PAGE=N`, `..._HANG_PAGE=N`,
 `..._ALLOC_PAGE=N`, `..._TRAP_PAGE=N` (the worker aborts, spins, allocates without bound or makes a call outside
 its allow-list when it reaches page N), `GRIMOIRE_PDF_TEST_LINKS=N` (the worker aborts, N = 1, or spins, N = 2, when
 it walks the document's link annotations), `GRIMOIRE_PDF_TEST_WOKE=1` (every page's wait counts as one the Kindle
@@ -949,6 +968,9 @@ Font hooks (same builds): `GRIMOIRE_FONT_WATCHDOG_MS=N` (the font watchdog), `GR
 `GRIMOIRE_FONT_TEST_DRAW_CRASH=1` (the simulator's build only: the app ends at the first glyph a custom font
 draws, as a font that crashed its first screen would). `GRIMOIRE_IMPORT_STABLE=fast` takes a font file at the
 first look too, and `GRIMOIRE_WORK_FAIL_STEP` fails a font worker's step: no font is then checked.
+Files' previews (same builds): `GRIMOIRE_PREVIEW_MS=N` is the time one preview may take, every kind's (in place of
+3 s for a PDF's page and a font's sample, 6 s for a picture), and `GRIMOIRE_PREVIEWS_MAX=<files>,<bytes>` the
+limits its cache is pruned past; the PDF, picture and font hooks above reach a preview's worker too.
 `GRIMOIRE_FONT_GLYPH_US=N` is the CPU time one glyph's draw may take in the check, in microseconds (1 to
 999999999; anything else, or unset, is 5 s, which no real font reaches), and
 `GRIMOIRE_FONT_TEST_SLOW=<slow|once|bold|from>:<glyph>:<us>` is the test charge: the draw of glyph `<glyph>`
