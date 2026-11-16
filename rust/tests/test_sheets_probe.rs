@@ -1187,8 +1187,9 @@ fn recorded(name: &str) -> String {
             out.push('\n');
         }
     }
-    // Only reviewed Index-screen raster hashes differ; layouts and event results still use the C baseline.
-    let overrides=include_str!("fixtures/sheets_probe_rust_index.txt");
+    // Only reviewed raster hashes differ (the Index screens, and the Templates and Photos sheets' From a file... tile of
+    // 2.2, #146); layouts and event results still use the C baseline.
+    let overrides=concat!(include_str!("fixtures/sheets_probe_rust_index.txt"),include_str!("fixtures/sheets_probe_rust_templates.txt"));
     out.lines().map(|line|{
         let (key,_)=line.rsplit_once(' ').unwrap_or((line,""));
         overrides.lines().find(|entry|entry.rsplit_once(' ').is_some_and(|(label,_)|label==key)).unwrap_or(line).to_string()+"\n"
