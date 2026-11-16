@@ -1660,8 +1660,9 @@ with `#` passed over, `from=` and `time=` each exactly once, `from=` a path unde
 return, no key this version does not know). A record that does not read so leaves its item listed and not
 restorable from Grimoire. A path with a line break in it cannot be recorded, so such an item is not trashed.
 
-Restore puts a file or folder back in the folder `from=` names, when that folder is still there and inside
-Grimoire's `import/`, `templates/`, `photos/` or `fonts/` (never the folder itself, never `import/done`); a
+Restore puts a file or folder back in the folder `from=` names, when that folder is still there, no import
+holds it, and it is inside Grimoire's `import/`, `templates/`, `photos/` or `fonts/` (never the folder itself,
+never `import/done`); a
 name taken there gets " 2", " 3" and so on up to " 99" (before a file's extension: `Holiday 2.png`). Then the
 record and the emptied `files-...` folder are removed: the only removal the trash ever sees. A record whose
 `from=` is `grimoire/notebooks/<id>` over a folder named `<id>` restores that notebook, as `<id>-<time>` does

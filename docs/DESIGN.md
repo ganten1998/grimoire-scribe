@@ -2370,8 +2370,8 @@ their own work), so nothing a user sees changed.
 - **Never a hard delete.** Trash is one rename into a new folder `trash/files-<YYYYMMDD-HHMMSS>-<4 hex>/`, beside
   its record `.grimoire-trash` (`from=`, `time=`), written with `O_CREAT|O_EXCL|O_NOFOLLOW` and synced before the
   rename; a failure removes both, so nothing is left. Restore reads the record strictly (a plain file, 4 KiB at
-  most, `O_NOFOLLOW|O_NONBLOCK`), puts the item back where it was when that folder is still there and allowed (a
-  name taken gets " 2", " 3"...), else says why (`FolderGone`, `BadRecord`, `Refused`); a notebook goes back to
+  most, `O_NOFOLLOW|O_NONBLOCK`), puts the item back where it was when that folder is still there, allowed and not held
+  by an import (a name taken gets " 2", " 3"...), else says why (`FolderGone`, `BadRecord`, `Refused`, `Busy`); a notebook goes back to
   `notebooks/<id>` from the name `store_delete` gives it or from a record naming that folder, refused while the
   id is taken. The only removals: the record and its emptied folder after a restore. Pages in the trash are
   listed, never restored (their place was never kept). The trash is listed by `FsListing` in its slices and read

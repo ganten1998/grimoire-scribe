@@ -1216,8 +1216,8 @@ impl FsStorage {
     }
 
     /// Puts the trash entry `entry` back. A file or folder (`files-...`) goes back where its record says it was,
-    /// when that folder is still there and inside Grimoire's folders for the user's files; a name taken there gets
-    /// " 2", " 3" and so on (before a file's extension). A notebook goes back to `notebooks/<id>`, from the name
+    /// when that folder is still there, inside Grimoire's folders for the user's files and not held by an import; a
+    /// name taken there gets " 2", " 3" and so on (before a file's extension). A notebook goes back to `notebooks/<id>`, from the name
     /// store_delete gives it (`<id>-<time>`) or from a record whose `from=` is that folder; refused when the id is
     /// taken. A page is not restored here (its place in its notebook was never kept). Its folder in the trash goes
     /// once empty: the record, then the folder, the only removal in these writes.
@@ -1257,6 +1257,10 @@ impl FsStorage {
                     _ => return Err(FsWriteErr::Refused),
                 };
                 let done = if let Some(zone) = zone {
+                    // (never into what an import holds: a picture put back into a folder being imported)
+                    if self.busy(&rec.from) {
+                        return Err(FsWriteErr::Busy);
+                    }
                     let dest = match self.open_dir(&folder, false) {
                         Ok(fd) => fd,
                         Err(FsErr::NotFound | FsErr::NotDir) => return Err(FsWriteErr::FolderGone),

@@ -206,14 +206,17 @@ fn settle() -> i32 {
 }
 
 // What an import holds is never renamed or trashed: the PDF a PDF import works on, a folder of pictures (a scan's,
-// by its path under Grimoire's folder), what is inside it, and the folder a held PDF is in. The jobs wait in the
-// queue behind another (an export of no notebook, which fails), so no import runs; once they leave it, the items
-// are free again.
+// by its path under Grimoire's folder), what is inside it, and the folder a held PDF is in; nor is anything put back
+// into a held folder. The jobs wait in the queue behind another (an export of no notebook, which fails), so no
+// import runs; once they leave it, the items are free again.
 fn what_an_import_holds_stays() {
     let (root, g) = tree();
     std::fs::create_dir_all(format!("{root}/grimoire/import/Work")).unwrap();
     std::fs::write(format!("{root}/grimoire/import/Work/A.pdf"), b"%PDF a").unwrap();
     let st = open(&root, &g);
+    // a picture of the folder in the trash, to be put back while the folder is held
+    let p2 = stat_of(&st, "grimoire/import/Trip/p2.png");
+    let back = st.trash(&sp("grimoire/import/Trip/p2.png"), &p2).unwrap();
     let mirror = format!("{root}/mirror");
     bg_queue(BgKind::MirrorPdf, Some("20261115-000000-dead"), Some(&mirror), 300.0, false);
     check!(bg_children() == 1);
@@ -229,6 +232,7 @@ fn what_an_import_holds_stays() {
         check!(st.trash(&sp(p), &s) == Err(FsWriteErr::Busy));
     }
     check!(!st.busy(&sp("grimoire/templates/a.png")) && !st.busy(&sp("grimoire/import/done/Old-20260101-000000.pdf")));
+    check!(st.restore(&back) == Err(FsWriteErr::Busy));
     check!(bg_unqueue(BgKind::PdfImport, "20261115-000000-beef", "grimoire/import/Book.pdf"));
     check!(bg_unqueue(BgKind::PdfImport, "20261115-000000-f00d", "grimoire/import/Work/A.pdf"));
     check!(bg_unqueue(BgKind::ImportFolder, "20261115-000000-cafe", &trip));
@@ -237,6 +241,7 @@ fn what_an_import_holds_stays() {
     check!(!st.busy(&sp("grimoire/import/Book.pdf")));
     check!(st.rename(&sp("grimoire/import/Book.pdf"), &s, b"Book 1.pdf").is_ok());
     check!(names(&format!("{root}/grimoire/import")) == ["Book 1.pdf", "Trip", "Work", "done"]);
+    check!(st.restore(&back) == Ok(Restored::File(sp("grimoire/import/Trip/p2.png"))));
 }
 
 // A file and a folder to the trash and back: one rename each way (the same inode), the record beside the item
