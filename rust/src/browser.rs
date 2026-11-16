@@ -2184,6 +2184,7 @@ impl Browser {
                 }
                 BrowserResult::Copying(to)
             }
+            // (changed since it was listed: said, and the folder read again; every other refusal by its own sentence)
             Err(FsWriteErr::Changed) => self.changed_since(a),
             Err(e) => {
                 let why = match e {

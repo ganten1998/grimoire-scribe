@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: Grimoire 1.0.0-beta\n"
 "Report-Msgid-Bugs-To: https://github.com/ganten1998/grimoire-scribe/issues\n"
-"POT-Creation-Date: 2026-11-16 10:29-0600\n"
+"POT-Creation-Date: 2026-11-16 10:33-0600\n"
 "PO-Revision-Date: 2026-10-20 08:02-0500\n"
 "Last-Translator: draft\n"
 "Language-Team: Spanish\n"
@@ -1021,6 +1021,22 @@ msgstr "Canal de actualizaciones: %s"
 msgid "Too big (over %d MB)."
 msgstr "Demasiado grande (más de %d MB)."
 
+#. TRANSLATORS: (also) a toast when a copy into Grimoire's templates or photos was not made because the
+#. picture changed, or went, between the moment it was picked and the copy.
+#. TRANSLATORS: a toast in the file picker: the file tapped was changed or replaced since its
+#. folder was listed; the folder is read again. One line of about 1000 px at 44 px.
+#: rust/src/bgwork_copy.rs rust/src/browser.rs
+msgid "File changed. Try again."
+msgstr "El archivo cambió. Inténtalo de nuevo."
+
+#. TRANSLATORS: (also) a toast when a picture is not copied into Grimoire's templates or photos because its
+#. path, folders and name together, is longer than Grimoire can hand to the copy.
+#. TRANSLATORS: a toast in the file picker: some names in this folder are left out because their path
+#. would be too long for Grimoire to hand to its import (one line).
+#: rust/src/bgwork_copy.rs rust/src/browser.rs
+msgid "Path too long."
+msgstr "Ruta demasiado larga."
+
 #. TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): a picture could not be copied into
 #. Grimoire's templates or photos (Use as template, Use as photo, a sheet's From a file...); the storage keeps
 #. 100 MB free, so the likely cause is that it is nearly full.
@@ -1175,12 +1191,6 @@ msgstr "Libre: %s de %s"
 #: rust/src/browser.rs rust/src/editor.rs rust/src/library.rs
 msgid "Couldn't open folder."
 msgstr "No se pudo abrir la carpeta."
-
-#. TRANSLATORS: a toast in the file picker: some names in this folder are left out because their path
-#. would be too long for Grimoire to hand to its import (one line).
-#: rust/src/browser.rs
-msgid "Path too long."
-msgstr "Ruta demasiado larga."
 
 #. TRANSLATORS: the file picker's first row, the folder Grimoire watches (grimoire/import): PDFs and pictures
 #. dropped in it become notebooks. Also the first word of its path line (a row of 150 px at 44 px).
@@ -1376,12 +1386,6 @@ msgstr "PDF, imágenes, fuentes"
 #: rust/src/browser.rs
 msgid "has notes"
 msgstr "con notas"
-
-#. TRANSLATORS: a toast in the file picker: the file tapped was changed or replaced since its
-#. folder was listed; the folder is read again. One line of about 1000 px at 44 px.
-#: rust/src/browser.rs
-msgid "File changed. Try again."
-msgstr "El archivo cambió. Inténtalo de nuevo."
 
 #. TRANSLATORS: the staying notice while the file picker reads a big folder (one line, about 600 px at 44 px).
 #: rust/src/browser.rs

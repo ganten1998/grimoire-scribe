@@ -57,6 +57,10 @@ pub enum CopyFail {
     Other = 1,
     /// the file is bigger than its folder takes (CopyTo::max_bytes)
     TooBig = 2,
+    /// it is no longer the file listed, or is gone (in the job: since the request, or while it was read)
+    Changed = 3,
+    /// its path does not fit a job's, or its name or path would be too long in the folder
+    TooLong = 4,
 }
 
 impl CopyFail {
@@ -64,6 +68,8 @@ impl CopyFail {
     pub fn of_request(e: FsWriteErr) -> CopyFail {
         match e {
             FsWriteErr::TooBig => CopyFail::TooBig,
+            FsWriteErr::Changed => CopyFail::Changed,
+            FsWriteErr::TooLong => CopyFail::TooLong,
             _ => CopyFail::Other,
         }
     }
@@ -71,6 +77,8 @@ impl CopyFail {
     pub fn of_exit(code: i32) -> CopyFail {
         match code {
             2 => CopyFail::TooBig,
+            3 => CopyFail::Changed,
+            4 => CopyFail::TooLong,
             _ => CopyFail::Other,
         }
     }
@@ -84,6 +92,12 @@ pub fn copy_refusal(why: CopyFail, to: CopyTo) -> String {
         // template, Use as photo or a sheet's From a file... is bigger than Grimoire takes as a template or a photo,
         // so it is not copied; %d is 16.
         CopyFail::TooBig => cformat!(tr("Too big (over %d MB)."), (to.max_bytes() >> 20) as i32),
+        // TRANSLATORS: (also) a toast when a copy into Grimoire's templates or photos was not made because the
+        // picture changed, or went, between the moment it was picked and the copy.
+        CopyFail::Changed => tr("File changed. Try again.").to_string(),
+        // TRANSLATORS: (also) a toast when a picture is not copied into Grimoire's templates or photos because its
+        // path, folders and name together, is longer than Grimoire can hand to the copy.
+        CopyFail::TooLong => tr("Path too long.").to_string(),
         CopyFail::Other => copy_failed().to_string(),
     }
 }
@@ -169,7 +183,8 @@ fn fail_after() -> u64 {
 /// (BgKind::CopyFile, reported through bg_poll as a job the user waits on). Refused now when the source is in a
 /// place a pick never takes from (Grimoire's own folders), is no longer the item listed, is no plain file, is
 /// bigger than the folder takes (`to.max_bytes()`), or would leave less than the floor free (100 MB after it); or
-/// when its path is not text or too long for a job.
+/// when its path is too long for a job (`TooLong`; one that is not text, which no listing shows, is `Refused`).
+/// What can never be copied is said before the room is looked at.
 pub fn copy_request(st: &FsStorage, src: &StoragePath, listed: &FsStat, to: CopyTo) -> Result<(), FsWriteErr> {
     if src.is_root() || st.zone(src, true) == FsZone::Refused {
         return Err(FsWriteErr::Refused);
@@ -185,11 +200,12 @@ pub fn copy_request(st: &FsStorage, src: &StoragePath, listed: &FsStat, to: Copy
     if now.size > to.max_bytes() {
         return Err(FsWriteErr::TooBig);
     }
+    let text = std::str::from_utf8(src.as_bytes()).is_ok();
+    let path = job_path(src, &now).ok_or(if text { FsWriteErr::TooLong } else { FsWriteErr::Refused })?;
     let free = free_bytes(st).ok_or(FsWriteErr::Io(libc::EIO))?;
     if !fsview_room_for(free, now.size) {
         return Err(FsWriteErr::NoRoom);
     }
-    let path = job_path(src, &now).ok_or(FsWriteErr::TooLong)?;
     bg_queue(BgKind::CopyFile, Some(to.folder()), Some(&path), 0.0, true);
     Ok(())
 }
@@ -247,15 +263,17 @@ fn copy(to: &str, path: &str) -> Result<u64, Fail> {
     let g = st.grimoire_rel().ok_or("Grimoire's folder is not in the storage")?.clone();
     let dest = g.join(to.folder().as_bytes()).ok_or("a path too long")?;
     let (_, name) = src.split_last().ok_or("no source")?;
-    if st.zone(&dest.join(name).ok_or("a path too long")?, false) != FsZone::Writable {
+    let long = |words: &str| Fail(CopyFail::TooLong, words.into());
+    let changed = |words: &str| Fail(CopyFail::Changed, words.into());
+    if st.zone(&dest.join(name).ok_or_else(|| long("a path too long"))?, false) != FsZone::Writable {
         return Err("not one of Grimoire's folders".into());
     }
     // the source: the walk again, a plain file, the one listed, no bigger than the folder takes
-    let file = st.open_file(&src, true).map_err(walk_why)?;
+    let file = st.open_file(&src, true).map_err(|e| if e == FsErr::NotFound { changed(&walk_why(e)) } else { walk_why(e).into() })?;
     let mut f = std::fs::File::from(file);
     let at = file_stat(&f)?;
     if !at.same(&listed) {
-        return Err("it changed since it was listed".into());
+        return Err(changed("it changed since it was listed"));
     }
     if at.size > to.max_bytes() {
         return Err(Fail(CopyFail::TooBig, format!("it is over {} MB", to.max_bytes() >> 20)));
@@ -284,13 +302,13 @@ fn copy(to: &str, path: &str) -> Result<u64, Fail> {
         for k in 1..=99u32 {
             let want = if k == 1 { name.to_vec() } else { numbered(name, k, false) };
             if want.len() > FS_NAME_MAX || dest.join(&want).is_none() {
-                return Err("a name too long".into());
+                return Err(long("a name too long"));
             }
-            let cw = CString::new(want).map_err(|_| String::from("a name"))?;
+            let cw = CString::new(want).map_err(|_| "a name")?;
             match rename_noreplace(d, &tmp, d, &cw) {
                 Ok(()) => return Ok(n),
                 Err(libc::EEXIST) => continue,
-                Err(e) => return Err(strerror(e)),
+                Err(e) => return Err(strerror(e).into()),
             }
         }
         Err("every name up to \" 99\" is taken".into())
@@ -300,7 +318,7 @@ fn copy(to: &str, path: &str) -> Result<u64, Fail> {
         unsafe { libc::unlinkat(d, tmp.as_ptr(), 0) };
     }
     sync_dir(d);
-    Ok(r?)
+    r
 }
 
 fn file_stat(f: &std::fs::File) -> Result<FsStat, String> {
@@ -331,7 +349,7 @@ fn create_tmp(d: i32, tmp: &CString) -> Result<std::fs::File, String> {
 
 /// Copies the source into `out` and syncs it: the bytes copied, or why not. The source must end as it was listed
 /// (size and time, as read at the end), and have given exactly its size.
-fn fill(src: &mut std::fs::File, out: std::fs::File, listed: &FsStat) -> Result<u64, String> {
+fn fill(src: &mut std::fs::File, out: std::fs::File, listed: &FsStat) -> Result<u64, Fail> {
     use std::io::{Read, Write};
     let mut out = out;
     let mut buf = Vec::new();
@@ -344,20 +362,20 @@ fn fill(src: &mut std::fs::File, out: std::fs::File, listed: &FsStat) -> Result<
             Ok(0) => break,
             Ok(k) => k,
             Err(e) if e.kind() == std::io::ErrorKind::Interrupted => continue,
-            Err(e) => return Err(strerror(e.raw_os_error().unwrap_or(libc::EIO))),
+            Err(e) => return Err(strerror(e.raw_os_error().unwrap_or(libc::EIO)).into()),
         };
         if n.saturating_add(k as u64) > limit {
-            return Err(strerror(libc::ENOSPC));
+            return Err(strerror(libc::ENOSPC).into());
         }
         out.write_all(&buf[..k]).map_err(|e| strerror(e.raw_os_error().unwrap_or(libc::EIO)))?;
         n += k as u64;
         if n > listed.size {
-            return Err("it changed while it was copied".into());
+            return Err(Fail(CopyFail::Changed, "it changed while it was copied".into()));
         }
     }
     let end = file_stat(src)?;
     if n != listed.size || !end.same(listed) {
-        return Err("it changed while it was copied".into());
+        return Err(Fail(CopyFail::Changed, "it changed while it was copied".into()));
     }
     out.sync_all().map_err(|e| strerror(e.raw_os_error().unwrap_or(libc::EIO)))?;
     Ok(n)
@@ -447,11 +465,17 @@ mod tests {
         assert_eq!(copy_refusal(CopyFail::of_request(FsWriteErr::TooBig), CopyTo::Templates), "Too big (over 16 MB).");
         assert_eq!(copy_refusal(CopyFail::of_request(FsWriteErr::TooBig), CopyTo::Photos), "Too big (over 16 MB).");
         assert_eq!(copy_refusal(CopyFail::of_request(FsWriteErr::TooBig), CopyTo::Fonts), "Too big (over 24 MB).");
+        assert_eq!(copy_refusal(CopyFail::of_request(FsWriteErr::TooLong), CopyTo::Templates), "Path too long.");
+        assert_eq!(copy_refusal(CopyFail::of_request(FsWriteErr::Changed), CopyTo::Templates), "File changed. Try again.");
         for e in [FsWriteErr::NoRoom, FsWriteErr::Refused, FsWriteErr::Io(libc::EIO), FsWriteErr::Walk(FsErr::NotFile)] {
             assert_eq!(copy_refusal(CopyFail::of_request(e), CopyTo::Templates), full, "{e:?}");
         }
         // the job's exit status, as bg_last_exit gives it: the cause's number, 1 (or a child that died) for the rest
-        assert_eq!(CopyFail::of_exit(CopyFail::TooBig as i32), CopyFail::TooBig);
+        for why in [CopyFail::TooBig, CopyFail::Changed, CopyFail::TooLong] {
+            assert_eq!(CopyFail::of_exit(why as i32), why);
+        }
+        assert_eq!(copy_refusal(CopyFail::of_exit(3), CopyTo::Photos), "File changed. Try again.");
+        assert_eq!(copy_refusal(CopyFail::of_exit(4), CopyTo::Photos), "Path too long.");
         for code in [1, -1, 0, 9] {
             assert_eq!(copy_refusal(CopyFail::of_exit(code), CopyTo::Photos), full, "{code}");
         }
