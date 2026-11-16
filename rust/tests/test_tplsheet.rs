@@ -648,6 +648,59 @@ fn from_file_tile() {
     canvas_free(&mut a.screen);
 }
 
+// A copy that ends while a pen or finger is down on the sheet (#146): the folder is not read again under the
+// contact, so no tile moves under it and the press it began stays the sheet's. Its lift does what it was on: a tile
+// is picked; a press on no button leaves the sheet open, and the folder is read at the next tick.
+fn a_copy_ends_under_a_contact() {
+    check!(rm_rf(&format!("{}/templates", root())) == 0);
+    templates_init();
+    put_template(1, "page-1.png");
+    put_template(2, "page-2.png");
+    let mut a = new_app();
+    screen(&mut a, 1860, 2480);
+    let mut s = TplSheet::default();
+    let mut d = Rect::default();
+    tplsheet_open(&mut s, &mut a, None, PAPER_BLANK, None);
+    drain_jobs();
+    tplsheet_tick(&mut s, &mut a, now_ms(), &mut d);
+    tplsheet_draw(&mut s, &mut a);
+    check!(probe(&s, "names") == "page-1|page-2" && probe(&s, "ready") == "2");
+    // the pen goes down on page-2's tile while a copy runs; the copy ends with a picture that sorts first
+    let Some(second) = find_hit(&s, TS_HIT_TILE, 1) else {
+        check!(false);
+        return;
+    };
+    let (x, y) = ((second.r.x + second.r.w / 2) as f32, (second.r.y + second.r.h / 2) as f32);
+    tplsheet_copy_asked(&mut s);
+    check!(tplsheet_pointer(&mut s, &mut a, 0, x, y, 1000, &mut d) == TsResult::None);
+    put_template(99, "page-0.png");
+    check!(!tplsheet_tick(&mut s, &mut a, now_ms(), &mut d));
+    check!(s.open && probe(&s, "copying") == "1" && probe(&s, "names") == "page-1|page-2");
+    check!(tplsheet_pointer(&mut s, &mut a, 2, x, y, 1400, &mut d) == TsResult::Picked);
+    check!(tplsheet_path(&s).ends_with("/page-2.png"));
+    tplsheet_close(&mut s);
+    // a press on no button (the middle of the sheet, under its one row of tiles) while another copy ends
+    tplsheet_open(&mut s, &mut a, None, PAPER_BLANK, None);
+    drain_jobs();
+    tplsheet_tick(&mut s, &mut a, now_ms(), &mut d);
+    tplsheet_draw(&mut s, &mut a);
+    check!(probe(&s, "names") == "page-0|page-1|page-2");
+    let (x, y) = ((s.rect.x + s.rect.w / 2) as f32, (s.rect.y + s.rect.h / 2) as f32);
+    check!(s.hits.h.iter().all(|h| !rect_contains(h.r, x as i32, y as i32)));
+    tplsheet_copy_asked(&mut s);
+    check!(tplsheet_pointer(&mut s, &mut a, 0, x, y, 2000, &mut d) == TsResult::None);
+    put_template(98, "page-3.png");
+    check!(!tplsheet_tick(&mut s, &mut a, now_ms(), &mut d) && probe(&s, "copying") == "1");
+    check!(tplsheet_pointer(&mut s, &mut a, 2, x, y, 2600, &mut d) == TsResult::None && s.open);
+    check!(probe(&s, "names") == "page-0|page-1|page-2");
+    // the contact gone: the folder is read, the new picture's tile there
+    check!(tplsheet_tick(&mut s, &mut a, now_ms(), &mut d) && !rect_is_empty(d));
+    check!(s.open && probe(&s, "copying") == "0" && probe(&s, "names") == "page-0|page-1|page-2|page-3");
+    tplsheet_close(&mut s);
+    drain_jobs();
+    canvas_free(&mut a.screen);
+}
+
 // Everything, in the C's order (the tests share the store and the folders the ones before them made).
 #[test]
 fn test_tplsheet() {
@@ -673,6 +726,7 @@ fn test_tplsheet() {
     run!(labels_keep_to_their_tiles);
     run!(empty_state_paragraphs);
     run!(from_file_tile);
+    run!(a_copy_ends_under_a_contact);
     font_shutdown();
     done();
     let _ = std::fs::remove_dir_all(&top);

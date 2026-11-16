@@ -11,7 +11,8 @@
 //!
 //! Its last tile is From a file... (2.2, issue #146): the host opens the picture pick over it (browser.rs) and asks the
 //! copy job for the picture picked (bgwork_copy.rs); the tile waits while that copy runs, and when it ends the folder
-//! is read again, with the new picture's tile in view.
+//! is read again, with the new picture's tile in view (never while a pen or finger is down on the sheet: after its
+//! lift).
 
 use crate::bgwork_copy::CopyTo;
 use crate::prelude::*;
@@ -598,6 +599,7 @@ pub fn tplsheet_pointer(s: &mut TplSheet, a: &mut App, phase: i32, x: f32, y: f3
     if phase != 2 {
         return TsResult::None;
     }
+    s.press.down = false; // (the contact is gone: a copy that ended under it is seen at the next tick)
     *dirty = app_press_release(a, &mut s.pressed);
     if !rect_contains(s.rect, s.press.x0 as i32, s.press.y0 as i32) {
         *dirty = s.rect; // a tap outside the sheet cancels
@@ -644,8 +646,11 @@ pub fn tplsheet_tick(s: &mut TplSheet, a: &mut App, now: u32, dirty: &mut Rect) 
     if !s.open {
         return false;
     }
-    // A copy into the folder (#146) no longer queued or running (reaped: it went in or not): the folder read again
-    if s.copying && !bg_pending(BgKind::CopyFile, tplsheet_folder(s).folder()) {
+    // A copy into the folder (#146) no longer queued or running (reaped: it went in or not): the folder read again.
+    // Not while a pen or finger is down on the sheet: reading it makes the sheet anew, which would forget the press
+    // (its lift would then read as a tap outside, and close the sheet) and move the tiles under it; the lift comes
+    // first, as the sheet was drawn, and the folder is read at the tick after it.
+    if s.copying && !s.press.down && !bg_pending(BgKind::CopyFile, tplsheet_folder(s).folder()) {
         copy_ended(s, a);
         tplsheet_draw(s, a);
         *dirty = s.rect;
