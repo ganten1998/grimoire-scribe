@@ -378,6 +378,17 @@ pub fn files_cmp(a: (bool, &str, Option<FsStat>), b: (bool, &str, Option<FsStat>
     key.then_with(|| name_cmp(a.1, b.1))
 }
 
+/// Sorts rows: `how` 0 by name, 1 and 2 as files_cmp (the newest or the largest first), ROWS_BY_TIME the newest
+/// first by the time in each name (the trash's). Every row sort goes through here: one sort in the binary.
+const ROWS_BY_TIME: i32 = 3;
+fn sort_rows(rows: &mut [Row], how: i32) {
+    rows.sort_by(|a, b| match how {
+        ROWS_BY_TIME => b.when.cmp(&a.when).then_with(|| name_cmp(&a.name, &b.name)),
+        0 => name_cmp(&a.name, &b.name),
+        _ => files_cmp((a.kind == RowKind::Dir, &a.name, a.stat), (b.kind == RowKind::Dir, &b.name, b.stat), how),
+    });
+}
+
 fn is_picture(n: &[u8]) -> bool {
     [b".png".as_slice(), b".jpg", b".jpeg", b".pgm"].iter().any(|e| n.len() > e.len() && n[n.len() - e.len()..].eq_ignore_ascii_case(e))
 }
@@ -674,8 +685,8 @@ impl Browser {
                 }
             }
         }
-        dirs.sort_by(|a, b| name_cmp(&a.name, &b.name));
-        files.sort_by(|a, b| name_cmp(&a.name, &b.name));
+        sort_rows(&mut dirs, 0);
+        sort_rows(&mut files, 0);
         if odd > 0 || l.hidden > 0 {
             qlog!("files: %d names left out (links, refused folders, odd names, long paths: %d, %d of them odd)", (odd + l.hidden) as i32, l.hidden as i32, odd as i32);
         }
@@ -689,7 +700,7 @@ impl Browser {
         if place && self.in_trash_place() {
             // Grimoire's trash, read only: each entry by the time in its name, the newest first (no stat)
             let mut rows = self.trash_rows();
-            rows.sort_by(|a, b| b.when.cmp(&a.when).then_with(|| name_cmp(&a.name, &b.name)));
+            sort_rows(&mut rows, ROWS_BY_TIME);
             self.set_rows(rows);
             return;
         }
@@ -812,7 +823,7 @@ impl Browser {
         }
         let Some(mut rows) = self.next.take() else { return false };
         let sort = self.prefs.sort;
-        rows.sort_by(|a, b| files_cmp((a.kind == RowKind::Dir, &a.name, a.stat), (b.kind == RowKind::Dir, &b.name, b.stat), sort));
+        sort_rows(&mut rows, sort.clamp(0, 2));
         qlog!("files: %d rows sorted (%d) in %u ms", rows.len() as i32, sort, real_now_ms().wrapping_sub(t0));
         self.set_rows(rows);
         true
@@ -1288,7 +1299,8 @@ impl Browser {
                 .filter(|e| e.kind == FsKind::Dir && !taken.contains(&e.name.to_ascii_lowercase()))
                 .filter_map(|e| Some((std::str::from_utf8(&e.name).ok()?.to_string(), StoragePath::new(&e.name)?)))
                 .collect();
-            tops.sort_by(|a, b| name_cmp(&a.0, &b.0));
+            // (name_cmp is a total order: the unstable sort gives the same order, in less code)
+            tops.sort_unstable_by(|a, b| name_cmp(&a.0, &b.0));
             rows.extend(tops.into_iter().map(|(n, p)| (n, p, IconKind::Folder, false)));
         }
         self.goto = rows;
