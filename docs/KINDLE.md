@@ -607,8 +607,9 @@ deleting `grimoire/fonts/.cache/` has every font checked again.
 ## Files: rename, trash, restore and copy (2.2, the storage layer)
 
 Grimoire can rename, trash, restore and copy files inside its own `import/`, `templates/`, `photos/` and
-`fonts/` folders (docs/DESIGN.md, Files' storage writes). Nothing on screen uses these yet; once the screens
-come, grimoire.log says (never a file's name: the folder, sizes, timings, reasons):
+`fonts/` folders (docs/DESIGN.md, Files' storage writes). Files' cards rename and delete, and its Trash place
+restores and shows the trash's size (docs/DESIGN.md, Files: rename, delete and restore); the copy waits for the
+From a file... tiles. grimoire.log says (never a file's name: the folder, sizes, timings, reasons):
 
 - `files: an item of <folder> was renamed`, `files: an item of <folder> went to the trash`, `files: an item went
   back to <folder>`, and `files: notebook <id> came back from the trash`. A deleted item is in
@@ -626,6 +627,10 @@ come, grimoire.log says (never a file's name: the folder, sizes, timings, reason
   the next number free), to rename by hand. A crash in the middle of one leaves it the same way.
 - `files: a trash entry that held nothing was removed`: Restore on an entry a trash cut off by a crash left (its
   record alone, or an empty folder); the item never left its folder.
+- `files: the trash holds N entries, N files, N KB (read in T ms)`: Files' root or its Trash place read the
+  trash's size (once a session, and again after a delete or a restore), a slice at a time; T is the time of the
+  slices added up. `files: notebook <id> is back, its notebook.ini did not read`: a restored notebook whose own
+  file could not be read, so it kept its name as it was (it is back in `notebooks/` all the same).
 - `bg: file copy of <folder> (pid N)`, then `bg: a file copied into <folder>: N KB in T ms` or `bg: a file not
   copied into <folder>: <why>` (among them: no room: the storage would keep less than 100 MB; it changed since it
   was listed, or while it was copied; it is no plain file; a link on its way; a system error's own words), and

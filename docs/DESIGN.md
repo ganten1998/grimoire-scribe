@@ -2400,8 +2400,8 @@ are routed in `library.rs` as the Graph's are, and two fingers down does nothing
 ## Files' storage writes (2.2, issue #117)
 
 `fsview.rs` writes since 2.2, inside Grimoire's folders for the user's files only, and `bgwork_copy.rs` copies
-into them. Nothing on screen calls either yet (the Files place, its cards and the From a file... tiles come with
-their own work), so nothing a user sees changed.
+into them. Files' cards rename and delete, and its Trash place restores ("Files: rename, delete and restore (2.2,
+issue #144)", below); the copy waits for the From a file... tiles.
 
 - **Where it may write: an allow-list.** Only what is inside `grimoire/import`, `templates`, `photos` and
   `fonts` (`FsStorage::write_zone`), never the folder itself and never `import/done` itself (what is inside it
@@ -2518,24 +2518,89 @@ hosted the same way (`LibraryState.files`, `files_open_place`), and closes back 
   `grimoire/fonts` whose check passed: its family, from the check's own verdict, `userfont_family`). No user's
   file is parsed for a card; pages and picture sizes wait for the worker (previews). A PDF offers Import as
   notebook or Open its notebook as the picker does; a PDF of the PDF copies opens the notebook it was written from
-  (the one whose `export_mirror_path` it is). Pictures, fonts and other files offer nothing else yet. Every act
-  checks the file again first ("File changed. Try again.").
+  (the one whose `export_mirror_path` it is). Pictures, fonts and other files offer nothing else yet, but Rename
+  and Delete inside Grimoire's own folders (below, issue #144). Every act checks the file or folder again first, by
+  its path and its identity ("File changed. Try again.").
 - **The Trash place** lists `grimoire/trash` read only, through the storage writes' trash listing
   (`fsview_trash_entries`, read by name alone, no stat: the newest first by the time in each entry's name, a name of
   no known form last): a file or folder trashed from Grimoire's folders (`files-<stamp>-<4 hex>`) by the last part
   of where its record says it was (`FsStorage::trash_record`, read for the rows on screen only), a notebook
   (`<id>-<time>`, a folder) by the name its `notebook.ini` there holds (opened through the walk, as the listing is,
   and cut as the store cuts a name), a page (`<id>-p<page>-<time>`) by its notebook's name, each with its date; a
-  `files-` entry whose record does not read, and a name of another form, as it is. Entries are not entered and
-  have no card.
+  `files-` entry whose record does not read, and a name of another form, as it is. Entries are not entered; a
+  file's, folder's or notebook's has a card with Restore (issue #144), a page's none.
 - **A Library card held** `HOLD_MS` opens its menu as its `...` does (a notebook's, a folder's, the Files card's);
   the lift after it does nothing.
 - **Actions** `files` (108) and `home` (109) act in the Library, with no default key and no Buttons or Gestures
   row (they are bound by name, as the Library's New notebook and Share are), from a key or a gesture, over the
   Library and inside Files alike. `home` is the Library's top for now.
-- **Seams left for the later Files work**: `RowKind::Trashed` and the trash rows (Restore), the card's rows per
-  kind in `card_lines` (Rename, Trash, Use as template, Use as photo, Add to fonts), `BrowseMode` and `FilesPrefs`
-  (a home, a View), `library_home` (where a set home starts), `PickSpec.start` (opening at a folder).
+- **Seams left for the later Files work**: the card's rows per kind in `card_lines` (Use as template, Use as
+  photo, Add to fonts), `BrowseMode` and `FilesPrefs` (a home, a View), `library_home` (where a set home starts),
+  `PickSpec.start` (opening at a folder).
+
+## Files: rename, delete and restore (2.2, issue #144)
+
+The screens on the storage writes above: Files' cards (`browser.rs`) rename a file or folder and move it to the
+trash, and the Trash place puts an entry back. Pick mode (New notebook's From a file...) offers none of it.
+
+- **Where.** A card offers Rename and "Delete (moves it to grimoire/trash)" only on a file or folder inside
+  Grimoire's folders for the user's files: what `FsStorage::can_write` allows (the allow-list, `write_zone`: what is
+  inside `import`, `templates`, `photos` and `fonts`, never the folder itself nor `import/done` itself). Every other
+  place stays read only, and so do PDF copies and the trash itself.
+- **Check first.** Every act checks the card's item again before it does anything (`unchanged`): by its path and its
+  identity. A file must have the device, inode, size and time it had when its card opened; a folder the same device
+  and inode (not its size and time, which change with what is put in it), so another folder renamed to its name is
+  refused. A card whose stat is not known acts on nothing. Refused: "File changed. Try again." and the folder is
+  read again. fsview's writes check again themselves (`FsStat::same`) at the moment they act.
+- **Held by an import.** Rename (before the keyboard opens) and Delete ask `FsStorage::busy` (through the writes):
+  what a queued or running import works on, what is inside it, the folder a held PDF is in, and while a previous
+  run's import holds the lock everything in `import/`. Held: "Importing now." and nothing is done.
+- **Rename** opens the keyboard (the Library's, hosted by the browser: `Browser.kb`, drawn over Files, its keys
+  refreshed alone; a hardware keyboard's keys reach it through `library_keyboard_area`, and Esc or Back is its
+  Cancel) with the name, titled Name (or Folder for a folder), the caret before a file's extension, so typing
+  edits the stem and the extension stays in sight. Done checks `fsview_name_check` first and says the rule broken,
+  keeping the keyboard up with the name to put right: "Name can't contain %s" (the character; a control character
+  as `U+XXXX`), "Name can't start or end with a space.", "Name can't start or end with a dot." (a leading dot
+  would hide it), "Keep the extension %s." (the old one, with its dot), "Path too long." (over 255 bytes, or a path
+  of 600). Then `FsStorage::rename`, which never replaces: a name taken says "A file with that name is already
+  here." and keeps the keyboard up (no " 2" is offered). An empty name renames nothing, as the Library's keyboards
+  do. A name the keyboard cannot hold whole (96 bytes) is not offered to it ("Couldn't rename file."). Renamed: the
+  folder is read again, with its rows' page kept.
+- **Delete** is one tap on the card (the card is the confirmation, as for an import, and Restore undoes it):
+  `FsStorage::trash`, then "Moved to grimoire/trash" and the folder read again.
+- **The Trash place** lists the trash as before (fsview's trash listing, newest first by the time in each name),
+  each row with its size and date; the root's Trash row has the trash's size beside its path. The sizes come from
+  `FsStorage::trash_sizes` (`TrashSizes`), a walk of the trash in slices of at most 20 ms a tick, begun when the
+  root or the Trash place first shows in a session and again after each write: regular files at any depth by their
+  size (a `files-...` entry counts its item, not its record), no link followed or counted, nothing on another device
+  or deeper than 16 folders entered; an entry's size shows once it is read to its end, the total once the walk is
+  through. A file's, folder's or notebook's entry has a card: its name, size and date, and Restore alone (no Empty,
+  no delete: the trash is cleaned over USB). A page's entry has none (its place in its notebook was never kept).
+- **Restore** (`FsStorage::restore`, after the check): a file or folder goes back where its record says, " 2" when
+  its name is taken there: "Restored to %s." with its folder. A notebook (the name `store_delete` gives it, so the
+  Library's deletes come back too, or the record form) goes back to `notebooks/<id>`; then `store_restored` gives it
+  " 2", " 3"... when another notebook of its Library folder has its name (in any ASCII case: their PDF copies would
+  be one file), keeping its modified time (it goes back to its place in the Library's order), and has the Graph's
+  index look again; "Restored to %s." with its Library folder (Notebooks at the top). The browser answers
+  `BrowserResult::NotebookBack` and the Library reads its notebooks again at once (`reload`), under Files. An entry
+  that held nothing (a trash cut off) is removed and says nothing. Refusals: "Couldn't restore. Name taken." (every
+  name to " 99", or the notebook's id), "Couldn't restore. Folder gone.", "Importing now.", else "Couldn't
+  restore." (a record that does not read, a place Grimoire does not write in). A notebook's mirror PDF is made again
+  at its next change.
+- **Words** (Spanish beside each; Japanese is nebuff's): Restore, Importing now., Name can't contain %s, Name can't
+  start or end with a space., Name can't start or end with a dot., Keep the extension %s., A file with that name is
+  already here., Couldn't rename file., Couldn't move to trash., Couldn't restore., Couldn't restore. Name taken.,
+  Couldn't restore. Folder gone., Restored to %s. Reused: Rename, Delete (moves it to %s), Moved to %s, File
+  changed. Try again., Path too long., the keyboard's Name and Folder, Notebooks.
+- **Logs** (no names): the storage writes' own lines, and `files: the trash holds N entries, N files, N KB (read in T
+  ms)` once a walk of the trash is through (docs/KINDLE.md).
+- **Tests**: `browser.rs`'s unit tests (a folder card's check by identity, each refusal's words, Rename's rules and
+  places, Delete then Restore, a notebook the Library deleted coming back as " 2"), `test_fsview_writes.rs`'s trash
+  sizes (slices, depth, links, the record left out), and the scenarios `files_8_rename` (every rule, a name taken, a
+  good name, an empty one, Cancel), `files_9_trash` (Delete, the sizes, Restore, a page with no card),
+  `files_10_restore_notebook` (the Library's Delete, Restore, " 2"), `files_11_busy` (an importing PDF),
+  `files_12_swap` (a folder swapped under its card, through the runner's `storage move`) and `files_13_es_fit`,
+  `files_14_es_fit_classic` (Spanish, each text checked for fit, upright and sideways).
 
 ## Shared building blocks (2.1, lane L0)
 

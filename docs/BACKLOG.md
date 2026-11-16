@@ -4,6 +4,31 @@ Work that was decided, deferred or found but not done yet. Keep this current: wh
 move it to "Done" with the version; when something is deferred, add it here with who decided and
 why. Newest decisions first within each section.
 
+## Files' rename, delete and restore (2.2, issue #144): what waits
+
+Built: Rename and Delete on the cards inside Grimoire's folders for the user's files, the name rules' words, "Importing
+now.", a folder card's check by identity, the Trash place's sizes and the trash's on its row, Restore for files,
+folders and notebooks (docs/DESIGN.md, "Files: rename, delete and restore"). Waiting:
+
+- **Not in 2.2** (D31): Move (Import to Templates or Photos by kind, between them, to Import) and New folder in
+  Import. **Never**: Empty (the trash is cleaned over USB). **Not built**: Restore for a page (its place in its
+  notebook was never kept; browser.md 17 has it as an optional extra).
+- **A held item's row is not greyed**: its card still offers Rename and Delete, and each says "Importing now." when
+  tapped (the busy check is one per tap, not one per row drawn).
+- **A name taken on rename** says "A file with that name is already here." and keeps the keyboard up with the name;
+  the plan's "offer Name 2" is not built (Restore does give " 2").
+- **Names the keyboard cannot hold** (96 bytes and more) are not offered to it: "Couldn't rename file.". Rename them
+  over USB.
+- **The trash past 5,000 entries**: the Trash place lists the 5,000 names fsview's listing keeps, in the order the
+  storage gives them, then sorted, so not the newest 5,000 (as before); the size walk counts every entry.
+- **The size walk** runs once a session (from Files' root or its Trash place) and again after each delete or restore;
+  a trash changed over USB while Files is open is measured again only then. Not timed on the Scribe (TESTING.md, "2.2,
+  Files' rename, delete and restore (issue #144): device checks").
+- **A font renamed or deleted** in `grimoire/fonts`: the Font sheet lists the folder again when it opens; a font in
+  use goes back to Terminess, as it does when its file goes over USB. A template's picture renamed or deleted just
+  before its template job reads it makes the job fail (only imports count as busy, below).
+- **Japanese** for the new words: nebuff's (#55); they show in English until then.
+
 ## Files (2.2, issue #124): what waits
 
 Built: place mode, the Files card (hidden until "Show Files in Library"; the last card of the Library's top
@@ -14,10 +39,7 @@ each for its own issue:
 - **Home**: `home=` in settings.ini (any Library or Kindle folder), Set as home in the Go to sheet and on a
   folder's card, Reset home to Notebooks, opening at home at each start, "Home folder not found.". Today `home`
   (the action) goes to the Library's top (`library_home`, where a set home starts).
-- **Rename and Trash on screen** in Grimoire's writable folders (Import, Templates, Photos, Fonts), with the name
-  rules and "Importing now.", on the storage layer's writes (issue #117); **Restore** on the trash's rows
-  (`RowKind::Trashed`) for files and notebooks, never Empty; the trash's size on its row. Pages in the trash are
-  listed by their notebook's name; their Restore is optional.
+- **Rename and Trash on screen** and **Restore** in the Trash place: built with issue #144 (above).
 - **Previews and the Covers view** (`files_view=covers`, read today as the list and kept), "Making previews...",
   the cache and its prune; the details a card can only have from the worker (a PDF's pages, a picture's size, a
   font's sample and coverage).
@@ -50,27 +72,20 @@ each for its own issue:
 ## Files' storage writes (2.2, issue #117): what waits
 
 The storage layer writes now (docs/DESIGN.md, Files' storage writes): rename, trash with its record, restore,
-the name rules, the busy check and the copy job (`BgKind::CopyFile`). Nothing on screen calls them yet.
+the name rules, the busy check and the copy job (`BgKind::CopyFile`). Files' cards and its Trash place call rename,
+trash and restore since issue #144 (its own section, above); the copy waits for the From a file... tiles.
 
 - **The screens' part** (the Files place and its cards, the Trash place, the From a file... tiles, Add a
   font...):
-  - Their words for each refusal: "File changed. Try again." (`Changed`), "Importing now." (`Busy`), "Name can't
-    contain %s" (`NameRule::Char`) and words for the other rules (empty, too long, a space at either end, a dot at
-    the start or the end, the extension kept), a name taken on rename (`Exists`: offer " 2"), "Couldn't restore.
-    Folder gone." (`FolderGone`), an entry whose record does not read (`BadRecord`), "Restored to %s.", an entry
-    a cut-off trash left, removed with nothing put back (`Restored::Nothing`), and "Couldn't copy file. Is the
-    storage full?" for any failed copy (the job ends 0 or 1 only). None is a string yet.
-  - The Trash place (issue #124) lists through `fsview_trash_entries` and reads, for the rows on screen, a
-    file's record (`FsStorage::trash_record`) and a notebook's `trash/<entry>/notebook.ini` (no store function
-    reads a notebook there yet); Restore on its rows waits. The Trash's size on its row is a walk of its own, not
-    built. FsListing keeps at most 5,000 names in the order the storage gives them, and the trash only grows
-    (every deleted page is an entry), so past 5,000 the place would sort an arbitrary 5,000, not the newest: the
-    screens decide what it shows then.
-  - After a notebook's restore: the Library's list read again, and `libindex_revalidate()` (or the index's next
-    check) brings it back to the Graph; its mirror PDF is made at its next change.
+  - The refusals' words came with issue #144 (rename, trash, restore; "Restored to %s.", and nothing said for an
+    entry a cut-off trash left). Waiting: "Couldn't copy file. Is the storage full?" for any failed copy (the job
+    ends 0 or 1 only).
+  - The Trash place's Restore, its sizes, and the Library read again after a notebook's restore (with
+    `libindex_revalidate()` in `store_restored`) came with issue #144; a restored notebook's mirror PDF is made at
+    its next change. FsListing keeps at most 5,000 names in the order the storage gives them, and the trash only
+    grows (every deleted page is an entry), so past 5,000 the place sorts an arbitrary 5,000, not the newest.
   - A copy's end: `poll_jobs` (app.rs) returns at `BgKind::CopyFile` without a toast; the tile's or the Font
     sheet's code reads `bg_last_exit()` there, and has the template list or the font check look again.
-  - A held item: its row greyed and its card's Rename and Delete saying "Importing now.", from `FsStorage::busy`.
 - **Not built** (the plan's later parts, or not in this lane): Move (Import to Templates or Photos by kind,
   between them, to Import) and New folder in Import (the owner decides whether they are 2.2's); Restore for a
   page (its place in its notebook was never kept); `store_delete` writing the record form for a notebook (2.2
