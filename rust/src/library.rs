@@ -6109,7 +6109,7 @@ static ABOUT_LINKS: &[AboutLink] = &[
     AboutLink { name: n_("Ko-fi"), url: "https://ko-fi.com/B0B7EF4TJ" },
     AboutLink { name: n_("Grimoire GitHub"), url: "https://github.com/ganten1998/grimoire-scribe" },
     AboutLink { name: n_("Nebuff's GitHub"), url: "https://github.com/nebuff" },
-    AboutLink { name: n_("Gantan's GitHub"), url: "https://github.com/ganten1998" },
+    AboutLink { name: n_("Ganten's GitHub"), url: "https://github.com/ganten1998" },
 ];
 
 /// Settings > System > About: what this device is, its version, a bar of the storage used (the data
@@ -10167,6 +10167,15 @@ mod tests {
         assert_eq!(ABOUT_LINKS[1].name, "Grimoire GitHub");
         assert_eq!(ABOUT_LINKS[2].url, "https://github.com/nebuff");
         assert_eq!(ABOUT_LINKS[3].url, "https://github.com/ganten1998");
+        // (a person's GitHub link is named after the account it opens: "Ganten's GitHub" for ganten1998)
+        assert_eq!(ABOUT_LINKS[3].name, "Ganten's GitHub");
+        for link in ABOUT_LINKS {
+            let Some(account) = link.url.strip_prefix("https://github.com/").filter(|p| !p.contains('/')) else {
+                continue;
+            };
+            let owner = link.name.split('\'').next().unwrap_or("").to_lowercase();
+            assert!(account.starts_with(&owner), "{} opens {}", link.name, link.url);
+        }
         act(&mut a, &Hit { r: RECT_EMPTY, id: H_LINK, arg: 0 });
         assert_eq!((lib(&mut a).modal, lib(&mut a).device_link), (Modal::LinkQr, 0));
         assert!(

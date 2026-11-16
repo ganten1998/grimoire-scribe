@@ -5,7 +5,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: Grimoire 2.1.0-beta.1\n"
 "Report-Msgid-Bugs-To: https://github.com/ganten1998/grimoire-scribe/issues\n"
-"POT-Creation-Date: 2026-11-15 18:06-0600\n"
+"POT-Creation-Date: 2026-11-15 19:01-0600\n"
 "PO-Revision-Date: 2026-11-10 00:00+0000\n"
 "Last-Translator: nebuff\n"
 "Language-Team: Japanese\n"
@@ -3927,7 +3927,7 @@ msgid "Nebuff's GitHub"
 msgstr ""
 
 #: rust/src/library.rs
-msgid "Gantan's GitHub"
+msgid "Ganten's GitHub"
 msgstr ""
 
 #: rust/src/library.rs
