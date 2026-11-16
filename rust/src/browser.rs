@@ -3146,10 +3146,10 @@ impl Browser {
     }
 
     /// Use as template, Use as photo (#146): the file card `c` was opened for, checked again, asked of the copy job
-    /// into Grimoire's templates or photos (`copy_request`: the walk, the file as listed, its size, the free-space
-    /// floor). The card is closed; a refusal is said now (`copy_refusal`: nothing was copied, and no job runs), the
-    /// copy's end by the app's tick when the job ends. The card's rect goes out with the Covers tiles that changed
-    /// while it was open, as when Cancel closes it (`close_card`).
+    /// into Grimoire's templates or photos (`copy_request`: the walk, the file as listed, its name, its size, the
+    /// free-space floor). The card is closed; a refusal is said now (`copy_refusal`, or the rule its name breaks:
+    /// nothing was copied, and no job runs), the copy's end by the app's tick when the job ends. The card's rect goes
+    /// out with the Covers tiles that changed while it was open, as when Cancel closes it (`close_card`).
     fn copy_in(&mut self, a: &mut App, c: &Card, to: CopyTo) -> BrowserResult {
         let asked = match (self.storage.as_ref(), c.stat) {
             (Some(st), Some(listed)) => copy_request(st, &c.path, &listed, to),
@@ -3172,13 +3172,20 @@ impl Browser {
                     FsWriteErr::Refused => "a place it is not taken from".to_string(),
                     FsWriteErr::TooLong => "its path is too long for a job".to_string(),
                     FsWriteErr::TooBig => format!("it is over {} MB", to.max_bytes() >> 20),
+                    FsWriteErr::Name(_) => "its name is not one a file in Grimoire's folders can have".to_string(),
                     FsWriteErr::Io(n) => strerror(n),
                     other => format!("{other:?}"),
                 };
                 qlog!("files: a copy into %s was refused: %s", to.folder(), &why);
                 self.draw(a);
                 app_invalidate(a, rect_union(c.rect, self.tiles_stale), RefreshMode::Ui);
-                app_toast(a, &copy_refusal(CopyFail::of_request(e), to), 3000);
+                // (a name the rules refuse: the rename's words for that rule; the file keeps its name where it is)
+                let name = c.path.split_last().map(|(_, n)| n.to_vec()).unwrap_or_default();
+                let said = match e {
+                    FsWriteErr::Name(rule) => name_refusal(rule, &name, &name),
+                    _ => copy_refusal(CopyFail::of_request(e), to),
+                };
+                app_toast(a, &said, 3000);
                 BrowserResult::None
             }
         }

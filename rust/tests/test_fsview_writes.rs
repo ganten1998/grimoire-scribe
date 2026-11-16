@@ -591,10 +591,11 @@ fn too_big(root: &str, p: &str, to: CopyTo) {
     f.set_len(to.max_bytes() + 1).unwrap();
 }
 
-// The copy request: refused for a source that is no plain file, has changed, sits in Grimoire's own folders, is
-// bigger than its folder takes, has a path too long for a job, or would leave less than the floor; else queued, and
-// the job puts the bytes in the folder under the source's name (" 2" when taken), reported as a job the user waits
-// on. A source that changes before the job reads it ends the job with the number that says so.
+// The copy request: refused for a source that is no plain file, has changed, sits in Grimoire's own folders, has a
+// name the rules for a name in Grimoire's folders refuse, is bigger than its folder takes, has a path too long for a
+// job, or would leave less than the floor; else queued, and the job puts the bytes in the folder under the source's
+// name (" 2" when taken), reported as a job the user waits on. A source that changes before the job reads it ends
+// the job with the number that says so.
 fn the_copy_request() {
     let (root, g) = tree();
     std::fs::write(format!("{root}/documents/photo.png"), vec![7u8; 200_000]).unwrap();
@@ -640,8 +641,29 @@ fn the_copy_request() {
         copy_seams(free, None);
         check!(copy_request(&st, &sp(&long), &l, CopyTo::Templates) == Err(FsWriteErr::TooLong));
     }
+    // a name Files' Rename would refuse (issue #161): the copy keeps the source's name, so no copy of it is made in
+    // Grimoire's folders, into any of them, with room or without, and the refusal carries the rule broken
+    for (name, rule) in [
+        ("a:b.ttf", NameRule::Char(b':')),
+        ("what?.png", NameRule::Char(b'?')),
+        (" lead.ttf", NameRule::LeadingSpace),
+        ("trail.ttf ", NameRule::TrailingSpace),
+        ("dot.ttf.", NameRule::TrailingDot),
+        ("tab\there.ttf", NameRule::Control),
+    ] {
+        let p = format!("documents/{name}");
+        std::fs::write(format!("{root}/{p}"), b"some bytes").unwrap();
+        let listed = stat_of(&st, &p);
+        for free in [None, Some(1 << 20)] {
+            copy_seams(free, None);
+            for to in [CopyTo::Templates, CopyTo::Photos, CopyTo::Fonts] {
+                check!(copy_request(&st, &sp(&p), &listed, to) == Err(FsWriteErr::Name(rule)));
+            }
+        }
+    }
+    copy_seams(None, None);
     check!(!bg_busy());
-    check!(names(&format!("{g}/photos")).is_empty() && names(&format!("{g}/templates")) == ["a.png", "b.png"]);
+    check!(names(&format!("{g}/photos")).is_empty() && names(&format!("{g}/templates")) == ["a.png", "b.png"] && names(&format!("{g}/fonts")).is_empty());
     copy_seams(Some((100 << 20) + 199_999), None);
     check!(copy_request(&st, &sp("documents/photo.png"), &p, CopyTo::Photos) == Err(FsWriteErr::NoRoom));
     copy_seams(Some((100 << 20) + 200_000), None);
@@ -670,9 +692,9 @@ fn the_copy_request() {
 
 // The job on its own (as the child runs it): it refuses a source that is no plain file or a link, one that is not
 // the file listed or is gone, one bigger than its folder takes, a name too long once numbered (each with its own
-// number, a CopyFail, which the screen reads back), a copy that would go under the floor, and a write that fails
-// (a full storage): nothing is left in the folder each time. A temporary file a dead copy left is swept; one of a
-// live process is not.
+// number, a CopyFail, which the screen reads back), a name the rules for a name in Grimoire's folders refuse (the
+// request said which rule), a copy that would go under the floor, and a write that fails (a full storage): nothing
+// is left in the folder each time. A temporary file a dead copy left is swept; one of a live process is not.
 fn the_copy_job() {
     let (root, g) = tree();
     std::fs::write(format!("{root}/documents/font.ttf"), vec![1u8; 300_000]).unwrap();
@@ -689,6 +711,12 @@ fn the_copy_job() {
     moved.size += 1;
     check!(bg_copy_file("fonts", &arg(&moved, "documents/font.ttf")) == CopyFail::Changed as i32);
     check!(bg_copy_file("fonts", &arg(&f, "documents/gone.ttf")) == CopyFail::Changed as i32);
+    check!(names(&fonts).is_empty());
+    // a name the rules refuse that reached the job (the request refuses it first): not copied
+    for name in ["a:b.ttf", " lead.ttf", "trail.ttf ", "dot.ttf."] {
+        std::fs::write(format!("{root}/documents/{name}"), vec![2u8; 1000]).unwrap();
+        check!(bg_copy_file("fonts", &arg(&stat_of(&st, &format!("documents/{name}")), &format!("documents/{name}"))) == -1);
+    }
     check!(names(&fonts).is_empty());
     // a file over the folder's limit that reached the job (the request refuses it first): not copied, and the job
     // ends with the number that says so, with room or without

@@ -1,11 +1,12 @@
 //! A file copied into one of Grimoire's folders for the user's files (BgKind::CopyFile, 2.2, issue #117): what a
 //! picture's Use as template and Use as photo in Files, and the From a file... tiles of the Templates and Photos
 //! sheets, ask for (issue #146; the Font sheet's Add a font... comes later). The request (UI thread) checks the
-//! source is still the plain file listed, that it is no bigger than its folder takes (CopyTo::max_bytes: a bigger
+//! source is still the plain file listed, that its name is one Files' Rename would give a file there
+//! (fsview_name_check), that it is no bigger than its folder takes (CopyTo::max_bytes: a bigger
 //! one could never be used there), that the storage keeps its floor after it (fsview_room_for), and queues the
 //! job. The job (a background child) opens
 //! the source again through fsview's walk (no link, one device, never Grimoire's notebooks, PDFs or trash),
-//! checks it is still that file, no bigger than that, and that there is room, copies it to a temporary name in the folder
+//! checks it is still that file, its name, that it is no bigger than that, and that there is room, copies it to a temporary name in the folder
 //! (`.grimoire-copy-<pid>.part`), checks the source did not change while it was read, syncs, and renames it to
 //! the source's name with a rename that replaces nothing (" 2", " 3"... when taken). On any failure the
 //! temporary file goes: nothing is left behind. The log has the folder, sizes and times, never a name. What the
@@ -181,10 +182,11 @@ fn fail_after() -> u64 {
 
 /// Asks for the file at `src` (as listed: `listed`) to be copied into Grimoire's folder `to`, in the background
 /// (BgKind::CopyFile, reported through bg_poll as a job the user waits on). Refused now when the source is in a
-/// place a pick never takes from (Grimoire's own folders), is no longer the item listed, is no plain file, is
-/// bigger than the folder takes (`to.max_bytes()`), or would leave less than the floor free (100 MB after it); or
-/// when its path is too long for a job (`TooLong`; one that is not text, which no listing shows, is `Refused`).
-/// What can never be copied is said before the room is looked at.
+/// place a pick never takes from (Grimoire's own folders), is no longer the item listed, is no plain file, has a
+/// name the rules for a name in Grimoire's folders refuse (`Name`, with the rule: the copy keeps the source's
+/// name), is bigger than the folder takes (`to.max_bytes()`), or would leave less than the floor free (100 MB
+/// after it); or when its path is too long for a job (`TooLong`; one that is not text, which no listing shows, is
+/// `Refused`). What can never be copied is said before the room is looked at.
 pub fn copy_request(st: &FsStorage, src: &StoragePath, listed: &FsStat, to: CopyTo) -> Result<(), FsWriteErr> {
     if src.is_root() || st.zone(src, true) == FsZone::Refused {
         return Err(FsWriteErr::Refused);
@@ -195,6 +197,10 @@ pub fn copy_request(st: &FsStorage, src: &StoragePath, listed: &FsStat, to: Copy
     }
     if now.mode & libc::S_IFMT as u32 != libc::S_IFREG as u32 {
         return Err(FsWriteErr::Walk(FsErr::NotFile));
+    }
+    // (the copy has the source's name: one Files' Rename would refuse is not made in Grimoire's folders by a copy)
+    if let Some(rule) = src.split_last().and_then(|(_, name)| name_rule(name)) {
+        return Err(FsWriteErr::Name(rule));
     }
     // (said before the room: a file too big is refused however much room there is)
     if now.size > to.max_bytes() {
@@ -208,6 +214,12 @@ pub fn copy_request(st: &FsStorage, src: &StoragePath, listed: &FsStat, to: Copy
     }
     bg_queue(BgKind::CopyFile, Some(to.folder()), Some(&path), 0.0, true);
     Ok(())
+}
+
+/// The rule a source's name breaks as the name of its copy (`fsview_name_check`, with the name as its own old
+/// name: the copy keeps the extension), None for a name the rules allow.
+fn name_rule(name: &[u8]) -> Option<NameRule> {
+    fsview_name_check(name, name, false).err()
 }
 
 /// BgKind::CopyFile, in the background child: 0 when the file is in its folder; when not, a CopyFail's number
@@ -267,6 +279,10 @@ fn copy(to: &str, path: &str) -> Result<u64, Fail> {
     let changed = |words: &str| Fail(CopyFail::Changed, words.into());
     if st.zone(&dest.join(name).ok_or_else(|| long("a path too long"))?, false) != FsZone::Writable {
         return Err("not one of Grimoire's folders".into());
+    }
+    // (the request refused such a name with its rule's words: one that reached the job is not copied either)
+    if name_rule(name).is_some() {
+        return Err("its name is not one a file in Grimoire's folders can have".into());
     }
     // the source: the walk again, a plain file, the one listed, no bigger than the folder takes
     let file = st.open_file(&src, true).map_err(|e| if e == FsErr::NotFound { changed(&walk_why(e)) } else { walk_why(e).into() })?;
