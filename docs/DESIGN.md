@@ -2481,15 +2481,20 @@ trash and restore have no screen yet.
   docs/FORMAT.md, The trash, has the names and the record.
 - **The copy job, `BgKind::CopyFile = 10`** (`bgwork_copy.rs`; 9 is kept for the file previews). The request
   (`copy_request`, UI thread) refuses a source in a place a pick never takes from, one no longer the plain file
-  listed, and one that would leave less than the floor (100 MB after it, `fsview_room_for`), and queues the job as
-  one the user waits on (id: the folder, `templates`, `photos` or `fonts`; path: the listed stat and the source's
-  storage path, under 600 bytes). The job opens the source again through the walk, checks it is the file listed
-  and that there is room, writes `.grimoire-copy-<pid>.part` in the folder (made when missing), checks the source
-  ended as listed, syncs, and renames with no replace to the source's name (" 2" when taken). Any failure
-  removes the temporary file; one a killed copy left is removed by the next copy into that folder, unless its
-  process still runs and has written it within the hour (after a restart its process id is often another
-  process's). It ends 0 or 1 only: the one message for a failed copy needs no more. Its child's margin is 64 MiB
-  (one 64 KiB buffer). The app's tick takes its end apart from the PDF mirror's (no "PDF saved").
+  listed, one bigger than its folder takes (`CopyTo::max_bytes`: the template job's own `TEMPLATE_MAX_BYTES`, 16
+  MB, for templates and photos, the font check's `FONT_FILE_MAX` for fonts), one whose path does not fit a job's,
+  and one that would leave less than the floor (100 MB after it, `fsview_room_for`; looked at last, since what can
+  never be copied is refused whatever room there is), and queues the job as one the user waits on (id: the folder,
+  `templates`, `photos` or `fonts`; path: the listed stat and the source's storage path, under 600 bytes). The job
+  opens the source again through the walk, checks it is the file listed, no bigger than its folder takes, and that
+  there is room, writes `.grimoire-copy-<pid>.part` in the folder (made when missing), checks the source ended as
+  listed, syncs, and renames with no replace to the source's name (" 2" when taken). Any failure removes the
+  temporary file; one a killed copy left is removed by the next copy into that folder, unless its process still
+  runs and has written it within the hour (after a restart its process id is often another process's). It ends 0,
+  or 1 when the copy was not made, or with the number of a cause the screens have a sentence for (`CopyFail`, read
+  back with `bg_last_exit()`): 2 too big for its folder, 3 no longer the file listed (changed, gone, or changed
+  while it was read), 4 a name or a path too long in the folder. Its child's margin is 64 MiB (one 64 KiB buffer).
+  The app's tick takes its end apart from the PDF mirror's (no "PDF saved").
 - **Waits on the UI thread**: each sync of these writes (the record, the folders) is followed by `work_pump()`, as
   util's atomic write does between its steps, so the pens are read between waits of 15-25 ms each.
 - **Logs** (no names, docs/KINDLE.md): the zone a rename, trash or restore acted in, a notebook's id, a copy's
@@ -2575,46 +2580,68 @@ A picture from anywhere on the Kindle becomes a template or a photo by a copy in
 
 - **A picture's card in Files** offers Use as template and Use as photo, but never the copy into the folder the
   picture is already in, and neither out of a place a pick never takes from (Grimoire's PDF copies). The card's
-  file is checked again first ("File changed. Try again."), then `copy_request` checks the walk, the file as listed
-  and the floor; a refusal says "Couldn't copy file. Is the storage full?" at once and logs why, and no job runs.
-  Files stays where it was.
+  file is checked again first ("File changed. Try again."), then `copy_request` checks the walk, the file as
+  listed, its size, its path and the floor; a refusal is said at once (What is said, below) and logged with its
+  reason, no job runs and nothing is written. Files stays where it was.
 - **The Templates and Photos sheets end with a From a file... tile** (`tplsheet.rs`): the last tile, after every
   picture, so that no picture's tile moves for it (with 24 templates upright it is page 2's only tile; in the empty
   sheet it sits under the text, in the grid's last row). It opens the picture pick, `PickSpec::picture(to)`: pick
-  mode with `PickKind::Picture` alone (the names the template job takes: .png, .jpg, .jpeg, .pgm), the title "From a
-  file...", a root of Documents, Downloads and All storage (no Import: that place is the imports', its rows their
+  mode with `PickKind::Picture` alone (the names the template job takes: .png, .jpg, .jpeg, .pgm), the title "From
+  a file...", a root of Documents, Downloads and All storage (no Import: that place is the imports', its rows their
   statuses and Look again), and a picture's card with that sheet's copy alone, first, then Cancel. The sheet stays
   open under the pick: Back at the pick's root comes back to it, and so does a copy asked
   (`BrowserResult::Copying`), after which the tile waits (an hourglass, not tappable) until the copy job is no
   longer queued or running (`bg_pending`, which counts a child until the app's tick reaps it). Then the folder is
   read again as the sheet opened on it (the same paper selected) and the new picture, the first file not listed
   before, is put in view; its tile waits for its preview and fills in when the previews job ends, as a picture
-  copied over USB does. A copy that failed leaves the tiles as they were. A sheet opened while a copy into its
-  folder runs waits for it the same way.
+  copied over USB does. A copy that failed leaves the tiles as they were, and one refused when it was asked for
+  leaves the pick up, for another picture. A sheet opened while a copy into its folder runs waits for it the same
+  way. The copy's end waits for a pen or finger that is down on the sheet (`tplsheet_tick`): reading the folder
+  makes the sheet anew, which would forget the press (its lift would close the sheet as a tap outside does) and
+  move the tiles under it, so the lift comes first, on the sheet as drawn, and the folder is read at the tick after
+  it.
 - **Who hosts the pick.** Over New notebook the Library does, as it hosts New notebook's own From a file...
-  (`files_open_picture`; More layouts... there has templates only). Photos..., and the editor's More layouts..., open
-  from the editor, where the picker had no host: the editor hosts it itself (`EditorState.files`), as it hosts Copy
-  to notebook's picker (`destination`): drawn over the whole screen by `compose`, its contacts, keys (Esc and Back
-  up a level, the page keys its screens), ticks, `files.*` probes and taps routed to it while it is up, the panel
-  and the clock corner taken with it (`sheet_open`, `corner_sheet_open`). The notebook stays open under it as it
-  was: the page, its view, its undo history and the sheet's page of tiles; the page's idle save runs under it as
-  under any sheet (`idle_save`), the rest of the page's tick waits until it closes. A turn and a wake keep it up; it closes
-  with the notebook (`close_sheets`) or when the editor is left. The other way the plan named, a trip to the
-  Library and back with the page kept, was not taken: it closes the notebook (its undo history and view go) and
-  needs the sheet opened again on the way back, for no less code.
-- **What is said.** A copy job that fails says "Couldn't copy file. Is the storage full?" wherever the user is
-  (app.rs, `copy_told`); one that went in says "Copied to Templates." (or Photos), unless the sheet of that folder
-  is in front (`library_sheet_folder`, `editor_sheet_folder`), which shows the new picture itself.
+  (`files_open_picture`; More layouts... there has templates only). Photos..., and the editor's More layouts...,
+  open from the editor, where the picker had no host: the editor hosts it itself (`EditorState.files`), as it hosts
+  Copy to notebook's picker (`destination`): drawn over the whole screen by `compose`, its contacts, keys (Esc and
+  Back up a level, the page keys its screens), ticks, `files.*` probes and taps routed to it while it is up, the
+  panel and the clock corner taken with it (`sheet_open`, `corner_sheet_open`). The notebook stays open under it as
+  it was: the page, its view, its undo history and the sheet's page of tiles; the page's idle save runs under it as
+  under any sheet (`idle_save`), the rest of the page's tick waits until it closes. A turn and a wake keep it up;
+  it closes with the sheets, the notebook or the screen (`files_drop`, which takes its "Loading..." notice down
+  with it wherever it closes). The pick is handed one setting, whether the Files card is in the Library
+  (`FilesPrefs.card`, for its root's "Show Files in Library" row): Sort and Show are the Files place's. The other
+  way the plan named, a trip to the Library and back with the page kept, was not taken: it closes the notebook (its
+  undo history and view go) and needs the sheet opened again on the way back, for no less code.
+- **What is said.** A copy that is not made says why where a sentence the screens already had names the cause
+  (`copy_refusal`, bgwork_copy.rs), both when it is refused at the request and when its job ends (the job's exit
+  status, `CopyFail`): "Too big (over 16 MB)." for a picture over what the template job takes of a template or a
+  photo, which is refused before a byte is copied and again in the job (so nothing is copied that could never be
+  used, and nothing says it was); "Path too long." for a path that does not fit the job's, or a name too long in
+  the folder; "File changed. Try again." for a file that is no longer the one listed (at the request the folder is
+  read again too). Every other cause says "Couldn't copy file. Is the storage full?": the floor, a write that
+  failed, and the rare ones with no sentence of their own (a link on the way, every name up to " 99" taken), which
+  grimoire.log names. A job's end is said wherever the user is (app.rs, `copy_told`); a copy that went in says
+  "Copied to Templates." (or Photos), unless the sheet of that folder is in front (`library_sheet_folder`,
+  `editor_sheet_folder`), which shows the new picture itself.
 - **Strings**: Use as template, Use as photo, Couldn't copy file. Is the storage full?, Copied to %s. ("From a
-  file...", "Templates", "Photos" and "File changed. Try again." were there.)
+  file...", "Templates", "Photos", "File changed. Try again.", "Too big (over %d MB)." and "Path too long." were
+  there.)
 - **Tests**: `browser.rs`'s unit tests (the picture pick's root and rows; each card's copies), `test_tplsheet.rs`
   `from_file_tile` (the tile's place and pages, its tap, the wait, the folder read again with the new picture in
   view, a failed copy) and the empty state's paragraphs above the tile, and the scenarios `files_8_use_as` (Use as
   template and Use as photo from Files, " 2" for a name taken), `files_9_copy_room` (the floor, through
-  `GRIMOIRE_COPY_FREE_BYTES`), `z_tpl_c_from_file_library` (the tile over New notebook), `z_tpl_d_from_file_full` (a
-  copy whose writes fail, through `GRIMOIRE_COPY_FAIL_AFTER`) and `z_tpl_e_from_file_editor` (the tile over the page
-  for templates and photos, with the page, a stroke and its undo kept, through a turn and a wake).
-- **Not here**: Add a font... and a font's Add to fonts wait for the font check's hardening (#111).
+  `GRIMOIRE_COPY_FREE_BYTES`), `z_tpl_c_from_file_library` (the tile over New notebook), `z_tpl_d_from_file_full`
+  (a copy whose writes fail, through `GRIMOIRE_COPY_FAIL_AFTER`) and `z_tpl_e_from_file_editor` (the tile over the
+  page for templates and photos, with the page, a stroke and its undo kept, through a turn and a wake). For what is
+  refused: `test_fsview_writes.rs` (the request and the job on a file one byte too big, a path of 590 bytes, a
+  source changed or gone, a name too long once numbered, each with room and without where it matters, and the job's
+  exit status read back), `bgwork_copy.rs`'s `what_a_refused_copy_says`, and `files_9_copy_refused` (Files' two
+  rows and the tile's pick on a picture too big, and a path too long; `tests/files_copy_refused.py` plants them).
+  `test_tplsheet.rs` `a_copy_ends_under_a_contact` and `z_tpl_f_from_file_press` hold the copy's end under a
+  contact, and `z_tpl_g_from_file_keys` the pick's keys over the page.
+- **Not here**: Add a font... and a font's Add to fonts. They waited for the font check's hardening (#111), which
+  is merged now, and are a change of their own; the copy job already refuses a font over the font check's limit.
 
 ## Shared building blocks (2.1, lane L0)
 

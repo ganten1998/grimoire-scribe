@@ -17,7 +17,8 @@
   and New notebook's More layouts...) end with a From a file... tile: pick a picture anywhere on the Kindle and it is
   copied in, its tile appearing in the sheet once its preview is made, with the notebook's page left as it was. In
   Files, a picture's card offers Use as template and Use as photo. A copy that would leave less than 100 MB free is
-  refused: "Couldn't copy file. Is the storage full?".
+  refused: "Couldn't copy file. Is the storage full?". A picture over 16 MB, which Grimoire could not use as a
+  template or a photo, is not copied: "Too big (over 16 MB).".
 - Hardening: Grimoire reads the files in its own folders only when they are plain files, with size limits
   on the small text files, and makes its temporary files afresh each time. A `settings.ini` it cannot
   read is kept as `settings.ini.unread` rather than written over. A picture or folder in `templates/`,

@@ -1462,7 +1462,7 @@ impl Browser {
                 }
             }
             // Files (2.2): what the file is, its size and date (and its family for a font of Grimoire's whose check
-            // passed); Add to fonts waits for the Font sheet's Add a font... (#111)
+            // passed); Add to fonts comes with the Font sheet's Add a font...
             RowKind::Font | RowKind::Other => {
                 details = self.card_details(r);
             }

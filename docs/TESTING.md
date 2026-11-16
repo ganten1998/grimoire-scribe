@@ -2966,8 +2966,9 @@ steps 1, 5 and 11 answer; and the two floors of free room beside it (`STATE_FREE
 
 ## 2.2, From a file... and Use as template (issue #146): device checks
 
-Not run on a Scribe yet. The scenarios `files_8_use_as`, `files_9_copy_room`, `z_tpl_c_from_file_library`,
-`z_tpl_d_from_file_full` and `z_tpl_e_from_file_editor` cover the logic (docs/DESIGN.md, From a file... and Use as
+Not run on a Scribe yet. The scenarios `files_8_use_as`, `files_9_copy_room`, `files_9_copy_refused`,
+`z_tpl_c_from_file_library`, `z_tpl_d_from_file_full`, `z_tpl_e_from_file_editor`, `z_tpl_f_from_file_press` and
+`z_tpl_g_from_file_keys` cover the logic (docs/DESIGN.md, From a file... and Use as
 template), with the floor and a failing write simulated. What only the Scribe can tell:
 
 1. **A photo from the Kindle**: copy a JPG of a few MB into `documents/` over USB. In a notebook, Paper > Photos... >
@@ -2985,3 +2986,6 @@ template), with the floor and a failing write simulated. What only the Scribe ca
    once, and grimoire.log says `files: a copy into templates was refused: no room: ...`; nothing is left in
    `grimoire/templates` (no `.grimoire-copy-*.part`).
 5. **Rotate** the Scribe with the picker up over a notebook's page: it lays out again and Back returns to the sheet.
+6. **A picture over 16 MB** (a large scan, or any big file named .png): Use as template in Files says "Too big
+   (over 16 MB)." at once, grimoire.log says `files: a copy into templates was refused: it is over 16 MB`, and
+   nothing is added to `grimoire/templates`. The same from a sheet's From a file..., where the picker stays up.
