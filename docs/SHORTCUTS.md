@@ -235,6 +235,10 @@ Actions, in the Buttons sheet's groups:
   view or Find left, the newest first, up to 32, forgotten when the notebook closes; a page turn leaves
   nothing on that list, the page on show is never the one it goes back to, and with none a toast says so; with none left after a link into another notebook it returns to the notebook the link was followed from, at the same page and zoom, with that notebook's own list as it was, from 2.0.0-beta.2) and `link-areas` (dotted outlines over the page where a
   finger tap follows a link, on and off, remembered; the Links bar's Areas button does the same).
+- **Files** (2.2): `files` (opens Files, the Kindle's storage to browse, whether or not its card is in the
+  Library; inside Files, its root) and `home` (the Library's top, out of any folder and out of Files). They act in
+  the Library only, have no default key and no row in the Buttons or Gestures sheets: bind them in shortcuts.ini
+  (`key.f=files`) or gestures.ini, as the Library's `new-notebook` and `share`.
 - **The Graph** (2.0.0-beta.2): `graph-view` (View: All
   and View: Adjacent in turn, fitted, as the view button) and `pan-left`, `pan-right`, `pan-up`, `pan-down`
   (the view moves a sixth of the plot that way). They act only in the Graph, from the Library or a notebook, and
@@ -424,7 +428,8 @@ Pair sheet say so. Analog sticks are not read; analog triggers are, as LT and RT
 Names below are the persistent INI values; numeric ids are internal. The new actions use ids
 56..77, preserving 54 (`gesture-new-page`) and 55 (`status-mode`); later actions retain 78..81,
 pen pan/zoom use 82/83, `select` 84, `select-exact` 85, `new-pages` 86, `save` to `settings` 87 to 93,
-`select-all` 95, and the Graph's `graph-view` 100 and `pan-left`, `pan-right`, `pan-up`, `pan-down` 101 to 104.
+`select-all` 95, the Graph's `graph-view` 100 and `pan-left`, `pan-right`, `pan-up`, `pan-down` 101 to 104, and
+Files' `files` 108 and `home` 109 (105 to 107 are the size keys').
 Groups are Editing, Tools,
 Pages, Index, Menus, Screen and System. `tool:pencil` remains a compatibility entry even though
 the current Tools learning list starts with the mechanical pencil.
@@ -518,6 +523,8 @@ Every registered action accepts PEN. Pan and zoom accept only a pen drag.
 | `select-all` | OneShot | Pages | Key, pad, touch, shape, pen |
 | `graph-view` | Cycle | Index (no Buttons row) | Key, pad, pen |
 | `pan-left`, `pan-right`, `pan-up`, `pan-down` | Step | Index (no Buttons row) | Key, pad, pen |
+| `files` | Menu | Menus (no Buttons row) | Key, pad, touch, shape, pen |
+| `home` | OneShot | Menus (no Buttons row) | Key, pad, touch, shape, pen |
 
 ### The Graph's keys
 

@@ -2697,3 +2697,29 @@ import commits. The owner's check:
 If step 1's T is long enough to matter, or step 2 shows the pen lagging, see the BACKLOG entry on the import's
 whole-file read ("Hardening round (2026-11), import: what waits"). If step 7 shows any of its three lines, do
 not release: send grimoire.log.
+
+## 2.2, Files (lane L11b): device checks
+
+Not run on a Scribe yet. The headless scenarios `files_1_card` to `files_7_keys` cover the logic (the card hidden,
+shown last and hidden again, the root's rows, the path bar's parts and Go to, each Sort on a folder of known
+sizes and times, Show all with a link, a picture's, a font's and another file's card, the trash, a Library card's
+hold, the `files` and `home` actions from keys), and `browser.rs`'s unit tests the order, the root and the cards.
+What only the storage can tell, on the Scribe:
+
+1. **A big `documents/`** (a few thousand files): Files > Documents. Read grimoire.log: `files: listed N entries
+   (M usable) in T ms`, then tap Sort to Newest and to Size and read `files: N rows sorted (S) in T ms` (counts
+   and timings only, never a name). Note each T, whether "Loading..." appears (over 1 s), that the rows on screen
+   do not move until the new order is ready and then change at once, and that the pen and page turns stay quick
+   meanwhile. Send the lines and the folder's size.
+2. **A folder past 5,000 entries**: "Showing the first 5000." under the path, every Sort finishes, and the order
+   covers the 5,000 listed.
+3. **Planted links** over SSH (`ln -s /mnt/us/documents /mnt/us/documents/loop`, `ln -s /etc
+   /mnt/us/documents/etc`, `ln -s Planner.pdf /mnt/us/documents/Alias.pdf`): with Show set to PDFs, pictures,
+   fonts none is listed; with All files each is a greyed row "link, not followed", a tap on it does nothing, and
+   Sort by newest or size puts them last. Nothing is entered or opened through one.
+4. **The card**: New > From a file... > Show Files in Library; Back to the Library: the Files card is the last card
+   (with many notebooks, on the last screen). Hold it 0.6 s: its menu; Hide from Library takes it away, and the row
+   comes back in the picker's root.
+5. **PDF copies and Trash**: Files > PDF copies lists the mirror PDFs read only, and a mirror PDF's card opens its
+   notebook; Files > Trash lists deleted notebooks by name and date, newest first, and none opens.
+6. **Rotate** the Scribe in Files: the path bar, its chips, the rows and the Go to sheet lay out again.
