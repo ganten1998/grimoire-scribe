@@ -21,9 +21,9 @@ each for its own issue:
 - **Previews and the Covers view** (`files_view=covers`, read today as the list and kept), "Making previews...",
   the cache and its prune; the details a card can only have from the worker (a PDF's pages, a picture's size, a
   font's sample and coverage).
-- **From a file... tiles** in the Paper sheet's More layouts... and Photos...: Use as template and Use as photo on
-  a picture's card, and Add to fonts on a font's (with the Kindle fonts row of the Font sheet), once a copy job
-  exists. The cards offer only Cancel for those kinds until then.
+- **Add to fonts** on a font's card, with the Font sheet's Add a font... and its Kindle fonts row: they wait for the
+  font check's hardening (#111). The From a file... tiles and a picture's Use as template and Use as photo are
+  built (#146, the section below).
 - **Not decided here**: the Files card's second line (an earlier idea was "%d to import"; the free space today); the
   Folder icon greyed in read-only places; Ctrl+N and Ctrl+F in Files; Esc at a home root asking "Exit
   Grimoire?". The card is the last card of the top level, which in a big Library is the last screen: if that is
@@ -31,6 +31,23 @@ each for its own issue:
 - **Not timed on the Scribe**: Sort by newest or size stats a whole folder (up to 5,000 entries) in 20 ms slices
   on the UI thread; the Go to sheet reads the storage root at once on the tap, at most 200 ms in all (a root that
   takes longer lists the folders read by then). TESTING.md, "2.2, Files (issue #124): device checks".
+
+## From a file... and Use as template (2.2, issue #146): what waits
+
+Built: a picture's Use as template and Use as photo in Files, and the From a file... tile at the end of the
+Templates and Photos sheets, over New notebook and over a notebook's page (docs/DESIGN.md, From a file... and Use
+as template). Waiting:
+
+- **Add a font...** in the Font sheet (with the Kindle fonts row) and **Add to fonts** on a font's card in Files: the
+  same copy job into `grimoire/fonts`, after the font check's hardening (#111), on the Font sheet as nebuff's
+  Settings work has it.
+- **Defaults taken here, for the owner to confirm**: the tile is the sheet's last (no picture's tile moves for it;
+  in a big folder it is on the last page); the picture pick's title is "From a file..." and its root has no Import
+  place; a copy that went in is told by "Copied to Templates." (or Photos) unless its sheet is in front; every
+  failed copy says "Couldn't copy file. Is the storage full?" (the job ends 0 or 1, so a copy that failed for
+  another reason, rare, says the same; grimoire.log has the reason).
+- **Not timed on the Scribe**: a big photo's copy and preview. docs/TESTING.md, "2.2, From a file... and Use as
+  template (issue #146): device checks".
 
 ## After the release of 2.1.0 (2026-11-13): what waits
 
