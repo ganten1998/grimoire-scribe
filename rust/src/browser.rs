@@ -3063,6 +3063,14 @@ mod tests {
             assert!(p.go(sp("documents/Pics")));
             assert_eq!(rows(&mut p, 0), [want, "Cancel"]);
         }
+        // the card's file is checked again before either copy is asked ("File changed. Try again."): a picture
+        // written again since its folder was listed is no longer the card's
+        assert!(b.go(sp("documents/Pics")));
+        b.open_card(0);
+        let c = b.card.clone().expect("a card");
+        assert!(b.unchanged(&c));
+        std::fs::write(format!("{base}/documents/Pics/a.png"), b"another picture, a longer one").unwrap();
+        assert!(!b.unchanged(&c));
     }
 
     // The picture pick (2.2, #146): its root has no Import (that place is the imports', with their statuses and Look
