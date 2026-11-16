@@ -3952,10 +3952,10 @@ mod tests {
         assert_eq!(card_named(&mut b, "done").1, ["Open", "Cancel"]);
         assert!(b.go(sp("grimoire")));
         assert_eq!(card_named(&mut b, "import").1, ["Open", "Cancel"]);
-        // a template's card, and a folder's in templates
+        // a template's card (a picture's: its copy into photos first, #146), and a folder's in templates
         assert!(b.go(sp("grimoire/templates")));
         assert_eq!(card_named(&mut b, "Sub").1, ["Open", "Rename", "Delete", "Cancel"]);
-        assert_eq!(card_named(&mut b, "Grid.png").1, ["Rename", "Delete", "Cancel"]);
+        assert_eq!(card_named(&mut b, "Grid.png").1, ["Use as photo", "Rename", "Delete", "Cancel"]);
         assert_eq!(b.rename_begin(), Ok(b"Grid.png".to_vec()));
         assert_eq!(b.rename_to(b"Grid.png"), Ok(None), "Done with nothing typed renames nothing");
         for (bad, says) in [
@@ -4322,7 +4322,8 @@ mod tests {
         let mut b = Browser::default();
         assert!(b.open(PickSpec::place(), FilesPrefs { card: true, ..Default::default() }));
         assert!(b.go(sp("grimoire/photos")));
-        assert_eq!(card_named(&mut b, "beach.jpg").1, ["Rename", "Delete", "Cancel"]);
+        // (a photo's card: its copy into templates first, #146)
+        assert_eq!(card_named(&mut b, "beach.jpg").1, ["Use as template", "Rename", "Delete", "Cancel"]);
         b.draw(&mut a);
         assert!(b.point("card.trash").is_some() && b.point("card.delete").is_none());
         let card_rect = b.card_rect();
@@ -4493,13 +4494,19 @@ mod tests {
     // PEN_REOPEN_MS after the frame, by the kernel's time of the contact where it says (a contact read late came down
     // when the kernel saw it). The question stays up and the item where it was. A tap after that answers as before:
     // Keep it and a tap outside close it, its Delete moves the item. On a folder's card (Open and Import above its
-    // Delete) and a file's, each on a first row; and the question's Delete is not where the first tap was.
+    // Delete), a picture's (its copies above its Rename, #146: both in a folder of photos, one in templates) and a
+    // font's (Rename, Delete and Cancel alone), each on a first row; and the question's Delete is not where the first
+    // tap was.
     #[test]
     fn the_delete_question_is_answered_only_once_it_has_been_shown() {
         let (base, _g) = storage("deleteseen");
         let ph = format!("{base}/grimoire/photos");
         std::fs::create_dir_all(format!("{ph}/Atlas")).unwrap();
         std::fs::write(format!("{ph}/Atlas/p1.png"), b"p").unwrap();
+        for (d, n) in [("templates", "Grid.png"), ("fonts", "Plain.ttf")] {
+            std::fs::create_dir_all(format!("{base}/grimoire/{d}")).unwrap();
+            std::fs::write(format!("{base}/grimoire/{d}/{n}"), b"x").unwrap();
+        }
         i18n_set("en");
         let mut a = screen_app();
         #[cfg(feature = "sim")]
@@ -4511,7 +4518,9 @@ mod tests {
         let up = |b: &Browser| b.card.as_ref().is_some_and(|c| c.confirm);
         for (folder, name, rows) in [
             ("grimoire/photos", "Atlas", &["Open", "Import 1 picture as notebook", "Rename", "Delete", "Cancel"][..]),
-            ("grimoire/photos/Atlas", "p1.png", &["Rename", "Delete", "Cancel"][..]),
+            ("grimoire/photos/Atlas", "p1.png", &["Use as template", "Use as photo", "Rename", "Delete", "Cancel"][..]),
+            ("grimoire/templates", "Grid.png", &["Use as photo", "Rename", "Delete", "Cancel"][..]),
+            ("grimoire/fonts", "Plain.ttf", &["Rename", "Delete", "Cancel"][..]),
         ] {
             let item = format!("{base}/{folder}/{name}");
             let mut b = Browser::default();
@@ -4581,13 +4590,14 @@ mod tests {
         canvas_free(&mut a.screen);
     }
 
-    // The question's Delete is never drawn under the card row that opened it (issue #144), wherever the card was: for
-    // every row of a screen, upright and sideways, of a folder of files and of one that begins with two folders (one
-    // with a picture to import, so its card has a row more), the card's Delete lies a tap's slop clear of the
-    // question's Delete, and the sheet is the Library's, on the screen, moved up or down by no more than that takes.
-    // The cards of a first row lie over the Library's place for the question's Delete, or within the slop of it (a
-    // file's, and a folder's with nothing to import), and there the sheet has moved; a question no tap opened (a
-    // test's) is in the Library's place.
+    // The question's Delete is never drawn under the card row that opened it (issue #144), wherever the card was and
+    // however many rows it has above its Delete: for every row of a screen, upright and sideways, of a folder of fonts
+    // (cards of three rows: Rename, Delete, Cancel), of one of pictures (four: their copy above Rename, #146), of one
+    // that begins with two folders (one with pictures to import, so its card has a row more) and of one of pictures
+    // with both copies (five), the card's Delete lies a tap's slop clear of the question's Delete, and the sheet is
+    // the Library's, on the screen, moved up or down by no more than that takes. Some cards lie over the Library's
+    // place for the question's Delete, or within the slop of it, and there the sheet has moved; a question no tap
+    // opened (a test's) is in the Library's place.
     #[test]
     fn the_delete_questions_delete_is_not_under_the_row_that_opened_it() {
         let (base, _g) = storage("deleteplace");
@@ -4595,19 +4605,22 @@ mod tests {
         std::fs::create_dir_all(format!("{g}/photos/Atlas")).unwrap();
         std::fs::create_dir_all(format!("{g}/photos/Birds")).unwrap();
         std::fs::create_dir_all(format!("{g}/templates")).unwrap();
-        std::fs::write(format!("{g}/photos/Birds/p1.png"), b"p").unwrap();
+        std::fs::create_dir_all(format!("{g}/fonts")).unwrap();
         for i in 0..12 {
             std::fs::write(format!("{g}/photos/c{i:02}.jpg"), b"x").unwrap();
+            std::fs::write(format!("{g}/photos/Birds/p{i:02}.png"), b"x").unwrap();
             std::fs::write(format!("{g}/templates/t{i:02}.png"), b"x").unwrap();
+            std::fs::write(format!("{g}/fonts/f{i:02}.ttf"), b"x").unwrap();
         }
         i18n_set("en");
         assert_eq!(font_init(), 0);
         ui_init(300.0);
         let mut moved = Vec::new();
+        let mut heights = std::collections::BTreeSet::new();
         for (w, h) in [(1860, 2480), (2480, 1860)] {
             let mut a = App { w, h, dpi: 300.0, ..Default::default() };
             assert_eq!(canvas_init(&mut a.screen, w, h), 0);
-            for folder in ["grimoire/templates", "grimoire/photos"] {
+            for folder in ["grimoire/fonts", "grimoire/templates", "grimoire/photos", "grimoire/photos/Birds"] {
                 let mut b = Browser::default();
                 assert!(b.open(PickSpec::place(), FilesPrefs { card: true, ..Default::default() }));
                 assert!(b.go(sp(folder)));
@@ -4618,6 +4631,7 @@ mod tests {
                     b.open_card(i);
                     b.draw(&mut a);
                     let opener = b.card.as_ref().unwrap().hits.h.iter().find(|h| h.id == B_CARD_TRASH).expect("the card's Delete").r;
+                    heights.insert(b.card.as_ref().unwrap().hits.h.len());
                     assert_eq!(b.delete_ask(), Ok(()));
                     b.draw(&mut a);
                     let place = b.card_rect();
@@ -4642,10 +4656,19 @@ mod tests {
             }
             canvas_free(&mut a.screen);
         }
-        // (where it moves today: upright, for the cards of the first two rows of files and of a first row's folder
-        // with nothing to import, which lie over the Library's place for it; sideways, for a first row's file, whose
-        // card's Delete ends within the slop of it)
-        let today = [(1860, "grimoire/templates", 0), (1860, "grimoire/templates", 1), (1860, "grimoire/photos", 0), (2480, "grimoire/templates", 0)];
+        assert_eq!(heights.into_iter().collect::<Vec<_>>(), [3, 4, 5], "cards of three, four and five rows were asked");
+        // (where it moves today: upright, for the cards of the first two rows of fonts, of a first row's picture and
+        // of a first row's folder with nothing to import, which lie over the Library's place for it; sideways, for a
+        // first row's font, whose card's Delete ends within the slop of it, and for a fifth row's picture with both
+        // copies, whose card is drawn above its row)
+        let today = [
+            (1860, "grimoire/fonts", 0),
+            (1860, "grimoire/fonts", 1),
+            (1860, "grimoire/templates", 0),
+            (1860, "grimoire/photos", 0),
+            (2480, "grimoire/fonts", 0),
+            (2480, "grimoire/photos/Birds", 4),
+        ];
         assert_eq!(moved, today);
         // neither way fits (a screen too short for the sheet to move): where it was
         let (sheet, row) = (Rect::new(70, 50, 1720, 512), Rect::new(110, 220, 1640, 140));
@@ -4656,15 +4679,17 @@ mod tests {
 
     // A picture's card copies it into Grimoire's templates or photos (2.2, #146). In Files: Use as template and Use as
     // photo, but never the copy into the folder the picture is already in, and neither in a place a pick never takes
-    // from (Grimoire's PDF copies). In the picture pick a Templates or Photos sheet's From a file... opens: that sheet's
-    // copy alone, then Cancel.
+    // from (Grimoire's PDF copies). Inside Grimoire's folders for the user's files Rename and Delete follow the copies
+    // (issue #144): a template's card is Use as photo, Rename, Delete, Cancel, and a picture in a folder of its own
+    // there has both copies above them. In the picture pick a Templates or Photos sheet's From a file... opens: that
+    // sheet's copy alone, then Cancel, in Grimoire's folders too (the pick renames and deletes nothing).
     #[test]
     fn a_pictures_card_offers_the_copies_into_templates_and_photos() {
         let (base, _g) = storage("useas");
-        for d in ["documents/Pics", "grimoire/templates", "grimoire/photos", "grimoire/PDFs"] {
+        for d in ["documents/Pics", "grimoire/templates", "grimoire/photos", "grimoire/photos/Trip", "grimoire/PDFs"] {
             std::fs::create_dir_all(format!("{base}/{d}")).unwrap();
         }
-        for f in ["documents/Pics/a.png", "grimoire/templates/t.png", "grimoire/photos/p.jpg", "grimoire/PDFs/odd.png"] {
+        for f in ["documents/Pics/a.png", "grimoire/templates/t.png", "grimoire/photos/p.jpg", "grimoire/photos/Trip/q.png", "grimoire/PDFs/odd.png"] {
             std::fs::write(format!("{base}/{f}"), b"a picture").unwrap();
         }
         i18n_set("en");
@@ -4678,16 +4703,21 @@ mod tests {
         assert!(b.go(sp("documents/Pics")));
         assert_eq!(rows(&mut b, 0), ["Use as template", "Use as photo", "Cancel"]);
         assert!(b.go(sp("grimoire/templates")));
-        assert_eq!(rows(&mut b, 0), ["Use as photo", "Cancel"]);
+        assert_eq!(rows(&mut b, 0), ["Use as photo", "Rename", "Delete", "Cancel"]);
         assert!(b.go(sp("grimoire/photos")));
-        assert_eq!(rows(&mut b, 0), ["Use as template", "Cancel"]);
+        assert_eq!(row_names(&b), ["Trip", "p.jpg"]);
+        assert_eq!(rows(&mut b, 1), ["Use as template", "Rename", "Delete", "Cancel"]);
+        assert!(b.go(sp("grimoire/photos/Trip")));
+        assert_eq!(rows(&mut b, 0), ["Use as template", "Use as photo", "Rename", "Delete", "Cancel"]);
         assert!(b.go(sp("grimoire/PDFs")));
         assert_eq!(rows(&mut b, 0), ["Cancel"]);
-        for (to, want) in [(CopyTo::Templates, "Use as template"), (CopyTo::Photos, "Use as photo")] {
+        for (to, want, own) in [(CopyTo::Templates, "Use as template", "grimoire/photos/Trip"), (CopyTo::Photos, "Use as photo", "grimoire/templates")] {
             let mut p = Browser::default();
             assert!(p.open(PickSpec::picture(to), FilesPrefs { card: true, ..Default::default() }));
             assert!(p.go(sp("documents/Pics")));
             assert_eq!(rows(&mut p, 0), [want, "Cancel"]);
+            assert!(p.go(sp(own)));
+            assert_eq!(rows(&mut p, 0), [want, "Cancel"], "the pick in {own}: no Rename, no Delete");
         }
         // the card's file is checked again before either copy is asked ("File changed. Try again."): a picture
         // written again since its folder was listed is no longer the card's

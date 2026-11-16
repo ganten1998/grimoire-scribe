@@ -7,10 +7,10 @@
 # env: GRIMOIRE_CHECK_FIT=1
 # settings: theme=classic
 # Files' rename, delete and restore (2.2, issue #144) in Spanish and Classic, every text checked for fit, as
-# files_13_es_fit does in Gothic, with the same taps: a template's card with Renombrar and Borrar, the rename
-# keyboard and each kind of refusal over it, the Delete question, the Trash place's rows with their sizes, an entry's card with
-# Restaurar, and the toasts of each act; upright, then the card and the keyboard sideways (Esc, with the keys on,
-# its Cancel).
+# files_13_es_fit does in Gothic, with the same taps: a template's card with Usar como foto (#146), Renombrar and
+# Borrar, the rename keyboard and each kind of refusal over it, the Delete question, the Trash place's rows with their
+# sizes, an entry's card with Restaurar, and the toasts of each act; upright, then the card (its four rows) and the
+# keyboard sideways (Esc, with the keys on, its Cancel), and a photo's card with Usar como plantilla.
 # rust-only
 wait 300
 tap library files-card
@@ -21,7 +21,7 @@ tap library files.item.Templates
 wait 300
 tap library files.item.Grid.png
 wait 300
-expect files.card.rows is Renombrar|Borrar|Cancelar
+expect files.card.rows is Usar como foto|Renombrar|Borrar|Cancelar
 shot 02-card
 tap library files.card.rename
 wait 300
@@ -120,6 +120,7 @@ wait 300
 tap library files.item.Lines.png
 wait 300
 expect files.card is picture
+expect files.card.rows is Usar como foto|Renombrar|Borrar|Cancelar
 shot 13-card-sideways
 tap library files.card.trash
 wait 500
@@ -137,4 +138,17 @@ shot 14-keyboard-sideways
 key 1 0
 wait 300
 expect files.keyboard is 0
+# a photo's card sideways: four rows, the longer of the two copies' names first (Usar como plantilla, #146)
+tap library files.crumb.1
+wait 300
+tap library files.item.Photos
+wait 300
+tap library files.item.beach.jpg
+wait 300
+expect files.card is picture
+expect files.card.rows is Usar como plantilla|Renombrar|Borrar|Cancelar
+shot 15-photo-card-sideways
+tap library files.card.cancel
+wait 200
+expect files.card is
 quit

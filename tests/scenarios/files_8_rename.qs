@@ -3,11 +3,12 @@
 # storage: 1
 # generate: tests/files_trash_tree.py
 # Rename on a template's card in Files (2.2, issue #144): the card of a file inside Grimoire's own folders offers
-# Rename and Delete; Rename opens the keyboard with the name, its caret before the extension. A name each rule
-# refuses says why and keeps the keyboard up with it (a character a name cannot hold, a space at the start and at
-# the end, a dot at the end and at the start, the extension gone, then changed); a name taken says so and nothing
-# is replaced; Done with nothing typed, an empty name and Cancel rename nothing; a good name renames the file in
-# place. A folder's new name that Grimoire's folders do not take (an ending the Kindle's reader keeps) says so too.
+# Rename and Delete (a template's after its Use as photo, #146); Rename opens the keyboard with the name, its caret
+# before the extension. A name each rule refuses says why and keeps the keyboard up with it (a character a name cannot
+# hold, a space at the start and at the end, a dot at the end and at the start, the extension gone, then changed); a
+# name taken says so and nothing is replaced; Done with nothing typed, an empty name and Cancel rename nothing; a good
+# name renames the file in place. A folder's new name that Grimoire's folders do not take (an ending the Kindle's
+# reader keeps) says so too.
 # Keys (portrait, the Library's keyboard): shift 175 2205, del 1679 2205, Cancel 217 2365, the symbols key
 # 570 2365, space 1018 2365, the dot 1466 2365, Done 1685 2365; letters row y 1885 (q 133, e 487, i 1372, p 1726),
 # y 2045 (a 221, s 398, g 929, j 1283, l 1637), y 2205 (n 1278); digits y 1725 (2 at 310); the symbols page's
@@ -23,7 +24,7 @@ expect files.order is Grid.png|Lines.png
 tap library files.item.Grid.png
 wait 300
 expect files.card is picture
-expect files.card.rows is Rename|Delete|Cancel
+expect files.card.rows is Use as photo|Rename|Delete|Cancel
 shot 01-card
 tap library files.card.rename
 wait 300

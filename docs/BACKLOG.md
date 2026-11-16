@@ -120,7 +120,8 @@ as template). Waiting:
 
 The storage layer writes now (docs/DESIGN.md, Files' storage writes): rename, trash with its record, restore,
 the name rules, the busy check and the copy job (`BgKind::CopyFile`). Files' cards and its Trash place call rename,
-trash and restore since issue #144 (its own section, above); the copy waits for the From a file... tiles.
+trash and restore since issue #144, and a picture's Use as template and Use as photo and the From a file... tiles
+call the copy since issue #146 (each its own section, above).
 
 - **The screens' part** (the Files place and its cards, the Trash place, the From a file... tiles, Add a
   font...):
@@ -139,8 +140,10 @@ trash and restore since issue #144 (its own section, above); the copy waits for 
   reads that form and writes the old name, `<id>-<time>`). Empty trash never comes (the owner cleans it over USB).
 - **What counts as busy**: what an import works on, and since issue #144 a template or photo picked for a page
   until the job that copies its picture into the notebook has ended (`bg_job_pictures`). Not the source of a copy
-  into Grimoire's folders (`BgKind::CopyFile`, which no screen asks for yet): that job refuses a source that
-  changed and leaves nothing behind.
+  into Grimoire's folders (`BgKind::CopyFile`: Use as template, Use as photo and the From a file... tiles since
+  issue #146): that job refuses a source that changed or is gone and leaves nothing behind, so a picture of
+  Grimoire's folders renamed or deleted in Files before its copy has opened it is not copied ("File changed. Try
+  again.").
 - **The fallback's last moment.** Where the storage refuses the no-replace flag, a rename reserves the new name
   and renames over its own reservation only (DESIGN.md, Never an overwrite), since files come over USB and the
   copy job renames while Grimoire runs. Left: a writer that opens the empty reserved file by its name between the

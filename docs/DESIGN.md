@@ -2649,12 +2649,15 @@ A picture from anywhere on the Kindle becomes a template or a photo by a copy in
 ## Files: rename, delete and restore (2.2, issue #144)
 
 The screens on the storage writes above: Files' cards (`browser.rs`) rename a file or folder and move it to the
-trash, and the Trash place puts an entry back. Pick mode (New notebook's From a file...) offers none of it.
+trash, and the Trash place puts an entry back. Pick mode (New notebook's From a file..., and the picture pick of the
+Templates and Photos sheets) offers none of it.
 
 - **Where.** A card offers Rename and Delete only on a file or folder inside Grimoire's folders for the user's files:
   what `FsStorage::can_write` allows (the allow-list, `write_zone`: what is inside `import`, `templates`, `photos` and
   `fonts`, never the folder itself nor `import/done` itself). Every other place stays read only, and so do PDF copies
-  and the trash itself.
+  and the trash itself. The two rows follow the rows a card has for its kind (a folder's Open and its import, a PDF's
+  import, a picture's Use as template and Use as photo, issue #146) and stand above Cancel: a template's card is Use
+  as photo, Rename, Delete, Cancel.
 - **Check first.** Every act checks the card's item again before it does anything (`unchanged`): by its path and its
   identity. A file must have the device, inode, size and time it had when its card opened; a folder the same device
   and inode (not its size and time, which change with what is put in it), so another folder renamed to its name is
@@ -2664,7 +2667,9 @@ trash, and the Trash place puts an entry back. Pick mode (New notebook's From a 
   what a queued or running import works on, what is inside it, the folder a held PDF is in, and while a previous run's
   import holds the lock everything in `import/`; and a template or photo picked for a page, until the job that copies
   its picture into the notebook has ended (`bg_job_pictures`: renamed or deleted before, the page would draw white).
-  Held: "Importing now." and nothing is done.
+  Held: "Importing now." and nothing is done. A picture whose copy into templates or photos waits (Use as template,
+  Use as photo) is not held: renamed or deleted before the copy job has opened it, it is not copied, and the copy's
+  end says "File changed. Try again.".
 - **Rename** opens the keyboard (the Library's, hosted by the browser: `Browser.kb`, drawn over Files, its keys
   refreshed alone; a hardware keyboard's keys reach it through `library_keyboard_area`, and Esc or Back is its Cancel)
   with the name, titled Name (or Folder for a folder), the caret before a file's extension, so typing edits the stem
@@ -2769,7 +2774,8 @@ trash, and the Trash place puts an entry back. Pick mode (New notebook's From a 
   question, Keep it, a tap outside it, its Delete, the sizes, Restore, a page with no card), `files_10_restore_notebook`
   (the Library's Delete, Restore, " 2"), `files_11_busy` (an importing PDF), `files_12_swap` (a folder swapped under its
   card, through the runner's `storage move`), `files_13_es_fit`, `files_14_es_fit_classic` (Spanish, each text checked
-  for fit, upright and sideways), `files_15_font_in_use` (the font in use and its Bold file: Delete refused, Rename with
+  for fit, upright and sideways, a picture's four rows with each of its copies' names among them),
+  `files_15_font_in_use` (the font in use and its Bold file: Delete refused, Rename with
   the setting following and the font still drawing), `files_16_font_kept` (the next start), `files_17_es_font_in_use`
   and `files_18_delete_twice` (two taps at one place on the card's Delete, on a folder's card and a file's on a first
   row, upright and sideways: the question up and the item where it was; its Delete once it has been shown).

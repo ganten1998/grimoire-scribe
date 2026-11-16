@@ -2,14 +2,14 @@
 # settings: files_card=1
 # storage: 1
 # generate: tests/files_trash_tree.py
-# Delete a photo, then Restore it from the Trash place (2.2, issue #144). The root's Trash row shows the trash's
-# size once its walk is through (7 KB: a notebook of 5 KB and a page of 2 KB), and 10 KB once the photo (3 KB) is
-# in it. The photo's card asks first, as the Library asks before a notebook goes (Delete "beach.jpg"?, with "Delete
-# (moves it to grimoire/trash)" and "Keep it"): Keep it, and a tap outside the question, move nothing; its Delete
-# moves the photo to the trash ("Moved to grimoire/trash"); the Trash place lists its entries
-# newest first, each with its size and date (the photo by its own name, the notebook by its name, the page by its
-# notebook's); the page has no card (pages are listed, never restored); the photo's card offers Restore alone, which
-# puts it back where it was ("Restored to grimoire/photos.").
+# Delete a photo, then Restore it from the Trash place (2.2, issue #144). The root's Trash row shows the trash's size
+# once its walk is through (7 KB: a notebook of 5 KB and a page of 2 KB), and 10 KB once the photo (3 KB) is in it.
+# The photo's card (Use as template, #146, then Rename and Delete) asks first, as the Library asks before a notebook
+# goes (Delete "beach.jpg"?, with "Delete (moves it to grimoire/trash)" and "Keep it"): Keep it, and a tap outside the
+# question, move nothing; its Delete moves the photo to the trash ("Moved to grimoire/trash"); the Trash place lists
+# its entries newest first, each with its size and date (the photo by its own name, the notebook by its name, the page
+# by its notebook's); the page has no card (pages are listed, never restored); the photo's card offers Restore alone,
+# which puts it back where it was ("Restored to grimoire/photos.").
 # The question takes an answer once it has been shown, 450 ms after its frame (files_18_delete_twice has the taps
 # that come sooner): each answer here follows a wait of 500.
 # rust-only
@@ -24,7 +24,7 @@ expect files.order is Other|Trip|beach.jpg
 tap library files.item.beach.jpg
 wait 300
 expect files.card is picture
-expect files.card.rows is Rename|Delete|Cancel
+expect files.card.rows is Use as template|Rename|Delete|Cancel
 tap library files.card.trash
 wait 500
 expect files.card is delete

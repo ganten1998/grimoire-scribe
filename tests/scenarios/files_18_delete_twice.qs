@@ -5,12 +5,13 @@
 # env: GRIMOIRE_SIM_CLOCK=script
 # Two taps at one place on a card's Delete never answer its question (2.2, issue #144): Delete asks first, and the
 # question must be seen before it can be answered. The first tap opens `Delete "name"?`; the second, at the place of
-# the first (`files.card.opener`: where the card's Delete was) and with no time between, answers nothing, wherever
-# the question was drawn: the question is up and the item in its folder. On a folder's card and a file's, each on the
-# first row of its folder, upright and sideways. Taps on the question's Delete, on Keep it and outside the sheet a
-# tenth of a second after it was shown answer nothing either. Half a second after it was shown (the script's clock
-# moves by its waits alone, so the times are exact on any machine) a tap is an answer as before: Keep it keeps, and
-# the question's Delete moves the item to the trash.
+# the first (`files.card.opener`: where the card's Delete was) and with no time between, answers nothing, wherever the
+# question was drawn: the question is up and the item in its folder. On a folder's card and a file's (a template's:
+# its Delete is the third of its four rows, under Use as photo and Rename, #146), each on the first row of its folder,
+# upright and sideways. Taps on the question's Delete, on Keep it and outside the sheet a tenth of a second after it
+# was shown answer nothing either. Half a second after it was shown (the script's clock moves by its waits alone, so
+# the times are exact on any machine) a tap is an answer as before: Keep it keeps, and the question's Delete moves the
+# item to the trash.
 # rust-only
 wait 300
 tap library files-card
@@ -53,6 +54,7 @@ expect files.order is Grid.png|Lines.png
 tap library files.item.Grid.png
 wait 300
 expect files.card is picture
+expect files.card.rows is Use as photo|Rename|Delete|Cancel
 tap library files.card.trash
 tap library files.card.opener
 wait 300
@@ -77,6 +79,7 @@ expect files.order is Lines.png
 tap library files.item.Lines.png
 wait 300
 expect files.card is picture
+expect files.card.rows is Use as photo|Rename|Delete|Cancel
 tap library files.card.trash
 tap library files.card.opener
 wait 300

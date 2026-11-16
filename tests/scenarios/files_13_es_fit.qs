@@ -6,10 +6,11 @@
 # env: GRIMOIRE_LANG=es
 # env: GRIMOIRE_CHECK_FIT=1
 # Files' rename, delete and restore (2.2, issue #144) in Spanish, every text checked for fit (files_14_es_fit_classic
-# runs the same in Classic): a template's card with Renombrar and Borrar, the rename keyboard and a refusal of each
-# kind's words over it, the Delete question, the Trash place's rows with their sizes, an entry's card with Restaurar, and the toasts of
-# each act; upright, then the card and the keyboard sideways (Esc, with the keys on, its Cancel). The taps are
-# files_8_rename's and files_9_trash's.
+# runs the same in Classic): a template's card with Usar como foto (#146), Renombrar and Borrar, the rename keyboard
+# and a refusal of each kind's words over it, the Delete question, the Trash place's rows with their sizes, an entry's
+# card with Restaurar, and the toasts of each act; upright, then the card (its four rows) and the keyboard sideways
+# (Esc, with the keys on, its Cancel), and a photo's card with Usar como plantilla. The taps are files_8_rename's and
+# files_9_trash's.
 # rust-only
 wait 300
 tap library files-card
@@ -20,7 +21,7 @@ tap library files.item.Templates
 wait 300
 tap library files.item.Grid.png
 wait 300
-expect files.card.rows is Renombrar|Borrar|Cancelar
+expect files.card.rows is Usar como foto|Renombrar|Borrar|Cancelar
 shot 02-card
 tap library files.card.rename
 wait 300
@@ -119,6 +120,7 @@ wait 300
 tap library files.item.Lines.png
 wait 300
 expect files.card is picture
+expect files.card.rows is Usar como foto|Renombrar|Borrar|Cancelar
 shot 13-card-sideways
 tap library files.card.trash
 wait 500
@@ -136,4 +138,17 @@ shot 14-keyboard-sideways
 key 1 0
 wait 300
 expect files.keyboard is 0
+# a photo's card sideways: four rows, the longer of the two copies' names first (Usar como plantilla, #146)
+tap library files.crumb.1
+wait 300
+tap library files.item.Photos
+wait 300
+tap library files.item.beach.jpg
+wait 300
+expect files.card is picture
+expect files.card.rows is Usar como plantilla|Renombrar|Borrar|Cancelar
+shot 15-photo-card-sideways
+tap library files.card.cancel
+wait 200
+expect files.card is
 quit
