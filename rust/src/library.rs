@@ -184,7 +184,8 @@ const H_EXIT_NO: i32 = 83;
 const H_PAIR_MENU: i32 = 84;
 const H_SHORTCUT_DEVICE: i32 = 85;
 const H_SHORTCUT_OWN: i32 = 86;
-// 2.1: the Style row's Font chip (Classic only), and the Font sheet's rows (arg: the family), Done and Cancel.
+// 2.1: the Font row (Classic only; a chip on the Style row before #115), and the Font sheet's rows (arg: the
+// family), Done (the page's X since #115) and Cancel (its Back).
 const H_SET_FONT: i32 = 89;
 const H_FONT_PICK: i32 = 90;
 const H_FONT_DONE: i32 = 91;
@@ -7243,7 +7244,9 @@ fn act(a: &mut App, h: &Hit) {
         H_FONT_PICK => {
             let pick = (h.arg.max(0) as usize).min(FONT_FAMILIES.len() - 1);
             lib(a).font_picked = true; // (a family tapped, even the one that shows: the apply takes font=file: away)
-            if pick != lib(a).font_pick || !lib(a).font_file.is_empty() {
+            // (also the family that shows while settings.ini names a font of the owner's own that does not draw
+            // now, one a crash kept out or whose file is gone: the tap takes that line away now, not the X later)
+            if pick != lib(a).font_pick || !lib(a).font_file.is_empty() || !a.settings.font_file.is_empty() {
                 lib(a).font_pick = pick;
                 lib(a).font_file.clear();
                 // (a font held beside the one in use for the sample goes)
@@ -8841,8 +8844,20 @@ pub fn library_probe(a: &mut App, key: &str, out: &mut String, cap: usize) -> i3
                 H_WIFI_OTHER_OPEN => "wifi.other.open", H_WIFI_OTHER_WPA => "wifi.other.wpa",
                 H_WIFI_OTHER_WPA3 => "wifi.other.wpa3", H_WIFI_OTHER_EAP => "wifi.other.eap",
                 H_WIFI_OTHER_CANCEL => "wifi.other.cancel",
+                // (the new Settings page's rows and submenus that had no name: its Back and X, and the
+                // choice lists that open from a row)
+                H_SETTINGS_BACK => "settings.back", H_SETTINGS_CLOSE => "settings.close",
+                H_SET_LANGUAGE => "language", H_LANG_PICK => "language.", H_LANG_BACK => "language.back",
+                H_SET_SIDE => "pen-button", H_SIDE_PICK => "pen-button.", H_SIDE_BACK => "pen-button.back",
+                H_SET_ERASER => "eraser-mode", H_ERASER_PICK => "eraser-mode.", H_ERASER_BACK => "eraser-mode.back",
+                H_SET_PINCH => "pinch", H_SET_MIRROR => "mirror",
+                H_SET_DEVICE => "about-device", H_DEVICE_BACK => "about-device.back",
                 _ => "",
             });
+            if hit.id == H_LANG_PICK {
+                name.push_str(i18n_language_code(hit.arg).unwrap_or("auto"));
+            }
+            if matches!(hit.id, H_SIDE_PICK | H_ERASER_PICK) { name.push_str(&hit.arg.to_string()); }
             if hit.id == H_FONT_PICK {
                 name.push_str(FONT_FAMILIES.get(hit.arg as usize).map_or("", |f| f.id));
             }

@@ -4,6 +4,8 @@
 wait 200
 tap 1535 95
 wait 100
+tap library settings.cat.4
+wait 100
 tap library gestures
 wait 100
 expect library.sheet is gestures

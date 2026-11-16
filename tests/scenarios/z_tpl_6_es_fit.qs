@@ -55,10 +55,12 @@ wait 300
 tap 1535 95
 wait 100
 expect library.sheet is settings
-tap 930 930
+tap library settings.cat.1
+wait 100
+tap library theme
 wait 100
 expect settings.theme is classic
-tap 1560 1930
+tap library done
 wait 100
 expect library.sheet is none
 tap 965 95

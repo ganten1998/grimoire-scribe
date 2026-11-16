@@ -8,6 +8,8 @@
 wait 150
 tap 1535 95
 wait 200
+tap library settings.cat.4
+wait 100
 tap library shortcuts
 wait 200
 tap library buttons
@@ -46,16 +48,16 @@ tap library buttons.group.pages
 wait 100
 expect library.buttons_group is pages
 expect pads.previous-page is Select,Left
-touch down 930 416
+touch down 930 296
 wait 700
-touch up 930 416
+touch up 930 296
 wait 100
 expect pads.previous-page is
 expect pads.next-page is
 expect toast is No buttons for Previous / next page now.
 expect library.learning is
 # A finger that moves off the row: no hold, no learning
-touch down 930 576
+touch down 930 450
 touch move 20 687
 wait 700
 touch up 20 687

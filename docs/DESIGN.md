@@ -314,17 +314,20 @@ draws them. White ink and the precise eraser make them.
   The glyph cache keys a glyph by its file, so a change of font loses nothing cached. The files are
   static Regular and Bold instances of Google Fonts' variable fonts, cut to Latin, Latin-1, Latin
   Extended-A and General Punctuation (238 KB for the six: `assets/README.md`).
-- Settings > Font (library.rs, `Modal::Font`, 2.1): in Classic the Style row's right end is a chip, "Font:
-  Terminess" (the family's short name, md-format_font beside it), and the rest of the row still changes
-  the style; Gothic has no chip. The chip opens the Font sheet: a sample card (the highlighted family's
-  name at the title size, a translated sentence at the text size, digits and accents at the small size,
-  all drawn in it), then a row for each family drawn in itself, a check on the one in use, then Cancel
-  and Done. The sheet's own words stay in the font in use (in Terminess while that is one of the owner's
-  own, 2.1.0-beta.2: Your own fonts, which also adds the headings Built in and Your fonts, the rows of
-  grimoire/fonts and their pages). A tap highlights a row and refreshes only the
-  sample and the two rows (`font_step`, one partial refresh); Done saves `font=`, applies it and redraws
-  with a Full refresh, as a style change does; Cancel, Back and Esc change nothing. `font_with_family`
-  draws a family's row and sample and puts the font in use back.
+- Settings > Font (library.rs, `Modal::Font`, 2.1; a page of the new Settings menu since #115): in Classic
+  Settings' Display category has a Font row, "Font: Terminess" (the family's short name, or the family name
+  of one of the owner's own fonts); Gothic has no such row (`Show::ClassicOnly`). The row opens the Font
+  sheet, a Settings page with Back at its top left and the X at its top right: a sample card (the
+  highlighted font's name at the title size, a translated sentence at the text size, digits and accents at
+  the small size, all drawn in it), then a row for each family drawn in itself and a check on the one in
+  use. The sheet's own words stay in the font in use (in Terminess while that is one of the owner's own,
+  2.1.0-beta.2: Your own fonts, which also adds the headings Built in and Your fonts, the rows of
+  grimoire/fonts and their pages). A tap on a font applies it at once (`font_apply_pick`): it saves
+  `font=` (and `font=file:` for one of the owner's own, or takes such a line away when a family is
+  tapped, also the family that shows while that font does not draw), restyles the share pages and redraws
+  with a Full refresh, as a style change does. Back and Esc return to Settings and the X closes all of
+  Settings (`close_settings`), each keeping the font tapped, as Language keeps a language picked.
+  `font_with_family` draws a family's row and sample and puts the font in use back.
 - The keyboard's text is UTF-8 and its keys carry code points (`KB_KEY_*` below 32 for the named
   keys, `KB_KEY_FLICK` + row for the kana pad's own keys). There are four pages of characters,
   letters, symbols, accents and kana (`Keyboard.page`); the first three have `-`, `'` and `.`
@@ -885,7 +888,7 @@ announcements: goingToScreenSaver draws the sleep screen, outOfScreenSaver is th
    as 'Grimoire Text', the browser's serif, sans-serif or monospace after it, and Terminess as 'Grimoire
    Mono' for the studio's command line). The server takes the style and the font as it starts, and again
    when either changes while it runs (Live view keeps it up across screens: the style row, the theme
-   shortcut and the Font sheet's Done call `httpd_restyle`), so the next page a browser loads is in them;
+   shortcut and a tap on a font in the Font sheet call `httpd_restyle`), so the next page a browser loads is in them;
    a page already open keeps its own until it loads again. The fonts' licenses go with them (Rust only): `/font/licenses.txt`
    holds the texts (Terminess's OFL, its Material Design icons' notice and the Apache License, the Gothic
    fonts' and the Classic fonts' OFL), each font's answer names it in a `Link: rel="license"` header, and

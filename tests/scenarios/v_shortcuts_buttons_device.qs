@@ -10,6 +10,8 @@
 wait 150
 tap 1535 95
 wait 100
+tap library settings.cat.4
+wait 100
 tap library shortcuts
 wait 100
 hid attach key:05ac:0256 Magic Keyboard
@@ -40,7 +42,7 @@ expect library.buttons.undo is East
 expect pads.undo is East
 tap library done
 wait 100
-tap library done
+tap library settings.back
 wait 100
 expect library.sheet is shortcuts
 # The Pro 2's own shortcuts on (a copy of the default, East for Undo), then the device row back on the
@@ -76,7 +78,7 @@ expect pads.undo is East
 shot 01-refused
 tap library done
 wait 100
-tap library done
+tap library settings.back
 wait 100
 # The Pro 2 chosen: its own buttons. The Arcade Stick's press is not learned into them; the Pro 2's is, and the
 # default keeps East.
@@ -113,9 +115,9 @@ expect library.buttons.undo is South
 storage ok
 tap library done
 wait 100
-tap library done
+tap library settings.back
 wait 100
-tap library done
+tap library settings.close
 wait 100
 expect library.sheet is none
 # In a notebook: the Pro 2's South undoes; the Arcade Stick's South does not, its East does.
@@ -145,6 +147,8 @@ expect editor.strokes is 0
 pentap panel library
 wait 300
 tap 1535 95
+wait 100
+tap library settings.cat.4
 wait 100
 tap library shortcuts
 wait 100

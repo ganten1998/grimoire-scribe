@@ -3,7 +3,7 @@
 # What's new in Classic, 2.0.0's notes on Read all's sheet (2.1.0; the owner, 2026-11-07: "The note
 # reading itself isn't polished enough"). Upright they fit at 44 px in the look they always had.
 # Sideways even the closest look at 44 px (the leading 1.15, the gaps 60% of theirs) takes two pages:
-# the type steps down to the largest size whose closest look fits, 41.5 px, at the leading 1.15
+# the type steps down to the largest size whose closest look fits, 42.5 px (41.5 before #115 shortened them), at the leading 1.15
 # (fitting by size alone set them at 38.5 px, and the room left under them). Their sheet would then
 # start across the Library's top bar's buttons: it starts where the tallest sheet does, at the margin
 # above them, and reaches down to the margin under the pager. The
@@ -35,7 +35,7 @@ tap library about.row.2.0.0
 wait 100
 expect library.about.view is note
 expect library.about.pages is 1
-expect library.about.body_px is 41.5
+expect library.about.body_px is 42.5
 expect library.about.lead is 1.15
 expect library.about.signature is 1
 expect library.ui_has.about.next is 0

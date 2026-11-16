@@ -17,7 +17,7 @@ wait 300
 shot 02-library-sideways
 rotate 0
 wait 300
-# A notebook with one stroke; its Display sheet, the sleep screen tapped round to the Kindle's own.
+# A notebook with one stroke; Settings' Sleep settings over it, the sleep screen tapped round to the Kindle's own.
 tap library new
 wait 100
 tap 510 460
@@ -27,15 +27,20 @@ expect screen is editor
 pen line 300 1700 1400 1720 60 0.4 0.9
 wait 700
 expect editor.strokes is 1
-pentap panel display
+pentap panel settings
 wait 300
-expect editor.modal is display
-tap 800 1500
+expect editor.modal is settings
+tap library settings.cat.2
+wait 100
+tap library sleep-clock
+wait 300
+expect editor.settings.sheet is display
+tap library display.sleep
 wait 200
-tap 800 1500
+tap library display.sleep
 wait 200
 expect settings.sleep_mode is 2
-tap 1464 1950
+tap library display.done
 wait 300
 expect editor.modal is none
 sleep
@@ -54,6 +59,8 @@ wait 300
 expect screen is library
 tap library settings
 wait 200
+tap library settings.cat.1
+wait 100
 tap library theme
 wait 300
 expect settings.theme is classic
