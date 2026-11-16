@@ -294,7 +294,8 @@ your notebooks and settings from `quire/` to `grimoire/` and removes the old Qui
   with a message, and the same PDF a second time says "PDF already imported.". A page that cannot be read
   becomes a blank page and the end says so ("Some pages couldn't be read."); a PDF with no page that reads is
   not imported. A PDF that fails waits until you replace it (three tries); one that found the storage full goes
-  once there is room. KOReader's Open this book still works for books and for the pages it draws.
+  once there is room. KOReader's Open this book hands its PDF to this same import (see Open this book in
+  Grimoire), and still draws DjVu and comic books itself.
 - **A file anywhere on the Kindle**: Library > New > **From a file...** opens Files, titled "Import a PDF or
   pictures": Import (`grimoire/import`, with what each file is doing: Waiting, "Importing: page 40 of 365",
   Imported, and a Look again row), Documents, Downloads and All storage (Grimoire's notebooks, PDFs and trash
@@ -432,11 +433,16 @@ page of its own, add a new page in Pages first.
 **Open this book in Grimoire.** In a PDF, DjVu or comic book, Tools > Grimoire > **Open this book in
 Grimoire** (also a gesture action) puts every page of the book into its Grimoire notebook at once,
 then opens the page you are reading. In KOReader's file browser, long-press such a file and choose
-**Open with... > Grimoire** to do the same without opening it. KOReader draws each page first, about
-a second or two a page on a Scribe, with a message that a tap stops; pages the notebook already has,
-with what you wrote on them, are kept as they are, so opening the same book again only adds what is
-missing. It is the same notebook Annotate this page uses. A PDF's own links come along (a planner's tabs: a
-finger tap on "March" goes to March): see Document links.
+**Open with... > Grimoire** to do the same without opening it. For a DjVu or comic book KOReader draws
+each page first, about a second or two a page on a Scribe, with a message that a tap stops. A PDF goes
+straight to Grimoire instead, which reads it itself as it imports a PDF (in colour where the PDF has colour;
+the notice at the bottom counts its pages meanwhile) and then opens the page you were reading. Pages the
+notebook already has, with what you wrote on them, are kept as they are, so opening the same book again only
+adds what is missing; a book you opened before this version keeps the gray pages KOReader drew, and the pages
+added now are Grimoire's. It is the same notebook Annotate this page uses. A PDF's own links come along (a
+planner's tabs: a finger tap on "March" goes to March): see Document links. This needs the plugin updated (the
+Library's Install / update Grimoire plugin, then restart KOReader); a PDF that needs a password still goes the
+older way, KOReader drawing it.
 
 **Document links.** The tabs of a planner PDF are part of its pages. A tap follows one (a link you drew yourself
 comes first where they overlap); a finger held on one starts Select, as anywhere on the page. Clear page keeps

@@ -2248,8 +2248,9 @@ fill, and the links are read at the size of the pages they will be on only after
 writes the notebook: its last slice checks the file and says the pages are made, and the UI process puts them in
 (`pdfimport::fill_tick`), as KOReader's book job adds its pages, so the commit is one more thing the UI does in
 turn and never meets another writer of that notebook. It begins only with the Library in front and at rest (so no
-notebook is open in the editor and no dialog is half way), no book job running and no background job on that
-notebook (`bg_notebook_busy`), and runs over a few ticks with the input held (pen and touch, keys and controller
+notebook is open in the editor and no dialog is half way), no book job running (one that waits on a PDF import,
+below, writes no notebook, and lets the fill go in) and no background job on that notebook (`bg_notebook_busy`),
+and runs over a few ticks with the input held (pen and touch, keys and controller
 buttons, the Live view's keys; what still acts, the power button, a turn of the device or a keyboard coming or
 going, writes no notebook) and the book's notice showing how far it got; no background job on that notebook starts
 until it ends (`pdfimport::fill_holds`, read by `next_job`). Each tick reads again what it writes and writes each
@@ -2275,6 +2276,27 @@ as without one, and the fill goes in after, once the notebook is closed. A copy 
 for the first, as any copy does, and then finds every page there. A fill's state is `pdf-fill.ini`, a name earlier
 versions never read: they remove the folder as a cut-off import's, so none of them ever takes a fill for an import
 of a notebook of its own.
+
+KOReader hands a PDF over by its path (2.2, issue #142): to a launcher whose Capabilities line says `pdf`, the
+plugin's Open this book writes `import/.book/request.ini` version 2 naming the PDF it has open (`file=`) and draws
+nothing; the launcher's line is what keeps a newer plugin from sending one to an older Grimoire, whose `book_parse`
+refuses any version but 1. Grimoire never trusts the path: `book_parse` takes one `file=` line whole, absolute,
+UTF-8 and with no carriage return, and the book job's start takes it through the storage walk as the picker does
+(`FsStorage::open_file` with the pick's zones: inside the storage root, no link followed, the root's device, none of
+Grimoire's own folders, a plain file opened without waiting), reads the book key from the file, and gives the PDF to
+`pdf_import_queue` as a pick. From there it is the import's: the same job, sandboxed worker, key, file record and
+fill rules, read in place, so a notebook KOReader made through version 1 is filled by its key (only the pages it
+lacks, its own pages untouched, no record given) and a book opened before 2.2 holds KOReader's gray pages beside the
+import's colour ones (the owner accepted a book holding both: issue #142). The book job (`annotate.rs`, `step_pdf`) writes nothing itself: it
+holds pen and touch as a version 1 job does, counts the import's pages in the book's notice, and waits for the end
+the app gives it (`book_pdf_end`: the import's job end for its PDF, or the fill's commit, which `fill_tick` lets run
+while it waits) instead of the import's own toasts; then it opens the notebook made, filled or found whole at the
+reader's book page (by the count the notebook's pages name, when the two engines count differently) with KOReader's
+toasts, or fails as a book fails. An import that is neither queued, waiting for the lock nor going in, and told
+nothing, for 3 s (a fill whose notebook changed meanwhile) opens the book's notebook as it is. The plugin keeps
+version 1 for DjVu, comics and XPS, for a PDF outside the storage, and for a PDF that needs a password, which it asks
+of a MuPDF document of its own: MuPDF answers by trying the empty password, which would make the reader's document
+forget the one it was given.
 
 ## Your own fonts (2.1.0-beta.2, lane L10)
 

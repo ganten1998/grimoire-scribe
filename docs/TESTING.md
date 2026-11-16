@@ -2860,3 +2860,59 @@ of this branch:
    with no toast over it. Go back to the Library: the fill's pages go in ("Added N book pages.").
 7. **KOReader again.** Open the PDF in KOReader and use Open this book in Grimoire on a page the fill added: it
    opens that page, adds no page, and no tab doubles.
+
+## 2.2, KOReader hands a PDF over by its path (issue #142): device checks
+
+KOReader's Open this book in Grimoire on a PDF, to a launcher whose Capabilities line says `pdf`, names the PDF by
+its path (`import/.book/request.ini` version 2) and draws nothing. Grimoire takes the path through the storage walk
+to the PDF import, as a file picked in Files: the import draws the pages (in colour where the PDF has colour) and
+finds the links, fills a notebook KOReader made through version 1 with the pages it lacks, and the book job opens
+the page the reader was on, the book's notice counting meanwhile and taps waiting. DjVu, comics, XPS, a PDF that
+needs a password, a PDF outside the storage, and any PDF to an older launcher go by version 1, KOReader drawing
+them; Annotate this page stays version 1. Automated: `rust/tests/test_annotate.rs` (`book_request_parsing`:
+version 2 read strictly, version 1 unchanged), `rust/tests/test_koreader_pdf.rs` (a new notebook at the reader's
+page with its record, its colour kept, a fill of a version 1 notebook keeping KOReader's pages, "already imported"
+opening at the page, ten paths the walk refuses, a PDF the import refuses), `tests/koplugin_test.lua` (a PDF by its
+path from the reader and from Open with..., the same PDF to a 2.1 launcher, a DjVu, Annotate this page, a PDF that
+needs a password, paths it cannot send), `tests/package_check.sh` (the launcher's `pdf`) and the scenarios
+`tests/scenarios/y_koreader_pdf_1_new.qs` (the hand-over on a storage root: the notice, taps waiting, the
+notebook open at book page 3), `y_koreader_pdf_2_fill.qs` (z_pdf_11's notebook of KOReader's pages 1 and 3 filled
+by the planner's path, open at book page 2) and `y_koreader_pdf_3_djvu.qs` (a version 1 request, as a DjVu's,
+taken as before).
+
+**Not run on a Scribe.** The owner's check, on a build of this branch (a planner PDF with coloured tabs, more than
+20 pages, that Grimoire never saw; a DjVu or CBZ book):
+
+1. **The plugin updated.** Install the build. Start Grimoire from the Library once and use Settings > KOReader >
+   Install / update Grimoire plugin, then quit KOReader and start it again from its Library item. The second line
+   of `grimoire/app/grimoire.sh` is `# Capabilities: guard hosted annotate book links pdf`.
+2. **A PDF by its path.** In KOReader, open the planner, go to its page 7 and use Tools > Grimoire > Open this book
+   in Grimoire. KOReader shows "Preparing Grimoire..." alone (no "Preparing page N of M for Grimoire..."), then
+   Grimoire's Library with "Adding book pages: N of M" at the bottom; a tap on New does nothing meanwhile. The
+   notebook then opens at page 7 (the page chip says 7) with "Added M book pages.". Note the time from the tap in
+   KOReader to the page. `koreader/crash.log` has `Grimoire: a PDF of M pages sent by its path, to open at page 7`;
+   `grimoire.log` has `book: the PDF KOReader named goes to the PDF import (<id>); its page 7 of M opens once that
+   ends`, the import's own lines (`import: <id>: M page(s), ...`, with the worker sandboxed), and `book: <id>: M
+   page(s) added by the PDF import (a new notebook), opens at its page 7`. A line `book: the book key KOReader sent
+   is not its file's` means the two keys differ: send the log.
+3. **Colour and tabs.** A tab on the page works (eye on: each drawn once). Back in the Library (the notebook
+   closed), copy the notebook's PDF from `grimoire/PDFs` to a computer over USB: the planner's coloured pages are in
+   colour there (the Scribe shows them gray).
+4. **Back to KOReader.** Library > Back to KOReader: the same planner at page 7. The PDF is where it was, unmoved.
+5. **A book opened before.** In KOReader, in another PDF Grimoire never saw, use Annotate this page in Grimoire on
+   its page 3 and write a line; back in KOReader, annotate its page 9 too (crash.log: `page 9 of M sent to
+   annotate`: Annotate stays version 1). Then go to its page 5 and use Open this book in Grimoire: the notice counts
+   the pages the notebook lacks (M less 2), the notebook opens at page 5 with "Added M-2 book pages.", pages 3 and 9
+   are KOReader's (gray, the line on page 3), the rest Grimoire's, and the Library has one card for the book.
+   `grimoire.log` has `import: <id>: notebook <nb> lacks M-2 of the book's M page(s): they are added to it` and
+   `import: notebook <nb> filled`.
+6. **Whole already.** Back in KOReader, Open this book in Grimoire on page 12 of that same PDF: the notebook opens
+   at page 12 at once, with no toast (`import: <id>: this PDF was imported before; nothing made`, then `book: <nb>:
+   0 page(s) added by the PDF import (its notebook), opens at its page 12`).
+7. **A DjVu still by version 1.** Open the DjVu or CBZ book in KOReader and use Open this book in Grimoire:
+   "Preparing page N of M for Grimoire... Tap to stop." shows as before, and the notebook opens at the reader's
+   page (`book: <id>: N page(s) of M to add, ...` in `grimoire.log`).
+8. **A PDF with a password** (when one is at hand): Open this book in Grimoire draws its pages in KOReader as a
+   DjVu's are, and crash.log has `Grimoire: this PDF needs a password: KOReader draws its pages`.
+
+No line of `grimoire.log` or `crash.log` from these steps names a book, its file or its title.

@@ -2,6 +2,11 @@
 
 ## 2.1.1 (unreleased)
 
+- **KOReader hands PDFs over by their path** (#142). With the KOReader plugin updated (Settings > KOReader >
+  Install / update Grimoire plugin, then restart KOReader), Open this book in Grimoire on a PDF no longer has
+  KOReader draw every page: Grimoire imports the PDF itself, in colour where the PDF has colour, with the notice
+  counting its pages, and then opens the page you were reading. A book you opened before keeps the pages KOReader
+  drew and gets the ones it lacks. DjVu, comics, XPS and a PDF that needs a password go the older way.
 - **Size keys.** Shift+[ and Shift+] on a paired keyboard take the pen in use to its next smaller or larger quick
   size, and a short toast says the size; a controller's buttons and gestures can too (Smaller / larger size, in the
   Tools group of Buttons and of Gestures). The new `quick-size` action, bound by name in shortcuts.ini or

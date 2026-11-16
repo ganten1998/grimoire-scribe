@@ -248,8 +248,32 @@ the name rules, the busy check and the copy job (`BgKind::CopyFile`). Nothing on
 - **Pages a fill made blank stay blank**: the same PDF dropped again finds them present and says "already". Delete
   them to have them made again.
 - **The picker** offers no import for a PDF whose notebook (without a record) holds its key (the hardening entry
-  below), so a fill from Files needs the file dropped in `import/`. KOReader's hand-over by path, in its own issue,
-  will start the same job on the book's notebook.
+  below), so a fill from Files needs the file dropped in `import/`. KOReader's hand-over by path (#142, below)
+  starts the same job on the book's notebook.
+
+## KOReader hands a PDF over by its path (2.2, #142): what waits, and what is for the owner
+
+- **The Scribe check has not run** (docs/TESTING.md, "2.2, KOReader hands a PDF over by its path"): the plugin
+  updated, KOReader restarted, a PDF handed over and its reader's page opening at the end, its colour, a book
+  opened before (KOReader's pages kept, the rest filled), a DjVu still by version 1. The tests stand KOReader in.
+- **Taps wait for the whole import**, as they wait for version 1's few seconds of adding pages: a long PDF holds
+  the Library for as long as its import takes (about the time KOReader took to draw it, which held the reader
+  instead), with no way to stop it but sleep. The owner may prefer the Library usable meanwhile, the page opening
+  only if nothing else was opened.
+- **The reader's contrast is not sent**: a PDF by its path is drawn at its own contrast, where version 1 drew it at
+  the reader's. A `gamma=` line waits with the darker lines import option.
+- **Failures say the book's words** ("Couldn't open book from KOReader (see grimoire.log).", "Couldn't add book
+  pages. Is the storage full?", "Book too long: notebooks hold 2000 pages."), not the import's own ("PDF needs a
+  password.", "PDF too big: over N MB."), which the log carries. The owner may prefer the import's.
+- **The password question** opens the PDF a second time in KOReader (a MuPDF document of the plugin's own, through
+  `ffi/mupdf`'s `openDocument`, `needsPassword` and `close`, as KOReader's own PDF reader calls them): read in
+  KOReader's code, not run on a Kindle. Where it fails the plugin sends the PDF by its path, and a PDF that needs a
+  password then fails in Grimoire with the book's toast.
+- **A PDF KOReader opens from `grimoire/import`** is filed in `import/done/` once imported, as any pick there is;
+  KOReader then no longer finds it at its path. (The scan would take it from there anyway.)
+- **Grimoire stopped while the import runs** (the launcher's watchdog, a crash) leaves the import to its detached
+  child, as any import; the reader's page does not open, and the next Open this book finds the notebook.
+- **Not built: a card for the notebook being made**, as for a fill (above).
 
 ## Hardening round (2026-11), import: what waits
 
@@ -373,7 +397,7 @@ What waits for the lanes that use them:
   allow-list, the check before acting, the free-space refusal) came in 2.2's storage layer (issue #117: "Files'
   storage writes (2.2, issue #117): what waits", above); their words ("File changed. Try again.", "Kindle storage
   nearly full.") wait for the screens. The Loading notice over 1 s, and its first readers (the picker, the PDF
-  import, the KOReader hand-over's walk in place of `realpath`).
+  import; the KOReader hand-over walks its path since #142, under the book's notice).
 - `name_cmp`'s readers: the browser, the import order and the font list.
 - The Library listing from libindex's cache plus stamps (browser.md 17), past reading each notebook.ini once.
 

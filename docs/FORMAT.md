@@ -775,7 +775,9 @@ waits, and within 10 s of the end of a previous run's import):
   and show their luma. The Scribe draws every page picture as its luma (a page held in memory is the 4.6 MB
   gray canvas, never the 13.8 MB RGB copy), and the share server's page pictures are that gray render; the
   notebook's PDF (the mirror in `PDFs/`, the share server's PDF download, a zip's PDF entry) embeds a page on a
-  colour picture in colour, DeviceRGB (see the notebook PDF below). The KOReader route's pages stay gray.
+  colour picture in colour, DeviceRGB (see the notebook PDF below). The pages KOReader draws (Annotate this
+  page, and Open this book for DjVu, comics, XPS and any book version 1 sends) stay gray; a PDF KOReader hands over
+  by its path (2.2, Whole books) is drawn by this import, in colour.
 - **The book key** is KOReader's partial MD5 of the file (1 KiB samples at 0, 1 KiB, 4 KiB ... 1 GiB), written
   as `source=` in `notebook.ini` and `book=` in `source.ini` (`kind=paged`, a `page.<n>.<count>=<page id>` line
   per page, and `links=1` when the import wrote `doclinks.ini`, so KOReader's Open this book does not ask for
@@ -1112,7 +1114,48 @@ read, a file that cannot be written, or more pages than a notebook holds, takes 
 and picture it wrote (the ids stay given up): the notebook stays as it was, and a toast says why.
 The editor then opens on the page to open (else the first page added).
 
-1.0.0-beta to 2.0.0-beta.4 never read `import/.book/`; the plugin never sends to them.
+**A PDF by its path: version 2 (2.2).** To a launcher whose `# Capabilities:` line says `pdf`, the plugin sends
+a PDF by its path instead of drawing it: no picture, no `links.txt`, nothing asked of KOReader but the book's key,
+title and page count. The request has the lines above (`book`, `title`, `kind`, `time`, `pages`, `page`) with
+`version=2`, no `picture.<n>` line, and:
+
+| key | value |
+|---|---|
+| `file` | the PDF's absolute path as KOReader has it open, once: inside the Kindle's storage (`/mnt/us/...`), with no `.`, `..` or empty part and no control character in it. Its line is read whole (under 1024 bytes), never cut as a longer title is |
+
+The plugin keeps version 1 for DjVu, comics and XPS, for a PDF to a launcher without `pdf`, for a PDF outside the
+storage or with a path it cannot send, and for a PDF that needs a password (Grimoire cannot ask for one; KOReader,
+which was given it, draws the pages). It asks a MuPDF document of its own whether a PDF needs a password, never
+the reader's. Annotate this page stays version 1 for every format.
+
+Grimoire reads a version 2 request strictly: a second `file=` line, a path that is not absolute, is not UTF-8 or
+holds a carriage return, or a `picture.<n>` line, and it does not read. At the start the path goes through the
+storage walk as a file picked in Files does (inside the storage root; each folder opened without following a link,
+on the root's device, none of Grimoire's own folders and no hidden or system one; a plain file, never waited on),
+the book key is read from the file, and the PDF goes to the PDF import as a pick (Imports: PDFs, below): read in
+place (one that lies in `import/` itself is filed in `done/`, as any pick there is), named after the request's
+title (else the file's name), at the top of the Library, keyed and recorded by its file. The request is taken once
+the import is queued; a path the walk refuses ends the book there. The book job then waits for the import, pen and
+touch waiting and the book's notice counting the import's pages ("Adding book pages: N of M": the pages the book's
+notebook lacks, or all of them for a new notebook), and opens at the page that holds the reader's book page:
+
+- the notebook the import made, with "Added N book pages." ("Imported notebook (N pages). Some pages couldn't be
+  read." when some of its pages are blank);
+- the notebook it filled, with "Added N book pages.": a notebook KOReader made through version 1 holds only the
+  pages KOReader drew, and the import adds those it lacks in book order (its key decides; KOReader's pages stay as
+  they are, and the notebook is not given a record);
+- the notebook that holds every page ("PDF already imported."), with no toast.
+
+A fill's pages go in while the job waits. A book page under another page count than the request's (two engines may
+count a broken PDF's pages differently) is found under the one count the notebook's pages name. An import that fails
+fails the book as above: "Couldn't add book pages. Is the storage full?" for no room, "Book too long: notebooks hold
+2000 pages." for more pages than a notebook holds, else "Couldn't open book from KOReader (see grimoire.log)." (the
+import's own lines in the log say why). A book opened in KOReader before 2.2 keeps the pages KOReader drew, gray;
+the pages added through version 2 are the import's, in colour where the PDF has colour.
+
+1.0.0-beta to 2.0.0-beta.4 never read `import/.book/`; the plugin never sends to them. 2.0.0-beta.5 to 2.1 read
+version 1 alone: a version 2 request does not read there (the book's failure, the folder emptied), and the plugin
+never sends one to them, as no launcher before 2.2 says `pdf`.
 
 ### Links from KOReader: `import/.book/links.txt` and `source.ini`'s `links=1` (2.1.0-beta.2 on)
 
@@ -1876,6 +1919,13 @@ What 2.1.0 and the versions before it do with what a fill (2.2) writes:
 | a filled notebook | an ordinary notebook: it opens with every page of its list, the pages a fill added as document pages on their pictures (2.1.0 also with their tabs and names; 2.0 without the tabs, as for any `doclinks.ini`). Its files are the ones they write themselves: page files, `bg/` pictures, `bg/index.ini`, `bg/pages.ini`, `source.ini` page lines, `doclinks.ini`, `nav.ini`, `notebook.ini`. A notebook without a record still has none |
 | a fill's work folder (`notebooks/.import-<id>/` with `pdf-fill.ini`) | no `pdf-import.ini` and no `notebook.ini` in it: removed at their next start as any cut-off import's ("removed what a cut-off import left"); the notebook stays as it was, and the PDF, still in `import/`, is "PDF already imported." there (2.1.0) or never imported (before it) |
 | a fill's commit cut off half way (`stage=2`), then a start of one of them before 2.2 goes on with it | they remove the work folder, so the commit never goes on: the notebook lists the pages it had (cut before `notebook.ini` was written), or all of them without the links and names the fill had yet to add (cut after). Page files a cut left unlisted, and their lines in `bg/pages.ini` and `source.ini`, are never shown; `source.ini`'s go at its next write |
+
+What 2.1.0 and the versions before it do with KOReader's hand-over by path (2.2):
+
+| new data (2.2) | 2.1.0 and before |
+|---|---|
+| `import/.book/request.ini` version 2 | never sent to them: the plugin sends version 2 only to a launcher whose Capabilities line says `pdf`, and no launcher before 2.2 does (a 2.2 plugin sends them version 1, KOReader drawing the pages). One that reaches them anyway does not read (2.0.0-beta.5 to 2.1.0: "a version of request this Grimoire does not know"): nothing opened, "Couldn't open book from KOReader (see grimoire.log).", the folder emptied. 2.0.0-beta.4 and before never read the folder |
+| a notebook made or filled through version 2 | a notebook the PDF import made or filled (the tables above) |
 
 ## Highlighter rendering in 1.2.0
 
