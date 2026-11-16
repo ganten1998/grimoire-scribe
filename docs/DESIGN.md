@@ -2314,14 +2314,14 @@ the notebook's pages name, when the two engines count differently). `book_tick` 
 Still on the Library (`BookStatus.left` is set once the screen has been anything else since the hand-over) with its
 cards in front (`library_cards_in_front`: no sheet, no Files, no Graph): the notebook opens at that page, with version
 1's toasts, a finger resting on the Library or not (the end waits for nothing the user does). Otherwise nothing opens:
-the import says what it says for a dropped PDF (`pdf_import_told`: its toast, or the new card alone with the Library
-in front), and the page is kept as the one the notebook opens at (`book_pdf_keep_page`: `last_page` alone, and never
-for the notebook the editor has open). An end that comes while the Kindle sleeps or a fill's pages go in is taken
-after. An import that fails fails the book, and says the import's own toast ("PDF needs a password.", "PDF too big:
-over N MB." and the others of `pdf_import_told`); a request that ends before any import (it does not read, or the walk
-refuses its path) says the book's. An import that is neither queued, waiting for the lock nor going in, and told
-nothing, for 3 s (a fill whose notebook changed meanwhile) ends on the notebook that fill was for (`fill_target`,
-noted while its pages waited), as it is.
+the import's own done toast shows (`pdf_import_said`, which says it here even with the new card on the Library in
+front: it is the one word the user gets of the book they asked for), and the page is kept as the one the notebook
+opens at (`book_pdf_keep_page`: `last_page` alone, and never for the notebook the editor has open). An end that comes
+while the Kindle sleeps or a fill's pages go in is taken after. An import that fails fails the book, and says the
+import's own toast ("PDF needs a password.", "PDF too big: over N MB." and the others of `pdf_import_told`); a request
+that ends before any import (it does not read, or the walk refuses its path) says the book's. An import that is
+neither queued, waiting for the lock nor going in, and told nothing, for 3 s (a fill whose notebook changed meanwhile)
+ends on the notebook that fill was for (`fill_target`, noted while its pages waited), as it is.
 
 The plugin sends version 2 only for what Grimoire takes, so that a book that opened before 2.2 never fails where
 KOReader could have drawn it: there is no way back to version 1 once Grimoire has the request. It keeps version 1

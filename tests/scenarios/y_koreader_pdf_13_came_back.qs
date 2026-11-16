@@ -8,8 +8,8 @@
 # rust-only
 # KOReader hands a PDF over by its path (2.2, request.ini version 2); the user opens a notebook of their own
 # meanwhile and is back on the Library before the import ends. Having gone on to something else, they are taken
-# nowhere: the Library stays in front, the book's notebook arrives as a card (as a dropped PDF's does, with no toast
-# over it), and that card opens at the page the reader was on, book page 3.
+# nowhere: the Library stays in front, the book's notebook arrives as a card with the import's toast, and that card
+# opens at the page the reader was on, book page 3.
 wait 300
 expect screen is library
 expect annotate.book is running
@@ -24,11 +24,11 @@ expect screen is library
 expect annotate.book is running
 waitfor annotate.book is done
 wait 300
-waitbg
 shot 01-library
 expect screen is library
 expect library.sheet is none
-expect toast is
+expect toast is Imported notebook (4 pages).
+waitbg
 expect library.items is 2
 expect library.card.1.name is Tabs Planner
 tap 326 608

@@ -553,8 +553,8 @@ fn book_holds(a: &App) -> bool {
 // A PDF handed over by its path (version 2, 2.2) is the PDF import's: this only follows it. When it ends with the
 // user still on the Library (never left since the hand-over: BookStatus.left) and its cards in front (no sheet, no
 // Files, no Graph) the notebook opens on the reader's page, as version 1's does. Otherwise nothing opens: the
-// import says what it says for a dropped PDF (its toast, or with the Library in front the new card alone), and the
-// reader's page is kept as the page the notebook opens at. An end that comes while the Kindle
+// import's own done toast shows, as for a dropped PDF (and also where the Library is in front again with the new
+// card on it), and the reader's page is kept as the page the notebook opens at. An end that comes while the Kindle
 // sleeps, or while a fill's pages go in, is taken once that is over: both end by themselves. It waits for nothing
 // the user does or does not do: not for a finger to lift (a lift that a fill's hold swallowed would never come; the
 // Library forgets what was pressed as it is left, and a lift that reaches the page finds nothing it began).
@@ -576,8 +576,9 @@ fn book_tick(a: &mut App) {
         if !crate::editor::editor_has_open(a, nb.as_str()) && !book_pdf_keep_page(nb.as_str(), a.book.pid) {
             qlog!("book: %s: the reader's page could not be kept as the page it opens at", nb.as_str());
         }
+        // (said always: the user asked for this book, and it does not open by itself)
         if let Some((id, fin)) = book_pdf_told() {
-            pdf_import_told(a, &id, fin);
+            pdf_import_said(a, &id, fin, true);
         }
         return;
     }
@@ -2007,6 +2008,13 @@ fn imported_blank_text(pages: i32) -> String {
 // (D20) no toast says "Imported"; elsewhere one does. One that left pages blank says so whatever is in front,
 // as it is news the card does not carry. (`id`: the import's job; a fill's end comes from the UI's own commit.)
 fn pdf_import_told(a: &mut App, id: &str, fin: crate::pdfimport::Finished) {
+    pdf_import_said(a, id, fin, false);
+}
+
+// The same; with `always`, a new notebook's toast shows even where its card is on the Library in front: the end
+// of a PDF KOReader handed over by its path that opens nothing (book_tick), as the user asked for that book and
+// it is the one word they get of it.
+fn pdf_import_said(a: &mut App, id: &str, fin: crate::pdfimport::Finished, always: bool) {
     use crate::pdfimport::{FailWhy, Finished};
     let mut msg = String::new();
     match fin {
@@ -2022,7 +2030,7 @@ fn pdf_import_told(a: &mut App, id: &str, fin: crate::pdfimport::Finished) {
                 // TRANSLATORS: a PDF became a new notebook, but its document links (a planner's tabs) were more than
                 // a notebook holds and some were left out; %d is its page count. In a toast: one or two lines.
                 csnprintf!(&mut msg, 256, ng_("Imported notebook (%d page). Some links were left out.", "Imported notebook (%d pages). Some links were left out.", pages as i64), pages as i32);
-            } else if !shown {
+            } else if !shown || always {
                 // TRANSLATORS: a folder of page pictures (grimoire/import/<name>) or a PDF became a new notebook.
                 csnprintf!(&mut msg, 256, ng_("Imported notebook (%d page).", "Imported notebook (%d pages).", pages as i64), pages as i32);
             }

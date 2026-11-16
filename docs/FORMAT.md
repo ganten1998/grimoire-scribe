@@ -1221,10 +1221,11 @@ record), or the one it found holding every page. When the import ends:
   page, as version 1's does, with "Added N book pages." for a notebook made or filled ("Imported notebook (N
   pages). Some pages couldn't be read." for a new one with blank pages) and no toast for one that held every page;
 - otherwise (a notebook open, a sheet, Files or the Graph in front, or the user back on the Library after going
-  elsewhere) nothing opens. The import says what it says for a dropped PDF: its toast ("Imported notebook (N
-  pages).", "Added N book pages.", "PDF already imported."), or, with the Library's cards in front, the new card
-  alone. The reader's page is kept as the page the notebook opens at (`last_page` in its `notebook.ini`; nothing
-  else of it changes), so its card opens there. A notebook that is open in the editor then keeps its place.
+  elsewhere) nothing opens. The import's own done toast shows, as for a dropped PDF ("Imported notebook (N
+  pages).", "Added N book pages.", "PDF already imported."), here also where the Library is in front with the new
+  card on it. The reader's page is kept as the page the notebook opens at (`last_page` in its `notebook.ini`;
+  nothing else of it changes), so its card opens there. A notebook that is open in the editor then keeps its
+  place.
 
 An end that comes while the Kindle sleeps, or while a fill's pages go in, is taken once that is over. A book page
 under another page count than the request's (two engines may count a broken PDF's pages differently) is found

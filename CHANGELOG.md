@@ -6,12 +6,11 @@
   Install / update Grimoire plugin, then restart KOReader), Open this book in Grimoire on a PDF no longer has
   KOReader draw every page: Grimoire imports the PDF itself, in colour where the PDF has colour, with the notice
   counting its pages while the Library stays usable, and then opens the page you were reading. If you opened
-  something else meanwhile, nothing opens by itself: the book's notebook is a card in the Library (a toast says
-  so when the Library is not in front), and it opens at that page. A book you opened before keeps the pages
-  KOReader drew and gets the ones it lacks. A PDF that cannot be imported says why, as one dropped in
-  `grimoire/import` does. DjVu, comics, XPS, a PDF that needs a password and a PDF Grimoire does not take by its
-  path (in a hidden or system folder, over 512 MB, changed since KOReader first opened it) go the older way, as
-  before.
+  something else meanwhile, nothing opens by itself: a toast says the import is done, the book's notebook is a
+  card in the Library, and it opens at that page. A book you opened before keeps the pages KOReader drew and gets
+  the ones it lacks. A PDF that cannot be imported says why, as one dropped in `grimoire/import` does. DjVu,
+  comics, XPS, a PDF that needs a password and a PDF Grimoire does not take by its path (in a hidden or system
+  folder, over 512 MB, changed since KOReader first opened it) go the older way, as before.
 - **Size keys.** Shift+[ and Shift+] on a paired keyboard take the pen in use to its next smaller or larger quick
   size, and a short toast says the size; a controller's buttons and gestures can too (Smaller / larger size, in the
   Tools group of Buttons and of Gestures). The new `quick-size` action, bound by name in shortcuts.ini or

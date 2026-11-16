@@ -168,20 +168,19 @@ draws in this run, and once per book (until the notebook's `source.ini` says `li
 already holds, so an Open this book costs no page opens it does not need after the first. They arrive as
 `import/.book/links.txt`, and Grimoire builds `doclinks.ini` from them (docs/FORMAT.md, Links from KOReader).
 
-**PDFs by their path (2.2).** To a Grimoire whose `app/grimoire.sh` Capabilities line says `pdf`, Open this book
-in Grimoire on a PDF draws nothing: the plugin names the file in `import/.book/request.ini` (version 2) and hands
-over at once. Grimoire's own PDF import draws the pages (in colour where the PDF has colour) and finds the links,
-as for a PDF dropped in `grimoire/import`: the Library's notice counts the pages ("Importing: page N of M") and the
-Library stays usable. When the import ends the page the reader was on opens, if the user is still on the Library
-with its cards in front; with a notebook, a sheet, Files or the Graph in front, or after a visit to a notebook,
-nothing opens by itself: the import's toast shows (or its new card alone, on the Library), and the book's card
-opens at that page. A book opened before 2.2 keeps the pages KOReader drew, and the pages it lacks
-come from the import. DjVu, comics, XPS, a PDF that needs a password, a PDF Grimoire does not take by its path
-(outside `/mnt/us`, in a hidden, `.sdr` or system folder such as `koreader/`, in Grimoire's own folders, through a
-link, over 512 MiB) and a PDF changed since KOReader first opened it go as before, KOReader drawing them. The
-plugin must be updated (Library > Settings > KOReader > Install / update Grimoire plugin) and KOReader restarted:
-an older plugin keeps sending version 1, which this Grimoire still takes. crash.log says (no file name, title or
-key):
+**PDFs by their path (2.2).** To a Grimoire whose `app/grimoire.sh` Capabilities line says `pdf`, Open this book in
+Grimoire on a PDF draws nothing: the plugin names the file in `import/.book/request.ini` (version 2) and hands over at
+once. Grimoire's own PDF import draws the pages (in colour where the PDF has colour) and finds the links, as for a PDF
+dropped in `grimoire/import`: the Library's notice counts the pages ("Importing: page N of M") and the Library stays
+usable. When the import ends the page the reader was on opens, if the user is still on the Library with its cards in
+front; with a notebook, a sheet, Files or the Graph in front, or after a visit to a notebook, nothing opens by itself:
+the import's toast shows, and the book's card opens at that page. A book opened before 2.2 keeps the pages KOReader
+drew, and the pages it lacks come from the import. DjVu, comics, XPS, a PDF that needs a password, a PDF Grimoire does
+not take by its path (outside `/mnt/us`, in a hidden, `.sdr` or system folder such as `koreader/`, in Grimoire's own
+folders, through a link, over 512 MiB) and a PDF changed since KOReader first opened it go as before, KOReader drawing
+them. The plugin must be updated (Library > Settings > KOReader > Install / update Grimoire plugin) and KOReader
+restarted: an older plugin keeps sending version 1, which this Grimoire still takes. crash.log says (no file name,
+title or key):
 
 - `Grimoire: a PDF of N pages sent by its path, to open at page P`;
 - `Grimoire: this PDF needs a password: KOReader draws its pages`;
