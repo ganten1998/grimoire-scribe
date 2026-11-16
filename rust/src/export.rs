@@ -91,7 +91,10 @@ impl FileSink {
             }
         }
     }
-    /// A file to be made and read back (a spool): the caller unlinks it when it likes.
+    /// A file to be made and read back (a spool): the caller unlinks it when it likes. (Kept out of line: made
+    /// small by util::create_fresh_nofollow_as, it was inlined into both of the share server's respond_made
+    /// specializations, 5 KB more of the Kindle binary.)
+    #[inline(never)]
     pub fn create_spool(path: &str) -> Option<FileSink> {
         #[cfg(feature = "sim")]
         if crate::util::SIM_STORAGE_FULL.load(std::sync::atomic::Ordering::Relaxed) {
