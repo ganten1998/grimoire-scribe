@@ -52,7 +52,8 @@ waitfor files.tiles is ppppppppi
 tap library files.show
 waitfor files.rows is 24
 waitfor files.tiles is pppiipppp
-# Sort: newest (the files' times tie: the same screen), size (other files come first), then names again
+# Sort: newest (the files' times tie, as the generator sets them: the same screen), size (other files come first),
+# then names again
 tap library files.sort
 wait 300
 expect files.sort is newest
