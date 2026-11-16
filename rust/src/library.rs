@@ -7751,7 +7751,13 @@ fn files_open_picture(a: &mut App, to: crate::bgwork_copy::CopyTo) {
 /// in the Library), over the Library as it is.
 fn files_open_place(a: &mut App) {
     let prefs = files_prefs(a);
-    let ok = with_files(a, |b, _| b.open(PickSpec::place(), prefs));
+    let view = a.settings.files_view;
+    let ok = with_files(a, |b, _| {
+        let ok = b.open(PickSpec::place(), prefs);
+        // (Files' View, the list or Covers: the place's alone, a picker is always a list)
+        b.set_view(view);
+        ok
+    });
     files_opened(a, ok);
 }
 
@@ -7777,6 +7783,7 @@ fn files_close(a: &mut App, to_library: bool) {
         s.modal = Modal::None;
     }
     app_notice_clear(a, NoticeKey::Loading);
+    app_notice_clear(a, NoticeKey::Previews);
     if to_library {
         reload(a);
     }
@@ -7833,11 +7840,12 @@ fn files_result(a: &mut App, r: BrowserResult) {
             files_close(a, true);
             editor_open_notebook(a, &id);
         }
-        // Files' Sort or Show chip: kept for the next time Files opens
+        // Files' Sort, Show or View chip: kept for the next time Files opens
         BrowserResult::Prefs => {
-            let prefs = lib(a).files.prefs;
+            let (prefs, view) = (lib(a).files.prefs, lib(a).files.view());
             a.settings.files_sort = prefs.sort;
             a.settings.files_show = prefs.show;
+            a.settings.files_view = view;
             settings_save(&a.settings);
         }
         // "Show Files in Library": the card is the Library's last from now on (the browser drew its root without the row)

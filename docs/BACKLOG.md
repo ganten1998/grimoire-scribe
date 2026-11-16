@@ -55,16 +55,27 @@ Waiting:
 
 Built: place mode, the Files card (hidden until "Show Files in Library"; the last card of the Library's top
 level), the path bar inside Files only, Go to, Sort, Show, a card for every kind of file, the trash listed read
-only, a Library card's hold, and the `files` and `home` actions (docs/DESIGN.md, "Files: the place"). Waiting,
-each for its own issue:
+only, a Library card's hold, and the `files` and `home` actions (docs/DESIGN.md, "Files: the place"); previews and
+the Covers view (issue #145; "Files: previews and the Covers view"). Waiting, each for its own issue:
 
 - **Home**: `home=` in settings.ini (any Library or Kindle folder), Set as home in the Go to sheet and on a
   folder's card, Reset home to Notebooks, opening at home at each start, "Home folder not found.". Today `home`
   (the action) goes to the Library's top (`library_home`, where a set home starts).
 - **Rename and Trash on screen** and **Restore** in the Trash place: built with issue #144 (above).
-- **Previews and the Covers view** (`files_view=covers`, read today as the list and kept), "Making previews...",
-  the cache and its prune; the details a card can only have from the worker (a PDF's pages, a picture's size, a
-  font's sample and coverage).
+- **After the previews (issue #145)**: the details a card can only have from the worker (a PDF's pages, a
+  picture's size, a font's coverage) and a preview on a file's card; Covers as the default for Templates and Photos
+  (today one View setting holds for every place); a second child for file previews beside the first (bgjob's
+  `extra_slot` takes page previews only), so previews need not wait for a long import; the previews' times (3 s a
+  PDF's page and a font's sample, 6 s a picture) set from the Scribe's own numbers, which docs/TESTING.md asks for;
+  the last screens' previews kept in memory, so that a turn back shows them with the turn's own refresh (today a
+  screen that comes back is read from the cache in a second refresh); the preview of a file Files itself renames
+  or trashes dropped at once (today the daily sweep takes it); the cache's folder held by a descriptor and its
+  entries reached with the `*at` calls (today a link check by path, then the path); a whole session without
+  previews once a worker's sandbox step failed in a previews job (today each file is asked for once a visit, and
+  a step that failed in the app's own process stops them); the language fit check of the path bar's three chips
+  (y_all_screens visits the picker's root only, not a place of Files); the font sample's text is fixed Latin
+  ("Aa", "Abc 123"), so a font of kana or kanji alone is refused as the check refuses it. Not timed on the
+  Scribe: docs/TESTING.md, "2.2, Files' previews and the Covers view (issue #145): device checks".
 - **Add to fonts** on a font's card, with the Font sheet's Add a font... and its Kindle fonts row: not built. They
   waited for the font check's hardening (#111), which is merged now. The From a file... tiles and a picture's Use
   as template and Use as photo are built (#146, the section below).

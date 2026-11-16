@@ -3154,3 +3154,58 @@ Grimoire open and Files' card shown (New > From a file... > Show Files in Librar
    has 0 in place of 1.)
 
 Tidy: delete `Probe2.png` from `templates` over USB (or keep it as a template).
+
+## 2.2, Files' previews and the Covers view (issue #145): device checks
+
+Not run on a Scribe yet. The unit tests (`bgwork_previews.rs`: the key, the `.info`, the prune, a preview's time),
+the job tests through a real worker (`rust/tests/test_file_previews.rs`), `test_browser.rs` (only the screen's
+files asked for, a tile that comes back, the tiles drawn together) and the Covers scenarios `files_8_covers` to
+`files_14_covers_use_as` cover the logic on the Mac, where the simulated panel counts the refreshes
+(`display.presents`); CI's Linux job makes a preview of each kind, and has the filter end a worker, in the real
+sandbox (`test_sandbox_linux.rs`). What only the Scribe can tell (read grimoire.log over SSH; it names no file):
+
+1. **A big mixed folder, and the previews' times**: put about 40 files in a folder of `documents/` (PDFs, one of
+   them a planner of a few hundred pages and over 100 MB; phone photos of 12 MP, and one of 40 MP or more; a few
+   fonts, one of them a CJK font near 20 MB). Files > Documents > that folder, View: Covers. Note how long until
+   every tile of the first screen shows its preview, and whether "Making previews..." comes after a second and
+   goes when the last one lands. Send the lines `file previews: a pdf|picture|font made in T ms (the worker's peak
+   N kB, this job's M kB)`: T for each kind, the slowest, and the peaks; and every `gave no preview (slow)` line
+   with what the file was. A preview has 3 s (a PDF's page, a font's sample) or 6 s (a picture), numbers derived
+   from the import's watchdogs and not yet measured: a real file of an ordinary size that runs out of them means
+   the numbers are too tight.
+2. **The panel**: while a screen's previews arrive, the tiles change in groups (all at once when they come within
+   2 s, else about every 2 s), never tile by tile, and never with a flash of the whole screen; look for ghosting
+   on the tiles after several screens, and note whether the next page turn after about thirty refreshes is the one
+   that flashes.
+3. **Memory**: while the first screen's previews are being made, `grep MemAvailable /proc/meminfo` a few times and
+   `dmesg | tail` after: no process killed, Grimoire's own memory (`grep VmRSS /proc/$(pidof grimoire)/status`)
+   about the same before and after (a screen of previews is about 1 MB).
+4. **Turning screens**: on a folder of a few hundred pictures, turn three screens quickly: only the screens shown
+   get `made` lines (count them: nine a screen upright), the pen and the page turns stay quick meanwhile. Turn back
+   to the first screen: its tiles show their previews again within a moment (hourglasses first, then the previews
+   together), with no new `made` line, and the turn itself is not held up (the cache is read a few files a tick).
+   The same after Sort, after Show, and after a rotation.
+5. **A folder past 5,000 files** in Covers: "Showing the first 5000." under the path, and only the screen shown is
+   made (nine lines).
+6. **Refused and slow**: a text file renamed `x.pdf`, and a truncated JPEG: each tile shows its kind's icon and the
+   log says `has no preview (refused), marked` once; entering the folder again makes no new line for them. A file
+   that runs out of its time says `gave no preview (slow) ...; one more try at another visit` the first time, and
+   `has no preview (slow), marked` when the folder is entered again; after that it is not tried.
+7. **Behind other work**: start a PDF import of a few hundred pages (or an export), then open a folder in Covers:
+   the import's pages go on at their pace (its notice counts on), the tiles wait as hourglasses, and the previews
+   come once the import is done. In Files > Import, in Covers, the tile of the PDF being imported says
+   "Importing: page N of M" under its name.
+8. **A card over arriving previews**: tap a tile while its screen's previews are still coming, wait until the log
+   shows the last `made` line, close the card: every tile shows its preview, none stays an hourglass.
+9. **Sleep and wake** while previews are being made (the power button): after the wake every tile shows a preview
+   or its icon, none stays an hourglass, and entering the folder again makes what is missing.
+10. **The cache**: with Grimoire closed, `du -sh /mnt/us/grimoire/.cache/files` and `ls | wc -l` there after the
+    checks above (a preview is 120,015 bytes, its `.info` under a kilobyte). Delete a previewed file over USB and
+    the sweep's stamp (`rm /mnt/us/grimoire/.cache/files/.swept`), then open any folder with a file not yet
+    previewed in Covers: the log says `1 preview(s) of files that are gone or changed dropped from
+    the cache`, and note how long that job took beside its `made in T ms`. The prune: the cache passes 64 MiB at
+    about 559 previews (some 62 screens); the line to see then is `file previews: the cache pruned: N file(s) (M
+    kB) removed of K`, after which about 419 previews are left. Then delete the folder; reopen Files in Covers:
+    the previews are made again.
+11. **Rotate** in Covers: ten tiles sideways, the previews there again after a moment, the card of a tile beside
+    it.

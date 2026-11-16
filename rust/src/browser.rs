@@ -25,6 +25,7 @@
 //! The model (`Browser`'s rows, listing and statuses) needs no screen: the tests drive it with `list_now`.
 
 use crate::bgwork_copy::{copy_refusal, copy_request, CopyFail, CopyTo};
+use crate::bgwork_previews::{CoverTiles, TileShow, PREVIEW_H, PREVIEW_W};
 use crate::fsview::*;
 use crate::prelude::*;
 
@@ -57,6 +58,11 @@ const B_CARD_RENAME: i32 = B_WRITE;
 const B_CARD_TRASH: i32 = B_WRITE + 1;
 const B_CARD_RESTORE: i32 = B_WRITE + 2;
 const B_DELETE_YES: i32 = B_WRITE + 3;
+// Files' View chip (2.2, issue #145): List or Covers. The ids of the Covers work are a block of their own, from 60:
+// other Files work adds ids beside the ones above, and a hit id must be one thing only (a branch that finds a number
+// taken moves its own).
+const B_COVERS: i32 = 60;
+const B_VIEW: i32 = B_COVERS;
 
 /// What a task can pick, or Files lists as usable.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -90,7 +96,7 @@ pub struct PickSpec {
 }
 
 /// What the Library's settings say of Files (settings.ini files_card, files_sort, files_show), handed to the
-/// browser as it opens.
+/// browser as it opens. (files_view is not here: `Browser::set_view`.)
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct FilesPrefs {
     /// the Files card is in the Library (the root then has no "Show Files in Library" row)
@@ -157,7 +163,8 @@ pub enum BrowserResult {
     LookAgain,
     /// the root's "Show Files in Library" row: the host puts the Files card in the Library (files_card=1)
     ShowInLibrary,
-    /// Files' Sort or Show chip changed `prefs`: the host saves them (files_sort, files_show)
+    /// Files' Sort, Show or View chip changed `prefs` or the view: the host saves them (files_sort, files_show, and
+    /// files_view from `Browser::view`)
     Prefs,
     /// A picture's Use as template or Use as photo (#146): the copy job was asked to copy it into this folder (the
     /// app's tick says when it ends); the picture pick is done
@@ -526,18 +533,40 @@ pub struct Browser {
     /// a rename inside grimoire/fonts just done: the item's path under that folder before and after, for the host
     /// (`font_follows`: what its check found goes with it, and Settings has `fonts_named` as it is now)
     font_renamed: Option<(String, String)>,
+    /// Covers (2.2, issue #145): Files' View setting (FILES_VIEW_NAMES's index: 1 Covers, the previews in a grid),
+    /// set by the host once Files is open (`set_view`); the previews of the files on screen; the screen's width as
+    /// last drawn (the grid's columns); since when a preview of the screen is being made, and whether the notice
+    /// says so
+    view: i32,
+    covers: CoverTiles,
+    aw: i32,
+    making_since: Option<u32>,
+    making_notice: bool,
+    /// what each tile on screen was drawn saying under its name (the Import place's status), by its row
+    tile_said: Vec<(usize, String)>,
+    /// when the tiles were last drawn for the panel (the screen, or the tiles that had changed): COVERS_REFRESH_MS
+    /// counts from it, by the tick's clock (a whole draw is timed by the tick after it: `tiles_drawn`)
+    tiles_at: u32,
+    tiles_drawn: bool,
+    /// the tiles the last whole draw found changed since they were drawn before (a card opened or closed over
+    /// them refreshes them with its own rect)
+    tiles_stale: Rect,
 }
+
+/// Covers: while a screen's previews are still coming, the tiles that changed are drawn together at most once this
+/// often (the staying notice's own interval, app.rs NOTICE_EVERY_MS); once the screen's set is complete, at once.
+pub const COVERS_REFRESH_MS: u32 = 2000;
 
 fn root_dir() -> Option<(String, String)> {
     let root = crate::pdfimport::storage_root()?;
     Some((root, store_root()))
 }
 
-fn is_pdf(n: &[u8]) -> bool {
+pub(crate) fn is_pdf(n: &[u8]) -> bool {
     n.len() > 4 && n[n.len() - 4..].eq_ignore_ascii_case(b".pdf")
 }
 
-fn is_font(n: &[u8]) -> bool {
+pub(crate) fn is_font(n: &[u8]) -> bool {
     [b".ttf".as_slice(), b".otf"].iter().any(|e| n.len() > e.len() && n[n.len() - e.len()..].eq_ignore_ascii_case(e))
 }
 
@@ -567,7 +596,7 @@ fn sort_rows(rows: &mut [Row], how: i32) {
     });
 }
 
-fn is_picture(n: &[u8]) -> bool {
+pub(crate) fn is_picture(n: &[u8]) -> bool {
     [b".png".as_slice(), b".jpg", b".jpeg", b".pgm"].iter().any(|e| n.len() > e.len() && n[n.len() - e.len()..].eq_ignore_ascii_case(e))
 }
 
@@ -654,6 +683,7 @@ impl Browser {
     /// Opens the browser at its root, or at the spec's start when that opens, with the Library's settings for
     /// Files. False when there is no storage to browse.
     pub fn open(&mut self, spec: PickSpec, prefs: FilesPrefs) -> bool {
+        self.covers.forget();
         *self = Browser::default();
         self.prefs = prefs;
         let Some((root, grimoire)) = root_dir() else { return false };
@@ -683,11 +713,27 @@ impl Browser {
     }
 
     /// The walk's pick flag: pick mode also refuses Grimoire's PDFs and trash, which Files shows read only.
+    /// Files' View setting (settings.ini files_view, FILES_VIEW_NAMES's index: 0 the list, 1 Covers), given by the
+    /// host once Files is open and read back when the View chip changes it (`BrowserResult::Prefs`). It is the
+    /// browser's own, not a field of `FilesPrefs`: a picker opened anywhere is a list, whatever it is given.
+    pub fn set_view(&mut self, view: i32) {
+        self.view = view.clamp(0, 1);
+        if self.view == 0 {
+            // (the list: the previews still queued are taken back; the one running ends by itself in seconds)
+            self.covers.forget();
+        }
+    }
+
+    pub fn view(&self) -> i32 {
+        self.view
+    }
+
     fn pick(&self) -> bool {
         self.mode == BrowseMode::Pick
     }
 
     pub fn close(&mut self) {
+        self.covers.forget();
         self.listing = None;
         self.sizes = None;
         self.storage = None;
@@ -759,6 +805,7 @@ impl Browser {
     }
 
     fn show_root(&mut self) {
+        self.covers.forget();
         self.at = None;
         self.place_root = None;
         self.listing = None;
@@ -806,6 +853,8 @@ impl Browser {
                 if from_root {
                     self.place_root = Some(p.clone());
                 }
+                // (a visit begins: what the last asked for is forgotten, its queued previews with it)
+                self.covers.forget();
                 self.listing = Some(l);
                 self.at = Some(p);
                 self.rows = Vec::new();
@@ -1228,9 +1277,44 @@ impl Browser {
     }
 
     fn per_page(&self, a_h: i32) -> usize {
+        if self.in_covers() {
+            let (cols, rows) = self.grid(a_h);
+            return (cols * rows) as usize;
+        }
         let top = u(190.0) + u(40.0) + self.band_h() + u(10.0);
         let room = a_h - top - u(170.0) - u(20.0);
         (room / u(150.0)).max(1) as usize
+    }
+
+    /// Whether the folder shown is in the Covers view (2.2): Files' View says so, inside a place, not the trash (which
+    /// keeps its own list). The picker's pick mode and Files' root are always lists.
+    fn in_covers(&self) -> bool {
+        self.mode == BrowseMode::Place && self.view == 1 && self.at.is_some() && !self.in_trash_place()
+    }
+
+    /// The Covers grid's area (where the rows go) for a screen `aw` x `a_h`: its top, width and height.
+    fn grid_room(&self, aw: i32, a_h: i32) -> (i32, i32, i32) {
+        let top = u(190.0) + u(40.0) + self.band_h() + u(10.0);
+        (top, aw - 2 * u(50.0), a_h - top - u(170.0) - u(20.0))
+    }
+
+    /// The Covers grid (columns, rows) for a screen `a_h` tall, as wide as last drawn (before the first draw, a page's
+    /// shape): tiles of at least 440 x 520 px, a 300 x 400 preview and its name under it.
+    fn grid(&self, a_h: i32) -> (i32, i32) {
+        let aw = if self.aw > 0 { self.aw } else { a_h * 3 / 4 };
+        let (_, w, h) = self.grid_room(aw, a_h);
+        let gap = u(30.0);
+        (((w + gap) / (u(440.0) + gap)).max(1), ((h + gap) / (u(520.0) + gap)).max(1))
+    }
+
+    /// The rect of the k-th tile of the screen in the Covers grid.
+    fn tile_rect(&self, k: usize, aw: i32, a_h: i32) -> Rect {
+        let (cols, rows) = self.grid(a_h);
+        let (top, w, h) = self.grid_room(aw, a_h);
+        let gap = u(30.0);
+        let (tw, th) = ((w - (cols - 1) * gap) / cols, (h - (rows - 1) * gap) / rows);
+        let (c, r) = (k as i32 % cols, k as i32 / cols);
+        Rect::new(u(50.0) + c * (tw + gap), top + r * (th + gap), tw, th)
     }
 
     pub fn pages(&self, a_h: i32) -> usize {
@@ -1409,6 +1493,22 @@ impl Browser {
                     return changed;
                 }
             }
+        }
+        // Covers: the screen's PDFs, pictures and fonts looked up in the cache once their stats are in, and asked for
+        // when it has nothing, each its own job, in the listed order; never another screen's (one turned away from
+        // takes its queued jobs back)
+        if self.in_covers() {
+            let on: Vec<(StoragePath, FsStat)> = vis
+                .clone()
+                .filter_map(|i| {
+                    let r = &self.rows[i];
+                    matches!(r.kind, RowKind::Pdf | RowKind::Picture | RowKind::Font).then_some(())?;
+                    Some((r.path.clone(), r.stat?))
+                })
+                .collect();
+            self.covers.screen(&on);
+            // (read from the cache, or asked for, a slice a tick: a screen back from another is read again)
+            self.covers.step(FS_SLICE_MS);
         }
         // Files: a trash entry's name, a font's family (from its check's verdict), one a tick
         for i in vis.clone() {
@@ -2150,6 +2250,7 @@ impl Browser {
         self.row_rects.clear();
         self.drawn.clear();
         let (aw, ah) = (a.w, a.h);
+        self.aw = aw;
         let per = self.per_page(ah);
         self.per_last = per;
         self.screen = self.screen.min(self.rows.len().saturating_sub(1) / per);
@@ -2207,17 +2308,31 @@ impl Browser {
             // TRANSLATORS: a folder in the file picker with nothing in it a PDF import can use (one line, 44 px, centred).
             font_draw_centered(c, FontFace::Bold, ui_text_size(), Rect::new(m, y0 + u(120.0), aw - 2 * m, u(100.0)), tr("Nothing here to use."), 0);
         }
+        let covers = self.in_covers();
+        // (Covers: what the tiles were drawn showing before this draw; the ones that changed are its stale ones)
+        let before = (self.covers.take_shown(), std::mem::take(&mut self.tile_said));
+        self.tiles_stale = RECT_EMPTY;
+        self.tiles_drawn = true;
         for k in 0..per {
             let i = first + k;
             if i >= self.rows.len() {
                 break;
             }
-            let r = Rect::new(m, y0 + k as i32 * u(150.0), aw - 2 * m, u(150.0) - u(12.0));
-            self.draw_row(&mut a.screen, r, i);
+            // (Covers: a tile of the grid, tapped and held as a row is; no "..." of its own)
+            let r = if covers { self.tile_rect(k, aw, ah) } else { Rect::new(m, y0 + k as i32 * u(150.0), aw - 2 * m, u(150.0) - u(12.0)) };
+            if covers {
+                self.draw_tile(&mut a.screen, r, i);
+                let was = before.0.iter().find(|(p, _)| *p == self.rows[i].path).map(|(_, show)| (*show, before.1.iter().find(|(j, _)| *j == i).map_or("", |(_, t)| t.as_str())));
+                if was.is_some_and(|w| w != (self.tile_show(i), self.tile_says(i).as_str())) {
+                    self.tiles_stale = rect_union(self.tiles_stale, rect_inflate(r, u(4.0)));
+                }
+            } else {
+                self.draw_row(&mut a.screen, r, i);
+            }
             self.row_rects.push((i, r));
             self.drawn.push(self.rows[i].name.clone());
             hits_add(&mut self.hits, r, B_ROW, i as i32);
-            if self.has_card(i) {
+            if !covers && self.has_card(i) {
                 let mr = Rect::new(r.x + r.w - u(130.0), r.y + u(14.0), u(110.0), r.h - u(28.0));
                 hits_add(&mut self.hits, mr, B_MORE, i as i32);
             }
@@ -2281,9 +2396,11 @@ impl Browser {
         } else {
             let show = chip(c, band.x + band.w, IconKind::Eye, self.show_label());
             let sort = chip(c, show.x - u(20.0), IconKind::Sort, self.sort_label());
+            let view = chip(c, sort.x - u(20.0), IconKind::Grid, self.view_label());
             hits_add(&mut self.hits, show, B_SHOW, 0);
             hits_add(&mut self.hits, sort, B_SORT, 0);
-            sort.x - u(30.0)
+            hits_add(&mut self.hits, view, B_VIEW, 0);
+            view.x - u(30.0)
         };
         // the path's parts in the room left
         let room = Rect::new(band.x, band.y, room_end - band.x, band.h);
@@ -2356,6 +2473,19 @@ impl Browser {
         }
     }
 
+    /// The View chip's word: the view in use (a tap takes the other).
+    fn view_label(&self) -> &'static str {
+        if self.view == 1 {
+            // TRANSLATORS: Files' View chip on its path bar while the files show as a grid of their previews (one word
+            // of about 220 px at 34 px in bold; a tap shows them as a list).
+            tr("Covers")
+        } else {
+            // TRANSLATORS: Files' View chip on its path bar while the files show as a list of rows (one word of about
+            // 220 px at 34 px in bold; a tap shows a grid of their previews). Also the Graph's List tab.
+            tr("List")
+        }
+    }
+
     fn show_label(&self) -> &'static str {
         if self.prefs.show == 1 {
             // TRANSLATORS: Files' Show chip on its path bar: every file is listed (others greyed, never opened), at
@@ -2372,11 +2502,9 @@ impl Browser {
         self.rows.get(i).is_some_and(|r| matches!(r.kind, RowKind::Pdf | RowKind::Dir | RowKind::Picture | RowKind::Font | RowKind::Other) || Self::restorable(r))
     }
 
-    fn draw_row(&self, c: &mut Canvas, r: Rect, i: usize) {
-        let row = &self.rows[i];
-        canvas_fill(c, Rect::new(r.x - u(4.0), r.y - u(4.0), r.w + u(8.0), r.h + u(8.0)), 255);
-        ui_frame(c, r, u(12.0), 0, false, u(3.0));
-        let icon = match (row.kind, row.place) {
+    /// A row's icon (a list row's, a Covers tile's without a preview).
+    fn row_icon(row: &Row) -> IconKind {
+        match (row.kind, row.place) {
             (RowKind::Place, Some(PlaceKind::Import)) => IconKind::Download,
             (RowKind::Place, Some(PlaceKind::Documents)) => IconKind::Folder,
             (RowKind::Place, Some(PlaceKind::Downloads)) => IconKind::Download,
@@ -2397,10 +2525,16 @@ impl Browser {
             (RowKind::Trashed, _) if row.trash.as_ref().is_some_and(|t| t.kind == TrashKind::File) => IconKind::FileOther,
             (RowKind::Trashed, _) if row.dir => IconKind::Notebook,
             (RowKind::Trashed, _) => IconKind::Paper,
-        };
+        }
+    }
+
+    fn draw_row(&self, c: &mut Canvas, r: Rect, i: usize) {
+        let row = &self.rows[i];
+        canvas_fill(c, Rect::new(r.x - u(4.0), r.y - u(4.0), r.w + u(8.0), r.h + u(8.0)), 255);
+        ui_frame(c, r, u(12.0), 0, false, u(3.0));
         // (a file Grimoire cannot use, and a link, greyed: Show all lists them so the folder is seen whole)
         let ink = if matches!(row.kind, RowKind::Other | RowKind::Link) { 110 } else { 0 };
-        ui_icon(c, icon, Rect::new(r.x + u(20.0), r.y + u(20.0), u(90.0), r.h - u(40.0)), ink);
+        ui_icon(c, Self::row_icon(row), Rect::new(r.x + u(20.0), r.y + u(20.0), u(90.0), r.h - u(40.0)), ink);
         let right = if self.has_card(i) { u(150.0) } else { u(30.0) };
         let tx = r.x + u(140.0);
         let tw = r.w - u(140.0) - right;
@@ -2440,13 +2574,93 @@ impl Browser {
         }
     }
 
-    /// Row `i` again, alone (a count, status or key arrived): the rect to refresh, empty when it is not on screen.
+    /// What row `i`'s Covers tile shows now: a PDF's, a picture's or a font's preview once it is there, the hourglass
+    /// until then (its stat still to come, its file to be looked up, its job queued or running), else its kind's icon
+    /// (a folder, any other file, a file gone, one whose job ended without a preview).
+    fn tile_show(&self, i: usize) -> TileShow {
+        let r = &self.rows[i];
+        if !matches!(r.kind, RowKind::Pdf | RowKind::Picture | RowKind::Font) {
+            return TileShow::Icon;
+        }
+        match r.stat {
+            Some(s) => self.covers.show(&r.path, &s),
+            None if !r.stat_tried && r.ix != usize::MAX => TileShow::Loading,
+            None => TileShow::Icon,
+        }
+    }
+
+    /// What row `i`'s Covers tile says under its name: the Import place's status, as the list's row says it under
+    /// its name (waiting, the page an import is on, failed, imported); nothing anywhere else.
+    fn tile_says(&self, i: usize) -> String {
+        let r = &self.rows[i];
+        if matches!(r.kind, RowKind::Pdf | RowKind::Dir) && self.under_import() && r.status != RowStatus::None {
+            self.status_text(&r.status)
+        } else {
+            String::new()
+        }
+    }
+
+    /// A Covers tile (2.2): the file's preview in a box of its shape (at most its size, so a preview is drawn pixel for
+    /// pixel), the hourglass while it is to come, else the kind's icon; its name under it, and under that what the
+    /// list's row says of an import.
+    fn draw_tile(&mut self, c: &mut Canvas, r: Rect, i: usize) {
+        canvas_fill(c, rect_inflate(r, u(4.0)), 255);
+        let name_h = u(70.0);
+        let pic = Rect::new(r.x, r.y, r.w, r.h - name_h - u(10.0));
+        let s = (pic.w as f32 / PREVIEW_W as f32).min(pic.h as f32 / PREVIEW_H as f32).min(1.0);
+        let (bw, bh) = ((PREVIEW_W as f32 * s) as i32, (PREVIEW_H as f32 * s) as i32);
+        // (the box and its name together, in the middle of the tile)
+        let bx = Rect::new(pic.x + (pic.w - bw) / 2, pic.y + ((pic.h - bh) / 2).max(0), bw, bh);
+        let show = self.tile_show(i);
+        let says = self.tile_says(i);
+        let row = &self.rows[i];
+        let ink = if matches!(row.kind, RowKind::Other | RowKind::Link) { 110 } else { 0 };
+        match show {
+            TileShow::Preview => {
+                if let Some(p) = row.stat.and_then(|st| self.covers.preview(&row.path, &st)) {
+                    canvas_blit_fit(c, p, bx);
+                }
+            }
+            TileShow::Loading => ui_tile_loading(c, bx),
+            TileShow::Icon => {
+                let s = bx.w.min(bx.h) / 2;
+                ui_icon(c, Self::row_icon(row), Rect::new(bx.x + (bx.w - s) / 2, bx.y + (bx.h - s) / 2, s, s), ink);
+            }
+        }
+        ui_frame(c, bx, u(8.0), 0, false, u(3.0));
+        // the name right under its box: centred on it when it fits the tile, else cut as names are
+        let label = self.row_label(row);
+        let lw = font_measure(FontFace::Bold, ui_small_size(), &label);
+        let lx = if lw <= r.w { (bx.x + bx.w / 2 - lw / 2).clamp(r.x, r.x + r.w - lw) } else { r.x };
+        let name = Rect::new(lx, bx.y + bx.h + u(10.0), lw.min(r.w), name_h);
+        font_draw_left_name(c, FontFace::Bold, ui_small_size(), name, &label, ink);
+        // (the status in what is left of the tile under the name, on two lines at most)
+        let under = Rect::new(r.x, name.y + name.h, r.w, r.y + r.h - name.y - name.h);
+        if !says.is_empty() && under.h > 0 {
+            ui_text(c, FontFace::Regular, ui_small_size(), ui_small_size() * 0.8, under, &says, 2, false, ink);
+        }
+        let p = row.path.clone();
+        self.covers.note(&p, show);
+        self.tile_said.retain(|(j, _)| *j != i);
+        self.tile_said.push((i, says));
+    }
+
+    /// Row `i` again, alone (a count, status or key arrived; in Covers, its preview): the rect to refresh, empty when
+    /// it is not on screen.
     pub fn redraw_row(&mut self, a: &mut App, i: usize) -> Rect {
         let Some(&(_, r)) = self.row_rects.iter().find(|(k, _)| *k == i) else { return RECT_EMPTY };
         if self.card.is_some() || self.kb.open {
             return RECT_EMPTY; // (the card or the keyboard covers it: the next draw has it right)
         }
-        self.draw_row(&mut a.screen, r, i);
+        if self.in_covers() {
+            self.draw_tile(&mut a.screen, r, i);
+        } else {
+            self.draw_row(&mut a.screen, r, i);
+        }
+        // (a press under way on it keeps its pressed look, so the lift that takes the look off leaves it plain)
+        if let Some(p) = self.pressed_rect.filter(|p| rect_overlaps(*p, r)) {
+            canvas_invert(&mut a.screen, p);
+        }
         rect_inflate(r, u(4.0))
     }
 
@@ -2628,6 +2842,16 @@ impl Browser {
                     }
                 }
             }
+            // the View chip: List or Covers, the first row on screen kept on screen
+            B_VIEW => {
+                let first = self.screen * self.per_page(ah);
+                self.set_view(if self.view == 1 { 0 } else { 1 });
+                self.card = None;
+                self.drop_press();
+                self.screen = first / self.per_page(ah);
+                self.redraw(a, RefreshMode::Ui);
+                return BrowserResult::Prefs;
+            }
             B_SORT | B_SHOW => {
                 if h.id == B_SORT {
                     self.prefs.sort = (self.prefs.sort.clamp(0, 2) + 1) % 3;
@@ -2693,10 +2917,11 @@ impl Browser {
         BrowserResult::None
     }
 
-    /// The card opened or changed: the screen drawn into the panel's buffer, and the card's rect alone refreshed.
+    /// The card opened or changed: the screen drawn into the panel's buffer, and the card's rect alone refreshed
+    /// (with the Covers tiles that draw found changed since they were last drawn: a preview that came).
     fn show_card(&mut self, a: &mut App) {
         self.draw(a);
-        let r = self.card_rect();
+        let r = rect_union(self.card_rect(), self.tiles_stale);
         app_invalidate(a, r, RefreshMode::Ui);
     }
 
@@ -2923,7 +3148,8 @@ impl Browser {
     /// Use as template, Use as photo (#146): the file card `c` was opened for, checked again, asked of the copy job
     /// into Grimoire's templates or photos (`copy_request`: the walk, the file as listed, its size, the free-space
     /// floor). The card is closed; a refusal is said now (`copy_refusal`: nothing was copied, and no job runs), the
-    /// copy's end by the app's tick when the job ends.
+    /// copy's end by the app's tick when the job ends. The card's rect goes out with the Covers tiles that changed
+    /// while it was open, as when Cancel closes it (`close_card`).
     fn copy_in(&mut self, a: &mut App, c: &Card, to: CopyTo) -> BrowserResult {
         let asked = match (self.storage.as_ref(), c.stat) {
             (Some(st), Some(listed)) => copy_request(st, &c.path, &listed, to),
@@ -2934,7 +3160,7 @@ impl Browser {
                 // (the picture pick ends here: its host closes it; Files stays, the card gone)
                 if !self.pick() {
                     self.draw(a);
-                    app_invalidate(a, c.rect, RefreshMode::Ui);
+                    app_invalidate(a, rect_union(c.rect, self.tiles_stale), RefreshMode::Ui);
                 }
                 BrowserResult::Copying(to)
             }
@@ -2951,7 +3177,7 @@ impl Browser {
                 };
                 qlog!("files: a copy into %s was refused: %s", to.folder(), &why);
                 self.draw(a);
-                app_invalidate(a, c.rect, RefreshMode::Ui);
+                app_invalidate(a, rect_union(c.rect, self.tiles_stale), RefreshMode::Ui);
                 app_toast(a, &copy_refusal(CopyFail::of_request(e), to), 3000);
                 BrowserResult::None
             }
@@ -2962,7 +3188,8 @@ impl Browser {
         let r = self.card_rect();
         self.card = None;
         self.draw(a);
-        app_invalidate(a, r, RefreshMode::Ui);
+        // (the previews that landed while the card was open are in this draw: their tiles go out with its rect)
+        app_invalidate(a, rect_union(r, self.tiles_stale), RefreshMode::Ui);
         BrowserResult::None
     }
 
@@ -2988,7 +3215,8 @@ impl Browser {
         true
     }
 
-    fn turn(&mut self, next: bool, ah: i32) {
+    /// The pager's turn (Prev or Next) for a screen `ah` tall; the tests' too (it needs no screen).
+    pub fn turn(&mut self, next: bool, ah: i32) {
         let pages = self.pages(ah);
         self.card = None;
         if next && self.screen + 1 < pages {
@@ -3068,6 +3296,7 @@ impl Browser {
         if self.toast.is_some() {
             self.flush_toast(a);
         }
+        self.previews_notice(a, now);
         // (busy: a folder being read, or Files' rows being sorted by newest or size)
         let busy = !self.ready || self.next.is_some();
         // (the Loading notice goes once a folder is read, whichever: Back during a slow listing shows another)
@@ -3092,12 +3321,78 @@ impl Browser {
             }
             return;
         }
+        // Covers: the tiles that changed (a preview that came, a job that ended without one, a status) are drawn
+        // together, never one refresh a file: at once when the screen's set is complete, else at most once every
+        // COVERS_REFRESH_MS; each time as one Ui of their union that fills in by itself (app_invalidate_filling:
+        // counted, and never the refresh that becomes the cleaning flash).
+        if self.in_covers() {
+            if std::mem::take(&mut self.tiles_drawn) {
+                self.tiles_at = now;
+            }
+            if let Some(due) = self.tiles_due(now) {
+                let mut d = RECT_EMPTY;
+                for i in due {
+                    d = rect_union(d, self.redraw_row(a, i));
+                }
+                self.tiles_at = now;
+                app_invalidate_filling(a, d);
+            }
+            return;
+        }
         let mut d = RECT_EMPTY;
         for i in changed {
             d = rect_union(d, self.redraw_row(a, i));
         }
         if !rect_is_empty(d) {
             app_invalidate(a, d, RefreshMode::Ui);
+        }
+    }
+
+    /// Covers: the rows whose tiles are to be drawn again now, None when there is nothing to draw yet. A tile has
+    /// changed when it would show or say something else than it was last drawn with. The changed ones are due all
+    /// together: once the screen's set is complete (no file of it whose stat is still to come or that is still to be
+    /// looked up, no job of it queued or running), or COVERS_REFRESH_MS after the tiles were last drawn. Never under an open card (its close draws
+    /// them).
+    pub fn tiles_due(&self, now: u32) -> Option<Vec<usize>> {
+        if !self.in_covers() || self.card.is_some() {
+            return None;
+        }
+        let changed: Vec<usize> = self
+            .row_rects
+            .iter()
+            .filter_map(|&(i, _)| {
+                let row = self.rows.get(i)?;
+                let was = (self.covers.shown(&row.path)?, self.tile_said.iter().find(|(j, _)| *j == i).map_or("", |(_, t)| t.as_str()));
+                (was != (self.tile_show(i), self.tile_says(i).as_str())).then_some(i)
+            })
+            .collect();
+        // (not complete: a file whose stat is still to come, one to be looked up, or a job queued or running)
+        let coming = |r: &Row| matches!(r.kind, RowKind::Pdf | RowKind::Picture | RowKind::Font) && r.stat.is_none() && !r.stat_tried && r.ix != usize::MAX;
+        let pending = self.covers.pending() || self.row_rects.iter().any(|&(i, _)| self.rows.get(i).is_some_and(coming));
+        if changed.is_empty() || (pending && now.wrapping_sub(self.tiles_at) < COVERS_REFRESH_MS) {
+            return None;
+        }
+        Some(changed)
+    }
+
+    /// The staying notice "Making previews..." while a preview of the Covers screen is being made, once that has gone
+    /// on for a second (a screen whose previews come at once says nothing), and away when none is. Not while the
+    /// screen's jobs only wait behind other work (an import, an export, a font check: that work's own notice shows).
+    fn previews_notice(&mut self, a: &mut App, now: u32) {
+        let making = self.in_covers() && self.covers.making() && bg_kind_running(BgKind::FilePreviews);
+        if !making {
+            self.making_since = None;
+        } else if self.making_since.is_none() {
+            self.making_since = Some(now);
+        }
+        if making && !self.making_notice && self.making_since.is_some_and(|t| now.wrapping_sub(t) >= 1000) {
+            self.making_notice = true;
+            // TRANSLATORS: the staying notice while Files makes the previews of the files on screen in its Covers view
+            // (one line, about 700 px at 44 px).
+            app_notice(a, NoticeKey::Previews, tr("Making previews..."));
+        } else if !making && self.making_notice {
+            self.making_notice = false;
+            app_notice_clear(a, NoticeKey::Previews);
         }
     }
 
@@ -3160,8 +3455,34 @@ impl Browser {
             "order" => out.push_str(&self.rows.iter().map(|r| r.name.as_str()).collect::<Vec<_>>().join("|")),
             // (the rows as last drawn on the screen, by name: Sort's rows change on screen once, when ready)
             "drawn" => out.push_str(&self.drawn.join("|")),
+            // Covers (2.2): the view, what each tile on screen was last drawn showing (p a preview, l the hourglass, i
+            // an icon; empty in the list), whether a preview of the screen is being made, and the files asked for
+            "view" => out.push_str(FILES_VIEW_NAMES[self.view.clamp(0, 1) as usize]),
+            "tiles" => {
+                if self.in_covers() {
+                    let shown: String = self.row_rects.iter().map(|(i, _)| self.rows.get(*i).and_then(|r| self.covers.shown(&r.path)).map_or('-', |t| t.letter())).collect();
+                    out.push_str(&shown);
+                }
+            }
+            // (what each tile on screen would show now, drawn yet or not: the tiles that changed are drawn together)
+            "covers" => {
+                if self.in_covers() {
+                    let now: String = self.visible(a_h).map(|i| self.tile_show(i).letter()).collect();
+                    out.push_str(&now);
+                }
+            }
+            "making" => out.push_str(if self.covers.making() { "1" } else { "0" }),
+            "asked" => out.push_str(&self.covers.asked().to_string()),
             _ => {
                 let Some((what, n)) = key.split_once('.') else { return false };
+                // (Covers: what the tile of the N-th row on screen was last drawn saying under its name; empty in the list)
+                if what == "says" {
+                    let Some(i) = n.parse::<usize>().ok().filter(|&k| k >= 1).map(|k| self.screen * per + k - 1) else { return true };
+                    if self.in_covers() {
+                        out.push_str(self.tile_said.iter().find(|(j, _)| *j == i).map_or("", |(_, t)| t.as_str()));
+                    }
+                    return true;
+                }
                 if !matches!(what, "row" | "sub" | "status" | "notes" | "keyed" | "kind" | "item" | "pictures") {
                     return false;
                 }
@@ -3237,6 +3558,7 @@ impl Browser {
             "next" => find(B_NEXT, 0),
             "sort" => find(B_SORT, 0),
             "show" => find(B_SHOW, 0),
+            "view" => find(B_VIEW, 0),
             _ => {
                 let (what, n) = name.split_once('.')?;
                 // the rows on screen, in order: their B_ROW hits

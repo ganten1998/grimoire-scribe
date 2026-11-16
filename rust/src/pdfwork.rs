@@ -1245,12 +1245,21 @@ pub struct Session {
     rec_bytes: usize,
     pub sandboxed: bool,
     pub pages: u32,
+    /// the monotonic time (mono_ms) past which no read of this session waits: u64::MAX for an import, whose
+    /// watchdogs alone hold it; a time of its own for a file's preview (bgwork_previews.rs), which is held to less
+    until: u64,
 }
 
 impl Session {
     /// Starts a worker on the PDF and checks its handshake: the build line, then the sandbox line or
     /// `E sandbox <step>`.
     pub fn start(source_fd: i32, file_len: u64, limits: &Limits) -> Result<Session, StartErr> {
+        Session::start_until(source_fd, file_len, limits, u64::MAX)
+    }
+
+    /// `start`, for a session held to a time of its own: no read of it (the handshake's, the probe's, a page's)
+    /// waits past `until` (mono_ms), whatever its watchdog would allow.
+    pub fn start_until(source_fd: i32, file_len: u64, limits: &Limits, until: u64) -> Result<Session, StartErr> {
         let limits = Limits { file_len, ..limits.clone() };
         // A worker that ended by itself (`E password`) has closed its pipe: the writer's next line must fail, not
         // end the writer with SIGPIPE before it reads why (the worker inherits this, and exits on a failed write).
@@ -1261,7 +1270,7 @@ impl Session {
             Err(SpawnErr::Sandbox(step)) => return Err(StartErr::Sandbox(step.to_string())),
             Err(SpawnErr::Start) => return Err(StartErr::Worker("start")),
         };
-        let deadline = mono_ms() + 15_000;
+        let deadline = (mono_ms() + 15_000).min(until);
         let sandboxed;
         // first record: the build
         let line = w.read_line(512, deadline).map_err(|_| StartErr::Worker("no handshake"))?;
@@ -1288,7 +1297,7 @@ impl Session {
             }
             _ => return Err(StartErr::Worker("handshake")),
         }
-        Ok(Session { w, rec_bytes: 0, sandboxed, pages: 0 })
+        Ok(Session { w, rec_bytes: 0, sandboxed, pages: 0, until })
     }
 
     /// The probe: the page count (the writer checks it against the caps).
@@ -1297,7 +1306,7 @@ impl Session {
         let _ = self.w.send("PROBE\n");
         let mut pages = None;
         loop {
-            let deadline = mono_ms() + page_watchdog_ms();
+            let deadline = (mono_ms() + page_watchdog_ms()).min(self.until);
             let line = match self.w.read_line(4096, deadline) {
                 Ok(l) => l,
                 Err(_) => {
@@ -1347,7 +1356,7 @@ impl Session {
         }
         let mut got = Collected::default();
         loop {
-            let deadline = mono_ms() + page_watchdog_ms();
+            let deadline = (mono_ms() + page_watchdog_ms()).min(self.until);
             let line = match self.w.read_line(512, deadline) {
                 Ok(l) => l,
                 Err(_) => {
@@ -1404,7 +1413,7 @@ impl Session {
         // within the watchdog: a page is never more than that, so a worker that drips one-row bands (asleep in
         // futex, no CPU spent) cannot hold the writer and the job queue for hours (security review 2026-11).
         let band_h = (h as u32).div_ceil(bands.max(1)) as usize;
-        let page_end = mono_ms() + page_watchdog_ms().saturating_mul(bands.max(1) as u64 + 1);
+        let page_end = (mono_ms() + page_watchdog_ms().saturating_mul(bands.max(1) as u64 + 1)).min(self.until);
         loop {
             let deadline = (mono_ms() + page_watchdog_ms()).min(page_end);
             let line = match self.w.read_line(512, deadline) {

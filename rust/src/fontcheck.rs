@@ -21,8 +21,13 @@
 //!                                       preview's size; `scale` is 0 for the first slice, which settles the
 //!                                       font's scale, and that scale for the slices after it; `glyph us` is
 //!                                       the CPU time one glyph's draw may take, in microseconds
+//!   `T <len> <w> <h> <glyph us>`        Files' preview of the font (2.2): the face opened, the sample's glyphs
+//!                                       walked as the check walks a glyph (each draw held to `glyph us`), then
+//!                                       the fixed sample drawn in it on a w x h picture; answered `P <w> <h>`
+//!                                       with the pixels, then `D <cpu ms>`, or an `E` record. No verdict comes
+//!                                       of it: a sample says nothing of the check
 //!   `H <hook> <n>`                      a test hook (headless and test builds only: `crash`, `hang`, `trap` at
-//!                                       glyph index n)
+//!                                       glyph index n; at 0, the sample's too)
 //!   `H <hook> <n> <us>`                 the test charge (the same builds: `slow`, `slowonce`, `slowbold`,
 //!                                       `slowfrom`: glyph n's draw is counted `us` microseconds dearer)
 //!   `Q`                                 end
@@ -1026,50 +1031,13 @@ fn preview(o: &Opened, out: &mut Outliner, px: f32) -> Option<(Vec<u8>, i32, i32
     let asc = (f.ascent as f32 * scale).round_ties_even() as i32;
     let desc = (-f.descent as f32 * scale).round_ties_even() as i32;
     let base = (h - (asc + desc)) / 2 + asc;
-    let cmap = o.font.charmap();
-    let gm = o.font.glyph_metrics(Size::unscaled(), LocationRef::default());
     let mut px_out: Vec<u8> = Vec::new();
     px_out.try_reserve_exact(wmax as usize * h as usize).ok()?;
     px_out.resize(wmax as usize * h as usize, 255);
-    let mut draw = |text: &str, px_out: &mut Vec<u8>| -> i32 {
-        let mut pen = 0.0f32;
-        let mut right = 0;
-        for ch in text.chars() {
-            let Some(g) = cmap.map(ch as u32).map(|g| g.to_u32()).filter(|&g| g != 0 && bit(&o.mapped, g)) else { continue };
-            let Some(adv) = gm.advance_width(GlyphId::new(g)).filter(|a| a.is_finite() && *a >= 0.0) else { continue };
-            let next = pen + adv * scale;
-            if next.ceil() as i32 > wmax {
-                break;
-            }
-            if let Ok(Some(b)) = out.outline(&o.glyphs, g, &[], f.line()) {
-                if let Some(bm) = rasterize(&mut out.verts, b, scale) {
-                    let (gx, gy) = (pen.round_ties_even() as i32 + bm.xoff, base + bm.yoff);
-                    for r in 0..bm.h {
-                        let y = gy + r;
-                        if y < 0 || y >= h {
-                            continue;
-                        }
-                        for c in 0..bm.w {
-                            let x = gx + c;
-                            if x < 0 || x >= wmax {
-                                continue;
-                            }
-                            let a = bm.px[(r * bm.w + c) as usize] as i32;
-                            let d = &mut px_out[(y * wmax + x) as usize];
-                            *d = (*d as i32 - (*d as i32 * a + 127) / 255) as u8;
-                            right = right.max(x + 1);
-                        }
-                    }
-                }
-            }
-            pen = next;
-        }
-        right
-    };
     let named = if f.style.is_empty() || f.style.eq_ignore_ascii_case("regular") { f.family.clone() } else { format!("{} {}", f.family, f.style) };
-    let mut right = draw(&named, &mut px_out);
+    let mut right = draw_text(o, out, &named, scale, 0.0, base, (wmax, h), &mut px_out);
     if right == 0 {
-        right = draw("AaBbCc 123", &mut px_out);
+        right = draw_text(o, out, "AaBbCc 123", scale, 0.0, base, (wmax, h), &mut px_out);
     }
     // (cut to its ink, with a little air)
     let w = (right + 4).clamp(8, wmax);
@@ -1079,6 +1047,82 @@ fn preview(o: &Opened, out: &mut Outliner, px: f32) -> Option<(Vec<u8>, i32, i32
         cut.extend_from_slice(&px_out[(y * wmax) as usize..(y * wmax + w) as usize]);
     }
     Some((cut, w, h))
+}
+
+/// Draws `text` in the face, `scale` pixels a font unit, from x `x0` on the baseline `base` of a w x h gray picture
+/// (`size`), black over what is there; a glyph is drawn whole or not at all (the first whose advance would pass the
+/// right edge ends the line). The x after its last ink, 0 when it drew none.
+#[allow(clippy::too_many_arguments)]
+fn draw_text(o: &Opened, out: &mut Outliner, text: &str, scale: f32, x0: f32, base: i32, size: (i32, i32), px_out: &mut [u8]) -> i32 {
+    let (wmax, h) = size;
+    let cmap = o.font.charmap();
+    let gm = o.font.glyph_metrics(Size::unscaled(), LocationRef::default());
+    let mut pen = x0;
+    let mut right = 0;
+    for ch in text.chars() {
+        let Some(g) = cmap.map(ch as u32).map(|g| g.to_u32()).filter(|&g| g != 0 && bit(&o.mapped, g)) else { continue };
+        let Some(adv) = gm.advance_width(GlyphId::new(g)).filter(|a| a.is_finite() && *a >= 0.0) else { continue };
+        let next = pen + adv * scale;
+        if next.ceil() as i32 > wmax {
+            break;
+        }
+        if let Ok(Some(b)) = out.outline(&o.glyphs, g, &[], o.facts.line()) {
+            if let Some(bm) = rasterize(&mut out.verts, b, scale) {
+                let (gx, gy) = (pen.round_ties_even() as i32 + bm.xoff, base + bm.yoff);
+                for r in 0..bm.h {
+                    let y = gy + r;
+                    if y < 0 || y >= h {
+                        continue;
+                    }
+                    for c in 0..bm.w {
+                        let x = gx + c;
+                        if x < 0 || x >= wmax {
+                            continue;
+                        }
+                        let a = bm.px[(r * bm.w + c) as usize] as i32;
+                        let d = &mut px_out[(y * wmax + x) as usize];
+                        *d = (*d as i32 - (*d as i32 * a + 127) / 255) as u8;
+                        right = right.max(x + 1);
+                    }
+                }
+            }
+        }
+        pen = next;
+    }
+    right
+}
+
+/// What Files' preview of a font shows (2.2, issue #145): these lines, fixed, in the font itself, each centred, at
+/// this share of the picture's height as its line.
+const SAMPLE_LINES: [(&str, f32); 2] = [("Aa", 0.40), ("Abc 123", 0.14)];
+
+/// A font's sample for Files' Covers view: SAMPLE_LINES drawn in the font, black on a w x h white picture, each line
+/// centred (a line too wide for it cut at its last whole letter). The face is opened at the scale 1000 (no string
+/// fit: a sample is drawn at the size it asks for).
+fn sample(o: &Opened, out: &mut Outliner, w: i32, h: i32) -> Option<Vec<u8>> {
+    let f = &o.facts;
+    let line = f.line() as f32;
+    let gm = o.font.glyph_metrics(Size::unscaled(), LocationRef::default());
+    let cmap = o.font.charmap();
+    let mut px: Vec<u8> = Vec::new();
+    px.try_reserve_exact(w as usize * h as usize).ok()?;
+    px.resize(w as usize * h as usize, 255);
+    let mut top = h as f32 * 0.18;
+    for (text, share) in SAMPLE_LINES {
+        let lpx = (h as f32 * share).clamp(FONT_PX_MIN, FONT_PX_MAX);
+        let scale = lpx / line;
+        let width: f32 = text
+            .chars()
+            .filter_map(|ch| cmap.map(ch as u32).filter(|g| g.to_u32() != 0 && bit(&o.mapped, g.to_u32())))
+            .filter_map(|g| gm.advance_width(g).filter(|a| a.is_finite() && *a >= 0.0))
+            .map(|a| a * scale)
+            .sum();
+        let x0 = ((w as f32 - width) / 2.0).max(0.0).floor();
+        let base = (top + f.ascent as f32 * scale).round_ties_even() as i32;
+        draw_text(o, out, text, scale, x0, base, (w, h), &mut px);
+        top += lpx * 1.3;
+    }
+    Some(px)
 }
 
 /// The check of one font from glyph index `start`, a glyph's draw held to `limit_us` of CPU: the records it
@@ -1156,7 +1200,67 @@ fn check_one(data: &Rc<Vec<u8>>, start: usize, px: f32, slice_ms: u64, scale_pm:
     say(&format!("D {} {} {}\n", cpu_ms().saturating_sub(t0).min(RECORD_MAX), sums.slowest_us.min(RECORD_MAX), sums.letters_us.min(RECORD_MAX)));
 }
 
-/// The worker's loop (after sandbox.rs's steps): one font, in as many `F` commands as the writer sends.
+/// The largest sample a `T` asks for: twice Files' preview (300 x 400) each way.
+const SAMPLE_W_MAX: usize = 600;
+const SAMPLE_H_MAX: usize = 800;
+
+/// One font's sample (`T`): the records it sends. Before a glyph of the sample is drawn it goes through the
+/// check's own walk (`glyph_walk`: the regular face the UI would make, the caps, its draw timed at the largest
+/// size against `limit_us`), so a sample is held to the glyph limit a check is: a glyph over it ends the sample
+/// (`E slow`), one that does not draw is left out of the picture. Nothing here is a check: no `F` record is
+/// sent, and the writer makes no verdict of a sample.
+fn sample_one(data: &Rc<Vec<u8>>, w: i32, h: i32, limit_us: u64) {
+    let t0 = cpu_ms();
+    let Some(mut out) = Outliner::new() else {
+        say("E mem\n");
+        return;
+    };
+    let mut o = match open_face(data, &mut out, 1000) {
+        Ok(o) => o,
+        Err(why) => {
+            say(&format!("E bad {}\n", why as i32));
+            return;
+        }
+    };
+    let Some(regular) = SafeFace::new(data.clone(), Rc::new(o.facts.clone()), false) else {
+        say("E bad 0\n");
+        return;
+    };
+    let cmap = o.font.charmap();
+    let mut walked: Vec<u32> = Vec::new();
+    let mut sums = Sums::default();
+    for ch in SAMPLE_LINES.iter().flat_map(|(text, _)| text.chars()) {
+        let Some(g) = cmap.map(ch as u32).map(|g| g.to_u32()).filter(|&g| g != 0 && bit(&o.mapped, g)) else { continue };
+        if walked.contains(&g) {
+            continue;
+        }
+        walked.push(g);
+        match glyph_walk(&o, std::slice::from_ref(&regular), &mut out, g, limit_us, &mut sums) {
+            Walked::Fine => {}
+            Walked::Slow(us) => {
+                say(&format!("E slow {g} {}\n", us.min(RECORD_MAX)));
+                return;
+            }
+            // (it does not draw: not in the sample, as the UI would not draw it)
+            Walked::Broken => {
+                if let Some(word) = o.mapped.get_mut((g / 64) as usize) {
+                    *word &= !(1 << (g % 64));
+                }
+            }
+        }
+    }
+    match sample(&o, &mut out, w, h) {
+        Some(pixels) => {
+            say(&format!("P {w} {h}\n"));
+            write_all(FD_OUT, &pixels);
+            say(&format!("D {}\n", cpu_ms().saturating_sub(t0).min(RECORD_MAX)));
+        }
+        None => say("E mem\n"),
+    }
+}
+
+/// The worker's loop (after sandbox.rs's steps): one font, in as many `F` commands as the writer sends, or its
+/// sample (`T`, Files' preview).
 pub fn worker_run(_l: &Limits) -> i32 {
     #[cfg_attr(feature = "kindle", allow(unused_mut))]
     let mut hooks = Hooks::default();
@@ -1192,6 +1296,23 @@ pub fn worker_run(_l: &Limits) -> i32 {
                     return 1;
                 };
                 TEST_SLOW.set(Some(TestSlow { kind, glyph: n as u32, us: us as u64 }));
+            }
+            // (Files' preview, 2.2: the face opened, the sample's glyphs walked under the glyph limit, the sample
+            // drawn; no walk of the font, no verdict)
+            ["T", len, w, h, glyph_us] => {
+                let (Some(len), Some(w), Some(h), Some(glyph_us)) = (number(len), number(w), number(h), number(glyph_us)) else {
+                    say("E protocol\n");
+                    return 1;
+                };
+                if len == 0 || len > FONT_FILE_MAX || !(8..=SAMPLE_W_MAX).contains(&w) || !(8..=SAMPLE_H_MAX).contains(&h) || glyph_us == 0 {
+                    say("E protocol\n");
+                    return 1;
+                }
+                let Some(data) = read_bytes_fd(FD_IN, len) else {
+                    return 1;
+                };
+                run_hooks(&hooks, 0);
+                sample_one(&Rc::new(data), w as i32, h as i32, glyph_us as u64);
             }
             #[cfg(not(feature = "kindle"))]
             ["H", hook, n] => {
@@ -1312,6 +1433,11 @@ enum Hello {
 }
 
 fn start_worker(len: usize) -> Hello {
+    start_worker_until(len, u64::MAX)
+}
+
+/// `start_worker`, its handshake waited for no longer than `until` (mono_ms): a preview's worker (font_sample).
+fn start_worker_until(len: usize, until: u64) -> Hello {
     if session_broken() {
         return Hello::No("an earlier worker's sandbox step failed");
     }
@@ -1326,7 +1452,7 @@ fn start_worker(len: usize) -> Hello {
         }
         Err(SpawnErr::Start) => return Hello::No("the worker did not start"),
     };
-    let deadline = mono_ms() + 15_000;
+    let deadline = (mono_ms() + 15_000).min(until);
     let hello = (|| {
         let line = w.read_line(512, deadline).ok()?;
         if line != format!("B {}", build_id()).as_bytes() {
@@ -1644,6 +1770,110 @@ pub fn check_font(data: &[u8], px: i32) -> FontOut {
         if spent >= job_ms {
             return FontOut::Slow;
         }
+    }
+}
+
+/// A font's sample for Files' preview (2.2, issue #145), w x h gray pixels, by one sandboxed worker (`T`): the face
+/// opened as the check opens it, the sample's glyphs each held to the check's glyph limit (`glyph_limit_us`),
+/// SAMPLE_LINES drawn in it. One worker, the font worker's limits, its watchdog on each record, and none of it
+/// (the handshake too) waited for past `until` (mono_ms: the preview's own time). Err says why not, as the check's
+/// outcomes do: `Refused` (the font is at fault), `Slow` (the watchdog or the time ran out), `SlowGlyphs` (a glyph
+/// of the sample is over the glyph limit), `Dead` (the worker ended or lied), `Retry` (no memory), `NoWorker`
+/// (none can be had: not the font's fault). A sample is no check: nothing here reads or writes a verdict, and no
+/// outcome of it is `Passed`.
+pub fn font_sample(data: &[u8], w: i32, h: i32, until: u64) -> Result<Vec<u8>, FontOut> {
+    if data.is_empty() || data.len() > FONT_FILE_MAX || !(8..=SAMPLE_W_MAX as i32).contains(&w) || !(8..=SAMPLE_H_MAX as i32).contains(&h) {
+        return Err(FontOut::Refused(Refuse::Unreadable));
+    }
+    let mut wk = match start_worker_until(data.len(), until) {
+        Hello::Ready(w) => w,
+        Hello::No(why) => return Err(FontOut::NoWorker(why)),
+    };
+    let wait = || (mono_ms() + watchdog_ms()).min(until);
+    let deadline = wait();
+    if !(wk.send(&format!("T {} {w} {h} {}\n", data.len(), glyph_limit_us())) && wk.send_bytes(data, deadline)) {
+        let stalled = mono_ms() >= deadline;
+        wk.kill_and_reap();
+        return Err(if stalled { FontOut::Slow } else { FontOut::Dead("the worker ended") });
+    }
+    let line = match wk.read_line(64, wait()) {
+        Ok(l) => l,
+        Err(ReadErr::Timeout) => {
+            wk.kill_and_reap();
+            return Err(FontOut::Slow);
+        }
+        Err(_) => {
+            let st = wk.kill_and_reap();
+            let cpu = libc::WIFSIGNALED(st) && libc::WTERMSIG(st) == libc::SIGXCPU;
+            return Err(if cpu { FontOut::Slow } else { FontOut::Dead("the worker ended") });
+        }
+    };
+    let s = String::from_utf8_lossy(&line).into_owned();
+    let t: Vec<&str> = s.split(' ').collect();
+    let broke = |wk: &mut Worker| {
+        wk.kill_and_reap();
+        Err(FontOut::Dead("the worker broke the protocol"))
+    };
+    if !line.iter().all(|&c| (0x20..0x7f).contains(&c)) {
+        return broke(&mut wk);
+    }
+    match t.as_slice() {
+        ["P", pw, ph] if number(pw) == Some(w as usize) && number(ph) == Some(h as usize) => {
+            let mut px: Vec<u8> = Vec::new();
+            if px.try_reserve_exact(w as usize * h as usize).is_err() {
+                wk.kill_and_reap();
+                return Err(FontOut::Retry("out of memory"));
+            }
+            px.resize(w as usize * h as usize, 0);
+            match wk.read_exact(&mut px, wait()) {
+                Ok(()) => {}
+                Err(ReadErr::Timeout) => {
+                    wk.kill_and_reap();
+                    return Err(FontOut::Slow);
+                }
+                Err(_) => {
+                    wk.kill_and_reap();
+                    return Err(FontOut::Dead("the worker ended while it sent the sample"));
+                }
+            }
+            let done = wk.read_line(64, wait()).ok().map(|l| String::from_utf8_lossy(&l).into_owned());
+            let fine = done.as_deref().and_then(|d| d.strip_prefix("D ")).and_then(number).is_some();
+            wk.send("Q\n");
+            wk.finish(500);
+            if fine {
+                Ok(px)
+            } else {
+                Err(FontOut::Dead("the worker broke the protocol"))
+            }
+        }
+        ["E", "bad", n] => {
+            let why = match number(n) {
+                Some(0) => Refuse::Unreadable,
+                Some(1) => Refuse::NoLatin,
+                Some(2) => Refuse::Format,
+                _ => return broke(&mut wk),
+            };
+            wk.send("Q\n");
+            wk.finish(500);
+            Err(FontOut::Refused(why))
+        }
+        ["E", "slow", g, us] => {
+            let (Some(_), Some(us)) = (number(g).filter(|&g| g <= 65_535), number(us)) else { return broke(&mut wk) };
+            wk.send("Q\n");
+            wk.finish(500);
+            Err(FontOut::SlowGlyphs { letter: true, slow: 1, slowest_us: us as u64 })
+        }
+        ["E", "mem"] => {
+            wk.kill_and_reap();
+            Err(FontOut::Retry("out of memory"))
+        }
+        ["E", "sigsys", n] => {
+            let n = number(n).map_or(-1, |n| n as i32);
+            wk.kill_and_reap();
+            qlog!("work: a font's worker made call %d, which the sandbox does not allow", n);
+            Err(FontOut::Dead("the worker made a call the sandbox does not allow"))
+        }
+        _ => broke(&mut wk),
     }
 }
 

@@ -121,13 +121,13 @@ const TMP_STALE_SECS: i64 = 3600;
 
 /// The job's path: the source as listed ("<dev>.<ino>.<size>.<mtime>:") and its storage path, None when the path
 /// is not text or the whole would not fit the job's 600 bytes.
-fn job_path(src: &StoragePath, listed: &FsStat) -> Option<String> {
+pub(crate) fn job_path(src: &StoragePath, listed: &FsStat) -> Option<String> {
     let s = std::str::from_utf8(src.as_bytes()).ok()?;
     let p = format!("{}.{}.{}.{}:{}", listed.dev, listed.ino, listed.size, listed.mtime, s);
     (p.len() < FS_PATH_MAX).then_some(p)
 }
 
-fn job_parse(path: &str) -> Option<(FsStat, StoragePath)> {
+pub(crate) fn job_parse(path: &str) -> Option<(FsStat, StoragePath)> {
     let (head, src) = path.split_once(':')?;
     let f: Vec<&str> = head.split('.').collect();
     let [dev, ino, size, mtime] = f[..] else { return None };
@@ -160,7 +160,7 @@ fn seam(set: &std::sync::atomic::AtomicU64, var: &str) -> Option<u64> {
     std::env::var(var).ok().and_then(|v| v.parse::<u64>().ok())
 }
 
-fn free_bytes(st: &FsStorage) -> Option<u64> {
+pub(crate) fn free_bytes(st: &FsStorage) -> Option<u64> {
     #[cfg(any(test, feature = "sim"))]
     if let Some(f) = seam(&SEAM_FREE, "GRIMOIRE_COPY_FREE_BYTES") {
         return Some(f);
