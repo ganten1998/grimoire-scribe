@@ -110,12 +110,16 @@ A platform whose target gives its system another name than Linux, but which runs
 `linux-kernel` as well. The worker's steps are built for `target_os = "linux"` only, so without it such a
 worker has plain process isolation. With it the worker holds the steps that need no root (oom_score_adj, no
 new privileges, the parent-death signal, the limits, the allow-list) as a required sandbox holds its steps,
-and says `S 2` in its handshake, which only a build with the feature takes; it leaves out the ones that need
-root (namespaces, chroot, uid) unless the writer requires the whole sandbox (`GRIMOIRE_SANDBOX=require`, as
-root), which makes the jail and takes `S 1` as on Linux. Two things differ there from the Kindle's worker: the
-address-space limit starts from the address space the worker holds when that is larger than the image the
-limit assumes (an allocator may reserve gigabytes when a program starts, `as_limit`), and prctl answers
-ENOSYS (an allocator that names its regions with prctl goes on without the names, `LINUX_KERNEL_ENOSYS`).
+and says `S 2` in its handshake, which only a build with the feature takes, and only where the whole sandbox
+is not required; it leaves out the ones that need root (namespaces, chroot, uid) unless the writer requires
+the whole sandbox (`GRIMOIRE_SANDBOX=require`, as root), which makes the jail and takes only `S 1`, as on
+Linux. (That configuration has not been run on such a device: the device run was without root.) Two things
+differ there from the Kindle's worker: the address-space limit starts from the address space the worker held
+before its first step when that is larger than the image the limit assumes (an allocator may reserve gigabytes
+when a program starts, `as_limit`; memory it hands out from those reserved regions is not counted by the limit),
+and prctl answers ENOSYS (an allocator that names its regions with prctl goes on without the names,
+`LINUX_KERNEL_ENOSYS`). build.rs refuses the feature for a target whose triple does not name linux, and for an
+architecture sandbox.rs has no system-call table for.
 Where no worker can be had, its writer never parses untrusted bytes itself: pictures wait, as on the Kindle
 (`writer_never_parses`). grimoire.log says `work: sandboxed without root (...)`.
 

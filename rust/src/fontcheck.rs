@@ -28,7 +28,7 @@
 //!   `Q`                                 end
 //!
 //! Records (worker to writer, text lines of a fixed grammar; numbers are decimal, without sign):
-//!   `B <version> <protocol>`, `S <0|1>`   the handshake, as every worker's
+//!   `B <version> <protocol>`, `S <0|1|2>` the handshake, as every worker's
 //!   `F face <upem> <ascent> <descent> <scale> <weight> <italic> <mapped>`   (descent as a magnitude; scale in
 //!                                       thousandths)
 //!   `F wght <min> <default> <max> <bold at>`   only for a font with a weight axis

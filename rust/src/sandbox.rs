@@ -28,8 +28,9 @@
 //! kernel, builds the steps with the `linux-kernel` feature (PORTING.md). Its worker always holds the steps that need
 //! no root (oom_score_adj, no new privileges, the parent-death signal, the limits, the allow-list), as a required
 //! sandbox holds its steps, and leaves out the ones that need root (namespaces, chroot, uid) unless its writer
-//! requires the whole sandbox and makes the jail. Its handshake then says `S 2`, never `S 1`: `S 1` stays "every step
-//! of the sandbox held", and only a build with the feature takes `S 2`.
+//! requires the whole sandbox and makes the jail. Its handshake then says `S 2`, never `S 1`: `S 1` stays the word of
+//! the whole set of steps, and only a build with the feature takes `S 2`, and only where its writer does not require
+//! the whole sandbox (where it does, the writers take only `S 1`, as everywhere).
 
 use crate::prelude::*;
 use std::ffi::CString;
@@ -286,7 +287,8 @@ pub fn allow_list() -> Vec<u32> {
     allow_list_for(this_arch())
 }
 
-/// "The time64 calls musl tries first answer ENOSYS" (the 32-bit ARM only).
+/// The calls that answer ENOSYS in place of a trap: the architecture's own (the time64 calls musl tries first on the
+/// 32-bit ARM, and gettid), and in a build with the `linux-kernel` feature prctl as well (`LINUX_KERNEL_ENOSYS`).
 pub fn enosys_calls() -> Vec<u32> {
     let mut v = this_arch().enosys.to_vec();
     if LINUX_KERNEL {
@@ -478,8 +480,8 @@ pub fn takes_no_root_steps(linux_kernel: bool, jail_given: bool) -> bool {
     linux_kernel && !jail_given
 }
 
-/// The handshake's sandbox word: 1 every step of the sandbox held, 2 the steps that need no root held (a build with the
-/// `linux-kernel` feature, without a jail), 0 a build without the steps.
+/// The handshake's sandbox word: 1 the whole set of steps (each held where the sandbox is required), 2 the steps that
+/// need no root, each held (a build with the `linux-kernel` feature, without a jail), 0 a build without the steps.
 pub fn sandbox_word(sandboxed: bool, no_root: bool) -> i32 {
     if !sandboxed {
         0
@@ -538,9 +540,16 @@ pub fn sandbox_line_ok(sandboxed: bool) -> bool {
     sandbox_line_ok_for(sandboxed, sandbox_required() || LINUX_KERNEL)
 }
 
-/// Whether this build's writers take a worker's `S 2`: only with the `linux-kernel` feature.
+/// Whether this build's writers take a worker's `S 2`: only with the `linux-kernel` feature, and only where the whole
+/// sandbox is not required (where it is, the writers take only `S 1`: DESIGN.md 3.7).
 pub fn sandbox_line_two_ok() -> bool {
-    LINUX_KERNEL
+    // (in this order: without the feature nothing else is asked, and the writers' code is what it was)
+    LINUX_KERNEL && !sandbox_required()
+}
+
+/// The rule itself.
+pub fn sandbox_line_two_ok_for(linux_kernel: bool, required: bool) -> bool {
+    linux_kernel && !required
 }
 
 /// The filter's report as a worker's line, read strictly: `E sigsys ` followed by the call's number in one to
@@ -587,6 +596,13 @@ pub struct Limits {
 /// build with the `linux-kernel` feature measures; everywhere else this is `as_bytes`.
 pub fn as_limit(as_bytes: u64, held: u64) -> u64 {
     as_bytes + held.saturating_sub(s1::WORKER_IMAGE)
+}
+
+/// `as_limit` as a limit of `max` (the largest value the target's limits hold) takes it: a target whose limits are 32
+/// bits wide caps the sum there. Only a build with the `linux-kernel` feature caps; elsewhere the figure never comes
+/// near.
+pub fn as_capped(as_bytes: u64, held: u64, max: u64) -> u64 {
+    as_limit(as_bytes, held).min(max)
 }
 
 /// The worker's address space for a file of `file_len` bytes (4.3): its image, the file, and the margin.
@@ -726,15 +742,16 @@ mod linux {
         // A build with the `linux-kernel` feature: the address space the worker holds already takes the place of
         // the image the limit assumes, when it is larger. Its C library's allocator may reserve gigabytes of
         // address space at the start, before any step, and a limit under what is held already lets no mapping be
-        // made and no stack grow (`as_limit`). Read now, while a file can still be opened.
-        let held = if LINUX_KERNEL { address_space_held() } else { 0 };
+        // made and no stack grow (`as_limit`). Measured before the first step (`standard_steps`): after a chroot
+        // /proc/self cannot be read.
+        let held = if LINUX_KERNEL { HELD.load(std::sync::atomic::Ordering::Relaxed) } else { 0 };
         // SAFETY: signal() with SIG_IGN, so a write past FSIZE 0 is an error and not a signal.
         unsafe { libc::signal(libc::SIGXFSZ, libc::SIG_IGN) };
         set_limit!(libc::RLIMIT_NOFILE, 0, 0);
         set_limit!(libc::RLIMIT_NPROC, 0, 0);
         set_limit!(libc::RLIMIT_FSIZE, 0, 0);
         set_limit!(libc::RLIMIT_CORE, 0, 0);
-        set_limit!(libc::RLIMIT_AS, as_limit(l.as_bytes, held), as_limit(l.as_bytes, held));
+        set_limit!(libc::RLIMIT_AS, as_set(l.as_bytes, held), as_set(l.as_bytes, held));
         set_limit!(libc::RLIMIT_CPU, l.cpu_secs, l.cpu_secs + 5);
         // SAFETY: dup, socket and open only take plain arguments; none may succeed.
         let (d, s, o) = unsafe {
@@ -743,8 +760,22 @@ mod linux {
         if d >= 0 || s >= 0 || o >= 0 {
             return Err(libc::EMFILE ^ 0x4000);
         }
-        Ok(format!("NOFILE 0, NPROC 0, FSIZE 0, CORE 0, AS {} MiB, CPU {} s", as_limit(l.as_bytes, held) >> 20, l.cpu_secs))
+        Ok(format!("NOFILE 0, NPROC 0, FSIZE 0, CORE 0, AS {} MiB, CPU {} s", as_set(l.as_bytes, held) >> 20, l.cpu_secs))
     }
+
+    /// The address-space limit the rlimits step sets: `as_limit`, and in a build with the `linux-kernel` feature
+    /// capped at what this target's limits hold (`as_capped`).
+    fn as_set(as_bytes: u64, held: u64) -> u64 {
+        if LINUX_KERNEL {
+            as_capped(as_bytes, held, libc::rlim_t::MAX as u64)
+        } else {
+            as_limit(as_bytes, held)
+        }
+    }
+
+    /// The address space the worker held before its first step (a build with the `linux-kernel` feature only:
+    /// `standard_steps` measures it, the rlimits step reads it).
+    pub static HELD: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 
     /// The address space this process holds (bytes), from /proc/self/statm; 0 when it cannot be read.
     pub fn address_space_held() -> u64 {
@@ -881,6 +912,11 @@ mod linux {
 #[cfg(any(target_os = "linux", feature = "linux-kernel"))]
 pub fn standard_steps<'a>(a: &'a WorkArgs) -> Vec<Step<'a>> {
     use linux::*;
+    if LINUX_KERNEL {
+        // (before any step: the rlimits step's address-space limit starts from it, and after a chroot /proc/self
+        // cannot be read)
+        HELD.store(address_space_held(), std::sync::atomic::Ordering::Relaxed);
+    }
     let mut v: Vec<Step> = vec![Step { name: "oom", run: Box::new(|| oom_score_adj(1000)) }];
     if !takes_no_root_steps(LINUX_KERNEL, a.jail.is_some()) {
         v.push(Step { name: "namespaces", run: Box::new(unshare_net_ipc) });
@@ -1631,9 +1667,13 @@ mod tests {
                 assert_eq!(eval_filter(&with, n.audit_arch, nr), SECCOMP_RET_TRAP, "{nr}");
             }
         }
-        // (this build has no such feature: its list is the architecture's own)
-        assert_eq!(enosys_calls(), this_arch().enosys.to_vec());
-        #[cfg(target_os = "linux")]
+        // (this build's list: the architecture's own, and prctl with the feature)
+        let mut want = this_arch().enosys.to_vec();
+        if LINUX_KERNEL {
+            want.extend(linux_kernel_enosys(this_arch()));
+        }
+        assert_eq!(enosys_calls(), want);
+        #[cfg(any(target_os = "linux", feature = "linux-kernel"))]
         assert_eq!(libc::SYS_prctl as u32, linux_kernel_enosys(this_arch())[0]);
     }
 
@@ -1754,10 +1794,9 @@ mod tests {
         assert!(!sandbox_line_ok_for(false, true));
     }
 
-    // A build with the `linux-kernel` feature: its worker takes only the steps that need no root when its writer made
-    // no jail, and says `S 2` for them; `S 1` stays "every step held", and every other build says what it said.
     // The address-space limit: the writer's, and with what a worker holds already in place of the image when that
-    // is larger (a build with the `linux-kernel` feature measures it; no other build does).
+    // is larger (a build with the `linux-kernel` feature measures it; no other build does). Capped where a target's
+    // limits are 32 bits wide.
     #[test]
     fn the_address_space_limit_starts_from_what_is_held_when_that_is_larger() {
         let a = worker_as_bytes(1 << 20, false);
@@ -1765,21 +1804,32 @@ mod tests {
         assert_eq!(as_limit(a, s1::WORKER_IMAGE - 4096), a, "less than the image");
         assert_eq!(as_limit(a, s1::WORKER_IMAGE), a);
         assert_eq!(as_limit(a, 8 << 30), a - s1::WORKER_IMAGE + (8 << 30), "an allocator's reserve of 8 GiB");
+        assert_eq!(as_capped(a, 8 << 30, u32::MAX as u64), u32::MAX as u64, "32-bit limits");
+        assert_eq!(as_capped(a, 8 << 30, u64::MAX), as_limit(a, 8 << 30));
+        assert_eq!(as_capped(a, 0, u32::MAX as u64), a);
     }
 
+    // A build with the `linux-kernel` feature: its worker takes only the steps that need no root when its writer made
+    // no jail, and says `S 2` for them; `S 1` stays the word of the whole set of steps, and every other build says
+    // what it said.
     #[test]
     fn the_steps_that_need_no_root_have_a_word_of_their_own() {
         assert!(takes_no_root_steps(true, false));
         assert!(!takes_no_root_steps(true, true), "a writer that made a jail requires the whole sandbox");
         assert!(!takes_no_root_steps(false, false) && !takes_no_root_steps(false, true));
         assert_eq!((sandbox_word(true, false), sandbox_word(true, true), sandbox_word(false, false), sandbox_word(false, true)), (1, 2, 0, 0));
-        // this build (the tests' own: no such feature) neither takes `S 2` nor loosens what it takes of `S 0`
-        assert!(!LINUX_KERNEL && !sandbox_line_two_ok());
-        assert_eq!(sandbox_line_ok(false), !sandbox_required());
+        // `S 2` is taken only by a build with the feature, and only where the whole sandbox is not required
+        assert!(sandbox_line_two_ok_for(true, false));
+        assert!(!sandbox_line_two_ok_for(true, true), "where the whole sandbox is required the writers take only `S 1`");
+        assert!(!sandbox_line_two_ok_for(false, false) && !sandbox_line_two_ok_for(false, true));
+        // this build, whatever it is: a build without the feature neither takes `S 2` nor loosens what it takes of
+        // `S 0`; a build with it never takes `S 0`
+        assert_eq!(sandbox_line_two_ok(), sandbox_line_two_ok_for(LINUX_KERNEL, sandbox_required()));
+        assert_eq!(sandbox_line_ok(false), !sandbox_required() && !LINUX_KERNEL);
         // and a writer of a build with the feature never parses untrusted bytes itself, required or not
         assert!(writer_never_parses_for(false, true) && writer_never_parses_for(true, false) && writer_never_parses_for(true, true));
         assert!(!writer_never_parses_for(false, false));
-        assert_eq!(writer_never_parses(), sandbox_required());
+        assert_eq!(writer_never_parses(), sandbox_required() || LINUX_KERNEL);
     }
 
     #[test]
