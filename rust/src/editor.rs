@@ -5220,10 +5220,10 @@ fn qs_key(a: &mut App) {
 
 // size-smaller and size-larger: the pen in use goes to its next quick size down or up (quicksize_step), set as a tap
 // on that chip of its card sets it (quicksize_apply: a setting, no history step, settings.ini written a pass later),
-// and a short toast says the size as the card writes it: the one confirmation toast (the owner, 2026-11-15), as
-// nothing else on the screen shows the size. At the smallest or the largest the size stays and the toast still says
-// it; a step while it shows takes its place. With Select mode on the pen draws a lasso, which has no size: nothing,
-// and no toast.
+// and a short toast says the size as the card writes it (the owner, 2026-11-15), as the light keys' toasts say the
+// level ("Light %d of %d") and the eraser mode's its mode ("Eraser: %s"), since nothing else on the screen shows the
+// size. At the smallest or the largest the size stays and the toast still says it; a step while it shows takes its
+// place. With Select mode on the pen draws a lasso, which has no size: nothing, and no toast.
 fn size_step(a: &mut App, larger: bool) {
     if ed_ref(a).sel.state != SelState::Off {
         return;

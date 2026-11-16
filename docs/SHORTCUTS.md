@@ -271,12 +271,13 @@ pen), another goes to the tool button. The starter mappings give them no key or 
 smaller or larger of its five quick sizes, the chips of the card a pen held on the toolbar opens, as a tap on that
 chip would: a setting (no undo step), written to settings.ini a moment later. A width tuned in Pen feel between two
 chips goes to the one of the two that way. Each step says the size in a short toast ("Size: 0.5 mm", 1.2 s; a step
-while it shows takes its place), the one confirmation toast, as nothing else on the screen shows the size. At the
-smallest or the largest the size stays and the toast still says it. With Select mode on (the lasso has no size) they
-do nothing. `quick-size` opens that card from a key or a gesture, beside the pen in use's button on the toolbar, or
-beside the folded toolbar; pressed again it closes the card, as a menu's button does, and a size key with the card
-up is a pick (the card closes). The starter map gives `quick-size` no key, and no gesture is built in for the three.
-Versions before 2.2 refuse the three names, one line each, as Reload shortcuts.ini counts them.
+while it shows takes its place), as the light keys' toasts say the level ("Light 12 of 24"), since nothing else on
+the screen shows the size. At the smallest or the largest the size stays and the toast still says it. With Select
+mode on (the lasso has no size) they do nothing. `quick-size` opens that card from a key or a gesture, beside the
+pen in use's button on the toolbar, or beside the folded toolbar; pressed again it closes the card, as a menu's
+button does, and a size key with the card up is a pick (the card closes). The starter map gives `quick-size` no
+key, and no gesture is built in for the three. Versions before 2.2 refuse the three names, one line each, as Reload
+shortcuts.ini counts them.
 
 `add-link` starts a link on the open page in one press, as the Index's Add a link does, without
 going through the Pages view: a strip along the bottom asks you to draw around what links, the next
