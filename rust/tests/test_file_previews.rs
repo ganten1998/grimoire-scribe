@@ -14,7 +14,10 @@ use grimoire::fsview::*;
 use grimoire::prelude::*;
 use testlib::*;
 
-const HOOKS: [&str; 9] = [
+const HOOKS: [&str; 12] = [
+    "GRIMOIRE_STATE",
+    "GRIMOIRE_FONT_GLYPH_US",
+    "GRIMOIRE_FONT_TEST_SLOW",
     "GRIMOIRE_PIC_TEST_HANG",
     "GRIMOIRE_PIC_WATCHDOG_MS",
     "GRIMOIRE_FONT_TEST_HANG",
@@ -241,6 +244,53 @@ fn a_cache_entry_that_does_not_read_is_made_again() {
     check!(preview_of(p, &s).is_some());
 }
 
+// A font's preview is no check of the font (#111): a font in grimoire/fonts, previewed, has no verdict, no entry in
+// the fonts' own cache and no mark there: the folder where verdicts are kept stays empty, and grimoire/fonts holds
+// the font file alone, so the font still waits for its check and nothing draws text with it. A font whose sample's
+// letter is over the check's glyph limit has no preview (marked as taking too long), and no verdict either.
+fn a_fonts_preview_is_no_verdict() {
+    clean_env();
+    let (root, g) = tree();
+    let state = format!("{}/fp-state", tl_tmp());
+    let _ = std::fs::remove_dir_all(&state);
+    std::fs::create_dir_all(&state).unwrap();
+    std::env::set_var("GRIMOIRE_STATE", &state);
+    std::fs::create_dir_all(format!("{g}/fonts")).unwrap();
+    let font = fontfix::test_font("Regular", 400);
+    std::fs::write(format!("{g}/fonts/Mine.ttf"), fontfix::ttf(&font)).unwrap();
+    let p = "grimoire/fonts/Mine.ttf";
+    let s = listed(&root, &g, p);
+    check!(bg_file_preview(&arg(&s, p)) == 0);
+    check!(preview_of(p, &s).is_some_and(|c| dark(&c) > 50));
+    let files_under = |d: &str| -> Vec<String> {
+        fn walk(d: &std::path::Path, out: &mut Vec<String>) {
+            for e in std::fs::read_dir(d).into_iter().flatten().flatten() {
+                if e.path().is_dir() {
+                    walk(&e.path(), out);
+                } else {
+                    out.push(e.path().to_string_lossy().into_owned());
+                }
+            }
+        }
+        let mut v = Vec::new();
+        walk(std::path::Path::new(d), &mut v);
+        v
+    };
+    // nothing where verdicts are kept, nothing in the fonts' own cache: only the font itself under fonts/
+    check!(files_under(&state).is_empty());
+    check!(files_under(&format!("{g}/fonts")) == vec![format!("{g}/fonts/Mine.ttf")]);
+    // a letter of the sample over the glyph limit: no preview, marked as taking too long, and still no verdict
+    std::fs::write(format!("{g}/fonts/Slow.ttf"), fontfix::ttf(&fontfix::test_font("Bold", 700))).unwrap();
+    let slow = "grimoire/fonts/Slow.ttf";
+    let s2 = listed(&root, &g, slow);
+    std::env::set_var("GRIMOIRE_FONT_GLYPH_US", "1000");
+    std::env::set_var("GRIMOIRE_FONT_TEST_SLOW", "from:0:5000");
+    check!(bg_file_preview(&arg(&s2, slow)) == 0);
+    check!(preview_info(&sp(slow), &s2).is_some_and(|i| i.made == Err(NoPreview::Slow)));
+    check!(files_under(&state).is_empty());
+    clean_env();
+}
+
 // The prune, through the job: past its limits (made small here) the oldest previews go, each with all of its files,
 // down to three quarters; the one just made stays. Deleting the cache loses nothing: the next job makes it again.
 fn the_cache_is_pruned_oldest_first() {
@@ -335,6 +385,7 @@ fn test_file_previews() {
     run!(a_file_that_takes_too_long_is_marked);
     run!(a_changed_file_makes_a_new_preview);
     run!(a_cache_entry_that_does_not_read_is_made_again);
+    run!(a_fonts_preview_is_no_verdict);
     run!(the_cache_is_pruned_oldest_first);
     run!(the_request_queues_a_job_a_child_runs);
     run!(no_worker_writes_nothing);

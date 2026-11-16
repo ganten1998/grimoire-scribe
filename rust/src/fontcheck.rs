@@ -21,11 +21,13 @@
 //!                                       preview's size; `scale` is 0 for the first slice, which settles the
 //!                                       font's scale, and that scale for the slices after it; `glyph us` is
 //!                                       the CPU time one glyph's draw may take, in microseconds
-//!   `T <len> <w> <h>`                   Files' preview of the font (2.2): the face opened, a fixed sample drawn
-//!                                       in it on a w x h picture (no glyph walk); answered `P <w> <h>` with
-//!                                       the pixels, then `D`, or an `E` record
+//!   `T <len> <w> <h> <glyph us>`        Files' preview of the font (2.2): the face opened, the sample's glyphs
+//!                                       walked as the check walks a glyph (each draw held to `glyph us`), then
+//!                                       the fixed sample drawn in it on a w x h picture; answered `P <w> <h>`
+//!                                       with the pixels, then `D <cpu ms>`, or an `E` record. No verdict comes
+//!                                       of it: a sample says nothing of the check
 //!   `H <hook> <n>`                      a test hook (headless and test builds only: `crash`, `hang`, `trap` at
-//!                                       glyph index n; at 0, the sample's)
+//!                                       glyph index n; at 0, the sample's too)
 //!   `H <hook> <n> <us>`                 the test charge (the same builds: `slow`, `slowonce`, `slowbold`,
 //!                                       `slowfrom`: glyph n's draw is counted `us` microseconds dearer)
 //!   `Q`                                 end
@@ -1202,25 +1204,56 @@ fn check_one(data: &Rc<Vec<u8>>, start: usize, px: f32, slice_ms: u64, scale_pm:
 const SAMPLE_W_MAX: usize = 600;
 const SAMPLE_H_MAX: usize = 800;
 
-/// One font's sample (`T`): the records it sends.
-fn sample_one(data: &[u8], w: i32, h: i32) {
+/// One font's sample (`T`): the records it sends. Before a glyph of the sample is drawn it goes through the
+/// check's own walk (`glyph_walk`: the regular face the UI would make, the caps, its draw timed at the largest
+/// size against `limit_us`), so a sample is held to the glyph limit a check is: a glyph over it ends the sample
+/// (`E slow`), one that does not draw is left out of the picture. Nothing here is a check: no `F` record is
+/// sent, and the writer makes no verdict of a sample.
+fn sample_one(data: &Rc<Vec<u8>>, w: i32, h: i32, limit_us: u64) {
     let t0 = cpu_ms();
     let Some(mut out) = Outliner::new() else {
         say("E mem\n");
         return;
     };
-    let o = match open_face(data, &mut out, 1000) {
+    let mut o = match open_face(data, &mut out, 1000) {
         Ok(o) => o,
         Err(why) => {
             say(&format!("E bad {}\n", why as i32));
             return;
         }
     };
+    let Some(regular) = SafeFace::new(data.clone(), Rc::new(o.facts.clone()), false) else {
+        say("E bad 0\n");
+        return;
+    };
+    let cmap = o.font.charmap();
+    let mut walked: Vec<u32> = Vec::new();
+    let mut sums = Sums::default();
+    for ch in SAMPLE_LINES.iter().flat_map(|(text, _)| text.chars()) {
+        let Some(g) = cmap.map(ch as u32).map(|g| g.to_u32()).filter(|&g| g != 0 && bit(&o.mapped, g)) else { continue };
+        if walked.contains(&g) {
+            continue;
+        }
+        walked.push(g);
+        match glyph_walk(&o, std::slice::from_ref(&regular), &mut out, g, limit_us, &mut sums) {
+            Walked::Fine => {}
+            Walked::Slow(us) => {
+                say(&format!("E slow {g} {}\n", us.min(RECORD_MAX)));
+                return;
+            }
+            // (it does not draw: not in the sample, as the UI would not draw it)
+            Walked::Broken => {
+                if let Some(word) = o.mapped.get_mut((g / 64) as usize) {
+                    *word &= !(1 << (g % 64));
+                }
+            }
+        }
+    }
     match sample(&o, &mut out, w, h) {
         Some(pixels) => {
             say(&format!("P {w} {h}\n"));
             write_all(FD_OUT, &pixels);
-            say(&format!("D {}\n", cpu_ms().saturating_sub(t0)));
+            say(&format!("D {}\n", cpu_ms().saturating_sub(t0).min(RECORD_MAX)));
         }
         None => say("E mem\n"),
     }
@@ -1264,13 +1297,14 @@ pub fn worker_run(_l: &Limits) -> i32 {
                 };
                 TEST_SLOW.set(Some(TestSlow { kind, glyph: n as u32, us: us as u64 }));
             }
-            // (Files' preview, 2.2: the face opened, the sample drawn, no glyph walk)
-            ["T", len, w, h] => {
-                let (Some(len), Some(w), Some(h)) = (number(len), number(w), number(h)) else {
+            // (Files' preview, 2.2: the face opened, the sample's glyphs walked under the glyph limit, the sample
+            // drawn; no walk of the font, no verdict)
+            ["T", len, w, h, glyph_us] => {
+                let (Some(len), Some(w), Some(h), Some(glyph_us)) = (number(len), number(w), number(h), number(glyph_us)) else {
                     say("E protocol\n");
                     return 1;
                 };
-                if len == 0 || len > FONT_FILE_MAX || !(8..=SAMPLE_W_MAX).contains(&w) || !(8..=SAMPLE_H_MAX).contains(&h) {
+                if len == 0 || len > FONT_FILE_MAX || !(8..=SAMPLE_W_MAX).contains(&w) || !(8..=SAMPLE_H_MAX).contains(&h) || glyph_us == 0 {
                     say("E protocol\n");
                     return 1;
                 }
@@ -1278,7 +1312,7 @@ pub fn worker_run(_l: &Limits) -> i32 {
                     return 1;
                 };
                 run_hooks(&hooks, 0);
-                sample_one(&data, w as i32, h as i32);
+                sample_one(&Rc::new(data), w as i32, h as i32, glyph_us as u64);
             }
             #[cfg(not(feature = "kindle"))]
             ["H", hook, n] => {
@@ -1735,9 +1769,12 @@ pub fn check_font(data: &[u8], px: i32) -> FontOut {
 }
 
 /// A font's sample for Files' preview (2.2, issue #145), w x h gray pixels, by one sandboxed worker (`T`): the face
-/// opened as the check opens it, SAMPLE_LINES drawn in it. One worker, the font worker's limits, its watchdog on each
-/// record. Err says why not, as the check's outcomes do: `Refused` (the font is at fault), `Slow` (the watchdog ran
-/// out), `Dead` (the worker ended or lied), `Retry` (no memory), `NoWorker` (none can be had: not the font's fault).
+/// opened as the check opens it, the sample's glyphs each held to the check's glyph limit (`glyph_limit_us`),
+/// SAMPLE_LINES drawn in it. One worker, the font worker's limits, its watchdog on each record. Err says why not,
+/// as the check's outcomes do: `Refused` (the font is at fault), `Slow` (the watchdog ran out), `SlowGlyphs` (a
+/// glyph of the sample is over the glyph limit), `Dead` (the worker ended or lied), `Retry` (no memory),
+/// `NoWorker` (none can be had: not the font's fault). A sample is no check: nothing here reads or writes a
+/// verdict, and no outcome of it is `Passed`.
 pub fn font_sample(data: &[u8], w: i32, h: i32) -> Result<Vec<u8>, FontOut> {
     if data.is_empty() || data.len() > FONT_FILE_MAX || !(8..=SAMPLE_W_MAX as i32).contains(&w) || !(8..=SAMPLE_H_MAX as i32).contains(&h) {
         return Err(FontOut::Refused(Refuse::Unreadable));
@@ -1747,7 +1784,7 @@ pub fn font_sample(data: &[u8], w: i32, h: i32) -> Result<Vec<u8>, FontOut> {
         Hello::No(why) => return Err(FontOut::NoWorker(why)),
     };
     let deadline = mono_ms() + watchdog_ms();
-    if !(wk.send(&format!("T {} {w} {h}\n", data.len())) && wk.send_bytes(data, deadline)) {
+    if !(wk.send(&format!("T {} {w} {h} {}\n", data.len(), glyph_limit_us())) && wk.send_bytes(data, deadline)) {
         let stalled = mono_ms() >= deadline;
         wk.kill_and_reap();
         return Err(if stalled { FontOut::Slow } else { FontOut::Dead("the worker ended") });
@@ -1805,6 +1842,12 @@ pub fn font_sample(data: &[u8], w: i32, h: i32) -> Result<Vec<u8>, FontOut> {
             wk.send("Q\n");
             wk.finish(500);
             Err(FontOut::Refused(why))
+        }
+        ["E", "slow", g, us] => {
+            let (Some(_), Some(us)) = (number(g).filter(|&g| g <= 65_535), number(us)) else { return broke(&mut wk) };
+            wk.send("Q\n");
+            wk.finish(500);
+            Err(FontOut::SlowGlyphs { letter: true, slow: 1, slowest_us: us as u64 })
         }
         ["E", "mem"] => {
             wk.kill_and_reap();

@@ -10,7 +10,8 @@
 //! - The job (a background child, `bg_file_preview`): opens the file again through fsview's walk (Files' place mode:
 //!   no link, one device, never the notebooks), checks it is still the file listed, and has one worker make the
 //!   preview, 300 x 400 and gray: a PDF's first page fitted (pdfwork.rs `R`), a picture fitted and turned upright
-//!   (picwork.rs, a pool that never decodes in the writer), a font's fixed sample (fontcheck.rs `T`). Each worker has
+//!   (picwork.rs, a pool that never decodes in the writer), a font's fixed sample (fontcheck.rs `T`, its glyphs held
+//!   to the check's glyph limit; a sample is no check, and no verdict comes of it). Each worker has
 //!   its kind's limits and watchdog, and the writer validates every record, as the import and the font check do. A
 //!   file the worker refuses, takes too long on, or ends on gets a "no preview" mark, kept, so that it is not tried at
 //!   every visit. No worker to be had, no memory, a file changed or gone: nothing is written (the next visit asks).
@@ -441,7 +442,8 @@ fn font_preview(data: &[u8]) -> Result<Canvas, Fail> {
     match font_sample(data, PREVIEW_W, PREVIEW_H) {
         Ok(px) => gray_of(&px, PREVIEW_W, PREVIEW_H, 1),
         Err(FontOut::Refused(_)) => Err(Fail::Mark(NoPreview::Refused)),
-        Err(FontOut::Slow) => Err(Fail::Mark(NoPreview::Slow)),
+        // (the watchdog ran out, or a glyph of the sample is over the check's glyph limit)
+        Err(FontOut::Slow | FontOut::SlowGlyphs { .. }) => Err(Fail::Mark(NoPreview::Slow)),
         Err(FontOut::Dead(_)) => Err(Fail::Mark(NoPreview::Ended)),
         Err(FontOut::NoWorker(_)) => Err(Fail::Later("no sandboxed worker can be had")),
         Err(_) => Err(Fail::Later("out of memory")),

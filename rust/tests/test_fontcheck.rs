@@ -355,8 +355,8 @@ fn slow_fonts_and_slices() {
 }
 
 // Files' preview of a font (2.2, issue #145): the worker opens the face and draws the fixed sample on a white
-// picture of the size asked for (two lines, "Aa" and "Abc 123", each centred), without the check's walk; the same
-// font gives the same picture, a variable and a CFF one are drawn too. A font the check refuses is refused here the
+// picture of the size asked for (two lines, "Aa" and "Abc 123", each centred), without the check's walk of the whole
+// font; the same font gives the same picture, a variable and a CFF one are drawn too. A font the check refuses is refused here the
 // same way, a WOFF2 by its format; a worker that never answers is the watchdog's (Slow), one that traps or crashes
 // ended (Dead). Sizes outside the protocol's are refused before any worker.
 fn a_fonts_sample_is_drawn_by_the_worker() {
@@ -404,6 +404,49 @@ fn a_fonts_sample_is_drawn_by_the_worker() {
     std::env::set_var("GRIMOIRE_FONT_TEST_HANG", "0");
     check!(matches!(check_font(&good, 44), FontOut::Passed { .. }));
     std::env::remove_var("GRIMOIRE_FONT_TEST_HANG");
+}
+
+// The sample is held to the check's glyph limit (#111): each glyph it draws goes through the check's own walk in
+// the worker first, its draw timed against the limit the writer sends. A letter of the sample over the limit ends
+// the sample as too slow (never as a dead worker, never as a picture); a glyph the sample does not draw is not
+// walked; a draw that is dear and under the limit changes nothing. The worker takes `T` only with its limit.
+fn a_fonts_sample_is_held_to_the_glyph_limit() {
+    use grimoire::sandbox::{mono_ms, WorkKind, Worker};
+    clean_env();
+    let (w, h) = (300, 400);
+    let f = test_font_latin1("Regular", 400);
+    let font = ttf(&f);
+    std::env::set_var("GRIMOIRE_FONT_GLYPH_US", LIMIT_US.to_string());
+    let plain = font_sample(&font, w, h).expect("the sample, nothing charged");
+    // "Aa" and "Abc 123": each of their letters and digits over the limit is a sample that takes too long
+    for ch in ['A', 'a', 'b', 'c', '1', '2', '3'] {
+        slow_charge("slow", glyph_index(&f, ch), LIMIT_US + 1);
+        check!(matches!(font_sample(&font, w, h), Err(FontOut::SlowGlyphs { letter: true, slowest_us, .. }) if slowest_us > LIMIT_US));
+    }
+    // a glyph the sample does not draw is not walked for it: the same picture
+    slow_charge("slow", glyph_index(&f, 'Z'), LIMIT_US + 1);
+    check!(font_sample(&font, w, h).ok().as_ref() == Some(&plain));
+    slow_charge("slow", glyph_index(&f, '\u{a4}'), LIMIT_US + 1);
+    check!(font_sample(&font, w, h).ok().as_ref() == Some(&plain));
+    // dear and under the limit: the same picture
+    slow_charge("slow", glyph_index(&f, 'A'), LIMIT_US / 2);
+    check!(font_sample(&font, w, h).ok().as_ref() == Some(&plain));
+    // slow at the first try only: measured again, as the walk does, and drawn
+    slow_charge("once", glyph_index(&f, 'A'), LIMIT_US + 1);
+    check!(font_sample(&font, w, h).ok().as_ref() == Some(&plain));
+    std::env::remove_var("GRIMOIRE_FONT_TEST_SLOW");
+    std::env::remove_var("GRIMOIRE_FONT_GLYPH_US");
+    // the command's grammar: a `T` without its limit, with a limit of 0 or no number, or with a field more
+    for command in ["T 10 300 400\n", "T 10 300 400 0\n", "T 10 300 400 x\n", "T 10 300 400 5000 1\n"] {
+        let mut wk = Worker::spawn(WorkKind::Font, None, &limits(10)).expect("a worker starts");
+        let deadline = mono_ms() + 15_000;
+        check!(wk.read_line(512, deadline).unwrap_or_default().starts_with(b"B "));
+        let sandbox = wk.read_line(512, deadline).unwrap_or_default();
+        check!(sandbox == b"S 0" || sandbox == b"S 1");
+        check!(wk.send(command));
+        check!(wk.read_line(512, deadline).unwrap_or_default() == b"E protocol");
+        wk.kill_and_reap();
+    }
 }
 
 // A sandbox step that fails is not the font's fault: nothing is checked, nothing is marked, the job says no
@@ -1085,6 +1128,7 @@ fn test_fontcheck() {
     run!(a_first_trys_mark_counts_only_for_its_own_check);
     run!(the_worker_refuses_a_command_of_another_grammar);
     run!(a_fonts_sample_is_drawn_by_the_worker);
+    run!(a_fonts_sample_is_held_to_the_glyph_limit);
     // (last: it leaves the session without workers, as a failed step does)
     run!(a_failed_sandbox_step_checks_nothing);
     done();
