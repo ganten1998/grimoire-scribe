@@ -486,6 +486,41 @@ fn a_notebook_being_filled_does_not_open_and_a_fill_waits_for_its_notebook() {
     assert_eq!(book_pages(&id, &e.info(&id)), [1, 2, 3, 4]);
 }
 
+// While KOReader's Open this book adds pages to the book's notebook, a fill of it whose pages are made waits (the
+// book's job holds the notebook as the editor does); then the fill adds only what the notebook still lacks: the page
+// KOReader added meanwhile stays KOReader's, and is not added twice.
+#[test]
+fn a_fill_waits_while_koreader_adds_pages_and_adds_only_what_is_still_missing() {
+    let e = setup("koreader-meanwhile");
+    std::env::set_var("GRIMOIRE_PDF_SLICE_PAGES", "1");
+    let bytes = pdffix::tabs();
+    let key = key_of(&bytes);
+    let id = koreader_book(&e, &key, 4, &[1, 3], &[]);
+    let src = e.drop("Tabs.pdf", &bytes);
+    let mut fid = String::new();
+    store_make_id(&mut fid);
+    assert_eq!(run_on(&fid, &src, 2), [SliceEnd::More, SliceEnd::More], "the probe and book page 2");
+    // KOReader hands book page 2 over: its job starts, and holds the notebook while it runs
+    let mut st = koreader_request(&e, &key, 4, &[2], &[]);
+    assert_eq!(st.state, BookState::Running);
+    assert_eq!(run_slice(&fid, &src), SliceEnd::Waiting, "book page 4 made; the commit waits");
+    for _ in 0..100 {
+        if st.state != BookState::Running {
+            break;
+        }
+        book_step(150, &mut st);
+    }
+    assert_eq!((st.state, st.added), (BookState::Done, 1));
+    let nb = e.info(&id);
+    assert_eq!(book_pages(&id, &nb), [1, 2, 3]);
+    let page2 = nb.page_ids[1];
+    let ends = run_on(&fid, &src, 4);
+    assert_eq!(last(&ends), &SliceEnd::Filled { added: 1, blank: 0 }, "{ends:?}");
+    let nb = e.info(&id);
+    assert_eq!(book_pages(&id, &nb), [1, 2, 3, 4]);
+    assert_eq!(nb.page_ids[1], page2, "book page 2 is KOReader's");
+}
+
 // ---- stops, cuts and a PDF that goes ----
 
 // A fill stopped in the middle (the run before ended after the probe and one page) goes on at the next start's scan,

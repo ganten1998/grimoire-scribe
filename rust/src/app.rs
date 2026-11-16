@@ -695,10 +695,10 @@ pub fn app_init(a: &mut App, w: i32, h: i32, dpi: f32) -> i32 {
     a.prevent_applied = -1;
     app_apply_sleep_policy(a);
     // The owner's pictures (templates.h): the templates and import folders, and the folders of page
-    // pictures copied into import/ since the last run, made into notebooks in the background.
+    // pictures copied into import/ since the last run, made into notebooks in the background (the scan of
+    // import/ below, once KOReader's hand-over is taken).
     templates_init();
     crate::userfonts::userfonts_init();
-    import_scan(dpi);
     let caps = input_caps();
     if a.settings.rotation_lock != 0 {
         app_set_rotation(a, a.settings.rotation_lock - 1);
@@ -714,6 +714,9 @@ pub fn app_init(a: &mut App, w: i32, h: i32, dpi: f32) -> i32 {
     let book = getenv("GRIMOIRE_BOOK");
     book_start(book.as_deref() == Some("1") && !app_host().is_empty(), &mut a.book,
     );
+    // The imports, after what KOReader handed over: a PDF fill that goes on from an earlier run then finds the
+    // book's notebook as KOReader left it, or (a whole book still being added) open, and waits for it.
+    import_scan(dpi);
     // Beta.1 could leave the passcode off after a restart: the launcher says so (GRIMOIRE_PASSCODE), and
     // the log notes it, with no toast (the owner, 2026-11-04). Current standalone sessions leave it
     // enabled and yield to the native keypad on sleep.
