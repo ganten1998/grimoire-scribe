@@ -5,7 +5,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: Grimoire 2.1.0-beta.1\n"
 "Report-Msgid-Bugs-To: https://github.com/ganten1998/grimoire-scribe/issues\n"
-"POT-Creation-Date: 2026-11-15 23:27-0600\n"
+"POT-Creation-Date: 2026-11-16 00:35-0600\n"
 "PO-Revision-Date: 2026-11-10 00:00+0000\n"
 "Last-Translator: nebuff\n"
 "Language-Team: Japanese\n"
@@ -663,7 +663,7 @@ msgstr ""
 
 #. TRANSLATORS: in a toast while Grimoire puts the pages of a book KOReader sent into its
 #. notebook (a few seconds for a big book): pages done, of how many. One line of about 1700 px.
-#: rust/src/app.rs
+#: rust/src/app.rs rust/src/editor.rs
 #, c-format
 msgid "Adding book pages: %d of %d"
 msgstr "本のページの追加: %d の %d"
@@ -825,6 +825,31 @@ msgstr ""
 msgid "Couldn't import page folder (see %s)."
 msgstr "ページのフォルダーをインポートできませんでした (%s を参照)。"
 
+#. TRANSLATORS: the title of the sheet of templates (pictures copied into grimoire/templates, to
+#. write on as paper), which More papers... opens (1560 px at 64 px).
+#: rust/src/app.rs rust/src/browser.rs rust/src/tplsheet.rs
+msgid "Templates"
+msgstr "テンプレート"
+
+#. TRANSLATORS: the title of the sheet of photos (copied into grimoire/photos), which Photos...
+#. opens (1560 px at 64 px).
+#: rust/src/app.rs rust/src/browser.rs rust/src/tplsheet.rs
+msgid "Photos"
+msgstr "写真"
+
+#. TRANSLATORS: Files' row for grimoire/fonts, the fonts copied for Classic's text (44 px in a row of 150 px).
+#: rust/src/app.rs rust/src/browser.rs
+#, fuzzy
+msgid "Fonts"
+msgstr "フォント"
+
+#. TRANSLATORS: a toast (about 1700 px at 44 px in bold): a picture was copied into one of Grimoire's folders;
+#. %s is that folder's name as Files shows it (Templates, Photos).
+#: rust/src/app.rs
+#, fuzzy, c-format
+msgid "Copied to %s."
+msgstr "%sとリンクしています。"
+
 #. TRANSLATORS: a PDF saved in the background, and where (the Kindle's folder of them).
 #: rust/src/app.rs
 #, c-format
@@ -984,6 +1009,14 @@ msgstr "安定版"
 msgid "Update channel: %s"
 msgstr "アップデートチャンネル: %s"
 
+#. TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): a picture could not be copied into
+#. Grimoire's templates or photos (Use as template, Use as photo, a sheet's From a file...); the storage keeps
+#. 100 MB free, so the likely cause is that it is nearly full.
+#: rust/src/bgwork_copy.rs
+#, fuzzy
+msgid "Couldn't copy file. Is the storage full?"
+msgstr "このページを保存できませんでした。ストレージがいっぱいですか?"
+
 #: rust/src/bgwork_template.rs
 msgid "Templates for Grimoire"
 msgstr "Grimoire用テンプレート"
@@ -1082,6 +1115,14 @@ msgstr ""
 msgid "Import a PDF or pictures"
 msgstr ""
 
+#. TRANSLATORS: (also) the title of the file picker the Templates and Photos sheets' From a file... tile
+#. opens, to pick a picture to copy in (the Library's header, about 1400 px at 56 px).
+#. TRANSLATORS: New notebook's button (348 px at 44 px, or 34 px, or two lines of that): it opens the file picker
+#. to make a notebook of a PDF or a folder of pictures anywhere on the Kindle.
+#: rust/src/browser.rs rust/src/library.rs
+msgid "From a file..."
+msgstr ""
+
 #. TRANSLATORS: a file's size in kilobytes, in the file picker's rows and cards (small text).
 #: rust/src/browser.rs
 #, c-format
@@ -1138,24 +1179,6 @@ msgstr ""
 #: rust/src/browser.rs
 msgid "All storage"
 msgstr ""
-
-#. TRANSLATORS: the title of the sheet of templates (pictures copied into grimoire/templates, to
-#. write on as paper), which More papers... opens (1560 px at 64 px).
-#: rust/src/browser.rs rust/src/tplsheet.rs
-msgid "Templates"
-msgstr "テンプレート"
-
-#. TRANSLATORS: the title of the sheet of photos (copied into grimoire/photos), which Photos...
-#. opens (1560 px at 64 px).
-#: rust/src/browser.rs rust/src/tplsheet.rs
-msgid "Photos"
-msgstr "写真"
-
-#. TRANSLATORS: Files' row for grimoire/fonts, the fonts copied for Classic's text (44 px in a row of 150 px).
-#: rust/src/browser.rs
-#, fuzzy
-msgid "Fonts"
-msgstr "フォント"
 
 #. TRANSLATORS: Files' row for the Kindle's own fonts folder (the fonts its reader uses), which Grimoire
 #. only looks in (44 px in a row of 150 px).
@@ -1217,6 +1240,22 @@ msgstr "キャンセル"
 #, fuzzy
 msgid "Go to"
 msgstr "ページに移動"
+
+#. TRANSLATORS: a picture's card in Files (and in the picker the Templates sheet's From a
+#. file... opens): this copies it into grimoire/templates, to write on as paper (a row of
+#. about 800 px at 44 px).
+#: rust/src/browser.rs
+#, fuzzy
+msgid "Use as template"
+msgstr "テンプレート"
+
+#. TRANSLATORS: a picture's card in Files (and in the picker the Photos sheet's From a
+#. file... opens): this copies it into grimoire/photos, to be a page's own picture (a row
+#. of about 800 px at 44 px).
+#: rust/src/browser.rs
+#, fuzzy
+msgid "Use as photo"
+msgstr "レイアウトを使用する"
 
 #. TRANSLATORS: a PDF's card in the file picker: a notebook already holds this book, and this opens it
 #. (a row of about 800 px at 44 px).
@@ -2843,12 +2882,6 @@ msgstr "ライブラリ（最上位）"
 #: rust/src/library.rs
 msgid "Create"
 msgstr "作成"
-
-#. TRANSLATORS: New notebook's button (348 px at 44 px, or 34 px, or two lines of that): it opens the file picker
-#. to make a notebook of a PDF or a folder of pictures anywhere on the Kindle.
-#: rust/src/library.rs
-msgid "From a file..."
-msgstr ""
 
 #. TRANSLATORS: a notebook's and a folder's menu (rows of 1470 px at 44 px in bold): its pages are not shown
 #. in the Graph of all notebooks (the Graph: the Index's map of linked pages), or are shown there again.

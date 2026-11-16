@@ -2101,7 +2101,9 @@ fn poll_jobs(a: &mut App) -> i32 {
         return 0;
     }
     if done == BgKind::CopyFile as i32 {
-        // (a file copied into templates, photos or fonts: its screens, 2.2, read its end here; never the PDF's toast)
+        // A file copied into templates or photos (2.2, #146: Use as template, Use as photo): a copy that failed is
+        // said wherever the user is, one that went in by its folder's name. Never the PDF's toast.
+        copy_told(a, crate::bgwork_copy::CopyTo::of(done_id.as_str()), r);
         return 0;
     }
     if done == BgKind::FontCheck as i32 {
@@ -2134,6 +2136,26 @@ fn poll_jobs(a: &mut App) -> i32 {
         app_toast(a, &msg, 8000);
     }
     0
+}
+
+// The end of a copy job (bg_poll's result `r`: 1 done, -1 failed) into folder `to`.
+fn copy_told(a: &mut App, to: Option<crate::bgwork_copy::CopyTo>, r: i32) {
+    use crate::bgwork_copy::{copy_failed, CopyTo};
+    if r < 0 {
+        app_toast(a, copy_failed(), 4000);
+        return;
+    }
+    let Some(to) = to.filter(|_| r > 0) else { return };
+    let place = match to {
+        CopyTo::Templates => tr("Templates"),
+        CopyTo::Photos => tr("Photos"),
+        CopyTo::Fonts => tr("Fonts"),
+    };
+    let mut msg = String::new();
+    // TRANSLATORS: a toast (about 1700 px at 44 px in bold): a picture was copied into one of Grimoire's folders;
+    // %s is that folder's name as Files shows it (Templates, Photos).
+    csnprintf!(&mut msg, 256, tr("Copied to %s."), place);
+    app_toast(a, &msg, 3000);
 }
 
 // A minute of "Sleep after". In the simulator a scenario can make it shorter

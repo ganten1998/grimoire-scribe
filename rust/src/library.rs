@@ -7816,6 +7816,9 @@ fn files_result(a: &mut App, r: BrowserResult) {
             settings_save(&a.settings);
             reload(a);
         }
+        // A picture's Use as template or Use as photo in Files (#146): the copy job runs, and the app's tick says when
+        // it ends; Files stays as it is
+        BrowserResult::Copying(_) => {}
         BrowserResult::LookAgain => {
             import_scan(a.dpi);
             with_files(a, |b, a| {

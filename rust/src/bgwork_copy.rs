@@ -1,6 +1,7 @@
-//! A file copied into one of Grimoire's folders for the user's files (BgKind::CopyFile, 2.2, issue #117): what
-//! the From a file... tiles of templates and photos and the Font sheet's Add a font... will ask for (their
-//! screens come later). The request (UI thread) checks the source is still the plain file listed, that the
+//! A file copied into one of Grimoire's folders for the user's files (BgKind::CopyFile, 2.2, issue #117): what a
+//! picture's Use as template and Use as photo in Files, and the From a file... tiles of the Templates and Photos
+//! sheets, ask for (issue #146; the Font sheet's Add a font... comes later). The request (UI thread) checks the
+//! source is still the plain file listed, that the
 //! storage keeps its floor after it (fsview_room_for), and queues the job. The job (a background child) opens
 //! the source again through fsview's walk (no link, one device, never Grimoire's notebooks, PDFs or trash),
 //! checks it is still that file and that there is room, copies it to a temporary name in the folder
@@ -30,9 +31,19 @@ impl CopyTo {
             CopyTo::Fonts => "fonts",
         }
     }
-    fn of(folder: &str) -> Option<CopyTo> {
+    /// The folder named so (a job's id, as bg_poll_job reports it), None for any other.
+    pub fn of(folder: &str) -> Option<CopyTo> {
         [CopyTo::Templates, CopyTo::Photos, CopyTo::Fonts].into_iter().find(|t| t.folder() == folder)
     }
+}
+
+/// What a copy that could not be made says, refused at the request or failed in the job (the one message for every
+/// cause: the floor is the likely one).
+pub fn copy_failed() -> &'static str {
+    // TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): a picture could not be copied into
+    // Grimoire's templates or photos (Use as template, Use as photo, a sheet's From a file...); the storage keeps
+    // 100 MB free, so the likely cause is that it is nearly full.
+    tr("Couldn't copy file. Is the storage full?")
 }
 
 /// What the copy reads and writes at a time.
@@ -67,19 +78,28 @@ static SEAM_FAIL_AFTER: std::sync::atomic::AtomicU64 = std::sync::atomic::Atomic
 
 /// Tests (never the Kindle's build): the bytes free the copy sees (None: the storage's own), and a write that fails
 /// as on a full storage (ENOSPC) once this many bytes are written (None: none). A job forked after takes them too.
+/// The headless runner's scenarios set the same through `GRIMOIRE_COPY_FREE_BYTES` and `GRIMOIRE_COPY_FAIL_AFTER`
+/// (docs/SIM.md), which these override.
 #[cfg(any(test, feature = "sim"))]
 pub fn copy_seams(free: Option<u64>, fail_after: Option<u64>) {
     SEAM_FREE.store(free.unwrap_or(u64::MAX), std::sync::atomic::Ordering::Relaxed);
     SEAM_FAIL_AFTER.store(fail_after.unwrap_or(u64::MAX), std::sync::atomic::Ordering::Relaxed);
 }
 
+// (a seam's value: the test's, else the runner's variable, else none)
+#[cfg(any(test, feature = "sim"))]
+fn seam(set: &std::sync::atomic::AtomicU64, var: &str) -> Option<u64> {
+    let v = set.load(std::sync::atomic::Ordering::Relaxed);
+    if v != u64::MAX {
+        return Some(v);
+    }
+    std::env::var(var).ok().and_then(|v| v.parse::<u64>().ok())
+}
+
 fn free_bytes(st: &FsStorage) -> Option<u64> {
     #[cfg(any(test, feature = "sim"))]
-    {
-        let f = SEAM_FREE.load(std::sync::atomic::Ordering::Relaxed);
-        if f != u64::MAX {
-            return Some(f);
-        }
+    if let Some(f) = seam(&SEAM_FREE, "GRIMOIRE_COPY_FREE_BYTES") {
+        return Some(f);
     }
     st.free_bytes()
 }
@@ -87,7 +107,7 @@ fn free_bytes(st: &FsStorage) -> Option<u64> {
 fn fail_after() -> u64 {
     #[cfg(any(test, feature = "sim"))]
     {
-        SEAM_FAIL_AFTER.load(std::sync::atomic::Ordering::Relaxed)
+        seam(&SEAM_FAIL_AFTER, "GRIMOIRE_COPY_FAIL_AFTER").unwrap_or(u64::MAX)
     }
     #[cfg(not(any(test, feature = "sim")))]
     {

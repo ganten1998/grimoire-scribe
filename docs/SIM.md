@@ -368,7 +368,8 @@ Taps: `tap library files.back`, `files.prev`, `files.next`, `files.row.N` (the N
 `files.more.N` (its `...`), `files.item.NAME` (the row of that name, `_` for a space; the root's rows by their
 English names: `Import`, `documents`, `Downloads`, `Templates`, `Photos`, `Fonts`, `Kindle_fonts`, `PDF_copies`,
 `Trash`, `All_storage`, `Show_Files_in_Library`), and the open card's `files.card.import`, `files.card.open`,
-`files.card.pictures`, `files.card.notebook`, `files.card.cancel`. In Files: `files.crumb.N` (the Nth part of the
+`files.card.pictures`, `files.card.notebook`, `files.card.template` and `files.card.photo` (a picture's Use as template
+and Use as photo), `files.card.cancel`. In Files: `files.crumb.N` (the Nth part of the
 path bar, from 1: Files, the place, then each folder; the last opens the Go to sheet), `files.sort` and
 `files.show` (its chips), and `files.goto.N` (the Go to sheet's Nth row).
 
@@ -928,7 +929,9 @@ PDF import hooks (headless and test builds; compiled out of the Kindle build, li
 `GRIMOIRE_IMPORT_STABLE=fast` (a file is taken at the first look: no 2 s and 5 s wait; `hold`: no PDF in `import/` is ever taken, it stays Waiting), `GRIMOIRE_PDF_SLICE_PAGES=N`
 (slices of N pages), `GRIMOIRE_PDF_BANDS=N` (N above 1: band mode), `GRIMOIRE_PDF_NO_MAP=1` (the device refuses the
 private mapping: the worker reads the file whole), `GRIMOIRE_PDF_FREE_BYTES=N` (free storage as N bytes),
-`GRIMOIRE_PDF_WATCHDOG_MS=N` (the page watchdog), `GRIMOIRE_PDF_TEST_CRASH_PAGE=N`, `..._HANG_PAGE=N`,
+`GRIMOIRE_PDF_WATCHDOG_MS=N` (the page watchdog), `GRIMOIRE_COPY_FREE_BYTES=N` (the copy job's free storage as N
+bytes: its floor is 100 MB after the copy, `FS_FREE_FLOOR`), `GRIMOIRE_COPY_FAIL_AFTER=N` (the copy job's writes fail as
+on a full storage once N bytes are written), `GRIMOIRE_PDF_TEST_CRASH_PAGE=N`, `..._HANG_PAGE=N`,
 `..._ALLOC_PAGE=N`, `..._TRAP_PAGE=N` (the worker aborts, spins, allocates without bound or makes a call outside
 its allow-list when it reaches page N), `GRIMOIRE_PDF_TEST_LINKS=N` (the worker aborts, N = 1, or spins, N = 2, when
 it walks the document's link annotations), `GRIMOIRE_PDF_TEST_WOKE=1` (every page's wait counts as one the Kindle
