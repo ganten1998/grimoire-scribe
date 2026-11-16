@@ -26,6 +26,7 @@ grimoire/app/licenses/         the licenses of the fonts and code in the app
 grimoire/notebooks/<id>/notebook.ini, p<N>.qpg, thumb.pgm   (the format: docs/FORMAT.md)
 grimoire/notebooks/<id>/doclinks.ini   the links a PDF brought (a planner's tabs), apart from links.ini
 grimoire/import/.book/links.txt   the links of a book's pages, sent by the KOReader plugin with the pages
+grimoire/import/.book/request.ini a book the plugin sent: its pictures (version 1), or a PDF by its path (version 2)
 grimoire/settings.ini, folders.ini, sleep.pgm, grimoire.log
 grimoire/.passcode-paused      legacy beta.1 marker, consumed for its recovery notice
 grimoire/.passcode-left-off    counts the starts told that a restart left the passcode off
@@ -166,6 +167,61 @@ planner's tabs), to a launcher whose Capabilities line says `links`: KOReader's 
 draws in this run, and once per book (until the notebook's `source.ini` says `links=1`) for the pages Grimoire
 already holds, so an Open this book costs no page opens it does not need after the first. They arrive as
 `import/.book/links.txt`, and Grimoire builds `doclinks.ini` from them (docs/FORMAT.md, Links from KOReader).
+
+**PDFs by their path (2.2).** To a Grimoire whose `app/grimoire.sh` Capabilities line says `pdf`, Open this book in
+Grimoire on a PDF draws nothing: the plugin names the file in `import/.book/request.ini` (version 2) and hands over at
+once. Grimoire's own PDF import draws the pages (in colour where the PDF has colour) and finds the links, as for a PDF
+dropped in `grimoire/import`: the Library's notice counts the pages ("Importing: page N of M") and the Library stays
+usable. When the import ends the page the reader was on opens, if the user is still on the Library with its cards in
+front; with a notebook, a sheet, Files or the Graph in front, or after a visit to a notebook, nothing opens by itself:
+the import's toast shows, and the book's card opens at that page. A book opened before 2.2 keeps the pages KOReader
+drew, and the pages it lacks come from the import. DjVu, comics, XPS, a PDF that needs a password, a PDF Grimoire does
+not take by its path (outside `/mnt/us`, in a hidden, `.sdr` or system folder such as `koreader/`, in Grimoire's own
+folders, through a link, over 512 MiB) and a PDF changed since KOReader first opened it go as before, KOReader drawing
+them. The plugin must be updated (Library > Settings > KOReader > Install / update Grimoire plugin) and KOReader
+restarted: an older plugin keeps sending version 1, which this Grimoire still takes. crash.log says (no file name,
+title or key):
+
+- `Grimoire: a PDF of N pages sent by its path, to open at page P`;
+- `Grimoire: this PDF needs a password: KOReader draws its pages`;
+- `Grimoire: this PDF is not sent by its path (<why>): KOReader draws its pages`, where why is `outside the Kindle's
+  storage`, `a name a request cannot hold`, `a path too long`, `a path that is not plain`, `a hidden or .sdr
+  folder`, `a system folder`, `one of Grimoire's own folders`, `a link on the way`, `another device` or `a file over
+  512 MiB`;
+- `Grimoire: this PDF changed since KOReader first opened it: KOReader draws its pages` (the key KOReader keeps for
+  the book is not its file's now);
+- `Grimoire: could not ask whether this PDF needs a password; it goes by its path`: the question itself failed on
+  this KOReader (its MuPDF has other names, or could not open the file a second time). The plugin's question has
+  not run on a device yet: send the log if this line shows.
+
+grimoire.log says (no file name, title or key):
+
+- `book: the PDF KOReader named goes to the PDF import (<id>); its page P of N opens once that ends` (or `... is
+  being imported already; ...`, or `... waits for an import of an earlier run; ...`), with `book: other imports go
+  first; this one starts after them` when another import is ahead of it (the toast "Another import is still going.
+  This one starts after it." says so), then the import's own lines
+  (PDF imports, below), then `book: <nb>: N page(s) added by the PDF import (a new notebook|its notebook), opens at
+  its page K`.
+- `book: the PDF KOReader named is not in the Kindle's storage; nothing opened`, `book: the PDF KOReader named
+  is reached through a link|is on another device|lies where Grimoire does not read (a hidden or system folder, or
+  one of its own)|is not there|is no plain file|could not be opened; nothing opened`, `book: the PDF KOReader named
+  could not be read; nothing opened`, and `book: the PDF KOReader named could not go to the PDF import (name|
+  sandbox|own|lock|mark); nothing opened`: the path or the file was refused before any import.
+- `book: the book key KOReader sent is not its file's; the file's is used`: the key KOReader keeps for the book is
+  not the one its file has now (a file changed since KOReader first opened it, say). The notebook is the import's
+  to choose, from the file as it is: the import's lines say which (`this PDF was imported before`, `notebook <nb>
+  lacks ...`, or `a notebook holds this PDF's key but was made from another file; this one is imported` for an
+  edited copy, which becomes a notebook once).
+- `book: the PDF import failed (the lines above say why); nothing opened`, `book: the PDF import found the PDF
+  imported before, but named no notebook that is there; nothing opened`, `book: the PDF import ended without a word;
+  the book's notebook opens as it is` (a fill whose notebook was renamed or moved meanwhile) and `book: the PDF
+  import ended without a notebook; nothing opened`.
+- `book: <nb>: the reader's page could not be kept as the page it opens at`: the import ended with something else
+  in front, and the notebook's `notebook.ini` could not be written (or no longer holds that page); the notebook
+  opens where it would have.
+- `book: the request does not read (<why>); nothing opened`, for a version 2 request: `no file named`, `a file named
+  twice`, `a version 2 request names a key twice`, `its file's path is not absolute`, `... is too long`, `... holds a
+  control character`, `... is not UTF-8`, `a version 2 request names a picture`.
 
 **How it gets into KOReader.** A fresh installation leaves KOReader untouched. Use Library >
 Settings > KOReader > Install / update Grimoire plugin, or manually copy the ZIP's

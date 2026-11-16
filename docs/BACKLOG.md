@@ -339,8 +339,38 @@ call the copy since issue #146 (each its own section, above).
 - **Pages a fill made blank stay blank**: the same PDF dropped again finds them present and says "already". Delete
   them to have them made again.
 - **The picker** offers no import for a PDF whose notebook (without a record) holds its key (the hardening entry
-  below), so a fill from Files needs the file dropped in `import/`. KOReader's hand-over by path, in its own issue,
-  will start the same job on the book's notebook.
+  below), so a fill from Files needs the file dropped in `import/`. KOReader's hand-over by path (#142, below)
+  starts the same job on the book's notebook.
+
+## KOReader hands a PDF over by its path (2.2, #142): what waits, and what is for the owner
+
+- **The Scribe check has not run** (docs/TESTING.md, "2.2, KOReader hands a PDF over by its path"): the plugin
+  updated, KOReader restarted, a PDF handed over and its reader's page opening at the end, its colour, the Library
+  used meanwhile, a book opened before (KOReader's pages kept, the rest filled), the first start after an update,
+  another import ahead, an edited copy, a DjVu still by version 1, the password question, a PDF where Grimoire
+  does not read. The tests stand KOReader in.
+- **A hand-over's import cannot be stopped**, as no import can: it holds nothing (the Library is usable, and what
+  was opened meanwhile stays in front), but it runs to its end. Putting the Kindle to sleep pauses it and stops
+  nothing. A Cancel would need a string of its own and a way to stop a running import job, which the job queue
+  does not have.
+- **The reader's contrast is not sent**: a PDF by its path is drawn at its own contrast, where version 1 drew it at
+  the reader's. A `gamma=` line waits with the darker lines import option.
+- **The password question** opens the PDF a second time in KOReader (a MuPDF document of the plugin's own, through
+  `ffi/mupdf`'s `openDocument`, `needsPassword` and `close`, as KOReader's own PDF reader calls them): read in
+  KOReader's code, never run on a Kindle. Every call is guarded, so it cannot stop KOReader. Where it fails
+  crash.log says `could not ask whether this PDF needs a password`, the plugin sends the PDF by its path, and a
+  PDF that needs a password then fails in Grimoire with "PDF needs a password.".
+- **A PDF KOReader reads and Grimoire's engine cannot open** (not one blank page: the whole file) fails by its
+  path each time with "Couldn't import PDF (see grimoire.log).", where 2.1 drew it in KOReader: once Grimoire has
+  the request nothing sends the book the older way. A refusal Grimoire keeps by the book's key, which the plugin
+  reads before it chooses, would send such a book by version 1 from the second time on.
+- **A PDF changed since KOReader first opened it** (the key KOReader keeps is no longer its file's) stays with
+  version 1 and the notebook of KOReader's key. A request that carried both keys would let the import take it.
+- **A PDF KOReader opens from `grimoire/import`** is filed in `import/done/` once imported, as any pick there is;
+  KOReader then no longer finds it at its path. (The scan would take it from there anyway.)
+- **Grimoire stopped while the import runs** (the launcher's watchdog, a crash) leaves the import to its detached
+  child, as any import; the reader's page does not open, and the next Open this book finds the notebook.
+- **Not built: a card for the notebook being made**, as for a fill (above).
 
 ## Hardening round (2026-11), import: what waits
 
@@ -353,15 +383,18 @@ call the copy since issue #146 (each its own section, above).
 - **Confirm Open its notebook with the file record.** In Files, a PDF whose key and size match a notebook's
   record opens that notebook without reading the file whole; compare the whole file in the background before
   opening, and drop Import as notebook from that card then.
-- **Carry the file record on the KOReader route.** Open this book in Grimoire finds a book's notebook by its
-  key; let it confirm with the record where one exists.
+- **Carry the file record on the KOReader route.** Done for a PDF handed over by its path (#142): the import
+  decides by the record, and Open this book opens the notebook of the very file. Version 1 (DjVu, comics, a PDF
+  that needs a password, an older plugin) still finds a book's notebook by its key alone, and a notebook it makes
+  has no record; let it confirm with the record where one exists.
 - **A pick of a PDF whose key a notebook without a record holds.** Today it says "PDF already imported."; the
   owner decides whether a pick should import it as a notebook of its own. (Since #123 such a PDF fills that
   notebook when the notebook lacks pages; the picker's card for it still offers Open its notebook only, so a
   fill from Files needs the file dropped in `import/`.)
 - **A book whose first notebook was deleted.** A notebook made while another holds the key carries the key in
   its record alone. If the first is then deleted and the book's file is imported again, another notebook still
-  holds the key, so the new one is made that way too, and KOReader's Open this book in Grimoire then starts a
+  holds the key, so the new one is made that way too, and KOReader's Open this book in Grimoire by version 1 (an
+  older plugin, or a PDF that needs a password; a PDF handed over by its path goes by the record) then starts a
   notebook of its own. That notebook is KOReader's route's, so it has the bare key and no file record: from
   then on the key alone decides for every file of that key ("PDF already imported.", and a file of `import/`
   goes to `done/`), as it does for a notebook made before this round, until that notebook is deleted. The
@@ -464,7 +497,7 @@ What waits for the lanes that use them:
   allow-list, the check before acting, the free-space refusal) came in 2.2's storage layer (issue #117: "Files'
   storage writes (2.2, issue #117): what waits", above); their words ("File changed. Try again.", "Kindle storage
   nearly full.") wait for the screens. The Loading notice over 1 s, and its first readers (the picker, the PDF
-  import, the KOReader hand-over's walk in place of `realpath`).
+  import; the KOReader hand-over walks its path since #142, under the import's notice).
 - `name_cmp`'s readers: the browser, the import order and the font list.
 - The Library listing from libindex's cache plus stamps (browser.md 17), past reading each notebook.ini once.
 
