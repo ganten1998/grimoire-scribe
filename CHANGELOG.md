@@ -8,6 +8,22 @@
   `photos/` or `import/` that is a link is no longer taken: copy the file in.
 - Housekeeping: the separate process that reads PDFs, pictures and fonts is held to a narrower set of
   system calls and is started only with all of its descriptors in place. No change in the app.
+- Housekeeping: the documents of the safe loader and of your own fonts say what the code does (the limit
+  on a worker's record lines, what a build off the Kindle takes of the sandbox, the font check's second
+  try), `licenses/rust-crates.txt` says it lists every crate `Cargo.lock` names, and the crate check
+  refuses by name the one crate that would bring a second font parser into the build. No change in the app.
+- **"PDF already imported." now means that very file.** A notebook made from a PDF keeps the SHA-256 and
+  size of its file (one line in its `source.ini`), and a PDF with the same book key is compared with it. The
+  same file says "PDF already imported." as before; a different file with that key (an edited copy, say)
+  becomes a notebook of its own, and KOReader's Open this book in Grimoire keeps opening the first.
+  Notebooks made before this version, or from KOReader, go by the key as before. In Files, a PDF that a
+  notebook already holds offers Import as notebook beside Open its notebook. A big PDF is read once more at
+  the end of its import (the notice stays on its last page meanwhile).
+- The import handles odd names and places more strictly: a file's path is kept exactly as it is while it is
+  imported (a name with unusual characters goes on correctly after an interruption), a path with a line
+  break in a name is left where it is, a file picked from a folder that is only spelled like
+  `grimoire/import` stays where it is, and the import's lock file and its first look at a dropped PDF are
+  opened without following links.
 
 ## 2.1.0 (2026-11-13)
 
@@ -114,8 +130,8 @@
   lines they do not know (they draw Terminess). The Kindle binary is 10.6 MB and the zip 5.5 MB with it.
 - **Settings > Wi-Fi switches between the Kindle's saved networks** (issue #40). A Wi-Fi button in Settings'
   bottom row, beside Pair, opens a sheet that turns Wi-Fi on or off, says which network the Kindle is connected
-  to, and lists the networks the Kindle has saved, that one first with a check (seven a page; More networks shows
-  the next). Tap one to switch: "Connecting to ...", then "Connected to ...", or "Could not connect to ..." when
+  to, and lists the networks the Kindle has saved in their own order; the status line names the connected network and
+  the list scrolls. Tap one to switch: "Connecting to ...", then "Connected to ...", or "Could not connect to ..." when
   the Kindle refuses it or has not connected in 45 seconds (Grimoire then changes nothing more). Switching drops
   Share, Live view and SSH from the network you leave. Adding a network or a password stays in the Kindle's
   settings and KOReader. No Wi-Fi password reaches the app, its files or its log (its helper keeps only the

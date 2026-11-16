@@ -457,16 +457,45 @@ docs/TESTING.md (Index phase 2).
 ## PDF imports (2.1.0-beta.2)
 
 Copy a PDF into `grimoire/import/` (see README). Device checks are in TESTING.md. What grimoire.log says (no
-file name, title or key ever appears in it: ids, page numbers, counts, timings, reasons):
+file name, title, key or hash ever appears in it: ids, page numbers, counts, sizes, timings, reasons):
 
 - `work: sandboxed (uid 62001, chroot, netns, no new privileges, seccomp, selinux enforcing|permissive|off)`:
   for PDFs once a session, at the first worker; for pictures and fonts once a background job (each job is a
-  process of its own, and says it at its first worker). `work: not sandboxed (...)` anywhere the steps are skipped.
+  process of its own, and says it at its first worker). `work: not sandboxed (...)` wherever the sandbox is not
+  required (never on the Kindle).
 - `import: <id>: N page(s), the PDF is N KB` (the probe), then for each slice `import: <id>: pages A to B of M in
   T ms (MemAvailable K MB, N band(s))` (a page's time is T over the slice's pages), then `import: notebook <id>
   made of N page(s), N picture(s), N blank`.
 - `import: N PDF(s) queued; left as they are: ...`: a scan's counts (not yet steady, tried out, imported,
-  skipped, held elsewhere, waiting for room).
+  skipped, held elsewhere, waiting for room, and at its end `N that differ from their listing, N no longer
+  files`: the scan's look at a steady PDF opens it without following a link and reads only the file it listed;
+  both counts are 0 on a Scribe at rest). `import: a PDF that differs from its listing has not changed for a
+  minute; it is imported as it is`: a PDF whose look kept finding another file than the listing's for a minute
+  (a storage that names one file differently by its name and by an open file would show this for every PDF:
+  send the log).
+- `import: <id>: its file read for its record: N KB in T ms` (the last slice read the whole file once, for the
+  record the notebook keeps of it: FORMAT.md, the file record) and `import: <id>: its file read to compare with
+  a notebook's record: N KB in T ms` (at its start, only for a PDF with the key and the size of a notebook's
+  record). T is the time to note for a big PDF. `import: <id>: a notebook holds this PDF's key but was made from
+  another file; this one is imported`: it becomes a notebook of its own. `import: <id>: its file could not be
+  read whole; the notebook keeps no file record`, or `... could not be read whole and another notebook holds its
+  key; nothing imported`: the storage failed a read in the last slice; `import: <id>: its file could not be read
+  whole to compare with a notebook's record`: it failed one at the start, and the PDF then counts as another
+  file than the record's (the line with N KB and T ms is logged only for a file that was read whole).
+  `import: <id>: its PDF's name no longer
+  holds the file that was read; nothing moves to import/done, and the next scan takes what is at that name`:
+  another file was put at the PDF's name while it was imported, or the file changed or was taken away; the
+  import's own end (its notebook, or "PDF already imported.") stands. On a Scribe at rest this line never
+  shows (a storage that names one file differently by its name and by an open file would show it at every
+  import, three times a file: send the log).
+- `import: a path that holds a line break is never imported; refused`, `import: a picked PDF's path holds a line
+  break; refused` and `import: <id>: its path holds a line break; nothing imported`: a name with a line feed or
+  a carriage return in it (a FAT storage cannot hold one). `import: the import lock cannot be taken (<why>); a
+  picked PDF is refused` (or `a picked folder is refused`, or `the import folders wait for the next scan`): the
+  lock file `grimoire/import/.lock` cannot be opened (`Symbolic link loop`: a link is at its name, and is not
+  followed), or what is at its name is not a plain file of one name (`Invalid argument`), or it stopped being
+  the file at its name twice while it was taken (`Stale file handle`). Nothing is removed for it: look at what
+  is at that name over USB.
 - `import: <id>: its last slice was cut off (K of 3)`, `... the job used more CPU than S s; it stops here (K of 3)
   and goes on later`, `... it stopped 3 times without finishing; nothing imported`: an import that keeps not
   finishing ends after three stops. `... the files of the pages from N are gone; they are made again`: a resume
@@ -524,7 +553,9 @@ says (never a file's name or a family's: counts, sizes, timings, reasons):
 
 - `bg: font check of a folder (pid N)`, then for each file not checked yet `fonts: file I of N passed: S KB, G
   glyphs, K from Terminess, checked in T ms`, or `... refused (unreadable|no Latin letters|a web font)`, or `...
-  took too long to read (T ms)`, or `... the check's worker ended (<why>): marked unreadable`, or `... left for
+  took too long to read (T ms): left for a second try` (no verdict yet: the file is checked again a minute or more
+  later) and at that try `... took too long to read again (T ms)` (the verdict), or `... the check's worker ended
+  (<why>): marked unreadable`, or `... left for
   later (out of memory)`; each job checks one font (`fonts: file I of N done; more are left for the next job`),
   and the last one ends with `fonts: in the folder, P passed, R refused, D the worker died on, L left for later, T
   too big or empty (N font file(s) in all)`, the whole folder's tally from the verdicts kept, and `bg: font check
@@ -1095,21 +1126,59 @@ Buttons... and Reload shortcuts.ini; Pair holds Bluetooth controller and Pair a 
 Library > Share > Wi-Fi (also on the Live view pairing card) opens the radio controls. Turn on
 Wi-Fi leaves airplane mode and asks the Kindle's existing Wi-Fi service to reconnect to a saved
 network. Radio-on and connected are shown separately; the Share address and QR code appear only
-when the system has an address. Add a new network or change its password in Kindle settings or
-KOReader's normal network menu. Grimoire does not replace or log saved network credentials, and none reaches
-the app (the helper keeps only the networks' names: below).
+when the system has an address. Settings > Wi-Fi can scan for nearby networks, add an Open,
+WPA/WPA2- or WPA3-Personal one with its password, or a WPA2/WPA3-Enterprise (PEAP/MSCHAPv2) one with
+its username and password, and delete a saved profile with its row's trash button. WEP, OWE and
+WPA3-Enterprise 192-bit stay with Kindle settings or KOReader. Grimoire does not replace or log saved
+network credentials, and none reaches the app (the helper keeps only the networks' names: below).
 
-Settings > Wi-Fi (2.1.0-beta.2, issue #40) has the same radio button (Retry when the state is not
-known), a status line ("Connected to <name>", "Connecting to <name>...", "Could not connect to
-<name>.") and the networks the Kindle has saved, the one connected to first and checked, seven a
-page with More networks for the next. A tap on a network asks the Kindle's Wi-Fi service to connect
-to it, turning the radio on first if it is off. The sheet then reads the network connected to every
-2 s, and the switch has worked once a read names that network; it has failed when the helper refuses
-it or after 45 s without it. Grimoire switches nothing back after a failure: the Kindle's own service
-decides what it joins next. The sheet reads only while it is up: the radio, the network and the saved
-networks as it opens (once more when the radio comes on, for a service that lists them only then),
-then the network connected to while a switch is under way, or for 45 s after a tap while the radio is
-on with no connection. Switching away from a network disconnects Wi-Fi SSH, sharing and Live view on it.
+Settings > Wi-Fi (2.1.0-beta.2, issue #40) opens on Nearby. The status line and the radio button (Retry
+when the state is not known) sit over Rescan, Other... and Saved networks; the sheet scans by itself once
+the radio is on. Each network has a three-bar signal icon, filled for its strength, and a small lock when it
+is not Open; the scan's strongest come first, then the names the Kindle knows. A tap connects a saved name or
+adds an unsaved Open, WPA/WPA2-Personal, WPA3-Personal or WPA2/WPA3-Enterprise one. The connected row is
+filled black with a white rule inside its edge and white bars; a tap on it again disconnects without turning
+the radio off. Other... types a hidden network's name and asks Open, WPA/WPA2, WPA3 or WPA2/WPA3-Enterprise;
+a password is typed on the keyboard's masked page and never shown. A WPA2/WPA3-Enterprise add asks for the
+username on the normal keyboard, then the password on the masked one. It uses PEAP with MSCHAPv2 through the
+supplicant's `wpa_cli` control interface, with PMF optional and the SHA-256 AKM offered, so it joins both
+WPA2-Enterprise and WPA3-Enterprise (non-192-bit); both values travel only on stdin, and the profile lives in
+the supplicant rather than wifid's saved list; a persistent no-secret marker makes the helper list it
+under Saved too, and a tap selects or removes it through `wpa_cli`. `save_config` is best effort. There is no CA-certificate
+field yet, so PEAP does not validate the school's server certificate; use it only on a network you trust.
+WPA3-Enterprise 192-bit, EAP-TTLS and EAP-TLS are not created. WPA3-Personal uses SAE through `wpa_cli` with
+PMF required; its passphrase reaches the helper only on stdin (SAE needs it, not the PSK). Both supplicant-owned
+profiles disable the supplicant's background scan, whose learned channel list can otherwise take the link
+off-channel and make it deauthenticate. A bounded `wpa_cli` watcher starts after the completed 4-way, detached in its own session, and appends
+sanitized supplicant events and state snapshots to `.supplicant-events.log` in the app folder. A drop
+shows `CTRL-EVENT-DISCONNECTED` with its numeric reason and whether `CTRL-EVENT-TERMINATING` followed;
+the watcher never records a name, BSSID or credential.
+The keyboard stays over the Wi-Fi page, as it does over the rest of Settings. Saved networks lists the Kindle's
+profiles, the connected one first, eight a page with More; a tap connects (or disconnects, on the connected
+row), and the trash button on a row deletes that profile at once. Disconnect puts wifid's connection manager
+in manual mode (so it does not rejoin the profile at once), asks `cmDisconnect` with the current profile, then  without a name, then asks wpa_supplicant with `wpa_cli … disconnect`; it waits until `cmState` reports the link
+  gone, then pins the drop with `wpa_cli disconnect` and disables that network at the supplicant, the radio stays
+  on, and a failure re-enables the network, restores automatic mode and says "Could not disconnect." Joining,
+adding a wifid-managed profile, or turning the radio on restores automatic mode; an EAP or WPA3 supplicant
+profile leaves the manager manual while it owns the link. A
+quiet scan runs every 20 s while Nearby
+is idle: the list stays as it is, and only names that joined or left change; a Rescan still starts a fresh
+list. A tap on a network or another control cancels a scan already running and acts at once, so scanning
+never makes a join, add, delete or disconnect wait; the next quiet scan waits 20 s after that one's answer.
+The sheet then reads the network connected to every 2 s, and the switch has worked once a read names
+that network; it has failed when the helper refuses it or after 45 s without it. A profile that took is
+watched the same way. A failed hidden-network add
+says "Could not add the network.", not the generic read error; the log names the helper's exit (18 no valid
+PSK, 19 the profile refused, 20 no read back, 26 no wpa_cli or control socket, 27 the supplicant refused the
+network, 28 the supplicant does not list SAE). A delete that fails says "Could not forget
+the network.", its log exit naming the step (21 the radio, 23 no read back, 24 no netid could be read,
+25 wifid still had the profile after the netid write). Grimoire switches nothing back after a
+failure: the Kindle's own service decides what it joins next. The sheet reads only while it is up: the
+radio, the network and the saved networks as it opens (once more when the radio comes on, for a service
+that lists them only then), then the network connected to while a switch is under way, or for 45 s after a
+tap while the radio is on with no connection, and the quiet Nearby scan. Opening the sheet never turns the
+radio on: with it off, the page offers Turn on Wi-Fi. Switching away from a network disconnects Wi-Fi SSH,
+sharing and Live view on it; the radio stays on.
 
 Turn off Wi-Fi disconnects Wi-Fi SSH, sharing and Live view. It leaves notebooks usable locally.
 The app changes radio state or the network only after an explicit button press, preserves that
@@ -1129,8 +1198,12 @@ come from wifid's hasharray properties `currentEssid` (the network connected to,
 cmState is CONNECTED) and `profileData` (the saved networks), read with `lipc-hash-prop` and an empty
 hasharray in, as KOReader reads them; a switch is `lipc-set-prop -s com.lab126.cmd ensureConnection
 "wifi:<essid>"`, as KOReader's network menu does when a network is picked, and the helper refuses any
-name that is not among the saved networks before it changes anything. Nothing creates, changes or
-deletes a profile.
+name that is not among the saved networks before it changes anything. Add and Delete are the only profile
+changes: `add` creates an Open, WPA or WPA2 profile from the PSK on stdin (or a passphrase, for a direct
+call) and asks wifid to connect, a WPA3-Personal SAE profile from its passphrase on stdin through `wpa_cli`,
+or a WPA2/WPA3-Enterprise PEAP/MSCHAPv2 network through `wpa_cli` from the username and password on
+stdin; `delete` removes the named saved profile. OWE, WEP, WPA3-Enterprise 192-bit, EAP-TTLS and EAP-TLS
+profiles are never created.
 
 profileData's answer holds each saved network's password. It goes from lipc-hash-prop straight into
 a small awk reader inside the helper that keeps the essid values and nothing else: no password reaches
@@ -1140,12 +1213,25 @@ numbers, and braces, brackets, commas and words around them); any unquoted value
 them, makes it give no name at all, and the sheet says "Saved networks could not be read." with the
 radio controls still there. A name with a backslash (an escape it cannot undo), a control character or
 more than 32 bytes is left out. Names travel to Grimoire, and back for a switch, in hex, so no byte of
-one can break a line or be taken for code. Grimoire does not log network names (grimoire.log goes to
-public bug reports). The lipc-hash-prop output format, whether wifid lists the saved networks with the
-radio off, and whether ensureConnection switches away from a connected network are device probes and
-checks for 2.1.0-beta.2 (docs/TESTING.md).
+one can break a line or be taken for code. Adding derives the WPA PSK in Grimoire (PBKDF2-HMAC-SHA1 over
+the passphrase and the name, 4096 rounds, 256 bits) and sends its 64 hex digits on the helper's stdin
+(never an argument); the helper also takes a passphrase there for a direct call, through
+`wpa_passphrase` where the firmware has it. WPA3-Personal sends the passphrase itself there instead:
+SAE derives its password element from it, and the PBKDF2 PSK would not do. It pipes the profile hasharray
+to `createProfile`; forgetting is `deleteProfile <essid>` on older firmware, or
+`deleteProfile <netid>` (the profile's integer id, read from profileData) on the Scribe. The app wipes its
+passphrase copy after deriving the PSK, the helper wipes what it receives, and neither is printed, logged or kept.
+An enterprise add's credentials go from Grimoire to the helper on stdin and then to `wpa_cli` on its stdin;
+the helper quotes them for its parser and never prints or logs them. The profile is the supplicant's, not one
+wifid lists in profileData; the helper lists it under Saved and rejoins or removes it through `wpa_cli`
+without exposing its name in a command argument. `save_config` is best effort. There is no
+CA-certificate choice yet, so PEAP's server certificate is not validated; the WPA2-Enterprise path is for a
+trusted school network until that ships.
+Grimoire does not log network names (grimoire.log goes to public bug reports). The lipc-hash-prop output
+format, scanList's answer, and whether `createProfile` and `deleteProfile` behave as expected on this
+firmware are Phase 0 probes (`tools/kindle-wifi-probe.sh`, docs/WIFI-PHASE0.md).
 
-A parent job bounds the helper to 12 seconds and kills only its own helper process group if it
+A parent job bounds the helper to 12 seconds (25 for a scan) and kills only its own helper process group if it
 stalls. Status polling is limited to the visible Wi-Fi dialog or sheet, and stops after connecting,
 switching off or 45 seconds; Retry checks again. Physical airplane-mode transitions remain a device
 acceptance check.

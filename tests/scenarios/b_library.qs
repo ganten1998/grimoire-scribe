@@ -131,7 +131,7 @@ tap 1637 2182
 tap 223 2182
 tap 930 1240
 wait 200
-pen line 200 1300 1600 1350 40 0.6 0.6
+pen line 200 1000 1600 1050 40 0.6 0.6
 wait 100
 shot 13-calib-verify
 expect screen is calib

@@ -125,7 +125,9 @@ why. Newest decisions first within each section.
   the file again just before it writes, which leaves a few milliseconds in which a job's note can be lost. Found
   in the fix round, not fixed: moving the prune into the jobs is a change of who owns the file.
 - **Crates**: skrifa is now a direct dependency (your own fonts, L10), pinned to the 0.46.2 hayro brings: no
-  crate is added. Cargo.lock names a second skrifa and read-fonts (glifo's optional dependency), not built; the build
+  crate is added. Cargo.lock names a second skrifa and read-fonts (glifo's, and glifo is vello_cpu's optional text
+  renderer, compiled only with a feature hayro does not ask for), not built: deny.toml bans glifo, so the deny job
+  fails if a build would take it; the build
   has three duplicates (fearless_simd, miniz_oxide, syn), not the plan's five. flate2, smallvec and syn were
   moved to versions published before 2026-11-02 so that every crate is two weeks old at a tag on or after
   2026-11-16 (`tools/check-crate-dates.py --tag-date 2026-11-16` passes).
@@ -143,6 +145,88 @@ why. Newest decisions first within each section.
   without being asked so, which the filter's rule does not see: the start of a worker would then clear the
   flag before its exec. Not built: no test host can show it failing first.
 - **`sandbox::s1` numbers** are unchanged by this round.
+
+## Hardening round (2026-11), invariants: what waits
+
+- **A `<key>.slow` mark outlives its second try.** A font that passes (or is refused) on its second try
+  keeps the mark beside its verdict until the file changes, so a later check of the same key that runs out
+  of time once is "Took too long to read." without a second try. For the fonts work.
+- **The record cap stays a worker's** (4 MiB of record lines each, `RECORDS_MAX_BYTES`). A total across a
+  job's workers was weighed and not built: only a job's first worker comes near the cap, an honest job's
+  lines at the caps come to about 3.6 MiB, and a total would need a count kept in `pdf-import.ini`.
+- **Source comments cite numbered sections of a DESIGN.md** ("DESIGN.md 3.7", "4.3", "section 9": about 40
+  places in rust/, tools/ and the workflow). They are the 2.1 plan's sections; docs/DESIGN.md has headings,
+  not numbers. Not changed: a reader finds the subject by its heading.
+- **A docs-only pull request runs no test**, and a few tests read the documents (docs/TESTING.md, "Tests
+  that read the documents"): a reworded sentence they hold is first caught on the push to main.
+- **The Linux tests of the sandbox's steps have not run on a Scribe** (they need cargo); the steps have, as
+  they were in 2.1.0-beta.2 (S1, and that beta's imports, pictures and fonts). The narrower system-call rules
+  that came after are the entry "The Scribe check of this round has not run", above.
+- **Three sentences outside this round's lines are still loose**, and no test holds them. docs/DESIGN.md, the
+  safe loader, and `sandbox.rs` (`sandbox_line_ok_for`): "`S 1` (the steps are in place)"; a Linux build that
+  does not require the sandbox says `S 1` as soon as it has the steps, also when one failed and was passed
+  over (`pdfwork.rs`'s header has the exact form). `sandbox.rs`, `s1::FONT_JOB_CPU_SECS`: "past it the font
+  is "Took too long to read."", where a first timeout only leaves the font for its second try.
+  docs/TESTING.md, "2.1.0-beta.2, L9", step 7: "see its section at the end" for the fix round's section,
+  which other sections now follow.
+
+## Hardening round (2026-11), import: what waits
+
+- **The Scribe check of this round has not run** (docs/TESTING.md, "Hardening round (2026-11), import"). Its
+  steps 1 to 3 say how long a big PDF takes to read whole; steps 7 and 8 say whether the Scribe's storage gives a
+  file one identity by its name and by an open file, which the scan's look, the import lock and the move to
+  `import/done` all compare (if it did not, every dropped PDF would wait a minute, no import would start, and
+  an imported PDF would stay in `import/` and be read again up to three times). No release holds this round's
+  import commits until those have run.
+- **Confirm Open its notebook with the file record.** In Files, a PDF whose key and size match a notebook's
+  record opens that notebook without reading the file whole; compare the whole file in the background before
+  opening, and drop Import as notebook from that card then.
+- **Carry the file record on the KOReader route.** Open this book in Grimoire finds a book's notebook by its
+  key; let it confirm with the record where one exists.
+- **A pick of a PDF whose key a notebook without a record holds.** Today it says "PDF already imported."; the
+  owner decides whether a pick should import it as a notebook of its own.
+- **A book whose first notebook was deleted.** A notebook made while another holds the key carries the key in
+  its record alone. If the first is then deleted and the book's file is imported again, another notebook still
+  holds the key, so the new one is made that way too, and KOReader's Open this book in Grimoire then starts a
+  notebook of its own. That notebook is KOReader's route's, so it has the bare key and no file record: from
+  then on the key alone decides for every file of that key ("PDF already imported.", and a file of `import/`
+  goes to `done/`), as it does for a notebook made before this round, until that notebook is deleted. The
+  owner decides whether the import should give the bare key (`source=`, `book=`) to a new notebook when no
+  notebook has those two lines (the book's file, imported again, would then be the notebook KOReader opens,
+  with a record); the entry above, on a pick whose key a notebook without a record holds, is the other half
+  of the same question.
+- **The import's whole-file read.** Measured on the Scribe at the owner's check; if its time or its use of
+  memory asks for it, spread it over the slices or release its cached pages as it goes.
+- **Endings without a test.** A file that cannot be read whole (at the start, where it then counts as another
+  file than the record's; in the last slice, where the notebook is made without a record, or the import fails
+  when another notebook holds the key), and the import lock's second round (the name given to another file
+  between the lock and the check): nothing but a failing read, or a race, reaches them. A seam for the tests
+  could, as `pdfimport::sim_before_filing` does for the move to `import/done`.
+- **File an imported PDF by its open file.** The import looks at the PDF's name once more just before the
+  move to `import/done`, and the look and the move are two steps. Where the storage offers a move that names
+  the open file itself, the two become one; else, look at what arrived in `done/` and put back what is not
+  the file that was read.
+- **The record of an import that went on after a stop.** The last slice checks its file's key against the
+  first slice's. Two files of one key, size and time are not told apart there: the pages may be of both, and
+  the record is of the last slice's file (docs/FORMAT.md says the record promises no more). Keeping the first
+  slice's hash in the import's state (`pdf-import.ini`) would tell them apart, at the price of a second
+  whole-file read.
+- **A folder's pictures and a PDF the scan's look leaves.** A PDF that the look finds to be no file the import
+  opens (counted as "no longer files": a folder of `import/` whose name the storage walk refuses, such as one
+  ending in `.sdr`) is never queued, and the folder's pictures still wait for it (`folder_holds_pdfs` knows
+  the names the scan leaves out, not this). They waited before this round too, when the PDF failed at every
+  scan. Give `folder_holds_pdfs` the look's answer for such a folder.
+- **The import's small files and the bounded read.** The marks and an import's state are read through
+  `util::read_file`, which since the storage reads takes plain files only; they have limits of their own when
+  parsed (a mark is 4 KiB at most), not when read. Read them with `util::read_file_max`, and the last slice's
+  `links.part` and `names.part` with it too (today `std::fs::read`, then a size check). The storage reads'
+  list below names the marks as well; the lock file's own open could share `util`'s plain-file open.
+- **The picker's own test of "under import"** compares names without case; on a storage that tells names
+  apart, rows of a folder only spelled like import would show a status.
+- **Picture folders with a line break in their name** are still imported by the picture scan; give
+  `list_names` the same rule as the PDFs' (`pdfimport::name_storable`), with the storage work.
+- **A link at a folder above the import lock** belongs with the storage work: the lock file itself is opened
+  without following a link, the folders above it by their names.
 
 ## The keyboard's caret and text copy and paste (2.1.0-beta.2, last round, lane K): choices for the owner, and what waits
 
@@ -244,7 +328,7 @@ Built on the plan's other recommended defaults (the owner has not answered them;
 What waits: O2 (the ink row in a pen's card), O3 (size keys and the `quick-size` action, ids 105 to 107), O4 (your
 own chips), O6 (hold in the picker), O8 to O10 stay out; the live ink on the largest chips (charcoal 2, marker
 2.8, highlighter 8, eraser 12 mm) is for the owner to measure with `tools/bench-ink.c` (docs/TESTING.md): drop a
-top chip if live ink lags. The Japanese for "Hold a pen on the toolbar for its sizes." is for nebuff.
+top chip if live ink lags.
 
 ## Classic fonts (2.1.0): choices for the owner, and what waits
 
@@ -275,9 +359,10 @@ Waits, from the 2.1 plan:
 
 ## Your own fonts (2.1.0-beta.2, lane L10): choices for the owner, and what waits
 
-Built to the 2.1 plan's D30 (Done, below). **Nothing of it has run on a Scribe, and its sandbox steps have not
-run anywhere** (the CI job `sandbox` is their first run): docs/TESTING.md, "2.1.0-beta.2, L10", has the device
-checks. Where the plan did not settle a thing, what the lane chose, for the owner to confirm:
+Built to the 2.1 plan's D30 (Done, below). Its check runs in the real sandbox in the CI job `sandbox`
+(`a_font_is_checked_in_the_real_sandbox`), and fonts were checked and used on the owner's Scribe with
+2.1.0-beta.2's development builds (docs/TESTING.md, "2.1.0-beta.2"); docs/TESTING.md, "2.1.0-beta.2, L10", has
+the device checks. Where the plan did not settle a thing, what the lane chose, for the owner to confirm:
 
 - **The size of text in your font.** The plan's rule as written: capitals as tall as Terminess's, the scale
   kept between 0.85 and 1.25, then lowered until 95 of 100 of Grimoire's strings are no wider than in
@@ -368,8 +453,8 @@ Bold-only letters of a name, a Done on a font that does not load. Left, with wha
   language, but a real font's widths are its own; labels that do not fit end in "...".
 - **Left and Right do not turn the pages of Your fonts** (the sheet's arrows do).
 - **`sandbox::s1::FONT_*`** (20 s slices, 10 min a font, 60 s of CPU a worker, a 30 s watchdog, 64 MiB over the
-  file) are the plan's numbers, placeholders until S1 measures the Scribe; `s1::WORKER_IMAGE` (11 MiB) is now
-  only about 0.9 MiB above the binary's size, which the margins absorb.
+  file) are the plan's numbers, kept: S1 (2026-11-09) measured PDF pages, not a font's check; `s1::WORKER_IMAGE`
+  (11 MiB) is now only about 0.9 MiB above the binary's size, which the margins absorb.
 - **A What's new line** for 2.1.0-beta.2's notes (docs/whatsnew), which the owner writes.
 - **Japanese** for the 15 new strings (nebuff): English shows until then.
 
@@ -457,8 +542,6 @@ confirm or change:
   back to New notebook, and as SHORTCUTS.md's "one level a press"), the card closes. In 2.0.0 Esc on Read all's
   sheet closed What's new; the list has no on-screen way back to the card, only Esc. **Enter on the list opens
   the running version's notes**, as there is no highlighted row (the Library's sheets have none).
-- **Japanese for "This version" and "unreleased"** is empty in po/ja.po: the list shows them in English in
-  Japanese until nebuff translates them. Back reuses the Templates sheet's, already translated.
 
 ## The lasso drag (2.0.0): the owner's report of 2026-11-05, fixed; what is left for the owner
 
@@ -1244,8 +1327,9 @@ items of Document links. Left:
   checked by reading only; a test needs a listing slower than a second in the headless runner.
 - **The picker's UI-thread work** (the fix round, Low): entries of no known kind are stat-ed in 20 ms slices before
   the rows are built; the Import place's folder rows are listed every 5 s, the PDF rows as the import's progress
-  changes; "has notes" reads the notebooks' keys once a session (one small read for each notebook without
-  `source=`, at the first PDF row, on the UI thread). None of it is timed on the Scribe (TESTING.md, L8 check 2).
+  changes; "has notes" reads the notebooks' keys and file records once a session (one small read for each
+  notebook, at the first PDF row, on the UI thread: since the hardening round of 2026-11 also for a notebook with
+  `source=`, whose record is in its `source.ini`). None of it is timed on the Scribe (TESTING.md, L8 check 2).
 - **Folder rows count their pictures by listing the folder** (on the idle tick, one folder a tick, at most 200 ms
   each) to show "%d pictures" and to offer Import %d pictures as notebook. On a big `documents/` of big folders over
   FUSE that is unmeasured: TESTING.md has the timing check. A cheaper rule (count only when the card opens) is

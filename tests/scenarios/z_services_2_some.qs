@@ -1,17 +1,23 @@
 # settings: status_mode=1
 # env: GRIMOIRE_SIM_NO_SERVICES=wifi,updates
-# Settings on a platform that leaves two device services to its system: their two buttons are gone,
+# Settings on a platform that leaves two device services to its system: their two rows are gone,
 # the others stay, and each of those still opens its sheet.
 # rust-only
 wait 300
 tap library settings
 wait 300
 expect library.sheet is settings
-expect library.ui_has.calibrate is 1
-expect library.ui_has.ko is 1
-expect library.ui_has.pair-menu is 1
-expect library.ui_has.wifi is 0
+# General: the two services a platform leaves out have no row.
 expect library.ui_has.updates is 0
+expect library.ui_has.wifi is 0
+# Pen: Calibrate is there.
+tap library settings.cat.3
+wait 100
+expect library.ui_has.calibrate is 1
+# Controls: Pair and Gestures are there, and Pair opens its sheet.
+tap library settings.cat.4
+wait 100
+expect library.ui_has.pair-menu is 1
 expect library.ui_has.gestures is 1
 expect library.ui_has.done is 1
 shot 01-settings-without-wifi-and-updates

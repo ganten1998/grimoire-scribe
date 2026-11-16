@@ -66,21 +66,12 @@ wait 300
 expect editor.page is 3
 expect editor.modal is none
 expect editor.screen_composed is 1
-# Changing size/corner with the pen still near paints the actual clock before menu exit.
+# The Display sheet covers the clock corner, even with the pen near; the page's corner comes back after it.
 pentap panel display
 expect editor.modal is display
 wait 100
-expect status.shown is 1
-pentap panel display.size
-wait 100
-expect settings.status_size is 1
-expect status.shown is 1
-expect status.rect not 6 6 331 48
-shot 05-clock-live-preview
-pentap panel display.corner
-wait 100
-expect settings.status_corner is 1
-expect status.shown is 1
+expect status.shown is 0
+shot 05-clock-under-display
 pentap panel display.done
 expect editor.modal is none
 pentap panel shapes
@@ -90,6 +81,8 @@ pentap panel shapes.done
 # Swipe down still opens the default Graph.
 pen leave
 wait 1100
+expect status.shown is 1
+expect status.rect is 6 6 331 48
 swipe 2 930 900 0 400
 expect editor.modal is map
 quit

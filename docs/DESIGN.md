@@ -146,7 +146,8 @@ A desktop simulator (SDL3) and an SDL-free headless script runner exist for deve
   is never the pen's hand), a stroke or another gesture is in progress (`editor_busy`), or the driver is in
   pen mode (`display_pen_mode_on`: it stays so past a stroke until a grayscale refresh is due, and
   that refresh waits for the pen's last frame, so a refresh of the corner must not be the one that
-  ends it). A finger tap in the 14 mm corner square, or on the box's place with 4 mm around it (shown or
+  ends it). Taking it down is not held back by the pen merely being near: a sheet opened under the pen
+  must not keep the corner over the sheet. A finger tap in the 14 mm corner square, or on the box's place with 4 mm around it (shown or
   not: `status_hit`), turns it on and off: decided at the lift, with the
   finger down in the zone, on no control (`editor_control_at`: the panel, or a link, but
   not one of your own in the corner; a document link in the corner is a control: D7a, taps follow document links), lifted in the square (or within 5 mm of where it landed) and under 800 ms, whatever the fingertip did between (the path is not asked: a hard press drifts); every decision is one `grimoire.log` line; the screen
@@ -405,6 +406,10 @@ draws them. White ink and the precise eraser make them.
   they reach the keyboard as Esc does, through `app_type_text`, whose touch-down on the text box now carries
   the input too, so it is taken as a contact on no key and moves no caret. Letters typed on a paired keyboard
   still type nothing in a field.
+- On the Library, the sheet a keyboard was opened from stays drawn under it, the Wi-Fi page included:
+  `LibraryState.kb_parent` names that sheet, and `draw_modal` draws it before `keyboard_draw` puts the keys
+  over its lower half. The keys take every contact; the page below is not a tap target while they are up.
+  (The editor's pages, Find and the Pages view already keep their page under their keyboards.)
 - Every keyboard host (the Library's sheet, the Pages view's Page name and Go to page) hands its pen
   and finger events to `app_keyboard_pointer` and its tick to `app_keyboard_tick` (app.c), so a key
   costs the same over any screen. A sample that changes nothing (the pen resting on a key sends one
@@ -1818,31 +1823,89 @@ new paths and collisions before writing, retaining original metadata for rollbac
 ## Settings > Wi-Fi (2.1.0-beta.2)
 
 Issue #40 (from #36: someone who relies on Live view among several networks): choose among the Kindle's
-saved Wi-Fi networks from Settings, in the current Settings design. The smallest safe feature: the network
-connected to, the saved networks, a switch to one, its outcome, and a clean fallback; no network is added
-(the Kindle's settings and KOReader do that) and no profile is changed or deleted.
+saved Wi-Fi networks from Settings, in the current Settings design. Nearby networks come first: opening the
+sheet finds them (when the radio is on), with Rescan, Other... and Saved networks above the list. Each scan
+row shows a three-bar signal icon, filled for the strength, and a small lock when the network is not open. A
+saved row has a trash button at its right that deletes that profile at once. The connected row is filled black
+with a white rule inside its edge; tapping it again disconnects, keeping the radio on. While Nearby is idle, a
+quiet scan every 20 s updates the list in place: it never clears it or moves a name that is still there. Other...
+types a hidden network's name, then asks whether it is Open, WPA/WPA2 with a masked password, WPA3-Personal with
+a masked password, or WPA2/WPA3-Enterprise with a username and masked password. Enterprise add uses
+PEAP/MSCHAPv2 through `wpa_cli` (credentials on stdin), with PMF optional and the SHA-256 AKM offered, so it
+joins WPA2-Enterprise and WPA3-Enterprise (non-192-bit); the profile lives in the supplicant, not Saved
+networks, and `save_config` is best effort. WPA3-Personal uses SAE through `wpa_cli`, with PMF required and its
+passphrase on stdin. Both disable the supplicant's background scan, whose learned channel list can take the link
+off-channel. WEP, OWE, WPA3-Enterprise 192-bit, EAP-TTLS and EAP-TLS stay out. No CA-certificate choice
+ships yet, so PEAP does not validate the school's certificate.
 
-- **Where.** A Wi-Fi button in Settings' bottom row, beside Pair (both radios), opens a sheet drawn as the
-  Pair sheet is (draw_menu rows): the radio row (Turn on Wi-Fi, Turn off Wi-Fi, or Retry when the state is
-  not known), the status line, the saved networks (the one connected to first, with a check; seven a page
-  and a More networks row past seven, so it fits sideways), Done. Esc goes back to Settings. The notebook's
-  Settings has it too.
+- **Where.** A Wi-Fi row in Settings opens a full-page sheet drawn as its other submenus are. The status line
+  and the radio control (Turn on Wi-Fi, Turn off Wi-Fi, or Retry) sit over the top buttons: Rescan, Other...
+  and Saved networks. Nearby is the page it opens on; it scans once the radio is on, Rescan scans again, and an
+  idle Nearby asks for a quiet scan every 20 s (WIFI_REFRESH_MS). Saved networks shows the Kindle's saved
+  profiles, the one connected to first, eight a page with More, and
+  each row's trash button. Tapping Saved networks again returns to Nearby. Esc goes back to Settings. The
+  notebook's Settings has it too.
+- **Rows.** A network's name is a name: drawn smaller or shortened as names are, never counted as cut short.
+  Under it are what the sheet knows (Connected or Saved) and its security. The three signal bars fill from the
+  scan's `signal` against `signal_max`; a saved network no scan has measured shows the bars unlit. The lock is
+  over the icon's lower right for every security but Open, drawn from its shackle and body because the icon
+  font's lock is not in every face. The connected network's row is filled black with a white rule inside its
+  edge (its bars stay white); a tap on it calls the helper's disconnect.
 - **Status.** "Connecting to <name>..." while a switch is under way, "Could not connect to <name>." after
-  one failed, else the Share card's lines, with "Connected to <name>" when the name is known. A network's
-  name is a name: drawn smaller or shortened as names are, never counted as cut short.
+  one failed, else the Share card's lines, with "Connected to <name>" when the name is known. A failed Add says
+  "Could not add the network." (wifi_add_failed) rather than the generic read error, and a failed trash tap
+  "Could not forget the network." (wifi_delete_failed); a later successful read clears either.
+- **Add and delete.** A scan result that is not saved opens the masked keyboard for WPA/WPA2 or
+  WPA3-Personal, or is added at once when Open; Other... takes a hidden name, then Open, WPA/WPA2, WPA3
+  or WPA2/WPA3-Enterprise and its password. `wifi_add` derives the WPA/WPA2 PSK (PBKDF2-HMAC-SHA1 over
+  the passphrase and the name) and sends its 64 hex digits on the helper's stdin, never in argv;
+  WPA3-Personal sends the passphrase itself there (SAE needs it); the helper also takes a passphrase
+  there for a direct call.
+  A saved row's trash calls `wifi_delete` directly, with no Yes/No page; the helper tries wifid's
+  `deleteProfile` property by name (older firmware), then by the profile's integer `netid` (from
+  `profileData`, or `netidValue` when it is absent; the Scribe's wifid), then the supplicant's own
+  network, and counts the profile gone only when a fresh read no longer
+  lists it. Add and delete both read the networks back. Duplicate names are handled by wifid's own profile rules and the next read (no guessed merge in the
+  app). A profile that is not among the saved networks afterwards did not stick: that is a failed add. The
+  add's exits name the step in the log: 18 no valid PSK, 19 wifid refused the profile,
+  20 no read came back after the change. The
+  keyboard draws over the Wi-Fi page, which stays on the panel under it.
 - **A switch** is wifi_join: the helper's `join <hex>` (ensureConnection), then a read of the network
   connected to every 2 s. It has worked once a read has the Kindle connected to that network (the helper's
   own report right after the request still names the old one: no false success), and failed when the
   helper refused it or after 45 s (JOIN_WAIT). Nothing switches back: the Kindle's service decides what it
-  joins next. Turning the radio on or off forgets a switch; one switch runs at a time.
+  joins next. Turning the radio on or off forgets a switch; one switch runs at a time. A profile that took
+  joins the same watch (the helper already asked wifid to connect): the sheet says it is connecting until a
+  read names it, or names it failed.
+- **Disconnect** is the helper's `disconnect`, called from a tap on the connected row. Wi-Fi stays on. It
+  first puts wifid's connection manager in its manual `cmConnMode`, so it does not join the profile again
+  the moment the link drops, then writes `cmDisconnect` with the current `cmProfile` (some firmware ignores
+  it without that name), then without a name, then asks wpa_supplicant with `wpa_cli … disconnect` (with a
+  two-second bound, and the known control-socket paths tried). Once the link is down it pins the drop with
+  `wpa_cli disconnect` and disables that network at the supplicant, since the supplicant can reassociate on
+  its own within a moment, and so can a bare reconnect from wifid. It waits for `cmState` to leave
+  CONNECTED, looks once more a second later, and requires the report to say connected=0. A later join, add
+  or turn-on asks wifid to connect, which manages its own networks. A failure re-enables the network and
+  asks for `cmConnMode auto` again, keeping the last known status and saying "Could not disconnect." rather
+  than the generic read error; the helper's exit names the failed step in the log (10 radio, 11 connection
+  state, 12 no route took, 13 it came back past the disconnect pin, 17 it came back past the disable too,
+  15 it came back with no usable `wpa_cli` at all, 14 no final read). Joining, adding and turning the radio
+  on restore `auto` too. It is a change like a switch: one at a time, and success clears the current name.
 - **Reads** run only while the sheet is up (as the Share card's): everything as it opens, the saved
   networks once more when the radio comes on if they could not be read while it was off, everything once
-  more after a refused switch, and the network connected to while a switch is under way, or for 45 s after
-  a tap while the radio is on with no connection.
+  more after a refused switch, the network connected to while a switch is under way, or for 45 s after
+  a tap while the radio is on with no connection. A quiet scan of Nearby runs every 20 s while it is idle
+  with a list; `wifi_scan_quiet` keeps the old order and merges each name's new signal, security and known
+  flag, drops names that left, and appends new ones. Its failure leaves the old list and says nothing. A tap
+  on Rescan while it runs accepts it as the rescan instead of clearing the list. A tap on any change (join,
+  add, delete, disconnect, radio) cancels a running scan and starts at once; the 20 s wait starts when a
+  scan's answer returns, so a slow scan is never followed straight away by another one.
 - **Passwords** never leave the helper (docs/KINDLE.md, Wi-Fi): the profileData reader keeps essid values
-  only and gives no name at all for any format it does not know. Names cross in hex and are checked again
-  in Rust (1 to 32 bytes, no control character; anything else fails the whole report closed). No name is
-  logged.
+  only and gives no name at all for any format it does not know. A password goes from the masked keyboard to
+  the helper's stdin, is turned into a PSK, and is wiped from the keyboard on Done/Cancel; it is never in
+  argv, the environment, output, logs or scenario recordings, and the keyboard's probe returns empty for a
+  secret. Names cross in hex and are checked again in Rust (1 to 32 bytes, no control character; anything
+  else fails the whole report closed). No name is logged.
 
 ## Settings > Gestures and page finger shapes (Index phase 3)
 
@@ -2066,7 +2129,9 @@ The binding design is docs/beta2/LASSO-DESIGN.md; this is where it lives in the 
 ## The safe loader and the PDF import (2.1.0-beta.2, lane L5)
 
 PDFs are untrusted, and Grimoire runs as root, so no process that writes files parses one. The import is three
-processes: the UI (queues, shows the notice, never reads the PDF beyond the ends of the file), the writer (a
+processes: the UI (queues, shows the notice, and never parses a PDF: it reads the first and the last KiB of a file
+the scan found, to see that it is whole, and, in the picker, up to twelve 1 KiB samples for the book key, which it
+hashes), the writer (a
 background job child: opens the file through `fsview`'s walk, owns the work folder, validates every record
 and writes the files) and the worker, a fresh exec of the same binary (`grimoire --work pdf ...`, taken
 before any UI start-up) that inherits nothing: descriptors 0 to 5 only (0 to 2 on /dev/null, 3 the PDF, read
@@ -2086,9 +2151,15 @@ step, or a worker that cannot be started, marks nothing and counts no try; the s
 steps are in place; `S 0` is a build without them, macOS); where the sandbox is required the writers take only
 `S 1`, and a worker is started only with descriptors 0 to 5 in place. The writer ignores SIGPIPE, and reads a worker's last
 records after a send that failed. The page watchdog runs on CLOCK_MONOTONIC (a sleep does not count); a page
-whose wait the Kindle slept through and that then stalls is tried again once without a strike. Off the Kindle the steps are
-skipped (plain process isolation) unless GRIMOIRE_SANDBOX=require. The worker's records are text lines of a
-fixed grammar plus pixel bands, at most 4 MiB a job besides pixels, parsed strictly (`pdfwork.rs`); every
+whose wait the Kindle slept through and that then stalls is tried again once without a strike. Off the Kindle a
+failed step refuses nothing unless the writer requires the sandbox (GRIMOIRE_SANDBOX=require: on Linux it then makes
+the worker's jail, and a worker given a jail holds every step, as on the Kindle). macOS has none of the steps (plain
+process isolation); a Linux build that does not require the sandbox still takes the steps that work without root (no
+new privileges, the limits and the allow-list among them) and has no chroot. The worker's records are text lines of
+a fixed grammar plus pixel bands, parsed strictly (`pdfwork.rs`). The writer ends a worker whose record lines pass
+4 MiB (`RECORDS_MAX_BYTES`: counted for each worker, the pixels and the handshake's two lines apart), and a job is
+many workers: a fresh one for each slice, and after each one that died or stalled. Only the first comes near the
+cap, with the links and the names; the others send the page count, a line a band and a line a page. Every
 number the device spike (S1) sets is in the one table `sandbox::s1`, marked "set by S1". The notebook, its
 slices, marks and colour rule are in FORMAT.md, "Imports: PDFs". Two rules hold the import together (the fix round
 of 2026-11-09): whether a file may be moved is decided by where it lies (`pdfimport::in_import`), never by a mark;
@@ -2096,7 +2167,22 @@ and the state never names a picture the saved index does not (the index is saved
 and makes again what is gone). Only an import's child keeps the import lock's descriptor (`bgjob::child_setup`),
 so a compaction or a mirror that starts as the last import ends never holds it; a pick that met a lock held
 elsewhere is queued by the first scan that takes it afresh, and the tick tries the lock every 10 s while a
-previous run's detached import holds it.
+previous run's detached import holds it. The lock is a plain file at its own name (`pdfimport::lock_take`): it
+is opened without following a link (`O_NOFOLLOW`, and `O_NONBLOCK` as the other lock files), must be a regular
+file with one name, and once locked must still be the file at its name (`lock_is_at`), else the lock is asked
+for once more and then given up. What else is found at the name is never removed and never followed. Only
+`EWOULDBLOCK` means another process imports, and only then does a pick wait; a lock that cannot be taken for
+any other reason refuses a pick with the message for a file that cannot be imported, and leaves no mark. A third
+rule joined the two above in the hardening round of 2026-11: a file's path is kept in its mark and state as it
+is, and a path those files cannot hold (a line break in a name, `pdfimport::name_storable`) is refused where it
+comes in: the scan, the picker's rows, a pick, the job. `in_import` asks the folder itself where a path spells
+`import` in another case (`pdfimport::under_import`), and the scan's first look at a PDF opens it through the
+same walk as the job and reads only the file it listed (`read_ends`). The job reads its PDF through the file it
+opened, and a file of `import/` is moved to `done/` by its name, so the name is looked at once more just before
+the move (`finish_pdf`): it must still hold the file that was read (the lock's own test of a name against an
+open file, and the size and time the file was opened with), else nothing moves, nothing is marked done, and
+the next scan takes what is at the name; the try stays counted, so this cannot repeat without end. The record a
+notebook keeps of its file takes its key and its hash from the one file the last slice has open.
 
 The links and names (lane L6) come out of the same worker. After the page count the writer sends `LINKS <w> <h>`;
 the worker walks the annotations of every page (`pdfwork.rs`, module `links`), resolves each destination to a
@@ -2162,7 +2248,9 @@ its bytes.** Four parts keep it (`fontcheck.rs`, `userfonts.rs`, `font.rs`):
   and drawing at both sizes; a glyph that fails is listed and comes from Terminess, and more than one in a
   hundred is "Unreadable font.". It works in slices of 20 s of its own CPU time (`s1::FONT_SLICE_CPU_SECS`),
   each a fresh worker that gets the bytes again and goes on from the glyph index the last reached, 10 minutes
-  in all, then "Took too long to read."; a worker silent for 30 s is killed and is the same. It settles the
+  in all; a worker silent for 30 s is killed and counts as out of time too. A first check that runs out of time
+  writes no verdict: the file is checked once more, a minute or more later (`<key>.slow`), and a second is
+  "Took too long to read.". It settles the
   font's scale (capitals as tall as Terminess's, 0.592 of the line, between 0.85 and 1.25, then lowered a
   hundredth at a time until 95 of 100 of Grimoire's strings, in every language, are no wider than Terminess
   draws them, measured as `font.rs` measures: advances only), says which languages need letters the font
@@ -2238,9 +2326,16 @@ are routed in `library.rs` as the Graph's are, and two fingers down does nothing
   (`pdfimport::import_status`, `bgwork_template::folder_failed`): the PDF rows' when the import's progress changes
   (looked at at most once a second), every row's every 5 s (a folder's lists the folder), and redraws only the rows
   that changed. The staying notice of an import stays off that place (`library_import_place_up`): its rows say it.
-- **"has notes"** is the PDF's book key (KOReader's partial MD5, 12 reads of 1 KiB through the walk) compared with
-  the notebooks' keys (`source=`, else the book their `source.ini` names), read once for the picker's session; the
-  card then offers Open its notebook.
+- **"has notes"** is the PDF's book key (KOReader's partial MD5, 12 reads of 1 KiB through the walk) and its size
+  (one descriptor) compared with the keys the notebooks hold and the records of their files
+  (`pdfimport::key_holders`: `source=`, else the book their `source.ini` names, else the key of its `file=` line;
+  one small read a notebook, once for the picker's session). No file is read whole in the UI, so the row states
+  what the key and the size can say (`pdfimport::key_match`), and the card has three cases. A notebook holds the
+  key with a record of the file's size: "has notes", and the card offers Open its notebook and Import as
+  notebook (the import reads the whole file and gives the exact answer: "PDF already imported." for that very
+  file, a notebook of its own for another). A notebook holds the key with no record (one made before the
+  records, or from KOReader): "has notes", Open its notebook, as before. Only notebooks whose records are of
+  another size hold the key, or none does: no tag, Import as notebook.
 - **Logs** carry counts and timings only ("files: listed N entries (M usable) in T ms"), never a name.
 
 ## Shared building blocks (2.1, lane L0)

@@ -1778,12 +1778,6 @@ pub fn editor_status_changed(a: &mut App) {
     } else if let Some(s) = a.ed.as_deref_mut() { s.view_w = 0; }
 }
 
-/// A read-only live preview of the corner while adjusting it in Display.
-pub fn editor_status_preview(a:&App)->bool {
-    if crate::library::library_status_preview(a) {return true;}
-    a.scr==ScreenId::Editor && !crate::library::library_settings_active(a)
-        && a.ed.as_deref().is_some_and(|s|s.open && s.dm.open)
-}
 
 // ---- view ----
 
@@ -10973,7 +10967,7 @@ fn owner_pointer(a: &mut App, ph: i32, ev: &InEvent, pen: bool) {
                     app_invalidate(a, d, RefreshMode::Ui);
                 }
                 app_toast_dismiss(a);
-            } else if r == DmResult::Closed {
+            } else if r == DmResult::Closed || r == DmResult::ClosedAll {
                 compose(a, d);
                 app_invalidate(a, d, RefreshMode::Ui);
             } else if !rect_is_empty(d) {

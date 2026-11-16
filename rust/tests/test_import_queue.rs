@@ -583,3 +583,155 @@ fn a_pdf_without_its_end_marker_is_taken_after_a_minute_unchanged() {
     drain();
     assert_eq!(queued, vec![0, 0, 0, 1]);
 }
+
+// ---- names: a path is kept as it is, and one a line cannot hold is refused where it comes in ----
+
+// A picked PDF whose path holds a line feed is refused before the lock is asked for and before any mark, whether
+// the lock is free or held elsewhere: nothing waits under another file's path.
+#[test]
+fn a_picked_path_with_a_line_break_is_refused() {
+    let e = setup("pick-line-break");
+    e.put("documents/ab.pdf", &pdffix::planner(1));
+    if std::fs::write(format!("{}/documents/a\nb.pdf", e.storage), pdffix::planner(2)).is_err() {
+        eprintln!("  skipped: this file system refuses a line feed in a name");
+        return;
+    }
+    let sp = StoragePath::new(b"documents/a\nb.pdf").unwrap();
+    // the lock free
+    let q1 = pdf_import_queue(&sp, None, None, DPI);
+    let (marks1, pending1) = (e.marks(), pending_count());
+    drain();
+    let made1 = e.notebooks();
+    // the lock held elsewhere, then let go: a scan takes up whatever waited
+    let other = e.hold_lock();
+    let q2 = pdf_import_queue(&sp, None, None, DPI);
+    let marks2 = e.marks();
+    drop(other);
+    grimoire::bgwork_template::import_scan(DPI);
+    drain();
+    assert_eq!(q1, Queued::Refused("name"));
+    assert!(marks1.is_empty() && pending1 == 0, "{marks1:?}, {pending1} pending");
+    assert!(made1.is_empty(), "{made1:?}");
+    assert_eq!(q2, Queued::Refused("name"));
+    assert!(marks2.is_empty(), "{marks2:?}");
+    assert!(e.notebooks().is_empty(), "{:?}", e.notebooks());
+    assert!(std::path::Path::new(&format!("{}/documents/ab.pdf", e.storage)).exists());
+}
+
+// A folder's pictures wait for the PDFs in it that the scan takes, never for one it leaves out.
+#[test]
+fn a_folders_pictures_do_not_wait_for_a_pdf_the_scan_leaves_out() {
+    let e = setup("scans-line-break");
+    std::env::set_var("GRIMOIRE_IMPORT_STABLE", "fast");
+    for k in 1..=2 {
+        let p = BgPicture { px: vec![120u8; 150 * 200], w: 150, h: 200, ch: 1 };
+        e.put(&format!("grimoire/import/Scans/page-{k}.png"), &encode_png(&p).unwrap());
+    }
+    if std::fs::write(format!("{}/import/Scans/a\nb.pdf", e.root), pdffix::planner(1)).is_err() {
+        eprintln!("  skipped: this file system refuses a line feed in a name");
+        return;
+    }
+    let mut made = Vec::new();
+    for _ in 0..3 {
+        grimoire::bgwork_template::import_scan(DPI);
+        drain();
+        made.push(e.notebooks());
+    }
+    assert_eq!(made[0], ["Scans"], "the first scan takes the pictures: {made:?}");
+    assert_eq!(made[2], ["Scans"], "and no later one makes another notebook: {made:?}");
+}
+
+/// The name of a path's mark in import/.marks: FNV-1a (64 bits) of the path, as 16 hex digits.
+fn mark_name(src: &str) -> String {
+    let mut h: u64 = 14695981039346656037;
+    for &b in src.as_bytes() {
+        h = (h ^ b as u64).wrapping_mul(1099511628211);
+    }
+    format!("{h:016x}")
+}
+
+// A waiting mark is named by the hash of the path it holds. One filed under another path's hash is not that
+// path's: it is removed, and the file it names is not imported for it.
+#[test]
+fn a_waiting_mark_that_is_not_its_paths_own_is_dropped() {
+    let e = setup("mark-not-own");
+    e.put("documents/ab.pdf", &pdffix::planner(1));
+    let mark = format!("{}/import/.marks/{}", e.root, mark_name("documents/a\u{85}b.pdf"));
+    std::fs::create_dir_all(format!("{}/import/.marks", e.root)).unwrap();
+    std::fs::write(&mark, "state=waiting\nsrc=documents/ab.pdf\npick=1\n").unwrap();
+    let n = queue_waiting_marks(DPI);
+    let pending = pending_count();
+    let there = std::path::Path::new(&mark).exists();
+    drain();
+    assert_eq!(n, 0);
+    assert_eq!(pending, 0);
+    assert!(!there, "the mark is still there");
+    assert!(e.notebooks().is_empty(), "{:?}", e.notebooks());
+    // a mark under its own path's hash is taken as before
+    std::fs::write(format!("{}/import/.marks/{}", e.root, mark_name("documents/ab.pdf")), "state=waiting\nsrc=documents/ab.pdf\npick=1\n").unwrap();
+    assert_eq!(queue_waiting_marks(DPI), 1);
+    drain();
+    assert_eq!(e.notebooks(), ["ab"]);
+}
+
+// A folder of import/ whose own name holds a line break: the scan leaves out every PDF in it (their paths cannot
+// be kept), so its pictures do not wait for them. They import as a folder's pictures always did, and that import
+// files the whole folder, the PDF with it (docs/FORMAT.md says so).
+#[test]
+fn the_pictures_of_a_folder_named_with_a_line_break_do_not_wait_for_its_pdf() {
+    let e = setup("folder-line-break");
+    std::env::set_var("GRIMOIRE_IMPORT_STABLE", "fast");
+    let dir = format!("{}/import/Sc\nans", e.root);
+    if std::fs::create_dir(&dir).is_err() {
+        eprintln!("  skipped: this file system refuses a line feed in a name");
+        return;
+    }
+    for k in 1..=2 {
+        let p = BgPicture { px: vec![120u8; 150 * 200], w: 150, h: 200, ch: 1 };
+        std::fs::write(format!("{dir}/page-{k}.png"), encode_png(&p).unwrap()).unwrap();
+    }
+    std::fs::write(format!("{dir}/x.pdf"), pdffix::planner(1)).unwrap();
+    assert!(list_pdfs().files.is_empty(), "the scan lists no PDF of a folder so named");
+    let mut made = Vec::new();
+    for _ in 0..3 {
+        grimoire::bgwork_template::import_scan(DPI);
+        drain();
+        made.push(e.notebooks().len());
+    }
+    assert_eq!(made, [1, 1, 1], "the first scan takes the pictures, and no scan makes another notebook");
+    let mut nb = Vec::new();
+    store_list(&mut nb);
+    assert_eq!(nb[0].npages(), 2, "the notebook is the two pictures'");
+    assert!(!std::path::Path::new(&dir).exists(), "the folder was filed");
+}
+
+// A file that takes a PDF's name while that PDF is being imported, through the scan and its jobs as the app
+// runs them: the PDF that was read becomes its notebook, the file at the name is not moved to import/done and not
+// marked, and the next scan lists it and imports it as the file it is. (The file is put at the name through
+// pdfimport's seam for the tests, in the job's own process, where the import is about to file its PDF.)
+#[test]
+fn the_next_scan_imports_a_file_that_took_the_name_of_a_pdf_being_imported() {
+    let e = setup("name-taken-scan");
+    std::env::set_var("GRIMOIRE_IMPORT_STABLE", "fast");
+    e.put("grimoire/import/Book.pdf", &pdffix::planner(2));
+    let other = pdffix::planner(3);
+    let (at, tmp) = (format!("{}/import/Book.pdf", e.root), format!("{}/import/.incoming", e.root));
+    std::fs::write(&tmp, &other).unwrap();
+    sim_before_filing(move || std::fs::rename(&tmp, &at).unwrap());
+    let q1 = grimoire::bgwork_template::import_scan(DPI);
+    let said1 = drain();
+    // (the jobs are this process's children, each with a copy of the seam: from here on it does nothing)
+    sim_before_filing(|| ());
+    let after1 = (e.notebooks(), std::fs::read(format!("{}/import/Book.pdf", e.root)).ok(), e.names("grimoire/import/done"), e.marks());
+    let q2 = grimoire::bgwork_template::import_scan(DPI);
+    let said2 = drain();
+    lock_release_if_idle();
+    assert_eq!((q1, said1.as_slice()), (1, &["Imported { pages: 2, blank: 0, trimmed: 0 }".to_string()][..]), "the PDF that was read became its notebook");
+    assert_eq!(after1.0, ["Book"]);
+    assert!(after1.1.as_deref() == Some(&other[..]), "the file that took the name is still at it");
+    assert!(after1.2.is_empty() && after1.3.is_empty(), "it was not filed in import/done, and no mark says it was imported: {:?}, {:?}", after1.2, after1.3);
+    assert_eq!((q2, said2.as_slice()), (1, &["Imported { pages: 3, blank: 0, trimmed: 0 }".to_string()][..]), "the next scan imports the file at the name");
+    assert_eq!(e.notebooks(), ["Book", "Book 2"]);
+    assert_eq!(e.names("grimoire/import/done").len(), 1, "and files it");
+    assert!(!std::path::Path::new(&format!("{}/import/Book.pdf", e.root)).exists() && e.attempts().is_empty() && e.marks().is_empty(), "nothing of it is left in import/");
+}

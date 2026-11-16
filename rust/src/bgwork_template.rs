@@ -906,10 +906,9 @@ pub fn photo_install(nb: &NotebookInfo, path: &str, kind: &mut PaperKind, why: &
 
 fn install_picture(nb: &NotebookInfo, path: &str, kind: &mut PaperKind, why: &mut &'static str, photo: bool) -> i32 {
     *why = "the file does not read";
-    // On the UI thread: its key, from the hash of its bytes and the page size; the picture is made
-    // in the background. The previews job, which reads every template whole anyway, keeps the hash
-    // and whether the file is a picture Grimoire takes; only a small file it has not seen yet is
-    // read here (whole, once).
+    // On the UI thread: its key, from the hash the previews job keeps beside the preview (it reads every
+    // template whole anyway) and the page size; the picture is made in the background. None of the file's
+    // bytes are read here: one the previews job has not seen yet is not ready (PREVIEW_NOT_MADE).
     if path.len() >= JOB_PATH_MAX {
         *why = "too long a path for a background job";
         return -1;
@@ -2070,6 +2069,10 @@ pub fn import_pick_queue(path: &StoragePath, name: Option<&str>, folder: Option<
         }
     }
     let busy = match lock_take() {
+        Lock::Busy(e) if e != libc::EWOULDBLOCK => {
+            qlog!("import: the import lock cannot be taken (%s); a picked folder is refused", &strerror(e));
+            return Queued::Refused("lock");
+        }
         Lock::Busy(_) => true,
         Lock::Fresh => {
             import_leftovers(true, &mut Vec::new());

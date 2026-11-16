@@ -186,8 +186,8 @@ your notebooks and settings from `quire/` to `grimoire/` and removes the old Qui
   its card turns it off, and it turns itself off after 10 minutes with nobody watching. Plain HTTP:
   use it on a network you trust.
 - **Wi-Fi networks**: **Settings > Wi-Fi** turns Wi-Fi on or off, says which network the Kindle is
-  connected to, and lists the networks the Kindle has saved, the one connected to first and checked (seven
-  a page; **More networks** shows the next). Tap one to switch to it: "Connecting to ..." until the Kindle
+  connected to, and lists the networks the Kindle has saved in their own order; the list scrolls. The
+  status line names the connected network. Tap one to switch to it: "Connecting to ..." until the Kindle
   is connected to it, or "Could not connect to ..." when it refuses or has not connected in 45 seconds
   (Grimoire changes nothing more: the Kindle's own Wi-Fi service decides what it joins next). Switching disconnects Share, Live view and SSH from
   the network you leave. Add a network or change its password in the Kindle's settings or KOReader:
@@ -298,7 +298,10 @@ your notebooks and settings from `quire/` to `grimoire/` and removes the old Qui
   Imported, and a Look again row), Documents, Downloads and All storage (Grimoire's notebooks, PDFs and trash
   are never listed). A tap on a folder opens it; a tap on a PDF opens its card ("14.2 MB, Oct 30" and Import as
   notebook, or Open its notebook when a notebook already holds that book; "has notes" shows on its row), and
-  the second tap imports it. A folder of pictures is imported from its `...` (or a finger held on it) card.
+  the second tap imports it. A notebook made from a PDF remembers its file, so the card of such a PDF offers
+  Import as notebook beside Open its notebook: the very same file says "PDF already imported.", and another
+  file that only looks like the book to KOReader's key (an edited copy, say) becomes a notebook of its own.
+  A folder of pictures is imported from its `...` (or a finger held on it) card.
   The notebook takes the file's name unless you typed one in the New notebook sheet first, and goes in that
   sheet's folder. The file stays exactly where it was: Grimoire only reads outside its own folders, and never
   follows a link (a file picked in Import itself is filed in `import/done/` like one dropped there). A file

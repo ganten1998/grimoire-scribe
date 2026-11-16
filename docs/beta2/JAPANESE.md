@@ -15,7 +15,7 @@ modules it touches. "Zip" means gzip -9 of the file, which tracks what the defla
 
 | Stage | What | Binary / zip cost | New code (from the code) | Verdict |
 | --- | --- | --- | --- | --- |
-| 1 | Take `ja.po`, DotGothic16 and the flick pad, with fixes | +1.56 MB / +0.61 MB (subset font + ja.mo) | about 150 to 200 lines on top of the contributor's 769 | Take it for beta.2, after a native read |
+| 1 | Take `ja.po`, DotGothic16 and the flick pad, with fixes | +1.56 MB / +0.61 MB (subset font + ja.mo) | about 150 to 200 lines on top of the contributor's 769 | Take it for beta.2 |
 | 2 | Kana input: Bluetooth keyboards type at all, romaji to kana, katakana, Find folding | about +10 KB | about 700 lines with tests and the romaji table | Next; half of it helps every language |
 | 3 | Kanji conversion: SKK dictionaries, a candidate bar, learning | +1.30 MB / +0.64 MB (M + ML + jinmei) | about 1,100 to 1,300 lines with tests | After stage 2; GPL-2.0-or-later data, compatible |
 | - | Amazon's own Japanese keyboard | - | larger than stages 2 and 3 together | No (reasons below) |
@@ -39,9 +39,6 @@ installed app by about 2.9 MB (the dictionary as its own file). The Scribe (Medi
 | Names | `ui_name_label` and `annotate_name` now keep kana and kanji (a Japanese book title stays) | |
 | Flick pad | `keyboard.rs`/`keyboard.c` (+227/+164 lines), tests in both trees | |
 | Tests | test_i18n, test_ui, test_font, test_keyboard, three scenario taps moved for the longer language list | |
-
-The `po` header says `Last-Translator: draft`: the translation reads as a careful draft and
-should be treated as one until a native speaker reads it.
 
 ### The font: measured
 
@@ -143,13 +140,11 @@ Minor: the `TRANSLATORS:` comment sits on literal strings (あ, ゛, 小) that n
   TRANSLATING.md, KOReader strings); (2) the font (the subset file, OFL text, the subset script,
   the fallback and pixel rendering, FORMAT.md and DESIGN.md); (3) the flick pad with the five fixes
   above and their tests; (4) CHANGELOG and BACKLOG.
-- **Gate:** `make check`, with no `fit[ja]` line in either style. The PR description lists the
-  screens a native reader should check in the shots: the top bar (New, Folder, Share must stay
-  narrow enough for the scenario taps, as TRANSLATING.md says), Settings, Pen feel, the Index
-  sheets.
-- **Native read:** someone who reads Japanese goes through `po/ja-glossary.md` first (it lists the
-  choices: ノート vs ノートブック, フォルダー, the paper names), then the tightest screens in the
-  shots. Until then `Last-Translator` stays `draft` and the CHANGELOG says "draft translation".
+- **Gate:** `make check`, with no `fit[ja]` line in either style. The screens checked in the
+  shots include the top bar (New, Folder and Share stay narrow enough for the scenario taps, as
+  TRANSLATING.md says), Settings, Pen feel and the Index sheets.
+- **Translation:** `po/ja.po` has every entry translated and `po/ja.mo` is built from it; the
+  glossary lists the choices (ノート vs ノートブック, フォルダー, the paper names).
 - **The C tree:** the contributor mirrored the keyboard and font changes into `src/`. `make check`
   does not build the C tree (`c-check` is separate), so mirroring is welcome but should not hold
   the PR.
@@ -321,8 +316,7 @@ None of that is needed for stages 1 to 3.
 **Stage 1: the translation and the font (beta.2).** Contributor PR shaped as above, plus the
 maintainer's fixes: the font subset (1.49 MB instead of 2.07), pixel rendering for DotGothic16
 (about 30 lines), the five flick-pad fixes (about 75 lines with tests), FORMAT.md and DESIGN.md
-lines, a native read of the glossary and the shots. Cost: binary +1.56 MB (font + ja.mo), zip
-+0.61 MB. One lane, plus waiting for a native reader.
+lines. Cost: binary +1.56 MB (font + ja.mo), zip +0.61 MB. One lane.
 
 **Stage 2: kana input (beta.3).**
 - Bluetooth keyboards type into the keyboard, every language: about 300 lines with scenarios.

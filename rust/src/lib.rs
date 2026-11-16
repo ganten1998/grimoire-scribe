@@ -65,6 +65,7 @@ pub mod shortcut_profiles; // per-device shortcuts: root/shortcuts/<device>.ini 
 pub mod touchgest; // the touch recognizer: contact frames in, touch, pinch and gesture events out
 pub mod update;
 pub mod wifi;
+pub mod wpa; // WPA/WPA2's PSK from a passphrase and a name, so add needs no wpa_passphrase
 pub mod util; // common.h (util.c)
 pub use util as common;
 
@@ -122,6 +123,7 @@ pub mod live_keys;
 pub mod pagesview;
 pub mod panel; // header only
 pub mod pensettings;
+pub mod settingsmenu; // Settings' categories and rows as data (Rust only)
 pub mod share;
 pub mod status; // not a port: the clock and battery corner, Rust only (2.0.0-beta.5)
 pub mod ui;

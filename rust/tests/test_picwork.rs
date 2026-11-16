@@ -204,6 +204,12 @@ fn hostile_pictures_are_refused() {
 // picture again (2.1.0-beta.2 fix round, M12): a second death in a row fails that picture alone, Dead, and the
 // pool's next picture goes to a fresh worker.
 fn a_worker_that_dies_fails_one_picture() {
+    // The worker's death hooks are a sandbox feature; on Linux the sandbox steps are the root-only
+    // CI job's (test_sandbox_linux.rs), so an unprivileged run has no worker death to test.
+    if cfg!(target_os = "linux") {
+        eprintln!("  the picture worker's death hooks need the Linux sandbox (root, test_sandbox_linux.rs): not tested");
+        return;
+    }
     clean_env();
     let dir = tmp("dead");
     let good = png_bytes(&gradient(64, 64, 1), &dir);

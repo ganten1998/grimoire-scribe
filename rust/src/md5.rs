@@ -1,6 +1,8 @@
 //! MD5 (RFC 1321) and KOReader's partial MD5, the key of a book (DESIGN.md 3.13). About 80 lines of
 //! our own, no crate: the key is not a secret, only the name KOReader and Grimoire give one file, so
-//! its notebook is found again whichever of them made it.
+//! its notebook is found again whichever of them made it. The key reads samples of a file, so two files
+//! can have one: whether a PDF is the very file a notebook was made from is said by the whole file's
+//! SHA-256 (sha256.rs), which an imported notebook keeps beside the key (pdfimport.rs, FileRecord).
 //!
 //! KOReader's `util.partialMD5` hashes 1 KiB samples taken at `lshift(1024, 2 * i)` for `i = -1 .. 10`,
 //! stopping at the first read that finds nothing. LuaJIT's `lshift(1024, -2)` masks the count to 30 and
