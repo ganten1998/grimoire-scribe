@@ -87,6 +87,9 @@ pub struct App {
     pub frames: u32,
     /// promote to FULL every 30
     pub ui_refreshes_since_full: i32,
+    /// what waits to be flushed is only what fills in by itself (app_invalidate_filling): its Ui is never the one
+    /// promoted to the cleaning Full
+    pub dirty_filling: bool,
     /// what fast refreshes left on the panel that only a flash wipes (display.rs, issue #11): the
     /// editor adds to it and cleans it; every Full, and a Clean over it, wipes it here at the flush
     pub du_wear: DuWear,
@@ -2293,6 +2296,25 @@ pub fn app_invalidate(a: &mut App, r: Rect, m: RefreshMode) {
     if rect_is_empty(r) {
         return;
     }
+    a.dirty_filling = false; // (whatever else is waiting, this refresh is one something asked for)
+    invalidate_in(a, r, m);
+}
+
+/// A part of the screen that fills in by itself, nobody having touched anything (Files' Covers tiles as their
+/// previews arrive): a Ui refresh of `r` like any other, and counted like any other, but never the one that
+/// becomes the cleaning Full (app_flush: every 30th Ui), which would flash the whole panel in the middle of a
+/// screen that is still arriving. The count runs on, and the next refresh that anything else asks for (a page
+/// turn, a tap) is the Full instead. Only while nothing else waits to be flushed with it.
+pub fn app_invalidate_filling(a: &mut App, r: Rect) {
+    let r = rect_intersect(r, Rect { x: 0, y: 0, w: a.w, h: a.h });
+    if rect_is_empty(r) {
+        return;
+    }
+    a.dirty_filling = rect_is_empty(a.dirty) || a.dirty_filling;
+    invalidate_in(a, r, RefreshMode::Ui);
+}
+
+fn invalidate_in(a: &mut App, r: Rect, m: RefreshMode) {
     // Keep the strongest mode requested since the last flush.
     if rect_is_empty(a.dirty) || m.strength() > a.dirty_mode.strength() {
         a.dirty_mode = m;
@@ -2337,9 +2359,11 @@ fn app_flush_in(a: &mut App) {
         a.dirty = rect_union(a.dirty, self_dirty);
         with(|s| s.self_dirty = RECT_EMPTY);
     }
+    // (a refresh of what fills in by itself, alone: counted, and never promoted: app_invalidate_filling)
+    let filling = std::mem::take(&mut a.dirty_filling) && rect_is_empty(self_dirty);
     if m == RefreshMode::Ui {
         a.ui_refreshes_since_full += 1;
-        if a.ui_refreshes_since_full >= 30 {
+        if a.ui_refreshes_since_full >= 30 && !filling {
             m = RefreshMode::Full;
         }
     }
@@ -3168,6 +3192,50 @@ mod tests {
         let mut out = String::new();
         assert_eq!(app_probe(a, key, &mut out, 256), 0, "{key}");
         out
+    }
+
+    /// A refresh of what fills in by itself (Files' Covers tiles as their previews arrive) is a Ui like any other
+    /// and counted like any other, but never the one promoted to the cleaning Full: the 30th and the ones after
+    /// it stay Ui, and the next refresh something asked for is the Full instead. With anything else waiting to be
+    /// flushed with it, before or after, it is an ordinary refresh.
+    #[test]
+    fn a_filling_refresh_is_counted_and_never_the_cleaning_full() {
+        let mut a = notice_app();
+        let r = Rect { x: 100, y: 500, w: 400, h: 300 };
+        let other = Rect { x: 900, y: 900, w: 50, h: 50 };
+        a.ui_refreshes_since_full = 28;
+        for want in [29, 30, 31, 32] {
+            app_invalidate_filling(&mut a, r);
+            assert!(a.dirty_filling && a.dirty_mode == RefreshMode::Ui && a.dirty == r);
+            app_flush(&mut a);
+            assert_eq!(a.ui_refreshes_since_full, want, "counted, and no Full to start the count again");
+            assert!(!a.dirty_filling && rect_is_empty(a.dirty));
+        }
+        // the next refresh something asked for is the cleaning Full (the count starts again)
+        app_invalidate(&mut a, other, RefreshMode::Ui);
+        assert!(!a.dirty_filling);
+        app_flush(&mut a);
+        assert_eq!(a.ui_refreshes_since_full, 0);
+        // with something else waiting, before it or after it: an ordinary 30th, the Full
+        a.ui_refreshes_since_full = 29;
+        app_invalidate(&mut a, other, RefreshMode::Ui);
+        app_invalidate_filling(&mut a, r);
+        assert!(!a.dirty_filling && a.dirty == rect_union(r, other));
+        app_flush(&mut a);
+        assert_eq!(a.ui_refreshes_since_full, 0);
+        a.ui_refreshes_since_full = 29;
+        app_invalidate_filling(&mut a, r);
+        app_invalidate(&mut a, other, RefreshMode::Ui);
+        assert!(!a.dirty_filling);
+        app_flush(&mut a);
+        assert_eq!(a.ui_refreshes_since_full, 0);
+        // under the 30th it is one more Ui in the count, as any
+        app_invalidate_filling(&mut a, r);
+        app_flush(&mut a);
+        assert_eq!(a.ui_refreshes_since_full, 1);
+        // nothing of it off the screen
+        app_invalidate_filling(&mut a, Rect { x: -500, y: 0, w: 100, h: 100 });
+        assert!(!a.dirty_filling && rect_is_empty(a.dirty));
     }
 
     /// Shown at the next flush; drawn again only for a new text, at most once every 2 s; none of it counted
