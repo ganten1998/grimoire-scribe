@@ -417,6 +417,22 @@ fn free_line(free: u64, total: u64) -> String {
     cformat!(tr("Free: %s of %s"), size_label(free).as_str(), size_label(total).as_str())
 }
 
+/// What a trash entry's name says: (the time in it, its notebook's id, whether it is a page) for a notebook
+/// `<id>-<time>` or a page `<id>-p<page>-<time>`; (0, "", false) for a name of another form. The Trash place reads
+/// names here alone. Issue #117's storage writes add a trash listing to fsview.rs that reads these names and the
+/// `files-<stamp>-<4 hex>` entries its own trash makes (here a name of another form): once that is on main, this
+/// reading moves there.
+fn trash_name(name: &str) -> (i64, &str, bool) {
+    let digits = |s: &str| !s.is_empty() && s.len() <= 18 && s.bytes().all(|c| c.is_ascii_digit());
+    let parts = name.rsplit_once('-').filter(|(h, t)| digits(t) && !h.is_empty() && !name.starts_with("files-"));
+    let Some((head, t)) = parts else { return (0, "", false) };
+    let when = t.parse().unwrap_or(0);
+    match head.rsplit_once("-p") {
+        Some((id, p)) if digits(p) && !id.is_empty() => (when, id, true),
+        _ => (when, head, false),
+    }
+}
+
 /// The longest the Go to sheet's tap waits for the storage root's folders.
 const GOTO_MS: u32 = 200;
 
@@ -760,27 +776,34 @@ impl Browser {
             let mut r = Row::new(RowKind::Trashed, name, path);
             r.ix = ix;
             r.dir = e.kind == FsKind::Dir;
-            r.when = name.rsplit_once('-').and_then(|(_, t)| t.parse::<i64>().ok()).unwrap_or(0);
+            r.when = trash_name(name).0;
             rows.push(r);
         }
         rows
     }
 
     /// A trash entry's name as Files shows it: a notebook's own name (its notebook.ini in the trash, Grimoire's own
-    /// small file), a page's notebook's name, else "" (the entry's name shows).
+    /// small file, opened through the walk as the listing was: no link on the way, a plain file, never waited on; the
+    /// name cut as the store cuts one), a page's notebook's name, else "" (the entry's name shows).
     fn trash_title(&self, r: &Row) -> String {
-        let Some((id, _)) = r.name.rsplit_once('-') else { return String::new() };
-        if r.dir {
-            let ini = format!("{}/trash/{}/notebook.ini", store_root(), r.name);
-            let text = crate::util::read_file_max(&ini, 16 << 10).unwrap_or_default();
-            return String::from_utf8_lossy(&text)
-                .lines()
-                .find_map(|l| l.strip_prefix("name="))
-                .map(|n| n.trim().to_string())
-                .unwrap_or_default();
+        use std::io::Read;
+        let (_, id, page) = trash_name(&r.name);
+        if page {
+            let nb = self.books.iter().find(|b| b.id.as_str() == id);
+            return nb.map_or(String::new(), |b| b.name.as_str().to_string());
         }
-        let Some((nb, _)) = id.rsplit_once("-p") else { return String::new() };
-        self.books.iter().find(|b| b.id.as_str() == nb).map_or(String::new(), |b| b.name.as_str().to_string())
+        let ini = r.path.join(b"notebook.ini").filter(|_| r.dir && !id.is_empty());
+        let fd = ini.and_then(|p| self.storage.as_ref()?.open_file(&p, self.pick()).ok());
+        let Some(fd) = fd else { return String::new() };
+        let mut text = Vec::new();
+        if std::fs::File::from(fd).take(16 << 10).read_to_end(&mut text).is_err() {
+            return String::new();
+        }
+        String::from_utf8_lossy(&text)
+            .lines()
+            .find_map(|l| l.strip_prefix("name="))
+            .map(|n| cut_at_bytes(n.trim(), STORE_NAME_LEN - 1).to_string())
+            .unwrap_or_default()
     }
 
     /// The rows shown from now on (the Import place's Look again after them), from the first screen. A press on the
@@ -2707,6 +2730,46 @@ mod tests {
         let labels: Vec<&str> = b.goto.iter().map(|g| g.0.as_str()).collect();
         assert!(labels.contains(&"F000") && labels.contains(&"F399"), "{labels:?}");
         assert!(!labels.iter().any(|l| l.contains('\n')), "a name with a line break is no row");
+    }
+
+    // The Trash place reads a notebook's name through the walk: an entry that was a folder when listed and is a link
+    // to another folder when its name is read gives no name (the entry's own shows), and a name is cut as the store
+    // cuts one. Names are read by one function: a notebook's and a page's time and id, and nothing from a name of
+    // another form (the entries the storage writes' trash will make among them).
+    #[test]
+    fn trash_names_are_read_through_the_walk() {
+        let (base, _g) = storage("trashwalk");
+        let t = format!("{base}/grimoire/trash");
+        let other = format!("{base}/elsewhere");
+        std::fs::create_dir_all(&other).unwrap();
+        std::fs::write(format!("{other}/notebook.ini"), "name=FROM-ELSEWHERE\n").unwrap();
+        let swapped = "20261101-000000-0007-1790000700";
+        let long = "20261101-000000-0006-1790000600";
+        for (entry, name) in [(swapped, "Real".to_string()), (long, "N".repeat(300))] {
+            std::fs::create_dir_all(format!("{t}/{entry}")).unwrap();
+            std::fs::write(format!("{t}/{entry}/notebook.ini"), format!("name={name}\n")).unwrap();
+        }
+        std::fs::create_dir_all(format!("{t}/files-20261115-120000-1234")).unwrap();
+        assert_eq!(trash_name(long), (1790000600, "20261101-000000-0006", false));
+        assert_eq!(trash_name("20261101-000000-0006-p3-1790000500"), (1790000500, "20261101-000000-0006", true));
+        assert_eq!(trash_name("files-20261115-120000-1234"), (0, "", false));
+        assert_eq!(trash_name("notes"), (0, "", false));
+        i18n_set("en");
+        let mut b = Browser::default();
+        assert!(b.open(PickSpec::place(), FilesPrefs { card: true, ..Default::default() }));
+        assert!(b.go(sp("grimoire/trash")));
+        assert_eq!(row_names(&b), [swapped, long, "files-20261115-120000-1234"]);
+        // (after the listing, the folder is swapped for a link to another)
+        std::fs::remove_dir_all(format!("{t}/{swapped}")).unwrap();
+        std::os::unix::fs::symlink(&other, format!("{t}/{swapped}")).unwrap();
+        for _ in 0..8 {
+            b.work(2480, now_ms());
+        }
+        let labels: Vec<String> = b.rows.iter().map(|r| b.row_label(r)).collect();
+        assert_eq!(labels[0], swapped, "nothing read through the link");
+        assert_eq!(labels[1], "N".repeat(STORE_NAME_LEN - 1));
+        assert_eq!(labels[2], "files-20261115-120000-1234");
+        assert_eq!(b.rows[2].when, 0);
     }
 
     #[test]
