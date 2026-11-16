@@ -6,6 +6,8 @@
 wait 200
 tap 1535 95
 wait 100
+tap library settings.cat.4
+wait 100
 tap library gestures
 wait 100
 expect library.sheet is gestures
@@ -23,7 +25,7 @@ expect library.record is 0
 expect gestures.shape.links is 2
 tap library done
 wait 100
-tap library done
+tap library settings.back
 wait 100
 expect library.sheet is settings
 tap library done

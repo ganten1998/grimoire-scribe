@@ -133,8 +133,10 @@ with open(os.path.join(d, 'root', 'settings.ini'), 'a') as f:
 script = open(os.path.join(HERE, 'scenarios', 'live_1_card.qs')).read().split('# live_check holds here')[0]
 turns = ''.join('rotate %d\nwait %d\n' % ((i + 1) % 2, TURN_MS) for i in range(TURNS))
 with open(os.path.join(d, 'card.qs'), 'w') as f:
-    # paired: the card's Done, the library; then the turns, the last screen's shot, and a hold
-    f.write(script + 'hold %s/paired\ntap share done\nwait 500\nhold %s/go\n%swait 500\nshot final\nhold %s/never\n'
+    # paired: the pairing itself takes the card away and brings the Library back (share.rs, share_tick), so
+    # nothing is tapped (the Share page's X, where a tap on its name lands, is the Library's Exit); then the
+    # turns, the last screen's shot, and a hold
+    f.write(script + 'hold %s/paired\nwait 500\nhold %s/go\n%swait 500\nshot final\nhold %s/never\n'
             % (d, d, turns, d))
 fifo_main, fifo_viewer = os.path.join(d, 'raw-main'), os.path.join(d, 'raw-viewer')
 os.mkfifo(fifo_main)

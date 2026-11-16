@@ -2698,6 +2698,34 @@ If step 1's T is long enough to matter, or step 2 shows the pen lagging, see the
 whole-file read ("Hardening round (2026-11), import: what waits"). If step 7 shows any of its three lines, do
 not release: send grimoire.log.
 
+## 2.2 work, the Font sheet in the new Settings menu (#115, #116)
+
+Since the new Settings menu (#115, which the owner checked on a Kindle Scribe), Settings > Font is the Font row
+of Settings' Display category, and its sheet works as Language does: a tap on a font applies it at once and
+saves it (with one Full refresh, as a style change); Back and Esc return to Settings and the X closes all of
+Settings, each keeping the font tapped. That replaces "Done applies, Cancel leaves the font as it was" in the
+sections "2.1.0, Classic fonts", "2.1.0-beta.2, L10 (your own fonts)" (step 8) and "2.1.0-beta.2, fix round,
+F3" (step 3), which describe the 2.1.0 builds.
+
+Automated: tests/scenarios/y_fonts.qs (a tap applies the family and saves it with a Full refresh; Back and Esc
+keep it; the X closes Settings with one ui refresh; Gothic has no Font row), z_fonts_kept.qs (the font y_fonts
+tapped last is there at the next start: y_fonts quits with the storage full after that tap, so the tap saved
+it), y_fonts_unknown.qs (an unknown `font=` line stays while the sheet is left with no tap, and a font tapped
+replaces it at once), y_fonts_own_1_sheet.qs and z_fonts_own_kept.qs (a font of the owner's own applied and
+saved at the tap, kept by Back and by the X, and there at the next start), and rust/tests/test_fontguard.rs
+`terminess_tapped_after_a_strike_takes_the_font_away_at_once` (after a start in Terminess that a crash made,
+Terminess tapped, then Back: no `font=file:` line is left, and the next start does not load the font).
+
+On the Scribe:
+
+1. **A tap applies.** In Classic, Settings, the Display category, Font: tap Atkinson. One full refresh, and the
+   sheet is in Atkinson; Back: Settings is in Atkinson and its row reads "Font: Atkinson"; restart Grimoire:
+   still Atkinson.
+2. **Back keeps the font tapped.** Tap Literata, then Back: Settings stays in Literata. Tap Atkinson, then the
+   X: the Library is in Atkinson.
+3. **Terminess after a crash.** As step 3 of "2.1.0-beta.2, fix round, F3", but tap Terminess and then Back:
+   settings.ini has no `font=file:` line any more, and the next start does not load the font.
+
 ## 2.2, Files (issue #124): device checks
 
 Not run on a Scribe yet. The headless scenarios `files_1_card` to `files_7_keys` cover the logic (the card hidden,

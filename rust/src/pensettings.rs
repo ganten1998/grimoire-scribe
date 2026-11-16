@@ -333,12 +333,16 @@ fn draw_pad_bare(a: &mut App) {
     crate::library::settings_card(c, clear, ButtonStyle::Plain);
     // TRANSLATORS: the button that wipes Pen feel's test pad (174 px at 44 px, or 34 px).
     // TRANSLATORS: on the eraser tab, restore the handwritten practice ink (174 px at 34 px).
-    font_draw_centered(
+    // (at 44 px, or down to 34 px where the word is longer than the card, as the button it replaced did)
+    ui_text(
         c,
         FontFace::Caps,
         ui_text_size(),
+        ui_small_size(),
         clear,
         if s.tab == TOOL_ERASER { tr("Reset pad") } else { tr("Clear") },
+        1,
+        true,
         0,
     );
 }

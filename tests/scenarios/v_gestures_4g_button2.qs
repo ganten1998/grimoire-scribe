@@ -6,18 +6,21 @@ wait 200
 expect pen.gesture is
 tap 1535 95
 wait 100
-expect library.ui_at.1000.1930 is gestures
-tap 1000 1930
+expect library.ui_at.329.830 is settings.cat.4
+tap 329 830
+wait 100
+expect library.ui_at.1233.639 is gestures
+tap 1233 639
 wait 100
 expect library.sheet is gestures
-expect library.ui_at.930.749 is gestures.group.editing
-tap 930 749
+expect library.ui_at.930.608 is gestures.group.editing
+tap 930 608
 wait 100
 expect library.gestures_group is editing
 expect library.gestures.1 is Undo: no gesture
 expect library.gestures.2 is Redo: no gesture
-expect library.ui_at.930.520 is gestures.row.2
-tap 930 520
+expect library.ui_at.930.450 is gestures.row.2
+tap 930 450
 wait 100
 expect library.gestures.learning is redo
 expect library.record is wait
@@ -30,14 +33,14 @@ pentap 500 1650
 wait 100
 expect library.record is 0
 pen leave
-expect library.ui_at.930.2120 is done
-tap 930 2120
+expect library.ui_at.125.95 is done
+tap 125 95
 wait 100
-expect library.ui_at.930.2030 is done
-tap 930 2030
+expect library.ui_at.125.95 is settings.back
+tap 125 95
 wait 100
-expect library.ui_at.1550.1930 is done
-tap 1550 1930
+expect library.ui_at.1735.95 is done
+tap 1735 95
 wait 100
 expect library.sheet is none
 tap 965 95
