@@ -222,3 +222,111 @@ fn names_with_a_line_break_are_not_rows() {
         assert!(!rows.iter().any(|r| r == name), "{name:?} is a row: {rows:?}");
     }
 }
+
+// Files' Covers view (2.2, issue #145): what reaches the worker is the screen's files alone. A folder of 25 pictures
+// and a PDF, nine tiles a screen (a Scribe upright): the first screen's nine are asked for, each its own job, and only
+// they get a preview; a turn to the next screen asks for its nine and takes the first screen's still queued out of the
+// queue (the jobs held back here by GRIMOIRE_BG_DELAY_MS: the one running runs on). The list asks for nothing, nor
+// does the picker's pick mode with the same setting, nor Files' root. A folder past 5,000 entries keeps the cap,
+// and only its screen is asked for.
+#[test]
+fn covers_asks_for_the_screens_files_only() {
+    use grimoire::bgwork_previews::*;
+    use grimoire::browser::FilesPrefs;
+    let root = plain_tree("covers");
+    std::env::set_var("GRIMOIRE_WORK_EXE", env!("CARGO_BIN_EXE_grimoire-headless"));
+    let dir = format!("{root}/documents/Many");
+    std::fs::create_dir_all(&dir).unwrap();
+    let png = format!("{dir}/p00.png");
+    let px: Vec<u8> = (0..40 * 30).map(|i| (i % 200) as u8).collect();
+    assert_eq!(bgimage_write_png(&png, &BgPicture { px, w: 40, h: 30, ch: 1 }), 0);
+    for i in 1..25 {
+        std::fs::copy(&png, format!("{dir}/p{i:02}.png")).unwrap();
+    }
+    std::fs::write(format!("{dir}/zz.pdf"), b"%PDF-1.4\n").unwrap();
+    let cache = format!("{root}/grimoire/.cache/files");
+    let infos = || std::fs::read_dir(&cache).map(|rd| rd.flatten().filter(|e| e.file_name().to_string_lossy().ends_with(".info")).count()).unwrap_or(0);
+    let probe = |b: &Browser, k: &str| {
+        let mut o = String::new();
+        assert!(b.probe(2480, k, &mut o), "{k}");
+        o
+    };
+    let settle = || {
+        let t0 = grimoire::util::real_now_ms();
+        while bg_busy() && grimoire::util::real_now_ms().wrapping_sub(t0) < 60_000 {
+            bg_poll();
+            sleep_ms(5);
+        }
+        assert!(!bg_busy());
+    };
+    let ask = |b: &mut Browser, n: usize| {
+        for _ in 0..200 {
+            b.work(2480, now_ms());
+            if probe(b, "asked") == n.to_string() {
+                return;
+            }
+        }
+        panic!("asked {} of {n}", probe(b, "asked"));
+    };
+    let covers = FilesPrefs { card: true, view: 1, ..Default::default() };
+    // the list: nothing asked
+    let mut b = Browser::default();
+    assert!(b.open(PickSpec::place(), FilesPrefs { card: true, ..Default::default() }));
+    assert!(b.go(sp("documents/Many")));
+    for _ in 0..20 {
+        b.work(2480, now_ms());
+    }
+    assert_eq!(probe(&b, "view"), "list");
+    assert_eq!(probe(&b, "asked"), "0");
+    // pick mode with Covers set: a list, nothing asked; Files' root neither
+    let mut b = Browser::default();
+    assert!(b.open(PickSpec::import(), covers));
+    assert!(b.go(sp("documents/Many")));
+    for _ in 0..20 {
+        b.work(2480, now_ms());
+    }
+    assert_eq!(probe(&b, "asked"), "0");
+    let mut b = Browser::default();
+    assert!(b.open(PickSpec::place(), covers));
+    for _ in 0..20 {
+        b.work(2480, now_ms());
+    }
+    assert_eq!(probe(&b, "asked"), "0");
+    assert_eq!(infos(), 0);
+    // Covers: the first screen's nine, made by the worker
+    assert!(b.go(sp("documents/Many")));
+    assert_eq!(probe(&b, "per_page"), "9");
+    assert_eq!(probe(&b, "rows"), "26");
+    ask(&mut b, 9);
+    settle();
+    assert_eq!(infos(), 9);
+    // held back: the second screen's nine queued behind a slow first; a turn to the third takes the queued ones back
+    std::env::set_var("GRIMOIRE_BG_DELAY_MS", "400");
+    b.turn(true, 2480);
+    ask(&mut b, 18);
+    assert_eq!(probe(&b, "making"), "1");
+    b.turn(true, 2480);
+    // (the second screen's eight queued ones are no longer asked for; the third's eight are)
+    ask(&mut b, 18);
+    std::env::remove_var("GRIMOIRE_BG_DELAY_MS");
+    settle();
+    // nine of the first screen, one of the second (the one that was running), the third's seven pictures and the
+    // PDF's mark (no PDF at all: refused)
+    assert_eq!(infos(), 9 + 1 + 8);
+    let zz = FsStorage::open(&root, &format!("{root}/grimoire")).unwrap().stat(&sp("documents/Many/zz.pdf"), false).unwrap();
+    assert!(matches!(preview_cached(&sp("documents/Many/zz.pdf"), &zz), Cached::NoPreview));
+    assert_eq!(probe(&b, "making"), "0");
+    // past 5,000 entries: the cap holds, and the screen alone is asked for (empty files: each marked, no worker)
+    let big = format!("{root}/documents/Big");
+    std::fs::create_dir_all(&big).unwrap();
+    for i in 0..5010 {
+        std::fs::write(format!("{big}/b{i:04}.png"), b"").unwrap();
+    }
+    assert!(b.go(sp("documents/Big")));
+    assert_eq!(probe(&b, "capped"), "1");
+    assert_eq!(probe(&b, "rows"), "5000");
+    ask(&mut b, 9);
+    settle();
+    assert_eq!(infos(), 18 + 9);
+    b.close();
+}

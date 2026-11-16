@@ -369,8 +369,9 @@ Taps: `tap library files.back`, `files.prev`, `files.next`, `files.row.N` (the N
 English names: `Import`, `documents`, `Downloads`, `Templates`, `Photos`, `Fonts`, `Kindle_fonts`, `PDF_copies`,
 `Trash`, `All_storage`, `Show_Files_in_Library`), and the open card's `files.card.import`, `files.card.open`,
 `files.card.pictures`, `files.card.notebook`, `files.card.cancel`. In Files: `files.crumb.N` (the Nth part of the
-path bar, from 1: Files, the place, then each folder; the last opens the Go to sheet), `files.sort` and
-`files.show` (its chips), and `files.goto.N` (the Go to sheet's Nth row).
+path bar, from 1: Files, the place, then each folder; the last opens the Go to sheet), `files.sort`,
+`files.show` and `files.view` (its chips), and `files.goto.N` (the Go to sheet's Nth row). In the Covers view
+`files.row.N` and `files.item.NAME` tap a tile (it has no `...`).
 
 | key | value |
 |---|---|
@@ -383,6 +384,8 @@ path bar, from 1: Files, the place, then each folder; the last opens the Go to s
 | `files.card` | the open card: `pdf`, `folder`, in Files `picture`, `font`, `other` or `goto` (the Go to sheet), or empty; `files.card.details` its first line (the Go to sheet's title), `files.card.rows` its rows joined by `|` |
 | `files.sort`, `files.show` | Files' order (`name`, `newest`, `size`) and what it lists (`usable`, `all`), as settings.ini has them; `files.sorting` `1` while a new order's stats come in |
 | `files.order`, `files.drawn` | the rows' names in order, joined by `|`; the rows' names as last drawn on the screen (a new order shows there once, when ready) |
+| `files.view`, `files.tiles` | Files' view (`list`, `covers`), as settings.ini has it; in the Covers view what each tile on the screen was last drawn showing, a letter each in order: `p` its preview, `l` the hourglass (its preview being made), `i` its kind's icon (a folder, another file, one the worker refused); empty in the list (2.2) |
+| `files.making`, `files.asked` | `1` while a preview the Covers screen asked for is queued or running ("Making previews..." stays meanwhile, after its first second); how many files were asked for since the folder was entered, a file the cache had included |
 | `storage.exists.PATH`, `storage.size.PATH`, `storage.names.DIR` | on the storage root: whether a path is there (a link counts as itself), a file's size (-1 without it), a folder's names sorted and joined by `|` |
 
 ### Checks

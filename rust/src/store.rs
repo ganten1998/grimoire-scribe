@@ -191,7 +191,7 @@ pub struct Settings {
     /// clears it.
     pub files_card: bool,
     /// Files' order (files_sort, FILES_SORT_NAMES: name, newest, size), what it lists (files_show,
-    /// FILES_SHOW_NAMES: usable files or all) and how (files_view, FILES_VIEW_NAMES: list). Each line is absent
+    /// FILES_SHOW_NAMES: usable files or all) and how (files_view, FILES_VIEW_NAMES: list or covers). Each line is absent
     /// at its default (the first name), and a value this build does not have is used as the default and
     /// written back as it was.
     pub files_sort: i32,
@@ -203,8 +203,8 @@ pub struct Settings {
 pub const FILES_SORT_NAMES: [&str; 3] = ["name", "newest", "size"];
 /// files_show's: the files Grimoire can use, or every file.
 pub const FILES_SHOW_NAMES: [&str; 2] = ["usable", "all"];
-/// files_view's: a list (Covers, which needs previews, comes later: a later version's value is kept as it was).
-pub const FILES_VIEW_NAMES: [&str; 1] = ["list"];
+/// files_view's: a list, or the previews in a grid (Covers, 2.2, issue #145).
+pub const FILES_VIEW_NAMES: [&str; 2] = ["list", "covers"];
 
 // ---- state ----
 

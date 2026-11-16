@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: Grimoire 1.0.0-beta\n"
 "Report-Msgid-Bugs-To: https://github.com/ganten1998/grimoire-scribe/issues\n"
-"POT-Creation-Date: 2026-11-15 23:27-0600\n"
+"POT-Creation-Date: 2026-11-16 00:51-0600\n"
 "PO-Revision-Date: 2026-10-20 08:02-0500\n"
 "Last-Translator: draft\n"
 "Language-Team: Spanish\n"
@@ -666,7 +666,7 @@ msgstr "Se omitieron algunos enlaces."
 
 #. TRANSLATORS: in a toast while Grimoire puts the pages of a book KOReader sent into its
 #. notebook (a few seconds for a big book): pages done, of how many. One line of about 1700 px.
-#: rust/src/app.rs
+#: rust/src/app.rs rust/src/editor.rs
 #, c-format
 msgid "Adding book pages: %d of %d"
 msgstr "Añadiendo páginas del libro: %d de %d"
@@ -1311,6 +1311,18 @@ msgstr "Tamaño"
 msgid "Name"
 msgstr "Nombre"
 
+#. TRANSLATORS: Files' View chip on its path bar while the files show as a grid of their previews (one word
+#. of about 220 px at 34 px in bold; a tap shows them as a list).
+#: rust/src/browser.rs
+msgid "Covers"
+msgstr "Portadas"
+
+#. TRANSLATORS: Files' View chip on its path bar while the files show as a list of rows (one word of about
+#. 220 px at 34 px in bold; a tap shows a grid of their previews). Also the Graph's List tab.
+#: rust/src/browser.rs rust/src/mapview.rs
+msgid "List"
+msgstr "Lista"
+
 #. TRANSLATORS: Files' Show chip on its path bar: every file is listed (others greyed, never opened), at
 #. 34 px in bold, about 360 px. A tap shows only the files Grimoire can use.
 #: rust/src/browser.rs
@@ -1339,6 +1351,12 @@ msgstr "El archivo cambió. Inténtalo de nuevo."
 #: rust/src/browser.rs
 msgid "Loading..."
 msgstr "Cargando..."
+
+#. TRANSLATORS: the staying notice while Files makes the previews of the files on screen in its Covers view
+#. (one line, about 700 px at 44 px).
+#: rust/src/browser.rs
+msgid "Making previews..."
+msgstr "Creando vistas previas..."
 
 #: rust/src/brush.rs
 msgctxt "tool"
@@ -4411,10 +4429,6 @@ msgstr "%s, página %d. Enlaces a %d, desde %d."
 #, c-format
 msgid "Page %d. Links to %d, linked from %d."
 msgstr "Página %d. Enlaces a %d, desde %d."
-
-#: rust/src/mapview.rs
-msgid "List"
-msgstr "Lista"
 
 #: rust/src/mapview.rs
 #, c-format

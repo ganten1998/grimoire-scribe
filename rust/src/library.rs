@@ -7712,7 +7712,7 @@ fn with_files<R>(a: &mut App, f: impl FnOnce(&mut Browser, &mut App) -> R) -> R 
 
 /// What the browser is handed of the settings for Files.
 fn files_prefs(a: &App) -> FilesPrefs {
-    FilesPrefs { card: a.settings.files_card, sort: a.settings.files_sort, show: a.settings.files_show }
+    FilesPrefs { card: a.settings.files_card, sort: a.settings.files_sort, show: a.settings.files_show, view: a.settings.files_view }
 }
 
 fn files_open(a: &mut App) {
@@ -7751,6 +7751,7 @@ fn files_close(a: &mut App, to_library: bool) {
         s.modal = Modal::None;
     }
     app_notice_clear(a, NoticeKey::Loading);
+    app_notice_clear(a, NoticeKey::Previews);
     if to_library {
         reload(a);
     }
@@ -7803,11 +7804,12 @@ fn files_result(a: &mut App, r: BrowserResult) {
             files_close(a, true);
             editor_open_notebook(a, &id);
         }
-        // Files' Sort or Show chip: kept for the next time Files opens
+        // Files' Sort, Show or View chip: kept for the next time Files opens
         BrowserResult::Prefs => {
             let prefs = lib(a).files.prefs;
             a.settings.files_sort = prefs.sort;
             a.settings.files_show = prefs.show;
+            a.settings.files_view = prefs.view;
             settings_save(&a.settings);
         }
         // "Show Files in Library": the card is the Library's last from now on (the browser drew its root without the row)

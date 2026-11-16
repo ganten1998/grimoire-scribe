@@ -557,6 +557,145 @@ fn prune(dir: &str) {
     qlog!("file previews: the cache pruned: %d file(s) (%d kB) removed of %d", files as i32, (bytes >> 10) as i32, names.len() as i32);
 }
 
+// ---- the Covers view's tiles (UI thread) ----
+
+/// What a Covers tile shows: the file's preview, the hourglass while its job is to make it, or its kind's icon.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum TileShow {
+    Preview,
+    Loading,
+    Icon,
+}
+
+impl TileShow {
+    /// Its letter for the runner's files.tiles: `p`, `l`, `i`.
+    pub fn letter(self) -> char {
+        match self {
+            TileShow::Preview => 'p',
+            TileShow::Loading => 'l',
+            TileShow::Icon => 'i',
+        }
+    }
+}
+
+/// The Covers view's previews (2.2): the files of its screen asked for once a visit (each its own job), the previews
+/// decoded while their files are on screen, and what each tile was drawn showing, so that a preview that comes is
+/// drawn alone.
+#[derive(Default)]
+pub struct CoverTiles {
+    /// the files asked for this visit: the path and stat the job was given, and the job's path while it is to be
+    /// looked at (None: no job, the cache had it, the path does not fit a job, or the job ended and was looked at)
+    asked: Vec<(StoragePath, FsStat, Option<String>)>,
+    /// the previews decoded, of files on screen
+    tiles: Vec<(StoragePath, FsStat, Canvas)>,
+    /// what each tile on screen was drawn showing, by its file
+    shown: Vec<(StoragePath, TileShow)>,
+    /// the files the screen showed at the last look (`screen`)
+    on: Vec<(StoragePath, FsStat)>,
+}
+
+impl CoverTiles {
+    /// A visit ends (another folder, the list, Files closed): the jobs still queued for it are taken out of the queue
+    /// (a running one runs on), and nothing of it is kept.
+    pub fn forget(&mut self) {
+        for j in self.asked.iter().filter_map(|a| a.2.as_deref()) {
+            bg_unqueue(BgKind::FilePreviews, "", j);
+        }
+        *self = CoverTiles::default();
+    }
+
+    /// The screen shows these files now (`on`: the files of its tiles that have a kind with a preview, each with its
+    /// stat, in the listed order). The jobs still queued for files no longer on it are taken out of the queue (those
+    /// files are asked for again when they come back), and the previews decoded of files gone from it are dropped.
+    /// Each file on it not asked for yet this visit is looked up in the cache: its preview is decoded, a mark is
+    /// taken as it is, and with nothing there a job is queued. True when one was.
+    pub fn screen(&mut self, on: &[(StoragePath, FsStat)]) -> bool {
+        if on == self.on.as_slice() {
+            return false; // (the same screen as at the last look: asked already)
+        }
+        self.on = on.to_vec();
+        let here = |p: &StoragePath, s: &FsStat| on.iter().any(|(q, t)| q == p && t.same(s));
+        self.asked.retain(|(p, s, j)| here(p, s) || !j.as_deref().is_some_and(|j| bg_unqueue(BgKind::FilePreviews, "", j)));
+        self.tiles.retain(|(p, s, _)| here(p, s));
+        self.shown.retain(|(p, _)| on.iter().any(|(q, _)| q == p));
+        let mut queued = false;
+        for (p, s) in on {
+            if self.asked.iter().any(|(q, t, _)| q == p && t.same(s)) {
+                continue;
+            }
+            let job = match preview_cached(p, s) {
+                Cached::Nothing => preview_request(p, s),
+                Cached::NoPreview => None,
+                Cached::Preview(c) => {
+                    if self.tiles.try_reserve(1).is_ok() {
+                        self.tiles.push((p.clone(), *s, c));
+                    }
+                    None
+                }
+            };
+            queued |= job.is_some();
+            if self.asked.try_reserve(1).is_ok() {
+                self.asked.push((p.clone(), *s, job));
+            }
+        }
+        queued
+    }
+
+    /// What the tile of the file at `p` (as listed: `s`) shows now: its preview once decoded; the hourglass until it
+    /// is asked for and while its job is queued or running; else its kind's icon. A job that ended is looked at once:
+    /// what it wrote is decoded then.
+    pub fn show(&mut self, p: &StoragePath, s: &FsStat) -> TileShow {
+        if self.tiles.iter().any(|(q, t, _)| q == p && t.same(s)) {
+            return TileShow::Preview;
+        }
+        let Some(i) = self.asked.iter().position(|(q, t, _)| q == p && t.same(s)) else { return TileShow::Loading };
+        let Some(job) = self.asked[i].2.clone() else { return TileShow::Icon };
+        if bg_job_pending(BgKind::FilePreviews, "", &job) {
+            return TileShow::Loading;
+        }
+        self.asked[i].2 = None;
+        if let Cached::Preview(c) = preview_cached(p, s) {
+            if self.tiles.try_reserve(1).is_ok() {
+                self.tiles.push((p.clone(), *s, c));
+                return TileShow::Preview;
+            }
+        }
+        TileShow::Icon
+    }
+
+    /// The decoded preview of the file at `p` (as listed: `s`).
+    pub fn preview(&self, p: &StoragePath, s: &FsStat) -> Option<&Canvas> {
+        self.tiles.iter().find(|(q, t, _)| q == p && t.same(s)).map(|t| &t.2)
+    }
+
+    /// The tile of `p` was drawn showing `show`.
+    pub fn note(&mut self, p: &StoragePath, show: TileShow) {
+        match self.shown.iter_mut().find(|(q, _)| q == p) {
+            Some(s) => s.1 = show,
+            None => {
+                if self.shown.try_reserve(1).is_ok() {
+                    self.shown.push((p.clone(), show));
+                }
+            }
+        }
+    }
+
+    /// What the tile of `p` was last drawn showing.
+    pub fn shown(&self, p: &StoragePath) -> Option<TileShow> {
+        self.shown.iter().find(|(q, _)| q == p).map(|s| s.1)
+    }
+
+    /// Whether a job asked for this visit is queued or running (the notice "Making previews..." stays meanwhile).
+    pub fn making(&self) -> bool {
+        self.asked.iter().filter_map(|a| a.2.as_deref()).any(|j| bg_job_pending(BgKind::FilePreviews, "", j))
+    }
+
+    /// How many files were asked for this visit (the runner's files.asked).
+    pub fn asked(&self) -> usize {
+        self.asked.len()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
