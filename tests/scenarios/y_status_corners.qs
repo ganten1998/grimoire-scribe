@@ -66,7 +66,10 @@ expect status.shown is 0
 tap 1790 70
 wait 300
 expect settings.status_on is 1
-# The shortcut: the next corner, with the box going from one place to the other in two small refreshes.
+# The shortcut: the next corner, with the box going from one place to the other in two small refreshes. The count
+# starts once the corner row's toast is gone (it shows 2.5 s from the row's tap), so the refresh that takes it
+# down is never counted with the box's, however late the machine ends the waits (issue #139).
+waitfor toast is
 expect display.presents not -1
 key 46 0
 wait 300
