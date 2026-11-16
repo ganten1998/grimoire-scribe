@@ -35,16 +35,18 @@ the name rules, the busy check and the copy job (`BgKind::CopyFile`). Nothing on
   - The Trash place: `FsListing` over `FsStorage::trash_dir()` in its slices, then `fsview_trash_entries`; a
     file's row reads `FsStorage::trash_record` for the rows on screen; a notebook's row needs its name from
     `trash/<entry>/notebook.ini` (no store function reads a notebook there yet). The Trash's size on its row is
-    a walk of its own, not built.
+    a walk of its own, not built. FsListing keeps at most 5,000 names in the order the storage gives them, and
+    the trash only grows (every deleted page is an entry), so past 5,000 the place would sort an arbitrary
+    5,000, not the newest: the screens decide what it shows then.
   - After a notebook's restore: the Library's list read again, and `libindex_revalidate()` (or the index's next
     check) brings it back to the Graph; its mirror PDF is made at its next change.
   - A copy's end: `poll_jobs` (app.rs) returns at `BgKind::CopyFile` without a toast; the tile's or the Font
     sheet's code reads `bg_last_exit()` there, and has the template list or the font check look again.
   - A held item: its row greyed and its card's Rename and Delete saying "Importing now.", from `FsStorage::busy`.
 - **Not built** (the plan's later parts, or not in this lane): Move (Import to Templates or Photos by kind,
-  between them, to Import) and New folder in Import (N3 decides whether they are 2.2's); Restore for a page (its
-  place in its notebook was never kept); `store_delete` writing the record form for a notebook (2.2 reads that form
-  and writes the old name, `<id>-<time>`). Empty trash never comes (the owner cleans it over USB).
+  between them, to Import) and New folder in Import (the owner decides whether they are 2.2's); Restore for a
+  page (its place in its notebook was never kept); `store_delete` writing the record form for a notebook (2.2
+  reads that form and writes the old name, `<id>-<time>`). Empty trash never comes (the owner cleans it over USB).
 - **Only imports count as busy.** A template job reads its picture by path when it starts; a rename or trash of
   that picture just before makes the job fail (it says so), and is not refused. The screens can add it if it
   shows.
@@ -52,13 +54,18 @@ the name rules, the busy check and the copy job (`BgKind::CopyFile`). Nothing on
   and renames over its own reservation only (DESIGN.md, Never an overwrite), since files come over USB and the
   copy job renames while Grimoire runs. Left: a writer that opens the empty reserved file by its name between the
   last check and the rename loses what it wrote, and a crash there leaves an empty file or folder at the new name.
+- **What a rename or a trash acts on** is whatever is at the name at its rename, checked just before: an entry
+  swapped in at that name in between (over USB) is moved, never replaced or deleted. A check after the rename
+  would refuse every rename on a storage whose inode numbers change on rename, which the Scribe's check (step 2)
+  has not ruled out yet.
 - **A copy's source changed during the read** is caught by the check at the copy's end (size and time, and the
-  bytes read against the size); no test changes a source in the middle of a read (the tests change it before the
-  job reads it).
+  bytes read against the size), except a rewrite of the same size within the storage's time granularity (a
+  second; two on FAT); no test changes a source in the middle of a read (the tests change it before the job
+  reads it).
 - **The Scribe's checks** (docs/TESTING.md, "2.2, Files' storage writes (issue #117): device checks"): whether the
-  storage takes the no-replace rename, whether a move into the trash is one rename for a file and a folder, and
-  whether device and inode numbers stay the same across a restart, a USB connection and a session. Not run yet;
-  due before the first screen that uses the writes ships.
+  storage takes the no-replace rename (also for a name that differs in case only), whether a move into the trash
+  is one rename for a file and a folder, and whether device and inode numbers stay the same across a restart and
+  while Grimoire runs. Not run yet (issue #100); due before the first screen that uses the writes ships.
 
 ## nebuff's main and Clear page (2.1.0-beta.2, lane M, 2026-11-11): what waits
 

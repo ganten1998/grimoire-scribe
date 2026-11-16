@@ -37,7 +37,7 @@ pub enum BgKind {
     /// the sandboxed worker (userfonts.rs, 2.1.0-beta.2). It ends 0, 3 (some files wait), 4 (no worker) or 5 (one font checked, more to do: the next job is queued
     /// with the path "next", behind exports and a PDF's slices).
     FontCheck = 8,
-    // (9 is FilePreviews, 2.2's, not built yet: DESIGN.md's allocation table)
+    // (9 is kept for 2.2's file previews, not built yet: K_KIND_NAMES holds its name)
     /// id: the folder it goes into ("templates", "photos" or "fonts"), path: "<dev>.<ino>.<size>.<mtime>:<StoragePath>",
     /// the source as listed; a copy of a file into one of Grimoire's folders for the user's files, under the free
     /// space floor, to a temporary name and then a rename that replaces nothing (bgwork_copy.rs, 2.2). Ends 0 or 1.

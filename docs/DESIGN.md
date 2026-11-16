@@ -2345,11 +2345,11 @@ into them. Nothing on screen calls either yet (the Files place, its cards and th
 their own work), so nothing a user sees changed.
 
 - **Where it may write: an allow-list.** Only what is inside `grimoire/import`, `templates`, `photos` and
-  `fonts` (`FsStorage::write_zone`), never the folder itself and never `import/done`; never a dot-name, nor any
-  other place the zones refuse, nor the rest of the storage (read-only, D26). A restore writes in one more place:
-  a notebook's folder back into `grimoire/notebooks`, by its id, the folder known by its identity. Every path
-  goes through the walk (no link at any component, one device), and the trash and the notebooks folder are
-  checked by `st_dev` and `st_ino` against what `FsStorage::open` noted.
+  `fonts` (`FsStorage::write_zone`), never the folder itself and never `import/done` itself (what is inside it
+  may be); never a dot-name, nor any other place the zones refuse, nor the rest of the storage (read-only, D26).
+  A restore writes in one more place: a notebook's folder back into `grimoire/notebooks`, by its id, the folder
+  known by its identity. Every path goes through the walk (no link at any component, one device), and the trash
+  and the notebooks folder are checked by `st_dev` and `st_ino` against what `FsStorage::open` noted.
 - **Never an overwrite.** Every rename is `renameat2(RENAME_NOREPLACE)` (by `syscall`, so no C library wrapper is
   needed). Where the storage refuses the flag or the kernel lacks the call (EINVAL, ENOSYS), and on the Mac, a
   look for the new name and then `renameat` would not do: Grimoire is not the only writer while it runs (files

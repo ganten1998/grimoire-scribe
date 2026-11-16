@@ -2708,9 +2708,10 @@ trash and restore of a file, a folder and a notebook in both forms, a name taken
 its floor, a failed write and a source that changes). On the Mac only the fallback rename runs (the new name
 reserved, then `renameat` over the reservation); CI's Linux job (`sandbox`) runs the same file with the kernel's
 `RENAME_NOREPLACE` on its tmpfs. Nothing on screen calls these writes yet, so the Scribe's part is three
-questions about its storage, asked over SSH with Grimoire closed. Their answers decide what runs there and
-whether "File changed. Try again." can come for no reason; they are due before the first screen that uses the
-writes ships. Write the answers into docs/KINDLE.md (How it fits in).
+questions about its storage, asked over SSH (Grimoire closed unless a step says otherwise). Their answers decide
+what runs there and whether "File changed. Try again." can come for no reason; they are due before the first
+screen that uses the writes ships (issue #100 tracks the device checks before a release). Write the answers into
+docs/KINDLE.md (How it fits in).
 
 1. **Does the storage take the no-replace rename?** KOReader's LuaJIT can make the call (`382` is
    `renameat2` on the Scribe's 32-bit ARM kernel, `-100` the current folder, `1` the no-replace flag; if
@@ -2726,15 +2727,18 @@ writes ships. Write the answers into docs/KINDLE.md (How it fits in).
      local e = ffi.errno()
      print(from .. " -> " .. to .. ": " .. r .. (r ~= 0 and (" " .. ffi.string(ffi.C.strerror(e))) or ""))
    end
-   try("a", "b") try("a", "c")'
+   try("a", "b") try("a", "B") try("a", "c")'
    ls; cat b c
    ```
 
-   The flag works when it prints `a -> b: -1 File exists` then `a -> c: 0`, and `ls` shows `b c` with `b`
-   holding `b` and `c` holding `a`: Grimoire's renames are the kernel's own. It prints `Invalid argument` (or
-   `Function not implemented`) for both, and `a` is still there, when the storage refuses it: Grimoire then
-   takes the fallback, and its log says so once a session (`files: the storage refused the no-replace rename`).
-   Either answer works; a third (anything replaced, or another error) is not expected: send the output.
+   The flag works when it prints `a -> b: -1 File exists`, `a -> B: -1 File exists` (on a storage that folds
+   case, `B` is `b`) and `a -> c: 0`, and `ls` shows `b c` with `b` holding `b` and `c` holding `a`: Grimoire's
+   renames are the kernel's own. It prints `Invalid argument` (or `Function not implemented`) for all three, and
+   `a` is still there, when the storage refuses it: Grimoire then takes the fallback (the name reserved first),
+   and its log says so once a session (`files: the storage refused the no-replace rename`). On a storage that
+   keeps case apart, `a -> B: 0` then `a -> c: -1 No such file or directory`, and `ls` shows `B b`: send the
+   output (the case rules matter to the screens). Any other answer (anything replaced, or another error) is not
+   expected: send the output.
 2. **Is a move into the trash one rename, for a file and for a folder?** In the same folder:
 
    ```
@@ -2750,11 +2754,12 @@ writes ships. Write the answers into docs/KINDLE.md (How it fits in).
    so before a big file goes.
 3. **Do the numbers a check compares stay the same?** "File changed. Try again." compares a file's device,
    inode, size and time with what its listing saw. In the same folder:
-   `echo keep > keep && stat -c '%d %i %s %Y' keep`, and note the line. Then ask again
-   (`stat -c '%d %i %s %Y' /mnt/us/grimoire/.probe/keep`) after a restart of the Kindle, after it has been
-   connected to a computer over USB as a drive and ejected, and with Grimoire open for a minute (from SSH while
-   it runs). The same line every time: a file left alone never reads as changed. A new device or inode number
-   after the restart or the USB connection matters only to a listing kept across them (none is); one that
-   changes while Grimoire runs would make the screens refuse for no reason: send the lines.
+   `echo keep > keep && stat -c '%d %i %s %Y' keep`, and note the line. Then ask again over SSH
+   (`stat -c '%d %i %s %Y' /mnt/us/grimoire/.probe/keep`) after a restart of the Kindle, and with Grimoire open
+   for a minute (from SSH while it runs). The same line every time: a file left alone never reads as changed. The
+   Scribe connects to a computer over MTP, so its storage stays mounted while a cable is in: a connection is no
+   separate case to ask about. A new device or inode number after the restart matters only to a listing kept
+   across it (none is); one that changes while Grimoire runs would make the screens refuse for no reason: send
+   the lines.
 
 Tidy: `cd /; rm -rf /mnt/us/grimoire/.probe`.

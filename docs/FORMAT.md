@@ -1662,7 +1662,7 @@ restorable from Grimoire. A path with a line break in it cannot be recorded, so 
 
 Restore puts a file or folder back in the folder `from=` names, when that folder is still there, no import
 holds it, and it is inside Grimoire's `import/`, `templates/`, `photos/` or `fonts/` (never the folder itself,
-never `import/done`); a name taken there gets " 2", " 3" and so on up to " 99" (before a file's
+never `import/done` itself); a name taken there gets " 2", " 3" and so on up to " 99" (before a file's
 extension: `Holiday 2.png`). Then the record and the emptied `files-...` folder are removed: the only removal
 the trash ever sees. Anything put into that folder by hand stays there, in a folder with no record. A record
 whose `from=` is `grimoire/notebooks/<id>` over a folder named `<id>` restores that notebook, as `<id>-<time>`
