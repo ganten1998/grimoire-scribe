@@ -602,9 +602,10 @@ real folders and plain files. Temporary files named after the process (`<name>.<
 (`util::create_fresh_nofollow`): what stands at the name is removed, never opened. `mkdir_p` takes an existing
 entry as the folder, a link to one included; code that prunes or empties a folder of Grimoire's checks that
 folder first (`util::no_link_below`, `pdfcache::real_dirs`, the previews' sweep). The mirror's sweep of stale
-temporaries works in the mirror folder the user chose. One reader of your own fonts' files
-(`userfonts::read_small`: a verdict, the crash guard) still opens by path, after an `lstat` that refuses a
-link (docs/BACKLOG.md, "Hardening round (2026-11), storage reads: what waits").
+temporaries works in the mirror folder the user chose. Your own fonts' files are read the same way: the crash
+guard (`grimoire/.font-inuse`, at most 1 KiB) and the check's `.slow` marks and previews by
+`util::read_file_max`, and its verdicts from a descriptor of the folder that keeps them (`userfonts::read_at`,
+never through a link and never waiting).
 
 The page size: a new notebook gets the device's (`store_set_device`), and
 `store_notebook_page_size` is what every reader and writer of its pages asks. A notebook.ini

@@ -74,8 +74,8 @@ From 2.1.1 on Grimoire reads these files only when the entry at the name is a pl
 records. A link there (to a file, to a folder or to nothing), a folder or anything else reads as a file that
 is not there; for the shortcut files it is a file that is there and does not read, as their section says. A
 folder on the way to a file may be a link (`root` itself, `notebooks/`): only the last name is held to this.
-Your own fonts' check results and crash guard are still opened by path, after a look at the entry that does
-not follow a link (docs/BACKLOG.md, "Hardening round (2026-11), storage reads: what waits").
+Your own fonts' files are held to the same rule: `.font-inuse` (at most 1 KiB, a longer one is not read) and
+the check's verdicts, marks and previews (Your own fonts).
 
 The small text files are read up to a size, and a longer one is not read: `settings.ini`, `notebook.ini`,
 `folders.ini`, `bg/index.ini` and `bg/pages.ini` up to 1 MiB (1,048,576 bytes), an import folder's mark up to
@@ -716,7 +716,9 @@ itself only renames a `.checking` mark to `.bad` when that job died.
 before its first use in a session and removed once a screen drawn with it is on the panel. An armed line found
 at a start is a strike: that start does not draw the font; with one strike the next start tries it once more;
 with two it is left alone until the file changes (another key). A file that does not read as this is started
-afresh. Deleting it only forgets the strikes.
+afresh. It is read only when the entry at its name is a plain file of at most 1 KiB: a link there is not
+followed, a FIFO is not waited on, and anything else there is no guard file. Deleting it only forgets the
+strikes.
 
 ### Imports: `root/import/<Name>/`
 

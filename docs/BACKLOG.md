@@ -1499,9 +1499,6 @@ items of Document links. Left:
 
 ## Hardening round (2026-11), storage reads: what waits
 
-- The one reader left that opens by path, in your own fonts (`userfonts.rs` `read_small`: a font's verdict
-  and the crash guard, after an `lstat` that refuses a link), takes the plain-file read
-  (`util::open_read_nofollow`) with the change that owns that file (#111).
 - The folders a scan lists (the import folders, the marks) are read through the storage walk, as picked
   folders are.
 - A page file that is there but does not read fails to open rather than opening blank; with it, a size

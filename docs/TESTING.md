@@ -2565,7 +2565,8 @@ table and on CI's kernel run. Use the bundle built with the pinned toolchain (do
 ## Hardening round (2026-11), storage reads and temporaries: device checks
 
 Automated: the unit tests of `util.rs`, `store.rs` and `bgwork_template.rs`, `rust/tests/test_sec_read_links.rs`,
-`test_sec_pid_tmp.rs` and `test_sec_work_links.rs` (links, FIFOs, folders and sizes on the host's file system).
+`test_sec_pid_tmp.rs` and `test_sec_work_links.rs`, and the crash guard's file in `test_fontguard.rs`
+(`the_guard_file_is_read_only_as_a_plain_file`) (links, FIFOs, folders and sizes on the host's file system).
 What they cannot show is the Scribe's own storage, so this round ships only once these are done on a Scribe:
 
 1. **Before installing, over SSH.** Keep a copy of the settings:

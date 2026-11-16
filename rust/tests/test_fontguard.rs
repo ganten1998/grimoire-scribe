@@ -279,6 +279,63 @@ wait 3000\ntap library font.cancel\nwait 50\nquit\n";
     check!(!std::fs::read_to_string(&verdict).is_ok_and(|t| t.contains("future=1")));
 }
 
+/// A FIFO at `path`.
+fn fifo_at(path: &str) {
+    let c = std::ffi::CString::new(path).unwrap();
+    // SAFETY: mkfifo reads the NUL-terminated path we own.
+    check!(unsafe { libc::mkfifo(c.as_ptr(), 0o644) } == 0);
+}
+
+// The guard file is read only when the entry at its name is a plain file of at most the guard's 1 KiB
+// (util::read_file_max): a link there is not followed, a FIFO is not waited on, a longer file is not read. Each
+// is no guard file (not one that "does not read", which the log would say), the font draws, and the guard's
+// own file takes the name when its mark is written. The control: the same text in a plain file keeps the font
+// out.
+fn the_guard_file_is_read_only_as_a_plain_file() {
+    let r = prepared("plain");
+    // the font's key, from a start that died during its first screen
+    let (code, signal, _) = start(&r, IN_USE, true);
+    check!(code.is_none() && signal == Some(libc::SIGABRT));
+    let Some(key) = guard(&r).first().map(|g| g.key) else {
+        check!(false);
+        return;
+    };
+    let at = format!("{r}/.font-inuse");
+    let gone = || std::fs::symlink_metadata(&at).is_err();
+    let struck = guard_text(&[GuardEntry { key, strikes: GUARD_STRIKES, armed: false }]);
+    std::fs::write(&at, &struck).unwrap();
+    let (code, _, _) = start(&r, TERMINESS, false);
+    check!(code == Some(0));
+    // a link to that text, outside the data root: not followed, and the text stays as it was
+    std::fs::remove_file(&at).unwrap();
+    let outside = format!("{r}-outside");
+    std::fs::write(&outside, &struck).unwrap();
+    std::os::unix::fs::symlink(&outside, &at).unwrap();
+    let (code, _, out) = start(&r, IN_USE, false);
+    check!(code == Some(0));
+    check!(!out.contains("the guard file does not read"));
+    check!(std::fs::read_to_string(&outside).is_ok_and(|t| t == struck));
+    check!(gone());
+    // a FIFO: not waited on (waits_on lets a start that waits go after 30 s, and says so)
+    let _ = std::fs::remove_file(&at);
+    fifo_at(&at);
+    let ((code, _, out), waited) = waits_on(std::path::Path::new(&at), || start(&r, IN_USE, false));
+    check!(!waited);
+    check!(code == Some(0));
+    check!(!out.contains("the guard file does not read"));
+    check!(gone());
+    // a file one byte over the guard's 1 KiB, with the two strikes in its first lines: not read
+    let mut long = struck.clone().into_bytes();
+    long.resize(1025, b'\n');
+    let _ = std::fs::remove_file(&at);
+    std::fs::write(&at, &long).unwrap();
+    let (code, _, out) = start(&r, IN_USE, false);
+    check!(code == Some(0));
+    check!(!out.contains("the guard file does not read"));
+    check!(gone());
+    let _ = std::fs::remove_file(&outside);
+}
+
 #[test]
 fn test_fontguard() {
     run!(two_strikes_then_terminess_until_the_file_changes);
@@ -288,5 +345,6 @@ fn test_fontguard() {
     run!(done_on_terminess_after_a_strike_takes_the_font_away);
     run!(terminess_tapped_after_a_strike_takes_the_font_away_at_once);
     run!(a_verdict_that_does_not_read_is_checked_again);
+    run!(the_guard_file_is_read_only_as_a_plain_file);
     done();
 }
