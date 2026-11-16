@@ -5356,7 +5356,9 @@ pub fn library_fonts_checked(a: &mut App, changed: bool) {
 
 // The item MORE, MOVE and DELETE act on (S->target), if it is one.
 fn target_item(s: &LibraryState) -> Option<Item> {
-    if s.target >= 0 && (s.target as usize) < s.items.len() {
+    // (never the Files card: it is no notebook or folder, and its menu acts on neither; a menu left open over a list
+    // that changed under it must not read it as notebook 0)
+    if s.target >= 0 && (s.target as usize) < s.items.len() && !s.items[s.target as usize].is_files {
         Some(s.items[s.target as usize])
     } else {
         None
@@ -7818,9 +7820,18 @@ fn files_result(a: &mut App, r: BrowserResult) {
 }
 
 fn files_event(a: &mut App, ev: &InEvent) {
+    if ev.type_ == InType::Gesture {
+        // (a gesture bound to files or home acts as its key does here; two fingers down does nothing: the Graph's
+        // gesture belongs to the Notebooks place)
+        let action = gesturemap_key_of_id(ev.value).map_or(0, |k| gesturemap_action(&a.gestures, k));
+        if action == SHORTCUT_FILES || action == SHORTCUT_HOME {
+            library_shortcut(a, action);
+        }
+        return;
+    }
     let ph = app_pointer_phase(ev);
     if ph < 0 {
-        return; // (two fingers down does nothing here: the Graph's gesture belongs to the Notebooks place)
+        return;
     }
     let r = with_files(a, |b, a| b.pointer(a, ph, ev));
     files_result(a, r);
@@ -9574,6 +9585,42 @@ mod tests {
         }
         library_free(&mut a);
         canvas_free(&mut a.screen);
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    // A gesture bound to files or home (gestures.ini) acts while Files is up, as its key does: home leaves Files for
+    // the Library's top, files goes to Files' root. And the Files card is no menu's notebook: a menu's target that
+    // lands on it reads as none.
+    #[test]
+    fn files_gestures_act_in_files_and_the_card_is_no_target() {
+        let root = std::env::temp_dir().join(format!("grimoire-files-gestures-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(root.join("documents")).unwrap();
+        std::env::set_var("GRIMOIRE_STORAGE", &root);
+        assert_eq!(store_init(root.join("grimoire").to_str().unwrap()), 0);
+        let mut a = pen_record_app();
+        a.scr = ScreenId::Library;
+        settings_default(&mut a.settings);
+        a.settings.files_card = true;
+        lib(&mut a).modal = Modal::None;
+        reload(&mut a);
+        let three = |kind| GestureKey::Touch { fingers: 3, kind };
+        assert!(gesturemap_set(&mut a.gestures, three(TouchKind::Tap), SHORTCUT_HOME) >= 0);
+        assert!(gesturemap_set(&mut a.gestures, three(TouchKind::Up), SHORTCUT_FILES) >= 0);
+        let gesture = |a: &mut App, id: i32| library_event_in(a, &InEvent { type_: InType::Gesture, value: id, ..Default::default() });
+        assert!(library_shortcut(&mut a, SHORTCUT_FILES) && files_shown(&a));
+        assert!(lib(&mut a).files.go(crate::fsview::StoragePath::new(b"documents").unwrap()));
+        gesture(&mut a, G_3_UP);
+        let (mut out, h) = (String::new(), a.h);
+        assert!(lib(&mut a).files.probe(h, "place", &mut out) && out == "root", "files: Files' root");
+        gesture(&mut a, G_3_TAP);
+        assert!(!files_shown(&a), "home: out of Files");
+        let s = lib(&mut a);
+        s.target = s.items.iter().position(|it| it.is_files).unwrap() as i32;
+        assert!(target_item(s).is_none());
+        library_free(&mut a);
+        canvas_free(&mut a.screen);
+        std::env::remove_var("GRIMOIRE_STORAGE");
         let _ = std::fs::remove_dir_all(&root);
     }
 

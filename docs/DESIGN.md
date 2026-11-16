@@ -2391,7 +2391,8 @@ hosted the same way (`LibraryState.files`, `files_open_place`), and closes back 
 - **A Library card held** `HOLD_MS` opens its menu as its `...` does (a notebook's, a folder's, the Files card's);
   the lift after it does nothing.
 - **Actions** `files` (108) and `home` (109) act in the Library, with no default key and no Buttons or Gestures
-  row (they are bound by name, as the Library's New notebook and Share are). `home` is the Library's top for now.
+  row (they are bound by name, as the Library's New notebook and Share are), from a key or a gesture, over the
+  Library and inside Files alike. `home` is the Library's top for now.
 - **Seams left for the later Files work**: `RowKind::Trashed` and the trash rows (Restore), the card's rows per
   kind in `card_lines` (Rename, Trash, Use as template, Use as photo, Add to fonts), `BrowseMode` and `FilesPrefs`
   (a home, a View), `library_home` (where a set home starts), `PickSpec.start` (opening at a folder).
