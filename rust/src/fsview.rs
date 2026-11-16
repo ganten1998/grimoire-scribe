@@ -1,7 +1,10 @@
 //! One storage layer (the 2.1 plan, DESIGN.md "One storage layer"; browser.md 8 and 9): the only code that
-//! touches the Kindle's storage for the file browser and for every consumer of a user's file. Read-only for
-//! now (lane L0): the root, the walk, Grimoire's own folders by identity, StoragePath, zones, the time-sliced
-//! listing, stats and free space. The picker (L8) and the PDF import (L5) read through it.
+//! touches the Kindle's storage for the file browser and for every consumer of a user's file. Lane L0 built
+//! its reading side: the root, the walk, Grimoire's own folders by identity, StoragePath, zones, the
+//! time-sliced listing, stats and free space; the picker (L8) and the PDF import (L5) read through it. Since
+//! 2.2 (issue #117) it also writes, inside Grimoire's folders for the user's files only: a rename that never
+//! replaces an entry, the trash with its record, restore, and the name rules. Nothing on screen calls the
+//! writes yet.
 //!
 //! - One root: /mnt/us on the Kindle (when Grimoire's own folder is inside it); elsewhere GRIMOIRE_STORAGE,
 //!   a hook compiled out of the Kindle build. Never "/".
@@ -10,12 +13,16 @@
 //!   kernel, 4.9, has no openat2). Each directory must be on the root's device, and none may be Grimoire's
 //!   notebooks (nor, for a pick, its PDFs or trash), compared by st_dev and st_ino: a path cased differently
 //!   on a case-insensitive storage cannot reach them by name.
-//! - Zones: lists hide by a deny-list (dot-entries, *.sdr, the system's folders, Grimoire's own); writes (not
-//!   here yet) will go by an allow-list (Grimoire's import, templates, photos, fonts), so safety never depends
-//!   on the deny-list being complete.
+//! - Zones: lists hide by a deny-list (dot-entries, *.sdr, the system's folders, Grimoire's own); writes go
+//!   by an allow-list (what is inside Grimoire's import, templates, photos and fonts), so safety never
+//!   depends on the deny-list being complete.
+//! - Never a hard delete, never an overwrite: delete is a rename into the trash, and every rename is
+//!   renameat2(RENAME_NOREPLACE), or where the storage refuses that call (and on the Mac) a look for the
+//!   name and then renameat. Each write checks the item is still the one listed (FsStat::same) and that no
+//!   import holds it.
 //! - Time-sliced: a listing reads names and d_type only (at most 5,000), and stats only the rows asked for,
 //!   each in slices of at most 20 ms a tick with the folder kept open between ticks.
-//! - Privacy: the log has counts and timings, never a name.
+//! - Privacy: the log has counts, zones and timings, never a name.
 
 use crate::prelude::*;
 use std::ffi::CString;
@@ -41,7 +48,7 @@ const SYSTEM: [&[u8]; 9] =
 const OWN_REFUSED: [&[u8]; 4] = [b"app", b"notebooks", b"bluetooth", b".cache"];
 /// Grimoire's folders a pick never offers from (a mirror PDF, a trashed notebook).
 const OWN_NOT_PICKED: [&[u8]; 2] = [b"PDFs", b"trash"];
-/// Grimoire's folders that hold the user's files (writes will go only here).
+/// Grimoire's folders that hold the user's files (writes go only to what is inside them).
 const OWN_WRITABLE: [&[u8]; 4] = [b"import", b"templates", b"photos", b"fonts"];
 
 /// The storage root for the browser: /mnt/us on the Kindle when Grimoire's own folder is inside it; elsewhere
@@ -120,7 +127,7 @@ impl StoragePath {
 /// What may be done in a place (DESIGN.md 3.5, rule 4).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum FsZone {
-    /// Grimoire's folders for the user's files: import, templates, photos, fonts (writes, later, only here)
+    /// Grimoire's folders for the user's files: import, templates, photos, fonts (writes only to what is inside)
     Writable,
     /// documents, Downloads, the storage's fonts, the rest: looked at and picked from, never written
     ReadOnly,
@@ -242,6 +249,8 @@ pub struct FsStorage {
     /// (dev, ino) of Grimoire's notebooks, and of its PDFs and trash (refused to a pick)
     notebooks: Option<(u64, u64)>,
     not_picked: Vec<(u64, u64)>,
+    /// (dev, ino) of Grimoire's trash, where the writes put what is deleted
+    trash: Option<(u64, u64)>,
 }
 
 fn open_dir_at(dirfd: i32, name: &[u8]) -> Result<OwnedFd, FsErr> {
@@ -304,12 +313,14 @@ impl FsStorage {
         let base = root.trim_end_matches('/');
         let rel = grimoire.strip_prefix(base).and_then(|r| r.strip_prefix('/')).map(|r| r.trim_end_matches('/'));
         let g = grimoire.trim_end_matches('/');
+        let trash = identity(&format!("{g}/trash"));
         Ok(FsStorage {
             root: root_fd,
             dev,
             grimoire: rel.and_then(|r| StoragePath::new(r.as_bytes())),
             notebooks: identity(&format!("{g}/notebooks")),
-            not_picked: [identity(&format!("{g}/PDFs")), identity(&format!("{g}/trash"))].into_iter().flatten().collect(),
+            not_picked: [identity(&format!("{g}/PDFs")), trash].into_iter().flatten().collect(),
+            trash,
         })
     }
 
@@ -564,5 +575,873 @@ impl FsListing {
             }
         }
         true
+    }
+}
+
+// ---- writes (2.2, issue #117): only inside Grimoire's folders for the user's files ----
+
+/// The record beside a trashed file or folder: `trash/files-<YYYYMMDD-HHMMSS>-<4 hex>/.grimoire-trash`.
+pub const TRASH_RECORD: &str = ".grimoire-trash";
+/// A record longer than this is not read (it holds one path under 600 bytes and a time).
+pub const TRASH_RECORD_MAX: usize = 4096;
+/// A name is at most this many bytes (browser.md 8.8).
+pub const FS_NAME_MAX: usize = 255;
+/// The folder a trashed file or folder goes into begins so: `files-<YYYYMMDD-HHMMSS>-<4 hex>`.
+const TRASH_FILES: &[u8] = b"files-";
+/// Where a restore finds its name taken: " 2" up to this; every one taken, it refuses.
+const NUMBERED_MAX: u32 = 99;
+
+/// Why a write was refused.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum FsWriteErr {
+    /// outside what is inside Grimoire's writable folders, one of Grimoire's own names there, a page in the
+    /// trash, or an entry the trash does not know
+    Refused,
+    /// the walk to it failed (a link, another device, a folder that is not there...)
+    Walk(FsErr),
+    /// it is no longer the item listed: device, inode, size or time ("File changed. Try again.")
+    Changed,
+    /// an import holds it ("Importing now.")
+    Busy,
+    /// the new name breaks a rule
+    Name(NameRule),
+    /// an entry of that name is there: nothing is ever replaced
+    Exists,
+    /// the path would be 600 bytes or more, or a name longer than 255
+    TooLong,
+    /// restore: the folder it came from is gone
+    FolderGone,
+    /// restore: its record is not there or does not read (strictly)
+    BadRecord,
+    /// copy: less than the floor would be left
+    NoRoom,
+    /// a call failed with this errno
+    Io(i32),
+}
+
+/// The rule a new name breaks (`fsview_name_check`): browser.md 8.8, the strictest of vfat and MTP.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum NameRule {
+    Empty,
+    /// longer than 255 bytes
+    TooLong,
+    /// one of / \ : * ? " < > |, the first in the name ("Name can't contain %s")
+    Char(u8),
+    /// a control character
+    Control,
+    LeadingSpace,
+    TrailingSpace,
+    TrailingDot,
+    /// a name beginning with a dot is hidden: Files never lists it
+    LeadingDot,
+    /// a file's extension changed or went (the keyboard edits the stem)
+    Extension,
+}
+
+/// The rules a new name keeps, as one function: not empty, at most 255 bytes, none of / \ : * ? " < > |, no
+/// control character, no leading or trailing space, no trailing dot, no leading dot, and for a file (`dir`
+/// false) the extension `old` has, in any case. The first rule broken.
+pub fn fsview_name_check(old: &[u8], new: &[u8], dir: bool) -> Result<(), NameRule> {
+    let (Some(&first), Some(&last)) = (new.first(), new.last()) else { return Err(NameRule::Empty) };
+    if new.len() > FS_NAME_MAX {
+        return Err(NameRule::TooLong);
+    }
+    if let Some(&c) = new.iter().find(|c| b"/\\:*?\"<>|".contains(c)) {
+        return Err(NameRule::Char(c));
+    }
+    if new.iter().any(|&c| c < 0x20 || c == 0x7f) {
+        return Err(NameRule::Control);
+    }
+    if first == b' ' {
+        return Err(NameRule::LeadingSpace);
+    }
+    if last == b' ' {
+        return Err(NameRule::TrailingSpace);
+    }
+    if last == b'.' {
+        return Err(NameRule::TrailingDot);
+    }
+    if first == b'.' {
+        return Err(NameRule::LeadingDot);
+    }
+    if let (false, Some(ext)) = (dir, extension(old)) {
+        if !extension(new).is_some_and(|e| e.eq_ignore_ascii_case(ext)) {
+            return Err(NameRule::Extension);
+        }
+    }
+    Ok(())
+}
+
+/// A name's extension: what follows its last dot, when that dot is neither its first byte nor its last.
+fn extension(name: &[u8]) -> Option<&[u8]> {
+    let i = name.iter().rposition(|&c| c == b'.')?;
+    (i > 0 && i + 1 < name.len()).then(|| &name[i + 1..])
+}
+
+/// `name` with " n" before a file's extension ("a 2.png"), or at the end of a folder's name ("Work 2").
+pub(crate) fn numbered(name: &[u8], n: u32, dir: bool) -> Vec<u8> {
+    let at = if dir { None } else { extension(name).map(|e| name.len() - e.len() - 1) };
+    let (stem, ext) = name.split_at(at.unwrap_or(name.len()));
+    [stem, format!(" {n}").as_bytes(), ext].concat()
+}
+
+/// Whether two paths are one, or one is inside the other (components compared without regard to ASCII case,
+/// as a case-insensitive storage finds them).
+fn related(a: &[u8], b: &[u8]) -> bool {
+    let (x, y): (Vec<&[u8]>, Vec<&[u8]>) = (a.split(|&c| c == b'/').collect(), b.split(|&c| c == b'/').collect());
+    x.iter().zip(&y).all(|(p, q)| eq_nocase(p, q))
+}
+
+/// Pure: whether an import holds `p` (a storage path's bytes). `held`: the paths the imports queued or running
+/// work on (a PDF, a folder of pictures); one of them is `p`, or inside `p`, or `p` is inside one. `detached`: a
+/// previous run's import still holds the lock, and what it works on is not known here, so all of `import` (Grimoire's
+/// import folder) counts as held.
+fn holds(p: &[u8], held: &[Vec<u8>], detached: bool, import: Option<&[u8]>) -> bool {
+    held.iter().any(|h| !h.is_empty() && related(p, h)) || (detached && import.is_some_and(|i| related(p, i)))
+}
+
+/// What a trash entry is, by its name alone (no stat).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum TrashKind {
+    /// a file or folder of Grimoire's folders, in `files-<stamp>-<4 hex>/` with its record (2.2)
+    File,
+    /// a notebook, `<id>-<time>` (store_delete, every version)
+    Notebook,
+    /// a page, `<id>-p<page id>-<time>` (store_delete_page): listed only, its place in the notebook is kept nowhere
+    Page,
+    /// a name of none of these forms
+    Other,
+}
+
+/// One entry of the trash, read from its name.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct TrashEntry {
+    /// its name in the trash
+    pub name: Vec<u8>,
+    pub kind: TrashKind,
+    /// when it went there, unix seconds, from its name (0 for Other)
+    pub time: i64,
+    /// a notebook's id (a page's: its notebook's)
+    pub id: String,
+    /// a page's id
+    pub page: u32,
+}
+
+fn digits(s: &[u8]) -> bool {
+    !s.is_empty() && s.iter().all(u8::is_ascii_digit)
+}
+
+/// A notebook id as the store takes it (store.rs's rule: letters, digits, '-' and '_', under 24 bytes).
+fn notebook_id_ok(id: &str) -> bool {
+    store_notebook_dir(id, &mut String::new(), FS_PATH_MAX) == 0
+}
+
+/// The unix time of a local `YYYYMMDD-HHMMSS` (a trash wrapper's stamp), None for no such time.
+#[allow(deprecated)] // (libc's time_t on 32-bit musl, as util.rs's local_tm)
+fn stamp_time(s: &[u8]) -> Option<i64> {
+    if s.len() != 15 || s[8] != b'-' || !digits(&s[..8]) || !digits(&s[9..]) {
+        return None;
+    }
+    let n = |a: usize, b: usize| std::str::from_utf8(&s[a..b]).ok().and_then(|t| t.parse::<i32>().ok());
+    let (y, mo, d, h, mi, se) = (n(0, 4)?, n(4, 6)?, n(6, 8)?, n(9, 11)?, n(11, 13)?, n(13, 15)?);
+    if !(1..=12).contains(&mo) || !(1..=31).contains(&d) || h > 23 || mi > 59 || se > 60 {
+        return None;
+    }
+    // SAFETY: tm is plain data, zeroed then filled; mktime reads and normalizes our local.
+    unsafe {
+        let mut tm: libc::tm = std::mem::zeroed();
+        tm.tm_year = y - 1900;
+        tm.tm_mon = mo - 1;
+        tm.tm_mday = d;
+        tm.tm_hour = h;
+        tm.tm_min = mi;
+        tm.tm_sec = se;
+        tm.tm_isdst = -1;
+        let t = libc::mktime(&mut tm);
+        (t != -1).then_some(t as i64)
+    }
+}
+
+/// A trash entry from its name: `files-<YYYYMMDD-HHMMSS>-<4 hex>` (a file or folder, 2.2), `<id>-<time>` (a
+/// notebook) or `<id>-p<page id>-<time>` (a page), else Other.
+fn trash_parse(name: &[u8]) -> TrashEntry {
+    let other = TrashEntry { name: name.to_vec(), kind: TrashKind::Other, time: 0, id: String::new(), page: 0 };
+    if let Some(rest) = name.strip_prefix(TRASH_FILES) {
+        let hex = |s: &[u8]| s.len() == 4 && s.iter().all(|c| c.is_ascii_digit() || (b'a'..=b'f').contains(c));
+        return match (rest.len() == 20 && rest[15] == b'-' && hex(&rest[16..])).then(|| stamp_time(&rest[..15])).flatten() {
+            Some(time) => TrashEntry { kind: TrashKind::File, time, ..other },
+            None => other,
+        };
+    }
+    let Some((head, t)) = std::str::from_utf8(name).ok().and_then(|s| s.rsplit_once('-')) else { return other };
+    let Some(time) = (digits(t.as_bytes()) && t.len() <= 18).then(|| t.parse::<i64>().ok()).flatten() else { return other };
+    if let Some((id, p)) = head.rsplit_once('-') {
+        let page = p.strip_prefix('p').filter(|d| digits(d.as_bytes()) && d.len() <= 9).and_then(|d| d.parse::<u32>().ok());
+        if let Some(page) = page.filter(|&n| n > 0 && notebook_id_ok(id)) {
+            return TrashEntry { kind: TrashKind::Page, time, id: id.to_string(), page, ..other };
+        }
+    }
+    if notebook_id_ok(head) {
+        return TrashEntry { kind: TrashKind::Notebook, time, id: head.to_string(), ..other };
+    }
+    other
+}
+
+/// The trash's entries from a listing of it (FsListing over `FsStorage::trash_dir`, in its slices), each read
+/// from its name alone, newest first (those of no known form last), names in byte order where times are equal.
+pub fn fsview_trash_entries(entries: &[FsEntry]) -> Vec<TrashEntry> {
+    let mut v: Vec<TrashEntry> = entries.iter().map(|e| trash_parse(&e.name)).collect();
+    v.sort_by(|a, b| ((a.kind == TrashKind::Other), std::cmp::Reverse(a.time), &a.name).cmp(&((b.kind == TrashKind::Other), std::cmp::Reverse(b.time), &b.name)));
+    v
+}
+
+/// A trashed file's or folder's record: where it was (a storage path) and when it went (unix seconds).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct TrashRecord {
+    pub from: StoragePath,
+    pub time: i64,
+}
+
+fn trash_record_text(from: &StoragePath, time: i64) -> Vec<u8> {
+    let mut t = b"# Grimoire: where this went from, for Restore (docs/FORMAT.md, The trash)\nfrom=".to_vec();
+    t.extend_from_slice(from.as_bytes());
+    t.extend_from_slice(format!("\ntime={time}\n").as_bytes());
+    t
+}
+
+/// A record read strictly: at most TRASH_RECORD_MAX bytes, every line ended by a line feed (no carriage return),
+/// a line that begins with '#' passed over, `from=` (a storage path, not the root) and `time=` (digits) once each,
+/// and no other line. None for anything else.
+fn trash_record_parse(t: &[u8]) -> Option<TrashRecord> {
+    if t.len() > TRASH_RECORD_MAX || t.last() != Some(&b'\n') || t.contains(&b'\r') || t.contains(&0) {
+        return None;
+    }
+    let (mut from, mut time) = (None, None);
+    for line in t[..t.len() - 1].split(|&c| c == b'\n') {
+        if line.first() == Some(&b'#') {
+            continue;
+        }
+        if let Some(v) = line.strip_prefix(b"from=") {
+            if from.is_some() {
+                return None;
+            }
+            from = Some(StoragePath::new(v).filter(|p| !p.is_root())?);
+        } else if let Some(v) = line.strip_prefix(b"time=") {
+            if time.is_some() || !digits(v) || v.len() > 18 {
+                return None;
+            }
+            time = Some(std::str::from_utf8(v).ok()?.parse::<i64>().ok()?);
+        } else {
+            return None;
+        }
+    }
+    Some(TrashRecord { from: from?, time: time? })
+}
+
+#[cfg(any(test, feature = "sim"))]
+static FORCE_FALLBACK: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// Tests (never the Kindle's build): every rename takes the fallback (a look for the name, then renameat), as on a
+/// storage that refuses renameat2's flag, so a run on Linux tries it too.
+#[cfg(any(test, feature = "sim"))]
+pub fn fsview_rename_fallback_force(on: bool) {
+    FORCE_FALLBACK.store(on, std::sync::atomic::Ordering::Relaxed);
+}
+
+#[cfg(target_os = "linux")]
+fn fallback_forced() -> bool {
+    #[cfg(any(test, feature = "sim"))]
+    if FORCE_FALLBACK.load(std::sync::atomic::Ordering::Relaxed) {
+        return true;
+    }
+    false
+}
+
+/// Renames `old` in `ofd` to `new` in `nfd`, never over an entry: renameat2(RENAME_NOREPLACE) on Linux; where the
+/// storage refuses the flag or the kernel has no such call (EINVAL, ENOSYS), and on the Mac, the fallback looks
+/// for `new` (fstatat, no link followed) and renames only when nothing is there. Err(errno): EEXIST when taken.
+pub(crate) fn rename_noreplace(ofd: i32, old: &CString, nfd: i32, new: &CString) -> Result<(), i32> {
+    #[cfg(target_os = "linux")]
+    if !fallback_forced() {
+        // SAFETY: renameat2 through syscall (a C library may lack the wrapper) on our descriptors and two
+        // NUL-terminated names.
+        let r = unsafe { libc::syscall(libc::SYS_renameat2, ofd, old.as_ptr(), nfd, new.as_ptr(), libc::RENAME_NOREPLACE) };
+        if r == 0 {
+            return Ok(());
+        }
+        let e = errno();
+        if e != libc::EINVAL && e != libc::ENOSYS {
+            return Err(e);
+        }
+        static NOTED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+        if !NOTED.swap(true, std::sync::atomic::Ordering::Relaxed) {
+            qlog!("files: the storage refused the no-replace rename (%s); a rename looks for the name first", &strerror(e));
+        }
+    }
+    // SAFETY: st is written by fstatat before it is read; the names are NUL-terminated.
+    let mut st: libc::stat = unsafe { std::mem::zeroed() };
+    if unsafe { libc::fstatat(nfd, new.as_ptr(), &mut st, libc::AT_SYMLINK_NOFOLLOW) } == 0 {
+        return Err(libc::EEXIST);
+    }
+    let e = errno();
+    if e != libc::ENOENT {
+        return Err(e);
+    }
+    // SAFETY: renameat on our descriptors and two NUL-terminated names.
+    if unsafe { libc::renameat(ofd, old.as_ptr(), nfd, new.as_ptr()) } != 0 {
+        return Err(errno());
+    }
+    Ok(())
+}
+
+fn cname(name: &[u8]) -> Result<CString, FsWriteErr> {
+    CString::new(name).map_err(|_| FsWriteErr::Refused)
+}
+
+/// Four hex digits from the system's randomness (the clock and a count where there is none).
+fn hex4() -> String {
+    let mut b = [0u8; 2];
+    if !crate::util::random_fill(&mut b) {
+        static COUNT: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
+        let x = real_now_ms() ^ std::process::id().rotate_left(8) ^ COUNT.fetch_add(0x9e37, std::sync::atomic::Ordering::Relaxed);
+        b = [(x >> 8) as u8, x as u8];
+    }
+    format!("{:02x}{:02x}", b[0], b[1])
+}
+
+/// Best effort: what was renamed in or out of the folder open at `fd` is on the storage.
+pub(crate) fn sync_dir(fd: i32) {
+    // SAFETY: fsync on a descriptor the caller owns.
+    unsafe { libc::fsync(fd) };
+}
+
+/// Opens `name` in `dirfd` as a folder (O_DIRECTORY|O_NOFOLLOW).
+fn open_sub(dirfd: i32, name: &CString) -> Result<OwnedFd, i32> {
+    // SAFETY: openat on our descriptor and a NUL-terminated name; the descriptor returned is owned by the OwnedFd.
+    let fd = unsafe { libc::openat(dirfd, name.as_ptr(), libc::O_RDONLY | libc::O_DIRECTORY | libc::O_NOFOLLOW | libc::O_CLOEXEC) };
+    if fd < 0 {
+        return Err(errno());
+    }
+    // SAFETY: fd was just opened and is owned by no one else.
+    Ok(unsafe { OwnedFd::from_raw_fd(fd) })
+}
+
+fn unlink_at(dirfd: i32, name: &CString, flags: i32) {
+    // SAFETY: unlinkat on our descriptor and a NUL-terminated name.
+    unsafe { libc::unlinkat(dirfd, name.as_ptr(), flags) };
+}
+
+/// Writes a trashed item's record into the new folder open at `wfd`: created there (O_CREAT|O_EXCL|O_NOFOLLOW, the
+/// descriptor form of create_fresh_nofollow: the folder is new, so nothing stands at the name), written whole and
+/// synced, or removed again.
+fn write_record(wfd: i32, from: &StoragePath, time: i64) -> Result<(), i32> {
+    let c = CString::new(TRASH_RECORD).map_err(|_| libc::EINVAL)?;
+    // SAFETY: openat on our descriptor and a NUL-terminated name; the descriptor is closed below.
+    let fd = unsafe { libc::openat(wfd, c.as_ptr(), libc::O_WRONLY | libc::O_CREAT | libc::O_EXCL | libc::O_NOFOLLOW | libc::O_CLOEXEC, 0o644 as libc::c_uint) };
+    if fd < 0 {
+        return Err(errno());
+    }
+    // SAFETY: fd was just opened and is owned by no one else; the File closes it.
+    let mut f = unsafe { std::fs::File::from_raw_fd(fd) };
+    use std::io::Write;
+    let r = f.write_all(&trash_record_text(from, time)).and_then(|_| f.sync_all());
+    drop(f);
+    r.map_err(|e| {
+        unlink_at(wfd, &c, 0);
+        e.raw_os_error().unwrap_or(libc::EIO)
+    })
+}
+
+/// Reads the record in the folder open at `wfd`: a plain file at the name (O_NOFOLLOW, and O_NONBLOCK so nothing
+/// else ever waits), at most TRASH_RECORD_MAX bytes (the descriptor form of open_read_nofollow and its limit), read
+/// strictly.
+fn read_record(wfd: i32) -> Option<TrashRecord> {
+    use std::io::Read;
+    let c = CString::new(TRASH_RECORD).ok()?;
+    // SAFETY: openat on our descriptor and a NUL-terminated name; the descriptor is owned by the File.
+    let fd = unsafe { libc::openat(wfd, c.as_ptr(), libc::O_RDONLY | libc::O_NOFOLLOW | libc::O_NONBLOCK | libc::O_NOCTTY | libc::O_CLOEXEC) };
+    if fd < 0 {
+        return None;
+    }
+    // SAFETY: fd was just opened and is owned by no one else.
+    let f = unsafe { std::fs::File::from_raw_fd(fd) };
+    let md = f.metadata().ok()?;
+    if !md.is_file() || md.len() > TRASH_RECORD_MAX as u64 {
+        return None;
+    }
+    let mut t = Vec::new();
+    f.take(TRASH_RECORD_MAX as u64 + 1).read_to_end(&mut t).ok()?;
+    trash_record_parse(&t)
+}
+
+/// What a restore put back.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Restored {
+    /// a file or folder, at this storage path now
+    File(StoragePath),
+    /// a notebook, as `notebooks/<id>` again
+    Notebook(String),
+}
+
+/// An errno of a rename as a refusal: taken, gone since it was looked at, or another failure.
+fn rename_err(e: i32) -> FsWriteErr {
+    match e {
+        libc::EEXIST | libc::ENOTEMPTY => FsWriteErr::Exists,
+        libc::ENOENT => FsWriteErr::Changed,
+        _ => FsWriteErr::Io(e),
+    }
+}
+
+fn log_failed(what: &str, e: FsWriteErr) -> FsWriteErr {
+    if let FsWriteErr::Io(n) = e {
+        qlog!("files: %s failed: %s", what, &strerror(n));
+    }
+    e
+}
+
+impl FsStorage {
+    /// Which of Grimoire's folders for the user's files `p` is inside ("import", "templates", "photos", "fonts"),
+    /// None when it may not be written: the allow-list. Only what is inside one of them, never the folder itself,
+    /// nor `import/done` (where imports file their originals), nor a dot-name or anything else the zones refuse.
+    fn write_zone(&self, p: &StoragePath) -> Option<&'static str> {
+        let g = self.grimoire.as_ref()?;
+        if zone_of(Some(g), p, false) != FsZone::Writable {
+            return None;
+        }
+        let gl = g.components().count();
+        let comps: Vec<&[u8]> = p.components().collect();
+        if comps.len() < gl + 2 || (comps.len() == gl + 2 && eq_nocase(comps[gl], b"import") && eq_nocase(comps[gl + 1], b"done")) {
+            return None;
+        }
+        ["import", "templates", "photos", "fonts"].into_iter().find(|w| eq_nocase(comps[gl], w.as_bytes()))
+    }
+
+    /// Whether an import holds `p` (browser.md 8.14, "Importing now."): a PDF import or a picture import queued or
+    /// running in this process works on it, inside it, or on the folder it is in (the job table's paths, and the
+    /// PDF import's own list); or a previous run's import still holds the lock (pdfimport's detached state), and
+    /// then everything in Grimoire's import folder counts as held, since what that one works on is not known here.
+    pub fn busy(&self, p: &StoragePath) -> bool {
+        if std::str::from_utf8(p.as_bytes()).is_ok_and(crate::pdfimport::is_queued) {
+            return true;
+        }
+        let g = self.grimoire.as_ref().map(|g| g.as_bytes().to_vec());
+        let own = store_root();
+        let held: Vec<Vec<u8>> = bg_job_paths(&[BgKind::PdfImport, BgKind::ImportFolder])
+            .into_iter()
+            .filter_map(|j| match j.strip_prefix(own.trim_end_matches('/')).and_then(|r| r.strip_prefix('/')) {
+                // (a folder of import/ a scan queued: its absolute path, under Grimoire's own folder)
+                Some(rel) if j.starts_with('/') => g.as_ref().map(|g| [&g[..], b"/", rel.as_bytes()].concat()),
+                None if j.starts_with('/') => None,
+                // (a PDF, a folder picked in place: a storage path)
+                _ => Some(j.into_bytes()),
+            })
+            .collect();
+        let import = g.map(|g| [&g[..], b"/import"].concat());
+        holds(p.as_bytes(), &held, crate::pdfimport::detached_running(), import.as_deref())
+    }
+
+    /// Grimoire's trash as a storage path (to list it with FsListing), None when Grimoire's folder is not inside
+    /// the root.
+    pub fn trash_dir(&self) -> Option<StoragePath> {
+        self.grimoire.as_ref()?.join(b"trash")
+    }
+
+    /// The trash, opened by the walk and known by its identity.
+    fn trash_fd(&self) -> Result<OwnedFd, FsWriteErr> {
+        let p = self.trash_dir().ok_or(FsWriteErr::Refused)?;
+        let fd = self.open_dir(&p, false).map_err(FsWriteErr::Walk)?;
+        let st = fstat_fd(fd.as_raw_fd()).map_err(FsWriteErr::Walk)?;
+        if self.trash != Some((st.dev, st.ino)) {
+            return Err(FsWriteErr::Refused);
+        }
+        Ok(fd)
+    }
+
+    /// Grimoire's notebooks folder, opened from its own folder (by the walk) and known by its identity: the one
+    /// place a restore writes outside the allow-list, and only a notebook's folder, by its id.
+    fn notebooks_fd(&self) -> Result<OwnedFd, FsWriteErr> {
+        let g = self.grimoire.as_ref().ok_or(FsWriteErr::Refused)?;
+        let gfd = self.open_dir(g, false).map_err(FsWriteErr::Walk)?;
+        let fd = open_sub(gfd.as_raw_fd(), &cname(b"notebooks")?).map_err(|e| FsWriteErr::Walk(if e == libc::ENOENT { FsErr::NotFound } else { FsErr::Io(e) }))?;
+        let st = fstat_fd(fd.as_raw_fd()).map_err(FsWriteErr::Walk)?;
+        if self.notebooks != Some((st.dev, st.ino)) {
+            return Err(FsWriteErr::Refused);
+        }
+        Ok(fd)
+    }
+
+    /// Renames the file or folder at `p` (as listed: `listed`) to `new_name` in the same folder, never over an
+    /// entry: inside Grimoire's folders for the user's files only, not while an import holds it, only while it is
+    /// the item listed, and only to a name the rules allow (`fsview_name_check`). A rename that changes only the
+    /// case, or that the storage says would land on the item itself (a storage that folds case), goes through a
+    /// temporary name. Its new path.
+    pub fn rename(&self, p: &StoragePath, listed: &FsStat, new_name: &[u8]) -> Result<StoragePath, FsWriteErr> {
+        let zone = self.write_zone(p).ok_or(FsWriteErr::Refused)?;
+        let (folder, old) = p.split_last().ok_or(FsWriteErr::Refused)?;
+        if self.busy(p) {
+            return Err(FsWriteErr::Busy);
+        }
+        let dir = self.open_dir(&folder, false).map_err(FsWriteErr::Walk)?;
+        let d = dir.as_raw_fd();
+        let c_old = cname(old)?;
+        let now = stat_at(d, &c_old).map_err(|e| if e == FsErr::NotFound { FsWriteErr::Changed } else { FsWriteErr::Walk(e) })?;
+        if !now.same(listed) {
+            return Err(FsWriteErr::Changed);
+        }
+        let dir_item = match now.kind() {
+            FsKind::Dir => true,
+            FsKind::File => false,
+            _ => return Err(FsWriteErr::Refused),
+        };
+        fsview_name_check(old, new_name, dir_item).map_err(FsWriteErr::Name)?;
+        let to = folder.join(new_name).ok_or(FsWriteErr::TooLong)?;
+        if self.write_zone(&to).is_none() {
+            return Err(FsWriteErr::Refused);
+        }
+        if new_name == old {
+            return Ok(to);
+        }
+        let c_new = cname(new_name)?;
+        let folded = new_name.eq_ignore_ascii_case(old);
+        let direct = if folded { Err(libc::EEXIST) } else { rename_noreplace(d, &c_old, d, &c_new) };
+        match direct {
+            Ok(()) => {}
+            Err(libc::EEXIST) if folded || stat_at(d, &c_new).is_ok_and(|s| (s.dev, s.ino) == (now.dev, now.ino)) => {
+                let tmp = cname(format!(".grimoire-rename-{}-{}", std::process::id(), hex4()).as_bytes())?;
+                rename_noreplace(d, &c_old, d, &tmp).map_err(|e| log_failed("a rename", rename_err(e)))?;
+                if let Err(e) = rename_noreplace(d, &tmp, d, &c_new) {
+                    if rename_noreplace(d, &tmp, d, &c_old).is_err() {
+                        qlog!("files: a rename through a temporary name could not be undone; the item is at its temporary name in %s", zone);
+                    }
+                    return Err(log_failed("a rename", rename_err(e)));
+                }
+            }
+            Err(e) => return Err(log_failed("a rename", rename_err(e))),
+        }
+        sync_dir(d);
+        qlog!("files: an item of %s was renamed", zone);
+        Ok(to)
+    }
+
+    /// Moves the file or folder at `p` (as listed: `listed`) to the trash, never deleting it: one rename into a new
+    /// folder `trash/files-<YYYYMMDD-HHMMSS>-<4 hex>/`, beside its record (`.grimoire-trash`: where it was and
+    /// when), written and synced first. Inside Grimoire's folders for the user's files only, not while an import
+    /// holds it, only while it is the item listed. Nothing is left behind when it fails. The new entry's name in
+    /// the trash.
+    pub fn trash(&self, p: &StoragePath, listed: &FsStat) -> Result<Vec<u8>, FsWriteErr> {
+        let zone = self.write_zone(p).ok_or(FsWriteErr::Refused)?;
+        let (folder, name) = p.split_last().ok_or(FsWriteErr::Refused)?;
+        // (a record is lines: a path with a line break in it cannot be kept, so it is not trashed)
+        if p.as_bytes().iter().any(|&c| c == b'\n' || c == b'\r') {
+            return Err(FsWriteErr::Refused);
+        }
+        if self.busy(p) {
+            return Err(FsWriteErr::Busy);
+        }
+        let dir = self.open_dir(&folder, false).map_err(FsWriteErr::Walk)?;
+        let c = cname(name)?;
+        let now = stat_at(dir.as_raw_fd(), &c).map_err(|e| if e == FsErr::NotFound { FsWriteErr::Changed } else { FsWriteErr::Walk(e) })?;
+        if !now.same(listed) {
+            return Err(FsWriteErr::Changed);
+        }
+        if !matches!(now.kind(), FsKind::File | FsKind::Dir) || now.dev != self.dev {
+            return Err(FsWriteErr::Refused);
+        }
+        let trash = self.trash_fd()?;
+        let t = trash.as_raw_fd();
+        // a folder of its own, at a name nothing has
+        let mut made = None;
+        for _ in 0..8 {
+            let tm = local_tm(wall_time());
+            let w = format!(
+                "files-{:04}{:02}{:02}-{:02}{:02}{:02}-{}",
+                tm.tm_year + 1900,
+                tm.tm_mon + 1,
+                tm.tm_mday,
+                tm.tm_hour,
+                tm.tm_min,
+                tm.tm_sec,
+                hex4()
+            );
+            let cw = cname(w.as_bytes())?;
+            // SAFETY: mkdirat on our descriptor and a NUL-terminated name.
+            if unsafe { libc::mkdirat(t, cw.as_ptr(), 0o755) } == 0 {
+                made = Some((w, cw));
+                break;
+            }
+            let e = errno();
+            if e != libc::EEXIST {
+                return Err(log_failed("the trash", FsWriteErr::Io(e)));
+            }
+        }
+        let Some((w, cw)) = made else { return Err(log_failed("the trash", FsWriteErr::Io(libc::EEXIST))) };
+        let undo = |wfd: Option<i32>| {
+            if let (Some(wfd), Ok(rc)) = (wfd, cname(TRASH_RECORD.as_bytes())) {
+                unlink_at(wfd, &rc, 0);
+            }
+            unlink_at(t, &cw, libc::AT_REMOVEDIR);
+        };
+        let wrapper = match open_sub(t, &cw) {
+            Ok(fd) => fd,
+            Err(e) => {
+                undo(None);
+                return Err(log_failed("the trash", FsWriteErr::Io(e)));
+            }
+        };
+        let wfd = wrapper.as_raw_fd();
+        if let Err(e) = write_record(wfd, p, wall_time()) {
+            undo(None);
+            return Err(log_failed("the trash's record", FsWriteErr::Io(e)));
+        }
+        if let Err(e) = rename_noreplace(dir.as_raw_fd(), &c, wfd, &c) {
+            undo(Some(wfd));
+            return Err(log_failed("the trash", rename_err(e)));
+        }
+        sync_dir(wfd);
+        sync_dir(dir.as_raw_fd());
+        sync_dir(t);
+        qlog!("files: an item of %s went to the trash", zone);
+        Ok(w.into_bytes())
+    }
+
+    /// The record of the trash entry `entry` (a file's or folder's, `files-...`), for a row on screen: where it
+    /// came from and when. BadRecord when there is none, or it does not read strictly.
+    pub fn trash_record(&self, entry: &[u8]) -> Result<TrashRecord, FsWriteErr> {
+        if trash_parse(entry).kind != TrashKind::File {
+            return Err(FsWriteErr::Refused);
+        }
+        let trash = self.trash_fd()?;
+        let w = open_sub(trash.as_raw_fd(), &cname(entry)?).map_err(|_| FsWriteErr::BadRecord)?;
+        read_record(w.as_raw_fd()).ok_or(FsWriteErr::BadRecord)
+    }
+
+    /// Puts the trash entry `entry` back. A file or folder (`files-...`) goes back where its record says it was,
+    /// when that folder is still there and inside Grimoire's folders for the user's files; a name taken there gets
+    /// " 2", " 3" and so on (before a file's extension). A notebook goes back to `notebooks/<id>`, from the name
+    /// store_delete gives it (`<id>-<time>`) or from a record whose `from=` is that folder; refused when the id is
+    /// taken. A page is not restored here (its place in its notebook was never kept). Its folder in the trash goes
+    /// once empty: the record, then the folder, the only removal in these writes.
+    pub fn restore(&self, entry: &[u8]) -> Result<Restored, FsWriteErr> {
+        if entry.is_empty() || entry.contains(&b'/') || entry == b"." || entry == b".." {
+            return Err(FsWriteErr::Refused);
+        }
+        let e = trash_parse(entry);
+        let trash = self.trash_fd()?;
+        let t = trash.as_raw_fd();
+        let ce = cname(entry)?;
+        match e.kind {
+            TrashKind::Notebook => {
+                let st = stat_at(t, &ce).map_err(FsWriteErr::Walk)?;
+                if st.kind() != FsKind::Dir {
+                    return Err(FsWriteErr::Refused);
+                }
+                self.restore_notebook(t, &ce, &e.id)?;
+                Ok(Restored::Notebook(e.id))
+            }
+            TrashKind::File => {
+                let w = open_sub(t, &ce).map_err(|_| FsWriteErr::BadRecord)?;
+                let wfd = w.as_raw_fd();
+                let rec = read_record(wfd).ok_or(FsWriteErr::BadRecord)?;
+                let (folder, name) = rec.from.split_last().ok_or(FsWriteErr::BadRecord)?;
+                // where it goes first: a notebook's folder, or inside Grimoire's folders for the user's files
+                let zone = match self.is_notebook_path(&rec.from) {
+                    true => None,
+                    false => Some(self.write_zone(&rec.from).ok_or(FsWriteErr::Refused)?),
+                };
+                // then the item, at the name the record gives it
+                let cn = cname(name)?;
+                let st = stat_at(wfd, &cn).map_err(|_| FsWriteErr::BadRecord)?;
+                let dir_item = match st.kind() {
+                    FsKind::Dir => true,
+                    FsKind::File => false,
+                    _ => return Err(FsWriteErr::Refused),
+                };
+                let done = if let Some(zone) = zone {
+                    let dest = match self.open_dir(&folder, false) {
+                        Ok(fd) => fd,
+                        Err(FsErr::NotFound | FsErr::NotDir) => return Err(FsWriteErr::FolderGone),
+                        Err(e) => return Err(FsWriteErr::Walk(e)),
+                    };
+                    let mut back = None;
+                    for n in 1..=NUMBERED_MAX {
+                        let want = if n == 1 { name.to_vec() } else { numbered(name, n, dir_item) };
+                        let to = folder.join(&want).filter(|_| want.len() <= FS_NAME_MAX).ok_or(FsWriteErr::TooLong)?;
+                        match rename_noreplace(wfd, &cn, dest.as_raw_fd(), &cname(&want)?) {
+                            Ok(()) => {
+                                back = Some(to);
+                                break;
+                            }
+                            Err(libc::EEXIST) => continue,
+                            Err(e) => return Err(log_failed("a restore", rename_err(e))),
+                        }
+                    }
+                    let to = back.ok_or(FsWriteErr::Exists)?;
+                    sync_dir(dest.as_raw_fd());
+                    qlog!("files: an item went back to %s", zone);
+                    Restored::File(to)
+                } else {
+                    let id = std::str::from_utf8(name).ok().filter(|id| dir_item && notebook_id_ok(id)).ok_or(FsWriteErr::Refused)?;
+                    self.restore_notebook(wfd, &cn, id)?;
+                    Restored::Notebook(id.to_string())
+                };
+                // its folder in the trash, now holding the record alone
+                unlink_at(wfd, &cname(TRASH_RECORD.as_bytes())?, 0);
+                drop(w);
+                unlink_at(t, &ce, libc::AT_REMOVEDIR);
+                sync_dir(t);
+                Ok(done)
+            }
+            TrashKind::Page | TrashKind::Other => Err(FsWriteErr::Refused),
+        }
+    }
+
+    /// Whether `p` is `<Grimoire's folder>/notebooks/<one name>`.
+    fn is_notebook_path(&self, p: &StoragePath) -> bool {
+        let Some(g) = self.grimoire.as_ref() else { return false };
+        let (gc, pc): (Vec<&[u8]>, Vec<&[u8]>) = (g.components().collect(), p.components().collect());
+        pc.len() == gc.len() + 2 && gc.iter().zip(&pc).all(|(a, b)| eq_nocase(a, b)) && eq_nocase(pc[gc.len()], b"notebooks")
+    }
+
+    /// Renames the notebook folder `name` in `from_fd` to `notebooks/<id>`, never over a notebook there.
+    fn restore_notebook(&self, from_fd: i32, name: &CString, id: &str) -> Result<(), FsWriteErr> {
+        if !notebook_id_ok(id) {
+            return Err(FsWriteErr::Refused);
+        }
+        let nb = self.notebooks_fd()?;
+        rename_noreplace(from_fd, name, nb.as_raw_fd(), &cname(id.as_bytes())?).map_err(|e| log_failed("a notebook's restore", rename_err(e)))?;
+        sync_dir(nb.as_raw_fd());
+        qlog!("files: notebook %s came back from the trash", id);
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // The name rules, each refused on its own and the first broken named; a file keeps its extension in any case,
+    // a folder has none to keep.
+    #[test]
+    fn the_name_rules() {
+        let ok = |old: &[u8], new: &[u8], dir: bool| fsview_name_check(old, new, dir);
+        assert_eq!(ok(b"a.png", b"b.png", false), Ok(()));
+        assert_eq!(ok(b"a.png", b"Holiday 2026.PNG", false), Ok(()));
+        assert_eq!(ok(b"a.png", b"caf\xc3\xa9.png", false), Ok(()));
+        assert_eq!(ok(b"a.png", b"", false), Err(NameRule::Empty));
+        let long = [vec![b'x'; 252], b".png".to_vec()].concat();
+        assert_eq!(ok(b"a.png", &long, false), Err(NameRule::TooLong));
+        assert_eq!(ok(b"a.png", &long[1..], false), Ok(()));
+        for c in b"/\\:*?\"<>|" {
+            assert_eq!(ok(b"a.png", &[b'x', *c, b'.', b'p', b'n', b'g'], false), Err(NameRule::Char(*c)));
+        }
+        assert_eq!(ok(b"a.png", b"a:b*c.png", false), Err(NameRule::Char(b':')));
+        assert_eq!(ok(b"a.png", b"a\tb.png", false), Err(NameRule::Control));
+        assert_eq!(ok(b"a.png", b"a\x7f.png", false), Err(NameRule::Control));
+        assert_eq!(ok(b"a.png", b" a.png", false), Err(NameRule::LeadingSpace));
+        assert_eq!(ok(b"Work", b"Work ", true), Err(NameRule::TrailingSpace));
+        assert_eq!(ok(b"Work", b"Work.", true), Err(NameRule::TrailingDot));
+        assert_eq!(ok(b"Work", b".Work", true), Err(NameRule::LeadingDot));
+        assert_eq!(ok(b"a.png", b"a.jpg", false), Err(NameRule::Extension));
+        assert_eq!(ok(b"a.png", b"a", false), Err(NameRule::Extension));
+        assert_eq!(ok(b"a.png", b"png", false), Err(NameRule::Extension));
+        // a file with no extension may take any name; a folder keeps none
+        assert_eq!(ok(b"notes", b"notes 2", false), Ok(()));
+        assert_eq!(ok(b"Work.2026", b"School", true), Ok(()));
+    }
+
+    // " 2" goes before a file's extension and at the end of a folder's name.
+    #[test]
+    fn numbered_names() {
+        assert_eq!(numbered(b"a.png", 2, false), b"a 2.png");
+        assert_eq!(numbered(b"notes", 3, false), b"notes 3");
+        assert_eq!(numbered(b"Work.2026", 2, true), b"Work.2026 2");
+        assert_eq!(numbered(b"archive.tar.gz", 2, false), b"archive.tar 2.gz");
+    }
+
+    // The trash's names: a file's folder (2.2), a notebook and a page (every version), and anything else.
+    #[test]
+    fn trash_names() {
+        let tm = local_tm(1_700_000_000);
+        let stamp = format!("{:04}{:02}{:02}-{:02}{:02}{:02}", tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec);
+        let f = trash_parse(format!("files-{stamp}-0a9f").as_bytes());
+        assert_eq!((f.kind, f.time), (TrashKind::File, 1_700_000_000));
+        let n = trash_parse(b"20261115-101010-ab12-1763200000");
+        assert_eq!((n.kind, n.time, n.id.as_str()), (TrashKind::Notebook, 1_763_200_000, "20261115-101010-ab12"));
+        let p = trash_parse(b"20261115-101010-ab12-p7-1763200001");
+        assert_eq!((p.kind, p.time, p.id.as_str(), p.page), (TrashKind::Page, 1_763_200_001, "20261115-101010-ab12", 7));
+        for bad in [
+            &b"files-20261115-101010-0A9F"[..],
+            b"files-20261115-101010-0a9",
+            b"files-20261315-101010-0a9f",
+            b"files-2026111-1010100-0a9f",
+            b"files-",
+            b"notes.txt",
+            b"20261115-101010-ab12-",
+            b"a b-123",
+            b"-123",
+            b"20261115-101010-ab12-x",
+        ] {
+            assert_eq!(trash_parse(bad).kind, TrashKind::Other, "{}", String::from_utf8_lossy(bad));
+        }
+        // a page's id 0 is no page: the name reads as a notebook's id with "-p0" in it
+        assert_eq!(trash_parse(b"abc-p0-12").kind, TrashKind::Notebook);
+        // newest first, the unknown last
+        let e = |n: &[u8]| FsEntry { name: n.to_vec(), kind: FsKind::Dir, stat: None };
+        let list = fsview_trash_entries(&[e(b"zzz"), e(b"a-100"), e(format!("files-{stamp}-0001").as_bytes()), e(b"a-p2-200")]);
+        let order: Vec<&[u8]> = list.iter().map(|t| &t.name[..]).collect();
+        assert_eq!(order, vec![format!("files-{stamp}-0001").as_bytes(), b"a-p2-200", b"a-100", b"zzz"]);
+    }
+
+    // The record, read strictly: what the writer writes reads back; a missing or doubled key, another line, a
+    // carriage return, no last line feed, a path that is no storage path, a time that is no number, or more than
+    // 4 KiB, each refused.
+    #[test]
+    fn the_record_reads_strictly() {
+        let from = StoragePath::new(b"grimoire/templates/a b.png").unwrap();
+        let t = trash_record_text(&from, 1_763_200_000);
+        assert_eq!(trash_record_parse(&t), Some(TrashRecord { from: from.clone(), time: 1_763_200_000 }));
+        assert_eq!(trash_record_parse(b"time=5\nfrom=grimoire/import/x.pdf\n").map(|r| r.time), Some(5));
+        for bad in [
+            &b""[..],
+            b"from=grimoire/import/x.pdf\n",
+            b"time=5\n",
+            b"from=grimoire/import/x.pdf\ntime=5",
+            b"from=grimoire/import/x.pdf\r\ntime=5\n",
+            b"from=grimoire/import/x.pdf\ntime=5\ntime=6\n",
+            b"from=a\nfrom=b\ntime=5\n",
+            b"from=grimoire/import/x.pdf\ntime=5\nkind=file\n",
+            b"from=grimoire/import/x.pdf\n\ntime=5\n",
+            b"from=/etc/passwd\ntime=5\n",
+            b"from=grimoire/../etc\ntime=5\n",
+            b"from=\ntime=5\n",
+            b"from=grimoire/import/x.pdf\ntime=-5\n",
+            b"from=grimoire/import/x.pdf\ntime=5s\n",
+            b"from=grimoire/import/x.pdf\ntime=\n",
+            b"from=grimoire/im\0port\ntime=5\n",
+        ] {
+            assert_eq!(trash_record_parse(bad), None, "{:?}", String::from_utf8_lossy(bad));
+        }
+        let big = [b"# ".to_vec(), vec![b'x'; TRASH_RECORD_MAX], b"\nfrom=a\ntime=1\n".to_vec()].concat();
+        assert_eq!(trash_record_parse(&big), None);
+    }
+
+    // What an import holds: the paths it works on, what is inside them and the folders they are in; any case of
+    // the names; and everything in the import folder while a previous run's import holds the lock.
+    #[test]
+    fn what_an_import_holds() {
+        let held = vec![b"grimoire/import/Book.pdf".to_vec(), b"grimoire/import/Trip".to_vec()];
+        let imp: &[u8] = b"grimoire/import";
+        assert!(holds(b"grimoire/import/Book.pdf", &held, false, Some(imp)));
+        assert!(holds(b"grimoire/import/book.PDF", &held, false, Some(imp)));
+        assert!(holds(b"grimoire/import/Trip/p1.png", &held, false, Some(imp)));
+        assert!(holds(b"grimoire/import/Trip", &held, false, Some(imp)));
+        assert!(!holds(b"grimoire/import/Other.pdf", &held, false, Some(imp)));
+        assert!(!holds(b"grimoire/import/Trip 2", &held, false, Some(imp)));
+        assert!(!holds(b"grimoire/templates/a.png", &held, false, Some(imp)));
+        let work = vec![b"grimoire/import/Work/A.pdf".to_vec()];
+        assert!(holds(b"grimoire/import/Work", &work, false, Some(imp)));
+        assert!(!holds(b"grimoire/import/Other.pdf", &[], false, Some(imp)));
+        assert!(holds(b"grimoire/import/Other.pdf", &[], true, Some(imp)));
+        assert!(!holds(b"grimoire/templates/a.png", &[], true, Some(imp)));
     }
 }
