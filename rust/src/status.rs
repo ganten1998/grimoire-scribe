@@ -721,12 +721,19 @@ static K_CORNER_TOASTS: [&str; STATUS_CORNERS as usize] = [
     n_("Clock and battery: bottom left corner of page"),
 ];
 
-/// The next corner, clockwise from the top left and round (the status-corner shortcut, the Display sheet's row).
+/// Settings > Sleep & Clock > Clock settings > the corner row: the next corner, clockwise from the top left and
+/// round. No toast: the row names the corner, as the size row names the size (issue #141).
 pub fn status_cycle_corner(a: &mut App) {
     a.settings.status_corner = (a.settings.status_corner + 1) % STATUS_CORNERS;
     save_later();
     qlog!("status: the clock and battery corner moves to corner %d", a.settings.status_corner);
     ask_change(a);
+}
+
+/// The status-corner shortcut: the next corner, as the corner row; with no notebook page in front, where nothing
+/// shows it, a toast says which corner it is now.
+pub fn status_corner_shortcut(a: &mut App) {
+    status_cycle_corner(a);
     if !page_in_front(a) {
         say(a, tr(K_CORNER_TOASTS[clampi(a.settings.status_corner, 0, STATUS_CORNERS - 1) as usize]));
     }
@@ -1658,6 +1665,33 @@ mod tests {
         // and nothing more is asked while there is nothing on the panel
         status_tick(&mut a, 1000);
         assert!(with(|s| s.pending.is_empty()));
+        status_reset();
+    }
+
+    /// With the page covered (Settings over it), the Clock settings page's corner row moves the corner with no
+    /// toast, and the status-corner shortcut moves it and names the new corner in one (issue #141).
+    #[test]
+    fn the_corner_row_moves_the_corner_without_a_toast_and_the_shortcut_names_it() {
+        up();
+        status_reset();
+        front(false);
+        let mut a = App { w: 600, h: 400, dpi: 300.0, ..Default::default() };
+        a.settings.status_mode = 1;
+        assert_eq!(canvas_init(&mut a.screen, 600, 400), 0);
+        status_cycle_corner(&mut a);
+        assert_eq!((a.settings.status_corner, a.toast_visible, a.toast.as_str()), (1, false, ""));
+        status_corner_shortcut(&mut a);
+        assert_eq!(a.settings.status_corner, 2);
+        assert!(a.toast_visible);
+        assert_eq!(a.toast.as_str(), "Clock and battery: bottom right corner of page");
+        // with the page in front the shortcut shows the corner itself, and no toast
+        front(true);
+        a.toast_visible = false;
+        a.toast.set_cut("");
+        status_corner_shortcut(&mut a);
+        assert_eq!((a.settings.status_corner, a.toast_visible, a.toast.as_str()), (3, false, ""));
+        front(false);
+        with(|s| s.save_due = false);
         status_reset();
     }
 }

@@ -415,9 +415,9 @@ that flattens and drifts still taps), and
 nothing makes the next tap wait. A key or controller button can do the same: the `status-toggle` action,
 and `status-corner` for the next corner (docs/SHORTCUTS.md, Buttons > Menus); with no page in front they
 change the setting and say so with a toast. Settings > Display, beside Done, has the size (small,
-medium or large) and the corner (top left, top right, bottom right, bottom left, in turn), and its
-rows include "Display time as 12 hour". They are settings.ini `status_on`, `status_size`,
-`status_corner` and `clock_12h` (docs/FORMAT.md).
+medium or large) and the corner (top left, top right, bottom right, bottom left, in turn); the two rows
+name what they set, so neither shows a toast. Its rows include "Display time as 12 hour". They are
+settings.ini `status_on`, `status_size`, `status_corner` and `clock_12h` (docs/FORMAT.md).
 
 It is drawn over the screen for each refresh and never saved into it: it is not in a page, a
 thumbnail, an export or PDF, Live view, or the sleep screen. It refreshes by itself at each minute and
