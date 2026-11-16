@@ -882,6 +882,33 @@ fn rename_seam() {
     }
 }
 
+/// The moments a test can stop a write at, as a crash would (fsview_stop_at): nothing after it runs, no undo.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum FsStop {
+    /// a rename through a temporary name, between its two renames
+    RenameHalfway = 1,
+    /// the trash: its record written, the item not moved yet
+    TrashRecorded = 2,
+}
+
+#[cfg(any(test, feature = "sim"))]
+static STOP_AT: std::sync::atomic::AtomicU8 = std::sync::atomic::AtomicU8::new(0);
+
+/// Tests (never the Kindle's build): the next writes stop at `at` (None: nowhere), returning Io(EINTR).
+#[cfg(any(test, feature = "sim"))]
+pub fn fsview_stop_at(at: Option<FsStop>) {
+    STOP_AT.store(at.map_or(0, |s| s as u8), std::sync::atomic::Ordering::Relaxed);
+}
+
+fn stopped(at: FsStop) -> bool {
+    #[cfg(any(test, feature = "sim"))]
+    if STOP_AT.load(std::sync::atomic::Ordering::Relaxed) == at as u8 {
+        return true;
+    }
+    let _ = at;
+    false
+}
+
 /// Renames `old` in `ofd` to `new` in `nfd`, never over an entry: renameat2(RENAME_NOREPLACE) on Linux; where the
 /// storage refuses the flag or the kernel has no such call (EINVAL, ENOSYS), and on the Mac, the fallback
 /// (`rename_fallback`) reserves `new` first, atomically, and renames over its own reservation only. Err(errno):
@@ -1088,6 +1115,44 @@ pub enum Restored {
     File(StoragePath),
     /// a notebook, as `notebooks/<id>` again
     Notebook(String),
+    /// nothing: the entry held nothing but its record (a trash cut off before its item moved, so the item never
+    /// left its folder) or nothing at all, and is gone from the trash
+    Nothing,
+}
+
+/// Whether the folder open at `wfd` holds nothing but a trash record (or nothing at all). False at any other entry,
+/// or when it cannot be read.
+fn holds_only_record(wfd: i32) -> bool {
+    // SAFETY: dup of our descriptor; fdopendir takes the duplicate and closedir closes it; each entry's name is read
+    // before the next readdir.
+    unsafe {
+        let d2 = libc::dup(wfd);
+        if d2 < 0 {
+            return false;
+        }
+        let dir = libc::fdopendir(d2);
+        if dir.is_null() {
+            libc::close(d2);
+            return false;
+        }
+        let mut only = true;
+        loop {
+            crate::util::set_errno(0);
+            let e = libc::readdir(dir);
+            if e.is_null() {
+                // (the end, or a read that failed: then nothing is known, and nothing is removed)
+                only = only && errno() == 0;
+                break;
+            }
+            let n = std::ffi::CStr::from_ptr((*e).d_name.as_ptr()).to_bytes();
+            if n != b"." && n != b".." && n != TRASH_RECORD.as_bytes() {
+                only = false;
+                break;
+            }
+        }
+        libc::closedir(dir);
+        only
+    }
 }
 
 /// An errno of a rename as a refusal: taken, gone since it was looked at, or another failure.
@@ -1181,7 +1246,8 @@ impl FsStorage {
     /// entry: inside Grimoire's folders for the user's files only, not while an import holds it, only while it is
     /// the item listed, and only to a name the rules allow (`fsview_name_check`). A rename that changes only the
     /// case, or that the storage says would land on the item itself (a storage that folds case), goes through a
-    /// temporary name. Its new path.
+    /// temporary name in the same folder, the new name numbered (" 2"; TooLong when that passes 255 bytes), and is
+    /// undone when its second step fails. Its new path.
     pub fn rename(&self, p: &StoragePath, listed: &FsStat, new_name: &[u8]) -> Result<StoragePath, FsWriteErr> {
         let zone = self.write_zone(p).ok_or(FsWriteErr::Refused)?;
         let (folder, old) = p.split_last().ok_or(FsWriteErr::Refused)?;
@@ -1214,11 +1280,32 @@ impl FsStorage {
         match direct {
             Ok(()) => {}
             Err(libc::EEXIST) if folded || stat_at(d, &c_new).is_ok_and(|s| (s.dev, s.ino) == (now.dev, now.ino)) => {
-                let tmp = cname(format!(".grimoire-rename-{}-{}", std::process::id(), hex4()).as_bytes())?;
-                rename_noreplace(d, &c_old, d, &tmp).map_err(|e| log_failed("a rename", rename_err(e)))?;
+                // The temporary name is the new one numbered (" 2", before a file's extension): a name every
+                // listing shows, so a rename cut off half way (a crash, an undo that fails) leaves the item in
+                // sight under nearly the name asked for, never hidden with its name kept nowhere.
+                let mut parked = None;
+                for n in 2..=NUMBERED_MAX {
+                    let t = numbered(new_name, n, dir_item);
+                    if t.len() > FS_NAME_MAX {
+                        return Err(FsWriteErr::TooLong);
+                    }
+                    let ct = cname(&t)?;
+                    match rename_noreplace(d, &c_old, d, &ct) {
+                        Ok(()) => {
+                            parked = Some(ct);
+                            break;
+                        }
+                        Err(libc::EEXIST) => continue,
+                        Err(e) => return Err(log_failed("a rename", rename_err(e))),
+                    }
+                }
+                let tmp = parked.ok_or(FsWriteErr::Exists)?;
+                if stopped(FsStop::RenameHalfway) {
+                    return Err(FsWriteErr::Io(libc::EINTR));
+                }
                 if let Err(e) = rename_noreplace(d, &tmp, d, &c_new) {
                     if rename_noreplace(d, &tmp, d, &c_old).is_err() {
-                        qlog!("files: a rename through a temporary name could not be undone; the item is at its temporary name in %s", zone);
+                        qlog!("files: a rename through a temporary name could not be undone; the item has the new name numbered, in %s", zone);
                     }
                     return Err(log_failed("a rename", rename_err(e)));
                 }
@@ -1233,8 +1320,9 @@ impl FsStorage {
     /// Moves the file or folder at `p` (as listed: `listed`) to the trash, never deleting it: one rename into a new
     /// folder `trash/files-<YYYYMMDD-HHMMSS>-<4 hex>/`, beside its record (`.grimoire-trash`: where it was and
     /// when), written and synced first. Inside Grimoire's folders for the user's files only, not while an import
-    /// holds it, only while it is the item listed. Nothing is left behind when it fails. The new entry's name in
-    /// the trash.
+    /// holds it, only while it is the item listed. Nothing is left behind when it fails. Cut off between its record
+    /// and its rename (a crash), the item never left: the trash lists the entry, and Restore removes it
+    /// (`Restored::Nothing`). The new entry's name in the trash.
     pub fn trash(&self, p: &StoragePath, listed: &FsStat) -> Result<Vec<u8>, FsWriteErr> {
         let zone = self.write_zone(p).ok_or(FsWriteErr::Refused)?;
         let (folder, name) = p.split_last().ok_or(FsWriteErr::Refused)?;
@@ -1300,6 +1388,9 @@ impl FsStorage {
             undo(None);
             return Err(log_failed("the trash's record", FsWriteErr::Io(e)));
         }
+        if stopped(FsStop::TrashRecorded) {
+            return Err(FsWriteErr::Io(libc::EINTR));
+        }
         // (into the folder made above, holding only the record: no reservation is needed there)
         if let Err(e) = rename_at(dir.as_raw_fd(), &c, wfd, &c, false) {
             undo(Some(wfd));
@@ -1328,7 +1419,8 @@ impl FsStorage {
     /// name taken there gets " 2", " 3" and so on (before a file's extension). A notebook goes back to `notebooks/<id>`, from the name
     /// store_delete gives it (`<id>-<time>`) or from a record whose `from=` is that folder; refused when the id is
     /// taken. A page is not restored here (its place in its notebook was never kept). Its folder in the trash goes
-    /// once empty: the record, then the folder, the only removal in these writes.
+    /// once empty: the record, then the folder, the only removal in these writes. A `files-...` entry that holds
+    /// nothing but its record, or nothing (a trash cut off before its item moved), is removed: `Restored::Nothing`.
     pub fn restore(&self, entry: &[u8]) -> Result<Restored, FsWriteErr> {
         if entry.is_empty() || entry.contains(&b'/') || entry == b"." || entry == b".." {
             return Err(FsWriteErr::Refused);
@@ -1349,6 +1441,19 @@ impl FsStorage {
             TrashKind::File => {
                 let w = open_sub(t, &ce).map_err(|_| FsWriteErr::BadRecord)?;
                 let wfd = w.as_raw_fd();
+                if holds_only_record(wfd) {
+                    // A trash cut off before its item moved (a crash after the folder or the record): the item never
+                    // left, so there is nothing to put back. The record, then the emptied folder, go.
+                    unlink_at(wfd, &cname(TRASH_RECORD.as_bytes())?, 0);
+                    drop(w);
+                    // SAFETY: unlinkat on our descriptor and a NUL-terminated name (a folder: removed only empty).
+                    if unsafe { libc::unlinkat(t, ce.as_ptr(), libc::AT_REMOVEDIR) } != 0 {
+                        return Err(FsWriteErr::BadRecord);
+                    }
+                    sync_dir(t);
+                    qlog!("files: a trash entry that held nothing was removed");
+                    return Ok(Restored::Nothing);
+                }
                 let rec = read_record(wfd).ok_or(FsWriteErr::BadRecord)?;
                 let (folder, name) = rec.from.split_last().ok_or(FsWriteErr::BadRecord)?;
                 // where it goes first: a notebook's folder, or inside Grimoire's folders for the user's files

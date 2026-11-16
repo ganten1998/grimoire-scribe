@@ -29,9 +29,9 @@ the name rules, the busy check and the copy job (`BgKind::CopyFile`). Nothing on
   - Their words for each refusal: "File changed. Try again." (`Changed`), "Importing now." (`Busy`), "Name can't
     contain %s" (`NameRule::Char`) and words for the other rules (empty, too long, a space at either end, a dot at
     the start or the end, the extension kept), a name taken on rename (`Exists`: offer " 2"), "Couldn't restore.
-    Folder gone." (`FolderGone`), an entry whose record does not read (`BadRecord`), "Restored to %s.", and
-    "Couldn't copy file. Is the storage full?" for any failed copy (the job ends 0 or 1 only). None is a string
-    yet.
+    Folder gone." (`FolderGone`), an entry whose record does not read (`BadRecord`), "Restored to %s.", an entry
+    a cut-off trash left, removed with nothing put back (`Restored::Nothing`), and "Couldn't copy file. Is the
+    storage full?" for any failed copy (the job ends 0 or 1 only). None is a string yet.
   - The Trash place: `FsListing` over `FsStorage::trash_dir()` in its slices, then `fsview_trash_entries`; a
     file's row reads `FsStorage::trash_record` for the rows on screen; a notebook's row needs its name from
     `trash/<entry>/notebook.ini` (no store function reads a notebook there yet). The Trash's size on its row is

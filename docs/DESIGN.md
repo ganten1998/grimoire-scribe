@@ -2365,8 +2365,9 @@ their own work), so nothing a user sees changed.
   random name, holding only the record) the fallback looks for the name only. The log says once a session when
   the storage refuses the flag; whether the Scribe's storage does is what docs/TESTING.md's check finds out. A
   rename that changes only the case, or that the storage says would land on the item itself (a storage that
-  folds case), goes through a temporary name in the same folder (`.grimoire-rename-<pid>-<4 hex>`), and is
-  undone if the second step fails.
+  folds case), goes through a temporary name in the same folder, the new name numbered (" 2", " 3"...), and is
+  undone if the second step fails. Cut off half way (a crash, or an undo that fails), the item is left in sight
+  under that numbered name, never at a hidden one.
 - **Check again before acting.** Rename and trash take the stat the listing had (`FsStat`) and refuse when the
   entry's device, inode, size or time differ (`Changed`, "File changed. Try again." on screen), or when an import
   holds it (`Busy`, "Importing now."): a PDF or a folder of pictures a queued or running import works on, what is
@@ -2378,14 +2379,17 @@ their own work), so nothing a user sees changed.
   It names the first rule broken (`NameRule`), so the screen can say which.
 - **Never a hard delete.** Trash is one rename into a new folder `trash/files-<YYYYMMDD-HHMMSS>-<4 hex>/`, beside
   its record `.grimoire-trash` (`from=`, `time=`), written with `O_CREAT|O_EXCL|O_NOFOLLOW` and synced before the
-  rename; a failure removes both, so nothing is left. Restore reads the record strictly (a plain file, 4 KiB at
-  most, `O_NOFOLLOW|O_NONBLOCK`), puts the item back where it was when that folder is still there, allowed and not held
-  by an import (a name taken gets " 2", " 3"...), else says why (`FolderGone`, `BadRecord`, `Refused`, `Busy`); a notebook goes back to
-  `notebooks/<id>` from the name `store_delete` gives it or from a record naming that folder, refused while the
-  id is taken. The only removals: the record and its emptied folder after a restore. Pages in the trash are
-  listed, never restored (their place was never kept). The trash is listed by `FsListing` in its slices and read
-  by name alone (`fsview_trash_entries`, newest first by the time in each name); a row's record is read only for
-  the rows on screen (`FsStorage::trash_record`). docs/FORMAT.md, The trash, has the names and the record.
+  rename; a failure removes both, so nothing is left. Cut off between the record and the rename (a crash), the
+  item never left: the entry is listed with its record, and Restore removes it, as it does an empty `files-`
+  folder (`Restored::Nothing`, the one case where it puts nothing back). Restore reads the record strictly (a
+  plain file, 4 KiB at most, `O_NOFOLLOW|O_NONBLOCK`), puts the item back where it was when that folder is still
+  there, allowed and not held by an import (a name taken gets " 2", " 3"...), else says why (`FolderGone`,
+  `BadRecord`, `Refused`, `Busy`); a notebook goes back to `notebooks/<id>` from the name `store_delete` gives it
+  or from a record naming that folder, refused while the id is taken. The only removals: the record and its
+  emptied folder after a restore. Pages in the trash are listed, never restored (their place was never kept).
+  The trash is listed by `FsListing` in its slices and read by name alone (`fsview_trash_entries`, newest first
+  by the time in each name); a row's record is read only for the rows on screen (`FsStorage::trash_record`).
+  docs/FORMAT.md, The trash, has the names and the record.
 - **The copy job, `BgKind::CopyFile = 10`** (`bgwork_copy.rs`; 9 is kept for the file previews). The request
   (`copy_request`, UI thread) refuses a source in a place a pick never takes from, one no longer the plain file
   listed, and one that would leave less than the floor (100 MB after it, `fsview_room_for`), and queues the job as
@@ -2402,12 +2406,12 @@ their own work), so nothing a user sees changed.
   holds), `bgjob.rs`'s (the jobs' paths), `bgwork_copy.rs`'s (the job's path), and
   `rust/tests/test_fsview_writes.rs` (every refusal of the allow-list, no replace with renameat2's
   flag and with the fallback forced through `fsview_rename_fallback_force`, another writer at the
-  name between the fallback's check and its rename through `fsview_rename_seam`, a case-only rename, the busy
-  check through real queued jobs, trash and restore of a file, a folder and a notebook in both forms, a name
-  taken, refused restores, the copy request and job with the floor and a failed write through `copy_seams`, a
-  source that changes, and leftovers swept). On the Mac only the fallback runs; CI's Linux job runs the same file
-  with renameat2's flag, and docs/TESTING.md has the Scribe's check of the flag, of one rename into the trash and
-  of inode numbers.
+  name between the fallback's check and its rename through `fsview_rename_seam`, a case-only rename, a rename and
+  a trash stopped half way through `fsview_stop_at`, the busy check through real queued jobs, trash and restore of
+  a file, a folder and a notebook in both forms, a name taken, refused restores, the copy request and job with the
+  floor and a failed write through `copy_seams`, a source that changes, and leftovers swept). On the Mac only the
+  fallback runs; CI's Linux job runs the same file with renameat2's flag, and docs/TESTING.md has the Scribe's
+  check of the flag, of one rename into the trash and of inode numbers.
 
 ## Shared building blocks (2.1, lane L0)
 

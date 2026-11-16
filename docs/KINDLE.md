@@ -599,9 +599,11 @@ come, grimoire.log says (never a file's name: the folder, sizes, timings, reason
   what docs/TESTING.md's check finds out.
 - `files: a rename|the trash|the trash's record|a restore|a notebook's restore failed: <why>`: a call the storage
   refused, with its reason (a name taken, a file that changed or an import holding it are told on screen, not
-  here). `files: a rename through a temporary name could not be undone; the item is at its temporary name in
-  <folder>`: a case-only rename stopped half way; the file is `.grimoire-rename-<pid>-<4 hex>` in that folder,
-  to rename back by hand.
+  here). `files: a rename through a temporary name could not be undone; the item has the new name numbered, in
+  <folder>`: a case-only rename stopped half way; the file is in that folder under the new name with " 2" (or
+  the next number free), to rename by hand. A crash in the middle of one leaves it the same way.
+- `files: a trash entry that held nothing was removed`: Restore on an entry a trash cut off by a crash left (its
+  record alone, or an empty folder); the item never left its folder.
 - `bg: file copy of <folder> (pid N)`, then `bg: a file copied into <folder>: N KB in T ms` or `bg: a file not
   copied into <folder>: <why>` (among them: no room: the storage would keep less than 100 MB; it changed since it
   was listed, or while it was copied; it is no plain file; a link on its way; a system error's own words), and

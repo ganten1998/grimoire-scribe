@@ -239,6 +239,58 @@ fn what_comes_meanwhile_is_never_replaced() {
     fsview_rename_fallback_force(false);
 }
 
+// A rename through a temporary name stopped between its two renames, as a crash would stop it: the item is at the
+// new name numbered (" 2"), which the listing shows (never a hidden name, its own kept nowhere), and a rename of it
+// finishes the job.
+fn a_rename_cut_off_half_way() {
+    for forced in [false, true] {
+        fsview_rename_fallback_force(forced);
+        let (root, g) = tree();
+        let st = open(&root, &g);
+        let a = stat_of(&st, "grimoire/templates/a.png");
+        fsview_stop_at(Some(FsStop::RenameHalfway));
+        check!(st.rename(&sp("grimoire/templates/a.png"), &a, b"A.png") == Err(FsWriteErr::Io(libc::EINTR)));
+        fsview_stop_at(None);
+        check!(names(&format!("{root}/grimoire/templates")) == ["A 2.png", "b.png"]);
+        let mut l = FsListing::start(&st, &sp("grimoire/templates"), false).unwrap();
+        while !l.step(FS_SLICE_MS) {}
+        check!(l.entries.iter().any(|e| e.name == b"A 2.png"));
+        let p = stat_of(&st, "grimoire/templates/A 2.png");
+        check!(p.ino == a.ino);
+        check!(st.rename(&sp("grimoire/templates/A 2.png"), &p, b"A.png") == Ok(sp("grimoire/templates/A.png")));
+        check!(names(&format!("{root}/grimoire/templates")) == ["A.png", "b.png"]);
+        check!(read(&root, "grimoire/templates/A.png").as_deref() == Some(&b"template a"[..]));
+    }
+    fsview_rename_fallback_force(false);
+}
+
+// The trash stopped after its record and before its rename, as a crash would stop it: the item never left. The
+// trash lists the entry and its record reads; Restore removes it (nothing to put back) and leaves the item as it
+// is. An empty files- folder (a stop before the record) goes the same way; one holding anything but a record stays.
+fn a_trash_cut_off_before_its_item_moved() {
+    let (root, g) = tree();
+    let st = open(&root, &g);
+    let a = stat_of(&st, "grimoire/templates/a.png");
+    fsview_stop_at(Some(FsStop::TrashRecorded));
+    check!(st.trash(&sp("grimoire/templates/a.png"), &a) == Err(FsWriteErr::Io(libc::EINTR)));
+    fsview_stop_at(None);
+    check!(read(&root, "grimoire/templates/a.png").as_deref() == Some(&b"template a"[..]));
+    let list = trash_list(&st);
+    check!(list.len() == 1 && list[0].kind == TrashKind::File);
+    check!(st.trash_record(&list[0].name).map(|r| r.from) == Ok(sp("grimoire/templates/a.png")));
+    check!(st.restore(&list[0].name) == Ok(Restored::Nothing));
+    check!(names(&format!("{g}/trash")).is_empty());
+    check!(stat_of(&st, "grimoire/templates/a.png").same(&a));
+    let w = format!("{g}/trash/files-20261115-101010-0a9f");
+    std::fs::create_dir(&w).unwrap();
+    check!(st.restore(b"files-20261115-101010-0a9f") == Ok(Restored::Nothing));
+    check!(names(&format!("{g}/trash")).is_empty());
+    std::fs::create_dir(&w).unwrap();
+    std::fs::write(format!("{w}/note.txt"), b"by hand").unwrap();
+    check!(st.restore(b"files-20261115-101010-0a9f") == Err(FsWriteErr::BadRecord));
+    check!(names(&w) == ["note.txt"]);
+}
+
 // Waits for the background children to end, reaping each (at most 30 s). The last notify result.
 fn settle() -> i32 {
     let mut r = 0;
@@ -563,6 +615,8 @@ fn test_fsview_writes() {
     run!(a_rename_never_replaces);
     run!(a_case_only_rename);
     run!(what_comes_meanwhile_is_never_replaced);
+    run!(a_rename_cut_off_half_way);
+    run!(a_trash_cut_off_before_its_item_moved);
     run!(what_an_import_holds_stays);
     run!(trash_and_restore_a_file_and_a_folder);
     run!(a_name_taken_on_restore);
