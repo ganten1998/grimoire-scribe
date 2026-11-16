@@ -2714,10 +2714,13 @@ What only the storage can tell, on the Scribe:
    of a second; note whether it comes at once and lists the top folders. Send the lines and the folder's size.
 2. **A folder past 5,000 entries**: "Showing the first 5000." under the path, every Sort finishes, and the order
    covers the 5,000 listed.
-3. **Planted links** over SSH (`ln -s /mnt/us/documents /mnt/us/documents/loop`, `ln -s /etc
-   /mnt/us/documents/etc`, `ln -s Planner.pdf /mnt/us/documents/Alias.pdf`): with Show set to PDFs, pictures,
-   fonts none is listed; with All files each is a greyed row "link, not followed", a tap on it does nothing, and
-   Sort by newest or size puts them last. Nothing is entered or opened through one.
+3. **Planted links** over SSH, in a folder of their own outside `documents/` (which the Kindle's reader indexes):
+   `mkdir /mnt/us/linktest`, copy any PDF into it as `Plain.pdf`, then `ln -s /mnt/us/linktest
+   /mnt/us/linktest/loop`, `ln -s /etc /mnt/us/linktest/etc` and `ln -s Plain.pdf /mnt/us/linktest/Alias.pdf`.
+   Files > All storage > linktest: with Show set to PDFs, pictures, fonts only Plain.pdf is listed; with All files
+   each link is a greyed row "link, not followed", a tap on it does nothing, and Sort by newest or size puts them
+   last. Nothing is entered or opened through one. Then remove the folder and its links: `rm -r /mnt/us/linktest`
+   (rm removes the links themselves, never what they point to).
 4. **The card**: New > From a file... > Show Files in Library; Back to the Library: the Files card is the last card
    (with many notebooks, on the last screen). Hold it 0.6 s: its menu; Hide from Library takes it away, and the row
    comes back in the picker's root.
