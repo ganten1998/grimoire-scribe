@@ -29,8 +29,8 @@ each for its own issue:
   Grimoire?". The card is the last card of the top level, which in a big Library is the last screen: if that is
   too far, the other reading (the last card of the first screen) is a change in `reload` alone.
 - **Not timed on the Scribe**: Sort by newest or size stats a whole folder (up to 5,000 entries) in 20 ms slices
-  on the UI thread; the Go to sheet lists the storage's top folders at once (up to 200 ms). TESTING.md, "2.2,
-  Files (issue #124): device checks".
+  on the UI thread; the Go to sheet reads the storage root at once on the tap, at most 200 ms in all (a root that
+  takes longer lists the folders read by then). TESTING.md, "2.2, Files (issue #124): device checks".
 
 ## After the release of 2.1.0 (2026-11-13): what waits
 

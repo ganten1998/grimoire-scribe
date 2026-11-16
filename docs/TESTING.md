@@ -2710,7 +2710,8 @@ What only the storage can tell, on the Scribe:
    (M usable) in T ms`, then tap Sort to Newest and to Size and read `files: N rows sorted (S) in T ms` (counts
    and timings only, never a name). Note each T, whether "Loading..." appears (over 1 s), that the rows on screen
    do not move until the new order is ready and then change at once, and that the pen and page turns stay quick
-   meanwhile. Send the lines and the folder's size.
+   meanwhile. Then tap the folder shown in the path bar: the Go to sheet reads the storage root for at most a fifth
+   of a second; note whether it comes at once and lists the top folders. Send the lines and the folder's size.
 2. **A folder past 5,000 entries**: "Showing the first 5000." under the path, every Sort finishes, and the order
    covers the 5,000 listed.
 3. **Planted links** over SSH (`ln -s /mnt/us/documents /mnt/us/documents/loop`, `ln -s /etc

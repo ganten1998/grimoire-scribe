@@ -2357,8 +2357,10 @@ hosted the same way (`LibraryState.files`, `files_open_place`), and closes back 
   Hide from Library, Cancel. Its second line is the free space when it fits the card.
 - **The path bar is Files' alone.** Inside a place, the band under the header is 120 px: the path's parts (Files,
   the place, each folder) each a target the bar's height that opens it, the folder shown opening the Go to sheet
-  (the places that are there, then the storage's other top folders by name; rows that do not fit the screen are
-  left out, All storage reaches them). A path too long for its room keeps Files, one "..." (which opens the last
+  (the places that are there, then the storage's other top folders by name, but a name a row would not take, with
+  a line break; rows that do not fit the screen are left out, All storage reaches them). The tap reads the storage
+  root at once, at most 200 ms in all (`root_listing`: names and kinds, a stat only where the kind is not known);
+  a root that takes longer gives the folders read by then. A path too long for its room keeps Files, one "..." (which opens the last
   part it stands for) and the last parts. The picker keeps its path line as text, and the Library's own folders
   are as they were (the owner's narrow reading: the Library's code paths are untouched but for the card, the hold
   and the hosting seams).

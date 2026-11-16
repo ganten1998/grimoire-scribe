@@ -417,6 +417,32 @@ fn free_line(free: u64, total: u64) -> String {
     cformat!(tr("Free: %s of %s"), size_label(free).as_str(), size_label(total).as_str())
 }
 
+/// The longest the Go to sheet's tap waits for the storage root's folders.
+const GOTO_MS: u32 = 200;
+
+/// The storage root for the Go to sheet, read at once (the tap waits for it) and all of it within GOTO_MS by
+/// `clock`: names and kinds, and a stat only for an entry whose kind the folder did not say. A root that takes
+/// longer gives the folders read by then (All storage lists them all).
+fn root_listing(st: &FsStorage, pick: bool, clock: &mut dyn FnMut() -> u32) -> Option<FsListing> {
+    let mut l = FsListing::start(st, &StoragePath::root(), pick).ok()?;
+    let t0 = clock();
+    loop {
+        let left = GOTO_MS.saturating_sub(clock().wrapping_sub(t0));
+        if left == 0 || l.step_clocked(FS_SLICE_MS.min(left), clock) {
+            break;
+        }
+    }
+    for i in 0..l.entries.len() {
+        if l.entries[i].kind == FsKind::Unknown {
+            let left = GOTO_MS.saturating_sub(clock().wrapping_sub(t0));
+            if !l.stat_clocked(i..i + 1, left, clock) {
+                break;
+            }
+        }
+    }
+    Some(l)
+}
+
 /// The storage's free space as Files' root says it, for the Library's Files card (2.2); None with no storage to
 /// tell (one statvfs of the storage root: nothing is listed).
 pub fn files_free_line() -> Option<String> {
@@ -1287,17 +1313,16 @@ impl Browser {
                 rows.push((Self::place_label(k).to_string(), p, Self::place_icon(k), true));
             }
         }
-        // the storage's top folders that are no place (read at once, names and kinds only, as a folder is)
-        if let Ok(mut l) = FsListing::start(st, &StoragePath::root(), pick) {
-            let t0 = real_now_ms();
-            while !l.step(FS_SLICE_MS) && real_now_ms().wrapping_sub(t0) < 200 {}
-            let n = l.entries.len();
-            l.stat(0..n, 100);
+        // the storage's top folders that are no place, but a name a row would not take either (a line break)
+        if let Some(l) = root_listing(st, pick, &mut real_now_ms) {
             let mut tops: Vec<(String, StoragePath)> = l
                 .entries
                 .iter()
                 .filter(|e| e.kind == FsKind::Dir && !taken.contains(&e.name.to_ascii_lowercase()))
-                .filter_map(|e| Some((std::str::from_utf8(&e.name).ok()?.to_string(), StoragePath::new(&e.name)?)))
+                .filter_map(|e| {
+                    let n = std::str::from_utf8(&e.name).ok().filter(|n| crate::pdfimport::name_storable(n))?;
+                    Some((n.to_string(), StoragePath::new(&e.name)?))
+                })
                 .collect();
             // (name_cmp is a total order: the unstable sort gives the same order, in less code)
             tops.sort_unstable_by(|a, b| name_cmp(&a.0, &b.0));
@@ -2655,6 +2680,33 @@ mod tests {
         let mut a = screen_app();
         b.draw(&mut a);
         canvas_free(&mut a.screen);
+    }
+
+    // The Go to sheet reads the storage root at once on the tap, and all of it within GOTO_MS (by a clock that runs
+    // a millisecond a call: names and kinds, a stat only where the kind is not known), and it leaves out a top folder
+    // whose name holds a line break, as the rows do.
+    #[test]
+    fn go_to_reads_the_root_within_its_time_and_leaves_out_odd_names() {
+        let (base, _g) = storage("gotoroot");
+        for i in 0..400 {
+            std::fs::create_dir_all(format!("{base}/F{i:03}")).unwrap();
+        }
+        std::fs::create_dir_all(format!("{base}/Top\nX")).unwrap();
+        i18n_set("en");
+        let mut b = Browser::default();
+        assert!(b.open(PickSpec::place(), FilesPrefs { card: true, ..Default::default() }));
+        let mut t = 0u32;
+        let mut clock = || {
+            t += 1;
+            t
+        };
+        let l = root_listing(b.storage.as_ref().unwrap(), false, &mut clock).unwrap();
+        assert!(!l.entries.is_empty());
+        assert!(t <= GOTO_MS + 5, "the tap waited {t} ms");
+        b.open_goto();
+        let labels: Vec<&str> = b.goto.iter().map(|g| g.0.as_str()).collect();
+        assert!(labels.contains(&"F000") && labels.contains(&"F399"), "{labels:?}");
+        assert!(!labels.iter().any(|l| l.contains('\n')), "a name with a line break is no row");
     }
 
     #[test]
