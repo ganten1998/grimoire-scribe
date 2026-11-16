@@ -25,7 +25,7 @@ fn a_worker_that_underreports_its_time_cannot_run_the_check_for_ever() {
              read -r cmd len next px slice scale <&5\n\
              if [ \"$n\" -gt 40 ]; then printf 'E bad 0\\n' >&4; sleep 5; exit 0; fi\n\
              if [ \"$next\" = 0 ]; then printf 'F face 1000 800 200 1000 400 0 100\\n' >&4; fi\n\
-             printf 'N %d 1\\n' $((next + 1)) >&4\nsleep 5\n",
+             printf 'N %d 1 0 0\\n' $((next + 1)) >&4\nsleep 5\n",
             grimoire::sandbox::build_id(),
             c = count.display()
         ),
