@@ -896,6 +896,46 @@ fn a_commit_cut_off_at_any_step_ends_with_the_notebook_filled() {
     }
 }
 
+// A commit cut off after its notebook.ini, when the book's page 1 became the notebook's first page, still gives the
+// card that page's picture when it is taken up again.
+#[test]
+fn a_commit_cut_after_its_notebook_ini_still_gives_the_card_its_picture() {
+    let e = setup("cut-thumb");
+    let (id, bytes) = imported_tabs(&e);
+    drop_pages(&id, &[1, 2]);
+    let thumb = format!("{}/notebooks/{id}/thumb.pgm", e.root);
+    let _ = std::fs::remove_file(&thumb);
+    let (_, ends) = import_all(&e.drop("Tabs again.pdf", &bytes));
+    assert_eq!(last(&ends), &SliceEnd::Ready { blank: 0 }, "{ends:?}");
+    sim_fill_cut(5);
+    start_again();
+    assert_eq!(commit_all(), Finished::Nothing, "cut off");
+    assert_eq!(book_pages(&id, &e.info(&id)), [1, 2, 3, 4], "the pages are listed");
+    assert!(!std::path::Path::new(&thumb).exists());
+    assert!(filled(&put_in(), 2));
+    assert!(std::path::Path::new(&thumb).exists(), "the card's picture is the book's page 1");
+}
+
+// A fill whose notebook no longer holds the PDF's key by the time its pages go in (a state or a notebook changed by
+// hand) is not committed: nothing of the notebook is written.
+#[test]
+fn a_notebook_that_no_longer_holds_the_key_is_not_filled() {
+    let e = setup("key-gone");
+    let (id, fid, _) = made_for(&e, "Tabs again.pdf");
+    let key = e.fill_state(&fid).key;
+    let ini = format!("{}/notebooks/{id}/notebook.ini", e.root);
+    let text = std::fs::read_to_string(&ini).unwrap();
+    assert!(text.contains(&format!("source={key}")), "{text}");
+    std::fs::write(&ini, text.replace(&format!("source={key}"), "source=00000000000000000000000000000000")).unwrap();
+    let path = format!("{}/notebooks/{id}/source.ini", e.root);
+    let src: String = std::fs::read_to_string(&path).unwrap().lines().filter(|l| !l.starts_with("file=") && !l.starts_with("book=")).map(|l| format!("{l}\n")).collect();
+    std::fs::write(&path, &src).unwrap();
+    let files = e.files(&id);
+    assert_eq!(put_in(), Finished::Nothing);
+    assert_eq!(e.files(&id), files, "nothing of the notebook was written");
+    assert!(e.work_folders().is_empty());
+}
+
 // A commit cut off three times (Grimoire killed there at each start) ends at the third stop: its work folder goes,
 // and the notebook is as the cuts left it (here, before its notebook.ini: as it was).
 #[test]
