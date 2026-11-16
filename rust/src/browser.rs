@@ -268,8 +268,12 @@ impl Row {
 /// The item card: what a PDF or a folder offers (popout.rs places it beside its row).
 #[derive(Clone, Debug, Default)]
 struct Card {
-    /// the row (an index into rows) it belongs to
+    /// the row (an index into rows) it is drawn beside, and the file it was opened for: its path and its stat then.
+    /// When the rows are made again (a new order, Show) the card follows that file to its row, or closes; what it
+    /// acts on is that file, checked against that stat.
     row: usize,
+    path: StoragePath,
+    stat: Option<FsStat>,
     /// Files' Go to sheet (2.2) in place of a row's card
     goto: bool,
     rect: Rect,
@@ -315,6 +319,8 @@ pub struct Browser {
     loading_since: u32,
     loading_notice: bool,
     screen: usize,
+    /// rows a screen, as last drawn (a card that follows its file goes to that file's screen)
+    per_last: usize,
     hits: HitList,
     press: Press,
     pressed: Option<Hit>,
@@ -518,6 +524,7 @@ impl Browser {
         self.next = None;
         self.built = true;
         self.card = None;
+        self.drop_press();
         self.screen = 0;
         self.capped = false;
         self.too_long = 0;
@@ -561,6 +568,7 @@ impl Browser {
                 self.built = false;
                 self.next = None;
                 self.card = None;
+                self.drop_press();
                 self.screen = 0;
                 self.capped = false;
                 self.too_long = 0;
@@ -738,17 +746,48 @@ impl Browser {
         self.books.iter().find(|b| b.id.as_str() == nb).map_or(String::new(), |b| b.name.as_str().to_string())
     }
 
-    /// The rows shown from now on (the Import place's Look again after them), from the first screen.
+    /// The rows shown from now on (the Import place's Look again after them), from the first screen. A press on the
+    /// rows before is dropped (its row number names another file now); an open card follows the file it was opened
+    /// for to its row (and its screen), with what was read of it since, or closes when that file is not listed now.
     fn set_rows(&mut self, mut rows: Vec<Row>) {
         if self.in_import_place() {
             if let Some(at) = self.at.clone() {
                 rows.push(Row::new(RowKind::Look, "Look again", at));
             }
         }
-        self.rows = rows;
+        self.drop_press();
         self.screen = 0;
+        if let Some(mut c) = self.card.take() {
+            let old = self.card_row(&c).cloned();
+            let same = |r: &Row| r.path == c.path && c.stat.zip(r.stat).is_none_or(|(a, b)| (a.dev, a.ino) == (b.dev, b.ino));
+            match rows.iter().position(same) {
+                _ if c.goto => self.card = Some(c),
+                Some(j) => {
+                    if let Some(o) = old {
+                        let stat = rows[j].stat.or(o.stat);
+                        rows[j] = Row { stat, ..o };
+                    }
+                    c.row = j;
+                    self.screen = j / self.per_last.max(1);
+                    self.card = Some(c);
+                }
+                None => {}
+            }
+        }
+        self.rows = rows;
         self.ready = true;
         self.status_due = true;
+    }
+
+    /// A press under way is let go of without acting (the rows under it changed).
+    fn drop_press(&mut self) {
+        self.pressed = None;
+        self.pressed_rect = None;
+    }
+
+    /// The row the open card is for, while that row is still its file's.
+    fn card_row(&self, c: &Card) -> Option<&Row> {
+        self.rows.get(c.row).filter(|r| !c.goto && r.path == c.path)
     }
 
     /// One slice of stats for the rows being made ready (Sort by newest or size, at most `budget_ms`); once each has
@@ -1216,7 +1255,8 @@ impl Browser {
                 self.rows[row].notebook = Some(id);
             }
         }
-        self.card = Some(Card { row, ..Default::default() });
+        let r = &self.rows[row];
+        self.card = Some(Card { row, path: r.path.clone(), stat: r.stat, ..Default::default() });
     }
 
     /// Files' Go to sheet (2.2): every place of the root that is there, then the storage's other top folders, by
@@ -1277,8 +1317,7 @@ impl Browser {
             // places and the Kindle's top folders, one a row (34 px, at the sheet's top).
             return (tr("Go to").to_string(), rows);
         }
-        let row = card.row;
-        let r = &self.rows[row];
+        let Some(r) = self.card_row(card) else { return (String::new(), Vec::new()) };
         let mut rows: Vec<(i32, i32, IconKind, String)> = Vec::new();
         let details;
         // (Files: no import from Grimoire's PDF copies or trash, as the picker never offers them)
@@ -1383,10 +1422,11 @@ impl Browser {
         format!("{}, {}", size_label(s.size), day)
     }
 
-    /// Checks the row again before acting on it ("File changed. Try again."): its stat now against the listing's.
-    fn unchanged(&mut self, row: usize) -> bool {
-        let (Some(st), Some(r)) = (self.storage.as_ref(), self.rows.get(row)) else { return false };
-        match (r.stat, st.stat(&r.path, self.pick())) {
+    /// Checks the file a card was opened for again before acting on it ("File changed. Try again."): its stat now
+    /// against the one it had then (false once its row is not listed).
+    fn unchanged(&self, c: &Card) -> bool {
+        let (Some(st), Some(r)) = (self.storage.as_ref(), self.card_row(c)) else { return false };
+        match (c.stat, st.stat(&c.path, self.pick())) {
             (Some(was), Ok(now)) if r.kind != RowKind::Dir => was.same(&now),
             (_, Ok(now)) => now.mode & libc::S_IFMT as u32 == libc::S_IFDIR as u32,
             _ => false,
@@ -1402,6 +1442,7 @@ impl Browser {
         self.drawn.clear();
         let (aw, ah) = (a.w, a.h);
         let per = self.per_page(ah);
+        self.per_last = per;
         self.screen = self.screen.min(self.rows.len().saturating_sub(1) / per);
         let c = &mut a.screen;
         canvas_fill(c, Rect::new(0, 0, aw, ah), 255);
@@ -1685,6 +1726,9 @@ impl Browser {
 
     fn draw_card(&mut self, a: &mut App) {
         let Some(card) = self.card.take() else { return };
+        if !card.goto && self.card_row(&card).is_none() {
+            return; // (its file is not listed now: no card)
+        }
         let (details, mut lines) = self.card_lines(&card);
         let (aw, ah) = (a.w, a.h);
         let cw = (aw - 2 * u(40.0)).min(u(980.0));
@@ -1913,7 +1957,7 @@ impl Browser {
         if !(press_is_tap(&self.press, h.r) || rect_contains(h.r, ev.x as i32, ev.y as i32)) {
             return BrowserResult::None;
         }
-        let row = card.row;
+        let path = card.path.clone();
         match h.id {
             B_CARD_CANCEL => self.close_card(a),
             B_GOTO => {
@@ -1927,9 +1971,8 @@ impl Browser {
                 BrowserResult::None
             }
             B_CARD_OPEN => {
-                let Some(r) = self.rows.get(row).cloned() else { return self.close_card(a) };
                 self.card = None;
-                if self.enter(r.path.clone(), false, now_ms()) {
+                if self.enter(path, false, now_ms()) {
                     self.redraw_full(a);
                 } else {
                     self.flush_toast(a);
@@ -1937,9 +1980,9 @@ impl Browser {
                 BrowserResult::None
             }
             B_CARD_IMPORT | B_CARD_PICTURES | B_CARD_NOTEBOOK => {
-                if !self.unchanged(row) {
+                let Some(c) = self.card.take() else { return BrowserResult::None };
+                if !self.unchanged(&c) {
                     // the file changed since it was listed: the folder is read again
-                    self.card = None;
                     // TRANSLATORS: a toast in the file picker: the file tapped was changed or replaced since its
                     // folder was listed; the folder is read again. One line of about 1000 px at 44 px.
                     self.toast = Some(tr("File changed. Try again."));
@@ -1951,14 +1994,11 @@ impl Browser {
                     self.flush_toast(a);
                     return BrowserResult::None;
                 }
-                let r = &self.rows[row];
-                let res = match h.id {
-                    B_CARD_IMPORT => BrowserResult::Pdf(r.path.clone()),
-                    B_CARD_PICTURES => BrowserResult::Pictures(r.path.clone()),
-                    _ => r.notebook.clone().map_or(BrowserResult::None, BrowserResult::OpenNotebook),
-                };
-                self.card = None;
-                res
+                match h.id {
+                    B_CARD_IMPORT => BrowserResult::Pdf(path),
+                    B_CARD_PICTURES => BrowserResult::Pictures(path),
+                    _ => self.card_row(&c).and_then(|r| r.notebook.clone()).map_or(BrowserResult::None, BrowserResult::OpenNotebook),
+                }
             }
             _ => BrowserResult::None,
         }
@@ -2122,11 +2162,12 @@ impl Browser {
             "card" => out.push_str(&match &self.card {
                 None => String::new(),
                 Some(c) if c.goto => "goto".to_string(),
-                Some(c) => match self.rows[c.row].kind {
-                    RowKind::Pdf => "pdf".to_string(),
-                    RowKind::Picture => "picture".to_string(),
-                    RowKind::Font => "font".to_string(),
-                    RowKind::Other => "other".to_string(),
+                Some(c) => match self.card_row(c).map(|r| r.kind) {
+                    None => String::new(),
+                    Some(RowKind::Pdf) => "pdf".to_string(),
+                    Some(RowKind::Picture) => "picture".to_string(),
+                    Some(RowKind::Font) => "font".to_string(),
+                    Some(RowKind::Other) => "other".to_string(),
                     _ => "folder".to_string(),
                 },
             }),
@@ -2520,6 +2561,87 @@ mod tests {
         assert_eq!(labels, ["Newer", "Gamma", "Old"]);
         assert!(b.rows.iter().all(|r| r.kind == RowKind::Trashed && !b.has_card(0)));
         assert!(b.rows[0].dir && !b.rows[1].dir);
+    }
+
+    // A screen to draw the browser on (1860 x 2480, upright), for the tests that draw.
+    fn screen_app() -> App {
+        assert_eq!(font_init(), 0);
+        ui_init(300.0);
+        let mut a = App { w: 1860, h: 2480, dpi: 300.0, ..Default::default() };
+        assert_eq!(canvas_init(&mut a.screen, a.w, a.h), 0);
+        a
+    }
+
+    fn put_files(d: &str, files: &[(&str, usize)]) {
+        std::fs::create_dir_all(d).unwrap();
+        for (n, size) in files {
+            std::fs::write(format!("{d}/{n}"), [b"%PDF-1.4\n".to_vec(), vec![b'x'; *size]].concat()).unwrap();
+        }
+    }
+
+    // A card opened on a row while a new order is being made (Sort by size: the rows on screen stay, and can be
+    // tapped, while the stats come in) stays on the file it was opened for when the new order takes their place: it
+    // follows that file to its new row, says the same, and checks and acts on that file, against its stat when the
+    // card opened. A press on the old rows is dropped.
+    #[test]
+    fn a_card_opened_while_sorting_follows_its_file() {
+        let (base, _g) = storage("sortcard");
+        let d = format!("{base}/documents/S");
+        put_files(&d, &[("a.pdf", 1000), ("b.pdf", 3000), ("c.pdf", 2000)]);
+        i18n_set("en");
+        let mut b = Browser::default();
+        assert!(b.open(PickSpec::place(), FilesPrefs { card: true, sort: 0, show: 0 }));
+        assert!(b.go(sp("documents/S")));
+        assert_eq!(row_names(&b), ["a.pdf", "b.pdf", "c.pdf"]);
+        b.prefs.sort = 2;
+        b.rebuild();
+        assert!(b.next.is_some(), "the new order is being made");
+        b.open_card(0);
+        let labels = |b: &Browser, c: &Card| -> (String, Vec<String>) {
+            let (d, rows) = b.card_lines(c);
+            (d, rows.into_iter().map(|r| r.3).collect())
+        };
+        let before = labels(&b, &b.card.clone().unwrap());
+        assert!(before.0.starts_with("PDF, 1 KB, "), "{before:?}");
+        b.pressed = Some(Hit { id: B_ROW, arg: 1, ..Default::default() });
+        b.list_now();
+        assert_eq!(row_names(&b), ["b.pdf", "c.pdf", "a.pdf"]);
+        let c = b.card.clone().expect("the card stays open");
+        assert_eq!(b.rows[c.row].name, "a.pdf", "the card follows its file");
+        assert_eq!(labels(&b, &c), before);
+        assert!(b.pressed.is_none(), "a press on the old rows is dropped");
+        assert!(c.path == sp("documents/S/a.pdf") && b.unchanged(&c));
+        // (the check is against the file the card was opened for: a.pdf changed, nothing acts)
+        std::fs::write(format!("{d}/a.pdf"), b"%PDF-1.4\nlonger than it was").unwrap();
+        assert!(!b.unchanged(&c));
+    }
+
+    // The same while Show narrows the rows (every file to the usable ones) under a card on a file that is not listed
+    // then: the card closes, and nothing reads past the rows (drawing the card read them by its number, past the end).
+    #[test]
+    fn a_card_whose_file_is_no_longer_listed_closes() {
+        let (base, _g) = storage("showcard2");
+        put_files(&format!("{base}/documents/S"), &[("a.pdf", 1000), ("b.pdf", 3000), ("e.txt", 4000), ("f.txt", 10)]);
+        i18n_set("en");
+        let mut b = Browser::default();
+        assert!(b.open(PickSpec::place(), FilesPrefs { card: true, sort: 0, show: 1 }));
+        assert!(b.go(sp("documents/S")));
+        assert_eq!(row_names(&b), ["a.pdf", "b.pdf", "e.txt", "f.txt"]);
+        b.prefs.sort = 2;
+        b.rebuild();
+        b.prefs.show = 0;
+        b.rebuild();
+        assert!(b.next.is_some());
+        b.open_card(3);
+        assert!(b.card.is_some());
+        b.list_now();
+        assert_eq!(row_names(&b), ["b.pdf", "a.pdf"]);
+        let mut out = String::new();
+        assert!(b.probe(2480, "card", &mut out) && out.is_empty(), "{out}");
+        assert!(b.card.is_none(), "its file is not listed now");
+        let mut a = screen_app();
+        b.draw(&mut a);
+        canvas_free(&mut a.screen);
     }
 
     #[test]
