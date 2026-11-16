@@ -45,22 +45,23 @@ tap 217 2365
 wait 50
 # Pen feel: a slider a second finger takes over (a palm, landing late) keeps the value it reached.
 tap 1535 95
+tap library settings.cat.3
 tap library pen-feel
 expect screen is penset
-finger 1 down 830 1172
+finger 1 down 830.83 1167
 frame 100
-finger 1 move 880 1172
+finger 1 move 880.26 1167
 frame 500
 expect penset.param.size_min_mm is 0.9000
 finger 2 down 400 1900
 frame 40
 finger 2 up 400 1900
-finger 1 up 880 1172
+finger 1 up 880.26 1167
 frame
 wait 100
 expect penset.param.size_min_mm is 0.9000
 expect penset.slider_pending is 0
-tap 125 95
+tap 1735 95
 wait 300
 expect screen is library
 # A notebook: on its panel a finger is a finger with the pen hovering beside it (20 mm away).
@@ -81,18 +82,18 @@ expect editor.modal is display
 # cancel's off-screen place once set the light to 0, and saved it).
 expect light.intensity is 12
 pen leave
-finger 1 down 1000 552
+finger 1 down 1011 296
 frame 100
-finger 1 move 1100 552
+finger 1 move 1132 296
 frame 100
-finger 1 move 1150 552
+finger 1 move 1193 296
 frame 100
 pen hover 300 1800
 wait 300
 expect light.intensity is 10
-finger 1 up 1150 552
+finger 1 up 1193 296
 frame
-tap 1464 1950
+tap panel display.done
 wait 300
 expect editor.modal is none
 # On the page's ink a finger beside the hovering pen is its writing hand, held; one far from it

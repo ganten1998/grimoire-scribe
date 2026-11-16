@@ -4,6 +4,8 @@ wait 100
 expect settings.theme is gothic
 tap 1535 95
 wait 50
+tap library settings.cat.4
+wait 50
 tap library gestures
 wait 50
 shot es-gestures-0
@@ -56,14 +58,18 @@ tap library record.cancel
 wait 50
 tap library done
 wait 50
-tap library done
+tap library settings.back
 wait 50
-tap 930 930
+tap library settings.cat.1
+wait 50
+tap library theme
 wait 100
 expect settings.theme is classic
 tap library done
 wait 50
 tap 1535 95
+wait 50
+tap library settings.cat.4
 wait 50
 tap library gestures
 wait 50
@@ -117,7 +123,7 @@ tap library record.cancel
 wait 50
 tap library done
 wait 50
-tap library done
+tap library settings.back
 wait 50
 tap library done
 wait 50
