@@ -1,12 +1,14 @@
 # make l10n-check runs this in every language, in Classic with each font of Settings > Font (Terminess,
-# Atkinson Hyperlegible Next, Noto Sans, Literata), with GRIMOIRE_CHECK_FIT=1: Settings with the Style
-# row's Font chip, then the Font sheet with each family highlighted (its sample drawn in it), upright and
+# Atkinson Hyperlegible Next, Noto Sans, Literata), with GRIMOIRE_CHECK_FIT=1: Settings' Display category with
+# its Font row (the new Settings menu, #115), then the Font sheet with each family highlighted (its sample drawn in it), upright and
 # sideways, and Cancel, which leaves the font as it was. (2.1, Rust only)
 wait 100
 expect settings.theme is classic
 tap 1535 95
 wait 50
 expect library.sheet is settings
+tap library settings.cat.1
+wait 50
 expect library.ui_has.font is 1
 shot 01-settings
 rotate 1
