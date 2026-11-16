@@ -4,8 +4,9 @@
 
 - **Size keys.** Shift+[ and Shift+] on a paired keyboard take the pen in use to its next smaller or larger quick
   size, and a short toast says the size; a controller's buttons and gestures can too (Smaller / larger size, in the
-  Tools group of Buttons and of Gestures), and "Sizes of the pen in use" opens the sizes card from a key. An
-  unedited shortcuts.ini gets the two keys at the next start.
+  Tools group of Buttons and of Gestures). The new `quick-size` action, bound by name in shortcuts.ini or
+  gestures.ini, opens the sizes card from a key or a gesture. An unedited shortcuts.ini gets the two keys at the
+  next start.
 - Hardening: Grimoire reads the files in its own folders only when they are plain files, with size limits
   on the small text files, and makes its temporary files afresh each time. A `settings.ini` it cannot
   read is kept as `settings.ini.unread` rather than written over. A picture or folder in `templates/`,
