@@ -791,6 +791,7 @@ fn rare_notices_fit() {
             // The Display sheet's checkbox rows (Invert, Sideways): one line beside the box (1300 px).
             check!(font_measure(FontFace::Regular, ui_text_size(), tr("Sideways, show the whole page")) <= 1300);
             check!(font_measure(FontFace::Regular, ui_text_size(), tr("Invert colors in Grimoire (white on black)")) <= 1300);
+            check!(font_measure(FontFace::Regular, ui_text_size(), tr("Auto brightness (follow the room's light)")) <= 1300);
             // The Share screen without an address (the scenario has one), and asleep: lines across
             // the sheet's text room, the first in bold at the title size.
             let share = 1860 - 2 * 70 - if th == UiTheme::Gothic { 80 } else { 72 };

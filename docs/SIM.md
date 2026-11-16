@@ -291,6 +291,10 @@ services to its system (`wifi`, `pairing`, `updates`, `koreader`, `calibration`:
 `Services`), so Settings can be run without their rows. The scenario harness clears it between runs.
 `GRIMOIRE_SIM_NO_LIGHT=1` makes it a device without a front light: the Display sheet says so where
 its sliders would be, and Settings calls the row Display. The scenario harness clears it between runs.
+`GRIMOIRE_SIM_LIGHT_SENSOR=1` makes it a Kindle with an ambient-light sensor (the Scribe's two are in
+its wide bezel): the Display sheet has its Auto brightness row, and `light.auto` follows it (0 off,
+1 on). Without the hook the simulator has no sensor, as a Kindle without one. The scenario harness
+clears it between runs.
 `GRIMOIRE_SIM_DEVICE_NAME=NAME` makes the simulator a platform whose device is called NAME: every
 text that is looked up says NAME where it says Kindle (i18n.rs, the device's name). The scenario
 harness clears it between runs.
@@ -436,6 +440,7 @@ shows what the app holds.
 | `settings.kept.KEY` | the value settings.ini had for a known key that this version could not use as written and keeps to write back as it was (`settings.kept.font` is `comic-sans` for `font=comic-sans`); empty when there is none (2.1) |
 | `settings.TOOL.PARAM` | a tool's pen feel as settings.ini stores it, four decimals: TOOL as for `editor.tool`, PARAM a slider's settings.ini name (`size_min_mm`, `size_max_mm`, `opacity_min`, `opacity_max`, `pressure_floor`, `pressure_ceiling`, `pressure_gamma`, `tilt_min_deg`, `tilt_max_deg`, `tilt_size`, `tilt_opacity`, `grain`, `smoothing`), e.g. `settings.fountain.pressure_gamma` |
 | `light.intensity`, `light.warmth` | the front light (the simulator starts at 12 and 8) |
+| `light.auto` | the Kindle's own auto brightness (`com.lab126.powerd flAuto`): 1 on, 0 off, -1 without an ambient-light sensor (`GRIMOIRE_SIM_LIGHT_SENSOR=1` gives it one) |
 | `editor.page`, `editor.pages` | the open page (from 1) and the page count, 0 with no notebook open |
 | `editor.tool` | the pen's tool by its settings.ini name: `pencil`, `mech`, `ballpoint`, `eraser`, `highlighter`, `fountain`, `fineliner`, `marker`, `charcoal` or `calligraphy` |
 | `editor.view` | the view: the zoom as `editor.zoom`, then the page point at the screen's top left, `2.25 517 667` (2.0.0-beta.2) |

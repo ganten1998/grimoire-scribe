@@ -81,6 +81,8 @@ struct State {
     shells: [libc::pid_t; BG_SHELLS],
     intensity: i32,
     warmth: i32,
+    /// the Kindle's own auto brightness (flAuto): 1 on, 0 off, -1 where it has no light sensor
+    auto: i32,
     /// the battery as the power service last said, and when it was last asked (now_ms, 0 never):
     /// sys_battery's fallback
     battery: Battery,
@@ -108,6 +110,7 @@ thread_local! {
             shells: [0; BG_SHELLS],
             intensity: -1,
             warmth: -1,
+            auto: -1,
             battery: Battery { percent: -1, charging: false },
             battery_at: 0,
             ask: NO_ASK,
@@ -190,15 +193,27 @@ pub fn light_available() -> bool {
 pub fn light_refresh() {
     let intensity = get_prop("flIntensity");
     let warmth = get_prop("currentAmberLevel");
+    let auto = get_prop("flAuto");
+    // alsLux is the ambient-light sensor itself: a Kindle without one (or one whose power service
+    // keeps it back) has no auto brightness to offer, whatever flAuto says.
+    let lux = get_prop("alsLux");
     with(|s| {
         s.intensity = intensity;
         s.warmth = warmth;
+        s.auto = if auto >= 0 && lux >= 0 { i32::from(auto != 0) } else { -1 };
     })
 }
 
 pub fn light_get(intensity: &mut i32, warmth: &mut i32) {
     if with(|s| s.intensity) < 0 {
         light_refresh(); // never read, or the power service did not answer then
+    } else if with(|s| s.auto) > 0 {
+        // Auto brightness moves the level while Grimoire runs; the Display sheet's slider shows
+        // where the Kindle has it now.
+        let live = get_prop("flIntensity");
+        if live >= 0 {
+            with(|s| s.intensity = live);
+        }
     }
     with(|s| {
         *intensity = s.intensity;
@@ -218,6 +233,18 @@ pub fn light_set_warmth(level: i32) {
 
 pub fn light_warmth() -> i32 {
     with(|s| s.warmth)
+}
+
+pub fn light_auto() -> i32 {
+    with(|s| s.auto)
+}
+
+pub fn light_set_auto(on: bool) {
+    if with(|s| s.auto) < 0 {
+        return; // no ambient-light sensor: nothing to follow
+    }
+    set_prop("flAuto", if on { 1 } else { 0 });
+    with(|s| s.auto = i32::from(on));
 }
 
 pub fn sys_request_sleep() {

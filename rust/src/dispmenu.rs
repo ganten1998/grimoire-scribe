@@ -25,6 +25,9 @@ pub struct DispMenu {
     /// 0..LIGHT_MAX, -1 unknown
     pub intensity: i32,
     pub warmth: i32,
+    /// The Kindle's own auto brightness (com.lab126.powerd flAuto): 1 on, 0 off, -1 where this
+    /// Kindle has no ambient-light sensor to follow.
+    pub auto: i32,
     /// slider being dragged (its D_* id), 0 none
     pub active: i32,
     /// that slider's row
@@ -52,11 +55,12 @@ const D_CORNER: i32 = 10;
 
 pub fn dispmenu_control_point(m:&DispMenu,name:&str)->Option<(f32,f32)> {
     if !m.open{return None;}
-    let id=match name {"size"=>D_STATUS,"corner"=>D_CORNER,"done"=>D_DONE,"fit"=>D_FIT,"newpage"=>D_NEWPAGE,"time12"=>D_TIME12,"invert"=>D_INVERT,"brightness"=>D_BRIGHT,"warmth"=>D_WARM,_=>return None};
+    let id=match name {"size"=>D_STATUS,"corner"=>D_CORNER,"done"=>D_DONE,"fit"=>D_FIT,"newpage"=>D_NEWPAGE,"time12"=>D_TIME12,"invert"=>D_INVERT,"brightness"=>D_BRIGHT,"warmth"=>D_WARM,"auto"=>D_AUTO,_=>return None};
     m.hits.h.iter().find(|h|h.id==id).map(|h|((h.r.x+h.r.w/2)as f32,(h.r.y+h.r.h/2)as f32))
 }
 const D_NEWPAGE: i32 = 11;
 const D_TIME12: i32 = 12;
+const D_AUTO: i32 = 13;
 
 /// A dragged slider's row is drawn at most this often, as Pen feel's sliders are.
 const DRAG_DRAW_MS: u32 = 80;
@@ -120,30 +124,38 @@ fn step_of(minutes: i32) -> i32 {
     best as i32
 }
 
-/// Rows: brightness, warmth, invert, sideways, new page by swiping, 12-hour time, [heading], sleep
-/// screen, [pin], sleep after.
-fn row_h(a: &App) -> i32 {
-    let rows = 9 + if editor_page_canvas(a).is_some() { 1 } else { 0 };
+/// Rows: brightness, [auto brightness], warmth, invert, sideways, new page by swiping, 12-hour time,
+/// [heading], sleep screen, [pin], sleep after. Auto brightness is there only where the Kindle has
+/// an ambient-light sensor (and the light itself is readable).
+fn rows(m: &DispMenu, a: &App) -> i32 {
+    let mut rows = 9 + if editor_page_canvas(a).is_some() { 1 } else { 0 };
+    if m.auto >= 0 && light_available() && m.intensity >= 0 {
+        rows += 1;
+    }
+    rows
+}
+
+fn row_h(a: &App, m: &DispMenu) -> i32 {
     let room = a.h - ui_px(120.0) - ui_px(72.0) - ui_px(190.0) - ui_px(80.0);
-    let h = room / rows;
+    let h = room / rows(m, a);
     clampi(h, ui_px(100.0), ui_px(140.0))
 }
 
-fn card_rect(a: &App) -> Rect {
+fn card_rect(a: &App, m: &DispMenu) -> Rect {
     let mut w = a.w - 2 * ui_px(70.0);
     if w > ui_px(1500.0) {
         w = ui_px(1500.0);
     }
-    let rows = 9 + if editor_page_canvas(a).is_some() { 1 } else { 0 };
-    let h = ui_px(120.0) + ui_px(72.0) + rows * row_h(a) + ui_px(190.0);
+    let h = ui_px(120.0) + ui_px(72.0) + rows(m, a) * row_h(a, m) + ui_px(190.0);
     // (the card's top stays where it was before the new-page row: it grows downward by that row)
-    Rect { x: (a.w - w) / 2, y: (a.h - (h - row_h(a))) / 3, w, h }
+    Rect { x: (a.w - w) / 2, y: (a.h - (h - row_h(a, m))) / 3, w, h }
 }
 
 pub fn dispmenu_open(m: &mut DispMenu, a: &mut App) {
     *m = DispMenu { open: true, ..Default::default() };
     light_get(&mut m.intensity, &mut m.warmth);
-    m.rect = card_rect(a);
+    m.auto = light_auto();
+    m.rect = card_rect(a, m);
 }
 
 fn slider_for(m: &DispMenu, a: &App, which: i32, row: Rect, s: &mut Slider) {
@@ -188,29 +200,42 @@ fn draw_slider_row(m: &DispMenu, a: &mut App, which: i32, row: Rect) {
 pub fn dispmenu_draw(m: &mut DispMenu, a: &mut App) -> Rect {
     hits_clear(&mut m.hits);
     m.pressed = None;
-    m.rect = card_rect(a);
+    m.rect = card_rect(a, m);
     let in_ = ui_sheet(&mut a.screen, m.rect, tr("Display"));
-    let rh = row_h(a);
+    let rh = row_h(a, m);
     let mut y = in_.y;
     let have = light_available() && m.intensity >= 0;
-    for i in 0..2 {
-        let row = Rect { x: in_.x, y, w: in_.w, h: rh };
-        y += rh; // (the C's loop step: the row is taken)
-        canvas_fill(&mut a.screen, row, 255);
-        if !have {
-            if i == 0 {
-                // TRANSLATORS: in the Display sheet where the sliders would be (1420 px at 44 px).
-                font_draw_left(&mut a.screen, FontFace::Regular, ui_text_size(), row, tr("Front light controls are not available here."), 60);
-            }
-            continue;
-        }
-        if i == 1 && m.warmth < 0 {
+    let row = Rect { x: in_.x, y, w: in_.w, h: rh };
+    y += rh;
+    canvas_fill(&mut a.screen, row, 255);
+    if !have {
+        // TRANSLATORS: in the Display sheet where the sliders would be (1420 px at 44 px).
+        font_draw_left(&mut a.screen, FontFace::Regular, ui_text_size(), row, tr("Front light controls are not available here."), 60);
+    } else {
+        draw_slider_row(m, a, D_BRIGHT, row);
+        hits_add(&mut m.hits, row, D_BRIGHT, 0);
+    }
+    // The Kindle's own auto brightness: the power service follows its ambient-light sensor.
+    if have && m.auto >= 0 {
+        let auto = Rect { x: in_.x, y, w: in_.w, h: rh };
+        y += rh;
+        // TRANSLATORS: the Display sheet's checkbox row under Brightness: the Kindle's own auto
+        // brightness, which follows the light in the room (com.lab126.powerd flAuto). About 930 px
+        // at 44 px, beside its box.
+        ui_checkbox(&mut a.screen, auto, tr("Auto brightness (follow the room's light)"), m.auto != 0);
+        hits_add(&mut m.hits, auto, D_AUTO, 0);
+    }
+    let warm = Rect { x: in_.x, y, w: in_.w, h: rh };
+    y += rh;
+    canvas_fill(&mut a.screen, warm, 255);
+    if have {
+        if m.warmth < 0 {
             // no amber LEDs on this Kindle
-            font_draw_left(&mut a.screen, FontFace::Regular, ui_text_size(), row, tr("This Kindle has no warmth control."), 60);
-            continue;
+            font_draw_left(&mut a.screen, FontFace::Regular, ui_text_size(), warm, tr("This Kindle has no warmth control."), 60);
+        } else {
+            draw_slider_row(m, a, D_WARM, warm);
+            hits_add(&mut m.hits, warm, D_WARM, 0);
         }
-        draw_slider_row(m, a, if i == 0 { D_BRIGHT } else { D_WARM }, row);
-        hits_add(&mut m.hits, row, if i == 0 { D_BRIGHT } else { D_WARM }, 0);
     }
     let inv = Rect { x: in_.x, y, w: in_.w, h: rh };
     ui_checkbox(&mut a.screen, inv, tr("Invert colors in Grimoire (white on black)"), a.settings.invert);
@@ -442,6 +467,10 @@ pub fn dispmenu_pointer(m: &mut DispMenu, a: &mut App, phase: i32, x: f32, y: f3
         }
         D_STATUS => status_cycle_size(a),
         D_CORNER => status_cycle_corner(a),
+        D_AUTO => {
+            light_set_auto(m.auto == 0);
+            m.auto = light_auto();
+        }
         D_PIN => {
             if editor_pin_sleep_page(a) {
                 a.settings.sleep_mode = 1;
