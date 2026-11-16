@@ -2597,11 +2597,13 @@ What they cannot show is the Scribe's own storage, so this round ships only once
    `ln -s /etc/hostname /mnt/us/grimoire/templates/linked.png`, start Grimoire, New notebook, Paper: no
    `linked` among the templates. Remove the link.
 10. **The clipboard, the compaction lists, the shortcut files and the PDF cache** (the same read, since
-    #118). Lasso some ink, Copy, turn the page and Paste: it pastes. Change one page of step 6's notebook
-    and close it: its `bg: export of <id>: N pages, D drawn` line has D smaller than N (the other pages
-    were found in the PDF cache). Erase a word on a page, close the notebook and start Grimoire again: the
-    log has no `its list does not read` line. With shortcuts on and a keyboard at hand, a key of
-    `shortcuts.ini` acts as before.
+    #118). Lasso some ink, Copy, turn the page and Paste: it pastes. Take a notebook of two pages or more
+    that the PDF mirror has written (step 6's, if it has two pages; else change another one and close it
+    once with the mirror on), change one of its pages and close it: its
+    `bg: export of <id>: N pages, D drawn` line has D smaller than N (the other pages were found in the PDF
+    cache). Erase a word on a page, close the notebook and start Grimoire again: the log has no
+    `its list does not read` line. With shortcuts on and a keyboard at hand, a key of `shortcuts.ini` acts
+    as before.
 
 ## Hardening round (2026-11), invariants: the documents and the build's crate rule
 
