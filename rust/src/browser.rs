@@ -356,11 +356,11 @@ fn root_dir() -> Option<(String, String)> {
     Some((root, store_root()))
 }
 
-fn is_pdf(n: &[u8]) -> bool {
+pub(crate) fn is_pdf(n: &[u8]) -> bool {
     n.len() > 4 && n[n.len() - 4..].eq_ignore_ascii_case(b".pdf")
 }
 
-fn is_font(n: &[u8]) -> bool {
+pub(crate) fn is_font(n: &[u8]) -> bool {
     [b".ttf".as_slice(), b".otf"].iter().any(|e| n.len() > e.len() && n[n.len() - e.len()..].eq_ignore_ascii_case(e))
 }
 
@@ -390,7 +390,7 @@ fn sort_rows(rows: &mut [Row], how: i32) {
     });
 }
 
-fn is_picture(n: &[u8]) -> bool {
+pub(crate) fn is_picture(n: &[u8]) -> bool {
     [b".png".as_slice(), b".jpg", b".jpeg", b".pgm"].iter().any(|e| n.len() > e.len() && n[n.len() - e.len()..].eq_ignore_ascii_case(e))
 }
 

@@ -266,6 +266,51 @@ fn a_font_is_checked_in_the_real_sandbox() {
     // it would take the workers away from the tests after this one)
 }
 
+// Files' previews (2.2, issue #145): the job makes a preview of each kind through the real sandbox, a PDF's first
+// page, a picture and a font's sample (the font worker's `T`), each a 300 x 400 picture with ink in it in the cache,
+// with every call each worker makes on the allow-list; a file a worker refuses is marked. Nothing falls back to the
+// writer.
+#[test]
+fn previews_are_made_in_the_real_sandbox() {
+    use grimoire::bgwork_previews::*;
+    if !root() {
+        return;
+    }
+    let (_g, _f, _len) = setup();
+    for h in ["GRIMOIRE_PIC_TEST_TRAP", "GRIMOIRE_FONT_TEST_TRAP"] {
+        std::env::remove_var(h);
+    }
+    let base = std::env::temp_dir().join(format!("grimoire-sandbox-{}/previews", std::process::id()));
+    let _ = std::fs::remove_dir_all(&base);
+    let dir = base.join("documents");
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::create_dir_all(base.join("grimoire")).unwrap();
+    let px: Vec<u8> = (0..120 * 90).map(|i| if i % 120 < 60 { 20 } else { 230 }).collect();
+    assert_eq!(grimoire::bgimage::bgimage_write_png(dir.join("p.png").to_str().unwrap(), &grimoire::bgimage::BgPicture { px, w: 120, h: 90, ch: 1 }), 0);
+    std::fs::write(dir.join("a.pdf"), pdffix::planner(2)).unwrap();
+    std::fs::write(dir.join("f.ttf"), fontfix::ttf(&fontfix::test_font("Regular", 400))).unwrap();
+    std::fs::write(dir.join("junk.pdf"), pdffix::junk()).unwrap();
+    std::env::set_var("GRIMOIRE_STORAGE", &base);
+    assert_eq!(grimoire::store::store_init(base.join("grimoire").to_str().unwrap()), 0);
+    let st = grimoire::fsview::FsStorage::open(base.to_str().unwrap(), base.join("grimoire").to_str().unwrap()).unwrap();
+    for (name, made) in [("a.pdf", true), ("p.png", true), ("f.ttf", true), ("junk.pdf", false)] {
+        let p = grimoire::fsview::StoragePath::new(format!("documents/{name}").as_bytes()).unwrap();
+        let s = st.stat(&p, false).unwrap();
+        let arg = format!("{}.{}.{}.{}:documents/{name}", s.dev, s.ino, s.size, s.mtime);
+        assert_eq!(bg_file_preview(&arg), 0, "{name}");
+        match preview_cached(&p, &s) {
+            Cached::Preview(c) if made => {
+                assert_eq!((c.w, c.h), (PREVIEW_W, PREVIEW_H), "{name}");
+                assert!(c.px.iter().any(|&v| v < 128), "{name}: no ink");
+            }
+            Cached::NoPreview if !made => {}
+            _ => panic!("{name}: not what the worker should have made"),
+        }
+    }
+    assert!(!grimoire::picwork::in_fallback(), "the picture was decoded by a worker");
+    assert!(!session_broken(), "every worker held its sandbox");
+}
+
 // The worker's clean end (the 2.1.0-beta.2 fix round): `--work` ends with _exit, so a worker told to stop under
 // the filter makes no call outside the list on its way out (the runtime's own exit lets go of the main thread's
 // signal stack with sigaltstack, 186 on the Kindle, which would read as `E sigsys 186` at every clean end).

@@ -2009,7 +2009,7 @@ pub fn sim_before_filing(f: impl FnOnce() + 'static) {
 }
 
 /// Whether the private read-only mapping the worker needs works on this storage (the S1 spike's question).
-fn can_map(fd: i32, len: u64) -> bool {
+pub(crate) fn can_map(fd: i32, len: u64) -> bool {
     if len == 0 {
         return false;
     }
