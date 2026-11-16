@@ -2358,23 +2358,24 @@ hosted the same way (`LibraryState.files`, `files_open_place`), and closes back 
   reloads (one statvfs), not at each draw.
 - **The path bar is Files' alone.** Inside a place, the band under the header is 120 px: the path's parts (Files,
   the place, each folder) each a target the bar's height that opens it, the folder shown opening the Go to sheet
-  (the places that are there, then the storage's other top folders by name, but a name a row would not take, with
-  a line break; rows that do not fit the screen are left out, All storage reaches them). The tap reads the storage
-  root at once, at most 200 ms in all (`root_listing`: names and kinds, a stat only where the kind is not known);
-  a root that takes longer gives the folders read by then. A path too long for its room keeps Files, one "..." (which opens the last
-  part it stands for) and the last parts. The picker keeps its path line as text, and the Library's own folders
-  are as they were (the owner's narrow reading: the Library's code paths are untouched but for the card, the hold
-  and the hosting seams).
-- **Sort and Show**, two chips on the bar, kept in `files_sort` and `files_show`. Sort: by name (`name_cmp`), the
-  newest first or the largest first, folders first each time (by name under Size), ties by name, a row with no stat
-  last (`files_cmp`). Newest and Size need every row's stat: the rows are made from the listing (nothing is read
-  again) into `next`, stat-ed in slices of at most 20 ms a tick, then sorted and shown at once; the rows on screen
-  stay as they are meanwhile, a folder entered so shows no row before, and the Loading notice comes after a second.
-  The listing's cap (5,000) holds. Show: the PDFs, pictures and fonts Grimoire can use (and folders), or every
-  file: the others greyed, and the links by name ("link, not followed"), which fsview's listing keeps in `links`
-  as it leaves them out (within the same 5,000 rows, with "Showing the first 5000." when any is left out); a link
-  is never entered, opened or stat-ed through. View is a list (`files_view`; Covers
-  needs previews).
+  (the places that are there, then the storage's other top folders by name, but a name a row would not take, with a
+  line break; rows that do not fit the screen are left out, All storage reaches them). The tap reads the storage
+  root at once, at most 200 ms in all (`root_listing`: names and kinds, a stat only where the kind is not known); a
+  root that takes longer gives the folders read by then. A path too long for its room keeps Files, one "..." (which
+  opens the last part it stands for) and the last parts. The picker keeps its path line as text, naming a folder by
+  the place that holds it however it was reached (as before Files; the path bar names the place the way in started
+  at, as Back goes), and the Library's own folders are as they were (the owner's narrow reading: the Library's code
+  paths are untouched but for the card, the hold and the hosting seams).
+- **Sort and Show**, two chips on the bar (not in the Trash place, which keeps its own order and lists all it
+  holds), kept in `files_sort` and `files_show`. Sort: by name (`name_cmp`), the newest first or the largest first,
+  folders first each time (by name under Size), ties by name, a row with no stat last (`files_cmp`). Newest and Size
+  need every row's stat: the rows are made from the listing (nothing is read again) into `next`, stat-ed in slices
+  of at most 20 ms a tick, then sorted and shown at once; the rows on screen stay as they are meanwhile, a folder
+  entered so shows no row before, and the Loading notice comes after a second. The listing's cap (5,000) holds.
+  Show: the PDFs, pictures and fonts Grimoire can use (and folders), or every file: the others greyed, and the links
+  by name ("link, not followed"), which fsview's listing keeps in `links` as it leaves them out (within the same
+  5,000 rows, with "Showing the first 5000." when any is left out); a link is never entered, opened or stat-ed
+  through. View is a list (`files_view`; Covers needs previews).
 - **Item cards.** A picture, a font and any other file have cards, as a PDF and a folder do: the details say what
   the file is, its size and its date, and what is known of it without reading it in the UI process (a font of
   `grimoire/fonts` whose check passed: its family, from the check's own verdict, `userfont_family`). No user's

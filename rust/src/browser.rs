@@ -1067,10 +1067,12 @@ impl Browser {
     fn crumb_list(&self) -> Vec<(String, Option<StoragePath>)> {
         let Some(at) = self.at.as_ref() else { return Vec::new() };
         let mut out = vec![(tr("Files").to_string(), None)];
-        // the place: the one the way in started at (Back goes up to it), else the one of this mode whose folder holds
-        // this one, the nearest (All storage holds every one)
+        // the place: in Files the one the way in started at (Back goes up to it), else the one of this mode whose
+        // folder holds this one, the nearest (All storage holds every one); the picker's path line always the nearest,
+        // as before Files
         let places: Vec<(PlaceKind, StoragePath)> = self.mode_places().iter().filter_map(|&k| self.place_path(k).map(|p| (k, p))).collect();
-        let started = self.place_root.as_ref().filter(|r| path_under(at, r)).and_then(|r| places.iter().find(|(_, p)| p == r).cloned());
+        let started = self.place_root.as_ref().filter(|r| !self.pick() && path_under(at, r));
+        let started = started.and_then(|r| places.iter().find(|(_, p)| p == r).cloned());
         let (k, base) = started
             .or_else(|| places.iter().filter(|(_, p)| path_under(at, p)).max_by_key(|(_, p)| p.as_bytes().len()).cloned())
             .unwrap_or((PlaceKind::All, StoragePath::root()));
@@ -1631,12 +1633,18 @@ impl Browser {
             font_draw_left(c, FontFace::Bold, small, Rect::new(tx, r.y, r.x + r.w - tx - u(20.0), r.h), label, 0);
             r
         };
-        let show = chip(c, band.x + band.w, IconKind::Eye, self.show_label());
-        let sort = chip(c, show.x - u(20.0), IconKind::Sort, self.sort_label());
-        hits_add(&mut self.hits, show, B_SHOW, 0);
-        hits_add(&mut self.hits, sort, B_SORT, 0);
+        // (none in the trash: it keeps its own order, by the time in each name, and lists all it holds)
+        let room_end = if self.in_trash_place() {
+            band.x + band.w
+        } else {
+            let show = chip(c, band.x + band.w, IconKind::Eye, self.show_label());
+            let sort = chip(c, show.x - u(20.0), IconKind::Sort, self.sort_label());
+            hits_add(&mut self.hits, show, B_SHOW, 0);
+            hits_add(&mut self.hits, sort, B_SORT, 0);
+            sort.x - u(30.0)
+        };
         // the path's parts in the room left
-        let room = Rect::new(band.x, band.y, sort.x - u(30.0) - band.x, band.h);
+        let room = Rect::new(band.x, band.y, room_end - band.x, band.h);
         let parts = self.crumb_list();
         if parts.is_empty() || room.w <= 0 {
             return;
@@ -2806,6 +2814,46 @@ mod tests {
         b.prefs.show = 0;
         b.rebuild();
         assert!(b.rows.len() == 1 && !b.capped);
+    }
+
+    // The picker's path line names a folder by the place that holds it however it was reached (All storage, then
+    // documents/Books: "Files > Documents > Books", as before Files); Files' path bar names the place the way in
+    // started at, as its Back goes up to it.
+    #[test]
+    fn the_pickers_path_line_names_the_place_that_holds_the_folder() {
+        let (base, _g) = storage("pickcrumbs");
+        std::fs::create_dir_all(format!("{base}/documents/Books")).unwrap();
+        i18n_set("en");
+        let cases = [(PickSpec::import(), "Files > Documents > Books"), (PickSpec::place(), "Files > All storage > documents > Books")];
+        for (spec, want) in cases {
+            let mut b = Browser::default();
+            assert!(b.open(spec, FilesPrefs { card: true, ..Default::default() }));
+            assert!(b.enter(StoragePath::root(), true, now_ms()));
+            b.list_now();
+            assert!(b.go(sp("documents/Books")));
+            assert_eq!(b.crumbs(), want);
+        }
+    }
+
+    // The Trash place has no Sort or Show chip on its path bar (its order is the time in each name, and it lists all
+    // it holds); a folder elsewhere in Files has both.
+    #[test]
+    fn the_trash_place_has_no_sort_or_show_chip() {
+        let (base, _g) = storage("trashchips");
+        std::fs::create_dir_all(format!("{base}/grimoire/trash/20261101-000000-0001-1790000000")).unwrap();
+        std::fs::create_dir_all(format!("{base}/documents")).unwrap();
+        i18n_set("en");
+        let mut a = screen_app();
+        let mut b = Browser::default();
+        assert!(b.open(PickSpec::place(), FilesPrefs { card: true, ..Default::default() }));
+        assert!(b.go(sp("documents")));
+        b.draw(&mut a);
+        assert!(b.point("sort").is_some() && b.point("show").is_some());
+        assert!(b.go(sp("grimoire/trash")));
+        b.draw(&mut a);
+        assert!(b.point("sort").is_none() && b.point("show").is_none());
+        assert!(b.point("crumb.2").is_some(), "the path's parts are there");
+        canvas_free(&mut a.screen);
     }
 
     #[test]
