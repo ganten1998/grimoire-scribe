@@ -2504,6 +2504,68 @@ their own work), so nothing a user sees changed.
   fallback runs; CI's Linux job runs the same file with renameat2's flag, and docs/TESTING.md has the Scribe's
   check of the flag, of one rename into the trash and of inode numbers.
 
+## Files: the place (2.2, issue #124)
+
+`browser.rs` has a second mode beside the picker's. `PickSpec { kinds, title, start, mode }` says what the browser
+was asked for: `PickSpec::import()` is New notebook's From a file... (pick mode, as above), `PickSpec::place()` is
+Files (place mode), opened from the Library's Files card, that card's menu's Open, and the `files` action. It is
+hosted the same way (`LibraryState.files`, `files_open_place`), and closes back to the Library.
+
+- **The root** lists Import, Documents, Downloads, Templates, Photos, Fonts, Kindle fonts (the storage's `fonts/`),
+  PDF copies, Trash and All storage: Import and All storage always, every other place when its folder is there.
+  The free space line stays at the top. Place mode walks with the pick flag off: Grimoire's `PDFs` and `trash` are
+  looked into there (read only), `notebooks` is refused as everywhere. Nothing under `PDFs` or `trash` is offered
+  for import, by a card's rows (the zone a pick would refuse) as by the jobs (which refuse them anyway).
+- **The Files card.** Hidden until settings.ini `files_card` is 1, which the root's last row, "Show Files in
+  Library", sets (in pick mode as in place mode, while the card is hidden). Shown, it is the last card of the
+  Library's top level, after every folder and notebook (`reload` appends it; it is in no folder), so no notebook
+  moves for it; in a big Library that is the last screen of cards. Its `...` (or a hold) opens its menu: Open,
+  Hide from Library, Cancel. Its second line is the free space when it fits the card, read when the Library
+  reloads (one statvfs), not at each draw.
+- **The path bar is Files' alone.** Inside a place, the band under the header is 120 px: the path's parts (Files,
+  the place, each folder) each a target the bar's height that opens it, the folder shown opening the Go to sheet
+  (the places that are there, then the storage's other top folders by name, but a name a row would not take, with a
+  line break; rows that do not fit the screen are left out, All storage reaches them). The tap reads the storage
+  root at once, at most 200 ms in all (`root_listing`: names and kinds, a stat only where the kind is not known); a
+  root that takes longer gives the folders read by then. A path too long for its room keeps Files, one "..." (which
+  opens the last part it stands for) and the last parts. The picker keeps its path line as text, naming a folder by
+  the place that holds it however it was reached (as before Files; the path bar names the place the way in started
+  at, as Back goes), and the Library's own folders are as they were (the owner's narrow reading: the Library's code
+  paths are untouched but for the card, the hold and the hosting seams).
+- **Sort and Show**, two chips on the bar (not in the Trash place, which keeps its own order and lists all it
+  holds), kept in `files_sort` and `files_show`. Sort: by name (`name_cmp`), the newest first or the largest first,
+  folders first each time (by name under Size), ties by name, a row with no stat last (`files_cmp`). Newest and Size
+  need every row's stat: the rows are made from the listing (nothing is read again) into `next`, stat-ed in slices
+  of at most 20 ms a tick, then sorted and shown at once; the rows on screen stay as they are meanwhile, a folder
+  entered so shows no row before, and the Loading notice comes after a second. The listing's cap (5,000) holds.
+  Show: the PDFs, pictures and fonts Grimoire can use (and folders), or every file: the others greyed, and the links
+  by name ("link, not followed"), which fsview's listing keeps in `links` as it leaves them out (within the same
+  5,000 rows, with "Showing the first 5000." when any is left out); a link is never entered, opened or stat-ed
+  through. View is a list (`files_view`; Covers needs previews).
+- **Item cards.** A picture, a font and any other file have cards, as a PDF and a folder do: the details say what
+  the file is, its size and its date, and what is known of it without reading it in the UI process (a font of
+  `grimoire/fonts` whose check passed: its family, from the check's own verdict, `userfont_family`). No user's
+  file is parsed for a card; pages and picture sizes wait for the worker (previews). A PDF offers Import as
+  notebook or Open its notebook as the picker does; a PDF of the PDF copies opens the notebook it was written from
+  (the one whose `export_mirror_path` it is). Pictures, fonts and other files offer nothing else yet. Every act
+  checks the file again first ("File changed. Try again.").
+- **The Trash place** lists `grimoire/trash` read only, through the storage writes' trash listing
+  (`fsview_trash_entries`, read by name alone, no stat: the newest first by the time in each entry's name, a name of
+  no known form last): a file or folder trashed from Grimoire's folders (`files-<stamp>-<4 hex>`) by the last part
+  of where its record says it was (`FsStorage::trash_record`, read for the rows on screen only), a notebook
+  (`<id>-<time>`, a folder) by the name its `notebook.ini` there holds (opened through the walk, as the listing is,
+  and cut as the store cuts a name), a page (`<id>-p<page>-<time>`) by its notebook's name, each with its date; a
+  `files-` entry whose record does not read, and a name of another form, as it is. Entries are not entered and
+  have no card.
+- **A Library card held** `HOLD_MS` opens its menu as its `...` does (a notebook's, a folder's, the Files card's);
+  the lift after it does nothing.
+- **Actions** `files` (108) and `home` (109) act in the Library, with no default key and no Buttons or Gestures
+  row (they are bound by name, as the Library's New notebook and Share are), from a key or a gesture, over the
+  Library and inside Files alike. `home` is the Library's top for now.
+- **Seams left for the later Files work**: `RowKind::Trashed` and the trash rows (Restore), the card's rows per
+  kind in `card_lines` (Rename, Trash, Use as template, Use as photo, Add to fonts), `BrowseMode` and `FilesPrefs`
+  (a home, a View), `library_home` (where a set home starts), `PickSpec.start` (opening at a folder).
+
 ## Shared building blocks (2.1, lane L0)
 
 The 2.1 plan builds a few pieces once, for every later lane to reuse (no second one grows beside them).

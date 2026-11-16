@@ -295,6 +295,17 @@ fn the_verdict_is_kept_in_grimoires_own_folder() {
     check!(std::fs::read_to_string(format!("{tag}/root")).is_ok_and(|t| t == format!("{r}\n")));
     check!(loads("Mine.ttf") == Ok("overprint"));
     check!(state_of("Mine.ttf") == "ready");
+    // Files' card names the family from that verdict, for the file's size and time, and only while the
+    // verdict's companion is in the cache
+    use std::os::unix::fs::MetadataExt;
+    let md = std::fs::metadata(format!("{r}/fonts/Mine.ttf")).unwrap();
+    check!(userfont_family("Mine.ttf", md.len(), md.mtime()).as_deref() == Some("Grimoire Test"));
+    check!(userfont_family("Mine.ttf", md.len() + 1, md.mtime()).is_none());
+    let preview = format!("{cache}/{key:016x}.pgm");
+    let kept = std::fs::read(&preview).unwrap();
+    std::fs::remove_file(&preview).unwrap();
+    check!(userfont_family("Mine.ttf", md.len(), md.mtime()).is_none());
+    std::fs::write(&preview, &kept).unwrap();
 }
 
 // A font is checked once where its verdict is kept: later looks need no worker. The same data root beside

@@ -63,7 +63,7 @@ pub const SHORTCUT_GESTURE_NEW_PAGE: i32 = 54;
 pub const SHORTCUT_STATUS_MODE: i32 = 55;
 /// The highest action id in use (it follows the highest; ids between with no action have no name, which the
 /// loops over 1..=SHORTCUT_LAST skip).
-pub const SHORTCUT_LAST: i32 = SHORTCUT_QUICK_SIZE;
+pub const SHORTCUT_LAST: i32 = SHORTCUT_HOME;
 /// Where an action came from: a key, a controller's button, a touch gesture (gestures.ini), and
 /// later a finger shape or the pen's button. A page turned by a gesture adds a page on the last one unless settings.ini gesture_new_page is off.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]

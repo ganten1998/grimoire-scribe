@@ -140,6 +140,17 @@ fn key_of(rel: &str, size: u64, mtime: i64) -> u64 {
     h
 }
 
+/// The family of the font at `rel` under grimoire/fonts as its check found it (Files' card, 2.2), when the font has
+/// a verdict for this size and time and passed: one small file of the check's own, read where the verdicts are
+/// kept and counted only with its companion (`verdict_for`), no font read here. None else.
+pub fn userfont_family(rel: &str, size: u64, mtime: i64) -> Option<String> {
+    let vd = VerdictDir::open(false).ok()?;
+    match verdict_for(&vd, key_of(rel, size, mtime), size)? {
+        Verdict { what: VerdictKind::Passed(facts), .. } if !facts.family.is_empty() => Some(facts.family),
+        _ => None,
+    }
+}
+
 fn storage() -> Option<FsStorage> {
     FsStorage::open(&fonts_dir(), &store_root()).ok()
 }
