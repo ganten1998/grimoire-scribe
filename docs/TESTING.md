@@ -86,8 +86,11 @@ at once (macOS: 5); it stays off until a run passes there (docs/BACKLOG.md).
 
 **Tests that read the documents.** A docs-only pull request runs no test, and a few tests read the
 documents: `rust/tests/test_sec_invariants.rs` (DESIGN.md, FORMAT.md, KINDLE.md, TESTING.md, BACKLOG.md and
-RELEASING.md: sentences about the safe loader that must not come back, the names `RECORDS_MAX_BYTES` and
-`<key>.slow`, and a few sentences that hold only while another one stands), `mapview.rs` (the Graph's keys) and
+RELEASING.md: sentences about the safe loader and the font check that must not come back, the names
+`RECORDS_MAX_BYTES`, `<key>.slow` and `<key>.no`, the font check's glyph limit with its figure, the number in
+a font verdict's first line and in a `<key>.slow` mark's line, the font check's other placeholders with
+their values, and a few sentences that hold only while another one stands), `mapview.rs` (the Graph's keys)
+and
 `test_scenarios.rs` with `sim_sdl.rs` (SIM.md). After rewording a sentence they hold, run `make test-sim`
 by hand: otherwise the push to main is the first run to say so.
 
@@ -2562,7 +2565,8 @@ table and on CI's kernel run. Use the bundle built with the pinned toolchain (do
 ## Hardening round (2026-11), storage reads and temporaries: device checks
 
 Automated: the unit tests of `util.rs`, `store.rs` and `bgwork_template.rs`, `rust/tests/test_sec_read_links.rs`,
-`test_sec_pid_tmp.rs` and `test_sec_work_links.rs` (links, FIFOs, folders and sizes on the host's file system).
+`test_sec_pid_tmp.rs` and `test_sec_work_links.rs`, and the crash guard's file in `test_fontguard.rs`
+(`the_guard_file_is_read_only_as_a_plain_file`) (links, FIFOs, folders and sizes on the host's file system).
 What they cannot show is the Scribe's own storage, so this round ships only once these are done on a Scribe:
 
 1. **Before installing, over SSH.** Keep a copy of the settings:
@@ -2890,6 +2894,75 @@ What only the storage can tell, on the Scribe:
 5. **PDF copies and Trash**: Files > PDF copies lists the mirror PDFs read only, and a mirror PDF's card opens its
    notebook; Files > Trash lists deleted notebooks by name and date, newest first, and none opens.
 6. **Rotate** the Scribe in Files: the path bar, its chips, the rows and the Go to sheet lay out again.
+
+## Hardening round (2026-11), fonts: where a check's result is kept, its hash, and a glyph's draw time
+
+What the background check found of a font (its verdict) is kept on the Kindle itself, in
+`/var/local/grimoire`, and tied to the font file by its SHA-256; and the check times each glyph as Grimoire
+will draw it. Automated: the tests of `rust/src/sha256.rs`, `rust/tests/test_sec_font_verdict.rs`, the
+functions of `rust/tests/test_fontcheck.rs` about the glyph limit and the second try's mark, the unit tests
+of `fontcheck.rs` and `userfonts.rs`, and (Linux, root, CI's `sandbox` job) the font test of
+`rust/tests/test_sandbox_linux.rs`.
+
+**Not run on a Scribe, and it must be before a release.** This change can leave a Kindle with no custom font
+(if Grimoire's own folder cannot be used there), can refuse a font that works today or hand some of its
+glyphs to Terminess (the time limit), and changes what the sandboxed worker does for every glyph. Its
+values that are placeholders, and wait for the answers below: the glyph limit (`s1::FONT_GLYPH_CPU_MS` in
+`sandbox.rs`, 20 ms) and the size a draw is timed at (`FONT_TIME_PX` in `fontcheck.rs`, 160 px), which
+steps 6 to 8 answer; the own folder's place (`STATE_BASE` in `userfonts.rs`, `/var/local/grimoire`), which
+steps 1, 5 and 11 answer; and the two floors of free room beside it (`STATE_FREE_FLOOR`, 4 MB, and
+`STATE_FILES_FLOOR`, 512 files), which step 1 answers.
+
+1. **Before installing, over SSH, with 2.1.0 still on.** `mount | grep /var/local`, `df -k /var/local`,
+   `df -i /var/local`, `ls -ld /var/local`. Write the answers here. /var/local must be a file system of its
+   own that keeps its files across a restart (not the tmpfs at /var) and that keeps owners and modes (ext3
+   or ext4, say; on one without them the test "root's, and no one else can write it" means nothing). It
+   must be root's, with no write bit for group or others (`drwxr-xr-x  root`: Grimoire tests the folders it
+   makes there, never /var/local itself), with well over 4 MB and at least 512 inodes free (a file system
+   that counts no inodes, `df -i` showing 0, is fine). If it is not, stop: the place (`STATE_BASE`) and the
+   floors beside it are set from these numbers before a release. Also keep 2.1.0's grimoire.log lines
+   `fonts: file I of N passed: ... checked in T ms` and `font: custom font loaded: S KB in T ms`.
+2. **The update.** Install, start Grimoire with a font of your own in use. The Library is in Terminess at
+   first; the font comes back by itself with one redraw once its check has passed (how long?). Settings >
+   Font shows "Checking..." rows meanwhile. grimoire.log has one `fonts: file I of N passed: ...` line a
+   font, and no `work: a font's worker made call N`, no `marked unreadable`, no `cannot be kept`. If the font
+   in use has a Bold file whose name sorts after its own (`Name.ttf` with `NameBold.ttf`), look at text
+   Grimoire draws bold once the font is back: it is the regular overprinted until Grimoire is started
+   again, then the Bold file's (docs/BACKLOG.md, "Bold stays overprinted").
+3. **Where it is kept.** `ls -ld /var/local/grimoire /var/local/grimoire/* /var/local/grimoire/*/fonts
+   /var/local/grimoire/*/root` (three folders, `drwx------`, and one file, `-rw-------`, all root's; `cat`
+   of the file gives the data folder's path); `ls -l /var/local/grimoire/*/fonts` (one small `.font` a
+   font); `head -3` of one says `grimoire-font 2` and a 64-digit `hash=`, which is `sha256sum` of
+   the font file. `ls /mnt/us/grimoire/fonts/.cache` has a `.pgm` a font (a `.no` for one the check
+   refused), and 2.1.0's `.font` files untouched.
+4. **The next start, and the hash's cost.** Close and start Grimoire: the font draws on the first screen and
+   the log has no `bg: font check` line. Read `font: custom font loaded: S KB in T ms` and compare T with
+   2.1.0's from step 1, with the largest font you have (10 MB or more if you can). In Settings > Font tap a
+   built-in font, then that font's row again (a tap applies a font at once, with that log line for it): how
+   long until the sheet is drawn in it? Write both times down. The whole file is hashed at every load, on
+   the UI's thread: if either wait is longer than you accept, "Hashing a font while it is read"
+   (docs/BACKLOG.md) comes before the release. The bound is yours to set; none is built in.
+5. **After a restart of the Kindle**: as step 4 (the folder survived).
+6. **The glyph figures.** For each font read `slowest glyph T us` and `letters and digits L us` in its pass
+   line. Are the numbers fine-grained (not all multiples of 1000 or 10000)? If they are all multiples, the
+   clock is too coarse for this limit: say so. Write down the slowest glyph of the fonts you want to keep:
+   the limit (20 ms now) should be at least three times that. (The figure counts the glyphs handed to
+   Terminess as too slow, `W too slow to draw`: with W above 0 it can be over the limit in a font that
+   passed.)
+7. **Steadiness.** Delete `grimoire/fonts/.cache` (Grimoire closed) and start: every font is checked again.
+   Do it three times: just after a restart, after ten minutes of writing, and on the charger. Are a font's
+   `slowest glyph` figures within a factor of two of each other?
+8. **Heavy fonts.** A large CJK variable font and two or three heavy display fonts: `checked in T ms`
+   against 2.1.0's figure from step 1 (how much slower is the check?), any `(W too slow to draw)` with W
+   above 0, any `left for a second try` followed a minute later by a pass or by `take too long to draw
+   again`. A font that ends "Took too long to read." but draws fine: note its figures.
+9. **By hand.** `rm -r /var/local/grimoire` with Grimoire closed: the next start checks every font once and
+   nothing else changes. If you run a second data folder (a development copy): /var/local/grimoire has one
+   folder for each.
+10. **With the other hardening changes of this release in the same build**, run steps 2 and 8 once more:
+    the worker's narrower system calls and this change's walk are in the same process.
+11. When a firmware update next arrives: is /var/local/grimoire still there? (If not, fonts are checked once
+    more: note it in KINDLE.md.)
 
 ## 2.2, Files' previews and the Covers view (issue #145): device checks
 

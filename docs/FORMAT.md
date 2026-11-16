@@ -75,8 +75,8 @@ From 2.1.1 on Grimoire reads these files only when the entry at the name is a pl
 records. A link there (to a file, to a folder or to nothing), a folder or anything else reads as a file that
 is not there; for the shortcut files it is a file that is there and does not read, as their section says. A
 folder on the way to a file may be a link (`root` itself, `notebooks/`): only the last name is held to this.
-Your own fonts' check results and crash guard are still opened by path, after a look at the entry that does
-not follow a link (docs/BACKLOG.md, "Hardening round (2026-11), storage reads: what waits").
+Your own fonts' files are held to the same rule: `.font-inuse` (at most 1 KiB, a longer one is not read) and
+the check's verdicts, marks and previews (Your own fonts).
 
 The small text files are read up to a size, and a longer one is not read: `settings.ini`, `notebook.ini`,
 `folders.ini`, `bg/index.ini` and `bg/pages.ini` up to 1 MiB (1,048,576 bytes), an import folder's mark up to
@@ -640,52 +640,86 @@ in name order, each at most 24 MB. Files ending in `.woff` or `.woff2` are liste
 control character, is left out. Grimoire makes the folder at startup, with a `README.txt`, if it is missing.
 Nothing in a notebook ever refers to a font: pages, PDFs and pictures do not change with one.
 
-`fonts/.cache/` holds what the background check found, each file named by the FNV-1a 64 hash (16 hex digits) of
-the font's path under the folder, its size and its time (`<path>/<size>/<mtime>`), so a file replaced by
-another is checked afresh. It is a cache: deleting it loses nothing. The background job writes it; the app itself
-only renames a `.checking` mark to `.bad` when that job died.
+`fonts/.cache/` holds the background check's previews and marks (and its verdicts, in a build that keeps
+them there: below), each file named by the FNV-1a 64 hash (16 hex digits) of the font's path under the folder,
+its size and its time (`<path>/<size>/<mtime>`), so a file replaced by another is checked afresh. It is a
+cache: deleting it loses nothing, and has every font checked again. The background job writes it; the app
+itself only renames a `.checking` mark to `.bad` when that job died.
 
-- `<key>.font`, the verdict, text, at most 8 KiB, read strictly (an unknown line, or a number out of range,
-  makes the file no verdict and the font is checked again):
+- `<key>.font`, the verdict, text, at most 8 KiB, read strictly: it is a verdict only when it is, byte for
+  byte, a text the check writes (every line below there once and in this order, every number in range and
+  written as below, nothing after the last line). Anything else, a text cut short at a line's end among
+  them, is no verdict, and the font is checked again. Where it is kept depends on the build (from the verdicts numbered 2 on; those numbered 1 were always
+  in `fonts/.cache/`).
+  On the Kindle it is outside the storage, in `/var/local/grimoire/<16 hex digits>/fonts/`: the 16 digits
+  are the FNV-1a 64 hash of the data root's path (each data root has its folder there, and the file `root`
+  beside `fonts/` holds the root's path). Grimoire makes these folders for root alone (mode 0700); one
+  that is already there is used only while it is root's and no one else can write it. Nothing under
+  `root/fonts/` decides whether a font is read. A build that names no folder of its own (the simulator
+  without `GRIMOIRE_STATE`, docs/SIM.md) keeps it in `fonts/.cache/`, as before. Either way a verdict counts
+  only with its companion in `fonts/.cache/`: a pass with `<key>.pgm`, a refusal with `<key>.no`.
 
   ```text
-  grimoire-font 1
-  hash=<FNV-1a 64 of the whole file, 16 hex digits>
+  grimoire-font 2
+  hash=<SHA-256 of the whole file, 64 lower-case hex digits: what sha256sum prints>
   size=<the file's size in bytes>
   ok=1                            or  why=unreadable | nolatin | format | slow
   upem=<units per em, 16 to 16384>
   ascent=<units above the baseline>     descent=<units below it, as a magnitude>
   scale=<how much bigger than asked its text is drawn, in thousandths: 850 to 1250>
   weight=<its weight class, 1 to 1000>  italic=<0|1>
-  mapped=<glyphs its cmap maps>
+  mapped=<glyphs its cmap maps, 1 to 65535>
   wght=<least> <default> <most>   bold=<the weight its bold is drawn at>   (a weight axis only)
-  cover=<characters it has of Latin-1, Latin Extended-A, Greek, Cyrillic, kana, kanji>
+  cover=<characters it has of Latin-1, Latin Extended-A, Greek, Cyrillic, kana, kanji: at most 100000 each>
   lacks=<bits: 1 English, 2 Spanish, 4 Japanese: that language's words need letters it lacks>
   family=<its family's name>      style=<its style's name>     (64 characters each at most)
-  skip=<glyph>,<glyph>,...        glyphs that failed the check, in order, at most 656: drawn in Terminess
+  skip=<glyph>,<glyph>,...        glyphs that failed the check or take too long to draw, in order, at most
+                                  656: drawn in Terminess. The last line of a pass, there (empty after
+                                  the `=`) when no glyph is skipped
   ```
 
-  The lines after `size` are there only with `ok=1`. `ascent` and `descent` are the font's own unless they
-  are far from what its letters reach (then what they reach). Grimoire draws a font only when the bytes it
-  reads hash to `hash`; other bytes under the same name, size and time are checked again.
+  A refusal ends with its `why=` line. The lines from `upem` on are there only with `ok=1`, and then all
+  of them are, each on a line of its own (`wght` and `bold` only for a font with a weight axis). `ascent`
+  and `descent` are the font's own unless they are far from what its letters reach (then what they reach).
+  Grimoire draws a font only when the bytes it reads hash to `hash`; other bytes under the same name, size
+  and time are checked again. The first line's
+  number stands for the text and for the check's rules together: 2.1.0 wrote `grimoire-font 1` with a
+  16-digit FNV-1a 64 `hash`, which is no verdict now, so each font is checked once more after the update.
+  On the Kindle a `<key>.font` in `fonts/.cache/` is 2.1.0's: it is not read and not written, and goes when
+  its font file does.
 - `<key>.pgm`, the preview (P5 PGM): the family's name (and its style, unless Regular) drawn in the font,
   black on white, at the text size of the screen the check ran for.
+- `<key>.no`, empty (from the verdicts numbered 2 on): the check refused this file; its verdict says why.
 - `<key>.checking`, empty: a check of this file is under way.
+- `<key>.slow`, one line of text: a check of this file ran out of time, or found glyphs that take too long
+  to draw. No verdict is written then: the file is checked once more, a minute or more later (a timeout
+  right after a wake is the clock's, not the font's), and a check that ends the way an earlier one did
+  writes the verdict `why=slow`. One check out of time and one that found such glyphs are not two that
+  agree: the font is left for one more try. The line is
+
+  ```text
+  grimoire-font 2 slow <time | glyphs | time,glyphs> <SHA-256 of the whole font file, 64 hex digits>
+  ```
+
+  the verdict's number, how the earlier checks ended, and the bytes they were of. A mark that does not read
+  as that is no mark and is removed (an empty file, which is what the mark was while verdicts were numbered
+  1, so a mark left from then never makes one check the second of two); a mark that names other bytes is
+  no earlier check of this file. A mark dated ahead of the clock (the clock was set back since) is written
+  again, so the wait is a minute from then and never longer. The mark goes when a verdict is written,
+  whatever it says; beside a `.bad` it stays until the file changes or goes, when it goes with the key's
+  other entries. Every version that reads `fonts/.cache/` knows the mark by its name and time
+  (2.1.0-beta.2 on); older versions never open the folder.
 - `<key>.bad`, empty: the check's worker died on this file, or the check itself did. The font is not read
   again until the file changes.
-- `<key>.slow`, empty: one check of this file ran out of time. With no verdict beside it the file is
-  checked once more, a minute or more later (a timeout right after a wake is the clock's, not the
-  font's), and a second timeout writes the verdict `why=slow` and removes the mark. Otherwise the mark
-  stays, beside the verdict or `.bad`, until the file changes or goes, when it goes with the key's other
-  entries. Every version that reads `fonts/.cache/` knows the mark (2.1.0-beta.2 on); older versions
-  never open the folder.
 
 `root/.font-inuse` is the crash guard, not a cache (the app itself writes it): text, a first line
 `grimoire-font-guard 1`, then at most eight lines `<key> <strikes 0|1|2> <armed 0|1>`. A font's line is armed
 before its first use in a session and removed once a screen drawn with it is on the panel. An armed line found
 at a start is a strike: that start does not draw the font; with one strike the next start tries it once more;
 with two it is left alone until the file changes (another key). A file that does not read as this is started
-afresh. Deleting it only forgets the strikes.
+afresh. It is read only when the entry at its name is a plain file of at most 1 KiB: a link there is not
+followed, a FIFO is not waited on, and anything else there is no guard file. Deleting it only forgets the
+strikes.
 
 ### Imports: `root/import/<Name>/`
 
@@ -1886,6 +1920,13 @@ What 2.1.0 and the versions before it do with what a fill (2.2) writes:
 | a filled notebook | an ordinary notebook: it opens with every page of its list, the pages a fill added as document pages on their pictures (2.1.0 also with their tabs and names; 2.0 without the tabs, as for any `doclinks.ini`). Its files are the ones they write themselves: page files, `bg/` pictures, `bg/index.ini`, `bg/pages.ini`, `source.ini` page lines, `doclinks.ini`, `nav.ini`, `notebook.ini`. A notebook without a record still has none |
 | a fill's work folder (`notebooks/.import-<id>/` with `pdf-fill.ini`) | no `pdf-import.ini` and no `notebook.ini` in it: removed at their next start as any cut-off import's ("removed what a cut-off import left"); the notebook stays as it was, and the PDF, still in `import/`, is "PDF already imported." there (2.1.0) or never imported (before it) |
 | a fill's commit cut off half way (`stage=2`), then a start of one of them before 2.2 goes on with it | they remove the work folder, so the commit never goes on: the notebook lists the pages it had (cut before `notebook.ini` was written), or all of them without the links and names the fill had yet to add (cut after). Page files a cut left unlisted, and their lines in `bg/pages.ini` and `source.ini`, are never shown; `source.ini`'s go at its next write |
+
+What 2.1.0 does with what a version that numbers its font verdicts 2 writes (read in its code at the tag):
+
+| new data (font verdicts numbered 2) | 2.1.0 |
+|---|---|
+| a font's verdict (`grimoire-font 2`; on the Kindle in `/var/local/grimoire`), `fonts/.cache/<key>.no` | 2.1.0 never looks outside the storage: on the Kindle it keeps and reads its own `fonts/.cache/<key>.font`, which the later version never reads there and leaves alone, so a font 2.1.0 had checked is ready at once. Where the later version keeps its verdicts in `fonts/.cache/`, 2.1.0 takes `grimoire-font 2` as no verdict and checks the font once. `<key>.no` is a name it does not read; it goes with its font file |
+| `fonts/.cache/<key>.slow` with its line of text | 2.1.0 knows the mark by its name and time and never reads what it holds: it takes it as the mark of a first check of its own that ran out of time |
 
 ## Highlighter rendering in 1.2.0
 

@@ -92,6 +92,10 @@ pub mod s1 {
     /// A font worker's address space beyond its image and the file's bytes: skrifa's draw memory, the glyph
     /// bitmaps at the largest size, stb's edges. (set by S1)
     pub const FONT_AS_MARGIN: u64 = 64 << 20;
+    /// The CPU time one glyph's draw may take in the check, at the largest size the UI draws (fontcheck.rs,
+    /// FONT_TIME_PX): milliseconds. A placeholder, not yet measured on the Scribe (docs/TESTING.md). It is one
+    /// of the check's rules: the verdict's number (fontcheck.rs, VERDICT_NUMBER) moves whenever it does.
+    pub const FONT_GLYPH_CPU_MS: u64 = 20;
     /// D12's trigger: if the median planner page takes longer than this whole on the Scribe, a PDFium helper is
     /// weighed before this goes on. Nothing in the code reads it. (S1 measured 90 ms: not triggered.)
     pub const D12_TRIGGER_PAGE_MS: u32 = 2_000;
@@ -108,7 +112,7 @@ pub mod s1 {
 pub const WORKER_ID: u32 = 62001;
 
 /// The record protocol's number: the worker and the writer must agree (the handshake's build line).
-pub const WORK_PROTOCOL: u32 = 1;
+pub const WORK_PROTOCOL: u32 = 2;
 
 /// The build the handshake names: the version and the protocol. (A worker is always a fresh exec of the
 /// writer's own binary, /proc/self/exe; a different build can only turn up where that path is not used.)

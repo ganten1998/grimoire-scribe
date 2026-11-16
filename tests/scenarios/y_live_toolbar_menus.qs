@@ -10,6 +10,12 @@
 # it, and after the menu closes. Settings over the notebook (and its own Display sheet) leave the frame the whole
 # screen, the panel's edge beside the sheet in the tiles and no layer, as before; the layer is back as it closes.
 # The Kindle's refreshes are what they were: the layer is the stream's alone.
+# (past the two launch repaints, at 1.2 s and 3.5 s, which refresh the whole screen: the stretch counted at the
+# Display sheet's X ended about 3.4 s after the start, so the 3.5 s one fell inside it, before it or after it as
+# the machine's speed had it, and the check wanted it last, issue #134)
+# (the clock corner held still: its minute's refresh would land among the counted ones)
+clock 1700000000
+wait 3600
 wait 300
 tap 1345 95
 wait 300
@@ -52,7 +58,9 @@ expect live.stale.1704.220.128.1734 is 0
 tap panel display.done
 wait 400
 expect editor.modal is none
-expect display.presents is ui 0 0 1860 2480, fast 80 704 1700 120, ui 0 0 1860 2480, fast 1660 20 150 150, ui 0 0 1860 2480, ui 0 0 1860 2480
+# (the sheet again after the drag, the New page row pressed and the sheet again, the X pressed and the screen
+# without the sheet)
+expect display.presents is ui 0 0 1860 2480, fast 80 704 1700 120, ui 0 0 1860 2480, fast 1660 20 150 150, ui 0 0 1860 2480
 expect live.panel is 1704 220 128 1734
 expect live.stale.1704.220.128.1734 is 0
 # Another sheet beside it (Paper), and closed again.
