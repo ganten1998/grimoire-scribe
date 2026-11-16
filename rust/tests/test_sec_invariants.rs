@@ -76,6 +76,22 @@ fn stands_on(fails: &mut Vec<String>, f: File, words: &str, on: File, base: &str
     }
 }
 
+/// A name the code has with its figure beside it: the file names `name`, and `figure` stands within 200 bytes
+/// of the first place it does (bytes, not characters: the files hold characters of more than one byte), as a
+/// whole number ("20 ms" is not found in "120 ms"). A changed number fails here until the sentence follows.
+fn beside(fails: &mut Vec<String>, f: File, name: &str, figure: &str) {
+    let text = flat(f);
+    let Some(at) = text.find(name) else {
+        fails.push(format!("{} does not name {name}", f.0));
+        return;
+    };
+    let b = text.as_bytes();
+    let (from, to) = (at.saturating_sub(200), (at + name.len() + 200).min(b.len()));
+    if !(from..to.saturating_sub(figure.len() - 1)).any(|i| b[i..].starts_with(figure.as_bytes()) && (i == 0 || !b[i - 1].is_ascii_digit())) {
+        fails.push(format!("{} names {name} without its figure, \"{figure}\", within 200 bytes of it", f.0));
+    }
+}
+
 /// The end of a test: every failed pin, or none.
 fn none_failed(fails: &[String], what: &str) {
     assert!(fails.is_empty(), "{what}: {} failed\n  {}\n", fails.len(), fails.join("\n  "));
@@ -119,6 +135,59 @@ fn the_docs_name_the_record_cap_with_its_size_and_not_as_a_jobs() {
         }
     }
     none_failed(&fails, "the record cap in the documents");
+}
+
+// Your own fonts after the font check's hardening (#97): where a check's result (its verdict) is kept, what
+// ties it to its file, the `.slow` mark, and the limits. The sentences that described these before that change
+// are gone from the files that held them (a merge settled by the older side would bring them back), and the
+// documents name what the code has: the companion a refusal leaves, the verdict's number, the glyph limit with
+// its figure beside it. The own folder's place and the floors of its free room are placeholders until a
+// Scribe's figures are in: while the documents give them, userfonts.rs must still hold them, so the day one
+// is changed the sentence is read again and follows.
+#[test]
+fn the_docs_follow_the_font_checks_verdicts_and_limits() {
+    let mut fails = Vec::new();
+    // where a verdict is kept: Grimoire's own folder where the build has one, else the cache (`VerdictDir`)
+    gone(&mut fails, USERFONTS, "grimoire/fonts/.cache/<key>.font (the verdict");
+    gone(&mut fails, USERFONTS, "and its verdict and preview written to the cache");
+    gone(&mut fails, FORMAT, "`fonts/.cache/` holds what the background check found");
+    stands_on(&mut fails, FORMAT, "in `/var/local/grimoire/<16 hex digits>/fonts/`", USERFONTS, "const STATE_BASE: &str = \"/var/local/grimoire\";");
+    stands_on(&mut fails, KINDLE, "`/var/local/grimoire/<16 hex digits>/fonts/<key>.font`", USERFONTS, "const STATE_BASE: &str = \"/var/local/grimoire\";");
+    // a verdict counts only with its companion in the cache: a pass with its preview, a refusal with `<key>.no`
+    present(&mut fails, FORMAT, "`<key>.no`");
+    // what ties a verdict to its file: the file's SHA-256, under the number the code writes in the first line
+    gone(&mut fails, FORMAT, "hash=<FNV-1a 64 of the whole file");
+    present(&mut fails, FORMAT, &format!("grimoire-font {} hash=<SHA-256 of the whole file", grimoire::fontcheck::VERDICT_NUMBER));
+    // the `.slow` mark goes when a verdict is written (bg_font_check)
+    gone(&mut fails, FORMAT, "With no verdict beside it the file is checked once more");
+    gone(&mut fails, FORMAT, "Otherwise the mark stays, beside the verdict");
+    gone(&mut fails, BACKLOG, "mark outlives its second try");
+    // the mark is one line under the verdict's number, with how the earlier checks ended and of which bytes
+    // (`SlowMark` in userfonts.rs): it is no longer an empty file, and FORMAT.md gives the line with the number
+    // the code writes
+    gone(&mut fails, FORMAT, "`<key>.slow`, empty");
+    present(&mut fails, FORMAT, &format!("grimoire-font {} slow <time | glyphs | time,glyphs> <SHA-256 of the whole font file", grimoire::fontcheck::VERDICT_NUMBER));
+    // the second try is told once, for a check that ran out of time and for one that found glyphs too slow,
+    // and the two kinds of result do not make a verdict together
+    gone(&mut fails, DESIGN, "(`<key>.slow`), and a second is \"Took too long to read.\"");
+    gone(&mut fails, DESIGN, "and a second such check is \"Took too long to read.\"");
+    gone(&mut fails, FORMAT, "when that check too runs out of time or finds such glyphs");
+    // the limits: the glyph limit with its figure, wherever a document gives it; the floors while they stand
+    let ms = format!("{} ms", grimoire::sandbox::s1::FONT_GLYPH_CPU_MS);
+    for f in [DESIGN, TESTING, BACKLOG] {
+        beside(&mut fails, f, "`s1::FONT_GLYPH_CPU_MS`", &ms);
+    }
+    stands_on(&mut fails, TESTING, "`STATE_FREE_FLOOR`, 4 MB", USERFONTS, "const STATE_FREE_FLOOR: u64 = 4 << 20;");
+    stands_on(&mut fails, TESTING, "`STATE_FILES_FLOOR`, 512 files", USERFONTS, "const STATE_FILES_FLOOR: u64 = 512;");
+    stands_on(&mut fails, TESTING, "at least 512 inodes free", USERFONTS, "const STATE_FILES_FLOOR: u64 = 512;");
+    // the other two placeholders the device checks name with their values: the own folder's place, and the
+    // size a draw is timed at (the largest the UI draws)
+    stands_on(&mut fails, TESTING, "`STATE_BASE` in `userfonts.rs`, `/var/local/grimoire`", USERFONTS, "const STATE_BASE: &str = \"/var/local/grimoire\";");
+    for (f, words) in [(TESTING, "`FONT_TIME_PX` in `fontcheck.rs`, 160 px"), (BACKLOG, "(`FONT_TIME_PX`, 160 px)")] {
+        stands_on(&mut fails, f, words, FONTCHECK, "pub const FONT_TIME_PX: f32 = FONT_PX_MAX;");
+        stands_on(&mut fails, f, words, FONTCHECK, "pub const FONT_PX_MAX: f32 = 160.0;");
+    }
+    none_failed(&fails, "your own fonts: verdicts and limits");
 }
 
 // ---- Cargo.lock against deny.toml and the skrifa pin ----

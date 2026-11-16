@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: Grimoire 2.1.0\n"
 "Report-Msgid-Bugs-To: https://github.com/ganten1998/grimoire-scribe/issues\n"
-"POT-Creation-Date: 2026-11-16 00:43-0600\n"
+"POT-Creation-Date: 2026-11-16 10:13-0600\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -1124,7 +1124,7 @@ msgstr ""
 
 #. TRANSLATORS: a toast in the file picker: the folder tapped could not be opened (gone since it was
 #. listed, or one Grimoire never opens). One line of about 1000 px at 44 px.
-#: rust/src/browser.rs rust/src/library.rs
+#: rust/src/browser.rs rust/src/editor.rs rust/src/library.rs
 msgid "Couldn't open folder."
 msgstr ""
 

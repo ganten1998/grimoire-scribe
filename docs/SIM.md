@@ -953,6 +953,19 @@ Font hooks (same builds): `GRIMOIRE_FONT_WATCHDOG_MS=N` (the font watchdog), `GR
 `GRIMOIRE_FONT_TEST_DRAW_CRASH=1` (the simulator's build only: the app ends at the first glyph a custom font
 draws, as a font that crashed its first screen would). `GRIMOIRE_IMPORT_STABLE=fast` takes a font file at the
 first look too, and `GRIMOIRE_WORK_FAIL_STEP` fails a font worker's step: no font is then checked.
+`GRIMOIRE_FONT_GLYPH_US=N` is the CPU time one glyph's draw may take in the check, in microseconds (1 to
+999999999; anything else, or unset, is 5 s, which no real font reaches), and
+`GRIMOIRE_FONT_TEST_SLOW=<slow|once|bold|from>:<glyph>:<us>` is the test charge: the draw of glyph `<glyph>`
+is counted `<us>` microseconds dearer (`slow`: every draw of it; `once`: its first timed draw; `bold`: its
+draws by the bold through the weight axis; `from`: every glyph from that index on), so a test decides what is
+slow and none compares a real clock with a real limit.
+`GRIMOIRE_STATE=<absolute path>` (any build but the Kindle's, whose folder is fixed) names a folder of
+Grimoire's own outside the data root: the font check's verdicts are then kept there, in a folder for each
+data root, and read only while every folder on the way is this user's and no one else can write it; unset
+or empty, they stay in `fonts/.cache`. A value that is no absolute path names no folder and is not the
+cache either: it is a folder that cannot be made, and no font is checked (the job's status 6).
+`GRIMOIRE_STATE_FREE_BYTES=N` (same builds) is the room free there, as the check reads it before it checks
+a font.
 Child caps hooks (the simulator's build): `GRIMOIRE_CAPS_PROBE=<file>` (each background child appends the caps it
 took, `oom=N as=N`, for a test to read) and `GRIMOIRE_CAPS_NO_STATM=1` (a child cannot read its own size: on Linux
 it is capped at 1 GiB plus its margin).
