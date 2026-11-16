@@ -5,7 +5,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: Grimoire 2.1.0-beta.1\n"
 "Report-Msgid-Bugs-To: https://github.com/ganten1998/grimoire-scribe/issues\n"
-"POT-Creation-Date: 2026-11-16 00:42-0600\n"
+"POT-Creation-Date: 2026-11-16 09:42-0600\n"
 "PO-Revision-Date: 2026-11-10 00:00+0000\n"
 "Last-Translator: nebuff\n"
 "Language-Team: Japanese\n"
@@ -583,7 +583,7 @@ msgstr ""
 #. TRANSLATORS: the file picker's name, the first word of its path line (small, in a band of 100 px).
 #: rust/src/actions.rs rust/src/browser.rs rust/src/library.rs
 msgid "Files"
-msgstr ""
+msgstr "ファイル"
 
 #. TRANSLATORS: (shortcuts and gestures lists, about 1100 px at 44 px in bold) in the Library: back to its top,
 #. out of any folder (and out of Files).
@@ -646,7 +646,7 @@ msgstr "KOReader が送信した本を開けませんでした (%s を参照)。
 #, c-format
 msgid "Added %d book page. Some links were left out."
 msgid_plural "Added %d book pages. Some links were left out."
-msgstr[0] ""
+msgstr[0] "本の%dページを追加しました。一部のリンクは省かれました。"
 
 #. TRANSLATORS: in a toast, once the pages of a book KOReader sent are in its notebook.
 #: rust/src/app.rs
@@ -659,7 +659,7 @@ msgstr[0] "本の%dページを追加しました。"
 #. the book's links (a planner's tabs) are not in it, as there were too many, or they could not be saved.
 #: rust/src/app.rs
 msgid "Some links were left out."
-msgstr ""
+msgstr "一部のリンクは省かれました。"
 
 #. TRANSLATORS: in a toast while Grimoire puts the pages of a book KOReader sent into its
 #. notebook (a few seconds for a big book): pages done, of how many. One line of about 1700 px.
@@ -757,6 +757,8 @@ msgstr "更新中。 Grimoire が自動的に再起動します。"
 msgid "Imported notebook (%d page). Some pages couldn't be read."
 msgid_plural "Imported notebook (%d pages). Some pages couldn't be read."
 msgstr[0] ""
+"%dページのノートブックをインポートしました。一部のページを読み取れませんでし"
+"た。"
 
 #. TRANSLATORS: a PDF became a new notebook, but its document links (a planner's tabs) were more than
 #. a notebook holds and some were left out; %d is its page count. In a toast: one or two lines.
@@ -765,6 +767,7 @@ msgstr[0] ""
 msgid "Imported notebook (%d page). Some links were left out."
 msgid_plural "Imported notebook (%d pages). Some links were left out."
 msgstr[0] ""
+"%dページのノートブックをインポートしました。一部のリンクは省かれました。"
 
 #. TRANSLATORS: a folder of page pictures (grimoire/import/<name>) or a PDF became a new notebook.
 #. TRANSLATORS: a folder of page pictures (grimoire/import/<name>) became a new notebook.
@@ -778,29 +781,29 @@ msgstr[0] "%dページのノートブックをインポートしました。"
 #. of before. A file of grimoire/import moves to import/done; a file picked elsewhere stays where it is.
 #: rust/src/app.rs
 msgid "PDF already imported."
-msgstr ""
+msgstr "PDFはインポート済みです。"
 
 #. TRANSLATORS: a toast: the PDF is protected by a password, which Grimoire cannot ask for.
 #: rust/src/app.rs
 msgid "PDF needs a password."
-msgstr ""
+msgstr "PDFにはパスワードが必要です。"
 
 #. TRANSLATORS: a toast: the PDF has more pages than a notebook holds; %d is that number (2000).
 #: rust/src/app.rs
 #, c-format
 msgid "PDF too long: notebooks hold %d pages."
-msgstr ""
+msgstr "PDFが長すぎます。ノートブックは%dページまでです。"
 
 #. TRANSLATORS: a toast: the PDF's file is bigger than Grimoire reads; %d is the size in MB (512).
 #: rust/src/app.rs
 #, c-format
 msgid "PDF too big: over %d MB."
-msgstr ""
+msgstr "PDFが大きすぎます（%d MB を超えています）。"
 
 #. TRANSLATORS: a toast: the PDF could not be imported because the Kindle's storage is full.
 #: rust/src/app.rs
 msgid "Couldn't import PDF. Is the storage full?"
-msgstr ""
+msgstr "PDFをインポートできませんでした。ストレージがいっぱいですか?"
 
 #. TRANSLATORS: a toast: the PDF could not become a notebook; %s is the log file that says why.
 #. The PDF stays where it was.
@@ -808,7 +811,7 @@ msgstr ""
 #: rust/src/app.rs rust/src/browser.rs rust/src/library.rs
 #, c-format
 msgid "Couldn't import PDF (see %s)."
-msgstr ""
+msgstr "PDFをインポートできませんでした (%s を参照)。"
 
 #. TRANSLATORS: the staying notice at the bottom of the Library while a PDF becomes a notebook
 #. (and a row of the Import place): the page it is on, of how many. One line of about 1700 px.
@@ -816,7 +819,7 @@ msgstr ""
 #: rust/src/app.rs rust/src/browser.rs
 #, c-format
 msgid "Importing: page %d of %d"
-msgstr ""
+msgstr "インポート中: %d/%d ページ"
 
 #. TRANSLATORS: a folder of page pictures could not become a notebook; %s is the log file
 #. that says why. The folder stays where it was.
@@ -1067,6 +1070,11 @@ msgid ""
 "open the Library. Its pages become the notebook's pages, in colour where the "
 "PDF has colour. A file still being copied waits until it is whole."
 msgstr ""
+"手帳などのPDFは、そのまま入れられます。ファイルをここに置くか、ここにあるフォ"
+"ルダーに入れてから、ライブラリを開いてください。フォルダーに入れたノートは、"
+"その名前のライブラリのフォルダーに整理されます。PDFのページがノートのページに"
+"なり、PDFに色があるところは色のままです。コピー中のファイルは、コピーが完了す"
+"るまで待機します。"
 
 #. TRANSLATORS: grimoire/import/README.txt, its last paragraph. "done" is the name of a folder: keep it as
 #. it is.
@@ -1075,12 +1083,15 @@ msgid ""
 "Grimoire imports each folder or PDF in the background and then moves it into "
 "the done folder. Copy them in over USB, or over SSH while Grimoire runs."
 msgstr ""
+"Grimoire は各フォルダーやPDFをバックグラウンドでインポートし、その後 done "
+"フォルダーに移動します。USB 経由で、または Grimoire の実行中に SSH 経由でコ"
+"ピーしてください。"
 
 #. TRANSLATORS: the title of the file picker opened by New notebook's From a file... (the Library's header,
 #. about 1400 px at 56 px).
 #: rust/src/browser.rs
 msgid "Import a PDF or pictures"
-msgstr ""
+msgstr "PDFまたは画像をインポート"
 
 #. TRANSLATORS: a toast over the rename keyboard in Files: the name typed holds a character a name on the
 #. Kindle's storage cannot (%s: the character, one of / \ : * ? " < > |). One line of about 1500 px at 44 px.
@@ -1112,32 +1123,33 @@ msgstr ""
 #. would be too long for Grimoire to hand to its import (one line).
 #: rust/src/browser.rs
 msgid "Path too long."
-msgstr ""
+msgstr "パスが長すぎます。"
 
 #. TRANSLATORS: a toast in Files: renaming the file or folder failed (grimoire.log says why). One line.
 #: rust/src/browser.rs
 #, fuzzy
 msgid "Couldn't rename file."
-msgstr "リンクを読み取れませんでした。"
+msgstr "フォルダーを開けませんでした。"
 
 #. TRANSLATORS: a toast in the file picker: the file tapped was changed or replaced since its
 #. folder was listed; the folder is read again. One line of about 1000 px at 44 px.
 #: rust/src/browser.rs
 msgid "File changed. Try again."
-msgstr ""
+msgstr "ファイルが変わりました。もう一度試してください。"
 
 #. TRANSLATORS: a toast in Files: an import is working on this file or folder (or the folder it is in), so it
 #. is not renamed, moved to the trash or put back now. One line of about 1000 px at 44 px.
 #: rust/src/browser.rs
+#, fuzzy
 msgid "Importing now."
-msgstr ""
+msgstr "インポート"
 
 #. TRANSLATORS: a toast over the rename keyboard in Files: another file or folder in this folder has the name
 #. typed (nothing is ever replaced). One line of about 1500 px at 44 px.
 #: rust/src/browser.rs
 #, fuzzy
 msgid "A file with that name is already here."
-msgstr "「%s」という名前のフォルダーはすでにあります。"
+msgstr "「%s」という名前のフォルダーがすでにあります。"
 
 #. TRANSLATORS: a toast in Files' Trash: the item could not go back, as every name it could take there (its
 #. own, then with " 2" up to " 99"), or its notebook's id, is taken. One line of about 1500 px at 44 px.
@@ -1151,7 +1163,7 @@ msgstr "ページ名を保存できませんでした。"
 #: rust/src/browser.rs
 #, fuzzy
 msgid "Couldn't restore. Folder gone."
-msgstr "それらのページを削除できませんでした"
+msgstr "フォルダーを開けませんでした。"
 
 #. TRANSLATORS: a toast in Files: moving the file or folder to the trash failed (grimoire.log says why). One line.
 #: rust/src/browser.rs
@@ -1170,52 +1182,52 @@ msgstr "やり直せませんでした。"
 #: rust/src/browser.rs
 #, c-format
 msgid "%d KB"
-msgstr ""
+msgstr "%d KB"
 
 #. TRANSLATORS: a file's size in megabytes with one decimal ("14.2 MB"), in the file picker's rows and cards.
 #: rust/src/browser.rs
 #, c-format
 msgid "%.1f MB"
-msgstr ""
+msgstr "%.1f MB"
 
 #. TRANSLATORS: a size in gigabytes with one decimal ("9.8 GB"), in the file picker's rows, cards and free space line.
 #: rust/src/browser.rs
 #, c-format
 msgid "%.1f GB"
-msgstr ""
+msgstr "%.1f GB"
 
 #. TRANSLATORS: the file picker's free space line: free of the whole storage ("Free: 9.8 GB of 14.5 GB"), at 44 px, right-aligned.
 #: rust/src/browser.rs
 #, c-format
 msgid "Free: %s of %s"
-msgstr ""
+msgstr "空き: %s / %s"
 
 #. TRANSLATORS: a toast in the file picker: the folder tapped could not be opened (gone since it was
 #. listed, or one Grimoire never opens). One line of about 1000 px at 44 px.
 #: rust/src/browser.rs rust/src/library.rs
 msgid "Couldn't open folder."
-msgstr ""
+msgstr "フォルダーを開けませんでした。"
 
 #. TRANSLATORS: the file picker's first row, the folder Grimoire watches (grimoire/import): PDFs and pictures
 #. dropped in it become notebooks. Also the first word of its path line (a row of 150 px at 44 px).
 #: rust/src/browser.rs
 msgid "Import"
-msgstr ""
+msgstr "インポート"
 
 #. TRANSLATORS: the file picker's row for the Kindle's documents folder (44 px in a row).
 #: rust/src/browser.rs
 msgid "Documents"
-msgstr ""
+msgstr "ドキュメント"
 
 #. TRANSLATORS: the file picker's row for the Kindle's Downloads folder (44 px in a row).
 #: rust/src/browser.rs
 msgid "Downloads"
-msgstr ""
+msgstr "ダウンロード"
 
 #. TRANSLATORS: the file picker's row for the whole Kindle storage, less Grimoire's own notebooks (44 px in a row).
 #: rust/src/browser.rs
 msgid "All storage"
-msgstr ""
+msgstr "すべてのストレージ"
 
 #. TRANSLATORS: the title of the sheet of templates (pictures copied into grimoire/templates, to
 #. write on as paper), which More papers... opens (1560 px at 64 px).
@@ -1249,7 +1261,7 @@ msgstr ""
 #. TRANSLATORS: the Import place's last row: it looks in grimoire/import for new files now (44 px in a row).
 #: rust/src/browser.rs
 msgid "Look again"
-msgstr ""
+msgstr "もう一度探す"
 
 #. TRANSLATORS: the last row of the file picker's first screen (and of Files'): puts a Files card at the end
 #. of the Library, which opens these places to browse (44 px in a row of about 1500 px).
@@ -1269,17 +1281,17 @@ msgstr ""
 #, c-format
 msgid "%d picture"
 msgid_plural "%d pictures"
-msgstr[0] ""
+msgstr[0] "%d枚の画像"
 
 #. TRANSLATORS: a row of the Import place: this file is not imported yet (small text under its name).
 #: rust/src/browser.rs
 msgid "Waiting"
-msgstr ""
+msgstr "待機中"
 
 #. TRANSLATORS: a row of the Import place: this file became a notebook.
 #: rust/src/browser.rs
 msgid "Imported"
-msgstr ""
+msgstr "インポート済み"
 
 #. TRANSLATORS: the sheets' buttons: 348 px at 44 px inside Gothic's carved line (342 for Create,
 #. the main one), or at 34 px, or two lines of that.
@@ -1300,12 +1312,12 @@ msgstr "ページに移動"
 #. (a row of about 800 px at 44 px).
 #: rust/src/browser.rs
 msgid "Open its notebook"
-msgstr ""
+msgstr "ノートを開く"
 
 #. TRANSLATORS: a PDF's card in the file picker: this makes a notebook of its pages (a row of about 800 px at 44 px).
 #: rust/src/browser.rs
 msgid "Import as notebook"
-msgstr ""
+msgstr "ノートとしてインポート"
 
 #. TRANSLATORS: a trash entry's card in Files: puts the file, folder or notebook back where it was (a row
 #. of about 800 px at 44 px).
@@ -1324,7 +1336,7 @@ msgstr "開く"
 #, c-format
 msgid "Import %d picture as notebook"
 msgid_plural "Import %d pictures as notebook"
-msgstr[0] ""
+msgstr[0] "%d枚の画像をノートとしてインポート"
 
 #. TRANSLATORS: a held page's sheet in the Pages view, a row (about 950 px at 34 px): give the page
 #. a name (its naming keyboard, titled Page name).
@@ -1376,18 +1388,18 @@ msgstr "ノート"
 #. TRANSLATORS: the file picker's top line when the Kindle has under 200 MB free (one line, about 800 px at 44 px).
 #: rust/src/browser.rs
 msgid "Kindle storage nearly full."
-msgstr ""
+msgstr "Kindleのストレージがほぼいっぱいです。"
 
 #. TRANSLATORS: a folder in the file picker held more than it lists; %d is how many it shows (5000), at 34 px, right of the path.
 #: rust/src/browser.rs
 #, c-format
 msgid "Showing the first %d."
-msgstr ""
+msgstr "最初の%d件を表示"
 
 #. TRANSLATORS: a folder in the file picker with nothing in it a PDF import can use (one line, 44 px, centred).
 #: rust/src/browser.rs
 msgid "Nothing here to use."
-msgstr ""
+msgstr "ここに使えるものはありません。"
 
 #. TRANSLATORS: between the Library's page buttons (1320 px at 44 px).
 #. TRANSLATORS: (also) between the Templates sheet's page buttons, in bold: 440 px at 44 px.
@@ -1432,7 +1444,7 @@ msgstr ""
 #. right of the row under its name (about 260 px at 34 px).
 #: rust/src/browser.rs
 msgid "has notes"
-msgstr ""
+msgstr "ノートあり"
 
 #. TRANSLATORS: the keyboard's label for the name being typed: a folder's, or a notebook's.
 #: rust/src/browser.rs rust/src/library.rs
@@ -1448,7 +1460,7 @@ msgstr "名前"
 #. TRANSLATORS: the staying notice while the file picker reads a big folder (one line, about 600 px at 44 px).
 #: rust/src/browser.rs
 msgid "Loading..."
-msgstr ""
+msgstr "読み込み中..."
 
 #: rust/src/brush.rs
 msgctxt "tool"
@@ -1673,7 +1685,7 @@ msgstr "スリープ画面: Kindle PIN (ネイティブロック解除)"
 
 #: rust/src/dispmenu.rs
 msgid "Display time as 12 hour"
-msgstr "時刻を12時間制で表示"
+msgstr "時刻を12時間表示にする"
 
 #: rust/src/dispmenu.rs
 msgid "This page is now the sleep screen"
@@ -1894,7 +1906,7 @@ msgstr "リンクを保存できませんでした。ページはクリアされ
 #. brings back everything it took, in one step.
 #: rust/src/editor.rs
 msgid "Page cleared. Undo brings it back."
-msgstr ""
+msgstr "ページを消去しました。元に戻すと復元されます。"
 
 #. TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): Delete in the Pages view
 #. could not delete the ticked pages (the blank page a notebook keeps could not be added).
@@ -2004,7 +2016,7 @@ msgstr[0] ""
 #, c-format
 msgid "Copied %d page to %s, without its document links."
 msgid_plural "Copied %d pages to %s, without their document links."
-msgstr[0] ""
+msgstr[0] "%dページを%sにコピーしました（文書のリンクは除く）。"
 
 #. TRANSLATORS: the same strip for the long-press card's Redraw the area (about 1400 px at 44 px in
 #. bold): the next pen stroke draws the link's new area, and leaves no ink.
@@ -2144,7 +2156,7 @@ msgstr "リンクを読み取れませんでした。"
 #. card of that pen's widths.
 #: rust/src/editor.rs
 msgid "Hold a pen on the toolbar for its sizes."
-msgstr "ツールバーのペンを長押しすると、その太さを選べます。"
+msgstr "ツールバーのペンを長押しすると、太さの一覧が開きます。"
 
 #. TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): Back to the page
 #. before was asked with no page to go back to.
@@ -2190,7 +2202,7 @@ msgstr "そのテンプレートは使用できませんでした (%s を参照)
 #. picking it again works once the tile shows its picture.
 #: rust/src/editor.rs
 msgid "Not ready yet. Try again in a moment."
-msgstr ""
+msgstr "まだ準備ができていません。しばらくしてからもう一度試してください。"
 
 #. TRANSLATORS: in a toast (about 1700 px at 44 px in bold, or two lines): a photo picked on the
 #. Photos sheet could not become the page's paper; %s is the log file that says why.
@@ -2870,32 +2882,32 @@ msgstr "削除"
 #: rust/src/keyboard.rs
 msgctxt "key"
 msgid "Select all"
-msgstr ""
+msgstr "すべて選択"
 
 #: rust/src/keyboard.rs
 msgctxt "key"
 msgid "Cut"
-msgstr ""
+msgstr "切り取り"
 
 #: rust/src/keyboard.rs
 msgctxt "key"
 msgid "Copy"
-msgstr ""
+msgstr "コピー"
 
 #: rust/src/keyboard.rs
 msgctxt "key"
 msgid "Paste"
-msgstr ""
+msgstr "貼り付け"
 
 #: rust/src/keyboard.rs
 msgctxt "key"
 msgid "Start"
-msgstr ""
+msgstr "先頭"
 
 #: rust/src/keyboard.rs
 msgctxt "key"
 msgid "End"
-msgstr ""
+msgstr "末尾"
 
 #: rust/src/keyboard.rs
 msgctxt "key"
@@ -2963,7 +2975,7 @@ msgstr "作成"
 #. to make a notebook of a PDF or a folder of pictures anywhere on the Kindle.
 #: rust/src/library.rs
 msgid "From a file..."
-msgstr ""
+msgstr "ファイルから..."
 
 #. TRANSLATORS: a notebook's and a folder's menu (rows of 1470 px at 44 px in bold): its pages are not shown
 #. in the Graph of all notebooks (the Graph: the Index's map of linked pages), or are shown there again.
@@ -3450,12 +3462,12 @@ msgstr "保存されました"
 #: rust/src/library.rs
 #, c-format
 msgid "Connecting to %s…"
-msgstr ""
+msgstr "%sに接続しています…"
 
 #: rust/src/library.rs
 #, c-format
 msgid "Could not connect to %s."
-msgstr ""
+msgstr "%sに接続できませんでした。"
 
 #: rust/src/library.rs rust/src/share.rs
 msgid "Checking Wi-Fi…"
@@ -3491,7 +3503,7 @@ msgstr "Wi-Fiはオフです"
 #: rust/src/library.rs
 #, c-format
 msgid "Connected to %s"
-msgstr ""
+msgstr "%sに接続しました"
 
 #: rust/src/library.rs rust/src/share.rs
 msgid "Connected to Wi-Fi"
@@ -3576,12 +3588,12 @@ msgstr ""
 #. TRANSLATORS: (Settings > Wi-Fi) a line in place of the saved networks when they could not be read.
 #: rust/src/library.rs
 msgid "Saved networks could not be read."
-msgstr ""
+msgstr "保存されたネットワークを読み取れませんでした。"
 
 #. TRANSLATORS: (Settings > Wi-Fi) a line in place of the saved networks while the radio is off.
 #: rust/src/library.rs
 msgid "Turn on Wi-Fi to see the saved networks."
-msgstr ""
+msgstr "保存されたネットワークを見るには Wi-Fi をオンにしてください。"
 
 #. TRANSLATORS: (Settings > Wi-Fi) the Kindle has no saved Wi-Fi network; Grimoire adds none itself.
 #: rust/src/library.rs
@@ -3730,7 +3742,7 @@ msgstr "もう一度試してください"
 #. every gesture for the action (the built-in ones too), so the row says "no gesture".
 #: rust/src/library.rs
 msgid "Disable"
-msgstr ""
+msgstr "無効にする"
 
 #: rust/src/library.rs
 #, c-format
@@ -3765,66 +3777,66 @@ msgstr "PDF を %s (USB) にミラーリング"
 #. before Grimoire uses it. Each of these row notes: about 900 px at 34 px, one line.
 #: rust/src/library.rs
 msgid "Checking..."
-msgstr ""
+msgstr "確認中..."
 
 #. TRANSLATORS: (a row of Your fonts) the font can be used, but lacks some letters of the
 #. language Grimoire is in: those are drawn in Terminess (the built-in font's name, kept).
 #: rust/src/library.rs
 msgid "Some letters come from Terminess."
-msgstr ""
+msgstr "一部の文字は Terminess で表示されます。"
 
 #. TRANSLATORS: (a row of Your fonts, greyed) the file is no font Grimoire can read: damaged, empty,
 #. or one whose letters draw nothing.
 #: rust/src/library.rs
 msgid "Unreadable font."
-msgstr ""
+msgstr "読み取れないフォントです。"
 
 #. TRANSLATORS: (a row of Your fonts, greyed) the font file is bigger than Grimoire takes; %d is 24.
 #: rust/src/library.rs
 #, c-format
 msgid "Too big (over %d MB)."
-msgstr ""
+msgstr "大きすぎます（%d MB を超えています）。"
 
 #. TRANSLATORS: (a row of Your fonts, greyed) a symbol font, or one without the letters A to Z.
 #: rust/src/library.rs
 msgid "No Latin letters."
-msgstr ""
+msgstr "ラテン文字がありません。"
 
 #. TRANSLATORS: (a row of Your fonts, greyed) a web font (.woff, .woff2): Grimoire takes .ttf and .otf
 #. files. The two endings are file kinds: keep them as they are.
 #: rust/src/library.rs
 msgid "Use .ttf or .otf."
-msgstr ""
+msgstr ".ttf または .otf を使用してください。"
 
 #. TRANSLATORS: (a row of Your fonts, greyed) checking the font took longer than Grimoire allows.
 #: rust/src/library.rs
 msgid "Took too long to read."
-msgstr ""
+msgstr "読み取りに時間がかかりすぎました。"
 
 #. TRANSLATORS: (a row of Your fonts, greyed) the font Grimoire was set to is no longer in the folder.
 #: rust/src/library.rs
 msgid "File missing."
-msgstr ""
+msgstr "ファイルがありません。"
 
 #. TRANSLATORS: the Font sheet's sample sentence, drawn in each font at 44 px, at most two lines of
 #. about 1600 px: a sentence that uses many of your language's letters (English: a pangram; Spanish
 #. could be "La cigüeña tocaba el saxofón detrás del palenque de paja.").
 #: rust/src/library.rs
 msgid "The quick brown fox jumps over the lazy dog."
-msgstr "すばしっこい茶色のきつねが、のろまな犬を飛び越えました。"
+msgstr "今日はいい天気ですね。コーヒーでも飲みながら、本を読みましょう。"
 
 #. TRANSLATORS: (Settings > Font) the heading over the fonts that come with Grimoire. 34 px bold, about
 #. 800 px.
 #: rust/src/library.rs
 msgid "Built in"
-msgstr ""
+msgstr "内蔵フォント"
 
 #. TRANSLATORS: (Settings > Font) the heading over the fonts the owner copied onto the Kindle; %s is
 #. their folder there, grimoire/fonts. 34 px bold, about 800 px.
 #: rust/src/library.rs
 #, c-format
 msgid "Your fonts (%s)"
-msgstr ""
+msgstr "自分のフォント (%s)"
 
 #. TRANSLATORS: (Settings > Font, under Your fonts while the folder is empty) how to add a font: %s is
 #. the folder on the Kindle's storage, grimoire/fonts. ".ttf" and ".otf" are file kinds: keep them.
@@ -3832,13 +3844,13 @@ msgstr ""
 #: rust/src/library.rs
 #, c-format
 msgid "Copy .ttf or .otf files into %s over USB."
-msgstr ""
+msgstr "USB 経由で .ttf または .otf ファイルを %s にコピーしてください。"
 
 #. TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): Done on a font of the
 #. owner's own that could not be loaded just now (too little memory free, or its file changed).
 #: rust/src/library.rs
 msgid "Couldn't use that font."
-msgstr ""
+msgstr "そのフォントを使用できませんでした。"
 
 #. TRANSLATORS: the notice that stays above the Font sheet's buttons while the fonts copied into
 #. grimoire/fonts are checked in the background, with how many are left. One line of about 1700 px at 44 px
@@ -3847,7 +3859,7 @@ msgstr ""
 #, c-format
 msgid "Checking %d font..."
 msgid_plural "Checking %d fonts..."
-msgstr[0] ""
+msgstr[0] "%d個のフォントを確認しています..."
 
 #: rust/src/library.rs
 msgid "Searching... Put the controller in pairing mode."
@@ -4057,14 +4069,14 @@ msgstr "移動先"
 #: rust/src/library.rs
 #, c-format
 msgid "A folder named \"%s\" is already there."
-msgstr "「%s」という名前のフォルダーはすでにあります。"
+msgstr "「%s」という名前のフォルダーがすでにあります。"
 
 #. TRANSLATORS: the second answer (1470 px at 44 px in bold; %s: the name the folder would get,
 #. the other one's with a number, "School 2"): the two folders stay apart.
 #: rust/src/library.rs
 #, c-format
 msgid "Keep both (as \"%s\")"
-msgstr "両方を残す（「%s」として）"
+msgstr "両方残す（「%s」として）"
 
 #. TRANSLATORS: the first answer (1470 px at 44 px in bold): what is in the folder that was
 #. moved or renamed goes into the folder that is there, and that folder is gone.
@@ -4211,7 +4223,7 @@ msgstr "フォルダーを移動できませんでした。移動先を確認し
 #. could not be done; nothing was changed.
 #: rust/src/library.rs
 msgid "Couldn't merge the folders. Nothing was changed."
-msgstr "フォルダーを統合できませんでした。変更はありません。"
+msgstr "フォルダーを統合できませんでした。何も変更されていません。"
 
 #. TRANSLATORS: a new notebook's name until it is renamed, with the day ("Notebook Oct 10").
 #: rust/src/library.rs
@@ -4247,6 +4259,7 @@ msgstr "変更を保存できませんでした。"
 #: rust/src/library.rs
 msgid "Another import is still going. This one starts after it."
 msgstr ""
+"別のインポートがまだ進行中です。それが終わると、このインポートが始まります。"
 
 #. TRANSLATORS: the notebook's Index (the list of named pages) as a place a link goes: a Links bar row, a
 #. Link to... chip (about 700 px at 44 px in bold upright, 600 sideways) and the long-press card's title.
@@ -4273,7 +4286,7 @@ msgstr "×%d"
 #: rust/src/linkbar.rs
 #, c-format
 msgid "From the PDF (%d)"
-msgstr ""
+msgstr "PDFから (%d)"
 
 #. TRANSLATORS: the caption over a Links bar chip for a page whose links come TO the open page (in this
 #. notebook or another), in small type over that page's name (about 600 px at 34 px).
@@ -5349,7 +5362,7 @@ msgstr[0] "Grimoire はそこで %d ファイルを使用できません (%s を
 #. use then) for the owner to read on a computer: its title, then its two paragraphs. No room limit.
 #: rust/src/userfonts.rs
 msgid "Fonts for Grimoire"
-msgstr ""
+msgstr "Grimoire のフォント"
 
 #. TRANSLATORS: grimoire/fonts/README.txt's first paragraph. "Settings", "Font", "Your fonts" and
 #. "Classic" name Grimoire's own sheet, chip, heading and style: as they are translated there. ".ttf"
@@ -5362,6 +5375,11 @@ msgid ""
 "your pages, their PDFs and the pages you share never change with it. A "
 "letter your font lacks comes from Terminess."
 msgstr ""
+"Grimoire を自分のフォントで読みたいときは、ここにフォントファイル（.ttf また"
+"は .otf）をコピーしてください。設定でクラシックスタイルの「フォント」をタップ"
+"し、「自分のフォント」から選びます。フォントは Grimoire 自身の文字（メ"
+"ニュー、名前、キーボード）を描きます。ページ、その PDF、共有するページは変わ"
+"りません。フォントにない文字は Terminess で表示されます。"
 
 #. TRANSLATORS: grimoire/fonts/README.txt's second paragraph. ".cache" is a folder's name: keep it.
 #: rust/src/userfonts.rs
@@ -5372,6 +5390,11 @@ msgid ""
 "If a font ever goes wrong, delete its file here and Grimoire is back in "
 "Terminess."
 msgstr ""
+"Grimoire を閉じている間に USB 経由でコピーしてください。Grimoire は使用する前"
+"に各フォントをバックグラウンドで確認し、その結果を .cache フォルダーに保存し"
+"ます。フォントはこの Kindle に残ります。使用する権利のあるフォントを使ってく"
+"ださい。フォントに問題が起きたら、ここでそのファイルを削除すれば、Grimoire "
+"は Terminess に戻ります。"
 
 #. TRANSLATORS: months, as short as the language writes them on a date: "Oct 10, 14:32" on the
 #. Library's cards, which are narrow when the Kindle is sideways.
