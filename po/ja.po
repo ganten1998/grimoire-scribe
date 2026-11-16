@@ -5,7 +5,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: Grimoire 2.1.0-beta.1\n"
 "Report-Msgid-Bugs-To: https://github.com/ganten1998/grimoire-scribe/issues\n"
-"POT-Creation-Date: 2026-11-10 21:50-0500\n"
+"POT-Creation-Date: 2026-11-15 17:55-0600\n"
 "PO-Revision-Date: 2026-11-10 00:00+0000\n"
 "Last-Translator: nebuff\n"
 "Language-Team: Japanese\n"
@@ -144,7 +144,7 @@ msgstr "画面"
 msgid "System..."
 msgstr "システム..."
 
-#: rust/src/actions.rs
+#: rust/src/actions.rs rust/src/settingsmenu.rs
 msgid "System"
 msgstr "システム"
 
@@ -418,7 +418,7 @@ msgstr "Bluetoothコントローラー"
 msgid "Language"
 msgstr "言語"
 
-#. TRANSLATORS: the Display sheet's sliders, each left of its value ("12", "5 min", "never"):
+#. TRANSLATORS: the sheets' sliders, each left of its value ("12", "5 min", "never"):
 #. about 440 px at 44 px beside a time in Gothic (460 in Classic), 520 beside a number.
 #: rust/src/actions.rs rust/src/dispmenu.rs
 msgid "Sleep after"
@@ -827,7 +827,7 @@ msgstr "%dのライト%d"
 msgid "Rotation locked."
 msgstr "回転がロックされています。"
 
-#: rust/src/app.rs
+#: rust/src/app.rs rust/src/i18n.rs
 msgid "Rotation follows Kindle."
 msgstr "回転はKindleに従います。"
 
@@ -867,8 +867,8 @@ msgid "PDF copies off."
 msgstr "PDF はコピーオフになります。"
 
 #. TRANSLATORS: Display sheet sleep screen choices, toast, 1700 px at 44 px, two lines.
-#. TRANSLATORS: the Display sheet's sleep screen row, which a tap moves to the next choice: what
-#. the Kindle shows while it sleeps. About 1280 px at 44 px, upright and sideways.
+#. TRANSLATORS: the Sleep settings page's sleep screen row, which a tap moves to the next choice:
+#. what the Kindle shows while it sleeps. About 1280 px at 44 px, upright and sideways.
 #: rust/src/app.rs rust/src/dispmenu.rs
 msgid "Sleep screen: the page I'm on (tap to change)"
 msgstr "スリープ画面: 現在閲覧しているページ (タップして変更)"
@@ -927,11 +927,13 @@ msgstr "次の睡眠: %s"
 msgid "Automatic"
 msgstr "自動"
 
-#: rust/src/app.rs
+#. TRANSLATORS: Settings > Updates, the branch the switch is on: Preview gets betas and releases,
+#. Stable only releases.
+#: rust/src/app.rs rust/src/library.rs
 msgid "Preview"
 msgstr "プレビュー"
 
-#: rust/src/app.rs
+#: rust/src/app.rs rust/src/library.rs
 msgid "Stable"
 msgstr "安定版"
 
@@ -1325,8 +1327,8 @@ msgstr "ペン完成。"
 msgid "Calibration saved"
 msgstr "キャリブレーションが保存されました"
 
-#. TRANSLATORS: the Display sheet's cell beside Done: how large the clock and battery on a notebook page are,
-#. which a tap moves to the next size. Two lines of about 365 px at 34 px.
+#. TRANSLATORS: the Clock settings page's row for how large the clock and battery on a notebook page
+#. are, which a tap moves to the next size. Two lines of about 365 px at 34 px.
 #: rust/src/dispmenu.rs
 msgid "Clock size: small"
 msgstr "時計のサイズ: 小"
@@ -1339,8 +1341,9 @@ msgstr "時計のサイズ: 中"
 msgid "Clock size: large"
 msgstr "時計サイズ: 大"
 
-#. TRANSLATORS: the Display sheet's cell beside Done and the clock's size: which corner of a notebook page the
-#. clock and battery sit in, which a tap moves to the next (clockwise). Two lines of about 365 px at 34 px.
+#. TRANSLATORS: the Clock settings page's row under the clock's size: which corner of a notebook page
+#. the clock and battery sit in, which a tap moves to the next (clockwise). Two lines of about 365 px
+#. at 34 px.
 #: rust/src/dispmenu.rs
 msgid "Clock corner: top left"
 msgstr "時計の角：左上"
@@ -1380,15 +1383,23 @@ msgctxt "sleep after"
 msgid "never"
 msgstr "なし"
 
-#. TRANSLATORS: the heading of the Display page's rows about the Kindle's sleep.
-#: rust/src/dispmenu.rs
-msgid "Sleep"
-msgstr "スリープ"
-
-#. TRANSLATORS: makes the open page the sleep screen (528 px at 44 px, or 34 px).
 #: rust/src/dispmenu.rs
 msgid "Pin this page"
 msgstr "このページを固定する"
+
+#. TRANSLATORS: the row that opens the sleep settings' page: the sleep screen and the
+#. timer.
+#: rust/src/dispmenu.rs rust/src/settingsmenu.rs
+#, fuzzy
+msgid "Sleep settings"
+msgstr "設定を表示する"
+
+#. TRANSLATORS: the row that opens the clock settings' page: the clock and battery on a
+#. notebook page.
+#: rust/src/dispmenu.rs rust/src/settingsmenu.rs
+#, fuzzy
+msgid "Clock settings"
+msgstr "設定を表示する"
 
 #. TRANSLATORS: in the Display page where the sliders would be (1420 px at 44 px).
 #: rust/src/dispmenu.rs
@@ -1400,20 +1411,16 @@ msgid "This Kindle has no warmth control."
 msgstr "このKindleには暖かさコントロールがありません。"
 
 #: rust/src/dispmenu.rs
-msgid "Invert colors in Grimoire (white on black)"
-msgstr "Grimoire で色を反転 (黒地に白)"
-
-#: rust/src/dispmenu.rs
 msgid "Sideways, show the whole page"
 msgstr "横向きにページ全体を表示"
 
 #: rust/src/dispmenu.rs
-msgid "Display time as 12 hour"
-msgstr "時刻を12時間制で表示"
-
-#: rust/src/dispmenu.rs
 msgid "Sleep screen: Kindle PIN (native unlock)"
 msgstr "スリープ画面: Kindle PIN (ネイティブロック解除)"
+
+#: rust/src/dispmenu.rs
+msgid "Display time as 12 hour"
+msgstr "時刻を12時間制で表示"
 
 #: rust/src/dispmenu.rs
 msgid "This page is now the sleep screen"
@@ -1489,7 +1496,6 @@ msgstr "固定"
 #. TRANSLATORS: the same button while the pens are being chosen, beside a check mark: it ends
 #. that (116 px at 34 px, as Pin).
 #: rust/src/editor.rs rust/src/i18n.rs rust/src/keyboard.rs rust/src/library.rs
-#: rust/src/share.rs
 msgid "Done"
 msgstr "完了"
 
@@ -1888,7 +1894,7 @@ msgstr "戻るものは何もありません。"
 
 #. TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): a controller's button
 #. changed the eraser to the one named, as Pen feel names it: Whole strokes or Precise.
-#: rust/src/editor.rs
+#: rust/src/editor.rs rust/src/library.rs
 #, c-format
 msgid "Eraser: %s"
 msgstr "消しゴム：%s"
@@ -2171,7 +2177,7 @@ msgid "Waiting for an export slot..."
 msgstr "エクスポートスロットを待っています..."
 
 #. TRANSLATORS: the share index, the page a browser opens at the Share screen's address.
-#: rust/src/httpd.rs
+#: rust/src/httpd.rs rust/src/i18n.rs
 #, c-format
 msgid "%d notebook on your Kindle"
 msgid_plural "%d notebooks on your Kindle"
@@ -2221,9 +2227,8 @@ msgstr "スタジオにはJavaScriptが必要です。"
 
 #. TRANSLATORS: Live view's name: the Kindle's screen watched in a computer's browser. The
 #. browser page's title, and the pairing card's on the Kindle.
-#. TRANSLATORS: the Share screen's title.
 #. TRANSLATORS: the Share screen's button that turns Live view on (or shows its card while it
-#. is on): 388 px at 44 px, or 34 px under its icon.
+#. is on).
 #: rust/src/httpd.rs rust/src/share.rs
 msgid "Live view"
 msgstr "ライブビュー"
@@ -2457,7 +2462,7 @@ msgstr "設定を表示する"
 msgid "Picture"
 msgstr "画像"
 
-#: rust/src/httpd.rs
+#: rust/src/httpd.rs rust/src/settingsmenu.rs
 msgid "Pen"
 msgstr "ペン"
 
@@ -3132,6 +3137,69 @@ msgstr "忘れられた。"
 msgid "Couldn't forget controller"
 msgstr "あのコントローラーが忘れられなかった"
 
+#: rust/src/library.rs rust/src/settingsmenu.rs
+msgid "Updates"
+msgstr "アップデート"
+
+#: rust/src/library.rs
+msgid "Checking for updates..."
+msgstr "アップデートをチェックしています..."
+
+#: rust/src/library.rs
+msgid "Updates come through KPM, which is not here."
+msgstr "アップデートは KPM を通じて行われますが、ここにはありません。"
+
+#. TRANSLATORS: Settings > Updates' button when the check found a newer Grimoire (%s): a tap
+#. closes Grimoire, KPM installs it, and Grimoire starts again.
+#: rust/src/library.rs
+#, c-format
+msgid "Update to %s"
+msgstr "%sにアップデート"
+
+#: rust/src/library.rs
+#, c-format
+msgid "Grimoire %s is the newest."
+msgstr "Grimoire %sが最新です。"
+
+#: rust/src/library.rs
+msgid "Could not check. Is Wi-Fi on?"
+msgstr "確認できませんでした。 Wi-Fiはオンになってますか？"
+
+#: rust/src/library.rs
+msgid "Could not check for updates."
+msgstr "アップデートを確認できませんでした。"
+
+#: rust/src/library.rs
+msgid "Check for updates"
+msgstr "アップデートをチェックする"
+
+#. TRANSLATORS: Settings > Updates, the row whose switch picks the branch updates come from.
+#: rust/src/library.rs
+#, fuzzy
+msgid "Update branch"
+msgstr "チャンネルを更新する"
+
+#: rust/src/library.rs
+msgid "Enterprise"
+msgstr ""
+
+#: rust/src/library.rs
+msgid "Enterprise 192-bit"
+msgstr ""
+
+#: rust/src/library.rs
+msgid "Unknown"
+msgstr ""
+
+#: rust/src/library.rs
+#, fuzzy
+msgid "Connected"
+msgstr "%sが接続されました"
+
+#: rust/src/library.rs
+msgid "Saved"
+msgstr "保存されました"
+
 #. TRANSLATORS: (Settings > Wi-Fi) its status line, 1470 px at 44 px in bold or two lines at 34 px; %s
 #. is a Wi-Fi network's name as the Kindle saved it (shortened if it is long). Connecting: a switch
 #. to that network is under way; Could not connect: it did not connect in 45 seconds, or the Kindle
@@ -3150,9 +3218,28 @@ msgstr ""
 msgid "Checking Wi-Fi…"
 msgstr "Wi-Fiをチェック中…"
 
+#. TRANSLATORS: (Settings > Wi-Fi) the toast when a network profile could not be created.
+#: rust/src/library.rs
+#, fuzzy
+msgid "Could not add the network."
+msgstr "サーバーを起動できませんでした"
+
+#. TRANSLATORS: (Settings > Wi-Fi) the status when a saved network's profile could not be deleted.
+#. TRANSLATORS: (Settings > Wi-Fi) the toast when a saved network could not be forgotten.
+#: rust/src/library.rs
+#, fuzzy
+msgid "Could not forget the network."
+msgstr "サーバーを起動できませんでした"
+
 #: rust/src/library.rs rust/src/share.rs
 msgid "Could not read or change Wi-Fi."
 msgstr "Wi-Fi の読み取りまたは変更ができませんでした。"
+
+#. TRANSLATORS: (Settings > Wi-Fi) the toast when the network cannot be disconnected now.
+#: rust/src/library.rs
+#, fuzzy
+msgid "Could not disconnect."
+msgstr "コントローラーが切断されました"
 
 #: rust/src/library.rs rust/src/share.rs
 msgid "Wi-Fi is off"
@@ -3179,7 +3266,7 @@ msgstr "Wi-Fi はオンです。接続が不明"
 msgid "Wi-Fi unavailable"
 msgstr "Wi-Fiは利用できません"
 
-#. TRANSLATORS: starts the share server again (388 px at 44 px, or 34 px).
+#. TRANSLATORS: starts the share server again.
 #: rust/src/library.rs rust/src/share.rs
 msgid "Retry"
 msgstr "再試行"
@@ -3192,34 +3279,144 @@ msgstr "Wi-Fiをオフにする"
 msgid "Turn on Wi-Fi"
 msgstr "Wi-Fiをオンにする"
 
-#. TRANSLATORS: (Settings > Wi-Fi) a line in place of the saved networks: they could not be read
-#. (with the radio off, the first: they may be read only while it is on). 1470 px at 44 px in
-#. bold, or two lines at 34 px.
+#. TRANSLATORS: the title of Settings > Wi-Fi.
+#. TRANSLATORS: (Settings) the row that opens the Wi-Fi submenu: the radio and the Kindle's
+#. saved networks.
+#: rust/src/library.rs rust/src/settingsmenu.rs rust/src/share.rs
+msgid "Wi-Fi"
+msgstr "Wi-Fi"
+
+#. TRANSLATORS: (Settings > Wi-Fi) the button above the nearby networks that scans again.
+#: rust/src/library.rs
+msgid "Rescan"
+msgstr ""
+
+#. TRANSLATORS: (Settings > Wi-Fi) the button above the networks that adds a hidden network by name.
+#: rust/src/library.rs
+msgid "Other..."
+msgstr ""
+
+#: rust/src/library.rs
+#, fuzzy
+msgid "Saved networks"
+msgstr "今すぐ保存"
+
+#. TRANSLATORS: (Settings > Wi-Fi) the nearby list while the radio is off.
+#: rust/src/library.rs
+#, fuzzy
+msgid "Turn on Wi-Fi to see nearby networks."
+msgstr "まず Kindle の Wi-Fi をオンにします"
+
+#. TRANSLATORS: (Settings > Wi-Fi) the nearby list while its scan runs.
+#: rust/src/library.rs
+msgid "Scanning for networks…"
+msgstr ""
+
+#. TRANSLATORS: (Settings > Wi-Fi) the nearby list when the last scan could not run or its answer
+#. was not one this reader knows.
+#. TRANSLATORS: (Settings > Wi-Fi) the toast when a scan cannot be asked for now.
+#: rust/src/library.rs
+#, fuzzy
+msgid "Could not scan for networks."
+msgstr "アップデートを確認できませんでした。"
+
+#. TRANSLATORS: (Settings > Wi-Fi) the nearby list when no network is near.
+#: rust/src/library.rs
+msgid "No networks found."
+msgstr ""
+
+#. TRANSLATORS: (Settings > Wi-Fi) the nearby list before its first scan has an answer.
+#: rust/src/library.rs
+msgid "Tap Rescan to look for networks."
+msgstr ""
+
+#. TRANSLATORS: (Settings > Wi-Fi) a line in place of the saved networks when they could not be read.
 #: rust/src/library.rs
 msgid "Saved networks could not be read."
 msgstr ""
 
+#. TRANSLATORS: (Settings > Wi-Fi) a line in place of the saved networks while the radio is off.
 #: rust/src/library.rs
 msgid "Turn on Wi-Fi to see the saved networks."
 msgstr ""
 
 #. TRANSLATORS: (Settings > Wi-Fi) the Kindle has no saved Wi-Fi network; Grimoire adds none itself.
 #: rust/src/library.rs
-msgid "No saved networks. Add one in Kindle settings or KOReader."
+msgid "No saved networks. Add one with Other... or in Kindle settings."
 msgstr ""
 
-#. TRANSLATORS: (Settings > Wi-Fi) the row under the saved networks when they take more than
-#. one page: shows the next page (after the last, the first). %d of %d: this page, the pages.
+#. TRANSLATORS: the password keyboard's title for a Wi-Fi network; %s is its name.
+#. TRANSLATORS: the password keyboard's title for a school/enterprise Wi-Fi network;
+#. %s is its name.
 #: rust/src/library.rs
-#, c-format
-msgid "More networks (%d of %d)"
+#, fuzzy, c-format
+msgid "Password for %s"
+msgstr "%sのボタンを押してください"
+
+#. TRANSLATORS: the keyboard's title for a school/enterprise Wi-Fi username; %s is its name.
+#: rust/src/library.rs
+#, fuzzy, c-format
+msgid "Username for %s"
+msgstr "フォルダーの名前を変更する"
+
+#. TRANSLATORS: (Settings > Wi-Fi > Other...) the hidden network whose security is being picked; %s is its name.
+#: rust/src/library.rs
+#, fuzzy, c-format
+msgid "Network: %s"
+msgstr "名前: %s"
+
+#. TRANSLATORS: (Settings > Wi-Fi > Other...) the choice for a hidden network with no password.
+#: rust/src/library.rs
+msgid "Open network"
 msgstr ""
 
-#. TRANSLATORS: (Settings) the row that opens the Wi-Fi sheet: the radio and the Kindle's
-#. saved networks.
-#: rust/src/library.rs rust/src/settingsmenu.rs rust/src/share.rs
-msgid "Wi-Fi"
-msgstr "Wi-Fi"
+#. TRANSLATORS: (Settings > Wi-Fi > Other...) the choice for a hidden WPA or WPA2 network.
+#: rust/src/library.rs
+msgid "WPA/WPA2 password"
+msgstr ""
+
+#. TRANSLATORS: (Settings > Wi-Fi > Other...) the choice for a hidden WPA3-Personal network.
+#: rust/src/library.rs
+msgid "WPA3 password"
+msgstr ""
+
+#. TRANSLATORS: (Settings > Wi-Fi > Other...) the choice for a hidden WPA2- or WPA3-Enterprise network.
+#: rust/src/library.rs
+msgid "WPA2/WPA3-Enterprise"
+msgstr ""
+
+#. TRANSLATORS: the title of the page that adds a hidden Wi-Fi network by name.
+#: rust/src/library.rs
+#, fuzzy
+msgid "Other network"
+msgstr "他の色"
+
+#. TRANSLATORS: (Settings > Wi-Fi) the toast while the network connected to is dropped.
+#: rust/src/library.rs
+#, fuzzy
+msgid "Disconnecting…"
+msgstr "再接続中..."
+
+#. TRANSLATORS: the keyboard's title for a hidden Wi-Fi network's name.
+#: rust/src/library.rs
+msgid "Hidden network name"
+msgstr ""
+
+#. TRANSLATORS: (Settings > Wi-Fi) the toast while a hidden network's profile is being created.
+#. TRANSLATORS: (Settings > Wi-Fi) the toast while an open network's profile is being created.
+#: rust/src/library.rs
+msgid "Adding network…"
+msgstr ""
+
+#. TRANSLATORS: (Settings > Wi-Fi) the toast while a saved network's profile is being deleted.
+#: rust/src/library.rs
+msgid "Forgetting network…"
+msgstr ""
+
+#. TRANSLATORS: (Settings > Wi-Fi) a scanned network Grimoire cannot add yet.
+#: rust/src/library.rs
+msgid "This network's security is not supported yet."
+msgstr ""
 
 #. TRANSLATORS: Gestures row: action and first binding plus +N, about 1300 px with a thumbnail, two lines at 34 px.
 #: rust/src/library.rs
@@ -3312,6 +3509,11 @@ msgid "Language: %s"
 msgstr "言語: %s"
 
 #: rust/src/library.rs
+#, fuzzy, c-format
+msgid "Pen button: %s"
+msgstr "ボタン: %s"
+
+#: rust/src/library.rs
 #, c-format
 msgid "Mirror PDFs to %s (USB)"
 msgstr "PDF を %s (USB) にミラーリング"
@@ -3394,6 +3596,12 @@ msgstr ""
 msgid "Copy .ttf or .otf files into %s over USB."
 msgstr ""
 
+#. TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): Done on a font of the
+#. owner's own that could not be loaded just now (too little memory free, or its file changed).
+#: rust/src/library.rs
+msgid "Couldn't use that font."
+msgstr ""
+
 #. TRANSLATORS: the notice that stays above the Font sheet's buttons while the fonts copied into
 #. grimoire/fonts are checked in the background, with how many are left. One line of about 1700 px at 44 px
 #. bold.
@@ -3402,65 +3610,6 @@ msgstr ""
 msgid "Checking %d font..."
 msgid_plural "Checking %d fonts..."
 msgstr[0] ""
-
-#: rust/src/library.rs
-msgid "Updates come through KPM, which is not here."
-msgstr "アップデートは KPM を通じて行われますが、ここにはありません。"
-
-#: rust/src/library.rs
-msgid "Checking for updates..."
-msgstr "アップデートをチェックしています..."
-
-#: rust/src/library.rs
-#, c-format
-msgid "Grimoire %s is available."
-msgstr "Grimoire %sもございます。"
-
-#: rust/src/library.rs
-#, c-format
-msgid "Grimoire %s is the newest."
-msgstr "Grimoire %sが最新です。"
-
-#: rust/src/library.rs
-msgid "Could not check. Is Wi-Fi on?"
-msgstr "確認できませんでした。 Wi-Fiはオンになってますか？"
-
-#: rust/src/library.rs
-msgid "Could not check for updates."
-msgstr "アップデートを確認できませんでした。"
-
-#: rust/src/library.rs
-#, c-format
-msgid "This is Grimoire %s."
-msgstr "Grimoire %sです。"
-
-#: rust/src/library.rs
-msgid "Updates: betas and releases (tap for releases only)"
-msgstr "アップデート: ベータ版とリリース (リリースのみをタップ)"
-
-#: rust/src/library.rs
-msgid "Updates: releases only (tap for betas too)"
-msgstr "アップデート: リリースのみ (タップするとベータ版も表示されます)"
-
-#. TRANSLATORS: (Updates sheet) installs the newer Grimoire (%s): Grimoire closes, KPM
-#. installs it, and Grimoire starts again.
-#: rust/src/library.rs
-#, c-format
-msgid "Update to %s"
-msgstr "%sにアップデート"
-
-#: rust/src/library.rs
-msgid "Check for updates"
-msgstr "アップデートをチェックする"
-
-#: rust/src/library.rs
-msgid "Update"
-msgstr "アップデート"
-
-#. TRANSLATORS: the Updates sheet's title (Settings > Updates).
-#: rust/src/library.rs rust/src/settingsmenu.rs
-msgid "Updates"
-msgstr "アップデート"
 
 #: rust/src/library.rs
 msgid "Searching... Put the controller in pairing mode."
@@ -3708,9 +3857,95 @@ msgstr "削除（%sに移動）"
 msgid "Keep it"
 msgstr "残す"
 
+#. TRANSLATORS: the title of the list of what the pen's button does while writing (Settings > Pen).
+#: rust/src/library.rs
+#, fuzzy
+msgid "Pen button"
+msgstr "サイドボタン"
+
+#. TRANSLATORS: the title of the list of what the eraser does (Settings > Pen).
+#: rust/src/library.rs
+#, fuzzy
+msgid "Eraser"
+msgstr "消しゴム"
+
+#: rust/src/library.rs
+msgid "Kindle"
+msgstr ""
+
+#. TRANSLATORS: Settings > System > About, the device's name on a computer (the Kindle build names
+#. the Kindle's own model).
+#: rust/src/library.rs
+msgid "This computer"
+msgstr ""
+
+#: rust/src/library.rs
+msgid "Ko-fi"
+msgstr ""
+
+#: rust/src/library.rs
+msgid "Grimoire GitHub"
+msgstr ""
+
+#: rust/src/library.rs
+msgid "Nebuff's GitHub"
+msgstr ""
+
+#: rust/src/library.rs
+msgid "Gantan's GitHub"
+msgstr ""
+
+#: rust/src/library.rs
+msgid "About"
+msgstr ""
+
+#: rust/src/library.rs
+#, fuzzy, c-format
+msgid "Grimoire %s"
+msgstr "Grimoire %sです。"
+
+#: rust/src/library.rs
+#, fuzzy, c-format
+msgid "Storage: %s of %s used"
+msgstr "%s/%dのページ"
+
+#: rust/src/library.rs
+#, c-format
+msgid "%s free"
+msgstr ""
+
+#. TRANSLATORS: Settings > System > About, where the storage bar would be when the system
+#. cannot tell the storage's size.
+#: rust/src/library.rs
+#, fuzzy
+msgid "Storage: not available"
+msgstr "ページが利用できません"
+
+#. TRANSLATORS: Settings > System > About, the heading over its links (Ko-fi, GitHub, ...).
+#: rust/src/library.rs
+msgid "Links"
+msgstr ""
+
+#. TRANSLATORS: Settings > System > About > a link, above the link's QR code.
+#: rust/src/library.rs
+msgid "Scan with a phone's camera"
+msgstr ""
+
 #: rust/src/library.rs
 msgid "Couldn't create notebook (storage full?)"
 msgstr "ノートブックを作成できませんでした (ストレージがいっぱいですか?)"
+
+#. TRANSLATORS: (Settings > Wi-Fi > Other...) the hidden network name is empty or longer
+#. than a Wi-Fi name can be.
+#: rust/src/library.rs
+msgid "Use a network name of 1 to 32 characters."
+msgstr ""
+
+#. TRANSLATORS: (Settings > Wi-Fi) the enterprise username is empty, a control
+#. character, or longer than 128 bytes.
+#: rust/src/library.rs
+msgid "Use a username of 1 to 128 characters."
+msgstr ""
 
 #: rust/src/library.rs
 msgid "Couldn't create folder. Use a shorter name without a slash."
@@ -3770,12 +4005,6 @@ msgid "Couldn't update KOReader. Patch conflict or storage error?"
 msgstr ""
 "KOReaderをアップデートできませんでした。パッチが違うのか、それともストレージ"
 "エラーですか?"
-
-#. TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): Done on a font of the
-#. owner's own that could not be loaded just now (too little memory free, or its file changed).
-#: rust/src/library.rs
-msgid "Couldn't use that font."
-msgstr ""
 
 #. TRANSLATORS: a toast (about 1700 px at 44 px in bold) after a notebook's or a folder's menu row that
 #. leaves its pages out of the Graph of all notebooks, or shows them there again: the change could
@@ -4533,8 +4762,6 @@ msgstr "ニブはリーンをフォローします"
 msgid "Nib fully follows at"
 msgstr "ペン先は完全に追従します"
 
-#. TRANSLATORS: the button that wipes Pen feel's test pad (174 px at 44 px, or 34 px).
-#. TRANSLATORS: on the eraser tab, restore the handwritten practice ink (174 px at 34 px).
 #: rust/src/pensettings.rs
 msgid "Reset pad"
 msgstr "リセット"
@@ -4550,7 +4777,6 @@ msgstr "消去"
 msgid "Pen feel: %s"
 msgstr "ペンタッチ：%s"
 
-#. TRANSLATORS: puts the tool's pen feel back as it came (328 px at 44 px, or 34 px).
 #: rust/src/pensettings.rs
 msgid "Reset tool"
 msgstr "リセットツール"
@@ -4584,39 +4810,98 @@ msgid ""
 msgstr ""
 "消しゴムは触れた部分だけを消します。強く押すほど、消える範囲が広がります。"
 
-#. TRANSLATORS: what holding the pen's button while writing does; a tap moves to the next.
+#. TRANSLATORS: Settings' Pen category, the row that opens the pen button's choices, with the
+#. choice in use: "Pen button: Nothing".
 #: rust/src/settingsmenu.rs
-msgid "Holding the pen button while writing does nothing (tap to change)"
+#, fuzzy
+msgid "Nothing"
+msgstr "スムージング"
+
+#: rust/src/settingsmenu.rs
+#, fuzzy
+msgid "Erases"
+msgstr "消しゴム"
+
+#: rust/src/settingsmenu.rs
+#, fuzzy
+msgid "Highlights"
+msgstr "ハイライト"
+
+#: rust/src/settingsmenu.rs
+msgid "Draws white"
 msgstr ""
-"書き込み中にペンボタンを押し続けても何も起こりません (タップして変更します)"
+
+#. TRANSLATORS: the pen button submenu's four choices, what holding the pen's button while writing does.
+#: rust/src/settingsmenu.rs
+#, fuzzy
+msgid "Nothing while writing"
+msgstr "執筆"
 
 #: rust/src/settingsmenu.rs
-msgid "Holding the pen button while writing erases (tap to change)"
-msgstr "ペンボタンを押しながら書くと消去（タップで変更）"
+#, fuzzy
+msgid "Erases while writing"
+msgstr "押しながら消去"
 
 #: rust/src/settingsmenu.rs
-msgid "Holding the pen button while writing highlights (tap to change)"
-msgstr "ペンボタンを押したままハイライトを書く（タップして変更）"
+#, fuzzy
+msgid "Highlights while writing"
+msgstr "蛍光ペン"
 
 #: rust/src/settingsmenu.rs
-msgid "Holding the pen button while writing draws white (tap to change)"
-msgstr "ペンボタンを押しながら書くと白く描画されます（タップして変更します）"
+msgid "Draws white while writing"
+msgstr ""
+
+#. TRANSLATORS: Settings' Pen category, the row that opens the eraser's choices, with the choice in
+#. use: "Eraser: Whole strokes".
+#: rust/src/settingsmenu.rs
+#, fuzzy
+msgid "Whole strokes"
+msgstr "ストローク全体"
 
 #: rust/src/settingsmenu.rs
-msgid "Style: Gothic (tap for Classic)"
-msgstr "スタイル: ゴシック (タップするとクラシック)"
+#, fuzzy
+msgid "Precise"
+msgstr "精密"
+
+#. TRANSLATORS: the eraser submenu's two choices: it takes every stroke it touches away whole, or
+#. only what it touches (as white ink does).
+#: rust/src/settingsmenu.rs
+#, fuzzy
+msgid "Takes away whole strokes"
+msgstr "ストローク全体"
 
 #: rust/src/settingsmenu.rs
-msgid "Style: Classic (tap for Gothic)"
+msgid "Takes away only what it touches"
+msgstr ""
+
+#: rust/src/settingsmenu.rs
+#, fuzzy
+msgid "Style (Gothic)"
 msgstr "スタイル: クラシック (タップするとゴシック)"
 
-#. TRANSLATORS: the row that opens Display's sheet: brightness, warmth and invert.
 #: rust/src/settingsmenu.rs
-msgid "Display: brightness, warmth, invert"
+#, fuzzy
+msgid "Style (Classic)"
+msgstr "選択（なぞり）"
+
+#: rust/src/settingsmenu.rs
+#, fuzzy
+msgid "Display: brightness, warmth"
 msgstr "表示: 明るさ、暖かさ、反転"
 
 #: rust/src/settingsmenu.rs
-msgid "Turn with the Kindle (portrait and landscape)"
+msgid "General"
+msgstr "一般"
+
+#. TRANSLATORS: the row that turns Grimoire's dark mode (white on black) on or off.
+#: rust/src/settingsmenu.rs
+#, fuzzy
+msgid "Dark mode"
+msgstr "消しゴムモード"
+
+#: rust/src/settingsmenu.rs
+#, fuzzy
+msgid "Rotation (portrait and landscape)"
 msgstr "Kindleで回転（縦横）"
 
 #: rust/src/settingsmenu.rs
@@ -4624,24 +4909,23 @@ msgid "Pinch with two fingers to zoom"
 msgstr "2 本の指でピンチしてズームします"
 
 #: rust/src/settingsmenu.rs
-msgid "Pen Feel"
-msgstr "ペンの感触"
+#, fuzzy
+msgid "Sleep & Clock"
+msgstr "もう寝てください"
 
-#. TRANSLATORS: the row that opens Pen sensitivity's sheet: pressure and tilt, per tool.
+#. TRANSLATORS: the row that opens Tool Settings' sheet: pressure and tilt, per tool.
 #: rust/src/settingsmenu.rs
-msgid "Pen sensitivity (pressure + tilt per tool)"
+#, fuzzy
+msgid "Tool Settings: pressure and tilt per tool"
 msgstr "ペンの感度 (ツールごとの圧力 + 傾き)"
-
-#: rust/src/settingsmenu.rs
-msgid "Calibration"
-msgstr "キャリブレーション"
 
 #: rust/src/settingsmenu.rs
 msgid "Calibrate pen and touch"
 msgstr "ペンとタッチを調整する"
 
 #: rust/src/settingsmenu.rs
-msgid "Controller"
+#, fuzzy
+msgid "Controls"
 msgstr "コントローラー"
 
 #: rust/src/settingsmenu.rs
@@ -4649,38 +4933,20 @@ msgid "Shortcuts: keys and controller buttons"
 msgstr "ショートカット: キーとコントローラーのボタン"
 
 #: rust/src/settingsmenu.rs
-msgid "General"
-msgstr "一般"
-
-#: rust/src/settingsmenu.rs
 msgid "KOReader"
 msgstr "KOReader"
 
-#. TRANSLATORS: the Share screen's help, under the address: a line each, 1578 px at 34 px
-#. sideways (beside the QR code), 1640 upright.
-#: rust/src/share.rs
-msgid "Pages as PNG, notebooks as PDF or zip, folders and everything as zip."
+#. TRANSLATORS: the row that opens About: what this Kindle is, its screen, and the
+#. storage used.
+#: rust/src/settingsmenu.rs
+msgid "About: device and storage"
 msgstr ""
-"ページは PNG、ノートブックは PDF または zip、フォルダーなどすべては zip で"
-"す。"
 
-#: rust/src/share.rs
-msgid "Effects: transparent, recolored or filtered copies of any page."
-msgstr "効果: 任意のページの透明、色変更、またはフィルター処理されたコピー。"
-
-#: rust/src/share.rs
-msgid "Same Wi-Fi network only. Keep this screen open while downloading."
-msgstr ""
-"同じ Wi-Fi ネットワークのみ。ダウンロード中はこの画面を開いたままにしてくださ"
-"い。"
-
-#. TRANSLATORS: how many downloads the Share screen has answered since it opened.
 #: rust/src/share.rs
 #, c-format
 msgid "Downloads served: %d"
 msgstr "提供されるダウンロード: %d"
 
-#. TRANSLATORS: Live view's pairing card: how many computers watch the screen now.
 #: rust/src/share.rs
 #, c-format
 msgid "%d computer watching"
@@ -4707,7 +4973,6 @@ msgstr "携帯電話でスキャンするか、ブラウザでこれを開きま
 msgid "On your computer, open this in a browser:"
 msgstr "コンピュータのブラウザでこれを開きます。"
 
-#. TRANSLATORS: another address the Kindle answers at, and its network interface ("usb0").
 #: rust/src/share.rs
 #, c-format
 msgid "Also: %s (%s)"
@@ -4718,12 +4983,6 @@ msgstr "こちらも: %s (%s)"
 #: rust/src/share.rs
 msgid "Then type this code:"
 msgstr "次に、次のコードを入力します。"
-
-#. TRANSLATORS: the last help line, with the command a computer pulls everything with.
-#: rust/src/share.rs
-#, c-format
-msgid "From a terminal: %s <address above>"
-msgstr "端末から: %s <上記のアドレス>"
 
 #: rust/src/share.rs
 msgid "Connects to saved networks."
@@ -4741,8 +5000,6 @@ msgstr "Wi-Fi をオフにすると、SSH と共有が切断されます。"
 msgid "Share over Wi-Fi"
 msgstr "Wi-Fi で共有"
 
-#. TRANSLATORS: the Share screen without an address (1640 px at 64 px), and what to do (at
-#. 44 px); Retry is the button's name.
 #: rust/src/share.rs
 msgid "No Wi-Fi connection yet"
 msgstr "Wi-Fi 接続がまだありません"
@@ -4767,12 +5024,11 @@ msgstr "次に、「再試行」をタップします。"
 msgid "Is another app using the port? Try again."
 msgstr "別のアプリがポートを使用していますか?もう一度やり直してください。"
 
-#. TRANSLATORS: Live view's pairing card: turns Live view off (388 px at 44 px, or 34 px).
+#. TRANSLATORS: Live view's pairing card: turns Live view off.
 #: rust/src/share.rs
 msgid "Stop"
 msgstr "停止"
 
-#. TRANSLATORS: the Share screen as the Kindle's sleep screen.
 #: rust/src/share.rs
 msgid "Asleep"
 msgstr "眠っている"
@@ -5419,6 +5675,68 @@ msgctxt "studio"
 msgid "Copied"
 msgstr "コピーされました"
 
+#~ msgid "Sleep"
+#~ msgstr "スリープ"
+
+#~ msgid "Invert colors in Grimoire (white on black)"
+#~ msgstr "Grimoire で色を反転 (黒地に白)"
+
+#, c-format
+#~ msgid "Grimoire %s is available."
+#~ msgstr "Grimoire %sもございます。"
+
+#~ msgid "Updates: betas and releases (tap for releases only)"
+#~ msgstr "アップデート: ベータ版とリリース (リリースのみをタップ)"
+
+#~ msgid "Updates: releases only (tap for betas too)"
+#~ msgstr "アップデート: リリースのみ (タップするとベータ版も表示されます)"
+
+#~ msgid "Update"
+#~ msgstr "アップデート"
+
+#~ msgid "Holding the pen button while writing does nothing (tap to change)"
+#~ msgstr ""
+#~ "書き込み中にペンボタンを押し続けても何も起こりません (タップして変更しま"
+#~ "す)"
+
+#~ msgid "Holding the pen button while writing erases (tap to change)"
+#~ msgstr "ペンボタンを押しながら書くと消去（タップで変更）"
+
+#~ msgid "Holding the pen button while writing highlights (tap to change)"
+#~ msgstr "ペンボタンを押したままハイライトを書く（タップして変更）"
+
+#~ msgid "Holding the pen button while writing draws white (tap to change)"
+#~ msgstr ""
+#~ "ペンボタンを押しながら書くと白く描画されます（タップして変更します）"
+
+#~ msgid "Style: Gothic (tap for Classic)"
+#~ msgstr "スタイル: ゴシック (タップするとクラシック)"
+
+#~ msgid "Pen Feel"
+#~ msgstr "ペンの感触"
+
+#~ msgid "Calibration"
+#~ msgstr "キャリブレーション"
+
+#~ msgid ""
+#~ "Pages as PNG, notebooks as PDF or zip, folders and everything as zip."
+#~ msgstr ""
+#~ "ページは PNG、ノートブックは PDF または zip、フォルダーなどすべては zip で"
+#~ "す。"
+
+#~ msgid "Effects: transparent, recolored or filtered copies of any page."
+#~ msgstr ""
+#~ "効果: 任意のページの透明、色変更、またはフィルター処理されたコピー。"
+
+#~ msgid "Same Wi-Fi network only. Keep this screen open while downloading."
+#~ msgstr ""
+#~ "同じ Wi-Fi ネットワークのみ。ダウンロード中はこの画面を開いたままにしてく"
+#~ "ださい。"
+
+#, c-format
+#~ msgid "From a terminal: %s <address above>"
+#~ msgstr "端末から: %s <上記のアドレス>"
+
 #~ msgid ""
 #~ "Grimoire imports each folder in the background and then moves it into the "
 #~ "done folder. Copy folders in over USB while Grimoire is closed."
@@ -5601,9 +5919,6 @@ msgstr "コピーされました"
 #~ msgid "Saving..."
 #~ msgstr "保存中..."
 
-#~ msgid "Saved"
-#~ msgstr "保存されました"
-
 #~ msgid "This is the last page."
 #~ msgstr "これが最後のページです。"
 
@@ -5664,6 +5979,3 @@ msgstr "コピーされました"
 
 #~ msgid "Around it"
 #~ msgstr "その周り"
-
-#~ msgid "Page unavailable"
-#~ msgstr "ページが利用できません"
