@@ -2404,8 +2404,8 @@ their own work), so nothing a user sees changed.
   size and time, the reason a copy was refused, an errno when a call failed, and once a session the fallback.
 - **Tests**: `fsview.rs`'s unit tests (the name rules, the trash's names, the record read strictly, what an import
   holds), `bgjob.rs`'s (the jobs' paths), `bgwork_copy.rs`'s (the job's path), and
-  `rust/tests/test_fsview_writes.rs` (every refusal of the allow-list, no replace with renameat2's
-  flag and with the fallback forced through `fsview_rename_fallback_force`, another writer at the
+  `rust/tests/test_fsview_writes.rs` (every refusal of the allow-list, a path with a line break, no replace with
+  renameat2's flag and with the fallback forced through `fsview_rename_fallback_force`, another writer at the
   name between the fallback's check and its rename through `fsview_rename_seam`, a case-only rename, a rename and
   a trash stopped half way through `fsview_stop_at`, the busy check through real queued jobs, trash and restore of
   a file, a folder and a notebook in both forms, a name taken, refused restores, the copy request and job with the

@@ -67,12 +67,24 @@ fn trash_list(st: &FsStorage) -> Vec<TrashEntry> {
     fsview_trash_entries(&l.entries)
 }
 
+/// A folder of the test's own beside the storage root (never one of the system's), with a file in it: what a link
+/// out of the storage points at.
+fn outside() -> String {
+    let o = format!("{}/fsw-outside", tl_tmp());
+    let _ = std::fs::remove_dir_all(&o);
+    std::fs::create_dir_all(&o).unwrap();
+    std::fs::write(format!("{o}/hosts"), b"canary").unwrap();
+    o
+}
+
 // Writes go only to what is inside Grimoire's import, templates, photos and fonts: never the storage's other
 // folders, the folder itself, import/done, Grimoire's settings, PDFs, notebooks or trash; never to a name of
-// Grimoire's own, a hidden name, or through a link.
+// Grimoire's own, a hidden name, or through a link (one to a folder of the test's own outside the storage, whose
+// file stays as it was).
 fn writes_stay_in_grimoires_folders() {
     let (root, g) = tree();
-    symlink("/etc", format!("{root}/grimoire/fonts/etc")).unwrap();
+    let out = outside();
+    symlink(&out, format!("{root}/grimoire/fonts/out")).unwrap();
     symlink(format!("{root}/documents/a.pdf"), format!("{root}/grimoire/templates/link.png")).unwrap();
     let st = open(&root, &g);
     for p in [
@@ -99,7 +111,8 @@ fn writes_stay_in_grimoires_folders() {
     check!(st.rename(&sp("grimoire/templates/link.png"), &link, b"l2.png") == Err(FsWriteErr::Refused));
     check!(st.trash(&sp("grimoire/templates/link.png"), &link) == Err(FsWriteErr::Refused));
     check!(read(&root, "documents/a.pdf").is_some());
-    check!(matches!(st.trash(&sp("grimoire/fonts/etc/hosts"), &FsStat::default()), Err(FsWriteErr::Walk(FsErr::Link))));
+    check!(matches!(st.trash(&sp("grimoire/fonts/out/hosts"), &FsStat::default()), Err(FsWriteErr::Walk(FsErr::Link))));
+    check!(names(&out) == ["hosts"] && read(&out, "hosts").as_deref() == Some(&b"canary"[..]));
     // the names: Grimoire's own, hidden, another folder, the rules
     let s = stat_of(&st, "grimoire/import/Trip");
     check!(st.rename(&sp("grimoire/import/Trip"), &s, b"done") == Err(FsWriteErr::Refused));
@@ -111,6 +124,16 @@ fn writes_stay_in_grimoires_folders() {
     check!(st.rename(&sp("grimoire/templates/a.png"), &a, b"a.jpg") == Err(FsWriteErr::Name(NameRule::Extension)));
     check!(st.rename(&sp("grimoire/templates/a.png"), &a, b"a.png ") == Err(FsWriteErr::Name(NameRule::TrailingSpace)));
     check!(read(&root, "grimoire/templates/a.png").as_deref() == Some(&b"template a"[..]));
+    // a path with a line break (a line feed or a carriage return) is not trashed: the record is lines and could not
+    // hold it, so the item would stay in the trash with a record that never reads. It stays where it is.
+    for name in ["line\nfeed.png", "carriage\rreturn.png"] {
+        let p = format!("grimoire/templates/{name}");
+        std::fs::write(format!("{root}/{p}"), b"x").unwrap();
+        let s = stat_of(&st, &p);
+        check!(st.trash(&sp(&p), &s) == Err(FsWriteErr::Refused));
+        check!(read(&root, &p).as_deref() == Some(&b"x"[..]));
+    }
+    check!(names(&format!("{g}/trash")).is_empty());
     // a Grimoire whose folder is not inside the root writes nothing
     let outside = FsStorage::open(&format!("{root}/documents"), &g).unwrap();
     let d = outside.stat(&sp("a.pdf"), false).unwrap();
@@ -371,7 +394,8 @@ fn trash_and_restore_a_file_and_a_folder() {
         check!(names(&format!("{g}/trash/{}", String::from_utf8_lossy(&folder))) == [".grimoire-trash", "Trip"]);
         let list = trash_list(&st);
         check!(list.len() == 2 && list.iter().all(|e| e.kind == TrashKind::File));
-        check!(list.iter().all(|e| (e.time - rec.time).abs() <= 2));
+        // (the folder's stamp is local time read back by mktime: inside a fall-back hour it may read an hour off)
+        check!(list.iter().all(|e| (e.time - rec.time).abs() <= 2 || ((e.time - rec.time).abs() - 3600).abs() <= 2));
         // back
         check!(st.restore(&entry) == Ok(Restored::File(sp("grimoire/templates/a.png"))));
         check!(read(&root, "grimoire/templates/a.png").as_deref() == Some(&b"template a"[..]));
@@ -626,5 +650,6 @@ fn test_fsview_writes() {
     run!(the_copy_job);
     std::env::remove_var("GRIMOIRE_STORAGE");
     let _ = std::fs::remove_dir_all(format!("{}/fsw-storage", tl_tmp()));
+    let _ = std::fs::remove_dir_all(format!("{}/fsw-outside", tl_tmp()));
     done();
 }
