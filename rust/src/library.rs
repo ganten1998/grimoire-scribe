@@ -581,8 +581,9 @@ fn reload(a: &mut App) {
             });
         }
     }
-    // The Files card (2.2, D31): after every folder and notebook of the top level, so it is the Library's last card
-    // (on its last screen), and no notebook's place changes for it.
+    // Where the Files card goes (2.2), decided here and nowhere else: after every folder and notebook of the top
+    // level, so it is the Library's last card (on its last screen), and no notebook's place changes for it. (The
+    // last card of the first screen instead would be an insert at the screen's last place here.)
     if files_card && s.cur_folder.is_empty() {
         s.items.push(Item { is_files: true, ..Default::default() });
     }
@@ -7938,7 +7939,7 @@ pub fn library_shortcut(a: &mut App, action: i32) -> bool {
 }
 
 /// The `home` action (2.2): the Library's top, out of any folder, at its first screen. (A home the user sets, any
-/// Library or Kindle folder, is a later lane's: this is where it will start.)
+/// Library or Kindle folder, comes later: this is where it will start.)
 fn library_home(a: &mut App) {
     let s = lib(a);
     s.cur_folder.clear();
@@ -9453,7 +9454,7 @@ mod tests {
         let _ = std::fs::remove_dir_all(&root);
     }
 
-    // The Files card (2.2, D31): not there by default; with files_card it is the top level's last card, after every
+    // The Files card (2.2): not there by default; with files_card it is the top level's last card, after every
     // folder and notebook, and in no folder. Its "..." opens its menu, whose Hide from Library takes it away and
     // writes files_card back out (the line goes).
     #[test]

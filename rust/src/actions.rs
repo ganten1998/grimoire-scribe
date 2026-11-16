@@ -61,7 +61,7 @@ pub const SHORTCUT_PAN_RIGHT: i32 = 102;
 pub const SHORTCUT_PAN_UP: i32 = 103;
 pub const SHORTCUT_PAN_DOWN: i32 = 104;
 /// Files (2.2): open Files (place mode) whether or not its card is in the Library, and go home (the Library's top;
-/// a home set by the user comes with a later lane). Library actions with no default key, bound by name in
+/// a home set by the user comes later). Library actions with no default key, bound by name in
 /// shortcuts.ini or gestures.ini as the Library's other actions are (105 to 107 are the size keys').
 pub const SHORTCUT_FILES: i32 = 108;
 pub const SHORTCUT_HOME: i32 = 109;

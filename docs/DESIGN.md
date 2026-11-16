@@ -2338,7 +2338,7 @@ are routed in `library.rs` as the Graph's are, and two fingers down does nothing
   another size hold the key, or none does: no tag, Import as notebook.
 - **Logs** carry counts and timings only ("files: listed N entries (M usable) in T ms"), never a name.
 
-## Files: the place (2.2, lane L11b)
+## Files: the place (2.2, issue #124)
 
 `browser.rs` has a second mode beside the picker's. `PickSpec { kinds, title, start, mode }` says what the browser
 was asked for: `PickSpec::import()` is New notebook's From a file... (pick mode, as above), `PickSpec::place()` is
@@ -2350,7 +2350,7 @@ hosted the same way (`LibraryState.files`, `files_open_place`), and closes back 
   The free space line stays at the top. Place mode walks with the pick flag off: Grimoire's `PDFs` and `trash` are
   looked into there (read only), `notebooks` is refused as everywhere. Nothing under `PDFs` or `trash` is offered
   for import, by a card's rows (the zone a pick would refuse) as by the jobs (which refuse them anyway).
-- **The Files card (D31).** Hidden until settings.ini `files_card` is 1, which the root's last row, "Show Files in
+- **The Files card.** Hidden until settings.ini `files_card` is 1, which the root's last row, "Show Files in
   Library", sets (in pick mode as in place mode, while the card is hidden). Shown, it is the last card of the
   Library's top level, after every folder and notebook (`reload` appends it; it is in no folder), so no notebook
   moves for it; in a big Library that is the last screen of cards. Its `...` (or a hold) opens its menu: Open,
@@ -2360,7 +2360,7 @@ hosted the same way (`LibraryState.files`, `files_open_place`), and closes back 
   (the places that are there, then the storage's other top folders by name; rows that do not fit the screen are
   left out, All storage reaches them). A path too long for its room keeps Files, one "..." (which opens the last
   part it stands for) and the last parts. The picker keeps its path line as text, and the Library's own folders
-  are as they were (the narrow reading of D31: the Library's code paths are untouched but for the card, the hold
+  are as they were (the owner's narrow reading: the Library's code paths are untouched but for the card, the hold
   and the hosting seams).
 - **Sort and Show**, two chips on the bar, kept in `files_sort` and `files_show`. Sort: by name (`name_cmp`), the
   newest first or the largest first, folders first each time (by name under Size), ties by name, a row with no stat
@@ -2385,7 +2385,7 @@ hosted the same way (`LibraryState.files`, `files_open_place`), and closes back 
   the lift after it does nothing.
 - **Actions** `files` (108) and `home` (109) act in the Library, with no default key and no Buttons or Gestures
   row (they are bound by name, as the Library's New notebook and Share are). `home` is the Library's top for now.
-- **Seams left for the later Files lanes**: `RowKind::Trashed` and the trash rows (Restore), the card's rows per
+- **Seams left for the later Files work**: `RowKind::Trashed` and the trash rows (Restore), the card's rows per
   kind in `card_lines` (Rename, Trash, Use as template, Use as photo, Add to fonts), `BrowseMode` and `FilesPrefs`
   (a home, a View), `library_home` (where a set home starts), `PickSpec.start` (opening at a folder).
 

@@ -2698,7 +2698,7 @@ If step 1's T is long enough to matter, or step 2 shows the pen lagging, see the
 whole-file read ("Hardening round (2026-11), import: what waits"). If step 7 shows any of its three lines, do
 not release: send grimoire.log.
 
-## 2.2, Files (lane L11b): device checks
+## 2.2, Files (issue #124): device checks
 
 Not run on a Scribe yet. The headless scenarios `files_1_card` to `files_7_keys` cover the logic (the card hidden,
 shown last and hidden again, the root's rows, the path bar's parts and Go to, each Sort on a folder of known

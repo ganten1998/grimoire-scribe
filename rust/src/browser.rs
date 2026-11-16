@@ -1,5 +1,5 @@
-//! The file browser (2.1.0-beta.2, lane L8; 2.2, lane L11b; DESIGN.md 2.2, 2.8, 3.2, 3.6; areas/browser.md Phases 1
-//! and 2), hosted by the Library as a mode the way it hosts the Graph. Two modes. Pick mode: Library > New > From a
+//! The file browser (the picker since 2.1.0-beta.2, Files since 2.2, issue #124; DESIGN.md 2.2, 2.8, 3.2 and
+//! 3.6), hosted by the Library as a mode the way it hosts the Graph. Two modes. Pick mode: Library > New > From a
 //! file... asks for a PDF or a folder of pictures; its root has four places (Import, Documents, Downloads, All
 //! storage), the folders under them and, in them, the PDFs and folders a task can use: a tap on a folder enters
 //! it, a tap on a PDF opens its card (the one place a tap offers choices: an import can be 400 pages, and the card
@@ -36,7 +36,7 @@ const B_SORT: i32 = 12;
 const B_SHOW: i32 = 13;
 const B_GOTO: i32 = 14;
 
-/// What a task can pick, or Files lists as usable (browser.md 4.3).
+/// What a task can pick, or Files lists as usable.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum PickKind {
     Pdf,
@@ -138,7 +138,7 @@ pub enum RowKind {
     Other,
     Link,
     /// an entry of Grimoire's trash, listed read only by the time in its name (a notebook by its name): never
-    /// entered, no card yet (Restore is a later lane's)
+    /// entered, no card yet (Restore comes later, with the storage's writes)
     Trashed,
 }
 
@@ -361,7 +361,7 @@ fn is_font(n: &[u8]) -> bool {
     [b".ttf".as_slice(), b".otf"].iter().any(|e| n.len() > e.len() && n[n.len() - e.len()..].eq_ignore_ascii_case(e))
 }
 
-/// Files' order (2.2, browser.md 6.3) of two rows (is a folder, name, stat): folders before files; then by name
+/// Files' order (2.2) of two rows (is a folder, name, stat): folders before files; then by name
 /// (name_cmp: accents folded, digit runs read as numbers), the newest first (sort 1), or the largest first (sort 2;
 /// folders by name); ties by name. A row with no stat (a link, a file gone since its folder was read) comes after
 /// those with one.
@@ -553,7 +553,7 @@ impl Browser {
                 rows.push(r);
             }
         }
-        // (the way to the Files card, in either mode, while it is not in the Library: D31)
+        // (the way to the Files card, hidden at first: in either mode, while it is not in the Library)
         if !self.prefs.card {
             rows.push(Row::new(RowKind::ShowCard, "Show Files in Library", StoragePath::root()));
         }
@@ -1336,7 +1336,8 @@ impl Browser {
         let importable = self.pick() || self.storage.as_ref().is_some_and(|st| st.zone(&r.path, true) != FsZone::Refused);
         match r.kind {
             // Files (2.2): what the file is, its size and date (and its family for a font of Grimoire's whose check
-            // passed); Use as template, Use as photo and Add to fonts wait for the copy job (the From a file lane)
+            // passed); Use as template, Use as photo and Add to fonts wait for the copy job (with the From a file...
+            // tiles)
             RowKind::Picture | RowKind::Font | RowKind::Other => {
                 details = self.card_details(r);
             }
@@ -2396,7 +2397,7 @@ mod tests {
         assert!(!p.go(sp("grimoire/trash")));
     }
 
-    // D31: the way to the Files card is the root's last row, in either mode, while the card is not in the Library;
+    // The way to the Files card is the root's last row, in either mode, while the card is not in the Library;
     // once it is, the row is not there.
     #[test]
     fn show_files_in_library_is_the_roots_last_row_until_the_card_is_shown() {

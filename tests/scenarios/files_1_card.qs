@@ -1,7 +1,7 @@
 # settings: status_mode=1
 # storage: 1
 # generate: tests/files_place_tree.py
-# The Files card (2.2, D31): not in the Library at first. The file picker's last root row, "Show Files in Library",
+# The Files card (2.2): not in the Library at first. The file picker's last root row, "Show Files in Library",
 # puts it at the end of the Library, after every folder and notebook of the top level (and in no folder); a tap on
 # it opens Files at its root, which has no such row now; its "..." opens its menu, whose Hide from Library takes it
 # away again, and the picker's row comes back.
