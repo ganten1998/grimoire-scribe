@@ -1178,10 +1178,14 @@ the import is queued; a path the walk refuses ends the book there.
 From there the import runs as a dropped PDF's does, and nothing is held for it: the Library stays usable, the
 import's own notice counts its pages ("Importing: page N of M"), and a sheet that is up (What's new, on the first
 start after an update) closes as it always does. A fill's pages go in by a fill's own rules (the Library in front
-and at rest: Imports, below). The book job only follows the import. Its notebook is the one the import made, the one
-it filled (a notebook KOReader made through version 1 holds only the pages KOReader drew, and the import adds those
-it lacks in book order: its key decides, KOReader's pages stay as they are, and the notebook is not given a record),
-or the one it found holding every page. When the import ends:
+and at rest: Imports, below). Behind another import (one of an earlier run that still holds the import lock, or
+others queued ahead of it in this one) it queues as a picked PDF does, and a toast says so at the start: "Another
+import is still going. This one starts after it.".
+
+The book job only follows the import, however long it takes. Its notebook is the one the import made, the one it
+filled (a notebook KOReader made through version 1 holds only the pages KOReader drew, and the import adds those
+it lacks in book order: its key decides, KOReader's pages stay as they are, and the notebook is not given a
+record), or the one it found holding every page. When the import ends:
 
 - with the Library's cards in front (no sheet, no Files, no Graph), that notebook opens at the page that holds the
   reader's book page, as version 1's does, with "Added N book pages." for a notebook made or filled ("Imported

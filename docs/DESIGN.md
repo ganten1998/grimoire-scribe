@@ -2298,7 +2298,9 @@ Library usable, because nothing it writes can be reached meanwhile: a new notebo
 import's job, a fill's commit holds the input itself for its few ticks, and the editor refuses a notebook that is
 being filled. Holding the input for the whole import, as version 1 does for its few seconds, would also turn any wait
 into a lock: a fill's commit waits for the Library to be at rest, What's new opens by itself on the first start after
-an update, and a held Dismiss could then never close it. The job follows the import through the end the app gives it
+an update, and a held Dismiss could then never close it. For the same reason nothing bounds the wait: behind another
+import (an earlier run's, which holds the import lock, or others queued ahead: `BookStatus.waits`) the PDF queues as
+a picked PDF does, with the picker's toast for it. The job follows the import through the end the app gives it
 (`book_pdf_end`: the import's job end for its PDF, or the fill's commit, which `fill_tick` begins by its own rules)
 and names the notebook made, filled or found whole and the page of it that holds the reader's book page (by the
 count the notebook's pages name, when the two engines count differently). `book_tick` then decides by what is in

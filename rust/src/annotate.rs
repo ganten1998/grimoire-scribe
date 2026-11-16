@@ -1501,6 +1501,10 @@ pub struct BookStatus {
     /// version 2: a PDF handed over by its path. The PDF import makes its pages as it makes a dropped PDF's, with
     /// its own notice, and nothing waits for this job: no input is held and it shows no notice of its own (app.rs)
     pub pdf: bool,
+    /// RUNNING (version 2), at the start: the PDF's import is behind another, an earlier run's that still holds the
+    /// import lock, or imports queued ahead of it in this one. It starts after them, as a picked PDF does, and the
+    /// app says so (app_init)
+    pub waits: bool,
 }
 
 /// The job: one at a time, from book_start to DONE or FAILED.
@@ -1913,6 +1917,16 @@ fn start_pdf(j: &mut Job, st: &mut BookStatus, dir: &str) {
             job_fail(j, st, AnnotateWhy::Log);
             return;
         }
+    }
+    // Behind another import: it queues as a picked PDF does (the lock held by an earlier run's import: its mark
+    // waits, and the Library's scan queues it once that import has ended), and nothing waits on it meanwhile.
+    st.waits = match &q {
+        Queued::Waiting => true,
+        Queued::Started(_) => crate::pdfimport::pending_count() + crate::bgwork_template::pictures_pending() > 1,
+        _ => false,
+    };
+    if st.waits {
+        qlog!("book: other imports go first; this one starts after them");
     }
     j.src = src;
     j.key = key;

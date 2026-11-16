@@ -409,3 +409,65 @@ fn the_import_s_end_is_told_once_and_the_readers_page_is_kept() {
     assert_eq!((st.state, st.pdf), (BookState::Failed, true));
     assert_eq!(book_pdf_told(), None);
 }
+
+// Another process holds the import lock (an earlier run's import, still going in its detached child): the PDF
+// queues behind it as a picked PDF does, its mark waiting, and the status says so (the app's toast: "Another import
+// is still going. This one starts after it."). The job follows and holds nothing, however long that import takes;
+// once the lock is free the Library's scan queues the PDF, and the job ends on the notebook at the reader's page.
+#[test]
+fn a_hand_over_behind_another_runs_import_waits_as_a_pick_does() {
+    use std::os::fd::AsRawFd;
+    let e = setup("waits");
+    let bytes = pdffix::tabs();
+    let key = key_of(&bytes);
+    let file = e.book("Tabs.pdf", &bytes);
+    let other = std::fs::OpenOptions::new().create(true).truncate(false).write(true).open(format!("{}/import/.lock", e.root)).unwrap();
+    // SAFETY: flock on a descriptor this test owns (another open file description than the module's).
+    assert_eq!(unsafe { libc::flock(other.as_raw_fd(), libc::LOCK_EX | libc::LOCK_NB) }, 0);
+    log_capture(&e);
+    let mut st = hand_over(&e, &key, &file, 3, 4);
+    let log = log_captured(&e);
+    assert_eq!((st.state, st.pdf, st.waits), (BookState::Running, true, true), "{st:?}");
+    assert!(log.contains("book: the PDF KOReader named waits for an import of an earlier run") && log.contains("book: other imports go first"), "{log}");
+    assert_eq!((e.marks(), pending_count(), bg_busy()), (1, 0, false), "its mark waits; nothing is queued");
+    // (longer than the 3 s after which an import that is nowhere counts as lost: a waiting mark is somewhere)
+    let t0 = std::time::Instant::now();
+    while t0.elapsed().as_millis() < 3600 {
+        book_step(150, &mut st);
+        std::thread::sleep(std::time::Duration::from_millis(50));
+    }
+    assert_eq!(st.state, BookState::Running, "it follows for as long as the other import takes");
+    assert_eq!(grimoire::bgwork_template::import_scan(DPI), 0, "the lock is still held elsewhere");
+    drop(other); // that import ends
+    assert_eq!(grimoire::bgwork_template::import_scan(DPI), 1, "the Library's scan queues the pick that waited");
+    run_book(&mut st);
+    assert_eq!((st.state, st.made, st.added), (BookState::Done, true, 4), "{st:?}");
+    assert_eq!(st.pid, e.info(st.nb.as_str()).page_ids[2], "the reader's page, book page 3");
+    assert_eq!(e.marks(), 0);
+}
+
+// Imports queued ahead of the hand-over's in this run (a PDF dropped in import/ that the start's scan took): the
+// status says it waits too. A hand-over with nothing ahead of it does not.
+#[test]
+fn a_hand_over_behind_a_queued_import_says_it_waits() {
+    let e = setup("queued");
+    std::env::set_var("GRIMOIRE_IMPORT_STABLE", "fast");
+    std::fs::write(format!("{}/import/Colour.pdf", e.root), pdffix::colour()).unwrap();
+    assert_eq!(grimoire::bgwork_template::import_scan(DPI), 1, "the dropped PDF is queued first");
+    let bytes = pdffix::tabs();
+    let file = e.book("Tabs.pdf", &bytes);
+    let mut st = hand_over(&e, &key_of(&bytes), &file, 2, 4);
+    assert_eq!((st.state, st.waits, pending_count()), (BookState::Running, true, 2), "{st:?}");
+    run_book(&mut st);
+    std::env::remove_var("GRIMOIRE_IMPORT_STABLE");
+    assert_eq!((st.state, st.added), (BookState::Done, 4), "{st:?}");
+    assert_eq!(e.notebooks().len(), 2, "both PDFs became notebooks");
+    // alone: nothing to wait for
+    drop(e);
+    let e = setup("alone");
+    let file = e.book("Tabs.pdf", &bytes);
+    let mut st = hand_over(&e, &key_of(&bytes), &file, 2, 4);
+    assert_eq!((st.state, st.waits), (BookState::Running, false));
+    run_book(&mut st);
+    assert_eq!(st.state, BookState::Done);
+}

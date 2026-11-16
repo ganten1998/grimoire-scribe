@@ -2977,7 +2977,8 @@ comics, XPS, a PDF that needs a password, a PDF outside the storage, and any PDF
 (`book_request_parsing`: version 2 read strictly, version 1 unchanged), `rust/tests/test_koreader_pdf.rs` (a new
 notebook at the reader's page with its record, its colour kept, a fill of a version 1 notebook keeping KOReader's
 pages, "already imported" ending on the page, ten paths the walk refuses, a PDF the import refuses, the import's end
-told once and the reader's page kept as the page the notebook opens at), `tests/koplugin_test.lua` (a PDF by its
+told once and the reader's page kept as the page the notebook opens at, a hand-over behind another run's import and
+behind a queued one), `tests/koplugin_test.lua` (a PDF by its
 path from the reader and from Open with..., the same PDF to a 2.1 launcher, a DjVu, Annotate this page, a PDF that
 needs a password, paths it cannot send), `tests/package_check.sh` (the launcher's `pdf`) and the scenarios
 `tests/scenarios/y_koreader_pdf_1_new.qs` (the hand-over on a storage root: the import's notice, New notebook
@@ -2988,8 +2989,9 @@ is a hand-over that fills a notebook: What's new closes, then the pages go in an
 `y_koreader_pdf_5_elsewhere.qs` (a notebook of the user's own in front at the end: the import's toast, and the
 book's card opens at book page 3), `y_koreader_pdf_6_sheet.qs` (the same with a sheet up),
 `y_koreader_pdf_7_asleep.qs` (the end taken at the wake), `y_koreader_pdf_8_password.qs` (a PDF the import
-refuses says the import's "PDF needs a password.") and `y_koreader_pdf_9_refused.qs` (a path the walk refuses
-says the book's failure).
+refuses says the import's "PDF needs a password."), `y_koreader_pdf_9_refused.qs` (a path the walk refuses says
+the book's failure) and `y_koreader_pdf_10_queued.qs` (behind a dropped PDF's import: the toast that says it
+waits, then both notebooks).
 
 **Not run on a Scribe.** The owner's check, on a build of this branch (a planner PDF with coloured tabs, more than
 20 pages, that Grimoire never saw; a second, long PDF, of a few hundred pages; a DjVu or CBZ book):
@@ -3032,11 +3034,18 @@ says the book's failure).
    sheet is still up, and `grimoire.log` has `the pages for notebook <nb> are made; they go in once the Library is
    in front`. Tap Dismiss: it closes at once, "Adding book pages: N of M" shows for a moment, and the notebook
    opens at the reader's page with "Added N book pages.".
-9. **A DjVu still by version 1.** Open the DjVu or CBZ book in KOReader and use Open this book in Grimoire:
-   "Preparing page N of M for Grimoire... Tap to stop." shows as before, and the notebook opens at the reader's
-   page (`book: <id>: N page(s) of M to add, ...` in `grimoire.log`), with taps held for the few seconds its pages
-   take, as before.
-10. **A PDF with a password** (when one is at hand): Open this book in Grimoire draws its pages in KOReader as a
+9. **Behind another import.** Delete the long PDF's notebook, hand the long PDF over again from KOReader, and
+   while "Importing: page N of M" counts use Library > Back to KOReader (its import goes on by itself). In
+   KOReader, open a PDF Grimoire never saw and use Open this book in Grimoire: the Library says "Another import
+   is still going. This one starts after it." and stays usable; `grimoire.log` has `book: the PDF KOReader named
+   waits for an import of an earlier run`. Stay on the Library: within about 10 s of the first import's end
+   (`import: the import from an earlier run has ended`) the second starts, and its notebook opens at the reader's
+   page.
+10. **A DjVu still by version 1.** Open the DjVu or CBZ book in KOReader and use Open this book in Grimoire:
+    "Preparing page N of M for Grimoire... Tap to stop." shows as before, and the notebook opens at the reader's
+    page (`book: <id>: N page(s) of M to add, ...` in `grimoire.log`), with taps held for the few seconds its pages
+    take, as before.
+11. **A PDF with a password** (when one is at hand): Open this book in Grimoire draws its pages in KOReader as a
     DjVu's are, and crash.log has `Grimoire: this PDF needs a password: KOReader draws its pages`.
 
 No line of `grimoire.log` or `crash.log` from these steps names a book, its file or its title.

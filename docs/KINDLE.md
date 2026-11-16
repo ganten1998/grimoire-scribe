@@ -182,7 +182,9 @@ and KOReader restarted: an older plugin keeps sending version 1, which this Grim
 draws its pages`. grimoire.log says (no file name, title or key):
 
 - `book: the PDF KOReader named goes to the PDF import (<id>); its page P of N opens once that ends` (or `... is
-  being imported already; ...`, or `... waits for an import of an earlier run; ...`), then the import's own lines
+  being imported already; ...`, or `... waits for an import of an earlier run; ...`), with `book: other imports go
+  first; this one starts after them` when another import is ahead of it (the toast "Another import is still going.
+  This one starts after it." says so), then the import's own lines
   (PDF imports, below), then `book: <nb>: N page(s) added by the PDF import (a new notebook|its notebook), opens at
   its page K`.
 - `book: the PDF KOReader named is not in the Kindle's storage; nothing opened`, `book: the PDF KOReader named

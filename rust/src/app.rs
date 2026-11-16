@@ -773,6 +773,10 @@ pub fn app_init(a: &mut App, w: i32, h: i32, dpi: f32) -> i32 {
         app_toast(a, &note, 8000);
     } else if a.book.state == BookState::Failed {
         book_failed(a);
+    } else if a.book.state == BookState::Running && a.book.waits {
+        // The PDF KOReader handed over by its path is behind another import (one of an earlier run, or others
+        // queued ahead of it): it starts after them, and that is said, as for a picked PDF. Nothing is held.
+        app_toast(a, crate::library::library_import_waits_text(), 6000);
     } else if !caps.has_pen {
         // TRANSLATORS: %s is the app's name, Grimoire.
         csnprintf!(&mut msg, 256, tr("No pen found. %s is made for Kindle Scribe; writing needs its pen."), APP_NAME);

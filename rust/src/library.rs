@@ -7770,6 +7770,15 @@ fn files_close(a: &mut App, to_library: bool) {
     redraw(a, RefreshMode::Full);
 }
 
+/// What a toast says when an import that was asked for has to wait for another: a file picked while an import of
+/// an earlier run is still going, and a PDF KOReader handed over by its path behind any other import (app.rs).
+pub fn library_import_waits_text() -> &'static str {
+    // TRANSLATORS: a toast after a file was picked to import while an import from an earlier run is
+    // still going (in the background): this one starts once that one is done. One line of about
+    // 1700 px at 44 px, or two.
+    tr("Another import is still going. This one starts after it.")
+}
+
 fn files_result(a: &mut App, r: BrowserResult) {
     use crate::pdfimport::Queued;
     let (name, folder) = {
@@ -7803,12 +7812,7 @@ fn files_result(a: &mut App, r: BrowserResult) {
                     }
                     app_toast(a, &msg, 4000);
                 }
-                Queued::Waiting => {
-                    // TRANSLATORS: a toast after a file was picked to import while an import from an earlier run is
-                    // still going (in the background): this one starts once that one is done. One line of about
-                    // 1700 px at 44 px, or two.
-                    app_toast(a, tr("Another import is still going. This one starts after it."), 6000);
-                }
+                Queued::Waiting => app_toast(a, library_import_waits_text(), 6000),
                 _ => {}
             }
         }
