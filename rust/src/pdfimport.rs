@@ -2385,7 +2385,12 @@ fn first_slice(id: &str, src: &str, abs: &str, source: &Src, mark: Option<&Mark>
         qlog!("import: %s: a PDF over %d MB; nothing imported%s", id, (cap >> 20) as i32, if mapped { "" } else { " (the device refuses the private mapping)" });
         return refuse(R_TOO_BIG, (cap >> 20) as u32);
     }
-    let key = partial_md5_fd(std::os::fd::AsRawFd::as_raw_fd(&source.fd));
+    let Some(key) = partial_md5_fd(std::os::fd::AsRawFd::as_raw_fd(&source.fd)) else {
+        // (a read that fails is no key: one taken from the samples before it would be another file's)
+        qlog!("import: %s: its book key could not be read (the storage failed a read); nothing imported", id);
+        mark_drop(src);
+        return fail(id, R_FAILED, 0);
+    };
     let mut all = Vec::new();
     store_list(&mut all);
     // "Imported before" is said of this very file. The notebooks that hold its key decide: one whose record has
@@ -2922,11 +2927,14 @@ fn commit(id: &str, src: &str, abs: &str, state: &State, source: &Src, pw: i32, 
     // this open file, so both are of one file: a file that took the name between two slices, with the same size
     // and time and another key, ends the import here.
     let again = open_source(src);
-    if again.as_ref().map_or(true, |s| s.size != state.size || s.mtime != state.mtime)
-        || source.size != state.size
-        || partial_md5_fd(std::os::fd::AsRawFd::as_raw_fd(&source.fd)) != state.key
-    {
-        qlog!("import: %s: the PDF changed under the import; nothing imported", id);
+    let still = again.as_ref().is_ok_and(|s| s.size == state.size && s.mtime == state.mtime) && source.size == state.size;
+    let key = if still { partial_md5_fd(std::os::fd::AsRawFd::as_raw_fd(&source.fd)) } else { None };
+    if !still || key.as_deref() != Some(state.key.as_str()) {
+        if still && key.is_none() {
+            qlog!("import: %s: its book key could not be read (the storage failed a read); nothing imported", id);
+        } else {
+            qlog!("import: %s: the PDF changed under the import; nothing imported", id);
+        }
         remove_work_folder(id);
         mark_drop(src);
         return fail(id, R_FAILED, 0);
