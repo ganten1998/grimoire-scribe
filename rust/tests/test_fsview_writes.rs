@@ -585,9 +585,16 @@ fn notebooks_and_pages_in_the_trash() {
     fsview_rename_fallback_force(false);
 }
 
-// The copy request: refused for a source that is no plain file, has changed, sits in Grimoire's own folders, or
-// would leave less than the floor; else queued, and the job puts the bytes in the folder under the source's name
-// (" 2" when taken), reported as a job the user waits on.
+// A file one byte over what the folder `to` takes (a sparse one: no disk is used, and no copy of it is ever made).
+fn too_big(root: &str, p: &str, to: CopyTo) {
+    let f = std::fs::File::create(format!("{root}/{p}")).unwrap();
+    f.set_len(to.max_bytes() + 1).unwrap();
+}
+
+// The copy request: refused for a source that is no plain file, has changed, sits in Grimoire's own folders, is
+// bigger than its folder takes, has a path too long for a job, or would leave less than the floor; else queued, and
+// the job puts the bytes in the folder under the source's name (" 2" when taken), reported as a job the user waits
+// on. A source that changes before the job reads it ends the job with the number that says so.
 fn the_copy_request() {
     let (root, g) = tree();
     std::fs::write(format!("{root}/documents/photo.png"), vec![7u8; 200_000]).unwrap();
@@ -603,6 +610,38 @@ fn the_copy_request() {
     let mut other = p;
     other.mtime -= 1;
     check!(copy_request(&st, &sp("documents/photo.png"), &other, CopyTo::Photos) == Err(FsWriteErr::Changed));
+    // a picture over the template job's limit (templates and photos alike): refused here, with room or without,
+    // and no job is queued
+    check!(CopyTo::Templates.max_bytes() == grimoire::bgwork_template::TEMPLATE_MAX_BYTES as u64 && CopyTo::Photos.max_bytes() == CopyTo::Templates.max_bytes());
+    check!(CopyTo::Fonts.max_bytes() == grimoire::fontcheck::FONT_FILE_MAX as u64);
+    too_big(&root, "documents/huge.png", CopyTo::Photos);
+    let huge = stat_of(&st, "documents/huge.png");
+    for free in [None, Some(1 << 20)] {
+        copy_seams(free, None);
+        for to in [CopyTo::Templates, CopyTo::Photos] {
+            check!(copy_request(&st, &sp("documents/huge.png"), &huge, to) == Err(FsWriteErr::TooBig));
+        }
+    }
+    // a path a listing shows (under 600 bytes) that does not fit a job's with the listed stat before it: refused as
+    // too long, with room or without
+    let mut deep = String::from("documents");
+    while deep.len() + 61 + "/p.png".len() < 596 {
+        deep.push('/');
+        deep.push_str(&"d".repeat(60));
+    }
+    deep.push('/');
+    deep.push_str(&"e".repeat(590 - "/p.png".len() - deep.len()));
+    std::fs::create_dir_all(format!("{root}/{deep}")).unwrap();
+    let long = format!("{deep}/p.png");
+    check!(long.len() == 590);
+    std::fs::write(format!("{root}/{long}"), b"a picture").unwrap();
+    let l = stat_of(&st, &long);
+    for free in [None, Some(1 << 20)] {
+        copy_seams(free, None);
+        check!(copy_request(&st, &sp(&long), &l, CopyTo::Templates) == Err(FsWriteErr::TooLong));
+    }
+    check!(!bg_busy());
+    check!(names(&format!("{g}/photos")).is_empty() && names(&format!("{g}/templates")) == ["a.png", "b.png"]);
     copy_seams(Some((100 << 20) + 199_999), None);
     check!(copy_request(&st, &sp("documents/photo.png"), &p, CopyTo::Photos) == Err(FsWriteErr::NoRoom));
     copy_seams(Some((100 << 20) + 200_000), None);
@@ -622,13 +661,18 @@ fn the_copy_request() {
     check!(copy_request(&st, &sp("documents/photo.png"), &p, CopyTo::Templates) == Ok(()));
     std::fs::write(format!("{root}/documents/photo.png"), vec![8u8; 200_001]).unwrap();
     check!(settle() == -1);
+    // (the child's exit status, as the app's tick reads it for the toast: "File changed. Try again.")
+    check!(bg_last_exit() == CopyFail::Changed as i32);
+    check!(copy_refusal(CopyFail::of_exit(bg_last_exit()), CopyTo::Templates) == "File changed. Try again.");
     std::env::remove_var("GRIMOIRE_BG_DELAY_MS");
     check!(names(&format!("{g}/templates")) == ["a.png", "b.png"]);
 }
 
 // The job on its own (as the child runs it): it refuses a source that is no plain file or a link, one that is not
-// the file listed, a copy that would go under the floor, and a write that fails (a full storage): nothing is left
-// in the folder each time. A temporary file a dead copy left is swept; one of a live process is not.
+// the file listed or is gone, one bigger than its folder takes, a name too long once numbered (each with its own
+// number, a CopyFail, which the screen reads back), a copy that would go under the floor, and a write that fails
+// (a full storage): nothing is left in the folder each time. A temporary file a dead copy left is swept; one of a
+// live process is not.
 fn the_copy_job() {
     let (root, g) = tree();
     std::fs::write(format!("{root}/documents/font.ttf"), vec![1u8; 300_000]).unwrap();
@@ -643,8 +687,22 @@ fn the_copy_job() {
     check!(bg_copy_file("fonts", "not a request") == -1);
     let mut moved = f;
     moved.size += 1;
-    check!(bg_copy_file("fonts", &arg(&moved, "documents/font.ttf")) == -1);
+    check!(bg_copy_file("fonts", &arg(&moved, "documents/font.ttf")) == CopyFail::Changed as i32);
+    check!(bg_copy_file("fonts", &arg(&f, "documents/gone.ttf")) == CopyFail::Changed as i32);
     check!(names(&fonts).is_empty());
+    // a file over the folder's limit that reached the job (the request refuses it first): not copied, and the job
+    // ends with the number that says so, with room or without
+    too_big(&root, "documents/huge.png", CopyTo::Templates);
+    too_big(&root, "documents/huge.ttf", CopyTo::Fonts);
+    let before = names(&format!("{g}/templates"));
+    for free in [None, Some(1 << 20)] {
+        copy_seams(free, None);
+        check!(bg_copy_file("templates", &arg(&stat_of(&st, "documents/huge.png"), "documents/huge.png")) == CopyFail::TooBig as i32);
+        check!(bg_copy_file("photos", &arg(&stat_of(&st, "documents/huge.png"), "documents/huge.png")) == CopyFail::TooBig as i32);
+        check!(bg_copy_file("fonts", &arg(&stat_of(&st, "documents/huge.ttf"), "documents/huge.ttf")) == CopyFail::TooBig as i32);
+    }
+    copy_seams(None, None);
+    check!(names(&format!("{g}/templates")) == before && names(&format!("{g}/photos")).is_empty() && names(&fonts).is_empty());
     copy_seams(Some((100 << 20) + 299_999), None);
     check!(bg_copy_file("fonts", &arg(&f, "documents/font.ttf")) == -1);
     check!(names(&fonts).is_empty());
@@ -674,6 +732,13 @@ fn the_copy_job() {
     std::fs::remove_dir_all(format!("{g}/photos")).unwrap();
     check!(bg_copy_file("photos", &arg(&f, "documents/font.ttf")) == 0);
     check!(names(&format!("{g}/photos")) == ["font.ttf"]);
+    // a name of 254 bytes goes in once; taken, it would be 256 with " 2": too long, said so, and nothing is left
+    let wide = format!("documents/{}.png", "w".repeat(250));
+    std::fs::write(format!("{root}/{wide}"), b"a picture").unwrap();
+    let w = stat_of(&st, &wide);
+    check!(bg_copy_file("photos", &arg(&w, &wide)) == 0);
+    check!(bg_copy_file("photos", &arg(&w, &wide)) == CopyFail::TooLong as i32);
+    check!(names(&format!("{g}/photos")).len() == 2);
 }
 
 // The trash's sizes (issue #144), read a slice at a time: each entry's bytes (a file's or folder's entry its item's,

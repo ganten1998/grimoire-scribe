@@ -65,9 +65,9 @@ each for its own issue:
 - **Previews and the Covers view** (`files_view=covers`, read today as the list and kept), "Making previews...",
   the cache and its prune; the details a card can only have from the worker (a PDF's pages, a picture's size, a
   font's sample and coverage).
-- **From a file... tiles** in the Paper sheet's More layouts... and Photos...: Use as template and Use as photo on
-  a picture's card, and Add to fonts on a font's (with the Kindle fonts row of the Font sheet), once a copy job
-  exists. The cards offer only Cancel for those kinds until then.
+- **Add to fonts** on a font's card, with the Font sheet's Add a font... and its Kindle fonts row: not built. They
+  waited for the font check's hardening (#111), which is merged now. The From a file... tiles and a picture's Use
+  as template and Use as photo are built (#146, the section below).
 - **Not decided here**: the Files card's second line (an earlier idea was "%d to import"; the free space today); the
   Folder icon greyed in read-only places; Ctrl+N and Ctrl+F in Files; Esc at a home root asking "Exit
   Grimoire?". The card is the last card of the top level, which in a big Library is the last screen: if that is
@@ -75,6 +75,31 @@ each for its own issue:
 - **Not timed on the Scribe**: Sort by newest or size stats a whole folder (up to 5,000 entries) in 20 ms slices
   on the UI thread; the Go to sheet reads the storage root at once on the tap, at most 200 ms in all (a root that
   takes longer lists the folders read by then). TESTING.md, "2.2, Files (issue #124): device checks".
+
+## From a file... and Use as template (2.2, issue #146): what waits
+
+Built: a picture's Use as template and Use as photo in Files, and the From a file... tile at the end of the
+Templates and Photos sheets, over New notebook and over a notebook's page (docs/DESIGN.md, From a file... and Use
+as template). Waiting:
+
+- **Add a font...** in the Font sheet (with the Kindle fonts row) and **Add to fonts** on a font's card in Files:
+  the same copy job into `grimoire/fonts` (it refuses a font over the font check's limit already), on the Font
+  sheet as nebuff's Settings work has it. The font check's hardening they waited for (#111) is merged now; they are
+  a change of their own.
+- **Defaults taken here, for the owner to confirm**: the tile is the sheet's last (no picture's tile moves for it;
+  in a big folder it is on the last page); the picture pick's title is "From a file..." and its root has no Import
+  place; a copy that went in is told by "Copied to Templates." (or Photos) unless its sheet is in front; a copy
+  that is not made says the sentence of its cause where the screens had one ("Too big (over 16 MB).", "Path too
+  long.", "File changed. Try again."), and "Couldn't copy file. Is the storage full?" for the floor, a failed write
+  and the rare causes with no sentence (grimoire.log has the reason).
+- **After a job's "File changed. Try again."** (a picture that changed between the tap and its copy, a download
+  still being written, say) Files still lists the folder as it was read: the next tap on that card says the same
+  once more and reads the folder again, so the copy takes a third tap. The app's tick could have Files read its
+  folder again when a copy ends so.
+- **The empty Templates and Photos sheets** still name only the copy over USB in their text, above a tile that
+  offers the other way. No new string was the rule here; the sentence may be reworded with the next strings.
+- **Not timed on the Scribe**: a big photo's copy and preview. docs/TESTING.md, "2.2, From a file... and Use as
+  template (issue #146): device checks".
 
 ## After the release of 2.1.0 (2026-11-13): what waits
 
@@ -100,8 +125,8 @@ trash and restore since issue #144 (its own section, above); the copy waits for 
 - **The screens' part** (the Files place and its cards, the Trash place, the From a file... tiles, Add a
   font...):
   - The refusals' words came with issue #144 (rename, trash, restore; "Restored to %s.", and nothing said for an
-    entry a cut-off trash left). Waiting: "Couldn't copy file. Is the storage full?" for any failed copy (the job
-    ends 0 or 1 only).
+    entry a cut-off trash left) and, for a copy, with issue #146: "Couldn't copy file. Is the storage full?" for a
+    failed copy with no sentence of its own (the job's exit status names the others).
   - The Trash place's Restore, its sizes, and the Library read again after a notebook's restore (with
     `libindex_revalidate()` in `store_restored`) came with issue #144; a restored notebook's mirror PDF is made at
     its next change. The trash only grows (every deleted page is an entry): past 5,000 entries its listing
