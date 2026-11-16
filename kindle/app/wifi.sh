@@ -266,8 +266,9 @@ wpa_ready() {
         *"wpa_state=COMPLETED"*)
             # wpa_cli status names an EAP AKM "WPA2/IEEE 802.1X" or "WPA3/IEEE 802.1X", not
             # the network block's "WPA-EAP"; accept both forms, and SAE for WPA3-Personal.
+            # (The WPA-EAP pattern also matches WPA-EAP-SHA256.)
             case "$wpa_state" in
-                *"key_mgmt=SAE"*|*"key_mgmt=FT-SAE"*|*"key_mgmt=WPA-EAP"*|*"key_mgmt=WPA-EAP-SHA256"*|*"IEEE 802.1X"*)
+                *"key_mgmt=SAE"*|*"key_mgmt=FT-SAE"*|*"key_mgmt=WPA-EAP"*|*"IEEE 802.1X"*)
                     unset wpa_state
                     return 0
                     ;;
@@ -731,7 +732,7 @@ select_network %s
         # A wifid-managed profile replaces any supplicant-owned EAP/WPA3 profile.
         rm -f "$supplicant_marker" 2>/dev/null || true
         if [ "$method" = open ]; then
-            secured=no; psk=""
+            psk=""
         else
             IFS= read -r secret || exit 2
             psk=
@@ -751,7 +752,6 @@ select_network %s
                 [ "${#psk}" -eq 64 ] || { unset secret; exit 18; }
             fi
             unset secret
-            secured=yes
         fi
         esc=$(printf '%s' "$essid" | sed 's/\\/\\\\/g; s/"/\\"/g')
         if [ "$method" = open ]; then

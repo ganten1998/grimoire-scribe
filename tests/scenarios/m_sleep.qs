@@ -23,16 +23,21 @@ wait 400
 shot 02-awake
 expect asleep is 0
 expect screen is editor
-pentap panel display
+pentap panel settings
 wait 300
-shot 03-display-sheet-sleep
-expect editor.modal is display
+expect editor.modal is settings
+tap library settings.cat.2
+wait 100
+tap library sleep-clock
+wait 300
+shot 03-sleep-settings
+expect editor.settings.sheet is display
 expect settings.sleep_mode is 0
-tap 496 1640
+tap library display.pin
 expect toast is This page is now the sleep screen
 expect settings.sleep_mode is 1
 wait 300
-tap 1464 1950
+tap library display.done
 wait 300
 expect editor.modal is none
 pentap panel next

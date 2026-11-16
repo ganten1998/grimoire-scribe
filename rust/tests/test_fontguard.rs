@@ -236,6 +236,27 @@ quit\n";
     check!(code == Some(0) && signal.is_none());
 }
 
+// M17 with Back (the new Settings menu, #115: a font tapped applies at once): after a start in Terminess (one
+// strike), Terminess tapped in the Font sheet, the family that shows, takes the font= line away at the tap, saved
+// then (the storage full after it, nothing later can write settings.ini), and the sheet's Back keeps that.
+fn terminess_tapped_after_a_strike_takes_the_font_away_at_once() {
+    let r = prepared("tap");
+    let (code, signal, _) = start(&r, IN_USE, true);
+    check!(code.is_none() && signal == Some(libc::SIGABRT));
+    let undo = "wait 200\nexpect font is terminess\nexpect settings.font is file:Mine.ttf\ntap library settings\nwait 50\n\
+tap library settings.cat.1\nwait 50\ntap library font\nwait 50\nexpect library.font.pick is terminess\ntap library font.terminess\n\
+wait 100\nexpect settings.font is terminess\nexpect font is terminess\nstorage full\ntap library font.cancel\nwait 50\n\
+expect library.sheet is settings\nexpect settings.font is terminess\nquit\n";
+    let (code, _, out) = start(&r, undo, false);
+    check!(code == Some(0));
+    if code != Some(0) {
+        eprintln!("{out}");
+    }
+    check!(!settings_font_line(&r).contains("file:"));
+    let (code, signal, _) = start(&r, "wait 100\nexpect font is terminess\nexpect settings.font is terminess\nexpect font.own.drawn is 0\nquit\n", true);
+    check!(code == Some(0) && signal.is_none());
+}
+
 // M20: a verdict that does not read (a line a later version added) is checked again, once: the row does not say
 // "Checking..." for good, and the open sheet does not refresh at every look.
 fn a_verdict_that_does_not_read_is_checked_again() {
@@ -265,6 +286,7 @@ fn test_fontguard() {
     run!(gothic_holds_no_custom_font);
     run!(a_check_that_cannot_end_is_not_queued_again_at_once);
     run!(done_on_terminess_after_a_strike_takes_the_font_away);
+    run!(terminess_tapped_after_a_strike_takes_the_font_away_at_once);
     run!(a_verdict_that_does_not_read_is_checked_again);
     done();
 }

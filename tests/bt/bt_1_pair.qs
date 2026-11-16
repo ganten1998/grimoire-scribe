@@ -4,12 +4,14 @@
 # (tests/fake_bthelper.py) and runs this (a helper is needed, so it is not in tests/scenarios). The helper is
 # used as it is (not Grimoire's: it is never stopped), Settings > Pair > Pair a controller... finds two
 # controllers (a name that is not printable shown safely), the second will not pair, the first does, then is
-# forgotten; its Done goes back to Pair; Bluetooth turned off and on again there, and the helper going and
+# forgotten; its Back goes back to Pair; Bluetooth turned off and on again there, and the helper going and
 # coming back with shortcuts (Settings > Shortcuts' Enable shortcuts).
 wait 2000
 expect library.bluetooth is external
 tap 1535 95
 wait 200
+tap library settings.cat.4
+wait 100
 tap library pair-menu
 wait 200
 expect library.sheet is pair-menu
@@ -19,22 +21,22 @@ expect library.sheet is pair
 wait 3000
 expect library.pair is idle 2 0
 shot 01-found
-tap 930 1055
+tap 930 608
 wait 2500
 expect toast is Couldn't pair controller
 expect library.pair is idle 2 0
-tap 930 895
+tap 930 452
 wait 300
 expect library.pair is pairing 2 0
 wait 2500
 expect toast is Paired.
 expect library.pair is idle 2 1
 shot 02-paired
-tap 930 1160
+tap 930 764
 wait 1500
 expect toast is Forgotten.
 expect library.pair is idle 2 0
-tap 930 1375
+tap library settings.back
 wait 200
 expect library.sheet is pair-menu
 tap library bluetooth
@@ -46,10 +48,12 @@ shot 03-bluetooth-off
 tap library bluetooth
 wait 200
 expect library.bluetooth is external
-tap library done
+tap library settings.close
 wait 200
 tap 1535 95
 wait 200
+tap library settings.cat.4
+wait 100
 tap library shortcuts
 wait 200
 tap library shortcuts.enable

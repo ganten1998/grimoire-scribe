@@ -16,10 +16,13 @@ tap panel library
 wait 100
 tap 1535 95
 wait 100
-expect library.ui_at.1000.1930 is gestures
-tap 1000 1930
+expect library.ui_at.329.830 is settings.cat.4
+tap 329 830
 wait 100
-expect library.ui_at.930.1069 is gestures.group.pages
-tap 930 1069
+expect library.ui_at.1233.639 is gestures
+tap 1233 639
+wait 100
+expect library.ui_at.930.920 is gestures.group.pages
+tap 930 920
 wait 100
 expect library.gestures.7 is Pages: no gesture
