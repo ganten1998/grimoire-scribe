@@ -217,6 +217,9 @@ grimoire.log says (no file name, title or key):
   imported before, but named no notebook that is there; nothing opened`, `book: the PDF import ended without a word;
   the book's notebook opens as it is` (a fill whose notebook was renamed or moved meanwhile) and `book: the PDF
   import ended without a notebook; nothing opened`.
+- `book: <nb>: the reader's page could not be kept as the page it opens at`: the import ended with something else
+  in front, and the notebook's `notebook.ini` could not be written (or no longer holds that page); the notebook
+  opens where it would have.
 - `book: the request does not read (<why>); nothing opened`, for a version 2 request: `no file named`, `a file named
   twice`, `a version 2 request names a key twice`, `its file's path is not absolute`, `... is too long`, `... holds a
   control character`, `... is not UTF-8`, `a version 2 request names a picture`.

@@ -1,7 +1,7 @@
 # settings: status_mode=1
 # storage: 1
 # env: GRIMOIRE_HOST=koreader
-# env: GRIMOIRE_BOOK=1 GRIMOIRE_PDF_SLICE_PAGES=1 GRIMOIRE_BG_DELAY_MS=1000
+# env: GRIMOIRE_BOOK=1 GRIMOIRE_PDF_SLICE_PAGES=1 GRIMOIRE_BG_DELAY_MS=1500
 # copy: tests/fixtures/pdf/tabs documents
 # generate: tests/book_v2_request.py --dir documents --data grimoire --book 1fba66e74df2ca9847e3725e1571df47 --page 3 --pages 4
 # pdfs: 0

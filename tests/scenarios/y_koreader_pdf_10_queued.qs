@@ -1,7 +1,7 @@
 # settings: status_mode=1
 # storage: 1
 # env: GRIMOIRE_HOST=koreader
-# env: GRIMOIRE_BOOK=1 GRIMOIRE_IMPORT_STABLE=fast GRIMOIRE_BG_DELAY_MS=600
+# env: GRIMOIRE_BOOK=1 GRIMOIRE_IMPORT_STABLE=fast GRIMOIRE_BG_DELAY_MS=1200
 # copy: tests/fixtures/pdf/colour grimoire/import
 # copy: tests/fixtures/pdf/tabs documents
 # generate: tests/book_v2_request.py --dir documents --data grimoire --book 1fba66e74df2ca9847e3725e1571df47 --page 3 --pages 4
