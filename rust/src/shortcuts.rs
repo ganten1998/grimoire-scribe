@@ -447,7 +447,8 @@ fn parse(map: &mut Shortcuts, text: &[u8], allow_key: bool, allow_pad: bool) {
 pub(crate) fn ini_read_bounded(path: &str, cap: u64) -> Result<Option<Vec<u8>>, ()> {
     let f = match open_read_nofollow(path) {
         Ok((f, st)) if st.len() <= cap => f,
-        // (a link at the name, even one to nothing, is an existing unreadable mapping, not a missing file)
+        // (only nothing at the name is a missing file: a link there, even one to nothing, fails the open with
+        // ELOOP and is an existing unreadable mapping)
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
         _ => return Err(()),
     };
