@@ -10,9 +10,9 @@ Built: Rename and Delete on the cards inside Grimoire's folders for the user's f
 now.", a folder card's check by identity, the Trash place's sizes and the trash's on its row, Restore for files,
 folders and notebooks (docs/DESIGN.md, "Files: rename, delete and restore"). Waiting:
 
-- **Not in 2.2** (D31): Move (Import to Templates or Photos by kind, between them, to Import) and New folder in
-  Import. **Never**: Empty (the trash is cleaned over USB). **Not built**: Restore for a page (its place in its
-  notebook was never kept; browser.md 17 has it as an optional extra).
+- **Not in 2.2** (the owner's decision): Move (Import to Templates or Photos by kind, between them, to Import)
+  and New folder in Import. **Never**: Empty (the trash is cleaned over USB). **Not built**: Restore for a page
+  (its place in its notebook was never kept; an optional extra in the plan).
 - **A held item's row is not greyed**: its card still offers Rename and Delete, and each says "Importing now." when
   tapped (the busy check is one per tap, not one per row drawn).
 - **A name taken on rename** says "A file with that name is already here." and keeps the keyboard up with the name;

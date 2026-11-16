@@ -24,6 +24,7 @@ const RELEASING: File = ("docs/RELEASING.md", include_str!("../../docs/RELEASING
 const PDFWORK: File = ("rust/src/pdfwork.rs", include_str!("../src/pdfwork.rs"));
 const FONTCHECK: File = ("rust/src/fontcheck.rs", include_str!("../src/fontcheck.rs"));
 const USERFONTS: File = ("rust/src/userfonts.rs", include_str!("../src/userfonts.rs"));
+const FSVIEW: File = ("rust/src/fsview.rs", include_str!("../src/fsview.rs"));
 const SANDBOX: File = ("rust/src/sandbox.rs", include_str!("../src/sandbox.rs"));
 const TEMPLATES: File = ("rust/src/bgwork_template.rs", include_str!("../src/bgwork_template.rs"));
 const SANDBOX_TESTS: File = ("rust/tests/test_sandbox_linux.rs", include_str!("test_sandbox_linux.rs"));
@@ -467,6 +468,19 @@ fn the_one_skrifa_is_the_one_hayro_brings() {
 
 // Sentences that said what the code does not do, each gone from the file that held it, and one file name the
 // code writes that FORMAT.md did not list.
+// Files' rename, delete and restore (issue #144): its public text names no label or file of the private plan, and
+// says what the screens do now.
+#[test]
+fn files_rename_delete_and_restore_are_told_as_they_are() {
+    let mut fails = Vec::new();
+    gone(&mut fails, BACKLOG, "**Not in 2.2** (D31)");
+    gone(&mut fails, BACKLOG, "browser.md 17 has it as an optional extra");
+    gone(&mut fails, FSVIEW, "browser.md D4");
+    // the Trash place has Restore: it is not read only
+    gone(&mut fails, DESIGN, "lists `grimoire/trash` read only, through");
+    none_failed(&fails, "Files' rename, delete and restore");
+}
+
 #[test]
 fn the_docs_no_longer_say_what_the_code_does_not() {
     let mut fails = Vec::new();

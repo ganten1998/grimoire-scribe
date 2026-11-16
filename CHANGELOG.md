@@ -15,7 +15,7 @@
   as its "..." does. Two new actions with no default key, `files` and `home`.
 - **Files: Rename, Delete and Restore.** Inside Grimoire's own folders (Import, Templates, Photos, Fonts) a file's or
   folder's card renames it, saying which rule a name breaks and never replacing another file, or moves it to the
-  trash; what an import is working on says "Importing now.". Files > Trash shows each entry's size, and its row the
+  trash; what an import is working on says "Importing now." instead. Files > Trash shows each entry's size, and its row the
   trash's, and puts a file, a folder or a notebook back with Restore (" 2" when its name is taken); notebooks
   deleted in the Library come back the same way. No Empty: the trash is cleaned over USB.
 - Hardening: Grimoire reads the files in its own folders only when they are plain files, with size limits

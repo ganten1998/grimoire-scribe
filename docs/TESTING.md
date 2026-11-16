@@ -89,7 +89,8 @@ documents: `rust/tests/test_sec_invariants.rs` (DESIGN.md, FORMAT.md, KINDLE.md,
 RELEASING.md: sentences about the safe loader and the font check that must not come back, the names
 `RECORDS_MAX_BYTES`, `<key>.slow` and `<key>.no`, the font check's glyph limit with its figure, the number in
 a font verdict's first line and in a `<key>.slow` mark's line, the font check's other placeholders with
-their values, and a few sentences that hold only while another one stands), `mapview.rs` (the Graph's keys)
+their values, a few sentences that hold only while another one stands, and what must not come back about
+Files' rename, delete and restore), `mapview.rs` (the Graph's keys)
 and
 `test_scenarios.rs` with `sim_sdl.rs` (SIM.md). After rewording a sentence they hold, run `make test-sim`
 by hand: otherwise the push to main is the first run to say so.

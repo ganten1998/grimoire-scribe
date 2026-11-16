@@ -2550,7 +2550,7 @@ hosted the same way (`LibraryState.files`, `files_open_place`), and closes back 
   (the one whose `export_mirror_path` it is). Pictures, fonts and other files offer nothing else yet, but Rename
   and Delete inside Grimoire's own folders (below, issue #144). Every act checks the file or folder again first, by
   its path and its identity ("File changed. Try again.").
-- **The Trash place** lists `grimoire/trash` read only, through the storage writes' trash listing
+- **The Trash place** lists `grimoire/trash` through the storage writes' trash listing
   (`fsview_trash_entries`, read by name alone, no stat: the newest first by the time in each entry's name, a name of
   no known form last): a file or folder trashed from Grimoire's folders (`files-<stamp>-<4 hex>`) by the last part
   of where its record says it was (`FsStorage::trash_record`, read for the rows on screen only), a notebook

@@ -1569,7 +1569,7 @@ impl FsStorage {
 /// How deep a size walk goes inside a trash entry (a notebook's folder holds two levels).
 const SIZE_DEPTH: usize = 16;
 
-/// The bytes the trash holds, entry by entry (browser.md D4: no Empty, so the user sees its size and cleans it over
+/// The bytes the trash holds, entry by entry (there is no Empty, so the user sees its size and cleans it over
 /// USB): the regular files at any depth in each entry, by their size (a `files-...` entry's record left out: its size
 /// is its item's), read a slice at a time with the folders being read kept open between ticks. Nothing is opened but
 /// folders (O_DIRECTORY|O_NOFOLLOW, from the one above), no link is followed or counted, and no folder on another
