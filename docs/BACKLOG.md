@@ -279,8 +279,10 @@ the name rules, the busy check and the copy job (`BgKind::CopyFile`). Nothing on
 ## KOReader hands a PDF over by its path (2.2, #142): what waits, and what is for the owner
 
 - **The Scribe check has not run** (docs/TESTING.md, "2.2, KOReader hands a PDF over by its path"): the plugin
-  updated, KOReader restarted, a PDF handed over and its reader's page opening at the end, its colour, a book
-  opened before (KOReader's pages kept, the rest filled), a DjVu still by version 1. The tests stand KOReader in.
+  updated, KOReader restarted, a PDF handed over and its reader's page opening at the end, its colour, the Library
+  used meanwhile, a book opened before (KOReader's pages kept, the rest filled), the first start after an update,
+  another import ahead, an edited copy, a DjVu still by version 1, the password question, a PDF where Grimoire
+  does not read. The tests stand KOReader in.
 - **A hand-over's import cannot be stopped**, as no import can: it holds nothing (the Library is usable, and what
   was opened meanwhile stays in front), but it runs to its end. Putting the Kindle to sleep pauses it and stops
   nothing. A Cancel would need a string of its own and a way to stop a running import job, which the job queue

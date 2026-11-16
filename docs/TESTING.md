@@ -2838,8 +2838,11 @@ that sends links again would add a second copy of a link to a page the fill adde
 of this branch:
 
 1. **KOReader's notebook.** In KOReader, open a planner PDF with tabs that Grimoire never imported (one of more
-   than ten pages), go to its third page and use Open this book in Grimoire. Write a line on that page. Note the
-   notebook's page count on its card (the pages KOReader sent), and leave Grimoire for KOReader.
+   than ten pages), go to its third page and use Annotate this page in Grimoire, then do the same on two or three
+   more of its pages. (KOReader draws these. With this build's plugin, Open this book in Grimoire hands a PDF
+   over by its path and its notebook holds every page at once: the check for issue #142, below.) Write a line on
+   the third page. Note the notebook's page count on its card (the pages KOReader sent), and leave Grimoire for
+   KOReader.
 2. **The same file dropped.** Over USB, copy that very file (from where KOReader opened it, unchanged) into
    `grimoire/import`, and start Grimoire. Within about 10 s the notice counts the missing pages ("Importing: page
    N of M", M the book's pages less the notebook's), then "Adding book pages: N of M" for a moment, and the end
@@ -2860,8 +2863,12 @@ of this branch:
    PDF again, and while the notice counts, tap the notebook's card: it opens, as it is. Go back to the Library:
    "Adding book pages: N of M" shows for a moment, then "Added N book pages."; the card opens it, filled again.
 6. **KOReader while a fill waits.** Delete a few pages again, drop a copy of the PDF, and before its notice ends
-   leave Grimoire for KOReader; there, use Open this book in Grimoire: the book opens on the reader's page at once,
-   with no toast over it. Go back to the Library: the fill's pages go in ("Added N book pages.").
+   leave Grimoire for KOReader; there, use Open this book in Grimoire. With this build's plugin the PDF goes by
+   its path: the Library comes up (saying "Another import is still going. This one starts after it." while the
+   first import still runs), the fill's pages go in ("Added N book pages."), and the notebook then opens on the
+   reader's page, with no page added twice. (With a plugin from before 2.2, which draws the pages itself, the
+   book opens on the reader's page at once, with no toast over it, and the fill's pages go in once the Library is
+   back in front.)
 7. **KOReader again.** Open the PDF in KOReader and use Open this book in Grimoire on a page the fill added: it
    opens that page, adds no page, and no tab doubles.
 
@@ -2977,32 +2984,33 @@ comics, XPS, a PDF that needs a password, a PDF at a path Grimoire does not take
 since KOReader first opened it, and any PDF to an older launcher go by version 1, KOReader drawing them; Annotate
 this page stays version 1.
 
-Automated: `rust/tests/test_annotate.rs`
-(`book_request_parsing`: version 2 read strictly, version 1 unchanged), `rust/tests/test_koreader_pdf.rs` (a new
-notebook at the reader's page with its record, its colour kept, a fill of a version 1 notebook keeping KOReader's
-pages, "already imported" ending on the page, ten paths the walk refuses, a PDF the import refuses, the import's end
-told once and the reader's page kept as the page the notebook opens at, a hand-over behind another run's import and
-behind a queued one, the notebook whose record is of the file for three files of one key, a notebook without a
-record taken for any file of its key, the file the import opened deciding when the name changed hands after the
-start, a fill stopped by a rename), `tests/koplugin_test.lua` (a PDF by its path from the reader and from Open
-with..., the same PDF to a 2.1 launcher, a DjVu, Annotate this page, a PDF that needs a password, the question
-failing and its log line, version 1 for every path Grimoire's walk refuses (hidden, `.sdr`, system and own folders,
-a linked folder, a link, 600 bytes, not UTF-8) with version 2 beside each, a PDF over 512 MiB, a PDF changed since
-KOReader first opened it), `tests/package_check.sh` (the launcher's `pdf`) and the scenarios
-`tests/scenarios/y_koreader_pdf_1_new.qs` (the hand-over on a storage root: the import's notice, New notebook
-opening and closing meanwhile, the notebook open at book page 3), `y_koreader_pdf_2_fill.qs` (z_pdf_11's notebook of
-KOReader's pages 1 and 3 filled by the planner's path, open at book page 2), `y_koreader_pdf_3_djvu.qs` (a version 1
-request, as a DjVu's, taken as before), `y_koreader_pdf_4_whatsnew.qs` (the first start after an update is a
-hand-over that fills a notebook: What's new closes, then the pages go in and the notebook opens),
-`y_koreader_pdf_5_elsewhere.qs` (a notebook of the user's own in front at the end: the import's toast, and the
-book's card opens at book page 3), `y_koreader_pdf_6_sheet.qs` (the same with a sheet up),
-`y_koreader_pdf_7_asleep.qs` (the end taken at the wake), `y_koreader_pdf_8_password.qs` (a PDF the import refuses
-says the import's "PDF needs a password."), `y_koreader_pdf_9_refused.qs` (a path the walk refuses says the book's
-failure), `y_koreader_pdf_10_queued.qs` (behind a dropped PDF's import: the toast that says it waits, then both
-notebooks), `y_koreader_pdf_11_already.qs` (a book whose notebook holds every page: opened at the reader's page,
-nothing made), `y_koreader_pdf_12_pressed.qs` (a finger held on a Library button at the end: the notebook
-opens, and the lift does nothing on the page) and `y_koreader_pdf_13_came_back.qs` (back on the Library after a
-visit to a notebook: nothing opens, the card arrives and opens at book page 3).
+Automated: `rust/tests/test_annotate.rs` (`book_request_parsing`: version 2 read strictly, version 1 unchanged),
+`rust/tests/test_koreader_pdf.rs` (a new notebook at the reader's page with its record, its colour kept, a fill of a
+version 1 notebook keeping KOReader's pages, "already imported" ending on the page, ten paths the walk refuses, a
+PDF the import refuses, the import's end told once and the reader's page kept as the page the notebook opens at, a
+hand-over behind another run's import and behind a queued one, the notebook whose record is of the file for three
+files of one key, a notebook without a record taken for any file of its key, the file the import opened deciding
+when the name changed hands after the start, a fill stopped by a rename, a fill's end kept while its filing slice
+ends), `tests/koplugin_test.lua` (a PDF by its path from the reader and from Open with..., the same PDF to a 2.1
+launcher, a DjVu, Annotate this page, a PDF that needs a password, the question failing and its log line, version 1
+for every path Grimoire's walk refuses (hidden, `.sdr`, system and own folders, a linked folder, a link, 600 bytes,
+not UTF-8) with version 2 beside each, a PDF over 512 MiB, a PDF changed since KOReader first opened it),
+`tests/package_check.sh` (the launcher's `pdf`) and the scenarios `tests/scenarios/y_koreader_pdf_1_new.qs` (the
+hand-over on a storage root: the import's notice, New notebook opening and closing meanwhile, the notebook open at
+book page 3), `y_koreader_pdf_2_fill.qs` (z_pdf_11's notebook of KOReader's pages 1 and 3 filled by the planner's
+path, open at book page 2), `y_koreader_pdf_3_djvu.qs` (a version 1 request, as a DjVu's, taken as before),
+`y_koreader_pdf_4_whatsnew.qs` (the first start after an update is a hand-over that fills a notebook: What's new
+closes, then the pages go in and the notebook opens), `y_koreader_pdf_5_elsewhere.qs` (a notebook of the user's own
+in front at the end: the import's toast, and the book's card opens at book page 3), `y_koreader_pdf_6_sheet.qs` (the
+same with a sheet up), `y_koreader_pdf_7_asleep.qs` (the end taken at the wake), `y_koreader_pdf_8_password.qs` (a
+PDF the import refuses says the import's "PDF needs a password."), `y_koreader_pdf_9_refused.qs` (a path the walk
+refuses says the book's failure), `y_koreader_pdf_10_queued.qs` (behind a dropped PDF's import: the toast that says
+it waits, then both notebooks), `y_koreader_pdf_11_already.qs` (a book whose notebook holds every page: opened at
+the reader's page, nothing made), `y_koreader_pdf_12_pressed.qs` (a finger held on a Library button at the end: the
+notebook opens, and the lift does nothing on the page), `y_koreader_pdf_13_came_back.qs` (back on the Library after
+a visit to a notebook: nothing opens, the card arrives and opens at book page 3) and
+`y_koreader_pdf_14_fill_waits.qs` (a fill of the book's notebook from a dropped copy waits: it goes in, the book's
+own import then finds every page there, and the notebook opens at book page 2).
 
 **Not run on a Scribe.** The owner's check, on a build of this branch (a planner PDF with coloured tabs, more than
 20 pages, that Grimoire never saw; a second, long PDF, of a few hundred pages; a DjVu or CBZ book):
