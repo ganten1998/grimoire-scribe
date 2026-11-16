@@ -6,9 +6,10 @@ why. Newest decisions first within each section.
 
 ## Files' rename, delete and restore (2.2, issue #144): what waits
 
-Built: Rename and Delete on the cards inside Grimoire's folders for the user's files, the name rules' words, "Importing
-now.", a folder card's check by identity, the Trash place's sizes and the trash's on its row, Restore for files,
-folders and notebooks (docs/DESIGN.md, "Files: rename, delete and restore"). Waiting:
+Built: Rename and Delete on the cards inside Grimoire's folders for the user's files, the name rules' words, Delete's
+question, "Importing now.", a folder card's check by identity, the Trash place's sizes and the trash's on its row,
+Restore for files, folders and notebooks, the font in use (docs/DESIGN.md, "Files: rename, delete and restore").
+Waiting:
 
 - **Not in 2.2** (the owner's decision): Move (Import to Templates or Photos by kind, between them, to Import)
   and New folder in Import. **Never**: Empty (the trash is cleaned over USB). **Not built**: Restore for a page
@@ -21,9 +22,20 @@ folders and notebooks (docs/DESIGN.md, "Files: rename, delete and restore"). Wai
   with a control character ("Name can't contain U+0009"). Rename them over USB.
 - **The trash past 5,000 entries**: the Trash place lists the newest 5,000 (its listing reads the whole folder, a
   slice at a time, and lets the oldest go); the older ones are reached over USB. The size walk counts every entry.
-- **The size walk** runs once a session (from Files' root or its Trash place) and again after each delete or restore;
-  a trash changed over USB while Files is open is measured again only then. Not timed on the Scribe (TESTING.md, "2.2,
-  Files' rename, delete and restore (issue #144): device checks").
+- **The size walk** runs once a session (from Files' root or its Trash place) and again, whole, after each delete or
+  restore (a slice a tick, while the root or the Trash place shows; the rows keep the sizes they had meanwhile).
+  Adding and taking one entry's bytes in place would spare the walks, at the price of a total that can drift from
+  what is on the storage. A row whose entry the walk did not see (put there over USB since) shows no size, and is
+  looked up again each tick among the walk's entries (at most a screen of rows, each against at most the trash's
+  names). A trash changed over USB while Files is open is measured again only at the next write. Not timed on the
+  Scribe (TESTING.md, "2.2, Files' rename, delete and restore (issue #144): device checks").
+- **A folder named as Grimoire's on a storage that keeps case apart**: the allow-list knows Grimoire's folders by
+  name without regard to ASCII case (fsview's zones, from the storage writes), so a second folder such as
+  `Grimoire/photos` beside the real one would be offered Rename and Delete too. Everything stays inside the user's
+  own files and can be restored; knowing the folders by identity, as notebooks and the trash are known, is the
+  storage layer's to add.
+- **A trash entry's row** says its size and date, not what it is (a notebook, a file), and a file restored as " 2"
+  is told with its folder alone: both would need new words.
 - **The font in use** (Settings' `font`, and its `font_bold`): Delete refuses it ("Font in use."), and Rename takes
   the setting and what its check found along. Left: a Bold file Grimoire found by itself (no `font_bold` line) can
   be deleted, and bold is then the regular overprinted from the next start; a font renamed or deleted over USB
