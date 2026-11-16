@@ -232,11 +232,13 @@ pub struct Row {
     /// say it is the same, so the card offers Import as notebook as well, and the import gives the answer
     pub also_import: bool,
     pub status: RowStatus,
-    /// Files (2.2): the name a row shows in place of its file's (a trashed notebook's own; None until looked up, ""
-    /// when there is none), the time in a trash entry's name, and whether the entry is a folder
+    /// Files (2.2): the name a row shows in place of its file's (a trashed notebook's own, a trashed file's from its
+    /// record; None until looked up, "" when there is none), the time in a trash entry's name, whether the entry is a
+    /// folder, and what fsview's trash listing read from its name
     title: Option<String>,
     when: i64,
     dir: bool,
+    trash: Option<TrashEntry>,
     /// what the card's details say of the file beyond its size and date, once known without reading it here (a
     /// font's family, from its check's verdict): None until looked, "" for nothing
     detail: Option<String>,
@@ -260,6 +262,7 @@ impl Row {
             title: None,
             when: 0,
             dir: kind == RowKind::Dir,
+            trash: None,
             detail: None,
         }
     }
@@ -378,12 +381,10 @@ pub fn files_cmp(a: (bool, &str, Option<FsStat>), b: (bool, &str, Option<FsStat>
     key.then_with(|| name_cmp(a.1, b.1))
 }
 
-/// Sorts rows: `how` 0 by name, 1 and 2 as files_cmp (the newest or the largest first), ROWS_BY_TIME the newest
-/// first by the time in each name (the trash's). Every row sort goes through here: one sort in the binary.
-const ROWS_BY_TIME: i32 = 3;
+/// Sorts rows: `how` 0 by name, 1 and 2 as files_cmp (the newest or the largest first). Every row sort goes through
+/// here: one sort in the binary (the Trash place keeps the order of fsview's trash listing).
 fn sort_rows(rows: &mut [Row], how: i32) {
     rows.sort_by(|a, b| match how {
-        ROWS_BY_TIME => b.when.cmp(&a.when).then_with(|| name_cmp(&a.name, &b.name)),
         0 => name_cmp(&a.name, &b.name),
         _ => files_cmp((a.kind == RowKind::Dir, &a.name, a.stat), (b.kind == RowKind::Dir, &b.name, b.stat), how),
     });
@@ -415,22 +416,6 @@ fn u(v: f32) -> i32 {
 fn free_line(free: u64, total: u64) -> String {
     // TRANSLATORS: the file picker's free space line: free of the whole storage ("Free: 9.8 GB of 14.5 GB"), at 44 px, right-aligned.
     cformat!(tr("Free: %s of %s"), size_label(free).as_str(), size_label(total).as_str())
-}
-
-/// What a trash entry's name says: (the time in it, its notebook's id, whether it is a page) for a notebook
-/// `<id>-<time>` or a page `<id>-p<page>-<time>`; (0, "", false) for a name of another form. The Trash place reads
-/// names here alone. Issue #117's storage writes add a trash listing to fsview.rs that reads these names and the
-/// `files-<stamp>-<4 hex>` entries its own trash makes (here a name of another form): once that is on main, this
-/// reading moves there.
-fn trash_name(name: &str) -> (i64, &str, bool) {
-    let digits = |s: &str| !s.is_empty() && s.len() <= 18 && s.bytes().all(|c| c.is_ascii_digit());
-    let parts = name.rsplit_once('-').filter(|(h, t)| digits(t) && !h.is_empty() && !name.starts_with("files-"));
-    let Some((head, t)) = parts else { return (0, "", false) };
-    let when = t.parse().unwrap_or(0);
-    match head.rsplit_once("-p") {
-        Some((id, p)) if digits(p) && !id.is_empty() => (when, id, true),
-        _ => (when, head, false),
-    }
 }
 
 /// The longest the Go to sheet's tap waits for the storage root's folders.
@@ -754,9 +739,8 @@ impl Browser {
         dirs.extend(files);
         self.built = true;
         if place && self.in_trash_place() {
-            // Grimoire's trash, read only: each entry by the time in its name, the newest first (no stat)
-            let mut rows = self.trash_rows();
-            sort_rows(&mut rows, ROWS_BY_TIME);
+            // Grimoire's trash, read only, in the order of fsview's trash listing (no stat)
+            let rows = self.trash_rows();
             self.set_rows(rows);
             return;
         }
@@ -774,12 +758,17 @@ impl Browser {
         self.at.as_ref().is_some_and(|p| self.place_path(PlaceKind::Trash).is_some_and(|t| *p == t))
     }
 
-    /// The trash's entries as rows: a notebook (`<id>-<time>`, a folder) or a page (`<id>-p<page>-<time>`, a file),
+    /// The trash's entries as rows, read and ordered by fsview's trash listing (`fsview_trash_entries`: the newest
+    /// first by the time in each name, a name of no known form last): a file or folder of Grimoire's folders
+    /// (`files-<stamp>-<4 hex>`, beside its record), a notebook (`<id>-<time>`) and a page (`<id>-p<page>-<time>`),
     /// each with the time in its name. A name of another form is listed as it is, with no time.
     fn trash_rows(&self) -> Vec<Row> {
         let (Some(l), Some(at)) = (self.listing.as_ref(), self.at.as_ref()) else { return Vec::new() };
+        let ix: std::collections::HashMap<&[u8], usize> = l.entries.iter().enumerate().map(|(i, e)| (e.name.as_slice(), i)).collect();
         let mut rows = Vec::new();
-        for (ix, e) in l.entries.iter().enumerate() {
+        for t in fsview_trash_entries(&l.entries) {
+            let Some(&i) = ix.get(t.name.as_slice()) else { continue };
+            let e = &l.entries[i];
             if !matches!(e.kind, FsKind::Dir | FsKind::File) {
                 continue;
             }
@@ -788,25 +777,37 @@ impl Browser {
                 continue;
             }
             let mut r = Row::new(RowKind::Trashed, name, path);
-            r.ix = ix;
+            r.ix = i;
             r.dir = e.kind == FsKind::Dir;
-            r.when = trash_name(name).0;
+            r.when = t.time;
+            r.trash = Some(t);
             rows.push(r);
         }
         rows
     }
 
-    /// A trash entry's name as Files shows it: a notebook's own name (its notebook.ini in the trash, Grimoire's own
-    /// small file, opened through the walk as the listing was: no link on the way, a plain file, never waited on; the
-    /// name cut as the store cuts one), a page's notebook's name, else "" (the entry's name shows).
+    /// A trash entry's name as Files shows it: a file's or folder's own name (the last part of where its record says
+    /// it was, `FsStorage::trash_record`, read for the rows on screen only), a notebook's own name (its notebook.ini in
+    /// the trash, Grimoire's own small file, opened through the walk as the listing was: no link on the way, a plain
+    /// file, never waited on; the name cut as the store cuts one), a page's notebook's name, else "" (the entry's
+    /// name shows).
     fn trash_title(&self, r: &Row) -> String {
         use std::io::Read;
-        let (_, id, page) = trash_name(&r.name);
-        if page {
-            let nb = self.books.iter().find(|b| b.id.as_str() == id);
-            return nb.map_or(String::new(), |b| b.name.as_str().to_string());
+        let Some(t) = r.trash.as_ref() else { return String::new() };
+        match t.kind {
+            TrashKind::Page => {
+                let nb = self.books.iter().find(|b| b.id.as_str() == t.id.as_str());
+                return nb.map_or(String::new(), |b| b.name.as_str().to_string());
+            }
+            TrashKind::File => {
+                let rec = self.storage.as_ref().and_then(|st| st.trash_record(&t.name).ok());
+                let name = rec.and_then(|rec| rec.from.split_last().map(|(_, n)| String::from_utf8_lossy(n).into_owned()));
+                return name.filter(|n| crate::pdfimport::name_storable(n)).unwrap_or_default();
+            }
+            TrashKind::Other => return String::new(),
+            TrashKind::Notebook => {}
         }
-        let ini = r.path.join(b"notebook.ini").filter(|_| r.dir && !id.is_empty());
+        let ini = r.path.join(b"notebook.ini").filter(|_| r.dir);
         let fd = ini.and_then(|p| self.storage.as_ref()?.open_file(&p, self.pick()).ok());
         let Some(fd) = fd else { return String::new() };
         let mut text = Vec::new();
@@ -1752,6 +1753,7 @@ impl Browser {
             (RowKind::Font, _) => IconKind::Font,
             (RowKind::Other, _) => IconKind::FileOther,
             (RowKind::Link, _) => IconKind::LinkOff,
+            (RowKind::Trashed, _) if row.trash.as_ref().is_some_and(|t| t.kind == TrashKind::File) => IconKind::FileOther,
             (RowKind::Trashed, _) if row.dir => IconKind::Notebook,
             (RowKind::Trashed, _) => IconKind::Paper,
         };
@@ -2756,8 +2758,7 @@ mod tests {
 
     // The Trash place reads a notebook's name through the walk: an entry that was a folder when listed and is a link
     // to another folder when its name is read gives no name (the entry's own shows), and a name is cut as the store
-    // cuts one. Names are read by one function: a notebook's and a page's time and id, and nothing from a name of
-    // another form (the entries the storage writes' trash will make among them).
+    // cuts one. A file's entry with no record beside it shows its own name, with the time in it.
     #[test]
     fn trash_names_are_read_through_the_walk() {
         let (base, _g) = storage("trashwalk");
@@ -2772,15 +2773,11 @@ mod tests {
             std::fs::write(format!("{t}/{entry}/notebook.ini"), format!("name={name}\n")).unwrap();
         }
         std::fs::create_dir_all(format!("{t}/files-20261115-120000-1234")).unwrap();
-        assert_eq!(trash_name(long), (1790000600, "20261101-000000-0006", false));
-        assert_eq!(trash_name("20261101-000000-0006-p3-1790000500"), (1790000500, "20261101-000000-0006", true));
-        assert_eq!(trash_name("files-20261115-120000-1234"), (0, "", false));
-        assert_eq!(trash_name("notes"), (0, "", false));
         i18n_set("en");
         let mut b = Browser::default();
         assert!(b.open(PickSpec::place(), FilesPrefs { card: true, ..Default::default() }));
         assert!(b.go(sp("grimoire/trash")));
-        assert_eq!(row_names(&b), [swapped, long, "files-20261115-120000-1234"]);
+        assert_eq!(row_names(&b), ["files-20261115-120000-1234", swapped, long]);
         // (after the listing, the folder is swapped for a link to another)
         std::fs::remove_dir_all(format!("{t}/{swapped}")).unwrap();
         std::os::unix::fs::symlink(&other, format!("{t}/{swapped}")).unwrap();
@@ -2788,10 +2785,66 @@ mod tests {
             b.work(2480, now_ms());
         }
         let labels: Vec<String> = b.rows.iter().map(|r| b.row_label(r)).collect();
-        assert_eq!(labels[0], swapped, "nothing read through the link");
-        assert_eq!(labels[1], "N".repeat(STORE_NAME_LEN - 1));
-        assert_eq!(labels[2], "files-20261115-120000-1234");
-        assert_eq!(b.rows[2].when, 0);
+        assert_eq!(labels[0], "files-20261115-120000-1234", "no record: the entry's own name");
+        assert_eq!(labels[1], swapped, "nothing read through the link");
+        assert_eq!(labels[2], "N".repeat(STORE_NAME_LEN - 1));
+        assert!(b.rows[0].when > 0 && !b.row_sub(&b.rows[0]).is_empty());
+    }
+
+    // The Trash place reads the trash through fsview's trash listing (`fsview_trash_entries`), as the storage writes
+    // define it: a trash holding both forms side by side, a file trashed now by fsview's own trash and one trashed
+    // earlier (`files-<stamp>-<4 hex>`, each beside its record), a `files-` entry with no record, a notebook
+    // (`<id>-<time>`), a page (`<id>-p<page>-<time>`) and a name of another form. The rows are the listing's entries in
+    // its order (the newest first by the time in each name, the other form last), with its times; a file shows the
+    // name its record holds, a notebook its own, a page its notebook's; the entry with no record and the other form
+    // show their own names, and only the other form has no date.
+    #[test]
+    fn the_trash_place_lists_both_forms_through_fsviews_listing() {
+        let (base, _g) = storage("trashforms");
+        let t = format!("{base}/grimoire/trash");
+        std::fs::create_dir_all(format!("{base}/grimoire/templates")).unwrap();
+        std::fs::write(format!("{base}/grimoire/templates/Grid.png"), b"a template").unwrap();
+        let mut nb = NotebookInfo::default();
+        assert_eq!(store_create("Gamma", "", PAPER_BLANK, &mut nb), 0);
+        // (a file trashed now, by the storage writes' own trash)
+        let st = FsStorage::open(&base, &format!("{base}/grimoire")).unwrap();
+        let grid = sp("grimoire/templates/Grid.png");
+        let listed = st.stat(&grid, false).unwrap();
+        let made = String::from_utf8(st.trash(&grid, &listed).unwrap()).unwrap();
+        assert!(made.starts_with("files-") && !std::path::Path::new(&format!("{base}/grimoire/templates/Grid.png")).exists());
+        // (the older entries: a notebook of 2026-10-26, a file's of 2026-10-20 with its record, one of 2026-10-10
+        // with none, a page of 2026-09-21, and a name of another form)
+        let kept = "20261001-000000-0001-1793000000";
+        std::fs::create_dir_all(format!("{t}/{kept}")).unwrap();
+        std::fs::write(format!("{t}/{kept}/notebook.ini"), "name=Kept\n").unwrap();
+        let beach = "files-20261020-090000-00ff";
+        std::fs::create_dir_all(format!("{t}/{beach}")).unwrap();
+        std::fs::write(format!("{t}/{beach}/beach.jpg"), b"a photo").unwrap();
+        std::fs::write(format!("{t}/{beach}/{TRASH_RECORD}"), "# a record\nfrom=grimoire/photos/beach.jpg\ntime=1792483200\n").unwrap();
+        let bare = "files-20261010-080000-0abc";
+        std::fs::create_dir_all(format!("{t}/{bare}")).unwrap();
+        let page = format!("{}-p3-1790000500", nb.id.as_str());
+        std::fs::write(format!("{t}/{page}"), b"").unwrap();
+        std::fs::write(format!("{t}/notes"), b"").unwrap();
+        i18n_set("en");
+        let mut b = Browser::default();
+        assert!(b.open(PickSpec::place(), FilesPrefs { card: true, ..Default::default() }));
+        assert!(b.go(sp("grimoire/trash")));
+        let mut l = FsListing::start(&st, &st.trash_dir().unwrap(), false).unwrap();
+        while !l.step(FS_SLICE_MS) {}
+        let listing: Vec<(String, i64)> =
+            fsview_trash_entries(&l.entries).into_iter().map(|e| (String::from_utf8(e.name).unwrap(), e.time)).collect();
+        let rows: Vec<(String, i64)> = b.rows.iter().map(|r| (r.name.clone(), r.when)).collect();
+        assert_eq!(rows, listing, "the rows are fsview's listing, in its order, with its times");
+        assert_eq!(row_names(&b), [made.as_str(), kept, beach, bare, page.as_str(), "notes"]);
+        for _ in 0..16 {
+            b.work(2480, now_ms());
+        }
+        let labels: Vec<String> = b.rows.iter().map(|r| b.row_label(r)).collect();
+        assert_eq!(labels, ["Grid.png", "Kept", "beach.jpg", bare, "Gamma", "notes"]);
+        assert!(b.rows[..5].iter().all(|r| r.when > 0 && !b.row_sub(r).is_empty()));
+        assert!(b.rows[5].when == 0 && b.row_sub(&b.rows[5]).is_empty());
+        assert!(b.rows.iter().enumerate().all(|(i, r)| r.kind == RowKind::Trashed && !b.has_card(i)));
     }
 
     // Show all in a folder of 6,000 links (the listing keeps 5,000 of their names): no more than 5,000 rows, and

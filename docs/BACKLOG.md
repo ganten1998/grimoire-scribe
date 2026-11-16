@@ -60,12 +60,12 @@ the name rules, the busy check and the copy job (`BgKind::CopyFile`). Nothing on
     Folder gone." (`FolderGone`), an entry whose record does not read (`BadRecord`), "Restored to %s.", an entry
     a cut-off trash left, removed with nothing put back (`Restored::Nothing`), and "Couldn't copy file. Is the
     storage full?" for any failed copy (the job ends 0 or 1 only). None is a string yet.
-  - The Trash place: `FsListing` over `FsStorage::trash_dir()` in its slices, then `fsview_trash_entries`; a
-    file's row reads `FsStorage::trash_record` for the rows on screen; a notebook's row needs its name from
-    `trash/<entry>/notebook.ini` (no store function reads a notebook there yet). The Trash's size on its row is
-    a walk of its own, not built. FsListing keeps at most 5,000 names in the order the storage gives them, and
-    the trash only grows (every deleted page is an entry), so past 5,000 the place would sort an arbitrary
-    5,000, not the newest: the screens decide what it shows then.
+  - The Trash place (issue #124) lists through `fsview_trash_entries` and reads, for the rows on screen, a
+    file's record (`FsStorage::trash_record`) and a notebook's `trash/<entry>/notebook.ini` (no store function
+    reads a notebook there yet); Restore on its rows waits. The Trash's size on its row is a walk of its own, not
+    built. FsListing keeps at most 5,000 names in the order the storage gives them, and the trash only grows
+    (every deleted page is an entry), so past 5,000 the place would sort an arbitrary 5,000, not the newest: the
+    screens decide what it shows then.
   - After a notebook's restore: the Library's list read again, and `libindex_revalidate()` (or the index's next
     check) brings it back to the Graph; its mirror PDF is made at its next change.
   - A copy's end: `poll_jobs` (app.rs) returns at `BgKind::CopyFile` without a toast; the tile's or the Font

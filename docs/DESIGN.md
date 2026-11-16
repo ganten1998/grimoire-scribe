@@ -2478,11 +2478,14 @@ hosted the same way (`LibraryState.files`, `files_open_place`), and closes back 
   notebook or Open its notebook as the picker does; a PDF of the PDF copies opens the notebook it was written from
   (the one whose `export_mirror_path` it is). Pictures, fonts and other files offer nothing else yet. Every act
   checks the file again first ("File changed. Try again.").
-- **The Trash place** lists `grimoire/trash` read only, the newest first by the time in each entry's name (no
-  stat): a notebook (`<id>-<time>`, a folder) by the name its `notebook.ini` there holds (opened through the walk,
-  as the listing is, and cut as the store cuts a name), a page (`<id>-p<page>-<time>`) by its notebook's name, each
-  with its date; a name of another form as it is. Entries are not entered and have no card. The names are read in
-  `trash_name` alone, which moves to the trash listing issue #117 adds to `fsview.rs` once that is on main.
+- **The Trash place** lists `grimoire/trash` read only, through the storage writes' trash listing
+  (`fsview_trash_entries`, read by name alone, no stat: the newest first by the time in each entry's name, a name of
+  no known form last): a file or folder trashed from Grimoire's folders (`files-<stamp>-<4 hex>`) by the last part
+  of where its record says it was (`FsStorage::trash_record`, read for the rows on screen only), a notebook
+  (`<id>-<time>`, a folder) by the name its `notebook.ini` there holds (opened through the walk, as the listing is,
+  and cut as the store cuts a name), a page (`<id>-p<page>-<time>`) by its notebook's name, each with its date; a
+  `files-` entry whose record does not read, and a name of another form, as it is. Entries are not entered and
+  have no card.
 - **A Library card held** `HOLD_MS` opens its menu as its `...` does (a notebook's, a folder's, the Files card's);
   the lift after it does nothing.
 - **Actions** `files` (108) and `home` (109) act in the Library, with no default key and no Buttons or Gestures
