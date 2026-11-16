@@ -7,7 +7,7 @@
 # pad takes at most five; once the notebook is full, the + held on its last page says so and opens no pad (its
 # press let go), and a plain tap on it says it could not add a page, as before. Opening one of the batch's pages
 # (going to it) makes it a page in use: the Pages view no longer offers the batch's Undo. The panel's page chip
-# shows the page alone, as four-digit counts do not fit it whole (#119).
+# shows the page alone, as it does on every page of a notebook of 1000 pages or more (#119).
 wait 300
 tap library folder.Void
 tap library notebook.F

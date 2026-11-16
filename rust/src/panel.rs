@@ -62,15 +62,52 @@ pub fn panel_chip_w() -> i32 {
 pub fn panel_chip_px(f: PanelFit) -> f32 {
     ui_small_size() * if f.scale < 1.0 { f.scale } else { 1.0 }
 }
-/// The page chip's text for page `page` (from 1) of `npages`: "12 / 40", or the page alone, "1995", where that
-/// does not fit the chip at its size (#119: four-digit counts in every font, and three-digit ones in most). The
-/// page keeps the chip's size, readable at arm's length, where the whole count made small enough to fit would
+/// What panel_chip_whole found an answer for: the page count, Gothic, Classic's font (font_look, 0 in Gothic),
+/// the chip's text size (its bits) and the chip's width.
+type ChipKey = (i32, bool, usize, u32, i32);
+thread_local! {
+    /// panel_chip_whole's last answer, with what it was found for
+    static CHIP_WHOLE: std::cell::Cell<Option<(ChipKey, bool)>> = const { std::cell::Cell::new(None) };
+}
+
+/// Whether the page chip of a notebook of `npages` pages shows the page and the count: true when "p / npages"
+/// fits the chip for every page p, measured as draw_panel draws it (FontFace::Bold at panel_chip_px, within
+/// panel_chip_w), false when any one would be cut short. Found once for each page count, look (Gothic, or
+/// Classic's font as font_look numbers it), text size and chip width, and again when one of them changes (pages
+/// added or deleted, the font switched, the screen turned): at most `npages` measures, from the last page down
+/// to the first label that does not fit. A count that fits measures every label: at most 999 in the built-in
+/// fonts, as no count of 1000 or more fits in any of them.
+pub fn panel_chip_whole(npages: i32, f: PanelFit) -> bool {
+    let (px, w) = (panel_chip_px(f), panel_chip_w());
+    let gothic = font_gothic();
+    let key = (npages, gothic, if gothic { 0 } else { font_look() }, px.to_bits(), w);
+    if let Some((k, whole)) = CHIP_WHOLE.get() {
+        if k == key {
+            return whole;
+        }
+    }
+    let mut lab = String::new();
+    let whole = (1..=npages).rev().all(|p| {
+        csnprintf!(&mut lab, 32, "%d / %d", p, npages);
+        font_measure(FontFace::Bold, px, &lab) <= w
+    });
+    CHIP_WHOLE.set(Some((key, whole)));
+    whole
+}
+
+/// The page chip's text for page `page` (from 1) of `npages`, decided once for the notebook (#119), so the chip
+/// keeps one form while paging: "12 / 40" on every page where every page's label fits the chip at its size
+/// (panel_chip_whole), else the page alone, "1995", on every page. Every count under 100 fits in every font at
+/// every size the panel takes, and no count of 1000 or more does in any built-in font; between, it depends on
+/// the font and the size (in Gothic "100 / 100" is cut, while every label of 101 or 111 pages fits). The page
+/// alone keeps the chip's size, readable at arm's length, where the whole count made small enough to fit would
 /// be two thirds to three quarters of it at "9999 / 9999"; Pages, which the chip opens, says the count in its
 /// title.
 pub fn panel_page_label(page: i32, npages: i32, f: PanelFit) -> String {
     let mut lab = String::new();
-    csnprintf!(&mut lab, 32, "%d / %d", page, npages);
-    if font_measure(FontFace::Bold, panel_chip_px(f), &lab) > panel_chip_w() {
+    if panel_chip_whole(npages, f) {
+        csnprintf!(&mut lab, 32, "%d / %d", page, npages);
+    } else {
         csnprintf!(&mut lab, 32, "%d", page);
     }
     lab
