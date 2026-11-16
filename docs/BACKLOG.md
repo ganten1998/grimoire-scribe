@@ -218,9 +218,9 @@ why. Newest decisions first within each section.
   scan. Give `folder_holds_pdfs` the look's answer for such a folder.
 - **The import's small files and the bounded read.** The marks and an import's state are read through
   `util::read_file`, which since the storage reads takes plain files only; they have limits of their own when
-  parsed (a mark is 4 KiB at most), not when read. Read them with `util::read_file_max`, and the last slice's
-  `links.part` and `names.part` with it too (today `std::fs::read`, then a size check). The storage reads'
-  list below names the marks as well; the lock file's own open could share `util`'s plain-file open.
+  parsed (a mark is 4 KiB at most), not when read. Read them with `util::read_file_max`, as the last slice
+  reads `links.part` and `names.part` since #118. The storage reads' list below names the marks as well; the
+  lock file's own open could share `util`'s plain-file open.
 - **The picker's own test of "under import"** compares names without case; on a storage that tells names
   apart, rows of a folder only spelled like import would show a status.
 - **Picture folders with a line break in their name** are still imported by the picture scan; give

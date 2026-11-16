@@ -69,20 +69,21 @@ root/.cache/pdf/<id>/                   the notebook PDF's page streams, disposa
 From 2.1.1 on Grimoire reads these files only when the entry at the name is a plain file: `settings.ini`,
 `folders.ini`, `sleep.pgm`, a notebook's `notebook.ini`, page files, `erased.txt`, `thumb.pgm`, previews and
 `bg/`, the pictures and folders of `templates/`, `photos/` and `import/`, the import marks and
-`import/.attempts`, `clipboard.qpg`, the shortcut files (`shortcuts.ini`, `controller.ini`, `shortcuts/`,
-`gestures.ini`, `live-keys.ini`) and the PDF cache's records. A link there (to a file, to a folder or to
-nothing), a folder or anything else reads as a file that is not there; for the shortcut files it is a file
-that is there and does not read, as their section says. A folder on the way to a file may be a
-link (`root` itself, `notebooks/`): only the last name is held to this. Your own fonts' check results and
-crash guard are still opened by path, after a look at the entry that does not follow a link (docs/BACKLOG.md,
-"Hardening round (2026-11), storage reads: what waits").
+`import/.attempts`, an import's work files `links.part` and `names.part`, `clipboard.qpg`, the shortcut files
+(`shortcuts.ini`, `controller.ini`, `shortcuts/`, `gestures.ini`, `live-keys.ini`) and the PDF cache's
+records. A link there (to a file, to a folder or to nothing), a folder or anything else reads as a file that
+is not there; for the shortcut files it is a file that is there and does not read, as their section says. A
+folder on the way to a file may be a link (`root` itself, `notebooks/`): only the last name is held to this.
+Your own fonts' check results and crash guard are still opened by path, after a look at the entry that does
+not follow a link (docs/BACKLOG.md, "Hardening round (2026-11), storage reads: what waits").
 
-The small text files are read up to a size, and a longer one is not read: `settings.ini`,
-`notebook.ini`, `folders.ini`, `bg/index.ini` and `bg/pages.ini` up to 1 MiB (1,048,576 bytes), an import
-folder's mark up to 4 KiB, `import/.attempts` and a notebook's `erased.txt` up to 64 KiB, and a PGM
-(`thumb.pgm`, `sleep.pgm`, a preview) up to 64,000,064 bytes (its largest picture, 8000 x 8000, and a header). Page files and pictures have no
-limit of this kind. A `folders.ini` over its limit reads as an empty list; what the other readers do with a
-file that is not read is in their sections.
+The small text files are read up to a size, and a longer one is not read: `settings.ini`, `notebook.ini`,
+`folders.ini`, `bg/index.ini` and `bg/pages.ini` up to 1 MiB (1,048,576 bytes), an import folder's mark up to
+4 KiB, `import/.attempts` and a notebook's `erased.txt` up to 64 KiB, an import's `links.part` up to 4,194,314
+bytes and its `names.part` up to 406,000 (the most one worker's walk can have the first slice write: "Imports:
+PDFs" below), and a PGM (`thumb.pgm`, `sleep.pgm`, a preview) up to 64,000,064 bytes (its largest picture,
+8000 x 8000, and a header). Page files and pictures have no limit of this kind. A `folders.ini` over its limit
+reads as an empty list; what the other readers do with a file that is not read is in their sections.
 
 ## Pages: `p<id>.qpg`
 
@@ -851,9 +852,13 @@ waits, and within 10 s of the end of a previous run's import):
 - **Links and names (lane L6):** slice 0 also asks the worker for the PDF's links (`LINKS <w> <h>`, after the page
   count), in the pixels of the Scribe page by the same transform that draws the page, and keeps what it sent in
   the work folder as `links.part` (the `L` and `Q` records, then `F`) and `names.part` (the `O` records), in the
-  worker's own record grammar, read back strictly by the last slice. The commit writes `doclinks.ini` (below) and
-  `nav.ini` from them, before `notebook.ini`, and removes the two parts. A worker that dies, stalls or lies in
-  the walk costs the notebook its links and names only (logged); the pages do not depend on it. What is read:
+  worker's own record grammar, read back strictly by the last slice, each only as a plain file of at most its
+  size: `links.part` 4,194,314 bytes (a worker's 4 MiB of records, line for line, and the `F` line the slice
+  writes itself when the walk sent none), `names.part` 406,000 (an `O` line of at most 203 bytes for each of
+  at most 2000 pages); a part that does not read leaves the notebook without links and names. The commit
+  writes `doclinks.ini` (below) and `nav.ini` from them, before `notebook.ini`, and removes the two parts. A
+  worker that dies, stalls or lies in the walk costs the notebook its links and names only (logged); the
+  pages do not depend on it. What is read:
   an annotation `/Subtype /Link`, not hidden (`/F` bit 2) or not viewed (bit 6); its `/A` GoTo (explicit
   destination, or a name or string looked up in the catalog's `/Names /Dests` name tree and its PDF 1.1 `/Dests`
   dictionary, each tried for either type), the four Named actions (`NextPage`, `PrevPage`, `FirstPage`,
