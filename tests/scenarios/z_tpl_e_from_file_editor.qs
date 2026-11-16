@@ -6,8 +6,8 @@
 # pick over the page, hosted by the editor, so the notebook stays open as it was (its page, a stroke on it and its
 # undo). Back at the picker's root goes back to the sheet. Use as template copies the picture in and brings the sheet
 # back, where the new template's tile fills in once its preview is made and becomes the page's paper; two undos then
-# take back the paper and the stroke drawn before. A turn and a wake keep the picker up. The same from Photos... with
-# a photo.
+# take back the paper and the stroke drawn before. The page's idle save runs under the picker, and a turn and a wake
+# keep it up. The same from Photos... with a photo.
 # rust-only
 wait 300
 tap 965 95
@@ -32,6 +32,9 @@ expect files.open is 1
 expect files.mode is pick
 expect files.order is documents|All storage|Show Files in Library
 shot 01-picker-over-the-page
+# the page's idle save runs under the picker, as under any sheet (the stroke was drawn a moment before)
+wait 2500
+expect editor.unsaved is 0
 # a turn and a wake keep the picker over the page
 rotate 1
 wait 400

@@ -2793,6 +2793,16 @@ fn list_erased_pages(s: &mut EditorState) {
 
 // False if the page could not be written; it then stays dirty (and in memory), so callers
 // that would drop it (turning the page, closing) must stay put instead.
+// Autosave after a real pause (and never while the pen is down). One that fails (a full store)
+// tries again 2 s later, not at every tick: each try says so with a toast.
+fn idle_save(a: &mut App, now: u32) {
+    let s = ed(a);
+    if s.open && (s.page_dirty || caches_due(s, now))
+        && s.owner == Owner::None && now.wrapping_sub(s.last_up) > 2000 && !autosave(a) {
+        ed(a).last_up = now;
+    }
+}
+
 // The idle autosave: save_page, marked so that it makes the Pages preview at most every 30 s.
 fn autosave(a: &mut App) -> bool {
     save_page_for(a, Some(CacheSave::Idle))
@@ -11318,9 +11328,11 @@ fn migrate_step(a: &mut App) {
 
 pub fn editor_tick(a: &mut App, now: u32) {
     if crate::library::library_settings_active(a) {crate::library::library_tick(a,now);touch_context(a);return;}
-    // (the picture pick over the page: its listing, rows and hold; the page's work waits until it closes)
+    // (the picture pick over the page: its listing, rows and hold, and the page's idle save as over any sheet; the
+    // page's other work waits until it closes)
     if ed_ref(a).files.open {
         with_modal(a, |s| &mut s.files, |b, a| b.tick(a, now));
+        idle_save(a, now);
         return;
     }
     if !a.asleep && !ed_ref(a).pv.open && !ed_ref(a).destination.open && !editor_busy(a)
@@ -11496,13 +11508,7 @@ pub fn editor_tick(a: &mut App, now: u32) {
             pb_out(a, out, now);
         }
     }
-    // Autosave after a real pause (and never while the pen is down). One that fails (a full store)
-    // tries again 2 s later, not at every tick: each try says so with a toast.
-    let s = ed(a);
-    if s.open && (s.page_dirty || caches_due(s, now))
-        && s.owner == Owner::None && now.wrapping_sub(s.last_up) > 2000 && !autosave(a) {
-        ed(a).last_up = now;
-    }
+    idle_save(a, now);
     // beta.5's links on pages not visited yet: one page a tick, only while nothing is touching or open
     // over the page. A page not in the session cache is read for it and dropped (memory stays flat),
     // with the pens pumped as it is read. Each page is tried once, whatever happens.

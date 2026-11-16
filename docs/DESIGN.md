@@ -2568,7 +2568,8 @@ A picture from anywhere on the Kindle becomes a template or a photo by a copy in
   to notebook's picker (`destination`): drawn over the whole screen by `compose`, its contacts, keys (Esc and Back
   up a level, the page keys its screens), ticks, `files.*` probes and taps routed to it while it is up, the panel
   and the clock corner taken with it (`sheet_open`, `corner_sheet_open`). The notebook stays open under it as it
-  was: the page, its view, its undo history and the sheet's page of tiles. A turn and a wake keep it up; it closes
+  was: the page, its view, its undo history and the sheet's page of tiles; the page's idle save runs under it as
+  under any sheet (`idle_save`), the rest of the page's tick waits until it closes. A turn and a wake keep it up; it closes
   with the notebook (`close_sheets`) or when the editor is left. The other way the plan named, a trip to the
   Library and back with the page kept, was not taken: it closes the notebook (its undo history and view go) and
   needs the sheet opened again on the way back, for no less code.
