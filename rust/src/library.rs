@@ -7243,7 +7243,9 @@ fn act(a: &mut App, h: &Hit) {
         H_FONT_PICK => {
             let pick = (h.arg.max(0) as usize).min(FONT_FAMILIES.len() - 1);
             lib(a).font_picked = true; // (a family tapped, even the one that shows: the apply takes font=file: away)
-            if pick != lib(a).font_pick || !lib(a).font_file.is_empty() {
+            // (also the family that shows while settings.ini names a font of the owner's own that does not draw
+            // now, one a crash kept out or whose file is gone: the tap takes that line away now, not the X later)
+            if pick != lib(a).font_pick || !lib(a).font_file.is_empty() || !a.settings.font_file.is_empty() {
                 lib(a).font_pick = pick;
                 lib(a).font_file.clear();
                 // (a font held beside the one in use for the sample goes)
