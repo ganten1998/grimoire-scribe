@@ -479,6 +479,13 @@ pub struct Browser {
     /// a tick; begun once (a trash that cannot be read gives no sizes), and again after each write
     sizes: Option<TrashSizes>,
     sizes_tried: bool,
+    /// the fonts Settings names (issue #144): Classic's own font and its Bold file, each a path under grimoire/fonts
+    /// as settings.ini keeps it ("" for none). The host's, noted before a card acts: Delete refuses such a file (and
+    /// a folder that holds one), and Rename takes the names along
+    pub fonts_named: [String; 2],
+    /// a rename inside grimoire/fonts just done: the item's path under that folder before and after, for the host
+    /// (`font_follows`: what its check found goes with it, and Settings has `fonts_named` as it is now)
+    font_renamed: Option<(String, String)>,
 }
 
 fn root_dir() -> Option<(String, String)> {
@@ -1757,6 +1764,39 @@ impl Browser {
         was.same(&now)
     }
 
+    /// Which part of the font `rel` (a path under grimoire/fonts as Settings names it: `Mine.ttf`, `Inter/Mine.ttf`)
+    /// the item at `p` is: 0 its first name (the file itself, or the folder it is in), 1 the file in that folder.
+    /// None when the item is neither. By identity (device and inode), as a card knows its item: on a storage that
+    /// folds case the setting may spell the name another way, and on one that does not, a name that differs only
+    /// by case is another file.
+    fn font_part(&self, p: &StoragePath, stat: &FsStat, rel: &str) -> Option<usize> {
+        let (st, fonts) = (self.storage.as_ref()?, self.place_path(PlaceKind::Fonts)?);
+        if rel.is_empty() || !path_under(p, &fonts) {
+            return None;
+        }
+        let mut at = fonts;
+        for (i, name) in rel.split('/').enumerate() {
+            at = at.join(name.as_bytes())?;
+            if st.stat(&at, false).is_ok_and(|s| (s.dev, s.ino) == (stat.dev, stat.ino)) {
+                return Some(i);
+            }
+        }
+        None
+    }
+
+    /// Whether the item is a font Settings names (Classic's own font, or its Bold file), or the folder that holds
+    /// one: not deleted ("Font in use."), since Settings would be left naming a file that is gone.
+    fn font_in_use(&self, p: &StoragePath, stat: &FsStat) -> bool {
+        self.fonts_named.iter().any(|rel| self.font_part(p, stat, rel).is_some())
+    }
+
+    /// An item's path under grimoire/fonts (`Inter/Mine.ttf`), None for one that is not inside that folder.
+    fn font_rel(&self, p: &StoragePath) -> Option<String> {
+        let fonts = self.place_path(PlaceKind::Fonts)?;
+        let rest = p.as_bytes().get(fonts.as_bytes().len() + 1..).filter(|r| !r.is_empty() && path_under(p, &fonts))?;
+        String::from_utf8(rest.to_vec()).ok()
+    }
+
     /// Whether a row's card offers Rename and Delete: Files only, a file or folder inside Grimoire's folders for the
     /// user's files (fsview's allow-list: what is inside import, templates, photos and fonts; never elsewhere).
     fn writable(&self, r: &Row) -> bool {
@@ -1830,26 +1870,72 @@ impl Browser {
         if folder.join(new).is_some_and(|to| !st.can_write(&to)) {
             return Err((zone_refusal(new), Then::Keyboard));
         }
+        // a font Settings names (or the folder it is in) takes its setting along: the names as they will be, which
+        // Settings must be able to keep (a path too long for it is refused before anything is renamed)
+        let mut named = self.fonts_named.clone();
+        for rel in named.iter_mut() {
+            let Some(part) = self.font_part(&rn.path, &rn.stat, rel) else { continue };
+            let mut names: Vec<&str> = rel.split('/').collect();
+            let Ok(name) = std::str::from_utf8(new) else { continue };
+            names[part] = name;
+            let moved = names.join("/");
+            if !crate::userfonts::userfont_rel_ok(&moved) {
+                return Err((name_refusal(NameRule::TooLong, &old, new), Then::Keyboard));
+            }
+            *rel = moved;
+        }
         let to = st.rename(&rn.path, &rn.stat, new).map_err(|e| refusal(e, Act::Rename, &old, new))?;
+        self.fonts_named = named;
+        self.font_renamed = self.font_rel(&rn.path).zip(self.font_rel(&to));
         if !self.entry_changed(&old, Some(new)) {
             self.reread();
         }
         Ok(Some(to))
     }
 
+    /// The host's part of a rename inside grimoire/fonts (`font_renamed`): what the font check found of the file
+    /// (of a folder's files) goes to its new name, so that it is not checked again; and when Settings named it,
+    /// settings.ini has the new path (`fonts_named`) and the font is applied from it, still drawing.
+    fn font_follows(&mut self, a: &mut App) {
+        let Some((old, new)) = self.font_renamed.take() else { return };
+        crate::userfonts::userfonts_renamed(&old, &new);
+        let [font, bold] = &self.fonts_named;
+        if a.settings.font_file.as_str() != font || a.settings.font_bold.as_str() != bold {
+            a.settings.font_file.set(font);
+            a.settings.font_bold.set(bold);
+            settings_save(&a.settings);
+            crate::userfonts::userfonts_apply(a);
+        }
+    }
+
+    /// The fonts Settings names, noted before a card or the rename keyboard acts (`fonts_named`).
+    fn note_fonts(&mut self, a: &App) {
+        self.fonts_named = [a.settings.font_file.as_str().to_string(), a.settings.font_bold.as_str().to_string()];
+    }
+
     /// Delete on the open card: the item checked again and not held; then the card asks, as the Library asks before a
     /// notebook goes (`Delete "name"?`, with the Library's two answers). Nothing is moved until its Delete is tapped
     /// (`trash_card`). Err: what the toast says, and what follows.
     fn delete_ask(&mut self) -> Result<(), (String, Then)> {
-        let (path, _) = self.card_item()?;
+        let (path, stat) = self.card_item()?;
         let st = self.storage.as_ref().ok_or((tr("Couldn't move to trash.").to_string(), Then::Nothing))?;
         if st.busy(&path) {
             return Err((tr("Importing now.").to_string(), Then::Nothing));
+        }
+        if self.font_in_use(&path, &stat) {
+            return Err((Self::in_use_words(), Then::Nothing));
         }
         if let Some(c) = self.card.as_mut() {
             c.confirm = true;
         }
         Ok(())
+    }
+
+    fn in_use_words() -> String {
+        // TRANSLATORS: a toast in Files: this font file (or a folder that holds it) is not deleted, because Settings
+        // has it as the font Grimoire is read in, or as that font's Bold file (pick another font in Settings > Font
+        // first). One line of about 1000 px at 44 px.
+        tr("Font in use.").to_string()
     }
 
     /// The Delete question's title for a sheet whose title has `w` px: `Delete "name"?`, the name cut with "..."
@@ -1871,6 +1957,10 @@ impl Browser {
     /// where it went.
     fn trash_card(&mut self) -> Result<String, (String, Then)> {
         let (path, stat) = self.card_item()?;
+        // (asked again here: the question may have stood a while, and nothing of a font in use is ever moved)
+        if self.font_in_use(&path, &stat) {
+            return Err((Self::in_use_words(), Then::Nothing));
+        }
         let st = self.storage.as_ref().ok_or((tr("Couldn't move to trash.").to_string(), Then::Nothing))?;
         st.trash(&path, &stat).map_err(|e| refusal(e, Act::Trash, b"", b""))?;
         self.sizes_again();
@@ -2533,6 +2623,7 @@ impl Browser {
             return BrowserResult::None;
         }
         let path = card.path.clone();
+        self.note_fonts(a);
         match h.id {
             B_CARD_CANCEL => self.close_card(a),
             B_GOTO => {
@@ -2666,11 +2757,14 @@ impl Browser {
             self.rename_close(a);
             return;
         }
+        self.note_fonts(a);
         match self.rename_to(&text) {
             Ok(None) => self.rename_close(a),
             Ok(Some(_)) => {
                 keyboard_close(&mut self.kb);
                 self.renaming = None;
+                // (a font renamed: its check's result and, if Settings named it, its setting go with it)
+                self.font_follows(a);
                 self.redraw_full(a);
             }
             Err((msg, then)) => self.refused(a, &msg, then),
@@ -3708,6 +3802,91 @@ mod tests {
         assert!(p.open(PickSpec::import(), FilesPrefs { card: true, ..Default::default() }));
         assert!(p.go(sp("grimoire/import")));
         assert_eq!(card_named(&mut p, "Book.pdf").1, ["Import as notebook", "Cancel"]);
+    }
+
+    // The font in use (issue #144). Settings names Classic's own font, and its Bold file, by their paths under
+    // grimoire/fonts. Delete of such a file, or of the folder that holds one, is refused ("Font in use.") before its
+    // question and at the question's Delete, and nothing is moved; another font is deleted as any file. Rename
+    // takes the names along: the font's own file, its Bold file, and the folder they are in each leave
+    // `fonts_named` with the new path, and say what was renamed for the host. A new name that would make a path
+    // Settings cannot keep is refused before anything is renamed.
+    #[test]
+    fn the_font_in_use_is_not_deleted_and_a_rename_takes_its_setting_along() {
+        let (base, _g) = storage("fontinuse");
+        let f = format!("{base}/grimoire/fonts");
+        std::fs::create_dir_all(format!("{f}/Fam")).unwrap();
+        for n in ["Mine.ttf", "Mine-Bold.ttf", "Other.ttf", "Fam/In.ttf", "Fam/In-Bold.ttf"] {
+            std::fs::write(format!("{f}/{n}"), format!("the bytes of {n}")).unwrap();
+        }
+        let names = |d: &str| {
+            let mut v: Vec<String> = std::fs::read_dir(d).unwrap().flatten().map(|e| e.file_name().to_string_lossy().into_owned()).collect();
+            v.sort();
+            v
+        };
+        i18n_set("en");
+        let mut b = Browser::default();
+        assert!(b.open(PickSpec::place(), FilesPrefs { card: true, ..Default::default() }));
+        b.fonts_named = ["Mine.ttf".to_string(), "Mine-Bold.ttf".to_string()];
+        assert!(b.go(sp("grimoire/fonts")));
+        let in_use = Err(("Font in use.".to_string(), Then::Nothing));
+        for name in ["Mine.ttf", "Mine-Bold.ttf"] {
+            b.open_card(row_of(&b, name));
+            assert_eq!(b.delete_ask(), in_use, "{name}: refused before its question");
+            assert!(b.card.as_ref().is_some_and(|c| !c.confirm));
+            assert_eq!(b.trash_card(), Err(("Font in use.".to_string(), Then::Nothing)), "{name}: and at the question's Delete");
+        }
+        assert_eq!(names(&f), ["Fam", "Mine-Bold.ttf", "Mine.ttf", "Other.ttf"], "nothing moved");
+        assert!(names(&format!("{base}/grimoire/trash")).is_empty());
+        // a font Settings does not name goes as any file
+        b.open_card(row_of(&b, "Other.ttf"));
+        assert!(b.delete_ask().is_ok() && b.trash_card().is_ok());
+        // rename: the font's own file, then its Bold file
+        b.open_card(row_of(&b, "Mine.ttf"));
+        assert_eq!(b.rename_begin(), Ok(b"Mine.ttf".to_vec()));
+        assert!(b.rename_to(b"Yours.ttf").is_ok());
+        assert_eq!(b.fonts_named, ["Yours.ttf", "Mine-Bold.ttf"]);
+        assert_eq!(b.font_renamed.take(), Some(("Mine.ttf".to_string(), "Yours.ttf".to_string())));
+        b.open_card(row_of(&b, "Mine-Bold.ttf"));
+        assert_eq!(b.rename_begin(), Ok(b"Mine-Bold.ttf".to_vec()));
+        assert!(b.rename_to(b"Yours-Bold.ttf").is_ok());
+        assert_eq!(b.fonts_named, ["Yours.ttf", "Yours-Bold.ttf"]);
+        assert_eq!(b.font_renamed.take(), Some(("Mine-Bold.ttf".to_string(), "Yours-Bold.ttf".to_string())));
+        // under its new name it is still the font in use
+        b.open_card(row_of(&b, "Yours.ttf"));
+        assert_eq!(b.delete_ask(), in_use);
+        // a font in a folder: the folder that holds it is not deleted, and renamed it takes both names along
+        b.fonts_named = ["Fam/In.ttf".to_string(), "Fam/In-Bold.ttf".to_string()];
+        b.open_card(row_of(&b, "Fam"));
+        assert_eq!(b.delete_ask(), in_use, "the folder holds the font in use");
+        assert_eq!(b.rename_begin(), Ok(b"Fam".to_vec()));
+        let long = "F".repeat(95);
+        assert!(b.rename_to(b"Family").is_ok());
+        assert_eq!(b.fonts_named, ["Family/In.ttf", "Family/In-Bold.ttf"]);
+        assert_eq!(b.font_renamed.take(), Some(("Fam".to_string(), "Family".to_string())));
+        assert!(b.go(sp("grimoire/fonts/Family")));
+        b.open_card(row_of(&b, "In.ttf"));
+        assert_eq!(b.rename_begin(), Ok(b"In.ttf".to_vec()));
+        assert!(b.rename_to(b"Inner.ttf").is_ok());
+        assert_eq!(b.fonts_named, ["Family/Inner.ttf", "Family/In-Bold.ttf"]);
+        assert_eq!(b.font_renamed.take(), Some(("Family/In.ttf".to_string(), "Family/Inner.ttf".to_string())));
+        // a path Settings cannot keep (over 200 bytes): refused, the keyboard kept, nothing renamed
+        assert!(b.go(sp("grimoire/fonts")));
+        let deep = format!("{}.ttf", "D".repeat(120));
+        std::fs::write(format!("{f}/Family/{deep}"), b"a font of a long name").unwrap();
+        b.fonts_named = [format!("Family/{deep}"), String::new()];
+        b.open_card(row_of(&b, "Family"));
+        assert_eq!(b.rename_begin(), Ok(b"Family".to_vec()));
+        assert_eq!(b.rename_to(long.as_bytes()), Err(("Name too long.".to_string(), Then::Keyboard)));
+        assert_eq!(names(&f), ["Family", "Yours-Bold.ttf", "Yours.ttf"]);
+        assert!(b.font_renamed.is_none());
+        // a file elsewhere of a font's name is no font in use
+        std::fs::create_dir_all(format!("{base}/grimoire/templates")).unwrap();
+        std::fs::write(format!("{base}/grimoire/templates/Yours.ttf"), b"not in fonts").unwrap();
+        b.fonts_named = ["Yours.ttf".to_string(), String::new()];
+        b.prefs.show = 1;
+        assert!(b.go(sp("grimoire/templates")));
+        b.open_card(row_of(&b, "Yours.ttf"));
+        assert_eq!(b.delete_ask(), Ok(()));
     }
 
     // An empty trash says no size (issue #144): the root's Trash row shows its path alone once the walk is through

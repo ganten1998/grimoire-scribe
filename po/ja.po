@@ -5,7 +5,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: Grimoire 2.1.0-beta.1\n"
 "Report-Msgid-Bugs-To: https://github.com/ganten1998/grimoire-scribe/issues\n"
-"POT-Creation-Date: 2026-11-16 10:05-0600\n"
+"POT-Creation-Date: 2026-11-16 10:22-0600\n"
 "PO-Revision-Date: 2026-11-10 00:00+0000\n"
 "Last-Translator: nebuff\n"
 "Language-Team: Japanese\n"
@@ -1393,6 +1393,14 @@ msgstr "フォント"
 #: rust/src/browser.rs
 msgid "File"
 msgstr ""
+
+#. TRANSLATORS: a toast in Files: this font file (or a folder that holds it) is not deleted, because Settings
+#. has it as the font Grimoire is read in, or as that font's Bold file (pick another font in Settings > Font
+#. first). One line of about 1000 px at 44 px.
+#: rust/src/browser.rs
+#, fuzzy
+msgid "Font in use."
+msgstr "フォント: %s"
 
 #. TRANSLATORS: a toast in Files: the file or folder went to the trash folder on the Kindle's storage (%s).
 #. TRANSLATORS: a deleted notebook went to the trash folder on the Kindle's storage (%s).

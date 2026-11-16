@@ -2611,6 +2611,18 @@ trash, and the Trash place puts an entry back. Pick mode (New notebook's From a 
   grimoire/trash)" and "Keep it". Keep it, a tap outside the sheet, Esc and Back move nothing. Only its Delete
   moves the item: the check again, `FsStorage::trash`, then "Moved to grimoire/trash" and its row gone. Restore
   undoes it.
+- **The font in use.** Settings names Classic's own font, and its Bold file, by their paths under `grimoire/fonts`
+  (`font=file:<path>`, `font_bold=file:<path>`), so a file gone from that path would leave the next start in
+  Terminess. The browser is told both names before a card acts (`fonts_named`) and knows the item by identity
+  (`font_part`: device and inode of the file the setting names, or of the folder it is in). Delete of such a file,
+  or of the folder that holds one, says "Font in use." before its question and again at the question's Delete, and
+  moves nothing. Rename takes the setting along in the same step: the names as they will be are worked out first
+  (a path Settings cannot keep, over 200 bytes, is refused with "Name too long." before anything is renamed), then
+  `settings.ini` is saved with them and the font applied from its new path, still drawing (`font_follows`). What
+  the font check found goes with every font file renamed in Files, in use or not, and with the files of a renamed
+  folder (`userfonts_renamed`): the verdict and its companions are renamed from the old path's key to the new
+  one's (a key is path, size and time; the rename changes the path alone), so the file is not checked again. The
+  SHA-256 in the verdict still ties it to the bytes, compared at every load.
 - **After a write nothing is read again.** A rename, a delete and a restore tell the listing Files holds what
   changed (`entry_changed`: the entry's new name, or the entry gone) and make the rows again from it, as Sort and
   Show do: no folder is listed and no row stat-ed anew, which for a folder of thousands sorted by newest or size
@@ -2645,19 +2657,23 @@ trash, and the Trash place puts an entry back. Pick mode (New notebook's From a 
 - **Words** (Spanish beside each; Japanese is nebuff's): Restore, Importing now., Name can't contain %s, Name can't
   start or end with a space., Name can't start or end with a dot., Keep the extension %s., Name too long., That
   name is taken., Couldn't rename., Couldn't move to trash., Couldn't restore., Couldn't restore. Name taken.,
-  Couldn't restore. Folder gone., Restored to %s. Reused: Rename, Delete, Delete "%s"?, Delete (moves it to %s),
+  Couldn't restore. Folder gone., Restored to %s., Font in use. Reused: Rename, Delete, Delete "%s"?, Delete (moves it to %s),
   Keep it, Moved to %s, File changed. Try again., Path too long., the keyboard's Name and Folder, Notebooks.
 - **Logs** (no names): the storage writes' own lines, and `files: the trash holds N entries, N files, N KB (read in T
-  ms)` once a walk of the trash is through (docs/KINDLE.md).
+  ms)` once a walk of the trash is through, and `fonts: a rename in Files: what the check found of N font file(s)
+  went with them` (docs/KINDLE.md).
 - **Tests**: `browser.rs`'s unit tests (a folder card's check by identity, each refusal's words, Rename's rules and
   places, a name nobody typed never given, the allow-list's words, Delete's question, Delete then Restore, a notebook the Library deleted coming back as " 2", a trash past the cap keeping
-  its newest, a write changing its row with no folder read again), `test_fsview_writes.rs`'s trash sizes (slices, depth, links, the record left out), its listing past
+  its newest, a write changing its row with no folder read again, the font in use), `test_fsview_writes.rs`'s trash sizes (slices, depth, links, the record left out), its listing past
   the cap and a picture a page still waits for, and the scenarios `files_8_rename` (every rule, a name taken, a
   good name, an empty one, Cancel), `files_9_trash` (Delete's question, Keep it, a tap outside it, its Delete, the sizes, Restore, a page with no
   card),
   `files_10_restore_notebook` (the Library's Delete, Restore, " 2"), `files_11_busy` (an importing PDF),
-  `files_12_swap` (a folder swapped under its card, through the runner's `storage move`) and `files_13_es_fit`,
-  `files_14_es_fit_classic` (Spanish, each text checked for fit, upright and sideways).
+  `files_12_swap` (a folder swapped under its card, through the runner's `storage move`), `files_13_es_fit`,
+  `files_14_es_fit_classic` (Spanish, each text checked for fit, upright and sideways), `files_15_font_in_use` (the
+  font in use and its Bold file: Delete refused, Rename with the setting following and the font still drawing),
+  `files_16_font_kept` (the next start) and `files_17_es_font_in_use`. `test_sec_font_verdict.rs` has the renamed
+  font's verdict: no new check, in Grimoire's own folder and in the cache, and at the app's next start.
 
 ## Shared building blocks (2.1, lane L0)
 

@@ -24,8 +24,11 @@ folders and notebooks (docs/DESIGN.md, "Files: rename, delete and restore"). Wai
 - **The size walk** runs once a session (from Files' root or its Trash place) and again after each delete or restore;
   a trash changed over USB while Files is open is measured again only then. Not timed on the Scribe (TESTING.md, "2.2,
   Files' rename, delete and restore (issue #144): device checks").
-- **A font renamed or deleted** in `grimoire/fonts`: the Font sheet lists the folder again when it opens; a font in
-  use goes back to Terminess, as it does when its file goes over USB.
+- **The font in use** (Settings' `font`, and its `font_bold`): Delete refuses it ("Font in use."), and Rename takes
+  the setting and what its check found along. Left: a Bold file Grimoire found by itself (no `font_bold` line) can
+  be deleted, and bold is then the regular overprinted from the next start; a font renamed or deleted over USB
+  leaves the setting as it was, as before ("File missing." in the Font sheet). A folder of fonts renamed has its
+  files listed and stat-ed at once on the UI thread (a font folder is small; at most 5,000 names).
 - **Japanese** for the new words: nebuff's (#55); they show in English until then.
 
 ## Files (2.2, issue #124): what waits

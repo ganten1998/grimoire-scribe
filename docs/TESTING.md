@@ -2968,8 +2968,9 @@ steps 1, 5 and 11 answer; and the two floors of free room beside it (`STATE_FREE
 
 ## 2.2, Files' rename, delete and restore (issue #144): device checks
 
-Not run on a Scribe yet. Automated: `browser.rs`'s unit tests, `test_fsview_writes.rs`'s trash sizes and the
-scenarios `files_8_rename` to `files_14_es_fit_classic` (docs/DESIGN.md, Files: rename, delete and restore). On the
+Not run on a Scribe yet. Automated: `browser.rs`'s unit tests, `test_fsview_writes.rs`'s trash sizes and listing,
+`test_sec_font_verdict.rs`'s renamed font and the scenarios `files_8_rename` to `files_17_es_font_in_use`
+(docs/DESIGN.md, Files: rename, delete and restore). On the
 Mac only the storage writes' fallback rename runs, so what only the Scribe's storage can tell comes after the three
 checks of "2.2, Files' storage writes (issue #117): device checks" above (whether its storage takes the no-replace
 rename, whether a move into the trash is one rename, whether the numbers a check compares stay put). Then, with
@@ -2998,5 +2999,13 @@ Grimoire open and Files' card shown (New > From a file... > Show Files in Librar
 5. **Held by an import**: copy a PDF of several pages into `grimoire/import` over USB, and while its notice says
    "Importing: page ...", open its card in Files > Import: Rename and Delete each say "Importing now." and the file
    stays.
+6. **The font in use**: in Classic, with a font of your own picked in Settings > Font, open Files > Fonts and its
+   card. Delete says "Font in use." and the file stays. Rename it (add a letter): the screen stays in the font,
+   `settings.ini` has `font=file:<the new name>`, and grimoire.log has `fonts: a rename in Files: what the check
+   found of 1 font file(s) went with them`, then `font: custom font loaded: ...`, and no `bg: font check` line
+   after them. `ls /var/local/grimoire/*/fonts` shows as many `.font` files as before the rename. Close and start
+   Grimoire: the font draws on the first screen and the log has no `bg: font check` line. (On the Kindle the
+   verdicts are in Grimoire's own folder, where this rename is the one thing the app itself does: say if the log
+   has 0 in place of 1.)
 
 Tidy: delete `Probe2.png` from `templates` over USB (or keep it as a template).

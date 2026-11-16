@@ -489,6 +489,8 @@ fn files_rename_delete_and_restore_are_told_as_they_are() {
     // after a write the rows follow from the listing held: the folder is not read again at one go
     gone(&mut fails, DESIGN, "Renamed: the folder is read again, with its rows' page kept.");
     gone(&mut fails, DESIGN, "\"Moved to grimoire/trash\" and the folder read again.");
+    // the font in use: not deleted, and a rename takes its setting along
+    gone(&mut fails, BACKLOG, "a font in use goes back to Terminess, as it does when its file goes over USB.");
     none_failed(&fails, "Files' rename, delete and restore");
 }
 

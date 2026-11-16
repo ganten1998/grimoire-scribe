@@ -663,6 +663,10 @@ From a file... tiles. grimoire.log says (never a file's name: the folder, sizes,
   trash's size (once a session, and again after a delete or a restore), a slice at a time; T is the time of the
   slices added up. `files: notebook <id> is back, its notebook.ini did not read`: a restored notebook whose own
   file could not be read, so it kept its name as it was (it is back in `notebooks/` all the same).
+- `fonts: a rename in Files: what the check found of N font file(s) went with them`: a font file, or a folder of
+  them, was renamed in Files, and N verdicts went to the new names' keys, so those fonts are not checked again (0:
+  none was kept for it, a file not checked yet). With a font Settings names, `font: custom font loaded: ...`
+  follows, the font read again from its new path.
 - `bg: file copy of <folder> (pid N)`, then `bg: a file copied into <folder>: N KB in T ms` or `bg: a file not
   copied into <folder>: <why>` (among them: no room: the storage would keep less than 100 MB; it changed since it
   was listed, or while it was copied; it is no plain file; a link on its way; a system error's own words), and
