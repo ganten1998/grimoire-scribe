@@ -45,6 +45,9 @@
   and the count would not fit it on some page (every notebook of 1000 pages or more, and many of 100 or more,
   by the font and the size), where it was cut short; a notebook under 100 pages shows both as before. The count
   pad's - and + count on while held, as a held delete deletes, up to the pad's limits (#119).
+- The Clock settings page's corner row moves the clock and battery without a toast: the row names the corner, as
+  the size row names the size. The `status-corner` shortcut still names the corner in a toast where no notebook
+  page is in front (#141).
 
 ## 2.1.0 (2026-11-13)
 
