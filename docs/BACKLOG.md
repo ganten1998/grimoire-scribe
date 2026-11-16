@@ -8,8 +8,8 @@ why. Newest decisions first within each section.
 
 Built: place mode, the Files card (hidden until "Show Files in Library"; the last card of the Library's top
 level), the path bar inside Files only, Go to, Sort, Show, a card for every kind of file, the trash listed read
-only, a Library card's hold, and the `files` and `home` actions (docs/DESIGN.md, "Files: the place"). Waiting,
-each for its own issue:
+only, a Library card's hold, and the `files` and `home` actions (docs/DESIGN.md, "Files: the place"); previews and
+the Covers view (issue #145; "Files: previews and the Covers view"). Waiting, each for its own issue:
 
 - **Home**: `home=` in settings.ini (any Library or Kindle folder), Set as home in the Go to sheet and on a
   folder's card, Reset home to Notebooks, opening at home at each start, "Home folder not found.". Today `home`
@@ -18,9 +18,14 @@ each for its own issue:
   rules and "Importing now.", on the storage layer's writes (issue #117); **Restore** on the trash's rows
   (`RowKind::Trashed`) for files and notebooks, never Empty; the trash's size on its row. Pages in the trash are
   listed by their notebook's name; their Restore is optional.
-- **Previews and the Covers view** (`files_view=covers`, read today as the list and kept), "Making previews...",
-  the cache and its prune; the details a card can only have from the worker (a PDF's pages, a picture's size, a
-  font's sample and coverage).
+- **After the previews (issue #145)**: the details a card can only have from the worker (a PDF's pages, a
+  picture's size, a font's coverage) and a preview on a file's card; Covers as the default for Templates and Photos
+  (browser.md's idea: today one View setting holds for every place); a second child for file previews beside the
+  first (bgjob's `extra_slot` takes page previews only); an old file's preview pruning itself when the file changes
+  (today it stays until the prune); the language fit check of the path bar's three chips (y_all_screens visits the
+  picker's root only, not a place of Files); the font sample's text is fixed Latin ("Aa", "Abc 123"), so a font of
+  kana or kanji alone is refused as the check refuses it. Not timed on the Scribe: docs/TESTING.md, "2.2, Files'
+  previews and the Covers view (issue #145): device checks".
 - **From a file... tiles** in the Paper sheet's More layouts... and Photos...: Use as template and Use as photo on
   a picture's card, and Add to fonts on a font's (with the Kindle fonts row of the Font sheet), once a copy job
   exists. The cards offer only Cancel for those kinds until then.

@@ -2890,3 +2890,33 @@ What only the storage can tell, on the Scribe:
 5. **PDF copies and Trash**: Files > PDF copies lists the mirror PDFs read only, and a mirror PDF's card opens its
    notebook; Files > Trash lists deleted notebooks by name and date, newest first, and none opens.
 6. **Rotate** the Scribe in Files: the path bar, its chips, the rows and the Go to sheet lay out again.
+
+## 2.2, Files' previews and the Covers view (issue #145): device checks
+
+Not run on a Scribe yet. The unit tests (`bgwork_previews.rs`: the key, the `.info`, the prune), the job tests
+through a real worker (`rust/tests/test_file_previews.rs`), `test_browser.rs` (only the screen's files asked for)
+and the scenario `files_8_covers` cover the logic on the Mac; CI's Linux job makes a preview of each kind in the
+real sandbox (`test_sandbox_linux.rs`). What only the Scribe can tell (read grimoire.log over SSH; it names no file):
+
+1. **A big mixed folder**: put about 40 files in a folder of `documents/` (PDFs, one of them a planner of a few
+   hundred pages and over 100 MB; phone photos of 12 MP or more; a few fonts, one of them a CJK font near 20 MB).
+   Files > Documents > that folder, View: Covers. Note how long until every tile of the first screen shows its
+   preview, whether "Making previews..." comes after a second and goes when the last one lands, and that each
+   preview lands on its own tile without a flash of the whole screen. Send the lines `file previews: a pdf|picture|
+   font made in T ms (the worker's peak N kB, this job's M kB)`: T for each kind, the slowest, and the peaks.
+2. **Memory**: while the first screen's previews are being made, `grep MemAvailable /proc/meminfo` a few times and
+   `dmesg | tail` after: no process killed, Grimoire's own memory (`grep VmRSS /proc/$(pidof grimoire)/status`)
+   about the same before and after (a screen of previews is about 1 MB).
+3. **Turning screens**: on a folder of a few hundred pictures, turn three screens quickly: only the screens shown
+   get `made` lines (count them: nine a screen upright), the pen and the page turns stay quick meanwhile, and coming
+   back to the first screen shows its previews at once, with no new line.
+4. **A folder past 5,000 files** in Covers: "Showing the first 5000." under the path, and only the screen shown is
+   made (nine lines).
+5. **Refused and slow**: a text file renamed `x.pdf`, and a truncated JPEG: each tile shows its kind's icon and the
+   log says `has no preview (refused)` once; entering the folder again makes no new line for them.
+6. **Sleep and wake** while previews are being made (the power button): after the wake every tile shows a preview
+   or its icon, none stays an hourglass, and entering the folder again makes what is missing.
+7. **The cache**: with Grimoire closed, `du -sh /mnt/us/grimoire/.cache/files` and `ls | wc -l` there after the
+   checks above, then delete the folder; reopen Files in Covers: the previews are made again. On the 2,000 files
+   or 64 MB, the `the cache pruned` line once past them.
+8. **Rotate** in Covers: ten tiles sideways, the previews kept, the card of a tile beside it.

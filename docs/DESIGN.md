@@ -1499,8 +1499,8 @@ files of mirrors that are gone.
 Every background child carries two caps (`childcaps.rs`): `oom_score_adj` 500 (the PDF worker's 1000 is lane L5's;
 the UI's is unchanged) and `RLIMIT_AS` at the child's size at fork plus a margin by kind (a streaming mirror 128 MiB,
 from the colour page measured above with about 60 MiB of headroom; previews and map layouts 128; the font check's
-writer 128, two copies of a 24 MB font; compaction and the default 256; a picture job 512, above its own tighter
-cap), applied after `child_setup` for each bgjob child, the detached child, the share server's render children
+writer 128, two copies of a 24 MB font; a file's preview 128, a picture or a font read whole; a file copy 64;
+compaction and the default 256; a picture job 512, above its own tighter cap), applied after `child_setup` for each bgjob child, the detached child, the share server's render children
 (128 MiB) and Live view's viewer children (64 MiB). A child that cannot read its own size (`/proc/self/statm`) is
 capped at 1 GiB plus its margin, never left without one. Both caps are Linux's; the host build applies nothing.
 The CI job `sandbox` mirrors a Scribe-sized colour page under the real cap. The mirror logs its pages, how many it
@@ -2449,7 +2449,7 @@ their own work), so nothing a user sees changed.
   The trash is listed by `FsListing` in its slices and read by name alone (`fsview_trash_entries`, newest first
   by the time in each name); a row's record is read only for the rows on screen (`FsStorage::trash_record`).
   docs/FORMAT.md, The trash, has the names and the record.
-- **The copy job, `BgKind::CopyFile = 10`** (`bgwork_copy.rs`; 9 is kept for the file previews). The request
+- **The copy job, `BgKind::CopyFile = 10`** (`bgwork_copy.rs`; 9 is the file previews', below). The request
   (`copy_request`, UI thread) refuses a source in a place a pick never takes from, one no longer the plain file
   listed, and one that would leave less than the floor (100 MB after it, `fsview_room_for`), and queues the job as
   one the user waits on (id: the folder, `templates`, `photos` or `fonts`; path: the listed stat and the source's
@@ -2512,7 +2512,7 @@ hosted the same way (`LibraryState.files`, `files_open_place`), and closes back 
   Show: the PDFs, pictures and fonts Grimoire can use (and folders), or every file: the others greyed, and the links
   by name ("link, not followed"), which fsview's listing keeps in `links` as it leaves them out (within the same
   5,000 rows, with "Showing the first 5000." when any is left out); a link is never entered, opened or stat-ed
-  through. View is a list (`files_view`; Covers needs previews).
+  through. View, a third chip, is the list or Covers (`files_view`): "Files: previews and the Covers view", below.
 - **Item cards.** A picture, a font and any other file have cards, as a PDF and a folder do: the details say what
   the file is, its size and its date, and what is known of it without reading it in the UI process (a font of
   `grimoire/fonts` whose check passed: its family, from the check's own verdict, `userfont_family`). No user's
@@ -2535,7 +2535,66 @@ hosted the same way (`LibraryState.files`, `files_open_place`), and closes back 
   Library and inside Files alike. `home` is the Library's top for now.
 - **Seams left for the later Files work**: `RowKind::Trashed` and the trash rows (Restore), the card's rows per
   kind in `card_lines` (Rename, Trash, Use as template, Use as photo, Add to fonts), `BrowseMode` and `FilesPrefs`
-  (a home, a View), `library_home` (where a set home starts), `PickSpec.start` (opening at a folder).
+  (a home), `library_home` (where a set home starts), `PickSpec.start` (opening at a folder).
+
+## Files: previews and the Covers view (2.2, issue #145)
+
+Files' View chip shows a folder as its list or as Covers, a grid of previews (`browser.rs`, `bgwork_previews.rs`).
+In 2.1 the sandboxed worker parsed only files the user put in Grimoire's folders or picked; Covers sends it the
+PDFs, pictures and fonts of whatever folder is on screen, so what reaches it is held to the screen.
+
+- **What reaches the worker**: only the files of the tiles on screen in Covers, a PDF, a picture (`.png`, `.jpg`,
+  `.jpeg`, `.pgm`) or a font (`.ttf`, `.otf`), once their stats are in, each asked for once a visit (a folder
+  entered) and only when the cache has nothing for it (`CoverTiles::screen`). A screen turned away from takes its
+  jobs still queued out of the queue (asked for again if it comes back); a new folder, the list, or Files closed
+  takes all of them; a running job runs on. Nothing is asked for in the list, in the picker's pick mode, at Files'
+  root or in the trash (which stay lists). A folder past 5,000 entries keeps the listing's cap, and only its screen
+  is asked for.
+- **The job, `BgKind::FilePreviews = 9`**: one file a job, its path the file as listed
+  (`<dev>.<ino>.<size>.<mtime>:<StoragePath>`, as the copy job's), queued as one the user waits on (before mirrors
+  and imports, never two of the same file), dropped at exit (`bg_detach_rest`: they were for the screen). The child
+  opens the file again through `fsview`'s walk in place mode (no link, one device, never the notebooks; Grimoire's
+  PDF copies and trash are read, as Files lists them), checks it is the file listed, and has one worker make a
+  300 x 400 gray preview, each with its kind's limits and watchdog and every record validated as the import and the
+  font check validate theirs: a PDF's first page fitted on a white page (`pdfwork.rs` `R 1 300 400 1`, after the
+  probe; the import's address space and CPU limits, the PDF mapped where the storage allows it, else read whole
+  under its 64 MB cap), a picture fitted and turned upright by its EXIF (`picwork.rs`, read whole up to 64 MB, in a
+  pool that never decodes in the writer, `PicPool::worker_only`: a fresh worker tries it again after a death, as for
+  every picture), a font's fixed sample (`fontcheck.rs`'s `T` command: the face opened as the check opens it, "Aa"
+  and "Abc 123" drawn centred in it, no glyph walk; the font worker's limits). No user's file is ever parsed in the
+  UI process or in the writer.
+- **What a job ends with**: a preview; or a "no preview" mark, kept so the file is not tried at every visit, when
+  the worker refuses the file (no file of its kind it reads, a password, a file over its cap), takes too long on it
+  (its watchdog), or ends or lies on it; or nothing, when no worker can be had (a sandbox step failed, none
+  started), memory is short, the Kindle slept while the page was waited for, or the file changed since it was
+  listed or while it was read (the next visit, with the file listed again, asks again). It ends 0 or 1 only.
+- **The cache**, `grimoire/.cache/files/<key>.pgm` and `.info` (docs/FORMAT.md), `<key>` the FNV-1a 64 hash of the
+  storage path, the size and the time, so a changed file gets a preview of its own. Written by the job alone,
+  atomically, the picture first and then the `.info` that says it is whole; read by the UI with the plain-file read
+  and a size limit (128 bytes, the picture its header and 120,000 bytes), the `.info` parsed strictly and held to
+  the file as listed, the picture to the `.info`. After each preview or mark the job prunes it past 2,000 files or
+  64 MB, the oldest first, down to three quarters of each, looking at the names alone (no stat) while they cannot be
+  past the limits. Deleting it loses nothing.
+- **The grid**: tiles of at least 440 x 520 px (nine upright, ten sideways on a Scribe), each a box of the
+  preview's shape drawn pixel for pixel, the name under it. A tile shows the hourglass (`ui_tile_loading`) until its
+  file's stat is in and while its job is to make the preview, then the preview, or its kind's icon for a folder, a
+  file of another kind, a mark, or a job that ended with nothing. Previews that come are drawn tile by tile, those
+  of one tick in one Ui refresh (`CoverTiles` notes what each tile was drawn showing). A tap and a hold act as on a
+  row: a folder is entered, a file's card opens beside its tile. Memory: a screen's previews, about 120 KB each,
+  dropped as they leave the screen.
+- **The notice** "Making previews..." (`NoticeKey::Previews`, on the Library's screen that asked) stays while a job
+  the screen asked for is queued or running, from its first second on, as "Loading..." does.
+- **Logs** (docs/KINDLE.md): `bg: file previews of a file (pid N)`, then `file previews: a pdf|picture|font made in
+  T ms (the worker's peak N kB, this job's M kB)`, `... has no preview (refused|slow|ended), marked`, `nothing made
+  (<why>)`, and `the cache pruned: ...`; never a name.
+- **Tests**: `bgwork_previews.rs`'s unit tests (the key, the `.info` parsed strictly, the prune);
+  `rust/tests/test_file_previews.rs` (a PDF, a picture and a font through the worker, refused files marked and not
+  tried again, a hang marked slow, a changed file making a new preview, a cache entry that does not read made again,
+  the prune through the job, the job queued and run in a child, no worker writing nothing); `test_fontcheck.rs`'s
+  sample; `test_picwork_fallback.rs`'s worker-only pool; `test_browser.rs` (only the screen's files asked for, a turn
+  taking queued jobs back, nothing in the list, pick mode or the root, the cap kept); `test_store.rs` (`files_view`);
+  the scenario `files_8_covers`; and CI's Linux job, a preview of each kind in the real sandbox
+  (`test_sandbox_linux.rs`). docs/TESTING.md has the Scribe's check.
 
 ## Shared building blocks (2.1, lane L0)
 

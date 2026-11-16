@@ -632,6 +632,26 @@ come, grimoire.log says (never a file's name: the folder, sizes, timings, reason
   `bg: file copy pid N done` or `FAILED`. A copy cut off leaves `.grimoire-copy-<pid>.part` in the folder, which
   the next copy into it removes.
 
+## Files: previews and the Covers view (2.2)
+
+Files' View chip, Covers, shows a folder as a grid of previews, each made by the sandboxed worker in the
+background (docs/DESIGN.md, "Files: previews and the Covers view") and kept in `grimoire/.cache/files/`, which may
+be deleted at any time (the previews are made again). grimoire.log says, for each file of the screen that had none
+(never a file's name: the kind, timings, memory, reasons):
+
+- `bg: file previews of a file (pid N)`, then `bg: file previews pid N done` or `FAILED`.
+- `file previews: a pdf|picture|font made in T ms (the worker's peak N kB, this job's M kB)`: T is the whole job (the
+  worker's start, the file read or mapped, the page or picture or sample drawn, the cache written); the worker's
+  peak is its resident memory at most.
+- `file previews: a pdf|picture|font has no preview (refused|slow|ended), marked, in T ms`: the worker refused the
+  file (no file of that kind it reads, a password, too big for its worker), its watchdog ran out, or it ended on the
+  file. The tile shows the kind's icon, and the file is not tried again until it changes.
+- `file previews: nothing made (<why>)`: no sandboxed worker could be had, no memory, the Kindle slept while the
+  page was waited for, or the file changed since it was listed (among others: it is not there, a link on its way).
+  Nothing is written; the next visit asks again.
+- `file previews: the cache pruned: N file(s) (M kB) removed of K`: past 2,000 files or 64 MB, the oldest go.
+- `bg: N file preview(s) dropped (Grimoire ends)`: previews still queued when Grimoire closed; none is made after.
+
 ## Touch gestures and the touch trace
 
 Two fingers are gestures on the notebook page (docs/SHORTCUTS.md, gestures.ini by hand): down opens
