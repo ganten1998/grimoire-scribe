@@ -617,6 +617,12 @@ impl Browser {
         *self = Browser::default();
         self.prefs = prefs;
         let Some((root, grimoire)) = root_dir() else { return false };
+        // Files deletes into Grimoire's trash, which is cleaned over USB. A trash removed whole there is made again
+        // as Files opens, as every start makes it: without it each Delete (the Library's too) would fail until
+        // Grimoire started again. Made only where nothing stands (a link there is left alone, and refused later).
+        if spec.mode == BrowseMode::Place {
+            let _ = std::fs::create_dir(format!("{}/trash", grimoire.trim_end_matches('/')));
+        }
         let Ok(st) = FsStorage::open(&root, &grimoire) else { return false };
         self.free = st.free_bytes().zip(st.total_bytes());
         self.storage = Some(st);
@@ -3892,6 +3898,41 @@ mod tests {
         assert!(b.go(sp("grimoire/templates")));
         b.open_card(row_of(&b, "Yours.ttf"));
         assert_eq!(b.delete_ask(), Ok(()));
+    }
+
+    // The trash folder removed whole over USB (the way the trash is cleaned) is made again as Files opens (issue
+    // #144): Delete works, where it said "Couldn't move to trash." until Grimoire started again. A link standing at
+    // its name is left as it is, and nothing is moved through it.
+    #[test]
+    fn a_trash_removed_over_usb_is_made_again_as_files_opens() {
+        let (base, _g) = storage("notrash");
+        let (ph, trash) = (format!("{base}/grimoire/photos"), format!("{base}/grimoire/trash"));
+        std::fs::create_dir_all(&ph).unwrap();
+        std::fs::write(format!("{ph}/beach.jpg"), b"a photo").unwrap();
+        std::fs::write(format!("{ph}/hill.jpg"), b"a hill").unwrap();
+        let _ = std::fs::remove_dir_all(&trash);
+        i18n_set("en");
+        let mut b = Browser::default();
+        assert!(b.open(PickSpec::place(), FilesPrefs { card: true, ..Default::default() }));
+        assert!(std::path::Path::new(&trash).is_dir());
+        assert!(b.go(sp("grimoire/photos")));
+        b.open_card(row_of(&b, "beach.jpg"));
+        assert!(b.delete_ask().is_ok());
+        assert_eq!(b.trash_card(), Ok("Moved to grimoire/trash".to_string()));
+        // a link at its name: not followed, not replaced, and Delete is refused
+        let elsewhere = format!("{base}/elsewhere");
+        std::fs::create_dir_all(&elsewhere).unwrap();
+        std::fs::remove_dir_all(&trash).unwrap();
+        std::os::unix::fs::symlink(&elsewhere, &trash).unwrap();
+        let mut b = Browser::default();
+        assert!(b.open(PickSpec::place(), FilesPrefs { card: true, ..Default::default() }));
+        assert!(std::fs::symlink_metadata(&trash).unwrap().file_type().is_symlink());
+        assert!(b.go(sp("grimoire/photos")));
+        b.open_card(row_of(&b, "hill.jpg"));
+        assert!(b.delete_ask().is_ok());
+        assert_eq!(b.trash_card(), Err(("Couldn't move to trash.".to_string(), Then::Relist)));
+        assert!(std::fs::read_dir(&elsewhere).unwrap().next().is_none() && std::path::Path::new(&format!("{ph}/hill.jpg")).exists());
+        std::fs::remove_file(&trash).unwrap();
     }
 
     // An empty trash says no size (issue #144): the root's Trash row shows its path alone once the walk is through

@@ -2610,7 +2610,9 @@ trash, and the Trash place puts an entry back. Pick mode (New notebook's From a 
   `ui_sheet`): `Delete "name"?` (a long name cut with "..." so the question mark stays), "Delete (moves it to
   grimoire/trash)" and "Keep it". Keep it, a tap outside the sheet, Esc and Back move nothing. Only its Delete
   moves the item: the check again, `FsStorage::trash`, then "Moved to grimoire/trash" and its row gone. Restore
-  undoes it.
+  undoes it. The trash is cleaned over USB, and a `trash` folder removed whole there is made again as Files opens
+  (as every start makes it; a link at its name is left alone and refused), so Delete does not fail until the next
+  start.
 - **The font in use.** Settings names Classic's own font, and its Bold file, by their paths under `grimoire/fonts`
   (`font=file:<path>`, `font_bold=file:<path>`), so a file gone from that path would leave the next start in
   Terminess. The browser is told both names before a card acts (`fonts_named`) and knows the item by identity
@@ -2667,7 +2669,7 @@ trash, and the Trash place puts an entry back. Pick mode (New notebook's From a 
   went with them` (docs/KINDLE.md).
 - **Tests**: `browser.rs`'s unit tests (a folder card's check by identity, each refusal's words, Rename's rules and
   places, a name nobody typed never given, the allow-list's words, Delete's question, Delete then Restore, a notebook the Library deleted coming back as " 2", a trash past the cap keeping
-  its newest, a write changing its row with no folder read again, the font in use, a restore the store could not finish), `test_fsview_writes.rs`'s trash sizes (slices, depth, links, the record left out), its listing past
+  its newest, a write changing its row with no folder read again, the font in use, a restore the store could not finish, a trash removed over USB), `test_fsview_writes.rs`'s trash sizes (slices, depth, links, the record left out), its listing past
   the cap and a picture a page still waits for, and the scenarios `files_8_rename` (every rule, a name taken, a
   good name, an empty one, Cancel), `files_9_trash` (Delete's question, Keep it, a tap outside it, its Delete, the sizes, Restore, a page with no
   card),
