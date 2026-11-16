@@ -2171,7 +2171,12 @@ whose wait the Kindle slept through and that then stalls is tried again once wit
 failed step refuses nothing unless the writer requires the sandbox (GRIMOIRE_SANDBOX=require: on Linux it then makes
 the worker's jail, and a worker given a jail holds every step, as on the Kindle). macOS has none of the steps (plain
 process isolation); a Linux build that does not require the sandbox still takes the steps that work without root (no
-new privileges, the limits and the allow-list among them) and has no chroot. The worker's records are text lines of
+new privileges, the limits and the allow-list among them) and has no chroot. A platform kept in another crate whose
+system runs a Linux kernel under another name builds the steps with the `linux-kernel` feature (PORTING.md): its
+worker holds the steps that need no root as a required sandbox does, leaves out namespaces, chroot and uid unless
+its writer requires the whole sandbox, and says `S 2`, a word only such a build takes, so that `S 1` keeps meaning
+every step held; its address-space limit starts from what the worker holds when that is larger than the image, and
+prctl answers ENOSYS there. The worker's records are text lines of
 a fixed grammar plus pixel bands, parsed strictly (`pdfwork.rs`). The writer ends a worker whose record lines pass
 4 MiB (`RECORDS_MAX_BYTES`: counted for each worker, the pixels and the handshake's two lines apart), and a job is
 many workers: a fresh one for each slice, and after each one that died or stalled. Only the first comes near the

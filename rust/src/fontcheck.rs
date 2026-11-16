@@ -1107,7 +1107,7 @@ fn start_worker(len: usize) -> Hello {
         }
         let line = w.read_line(512, deadline).ok()?;
         let s = String::from_utf8_lossy(&line).into_owned();
-        if s == "S 1" || (s == "S 0" && sandbox_line_ok(false)) {
+        if s == "S 1" || (s == "S 0" && sandbox_line_ok(false)) || (s == "S 2" && sandbox_line_two_ok()) {
             return Some("");
         }
         if s == "S 0" {

@@ -192,6 +192,8 @@ pub fn parse_record(line: &[u8]) -> Result<Rec, Violation> {
         ("S", 2) => match t[1] {
             "0" => Ok(Rec::Sandboxed(false)),
             "1" => Ok(Rec::Sandboxed(true)),
+            // (the steps that need no root: a word only a build with the `linux-kernel` feature takes, sandbox.rs)
+            "2" if sandbox_line_two_ok() => Ok(Rec::Sandboxed(true)),
             _ => Err(bad),
         },
         ("P", 2) => Ok(Rec::Pages(num(1)?)),

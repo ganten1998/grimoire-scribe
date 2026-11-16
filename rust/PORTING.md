@@ -71,6 +71,7 @@ The C build's `-D` switches are cargo features:
 | `GRIMOIRE_SIM` (headless) | `--features sim` | sim_sdl (the headless runner) |
 | neither (host tools, unit tests) | no feature | platform_none |
 | none: Rust only | `--features external-platform` | another crate's (not with `kindle` or `sim`) |
+| none: Rust only, a Linux kernel under another system's name | `--features external-platform,linux-kernel` | another crate's, with the sandbox's worker steps (below) |
 
 `#ifdef GRIMOIRE_SIM` becomes `#[cfg(feature = "sim")]`, `#ifdef GRIMOIRE_KINDLE` becomes
 `#[cfg(feature = "kindle")]`. display.rs, input.rs and light.rs hold their headers' types and
@@ -100,6 +101,19 @@ to `mainloop::main` before it starts a thread or opens anything, as the in-tree 
 the worker's filter lets it wait and wake only on private futexes and map nothing executable, which one
 thread of Rust and a C library never needs more than; a platform's start-up code must not need more
 there.
+
+A platform whose target gives its system another name than Linux, but which runs a Linux kernel, turns on
+`linux-kernel` as well. The worker's steps are built for `target_os = "linux"` only, so without it such a
+worker has plain process isolation. With it the worker holds the steps that need no root (oom_score_adj, no
+new privileges, the parent-death signal, the limits, the allow-list) as a required sandbox holds its steps,
+and says `S 2` in its handshake, which only a build with the feature takes; it leaves out the ones that need
+root (namespaces, chroot, uid) unless the writer requires the whole sandbox (`GRIMOIRE_SANDBOX=require`, as
+root), which makes the jail and takes `S 1` as on Linux. Two things differ there from the Kindle's worker: the
+address-space limit starts from the address space the worker holds when that is larger than the image the
+limit assumes (an allocator may reserve gigabytes when a program starts, `as_limit`), and prctl answers
+ENOSYS (an allocator that names its regions with prctl goes on without the names, `LINUX_KERNEL_ENOSYS`).
+Where no worker can be had, its writer never parses untrusted bytes itself: pictures wait, as on the Kindle
+(`writer_never_parses`). grimoire.log says `work: sandboxed without root (...)`.
 
 The rules of this file hold for it as they do for the in-tree platforms: the platform's methods are
 called from that one thread and from the forked children; `input_poll` is the loop's one place to

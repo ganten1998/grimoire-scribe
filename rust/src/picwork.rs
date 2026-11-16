@@ -314,7 +314,7 @@ pub fn in_fallback() -> bool {
 
 fn no_worker(why: &str) {
     if !NO_WORKER.swap(true, Ordering::Relaxed) {
-        if sandbox_required() {
+        if writer_never_parses() {
             qlog!("work: pictures wait (%s): no sandboxed worker can be had, and the writer decodes none; nothing is marked and no try is counted", why);
         } else {
             qlog!("work: pictures decode in the writer (%s); the sandbox is unavailable", why);
@@ -351,12 +351,13 @@ enum Asked {
     Wait,
 }
 
-/// No worker can be had for a picture: where the sandbox is required it waits, never decoded here (whether a
+/// No worker can be had for a picture: where the sandbox is required (or the build has the `linux-kernel` feature:
+/// `writer_never_parses`) it waits, never decoded here (whether a
 /// worker was given it before or not); elsewhere one that no worker was given is decoded in the writer (D21), and
 /// one a worker was given is refused, for a worker the picture took over could otherwise hand it to a root process
 /// (security review 2026-11).
 fn without_worker(handed: bool) -> Result<Asked, &'static str> {
-    if sandbox_required() {
+    if writer_never_parses() {
         Ok(Asked::Wait)
     } else if handed {
         Err("no worker for a picture a worker was given")
@@ -404,7 +405,7 @@ impl PicPool {
             }
             let line = w.read_line(512, deadline).ok()?;
             let s = String::from_utf8_lossy(&line).into_owned();
-            if s == "S 1" || (s == "S 0" && sandbox_line_ok(false)) {
+            if s == "S 1" || (s == "S 0" && sandbox_line_ok(false)) || (s == "S 2" && sandbox_line_two_ok()) {
                 return Some(Ok(()));
             }
             if s == "S 0" {
@@ -682,7 +683,7 @@ fn parse_info(line: &[u8]) -> Reply {
 
 /// The writer's own header check: what 2.0 did, for when no worker can be had and the sandbox is not required.
 fn local_check(head: &[u8], file_len: usize) -> PicOut {
-    if sandbox_required() {
+    if writer_never_parses() {
         return PicOut::NoWorker(NO_WORKER_WHY); // (never reached: `without_worker`; a last guard)
     }
     let (mut w, mut h) = (0, 0);
@@ -696,7 +697,7 @@ fn local_check(head: &[u8], file_len: usize) -> PicOut {
 
 /// The writer's own decode: what 2.0 did, for when no worker can be had and the sandbox is not required.
 fn local_decode(data: &[u8], orient: bool, pw: i32, ph: i32) -> PicOut {
-    if sandbox_required() {
+    if writer_never_parses() {
         return PicOut::NoWorker(NO_WORKER_WHY); // (never reached: `without_worker`; a last guard)
     }
     match decode_one(data, orient, pw, ph) {

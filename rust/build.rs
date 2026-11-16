@@ -34,6 +34,9 @@ fn main() {
     if kindle && sim {
         panic!("the kindle and sim features are two builds of the app: enable one");
     }
+    if kindle && env::var_os("CARGO_FEATURE_LINUX_KERNEL").is_some() {
+        panic!("the linux-kernel feature is for a platform kept in another crate; the kindle build is Linux itself");
+    }
     if kindle && !(target.contains("linux") && target.starts_with("arm")) {
         panic!("the kindle feature builds for the Kindle: --target armv7-unknown-linux-musleabihf (got {target})");
     }
