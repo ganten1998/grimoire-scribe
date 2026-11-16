@@ -556,8 +556,7 @@ fn book_tick(a: &mut App) {
         if a.book.blank > 0 && a.book.made {
             // (a PDF KOReader handed over by its path became a new notebook, some of its pages blank: the PDF
             // import's own words for that, 2.2)
-            let mut msg = String::new();
-            csnprintf!(&mut msg, 256, ng_("Imported notebook (%d page). Some pages couldn't be read.", "Imported notebook (%d pages). Some pages couldn't be read.", a.book.added as i64), a.book.added);
+            let msg = imported_blank_text(a.book.added);
             app_toast(a, &msg, 5000);
         } else if a.book.added != 0 {
             let mut msg = String::new();
@@ -1944,6 +1943,16 @@ fn import_made(a: &App, id: &str) -> bool {
     crate::library::library_shows_folder(a, nb.folder.as_str())
 }
 
+// The toast of a PDF that became a new notebook with some of its pages blank (`pages`: its page count): the PDF
+// import's, and KOReader's hand-over by path's (book_tick).
+fn imported_blank_text(pages: i32) -> String {
+    let mut msg = String::new();
+    // TRANSLATORS: a PDF became a new notebook, but some of its pages could not be read and are
+    // blank; %d is its page count. In a toast: one line of about 1700 px at 44 px in bold, or two.
+    csnprintf!(&mut msg, 256, ng_("Imported notebook (%d page). Some pages couldn't be read.", "Imported notebook (%d pages). Some pages couldn't be read.", pages as i64), pages);
+    msg
+}
+
 // A PDF import ended (pdfimport.rs): what to tell the user. With the Library in front and the new card on it
 // (D20) no toast says "Imported"; elsewhere one does. One that left pages blank says so whatever is in front,
 // as it is news the card does not carry. (`id`: the import's job; a fill's end comes from the UI's own commit.)
@@ -1958,9 +1967,7 @@ fn pdf_import_told(a: &mut App, id: &str, fin: crate::pdfimport::Finished) {
                 app_redraw_mode(a, RefreshMode::Ui); // (waking redraws it too)
             }
             if blank > 0 {
-                // TRANSLATORS: a PDF became a new notebook, but some of its pages could not be read and are
-                // blank; %d is its page count. In a toast: one line of about 1700 px at 44 px in bold, or two.
-                csnprintf!(&mut msg, 256, ng_("Imported notebook (%d page). Some pages couldn't be read.", "Imported notebook (%d pages). Some pages couldn't be read.", pages as i64), pages as i32);
+                msg = imported_blank_text(pages as i32);
             } else if trimmed > 0 {
                 // TRANSLATORS: a PDF became a new notebook, but its document links (a planner's tabs) were more than
                 // a notebook holds and some were left out; %d is its page count. In a toast: one or two lines.
