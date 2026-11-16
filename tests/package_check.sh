@@ -121,11 +121,12 @@ check "payload's wifi.sh is kindle's" cmp -s "$B/app/wifi.sh" kindle/app/wifi.sh
 check "payload's update.sh is kindle's" cmp -s "$B/app/update.sh" kindle/app/update.sh
 check "payload's CAPABILITIES match the header" is "$(cat "$B/app/CAPABILITIES" 2>/dev/null)" "$CAPS"
 # app/grimoire.sh names what it supports itself: the guard, --hosted, --annotate (a page KOReader
-# sends), --book (a whole book) and links (the book's links, import/.book/links.txt), and no unpacking
-# (that is Grimoire.sh's).
+# sends), --book (a whole book), links (the book's links, import/.book/links.txt) and pdf (a PDF named
+# by its path, import/.book/request.ini version 2: the plugin sends one only to a launcher with it),
+# and no unpacking (that is Grimoire.sh's).
 APP_CAPS=$(head -n 10 "$B/app/grimoire.sh" 2>/dev/null | sed -n 's/^# Capabilities: //p')
 check "payload's grimoire.sh has its own Capabilities line ($APP_CAPS)" [ -n "$APP_CAPS" ]
-for c in guard hosted annotate book links; do
+for c in guard hosted annotate book links pdf; do
     check "payload's grimoire.sh Capabilities include $c" sh -c 'case " $1 " in *" $2 "*) exit 0 ;; esac; exit 1' sh "$APP_CAPS" "$c"
 done
 check "payload's grimoire.sh Capabilities leave out unpack-only" sh -c 'case " $1 " in *" unpack-only "*) exit 1 ;; esac' sh "$APP_CAPS"
