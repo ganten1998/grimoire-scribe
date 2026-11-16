@@ -12628,11 +12628,10 @@ mod tests {
     }
 
     /// The size keys (2.2). A step sets the pen in use's next chip as a tap on it would (a setting, written a pass
-    /// later) and says the size in a short toast, the card's millimetres; at an end the size
-    /// stays and the toast still says it. The eraser steps through its own chips. With Select mode on (the lasso has
-    /// no size) nothing changes and no toast shows. quick-size's card goes beside the pen in use's button (the tool
-    /// button while it shows that pen, a pinned pen, the eraser) or beside the folded box, and with Select mode on
-    /// nowhere.
+    /// later) and says the size in a short toast, the card's millimetres; at an end the size stays and the toast
+    /// still says it. The eraser steps through its own chips. With Select mode on (the lasso has no size) nothing
+    /// changes and no toast shows. quick-size's card goes beside the pen in use's button (the tool button while it
+    /// shows that pen, a pinned pen, the eraser) or beside the folded box, and with Select mode on nowhere.
     #[test]
     fn the_size_keys_step_the_pen_in_use_and_say_its_size() {
         let mut a = app(1860, 2480, 1860, 2480);
