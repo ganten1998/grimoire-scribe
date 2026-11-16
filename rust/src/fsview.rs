@@ -17,9 +17,10 @@
 //!   by an allow-list (what is inside Grimoire's import, templates, photos and fonts), so safety never
 //!   depends on the deny-list being complete.
 //! - Never a hard delete, never an overwrite: delete is a rename into the trash, and every rename is
-//!   renameat2(RENAME_NOREPLACE), or where the storage refuses that call (and on the Mac) a look for the
-//!   name and then renameat. Each write checks the item is still the one listed (FsStat::same) and that no
-//!   import holds it.
+//!   renameat2(RENAME_NOREPLACE), or where the storage refuses that call (and on the Mac) renameat over a
+//!   reservation of the new name made first (an O_EXCL create, or mkdirat), so nothing another writer puts
+//!   there is replaced. Each write checks the item is still the one listed (FsStat::same) and that no import
+//!   holds it.
 //! - Time-sliced: a listing reads names and d_type only (at most 5,000), and stats only the rows asked for,
 //!   each in slices of at most 20 ms a tick with the folder kept open between ticks.
 //! - Privacy: the log has counts, zones and timings, never a name.
@@ -841,8 +842,8 @@ fn trash_record_parse(t: &[u8]) -> Option<TrashRecord> {
 #[cfg(any(test, feature = "sim"))]
 static FORCE_FALLBACK: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
-/// Tests (never the Kindle's build): every rename takes the fallback (a look for the name, then renameat), as on a
-/// storage that refuses renameat2's flag, so a run on Linux tries it too.
+/// Tests (never the Kindle's build): every rename takes the fallback (the new name reserved, then renameat over
+/// the reservation), as on a storage that refuses renameat2's flag, so a run on Linux tries it too.
 #[cfg(any(test, feature = "sim"))]
 pub fn fsview_rename_fallback_force(on: bool) {
     FORCE_FALLBACK.store(on, std::sync::atomic::Ordering::Relaxed);
@@ -857,10 +858,39 @@ fn fallback_forced() -> bool {
     false
 }
 
+/// What a test runs in the fallback between its check and its renameat (fsview_rename_seam).
+#[cfg(any(test, feature = "sim"))]
+type RenameSeam = Box<dyn FnOnce() + Send>;
+#[cfg(any(test, feature = "sim"))]
+static RENAME_SEAM: std::sync::Mutex<Option<RenameSeam>> = std::sync::Mutex::new(None);
+
+/// Tests (never the Kindle's build): `f` runs once, in the next fallback rename, between its check (the new name
+/// reserved, or looked at for a folder of the trash's own) and its renameat: what another writer does at that
+/// moment.
+#[cfg(any(test, feature = "sim"))]
+pub fn fsview_rename_seam(f: Option<RenameSeam>) {
+    *RENAME_SEAM.lock().unwrap_or_else(|e| e.into_inner()) = f;
+}
+
+fn rename_seam() {
+    #[cfg(any(test, feature = "sim"))]
+    {
+        let f = RENAME_SEAM.lock().unwrap_or_else(|e| e.into_inner()).take();
+        if let Some(f) = f {
+            f();
+        }
+    }
+}
+
 /// Renames `old` in `ofd` to `new` in `nfd`, never over an entry: renameat2(RENAME_NOREPLACE) on Linux; where the
-/// storage refuses the flag or the kernel has no such call (EINVAL, ENOSYS), and on the Mac, the fallback looks
-/// for `new` (fstatat, no link followed) and renames only when nothing is there. Err(errno): EEXIST when taken.
+/// storage refuses the flag or the kernel has no such call (EINVAL, ENOSYS), and on the Mac, the fallback
+/// (`rename_fallback`) reserves `new` first, atomically, and renames over its own reservation only. Err(errno):
+/// EEXIST when taken.
 pub(crate) fn rename_noreplace(ofd: i32, old: &CString, nfd: i32, new: &CString) -> Result<(), i32> {
+    rename_at(ofd, old, nfd, new, true)
+}
+
+fn rename_at(ofd: i32, old: &CString, nfd: i32, new: &CString, reserve: bool) -> Result<(), i32> {
     #[cfg(target_os = "linux")]
     if !fallback_forced() {
         // SAFETY: renameat2 through syscall (a C library may lack the wrapper) on our descriptors and two
@@ -875,23 +905,100 @@ pub(crate) fn rename_noreplace(ofd: i32, old: &CString, nfd: i32, new: &CString)
         }
         static NOTED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
         if !NOTED.swap(true, std::sync::atomic::Ordering::Relaxed) {
-            qlog!("files: the storage refused the no-replace rename (%s); a rename looks for the name first", &strerror(e));
+            qlog!("files: the storage refused the no-replace rename (%s); a rename reserves the name first", &strerror(e));
         }
     }
-    // SAFETY: st is written by fstatat before it is read; the names are NUL-terminated.
+    rename_fallback(ofd, old, nfd, new, reserve)
+}
+
+/// The fallback. Grimoire is not the only writer while it runs (files come over USB, the copy job renames into the
+/// same folders), so a look for the name and then renameat could replace what came in between. Instead the new
+/// name is reserved, atomically: an O_EXCL create for a file, mkdirat for a folder, either of which fails when
+/// anything is there. Just before renameat over it, the reservation must still be its own (the same device and
+/// inode, a file still empty; a folder the kernel will not replace once something is in it). On any failure the
+/// reservation goes, only while it is still its own. `reserve` false: a folder the caller made a moment ago (the
+/// trash's own, under a random name), where a look is enough and a crash can leave no empty file beside the item.
+fn rename_fallback(ofd: i32, old: &CString, nfd: i32, new: &CString, reserve: bool) -> Result<(), i32> {
+    // SAFETY: a stat is plain data; zeroed, then written by fstatat before it is read.
     let mut st: libc::stat = unsafe { std::mem::zeroed() };
-    if unsafe { libc::fstatat(nfd, new.as_ptr(), &mut st, libc::AT_SYMLINK_NOFOLLOW) } == 0 {
-        return Err(libc::EEXIST);
+    if !reserve {
+        // SAFETY: fstatat on our descriptor and a NUL-terminated name, into st.
+        if unsafe { libc::fstatat(nfd, new.as_ptr(), &mut st, libc::AT_SYMLINK_NOFOLLOW) } == 0 {
+            return Err(libc::EEXIST);
+        }
+        let e = errno();
+        if e != libc::ENOENT {
+            return Err(e);
+        }
+        rename_seam();
+        // SAFETY: renameat on our descriptors and two NUL-terminated names.
+        return if unsafe { libc::renameat(ofd, old.as_ptr(), nfd, new.as_ptr()) } == 0 { Ok(()) } else { Err(errno()) };
     }
-    let e = errno();
-    if e != libc::ENOENT {
-        return Err(e);
-    }
-    // SAFETY: renameat on our descriptors and two NUL-terminated names.
-    if unsafe { libc::renameat(ofd, old.as_ptr(), nfd, new.as_ptr()) } != 0 {
+    // SAFETY: as above, for the item.
+    if unsafe { libc::fstatat(ofd, old.as_ptr(), &mut st, libc::AT_SYMLINK_NOFOLLOW) } != 0 {
         return Err(errno());
     }
-    Ok(())
+    let dir = st.st_mode & libc::S_IFMT == libc::S_IFDIR;
+    let mine = reserve_name(nfd, new, dir)?;
+    rename_seam();
+    if !still_reserved(nfd, new, mine, dir) {
+        return Err(libc::EEXIST);
+    }
+    // SAFETY: renameat on our descriptors and two NUL-terminated names.
+    if unsafe { libc::renameat(ofd, old.as_ptr(), nfd, new.as_ptr()) } == 0 {
+        return Ok(());
+    }
+    let e = errno();
+    if still_reserved(nfd, new, mine, dir) {
+        unlink_at(nfd, new, if dir { libc::AT_REMOVEDIR } else { 0 });
+    }
+    Err(e)
+}
+
+/// Makes `new` in `nfd`, a folder or an empty file, failing when anything is there: its device and inode.
+fn reserve_name(nfd: i32, new: &CString, dir: bool) -> Result<(u64, u64), i32> {
+    // SAFETY: a stat is plain data; zeroed, then written before it is read.
+    let mut st: libc::stat = unsafe { std::mem::zeroed() };
+    if dir {
+        // SAFETY: mkdirat on our descriptor and a NUL-terminated name.
+        if unsafe { libc::mkdirat(nfd, new.as_ptr(), 0o755) } != 0 {
+            return Err(errno());
+        }
+        // SAFETY: fstatat on our descriptor and a NUL-terminated name, into st.
+        if unsafe { libc::fstatat(nfd, new.as_ptr(), &mut st, libc::AT_SYMLINK_NOFOLLOW) } != 0 {
+            return Err(errno());
+        }
+    } else {
+        // SAFETY: openat on our descriptor and a NUL-terminated name; the descriptor is closed here, after fstat
+        // (closed before the rename, so no storage renames over a file still open).
+        let fd = unsafe { libc::openat(nfd, new.as_ptr(), libc::O_WRONLY | libc::O_CREAT | libc::O_EXCL | libc::O_NOFOLLOW | libc::O_CLOEXEC, 0o600 as libc::c_uint) };
+        if fd < 0 {
+            return Err(errno());
+        }
+        // SAFETY: fstat on the descriptor just opened, into st.
+        let r = unsafe { libc::fstat(fd, &mut st) };
+        let e = errno();
+        // SAFETY: closes the descriptor this function opened, once.
+        unsafe { libc::close(fd) };
+        if r != 0 {
+            unlink_at(nfd, new, 0);
+            return Err(e);
+        }
+    }
+    Ok((st.st_dev as u64, st.st_ino as u64))
+}
+
+/// Whether `new` in `nfd` is still the reservation `mine`: the same device and inode, a folder, or a file nothing
+/// has written into.
+fn still_reserved(nfd: i32, new: &CString, mine: (u64, u64), dir: bool) -> bool {
+    // SAFETY: a stat is plain data; zeroed, then written by fstatat before it is read.
+    let mut st: libc::stat = unsafe { std::mem::zeroed() };
+    // SAFETY: fstatat on our descriptor and a NUL-terminated name, into st.
+    if unsafe { libc::fstatat(nfd, new.as_ptr(), &mut st, libc::AT_SYMLINK_NOFOLLOW) } != 0 {
+        return false;
+    }
+    let kind = st.st_mode & libc::S_IFMT;
+    (st.st_dev as u64, st.st_ino as u64) == mine && if dir { kind == libc::S_IFDIR } else { kind == libc::S_IFREG && st.st_size == 0 }
 }
 
 fn cname(name: &[u8]) -> Result<CString, FsWriteErr> {
@@ -1193,7 +1300,8 @@ impl FsStorage {
             undo(None);
             return Err(log_failed("the trash's record", FsWriteErr::Io(e)));
         }
-        if let Err(e) = rename_noreplace(dir.as_raw_fd(), &c, wfd, &c) {
+        // (into the folder made above, holding only the record: no reservation is needed there)
+        if let Err(e) = rename_at(dir.as_raw_fd(), &c, wfd, &c, false) {
             undo(Some(wfd));
             return Err(log_failed("the trash", rename_err(e)));
         }

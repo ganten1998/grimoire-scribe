@@ -190,6 +190,55 @@ fn a_case_only_rename() {
     fsview_rename_fallback_force(false);
 }
 
+// Where the storage refuses renameat2's flag (forced here; always so on the Mac), Grimoire is still not the only
+// writer: files come over USB while it runs, and the copy job renames into the same folders. So the fallback
+// reserves the new name before it renames (an O_EXCL create for a file, mkdirat for a folder) and renames over
+// nothing but its own reservation. A seam acts between that check and the renameat, as another writer would: a
+// file written at the name, a file renamed onto it, a file put into a reserved folder. Each stays as that writer
+// left it, the item stays where it was, and the rename says Exists. When the rename itself fails (the item went
+// meanwhile), its reservation goes and nothing else does; so does the trash's folder and record.
+fn what_comes_meanwhile_is_never_replaced() {
+    fsview_rename_fallback_force(true);
+    let (root, g) = tree();
+    let st = open(&root, &g);
+    let t = format!("{root}/grimoire/templates");
+    let a = stat_of(&st, "grimoire/templates/a.png");
+    // a writer that writes the name as most do (made or cut to nothing, then written)
+    let at = format!("{t}/c.png");
+    fsview_rename_seam(Some(Box::new(move || std::fs::write(at, b"theirs").unwrap())));
+    check!(st.rename(&sp("grimoire/templates/a.png"), &a, b"c.png") == Err(FsWriteErr::Exists));
+    check!(read(&root, "grimoire/templates/c.png").as_deref() == Some(&b"theirs"[..]));
+    check!(read(&root, "grimoire/templates/a.png").as_deref() == Some(&b"template a"[..]));
+    // a writer that renames its own file onto the name
+    std::fs::write(format!("{root}/documents/d.png"), b"theirs too").unwrap();
+    let (from, to) = (format!("{root}/documents/d.png"), format!("{t}/d.png"));
+    fsview_rename_seam(Some(Box::new(move || std::fs::rename(from, to).unwrap())));
+    check!(st.rename(&sp("grimoire/templates/a.png"), &a, b"d.png") == Err(FsWriteErr::Exists));
+    check!(read(&root, "grimoire/templates/d.png").as_deref() == Some(&b"theirs too"[..]));
+    check!(read(&root, "grimoire/templates/a.png").as_deref() == Some(&b"template a"[..]));
+    // a folder: a file put into the reserved folder (the kernel never renames over a folder that holds one)
+    let trip = stat_of(&st, "grimoire/import/Trip");
+    let note = format!("{root}/grimoire/import/Trip 2/note.txt");
+    fsview_rename_seam(Some(Box::new(move || std::fs::write(note, b"theirs").unwrap())));
+    check!(st.rename(&sp("grimoire/import/Trip"), &trip, b"Trip 2") == Err(FsWriteErr::Exists));
+    check!(names(&format!("{root}/grimoire/import/Trip 2")) == ["note.txt"]);
+    check!(names(&format!("{root}/grimoire/import/Trip")) == ["p1.png", "p2.png"]);
+    // the item went meanwhile: the rename fails, its own reservation goes and nothing is left at the new name
+    let b = stat_of(&st, "grimoire/templates/b.png");
+    let (bf, bt) = (format!("{t}/b.png"), format!("{root}/documents/b.png"));
+    fsview_rename_seam(Some(Box::new(move || std::fs::rename(bf, bt).unwrap())));
+    check!(st.rename(&sp("grimoire/templates/b.png"), &b, b"e.png") == Err(FsWriteErr::Changed));
+    check!(names(&t) == ["a.png", "c.png", "d.png"]);
+    // ... and in the trash: the folder made for it and its record go too, and the item is as the writer left it
+    let (af, at) = (format!("{t}/a.png"), format!("{root}/documents/a.png"));
+    fsview_rename_seam(Some(Box::new(move || std::fs::rename(af, at).unwrap())));
+    check!(st.trash(&sp("grimoire/templates/a.png"), &a) == Err(FsWriteErr::Changed));
+    check!(names(&format!("{g}/trash")).is_empty());
+    check!(read(&root, "documents/a.png").as_deref() == Some(&b"template a"[..]));
+    fsview_rename_seam(None);
+    fsview_rename_fallback_force(false);
+}
+
 // Waits for the background children to end, reaping each (at most 30 s). The last notify result.
 fn settle() -> i32 {
     let mut r = 0;
@@ -513,6 +562,7 @@ fn test_fsview_writes() {
     run!(writes_stay_in_grimoires_folders);
     run!(a_rename_never_replaces);
     run!(a_case_only_rename);
+    run!(what_comes_meanwhile_is_never_replaced);
     run!(what_an_import_holds_stays);
     run!(trash_and_restore_a_file_and_a_folder);
     run!(a_name_taken_on_restore);

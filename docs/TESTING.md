@@ -2702,13 +2702,14 @@ not release: send grimoire.log.
 
 Automated: the unit tests of `fsview.rs` (the name rules, the trash's names, the record read strictly, what an
 import holds), `bgjob.rs` (the jobs' paths) and `bgwork_copy.rs` (the job's path), and
-`rust/tests/test_fsview_writes.rs` (the allow-list's refusals, no replace, a case-only rename, the busy check,
-trash and restore of a file, a folder and a notebook in both forms, a name taken, refused restores, the copy with
-its floor, a failed write and a source that changes). On the Mac only the fallback rename runs (a look for the
-name, then `renameat`); CI's Linux job (`sandbox`) runs the same file with the kernel's `RENAME_NOREPLACE` on its
-tmpfs. Nothing on screen calls these writes yet, so the Scribe's part is three questions about its storage,
-asked over SSH with Grimoire closed. Their answers decide what runs there and whether "File changed. Try again."
-can come for no reason; they are due before the first screen that uses the writes ships. Write the answers into
+`rust/tests/test_fsview_writes.rs` (the allow-list's refusals, no replace, another writer at the name between
+the fallback's check and its rename, a case-only rename, the busy check, trash and restore of a file, a folder
+and a notebook in both forms, a name taken, refused restores, the copy with its floor, a failed write and a
+source that changes). On the Mac only the fallback rename runs (the new name reserved, then `renameat` over the
+reservation); CI's Linux job (`sandbox`) runs the same file with the kernel's `RENAME_NOREPLACE` on its tmpfs.
+Nothing on screen calls these writes yet, so the Scribe's part is three questions about its storage, asked over
+SSH with Grimoire closed. Their answers decide what runs there and whether "File changed. Try again." can come
+for no reason; they are due before the first screen that uses the writes ships. Write the answers into
 docs/KINDLE.md (How it fits in).
 
 1. **Does the storage take the no-replace rename?** KOReader's LuaJIT can make the call (`382` is

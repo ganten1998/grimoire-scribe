@@ -592,9 +592,11 @@ come, grimoire.log says (never a file's name: the folder, sizes, timings, reason
   back to <folder>`, and `files: notebook <id> came back from the trash`. A deleted item is in
   `grimoire/trash/files-<date>-<time>-<4 hex>/` with `.grimoire-trash` beside it, which says where it was
   (docs/FORMAT.md, The trash): to put one back by hand, with Grimoire closed, move it there.
-- `files: the storage refused the no-replace rename (<why>); a rename looks for the name first`: once a session,
-  the first time a rename needs it. The Kindle's storage does not take the kernel's no-replace rename, so each
-  rename first looks whether the new name is taken (docs/TESTING.md has the check that decides which runs).
+- `files: the storage refused the no-replace rename (<why>); a rename reserves the name first`: once a session,
+  the first time a rename needs it. This line means the storage does not take the kernel's no-replace rename:
+  each rename then reserves the new name (an empty file or folder made only where nothing is) and renames over
+  its own reservation (docs/DESIGN.md, Files' storage writes). Whether the Scribe's storage takes the flag is
+  what docs/TESTING.md's check finds out.
 - `files: a rename|the trash|the trash's record|a restore|a notebook's restore failed: <why>`: a call the storage
   refused, with its reason (a name taken, a file that changed or an import holding it are told on screen, not
   here). `files: a rename through a temporary name could not be undone; the item is at its temporary name in

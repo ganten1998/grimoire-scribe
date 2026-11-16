@@ -48,9 +48,10 @@ the name rules, the busy check and the copy job (`BgKind::CopyFile`). Nothing on
 - **Only imports count as busy.** A template job reads its picture by path when it starts; a rename or trash of
   that picture just before makes the job fail (it says so), and is not refused. The screens can add it if it
   shows.
-- **The fallback's moment.** Where the storage refuses the no-replace flag, a rename looks for the name and then
-  renames: another writer could make that name in between. Grimoire is the only writer while it runs (files are
-  copied in with it closed), and the check before acting covers what changed earlier.
+- **The fallback's last moment.** Where the storage refuses the no-replace flag, a rename reserves the new name
+  and renames over its own reservation only (DESIGN.md, Never an overwrite), since files come over USB and the
+  copy job renames while Grimoire runs. Left: a writer that opens the empty reserved file by its name between the
+  last check and the rename loses what it wrote, and a crash there leaves an empty file or folder at the new name.
 - **A copy's source changed during the read** is caught by the check at the copy's end (size and time, and the
   bytes read against the size); no test changes a source in the middle of a read (the tests change it before the
   job reads it).

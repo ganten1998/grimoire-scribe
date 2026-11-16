@@ -2351,13 +2351,22 @@ their own work), so nothing a user sees changed.
   goes through the walk (no link at any component, one device), and the trash and the notebooks folder are
   checked by `st_dev` and `st_ino` against what `FsStorage::open` noted.
 - **Never an overwrite.** Every rename is `renameat2(RENAME_NOREPLACE)` (by `syscall`, so no C library wrapper is
-  needed); where the storage refuses the flag or the kernel lacks the call (EINVAL, ENOSYS), and on the Mac, the
-  fallback looks for the new name (`fstatat`, no link followed) and renames only when nothing is there. The
-  fallback leaves a moment between the look and the rename; Grimoire is the only writer while it runs (files
-  are copied in with it closed), and the check below covers what changed before. The log says once a session
-  when the storage refuses the flag. A rename that changes only the case, or that the storage says would land on the
-  item itself (a storage that folds case), goes through a temporary name in the same folder
-  (`.grimoire-rename-<pid>-<4 hex>`), and is undone if the second step fails.
+  needed). Where the storage refuses the flag or the kernel lacks the call (EINVAL, ENOSYS), and on the Mac, a
+  look for the new name and then `renameat` would not do: Grimoire is not the only writer while it runs (files
+  come over USB, and the copy job renames into the same folders). So the fallback reserves the new name first,
+  atomically (`O_CREAT|O_EXCL|O_NOFOLLOW` for a file, `mkdirat` for a folder: each fails when anything is
+  there), checks just before `renameat` that the name still holds its own reservation (the same device and
+  inode, a file still empty; the kernel never renames over a folder that holds anything), renames over it, and
+  on any failure removes the reservation only while it is still its own. Two writers never both win a name, so
+  the copy job and a rename or restore into the same folder need no busy check between them: one takes the
+  name, the other " 2" or Exists. What remains: a writer that opens the empty reserved file by its name in the
+  moment between that last check and the rename loses what it wrote there, and a crash in that moment leaves an
+  empty file or folder at the new name beside the item, which is untouched. Into the trash's own new folder (a
+  random name, holding only the record) the fallback looks for the name only. The log says once a session when
+  the storage refuses the flag; whether the Scribe's storage does is what docs/TESTING.md's check finds out. A
+  rename that changes only the case, or that the storage says would land on the item itself (a storage that
+  folds case), goes through a temporary name in the same folder (`.grimoire-rename-<pid>-<4 hex>`), and is
+  undone if the second step fails.
 - **Check again before acting.** Rename and trash take the stat the listing had (`FsStat`) and refuse when the
   entry's device, inode, size or time differ (`Changed`, "File changed. Try again." on screen), or when an import
   holds it (`Busy`, "Importing now."): a PDF or a folder of pictures a queued or running import works on, what is
@@ -2391,12 +2400,14 @@ their own work), so nothing a user sees changed.
   size and time, the reason a copy was refused, an errno when a call failed, and once a session the fallback.
 - **Tests**: `fsview.rs`'s unit tests (the name rules, the trash's names, the record read strictly, what an import
   holds), `bgjob.rs`'s (the jobs' paths), `bgwork_copy.rs`'s (the job's path), and
-  `rust/tests/test_fsview_writes.rs` (every refusal of the allow-list, no replace with renameat2's flag and with
-  the fallback forced through `fsview_rename_fallback_force`, a case-only rename, the busy check through real
-  queued jobs, trash and restore of a file, a folder and a notebook in both forms, a name taken, refused restores,
-  the copy request and job with the floor and a failed write through `copy_seams`, a source that changes, and
-  leftovers swept). On the Mac only the fallback runs; CI's Linux job runs the same file with renameat2's flag,
-  and docs/TESTING.md has the Scribe's check of the flag, of one rename into the trash and of inode numbers.
+  `rust/tests/test_fsview_writes.rs` (every refusal of the allow-list, no replace with renameat2's
+  flag and with the fallback forced through `fsview_rename_fallback_force`, another writer at the
+  name between the fallback's check and its rename through `fsview_rename_seam`, a case-only rename, the busy
+  check through real queued jobs, trash and restore of a file, a folder and a notebook in both forms, a name
+  taken, refused restores, the copy request and job with the floor and a failed write through `copy_seams`, a
+  source that changes, and leftovers swept). On the Mac only the fallback runs; CI's Linux job runs the same file
+  with renameat2's flag, and docs/TESTING.md has the Scribe's check of the flag, of one rename into the trash and
+  of inode numbers.
 
 ## Shared building blocks (2.1, lane L0)
 
