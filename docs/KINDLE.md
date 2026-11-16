@@ -31,7 +31,8 @@ grimoire/.passcode-paused      legacy beta.1 marker, consumed for its recovery n
 grimoire/.passcode-left-off    counts the starts told that a restart left the passcode off
 grimoire/.koplugin-installed   the build whose plugin went into KOReader, or "removed"
 grimoire/fonts/                font files you copy in for Classic's text (2.1.0-beta.2), with a README.txt
-grimoire/fonts/.cache/         what the background check found of each: verdict, preview, marks (deletable)
+grimoire/fonts/.cache/         the background check's preview of each, and its marks (deletable: every font is
+                               then checked again)
 grimoire/.font-inuse           the crash guard of a font of yours: there from before its first use in a
                                session until a screen drawn with it is on the panel, and while it has a strike
 grimoire/trash/                deleted notebooks and pages
@@ -572,14 +573,37 @@ Copy `.ttf` or `.otf` files into `grimoire/fonts/` (see README). Device checks a
 read first by the sandboxed worker (`grimoire --work font ...`, the same loader as PDFs and pictures: its bytes
 come down a pipe, 24 MB at most; its address space is its image, the file and 64 MiB; a slice is 20 s of its
 own CPU time, then a fresh worker goes on from the glyph the last one reached, 10 minutes in all). The UI reads
-a font only once its verdict is there, and only if the bytes it reads hash to the verdict's. What grimoire.log
-says (never a file's name or a family's: counts, sizes, timings, reasons):
+a font only once its verdict is there, and only if the bytes it reads hash to the verdict's (their SHA-256).
+
+What the check found of a font, its verdict, is kept on the Kindle itself and not on the storage (from the
+verdicts numbered 2 on, FORMAT.md; 2.1.0 kept its own in `grimoire/fonts/.cache/`):
+`/var/local/grimoire/<16 hex digits>/fonts/<key>.font`, a few hundred bytes a font (at most 200 files of 8 KiB
+for a data folder), in folders Grimoire makes for root alone (mode 0700; a folder that is already there is used
+only while it is root's and no one else can write it). The 16 digits name the data folder (a second one, a
+development copy, has its own, and the file `root` beside `fonts` says which folder it is of); what was kept for
+a data folder that is gone is removed at the next check. The previews and marks stay in `grimoire/fonts/.cache/`,
+and a verdict counts only with its preview (or, for a font the check refused, its `.no` file) there. So after the
+update each font is checked once more (Grimoire reads in Terminess until the font in use has passed again), and
+after a factory reset, or with the storage moved to another Kindle, once more there. A font whose check's
+worker died (its `.bad` file in `grimoire/fonts/.cache/`) is not checked again by this: it stays out until
+its file changes or the cache is deleted. `/var/local/grimoire` is
+left when Grimoire is removed; `rm -r /var/local/grimoire` over SSH, with Grimoire closed, removes it, at the
+price of one more check of every font. A `.font` file in `grimoire/fonts/.cache/` is 2.1.0's: it is not read,
+and 2.1.0 finds it again if you go back.
+
+What grimoire.log says (never a file's name or a family's: counts, sizes, timings, reasons):
 
 - `bg: font check of a folder (pid N)`, then for each file not checked yet `fonts: file I of N passed: S KB, G
-  glyphs, K from Terminess, checked in T ms`, or `... refused (unreadable|no Latin letters|a web font)`, or `...
-  took too long to read (T ms): left for a second try` (no verdict yet: the file is checked again a minute or more
-  later) and at that try `... took too long to read again (T ms)` (the verdict), or `... the check's worker ended
-  (<why>): marked unreadable`, or `... left for
+  glyphs, K from Terminess (W too slow to draw), slowest glyph T us, letters and digits L us, checked in T ms`
+  (the two figures are microseconds of the worker's CPU time for one glyph's draw at the largest size: the
+  dearest glyph of the font, and its letters and digits added up), or `... refused (unreadable|no Latin
+  letters|a web font)`, or `... took too long to read (T ms): left for a second try` (no verdict yet: the file
+  is checked again a minute or more later) and at that try `... took too long to read again (T ms)` (the
+  verdict), or `...: glyphs take too long to draw (a letter or digit, slowest T us | W glyph(s), slowest T
+  us): left for a second try` and, when the check a minute or more later agrees, `...: glyphs take too long to
+  draw again (...)` (the verdict: the row then says "Took too long to read."; a timeout and slow glyphs do
+  not make a verdict together, each is `left for a second try` until one of the two has shown twice), or
+  `... the check's worker ended (<why>): marked unreadable`, or `... left for
   later (out of memory)`; each job checks one font (`fonts: file I of N done; more are left for the next job`),
   and the last one ends with `fonts: in the folder, P passed, R refused, D the worker died on, L left for later, T
   too big or empty (N font file(s) in all)`, the whole folder's tally from the verdicts kept, and `bg: font check
@@ -588,7 +612,15 @@ says (never a file's name or a family's: counts, sizes, timings, reasons):
 - `fonts: no worker for the check (<why>); nothing is marked`, then `fonts: no worker can be had (see the lines
   above): no font is checked until Grimoire starts again`: a sandbox step failed or the worker did not start.
   No font is read, none is marked; the rows of unchecked fonts say "Unreadable font." for this session.
+- `fonts: what the check finds cannot be kept (<why>); nothing is marked`, then `fonts: what the check finds
+  cannot be kept (see the line above): no font is checked until Grimoire starts again`: `/var/local/grimoire`
+  cannot be used (it is not there, it cannot be made, it is not Grimoire's own: a name on the way is a link, is
+  not root's, or can be written by others), its file system has too little room, or it takes no write (a file
+  system that went read-only). No font is read, none is marked; the rows of unchecked fonts say "Unreadable font." for this session, and fonts that have their
+  verdicts go on working. `fonts: N data folder(s) are gone: what was kept for them is removed from Grimoire's
+  own folder`.
 - `fonts: the check ended badly; N file(s) marked unreadable`: the background job itself died on a file.
+  `fonts: what the check found could not be written. Is the storage, or Grimoire's own folder, full?`.
 - `font: custom font loaded: S KB in T ms, bold by its weight axis|a Bold file|overprint, K glyph(s) from
   Terminess, VmRSS R kB`: the font settings.ini names (or the Font sheet's sample) was read and hashed. T and R
   are the load time and the memory to compare in TESTING.md's device checks.

@@ -58,6 +58,13 @@
   the size row names the size. The `status-corner` shortcut still names the corner in a toast where no notebook
   page is in front (#141).
 
+- **Your own fonts: a stricter background check.** What the check found of a font is now kept on the
+  Kindle itself (`/var/local/grimoire`, a few hundred bytes a font) and tied to the font file by its
+  SHA-256. The check also times each glyph as Grimoire will draw it: a glyph that would take too long is
+  drawn in Terminess, and a font whose letters would is "Took too long to read.". Each font is checked
+  once more after the update, and Grimoire reads in Terminess until the font in use has passed again.
+  Deleting `grimoire/fonts/.cache` still has every font checked again.
+
 ## 2.1.0 (2026-11-13)
 
 - The first stable release of 2.1: 2.1.0-beta.2 with the changes below, now on the stable channel too (KPM

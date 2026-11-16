@@ -239,7 +239,7 @@ fn a_font_is_checked_in_the_real_sandbox() {
         return;
     }
     let (_g, _f, _len) = setup();
-    for h in ["GRIMOIRE_FONT_TEST_TRAP", "GRIMOIRE_FONT_SLICE_MS"] {
+    for h in ["GRIMOIRE_FONT_TEST_TRAP", "GRIMOIRE_FONT_SLICE_MS", "GRIMOIRE_FONT_GLYPH_US", "GRIMOIRE_FONT_TEST_SLOW"] {
         std::env::remove_var(h);
     }
     let font = fontfix::ttf(&fontfix::test_font_many(3000));
@@ -257,6 +257,24 @@ fn a_font_is_checked_in_the_real_sandbox() {
     assert!(matches!(check_font(&fontfix::otf(&fontfix::test_font("Regular", 400), 2, false), 44), FontOut::Passed { .. }));
     assert!(matches!(check_font(&fontfix::ttf(&fontfix::cyclic_composite(true)), 44), FontOut::Refused(Refuse::Unreadable)));
     assert!(matches!(check_font(&fontfix::woff2(), 44), FontOut::Refused(Refuse::Format)));
+    // a font with a bold location: every glyph is drawn through both faces the UI makes, and timed
+    match check_font(&fontfix::ttf(&fontfix::test_font_variable()), 44) {
+        FontOut::Passed { facts, slow, .. } => assert!(facts.bold_at == 700 && facts.skip.is_empty() && slow == 0),
+        other => panic!("{other:?}"),
+    }
+    // a glyph over the glyph limit comes from Terminess and the font passes (the limit is 100 s of CPU; the
+    // glyph is over it by the test charge alone, never by this runner's clock)
+    std::env::set_var("GRIMOIRE_FONT_GLYPH_US", "100000000");
+    std::env::set_var("GRIMOIRE_FONT_TEST_SLOW", "slow:2000:100000001");
+    match check_font(&font, 44) {
+        FontOut::Passed { facts, slow, slowest_us, .. } => {
+            assert_eq!(facts.skip, vec![2000]);
+            assert!(slow == 1 && slowest_us >= 100_000_001);
+        }
+        other => panic!("{other:?}"),
+    }
+    std::env::remove_var("GRIMOIRE_FONT_GLYPH_US");
+    std::env::remove_var("GRIMOIRE_FONT_TEST_SLOW");
     // a call outside the list: the worker is ended, and the font is not passed
     std::env::set_var("GRIMOIRE_FONT_TEST_TRAP", "40");
     assert!(matches!(check_font(&font, 44), FontOut::Dead(_)));
