@@ -2102,8 +2102,8 @@ fn poll_jobs(a: &mut App) -> i32 {
     }
     if done == BgKind::CopyFile as i32 {
         // A file copied into templates or photos (2.2, #146: Use as template, Use as photo, a sheet's From a file...):
-        // a copy that failed is said wherever the user is, one that went in by its folder's name (unless its sheet is
-        // in front, which shows it). Never the PDF's toast.
+        // a copy that failed is said wherever the user is (by its cause where a sentence names it), one that went in
+        // by its folder's name (unless its sheet is in front, which shows it). Never the PDF's toast.
         copy_told(a, crate::bgwork_copy::CopyTo::of(done_id.as_str()), r);
         return 0;
     }
@@ -2141,9 +2141,11 @@ fn poll_jobs(a: &mut App) -> i32 {
 
 // The end of a copy job (bg_poll's result `r`: 1 done, -1 failed) into folder `to`.
 fn copy_told(a: &mut App, to: Option<crate::bgwork_copy::CopyTo>, r: i32) {
-    use crate::bgwork_copy::{copy_failed, CopyTo};
+    use crate::bgwork_copy::{copy_failed, copy_refusal, CopyFail, CopyTo};
     if r < 0 {
-        app_toast(a, copy_failed(), 4000);
+        // (why, where the job's exit status says it; a job that names no folder of Grimoire's ends before it knows)
+        let msg = to.map_or_else(|| copy_failed().to_string(), |to| copy_refusal(CopyFail::of_exit(bg_last_exit()), to));
+        app_toast(a, &msg, 4000);
         return;
     }
     let Some(to) = to.filter(|_| r > 0) else { return };

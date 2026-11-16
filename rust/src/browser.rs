@@ -18,7 +18,7 @@
 //!
 //! The model (`Browser`'s rows, listing and statuses) needs no screen: the tests drive it with `list_now`.
 
-use crate::bgwork_copy::{copy_failed, copy_request, CopyTo};
+use crate::bgwork_copy::{copy_refusal, copy_request, CopyFail, CopyTo};
 use crate::fsview::*;
 use crate::prelude::*;
 
@@ -2167,8 +2167,9 @@ impl Browser {
     }
 
     /// Use as template, Use as photo (#146): the file card `c` was opened for, checked again, asked of the copy job
-    /// into Grimoire's templates or photos (`copy_request`: the walk, the file as listed, the free-space floor). The
-    /// card is closed; a refusal is said now, the copy's end by the app's tick when the job ends.
+    /// into Grimoire's templates or photos (`copy_request`: the walk, the file as listed, its size, the free-space
+    /// floor). The card is closed; a refusal is said now (`copy_refusal`: nothing was copied, and no job runs), the
+    /// copy's end by the app's tick when the job ends.
     fn copy_in(&mut self, a: &mut App, c: &Card, to: CopyTo) -> BrowserResult {
         let asked = match (self.storage.as_ref(), c.stat) {
             (Some(st), Some(listed)) => copy_request(st, &c.path, &listed, to),
@@ -2189,14 +2190,14 @@ impl Browser {
                     FsWriteErr::NoRoom => "no room: the storage would keep less than 100 MB".to_string(),
                     FsWriteErr::Refused => "a place it is not taken from".to_string(),
                     FsWriteErr::TooLong => "its path is too long for a job".to_string(),
+                    FsWriteErr::TooBig => format!("it is over {} MB", to.max_bytes() >> 20),
                     FsWriteErr::Io(n) => strerror(n),
                     other => format!("{other:?}"),
                 };
                 qlog!("files: a copy into %s was refused: %s", to.folder(), &why);
-                self.toast = Some(copy_failed());
                 self.draw(a);
                 app_invalidate(a, c.rect, RefreshMode::Ui);
-                self.flush_toast(a);
+                app_toast(a, &copy_refusal(CopyFail::of_request(e), to), 3000);
                 BrowserResult::None
             }
         }

@@ -623,6 +623,8 @@ pub enum FsWriteErr {
     BadRecord,
     /// copy: less than the floor would be left
     NoRoom,
+    /// copy: the file is bigger than the folder it would go into takes ("Too big (over %d MB).")
+    TooBig,
     /// a call failed with this errno
     Io(i32),
 }

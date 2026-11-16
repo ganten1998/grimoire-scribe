@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: Grimoire 1.0.0-beta\n"
 "Report-Msgid-Bugs-To: https://github.com/ganten1998/grimoire-scribe/issues\n"
-"POT-Creation-Date: 2026-11-16 10:13-0600\n"
+"POT-Creation-Date: 2026-11-16 10:29-0600\n"
 "PO-Revision-Date: 2026-10-20 08:02-0500\n"
 "Last-Translator: draft\n"
 "Language-Team: Spanish\n"
@@ -1011,6 +1011,15 @@ msgstr "Estable"
 #, c-format
 msgid "Update channel: %s"
 msgstr "Canal de actualizaciones: %s"
+
+#. TRANSLATORS: (also) a toast (one line of about 1000 px at 44 px in bold): the picture picked for Use as
+#. template, Use as photo or a sheet's From a file... is bigger than Grimoire takes as a template or a photo,
+#. so it is not copied; %d is 16.
+#. TRANSLATORS: (a row of Your fonts, greyed) the font file is bigger than Grimoire takes; %d is 24.
+#: rust/src/bgwork_copy.rs rust/src/library.rs
+#, c-format
+msgid "Too big (over %d MB)."
+msgstr "Demasiado grande (más de %d MB)."
 
 #. TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): a picture could not be copied into
 #. Grimoire's templates or photos (Use as template, Use as photo, a sheet's From a file...); the storage keeps
@@ -3703,12 +3712,6 @@ msgstr "Algunas letras vienen de Terminess."
 #: rust/src/library.rs
 msgid "Unreadable font."
 msgstr "Fuente ilegible."
-
-#. TRANSLATORS: (a row of Your fonts, greyed) the font file is bigger than Grimoire takes; %d is 24.
-#: rust/src/library.rs
-#, c-format
-msgid "Too big (over %d MB)."
-msgstr "Demasiado grande (más de %d MB)."
 
 #. TRANSLATORS: (a row of Your fonts, greyed) a symbol font, or one without the letters A to Z.
 #: rust/src/library.rs

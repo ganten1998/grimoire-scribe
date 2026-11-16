@@ -548,9 +548,15 @@ fn notebooks_and_pages_in_the_trash() {
     fsview_rename_fallback_force(false);
 }
 
-// The copy request: refused for a source that is no plain file, has changed, sits in Grimoire's own folders, or
-// would leave less than the floor; else queued, and the job puts the bytes in the folder under the source's name
-// (" 2" when taken), reported as a job the user waits on.
+// A file one byte over what the folder `to` takes (a sparse one: no disk is used, and no copy of it is ever made).
+fn too_big(root: &str, p: &str, to: CopyTo) {
+    let f = std::fs::File::create(format!("{root}/{p}")).unwrap();
+    f.set_len(to.max_bytes() + 1).unwrap();
+}
+
+// The copy request: refused for a source that is no plain file, has changed, sits in Grimoire's own folders, is
+// bigger than its folder takes, or would leave less than the floor; else queued, and the job puts the bytes in the
+// folder under the source's name (" 2" when taken), reported as a job the user waits on.
 fn the_copy_request() {
     let (root, g) = tree();
     std::fs::write(format!("{root}/documents/photo.png"), vec![7u8; 200_000]).unwrap();
@@ -566,6 +572,20 @@ fn the_copy_request() {
     let mut other = p;
     other.mtime -= 1;
     check!(copy_request(&st, &sp("documents/photo.png"), &other, CopyTo::Photos) == Err(FsWriteErr::Changed));
+    // a picture over the template job's limit (templates and photos alike): refused here, with room or without,
+    // and no job is queued
+    check!(CopyTo::Templates.max_bytes() == grimoire::bgwork_template::TEMPLATE_MAX_BYTES as u64 && CopyTo::Photos.max_bytes() == CopyTo::Templates.max_bytes());
+    check!(CopyTo::Fonts.max_bytes() == grimoire::fontcheck::FONT_FILE_MAX as u64);
+    too_big(&root, "documents/huge.png", CopyTo::Photos);
+    let huge = stat_of(&st, "documents/huge.png");
+    for free in [None, Some(1 << 20)] {
+        copy_seams(free, None);
+        for to in [CopyTo::Templates, CopyTo::Photos] {
+            check!(copy_request(&st, &sp("documents/huge.png"), &huge, to) == Err(FsWriteErr::TooBig));
+        }
+    }
+    check!(!bg_busy());
+    check!(names(&format!("{g}/photos")).is_empty() && names(&format!("{g}/templates")) == ["a.png", "b.png"]);
     copy_seams(Some((100 << 20) + 199_999), None);
     check!(copy_request(&st, &sp("documents/photo.png"), &p, CopyTo::Photos) == Err(FsWriteErr::NoRoom));
     copy_seams(Some((100 << 20) + 200_000), None);
@@ -590,7 +610,8 @@ fn the_copy_request() {
 }
 
 // The job on its own (as the child runs it): it refuses a source that is no plain file or a link, one that is not
-// the file listed, a copy that would go under the floor, and a write that fails (a full storage): nothing is left
+// the file listed, one bigger than its folder takes (its own number, CopyFail::TooBig, which the screen reads
+// back), a copy that would go under the floor, and a write that fails (a full storage): nothing is left
 // in the folder each time. A temporary file a dead copy left is swept; one of a live process is not.
 fn the_copy_job() {
     let (root, g) = tree();
@@ -608,6 +629,19 @@ fn the_copy_job() {
     moved.size += 1;
     check!(bg_copy_file("fonts", &arg(&moved, "documents/font.ttf")) == -1);
     check!(names(&fonts).is_empty());
+    // a file over the folder's limit that reached the job (the request refuses it first): not copied, and the job
+    // ends with the number that says so, with room or without
+    too_big(&root, "documents/huge.png", CopyTo::Templates);
+    too_big(&root, "documents/huge.ttf", CopyTo::Fonts);
+    let before = names(&format!("{g}/templates"));
+    for free in [None, Some(1 << 20)] {
+        copy_seams(free, None);
+        check!(bg_copy_file("templates", &arg(&stat_of(&st, "documents/huge.png"), "documents/huge.png")) == CopyFail::TooBig as i32);
+        check!(bg_copy_file("photos", &arg(&stat_of(&st, "documents/huge.png"), "documents/huge.png")) == CopyFail::TooBig as i32);
+        check!(bg_copy_file("fonts", &arg(&stat_of(&st, "documents/huge.ttf"), "documents/huge.ttf")) == CopyFail::TooBig as i32);
+    }
+    copy_seams(None, None);
+    check!(names(&format!("{g}/templates")) == before && names(&format!("{g}/photos")).is_empty() && names(&fonts).is_empty());
     copy_seams(Some((100 << 20) + 299_999), None);
     check!(bg_copy_file("fonts", &arg(&f, "documents/font.ttf")) == -1);
     check!(names(&fonts).is_empty());
