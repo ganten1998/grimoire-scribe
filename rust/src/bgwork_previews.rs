@@ -701,7 +701,11 @@ fn sweep(dir: &str, names: Vec<std::ffi::OsString>, from: &str) -> Vec<std::ffi:
             }
         }
     }
-    let _ = std::fs::write(format!("{dir}/{SWEPT}"), stopped.map_or(String::new(), |s| String::from_utf8_lossy(s).into_owned()));
+    // (the stamp made afresh, never through what stands at its name: a link planted there is unlinked, not followed)
+    if let Ok(mut f) = create_fresh_nofollow(&format!("{dir}/{SWEPT}")) {
+        use std::io::Write;
+        let _ = f.write_all(stopped.unwrap_or(&[]));
+    }
     if !gone.is_empty() {
         qlog!("file previews: %d preview(s) of files that are gone or changed dropped from the cache", gone.len() as i32);
     }

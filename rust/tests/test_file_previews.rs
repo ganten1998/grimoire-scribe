@@ -468,6 +468,21 @@ fn the_previews_of_files_that_are_gone_are_swept() {
         check!(rc == 0 && std::fs::read(&stamp).is_ok_and(|b| b.is_empty()));
         check!(has(&stems[3]) == stays);
     }
+    // the stamp is written afresh, never through a link: one planted at its name (to a file elsewhere) is not
+    // followed by the day's sweep (no sweep runs: it is not ours to judge by), and a sweep that does run, past a
+    // limit, puts a plain file in its place and leaves the other file as it was
+    let victim = format!("{root}/victim.txt");
+    std::fs::write(&victim, b"not the cache's").unwrap();
+    std::fs::remove_file(&stamp).unwrap();
+    std::os::unix::fs::symlink(&victim, &stamp).unwrap();
+    std::fs::write(format!("{root}/documents/Covers/new2.png"), png(33, 30)).unwrap();
+    check!(job("new2.png").0 == 0 && std::fs::symlink_metadata(&stamp).is_ok_and(|m| m.file_type().is_symlink()));
+    std::env::set_var("GRIMOIRE_PREVIEWS_MAX", "1,100000000");
+    std::fs::write(format!("{root}/documents/Covers/new3.png"), png(34, 30)).unwrap();
+    check!(job("new3.png").0 == 0);
+    std::env::remove_var("GRIMOIRE_PREVIEWS_MAX");
+    check!(std::fs::symlink_metadata(&stamp).is_ok_and(|m| m.file_type().is_file() && m.len() == 0));
+    check!(std::fs::read(&victim).is_ok_and(|b| b == b"not the cache's"));
     // past a limit: the gone ones go first, and then nothing of a file that is there has to go
     clean_env();
     let (root, g) = tree();
