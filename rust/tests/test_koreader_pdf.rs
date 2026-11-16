@@ -471,3 +471,198 @@ fn a_hand_over_behind_a_queued_import_says_it_waits() {
     run_book(&mut st);
     assert_eq!(st.state, BookState::Done);
 }
+
+// ---- which notebook a hand-over ends on (the file record, docs/FORMAT.md "The book key") ----
+//
+// pdffix::shared_key_set: three PDFs of two pages with one book key. A; B, of A's length (another hash); C, longer.
+// An edited copy of a book is such a file: KOReader's key samples a few KiB of it, and an edit elsewhere keeps it.
+
+/// The file at `path` replaced by `bytes` in one step, as a copy tool's rename does.
+fn replace_file(path: &str, bytes: &[u8]) {
+    let part = format!("{path}.part");
+    std::fs::write(&part, bytes).unwrap();
+    std::fs::rename(&part, path).unwrap();
+}
+
+/// Notebook `id` made the Library's newest (its modified time bumped), so it lists first.
+fn make_newest(e: &Env, id: &str) {
+    std::thread::sleep(std::time::Duration::from_millis(1100));
+    let mut nb = e.info(id);
+    assert_eq!(store_save_info(&mut nb), 0);
+    assert_eq!(e.notebooks()[0].id.as_str(), id);
+}
+
+// A hand-over opens the notebook whose file record is of the file. A file that keeps its book's key and is not
+// that file (every notebook of the key has a record, and none is of it) becomes a notebook of its own once: the next
+// hand-over of that same file finds its record and opens it, and the first file still opens the first notebook,
+// whichever of the two the Library lists first, and though both files have one key and one size.
+#[test]
+fn a_hand_over_opens_the_notebook_whose_record_is_of_the_file() {
+    let e = setup("record");
+    let (a, b, c) = pdffix::shared_key_set();
+    let key = key_of(&a);
+    assert!(key_of(&b) == key && key_of(&c) == key && a.len() == b.len() && a != b && c.len() > a.len(), "the set is what this test takes it for");
+    let file = e.book("Book.pdf", &a);
+    let over = |page: i32| {
+        let mut st = hand_over(&e, &key, &file, page, 2);
+        run_book(&mut st);
+        assert_eq!(st.state, BookState::Done, "{st:?}");
+        (st.nb.as_str().to_string(), st.made, st.added, e.info(st.nb.as_str()).page_ids.iter().position(|&p| p == st.pid))
+    };
+    // A: its notebook, with its record; again: that notebook, nothing made
+    let (na, made, added, at) = over(2);
+    assert_eq!((made, added, at), (true, 2, Some(1)));
+    assert_eq!(over(1), (na.clone(), false, 0, Some(0)));
+    assert_eq!(e.notebooks().len(), 1);
+    // B at the same name (an edited copy: one key, one size): a notebook of its own, once
+    replace_file(&file, &b);
+    let (nb, made, added, at) = over(2);
+    assert_eq!((made, added, at), (true, 2, Some(1)));
+    assert_ne!(nb, na);
+    assert_eq!(over(1), (nb.clone(), false, 0, Some(0)), "the next hand-over of that file finds its record");
+    assert_eq!(over(2), (nb.clone(), false, 0, Some(1)));
+    assert_eq!(e.notebooks().len(), 2, "made once");
+    // A again: A's notebook, though B's is the newer one
+    make_newest(&e, &nb);
+    replace_file(&file, &a);
+    assert_eq!(over(2), (na.clone(), false, 0, Some(1)), "the first file opens the first notebook");
+    // B again, with A's notebook the newer one
+    make_newest(&e, &na);
+    replace_file(&file, &b);
+    assert_eq!(over(1), (nb.clone(), false, 0, Some(0)));
+    // C (another size): once more a notebook of its own, once
+    replace_file(&file, &c);
+    let (nc, made, added, _) = over(1);
+    assert!(made && added == 2 && nc != na && nc != nb);
+    assert_eq!(over(2), (nc.clone(), false, 0, Some(1)));
+    assert_eq!(e.notebooks().len(), 3);
+    // each notebook's record is of its file, and only the first holds the bare key (KOReader's version 1 finds that one)
+    for (id, bytes) in [(&na, &a), (&nb, &b), (&nc, &c)] {
+        let src = e.ini(id, "source.ini");
+        let rec = src.lines().find(|l| l.starts_with("file=sha256:")).unwrap_or_else(|| panic!("{id} has a record:\n{src}"));
+        assert!(rec.ends_with(&format!(":{}:{key}", bytes.len())), "{rec}");
+        assert_eq!(e.info(id).source.as_str() == key, *id == na, "{id}");
+    }
+}
+
+// A notebook that holds the key with no record is the book's notebook, for any file of that key: one KOReader made
+// through version 1 (filled with the pages it lacks, as the same PDF dropped in import/ fills it), and one an import
+// before the record made (2.1). No second notebook is made for an edited copy of such a book.
+#[test]
+fn a_notebook_without_a_record_is_the_book_s_notebook_for_any_file_of_its_key() {
+    let e = setup("norecord");
+    let (a, b, c) = pdffix::shared_key_set();
+    let key = key_of(&a);
+    // KOReader's version 1 notebook: book page 1 of 2
+    let id = koreader_book(&e, &key, 2, &[1]);
+    assert!(!e.ini(&id, "source.ini").contains("file="));
+    let file = e.book("Book.pdf", &b);
+    let mut st = hand_over(&e, &key, &file, 2, 2);
+    run_book(&mut st);
+    assert_eq!((st.state, st.nb.as_str(), st.made, st.added), (BookState::Done, id.as_str(), false, 1), "filled: {st:?}");
+    assert_eq!(book_pages(&id, &e.info(&id)), [1, 2]);
+    // another file of the key, and a longer one: the same notebook, which holds every page
+    for other in [&a, &c] {
+        replace_file(&file, other);
+        let mut st = hand_over(&e, &key, &file, 1, 2);
+        run_book(&mut st);
+        assert_eq!((st.state, st.nb.as_str(), st.made, st.added), (BookState::Done, id.as_str(), false, 0), "{st:?}");
+    }
+    assert_eq!(e.notebooks().len(), 1);
+    assert!(!e.ini(&id, "source.ini").contains("file="), "and it is given no record");
+    drop(e);
+    // a notebook an import made before the record (2.1: source= and book=, no file= line)
+    let e = setup("norecord21");
+    let file = e.book("Book.pdf", &a);
+    let mut st = hand_over(&e, &key, &file, 1, 2);
+    run_book(&mut st);
+    let id = st.nb.as_str().to_string();
+    let path = format!("{}/notebooks/{id}/source.ini", e.root);
+    let without: String = std::fs::read_to_string(&path).unwrap().lines().filter(|l| !l.starts_with("file=")).map(|l| format!("{l}\n")).collect();
+    std::fs::write(&path, without).unwrap();
+    replace_file(&file, &b);
+    let mut st = hand_over(&e, &key, &file, 2, 2);
+    run_book(&mut st);
+    assert_eq!((st.state, st.nb.as_str(), st.made, st.added), (BookState::Done, id.as_str(), false, 0), "{st:?}");
+    assert_eq!(st.pid, e.info(&id).page_ids[1]);
+    assert_eq!(e.notebooks().len(), 1);
+}
+
+// The notebook is chosen from the file the import opens, never from the one the start looked at. Between the start
+// and the import's first slice (held back here) the name is given to another file: one of the same key and size, then
+// one of another key. The job ends on the notebook of the file the import read; the start's look decides nothing.
+#[test]
+fn the_notebook_is_the_one_of_the_file_the_import_opened() {
+    let e = setup("oneopen");
+    let (a, b, _) = pdffix::shared_key_set();
+    let key = key_of(&a);
+    let file = e.book("Book.pdf", &a);
+    let colour = pdffix::colour();
+    let other = e.book("Colour.pdf", &colour);
+    let mut made = Vec::new();
+    for (path, bytes, k, pages) in [(&file, &a, key.clone(), 2), (&file, &b, key.clone(), 2), (&other, &colour, key_of(&colour), 3)] {
+        replace_file(path, bytes);
+        let mut st = hand_over(&e, &k, path, 1, pages);
+        run_book(&mut st);
+        assert_eq!((st.state, st.made), (BookState::Done, true), "{st:?}");
+        made.push(st.nb.as_str().to_string());
+    }
+    let (na, nb, ncol) = (made[0].clone(), made[1].clone(), made[2].clone());
+    // the start sees A; the import opens B (one key, one size): B's notebook, though A's is listed first
+    replace_file(&file, &a);
+    make_newest(&e, &na);
+    std::env::set_var("GRIMOIRE_BG_DELAY_MS", "700");
+    let mut st = hand_over(&e, &key, &file, 2, 2);
+    assert_eq!(st.state, BookState::Running);
+    replace_file(&file, &b);
+    run_book(&mut st);
+    assert_eq!((st.state, st.nb.as_str(), st.added), (BookState::Done, nb.as_str(), 0), "the file the import opened: {st:?}");
+    // the start sees A; the import opens a file of another key, which has its notebook: that notebook
+    replace_file(&file, &a);
+    let mut st = hand_over(&e, &key, &file, 2, 2);
+    assert_eq!(st.state, BookState::Running);
+    replace_file(&file, &colour);
+    run_book(&mut st);
+    std::env::remove_var("GRIMOIRE_BG_DELAY_MS");
+    assert_eq!((st.state, st.nb.as_str(), st.added), (BookState::Done, ncol.as_str(), 0), "{st:?}");
+    assert_eq!(e.notebooks().len(), 3, "nothing made");
+}
+
+// A fill that ends without a word: its notebook was renamed while the pages were made (the Library is usable
+// meanwhile), so the pages do not go in. The job ends on that notebook as it is, the one the import chose.
+#[test]
+fn a_fill_stopped_by_a_rename_ends_on_the_notebook_as_it_is() {
+    let e = setup("renamed");
+    let bytes = pdffix::tabs();
+    let key = key_of(&bytes);
+    let id = koreader_book(&e, &key, 4, &[1, 3]);
+    let file = e.book("Tabs.pdf", &bytes);
+    let mut st = hand_over(&e, &key, &file, 3, 4);
+    // the app's ticks with something in front of the Library (no fill begins), until the pages are made
+    let t0 = std::time::Instant::now();
+    while fill_target("documents/Tabs.pdf").is_none() {
+        book_step(150, &mut st);
+        assert_eq!(fill_tick(false, DPI), Finished::Nothing);
+        let mut kind = -1;
+        let mut jid = FixedStr::<STORE_ID_LEN>::new();
+        let r = bg_poll_job(Some(&mut kind), Some(&mut jid));
+        if kind == BgKind::PdfImport as i32 {
+            assert_eq!(finished(jid.as_str(), r > 0), Finished::Nothing, "its pages are made, nothing told yet");
+        }
+        assert!(t0.elapsed().as_secs() < 60, "the fill's pages were never made");
+        std::thread::sleep(std::time::Duration::from_millis(5));
+    }
+    assert_eq!(fill_target("documents/Tabs.pdf").as_deref(), Some(id.as_str()));
+    book_step(150, &mut st); // (the job notes the fill's notebook)
+    let mut nb = e.info(&id);
+    nb.name.set("Renamed meanwhile");
+    assert_eq!(store_save_info(&mut nb), 0);
+    log_capture(&e);
+    run_book(&mut st);
+    let log = log_captured(&e);
+    assert_eq!((st.state, st.nb.as_str(), st.made, st.added), (BookState::Done, id.as_str(), false, 0), "{st:?}");
+    assert_eq!(book_pages(&id, &e.info(&id)), [1, 3], "as it is");
+    assert_eq!(st.pid, e.info(&id).page_ids[1], "the reader's page, book page 3, which it holds");
+    assert!(log.contains("its notebook was renamed, moved or deleted while the pages were made") && log.contains("book: the PDF import ended without a word; the book's notebook opens as it is"), "{log}");
+    assert_eq!(book_pdf_told(), None, "nothing of the import to say");
+}

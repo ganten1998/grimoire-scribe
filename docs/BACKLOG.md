@@ -308,15 +308,18 @@ the name rules, the busy check and the copy job (`BgKind::CopyFile`). Nothing on
 - **Confirm Open its notebook with the file record.** In Files, a PDF whose key and size match a notebook's
   record opens that notebook without reading the file whole; compare the whole file in the background before
   opening, and drop Import as notebook from that card then.
-- **Carry the file record on the KOReader route.** Open this book in Grimoire finds a book's notebook by its
-  key; let it confirm with the record where one exists.
+- **Carry the file record on the KOReader route.** Done for a PDF handed over by its path (#142): the import
+  decides by the record, and Open this book opens the notebook of the very file. Version 1 (DjVu, comics, a PDF
+  that needs a password, an older plugin) still finds a book's notebook by its key alone, and a notebook it makes
+  has no record; let it confirm with the record where one exists.
 - **A pick of a PDF whose key a notebook without a record holds.** Today it says "PDF already imported."; the
   owner decides whether a pick should import it as a notebook of its own. (Since #123 such a PDF fills that
   notebook when the notebook lacks pages; the picker's card for it still offers Open its notebook only, so a
   fill from Files needs the file dropped in `import/`.)
 - **A book whose first notebook was deleted.** A notebook made while another holds the key carries the key in
   its record alone. If the first is then deleted and the book's file is imported again, another notebook still
-  holds the key, so the new one is made that way too, and KOReader's Open this book in Grimoire then starts a
+  holds the key, so the new one is made that way too, and KOReader's Open this book in Grimoire by version 1 (an
+  older plugin, or a PDF that needs a password; a PDF handed over by its path goes by the record) then starts a
   notebook of its own. That notebook is KOReader's route's, so it has the bare key and no file record: from
   then on the key alone decides for every file of that key ("PDF already imported.", and a file of `import/`
   goes to `done/`), as it does for a notebook made before this round, until that notebook is deleted. The

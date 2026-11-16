@@ -2286,11 +2286,18 @@ refuses any version but 1. Grimoire never trusts the request: `book_parse` reads
 said by `version=2` alone, every key once at most, one `file=` line taken whole, absolute, UTF-8 and with no
 control character), and the book job's start takes it through the storage walk as the picker does
 (`FsStorage::open_file` with the pick's zones: inside the storage root, no link followed, the root's device, none of
-Grimoire's own folders, a plain file opened without waiting), reads the book key from the file, and gives the PDF to
-`pdf_import_queue` as a pick. From there it is the import's: the same job, sandboxed worker, key, file record and
-fill rules, read in place, so a notebook KOReader made through version 1 is filled by its key (only the pages it
-lacks, its own pages untouched, no record given) and a book opened before 2.2 holds KOReader's gray pages beside the
-import's colour ones (the owner accepted a book holding both: issue #142).
+Grimoire's own folders, a plain file opened without waiting) and gives the PDF to `pdf_import_queue` as a pick.
+From there it is the import's: the same job, sandboxed worker, key, file record and fill rules, read in place, so a
+notebook KOReader made through version 1 is filled by its key (only the pages it lacks, its own pages untouched, no
+record given) and a book opened before 2.2 holds KOReader's gray pages beside the import's colour ones (the owner
+accepted a book holding both: issue #142). The start's open is an early, exact refusal and nothing more: the import
+opens the file again by itself (every open the same walk), so the notebook is chosen from the import's open alone,
+by the record rule above (`key_match`), and the import says which: a new notebook is its job's id, a fill names its
+notebook, and "already imported" carries the notebook's id in the shared result record (`already_notebook`, checked
+to be a notebook before it is used; a fill's commit that finds every page there names the fill's). The book job
+never works the choice out again from a key or a size of its own, so a file that takes the name between the start
+and the import is imported as the file it is, and an edited copy with the key and the size of the original still
+opens its own notebook.
 
 The book job (`annotate.rs`, `step_pdf`) writes nothing itself and holds nothing (`BookStatus.pdf`; app.rs's
 `book_holds` is true for a version 1 job alone). The import runs as a dropped PDF's does, with its own notice and the
@@ -2312,7 +2319,7 @@ fill's pages go in is taken after. An import that fails fails the book, and says
 ("PDF needs a password.", "PDF too big: over N MB." and the others of `pdf_import_told`); a request that ends
 before any import (it does not read, or the walk refuses its path) says the book's. An import that is neither
 queued, waiting for the lock nor going in, and told nothing, for 3 s (a fill whose notebook changed meanwhile) ends
-on the book's notebook as it is. The plugin keeps
+on the notebook that fill was for (`fill_target`, noted while its pages waited), as it is. The plugin keeps
 version 1 for DjVu, comics and XPS, for a PDF outside the storage, and for a PDF that needs a password, which it asks
 of a MuPDF document of its own: MuPDF answers by trying the empty password, which would make the reader's document
 forget the one it was given.

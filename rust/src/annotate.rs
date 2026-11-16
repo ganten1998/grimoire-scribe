@@ -1541,15 +1541,15 @@ struct Job {
     links: Option<BookLinks>,
     /// some of those links did not make it into doclinks.ini
     links_out: bool,
-    /// version 2: the PDF import makes the pages (`src`: the PDF as a StoragePath's text; `key`: its book key, read
-    /// from the file at the start; `size`: the file's size then); `ended`: how that import ended, told by the app
-    /// (book_pdf_end), taken by the next step; `quiet_since`: when the import was last seen queued, waiting or being
-    /// put in (step_pdf looks again after PDF_LOST_MS)
+    /// version 2: the PDF import makes the pages (`src`: the PDF as a StoragePath's text); `ended`: how that import
+    /// ended and the notebook it ended on, told by the app (book_pdf_end), taken by the next step; `fill_nb`: the
+    /// notebook a fill of this PDF is for, once its pages are made (the import's choice: the job itself never
+    /// chooses a notebook); `quiet_since`: when the import was last seen queued, waiting or being put in (step_pdf
+    /// looks again after PDF_LOST_MS)
     pdf: bool,
     src: String,
-    key: String,
-    size: u64,
-    ended: Option<(String, crate::pdfimport::Finished)>,
+    ended: Option<(String, crate::pdfimport::Finished, Option<String>)>,
+    fill_nb: String,
     quiet_since: Option<u32>,
     looked: Option<u32>,
 }
@@ -1813,21 +1813,6 @@ fn storage_path_of(file: &str) -> Option<StoragePath> {
     StoragePath::new(rel.as_bytes())
 }
 
-/// The notebook that holds the book of key `key` and a file of `size` bytes, as the PDF import decides it without
-/// the whole file's hash (never read in the UI process): one whose record has that size, else the first without a
-/// record (pdfimport::key_match).
-fn pdf_notebook(key: &str, size: u64) -> Option<String> {
-    use crate::pdfimport::{key_holders, key_match, KeyMatch};
-    let mut all: Vec<NotebookInfo> = Vec::new();
-    if store_list(&mut all) != 0 {
-        return None;
-    }
-    match key_match(&key_holders(&all, Some(key)), size, None) {
-        KeyMatch::Same(nb) | KeyMatch::KeyOnly(nb) | KeyMatch::SizeOnly(nb) => Some(nb),
-        KeyMatch::None => None,
-    }
-}
-
 /// The page of notebook `id` that holds book page `page` of `pages` (its source.ini), and its index; with no such
 /// line, book page `page` of the one count the notebook's pages name (two engines may count a broken PDF's pages
 /// differently), else the page the notebook would open at.
@@ -1891,10 +1876,11 @@ fn start_pdf(j: &mut Job, st: &mut BookStatus, dir: &str) {
             return;
         }
     };
-    // its key and size from the file, as the import reads them: the notebook opened at the end is that key's
-    // SAFETY: md is written by fstat before it is read; the descriptor is this function's.
-    let mut md: libc::stat = unsafe { std::mem::zeroed() };
-    let size = if unsafe { libc::fstat(fd.as_raw_fd(), &mut md) } == 0 { md.st_size as u64 } else { 0 };
+    // This open only says early, and exactly, that the file can be taken. Nothing is chosen from it: the notebook
+    // is the import's to choose, from the import's own open of the file (its key, its size, its hash), and the
+    // job opens the one the import names at its end. A file that takes this name before the import opens it is
+    // then imported as the file it is, and never opened as another's notebook. The key is read for one line of
+    // the log, which a device check looks for.
     let Some(key) = crate::md5::partial_md5_fd(fd.as_raw_fd()) else {
         qlog!("book: the PDF KOReader named could not be read; nothing opened");
         job_fail(j, st, AnnotateWhy::Log);
@@ -1929,8 +1915,6 @@ fn start_pdf(j: &mut Job, st: &mut BookStatus, dir: &str) {
         qlog!("book: other imports go first; this one starts after them");
     }
     j.src = src;
-    j.key = key;
-    j.size = size;
     j.on = true;
     st.state = BookState::Running;
 }
@@ -1957,7 +1941,7 @@ fn pdf_open(j: &mut Job, st: &mut BookStatus, nb: &str, made: bool, added: u32, 
 /// A version 2 job's step: how its import ended (book_pdf_end), else whether it is still on its way.
 fn step_pdf(j: &mut Job, st: &mut BookStatus) {
     use crate::pdfimport::{FailWhy, Finished};
-    if let Some((id, fin)) = j.ended.take() {
+    if let Some((id, fin, named)) = j.ended.take() {
         if fin != Finished::Nothing {
             with(|s| s.pdf_told = Some((id.clone(), fin.clone())));
         }
@@ -1965,10 +1949,12 @@ fn step_pdf(j: &mut Job, st: &mut BookStatus) {
             Finished::Imported { pages, blank, trimmed } => return pdf_open(j, st, &id, true, pages, trimmed > 0, blank),
             Finished::Filled { nb, added, trimmed, .. } => return pdf_open(j, st, &nb, false, added, trimmed > 0, 0),
             Finished::Already => {
-                if let Some(nb) = pdf_notebook(&j.key, j.size) {
+                // (the notebook the import found this very file in: the one whose record is of the file, or the
+                // one that holds its key with no record. Never worked out again here.)
+                if let Some(nb) = named {
                     return pdf_open(j, st, &nb, false, 0, false, 0);
                 }
-                qlog!("book: the PDF import found the PDF imported before, but no notebook holds its key; nothing opened");
+                qlog!("book: the PDF import found the PDF imported before, but named no notebook that is there; nothing opened");
                 return job_fail(j, st, AnnotateWhy::Log);
             }
             Finished::Failed(why) => {
@@ -1982,6 +1968,10 @@ fn step_pdf(j: &mut Job, st: &mut BookStatus) {
     let now = now_ms();
     if crate::pdfimport::is_queued(&j.src) {
         j.quiet_since = None;
+        // (a fill's notebook, once its pages are made: kept for a fill that ends without a word, below)
+        if let Some(nb) = crate::pdfimport::fill_target(&j.src) {
+            j.fill_nb = nb;
+        }
         return;
     }
     // (not queued: waiting for the lock, its pages made and waiting to go in, or going in; looked at twice a second)
@@ -1991,22 +1981,25 @@ fn step_pdf(j: &mut Job, st: &mut BookStatus) {
     j.looked = Some(now);
     if crate::pdfimport::in_flight(&j.src) {
         j.quiet_since = None;
+        if let Some(nb) = crate::pdfimport::fill_target(&j.src) {
+            j.fill_nb = nb;
+        }
         return;
     }
     let since = *j.quiet_since.get_or_insert(now);
     if now.wrapping_sub(since) < PDF_LOST_MS {
         return;
     }
-    // It ended and nothing was told (a fill its notebook's change stopped, say): the notebook of its key as it is.
-    match pdf_notebook(&j.key, j.size) {
-        Some(nb) => {
-            qlog!("book: the PDF import ended without a word; the book's notebook opens as it is");
-            pdf_open(j, st, &nb, false, 0, false, 0);
-        }
-        None => {
-            qlog!("book: the PDF import ended without a notebook; nothing opened");
-            job_fail(j, st, AnnotateWhy::Log);
-        }
+    // It ended and nothing was told: a fill that its notebook's change stopped (renamed or moved while the pages
+    // were made). The notebook that fill was for, as it is, when it is still there.
+    let mut nb = NotebookInfo::default();
+    if !j.fill_nb.is_empty() && store_load_info(&j.fill_nb, &mut nb) == 0 && nb.npages() > 0 {
+        qlog!("book: the PDF import ended without a word; the book's notebook opens as it is");
+        let id = std::mem::take(&mut j.fill_nb);
+        pdf_open(j, st, &id, false, 0, false, 0);
+    } else {
+        qlog!("book: the PDF import ended without a notebook; nothing opened");
+        job_fail(j, st, AnnotateWhy::Log);
     }
 }
 
@@ -2017,11 +2010,14 @@ pub fn book_pdf_src() -> Option<String> {
 }
 
 /// How the import of a version 2 book job's PDF ended (`id`: its job; a fill's commit has none): the next
-/// book_step opens the reader's page, or fails as a book does.
+/// book_step ends the job on the notebook that end is about (pdfimport::ended_notebook: the import's choice), at
+/// the reader's page, or fails as a book does.
 pub fn book_pdf_end(id: &str, fin: crate::pdfimport::Finished) {
+    // (the notebook that end is about, asked now, while the import's result is still its own)
+    let nb = crate::pdfimport::ended_notebook(id, &fin);
     with(|s| {
         if s.j.on && s.j.pdf {
-            s.j.ended = Some((id.to_string(), fin));
+            s.j.ended = Some((id.to_string(), fin, nb));
         }
     });
 }

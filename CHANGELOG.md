@@ -34,7 +34,10 @@
 - **"PDF already imported." now means that very file.** A notebook made from a PDF keeps the SHA-256 and
   size of its file (one line in its `source.ini`), and a PDF with the same book key is compared with it. The
   same file says "PDF already imported." as before; a different file with that key (an edited copy, say)
-  becomes a notebook of its own, and KOReader's Open this book in Grimoire keeps opening the first.
+  becomes a notebook of its own. KOReader's Open this book in Grimoire on a PDF opens the notebook of the very
+  file it has open: an edited copy gets its notebook the first time and opens it from then on, and the file it
+  was edited from still opens its own. (For DjVu and comics, and with a KOReader plugin from before this
+  version, it opens the book's first notebook, by the key.)
   Notebooks made before this version, or from KOReader, go by the key as before. In Files, a PDF that a
   notebook already holds offers Import as notebook beside Open its notebook. A big PDF is read once more at
   the end of its import (the notice stays on its last page meanwhile).

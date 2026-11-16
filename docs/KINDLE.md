@@ -193,12 +193,14 @@ draws its pages`. grimoire.log says (no file name, title or key):
   could not be read; nothing opened`, and `book: the PDF KOReader named could not go to the PDF import (name|
   sandbox|own|lock|mark); nothing opened`: the path or the file was refused before any import.
 - `book: the book key KOReader sent is not its file's; the file's is used`: the key KOReader keeps for the book is
-  not the one its file has now (a file changed since KOReader first opened it, say). The notebook opened is the one
-  of the file's key.
+  not the one its file has now (a file changed since KOReader first opened it, say). The notebook is the import's
+  to choose, from the file as it is: the import's lines say which (`this PDF was imported before`, `notebook <nb>
+  lacks ...`, or `a notebook holds this PDF's key but was made from another file; this one is imported` for an
+  edited copy, which becomes a notebook once).
 - `book: the PDF import failed (the lines above say why); nothing opened`, `book: the PDF import found the PDF
-  imported before, but no notebook holds its key; nothing opened`, `book: the PDF import ended without a word; the
-  book's notebook opens as it is` (a fill whose notebook changed meanwhile) and `book: the PDF import ended without a
-  notebook; nothing opened`.
+  imported before, but named no notebook that is there; nothing opened`, `book: the PDF import ended without a word;
+  the book's notebook opens as it is` (a fill whose notebook was renamed or moved meanwhile) and `book: the PDF
+  import ended without a notebook; nothing opened`.
 - `book: the request does not read (<why>); nothing opened`, for a version 2 request: `no file named`, `a file named
   twice`, `a version 2 request names a key twice`, `its file's path is not absolute`, `... is too long`, `... holds a
   control character`, `... is not UTF-8`, `a version 2 request names a picture`.

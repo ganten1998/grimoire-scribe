@@ -838,8 +838,10 @@ waits, and within 10 s of the end of a previous run's import):
     notebook of its own.
   One notebook holds a book's bare key, the first. A notebook made while another holds the key has no `source=`
   line and no `book=` line: `kind=paged`, its page lines, `links=1` when written, and the record, which names
-  the key. So the KOReader route, the plugin and every earlier version, which go by those two lines, keep
-  finding the book's first notebook, and this version finds the other by its record. The file is read whole
+  the key. So KOReader's version 1 route (the pages KOReader draws), the plugin and every earlier version, which
+  go by those two lines, keep finding the book's first notebook, and this version's import finds the other by its
+  record: a PDF KOReader hands over by its path (Whole books, version 2) is the import's, and opens the notebook
+  of its own file. The file is read whole
   only in the import's background job: once in the last slice, and once at the start for a file of a record's
   size. When it cannot be read whole in the last slice, the notebook is made without a record if no notebook
   holds its key, and the import fails if one does. In Files, "has notes" goes by a PDF's key and size against
@@ -1168,12 +1170,26 @@ is a version 2 request wherever the line stands; `02` is no version it knows), a
 absolute, is not UTF-8, is 1024 bytes or longer or holds a control character (a byte under 0x20, or 0x7F), or a
 `picture.<n>` line, and it does not read. A key it does not know is passed over, as in version 1.
 
-At the start the path goes through the storage walk as a file picked in Files does (inside the storage root; each folder opened without following a link,
-on the root's device, none of Grimoire's own folders and no hidden or system one; a plain file, never waited on),
-the book key is read from the file, and the PDF goes to the PDF import as a pick (Imports: PDFs, below): read in
-place (one that lies in `import/` itself is filed in `done/`, as any pick there is), named after the request's
-title (else the file's name), at the top of the Library, keyed and recorded by its file. The request is taken once
-the import is queued; a path the walk refuses ends the book there.
+At the start the path goes through the storage walk as a file picked in Files does (inside the storage root; each
+folder opened without following a link, on the root's device, none of Grimoire's own folders and no hidden or
+system one; a plain file, never waited on), and the PDF goes to the PDF import as a pick (Imports: PDFs, below):
+read in place (one that lies in `import/` itself is filed in `done/`, as any pick there is), named after the
+request's title (else the file's name), at the top of the Library, keyed and recorded by its file. The request is
+taken once the import is queued; a path the walk refuses ends the book there. The start's look at the file decides
+nothing else: the import opens the file itself, and which notebook is the book's is the import's to say, from that
+open (the request's `book=` is compared with the file's key for the log alone).
+
+Which notebook that is follows the file record (Imports, "The file record"), so Open this book opens the notebook
+of the very file KOReader has open:
+
+- a notebook whose record is of this file (its size and its SHA-256) is its notebook: opened, and filled first when
+  it lacks pages;
+- else a notebook that holds the file's key with no record (one KOReader made through version 1, or one an import
+  before the record made) is the book's notebook, for any file of that key: opened, and filled first when it lacks
+  pages (a fill, as for the same PDF dropped in `import/`);
+- else (no notebook holds the key, or every one that does has a record of another file: an edited copy that kept
+  its key) the PDF becomes a notebook of its own, once: the next hand-over of that same file finds its record and
+  opens it, and the file it was edited from still opens its own.
 
 From there the import runs as a dropped PDF's does, and nothing is held for it: the Library stays usable, the
 import's own notice counts its pages ("Importing: page N of M"), and a sheet that is up (What's new, on the first
