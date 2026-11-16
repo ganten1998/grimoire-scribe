@@ -1,11 +1,12 @@
-// The storage layer's writes (src/fsview.rs, 2.2, issue #117) on a tree of the host's own:
+// The storage layer's writes (src/fsview.rs and src/bgwork_copy.rs, 2.2, issue #117) on a tree of the host's own:
 // a rename that never replaces an entry (renameat2's flag where Linux has it, and the fallback forced through a
 // test seam so a run anywhere takes it too), a rename that changes only the case, the trash with its record and
 // restore for a file, a folder and a notebook (both the name store_delete gives and the record form), a name taken
-// on restore, the record read strictly, and the busy check. Every refusal of the allow-list. Nothing on screen
-// calls these yet.
+// on restore, the record read strictly, the busy check, and the copy job with the floor, a write that fails, and a
+// source that changes. Every refusal of the allow-list. Nothing on screen calls these yet.
 #![cfg(feature = "sim")]
 mod testlib;
+use grimoire::bgwork_copy::*;
 use grimoire::fsview::*;
 use grimoire::prelude::*;
 use std::os::unix::fs::{symlink, MetadataExt};
@@ -417,6 +418,91 @@ fn notebooks_and_pages_in_the_trash() {
     fsview_rename_fallback_force(false);
 }
 
+// The copy request: refused for a source that is no plain file, has changed, sits in Grimoire's own folders, or
+// would leave less than the floor; else queued, and the job puts the bytes in the folder under the source's name
+// (" 2" when taken), reported as a job the user waits on.
+fn the_copy_request() {
+    let (root, g) = tree();
+    std::fs::write(format!("{root}/documents/photo.png"), vec![7u8; 200_000]).unwrap();
+    let fifo = std::ffi::CString::new(format!("{root}/documents/pipe.png")).unwrap();
+    // SAFETY: a NUL-terminated path.
+    check!(unsafe { libc::mkfifo(fifo.as_ptr(), 0o600) } == 0);
+    let st = open(&root, &g);
+    let p = stat_of(&st, "documents/photo.png");
+    check!(copy_request(&st, &sp("documents"), &stat_of(&st, "documents"), CopyTo::Photos) == Err(FsWriteErr::Walk(FsErr::NotFile)));
+    check!(copy_request(&st, &sp("documents/pipe.png"), &stat_of(&st, "documents/pipe.png"), CopyTo::Photos) == Err(FsWriteErr::Walk(FsErr::NotFile)));
+    check!(copy_request(&st, &sp("grimoire/PDFs/x.pdf"), &stat_of(&st, "grimoire/PDFs/x.pdf"), CopyTo::Photos) == Err(FsWriteErr::Refused));
+    check!(copy_request(&st, &sp("grimoire/settings.ini"), &stat_of(&st, "grimoire/settings.ini"), CopyTo::Photos) == Err(FsWriteErr::Refused));
+    let mut other = p;
+    other.mtime -= 1;
+    check!(copy_request(&st, &sp("documents/photo.png"), &other, CopyTo::Photos) == Err(FsWriteErr::Changed));
+    copy_seams(Some((100 << 20) + 199_999), None);
+    check!(copy_request(&st, &sp("documents/photo.png"), &p, CopyTo::Photos) == Err(FsWriteErr::NoRoom));
+    copy_seams(Some((100 << 20) + 200_000), None);
+    check!(copy_request(&st, &sp("documents/photo.png"), &p, CopyTo::Photos) == Ok(()));
+    check!(settle() == 1);
+    copy_seams(None, None);
+    check!(read(&root, "grimoire/photos/photo.png") == read(&root, "documents/photo.png"));
+    check!(copy_request(&st, &sp("documents/photo.png"), &p, CopyTo::Photos) == Ok(()));
+    check!(settle() == 1);
+    check!(names(&format!("{g}/photos")) == ["photo 2.png", "photo.png"]);
+    check!(copy_request(&st, &sp("documents/a.pdf"), &stat_of(&st, "documents/a.pdf"), CopyTo::Fonts) == Ok(()));
+    check!(settle() == 1);
+    check!(read(&g, "fonts/a.pdf").as_deref() == Some(&b"%PDF-1.4 a\n"[..]));
+    // a source that changes after the request, before the job reads it: the job refuses, nothing is left
+    std::env::set_var("GRIMOIRE_BG_DELAY_MS", "400");
+    let p = stat_of(&st, "documents/photo.png");
+    check!(copy_request(&st, &sp("documents/photo.png"), &p, CopyTo::Templates) == Ok(()));
+    std::fs::write(format!("{root}/documents/photo.png"), vec![8u8; 200_001]).unwrap();
+    check!(settle() == -1);
+    std::env::remove_var("GRIMOIRE_BG_DELAY_MS");
+    check!(names(&format!("{g}/templates")) == ["a.png", "b.png"]);
+}
+
+// The job on its own (as the child runs it): it refuses a source that is no plain file or a link, one that is not
+// the file listed, a copy that would go under the floor, and a write that fails (a full storage): nothing is left
+// in the folder each time. A temporary file a dead copy left is swept; one of a live process is not.
+fn the_copy_job() {
+    let (root, g) = tree();
+    std::fs::write(format!("{root}/documents/font.ttf"), vec![1u8; 300_000]).unwrap();
+    symlink(format!("{root}/documents/font.ttf"), format!("{root}/documents/link.ttf")).unwrap();
+    let st = open(&root, &g);
+    let f = stat_of(&st, "documents/font.ttf");
+    let arg = |s: &FsStat, p: &str| format!("{}.{}.{}.{}:{}", s.dev, s.ino, s.size, s.mtime, p);
+    let fonts = format!("{g}/fonts");
+    check!(bg_copy_file("fonts", &arg(&stat_of(&st, "documents"), "documents")) == -1);
+    check!(bg_copy_file("fonts", &arg(&f, "documents/link.ttf")) == -1);
+    check!(bg_copy_file("notebooks", &arg(&f, "documents/font.ttf")) == -1);
+    check!(bg_copy_file("fonts", "not a request") == -1);
+    let mut moved = f;
+    moved.size += 1;
+    check!(bg_copy_file("fonts", &arg(&moved, "documents/font.ttf")) == -1);
+    check!(names(&fonts).is_empty());
+    copy_seams(Some((100 << 20) + 299_999), None);
+    check!(bg_copy_file("fonts", &arg(&f, "documents/font.ttf")) == -1);
+    check!(names(&fonts).is_empty());
+    copy_seams(None, Some(100_000));
+    check!(bg_copy_file("fonts", &arg(&f, "documents/font.ttf")) == -1);
+    check!(names(&fonts).is_empty());
+    copy_seams(None, None);
+    // leftovers: a dead process's temporary file goes; a live one's (this process's parent) stays
+    // (a process id no system gives: above every pid_max)
+    let dead = format!("{fonts}/.grimoire-copy-{}.part", i32::MAX);
+    // SAFETY: getppid has no preconditions.
+    let live = format!("{fonts}/.grimoire-copy-{}.part", unsafe { libc::getppid() });
+    std::fs::write(&dead, b"half").unwrap();
+    std::fs::write(&live, b"half").unwrap();
+    check!(bg_copy_file("fonts", &arg(&f, "documents/font.ttf")) == 0);
+    check!(read(&g, "fonts/font.ttf") == read(&root, "documents/font.ttf"));
+    let left = names(&fonts);
+    check!(left.len() == 2 && left.contains(&"font.ttf".to_string()) && left.iter().any(|n| format!("{fonts}/{n}") == live));
+    std::fs::remove_file(&live).unwrap();
+    // the folder made where it is missing
+    std::fs::remove_dir_all(format!("{g}/photos")).unwrap();
+    check!(bg_copy_file("photos", &arg(&f, "documents/font.ttf")) == 0);
+    check!(names(&format!("{g}/photos")) == ["font.ttf"]);
+}
+
 #[test]
 fn test_fsview_writes() {
     run!(writes_stay_in_grimoires_folders);
@@ -427,6 +513,8 @@ fn test_fsview_writes() {
     run!(a_name_taken_on_restore);
     run!(a_restore_refused);
     run!(notebooks_and_pages_in_the_trash);
+    run!(the_copy_request);
+    run!(the_copy_job);
     std::env::remove_var("GRIMOIRE_STORAGE");
     let _ = std::fs::remove_dir_all(format!("{}/fsw-storage", tl_tmp()));
     done();

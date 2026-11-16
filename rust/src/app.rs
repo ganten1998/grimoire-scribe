@@ -2059,6 +2059,10 @@ fn poll_jobs(a: &mut App) -> i32 {
         pdf_import_done(a, done_id.as_str(), r > 0);
         return 0;
     }
+    if done == BgKind::CopyFile as i32 {
+        // (a file copied into templates, photos or fonts: its screens, 2.2, read its end here; never the PDF's toast)
+        return 0;
+    }
     if done == BgKind::FontCheck as i32 {
         // The Font sheet's rows fill in; the font settings.ini asks for, if it waited for this, draws from now
         // on (only while the Library is in front: never in the middle of a page).

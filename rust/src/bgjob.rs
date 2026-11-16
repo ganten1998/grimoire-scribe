@@ -37,6 +37,11 @@ pub enum BgKind {
     /// the sandboxed worker (userfonts.rs, 2.1.0-beta.2). It ends 0, 3 (some files wait), 4 (no worker) or 5 (one font checked, more to do: the next job is queued
     /// with the path "next", behind exports and a PDF's slices).
     FontCheck = 8,
+    // (9 is FilePreviews, 2.2's, not built yet: DESIGN.md's allocation table)
+    /// id: the folder it goes into ("templates", "photos" or "fonts"), path: "<dev>.<ino>.<size>.<mtime>:<StoragePath>",
+    /// the source as listed; a copy of a file into one of Grimoire's folders for the user's files, under the free
+    /// space floor, to a temporary name and then a rename that replaces nothing (bgwork_copy.rs, 2.2). Ends 0 or 1.
+    CopyFile = 10,
 }
 
 /// Queues a job (a queued duplicate, same kind, id and path, is merged). notify: report the result
@@ -321,7 +326,9 @@ struct Job {
     notify: bool,
 }
 
-const K_KIND_NAMES: [&str; 9] = ["export", "compaction", "template", "import", "map layout", "page previews", "library map layout", "PDF import", "font check"];
+// (by the kind's number: 9 is the file previews' of 2.2, a name kept for that kind)
+const K_KIND_NAMES: [&str; 11] =
+    ["export", "compaction", "template", "import", "map layout", "page previews", "library map layout", "PDF import", "font check", "file previews", "file copy"];
 
 /// bgjob.c's g_q, g_n, g_pid, g_running_notify and g_running.
 struct State {
@@ -433,6 +440,7 @@ fn run_job(j: &Job) -> i32 {
         BgKind::ImportFolder => bg_import_folder(j.dir.as_str(), j.dpi),
         BgKind::PdfImport => crate::pdfimport::bg_pdf_import(j.id.as_str(), j.dir.as_str()),
         BgKind::FontCheck => crate::userfonts::bg_font_check(j.dir.as_str(), j.dpi),
+        BgKind::CopyFile => crate::bgwork_copy::bg_copy_file(j.id.as_str(), j.dir.as_str()),
     }
 }
 
