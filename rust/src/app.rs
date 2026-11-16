@@ -2148,7 +2148,7 @@ fn copy_told(a: &mut App, to: Option<crate::bgwork_copy::CopyTo>, r: i32) {
     }
     let Some(to) = to.filter(|_| r > 0) else { return };
     // (the sheet of that folder in front shows the new picture itself: its From a file... tile)
-    if crate::library::library_sheet_folder(a) == Some(to) {
+    if crate::library::library_sheet_folder(a) == Some(to) || crate::editor::editor_sheet_folder(a) == Some(to) {
         return;
     }
     let place = match to {
@@ -2710,9 +2710,9 @@ pub fn app_probe(a: &mut App, key: &str, out: &mut String, cap: usize) -> i32 {
         }
         return 0;
     }
-    // The file picker (the Library's mode, browser.rs): files.*
+    // The file picker (the Library's mode, browser.rs): files.*; over the page the editor's picture pick (2.2, #146)
     if key.starts_with("files.") {
-        return library_probe(a, key, out, cap);
+        return if a.scr == ScreenId::Editor && !crate::library::library_settings_active(a) { editor_probe(a, key, out, cap) } else { library_probe(a, key, out, cap) };
     }
     if let Some(k) = key.strip_prefix("penset.") {
         return pensettings_probe(a, k, out, cap);
