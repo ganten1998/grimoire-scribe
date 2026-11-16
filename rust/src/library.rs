@@ -5,7 +5,7 @@ use crate::prelude::*;
 use crate::about::AboutView;
 use crate::settingsmenu;
 use crate::ui::{ui_row, ui_row_page, ui_row_pager, Row as UiRow};
-use crate::browser::{Browser, BrowserResult, PickSpec};
+use crate::browser::{BrowseMode, Browser, BrowserResult, FilesPrefs, PickSpec};
 
 #[repr(i32)]
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -54,6 +54,8 @@ enum Modal {
     DeviceInfo = 390,
     /// Settings > System > About > a link (Rust only): the link as a QR code a phone scans
     LinkQr = 395,
+    /// The Files card's menu (2.2, Rust only; a number of its own as LinkQr's): Open, Hide from Library, Cancel
+    FilesMore = 397,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -214,6 +216,9 @@ const H_SET_SLEEP: i32 = 184;
 const H_SET_CLOCK: i32 = 185;
 // Settings > Display's Dark mode toggle (the invert setting, moved out of the Display sheet).
 const H_SET_DARK: i32 = 196;
+// The Files card's menu (2.2): Open (Files, place mode) and Hide from Library.
+const H_FILES_OPEN: i32 = 197;
+const H_FILES_HIDE: i32 = 198;
 // Settings > Wi-Fi's top controls and lists: Nearby/Saved (arg: 0 or 1), Rescan, Other... (a hidden
 // network), a saved row's trash (arg: a row), and a network a scan found (arg: an index of
 // WifiSheet.near). The saved rows keep H_WIFI_NET.
@@ -239,6 +244,9 @@ const H_SETTINGS_CLOSE: i32 = 102;
 #[derive(Clone, Copy, Default)]
 struct Item {
     is_folder: bool,
+    /// the Files card (2.2): the top level's last card while settings.ini files_card says so (no notebook, no
+    /// folder: `nb` and `folder` mean nothing)
+    is_files: bool,
     /// index into books (notebooks)
     nb: usize,
     folder: FixedStr<STORE_NAME_LEN>,
@@ -539,6 +547,7 @@ fn free_lists(s: &mut LibraryState) {
 
 fn reload(a: &mut App) {
     let pp = per_page(a);
+    let files_card = a.settings.files_card;
     let s = lib(a);
     free_lists(s);
     s.card_gen = bgimage_generation(); // (the cards read from now on are up to date)
@@ -571,6 +580,11 @@ fn reload(a: &mut App) {
                 ..Default::default()
             });
         }
+    }
+    // The Files card (2.2, D31): after every folder and notebook of the top level, so it is the Library's last card
+    // (on its last screen), and no notebook's place changes for it.
+    if files_card && s.cur_folder.is_empty() {
+        s.items.push(Item { is_files: true, ..Default::default() });
     }
     let pages = (s.items.len() as i32 + pp - 1) / pp;
     s.page = clampi(s.page, 0, if pages > 0 { pages - 1 } else { 0 });
@@ -688,6 +702,10 @@ fn thumb_for(s: &mut LibraryState, dpi: f32, nb: usize) -> Option<&Canvas> {
 
 fn draw_card(c: &mut Canvas, s: &mut LibraryState, dpi: f32, r: Rect, idx: usize) {
     let it = s.items[idx];
+    if it.is_files {
+        draw_files_card(c, s, r, idx);
+        return;
+    }
     let th = r.w * 4 / 3;
     let tb = Rect::new(r.x, r.y, r.w, th);
     ui_frame(c, tb, ui_px(16.0), 255, true, 0);
@@ -768,6 +786,32 @@ fn draw_card(c: &mut Canvas, s: &mut LibraryState, dpi: f32, r: Rect, idx: usize
         }
     }
     font_draw_left(c, FontFace::Regular, ls, lr, &line2, 60);
+    let mr = Rect::new(r.x + r.w - more, r.y + th + ui_px(20.0), more, ui_px(110.0));
+    ui_button(c, mr, IconKind::More, "", ButtonStyle::Plain);
+    hits_add(&mut s.hits, tb, H_CARD, idx as i32);
+    hits_add(&mut s.hits, mr, H_CARD_MORE, idx as i32);
+}
+
+/// The Files card (2.2): Files' icon where a notebook's page is, its name, the storage's free space as Files' root
+/// says it (left out when it does not fit), and its `...` (Open, Hide from Library).
+fn draw_files_card(c: &mut Canvas, s: &mut LibraryState, r: Rect, idx: usize) {
+    let th = r.w * 4 / 3;
+    let tb = Rect::new(r.x, r.y, r.w, th);
+    ui_frame(c, tb, ui_px(16.0), 255, true, 0);
+    ui_icon(c, IconKind::Files, rect_inflate(tb, -r.w / 5), 0);
+    ui_frame(c, tb, ui_px(16.0), 0, false, ui_px(4.0));
+    let more = ui_px(110.0);
+    let tr_ = Rect::new(r.x, r.y + th + ui_px(14.0), r.w - more - ui_px(10.0), ui_px(96.0));
+    let face = if ui_theme() == UiTheme::Gothic { FontFace::Regular } else { FontFace::Bold };
+    ui_text_name(c, face, ui_text_size() * 0.88, ui_small_size(), tr_, tr("Files"), 2, 0);
+    if let Some(line) = crate::browser::files_free_line() {
+        let lr = Rect::new(r.x, tr_.y + tr_.h, r.w - more - ui_px(10.0), ui_px(40.0));
+        let ls = ui_small_size();
+        let fs = if font_measure(FontFace::Regular, ls, &line) > lr.w { font_fit_px(FontFace::Regular, ls, ls * 0.8, &line, lr.w) } else { ls };
+        if fs > 0.0 {
+            font_draw_left(c, FontFace::Regular, fs, lr, &line, 60);
+        }
+    }
     let mr = Rect::new(r.x + r.w - more, r.y + th + ui_px(20.0), more, ui_px(110.0));
     ui_button(c, mr, IconKind::More, "", ButtonStyle::Plain);
     hits_add(&mut s.hits, tb, H_CARD, idx as i32);
@@ -5789,6 +5833,16 @@ fn draw_modal(a: &mut App) {
             let title = name_label(lib(a).books[it.nb].name.as_str());
             draw_menu(a, &title, &rows);
         }
+        Modal::FilesMore => {
+            let rows = [
+                menu_row(IconKind::FolderOpen, tr("Open"), H_FILES_OPEN, 0, ButtonStyle::Plain),
+                // TRANSLATORS: the Files card's menu in the Library (1470 px at 44 px in bold): the card goes; the file
+                // picker's "Show Files in Library" puts it back.
+                menu_row(IconKind::Ban, tr("Hide from Library"), H_FILES_HIDE, 0, ButtonStyle::Plain),
+                menu_row(IconKind::Close, tr("Cancel"), H_CANCEL, 0, ButtonStyle::Plain),
+            ];
+            draw_menu(a, tr("Files"), &rows);
+        }
         Modal::FolderMore => {
             let Some(it) = it else { return };
             // TRANSLATORS: a folder's menu (1470 px at 44 px in bold); only an empty folder can go.
@@ -6794,7 +6848,9 @@ fn act(a: &mut App, h: &Hit) {
                 return;
             }
             let item = s.items[h.arg as usize];
-            if item.is_folder {
+            if item.is_files {
+                files_open_place(a);
+            } else if item.is_folder {
                 s.cur_folder.set_bytes(item.folder.as_bytes());
                 s.page = 0;
                 reload(a);
@@ -6806,13 +6862,27 @@ fn act(a: &mut App, h: &Hit) {
         }
         H_CARD_MORE => {
             let s = lib(a);
+            let Some(&item) = s.items.get(h.arg.max(0) as usize) else { return };
             s.target = h.arg;
-            let m = if s.items[h.arg as usize].is_folder {
+            let m = if item.is_files {
+                Modal::FilesMore
+            } else if item.is_folder {
                 Modal::FolderMore
             } else {
                 Modal::More
             };
             open_modal(a, m);
+        }
+        H_FILES_OPEN => {
+            lib(a).modal = Modal::None;
+            files_open_place(a);
+        }
+        H_FILES_HIDE => {
+            a.settings.files_card = false;
+            settings_save(&a.settings);
+            lib(a).modal = Modal::None;
+            reload(a);
+            redraw(a, RefreshMode::Ui);
         }
         H_PAPER => {
             let s = lib(a);
@@ -7625,8 +7695,26 @@ fn with_files<R>(a: &mut App, f: impl FnOnce(&mut Browser, &mut App) -> R) -> R 
     r
 }
 
+/// What the browser is handed of the settings for Files.
+fn files_prefs(a: &App) -> FilesPrefs {
+    FilesPrefs { card: a.settings.files_card, sort: a.settings.files_sort, show: a.settings.files_show }
+}
+
 fn files_open(a: &mut App) {
-    let ok = with_files(a, |b, _| b.open_pick(PickSpec::import()));
+    let prefs = files_prefs(a);
+    let ok = with_files(a, |b, _| b.open(PickSpec::import(), prefs));
+    files_opened(a, ok);
+}
+
+/// Files, the place (2.2): from the Files card, its menu's Open, and the `files` action (whether or not the card is
+/// in the Library), over the Library as it is.
+fn files_open_place(a: &mut App) {
+    let prefs = files_prefs(a);
+    let ok = with_files(a, |b, _| b.open(PickSpec::place(), prefs));
+    files_opened(a, ok);
+}
+
+fn files_opened(a: &mut App, ok: bool) {
     if !ok {
         // (no storage to browse: the sheet stays)
         app_toast(a, tr("Couldn't open folder."), 3000);
@@ -7638,9 +7726,11 @@ fn files_open(a: &mut App) {
     input_touch_context(library_touch_view(a));
 }
 
-/// The picker closed: back to New notebook's sheet (a cancel) or the Library (an import started).
+/// The picker closed: back to New notebook's sheet (a cancel) or the Library (an import started). Files (place
+/// mode) always goes back to the Library.
 fn files_close(a: &mut App, to_library: bool) {
     let s = lib(a);
+    let to_library = to_library || s.files.mode == BrowseMode::Place;
     s.files.close();
     if to_library {
         s.modal = Modal::None;
@@ -7657,7 +7747,8 @@ fn files_result(a: &mut App, r: BrowserResult) {
     let (name, folder) = {
         let s = lib(a);
         (
-            (s.new_name_typed && !s.new_name.is_empty()).then(|| s.new_name.as_str().to_string()),
+            // (Files has no name typed: an import from it is named by its file)
+            (s.files.mode == BrowseMode::Pick && s.new_name_typed && !s.new_name.is_empty()).then(|| s.new_name.as_str().to_string()),
             (!s.cur_folder.is_empty()).then(|| s.cur_folder.as_str().to_string()),
         )
     };
@@ -7696,6 +7787,12 @@ fn files_result(a: &mut App, r: BrowserResult) {
         BrowserResult::OpenNotebook(id) => {
             files_close(a, true);
             editor_open_notebook(a, &id);
+        }
+        // "Show Files in Library": the card is the Library's last from now on (the browser drew its root without the row)
+        BrowserResult::ShowInLibrary => {
+            a.settings.files_card = true;
+            settings_save(&a.settings);
+            reload(a);
         }
         BrowserResult::LookAgain => {
             import_scan(a.dpi);
@@ -7900,7 +7997,7 @@ pub fn library_back(a: &mut App) -> bool {
         Modal::Gestures if reset_asked => tap(a, H_GESTURES_RESET_CANCEL),
         Modal::Gestures => tap(a, H_GESTURES_DONE),
         Modal::New | Modal::Settings | Modal::More | Modal::FolderMore | Modal::Move | Modal::Delete
-        | Modal::About | Modal::Exit | Modal::Merge => close_modal(a),
+        | Modal::About | Modal::Exit | Modal::Merge | Modal::FilesMore => close_modal(a),
     }
     true
 }
@@ -8463,6 +8560,12 @@ fn card_probe(a: &mut App, key: &str, out: &mut String, cap: usize) -> i32 {
         return -1;
     }
     let it = s.items[(n - 1) as usize];
+    if it.is_files {
+        // the Files card (2.2): "files", its name "Files", no picture
+        let t = if name { tr("Files") } else if luma { "none" } else { "files" };
+        csnprintf!(out, cap, "%s", t);
+        return 0;
+    }
     if name {
         // the name under the card, as drawn (ui_name_label)
         let mut label = String::new();
@@ -8678,6 +8781,8 @@ pub fn library_probe(a: &mut App, key: &str, out: &mut String, cap: usize) -> i3
         csnprintf!(out, cap, "about-device");
     } else if key == "sheet" && s.modal == Modal::LinkQr {
         csnprintf!(out, cap, "about-link");
+    } else if key == "sheet" && s.modal == Modal::FilesMore {
+        csnprintf!(out, cap, "files-more");
     } else if key == "sheet" {
         match SHEETS.get(s.modal as usize) {
             Some(m) => csnprintf!(out, cap, "%s", *m),
@@ -8825,6 +8930,7 @@ pub fn library_probe(a: &mut App, key: &str, out: &mut String, cap: usize) -> i3
                 H_PAPER => "paper.", H_PAPER_CUSTOM => "paper.custom", H_PAPER_MORE => "paper.more", H_NEW_RENAME => "new.rename", H_NEW_FILE => "new.file",
                 H_EXIT_YES => "exit.yes", H_EXIT_NO => "exit.no",
                 H_MERGE_INTO => "merge.into", H_MERGE_BOTH => "merge.both",
+                H_FILES_OPEN => "files-card.open", H_FILES_HIDE => "files-card.hide",
                 H_BACK => "back", H_ABOUT => "about", H_ABOUT_CLOSE => "about.close",
                 H_ABOUT_PREV => "about.prev", H_ABOUT_NEXT => "about.next", H_ABOUT_MORE => "about.more",
                 H_ABOUT_ROW => "about.row.", H_ABOUT_BACK => "about.back",
@@ -9293,6 +9399,53 @@ mod tests {
         let mut folders = Vec::new();
         assert_eq!(store_list_folders(&mut folders), 0);
         assert_eq!(lib(&mut a).folders, folders);
+        library_free(&mut a);
+        canvas_free(&mut a.screen);
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    // The Files card (2.2, D31): not there by default; with files_card it is the top level's last card, after every
+    // folder and notebook, and in no folder. Its "..." opens its menu, whose Hide from Library takes it away and
+    // writes files_card back out (the line goes).
+    #[test]
+    fn the_files_card_is_the_top_levels_last_card() {
+        let root = std::env::temp_dir().join(format!("grimoire-files-card-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        assert_eq!(store_init(root.to_str().unwrap()), 0);
+        for (name, folder) in [("A", ""), ("B", "School"), ("C", "")] {
+            let mut nb = NotebookInfo::default();
+            assert_eq!(store_create(name, folder, PAPER_BLANK, &mut nb), 0);
+        }
+        let mut a = pen_record_app();
+        lib(&mut a).modal = Modal::None;
+        a.scr = ScreenId::Library;
+        settings_default(&mut a.settings);
+        reload(&mut a);
+        assert!(lib(&mut a).items.iter().all(|it| !it.is_files));
+        a.settings.files_card = true;
+        reload(&mut a);
+        let s = lib(&mut a);
+        assert_eq!(s.items.len(), 4, "School, A, C and Files");
+        assert!(s.items[0].is_folder && s.items[3].is_files);
+        assert_eq!(s.items.iter().filter(|it| it.is_files).count(), 1);
+        s.cur_folder.set("School");
+        reload(&mut a);
+        assert!(lib(&mut a).items.iter().all(|it| !it.is_files));
+        lib(&mut a).cur_folder.clear();
+        reload(&mut a);
+        redraw(&mut a, RefreshMode::Ui);
+        let mut out = String::new();
+        assert_eq!(library_probe(&mut a, "card.4", &mut out, 64), 0);
+        assert_eq!(out, "files");
+        act(&mut a, &Hit { id: H_CARD_MORE, arg: 3, ..Default::default() });
+        assert_eq!(lib(&mut a).modal, Modal::FilesMore);
+        act(&mut a, &Hit { id: H_FILES_HIDE, ..Default::default() });
+        assert!(!a.settings.files_card);
+        assert_eq!(lib(&mut a).modal, Modal::None);
+        assert!(lib(&mut a).items.iter().all(|it| !it.is_files));
+        let mut on_disk = Settings::default();
+        settings_load(&mut on_disk);
+        assert!(!on_disk.files_card);
         library_free(&mut a);
         canvas_free(&mut a.screen);
         let _ = std::fs::remove_dir_all(&root);
@@ -10535,6 +10688,13 @@ pub fn library_control_point(a:&mut App,name:&str)->Option<(f32,f32)> {
         if let Some(n)=name.strip_prefix("map.") {return mapview_control_point(&s.map,n);}
         return None;
     }
+    // The Files card (2.2) and its menu button.
+    if name=="files-card"||name=="files-card-menu" {
+        let s=a.lib.as_deref()?;
+        let i=s.items.iter().position(|it|it.is_files)?;
+        let id=if name=="files-card" {H_CARD} else {H_CARD_MORE};
+        return s.hits.h.iter().find(|h|h.id==id&&h.arg==i as i32).map(|h|((h.r.x+h.r.w/2)as f32,(h.r.y+h.r.h/2)as f32));
+    }
     // A card ("notebook.ID", "folder.PATH"), or its menu button ("notebook-menu.ID", "folder-menu.PATH").
     let card=match name.split_once('.') {
         Some(("notebook",rest))=>Some((false,rest,H_CARD)),
@@ -10545,7 +10705,7 @@ pub fn library_control_point(a:&mut App,name:&str)->Option<(f32,f32)> {
     };
     if let Some((folder,rest,id))=card {
         let s=a.lib.as_deref()?;
-        let i=s.items.iter().position(|it|it.is_folder==folder&&if folder{it.folder==rest}else{s.books[it.nb].id==rest})?;
+        let i=s.items.iter().position(|it|!it.is_files&&it.is_folder==folder&&if folder{it.folder==rest}else{s.books[it.nb].id==rest})?;
         return s.hits.h.iter().find(|h|h.id==id&&h.arg==i as i32).map(|h|((h.r.x+h.r.w/2)as f32,(h.r.y+h.r.h/2)as f32));
     }
     let points:Vec<_>=a.lib.as_deref()?.hits.h.iter().map(|h|((h.r.x+h.r.w/2) as f32,(h.r.y+h.r.h/2) as f32)).collect();

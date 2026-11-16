@@ -59,6 +59,18 @@ pub struct PickSpec {
     pub mode: BrowseMode,
 }
 
+/// What the Library's settings say of Files (settings.ini files_card, files_sort, files_show), handed to the
+/// browser as it opens.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct FilesPrefs {
+    /// the Files card is in the Library (the root then has no "Show Files in Library" row)
+    pub card: bool,
+    /// FILES_SORT_NAMES's index
+    pub sort: i32,
+    /// FILES_SHOW_NAMES's index: 1 every file
+    pub show: i32,
+}
+
 impl PickSpec {
     /// New notebook's From a file...: a PDF or a folder of pictures to import.
     pub fn import() -> PickSpec {
@@ -97,6 +109,8 @@ pub enum BrowserResult {
     OpenNotebook(String),
     /// the Import place's Look again row
     LookAgain,
+    /// the root's "Show Files in Library" row: the host puts the Files card in the Library (files_card=1)
+    ShowInLibrary,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -107,6 +121,8 @@ pub enum RowKind {
     Pdf,
     /// the Import place's last row
     Look,
+    /// the root's last row while the Files card is not in the Library: "Show Files in Library"
+    ShowCard,
 }
 
 /// A root row's place. Pick mode's root has Import, Documents, Downloads and All storage; place mode's has them all
@@ -226,6 +242,8 @@ pub struct Browser {
     pub mode: BrowseMode,
     title: &'static str,
     kinds: Vec<PickKind>,
+    /// the Library's settings for Files, as it opened (and as changed since)
+    pub prefs: FilesPrefs,
     /// None: the root's four rows; else the folder shown
     at: Option<StoragePath>,
     /// the folder the way in started at (a root row's), whose Back is the root's rows
@@ -300,13 +318,38 @@ fn u(v: f32) -> i32 {
     ui_px(v)
 }
 
+/// The free space line: free of the whole storage.
+fn free_line(free: u64, total: u64) -> String {
+    // TRANSLATORS: the file picker's free space line: free of the whole storage ("Free: 9.8 GB of 14.5 GB"), at 44 px, right-aligned.
+    cformat!(tr("Free: %s of %s"), size_label(free).as_str(), size_label(total).as_str())
+}
+
+/// The storage's free space as Files' root says it, for the Library's Files card (2.2); None with no storage to
+/// tell (one statvfs of the storage root: nothing is listed).
+pub fn files_free_line() -> Option<String> {
+    let (root, _) = root_dir()?;
+    let c = std::ffi::CString::new(root).ok()?;
+    // SAFETY: sv is written by statvfs before it is read; c is NUL-terminated.
+    let mut sv: libc::statvfs = unsafe { std::mem::zeroed() };
+    if unsafe { libc::statvfs(c.as_ptr(), &mut sv) } != 0 {
+        return None;
+    }
+    Some(free_line(sv.f_bavail as u64 * sv.f_frsize as u64, sv.f_blocks as u64 * sv.f_frsize as u64))
+}
+
 impl Browser {
     // ---- opening and listing ----
 
-    /// Opens the browser at its root, or at the spec's start when that opens. False when there is no storage to
-    /// browse.
+    /// Opens the browser at its root with the Files card not in the Library (the tests'): open's.
     pub fn open_pick(&mut self, spec: PickSpec) -> bool {
+        self.open(spec, FilesPrefs::default())
+    }
+
+    /// Opens the browser at its root, or at the spec's start when that opens, with the Library's settings for
+    /// Files. False when there is no storage to browse.
+    pub fn open(&mut self, spec: PickSpec, prefs: FilesPrefs) -> bool {
         *self = Browser::default();
+        self.prefs = prefs;
         let Some((root, grimoire)) = root_dir() else { return false };
         let Ok(st) = FsStorage::open(&root, &grimoire) else { return false };
         self.free = st.free_bytes().zip(st.total_bytes());
@@ -413,6 +456,10 @@ impl Browser {
                 r.place = Some(k);
                 rows.push(r);
             }
+        }
+        // (the way to the Files card, in either mode, while it is not in the Library: D31)
+        if !self.prefs.card {
+            rows.push(Row::new(RowKind::ShowCard, "Show Files in Library", StoragePath::root()));
         }
         self.rows = rows;
         self.ready = true;
@@ -628,6 +675,9 @@ impl Browser {
             (RowKind::Place, Some(k)) => Self::place_label(k).to_string(),
             // TRANSLATORS: the Import place's last row: it looks in grimoire/import for new files now (44 px in a row).
             (RowKind::Look, _) => tr("Look again").to_string(),
+            // TRANSLATORS: the last row of the file picker's first screen (and of Files'): puts a Files card at the end
+            // of the Library, which opens these places to browse (44 px in a row of about 1500 px).
+            (RowKind::ShowCard, _) => tr("Show Files in Library").to_string(),
             _ => r.name.clone(),
         }
     }
@@ -640,7 +690,7 @@ impl Browser {
                 Some(PlaceKind::All) => String::new(),
                 _ => String::from_utf8_lossy(r.path.as_bytes()).into_owned(),
             },
-            RowKind::Look => String::new(),
+            RowKind::Look | RowKind::ShowCard => String::new(),
             RowKind::Pdf | RowKind::Dir if self.under_import() && r.status != RowStatus::None => self.status_text(&r.status),
             RowKind::Pdf => {
                 let Some(s) = r.stat else { return String::new() };
@@ -733,7 +783,7 @@ impl Browser {
             let t0 = real_now_ms();
             for i in vis.clone() {
                 let r = &mut self.rows[i];
-                if r.kind == RowKind::Place || r.kind == RowKind::Look || r.stat.is_some() || r.stat_tried || r.ix == usize::MAX {
+                if matches!(r.kind, RowKind::Place | RowKind::Look | RowKind::ShowCard) || r.stat.is_some() || r.stat_tried || r.ix == usize::MAX {
                     continue;
                 }
                 if !l.stat(r.ix..r.ix + 1, FS_SLICE_MS) {
@@ -1010,8 +1060,7 @@ impl Browser {
             };
             font_draw_left(c, FontFace::Bold, ui_text_size(), Rect::new(band.x, band.y, band.w / 2, band.h), left, 0);
             if let Some((f, t)) = free {
-                // TRANSLATORS: the file picker's free space line: free of the whole storage ("Free: 9.8 GB of 14.5 GB"), at 44 px, right-aligned.
-                let line = cformat!(tr("Free: %s of %s"), size_label(f).as_str(), size_label(t).as_str());
+                let line = free_line(f, t);
                 let w = font_measure(FontFace::Regular, ui_text_size(), &line).min(band.w - u(40.0));
                 font_draw_left(c, FontFace::Regular, ui_text_size(), Rect::new(band.x + band.w - w, band.y, w, band.h), &line, 0);
             }
@@ -1085,14 +1134,15 @@ impl Browser {
             (RowKind::Place, Some(PlaceKind::Documents)) => IconKind::Folder,
             (RowKind::Place, Some(PlaceKind::Downloads)) => IconKind::Download,
             (RowKind::Place, Some(PlaceKind::Templates)) => IconKind::Paper,
-            (RowKind::Place, Some(PlaceKind::Photos)) => IconKind::Paper,
+            (RowKind::Place, Some(PlaceKind::Photos)) => IconKind::Image,
             (RowKind::Place, Some(PlaceKind::Fonts | PlaceKind::KindleFonts)) => IconKind::Font,
-            (RowKind::Place, Some(PlaceKind::PdfCopies)) => IconKind::Copy,
+            (RowKind::Place, Some(PlaceKind::PdfCopies)) => IconKind::Pdf,
             (RowKind::Place, Some(PlaceKind::Trash)) => IconKind::Trash,
-            (RowKind::Place, _) => IconKind::Library,
+            (RowKind::Place, _) => IconKind::Files,
             (RowKind::Dir, _) => IconKind::Folder,
             (RowKind::Pdf, _) => IconKind::Paper,
             (RowKind::Look, _) => IconKind::Update,
+            (RowKind::ShowCard, _) => IconKind::Pin,
         };
         ui_icon(c, icon, Rect::new(r.x + u(20.0), r.y + u(20.0), u(90.0), r.h - u(40.0)), 0);
         let right = if self.has_card(i) { u(150.0) } else { u(30.0) };
@@ -1106,7 +1156,7 @@ impl Browser {
         } else {
             (Rect::new(tx, r.y + u(10.0), tw, r.h * 55 / 100), Rect::new(tx, r.y + r.h * 55 / 100, tw, r.h * 40 / 100))
         };
-        if matches!(row.kind, RowKind::Place | RowKind::Look) {
+        if matches!(row.kind, RowKind::Place | RowKind::Look | RowKind::ShowCard) {
             font_draw_left(c, FontFace::Bold, ui_text_size(), name_r, &label, 0);
         } else {
             font_draw_left_name(c, FontFace::Bold, ui_text_size(), name_r, &label, 0);
@@ -1254,6 +1304,13 @@ impl Browser {
                     RowKind::Look => {
                         self.status_at = 0;
                         return BrowserResult::LookAgain;
+                    }
+                    // (the row goes once the card is in the Library: the host saves the setting)
+                    RowKind::ShowCard => {
+                        self.prefs.card = true;
+                        self.show_root();
+                        self.redraw(a, RefreshMode::Ui);
+                        return BrowserResult::ShowInLibrary;
                     }
                 }
             }
@@ -1481,6 +1538,7 @@ impl Browser {
         };
         match key {
             "open" => out.push_str(if self.open { "1" } else { "0" }),
+            "mode" => out.push_str(if self.mode == BrowseMode::Place { "place" } else { "pick" }),
             "place" => out.push_str(&match &self.at {
                 None => "root".to_string(),
                 Some(p) => String::from_utf8_lossy(p.as_bytes()).into_owned(),
@@ -1530,6 +1588,7 @@ impl Browser {
                         RowKind::Dir => "folder",
                         RowKind::Pdf => "pdf",
                         RowKind::Look => "look",
+                        RowKind::ShowCard => "show",
                     }),
                 }
             }
@@ -1669,8 +1728,9 @@ mod tests {
         }
         std::fs::write(format!("{base}/grimoire/PDFs/School/x.pdf"), b"%PDF-1.4\n").unwrap();
         i18n_set("en");
+        let card = FilesPrefs { card: true, ..Default::default() };
         let mut b = Browser::default();
-        assert!(b.open_pick(PickSpec::place()));
+        assert!(b.open(PickSpec::place(), card));
         assert_eq!(b.mode, BrowseMode::Place);
         assert_eq!(row_names(&b), ["Import", "documents", "Templates", "Photos", "Fonts", "Kindle fonts", "PDF copies", "Trash", "All storage"]);
         let labels: Vec<String> = b.rows.iter().map(|r| b.row_label(r)).collect();
@@ -1684,11 +1744,27 @@ mod tests {
         assert_eq!(b.crumbs(), "Files > Documents > Books");
         assert!(b.go(sp("grimoire/trash")));
         let mut p = Browser::default();
-        assert!(p.open_pick(PickSpec::import()));
+        assert!(p.open(PickSpec::import(), card));
         assert_eq!(p.mode, BrowseMode::Pick);
         assert_eq!(row_names(&p), ["Import", "documents", "All storage"]);
         assert!(!p.go(sp("grimoire/PDFs/School")));
         assert!(!p.go(sp("grimoire/trash")));
+    }
+
+    // D31: the way to the Files card is the root's last row, in either mode, while the card is not in the Library;
+    // once it is, the row is not there.
+    #[test]
+    fn show_files_in_library_is_the_roots_last_row_until_the_card_is_shown() {
+        let (_base, _g) = storage("showcard");
+        let mut b = Browser::default();
+        assert!(b.open(PickSpec::import(), FilesPrefs::default()));
+        assert_eq!(row_names(&b), ["Import", "All storage", "Show Files in Library"]);
+        assert_eq!(b.rows.last().map(|r| r.kind), Some(RowKind::ShowCard));
+        assert!(b.open(PickSpec::place(), FilesPrefs::default()));
+        assert_eq!(b.rows.last().map(|r| r.kind), Some(RowKind::ShowCard));
+        assert!(b.open(PickSpec::place(), FilesPrefs { card: true, ..Default::default() }));
+        assert!(b.rows.iter().all(|r| r.kind != RowKind::ShowCard));
+        assert_eq!(b.rows.last().map(|r| r.name.as_str()), Some("All storage"));
     }
 
     #[test]

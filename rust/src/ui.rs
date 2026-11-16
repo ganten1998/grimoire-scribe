@@ -92,10 +92,20 @@ pub enum IconKind {
     Font = 61,
     /// The record card's Disable (2.1, Rust only)
     Ban = 62,
+    /// Files (2.2, Rust only, browser.rs): its card in the Library and All storage; a picture, a PDF and any other
+    /// file; a link that is not followed; Sort; an open folder (the Go to sheet); Home (the `home` action)
+    Files = 63,
+    Image = 64,
+    Pdf = 65,
+    FileOther = 66,
+    LinkOff = 67,
+    Sort = 68,
+    FolderOpen = 69,
+    Home = 70,
 }
 impl IconKind {
     /// ICON_COUNT
-    pub const COUNT: usize = 63;
+    pub const COUNT: usize = 71;
 }
 
 #[derive(Clone, Copy, Debug, Default)]
@@ -312,6 +322,14 @@ const K_ICON_CP: [u32; IconKind::COUNT] = {
     k[IconKind::Hourglass as usize] = 0xF051F; // md-timer_sand
     k[IconKind::Font as usize] = 0xF06D6; // md-format_font
     k[IconKind::Ban as usize] = 0xF073A; // md-cancel
+    k[IconKind::Files as usize] = 0xF0AB6; // md-file_cabinet
+    k[IconKind::Image as usize] = 0xF02E9; // md-image
+    k[IconKind::Pdf as usize] = 0xF0226; // md-file_pdf_box
+    k[IconKind::FileOther as usize] = 0xF0214; // md-file
+    k[IconKind::LinkOff as usize] = 0xF0338; // md-link_off
+    k[IconKind::Sort as usize] = 0xF04BA; // md-sort
+    k[IconKind::FolderOpen as usize] = 0xF0770; // md-folder_open
+    k[IconKind::Home as usize] = 0xF02DC; // md-home
     k
 };
 

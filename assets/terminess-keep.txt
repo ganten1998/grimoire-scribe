@@ -254,6 +254,15 @@ U+F07CB  # md-gesture: recorded touch gestures in Settings
 U+F0F03  # md-lasso: Select mode's lasso
 U+F051F  # md-timer_sand: a page tile whose preview is being made
 U+F073A  # md-cancel: the record card's Disable
+# Icons: Files (2.2, rust/src/browser.rs, rust/src/library.rs)
+U+F0AB6  # md-file_cabinet: Files and All storage
+U+F02E9  # md-image: photos and pictures
+U+F0226  # md-file_pdf_box: PDFs
+U+F0214  # md-file: other files
+U+F0338  # md-link_off: a link that is not followed
+U+F04BA  # md-sort: Sort
+U+F0770  # md-folder_open: an open folder
+U+F02DC  # md-home: Home
 # Icons: the editor's shapes button (rust/src/editor.rs)
 U+F0831  # md-shape: shapes on
 U+F0832  # md-shape_outline: shapes off, drawn struck through
@@ -262,22 +271,14 @@ U+F0F70  # md-music_clef_treble: the treble clef
 U+F0F6F  # md-music_clef_bass: the bass clef
 U+F0F6E  # md-music_clef_alto: the alto and tenor clefs
 # Icons: planned for 2.1 (not drawn yet)
-U+F02DC  # md-home: Home
 U+F02FA  # md-import: the Import place
 U+F10B5  # md-folder_home: Set as home
 U+F0219  # md-file_document: Documents
 U+F00F8  # md-call_merge: Merge into it
-U+F02E9  # md-image: photos and pictures
 U+F0450  # md-refresh: Look again
 U+F06D6  # md-format_font: Fonts
 U+F099B  # md-restore: Restore
-U+F0226  # md-file_pdf_box: PDFs
-U+F04BA  # md-sort: Sort
-U+F0AB6  # md-file_cabinet: All storage
 U+F0572  # md-view_list: the list view
-U+F0338  # md-link_off: a link that is not followed
-U+F0770  # md-folder_open: an open folder
-U+F0214  # md-file: other files
 U+F027F  # md-format_size: a candidate
 U+F0819  # md-delete_restore: a candidate
 U+F0256  # md-folder_outline: a candidate

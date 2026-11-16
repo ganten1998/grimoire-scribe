@@ -5948,3 +5948,15 @@ msgstr "Fuentes del Kindle"
 #: rust/src/browser.rs
 msgid "Trash"
 msgstr "Papelera"
+
+#. TRANSLATORS: the last row of the file picker's first screen (and of Files'): puts a Files card at the end
+#. of the Library, which opens these places to browse (44 px in a row of about 1500 px).
+#: rust/src/browser.rs
+msgid "Show Files in Library"
+msgstr "Mostrar Archivos en la Biblioteca"
+
+#. TRANSLATORS: the Files card's menu in the Library (1470 px at 44 px in bold): the card goes; the file
+#. picker's "Show Files in Library" puts it back.
+#: rust/src/library.rs
+msgid "Hide from Library"
+msgstr "Quitar de la Biblioteca"

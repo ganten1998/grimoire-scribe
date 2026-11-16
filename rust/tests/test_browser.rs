@@ -63,8 +63,8 @@ fn the_picker_over_a_hostile_tree() {
     i18n_set("en");
     let root = tree("hostile");
     let mut b = open();
-    // the root: Import, Documents, Downloads, All storage
-    assert_eq!(names(&b), ["Import", "Documents", "Downloads", "All storage"]);
+    // the root: Import, Documents, Downloads, All storage, and (2.2) the way to the Files card while it is not shown
+    assert_eq!(names(&b), ["Import", "Documents", "Downloads", "All storage", "Show Files in Library"]);
     // documents: the plain folders and PDFs only, in order (links, the FIFO and the odd name are not listed)
     assert!(b.go(sp("documents")));
     let n = names(&b);
