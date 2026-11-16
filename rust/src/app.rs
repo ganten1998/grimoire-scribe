@@ -83,6 +83,8 @@ pub struct App {
     /// redraws. With the settings, what tells whether an action did anything: a finger shape names its action
     /// only when one of the two changed (editor.rs fs_fire, 2.0.0-beta.2).
     pub changes: u32,
+    /// the main loop's rounds so far (app_tick counts them): what a log line kept to one a frame goes by
+    pub frames: u32,
     /// promote to FULL every 30
     pub ui_refreshes_since_full: i32,
     /// what fast refreshes left on the panel that only a flash wipes (display.rs, issue #11): the
@@ -2116,6 +2118,7 @@ fn sleep_minute_ms() -> i32 {
 
 /// timers: autosave, toast, long press, httpd
 pub fn app_tick(a: &mut App, now: u32) {
+    a.frames = a.frames.wrapping_add(1);
     app_tick_screens(a, now);
     live_keys_tick(a);
     live_cap_sync(a);

@@ -598,7 +598,6 @@ Writing stayed fast at any size (median pen to screen 0.6 to 0.9 ms); the costs 
   a lighter page minutes later had none. Not explained yet.
 - **A stroke-eraser move on STRESS TEST 2 took 2.1 s** at 2.38 MB, its screen update 2 s late (as the CHANGELOG's
   about 3 s for a page-wide marker stroke on the first stress page).
-- **"Loading page..." and undo are not logged**, so a record cannot say whether the notice showed or undo ran.
 - **Limits, by extrapolation only**: nothing caps strokes or points on a page; the nearest limit is the 120 s
   heartbeat for a page drawn whole, reached at roughly 13 to 15 MB of STRESS TEST 3's mix (about 35 minutes
   of pen contact on one page). Points are kept at the pen's full rate, about 6.3 KB a second of contact.
@@ -1063,6 +1062,13 @@ items of Document links. Left:
     script's clock (GRIMOIRE_SIM_CLOCK=script) in waits of 100 ms: one long wait's ticks can come bunched at its
     end on a busy machine (its time spent drawing is not on that clock), and a tick more than three repeats late
     skips the rest, by design.
+  - "Loading page..." and undo are written to grimoire.log (found on the owner's stress pages, 2026-11-05): one
+    line when the notice shows, with the page's id, its file's size and why (no current kept drawing, or changes
+    not written yet), and one when an undo of a page runs, with what it undid in a few words (history_step_words:
+    its kind and how many strokes, never the ink) and the page's id; each at most once a frame (App.frames, which
+    app_tick counts). docs/KINDLE.md lists both. test_editor_log runs the headless runner and reads the lines:
+    the notice, a stroke, Clear page, a lasso move, and two undos in one batch, which say one line. Not logged:
+    redo, and the Pages view's own Undo of page moves and batches.
 - 2.1.1 (unreleased, 84-test-flakes; issues #84, #85 and #86, found on the day 2.1.0 was released, and #93, the
   day after): four checks no longer depend on the speed of the machine or on an earlier run.
   - `z_map_all_2_big` and `z_map_all_3_reading` wait for the library index and the Graph themselves (`waitfor`),
