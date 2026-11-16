@@ -8,7 +8,8 @@
 # z_pdf_11, which lacks book pages 2 and 4. The PDF fills it instead of saying "PDF already imported.": the two
 # pages come in book order (2 before 3, 4 last), the links that reach them are added, and the tabs KOReader sent
 # are not added a second time (page 1 keeps its two links: KOReader's to page 3, as KOReader drew it, and the one
-# to page 4). The pages with no name take the outline's (Cover, Notes). No second notebook is made.
+# to page 4). A fill names only the pages it adds: the outline names pages 1 and 3, KOReader's, so none is named
+# here. No second notebook is made.
 waitfor toast is Added 2 book pages.
 shot 01-filled
 waitbg
@@ -24,7 +25,7 @@ expect editor.doclinks is 2 5
 expect editor.doclink.1 is p3 1521 321 320 160
 expect editor.doclink.2 is p4 80 2240 320 160
 expect editor.doclink.3 is
-expect editor.page_name is Cover
+expect editor.page_name is
 # page 2, one of the pages added: its tab goes to page 4
 pentap panel next
 wait 400
@@ -37,7 +38,7 @@ wait 400
 expect editor.page is 3
 expect editor.doclinks is 1 5
 expect editor.doclink.1 is p1 1521 321 320 160
-expect editor.page_name is Notes
+expect editor.page_name is
 pentap panel library
 wait 600
 expect screen is library

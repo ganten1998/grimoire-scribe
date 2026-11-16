@@ -3398,22 +3398,24 @@ fn read_parts(id: &str, work: &str, pages: u32) -> Option<Collected> {
     c
 }
 
-/// A fill's links: the PDF's, between pages that both exist in the notebook now (`nb` and `m` as they are), put
-/// through the same fill as any source's with the notebook's own links counted: a link whose target and area
-/// (within 2 px) a link of the page has already is that link, the user's links' seeds are never taken, and the
-/// water level trims only links this fill adds. Idempotent, so a commit taken up again adds nothing twice. Returns
-/// whether doclinks.ini was written, and how many links were left out for room.
+/// A fill's links: the PDF's links that start or end on a page this fill added (`added`), mapped through the notebook
+/// as it is now (`nb` and `m`), put through the same fill as any source's with the notebook's own links counted: a
+/// link whose target and area (within 2 px) a link of the page has already is that link, the user's links' seeds are
+/// never taken, and the water level trims only links this fill adds. A link between two pages the notebook had is
+/// never added (the app has no way to remove a document link): deleting the pages a fill added takes every link it
+/// wrote. Idempotent, so a commit taken up again adds nothing twice. Returns how many links were left out (for room,
+/// or all of them when doclinks.ini cannot be written).
 #[allow(clippy::too_many_arguments)]
-fn fill_links(id: &str, nbid: &str, dir: &str, nb: &NotebookInfo, m: &AnnotateMap, pages: u32, pw: i32, ph: i32, c: &Collected) -> (bool, u32) {
+fn fill_links(id: &str, nbid: &str, dir: &str, nb: &NotebookInfo, m: &AnnotateMap, pages: u32, pw: i32, ph: i32, c: &Collected, added: &[u32]) -> u32 {
     let pid_of = |bp: u32| annotate_map_find(m, nb, bp as i32, pages as i32);
     let mut recs: Vec<DocRecord> = Vec::new();
-    if recs.try_reserve_exact(c.links.len()).is_err() {
-        return (false, 0);
-    }
     for (l, q) in &c.links {
         let (s, d) = (pid_of(l.src), pid_of(l.dst));
-        if s == 0 || d == 0 {
+        if s == 0 || d == 0 || !(added.contains(&s) || added.contains(&d)) {
             continue;
+        }
+        if recs.try_reserve(1).is_err() {
+            return c.links.len() as u32;
         }
         recs.push(DocRecord {
             src: s,
@@ -3426,10 +3428,13 @@ fn fill_links(id: &str, nbid: &str, dir: &str, nb: &NotebookInfo, m: &AnnotateMa
             index: l.index,
         });
     }
+    if recs.is_empty() {
+        return c.left.capped;
+    }
     let mut dl = doclinks_load(nbid);
     if !dl.writable {
         qlog!("import: %s: the doclinks.ini of notebook %s does not read; its links are left as they are", id, nbid);
-        return (false, 0);
+        return recs.len() as u32;
     }
     let before: std::collections::HashSet<(u32, u32)> = dl.links.iter().map(|l| (l.pid, l.seed)).collect();
     let mut mine = Nav::default();
@@ -3439,12 +3444,11 @@ fn fill_links(id: &str, nbid: &str, dir: &str, nb: &NotebookInfo, m: &AnnotateMa
     let st = pdflinks_fill(&mut dl, &recs, pw, ph, &have, &|pid, seed| nav_link_get(&mine, pid, seed).is_some());
     nav_free(&mut mine);
     let water = pdflinks_water_keeping(&mut dl, &|l| before.contains(&(l.pid, l.seed)));
-    // (written even with no link in it, as KOReader's route writes it: links=1 says the file is there)
-    dl.file = true;
     if doclinks_save_in(dir, &mut dl, nb) != 0 {
         qlog!("import: %s: the document links of notebook %s could not be written; left out", id, nbid);
-        return (false, 0);
+        return recs.len() as u32;
     }
+    let left = st.full + water + c.left.capped as usize;
     qlog!(
         "import: %s: notebook %s: %d document link(s) (%d added, %d already there, %d refused, %d left out for room)",
         id,
@@ -3453,14 +3457,14 @@ fn fill_links(id: &str, nbid: &str, dir: &str, nb: &NotebookInfo, m: &AnnotateMa
         st.added as i32,
         st.same as i32,
         st.invalid as i32,
-        (st.full + water + c.left.capped as usize) as i32
+        left as i32
     );
-    (true, (st.full + water + c.left.capped as usize) as u32)
+    left as u32
 }
 
-/// A fill's names: the outline's, for the pages of the notebook that have none (a page that has a name keeps it).
-/// Idempotent. Returns how many it gave.
-fn fill_names(id: &str, nbid: &str, nb: &NotebookInfo, m: &AnnotateMap, pages: u32, c: &Collected) -> u32 {
+/// A fill's names: the outline's, for the pages this fill added (`added`; a page the notebook had keeps its name, or
+/// its lack of one). Idempotent. Returns how many it gave.
+fn fill_names(id: &str, nbid: &str, nb: &NotebookInfo, m: &AnnotateMap, pages: u32, c: &Collected, added: &[u32]) -> u32 {
     if c.names.is_empty() {
         return 0;
     }
@@ -3474,7 +3478,7 @@ fn fill_names(id: &str, nbid: &str, nb: &NotebookInfo, m: &AnnotateMap, pages: u
     let mut named = 0;
     for (bp, text) in &c.names {
         let pid = annotate_map_find(m, nb, *bp as i32, pages as i32);
-        if pid != 0 && nav_name(&nav, pid).is_empty() && nav_set_name(&mut nav, pid, &String::from_utf8_lossy(text)) == 0 {
+        if added.contains(&pid) && nav_name(&nav, pid).is_empty() && nav_set_name(&mut nav, pid, &String::from_utf8_lossy(text)) == 0 {
             named += 1;
         }
     }
@@ -3846,21 +3850,11 @@ fn commit_finish(c: &mut Commit, dpi: f32) -> Finished {
     // 6. the links and 7. the names: either can fail alone, as an import's (the pages stay, without them)
     let mut trimmed = 0;
     if let Some(col) = read_parts(&id, &work, c.st.pages) {
-        let (written, left) = fill_links(&id, &nbid, &c.dir, &nb, &m, c.st.pages, c.st.page_w, c.st.page_h, &col);
-        trimmed = if written { left } else { col.links.len() as u32 };
-        if written && !m.links {
-            // (source.ini says links=1 once doclinks.ini holds the book's links: KOReader's Open this book then does
-            // not send the links of the pages it held again)
-            m.links = true;
-            let ok = annotate_map_text(&m, &nb).is_some_and(|t| write_file_atomic(&format!("{}/source.ini", c.dir), &t) == 0);
-            if !ok {
-                qlog!("import: %s: the source.ini of notebook %s could not say its links are there", &id, &nbid);
-            }
-        }
+        trimmed = fill_links(&id, &nbid, &c.dir, &nb, &m, c.st.pages, c.st.page_w, c.st.page_h, &col, &added);
         if cut_after(6) {
             return stop(&mut m);
         }
-        fill_names(&id, &nbid, &nb, &m, c.st.pages, &col);
+        fill_names(&id, &nbid, &nb, &m, c.st.pages, &col, &added);
     }
     annotate_map_free(&mut m);
     if cut_after(7) {

@@ -1,7 +1,7 @@
 // test_pdf_fill.rs: the same PDF again fills its notebook (2.2, issue #123). A PDF whose notebook (by its file
 // record, or by the book key where the notebook has none: one an earlier version made, or KOReader) lacks some of the
-// book's pages gets those pages added, in book order, with the links between pages that both exist and names for
-// pages that have none; the pages it had, their ink, names and links stay as they were. A notebook that has every
+// book's pages gets those pages added, in book order, with the links that start or end on them and the outline's names
+// for them; the pages it had, their ink, names and links stay as they were. A notebook that has every
 // page says "PDF already imported."; a PDF whose page count is not the one the notebook's pages name becomes a
 // notebook of its own. The writer only makes the pages; the UI process puts them in (pdfimport::fill_tick), with no
 // notebook open and nothing else writing it, and a commit cut off is taken to its end, never left half.
@@ -464,8 +464,51 @@ fn a_koreader_notebook_is_filled_and_no_link_is_doubled() {
     // the record-less notebook stays so; the key stays its own
     let text = e.ini(&id, "source.ini");
     assert!(!text.lines().any(|l| l.starts_with("file=")) && text.lines().any(|l| l == format!("book={key}")), "{text}");
-    // the outline names the pages that had none (KOReader gives none)
-    assert_eq!(names(&id, &nb), ["Cover", "", "Notes", ""]);
+    // the outline names only pages a fill adds: KOReader's pages 1 and 3 keep none (its names are for those two)
+    assert_eq!(names(&id, &nb), ["", "", "", ""]);
+}
+
+// A fill adds only links that start or end on a page it adds, and names only those pages, so deleting them takes
+// everything it wrote. KOReader's boxes 3 px off the worker's (one more than the 2 px rule): the links between the
+// pages KOReader sent stay KOReader's alone, none doubled. A KOReader notebook of pages 3 and 4 filled with 1 and 2:
+// page 1 takes the outline's name, page 3 (KOReader's) does not.
+#[test]
+fn a_fill_writes_links_and_names_only_for_the_pages_it_adds() {
+    let e = setup("added-only");
+    let (bytes, wl) = worker_links(&e);
+    let key = key_of(&bytes);
+    let off = |s: i32, d: i32| wl.iter().find(|l| l.0 == s && l.1 == d).map(|l| Rect { x: l.2.x + 3, y: l.2.y + 3, w: l.2.w, h: l.2.h }).unwrap();
+    let id = koreader_book(&e, &key, 4, &[1, 3], &[(1, 3, off(1, 3)), (3, 1, off(3, 1))]);
+    let before = e.info(&id);
+    let ko = doc_links(&id, &before);
+    let src_before = e.ini(&id, "source.ini");
+    let (_, ends) = import_all(&e.drop("Tabs.pdf", &bytes));
+    assert_eq!(last(&ends), &SliceEnd::Ready { blank: 0 }, "{ends:?}");
+    assert!(filled(&put_in(), 2));
+    let nb = e.info(&id);
+    let links = doc_links(&id, &nb);
+    assert_eq!(links.iter().map(|l| (l.0, l.1)).collect::<Vec<_>>(), [(1, 3), (1, 4), (2, 4), (3, 1), (4, 2)], "{links:?}");
+    for k in &ko {
+        assert!(links.contains(k), "KOReader's {k:?} is kept as it was: {links:?}");
+    }
+    // the pages the fill added deleted: the notebook's links, names and links= line are what they were
+    drop_pages(&id, &[2, 4]);
+    let nb = e.info(&id);
+    assert_eq!(nb.page_ids, before.page_ids);
+    assert_eq!(doc_links(&id, &nb), ko);
+    assert_eq!(names(&id, &nb), ["", ""]);
+    let links_line = |t: &str| t.lines().find(|l| l.starts_with("links=")).map(str::to_string);
+    assert_eq!(links_line(&e.ini(&id, "source.ini")), links_line(&src_before));
+    // names: only the pages it adds
+    std::fs::remove_dir_all(format!("{}/notebooks/{id}", e.root)).unwrap();
+    std::fs::remove_dir_all(format!("{}/import/done", e.root)).unwrap();
+    let id = koreader_book(&e, &key, 4, &[3, 4], &[]);
+    let (_, ends) = import_all(&e.drop("Tabs again.pdf", &bytes));
+    assert_eq!(last(&ends), &SliceEnd::Ready { blank: 0 }, "{ends:?}");
+    assert!(filled(&put_in(), 2));
+    let nb = e.info(&id);
+    assert_eq!(book_pages(&id, &nb), [1, 2, 3, 4]);
+    assert_eq!(names(&id, &nb), ["Cover", "", "", ""]);
 }
 
 // A notebook that has every page of the book: "PDF already imported.", and nothing of it is written.
@@ -837,7 +880,7 @@ fn a_commit_cut_off_at_any_step_ends_with_the_notebook_filled() {
         let links = doc_links(&id, &nb);
         assert_eq!(links.iter().map(|l| (l.0, l.1)).collect::<Vec<_>>(), [(1, 3), (1, 4), (2, 4), (3, 1), (4, 2)], "step {step}: {links:?}");
         assert!(no_link_twice(&links), "step {step}: {links:?}");
-        assert_eq!(names(&id, &nb), ["Cover", "", "Notes", ""], "step {step}");
+        assert_eq!(names(&id, &nb), ["", "", "", ""], "step {step}: KOReader's pages keep none");
         assert!(e.work_folders().is_empty(), "step {step}");
         for (k, v) in kept(&pristine, &before) {
             assert_eq!(e.files(&id).get(&k), Some(&v), "step {step}: {k}");
