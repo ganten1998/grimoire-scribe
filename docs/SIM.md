@@ -228,24 +228,24 @@ taps them in each). Upright: the Library's top bar has New at 965 95, Folder 115
 Settings 1535 95. Its five buttons widen together for a longer word, up to 220 px each: New is at
 965 only while they are at most 191 px wide, Folder at 1155 up to 198 and Share at 1345 up to 212
 (the same sideways), so a language with wider top-bar words moves them (docs/TRANSLATING.md).
-Hosted by KOReader they move left, as Back to KOReader takes the room it needs. Settings' rows
-are at x 930: Pen sensitivity y 460, Calibrate 620, Display 780, Style 930, Mirror PDFs 1060, the
-pen button's row 1190, Rotation 1320, Pinch 1450 and Language 1580. Upright from the
-Library, the Display sheet's "Sideways, show the whole page" row is 930 608, its sleep screen row 930 1308, and its clock and battery size cell 472 1626 and corner cell 997 1626, beside its Done at 1460 1626 (in a notebook the sheet has the Pin this page row too, so they are 472 1720, 997 1720 and 1460 1720). The Language list
-has Automatic at 930 785, English 930 945, Español 930 1105, 日本語 930 1265 and Cancel 930 1425. Pen feel's tabs
-are at x = 130 + 177 n, y 289, in the order pencil, mechanical pencil, charcoal, ballpoint,
-fineliner, marker, fountain pen, calligraphy pen, highlighter, eraser. Sideways (2480x1860): the
-top bar has New at 1585 95, Share 1965 95 and Settings 2155 95; Settings' rows are at x 1240: Pen
-sensitivity y 260, Calibrate 425, Display 590, Language 1385; the Display sheet's sleep screen row
-is 1240 1099 and its Done 1770 1419; the Language list has 日本語 at 1240 1009 and Cancel
-1240 1169. The first card's menu button is 431 896 (a notebook's or a folder's menu rows are tapped
+Hosted by KOReader they move left, as Back to KOReader takes the room it needs. Settings is one
+page (the new Settings menu, #115): its categories are at x 329, y 286 + 136 n (n from 0: General,
+Display, Sleep & Clock, Pen, Controls, System), the open category's rows at x 1233, y 371 + 134 n,
+and its X at 1735 95; a submenu's Back is at 125 95 and its X at 1735 95. Tap Settings' rows, the
+Display, Sleep settings and Clock settings pages' rows (`display.NAME`) and the choice lists' rows
+by name (`library.ui_at.X.Y` lists the names), never by place. Pen feel's tabs are one strip, its
+segments' centres at x = 138 + 176 n, y 301, in the order pencil, mechanical pencil, charcoal,
+ballpoint, fineliner, marker, fountain pen, calligraphy pen, highlighter, eraser; its Reset tool is
+at the page's foot, left (150 2390 is on it). Sideways (2480x1860): the top bar has New at 1585 95,
+Share 1965 95 and Settings 2155 95; Settings' categories are at x 330, y 286 + 136 n, its rows at x
+1544, y 371 + 134 n, and its X at 2355 95. The first card's menu button is 431 896 (a notebook's or a folder's menu rows are tapped
 by name, `tap library more.delete`, never by place: they move when the menu gains a row), Delete's
 Keep it 1240 845 and Move to's Cancel 1240 1055. Share's
 Done is 2160 1485. In New notebook, Rename is 1950 1424 and the Custom music tile 1800 1115 (its
 sheet's Cancel 598 1693); the keyboard's bottom row is at y 1745: Cancel 221, `-` 517, the
 symbols key 756, the accents key 995 (928 is on it too), space 1360, `'` 1723, `.` 1962 and Done
 2258 (Cancel's 279 is on it too). Pen feel's
-tabs are at x = 161 + 239 n, y 289 (the calligraphy pen's 1834). Calibration's corners are 298 223,
+tabs are at x = 169 + 238 n, y 301 (the calligraphy pen's 1835). Calibration's corners are 298 223,
 2182 223, 2182 1637 and 298 1637, its center 1240 930, touch's skip 1240 1475 and the check's
 Cancel 1240 1675. The editor's tool button is 2388 358.
 
@@ -299,18 +299,23 @@ the provisional `TG_TUNE`. The scenario harness clears both hooks between runs. 
 shapes and `tests/fixtures/touch/synthetic.txt` are regression inputs, not owner evidence.
 The trace contains no pen coordinates: replay cannot measure hover-distance acceptance.
 
-The Settings bottom row is KOReader | Pair | Wi-Fi | Gestures | Updates | Done, in either
-orientation (Pair in Controller's place since 2.0.0-beta.2, Wi-Fi since 2.1.0-beta.2: Gestures moved from
-x = 890, now a gap, to 1000). These interior tap points were checked with `library.ui_at` in English,
-Spanish and Japanese, Gothic and Classic, on the 1860 x 2480 panel (2480 x 1860 sideways):
+Settings' Controls category (since the new Settings menu, #115) lists Shortcuts, Pair and Gestures, and
+General lists Language, Updates and Wi-Fi; a submenu has Back at its top left and X at its top right (in a
+Gestures or Buttons group the Back is `done`, back to the list of groups). These interior tap points were
+checked with `library.ui_at` in English on the 1860 x 2480 panel (2480 x 1860 sideways); the page lays them
+out the same in every language and style (library.rs, `draw_settings`):
 
 | Target | Upright | Sideways |
 |---|---|---|
-| Pair | 580, 1930 | 863, 1695 |
-| Wi-Fi | 770, 1930 | 1070, 1695 |
-| Gestures | 1000, 1930 | 1320, 1695 |
-| Updates | 1200, 1930 | 1560, 1695 |
-| Settings Done | 1550, 1930 | 1820, 1695 |
+| Controls (`settings.cat.4`) | 329, 830 | 330, 830 |
+| Shortcuts | 1233, 371 | 1544, 371 |
+| Pair | 1233, 505 | 1544, 505 |
+| Gestures | 1233, 639 | 1544, 639 |
+| Updates (General, `settings.cat.0`) | 1233, 505 | 1544, 505 |
+| Settings X (`done`) | 1735, 95 | 2355, 95 |
+| A submenu's Back (`settings.back`, a group's `done`) | 125, 95 | 125, 95 |
+| Gestures' groups: Editing, Tools, Pages, Index | 930, 608 / 764 / 920 / 1076 | |
+| A Gestures or Buttons group's row N | 930, 296 + 154 (N - 1) | |
 | Record Use (when enabled) | 430, 1645 | 740, 1335 |
 | Record Try again | 763, 1645 | 1073, 1335 |
 | Record Disable | 1096, 1645 | 1406, 1335 |
@@ -319,12 +324,12 @@ Spanish and Japanese, Gothic and Classic, on the 1860 x 2480 panel (2480 x 1860 
 The three sample slots have interior centres at x = 630 / 930 / 1230, y = 1110 upright,
 and x = 940 / 1240 / 1540, y = 800 sideways. They display samples and have no hit action.
 Use `library.ui_at.X.Y` to check a candidate hit before depending on it. Its
-values include `pair-menu` (Settings' Pair), `gestures`, `updates`, `done`, `gestures.master`,
+values include `pair-menu` (Settings' Pair), `gestures`, `updates`, `done`, `settings.back`, `gestures.master`,
 `gestures.group.NAME`, `gestures.row.N`, `gestures.reset`, `gestures.reset.confirm`,
 `gestures.reset.cancel`, `record.use`, `record.retry`, `record.disable` and `record.cancel`. This is a hit-test
 probe, not a coordinate locator; existing unrelated coordinates above remain as documented.
 
-**Recording a gesture in a scenario.** Open Settings > Gestures and a group; verify each
+**Recording a gesture in a scenario.** Open Settings > Controls > Gestures and a group; verify each
 candidate tap with `library.ui_at.X.Y`. Tap an action, expect `library.gestures.learning`
 to name it and `library.record` to be `wait`. A paired row continues with the second member
 after saving the first. Use `tapn`/`swipe` for a pattern; expect `pattern touch.2.tap` (for example), then tap
