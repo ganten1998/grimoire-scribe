@@ -2466,8 +2466,8 @@ impl Browser {
 
     /// Covers: the rows whose tiles are to be drawn again now, None when there is nothing to draw yet. A tile has
     /// changed when it would show or say something else than it was last drawn with. The changed ones are due all
-    /// together: once the screen's set is complete (no file of it still to be looked up, no job of it queued or
-    /// running), or COVERS_REFRESH_MS after the tiles were last drawn. Never under an open card (its close draws
+    /// together: once the screen's set is complete (no file of it whose stat is still to come or that is still to be
+    /// looked up, no job of it queued or running), or COVERS_REFRESH_MS after the tiles were last drawn. Never under an open card (its close draws
     /// them).
     pub fn tiles_due(&self, now: u32) -> Option<Vec<usize>> {
         if !self.in_covers() || self.card.is_some() {
@@ -2482,7 +2482,10 @@ impl Browser {
                 (was != (self.tile_show(i), self.tile_says(i).as_str())).then_some(i)
             })
             .collect();
-        if changed.is_empty() || (self.covers.pending() && now.wrapping_sub(self.tiles_at) < COVERS_REFRESH_MS) {
+        // (not complete: a file whose stat is still to come, one to be looked up, or a job queued or running)
+        let coming = |r: &Row| matches!(r.kind, RowKind::Pdf | RowKind::Picture | RowKind::Font) && r.stat.is_none() && !r.stat_tried && r.ix != usize::MAX;
+        let pending = self.covers.pending() || self.row_rects.iter().any(|&(i, _)| self.rows.get(i).is_some_and(coming));
+        if changed.is_empty() || (pending && now.wrapping_sub(self.tiles_at) < COVERS_REFRESH_MS) {
             return None;
         }
         Some(changed)
