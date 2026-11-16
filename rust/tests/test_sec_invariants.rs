@@ -486,6 +486,9 @@ fn files_rename_delete_and_restore_are_told_as_they_are() {
     gone(&mut fails, BACKLOG, "A file with that name is already here.");
     gone(&mut fails, TESTING, "A file with that name is already here.");
     gone(&mut fails, DESIGN, "is not offered to it (\"Couldn't rename file.\")");
+    // after a write the rows follow from the listing held: the folder is not read again at one go
+    gone(&mut fails, DESIGN, "Renamed: the folder is read again, with its rows' page kept.");
+    gone(&mut fails, DESIGN, "\"Moved to grimoire/trash\" and the folder read again.");
     none_failed(&fails, "Files' rename, delete and restore");
 }
 

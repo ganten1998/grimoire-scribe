@@ -2582,7 +2582,8 @@ trash, and the Trash place puts an entry back. Pick mode (New notebook's From a 
   identity. A file must have the device, inode, size and time it had when its card opened; a folder the same device
   and inode (not its size and time, which change with what is put in it), so another folder renamed to its name is
   refused. A card whose stat is not known acts on nothing. Refused: "File changed. Try again." and the folder is
-  read again. fsview's writes check again themselves (`FsStat::same`) at the moment they act.
+  read again, in the listing's slices. fsview's writes check again themselves (`FsStat::same`) at the moment they
+  act.
 - **Held by an import.** Rename (before the keyboard opens) and Delete ask `FsStorage::busy` (through the writes):
   what a queued or running import works on, what is inside it, the folder a held PDF is in, and while a previous
   run's import holds the lock everything in `import/`; and a template or photo picked for a page, until the job
@@ -2603,13 +2604,20 @@ trash, and the Trash place puts an entry back. Pick mode (New notebook's From a 
   ending the Kindle's reader keeps for a book's own folder, which no listing shows) and "That name is taken." (a
   name Grimoire keeps for itself there: `done` in `import`). Then `FsStorage::rename`, which never replaces: a
   name taken says "That name is taken." and keeps the keyboard up (no " 2" is offered), and a path of 600 bytes
-  "Path too long.". Renamed: the folder is read again, with its rows' page kept.
+  "Path too long.". Renamed: its row has the new name, where that name belongs in the rows' order.
 - **Delete** asks first, as the Library asks before a notebook goes: the card's Delete (after the check, and not
   for a held item) turns the card into the Library's question, drawn as its sheet in the same place (`sheet_rect`,
   `ui_sheet`): `Delete "name"?` (a long name cut with "..." so the question mark stays), "Delete (moves it to
   grimoire/trash)" and "Keep it". Keep it, a tap outside the sheet, Esc and Back move nothing. Only its Delete
-  moves the item: the check again, `FsStorage::trash`, then "Moved to grimoire/trash" and the folder read again.
-  Restore undoes it.
+  moves the item: the check again, `FsStorage::trash`, then "Moved to grimoire/trash" and its row gone. Restore
+  undoes it.
+- **After a write nothing is read again.** A rename, a delete and a restore tell the listing Files holds what
+  changed (`entry_changed`: the entry's new name, or the entry gone) and make the rows again from it, as Sort and
+  Show do: no folder is listed and no row stat-ed anew, which for a folder of thousands sorted by newest or size
+  would hold the UI for all of it at one go. The other rows keep what they had read (sizes, names, counts), and
+  the screen of rows stays where it was. Only an act that found the item changed reads the folder again
+  (`reread`), a slice a tick with the Loading notice, as any folder is read. A file put there over USB meanwhile
+  shows the next time the folder is opened.
 - **The Trash place** lists the trash as before (fsview's trash listing, newest first by the time in each name),
   each row with its size and date; the root's Trash row has the trash's size beside its path. Past 5,000 entries
   (every deleted page is one, and the trash only grows) its listing, `FsListing::start_trash`, reads on to the
@@ -2642,7 +2650,7 @@ trash, and the Trash place puts an entry back. Pick mode (New notebook's From a 
   ms)` once a walk of the trash is through (docs/KINDLE.md).
 - **Tests**: `browser.rs`'s unit tests (a folder card's check by identity, each refusal's words, Rename's rules and
   places, a name nobody typed never given, the allow-list's words, Delete's question, Delete then Restore, a notebook the Library deleted coming back as " 2", a trash past the cap keeping
-  its newest), `test_fsview_writes.rs`'s trash sizes (slices, depth, links, the record left out), its listing past
+  its newest, a write changing its row with no folder read again), `test_fsview_writes.rs`'s trash sizes (slices, depth, links, the record left out), its listing past
   the cap and a picture a page still waits for, and the scenarios `files_8_rename` (every rule, a name taken, a
   good name, an empty one, Cancel), `files_9_trash` (Delete's question, Keep it, a tap outside it, its Delete, the sizes, Restore, a page with no
   card),

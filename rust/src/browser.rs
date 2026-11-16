@@ -574,10 +574,11 @@ fn root_listing(st: &FsStorage, pick: bool, clock: &mut dyn FnMut() -> u32) -> O
     Some(l)
 }
 
-// (how many times this thread asked for the Files card's free space: a test's)
+// (how many times this thread asked for the Files card's free space, and began reading a folder: the tests')
 #[cfg(test)]
 thread_local! {
     pub static FREE_LINE_READS: std::cell::Cell<u32> = const { std::cell::Cell::new(0) };
+    static FOLDER_READS: std::cell::Cell<u32> = const { std::cell::Cell::new(0) };
 }
 
 /// The storage's free space as Files' root says it, for the Library's Files card (2.2); None with no storage to
@@ -735,6 +736,8 @@ impl Browser {
     fn enter(&mut self, p: StoragePath, from_root: bool, now: u32) -> bool {
         let pick = self.pick();
         let Some(st) = self.storage.as_ref() else { return false };
+        #[cfg(test)]
+        FOLDER_READS.with(|n| n.set(n.get() + 1));
         // (the Trash place: its listing keeps the newest entries past the cap, so what was just deleted is listed)
         let trash = !pick && self.place_path(PlaceKind::Trash).is_some_and(|t| t == p);
         match if trash { FsListing::start_trash(st) } else { FsListing::start(st, &p, pick) } {
@@ -1036,6 +1039,68 @@ impl Browser {
         self.next = None;
         self.built = false;
         self.build_rows();
+    }
+
+    /// A card's act changed one entry of the folder shown (issue #144): the listing is told, and the rows are made
+    /// again from it as Sort and Show make them. Nothing is read again: reading and stat-ing a folder of thousands at
+    /// one go would hold the UI. `new` is the entry's new name, None when it is gone (into the trash, or back out of
+    /// it). The rows keep what they had read of their files, and the screen stays where it was. False when the
+    /// listing does not hold the entry (`reread` then reads the folder again, in its slices).
+    fn entry_changed(&mut self, old: &[u8], new: Option<&[u8]>) -> bool {
+        if !self.built {
+            return false;
+        }
+        let (Some(l), Some(at)) = (self.listing.as_mut(), self.at.clone()) else { return false };
+        let Some(i) = l.entries.iter().position(|e| e.name == old) else { return false };
+        match new {
+            Some(n) => l.entries[i].name = n.to_vec(),
+            // (no row is made of this kind: build_rows and the trash's rows pass over it; its stat is known, so it
+            // is never asked again)
+            None => l.entries[i].kind = FsKind::Other,
+        }
+        // a row is its entry in the listing (`ix`): what the others had read stays theirs
+        let had: std::collections::HashMap<usize, Row> = self.rows.iter().filter(|r| r.ix != usize::MAX && r.ix != i).map(|r| (r.ix, r.clone())).collect();
+        // (the rows on screen meanwhile, should another order's stats take a tick more: without the item, or with
+        // its new name)
+        match new.and_then(|n| Some((std::str::from_utf8(n).ok()?, at.join(n)?))) {
+            Some((name, path)) => {
+                if let Some(r) = self.rows.iter_mut().find(|r| r.ix == i) {
+                    r.name = name.to_string();
+                    r.path = path;
+                    r.detail = None;
+                }
+            }
+            None => self.rows.retain(|r| r.ix != i),
+        }
+        let (keep, said) = (self.screen, self.toast.take());
+        self.card = None;
+        self.rebuild();
+        if self.next.is_some() {
+            self.sort_step(FS_SLICE_MS);
+        }
+        for r in self.rows.iter_mut().chain(self.next.iter_mut().flatten()) {
+            if let Some(o) = had.get(&r.ix) {
+                let stat = r.stat.or(o.stat);
+                *r = Row { stat, ..o.clone() };
+            }
+        }
+        self.screen = keep;
+        self.toast = said;
+        true
+    }
+
+    /// The folder shown read again from the storage, in the listing's slices (a tick at a time, with its notice):
+    /// after an act that found the item changed, or that the listing could not follow. Never at one go.
+    fn reread(&mut self) {
+        self.card = None;
+        match self.at.clone() {
+            Some(p) => {
+                let said = self.toast.take();
+                self.enter(p, false, now_ms());
+                self.toast = said;
+            }
+            None => self.show_root(),
+        }
     }
 
     fn in_import_place(&self) -> bool {
@@ -1749,7 +1814,7 @@ impl Browser {
     /// The keyboard's name `new` for the item it is up for. The name it has (Done with nothing typed) renames
     /// nothing and checks nothing: None. Else the name rules first (their words), then the allow-list for the new
     /// name (its words: the keyboard stays), then fsview's rename, which never replaces and checks the item and
-    /// the imports again: its new path.
+    /// the imports again: its new path, and its row under the new name (`entry_changed`).
     pub fn rename_to(&mut self, new: &[u8]) -> Result<Option<StoragePath>, (String, Then)> {
         let rn = self.renaming.clone().ok_or((tr("Couldn't rename.").to_string(), Then::Nothing))?;
         let (folder, old) = rn.path.split_last().map(|(f, n)| (f, n.to_vec())).unwrap_or_default();
@@ -1763,7 +1828,11 @@ impl Browser {
         if folder.join(new).is_some_and(|to| !st.can_write(&to)) {
             return Err((zone_refusal(new), Then::Keyboard));
         }
-        st.rename(&rn.path, &rn.stat, new).map(Some).map_err(|e| refusal(e, Act::Rename, &old, new))
+        let to = st.rename(&rn.path, &rn.stat, new).map_err(|e| refusal(e, Act::Rename, &old, new))?;
+        if !self.entry_changed(&old, Some(new)) {
+            self.reread();
+        }
+        Ok(Some(to))
     }
 
     /// Delete on the open card: the item checked again and not held; then the card asks, as the Library asks before a
@@ -1796,26 +1865,33 @@ impl Browser {
     }
 
     /// The Delete question's Delete: the item checked again, then into the trash with its record (fsview's trash,
-    /// which checks the item and the imports again). The toast: where it went.
+    /// which checks the item and the imports again), and its row gone from the rows (`entry_changed`). The toast:
+    /// where it went.
     fn trash_card(&mut self) -> Result<String, (String, Then)> {
         let (path, stat) = self.card_item()?;
         let st = self.storage.as_ref().ok_or((tr("Couldn't move to trash.").to_string(), Then::Nothing))?;
         st.trash(&path, &stat).map_err(|e| refusal(e, Act::Trash, b"", b""))?;
         self.sizes_again();
+        if !path.split_last().is_some_and(|(_, name)| self.entry_changed(name, None)) {
+            self.reread();
+        }
         // TRANSLATORS: a toast in Files: the file or folder went to the trash folder on the Kindle's storage (%s).
         Ok(cformat!(tr("Moved to %s"), self.trash_label().as_str()))
     }
 
     /// Restore on the open card of a trash entry: the entry checked again, then put back by fsview's restore (a file
     /// or folder where its record says, " 2" when the name is taken; a notebook to the Library, given " 2" there by
-    /// the store when its name is taken). The toast (none when the entry held nothing to put back), and the notebook
-    /// put back, for the host.
+    /// the store when its name is taken); its row is gone from the Trash place's rows (`entry_changed`). The toast
+    /// (none when the entry held nothing to put back), and the notebook put back, for the host.
     fn restore_card(&mut self) -> Result<(Option<String>, Option<String>), (String, Then)> {
         let (path, _) = self.card_item()?;
         let entry = path.split_last().map(|(_, n)| n.to_vec()).unwrap_or_default();
         let st = self.storage.as_ref().ok_or((tr("Couldn't restore.").to_string(), Then::Nothing))?;
         let done = st.restore(&entry).map_err(|e| refusal(e, Act::Restore, b"", b""))?;
         self.sizes_again();
+        if !self.entry_changed(&entry, None) {
+            self.reread();
+        }
         // TRANSLATORS: a toast in Files' Trash: the item is back; %s is where (a folder on the Kindle's storage, such
         // as grimoire/photos, or the Library folder of a notebook). One line.
         let back_to = |w: &str| cformat!(tr("Restored to %s."), w);
@@ -1828,6 +1904,10 @@ impl Browser {
                 }
                 store_list(&mut self.books);
                 self.book_keys = None;
+                // (a page in the trash is listed by its notebook's name, which is known again now)
+                for r in self.rows.iter_mut().filter(|r| r.trash.as_ref().is_some_and(|t| t.kind == TrashKind::Page)) {
+                    r.title = None;
+                }
                 let folder = if nb.folder.is_empty() { tr("Notebooks").to_string() } else { nb.folder.as_str().to_string() };
                 (Some(back_to(&folder)), Some(id))
             }
@@ -2524,7 +2604,6 @@ impl Browser {
             B_DELETE_YES => {
                 match self.trash_card() {
                     Ok(msg) => {
-                        self.relist(now_ms());
                         self.redraw_full(a);
                         app_toast(a, &msg, 2500);
                     }
@@ -2534,7 +2613,6 @@ impl Browser {
             }
             B_CARD_RESTORE => match self.restore_card() {
                 Ok((msg, nb)) => {
-                    self.relist(now_ms());
                     self.redraw_full(a);
                     if let Some(m) = msg {
                         app_toast(a, &m, 2500);
@@ -2563,7 +2641,7 @@ impl Browser {
             Then::Relist => {
                 keyboard_close(&mut self.kb);
                 self.renaming = None;
-                self.relist(now_ms());
+                self.reread();
                 self.redraw_full(a);
             }
             _ => {
@@ -2578,8 +2656,8 @@ impl Browser {
 
     /// The rename keyboard's Done: an empty name is no rename (the keyboard closes, as the Library's do), and neither
     /// is the name as it was (nothing typed: nothing is checked or done); else the name is checked and the item
-    /// renamed, and the folder read again with it under its new name. A name the rules refuse, or one taken, keeps
-    /// the keyboard up with it.
+    /// renamed, and its row has its new name in the rows' order (`entry_changed`: the folder is not read again). A
+    /// name the rules refuse, or one taken, keeps the keyboard up with it.
     fn rename_done(&mut self, a: &mut App) {
         let text = self.kb.text.as_bytes().to_vec();
         if text.is_empty() {
@@ -2591,7 +2669,6 @@ impl Browser {
             Ok(Some(_)) => {
                 keyboard_close(&mut self.kb);
                 self.renaming = None;
-                self.relist(now_ms());
                 self.redraw_full(a);
             }
             Err((msg, then)) => self.refused(a, &msg, then),
@@ -3631,6 +3708,94 @@ mod tests {
         assert_eq!(card_named(&mut p, "Book.pdf").1, ["Import as notebook", "Cancel"]);
     }
 
+    // No freeze after a write (issue #144): a rename, a delete and a restore change their one row from the listing
+    // Files holds, as Sort and Show remake the rows, and the folder is not read again (reading and stat-ing a folder
+    // of thousands at one go held the UI). So no folder is begun to be read by the three acts, a file put there
+    // behind Files' back is not listed by them, the renamed row sits where its new name belongs (by name, and by
+    // size once sorted so), the rows keep what they had read, and the screen stays where it was.
+    #[test]
+    fn a_write_changes_its_row_without_reading_the_folder_again() {
+        let (base, _g) = storage("inplace");
+        let t = format!("{base}/grimoire/templates");
+        std::fs::create_dir_all(format!("{t}/Sub")).unwrap();
+        for (n, size) in [("Grid.png", 1000), ("Lines.png", 3000), ("Zeta.png", 2000)] {
+            std::fs::write(format!("{t}/{n}"), vec![b'x'; size]).unwrap();
+        }
+        i18n_set("en");
+        let mut b = Browser::default();
+        assert!(b.open(PickSpec::place(), FilesPrefs { card: true, ..Default::default() }));
+        assert!(b.go(sp("grimoire/templates")));
+        assert_eq!(row_names(&b), ["Sub", "Grid.png", "Lines.png", "Zeta.png"]);
+        let reads = FOLDER_READS.with(|n| n.get());
+        std::fs::write(format!("{t}/Behind.png"), b"put there over USB, after the listing").unwrap();
+        let zeta = row_of(&b, "Zeta.png");
+        b.rows[zeta].detail = Some("read before".to_string());
+        // rename: the row moves to where its name belongs
+        b.open_card(row_of(&b, "Grid.png"));
+        assert_eq!(b.rename_begin(), Ok(b"Grid.png".to_vec()));
+        assert_eq!(b.rename_to(b"Omega.png"), Ok(Some(sp("grimoire/templates/Omega.png"))));
+        assert_eq!(row_names(&b), ["Sub", "Lines.png", "Omega.png", "Zeta.png"]);
+        assert!(b.card.is_none() && b.ready && b.next.is_none());
+        assert_eq!(b.rows[row_of(&b, "Omega.png")].path, sp("grimoire/templates/Omega.png"));
+        assert_eq!(b.rows[row_of(&b, "Zeta.png")].detail.as_deref(), Some("read before"), "the other rows keep what they read");
+        // its card acts on the renamed file
+        b.open_card(row_of(&b, "Omega.png"));
+        assert!(b.unchanged(&b.card.clone().unwrap()));
+        // delete: the row goes
+        assert_eq!(b.delete_ask(), Ok(()));
+        assert!(b.trash_card().is_ok());
+        assert_eq!(row_names(&b), ["Sub", "Lines.png", "Zeta.png"]);
+        // sorted by size, a rename keeps that order (every row had its stat: the new order is there at once)
+        b.prefs.sort = 2;
+        b.rebuild();
+        b.list_now();
+        assert_eq!(row_names(&b), ["Sub", "Lines.png", "Zeta.png"]);
+        b.open_card(row_of(&b, "Zeta.png"));
+        assert_eq!(b.rename_begin(), Ok(b"Zeta.png".to_vec()));
+        assert!(b.rename_to(b"Alpha.png").is_ok());
+        assert_eq!(row_names(&b), ["Sub", "Lines.png", "Alpha.png"]);
+        assert!(b.next.is_none(), "no order is left being made");
+        // Show remakes the rows from the same listing: the deleted file does not come back, the new names stay
+        b.prefs.sort = 0;
+        b.prefs.show = 1;
+        b.rebuild();
+        assert_eq!(row_names(&b), ["Sub", "Alpha.png", "Lines.png"]);
+        assert_eq!(FOLDER_READS.with(|n| n.get()), reads, "no folder was read again");
+        // the screen stays where it was (a second screen of rows)
+        b.per_last = 2;
+        b.screen = 1;
+        b.open_card(row_of(&b, "Lines.png"));
+        assert_eq!(b.rename_begin(), Ok(b"Lines.png".to_vec()));
+        assert!(b.rename_to(b"Lines2.png").is_ok());
+        assert_eq!(b.screen, 1);
+        // the Trash place: Restore takes its row away, the others keep their names and sizes
+        std::fs::write(format!("{t}/Extra.png"), vec![b'e'; 500]).unwrap();
+        b.relist(now_ms());
+        b.open_card(row_of(&b, "Extra.png"));
+        assert!(b.delete_ask().is_ok() && b.trash_card().is_ok());
+        assert!(b.go(sp("grimoire/trash")));
+        for _ in 0..16 {
+            b.work(2480, now_ms());
+        }
+        // (both went within one second: their order in the trash is by their names there, which end in random digits)
+        let labels = |b: &Browser| {
+            let mut v = b.rows.iter().map(|r| (b.row_label(r), r.size)).collect::<Vec<_>>();
+            v.sort();
+            v
+        };
+        assert_eq!(labels(&b), [("Extra.png".to_string(), Some(500)), ("Omega.png".to_string(), Some(1000))]);
+        let reads = FOLDER_READS.with(|n| n.get());
+        let extra = b.rows.iter().position(|r| b.row_label(r) == "Extra.png").unwrap();
+        b.open_card(extra);
+        assert_eq!(b.restore_card(), Ok((Some("Restored to grimoire/templates.".to_string()), None)));
+        assert_eq!(labels(&b), [("Omega.png".to_string(), Some(1000))], "its name and size were not read again");
+        assert_eq!(FOLDER_READS.with(|n| n.get()), reads, "the trash was not listed again");
+        // an act the listing cannot follow reads the folder again, in slices: never at one go
+        assert!(!b.entry_changed(b"no such entry", None));
+        b.reread();
+        assert_eq!(FOLDER_READS.with(|n| n.get()), reads + 1);
+    }
+
     // Rename never changes a name nobody typed (issue #144). A name the keyboard cannot show as it is is not offered
     // to it, and the toast says why: a control character (which the keyboard leaves out of its text: before, Done
     // then renamed the file to the name without it), or 96 bytes and more (its end would be cut away). Done with the
@@ -3789,7 +3954,8 @@ mod tests {
     // Library folder meanwhile, it comes back as " 2" there, and keeps its place in the Library's order.
     #[test]
     fn a_notebook_the_library_deleted_comes_back() {
-        let (_base, _g) = storage("nbrestore");
+        let (base, _g) = storage("nbrestore");
+        std::fs::create_dir_all(format!("{base}/grimoire/trash")).unwrap();
         let mut nb = NotebookInfo::default();
         assert_eq!(store_create("Alpha", "School", PAPER_BLANK, &mut nb), 0);
         let id = nb.id.as_str().to_string();
@@ -3797,6 +3963,9 @@ mod tests {
         assert_eq!(store_delete(&id), 0);
         let mut again = NotebookInfo::default();
         assert_eq!(store_create("alpha", "School", PAPER_BLANK, &mut again), 0);
+        // (a page of it, deleted earlier: listed by its notebook's name once that is in the Library again)
+        let page = format!("{id}-p3-1700000000");
+        std::fs::write(format!("{base}/grimoire/trash/{page}"), b"").unwrap();
         i18n_set("en");
         let mut b = Browser::default();
         assert!(b.open(PickSpec::place(), FilesPrefs { card: true, ..Default::default() }));
@@ -3805,8 +3974,13 @@ mod tests {
             b.work(2480, now_ms());
         }
         assert_eq!(b.row_label(&b.rows[0]), "Alpha");
+        assert_eq!(b.row_label(&b.rows[1]), page, "its notebook is not in the Library: the entry's own name");
         assert_eq!(card_of(&mut b, 0).1, ["Restore", "Cancel"]);
         assert_eq!(b.restore_card(), Ok((Some("Restored to School.".to_string()), Some(id.clone()))));
+        for _ in 0..8 {
+            b.work(2480, now_ms());
+        }
+        assert_eq!(b.rows.iter().map(|r| b.row_label(r)).collect::<Vec<_>>(), ["Alpha 2"], "the page by its notebook's name now");
         let mut all = Vec::new();
         store_list(&mut all);
         let back = all.iter().find(|n| n.id.as_str() == id).expect("in the Library again");
