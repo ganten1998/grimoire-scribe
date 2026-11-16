@@ -371,9 +371,14 @@ English names: `Import`, `documents`, `Downloads`, `Templates`, `Photos`, `Fonts
 `Trash`, `All_storage`, `Show_Files_in_Library`), and the open card's `files.card.import`, `files.card.open`,
 `files.card.pictures`, `files.card.notebook`, `files.card.cancel`, and in Files `files.card.rename`,
 `files.card.trash` (Delete, which asks first), `files.card.delete` (the Delete question's Delete; its Keep it is
-`files.card.cancel`) and `files.card.restore` (a trash entry's). The rename keyboard is the Library's: its
-keys are tapped where they are drawn (as for New folder's), and Esc (keys on) or Back is its Cancel. A Library
-notebook's Delete confirmation is `tap library delete.yes`. In Files: `files.crumb.N` (the Nth part of the
+`files.card.cancel`), `files.card.opener` (while that question is up: where the card's Delete that opened it was
+tapped, for a second tap at the place of the first) and `files.card.restore` (a trash entry's). The rename keyboard
+is the Library's: its keys are tapped where they are drawn (as for New folder's), and Esc (keys on) or Back is its
+Cancel. A Library notebook's Delete confirmation is `tap library delete.yes`. A Delete question takes its answer
+once it has been shown, 450 ms after its frame went to the panel (docs/DESIGN.md, "The question is seen before it is
+answered"): a script waits `wait 500` between the tap that opens one and its answer (Files' Delete, Keep it or a tap
+outside; the Library's `delete.yes`), and tests/scenarios/files_18_delete_twice.qs, which taps sooner on purpose,
+runs on the script's clock. In Files: `files.crumb.N` (the Nth part of the
 path bar, from 1: Files, the place, then each folder; the last opens the Go to sheet), `files.sort` and
 `files.show` (its chips), and `files.goto.N` (the Go to sheet's Nth row).
 

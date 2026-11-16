@@ -10,6 +10,8 @@
 # newest first, each with its size and date (the photo by its own name, the notebook by its name, the page by its
 # notebook's); the page has no card (pages are listed, never restored); the photo's card offers Restore alone, which
 # puts it back where it was ("Restored to grimoire/photos.").
+# The question takes an answer once it has been shown, 450 ms after its frame (files_18_delete_twice has the taps
+# that come sooner): each answer here follows a wait of 500.
 # rust-only
 wait 300
 tap library files-card
@@ -24,7 +26,7 @@ wait 300
 expect files.card is picture
 expect files.card.rows is Rename|Delete|Cancel
 tap library files.card.trash
-wait 300
+wait 500
 expect files.card is delete
 expect files.card.details is Delete "beach.jpg"?
 expect files.card.rows is Delete (moves it to grimoire/trash)|Keep it
@@ -41,7 +43,7 @@ expect files.order is Other|Trip|beach.jpg
 tap library files.item.beach.jpg
 wait 300
 tap library files.card.trash
-wait 300
+wait 500
 expect files.card is delete
 tap 930 60
 wait 300
@@ -53,7 +55,7 @@ expect storage.names.grimoire/trash is 20261101-000000-0001-p3-1789995000|202611
 tap library files.item.beach.jpg
 wait 300
 tap library files.card.trash
-wait 300
+wait 500
 tap library files.card.delete
 wait 300
 expect toast is Moved to grimoire/trash

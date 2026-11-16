@@ -2605,12 +2605,26 @@ trash, and the Trash place puts an entry back. Pick mode (New notebook's From a 
   keyboard up (no " 2" is offered), and a path of 600 bytes "Path too long.". Renamed: its row has the new name, where
   that name belongs in the rows' order.
 - **Delete** asks first, as the Library asks before a notebook goes: the card's Delete (after the check, and not for a
-  held item) turns the card into the Library's question, drawn as its sheet in the same place (`sheet_rect`,
-  `ui_sheet`): `Delete "name"?` (a long name cut with "..." so the question mark stays), "Delete (moves it to
-  grimoire/trash)" and "Keep it". Keep it, a tap outside the sheet, Esc and Back move nothing. Only its Delete moves
-  the item: the check again, `FsStorage::trash`, then "Moved to grimoire/trash" and its row gone. Restore undoes it.
-  The trash is cleaned over USB, and a `trash` folder removed whole there is made again as Files opens (as every start
-  makes it; a link at its name is left alone and refused), so Delete does not fail until the next start.
+  held item) turns the card into the Library's question, drawn as its sheet (`sheet_rect`, `ui_sheet`): `Delete "name"?`
+  (a long name cut with "..." so the question mark stays), "Delete (moves it to grimoire/trash)" and "Keep it". Keep it,
+  a tap outside the sheet, Esc and Back move nothing. Only its Delete moves the item: the check again,
+  `FsStorage::trash`, then "Moved to grimoire/trash" and its row gone. Restore undoes it. The trash is cleaned over USB,
+  and a `trash` folder removed whole there is made again as Files opens (as every start makes it; a link at its name is
+  left alone and refused), so Delete does not fail until the next start.
+- **The question is seen before it is answered.** The tap that opens it changes at once what the next tap lands on, and
+  the panel shows the question later (a frame takes about 270 ms to show, docs/INK-PERFORMANCE.md), so the second of two
+  taps at one place on the card's Delete would answer a question nobody saw. Two things keep it from that, wherever the
+  card and the question are drawn. The time: the screen says it drew a question (`app_ask`, as it draws one for the
+  first time or at a new place), `app_flush` notes when the frame that carries it goes to the panel (`App.asked`), and a
+  contact answers only if it came down `PEN_REOPEN_MS` or more after that (450 ms, the time the Graph waits before a
+  pen's second tap on a node counts), by the kernel's time of the contact's frame where the kernel says, else by when it
+  was read (`app_asked_seen`). A contact that came down sooner is let go, down to its lift, wherever it landed: it is
+  not Delete, not Keep it, and outside the sheet it does not close the question. Esc and Back are no contacts, and close
+  it at once. The place: the sheet is in the Library's place for it, but moved down or up by the least that keeps its
+  Delete a tap's slop (`ui_px(30)`) clear of the card row that opened it (`question_dy`: the card's Delete, where the
+  finger is), so a tap where the first one was lands on no Delete even once the question has been shown. The Library's own
+  question for a notebook has the same guard on its Delete row (`library_event_in`); its Keep it answers at once, and
+  moves nothing.
 - **The font in use.** Settings names Classic's own font, and its Bold file, by their paths under `grimoire/fonts`
   (`font=file:<path>`, `font_bold=file:<path>`), so a file gone from that path would leave the next start in
   Terminess. The browser is told both names before a card acts (`fonts_named`) and knows the item by identity
@@ -2663,18 +2677,21 @@ trash, and the Trash place puts an entry back. Pick mode (New notebook's From a 
   ms)` once a walk of the trash is through, and `fonts: a rename in Files: what the check found of N font file(s) went
   with them` (docs/KINDLE.md).
 - **Tests**: `browser.rs`'s unit tests (a folder card's check by identity, each refusal's words, Rename's rules and
-  places, a name nobody typed never given, the allow-list's words, Delete's question, Delete then Restore, a notebook
-  the Library deleted coming back as " 2", a trash past the cap keeping its newest, a write changing its row with no
-  folder read again, the font in use, a restore the store could not finish, a trash removed over USB),
-  `test_fsview_writes.rs`'s trash sizes (slices, depth, links, the record left out), its listing past the cap and a
-  picture a page still waits for, and the scenarios `files_8_rename` (every rule, a name taken, a good name, an empty
-  one, Cancel), `files_9_trash` (Delete's question, Keep it, a tap outside it, its Delete, the sizes, Restore, a page
-  with no card), `files_10_restore_notebook` (the Library's Delete, Restore, " 2"), `files_11_busy` (an importing
-  PDF), `files_12_swap` (a folder swapped under its card, through the runner's `storage move`), `files_13_es_fit`,
-  `files_14_es_fit_classic` (Spanish, each text checked for fit, upright and sideways), `files_15_font_in_use` (the
-  font in use and its Bold file: Delete refused, Rename with the setting following and the font still drawing),
-  `files_16_font_kept` (the next start) and `files_17_es_font_in_use`. `test_sec_font_verdict.rs` has the renamed
-  font's verdict: no new check, in Grimoire's own folder and in the cache, and at the app's next start.
+  places, a name nobody typed never given, the allow-list's words, Delete's question, the question answered only once it
+  has been shown and its Delete never under the row that opened it, Delete then Restore, a notebook the Library deleted
+  coming back as " 2", a trash past the cap keeping its newest, a write changing its row with no folder read again, the
+  font in use, a restore the store could not finish, a trash removed over USB), `test_fsview_writes.rs`'s trash sizes
+  (slices, depth, links, the record left out), its listing past the cap and a picture a page still waits for, and the
+  scenarios `files_8_rename` (every rule, a name taken, a good name, an empty one, Cancel), `files_9_trash` (Delete's
+  question, Keep it, a tap outside it, its Delete, the sizes, Restore, a page with no card), `files_10_restore_notebook`
+  (the Library's Delete, Restore, " 2"), `files_11_busy` (an importing PDF), `files_12_swap` (a folder swapped under its
+  card, through the runner's `storage move`), `files_13_es_fit`, `files_14_es_fit_classic` (Spanish, each text checked
+  for fit, upright and sideways), `files_15_font_in_use` (the font in use and its Bold file: Delete refused, Rename with
+  the setting following and the font still drawing), `files_16_font_kept` (the next start), `files_17_es_font_in_use`
+  and `files_18_delete_twice` (two taps at one place on the card's Delete, on a folder's card and a file's on a first
+  row, upright and sideways: the question up and the item where it was; its Delete once it has been shown).
+  `test_sec_font_verdict.rs` has the renamed font's verdict: no new check, in Grimoire's own folder and in the cache,
+  and at the app's next start.
 
 ## Shared building blocks (2.1, lane L0)
 

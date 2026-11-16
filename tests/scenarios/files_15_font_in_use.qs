@@ -46,7 +46,7 @@ expect storage.names.grimoire/trash is
 tap library files.item.GrimoireTestCFF.otf
 wait 300
 tap library files.card.trash
-wait 300
+wait 500
 expect files.card is delete
 tap library files.card.delete
 wait 300

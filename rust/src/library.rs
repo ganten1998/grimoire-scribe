@@ -7433,7 +7433,10 @@ fn act(a: &mut App, h: &Hit) {
                 app_toast_dismiss(a); // (no toast while it is made: the owner, 2026-11-04; "PDF saved" says when)
             }
         }
-        H_MORE_DELETE => open_modal(a, Modal::Delete),
+        H_MORE_DELETE => {
+            open_modal(a, Modal::Delete);
+            app_ask(a); // (drawn, not shown yet: its Delete waits until it has been, library_event_in)
+        }
         H_MORE_GRAPH | H_FMORE_GRAPH => {
             // (arg: 1 leaves it out, 0 shows it again)
             let omit = h.arg != 0;
@@ -8418,10 +8421,14 @@ fn library_event_in(a: &mut App, ev: &InEvent) {
         return;
     }
     if ph == 0 {
+        // The question before a notebook is deleted takes its Delete once it has been shown, never before
+        // (app_asked_seen): a contact that came down on that row sooner answers nothing, down to its lift. Keep it
+        // moves nothing, and answers at once.
+        let unseen = modal == Modal::Delete && !app_asked_seen(a, ev);
         let s = lib(a);
         press_begin(&mut s.press, ev.x, ev.y, ev.t_ms);
         s.pressed_at = now_ms();
-        let h = hits_find(&s.hits, ev.x, ev.y).copied();
+        let h = hits_find(&s.hits, ev.x, ev.y).copied().filter(|h| !(unseen && h.id == H_DELETE_YES));
         s.pressed = None;
         if let Some(h) = h {
             s.pressed = Some(h);
@@ -9564,6 +9571,73 @@ mod tests {
         let mut on_disk = Settings::default();
         settings_load(&mut on_disk);
         assert!(!on_disk.files_card);
+        library_free(&mut a);
+        canvas_free(&mut a.screen);
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    // The question before a notebook is deleted takes its Delete only once it has been shown (issue #144: the guard
+    // Files' own question has, app_asked_seen): a contact that came down on that row before the question's frame
+    // went to the panel, or sooner than PEN_REOPEN_MS after it, deletes nothing and leaves the question up. Keep it
+    // moves nothing and answers at once, as before; a tap on its Delete after that deletes, as before.
+    #[test]
+    fn a_notebooks_delete_question_takes_its_delete_once_shown() {
+        let root = std::env::temp_dir().join(format!("grimoire-delete-seen-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        assert_eq!(store_init(root.to_str().unwrap()), 0);
+        let mut nb = NotebookInfo::default();
+        assert_eq!(store_create("A", "", PAPER_BLANK, &mut nb), 0);
+        let mut a = pen_record_app();
+        a.scr = ScreenId::Library;
+        settings_default(&mut a.settings);
+        lib(&mut a).modal = Modal::None;
+        reload(&mut a);
+        redraw(&mut a, RefreshMode::Ui);
+        let centre = |a: &mut App, id: i32| {
+            let h = lib(a).hits.h.iter().find(|h| h.id == id).copied().unwrap_or_else(|| panic!("no control {id}"));
+            ((h.r.x + h.r.w / 2) as f32, (h.r.y + h.r.h / 2) as f32)
+        };
+        let tap = |a: &mut App, (x, y): (f32, f32), t_ms: u32, k_ms: u32| {
+            for type_ in [InType::TouchDown, InType::TouchUp] {
+                library_event_in(a, &InEvent { type_, x, y, t_ms, k_ms, ..Default::default() });
+            }
+        };
+        let ask = |a: &mut App| {
+            act(a, &Hit { id: H_CARD_MORE, arg: 0, ..Default::default() });
+            assert_eq!(lib(a).modal, Modal::More);
+            let p = centre(a, H_MORE_DELETE);
+            tap(a, p, 1000, 0);
+            assert_eq!((lib(a).modal, a.asked), (Modal::Delete, Asked::Drawn));
+        };
+        ask(&mut a);
+        let yes = centre(&mut a, H_DELETE_YES);
+        for t in [1000, now_ms().wrapping_add(60_000)] {
+            tap(&mut a, yes, t, 0);
+            assert!(lib(&mut a).modal == Modal::Delete && lib(&mut a).books.len() == 1 && lib(&mut a).pressed.is_none(), "before its frame");
+        }
+        app_flush(&mut a);
+        let Asked::Shown(at) = a.asked else { panic!("{:?}", a.asked) };
+        for (t, k) in [(at, 0), (at.wrapping_add(PEN_REOPEN_MS - 1), 0), (at.wrapping_add(9_000), at.wrapping_sub(5))] {
+            tap(&mut a, yes, t, k);
+            assert!(lib(&mut a).modal == Modal::Delete && lib(&mut a).books.len() == 1, "too soon after its frame: {t} (kernel {k}), shown at {at}");
+        }
+        // Keep it at once
+        let keep = centre(&mut a, H_CANCEL);
+        tap(&mut a, keep, at, 0);
+        assert!(lib(&mut a).modal == Modal::None && lib(&mut a).books.len() == 1);
+        // asked again: Keep it even before the frame, as before
+        ask(&mut a);
+        let keep = centre(&mut a, H_CANCEL);
+        tap(&mut a, keep, 1000, 0);
+        assert!(lib(&mut a).modal == Modal::None && lib(&mut a).books.len() == 1);
+        // and its Delete, once shown
+        ask(&mut a);
+        app_flush(&mut a);
+        let Asked::Shown(at) = a.asked else { panic!("{:?}", a.asked) };
+        let yes = centre(&mut a, H_DELETE_YES);
+        tap(&mut a, yes, at.wrapping_add(PEN_REOPEN_MS), 0);
+        assert!(lib(&mut a).modal == Modal::None && lib(&mut a).books.is_empty(), "its Delete, once shown");
+        assert_eq!(a.toast.as_str(), "Moved to grimoire/trash");
         library_free(&mut a);
         canvas_free(&mut a.screen);
         let _ = std::fs::remove_dir_all(&root);

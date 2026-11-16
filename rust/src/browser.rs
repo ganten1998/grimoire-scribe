@@ -404,6 +404,11 @@ struct Card {
     /// the Delete question in place of the row's card (issue #144): `Delete "name"?`, asked as the Library asks it
     /// of a notebook, after the card's Delete and before anything is moved
     confirm: bool,
+    /// the question: the card row whose tap opened it (the card's Delete, where the finger was; empty when no tap
+    /// did), which the question's Delete is never drawn under; and where the question was when the app was last
+    /// told it had been drawn (app_ask: it takes no answer before it has been shown), empty before
+    opener: Rect,
+    asked: Rect,
     rect: Rect,
     hits: HitList,
     /// the pointer went down inside it
@@ -468,7 +473,8 @@ pub struct Browser {
     status_stamp: u32,
     /// how far the listing's entries of no known kind have been stat-ed (in slices, before the rows are built)
     stat_from: usize,
-    /// the lift of a contact that opened the card by a hold is not a tap on anything
+    /// the lift of a contact that opened the card by a hold is not a tap on anything; nor is a contact that came
+    /// down on the Delete question before it had been shown (app_asked_seen)
     swallow: bool,
     /// where each row on screen was last drawn (a status or count that arrives redraws only that row)
     row_rects: Vec<(usize, Rect)>,
@@ -2382,7 +2388,15 @@ impl Browser {
         if card.confirm {
             // the Delete question, drawn as the Library draws it for a notebook: its sheet, its title, its two rows
             let (rh, gap) = (u(140.0), u(20.0));
-            let rect = crate::library::sheet_rect(aw, ah, u(120.0) + u(72.0) + lines.len() as i32 * (rh + gap));
+            let mut rect = crate::library::sheet_rect(aw, ah, u(120.0) + u(72.0) + lines.len() as i32 * (rh + gap));
+            // (its Delete, the first row, clear of the card row that opened it: question_dy)
+            let first = ui_sheet_inner(rect, true);
+            rect.y += Self::question_dy(rect, Rect::new(first.x, first.y, first.w, rh), card.opener, ah);
+            // Drawn for the first time, or at a new place (the screen turned): not shown yet, and no contact answers
+            // it until it has been (card_pointer). Every draw of it is invalidated in the same call.
+            if rect != card.asked {
+                app_ask(a);
+            }
             let name = self.card_row(&card).map_or(String::new(), |r| r.name.clone());
             let c = &mut a.screen;
             let inner = ui_sheet(c, rect, &Self::delete_title(&name, rect.w - u(160.0)));
@@ -2395,7 +2409,7 @@ impl Browser {
                 font_draw_left(c, FontFace::Bold, ui_text_size(), Rect::new(r.x + rh + u(10.0), r.y, r.w - rh - u(30.0), r.h), label, 0);
                 hits_add(&mut hits, r, *id, *arg);
             }
-            self.card = Some(Card { rect, hits, ..card });
+            self.card = Some(Card { rect, hits, asked: rect, ..card });
             return;
         }
         let cw = (aw - 2 * u(40.0)).min(u(980.0));
@@ -2433,6 +2447,26 @@ impl Browser {
             y += rh + gap;
         }
         self.card = Some(Card { rect, hits, ..card });
+    }
+
+    /// How far down (negative: up) the Delete question's sheet moves from the Library's place for it, so that its
+    /// Delete row `row` is clear of `opener`, the card row whose tap opened the question, by a tap's slop (ui.rs
+    /// press_move's): the second of two taps at one place then lands on no Delete, wherever the card was drawn. The
+    /// smaller of the two moves that keep the sheet on a screen `ah` tall; 0 when the row is clear where it is,
+    /// when no tap opened the question, or when neither move fits.
+    fn question_dy(sheet: Rect, row: Rect, opener: Rect, ah: i32) -> i32 {
+        let keep = rect_inflate(opener, u(30.0));
+        if rect_is_empty(opener) || !rect_overlaps(row, keep) {
+            return 0;
+        }
+        let (down, up) = (keep.y + keep.h - row.y, keep.y - (row.y + row.h));
+        let fits = |dy: i32| sheet.y + dy >= u(40.0) && sheet.y + sheet.h + dy <= ah - u(40.0);
+        match (fits(down), fits(up)) {
+            (true, true) if down <= -up => down,
+            (true, false) => down,
+            (_, true) => up,
+            _ => 0,
+        }
     }
 
     /// Where the card is (to refresh it alone), empty with none.
@@ -2595,13 +2629,20 @@ impl Browser {
 
     fn card_pointer(&mut self, a: &mut App, ph: i32, ev: &InEvent) -> BrowserResult {
         if self.swallow && ph >= 0 {
-            // (the contact that held a row open the card: its lift is nothing)
+            // (the contact that held a row open the card, or came down on a question not shown yet: its lift is nothing)
             if ph == 2 {
                 self.swallow = false;
             }
             return BrowserResult::None;
         }
         let Some(card) = self.card.as_mut() else { return BrowserResult::None };
+        if ph == 0 && card.confirm && !app_asked_seen(a, ev) {
+            // The Delete question has not been shown, or only just: this contact came down on what was there before it
+            // (the second of two taps on the card's Delete). It answers nothing, down to its lift, wherever it
+            // landed: not Delete, not Keep it, and outside the sheet it does not close the question.
+            self.swallow = true;
+            return BrowserResult::None;
+        }
         if ph == 0 {
             press_begin(&mut self.press, ev.x, ev.y, ev.t_ms);
             card.inside = rect_contains(card.rect, ev.x as i32, ev.y as i32);
@@ -2705,7 +2746,13 @@ impl Browser {
             // Delete asks first: the card becomes the question, and only its Delete moves the item
             B_CARD_TRASH => {
                 match self.delete_ask() {
-                    Ok(()) => self.redraw(a, RefreshMode::Ui),
+                    Ok(()) => {
+                        // (where the finger is: the question's Delete is drawn clear of this row)
+                        if let Some(c) = self.card.as_mut() {
+                            c.opener = h.r;
+                        }
+                        self.redraw(a, RefreshMode::Ui);
+                    }
                     Err((msg, then)) => self.refused(a, &msg, then),
                 }
                 BrowserResult::None
@@ -3036,10 +3083,14 @@ impl Browser {
 
     /// The point a runner tap on a control named so lands on (docs/SIM.md): back, prev, next, row.N, more.N,
     /// item.NAME, and the card's import, open, pictures, notebook, rename, trash, restore and cancel; the Delete
-    /// question's delete (its Keep it is cancel).
+    /// question's delete (its Keep it is cancel) and, while the question is up, opener: where the card's Delete that
+    /// opened it was tapped (a second tap at the first's place).
     pub fn point(&self, name: &str) -> Option<(f32, f32)> {
         let centre = |h: &Hit| ((h.r.x + h.r.w / 2) as f32, (h.r.y + h.r.h / 2) as f32);
         if let Some(c) = &self.card {
+            if name == "card.opener" {
+                return (c.confirm && !rect_is_empty(c.opener)).then(|| centre(&Hit { r: c.opener, ..Default::default() }));
+            }
             let id = match name {
                 "card.import" => B_CARD_IMPORT,
                 "card.open" => B_CARD_OPEN,
@@ -4305,6 +4356,182 @@ mod tests {
         assert_eq!(r, Ok((Some("Restored to School.".to_string()), Some(twin.clone()))));
         let twins: Vec<(&str, &str)> = b.books.iter().filter(|n| n.name.as_str() == "Twin").map(|n| (n.name.as_str(), n.folder.as_str())).collect();
         assert_eq!(twins, [("Twin", "School"), ("Twin", "School")], "the browser's list is the store's, read once");
+    }
+
+    // A finger's tap at (x, y): its down, come down at `k` by the kernel's time (0: nobody says, as on the runner) and
+    // read at `t`, and its lift, through the browser's contacts.
+    fn tap_at(b: &mut Browser, a: &mut App, (x, y): (f32, f32), t: u32, k: u32) -> BrowserResult {
+        let ev = |type_| InEvent { type_, x, y, t_ms: t, k_ms: k, ..Default::default() };
+        b.pointer(a, 0, &ev(InType::TouchDown));
+        b.pointer(a, 2, &ev(InType::TouchUp))
+    }
+
+    // Delete's question must be seen before it is answered (issue #144: the second of two taps at one place on the
+    // card's Delete had moved the item with the question never seen). The tap on the card's Delete opens the question
+    // and moves nothing. Until the question's frame has gone to the panel no contact answers it, wherever it lands:
+    // where the first tap was, on its Delete, on Keep it, outside the sheet. Nor does one that came down sooner than
+    // PEN_REOPEN_MS after the frame, by the kernel's time of the contact where it says (a contact read late came down
+    // when the kernel saw it). The question stays up and the item where it was. A tap after that answers as before:
+    // Keep it and a tap outside close it, its Delete moves the item. On a folder's card (Open and Import above its
+    // Delete) and a file's, each on a first row; and the question's Delete is not where the first tap was.
+    #[test]
+    fn the_delete_question_is_answered_only_once_it_has_been_shown() {
+        let (base, _g) = storage("deleteseen");
+        let ph = format!("{base}/grimoire/photos");
+        std::fs::create_dir_all(format!("{ph}/Atlas")).unwrap();
+        std::fs::write(format!("{ph}/Atlas/p1.png"), b"p").unwrap();
+        i18n_set("en");
+        let mut a = screen_app();
+        #[cfg(feature = "sim")]
+        {
+            let (mut w, mut h) = (a.w, a.h);
+            crate::sim_sdl::display_set_orientation(0, &mut w, &mut h);
+        }
+        let there = |p: &str| std::path::Path::new(p).exists();
+        let up = |b: &Browser| b.card.as_ref().is_some_and(|c| c.confirm);
+        for (folder, name, rows) in [
+            ("grimoire/photos", "Atlas", &["Open", "Import 1 picture as notebook", "Rename", "Delete", "Cancel"][..]),
+            ("grimoire/photos/Atlas", "p1.png", &["Rename", "Delete", "Cancel"][..]),
+        ] {
+            let item = format!("{base}/{folder}/{name}");
+            let mut b = Browser::default();
+            assert!(b.open(PickSpec::place(), FilesPrefs { card: true, ..Default::default() }));
+            assert!(b.go(sp(folder)));
+            assert_eq!(row_of(&b, name), 0, "a first row");
+            b.draw(&mut a);
+            b.open_card(0);
+            b.draw(&mut a);
+            assert_eq!(b.card_lines(&b.card.clone().unwrap()).1.iter().map(|r| r.3.as_str()).collect::<Vec<_>>(), rows);
+            let first = b.point("card.trash").expect("the card's Delete");
+            let row = b.card.as_ref().unwrap().hits.h.iter().find(|h| h.id == B_CARD_TRASH).unwrap().r;
+            assert_eq!(b.point("card.opener"), None, "no question yet");
+            let t0 = now_ms();
+            tap_at(&mut b, &mut a, first, t0, 0);
+            assert!(up(&b) && there(&item), "{name}: the first tap asks");
+            assert_eq!(a.asked, Asked::Drawn, "drawn, and not on the panel yet");
+            assert_eq!((b.card.as_ref().unwrap().opener, b.point("card.opener")), (row, Some(first)));
+            let (yes, keep, outside) = (b.point("card.delete").unwrap(), b.point("card.cancel").unwrap(), (930.0, 60.0));
+            let yes_row = b.card.as_ref().unwrap().hits.h.iter().find(|h| h.id == B_DELETE_YES).unwrap().r;
+            assert!(!rect_contains(yes_row, first.0 as i32, first.1 as i32), "{name}: its Delete is not where the first tap was");
+            // before its frame went out: nothing, whenever the contact says it came down
+            for at in [first, yes, keep, outside] {
+                for t in [t0, t0.wrapping_add(60_000)] {
+                    assert_eq!(tap_at(&mut b, &mut a, at, t, 0), BrowserResult::None);
+                    assert!(up(&b) && there(&item) && !b.swallow, "{name}: a tap at {at:?} before the question was shown");
+                }
+            }
+            // the frame goes to the panel
+            app_flush(&mut a);
+            let Asked::Shown(shown) = a.asked else { panic!("the flush presents it: {:?}", a.asked) };
+            let soon = shown.wrapping_add(PEN_REOPEN_MS - 1);
+            let seen = shown.wrapping_add(PEN_REOPEN_MS);
+            for at in [first, yes, keep, outside] {
+                // too soon after it; and read late, having come down before the frame by the kernel's time
+                for (t, k) in [(shown, 0), (soon, 0), (shown.wrapping_add(9_000), shown.wrapping_sub(5)), (shown.wrapping_add(9_000), soon)] {
+                    assert_eq!(tap_at(&mut b, &mut a, at, t, k), BrowserResult::None);
+                    assert!(up(&b) && there(&item) && !b.swallow, "{name}: a tap at {at:?}, {t} (kernel {k}), shown at {shown}");
+                }
+            }
+            assert_eq!(a.asked, Asked::Shown(shown), "drawn again where it was, it is not asked anew");
+            // seen: a tap outside closes it, Keep it too, and nothing moved
+            tap_at(&mut b, &mut a, outside, seen, 0);
+            assert!(b.card.is_none() && there(&item), "{name}: a tap outside, once shown");
+            b.open_card(0);
+            b.draw(&mut a);
+            tap_at(&mut b, &mut a, first, seen, 0);
+            assert!(up(&b) && a.asked == Asked::Drawn, "{name}: asked again, drawn anew");
+            app_flush(&mut a);
+            let Asked::Shown(shown) = a.asked else { panic!("{:?}", a.asked) };
+            tap_at(&mut b, &mut a, keep, shown.wrapping_add(9_000), shown.wrapping_add(PEN_REOPEN_MS));
+            assert!(b.card.is_none() && there(&item), "{name}: Keep it, once shown");
+            // and its Delete, once shown, moves the item
+            b.open_card(0);
+            b.draw(&mut a);
+            tap_at(&mut b, &mut a, first, seen, 0);
+            app_flush(&mut a);
+            let Asked::Shown(shown) = a.asked else { panic!("{:?}", a.asked) };
+            assert!(up(&b) && there(&item));
+            tap_at(&mut b, &mut a, yes, shown.wrapping_add(PEN_REOPEN_MS), 0);
+            assert!(b.card.is_none() && !there(&item), "{name}: its Delete, once shown, moves it");
+            assert_eq!(a.toast.as_str(), "Moved to grimoire/trash");
+            // (the next folder's item is inside this one: back out of the trash)
+            let entry = std::fs::read_dir(format!("{base}/grimoire/trash")).unwrap().next().unwrap().unwrap().file_name();
+            assert!(b.storage.as_ref().unwrap().restore(entry.as_encoded_bytes()).is_ok() && there(&item));
+        }
+        canvas_free(&mut a.screen);
+    }
+
+    // The question's Delete is never drawn under the card row that opened it (issue #144), wherever the card was: for
+    // every row of a screen, upright and sideways, of a folder of files and of one that begins with two folders (one
+    // with a picture to import, so its card has a row more), the card's Delete lies a tap's slop clear of the
+    // question's Delete, and the sheet is the Library's, on the screen, moved up or down by no more than that takes.
+    // The cards of a first row lie over the Library's place for the question's Delete, or within the slop of it (a
+    // file's, and a folder's with nothing to import), and there the sheet has moved; a question no tap opened (a
+    // test's) is in the Library's place.
+    #[test]
+    fn the_delete_questions_delete_is_not_under_the_row_that_opened_it() {
+        let (base, _g) = storage("deleteplace");
+        let g = format!("{base}/grimoire");
+        std::fs::create_dir_all(format!("{g}/photos/Atlas")).unwrap();
+        std::fs::create_dir_all(format!("{g}/photos/Birds")).unwrap();
+        std::fs::create_dir_all(format!("{g}/templates")).unwrap();
+        std::fs::write(format!("{g}/photos/Birds/p1.png"), b"p").unwrap();
+        for i in 0..12 {
+            std::fs::write(format!("{g}/photos/c{i:02}.jpg"), b"x").unwrap();
+            std::fs::write(format!("{g}/templates/t{i:02}.png"), b"x").unwrap();
+        }
+        i18n_set("en");
+        assert_eq!(font_init(), 0);
+        ui_init(300.0);
+        let mut moved = Vec::new();
+        for (w, h) in [(1860, 2480), (2480, 1860)] {
+            let mut a = App { w, h, dpi: 300.0, ..Default::default() };
+            assert_eq!(canvas_init(&mut a.screen, w, h), 0);
+            for folder in ["grimoire/templates", "grimoire/photos"] {
+                let mut b = Browser::default();
+                assert!(b.open(PickSpec::place(), FilesPrefs { card: true, ..Default::default() }));
+                assert!(b.go(sp(folder)));
+                b.draw(&mut a);
+                let on_screen = b.row_rects.len();
+                assert!(on_screen >= 8, "{on_screen} rows");
+                for i in 0..on_screen {
+                    b.open_card(i);
+                    b.draw(&mut a);
+                    let opener = b.card.as_ref().unwrap().hits.h.iter().find(|h| h.id == B_CARD_TRASH).expect("the card's Delete").r;
+                    assert_eq!(b.delete_ask(), Ok(()));
+                    b.draw(&mut a);
+                    let place = b.card_rect();
+                    assert_eq!(place, crate::library::sheet_rect(w, h, place.h), "no tap opened it: the Library's place");
+                    // (as the tap on the card's Delete notes it: card_pointer)
+                    b.card.as_mut().unwrap().opener = opener;
+                    b.draw(&mut a);
+                    let c = b.card.as_ref().unwrap();
+                    let yes = c.hits.h.iter().find(|h| h.id == B_DELETE_YES).unwrap().r;
+                    let at = format!("{w}x{h} {folder} row {i}");
+                    assert!(!rect_overlaps(yes, rect_inflate(opener, u(30.0))), "{at}: Delete {yes:?} under the card's {opener:?}");
+                    assert!(c.rect.y >= u(40.0) && c.rect.y + c.rect.h <= h - u(40.0), "{at}: {:?}", c.rect);
+                    assert_eq!((c.rect.x, c.rect.w, c.rect.h), (place.x, place.w, place.h));
+                    if c.rect.y != place.y {
+                        let was = Rect { y: yes.y - (c.rect.y - place.y), ..yes };
+                        assert!(rect_overlaps(was, rect_inflate(opener, u(30.0))), "{at}: moved for nothing");
+                        assert!(yes.y == opener.y + opener.h + u(30.0) || yes.y + yes.h == opener.y - u(30.0), "{at}: moved by more than it takes");
+                        moved.push((w, folder, i));
+                    }
+                    b.card = None;
+                }
+            }
+            canvas_free(&mut a.screen);
+        }
+        // (where it moves today: upright, for the cards of the first two rows of files and of a first row's folder
+        // with nothing to import, which lie over the Library's place for it; sideways, for a first row's file, whose
+        // card's Delete ends within the slop of it)
+        let today = [(1860, "grimoire/templates", 0), (1860, "grimoire/templates", 1), (1860, "grimoire/photos", 0), (2480, "grimoire/templates", 0)];
+        assert_eq!(moved, today);
+        // neither way fits (a screen too short for the sheet to move): where it was
+        let (sheet, row) = (Rect::new(70, 50, 1720, 512), Rect::new(110, 220, 1640, 140));
+        assert_eq!(Browser::question_dy(sheet, row, Rect::new(400, 200, 900, 130), 620), 0);
+        assert_eq!(Browser::question_dy(sheet, row, RECT_EMPTY, 2480), 0);
+        assert_eq!(Browser::question_dy(sheet, row, Rect::new(400, 500, 900, 130), 2480), 0, "clear as it is");
     }
 
     #[test]

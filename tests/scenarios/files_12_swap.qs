@@ -41,7 +41,7 @@ expect storage.names.grimoire/trash is 20261101-000000-0001-p3-1789995000|202611
 tap library files.more.2
 wait 300
 tap library files.card.trash
-wait 300
+wait 500
 expect files.card is delete
 expect files.card.details is Delete "Trip"?
 storage move grimoire/photos/Trip grimoire/photos/Was

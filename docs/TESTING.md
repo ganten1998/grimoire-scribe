@@ -2969,7 +2969,7 @@ steps 1, 5 and 11 answer; and the two floors of free room beside it (`STATE_FREE
 ## 2.2, Files' rename, delete and restore (issue #144): device checks
 
 Not run on a Scribe yet. Automated: `browser.rs`'s unit tests, `test_fsview_writes.rs`'s trash sizes and listing,
-`test_sec_font_verdict.rs`'s renamed font and the scenarios `files_8_rename` to `files_17_es_font_in_use`
+`test_sec_font_verdict.rs`'s renamed font and the scenarios `files_8_rename` to `files_18_delete_twice`
 (docs/DESIGN.md, Files: rename, delete and restore). On the
 Mac only the storage writes' fallback rename runs, so what only the Scribe's storage can tell comes after the three
 checks of "2.2, Files' storage writes (issue #117): device checks" above (whether its storage takes the no-replace
@@ -2983,7 +2983,9 @@ Grimoire open and Files' card shown (New > From a file... > Show Files in Librar
    `files: an item of templates was renamed` (no name). Rename it to a template's name already there: "That name
    is taken.", and that file is unchanged (`stat -c '%i %s %Y'` before and after).
 2. **Delete**: its card > Delete: the question `Delete "Probe2.png"?` comes up as the Library's does for a
-   notebook, and Keep it leaves the file. Delete again, then Delete (moves it to grimoire/trash): "Moved to
+   notebook, and Keep it leaves the file. With the file on the first row of its folder, upright, tap the card's
+   Delete twice quickly at one place: the question is up and the file is where it was (the second tap answered
+   nothing: say if the question went, or the file did). Then its Delete (moves it to grimoire/trash): "Moved to
    grimoire/trash", the row is gone, and
    `ls -a /mnt/us/grimoire/trash/files-*` shows `Probe2.png` beside `.grimoire-trash`, whose `from=` line is
    `grimoire/templates/Probe2.png`. The inode is the one it had in `templates` (one rename, as step 2 of #117's

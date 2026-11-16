@@ -16,6 +16,14 @@ Waiting:
   (its place in its notebook was never kept; an optional extra in the plan).
 - **A held item's row is not greyed**: its card still offers Rename and Delete, and each says "Importing now." when
   tapped (the busy check is one per tap, not one per row drawn).
+- **The Delete question's wait is a fixed time**: an answer counts 450 ms after the question's frame was sent to the
+  panel (`PEN_REOPEN_MS`, docs/DESIGN.md, "The question is seen before it is answered"), not when the panel says the
+  frame is up. A frame takes about 270 ms to show at room temperature and longer in the cold
+  (docs/INK-PERFORMANCE.md); the driver's books know when a grayscale update has ended, and only display_fbink.rs
+  reads them (`display_fast_busy` tells of fast updates alone). Asking the display would make the wait exact. Not
+  timed on the Scribe (TESTING.md, the device checks' step 2 has the two taps). The Library's own question is asked
+  once, as it opens: turned while it is up, it is drawn at its new place and its Delete answers at once, where Files'
+  is asked anew.
 - **A name taken on rename** says "That name is taken." and keeps the keyboard up with the name; the plan's "offer
   Name 2" is not built (Restore does give " 2").
 - **Names the keyboard cannot show as they are** are not offered to it: 96 bytes and more ("Name too long."), or

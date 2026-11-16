@@ -78,7 +78,7 @@ expect files.keyboard is 0
 tap library files.item.Grid.png
 wait 300
 tap library files.card.trash
-wait 300
+wait 500
 expect files.card.details is ¿Borrar «Grid.png»?
 expect files.card.rows is Borrar (lo mueve a grimoire/trash)|Conservarlo
 shot 08-asked
@@ -121,7 +121,7 @@ wait 300
 expect files.card is picture
 shot 13-card-sideways
 tap library files.card.trash
-wait 300
+wait 500
 expect files.card is delete
 shot 13-asked-sideways
 tap library files.card.cancel

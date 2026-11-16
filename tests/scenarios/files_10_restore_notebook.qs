@@ -14,7 +14,7 @@ tap library notebook-menu.20261101-000000-0001
 wait 200
 expect library.sheet is more
 tap library more.delete
-wait 200
+wait 500
 expect library.sheet is delete
 tap library delete.yes
 wait 300
