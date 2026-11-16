@@ -666,3 +666,65 @@ fn a_fill_stopped_by_a_rename_ends_on_the_notebook_as_it_is() {
     assert!(log.contains("its notebook was renamed, moved or deleted while the pages were made") && log.contains("book: the PDF import ended without a word; the book's notebook opens as it is"), "{log}");
     assert_eq!(book_pdf_told(), None, "nothing of the import to say");
 }
+
+// A fill's end waits to be taken (the app does not step the job while the Kindle sleeps), and the slice that files
+// the fill's PDF ends meanwhile, saying nothing: that is no end of the book, and the fill's end is still the one the
+// job takes. The notebook is the filled one, with its pages counted, and the import's end is there to be told.
+#[test]
+fn a_fill_s_end_that_waits_is_not_lost_to_its_filing_slice() {
+    let e = setup("filing");
+    let bytes = pdffix::tabs();
+    let key = key_of(&bytes);
+    let id = koreader_book(&e, &key, 4, &[1, 3]);
+    let file = e.book("Tabs.pdf", &bytes);
+    let mut st = hand_over(&e, &key, &file, 2, 4);
+    // the app's ticks until the fill's commit ends: its end is given to the job, and the job is not stepped again
+    let t0 = std::time::Instant::now();
+    let mut given = false;
+    while !given {
+        book_step(150, &mut st);
+        assert_eq!(st.state, BookState::Running);
+        let f = fill_tick(true, DPI);
+        if f != Finished::Nothing {
+            assert!(matches!(f, Finished::Filled { added: 2, .. }), "{f:?}");
+            assert_eq!(fill_told_src(), book_pdf_src());
+            book_pdf_end("", f);
+            given = true;
+        }
+        let mut kind = -1;
+        let mut jid = FixedStr::<STORE_ID_LEN>::new();
+        let r = bg_poll_job(Some(&mut kind), Some(&mut jid));
+        if kind == BgKind::PdfImport as i32 {
+            let src = queued_src(jid.as_str());
+            let fin = finished(jid.as_str(), r > 0);
+            if src.is_some() && src == book_pdf_src() {
+                book_pdf_end(jid.as_str(), fin);
+            }
+        }
+        assert!(t0.elapsed().as_secs() < 60, "the fill never ended");
+        std::thread::sleep(std::time::Duration::from_millis(5));
+    }
+    // the filing slice ends while the job is not stepped: the app gives its end to the job as it does every end
+    let mut filed = 0;
+    while bg_busy() {
+        let mut kind = -1;
+        let mut jid = FixedStr::<STORE_ID_LEN>::new();
+        let r = bg_poll_job(Some(&mut kind), Some(&mut jid));
+        if kind == BgKind::PdfImport as i32 {
+            let src = queued_src(jid.as_str());
+            let fin = finished(jid.as_str(), r > 0);
+            assert_eq!(fin, Finished::Nothing, "the filing slice says nothing");
+            if src.is_some() && src == book_pdf_src() {
+                book_pdf_end(jid.as_str(), fin);
+                filed += 1;
+            }
+        }
+        assert!(t0.elapsed().as_secs() < 60, "the filing slice never ended");
+        std::thread::sleep(std::time::Duration::from_millis(5));
+    }
+    assert_eq!(filed, 1, "the filing slice ended with the job still waiting");
+    book_step(150, &mut st);
+    assert_eq!((st.state, st.nb.as_str(), st.made, st.added), (BookState::Done, id.as_str(), false, 2), "{st:?}");
+    assert_eq!(st.pid, e.info(&id).page_ids[1], "the reader's page, book page 2");
+    assert!(matches!(book_pdf_told(), Some((_, Finished::Filled { added: 2, .. }))));
+}

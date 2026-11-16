@@ -2014,8 +2014,13 @@ pub fn book_pdf_src() -> Option<String> {
 
 /// How the import of a version 2 book job's PDF ended (`id`: its job; a fill's commit has none): the next
 /// book_step ends the job on the notebook that end is about (pdfimport::ended_notebook: the import's choice), at
-/// the reader's page, or fails as a book does.
+/// the reader's page, or fails as a book does. A job's end that says nothing (a slice that left a fill's pages
+/// made, or filed its PDF) is no end of the book, and never takes the place of one that waits to be taken: the app
+/// does not step the job while the Kindle sleeps, and a fill's filing slice ends meanwhile.
 pub fn book_pdf_end(id: &str, fin: crate::pdfimport::Finished) {
+    if fin == crate::pdfimport::Finished::Nothing {
+        return;
+    }
     // (the notebook that end is about, asked now, while the import's result is still its own)
     let nb = crate::pdfimport::ended_notebook(id, &fin);
     with(|s| {
