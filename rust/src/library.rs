@@ -1815,12 +1815,6 @@ pub fn library_cards_in_front(a: &App) -> bool {
     a.scr == ScreenId::Library && a.lib.as_deref().is_none_or(|s| s.modal == Modal::None && !s.files.open && !s.map.open && !s.map_picker.open)
 }
 
-/// Whether a control of the Library is held down now (a card, a button: pressed, not yet let go). The end of a
-/// PDF handed over by its path waits for the lift, so that no notebook opens under a finger (app.rs, book_tick).
-pub fn library_pressed(a: &App) -> bool {
-    a.scr == ScreenId::Library && a.lib.as_deref().is_some_and(|s| s.pressed.is_some())
-}
-
 /// Whether the Library currently owns the raw gesture recording context.
 pub fn library_record_active(a: &App) -> bool {
     a.lib.as_deref().is_some_and(|s| s.modal == Modal::Gestures && s.record_action != SHORTCUT_NONE)

@@ -551,16 +551,18 @@ fn book_holds(a: &App) -> bool {
 // toast, then the editor opens on the reader's page.
 //
 // A PDF handed over by its path (version 2, 2.2) is the PDF import's: this only follows it. When it ends with the
-// Library's cards still in front (no sheet, no Files, no Graph, nothing pressed) the notebook opens on the
-// reader's page, as version 1's does. With anything else in front nothing opens over it: the import says its own
-// toast, as for a dropped PDF, and the reader's page is kept as the page the notebook opens at. An end that comes
-// while the Kindle sleeps, or while a fill's pages go in, is taken once that is over.
+// Library's cards still in front (no sheet, no Files, no Graph) the notebook opens on the reader's page, as
+// version 1's does. With anything else in front nothing opens over it: the import says its own toast, as for a
+// dropped PDF, and the reader's page is kept as the page the notebook opens at. An end that comes while the Kindle
+// sleeps, or while a fill's pages go in, is taken once that is over: both end by themselves. It waits for nothing
+// the user does or does not do: not for a finger to lift (a lift that a fill's hold swallowed would never come; the
+// Library forgets what was pressed as it is left, and a lift that reaches the page finds nothing it began).
 fn book_tick(a: &mut App) {
     book_fits_tick();
     if a.book.state != BookState::Running {
         return;
     }
-    if a.book.pdf && (a.asleep || crate::pdfimport::fill_busy().is_some() || crate::library::library_pressed(a)) {
+    if a.book.pdf && (a.asleep || crate::pdfimport::fill_busy().is_some()) {
         return;
     }
     book_step(150, &mut a.book);

@@ -2311,8 +2311,8 @@ a picked PDF does, with the picker's toast for it. The job follows the import th
 (`book_pdf_end`: the import's job end for its PDF, or the fill's commit, which `fill_tick` begins by its own rules)
 and names the notebook made, filled or found whole and the page of it that holds the reader's book page (by the
 count the notebook's pages name, when the two engines count differently). `book_tick` then decides by what is in
-front. The Library's cards (`library_cards_in_front`: no sheet, no Files, no Graph; a control held down is waited
-out): the notebook opens at that page, with version 1's toasts. Anything else: nothing opens over it, the import's
+front. The Library's cards (`library_cards_in_front`: no sheet, no Files, no Graph): the notebook opens at that
+page, with version 1's toasts, a finger resting on the Library or not (the end waits for nothing the user does). Anything else: nothing opens over it, the import's
 own toast shows (`pdf_import_told`), and the page is kept as the one the notebook opens at (`book_pdf_keep_page`:
 `last_page` alone, and never for the notebook the editor has open). An end that comes while the Kindle sleeps or a
 fill's pages go in is taken after. An import that fails fails the book, and says the import's own toast

@@ -2998,8 +2998,9 @@ book's card opens at book page 3), `y_koreader_pdf_6_sheet.qs` (the same with a 
 `y_koreader_pdf_7_asleep.qs` (the end taken at the wake), `y_koreader_pdf_8_password.qs` (a PDF the import refuses
 says the import's "PDF needs a password."), `y_koreader_pdf_9_refused.qs` (a path the walk refuses says the book's
 failure), `y_koreader_pdf_10_queued.qs` (behind a dropped PDF's import: the toast that says it waits, then both
-notebooks) and `y_koreader_pdf_11_already.qs` (a book whose notebook holds every page: opened at the reader's page,
-nothing made).
+notebooks), `y_koreader_pdf_11_already.qs` (a book whose notebook holds every page: opened at the reader's page,
+nothing made) and `y_koreader_pdf_12_pressed.qs` (a finger held on a Library button at the end: the notebook
+opens, and the lift does nothing on the page).
 
 **Not run on a Scribe.** The owner's check, on a build of this branch (a planner PDF with coloured tabs, more than
 20 pages, that Grimoire never saw; a second, long PDF, of a few hundred pages; a DjVu or CBZ book):
