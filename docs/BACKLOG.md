@@ -118,7 +118,7 @@ the name rules, the busy check and the copy job (`BgKind::CopyFile`). Nothing on
   Only if the sandbox ever fails on a device: a quiet "no worker" ending the UI does not toast would stop it.
 - **Links and the outline (lane L6)**: DONE in 2.1.0-beta.2 (FORMAT.md, "Imports: PDFs"). Left for later: web links
   are counted and left out (the optional QR card, 8.I of the plan, is the way to keep them); the outline names
-  only new notebooks' pages (a page's own name would keep it, which matters only when a fill comes in 2.2);
+  a new notebook's pages, and a fill only the pages it adds (#123, below);
   a worker caps at 60,000 links a PDF (after the water level a notebook keeps 14,400 at most, but a PDF past the
   cap loses its later pages' links before the densest-first trim sees them); `/Next` action chains, JavaScript
   and `/GoToR` are ignored; a Link that is hidden (`/F` bit 2) or not viewed (bit 6) is skipped (a choice the plan
@@ -218,6 +218,39 @@ the name rules, the busy check and the copy job (`BgKind::CopyFile`). Nothing on
   docs/TESTING.md, "2.1.0-beta.2, L9", step 7: "see its section at the end" for the fix round's section,
   which other sections now follow.
 
+## The same PDF again fills its notebook (2.2, #123): what waits, and what is for the owner
+
+- **The Scribe check has not run** (docs/TESTING.md, "2.2, the same PDF again fills its notebook"): whether the
+  book key Grimoire computes for a PDF KOReader opened is the key KOReader wrote, and whether KOReader's link boxes
+  and the import's agree within 2 px. A fill adds no link between the pages KOReader sent, but a later Open this
+  book whose plugin sends links again would add a second copy of a link to a page the fill added if they do not.
+  The tests can only stand KOReader's side in.
+- **A notebook without a record goes by its key alone**, so another file with the same key and the same page count
+  (an edited copy that kept the sampled bytes) fills it with that file's pages, their links and their outline
+  names; the pages the notebook had are not touched, and deleting the added pages takes all of it. A notebook
+  with a record is filled only by its own file (SHA-256 and size). Notebooks KOReader made never have a record
+  (the file record on the KOReader route, in the hardening entries below, would give them one). Two notebooks
+  without a record that hold one key (an earlier version's import and KOReader's, say): a fill goes to the first
+  the key match finds, the one changed last.
+- **Not built: a card for the notebook being made**, and `links=` carrying the held pages' count (the latter a
+  format change the owner has not asked for). A fill shows the staying notice's count, and the toast at its end.
+- **The toast of a fill with unreadable pages** says "Added N book pages." only: the blank pages are in the log.
+  A string of its own ("Added N book pages. Some pages couldn't be read.") would be one more msgid.
+- **The commit holds the input** while it runs, as KOReader's book job does, and begins only with the Library at
+  rest. It writes one page file a page added, each with an fsync (util.rs notes 15 to 25 ms for one on the
+  Kindle), so a fill of many pages holds the Library for that many writes; its time has not been measured on a
+  Scribe.
+- **A notebook deleted while its fill was made** is not filled, and its PDF, still in `import/`, becomes a
+  notebook of its own at the next scan (a renamed or moved one is filled at the next scan as it is now). The
+  owner may prefer the PDF to wait instead.
+- **A commit that fails before its notebook.ini** (the storage full) leaves the pictures it moved into the
+  notebook's `bg/`, listed by its index and shown by no page; a later fill of the same PDF shares them.
+- **Pages a fill made blank stay blank**: the same PDF dropped again finds them present and says "already". Delete
+  them to have them made again.
+- **The picker** offers no import for a PDF whose notebook (without a record) holds its key (the hardening entry
+  below), so a fill from Files needs the file dropped in `import/`. KOReader's hand-over by path, in its own issue,
+  will start the same job on the book's notebook.
+
 ## Hardening round (2026-11), import: what waits
 
 - **The Scribe check of this round has not run** (docs/TESTING.md, "Hardening round (2026-11), import"). Its
@@ -232,7 +265,9 @@ the name rules, the busy check and the copy job (`BgKind::CopyFile`). Nothing on
 - **Carry the file record on the KOReader route.** Open this book in Grimoire finds a book's notebook by its
   key; let it confirm with the record where one exists.
 - **A pick of a PDF whose key a notebook without a record holds.** Today it says "PDF already imported."; the
-  owner decides whether a pick should import it as a notebook of its own.
+  owner decides whether a pick should import it as a notebook of its own. (Since #123 such a PDF fills that
+  notebook when the notebook lacks pages; the picker's card for it still offers Open its notebook only, so a
+  fill from Files needs the file dropped in `import/`.)
 - **A book whose first notebook was deleted.** A notebook made while another holds the key carries the key in
   its record alone. If the first is then deleted and the book's file is imported again, another notebook still
   holds the key, so the new one is made that way too, and KOReader's Open this book in Grimoire then starts a
@@ -242,7 +277,8 @@ the name rules, the busy check and the copy job (`BgKind::CopyFile`). Nothing on
   owner decides whether the import should give the bare key (`source=`, `book=`) to a new notebook when no
   notebook has those two lines (the book's file, imported again, would then be the notebook KOReader opens,
   with a record); the entry above, on a pick whose key a notebook without a record holds, is the other half
-  of the same question.
+  of the same question. Since #123 the notebook that holds the bare key is also the one a fill goes to by the
+  key alone (KOReader's, then), and any file of that key and page count fills it.
 - **The import's whole-file read.** Measured on the Scribe at the owner's check; if its time or its use of
   memory asks for it, spread it over the slices or release its cached pages as it goes.
 - **Endings without a test.** A file that cannot be read whole (at the start, where it then counts as another

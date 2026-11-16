@@ -32,6 +32,14 @@
 - Housekeeping: package-check's size guard is now 13 MB for the Kindle binary and 7 MB for the zip (was 11 MB and
   6 MB): the new Settings menu brought the binary to 10.96 MB, and 2.2's Files, PDF fills and KOReader's hand-over
   by path need more.
+- **The same PDF again fills its notebook** (#123). When a PDF's notebook lacks some of the book's pages (pages
+  deleted since, or a notebook KOReader made, which holds only the pages KOReader sent), dropping the PDF in
+  `grimoire/import` again adds those pages in book order, with the tabs that reach them or start on them and the
+  outline's names for them, and says "Added N book pages." Pages already there, their ink, names and links stay
+  as they were (deleting the added pages takes back everything the fill added). A notebook with every page still
+  says "PDF already imported."; a PDF with another page count becomes a notebook of its own. The pages go in
+  once the notebook is closed and the Library is in front, in a moment that says "Adding book pages"; until then
+  the notebook opens as it is, and KOReader's Open this book in Grimoire opens the book as usual.
 
 - The toolbar's page chip shows the page alone, at its usual size, on every page of a notebook where the page
   and the count would not fit it on some page (every notebook of 1000 pages or more, and many of 100 or more,

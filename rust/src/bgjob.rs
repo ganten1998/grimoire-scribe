@@ -140,6 +140,16 @@ pub fn bg_cancel_notebook(id: &str) {
 pub fn bg_prefer(kind:BgKind,id:&str,path:&str) {
     with(|s|for j in s.q.iter_mut().filter(|j|j.kind==kind&&j.id.as_str()==id) {j.notify=j.dir.as_str()==path;});
 }
+/// Whether a child runs a job on notebook `id` now (its id is the notebook's: an export, a compaction, a picture,
+/// a layout, previews). A PDF fill's commit, in the UI, waits for it; and while that commit runs, no job on the
+/// notebook starts (next_job): a job queued for it waits for the commit's end.
+pub fn bg_notebook_busy(id: &str) -> bool {
+    with(|s| (s.pid > 0 && s.running.id.as_str() == id) || (s.extra_pid > 0 && s.extra.id.as_str() == id))
+}
+// A queued job on the notebook a PDF fill's commit writes now (pdfimport.rs): it starts after that commit.
+fn held(j: &Job) -> bool {
+    !j.id.is_empty() && crate::pdfimport::fill_holds(j.id.as_str())
+}
 /// Running includes an exited child until it is reaped, so a reopened view still receives its result.
 pub fn bg_pending(kind:BgKind,id:&str)->bool {
     let same=|j:&Job|j.kind==kind&&j.id.as_str()==id;
@@ -619,7 +629,7 @@ fn next_job(s: &mut State, cores: bool) -> Option<(usize, bool)> {
         s.extra_off = false;
         let mut next: Option<usize> = None;
         for i in 0..s.q.len() {
-            if s.extra_pid > 0 && previews_overlap(&s.q[i], &s.extra) {
+            if held(&s.q[i]) || (s.extra_pid > 0 && previews_overlap(&s.q[i], &s.extra)) {
                 continue;
             }
             if next.is_none_or(|n| rank(&s.q[i]) < rank(&s.q[n])) {
@@ -631,7 +641,7 @@ fn next_job(s: &mut State, cores: bool) -> Option<(usize, bool)> {
     if s.extra_pid > 0 || s.extra_off || !cores {
         return None;
     }
-    let i = s.q.iter().position(|j| j.kind == BgKind::PagePreviews && j.notify && !previews_overlap(j, &s.running))?;
+    let i = s.q.iter().position(|j| j.kind == BgKind::PagePreviews && j.notify && !held(j) && !previews_overlap(j, &s.running))?;
     Some((i, true))
 }
 

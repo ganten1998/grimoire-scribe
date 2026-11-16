@@ -139,29 +139,51 @@ pub fn pdflinks_fill(
 /// the bytes the file would have (outline lines included), the densest pages first, each page keeping its first
 /// links in annotation order. The 10% left is room for Copy page and later fills. Returns how many links went.
 pub fn pdflinks_water(dl: &mut DocLinks) -> usize {
+    water(dl, &|_| false)
+}
+
+/// pdflinks_water for a fill into a notebook that has links already (2.2): the links `kept` says yes to (the ones
+/// the notebook had) are never trimmed and count against the caps as they are; the level trims only the others,
+/// by the same rule among them (the densest pages first, each page keeping its first links). Returns how many went.
+pub fn pdflinks_water_keeping(dl: &mut DocLinks, kept: &dyn Fn(&DocLink) -> bool) -> usize {
+    water(dl, kept)
+}
+
+fn water(dl: &mut DocLinks, fixed: &dyn Fn(&DocLink) -> bool) -> usize {
     let max_n = DOCLINKS_MAX * DOCLINKS_WATER_PCT / 100;
     let max_b = DOCLINKS_FILE_MAX * DOCLINKS_WATER_PCT / 100;
     let total_b = doclinks_bytes(dl);
     if dl.links.len() <= max_n && total_b <= max_b {
         return 0;
     }
-    let base = total_b - dl.links.iter().map(|l| doclinks_link_bytes(dl, l)).sum::<usize>();
-    // rank of each link in its page, and its bytes
+    let held: Vec<bool> = dl.links.iter().map(fixed).collect();
+    let held_n = held.iter().filter(|&&h| h).count();
+    // (the bytes of everything that stays whatever the level: the header, the carried lines, the links held)
+    let base = total_b - dl.links.iter().zip(&held).filter(|(_, &h)| !h).map(|(l, _)| doclinks_link_bytes(dl, l)).sum::<usize>();
+    // rank of each link among its page's links that may go, and its bytes (0 for a link held)
     let mut rank = Vec::with_capacity(dl.links.len());
     let mut cost = Vec::with_capacity(dl.links.len());
     let (mut last, mut run) = (0u32, 0usize);
-    for l in &dl.links {
-        run = if l.pid == last { run + 1 } else { 1 };
-        last = l.pid;
+    for (l, &h) in dl.links.iter().zip(&held) {
+        if l.pid != last {
+            run = 0;
+            last = l.pid;
+        }
+        if h {
+            rank.push(0);
+            cost.push(0);
+            continue;
+        }
+        run += 1;
         rank.push(run);
         cost.push(doclinks_link_bytes(dl, l));
     }
     let widest = rank.iter().copied().max().unwrap_or(0);
     let level = |lv: usize| -> (usize, usize) {
-        let mut n = 0;
+        let mut n = held_n;
         let mut b = base;
         for i in 0..rank.len() {
-            if rank[i] <= lv {
+            if rank[i] != 0 && rank[i] <= lv {
                 n += 1;
                 b += cost[i];
             }

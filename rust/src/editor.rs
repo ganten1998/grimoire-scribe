@@ -3556,6 +3556,14 @@ fn close_notebook(a: &mut App) {
 
 /// loads, switches to SCR_EDITOR
 pub fn editor_open_notebook(a: &mut App, id: &str) {
+    // A PDF fill's pages going into this notebook now (2.2: the UI's commit, a few ticks with input held): it opens
+    // once they are in. Nothing in the app can ask meanwhile; this says why if it does.
+    if let Some((done, total)) = crate::pdfimport::fill_busy().filter(|_| crate::pdfimport::fill_holds(id)) {
+        let mut msg = String::new();
+        csnprintf!(&mut msg, 256, tr("Adding book pages: %d of %d"), done as i32, total as i32);
+        app_toast(a, &msg, 3000);
+        return;
+    }
     let requested=ed(a).requested_page.take();
     ed(a).notebook_back.clear();
     ed(a).from_graph = false;

@@ -929,7 +929,8 @@ fn live_keys_tick(a: &mut App) {
         };
         if !key.down {
             a.live_holds.retain(|h| h.code != key.code || h.cookie != key.cookie);
-        } else if !a.asleep && live_on() {
+        } else if !a.asleep && live_on() && crate::pdfimport::fill_busy().is_none() {
+            // (while a PDF fill's pages go into their notebook a key does nothing, as on the Kindle: app_event_screens)
             let action = httpd_live_key_action(&key, app_place(a));
             note_input(a);
             if app_shortcut_action(a, action, ActionSrc::Key) && action == SHORTCUT_HOLD_ERASER {
@@ -955,6 +956,12 @@ fn app_event_screens(a: &mut App, ev: &InEvent) {
         return;
     }
     if ev.type_ == InType::Key {
+        // While a PDF fill's pages go into their notebook (2.2, a few ticks), a key or a controller button does
+        // nothing, as pen and touch do nothing then (below): no shortcut, sheet or dialog comes between the commit's
+        // steps. (A key's release still ends Erase while held.)
+        if crate::pdfimport::fill_busy().is_some() {
+            return;
+        }
         // A pad that types (the Pages view's count pad) takes a keyboard's keys first, shortcuts on or off.
         if !a.asleep && !ev.gamepad && editor_modal_key(a, ev) {
             note_input(a);
@@ -1119,8 +1126,9 @@ fn app_event_screens(a: &mut App, ev: &InEvent) {
         live_capture(&mut captured);
     }
     let ev = &captured;
-    // While a book's pages are being added (a few seconds), nothing may open its notebook.
-    if a.book.state == BookState::Running
+    // While a book's pages are being added (a few seconds), nothing may open its notebook; nor while a PDF fill's
+    // pages go into theirs (2.2), so no Library action and no editor meets that commit (its keys: above).
+    if (a.book.state == BookState::Running || crate::pdfimport::fill_busy().is_some())
         && (app_pointer_phase(ev) >= 0 || ev.type_ == InType::PinchBegin || ev.type_ == InType::Key || ev.type_ == InType::Gesture)
     {
         return;
@@ -1931,10 +1939,9 @@ fn import_made(a: &App, id: &str) -> bool {
 
 // A PDF import ended (pdfimport.rs): what to tell the user. With the Library in front and the new card on it
 // (D20) no toast says "Imported"; elsewhere one does. One that left pages blank says so whatever is in front,
-// as it is news the card does not carry.
-fn pdf_import_done(a: &mut App, id: &str, ok: bool) {
+// as it is news the card does not carry. (`id`: the import's job; a fill's end comes from the UI's own commit.)
+fn pdf_import_told(a: &mut App, id: &str, fin: crate::pdfimport::Finished) {
     use crate::pdfimport::{FailWhy, Finished};
-    let fin = crate::pdfimport::finished(id, ok);
     let mut msg = String::new();
     match fin {
         Finished::Nothing => {}
@@ -1960,6 +1967,23 @@ fn pdf_import_done(a: &mut App, id: &str, ok: bool) {
             // TRANSLATORS: a toast: the PDF dropped in grimoire/import (or picked) is one Grimoire made a notebook
             // of before. A file of grimoire/import moves to import/done; a file picked elsewhere stays where it is.
             csnprintf!(&mut msg, 256, "%s", tr("PDF already imported."));
+        }
+        Finished::Filled { nb, added, trimmed, .. } => {
+            // The same PDF again filled its notebook's missing pages (2.2), the UI's commit just ended: the card may
+            // show a new first page, and the notebook's mirror PDF is made again. The toast is KOReader's route's own
+            // for pages added to a book's notebook (the pages that could not be read are blank, and the log says which).
+            if a.scr == ScreenId::Library && !a.asleep {
+                app_redraw_mode(a, RefreshMode::Ui);
+            }
+            if trimmed > 0 {
+                csnprintf!(&mut msg, 256, ng_("Added %d book page. Some links were left out.", "Added %d book pages. Some links were left out.", added as i64), added as i32);
+            } else {
+                csnprintf!(&mut msg, 256, ng_("Added %d book page.", "Added %d book pages.", added as i64), added as i32);
+            }
+            if a.settings.mirror_pdf {
+                let (dpi, dir) = (a.dpi, app_mirror_dir());
+                bg_mirror_pdf(&nb, dpi, &dir, false);
+            }
         }
         Finished::Failed(why) => match why {
             FailWhy::Password => {
@@ -1994,7 +2018,7 @@ fn pdf_import_done(a: &mut App, id: &str, ok: bool) {
 // every 10 s, and again after 5 s while a file waits to hold still. No timer runs while the editor is in front.
 pub fn app_import_rescan(a: &mut App, entering: bool) {
     let now = now_ms();
-    if a.asleep || a.scr != ScreenId::Library || !crate::pdfimport::scan_due(now, entering) {
+    if a.asleep || a.scr != ScreenId::Library || crate::pdfimport::fill_busy().is_some() || !crate::pdfimport::scan_due(now, entering) {
         return;
     }
     crate::pdfimport::scan_noted(now);
@@ -2029,6 +2053,20 @@ fn pdf_import_tick(a: &mut App, now: u32) {
             }
         }
     }
+    // A PDF fill whose pages are made goes into its notebook here, in the UI process (2.2), as KOReader's book
+    // job's pages do: it begins only with the Library in front and at rest (so no notebook is open, and no dialog
+    // is half way) and no book job running, takes a few ticks with input held (pen, touch and keys, the Live view's
+    // too), and says how far it got in the book's notice.
+    let free = a.scr == ScreenId::Library && !a.asleep && a.book.state != BookState::Running && crate::library::library_at_rest(a);
+    let fin = crate::pdfimport::fill_tick(free, a.dpi);
+    if let Some((done, total)) = crate::pdfimport::fill_busy() {
+        let mut msg = String::new();
+        csnprintf!(&mut msg, 256, tr("Adding book pages: %d of %d"), done as i32, total as i32);
+        app_notice(a, NoticeKey::Book, &msg);
+    } else if fin != crate::pdfimport::Finished::Nothing {
+        app_notice_clear(a, NoticeKey::Book);
+    }
+    pdf_import_told(a, "", fin);
     if a.scr == ScreenId::Library {
         app_import_rescan(a, false);
     }
@@ -2058,7 +2096,8 @@ fn poll_jobs(a: &mut App) -> i32 {
         editor_picture_made(a); // (the open page may be on that picture: a page KOReader sent)
     }
     if done == BgKind::PdfImport as i32 {
-        pdf_import_done(a, done_id.as_str(), r > 0);
+        let fin = crate::pdfimport::finished(done_id.as_str(), r > 0);
+        pdf_import_told(a, done_id.as_str(), fin);
         return 0;
     }
     if done == BgKind::CopyFile as i32 {
