@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: Grimoire 2.1.0\n"
 "Report-Msgid-Bugs-To: https://github.com/ganten1998/grimoire-scribe/issues\n"
-"POT-Creation-Date: 2026-11-16 10:02-0600\n"
+"POT-Creation-Date: 2026-11-16 10:05-0600\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -1056,8 +1056,10 @@ msgstr ""
 msgid "Import a PDF or pictures"
 msgstr ""
 
-#. TRANSLATORS: a toast over the rename keyboard in Files: the name typed holds a character a name on the
-#. Kindle's storage cannot (%s: the character, one of / \ : * ? " < > |). One line of about 1500 px at 44 px.
+#. TRANSLATORS: a toast over the rename keyboard in Files: the name holds something a name in Grimoire's
+#. folders on the Kindle's storage cannot (%s: a character, one of / \ : * ? " < > |; a control character
+#. written as U+0009; or the ending .sdr, which the Kindle's reader keeps for a book's own folder). One line
+#. of about 1500 px at 44 px.
 #: rust/src/browser.rs
 #, c-format
 msgid "Name can't contain %s"
@@ -1082,15 +1084,22 @@ msgstr ""
 msgid "Keep the extension %s."
 msgstr ""
 
-#. TRANSLATORS: a toast in the file picker: some names in this folder are left out because their path
-#. would be too long for Grimoire to hand to its import (one line).
+#. TRANSLATORS: a toast in Files: the name is longer than a name can be there (255 bytes), or, as Rename is
+#. tapped, longer than Grimoire's keyboard can hold to edit (95 bytes). One line of about 1000 px at 44 px.
 #: rust/src/browser.rs
-msgid "Path too long."
+msgid "Name too long."
 msgstr ""
 
 #. TRANSLATORS: a toast in Files: renaming the file or folder failed (grimoire.log says why). One line.
 #: rust/src/browser.rs
-msgid "Couldn't rename file."
+msgid "Couldn't rename."
+msgstr ""
+
+#. TRANSLATORS: a toast over the rename keyboard in Files: another file or folder in this folder has the name
+#. typed (nothing is ever replaced), or Grimoire keeps that name for itself there. One line of about 1500 px
+#. at 44 px.
+#: rust/src/browser.rs
+msgid "That name is taken."
 msgstr ""
 
 #. TRANSLATORS: a toast in the file picker: the file tapped was changed or replaced since its
@@ -1105,10 +1114,10 @@ msgstr ""
 msgid "Importing now."
 msgstr ""
 
-#. TRANSLATORS: a toast over the rename keyboard in Files: another file or folder in this folder has the name
-#. typed (nothing is ever replaced). One line of about 1500 px at 44 px.
+#. TRANSLATORS: a toast in the file picker: some names in this folder are left out because their path
+#. would be too long for Grimoire to hand to its import (one line).
 #: rust/src/browser.rs
-msgid "A file with that name is already here."
+msgid "Path too long."
 msgstr ""
 
 #. TRANSLATORS: a toast in Files' Trash: the item could not go back, as every name it could take there (its

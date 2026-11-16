@@ -15,10 +15,10 @@ folders and notebooks (docs/DESIGN.md, "Files: rename, delete and restore"). Wai
   (its place in its notebook was never kept; an optional extra in the plan).
 - **A held item's row is not greyed**: its card still offers Rename and Delete, and each says "Importing now." when
   tapped (the busy check is one per tap, not one per row drawn).
-- **A name taken on rename** says "A file with that name is already here." and keeps the keyboard up with the name;
-  the plan's "offer Name 2" is not built (Restore does give " 2").
-- **Names the keyboard cannot hold** (96 bytes and more) are not offered to it: "Couldn't rename file.". Rename them
-  over USB.
+- **A name taken on rename** says "That name is taken." and keeps the keyboard up with the name; the plan's "offer
+  Name 2" is not built (Restore does give " 2").
+- **Names the keyboard cannot show as they are** are not offered to it: 96 bytes and more ("Name too long."), or
+  with a control character ("Name can't contain U+0009"). Rename them over USB.
 - **The trash past 5,000 entries**: the Trash place lists the newest 5,000 (its listing reads the whole folder, a
   slice at a time, and lets the oldest go); the older ones are reached over USB. The size walk counts every entry.
 - **The size walk** runs once a session (from Files' root or its Trash place) and again after each delete or restore;

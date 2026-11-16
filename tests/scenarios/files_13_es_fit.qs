@@ -69,7 +69,7 @@ tap 929 2045
 expect files.text is Lines.png
 tap 1685 2365
 wait 200
-expect toast is Ya hay un archivo con ese nombre aquí.
+expect toast is Ese nombre ya existe.
 shot 07-taken
 tap 217 2365
 wait 300

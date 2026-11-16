@@ -160,17 +160,22 @@ struct Renaming {
     dir: bool,
 }
 
+/// The first control character in a name (U+0000 to U+001F, U+007F to U+009F: what the keyboard leaves out of a
+/// text it is opened with, and what a name on the Kindle's storage should not hold), None for a name with none.
+fn control_in(name: &[u8]) -> Option<u32> {
+    String::from_utf8_lossy(name).chars().find(|c| c.is_control()).map(|c| c as u32)
+}
+
 /// What the screen says of a name the rules refuse (`fsview_name_check`'s first rule broken; `old` the name it had,
 /// `new` the one typed).
 pub fn name_refusal(rule: NameRule, old: &[u8], new: &[u8]) -> String {
     match rule {
-        // TRANSLATORS: a toast over the rename keyboard in Files: the name typed holds a character a name on the
-        // Kindle's storage cannot (%s: the character, one of / \ : * ? " < > |). One line of about 1500 px at 44 px.
+        // TRANSLATORS: a toast over the rename keyboard in Files: the name holds something a name in Grimoire's
+        // folders on the Kindle's storage cannot (%s: a character, one of / \ : * ? " < > |; a control character
+        // written as U+0009; or the ending .sdr, which the Kindle's reader keeps for a book's own folder). One line
+        // of about 1500 px at 44 px.
         NameRule::Char(c) => cformat!(tr("Name can't contain %s"), (c as char).to_string().as_str()),
-        NameRule::Control => {
-            let c = new.iter().find(|&&c| c < 0x20 || c == 0x7f).copied().unwrap_or(0);
-            cformat!(tr("Name can't contain %s"), format!("U+{c:04X}").as_str())
-        }
+        NameRule::Control => cformat!(tr("Name can't contain %s"), format!("U+{:04X}", control_in(new).unwrap_or(0)).as_str()),
         // TRANSLATORS: a toast over the rename keyboard in Files: the name typed begins or ends with a space. One line
         // of about 1500 px at 44 px.
         NameRule::LeadingSpace | NameRule::TrailingSpace => tr("Name can't start or end with a space.").to_string(),
@@ -183,10 +188,22 @@ pub fn name_refusal(rule: NameRule, old: &[u8], new: &[u8]) -> String {
             // (%s: its extension with the dot, such as .png). One line of about 1500 px at 44 px.
             cformat!(tr("Keep the extension %s."), ext.as_str())
         }
-        NameRule::TooLong => tr("Path too long.").to_string(),
+        // TRANSLATORS: a toast in Files: the name is longer than a name can be there (255 bytes), or, as Rename is
+        // tapped, longer than Grimoire's keyboard can hold to edit (95 bytes). One line of about 1000 px at 44 px.
+        NameRule::TooLong => tr("Name too long.").to_string(),
         // (an empty name is no rename: the keyboard closes and nothing is done)
-        NameRule::Empty => tr("Couldn't rename file.").to_string(),
+        NameRule::Empty => tr("Couldn't rename.").to_string(),
     }
+}
+
+/// What the screen says of a new name the rules allow and Grimoire's folders do not (fsview's allow-list): a name
+/// ending in `.sdr` (the Kindle's reader keeps a book's data in such a folder, and no listing shows one), else a
+/// name Grimoire keeps for itself there (`done` in `import`, where imports file their originals).
+fn zone_refusal(new: &[u8]) -> String {
+    if new.len() >= 4 && new[new.len() - 4..].eq_ignore_ascii_case(b".sdr") {
+        return cformat!(tr("Name can't contain %s"), ".sdr");
+    }
+    tr("That name is taken.").to_string()
 }
 
 /// What the screen says of a storage write's refusal, and what follows it.
@@ -199,9 +216,12 @@ fn refusal(e: FsWriteErr, act: Act, old: &[u8], new: &[u8]) -> (String, Then) {
         (FsWriteErr::Busy, _) => (s(tr("Importing now.")), Then::Nothing),
         (FsWriteErr::Name(rule), _) => (name_refusal(rule, old, new), Then::Keyboard),
         // TRANSLATORS: a toast over the rename keyboard in Files: another file or folder in this folder has the name
-        // typed (nothing is ever replaced). One line of about 1500 px at 44 px.
-        (FsWriteErr::Exists, Act::Rename) => (s(tr("A file with that name is already here.")), Then::Keyboard),
+        // typed (nothing is ever replaced), or Grimoire keeps that name for itself there. One line of about 1500 px
+        // at 44 px.
+        (FsWriteErr::Exists, Act::Rename) => (s(tr("That name is taken.")), Then::Keyboard),
         (FsWriteErr::TooLong, Act::Rename) => (s(tr("Path too long.")), Then::Keyboard),
+        // (a place or a name the allow-list refuses: the typed name stays, to be changed)
+        (FsWriteErr::Refused, Act::Rename) => (s(tr("Couldn't rename.")), Then::Keyboard),
         // TRANSLATORS: a toast in Files' Trash: the item could not go back, as every name it could take there (its
         // own, then with " 2" up to " 99"), or its notebook's id, is taken. One line of about 1500 px at 44 px.
         (FsWriteErr::Exists, Act::Restore) => (s(tr("Couldn't restore. Name taken.")), Then::Relist),
@@ -209,7 +229,7 @@ fn refusal(e: FsWriteErr, act: Act, old: &[u8], new: &[u8]) -> (String, Then) {
         // about 1500 px at 44 px.
         (FsWriteErr::FolderGone, _) => (s(tr("Couldn't restore. Folder gone.")), Then::Nothing),
         // TRANSLATORS: a toast in Files: renaming the file or folder failed (grimoire.log says why). One line.
-        (_, Act::Rename) => (s(tr("Couldn't rename file.")), Then::Relist),
+        (_, Act::Rename) => (s(tr("Couldn't rename.")), Then::Relist),
         // TRANSLATORS: a toast in Files: moving the file or folder to the trash failed (grimoire.log says why). One line.
         (_, Act::Trash) => (s(tr("Couldn't move to trash.")), Then::Relist),
         // TRANSLATORS: a toast in Files' Trash: the entry could not be put back (its record does not read, or the
@@ -1701,33 +1721,49 @@ impl Browser {
     }
 
     /// Rename on the open card (the tests' as the row's): the item checked again, not held by an import, and then
-    /// the keyboard's item from now on. Err: what the toast says, and what follows.
+    /// the keyboard's item from now on. A name the keyboard cannot show exactly as it is is not offered to it, and
+    /// the toast says why: one too long for it to hold (its end would be cut away), or one with a control character
+    /// (which it leaves out), so a Done can never rename a file to a name nobody typed. Err: what the toast says,
+    /// and what follows.
     fn rename_begin(&mut self) -> Result<Vec<u8>, (String, Then)> {
         let (path, stat) = self.card_item()?;
-        let st = self.storage.as_ref().ok_or((tr("Couldn't rename file.").to_string(), Then::Nothing))?;
+        let st = self.storage.as_ref().ok_or((tr("Couldn't rename.").to_string(), Then::Nothing))?;
         if st.busy(&path) {
             return Err((tr("Importing now.").to_string(), Then::Nothing));
         }
         let name = path.split_last().map(|(_, n)| n.to_vec()).unwrap_or_default();
-        // (a name the keyboard cannot hold whole is not offered to it: its end would be cut away)
         if name.len() >= KB_TEXT_MAX {
-            return Err((tr("Couldn't rename file.").to_string(), Then::Nothing));
+            return Err((name_refusal(NameRule::TooLong, &name, &name), Then::Nothing));
+        }
+        let mut shown = Keyboard::default();
+        keyboard_open(&mut shown, "", &name);
+        if shown.text.as_bytes() != name.as_slice() {
+            let why = if control_in(&name).is_some() { name_refusal(NameRule::Control, &name, &name) } else { tr("Couldn't rename.").to_string() };
+            return Err((why, Then::Nothing));
         }
         let dir = stat.mode & libc::S_IFMT as u32 == libc::S_IFDIR as u32;
         self.renaming = Some(Renaming { path, stat, dir });
         Ok(name)
     }
 
-    /// The keyboard's name `new` for the item it is up for: the name rules first (their words), then fsview's rename,
-    /// which never replaces and checks the item and the imports again. Its new path.
-    pub fn rename_to(&mut self, new: &[u8]) -> Result<StoragePath, (String, Then)> {
-        let rn = self.renaming.clone().ok_or((tr("Couldn't rename file.").to_string(), Then::Nothing))?;
-        let old = rn.path.split_last().map(|(_, n)| n.to_vec()).unwrap_or_default();
+    /// The keyboard's name `new` for the item it is up for. The name it has (Done with nothing typed) renames
+    /// nothing and checks nothing: None. Else the name rules first (their words), then the allow-list for the new
+    /// name (its words: the keyboard stays), then fsview's rename, which never replaces and checks the item and
+    /// the imports again: its new path.
+    pub fn rename_to(&mut self, new: &[u8]) -> Result<Option<StoragePath>, (String, Then)> {
+        let rn = self.renaming.clone().ok_or((tr("Couldn't rename.").to_string(), Then::Nothing))?;
+        let (folder, old) = rn.path.split_last().map(|(f, n)| (f, n.to_vec())).unwrap_or_default();
+        if new == old.as_slice() {
+            return Ok(None);
+        }
         if let Err(rule) = fsview_name_check(&old, new, rn.dir) {
             return Err((name_refusal(rule, &old, new), Then::Keyboard));
         }
-        let st = self.storage.as_ref().ok_or((tr("Couldn't rename file.").to_string(), Then::Nothing))?;
-        st.rename(&rn.path, &rn.stat, new).map_err(|e| refusal(e, Act::Rename, &old, new))
+        let st = self.storage.as_ref().ok_or((tr("Couldn't rename.").to_string(), Then::Nothing))?;
+        if folder.join(new).is_some_and(|to| !st.can_write(&to)) {
+            return Err((zone_refusal(new), Then::Keyboard));
+        }
+        st.rename(&rn.path, &rn.stat, new).map(Some).map_err(|e| refusal(e, Act::Rename, &old, new))
     }
 
     /// Delete on the open card: the item checked again and not held; then the card asks, as the Library asks before a
@@ -2540,9 +2576,10 @@ impl Browser {
         app_toast(a, msg, 3000);
     }
 
-    /// The rename keyboard's Done: an empty name is no rename (the keyboard closes, as the Library's do); else the name
-    /// is checked and the item renamed, and the folder read again with it under its new name. A name the rules
-    /// refuse, or one taken, keeps the keyboard up with it.
+    /// The rename keyboard's Done: an empty name is no rename (the keyboard closes, as the Library's do), and neither
+    /// is the name as it was (nothing typed: nothing is checked or done); else the name is checked and the item
+    /// renamed, and the folder read again with it under its new name. A name the rules refuse, or one taken, keeps
+    /// the keyboard up with it.
     fn rename_done(&mut self, a: &mut App) {
         let text = self.kb.text.as_bytes().to_vec();
         if text.is_empty() {
@@ -2550,7 +2587,8 @@ impl Browser {
             return;
         }
         match self.rename_to(&text) {
-            Ok(_) => {
+            Ok(None) => self.rename_close(a),
+            Ok(Some(_)) => {
                 keyboard_close(&mut self.kb);
                 self.renaming = None;
                 self.relist(now_ms());
@@ -3507,20 +3545,24 @@ mod tests {
         assert_eq!(n(NameRule::Char(b':'), b"a:b.png"), "Name can't contain :");
         assert_eq!(n(NameRule::Char(b'"'), b"a\"b.png"), "Name can't contain \"");
         assert_eq!(n(NameRule::Control, b"a\tb.png"), "Name can't contain U+0009");
+        assert_eq!(n(NameRule::Control, "a\u{85}b.png".as_bytes()), "Name can't contain U+0085");
         assert_eq!(n(NameRule::LeadingSpace, b" a.png"), "Name can't start or end with a space.");
         assert_eq!(n(NameRule::TrailingSpace, b"a.png "), "Name can't start or end with a space.");
         assert_eq!(n(NameRule::LeadingDot, b".a.png"), "Name can't start or end with a dot.");
         assert_eq!(n(NameRule::TrailingDot, b"a.png."), "Name can't start or end with a dot.");
         assert_eq!(n(NameRule::Extension, b"a.jpg"), "Keep the extension .png.");
-        assert_eq!(n(NameRule::TooLong, b"x"), "Path too long.");
+        assert_eq!(n(NameRule::TooLong, b"x"), "Name too long.");
+        assert_eq!(zone_refusal(b"Sub.SDR"), "Name can't contain .sdr");
+        assert_eq!(zone_refusal(b"done"), "That name is taken.");
         let r = |e: FsWriteErr, act: Act| refusal(e, act, b"Grid.png", b"Lines.png");
         assert_eq!(r(FsWriteErr::Changed, Act::Rename), ("File changed. Try again.".to_string(), Then::Relist));
         assert_eq!(r(FsWriteErr::Busy, Act::Trash), ("Importing now.".to_string(), Then::Nothing));
         assert_eq!(r(FsWriteErr::Busy, Act::Rename), ("Importing now.".to_string(), Then::Nothing));
-        assert_eq!(r(FsWriteErr::Exists, Act::Rename), ("A file with that name is already here.".to_string(), Then::Keyboard));
+        assert_eq!(r(FsWriteErr::Exists, Act::Rename), ("That name is taken.".to_string(), Then::Keyboard));
+        assert_eq!(r(FsWriteErr::Refused, Act::Rename), ("Couldn't rename.".to_string(), Then::Keyboard));
         assert_eq!(r(FsWriteErr::Name(NameRule::Char(b'*')), Act::Rename), ("Name can't contain *".to_string(), Then::Keyboard));
         assert_eq!(r(FsWriteErr::TooLong, Act::Rename), ("Path too long.".to_string(), Then::Keyboard));
-        assert_eq!(r(FsWriteErr::Io(5), Act::Rename), ("Couldn't rename file.".to_string(), Then::Relist));
+        assert_eq!(r(FsWriteErr::Io(5), Act::Rename), ("Couldn't rename.".to_string(), Then::Relist));
         assert_eq!(r(FsWriteErr::Refused, Act::Trash), ("Couldn't move to trash.".to_string(), Then::Relist));
         assert_eq!(r(FsWriteErr::Exists, Act::Restore), ("Couldn't restore. Name taken.".to_string(), Then::Relist));
         assert_eq!(r(FsWriteErr::FolderGone, Act::Restore), ("Couldn't restore. Folder gone.".to_string(), Then::Nothing));
@@ -3555,6 +3597,7 @@ mod tests {
         assert_eq!(card_named(&mut b, "Sub").1, ["Open", "Rename", "Delete", "Cancel"]);
         assert_eq!(card_named(&mut b, "Grid.png").1, ["Rename", "Delete", "Cancel"]);
         assert_eq!(b.rename_begin(), Ok(b"Grid.png".to_vec()));
+        assert_eq!(b.rename_to(b"Grid.png"), Ok(None), "Done with nothing typed renames nothing");
         for (bad, says) in [
             (&b"Gr:id.png"[..], "Name can't contain :"),
             (b"Grid/2.png", "Name can't contain /"),
@@ -3569,10 +3612,10 @@ mod tests {
             assert_eq!(b.rename_to(bad), Err((says.to_string(), Then::Keyboard)), "{}", String::from_utf8_lossy(bad));
         }
         let long = [vec![b'x'; 252], b".png".to_vec()].concat();
-        assert_eq!(b.rename_to(&long), Err(("Path too long.".to_string(), Then::Keyboard)));
-        assert_eq!(b.rename_to(b"Lines.png"), Err(("A file with that name is already here.".to_string(), Then::Keyboard)));
+        assert_eq!(b.rename_to(&long), Err(("Name too long.".to_string(), Then::Keyboard)));
+        assert_eq!(b.rename_to(b"Lines.png"), Err(("That name is taken.".to_string(), Then::Keyboard)));
         assert_eq!(std::fs::read(format!("{t}/Lines.png")).unwrap(), b"lines", "nothing replaced");
-        assert_eq!(b.rename_to(b"Grid 2.PNG"), Ok(sp("grimoire/templates/Grid 2.PNG")));
+        assert_eq!(b.rename_to(b"Grid 2.PNG"), Ok(Some(sp("grimoire/templates/Grid 2.PNG"))));
         assert_eq!(std::fs::read(format!("{t}/Grid 2.PNG")).unwrap(), b"grid");
         assert!(!std::path::Path::new(&format!("{t}/Grid.png")).exists());
         // a card on a file changed since it was listed: nothing, and the folder is read again
@@ -3586,6 +3629,62 @@ mod tests {
         assert!(p.open(PickSpec::import(), FilesPrefs { card: true, ..Default::default() }));
         assert!(p.go(sp("grimoire/import")));
         assert_eq!(card_named(&mut p, "Book.pdf").1, ["Import as notebook", "Cancel"]);
+    }
+
+    // Rename never changes a name nobody typed (issue #144). A name the keyboard cannot show as it is is not offered
+    // to it, and the toast says why: a control character (which the keyboard leaves out of its text: before, Done
+    // then renamed the file to the name without it), or 96 bytes and more (its end would be cut away). Done with the
+    // name as it was renames nothing and checks nothing, even on a file changed since. A name the rules allow and
+    // Grimoire's folders do not says which (an ending the Kindle's reader keeps, a name Grimoire keeps) and keeps the
+    // keyboard up; a folder's name taken says so in words that fit a folder.
+    #[test]
+    fn rename_never_changes_a_name_nobody_typed() {
+        let (base, _g) = storage("renameshown");
+        let t = format!("{base}/grimoire/templates");
+        std::fs::create_dir_all(format!("{t}/Sub")).unwrap();
+        std::fs::create_dir_all(format!("{t}/Other")).unwrap();
+        std::fs::create_dir_all(format!("{base}/grimoire/import/Work")).unwrap();
+        let (long, fits) = (format!("{}.png", "L".repeat(92)), format!("{}.png", "F".repeat(91)));
+        for n in ["a\tb.png", "c\u{85}d.png", "Grid.png", long.as_str(), fits.as_str()] {
+            std::fs::write(format!("{t}/{n}"), b"a picture").unwrap();
+        }
+        let names = |d: &str| {
+            let mut v: Vec<String> = std::fs::read_dir(d).unwrap().flatten().map(|e| e.file_name().to_string_lossy().into_owned()).collect();
+            v.sort();
+            v
+        };
+        let before = names(&t);
+        i18n_set("en");
+        let mut b = Browser::default();
+        assert!(b.open(PickSpec::place(), FilesPrefs { card: true, ..Default::default() }));
+        assert!(b.go(sp("grimoire/templates")));
+        for (name, says) in [("a\tb.png", "Name can't contain U+0009"), ("c\u{85}d.png", "Name can't contain U+0085"), (long.as_str(), "Name too long.")] {
+            b.open_card(row_of(&b, name));
+            assert_eq!(b.rename_begin(), Err((says.to_string(), Then::Nothing)), "{name:?}");
+            assert!(b.renaming.is_none());
+        }
+        b.open_card(row_of(&b, &fits));
+        assert_eq!(b.rename_begin(), Ok(fits.clone().into_bytes()), "95 bytes: the keyboard holds it whole");
+        // nothing typed: nothing renamed, nothing checked (the file changed since its card opened)
+        b.open_card(row_of(&b, "Grid.png"));
+        assert_eq!(b.rename_begin(), Ok(b"Grid.png".to_vec()));
+        std::fs::write(format!("{t}/Grid.png"), b"a picture, longer now").unwrap();
+        assert_eq!(b.rename_to(b"Grid.png"), Ok(None));
+        assert_eq!(b.rename_to(b"Grid2.png"), Err(("File changed. Try again.".to_string(), Then::Relist)));
+        // the allow-list's refusals say which rule, and keep the keyboard
+        b.relist(now_ms());
+        b.open_card(row_of(&b, "Sub"));
+        assert_eq!(b.rename_begin(), Ok(b"Sub".to_vec()));
+        assert_eq!(b.rename_to(b"Sub.sdr"), Err(("Name can't contain .sdr".to_string(), Then::Keyboard)));
+        assert_eq!(b.rename_to(b"Sub.SDR"), Err(("Name can't contain .sdr".to_string(), Then::Keyboard)));
+        assert_eq!(b.rename_to(b"Other"), Err(("That name is taken.".to_string(), Then::Keyboard)));
+        assert!(b.go(sp("grimoire/import")));
+        b.open_card(row_of(&b, "Work"));
+        assert_eq!(b.rename_begin(), Ok(b"Work".to_vec()));
+        assert_eq!(b.rename_to(b"done"), Err(("That name is taken.".to_string(), Then::Keyboard)));
+        assert_eq!(b.rename_to(b"Done"), Err(("That name is taken.".to_string(), Then::Keyboard)));
+        assert_eq!(names(&t), before, "nothing was renamed");
+        assert_eq!(names(&format!("{base}/grimoire/import")), ["Work"]);
     }
 
     // Delete asks first (issue #144): the card's Delete moves nothing; the card becomes the Library's question for a

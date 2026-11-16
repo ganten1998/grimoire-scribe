@@ -6,7 +6,8 @@
 # Rename and Delete; Rename opens the keyboard with the name, its caret before the extension. A name each rule
 # refuses says why and keeps the keyboard up with it (a character a name cannot hold, a space at the start and at
 # the end, a dot at the end and at the start, the extension gone, then changed); a name taken says so and nothing
-# is replaced; an empty name and Cancel rename nothing; a good name renames the file in place.
+# is replaced; Done with nothing typed, an empty name and Cancel rename nothing; a good name renames the file in
+# place. A folder's new name that Grimoire's folders do not take (an ending the Kindle's reader keeps) says so too.
 # Keys (portrait, the Library's keyboard): shift 175 2205, del 1679 2205, Cancel 217 2365, the symbols key
 # 570 2365, space 1018 2365, the dot 1466 2365, Done 1685 2365; letters row y 1885 (q 133, e 487, i 1372, p 1726),
 # y 2045 (a 221, s 398, g 929, j 1283, l 1637), y 2205 (n 1278); digits y 1725 (2 at 310); the symbols page's
@@ -30,6 +31,18 @@ expect files.keyboard is 1
 expect files.text is Grid.png
 expect files.card is
 shot 02-keyboard
+# Done with nothing typed: the keyboard closes, nothing is renamed and nothing said
+tap 1685 2365
+wait 300
+expect files.keyboard is 0
+expect toast is
+expect storage.names.grimoire/templates is Grid.png|Lines.png|README.txt
+tap library files.item.Grid.png
+wait 300
+tap library files.card.rename
+wait 300
+expect files.keyboard is 1
+expect files.text is Grid.png
 # a character a name cannot hold, typed where the caret is (before .png)
 tap 570 2365
 tap 664 2045
@@ -109,7 +122,7 @@ tap 929 2045
 expect files.text is Lines.png
 tap 1685 2365
 wait 200
-expect toast is A file with that name is already here.
+expect toast is That name is taken.
 expect files.keyboard is 1
 expect storage.size.grimoire/templates/Lines.png is 2048
 # a good name: Lines2.png, the file renamed in place and listed by it
@@ -148,4 +161,43 @@ tap 217 2365
 wait 300
 expect files.keyboard is 0
 expect storage.names.grimoire/templates is Lines.png|Lines2.png|README.txt
+# a folder: an ending the Kindle's reader keeps for a book's own folder is said, and the keyboard stays with the name;
+# then a name another folder has, in words that fit a folder
+tap library files.crumb.1
+wait 300
+tap library files.item.Photos
+wait 300
+expect files.order is Other|Trip|beach.jpg
+tap library files.more.2
+wait 300
+tap library files.card.rename
+wait 300
+expect files.text is Trip
+tap 1466 2365
+tap 398 2045
+tap 575 2045
+tap 664 1885
+expect files.text is Trip.sdr
+tap 1685 2365
+wait 200
+expect toast is Name can't contain .sdr
+expect files.keyboard is 1
+expect files.text is Trip.sdr
+shot 05-ending
+key 30 1
+tap 175 2205
+tap 1549 1885
+tap 841 1885
+tap 1106 2045
+tap 487 1885
+tap 664 1885
+expect files.text is Other
+tap 1685 2365
+wait 200
+expect toast is That name is taken.
+expect files.keyboard is 1
+tap 217 2365
+wait 300
+expect files.keyboard is 0
+expect storage.names.grimoire/photos is Other|README.txt|Trip|beach.jpg
 quit

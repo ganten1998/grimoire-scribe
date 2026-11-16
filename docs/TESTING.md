@@ -2979,8 +2979,8 @@ Grimoire open and Files' card shown (New > From a file... > Show Files in Librar
 1. **Rename**: Files > Templates > Probe.png's card > Rename: the keyboard holds `Probe.png` with the caret before
    `.png`. Type `:` and Done: "Name can't contain :" and the keyboard stays; delete it, type `2` and Done: the row is
    `Probe2.png`. Over SSH, `ls /mnt/us/grimoire/templates` shows `Probe2.png` and no `Probe.png`, and grimoire.log has
-   `files: an item of templates was renamed` (no name). Rename it to a template's name already there: "A file with
-   that name is already here.", and that file is unchanged (`stat -c '%i %s %Y'` before and after).
+   `files: an item of templates was renamed` (no name). Rename it to a template's name already there: "That name
+   is taken.", and that file is unchanged (`stat -c '%i %s %Y'` before and after).
 2. **Delete**: its card > Delete: the question `Delete "Probe2.png"?` comes up as the Library's does for a
    notebook, and Keep it leaves the file. Delete again, then Delete (moves it to grimoire/trash): "Moved to
    grimoire/trash", the row is gone, and

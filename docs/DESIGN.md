@@ -2591,14 +2591,19 @@ trash, and the Trash place puts an entry back. Pick mode (New notebook's From a 
 - **Rename** opens the keyboard (the Library's, hosted by the browser: `Browser.kb`, drawn over Files, its keys
   refreshed alone; a hardware keyboard's keys reach it through `library_keyboard_area`, and Esc or Back is its
   Cancel) with the name, titled Name (or Folder for a folder), the caret before a file's extension, so typing
-  edits the stem and the extension stays in sight. Done checks `fsview_name_check` first and says the rule broken,
-  keeping the keyboard up with the name to put right: "Name can't contain %s" (the character; a control character
-  as `U+XXXX`), "Name can't start or end with a space.", "Name can't start or end with a dot." (a leading dot
-  would hide it), "Keep the extension %s." (the old one, with its dot), "Path too long." (over 255 bytes, or a path
-  of 600). Then `FsStorage::rename`, which never replaces: a name taken says "A file with that name is already
-  here." and keeps the keyboard up (no " 2" is offered). An empty name renames nothing, as the Library's keyboards
-  do. A name the keyboard cannot hold whole (96 bytes) is not offered to it ("Couldn't rename file."). Renamed: the
-  folder is read again, with its rows' page kept.
+  edits the stem and the extension stays in sight. A name the keyboard cannot show exactly as it is is not offered
+  to it, and the toast says why: "Name too long." (96 bytes and more: its end would be cut away) or "Name can't
+  contain %s" with `U+XXXX` (a control character, which the keyboard leaves out of its text), so Done can never
+  rename a file to a name nobody typed. Done with the name as it was renames nothing and checks nothing, and
+  neither does an empty name, as the Library's keyboards do. Else Done checks `fsview_name_check` first and says
+  the rule broken, keeping the keyboard up with the name to put right: "Name can't contain %s" (the character; a
+  control character as `U+XXXX`), "Name can't start or end with a space.", "Name can't start or end with a dot." (a
+  leading dot would hide it), "Keep the extension %s." (the old one, with its dot), "Name too long." (over 255
+  bytes). Then the allow-list for the new name, with the keyboard kept up too: "Name can't contain .sdr" (an
+  ending the Kindle's reader keeps for a book's own folder, which no listing shows) and "That name is taken." (a
+  name Grimoire keeps for itself there: `done` in `import`). Then `FsStorage::rename`, which never replaces: a
+  name taken says "That name is taken." and keeps the keyboard up (no " 2" is offered), and a path of 600 bytes
+  "Path too long.". Renamed: the folder is read again, with its rows' page kept.
 - **Delete** asks first, as the Library asks before a notebook goes: the card's Delete (after the check, and not
   for a held item) turns the card into the Library's question, drawn as its sheet in the same place (`sheet_rect`,
   `ui_sheet`): `Delete "name"?` (a long name cut with "..." so the question mark stays), "Delete (moves it to
@@ -2629,14 +2634,14 @@ trash, and the Trash place puts an entry back. Pick mode (New notebook's From a 
   restore." (a record that does not read, a place Grimoire does not write in). A notebook's mirror PDF is made again
   at its next change.
 - **Words** (Spanish beside each; Japanese is nebuff's): Restore, Importing now., Name can't contain %s, Name can't
-  start or end with a space., Name can't start or end with a dot., Keep the extension %s., A file with that name is
-  already here., Couldn't rename file., Couldn't move to trash., Couldn't restore., Couldn't restore. Name taken.,
+  start or end with a space., Name can't start or end with a dot., Keep the extension %s., Name too long., That
+  name is taken., Couldn't rename., Couldn't move to trash., Couldn't restore., Couldn't restore. Name taken.,
   Couldn't restore. Folder gone., Restored to %s. Reused: Rename, Delete, Delete "%s"?, Delete (moves it to %s),
   Keep it, Moved to %s, File changed. Try again., Path too long., the keyboard's Name and Folder, Notebooks.
 - **Logs** (no names): the storage writes' own lines, and `files: the trash holds N entries, N files, N KB (read in T
   ms)` once a walk of the trash is through (docs/KINDLE.md).
 - **Tests**: `browser.rs`'s unit tests (a folder card's check by identity, each refusal's words, Rename's rules and
-  places, Delete then Restore, a notebook the Library deleted coming back as " 2", a trash past the cap keeping
+  places, a name nobody typed never given, the allow-list's words, Delete's question, Delete then Restore, a notebook the Library deleted coming back as " 2", a trash past the cap keeping
   its newest), `test_fsview_writes.rs`'s trash sizes (slices, depth, links, the record left out), its listing past
   the cap and a picture a page still waits for, and the scenarios `files_8_rename` (every rule, a name taken, a
   good name, an empty one, Cancel), `files_9_trash` (Delete's question, Keep it, a tap outside it, its Delete, the sizes, Restore, a page with no
