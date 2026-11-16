@@ -3,7 +3,8 @@
 // test seam so a run anywhere takes it too), a rename that changes only the case, the trash with its record and
 // restore for a file, a folder and a notebook (both the name store_delete gives and the record form), a name taken
 // on restore, the record read strictly, the busy check, and the copy job with the floor, a write that fails, and a
-// source that changes. Every refusal of the allow-list. Nothing on screen calls these yet.
+// source that changes. Every refusal of the allow-list. The trash's sizes, read a slice at a time (issue #144).
+// Nothing on screen calls these yet.
 #![cfg(feature = "sim")]
 mod testlib;
 use grimoire::bgwork_copy::*;
@@ -639,6 +640,64 @@ fn the_copy_job() {
     check!(names(&format!("{g}/photos")) == ["font.ttf"]);
 }
 
+// The trash's sizes (issue #144), read a slice at a time: each entry's bytes (a file's or folder's entry its item's,
+// not its record's; a notebook's folder at any depth; a page's file), the total, a link anywhere neither followed
+// nor counted, nothing deeper than 16 folders entered; an entry's size is told only once it is read to its end.
+fn the_trash_sizes() {
+    let (root, g) = tree();
+    let o = outside();
+    std::fs::write(format!("{o}/big"), vec![b'x'; 50_000]).unwrap();
+    let st = open(&root, &g);
+    let photo = sp("grimoire/photos/beach.jpg");
+    std::fs::write(format!("{root}/grimoire/photos/beach.jpg"), vec![b'p'; 3000]).unwrap();
+    let a = st.trash(&photo, &stat_of(&st, "grimoire/photos/beach.jpg")).unwrap();
+    std::fs::create_dir_all(format!("{root}/grimoire/import/Trip/deep")).unwrap();
+    std::fs::write(format!("{root}/grimoire/import/Trip/deep/x.png"), vec![b'd'; 50]).unwrap();
+    symlink(format!("{o}/big"), format!("{root}/grimoire/import/Trip/link.png")).unwrap();
+    let b = st.trash(&sp("grimoire/import/Trip"), &stat_of(&st, "grimoire/import/Trip")).unwrap();
+    let t = format!("{g}/trash");
+    let nb = "20261101-000000-0001-1790000000";
+    std::fs::create_dir_all(format!("{t}/{nb}/pages")).unwrap();
+    std::fs::write(format!("{t}/{nb}/notebook.ini"), vec![b'n'; 120]).unwrap();
+    std::fs::write(format!("{t}/{nb}/pages/p1.qpg"), vec![b'q'; 1000]).unwrap();
+    std::fs::write(format!("{t}/20261101-000000-0001-p3-1790000500"), vec![b'g'; 777]).unwrap();
+    symlink(format!("{o}/big"), format!("{t}/notes-link")).unwrap();
+    let mut deep = format!("{t}/deep");
+    for _ in 0..18 {
+        deep.push_str("/d");
+    }
+    std::fs::create_dir_all(&deep).unwrap();
+    std::fs::write(format!("{deep}/far"), vec![b'f'; 9999]).unwrap();
+    std::fs::write(format!("{t}/deep/near"), vec![b'n'; 10]).unwrap();
+    // a clock a millisecond a call, and slices of 2: the walk takes many steps, and stops between them
+    let mut s = st.trash_sizes().unwrap();
+    let mut now = 0u32;
+    let mut clock = || {
+        now += 1;
+        now
+    };
+    let mut steps = 0;
+    let mut told_early = false;
+    while !s.step_clocked(2, &mut clock) {
+        steps += 1;
+        // (an entry being read is not told: only one read to its end)
+        told_early |= s.size_of(b.as_slice()).is_some_and(|n| n != 3 + 3 + 50);
+        check!(steps < 10_000);
+    }
+    check!(steps > 3 && !told_early);
+    check!(s.size_of(&a) == Some(3000));
+    // Trip: p1 and p2 (3 and 3 bytes, the tree's), deep/x.png (50); its link not counted
+    check!(s.size_of(&b) == Some(3 + 3 + 50));
+    check!(s.size_of(nb.as_bytes()) == Some(1120));
+    check!(s.size_of(b"20261101-000000-0001-p3-1790000500") == Some(777));
+    check!(s.size_of(b"notes-link") == Some(0));
+    // (nothing deeper than 16 folders is entered)
+    check!(s.size_of(b"deep") == Some(10));
+    check!(s.size_of(b"no such entry").is_none());
+    check!(s.total == 3000 + 56 + 1120 + 777 + 10);
+    check!(s.done && s.step(FS_SLICE_MS));
+}
+
 #[test]
 fn test_fsview_writes() {
     run!(writes_stay_in_grimoires_folders);
@@ -654,6 +713,7 @@ fn test_fsview_writes() {
     run!(notebooks_and_pages_in_the_trash);
     run!(the_copy_request);
     run!(the_copy_job);
+    run!(the_trash_sizes);
     std::env::remove_var("GRIMOIRE_STORAGE");
     let _ = std::fs::remove_dir_all(format!("{}/fsw-storage", tl_tmp()));
     let _ = std::fs::remove_dir_all(format!("{}/fsw-outside", tl_tmp()));

@@ -4,7 +4,7 @@
 //! time-sliced listing, stats and free space; the picker (L8) and the PDF import (L5) read through it. Since
 //! 2.2 (issue #117) it also writes, inside Grimoire's folders for the user's files only: a rename that never
 //! replaces an entry, the trash with its record, restore, and the name rules (the copy job is
-//! bgwork_copy.rs). Nothing on screen calls the writes yet.
+//! bgwork_copy.rs), and the trash's sizes. Nothing on screen calls the writes yet.
 //!
 //! - One root: /mnt/us on the Kindle (when Grimoire's own folder is inside it); elsewhere GRIMOIRE_STORAGE,
 //!   a hook compiled out of the Kindle build. Never "/".
@@ -1199,6 +1199,12 @@ impl FsStorage {
         ["import", "templates", "photos", "fonts"].into_iter().find(|w| eq_nocase(comps[gl], w.as_bytes()))
     }
 
+    /// Whether rename and trash may act on `p` (the allow-list, `write_zone`): what Files' cards offer Rename and
+    /// Delete on.
+    pub fn can_write(&self, p: &StoragePath) -> bool {
+        self.write_zone(p).is_some()
+    }
+
     /// Whether an import holds `p` (browser.md 8.14, "Importing now."): a PDF import or a picture import queued or
     /// running in this process works on it, inside it, or on the folder it is in (the job table's paths, and the
     /// PDF import's own list); or a previous run's import still holds the lock (pdfimport's detached state), and
@@ -1238,6 +1244,22 @@ impl FsStorage {
             return Err(FsWriteErr::Refused);
         }
         Ok(fd)
+    }
+
+    /// The trash's sizes, to be read from now on a slice at a time (`TrashSizes::step`), from the trash opened by
+    /// the walk and known by its identity.
+    pub fn trash_sizes(&self) -> Result<TrashSizes, FsWriteErr> {
+        let fd = self.trash_fd()?;
+        let raw = std::os::fd::IntoRawFd::into_raw_fd(fd);
+        // SAFETY: raw is an open folder descriptor; fdopendir takes it over (closedir closes it).
+        let dir = unsafe { libc::fdopendir(raw) };
+        if dir.is_null() {
+            let e = errno();
+            // SAFETY: fdopendir failed, so raw is still ours to close.
+            unsafe { libc::close(raw) };
+            return Err(FsWriteErr::Io(e));
+        }
+        Ok(TrashSizes { entries: Vec::new(), total: 0, done: false, open: vec![(dir, usize::MAX)], dev: self.dev, files: 0, spent_ms: 0 })
     }
 
     /// Grimoire's notebooks folder, opened from its own folder (by the walk) and known by its identity: the one
@@ -1540,6 +1562,120 @@ impl FsStorage {
         sync_dir(nb.as_raw_fd());
         qlog!("files: notebook %s came back from the trash", id);
         Ok(())
+    }
+}
+
+/// How deep a size walk goes inside a trash entry (a notebook's folder holds two levels).
+const SIZE_DEPTH: usize = 16;
+
+/// The bytes the trash holds, entry by entry (browser.md D4: no Empty, so the user sees its size and cleans it over
+/// USB): the regular files at any depth in each entry, by their size (a `files-...` entry's record left out: its size
+/// is its item's), read a slice at a time with the folders being read kept open between ticks. Nothing is opened but
+/// folders (O_DIRECTORY|O_NOFOLLOW, from the one above), no link is followed or counted, and no folder on another
+/// device, or deeper than 16, is entered.
+pub struct TrashSizes {
+    /// (an entry's name in the trash, its bytes so far), in the order the trash gives them
+    entries: Vec<(Vec<u8>, u64)>,
+    /// every entry's bytes so far
+    pub total: u64,
+    /// the trash is read to its end: `total` is its size
+    pub done: bool,
+    /// the folders being read, the trash's own first, each with the entry it counts for
+    open: Vec<(*mut libc::DIR, usize)>,
+    dev: u64,
+    files: u32,
+    spent_ms: u32,
+}
+
+impl Drop for TrashSizes {
+    fn drop(&mut self) {
+        for &(d, _) in &self.open {
+            // SAFETY: each came from fdopendir and is closed once, here.
+            unsafe { libc::closedir(d) };
+        }
+    }
+}
+
+impl TrashSizes {
+    /// Reads on for at most `budget_ms` (FS_SLICE_MS a tick); true once the trash is read.
+    pub fn step(&mut self, budget_ms: u32) -> bool {
+        self.step_clocked(budget_ms, &mut real_now_ms)
+    }
+
+    /// The same by `clock` (the tests' own).
+    pub fn step_clocked(&mut self, budget_ms: u32, clock: &mut dyn FnMut() -> u32) -> bool {
+        if self.done {
+            return true;
+        }
+        let t0 = clock();
+        while let Some(&(dir, owner)) = self.open.last() {
+            // SAFETY: dir is open while it is in `open`; readdir's entry is read before the next call.
+            let e = unsafe { libc::readdir(dir) };
+            if e.is_null() {
+                // SAFETY: dir came from fdopendir; it leaves `open` here, so it is closed once.
+                unsafe { libc::closedir(dir) };
+                self.open.pop();
+                continue;
+            }
+            // SAFETY: e points at a dirent whose d_name is NUL-terminated.
+            let name = unsafe { std::ffi::CStr::from_ptr((*e).d_name.as_ptr()).to_bytes().to_vec() };
+            if name == b"." || name == b".." {
+                continue;
+            }
+            // (an entry of the trash itself counts for itself; what is inside one, for the entry it is in)
+            let ix = if self.open.len() == 1 {
+                self.entries.push((name.clone(), 0));
+                self.entries.len() - 1
+            } else {
+                owner
+            };
+            // (a file's or folder's entry counts the item, not the few bytes of its record beside it)
+            if self.open.len() == 2 && name == TRASH_RECORD.as_bytes() && self.entries[ix].0.starts_with(TRASH_FILES) {
+                continue;
+            }
+            // SAFETY: dir is open; its descriptor stays its own.
+            let dfd = unsafe { libc::dirfd(dir) };
+            if let Ok(c) = CString::new(name) {
+                match stat_at(dfd, &c) {
+                    Ok(st) if st.kind() == FsKind::File => {
+                        self.entries[ix].1 += st.size;
+                        self.total += st.size;
+                        self.files += 1;
+                    }
+                    Ok(st) if st.kind() == FsKind::Dir && st.dev == self.dev && self.open.len() <= SIZE_DEPTH => {
+                        if let Some(d) = open_sub(dfd, &c).ok().filter(|fd| fstat_fd(fd.as_raw_fd()).is_ok_and(|s| s.dev == self.dev)) {
+                            let raw = std::os::fd::IntoRawFd::into_raw_fd(d);
+                            // SAFETY: raw is an open folder descriptor; fdopendir takes it over (closedir closes it).
+                            let sub = unsafe { libc::fdopendir(raw) };
+                            if sub.is_null() {
+                                // SAFETY: fdopendir failed, so raw is still ours to close.
+                                unsafe { libc::close(raw) };
+                            } else {
+                                self.open.push((sub, ix));
+                            }
+                        }
+                    }
+                    _ => {}
+                }
+            }
+            if clock().wrapping_sub(t0) >= budget_ms {
+                break;
+            }
+        }
+        self.spent_ms = self.spent_ms.wrapping_add(clock().wrapping_sub(t0));
+        if self.open.is_empty() {
+            self.done = true;
+            // (counts and timings only: never a name)
+            qlog!("files: the trash holds %d entries, %d files, %s KB (read in %u ms)", self.entries.len() as i32, self.files as i32, &(self.total >> 10).to_string(), self.spent_ms);
+        }
+        self.done
+    }
+
+    /// The bytes of the trash entry `name`, once it is read to its end (None before, and for no such entry).
+    pub fn size_of(&self, name: &[u8]) -> Option<u64> {
+        let i = self.entries.iter().position(|e| e.0 == name)?;
+        let reading = !self.done && self.open.len() > 1 && i + 1 == self.entries.len();
+        (!reading).then_some(self.entries[i].1)
     }
 }
 
