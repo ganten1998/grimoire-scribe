@@ -1808,6 +1808,13 @@ pub fn library_at_rest(a: &App) -> bool {
     a.lib.as_deref().is_none_or(|s| s.modal == Modal::None)
 }
 
+/// Whether the Library's own cards are in front with nothing over them: the Library is the screen, with no sheet,
+/// no Files and no Graph up. Where a PDF KOReader handed over by its path opens its notebook once its import ends
+/// (app.rs, book_tick); with anything else in front it opens nothing.
+pub fn library_cards_in_front(a: &App) -> bool {
+    a.scr == ScreenId::Library && a.lib.as_deref().is_none_or(|s| s.modal == Modal::None && !s.files.open && !s.map.open && !s.map_picker.open)
+}
+
 /// Whether the Library currently owns the raw gesture recording context.
 pub fn library_record_active(a: &App) -> bool {
     a.lib.as_deref().is_some_and(|s| s.modal == Modal::Gestures && s.record_action != SHORTCUT_NONE)
@@ -7779,6 +7786,15 @@ fn files_close(a: &mut App, to_library: bool) {
     redraw(a, RefreshMode::Full);
 }
 
+/// What a toast says when an import that was asked for has to wait for another: a file picked while an import of
+/// an earlier run is still going, and a PDF KOReader handed over by its path behind any other import (app.rs).
+pub fn library_import_waits_text() -> &'static str {
+    // TRANSLATORS: a toast after a file was picked to import while an import from an earlier run is
+    // still going (in the background): this one starts once that one is done. One line of about
+    // 1700 px at 44 px, or two.
+    tr("Another import is still going. This one starts after it.")
+}
+
 fn files_result(a: &mut App, r: BrowserResult) {
     use crate::pdfimport::Queued;
     let (name, folder) = {
@@ -7812,12 +7828,7 @@ fn files_result(a: &mut App, r: BrowserResult) {
                     }
                     app_toast(a, &msg, 4000);
                 }
-                Queued::Waiting => {
-                    // TRANSLATORS: a toast after a file was picked to import while an import from an earlier run is
-                    // still going (in the background): this one starts once that one is done. One line of about
-                    // 1700 px at 44 px, or two.
-                    app_toast(a, tr("Another import is still going. This one starts after it."), 6000);
-                }
+                Queued::Waiting => app_toast(a, library_import_waits_text(), 6000),
                 _ => {}
             }
         }

@@ -940,6 +940,72 @@ fn book_request_parsing() {
     }
     // (The C also passes NULL: the nothing that is there is the empty text, which has no book.)
     check!(book_parse(b"", &mut r, &mut why) != 0);
+    // Version 2 (2.2): a PDF named by its absolute path and no picture; its line is read whole, past the length a
+    // title is cut at, and a name of any letters is kept as it is.
+    let long = format!("/mnt/us/documents/{}.pdf", "a".repeat(700));
+    let v2 = format!("version=2\r\nbook={BOOK}\r\ntitle=Hanon\r\nfile={long}\r\npages=96\r\npage=13\r\nkind=paged\r\ntime=1792500000\r\nfrom=a newer plugin\r\n");
+    check!(book_parse(v2.as_bytes(), &mut r, &mut why) == 0 && why.is_empty());
+    check!(r.version == 2 && r.file == long && r.book == BOOK && r.title == "Hanon" && r.page == 13 && r.pages == 96);
+    check!(r.kind == "paged" && r.time == 1792500000 && r.sent.is_empty());
+    book_request_free(&mut r);
+    let odd = "/mnt/us/documents/Étude 10:30 (copy) #2.pdf";
+    check!(book_parse(format!("file={odd}\nversion=2\nbook=ab12\npages=3\npage=1\n").as_bytes(), &mut r, &mut why) == 0 && r.file == odd);
+    book_request_free(&mut r);
+    // Version 1 as before: a file= line is a key it does not know, whatever it holds, and its pictures are read.
+    let big = "x".repeat(2000);
+    for f in ["relative.pdf", "/a\rb.pdf", long.as_str(), big.as_str()] {
+        let v1 = format!("version=1\nbook=ab12\nfile={f}\npages=3\npage=1\npicture.2=page-2.png\n");
+        let rc = book_parse(v1.as_bytes(), &mut r, &mut why);
+        check!(rc == 0 && r.version == 1 && r.file.is_empty() && r.sent.len() == 1 && r.sent[0] == 2);
+        book_request_free(&mut r);
+    }
+    let mut bad2: Vec<Vec<u8>> = [
+        "version=2\nbook=ab12\npages=3\npage=1\n",                                         // no file
+        "version=2\nbook=ab12\nfile=\npages=3\npage=1\n",                                  // an empty one
+        "version=2\nbook=ab12\nfile=documents/a.pdf\npages=3\npage=1\n",                   // not absolute
+        "version=2\nbook=ab12\nfile=/mnt/us/a.pdf\nfile=/mnt/us/b.pdf\npages=3\npage=1\n", // two
+        "version=2\nbook=ab12\nfile=/mnt/us/a.pdf\npages=3\npage=1\npicture.1=page-1.png\n", // a picture
+        "version=2\nbook=ab12\nfile=/mnt/us/a\rb.pdf\npages=3\npage=1\n",                  // a carriage return in it
+        "version=2\nbook=ab12\nfile=/mnt/us/a\tb.pdf\npages=3\npage=1\n",                  // a tab in it
+        "version=2\nbook=ab12\nfile=/mnt/us/a\x1bb.pdf\npages=3\npage=1\n",               // an escape
+        "version=2\nbook=ab12\nfile=/mnt/us/a\x7fb.pdf\npages=3\npage=1\n",               // a delete
+        // each key once: a second line of any of them, and the version said twice in either order
+        "version=2\nversion=1\nbook=ab12\nfile=/mnt/us/a.pdf\npages=3\npage=1\n",
+        "version=1\nversion=2\nbook=ab12\nfile=/mnt/us/a.pdf\npages=3\npage=1\n",
+        "version=2\nversion=2\nbook=ab12\nfile=/mnt/us/a.pdf\npages=3\npage=1\n",
+        "version=2\nbook=ab12\nbook=cd34\nfile=/mnt/us/a.pdf\npages=3\npage=1\n",
+        "version=2\nbook=ab12\nfile=/mnt/us/a.pdf\ntitle=A\ntitle=B\npages=3\npage=1\n",
+        "version=2\nbook=ab12\nfile=/mnt/us/a.pdf\npages=3\npages=4\npage=1\n",
+        "version=2\nbook=ab12\nfile=/mnt/us/a.pdf\npages=3\npage=1\npage=2\n",
+        "version=2\nbook=ab12\nfile=/mnt/us/a.pdf\npages=3\npage=1\nkind=paged\nkind=paged\n",
+        "version=2\nbook=ab12\nfile=/mnt/us/a.pdf\npages=3\npage=1\ntime=5\ntime=6\n",
+        // the version is said by "2" alone
+        "version=02\nbook=ab12\nfile=/mnt/us/a.pdf\npages=3\npage=1\n",
+        "version=2 \nbook=ab12\nfile=/mnt/us/a.pdf\npages=3\npage=1\n",
+        "version=+2\nbook=ab12\nfile=/mnt/us/a.pdf\npages=3\npage=1\n",
+        "version=2\nfile=/mnt/us/a.pdf\npages=3\npage=1\n",                                // no book
+        "version=2\nbook=ab12\nfile=/mnt/us/a.pdf\npage=1\n",                              // no page count
+        "version=2\nbook=ab12\nfile=/mnt/us/a.pdf\npages=3\npage=4\n",                     // the page past the last
+        "version=3\nbook=ab12\nfile=/mnt/us/a.pdf\npages=3\npage=1\n",                     // a version it does not know
+    ]
+    .iter()
+    .map(|s| s.as_bytes().to_vec())
+    .collect();
+    // Version 1 reads a key said twice as it always did (the last line counts), and a version with a leading zero.
+    check!(book_parse(b"version=01\nbook=ab12\nbook=cd34\npages=3\npages=4\npage=1\npage=4\n", &mut r, &mut why) == 0);
+    check!(r.version == 1 && r.book == "cd34" && r.pages == 4 && r.page == 4);
+    book_request_free(&mut r);
+    // a path too long to be one, and one that is not UTF-8
+    bad2.push(format!("version=2\nbook=ab12\nfile=/{}\npages=3\npage=1\n", "a".repeat(BOOK_FILE_MAX)).into_bytes());
+    bad2.push(b"version=2\nbook=ab12\nfile=/mnt/us/caf\xe9.pdf\npages=3\npage=1\n".to_vec());
+    for b in &bad2 {
+        let rc = book_parse(b, &mut r, &mut why);
+        if rc == 0 {
+            eprintln!("  taken: {}", String::from_utf8_lossy(b));
+        }
+        check!(rc != 0 && !why.is_empty());
+        book_request_free(&mut r);
+    }
 }
 
 // The notices a start with a request can end with (app.c), in every language and style, on the

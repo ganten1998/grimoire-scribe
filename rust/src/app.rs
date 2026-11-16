@@ -293,7 +293,7 @@ fn live_block(on: bool) {
 
 fn live_cap_sync(a: &App) {
     let mut cap = LiveCap { on: G_LIVE_APP.load(Ordering::Relaxed), asleep: a.asleep, input_yielded: a.input_yielded, ..Default::default() };
-    if cap.on && a.scr == ScreenId::Editor && a.book.state != BookState::Running {
+    if cap.on && a.scr == ScreenId::Editor && !book_holds(a) {
         cap.editor = true;
         for (e, row) in cap.styles.iter_mut().enumerate() {
             for (side, style) in row.iter_mut().enumerate() {
@@ -542,21 +542,65 @@ fn book_failed(a: &mut App) {
     app_toast(a, &msg, 8000);
 }
 
+// Whether KOReader's book job holds the input now: while a version 1 job adds the pages KOReader drew (a few
+// seconds, writing the book's notebook itself). A PDF handed over by its path (version 2) never does: the PDF
+// import makes its pages as it makes a dropped PDF's, the Library stays usable meanwhile, and a sheet that is up
+// (What's new, on the first start after an update) closes as it always does.
+fn book_holds(a: &App) -> bool {
+    a.book.state == BookState::Running && !a.book.pdf
+}
+
 // A whole book KOReader sent (annotate.h), its pages added a slice at a time: how far it got, in a
 // toast, then the editor opens on the reader's page.
+//
+// A PDF handed over by its path (version 2, 2.2) is the PDF import's: this only follows it. When it ends with the
+// user still on the Library (never left since the hand-over: BookStatus.left) and its cards in front (no sheet, no
+// Files, no Graph) the notebook opens on the reader's page, as version 1's does. Otherwise nothing opens: the
+// import's own done toast shows, as for a dropped PDF (and also where the Library is in front again with the new
+// card on it), and the reader's page is kept as the page the notebook opens at. An end that comes while the Kindle
+// sleeps, or while a fill's pages go in, is taken once that is over: both end by themselves. It waits for nothing
+// the user does or does not do: not for a finger to lift (a lift that a fill's hold swallowed would never come; the
+// Library forgets what was pressed as it is left, and a lift that reaches the page finds nothing it began).
 fn book_tick(a: &mut App) {
     book_fits_tick();
     if a.book.state != BookState::Running {
         return;
     }
+    if a.book.pdf && a.scr != ScreenId::Library {
+        a.book.left = true; // (the user went on to something else: from here on nothing opens by itself)
+    }
+    if a.book.pdf && (a.asleep || crate::pdfimport::fill_busy().is_some()) {
+        return;
+    }
     book_step(150, &mut a.book);
+    if a.book.state == BookState::Done && a.book.pdf && (a.book.left || !crate::library::library_cards_in_front(a)) {
+        let nb = a.book.nb;
+        // (the notebook the editor has open keeps its place: its page is the user's, and its files the editor's)
+        if !crate::editor::editor_has_open(a, nb.as_str()) && !book_pdf_keep_page(nb.as_str(), a.book.pid) {
+            qlog!("book: %s: the reader's page could not be kept as the page it opens at", nb.as_str());
+        }
+        // (said always: the user asked for this book, and it does not open by itself)
+        if let Some((id, fin)) = book_pdf_told() {
+            pdf_import_said(a, &id, fin, true);
+        }
+        return;
+    }
     if a.book.state == BookState::Done {
         let nb = a.book.nb;
         // (links only: the notebook changed too, so that its mirror PDF, which draws the tabs, is made again)
         let added = a.book.made || a.book.added > 0 || a.book.links;
-        app_notice_clear(a, NoticeKey::Book); // (the notice saying how far it got goes)
+        if a.book.pdf {
+            book_pdf_told(); // (said by the notebook opening, and the book's toast below)
+        } else {
+            app_notice_clear(a, NoticeKey::Book); // (the notice saying how far it got goes)
+        }
         editor_open_notebook_at(a, nb.as_str(), a.book.pid, added);
-        if a.book.added != 0 {
+        if a.book.blank > 0 && a.book.made {
+            // (a PDF KOReader handed over by its path became a new notebook, some of its pages blank: the PDF
+            // import's own words for that, 2.2)
+            let msg = imported_blank_text(a.book.added);
+            app_toast(a, &msg, 5000);
+        } else if a.book.added != 0 {
             let mut msg = String::new();
             if a.book.links_out {
                 // TRANSLATORS: in a toast, once the pages of a book KOReader sent are in its notebook, but some of
@@ -578,9 +622,17 @@ fn book_tick(a: &mut App) {
             bg_mirror_pdf(nb.as_str(), dpi, &dir, false);
         }
     } else if a.book.state == BookState::Failed {
-        app_notice_clear(a, NoticeKey::Book); // (the notice saying how far it got goes)
-        book_failed(a);
-    } else {
+        if !a.book.pdf {
+            app_notice_clear(a, NoticeKey::Book); // (the notice saying how far it got goes)
+        }
+        // A PDF handed over by its path that its import refused says the import's own words, whatever is in front
+        // ("PDF needs a password.", "PDF too big: over N MB.", and the others: pdf_import_told). A path refused
+        // before any import, and every version 1 failure, says the book's.
+        match if a.book.pdf { book_pdf_told() } else { None } {
+            Some((id, fin @ crate::pdfimport::Finished::Failed(_))) => pdf_import_told(a, &id, fin),
+            _ => book_failed(a),
+        }
+    } else if !a.book.pdf {
         book_progress(a, now_ms());
     }
 }
@@ -731,6 +783,10 @@ pub fn app_init(a: &mut App, w: i32, h: i32, dpi: f32) -> i32 {
         app_toast(a, &note, 8000);
     } else if a.book.state == BookState::Failed {
         book_failed(a);
+    } else if a.book.state == BookState::Running && a.book.waits {
+        // The PDF KOReader handed over by its path is behind another import (one of an earlier run, or others
+        // queued ahead of it): it starts after them, and that is said, as for a picked PDF. Nothing is held.
+        app_toast(a, crate::library::library_import_waits_text(), 6000);
     } else if !caps.has_pen {
         // TRANSLATORS: %s is the app's name, Grimoire.
         csnprintf!(&mut msg, 256, tr("No pen found. %s is made for Kindle Scribe; writing needs its pen."), APP_NAME);
@@ -1130,8 +1186,9 @@ fn app_event_screens(a: &mut App, ev: &InEvent) {
     }
     let ev = &captured;
     // While a book's pages are being added (a few seconds), nothing may open its notebook; nor while a PDF fill's
-    // pages go into theirs (2.2), so no Library action and no editor meets that commit (its keys: above).
-    if (a.book.state == BookState::Running || crate::pdfimport::fill_busy().is_some())
+    // pages go into theirs (2.2), so no Library action and no editor meets that commit (its keys: above). A PDF
+    // KOReader handed over by its path holds nothing: its import writes no notebook the user can reach (book_holds).
+    if (book_holds(a) || crate::pdfimport::fill_busy().is_some())
         && (app_pointer_phase(ev) >= 0 || ev.type_ == InType::PinchBegin || ev.type_ == InType::Key || ev.type_ == InType::Gesture)
     {
         return;
@@ -1940,10 +1997,27 @@ fn import_made(a: &App, id: &str) -> bool {
     crate::library::library_shows_folder(a, nb.folder.as_str())
 }
 
+// The toast of a PDF that became a new notebook with some of its pages blank (`pages`: its page count): the PDF
+// import's, and KOReader's hand-over by path's (book_tick).
+fn imported_blank_text(pages: i32) -> String {
+    let mut msg = String::new();
+    // TRANSLATORS: a PDF became a new notebook, but some of its pages could not be read and are
+    // blank; %d is its page count. In a toast: one line of about 1700 px at 44 px in bold, or two.
+    csnprintf!(&mut msg, 256, ng_("Imported notebook (%d page). Some pages couldn't be read.", "Imported notebook (%d pages). Some pages couldn't be read.", pages as i64), pages);
+    msg
+}
+
 // A PDF import ended (pdfimport.rs): what to tell the user. With the Library in front and the new card on it
 // (D20) no toast says "Imported"; elsewhere one does. One that left pages blank says so whatever is in front,
 // as it is news the card does not carry. (`id`: the import's job; a fill's end comes from the UI's own commit.)
 fn pdf_import_told(a: &mut App, id: &str, fin: crate::pdfimport::Finished) {
+    pdf_import_said(a, id, fin, false);
+}
+
+// The same; with `always`, a new notebook's toast shows even where its card is on the Library in front: the end
+// of a PDF KOReader handed over by its path that opens nothing (book_tick), as the user asked for that book and
+// it is the one word they get of it.
+fn pdf_import_said(a: &mut App, id: &str, fin: crate::pdfimport::Finished, always: bool) {
     use crate::pdfimport::{FailWhy, Finished};
     let mut msg = String::new();
     match fin {
@@ -1954,14 +2028,12 @@ fn pdf_import_told(a: &mut App, id: &str, fin: crate::pdfimport::Finished) {
                 app_redraw_mode(a, RefreshMode::Ui); // (waking redraws it too)
             }
             if blank > 0 {
-                // TRANSLATORS: a PDF became a new notebook, but some of its pages could not be read and are
-                // blank; %d is its page count. In a toast: one line of about 1700 px at 44 px in bold, or two.
-                csnprintf!(&mut msg, 256, ng_("Imported notebook (%d page). Some pages couldn't be read.", "Imported notebook (%d pages). Some pages couldn't be read.", pages as i64), pages as i32);
+                msg = imported_blank_text(pages as i32);
             } else if trimmed > 0 {
                 // TRANSLATORS: a PDF became a new notebook, but its document links (a planner's tabs) were more than
                 // a notebook holds and some were left out; %d is its page count. In a toast: one or two lines.
                 csnprintf!(&mut msg, 256, ng_("Imported notebook (%d page). Some links were left out.", "Imported notebook (%d pages). Some links were left out.", pages as i64), pages as i32);
-            } else if !shown {
+            } else if !shown || always {
                 // TRANSLATORS: a folder of page pictures (grimoire/import/<name>) or a PDF became a new notebook.
                 csnprintf!(&mut msg, 256, ng_("Imported notebook (%d page).", "Imported notebook (%d pages).", pages as i64), pages as i32);
             }
@@ -2059,8 +2131,11 @@ fn pdf_import_tick(a: &mut App, now: u32) {
     // A PDF fill whose pages are made goes into its notebook here, in the UI process (2.2), as KOReader's book
     // job's pages do: it begins only with the Library in front and at rest (so no notebook is open, and no dialog
     // is half way) and no book job running, takes a few ticks with input held (pen, touch and keys, the Live view's
-    // too), and says how far it got in the book's notice.
-    let free = a.scr == ScreenId::Library && !a.asleep && a.book.state != BookState::Running && crate::library::library_at_rest(a);
+    // too), and says how far it got in the book's notice. A book job that follows a PDF import (KOReader's hand-over
+    // by path) writes no notebook itself: a fill goes in during it by these same rules, and the one of its own PDF
+    // ends it.
+    let book = book_pdf_src();
+    let free = a.scr == ScreenId::Library && !a.asleep && !book_holds(a) && crate::library::library_at_rest(a);
     let fin = crate::pdfimport::fill_tick(free, a.dpi);
     if let Some((done, total)) = crate::pdfimport::fill_busy() {
         let mut msg = String::new();
@@ -2069,7 +2144,11 @@ fn pdf_import_tick(a: &mut App, now: u32) {
     } else if fin != crate::pdfimport::Finished::Nothing {
         app_notice_clear(a, NoticeKey::Book);
     }
-    pdf_import_told(a, "", fin);
+    if fin != crate::pdfimport::Finished::Nothing && book.is_some() && crate::pdfimport::fill_told_src() == book {
+        book_pdf_end("", fin);
+    } else {
+        pdf_import_told(a, "", fin);
+    }
     if a.scr == ScreenId::Library {
         app_import_rescan(a, false);
     }
@@ -2099,8 +2178,14 @@ fn poll_jobs(a: &mut App) -> i32 {
         editor_picture_made(a); // (the open page may be on that picture: a page KOReader sent)
     }
     if done == BgKind::PdfImport as i32 {
+        // (the PDF KOReader handed over by its path, 2.2: its end opens the reader's page, through the book job)
+        let src = crate::pdfimport::queued_src(done_id.as_str());
         let fin = crate::pdfimport::finished(done_id.as_str(), r > 0);
-        pdf_import_told(a, done_id.as_str(), fin);
+        if src.is_some() && src == book_pdf_src() {
+            book_pdf_end(done_id.as_str(), fin);
+        } else {
+            pdf_import_told(a, done_id.as_str(), fin);
+        }
         return 0;
     }
     if done == BgKind::CopyFile as i32 {
