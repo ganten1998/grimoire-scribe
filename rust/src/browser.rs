@@ -10,8 +10,9 @@
 //! user's files (import, templates, photos, fonts) a card renames a file or folder, with the rename keyboard, or
 //! moves it to the trash after asking as the Library asks before a notebook goes (the font Settings names is not
 //! deleted, and renamed it stays the font); the Trash place puts an entry back (Restore) and shows each entry's
-//! size and the trash's own (issue #144). After such a write the rows follow from the listing held: nothing is
-//! read again. Everything else is read only.
+//! size and the trash's own (issue #144). After such a write the rows follow from the listing held: the folder
+//! shown is not read again (a font renamed has its check's results and its setting follow, and a notebook restored
+//! has the Library read: DESIGN.md says what each reads). Everything else is read only.
 //!
 //! Everything it reads of the storage goes through fsview.rs: the walk (no link anywhere, one device, Grimoire's
 //! notebooks refused by identity, and in pick mode its PDFs and trash too), listings of names and kinds only in

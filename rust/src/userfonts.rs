@@ -6,8 +6,9 @@
 //!   file), .checking (a check under way), .bad (the check's worker died on it) and .slow (one check ran out of
 //!   time, or found glyphs too slow to draw: FORMAT.md). <key> is the FNV-1a hash of the file's path under the
 //!   folder, its size and its time, as a template's preview is keyed, so a file replaced by another is checked
-//!   afresh. Written by the background job, but for the UI's rename of a .checking mark to .bad when that job
-//!   died; deleting it loses nothing, and has every font checked again.
+//!   afresh. Written by the background job, but for two renames of the UI's: a .checking mark to .bad when that
+//!   job died, and the .pgm, .no, .bad and .slow of a font renamed in Files to its new key (`userfonts_renamed`).
+//!   Deleting it loses nothing, and has every font checked again.
 //! - the verdicts (`VerdictDir`): <key>.font (fontcheck.rs), what the check found of a file. Where the build has
 //!   a folder of its own outside the storage (the Kindle: /var/local/grimoire; elsewhere GRIMOIRE_STATE), they
 //!   are kept there, in a folder for each data root, and nothing under grimoire/fonts decides whether a font is

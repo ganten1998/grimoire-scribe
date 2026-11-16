@@ -2637,12 +2637,18 @@ trash, and the Trash place puts an entry back. Pick mode (New notebook's From a 
   (`userfonts_renamed`): the verdict and its companions are renamed from the old path's key to the new one's (a key is
   path, size and time; the rename changes the path alone), so the file is not checked again. The SHA-256 in the
   verdict still ties it to the bytes, compared at every load.
-- **After a write nothing is read again.** A rename, a delete and a restore tell the listing Files holds what changed
-  (`entry_changed`: the entry's new name, or the entry gone) and make the rows again from it, as Sort and Show do: no
-  folder is listed and no row stat-ed anew, which for a folder of thousands sorted by newest or size would hold the UI
-  for all of it at one go. The other rows keep what they had read (sizes, names, counts), and the screen of rows stays
-  where it was. Only an act that found the item changed reads the folder again (`reread`), a slice a tick with the
-  Loading notice, as any folder is read. A file put there over USB meanwhile shows the next time the folder is opened.
+- **After a write the folder shown is not read again.** A rename, a delete and a restore tell the listing Files holds
+  what changed (`entry_changed`: the entry's new name, or the entry gone) and make the rows again from it, as Sort and
+  Show do: the folder shown is not listed and none of its rows stat-ed anew, which for a folder of thousands sorted by
+  newest or size would hold the UI for all of it at one go. The other rows keep what they had read (sizes, names,
+  counts), and the screen of rows stays where it was. Only an act that found the item changed reads the folder again
+  (`reread`), a slice a tick with the Loading notice, as any folder is read. A file put there over USB meanwhile shows
+  the next time the folder is opened. Three writes read something else, each at one go on the UI thread: a font file
+  renamed is stat-ed once, and a folder of fonts renamed is listed and its entries stat-ed, for the keys the check's
+  results go to (`userfonts_renamed`); the font in use, renamed, is read and hashed again as it is applied from its new
+  path (`userfonts_apply`; where Settings names no Bold file and the font has no bold weight of its own, `fonts/` and
+  its folders are listed for one); and a notebook restored has the store read the Library's notebooks once
+  (`store_restored`) and the Library under Files once more (`reload`).
 - **The Trash place** lists the trash as before (fsview's trash listing, newest first by the time in each name), each
   row with its size and date; the root's Trash row has the trash's size beside its path (an empty trash its path
   alone, and an entry of no bytes no size: a size label rounds up to "1 KB"). Past 5,000 entries (every deleted page

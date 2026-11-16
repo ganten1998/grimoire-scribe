@@ -25,6 +25,7 @@ const PDFWORK: File = ("rust/src/pdfwork.rs", include_str!("../src/pdfwork.rs"))
 const FONTCHECK: File = ("rust/src/fontcheck.rs", include_str!("../src/fontcheck.rs"));
 const USERFONTS: File = ("rust/src/userfonts.rs", include_str!("../src/userfonts.rs"));
 const FSVIEW: File = ("rust/src/fsview.rs", include_str!("../src/fsview.rs"));
+const BROWSER: File = ("rust/src/browser.rs", include_str!("../src/browser.rs"));
 const SANDBOX: File = ("rust/src/sandbox.rs", include_str!("../src/sandbox.rs"));
 const TEMPLATES: File = ("rust/src/bgwork_template.rs", include_str!("../src/bgwork_template.rs"));
 const SANDBOX_TESTS: File = ("rust/tests/test_sandbox_linux.rs", include_str!("test_sandbox_linux.rs"));
@@ -489,6 +490,16 @@ fn files_rename_delete_and_restore_are_told_as_they_are() {
     // after a write the rows follow from the listing held: the folder is not read again at one go
     gone(&mut fails, DESIGN, "Renamed: the folder is read again, with its rows' page kept.");
     gone(&mut fails, DESIGN, "\"Moved to grimoire/trash\" and the folder read again.");
+    // which is the folder shown, no more: a font renamed, the font in use and a notebook restored read what DESIGN
+    // lists (userfonts_renamed, userfonts_apply, store_restored and the Library's reload)
+    gone(&mut fails, DESIGN, "After a write nothing is read again.");
+    gone(&mut fails, DESIGN, "no folder is listed and no row stat-ed anew");
+    gone(&mut fails, BROWSER, "the listing held: nothing is read again");
+    // who writes where the font check keeps its results: the job, but for the UI's renames (a .checking mark to
+    // .bad, and what the check found of a font renamed in Files, to its new key)
+    gone(&mut fails, USERFONTS, "but for the UI's rename of a .checking mark to .bad when that job died; deleting it");
+    gone(&mut fails, USERFONTS, "background job alone.");
+    gone(&mut fails, USERFONTS, "the UI never writes there");
     // the font in use: not deleted, and a rename takes its setting along
     gone(&mut fails, BACKLOG, "a font in use goes back to Terminess, as it does when its file goes over USB.");
     none_failed(&fails, "Files' rename, delete and restore");
