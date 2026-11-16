@@ -1103,13 +1103,16 @@ impl Browser {
     }
 
     /// The folder shown read again from the storage, in the listing's slices (a tick at a time, with its notice):
-    /// after an act that found the item changed, or that the listing could not follow. Never at one go.
+    /// after an act that found the item changed, or that the listing could not follow. Never at one go. A folder
+    /// that is itself gone gives way to the nearest one above that opens, as Back finds it.
     fn reread(&mut self) {
         self.card = None;
         match self.at.clone() {
             Some(p) => {
                 let said = self.toast.take();
-                self.enter(p, false, now_ms());
+                if !self.enter(p, false, now_ms()) {
+                    self.up(now_ms());
+                }
                 self.toast = said;
             }
             None => self.show_root(),
@@ -4066,6 +4069,12 @@ mod tests {
         assert!(!b.entry_changed(b"no such entry", None));
         b.reread();
         assert_eq!(FOLDER_READS.with(|n| n.get()), reads + 1);
+        // and when the folder shown is itself gone, the nearest one above that opens is shown
+        assert!(b.go(sp("grimoire/templates/Sub")));
+        std::fs::remove_dir(format!("{t}/Sub")).unwrap();
+        b.reread();
+        assert_eq!(b.at, Some(sp("grimoire/templates")));
+        assert!(b.toast.is_none());
     }
 
     // Rename never changes a name nobody typed (issue #144). A name the keyboard cannot show as it is is not offered
