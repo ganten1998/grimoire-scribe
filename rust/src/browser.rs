@@ -459,9 +459,17 @@ fn root_listing(st: &FsStorage, pick: bool, clock: &mut dyn FnMut() -> u32) -> O
     Some(l)
 }
 
+// (how many times this thread asked for the Files card's free space: a test's)
+#[cfg(test)]
+thread_local! {
+    pub static FREE_LINE_READS: std::cell::Cell<u32> = const { std::cell::Cell::new(0) };
+}
+
 /// The storage's free space as Files' root says it, for the Library's Files card (2.2); None with no storage to
 /// tell (one statvfs of the storage root: nothing is listed).
 pub fn files_free_line() -> Option<String> {
+    #[cfg(test)]
+    FREE_LINE_READS.with(|n| n.set(n.get() + 1));
     let (root, _) = root_dir()?;
     let c = std::ffi::CString::new(root).ok()?;
     // SAFETY: sv is written by statvfs before it is read; c is NUL-terminated.

@@ -2354,7 +2354,8 @@ hosted the same way (`LibraryState.files`, `files_open_place`), and closes back 
   Library", sets (in pick mode as in place mode, while the card is hidden). Shown, it is the last card of the
   Library's top level, after every folder and notebook (`reload` appends it; it is in no folder), so no notebook
   moves for it; in a big Library that is the last screen of cards. Its `...` (or a hold) opens its menu: Open,
-  Hide from Library, Cancel. Its second line is the free space when it fits the card.
+  Hide from Library, Cancel. Its second line is the free space when it fits the card, read when the Library
+  reloads (one statvfs), not at each draw.
 - **The path bar is Files' alone.** Inside a place, the band under the header is 120 px: the path's parts (Files,
   the place, each folder) each a target the bar's height that opens it, the folder shown opening the Go to sheet
   (the places that are there, then the storage's other top folders by name, but a name a row would not take, with

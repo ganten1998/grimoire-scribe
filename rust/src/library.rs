@@ -280,6 +280,9 @@ pub struct LibraryState {
     /// and Esc at the picker's root come back to it), and whether the sheet's name was typed (D28: a typed name is
     /// the imported notebook's, else the file's own).
     files: Browser,
+    /// The Files card's second line (2.2), the storage's free space: read when the Library reloads (one statvfs),
+    /// not at each draw of the card; None when there is no storage to tell
+    files_free: Option<String>,
     new_name_typed: bool,
     /// The Merge dialog (2.1): the folder that was moved or renamed, and the path it would take, which is
     /// the name of a folder already there
@@ -586,6 +589,7 @@ fn reload(a: &mut App) {
     // last card of the first screen instead would be an insert at the screen's last place here.)
     if files_card && s.cur_folder.is_empty() {
         s.items.push(Item { is_files: true, ..Default::default() });
+        s.files_free = crate::browser::files_free_line();
     }
     let pages = (s.items.len() as i32 + pp - 1) / pp;
     s.page = clampi(s.page, 0, if pages > 0 { pages - 1 } else { 0 });
@@ -805,7 +809,7 @@ fn draw_files_card(c: &mut Canvas, s: &mut LibraryState, r: Rect, idx: usize) {
     let tr_ = Rect::new(r.x, r.y + th + ui_px(14.0), r.w - more - ui_px(10.0), ui_px(96.0));
     let face = if ui_theme() == UiTheme::Gothic { FontFace::Regular } else { FontFace::Bold };
     ui_text_name(c, face, ui_text_size() * 0.88, ui_small_size(), tr_, tr("Files"), 2, 0);
-    if let Some(line) = crate::browser::files_free_line() {
+    if let Some(line) = s.files_free.as_deref() {
         let lr = Rect::new(r.x, tr_.y + tr_.h, r.w - more - ui_px(10.0), ui_px(40.0));
         let ls = ui_small_size();
         let fs = if font_measure(FontFace::Regular, ls, &line) > lr.w { font_fit_px(FontFace::Regular, ls, ls * 0.8, &line, lr.w) } else { ls };
@@ -9451,6 +9455,36 @@ mod tests {
         assert_eq!(lib(&mut a).folders, folders);
         library_free(&mut a);
         canvas_free(&mut a.screen);
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    // The Files card's second line, the storage's free space (2.2), is read when the Library reloads, not at each
+    // draw of the card: drawing the Library three times asks for it no more.
+    #[test]
+    fn the_files_cards_free_space_is_read_on_reload_not_on_each_draw() {
+        let root = std::env::temp_dir().join(format!("grimoire-files-free-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(&root).unwrap();
+        std::env::set_var("GRIMOIRE_STORAGE", &root);
+        assert_eq!(store_init(root.join("grimoire").to_str().unwrap()), 0);
+        let mut a = pen_record_app();
+        a.scr = ScreenId::Library;
+        settings_default(&mut a.settings);
+        a.settings.files_card = true;
+        lib(&mut a).modal = Modal::None;
+        let reads = || crate::browser::FREE_LINE_READS.with(|n| n.get());
+        let r0 = reads();
+        reload(&mut a);
+        assert_eq!(reads(), r0 + 1);
+        assert!(lib(&mut a).files_free.as_deref().is_some_and(|l| l.starts_with("Free: ")));
+        for _ in 0..3 {
+            redraw(&mut a, RefreshMode::Ui);
+        }
+        assert!(lib(&mut a).items[0].is_files && lib(&mut a).hits.h.iter().any(|h| h.id == H_CARD), "the card was drawn");
+        assert_eq!(reads(), r0 + 1, "no draw asked for it again");
+        library_free(&mut a);
+        canvas_free(&mut a.screen);
+        std::env::remove_var("GRIMOIRE_STORAGE");
         let _ = std::fs::remove_dir_all(&root);
     }
 
