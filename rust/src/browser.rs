@@ -1500,15 +1500,18 @@ impl Browser {
         format!("{}, {}", size_label(s.size), day)
     }
 
-    /// Checks the file a card was opened for again before acting on it ("File changed. Try again."): its stat now
-    /// against the one it had then (false once its row is not listed).
+    /// Checks the file or folder a card was opened for again before acting on it ("File changed. Try again."): by
+    /// its path and its identity. A file: its device, inode, size and time now against its stat then. A folder: the
+    /// same folder (device and inode), not just some folder at that path (its size and time change with what is put
+    /// in it). False once its row is not listed, or when its stat then is not known.
     fn unchanged(&self, c: &Card) -> bool {
-        let (Some(st), Some(r)) = (self.storage.as_ref(), self.card_row(c)) else { return false };
-        match (c.stat, st.stat(&c.path, self.pick())) {
-            (Some(was), Ok(now)) if r.kind != RowKind::Dir => was.same(&now),
-            (_, Ok(now)) => now.mode & libc::S_IFMT as u32 == libc::S_IFDIR as u32,
-            _ => false,
+        let (Some(st), Some(_)) = (self.storage.as_ref(), self.card_row(c)) else { return false };
+        let (Some(was), Ok(now)) = (c.stat, st.stat(&c.path, self.pick())) else { return false };
+        let dir = |s: &FsStat| s.mode & libc::S_IFMT as u32 == libc::S_IFDIR as u32;
+        if dir(&was) || dir(&now) {
+            return dir(&was) && dir(&now) && (was.dev, was.ino) == (now.dev, now.ino);
         }
+        was.same(&now)
     }
 
     // ---- drawing ----
@@ -2907,6 +2910,42 @@ mod tests {
         assert!(b.point("sort").is_none() && b.point("show").is_none());
         assert!(b.point("crumb.2").is_some(), "the path's parts are there");
         canvas_free(&mut a.screen);
+    }
+
+    fn row_of(b: &Browser, name: &str) -> usize {
+        b.rows.iter().position(|r| r.name == name).unwrap_or_else(|| panic!("no row {name}: {:?}", row_names(b)))
+    }
+
+    // A folder card's check before acting is by identity (issue #144; #132's final verify): the folder the card was
+    // opened for, swapped for another folder of the same name (removed, and another renamed to it), is refused, as a
+    // file is; the same folder with a file put in it since (its size and time changed) is still the one.
+    #[test]
+    fn a_folder_cards_check_is_by_the_folders_identity() {
+        let (base, _g) = storage("swapfolder");
+        let imp = format!("{base}/grimoire/import");
+        for d in ["Trip", "Other"] {
+            std::fs::create_dir_all(format!("{imp}/{d}")).unwrap();
+            std::fs::write(format!("{imp}/{d}/p1.png"), b"a picture").unwrap();
+        }
+        i18n_set("en");
+        for spec in [PickSpec::place(), PickSpec::import()] {
+            let mut b = Browser::default();
+            assert!(b.open(spec, FilesPrefs { card: true, ..Default::default() }));
+            assert!(b.go(sp("grimoire/import")));
+            let i = row_of(&b, "Trip");
+            b.open_card(i);
+            let c = b.card.clone().expect("a folder's card");
+            assert!(b.unchanged(&c), "nothing changed yet");
+            std::fs::write(format!("{imp}/Trip/p2.png"), b"another").unwrap();
+            assert!(b.unchanged(&c), "the same folder, with a file more");
+            std::fs::rename(format!("{imp}/Trip"), format!("{imp}/Was")).unwrap();
+            std::fs::rename(format!("{imp}/Other"), format!("{imp}/Trip")).unwrap();
+            assert!(!b.unchanged(&c), "another folder at the path is not the one the card was opened for");
+            // (back as it was, for the other mode)
+            std::fs::rename(format!("{imp}/Trip"), format!("{imp}/Other")).unwrap();
+            std::fs::rename(format!("{imp}/Was"), format!("{imp}/Trip")).unwrap();
+            std::fs::remove_file(format!("{imp}/Trip/p2.png")).unwrap();
+        }
     }
 
     #[test]
