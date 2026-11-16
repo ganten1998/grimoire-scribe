@@ -2963,3 +2963,29 @@ steps 1, 5 and 11 answer; and the two floors of free room beside it (`STATE_FREE
     the worker's narrower system calls and this change's walk are in the same process.
 11. When a firmware update next arrives: is /var/local/grimoire still there? (If not, fonts are checked once
     more: note it in KINDLE.md.)
+
+## 2.2, From a file... and Use as template (issue #146): device checks
+
+Not run on a Scribe yet. The scenarios `files_8_use_as`, `files_9_copy_room`, `files_9_copy_refused`,
+`z_tpl_c_from_file_library`, `z_tpl_d_from_file_full`, `z_tpl_e_from_file_editor`, `z_tpl_f_from_file_press` and
+`z_tpl_g_from_file_keys` cover the logic (docs/DESIGN.md, From a file... and Use as
+template), with the floor and a failing write simulated. What only the Scribe can tell:
+
+1. **A photo from the Kindle**: copy a JPG of a few MB into `documents/` over USB. In a notebook, Paper > Photos... >
+   From a file... > Documents > the photo > Use as photo: the sheet comes back, its last tile an hourglass while
+   the copy runs, then the photo's tile (waiting, then its preview), and a tap makes it the page's paper. Note how
+   long the copy and the preview took (grimoire.log: `bg: a file copied into photos: N KB in T ms`, then the
+   previews job), that the pen and the sheet stay quick meanwhile, and that the page, a stroke written before and
+   Undo are as they were.
+2. **The same over New notebook**: New > More layouts... > From a file... > a PNG > Use as template: the template's
+   tile comes, and Create makes the notebook on it.
+3. **Files**: a picture's card in Documents offers Use as template and Use as photo; each says "Copied to
+   Templates." (or Photos) once it is in, and a second copy of the same picture is "<name> 2" in that folder.
+4. **Nearly full storage** (optional, only with a storage to spare that can be filled and emptied safely): with
+   under 100 MB free plus the picture's size, Use as template says "Couldn't copy file. Is the storage full?" at
+   once, and grimoire.log says `files: a copy into templates was refused: no room: ...`; nothing is left in
+   `grimoire/templates` (no `.grimoire-copy-*.part`).
+5. **Rotate** the Scribe with the picker up over a notebook's page: it lays out again and Back returns to the sheet.
+6. **A picture over 16 MB** (a large scan, or any big file named .png): Use as template in Files says "Too big
+   (over 16 MB)." at once, grimoire.log says `files: a copy into templates was refused: it is over 16 MB`, and
+   nothing is added to `grimoire/templates`. The same from a sheet's From a file..., where the picker stays up.

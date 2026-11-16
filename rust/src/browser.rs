@@ -6,7 +6,10 @@
 //! is the confirmation), a hold on a folder (or its `...`) opens the card that imports its pictures. The Import
 //! place lists `grimoire/import` with a status on each row and a Look again row. Place mode (2.2): Files, opened
 //! from the Library's Files card or the `files` action, where the user browses: its root adds Grimoire's own
-//! places (Templates, Photos, Fonts, PDF copies, Trash) and the Kindle's fonts, every one read only here.
+//! places (Templates, Photos, Fonts, PDF copies, Trash) and the Kindle's fonts, every one read only here. A picture's
+//! card copies it into Grimoire's templates or photos (Use as template, Use as photo: the copy job, bgwork_copy.rs),
+//! and the Templates and Photos sheets' From a file... tile opens the picture pick (2.2, issue #146): pictures only,
+//! its card offering that sheet's copy.
 //!
 //! Everything it reads of the storage goes through fsview.rs: the walk (no link anywhere, one device, Grimoire's
 //! notebooks refused by identity, and in pick mode its PDFs and trash too), listings of names and kinds only in
@@ -15,6 +18,7 @@
 //!
 //! The model (`Browser`'s rows, listing and statuses) needs no screen: the tests drive it with `list_now`.
 
+use crate::bgwork_copy::{copy_refusal, copy_request, CopyFail, CopyTo};
 use crate::fsview::*;
 use crate::prelude::*;
 
@@ -35,6 +39,10 @@ const B_CRUMB: i32 = 11;
 const B_SORT: i32 = 12;
 const B_SHOW: i32 = 13;
 const B_GOTO: i32 = 14;
+// A picture's card (#146): Use as template, Use as photo. (The ids are used by name only, here and by the runner,
+// which taps `card.template` and `card.photo`: to move them, change the one number. No two ids may be equal.)
+const B_CARD_TEMPLATE: i32 = 15;
+const B_CARD_PHOTO: i32 = B_CARD_TEMPLATE + 1;
 
 /// What a task can pick, or Files lists as usable.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -56,13 +64,15 @@ pub enum BrowseMode {
 }
 
 /// What the browser was asked for: the kinds it offers, its title (translated by the caller), the folder it opens
-/// at (None: its root) and its mode.
+/// at (None: its root), its mode, and for the picture pick the folder a picture picked is copied into (its card's
+/// one copy).
 #[derive(Clone, Debug)]
 pub struct PickSpec {
     pub kinds: &'static [PickKind],
     pub title: &'static str,
     pub start: Option<StoragePath>,
     pub mode: BrowseMode,
+    pub to: Option<CopyTo>,
 }
 
 /// What the Library's settings say of Files (settings.ini files_card, files_sort, files_show), handed to the
@@ -87,6 +97,7 @@ impl PickSpec {
             title: tr("Import a PDF or pictures"),
             start: None,
             mode: BrowseMode::Pick,
+            to: None,
         }
     }
 
@@ -97,6 +108,21 @@ impl PickSpec {
             title: tr("Files"),
             start: None,
             mode: BrowseMode::Place,
+            to: None,
+        }
+    }
+
+    /// The Templates or Photos sheet's From a file... (2.2, #146): a picture, copied into grimoire/templates or
+    /// grimoire/photos.
+    pub fn picture(to: CopyTo) -> PickSpec {
+        PickSpec {
+            kinds: &[PickKind::Picture],
+            // TRANSLATORS: (also) the title of the file picker the Templates and Photos sheets' From a file... tile
+            // opens, to pick a picture to copy in (the Library's header, about 1400 px at 56 px).
+            title: tr("From a file..."),
+            start: None,
+            mode: BrowseMode::Pick,
+            to: Some(to),
         }
     }
 }
@@ -119,6 +145,9 @@ pub enum BrowserResult {
     ShowInLibrary,
     /// Files' Sort or Show chip changed `prefs`: the host saves them (files_sort, files_show)
     Prefs,
+    /// A picture's Use as template or Use as photo (#146): the copy job was asked to copy it into this folder (the
+    /// app's tick says when it ends); the picture pick is done
+    Copying(CopyTo),
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -293,6 +322,8 @@ pub struct Browser {
     pub mode: BrowseMode,
     title: &'static str,
     kinds: Vec<PickKind>,
+    /// the picture pick's folder (PickSpec.to)
+    to: Option<CopyTo>,
     /// the Library's settings for Files, as it opened (and as changed since)
     pub prefs: FilesPrefs,
     /// the rows were made from the listing (and, once ready, are the rows shown)
@@ -485,6 +516,7 @@ impl Browser {
         self.kinds = spec.kinds.to_vec();
         self.mode = spec.mode;
         self.title = spec.title;
+        self.to = spec.to;
         self.open = true;
         store_list(&mut self.books);
         self.show_root();
@@ -523,9 +555,16 @@ impl Browser {
         StoragePath::new(format!("{}/{name}", self.storage.as_ref()?.grimoire_rel()?.to_string_lossy()).as_bytes())
     }
 
-    /// The root's places in this mode, in order.
+    /// Whether this browser offers what an import takes (a PDF, a folder of pictures): the picture pick does not.
+    fn imports(&self) -> bool {
+        self.kinds.contains(&PickKind::Pdf) || self.kinds.contains(&PickKind::PictureFolder)
+    }
+
+    /// The root's places in this mode, in order. (The picture pick has no Import: that place is the imports', its rows
+    /// their statuses and Look again.)
     fn mode_places(&self) -> &'static [PlaceKind] {
         match self.mode {
+            BrowseMode::Pick if !self.imports() => &[PlaceKind::Documents, PlaceKind::Downloads, PlaceKind::All],
             BrowseMode::Pick => &[PlaceKind::Import, PlaceKind::Documents, PlaceKind::Downloads, PlaceKind::All],
             BrowseMode::Place => &[
                 PlaceKind::Import,
@@ -672,6 +711,7 @@ impl Browser {
         let place = self.mode == BrowseMode::Place;
         let show_all = place && self.prefs.show == 1;
         let pdfs = self.kinds.contains(&PickKind::Pdf);
+        let pictures = self.kinds.contains(&PickKind::Picture);
         let (Some(l), Some(at)) = (self.listing.as_mut(), self.at.clone()) else { return };
         self.capped = l.capped;
         self.hidden = l.hidden;
@@ -685,11 +725,12 @@ impl Browser {
                 odd += 1;
                 continue;
             };
-            // pick mode: folders and PDFs; Files: pictures and fonts too, and with Show all every file and link
+            // pick mode: folders and its kinds (PDFs, or pictures); Files: pictures and fonts too, and with Show all
+            // every file and link
             let kind = match e.kind {
                 FsKind::Dir => RowKind::Dir,
                 FsKind::File if pdfs && is_pdf(&e.name) => RowKind::Pdf,
-                FsKind::File if place && is_picture(&e.name) => RowKind::Picture,
+                FsKind::File if pictures && is_picture(&e.name) => RowKind::Picture,
                 FsKind::File if place && is_font(&e.name) => RowKind::Font,
                 FsKind::File if show_all => RowKind::Other,
                 FsKind::Link if show_all => RowKind::Link,
@@ -825,7 +866,7 @@ impl Browser {
     /// rows before is dropped (its row number names another file now); an open card follows the file it was opened
     /// for to its row (and its screen), with what was read of it since, or closes when that file is not listed now.
     fn set_rows(&mut self, mut rows: Vec<Row>) {
-        if self.in_import_place() {
+        if self.in_import_place() && self.imports() {
             if let Some(at) = self.at.clone() {
                 rows.push(Row::new(RowKind::Look, "Look again", at));
             }
@@ -1400,10 +1441,29 @@ impl Browser {
         // (Files: no import from Grimoire's PDF copies or trash, as the picker never offers them)
         let importable = self.pick() || self.storage.as_ref().is_some_and(|st| st.zone(&r.path, true) != FsZone::Refused);
         match r.kind {
+            // a picture (#146): its copies into Grimoire's templates and photos (the picture pick's one, first)
+            RowKind::Picture => {
+                details = if self.pick() { self.row_sub_plain(r) } else { self.card_details(r) };
+                for to in [CopyTo::Templates, CopyTo::Photos] {
+                    if importable && self.offers_copy(r, to) {
+                        let (id, icon, label) = if to == CopyTo::Templates {
+                            // TRANSLATORS: a picture's card in Files (and in the picker the Templates sheet's From a
+                            // file... opens): this copies it into grimoire/templates, to write on as paper (a row of
+                            // about 800 px at 44 px).
+                            (B_CARD_TEMPLATE, IconKind::Paper, tr("Use as template"))
+                        } else {
+                            // TRANSLATORS: a picture's card in Files (and in the picker the Photos sheet's From a
+                            // file... opens): this copies it into grimoire/photos, to be a page's own picture (a row
+                            // of about 800 px at 44 px).
+                            (B_CARD_PHOTO, IconKind::Image, tr("Use as photo"))
+                        };
+                        rows.push((id, 0, icon, label.to_string()));
+                    }
+                }
+            }
             // Files (2.2): what the file is, its size and date (and its family for a font of Grimoire's whose check
-            // passed); Use as template, Use as photo and Add to fonts wait for the copy job (with the From a file...
-            // tiles)
-            RowKind::Picture | RowKind::Font | RowKind::Other => {
+            // passed); Add to fonts comes with the Font sheet's Add a font...
+            RowKind::Font | RowKind::Other => {
                 details = self.card_details(r);
             }
             RowKind::Pdf => {
@@ -1433,6 +1493,17 @@ impl Browser {
         }
         rows.push((B_CARD_CANCEL, 0, IconKind::Close, tr("Cancel").to_string()));
         (details, rows)
+    }
+
+    /// Whether a picture's card offers its copy into `to` (#146): in the picture pick only the pick's own, and never
+    /// into the folder the picture is in already (there it is a template, or a photo, as it is).
+    fn offers_copy(&self, r: &Row, to: CopyTo) -> bool {
+        let place = if to == CopyTo::Templates { PlaceKind::Templates } else { PlaceKind::Photos };
+        let there = match (r.path.split_last(), self.place_path(place)) {
+            (Some((dir, _)), Some(p)) => dir.as_bytes().eq_ignore_ascii_case(p.as_bytes()),
+            _ => false,
+        };
+        self.to.is_none_or(|t| t == to) && !there
     }
 
     /// A Files card's details: what the file is, then its size and date, and what is known of it without reading
@@ -1842,7 +1913,8 @@ impl Browser {
         let mut y = inner.y + u(80.0);
         for (id, arg, icon, label) in &lines {
             let r = Rect::new(inner.x, y, inner.w, rh);
-            let primary = matches!(*id, B_CARD_IMPORT | B_CARD_PICTURES | B_CARD_NOTEBOOK);
+            // (a picture's copy is the task's action in the picture pick; in Files neither of its two is first)
+            let primary = matches!(*id, B_CARD_IMPORT | B_CARD_PICTURES | B_CARD_NOTEBOOK) || (self.pick() && matches!(*id, B_CARD_TEMPLATE | B_CARD_PHOTO));
             ui_frame(c, r, u(16.0), 255, true, 0);
             ui_frame(c, r, u(16.0), 0, false, if primary { u(6.0) } else { u(3.0) });
             ui_icon(c, *icon, Rect::new(r.x + u(20.0), r.y + u(15.0), rh - u(30.0), rh - u(30.0)), 0);
@@ -2064,28 +2136,72 @@ impl Browser {
                 }
                 BrowserResult::None
             }
-            B_CARD_IMPORT | B_CARD_PICTURES | B_CARD_NOTEBOOK => {
+            B_CARD_IMPORT | B_CARD_PICTURES | B_CARD_NOTEBOOK | B_CARD_TEMPLATE | B_CARD_PHOTO => {
                 let Some(c) = self.card.take() else { return BrowserResult::None };
                 if !self.unchanged(&c) {
-                    // the file changed since it was listed: the folder is read again
-                    // TRANSLATORS: a toast in the file picker: the file tapped was changed or replaced since its
-                    // folder was listed; the folder is read again. One line of about 1000 px at 44 px.
-                    self.toast = Some(tr("File changed. Try again."));
-                    let at = self.at.clone();
-                    if let Some(p) = at {
-                        self.enter(p, false, now_ms());
-                    }
-                    self.redraw_full(a);
-                    self.flush_toast(a);
-                    return BrowserResult::None;
+                    return self.changed_since(a);
                 }
                 match h.id {
                     B_CARD_IMPORT => BrowserResult::Pdf(path),
                     B_CARD_PICTURES => BrowserResult::Pictures(path),
+                    B_CARD_TEMPLATE => self.copy_in(a, &c, CopyTo::Templates),
+                    B_CARD_PHOTO => self.copy_in(a, &c, CopyTo::Photos),
                     _ => self.card_row(&c).and_then(|r| r.notebook.clone()).map_or(BrowserResult::None, BrowserResult::OpenNotebook),
                 }
             }
             _ => BrowserResult::None,
+        }
+    }
+
+    /// The file a card acts on changed since its folder was listed: said, and the folder read again.
+    fn changed_since(&mut self, a: &mut App) -> BrowserResult {
+        // TRANSLATORS: a toast in the file picker: the file tapped was changed or replaced since its
+        // folder was listed; the folder is read again. One line of about 1000 px at 44 px.
+        self.toast = Some(tr("File changed. Try again."));
+        let at = self.at.clone();
+        if let Some(p) = at {
+            self.enter(p, false, now_ms());
+        }
+        self.redraw_full(a);
+        self.flush_toast(a);
+        BrowserResult::None
+    }
+
+    /// Use as template, Use as photo (#146): the file card `c` was opened for, checked again, asked of the copy job
+    /// into Grimoire's templates or photos (`copy_request`: the walk, the file as listed, its size, the free-space
+    /// floor). The card is closed; a refusal is said now (`copy_refusal`: nothing was copied, and no job runs), the
+    /// copy's end by the app's tick when the job ends.
+    fn copy_in(&mut self, a: &mut App, c: &Card, to: CopyTo) -> BrowserResult {
+        let asked = match (self.storage.as_ref(), c.stat) {
+            (Some(st), Some(listed)) => copy_request(st, &c.path, &listed, to),
+            _ => Err(FsWriteErr::Changed),
+        };
+        match asked {
+            Ok(()) => {
+                // (the picture pick ends here: its host closes it; Files stays, the card gone)
+                if !self.pick() {
+                    self.draw(a);
+                    app_invalidate(a, c.rect, RefreshMode::Ui);
+                }
+                BrowserResult::Copying(to)
+            }
+            // (changed since it was listed: said, and the folder read again; every other refusal by its own sentence)
+            Err(FsWriteErr::Changed) => self.changed_since(a),
+            Err(e) => {
+                let why = match e {
+                    FsWriteErr::NoRoom => "no room: the storage would keep less than 100 MB".to_string(),
+                    FsWriteErr::Refused => "a place it is not taken from".to_string(),
+                    FsWriteErr::TooLong => "its path is too long for a job".to_string(),
+                    FsWriteErr::TooBig => format!("it is over {} MB", to.max_bytes() >> 20),
+                    FsWriteErr::Io(n) => strerror(n),
+                    other => format!("{other:?}"),
+                };
+                qlog!("files: a copy into %s was refused: %s", to.folder(), &why);
+                self.draw(a);
+                app_invalidate(a, c.rect, RefreshMode::Ui);
+                app_toast(a, &copy_refusal(CopyFail::of_request(e), to), 3000);
+                BrowserResult::None
+            }
         }
     }
 
@@ -2309,7 +2425,7 @@ impl Browser {
     }
 
     /// The point a runner tap on a control named so lands on (docs/SIM.md): back, prev, next, row.N, more.N,
-    /// item.NAME, and the card's import, open, pictures, notebook and cancel.
+    /// item.NAME, and the card's import, open, pictures, notebook, template, photo and cancel.
     pub fn point(&self, name: &str) -> Option<(f32, f32)> {
         let centre = |h: &Hit| ((h.r.x + h.r.w / 2) as f32, (h.r.y + h.r.h / 2) as f32);
         if let Some(c) = &self.card {
@@ -2318,6 +2434,8 @@ impl Browser {
                 "card.open" => B_CARD_OPEN,
                 "card.pictures" => B_CARD_PICTURES,
                 "card.notebook" => B_CARD_NOTEBOOK,
+                "card.template" => B_CARD_TEMPLATE,
+                "card.photo" => B_CARD_PHOTO,
                 "card.cancel" => B_CARD_CANCEL,
                 _ => 0,
             };
@@ -2582,10 +2700,11 @@ mod tests {
         assert!(b.goto[4].1 == sp("audible") && !b.goto[4].3 && b.goto[1].3);
     }
 
-    // Files' item cards (2.2): a picture, a font and another file say what they are, with their size and date, and
-    // offer nothing yet but Cancel; a PDF offers its import; a PDF of the PDF copies opens the notebook it was written
-    // from and is never imported; a link has no card. The trash lists its entries read only, the newest first, a
-    // notebook by its own name and a page by its notebook's.
+    // Files' item cards (2.2): a picture, a font and another file say what they are, with their size and date; a
+    // picture offers Use as template and Use as photo (#146), a font and another file nothing yet but Cancel; a PDF
+    // offers its import; a PDF of the PDF copies opens the notebook it was written from and is never imported; a link
+    // has no card. The trash lists its entries read only, the newest first, a notebook by its own name and a page by
+    // its notebook's.
     #[test]
     fn files_cards_say_what_a_file_is_and_the_trash_is_read_only() {
         let (base, _g) = storage("cards");
@@ -2622,7 +2741,7 @@ mod tests {
         assert_eq!(r0, ["Import as notebook", "Cancel"]);
         let (d1, r1) = card(&mut b, 1);
         assert!(d1.starts_with("Picture, 2 KB, "), "{d1}");
-        assert_eq!(r1, ["Cancel"]);
+        assert_eq!(r1, ["Use as template", "Use as photo", "Cancel"]);
         let (d2, r2) = card(&mut b, 2);
         assert!(d2.starts_with("Font, 1 KB, "), "{d2}");
         assert_eq!(r2, ["Cancel"]);
@@ -2907,6 +3026,72 @@ mod tests {
         assert!(b.point("sort").is_none() && b.point("show").is_none());
         assert!(b.point("crumb.2").is_some(), "the path's parts are there");
         canvas_free(&mut a.screen);
+    }
+
+    // A picture's card copies it into Grimoire's templates or photos (2.2, #146). In Files: Use as template and Use as
+    // photo, but never the copy into the folder the picture is already in, and neither in a place a pick never takes
+    // from (Grimoire's PDF copies). In the picture pick a Templates or Photos sheet's From a file... opens: that sheet's
+    // copy alone, then Cancel.
+    #[test]
+    fn a_pictures_card_offers_the_copies_into_templates_and_photos() {
+        let (base, _g) = storage("useas");
+        for d in ["documents/Pics", "grimoire/templates", "grimoire/photos", "grimoire/PDFs"] {
+            std::fs::create_dir_all(format!("{base}/{d}")).unwrap();
+        }
+        for f in ["documents/Pics/a.png", "grimoire/templates/t.png", "grimoire/photos/p.jpg", "grimoire/PDFs/odd.png"] {
+            std::fs::write(format!("{base}/{f}"), b"a picture").unwrap();
+        }
+        i18n_set("en");
+        let rows = |b: &mut Browser, i: usize| -> Vec<String> {
+            b.open_card(i);
+            let c = b.card.clone().expect("a card");
+            b.card_lines(&c).1.into_iter().map(|r| r.3).collect()
+        };
+        let mut b = Browser::default();
+        assert!(b.open(PickSpec::place(), FilesPrefs { card: true, ..Default::default() }));
+        assert!(b.go(sp("documents/Pics")));
+        assert_eq!(rows(&mut b, 0), ["Use as template", "Use as photo", "Cancel"]);
+        assert!(b.go(sp("grimoire/templates")));
+        assert_eq!(rows(&mut b, 0), ["Use as photo", "Cancel"]);
+        assert!(b.go(sp("grimoire/photos")));
+        assert_eq!(rows(&mut b, 0), ["Use as template", "Cancel"]);
+        assert!(b.go(sp("grimoire/PDFs")));
+        assert_eq!(rows(&mut b, 0), ["Cancel"]);
+        for (to, want) in [(CopyTo::Templates, "Use as template"), (CopyTo::Photos, "Use as photo")] {
+            let mut p = Browser::default();
+            assert!(p.open(PickSpec::picture(to), FilesPrefs { card: true, ..Default::default() }));
+            assert!(p.go(sp("documents/Pics")));
+            assert_eq!(rows(&mut p, 0), [want, "Cancel"]);
+        }
+        // the card's file is checked again before either copy is asked ("File changed. Try again."): a picture
+        // written again since its folder was listed is no longer the card's
+        assert!(b.go(sp("documents/Pics")));
+        b.open_card(0);
+        let c = b.card.clone().expect("a card");
+        assert!(b.unchanged(&c));
+        std::fs::write(format!("{base}/documents/Pics/a.png"), b"another picture, a longer one").unwrap();
+        assert!(!b.unchanged(&c));
+    }
+
+    // The picture pick (2.2, #146): its root has no Import (that place is the imports', with their statuses and Look
+    // again), and a folder lists its folders and the pictures the template job takes (.png, .jpg, .jpeg, .pgm, in any
+    // case), nothing else.
+    #[test]
+    fn the_picture_pick_lists_folders_and_pictures() {
+        let (base, _g) = storage("picpick");
+        let d = format!("{base}/documents/Pics");
+        std::fs::create_dir_all(format!("{d}/Sub")).unwrap();
+        for n in ["a.png", "B.JPG", "c.jpeg", "d.pgm", "e.pdf", "f.ttf", "g.txt"] {
+            std::fs::write(format!("{d}/{n}"), b"x").unwrap();
+        }
+        i18n_set("en");
+        let mut b = Browser::default();
+        assert!(b.open(PickSpec::picture(CopyTo::Photos), FilesPrefs { card: true, ..Default::default() }));
+        assert_eq!(b.mode, BrowseMode::Pick);
+        assert_eq!(row_names(&b), ["documents", "All storage"]);
+        assert!(b.go(sp("documents/Pics")));
+        assert_eq!(row_names(&b), ["Sub", "a.png", "B.JPG", "c.jpeg", "d.pgm"]);
+        assert!(b.rows[1..].iter().all(|r| r.kind == RowKind::Picture));
     }
 
     #[test]
