@@ -1,6 +1,7 @@
 //! A file copied into one of Grimoire's folders for the user's files (BgKind::CopyFile, 2.2, issue #117): what a
 //! picture's Use as template and Use as photo in Files, and the From a file... tiles of the Templates and Photos
-//! sheets, ask for (issue #146; the Font sheet's Add a font... comes later). The request (UI thread) checks the
+//! sheets, ask for (issue #146), and a font's Add to fonts in Files and the Font sheet's Add a font... (issue #161).
+//! The request (UI thread) checks the
 //! source is still the plain file listed, that its name is one Files' Rename would give a file there
 //! (fsview_name_check), that it is no bigger than its folder takes (CopyTo::max_bytes: a bigger
 //! one could never be used there), that the storage keeps its floor after it (fsview_room_for), and queues the
@@ -12,6 +13,12 @@
 //! temporary file goes: nothing is left behind. The log has the folder, sizes and times, never a name. What the
 //! screen says of a copy that was not made is copy_refusal's: the sentence for its cause where one exists
 //! (CopyFail, which the job's exit status carries), else the one for a full storage.
+//!
+//! The copy reads the file as bytes and nothing more. A font copied into grimoire/fonts is no font to Grimoire
+//! yet: it is one once the font check's worker has passed these very bytes (userfonts.rs), as for a file put there
+//! over USB. While it is written the copy has the temporary name, a dot-name with the ending `.part`: no listing
+//! shows it and the fonts folder's scan takes no such name, so a copy cut short (a failed write, the power) is
+//! never taken for a font, and the next copy into that folder removes what a dead one left.
 
 use crate::fsview::*;
 use crate::prelude::*;
@@ -106,8 +113,9 @@ pub fn copy_refusal(why: CopyFail, to: CopyTo) -> String {
 /// What a copy that could not be made says when no other sentence names its cause (the floor is the likely one).
 pub fn copy_failed() -> &'static str {
     // TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): a picture could not be copied into
-    // Grimoire's templates or photos (Use as template, Use as photo, a sheet's From a file...); the storage keeps
-    // 100 MB free, so the likely cause is that it is nearly full.
+    // Grimoire's templates or photos (Use as template, Use as photo, a sheet's From a file...), or a font file into
+    // its fonts (Add to fonts, Settings > Font's Add a font...); the storage keeps 100 MB free, so the likely cause
+    // is that it is nearly full.
     tr("Couldn't copy file. Is the storage full?")
 }
 

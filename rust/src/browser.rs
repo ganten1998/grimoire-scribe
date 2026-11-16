@@ -14,8 +14,11 @@
 //! shown is not read again (a font renamed has its check's results and its setting follow, and a notebook restored
 //! has the Library read: DESIGN.md says what each reads). A picture's card copies it into Grimoire's templates or
 //! photos (Use as template, Use as photo: the copy job, bgwork_copy.rs), and the Templates and Photos sheets' From
-//! a file... tile opens the picture pick (2.2, issue #146): pictures only, its card offering that sheet's copy.
-//! Everything else is read only.
+//! a file... tile opens the picture pick (2.2, issue #146): pictures only, its card offering that sheet's copy. A
+//! font's card copies it into Grimoire's fonts the same way (Add to fonts), and the Font sheet's Add a font... opens
+//! the font pick (2.2, issue #161): fonts only, from the Kindle's own fonts folder first. A font is listed here by
+//! its name, size and date: nothing in this file opens one, and a font copied in is used only once its check has
+//! passed (userfonts.rs). Everything else is read only.
 //!
 //! Everything it reads of the storage goes through fsview.rs: the walk (no link anywhere, one device, Grimoire's
 //! notebooks refused by identity, and in pick mode its PDFs and trash too), listings of names and kinds only in
@@ -63,6 +66,8 @@ const B_DELETE_YES: i32 = B_WRITE + 3;
 // taken moves its own).
 const B_COVERS: i32 = 60;
 const B_VIEW: i32 = B_COVERS;
+// A font's card (2.2, issue #161): Add to fonts. This work's ids are numbered from 90 (the runner taps `card.add`).
+const B_CARD_FONT: i32 = 90;
 
 /// What a task can pick, or Files lists as usable.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -84,8 +89,8 @@ pub enum BrowseMode {
 }
 
 /// What the browser was asked for: the kinds it offers, its title (translated by the caller), the folder it opens
-/// at (None: its root), its mode, and for the picture pick the folder a picture picked is copied into (its card's
-/// one copy).
+/// at (None: its root), its mode, and for the picture pick and the font pick the folder a file picked is copied
+/// into (its card's one copy).
 #[derive(Clone, Debug)]
 pub struct PickSpec {
     pub kinds: &'static [PickKind],
@@ -145,6 +150,22 @@ impl PickSpec {
             to: Some(to),
         }
     }
+
+    /// The Font sheet's Add a font... (2.2, #161): a font file (.ttf, .otf), copied into grimoire/fonts, where it
+    /// is checked as every font put there is before anything reads it.
+    pub fn font() -> PickSpec {
+        PickSpec {
+            kinds: &[PickKind::Font],
+            // TRANSLATORS: the last row of Settings > Font's list of your own fonts (a row of about 800 px at 44 px
+            // in bold), and the title of the file picker it opens (the Library's header, about 1400 px at 56 px):
+            // pick a font file anywhere on the Kindle, its own fonts folder too, and it is copied into
+            // grimoire/fonts.
+            title: tr("Add a font..."),
+            start: None,
+            mode: BrowseMode::Pick,
+            to: Some(CopyTo::Fonts),
+        }
+    }
 }
 
 /// What a step of the picker says to its host.
@@ -166,8 +187,8 @@ pub enum BrowserResult {
     /// Files' Sort, Show or View chip changed `prefs` or the view: the host saves them (files_sort, files_show, and
     /// files_view from `Browser::view`)
     Prefs,
-    /// A picture's Use as template or Use as photo (#146): the copy job was asked to copy it into this folder (the
-    /// app's tick says when it ends); the picture pick is done
+    /// A picture's Use as template or Use as photo (#146), or a font's Add to fonts (#161): the copy job was asked
+    /// to copy it into this folder (the app's tick says when it ends); the picture pick, or the font pick, is done
     Copying(CopyTo),
     /// Files' Restore put this notebook (its id) back: the host reads the Library again at once
     NotebookBack(String),
@@ -298,8 +319,9 @@ pub enum RowKind {
     Trashed,
 }
 
-/// A root row's place. Pick mode's root has Import, Documents, Downloads and All storage; place mode's has them all
-/// (Grimoire's and the Kindle's folders only when they are there).
+/// A root row's place. Pick mode's root has Import, Documents, Downloads and All storage (the font pick's: the
+/// Kindle's fonts in Import's place); place mode's has them all (Grimoire's and the Kindle's folders only when they
+/// are there).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum PlaceKind {
     Import,
@@ -763,9 +785,11 @@ impl Browser {
     }
 
     /// The root's places in this mode, in order. (The picture pick has no Import: that place is the imports', its rows
-    /// their statuses and Look again.)
+    /// their statuses and Look again. The font pick's first place is the Kindle's own fonts folder, where the fonts
+    /// of its reader are: read only, as every place of a pick is, and no row where the Kindle has no such folder.)
     fn mode_places(&self) -> &'static [PlaceKind] {
         match self.mode {
+            BrowseMode::Pick if self.kinds.contains(&PickKind::Font) => &[PlaceKind::KindleFonts, PlaceKind::Documents, PlaceKind::Downloads, PlaceKind::All],
             BrowseMode::Pick if !self.imports() => &[PlaceKind::Documents, PlaceKind::Downloads, PlaceKind::All],
             BrowseMode::Pick => &[PlaceKind::Import, PlaceKind::Documents, PlaceKind::Downloads, PlaceKind::All],
             BrowseMode::Place => &[
@@ -921,6 +945,7 @@ impl Browser {
         let show_all = place && self.prefs.show == 1;
         let pdfs = self.kinds.contains(&PickKind::Pdf);
         let pictures = self.kinds.contains(&PickKind::Picture);
+        let fonts = self.kinds.contains(&PickKind::Font);
         let (Some(l), Some(at)) = (self.listing.as_mut(), self.at.clone()) else { return };
         self.capped = l.capped;
         self.hidden = l.hidden;
@@ -934,13 +959,13 @@ impl Browser {
                 odd += 1;
                 continue;
             };
-            // pick mode: folders and its kinds (PDFs, or pictures); Files: pictures and fonts too, and with Show all
-            // every file and link
+            // pick mode: folders and its kinds (PDFs, or pictures, or fonts); Files: all of them, and with Show all
+            // every file and link. A font is a row by its name alone (.ttf, .otf): its file is not opened here
             let kind = match e.kind {
                 FsKind::Dir => RowKind::Dir,
                 FsKind::File if pdfs && is_pdf(&e.name) => RowKind::Pdf,
                 FsKind::File if pictures && is_picture(&e.name) => RowKind::Picture,
-                FsKind::File if place && is_font(&e.name) => RowKind::Font,
+                FsKind::File if fonts && is_font(&e.name) => RowKind::Font,
                 FsKind::File if show_all => RowKind::Other,
                 FsKind::Link if show_all => RowKind::Link,
                 _ => continue,
@@ -1811,9 +1836,20 @@ impl Browser {
                     }
                 }
             }
-            // Files (2.2): what the file is, its size and date (and its family for a font of Grimoire's whose check
-            // passed); Add to fonts comes with the Font sheet's Add a font...
-            RowKind::Font | RowKind::Other => {
+            // a font (#161): what it is, its size and date (in Files its family too, for a font of Grimoire's whose
+            // check passed: read from the check's result, never from the font), and its copy into Grimoire's fonts.
+            // No sample of it is drawn here: the card opens no font file
+            RowKind::Font => {
+                details = if self.pick() { self.row_sub_plain(r) } else { self.card_details(r) };
+                if importable && self.offers_copy(r, CopyTo::Fonts) {
+                    // TRANSLATORS: a font's card in Files (and in the picker Settings > Font's Add a font... opens):
+                    // this copies the font file into grimoire/fonts, where Grimoire checks it and then lists it
+                    // under Your fonts in Settings > Font (a row of about 800 px at 44 px).
+                    rows.push((B_CARD_FONT, 0, IconKind::Font, tr("Add to fonts").to_string()));
+                }
+            }
+            // Files (2.2): any other file says what it is, its size and date
+            RowKind::Other => {
                 details = self.card_details(r);
             }
             RowKind::Pdf => {
@@ -1863,12 +1899,21 @@ impl Browser {
         (details, rows)
     }
 
-    /// Whether a picture's card offers its copy into `to` (#146): in the picture pick only the pick's own, and never
-    /// into the folder the picture is in already (there it is a template, or a photo, as it is).
+    /// Whether a picture's card offers its copy into `to` (#146), or a font's its copy into Grimoire's fonts (#161):
+    /// in the picture pick and the font pick only the pick's own, and never into the folder the file is in already
+    /// (there it is a template, or a photo, as it is). A font is in Grimoire's fonts already where the Font sheet
+    /// lists it: in that folder, or in a folder of it one level down.
     fn offers_copy(&self, r: &Row, to: CopyTo) -> bool {
-        let place = if to == CopyTo::Templates { PlaceKind::Templates } else { PlaceKind::Photos };
+        let place = match to {
+            CopyTo::Templates => PlaceKind::Templates,
+            CopyTo::Photos => PlaceKind::Photos,
+            CopyTo::Fonts => PlaceKind::Fonts,
+        };
         let there = match (r.path.split_last(), self.place_path(place)) {
-            (Some((dir, _)), Some(p)) => dir.as_bytes().eq_ignore_ascii_case(p.as_bytes()),
+            (Some((dir, _)), Some(p)) => {
+                let in_it = |d: &StoragePath| d.as_bytes().eq_ignore_ascii_case(p.as_bytes());
+                in_it(&dir) || (to == CopyTo::Fonts && dir.split_last().is_some_and(|(up, _)| in_it(&up)))
+            }
             _ => false,
         };
         self.to.is_none_or(|t| t == to) && !there
@@ -2724,8 +2769,9 @@ impl Browser {
         let mut y = inner.y + u(80.0);
         for (id, arg, icon, label) in &lines {
             let r = Rect::new(inner.x, y, inner.w, rh);
-            // (a picture's copy is the task's action in the picture pick; in Files neither of its two is first)
-            let primary = matches!(*id, B_CARD_IMPORT | B_CARD_PICTURES | B_CARD_NOTEBOOK | B_CARD_RESTORE) || (self.pick() && matches!(*id, B_CARD_TEMPLATE | B_CARD_PHOTO));
+            // (a picture's copy is the task's action in the picture pick, a font's in the font pick; in Files neither
+            // of a picture's two is first, and a font's one is a row as the others)
+            let primary = matches!(*id, B_CARD_IMPORT | B_CARD_PICTURES | B_CARD_NOTEBOOK | B_CARD_RESTORE) || (self.pick() && matches!(*id, B_CARD_TEMPLATE | B_CARD_PHOTO | B_CARD_FONT));
             ui_frame(c, r, u(16.0), 255, true, 0);
             ui_frame(c, r, u(16.0), 0, false, if primary { u(6.0) } else { u(3.0) });
             ui_icon(c, *icon, Rect::new(r.x + u(20.0), r.y + u(15.0), rh - u(30.0), rh - u(30.0)), 0);
@@ -3000,7 +3046,7 @@ impl Browser {
                 }
                 BrowserResult::None
             }
-            B_CARD_IMPORT | B_CARD_PICTURES | B_CARD_NOTEBOOK | B_CARD_TEMPLATE | B_CARD_PHOTO => {
+            B_CARD_IMPORT | B_CARD_PICTURES | B_CARD_NOTEBOOK | B_CARD_TEMPLATE | B_CARD_PHOTO | B_CARD_FONT => {
                 let Some(c) = self.card.take() else { return BrowserResult::None };
                 if !self.unchanged(&c) {
                     return self.changed_since(a);
@@ -3010,6 +3056,7 @@ impl Browser {
                     B_CARD_PICTURES => BrowserResult::Pictures(path),
                     B_CARD_TEMPLATE => self.copy_in(a, &c, CopyTo::Templates),
                     B_CARD_PHOTO => self.copy_in(a, &c, CopyTo::Photos),
+                    B_CARD_FONT => self.copy_in(a, &c, CopyTo::Fonts),
                     _ => self.card_row(&c).and_then(|r| r.notebook.clone()).map_or(BrowserResult::None, BrowserResult::OpenNotebook),
                 }
             }
@@ -3145,11 +3192,12 @@ impl Browser {
         BrowserResult::None
     }
 
-    /// Use as template, Use as photo (#146): the file card `c` was opened for, checked again, asked of the copy job
-    /// into Grimoire's templates or photos (`copy_request`: the walk, the file as listed, its name, its size, the
-    /// free-space floor). The card is closed; a refusal is said now (`copy_refusal`, or the rule its name breaks:
-    /// nothing was copied, and no job runs), the copy's end by the app's tick when the job ends. The card's rect goes
-    /// out with the Covers tiles that changed while it was open, as when Cancel closes it (`close_card`).
+    /// Use as template, Use as photo (#146), Add to fonts (#161): the file card `c` was opened for, checked again,
+    /// asked of the copy job into Grimoire's templates, photos or fonts (`copy_request`: the walk, the file as listed,
+    /// its name, its size, the free-space floor). The card is closed; a refusal is said now (`copy_refusal`, or the
+    /// rule its name breaks: nothing was copied, and no job runs), the copy's end by the app's tick when the job
+    /// ends. The card's rect goes out with the Covers tiles that changed while it was open, as when Cancel closes it
+    /// (`close_card`).
     fn copy_in(&mut self, a: &mut App, c: &Card, to: CopyTo) -> BrowserResult {
         let asked = match (self.storage.as_ref(), c.stat) {
             (Some(st), Some(listed)) => copy_request(st, &c.path, &listed, to),
@@ -3157,7 +3205,7 @@ impl Browser {
         };
         match asked {
             Ok(()) => {
-                // (the picture pick ends here: its host closes it; Files stays, the card gone)
+                // (the picture pick, or the font pick, ends here: its host closes it; Files stays, the card gone)
                 if !self.pick() {
                     self.draw(a);
                     app_invalidate(a, rect_union(c.rect, self.tiles_stale), RefreshMode::Ui);
@@ -3527,8 +3575,8 @@ impl Browser {
     }
 
     /// The point a runner tap on a control named so lands on (docs/SIM.md): back, prev, next, row.N, more.N,
-    /// item.NAME, and the card's import, open, pictures, notebook, template, photo, rename, trash, restore and
-    /// cancel; the Delete question's delete (its Keep it is cancel) and, while the question is up, opener: where the
+    /// item.NAME, and the card's import, open, pictures, notebook, template, photo, add (a font's Add to fonts),
+    /// rename, trash, restore and cancel; the Delete question's delete (its Keep it is cancel) and, while the question is up, opener: where the
     /// card's Delete that opened it was tapped (a second tap at the first's place).
     pub fn point(&self, name: &str) -> Option<(f32, f32)> {
         let centre = |h: &Hit| ((h.r.x + h.r.w / 2) as f32, (h.r.y + h.r.h / 2) as f32);
@@ -3548,6 +3596,7 @@ impl Browser {
                 "card.trash" => B_CARD_TRASH,
                 "card.delete" => B_DELETE_YES,
                 "card.restore" => B_CARD_RESTORE,
+                "card.add" => B_CARD_FONT,
                 _ => 0,
             };
             if id != 0 {
@@ -3813,8 +3862,8 @@ mod tests {
     }
 
     // Files' item cards (2.2): a picture, a font and another file say what they are, with their size and date; a
-    // picture offers Use as template and Use as photo (#146), a font and another file nothing yet but Cancel; a PDF
-    // offers its import; a PDF of the PDF copies opens the notebook it was written from and is never imported; a link
+    // picture offers Use as template and Use as photo (#146), a font Add to fonts (#161), another file nothing but
+    // Cancel; a PDF offers its import; a PDF of the PDF copies opens the notebook it was written from and is never imported; a link
     // has no card. The trash lists its entries, the newest first, a notebook by its own name and a page by its
     // notebook's; a notebook's has a card (Restore, issue #144), a page's none.
     #[test]
@@ -3856,9 +3905,10 @@ mod tests {
         assert_eq!(r1, ["Use as template", "Use as photo", "Cancel"]);
         let (d2, r2) = card(&mut b, 2);
         assert!(d2.starts_with("Font, 1 KB, "), "{d2}");
-        assert_eq!(r2, ["Cancel"]);
-        let (d3, _) = card(&mut b, 3);
+        assert_eq!(r2, ["Add to fonts", "Cancel"]);
+        let (d3, r3) = card(&mut b, 3);
         assert!(d3.starts_with("File, 4 KB, "), "{d3}");
+        assert_eq!(r3, ["Cancel"]);
         b.card = None;
         assert!(!b.has_card(4));
         b.open_card(4);
@@ -5077,6 +5127,169 @@ mod tests {
         assert!(b.go(sp("documents/Pics")));
         assert_eq!(row_names(&b), ["Sub", "a.png", "B.JPG", "c.jpeg", "d.pgm"]);
         assert!(b.rows[1..].iter().all(|r| r.kind == RowKind::Picture));
+    }
+
+    // A font's card copies it into Grimoire's fonts (2.2, #161): Add to fonts, in Files, for a font that is not one
+    // of grimoire/fonts already (in that folder or in a folder of it one level down, which is what the Font sheet
+    // lists; one deeper is not listed there, and is offered), and never out of a place a pick never takes from
+    // (Grimoire's PDF copies). Files offers the kinds the picker's rows always had, .ttf and .otf: a collection
+    // (.ttc, .otc) and a web font are other files, with no such row. In the Kindle's own fonts folder the card is
+    // that row and Cancel: no Rename and no Delete, and the storage layer refuses both there whatever a card would
+    // offer. The card names no family for a file outside grimoire/fonts and reads no font: these files are no fonts
+    // at all, and their cards are the same.
+    #[test]
+    fn a_fonts_card_offers_the_copy_into_grimoires_fonts() {
+        let (base, _g) = storage("addtofonts");
+        for d in ["documents/Type", "fonts", "grimoire/fonts/Family/Deeper", "grimoire/PDFs"] {
+            std::fs::create_dir_all(format!("{base}/{d}")).unwrap();
+        }
+        let files = [
+            "documents/Type/a.ttf",
+            "documents/Type/B.OTF",
+            "documents/Type/c.ttc",
+            "documents/Type/d.otc",
+            "documents/Type/e.woff2",
+            "fonts/Kindle.ttf",
+            "grimoire/fonts/own.ttf",
+            "grimoire/fonts/Family/in.otf",
+            "grimoire/fonts/Family/Deeper/far.ttf",
+            "grimoire/PDFs/odd.ttf",
+        ];
+        for f in files {
+            std::fs::write(format!("{base}/{f}"), b"no font at all").unwrap();
+        }
+        i18n_set("en");
+        let card = |b: &mut Browser, name: &str| -> (String, Vec<String>) {
+            let i = b.rows.iter().position(|r| r.name == name).unwrap_or_else(|| panic!("{name} is not listed"));
+            b.open_card(i);
+            let c = b.card.clone().expect("a card");
+            let (d, rows) = b.card_lines(&c);
+            (d, rows.into_iter().map(|r| r.3).collect())
+        };
+        let mut b = Browser::default();
+        assert!(b.open(PickSpec::place(), FilesPrefs { card: true, ..Default::default() }));
+        assert!(b.go(sp("documents/Type")));
+        assert_eq!(row_names(&b), ["a.ttf", "B.OTF"]);
+        let (d, rows) = card(&mut b, "a.ttf");
+        assert!(d.starts_with("Font, 1 KB, "), "{d}");
+        assert_eq!(rows, ["Add to fonts", "Cancel"]);
+        assert_eq!(card(&mut b, "B.OTF").1, ["Add to fonts", "Cancel"]);
+        // Show all: a collection and a web font are listed as other files, with nothing to do
+        b.prefs.show = 1;
+        b.rebuild();
+        assert_eq!(row_names(&b), ["a.ttf", "B.OTF", "c.ttc", "d.otc", "e.woff2"]);
+        for other in ["c.ttc", "d.otc", "e.woff2"] {
+            assert_eq!(card(&mut b, other).1, ["Cancel"], "{other}");
+        }
+        b.prefs.show = 0;
+        // the Kindle's own fonts folder: read only
+        assert!(b.go(sp("fonts")));
+        assert_eq!(b.crumbs(), "Files > Kindle fonts");
+        let (d, rows) = card(&mut b, "Kindle.ttf");
+        assert!(d.starts_with("Font, 1 KB, "), "{d}");
+        assert_eq!(rows, ["Add to fonts", "Cancel"]);
+        assert!(!b.writable(&b.rows[0]));
+        let st = b.storage.as_ref().unwrap();
+        let k = sp("fonts/Kindle.ttf");
+        let listed = st.stat(&k, false).unwrap();
+        assert!(!st.can_write(&k) && st.zone(&k, false) == FsZone::ReadOnly);
+        assert_eq!(st.rename(&k, &listed, b"Other.ttf"), Err(FsWriteErr::Refused));
+        assert_eq!(st.trash(&k, &listed), Err(FsWriteErr::Refused));
+        assert_eq!(std::fs::read(format!("{base}/fonts/Kindle.ttf")).unwrap(), b"no font at all");
+        // inside grimoire/fonts: no copy of what is a font of it already, in the folder or one level down
+        assert!(b.go(sp("grimoire/fonts")));
+        assert_eq!(card(&mut b, "own.ttf").1, ["Rename", "Delete", "Cancel"]);
+        assert!(b.go(sp("grimoire/fonts/Family")));
+        assert_eq!(card(&mut b, "in.otf").1, ["Rename", "Delete", "Cancel"]);
+        assert!(b.go(sp("grimoire/fonts/Family/Deeper")));
+        assert_eq!(card(&mut b, "far.ttf").1, ["Add to fonts", "Rename", "Delete", "Cancel"]);
+        assert!(b.go(sp("grimoire/PDFs")));
+        assert_eq!(card(&mut b, "odd.ttf").1, ["Cancel"]);
+        // the card's file is checked again before the copy is asked: a font written again since its folder was
+        // listed is no longer the card's
+        assert!(b.go(sp("fonts")));
+        b.open_card(0);
+        let c = b.card.clone().expect("a card");
+        assert!(b.unchanged(&c));
+        std::fs::write(format!("{base}/fonts/Kindle.ttf"), b"another file under that name").unwrap();
+        assert!(!b.unchanged(&c));
+    }
+
+    // The font pick (2.2, #161), which the Font sheet's Add a font... opens. Its root has the Kindle's own fonts
+    // folder first, when the Kindle has one (no row without it, nor for a link in its place), then Documents,
+    // Downloads and All storage, and no Import. A folder lists its folders and the font files by their names (.ttf
+    // and .otf, in any case) and nothing else: no collection, no web font, no picture, no PDF. A font's card is Add
+    // to fonts and Cancel, with its size and date and no more, inside Grimoire's folders too (the pick renames and
+    // deletes nothing); a font that is one of grimoire/fonts already has Cancel alone. The picker for an import and
+    // the picture pick list no font.
+    #[test]
+    fn the_font_pick_lists_the_kindles_fonts_first_and_fonts_only() {
+        let (base, _g) = storage("fontpick");
+        let d = format!("{base}/documents/Type");
+        std::fs::create_dir_all(format!("{d}/Sub")).unwrap();
+        for n in ["a.ttf", "B.OTF", "c.ttc", "d.otc", "e.woff", "f.woff2", "g.png", "h.pdf", "i.txt", ".hidden.ttf"] {
+            std::fs::write(format!("{d}/{n}"), b"x").unwrap();
+        }
+        i18n_set("en");
+        let prefs = FilesPrefs { card: true, ..Default::default() };
+        let rows = |b: &mut Browser, i: usize| -> (String, Vec<String>) {
+            b.open_card(i);
+            let c = b.card.clone().expect("a card");
+            let (d, rows) = b.card_lines(&c);
+            (d, rows.into_iter().map(|r| r.3).collect())
+        };
+        // no fonts folder on the Kindle: no row; a link of that name is no place either
+        let mut b = Browser::default();
+        assert!(b.open(PickSpec::font(), prefs));
+        assert_eq!(b.mode, BrowseMode::Pick);
+        assert_eq!(b.title, "Add a font...");
+        assert_eq!(row_names(&b), ["documents", "All storage"]);
+        std::os::unix::fs::symlink(&d, format!("{base}/fonts")).unwrap();
+        assert!(b.open(PickSpec::font(), prefs));
+        assert_eq!(row_names(&b), ["documents", "All storage"]);
+        std::fs::remove_file(format!("{base}/fonts")).unwrap();
+        std::fs::create_dir_all(format!("{base}/fonts")).unwrap();
+        std::fs::create_dir_all(format!("{base}/Downloads")).unwrap();
+        std::fs::write(format!("{base}/fonts/Kindle.otf"), b"x").unwrap();
+        assert!(b.open(PickSpec::font(), prefs));
+        assert_eq!(row_names(&b), ["Kindle fonts", "documents", "Downloads", "All storage"]);
+        assert_eq!(b.row_label(&b.rows[0]), "Kindle fonts");
+        assert_eq!(b.row_sub(&b.rows[0]), "fonts");
+        // a folder: its folders and its fonts
+        assert!(b.go(sp("documents/Type")));
+        assert_eq!(row_names(&b), ["Sub", "a.ttf", "B.OTF"]);
+        assert!(b.rows[1..].iter().all(|r| r.kind == RowKind::Font));
+        let (details, r) = rows(&mut b, 1);
+        assert_eq!(r, ["Add to fonts", "Cancel"]);
+        assert!(details.starts_with("1 KB, "), "size and date alone: {details}");
+        // the Kindle's fonts: the same card, and the path line names the place
+        assert!(b.open(PickSpec::font(), prefs));
+        assert!(b.enter(sp("fonts"), true, now_ms()));
+        b.list_now();
+        assert_eq!(b.crumbs(), "Files > Kindle fonts");
+        assert_eq!(row_names(&b), ["Kindle.otf"]);
+        assert_eq!(rows(&mut b, 0).1, ["Add to fonts", "Cancel"]);
+        assert!(!b.writable(&b.rows[0]));
+        // Grimoire's own fonts, reached through All storage: nothing to add, and nothing renamed or deleted
+        std::fs::create_dir_all(format!("{base}/grimoire/fonts/Family/Deeper")).unwrap();
+        for f in ["own.ttf", "Family/in.ttf", "Family/Deeper/far.ttf"] {
+            std::fs::write(format!("{base}/grimoire/fonts/{f}"), b"x").unwrap();
+        }
+        assert!(b.go(sp("grimoire/fonts")));
+        assert_eq!(row_names(&b), ["Family", "own.ttf"]);
+        assert_eq!(rows(&mut b, 1).1, ["Cancel"]);
+        assert!(b.go(sp("grimoire/fonts/Family")));
+        assert_eq!(rows(&mut b, 1).1, ["Cancel"]);
+        assert!(b.go(sp("grimoire/fonts/Family/Deeper")));
+        assert_eq!(rows(&mut b, 0).1, ["Add to fonts", "Cancel"]);
+        // the other picks list no font
+        for spec in [PickSpec::import(), PickSpec::picture(CopyTo::Templates)] {
+            let mut p = Browser::default();
+            assert!(p.open(spec, prefs));
+            assert!(!row_names(&p).iter().any(|n| n == "Kindle fonts"));
+            assert!(p.go(sp("documents/Type")));
+            assert!(p.rows.iter().all(|r| r.kind != RowKind::Font), "{:?}", row_names(&p));
+        }
     }
 
     #[test]

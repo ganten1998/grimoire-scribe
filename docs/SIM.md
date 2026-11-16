@@ -370,7 +370,7 @@ Taps: `tap library files.back`, `files.prev`, `files.next`, `files.row.N` (the N
 English names: `Import`, `documents`, `Downloads`, `Templates`, `Photos`, `Fonts`, `Kindle_fonts`, `PDF_copies`,
 `Trash`, `All_storage`, `Show_Files_in_Library`), and the open card's `files.card.import`, `files.card.open`,
 `files.card.pictures`, `files.card.notebook`, `files.card.template` and `files.card.photo` (a picture's Use as template
-and Use as photo), `files.card.cancel`, and in Files `files.card.rename`,
+and Use as photo), `files.card.add` (a font's Add to fonts, 2.2, issue #161), `files.card.cancel`, and in Files `files.card.rename`,
 `files.card.trash` (Delete, which asks first), `files.card.delete` (the Delete question's Delete; its Keep it is
 `files.card.cancel`), `files.card.opener` (while that question is up: where the card's Delete that opened it was
 tapped, for a second tap at the place of the first) and `files.card.restore` (a trash entry's). The rename keyboard

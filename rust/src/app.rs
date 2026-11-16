@@ -2208,9 +2208,10 @@ fn poll_jobs(a: &mut App) -> i32 {
         return 0;
     }
     if done == BgKind::CopyFile as i32 {
-        // A file copied into templates or photos (2.2, #146: Use as template, Use as photo, a sheet's From a file...):
-        // a copy that failed is said wherever the user is (by its cause where a sentence names it), one that went in
-        // by its folder's name (unless its sheet is in front, which shows it). Never the PDF's toast.
+        // A file copied into templates or photos (2.2, #146: Use as template, Use as photo, a sheet's From a file...)
+        // or into fonts (#161: Add to fonts, the Font sheet's Add a font...): a copy that failed is said wherever
+        // the user is (by its cause where a sentence names it), one that went in by its folder's name (unless its
+        // sheet is in front, which shows it). Never the PDF's toast.
         copy_told(a, crate::bgwork_copy::CopyTo::of(done_id.as_str()), r);
         return 0;
     }
@@ -2260,7 +2261,14 @@ fn copy_told(a: &mut App, to: Option<crate::bgwork_copy::CopyTo>, r: i32) {
         return;
     }
     let Some(to) = to.filter(|_| r > 0) else { return };
-    // (the sheet of that folder in front shows the new picture itself: its From a file... tile)
+    // A font copied in is a file of the fonts folder as one put there over USB is: the folder is looked at for it,
+    // and the check that decides whether Grimoire ever reads it runs as for every file there (userfonts_added).
+    // The copy itself applies nothing.
+    if to == CopyTo::Fonts {
+        crate::userfonts::userfonts_added(a.dpi);
+    }
+    // (the sheet of that folder in front shows the new picture itself: its From a file... tile; the Font sheet the
+    // new font's row, which says "Checking..." until its check has ended)
     if crate::library::library_sheet_folder(a) == Some(to) || crate::editor::editor_sheet_folder(a) == Some(to) {
         return;
     }
@@ -2270,8 +2278,8 @@ fn copy_told(a: &mut App, to: Option<crate::bgwork_copy::CopyTo>, r: i32) {
         CopyTo::Fonts => tr("Fonts"),
     };
     let mut msg = String::new();
-    // TRANSLATORS: a toast (about 1700 px at 44 px in bold): a picture was copied into one of Grimoire's folders;
-    // %s is that folder's name as Files shows it (Templates, Photos).
+    // TRANSLATORS: a toast (about 1700 px at 44 px in bold): a picture was copied into one of Grimoire's folders,
+    // or a font file into its fonts; %s is that folder's name as Files shows it (Templates, Photos, Fonts).
     csnprintf!(&mut msg, 256, tr("Copied to %s."), place);
     app_toast(a, &msg, 3000);
 }
