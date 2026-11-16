@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: Grimoire 1.0.0-beta\n"
 "Report-Msgid-Bugs-To: https://github.com/ganten1998/grimoire-scribe/issues\n"
-"POT-Creation-Date: 2026-11-15 18:01-0600\n"
+"POT-Creation-Date: 2026-11-15 18:06-0600\n"
 "PO-Revision-Date: 2026-10-20 08:02-0500\n"
 "Last-Translator: draft\n"
 "Language-Team: Spanish\n"
@@ -69,6 +69,13 @@ msgstr "Herramienta anterior / siguiente"
 #: rust/src/actions.rs
 msgid "Previous / next in the picker"
 msgstr "Anterior / siguiente en el selector"
+
+#. TRANSLATORS: (Buttons and Gestures sheets, a row as Previous / next tool, about 1100 px at 44 px in bold
+#. with the buttons' names) the buttons or gestures that take the pen in use to the next smaller and the next
+#. larger of its quick sizes, in that order.
+#: rust/src/actions.rs
+msgid "Smaller / larger size"
+msgstr "Tamaño menor / mayor"
 
 #: rust/src/actions.rs
 msgid "Previous / next page"

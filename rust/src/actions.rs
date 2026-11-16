@@ -212,7 +212,7 @@ static K_EDITING: [LearnRow; 11] = [
 // rows, about 1100 px at 44 px in bold, with the buttons' names). They go through the pens on the panel.
 // TRANSLATORS: (Buttons sheet) the buttons that move the open tool picker's choice to its previous and
 // next pen (with it closed, they switch tools through all nine), in that order.
-static K_TOOLS: [LearnRow; 11] = [
+static K_TOOLS: [LearnRow; 12] = [
     lr(
         None,
         [SHORTCUT_TOOL_BASE + TOOL_PENCIL.0, 0],
@@ -267,6 +267,15 @@ static K_TOOLS: [LearnRow; 11] = [
         Some(n_("Previous / next in the picker")),
         [SHORTCUT_PICKER_PREV, SHORTCUT_PICKER_NEXT],
         IconKind::Grid,
+    ),
+    // (2.2: the group's twelfth row, GROUP_ROWS_MAX; quick-size has none, it is bound by name)
+    lr(
+        // TRANSLATORS: (Buttons and Gestures sheets, a row as Previous / next tool, about 1100 px at 44 px in bold
+        // with the buttons' names) the buttons or gestures that take the pen in use to the next smaller and the next
+        // larger of its quick sizes, in that order.
+        Some(n_("Smaller / larger size")),
+        [SHORTCUT_SIZE_SMALLER, SHORTCUT_SIZE_LARGER],
+        IconKind::Tune,
     ),
 ];
 

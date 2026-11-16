@@ -43,7 +43,7 @@ fn registry_names_groups_and_labels() {
         "status-corner",
         "gesture-new-page",
     ];
-    let expected_group_rows = [11usize, 11, 11, 7, 9, 10, 6];
+    let expected_group_rows = [11usize, 12, 11, 7, 9, 10, 6];
     check!(ACTION_GROUPS.len() == N_GROUPS && N_GROUPS == expected_group_rows.len());
     check!(SHORTCUT_LAST == SHORTCUT_QUICK_SIZE && SHORTCUT_QUICK_SIZE == 107 && SHORTCUT_SIZE_LARGER == 106 && SHORTCUT_SIZE_SMALLER == 105 && SHORTCUT_PAN_DOWN == 104 && SHORTCUT_GRAPH_VIEW == 100 && SHORTCUT_SELECT_ALL == 95 && SHORTCUT_SAVE == 87 && SHORTCUT_BACK == 88 && SHORTCUT_TWO_FINGER_UP == 89 && SHORTCUT_NEW_NOTEBOOK == 90 && SHORTCUT_NEW_FOLDER == 91 && SHORTCUT_SHARE == 92 && SHORTCUT_SETTINGS == 93 && SHORTCUT_SELECT == 84 && SHORTCUT_SELECT_EXACT == 85 && SHORTCUT_NEW_PAGES == 86 && SHORTCUT_GESTURE_NEW_PAGE == 54 && SHORTCUT_STATUS_MODE == 55);
     let mut ids = HashSet::new();
@@ -83,7 +83,6 @@ fn registry_names_groups_and_labels() {
         check!(
             group_row_count(g) == *want
                 && group_row_count(g) <= GROUP_ROWS_MAX
-                && group_row_count(g) <= 11
         );
         check!(
             ACTION_GROUPS[g].probe.len() > 0
