@@ -1173,19 +1173,28 @@ on the root's device, none of Grimoire's own folders and no hidden or system one
 the book key is read from the file, and the PDF goes to the PDF import as a pick (Imports: PDFs, below): read in
 place (one that lies in `import/` itself is filed in `done/`, as any pick there is), named after the request's
 title (else the file's name), at the top of the Library, keyed and recorded by its file. The request is taken once
-the import is queued; a path the walk refuses ends the book there. The book job then waits for the import, pen and
-touch waiting and the book's notice counting the import's pages ("Adding book pages: N of M": the pages the book's
-notebook lacks, or all of them for a new notebook), and opens at the page that holds the reader's book page:
+the import is queued; a path the walk refuses ends the book there.
 
-- the notebook the import made, with "Added N book pages." ("Imported notebook (N pages). Some pages couldn't be
-  read." when some of its pages are blank);
-- the notebook it filled, with "Added N book pages.": a notebook KOReader made through version 1 holds only the
-  pages KOReader drew, and the import adds those it lacks in book order (its key decides; KOReader's pages stay as
-  they are, and the notebook is not given a record);
-- the notebook that holds every page ("PDF already imported."), with no toast.
+From there the import runs as a dropped PDF's does, and nothing is held for it: the Library stays usable, the
+import's own notice counts its pages ("Importing: page N of M"), and a sheet that is up (What's new, on the first
+start after an update) closes as it always does. A fill's pages go in by a fill's own rules (the Library in front
+and at rest: Imports, below). The book job only follows the import. Its notebook is the one the import made, the one
+it filled (a notebook KOReader made through version 1 holds only the pages KOReader drew, and the import adds those
+it lacks in book order: its key decides, KOReader's pages stay as they are, and the notebook is not given a record),
+or the one it found holding every page. When the import ends:
 
-A fill's pages go in while the job waits. A book page under another page count than the request's (two engines may
-count a broken PDF's pages differently) is found under the one count the notebook's pages name. An import that fails
+- with the Library's cards in front (no sheet, no Files, no Graph), that notebook opens at the page that holds the
+  reader's book page, as version 1's does, with "Added N book pages." for a notebook made or filled ("Imported
+  notebook (N pages). Some pages couldn't be read." for a new one with blank pages) and no toast for one that held
+  every page;
+- with anything else in front (a notebook open, a sheet, Files, the Graph), nothing opens over it. The import says
+  its own toast, as for a dropped PDF ("Imported notebook (N pages).", "Added N book pages.", "PDF already
+  imported."), and the reader's page is kept as the page the notebook opens at (`last_page` in its `notebook.ini`;
+  nothing else of it changes), so its card opens there. A notebook that is open in the editor then keeps its place.
+
+An end that comes while the Kindle sleeps, or while a fill's pages go in, is taken once that is over. A book page
+under another page count than the request's (two engines may count a broken PDF's pages differently) is found
+under the one count the notebook's pages name. An import that fails
 fails the book as above: "Couldn't add book pages. Is the storage full?" for no room, "Book too long: notebooks hold
 2000 pages." for more pages than a notebook holds, else "Couldn't open book from KOReader (see grimoire.log)." (the
 import's own lines in the log say why). A book opened in KOReader before 2.2 keeps the pages KOReader drew, gray;

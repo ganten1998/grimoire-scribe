@@ -2290,13 +2290,25 @@ Grimoire's own folders, a plain file opened without waiting), reads the book key
 `pdf_import_queue` as a pick. From there it is the import's: the same job, sandboxed worker, key, file record and
 fill rules, read in place, so a notebook KOReader made through version 1 is filled by its key (only the pages it
 lacks, its own pages untouched, no record given) and a book opened before 2.2 holds KOReader's gray pages beside the
-import's colour ones (the owner accepted a book holding both: issue #142). The book job (`annotate.rs`, `step_pdf`) writes nothing itself: it
-holds pen and touch as a version 1 job does, counts the import's pages in the book's notice, and waits for the end
-the app gives it (`book_pdf_end`: the import's job end for its PDF, or the fill's commit, which `fill_tick` lets run
-while it waits) instead of the import's own toasts; then it opens the notebook made, filled or found whole at the
-reader's book page (by the count the notebook's pages name, when the two engines count differently) with KOReader's
-toasts, or fails as a book fails. An import that is neither queued, waiting for the lock nor going in, and told
-nothing, for 3 s (a fill whose notebook changed meanwhile) opens the book's notebook as it is. The plugin keeps
+import's colour ones (the owner accepted a book holding both: issue #142).
+
+The book job (`annotate.rs`, `step_pdf`) writes nothing itself and holds nothing (`BookStatus.pdf`; app.rs's
+`book_holds` is true for a version 1 job alone). The import runs as a dropped PDF's does, with its own notice and the
+Library usable, because nothing it writes can be reached meanwhile: a new notebook is renamed into place whole by the
+import's job, a fill's commit holds the input itself for its few ticks, and the editor refuses a notebook that is
+being filled. Holding the input for the whole import, as version 1 does for its few seconds, would also turn any wait
+into a lock: a fill's commit waits for the Library to be at rest, What's new opens by itself on the first start after
+an update, and a held Dismiss could then never close it. The job follows the import through the end the app gives it
+(`book_pdf_end`: the import's job end for its PDF, or the fill's commit, which `fill_tick` begins by its own rules)
+and names the notebook made, filled or found whole and the page of it that holds the reader's book page (by the
+count the notebook's pages name, when the two engines count differently). `book_tick` then decides by what is in
+front. The Library's cards (`library_cards_in_front`: no sheet, no Files, no Graph; a control held down is waited
+out): the notebook opens at that page, with version 1's toasts. Anything else: nothing opens over it, the import's
+own toast shows (`pdf_import_told`), and the page is kept as the one the notebook opens at (`book_pdf_keep_page`:
+`last_page` alone, and never for the notebook the editor has open). An end that comes while the Kindle sleeps or a
+fill's pages go in is taken after. An import that fails fails the book. An import that is neither queued, waiting for
+the lock nor going in, and told nothing, for 3 s (a fill whose notebook changed meanwhile) ends on the book's
+notebook as it is. The plugin keeps
 version 1 for DjVu, comics and XPS, for a PDF outside the storage, and for a PDF that needs a password, which it asks
 of a MuPDF document of its own: MuPDF answers by trying the empty password, which would make the reader's document
 forget the one it was given.

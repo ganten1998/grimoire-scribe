@@ -785,6 +785,9 @@ struct State {
     f: Fits,
     /// the version of this start's book request (1, 2), 0 for none or one that did not read
     book_version: i32,
+    /// how the PDF import of the last version 2 job ended, as the app told it (book_pdf_end): the import's job and
+    /// its end, for the app to say in the import's own words (book_pdf_told takes it)
+    pdf_told: Option<(String, crate::pdfimport::Finished)>,
 }
 
 thread_local! {
@@ -1495,6 +1498,9 @@ pub struct BookStatus {
     pub links_out: bool,
     /// DONE (version 2, a new notebook): pages the PDF import could not read, made blank
     pub blank: i32,
+    /// version 2: a PDF handed over by its path. The PDF import makes its pages as it makes a dropped PDF's, with
+    /// its own notice, and nothing waits for this job: no input is held and it shows no notice of its own (app.rs)
+    pub pdf: bool,
 }
 
 /// The job: one at a time, from book_start to DONE or FAILED.
@@ -1534,7 +1540,7 @@ struct Job {
     /// version 2: the PDF import makes the pages (`src`: the PDF as a StoragePath's text; `key`: its book key, read
     /// from the file at the start; `size`: the file's size then); `ended`: how that import ended, told by the app
     /// (book_pdf_end), taken by the next step; `quiet_since`: when the import was last seen queued, waiting or being
-    /// put in (book_pdf_step looks again after PDF_LOST_MS)
+    /// put in (step_pdf looks again after PDF_LOST_MS)
     pdf: bool,
     src: String,
     key: String,
@@ -1770,9 +1776,12 @@ fn start(j: &mut Job, asked: bool, st: &mut BookStatus) {
 // KOReader's plugin names the PDF it has open (`file=`) and draws nothing, to a launcher that says `pdf`. The path is
 // checked through the storage walk, as a picked file is (fsview: no link followed, a plain file on the storage's
 // device, none of Grimoire's own folders), and the PDF goes to the PDF import as a pick (pdfimport.rs: the same job,
-// sandboxed worker, key, file record and fill rules, read in place). The book job then waits for that import to end,
-// with pen and touch waiting and the book's notice saying how far it got, and opens the notebook the import made,
-// filled or found whole at the page the reader was on. The request is taken once the import is queued.
+// sandboxed worker, key, file record and fill rules, read in place). The import then runs as a dropped PDF's does:
+// the Library stays usable, with the import's own notice, and nothing is held for it. The book job only follows it:
+// it waits for the end the app gives it (book_pdf_end) and names the notebook the import made, filled or found whole
+// and the page of it that holds the reader's book page. What happens then is the app's (app.rs, book_tick): the
+// notebook opens there when the Library's cards are still in front, else the import's own toast shows and the page
+// is kept as the one the notebook opens at (book_pdf_keep_page). The request is taken once the import is queued.
 
 /// After this long with the PDF's import neither queued, waiting for the lock nor being put in, and no end told,
 /// the job decides from the notebooks as they are.
@@ -1815,15 +1824,6 @@ fn pdf_notebook(key: &str, size: u64) -> Option<String> {
     }
 }
 
-/// The notice's count until the import says its own: the pages the book's notebook lacks, 0 when it holds them all
-/// (or cannot say, which the import takes as "already imported"), the book's page count when there is none.
-fn pdf_total_guess(key: &str, size: u64, pages: i32) -> i32 {
-    match pdf_notebook(key, size) {
-        Some(nb) => crate::pdfimport::fill_plan(&nb).ok().flatten().map_or(0, |p| p.todo.len() as i32),
-        None => pages,
-    }
-}
-
 /// The page of notebook `id` that holds book page `page` of `pages` (its source.ini), and its index; with no such
 /// line, book page `page` of the one count the notebook's pages name (two engines may count a broken PDF's pages
 /// differently), else the page the notebook would open at.
@@ -1862,6 +1862,8 @@ fn start_pdf(j: &mut Job, st: &mut BookStatus, dir: &str) {
     use crate::pdfimport::Queued;
     use std::os::fd::AsRawFd;
     j.pdf = true;
+    st.pdf = true;
+    with(|s| s.pdf_told = None);
     let Some(sp) = storage_path_of(&j.r.file) else {
         qlog!("book: the PDF KOReader named is not in the Kindle's storage; nothing opened");
         job_fail(j, st, AnnotateWhy::Log);
@@ -1898,7 +1900,6 @@ fn start_pdf(j: &mut Job, st: &mut BookStatus, dir: &str) {
     if key.as_bytes() != j.r.book.as_bytes() {
         qlog!("book: the book key KOReader sent is not its file's; the file's is used");
     }
-    st.total = pdf_total_guess(&key, size, j.r.pages);
     let mut name = String::new();
     annotate_name(j.r.title.as_bytes(), &mut name, STORE_NAME_LEN);
     let q = crate::pdfimport::pdf_import_queue(&sp, (!name.is_empty()).then_some(name.as_str()), None, store_dpi());
@@ -1939,10 +1940,13 @@ fn pdf_open(j: &mut Job, st: &mut BookStatus, nb: &str, made: bool, added: u32, 
     job_end(j, st);
 }
 
-/// A version 2 job's step: how its import ended (book_pdf_end), else how far it got, for the notice.
+/// A version 2 job's step: how its import ended (book_pdf_end), else whether it is still on its way.
 fn step_pdf(j: &mut Job, st: &mut BookStatus) {
-    use crate::pdfimport::{FailWhy, Finished, ImportStatus};
+    use crate::pdfimport::{FailWhy, Finished};
     if let Some((id, fin)) = j.ended.take() {
+        if fin != Finished::Nothing {
+            with(|s| s.pdf_told = Some((id.clone(), fin.clone())));
+        }
         match fin {
             Finished::Imported { pages, blank, trimmed } => return pdf_open(j, st, &id, true, pages, trimmed > 0, blank),
             Finished::Filled { nb, added, trimmed, .. } => return pdf_open(j, st, &nb, false, added, trimmed > 0, 0),
@@ -1964,10 +1968,6 @@ fn step_pdf(j: &mut Job, st: &mut BookStatus) {
     let now = now_ms();
     if crate::pdfimport::is_queued(&j.src) {
         j.quiet_since = None;
-        if let ImportStatus::Importing(p, n) = crate::pdfimport::import_status(&j.src, 0, 0) {
-            st.added = p as i32;
-            st.total = n as i32;
-        }
         return;
     }
     // (not queued: waiting for the lock, its pages made and waiting to go in, or going in; looked at twice a second)
@@ -2010,6 +2010,31 @@ pub fn book_pdf_end(id: &str, fin: crate::pdfimport::Finished) {
             s.j.ended = Some((id.to_string(), fin));
         }
     });
+}
+
+/// How the PDF import of the version 2 job that just ended had ended, once: the import's job (empty for a fill's
+/// commit) and its end, as book_pdf_end gave them. None for a job that ended without a word from the import (a
+/// path refused at the start, an import lost). The app says it in the import's own words where the book's notebook
+/// does not open (app.rs).
+pub fn book_pdf_told() -> Option<(String, crate::pdfimport::Finished)> {
+    with(|s| s.pdf_told.take())
+}
+
+/// Keeps page `pid` as the page notebook `nb` opens at (its notebook.ini's last_page), for a hand-over by path
+/// whose import ended while something else was in front: the notebook then opens on the reader's page the next
+/// time. Nothing else of the notebook changes, its modified time neither. False when the notebook does not read,
+/// holds no such page, or cannot be written. Never called for the notebook the editor has open (app.rs).
+pub fn book_pdf_keep_page(nb: &str, pid: u32) -> bool {
+    let (mut info, mut dir) = (NotebookInfo::default(), String::new());
+    if store_load_info(nb, &mut info) != 0 || store_notebook_dir(nb, &mut dir, 600) != 0 {
+        return false;
+    }
+    let Some(at) = info.page_ids.iter().position(|&p| p == pid) else { return false };
+    if info.last_page == at as i32 {
+        return true;
+    }
+    info.last_page = at as i32;
+    store_write_info_in(&dir, &info) == 0
 }
 
 /// The links the plugin sent (links.txt, strictly: a file is taken whole or not at all). None for no file or one

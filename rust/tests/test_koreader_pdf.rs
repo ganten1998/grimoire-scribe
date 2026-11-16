@@ -1,9 +1,11 @@
 // test_koreader_pdf.rs: KOReader hands a PDF over by its path (2.2, issue #142). The plugin's version 2 request
 // names the PDF it has open (`file=`) and draws nothing; Grimoire checks the path through the storage walk, as a
 // picked file is, and gives the PDF to the PDF import as a pick: the same job, sandboxed worker, book key, file record
-// and fill rules. The book job waits for that import and opens the notebook it made, filled or found whole at the page
-// the reader was on. A notebook KOReader made through version 1 is filled with the pages it lacks; the pages it has
-// stay as they are.
+// and fill rules. The book job follows that import, holding nothing, and names the notebook it made, filled or found
+// whole and the page of it the reader was on; the app opens it there when the Library's cards are still in front, and
+// else keeps that page as the one the notebook opens at (book_pdf_keep_page; the scenarios y_koreader_pdf_* run the
+// app's side). A notebook KOReader made through version 1 is filled with the pages it lacks; the pages it has stay as
+// they are.
 //
 // The jobs run as the app runs them (bg_poll_job, pdfimport::finished, the UI's fill_tick), each page through a real
 // worker (a fresh exec of the headless runner), as in test_pdf_fill.rs; the end of the book's own import goes to the
@@ -169,6 +171,7 @@ fn koreader_book(e: &Env, key: &str, pages: i32, held: &[i32]) -> String {
         book_step(150, &mut st);
     }
     assert_eq!(st.state, BookState::Done, "KOReader's version 1 book: {st:?}");
+    assert!(!st.pdf, "a version 1 job is not the PDF import's: the app holds the input for it, as before");
     st.nb.as_str().to_string()
 }
 
@@ -223,6 +226,7 @@ fn a_pdf_handed_over_by_its_path_becomes_a_notebook_open_at_the_readers_page() {
     let log = log_captured(&e);
     assert_eq!(started, (BookState::Running, Some("documents/Tabs Planner.pdf".to_string()), "2".to_string(), false), "the import queued, the request taken");
     assert_eq!((st.state, st.made, st.added, st.blank), (BookState::Done, true, 4, 0), "{st:?}");
+    assert!(st.pdf, "a job that holds nothing (app.rs reads this)");
     let id = st.nb.as_str().to_string();
     let nb = e.info(&id);
     assert_eq!(nb.name.as_str(), TITLE);
@@ -284,7 +288,6 @@ fn a_version_2_hand_over_fills_a_notebook_koreader_made() {
     let kept = pictures(&before);
     let file = e.book("Tabs.pdf", &bytes);
     let mut st = hand_over(&e, &key, &file, 2, 4);
-    assert_eq!(st.total, 2, "the notice counts the two pages it lacks");
     run_book(&mut st);
     assert_eq!((st.state, st.made, st.added), (BookState::Done, false, 2), "{st:?}");
     assert_eq!(st.nb.as_str(), id, "the notebook KOReader made");
@@ -298,7 +301,6 @@ fn a_version_2_hand_over_fills_a_notebook_koreader_made() {
     assert_eq!(e.notebooks().len(), 1, "no notebook of its own");
     // Once more: every page is there ("already imported"): it opens at the reader's page, nothing added.
     let mut st = hand_over(&e, &key, &file, 4, 4);
-    assert_eq!(st.total, 0, "nothing to count");
     run_book(&mut st);
     assert_eq!((st.state, st.added, st.nb.as_str()), (BookState::Done, 0, id.as_str()), "{st:?}");
     assert_eq!(st.pid, e.info(&id).page_ids[3], "book page 4");
@@ -366,4 +368,44 @@ fn a_pdf_the_import_refuses_fails_the_book() {
     assert_eq!((st.state, st.why), (BookState::Failed, AnnotateWhy::Log), "{st:?}");
     assert!(e.notebooks().is_empty());
     assert!(std::path::Path::new(&file).exists(), "the PDF stays where it was");
+}
+
+// What the app needs when a hand-over's import ends with something else in front (app.rs, book_tick): how the import
+// ended, once, to say it in the import's own words; and the reader's page kept as the page the notebook opens at, with
+// nothing else of the notebook changed (its place among the Library's cards, by its modified time, neither).
+#[test]
+fn the_import_s_end_is_told_once_and_the_readers_page_is_kept() {
+    let e = setup("kept");
+    let bytes = pdffix::tabs();
+    let file = e.book("Tabs.pdf", &bytes);
+    let mut st = hand_over(&e, &key_of(&bytes), &file, 3, 4);
+    assert!(st.pdf && book_pdf_told().is_none(), "nothing is told while it runs");
+    run_book(&mut st);
+    assert_eq!((st.state, st.added), (BookState::Done, 4), "{st:?}");
+    let id = st.nb.as_str().to_string();
+    assert_eq!(book_pdf_told(), Some((id.clone(), Finished::Imported { pages: 4, blank: 0, trimmed: 0 })));
+    assert_eq!(book_pdf_told(), None, "once");
+    let before = e.info(&id);
+    assert_eq!(before.last_page, 0, "an import's notebook opens at its first page");
+    let ini = e.ini(&id, "notebook.ini");
+    assert!(book_pdf_keep_page(&id, st.pid));
+    let after = e.info(&id);
+    assert_eq!(after.last_page, 2, "book page 3");
+    assert_eq!((after.modified, after.page_ids.clone(), after.name.as_str(), after.source.as_str()), (before.modified, before.page_ids.clone(), before.name.as_str(), before.source.as_str()));
+    assert_eq!(e.ini(&id, "notebook.ini"), ini.replace("last_page=0", "last_page=2"), "that line alone");
+    // again: nothing to write; a page the notebook does not hold, or a notebook that is not there: nothing kept
+    assert!(book_pdf_keep_page(&id, st.pid));
+    assert!(!book_pdf_keep_page(&id, 9999) && !book_pdf_keep_page("20200101-000000-0000", st.pid));
+    assert_eq!(e.info(&id).last_page, 2);
+    // A hand-over the import refuses tells the import's failure, for the app's toast.
+    let junk = b"%PDF-1.4\nnot a PDF after all\n%%EOF\n".to_vec();
+    let file = e.book("Junk.pdf", &junk);
+    let mut st = hand_over(&e, &key_of(&junk), &file, 1, 1);
+    run_book(&mut st);
+    assert_eq!(st.state, BookState::Failed);
+    assert!(matches!(book_pdf_told(), Some((_, Finished::Failed(FailWhy::Generic)))));
+    // A path refused at the start never reached the import: nothing of it to tell.
+    let st = hand_over(&e, &key_of(&bytes), &format!("{}/documents/Missing.pdf", e.storage), 1, 4);
+    assert_eq!((st.state, st.pdf), (BookState::Failed, true));
+    assert_eq!(book_pdf_told(), None);
 }

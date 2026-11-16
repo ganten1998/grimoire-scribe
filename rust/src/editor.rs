@@ -3554,6 +3554,12 @@ fn close_notebook(a: &mut App) {
     bgimage_forget(None); // the notebook's pictures (up to 3 pages' worth) and its failures
 }
 
+/// Whether notebook `id` is the one the editor has open (in front or behind another screen): its notebook.ini is
+/// the editor's to write then.
+pub fn editor_has_open(a: &App, id: &str) -> bool {
+    a.ed.as_deref().is_some_and(|s| s.open && s.nb.id.as_str() == id)
+}
+
 /// loads, switches to SCR_EDITOR
 pub fn editor_open_notebook(a: &mut App, id: &str) {
     // A PDF fill's pages going into this notebook now (2.2: the UI's commit, a few ticks with input held): it opens

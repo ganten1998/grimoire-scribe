@@ -290,7 +290,7 @@ fn live_block(on: bool) {
 
 fn live_cap_sync(a: &App) {
     let mut cap = LiveCap { on: G_LIVE_APP.load(Ordering::Relaxed), asleep: a.asleep, input_yielded: a.input_yielded, ..Default::default() };
-    if cap.on && a.scr == ScreenId::Editor && a.book.state != BookState::Running {
+    if cap.on && a.scr == ScreenId::Editor && !book_holds(a) {
         cap.editor = true;
         for (e, row) in cap.styles.iter_mut().enumerate() {
             for (side, style) in row.iter_mut().enumerate() {
@@ -539,19 +539,51 @@ fn book_failed(a: &mut App) {
     app_toast(a, &msg, 8000);
 }
 
+// Whether KOReader's book job holds the input now: while a version 1 job adds the pages KOReader drew (a few
+// seconds, writing the book's notebook itself). A PDF handed over by its path (version 2) never does: the PDF
+// import makes its pages as it makes a dropped PDF's, the Library stays usable meanwhile, and a sheet that is up
+// (What's new, on the first start after an update) closes as it always does.
+fn book_holds(a: &App) -> bool {
+    a.book.state == BookState::Running && !a.book.pdf
+}
+
 // A whole book KOReader sent (annotate.h), its pages added a slice at a time: how far it got, in a
 // toast, then the editor opens on the reader's page.
+//
+// A PDF handed over by its path (version 2, 2.2) is the PDF import's: this only follows it. When it ends with the
+// Library's cards still in front (no sheet, no Files, no Graph, nothing pressed) the notebook opens on the
+// reader's page, as version 1's does. With anything else in front nothing opens over it: the import says its own
+// toast, as for a dropped PDF, and the reader's page is kept as the page the notebook opens at. An end that comes
+// while the Kindle sleeps, or while a fill's pages go in, is taken once that is over.
 fn book_tick(a: &mut App) {
     book_fits_tick();
     if a.book.state != BookState::Running {
         return;
     }
+    if a.book.pdf && (a.asleep || crate::pdfimport::fill_busy().is_some() || crate::library::library_pressed(a)) {
+        return;
+    }
     book_step(150, &mut a.book);
+    if a.book.state == BookState::Done && a.book.pdf && !crate::library::library_cards_in_front(a) {
+        let nb = a.book.nb;
+        // (the notebook the editor has open keeps its place: its page is the user's, and its files the editor's)
+        if !crate::editor::editor_has_open(a, nb.as_str()) && !book_pdf_keep_page(nb.as_str(), a.book.pid) {
+            qlog!("book: %s: the reader's page could not be kept as the page it opens at", nb.as_str());
+        }
+        if let Some((id, fin)) = book_pdf_told() {
+            pdf_import_told(a, &id, fin);
+        }
+        return;
+    }
     if a.book.state == BookState::Done {
         let nb = a.book.nb;
         // (links only: the notebook changed too, so that its mirror PDF, which draws the tabs, is made again)
         let added = a.book.made || a.book.added > 0 || a.book.links;
-        app_notice_clear(a, NoticeKey::Book); // (the notice saying how far it got goes)
+        if a.book.pdf {
+            book_pdf_told(); // (said by the notebook opening, and the book's toast below)
+        } else {
+            app_notice_clear(a, NoticeKey::Book); // (the notice saying how far it got goes)
+        }
         editor_open_notebook_at(a, nb.as_str(), a.book.pid, added);
         if a.book.blank > 0 && a.book.made {
             // (a PDF KOReader handed over by its path became a new notebook, some of its pages blank: the PDF
@@ -580,9 +612,11 @@ fn book_tick(a: &mut App) {
             bg_mirror_pdf(nb.as_str(), dpi, &dir, false);
         }
     } else if a.book.state == BookState::Failed {
-        app_notice_clear(a, NoticeKey::Book); // (the notice saying how far it got goes)
+        if !a.book.pdf {
+            app_notice_clear(a, NoticeKey::Book); // (the notice saying how far it got goes)
+        }
         book_failed(a);
-    } else {
+    } else if !a.book.pdf {
         book_progress(a, now_ms());
     }
 }
@@ -591,8 +625,7 @@ fn book_tick(a: &mut App) {
 // The notice redraws only when its text changes, at most once every 2 s, outside the count whose 30th Ui
 // is a Full: a long book no longer flashes the panel about every 18 s (2.1, DESIGN.md "One notice").
 fn book_progress(a: &mut App, now: u32) {
-    // (a PDF KOReader handed over by its path, whose notebook holds every page already: no count to show)
-    if now.wrapping_sub(a.book_told) < 600 || a.book.total == 0 {
+    if now.wrapping_sub(a.book_told) < 600 {
         return;
     }
     a.book_told = now;
@@ -1133,8 +1166,9 @@ fn app_event_screens(a: &mut App, ev: &InEvent) {
     }
     let ev = &captured;
     // While a book's pages are being added (a few seconds), nothing may open its notebook; nor while a PDF fill's
-    // pages go into theirs (2.2), so no Library action and no editor meets that commit (its keys: above).
-    if (a.book.state == BookState::Running || crate::pdfimport::fill_busy().is_some())
+    // pages go into theirs (2.2), so no Library action and no editor meets that commit (its keys: above). A PDF
+    // KOReader handed over by its path holds nothing: its import writes no notebook the user can reach (book_holds).
+    if (book_holds(a) || crate::pdfimport::fill_busy().is_some())
         && (app_pointer_phase(ev) >= 0 || ev.type_ == InType::PinchBegin || ev.type_ == InType::Key || ev.type_ == InType::Gesture)
     {
         return;
@@ -2070,13 +2104,11 @@ fn pdf_import_tick(a: &mut App, now: u32) {
     // A PDF fill whose pages are made goes into its notebook here, in the UI process (2.2), as KOReader's book
     // job's pages do: it begins only with the Library in front and at rest (so no notebook is open, and no dialog
     // is half way) and no book job running, takes a few ticks with input held (pen, touch and keys, the Live view's
-    // too), and says how far it got in the book's notice. A book job that waits on a PDF import (KOReader's hand-over
-    // by path) writes no notebook itself: a fill goes in during it, and the one of its own PDF ends it.
+    // too), and says how far it got in the book's notice. A book job that follows a PDF import (KOReader's hand-over
+    // by path) writes no notebook itself: a fill goes in during it by these same rules, and the one of its own PDF
+    // ends it.
     let book = book_pdf_src();
-    let free = a.scr == ScreenId::Library
-        && !a.asleep
-        && (a.book.state != BookState::Running || book.is_some())
-        && crate::library::library_at_rest(a);
+    let free = a.scr == ScreenId::Library && !a.asleep && !book_holds(a) && crate::library::library_at_rest(a);
     let fin = crate::pdfimport::fill_tick(free, a.dpi);
     if let Some((done, total)) = crate::pdfimport::fill_busy() {
         let mut msg = String::new();

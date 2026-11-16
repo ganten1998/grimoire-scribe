@@ -436,7 +436,9 @@ then opens the page you are reading. In KOReader's file browser, long-press such
 **Open with... > Grimoire** to do the same without opening it. For a DjVu or comic book KOReader draws
 each page first, about a second or two a page on a Scribe, with a message that a tap stops. A PDF goes
 straight to Grimoire instead, which reads it itself as it imports a PDF (in colour where the PDF has colour;
-the notice at the bottom counts its pages meanwhile) and then opens the page you were reading. Pages the
+the notice at the bottom counts its pages, and the Library stays usable meanwhile) and then opens the page you
+were reading. If you opened something else in the meantime, nothing opens over it: a toast says the import is
+done, and the book's notebook opens at that page when you tap its card. Pages the
 notebook already has, with what you wrote on them, are kept as they are, so opening the same book again only
 adds what is missing; a book you opened before this version keeps the gray pages KOReader drew, and the pages
 added now are Grimoire's. It is the same notebook Annotate this page uses. A PDF's own links come along (a
