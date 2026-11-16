@@ -827,17 +827,29 @@ fn backspace(kb: &mut Keyboard) {
     replace_selection(kb, b"");
 }
 
+// The keys that act again while held (keyboard_repeat): delete, ◀ and ▶, and the count pad's - and + (#119).
+fn repeats(code: u32) -> bool {
+    matches!(code, KB_KEY_BKSP | KB_KEY_LEFT | KB_KEY_RIGHT | KB_KEY_DEC | KB_KEY_INC)
+}
+
 // Whether delete, ◀ or ▶ held down has anything more to do: delete a selection or a character before the caret,
-// ◀ a selection or a character before it, ▶ a selection or one after it.
+// ◀ a selection or a character before it, ▶ a selection or one after it. The count pad's - and + have until the
+// count is at the pad's limit: 1 for -, its most for +.
 fn can_repeat(kb: &Keyboard, code: u32) -> bool {
     let len = kb.text.len();
     let caret = kb.caret.min(len);
-    has_selection(kb)
-        || match code {
-            KB_KEY_BKSP | KB_KEY_LEFT => caret > 0,
-            KB_KEY_RIGHT => caret < len,
-            _ => false,
+    match code {
+        KB_KEY_DEC => kb.page == 4 && keyboard_count(kb) > 1,
+        KB_KEY_INC => kb.page == 4 && keyboard_count(kb) < kb.count_max,
+        _ => {
+            has_selection(kb)
+                || match code {
+                    KB_KEY_BKSP | KB_KEY_LEFT => caret > 0,
+                    KB_KEY_RIGHT => caret < len,
+                    _ => false,
+                }
         }
+    }
 }
 
 /// A hardware key on an open on-screen keyboard: the result a tap on the same key would give (Cancel closes it;
@@ -1609,10 +1621,10 @@ pub fn keyboard_pointer(kb: &mut Keyboard, phase: i32, x: f32, y: f32, t: u32, d
     if !rect_is_empty(kb.field_dirty) && rect_contains_rect(kb.field_dirty, *dirty) {
         *dirty = RECT_EMPTY;
     }
-    if phase == 0 && matches!(code, KB_KEY_BKSP | KB_KEY_LEFT | KB_KEY_RIGHT) && kb.open && can_repeat(kb, code) {
-        // Held, it deletes (or moves the caret) again (keyboard_repeat): not with nothing left to delete before the
-        // caret, or no further to go, so a hold on an empty field, or on the count pad's opening 1 (which this
-        // delete cleared), or on ◀ at the text's start, does nothing more.
+    if phase == 0 && repeats(code) && kb.open && can_repeat(kb, code) {
+        // Held, it deletes (or moves the caret, or counts) again (keyboard_repeat): not with nothing left to delete
+        // before the caret, or no further to go, so a hold on an empty field, or on the count pad's opening 1 (which
+        // this delete cleared), or on ◀ at the text's start, or on - at 1 or + at the pad's most, does nothing more.
         kb.repeat_at = t.wrapping_add(KB_HOLD_MS).max(1);
         kb.repeat_gen = G_HOLDS.with(|g| g.get());
     }
@@ -1788,7 +1800,8 @@ fn pressed_code(kb: &Keyboard) -> Option<u32> {
     (kb.pressed_key >= 0 && (kb.pressed_key as usize) < n).then(|| keys[kb.pressed_key as usize].code)
 }
 
-/// Delete held down (or ◀ or ▶, the same way), at `now` (a sample of the contact on it, or the screen's tick): once
+/// Delete held down (or ◀ or ▶, or the count pad's - or +, the same way), at `now` (a sample of the contact on it, or
+/// the screen's tick): once
 /// its next repeat is due, the delete a tap makes (the caret's move), with every repeat that came due since up to
 /// KB_REPEAT_BATCH (a tick or a sample late,
 /// or the panel busy); the next is due KB_REPEAT_MS after the last that came due, so the rate holds and those
@@ -1797,8 +1810,8 @@ fn pressed_code(kb: &Keyboard) -> Option<u32> {
 /// is never more than that one refresh behind the text, at the lift too, after which nothing more is deleted.
 /// Changed when it deleted (Moved when it moved the caret), with field_dirty (and on the count pad also_dirty) as
 /// keyboard_press sets them; None otherwise, both empty. The hold ends once nothing is left to delete before the
-/// caret (no further for the caret to go), and when the keyboard has closed, the key pressed is not delete, ◀ or ▶,
-/// or keyboard_holds_end came since it began.
+/// caret (no further for the caret to go, the count at the pad's limit), and when the keyboard has closed, the key
+/// pressed is not one that repeats, or keyboard_holds_end came since it began.
 pub fn keyboard_repeat(kb: &mut Keyboard, now: u32, panel_busy: bool) -> KbResult {
     kb.field_dirty = RECT_EMPTY;
     kb.also_dirty = RECT_EMPTY;
@@ -1808,7 +1821,7 @@ pub fn keyboard_repeat(kb: &mut Keyboard, now: u32, panel_busy: bool) -> KbResul
     let code = pressed_code(kb).unwrap_or(0);
     if !kb.open
         || kb.repeat_gen != G_HOLDS.with(|g| g.get())
-        || !matches!(code, KB_KEY_BKSP | KB_KEY_LEFT | KB_KEY_RIGHT)
+        || !repeats(code)
         || !can_repeat(kb, code)
     {
         kb.repeat_at = 0;
@@ -2186,6 +2199,82 @@ mod tests {
 
     fn label(n: i32) -> String {
         format!("Add {n}")
+    }
+
+    /// The count pad's - and + held (#119) count again as delete held deletes, with its timing (KB_HOLD_MS, then
+    /// every KB_REPEAT_MS): the touch-down's step, one at KB_HOLD_MS and one every KB_REPEAT_MS after, never more
+    /// than that by the clock however late the ticks come (KB_REPEAT_BATCH at most at once, none saved up), and
+    /// never past the pad's limits, where the hold ends: 1 for -, its most for +.
+    #[test]
+    fn the_count_pads_minus_and_plus_repeat_to_its_limits() {
+        let pad = |max: i32| {
+            let mut kb = Keyboard::default();
+            keyboard_open_count(&mut kb, "Pages to add", max, label);
+            kb.area = keyboard_area(&kb, Rect { x: 0, y: 0, w: 1860, h: 2480 });
+            kb
+        };
+        let centre = |kb: &Keyboard, code: u32| {
+            let mut r = RECT_EMPTY;
+            assert!(keyboard_key_rect(kb, code, &mut r));
+            ((r.x + r.w / 2) as f32, (r.y + r.h / 2) as f32)
+        };
+        // + held H ms from the opening 1, a tick every millisecond (or every 30, as the main loop goes round), with
+        // room to spare: 1 and the steps a hold of H ms makes by the clock.
+        for step in [1u32, 30] {
+            for held in [0u32, 100, 399, 400, 401, 464, 465, 1000, 2000] {
+                let mut kb = pad(999);
+                let (x, y) = centre(&kb, KB_KEY_INC);
+                at(&mut kb, 0, x, y, 1000);
+                let mut dt = step;
+                while dt <= held {
+                    keyboard_repeat(&mut kb, 1000 + dt, false);
+                    dt += step;
+                }
+                at(&mut kb, 2, x, y, 1000 + held);
+                let steps = 1 + if held >= KB_HOLD_MS { 1 + (held - KB_HOLD_MS) / KB_REPEAT_MS } else { 0 };
+                let got = keyboard_count(&kb) as u32 - 1;
+                if step == 1 {
+                    assert_eq!(got, steps, "+ held {held} ms, a tick a millisecond");
+                } else {
+                    assert!(got <= steps && got + 1 >= steps, "+ held {held} ms, a tick every 30: {got} of {steps}");
+                }
+                assert_eq!(kb.repeat_at, 0, "the lift ends the hold");
+            }
+        }
+        // A tick found 2 s late: KB_REPEAT_BATCH steps, no more, and the next on the schedule.
+        let mut kb = pad(999);
+        let (x, y) = centre(&kb, KB_KEY_INC);
+        at(&mut kb, 0, x, y, 1000);
+        assert_eq!(keyboard_repeat(&mut kb, 3000, false), KbResult::Changed);
+        assert!(!rect_is_empty(kb.field_dirty) && !rect_is_empty(kb.also_dirty), "the count line and Done");
+        assert_eq!(keyboard_count(&kb), 2 + KB_REPEAT_BATCH as i32);
+        assert!(kb.repeat_at > 3000 && kb.repeat_at <= 3000 + KB_REPEAT_MS);
+        // + held at the pad's most: up to it, and the hold ends there.
+        let mut kb = pad(5);
+        let (x, y) = centre(&kb, KB_KEY_INC);
+        at(&mut kb, 0, x, y, 1000);
+        for t in (1001..=4000).step_by(10) {
+            keyboard_repeat(&mut kb, t, false);
+        }
+        assert_eq!((keyboard_count(&kb), kb.repeat_at), (5, 0));
+        at(&mut kb, 2, x, y, 4000);
+        // - held from 5: down to 1, and the hold ends there; held at 1 it does not start.
+        let (x, y) = centre(&kb, KB_KEY_DEC);
+        at(&mut kb, 0, x, y, 5000);
+        assert_eq!(keyboard_count(&kb), 4);
+        for t in (5001..=8000).step_by(10) {
+            keyboard_repeat(&mut kb, t, false);
+        }
+        assert_eq!((keyboard_count(&kb), kb.repeat_at), (1, 0));
+        at(&mut kb, 2, x, y, 8000);
+        at(&mut kb, 0, x, y, 9000);
+        assert_eq!((keyboard_count(&kb), kb.repeat_at), (1, 0));
+        at(&mut kb, 2, x, y, 9100);
+        // + on a pad of one: the opening 1 is all there is, no hold.
+        let mut kb = pad(1);
+        let (x, y) = centre(&kb, KB_KEY_INC);
+        at(&mut kb, 0, x, y, 1000);
+        assert_eq!((keyboard_count(&kb), kb.repeat_at), (1, 0));
     }
 
     /// New page's count pad (2.0.0-beta.2): digits, del, - and + keep a count from 0 to its most, a count past

@@ -4104,6 +4104,10 @@ pub fn store_page_dense(nb: &NotebookInfo, pid: u32) -> bool {
 pub fn store_page_slow(nb: &NotebookInfo, pid: u32) -> bool {
     page_render_files(nb, pid).is_some_and(|(source, _, _)| page_file_at_least(&source, STORE_SLOW_PAGE_BYTES))
 }
+/// The size of page pid's file in bytes, None where it has none (a blank page never written): for grimoire.log.
+pub fn store_page_file_bytes(nb: &NotebookInfo, pid: u32) -> Option<u64> {
+    page_render_files(nb, pid).and_then(|(source, _, _)| std::fs::metadata(source).ok()).map(|m| m.len())
+}
 // Whether page pid has a kept drawing of its file as it is now, at the notebook's page size, by this
 // renderer, layered or not (that is told only by reading the page): the previews job's guess that the page
 // is quick to make, before it reads the page (store_load_page_render still checks it all). A drawing kept

@@ -2,6 +2,11 @@
 
 ## 2.1.1 (unreleased)
 
+- **Size keys.** Shift+[ and Shift+] on a paired keyboard take the pen in use to its next smaller or larger quick
+  size, and a short toast says the size; a controller's buttons and gestures can too (Smaller / larger size, in the
+  Tools group of Buttons and of Gestures). The new `quick-size` action, bound by name in shortcuts.ini or
+  gestures.ini, opens the sizes card from a key or a gesture. An unedited shortcuts.ini gets the two keys at the
+  next start.
 - Hardening: Grimoire reads the files in its own folders only when they are plain files, with size limits
   on the small text files, and makes its temporary files afresh each time. A `settings.ini` it cannot
   read is kept as `settings.ini.unread` rather than written over. A picture or folder in `templates/`,
@@ -35,6 +40,11 @@
   says "PDF already imported."; a PDF with another page count becomes a notebook of its own. The pages go in
   once the notebook is closed and the Library is in front, in a moment that says "Adding book pages"; until then
   the notebook opens as it is, and KOReader's Open this book in Grimoire opens the book as usual.
+
+- The toolbar's page chip shows the page alone, at its usual size, on every page of a notebook where the page
+  and the count would not fit it on some page (every notebook of 1000 pages or more, and many of 100 or more,
+  by the font and the size), where it was cut short; a notebook under 100 pages shows both as before. The count
+  pad's - and + count on while held, as a held delete deletes, up to the pad's limits (#119).
 
 ## 2.1.0 (2026-11-13)
 

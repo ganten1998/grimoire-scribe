@@ -43,11 +43,11 @@ fn live_keys_text(defaults: &Shortcuts) -> String {
     text
 }
 
-/// Whether text is live-keys.ini as an earlier Grimoire wrote it (from the Kindle's starter map of 2.0.0-beta.1
-/// on; a CRLF copy counts), which nobody edited.
+/// Whether text is live-keys.ini as an earlier Grimoire wrote it (from the Kindle's starter map of 2.0.0-beta.1,
+/// or of 2.0.0-beta.2 to 2.1, before the size keys; a CRLF copy counts), which nobody edited.
 fn live_keys_old_starter(text: &[u8]) -> bool {
-    let old = live_keys_text(&shortcuts_parse_text(OLD_KINDLE_STARTER_2_0));
-    String::from_utf8_lossy(text).replace("\r\n", "\n") == old
+    let text = String::from_utf8_lossy(text).replace("\r\n", "\n");
+    [OLD_KINDLE_STARTER_2_0, OLD_KINDLE_STARTER_2_1].iter().any(|old| text == live_keys_text(&shortcuts_parse_text(old)))
 }
 
 /// Built-in keyboard defaults only, independent of the owner's physical keyboard/controller map.
@@ -277,6 +277,30 @@ mod tests {
         let keys = live_keys_load(path);
         assert_eq!(std::fs::read_to_string(path).unwrap(), edited);
         assert_eq!(shortcuts_lookup_at(&keys, ActionSrc::Key, 109, 0, PL_PAGE), SHORTCUT_NEXT_TOOL);
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+    /// The live-keys.ini 2.0.0-beta.2 to 2.1 wrote (that starter map's keys), unedited, becomes this build's and so
+    /// has the size keys (2.2), Shift+[ and Shift+]; one edited is kept as it is, without them.
+    #[test]
+    fn the_2_1_live_keys_starter_gains_the_size_keys() {
+        let dir = std::env::temp_dir().join(format!("grimoire-live-keys-21-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("live-keys.ini");
+        let path = path.to_str().unwrap();
+        let old = live_keys_text(&shortcuts_parse_text(include_str!("../../tests/fixtures/keys-2-1-starter/shortcuts.ini")));
+        assert!(old.contains("key.code27=next-tool\n") && !old.contains("size-"), "{old}");
+        assert!(live_keys_old_starter(old.as_bytes()));
+        std::fs::write(path, &old).unwrap();
+        let keys = live_keys_load(path);
+        let text = std::fs::read_to_string(path).unwrap();
+        assert!(text.contains("key.Shift+code26=size-smaller\nkey.Shift+code27=size-larger\n"), "{text}");
+        assert_eq!(shortcuts_lookup_at(&keys, ActionSrc::Key, 27, KEYMOD_SHIFT, PL_PAGE), SHORTCUT_SIZE_LARGER);
+        let edited = format!("{old}key.q=undo\n");
+        std::fs::write(path, &edited).unwrap();
+        let keys = live_keys_load(path);
+        assert_eq!(std::fs::read_to_string(path).unwrap(), edited);
+        assert_eq!(shortcuts_lookup_at(&keys, ActionSrc::Key, 27, KEYMOD_SHIFT, PL_PAGE), SHORTCUT_NONE);
         std::fs::remove_dir_all(dir).unwrap();
     }
 }

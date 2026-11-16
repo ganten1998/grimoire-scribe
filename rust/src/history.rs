@@ -387,6 +387,24 @@ pub fn history_push_link(h: &mut History, e: LinkEdit) {
     push_undo(h, Action { kind: ActKind::Link, link: Some(Box::new(e)), ..Default::default() });
 }
 
+/// A step in a few words, for grimoire.log (the editor's undo line, #119): its kind and how many strokes or links it
+/// moved, never what they are.
+pub fn history_step_words(a: &Action) -> String {
+    let strokes = |n: usize| if n == 1 { "1 stroke".to_string() } else { cformat!("%d strokes", n as i32) };
+    match a.kind {
+        ActKind::Add => "a stroke".to_string(),
+        ActKind::Erase => cformat!("an erase of %s", &strokes(a.ids.len())),
+        ActKind::Paper => "a paper change".to_string(),
+        ActKind::Clear => cformat!("a page clear (%s)", &strokes(a.ids.len())),
+        ActKind::Link => cformat!("a link change (%d)", a.link.as_ref().map_or(0, |e| e.records.len()) as i32),
+        ActKind::Replace => "a shape snap".to_string(),
+        ActKind::Lasso => {
+            let on = a.added.as_ref().map_or(0, |ad| ad.ids.len());
+            cformat!("a lasso step (%s off the page, %d on)", &strokes(a.ids.len()), on as i32)
+        }
+    }
+}
+
 /// The kind of the step an undo would apply, None for none (the editor applies a Link step's records).
 pub fn history_undo_kind(h: &History) -> Option<ActKind> {
     h.undo.last().map(|a| a.kind)

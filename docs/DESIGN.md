@@ -453,6 +453,10 @@ draws them. White ink and the precise eraser make them.
   take no typed keys (only Esc, their Cancel, and the keys that move the caret, select and copy and paste:
   above), and on the count pads `hidkeys_event` drops the kernel's autorepeat (value 2) as it does for every
   key; so a held arrow moves the caret once.
+- The count pad's - and + held repeat the same way (#119): the same `KB_HOLD_MS`, `KB_REPEAT_MS` and
+  `KB_REPEAT_BATCH`, the same ends of a hold, its Done drawn with the count as for a tap. A hold stops at the
+  pad's limits (`can_repeat`: - at 1, + at its most, the pages the notebook still holds), and one on - at 1 or
+  + at its most never starts. tests/scenarios/z_pages_add_9_hold.qs holds them by the script's clock.
 
 ## Languages
 
