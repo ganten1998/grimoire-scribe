@@ -516,7 +516,9 @@ file name, title, key or hash ever appears in it: ids, page numbers, counts, siz
   added once it is closed` (or `at Grimoire's next start`, in the child that finishes the queue after Grimoire
   closes): the fill waits, and the next scan goes on with it. `import: <id>: <why>; nothing added to notebook
   <nb>`: a fill that failed (`the notebook is gone`: deleted or in the trash meanwhile; a storage failure), the
-  notebook as it was.
+  notebook as it was. `import: <id>: its commit was cut off (K of 3)`: a commit taken up again after its writer
+  was cut off; at the third, `its commit stopped 3 times without finishing; notebook <nb> is as its last cut
+  left it`.
 - `import: <id>: page N of M: the worker died of signal S (strike K)` or `... stalled ...` or `... made call C,
   which the sandbox does not allow`; after the second strike `... could not be read ...; it is blank`. On the
   Kindle call 175 (`rt_sigprocmask`) is the worker's own abort (out of memory, or a panic), not a call to add;

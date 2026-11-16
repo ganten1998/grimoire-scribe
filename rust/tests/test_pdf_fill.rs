@@ -640,6 +640,30 @@ fn a_commit_cut_off_at_any_step_ends_with_the_notebook_filled() {
     }
 }
 
+// A commit cut off three times (a writer that keeps dying there) ends at the third: its work folder goes, and the
+// notebook is as the cuts left it (here, before its notebook.ini: as it was).
+#[test]
+fn a_commit_cut_off_three_times_ends() {
+    let e = setup("cut-thrice");
+    let (id, bytes) = imported_tabs(&e);
+    drop_pages(&id, &[2, 4]);
+    let before = e.info(&id);
+    let src = e.drop("Tabs again.pdf", &bytes);
+    let mut fid = String::new();
+    store_make_id(&mut fid);
+    sim_fill_cut(2);
+    assert_eq!(run_on(&fid, &src, 2), [SliceEnd::More, SliceEnd::More]);
+    for _ in 0..2 {
+        sim_fill_cut(2);
+        assert_eq!(run_slice(&fid, &src), SliceEnd::More, "cut off again");
+    }
+    sim_fill_cut(0);
+    assert!(matches!(run_slice(&fid, &src), SliceEnd::Failed(..)), "the third stop ends it");
+    assert!(e.work_folders().is_empty());
+    assert_eq!(e.info(&id).page_ids, before.page_ids);
+    assert_eq!(fill_pending(&id), None);
+}
+
 // ---- the queue ----
 
 /// Polls the background jobs as app.rs's poll_jobs does, until none is left: what each import said.

@@ -3546,12 +3546,23 @@ fn commit_fill(id: &str, src: &str, abs: &str, source: Option<&Src>, state: &Sta
     if map_count(&m) != Some(state.pages) {
         return gone("its pages no longer name the PDF's page count", R_FAILED);
     }
-    if !state.committing {
-        let mut st = state.clone();
-        st.committing = true;
-        if !state_write(id, &st) {
-            return gone("its state could not be written", R_STORAGE);
+    // The commit begins, or goes on: `open` stays set while it runs, so a commit that finds it set was cut off (a
+    // stop), and one cut off three times ends there, the notebook as the last cut left it (M11's rule).
+    let mut st = state.clone();
+    if st.committing && st.open {
+        st.stops += 1;
+        qlog!("import: %s: its commit was cut off (%d of %d)", id, st.stops as i32, STOPS_MAX as i32);
+        if st.stops >= STOPS_MAX {
+            qlog!("import: %s: its commit stopped %d times without finishing; notebook %s is as its last cut left it", id, st.stops as i32, &nbid);
+            remove_work_folder(id);
+            mark_drop(src);
+            return fail(id, R_FAILED, 0);
         }
+    }
+    st.committing = true;
+    st.open = true;
+    if !state_write(id, &st) {
+        return gone("its state could not be written", R_STORAGE);
     }
     let pages = state.pages as i32;
     // the pages it still lacks (one KOReader's route added since stays as it is, and this one is not added)
