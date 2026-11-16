@@ -19,6 +19,8 @@ shot 01-library-own
 tap 1535 95
 wait 50
 expect library.sheet is settings
+tap library settings.cat.1
+wait 50
 shot 02-settings-own
 tap library font
 wait 50
@@ -26,6 +28,7 @@ expect library.font.pick is file:GrimoireTest-Regular.ttf
 expect library.font.checking is 0
 tap library font.cancel
 wait 50
+expect library.sheet is settings
 expect font is file:GrimoireTest-Regular.ttf
 tap library done
 wait 50
