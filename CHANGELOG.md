@@ -33,6 +33,11 @@
   6 MB): the new Settings menu brought the binary to 10.96 MB, and 2.2's Files, PDF fills and KOReader's hand-over
   by path need more.
 
+- The toolbar's page chip shows the page alone, at its usual size, on every page of a notebook where the page
+  and the count would not fit it on some page (every notebook of 1000 pages or more, and many of 100 or more,
+  by the font and the size), where it was cut short; a notebook under 100 pages shows both as before. The count
+  pad's - and + count on while held, as a held delete deletes, up to the pad's limits (#119).
+
 ## 2.1.0 (2026-11-13)
 
 - The first stable release of 2.1: 2.1.0-beta.2 with the changes below, now on the stable channel too (KPM

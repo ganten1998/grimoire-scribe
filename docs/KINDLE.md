@@ -909,6 +909,12 @@ checks above. Synthetic tests cannot establish real-hand acceptance or accidenta
   and each gesture's outcome to `grimoire/touch-trace.txt` (4 MB at most; each start, and each turn
   of the screen, adds a line naming the rotation, the screen and its dpi). It stays in the data folder: no export, share page or raw ZIP
   carries it. Delete `grimoire/touch-trace` to stop, and send the two files when asked.
+- **A slow page, and undo** (#119): when "Loading page..." shows, grimoire.log says `editor: "Loading
+  page..." for page id N: its file is K KB, with no current kept drawing` (or `with changes not written yet`),
+  and when an undo of a page runs, `editor: undo of W on page id N`, W one of `a stroke`, `an erase of N
+  strokes`, `a paper change`, `a page clear (N strokes)`, `a link change (N)`, `a shape snap` and `a lasso step
+  (N strokes off the page, M on)`: ids, sizes and counts, never the ink. Each at most once a frame (a round of
+  the main loop): a second undo in the same round, from keys that came together, adds no line.
 - **The startup log** starts with a diagnostics block. `device:` lines give the model code (the
   first 6 characters of /proc/usid, never the serial), memory, CPU part and hardware. `display:`
   lines give the FBInk device id, platform, pixel format, color panel flag, raw vinfo and finfo,

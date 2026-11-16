@@ -653,7 +653,6 @@ Writing stayed fast at any size (median pen to screen 0.6 to 0.9 ms); the costs 
   a lighter page minutes later had none. Not explained yet.
 - **A stroke-eraser move on STRESS TEST 2 took 2.1 s** at 2.38 MB, its screen update 2 s late (as the CHANGELOG's
   about 3 s for a page-wide marker stroke on the first stress page).
-- **"Loading page..." and undo are not logged**, so a record cannot say whether the notice showed or undo ran.
 - **Limits, by extrapolation only**: nothing caps strokes or points on a page; the nearest limit is the 120 s
   heartbeat for a page drawn whole, reached at roughly 13 to 15 MB of STRESS TEST 3's mix (about 35 minutes
   of pen contact on one page). Points are kept at the pen's full rate, about 6.3 KB a second of contact.
@@ -817,13 +816,6 @@ Decided by the lane B3 design (docs/beta2/PIXEL-LASSO.md, 2026-11-03) and its bu
 
 ## In progress
 
-- **The panel's page count does not fit four-digit pages** (b3-padd2 agent, 2026-11-03, found by the fit check):
-  "1995 / 2000" needs 162 px and the toolbar's page chip has 112, so it is cut short in a notebook of 1000 pages
-  or more (z_pages_add_6_toolbar_limit stays on page 1 for that reason). A smaller size for long counts, or the
-  current page alone, would fit.
-- **Pages: the count pad's - and + do not repeat when held** (b3-padd agent, 2026-11-03; the brief made it
-  optional): one step per tap, and Up and Down on a keyboard repeat only as the keyboard sends repeats
-  (Grimoire ignores key repeats).
 - **Pages: drag shows the gap bar only, never makes room** (b2-pv agent, 2026-11-02): the tiles do not
   shift aside while a page is dragged (each shift would redraw the grid on e-ink); the bar between two
   tiles says where it lands. Revisit after trying it on a Scribe.
@@ -1105,6 +1097,42 @@ items of Document links. Left:
 
 ## Done
 
+- 2.1.1 (unreleased, 119-editor-page-count-pad; issue #119): three items that touch the editor.
+  - The panel's page chip fits any count (In progress since 2026-11-03, found by the fit check), and keeps one
+    form in a notebook: the page and the count on every page when every page's label fits the chip at its size,
+    else the page alone on every page (panel.rs, panel_chip_whole and panel_page_label), decided once for each
+    page count, font and size, and again when one of them changes. The labels cut short with "..." were most of
+    those of 1000 pages or more ("1995 / 2000" needs 142 to 172 px by the font upright, the chip has 112, while
+    "1 / 2000" fits in Gothic) and some of 100 or more in every font at full size (in Gothic "100 / 100" and
+    "20 / 200", in Classic "10 / 100" in Terminess and Atkinson, "100 / 100" in Noto Sans, "100 / 200" in
+    Literata). In Gothic, Atkinson and Literata those fall on scattered pages, so a rule by the label made the
+    chip change form while paging ("99 / 150", "100", "101 / 150", "102" in Gothic). By the notebook, every
+    count under 100 shows the page and the count as before, and no count of 1000 or more does in any built-in
+    font; between, it depends on the font and the size (in Gothic 101 and 111 pages show both, 100 and 112 do
+    not; in Literata at full size every count up to 199 and 101 more under 1000 show both; sideways on the
+    2022/2024 Scribes' screen with 3 pens pinned every count under 1000 shows both in Noto Sans and Literata).
+    Of the two ways this entry offered, the page alone keeps the chip's size, readable at arm's length on the
+    panel; the whole count made small enough to fit would be two thirds to three quarters of it at
+    "9999 / 9999". test_panel checks every count from 1 to 9999 in Gothic and in Classic with each font, at the
+    chip's three sizes (both Scribes' screens, upright and sideways, with 0 to 3 pens pinned);
+    z_pages_add_6_toolbar_limit (now on the last page too, upright and sideways, and on a small notebook) and
+    z_pages_add_7_toolbar_full (now with the fit check) read the chip (`editor.page_chip`, docs/SIM.md).
+  - The count pad's - and + repeat when held (In progress since 2026-11-03), on the toolbar's pad and the Pages
+    view's: with delete's timing on every keyboard (KB_HOLD_MS 400 ms, then every KB_REPEAT_MS 65 ms, at most
+    KB_REPEAT_BATCH 3 at once for a late tick, none saved up), so a hold makes no more steps than its time by
+    the clock, and stopping at the pad's limits (1, and the pages the notebook still holds). Left as it was: Up
+    and Down on a keyboard step once a press, as Grimoire drops the kernel's key repeats for every key. Unit test
+    the_count_pads_minus_and_plus_repeat_to_its_limits (keyboard.rs); z_pages_add_9_hold holds them by the
+    script's clock (GRIMOIRE_SIM_CLOCK=script) in waits of 100 ms: one long wait's ticks can come bunched at its
+    end on a busy machine (its time spent drawing is not on that clock), and a tick more than three repeats late
+    skips the rest, by design.
+  - "Loading page..." and undo are written to grimoire.log (found on the owner's stress pages, 2026-11-05): one
+    line when the notice shows, with the page's id, its file's size and why (no current kept drawing, or changes
+    not written yet), and one when an undo of a page runs, with what it undid in a few words (history_step_words:
+    its kind and how many strokes, never the ink) and the page's id; each at most once a frame (App.frames, which
+    app_tick counts). docs/KINDLE.md lists both. test_editor_log runs the headless runner and reads the lines:
+    the notice, a stroke, Clear page, a lasso move, and two undos in one batch, which say one line. Not logged:
+    redo, and the Pages view's own Undo of page moves and batches.
 - 2.1.1 (unreleased, 84-test-flakes; issues #84, #85 and #86, found on the day 2.1.0 was released, and #93, the
   day after): four checks no longer depend on the speed of the machine or on an earlier run.
   - `z_map_all_2_big` and `z_map_all_3_reading` wait for the library index and the Graph themselves (`waitfor`),
