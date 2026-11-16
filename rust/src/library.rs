@@ -7712,7 +7712,7 @@ fn with_files<R>(a: &mut App, f: impl FnOnce(&mut Browser, &mut App) -> R) -> R 
 
 /// What the browser is handed of the settings for Files.
 fn files_prefs(a: &App) -> FilesPrefs {
-    FilesPrefs { card: a.settings.files_card, sort: a.settings.files_sort, show: a.settings.files_show, view: a.settings.files_view }
+    FilesPrefs { card: a.settings.files_card, sort: a.settings.files_sort, show: a.settings.files_show }
 }
 
 fn files_open(a: &mut App) {
@@ -7725,7 +7725,13 @@ fn files_open(a: &mut App) {
 /// in the Library), over the Library as it is.
 fn files_open_place(a: &mut App) {
     let prefs = files_prefs(a);
-    let ok = with_files(a, |b, _| b.open(PickSpec::place(), prefs));
+    let view = a.settings.files_view;
+    let ok = with_files(a, |b, _| {
+        let ok = b.open(PickSpec::place(), prefs);
+        // (Files' View, the list or Covers: the place's alone, a picker is always a list)
+        b.set_view(view);
+        ok
+    });
     files_opened(a, ok);
 }
 
@@ -7806,10 +7812,10 @@ fn files_result(a: &mut App, r: BrowserResult) {
         }
         // Files' Sort, Show or View chip: kept for the next time Files opens
         BrowserResult::Prefs => {
-            let prefs = lib(a).files.prefs;
+            let (prefs, view) = (lib(a).files.prefs, lib(a).files.view());
             a.settings.files_sort = prefs.sort;
             a.settings.files_show = prefs.show;
-            a.settings.files_view = prefs.view;
+            a.settings.files_view = view;
             settings_save(&a.settings);
         }
         // "Show Files in Library": the card is the Library's last from now on (the browser drew its root without the row)

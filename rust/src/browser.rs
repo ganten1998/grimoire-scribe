@@ -36,8 +36,11 @@ const B_CRUMB: i32 = 11;
 const B_SORT: i32 = 12;
 const B_SHOW: i32 = 13;
 const B_GOTO: i32 = 14;
-// Files' View chip (2.2): List or Covers.
-const B_VIEW: i32 = 15;
+// Files' View chip (2.2, issue #145): List or Covers. The ids of the Covers work are a block of their own, from 60:
+// other Files work adds ids beside the ones above, and a hit id must be one thing only (a branch that finds a number
+// taken moves its own).
+const B_COVERS: i32 = 60;
+const B_VIEW: i32 = B_COVERS;
 
 /// What a task can pick, or Files lists as usable.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -68,8 +71,8 @@ pub struct PickSpec {
     pub mode: BrowseMode,
 }
 
-/// What the Library's settings say of Files (settings.ini files_card, files_sort, files_show, files_view), handed to
-/// the browser as it opens.
+/// What the Library's settings say of Files (settings.ini files_card, files_sort, files_show), handed to the
+/// browser as it opens. (files_view is not here: `Browser::set_view`.)
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct FilesPrefs {
     /// the Files card is in the Library (the root then has no "Show Files in Library" row)
@@ -78,8 +81,6 @@ pub struct FilesPrefs {
     pub sort: i32,
     /// FILES_SHOW_NAMES's index: 1 every file
     pub show: i32,
-    /// FILES_VIEW_NAMES's index: 1 Covers, the previews in a grid (2.2, issue #145)
-    pub view: i32,
 }
 
 impl PickSpec {
@@ -122,7 +123,8 @@ pub enum BrowserResult {
     LookAgain,
     /// the root's "Show Files in Library" row: the host puts the Files card in the Library (files_card=1)
     ShowInLibrary,
-    /// Files' Sort, Show or View chip changed `prefs`: the host saves them (files_sort, files_show, files_view)
+    /// Files' Sort, Show or View chip changed `prefs` or the view: the host saves them (files_sort, files_show, and
+    /// files_view from `Browser::view`)
     Prefs,
 }
 
@@ -354,8 +356,11 @@ pub struct Browser {
     row_rects: Vec<(usize, Rect)>,
     /// something to say to the user once drawn (a toast)
     pub toast: Option<&'static str>,
-    /// Covers (2.2, issue #145): the previews of the files on screen; the screen's width as last drawn (the grid's
-    /// columns); since when a preview of the screen is being made, and whether the notice says so
+    /// Covers (2.2, issue #145): Files' View setting (FILES_VIEW_NAMES's index: 1 Covers, the previews in a grid),
+    /// set by the host once Files is open (`set_view`); the previews of the files on screen; the screen's width as
+    /// last drawn (the grid's columns); since when a preview of the screen is being made, and whether the notice
+    /// says so
+    view: i32,
     covers: CoverTiles,
     aw: i32,
     making_since: Option<u32>,
@@ -510,6 +515,21 @@ impl Browser {
     }
 
     /// The walk's pick flag: pick mode also refuses Grimoire's PDFs and trash, which Files shows read only.
+    /// Files' View setting (settings.ini files_view, FILES_VIEW_NAMES's index: 0 the list, 1 Covers), given by the
+    /// host once Files is open and read back when the View chip changes it (`BrowserResult::Prefs`). It is the
+    /// browser's own, not a field of `FilesPrefs`: a picker opened anywhere is a list, whatever it is given.
+    pub fn set_view(&mut self, view: i32) {
+        self.view = view.clamp(0, 1);
+        if self.view == 0 {
+            // (the list: the previews still queued are taken back; the one running ends by itself in seconds)
+            self.covers.forget();
+        }
+    }
+
+    pub fn view(&self) -> i32 {
+        self.view
+    }
+
     fn pick(&self) -> bool {
         self.mode == BrowseMode::Pick
     }
@@ -990,7 +1010,7 @@ impl Browser {
     /// Whether the folder shown is in the Covers view (2.2): Files' View says so, inside a place, not the trash (which
     /// keeps its own list). The picker's pick mode and Files' root are always lists.
     fn in_covers(&self) -> bool {
-        self.mode == BrowseMode::Place && self.prefs.view == 1 && self.at.is_some() && !self.in_trash_place()
+        self.mode == BrowseMode::Place && self.view == 1 && self.at.is_some() && !self.in_trash_place()
     }
 
     /// The Covers grid's area (where the rows go) for a screen `aw` x `a_h`: its top, width and height.
@@ -1790,7 +1810,7 @@ impl Browser {
 
     /// The View chip's word: the view in use (a tap takes the other).
     fn view_label(&self) -> &'static str {
-        if self.prefs.view == 1 {
+        if self.view == 1 {
             // TRANSLATORS: Files' View chip on its path bar while the files show as a grid of their previews (one word
             // of about 220 px at 34 px in bold; a tap shows them as a list).
             tr("Covers")
@@ -2081,10 +2101,7 @@ impl Browser {
             // the View chip: List or Covers, the first row on screen kept on screen
             B_VIEW => {
                 let first = self.screen * self.per_page(ah);
-                self.prefs.view = if self.prefs.view == 1 { 0 } else { 1 };
-                if self.prefs.view == 0 {
-                    self.covers.forget();
-                }
+                self.set_view(if self.view == 1 { 0 } else { 1 });
                 self.card = None;
                 self.drop_press();
                 self.screen = first / self.per_page(ah);
@@ -2468,7 +2485,7 @@ impl Browser {
             "drawn" => out.push_str(&self.drawn.join("|")),
             // Covers (2.2): the view, what each tile on screen was last drawn showing (p a preview, l the hourglass, i
             // an icon; empty in the list), whether a preview of the screen is being made, and the files asked for
-            "view" => out.push_str(FILES_VIEW_NAMES[self.prefs.view.clamp(0, 1) as usize]),
+            "view" => out.push_str(FILES_VIEW_NAMES[self.view.clamp(0, 1) as usize]),
             "tiles" => {
                 if self.in_covers() {
                     let shown: String = self.row_rects.iter().map(|(i, _)| self.covers.shown(&self.rows[*i].path).map_or('-', |t| t.letter())).collect();
@@ -2762,7 +2779,7 @@ mod tests {
         assert_eq!(b.row_sub(&b.rows[6]), "link, not followed");
         // entered by newest: no row shows until every stat is in
         let mut e = Browser::default();
-        assert!(e.open(PickSpec::place(), FilesPrefs { card: true, sort: 1, show: 0, view: 0 }));
+        assert!(e.open(PickSpec::place(), FilesPrefs { card: true, sort: 1, show: 0 }));
         assert!(e.enter(sp("documents/Sorted"), false, now_ms()));
         while e.next.is_none() && !e.ready {
             e.step_listing(FS_SLICE_MS);
@@ -2814,7 +2831,7 @@ mod tests {
         std::fs::write(format!("{base}/grimoire/trash/{}-p3-1750000000", nb.id.as_str()), b"").unwrap();
         i18n_set("en");
         let mut b = Browser::default();
-        assert!(b.open(PickSpec::place(), FilesPrefs { card: true, sort: 0, show: 1, view: 0 }));
+        assert!(b.open(PickSpec::place(), FilesPrefs { card: true, sort: 0, show: 1 }));
         assert!(b.go(sp("documents/Sorted")));
         assert_eq!(row_names(&b), ["a.pdf", "c.png", "d.ttf", "e.txt", "f.pdf"]);
         let card = |b: &mut Browser, i: usize| -> (String, Vec<String>) {
@@ -2881,7 +2898,7 @@ mod tests {
         put_files(&d, &[("a.pdf", 1000), ("b.pdf", 3000), ("c.pdf", 2000)]);
         i18n_set("en");
         let mut b = Browser::default();
-        assert!(b.open(PickSpec::place(), FilesPrefs { card: true, sort: 0, show: 0, view: 0 }));
+        assert!(b.open(PickSpec::place(), FilesPrefs { card: true, sort: 0, show: 0 }));
         assert!(b.go(sp("documents/S")));
         assert_eq!(row_names(&b), ["a.pdf", "b.pdf", "c.pdf"]);
         b.prefs.sort = 2;
@@ -2915,7 +2932,7 @@ mod tests {
         put_files(&format!("{base}/documents/S"), &[("a.pdf", 1000), ("b.pdf", 3000), ("e.txt", 4000), ("f.txt", 10)]);
         i18n_set("en");
         let mut b = Browser::default();
-        assert!(b.open(PickSpec::place(), FilesPrefs { card: true, sort: 0, show: 1, view: 0 }));
+        assert!(b.open(PickSpec::place(), FilesPrefs { card: true, sort: 0, show: 1 }));
         assert!(b.go(sp("documents/S")));
         assert_eq!(row_names(&b), ["a.pdf", "b.pdf", "e.txt", "f.txt"]);
         b.prefs.sort = 2;
@@ -3066,7 +3083,7 @@ mod tests {
             std::os::unix::fs::symlink("a.pdf", format!("{d}/l{i}")).unwrap();
         }
         let mut b = Browser::default();
-        assert!(b.open(PickSpec::place(), FilesPrefs { card: true, sort: 0, show: 1, view: 0 }));
+        assert!(b.open(PickSpec::place(), FilesPrefs { card: true, sort: 0, show: 1 }));
         assert!(b.go(sp("documents/Links")));
         assert_eq!(b.rows.len(), FS_LIST_MAX);
         assert!(b.capped, "Showing the first 5000.");

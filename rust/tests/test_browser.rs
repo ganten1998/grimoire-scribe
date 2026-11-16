@@ -268,10 +268,10 @@ fn covers_asks_for_the_screens_files_only() {
         }
         panic!("asked {} of {n}", probe(b, "asked"));
     };
-    let covers = FilesPrefs { card: true, view: 1, ..Default::default() };
+    let card = FilesPrefs { card: true, ..Default::default() };
     // the list: nothing asked
     let mut b = Browser::default();
-    assert!(b.open(PickSpec::place(), FilesPrefs { card: true, ..Default::default() }));
+    assert!(b.open(PickSpec::place(), card));
     assert!(b.go(sp("documents/Many")));
     for _ in 0..20 {
         b.work(2480, now_ms());
@@ -280,14 +280,16 @@ fn covers_asks_for_the_screens_files_only() {
     assert_eq!(probe(&b, "asked"), "0");
     // pick mode with Covers set: a list, nothing asked; Files' root neither
     let mut b = Browser::default();
-    assert!(b.open(PickSpec::import(), covers));
+    assert!(b.open(PickSpec::import(), card));
+    b.set_view(1);
     assert!(b.go(sp("documents/Many")));
     for _ in 0..20 {
         b.work(2480, now_ms());
     }
     assert_eq!(probe(&b, "asked"), "0");
     let mut b = Browser::default();
-    assert!(b.open(PickSpec::place(), covers));
+    assert!(b.open(PickSpec::place(), card));
+    b.set_view(1);
     for _ in 0..20 {
         b.work(2480, now_ms());
     }
