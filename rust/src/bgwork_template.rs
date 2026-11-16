@@ -1137,7 +1137,7 @@ pub fn bg_template(id: &str, src: &str, dpi: f32) -> i32 {
 // resumes with its pictures gone (H7).
 // (by descriptor, never through a link: util.rs remove_work_dir)
 fn remove_work<P: AsRef<Path>>(work: P) {
-    remove_work_dir(work.as_ref(), &[c"pdf-import.ini"]);
+    remove_work_dir(work.as_ref(), &[c"pdf-import.ini", c"pdf-fill.ini"]);
 }
 
 // The notebook id written in an import folder's mark, or false (none, or "done"). A mark is a line: one

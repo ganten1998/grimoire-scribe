@@ -266,6 +266,9 @@ pub fn bg_detach_rest() {
         unsafe { libc::setsid() };
         // (the import lock goes with it only when it has an import to finish)
         child_setup(jobs.iter().any(|j| is_import(j.kind)));
+        // (no UI is there to say which notebook is open, and the next run may open any: a PDF fill made here waits
+        // for that run's scan to put its pages in place)
+        crate::pdfimport::detached_child_set();
         // (the detached child runs the jobs left, the biggest margin of them)
         child_caps_apply(jobs.iter().map(|j| child_margin(j.kind)).max().unwrap_or(0));
         // Wait for the running export first (it writes the same folder).

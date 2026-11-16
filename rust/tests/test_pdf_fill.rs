@@ -11,10 +11,651 @@
 // then pdfimport::finished), as test_import_queue.rs does, and wait on no clock. Generated PDFs only (pdffix::tabs:
 // four pages of 465 x 620 points, a tab on each, a link by a name on page 1, an outline naming pages 1 and 3).
 #![cfg(feature = "sim")]
+mod pdffix;
+use grimoire::pdfimport::*;
 use grimoire::prelude::*;
+use std::collections::BTreeMap;
+use std::sync::Mutex;
 
 const PW: i32 = 600;
 const PH: i32 = 800;
+const DPI: f32 = 300.0;
+static LOCK: Mutex<()> = Mutex::new(());
+
+fn bin() -> &'static str {
+    env!("CARGO_BIN_EXE_grimoire-headless")
+}
+
+const HOOKS: [&str; 10] = [
+    "GRIMOIRE_PDF_JOB_CPU_SECS",
+    "GRIMOIRE_PDF_SLICE_PAGES",
+    "GRIMOIRE_PDF_BANDS",
+    "GRIMOIRE_PDF_NO_MAP",
+    "GRIMOIRE_PDF_FREE_BYTES",
+    "GRIMOIRE_PDF_TEST_CRASH_PAGE",
+    "GRIMOIRE_IMPORT_STABLE",
+    "GRIMOIRE_SANDBOX",
+    "GRIMOIRE_WORK_FAIL_STEP",
+    "GRIMOIRE_BG_DELAY_MS",
+];
+
+struct Env {
+    /// Grimoire's own folder (the storage root is its parent)
+    root: String,
+    _g: std::sync::MutexGuard<'static, ()>,
+}
+
+fn storage_of(name: &str) -> std::path::PathBuf {
+    let base = std::env::var("GRIMOIRE_TEST_TMP").map(std::path::PathBuf::from).unwrap_or_else(|_| std::env::temp_dir());
+    base.join(format!("grimoire-pdf-fill-{}-{name}", std::process::id()))
+}
+
+/// This thread's store on the storage `name` (the store, the queue and the import's UI side are per thread).
+fn attach(name: &str) -> String {
+    let storage = storage_of(name);
+    let root = storage.join("grimoire");
+    std::fs::create_dir_all(root.join("import")).unwrap();
+    std::fs::create_dir_all(storage.join("documents")).unwrap();
+    std::env::set_var("GRIMOIRE_STORAGE", &storage);
+    std::env::set_var("GRIMOIRE_WORK_EXE", bin());
+    assert_eq!(store_init(root.to_str().unwrap()), 0);
+    store_set_device(DPI, PW, PH);
+    ui_reset();
+    root.to_str().unwrap().to_string()
+}
+
+fn setup(name: &str) -> Env {
+    let g = LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    for h in HOOKS {
+        std::env::remove_var(h);
+    }
+    let _ = std::fs::remove_dir_all(storage_of(name));
+    let root = attach(name);
+    Env { root, _g: g }
+}
+
+impl Env {
+    /// Puts a PDF in import/ and returns its StoragePath text.
+    fn drop(&self, name: &str, bytes: &[u8]) -> String {
+        std::fs::write(format!("{}/import/{name}", self.root), bytes).unwrap();
+        format!("grimoire/import/{name}")
+    }
+    fn notebooks(&self) -> Vec<NotebookInfo> {
+        let mut v = Vec::new();
+        store_list(&mut v);
+        v
+    }
+    fn info(&self, id: &str) -> NotebookInfo {
+        let mut nb = NotebookInfo::default();
+        assert_eq!(store_load_info(id, &mut nb), 0, "notebook {id} reads");
+        nb
+    }
+    fn ini(&self, id: &str, file: &str) -> String {
+        std::fs::read_to_string(format!("{}/notebooks/{id}/{file}", self.root)).unwrap_or_default()
+    }
+    fn done_files(&self) -> usize {
+        std::fs::read_dir(format!("{}/import/done", self.root)).map(|r| r.flatten().count()).unwrap_or(0)
+    }
+    /// The work folders of imports (notebooks/.import-<id>), by name.
+    fn work_folders(&self) -> Vec<String> {
+        std::fs::read_dir(format!("{}/notebooks", self.root))
+            .map(|r| r.flatten().map(|e| e.file_name().to_string_lossy().into_owned()).filter(|n| n.starts_with(".import-")).collect())
+            .unwrap_or_default()
+    }
+    /// Every file of notebook `id` (its folder and bg/), with its bytes.
+    fn files(&self, id: &str) -> BTreeMap<String, Vec<u8>> {
+        let mut out = BTreeMap::new();
+        let dir = format!("{}/notebooks/{id}", self.root);
+        for sub in ["", "bg"] {
+            let d = if sub.is_empty() { dir.clone() } else { format!("{dir}/{sub}") };
+            for e in std::fs::read_dir(&d).map(|r| r.flatten().collect::<Vec<_>>()).unwrap_or_default() {
+                if e.file_type().is_ok_and(|t| t.is_file()) {
+                    let name = if sub.is_empty() { e.file_name().to_string_lossy().into_owned() } else { format!("{sub}/{}", e.file_name().to_string_lossy()) };
+                    out.insert(name, std::fs::read(e.path()).unwrap());
+                }
+            }
+        }
+        out
+    }
+}
+
+/// Runs the slices of one import to its end: (its id, the ends in order).
+fn import_all(src: &str) -> (String, Vec<SliceEnd>) {
+    let mut id = String::new();
+    store_make_id(&mut id);
+    let ends = run_on(&id, src, 400);
+    (id, ends)
+}
+
+fn run_on(id: &str, src: &str, most: usize) -> Vec<SliceEnd> {
+    let mut ends = Vec::new();
+    for _ in 0..most {
+        let e = run_slice(id, src);
+        let more = e == SliceEnd::More;
+        ends.push(e);
+        if !more {
+            break;
+        }
+    }
+    ends
+}
+
+fn last(ends: &[SliceEnd]) -> &SliceEnd {
+    ends.last().unwrap()
+}
+
+/// The book key of these bytes (KOReader's partial MD5), as the import and KOReader compute it.
+fn key_of(bytes: &[u8]) -> String {
+    grimoire::md5::partial_md5(|buf, off| {
+        let off = (off as usize).min(bytes.len());
+        let n = buf.len().min(bytes.len() - off);
+        buf[..n].copy_from_slice(&bytes[off..off + n]);
+        n
+    })
+}
+
+/// Which book page each page of notebook `id` holds, in its order (0 for a page that holds none).
+fn book_pages(id: &str, nb: &NotebookInfo) -> Vec<i32> {
+    let mut m = AnnotateMap::default();
+    assert_eq!(annotate_map_load(id, &mut m), 0);
+    nb.page_ids.iter().map(|&pid| m.e.iter().find(|e| e.pid == pid).map_or(0, |e| e.page)).collect()
+}
+
+/// The document links of notebook `id` whose pages it lists: (its page's book page, its target's book page, area).
+fn doc_links(id: &str, nb: &NotebookInfo) -> Vec<(i32, i32, Rect)> {
+    let bp = book_pages(id, nb);
+    let book = |pid: u32| nb.page_ids.iter().position(|&p| p == pid).map_or(-1, |i| bp[i]);
+    let mut dl = doclinks_load(id);
+    doclinks_prune(&mut dl, nb);
+    let mut v: Vec<(i32, i32, Rect)> = dl.links.iter().map(|l| (book(l.pid), book(l.target), l.area())).collect();
+    v.sort_by_key(|x| (x.0, x.1, x.2.x, x.2.y));
+    v
+}
+
+/// No page has two links to one target whose areas are within 2 px (the fill's rule for "the same link").
+fn no_link_twice(links: &[(i32, i32, Rect)]) -> bool {
+    let near = |a: Rect, b: Rect| (a.x - b.x).abs() <= 2 && (a.y - b.y).abs() <= 2 && (a.x + a.w - b.x - b.w).abs() <= 2 && (a.y + a.h - b.y - b.h).abs() <= 2;
+    links.iter().enumerate().all(|(i, a)| links[i + 1..].iter().all(|b| !(a.0 == b.0 && a.1 == b.1 && near(a.2, b.2))))
+}
+
+/// The name of each page of notebook `id`, in its order.
+fn names(id: &str, nb: &NotebookInfo) -> Vec<String> {
+    let mut nav = Nav::default();
+    nav_init(&mut nav);
+    assert_eq!(nav_load_names(id, &mut nav), 0);
+    let v = nb.page_ids.iter().map(|&p| nav_name(&nav, p).to_string()).collect();
+    nav_free(&mut nav);
+    v
+}
+
+/// Takes pages out of notebook `id`'s list (as a delete in the Pages view does; the files stay, as they do there).
+fn drop_pages(id: &str, book: &[i32]) {
+    let mut nb = NotebookInfo::default();
+    assert_eq!(store_load_info(id, &mut nb), 0);
+    let bp = book_pages(id, &nb);
+    let keep: Vec<u32> = nb.page_ids.iter().zip(&bp).filter(|(_, b)| !book.contains(b)).map(|(&p, _)| p).collect();
+    nb.page_ids = keep;
+    nb.last_page = 0;
+    assert_eq!(store_save_info(&mut nb), 0);
+}
+
+/// Ink on page `index` of notebook `id`: one pencil stroke.
+fn ink(id: &str, index: i32) {
+    let mut nb = NotebookInfo::default();
+    assert_eq!(store_load_info(id, &mut nb), 0);
+    let (mut w, mut h) = (0, 0);
+    store_notebook_page_size(&nb, &mut w, &mut h);
+    let mut pg = None;
+    assert_eq!(store_load_page(&nb, index, w, h, &mut pg), 0);
+    let mut p = pg.unwrap();
+    let mut tp = ToolParams::default();
+    tool_params_default(TOOL_PENCIL, &mut tp);
+    let mut s = stroke_new(TOOL_PENCIL, &tp, 77);
+    for i in 0..10 {
+        let q = PenSample { x: 50.0 + i as f32 * 10.0, y: 100.0, pressure: 0.5, tilt_x: 0.0, tilt_y: 0.0, t_ms: i * 4 };
+        stroke_append(&mut s, &q, DPI);
+    }
+    page_add(&mut p, s);
+    assert_eq!(store_save_page(&nb, index, &p), 0);
+}
+
+/// The user's own link on page `index` of notebook `id` (links.ini), to its first page.
+fn user_link(id: &str, index: usize) {
+    let nb = {
+        let mut nb = NotebookInfo::default();
+        assert_eq!(store_load_info(id, &mut nb), 0);
+        nb
+    };
+    let mut nav = Nav::default();
+    nav_init(&mut nav);
+    assert_eq!(nav_load(id, &mut nav), 0);
+    assert_eq!(nav_link_set(&mut nav, nb.page_ids[index], 0x1234_5678, &format!("p{}", nb.page_ids[nb.page_ids.len() - 1])), 0);
+    assert_eq!(nav_save_links(id, &mut nav, &nb), 0);
+    nav_free(&mut nav);
+}
+
+/// A page's own name (nav.ini), given by the user.
+fn name_page(id: &str, index: usize, name: &str) {
+    let mut nb = NotebookInfo::default();
+    assert_eq!(store_load_info(id, &mut nb), 0);
+    let mut nav = Nav::default();
+    nav_init(&mut nav);
+    assert_eq!(nav_load(id, &mut nav), 0);
+    assert_eq!(nav_set_name(&mut nav, nb.page_ids[index], name), 0);
+    assert_eq!(nav_save(id, &mut nav, &nb), 0);
+    nav_free(&mut nav);
+}
+
+/// The tabs planner, imported whole: its notebook's id.
+fn imported_tabs(e: &Env) -> (String, Vec<u8>) {
+    let bytes = pdffix::tabs();
+    let (id, ends) = import_all(&e.drop("Tabs.pdf", &bytes));
+    assert_eq!(last(&ends), &SliceEnd::Done { pages: 4, blank: 0 }, "{ends:?}");
+    (id, bytes)
+}
+
+/// The files of a notebook that a fill never writes: the pages it had and the user's links.
+fn kept(files: &BTreeMap<String, Vec<u8>>, nb: &NotebookInfo) -> BTreeMap<String, Vec<u8>> {
+    files
+        .iter()
+        .filter(|(k, _)| k.as_str() == "links.ini" || nb.page_ids.iter().any(|p| **k == format!("p{p}.qpg")) || (k.starts_with("bg/") && k.ends_with(".png")))
+        .map(|(k, v)| (k.clone(), v.clone()))
+        .collect()
+}
+
+// ---- the fill ----
+
+// A notebook made from the PDF (so with its file record) that lost two pages: the same PDF again adds them back in
+// book order, with their tabs; the pages it kept are byte for byte what they were (their ink too), their names stay
+// (the user's name, the outline's), the user's link stays, and no link is there twice.
+#[test]
+fn a_notebook_with_a_record_is_filled_with_the_pages_it_lacks() {
+    let e = setup("record");
+    let (id, bytes) = imported_tabs(&e);
+    drop_pages(&id, &[2, 4]);
+    ink(&id, 0);
+    name_page(&id, 1, "Mine");
+    user_link(&id, 0);
+    let before = e.info(&id);
+    assert_eq!(book_pages(&id, &before), [1, 3]);
+    let files = e.files(&id);
+    let record = e.ini(&id, "source.ini").lines().find(|l| l.starts_with("file=")).map(str::to_string).expect("a record");
+    let (fid, ends) = import_all(&e.drop("Tabs again.pdf", &bytes));
+    assert_eq!(last(&ends), &SliceEnd::Filled { added: 2, blank: 0 }, "{ends:?}");
+    assert_eq!(e.notebooks().len(), 1, "no notebook of its own");
+    let nb = e.info(&id);
+    assert_eq!(book_pages(&id, &nb), [1, 2, 3, 4], "the pages in book order");
+    assert_eq!(&nb.page_ids[0], &before.page_ids[0]);
+    assert_eq!(&nb.page_ids[2], &before.page_ids[1]);
+    // the pages it had, its pictures and the user's links: byte for byte
+    let now = e.files(&id);
+    for (k, v) in kept(&files, &before) {
+        assert_eq!(now.get(&k), Some(&v), "{k} is as it was");
+    }
+    // the names: the user's stays, the outline's stays, the new pages have none (the outline names pages 1 and 3)
+    assert_eq!(names(&id, &nb), ["Cover", "", "Mine", ""]);
+    // the tabs: one on each page and the named link on page 1, none twice
+    let links = doc_links(&id, &nb);
+    let pairs: Vec<(i32, i32)> = links.iter().map(|l| (l.0, l.1)).collect();
+    assert_eq!(pairs, [(1, 3), (1, 4), (2, 4), (3, 1), (4, 2)], "{links:?}");
+    assert!(no_link_twice(&links));
+    // the record is the file's still; the PDF is filed; no work folder is left
+    assert!(e.ini(&id, "source.ini").lines().any(|l| l == record));
+    assert_eq!(e.done_files(), 2);
+    assert!(e.work_folders().is_empty(), "{:?}", e.work_folders());
+    assert!(!std::path::Path::new(&format!("{}/notebooks/.import-{fid}", e.root)).exists());
+    // and the same PDF a third time: every page is there
+    let (_, ends) = import_all(&e.drop("Tabs a third time.pdf", &bytes));
+    assert_eq!(last(&ends), &SliceEnd::Already, "{ends:?}");
+}
+
+// A notebook without a record (an earlier version's, or one whose record this version does not read) is filled by
+// its key, and is never given a record.
+#[test]
+fn a_notebook_without_a_record_is_filled_by_its_key() {
+    let e = setup("no-record");
+    let (id, bytes) = imported_tabs(&e);
+    let path = format!("{}/notebooks/{id}/source.ini", e.root);
+    let without: String = std::fs::read_to_string(&path).unwrap().lines().filter(|l| !l.starts_with("file=")).map(|l| format!("{l}\n")).collect();
+    std::fs::write(&path, &without).unwrap();
+    drop_pages(&id, &[1, 2]);
+    let thumb = format!("{}/notebooks/{id}/thumb.pgm", e.root);
+    let _ = std::fs::remove_file(&thumb);
+    let (_, ends) = import_all(&e.drop("Tabs again.pdf", &bytes));
+    assert_eq!(last(&ends), &SliceEnd::Filled { added: 2, blank: 0 }, "{ends:?}");
+    let nb = e.info(&id);
+    assert_eq!(book_pages(&id, &nb), [1, 2, 3, 4]);
+    let text = e.ini(&id, "source.ini");
+    assert!(!text.lines().any(|l| l.starts_with("file=")), "the notebook was given a record:\n{text}");
+    assert!(text.lines().any(|l| l == format!("book={}", key_of(&bytes))), "{text}");
+    // the new first page is the book's page 1: its card has its picture again
+    assert!(std::path::Path::new(&thumb).exists());
+    assert_eq!(names(&id, &nb), ["Cover", "", "Notes", ""]);
+    assert!(no_link_twice(&doc_links(&id, &nb)));
+}
+
+/// KOReader's "Open this book in Grimoire" for the tabs planner (its key), holding the book pages `held`, with the
+/// links its plugin sent (`links`: book pages and rectangles in 600 x 800 pictures). Returns the notebook's id.
+fn koreader_book(e: &Env, key: &str, pages: i32, held: &[i32], links: &[(i32, i32, Rect)]) -> String {
+    let mut st = koreader_request(e, key, pages, held, links);
+    for _ in 0..1000 {
+        if st.state != BookState::Running {
+            break;
+        }
+        book_step(150, &mut st);
+    }
+    assert_eq!(st.state, BookState::Done, "KOReader's book: {st:?}");
+    st.nb.as_str().to_string()
+}
+
+/// KOReader's request (as koreader_book), started and left running.
+fn koreader_request(e: &Env, key: &str, pages: i32, held: &[i32], links: &[(i32, i32, Rect)]) -> BookStatus {
+    let dir = format!("{}/{BOOK_DIR}", e.root);
+    std::fs::create_dir_all(&dir).unwrap();
+    let mut req = format!("version=1\nbook={key}\ntitle=Tabs\npages={pages}\npage={}\nkind=paged\ntime={}\n", held[0], wall_time());
+    for &p in held {
+        assert_eq!(bgimage_write_png(&format!("{dir}/page-{p}.png"), &BgPicture { px: vec![(180 + p) as u8; (PW * PH) as usize], w: PW, h: PH, ch: 1 }), 0);
+        req.push_str(&format!("picture.{p}=page-{p}.png\n"));
+    }
+    let mut lt = format!("P {PW} {PH}\n");
+    for (s, d, r) in links {
+        lt.push_str(&format!("L {s} {d} {} {} {} {}\n", r.x, r.y, r.w, r.h));
+    }
+    std::fs::write(format!("{dir}/links.txt"), lt).unwrap();
+    std::fs::write(format!("{dir}/{BOOK_REQUEST}"), req).unwrap();
+    let mut st = BookStatus::default();
+    book_start(true, &mut st);
+    st
+}
+
+/// The tabs planner's links as the import maps them (a notebook made of it, then removed): (from, to, area).
+fn worker_links(e: &Env) -> (Vec<u8>, Vec<(i32, i32, Rect)>) {
+    let (id, bytes) = imported_tabs(e);
+    let nb = e.info(&id);
+    let links = doc_links(&id, &nb);
+    std::fs::remove_dir_all(format!("{}/notebooks/{id}", e.root)).unwrap();
+    std::fs::remove_dir_all(format!("{}/import/done", e.root)).unwrap();
+    (bytes, links)
+}
+
+// A notebook KOReader made holds only the pages KOReader sent (1 and 3 here) and KOReader's links between them, its
+// rectangles a pixel off the worker's (two engines). The same PDF dropped in import/ fills it by its key: pages 2
+// and 4 come in book order, the links that reach them are added, and the links KOReader sent are not added again.
+#[test]
+fn a_koreader_notebook_is_filled_and_no_link_is_doubled() {
+    let e = setup("koreader");
+    let (bytes, wl) = worker_links(&e);
+    let key = key_of(&bytes);
+    let shift = |r: Rect| Rect { x: r.x + 1, y: r.y + 1, w: r.w, h: r.h };
+    let of = |s: i32, d: i32| wl.iter().find(|l| l.0 == s && l.1 == d).map(|l| shift(l.2)).unwrap();
+    // KOReader sent pages 1 and 3, and the links of both: 1 to 3, 3 to 1, and 1 to 4 (a page it does not hold, left out)
+    let id = koreader_book(&e, &key, 4, &[1, 3], &[(1, 3, of(1, 3)), (3, 1, of(3, 1)), (1, 4, of(1, 4))]);
+    let before = e.info(&id);
+    assert_eq!(book_pages(&id, &before), [1, 3]);
+    let src_before = e.ini(&id, "source.ini");
+    assert!(src_before.lines().any(|l| l == "links=1") && !src_before.lines().any(|l| l.starts_with("file=")), "{src_before}");
+    let ko = doc_links(&id, &before);
+    assert_eq!(ko.iter().map(|l| (l.0, l.1)).collect::<Vec<_>>(), [(1, 3), (3, 1)], "{ko:?}");
+    ink(&id, 1);
+    let files = e.files(&id);
+    let (_, ends) = import_all(&e.drop("Tabs.pdf", &bytes));
+    assert_eq!(last(&ends), &SliceEnd::Filled { added: 2, blank: 0 }, "{ends:?}");
+    let nb = e.info(&id);
+    assert_eq!(book_pages(&id, &nb), [1, 2, 3, 4]);
+    let links = doc_links(&id, &nb);
+    assert_eq!(links.iter().map(|l| (l.0, l.1)).collect::<Vec<_>>(), [(1, 3), (1, 4), (2, 4), (3, 1), (4, 2)], "{links:?}");
+    assert!(no_link_twice(&links), "{links:?}");
+    // KOReader's links are the ones that stay, as KOReader drew them
+    for k in &ko {
+        assert!(links.contains(k), "KOReader's {k:?} is kept as it was: {links:?}");
+    }
+    for (k, v) in kept(&files, &before) {
+        assert_eq!(e.files(&id).get(&k), Some(&v), "{k} is as it was");
+    }
+    // the record-less notebook stays so; the key stays its own
+    let text = e.ini(&id, "source.ini");
+    assert!(!text.lines().any(|l| l.starts_with("file=")) && text.lines().any(|l| l == format!("book={key}")), "{text}");
+    // the outline names the pages that had none (KOReader gives none)
+    assert_eq!(names(&id, &nb), ["Cover", "", "Notes", ""]);
+}
+
+// A notebook that has every page of the book: "PDF already imported.", and nothing of it is written.
+#[test]
+fn a_notebook_with_every_page_says_already() {
+    let e = setup("full");
+    let (id, bytes) = imported_tabs(&e);
+    let files = e.files(&id);
+    let (_, ends) = import_all(&e.drop("Tabs again.pdf", &bytes));
+    assert_eq!(ends, [SliceEnd::Already]);
+    assert_eq!(e.files(&id), files);
+    assert_eq!(e.notebooks().len(), 1);
+}
+
+// A notebook whose pages name another page count of the book (KOReader's engine counted five pages of this PDF): the
+// PDF, which has four, becomes a notebook of its own, and the first notebook is left as it was.
+#[test]
+fn a_pdf_of_another_page_count_becomes_a_notebook_of_its_own() {
+    let e = setup("count");
+    let bytes = pdffix::tabs();
+    let key = key_of(&bytes);
+    let id = koreader_book(&e, &key, 5, &[1, 3], &[]);
+    let files = e.files(&id);
+    let (fid, ends) = import_all(&e.drop("Tabs.pdf", &bytes));
+    assert_eq!(last(&ends), &SliceEnd::Done { pages: 4, blank: 0 }, "{ends:?}");
+    assert_eq!(e.files(&id), files, "the first notebook is as it was");
+    assert_eq!(e.notebooks().len(), 2);
+    // the first keeps the bare key; the new one has it in its record alone
+    assert!(!e.ini(&fid, "notebook.ini").lines().any(|l| l.starts_with("source=")));
+    assert!(e.ini(&fid, "source.ini").lines().any(|l| l.starts_with("file=sha256:") && l.ends_with(&key)));
+}
+
+// ---- only while the notebook is closed ----
+
+// While a fill of a notebook is under way it does not open (the editor asks fill_pending first, and shows its count);
+// a fill whose notebook is open when its pages are made waits, keeping its work folder, and goes on once it is closed.
+#[test]
+fn a_notebook_being_filled_does_not_open_and_a_fill_waits_for_its_notebook() {
+    let e = setup("pending");
+    std::env::set_var("GRIMOIRE_PDF_SLICE_PAGES", "1");
+    let (id, bytes) = imported_tabs(&e);
+    drop_pages(&id, &[2, 4]);
+    let files = e.files(&id);
+    assert_eq!(fill_pending(&id), None);
+    let src = e.drop("Tabs again.pdf", &bytes);
+    let mut fid = String::new();
+    store_make_id(&mut fid);
+    assert_eq!(run_slice(&fid, &src), SliceEnd::More, "the probe");
+    assert_eq!(fill_pending(&id), Some((1, 2)), "the fill of two pages is under way");
+    assert_eq!(fill_pending(&fid), None, "(only that notebook)");
+    // a fill's state has a name an earlier version never reads
+    let work = format!("{}/notebooks/.import-{fid}", e.root);
+    assert!(std::path::Path::new(&format!("{work}/pdf-fill.ini")).exists() && !std::path::Path::new(&format!("{work}/pdf-import.ini")).exists());
+    // the notebook is open (it was opened before the fill was decided): the pages are made, and the fill waits
+    note_open(&id);
+    let ends = run_on(&fid, &src, 10);
+    assert_eq!(last(&ends), &SliceEnd::Waiting, "{ends:?}");
+    assert_eq!(e.files(&id), files, "nothing of the open notebook was written");
+    assert!(std::path::Path::new(&work).exists(), "the work folder waits");
+    assert_eq!(fill_pending(&id), Some((2, 2)));
+    assert!(keep_work_folder(&fid), "the next scan goes on with it");
+    // closed: the fill goes on
+    note_closed(&id);
+    let ends = run_on(&fid, &src, 10);
+    assert_eq!(last(&ends), &SliceEnd::Filled { added: 2, blank: 0 }, "{ends:?}");
+    assert_eq!(fill_pending(&id), None);
+    assert_eq!(book_pages(&id, &e.info(&id)), [1, 2, 3, 4]);
+}
+
+// ---- stops, cuts and a PDF that goes ----
+
+// A fill stopped in the middle (the run before ended after the probe and one page) goes on at the next start's scan,
+// from its work folder, and fills the notebook.
+#[test]
+fn a_fill_goes_on_after_a_stop_in_the_middle() {
+    let e = setup("resume");
+    std::env::set_var("GRIMOIRE_PDF_SLICE_PAGES", "1");
+    let (id, bytes) = imported_tabs(&e);
+    drop_pages(&id, &[1, 2, 4]);
+    let src = e.drop("Tabs again.pdf", &bytes);
+    // the run before: the probe and one page (another thread: its own store, queue and record)
+    let s2 = src.clone();
+    std::thread::spawn(move || {
+        attach("resume");
+        let mut fid = String::new();
+        store_make_id(&mut fid);
+        assert!(mark_write_public(&Mark { state: MarkState::Making, id: fid.clone(), src: s2.clone(), ..Default::default() }));
+        assert_eq!(run_slice(&fid, &s2), SliceEnd::More);
+        assert_eq!(run_slice(&fid, &s2), SliceEnd::More);
+    })
+    .join()
+    .unwrap();
+    assert_eq!(e.work_folders().len(), 1);
+    assert!(fill_pending(&id).is_some());
+    std::env::set_var("GRIMOIRE_IMPORT_STABLE", "fast");
+    assert_eq!(grimoire::bgwork_template::import_scan(DPI), 1);
+    let told = drain();
+    assert_eq!(told.len(), 1, "{told:?}");
+    assert!(told[0].starts_with("Filled") && told[0].contains("added: 3"), "{told:?}");
+    assert_eq!(book_pages(&id, &e.info(&id)), [1, 2, 3, 4]);
+    assert!(e.work_folders().is_empty());
+}
+
+// A fill cancelled before its commit (its PDF went away after a page was made) leaves the notebook as it was.
+#[test]
+fn a_cancelled_fill_leaves_the_notebook_as_it_was() {
+    let e = setup("cancel");
+    std::env::set_var("GRIMOIRE_PDF_SLICE_PAGES", "1");
+    let (id, bytes) = imported_tabs(&e);
+    drop_pages(&id, &[2, 3, 4]);
+    let files = e.files(&id);
+    let src = e.drop("Tabs again.pdf", &bytes);
+    let mut fid = String::new();
+    store_make_id(&mut fid);
+    assert_eq!(run_slice(&fid, &src), SliceEnd::More);
+    assert_eq!(run_slice(&fid, &src), SliceEnd::More);
+    std::fs::remove_file(format!("{}/import/Tabs again.pdf", e.root)).unwrap();
+    assert!(matches!(run_slice(&fid, &src), SliceEnd::Failed(..)));
+    assert!(e.work_folders().is_empty());
+    assert_eq!(e.files(&id), files, "the notebook is as it was");
+    assert_eq!(fill_pending(&id), None, "and it opens");
+}
+
+// A commit cut off after any of its steps (a writer killed there) is taken up again by the next slice and fills the
+// notebook; until its notebook.ini is written (step 5) the notebook lists the pages it had, and none of what it shows
+// has changed. The PDF may even be gone by then: a commit that has begun goes on from the work folder alone.
+#[test]
+fn a_commit_cut_off_at_any_step_ends_with_the_notebook_filled() {
+    let e = setup("cut");
+    let (bytes, wl) = worker_links(&e);
+    let key = key_of(&bytes);
+    let of = |s: i32, d: i32| wl.iter().find(|l| l.0 == s && l.1 == d).map(|l| l.2).unwrap();
+    for step in 1..=7u32 {
+        // a fresh notebook from KOReader for each step (pages 1 and 3, its own pictures), the last one gone
+        for nb in e.notebooks() {
+            std::fs::remove_dir_all(format!("{}/notebooks/{}", e.root, nb.id.as_str())).unwrap();
+        }
+        let id = koreader_book(&e, &key, 4, &[1, 3], &[(1, 3, of(1, 3)), (3, 1, of(3, 1))]);
+        let pristine = e.files(&id);
+        let before = e.info(&id);
+        let src = e.drop(&format!("Tabs {step}.pdf"), &bytes);
+        let mut fid = String::new();
+        store_make_id(&mut fid);
+        sim_fill_cut(step);
+        // the probe, then the slice that makes both pages and commits, cut off after its step
+        let ends = run_on(&fid, &src, 2);
+        assert_eq!(ends, [SliceEnd::More, SliceEnd::More], "step {step}");
+        let nb = e.info(&id);
+        if step <= 4 {
+            assert_eq!(nb.page_ids, before.page_ids, "step {step}: the notebook lists the pages it had");
+            assert_eq!(names(&id, &nb), ["", ""], "step {step}");
+            assert_eq!(doc_links(&id, &nb), doc_links(&id, &before), "step {step}");
+            for (k, v) in kept(&pristine, &before) {
+                assert_eq!(e.files(&id).get(&k), Some(&v), "step {step}: {k}");
+            }
+            assert_eq!(fill_pending(&id), Some((2, 2)), "step {step}: it does not open meanwhile");
+        } else {
+            assert_eq!(book_pages(&id, &nb), [1, 2, 3, 4], "step {step}");
+        }
+        // the PDF goes, and the commit is taken up again all the same
+        if step % 2 == 1 {
+            std::fs::remove_file(format!("{}/import/Tabs {step}.pdf", e.root)).unwrap();
+        }
+        let ends = run_on(&fid, &src, 10);
+        let want = if step <= 4 { SliceEnd::Filled { added: 2, blank: 0 } } else { SliceEnd::Already };
+        assert_eq!(last(&ends), &want, "step {step}: {ends:?}");
+        let nb = e.info(&id);
+        assert_eq!(book_pages(&id, &nb), [1, 2, 3, 4], "step {step}");
+        let links = doc_links(&id, &nb);
+        assert_eq!(links.iter().map(|l| (l.0, l.1)).collect::<Vec<_>>(), [(1, 3), (1, 4), (2, 4), (3, 1), (4, 2)], "step {step}: {links:?}");
+        assert!(no_link_twice(&links), "step {step}: {links:?}");
+        assert_eq!(names(&id, &nb), ["Cover", "", "Notes", ""], "step {step}");
+        assert!(e.work_folders().is_empty(), "step {step}");
+        assert_eq!(fill_pending(&id), None, "step {step}");
+        for (k, v) in kept(&pristine, &before) {
+            assert_eq!(e.files(&id).get(&k), Some(&v), "step {step}: {k}");
+        }
+        // every page's picture is there
+        for i in 0..4 {
+            let mut pg = None;
+            assert_eq!(store_load_page(&nb, i, PW, PH, &mut pg), 0, "step {step}: page {i}");
+            let paper = pg.unwrap().paper;
+            assert!(paper_is_document(paper));
+            assert!(std::path::Path::new(&format!("{}/notebooks/{id}/bg/{:06x}.png", e.root, paper_image_id(paper))).exists(), "step {step}: page {i}'s picture");
+        }
+    }
+}
+
+// ---- the queue ----
+
+/// Polls the background jobs as app.rs's poll_jobs does, until none is left: what each import said.
+fn drain() -> Vec<String> {
+    let mut said = Vec::new();
+    let t0 = std::time::Instant::now();
+    loop {
+        let mut kind = -1;
+        let mut id = FixedStr::<STORE_ID_LEN>::new();
+        let r = bg_poll_job(Some(&mut kind), Some(&mut id));
+        if kind == BgKind::PdfImport as i32 {
+            said.push(format!("{:?}", finished(id.as_str(), r > 0)));
+        }
+        if !bg_busy() {
+            break;
+        }
+        assert!(t0.elapsed().as_secs() < 120, "the jobs never ended");
+        std::thread::sleep(std::time::Duration::from_millis(5));
+    }
+    said
+}
+
+// The scenario as the owner meets it: a PDF dropped in import/ became a notebook; some of its pages were deleted;
+// the same PDF dropped again fills them, and the second copy dropped with it says "PDF already imported." once the
+// fill is in (two fills of one notebook never run: the copy waits for the first).
+#[test]
+fn a_pdf_dropped_again_fills_its_notebook_and_a_second_copy_says_already() {
+    let e = setup("queue");
+    std::env::set_var("GRIMOIRE_IMPORT_STABLE", "fast");
+    std::env::set_var("GRIMOIRE_PDF_SLICE_PAGES", "1");
+    let bytes = pdffix::tabs();
+    e.drop("Tabs.pdf", &bytes);
+    assert_eq!(grimoire::bgwork_template::import_scan(DPI), 1);
+    let told = drain();
+    assert!(told.iter().any(|t| t.starts_with("Imported")), "{told:?}");
+    let id = e.notebooks()[0].id.as_str().to_string();
+    drop_pages(&id, &[2, 3]);
+    e.drop("Tabs again.pdf", &bytes);
+    e.drop("Tabs copy.pdf", &bytes);
+    assert_eq!(grimoire::bgwork_template::import_scan(DPI), 2);
+    let mut told = drain();
+    assert!(scan_due(now_ms(), false), "the copy that waited is taken again at once");
+    grimoire::bgwork_template::import_scan(DPI);
+    told.extend(drain());
+    assert_eq!(told.iter().filter(|t| t.starts_with("Filled")).count(), 1, "{told:?}");
+    assert!(told.iter().any(|t| t.contains(&format!("nb: \"{id}\"")) && t.contains("added: 2")), "{told:?}");
+    assert!(told.iter().any(|t| t == "Already"), "{told:?}");
+    assert_eq!(e.notebooks().len(), 1);
+    assert_eq!(book_pages(&id, &e.info(&id)), [1, 2, 3, 4]);
+    assert_eq!(e.done_files(), 3);
+}
 
 // ---- the water level keeps a notebook's own links ----
 
@@ -44,4 +685,35 @@ fn the_water_level_of_a_fill_trims_only_the_links_it_adds() {
     // the plain water level (an import's, a new notebook's) would trim the densest page: the notebook's own links
     assert!(pdflinks_water(&mut plain) > 0);
     assert!(!had.iter().all(|h| plain.links.iter().any(|l| (l.pid, l.seed) == *h)), "the plain level takes links page 1 had");
+}
+
+// The state of a fill reads back as it was written, and is refused when its lists do not fit together.
+#[test]
+fn a_fills_state_reads_back_strictly() {
+    let s = State {
+        src: "grimoire/import/Tabs.pdf".into(),
+        size: 10,
+        mtime: 20,
+        key: "0123456789abcdef0123456789abcdef".into(),
+        pages: 4,
+        next: 2,
+        pics: vec![0x12],
+        fill: "20261115-120000-ab12".into(),
+        todo: vec![2, 4],
+        page_w: 600,
+        page_h: 800,
+        ..Default::default()
+    };
+    let t = s.text();
+    assert_eq!(State::parse(t.as_bytes()), Some(s.clone()));
+    for (from, to) in [("todo=2,4", "todo=4,2"), ("todo=2,4", "todo=2,5"), ("todo=2,4", "todo="), ("next=2", "next=4"), ("fill=20261115-120000-ab12", "fill=../x")] {
+        assert_eq!(State::parse(t.replace(from, to).as_bytes()), None, "{to}");
+    }
+    // a commit begun is a state whose pages are all made
+    let done = State { next: 3, pics: vec![0x12, 0x13], committing: true, ..s.clone() };
+    assert_eq!(State::parse(done.text().as_bytes()), Some(done.clone()));
+    assert_eq!(State::parse(State { next: 2, pics: vec![0x12], ..done }.text().as_bytes()), None);
+    // an import's state has no fill lines
+    let plain = State { fill: String::new(), todo: Vec::new(), page_w: 0, page_h: 0, ..s };
+    assert!(!plain.text().contains("fill="));
 }

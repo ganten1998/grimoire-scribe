@@ -1959,6 +1959,23 @@ fn pdf_import_done(a: &mut App, id: &str, ok: bool) {
             // of before. A file of grimoire/import moves to import/done; a file picked elsewhere stays where it is.
             csnprintf!(&mut msg, 256, "%s", tr("PDF already imported."));
         }
+        Finished::Filled { nb, added, trimmed, .. } => {
+            // The same PDF again filled its notebook's missing pages (2.2): the card may show a new first page, and
+            // the notebook's mirror PDF is made again. The toast is KOReader's route's own for pages added to a
+            // book's notebook (the pages that could not be read are blank, and the log says which).
+            if a.scr == ScreenId::Library && !a.asleep {
+                app_redraw_mode(a, RefreshMode::Ui);
+            }
+            if trimmed > 0 {
+                csnprintf!(&mut msg, 256, ng_("Added %d book page. Some links were left out.", "Added %d book pages. Some links were left out.", added as i64), added as i32);
+            } else {
+                csnprintf!(&mut msg, 256, ng_("Added %d book page.", "Added %d book pages.", added as i64), added as i32);
+            }
+            if a.settings.mirror_pdf {
+                let (dpi, dir) = (a.dpi, app_mirror_dir());
+                bg_mirror_pdf(&nb, dpi, &dir, false);
+            }
+        }
         Finished::Failed(why) => match why {
             FailWhy::Password => {
                 // TRANSLATORS: a toast: the PDF is protected by a password, which Grimoire cannot ask for.
