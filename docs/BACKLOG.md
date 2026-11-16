@@ -857,17 +857,19 @@ Decided by the lane B3 design (docs/beta2/PIXEL-LASSO.md, 2026-11-03) and its bu
   checks what has NOT happened yet after a wait; the others check what has, which a late wait cannot break.
   A third kind checks a stretch of `display.presents` with `is` that can begin before the launch's second
   repaint (a `ui` of the whole screen 3.5 s after the start, docs/SIM.md): z_pages_find_over did (#93: Done,
-  below), and beginning with `wait 3600` is the cure. Three more do, not fixed yet: with every wait 175 to 275 ms
+  below), and beginning with `wait 3600` is the cure. Two more do, not fixed yet: with every wait 175 to 275 ms
   late (`make scenarios SCEN_ENV=GRIMOIRE_SIM_LATE_MS=225`; at 400, as `make scenarios-late` runs, they pass)
-  z_lasso_22_resize (lines 61 and 65), y_live_toolbar_menus (line 37) and z_pages_drag (line 57) each see
-  `ui 0 0 1860 2480` after what they expect. Eight more begin such a stretch within 3.5 s by the sum of their
-  waits and passed at every lateness tried, 0 to 600 ms: g_gest_1, g_gest_10_forgiving, s_shape_2_fire,
-  t_touch_1_contacts, v_actions_screen, v_gestures_4d_pan, v_gestures_4d_zoom and z_bar_3b_press_taken_over.
-  A fourth kind depends on the machine's clock: y_live_toolbar_menus shows the clock corner (`status_mode=1`)
-  and has no `clock` line to hold it still, so the corner's refresh at a minute's change falls into a checked
-  stretch (`ui 6 6 478 66` after what line 37 expects) whenever the run starts about 2 s before a minute ends:
-  once in a `make check` of 2026-11-14 (started 06:05:57.9), and each time it is started so on purpose, at
-  16d11bca as well. Not fixed yet.
+  z_lasso_22_resize (lines 61 and 65) and z_pages_drag (line 57) each see `ui 0 0 1860 2480` after what they
+  expect. y_live_toolbar_menus did too, and after #115 the stretch it counts at the Display sheet's X wanted the
+  3.5 s repaint as its last refresh, which it is only when the waits end about 20 to 40 ms late: it begins with
+  `wait 3600` since #134 and wants the sheet's own five refreshes. Eight more begin such a stretch within 3.5 s
+  by the sum of their waits and passed at every lateness tried, 0 to 600 ms: g_gest_1, g_gest_10_forgiving,
+  s_shape_2_fire, t_touch_1_contacts, v_actions_screen, v_gestures_4d_pan, v_gestures_4d_zoom and
+  z_bar_3b_press_taken_over.
+  A fourth kind depends on the machine's clock: a scenario that shows the clock corner with no `clock` line to
+  hold it still sees the corner's refresh (`ui 6 6 478 66`) in a checked stretch when a minute ends inside it.
+  y_live_toolbar_menus did (once in a `make check` of 2026-11-14, started 06:05:57.9), and holds the clock
+  since #134.
 
 - **The stroke eraser on very dense pages.** Taking a stroke out of the middle still draws what was
   under it again (undo and redo of it are instant since rc.10). On a 1,090-stroke page that can take
