@@ -874,7 +874,7 @@ fn map_draw(a: &mut App, r: Rect) {
 // The Graph opens on every notebook (past the Graph of all notebooks' caps, on this one, and says so).
 fn map_show(a: &mut App, around: bool) {
     app_toast(a,"",0);
-    close_sheets(ed(a));
+    close_sheets(a);
     pagesview_close(&mut ed(a).pv);
     link_off(a);
     let pid = ed_ref(a).open_pid();
@@ -2791,8 +2791,6 @@ fn list_erased_pages(s: &mut EditorState) {
     }
 }
 
-// False if the page could not be written; it then stays dirty (and in memory), so callers
-// that would drop it (turning the page, closing) must stay put instead.
 // Autosave after a real pause (and never while the pen is down). One that fails (a full store)
 // tries again 2 s later, not at every tick: each try says so with a toast.
 fn idle_save(a: &mut App, now: u32) {
@@ -2803,6 +2801,8 @@ fn idle_save(a: &mut App, now: u32) {
     }
 }
 
+// False if the page could not be written; it then stays dirty (and in memory), so callers
+// that would drop it (turning the page, closing) must stay put instead.
 // The idle autosave: save_page, marked so that it makes the Pages preview at most every 30 s.
 fn autosave(a: &mut App) -> bool {
     save_page_for(a, Some(CacheSave::Idle))
@@ -3491,6 +3491,7 @@ fn closed_record(a: &mut App) {
 fn closed_record(_a: &mut App) {}
 
 fn close_notebook(a: &mut App) {
+    files_drop(a); // (the picture pick goes with its notebook)
     let s = ed(a);
     pb_reset(s);
     if !s.open {
@@ -3558,7 +3559,6 @@ fn close_notebook(a: &mut App) {
     s.paper = SharedPaper::default();
     canvas_free(&mut s.image_prev); // (it may have drawn a picture white: made again from the file)
     tplsheet_close(&mut s.ts);
-    s.files.close();
     s.picture_missing = false;
     s.white_caches = false;
     s.noted.clear();
@@ -8381,7 +8381,7 @@ fn panel_act(a: &mut App, h: Hit) {
         }
         P_SETTINGS => {
             fs_abort_view(a,FsAbortView::Screen);settle_now(a);
-            if save_page(a){links_flush(a);pb_reset(ed(a));close_sheets(ed(a));crate::library::library_settings_from_notebook(a);}
+            if save_page(a){links_flush(a);pb_reset(ed(a));close_sheets(a);crate::library::library_settings_from_notebook(a);}
         }
         P_LIBRARY => {
             // (no "Saving..." or "Saved" toast: the owner, 2026-11-04; a page that cannot be saved says so)
@@ -8499,7 +8499,7 @@ fn close_front(a: &mut App, draw: bool) {
     if s.mb.open {
         r = rect_union(r, s.mb.rect);
     }
-    close_sheets(s);
+    close_sheets(a);
     if !draw {
         return;
     }
@@ -9236,7 +9236,9 @@ fn apply_photo(a: &mut App, path: &str) {
 // The Templates or Photos sheet's From a file...: the picture pick over the page, the sheet open under it.
 fn files_open(a: &mut App) {
     let to = tplsheet_folder(&ed_ref(a).ts);
-    let prefs = FilesPrefs { card: a.settings.files_card, sort: a.settings.files_sort, show: a.settings.files_show };
+    // (a pick reads only whether the Files card is in the Library, for its root's "Show Files in Library" row: Sort,
+    // Show and whatever else Files keeps are the place's own, and stay at their defaults here)
+    let prefs = FilesPrefs { card: a.settings.files_card, ..Default::default() };
     if !with_modal(a, |s| &mut s.files, |b, _| b.open(PickSpec::picture(to), prefs)) {
         // (no storage to browse: the sheet stays)
         app_toast(a, tr("Couldn't open folder."), 3000);
@@ -9265,9 +9267,19 @@ fn files_result(a: &mut App, r: BrowserResult) {
 
 // The picture pick closed: the page and the sheet as they were.
 fn files_close(a: &mut App) {
-    ed(a).files.close();
-    app_notice_clear(a, NoticeKey::Loading);
+    files_drop(a);
     compose_all(a, RefreshMode::Full);
+}
+
+// The picture pick gone, with nothing drawn: by its own Back or a copy asked (files_close), with the sheets
+// (close_sheets), the notebook (close_notebook) or the screen (editor_leave). Its staying notice ("Loading...", up
+// while a slow folder is read) goes with it wherever it closes: its own tick, which would take it down, no longer
+// runs.
+fn files_drop(a: &mut App) {
+    if ed_ref(a).files.open {
+        ed(a).files.close();
+        app_notice_clear(a, NoticeKey::Loading);
+    }
 }
 
 /// The folder of the Templates or Photos sheet in front over the page (the picker not over it), None for none: a copy
@@ -9476,8 +9488,10 @@ pub fn editor_free(a: &mut App) {
 // Every sheet over the page closed: the paper sheet, Display, Custom music, the tool picker (and its
 // Pin mode). A sheet closed here stays open through a turn or a wake (editor_enter), laid out again
 // by compose for the new size, as each of these lays itself out where it is drawn. (The Pages view
-// closes with its notebook, and stays open through those too.)
-fn close_sheets(s: &mut EditorState) {
+// closes with its notebook, and stays open through those too.) The picture pick over a sheet goes with them.
+fn close_sheets(a: &mut App) {
+    files_drop(a);
+    let s = ed(a);
     if s.map.open {
         mapview_close(&mut s.map);
     }
@@ -9492,7 +9506,6 @@ fn close_sheets(s: &mut EditorState) {
     s.tools_open = false;
     s.pin_mode = false;
     tplsheet_close(&mut s.ts);
-    s.files.close();
 }
 
 // On a landscape full-page view the margins are useful space for the panel. Keep the writer's
@@ -9561,7 +9574,7 @@ pub fn editor_enter(a: &mut App) {
     // A turn, or the redraw after waking (a->relayout), lays out the same screen again: the sheet
     // that was open stays open. Coming in from another screen, none is.
     if !a.relayout {
-        close_sheets(ed(a));
+        close_sheets(a);
     }
     // (the quick sizes card was placed for the screen it was opened on: a turn or a wake closes it, silently, in
     // this redraw)
@@ -9755,10 +9768,7 @@ pub fn editor_leave(a: &mut App) {
         bar_drop(ed(a));
         find_drop(ed(a));
         lm_drop(ed(a)); // (a link being made is not made, silently)
-        if ed_ref(a).files.open {
-            ed(a).files.close(); // (the picture pick goes with the screen, its staying notice too)
-            app_notice_clear(a, NoticeKey::Loading);
-        }
+        files_drop(a); // (the picture pick goes with the screen, its staying notice too)
     }
     save_page(a);
     links_flush(a);

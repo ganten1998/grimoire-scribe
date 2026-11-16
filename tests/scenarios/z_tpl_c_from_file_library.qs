@@ -1,7 +1,7 @@
 # settings: status_mode=1
 # storage: 1
 # copy: tests/fixtures/scen-templates documents/Pics
-# New notebook > More papers... with no templates yet (2.2, #146): the sheet's From a file... tile opens the picker on
+# New notebook > More layouts... with no templates yet (2.2, #146): the sheet's From a file... tile opens the picker on
 # pictures (no Import place; a folder lists its folders and pictures only), and a picture's card offers Use as
 # template, which asks the copy job and brings the sheet back. Once the copy is in, the folder is read again: the new
 # template's tile fills in when its preview is made, and is picked as New notebook's paper. Back at the picker's root

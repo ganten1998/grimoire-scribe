@@ -39,9 +39,10 @@ const B_CRUMB: i32 = 11;
 const B_SORT: i32 = 12;
 const B_SHOW: i32 = 13;
 const B_GOTO: i32 = 14;
-// A picture's card (#146): Use as template, Use as photo.
+// A picture's card (#146): Use as template, Use as photo. (The ids are used by name only, here and by the runner,
+// which taps `card.template` and `card.photo`: to move them, change the one number. No two ids may be equal.)
 const B_CARD_TEMPLATE: i32 = 15;
-const B_CARD_PHOTO: i32 = 16;
+const B_CARD_PHOTO: i32 = B_CARD_TEMPLATE + 1;
 
 /// What a task can pick, or Files lists as usable.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

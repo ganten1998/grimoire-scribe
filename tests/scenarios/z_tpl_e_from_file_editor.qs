@@ -2,7 +2,7 @@
 # storage: 1
 # copy: tests/fixtures/scen-templates documents/Pics
 # copy: tests/fixtures/photos documents/Camera
-# The editor's Paper sheet > More papers... and Photos... (2.2, #146): their From a file... tile opens the picture
+# The editor's Paper sheet > More layouts... and Photos... (2.2, #146): their From a file... tile opens the picture
 # pick over the page, hosted by the editor, so the notebook stays open as it was (its page, a stroke on it and its
 # undo). Back at the picker's root goes back to the sheet. Use as template copies the picture in and brings the sheet
 # back, where the new template's tile fills in once its preview is made and becomes the page's paper; two undos then
