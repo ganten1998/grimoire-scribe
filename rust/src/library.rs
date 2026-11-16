@@ -7833,15 +7833,21 @@ fn files_tick(a: &mut App, now: u32) {
     with_files(a, |b, a| b.tick(a, now));
 }
 
-// Two fingers down over the Library (or whatever gestures.ini binds to index-map) open the Graph; no other
-// gesture does anything here.
+// Two fingers down over the Library (or whatever gestures.ini binds to index-map) open the Graph; a gesture bound to
+// files or home (2.2) does that; no other gesture does anything here.
 fn library_gesture(a: &mut App, ev: &InEvent) {
     if lib(a).modal != Modal::None {
         return;
     }
     let Some(key) = gesturemap_key_of_id(ev.value) else { return };
-    if gesturemap_action(&a.gestures, key) == SHORTCUT_INDEX_MAP {
-        graph_open(a, None);
+    match gesturemap_action(&a.gestures, key) {
+        SHORTCUT_INDEX_MAP => {
+            graph_open(a, None);
+        }
+        // (Files' two, 2.2, when gestures.ini binds them)
+        SHORTCUT_FILES => files_open_place(a),
+        SHORTCUT_HOME => library_home(a),
+        _ => {}
     }
 }
 
@@ -7861,6 +7867,16 @@ pub fn library_shortcut(a: &mut App, action: i32) -> bool {
             SHORTCUT_BACK | SHORTCUT_GO_BACK | SHORTCUT_CLOSE_MENU => return files_back(a),
             SHORTCUT_PREV_PAGE | SHORTCUT_NEXT_PAGE => {
                 with_files(a, |b, a| b.turn_key(a, action == SHORTCUT_NEXT_PAGE));
+                return true;
+            }
+            // (2.2: files goes to Files' root, home out of it to the Library's top)
+            SHORTCUT_FILES => {
+                with_files(a, |b, a| b.to_root(a));
+                return true;
+            }
+            SHORTCUT_HOME => {
+                files_close(a, true);
+                library_home(a);
                 return true;
             }
             _ => return false,
@@ -7906,6 +7922,9 @@ pub fn library_shortcut(a: &mut App, action: i32) -> bool {
         SHORTCUT_NEW_FOLDER => act(a, &Hit { id: H_NEWFOLDER, ..Default::default() }),
         SHORTCUT_SETTINGS => act(a, &Hit { id: H_SETTINGS, ..Default::default() }),
         SHORTCUT_SHARE => act(a, &Hit { id: H_SHARE, ..Default::default() }),
+        // Files' two (2.2, no default key): Files, whether or not its card is in the Library; home, the top
+        SHORTCUT_FILES => files_open_place(a),
+        SHORTCUT_HOME => library_home(a),
         // Left and Right: the list's previous and next screen, as its arrows (while there is one).
         SHORTCUT_PREV_PAGE | SHORTCUT_NEXT_PAGE => {
             let want = if action == SHORTCUT_NEXT_PAGE { H_NEXT } else { H_PREV };
@@ -7916,6 +7935,16 @@ pub fn library_shortcut(a: &mut App, action: i32) -> bool {
         _ => return false,
     }
     true
+}
+
+/// The `home` action (2.2): the Library's top, out of any folder, at its first screen. (A home the user sets, any
+/// Library or Kindle folder, is a later lane's: this is where it will start.)
+fn library_home(a: &mut App) {
+    let s = lib(a);
+    s.cur_folder.clear();
+    s.page = 0;
+    reload(a);
+    redraw(a, RefreshMode::Full);
 }
 
 /// Whether the Graph (or its notebooks' browser) is up over the Library: a key pressed now is the Graph's.
@@ -9510,6 +9539,42 @@ mod tests {
         }
         library_free(&mut a);
         canvas_free(&mut a.screen);
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    // Files' two actions (2.2, no default key): files opens Files in place mode whether or not its card is in the
+    // Library, and inside it goes back to its root; home leaves Files and any folder for the Library's top.
+    #[test]
+    fn the_files_and_home_actions() {
+        let root = std::env::temp_dir().join(format!("grimoire-files-actions-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        let g = root.join("grimoire");
+        std::fs::create_dir_all(root.join("documents")).unwrap();
+        std::env::set_var("GRIMOIRE_STORAGE", &root);
+        assert_eq!(store_init(g.to_str().unwrap()), 0);
+        let mut nb = NotebookInfo::default();
+        assert_eq!(store_create("B", "School", PAPER_BLANK, &mut nb), 0);
+        let mut a = pen_record_app();
+        a.scr = ScreenId::Library;
+        settings_default(&mut a.settings);
+        lib(&mut a).modal = Modal::None;
+        reload(&mut a);
+        assert!(library_shortcut(&mut a, SHORTCUT_FILES));
+        assert!(files_shown(&a) && lib(&mut a).files.mode == BrowseMode::Place);
+        assert!(lib(&mut a).files.go(crate::fsview::StoragePath::new(b"documents").unwrap()));
+        assert!(library_shortcut(&mut a, SHORTCUT_FILES));
+        let mut out = String::new();
+        let h = a.h;
+        assert!(lib(&mut a).files.probe(h, "place", &mut out) && out == "root");
+        assert!(library_shortcut(&mut a, SHORTCUT_HOME));
+        assert!(!files_shown(&a));
+        lib(&mut a).cur_folder.set("School");
+        reload(&mut a);
+        assert!(library_shortcut(&mut a, SHORTCUT_HOME));
+        assert!(lib(&mut a).cur_folder.is_empty() && lib(&mut a).items[0].is_folder);
+        library_free(&mut a);
+        canvas_free(&mut a.screen);
+        std::env::remove_var("GRIMOIRE_STORAGE");
         let _ = std::fs::remove_dir_all(&root);
     }
 

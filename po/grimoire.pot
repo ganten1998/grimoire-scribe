@@ -5428,3 +5428,9 @@ msgstr ""
 #: rust/src/browser.rs
 msgid "File"
 msgstr ""
+
+#. TRANSLATORS: (shortcuts and gestures lists, about 1100 px at 44 px in bold) in the Library: back to its top,
+#. out of any folder (and out of Files).
+#: rust/src/actions.rs
+msgid "Home"
+msgstr ""

@@ -2027,6 +2027,13 @@ impl Browser {
         }
     }
 
+    /// The `files` action while the browser is up (2.2): its root, the card closed.
+    pub fn to_root(&mut self, a: &mut App) {
+        self.card = None;
+        self.show_root();
+        self.redraw_full(a);
+    }
+
     /// Esc: the card, else up one level. False at the root rows (the host cancels).
     pub fn back(&mut self, a: &mut App) -> bool {
         if self.card.is_some() {

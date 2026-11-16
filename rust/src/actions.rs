@@ -60,6 +60,11 @@ pub const SHORTCUT_PAN_LEFT: i32 = 101;
 pub const SHORTCUT_PAN_RIGHT: i32 = 102;
 pub const SHORTCUT_PAN_UP: i32 = 103;
 pub const SHORTCUT_PAN_DOWN: i32 = 104;
+/// Files (2.2): open Files (place mode) whether or not its card is in the Library, and go home (the Library's top;
+/// a home set by the user comes with a later lane). Library actions with no default key, bound by name in
+/// shortcuts.ini or gestures.ini as the Library's other actions are (105 to 107 are the size keys').
+pub const SHORTCUT_FILES: i32 = 108;
+pub const SHORTCUT_HOME: i32 = 109;
 
 pub const SRC_KEY: u8 = 1;
 pub const SRC_PAD: u8 = 2;
@@ -412,7 +417,7 @@ pub const ACTION_GROUPS: [ActionGroup; N_GROUPS] = K_GROUPS;
 // ---- action names and metadata ----
 
 /// The old names stay in their original lookup order; new phase 3 names follow the old set.
-pub static K_ACTIONS: [(&str, i32); 78] = [
+pub static K_ACTIONS: [(&str, i32); 80] = [
     ("undo", SHORTCUT_UNDO),
     ("redo", SHORTCUT_REDO),
     ("previous-page", SHORTCUT_PREV_PAGE),
@@ -488,6 +493,8 @@ pub static K_ACTIONS: [(&str, i32); 78] = [
     ("pan-right", SHORTCUT_PAN_RIGHT),
     ("pan-up", SHORTCUT_PAN_UP),
     ("pan-down", SHORTCUT_PAN_DOWN),
+    ("files", SHORTCUT_FILES),
+    ("home", SHORTCUT_HOME),
 ];
 
 const TOOL_NAMES: [(&str, i32); TOOL_COUNT] = [
@@ -503,7 +510,7 @@ const TOOL_NAMES: [(&str, i32); TOOL_COUNT] = [
     ("tool:calligraphy", SHORTCUT_TOOL_BASE + 9),
 ];
 
-static ACTIONS: [ActionInfo; 88] = [
+static ACTIONS: [ActionInfo; 90] = [
     // Tools are action ids too, even though the tool-specific labels retain msgctxt "tool".
     ai(
         SHORTCUT_TOOL_BASE,
@@ -1207,6 +1214,19 @@ static ACTIONS: [ActionInfo; 88] = [
         SHORTCUT_PAN_DOWN, "pan-down", n_("Move the Graph down"), None, IconKind::Next,
         GROUP_INDEX, SHORTCUT_PAN_UP, ActionKind::Step, SRC_BUTTONS_PEN,
     ),
+    // Files' two (2.2): in no Buttons sheet group (the Library's actions are bound by name, as New notebook's).
+    ai(
+        // TRANSLATORS: (shortcuts and gestures lists, about 1100 px at 44 px in bold) in the Library: opens Files, the
+        // Kindle's storage to browse, whether or not its card is in the Library.
+        SHORTCUT_FILES, "files", n_("Files"), None, IconKind::Files,
+        GROUP_MENUS, 0, ActionKind::Menu, SRC_ALL,
+    ),
+    ai(
+        // TRANSLATORS: (shortcuts and gestures lists, about 1100 px at 44 px in bold) in the Library: back to its top,
+        // out of any folder (and out of Files).
+        SHORTCUT_HOME, "home", n_("Home"), None, IconKind::Home,
+        GROUP_MENUS, 0, ActionKind::OneShot, SRC_ALL,
+    ),
 ];
 
 pub fn action_info(id: i32) -> Option<&'static ActionInfo> {
@@ -1332,6 +1352,8 @@ static K_PLACES: &[(i32, u8)] = &[
     (SHORTCUT_PAN_RIGHT, PL_GRAPH),
     (SHORTCUT_PAN_UP, PL_GRAPH),
     (SHORTCUT_PAN_DOWN, PL_GRAPH),
+    (SHORTCUT_FILES, PL_LIBRARY),
+    (SHORTCUT_HOME, PL_LIBRARY),
 ];
 
 /// The places an action acts in (PL_* bits): K_PLACES's, else a notebook page alone.
@@ -1439,5 +1461,7 @@ mod tests {
         assert_eq!(action_places(SHORTCUT_TOOL_BASE + TOOL_ERASER.0) & PL_PENFEEL, PL_PENFEEL);
         assert_eq!(action_places(SHORTCUT_INVERT), PL_ALL);
         assert_eq!(action_places(SHORTCUT_INDEX_MAP), PL_ALL & !PL_PENFEEL);
+        assert_eq!(action_places(SHORTCUT_FILES), PL_LIBRARY);
+        assert_eq!(action_places(SHORTCUT_HOME), PL_LIBRARY);
     }
 }

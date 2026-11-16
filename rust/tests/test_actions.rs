@@ -45,7 +45,7 @@ fn registry_names_groups_and_labels() {
     ];
     let expected_group_rows = [11usize, 11, 11, 7, 9, 10, 6];
     check!(ACTION_GROUPS.len() == N_GROUPS && N_GROUPS == expected_group_rows.len());
-    check!(SHORTCUT_LAST == SHORTCUT_PAN_DOWN && SHORTCUT_PAN_DOWN == 104 && SHORTCUT_GRAPH_VIEW == 100 && SHORTCUT_SELECT_ALL == 95 && SHORTCUT_SAVE == 87 && SHORTCUT_BACK == 88 && SHORTCUT_TWO_FINGER_UP == 89 && SHORTCUT_NEW_NOTEBOOK == 90 && SHORTCUT_NEW_FOLDER == 91 && SHORTCUT_SHARE == 92 && SHORTCUT_SETTINGS == 93 && SHORTCUT_SELECT == 84 && SHORTCUT_SELECT_EXACT == 85 && SHORTCUT_NEW_PAGES == 86 && SHORTCUT_GESTURE_NEW_PAGE == 54 && SHORTCUT_STATUS_MODE == 55);
+    check!(SHORTCUT_LAST == SHORTCUT_HOME && SHORTCUT_HOME == 109 && SHORTCUT_FILES == 108 && SHORTCUT_PAN_DOWN == 104 && SHORTCUT_GRAPH_VIEW == 100 && SHORTCUT_SELECT_ALL == 95 && SHORTCUT_SAVE == 87 && SHORTCUT_BACK == 88 && SHORTCUT_TWO_FINGER_UP == 89 && SHORTCUT_NEW_NOTEBOOK == 90 && SHORTCUT_NEW_FOLDER == 91 && SHORTCUT_SHARE == 92 && SHORTCUT_SETTINGS == 93 && SHORTCUT_SELECT == 84 && SHORTCUT_SELECT_EXACT == 85 && SHORTCUT_NEW_PAGES == 86 && SHORTCUT_GESTURE_NEW_PAGE == 54 && SHORTCUT_STATUS_MODE == 55);
     let mut ids = HashSet::new();
     let mut names = HashSet::new();
     let mut all = Vec::new();
@@ -58,11 +58,11 @@ fn registry_names_groups_and_labels() {
         check!(id >= 1 && id <= SHORTCUT_LAST);
         all.push(id);
     }
-    check!(K_ACTIONS.len() == old_names.len() + 42);
+    check!(K_ACTIONS.len() == old_names.len() + 44);
     for name in old_names {
         check!(action_by_name(name) != SHORTCUT_NONE);
     }
-    check!(all.len() == 88);
+    check!(all.len() == 90);
     check!(i18n_set("en"));
     for id in all.iter().copied() {
         let info = action_info(id);
@@ -78,7 +78,7 @@ fn registry_names_groups_and_labels() {
             check!(other.is_some_and(|p| p.pair == id && p.group == info.group));
         }
     }
-    check!(ids.len() == 88 && names.len() == 88);
+    check!(ids.len() == 90 && names.len() == 90);
     for (g, want) in expected_group_rows.iter().enumerate() {
         check!(
             group_row_count(g) == *want
