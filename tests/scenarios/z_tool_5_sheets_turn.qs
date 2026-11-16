@@ -115,7 +115,8 @@ tap panel music.cancel
 wait 200
 expect editor.modal is none
 expect editor.paper is 9
-# The Display sheet: turned, its sleep screen row there (and back), asleep and awake, Done
+# The Display sheet: turned, its new-page row there (and back), asleep and awake, its X (the sleep screen row
+# is on Settings' Sleep settings page since the new Settings menu, #115)
 pentap panel display
 wait 200
 expect editor.modal is display
@@ -123,16 +124,12 @@ rotate 1
 wait 300
 expect editor.modal is display
 shot 05-display-sideways
-tap 1240 1285
+tap panel display.newpage
 wait 100
-expect settings.sleep_mode is 1
-tap 1240 1285
+expect settings.gesture_new_page is 0
+tap panel display.newpage
 wait 100
-tap 1240 1285
-wait 100
-tap 1240 1285
-wait 100
-expect settings.sleep_mode is 0
+expect settings.gesture_new_page is 1
 rotate 0
 wait 300
 expect editor.modal is display
@@ -141,7 +138,7 @@ wait 300
 wake
 wait 300
 expect editor.modal is display
-tap 1462 1950
+tap panel display.done
 wait 200
 expect editor.modal is none
 # The Pages view: turned, every page ticked there; turned back, asleep and awake, still ticked; Back

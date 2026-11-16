@@ -52,6 +52,9 @@ expect library.sheet is none
 tap 2155 95
 wait 100
 expect library.sheet is settings
-expect toast.rect is 786 1496 907 110
-shot 05-settings-landscape-toast-above-done
+# The Settings page (since the new Settings menu, #115) has no buttons along its foot (its X is at the top):
+# no control is under the toast's usual place, so it stays there
+expect library.ui_at.1240.1685 is
+expect toast.rect is 786 1630 907 110
+shot 05-settings-landscape-toast
 quit

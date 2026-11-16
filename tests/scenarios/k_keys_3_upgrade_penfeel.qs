@@ -18,6 +18,8 @@ expect library.sheet is none
 # Pen feel from Settings
 tap library settings
 wait 200
+tap library settings.cat.3
+wait 100
 tap library pen-feel
 wait 300
 expect screen is penset

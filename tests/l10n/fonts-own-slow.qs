@@ -5,6 +5,8 @@
 wait 100
 tap 1535 95
 wait 50
+tap library settings.cat.1
+wait 50
 tap library font
 wait 50
 expect library.sheet is font
