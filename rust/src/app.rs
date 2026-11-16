@@ -2101,8 +2101,9 @@ fn poll_jobs(a: &mut App) -> i32 {
         return 0;
     }
     if done == BgKind::CopyFile as i32 {
-        // A file copied into templates or photos (2.2, #146: Use as template, Use as photo): a copy that failed is
-        // said wherever the user is, one that went in by its folder's name. Never the PDF's toast.
+        // A file copied into templates or photos (2.2, #146: Use as template, Use as photo, a sheet's From a file...):
+        // a copy that failed is said wherever the user is, one that went in by its folder's name (unless its sheet is
+        // in front, which shows it). Never the PDF's toast.
         copy_told(a, crate::bgwork_copy::CopyTo::of(done_id.as_str()), r);
         return 0;
     }
@@ -2146,6 +2147,10 @@ fn copy_told(a: &mut App, to: Option<crate::bgwork_copy::CopyTo>, r: i32) {
         return;
     }
     let Some(to) = to.filter(|_| r > 0) else { return };
+    // (the sheet of that folder in front shows the new picture itself: its From a file... tile)
+    if crate::library::library_sheet_folder(a) == Some(to) {
+        return;
+    }
     let place = match to {
         CopyTo::Templates => tr("Templates"),
         CopyTo::Photos => tr("Photos"),

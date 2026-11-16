@@ -318,7 +318,7 @@ fn page_paper_selected() {
     canvas_free(&mut a.screen);
 }
 
-// No templates at all (and no folder): the sheet says how to add some, with only Back to tap.
+// No templates at all (and no folder): the sheet says how to add some, with Back and From a file... (#146) to tap.
 fn empty_sheet() {
     check!(rm_rf(&format!("{}/templates", root())) == 0);
     let mut a = new_app();
@@ -327,7 +327,8 @@ fn empty_sheet() {
     tplsheet_open(&mut s, &mut a, None, PAPER_BLANK, None);
     tplsheet_draw(&mut s, &mut a);
     let mut v = probe(&s, "count");
-    check!(s.open && v == "0" && s.hits.h.len() == 1 && s.hits.h[0].id == TS_HIT_BACK && !bg_busy());
+    check!(s.open && v == "0" && s.hits.h.len() == 2 && s.hits.h[0].id == TS_HIT_BACK && !bg_busy());
+    check!(find_hit(&s, TS_HIT_FROM_FILE, 0).is_some());
     v = probe(&s, "pages");
     check!(v == "1");
     tplsheet_close(&mut s);
@@ -460,8 +461,15 @@ fn labels_keep_to_their_tiles() {
             ui_set_theme(if th != 0 { UiTheme::Classic } else { UiTheme::Gothic });
             for k in 0..6 {
                 let tr_ = Rect { x: 200, y: 20, w: g[k].tw, h: g[k].th };
-                for i in 0..PAPER_SHEET_TILES {
-                    let label = if i < PICKER_PAPERS { paper_label(paper_at(i)) } else { tr("Custom music...") };
+                for i in 0..=PAPER_SHEET_TILES {
+                    // (the last: the Templates and Photos sheets' From a file... tile, #146, of the same width)
+                    let label = if i == PAPER_SHEET_TILES {
+                        tr("From a file...")
+                    } else if i < PICKER_PAPERS {
+                        paper_label(paper_at(i))
+                    } else {
+                        tr("Custom music...")
+                    };
                     for sel in 0..2 {
                         let all = Rect { x: 0, y: 0, w: c.w, h: c.h };
                         canvas_fill(&mut c, all, 255);
@@ -522,13 +530,16 @@ fn empty_state_paragraphs() {
                 tplsheet_open(&mut s, &mut a, None, PAPER_BLANK, None);
                 tplsheet_draw(&mut s, &mut a);
                 let v = probe(&s, "count");
-                check!(v == "0" && s.t.len() == 2 && s.hits.h.len() == 1);
-                // The text's column: the sheet's inside (ui_sheet says where), above Back.
+                check!(v == "0" && s.t.len() == 2 && s.hits.h.len() == 2);
+                // The text's column: the sheet's inside (ui_sheet says where), above the From a file... tile (#146),
+                // which is under the text, and Back.
                 let mut scratch = Canvas::default();
                 check!(canvas_init(&mut scratch, a.w, a.h) == 0);
                 let in_ = ui_sheet(&mut scratch, s.rect, tr("Templates"));
                 canvas_free(&mut scratch);
-                let col = Rect { x: in_.x + ui_px(40.0), y: in_.y, w: in_.w - 2 * ui_px(40.0), h: in_.h - ui_px(160.0) };
+                let tile = find_hit(&s, TS_HIT_FROM_FILE, 0).map_or(RECT_EMPTY, |h| h.r);
+                check!(!rect_is_empty(tile) && tile.y > in_.y + ui_px(400.0));
+                let col = Rect { x: in_.x + ui_px(40.0), y: in_.y, w: in_.w - 2 * ui_px(40.0), h: tile.y - ui_px(20.0) - in_.y };
                 // Its bands of rows with ink (a few blank rows inside one, as under an accent,
                 // do not end it), and the blank between each and the next.
                 let mut gaps = [0i32; 64];
@@ -578,6 +589,65 @@ fn empty_state_paragraphs() {
     canvas_free(&mut a.screen);
 }
 
+// The From a file... tile (2.2, #146): the last tile, after every template (so no template's tile moves for it),
+// on a page of its own when the templates fill their pages; a tap on it says so and leaves the sheet open. Once the
+// host has asked for a copy the tile waits (it cannot be tapped) until the copy job is no longer queued or running;
+// then the folder is read again, the new picture's tile is in view (waiting for its preview, then filled in), and the
+// tile is back. A copy that put nothing there leaves the tiles as they were.
+fn from_file_tile() {
+    check!(rm_rf(&format!("{}/templates", root())) == 0);
+    templates_init();
+    for n in 1..=24 {
+        put_template(n, &format!("page-{n}.png"));
+    }
+    drain_jobs();
+    let mut a = new_app();
+    screen(&mut a, 1860, 2480);
+    let mut s = TplSheet::default();
+    tplsheet_open(&mut s, &mut a, None, PAPER_BLANK, None);
+    tplsheet_draw(&mut s, &mut a);
+    // 24 templates fill page 1 upright: the tile is page 2's only tile
+    check!(s.per == 24 && probe(&s, "pages") == "2" && find_hit(&s, TS_HIT_FROM_FILE, 0).is_none());
+    check!(probe(&s, "copying") == "0" && probe(&s, "count") == "24");
+    let mut d = Rect::default();
+    let next = find_hit(&s, TS_HIT_NEXT, 0);
+    check!(next.is_some() && tap(&mut s, &mut a, next.unwrap().r, &mut d) == TsResult::Changed);
+    let tile = find_hit(&s, TS_HIT_FROM_FILE, 0);
+    check!(tile.is_some() && find_hit(&s, TS_HIT_TILE, 23).is_none());
+    check!(tplsheet_point(&s, "from_file").is_some());
+    check!(tap(&mut s, &mut a, tile.unwrap().r, &mut d) == TsResult::FromFile && s.open);
+    // a copy asked: the tile waits, and stays so while the job is queued
+    tplsheet_copy_asked(&mut s);
+    tplsheet_draw(&mut s, &mut a);
+    check!(probe(&s, "copying") == "1" && find_hit(&s, TS_HIT_FROM_FILE, 0).is_none() && tplsheet_point(&s, "from_file").is_none());
+    let job = format!("{}/documents/a.png", root());
+    bg_queue(BgKind::CopyFile, Some("templates"), Some(&job), 0.0, false);
+    check!(bg_pending(BgKind::CopyFile, "templates"));
+    check!(!tplsheet_tick(&mut s, &mut a, now_ms(), &mut d) && probe(&s, "copying") == "1");
+    drain_jobs(); // (the job fails: no such file; nothing new)
+    check!(tplsheet_tick(&mut s, &mut a, now_ms(), &mut d) && !rect_is_empty(d));
+    check!(probe(&s, "copying") == "0" && probe(&s, "count") == "24" && probe(&s, "page") == "2");
+    check!(find_hit(&s, TS_HIT_FROM_FILE, 0).is_some());
+    // the copy put a picture there (sorted among the others): its tile is in view, waiting, then filled in
+    tplsheet_copy_asked(&mut s);
+    put_template(99, "page-0.png");
+    check!(tplsheet_tick(&mut s, &mut a, now_ms(), &mut d));
+    check!(probe(&s, "copying") == "0" && probe(&s, "count") == "25" && probe(&s, "page") == "1");
+    check!(s.t[s.shown[0] as usize].name == "page-0" && !s.t[s.shown[0] as usize].ready && s.pending);
+    check!(probe(&s, "names").starts_with("page-0|page-1|page-2|"));
+    drain_jobs();
+    check!(tplsheet_tick(&mut s, &mut a, now_ms(), &mut d) && find_hit(&s, TS_HIT_TILE, 0).is_some() && !s.pending);
+    // the photos sheet ends with the tile too
+    tplsheet_close(&mut s);
+    let mut nb = NotebookInfo::default();
+    check!(store_create("Photos", "", PAPER_BLANK, &mut nb) == 0);
+    tplsheet_open_photos(&mut s, &mut a, &nb, PAPER_BLANK);
+    tplsheet_draw(&mut s, &mut a);
+    check!(s.photos && find_hit(&s, TS_HIT_FROM_FILE, 0).is_some());
+    tplsheet_close(&mut s);
+    canvas_free(&mut a.screen);
+}
+
 // Everything, in the C's order (the tests share the store and the folders the ones before them made).
 #[test]
 fn test_tplsheet() {
@@ -602,6 +672,7 @@ fn test_tplsheet() {
     run!(fills_in_while_the_job_runs);
     run!(labels_keep_to_their_tiles);
     run!(empty_state_paragraphs);
+    run!(from_file_tile);
     font_shutdown();
     done();
     let _ = std::fs::remove_dir_all(&top);

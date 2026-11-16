@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: Grimoire 1.0.0-beta\n"
 "Report-Msgid-Bugs-To: https://github.com/ganten1998/grimoire-scribe/issues\n"
-"POT-Creation-Date: 2026-11-16 00:35-0600\n"
+"POT-Creation-Date: 2026-11-16 00:43-0600\n"
 "PO-Revision-Date: 2026-10-20 08:02-0500\n"
 "Last-Translator: draft\n"
 "Language-Team: Spanish\n"
@@ -1130,7 +1130,10 @@ msgstr "Importar un PDF o imágenes"
 #. opens, to pick a picture to copy in (the Library's header, about 1400 px at 56 px).
 #. TRANSLATORS: New notebook's button (348 px at 44 px, or 34 px, or two lines of that): it opens the file picker
 #. to make a notebook of a PDF or a folder of pictures anywhere on the Kindle.
-#: rust/src/browser.rs rust/src/library.rs
+#. TRANSLATORS: (also) the last tile of the Templates and Photos sheets, under its picture (a tile of about 250
+#. px, on two lines if need be): it opens the file picker to copy a picture from anywhere on the Kindle into
+#. grimoire/templates or grimoire/photos.
+#: rust/src/browser.rs rust/src/library.rs rust/src/tplsheet.rs
 msgid "From a file..."
 msgstr "Desde un archivo..."
 

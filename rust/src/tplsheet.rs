@@ -8,7 +8,12 @@
 //!
 //! A modal hosted by the editor (in the Paper sheet's place) and the library (over New notebook).
 //! It never shows or logs more of a template than its name on screen: names are the owner's.
+//!
+//! Its last tile is From a file... (2.2, issue #146): the host opens the picture pick over it (browser.rs) and asks the
+//! copy job for the picture picked (bgwork_copy.rs); the tile waits while that copy runs, and when it ends the folder
+//! is read again, with the new picture's tile in view.
 
+use crate::bgwork_copy::CopyTo;
 use crate::prelude::*;
 
 /// how often a sheet waiting for previews looks for them, while a job runs
@@ -150,13 +155,16 @@ pub enum TsResult {
     Picked = 2,  // TS_PICKED
     Back = 3,  // TS_BACK
     Cancel = 4,  // TS_CANCEL
+    /// the From a file... tile (#146): the host opens the picture pick; the sheet stays open under it
+    FromFile = 5,
 }
 /// The hits it registers as it draws (tests find its buttons by them): a tile (arg: the template, an
-/// index into shown), the page buttons, Back.
+/// index into shown), the page buttons, Back, the From a file... tile.
 pub const TS_HIT_TILE: i32 = 1;
 pub const TS_HIT_PREV: i32 = 2;
 pub const TS_HIT_NEXT: i32 = 3;
 pub const TS_HIT_BACK: i32 = 4;
+pub const TS_HIT_FROM_FILE: i32 = 5;
 
 #[derive(Clone, Debug, Default)]
 pub struct TplSheet {
@@ -198,6 +206,9 @@ pub struct TplSheet {
     pub current_path: FixedStr<TEMPLATE_PATH_MAX>,
     /// the button or tile pressed, shown pressed until the lift (app_press_feedback)
     pub pressed: Option<Rect>,
+    /// a copy into this folder was asked (the From a file... tile's, #146) or ran as the sheet opened, and has not
+    /// been seen to end: the tile waits, and the folder is read again when it ends
+    pub copying: bool,
 }
 
 // ---- the sheet ----
@@ -311,6 +322,36 @@ fn open_folder(s: &mut TplSheet, a: &mut App, nb: Option<&NotebookInfo>, current
     s.selected = find_selected(s);
     s.anchor = if s.selected > 0 { s.selected } else { 0 };
     s.next_check = now_ms().wrapping_add(CHECK_MS);
+    s.copying = bg_pending(BgKind::CopyFile, tplsheet_folder(s).folder());
+}
+
+/// The folder its pictures are in, and a From a file... copy goes into (#146).
+pub fn tplsheet_folder(s: &TplSheet) -> CopyTo {
+    if s.photos {
+        CopyTo::Photos
+    } else {
+        CopyTo::Templates
+    }
+}
+
+/// The host asked the copy job for a picture picked from the From a file... tile (#146): the tile waits until the
+/// job ends, and the folder is read again then (tplsheet_tick).
+pub fn tplsheet_copy_asked(s: &mut TplSheet) {
+    s.copying = true;
+}
+
+// A copy into the folder ended (it went in or not): the folder read again as the sheet opened on it, the same paper
+// selected, and in view the new picture (the first file not listed before), else the page that was.
+fn copy_ended(s: &mut TplSheet, a: &mut App) {
+    let had: Vec<String> = s.t.iter().map(|t| t.path.as_str().to_string()).collect();
+    let anchor = s.anchor;
+    let nb = s.nb.take();
+    let (current, photos) = (s.current, s.photos);
+    let path = s.current_path.as_str().to_string();
+    open_folder(s, a, nb.as_deref(), current, (!path.is_empty()).then_some(path.as_str()), photos);
+    let new = s.shown.iter().position(|&i| !had.iter().any(|p| p.as_str() == s.t[i as usize].path.as_str()));
+    s.anchor = new.map_or(anchor, |k| k as i32);
+    qlog!("templates: %s read again after a copy (%d files, %s new)", tplsheet_folder(s).folder(), s.t.len() as i32, if new.is_some() { "one" } else { "none" });
 }
 
 /// Opens it on the templates as they are now (the previews job queued for those that have none):
@@ -338,6 +379,30 @@ fn tile_name(c: &mut Canvas, tr: Rect, name: &str, selected: bool) {
         lr = Rect { x: lr.x + (lr.w - w) / 2, y: lr.y, w: w + 1, h: lr.h };
     }
     font_draw_left_name(c, f, px, lr, name, 0);
+}
+
+// The From a file... tile (#146): a blank page with Files' sign, or the hourglass while a copy it asked for runs.
+fn tile_from_file(c: &mut Canvas, tr: Rect, copying: bool) {
+    canvas_fill(c, tr, 255);
+    if copying {
+        ui_tile_loading(c, tr);
+        return;
+    }
+    let s = tr.w * 2 / 5;
+    ui_icon(c, IconKind::Files, Rect { x: tr.x + (tr.w - s) / 2, y: tr.y + (tr.h - s) / 2, w: s, h: s }, 0);
+}
+
+// The From a file... tile at r with its label, and its hit unless a copy runs.
+fn draw_from_file(s: &mut TplSheet, c: &mut Canvas, r: Rect, gap: i32) {
+    tile_from_file(c, r, s.copying);
+    ui_frame(c, r, ui_px(12.0), 0, false, ui_px(3.0));
+    // TRANSLATORS: (also) the last tile of the Templates and Photos sheets, under its picture (a tile of about 250
+    // px, on two lines if need be): it opens the file picker to copy a picture from anywhere on the Kindle into
+    // grimoire/templates or grimoire/photos.
+    paper_tile_label(c, r, gap, tr("From a file..."), false);
+    if !s.copying {
+        hits_add(&mut s.hits, Rect { x: r.x, y: r.y, w: r.w, h: r.h + ui_px(90.0) }, TS_HIT_FROM_FILE, 0);
+    }
 }
 
 // A tile whose preview is not made yet: the sign for more, in gray, until it is.
@@ -439,7 +504,8 @@ pub fn tplsheet_draw(s: &mut TplSheet, a: &mut App) -> Rect {
     let bh = ui_px(140.0);
     let offered = usable(s);
     s.per = g.cols * g.rows;
-    s.pages = if offered != 0 { (s.shown.len() as i32 + s.per - 1) / s.per } else { 1 };
+    // (the From a file... tile after the last template's: one place more)
+    s.pages = if offered != 0 { (s.shown.len() as i32 + s.per) / s.per } else { 1 };
     s.page = clampi(s.anchor / s.per, 0, s.pages - 1);
     let back = Rect { x: in_.x, y: in_.y + in_.h - bh, w: ui_px(380.0), h: bh };
     // TRANSLATORS: the Templates sheet's button back to the papers, under its icon (348 px at
@@ -455,14 +521,18 @@ pub fn tplsheet_draw(s: &mut TplSheet, a: &mut App) -> Rect {
     }
     if offered == 0 {
         draw_empty(s, a, Rect { x: in_.x, y: in_.y, w: in_.w, h: back.y - in_.y });
+        // (From a file... under the text, in the grid's last row, centred)
+        let tr = Rect { x: in_.x + (in_.w - g.tw) / 2, y: in_.y + (g.rows - 1) * g.cell_h, w: g.tw, h: g.th };
+        draw_from_file(s, &mut a.screen, tr, gap);
         return s.rect;
     }
     let gridw = g.cols * g.tw + (g.cols - 1) * gap;
+    let cell = |k: i32| Rect { x: in_.x + (in_.w - gridw) / 2 + (k % g.cols) * (g.tw + gap), y: in_.y + (k / g.cols) * g.cell_h, w: g.tw, h: g.th };
     let mut k = 0;
     while k < s.per && first + k < s.shown.len() as i32 {
         let i = first + k;
         let t = &mut s.t[s.shown[i as usize] as usize];
-        let tr = Rect { x: in_.x + (in_.w - gridw) / 2 + (k % g.cols) * (g.tw + gap), y: in_.y + (k / g.cols) * g.cell_h, w: g.tw, h: g.th };
+        let tr = cell(k);
         canvas_fill(c, tr, 255);
         let pv = if t.bad { None } else { template_thumb(t) };
         let have = pv.is_some();
@@ -481,6 +551,11 @@ pub fn tplsheet_draw(s: &mut TplSheet, a: &mut App) -> Rect {
             hits_add(&mut s.hits, Rect { x: tr.x, y: tr.y, w: tr.w, h: tr.h + ui_px(90.0) }, TS_HIT_TILE, i); // (none waiting, unusable)
         }
         k += 1;
+    }
+    // the From a file... tile, when this page holds its place
+    let last = s.shown.len() as i32;
+    if last >= first && last < first + s.per {
+        draw_from_file(s, c, cell(last - first), gap);
     }
     if s.pages > 1 {
         let nr = Rect { x: in_.x + in_.w - ui_px(220.0), y: back.y, w: ui_px(220.0), h: bh };
@@ -550,6 +625,8 @@ pub fn tplsheet_pointer(s: &mut TplSheet, a: &mut App, phase: i32, x: f32, y: f3
             *dirty = s.rect;
             TsResult::Picked
         }
+        // (the sheet stays open under the picker the host opens)
+        TS_HIT_FROM_FILE => TsResult::FromFile,
         TS_HIT_PREV | TS_HIT_NEXT => {
             s.anchor = clampi(s.page + if h.id == TS_HIT_NEXT { 1 } else { -1 }, 0, s.pages - 1) * s.per;
             tplsheet_draw(s, a);
@@ -564,7 +641,17 @@ pub fn tplsheet_pointer(s: &mut TplSheet, a: &mut App, phase: i32, x: f32, y: f3
 /// background job runs, and when one ends) are drawn in their tiles. True with *dirty to refresh.
 pub fn tplsheet_tick(s: &mut TplSheet, a: &mut App, now: u32, dirty: &mut Rect) -> bool {
     *dirty = RECT_EMPTY;
-    if !s.open || !s.pending {
+    if !s.open {
+        return false;
+    }
+    // A copy into the folder (#146) no longer queued or running (reaped: it went in or not): the folder read again
+    if s.copying && !bg_pending(BgKind::CopyFile, tplsheet_folder(s).folder()) {
+        copy_ended(s, a);
+        tplsheet_draw(s, a);
+        *dirty = s.rect;
+        return true;
+    }
+    if !s.pending {
         return false;
     }
     // A background job that ended (the previews job among them) says so by bgimage_generation;
@@ -605,8 +692,9 @@ pub fn tplsheet_preview(s: &mut TplSheet) -> Option<&Canvas> {
 
 /// The headless runner's "templates.*" keys (key without the prefix; docs/SIM.md): count (the
 /// templates it offers), ready (how many of those have their previews), page and pages (of tiles,
-/// from 1), selected (the selected one's name). Empty values while it is closed. 0, -1 for a key
-/// it does not know.
+/// from 1), selected (the selected one's name), copying (1 while its From a file... tile waits for a
+/// copy), names (the tiles' names in order, joined by |). Empty values while it is closed. 0, -1 for a
+/// key it does not know.
 pub fn tplsheet_probe(s: &TplSheet, key: &str, out: &mut String, cap: usize) -> i32 {
     let open = s.open;
     let mut ready = 0;
@@ -647,7 +735,26 @@ pub fn tplsheet_probe(s: &TplSheet, key: &str, out: &mut String, cap: usize) -> 
         "selected" => {
             csnprintf!(out, cap, "%s", if open && s.selected >= 0 { s.t[s.shown[s.selected as usize] as usize].name.as_str() } else { "" });
         }
+        "copying" => {
+            csnprintf!(out, cap, "%s", if !open { "" } else if s.copying { "1" } else { "0" });
+        }
+        "names" => {
+            let names: Vec<&str> = if open { s.shown.iter().map(|&i| s.t[i as usize].name.as_str()).collect() } else { Vec::new() };
+            csnprintf!(out, cap, "%s", &names.join("|"));
+        }
         _ => return -1,
     }
     0
+}
+
+/// Where the runner's `templates.NAME` taps (docs/SIM.md): from_file, the From a file... tile while it can be tapped
+/// (not while a copy it asked for runs), and back; None for another name, or with the sheet closed.
+pub fn tplsheet_point(s: &TplSheet, name: &str) -> Option<(f32, f32)> {
+    let id = match name {
+        "from_file" => TS_HIT_FROM_FILE,
+        "back" => TS_HIT_BACK,
+        _ => return None,
+    };
+    let h = s.hits.h.iter().find(|h| h.id == id).filter(|_| s.open)?;
+    Some(((h.r.x + h.r.w / 2) as f32, (h.r.y + h.r.h / 2) as f32))
 }

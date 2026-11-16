@@ -7699,6 +7699,13 @@ pub fn library_shows_folder(a: &App, folder: &str) -> bool {
         && a.lib.as_deref().is_some_and(|s| s.modal == Modal::None && !s.files.open && !s.map.open && !s.map_picker.open && s.cur_folder.as_str() == folder)
 }
 
+/// The folder of the Templates sheet in front over New notebook (the picker not over it), None for none: a copy into
+/// it that ends is shown there, with no toast (app.rs).
+pub fn library_sheet_folder(a: &App) -> Option<crate::bgwork_copy::CopyTo> {
+    let s = a.lib.as_deref().filter(|s| a.scr == ScreenId::Library && s.modal == Modal::Templates && s.ts.open && !s.files.open)?;
+    Some(tplsheet_folder(&s.ts))
+}
+
 pub fn library_import_place_up(a: &App) -> bool {
     files_shown(a) && a.lib.as_deref().is_some_and(|s| s.files.import_place_up())
 }
@@ -7718,6 +7725,14 @@ fn files_prefs(a: &App) -> FilesPrefs {
 fn files_open(a: &mut App) {
     let prefs = files_prefs(a);
     let ok = with_files(a, |b, _| b.open(PickSpec::import(), prefs));
+    files_opened(a, ok);
+}
+
+/// The Templates sheet's From a file... (2.2, #146): the picture pick over the sheet, which stays under it (Back at
+/// the picker's root, and a copy asked, come back to it).
+fn files_open_picture(a: &mut App, to: crate::bgwork_copy::CopyTo) {
+    let prefs = files_prefs(a);
+    let ok = with_files(a, |b, _| b.open(PickSpec::picture(to), prefs));
     files_opened(a, ok);
 }
 
@@ -7816,9 +7831,15 @@ fn files_result(a: &mut App, r: BrowserResult) {
             settings_save(&a.settings);
             reload(a);
         }
-        // A picture's Use as template or Use as photo in Files (#146): the copy job runs, and the app's tick says when
-        // it ends; Files stays as it is
-        BrowserResult::Copying(_) => {}
+        // A picture's Use as template or Use as photo (#146): the copy job runs. Files stays as it is (the app's tick
+        // says when the copy ends); the picture pick goes back to the Templates sheet under it, whose From a file...
+        // tile waits for the copy and then shows the new template
+        BrowserResult::Copying(_) => {
+            if lib(a).files.mode == BrowseMode::Pick {
+                tplsheet_copy_asked(&mut lib(a).ts);
+                files_close(a, false);
+            }
+        }
         BrowserResult::LookAgain => {
             import_scan(a.dpi);
             with_files(a, |b, a| {
@@ -8340,7 +8361,9 @@ fn library_event_in(a: &mut App, ev: &InEvent) {
             tplsheet_close(&mut ts);
         }
         lib(a).ts = ts;
-        if r == TsResult::Picked || r == TsResult::Back || r == TsResult::Cancel {
+        if r == TsResult::FromFile {
+            files_open_picture(a, crate::bgwork_copy::CopyTo::Templates);
+        } else if r == TsResult::Picked || r == TsResult::Back || r == TsResult::Cancel {
             lib(a).modal = Modal::New; // back to New notebook, also from a tap outside the sheet
             redraw(a, RefreshMode::Ui);
         } else if !rect_is_empty(d) {
@@ -10965,6 +10988,11 @@ pub fn library_control_point(a:&mut App,name:&str)->Option<(f32,f32)> {
     if name.starts_with("ui_has.") {return None;}
     // The file picker: files.back, files.row.N, files.more.N, files.item.NAME, files.prev, files.next, files.card.*
     if let Some(n)=name.strip_prefix("files.") {return a.lib.as_deref()?.files.point(n);}
+    // The Templates sheet over New notebook (2.2): templates.from_file, templates.back
+    if let Some(n)=name.strip_prefix("templates.") {
+        let s=a.lib.as_deref()?;
+        return (s.modal==Modal::Templates && !s.files.open).then(||tplsheet_point(&s.ts,n)).flatten();
+    }
     // The Display sheet's controls while it is open ("display.done", "display.fit").
     if let Some(n)=name.strip_prefix("display.") {return dispmenu_control_point(&a.lib.as_deref()?.dm,n);}
     // The Graph opened from the Library: its controls (map.back, map.view, ...) and its notebooks' browser's
