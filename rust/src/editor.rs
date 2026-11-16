@@ -5190,6 +5190,56 @@ fn qs_result(a: &mut App, r: QsResult, d: Rect) {
     }
 }
 
+// ---- the size keys (2.2) ----
+
+// The toolbar button the quick-size key opens pen `t`'s card beside: the one a hold would open it from (the tool
+// button while it shows `t`, `t` pinned, the eraser), else the folded box; none with Select mode on (the pen draws
+// a lasso, which has no size), nor for a pen the toolbar does not show.
+fn qs_key_anchor(s: &EditorState, t: ToolKind) -> Option<Hit> {
+    if s.sel.state != SelState::Off {
+        return None;
+    }
+    if s.collapsed {
+        return Some(Hit { r: s.panel, id: P_EXPAND, arg: 0 });
+    }
+    s.hits.h.iter().find(|&&h| qs_target(s, h) == Some(t)).copied()
+}
+
+// quick-size: the card of the pen in use opens as a hold on its button opens it (its tip's bit set the same), beside
+// that button or the folded box. The card's own key closes it again (editor_shortcut_in), as a menu's does.
+fn qs_key(a: &mut App) {
+    let t = a.settings.current_tool;
+    let s = ed_ref(a);
+    if !qs_allowed(s) {
+        return;
+    }
+    if let Some(h) = qs_key_anchor(s, t) {
+        qs_hold(a, h, t, true);
+    }
+}
+
+// size-smaller and size-larger: the pen in use goes to its next quick size down or up (quicksize_step), set as a tap
+// on that chip of its card sets it (quicksize_apply: a setting, no history step, settings.ini written a pass later),
+// and a short toast says the size as the card writes it (the owner, 2026-11-15), as the light keys' toasts say the
+// level ("Light %d of %d") and the eraser mode's its mode ("Eraser: %s"), since nothing else on the screen shows the
+// size. At the smallest or the largest the size stays and the toast still says it; a step while it shows takes its
+// place. With Select mode on the pen draws a lasso, which has no size: nothing, and no toast.
+fn size_step(a: &mut App, larger: bool) {
+    if ed_ref(a).sel.state != SelState::Off {
+        return;
+    }
+    let t = a.settings.current_tool;
+    let p = &mut a.settings.tools[t.0 as usize];
+    if let Some(i) = quicksize_step(t, p, larger) {
+        quicksize_apply(t, p, i);
+        ed(a).qs_save = 1;
+    }
+    let size = quicksize_mm_label(a.settings.tools[t.0 as usize].size_max_mm);
+    // TRANSLATORS: a short toast (about 1700 px at 44 px in bold; up 1.2 s) after a key or a button stepped the pen
+    // in use to the next of its quick sizes; %s is the width as the sizes card writes it ("0.5 mm").
+    app_toast(a, &cformat!(tr("Size: %s"), &size), 1200);
+}
+
 // ---- the toolbar's count pad (owner, 2026-11-03) ----
 
 // Whether the toolbar's + (the next-page button on the last page) held opens the count pad now: nothing in
@@ -8569,15 +8619,19 @@ fn editor_shortcut_in(a: &mut App, action: i32, x: f32, y: f32, src: ActionSrc) 
         }
         card_close(a);
     }
-    // The quick sizes card: Close menu and Back close it, one layer; another menu's button closes it and goes on;
-    // anything else is refused.
+    // The quick sizes card: Close menu, Back and its own key (quick-size) close it, one layer; another menu's button
+    // closes it and goes on, and so does a size key, a pick as a chip's tap is (the card closes, the toast says the
+    // size); anything else is refused.
     if ed_ref(a).qs.open {
-        let action_closes = action == SHORTCUT_CLOSE_MENU || action == SHORTCUT_GO_BACK || action == SHORTCUT_BACK;
+        let action_closes = action == SHORTCUT_CLOSE_MENU
+            || action == SHORTCUT_GO_BACK
+            || action == SHORTCUT_BACK
+            || action == SHORTCUT_QUICK_SIZE;
         if action_closes {
             qs_close(a);
             return true;
         }
-        if !menu_action(action) {
+        if !menu_action(action) && action != SHORTCUT_SIZE_SMALLER && action != SHORTCUT_SIZE_LARGER {
             return false;
         }
         qs_close(a);
@@ -8779,6 +8833,10 @@ fn editor_shortcut_in(a: &mut App, action: i32, x: f32, y: f32, src: ActionSrc) 
         if to != s.index {
             go_to_page(a, to);
         }
+    } else if action == SHORTCUT_SIZE_SMALLER || action == SHORTCUT_SIZE_LARGER {
+        size_step(a, action == SHORTCUT_SIZE_LARGER);
+    } else if action == SHORTCUT_QUICK_SIZE {
+        qs_key(a);
     } else if action == SHORTCUT_SELECT {
         sel_toggle(a);
     } else if action == SHORTCUT_SELECT_EXACT {
@@ -12567,6 +12625,61 @@ mod tests {
         assert_eq!(qs_target(s, hit(P_TOOLPICK, 0)), None);
         assert_eq!(qs_target(s, hit(P_UNDO, 0)), None);
         assert_eq!(qs_target(s, hit(P_EXPAND, 0)), None);
+    }
+
+    /// The size keys (2.2). A step sets the pen in use's next chip as a tap on it would (a setting, written a pass
+    /// later) and says the size in a short toast, the card's millimetres; at an end the size stays and the toast
+    /// still says it. The eraser steps through its own chips. With Select mode on (the lasso has no size) nothing
+    /// changes and no toast shows. quick-size's card goes beside the pen in use's button (the tool button while it
+    /// shows that pen, a pinned pen, the eraser) or beside the folded box, and with Select mode on nowhere.
+    #[test]
+    fn the_size_keys_step_the_pen_in_use_and_say_its_size() {
+        let mut a = app(1860, 2480, 1860, 2480);
+        settings_default(&mut a.settings);
+        ed(&mut a).open = true;
+        let max = |a: &App, t: ToolKind| a.settings.tools[t.0 as usize].size_max_mm;
+        a.settings.current_tool = TOOL_PENCIL;
+        quicksize_apply(TOOL_PENCIL, &mut a.settings.tools[TOOL_PENCIL.0 as usize], 1);
+        size_step(&mut a, true);
+        assert_eq!((max(&a, TOOL_PENCIL), a.toast.as_str()), (0.5, "Size: 0.5 mm"));
+        assert_eq!(ed_ref(&a).qs_save, 1);
+        assert!(a.toast_visible && a.toast_until.wrapping_sub(now_ms()) <= 1200);
+        for (want, toast) in [(0.7, "Size: 0.7 mm"), (1.0, "Size: 1 mm"), (1.0, "Size: 1 mm"), (1.0, "Size: 1 mm")] {
+            size_step(&mut a, true);
+            assert_eq!((max(&a, TOOL_PENCIL), a.toast.as_str()), (want, toast));
+        }
+        for _ in 0..6 {
+            size_step(&mut a, false);
+        }
+        assert_eq!((max(&a, TOOL_PENCIL), a.toast.as_str()), (0.25, "Size: 0.25 mm"));
+        a.settings.current_tool = TOOL_ERASER;
+        quicksize_apply(TOOL_ERASER, &mut a.settings.tools[TOOL_ERASER.0 as usize], 3);
+        size_step(&mut a, true);
+        assert_eq!((max(&a, TOOL_ERASER), a.toast.as_str()), (12.0, "Size: 12 mm"));
+        assert_eq!(max(&a, TOOL_PENCIL), 0.25);
+        // Select mode: nothing at all
+        a.settings.current_tool = TOOL_PENCIL;
+        app_toast(&mut a, "before", 3000);
+        ed(&mut a).sel.state = SelState::Armed;
+        size_step(&mut a, true);
+        assert_eq!((max(&a, TOOL_PENCIL), a.toast.as_str()), (0.25, "before"));
+        // quick-size's place
+        let hit = |id: i32, arg: i32, x: i32| Hit { r: Rect { x, y: 400, w: 112, h: 112 }, id, arg };
+        let s = ed(&mut a);
+        s.sel.state = SelState::Off;
+        s.hits.h = vec![hit(P_TOOLPICK, 0, 10), hit(P_TOOL, TOOL_FINELINER.0, 20), hit(P_TOOL, TOOL_ERASER.0, 30), hit(P_UNDO, 0, 40)];
+        s.tool_button_shows = TOOL_PENCIL.0;
+        let x = |s: &EditorState, t: ToolKind| qs_key_anchor(s, t).map(|h| h.r.x);
+        assert_eq!((x(s, TOOL_PENCIL), x(s, TOOL_FINELINER), x(s, TOOL_ERASER), x(s, TOOL_MARKER)), (Some(10), Some(20), Some(30), None));
+        s.tool_button_shows = TB_GRID;
+        assert_eq!(x(s, TOOL_PENCIL), None);
+        s.collapsed = true;
+        s.panel = Rect { x: 1700, y: 900, w: 130, h: 130 };
+        assert_eq!(qs_key_anchor(s, TOOL_MARKER).map(|h| h.r), Some(s.panel));
+        s.sel.state = SelState::Armed;
+        assert_eq!(x(s, TOOL_MARKER), None);
+        s.collapsed = false;
+        assert_eq!(x(s, TOOL_ERASER), None);
     }
 
     #[test]

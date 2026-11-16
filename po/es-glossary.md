@@ -200,3 +200,20 @@ New refusal/progress sentences follow PHASE3-BRIEF section 15. Keep tú imperati
 Gothic/Classic. Existing translations and contexts remain intact; the compact footer did not
 require abbreviating *Actualizaciones*. Record-card refusal lines are tested in two lines at
 34 px within the actual 1292 px line rectangle, and the unwrapped footer within 1312 px.
+
+## The Settings menu (2.2)
+
+| English | Spanish | Alternatives, notes |
+| --- | --- | --- |
+| The categories: General, Display, Sleep & Clock, Pen, Controls, System | **General, Pantalla, Reposo y reloj, Lápiz, Controles, Sistema** | *Controles* for keys, buttons and gestures together; a game controller alone stays *mando*. |
+| Sleep settings, Clock settings | **Ajustes de reposo, Ajustes del reloj** | As *Ajustes* for Settings. |
+| Style (Gothic) / (Classic), Dark mode, Rotation (portrait and landscape) | **Estilo (Gótico) / (Clásico)**, **Modo oscuro**, **Rotación (vertical y horizontal)** | The rotation toasts keep *La rotación sigue al Kindle.* |
+| Tool Settings: pressure and tilt per tool | **Sensibilidad: presión e inclinación por herramienta** | The sheet it opens is titled *Sensibilidad: Bolígrafo* (Pen feel), so the row uses its word. *Ajustes de herramientas*. |
+| Pen button: Nothing / Erases / Highlights / Draws white, and its list's *... while writing* | **Botón del lápiz: Nada / Borra / Resalta / Dibuja en blanco**; **Nada / Borra / Resalta / Dibuja en blanco al escribir** | As the toasts' *Botón del lápiz al escribir: borra*. |
+| Eraser: Whole strokes / Precise; Takes away whole strokes / only what it touches | **Borrador: Trazos enteros / Preciso**; **Quita trazos enteros / Quita solo lo que toca** | The eraser's words above. |
+| Update branch (its switch: Preview / Stable) | **Canal de actualizaciones** | The same choice as the action's Update channel. |
+| About: device and storage, About, Links | **Información: dispositivo y almacenamiento**, **Información**, **Enlaces** | *Acerca de* reads badly before a colon. The storage: *Almacenamiento: 3.1 GB de 32 GB en uso*, *Libre: 28.9 GB* (as *Libre: %s de %s*), *Almacenamiento: no disponible*. On a computer: *Este ordenador*. |
+| Grimoire GitHub, Nebuff's GitHub, Ganten's GitHub; Scan with a phone's camera | **GitHub de Grimoire, GitHub de Nebuff, GitHub de Ganten**; **Escanea con la cámara de un teléfono** | Ko-fi and Kindle stay as they are. |
+| a Wi-Fi network, saved, connected, nearby | **red** (feminine: **Conectada**, **Guardada**, **Desconocida**), **redes guardadas**, **redes cercanas** | A network's status and security agree with *red*. Enterprise: **Empresarial** (*Empresarial de 192 bits*, *WPA2/WPA3 Empresarial*); WEP, WPA, OWE as they are. |
+| Rescan, Other..., Other network, Open network, Hidden network name | **Volver a buscar**, **Otra...**, **Otra red**, **Red abierta**, **Nombre de la red oculta** | *Toca Volver a buscar para ver las redes cercanas.* Scanning is **buscar** (*Buscando redes…*, *No se pudo buscar redes.*), as *Buscar actualizaciones*. |
+| Password for %s, Username for %s; forget, disconnect | **Contraseña de %s**, **Nombre de usuario de %s**; **olvidar, desconectar** (*Olvidando la red…*, *No se pudo desconectar.*) | *Olvidar* as for a controller. |

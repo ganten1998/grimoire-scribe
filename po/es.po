@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: Grimoire 1.0.0-beta\n"
 "Report-Msgid-Bugs-To: https://github.com/ganten1998/grimoire-scribe/issues\n"
-"POT-Creation-Date: 2026-11-10 21:50-0500\n"
+"POT-Creation-Date: 2026-11-15 19:01-0600\n"
 "PO-Revision-Date: 2026-10-20 08:02-0500\n"
 "Last-Translator: draft\n"
 "Language-Team: Spanish\n"
@@ -69,6 +69,13 @@ msgstr "Herramienta anterior / siguiente"
 #: rust/src/actions.rs
 msgid "Previous / next in the picker"
 msgstr "Anterior / siguiente en el selector"
+
+#. TRANSLATORS: (Buttons and Gestures sheets, a row as Previous / next tool, about 1100 px at 44 px in bold
+#. with the buttons' names) the buttons or gestures that take the pen in use to the next smaller and the next
+#. larger of its quick sizes, in that order.
+#: rust/src/actions.rs
+msgid "Smaller / larger size"
+msgstr "Tamaño menor / mayor"
 
 #: rust/src/actions.rs
 msgid "Previous / next page"
@@ -147,7 +154,7 @@ msgstr "Pantalla"
 msgid "System..."
 msgstr "Sistema..."
 
-#: rust/src/actions.rs
+#: rust/src/actions.rs rust/src/settingsmenu.rs
 msgid "System"
 msgstr "Sistema"
 
@@ -421,7 +428,7 @@ msgstr "Mando Bluetooth"
 msgid "Language"
 msgstr "Idioma"
 
-#. TRANSLATORS: the Display sheet's sliders, each left of its value ("12", "5 min", "never"):
+#. TRANSLATORS: the sheets' sliders, each left of its value ("12", "5 min", "never"):
 #. about 440 px at 44 px beside a time in Gothic (460 in Classic), 520 beside a number.
 #: rust/src/actions.rs rust/src/dispmenu.rs
 msgid "Sleep after"
@@ -552,6 +559,24 @@ msgstr "Mover el grafo hacia arriba"
 #: rust/src/actions.rs
 msgid "Move the Graph down"
 msgstr "Mover el grafo hacia abajo"
+
+#. TRANSLATORS: (Gestures and shortcuts lists, about 1100 px at 44 px in bold) the pen in use goes to the next
+#. smaller of its five quick sizes (the widths of the card a pen held on the toolbar opens).
+#: rust/src/actions.rs
+msgid "Smaller size"
+msgstr "Tamaño menor"
+
+#. TRANSLATORS: (Gestures and shortcuts lists, about 1100 px at 44 px in bold) the pen in use goes to the next
+#. larger of its five quick sizes.
+#: rust/src/actions.rs
+msgid "Larger size"
+msgstr "Tamaño mayor"
+
+#. TRANSLATORS: (Gestures and shortcuts lists, about 1100 px at 44 px in bold) opens the card of the pen in
+#. use's quick sizes beside its button on the toolbar, as holding that button does.
+#: rust/src/actions.rs
+msgid "Sizes of the pen in use"
+msgstr "Tamaños de la herramienta en uso"
 
 #. TRANSLATORS: the name of a notebook that has none (it is saved with it, as a name given).
 #: rust/src/annotate.rs rust/src/pdfimport.rs rust/src/store.rs rust/src/ui.rs
@@ -834,7 +859,7 @@ msgstr "Luz %d de %d"
 msgid "Rotation locked."
 msgstr "Rotación bloqueada."
 
-#: rust/src/app.rs
+#: rust/src/app.rs rust/src/i18n.rs
 msgid "Rotation follows Kindle."
 msgstr "La rotación sigue al Kindle."
 
@@ -874,8 +899,8 @@ msgid "PDF copies off."
 msgstr "Copias en PDF desactivadas."
 
 #. TRANSLATORS: Display sheet sleep screen choices, toast, 1700 px at 44 px, two lines.
-#. TRANSLATORS: the Display sheet's sleep screen row, which a tap moves to the next choice: what
-#. the Kindle shows while it sleeps. About 1280 px at 44 px, upright and sideways.
+#. TRANSLATORS: the Sleep settings page's sleep screen row, which a tap moves to the next choice:
+#. what the Kindle shows while it sleeps. About 1280 px at 44 px, upright and sideways.
 #: rust/src/app.rs rust/src/dispmenu.rs
 msgid "Sleep screen: the page I'm on (tap to change)"
 msgstr "En reposo: la página abierta (toca para cambiar)"
@@ -934,11 +959,13 @@ msgstr "Reposo tras: %s"
 msgid "Automatic"
 msgstr "Automático"
 
-#: rust/src/app.rs
+#. TRANSLATORS: Settings > Updates, the branch the switch is on: Preview gets betas and releases,
+#. Stable only releases.
+#: rust/src/app.rs rust/src/library.rs
 msgid "Preview"
 msgstr "Beta"
 
-#: rust/src/app.rs
+#: rust/src/app.rs rust/src/library.rs
 msgid "Stable"
 msgstr "Estable"
 
@@ -1343,8 +1370,8 @@ msgstr "Lápiz listo."
 msgid "Calibration saved"
 msgstr "Calibración guardada"
 
-#. TRANSLATORS: the Display sheet's cell beside Done: how large the clock and battery on a notebook page are,
-#. which a tap moves to the next size. Two lines of about 365 px at 34 px.
+#. TRANSLATORS: the Clock settings page's row for how large the clock and battery on a notebook page
+#. are, which a tap moves to the next size. Two lines of about 365 px at 34 px.
 #: rust/src/dispmenu.rs
 msgid "Clock size: small"
 msgstr "Tamaño del reloj: pequeño"
@@ -1357,8 +1384,9 @@ msgstr "Tamaño del reloj: mediano"
 msgid "Clock size: large"
 msgstr "Tamaño del reloj: grande"
 
-#. TRANSLATORS: the Display sheet's cell beside Done and the clock's size: which corner of a notebook page the
-#. clock and battery sit in, which a tap moves to the next (clockwise). Two lines of about 365 px at 34 px.
+#. TRANSLATORS: the Clock settings page's row under the clock's size: which corner of a notebook page
+#. the clock and battery sit in, which a tap moves to the next (clockwise). Two lines of about 365 px
+#. at 34 px.
 #: rust/src/dispmenu.rs
 msgid "Clock corner: top left"
 msgstr "Esquina del reloj: arriba a la izquierda"
@@ -1398,15 +1426,21 @@ msgctxt "sleep after"
 msgid "never"
 msgstr "nunca"
 
-#. TRANSLATORS: the heading of the Display page's rows about the Kindle's sleep.
-#: rust/src/dispmenu.rs
-msgid "Sleep"
-msgstr "Reposo"
-
-#. TRANSLATORS: makes the open page the sleep screen (528 px at 44 px, or 34 px).
 #: rust/src/dispmenu.rs
 msgid "Pin this page"
 msgstr "Fijar esta página"
+
+#. TRANSLATORS: the row that opens the sleep settings' page: the sleep screen and the
+#. timer.
+#: rust/src/dispmenu.rs rust/src/settingsmenu.rs
+msgid "Sleep settings"
+msgstr "Ajustes de reposo"
+
+#. TRANSLATORS: the row that opens the clock settings' page: the clock and battery on a
+#. notebook page.
+#: rust/src/dispmenu.rs rust/src/settingsmenu.rs
+msgid "Clock settings"
+msgstr "Ajustes del reloj"
 
 #. TRANSLATORS: in the Display page where the sliders would be (1420 px at 44 px).
 #: rust/src/dispmenu.rs
@@ -1418,20 +1452,16 @@ msgid "This Kindle has no warmth control."
 msgstr "Este Kindle no tiene control de calidez."
 
 #: rust/src/dispmenu.rs
-msgid "Invert colors in Grimoire (white on black)"
-msgstr "Invertir los colores en Grimoire (blanco sobre negro)"
-
-#: rust/src/dispmenu.rs
 msgid "Sideways, show the whole page"
 msgstr "De lado, ver la página entera"
 
 #: rust/src/dispmenu.rs
-msgid "Display time as 12 hour"
-msgstr "Mostrar la hora en 12 horas"
-
-#: rust/src/dispmenu.rs
 msgid "Sleep screen: Kindle PIN (native unlock)"
 msgstr "Al dormir: PIN del Kindle (desbloqueo nativo)"
+
+#: rust/src/dispmenu.rs
+msgid "Display time as 12 hour"
+msgstr "Mostrar la hora en 12 horas"
 
 #: rust/src/dispmenu.rs
 msgid "This page is now the sleep screen"
@@ -1507,7 +1537,6 @@ msgstr "Fijar"
 #. TRANSLATORS: the same button while the pens are being chosen, beside a check mark: it ends
 #. that (116 px at 34 px, as Pin).
 #: rust/src/editor.rs rust/src/i18n.rs rust/src/keyboard.rs rust/src/library.rs
-#: rust/src/share.rs
 msgid "Done"
 msgstr "Listo"
 
@@ -1712,6 +1741,13 @@ msgstr "Cuaderno lleno con %d páginas."
 msgid "Couldn't add pages."
 msgstr "No se pudieron añadir las páginas."
 
+#. TRANSLATORS: a short toast (about 1700 px at 44 px in bold; up 1.2 s) after a key or a button stepped the pen
+#. in use to the next of its quick sizes; %s is the width as the sizes card writes it ("0.5 mm").
+#: rust/src/editor.rs
+#, c-format
+msgid "Size: %s"
+msgstr "Tamaño: %s"
+
 #. TRANSLATORS: the title in New page's count pad (bold, 44 px, about 700 px): how many blank pages to
 #. add at once, typed on the number pad or changed by one with its - and + keys.
 #: rust/src/editor.rs rust/src/pagesview.rs
@@ -1905,7 +1941,7 @@ msgstr "No hay a dónde volver."
 
 #. TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): a controller's button
 #. changed the eraser to the one named, as Pen feel names it: Whole strokes or Precise.
-#: rust/src/editor.rs
+#: rust/src/editor.rs rust/src/library.rs
 #, c-format
 msgid "Eraser: %s"
 msgstr "Borrador: %s"
@@ -2187,7 +2223,7 @@ msgid "Waiting for an export slot..."
 msgstr "Esperando a que termine otra exportación..."
 
 #. TRANSLATORS: the share index, the page a browser opens at the Share screen's address.
-#: rust/src/httpd.rs
+#: rust/src/httpd.rs rust/src/i18n.rs
 #, c-format
 msgid "%d notebook on your Kindle"
 msgid_plural "%d notebooks on your Kindle"
@@ -2238,9 +2274,8 @@ msgstr "El estudio necesita JavaScript."
 
 #. TRANSLATORS: Live view's name: the Kindle's screen watched in a computer's browser. The
 #. browser page's title, and the pairing card's on the Kindle.
-#. TRANSLATORS: the Share screen's title.
 #. TRANSLATORS: the Share screen's button that turns Live view on (or shows its card while it
-#. is on): 388 px at 44 px, or 34 px under its icon.
+#. is on).
 #: rust/src/httpd.rs rust/src/share.rs
 msgid "Live view"
 msgstr "Vista en directo"
@@ -2476,7 +2511,7 @@ msgstr "Ajustes de la vista"
 msgid "Picture"
 msgstr "Imagen"
 
-#: rust/src/httpd.rs
+#: rust/src/httpd.rs rust/src/settingsmenu.rs
 msgid "Pen"
 msgstr "Lápiz"
 
@@ -3153,6 +3188,67 @@ msgstr "Olvidado."
 msgid "Couldn't forget controller"
 msgstr "No se pudo olvidar el mando"
 
+#: rust/src/library.rs rust/src/settingsmenu.rs
+msgid "Updates"
+msgstr "Actualizaciones"
+
+#: rust/src/library.rs
+msgid "Checking for updates..."
+msgstr "Buscando actualizaciones..."
+
+#: rust/src/library.rs
+msgid "Updates come through KPM, which is not here."
+msgstr "Las actualizaciones llegan por KPM, que no está aquí."
+
+#. TRANSLATORS: Settings > Updates' button when the check found a newer Grimoire (%s): a tap
+#. closes Grimoire, KPM installs it, and Grimoire starts again.
+#: rust/src/library.rs
+#, c-format
+msgid "Update to %s"
+msgstr "Actualizar a %s"
+
+#: rust/src/library.rs
+#, c-format
+msgid "Grimoire %s is the newest."
+msgstr "Grimoire %s es la versión más reciente."
+
+#: rust/src/library.rs
+msgid "Could not check. Is Wi-Fi on?"
+msgstr "No se pudo comprobar. ¿Está activado el Wi-Fi?"
+
+#: rust/src/library.rs
+msgid "Could not check for updates."
+msgstr "No se pudo buscar actualizaciones."
+
+#: rust/src/library.rs
+msgid "Check for updates"
+msgstr "Buscar actualizaciones"
+
+#. TRANSLATORS: Settings > Updates, the row whose switch picks the branch updates come from.
+#: rust/src/library.rs
+msgid "Update branch"
+msgstr "Canal de actualizaciones"
+
+#: rust/src/library.rs
+msgid "Enterprise"
+msgstr "Empresarial"
+
+#: rust/src/library.rs
+msgid "Enterprise 192-bit"
+msgstr "Empresarial de 192 bits"
+
+#: rust/src/library.rs
+msgid "Unknown"
+msgstr "Desconocida"
+
+#: rust/src/library.rs
+msgid "Connected"
+msgstr "Conectada"
+
+#: rust/src/library.rs
+msgid "Saved"
+msgstr "Guardada"
+
 #. TRANSLATORS: (Settings > Wi-Fi) its status line, 1470 px at 44 px in bold or two lines at 34 px; %s
 #. is a Wi-Fi network's name as the Kindle saved it (shortened if it is long). Connecting: a switch
 #. to that network is under way; Could not connect: it did not connect in 45 seconds, or the Kindle
@@ -3171,9 +3267,25 @@ msgstr "No se pudo conectar a %s."
 msgid "Checking Wi-Fi…"
 msgstr "Comprobando wifi…"
 
+#. TRANSLATORS: (Settings > Wi-Fi) the toast when a network profile could not be created.
+#: rust/src/library.rs
+msgid "Could not add the network."
+msgstr "No se pudo añadir la red."
+
+#. TRANSLATORS: (Settings > Wi-Fi) the status when a saved network's profile could not be deleted.
+#. TRANSLATORS: (Settings > Wi-Fi) the toast when a saved network could not be forgotten.
+#: rust/src/library.rs
+msgid "Could not forget the network."
+msgstr "No se pudo olvidar la red."
+
 #: rust/src/library.rs rust/src/share.rs
 msgid "Could not read or change Wi-Fi."
 msgstr "No se pudo consultar ni cambiar el wifi."
+
+#. TRANSLATORS: (Settings > Wi-Fi) the toast when the network cannot be disconnected now.
+#: rust/src/library.rs
+msgid "Could not disconnect."
+msgstr "No se pudo desconectar."
 
 #: rust/src/library.rs rust/src/share.rs
 msgid "Wi-Fi is off"
@@ -3200,7 +3312,7 @@ msgstr "Wifi activado; conexión desconocida"
 msgid "Wi-Fi unavailable"
 msgstr "Wifi no disponible"
 
-#. TRANSLATORS: starts the share server again (388 px at 44 px, or 34 px).
+#. TRANSLATORS: starts the share server again.
 #: rust/src/library.rs rust/src/share.rs
 msgid "Retry"
 msgstr "Reintentar"
@@ -3213,35 +3325,139 @@ msgstr "Desactivar wifi"
 msgid "Turn on Wi-Fi"
 msgstr "Activar wifi"
 
-#. TRANSLATORS: (Settings > Wi-Fi) a line in place of the saved networks: they could not be read
-#. (with the radio off, the first: they may be read only while it is on). 1470 px at 44 px in
-#. bold, or two lines at 34 px.
+#. TRANSLATORS: the title of Settings > Wi-Fi.
+#. TRANSLATORS: (Settings) the row that opens the Wi-Fi submenu: the radio and the Kindle's
+#. saved networks.
+#: rust/src/library.rs rust/src/settingsmenu.rs rust/src/share.rs
+msgid "Wi-Fi"
+msgstr "Wifi"
+
+#. TRANSLATORS: (Settings > Wi-Fi) the button above the nearby networks that scans again.
+#: rust/src/library.rs
+msgid "Rescan"
+msgstr "Volver a buscar"
+
+#. TRANSLATORS: (Settings > Wi-Fi) the button above the networks that adds a hidden network by name.
+#: rust/src/library.rs
+msgid "Other..."
+msgstr "Otra..."
+
+#: rust/src/library.rs
+msgid "Saved networks"
+msgstr "Redes guardadas"
+
+#. TRANSLATORS: (Settings > Wi-Fi) the nearby list while the radio is off.
+#: rust/src/library.rs
+msgid "Turn on Wi-Fi to see nearby networks."
+msgstr "Activa el wifi para ver las redes cercanas."
+
+#. TRANSLATORS: (Settings > Wi-Fi) the nearby list while its scan runs.
+#: rust/src/library.rs
+msgid "Scanning for networks…"
+msgstr "Buscando redes…"
+
+#. TRANSLATORS: (Settings > Wi-Fi) the nearby list when the last scan could not run or its answer
+#. was not one this reader knows.
+#. TRANSLATORS: (Settings > Wi-Fi) the toast when a scan cannot be asked for now.
+#: rust/src/library.rs
+msgid "Could not scan for networks."
+msgstr "No se pudo buscar redes."
+
+#. TRANSLATORS: (Settings > Wi-Fi) the nearby list when no network is near.
+#: rust/src/library.rs
+msgid "No networks found."
+msgstr "No se encontraron redes."
+
+#. TRANSLATORS: (Settings > Wi-Fi) the nearby list before its first scan has an answer.
+#: rust/src/library.rs
+msgid "Tap Rescan to look for networks."
+msgstr "Toca Volver a buscar para ver las redes cercanas."
+
+#. TRANSLATORS: (Settings > Wi-Fi) a line in place of the saved networks when they could not be read.
 #: rust/src/library.rs
 msgid "Saved networks could not be read."
 msgstr "No se pudieron leer las redes guardadas."
 
+#. TRANSLATORS: (Settings > Wi-Fi) a line in place of the saved networks while the radio is off.
 #: rust/src/library.rs
 msgid "Turn on Wi-Fi to see the saved networks."
 msgstr "Activa el wifi para ver las redes guardadas."
 
 #. TRANSLATORS: (Settings > Wi-Fi) the Kindle has no saved Wi-Fi network; Grimoire adds none itself.
 #: rust/src/library.rs
-msgid "No saved networks. Add one in Kindle settings or KOReader."
-msgstr ""
-"No hay redes guardadas. Añade una en los ajustes del Kindle o en KOReader."
+msgid "No saved networks. Add one with Other... or in Kindle settings."
+msgstr "No hay redes guardadas. Añade una con Otra... o en la Configuración del Kindle."
 
-#. TRANSLATORS: (Settings > Wi-Fi) the row under the saved networks when they take more than
-#. one page: shows the next page (after the last, the first). %d of %d: this page, the pages.
+#. TRANSLATORS: the password keyboard's title for a Wi-Fi network; %s is its name.
+#. TRANSLATORS: the password keyboard's title for a school/enterprise Wi-Fi network;
+#. %s is its name.
 #: rust/src/library.rs
 #, c-format
-msgid "More networks (%d of %d)"
-msgstr "Más redes (%d de %d)"
+msgid "Password for %s"
+msgstr "Contraseña de %s"
 
-#. TRANSLATORS: (Settings) the row that opens the Wi-Fi sheet: the radio and the Kindle's
-#. saved networks.
-#: rust/src/library.rs rust/src/settingsmenu.rs rust/src/share.rs
-msgid "Wi-Fi"
-msgstr "Wifi"
+#. TRANSLATORS: the keyboard's title for a school/enterprise Wi-Fi username; %s is its name.
+#: rust/src/library.rs
+#, c-format
+msgid "Username for %s"
+msgstr "Nombre de usuario de %s"
+
+#. TRANSLATORS: (Settings > Wi-Fi > Other...) the hidden network whose security is being picked; %s is its name.
+#: rust/src/library.rs
+#, c-format
+msgid "Network: %s"
+msgstr "Red: %s"
+
+#. TRANSLATORS: (Settings > Wi-Fi > Other...) the choice for a hidden network with no password.
+#: rust/src/library.rs
+msgid "Open network"
+msgstr "Red abierta"
+
+#. TRANSLATORS: (Settings > Wi-Fi > Other...) the choice for a hidden WPA or WPA2 network.
+#: rust/src/library.rs
+msgid "WPA/WPA2 password"
+msgstr "Contraseña WPA/WPA2"
+
+#. TRANSLATORS: (Settings > Wi-Fi > Other...) the choice for a hidden WPA3-Personal network.
+#: rust/src/library.rs
+msgid "WPA3 password"
+msgstr "Contraseña WPA3"
+
+#. TRANSLATORS: (Settings > Wi-Fi > Other...) the choice for a hidden WPA2- or WPA3-Enterprise network.
+#: rust/src/library.rs
+msgid "WPA2/WPA3-Enterprise"
+msgstr "WPA2/WPA3 Empresarial"
+
+#. TRANSLATORS: the title of the page that adds a hidden Wi-Fi network by name.
+#: rust/src/library.rs
+msgid "Other network"
+msgstr "Otra red"
+
+#. TRANSLATORS: (Settings > Wi-Fi) the toast while the network connected to is dropped.
+#: rust/src/library.rs
+msgid "Disconnecting…"
+msgstr "Desconectando…"
+
+#. TRANSLATORS: the keyboard's title for a hidden Wi-Fi network's name.
+#: rust/src/library.rs
+msgid "Hidden network name"
+msgstr "Nombre de la red oculta"
+
+#. TRANSLATORS: (Settings > Wi-Fi) the toast while a hidden network's profile is being created.
+#. TRANSLATORS: (Settings > Wi-Fi) the toast while an open network's profile is being created.
+#: rust/src/library.rs
+msgid "Adding network…"
+msgstr "Añadiendo la red…"
+
+#. TRANSLATORS: (Settings > Wi-Fi) the toast while a saved network's profile is being deleted.
+#: rust/src/library.rs
+msgid "Forgetting network…"
+msgstr "Olvidando la red…"
+
+#. TRANSLATORS: (Settings > Wi-Fi) a scanned network Grimoire cannot add yet.
+#: rust/src/library.rs
+msgid "This network's security is not supported yet."
+msgstr "Aún no se admite la seguridad de esta red."
 
 #. TRANSLATORS: Gestures row: action and first binding plus +N, about 1300 px with a thumbnail, two lines at 34 px.
 #: rust/src/library.rs
@@ -3338,6 +3554,11 @@ msgstr "Idioma: %s"
 
 #: rust/src/library.rs
 #, c-format
+msgid "Pen button: %s"
+msgstr "Botón del lápiz: %s"
+
+#: rust/src/library.rs
+#, c-format
 msgid "Mirror PDFs to %s (USB)"
 msgstr "Copiar los PDF a %s (USB)"
 
@@ -3419,6 +3640,12 @@ msgstr "Tus fuentes (%s)"
 msgid "Copy .ttf or .otf files into %s over USB."
 msgstr "Copia archivos .ttf o .otf en %s por USB."
 
+#. TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): Done on a font of the
+#. owner's own that could not be loaded just now (too little memory free, or its file changed).
+#: rust/src/library.rs
+msgid "Couldn't use that font."
+msgstr "No se pudo usar esa fuente."
+
 #. TRANSLATORS: the notice that stays above the Font sheet's buttons while the fonts copied into
 #. grimoire/fonts are checked in the background, with how many are left. One line of about 1700 px at 44 px
 #. bold.
@@ -3428,65 +3655,6 @@ msgid "Checking %d font..."
 msgid_plural "Checking %d fonts..."
 msgstr[0] "Comprobando %d fuente..."
 msgstr[1] "Comprobando %d fuentes..."
-
-#: rust/src/library.rs
-msgid "Updates come through KPM, which is not here."
-msgstr "Las actualizaciones llegan por KPM, que no está aquí."
-
-#: rust/src/library.rs
-msgid "Checking for updates..."
-msgstr "Buscando actualizaciones..."
-
-#: rust/src/library.rs
-#, c-format
-msgid "Grimoire %s is available."
-msgstr "Grimoire %s está disponible."
-
-#: rust/src/library.rs
-#, c-format
-msgid "Grimoire %s is the newest."
-msgstr "Grimoire %s es la versión más reciente."
-
-#: rust/src/library.rs
-msgid "Could not check. Is Wi-Fi on?"
-msgstr "No se pudo comprobar. ¿Está activado el Wi-Fi?"
-
-#: rust/src/library.rs
-msgid "Could not check for updates."
-msgstr "No se pudo buscar actualizaciones."
-
-#: rust/src/library.rs
-#, c-format
-msgid "This is Grimoire %s."
-msgstr "Versión instalada: Grimoire %s."
-
-#: rust/src/library.rs
-msgid "Updates: betas and releases (tap for releases only)"
-msgstr "Actualizaciones: betas y versiones (toca para solo versiones)"
-
-#: rust/src/library.rs
-msgid "Updates: releases only (tap for betas too)"
-msgstr "Actualizaciones: solo versiones (toca para incluir betas)"
-
-#. TRANSLATORS: (Updates sheet) installs the newer Grimoire (%s): Grimoire closes, KPM
-#. installs it, and Grimoire starts again.
-#: rust/src/library.rs
-#, c-format
-msgid "Update to %s"
-msgstr "Actualizar a %s"
-
-#: rust/src/library.rs
-msgid "Check for updates"
-msgstr "Buscar actualizaciones"
-
-#: rust/src/library.rs
-msgid "Update"
-msgstr "Actualizar"
-
-#. TRANSLATORS: the Updates sheet's title (Settings > Updates).
-#: rust/src/library.rs rust/src/settingsmenu.rs
-msgid "Updates"
-msgstr "Actualizaciones"
 
 #: rust/src/library.rs
 msgid "Searching... Put the controller in pairing mode."
@@ -3734,9 +3902,92 @@ msgstr "Borrar (lo mueve a %s)"
 msgid "Keep it"
 msgstr "Conservarlo"
 
+#. TRANSLATORS: the title of the list of what the pen's button does while writing (Settings > Pen).
+#: rust/src/library.rs
+msgid "Pen button"
+msgstr "Botón del lápiz"
+
+#. TRANSLATORS: the title of the list of what the eraser does (Settings > Pen).
+#: rust/src/library.rs
+msgid "Eraser"
+msgstr "Borrador"
+
+#: rust/src/library.rs
+msgid "Kindle"
+msgstr "Kindle"
+
+#. TRANSLATORS: Settings > System > About, the device's name on a computer (the Kindle build names
+#. the Kindle's own model).
+#: rust/src/library.rs
+msgid "This computer"
+msgstr "Este ordenador"
+
+#: rust/src/library.rs
+msgid "Ko-fi"
+msgstr "Ko-fi"
+
+#: rust/src/library.rs
+msgid "Grimoire GitHub"
+msgstr "GitHub de Grimoire"
+
+#: rust/src/library.rs
+msgid "Nebuff's GitHub"
+msgstr "GitHub de Nebuff"
+
+#: rust/src/library.rs
+msgid "Ganten's GitHub"
+msgstr "GitHub de Ganten"
+
+#: rust/src/library.rs
+msgid "About"
+msgstr "Información"
+
+#: rust/src/library.rs
+#, c-format
+msgid "Grimoire %s"
+msgstr "Grimoire %s"
+
+#: rust/src/library.rs
+#, c-format
+msgid "Storage: %s of %s used"
+msgstr "Almacenamiento: %s de %s en uso"
+
+#: rust/src/library.rs
+#, c-format
+msgid "%s free"
+msgstr "Libre: %s"
+
+#. TRANSLATORS: Settings > System > About, where the storage bar would be when the system
+#. cannot tell the storage's size.
+#: rust/src/library.rs
+msgid "Storage: not available"
+msgstr "Almacenamiento: no disponible"
+
+#. TRANSLATORS: Settings > System > About, the heading over its links (Ko-fi, GitHub, ...).
+#: rust/src/library.rs
+msgid "Links"
+msgstr "Enlaces"
+
+#. TRANSLATORS: Settings > System > About > a link, above the link's QR code.
+#: rust/src/library.rs
+msgid "Scan with a phone's camera"
+msgstr "Escanea con la cámara de un teléfono"
+
 #: rust/src/library.rs
 msgid "Couldn't create notebook (storage full?)"
 msgstr "No se pudo crear el cuaderno (¿almacenamiento lleno?)"
+
+#. TRANSLATORS: (Settings > Wi-Fi > Other...) the hidden network name is empty or longer
+#. than a Wi-Fi name can be.
+#: rust/src/library.rs
+msgid "Use a network name of 1 to 32 characters."
+msgstr "Usa un nombre de red de 1 a 32 caracteres."
+
+#. TRANSLATORS: (Settings > Wi-Fi) the enterprise username is empty, a control
+#. character, or longer than 128 bytes.
+#: rust/src/library.rs
+msgid "Use a username of 1 to 128 characters."
+msgstr "Usa un nombre de usuario de 1 a 128 caracteres."
 
 #: rust/src/library.rs
 msgid "Couldn't create folder. Use a shorter name without a slash."
@@ -3793,12 +4044,6 @@ msgid "Couldn't update KOReader. Patch conflict or storage error?"
 msgstr ""
 "No se pudo actualizar KOReader. ¿Conflicto de parches o error de "
 "almacenamiento?"
-
-#. TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): Done on a font of the
-#. owner's own that could not be loaded just now (too little memory free, or its file changed).
-#: rust/src/library.rs
-msgid "Couldn't use that font."
-msgstr "No se pudo usar esa fuente."
 
 #. TRANSLATORS: a toast (about 1700 px at 44 px in bold) after a notebook's or a folder's menu row that
 #. leaves its pages out of the Graph of all notebooks, or shows them there again: the change could
@@ -4566,8 +4811,6 @@ msgstr "El plumín gira desde"
 msgid "Nib fully follows at"
 msgstr "Gira del todo desde"
 
-#. TRANSLATORS: the button that wipes Pen feel's test pad (174 px at 44 px, or 34 px).
-#. TRANSLATORS: on the eraser tab, restore the handwritten practice ink (174 px at 34 px).
 #: rust/src/pensettings.rs
 msgid "Reset pad"
 msgstr "Restaurar"
@@ -4583,7 +4826,6 @@ msgstr "Limpiar"
 msgid "Pen feel: %s"
 msgstr "Sensibilidad: %s"
 
-#. TRANSLATORS: puts the tool's pen feel back as it came (328 px at 44 px, or 34 px).
 #: rust/src/pensettings.rs
 msgid "Reset tool"
 msgstr "Restablecer"
@@ -4615,103 +4857,126 @@ msgid ""
 "The eraser takes away only what it touches; harder pressure = bigger reach."
 msgstr "El borrador quita solo lo que toca; más presión = más alcance."
 
-#. TRANSLATORS: what holding the pen's button while writing does; a tap moves to the next.
+#. TRANSLATORS: Settings' Pen category, the row that opens the pen button's choices, with the
+#. choice in use: "Pen button: Nothing".
 #: rust/src/settingsmenu.rs
-msgid "Holding the pen button while writing does nothing (tap to change)"
-msgstr ""
-"Mantener el botón del lápiz al escribir no hace nada (toca para cambiar)"
+msgid "Nothing"
+msgstr "Nada"
 
 #: rust/src/settingsmenu.rs
-msgid "Holding the pen button while writing erases (tap to change)"
-msgstr "Mantener el botón del lápiz al escribir borra (toca para cambiar)"
+msgid "Erases"
+msgstr "Borra"
 
 #: rust/src/settingsmenu.rs
-msgid "Holding the pen button while writing highlights (tap to change)"
-msgstr "Mantener el botón del lápiz al escribir resalta (toca para cambiar)"
+msgid "Highlights"
+msgstr "Resalta"
 
 #: rust/src/settingsmenu.rs
-msgid "Holding the pen button while writing draws white (tap to change)"
-msgstr ""
-"Mantener el botón del lápiz al escribir dibuja en blanco (toca para cambiar)"
+msgid "Draws white"
+msgstr "Dibuja en blanco"
+
+#. TRANSLATORS: the pen button submenu's four choices, what holding the pen's button while writing does.
+#: rust/src/settingsmenu.rs
+msgid "Nothing while writing"
+msgstr "Nada al escribir"
 
 #: rust/src/settingsmenu.rs
-msgid "Style: Gothic (tap for Classic)"
-msgstr "Estilo: Gótico (toca para cambiar a Clásico)"
+msgid "Erases while writing"
+msgstr "Borra al escribir"
 
 #: rust/src/settingsmenu.rs
-msgid "Style: Classic (tap for Gothic)"
-msgstr "Estilo: Clásico (toca para cambiar a Gótico)"
-
-#. TRANSLATORS: the row that opens Display's sheet: brightness, warmth and invert.
-#: rust/src/settingsmenu.rs
-msgid "Display: brightness, warmth, invert"
-msgstr "Pantalla: brillo, calidez, invertir"
+msgid "Highlights while writing"
+msgstr "Resalta al escribir"
 
 #: rust/src/settingsmenu.rs
-msgid "Turn with the Kindle (portrait and landscape)"
-msgstr "Girar con el Kindle (vertical y horizontal)"
+msgid "Draws white while writing"
+msgstr "Dibuja en blanco al escribir"
+
+#. TRANSLATORS: Settings' Pen category, the row that opens the eraser's choices, with the choice in
+#. use: "Eraser: Whole strokes".
+#: rust/src/settingsmenu.rs
+msgid "Whole strokes"
+msgstr "Trazos enteros"
+
+#: rust/src/settingsmenu.rs
+msgid "Precise"
+msgstr "Preciso"
+
+#. TRANSLATORS: the eraser submenu's two choices: it takes every stroke it touches away whole, or
+#. only what it touches (as white ink does).
+#: rust/src/settingsmenu.rs
+msgid "Takes away whole strokes"
+msgstr "Quita trazos enteros"
+
+#: rust/src/settingsmenu.rs
+msgid "Takes away only what it touches"
+msgstr "Quita solo lo que toca"
+
+#: rust/src/settingsmenu.rs
+msgid "Style (Gothic)"
+msgstr "Estilo (Gótico)"
+
+#: rust/src/settingsmenu.rs
+msgid "Style (Classic)"
+msgstr "Estilo (Clásico)"
+
+#: rust/src/settingsmenu.rs
+msgid "Display: brightness, warmth"
+msgstr "Pantalla: brillo, calidez"
+
+#: rust/src/settingsmenu.rs
+msgid "General"
+msgstr "General"
+
+#. TRANSLATORS: the row that turns Grimoire's dark mode (white on black) on or off.
+#: rust/src/settingsmenu.rs
+msgid "Dark mode"
+msgstr "Modo oscuro"
+
+#: rust/src/settingsmenu.rs
+msgid "Rotation (portrait and landscape)"
+msgstr "Rotación (vertical y horizontal)"
 
 #: rust/src/settingsmenu.rs
 msgid "Pinch with two fingers to zoom"
 msgstr "Pellizcar con dos dedos para hacer zoom"
 
 #: rust/src/settingsmenu.rs
-msgid "Pen Feel"
-msgstr "Sensibilidad"
+msgid "Sleep & Clock"
+msgstr "Reposo y reloj"
 
-#. TRANSLATORS: the row that opens Pen sensitivity's sheet: pressure and tilt, per tool.
+#. TRANSLATORS: the row that opens Tool Settings' sheet: pressure and tilt, per tool.
 #: rust/src/settingsmenu.rs
-msgid "Pen sensitivity (pressure + tilt per tool)"
-msgstr "Sensibilidad del lápiz (presión + inclinación por herramienta)"
-
-#: rust/src/settingsmenu.rs
-msgid "Calibration"
-msgstr "Calibración"
+msgid "Tool Settings: pressure and tilt per tool"
+msgstr "Sensibilidad: presión e inclinación por herramienta"
 
 #: rust/src/settingsmenu.rs
 msgid "Calibrate pen and touch"
 msgstr "Calibrar el lápiz y la pantalla táctil"
 
 #: rust/src/settingsmenu.rs
-msgid "Controller"
-msgstr "Mando"
+msgid "Controls"
+msgstr "Controles"
 
 #: rust/src/settingsmenu.rs
 msgid "Shortcuts: keys and controller buttons"
 msgstr "Atajos: teclas y botones del mando"
 
 #: rust/src/settingsmenu.rs
-msgid "General"
-msgstr "General"
-
-#: rust/src/settingsmenu.rs
 msgid "KOReader"
 msgstr "KOReader"
 
-#. TRANSLATORS: the Share screen's help, under the address: a line each, 1578 px at 34 px
-#. sideways (beside the QR code), 1640 upright.
-#: rust/src/share.rs
-msgid "Pages as PNG, notebooks as PDF or zip, folders and everything as zip."
-msgstr "Páginas en PNG, cuadernos en PDF o zip, carpetas y todo en zip."
+#. TRANSLATORS: the row that opens About: what this Kindle is, its screen, and the
+#. storage used.
+#: rust/src/settingsmenu.rs
+msgid "About: device and storage"
+msgstr "Información: dispositivo y almacenamiento"
 
-#: rust/src/share.rs
-msgid "Effects: transparent, recolored or filtered copies of any page."
-msgstr ""
-"Efectos: copias de cualquier página, transparentes, con otros colores o con "
-"filtros."
-
-#: rust/src/share.rs
-msgid "Same Wi-Fi network only. Keep this screen open while downloading."
-msgstr ""
-"Solo en la misma red Wi-Fi. Deja esta pantalla abierta mientras descargas."
-
-#. TRANSLATORS: how many downloads the Share screen has answered since it opened.
 #: rust/src/share.rs
 #, c-format
 msgid "Downloads served: %d"
 msgstr "Descargas realizadas: %d"
 
-#. TRANSLATORS: Live view's pairing card: how many computers watch the screen now.
 #: rust/src/share.rs
 #, c-format
 msgid "%d computer watching"
@@ -4739,7 +5004,6 @@ msgstr "Escanea el código con tu teléfono o abre esto en un navegador:"
 msgid "On your computer, open this in a browser:"
 msgstr "En tu computadora, abre esto en un navegador:"
 
-#. TRANSLATORS: another address the Kindle answers at, and its network interface ("usb0").
 #: rust/src/share.rs
 #, c-format
 msgid "Also: %s (%s)"
@@ -4750,12 +5014,6 @@ msgstr "También: %s (%s)"
 #: rust/src/share.rs
 msgid "Then type this code:"
 msgstr "Y escribe este código:"
-
-#. TRANSLATORS: the last help line, with the command a computer pulls everything with.
-#: rust/src/share.rs
-#, c-format
-msgid "From a terminal: %s <address above>"
-msgstr "Desde una terminal: %s <dirección de arriba>"
 
 #: rust/src/share.rs
 msgid "Connects to saved networks."
@@ -4773,8 +5031,6 @@ msgstr "Desactivar el wifi desconecta SSH y la conexión compartida."
 msgid "Share over Wi-Fi"
 msgstr "Compartir por Wi-Fi"
 
-#. TRANSLATORS: the Share screen without an address (1640 px at 64 px), and what to do (at
-#. 44 px); Retry is the button's name.
 #: rust/src/share.rs
 msgid "No Wi-Fi connection yet"
 msgstr "Aún no hay conexión wifi"
@@ -4799,12 +5055,11 @@ msgstr "Luego toca Reintentar."
 msgid "Is another app using the port? Try again."
 msgstr "¿Otra app usa el puerto? Inténtalo de nuevo."
 
-#. TRANSLATORS: Live view's pairing card: turns Live view off (388 px at 44 px, or 34 px).
+#. TRANSLATORS: Live view's pairing card: turns Live view off.
 #: rust/src/share.rs
 msgid "Stop"
 msgstr "Detener"
 
-#. TRANSLATORS: the Share screen as the Kindle's sleep screen.
 #: rust/src/share.rs
 msgid "Asleep"
 msgstr "En reposo"
@@ -5461,6 +5716,66 @@ msgctxt "studio"
 msgid "Copied"
 msgstr "Copiado"
 
+#~ msgid "Sleep"
+#~ msgstr "Reposo"
+
+#~ msgid "Invert colors in Grimoire (white on black)"
+#~ msgstr "Invertir los colores en Grimoire (blanco sobre negro)"
+
+#, c-format
+#~ msgid "Grimoire %s is available."
+#~ msgstr "Grimoire %s está disponible."
+
+#~ msgid "Updates: betas and releases (tap for releases only)"
+#~ msgstr "Actualizaciones: betas y versiones (toca para solo versiones)"
+
+#~ msgid "Updates: releases only (tap for betas too)"
+#~ msgstr "Actualizaciones: solo versiones (toca para incluir betas)"
+
+#~ msgid "Update"
+#~ msgstr "Actualizar"
+
+#~ msgid "Holding the pen button while writing does nothing (tap to change)"
+#~ msgstr ""
+#~ "Mantener el botón del lápiz al escribir no hace nada (toca para cambiar)"
+
+#~ msgid "Holding the pen button while writing erases (tap to change)"
+#~ msgstr "Mantener el botón del lápiz al escribir borra (toca para cambiar)"
+
+#~ msgid "Holding the pen button while writing highlights (tap to change)"
+#~ msgstr "Mantener el botón del lápiz al escribir resalta (toca para cambiar)"
+
+#~ msgid "Holding the pen button while writing draws white (tap to change)"
+#~ msgstr ""
+#~ "Mantener el botón del lápiz al escribir dibuja en blanco (toca para "
+#~ "cambiar)"
+
+#~ msgid "Style: Gothic (tap for Classic)"
+#~ msgstr "Estilo: Gótico (toca para cambiar a Clásico)"
+
+#~ msgid "Pen Feel"
+#~ msgstr "Sensibilidad"
+
+#~ msgid "Calibration"
+#~ msgstr "Calibración"
+
+#~ msgid ""
+#~ "Pages as PNG, notebooks as PDF or zip, folders and everything as zip."
+#~ msgstr "Páginas en PNG, cuadernos en PDF o zip, carpetas y todo en zip."
+
+#~ msgid "Effects: transparent, recolored or filtered copies of any page."
+#~ msgstr ""
+#~ "Efectos: copias de cualquier página, transparentes, con otros colores o "
+#~ "con filtros."
+
+#~ msgid "Same Wi-Fi network only. Keep this screen open while downloading."
+#~ msgstr ""
+#~ "Solo en la misma red Wi-Fi. Deja esta pantalla abierta mientras descargas."
+
+#, c-format
+#~ msgid "From a terminal: %s <address above>"
+#~ msgstr "Desde una terminal: %s <dirección de arriba>"
+
 #~ msgid ""
 #~ "Grimoire imports each folder in the background and then moves it into the "
 #~ "done folder. Copy folders in over USB while Grimoire is closed."
@@ -5690,9 +6005,6 @@ msgstr "Copiado"
 #~ msgid "Saving..."
 #~ msgstr "Guardando..."
 
-#~ msgid "Saved"
-#~ msgstr "Guardado"
-
 #~ msgid "This is the last page."
 #~ msgstr "Es la última página."
 
@@ -5765,9 +6077,6 @@ msgstr "Copiado"
 
 #~ msgid "Around it"
 #~ msgstr "A su alrededor"
-
-#~ msgid "Page unavailable"
-#~ msgstr "Página no disponible"
 
 #~ msgid "Any"
 #~ msgstr "Cualquiera"
