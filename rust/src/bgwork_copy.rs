@@ -73,7 +73,7 @@ pub fn copy_seams(free: Option<u64>, fail_after: Option<u64>) {
     SEAM_FAIL_AFTER.store(fail_after.unwrap_or(u64::MAX), std::sync::atomic::Ordering::Relaxed);
 }
 
-fn free_bytes(st: &FsStorage) -> Option<u64> {
+pub(crate) fn free_bytes(st: &FsStorage) -> Option<u64> {
     #[cfg(any(test, feature = "sim"))]
     {
         let f = SEAM_FREE.load(std::sync::atomic::Ordering::Relaxed);

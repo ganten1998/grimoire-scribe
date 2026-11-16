@@ -312,15 +312,19 @@ pub fn in_fallback() -> bool {
     NO_WORKER.load(Ordering::Relaxed) || session_broken()
 }
 
-fn no_worker(why: &str) {
+/// `waits`: the pool asking never decodes in the writer (the sandbox is required, or it is a worker-only pool).
+fn no_worker(why: &str, waits: bool) {
     if !NO_WORKER.swap(true, Ordering::Relaxed) {
-        if sandbox_required() {
+        if waits {
             qlog!("work: pictures wait (%s): no sandboxed worker can be had, and the writer decodes none; nothing is marked and no try is counted", why);
         } else {
             qlog!("work: pictures decode in the writer (%s); the sandbox is unavailable", why);
         }
     }
 }
+
+/// What `PicOut::Dead` says of a worker killed for giving no record in its time (its watchdog's, or a pool's own).
+pub const STALLED: &str = "the worker stalled";
 
 /// The writer's pictures: one worker at a time, a fresh one after `s1::PICTURE_SLICE` pictures or a death.
 pub struct PicPool {
@@ -329,6 +333,11 @@ pub struct PicPool {
     /// pictures are never decoded in the writer, whatever the sandbox's state (Files' previews, 2.2): with no
     /// worker a picture waits (`PicOut::NoWorker`), as it does where the sandbox is required
     worker_only: bool,
+    /// a picture gets one worker run: a worker that ends or stalls on it is not followed by a fresh one's second try
+    /// (Files' previews: their second try is another visit's job)
+    one_run: bool,
+    /// the monotonic time (mono_ms) past which no read of this pool waits (u64::MAX: its watchdog alone)
+    until: u64,
 }
 
 impl Default for PicPool {
@@ -370,19 +379,31 @@ fn without_worker(handed: bool) -> Result<Asked, &'static str> {
 
 impl PicPool {
     pub fn new() -> PicPool {
-        PicPool { w: None, served: 0, worker_only: false }
+        PicPool { w: None, served: 0, worker_only: false, one_run: false, until: u64::MAX }
     }
 
     /// A pool whose pictures only a worker decodes (Files' previews of the user's files, 2.2): no fallback to the
     /// writer's own decode, on the Mac and in the simulator too.
     pub fn worker_only() -> PicPool {
-        PicPool { w: None, served: 0, worker_only: true }
+        PicPool { w: None, served: 0, worker_only: true, one_run: false, until: u64::MAX }
+    }
+
+    /// A worker-only pool for one preview: one worker run a picture (no second try by a fresh worker), and nothing
+    /// of it, the worker's handshake too, waited for past `until` (mono_ms).
+    pub fn for_preview(until: u64) -> PicPool {
+        PicPool { w: None, served: 0, worker_only: true, one_run: true, until }
+    }
+
+    /// Whether this pool never decodes in the writer.
+    fn waits(&self) -> bool {
+        self.worker_only || sandbox_required()
     }
 
     fn start(&mut self) -> Start {
+        let waits = self.waits();
         if in_fallback() {
             if session_broken() {
-                no_worker("an earlier worker's sandbox step failed");
+                no_worker("an earlier worker's sandbox step failed", waits);
             }
             return Start::NoWorker;
         }
@@ -397,15 +418,15 @@ impl PicPool {
             Ok(w) => w,
             Err(SpawnErr::Sandbox(step)) => {
                 session_set_broken();
-                no_worker(&format!("step {step}"));
+                no_worker(&format!("step {step}"), waits);
                 return Start::NoWorker;
             }
             Err(SpawnErr::Start) => {
-                no_worker("the worker did not start");
+                no_worker("the worker did not start", waits);
                 return Start::NoWorker;
             }
         };
-        let deadline = mono_ms() + 15_000;
+        let deadline = (mono_ms() + 15_000).min(self.until);
         let hello = (|| {
             let line = w.read_line(512, deadline).ok()?;
             if line != format!("B {}", build_id()).as_bytes() {
@@ -437,12 +458,12 @@ impl PicPool {
             Some(Ok(())) => {}
             Some(Err(why)) => {
                 w.kill_and_reap();
-                no_worker(why);
+                no_worker(why, waits);
                 return Start::NoWorker;
             }
             None => {
                 w.kill_and_reap();
-                no_worker("the worker did not answer");
+                no_worker("the worker did not answer", waits);
                 return Start::NoWorker;
             }
         }
@@ -482,7 +503,7 @@ impl PicPool {
                 return if self.worker_only { Ok(Asked::Wait) } else { without_worker(handed) };
             };
             self.served += 1;
-            let deadline = mono_ms() + watchdog_ms();
+            let deadline = (mono_ms() + watchdog_ms()).min(self.until);
             // (once its command went out, the worker may read the picture: from here on it was given it)
             let sent = w.send(line) && {
                 handed = true;
@@ -496,13 +517,13 @@ impl PicPool {
                     again = false;
                     continue;
                 }
-                return Err(if stalled { "the worker stalled" } else { "the worker ended" });
+                return Err(if stalled { STALLED } else { "the worker ended" });
             }
             match w.read_line(512, deadline) {
                 Ok(l) => return Ok(Asked::Line(l)),
                 Err(ReadErr::Timeout) => {
                     self.drop_worker();
-                    return Err("the worker stalled");
+                    return Err(STALLED);
                 }
                 Err(_) => {
                     self.drop_worker();
@@ -581,6 +602,11 @@ impl PicPool {
         }
         match self.decode_once(data, orient, pw, ph, false) {
             Ok(out) => out,
+            // (one run a picture: no fresh worker's second try)
+            Err(why) if self.one_run => {
+                qlog!("work: a picture's worker ended (%s)", why);
+                PicOut::Dead(why)
+            }
             Err(why) => {
                 qlog!("work: a picture's worker ended (%s); a fresh worker tries it again", why);
                 self.decode_once(data, orient, pw, ph, true).unwrap_or_else(|why| {
@@ -619,12 +645,12 @@ impl PicPool {
                     return Ok(PicOut::Retry("out of memory"));
                 }
                 px.resize(n, 0);
-                let deadline = mono_ms() + watchdog_ms();
+                let deadline = (mono_ms() + watchdog_ms()).min(self.until);
                 let got = self.w.as_mut().map(|w| w.read_exact(&mut px, deadline));
                 if !matches!(got, Some(Ok(()))) {
                     self.drop_worker();
                     qlog!("work: a picture's worker ended while it sent the pixels");
-                    return Err("the worker ended");
+                    return Err(if matches!(got, Some(Err(ReadErr::Timeout))) { STALLED } else { "the worker ended" });
                 }
                 PicOut::Pic { src_w: sw, src_h: sh, fit: BgPicture { px, w, h, ch } }
             }

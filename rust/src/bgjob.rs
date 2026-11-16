@@ -39,7 +39,8 @@ pub enum BgKind {
     FontCheck = 8,
     /// id: none, path: "<dev>.<ino>.<size>.<mtime>:<StoragePath>", a file as Files' Covers view listed it; its preview
     /// made by the sandboxed worker into grimoire/.cache/files, or its "no preview" mark (bgwork_previews.rs, 2.2).
-    /// One file a job, queued as one the user waits on; dropped at exit. Ends 0 or 1.
+    /// One file a job, held to a few seconds, never one the user waits on by name: it runs behind exports, the PDF
+    /// mirror, imports and font checks (`rank`); dropped at exit. Ends 0 or 1.
     FilePreviews = 9,
     /// id: the folder it goes into ("templates", "photos" or "fonts"), path: "<dev>.<ino>.<size>.<mtime>:<StoragePath>",
     /// the source as listed; a copy of a file into one of Grimoire's folders for the user's files, under the free
@@ -170,6 +171,10 @@ pub fn bg_job_pending(kind:BgKind,id:&str,path:&str)->bool {
 // The same, queued only (not started: its child reads what it works on, a notebook's page list, as it starts).
 fn bg_job_queued(kind:BgKind,id:&str,path:&str)->bool {
     with(|s|s.q.iter().any(|j|j.kind==kind&&j.id.as_str()==id&&j.dir.as_str()==path))
+}
+/// Whether a child runs a job of this kind now (not one that only waits in the queue).
+pub fn bg_kind_running(kind: BgKind) -> bool {
+    with(|s| (s.pid > 0 && s.running.kind == kind) || (s.extra_pid > 0 && s.extra.kind == kind))
 }
 /// The paths of the queued and running jobs of these kinds (either child): what they work on. fsview's busy
 /// check reads the imports' (a PDF's storage path; a folder of pictures, a storage path when picked in place, else
@@ -517,10 +522,12 @@ fn child_setup(keep_lock: bool) {
 }
 
 // Which job goes first: something the user waits on (an export they asked for, a template's
-// picture), then the mirror PDFs, then imports, and compaction last. A compaction can take minutes
-// on the Kindle, and its pages stay listed until it is done, so nothing is lost by its waiting.
+// picture), then the mirror PDFs, then imports, then Files' previews, and compaction last. A compaction
+// can take minutes on the Kindle, and its pages stay listed until it is done, so nothing is lost by its
+// waiting.
 fn rank(j: &Job) -> i32 {
-    if j.notify || j.kind == BgKind::Template {
+    // (a file's preview is never a job the user waits on by name, whoever queued it)
+    if (j.notify && j.kind != BgKind::FilePreviews) || j.kind == BgKind::Template {
         return 0;
     }
     match j.kind {
@@ -529,9 +536,14 @@ fn rank(j: &Job) -> i32 {
         BgKind::ImportFolder | BgKind::PdfImport => 3,
         // (a font check after the first font of a look: one font a job, behind an export and a PDF's slice)
         BgKind::FontCheck => 3,
+        // Files' previews (2.2): the files of a Covers screen, whatever a folder holds. Behind every job above,
+        // an import's next slice too (queued again as each ends), so a screen of slow files never holds the one
+        // child ahead of an export, the mirror, an import or a font check; ahead of compaction and the idle
+        // warm-ups, since someone looks at the screen. A full queue lets them go before those jobs, too.
+        BgKind::FilePreviews => 4,
         // (an idle warm-up of the Pages view's previews: after anything asked for, with compaction)
-        BgKind::PagePreviews => 4,
-        _ => 4,
+        BgKind::PagePreviews => 5,
+        _ => 5,
     }
 }
 

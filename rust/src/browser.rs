@@ -1204,8 +1204,9 @@ impl Browser {
                 }
             }
         }
-        // Covers: the screen's PDFs, pictures and fonts asked for once their stats are in, each its own job, in the
-        // listed order; never another screen's (one turned away from takes its queued jobs back)
+        // Covers: the screen's PDFs, pictures and fonts looked up in the cache once their stats are in, and asked for
+        // when it has nothing, each its own job, in the listed order; never another screen's (one turned away from
+        // takes its queued jobs back)
         if self.in_covers() {
             let on: Vec<(StoragePath, FsStat)> = vis
                 .clone()
@@ -1216,6 +1217,8 @@ impl Browser {
                 })
                 .collect();
             self.covers.screen(&on);
+            // (read from the cache, or asked for, a slice a tick: a screen back from another is read again)
+            self.covers.step(FS_SLICE_MS);
         }
         // Files: a trash entry's name, a font's family (from its check's verdict), one a tick
         for i in vis.clone() {

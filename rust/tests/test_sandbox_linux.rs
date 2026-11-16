@@ -285,9 +285,11 @@ fn a_font_is_checked_in_the_real_sandbox() {
 }
 
 // Files' previews (2.2, issue #145): the job makes a preview of each kind through the real sandbox, a PDF's first
-// page, a picture and a font's sample (the font worker's `T`), each a 300 x 400 picture with ink in it in the cache,
-// with every call each worker makes on the allow-list; a file a worker refuses is marked. Nothing falls back to the
-// writer.
+// page, a picture and a font's sample (the font worker's `T`, its glyphs walked under the check's glyph limit),
+// each a 300 x 400 picture with ink in it in the cache, with every call each worker makes on the allow-list; a file
+// a worker refuses is marked. Nothing falls back to the writer. A worker the filter ends on a file (a call outside
+// the list: here each kind's test trap) is a try, as a page's strike is in an import: its first death writes no
+// mark, the second in a row does, and neither breaks the session.
 #[test]
 fn previews_are_made_in_the_real_sandbox() {
     use grimoire::bgwork_previews::*;
@@ -327,6 +329,22 @@ fn previews_are_made_in_the_real_sandbox() {
     }
     assert!(!grimoire::picwork::in_fallback(), "the picture was decoded by a worker");
     assert!(!session_broken(), "every worker held its sandbox");
+    // the filter ends the worker on the file: a try on record, then the mark
+    for (from, name, hook, at) in [("p.png", "p2.png", "GRIMOIRE_PIC_TEST_TRAP", "1"), ("f.ttf", "f2.ttf", "GRIMOIRE_FONT_TEST_TRAP", "0"), ("a.pdf", "a2.pdf", "GRIMOIRE_PDF_TEST_TRAP_PAGE", "1")] {
+        std::fs::copy(dir.join(from), dir.join(name)).unwrap();
+        let p = grimoire::fsview::StoragePath::new(format!("documents/{name}").as_bytes()).unwrap();
+        let s = st.stat(&p, false).unwrap();
+        let arg = format!("{}.{}.{}.{}:documents/{name}", s.dev, s.ino, s.size, s.mtime);
+        std::env::set_var(hook, at);
+        assert_eq!(bg_file_preview(&arg), 0, "{name}");
+        assert_eq!(preview_info(&p, &s).map(|i| i.made), Some(Made::Once(NoPreview::Ended)), "{name}: the first death is a try");
+        assert!(matches!(preview_cached(&p, &s), Cached::Nothing), "{name}");
+        assert_eq!(bg_file_preview(&arg), 0, "{name}");
+        assert_eq!(preview_info(&p, &s).map(|i| i.made), Some(Made::None(NoPreview::Ended)), "{name}: the second is the mark");
+        std::env::remove_var(hook);
+        // (and without the trap the same bytes under another name are previewed: the file was never at fault)
+    }
+    assert!(!session_broken(), "a worker the filter ended is the worker's end, not the sandbox's");
 }
 
 // The worker's clean end (the 2.1.0-beta.2 fix round): `--work` ends with _exit, so a worker told to stop under

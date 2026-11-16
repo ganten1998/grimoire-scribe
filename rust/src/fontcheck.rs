@@ -1433,6 +1433,11 @@ enum Hello {
 }
 
 fn start_worker(len: usize) -> Hello {
+    start_worker_until(len, u64::MAX)
+}
+
+/// `start_worker`, its handshake waited for no longer than `until` (mono_ms): a preview's worker (font_sample).
+fn start_worker_until(len: usize, until: u64) -> Hello {
     if session_broken() {
         return Hello::No("an earlier worker's sandbox step failed");
     }
@@ -1447,7 +1452,7 @@ fn start_worker(len: usize) -> Hello {
         }
         Err(SpawnErr::Start) => return Hello::No("the worker did not start"),
     };
-    let deadline = mono_ms() + 15_000;
+    let deadline = (mono_ms() + 15_000).min(until);
     let hello = (|| {
         let line = w.read_line(512, deadline).ok()?;
         if line != format!("B {}", build_id()).as_bytes() {
@@ -1770,26 +1775,28 @@ pub fn check_font(data: &[u8], px: i32) -> FontOut {
 
 /// A font's sample for Files' preview (2.2, issue #145), w x h gray pixels, by one sandboxed worker (`T`): the face
 /// opened as the check opens it, the sample's glyphs each held to the check's glyph limit (`glyph_limit_us`),
-/// SAMPLE_LINES drawn in it. One worker, the font worker's limits, its watchdog on each record. Err says why not,
-/// as the check's outcomes do: `Refused` (the font is at fault), `Slow` (the watchdog ran out), `SlowGlyphs` (a
-/// glyph of the sample is over the glyph limit), `Dead` (the worker ended or lied), `Retry` (no memory),
-/// `NoWorker` (none can be had: not the font's fault). A sample is no check: nothing here reads or writes a
-/// verdict, and no outcome of it is `Passed`.
-pub fn font_sample(data: &[u8], w: i32, h: i32) -> Result<Vec<u8>, FontOut> {
+/// SAMPLE_LINES drawn in it. One worker, the font worker's limits, its watchdog on each record, and none of it
+/// (the handshake too) waited for past `until` (mono_ms: the preview's own time). Err says why not, as the check's
+/// outcomes do: `Refused` (the font is at fault), `Slow` (the watchdog or the time ran out), `SlowGlyphs` (a glyph
+/// of the sample is over the glyph limit), `Dead` (the worker ended or lied), `Retry` (no memory), `NoWorker`
+/// (none can be had: not the font's fault). A sample is no check: nothing here reads or writes a verdict, and no
+/// outcome of it is `Passed`.
+pub fn font_sample(data: &[u8], w: i32, h: i32, until: u64) -> Result<Vec<u8>, FontOut> {
     if data.is_empty() || data.len() > FONT_FILE_MAX || !(8..=SAMPLE_W_MAX as i32).contains(&w) || !(8..=SAMPLE_H_MAX as i32).contains(&h) {
         return Err(FontOut::Refused(Refuse::Unreadable));
     }
-    let mut wk = match start_worker(data.len()) {
+    let mut wk = match start_worker_until(data.len(), until) {
         Hello::Ready(w) => w,
         Hello::No(why) => return Err(FontOut::NoWorker(why)),
     };
-    let deadline = mono_ms() + watchdog_ms();
+    let wait = || (mono_ms() + watchdog_ms()).min(until);
+    let deadline = wait();
     if !(wk.send(&format!("T {} {w} {h} {}\n", data.len(), glyph_limit_us())) && wk.send_bytes(data, deadline)) {
         let stalled = mono_ms() >= deadline;
         wk.kill_and_reap();
         return Err(if stalled { FontOut::Slow } else { FontOut::Dead("the worker ended") });
     }
-    let line = match wk.read_line(64, mono_ms() + watchdog_ms()) {
+    let line = match wk.read_line(64, wait()) {
         Ok(l) => l,
         Err(ReadErr::Timeout) => {
             wk.kill_and_reap();
@@ -1818,11 +1825,18 @@ pub fn font_sample(data: &[u8], w: i32, h: i32) -> Result<Vec<u8>, FontOut> {
                 return Err(FontOut::Retry("out of memory"));
             }
             px.resize(w as usize * h as usize, 0);
-            if wk.read_exact(&mut px, mono_ms() + watchdog_ms()).is_err() {
-                wk.kill_and_reap();
-                return Err(FontOut::Dead("the worker ended while it sent the sample"));
+            match wk.read_exact(&mut px, wait()) {
+                Ok(()) => {}
+                Err(ReadErr::Timeout) => {
+                    wk.kill_and_reap();
+                    return Err(FontOut::Slow);
+                }
+                Err(_) => {
+                    wk.kill_and_reap();
+                    return Err(FontOut::Dead("the worker ended while it sent the sample"));
+                }
             }
-            let done = wk.read_line(64, mono_ms() + watchdog_ms()).ok().map(|l| String::from_utf8_lossy(&l).into_owned());
+            let done = wk.read_line(64, wait()).ok().map(|l| String::from_utf8_lossy(&l).into_owned());
             let fine = done.as_deref().and_then(|d| d.strip_prefix("D ")).and_then(number).is_some();
             wk.send("Q\n");
             wk.finish(500);

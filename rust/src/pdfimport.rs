@@ -2478,7 +2478,7 @@ fn ignore_sigpipe() {
 }
 
 #[cfg(not(feature = "kindle"))]
-fn test_hooks() -> Vec<(&'static str, u32)> {
+pub(crate) fn test_hooks() -> Vec<(&'static str, u32)> {
     let mut v = Vec::new();
     for (name, var) in [
         ("crash", "GRIMOIRE_PDF_TEST_CRASH_PAGE"),
@@ -2494,7 +2494,7 @@ fn test_hooks() -> Vec<(&'static str, u32)> {
     v
 }
 #[cfg(feature = "kindle")]
-fn test_hooks() -> Vec<(&'static str, u32)> {
+pub(crate) fn test_hooks() -> Vec<(&'static str, u32)> {
     Vec::new()
 }
 
