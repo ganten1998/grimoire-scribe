@@ -709,6 +709,31 @@ fn what_writes_the_notebook_between_two_ticks_of_the_commit_stays() {
     assert!(!std::path::Path::new(&format!("{}/notebooks/.import-{fid}", e.root)).exists());
 }
 
+// A background job running on the notebook when its fill's pages are made (here its PDF mirror, in a child of its own):
+// no commit begins until that job has ended, so the two never write the notebook at once. Then the pages go in.
+#[test]
+fn a_fill_waits_for_a_job_running_on_its_notebook() {
+    let e = setup("job-first");
+    let (id, fid, _) = made_for(&e, "Tabs again.pdf");
+    drain();
+    start_again();
+    let mirror = format!("{}/mirror", e.root);
+    bg_queue(BgKind::MirrorPdf, Some(&id), Some(&mirror), DPI, false);
+    assert!(bg_notebook_busy(&id), "the job on the notebook runs (until it is reaped)");
+    for _ in 0..3 {
+        assert_eq!(fill_tick(true, DPI), Finished::Nothing);
+        assert!(fill_busy().is_none() && !fill_holds(&id), "no commit begins while a job runs on the notebook");
+    }
+    assert_eq!(e.fill_state(&fid).stage, STAGE_READY, "the pages wait, made");
+    assert_eq!(book_pages(&id, &e.info(&id)), [1, 3]);
+    drain();
+    assert!(!bg_notebook_busy(&id));
+    let f = commit_all();
+    assert!(filled(&f, 2), "{f:?}");
+    assert_eq!(book_pages(&id, &e.info(&id)), [1, 2, 3, 4]);
+    drain();
+}
+
 // A fill whose worker cannot be started (the sandbox or the exec refused) keeps its work folder for the next start,
 // as an import does, and holds nothing: its notebook opens (nothing but a commit under way holds one). Once a worker
 // can start again the fill goes on and its pages go in.

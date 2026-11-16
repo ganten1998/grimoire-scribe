@@ -2813,10 +2813,11 @@ waiting meanwhile); until then the notebook opens as it is, and KOReader's Open 
 Automated: `rust/tests/test_pdf_fill.rs` (a notebook with its file record, one without, one KOReader made with
 KOReader's links a pixel off the import's, and 3 px off, a full one, another page count, the files of the pages it
 had byte for byte, the writer that never writes the notebook, a notebook renamed, moved or deleted while its pages
-were made, what writes the notebook between two ticks of the commit, a worker that cannot start, KOReader's job
-while a fill waits, a stop in the middle, a fill whose PDF goes away, a commit cut off after each of its steps and
-three times, the key checked again, two copies dropped together, the water level that keeps a notebook's own
-links, the state's grammar) and the scenarios `tests/scenarios/z_pdf_11_fill_1_book.qs` (KOReader's book of the
+were made, what writes the notebook between two ticks of the commit, a job running on the notebook when its pages
+are made, a worker that cannot start, KOReader's job while a fill waits, a stop in the middle, a fill whose PDF goes
+away, a commit cut off after each of its steps and three times, the key checked again, two copies dropped together,
+the water level that keeps a notebook's own links, the state's grammar) and the scenarios
+`tests/scenarios/z_pdf_11_fill_1_book.qs` (KOReader's book of the
 tabs planner, pages 1 and 3), `z_pdf_12_fill_2_drop.qs` (the planner dropped: the two pages added, KOReader's tabs
 not doubled, no name given to KOReader's pages), `z_pdf_13_fill_3_open.qs` (the notebook opened while its fill is
 made, the pages going in back in the Library), `z_pdf_14_fill_4_held.qs` and `z_pdf_15_fill_5_koreader.qs`
