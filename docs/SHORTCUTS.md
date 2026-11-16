@@ -96,7 +96,7 @@ key and action twice is one line. Up and Down do nothing but in the Graph.
 |---|---|
 | everywhere | Esc `back`, Ctrl+S `save` |
 | the Library | Ctrl+N `new-notebook`, Ctrl+F `new-folder`, S `share`, O `settings`, Left/Right its screens (`previous-page`/`next-page`, as its arrows), G the Graph |
-| a notebook page | 1 to 9 the pens (the tool picker's order), 0 and E the eraser, W white ink, Ctrl+Z, Ctrl+Shift+Z and Ctrl+Y, Left/Right and PageUp/PageDown pages, Home/End, [ and ] tools, Ctrl+N `new-page`, Ctrl+F `go-to-page`, Ctrl+L `add-link`, R `name-page`, Space `two-finger-up`, - and = (+), Shift+=, the keypad's - and + zoom (with Ctrl too), Ctrl+0 the whole page, G L P T S, X held erases |
+| a notebook page | 1 to 9 the pens (the tool picker's order), 0 and E the eraser, W white ink, Ctrl+Z, Ctrl+Shift+Z and Ctrl+Y, Left/Right and PageUp/PageDown pages, Home/End, [ and ] tools, Shift+[ and Shift+] the pen's size (2.2), Ctrl+N `new-page`, Ctrl+F `go-to-page`, Ctrl+L `add-link`, R `name-page`, Space `two-finger-up`, - and = (+), Shift+=, the keypad's - and + zoom (with Ctrl too), Ctrl+0 the whole page, G L P T S, X held erases |
 | the Pages view | Left/Right its screens, Ctrl+N, Ctrl+F, Ctrl+A `select-all`, Ctrl+Z and Ctrl+Shift+Z its own Undo and Redo, P, G |
 | the Graph | the arrows `pan-*`, - and +, Ctrl+0, V `graph-view`, Ctrl+A, G |
 | Pen feel | 1 to 9 that pen's tab, 0 and E the eraser's |
@@ -127,10 +127,11 @@ back to the page after.
 Kindle keyboard
 PageUp and PageDown now turn pages (they stepped tools: [ and ] do that), and Up and Down are not bound (the
 D-pad's Up and Down still step tools). A `shortcuts.ini` that is byte for byte a starter map some Grimoire wrote
-(1.1.0's, 1.2.0's or 2.0.0's; a CRLF copy counts) becomes this
+(1.1.0's, 1.2.0's, 2.0.0's or 2.1's; a CRLF copy counts) becomes this
 build's at the next start (grimoire.log says so; there is no toast since 2.0.0-beta.2); a file someone edited
 is never touched and keeps meaning what it meant. live-keys.ini follows
-the same rule. To get the new keys into an edited file, delete it and Reload.
+the same rule. To get the new keys into an edited file, delete it and Reload (or add the lines: 2.2's are
+`key.Shift+code26=size-smaller` and `key.Shift+code27=size-larger`).
 
 Older versions refuse the new action names (`save`, `back`, `two-finger-up`, `new-notebook`, `new-folder`,
 `share`, `settings`, and the other 2.0.0-beta.2 ones), one line each.
@@ -139,8 +140,8 @@ Older versions refuse the new action names (`save`, `back`, `two-finger-up`, `ne
 
 **Settings > Shortcuts > Buttons...** shows what each button does and learns new ones (the device
 shown's own while they are on, above). Its list
-has seven registry groups: **Editing** (undo, redo, erase and clear), **Tools** (pens and tool
-steps), **Pages** (page movement, zoom, scroll and sideways behavior), **Index** (links, finding
+has seven registry groups: **Editing** (undo, redo, erase and clear), **Tools** (pens, tool
+steps and the pen's size), **Pages** (page movement, zoom, scroll and sideways behavior), **Index** (links, finding
 and naming), **Menus** (surfaces, toolbar and status), **Screen** (light, warmth, rotation and
 appearance) and **System** (gesture switch, language, sleep after and update channel).
 The registry table below gives the exact membership and source restrictions. Open a group,
@@ -179,8 +180,8 @@ row learns them.
 The default keyboard is the scheme above: 1–9 for the nine drawing tools in the tool picker's order
 (left to right, then down: pencil, mechanical pencil, charcoal, ballpoint, fineliner, marker, fountain pen,
 calligraphy pen, highlighter), 0 and E for the eraser, W for white ink, Ctrl+Z / Ctrl+Shift+Z / Ctrl+Y for
-undo/redo, left/right and PageUp/PageDown for pages, and [ and ] for tool cycling (before 2.0.0-beta.2
-PageUp/PageDown cycled tools).
+undo/redo, left/right and PageUp/PageDown for pages, [ and ] for tool cycling (before 2.0.0-beta.2
+PageUp/PageDown cycled tools), and Shift+[ and Shift+] for the pen's size (2.2).
 Gamepad defaults use the Linux gamepad convention: South undo, East eraser, North redo, West white,
 L1/R1 previous/next tool, Select/Start previous/next page, and the D-pad (a hat or four buttons,
 both read the same) Left/Right for pages and Up/Down for tools. These are starting points:
@@ -212,7 +213,8 @@ Actions, in the Buttons sheet's groups:
   button or gesture a toast says "Page cleared. Undo brings it back.").
 - **Tools**: `tool:pencil`, `tool:mech`, `tool:charcoal`, `tool:ballpoint`, `tool:fineliner`,
   `tool:marker`, `tool:fountain`, `tool:calligraphy`, `tool:highlighter`, `previous-tool`,
-  `next-tool`, `picker-previous`, `picker-next` (the Buttons sheet's Previous / next in the picker).
+  `next-tool`, `picker-previous`, `picker-next` (the Buttons sheet's Previous / next in the picker),
+  `size-smaller` and `size-larger` (Smaller / larger size, below), `quick-size` (no row: bind it by name).
 - **Pages**: `previous-page`, `next-page`, `first-page`, `last-page`, `new-page` (a page on the
   notebook's own paper right after the open one, which opens; the Pages view's New page adds one there too, but
   leaves the view up), `new-pages` (the count pad the toolbar's + opens when held: how many blank pages to add
@@ -264,6 +266,17 @@ the picker is open (not while it pins pens) they move its choice and leave it op
 they switch tools through all nine, from the eraser as above (marker, eraser, next in the picker:
 the fountain pen): a pinned pen is picked as a tap on its pin picks it (the tool button keeps its
 pen), another goes to the tool button. The starter mappings give them no key or button.
+
+`size-smaller` and `size-larger` (2.2; Shift+[ and Shift+] in the starter map) take the pen in use to the next
+smaller or larger of its five quick sizes, the chips of the card a pen held on the toolbar opens, as a tap on that
+chip would: a setting (no undo step), written to settings.ini a moment later. A width tuned in Pen feel between two
+chips goes to the one of the two that way. Each step says the size in a short toast ("Size: 0.5 mm", 1.2 s; a step
+while it shows takes its place), the one confirmation toast, as nothing else on the screen shows the size. At the
+smallest or the largest the size stays and the toast still says it. With Select mode on (the lasso has no size) they
+do nothing. `quick-size` opens that card from a key or a gesture, beside the pen in use's button on the toolbar, or
+beside the folded toolbar; pressed again it closes the card, as a menu's button does, and a size key with the card
+up is a pick (the card closes). The starter map gives `quick-size` no key, and no gesture is built in for the three.
+Versions before 2.2 refuse the three names, one line each, as Reload shortcuts.ini counts them.
 
 `add-link` starts a link on the open page in one press, as the Index's Add a link does, without
 going through the Pages view: a strip along the bottom asks you to draw around what links, the next
@@ -424,7 +437,8 @@ Pair sheet say so. Analog sticks are not read; analog triggers are, as LT and RT
 Names below are the persistent INI values; numeric ids are internal. The new actions use ids
 56..77, preserving 54 (`gesture-new-page`) and 55 (`status-mode`); later actions retain 78..81,
 pen pan/zoom use 82/83, `select` 84, `select-exact` 85, `new-pages` 86, `save` to `settings` 87 to 93,
-`select-all` 95, and the Graph's `graph-view` 100 and `pan-left`, `pan-right`, `pan-up`, `pan-down` 101 to 104.
+`select-all` 95, the Graph's `graph-view` 100 and `pan-left`, `pan-right`, `pan-up`, `pan-down` 101 to 104, and
+the size keys' `size-smaller`, `size-larger` and `quick-size` 105 to 107 (2.2).
 Groups are Editing, Tools,
 Pages, Index, Menus, Screen and System. `tool:pencil` remains a compatibility entry even though
 the current Tools learning list starts with the mechanical pencil.
@@ -518,6 +532,8 @@ Every registered action accepts PEN. Pan and zoom accept only a pen drag.
 | `select-all` | OneShot | Pages | Key, pad, touch, shape, pen |
 | `graph-view` | Cycle | Index (no Buttons row) | Key, pad, pen |
 | `pan-left`, `pan-right`, `pan-up`, `pan-down` | Step | Index (no Buttons row) | Key, pad, pen |
+| `size-smaller`, `size-larger` | Step | Tools | Key, pad, touch, shape, pen |
+| `quick-size` | Menu | Tools (no Buttons row) | Key, pad, touch, shape, pen |
 
 ### The Graph's keys
 

@@ -325,10 +325,16 @@ Built on the plan's other recommended defaults (the owner has not answered them;
 - **The eraser's chips are screen millimetres**, so at a zoom under 1 the 12 mm chip is clamped at the format's 12
   page millimetres.
 
-What waits: O2 (the ink row in a pen's card), O3 (size keys and the `quick-size` action, ids 105 to 107), O4 (your
-own chips), O6 (hold in the picker), O8 to O10 stay out; the live ink on the largest chips (charcoal 2, marker
-2.8, highlighter 8, eraser 12 mm) is for the owner to measure with `tools/bench-ink.c` (docs/TESTING.md): drop a
-top chip if live ink lags.
+Done in 2.2 (#122, the owner's decisions of 2026-11-15): O3, the size keys. `size-smaller` and `size-larger` (ids
+105 and 106, Shift+[ and Shift+] in the starter map, brought to an unedited starter at the start) step the pen in
+use through its five chips as a chip's tap does, each step saying the size in a short toast ("Size: 0.5 mm", 1.2 s),
+the one confirmation toast; the paired row "Smaller / larger size" is the Tools group's twelfth on the Buttons and
+Gestures pages. `quick-size` (id 107, no row, no key) opens the card beside the pen in use's button or the folded
+box (docs/SHORTCUTS.md).
+
+What waits: O2 (the ink row in a pen's card), O4 (your own chips), O6 (hold in the picker), O8 to O10 stay out; the
+live ink on the largest chips (charcoal 2, marker 2.8, highlighter 8, eraser 12 mm) is for the owner to measure with
+`tools/bench-ink.c` (docs/TESTING.md): drop a top chip if live ink lags, which changes what a size key walks too.
 
 ## Classic fonts (2.1.0): choices for the owner, and what waits
 
