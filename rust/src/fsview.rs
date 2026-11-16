@@ -610,7 +610,7 @@ pub enum FsWriteErr {
     Walk(FsErr),
     /// it is no longer the item listed: device, inode, size or time ("File changed. Try again.")
     Changed,
-    /// an import holds it ("Importing now.")
+    /// an import holds it, or a page still waits for its picture ("Importing now.")
     Busy,
     /// the new name breaks a rule
     Name(NameRule),
@@ -1210,6 +1210,8 @@ impl FsStorage {
     /// running in this process works on it, inside it, or on the folder it is in (the job table's paths, and the
     /// PDF import's own list); or a previous run's import still holds the lock (pdfimport's detached state), and
     /// then everything in Grimoire's import folder counts as held, since what that one works on is not known here.
+    /// A template or photo picked for a page counts the same until the job that copies its picture into the
+    /// notebook has ended (`bg_job_pictures`): renamed or trashed before, the page would draw white.
     pub fn busy(&self, p: &StoragePath) -> bool {
         if std::str::from_utf8(p.as_bytes()).is_ok_and(crate::pdfimport::is_queued) {
             return true;
@@ -1218,6 +1220,7 @@ impl FsStorage {
         let own = store_root();
         let held: Vec<Vec<u8>> = bg_job_paths(&[BgKind::PdfImport, BgKind::ImportFolder])
             .into_iter()
+            .chain(bg_job_pictures())
             .filter_map(|j| match j.strip_prefix(own.trim_end_matches('/')).and_then(|r| r.strip_prefix('/')) {
                 // (a folder of import/ a scan queued: its absolute path, under Grimoire's own folder)
                 Some(rel) if j.starts_with('/') => g.as_ref().map(|g| [&g[..], b"/", rel.as_bytes()].concat()),

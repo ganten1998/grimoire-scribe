@@ -2460,7 +2460,9 @@ issue #144)", below); the copy waits for the From a file... tiles.
   entry's device, inode, size or time differ (`Changed`, "File changed. Try again." on screen), or when an import
   holds it (`Busy`, "Importing now."): a PDF or a folder of pictures a queued or running import works on, what is
   inside it, or the folder a held PDF is in (`FsStorage::busy`, from the job table's paths, `bg_job_paths`, and
-  the PDF import's own list); while a previous run's import still holds the lock, everything in `import/`.
+  the PDF import's own list); while a previous run's import still holds the lock, everything in `import/`. The
+  same holds a template or photo picked for a page until the job that copies its picture into the notebook has
+  ended (issue #144).
 - **Names: one function**, `fsview_name_check(old, new, dir)`, the strictest of vfat and MTP (browser.md 8.8):
   not empty, at most 255 bytes, none of `/ \ : * ? " < > |`, no control character, no leading or trailing space,
   no trailing dot, no leading dot (a hidden name Files never lists), and a file keeps its extension in any case.
@@ -2583,7 +2585,9 @@ trash, and the Trash place puts an entry back. Pick mode (New notebook's From a 
   read again. fsview's writes check again themselves (`FsStat::same`) at the moment they act.
 - **Held by an import.** Rename (before the keyboard opens) and Delete ask `FsStorage::busy` (through the writes):
   what a queued or running import works on, what is inside it, the folder a held PDF is in, and while a previous
-  run's import holds the lock everything in `import/`. Held: "Importing now." and nothing is done.
+  run's import holds the lock everything in `import/`; and a template or photo picked for a page, until the job
+  that copies its picture into the notebook has ended (`bg_job_pictures`: renamed or deleted before, the page
+  would draw white). Held: "Importing now." and nothing is done.
 - **Rename** opens the keyboard (the Library's, hosted by the browser: `Browser.kb`, drawn over Files, its keys
   refreshed alone; a hardware keyboard's keys reach it through `library_keyboard_area`, and Esc or Back is its
   Cancel) with the name, titled Name (or Folder for a folder), the caret before a file's extension, so typing

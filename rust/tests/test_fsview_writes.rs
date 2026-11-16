@@ -2,8 +2,8 @@
 // a rename that never replaces an entry (renameat2's flag where Linux has it, and the fallback forced through a
 // test seam so a run anywhere takes it too), a rename that changes only the case, the trash with its record and
 // restore for a file, a folder and a notebook (both the name store_delete gives and the record form), a name taken
-// on restore, the record read strictly, the busy check, and the copy job with the floor, a write that fails, and a
-// source that changes. Every refusal of the allow-list. The trash's sizes, read a slice at a time (issue #144).
+// on restore, the record read strictly, the busy check (an import's files, and a picture a page still waits for),
+// and the copy job with the floor, a write that fails, and a source that changes. Every refusal of the allow-list. The trash's sizes, read a slice at a time (issue #144).
 #![cfg(feature = "sim")]
 mod testlib;
 use grimoire::bgwork_copy::*;
@@ -368,6 +368,42 @@ fn what_an_import_holds_stays() {
     check!(st.restore(&back) == Ok(Restored::File(sp("grimoire/import/Trip/p2.png"))));
 }
 
+// A template or photo picked for a page is held until the job that copies its picture into the notebook has ended
+// (BgKind::Template with the notebook's id, the file by its path under Grimoire's folder): not renamed, not trashed.
+// The other templates are free, and so is every one while only the previews job (no notebook, the whole folder its
+// path) waits. The jobs wait in the queue behind another, so none runs; once the copy leaves it, the file is free.
+fn what_a_page_still_needs_stays() {
+    let (root, g) = tree();
+    std::fs::write(format!("{root}/grimoire/photos/beach.jpg"), b"a photo").unwrap();
+    let st = open(&root, &g);
+    let mirror = format!("{root}/mirror");
+    bg_queue(BgKind::MirrorPdf, Some("20261115-000000-dead"), Some(&mirror), 300.0, false);
+    check!(bg_children() == 1);
+    // the previews job alone holds nothing
+    let templates = format!("{g}/templates");
+    bg_queue(BgKind::Template, Some(""), Some(&templates), 300.0, false);
+    check!(!st.busy(&sp("grimoire/templates/a.png")));
+    let (a, beach) = (format!("{g}/templates/a.png"), format!("{g}/photos/beach.jpg"));
+    bg_queue(BgKind::Template, Some("20261115-000000-beef"), Some(&a), 300.0, false);
+    bg_queue(BgKind::Template, Some("20261115-000000-beef"), Some(&beach), 300.0, false);
+    check!(bg_children() == 1);
+    for p in ["grimoire/templates/a.png", "grimoire/photos/beach.jpg"] {
+        let s = stat_of(&st, p);
+        check!(st.busy(&sp(p)));
+        check!(st.rename(&sp(p), &s, if p.ends_with(".png") { b"z.png" } else { b"z.jpg" }) == Err(FsWriteErr::Busy));
+        check!(st.trash(&sp(p), &s) == Err(FsWriteErr::Busy));
+    }
+    check!(!st.busy(&sp("grimoire/templates/b.png")));
+    check!(names(&format!("{g}/templates")) == ["a.png", "b.png"] && names(&format!("{g}/trash")).is_empty());
+    check!(bg_unqueue(BgKind::Template, "20261115-000000-beef", &a));
+    check!(bg_unqueue(BgKind::Template, "20261115-000000-beef", &beach));
+    check!(bg_unqueue(BgKind::Template, "", &templates));
+    settle();
+    let s = stat_of(&st, "grimoire/templates/a.png");
+    check!(!st.busy(&sp("grimoire/templates/a.png")));
+    check!(st.rename(&sp("grimoire/templates/a.png"), &s, b"z.png").is_ok());
+}
+
 // A file and a folder to the trash and back: one rename each way (the same inode), the record beside the item
 // (where it was, when), the trash listing it by the time in its name, its folder in the trash gone after the
 // restore. Both ways of renaming.
@@ -706,6 +742,7 @@ fn test_fsview_writes() {
     run!(a_rename_cut_off_half_way);
     run!(a_trash_cut_off_before_its_item_moved);
     run!(what_an_import_holds_stays);
+    run!(what_a_page_still_needs_stays);
     run!(trash_and_restore_a_file_and_a_folder);
     run!(a_name_taken_on_restore);
     run!(a_restore_refused);

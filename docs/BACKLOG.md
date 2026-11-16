@@ -25,8 +25,7 @@ folders and notebooks (docs/DESIGN.md, "Files: rename, delete and restore"). Wai
   a trash changed over USB while Files is open is measured again only then. Not timed on the Scribe (TESTING.md, "2.2,
   Files' rename, delete and restore (issue #144): device checks").
 - **A font renamed or deleted** in `grimoire/fonts`: the Font sheet lists the folder again when it opens; a font in
-  use goes back to Terminess, as it does when its file goes over USB. A template's picture renamed or deleted just
-  before its template job reads it makes the job fail (only imports count as busy, below).
+  use goes back to Terminess, as it does when its file goes over USB.
 - **Japanese** for the new words: nebuff's (#55); they show in English until then.
 
 ## Files (2.2, issue #124): what waits
@@ -90,9 +89,10 @@ trash and restore since issue #144 (its own section, above); the copy waits for 
   between them, to Import) and New folder in Import (the owner decides whether they are 2.2's); Restore for a
   page (its place in its notebook was never kept); `store_delete` writing the record form for a notebook (2.2
   reads that form and writes the old name, `<id>-<time>`). Empty trash never comes (the owner cleans it over USB).
-- **Only imports count as busy.** A template job reads its picture by path when it starts; a rename or trash of
-  that picture just before makes the job fail (it says so), and is not refused. The screens can add it if it
-  shows.
+- **What counts as busy**: what an import works on, and since issue #144 a template or photo picked for a page
+  until the job that copies its picture into the notebook has ended (`bg_job_pictures`). Not the source of a copy
+  into Grimoire's folders (`BgKind::CopyFile`, which no screen asks for yet): that job refuses a source that
+  changed and leaves nothing behind.
 - **The fallback's last moment.** Where the storage refuses the no-replace flag, a rename reserves the new name
   and renames over its own reservation only (DESIGN.md, Never an overwrite), since files come over USB and the
   copy job renames while Grimoire runs. Left: a writer that opens the empty reserved file by its name between the
