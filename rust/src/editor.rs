@@ -7,6 +7,7 @@
 //! screen), pinch to zoom up to 4x that. a->screen = the viewed page + panel (+ paper sheet).
 //! compose(r) rebuilds a screen rect from those layers; show(page rect) is the page-side entry.
 
+use crate::browser::{Browser, BrowserResult, FilesPrefs, PickSpec};
 use crate::prelude::*;
 use std::cell::Cell;
 #[cfg(feature = "sim")]
@@ -584,6 +585,10 @@ pub struct EditorState {
     /// the Pages view (pagesview.h)
     pv: PagesView,
     destination: NotebookPicker,
+    /// The picture pick (2.2, #146) the Templates or Photos sheet's From a file... tile opens over the page, the sheet
+    /// open under it: the editor hosts the file picker here, as the Library does over New notebook, so the notebook
+    /// stays open as it is (page, view, undo) while a picture is picked
+    files: Browser,
     /// the pages Copy to notebook... copies (ids, in notebook order) while its notebook picker is up
     copy_pids: Vec<u32>,
     /// the notebooks a link was followed out of, newest last: Back returns to each one's page and view
@@ -869,7 +874,7 @@ fn map_draw(a: &mut App, r: Rect) {
 // The Graph opens on every notebook (past the Graph of all notebooks' caps, on this one, and says so).
 fn map_show(a: &mut App, around: bool) {
     app_toast(a,"",0);
-    close_sheets(ed(a));
+    close_sheets(a);
     pagesview_close(&mut ed(a).pv);
     link_off(a);
     let pid = ed_ref(a).open_pid();
@@ -1552,6 +1557,9 @@ pub fn editor_panel_point(a: &mut App, name: &str) -> Option<(f32, f32)> {
     if a.scr != ScreenId::Editor || !s.open {
         return None;
     }
+    // The picture pick over the page (#146): files.* as the Library's; the sheet's From a file... tile and Back
+    if let Some(n)=name.strip_prefix("files.") {return s.files.open.then(||s.files.point(n)).flatten();}
+    if let Some(n)=name.strip_prefix("templates.") {return (s.ts.open && !s.files.open).then(||tplsheet_point(&s.ts,n)).flatten();}
     if name=="map.current" {return mapview_node_point(&s.map,&s.open_pid().to_string());}
     if let Some(n)=name.strip_prefix("map."){return mapview_control_point(&s.map,n);}
     if name.starts_with("music."){return musicbuild_control_point(&s.mb,name);}
@@ -2429,6 +2437,7 @@ fn areas_toggle(a: &mut App, _button: Rect) {
 // Rebuild a screen rect from the layers.
 fn compose(a: &mut App, r: Rect) {
     if crate::library::library_settings_active(a) {crate::library::library_settings_redraw(a);return;}
+    if ed_ref(a).files.open {with_modal(a,|s|&mut s.files,|b,a|b.draw(a));return;}
     if ed_ref(a).destination.open {with_modal(a,|s|&mut s.destination,|p,a|p.draw(a));return;}
     if ed_ref(a).map.open {
         map_draw(a, r);
@@ -2654,7 +2663,7 @@ fn draw_panel_over(a: &mut App) {
 pub fn editor_live_panel(a: &App) -> Rect {
     if crate::library::library_settings_active(a) {return RECT_EMPTY;}
     match a.ed.as_deref() {
-        Some(s) if s.open && !s.pv.open && !s.map.open && !s.destination.open => s.panel,
+        Some(s) if s.open && !s.pv.open && !s.map.open && !s.destination.open && !s.files.open => s.panel,
         _ => RECT_EMPTY,
     }
 }
@@ -2665,7 +2674,7 @@ pub fn editor_live_panel(a: &App) -> Rect {
 pub fn editor_live_hole(a: &App) -> Rect {
     if crate::library::library_settings_active(a) {return RECT_EMPTY;}
     match a.ed.as_deref() {
-        Some(s) if s.open && !s.pv.open => s.panel,
+        Some(s) if s.open && !s.pv.open && !s.files.open => s.panel,
         _ => RECT_EMPTY,
     }
 }
@@ -2779,6 +2788,16 @@ fn list_erased_pages(s: &mut EditorState) {
         if s.hist[i].to_list && !(s.is_open_page(i) && s.page_dirty) && note_for_compaction(s, pid) {
             s.hist[i].to_list = false;
         }
+    }
+}
+
+// Autosave after a real pause (and never while the pen is down). One that fails (a full store)
+// tries again 2 s later, not at every tick: each try says so with a toast.
+fn idle_save(a: &mut App, now: u32) {
+    let s = ed(a);
+    if s.open && (s.page_dirty || caches_due(s, now))
+        && s.owner == Owner::None && now.wrapping_sub(s.last_up) > 2000 && !autosave(a) {
+        ed(a).last_up = now;
     }
 }
 
@@ -3472,6 +3491,7 @@ fn closed_record(a: &mut App) {
 fn closed_record(_a: &mut App) {}
 
 fn close_notebook(a: &mut App) {
+    files_drop(a); // (the picture pick goes with its notebook)
     let s = ed(a);
     pb_reset(s);
     if !s.open {
@@ -4329,6 +4349,7 @@ const PAGE_CLEARED: &str = n_("Page cleared. Undo brings it back.");
 // or the paper sheet. The pen's button clears no page from under one.
 fn sheet_open(s: &EditorState) -> bool {
     s.destination.open
+        || s.files.open
         || s.map.open
         || s.pv.open
         || s.tools_open
@@ -8360,7 +8381,7 @@ fn panel_act(a: &mut App, h: Hit) {
         }
         P_SETTINGS => {
             fs_abort_view(a,FsAbortView::Screen);settle_now(a);
-            if save_page(a){links_flush(a);pb_reset(ed(a));close_sheets(ed(a));crate::library::library_settings_from_notebook(a);}
+            if save_page(a){links_flush(a);pb_reset(ed(a));close_sheets(a);crate::library::library_settings_from_notebook(a);}
         }
         P_LIBRARY => {
             // (no "Saving..." or "Saved" toast: the owner, 2026-11-04; a page that cannot be saved says so)
@@ -8478,7 +8499,7 @@ fn close_front(a: &mut App, draw: bool) {
     if s.mb.open {
         r = rect_union(r, s.mb.rect);
     }
-    close_sheets(s);
+    close_sheets(a);
     if !draw {
         return;
     }
@@ -8589,6 +8610,23 @@ fn editor_shortcut_in(a: &mut App, action: i32, x: f32, y: f32, src: ActionSrc) 
     if s.destination.open {
         if action==SHORTCUT_GO_BACK||action==SHORTCUT_CLOSE_MENU||action==SHORTCUT_BACK {s.destination.open=false;s.lt.hidden=false;compose_all(a,RefreshMode::Full);return true;}
         return false;
+    }
+    // The picture pick over the page (#146): Esc and Back up a level (at its root back to the sheet), the page keys
+    // its screens, as in the Library's
+    if s.files.open {
+        match action {
+            SHORTCUT_GO_BACK | SHORTCUT_CLOSE_MENU | SHORTCUT_BACK => {
+                if !with_modal(a, |s| &mut s.files, |b, a| b.back(a)) {
+                    files_close(a);
+                }
+                return true;
+            }
+            SHORTCUT_PREV_PAGE | SHORTCUT_NEXT_PAGE => {
+                with_modal(a, |s| &mut s.files, |b, a| b.turn_key(a, action == SHORTCUT_NEXT_PAGE));
+                return true;
+            }
+            _ => return false,
+        }
     }
     if action == SHORTCUT_HOLD_ERASER {
         s.hold_eraser_key = true;
@@ -9193,6 +9231,67 @@ fn apply_photo(a: &mut App, path: &str) {
     }
 }
 
+// ---- the picture pick over the page (2.2, #146) ----
+
+// The Templates or Photos sheet's From a file...: the picture pick over the page, the sheet open under it.
+fn files_open(a: &mut App) {
+    let to = tplsheet_folder(&ed_ref(a).ts);
+    // (a pick reads only whether the Files card is in the Library, for its root's "Show Files in Library" row: Sort,
+    // Show and whatever else Files keeps are the place's own, and stay at their defaults here)
+    let prefs = FilesPrefs { card: a.settings.files_card, ..Default::default() };
+    if !with_modal(a, |s| &mut s.files, |b, _| b.open(PickSpec::picture(to), prefs)) {
+        // (no storage to browse: the sheet stays)
+        app_toast(a, tr("Couldn't open folder."), 3000);
+        return;
+    }
+    compose_all(a, RefreshMode::Full);
+}
+
+// What a contact on the picture pick did: Back at its root comes back to the sheet; a copy asked comes back to it
+// too, its From a file... tile waiting for the copy; "Show Files in Library" puts the Files card in the Library.
+fn files_result(a: &mut App, r: BrowserResult) {
+    match r {
+        BrowserResult::Cancel => files_close(a),
+        BrowserResult::Copying(_) => {
+            tplsheet_copy_asked(&mut ed(a).ts);
+            files_close(a);
+        }
+        BrowserResult::ShowInLibrary => {
+            a.settings.files_card = true;
+            settings_save(&a.settings);
+        }
+        // (nothing else comes from the picture pick: no import, no Files' chips)
+        _ => {}
+    }
+}
+
+// The picture pick closed: the page and the sheet as they were.
+fn files_close(a: &mut App) {
+    files_drop(a);
+    compose_all(a, RefreshMode::Full);
+}
+
+// The picture pick gone, with nothing drawn: by its own Back or a copy asked (files_close), with the sheets
+// (close_sheets), the notebook (close_notebook) or the screen (editor_leave). Its staying notice ("Loading...", up
+// while a slow folder is read) goes with it wherever it closes: its own tick, which would take it down, no longer
+// runs.
+fn files_drop(a: &mut App) {
+    if ed_ref(a).files.open {
+        ed(a).files.close();
+        app_notice_clear(a, NoticeKey::Loading);
+    }
+}
+
+/// The folder of the Templates or Photos sheet in front over the page (the picker not over it), None for none: a copy
+/// into it that ends is shown there, with no toast (app.rs).
+pub fn editor_sheet_folder(a: &App) -> Option<crate::bgwork_copy::CopyTo> {
+    if a.scr != ScreenId::Editor || crate::library::library_settings_active(a) {
+        return None;
+    }
+    let s = a.ed.as_deref().filter(|s| s.open && s.ts.open && !s.files.open)?;
+    Some(tplsheet_folder(&s.ts))
+}
+
 fn modal_act(a: &mut App, h: Hit) {
     let s = ed(a);
     let sheet = s.paper_rect;
@@ -9389,8 +9488,10 @@ pub fn editor_free(a: &mut App) {
 // Every sheet over the page closed: the paper sheet, Display, Custom music, the tool picker (and its
 // Pin mode). A sheet closed here stays open through a turn or a wake (editor_enter), laid out again
 // by compose for the new size, as each of these lays itself out where it is drawn. (The Pages view
-// closes with its notebook, and stays open through those too.)
-fn close_sheets(s: &mut EditorState) {
+// closes with its notebook, and stays open through those too.) The picture pick over a sheet goes with them.
+fn close_sheets(a: &mut App) {
+    files_drop(a);
+    let s = ed(a);
     if s.map.open {
         mapview_close(&mut s.map);
     }
@@ -9473,7 +9574,7 @@ pub fn editor_enter(a: &mut App) {
     // A turn, or the redraw after waking (a->relayout), lays out the same screen again: the sheet
     // that was open stays open. Coming in from another screen, none is.
     if !a.relayout {
-        close_sheets(ed(a));
+        close_sheets(a);
     }
     // (the quick sizes card was placed for the screen it was opened on: a turn or a wake closes it, silently, in
     // this redraw)
@@ -9667,6 +9768,7 @@ pub fn editor_leave(a: &mut App) {
         bar_drop(ed(a));
         find_drop(ed(a));
         lm_drop(ed(a)); // (a link being made is not made, silently)
+        files_drop(a); // (the picture pick goes with the screen, its staying notice too)
     }
     save_page(a);
     links_flush(a);
@@ -9728,6 +9830,7 @@ pub fn editor_page_in_front(a: &App) -> bool {
 /// The sheets that take the corner with them: every one sheet_open names but the card, Link to... and Find PICK.
 fn corner_sheet_open(s: &EditorState) -> bool {
     s.destination.open
+        || s.files.open
         || s.map.open
         || s.pv.open
         || s.tools_open
@@ -10347,6 +10450,15 @@ fn editor_gesture(a: &mut App, ev: &InEvent) {
 }
 
 fn editor_event_in(a: &mut App, ev: &InEvent) {
+    // The picture pick over the page (#146): every contact is its (no gesture does anything there, as in pick mode)
+    if ed_ref(a).files.open {
+        let ph = app_pointer_phase(ev);
+        if ph >= 0 {
+            let r = with_modal(a, |s| &mut s.files, |b, a| b.pointer(a, ph, ev));
+            files_result(a, r);
+        }
+        return;
+    }
     if ed_ref(a).destination.open {
         let ph=app_pointer_phase(ev);
         if ph>=0 {let r=with_modal(a,|s|&mut s.destination,|p,a|p.pointer(a,ph,ev));match r {
@@ -11044,6 +11156,8 @@ fn owner_pointer(a: &mut App, ph: i32, ev: &InEvent, pen: bool) {
                 } else if !path.is_empty() {
                     apply_template(a, &path);
                 }
+            } else if r == TsResult::FromFile {
+                files_open(a);
             } else if r == TsResult::Back {
                 // Back to the Paper sheet, in the same place.
                 compose(a, d);
@@ -11224,6 +11338,13 @@ fn migrate_step(a: &mut App) {
 
 pub fn editor_tick(a: &mut App, now: u32) {
     if crate::library::library_settings_active(a) {crate::library::library_tick(a,now);touch_context(a);return;}
+    // (the picture pick over the page: its listing, rows and hold, and the page's idle save as over any sheet; the
+    // page's other work waits until it closes)
+    if ed_ref(a).files.open {
+        with_modal(a, |s| &mut s.files, |b, a| b.tick(a, now));
+        idle_save(a, now);
+        return;
+    }
     if !a.asleep && !ed_ref(a).pv.open && !ed_ref(a).destination.open && !editor_busy(a)
         && now.wrapping_sub(a.last_input)>1000 && now.wrapping_sub(ed_ref(a).previews_checked)>1000 {
         ed(a).previews_checked=now;
@@ -11397,13 +11518,7 @@ pub fn editor_tick(a: &mut App, now: u32) {
             pb_out(a, out, now);
         }
     }
-    // Autosave after a real pause (and never while the pen is down). One that fails (a full store)
-    // tries again 2 s later, not at every tick: each try says so with a toast.
-    let s = ed(a);
-    if s.open && (s.page_dirty || caches_due(s, now))
-        && s.owner == Owner::None && now.wrapping_sub(s.last_up) > 2000 && !autosave(a) {
-        ed(a).last_up = now;
-    }
+    idle_save(a, now);
     // beta.5's links on pages not visited yet: one page a tick, only while nothing is touching or open
     // over the page. A page not in the session cache is read for it and dropped (memory stays flat),
     // with the pens pumped as it is read. Each page is tried once, whatever happens.
@@ -11552,6 +11667,14 @@ pub fn editor_probe(a: &mut App, key: &str, out: &mut String, cap: usize) -> i32
             csnprintf!(out, cap, "%s", v.as_str());
             return 0;
         }
+    }
+    // The picture pick over the page (#146): the Library's files.* keys, of the editor's picker
+    if let Some(k)=key.strip_prefix("files.") {
+        let h=a.h;
+        let mut text=String::new();
+        if a.ed.as_deref().is_none_or(|s|!s.files.probe(h,k,&mut text)) {return -1;}
+        csnprintf!(out,cap,"%s",&text);
+        return 0;
     }
     if key=="pages.screen" {let pv=&ed_ref(a).pv;csnprintf!(out,cap,"%d",if !pv.open {0} else if pv.index_tab {pv.index_screen+1} else {pv.screen+1});return 0;}
     // Where `tap panel NAME` taps, "X Y" (empty for none): a script holds the toolbar's + there (editor.at.next).
@@ -12064,7 +12187,7 @@ pub fn editor_probe(a: &mut App, key: &str, out: &mut String, cap: usize) -> i32
         }
     } else if key == "modal" {
         // What is in front (input goes to the first one open, in this order).
-        let m = if crate::library::library_settings_active(a) {"settings"} else if s.map.open {
+        let m = if crate::library::library_settings_active(a) {"settings"} else if s.files.open {"files"} else if s.map.open {
             "map"
         } else if s.add_kb.open {
             "add-pad"

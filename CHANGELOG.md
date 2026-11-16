@@ -13,6 +13,12 @@
   parts open their folder, Go to, Sort (name, newest, size) and Show (the files Grimoire can use, or all, links
   greyed and never followed). Every file has a card that says what it is. A Library card held opens its menu,
   as its "..." does. Two new actions with no default key, `files` and `home`.
+- **Templates and photos from a file.** The Templates and Photos sheets (Paper > More layouts... and Photos...,
+  and New notebook's More layouts...) end with a From a file... tile: pick a picture anywhere on the Kindle and it is
+  copied in, its tile appearing in the sheet once its preview is made, with the notebook's page left as it was. In
+  Files, a picture's card offers Use as template and Use as photo. A copy that would leave less than 100 MB free is
+  refused: "Couldn't copy file. Is the storage full?". A picture over 16 MB, which Grimoire could not use as a
+  template or a photo, is not copied: "Too big (over 16 MB).".
 - **Files' Covers view**: the View chip on Files' path bar shows a folder as a grid of previews (a PDF's first
   page, a picture, a font's sample), made in the background by the sandboxed reader for the files on screen only,
   after any export, import or font check and for a few seconds a file at most, with "Making previews..." while

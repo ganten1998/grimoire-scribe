@@ -1,12 +1,16 @@
-//! A file copied into one of Grimoire's folders for the user's files (BgKind::CopyFile, 2.2, issue #117): what
-//! the From a file... tiles of templates and photos and the Font sheet's Add a font... will ask for (their
-//! screens come later). The request (UI thread) checks the source is still the plain file listed, that the
-//! storage keeps its floor after it (fsview_room_for), and queues the job. The job (a background child) opens
+//! A file copied into one of Grimoire's folders for the user's files (BgKind::CopyFile, 2.2, issue #117): what a
+//! picture's Use as template and Use as photo in Files, and the From a file... tiles of the Templates and Photos
+//! sheets, ask for (issue #146; the Font sheet's Add a font... comes later). The request (UI thread) checks the
+//! source is still the plain file listed, that it is no bigger than its folder takes (CopyTo::max_bytes: a bigger
+//! one could never be used there), that the storage keeps its floor after it (fsview_room_for), and queues the
+//! job. The job (a background child) opens
 //! the source again through fsview's walk (no link, one device, never Grimoire's notebooks, PDFs or trash),
-//! checks it is still that file and that there is room, copies it to a temporary name in the folder
+//! checks it is still that file, no bigger than that, and that there is room, copies it to a temporary name in the folder
 //! (`.grimoire-copy-<pid>.part`), checks the source did not change while it was read, syncs, and renames it to
 //! the source's name with a rename that replaces nothing (" 2", " 3"... when taken). On any failure the
-//! temporary file goes: nothing is left behind. The log has the folder, sizes and times, never a name.
+//! temporary file goes: nothing is left behind. The log has the folder, sizes and times, never a name. What the
+//! screen says of a copy that was not made is copy_refusal's: the sentence for its cause where one exists
+//! (CopyFail, which the job's exit status carries), else the one for a full storage.
 
 use crate::fsview::*;
 use crate::prelude::*;
@@ -30,9 +34,80 @@ impl CopyTo {
             CopyTo::Fonts => "fonts",
         }
     }
-    fn of(folder: &str) -> Option<CopyTo> {
+    /// The folder named so (a job's id, as bg_poll_job reports it), None for any other.
+    pub fn of(folder: &str) -> Option<CopyTo> {
         [CopyTo::Templates, CopyTo::Photos, CopyTo::Fonts].into_iter().find(|t| t.folder() == folder)
     }
+    /// The largest file the folder's own job takes: the template job's limit for templates and photos, the font
+    /// check's for fonts. A bigger file is never copied in, as nothing there could use it.
+    pub fn max_bytes(self) -> u64 {
+        match self {
+            CopyTo::Templates | CopyTo::Photos => crate::bgwork_template::TEMPLATE_MAX_BYTES as u64,
+            CopyTo::Fonts => crate::fontcheck::FONT_FILE_MAX as u64,
+        }
+    }
+}
+
+/// Why a copy was not made, as far as a sentence the screens have says it: at the request (`of_request`) or in the
+/// job, which ends with its number as exit status (`of_exit` reads it back from bg_last_exit; bgjob.rs lets these
+/// numbers through and makes 1 of any other failure).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum CopyFail {
+    /// the floor, a write that failed, or a cause with no sentence of its own (grimoire.log says which)
+    Other = 1,
+    /// the file is bigger than its folder takes (CopyTo::max_bytes)
+    TooBig = 2,
+    /// it is no longer the file listed, or is gone (in the job: since the request, or while it was read)
+    Changed = 3,
+    /// its path does not fit a job's, or its name or path would be too long in the folder
+    TooLong = 4,
+}
+
+impl CopyFail {
+    /// From copy_request's refusal.
+    pub fn of_request(e: FsWriteErr) -> CopyFail {
+        match e {
+            FsWriteErr::TooBig => CopyFail::TooBig,
+            FsWriteErr::Changed => CopyFail::Changed,
+            FsWriteErr::TooLong => CopyFail::TooLong,
+            _ => CopyFail::Other,
+        }
+    }
+    /// From the exit status of a copy job that failed.
+    pub fn of_exit(code: i32) -> CopyFail {
+        match code {
+            2 => CopyFail::TooBig,
+            3 => CopyFail::Changed,
+            4 => CopyFail::TooLong,
+            _ => CopyFail::Other,
+        }
+    }
+}
+
+/// What the screen says of a copy into `to` that was not made, refused at the request or failed in the job (a
+/// toast).
+pub fn copy_refusal(why: CopyFail, to: CopyTo) -> String {
+    match why {
+        // TRANSLATORS: (also) a toast (one line of about 1000 px at 44 px in bold): the picture picked for Use as
+        // template, Use as photo or a sheet's From a file... is bigger than Grimoire takes as a template or a photo,
+        // so it is not copied; %d is 16.
+        CopyFail::TooBig => cformat!(tr("Too big (over %d MB)."), (to.max_bytes() >> 20) as i32),
+        // TRANSLATORS: (also) a toast when a copy into Grimoire's templates or photos was not made because the
+        // picture changed, or went, between the moment it was picked and the copy.
+        CopyFail::Changed => tr("File changed. Try again.").to_string(),
+        // TRANSLATORS: (also) a toast when a picture is not copied into Grimoire's templates or photos because its
+        // path, folders and name together, is longer than Grimoire can hand to the copy.
+        CopyFail::TooLong => tr("Path too long.").to_string(),
+        CopyFail::Other => copy_failed().to_string(),
+    }
+}
+
+/// What a copy that could not be made says when no other sentence names its cause (the floor is the likely one).
+pub fn copy_failed() -> &'static str {
+    // TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): a picture could not be copied into
+    // Grimoire's templates or photos (Use as template, Use as photo, a sheet's From a file...); the storage keeps
+    // 100 MB free, so the likely cause is that it is nearly full.
+    tr("Couldn't copy file. Is the storage full?")
 }
 
 /// What the copy reads and writes at a time.
@@ -67,19 +142,28 @@ static SEAM_FAIL_AFTER: std::sync::atomic::AtomicU64 = std::sync::atomic::Atomic
 
 /// Tests (never the Kindle's build): the bytes free the copy sees (None: the storage's own), and a write that fails
 /// as on a full storage (ENOSPC) once this many bytes are written (None: none). A job forked after takes them too.
+/// The headless runner's scenarios set the same through `GRIMOIRE_COPY_FREE_BYTES` and `GRIMOIRE_COPY_FAIL_AFTER`
+/// (docs/SIM.md), which these override.
 #[cfg(any(test, feature = "sim"))]
 pub fn copy_seams(free: Option<u64>, fail_after: Option<u64>) {
     SEAM_FREE.store(free.unwrap_or(u64::MAX), std::sync::atomic::Ordering::Relaxed);
     SEAM_FAIL_AFTER.store(fail_after.unwrap_or(u64::MAX), std::sync::atomic::Ordering::Relaxed);
 }
 
+// (a seam's value: the test's, else the runner's variable, else none)
+#[cfg(any(test, feature = "sim"))]
+fn seam(set: &std::sync::atomic::AtomicU64, var: &str) -> Option<u64> {
+    let v = set.load(std::sync::atomic::Ordering::Relaxed);
+    if v != u64::MAX {
+        return Some(v);
+    }
+    std::env::var(var).ok().and_then(|v| v.parse::<u64>().ok())
+}
+
 pub(crate) fn free_bytes(st: &FsStorage) -> Option<u64> {
     #[cfg(any(test, feature = "sim"))]
-    {
-        let f = SEAM_FREE.load(std::sync::atomic::Ordering::Relaxed);
-        if f != u64::MAX {
-            return Some(f);
-        }
+    if let Some(f) = seam(&SEAM_FREE, "GRIMOIRE_COPY_FREE_BYTES") {
+        return Some(f);
     }
     st.free_bytes()
 }
@@ -87,7 +171,7 @@ pub(crate) fn free_bytes(st: &FsStorage) -> Option<u64> {
 fn fail_after() -> u64 {
     #[cfg(any(test, feature = "sim"))]
     {
-        SEAM_FAIL_AFTER.load(std::sync::atomic::Ordering::Relaxed)
+        seam(&SEAM_FAIL_AFTER, "GRIMOIRE_COPY_FAIL_AFTER").unwrap_or(u64::MAX)
     }
     #[cfg(not(any(test, feature = "sim")))]
     {
@@ -97,8 +181,10 @@ fn fail_after() -> u64 {
 
 /// Asks for the file at `src` (as listed: `listed`) to be copied into Grimoire's folder `to`, in the background
 /// (BgKind::CopyFile, reported through bg_poll as a job the user waits on). Refused now when the source is in a
-/// place a pick never takes from (Grimoire's own folders), is no longer the item listed, is no plain file, or
-/// would leave less than the floor free (100 MB after it); or when its path is not text or too long for a job.
+/// place a pick never takes from (Grimoire's own folders), is no longer the item listed, is no plain file, is
+/// bigger than the folder takes (`to.max_bytes()`), or would leave less than the floor free (100 MB after it); or
+/// when its path is too long for a job (`TooLong`; one that is not text, which no listing shows, is `Refused`).
+/// What can never be copied is said before the room is looked at.
 pub fn copy_request(st: &FsStorage, src: &StoragePath, listed: &FsStat, to: CopyTo) -> Result<(), FsWriteErr> {
     if src.is_root() || st.zone(src, true) == FsZone::Refused {
         return Err(FsWriteErr::Refused);
@@ -110,17 +196,22 @@ pub fn copy_request(st: &FsStorage, src: &StoragePath, listed: &FsStat, to: Copy
     if now.mode & libc::S_IFMT as u32 != libc::S_IFREG as u32 {
         return Err(FsWriteErr::Walk(FsErr::NotFile));
     }
+    // (said before the room: a file too big is refused however much room there is)
+    if now.size > to.max_bytes() {
+        return Err(FsWriteErr::TooBig);
+    }
+    let text = std::str::from_utf8(src.as_bytes()).is_ok();
+    let path = job_path(src, &now).ok_or(if text { FsWriteErr::TooLong } else { FsWriteErr::Refused })?;
     let free = free_bytes(st).ok_or(FsWriteErr::Io(libc::EIO))?;
     if !fsview_room_for(free, now.size) {
         return Err(FsWriteErr::NoRoom);
     }
-    let path = job_path(src, &now).ok_or(FsWriteErr::TooLong)?;
     bg_queue(BgKind::CopyFile, Some(to.folder()), Some(&path), 0.0, true);
     Ok(())
 }
 
-/// BgKind::CopyFile, in the background child: 0 when the file is in its folder, -1 when not (the log says why,
-/// and nothing of it is left there).
+/// BgKind::CopyFile, in the background child: 0 when the file is in its folder; when not, a CopyFail's number
+/// where the cause has one (the job's exit status), else -1 (the log says why, and nothing of it is left there).
 pub fn bg_copy_file(to: &str, path: &str) -> i32 {
     let t0 = now_ms();
     match copy(to, path) {
@@ -128,10 +219,27 @@ pub fn bg_copy_file(to: &str, path: &str) -> i32 {
             qlog!("bg: a file copied into %s: %u KB in %d ms", to, (n >> 10) as u32, now_ms().wrapping_sub(t0) as i32);
             0
         }
-        Err(why) => {
-            qlog!("bg: a file not copied into %s: %s", to, &why);
-            -1
+        Err(Fail(why, words)) => {
+            qlog!("bg: a file not copied into %s: %s", to, &words);
+            if why == CopyFail::Other {
+                -1
+            } else {
+                why as i32
+            }
         }
+    }
+}
+
+// Why the job failed: what the screen can say of it, and the log's words.
+struct Fail(CopyFail, String);
+impl From<&str> for Fail {
+    fn from(words: &str) -> Fail {
+        Fail(CopyFail::Other, words.into())
+    }
+}
+impl From<String> for Fail {
+    fn from(words: String) -> Fail {
+        Fail(CopyFail::Other, words)
     }
 }
 
@@ -147,7 +255,7 @@ fn walk_why(e: FsErr) -> String {
     }
 }
 
-fn copy(to: &str, path: &str) -> Result<u64, String> {
+fn copy(to: &str, path: &str) -> Result<u64, Fail> {
     let to = CopyTo::of(to).ok_or("not one of Grimoire's folders")?;
     let (listed, src) = job_parse(path).ok_or("a request that does not read")?;
     let root = crate::pdfimport::storage_root().ok_or("no storage")?;
@@ -155,15 +263,20 @@ fn copy(to: &str, path: &str) -> Result<u64, String> {
     let g = st.grimoire_rel().ok_or("Grimoire's folder is not in the storage")?.clone();
     let dest = g.join(to.folder().as_bytes()).ok_or("a path too long")?;
     let (_, name) = src.split_last().ok_or("no source")?;
-    if st.zone(&dest.join(name).ok_or("a path too long")?, false) != FsZone::Writable {
+    let long = |words: &str| Fail(CopyFail::TooLong, words.into());
+    let changed = |words: &str| Fail(CopyFail::Changed, words.into());
+    if st.zone(&dest.join(name).ok_or_else(|| long("a path too long"))?, false) != FsZone::Writable {
         return Err("not one of Grimoire's folders".into());
     }
-    // the source: the walk again, a plain file, the one listed
-    let file = st.open_file(&src, true).map_err(walk_why)?;
+    // the source: the walk again, a plain file, the one listed, no bigger than the folder takes
+    let file = st.open_file(&src, true).map_err(|e| if e == FsErr::NotFound { changed(&walk_why(e)) } else { walk_why(e).into() })?;
     let mut f = std::fs::File::from(file);
     let at = file_stat(&f)?;
     if !at.same(&listed) {
-        return Err("it changed since it was listed".into());
+        return Err(changed("it changed since it was listed"));
+    }
+    if at.size > to.max_bytes() {
+        return Err(Fail(CopyFail::TooBig, format!("it is over {} MB", to.max_bytes() >> 20)));
     }
     if !free_bytes(&st).is_some_and(|free| fsview_room_for(free, at.size)) {
         return Err("no room: the storage would keep less than 100 MB".into());
@@ -178,7 +291,7 @@ fn copy(to: &str, path: &str) -> Result<u64, String> {
             unsafe { libc::mkdirat(gfd.as_raw_fd(), c.as_ptr(), 0o755) };
             st.open_dir(&dest, false).map_err(walk_why)?
         }
-        Err(e) => return Err(walk_why(e)),
+        Err(e) => return Err(walk_why(e).into()),
     };
     let d = dir.as_raw_fd();
     sweep_stale(d);
@@ -189,13 +302,13 @@ fn copy(to: &str, path: &str) -> Result<u64, String> {
         for k in 1..=99u32 {
             let want = if k == 1 { name.to_vec() } else { numbered(name, k, false) };
             if want.len() > FS_NAME_MAX || dest.join(&want).is_none() {
-                return Err("a name too long".into());
+                return Err(long("a name too long"));
             }
-            let cw = CString::new(want).map_err(|_| String::from("a name"))?;
+            let cw = CString::new(want).map_err(|_| "a name")?;
             match rename_noreplace(d, &tmp, d, &cw) {
                 Ok(()) => return Ok(n),
                 Err(libc::EEXIST) => continue,
-                Err(e) => return Err(strerror(e)),
+                Err(e) => return Err(strerror(e).into()),
             }
         }
         Err("every name up to \" 99\" is taken".into())
@@ -236,7 +349,7 @@ fn create_tmp(d: i32, tmp: &CString) -> Result<std::fs::File, String> {
 
 /// Copies the source into `out` and syncs it: the bytes copied, or why not. The source must end as it was listed
 /// (size and time, as read at the end), and have given exactly its size.
-fn fill(src: &mut std::fs::File, out: std::fs::File, listed: &FsStat) -> Result<u64, String> {
+fn fill(src: &mut std::fs::File, out: std::fs::File, listed: &FsStat) -> Result<u64, Fail> {
     use std::io::{Read, Write};
     let mut out = out;
     let mut buf = Vec::new();
@@ -249,20 +362,20 @@ fn fill(src: &mut std::fs::File, out: std::fs::File, listed: &FsStat) -> Result<
             Ok(0) => break,
             Ok(k) => k,
             Err(e) if e.kind() == std::io::ErrorKind::Interrupted => continue,
-            Err(e) => return Err(strerror(e.raw_os_error().unwrap_or(libc::EIO))),
+            Err(e) => return Err(strerror(e.raw_os_error().unwrap_or(libc::EIO)).into()),
         };
         if n.saturating_add(k as u64) > limit {
-            return Err(strerror(libc::ENOSPC));
+            return Err(strerror(libc::ENOSPC).into());
         }
         out.write_all(&buf[..k]).map_err(|e| strerror(e.raw_os_error().unwrap_or(libc::EIO)))?;
         n += k as u64;
         if n > listed.size {
-            return Err("it changed while it was copied".into());
+            return Err(Fail(CopyFail::Changed, "it changed while it was copied".into()));
         }
     }
     let end = file_stat(src)?;
     if n != listed.size || !end.same(listed) {
-        return Err("it changed while it was copied".into());
+        return Err(Fail(CopyFail::Changed, "it changed while it was copied".into()));
     }
     out.sync_all().map_err(|e| strerror(e.raw_os_error().unwrap_or(libc::EIO)))?;
     Ok(n)
@@ -342,5 +455,29 @@ mod tests {
         }
         assert_eq!(CopyTo::of("photos"), Some(CopyTo::Photos));
         assert_eq!(CopyTo::of("notebooks"), None);
+    }
+
+    // What the screen says of a copy that was not made: the sentence of its cause, read from the request's refusal
+    // or from the job's exit status; the folder's own limit in the sentence for a file too big.
+    #[test]
+    fn what_a_refused_copy_says() {
+        let full = "Couldn't copy file. Is the storage full?";
+        assert_eq!(copy_refusal(CopyFail::of_request(FsWriteErr::TooBig), CopyTo::Templates), "Too big (over 16 MB).");
+        assert_eq!(copy_refusal(CopyFail::of_request(FsWriteErr::TooBig), CopyTo::Photos), "Too big (over 16 MB).");
+        assert_eq!(copy_refusal(CopyFail::of_request(FsWriteErr::TooBig), CopyTo::Fonts), "Too big (over 24 MB).");
+        assert_eq!(copy_refusal(CopyFail::of_request(FsWriteErr::TooLong), CopyTo::Templates), "Path too long.");
+        assert_eq!(copy_refusal(CopyFail::of_request(FsWriteErr::Changed), CopyTo::Templates), "File changed. Try again.");
+        for e in [FsWriteErr::NoRoom, FsWriteErr::Refused, FsWriteErr::Io(libc::EIO), FsWriteErr::Walk(FsErr::NotFile)] {
+            assert_eq!(copy_refusal(CopyFail::of_request(e), CopyTo::Templates), full, "{e:?}");
+        }
+        // the job's exit status, as bg_last_exit gives it: the cause's number, 1 (or a child that died) for the rest
+        for why in [CopyFail::TooBig, CopyFail::Changed, CopyFail::TooLong] {
+            assert_eq!(CopyFail::of_exit(why as i32), why);
+        }
+        assert_eq!(copy_refusal(CopyFail::of_exit(3), CopyTo::Photos), "File changed. Try again.");
+        assert_eq!(copy_refusal(CopyFail::of_exit(4), CopyTo::Photos), "Path too long.");
+        for code in [1, -1, 0, 9] {
+            assert_eq!(copy_refusal(CopyFail::of_exit(code), CopyTo::Photos), full, "{code}");
+        }
     }
 }

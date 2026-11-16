@@ -639,8 +639,9 @@ deleting `grimoire/fonts/.cache/` has every font checked again.
 ## Files: rename, trash, restore and copy (2.2, the storage layer)
 
 Grimoire can rename, trash, restore and copy files inside its own `import/`, `templates/`, `photos/` and
-`fonts/` folders (docs/DESIGN.md, Files' storage writes). Nothing on screen uses these yet; once the screens
-come, grimoire.log says (never a file's name: the folder, sizes, timings, reasons):
+`fonts/` folders (docs/DESIGN.md, Files' storage writes). On screen so far only the copy is used: a picture's Use
+as template and Use as photo in Files, and the Templates and Photos sheets' From a file... tile (docs/DESIGN.md,
+From a file... and Use as template). grimoire.log says (never a file's name: the folder, sizes, timings, reasons):
 
 - `files: an item of <folder> was renamed`, `files: an item of <folder> went to the trash`, `files: an item went
   back to <folder>`, and `files: notebook <id> came back from the trash`. A deleted item is in
@@ -660,9 +661,19 @@ come, grimoire.log says (never a file's name: the folder, sizes, timings, reason
   record alone, or an empty folder); the item never left its folder.
 - `bg: file copy of <folder> (pid N)`, then `bg: a file copied into <folder>: N KB in T ms` or `bg: a file not
   copied into <folder>: <why>` (among them: no room: the storage would keep less than 100 MB; it changed since it
-  was listed, or while it was copied; it is no plain file; a link on its way; a system error's own words), and
-  `bg: file copy pid N done` or `FAILED`. A copy cut off leaves `.grimoire-copy-<pid>.part` in the folder, which
-  the next copy into it removes.
+  was listed, or while it was copied; it is over N MB; a name too long; it is no plain file; a link on its way; a
+  system error's own words), and `bg: file copy pid N done` or `FAILED`. A copy cut off leaves
+  `.grimoire-copy-<pid>.part` in the folder, which the next copy into it removes. On screen a copy that was not
+  made says "Too big (over 16 MB).", "Path too long." or "File changed. Try again." for those causes and "Couldn't
+  copy file. Is the storage full?" for any other, and one that went in "Copied to Templates." (or Photos), unless
+  that folder's sheet is up, which shows the new picture.
+- `files: a copy into <folder> was refused: <why>`: Use as template or Use as photo refused before any job (it is
+  over N MB: a template or a photo is at most 16; its path is too long for a job; no room: the storage would keep
+  less than 100 MB; a place it is not taken from; a system error's own words), with the same sentences on screen. A
+  file changed since it was listed says "File changed. Try again." and logs nothing.
+- `templates: <folder> read again after a copy (N files, one|none new)`: a Templates or Photos sheet whose From a
+  file... tile waited for a copy, once the copy ended; `one new` is the picture copied in (its tile waits for its
+  preview as a picture copied over USB does), `none new` a copy that failed.
 
 ## Files: previews and the Covers view (2.2)
 

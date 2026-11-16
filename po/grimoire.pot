@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: Grimoire 2.1.0\n"
 "Report-Msgid-Bugs-To: https://github.com/ganten1998/grimoire-scribe/issues\n"
-"POT-Creation-Date: 2026-11-16 00:51-0600\n"
+"POT-Creation-Date: 2026-11-16 14:00-0600\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -823,6 +823,30 @@ msgstr ""
 msgid "Couldn't import page folder (see %s)."
 msgstr ""
 
+#. TRANSLATORS: the title of the sheet of templates (pictures copied into grimoire/templates, to
+#. write on as paper), which More papers... opens (1560 px at 64 px).
+#: rust/src/app.rs rust/src/browser.rs rust/src/tplsheet.rs
+msgid "Templates"
+msgstr ""
+
+#. TRANSLATORS: the title of the sheet of photos (copied into grimoire/photos), which Photos...
+#. opens (1560 px at 64 px).
+#: rust/src/app.rs rust/src/browser.rs rust/src/tplsheet.rs
+msgid "Photos"
+msgstr ""
+
+#. TRANSLATORS: Files' row for grimoire/fonts, the fonts copied for Classic's text (44 px in a row of 150 px).
+#: rust/src/app.rs rust/src/browser.rs
+msgid "Fonts"
+msgstr ""
+
+#. TRANSLATORS: a toast (about 1700 px at 44 px in bold): a picture was copied into one of Grimoire's folders;
+#. %s is that folder's name as Files shows it (Templates, Photos).
+#: rust/src/app.rs
+#, c-format
+msgid "Copied to %s."
+msgstr ""
+
 #. TRANSLATORS: a PDF saved in the background, and where (the Kindle's folder of them).
 #: rust/src/app.rs
 #, c-format
@@ -980,6 +1004,38 @@ msgstr ""
 msgid "Update channel: %s"
 msgstr ""
 
+#. TRANSLATORS: (also) a toast (one line of about 1000 px at 44 px in bold): the picture picked for Use as
+#. template, Use as photo or a sheet's From a file... is bigger than Grimoire takes as a template or a photo,
+#. so it is not copied; %d is 16.
+#. TRANSLATORS: (a row of Your fonts, greyed) the font file is bigger than Grimoire takes; %d is 24.
+#: rust/src/bgwork_copy.rs rust/src/library.rs
+#, c-format
+msgid "Too big (over %d MB)."
+msgstr ""
+
+#. TRANSLATORS: (also) a toast when a copy into Grimoire's templates or photos was not made because the
+#. picture changed, or went, between the moment it was picked and the copy.
+#. TRANSLATORS: a toast in the file picker: the file tapped was changed or replaced since its
+#. folder was listed; the folder is read again. One line of about 1000 px at 44 px.
+#: rust/src/bgwork_copy.rs rust/src/browser.rs
+msgid "File changed. Try again."
+msgstr ""
+
+#. TRANSLATORS: (also) a toast when a picture is not copied into Grimoire's templates or photos because its
+#. path, folders and name together, is longer than Grimoire can hand to the copy.
+#. TRANSLATORS: a toast in the file picker: some names in this folder are left out because their path
+#. would be too long for Grimoire to hand to its import (one line).
+#: rust/src/bgwork_copy.rs rust/src/browser.rs
+msgid "Path too long."
+msgstr ""
+
+#. TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): a picture could not be copied into
+#. Grimoire's templates or photos (Use as template, Use as photo, a sheet's From a file...); the storage keeps
+#. 100 MB free, so the likely cause is that it is nearly full.
+#: rust/src/bgwork_copy.rs
+msgid "Couldn't copy file. Is the storage full?"
+msgstr ""
+
 #: rust/src/bgwork_template.rs
 msgid "Templates for Grimoire"
 msgstr ""
@@ -1056,6 +1112,17 @@ msgstr ""
 msgid "Import a PDF or pictures"
 msgstr ""
 
+#. TRANSLATORS: (also) the title of the file picker the Templates and Photos sheets' From a file... tile
+#. opens, to pick a picture to copy in (the Library's header, about 1400 px at 56 px).
+#. TRANSLATORS: New notebook's button (348 px at 44 px, or 34 px, or two lines of that): it opens the file picker
+#. to make a notebook of a PDF or a folder of pictures anywhere on the Kindle.
+#. TRANSLATORS: (also) the last tile of the Templates and Photos sheets, under its picture (a tile of about 250
+#. px, on two lines if need be): it opens the file picker to copy a picture from anywhere on the Kindle into
+#. grimoire/templates or grimoire/photos.
+#: rust/src/browser.rs rust/src/library.rs rust/src/tplsheet.rs
+msgid "From a file..."
+msgstr ""
+
 #. TRANSLATORS: a file's size in kilobytes, in the file picker's rows and cards (small text).
 #: rust/src/browser.rs
 #, c-format
@@ -1082,14 +1149,8 @@ msgstr ""
 
 #. TRANSLATORS: a toast in the file picker: the folder tapped could not be opened (gone since it was
 #. listed, or one Grimoire never opens). One line of about 1000 px at 44 px.
-#: rust/src/browser.rs rust/src/library.rs
+#: rust/src/browser.rs rust/src/editor.rs rust/src/library.rs
 msgid "Couldn't open folder."
-msgstr ""
-
-#. TRANSLATORS: a toast in the file picker: some names in this folder are left out because their path
-#. would be too long for Grimoire to hand to its import (one line).
-#: rust/src/browser.rs
-msgid "Path too long."
 msgstr ""
 
 #. TRANSLATORS: the file picker's first row, the folder Grimoire watches (grimoire/import): PDFs and pictures
@@ -1111,23 +1172,6 @@ msgstr ""
 #. TRANSLATORS: the file picker's row for the whole Kindle storage, less Grimoire's own notebooks (44 px in a row).
 #: rust/src/browser.rs
 msgid "All storage"
-msgstr ""
-
-#. TRANSLATORS: the title of the sheet of templates (pictures copied into grimoire/templates, to
-#. write on as paper), which More papers... opens (1560 px at 64 px).
-#: rust/src/browser.rs rust/src/tplsheet.rs
-msgid "Templates"
-msgstr ""
-
-#. TRANSLATORS: the title of the sheet of photos (copied into grimoire/photos), which Photos...
-#. opens (1560 px at 64 px).
-#: rust/src/browser.rs rust/src/tplsheet.rs
-msgid "Photos"
-msgstr ""
-
-#. TRANSLATORS: Files' row for grimoire/fonts, the fonts copied for Classic's text (44 px in a row of 150 px).
-#: rust/src/browser.rs
-msgid "Fonts"
 msgstr ""
 
 #. TRANSLATORS: Files' row for the Kindle's own fonts folder (the fonts its reader uses), which Grimoire
@@ -1188,6 +1232,20 @@ msgstr ""
 #. places and the Kindle's top folders, one a row (34 px, at the sheet's top).
 #: rust/src/browser.rs
 msgid "Go to"
+msgstr ""
+
+#. TRANSLATORS: a picture's card in Files (and in the picker the Templates sheet's From a
+#. file... opens): this copies it into grimoire/templates, to write on as paper (a row of
+#. about 800 px at 44 px).
+#: rust/src/browser.rs
+msgid "Use as template"
+msgstr ""
+
+#. TRANSLATORS: a picture's card in Files (and in the picker the Photos sheet's From a
+#. file... opens): this copies it into grimoire/photos, to be a page's own picture (a row
+#. of about 800 px at 44 px).
+#: rust/src/browser.rs
+msgid "Use as photo"
 msgstr ""
 
 #. TRANSLATORS: a PDF's card in the file picker: a notebook already holds this book, and this opens it
@@ -1300,12 +1358,6 @@ msgstr ""
 #. right of the row under its name (about 260 px at 34 px).
 #: rust/src/browser.rs
 msgid "has notes"
-msgstr ""
-
-#. TRANSLATORS: a toast in the file picker: the file tapped was changed or replaced since its
-#. folder was listed; the folder is read again. One line of about 1000 px at 44 px.
-#: rust/src/browser.rs
-msgid "File changed. Try again."
 msgstr ""
 
 #. TRANSLATORS: the staying notice while the file picker reads a big folder (one line, about 600 px at 44 px).
@@ -2809,12 +2861,6 @@ msgstr ""
 msgid "Create"
 msgstr ""
 
-#. TRANSLATORS: New notebook's button (348 px at 44 px, or 34 px, or two lines of that): it opens the file picker
-#. to make a notebook of a PDF or a folder of pictures anywhere on the Kindle.
-#: rust/src/library.rs
-msgid "From a file..."
-msgstr ""
-
 #. TRANSLATORS: a notebook's and a folder's menu (rows of 1470 px at 44 px in bold): its pages are not shown
 #. in the Graph of all notebooks (the Graph: the Index's map of linked pages), or are shown there again.
 #: rust/src/library.rs
@@ -3613,12 +3659,6 @@ msgstr ""
 #. or one whose letters draw nothing.
 #: rust/src/library.rs
 msgid "Unreadable font."
-msgstr ""
-
-#. TRANSLATORS: (a row of Your fonts, greyed) the font file is bigger than Grimoire takes; %d is 24.
-#: rust/src/library.rs
-#, c-format
-msgid "Too big (over %d MB)."
 msgstr ""
 
 #. TRANSLATORS: (a row of Your fonts, greyed) a symbol font, or one without the letters A to Z.
