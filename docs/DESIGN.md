@@ -578,24 +578,32 @@ last pen-up, at every press of the power button, on page change, on leaving the 
 exit. `store_add_page` never writes over an existing `p<id>.qpg`: it takes the next free id.
 
 Reads of the data folder take plain files only. What is read there through `util::read_file`,
-`util::read_file_max` or `util::open_read_nofollow` (the store's files, the pictures, the template and
-import scans, the marks, the share zip's raw copies) is read only when the entry at the name itself is a
-plain file (a link, a folder or anything else there reads as a file that is not there), and the open never
-waits. Folders on the way to a file may be links (the data root, `notebooks/`, a platform's folders, a
-test's folder): only the last name is held to this. The small text files are read up to a limit
-(`util::read_file_max`: settings.ini, notebook.ini, folders.ini, bg/pages.ini and bg/index.ini 1 MiB; an
-import folder's mark 4 KiB; import/.attempts 64 KiB; a PGM 64,000,064 bytes, its largest picture and a
-header); page files and pictures have none of `read_file`'s own. A settings.ini that is there but was not
-read is moved to `settings.ini.unread` before the next save. An entry at a page's name that is no plain
-file is set aside as a damaged page is. The system's own files (/proc, /sys, the Kindle's locale file) are
-read with `util::read_system_file`, which follows links. The scans of `import/`, `templates/` and
-`photos/` take only real folders and plain files. Temporary files named after the process
-(`<name>.<pid>`, the mirror's `<name>.pdf.<pid>.tmp`) are made afresh (`util::create_fresh_nofollow`):
-what stands at the name is removed, never opened. `mkdir_p` takes an existing entry as the folder, a link
-to one included; code that prunes or empties a folder of Grimoire's checks that folder first
-(`util::no_link_below`, `pdfcache::real_dirs`, the previews' sweep). The mirror's sweep of stale
-temporaries works in the mirror folder the user chose. A few readers still open their files by path
-(docs/BACKLOG.md, "Hardening round (2026-11), storage reads: what waits").
+`util::read_file_max` or `util::open_read_nofollow` (the store's files, the pictures, the template and import
+scans, the marks, the share zip's raw copies, the clipboard, the compaction lists, the shortcut files, the PDF
+cache's records, an import's `links.part` and `names.part`, a notebook's `nav.ini`, `links.ini` and
+`doclinks.ini`) is read only when the entry at the name itself is a plain file (a link, a folder or anything
+else there reads as a file that is not there, or, for the shortcut files and a notebook's `nav.ini`,
+`links.ini` and `doclinks.ini`, as one that is there and does not read: nothing of it is used, and an edit
+that would write a sidecar that does not read (a page's name, a link) is refused, so it is never written
+over), and the open never waits. Folders on the way to a file may be links (the data root, `notebooks/`, a
+platform's folders, a test's folder): only the last name is held to this. The small text files are read up to
+a limit (`util::read_file_max`: settings.ini, notebook.ini, folders.ini, bg/pages.ini and bg/index.ini 1 MiB;
+an import folder's mark 4 KiB; import/.attempts 64 KiB; an import's links.part 4,194,314 bytes and names.part
+406,000, the most one worker's walk can have the first slice write; a PGM 64,000,064 bytes, its largest
+picture and a header; and, by the same bound in its own reader, a compaction list 64 KiB, which a read that
+fails midway leaves unread rather than cut short); page files and pictures have none of `read_file`'s own. A
+settings.ini that is there but was not read is moved to `settings.ini.unread` before the next save.
+An entry at a page's name that is no plain file is set
+aside as a damaged page is. The system's own files (/proc, /sys, the Kindle's locale file) are read with
+`util::read_system_file`, which follows links. The scans of `import/`, `templates/` and `photos/` take only
+real folders and plain files. Temporary files named after the process (`<name>.<pid>`, the mirror's
+`<name>.pdf.<pid>.tmp`, the PDF cache's `p<id>.z.<pid>.tmp`, the share spool) are made afresh
+(`util::create_fresh_nofollow`): what stands at the name is removed, never opened. `mkdir_p` takes an existing
+entry as the folder, a link to one included; code that prunes or empties a folder of Grimoire's checks that
+folder first (`util::no_link_below`, `pdfcache::real_dirs`, the previews' sweep). The mirror's sweep of stale
+temporaries works in the mirror folder the user chose. One reader of your own fonts' files
+(`userfonts::read_small`: a verdict, the crash guard) still opens by path, after an `lstat` that refuses a
+link (docs/BACKLOG.md, "Hardening round (2026-11), storage reads: what waits").
 
 The page size: a new notebook gets the device's (`store_set_device`), and
 `store_notebook_page_size` is what every reader and writer of its pages asks. A notebook.ini
@@ -787,8 +795,9 @@ announcements: goingToScreenSaver draws the sleep screen, outOfScreenSaver is th
   FBInk's CREDITS, the only text the tree has for them. The recipe fails when it cannot find zig's
   LICENSE or musl's COPYRIGHT, or one of those notices. A vendored directory with no license file,
   a font without its OFL text, or a missing notice fails package-check, and so does a change to
-  FBINK_SRC until its notice is added. package-check also holds the size guard (2.1, the owner's
-  decision D23, raised for 2.1.0-beta.2): the Kindle binary under 11 MB (11,000,000 bytes) and the zip under 6 MB.
+  FBINK_SRC until its notice is added. package-check also holds the size guard (the owner's
+  decision D23, raised for 2.1.0-beta.2 and again for 2.2): the Kindle binary under 13 MB (13,000,000 bytes) and the
+  zip under 7 MB.
 
 ## Tests
 
@@ -2188,8 +2197,13 @@ same walk as the job and reads only the file it listed (`read_ends`). The job re
 opened, and a file of `import/` is moved to `done/` by its name, so the name is looked at once more just before
 the move (`finish_pdf`): it must still hold the file that was read (the lock's own test of a name against an
 open file, and the size and time the file was opened with), else nothing moves, nothing is marked done, and
-the next scan takes what is at the name; the try stays counted, so this cannot repeat without end. The record a
-notebook keeps of its file takes its key and its hash from the one file the last slice has open.
+the next scan takes what is at the name; the try stays counted, so this cannot repeat without end, as long as the
+scan's listing and the open file agree on the file's size and time (the tries are counted under the size and time
+of the file the import has open, and the scan asks for them under the size and time its listing gives: a storage
+on which the two differ would see the file taken again at every scan). After the third such try the file waits,
+and the Import place's row then reads "Couldn't import PDF (see grimoire.log)." although its notebook exists
+(FORMAT.md, "Imports: PDFs"). The record a notebook keeps of its file takes its key and its hash from the one
+file the last slice has open.
 
 The links and names (lane L6) come out of the same worker. After the page count the writer sends `LINKS <w> <h>`;
 the worker walks the annotations of every page (`pdfwork.rs`, module `links`), resolves each destination to a
@@ -2345,6 +2359,84 @@ are routed in `library.rs` as the Graph's are, and two fingers down does nothing
   another size hold the key, or none does: no tag, Import as notebook.
 - **Logs** carry counts and timings only ("files: listed N entries (M usable) in T ms"), never a name.
 
+## Files' storage writes (2.2, issue #117)
+
+`fsview.rs` writes since 2.2, inside Grimoire's folders for the user's files only, and `bgwork_copy.rs` copies
+into them. Nothing on screen calls either yet (the Files place, its cards and the From a file... tiles come with
+their own work), so nothing a user sees changed.
+
+- **Where it may write: an allow-list.** Only what is inside `grimoire/import`, `templates`, `photos` and
+  `fonts` (`FsStorage::write_zone`), never the folder itself and never `import/done` itself (what is inside it
+  may be); never a dot-name, nor any other place the zones refuse, nor the rest of the storage (read-only, D26).
+  A restore writes in one more place: a notebook's folder back into `grimoire/notebooks`, by its id, the folder
+  known by its identity. Every path goes through the walk (no link at any component, one device), and the trash
+  and the notebooks folder are checked by `st_dev` and `st_ino` against what `FsStorage::open` noted.
+- **Never an overwrite.** Every rename is `renameat2(RENAME_NOREPLACE)` (by `syscall`, so no C library wrapper is
+  needed). Where the storage refuses the flag or the kernel lacks the call (EINVAL, ENOSYS), and on the Mac, a
+  look for the new name and then `renameat` would not do: Grimoire is not the only writer while it runs (files
+  come over USB, and the copy job renames into the same folders). So the fallback reserves the new name first,
+  atomically (`O_CREAT|O_EXCL|O_NOFOLLOW` for a file, `mkdirat` for a folder: each fails when anything is
+  there), checks just before `renameat` that the name still holds its own reservation (the same device and
+  inode, a file still empty; the kernel never renames over a folder that holds anything), renames over it, and
+  on any failure removes the reservation only while it is still its own. Two writers never both win a name, so
+  the copy job and a rename or restore into the same folder need no busy check between them: one takes the
+  name, the other " 2" or Exists. What remains: a writer that opens the empty reserved file by its name in the
+  moment between that last check and the rename loses what it wrote there, and a crash in that moment leaves an
+  empty file or folder at the new name beside the item, which is untouched. Into the trash's own new folder (a
+  random name, holding only the record) the fallback looks for the name only. The log says once a session when
+  the storage refuses the flag; whether the Scribe's storage does is what docs/TESTING.md's check finds out. A
+  rename that changes only the case, or that the storage says would land on the item itself (a storage that
+  folds case), goes through a temporary name in the same folder, the new name numbered (" 2", " 3"...), and is
+  undone if the second step fails. Cut off half way (a crash, or an undo that fails), the item is left in sight
+  under that numbered name, never at a hidden one.
+- **Check again before acting.** Rename and trash take the stat the listing had (`FsStat`) and refuse when the
+  entry's device, inode, size or time differ (`Changed`, "File changed. Try again." on screen), or when an import
+  holds it (`Busy`, "Importing now."): a PDF or a folder of pictures a queued or running import works on, what is
+  inside it, or the folder a held PDF is in (`FsStorage::busy`, from the job table's paths, `bg_job_paths`, and
+  the PDF import's own list); while a previous run's import still holds the lock, everything in `import/`.
+- **Names: one function**, `fsview_name_check(old, new, dir)`, the strictest of vfat and MTP (browser.md 8.8):
+  not empty, at most 255 bytes, none of `/ \ : * ? " < > |`, no control character, no leading or trailing space,
+  no trailing dot, no leading dot (a hidden name Files never lists), and a file keeps its extension in any case.
+  It names the first rule broken (`NameRule`), so the screen can say which.
+- **Never a hard delete.** Trash is one rename into a new folder `trash/files-<YYYYMMDD-HHMMSS>-<4 hex>/`, beside
+  its record `.grimoire-trash` (`from=`, `time=`), written with `O_CREAT|O_EXCL|O_NOFOLLOW` and synced before the
+  rename; a failure removes both, so nothing is left. Cut off between the record and the rename (a crash), the
+  item never left: the entry is listed with its record, and Restore removes it, as it does an empty `files-`
+  folder (`Restored::Nothing`, the one case where it puts nothing back). Restore reads the record strictly (a
+  plain file, 4 KiB at most, `O_NOFOLLOW|O_NONBLOCK`), puts the item back where it was when that folder is still
+  there, allowed and not held by an import (a name taken gets " 2", " 3"...), else says why (`FolderGone`,
+  `BadRecord`, `Refused`, `Busy`); a notebook goes back to `notebooks/<id>` from the name `store_delete` gives it
+  or from a record naming that folder, refused while the id is taken. The only removals: the record and its
+  emptied folder after a restore. Pages in the trash are listed, never restored (their place was never kept).
+  The trash is listed by `FsListing` in its slices and read by name alone (`fsview_trash_entries`, newest first
+  by the time in each name); a row's record is read only for the rows on screen (`FsStorage::trash_record`).
+  docs/FORMAT.md, The trash, has the names and the record.
+- **The copy job, `BgKind::CopyFile = 10`** (`bgwork_copy.rs`; 9 is kept for the file previews). The request
+  (`copy_request`, UI thread) refuses a source in a place a pick never takes from, one no longer the plain file
+  listed, and one that would leave less than the floor (100 MB after it, `fsview_room_for`), and queues the job as
+  one the user waits on (id: the folder, `templates`, `photos` or `fonts`; path: the listed stat and the source's
+  storage path, under 600 bytes). The job opens the source again through the walk, checks it is the file listed
+  and that there is room, writes `.grimoire-copy-<pid>.part` in the folder (made when missing), checks the source
+  ended as listed, syncs, and renames with no replace to the source's name (" 2" when taken). Any failure
+  removes the temporary file; one a killed copy left is removed by the next copy into that folder, unless its
+  process still runs and has written it within the hour (after a restart its process id is often another
+  process's). It ends 0 or 1 only: the one message for a failed copy needs no more. Its child's margin is 64 MiB
+  (one 64 KiB buffer). The app's tick takes its end apart from the PDF mirror's (no "PDF saved").
+- **Waits on the UI thread**: each sync of these writes (the record, the folders) is followed by `work_pump()`, as
+  util's atomic write does between its steps, so the pens are read between waits of 15-25 ms each.
+- **Logs** (no names, docs/KINDLE.md): the zone a rename, trash or restore acted in, a notebook's id, a copy's
+  size and time, the reason a copy was refused, an errno when a call failed, and once a session the fallback.
+- **Tests**: `fsview.rs`'s unit tests (the name rules, the trash's names, the record read strictly, what an import
+  holds), `bgjob.rs`'s (the jobs' paths), `bgwork_copy.rs`'s (the job's path), and
+  `rust/tests/test_fsview_writes.rs` (every refusal of the allow-list, a path with a line break, no replace with
+  renameat2's flag and with the fallback forced through `fsview_rename_fallback_force`, another writer at the
+  name between the fallback's check and its rename through `fsview_rename_seam`, a case-only rename, a rename and
+  a trash stopped half way through `fsview_stop_at`, the busy check through real queued jobs, trash and restore of
+  a file, a folder and a notebook in both forms, a name taken, refused restores, the copy request and job with the
+  floor and a failed write through `copy_seams`, a source that changes, and leftovers swept). On the Mac only the
+  fallback runs; CI's Linux job runs the same file with renameat2's flag, and docs/TESTING.md has the Scribe's
+  check of the flag, of one rename into the trash and of inode numbers.
+
 ## Shared building blocks (2.1, lane L0)
 
 The 2.1 plan builds a few pieces once, for every later lane to reuse (no second one grows beside them).
@@ -2380,7 +2472,7 @@ Lane L0 adds them with nothing visible: each keeps what the Scribe showed before
   ("Álgebra 2" before "Álgebra 10"); equal so, the bytes decide, a total order. For the file browser, the
   order of a PDF import and the font list. The Library's folders keep `cmp_name` and an import folder's
   pictures `natural_cmp`.
-- **One storage layer, `fsview.rs`** (read-only so far; browser.md 8 and 9 in the 2.1 plan). The root is
+- **One storage layer, `fsview.rs`** (its reading side; browser.md 8 and 9 in the 2.1 plan). The root is
   `/mnt/us` on the Kindle (when Grimoire's folder is inside it), elsewhere `GRIMOIRE_STORAGE` (compiled out
   of the Kindle build; never `/`). A `StoragePath` is a checked path relative to it, under 600 bytes, of
   byte names. The walk opens each component with `openat(O_DIRECTORY|O_NOFOLLOW)` from the one before and
@@ -2391,8 +2483,8 @@ Lane L0 adds them with nothing visible: each keeps what the Scribe showed before
   `FsListing` reads names and `d_type` only, at most 5,000, in slices of at most 20 ms with the folder kept
   open between ticks, links and refused entries left out; stats (`fstatat`, no link followed) only for the
   rows asked, in slices. Free space: a big job leaves 100 MB; under 200 MB is "nearly full". The log has
-  counts and timings, never a name. Writes (trash, `renameat2(RENAME_NOREPLACE)`, the allow-list) come with
-  their first user.
+  counts and timings, never a name. Its writes (rename, trash, restore, copy) came in 2.2: "Files' storage
+  writes (2.2)", below.
 - **The Library reads each notebook.ini once.** `reload` lists the notebooks and takes their folders from
   that list (`store_list_folders_from`), as the notebook picker and the share server's index do; it read
   each twice (500 notebooks: 1,000 reads on FUSE at each enter).

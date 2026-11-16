@@ -419,7 +419,7 @@ fn a_zips_pdf_entry_streams() {
 
 fn children_carry_their_caps() {
     // the plan: every kind gets oom_score_adj 500 and its address space at fork plus its margin
-    for kind in [BgKind::MirrorPdf, BgKind::CompactPages, BgKind::Template, BgKind::ImportFolder, BgKind::GraphLayout, BgKind::PagePreviews, BgKind::GraphLayoutAll] {
+    for kind in [BgKind::MirrorPdf, BgKind::CompactPages, BgKind::Template, BgKind::ImportFolder, BgKind::GraphLayout, BgKind::PagePreviews, BgKind::GraphLayoutAll, BgKind::CopyFile] {
         let plan = child_caps_plan(Some(100 << 20), child_margin(kind));
         assert_eq!(plan.oom_adj, 500);
         assert_eq!(plan.as_bytes, Some((100 << 20) + child_margin(kind)));
