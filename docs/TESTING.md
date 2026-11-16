@@ -2820,8 +2820,10 @@ links, the state's grammar) and the scenarios `tests/scenarios/z_pdf_11_fill_1_b
 tabs planner, pages 1 and 3), `z_pdf_12_fill_2_drop.qs` (the planner dropped: the two pages added, KOReader's tabs
 not doubled, no name given to KOReader's pages), `z_pdf_13_fill_3_open.qs` (the notebook opened while its fill is
 made, the pages going in back in the Library), `z_pdf_14_fill_4_held.qs` and `z_pdf_15_fill_5_koreader.qs`
-(KOReader's Open this book while a fill of the book's notebook waits: the book opens, the fill goes in after), and
-`z_pdf_17_fill_7_input.qs` (a key and a tap while the commit runs, slowed to a file a tick by
+(KOReader's Open this book while a fill of the book's notebook waits: the book opens, the fill goes in after),
+`z_pdf_16_fill_6_book_job.qs` (KOReader's job adds one of the pages a waiting fill made, looking at one page a tick
+by `GRIMOIRE_BOOK_STEP_PAGES`: no commit begins while it runs, and the fill then adds only the page still missing)
+and `z_pdf_17_fill_7_input.qs` (a key and a tap while the commit runs, slowed to a file a tick by
 `GRIMOIRE_FILL_STEP_PAGES`, do nothing).
 
 **Not run on a Scribe.** Two things only the Scribe can say: whether the book key Grimoire computes for a PDF is
