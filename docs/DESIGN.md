@@ -575,8 +575,10 @@ Reads of the data folder take plain files only. What is read there through `util
 scans, the marks, the share zip's raw copies, the clipboard, the compaction lists, the shortcut files, the PDF
 cache's records, an import's `links.part` and `names.part`, a notebook's `nav.ini`, `links.ini` and
 `doclinks.ini`) is read only when the entry at the name itself is a plain file (a link, a folder or anything
-else there reads as a file that is not there, or, for the shortcut files, as one that is there and does not
-read), and the open never waits. Folders on the way to a file may be links (the data root, `notebooks/`, a
+else there reads as a file that is not there, or, for the shortcut files and a notebook's `nav.ini`,
+`links.ini` and `doclinks.ini`, as one that is there and does not read: nothing of it is used, and an edit
+that would write a sidecar that does not read (a page's name, a link) is refused, so it is never written
+over), and the open never waits. Folders on the way to a file may be links (the data root, `notebooks/`, a
 platform's folders, a test's folder): only the last name is held to this. The small text files are read up to
 a limit (`util::read_file_max`: settings.ini, notebook.ini, folders.ini, bg/pages.ini and bg/index.ini 1 MiB;
 an import folder's mark 4 KiB; import/.attempts 64 KiB; an import's links.part 4,194,314 bytes and names.part
