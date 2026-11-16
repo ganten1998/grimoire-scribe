@@ -837,8 +837,11 @@ waits, and within 10 s of the end of a previous run's import):
   of those it lacks was read, then sets `stage=1`.
   The UI process puts the pages in (the commit), as KOReader's route adds its pages: it begins only with the
   Library in front and at rest (no notebook open in the editor, no sheet, dialog or keyboard up), no KOReader
-  book job running and no background job on that notebook, and runs over a few ticks with the input held (the
-  book's notice says "Adding book pages: %d of %d"); no background job on that notebook starts meanwhile.
+  book job running and no background job on that notebook, and runs over a few ticks with the input held: pen
+  and touch, keys and controller buttons, and the Live view's keys do nothing meanwhile, and the book's notice
+  says "Adding book pages: %d of %d". What still acts (the power button's sleep and wake, a turn of the device, a
+  keyboard or controller coming or going) writes no notebook; the power button held until Grimoire leaves cuts
+  the commit off, and the next start takes it up (below). No background job on that notebook starts meanwhile.
   Before it begins, a notebook whose name or Library folder is not the one `sig` noted (a rename, a move, its
   folder renamed or merged), one that is gone (deleted), or one that no longer holds the PDF's key is not filled:
   the work folder goes, and the PDF stays in `import/`, where the next scan takes it again as the file it is (a

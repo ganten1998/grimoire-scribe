@@ -927,7 +927,8 @@ fn live_keys_tick(a: &mut App) {
         };
         if !key.down {
             a.live_holds.retain(|h| h.code != key.code || h.cookie != key.cookie);
-        } else if !a.asleep && live_on() {
+        } else if !a.asleep && live_on() && crate::pdfimport::fill_busy().is_none() {
+            // (while a PDF fill's pages go into their notebook a key does nothing, as on the Kindle: app_event_screens)
             let action = httpd_live_key_action(&key, app_place(a));
             note_input(a);
             if app_shortcut_action(a, action, ActionSrc::Key) && action == SHORTCUT_HOLD_ERASER {
@@ -953,6 +954,12 @@ fn app_event_screens(a: &mut App, ev: &InEvent) {
         return;
     }
     if ev.type_ == InType::Key {
+        // While a PDF fill's pages go into their notebook (2.2, a few ticks), a key or a controller button does
+        // nothing, as pen and touch do nothing then (below): no shortcut, sheet or dialog comes between the commit's
+        // steps. (A key's release still ends Erase while held.)
+        if crate::pdfimport::fill_busy().is_some() {
+            return;
+        }
         // A pad that types (the Pages view's count pad) takes a keyboard's keys first, shortcuts on or off.
         if !a.asleep && !ev.gamepad && editor_modal_key(a, ev) {
             note_input(a);
@@ -1118,7 +1125,7 @@ fn app_event_screens(a: &mut App, ev: &InEvent) {
     }
     let ev = &captured;
     // While a book's pages are being added (a few seconds), nothing may open its notebook; nor while a PDF fill's
-    // pages go into theirs (2.2), so no Library action and no editor meets that commit.
+    // pages go into theirs (2.2), so no Library action and no editor meets that commit (its keys: above).
     if (a.book.state == BookState::Running || crate::pdfimport::fill_busy().is_some())
         && (app_pointer_phase(ev) >= 0 || ev.type_ == InType::PinchBegin || ev.type_ == InType::Key || ev.type_ == InType::Gesture)
     {
@@ -2046,8 +2053,8 @@ fn pdf_import_tick(a: &mut App, now: u32) {
     }
     // A PDF fill whose pages are made goes into its notebook here, in the UI process (2.2), as KOReader's book
     // job's pages do: it begins only with the Library in front and at rest (so no notebook is open, and no dialog
-    // is half way) and no book job running, takes a few ticks with input held, and says how far it got in the
-    // book's notice.
+    // is half way) and no book job running, takes a few ticks with input held (pen, touch and keys, the Live view's
+    // too), and says how far it got in the book's notice.
     let free = a.scr == ScreenId::Library && !a.asleep && a.book.state != BookState::Running && crate::library::library_at_rest(a);
     let fin = crate::pdfimport::fill_tick(free, a.dpi);
     if let Some((done, total)) = crate::pdfimport::fill_busy() {

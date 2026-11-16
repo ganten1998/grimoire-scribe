@@ -3569,7 +3569,7 @@ fn note_ready(id: &str) {
 }
 
 /// The fill whose pages are going into their notebook now: (page files written, of how many). The input waits
-/// meanwhile (app.rs), as it does while KOReader's book job adds pages.
+/// meanwhile (app.rs: pen and touch, keys and controller buttons, and the Live view's keys).
 pub fn fill_busy() -> Option<(u32, u32)> {
     COMMIT.with(|c| c.borrow().as_ref().map(|c| (c.written as u32, c.add.len() as u32)))
 }

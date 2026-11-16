@@ -2808,8 +2808,8 @@ only the pages KOReader sent) fills that notebook when it is dropped in `grimoir
 in book order, with the links that start or end on them and the outline's names for them. The pages it had keep
 their files, their names and their links: a fill adds no link between two of them and names none of them. A
 notebook with every page says "PDF already imported."; a PDF of another page count becomes a notebook of its own.
-The pages go in once the notebook is closed and the Library is in front ("Adding book pages: N of M", taps waiting
-meanwhile); until then the notebook opens as it is, and KOReader's Open this book in Grimoire is not held up.
+The pages go in once the notebook is closed and the Library is in front ("Adding book pages: N of M", taps and keys
+waiting meanwhile); until then the notebook opens as it is, and KOReader's Open this book in Grimoire is not held up.
 Automated: `rust/tests/test_pdf_fill.rs` (a notebook with its file record, one without, one KOReader made with
 KOReader's links a pixel off the import's, and 3 px off, a full one, another page count, the files of the pages it
 had byte for byte, the writer that never writes the notebook, a notebook renamed, moved or deleted while its pages
@@ -2820,7 +2820,9 @@ links, the state's grammar) and the scenarios `tests/scenarios/z_pdf_11_fill_1_b
 tabs planner, pages 1 and 3), `z_pdf_12_fill_2_drop.qs` (the planner dropped: the two pages added, KOReader's tabs
 not doubled, no name given to KOReader's pages), `z_pdf_13_fill_3_open.qs` (the notebook opened while its fill is
 made, the pages going in back in the Library), `z_pdf_14_fill_4_held.qs` and `z_pdf_15_fill_5_koreader.qs`
-(KOReader's Open this book while a fill of the book's notebook waits: the book opens, the fill goes in after).
+(KOReader's Open this book while a fill of the book's notebook waits: the book opens, the fill goes in after), and
+`z_pdf_17_fill_7_input.qs` (a key and a tap while the commit runs, slowed to a file a tick by
+`GRIMOIRE_FILL_STEP_PAGES`, do nothing).
 
 **Not run on a Scribe.** Two things only the Scribe can say: whether the book key Grimoire computes for a PDF is
 the key KOReader wrote for it (KOReader's own partial MD5 of the file it opened), and whether KOReader's link boxes

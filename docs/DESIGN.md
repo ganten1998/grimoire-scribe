@@ -2245,10 +2245,12 @@ writes the notebook: its last slice checks the file and says the pages are made,
 (`pdfimport::fill_tick`), as KOReader's book job adds its pages, so the commit is one more thing the UI does in
 turn and never meets another writer of that notebook. It begins only with the Library in front and at rest (so no
 notebook is open in the editor and no dialog is half way), no book job running and no background job on that
-notebook (`bg_notebook_busy`), and runs over a few ticks with the input held and the book's notice showing how far
-it got; no background job on that notebook starts until it ends (`pdfimport::fill_holds`, read by `next_job`).
-Each tick reads again what it writes and writes each file whole, so even a write that slipped in between two ticks
-would stay. A notebook renamed, moved or deleted while the pages were made (a hash of its name and folder taken as
+notebook (`bg_notebook_busy`), and runs over a few ticks with the input held (pen and touch, keys and controller
+buttons, the Live view's keys; what still acts, the power button, a turn of the device or a keyboard coming or
+going, writes no notebook) and the book's notice showing how far it got; no background job on that notebook starts
+until it ends (`pdfimport::fill_holds`, read by `next_job`). Each tick reads again what it writes and writes each
+file whole, so even a write that slipped in between two ticks would stay. A notebook renamed, moved or deleted
+while the pages were made (a hash of its name and folder taken as
 the fill is decided, and the notebook read again), or one that no longer holds the PDF's key, is not filled: the
 PDF stays in `import/` for the next scan, which takes it as the file it is. The child that finishes the queue after
 Grimoire closes runs the same slices, so it never commits either: a fill it finishes waits for the next start. The

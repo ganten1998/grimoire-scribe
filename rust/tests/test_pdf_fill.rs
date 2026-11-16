@@ -657,8 +657,8 @@ fn a_notebook_renamed_moved_or_deleted_while_its_pages_were_made_is_not_filled()
     assert_eq!((nb.name.as_str(), book_pages(&id, &nb)), ("Renamed by the user", vec![1, 2, 3, 4]));
 }
 
-// The UI's commit takes a few ticks (here a file a tick). Nothing in the app can act between them (its input waits,
-// as for KOReader's book job), and no background job on the notebook starts meanwhile; and should anything write the
+// The UI's commit takes a few ticks (here a file a tick). Nothing in the app can act between them (its input waits:
+// pen, touch and keys), and no background job on the notebook starts meanwhile; and should anything write the
 // notebook between two ticks, the commit keeps what it wrote: each file is read again and written whole in the tick
 // that writes it. A rename, a move and a page copied in (Copy to notebook) stay; a notebook deleted is never made again.
 #[test]
