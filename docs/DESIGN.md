@@ -2619,7 +2619,8 @@ trash, and the Trash place puts an entry back. Pick mode (New notebook's From a 
   (`reread`), a slice a tick with the Loading notice, as any folder is read. A file put there over USB meanwhile
   shows the next time the folder is opened.
 - **The Trash place** lists the trash as before (fsview's trash listing, newest first by the time in each name),
-  each row with its size and date; the root's Trash row has the trash's size beside its path. Past 5,000 entries
+  each row with its size and date; the root's Trash row has the trash's size beside its path (an empty trash its
+  path alone, and an entry of no bytes no size: a size label rounds up to "1 KB"). Past 5,000 entries
   (every deleted page is one, and the trash only grows) its listing, `FsListing::start_trash`, reads on to the
   folder's end in its slices and keeps the newest 5,000 by the time in each name, where any other folder's stops
   at the first 5,000 the storage gives: what was deleted last is always listed and can be restored ("Showing the

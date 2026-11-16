@@ -1215,8 +1215,9 @@ impl Browser {
             RowKind::Place => match r.place {
                 Some(PlaceKind::Import) => format!("{}", String::from_utf8_lossy(r.path.as_bytes())),
                 Some(PlaceKind::All) => String::new(),
-                // (the trash's size beside its path, once its walk is through: it is cleaned over USB)
-                Some(PlaceKind::Trash) if r.size.is_some() => format!("{}, {}", r.path.to_string_lossy(), size_label(r.size.unwrap_or(0))),
+                // (the trash's size beside its path, once its walk is through: it is cleaned over USB; an empty
+                // trash has none to say, where a size label would round it up to "1 KB")
+                Some(PlaceKind::Trash) if r.size.is_some_and(|b| b > 0) => format!("{}, {}", r.path.to_string_lossy(), size_label(r.size.unwrap_or(0))),
                 _ => String::from_utf8_lossy(r.path.as_bytes()).into_owned(),
             },
             RowKind::Look | RowKind::ShowCard => String::new(),
@@ -1228,7 +1229,8 @@ impl Browser {
             // (its size once the trash's walk has it, and the date in its name)
             RowKind::Trashed => {
                 let mut parts = Vec::new();
-                if let Some(b) = r.size {
+                // (an entry that holds no bytes, an empty page file or a name of another form, shows no size)
+                if let Some(b) = r.size.filter(|&b| b > 0) {
                     parts.push(size_label(b));
                 }
                 if r.when > 0 {
@@ -3417,7 +3419,7 @@ mod tests {
     // (`<id>-<time>`), a page (`<id>-p<page>-<time>`) and a name of another form. The rows are the listing's entries in
     // its order (the newest first by the time in each name, the other form last), with its times; a file shows the
     // name its record holds, a notebook its own, a page its notebook's; the entry with no record and the other form
-    // show their own names, and only the other form has no date (its size alone). A card (Restore, issue #144) on
+    // show their own names, and only the other form has no date (nor a size: it is empty). A card (Restore, issue #144) on
     // the files' entries and the notebook's, none on the page's or the other form's.
     #[test]
     fn the_trash_place_lists_both_forms_through_fsviews_listing() {
@@ -3464,7 +3466,7 @@ mod tests {
         let labels: Vec<String> = b.rows.iter().map(|r| b.row_label(r)).collect();
         assert_eq!(labels, ["Grid.png", "Kept", "beach.jpg", bare, "Gamma", "notes"]);
         assert!(b.rows[..5].iter().all(|r| r.when > 0 && !b.row_sub(r).is_empty()));
-        assert!(b.rows[5].when == 0 && b.row_sub(&b.rows[5]) == "1 KB");
+        assert!(b.rows[5].when == 0 && b.rows[5].size == Some(0) && b.row_sub(&b.rows[5]).is_empty(), "no date, and no bytes to say");
         assert!(b.rows.iter().all(|r| r.kind == RowKind::Trashed));
         let cards: Vec<bool> = (0..b.rows.len()).map(|i| b.has_card(i)).collect();
         assert_eq!(cards, [true, true, true, true, false, false]);
@@ -3706,6 +3708,51 @@ mod tests {
         assert!(p.open(PickSpec::import(), FilesPrefs { card: true, ..Default::default() }));
         assert!(p.go(sp("grimoire/import")));
         assert_eq!(card_named(&mut p, "Book.pdf").1, ["Import as notebook", "Cancel"]);
+    }
+
+    // An empty trash says no size (issue #144): the root's Trash row shows its path alone once the walk is through
+    // (a size label rounds 0 up to "1 KB", which read as something left after the trash was cleaned over USB), and
+    // an entry of no bytes shows no size; with something in it, the size is there.
+    #[test]
+    fn an_empty_trash_says_no_size() {
+        let (base, _g) = storage("emptytrash");
+        let ph = format!("{base}/grimoire/photos");
+        std::fs::create_dir_all(&ph).unwrap();
+        std::fs::create_dir_all(format!("{base}/grimoire/trash")).unwrap();
+        std::fs::write(format!("{ph}/beach.jpg"), vec![b'b'; 3000]).unwrap();
+        i18n_set("en");
+        // (the screen's measures, so that the root's rows are all on its first screen)
+        let mut a = screen_app();
+        canvas_free(&mut a.screen);
+        let mut b = Browser::default();
+        assert!(b.open(PickSpec::place(), FilesPrefs { card: true, ..Default::default() }));
+        let trash = row_of(&b, "Trash");
+        for _ in 0..8 {
+            b.work(2480, now_ms());
+        }
+        assert_eq!(b.rows[trash].size, Some(0), "the walk is through");
+        assert_eq!(b.row_sub(&b.rows[trash]), "grimoire/trash");
+        // a page's empty file in it: still nothing to say, on the root's row and on its own
+        std::fs::write(format!("{base}/grimoire/trash/20261101-000000-0001-p3-1790000500"), b"").unwrap();
+        b.sizes_again();
+        assert!(b.go(sp("grimoire/trash")));
+        for _ in 0..8 {
+            b.work(2480, now_ms());
+        }
+        assert_eq!(b.rows[0].size, Some(0));
+        let mut day = String::new();
+        format_date_short(1790000500, &mut day, 64);
+        assert_eq!(b.row_sub(&b.rows[0]), day, "its date alone");
+        // with a photo in it, the size shows
+        assert!(b.go(sp("grimoire/photos")));
+        b.open_card(row_of(&b, "beach.jpg"));
+        assert!(b.delete_ask().is_ok() && b.trash_card().is_ok());
+        b.show_root();
+        let trash = row_of(&b, "Trash");
+        for _ in 0..8 {
+            b.work(2480, now_ms());
+        }
+        assert_eq!(b.row_sub(&b.rows[trash]), "grimoire/trash, 3 KB");
     }
 
     // No freeze after a write (issue #144): a rename, a delete and a restore change their one row from the listing
