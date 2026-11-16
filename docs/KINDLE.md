@@ -175,11 +175,26 @@ as for a PDF dropped in `grimoire/import`: the Library's notice counts the pages
 Library stays usable. When the import ends the page the reader was on opens, if the Library's cards are still in
 front; with a notebook, a sheet, Files or the Graph in front nothing opens over it, the import's toast shows, and
 the book's card opens at that page. A book opened before 2.2 keeps the pages KOReader drew, and the pages it lacks
-come from the import. DjVu, comics, XPS, a PDF that needs a password and a PDF outside `/mnt/us` go as before,
-KOReader drawing them. The plugin must be updated (Library > Settings > KOReader > Install / update Grimoire plugin)
-and KOReader restarted: an older plugin keeps sending version 1, which this Grimoire still takes. crash.log says
-`Grimoire: a PDF of N pages sent by its path, to open at page P`, or `Grimoire: this PDF needs a password: KOReader
-draws its pages`. grimoire.log says (no file name, title or key):
+come from the import. DjVu, comics, XPS, a PDF that needs a password, a PDF Grimoire does not take by its path
+(outside `/mnt/us`, in a hidden, `.sdr` or system folder such as `koreader/`, in Grimoire's own folders, through a
+link, over 512 MiB) and a PDF changed since KOReader first opened it go as before, KOReader drawing them. The
+plugin must be updated (Library > Settings > KOReader > Install / update Grimoire plugin) and KOReader restarted:
+an older plugin keeps sending version 1, which this Grimoire still takes. crash.log says (no file name, title or
+key):
+
+- `Grimoire: a PDF of N pages sent by its path, to open at page P`;
+- `Grimoire: this PDF needs a password: KOReader draws its pages`;
+- `Grimoire: this PDF is not sent by its path (<why>): KOReader draws its pages`, where why is `outside the Kindle's
+  storage`, `a name a request cannot hold`, `a path too long`, `a path that is not plain`, `a hidden or .sdr
+  folder`, `a system folder`, `one of Grimoire's own folders`, `a link on the way`, `another device` or `a file over
+  512 MiB`;
+- `Grimoire: this PDF changed since KOReader first opened it: KOReader draws its pages` (the key KOReader keeps for
+  the book is not its file's now);
+- `Grimoire: could not ask whether this PDF needs a password; it goes by its path`: the question itself failed on
+  this KOReader (its MuPDF has other names, or could not open the file a second time). The plugin's question has
+  not run on a device yet: send the log if this line shows.
+
+grimoire.log says (no file name, title or key):
 
 - `book: the PDF KOReader named goes to the PDF import (<id>); its page P of N opens once that ends` (or `... is
   being imported already; ...`, or `... waits for an import of an earlier run; ...`), with `book: other imports go

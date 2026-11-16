@@ -444,7 +444,8 @@ adds what is missing; a book you opened before this version keeps the gray pages
 added now are Grimoire's. It is the same notebook Annotate this page uses. A PDF's own links come along (a
 planner's tabs: a finger tap on "March" goes to March): see Document links. This needs the plugin updated (the
 Library's Install / update Grimoire plugin, then restart KOReader); a PDF that needs a password still goes the
-older way, KOReader drawing it.
+older way, KOReader drawing it, and so does a PDF where Grimoire does not read (a hidden folder, KOReader's own
+folders) or one over 512 MB.
 
 **Document links.** The tabs of a planner PDF are part of its pages. A tap follows one (a link you drew yourself
 comes first where they overlap); a finger held on one starts Select, as anywhere on the page. Clear page keeps

@@ -2972,29 +2972,34 @@ to the PDF import, as a file picked in Files: the import draws the pages (in col
 finds the links, and fills a notebook KOReader made through version 1 with the pages it lacks. Nothing is held for
 it: the import's notice counts and the Library stays usable. When it ends the page the reader was on opens if the
 Library's cards are still in front; else the import's toast shows and the book's card opens at that page. DjVu,
-comics, XPS, a PDF that needs a password, a PDF outside the storage, and any PDF to an older launcher go by version
-1, KOReader drawing them; Annotate this page stays version 1. Automated: `rust/tests/test_annotate.rs`
+comics, XPS, a PDF that needs a password, a PDF at a path Grimoire does not take, one over 512 MiB, one changed
+since KOReader first opened it, and any PDF to an older launcher go by version 1, KOReader drawing them; Annotate
+this page stays version 1.
+
+Automated: `rust/tests/test_annotate.rs`
 (`book_request_parsing`: version 2 read strictly, version 1 unchanged), `rust/tests/test_koreader_pdf.rs` (a new
 notebook at the reader's page with its record, its colour kept, a fill of a version 1 notebook keeping KOReader's
 pages, "already imported" ending on the page, ten paths the walk refuses, a PDF the import refuses, the import's end
 told once and the reader's page kept as the page the notebook opens at, a hand-over behind another run's import and
 behind a queued one, the notebook whose record is of the file for three files of one key, a notebook without a
 record taken for any file of its key, the file the import opened deciding when the name changed hands after the
-start, a fill stopped by a rename), `tests/koplugin_test.lua` (a PDF by its
-path from the reader and from Open with..., the same PDF to a 2.1 launcher, a DjVu, Annotate this page, a PDF that
-needs a password, paths it cannot send), `tests/package_check.sh` (the launcher's `pdf`) and the scenarios
+start, a fill stopped by a rename), `tests/koplugin_test.lua` (a PDF by its path from the reader and from Open
+with..., the same PDF to a 2.1 launcher, a DjVu, Annotate this page, a PDF that needs a password, the question
+failing and its log line, version 1 for every path Grimoire's walk refuses (hidden, `.sdr`, system and own folders,
+a linked folder, a link, 600 bytes, not UTF-8) with version 2 beside each, a PDF over 512 MiB, a PDF changed since
+KOReader first opened it), `tests/package_check.sh` (the launcher's `pdf`) and the scenarios
 `tests/scenarios/y_koreader_pdf_1_new.qs` (the hand-over on a storage root: the import's notice, New notebook
-opening and closing meanwhile, the notebook open at book page 3), `y_koreader_pdf_2_fill.qs` (z_pdf_11's notebook
-of KOReader's pages 1 and 3 filled by the planner's path, open at book page 2), `y_koreader_pdf_3_djvu.qs` (a
-version 1 request, as a DjVu's, taken as before), `y_koreader_pdf_4_whatsnew.qs` (the first start after an update
-is a hand-over that fills a notebook: What's new closes, then the pages go in and the notebook opens),
+opening and closing meanwhile, the notebook open at book page 3), `y_koreader_pdf_2_fill.qs` (z_pdf_11's notebook of
+KOReader's pages 1 and 3 filled by the planner's path, open at book page 2), `y_koreader_pdf_3_djvu.qs` (a version 1
+request, as a DjVu's, taken as before), `y_koreader_pdf_4_whatsnew.qs` (the first start after an update is a
+hand-over that fills a notebook: What's new closes, then the pages go in and the notebook opens),
 `y_koreader_pdf_5_elsewhere.qs` (a notebook of the user's own in front at the end: the import's toast, and the
 book's card opens at book page 3), `y_koreader_pdf_6_sheet.qs` (the same with a sheet up),
-`y_koreader_pdf_7_asleep.qs` (the end taken at the wake), `y_koreader_pdf_8_password.qs` (a PDF the import
-refuses says the import's "PDF needs a password."), `y_koreader_pdf_9_refused.qs` (a path the walk refuses says
-the book's failure), `y_koreader_pdf_10_queued.qs` (behind a dropped PDF's import: the toast that says it
-waits, then both notebooks) and `y_koreader_pdf_11_already.qs` (a book whose notebook holds every page: opened
-at the reader's page, nothing made).
+`y_koreader_pdf_7_asleep.qs` (the end taken at the wake), `y_koreader_pdf_8_password.qs` (a PDF the import refuses
+says the import's "PDF needs a password."), `y_koreader_pdf_9_refused.qs` (a path the walk refuses says the book's
+failure), `y_koreader_pdf_10_queued.qs` (behind a dropped PDF's import: the toast that says it waits, then both
+notebooks) and `y_koreader_pdf_11_already.qs` (a book whose notebook holds every page: opened at the reader's page,
+nothing made).
 
 **Not run on a Scribe.** The owner's check, on a build of this branch (a planner PDF with coloured tabs, more than
 20 pages, that Grimoire never saw; a second, long PDF, of a few hundred pages; a DjVu or CBZ book):
@@ -3055,6 +3060,13 @@ at the reader's page, nothing made).
     page (`book: <id>: N page(s) of M to add, ...` in `grimoire.log`), with taps held for the few seconds its pages
     take, as before.
 12. **A PDF with a password** (when one is at hand): Open this book in Grimoire draws its pages in KOReader as a
-    DjVu's are, and crash.log has `Grimoire: this PDF needs a password: KOReader draws its pages`.
+    DjVu's are, and crash.log has `Grimoire: this PDF needs a password: KOReader draws its pages`. The plugin's
+    question (a MuPDF document of its own, opened and closed) has never run on a device: after steps 2 to 10,
+    search crash.log for `Grimoire: could not ask whether this PDF needs a password`. If the line is there for a
+    PDF that needs none, the question fails on this KOReader (the PDFs still go by their path): send the log.
+13. **A PDF where Grimoire does not read.** Copy the planner into `koreader/` (or into any folder whose name
+    begins with a dot) and open it there in KOReader: Open this book in Grimoire draws its pages in KOReader, as
+    before 2.2, and crash.log has `Grimoire: this PDF is not sent by its path (a system folder): KOReader draws
+    its pages`.
 
 No line of `grimoire.log` or `crash.log` from these steps names a book, its file or its title.

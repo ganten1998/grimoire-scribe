@@ -239,11 +239,19 @@ package.loaded["libs/libkoreader-lfs"] = {
     attributes = function(path, what)
         local mode = sh("test -d " .. q(path)) and "directory" or (sh("test -f " .. q(path)) and "file") or nil
         if what == "mode" then return mode end
-        if what == "size" then return mode == "file" and file_size(path) or nil end
+        -- (W.sizes: a size a case gives a path, for a file too big to make here)
+        if what == "size" then return W.sizes and W.sizes[path] or (mode == "file" and file_size(path) or nil) end
         if not mode then return nil end
         local dev, ino = (first_line("stat -L -c '%d %i' " .. q(path) .. " 2>/dev/null || stat -L -f '%d %i' "
             .. q(path) .. " 2>/dev/null") or ""):match("^(%d+) (%d+)$")
         return { mode = mode, dev = tonumber(dev), ino = tonumber(ino) }
+    end,
+    -- (as lfs's: the entry itself, a link never followed)
+    symlinkattributes = function(path, what)
+        local mode = sh("test -L " .. q(path)) and "link" or (sh("test -d " .. q(path)) and "directory")
+            or (sh("test -f " .. q(path)) and "file") or nil
+        if what == "mode" then return mode end
+        return mode and { mode = mode } or nil
     end,
     currentdir = function() return first_line("pwd") end,
     mkdir = function(path)
@@ -2311,7 +2319,118 @@ do -- A PDF outside the Kindle's storage, or with "..", an empty part or a line 
         koreader(true):onOpenBookInGrimoire()
         local r = book_request() or {}
         check("a PDF, " .. c[1] .. ": version " .. c[3], r.version == c[3] and wrapped())
+        if c[4] then
+            local said = false
+            for _, line in ipairs(W.logs) do
+                said = said or line == "Grimoire: could not ask whether this PDF needs a password; it goes by its path"
+            end
+            check("a PDF, " .. c[1] .. ": the log says the question could not be asked", said)
+            logs_name_no_book("a PDF, " .. c[1])
+        end
     end
+end
+
+-- Open this book on the PDF at `path` (below the scratch Kindle's storage when it starts with %s), to a launcher
+-- that says pdf: the version the request has, whether MuPDF was asked about a password, and the log's lines.
+local function sent(name, path, prepare)
+    world("book-pdf-" .. name:gsub("[^%w]", "-"))
+    W.unpack_writes = PDF_CAPS
+    W.book.pages, W.book.page, W.book.whole = 1, 1, true
+    W.book.file = path:format(W.us)
+    if prepare then prepare(W.book.file) end
+    koreader(true):onOpenBookInGrimoire()
+    local r = book_request() or {}
+    return r.version, at("mupdf open") ~= nil, table.concat(W.logs, "\n"), r
+end
+
+do -- A PDF where Grimoire's walk to a file does not go (a hidden name, a .sdr folder, the storage's system folders,
+    -- Grimoire's own, a path too long, a name that is not UTF-8) goes by version 1, KOReader drawing it as before
+    -- 2.2: sent by its path it would fail in Grimoire. No MuPDF question is asked for it. The log says why, never
+    -- where. A PDF beside each of them, in a place Grimoire reads, goes by its path. (A PDF in grimoire/PDFs is a
+    -- notebook's own, which the plugin opens no book from at all: above.)
+    local long = ("d"):rep(120)
+    for _, c in ipairs({
+        { "a hidden folder", "%s/documents/.hidden/Book.pdf", "1", "a hidden or .sdr folder" },
+        { "a hidden file", "%s/documents/.Book.pdf", "1", "a hidden or .sdr folder" },
+        { "a .sdr folder", "%s/documents/Book.sdr/Book.pdf", "1", "a hidden or .sdr folder" },
+        { "a .SDR folder", "%s/documents/Book.SDR/Book.pdf", "1", "a hidden or .sdr folder" },
+        { "koreader's folder", "%s/koreader/help/Guide.pdf", "1", "a system folder" },
+        { "KOReader's folder, in capitals", "%s/KOReader/Guide.pdf", "1", "a system folder" },
+        { "the system folder", "%s/system/Guide.pdf", "1", "a system folder" },
+        { "extensions", "%s/extensions/kterm/Guide.pdf", "1", "a system folder" },
+        { "Grimoire's app folder", "%s/grimoire/app/Notes.pdf", "1", "one of Grimoire's own folders" },
+        { "Grimoire's trash", "%s/grimoire/trash/20260101-000000-abcd/Notes.pdf", "1", "one of Grimoire's own folders" },
+        { "Grimoire's notebooks", "%s/Grimoire/notebooks/x/Notes.pdf", "1", "one of Grimoire's own folders" },
+        { "a path of 600 bytes", "%s/" .. long .. "/" .. long .. "/" .. long .. "/" .. long .. "/" .. long .. "/Book.pdf", "1",
+            "a path too long" },
+        { "a name that is not UTF-8", "%s/documents/caf\233.pdf", "1", "a name a request cannot hold" },
+        { "a name cut inside a character", "%s/documents/caf\195.pdf", "1", "a name a request cannot hold" },
+        { "documents", "%s/documents/Book.pdf", "2" },
+        { "a folder named like a system one, lower down", "%s/documents/koreader/Guide.pdf", "2" },
+        { "a name with a dot inside", "%s/documents/Vol. 2/My.Book.v2.pdf", "2" },
+        { "Grimoire's import folder", "%s/grimoire/import/Book.pdf", "2" },
+        { "a name in UTF-8", "%s/documents/caf\195\169 \230\151\165\230\156\172.pdf", "2" },
+        { "a path just under 600 bytes", "%s/" .. long .. "/" .. long .. "/" .. long .. "/" .. long .. "/" .. ("d"):rep(104)
+            .. "/Book.pdf", "2" },
+    }) do
+        local version, asked, log, r = sent(c[1], c[2])
+        local s = "a PDF in " .. c[1]
+        check(s .. ": version " .. c[3], version == c[3] and wrapped())
+        if c[3] == "1" then
+            check(s .. ": no password asked, no file named in the request", not asked and r.file == nil)
+            check(s .. ": the log says why", log:find("Grimoire: this PDF is not sent by its path (" .. c[4]
+                .. "): KOReader draws its pages", 1, true) ~= nil)
+        else
+            check(s .. ": by its path", r.file == W.book.file and asked)
+        end
+        check(s .. ": the log names no place", not log:find("documents", 1, true) and not log:find("Book", 1, true)
+            and not log:find("Guide", 1, true) and not log:find("Notes", 1, true))
+    end
+end
+
+do -- A PDF reached through a linked folder, or one that is a link itself, is not one Grimoire opens (it follows
+    -- none): version 1. The same file by its own path goes by its path.
+    local function tree(file)
+        local us = file:match("^(.*)/[^/]+/[^/]+$")
+        assert(sh("mkdir -p " .. q(us .. "/real") .. " " .. q(us .. "/documents")))
+        write(us .. "/real/Book.pdf", "%PDF-1.4\n")
+        assert(sh("ln -s real " .. q(us .. "/linked")))
+        assert(sh("ln -s ../real/Book.pdf " .. q(us .. "/documents/Alias.pdf")))
+    end
+    local version, asked, log = sent("a linked folder", "%s/linked/Book.pdf", tree)
+    check("a PDF through a linked folder: version 1, no password asked", version == "1" and not asked)
+    check("a PDF through a linked folder: the log says why", log:find("(a link on the way)", 1, true) ~= nil)
+    version, asked, log = sent("a link", "%s/documents/Alias.pdf", tree)
+    check("a PDF that is a link: version 1, no password asked", version == "1" and not asked)
+    check("a PDF that is a link: the log says why", log:find("(a link on the way)", 1, true) ~= nil)
+    local r
+    version, asked, log, r = sent("the file itself", "%s/real/Book.pdf", tree)
+    check("the same PDF by its own path: version 2", version == "2" and asked and r.file == W.book.file
+        and not log:find("not sent by its path", 1, true))
+end
+
+do -- A PDF over the size Grimoire's import reads (512 MiB: "PDF too big") goes by version 1, as before 2.2; one of
+    -- exactly that size goes by its path.
+    local big = 512 * 1024 * 1024
+    local version, asked, log = sent("too big", "%s/documents/Atlas.pdf", function(file) W.sizes = { [file] = big + 1 } end)
+    check("a PDF over 512 MiB: version 1, no password asked", version == "1" and not asked)
+    check("a PDF over 512 MiB: the log says why", log:find("(a file over 512 MiB)", 1, true) ~= nil)
+    version = sent("just big", "%s/documents/Atlas.pdf", function(file) W.sizes = { [file] = big } end)
+    check("a PDF of 512 MiB: version 2", version == "2")
+end
+
+do -- A PDF whose file changed since KOReader first opened it (the key KOReader keeps is no longer its file's):
+    -- its notebook is the one of KOReader's key, so it stays with version 1. The same key, or a KOReader that
+    -- cannot work the file's key out, sends it by its path.
+    local version, asked, log = sent("changed", "%s/documents/Book.pdf", function() W.md5_of_file = ("f"):rep(32) end)
+    check("a PDF changed since KOReader first opened it: version 1, no password asked", version == "1" and not asked)
+    check("a PDF changed since: the log says why, with no key", log:find("Grimoire: this PDF changed since KOReader "
+        .. "first opened it: KOReader draws its pages", 1, true) ~= nil and not log:find("ffff", 1, true)
+        and not log:find(W.book.md5, 1, true))
+    version = sent("unchanged", "%s/documents/Book.pdf", function() W.md5_of_file = W.book.md5 end)
+    check("a PDF with the key KOReader keeps: version 2", version == "2")
+    version = sent("no key worked out", "%s/documents/Book.pdf", function() W.md5_of_file = nil end)
+    check("a PDF whose key cannot be worked out: version 2", version == "2")
 end
 
 do -- Wi-Fi belongs to KOReader's network controls, not the Grimoire handoff plugin.

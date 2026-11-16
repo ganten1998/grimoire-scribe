@@ -8,8 +8,9 @@
   counting its pages while the Library stays usable, and then opens the page you were reading. If you opened
   something else meanwhile, a toast says the import is done and the book's notebook opens at that page from its
   card. A book you opened before keeps the pages KOReader drew and gets the ones it lacks. A PDF that cannot be
-  imported says why, as one dropped in `grimoire/import` does. DjVu, comics, XPS and a PDF that needs a password
-  go the older way.
+  imported says why, as one dropped in `grimoire/import` does. DjVu, comics, XPS, a PDF that needs a password and
+  a PDF Grimoire does not take by its path (in a hidden or system folder, over 512 MB, changed since KOReader
+  first opened it) go the older way, as before.
 - **Size keys.** Shift+[ and Shift+] on a paired keyboard take the pen in use to its next smaller or larger quick
   size, and a short toast says the size; a controller's buttons and gestures can too (Smaller / larger size, in the
   Tools group of Buttons and of Gestures). The new `quick-size` action, bound by name in shortcuts.ini or

@@ -1159,10 +1159,23 @@ title and page count. The request has the lines above (`book`, `title`, `kind`, 
 |---|---|
 | `file` | the PDF's absolute path as KOReader has it open, once: inside the Kindle's storage (`/mnt/us/...`), with no `.`, `..` or empty part and no control character in it. Its line is read whole (under 1024 bytes), never cut as a longer title is |
 
-The plugin keeps version 1 for DjVu, comics and XPS, for a PDF to a launcher without `pdf`, for a PDF outside the
-storage or with a path it cannot send, and for a PDF that needs a password (Grimoire cannot ask for one; KOReader,
-which was given it, draws the pages). It asks a MuPDF document of its own whether a PDF needs a password, never
-the reader's. Annotate this page stays version 1 for every format.
+The plugin sends version 2 only for a PDF Grimoire would take, and version 1 otherwise, KOReader drawing the pages,
+so a book that opened before 2.2 still opens. It keeps version 1 for:
+
+- DjVu, comics and XPS, and any PDF to a launcher without `pdf`;
+- a PDF at a path Grimoire's walk refuses (below), judged by the same rules on the path as written and on the
+  folders as they are: outside the storage; a `.`, `..` or empty part; a hidden name or a `.sdr` folder; one of the
+  storage's system folders (`koreader/` among them) or of Grimoire's own (`app`, `notebooks`, `bluetooth`, `PDFs`,
+  `trash`); a link on the way, or the file itself a link; another device; 600 bytes or more below the storage; a
+  name that is not UTF-8 or holds a control character;
+- a PDF over 512 MiB, which the import refuses ("PDF too big");
+- a PDF whose file no longer has the key KOReader keeps for the book (it changed since KOReader first opened it:
+  its notebook is the one of KOReader's key, which version 1 finds);
+- a PDF that needs a password (Grimoire cannot ask for one; KOReader, which was given it, draws the pages). The
+  plugin asks a MuPDF document of its own, never the reader's, with every call guarded; when the question itself
+  fails, crash.log says so and the PDF goes by its path.
+
+Annotate this page stays version 1 for every format.
 
 Grimoire reads a version 2 request strictly. Its version line says exactly `version=2` (a request with that line
 is a version 2 request wherever the line stands; `02` is no version it knows), and each of `version`, `book`,

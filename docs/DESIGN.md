@@ -2319,10 +2319,17 @@ fill's pages go in is taken after. An import that fails fails the book, and says
 ("PDF needs a password.", "PDF too big: over N MB." and the others of `pdf_import_told`); a request that ends
 before any import (it does not read, or the walk refuses its path) says the book's. An import that is neither
 queued, waiting for the lock nor going in, and told nothing, for 3 s (a fill whose notebook changed meanwhile) ends
-on the notebook that fill was for (`fill_target`, noted while its pages waited), as it is. The plugin keeps
-version 1 for DjVu, comics and XPS, for a PDF outside the storage, and for a PDF that needs a password, which it asks
-of a MuPDF document of its own: MuPDF answers by trying the empty password, which would make the reader's document
-forget the one it was given.
+on the notebook that fill was for (`fill_target`, noted while its pages waited), as it is.
+
+The plugin sends version 2 only for what Grimoire takes, so that a book that opened before 2.2 never fails where
+KOReader could have drawn it: there is no way back to version 1 once Grimoire has the request. It keeps version 1
+for DjVu, comics and XPS; for a PDF at a path the walk refuses (`pathRefused` applies fsview's rules to the path as
+written, and asks the storage for links on the way and for the device); for a PDF over the import's 512 MiB; for a
+PDF whose file no longer has the key KOReader keeps for the book (its notebook is found by KOReader's key, the
+import would key it by the file's, and the two would part); and for a PDF that needs a password, which it asks of a
+MuPDF document of its own: MuPDF answers by trying the empty password, which would make the reader's document
+forget the one it was given. That question's calls are all guarded, so a KOReader whose MuPDF has other names
+cannot be stopped by it; a question that fails is logged, and the PDF goes by its path.
 
 ## Your own fonts (2.1.0-beta.2, lane L10)
 

@@ -289,8 +289,15 @@ the name rules, the busy check and the copy job (`BgKind::CopyFile`). Nothing on
   the reader's. A `gamma=` line waits with the darker lines import option.
 - **The password question** opens the PDF a second time in KOReader (a MuPDF document of the plugin's own, through
   `ffi/mupdf`'s `openDocument`, `needsPassword` and `close`, as KOReader's own PDF reader calls them): read in
-  KOReader's code, not run on a Kindle. Where it fails the plugin sends the PDF by its path, and a PDF that needs a
-  password then fails in Grimoire with "PDF needs a password.".
+  KOReader's code, never run on a Kindle. Every call is guarded, so it cannot stop KOReader. Where it fails
+  crash.log says `could not ask whether this PDF needs a password`, the plugin sends the PDF by its path, and a
+  PDF that needs a password then fails in Grimoire with "PDF needs a password.".
+- **A PDF KOReader reads and Grimoire's engine cannot open** (not one blank page: the whole file) fails by its
+  path each time with "Couldn't import PDF (see grimoire.log).", where 2.1 drew it in KOReader: once Grimoire has
+  the request nothing sends the book the older way. A refusal Grimoire keeps by the book's key, which the plugin
+  reads before it chooses, would send such a book by version 1 from the second time on.
+- **A PDF changed since KOReader first opened it** (the key KOReader keeps is no longer its file's) stays with
+  version 1 and the notebook of KOReader's key. A request that carried both keys would let the import take it.
 - **A PDF KOReader opens from `grimoire/import`** is filed in `import/done/` once imported, as any pick there is;
   KOReader then no longer finds it at its path. (The scan would take it from there anyway.)
 - **Grimoire stopped while the import runs** (the launcher's watchdog, a crash) leaves the import to its detached
