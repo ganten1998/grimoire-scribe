@@ -28,6 +28,14 @@ local function write(path, text) -- (the test's own writes: never counted as the
     f:close()
 end
 local function is_file(path) return sh("test -f " .. q(path)) end
+-- The scratch folder as an absolute path with no "." or ".." in it (package_check.sh passes one under
+-- build/dist/../): the Kindle's paths are such, and the plugin sends a PDF by its path only when its is.
+do
+    assert(sh("mkdir -p " .. q(scratch)))
+    local p = io.popen("cd " .. q(scratch) .. " && pwd -P")
+    scratch = p and p:read("*l") or scratch
+    if p then p:close() end
+end
 
 -- The world of one case: what the stand-ins answer, and every call they saw (W.calls, in order).
 local W
