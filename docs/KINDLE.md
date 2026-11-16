@@ -662,7 +662,10 @@ From a file... tiles. grimoire.log says (never a file's name: the folder, sizes,
 - `files: the trash holds N entries, N files, N KB (read in T ms)`: Files' root or its Trash place read the
   trash's size (once a session, and again after a delete or a restore), a slice at a time; T is the time of the
   slices added up. `files: notebook <id> is back, its notebook.ini did not read`: a restored notebook whose own
-  file could not be read, so it kept its name as it was (it is back in `notebooks/` all the same).
+  file could not be read: it is back in `notebooks/`, the Library does not list it, and no toast named a folder
+  for it. `files: notebook <id> is back under a name another notebook of its folder has: the new name could not be
+  written`: its " 2" could not be saved (a full storage), so two notebooks of that folder have one name until one
+  is renamed.
 - `fonts: a rename in Files: what the check found of N font file(s) went with them`: a font file, or a folder of
   them, was renamed in Files, and N verdicts went to the new names' keys, so those fonts are not checked again (0:
   none was kept for it, a file not checked yet). With a font Settings names, `font: custom font loaded: ...`

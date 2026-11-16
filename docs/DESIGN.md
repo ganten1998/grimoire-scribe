@@ -2648,7 +2648,10 @@ trash, and the Trash place puts an entry back. Pick mode (New notebook's From a 
   Library's deletes come back too, or the record form) goes back to `notebooks/<id>`; then `store_restored` gives it
   " 2", " 3"... when another notebook of its Library folder has its name (in any ASCII case: their PDF copies would
   be one file), keeping its modified time (it goes back to its place in the Library's order), and has the Graph's
-  index look again; "Restored to %s." with its Library folder (Notebooks at the top). The browser answers
+  index look again; "Restored to %s." with its Library folder (Notebooks at the top). The store reads the Library
+  once for the names taken and hands that list to the browser. One whose " 2" could not be written is back under
+  its own name, and the toast names its own folder; one whose `notebook.ini` does not read is back in `notebooks/`
+  unlisted, and no toast names a folder for it (the log has each). The browser answers
   `BrowserResult::NotebookBack` and the Library reads its notebooks again at once (`reload`), under Files. An entry
   that held nothing (a trash cut off) is removed and says nothing. Refusals: "Couldn't restore. Name taken." (every
   name to " 99", or the notebook's id), "Couldn't restore. Folder gone.", "Importing now.", else "Couldn't
@@ -2664,7 +2667,7 @@ trash, and the Trash place puts an entry back. Pick mode (New notebook's From a 
   went with them` (docs/KINDLE.md).
 - **Tests**: `browser.rs`'s unit tests (a folder card's check by identity, each refusal's words, Rename's rules and
   places, a name nobody typed never given, the allow-list's words, Delete's question, Delete then Restore, a notebook the Library deleted coming back as " 2", a trash past the cap keeping
-  its newest, a write changing its row with no folder read again, the font in use), `test_fsview_writes.rs`'s trash sizes (slices, depth, links, the record left out), its listing past
+  its newest, a write changing its row with no folder read again, the font in use, a restore the store could not finish), `test_fsview_writes.rs`'s trash sizes (slices, depth, links, the record left out), its listing past
   the cap and a picture a page still waits for, and the scenarios `files_8_rename` (every rule, a name taken, a
   good name, an empty one, Cancel), `files_9_trash` (Delete's question, Keep it, a tap outside it, its Delete, the sizes, Restore, a page with no
   card),

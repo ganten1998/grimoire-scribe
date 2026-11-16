@@ -1990,18 +1990,23 @@ impl Browser {
         Ok(match done {
             Restored::File(p) => (Some(back_to(&p.split_last().map_or_else(String::new, |(f, _)| f.to_string_lossy()))), None),
             Restored::Notebook(id) => {
+                // (the store reads the Library once for the names taken, and that is the list here from now on)
                 let mut nb = NotebookInfo::default();
-                if store_restored(&id, &mut nb) != 0 {
-                    qlog!("files: notebook %s is back, its notebook.ini did not read", &id);
-                }
-                store_list(&mut self.books);
+                let rc = store_restored(&id, &mut nb, &mut self.books);
                 self.book_keys = None;
+                match rc {
+                    -1 => qlog!("files: notebook %s is back, its notebook.ini did not read", &id),
+                    -2 => qlog!("files: notebook %s is back under a name another notebook of its folder has: the new name could not be written", &id),
+                    _ => {}
+                }
                 // (a page in the trash is listed by its notebook's name, which is known again now)
                 for r in self.rows.iter_mut().filter(|r| r.trash.as_ref().is_some_and(|t| t.kind == TrashKind::Page)) {
                     r.title = None;
                 }
+                // (one whose notebook.ini did not read has no Library folder to name, and the Library does not list
+                // it: nothing is claimed)
                 let folder = if nb.folder.is_empty() { tr("Notebooks").to_string() } else { nb.folder.as_str().to_string() };
-                (Some(back_to(&folder)), Some(id))
+                ((rc != -1).then(|| back_to(&folder)), Some(id))
             }
             Restored::Nothing => (None, None),
         })
@@ -4211,6 +4216,43 @@ mod tests {
         store_list(&mut all);
         let back = all.iter().find(|n| n.id.as_str() == id).expect("in the Library again");
         assert_eq!((back.name.as_str(), back.folder.as_str(), back.modified), ("Alpha 2", "School", modified));
+    }
+
+    // A restored notebook the store could not finish (issue #144): one whose notebook.ini does not read is back in
+    // notebooks/ and the Library does not list it, so no toast names a folder for it (it said "Restored to
+    // Notebooks." whatever its folder had been); one whose " 2" name could not be written is back under its own name,
+    // and the toast names its own folder. The Library is read once for it, by the store.
+    #[test]
+    fn a_restore_the_store_could_not_finish_says_what_is_true() {
+        let (base, _g) = storage("nbhalf");
+        let trash = format!("{base}/grimoire/trash");
+        let mut made = |name: &str| {
+            let mut nb = NotebookInfo::default();
+            assert_eq!(store_create(name, "School", PAPER_BLANK, &mut nb), 0);
+            nb.id.as_str().to_string()
+        };
+        let (broken, twin) = (made("Broken"), made("Twin"));
+        assert_eq!(store_delete(&broken), 0);
+        assert_eq!(store_delete(&twin), 0);
+        let again = made("Twin");
+        let entry = |id: &str| std::fs::read_dir(&trash).unwrap().flatten().map(|e| e.file_name().to_string_lossy().into_owned()).find(|n| n.starts_with(id)).unwrap();
+        std::fs::remove_file(format!("{trash}/{}/notebook.ini", entry(&broken))).unwrap();
+        i18n_set("en");
+        let mut b = Browser::default();
+        assert!(b.open(PickSpec::place(), FilesPrefs { card: true, ..Default::default() }));
+        assert!(b.go(sp("grimoire/trash")));
+        b.open_card(row_of(&b, &entry(&broken)));
+        assert_eq!(b.restore_card(), Ok((None, Some(broken.clone()))), "no folder is claimed for it");
+        assert!(std::path::Path::new(&format!("{base}/grimoire/notebooks/{broken}")).is_dir(), "it is back in notebooks/ all the same");
+        assert_eq!(b.books.iter().map(|n| n.id.as_str()).collect::<Vec<_>>(), [again.as_str()]);
+        // the " 2" cannot be written (the store's next write fails): back under its own name, in its own folder
+        b.open_card(row_of(&b, &entry(&twin)));
+        crate::util::FAIL_WRITE_AT.with(|n| n.set(1));
+        let r = b.restore_card();
+        crate::util::FAIL_WRITE_AT.with(|n| n.set(0));
+        assert_eq!(r, Ok((Some("Restored to School.".to_string()), Some(twin.clone()))));
+        let twins: Vec<(&str, &str)> = b.books.iter().filter(|n| n.name.as_str() == "Twin").map(|n| (n.name.as_str(), n.folder.as_str())).collect();
+        assert_eq!(twins, [("Twin", "School"), ("Twin", "School")], "the browser's list is the store's, read once");
     }
 
     #[test]
