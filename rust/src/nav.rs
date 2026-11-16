@@ -212,60 +212,35 @@ fn name_key(line: &[u8]) -> Option<(u32, &[u8])> {
     Some((id as u32, &rest[digits + 1..]))
 }
 
-// A sidecar's text (None when there is no file): Ok, or Err when it is there and does not read, is
-// not a regular file, is a symlink, is over NAV_FILE_MAX or holds a NUL.
+// A sidecar's text (None when nothing is at its name): Ok, or Err when it is there and does not read, is
+// no plain file at its name (a link is not followed, and the open never waits: util::open_read_nofollow), is
+// over `cap` or holds a NUL.
 pub(crate) fn read_sidecar(path: &str, cap: usize) -> Result<Option<Vec<u8>>, ()> {
-    let Ok(cpath) = std::ffi::CString::new(path) else { return Err(()) };
-    // SAFETY: open of a NUL-terminated path we own; the descriptor is closed on every path below.
-    let fd = unsafe { libc::open(cpath.as_ptr(), libc::O_RDONLY | libc::O_NONBLOCK | libc::O_NOFOLLOW) };
-    if fd < 0 {
-        // SAFETY: lstat writes one stat into our zeroed local, from a NUL-terminated path.
-        let absent = errno() == libc::ENOENT && {
-            let mut st: libc::stat = unsafe { std::mem::zeroed() };
-            unsafe { libc::lstat(cpath.as_ptr(), &mut st) != 0 && errno() == libc::ENOENT }
-        };
-        return if absent { Ok(None) } else { Err(()) };
-    }
-    let r = read_open_sidecar(fd, cap);
-    // SAFETY: fd is the descriptor opened above, closed once.
-    unsafe { libc::close(fd) };
-    r.map(Some)
-}
-
-fn read_open_sidecar(fd: libc::c_int, cap: usize) -> Result<Vec<u8>, ()> {
-    // SAFETY: fstat writes one stat into our zeroed local, for the open descriptor.
-    let mut st: libc::stat = unsafe { std::mem::zeroed() };
-    if unsafe { libc::fstat(fd, &mut st) } != 0 || (st.st_mode & libc::S_IFMT) != libc::S_IFREG || st.st_size < 0 || st.st_size > cap as _ {
+    use std::io::Read;
+    let (f, st) = match open_read_nofollow(path) {
+        Ok(x) => x,
+        Err(e) => {
+            // (absent only when lstat finds nothing there either: a link, even one to nothing, is a file)
+            let absent = e.kind() == std::io::ErrorKind::NotFound && std::fs::symlink_metadata(path).is_err_and(|e| e.kind() == std::io::ErrorKind::NotFound);
+            return if absent { Ok(None) } else { Err(()) };
+        }
+    };
+    if st.len() > cap as u64 {
         return Err(());
     }
     let mut buf: Vec<u8> = Vec::new();
-    if buf.try_reserve_exact(cap + 1).is_err() {
+    if buf.try_reserve_exact(st.len() as usize + 1).is_err() {
         return Err(());
     }
-    let mut got_len = 0usize;
-    buf.resize(cap + 1, 0);
-    loop {
-        // SAFETY: read into the part of buf after got_len, with the room that is left there.
-        let got = unsafe { libc::read(fd, buf[got_len..].as_mut_ptr() as *mut libc::c_void, cap + 1 - got_len) };
-        if got < 0 {
-            if errno() == libc::EINTR {
-                continue;
-            }
-            return Err(());
-        }
-        if got == 0 {
-            break;
-        }
-        got_len += got as usize;
-        if got_len > cap {
-            return Err(());
-        }
+    // (one byte past the limit is asked for: a file that grew since the fstat is told from one that fits; EINTR
+    // is tried again)
+    if f.take(cap as u64 + 1).read_to_end(&mut buf).is_err() || buf.len() > cap {
+        return Err(());
     }
-    buf.truncate(got_len);
     if buf.contains(&0) {
         return Err(()); // never rewrite a file with a hidden binary tail
     }
-    Ok(buf)
+    Ok(Some(buf))
 }
 
 // Keeps a line this version does not read, to write back: -1 past the limits.

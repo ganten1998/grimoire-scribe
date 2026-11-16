@@ -7,17 +7,16 @@
 wait 150
 tap 1535 95
 wait 200
-expect library.ui_at.1200.1930 is updates
-tap 1200 1930
+tap library settings.cat.0
+wait 100
+expect library.ui_at.1233.505 is updates
+tap 1233 505
 wait 200
 shot 01-updates
-tap 930 1055
 wait 1000
 expect library.update is newer 9.0.0-beta.9
 shot 02-newer
-tap 930 895
-wait 100
-tap 930 1055
+tap library updates.channel
 wait 1000
 expect library.update is newest 1.2.0
 shot 03-newest

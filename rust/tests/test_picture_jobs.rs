@@ -107,6 +107,12 @@ fn with_log<R>(path: &str, f: impl FnOnce() -> R) -> (R, String) {
 // its header", from build_notebook). No notebook either way.
 #[test]
 fn a_picked_pictures_header_is_checked_by_the_worker() {
+    // The worker's death hook is a sandbox feature; on Linux the sandbox steps are the root-only
+    // CI job's (test_sandbox_linux.rs), so an unprivileged run has no worker death to test.
+    if cfg!(target_os = "linux") {
+        eprintln!("  the picture worker's death hooks need the Linux sandbox (root, test_sandbox_linux.rs): not tested");
+        return;
+    }
     let e = setup("pick-header");
     pictures(&format!("{}/documents/Scans", e.storage), 1);
     std::env::set_var("GRIMOIRE_PIC_TEST_CRASH", "1");
@@ -171,6 +177,12 @@ fn worker_deaths_never_refuse_a_good_folder() {
 // row die on is Dead (a template or photo is then marked bad: test_picwork.rs).
 #[test]
 fn one_death_is_tried_again_on_a_fresh_worker() {
+    // The worker's death hook is a sandbox feature; on Linux the sandbox steps are the root-only
+    // CI job's (test_sandbox_linux.rs), so an unprivileged run has no worker death to test.
+    if cfg!(target_os = "linux") {
+        eprintln!("  the picture worker's death hooks need the Linux sandbox (root, test_sandbox_linux.rs): not tested");
+        return;
+    }
     let e = setup("retry");
     let dir = format!("{}/pics", e.storage);
     pictures(&dir, 1);

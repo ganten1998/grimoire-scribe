@@ -102,7 +102,8 @@ your notebooks and settings from `quire/` to `grimoire/` and removes the old Qui
   switches to katakana and **、** holds 、。？！ on its flicks.
 - **Delete held down** deletes one character after another, on every keyboard (names, Find, the page number
   pads, the count pad): a tap deletes one, and a finger or the pen kept on the key deletes the next after about
-  0.4 s, then about 15 a second until it lifts or slides off.
+  0.4 s, then about 15 a second until it lifts or slides off. The count pad's - and + count on the same way,
+  up to its limits.
 - **The caret**: every keyboard but the count pad has **◀** and **▶** at the right end of its text line, which
   move the caret a letter (held, one after another, as delete does); a tap on the text puts the caret there
   and a drag across it selects. Typing and delete act at the caret, and replace or take a selection. The key
@@ -186,8 +187,8 @@ your notebooks and settings from `quire/` to `grimoire/` and removes the old Qui
   its card turns it off, and it turns itself off after 10 minutes with nobody watching. Plain HTTP:
   use it on a network you trust.
 - **Wi-Fi networks**: **Settings > Wi-Fi** turns Wi-Fi on or off, says which network the Kindle is
-  connected to, and lists the networks the Kindle has saved, the one connected to first and checked (seven
-  a page; **More networks** shows the next). Tap one to switch to it: "Connecting to ..." until the Kindle
+  connected to, and lists the networks the Kindle has saved in their own order; the list scrolls. The
+  status line names the connected network. Tap one to switch to it: "Connecting to ..." until the Kindle
   is connected to it, or "Could not connect to ..." when it refuses or has not connected in 45 seconds
   (Grimoire changes nothing more: the Kindle's own Wi-Fi service decides what it joins next). Switching disconnects Share, Live view and SSH from
   the network you leave. Add a network or change its password in the Kindle's settings or KOReader:
@@ -223,21 +224,22 @@ your notebooks and settings from `quire/` to `grimoire/` and removes the old Qui
   passcode off for its whole session, and Grimoire opened from KOReader leaves it that way. Start
   Grimoire from the Library when you need the passcode.
 - **Language**: English, Spanish or Japanese, following the Kindle's own language (see Language).
-- **Fonts** (Classic): the Style row in Settings has a **Font** chip at its right end in the Classic style.
-  It opens the Font sheet: **Terminess** (the default), **Atkinson Hyperlegible Next** (made for readers
+- **Fonts** (Classic): Settings' Display category has a **Font** row in the Classic style, naming the font in
+  use. It opens the Font sheet: **Terminess** (the default), **Atkinson Hyperlegible Next** (made for readers
   with low vision: I, l and 1, O and 0 cannot be mistaken), **Noto Sans** and **Literata** (a serif made
-  for reading on screens), each named in itself, with a sample of the one you tap at the top. **Done**
-  applies it to every screen; **Cancel** leaves the font as it was. Your pages, paper labels, the clock,
+  for reading on screens), each named in itself, with a sample of the one in use at the top. A tap on a font
+  applies it to every screen at once and saves it; the sheet's back arrow returns to Settings and its X closes
+  Settings, both keeping the font you tapped (to go back, tap the font you had). Your pages, paper labels, the clock,
   PDFs and pictures never change with the font, and neither do the icons; the share pages in your browser
-  use the same font (a page already open takes it when it loads again). Gothic keeps its own pixel type, so the chip is not there. Greek, Cyrillic and other
+  use the same font (a page already open takes it when it loads again). Gothic keeps its own pixel type, so the Font row is not there. Greek, Cyrillic and other
   letters a font lacks come from Terminess, and Japanese from DotGothic16, as in every style.
 - **Your own fonts** (Classic, since 2.1.0-beta.2): copy `.ttf` or `.otf` files into `grimoire/fonts` over USB
   (a family unzipped into a folder of its own is fine, one folder deep; up to 200 files, 24 MB each), then open
   Settings > Font. Under **Your fonts** each file shows its name drawn in itself once Grimoire has checked it
-  in the background ("Checking 3 fonts..." stays above the buttons meanwhile, and a file still being copied
+  in the background ("Checking 3 fonts..." stays on the sheet meanwhile, and a file still being copied
   waits until it is whole), or its row is greyed and says why not: "Unreadable font." (not a font, damaged, or
   one whose letters draw nothing), "Too big (over 24 MB).", "No Latin letters." (a symbol font), "Use .ttf or
-  .otf." (a web font) or "Took too long to read.". Tap a font to see the sample in it, and **Done** to use it.
+  .otf." (a web font) or "Took too long to read.". Tap a font to use it: it applies at once and is saved.
   Bold comes from the font's own weight axis if it has one, else from the Bold file of the same family beside
   it, else Grimoire thickens the regular. A letter your font lacks comes from Terminess (its row says "Some
   letters come from Terminess." when your language needs some), and kana and kanji from DotGothic16 unless your
@@ -247,8 +249,8 @@ your notebooks and settings from `quire/` to `grimoire/` and removes the old Qui
     labels, the clock, icons, PDFs and pictures never use it, and neither do the share pages (your browser gets
     Terminess): Grimoire never copies your font into a page, a PDF or anywhere else, and never sends it
     anywhere. It stays on this Kindle. Use fonts you have the right to use.
-  - **Back to Terminess.** Pick Terminess in the Font sheet and tap Done (while a font of yours is in use the
-    sheet's own words are in Terminess, so it can always be read; this also takes your font away after a start in
+  - **Back to Terminess.** Tap Terminess in the Font sheet (while a font of yours is in use the sheet's own words
+    are in Terminess, so it can always be read; a tap on Terminess also takes your font away after a start in
     Terminess that a crash made, so the next start does not try it again), or delete the font's file over USB:
     Grimoire is in Terminess from its next start (a running Grimoire keeps the copy it loaded), and the row says
     "File missing." until you pick another font or put the file back, which brings the font back. If a font ever stops Grimoire before its first screen is drawn, the next start

@@ -89,6 +89,8 @@ tap 1535 95
 wait 200
 shot 08-settings
 expect library.sheet is settings
+tap library settings.cat.3
+wait 100
 tap library pen-feel
 wait 400
 shot 09-penfeel-ballpoint
@@ -96,7 +98,7 @@ expect screen is penset
 tap 1152 289
 wait 200
 expect settings.fountain.pressure_gamma not 2.9000
-drag touch 1000 1789 1500 1789 6
+drag touch 1000 1700 1493 1700 6
 wait 200
 # (1152, 289) is the Fountain pen's tab since the new pens came, and the drag set its pressure curve
 expect settings.fountain.pressure_gamma is 2.9000
@@ -108,11 +110,16 @@ expect screen is penset
 tap 125 95
 wait 300
 expect screen is library
+expect library.sheet is settings
+tap library done
+wait 300
 expect library.sheet is none
 # Calibration
 tap 1535 95
 wait 200
 expect library.sheet is settings
+tap library settings.cat.3
+wait 100
 tap library calibrate
 wait 300
 shot 11-calib-first
@@ -131,7 +138,7 @@ tap 1637 2182
 tap 223 2182
 tap 930 1240
 wait 200
-pen line 200 1300 1600 1350 40 0.6 0.6
+pen line 200 1000 1600 1050 40 0.6 0.6
 wait 100
 shot 13-calib-verify
 expect screen is calib

@@ -531,6 +531,11 @@ fn the_docs_no_longer_say_what_the_code_does_not() {
     stands_on(&mut fails, TESTING, "see \"Hardening round (2026-11), sandbox\", below.", TESTING, "## Hardening round (2026-11), sandbox: ");
     // the crates: glifo is the optional one (vello_cpu's), and skrifa is glifo's plain dependency
     gone(&mut fails, BACKLOG, "glifo's optional dependency");
+    // a PDF whose name never holds the file read is read three times in all, so read again twice (#110); and the
+    // bound on its tries holds only while the scan's listing and the open file agree on its size and time
+    gone(&mut fails, TESTING, "read again up to three times");
+    gone(&mut fails, BACKLOG, "read again up to three times");
+    gone(&mut fails, DESIGN, "the try stays counted, so this cannot repeat without end. The record");
     // licenses/rust-crates.txt lists every crate the lock names, not only the ones built in
     gone(&mut fails, LICENSES_TOOL, "the Grimoire binary is built from (cargo's Cargo.lock decides them");
     // the same file gives the two-week rule for crates as the rule of a release and says where an exception is

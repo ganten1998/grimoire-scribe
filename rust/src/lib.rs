@@ -65,6 +65,7 @@ pub mod shortcut_profiles; // per-device shortcuts: root/shortcuts/<device>.ini 
 pub mod touchgest; // the touch recognizer: contact frames in, touch, pinch and gesture events out
 pub mod update;
 pub mod wifi;
+pub mod wpa; // WPA/WPA2's PSK from a passphrase and a name, so add needs no wpa_passphrase
 pub mod util; // common.h (util.c)
 pub use util as common;
 
@@ -76,6 +77,7 @@ pub mod bgimage;
 pub mod bgjob;
 pub mod bgwork_compact; // compact.h + bg_compact_pages
 pub mod bgwork_template; // templates.h + bg_template, bg_import_folder
+pub mod bgwork_copy; // a file copied into Grimoire's folders for the user's files: BgKind::CopyFile (2.2)
 pub mod brush;
 pub mod compact; // compact.h's surface (bodies in bgwork_compact.rs)
 pub mod export;
@@ -108,7 +110,7 @@ pub mod dispmenu;
 pub mod editor;
 pub mod erasersample; // header only (the bytes are in assets.rs)
 pub mod findsheet; // the Find sheet: go to a page by its number or name (Rust only, the Index's phase 1)
-pub mod fsview; // one storage layer: the walk, zones, listing and stats of the Kindle's storage (2.1, read-only)
+pub mod fsview; // one storage layer: the walk, zones, listing and stats of the Kindle's storage (2.1), and its writes in Grimoire's folders (2.2)
 pub mod httpd;
 pub mod inkmode; // header only
 pub mod keyboard;
@@ -122,6 +124,7 @@ pub mod live_keys;
 pub mod pagesview;
 pub mod panel; // header only
 pub mod pensettings;
+pub mod settingsmenu; // Settings' categories and rows as data (Rust only)
 pub mod share;
 pub mod status; // not a port: the clock and battery corner, Rust only (2.0.0-beta.5)
 pub mod ui;

@@ -51,6 +51,18 @@ fn get_module(qr: &[u8; QR_BUF], x: i32, y: i32) -> bool {
 }
 
 
+/// Data modules across the symbol for text, without its quiet zone, or 0 when the text cannot be
+/// encoded. A shorter address has fewer data modules, so drawing two codes at the same module size
+/// would make them look different sizes.
+pub fn ui_qr_data_modules(text: &str) -> i32 {
+    let mut qr = [0u8; QR_BUF];
+    if encode(text, &mut qr) {
+        get_size(&qr)
+    } else {
+        0
+    }
+}
+
 /// Modules across the symbol for text, its quiet zone included (37 for every share address), or
 /// 0 when the text cannot be encoded. A box of that many times m pixels gets modules of m pixels.
 pub fn ui_qr_modules(text: &str) -> i32 {

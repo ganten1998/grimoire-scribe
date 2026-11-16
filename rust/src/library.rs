@@ -3,6 +3,8 @@
 
 use crate::prelude::*;
 use crate::about::AboutView;
+use crate::settingsmenu;
+use crate::ui::{ui_row, ui_row_page, ui_row_pager, Row as UiRow};
 use crate::browser::{Browser, BrowserResult, PickKind, PickSpec};
 
 #[repr(i32)]
@@ -43,6 +45,15 @@ enum Modal {
     /// Settings > Wi-Fi (2.1.0-beta.2, Rust only; a number of its own as Merge's): the radio, the network
     /// connected to and the Kindle's saved networks, a tap switching to one (wifi.rs)
     Wifi = 360,
+    /// Settings > Pen > the pen button (Rust only; a number of its own as Wifi's): what holding the
+    /// side button while writing does, as Language's list of choices
+    SideButton = 370,
+    /// Settings > Pen > the eraser (Rust only): whole strokes, or precise
+    EraserMode = 380,
+    /// Settings > System > About (Rust only): what this Kindle is, the storage used, and its links
+    DeviceInfo = 390,
+    /// Settings > System > About > a link (Rust only): the link as a QR code a phone scans
+    LinkQr = 395,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -63,6 +74,10 @@ enum KbPurpose {
     NewFolder = 2,     // KBP_NEW_FOLDER
     MoveNewFolder = 3, // KBP_MOVE_NEW_FOLDER
     RenameFolder = 4,  // KBP_RENAME_FOLDER
+    WifiPassword = 5,  // the Wi-Fi sheet's masked password entry
+    WifiName = 6,      // the Wi-Fi sheet's hidden network name entry
+    WifiEapUser = 7,   // the Wi-Fi sheet's enterprise username entry
+    WifiEapPassword = 8, // the Wi-Fi sheet's masked enterprise password entry
 }
 
 const H_NONE: i32 = 0;
@@ -92,6 +107,16 @@ const H_SET_THEME: i32 = 23;
 const H_SET_LANGUAGE: i32 = 24;
 const H_LANG_PICK: i32 = 25;
 const H_LANG_BACK: i32 = 26;
+const H_SIDE_PICK: i32 = 120;
+const H_SIDE_BACK: i32 = 121;
+const H_SET_ERASER: i32 = 122;
+const H_ERASER_PICK: i32 = 123;
+const H_ERASER_BACK: i32 = 124;
+const H_SET_DEVICE: i32 = 125;
+const H_DEVICE_BACK: i32 = 126;
+const H_LINK: i32 = 127;
+const H_LINK_PAGE: i32 = 128;
+const H_LINK_BACK: i32 = 129;
 const H_MORE_OPEN: i32 = 27;
 const H_MORE_RENAME: i32 = 28;
 const H_MORE_MOVE: i32 = 29;
@@ -121,7 +146,6 @@ const H_PAIR_FORGET: i32 = 52;
 const H_PAIR_AGAIN: i32 = 53;
 const H_UPDATES: i32 = 54;
 const H_UPD_CHANNEL: i32 = 55;
-const H_UPD_CHECK: i32 = 56;
 const H_UPD_NOW: i32 = 57;
 const H_MOVE_PREV: i32 = 69;
 const H_MOVE_NEXT: i32 = 70;
@@ -160,7 +184,8 @@ const H_EXIT_NO: i32 = 83;
 const H_PAIR_MENU: i32 = 84;
 const H_SHORTCUT_DEVICE: i32 = 85;
 const H_SHORTCUT_OWN: i32 = 86;
-// 2.1: the Style row's Font chip (Classic only), and the Font sheet's rows (arg: the family), Done and Cancel.
+// 2.1: the Font row (Classic only; a chip on the Style row before #115), and the Font sheet's rows (arg: the
+// family), Done (the page's X since #115) and Cancel (its Back).
 const H_SET_FONT: i32 = 89;
 const H_FONT_PICK: i32 = 90;
 const H_FONT_DONE: i32 = 91;
@@ -174,13 +199,43 @@ const H_NEW_FILE: i32 = 95;
 // and the pages of them (arg: -1 back, 1 on).
 const H_FONT_OWN: i32 = 96;
 const H_FONT_PAGE: i32 = 97;
-// 2.1.0-beta.2: Settings' Wi-Fi button, and its sheet's rows: the radio (arg: WIFI_*), a saved network
-// (arg: its row, an index of WifiSheet.rows) and the next page of them. (Numbered apart from the ids other
-// work of the same release adds after 97.)
+// The page arrows of Settings' lists (ui_row_page): the categories down the left, the rows of the open
+// category, and a submenu's rows (arg: -1 back, 1 on).
+const H_SET_CAT_PAGE: i32 = 130;
+const H_SET_ROWS_PAGE: i32 = 131;
+const H_SETTINGS_PAGE: i32 = 132;
+// 2.1.0-beta.2: Settings' Wi-Fi button, and its submenu's rows: the radio (arg: WIFI_*), a saved network
+// (arg: its row, an index of WifiSheet.rows). (Numbered apart from the ids other work of the same release
+// adds after 97.)
 const H_WIFI_MENU: i32 = 180;
 const H_WIFI_RADIO: i32 = 181;
 const H_WIFI_NET: i32 = 182;
-const H_WIFI_MORE: i32 = 183;
+// 2.1: Settings' Sleep & Clock buttons (the Display sheet's sleep and clock rows, on pages of their own).
+const H_SET_SLEEP: i32 = 184;
+const H_SET_CLOCK: i32 = 185;
+// Settings > Display's Dark mode toggle (the invert setting, moved out of the Display sheet).
+const H_SET_DARK: i32 = 196;
+// Settings > Wi-Fi's top controls and lists: Nearby/Saved (arg: 0 or 1), Rescan, Other... (a hidden
+// network), a saved row's trash (arg: a row), and a network a scan found (arg: an index of
+// WifiSheet.near). The saved rows keep H_WIFI_NET.
+const H_WIFI_TAB: i32 = 186;
+const H_WIFI_SCAN: i32 = 187;
+const H_WIFI_NEAR: i32 = 188;
+const H_WIFI_DELETE: i32 = 189;
+const H_WIFI_OTHER: i32 = 190;
+const H_WIFI_OTHER_OPEN: i32 = 191;
+const H_WIFI_OTHER_WPA: i32 = 192;
+const H_WIFI_OTHER_CANCEL: i32 = 193;
+const H_WIFI_OTHER_EAP: i32 = 194;
+const H_WIFI_OTHER_WPA3: i32 = 195;
+
+// 2.1: Settings' page (a full screen, the categories down its left): the category a tap picks (arg: its
+// index), whose settings the page shows.
+const H_SET_CAT: i32 = 100;
+// A Settings submenu's Back and Done: one level up (Settings, Shortcuts or Pair), never out of Settings.
+const H_SETTINGS_BACK: i32 = 101;
+/// Every Settings page's X: the whole of Settings closes (a submenu's Back stays one step back).
+const H_SETTINGS_CLOSE: i32 = 102;
 
 #[derive(Clone, Copy, Default)]
 struct Item {
@@ -199,11 +254,8 @@ struct Item {
 pub struct LibraryState {
     /// Exit Grimoire?'s highlight is on No (Left and Right move it; Enter presses it)
     exit_no: bool,
-    /// The Font sheet (2.1): the family highlighted (FONT_FAMILIES; the one in use as it opens), and
-    /// where its sample card and its rows were drawn (a tap on a row refreshes only those).
+    /// The Font sheet (2.1): the family in use (FONT_FAMILIES), and where its sample card was drawn.
     font_pick: usize,
-    font_sample: Rect,
-    font_rows: Vec<Rect>,
     /// The Font sheet's own fonts (2.1.0-beta.2): the files of grimoire/fonts as the sheet found them
     /// (userfonts_scan), the one highlighted (its path under the folder; "" while a family is: font_pick), the
     /// first shown of the page on show and how many a page holds, the rows drawn (each font's index and where),
@@ -213,7 +265,7 @@ pub struct LibraryState {
     font_first: usize,
     font_per_page: usize,
     font_own_rows: Vec<(usize, Rect)>,
-    /// a family was tapped on the sheet since it opened (Done then drops a font=file: that does not draw)
+    /// a family was tapped on the sheet since it opened (an apply then drops a font=file: that does not draw)
     font_picked: bool,
     font_sample_how: &'static str,
     fonts_looked_ms: u32,
@@ -229,6 +281,25 @@ pub struct LibraryState {
     settings_return_editor: bool,
     settings_painting: bool,
     settings_editor_fit: bool,
+    /// Settings' page: the category whose settings show (0 General, 1 Display, 2 Sleep & Clock,
+    /// 3 Pen, 4 Controls, 5 System; H_SET_CAT), and the page each of its lists is on (ui_row_page):
+    /// the categories, the open category's rows, and the submenu's rows (whose title keys the last,
+    /// so another submenu starts at its first page).
+    settings_cat: i32,
+    settings_cat_page: i32,
+    /// The category the category page was last laid out for: opening Settings or picking one brings
+    /// its page on screen, while a tap on the page arrows stays on the page it asked for.
+    settings_cat_shown: i32,
+    settings_rows_page: i32,
+    settings_menu_page: i32,
+    settings_menu_title: String,
+    /// About's links: the page its list is on, and the link whose QR code shows (its index in
+    /// ABOUT_LINKS).
+    device_links_page: i32,
+    device_link: i32,
+    /// A screen Settings opened (Pen feel, Calibration) is returning to the Library: library_enter
+    /// opens Settings again, as it was left.
+    reopen_settings: bool,
     books: Vec<NotebookInfo>,
     folders: Vec<String>,
     items: Vec<Item>,
@@ -351,6 +422,8 @@ pub struct LibraryState {
     shown_bt_changes: u32,
     /// Settings > Wi-Fi
     wifi: WifiSheet,
+    /// The Wi-Fi submenu was opened from Share's bottom button: Back or X returns to Share.
+    share_wifi_return: bool,
     // The Updates sheet: its check (UPD_*), the newest version it found, why it failed.
     upd: i32,
     /// at most UPDATE_VERSION_LEN - 1 bytes
@@ -360,6 +433,9 @@ pub struct LibraryState {
     modal: Modal,
     kbp: KbPurpose,
     kb: Keyboard,
+    /// the sheet the keyboard was opened over: it stays drawn under its keys (Settings' and the
+    /// Wi-Fi sheet's keyboards never close their page)
+    kb_parent: Modal,
     dm: DispMenu,
     /// item index for MORE / MOVE / DELETE
     target: i32,
@@ -1678,6 +1754,11 @@ fn finish_recording(a: &mut App) {
     }
 }
 
+/// Whether the Library shows no sheet, dialog or keyboard (a PDF fill's pages go in then: app.rs).
+pub fn library_at_rest(a: &App) -> bool {
+    a.lib.as_deref().is_none_or(|s| s.modal == Modal::None)
+}
+
 /// Whether the Library currently owns the raw gesture recording context.
 pub fn library_record_active(a: &App) -> bool {
     a.lib.as_deref().is_some_and(|s| s.modal == Modal::Gestures && s.record_action != SHORTCUT_NONE)
@@ -2706,6 +2787,152 @@ fn upd_poll(a: &mut App) {
     }
 }
 
+/// Settings' card and its measures are the app's design system, in ui.rs: the main page, every
+/// submenu and the Display sheet draw the same cards and rows from these.
+pub(crate) use crate::ui::{
+    ui_card as settings_card, ui_row_gap as settings_gap, ui_row_pad as settings_pad,
+};
+
+/// A Settings card of segments (Pen feel's tools, its eraser choices): one outline around all of
+/// them, a rule between each two, and the one picked filled—square to its neighbours, following the
+/// card's rounded end where it has one. Returns where each segment is.
+pub(crate) fn settings_strip(c: &mut Canvas, r: Rect, n: i32, on: i32) -> Vec<Rect> {
+    let n = n.max(1);
+    let w = r.w / n;
+    let seg = |i: i32| -> Rect {
+        let x = r.x + i * w;
+        Rect { x, y: r.y, w: if i == n - 1 { r.x + r.w - x } else { w }, h: r.h }
+    };
+    if (0..n).contains(&on) {
+        let s = seg(on);
+        let rad = ui_px(16.0);
+        if n == 1 {
+            canvas_round_rect(c, s, rad, 0, true, 0);
+        } else if on == 0 {
+            canvas_round_rect(c, s, rad, 0, true, 0);
+            canvas_fill(c, Rect { x: s.x + rad, y: s.y, w: s.w - rad, h: s.h }, 0);
+        } else if on == n - 1 {
+            canvas_fill(c, Rect { x: s.x, y: s.y, w: s.w - rad, h: s.h }, 0);
+            canvas_round_rect(c, s, rad, 0, true, 0);
+        } else {
+            canvas_fill(c, s, 0);
+        }
+    }
+    settings_card(c, r, ButtonStyle::Plain);
+    for i in 1..n {
+        canvas_vline(c, r.x + i * w, r.y, r.y + r.h, ui_px(3.0), 0);
+    }
+    (0..n).map(seg).collect()
+}
+
+pub(crate) use crate::ui::ui_switch as settings_switch;
+
+/// Settings > Updates: one Update button that carries the version, and a switch for the branch the
+/// updates come from (Preview: betas and releases; Stable: releases only). The check runs as the
+/// page opens, so the version it shows is the feed's, not the last visit's.
+fn draw_updates(a: &mut App) {
+    let (aw, ah) = (a.w, a.h);
+    let preview = upd_preview(a);
+    let App { screen: c, lib, .. } = a;
+    let s = lib.as_deref_mut().unwrap();
+    let page = settings_page(c, aw, ah, tr("Updates"), true, false);
+    hits_add(&mut s.hits, page.back, H_SETTINGS_BACK, 0);
+    hits_add(&mut s.hits, page.close, H_SETTINGS_CLOSE, 0);
+    let in_ = page.content;
+    let avail = update_available();
+    let (upd, newer, latest, why) = (s.upd, upd_newer(s), s.upd_latest.clone(), s.upd_why.clone());
+    // The button says what the check found, and the version is on it either way; a failed check's
+    // button is the way to ask again.
+    let mut label = String::new();
+    let st = if upd == UPD_CHECKING {
+        csnprintf!(&mut label, 200, "%s", tr("Checking for updates..."));
+        ButtonStyle::Disabled
+    } else if !avail || (upd == UPD_FAILED && why == "no-kpm") {
+        csnprintf!(&mut label, 200, "%s", tr("Updates come through KPM, which is not here."));
+        ButtonStyle::Disabled
+    } else if upd == UPD_DONE && newer {
+        // TRANSLATORS: Settings > Updates' button when the check found a newer Grimoire (%s): a tap
+        // closes Grimoire, KPM installs it, and Grimoire starts again.
+        csnprintf!(&mut label, 200, tr("Update to %s"), &latest);
+        ButtonStyle::Primary
+    } else if upd == UPD_DONE {
+        csnprintf!(&mut label, 200, tr("Grimoire %s is the newest."), GRIMOIRE_VERSION);
+        ButtonStyle::Disabled
+    } else if upd == UPD_FAILED && why == "network" {
+        csnprintf!(&mut label, 200, "%s", tr("Could not check. Is Wi-Fi on?"));
+        ButtonStyle::Plain
+    } else if upd == UPD_FAILED {
+        csnprintf!(&mut label, 200, "%s", tr("Could not check for updates."));
+        ButtonStyle::Plain
+    } else {
+        csnprintf!(&mut label, 200, "%s", tr("Check for updates"));
+        ButtonStyle::Plain
+    };
+    let br = Rect::new(in_.x, in_.y, in_.w, ui_px(150.0));
+    ui_button(c, br, if newer { IconKind::Download } else { IconKind::Update }, &label, st);
+    if st != ButtonStyle::Disabled {
+        hits_add(&mut s.hits, br, H_UPD_NOW, 0);
+    }
+    // The branch, as a switch: on (Preview) for betas and releases, off (Stable) for releases only.
+    let row = Rect::new(in_.x, br.y + br.h + ui_px(24.0), in_.w, ui_px(140.0));
+    ui_frame(c, row, ui_px(16.0), 0, false, ui_px(3.0));
+    // TRANSLATORS: Settings > Updates, the row whose switch picks the branch updates come from.
+    font_draw_left(c, FontFace::Regular, ui_text_size(), rect_inflate(row, -ui_px(30.0)), tr("Update branch"), 0);
+    settings_switch(c, row, preview);
+    // TRANSLATORS: Settings > Updates, the branch the switch is on: Preview gets betas and releases,
+    // Stable only releases.
+    let branch = if preview { tr("Preview") } else { tr("Stable") };
+    let bw = font_measure(FontFace::Bold, ui_text_size(), branch);
+    let sx = row.x + row.w - ui_px(30.0) - ui_px(120.0);
+    font_draw_left(c, FontFace::Bold, ui_text_size(), Rect::new(sx - ui_px(24.0) - bw, row.y, bw, row.h), branch, 0);
+    hits_add(&mut s.hits, row, H_UPD_CHANNEL, 0);
+}
+
+/// A Settings submenu's full screen: Back and the title above a rule, the list's rows below (its own
+/// Done row left out: the page has an X at its top right instead) and an X at the top right.
+fn draw_settings_menu(a: &mut App, title: &str, rows: &[MenuRow]) {
+    let (aw, ah) = (a.w, a.h);
+    let App {
+        screen: c,
+        lib,
+        ..
+    } = a;
+    let s = lib.as_deref_mut().unwrap();
+    let page = settings_page(c, aw, ah, title, true, false);
+    hits_add(&mut s.hits, page.back, H_SETTINGS_BACK, 0);
+    hits_add(&mut s.hits, page.close, H_SETTINGS_CLOSE, 0);
+    let in_ = page.content;
+    let shown: Vec<&MenuRow> = rows
+        .iter()
+        .filter(|r| r.id != H_CANCEL && r.id != H_BUTTONS_DONE && r.id != H_GESTURES_DONE)
+        .collect();
+    // A submenu is the same page of rows as Settings' main page: the selection is filled, the rest
+    // outlined, and a list longer than the screen is paged rather than squeezed.
+    if s.settings_menu_title != title {
+        s.settings_menu_title.clear();
+        s.settings_menu_title.push_str(title);
+        s.settings_menu_page = 0;
+    }
+    let list = ui_row_page(in_, shown.len(), s.settings_menu_page, ui_px(140.0), ui_px(90.0));
+    s.settings_menu_page = list.page;
+    for (r, row) in list.rows.iter().zip(shown[list.first..list.first + list.rows.len()].iter()) {
+        let mut rr = UiRow::new(row.icon, &row.label);
+        rr.style = row.st;
+        rr.name = row.name;
+        ui_row(c, *r, &rr);
+        if row.st != ButtonStyle::Disabled {
+            hits_add(&mut s.hits, *r, row.id, row.arg);
+        }
+    }
+    ui_row_pager(c, &list);
+    if list.page > 0 {
+        hits_add(&mut s.hits, list.prev, H_SETTINGS_PAGE, -1);
+    }
+    if list.page + 1 < list.pages {
+        hits_add(&mut s.hits, list.next, H_SETTINGS_PAGE, 1);
+    }
+}
+
 // A vertical list of full-width buttons inside a sheet.
 /// The sheet with its rows; returns where each row is.
 fn draw_menu(a: &mut App, title: &str, rows: &[MenuRow]) -> Vec<Rect> {
@@ -2798,10 +3025,27 @@ fn draw_menu(a: &mut App, title: &str, rows: &[MenuRow]) -> Vec<Rect> {
 const WIFI_RETRY: i32 = 0;
 const WIFI_ON: i32 = 1;
 const WIFI_OFF: i32 = 2;
-/// Saved networks a page: with the radio, the status, More and Done, 11 rows, which fit sideways.
-const WIFI_PAGE: usize = 7;
+/// Settings > Wi-Fi's three views: the scan's networks first, the saved ones, and Other...'s hidden
+/// network.
+const WIFI_VIEW_NEARBY: usize = 0;
+const WIFI_VIEW_SAVED: usize = 1;
+const WIFI_VIEW_OTHER: usize = 2;
+/// While the nearby page is idle, it asks for a quiet scan this often.
+const WIFI_REFRESH_MS: u32 = 20_000;
+/// The badge on a WPA2/WPA3-Enterprise row (a product label, the same in every language).
+const WIFI_BETA: &str = "Beta";
 
-/// What the Wi-Fi sheet was drawn from: drawn again when any of it changes.
+/// A drag in the Wi-Fi list: where it went down, the scroll it began at, and whether it has passed
+/// the slop and is scrolling.
+#[derive(Clone, Copy, Debug, Default)]
+struct WifiScroll {
+    x0: i32,
+    y0: i32,
+    at: i32,
+    on: bool,
+}
+
+/// What the Wi-Fi submenu was drawn from: drawn again when any of it changes.
 #[derive(Clone, Default, PartialEq)]
 struct WifiShown {
     status: Option<WifiStatus>,
@@ -2809,26 +3053,52 @@ struct WifiShown {
     failed: bool,
     current: Option<Vec<u8>>,
     saved: Option<Vec<Vec<u8>>>,
+    nearby: Option<Vec<WifiNetwork>>,
+    scanning: bool,
+    scan_failed: bool,
+    add_failed: bool,
+    delete_failed: bool,
+    disconnect_failed: bool,
     join: Option<(Vec<u8>, WifiJoin)>,
 }
 
-/// Settings > Wi-Fi: the radio, the network connected to and the Kindle's saved networks (wifi.rs, the
-/// helper kindle/app/wifi.sh). It reads only while it is up: everything as it opens, then the network
-/// connected to every 2 s while a switch is under way, or while the radio is on with no connection, for
-/// 45 s after the last tap (the Share card's watch).
+/// Settings > Wi-Fi: nearby networks first, with Rescan, Other... and Saved networks above them. It
+/// reads only while it is open, and is all a full-page Settings submenu: the radio and what is
+/// connected, the scan's networks, the saved networks with a trash button each, and a hidden
+/// network's name and security. Opening it starts a scan once the radio is on.
 #[derive(Default)]
 struct WifiSheet {
     check_at: u32,
     watch_at: u32,
-    /// everything was asked for since the sheet opened (not while the Share card's last read still ran);
+    /// everything was asked for since the submenu opened (not while the Share card's last read still ran);
     /// the saved networks once more as the radio came on (wifid may not answer while it is off), or after a
     /// switch the helper refused
     asked: bool,
     relisted: bool,
     reread: bool,
-    /// the page of saved networks shown, and the names drawn, by row (H_WIFI_NET's arg)
-    page: usize,
+    /// WIFI_VIEW_*: Nearby, Saved, or Other...
+    view: usize,
+    /// how far the list is scrolled down, in pixels; rows holds every saved name and near every scan
+    /// result, not just the visible ones (H_WIFI_NET/H_WIFI_NEAR's arg is an index into them)
+    scroll: i32,
+    scroll_max: i32,
+    /// the list's last drawn viewport, and a drag in it
+    list: Rect,
+    scroll_drag: Option<WifiScroll>,
     rows: Vec<Vec<u8>>,
+    near: Vec<WifiNetwork>,
+    /// the network whose password or enterprise username is being typed, and a hidden network's name
+    /// while Other... is open. The enterprise username waits here between its keyboard and the
+    /// password's; it is wiped when the sheet resumes.
+    add: Option<WifiNetwork>,
+    eap_user: Option<Vec<u8>>,
+    other: Option<Vec<u8>>,
+    /// a scan is due as soon as the radio is on (opening the sheet, turning it on, or adding a network)
+    scan_auto: bool,
+    /// when the nearby list was last scanned, and a quiet refresh is in flight whose 20 s wait starts
+    /// when its answer comes back
+    refresh_at: u32,
+    refresh_wait: bool,
     shown: Option<WifiShown>,
 }
 
@@ -2840,6 +3110,13 @@ fn wifi_shown() -> WifiShown {
         failed: wifi_failed(),
         current: wifi_current().filter(|_| status.is_some_and(|st| st.connected == Some(true))),
         saved: wifi_saved(),
+        nearby: wifi_nearby(),
+        // (a quiet refresh keeps the list and its Rescan button as they are)
+        scanning: wifi_scanning() && !wifi_scan_quieting(),
+        scan_failed: wifi_scan_failed(),
+        add_failed: wifi_add_failed(),
+        delete_failed: wifi_delete_failed(),
+        disconnect_failed: wifi_disconnect_failed(),
         join: wifi_joining(),
     }
 }
@@ -2848,13 +3125,368 @@ fn wifi_sheet_open(a: &mut App) {
     let now = now_ms();
     wifi_join_clear();
     let asked = wifi_request(WifiAction::Networks);
-    lib(a).wifi = WifiSheet { check_at: now, watch_at: now, asked, ..WifiSheet::default() };
+    lib(a).wifi = WifiSheet {
+        check_at: now,
+        watch_at: now,
+        asked,
+        view: WIFI_VIEW_NEARBY,
+        scan_auto: true,
+        refresh_at: now,
+        ..WifiSheet::default()
+    };
     open_modal(a, Modal::Wifi);
 }
 
+/// Share's Wi-Fi button opens the same Settings > Wi-Fi submenu; closing it returns to Share.
+pub(crate) fn library_open_wifi_from_share(a: &mut App) {
+    if a.scr != ScreenId::Library {
+        app_switch(a, ScreenId::Library);
+    }
+    let s = lib(a);
+    s.share_wifi_return = true;
+    s.settings_return_editor = false;
+    wifi_sheet_open(a);
+}
+
+/// Whether the Wi-Fi submenu on screen was opened from Share (the app probe's wifi.open).
+pub(crate) fn library_wifi_from_share(a: &App) -> bool {
+    a.lib
+        .as_deref()
+        .is_some_and(|s| s.share_wifi_return && s.modal == Modal::Wifi)
+}
+
+/// Back from the password keyboard: the Wi-Fi page stays open, its nearby list fresh.
+fn wifi_sheet_resume(a: &mut App) {
+    let now = now_ms();
+    let parent = lib(a).kb_parent;
+    let s = lib(a);
+    s.modal = if matches!(parent, Modal::None | Modal::Kb) { Modal::Wifi } else { parent };
+    s.kb_parent = Modal::None;
+    s.wifi.add = None;
+    if let Some(mut u) = s.wifi.eap_user.take() {
+        u.fill(0);
+    }
+    s.wifi.other = None;
+    s.wifi.view = WIFI_VIEW_NEARBY;
+    s.wifi.scroll = 0;
+    s.wifi.scroll_drag = None;
+    s.wifi.scan_auto = true;
+    s.wifi.refresh_at = now;
+    s.wifi.refresh_wait = false;
+    s.wifi.check_at = now;
+    s.wifi.watch_at = now;
+    redraw(a, RefreshMode::Ui);
+}
+
+fn wifi_security_name(sec: WifiSecurity) -> &'static str {
+    match sec {
+        WifiSecurity::Open => tr("Open"),
+        WifiSecurity::Wep => "WEP",
+        WifiSecurity::Wpa => "WPA",
+        WifiSecurity::Wpa2 => "WPA2",
+        WifiSecurity::Wpa3 => "WPA3",
+        WifiSecurity::Owe => "OWE",
+        WifiSecurity::Enterprise => tr("Enterprise"),
+        WifiSecurity::Enterprise192 => tr("Enterprise 192-bit"),
+        WifiSecurity::Unknown => tr("Unknown"),
+    }
+}
+
+/// The three bars a scan's signal fills: a third, two thirds, or all three.
+fn wifi_bars(signal: i32, signal_max: i32) -> i32 {
+    if signal <= 0 || signal_max <= 0 {
+        return 0;
+    }
+    let pct = (signal as i64 * 100 / signal_max as i64).clamp(0, 100);
+    if pct >= 70 {
+        3
+    } else if pct >= 35 {
+        2
+    } else {
+        1
+    }
+}
+
+/// A lock drawn from its shackle and body: the icon font's lock glyph is not in every face.
+fn draw_wifi_lock(c: &mut Canvas, r: Rect, fg: u8, bg: u8) {
+    let shackle = Rect::new(r.x + ui_px(7.0), r.y + ui_px(2.0), r.w - ui_px(14.0), r.h - ui_px(12.0));
+    canvas_round_rect(c, shackle, ui_px(8.0), fg, false, ui_px(3.0));
+    let body = Rect::new(r.x + ui_px(2.0), r.y + ui_px(14.0), r.w - ui_px(4.0), r.h - ui_px(16.0));
+    canvas_round_rect(c, body, ui_px(3.0), fg, true, 0);
+    let hole = Rect::new(r.x + r.w / 2 - ui_px(2.0), r.y + ui_px(18.0), ui_px(4.0), ui_px(7.0));
+    canvas_round_rect(c, hole, ui_px(1.0), bg, true, 0);
+}
+
+/// The Wi-Fi signal beside a network: three bars, the lit ones its strength, and a small lock over
+/// their lower right when the network is not open. `signal` None draws all three unlit (a saved
+/// network no scan has measured).
+fn draw_wifi_icon(c: &mut Canvas, r: Rect, signal: Option<(i32, i32)>, secure: bool, fg: u8, card_bg: u8) {
+    let gap = ui_px(5.0);
+    let bw = (r.w * 16 / 100).max(ui_px(5.0));
+    let base = r.y + r.h - ui_px(9.0);
+    let heights = [r.h * 32 / 100, r.h * 52 / 100, r.h * 72 / 100];
+    let lit = signal.map_or(0, |(s, m)| wifi_bars(s, m));
+    for (i, h) in heights.iter().enumerate() {
+        let x = r.x + ui_px(5.0) + i as i32 * (bw + gap);
+        let bar = Rect::new(x, base - *h, bw, *h);
+        let gray = if (i as i32) < lit {
+            fg
+        } else if fg == 0 {
+            165
+        } else {
+            95
+        };
+        ui_frame(c, bar, ui_px(3.0), gray, true, 0);
+    }
+    if secure {
+        let lr = Rect::new(
+            r.x + r.w - ui_px(30.0),
+            r.y + r.h - ui_px(33.0),
+            ui_px(31.0),
+            ui_px(31.0),
+        );
+        ui_frame(c, rect_inflate(lr, ui_px(3.0)), ui_px(4.0), card_bg, true, 0);
+        draw_wifi_lock(c, lr, fg, card_bg);
+    }
+}
+
+/// One network row: its signal and lock at the left, its name, what the Kindle knows of it under
+/// that, and a saved network's trash button at the right.
+struct WifiRow<'a> {
+    name: &'a str,
+    security: Option<WifiSecurity>,
+    signal: Option<(i32, i32)>,
+    saved: bool,
+    current: bool,
+    enabled: bool,
+    id: i32,
+    arg: i32,
+    /// H_WIFI_DELETE's arg for a saved row's trash button, None for no button
+    trash: Option<i32>,
+}
+
+fn wifi_beta(sec: Option<WifiSecurity>) -> bool {
+    sec == Some(WifiSecurity::Enterprise)
+}
+
+/// A network row's small subtitle: what the Kindle knows of it, then a Beta badge after the
+/// security on an Enterprise (EAP) row only. `right` is the row's text limit, before its trash.
+fn draw_wifi_subtitle(c: &mut Canvas, tx: i32, right: i32, y: i32, h: i32, sub: &str, beta: bool, fg: u8, card_bg: u8) {
+    let right = right.max(tx);
+    let px = ui_small_size() * 0.8;
+    let badge_h = ui_px(36.0).min(h);
+    let gap = ui_px(12.0);
+    let badge_w = if beta {
+        ui_chip_w(FontFace::Bold, px, WIFI_BETA, badge_h, 0, right - tx)
+    } else {
+        0
+    };
+    let room = (right - tx - if beta { badge_w + gap } else { 0 }).max(0);
+    ui_text(
+        c,
+        FontFace::Regular,
+        ui_small_size(),
+        px,
+        Rect::new(tx, y, room, h),
+        sub,
+        1,
+        false,
+        fg,
+    );
+    if beta {
+        let used = font_measure(FontFace::Regular, px, sub).min(room);
+        let br = Rect::new(
+            (tx + used + gap).min(right - badge_w),
+            y + (h - badge_h) / 2,
+            badge_w,
+            badge_h,
+        );
+        ui_frame(c, br, badge_h / 2, fg, true, 0);
+        font_draw_centered(c, FontFace::Bold, px, br, WIFI_BETA, card_bg);
+    }
+}
+
+fn draw_wifi_row(c: &mut Canvas, hits: &mut HitList, r: Rect, row: &WifiRow) {
+    let st = if row.current {
+        ButtonStyle::Selected
+    } else if row.enabled {
+        ButtonStyle::Plain
+    } else {
+        ButtonStyle::Disabled
+    };
+    let fg: u8 = if row.current {
+        255
+    } else if row.enabled {
+        0
+    } else {
+        170
+    };
+    let card_bg: u8 = if row.current { 0 } else { 255 };
+    settings_card(c, r, st);
+    // The connected card is filled black: a white rule inside its edge sets it apart without
+    // changing the white bars of its signal.
+    if row.current {
+        ui_frame(c, rect_inflate(r, -ui_px(7.0)), ui_px(10.0), 255, false, ui_px(4.0));
+    }
+    // (before the trash, so the trash is the hit over the row it sits in)
+    if row.enabled && row.id != H_NONE {
+        hits_add(hits, r, row.id, row.arg);
+    }
+    let isz = (r.h - ui_px(20.0)).clamp(ui_px(64.0), ui_px(90.0));
+    let ir = Rect::new(r.x + settings_pad(), r.y + (r.h - isz) / 2, isz, isz);
+    let secure = row.security.is_some_and(|s| s != WifiSecurity::Open);
+    draw_wifi_icon(c, ir, row.signal, secure, fg, card_bg);
+    let mut right = r.x + r.w - settings_pad();
+    if let Some(arg) = row.trash {
+        let bs = (r.h - ui_px(30.0)).clamp(ui_px(70.0), ui_px(96.0));
+        let br = Rect::new(right - bs, r.y + (r.h - bs) / 2, bs, bs);
+        ui_button(c, br, IconKind::Trash, "", ButtonStyle::Plain);
+        // (after the row, so the trash is the hit over it)
+        hits_add(hits, br, H_WIFI_DELETE, arg);
+        right = br.x - ui_px(18.0);
+    }
+    let tx = ir.x + ir.w + settings_gap();
+    let mut sub = String::new();
+    if row.current {
+        sub.push_str(tr("Connected"));
+    } else if row.saved {
+        sub.push_str(tr("Saved"));
+    }
+    if let Some(sec) = row.security {
+        if !sub.is_empty() {
+            sub.push_str(" \u{b7} ");
+        }
+        sub.push_str(wifi_security_name(sec));
+    }
+    let text_w = (right - tx).max(0);
+    if sub.is_empty() {
+        ui_text_name(c, FontFace::Bold, ui_text_size(), ui_small_size(), Rect::new(tx, r.y, text_w, r.h), row.name, 1, fg);
+    } else {
+        ui_text_name(
+            c,
+            FontFace::Bold,
+            ui_text_size(),
+            ui_small_size(),
+            Rect::new(tx, r.y + ui_px(12.0), text_w, r.h - ui_px(56.0)),
+            row.name,
+            1,
+            fg,
+        );
+        draw_wifi_subtitle(
+            c,
+            tx,
+            right,
+            r.y + r.h - ui_px(54.0),
+            ui_px(42.0),
+            &sub,
+            wifi_beta(row.security),
+            fg,
+            card_bg,
+        );
+    }
+}
+
+fn draw_wifi_message(c: &mut Canvas, r: Rect, text: &str) {
+    settings_card(c, r, ButtonStyle::Disabled);
+    ui_text(
+        c,
+        FontFace::Regular,
+        ui_text_size(),
+        ui_small_size(),
+        rect_inflate(r, -settings_pad()),
+        text,
+        2,
+        false,
+        170,
+    );
+}
+
+/// One row's height: nine rows' worth of the list, within the touch and density bounds, so a
+/// drag moves by the same measure in every orientation.
+fn wifi_row_h(list_h: i32) -> i32 {
+    let gap = ui_px(14.0);
+    ((list_h - 8 * gap) / 9).clamp(ui_px(92.0), ui_px(154.0))
+}
+
+/// The rects of n rows, the first `scroll` pixels above the list's top: rows outside the list
+/// are still in the vector (their caller clips them).
+fn wifi_row_rects(in_: Rect, n: usize, scroll: i32) -> Vec<Rect> {
+    let gap = ui_px(14.0);
+    let rh = wifi_row_h(in_.h);
+    (0..n)
+        .map(|i| Rect::new(in_.x, in_.y + i as i32 * (rh + gap) - scroll, in_.w, rh))
+        .collect()
+}
+
+/// The height of n rows with their gaps, for the list's greatest scroll.
+fn wifi_content_h(n: usize, list_h: i32) -> i32 {
+    if n == 0 {
+        return 0;
+    }
+    let gap = ui_px(14.0);
+    n as i32 * wifi_row_h(list_h) + (n as i32 - 1) * gap
+}
+
+/// Keeps the hits added while drawing the list inside its viewport (a row cut by the list's top
+/// or foot must not be tappable outside it).
+fn wifi_clip_hits(hits: &mut HitList, from: usize, clip: Rect) {
+    let mut i = from;
+    while i < hits.h.len() {
+        let r = rect_intersect(hits.h[i].r, clip);
+        if rect_is_empty(r) {
+            hits.h.remove(i);
+        } else {
+            hits.h[i].r = r;
+            i += 1;
+        }
+    }
+}
+
+/// A name without the square brackets the Kindle puts around the connected profile. The brackets
+/// are a marker, not part of the network's name; an empty pair is left alone.
+fn wifi_unwrapped(name: &[u8]) -> &[u8] {
+    match name.strip_prefix(b"[").and_then(|n| n.strip_suffix(b"]")) {
+        Some(inner) if !inner.is_empty() => inner,
+        _ => name,
+    }
+}
+
+/// Whether `name` is the network the Kindle is connected to, allowing for the brackets the
+/// Kindle may put around the connected profile's name.
+fn wifi_is_current(name: &[u8], current: Option<&[u8]>) -> bool {
+    current.is_some_and(|c| wifi_unwrapped(c) == wifi_unwrapped(name))
+}
+
+/// The saved rows to show: the Kindle's order, with no connected network moved to the top. When
+/// the Kindle lists a bracketed name and its plain name as saved, the bracketed one is the
+/// connected marker, not a second profile. Keep the plain profile for its actions; a bracketed
+/// name with no plain form is kept (its label is still drawn without the brackets).
+fn wifi_saved_rows(saved: &[Vec<u8>]) -> Vec<Vec<u8>> {
+    let mut rows: Vec<Vec<u8>> = Vec::new();
+    let mut labels: Vec<&[u8]> = Vec::new();
+    for name in saved {
+        let label = wifi_unwrapped(name);
+        if label.len() != name.len() && saved.iter().any(|other| other.as_slice() == label) {
+            continue;
+        }
+        if labels.contains(&label) {
+            continue;
+        }
+        labels.push(label);
+        rows.push(name.clone());
+    }
+    rows
+}
+
+/// Settings > Wi-Fi: the radio's state and the three controls over whichever list is open.
 fn draw_wifi_sheet(a: &mut App) {
+    if lib(a).wifi.view == WIFI_VIEW_OTHER {
+        draw_wifi_other_page(a);
+        return;
+    }
     let w = wifi_shown();
-    let name = |n: &[u8]| String::from_utf8_lossy(n).into_owned();
+    let auto_scan = lib(a).wifi.scan_auto;
+    let name = |n: &[u8]| String::from_utf8_lossy(wifi_unwrapped(n)).into_owned();
     let mut status = String::new();
     let mut status_named = false;
     let on = w.status.is_some_and(|st| st.wireless && st.enabled);
@@ -2877,7 +3509,17 @@ fn draw_wifi_sheet(a: &mut App) {
         let text = if w.busy {
             tr("Checking Wi-Fi…")
         } else if w.failed {
-            tr("Could not read or change Wi-Fi.")
+            if wifi_add_failed() {
+                tr("Could not add the network.")
+            } else if wifi_delete_failed() {
+                // TRANSLATORS: (Settings > Wi-Fi) the status when a saved network's profile could not be deleted.
+                tr("Could not forget the network.")
+            } else {
+                tr("Could not read or change Wi-Fi.")
+            }
+        } else if w.disconnect_failed {
+            // (the helper failed to drop the link; the status still describes the connection it kept)
+            tr("Could not disconnect.")
         } else {
             match w.status {
                 Some(_) if !on => tr("Wi-Fi is off"),
@@ -2903,55 +3545,302 @@ fn draw_wifi_sheet(a: &mut App) {
         Some(_) => (tr("Turn on Wi-Fi"), WIFI_ON, !w.busy),
     };
     let style = |can: bool| if can { ButtonStyle::Plain } else { ButtonStyle::Disabled };
-    let mut rows = vec![
-        menu_row(IconKind::Share, radio, H_WIFI_RADIO, arg, style(can)),
-        MenuRow { name: status_named, ..menu_row(IconKind::None, &status, H_NONE, 0, ButtonStyle::Disabled) },
-    ];
-    // The saved networks, the one connected to first, a page at a time.
-    let mut names = w.saved.clone().unwrap_or_default();
-    if let Some(i) = w.current.as_ref().and_then(|c| names.iter().position(|n| n == c)) {
-        let n = names.remove(i);
-        names.insert(0, n);
+    let view = lib(a).wifi.view.min(WIFI_VIEW_SAVED);
+    let (aw, ah) = (a.w, a.h);
+    let App { screen: c, lib, .. } = a;
+    let s = lib.as_deref_mut().unwrap();
+    // TRANSLATORS: the title of Settings > Wi-Fi.
+    let page = settings_page(c, aw, ah, tr("Wi-Fi"), true, false);
+    hits_add(&mut s.hits, page.back, H_SETTINGS_BACK, 0);
+    hits_add(&mut s.hits, page.close, H_SETTINGS_CLOSE, 0);
+    let in_ = page.content;
+    let status_h = ui_px(110.0);
+    let gap = ui_px(16.0);
+    let radio_w = ui_px(390.0).min(in_.w / 2);
+    let status_r = Rect::new(in_.x, in_.y, in_.w - radio_w - gap, status_h);
+    ui_text(
+        c,
+        if status_named { FontFace::Bold } else { FontFace::Regular },
+        ui_text_size(),
+        ui_small_size(),
+        status_r,
+        &status,
+        2,
+        false,
+        0,
+    );
+    let radio_r = Rect::new(in_.x + in_.w - radio_w, in_.y, radio_w, status_h);
+    ui_button(c, radio_r, IconKind::Share, radio, style(can));
+    if can {
+        hits_add(&mut s.hits, radio_r, H_WIFI_RADIO, arg);
     }
-    let pages = names.len().div_ceil(WIFI_PAGE).max(1);
-    let page = lib(a).wifi.page.min(pages - 1);
-    let mut drawn = Vec::new();
-    if w.status.is_some() {
-        match &w.saved {
-            None => {
-                // TRANSLATORS: (Settings > Wi-Fi) a line in place of the saved networks: they could not be read
-                // (with the radio off, the first: they may be read only while it is on). 1470 px at 44 px in
-                // bold, or two lines at 34 px.
-                let why = if on { tr("Saved networks could not be read.") } else { tr("Turn on Wi-Fi to see the saved networks.") };
-                rows.push(menu_row(IconKind::None, why, H_NONE, 0, ButtonStyle::Disabled));
-            }
-            Some(saved) if saved.is_empty() => {
-                // TRANSLATORS: (Settings > Wi-Fi) the Kindle has no saved Wi-Fi network; Grimoire adds none itself.
-                rows.push(menu_row(IconKind::None, tr("No saved networks. Add one in Kindle settings or KOReader."), H_NONE, 0, ButtonStyle::Disabled));
-            }
-            Some(_) => {
-                for n in names.iter().skip(page * WIFI_PAGE).take(WIFI_PAGE) {
-                    let here = w.current.as_ref() == Some(n);
-                    let icon = if here { IconKind::Check } else { IconKind::None };
-                    rows.push(MenuRow { name: true, ..menu_row(icon, &name(n), H_WIFI_NET, drawn.len() as i32, style(!w.busy)) });
-                    drawn.push(n.clone());
-                }
-                if pages > 1 {
-                    let mut more = String::new();
-                    // TRANSLATORS: (Settings > Wi-Fi) the row under the saved networks when they take more than
-                    // one page: shows the next page (after the last, the first). %d of %d: this page, the pages.
-                    csnprintf!(&mut more, 96, tr("More networks (%d of %d)"), page as i32 + 1, pages as i32);
-                    rows.push(menu_row(IconKind::Next, &more, H_WIFI_MORE, 0, ButtonStyle::Plain));
-                }
-            }
+    let by = in_.y + status_h + ui_px(18.0);
+    let bh = ui_px(130.0);
+    let bw = (in_.w - 2 * gap) / 3;
+    let scan_r = Rect::new(in_.x, by, bw, bh);
+    let other_r = Rect::new(in_.x + bw + gap, by, bw, bh);
+    let saved_r = Rect::new(in_.x + 2 * (bw + gap), by, in_.w - 2 * (bw + gap), bh);
+    let scan_can = on && !w.scanning && !w.busy;
+    // TRANSLATORS: (Settings > Wi-Fi) the button above the nearby networks that scans again.
+    ui_button(c, scan_r, IconKind::Search, tr("Rescan"), style(scan_can));
+    if scan_can {
+        hits_add(&mut s.hits, scan_r, H_WIFI_SCAN, 0);
+    }
+    // TRANSLATORS: (Settings > Wi-Fi) the button above the networks that adds a hidden network by name.
+    ui_button(c, other_r, IconKind::Plus, tr("Other..."), ButtonStyle::Plain);
+    hits_add(&mut s.hits, other_r, H_WIFI_OTHER, 0);
+    // TRANSLATORS: (Settings > Wi-Fi) the button above the networks that shows the Kindle's saved ones;
+    // tapped while they are shown, it goes back to the nearby ones.
+    ui_button(
+        c,
+        saved_r,
+        IconKind::Check,
+        tr("Saved networks"),
+        if view == WIFI_VIEW_SAVED { ButtonStyle::Selected } else { ButtonStyle::Plain },
+    );
+    hits_add(&mut s.hits, saved_r, H_WIFI_TAB, WIFI_VIEW_SAVED as i32);
+    let list = Rect::new(
+        in_.x,
+        by + bh + ui_px(22.0),
+        in_.w,
+        (ah - ui_px(36.0) - (by + bh + ui_px(22.0))).max(0),
+    );
+    let mut info: Option<String> = None;
+    let mut all_nets: Vec<WifiNetwork> = Vec::new();
+    let mut all_names: Vec<Vec<u8>> = Vec::new();
+    if view == WIFI_VIEW_NEARBY {
+        // The networks a scan found, the connected one first, then the saved ones, then by signal.
+        let mut networks = w.nearby.clone().unwrap_or_default();
+        networks.sort_by(|a, b| {
+            let key = |n: &WifiNetwork| {
+                let here = wifi_is_current(&n.essid, w.current.as_deref());
+                let saved = w.saved.as_ref().is_some_and(|s| s.iter().any(|x| x == &n.essid));
+                // (no signal key: a 20 s refresh must not reorder the list as strength changes)
+                (!here, !saved)
+            };
+            key(a).cmp(&key(b))
+        });
+        if !on {
+            // TRANSLATORS: (Settings > Wi-Fi) the nearby list while the radio is off.
+            info = Some(tr("Turn on Wi-Fi to see nearby networks.").to_string());
+        } else if w.scanning || (auto_scan && w.nearby.is_none()) {
+            // TRANSLATORS: (Settings > Wi-Fi) the nearby list while its scan runs.
+            info = Some(tr("Scanning for networks…").to_string());
+        } else if w.scan_failed {
+            // TRANSLATORS: (Settings > Wi-Fi) the nearby list when the last scan could not run or its answer
+            // was not one this reader knows.
+            info = Some(tr("Could not scan for networks.").to_string());
+        } else if w.nearby.as_ref().is_some_and(|v| v.is_empty()) {
+            // TRANSLATORS: (Settings > Wi-Fi) the nearby list when no network is near.
+            info = Some(tr("No networks found.").to_string());
+        } else if w.nearby.is_none() {
+            // TRANSLATORS: (Settings > Wi-Fi) the nearby list before its first scan has an answer.
+            info = Some(tr("Tap Rescan to look for networks.").to_string());
+        } else {
+            all_nets = networks;
+        }
+    } else {
+        // The saved networks, in the Kindle's order, each with its trash button. The connected one
+        // keeps its place and is drawn as the Connected card there, not moved to the top.
+        let names = wifi_saved_rows(w.saved.as_deref().unwrap_or_default());
+        if w.saved.is_none() {
+            let why = if on {
+                // TRANSLATORS: (Settings > Wi-Fi) a line in place of the saved networks when they could not be read.
+                tr("Saved networks could not be read.")
+            } else {
+                // TRANSLATORS: (Settings > Wi-Fi) a line in place of the saved networks while the radio is off.
+                tr("Turn on Wi-Fi to see the saved networks.")
+            };
+            info = Some(why.to_string());
+        } else if names.is_empty() {
+            // TRANSLATORS: (Settings > Wi-Fi) the Kindle has no saved Wi-Fi network; Grimoire adds none itself.
+            info = Some(tr("No saved networks. Add one with Other... or in Kindle settings.").to_string());
+        } else {
+            all_names = names;
         }
     }
-    rows.push(menu_row(IconKind::Close, tr("Done"), H_CANCEL, 0, ButtonStyle::Plain));
-    let ws = &mut lib(a).wifi;
-    ws.page = page;
-    ws.rows = drawn;
+    let total = all_nets.len() + all_names.len();
+    let scroll_max = (wifi_content_h(total, list.h) - list.h).max(0);
+    let scroll = s.wifi.scroll.clamp(0, scroll_max);
+    if let Some(text) = info {
+        draw_wifi_message(c, Rect::new(list.x, list.y, list.w, wifi_row_h(list.h)), &text);
+    } else {
+        let rects = wifi_row_rects(list, total, scroll);
+        let old_clip = c.clip;
+        canvas_set_clip(c, rect_intersect(old_clip, list));
+        let hit_from = s.hits.h.len();
+        for (i, net) in all_nets.iter().enumerate() {
+            let r = rects[i];
+            if rect_is_empty(rect_intersect(r, list)) {
+                continue;
+            }
+            let saved = w.saved.as_ref().is_some_and(|s| s.iter().any(|x| x == &net.essid));
+            let label = name(&net.essid);
+            let row = WifiRow {
+                name: &label,
+                security: Some(net.security),
+                signal: Some((net.signal, net.signal_max)),
+                saved,
+                // The network connected to is drawn as the Connected card here too, as in the saved
+                // list (the Kindle may bracket the connected profile's name).
+                current: wifi_is_current(&net.essid, w.current.as_deref()),
+                enabled: net.security != WifiSecurity::Unknown || saved,
+                id: H_WIFI_NEAR,
+                arg: i as i32,
+                trash: None,
+            };
+            draw_wifi_row(c, &mut s.hits, r, &row);
+        }
+        for (i, saved_name) in all_names.iter().enumerate() {
+            let r = rects[all_nets.len() + i];
+            if rect_is_empty(rect_intersect(r, list)) {
+                continue;
+            }
+            let nearby = w.nearby.as_ref().and_then(|v| v.iter().find(|n| &n.essid == saved_name));
+            let label = name(saved_name);
+            let here = wifi_is_current(saved_name, w.current.as_deref());
+            let row = WifiRow {
+                name: &label,
+                security: nearby.map(|n| n.security),
+                signal: nearby.map(|n| (n.signal, n.signal_max)),
+                saved: true,
+                current: here,
+                enabled: !w.busy,
+                id: H_WIFI_NET,
+                arg: i as i32,
+                trash: (!w.busy).then_some(i as i32),
+            };
+            draw_wifi_row(c, &mut s.hits, r, &row);
+        }
+        canvas_set_clip(c, old_clip);
+        wifi_clip_hits(&mut s.hits, hit_from, list);
+    }
+    let ws = &mut s.wifi;
+    ws.scroll = scroll;
+    ws.scroll_max = scroll_max;
+    ws.list = list;
+    ws.rows = all_names;
+    ws.near = all_nets;
     ws.shown = Some(w);
-    draw_menu(a, tr("Wi-Fi"), &rows);
+}
+
+/// Ask for a hidden or scanned network's password, on the masked keyboard, then `wifi_add` it with
+/// `security` (WPA/WPA2, or WPA3-Personal).
+fn wifi_password_start(a: &mut App, n: Vec<u8>, security: WifiSecurity) {
+    let mut title = String::new();
+    let shown = String::from_utf8_lossy(&n).into_owned();
+    // TRANSLATORS: the password keyboard's title for a Wi-Fi network; %s is its name.
+    csnprintf!(&mut title, 200, tr("Password for %s"), &shown);
+    lib(a).wifi.add = Some(WifiNetwork {
+        essid: n,
+        security,
+        signal: 0,
+        signal_max: 1,
+        known: false,
+    });
+    open_kb_secret(a, KbPurpose::WifiPassword, &title);
+}
+
+/// Start the username then password flow for a WPA2/WPA3-Enterprise network. The username is typed
+/// on the normal keyboard, the password on the masked one; both live only in WifiSheet until the add.
+fn wifi_eap_start(a: &mut App, n: WifiNetwork) {
+    let mut title = String::new();
+    let shown = String::from_utf8_lossy(&n.essid).into_owned();
+    // TRANSLATORS: the keyboard's title for a school/enterprise Wi-Fi username; %s is its name.
+    csnprintf!(&mut title, 200, tr("Username for %s"), &shown);
+    let ws = &mut lib(a).wifi;
+    ws.add = Some(n);
+    if let Some(mut u) = ws.eap_user.take() {
+        u.fill(0);
+    }
+    open_kb(a, KbPurpose::WifiEapUser, &title, b"");
+}
+
+/// Other...'s page: the typed hidden network's name, then whether it is open or takes a password.
+fn draw_wifi_other_page(a: &mut App) {
+    let name = lib(a).wifi.other.clone().unwrap_or_default();
+    let mut label = String::new();
+    let shown = String::from_utf8_lossy(&name).into_owned();
+    // TRANSLATORS: (Settings > Wi-Fi > Other...) the hidden network whose security is being picked; %s is its name.
+    csnprintf!(&mut label, 240, tr("Network: %s"), &shown);
+    let rows = vec![
+        MenuRow {
+            name: true,
+            ..menu_row(IconKind::None, &label, H_NONE, 0, ButtonStyle::Disabled)
+        },
+        // TRANSLATORS: (Settings > Wi-Fi > Other...) the choice for a hidden network with no password.
+        menu_row(IconKind::None, tr("Open network"), H_WIFI_OTHER_OPEN, 0, ButtonStyle::Plain),
+        // TRANSLATORS: (Settings > Wi-Fi > Other...) the choice for a hidden WPA or WPA2 network.
+        menu_row(IconKind::None, tr("WPA/WPA2 password"), H_WIFI_OTHER_WPA, 0, ButtonStyle::Plain),
+        // TRANSLATORS: (Settings > Wi-Fi > Other...) the choice for a hidden WPA3-Personal network.
+        menu_row(IconKind::None, tr("WPA3 password"), H_WIFI_OTHER_WPA3, 0, ButtonStyle::Plain),
+        // TRANSLATORS: (Settings > Wi-Fi > Other...) the choice for a hidden WPA2- or WPA3-Enterprise network.
+        menu_row(IconKind::None, tr("WPA2/WPA3-Enterprise"), H_WIFI_OTHER_EAP, 0, ButtonStyle::Plain),
+        menu_row(IconKind::Close, tr("Cancel"), H_WIFI_OTHER_CANCEL, 0, ButtonStyle::Plain),
+    ];
+    // TRANSLATORS: the title of the page that adds a hidden Wi-Fi network by name.
+    draw_settings_menu(a, tr("Other network"), &rows);
+}
+
+/// A tap on the connected row: drop that network and leave the radio on.
+fn wifi_disconnect_tapped(a: &mut App) {
+    if wifi_disconnect() {
+        // TRANSLATORS: (Settings > Wi-Fi) the toast while the network connected to is dropped.
+        app_toast(a, tr("Disconnecting…"), 2000);
+    } else {
+        // TRANSLATORS: (Settings > Wi-Fi) the toast when the network cannot be disconnected now.
+        app_toast(a, tr("Could not disconnect."), 3000);
+    }
+}
+
+/// A drag in the Wi-Fi list scrolls it, while a tap still reaches the row under the finger.
+fn wifi_sheet_scroll(a: &mut App, ph: i32, ev: &InEvent) -> bool {
+    if ph == 0 {
+        let s = lib(a);
+        let in_list = s.wifi.view != WIFI_VIEW_OTHER
+            && rect_contains(s.wifi.list, ev.x as i32, ev.y as i32);
+        s.wifi.scroll_drag = in_list.then_some(WifiScroll {
+            x0: ev.x as i32,
+            y0: ev.y as i32,
+            at: s.wifi.scroll,
+            on: false,
+        });
+        return false;
+    }
+    let Some(mut d) = lib(a).wifi.scroll_drag else {
+        return false;
+    };
+    if ph == 1 {
+        let mut repaint = false;
+        if !d.on {
+            let dx = (ev.x as i32 - d.x0).abs();
+            let dy = (ev.y as i32 - d.y0).abs();
+            if dy < ui_px(30.0) || dy <= dx {
+                return false;
+            }
+            d.on = true;
+            lib(a).pressed = None;
+            repaint = true;
+        }
+        let next = (d.at + d.y0 - ev.y as i32).clamp(0, lib(a).wifi.scroll_max);
+        if next != lib(a).wifi.scroll {
+            lib(a).wifi.scroll = next;
+            repaint = true;
+        }
+        lib(a).wifi.scroll_drag = Some(d);
+        if repaint {
+            redraw(a, RefreshMode::Fast);
+        }
+        true
+    } else if d.on {
+        lib(a).wifi.scroll_drag = None;
+        lib(a).pressed = None;
+        redraw(a, RefreshMode::Ui);
+        true
+    } else {
+        lib(a).wifi.scroll_drag = None;
+        false
+    }
 }
 
 fn wifi_sheet_tap(a: &mut App, id: i32, arg: i32) {
@@ -2963,23 +3852,161 @@ fn wifi_sheet_tap(a: &mut App, id: i32, arg: i32) {
                 WIFI_OFF => WifiAction::Off,
                 _ => WifiAction::Networks,
             };
+            if action == WifiAction::On {
+                let ws = &mut lib(a).wifi;
+                ws.scan_auto = true;
+                ws.view = WIFI_VIEW_NEARBY;
+                ws.scroll = 0;
+                ws.scroll_drag = None;
+            } else if action == WifiAction::Off {
+                lib(a).wifi.scan_auto = false;
+            }
             wifi_request(action);
+        }
+        H_WIFI_TAB => {
+            let ws = &mut lib(a).wifi;
+            if arg == WIFI_VIEW_SAVED as i32 {
+                ws.view = if ws.view == WIFI_VIEW_SAVED { WIFI_VIEW_NEARBY } else { WIFI_VIEW_SAVED };
+                if ws.view == WIFI_VIEW_NEARBY && ws.near.is_empty() {
+                    ws.scan_auto = true;
+                }
+            } else {
+                ws.view = WIFI_VIEW_NEARBY;
+            }
+            ws.scroll = 0;
+            ws.scroll_drag = None;
+            ws.other = None;
+        }
+        H_WIFI_SCAN => {
+            let ws = &mut lib(a).wifi;
+            ws.view = WIFI_VIEW_NEARBY;
+            ws.scroll = 0;
+            ws.scroll_drag = None;
+            ws.other = None;
+            ws.scan_auto = false;
+            if !wifi_scan() {
+                // TRANSLATORS: (Settings > Wi-Fi) the toast when a scan cannot be asked for now.
+                app_toast(a, tr("Could not scan for networks."), 3000);
+                return;
+            }
+            ws.refresh_wait = true;
+        }
+        H_WIFI_OTHER => {
+            // (the page under the keyboard is still the nearby one; the name makes the security page)
+            {
+                let ws = &mut lib(a).wifi;
+                ws.other = None;
+                ws.scroll = 0;
+                ws.scroll_drag = None;
+            }
+            // TRANSLATORS: the keyboard's title for a hidden Wi-Fi network's name.
+            open_kb(a, KbPurpose::WifiName, tr("Hidden network name"), b"");
+            return;
+        }
+        H_WIFI_OTHER_OPEN => {
+            let Some(n) = lib(a).wifi.other.clone() else { return };
+            if !wifi_add(&n, b"", WifiSecurity::Open) {
+                // TRANSLATORS: (Settings > Wi-Fi) the toast when a network profile could not be created.
+                app_toast(a, tr("Could not add the network."), 3000);
+                return;
+            }
+            let ws = &mut lib(a).wifi;
+            ws.view = WIFI_VIEW_NEARBY;
+            ws.other = None;
+            ws.scroll = 0;
+            ws.scroll_drag = None;
+            ws.scan_auto = true;
+            // TRANSLATORS: (Settings > Wi-Fi) the toast while a hidden network's profile is being created.
+            app_toast(a, tr("Adding network…"), 2000);
+        }
+        H_WIFI_OTHER_WPA => {
+            let Some(n) = lib(a).wifi.other.clone() else { return };
+            wifi_password_start(a, n, WifiSecurity::Wpa2);
+            return;
+        }
+        H_WIFI_OTHER_WPA3 => {
+            let Some(n) = lib(a).wifi.other.clone() else { return };
+            wifi_password_start(a, n, WifiSecurity::Wpa3);
+            return;
+        }
+        H_WIFI_OTHER_EAP => {
+            let Some(n) = lib(a).wifi.other.clone() else { return };
+            wifi_eap_start(
+                a,
+                WifiNetwork {
+                    essid: n,
+                    security: WifiSecurity::Enterprise,
+                    signal: 0,
+                    signal_max: 1,
+                    known: false,
+                },
+            );
+        }
+        H_WIFI_OTHER_CANCEL => {
+            let ws = &mut lib(a).wifi;
+            ws.view = WIFI_VIEW_NEARBY;
+            ws.other = None;
+            ws.scroll = 0;
+            ws.scroll_drag = None;
+        }
+        H_WIFI_DELETE => {
+            let ws = &lib(a).wifi;
+            let Some(n) = ws.rows.get(arg as usize).cloned() else { return };
+            if !wifi_delete(&n) {
+                // TRANSLATORS: (Settings > Wi-Fi) the toast when a saved network could not be forgotten.
+                app_toast(a, tr("Could not forget the network."), 3000);
+                return;
+            }
+            // TRANSLATORS: (Settings > Wi-Fi) the toast while a saved network's profile is being deleted.
+            app_toast(a, tr("Forgetting network…"), 2000);
         }
         H_WIFI_NET => {
             let ws = &lib(a).wifi;
             let Some(n) = ws.rows.get(arg as usize).cloned() else { return };
-            // (the network connected to: nothing to switch)
-            if ws.shown.as_ref().is_some_and(|w| w.current.as_ref() == Some(&n)) {
+            // (the network connected to: tapping it again disconnects, keeping the radio on; the
+            // Kindle may bracket the connected profile's name, so compare it unwrapped)
+            if wifi_is_current(&n, ws.shown.as_ref().and_then(|w| w.current.as_deref())) {
+                wifi_disconnect_tapped(a);
                 return;
             }
             lib(a).wifi.reread = false;
             wifi_join(&n);
         }
-        H_WIFI_MORE => {
-            lib(a).wifi.page += 1;
-            let pages = wifi_saved().map_or(1, |s| s.len().div_ceil(WIFI_PAGE).max(1));
-            if lib(a).wifi.page >= pages {
-                lib(a).wifi.page = 0;
+        H_WIFI_NEAR => {
+            let ws = &lib(a).wifi;
+            let Some(n) = ws.near.get(arg as usize).cloned() else { return };
+            if wifi_is_current(&n.essid, ws.shown.as_ref().and_then(|w| w.current.as_deref())) {
+                wifi_disconnect_tapped(a);
+                return;
+            }
+            if !n.known && !ws.shown.as_ref().is_some_and(|w| w.saved.as_ref().is_some_and(|s| s.iter().any(|x| x == &n.essid))) {
+                match n.security {
+                    WifiSecurity::Open => {
+                        if !wifi_add(&n.essid, b"", WifiSecurity::Open) {
+                            // TRANSLATORS: (Settings > Wi-Fi) the toast when a network profile could not be created.
+                            app_toast(a, tr("Could not add the network."), 3000);
+                            return;
+                        }
+                        // TRANSLATORS: (Settings > Wi-Fi) the toast while an open network's profile is being created.
+                        app_toast(a, tr("Adding network…"), 2000);
+                    }
+                    WifiSecurity::Wpa | WifiSecurity::Wpa2 | WifiSecurity::Wpa3 => {
+                        wifi_password_start(a, n.essid.clone(), n.security);
+                        return;
+                    }
+                    WifiSecurity::Enterprise => {
+                        wifi_eap_start(a, n.clone());
+                        return;
+                    }
+                    _ => {
+                        // TRANSLATORS: (Settings > Wi-Fi) a scanned network Grimoire cannot add yet.
+                        app_toast(a, tr("This network's security is not supported yet."), 3500);
+                        return;
+                    }
+                }
+            } else {
+                lib(a).wifi.reread = false;
+                wifi_join(&n.essid);
             }
         }
         _ => return,
@@ -2987,10 +4014,21 @@ fn wifi_sheet_tap(a: &mut App, id: i32, arg: i32) {
     let ws = &mut lib(a).wifi;
     ws.check_at = now;
     ws.watch_at = now;
+    // (a tap is activity: the next quiet refresh waits 20 s from it)
+    ws.refresh_at = now;
     redraw(a, RefreshMode::Ui);
 }
 
 fn wifi_sheet_tick(a: &mut App, now: u32) {
+    // A quiet scan's 20 s wait starts when its answer is in, not when it was asked for: a scan that
+    // takes 20 s must not be followed by another one straight away.
+    {
+        let ws = &mut lib(a).wifi;
+        if ws.refresh_wait && !wifi_scanning() {
+            ws.refresh_wait = false;
+            ws.refresh_at = now;
+        }
+    }
     if !wifi_busy() {
         let st = wifi_status();
         let join = wifi_joining().map(|j| j.1);
@@ -3009,13 +4047,37 @@ fn wifi_sheet_tick(a: &mut App, now: u32) {
             }
             Some(st) => {
                 let on = st.wireless && st.enabled;
+                // A scan while a switch is settling, or while a supplicant-owned EAP/WPA3 link is
+                // connected, can make the Kindle deauthenticate from the AP it just joined. A stale
+                // marker with no link is safe to scan: the sheet must not look stuck on it either.
+                let supplicant_connected = st.supplicant && st.connected == Some(true);
+                let no_scan = join == Some(WifiJoin::Pending) || supplicant_connected;
                 if !on {
                     ws.relisted = false;
                 }
-                if on && wifi_saved().is_none() && !ws.relisted {
+                if on && ws.scan_auto && supplicant_connected {
+                    // The list cannot refresh without risking the link. Stop claiming a scan is under
+                    // way, and force the sheet to draw the Rescan hint instead.
+                    ws.scan_auto = false;
+                    ws.shown = None;
+                } else if on && ws.scan_auto && !wifi_scanning() {
+                    ws.scan_auto = false;
+                    ws.refresh_at = now;
+                    ws.refresh_wait = wifi_scan();
+                } else if on && wifi_saved().is_none() && !ws.relisted {
                     ws.relisted = true;
                     ws.check_at = now;
                     wifi_request(WifiAction::Networks);
+                } else if on
+                    && ws.view == WIFI_VIEW_NEARBY
+                    && !wifi_scanning()
+                    && !no_scan
+                    && wifi_nearby().is_some()
+                    && now.wrapping_sub(ws.refresh_at) >= WIFI_REFRESH_MS
+                {
+                    // Keep the list: only its changed names are merged in when the scan returns.
+                    ws.refresh_at = now;
+                    ws.refresh_wait = wifi_scan_quiet();
                 } else if now.wrapping_sub(ws.check_at) > 2000
                     && (join == Some(WifiJoin::Pending)
                         || (on && st.connected != Some(true) && now.wrapping_sub(ws.watch_at) < 45000))
@@ -3176,7 +4238,7 @@ fn draw_bind_sheet(a: &mut App, kind: BindKind) {
             Some(i) => cformat!(tr("Buttons: %s"), &a.shortcut_profiles[i].name),
             None => tr(kind.title).to_string(),
         };
-        draw_menu(a, &title, &rows);
+        draw_settings_menu(a, &title, &rows);
     } else {
         draw_bind_group(a, kind, group as usize);
     }
@@ -3184,18 +4246,14 @@ fn draw_bind_sheet(a: &mut App, kind: BindKind) {
 
 fn draw_bind_group(a: &mut App, kind: BindKind, group: usize) {
     let n = binding_row_count(kind, group) as i32;
-    let mut rh = ui_px(140.0);
-    let mut gap = ui_px(20.0);
-    let room = a.h - 2 * ui_px(40.0) - ui_px(120.0) - ui_px(72.0);
-    if (n + 1) * (rh + gap) > room {
-        rh = clampi(room / (n + 1) - gap, ui_px(118.0), rh);
-    }
-    if (n + 1) * (rh + gap) > room {
-        gap = clampi(room / (n + 1) - rh, ui_px(10.0), gap);
-    }
-    let card = sheet_rect(a.w, a.h, ui_px(120.0) + ui_px(72.0) + (n + 1) * (rh + gap));
+    let (aw, ah) = (a.w, a.h);
     let title = tr(ACTION_GROUPS[group].title);
-    let in_ = ui_sheet(&mut a.screen, card, title);
+    let page = settings_page(&mut a.screen, aw, ah, title, true, false);
+    hits_add(&mut lib(a).hits, page.back, bind_done_hit(kind), 0);
+    hits_add(&mut lib(a).hits, page.close, H_SETTINGS_CLOSE, 0);
+    let in_ = page.content;
+    let gap = ui_px(14.0);
+    let rh = ((in_.h - (n - 1).max(0) * gap) / n.max(1)).clamp(ui_px(90.0), ui_px(140.0));
     for i in 0..n as usize {
         let r = binding_row_at(kind, group, i).unwrap();
         let learning = kind.modal == BUTTONS.modal
@@ -3230,15 +4288,6 @@ fn draw_bind_group(a: &mut App, kind: BindKind, group: usize) {
             thumb,
         );
     }
-    let done = Rect::new(in_.x, in_.y + n * (rh + gap), in_.w, rh);
-    let App { screen: c, lib, .. } = a;
-    ui_button(c, done, IconKind::Back, tr("Done"), ButtonStyle::Plain);
-    hits_add(
-        &mut lib.as_deref_mut().unwrap().hits,
-        done,
-        bind_done_hit(kind),
-        0,
-    );
 }
 
 fn draw_bind_row(
@@ -3254,32 +4303,18 @@ fn draw_bind_row(
     thumb: Option<FsGesture>,
 ) {
     let selected = learning;
-    ui_frame(c, r, ui_px(16.0), if selected { 0 } else { 255 }, true, 0);
-    ui_frame(
-        c,
-        r,
-        ui_px(16.0),
-        0,
-        false,
-        ui_px(if selected { 6.0 } else { 3.0 }),
-    );
+    // (a submenu's rows are Settings' cards: the row being learned is filled, the rest outlined)
+    settings_card(c, r, if selected { ButtonStyle::Selected } else { ButtonStyle::Plain });
     let fg = if selected { 255 } else { 0 };
+    let pad = settings_pad();
+    let mut text_x = r.x + pad;
     if row.icon != IconKind::None {
-        ui_icon(
-            c,
-            row.icon,
-            Rect::new(
-                r.x + ui_px(20.0),
-                r.y + ui_px(15.0),
-                rh - ui_px(30.0),
-                rh - ui_px(30.0),
-            ),
-            fg,
-        );
+        let isz = rh - ui_px(30.0);
+        ui_icon(c, row.icon, Rect::new(r.x + pad, r.y + ui_px(15.0), isz, isz), fg);
+        text_x += isz + settings_gap();
     }
     let thumb_w = if thumb.is_some() { ui_px(120.0) } else { 0 };
-    let text_x = r.x + rh + ui_px(10.0);
-    let text_w = r.w - rh - ui_px(30.0) - thumb_w;
+    let text_w = r.x + r.w - text_x - pad - thumb_w;
     ui_text(
         c,
         FontFace::Bold,
@@ -3602,8 +4637,12 @@ fn draw_record_card(a: &mut App) {
 // The language Settings > Language has picked: its index, or -1 for automatic (language=auto,
 // or a language this version does not speak).
 fn language_picked(a: &App) -> i32 {
-    if i18n_setting_known(a.settings.language.as_str()) {
-        i18n_find(a.settings.language.as_str())
+    language_picked_settings(&a.settings)
+}
+
+fn language_picked_settings(settings: &Settings) -> i32 {
+    if i18n_setting_known(settings.language.as_str()) {
+        i18n_find(settings.language.as_str())
     } else {
         -1
     }
@@ -3621,20 +4660,95 @@ fn language_auto_label(out: &mut String, cap: usize) {
     );
 }
 
+/// The one Settings layout, edited by variables: a full screen with the title (at the one title
+/// size) above the rule, an optional Back button at the top left, an X icon alone at the top right,
+/// the content below, and an optional strip at the foot for a page's own control. The main page and
+/// every submenu are this same frame.
+pub(crate) struct SettingsPage {
+    pub content: Rect,
+    pub back: Rect,
+    pub close: Rect,
+    /// The strip at the foot a page with a control there (Pen feel's Reset tool) leaves for it.
+    pub footer: Rect,
+}
+
+pub(crate) fn settings_page(
+    c: &mut Canvas,
+    aw: i32,
+    ah: i32,
+    title: &str,
+    back: bool,
+    footer: bool,
+) -> SettingsPage {
+    canvas_fill(c, Rect::new(0, 0, aw, ah), 255);
+    let pad = ui_px(50.0);
+    let th = ui_px(190.0);
+    let bh = ui_px(150.0);
+    let mut back_r = RECT_EMPTY;
+    let mut tx = pad;
+    if back {
+        back_r = Rect::new(pad, (th - bh) / 2, bh, bh);
+        ui_button(c, back_r, IconKind::Back, "", ButtonStyle::Plain);
+        tx = back_r.x + bh + ui_px(30.0);
+    }
+    // Every Settings page closes with this X alone at the top right (never a Done at the foot).
+    let close_r = Rect::new(aw - pad - bh, (th - bh) / 2, bh, bh);
+    ui_button(c, close_r, IconKind::Close, "", ButtonStyle::Plain);
+    // (the same title face and size on the main page and on every submenu)
+    font_draw_left(
+        c,
+        FontFace::Title,
+        ui_title_size(),
+        Rect::new(tx, 0, (close_r.x - tx - ui_px(30.0)).max(0), th),
+        title,
+        0,
+    );
+    ui_rule(c, 0, aw, th, ui_px(4.0), 0);
+    let footer_h = if footer { ui_px(170.0) } else { ui_px(36.0) };
+    let content = Rect::new(pad, th + ui_px(36.0), aw - 2 * pad, ah - th - ui_px(36.0) - footer_h);
+    let footer_r = if footer {
+        Rect::new(pad, ah - ui_px(30.0) - ui_px(120.0), aw - 2 * pad, ui_px(120.0))
+    } else {
+        RECT_EMPTY
+    };
+    SettingsPage { content, back: back_r, close: close_r, footer: footer_r }
+}
+
+/// Maps a settings row to the hit id its action already handles: adding a row in settingsmenu.rs
+/// is one line here (and its handler in act if it is new) and the page layout picks it up.
+fn setting_hit(id: settingsmenu::SettingId) -> i32 {
+    use settingsmenu::SettingId::*;
+    match id {
+        Display => H_SET_DISPLAY,
+        SleepSettings => H_SET_SLEEP,
+        ClockSettings => H_SET_CLOCK,
+        Theme => H_SET_THEME,
+        DarkMode => H_SET_DARK,
+        Font => H_SET_FONT,
+        Rotate => H_SET_ROTATE,
+        Pinch => H_SET_PINCH,
+        PenFeel => H_SET_PENS,
+        SideButton => H_SET_SIDE,
+        EraserMode => H_SET_ERASER,
+        Calibration => H_SET_CALIB,
+        Shortcuts => H_SHORTCUTS,
+        Pair => H_PAIR_MENU,
+        Gestures => H_GESTURES,
+        Language => H_SET_LANGUAGE,
+        Mirror => H_SET_MIRROR,
+        Wifi => H_WIFI_MENU,
+        KOReader => H_KOREADER,
+        Updates => H_UPDATES,
+        AboutDevice => H_SET_DEVICE,
+    }
+}
+
+/// Settings' page: a full screen, its categories down the left, the active one's settings to
+/// their right, and the X at the top right. The categories, rows, labels and icons come from
+/// settingsmenu.rs; this function only lays them out and maps each row to its action.
 fn draw_settings(a: &mut App) {
     let (aw, ah) = (a.w, a.h);
-    let mut lang = String::new();
-    let mut lang_line = String::new();
-    if language_picked(a) < 0 {
-        language_auto_label(&mut lang, 96);
-    } else {
-        csnprintf!(
-            &mut lang,
-            96,
-            "%s",
-            i18n_language_name(language_picked(a)).unwrap_or("(null)")
-        );
-    }
+    let classic = ui_theme() == UiTheme::Classic;
     let App {
         screen: c,
         lib,
@@ -3642,303 +4756,171 @@ fn draw_settings(a: &mut App) {
         ..
     } = a;
     let s = lib.as_deref_mut().unwrap();
-    let card = sheet_rect(aw, ah, ui_px(1820.0));
-    let in_ = ui_sheet(c, card, tr("Settings"));
-    // The rows that open a screen or a sheet, in the owner's order of 2026-11-04 ("the 4 top settings options
-    // should be in a different order - Display, Pen sens, Shortcuts, Calibrate"). Four rows in the height
-    // three took before (110 px each, as the lines below them), so everything under them stays where it was.
-    let rh = ui_px(110.0);
-    let gap = ui_px(13.0);
-    let mut y = in_.y;
-    // TRANSLATORS: the rows of Settings: buttons with an icon (1470 px at 44 px in bold), then
-    // lines a tap changes (1530 px at 44 px) and checkboxes (1548 px at 44 px, or two lines at
-    // 34 px). Sideways they are 80 px wider.
-    let pens = tr("Pen sensitivity (pressure + tilt per tool)");
-    // (what the platform does not leave to Grimoire has no row or button here: light.rs, Services)
+    let page = settings_page(c, aw, ah, tr("Settings"), false, false);
+    // (a tap outside every row finds no hit and does nothing: never a hit over the whole page, whose
+    // press feedback would invert the screen and refresh it whole)
+    let pad = page.content.x;
+    let top = page.content.y;
+    let cats = &settingsmenu::CATEGORIES;
+    let side_w = (aw * 30 / 100).clamp(ui_px(320.0), ui_px(560.0));
+    let ncat = cats.len() as i32;
+    let content_bottom = page.content.y + page.content.h;
+    let cat_area = Rect::new(pad, top, side_w, content_bottom - top);
+    // A list is a page of ui_row's (ui_row_page): the same card, icon, label and spacing whether
+    // there are six categories or sixty, and its own page arrows when they no longer fit.
+    let active = clampi(s.settings_cat, 0, ncat - 1);
+    let mut cat_page = ui_row_page(cat_area, cats.len(), s.settings_cat_page, ui_px(120.0), ui_px(72.0));
+    // (the open category is brought on screen when it changes: the page arrows stay free to page
+    // the categories themselves)
+    if s.settings_cat_shown != active {
+        s.settings_cat_shown = active;
+        if !cat_page.rows.is_empty()
+            && !(cat_page.first..cat_page.first + cat_page.rows.len()).contains(&(active as usize))
+        {
+            let per = cat_page.rows.len().max(1);
+            cat_page = ui_row_page(cat_area, cats.len(), (active as usize / per) as i32, ui_px(120.0), ui_px(72.0));
+        }
+    }
+    s.settings_cat_page = cat_page.page;
+    for (i, cat) in cats.iter().enumerate().skip(cat_page.first).take(cat_page.rows.len()) {
+        let r = cat_page.rows[i - cat_page.first];
+        let row = UiRow::new(cat.icon, tr(cat.title)).bold();
+        let row = UiRow {
+            style: if i as i32 == active { ButtonStyle::Selected } else { ButtonStyle::Plain },
+            ..row
+        };
+        ui_row(c, r, &row);
+        hits_add(&mut s.hits, r, H_SET_CAT, i as i32);
+    }
+    ui_row_pager(c, &cat_page);
+    if cat_page.page > 0 {
+        hits_add(&mut s.hits, cat_page.prev, H_SET_CAT_PAGE, -1);
+    }
+    if cat_page.page + 1 < cat_page.pages {
+        hits_add(&mut s.hits, cat_page.next, H_SET_CAT_PAGE, 1);
+    }
+    let cat = &cats[active as usize];
+    let content_x = pad + side_w + ui_px(48.0);
+    let content_w = aw - content_x - pad;
+    font_draw_left(
+        c,
+        FontFace::Bold,
+        ui_text_size(),
+        Rect::new(content_x, top, content_w, ui_px(70.0)),
+        tr(cat.title),
+        0,
+    );
+    let list_top = top + ui_px(86.0);
+    // (what the platform does not leave to Grimoire has no row here: light.rs, Services)
     let services = sys_services();
-    // (without a front light the row is called what its sheet is: no brightness or warmth to name)
-    let display = if light_available() { tr("Display: brightness, warmth, invert") } else { tr("Display") };
-    let top = [
-        (IconKind::Brightness, display, H_SET_DISPLAY),
-        (IconKind::Tune, pens, H_SET_PENS),
-        // TRANSLATORS: (Settings) the row that opens the Shortcuts sheet: a keyboard's keys and a controller's
-        // buttons as shortcuts, each device's own if it has them (1470 px at 44 px in bold, as its neighbours).
-        (IconKind::Gamepad, tr("Shortcuts: keys and controller buttons"), H_SHORTCUTS),
-        (IconKind::Target, tr("Calibrate pen and touch"), H_SET_CALIB),
-    ];
-    for (icon, label, id) in top {
-        if id == H_SET_CALIB && !services.calibration {
-            continue;
-        }
-        let r = Rect::new(in_.x, y, in_.w, rh);
-        ui_button(c, r, IconKind::None, "", ButtonStyle::Plain);
-        ui_icon(
-            c,
-            icon,
-            Rect::new(
-                r.x + ui_px(20.0),
-                r.y + ui_px(15.0),
-                rh - ui_px(30.0),
-                rh - ui_px(30.0),
-            ),
-            0,
-        );
-        font_draw_left(
-            c,
-            FontFace::Bold,
-            ui_text_size(),
-            Rect::new(r.x + rh + ui_px(10.0), r.y, r.w - rh - ui_px(30.0), rh),
-            label,
-            0,
-        );
-        hits_add(&mut s.hits, r, id, 0);
-        y += rh + gap;
-    }
-    let rt = Rect::new(in_.x, y, in_.w, ui_px(110.0));
-    canvas_fill(c, rt, 255);
-    ui_icon(
-        c,
-        IconKind::Castle,
-        Rect::new(rt.x, rt.y + ui_px(15.0), ui_px(80.0), ui_px(80.0)),
-        0,
-    );
-    // TRANSLATORS: the style Grimoire is drawn in, and the other one a tap changes to (1530 px at 44 px
-    // in Gothic; in Classic the Font chip takes the row's right end, which leaves about 1000 px).
-    let mut style = tr("Style: Gothic (tap for Classic)");
-    if ui_theme() == UiTheme::Classic {
-        style = tr("Style: Classic (tap for Gothic)");
-    }
-    // In Classic a chip at the row's right end opens the Font sheet (2.1); the rest of the row still
-    // changes the style. Gothic has no chip: its look is its own type.
-    let mut text_w = rt.w - ui_px(110.0);
-    let mut theme_r = rt;
-    if ui_theme() == UiTheme::Classic {
-        let mut label = String::new();
-        // (one of the owner's own fonts by its family's name, cut short as a name is)
-        let own_name = crate::userfonts::userfonts_in_use_name();
-        // TRANSLATORS: (Settings, Classic only) the chip at the Style row's right end that opens the
-        // Font sheet, with the font in use by its short name, never translated ("Terminess",
-        // "Atkinson", "Noto Sans", "Literata"; one of your own fonts by its family's name, cut short
-        // if it is long): about 450 px at 34 px in bold, beside its icon.
-        csnprintf!(&mut label, 96, tr("Font: %s"), own_name.as_deref().unwrap_or(FONT_FAMILIES[font_family()].short));
-        let ch = ui_px(90.0);
-        // (the icon, then its label: the chip as wide as they need, up to 560 px)
-        let lx = ch + ui_px(10.0);
-        let w = lx + ui_chip_w(FontFace::Bold, ui_small_size(), &label, ch, ui_px(240.0), ui_px(560.0)) - ui_px(24.0);
-        let chip = Rect::new(rt.x + rt.w - w, rt.y + (rt.h - ch) / 2, w, ch);
-        ui_frame(c, chip, ch / 2, 255, true, 0);
-        ui_frame(c, chip, ch / 2, 0, false, ui_px(3.0));
-        ui_icon(c, IconKind::Font, Rect::new(chip.x + ui_px(16.0), chip.y + ui_px(8.0), ch - ui_px(16.0), ch - ui_px(16.0)), 0);
-        if own_name.is_some() {
-            font_draw_left_name(c, FontFace::Bold, ui_small_size(), Rect::new(chip.x + lx, chip.y, chip.w - lx - ui_px(24.0), ch), &label, 0);
-        } else {
-            font_draw_left(c, FontFace::Bold, ui_small_size(), Rect::new(chip.x + lx, chip.y, chip.w - lx - ui_px(24.0), ch), &label, 0);
-        }
-        text_w = chip.x - ui_px(24.0) - (rt.x + ui_px(110.0));
-        theme_r.w = chip.x - ui_px(12.0) - rt.x;
-        hits_add(&mut s.hits, chip, H_SET_FONT, 0);
-    }
-    font_draw_left(
-        c,
-        FontFace::Regular,
-        ui_text_size(),
-        Rect::new(rt.x + ui_px(110.0), rt.y, text_w, rt.h),
-        style,
-        0,
-    );
-    hits_add(&mut s.hits, theme_r, H_SET_THEME, 0);
-    y += ui_px(130.0);
-    let r3 = Rect::new(in_.x, y, in_.w, ui_px(110.0));
-    let mut row = String::new();
-    // TRANSLATORS: %s is the folder on the Kindle's storage (seen over USB) that gets a PDF of
-    // every notebook.
-    csnprintf!(
-        &mut row,
-        256,
-        tr("Mirror PDFs to %s (USB)"),
-        "grimoire/PDFs"
-    );
-    ui_checkbox(c, r3, &row, settings.mirror_pdf);
-    hits_add(&mut s.hits, r3, H_SET_MIRROR, 0);
-    y += ui_px(130.0);
-    let r4 = Rect::new(in_.x, y, in_.w, ui_px(110.0));
-    // What holding the pen's side button does while writing (settings.ini side_button 0 to 3).
-    static BTN_ROWS: [&str; 4] = [
-        // TRANSLATORS: what holding the pen's button while writing does; a tap moves to the next.
-        n_("Holding the pen button while writing does nothing (tap to change)"),
-        n_("Holding the pen button while writing erases (tap to change)"),
-        n_("Holding the pen button while writing highlights (tap to change)"),
-        // TRANSLATORS: the fourth choice of the same row: while the pen's button is held, the pen
-        // draws white ink (which takes away the ink under it and keeps the paper's lines). 1530 px
-        // at 44 px, sideways 1610, or two lines at 34 px.
-        n_("Holding the pen button while writing draws white (tap to change)"),
-    ];
-    canvas_fill(c, r4, 255);
-    ui_icon(
-        c,
-        IconKind::Highlighter,
-        Rect::new(r4.x, r4.y + ui_px(15.0), ui_px(80.0), ui_px(80.0)),
-        0,
-    );
-    ui_text(
-        c,
-        FontFace::Regular,
-        ui_text_size(),
-        ui_small_size(),
-        Rect::new(r4.x + ui_px(110.0), r4.y, r4.w - ui_px(110.0), r4.h),
-        tr(BTN_ROWS[clampi(settings.side_button, 0, 3) as usize]),
-        2,
-        false,
-        0,
-    );
-    hits_add(&mut s.hits, r4, H_SET_SIDE, 0);
-    y += ui_px(130.0);
-    let r5 = Rect::new(in_.x, y, in_.w, ui_px(110.0));
-    ui_checkbox(
-        c,
-        r5,
-        tr("Turn with the Kindle (portrait and landscape)"),
-        settings.follow_rotation,
-    );
-    hits_add(&mut s.hits, r5, H_SET_ROTATE, 0);
-    y += ui_px(130.0);
-    let r6 = Rect::new(in_.x, y, in_.w, ui_px(110.0));
-    ui_checkbox(
-        c,
-        r6,
-        tr("Pinch with two fingers to zoom"),
-        settings.pinch_zoom,
-    );
-    hits_add(&mut s.hits, r6, H_SET_PINCH, 0);
-    y += ui_px(130.0);
-    // The last row the sheet has room for: sideways in Gothic 18 px are left above Done.
-    let rl = Rect::new(in_.x, y, in_.w, ui_px(110.0));
-    // TRANSLATORS: a row of Settings, with the choice: "Automatic (English)", or a language's name.
-    csnprintf!(&mut lang_line, 160, tr("Language: %s"), &lang);
-    canvas_fill(c, rl, 255);
-    ui_icon(
-        c,
-        IconKind::Language,
-        Rect::new(rl.x, rl.y + ui_px(15.0), ui_px(80.0), ui_px(80.0)),
-        0,
-    );
-    ui_text(
-        c,
-        FontFace::Regular,
-        ui_text_size(),
-        ui_small_size(),
-        Rect::new(rl.x + ui_px(110.0), rl.y, rl.w - ui_px(110.0), rl.h),
-        &lang_line,
-        2,
-        false,
-        0,
-    );
-    hits_add(&mut s.hits, rl, H_SET_LANGUAGE, 0);
-    y += ui_px(150.0);
-    let caps = input_caps();
-    let mut pen = String::new();
-    let mut about = String::new();
-    let pressure = caps.has_pressure;
-    let tilt = caps.has_tilt;
-    if !caps.has_pen {
-        // TRANSLATORS: Settings' last lines (34 px): after the version, the pen Grimoire found (its
-        // device's name, %s) and what it reports; then where Grimoire keeps its data (%s).
-        csnprintf!(&mut pen, 160, "%s", tr("pen: none"));
-    } else if pressure && tilt {
-        csnprintf!(&mut pen, 160, tr("pen: %s, pressure, tilt"), &caps.pen_name);
-    } else if pressure {
-        csnprintf!(&mut pen, 160, tr("pen: %s, pressure"), &caps.pen_name);
-    } else if tilt {
-        csnprintf!(&mut pen, 160, tr("pen: %s, tilt"), &caps.pen_name);
-    } else {
-        csnprintf!(&mut pen, 160, tr("pen: %s"), &caps.pen_name);
-    }
-    csnprintf!(&mut about, 320, "Grimoire %s  %s", GRIMOIRE_VERSION, &pen);
-    font_draw_left(
-        c,
-        FontFace::Regular,
-        ui_small_size(),
-        Rect::new(in_.x, y, in_.w, ui_px(60.0)),
-        &about,
-        60,
-    );
-    // (The data's path is a name: a long one is cut short, as names are. tests/test_i18n.c checks
-    // that the label fits with the Kindle's path.)
-    csnprintf!(&mut about, 320, tr("Data: %s"), &store_root());
-    font_draw_left_name(
-        c,
-        FontFace::Regular,
-        ui_small_size(),
-        Rect::new(in_.x, y + ui_px(60.0), in_.w, ui_px(60.0)),
-        &about,
-        60,
-    );
-    let done = Rect::new(
-        in_.x + in_.w - ui_px(380.0),
-        in_.y + in_.h - ui_px(140.0),
-        ui_px(380.0),
-        ui_px(140.0),
-    );
-    ui_button(c, done, IconKind::None, tr("Done"), ButtonStyle::Primary);
-    hits_add(&mut s.hits, done, H_CANCEL, 0);
-    let ko = Rect::new(in_.x, done.y, ui_px(300.0), done.h);
-    if !(services.koreader && services.pairing && services.wifi && services.updates) {
-        // Without some of them: the buttons that are left, each as wide as its word needs (KOReader its
-        // 300 px), from the left. Gestures is always there.
-        let gap = ui_px(30.0);
-        let some = [
-            (services.koreader, IconKind::Notebook, "KOReader", H_KOREADER),
-            (services.pairing, IconKind::Link, tr("Pair"), H_PAIR_MENU),
-            (services.wifi, IconKind::Share, tr("Wi-Fi"), H_WIFI_MENU),
-            (true, IconKind::Gestures, tr("Gestures"), H_GESTURES),
-            (services.updates, IconKind::Update, tr("Updates"), H_UPDATES),
-        ];
-        let mut x = in_.x;
-        for (there, icon, label, id) in some {
-            if !there {
-                continue;
+    let shown: Vec<&settingsmenu::Item> = cat
+        .items
+        .iter()
+        .filter(|it| it.show.visible(classic, services))
+        .collect();
+    let list_area = Rect::new(content_x, list_top, content_w, content_bottom - list_top - ui_px(20.0));
+    let list = ui_row_page(list_area, shown.len(), s.settings_rows_page, ui_px(118.0), ui_px(90.0));
+    s.settings_rows_page = list.page;
+    let mut label_buf = String::new();
+    let mut lang_buf = String::new();
+    for (r, item) in list.rows.iter().zip(shown[list.first..list.first + list.rows.len()].iter()) {
+        let label: &str = match item.label {
+            settingsmenu::Label::Text(msgid) => tr(msgid),
+            settingsmenu::Label::Display => {
+                // (without a front light the row is called what its sheet is: no brightness or warmth to name)
+                tr(if light_available() {
+                    settingsmenu::DISPLAY_WITH_LIGHT
+                } else {
+                    settingsmenu::DISPLAY_NO_LIGHT
+                })
             }
-            let w = if id == H_KOREADER { ko.w } else { ui_button_need_w(done.h, icon, label, ButtonStyle::Plain).max(ui_px(160.0)) };
-            let r = Rect::new(x, done.y, w, done.h);
-            ui_button(c, r, icon, label, ButtonStyle::Plain);
-            hits_add(&mut s.hits, r, id, 0);
-            x += w + gap;
-        }
-        return;
+            settingsmenu::Label::Style => tr(if classic {
+                settingsmenu::STYLE_CLASSIC
+            } else {
+                settingsmenu::STYLE_GOTHIC
+            }),
+            settingsmenu::Label::Font => {
+                label_buf.clear();
+                // (one of the owner's own fonts by its family's name, cut short as a name is)
+                let own_name = crate::userfonts::userfonts_in_use_name();
+                // TRANSLATORS: (Settings, Classic only) the row that opens the Font sheet, with the font in use
+                // by its short name, never translated ("Terminess", "Atkinson", "Noto Sans", "Literata"; one of
+                // your own fonts by its family's name, cut short if it is long).
+                csnprintf!(&mut label_buf, 96, tr("Font: %s"), own_name.as_deref().unwrap_or(FONT_FAMILIES[font_family()].short));
+                &label_buf
+            }
+            settingsmenu::Label::Language => {
+                let picked = language_picked_settings(settings);
+                lang_buf.clear();
+                if picked < 0 {
+                    language_auto_label(&mut lang_buf, 96);
+                } else {
+                    csnprintf!(
+                        &mut lang_buf,
+                        96,
+                        "%s",
+                        i18n_language_name(picked).unwrap_or("(null)")
+                    );
+                }
+                label_buf.clear();
+                // TRANSLATORS: a row of Settings, with the choice: "Automatic (English)", or a language's name.
+                csnprintf!(&mut label_buf, 160, tr("Language: %s"), lang_buf.as_str());
+                &label_buf
+            }
+            settingsmenu::Label::SideButton => {
+                label_buf.clear();
+                // TRANSLATORS: Settings' Pen category row that opens the pen button's choices, with the
+                // choice in use ("Pen button: Erases").
+                csnprintf!(
+                    &mut label_buf,
+                    160,
+                    tr("Pen button: %s"),
+                    tr(settingsmenu::SIDE_BUTTON_NAMES[clampi(settings.side_button, 0, 3) as usize])
+                );
+                &label_buf
+            }
+            settingsmenu::Label::Eraser => {
+                label_buf.clear();
+                // TRANSLATORS: Settings' Pen category row that opens the eraser's choices, with the one in
+                // use ("Eraser: Whole strokes").
+                csnprintf!(
+                    &mut label_buf,
+                    160,
+                    tr("Eraser: %s"),
+                    tr(settingsmenu::ERASER_NAMES[clampi(settings.eraser_mode, 0, 1) as usize])
+                );
+                &label_buf
+            }
+            settingsmenu::Label::Mirror => {
+                label_buf.clear();
+                // TRANSLATORS: %s is the folder on the Kindle's storage (seen over USB) that gets a PDF of
+                // every notebook.
+                csnprintf!(
+                    &mut label_buf,
+                    256,
+                    tr("Mirror PDFs to %s (USB)"),
+                    "grimoire/PDFs"
+                );
+                &label_buf
+            }
+        };
+        // The icon, the label and any switch are ui_row's: one design for every row in Settings,
+        // whether it opens a page or is a choice.
+        let row = match item.check.value(settings) {
+            Some(on) => UiRow::toggled(item.icon, label, on),
+            None => UiRow::new(item.icon, label),
+        };
+        ui_row(c, *r, &row);
+        hits_add(&mut s.hits, *r, setting_hit(item.id), 0);
     }
-    ui_button(c, ko, IconKind::Notebook, "KOReader", ButtonStyle::Plain);
-    hits_add(&mut s.hits, ko, H_KOREADER, 0);
-    // Pair, Wi-Fi, Gestures and Updates share the space between KOReader and Done: evenly when the longest
-    // word fits a quarter, else each as wide as its word needs with what is left shared out evenly (four as
-    // wide as "Actualizaciones" would not fit), else evenly again (a word too long for any share is cut, and
-    // the fit check says so).
-    let gap = ui_px(30.0);
-    let mid = done.x - ko.x - ko.w - 5 * gap;
-    let bottom = [
-        // TRANSLATORS: Settings' bottom buttons, each a word under its icon, about 200 px at 34 px (the
-        // four share about 810 px upright; a longer word takes room from the shorter ones). Pair opens the
-        // Pair sheet (a Bluetooth controller: the helper on or off, pairing one; also that sheet's title),
-        // Wi-Fi the Wi-Fi sheet (the radio and the Kindle's saved networks), Gestures opens gesture
-        // bindings, Updates checks for a newer Grimoire.
-        (IconKind::Link, tr("Pair"), H_PAIR_MENU),
-        // TRANSLATORS: (Settings) the bottom button that opens the Wi-Fi sheet, about 200 px at 34 px under
-        // its icon; also that sheet's title, and the Share screen's button and card title.
-        (IconKind::Share, tr("Wi-Fi"), H_WIFI_MENU),
-        (IconKind::Gestures, tr("Gestures"), H_GESTURES),
-        (IconKind::Update, tr("Updates"), H_UPDATES),
-    ];
-    // (none narrower than 160 px, 13.5 mm, while that fits: a short word is still a finger's target)
-    let need = bottom.map(|(icon, label, _)| ui_button_need_w(done.h, icon, label, ButtonStyle::Plain).max(ui_px(160.0)));
-    let spare = mid - need.iter().sum::<i32>();
-    let even = need.iter().all(|&n| n <= mid / 4) || spare < 0;
-    let mut x = ko.x + ko.w + gap;
-    for (i, (icon, label, id)) in bottom.into_iter().enumerate() {
-        let w = if i == 3 { done.x - gap - x } else if even { mid / 4 } else { need[i] + spare / 4 };
-        let r = Rect::new(x, done.y, w, done.h);
-        ui_button(c, r, icon, label, ButtonStyle::Plain);
-        hits_add(&mut s.hits, r, id, 0);
-        x += w + gap;
+    ui_row_pager(c, &list);
+    if list.page > 0 {
+        hits_add(&mut s.hits, list.prev, H_SET_ROWS_PAGE, -1);
     }
+    if list.page + 1 < list.pages {
+        hits_add(&mut s.hits, list.next, H_SET_ROWS_PAGE, 1);
+    }
+    hits_add(&mut s.hits, page.close, H_CANCEL, 0);
 }
 
 /// The Font sheet's third sample line, the same in every language: digits, the punctuation Spanish
@@ -4003,12 +4985,11 @@ fn draw_font_own_row(c: &mut Canvas, r: Rect, f: &mut crate::userfonts::UserFont
     crate::userfonts::userfont_resolve(f);
     let usable = f.usable();
     let fg: u8 = if on { 255 } else if usable { 0 } else { 110 };
-    ui_frame(c, r, ui_px(16.0), if on { 0 } else { 255 }, true, 0);
-    ui_frame(c, r, ui_px(16.0), if usable { 0 } else { 110 }, false, ui_px(3.0));
+    settings_card(c, r, if on { ButtonStyle::Selected } else if usable { ButtonStyle::Plain } else { ButtonStyle::Disabled });
     let mark = r.h - ui_px(30.0);
-    let x = r.x + ui_px(40.0);
+    let x = r.x + settings_pad();
     // (the check mark's room is the row's own while it has none)
-    let w = r.w - ui_px(80.0) - if applied { mark } else { 0 };
+    let w = r.x + r.w - x - settings_pad() - if applied { mark } else { 0 };
     let top = Rect::new(x, r.y + ui_px(8.0), w, r.h - ui_px(58.0));
     let bottom = Rect::new(x, r.y + r.h - ui_px(54.0), w, ui_px(46.0));
     let note = font_row_note(f);
@@ -4046,8 +5027,8 @@ fn draw_font_own_row(c: &mut Canvas, r: Rect, f: &mut crate::userfonts::UserFont
 /// Settings > Font (2.1, Classic only): on top a sample of the font highlighted (its name at the title size,
 /// a sentence at the text size, digits and accents at the small size, all in it), then Built in: every family
 /// by its name, each drawn in itself; then Your fonts (2.1.0-beta.2): the files of grimoire/fonts, a page of
-/// them at a time (or where to copy some); the one in use with a check; then Cancel and Done. The sheet's own
-/// words are in the font in use until Done applies another, unless that font is one of the owner's own:
+/// them at a time (or where to copy some); the one in use with a check; then Back and Done. A tap applies a
+/// font at once, so the sheet's own words are in the font in use, unless that font is one of the owner's own:
 /// then they are Terminess, so a font that went wrong can always be taken back.
 fn draw_font_sheet(a: &mut App) {
     if font_own() {
@@ -4067,28 +5048,14 @@ fn draw_font_sheet_in(a: &mut App, applied: Option<usize>) {
     let n = FONT_FAMILIES.len();
     // Sideways the rows stand two abreast.
     let cols: usize = if aw > ah { 2 } else { 1 };
-    let (sample_h, rh, gap, bh, pad) = (ui_px(300.0), ui_px(130.0), ui_px(16.0), ui_px(140.0), ui_px(24.0));
-    // (a section's label; the second holds the pager; and above the buttons the room the staying notice
-    // takes, "Checking 3 fonts...", clear of every control)
-    let (lh, lh2, band) = (ui_px(60.0), ui_px(80.0), ui_px(150.0));
-    let built_rows = n.div_ceil(cols) as i32;
-    let fixed = sample_h + lh + built_rows * (rh + gap) + lh2 + band + bh;
-    let full = sheet_rect(aw, ah, i32::MAX / 2);
-    let chrome = full.h - ui_sheet_inner(full, true).h;
-    let rows_max = ((full.h - chrome - fixed + gap) / (rh + gap)).max(1) as usize;
-    let per_page = rows_max * cols;
-    let nown = s.fonts.len();
-    s.font_per_page = per_page;
-    if s.font_first >= nown {
-        s.font_first = nown.saturating_sub(1) / per_page * per_page;
-    }
-    s.font_first -= s.font_first % per_page;
-    let first = s.font_first;
-    let shown = nown.saturating_sub(first).min(per_page);
-    let own_rows = if nown == 0 { 1 } else { shown.div_ceil(cols).max(1) } as i32;
-    let card = sheet_rect(aw, ah, chrome + fixed + own_rows * (rh + gap) - gap);
+    let (sample_h, rh, gap, pad) = (ui_px(300.0), ui_px(130.0), ui_px(16.0), ui_px(24.0));
+    // (the two sections' labels: Built in's, and Your fonts' with its page count)
+    let (lh, lh2) = (ui_px(60.0), ui_px(80.0));
     // TRANSLATORS: the title of Settings > Font, the list of fonts Classic can be drawn in.
-    let in_ = ui_sheet(c, card, tr("Font"));
+    let page = settings_page(c, aw, ah, tr("Font"), true, false);
+    hits_add(&mut s.hits, page.back, H_FONT_CANCEL, 0);
+    hits_add(&mut s.hits, page.close, H_FONT_DONE, 0);
+    let in_ = page.content;
     let sample = Rect::new(in_.x, in_.y, in_.w, sample_h);
     ui_frame(c, sample, ui_px(16.0), 0, false, ui_px(3.0));
     let tx = sample.x + pad;
@@ -4137,9 +5104,19 @@ fn draw_font_sheet_in(a: &mut App, applied: Option<usize>) {
             font_with_family(pick, || draw_sample(c, FONT_FAMILIES[pick].name, false));
         }
     }
-    s.font_sample = sample;
-    s.font_rows.clear();
     s.font_own_rows.clear();
+    let built_rows = n.div_ceil(cols) as i32;
+    let fixed = sample_h + lh + built_rows * (rh + gap) + lh2;
+    let rows_max = ((in_.h - fixed + gap) / (rh + gap)).max(1) as usize;
+    let per_page = rows_max * cols;
+    let nown = s.fonts.len();
+    s.font_per_page = per_page;
+    if s.font_first >= nown {
+        s.font_first = nown.saturating_sub(1) / per_page * per_page;
+    }
+    s.font_first -= s.font_first % per_page;
+    let first = s.font_first;
+    let shown = nown.saturating_sub(first).min(per_page);
     let cw = (in_.w - (cols as i32 - 1) * gap) / cols as i32;
     let cell = |i: usize, top: i32| Rect::new(in_.x + (i % cols) as i32 * (cw + gap), top + (i / cols) as i32 * (rh + gap), cw, rh);
     let mut y = sample.y + sample.h;
@@ -4151,17 +5128,15 @@ fn draw_font_sheet_in(a: &mut App, applied: Option<usize>) {
         let r = cell(i, y);
         let on = own_pick.is_none() && i == pick;
         let fg: u8 = if on { 255 } else { 0 };
-        ui_frame(c, r, ui_px(16.0), if on { 0 } else { 255 }, true, 0);
-        ui_frame(c, r, ui_px(16.0), 0, false, ui_px(3.0));
+        settings_card(c, r, if on { ButtonStyle::Selected } else { ButtonStyle::Plain });
         let mark = rh - ui_px(30.0);
         font_with_family(i, || {
-            font_draw_left(c, FontFace::Bold, ui_text_size(), Rect::new(r.x + ui_px(40.0), r.y, r.w - ui_px(80.0) - mark, rh), f.name, fg);
+            font_draw_left(c, FontFace::Bold, ui_text_size(), Rect::new(r.x + settings_pad(), r.y, r.w - 2 * settings_pad() - mark, rh), f.name, fg);
         });
         if applied == Some(i) {
             ui_icon(c, IconKind::Check, Rect::new(r.x + r.w - ui_px(25.0) - mark, r.y + ui_px(15.0), mark, mark), fg);
         }
         hits_add(&mut s.hits, r, H_FONT_PICK, i as i32);
-        s.font_rows.push(r);
     }
     y += built_rows * (rh + gap);
     // The owner's own: the heading names the folder, with the pages' arrows at its right when the fonts
@@ -4210,46 +5185,49 @@ fn draw_font_sheet_in(a: &mut App, applied: Option<usize>) {
         }
         s.font_own_rows.push((idx, r));
     }
-    let done = Rect::new(in_.x + in_.w - ui_px(380.0), in_.y + in_.h - bh, ui_px(380.0), bh);
-    let cancel = Rect::new(in_.x, done.y, ui_px(380.0), bh);
-    ui_button(c, cancel, IconKind::None, tr("Cancel"), ButtonStyle::Plain);
-    ui_button(c, done, IconKind::None, tr("Done"), ButtonStyle::Primary);
-    hits_add(&mut s.hits, cancel, H_FONT_CANCEL, 0);
-    hits_add(&mut s.hits, done, H_FONT_DONE, 0);
 }
 
-/// Where the Font sheet drew the row of what is highlighted now (a family's, or an own font's if it is on
-/// the page shown).
-fn font_pick_row(s: &LibraryState) -> Rect {
-    if s.font_file.is_empty() {
-        return s.font_rows.get(s.font_pick).copied().unwrap_or(RECT_EMPTY);
+/// Applies what the Font sheet has highlighted now: a family (settings.ini's font=) or one of the owner's own
+/// fonts (font=file:<its path>), saved. The caller draws again in it with a Full refresh, as a style change
+/// does. A tap on a font calls this at once; X only closes the sheet. One of the owner's own fonts has its
+/// Bold file found again for it (font_bold= is for a hand). True when what draws the text changed.
+fn font_apply_pick(a: &mut App) -> bool {
+    let (pick, own, picked) = (lib(a).font_pick, lib(a).font_file.clone(), lib(a).font_picked);
+    let was_own = a.settings.font_file.as_str().to_string();
+    // What draws now changes nothing: also not a font= line whose font cannot be used (a file that is gone, a
+    // newer version's font), which stays as it is until another font is picked.
+    let drawn_own = if crate::userfonts::userfonts_in_use(&was_own) { was_own.clone() } else { String::new() };
+    // (a family picked while settings.ini asks for a font of the owner's own that does not draw now, a font a
+    // crash kept out, one still being checked or one that is gone, takes that font= line away: the next start
+    // must not try it again)
+    let drops_file = picked && own.is_empty() && !was_own.is_empty();
+    if !drops_file && own == drawn_own && (!own.is_empty() || pick == font_family()) {
+        return false;
     }
-    let at = s.fonts.iter().position(|f| f.rel == s.font_file);
-    s.font_own_rows.iter().find(|(i, _)| Some(*i) == at).map_or(RECT_EMPTY, |(_, r)| *r)
-}
-
-/// The Font sheet after a tap on a row (a family: `own` None; one of the owner's fonts: its path): the screen
-/// drawn again, and the panel refreshed only where the sample and the two rows whose highlight changed are
-/// (Ui), as What's new steps (about_step).
-fn font_step(a: &mut App, pick: usize, own: Option<String>) {
-    let was = font_pick_row(lib(a));
-    let s = lib(a);
-    s.font_pick = pick;
-    s.font_file = own.clone().unwrap_or_default();
-    // The sample of one of the owner's fonts is drawn by the font: held beside the one in use while it shows.
-    let want = own.filter(|rel| !crate::userfonts::userfonts_in_use(rel));
-    crate::userfonts::userfonts_sample(a, want.as_deref());
-    let sample = lib(a).font_sample;
-    if rect_is_empty(sample) || rect_is_empty(was) || graph_shown(a) || lib(a).settings_return_editor {
-        redraw(a, RefreshMode::Ui);
-        return;
+    if own.is_empty() {
+        a.settings.font = pick as i32;
+        a.settings.font_file.clear();
+        a.settings.font_bold.clear();
+        font_set_family(pick);
+    } else {
+        a.settings.font = 0;
+        if own != was_own {
+            a.settings.font_bold.clear();
+        }
+        a.settings.font_file.set(&own);
     }
-    draw_base(a);
-    hits_clear(&mut lib(a).hits);
-    draw_modal(a);
-    a.toast_floor = toast_floor(a);
-    let now = font_pick_row(lib(a));
-    app_invalidate(a, rect_union(sample, rect_union(was, now)), RefreshMode::Ui);
+    crate::userfonts::userfonts_apply(a);
+    if !own.is_empty() && !crate::userfonts::userfonts_in_use(&own) {
+        // The font did not load (too little memory, a file that changed): the setting stays, Terminess
+        // draws, and the owner is told.
+        font_set_family(0);
+        // TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): Done on a font of the
+        // owner's own that could not be loaded just now (too little memory free, or its file changed).
+        app_toast(a, tr("Couldn't use that font."), 3000);
+    }
+    httpd_restyle(ui_theme() == UiTheme::Gothic); // (the share pages, if Live view is on)
+    settings_save(&a.settings);
+    true
 }
 
 /// The Font sheet's staying notice while fonts are checked ("Checking 3 fonts..."), gone when none is.
@@ -4386,111 +5364,7 @@ fn draw_modal(a: &mut App) {
                 hits_add(&mut s.hits, *r, H_ABOUT_ROW, *i as i32);
             }
         }
-        Modal::Updates => {
-            let mut status = String::new();
-            let mut channel = String::new();
-            let mut now = String::new();
-            let avail = update_available();
-            let s = lib(a);
-            let (upd, newer, latest, why) =
-                (s.upd, upd_newer(s), s.upd_latest.clone(), s.upd_why.clone());
-            if !avail {
-                // TRANSLATORS: the Updates sheet's first line (about 1100 px at 44 px in bold): the version
-                // running; then while it checks; then what the check found: a newer one (%s), or that this
-                // one (%s) is the newest; or why it could not check.
-                csnprintf!(
-                    &mut status,
-                    200,
-                    "%s",
-                    tr("Updates come through KPM, which is not here.")
-                );
-            } else if upd == UPD_CHECKING {
-                csnprintf!(&mut status, 200, "%s", tr("Checking for updates..."));
-            } else if upd == UPD_DONE && newer {
-                csnprintf!(&mut status, 200, tr("Grimoire %s is available."), &latest);
-            } else if upd == UPD_DONE {
-                csnprintf!(
-                    &mut status,
-                    200,
-                    tr("Grimoire %s is the newest."),
-                    GRIMOIRE_VERSION
-                );
-            } else if upd == UPD_FAILED && why == "network" {
-                csnprintf!(&mut status, 200, "%s", tr("Could not check. Is Wi-Fi on?"));
-            } else if upd == UPD_FAILED && why == "no-kpm" {
-                csnprintf!(
-                    &mut status,
-                    200,
-                    "%s",
-                    tr("Updates come through KPM, which is not here.")
-                );
-            } else if upd == UPD_FAILED {
-                csnprintf!(&mut status, 200, "%s", tr("Could not check for updates."));
-            } else {
-                csnprintf!(
-                    &mut status,
-                    200,
-                    tr("This is Grimoire %s."),
-                    GRIMOIRE_VERSION
-                );
-            }
-            // TRANSLATORS: (Updates sheet) which updates: betas too (the preview channel), or releases
-            // only (stable); a tap changes it.
-            csnprintf!(
-                &mut channel,
-                200,
-                "%s",
-                if upd_preview(a) {
-                    tr("Updates: betas and releases (tap for releases only)")
-                } else {
-                    tr("Updates: releases only (tap for betas too)")
-                }
-            );
-            // TRANSLATORS: (Updates sheet) installs the newer Grimoire (%s): Grimoire closes, KPM
-            // installs it, and Grimoire starts again.
-            csnprintf!(&mut now, 160, tr("Update to %s"), &latest);
-            let can = avail && upd != UPD_CHECKING;
-            let rows = [
-                menu_row(IconKind::None, &status, H_NONE, 0, ButtonStyle::Disabled),
-                menu_row(
-                    IconKind::None,
-                    &channel,
-                    H_UPD_CHANNEL,
-                    0,
-                    if can {
-                        ButtonStyle::Plain
-                    } else {
-                        ButtonStyle::Disabled
-                    },
-                ),
-                // TRANSLATORS: (Updates sheet) asks Grimoire's feed for a newer Grimoire (through KPM).
-                menu_row(
-                    IconKind::Update,
-                    tr("Check for updates"),
-                    H_UPD_CHECK,
-                    0,
-                    if can {
-                        ButtonStyle::Plain
-                    } else {
-                        ButtonStyle::Disabled
-                    },
-                ),
-                menu_row(
-                    IconKind::Download,
-                    if newer { now.as_str() } else { tr("Update") },
-                    H_UPD_NOW,
-                    0,
-                    if newer {
-                        ButtonStyle::Primary
-                    } else {
-                        ButtonStyle::Disabled
-                    },
-                ),
-                menu_row(IconKind::Close, tr("Done"), H_CANCEL, 0, ButtonStyle::Plain),
-            ];
-            // TRANSLATORS: the Updates sheet's title (Settings > Updates).
-            draw_menu(a, tr("Updates"), &rows);
-        }
+        Modal::Updates => draw_updates(a),
         Modal::Pair => {
             let s = lib(a);
             let mut rows: Vec<MenuRow> = Vec::with_capacity(8);
@@ -4583,7 +5457,7 @@ fn draw_modal(a: &mut App) {
                 ButtonStyle::Plain,
             ));
             // TRANSLATORS: the title of the sheet that pairs a controller (Settings > Pair > Pair a controller).
-            draw_menu(a, tr("Pair a controller"), &rows);
+            draw_settings_menu(a, tr("Pair a controller"), &rows);
         }
         Modal::Buttons => draw_bind_sheet(a, BUTTONS),
         Modal::Gestures => draw_gestures_modal(a),
@@ -4738,7 +5612,7 @@ fn draw_modal(a: &mut App) {
             ];
             // TRANSLATORS: the Shortcuts sheet's title (Settings > Shortcuts): a keyboard's or a controller's
             // keys as shortcuts, each device's own if it has them.
-            draw_menu(a, tr("Shortcuts"), &rows);
+            draw_settings_menu(a, tr("Shortcuts"), &rows);
         }
         Modal::PairMenu => {
             let mut status = String::new();
@@ -4802,7 +5676,7 @@ fn draw_modal(a: &mut App) {
                 menu_row(IconKind::None, &status, H_NONE, 0, ButtonStyle::Disabled),
                 menu_row(IconKind::Close, tr("Done"), H_CANCEL, 0, ButtonStyle::Plain),
             ];
-            draw_menu(a, tr("Pair"), &rows);
+            draw_settings_menu(a, tr("Pair"), &rows);
         }
         Modal::Koreader => {
             let mut ko = String::new();
@@ -4871,7 +5745,7 @@ fn draw_modal(a: &mut App) {
                 ),
                 menu_row(IconKind::Close, tr("Done"), H_CANCEL, 0, ButtonStyle::Plain),
             ];
-            draw_menu(a, "KOReader", &rows);
+            draw_settings_menu(a, "KOReader", &rows);
         }
         Modal::More => {
             let Some(it) = it else { return };
@@ -5045,49 +5919,57 @@ fn draw_modal(a: &mut App) {
             draw_menu(a, &title, &rows);
         }
         Modal::Language => {
-            // Automatic, then every language by its own name; a pick applies at once.
-            let mut rows: Vec<MenuRow> = Vec::with_capacity(12);
+            // Automatic, then every language by its own name; a pick applies at once. A full screen, as
+            // Settings' submenus are: the page's chrome and the choices as cards in two columns.
             let cur = language_picked(a);
             let mut auto_label = String::new();
             language_auto_label(&mut auto_label, 96);
-            rows.push(menu_row(
-                IconKind::Language,
-                &auto_label,
-                H_LANG_PICK,
-                -1,
-                if cur < 0 {
-                    ButtonStyle::Selected
-                } else {
-                    ButtonStyle::Plain
-                },
-            ));
+            let mut rows: Vec<(String, i32, bool)> = Vec::with_capacity(12);
+            rows.push((auto_label, -1, cur < 0));
             let mut i = 0;
-            while i < i18n_language_count() && rows.len() < 11 {
-                let name = i18n_language_name(i).unwrap_or("(null)");
-                rows.push(menu_row(
-                    IconKind::None,
-                    name,
-                    H_LANG_PICK,
+            while i < i18n_language_count() && rows.len() < 12 {
+                rows.push((
+                    i18n_language_name(i).unwrap_or("(null)").to_string(),
                     i,
-                    if cur == i {
-                        ButtonStyle::Selected
-                    } else {
-                        ButtonStyle::Plain
-                    },
+                    cur == i,
                 ));
                 i += 1;
             }
-            rows.push(menu_row(
-                IconKind::Close,
-                tr("Cancel"),
-                H_LANG_BACK,
-                0,
-                ButtonStyle::Plain,
-            ));
             // TRANSLATORS: the title of the list of languages (Settings > Language).
-            draw_menu(a, tr("Language"), &rows);
+            draw_pick_sheet(a, tr("Language"), &rows, H_LANG_PICK, H_LANG_BACK);
         }
+        Modal::SideButton => {
+            let cur = clampi(a.settings.side_button, 0, 3);
+            let rows: Vec<(String, i32, bool)> = settingsmenu::SIDE_BUTTON_LABELS
+                .iter()
+                .enumerate()
+                .map(|(i, label)| (tr(label).to_string(), i as i32, i as i32 == cur))
+                .collect();
+            // TRANSLATORS: the title of the list of what the pen's button does while writing (Settings > Pen).
+            draw_pick_sheet(a, tr("Pen button"), &rows, H_SIDE_PICK, H_SIDE_BACK);
+        }
+        Modal::EraserMode => {
+            let cur = clampi(a.settings.eraser_mode, 0, 1);
+            let rows: Vec<(String, i32, bool)> = settingsmenu::ERASER_LABELS
+                .iter()
+                .enumerate()
+                .map(|(i, label)| (tr(label).to_string(), i as i32, i as i32 == cur))
+                .collect();
+            // TRANSLATORS: the title of the list of what the eraser does (Settings > Pen).
+            draw_pick_sheet(a, tr("Eraser"), &rows, H_ERASER_PICK, H_ERASER_BACK);
+        }
+        Modal::DeviceInfo => draw_device(a),
+        Modal::LinkQr => draw_link(a),
         Modal::Kb => {
+            // The page the keyboard was opened over stays on the panel, the keys over its lower half.
+            let parent = lib(a).kb_parent;
+            if parent != Modal::None && parent != Modal::Kb {
+                lib(a).modal = parent;
+                draw_modal(a);
+                lib(a).modal = Modal::Kb;
+                // (the keys take every contact: the page below is drawn, not tapped)
+                hits_clear(&mut lib(a).hits);
+            }
             let (aw, ah) = (a.w, a.h);
             let App { screen, lib, .. } = a;
             let s = lib.as_deref_mut().unwrap();
@@ -5189,6 +6071,182 @@ fn redraw(a: &mut App, m: RefreshMode) {
     app_invalidate_all(a, m);
 }
 
+/// The device's name for About: the Kindle's own model (its device tree, else /proc/usid's model
+/// code, its first 6 characters: never the serial number), or this computer's.
+fn device_name() -> String {
+    // (the reads are here for the Kindle build and are type-checked by every build; a computer has
+    // neither file, so the host and the simulator show their own line)
+    if cfg!(feature = "kindle") {
+        if let Ok(raw) = std::fs::read("/proc/device-tree/model") {
+            let name: String = raw.iter().take_while(|&&c| c != 0).map(|&c| c as char).collect();
+            let name = name.trim();
+            if !name.is_empty() {
+                return name.to_string();
+            }
+        }
+        if let Ok(f) = std::fs::File::open("/proc/usid") {
+            use std::io::Read;
+            let mut b = Vec::with_capacity(6);
+            let _ = f.take(6).read_to_end(&mut b);
+            let code: String = b.iter().map(|&c| if c.is_ascii_alphanumeric() { c as char } else { '?' }).collect();
+            if !code.is_empty() {
+                return format!("Kindle ({code})");
+            }
+        }
+        return tr("Kindle").to_string();
+    }
+    // TRANSLATORS: Settings > System > About, the device's name on a computer (the Kindle build names
+    // the Kindle's own model).
+    tr("This computer").to_string()
+}
+
+/// One of Settings > System > About's links: the name its row shows and the address its page shows
+/// as a QR code. A link is one line in ABOUT_LINKS: About lists them, pages the list when it
+/// outgrows the screen (ui_row_page), and opens each on its own page. Its row is named
+/// about.link.N for scenarios, N its place here (from 0), so add new links at the end.
+struct AboutLink {
+    name: &'static str,
+    url: &'static str,
+}
+
+/// The links About lists, in order. Names are msgids, translated as they are drawn; no other code
+/// changes when one is added here.
+static ABOUT_LINKS: &[AboutLink] = &[
+    AboutLink { name: n_("Ko-fi"), url: "https://ko-fi.com/B0B7EF4TJ" },
+    AboutLink { name: n_("Grimoire GitHub"), url: "https://github.com/ganten1998/grimoire-scribe" },
+    AboutLink { name: n_("Nebuff's GitHub"), url: "https://github.com/nebuff" },
+    AboutLink { name: n_("Ganten's GitHub"), url: "https://github.com/ganten1998" },
+];
+
+/// Settings > System > About: what this device is, its version, a bar of the storage used (the data
+/// root's filesystem) with the free room under it, and the links. One text size for the lines under
+/// the name, as the rest of Settings.
+fn draw_device(a: &mut App) {
+    let (aw, ah) = (a.w, a.h);
+    let App { screen: c, lib, .. } = a;
+    let s = lib.as_deref_mut().unwrap();
+    let page = settings_page(c, aw, ah, tr("About"), true, false);
+    hits_add(&mut s.hits, page.back, H_DEVICE_BACK, 0);
+    hits_add(&mut s.hits, page.close, H_SETTINGS_CLOSE, 0);
+    let in_ = page.content;
+    let px = ui_text_size();
+    let name = device_name();
+    font_draw_left(c, FontFace::Bold, ui_title_size(), Rect::new(in_.x, in_.y, in_.w, ui_px(110.0)), &name, 0);
+    let mut ver = String::new();
+    csnprintf!(&mut ver, 96, tr("Grimoire %s"), GRIMOIRE_VERSION);
+    font_draw_left(c, FontFace::Regular, px, Rect::new(in_.x, in_.y + ui_px(115.0), in_.w, ui_px(70.0)), &ver, 0);
+    let mut y = in_.y + ui_px(260.0);
+    match crate::pdfimport::storage_space() {
+        Some((total, free)) => {
+            let used = total.saturating_sub(free);
+            let (used_s, total_s, free_s) = (
+                crate::browser::size_label(used),
+                crate::browser::size_label(total),
+                crate::browser::size_label(free),
+            );
+            let mut used_line = String::new();
+            csnprintf!(&mut used_line, 256, tr("Storage: %s of %s used"), used_s.as_str(), total_s.as_str());
+            font_draw_left(c, FontFace::Regular, px, Rect::new(in_.x, y, in_.w, ui_px(70.0)), &used_line, 0);
+            // The bar runs the page's full width; the fill inside it is rounded as the bar is, so
+            // the progress ends in a pill rather than a square corner.
+            let bar = Rect::new(in_.x, y + ui_px(95.0), in_.w, ui_px(72.0));
+            ui_frame(c, bar, bar.h / 2, 0, false, ui_px(3.0));
+            let inner = rect_inflate(bar, -ui_px(10.0));
+            let filled = if total > 0 { (inner.w as u64 * used / total) as i32 } else { 0 };
+            if filled > 0 {
+                let fr = Rect::new(inner.x, inner.y, filled.min(inner.w), inner.h);
+                ui_frame(c, fr, fr.h / 2, 0, true, 0);
+            }
+            let mut free_line = String::new();
+            csnprintf!(&mut free_line, 160, tr("%s free"), free_s.as_str());
+            font_draw_left(c, FontFace::Regular, px, Rect::new(in_.x, bar.y + bar.h + ui_px(26.0), in_.w, ui_px(70.0)), &free_line, 0);
+            y = bar.y + bar.h + ui_px(102.0);
+        }
+        None => {
+            // TRANSLATORS: Settings > System > About, where the storage bar would be when the system
+            // cannot tell the storage's size.
+            font_draw_left(c, FontFace::Regular, px, Rect::new(in_.x, y, in_.w, ui_px(70.0)), tr("Storage: not available"), 0);
+            y += ui_px(102.0);
+        }
+    }
+    // The links, as rows a tap opens on their own page with a QR code a phone scans. The list pages
+    // when it outgrows the screen (ui_row_page), so a new link is one line in ABOUT_LINKS.
+    y += ui_px(40.0);
+    // TRANSLATORS: Settings > System > About, the heading over its links (Ko-fi, GitHub, ...).
+    font_draw_left(c, FontFace::Bold, px, Rect::new(in_.x, y, in_.w, ui_px(70.0)), tr("Links"), 0);
+    y += ui_px(90.0);
+    let area = Rect::new(in_.x, y, in_.w, (in_.y + in_.h - y).max(0));
+    let list = ui_row_page(area, ABOUT_LINKS.len(), s.device_links_page, ui_px(130.0), ui_px(90.0));
+    s.device_links_page = list.page;
+    for (r, i) in list.rows.iter().zip(list.first..list.first + list.rows.len()) {
+        let link = &ABOUT_LINKS[i];
+        ui_row(c, *r, &UiRow::new(IconKind::None, tr(link.name)));
+        hits_add(&mut s.hits, *r, H_LINK, i as i32);
+    }
+    ui_row_pager(c, &list);
+    if list.pages > 1 {
+        hits_add(&mut s.hits, list.prev, H_LINK_PAGE, -1);
+        hits_add(&mut s.hits, list.next, H_LINK_PAGE, 1);
+    }
+}
+
+/// Settings > System > About's link: its name as the page's title, its address as a QR code with the
+/// address under it.
+fn draw_link(a: &mut App) {
+    let (aw, ah) = (a.w, a.h);
+    let App { screen: c, lib, .. } = a;
+    let s = lib.as_deref_mut().unwrap();
+    let i = (s.device_link.max(0) as usize).min(ABOUT_LINKS.len().saturating_sub(1));
+    let link = &ABOUT_LINKS[i];
+    let page = settings_page(c, aw, ah, tr(link.name), true, false);
+    hits_add(&mut s.hits, page.back, H_LINK_BACK, 0);
+    hits_add(&mut s.hits, page.close, H_SETTINGS_CLOSE, 0);
+    let in_ = page.content;
+    // TRANSLATORS: Settings > System > About > a link, above the link's QR code.
+    font_draw_left(c, FontFace::Regular, ui_text_size(), Rect::new(in_.x, in_.y, in_.w, ui_px(70.0)), tr("Scan with a phone's camera"), 0);
+    let top = in_.y + ui_px(110.0);
+    let side = (in_.h - ui_px(300.0)).min(in_.w);
+    let sym = crate::qr::ui_qr(c, Rect::new(in_.x + (in_.w - side) / 2, top, side, side), link.url, false);
+    let ty = if rect_is_empty(sym) { top } else { sym.y + sym.h + ui_px(30.0) };
+    ui_text(c, FontFace::Regular, ui_text_size(), ui_small_size(), Rect::new(in_.x, ty, in_.w, ui_px(90.0)), link.url, 2, true, 0);
+}
+
+/// A Settings submenu of choices, as Language's: the page's chrome, the choices as cards in two
+/// columns (the chosen one filled), and a tap picking one. `rows` is (label, arg, chosen).
+fn draw_pick_sheet(a: &mut App, title: &str, rows: &[(String, i32, bool)], pick: i32, back: i32) {
+    let (aw, ah) = (a.w, a.h);
+    let App { screen: c, lib, .. } = a;
+    let s = lib.as_deref_mut().unwrap();
+    let page = settings_page(c, aw, ah, title, true, false);
+    hits_add(&mut s.hits, page.back, back, 0);
+    hits_add(&mut s.hits, page.close, H_SETTINGS_CLOSE, 0);
+    let in_ = page.content;
+    let gap = ui_px(16.0);
+    let n = rows.len() as i32;
+    let per = (n + 1) / 2;
+    let cw = (in_.w - gap) / 2;
+    let rh = ((in_.h - (per - 1) * gap) / per.max(1)).clamp(ui_px(90.0), ui_px(130.0));
+    for (k, (label, arg, selected)) in rows.iter().enumerate() {
+        let col = k as i32 / per;
+        let ri = k as i32 % per;
+        let r = Rect::new(in_.x + col * (cw + gap), in_.y + ri * (rh + gap), cw, rh);
+        settings_card(c, r, if *selected { ButtonStyle::Selected } else { ButtonStyle::Plain });
+        let fg: u8 = if *selected { 255 } else { 0 };
+        ui_text(
+            c,
+            FontFace::Regular,
+            ui_text_size(),
+            ui_small_size(),
+            rect_inflate(r, -ui_px(16.0)),
+            label,
+            2,
+            false,
+            fg,
+        );
+        hits_add(&mut s.hits, r, pick, *arg);
+    }
+}
+
 fn open_modal(a: &mut App, m: Modal) {
     lib(a).modal = m;
     redraw(a, RefreshMode::Ui);
@@ -5230,12 +6288,74 @@ fn close_modal(a: &mut App) {
     redraw(a, RefreshMode::Ui);
 }
 
+/// The X on any Settings page, or on a screen Settings opened: the whole of Settings closes, back
+/// to the Library—or to the editor it was opened over. Back still goes one step back.
+fn close_settings(a: &mut App, mode: RefreshMode) {
+    if lib(a).settings_return_editor {
+        let changed = lib(a).settings_editor_fit != a.settings.landscape_fit;
+        lib(a).settings_return_editor = false;
+        lib(a).modal = Modal::None;
+        library_leave(a);
+        if changed {
+            editor_fit_changed(a, true);
+        }
+        crate::editor::editor_settings_background(a);
+        app_invalidate_all(a, mode);
+        return;
+    }
+    lib(a).modal = Modal::None;
+    redraw(a, mode);
+}
+
+/// Pen feel's X: Settings must not reopen behind the screen it came from (its Back still does).
+pub(crate) fn settings_skip_reopen(a: &mut App) {
+    if let Some(s) = a.lib.as_deref_mut() {
+        s.reopen_settings = false;
+    }
+}
+
 fn open_kb(a: &mut App, p: KbPurpose, title: &str, initial: &[u8]) {
     let s = lib(a);
+    if s.modal != Modal::Kb {
+        s.kb_parent = s.modal;
+    }
     s.kbp = p;
     keyboard_open(&mut s.kb, title, initial);
     s.modal = Modal::Kb;
     redraw(a, RefreshMode::Ui);
+}
+
+fn open_kb_secret(a: &mut App, p: KbPurpose, title: &str) {
+    let s = lib(a);
+    if s.modal != Modal::Kb {
+        s.kb_parent = s.modal;
+    }
+    s.kbp = p;
+    keyboard_open_secret(&mut s.kb, title);
+    s.modal = Modal::Kb;
+    redraw(a, RefreshMode::Ui);
+}
+
+/// Whether a sheet is one of Settings' pages (the keyboard goes back to it, drawn unchanged).
+fn settings_sheet(m: Modal) -> bool {
+    matches!(
+        m,
+        Modal::Settings
+            | Modal::Display
+            | Modal::Language
+            | Modal::SideButton
+            | Modal::EraserMode
+            | Modal::DeviceInfo
+            | Modal::LinkQr
+            | Modal::Updates
+            | Modal::Shortcuts
+            | Modal::PairMenu
+            | Modal::Pair
+            | Modal::Buttons
+            | Modal::Gestures
+            | Modal::Font
+            | Modal::Wifi
+    )
 }
 
 // ---- actions ----
@@ -5327,7 +6447,100 @@ fn kb_finished(a: &mut App, ok: bool) {
     let txt = s.kb.text.as_str().to_string();
     let it = target_item(s);
     let kbp = s.kbp;
-    let mut back = Modal::None;
+    if kbp == KbPurpose::WifiName {
+        let parent = if s.kb_parent == Modal::Kb { Modal::Wifi } else { s.kb_parent };
+        let name = s.kb.text.as_bytes().to_vec();
+        if ok {
+            if name.is_empty() || name.len() > 32 {
+                // TRANSLATORS: (Settings > Wi-Fi > Other...) the hidden network name is empty or longer
+                // than a Wi-Fi name can be.
+                app_toast(a, tr("Use a network name of 1 to 32 characters."), 3500);
+            } else {
+                let s = lib(a);
+                s.wifi.other = Some(name);
+                s.wifi.view = WIFI_VIEW_OTHER;
+                s.wifi.scroll = 0;
+                s.wifi.scroll_drag = None;
+            }
+        }
+        lib(a).modal = parent;
+        redraw(a, RefreshMode::Ui);
+        return;
+    }
+    if kbp == KbPurpose::WifiEapUser {
+        let user = s.kb.text.as_bytes().to_vec();
+        let parent = if s.kb_parent == Modal::Kb { Modal::Wifi } else { s.kb_parent };
+        s.kb.text.clear();
+        s.kb.caret = 0;
+        s.kb.anchor = 0;
+        let valid = ok && !user.is_empty() && user.len() <= 128 && !user.iter().any(|&b| b < 0x20 || b == 0x7f);
+        if !valid {
+            let mut user = user;
+            user.fill(0);
+            if ok {
+                // TRANSLATORS: (Settings > Wi-Fi) the enterprise username is empty, a control
+                // character, or longer than 128 bytes.
+                app_toast(a, tr("Use a username of 1 to 128 characters."), 3500);
+            }
+            lib(a).modal = parent;
+            redraw(a, RefreshMode::Ui);
+            return;
+        }
+        let title = {
+            let mut t = String::new();
+            if let Some(n) = s.wifi.add.as_ref() {
+                let shown = String::from_utf8_lossy(&n.essid);
+                // TRANSLATORS: the password keyboard's title for a school/enterprise Wi-Fi network;
+                // %s is its name.
+                csnprintf!(&mut t, 200, tr("Password for %s"), shown.as_ref());
+            }
+            t
+        };
+        s.wifi.eap_user = Some(user);
+        open_kb_secret(a, KbPurpose::WifiEapPassword, &title);
+        return;
+    }
+    if kbp == KbPurpose::WifiPassword {
+        let pending = s.wifi.add.take();
+        let mut pass = s.kb.text.as_bytes().to_vec();
+        // (the password lives only in that Vec now; the keyboard's bytes go too)
+        s.kb.text.clear();
+        s.kb.caret = 0;
+        s.kb.anchor = 0;
+        if ok {
+            if let Some(n) = pending {
+                if !wifi_add(&n.essid, &pass, n.security) {
+                    app_toast(a, tr("Could not add the network."), 3000);
+                }
+            }
+        }
+        pass.fill(0);
+        wifi_sheet_resume(a);
+        return;
+    }
+    if kbp == KbPurpose::WifiEapPassword {
+        let pending = s.wifi.add.take();
+        let mut user = s.wifi.eap_user.take();
+        let mut pass = s.kb.text.as_bytes().to_vec();
+        s.kb.text.clear();
+        s.kb.caret = 0;
+        s.kb.anchor = 0;
+        if ok {
+            if let (Some(n), Some(u)) = (pending.as_ref(), user.as_ref()) {
+                if !wifi_add_eap(&n.essid, u, &pass) {
+                    app_toast(a, tr("Could not add the network."), 3000);
+                }
+            }
+        }
+        pass.fill(0);
+        if let Some(mut u) = user.take() {
+            u.fill(0);
+        }
+        wifi_sheet_resume(a);
+        return;
+    }
+    let parent = s.kb_parent;
+    let mut back = if settings_sheet(parent) { parent } else { Modal::None };
     if ok && !txt.is_empty() {
         match kbp {
             KbPurpose::NewName => {
@@ -5366,6 +6579,7 @@ fn kb_finished(a: &mut App, ok: bool) {
                     }
                 }
             }
+            KbPurpose::WifiPassword | KbPurpose::WifiName | KbPurpose::WifiEapUser | KbPurpose::WifiEapPassword => {}
             KbPurpose::RenameFolder => {
                 if let Some(it) = it.filter(|it| it.is_folder) {
                     let mut dest = FixedStr::new();
@@ -5473,6 +6687,16 @@ fn folder_follow(a: &mut App, old: &str) {
 }
 
 fn act(a: &mut App, h: &Hit) {
+    if lib(a).share_wifi_return && matches!(h.id, H_SETTINGS_BACK | H_SETTINGS_CLOSE) {
+        lib(a).share_wifi_return = false;
+        app_switch(a, ScreenId::Share);
+        return;
+    }
+    // The page arrows are the only taps that keep a submenu on its page: any other tap opens, closes
+    // or changes the list, which starts again at its first page (a longer list drawn by ui_row_page).
+    if !matches!(h.id, H_SETTINGS_PAGE | H_SET_CAT_PAGE | H_SET_ROWS_PAGE) {
+        lib(a).settings_menu_page = 0;
+    }
     let it = target_item(lib(a));
     match h.id {
         H_BACK => {
@@ -5502,7 +6726,32 @@ fn act(a: &mut App, h: &Hit) {
         // TRANSLATORS: the keyboard's label for the name being typed: a folder's, or a notebook's.
         H_NEWFOLDER => open_kb(a, KbPurpose::NewFolder, c_("keyboard", "Folder"), b""),
         H_SHARE => share_open(a),
-        H_SETTINGS => open_modal(a, Modal::Settings),
+        H_SETTINGS => {
+            let s = lib(a);
+            s.settings_cat_page = 0;
+            s.settings_cat_shown = -1;
+            s.settings_rows_page = 0;
+            s.settings_menu_page = 0;
+            open_modal(a, Modal::Settings);
+        }
+        H_SET_CAT => {
+            let s = lib(a);
+            s.settings_cat = clampi(h.arg, 0, settingsmenu::CATEGORIES.len() as i32 - 1);
+            s.settings_rows_page = 0;
+            redraw(a, RefreshMode::Ui);
+        }
+        H_SET_CAT_PAGE | H_SET_ROWS_PAGE | H_SETTINGS_PAGE => {
+            let s = lib(a);
+            let page = if h.id == H_SET_CAT_PAGE {
+                &mut s.settings_cat_page
+            } else if h.id == H_SET_ROWS_PAGE {
+                &mut s.settings_rows_page
+            } else {
+                &mut s.settings_menu_page
+            };
+            *page += h.arg;
+            redraw(a, RefreshMode::Ui);
+        }
         H_EXIT => a.running = false,
         H_EXIT_YES => {
             lib(a).modal = Modal::None;
@@ -5603,6 +6852,17 @@ fn act(a: &mut App, h: &Hit) {
         H_NEW_CREATE => create_notebook(a),
         H_NEW_FILE => files_open(a),
         H_CANCEL => close_modal(a),
+        H_SETTINGS_CLOSE => close_settings(a, RefreshMode::Ui),
+        // Back (and Done) on a Settings submenu: to the Settings page it was opened from, or one step
+        // back through Shortcuts / Pair, as Esc already does. It must never close Settings itself.
+        H_SETTINGS_BACK => {
+            let back = match lib(a).modal {
+                Modal::Pair => Modal::PairMenu,
+                Modal::Buttons => Modal::Shortcuts,
+                _ => Modal::Settings,
+            };
+            open_modal(a, back);
+        }
         H_GESTURES => open_gestures(a),
         H_GESTURE_GROUP => {
             let s = lib(a);
@@ -5647,7 +6907,11 @@ fn act(a: &mut App, h: &Hit) {
         H_SHORTCUTS => open_modal(a, Modal::Shortcuts),
         H_PAIR_MENU => open_modal(a, Modal::PairMenu),
         H_WIFI_MENU => wifi_sheet_open(a),
-        H_WIFI_RADIO | H_WIFI_NET | H_WIFI_MORE => wifi_sheet_tap(a, h.id, h.arg),
+        H_WIFI_RADIO | H_WIFI_NET | H_WIFI_TAB | H_WIFI_SCAN | H_WIFI_NEAR | H_WIFI_DELETE
+        | H_WIFI_OTHER | H_WIFI_OTHER_OPEN | H_WIFI_OTHER_WPA | H_WIFI_OTHER_WPA3 | H_WIFI_OTHER_EAP
+        | H_WIFI_OTHER_CANCEL => {
+            wifi_sheet_tap(a, h.id, h.arg)
+        }
         H_SHORTCUT_DEVICE => {
             // The next device listed (the first after the last), whose own shortcuts the next row is about.
             let devs = shortcut_devices(a);
@@ -5728,35 +6992,46 @@ fn act(a: &mut App, h: &Hit) {
             open_modal(a, back);
         }
         H_UPDATES => {
-            let s = lib(a);
-            if s.upd != UPD_CHECKING {
-                s.upd = UPD_IDLE;
+            // Opening the page runs the check (one already under way finishes first).
+            if lib(a).upd != UPD_CHECKING {
+                lib(a).upd = UPD_IDLE;
+                if update_check(upd_preview(a)) {
+                    lib(a).upd = UPD_CHECKING;
+                }
             }
             open_modal(a, Modal::Updates);
         }
         H_UPD_CHANNEL => {
-            a.settings.updates = if upd_preview(a) { 1 } else { 2 };
+            let preview = !upd_preview(a);
+            a.settings.updates = if preview { 2 } else { 1 };
             settings_save(&a.settings);
-            lib(a).upd = UPD_IDLE; // (what a check found was the other channel's)
-            redraw(a, RefreshMode::Ui);
-        }
-        H_UPD_CHECK => {
-            if update_check(upd_preview(a)) {
-                lib(a).upd = UPD_CHECKING;
+            // What the last check found was the other branch's: ask this one now (a check already
+            // under way is left to finish).
+            if !update_checking() {
+                lib(a).upd = UPD_IDLE;
+                if update_check(preview) {
+                    lib(a).upd = UPD_CHECKING;
+                }
             }
             redraw(a, RefreshMode::Ui);
         }
         H_UPD_NOW => {
-            if !upd_newer(lib(a)) {
+            if upd_newer(lib(a)) {
+                if update_request(upd_preview(a)) != 0 {
+                    // TRANSLATORS: a toast: the update could not be asked for (the storage is full, say).
+                    app_toast(a, tr("Couldn't start update"), 3000);
+                    return;
+                }
+                qlog!("update: leaving so KPM can install %s", &lib(a).upd_latest);
+                app_leave_for_update(a);
                 return;
             }
-            if update_request(upd_preview(a)) != 0 {
-                // TRANSLATORS: a toast: the update could not be asked for (the storage is full, say).
-                app_toast(a, tr("Couldn't start update"), 3000);
-                return;
+            // Nothing newer (a failed or idle check): the button asks again.
+            let preview = upd_preview(a);
+            if update_check(preview) {
+                lib(a).upd = UPD_CHECKING;
             }
-            qlog!("update: leaving so KPM can install %s", &lib(a).upd_latest);
-            app_leave_for_update(a);
+            redraw(a, RefreshMode::Ui);
         }
         H_BT_TOGGLE => {
             a.settings.controller = !a.settings.controller;
@@ -5823,11 +7098,15 @@ fn act(a: &mut App, h: &Hit) {
             redraw(a, RefreshMode::Ui);
         }
         H_SET_PENS => {
+            let from_settings = lib(a).modal == Modal::Settings && !lib(a).settings_return_editor;
+            lib(a).reopen_settings = from_settings;
             if !lib(a).settings_return_editor {lib(a).modal=Modal::None;}
             let tool = a.settings.current_tool;
             pensettings_open(a, tool);
         }
         H_SET_CALIB => {
+            let from_settings = lib(a).modal == Modal::Settings && !lib(a).settings_return_editor;
+            lib(a).reopen_settings = from_settings;
             if !lib(a).settings_return_editor {lib(a).modal=Modal::None;}
             calibrate_open(a);
         }
@@ -5857,9 +7136,29 @@ fn act(a: &mut App, h: &Hit) {
             settings_save(&a.settings);
             redraw(a, RefreshMode::Full);
         }
+        H_SET_DARK => {
+            a.settings.invert = !a.settings.invert;
+            display_set_invert(a.settings.invert);
+            live_set_invert(a.settings.invert);
+            settings_save(&a.settings);
+            redraw(a, RefreshMode::Full);
+        }
         H_SET_DISPLAY => {
             let mut dm = std::mem::take(&mut lib(a).dm);
             dispmenu_open(&mut dm, a);
+            lib(a).dm = dm;
+            open_modal(a, Modal::Display);
+        }
+        // Settings' Sleep & Clock (2.1): the sleep screen and timer, and the clock, on pages of their own.
+        H_SET_SLEEP => {
+            let mut dm = std::mem::take(&mut lib(a).dm);
+            dispmenu_open_sleep(&mut dm, a);
+            lib(a).dm = dm;
+            open_modal(a, Modal::Display);
+        }
+        H_SET_CLOCK => {
+            let mut dm = std::mem::take(&mut lib(a).dm);
+            dispmenu_open_clock(&mut dm, a);
             lib(a).dm = dm;
             open_modal(a, Modal::Display);
         }
@@ -5875,9 +7174,55 @@ fn act(a: &mut App, h: &Hit) {
             }
             redraw(a, RefreshMode::Ui);
         }
-        H_SET_SIDE => {
-            a.settings.side_button = (clampi(a.settings.side_button, 0, 3) + 1) % 4;
-            settings_save(&a.settings);
+        // What the pen's button does: its own list, as Language's, rather than a row that cycles.
+        H_SET_SIDE => open_modal(a, Modal::SideButton),
+        H_SIDE_PICK => {
+            let pick = clampi(h.arg, 0, 3);
+            if a.settings.side_button != pick {
+                a.settings.side_button = pick;
+                settings_save(&a.settings);
+            }
+            lib(a).modal = Modal::Settings;
+            redraw(a, RefreshMode::Ui);
+        }
+        H_SIDE_BACK => {
+            lib(a).modal = Modal::Settings;
+            redraw(a, RefreshMode::Ui);
+        }
+        // What the eraser does: whole strokes, or precise (settings.ini eraser_mode).
+        H_SET_ERASER => open_modal(a, Modal::EraserMode),
+        H_ERASER_PICK => {
+            let pick = clampi(h.arg, 0, 1);
+            if a.settings.eraser_mode != pick {
+                a.settings.eraser_mode = pick;
+                settings_save(&a.settings);
+            }
+            lib(a).modal = Modal::Settings;
+            redraw(a, RefreshMode::Ui);
+        }
+        H_ERASER_BACK => {
+            lib(a).modal = Modal::Settings;
+            redraw(a, RefreshMode::Ui);
+        }
+        // About: what this Kindle is, the storage used, and its links (their QR pages back to About).
+        H_SET_DEVICE => {
+            lib(a).device_links_page = 0;
+            open_modal(a, Modal::DeviceInfo);
+        },
+        H_DEVICE_BACK => {
+            lib(a).modal = Modal::Settings;
+            redraw(a, RefreshMode::Ui);
+        }
+        H_LINK => {
+            lib(a).device_link = clampi(h.arg, 0, ABOUT_LINKS.len() as i32 - 1);
+            open_modal(a, Modal::LinkQr);
+        }
+        H_LINK_PAGE => {
+            lib(a).device_links_page += h.arg;
+            redraw(a, RefreshMode::Ui);
+        }
+        H_LINK_BACK => {
+            lib(a).modal = Modal::DeviceInfo;
             redraw(a, RefreshMode::Ui);
         }
         H_SET_FONT => {
@@ -5899,19 +7244,33 @@ fn act(a: &mut App, h: &Hit) {
             font_notice(a);
             redraw(a, RefreshMode::Ui);
         }
+        // A font tapped applies at once, saved: a family (and with it a font=file: that does not draw goes),
+        // or one of the owner's own fonts.
         H_FONT_PICK => {
             let pick = (h.arg.max(0) as usize).min(FONT_FAMILIES.len() - 1);
-            lib(a).font_picked = true; // (a family tapped, even the one that shows: Done then takes font=file: away)
-            if pick != lib(a).font_pick || !lib(a).font_file.is_empty() {
-                font_step(a, pick, None);
+            lib(a).font_picked = true; // (a family tapped, even the one that shows: the apply takes font=file: away)
+            // (also the family that shows while settings.ini names a font of the owner's own that does not draw
+            // now, one a crash kept out or whose file is gone: the tap takes that line away now, not the X later)
+            if pick != lib(a).font_pick || !lib(a).font_file.is_empty() || !a.settings.font_file.is_empty() {
+                lib(a).font_pick = pick;
+                lib(a).font_file.clear();
+                // (a font held beside the one in use for the sample goes)
+                crate::userfonts::userfonts_sample(a, None);
+                if font_apply_pick(a) {
+                    redraw(a, RefreshMode::Full);
+                }
             }
         }
         H_FONT_OWN => {
-            let s = lib(a);
-            let rel = s.fonts.get(h.arg.max(0) as usize).filter(|f| f.usable()).map(|f| f.rel.clone());
-            if let Some(rel) = rel.filter(|r| *r != s.font_file) {
-                let pick = s.font_pick;
-                font_step(a, pick, Some(rel));
+            let rel = {
+                let s = lib(a);
+                s.fonts.get(h.arg.max(0) as usize).filter(|f| f.usable()).map(|f| f.rel.clone())
+            };
+            if let Some(rel) = rel.filter(|r| *r != lib(a).font_file) {
+                lib(a).font_file = rel;
+                if font_apply_pick(a) {
+                    redraw(a, RefreshMode::Full);
+                }
             }
         }
         H_FONT_PAGE => {
@@ -5920,50 +7279,13 @@ fn act(a: &mut App, h: &Hit) {
             s.font_first = if h.arg < 0 { s.font_first.saturating_sub(per) } else { s.font_first + per };
             redraw(a, RefreshMode::Ui);
         }
-        // Done applies the font highlighted, saved, and the screen comes back in it with a Full refresh, as
-        // a style change does; Cancel (Back, Esc) leaves the font as it was. One of the owner's own fonts is
-        // settings.ini's font=file:<its path>; its Bold file is found again for it (font_bold= is for a hand).
+        // A tap on a font applies it at once, so X only closes the sheet (a last apply changes nothing then);
+        // Back and Esc close it too, the font already the one picked.
         H_FONT_DONE => {
-            let (pick, own, picked) = (lib(a).font_pick, lib(a).font_file.clone(), lib(a).font_picked);
+            // (the font applied as it was tapped; the X closes all of Settings too)
+            let changed = font_apply_pick(a);
             font_sheet_closed(a);
-            lib(a).modal = Modal::Settings;
-            let was_own = a.settings.font_file.as_str().to_string();
-            // Done on what draws now changes nothing: also not a font= line whose font cannot be used (a file
-            // that is gone, a newer version's font), which stays as it is until another font is picked.
-            let drawn_own = if crate::userfonts::userfonts_in_use(&was_own) { was_own.clone() } else { String::new() };
-            // (a family picked while settings.ini asks for a font of the owner's own that does not draw now, a
-            // font a crash kept out, one still being checked or one that is gone, takes that font= line away:
-            // the next start must not try it again)
-            let drops_file = picked && own.is_empty() && !was_own.is_empty();
-            let same = !drops_file && own == drawn_own && (!own.is_empty() || pick == font_family());
-            if same {
-                redraw(a, RefreshMode::Ui);
-                return;
-            }
-            if own.is_empty() {
-                a.settings.font = pick as i32;
-                a.settings.font_file.clear();
-                a.settings.font_bold.clear();
-                font_set_family(pick);
-            } else {
-                a.settings.font = 0;
-                if own != was_own {
-                    a.settings.font_bold.clear();
-                }
-                a.settings.font_file.set(&own);
-            }
-            crate::userfonts::userfonts_apply(a);
-            if !own.is_empty() && !crate::userfonts::userfonts_in_use(&own) {
-                // The font did not load (too little memory, a file that changed): the setting stays, Terminess
-                // draws, and the owner is told.
-                font_set_family(0);
-                // TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): Done on a font of the
-                // owner's own that could not be loaded just now (too little memory free, or its file changed).
-                app_toast(a, tr("Couldn't use that font."), 3000);
-            }
-            httpd_restyle(ui_theme() == UiTheme::Gothic); // (the share pages, if Live view is on)
-            settings_save(&a.settings);
-            redraw(a, RefreshMode::Full);
+            close_settings(a, if changed { RefreshMode::Full } else { RefreshMode::Ui });
         }
         H_FONT_CANCEL => {
             font_sheet_closed(a);
@@ -6520,6 +7842,11 @@ pub fn library_back(a: &mut App) -> bool {
     if a.lib.is_none() {
         return false;
     }
+    if lib(a).share_wifi_return && lib(a).modal == Modal::Wifi {
+        lib(a).share_wifi_return = false;
+        app_switch(a, ScreenId::Share);
+        return true;
+    }
     let tap = |a: &mut App, id: i32| act(a, &Hit { id, ..Default::default() });
     if files_shown(a) {
         return files_back(a);
@@ -6560,7 +7887,12 @@ pub fn library_back(a: &mut App) -> bool {
             lib(a).modal = Modal::Settings;
             redraw(a, RefreshMode::Ui);
         }
-        Modal::Language | Modal::Koreader | Modal::Shortcuts | Modal::PairMenu | Modal::Updates | Modal::Wifi => {
+        Modal::LinkQr => {
+            lib(a).modal = Modal::DeviceInfo;
+            redraw(a, RefreshMode::Ui);
+        }
+        Modal::Language | Modal::Koreader | Modal::Shortcuts | Modal::PairMenu | Modal::Updates | Modal::Wifi
+        | Modal::SideButton | Modal::EraserMode | Modal::DeviceInfo => {
             lib(a).modal = Modal::Settings;
             redraw(a, RefreshMode::Ui);
         }
@@ -6587,6 +7919,11 @@ pub fn library_back(a: &mut App) -> bool {
 pub fn library_modal_key(a: &mut App, code: i32) -> bool {
     if a.scr != ScreenId::Library || graph_shown(a) || files_shown(a) || library_record_active(a) {
         return false;
+    }
+    if code == 1 && lib(a).share_wifi_return && lib(a).modal == Modal::Wifi {
+        lib(a).share_wifi_return = false;
+        app_switch(a, ScreenId::Share);
+        return true;
     }
     let Some(s) = a.lib.as_deref_mut() else { return false };
     const ENTER: i32 = 28;
@@ -6724,9 +8061,15 @@ pub fn library_enter(a: &mut App) {
         }
     }
     let s = lib(a);
+    let reopen_settings = std::mem::take(&mut s.reopen_settings);
     if !relayout {
         s.modal = Modal::None;
         s.settings_return_editor = false;
+        s.share_wifi_return = false;
+    }
+    if reopen_settings {
+        // (Back from Pen feel or Calibration, which Settings opened: Settings again, as it was left.)
+        s.modal = Modal::Settings;
     }
     s.pressed = None;
     // What's new opens by itself once after every update (Settings.whatsnew_due, the owner's rule of
@@ -6862,7 +8205,9 @@ fn library_event_in(a: &mut App, ev: &InEvent) {
             dispmenu_pointer(&mut dm, a, ph, ev.x, ev.y, ev.t_ms, &mut d)
         };
         lib(a).dm = dm;
-        if r == DmResult::Closed {
+        if r == DmResult::ClosedAll {
+            close_settings(a, RefreshMode::Ui); // the X closes all of Settings
+        } else if r == DmResult::Closed {
             lib(a).modal = Modal::Settings; // back to the settings sheet it was opened from
             redraw(a, RefreshMode::Ui);
         } else if r == DmResult::Inverted {
@@ -6915,6 +8260,9 @@ fn library_event_in(a: &mut App, ev: &InEvent) {
         if r == KbResult::Done || r == KbResult::Cancel {
             kb_finished(a, r == KbResult::Done);
         }
+        return;
+    }
+    if modal == Modal::Wifi && wifi_sheet_scroll(a, ph, ev) {
         return;
     }
     if ph == 0 {
@@ -7330,6 +8678,14 @@ pub fn library_probe(a: &mut App, key: &str, out: &mut String, cap: usize) -> i3
             crate::userfonts::userfont_resolve(f);
         }
         csnprintf!(out, cap, "%s", &f.as_ref().map_or(String::new(), font_row_note));
+    } else if key == "sheet" && s.modal == Modal::SideButton {
+        csnprintf!(out, cap, "pen-button");
+    } else if key == "sheet" && s.modal == Modal::EraserMode {
+        csnprintf!(out, cap, "eraser-mode");
+    } else if key == "sheet" && s.modal == Modal::DeviceInfo {
+        csnprintf!(out, cap, "about-device");
+    } else if key == "sheet" && s.modal == Modal::LinkQr {
+        csnprintf!(out, cap, "about-link");
     } else if key == "sheet" {
         match SHEETS.get(s.modal as usize) {
             Some(m) => csnprintf!(out, cap, "%s", *m),
@@ -7458,10 +8814,12 @@ pub fn library_probe(a: &mut App, key: &str, out: &mut String, cap: usize) -> i3
                 H_FMORE_RENAME=>"fmore.rename",H_FMORE_MOVE=>"fmore.move",H_FMORE_REMOVE=>"fmore.remove",
                 H_MOVE_TOP=>"move.top",H_MOVE_TO=>"move.to.",H_MOVE_NEW=>"move.new",H_MOVE_PREV=>"move.prev",H_MOVE_NEXT=>"move.next",
                 H_SET_PENS => "pen-feel", H_SET_CALIB => "calibrate", H_SET_DISPLAY => "display",
+                H_SET_SLEEP => "sleep-clock", H_SET_CLOCK => "clock-settings",
                 H_KOREADER => "ko", H_SHORTCUTS => "shortcuts", H_PAIR_MENU => "pair-menu", H_GESTURES => "gestures",
                 H_SHORTCUT_DEVICE => "shortcuts.device", H_SHORTCUT_OWN => "shortcuts.own", H_SHORTCUT_RELOAD => "shortcuts.reload",
                 H_UPDATES => "updates", H_CANCEL => "done", H_GESTURES_MASTER => "gestures.master",
-                H_UPD_CHANNEL => "updates.channel", H_UPD_CHECK => "updates.check", H_UPD_NOW => "updates.now",
+                H_UPD_CHANNEL => "updates.channel", H_UPD_NOW => "updates.now",
+                H_SET_DARK => "dark",
                 H_SET_ROTATE => "rotate", H_SHORTCUT_ENABLE => "shortcuts.enable", H_BT_TOGGLE => "bluetooth",
                 H_PAIR => "pair", H_BUTTONS => "buttons",
                 H_GESTURES_RESET => "gestures.reset", H_GESTURES_DONE => "done",
@@ -7478,11 +8836,33 @@ pub fn library_probe(a: &mut App, key: &str, out: &mut String, cap: usize) -> i3
                 H_BACK => "back", H_ABOUT => "about", H_ABOUT_CLOSE => "about.close",
                 H_ABOUT_PREV => "about.prev", H_ABOUT_NEXT => "about.next", H_ABOUT_MORE => "about.more",
                 H_ABOUT_ROW => "about.row.", H_ABOUT_BACK => "about.back",
+                H_LINK => "about.link.", H_LINK_PAGE => if hit.arg < 0 { "about.link.prev" } else { "about.link.next" },
                 H_SET_FONT => "font", H_FONT_PICK => "font.", H_FONT_DONE => "font.done", H_FONT_CANCEL => "font.cancel",
                 H_FONT_OWN => "font.file:", H_FONT_PAGE => if hit.arg < 0 { "font.prev" } else { "font.next" },
-                H_WIFI_MENU => "wifi", H_WIFI_RADIO => "wifi.radio", H_WIFI_NET => "wifi.net.", H_WIFI_MORE => "wifi.more",
+                H_SET_CAT => "settings.cat.",
+                H_SET_CAT_PAGE => if hit.arg < 0 { "settings.cat.prev" } else { "settings.cat.next" },
+                H_SET_ROWS_PAGE => if hit.arg < 0 { "settings.row.prev" } else { "settings.row.next" },
+                H_SETTINGS_PAGE => if hit.arg < 0 { "settings.page.prev" } else { "settings.page.next" },
+                H_WIFI_MENU => "wifi", H_WIFI_RADIO => "wifi.radio", H_WIFI_NET => "wifi.net.",
+                H_WIFI_TAB => "wifi.tab", H_WIFI_SCAN => "wifi.scan", H_WIFI_NEAR => "wifi.near.",
+                H_WIFI_DELETE => "wifi.delete.", H_WIFI_OTHER => "wifi.other",
+                H_WIFI_OTHER_OPEN => "wifi.other.open", H_WIFI_OTHER_WPA => "wifi.other.wpa",
+                H_WIFI_OTHER_WPA3 => "wifi.other.wpa3", H_WIFI_OTHER_EAP => "wifi.other.eap",
+                H_WIFI_OTHER_CANCEL => "wifi.other.cancel",
+                // (the new Settings page's rows and submenus that had no name: its Back and X, and the
+                // choice lists that open from a row)
+                H_SETTINGS_BACK => "settings.back", H_SETTINGS_CLOSE => "settings.close",
+                H_SET_LANGUAGE => "language", H_LANG_PICK => "language.", H_LANG_BACK => "language.back",
+                H_SET_SIDE => "pen-button", H_SIDE_PICK => "pen-button.", H_SIDE_BACK => "pen-button.back",
+                H_SET_ERASER => "eraser-mode", H_ERASER_PICK => "eraser-mode.", H_ERASER_BACK => "eraser-mode.back",
+                H_SET_PINCH => "pinch", H_SET_MIRROR => "mirror",
+                H_SET_DEVICE => "about-device", H_DEVICE_BACK => "about-device.back",
                 _ => "",
             });
+            if hit.id == H_LANG_PICK {
+                name.push_str(i18n_language_code(hit.arg).unwrap_or("auto"));
+            }
+            if matches!(hit.id, H_SIDE_PICK | H_ERASER_PICK) { name.push_str(&hit.arg.to_string()); }
             if hit.id == H_FONT_PICK {
                 name.push_str(FONT_FAMILIES.get(hit.arg as usize).map_or("", |f| f.id));
             }
@@ -7492,8 +8872,13 @@ pub fn library_probe(a: &mut App, key: &str, out: &mut String, cap: usize) -> i3
             if hit.id == H_ABOUT_ROW {
                 name.push_str(crate::about::notes().get(hit.arg as usize).map_or("", |e| e.versions[0]));
             }
+            if hit.id == H_LINK { name.push_str(&hit.arg.to_string()); }
             if hit.id == H_PAPER { name.push_str(&hit.arg.to_string()); }
             if hit.id == H_WIFI_NET { name.push_str(&(hit.arg + 1).to_string()); }
+            if hit.id == H_WIFI_NEAR { name.push_str(&(hit.arg + 1).to_string()); }
+            if hit.id == H_SET_CAT { name.push_str(&hit.arg.to_string()); }
+            if hit.id == H_WIFI_TAB { name.push_str(if hit.arg == 0 { ".near" } else { ".saved" }); }
+            if hit.id == H_WIFI_DELETE { name.push_str(&(hit.arg + 1).to_string()); }
             if hit.id == H_MOVE_TO { name.push_str(s.folders.get(hit.arg as usize).map_or("", |f| f.as_str())); }
             if matches!(hit.id, H_GESTURE_GROUP | H_BUTTON_GROUP) {
                 if let Some(group) = ACTION_GROUPS.get(hit.arg as usize) { name.push_str(group.probe); }
@@ -8307,7 +9692,16 @@ mod tests {
     fn the_buttons_groups_rows() {
         assert_eq!(N_GROUPS, 7);
         assert_eq!(group_row_count(0), 11); // (Select, 2.0.0-beta.2)
-        assert_eq!(group_row_count(1), TOOL_PENS as usize + 2);
+        // the nine pens, Previous / next tool and in the picker, Smaller / larger size (2.2: the size keys)
+        assert_eq!(group_row_count(1), TOOL_PENS as usize + 3);
+        assert_eq!(group_row_count(1), GROUP_ROWS_MAX);
+        let size = learn_row_at(1, TOOL_PENS as usize + 2).unwrap();
+        assert_eq!((size.label, size.act), (Some("Smaller / larger size"), [SHORTCUT_SIZE_SMALLER, SHORTCUT_SIZE_LARGER]));
+        assert_eq!((binding_row_count(BUTTONS, 1), binding_row_count(GESTURES, 1)), (12, 12));
+        assert_eq!(binding_row_index(BUTTONS, 1, SHORTCUT_SIZE_LARGER), Some(11));
+        assert_eq!(binding_row_index(GESTURES, 1, SHORTCUT_SIZE_SMALLER), Some(11));
+        // (quick-size has no row: it is bound by name)
+        assert!((0..N_GROUPS).all(|g| binding_row_index(BUTTONS, g, SHORTCUT_QUICK_SIZE).is_none()));
         // Zoom and scrolling are Pages rows; Index owns links and naming.
         assert_eq!(group_row_count(2), 11);
         assert_eq!(binding_row_count(BUTTONS, 2), 9);
@@ -8334,6 +9728,43 @@ mod tests {
                     assert_ne!(action_label(act), "?", "group {g} row {i}");
                 }
             }
+        }
+    }
+
+    /// The size keys' row (2.2), last in Tools on both pages, upright and sideways: Gestures names it with its
+    /// gesture ("Smaller / larger size: no gesture"), and Buttons has a twelfth row to tap, which learns the smaller
+    /// size's button first, as every paired row does.
+    #[test]
+    fn the_size_keys_row_is_last_in_tools_on_both_pages() {
+        assert_eq!(font_init(), 0);
+        ui_init(300.0);
+        for (w, h) in [(1860, 2480), (2480, 1860)] {
+            let mut a = App { w, h, dpi: 300.0, ..Default::default() };
+            assert_eq!(canvas_init(&mut a.screen, w, h), 0);
+            library_init(&mut a);
+            gesturemap_defaults(&mut a.gestures);
+            lib(&mut a).modal = Modal::Gestures;
+            lib(&mut a).gestures_group = GROUP_TOOLS as i32;
+            hits_clear(&mut lib(&mut a).hits);
+            draw_modal(&mut a);
+            assert_eq!(probe(&mut a, "gestures_group"), "tools");
+            assert_eq!(probe(&mut a, "gestures.12"), "Smaller / larger size: no gesture");
+            assert_eq!(probe(&mut a, "ui_has.gestures.row.12"), "1");
+            assert_eq!(probe(&mut a, "ui_has.gestures.row.13"), "0");
+            lib(&mut a).modal = Modal::Buttons;
+            bind_group_set(BUTTONS, lib(&mut a), GROUP_TOOLS as i32);
+            hits_clear(&mut lib(&mut a).hits);
+            draw_modal(&mut a);
+            assert_eq!(probe(&mut a, "buttons_group"), "tools");
+            assert_eq!(probe(&mut a, "ui_has.buttons.row.12"), "1");
+            assert_eq!(probe(&mut a, "ui_has.buttons.row.13"), "0");
+            lib(&mut a).learn_row = 11;
+            lib(&mut a).learn_step = 0;
+            assert_eq!(probe(&mut a, "learning"), "size-smaller");
+            lib(&mut a).learn_step = 1;
+            assert_eq!(probe(&mut a, "learning"), "size-larger");
+            library_free(&mut a);
+            canvas_free(&mut a.screen);
         }
     }
 
@@ -8390,35 +9821,48 @@ mod tests {
                             hits_clear(&mut lib(&mut a).hits);
                             draw_modal(&mut a);
                             let hits = &a.lib.as_ref().unwrap().hits;
-                            assert_eq!(hits.h.len(), binding_row_count(kind, group) + 1);
-                            let mut bottom = 0;
-                            for (row, hit) in hits.h.iter().enumerate() {
+                            // (Back at the top left closes the group, as Done used to; the X at the top
+                            // right closes all of Settings; then the rows)
+                            let done_hit = bind_done_hit(kind);
+                            let row_hit = bind_row_hit(kind);
+                            assert_eq!(hits.h.len(), binding_row_count(kind, group) + 2);
+                            assert_eq!(hits.h.iter().filter(|h| h.id == done_hit).count(), 1);
+                            assert_eq!(hits.h.iter().filter(|h| h.id == H_SETTINGS_CLOSE).count(), 1);
+                            let mut row_bottom = 0;
+                            let mut next_row = 0;
+                            for hit in &hits.h {
                                 let r = hit.r;
-                                assert!(r.y > bottom && r.y + r.h < h - ui_px(40.0));
+                                assert!(
+                                    r.y >= 0 && r.y + r.h < h - ui_px(20.0),
+                                    "{:?} group {group}: y {} h {} screen {h}",
+                                    kind.modal,
+                                    r.y,
+                                    r.h
+                                );
                                 assert!(r.x >= 0 && r.x + r.w <= w);
                                 assert!(r.h >= (dpi * 10.0 / 25.4).floor() as i32);
                                 let found =
                                     hits_find(hits, (r.x + r.w / 2) as f32, (r.y + r.h / 2) as f32)
                                         .unwrap();
-                                assert_eq!(
-                                    (found.id, found.arg),
-                                    if row < binding_row_count(kind, group) {
-                                        (bind_row_hit(kind), row as i32)
-                                    } else {
-                                        (bind_done_hit(kind), 0)
-                                    }
-                                );
-                                bottom = r.y + r.h;
+                                assert_eq!((found.id, found.arg), (hit.id, hit.arg));
+                                if hit.id == done_hit || hit.id == H_SETTINGS_CLOSE {
+                                    assert_eq!(hit.arg, 0);
+                                } else {
+                                    assert_eq!(hit.id, row_hit);
+                                    assert_eq!(hit.arg, next_row);
+                                    assert!(r.y > row_bottom, "row {next_row}: y {} bottom {row_bottom}", r.y);
+                                    row_bottom = r.y + r.h;
+                                    next_row += 1;
+                                }
                             }
+                            assert_eq!(next_row, binding_row_count(kind, group) as i32);
                         }
                         bind_group_set(kind, lib(&mut a), -1);
                         hits_clear(&mut lib(&mut a).hits);
                         draw_modal(&mut a);
-                        let mut bottom = 0;
                         for hit in &a.lib.as_ref().unwrap().hits.h {
-                            assert!(hit.r.y > bottom && hit.r.y + hit.r.h < h - ui_px(40.0));
+                            assert!(hit.r.y >= 0 && hit.r.y + hit.r.h < h - ui_px(20.0));
                             assert!(hit.r.x >= 0 && hit.r.x + hit.r.w <= w);
-                            bottom = hit.r.y + hit.r.h;
                         }
                         if kind.modal == Modal::Gestures {
                             assert!(probe(&mut a, "gestures.1").starts_with("Gestures:"));
@@ -8433,15 +9877,18 @@ mod tests {
         ui_set_theme(UiTheme::Gothic);
     }
 
-    // Settings' bottom row with Wi-Fi (2.1.0-beta.2): KOReader, Pair, Wi-Fi, Gestures, Updates, Done, in that
-    // order, none over another, each of the four at least 160 px, every word whole (its need met), in every
-    // language and style, upright and sideways.
+    // Settings' page with Wi-Fi: the General category lists it beside Language and Updates, as a whole
+    // row in every language and style, upright and sideways.
     #[test]
-    fn settings_bottom_row_fits_wifi_in_every_language_and_style() {
+    fn settings_general_lists_wifi_in_every_language_and_style() {
         let root = std::env::temp_dir().join(format!("grimoire-wifi-row-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&root);
         assert_eq!(store_init(root.to_str().unwrap()), 0);
         assert_eq!(font_init(), 0);
+        let general = settingsmenu::CATEGORIES
+            .iter()
+            .position(|c| c.items.iter().any(|it| it.id == settingsmenu::SettingId::Wifi))
+            .expect("the Wi-Fi row's category") as i32;
         for lang in ["en", "es", "ja"] {
             for theme in [UiTheme::Gothic, UiTheme::Classic] {
                 for (w, h) in [(1860, 2480), (2480, 1860)] {
@@ -8452,25 +9899,372 @@ mod tests {
                     assert_eq!(canvas_init(&mut a.screen, a.w, a.h), 0);
                     library_init(&mut a);
                     lib(&mut a).modal = Modal::Settings;
+                    lib(&mut a).settings_cat = general;
                     hits_clear(&mut lib(&mut a).hits);
                     draw_settings(&mut a);
-                    let at = |id: i32| a.lib.as_ref().unwrap().hits.h.iter().find(|x| x.id == id).map(|x| x.r).unwrap();
-                    let row = [H_KOREADER, H_PAIR_MENU, H_WIFI_MENU, H_GESTURES, H_UPDATES, H_CANCEL].map(at);
-                    let words = [("Pair", IconKind::Link), ("Wi-Fi", IconKind::Share), ("Gestures", IconKind::Gestures), ("Updates", IconKind::Update)];
-                    for i in 1..row.len() {
-                        assert!(row[i - 1].x + row[i - 1].w < row[i].x, "{lang} {theme:?} {w}: {i} over the one before");
-                        assert_eq!(row[i].y, row[0].y);
-                    }
-                    for (i, (word, icon)) in words.into_iter().enumerate() {
-                        let r = row[i + 1];
-                        assert!(r.w >= ui_px(160.0), "{lang} {theme:?} {w}: {word} {}", r.w);
-                        assert!(ui_button_need_w(r.h, icon, tr(word), ButtonStyle::Plain) <= r.w, "{lang} {theme:?} {w}: {word} cut");
-                    }
+                    let row = a.lib.as_ref().unwrap().hits.h.iter().find(|x| x.id == H_WIFI_MENU).map(|x| x.r)
+                        .unwrap_or_else(|| panic!("{lang} {theme:?} {w}: Wi-Fi row missing"));
+                    assert!(row.w >= ui_px(320.0), "{lang} {theme:?} {w}: Wi-Fi row {}", row.w);
+                    assert!(row.h >= ui_px(90.0), "{lang} {theme:?} {w}: Wi-Fi row {}", row.h);
+                    assert!(row.y >= 0 && row.y + row.h <= h, "{lang} {theme:?} {w}: Wi-Fi row off the screen");
+                    assert!(!tr("Wi-Fi").is_empty());
                     library_free(&mut a);
                     canvas_free(&mut a.screen);
                 }
             }
         }
+        i18n_set("en");
+        ui_init(300.0);
+        ui_set_theme(UiTheme::Gothic);
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    // Adding a row to settingsmenu.rs is all a row needs: the page draws every visible item with the
+    // one shared row design and gives it its hit, in both styles and both orientations. A list
+    // longer than the screen is paged, and every page draws only the rows it holds.
+    #[test]
+    fn every_settings_row_is_drawn_and_tappable() {
+        let root = std::env::temp_dir().join(format!("grimoire-settings-rows-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        assert_eq!(store_init(root.to_str().unwrap()), 0);
+        assert_eq!(font_init(), 0);
+        i18n_set("en");
+        for theme in [UiTheme::Gothic, UiTheme::Classic] {
+            for (w, h) in [(1860, 2480), (2480, 1860)] {
+                ui_init(300.0);
+                ui_set_theme(theme);
+                let mut a = App { w, h, dpi: 300.0, input_drained: true, ..Default::default() };
+                assert_eq!(canvas_init(&mut a.screen, a.w, a.h), 0);
+                library_init(&mut a);
+                lib(&mut a).modal = Modal::Settings;
+                for (ci, cat) in settingsmenu::CATEGORIES.iter().enumerate() {
+                    let want: Vec<i32> = cat
+                        .items
+                        .iter()
+                        .filter(|it| it.show.visible(theme == UiTheme::Classic, sys_services()))
+                        .map(|it| setting_hit(it.id))
+                        .collect();
+                    let mut got: Vec<i32> = Vec::new();
+                    lib(&mut a).settings_cat = ci as i32;
+                    lib(&mut a).settings_cat_page = 0;
+                    for page in 0..=want.len() {
+                        lib(&mut a).settings_rows_page = page as i32;
+                        hits_clear(&mut lib(&mut a).hits);
+                        draw_settings(&mut a);
+                        let s = a.lib.as_ref().unwrap();
+                        // (a page past the last is clamped to the last: stop before counting it twice)
+                        if s.settings_rows_page != page as i32 {
+                            break;
+                        }
+                        for hit in &s.hits.h {
+                            assert!(
+                                hit.r.x >= 0 && hit.r.x + hit.r.w <= w && hit.r.y >= 0 && hit.r.y + hit.r.h <= h,
+                                "{theme:?} {w}x{h} {}: a hit off the screen",
+                                cat.title
+                            );
+                            if want.contains(&hit.id) {
+                                got.push(hit.id);
+                            }
+                        }
+                    }
+                    for id in &want {
+                        assert!(
+                            got.contains(id),
+                            "{theme:?} {w}x{h} {}: a row was not drawn or not tappable",
+                            cat.title
+                        );
+                    }
+                    assert_eq!(got.len(), want.len(), "{theme:?} {w}x{h} {}: a row drawn twice", cat.title);
+                }
+                library_free(&mut a);
+                canvas_free(&mut a.screen);
+            }
+        }
+        i18n_set("en");
+        ui_init(300.0);
+        ui_set_theme(UiTheme::Gothic);
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    // A tap on Settings' white space does nothing at all: the page must not carry a shield hit over
+    // all of it, which would be found, invert the whole screen as press feedback, and refresh it
+    // whole at the lift (a full-screen flash on every tap between the rows).
+    #[test]
+    fn a_tap_on_settings_white_space_refreshes_nothing() {
+        let root = std::env::temp_dir().join(format!("grimoire-settings-blank-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        assert_eq!(store_init(root.to_str().unwrap()), 0);
+        assert_eq!(font_init(), 0);
+        ui_init(300.0);
+        ui_set_theme(UiTheme::Gothic);
+        i18n_set("en");
+        let mut a = App { w: 1860, h: 2480, dpi: 300.0, input_drained: true, ..Default::default() };
+        assert_eq!(canvas_init(&mut a.screen, a.w, a.h), 0);
+        library_init(&mut a);
+        lib(&mut a).modal = Modal::Settings;
+        lib(&mut a).settings_cat = 2;
+        hits_clear(&mut lib(&mut a).hits);
+        draw_settings(&mut a);
+        // Any point no row covers (a gap between the cards, or the title bar).
+        let mut blank = None;
+        'scan: for y in (0..a.h).step_by(8) {
+            for x in (0..a.w).step_by(8) {
+                if hits_find(&a.lib.as_ref().unwrap().hits, x as f32, y as f32).is_none() {
+                    blank = Some((x as f32, y as f32));
+                    break 'scan;
+                }
+            }
+        }
+        let (x, y) = blank.expect("Settings' white space (a full-screen hit covers the page)");
+        a.dirty = RECT_EMPTY;
+        library_event(&mut a, &InEvent { type_: InType::TouchDown, x, y, t_ms: 1000, ..Default::default() });
+        assert!(a.lib.as_ref().unwrap().pressed.is_none(), "white space took a press (it would invert the screen)");
+        assert!(rect_is_empty(a.dirty), "white space asked for a refresh");
+        library_event(&mut a, &InEvent { type_: InType::TouchUp, x, y, t_ms: 1040, ..Default::default() });
+        assert!(a.lib.as_ref().unwrap().pressed.is_none());
+        assert!(rect_is_empty(a.dirty), "white space refreshed the screen");
+        assert_eq!(a.lib.as_ref().unwrap().modal, Modal::Settings);
+        library_free(&mut a);
+        canvas_free(&mut a.screen);
+        i18n_set("en");
+        ui_init(300.0);
+        ui_set_theme(UiTheme::Gothic);
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    // Settings' Sleep & Clock category: two rows, each a page of its own—the sleep screen and timer,
+    // the clock and battery—apart from Display's light and appearance rows.
+    #[test]
+    fn settings_sleep_and_clock_open_their_own_pages() {
+        let root = std::env::temp_dir().join(format!("grimoire-sleep-clock-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        assert_eq!(store_init(root.to_str().unwrap()), 0);
+        assert_eq!(font_init(), 0);
+        ui_init(300.0);
+        ui_set_theme(UiTheme::Gothic);
+        i18n_set("en");
+        let mut a = App { w: 1860, h: 2480, dpi: 300.0, input_drained: true, ..Default::default() };
+        assert_eq!(canvas_init(&mut a.screen, a.w, a.h), 0);
+        library_init(&mut a);
+        lib(&mut a).modal = Modal::Settings;
+        lib(&mut a).settings_cat = 2;
+        hits_clear(&mut lib(&mut a).hits);
+        draw_settings(&mut a);
+        let hits = &a.lib.as_ref().unwrap().hits;
+        assert!(hits.h.iter().any(|h| h.id == H_SET_SLEEP), "the Sleep settings row");
+        assert!(hits.h.iter().any(|h| h.id == H_SET_CLOCK), "the Clock settings row");
+
+        act(&mut a, &Hit { r: RECT_EMPTY, id: H_SET_SLEEP, arg: 0 });
+        {
+            let s = lib(&mut a);
+            assert_eq!(s.modal, Modal::Display);
+            assert_eq!(s.dm.page, crate::dispmenu::DmPage::Sleep);
+        }
+        let mut dm = std::mem::take(&mut lib(&mut a).dm);
+        dispmenu_draw(&mut dm, &mut a);
+        for name in ["sleep", "sleep_after"] {
+            assert!(dispmenu_control_point(&dm, name).is_some(), "Sleep settings lost {name}");
+        }
+        for name in ["size", "corner", "time12", "brightness", "invert", "fit"] {
+            assert!(dispmenu_control_point(&dm, name).is_none(), "Sleep settings shows {name}");
+        }
+        lib(&mut a).dm = dm;
+
+        act(&mut a, &Hit { r: RECT_EMPTY, id: H_SET_CLOCK, arg: 0 });
+        {
+            let s = lib(&mut a);
+            assert_eq!(s.modal, Modal::Display);
+            assert_eq!(s.dm.page, crate::dispmenu::DmPage::Clock);
+        }
+        let mut dm = std::mem::take(&mut lib(&mut a).dm);
+        dispmenu_draw(&mut dm, &mut a);
+        for name in ["size", "corner", "time12"] {
+            assert!(dispmenu_control_point(&dm, name).is_some(), "Clock settings lost {name}");
+        }
+        for name in ["sleep", "sleep_after", "brightness", "invert", "fit"] {
+            assert!(dispmenu_control_point(&dm, name).is_none(), "Clock settings shows {name}");
+        }
+        lib(&mut a).dm = dm;
+
+        library_free(&mut a);
+        canvas_free(&mut a.screen);
+        i18n_set("en");
+        ui_init(300.0);
+        ui_set_theme(UiTheme::Gothic);
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    // Settings > Pen (2.1): the pen button's choices and the eraser's, each opening its own list as
+    // Language does; a pick is saved and comes back to Settings.
+    #[test]
+    fn pen_settings_rows_open_their_choice_sheets() {
+        let root = std::env::temp_dir().join(format!("grimoire-pen-choices-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        assert_eq!(store_init(root.to_str().unwrap()), 0);
+        assert_eq!(font_init(), 0);
+        ui_init(300.0);
+        ui_set_theme(UiTheme::Gothic);
+        i18n_set("en");
+        let mut a = App { w: 1860, h: 2480, dpi: 300.0, input_drained: true, ..Default::default() };
+        assert_eq!(canvas_init(&mut a.screen, a.w, a.h), 0);
+        library_init(&mut a);
+        a.settings.side_button = 0;
+        a.settings.eraser_mode = 0;
+        lib(&mut a).modal = Modal::Settings;
+        lib(&mut a).settings_cat = 3;
+        hits_clear(&mut lib(&mut a).hits);
+        draw_settings(&mut a);
+        for id in [H_SET_PENS, H_SET_SIDE, H_SET_ERASER] {
+            assert!(
+                a.lib.as_ref().unwrap().hits.h.iter().any(|h| h.id == id),
+                "the Pen row {id}"
+            );
+        }
+        act(&mut a, &Hit { r: RECT_EMPTY, id: H_SET_SIDE, arg: 0 });
+        assert_eq!(lib(&mut a).modal, Modal::SideButton);
+        let pick = a
+            .lib
+            .as_ref()
+            .unwrap()
+            .hits
+            .h
+            .iter()
+            .find(|h| h.id == H_SIDE_PICK && h.arg == 2)
+            .map(|h| h.r)
+            .expect("the pen's Highlights choice");
+        act(&mut a, &Hit { r: pick, id: H_SIDE_PICK, arg: 2 });
+        assert_eq!(a.settings.side_button, 2);
+        assert_eq!(lib(&mut a).modal, Modal::Settings);
+
+        act(&mut a, &Hit { r: RECT_EMPTY, id: H_SET_ERASER, arg: 0 });
+        assert_eq!(lib(&mut a).modal, Modal::EraserMode);
+        assert!(
+            a.lib.as_ref().unwrap().hits.h.iter().any(|h| h.id == H_ERASER_PICK && h.arg == 1),
+            "the eraser's Precise choice"
+        );
+        act(&mut a, &Hit { r: RECT_EMPTY, id: H_ERASER_PICK, arg: 1 });
+        assert_eq!(a.settings.eraser_mode, 1);
+        assert_eq!(lib(&mut a).modal, Modal::Settings);
+        library_free(&mut a);
+        canvas_free(&mut a.screen);
+        i18n_set("en");
+        ui_init(300.0);
+        ui_set_theme(UiTheme::Gothic);
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    // Settings > System > About: the device's page with its screen, version and storage bar, Back
+    // returning to Settings.
+    #[test]
+    fn settings_about_shows_the_device_and_its_storage() {
+        let root = std::env::temp_dir().join(format!("grimoire-about-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        assert_eq!(store_init(root.to_str().unwrap()), 0);
+        assert_eq!(font_init(), 0);
+        ui_init(300.0);
+        ui_set_theme(UiTheme::Gothic);
+        i18n_set("en");
+        let mut a = App { w: 1860, h: 2480, dpi: 300.0, input_drained: true, ..Default::default() };
+        assert_eq!(canvas_init(&mut a.screen, a.w, a.h), 0);
+        library_init(&mut a);
+        lib(&mut a).modal = Modal::Settings;
+        lib(&mut a).settings_cat = 5;
+        hits_clear(&mut lib(&mut a).hits);
+        draw_settings(&mut a);
+        assert!(
+            a.lib.as_ref().unwrap().hits.h.iter().any(|h| h.id == H_SET_DEVICE),
+            "the About row"
+        );
+        act(&mut a, &Hit { r: RECT_EMPTY, id: H_SET_DEVICE, arg: 0 });
+        assert_eq!(lib(&mut a).modal, Modal::DeviceInfo);
+        assert!(
+            a.lib.as_ref().unwrap().hits.h.iter().any(|h| h.id == H_DEVICE_BACK),
+            "About's Back"
+        );
+        assert!(crate::pdfimport::storage_space().is_some(), "the storage's size and free room");
+        let links: Vec<i32> = a.lib.as_ref().unwrap().hits.h.iter().filter(|h| h.id == H_LINK).map(|h| h.arg).collect();
+        assert_eq!(links, (0..ABOUT_LINKS.len() as i32).collect::<Vec<_>>(), "About's links");
+        assert_eq!(ABOUT_LINKS[1].name, "Grimoire GitHub");
+        assert_eq!(ABOUT_LINKS[2].url, "https://github.com/nebuff");
+        assert_eq!(ABOUT_LINKS[3].url, "https://github.com/ganten1998");
+        // (a person's GitHub link is named after the account it opens: "Ganten's GitHub" for ganten1998)
+        assert_eq!(ABOUT_LINKS[3].name, "Ganten's GitHub");
+        for link in ABOUT_LINKS {
+            let Some(account) = link.url.strip_prefix("https://github.com/").filter(|p| !p.contains('/')) else {
+                continue;
+            };
+            let owner = link.name.split('\'').next().unwrap_or("").to_lowercase();
+            assert!(account.starts_with(&owner), "{} opens {}", link.name, link.url);
+        }
+        act(&mut a, &Hit { r: RECT_EMPTY, id: H_LINK, arg: 0 });
+        assert_eq!((lib(&mut a).modal, lib(&mut a).device_link), (Modal::LinkQr, 0));
+        assert!(
+            a.lib.as_ref().unwrap().hits.h.iter().any(|h| h.id == H_LINK_BACK),
+            "the link's Back"
+        );
+        act(&mut a, &Hit { r: RECT_EMPTY, id: H_LINK_BACK, arg: 0 });
+        assert_eq!(lib(&mut a).modal, Modal::DeviceInfo);
+        act(&mut a, &Hit { r: RECT_EMPTY, id: H_LINK, arg: 2 });
+        assert_eq!((lib(&mut a).modal, lib(&mut a).device_link), (Modal::LinkQr, 2));
+        act(&mut a, &Hit { r: RECT_EMPTY, id: H_LINK_BACK, arg: 0 });
+        assert_eq!(lib(&mut a).modal, Modal::DeviceInfo);
+        act(&mut a, &Hit { r: RECT_EMPTY, id: H_DEVICE_BACK, arg: 0 });
+        assert_eq!(lib(&mut a).modal, Modal::Settings);
+        // The X closes all of Settings, from a submenu as from the main page.
+        act(&mut a, &Hit { r: RECT_EMPTY, id: H_SET_DEVICE, arg: 0 });
+        assert!(
+            a.lib.as_ref().unwrap().hits.h.iter().any(|h| h.id == H_SETTINGS_CLOSE),
+            "About's X"
+        );
+        act(&mut a, &Hit { r: RECT_EMPTY, id: H_SETTINGS_CLOSE, arg: 0 });
+        assert_eq!(lib(&mut a).modal, Modal::None, "the X closes all of Settings");
+        library_free(&mut a);
+        canvas_free(&mut a.screen);
+        i18n_set("en");
+        ui_init(300.0);
+        ui_set_theme(UiTheme::Gothic);
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    // Settings > Updates: one button that carries the version, and a switch for the branch updates come
+    // from; opening the page starts the check (with no KPM here, the button says so), and the switch
+    // flips and saves.
+    #[test]
+    fn settings_updates_has_one_button_and_the_branch_switch() {
+        let root = std::env::temp_dir().join(format!("grimoire-updates-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        assert_eq!(store_init(root.to_str().unwrap()), 0);
+        assert_eq!(font_init(), 0);
+        ui_init(300.0);
+        ui_set_theme(UiTheme::Gothic);
+        i18n_set("en");
+        let mut a = App { w: 1860, h: 2480, dpi: 300.0, input_drained: true, ..Default::default() };
+        assert_eq!(canvas_init(&mut a.screen, a.w, a.h), 0);
+        library_init(&mut a);
+        lib(&mut a).modal = Modal::Settings;
+        lib(&mut a).settings_cat = 0;
+        hits_clear(&mut lib(&mut a).hits);
+        draw_settings(&mut a);
+        act(&mut a, &Hit { r: RECT_EMPTY, id: H_UPDATES, arg: 0 });
+        assert_eq!(lib(&mut a).modal, Modal::Updates);
+        let hits = &a.lib.as_ref().unwrap().hits;
+        assert!(hits.h.iter().any(|h| h.id == H_SETTINGS_BACK), "Updates' Back");
+        assert!(hits.h.iter().any(|h| h.id == H_UPD_CHANNEL), "the branch switch");
+        assert!(
+            !hits.h.iter().any(|h| h.id == H_UPD_NOW),
+            "without KPM the Update button is disabled"
+        );
+        assert_eq!(a.lib.as_ref().unwrap().upd, UPD_IDLE, "the check ran and found no KPM");
+        let was = a.settings.updates;
+        act(&mut a, &Hit { r: RECT_EMPTY, id: H_UPD_CHANNEL, arg: 0 });
+        assert_ne!(a.settings.updates, was, "the switch saves its branch");
+        assert_ne!(a.settings.updates, 0, "a picked branch is explicit");
+        assert_eq!(lib(&mut a).modal, Modal::Updates);
+        assert!(a.lib.as_ref().unwrap().hits.h.iter().any(|h| h.id == H_UPD_CHANNEL));
+        act(&mut a, &Hit { r: RECT_EMPTY, id: H_SETTINGS_BACK, arg: 0 });
+        assert_eq!(lib(&mut a).modal, Modal::Settings);
+        library_free(&mut a);
+        canvas_free(&mut a.screen);
         i18n_set("en");
         ui_init(300.0);
         ui_set_theme(UiTheme::Gothic);
@@ -8504,9 +10298,295 @@ mod tests {
         assert_eq!(wifi_saved().map(|v| v.len()), Some(2));
         assert_eq!(wifi_status().map(|st| st.enabled), Some(false));
         wifi_sheet_tick(&mut a, now_ms());
+        // Nearby opens first; Saved is the top-right button, and its rows carry a trash button each.
+        wifi_sheet_tap(&mut a, H_WIFI_TAB, WIFI_VIEW_SAVED as i32);
         let rows: Vec<_> = a.lib.as_ref().unwrap().hits.h.iter().filter(|h| h.id == H_WIFI_NET).map(|h| h.arg).collect();
+        let trash: Vec<_> = a.lib.as_ref().unwrap().hits.h.iter().filter(|h| h.id == H_WIFI_DELETE).map(|h| h.arg).collect();
         assert_eq!(rows, [0, 1]);
+        assert_eq!(trash, [0, 1]);
+        let hit = a.lib.as_ref().unwrap().hits.h.iter().find(|h| h.id == H_WIFI_DELETE && h.arg == 0).unwrap().r;
+        assert_eq!(hits_find(&a.lib.as_ref().unwrap().hits, (hit.x + hit.w / 2) as f32, (hit.y + hit.h / 2) as f32).map(|h| h.id), Some(H_WIFI_DELETE));
         assert_eq!(lib(&mut a).wifi.rows, [b"Home".to_vec(), b"Office".to_vec()]);
+        let s = a.lib.as_ref().unwrap();
+        assert_eq!(s.hits.h.iter().filter(|h| h.id == H_SETTINGS_BACK).count(), 1, "Wi-Fi: Back");
+        assert_eq!(s.hits.h.iter().filter(|h| h.id == H_SETTINGS_CLOSE).count(), 1, "Wi-Fi: X");
+        assert!(!s.hits.h.iter().any(|h| h.id == H_CANCEL), "Wi-Fi: the sheet's own Done is gone");
+        // Its password keyboard draws over the Wi-Fi page, which stays open under it.
+        let ws = &mut lib(&mut a).wifi;
+        ws.other = Some(b"Hidden".to_vec());
+        ws.view = WIFI_VIEW_OTHER;
+        lib(&mut a).modal = Modal::Wifi;
+        open_kb_secret(&mut a, KbPurpose::WifiPassword, "Password");
+        assert_eq!(a.lib.as_ref().unwrap().kb_parent, Modal::Wifi);
+        hits_clear(&mut lib(&mut a).hits);
+        draw_modal(&mut a);
+        assert!(!rect_is_empty(a.lib.as_ref().unwrap().kb.area), "the keys are over the page");
+        assert!(a.lib.as_ref().unwrap().hits.h.is_empty(), "the page under them is not tapped");
+        keyboard_close(&mut lib(&mut a).kb);
+        lib(&mut a).modal = Modal::Wifi;
+        wifi_init(None);
+        library_free(&mut a);
+        canvas_free(&mut a.screen);
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    // The network list scrolls by dragging (there is no More networks row): every saved network is
+    // held in rows, while the list draws only those in its viewport.
+    #[test]
+    fn the_saved_network_list_scrolls_by_drag() {
+        let root = std::env::temp_dir().join(format!("grimoire-wifi-scroll-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(&root).unwrap();
+        assert_eq!(store_init(root.join("data").to_str().unwrap()), 0);
+        let script = root.join("helper.sh");
+        let mut saved = String::new();
+        for i in 0..20 {
+            let name = format!("Network {i:02}");
+            let hex: String = name.bytes().map(|b| format!("{b:02x}")).collect();
+            saved.push_str(&format!("saved={hex}\\n"));
+        }
+        std::fs::write(
+            &script,
+            format!(
+                "printf 'wireless=0\\nenabled=0\\nconnected=0\\n'\ncase $1 in\n networks) printf 'current=\\n{}list=1\\n';;\nesac\n",
+                saved
+            ),
+        )
+        .unwrap();
+        let mut a = pen_record_app();
+        lib(&mut a).modal = Modal::Settings;
+        wifi_init(script.to_str());
+        wifi_sheet_open(&mut a);
+        let began = std::time::Instant::now();
+        while wifi_saved().is_none() && began.elapsed() < std::time::Duration::from_secs(5) {
+            wifi_tick();
+            wifi_sheet_tick(&mut a, now_ms());
+            std::thread::sleep(std::time::Duration::from_millis(5));
+        }
+        assert_eq!(wifi_saved().map(|v| v.len()), Some(20));
+        wifi_sheet_tap(&mut a, H_WIFI_TAB, WIFI_VIEW_SAVED as i32);
+        let (list, max) = {
+            let ws = &lib(&mut a).wifi;
+            (ws.list, ws.scroll_max)
+        };
+        assert!(max > 0, "the twenty saved networks overflow the viewport");
+        assert_eq!(lib(&mut a).wifi.rows.len(), 20, "every row is held, not just a page");
+        let x = (list.x + list.w / 2) as f32;
+        let y0 = (list.y + list.h / 2) as f32;
+        let y1 = y0 - ui_px(400.0) as f32;
+        library_event(&mut a, &InEvent { type_: InType::TouchDown, x, y: y0, t_ms: 1000, ..Default::default() });
+        library_event(&mut a, &InEvent { type_: InType::TouchMove, x, y: y1, t_ms: 1100, ..Default::default() });
+        library_event(&mut a, &InEvent { type_: InType::TouchUp, x, y: y1, t_ms: 1200, ..Default::default() });
+        assert!(lib(&mut a).wifi.scroll > 0, "a drag up scrolls the list");
+        assert!(wifi_joining().is_none(), "a dragged row is not tapped");
+        wifi_init(None);
+        library_free(&mut a);
+        canvas_free(&mut a.screen);
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn the_beta_badge_is_only_for_enterprise_eap() {
+        assert!(wifi_beta(Some(WifiSecurity::Enterprise)));
+        for sec in [
+            WifiSecurity::Open,
+            WifiSecurity::Wep,
+            WifiSecurity::Wpa,
+            WifiSecurity::Wpa2,
+            WifiSecurity::Wpa3,
+            WifiSecurity::Owe,
+            WifiSecurity::Enterprise192,
+            WifiSecurity::Unknown,
+        ] {
+            assert!(!wifi_beta(Some(sec)), "{sec:?}");
+        }
+        assert!(!wifi_beta(None));
+    }
+
+    #[test]
+    fn the_enterprise_flow_asks_for_a_username_then_a_masked_password() {
+        let mut a = pen_record_app();
+        lib(&mut a).modal = Modal::Wifi;
+        wifi_eap_start(
+            &mut a,
+            WifiNetwork {
+                essid: b"School".to_vec(),
+                security: WifiSecurity::Enterprise,
+                signal: 0,
+                signal_max: 1,
+                known: false,
+            },
+        );
+        assert_eq!(a.lib.as_ref().unwrap().modal, Modal::Kb);
+        assert_eq!(a.lib.as_ref().unwrap().kbp, KbPurpose::WifiEapUser);
+        lib(&mut a).kb.text.set("student@example.edu");
+        kb_finished(&mut a, true);
+        assert_eq!(a.lib.as_ref().unwrap().kbp, KbPurpose::WifiEapPassword);
+        assert!(a.lib.as_ref().unwrap().kb.secret);
+        assert_eq!(a.lib.as_ref().unwrap().wifi.eap_user.as_deref(), Some(b"student@example.edu".as_slice()));
+        kb_finished(&mut a, false);
+        assert_eq!(a.lib.as_ref().unwrap().modal, Modal::Wifi);
+        assert_eq!(a.lib.as_ref().unwrap().wifi.eap_user, None);
+        library_free(&mut a);
+        canvas_free(&mut a.screen);
+    }
+
+    #[test]
+    fn a_scanned_wpa3_network_asks_for_its_password_and_keeps_its_security() {
+        let mut a = pen_record_app();
+        lib(&mut a).modal = Modal::Wifi;
+        lib(&mut a).wifi.near = vec![WifiNetwork {
+            essid: b"Home 3".to_vec(),
+            security: WifiSecurity::Wpa3,
+            signal: 2,
+            signal_max: 5,
+            known: false,
+        }];
+        wifi_sheet_tap(&mut a, H_WIFI_NEAR, 0);
+        assert_eq!(a.lib.as_ref().unwrap().kbp, KbPurpose::WifiPassword);
+        assert!(a.lib.as_ref().unwrap().kb.secret);
+        assert_eq!(
+            a.lib.as_ref().unwrap().wifi.add.as_ref().map(|n| n.security),
+            Some(WifiSecurity::Wpa3)
+        );
+        library_free(&mut a);
+        canvas_free(&mut a.screen);
+    }
+
+    // The nearby page refreshes itself after 20 s of quiet: the scan is asked for without clearing
+    // the list, and only its answer changes the rows.
+    #[test]
+    fn the_nearby_page_asks_for_a_quiet_scan_after_twenty_seconds() {
+        let root = std::env::temp_dir().join(format!("grimoire-wifi-refresh-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(&root).unwrap();
+        assert_eq!(store_init(root.join("data").to_str().unwrap()), 0);
+        let script = root.join("helper.sh");
+        let scans = root.join("scans");
+        std::fs::write(
+            &script,
+            format!(
+                r#"printf 'wireless=1\nenabled=1\nconnected=1\n'
+case $1 in
+ scan) echo scan >> '{}'; printf 'scan=ok\nnear=486f6d65,4,5,wpa2,1\nnear_end=1\n';;
+ networks) printf 'current=486f6d65\nsaved=486f6d65\nlist=1\n';;
+ *) printf 'current=486f6d65\n';;
+esac
+"#,
+                scans.display()
+            ),
+        )
+        .unwrap();
+        let mut a = pen_record_app();
+        lib(&mut a).modal = Modal::Settings;
+        wifi_init(script.to_str());
+        wifi_sheet_open(&mut a);
+        let settle = |a: &mut App, scans: &std::path::Path, want: usize| {
+            let began = std::time::Instant::now();
+            while began.elapsed() < std::time::Duration::from_secs(5) {
+                wifi_tick();
+                wifi_sheet_tick(a, now_ms());
+                let n = std::fs::read_to_string(scans).unwrap_or_default().lines().count();
+                if !wifi_busy() && wifi_nearby().is_some() && n >= want {
+                    return;
+                }
+                std::thread::sleep(std::time::Duration::from_millis(5));
+            }
+            panic!("the helper did not finish its scans");
+        };
+        settle(&mut a, &scans, 1);
+        let before = wifi_nearby().unwrap();
+        let now = now_ms();
+        lib(&mut a).wifi.refresh_at = now.wrapping_sub(WIFI_REFRESH_MS);
+        wifi_sheet_tick(&mut a, now);
+        assert!(wifi_scan_quieting(), "the idle page asks for a quiet refresh");
+        assert_eq!(wifi_nearby(), Some(before), "the list stays while it runs");
+        settle(&mut a, &scans, 2);
+        assert!(!wifi_scan_quieting());
+        assert_eq!(std::fs::read_to_string(&scans).unwrap().lines().count(), 2);
+        wifi_init(None);
+        library_free(&mut a);
+        canvas_free(&mut a.screen);
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    // A scan while a supplicant-owned EAP/WPA3 link is connected can make the Kindle deauth from
+    // the AP it just joined. The sheet must leave automatic and quiet scans alone for that link.
+    #[test]
+    fn a_supplicant_link_keeps_the_nearby_page_from_scanning() {
+        let root = std::env::temp_dir().join(format!("grimoire-wifi-supplicant-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(&root).unwrap();
+        assert_eq!(store_init(root.join("data").to_str().unwrap()), 0);
+        let script = root.join("helper.sh");
+        let scans = root.join("scans");
+        std::fs::write(
+            &script,
+            format!(
+                r#"printf 'wireless=1\nenabled=1\nconnected=1\nsupplicant=1\n'
+case $1 in
+ scan) echo scan >> '{}'; printf 'scan=ok\nnear=486f6d65,4,5,wpa2,1\nnear_end=1\n';;
+ networks) printf 'current=486f6d65\nsaved=486f6d65\nlist=1\n';;
+ *) printf 'current=486f6d65\n';;
+esac
+"#,
+                scans.display()
+            ),
+        )
+        .unwrap();
+        let mut a = pen_record_app();
+        lib(&mut a).modal = Modal::Settings;
+        wifi_init(script.to_str());
+        wifi_sheet_open(&mut a);
+        let began = std::time::Instant::now();
+        while began.elapsed() < std::time::Duration::from_secs(1) {
+            wifi_tick();
+            wifi_sheet_tick(&mut a, now_ms());
+            std::thread::sleep(std::time::Duration::from_millis(5));
+        }
+        assert!(!scans.exists(), "a supplicant-owned link is not scanned");
+        assert!(!wifi_scanning());
+        wifi_init(None);
+        library_free(&mut a);
+        canvas_free(&mut a.screen);
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    // The Kindle can report the connected profile as a bracketed second name. The saved list shows
+    // it once, plainly, in the Kindle's order, and does not make the connected row special.
+    #[test]
+    fn saved_networks_are_plain_deduplicated_and_keep_their_order() {
+        let root = std::env::temp_dir().join(format!("grimoire-wifi-plain-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(&root).unwrap();
+        assert_eq!(store_init(root.join("data").to_str().unwrap()), 0);
+        let script = root.join("helper.sh");
+        std::fs::write(
+            &script,
+            r#"case $1 in
+ networks) printf 'wireless=1\nenabled=1\nconnected=1\ncurrent=5b486f6d655d\nsaved=4f6666696365\nsaved=5b486f6d655d\nsaved=486f6d65\nlist=1\n';;
+ scan) printf 'scan=off\n';;
+ *) printf 'wireless=1\nenabled=1\nconnected=1\ncurrent=5b486f6d655d\n';;
+esac
+"#,
+        )
+        .unwrap();
+        let mut a = pen_record_app();
+        lib(&mut a).modal = Modal::Settings;
+        wifi_init(script.to_str());
+        wifi_sheet_open(&mut a);
+        let began = std::time::Instant::now();
+        while wifi_saved().is_none() && began.elapsed() < std::time::Duration::from_secs(5) {
+            wifi_tick();
+            wifi_sheet_tick(&mut a, now_ms());
+            std::thread::sleep(std::time::Duration::from_millis(5));
+        }
+        assert_eq!(wifi_saved().map(|v| v.len()), Some(3), "the raw report still has both names");
+        assert!(wifi_is_current(b"Home", Some(b"[Home]")));
+        assert!(wifi_is_current(b"[Home]", Some(b"Home")));
+        assert!(!wifi_is_current(b"Office", Some(b"[Home]")));
+        wifi_sheet_tap(&mut a, H_WIFI_TAB, WIFI_VIEW_SAVED as i32);
+        assert_eq!(lib(&mut a).wifi.rows, [b"Office".to_vec(), b"Home".to_vec()]);
         wifi_init(None);
         library_free(&mut a);
         canvas_free(&mut a.screen);
@@ -8577,9 +10657,6 @@ pub fn library_keyboard_area(a: &App) -> Option<Rect> {
 /// The notebook hosts a settings dialog and all its nested sheets without changing screens.
 pub fn library_settings_active(a:&App)->bool {
     a.scr==ScreenId::Editor && a.lib.as_deref().is_some_and(|s|s.settings_return_editor && !s.settings_painting)
-}
-pub fn library_status_preview(a:&App)->bool {
-    a.scr==ScreenId::Editor && a.lib.as_deref().is_some_and(|s|s.settings_return_editor && s.modal==Modal::Display)
 }
 pub fn library_settings_redraw(a:&mut App) {redraw(a,RefreshMode::Ui);}
 pub fn library_settings_back(a:&mut App) {close_modal(a);}

@@ -19,6 +19,54 @@ why. Newest decisions first within each section.
   pages' drawings kept in memory), #52 (lasso fixes for #50 and #51) and #67 (issue #60), which the owner reported
   checked on 2026-11-13.
 
+## Files' storage writes (2.2, issue #117): what waits
+
+The storage layer writes now (docs/DESIGN.md, Files' storage writes): rename, trash with its record, restore,
+the name rules, the busy check and the copy job (`BgKind::CopyFile`). Nothing on screen calls them yet.
+
+- **The screens' part** (the Files place and its cards, the Trash place, the From a file... tiles, Add a
+  font...):
+  - Their words for each refusal: "File changed. Try again." (`Changed`), "Importing now." (`Busy`), "Name can't
+    contain %s" (`NameRule::Char`) and words for the other rules (empty, too long, a space at either end, a dot at
+    the start or the end, the extension kept), a name taken on rename (`Exists`: offer " 2"), "Couldn't restore.
+    Folder gone." (`FolderGone`), an entry whose record does not read (`BadRecord`), "Restored to %s.", an entry
+    a cut-off trash left, removed with nothing put back (`Restored::Nothing`), and "Couldn't copy file. Is the
+    storage full?" for any failed copy (the job ends 0 or 1 only). None is a string yet.
+  - The Trash place: `FsListing` over `FsStorage::trash_dir()` in its slices, then `fsview_trash_entries`; a
+    file's row reads `FsStorage::trash_record` for the rows on screen; a notebook's row needs its name from
+    `trash/<entry>/notebook.ini` (no store function reads a notebook there yet). The Trash's size on its row is
+    a walk of its own, not built. FsListing keeps at most 5,000 names in the order the storage gives them, and
+    the trash only grows (every deleted page is an entry), so past 5,000 the place would sort an arbitrary
+    5,000, not the newest: the screens decide what it shows then.
+  - After a notebook's restore: the Library's list read again, and `libindex_revalidate()` (or the index's next
+    check) brings it back to the Graph; its mirror PDF is made at its next change.
+  - A copy's end: `poll_jobs` (app.rs) returns at `BgKind::CopyFile` without a toast; the tile's or the Font
+    sheet's code reads `bg_last_exit()` there, and has the template list or the font check look again.
+  - A held item: its row greyed and its card's Rename and Delete saying "Importing now.", from `FsStorage::busy`.
+- **Not built** (the plan's later parts, or not in this lane): Move (Import to Templates or Photos by kind,
+  between them, to Import) and New folder in Import (the owner decides whether they are 2.2's); Restore for a
+  page (its place in its notebook was never kept); `store_delete` writing the record form for a notebook (2.2
+  reads that form and writes the old name, `<id>-<time>`). Empty trash never comes (the owner cleans it over USB).
+- **Only imports count as busy.** A template job reads its picture by path when it starts; a rename or trash of
+  that picture just before makes the job fail (it says so), and is not refused. The screens can add it if it
+  shows.
+- **The fallback's last moment.** Where the storage refuses the no-replace flag, a rename reserves the new name
+  and renames over its own reservation only (DESIGN.md, Never an overwrite), since files come over USB and the
+  copy job renames while Grimoire runs. Left: a writer that opens the empty reserved file by its name between the
+  last check and the rename loses what it wrote, and a crash there leaves an empty file or folder at the new name.
+- **What a rename or a trash acts on** is whatever is at the name at its rename, checked just before: an entry
+  swapped in at that name in between (over USB) is moved, never replaced or deleted. A check after the rename
+  would refuse every rename on a storage whose inode numbers change on rename, which the Scribe's check (step 2)
+  has not ruled out yet.
+- **A copy's source changed during the read** is caught by the check at the copy's end (size and time, and the
+  bytes read against the size), except a rewrite of the same size within the storage's time granularity (a
+  second; two on FAT); no test changes a source in the middle of a read (the tests change it before the job
+  reads it).
+- **The Scribe's checks** (docs/TESTING.md, "2.2, Files' storage writes (issue #117): device checks"): whether the
+  storage takes the no-replace rename (also for a name that differs in case only), whether a move into the trash
+  is one rename for a file and a folder, and whether device and inode numbers stay the same across a restart and
+  while Grimoire runs. Not run yet (issue #100); due before the first screen that uses the writes ships.
+
 ## nebuff's main and Clear page (2.1.0-beta.2, lane M, 2026-11-11): what waits
 
 - **Bulk erase slowdown (issue #42) is not fixed in the app.** PR #43 ("Fix slowdown") changed the C tree only
@@ -70,7 +118,7 @@ why. Newest decisions first within each section.
   Only if the sandbox ever fails on a device: a quiet "no worker" ending the UI does not toast would stop it.
 - **Links and the outline (lane L6)**: DONE in 2.1.0-beta.2 (FORMAT.md, "Imports: PDFs"). Left for later: web links
   are counted and left out (the optional QR card, 8.I of the plan, is the way to keep them); the outline names
-  only new notebooks' pages (a page's own name would keep it, which matters only when a fill comes in 2.2);
+  a new notebook's pages, and a fill only the pages it adds (#123, below);
   a worker caps at 60,000 links a PDF (after the water level a notebook keeps 14,400 at most, but a PDF past the
   cap loses its later pages' links before the densest-first trim sees them); `/Next` action chains, JavaScript
   and `/GoToR` are ignored; a Link that is hidden (`/F` bit 2) or not viewed (bit 6) is skipped (a choice the plan
@@ -167,13 +215,46 @@ why. Newest decisions first within each section.
   docs/TESTING.md, "2.1.0-beta.2, L9", step 7: "see its section at the end" for the fix round's section,
   which other sections now follow.
 
+## The same PDF again fills its notebook (2.2, #123): what waits, and what is for the owner
+
+- **The Scribe check has not run** (docs/TESTING.md, "2.2, the same PDF again fills its notebook"): whether the
+  book key Grimoire computes for a PDF KOReader opened is the key KOReader wrote, and whether KOReader's link boxes
+  and the import's agree within 2 px. A fill adds no link between the pages KOReader sent, but a later Open this
+  book whose plugin sends links again would add a second copy of a link to a page the fill added if they do not.
+  The tests can only stand KOReader's side in.
+- **A notebook without a record goes by its key alone**, so another file with the same key and the same page count
+  (an edited copy that kept the sampled bytes) fills it with that file's pages, their links and their outline
+  names; the pages the notebook had are not touched, and deleting the added pages takes all of it. A notebook
+  with a record is filled only by its own file (SHA-256 and size). Notebooks KOReader made never have a record
+  (the file record on the KOReader route, in the hardening entries below, would give them one). Two notebooks
+  without a record that hold one key (an earlier version's import and KOReader's, say): a fill goes to the first
+  the key match finds, the one changed last.
+- **Not built: a card for the notebook being made**, and `links=` carrying the held pages' count (the latter a
+  format change the owner has not asked for). A fill shows the staying notice's count, and the toast at its end.
+- **The toast of a fill with unreadable pages** says "Added N book pages." only: the blank pages are in the log.
+  A string of its own ("Added N book pages. Some pages couldn't be read.") would be one more msgid.
+- **The commit holds the input** while it runs, as KOReader's book job does, and begins only with the Library at
+  rest. It writes one page file a page added, each with an fsync (util.rs notes 15 to 25 ms for one on the
+  Kindle), so a fill of many pages holds the Library for that many writes; its time has not been measured on a
+  Scribe.
+- **A notebook deleted while its fill was made** is not filled, and its PDF, still in `import/`, becomes a
+  notebook of its own at the next scan (a renamed or moved one is filled at the next scan as it is now). The
+  owner may prefer the PDF to wait instead.
+- **A commit that fails before its notebook.ini** (the storage full) leaves the pictures it moved into the
+  notebook's `bg/`, listed by its index and shown by no page; a later fill of the same PDF shares them.
+- **Pages a fill made blank stay blank**: the same PDF dropped again finds them present and says "already". Delete
+  them to have them made again.
+- **The picker** offers no import for a PDF whose notebook (without a record) holds its key (the hardening entry
+  below), so a fill from Files needs the file dropped in `import/`. KOReader's hand-over by path, in its own issue,
+  will start the same job on the book's notebook.
+
 ## Hardening round (2026-11), import: what waits
 
 - **The Scribe check of this round has not run** (docs/TESTING.md, "Hardening round (2026-11), import"). Its
   steps 1 to 3 say how long a big PDF takes to read whole; steps 7 and 8 say whether the Scribe's storage gives a
   file one identity by its name and by an open file, which the scan's look, the import lock and the move to
   `import/done` all compare (if it did not, every dropped PDF would wait a minute, no import would start, and
-  an imported PDF would stay in `import/` and be read again up to three times). No release holds this round's
+  an imported PDF would stay in `import/` and be read again twice). No release holds this round's
   import commits until those have run.
 - **Confirm Open its notebook with the file record.** In Files, a PDF whose key and size match a notebook's
   record opens that notebook without reading the file whole; compare the whole file in the background before
@@ -181,7 +262,9 @@ why. Newest decisions first within each section.
 - **Carry the file record on the KOReader route.** Open this book in Grimoire finds a book's notebook by its
   key; let it confirm with the record where one exists.
 - **A pick of a PDF whose key a notebook without a record holds.** Today it says "PDF already imported."; the
-  owner decides whether a pick should import it as a notebook of its own.
+  owner decides whether a pick should import it as a notebook of its own. (Since #123 such a PDF fills that
+  notebook when the notebook lacks pages; the picker's card for it still offers Open its notebook only, so a
+  fill from Files needs the file dropped in `import/`.)
 - **A book whose first notebook was deleted.** A notebook made while another holds the key carries the key in
   its record alone. If the first is then deleted and the book's file is imported again, another notebook still
   holds the key, so the new one is made that way too, and KOReader's Open this book in Grimoire then starts a
@@ -191,7 +274,8 @@ why. Newest decisions first within each section.
   owner decides whether the import should give the bare key (`source=`, `book=`) to a new notebook when no
   notebook has those two lines (the book's file, imported again, would then be the notebook KOReader opens,
   with a record); the entry above, on a pick whose key a notebook without a record holds, is the other half
-  of the same question.
+  of the same question. Since #123 the notebook that holds the bare key is also the one a fill goes to by the
+  key alone (KOReader's, then), and any file of that key and page count fills it.
 - **The import's whole-file read.** Measured on the Scribe at the owner's check; if its time or its use of
   memory asks for it, spread it over the slices or release its cached pages as it goes.
 - **Endings without a test.** A file that cannot be read whole (at the start, where it then counts as another
@@ -215,9 +299,9 @@ why. Newest decisions first within each section.
   scan. Give `folder_holds_pdfs` the look's answer for such a folder.
 - **The import's small files and the bounded read.** The marks and an import's state are read through
   `util::read_file`, which since the storage reads takes plain files only; they have limits of their own when
-  parsed (a mark is 4 KiB at most), not when read. Read them with `util::read_file_max`, and the last slice's
-  `links.part` and `names.part` with it too (today `std::fs::read`, then a size check). The storage reads'
-  list below names the marks as well; the lock file's own open could share `util`'s plain-file open.
+  parsed (a mark is 4 KiB at most), not when read. Read them with `util::read_file_max`, as the last slice
+  reads `links.part` and `names.part` since #118. The storage reads' list below names the marks as well; the
+  lock file's own open could share `util`'s plain-file open.
 - **The picker's own test of "under import"** compares names without case; on a storage that tells names
   apart, rows of a folder only spelled like import would show a status.
 - **Picture folders with a line break in their name** are still imported by the picture scan; give
@@ -283,9 +367,10 @@ What waits for the lanes that use them:
   (the picker, L8; Previews in 2.2). Their screens' rules are in `notice_pick`; Import shows on the Library only
   until the browser has screens of its own.
 - fsview's writes (delete as a rename into the trash, `renameat2(RENAME_NOREPLACE)` with its fallback, the
-  allow-list, "File changed. Try again.", the free-space refusal and "Kindle storage nearly full."), the
-  Loading notice over 1 s, and its first readers (the picker, the PDF import, the KOReader hand-over's walk in
-  place of `realpath`).
+  allow-list, the check before acting, the free-space refusal) came in 2.2's storage layer (issue #117: "Files'
+  storage writes (2.2, issue #117): what waits", above); their words ("File changed. Try again.", "Kindle storage
+  nearly full.") wait for the screens. The Loading notice over 1 s, and its first readers (the picker, the PDF
+  import, the KOReader hand-over's walk in place of `realpath`).
 - `name_cmp`'s readers: the browser, the import order and the font list.
 - The Library listing from libindex's cache plus stamps (browser.md 17), past reading each notebook.ini once.
 
@@ -322,10 +407,16 @@ Built on the plan's other recommended defaults (the owner has not answered them;
 - **The eraser's chips are screen millimetres**, so at a zoom under 1 the 12 mm chip is clamped at the format's 12
   page millimetres.
 
-What waits: O2 (the ink row in a pen's card), O3 (size keys and the `quick-size` action, ids 105 to 107), O4 (your
-own chips), O6 (hold in the picker), O8 to O10 stay out; the live ink on the largest chips (charcoal 2, marker
-2.8, highlighter 8, eraser 12 mm) is for the owner to measure with `tools/bench-ink.c` (docs/TESTING.md): drop a
-top chip if live ink lags. The Japanese for "Hold a pen on the toolbar for its sizes." is for nebuff.
+Done in 2.2 (#122, the owner's decisions of 2026-11-15): O3, the size keys. `size-smaller` and `size-larger` (ids
+105 and 106, Shift+[ and Shift+] in the starter map, brought to an unedited starter at the start) step the pen in
+use through its five chips as a chip's tap does, each step saying the size in a short toast ("Size: 0.5 mm", 1.2 s),
+as the light keys and the eraser mode's button say theirs; the paired row "Smaller / larger size" is the Tools
+group's twelfth on the Buttons and Gestures pages. `quick-size` (id 107, no row, no key) opens the card beside the
+pen in use's button or the folded box (docs/SHORTCUTS.md).
+
+What waits: O2 (the ink row in a pen's card), O4 (your own chips), O6 (hold in the picker), O8 to O10 stay out; the
+live ink on the largest chips (charcoal 2, marker 2.8, highlighter 8, eraser 12 mm) is for the owner to measure with
+`tools/bench-ink.c` (docs/TESTING.md): drop a top chip if live ink lags, which changes what a size key walks too.
 
 ## Classic fonts (2.1.0): choices for the owner, and what waits
 
@@ -574,8 +665,6 @@ confirm or change:
   back to New notebook, and as SHORTCUTS.md's "one level a press"), the card closes. In 2.0.0 Esc on Read all's
   sheet closed What's new; the list has no on-screen way back to the card, only Esc. **Enter on the list opens
   the running version's notes**, as there is no highlighted row (the Library's sheets have none).
-- **Japanese for "This version" and "unreleased"** is empty in po/ja.po: the list shows them in English in
-  Japanese until nebuff translates them. Back reuses the Templates sheet's, already translated.
 
 ## The lasso drag (2.0.0): the owner's report of 2026-11-05, fixed; what is left for the owner
 
@@ -632,7 +721,6 @@ Writing stayed fast at any size (median pen to screen 0.6 to 0.9 ms); the costs 
   a lighter page minutes later had none. Not explained yet.
 - **A stroke-eraser move on STRESS TEST 2 took 2.1 s** at 2.38 MB, its screen update 2 s late (as the CHANGELOG's
   about 3 s for a page-wide marker stroke on the first stress page).
-- **"Loading page..." and undo are not logged**, so a record cannot say whether the notice showed or undo ran.
 - **Limits, by extrapolation only**: nothing caps strokes or points on a page; the nearest limit is the 120 s
   heartbeat for a page drawn whole, reached at roughly 13 to 15 MB of STRESS TEST 3's mix (about 35 minutes
   of pen contact on one page). Points are kept at the pen's full rate, about 6.3 KB a second of contact.
@@ -796,13 +884,6 @@ Decided by the lane B3 design (docs/beta2/PIXEL-LASSO.md, 2026-11-03) and its bu
 
 ## In progress
 
-- **The panel's page count does not fit four-digit pages** (b3-padd2 agent, 2026-11-03, found by the fit check):
-  "1995 / 2000" needs 162 px and the toolbar's page chip has 112, so it is cut short in a notebook of 1000 pages
-  or more (z_pages_add_6_toolbar_limit stays on page 1 for that reason). A smaller size for long counts, or the
-  current page alone, would fit.
-- **Pages: the count pad's - and + do not repeat when held** (b3-padd agent, 2026-11-03; the brief made it
-  optional): one step per tap, and Up and Down on a keyboard repeat only as the keyboard sends repeats
-  (Grimoire ignores key repeats).
 - **Pages: drag shows the gap bar only, never makes room** (b2-pv agent, 2026-11-02): the tiles do not
   shift aside while a page is dragged (each shift would redraw the grid on e-ink); the bar between two
   tiles says where it lands. Revisit after trying it on a Scribe.
@@ -1084,6 +1165,42 @@ items of Document links. Left:
 
 ## Done
 
+- 2.1.1 (unreleased, 119-editor-page-count-pad; issue #119): three items that touch the editor.
+  - The panel's page chip fits any count (In progress since 2026-11-03, found by the fit check), and keeps one
+    form in a notebook: the page and the count on every page when every page's label fits the chip at its size,
+    else the page alone on every page (panel.rs, panel_chip_whole and panel_page_label), decided once for each
+    page count, font and size, and again when one of them changes. The labels cut short with "..." were most of
+    those of 1000 pages or more ("1995 / 2000" needs 142 to 172 px by the font upright, the chip has 112, while
+    "1 / 2000" fits in Gothic) and some of 100 or more in every font at full size (in Gothic "100 / 100" and
+    "20 / 200", in Classic "10 / 100" in Terminess and Atkinson, "100 / 100" in Noto Sans, "100 / 200" in
+    Literata). In Gothic, Atkinson and Literata those fall on scattered pages, so a rule by the label made the
+    chip change form while paging ("99 / 150", "100", "101 / 150", "102" in Gothic). By the notebook, every
+    count under 100 shows the page and the count as before, and no count of 1000 or more does in any built-in
+    font; between, it depends on the font and the size (in Gothic 101 and 111 pages show both, 100 and 112 do
+    not; in Literata at full size every count up to 199 and 101 more under 1000 show both; sideways on the
+    2022/2024 Scribes' screen with 3 pens pinned every count under 1000 shows both in Noto Sans and Literata).
+    Of the two ways this entry offered, the page alone keeps the chip's size, readable at arm's length on the
+    panel; the whole count made small enough to fit would be two thirds to three quarters of it at
+    "9999 / 9999". test_panel checks every count from 1 to 9999 in Gothic and in Classic with each font, at the
+    chip's three sizes (both Scribes' screens, upright and sideways, with 0 to 3 pens pinned);
+    z_pages_add_6_toolbar_limit (now on the last page too, upright and sideways, and on a small notebook) and
+    z_pages_add_7_toolbar_full (now with the fit check) read the chip (`editor.page_chip`, docs/SIM.md).
+  - The count pad's - and + repeat when held (In progress since 2026-11-03), on the toolbar's pad and the Pages
+    view's: with delete's timing on every keyboard (KB_HOLD_MS 400 ms, then every KB_REPEAT_MS 65 ms, at most
+    KB_REPEAT_BATCH 3 at once for a late tick, none saved up), so a hold makes no more steps than its time by
+    the clock, and stopping at the pad's limits (1, and the pages the notebook still holds). Left as it was: Up
+    and Down on a keyboard step once a press, as Grimoire drops the kernel's key repeats for every key. Unit test
+    the_count_pads_minus_and_plus_repeat_to_its_limits (keyboard.rs); z_pages_add_9_hold holds them by the
+    script's clock (GRIMOIRE_SIM_CLOCK=script) in waits of 100 ms: one long wait's ticks can come bunched at its
+    end on a busy machine (its time spent drawing is not on that clock), and a tick more than three repeats late
+    skips the rest, by design.
+  - "Loading page..." and undo are written to grimoire.log (found on the owner's stress pages, 2026-11-05): one
+    line when the notice shows, with the page's id, its file's size and why (no current kept drawing, or changes
+    not written yet), and one when an undo of a page runs, with what it undid in a few words (history_step_words:
+    its kind and how many strokes, never the ink) and the page's id; each at most once a frame (App.frames, which
+    app_tick counts). docs/KINDLE.md lists both. test_editor_log runs the headless runner and reads the lines:
+    the notice, a stroke, Clear page, a lasso move, and two undos in one batch, which say one line. Not logged:
+    redo, and the Pages view's own Undo of page moves and batches.
 - 2.1.1 (unreleased, 84-test-flakes; issues #84, #85 and #86, found on the day 2.1.0 was released, and #93, the
   day after): four checks no longer depend on the speed of the machine or on an earlier run.
   - `z_map_all_2_big` and `z_map_all_3_reading` wait for the library index and the Graph themselves (`waitfor`),
@@ -1382,17 +1499,14 @@ items of Document links. Left:
 
 ## Hardening round (2026-11), storage reads: what waits
 
-- The other reads by path take the plain-file read (`util::open_read_nofollow`): the clipboard, the
-  compaction's list, the shortcut files, the PDF cache's records. The compaction's list goes first: it is
-  read at every start, before the first frame (`compact_queue_listed`), and the start is fully under the
-  rule only once it is.
+- The one reader left that opens by path, in your own fonts (`userfonts.rs` `read_small`: a font's verdict
+  and the crash guard, after an `lstat` that refuses a link), takes the plain-file read
+  (`util::open_read_nofollow`) with the change that owns that file (#111).
 - The folders a scan lists (the import folders, the marks) are read through the storage walk, as picked
   folders are.
 - A page file that is there but does not read fails to open rather than opening blank; with it, a size
   limit on page files.
 - `mkdir_p` stays as it is (an existing entry counts as the folder): the data root, a platform's folders
   and the tests' folders may sit behind a link.
-- Tidy-up: the PDF cache's and the share spool's own "made afresh" onto `util::create_fresh_nofollow`;
-  `nav.rs` `read_sidecar` onto `util::open_read_nofollow`.
 - If no other lane has taken them by the merge: the marks in `pdfimport.rs` read with their own limits,
   and the link tests run as root in CI's sandbox job.

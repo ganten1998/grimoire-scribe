@@ -49,6 +49,8 @@ expect library.buttons.next-page is RS, Right
 expect library.buttons.clear-page is none
 tap 1535 95
 wait 200
+tap library settings.cat.4
+wait 100
 tap library shortcuts
 wait 200
 tap library buttons

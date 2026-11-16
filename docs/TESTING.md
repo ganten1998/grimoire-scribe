@@ -127,8 +127,8 @@ Checked by the owner on the Kindle Scribe 2024 (firmware 5.20.1.0.2) on the beta
 KPM on 2026-11-04 and 05, the last of them 8e1bd38's (this release's code, with the version before the bump).
 What the owner reported:
 
-- On the first candidate (416686d): toasts "Good for now"; Japanese works (a native speaker's confirmation is
-  awaited); KOReader's menus good, but its battery symbol showed "JS" (fixed since: on 2026-11-05 at 03:48
+- On the first candidate (416686d): toasts "Good for now"; Japanese works; KOReader's menus good, but its
+  battery symbol showed "JS" (fixed since: on 2026-11-05 at 03:48
   KOReader's crash.log names Grimoire's own Terminess for its menus); Pages' drag had to start before the held
   page's card, and the count pad's opening 1 read as a 0 (both changed: the sections below); the keyboard was
   not tried yet.
@@ -1240,7 +1240,7 @@ What only the Scribe and a real browser can show:
    connected" for 1.5 s; tap Done while it is up, and the browser shows it as the card closes. Again, but wait
    for it to go before Done: it does not come back. (That toast comes at most once in 30 s: turn the device
    off and wait between the two.)
-8. **Inverted.** With Invert colors on (Settings > Display), the browser's toast is inverted with the rest of
+8. **Inverted.** With Dark mode on (Settings > Display), the browser's toast is inverted with the rest of
    the picture, as on the Kindle (white with black words), and the browser's Invert colors switch turns it
    with the picture.
 
@@ -1456,11 +1456,12 @@ What only the Scribe and a real browser can show:
 
 1. **Display.** Pair a browser and open a notebook. Tap the toolbar's Display button: the Display sheet opens on
    the Kindle and in the browser, and the toolbar stays beside it in the browser, as on the Kindle. Drag
-   Brightness, tick or untick "Swiping past the last page adds a page", then tap Invert colors twice: the toolbar
+   Brightness, tick or untick "Swiping past the last page adds a page", then close the sheet and tap Dark mode twice in
+   Settings > Display: the toolbar
    stays in the browser the whole time (inverted with the rest while the colors are). Tap Done: the sheet goes
    from both and the toolbar is unchanged.
 2. **Settings.** Tap the toolbar's Settings button: the browser shows the Settings sheet as the Kindle does, over
-   most of the toolbar, and any strip of the toolbar it leaves at its right. Change a row (Turn with the Kindle, say, and back),
+   most of the toolbar, and any strip of the toolbar it leaves at its right. Change a row (Rotation, say, and back),
    open Display from it and drag Brightness, then go back and tap Done: at every step the browser shows what the
    Kindle shows, and after Done the toolbar is in the browser as before.
 3. **Over the toolbar.** Drag the toolbar to the middle of the page and open Display again: the sheet covers the
@@ -1602,7 +1603,7 @@ On the Scribe (a 2022 or 2024 Scribe, with a build of this branch):
    refresh shows text (no grays). (The page draws them a little smaller than the app now does: x1.05, x1.0
    and x1.12 there, x1.10, x1.065 and x1.15 here.) Say if another of its fonts (Inter, Fira Sans, Source
    Serif 4) should take one's place.
-2. **Pick each font.** Settings in Classic: the Style row reads "Style: Classic (tap for Gothic)" with "Font:
+2. **Pick each font.** Settings in Classic: the Style row reads "Style (Classic)" with "Font:
    Terminess" in a chip at its right end; a tap left of the chip still changes the style. Tap the chip: the
    Font sheet, Terminess highlighted and checked. Tap each family: only the sample and the two rows redraw,
    without a flash, and the sample's name, sentence and digits are in that family. Done on Atkinson: one full
@@ -2358,54 +2359,89 @@ z_pages_footer_delete and i_display. **Not run on a Scribe.** The owner's check:
 ## 2.1.0-beta.2, Wi-Fi networks (lane W)
 
 Settings > Wi-Fi (issue #40). Automated: `tests/test_wifi_sh.py` (make wifi-check: the helper's networks,
-current and join verbs against a fake lipc whose profileData holds passwords: none comes out, in text or in
-hex; a format it does not know and a failed read list no name; join refuses anything but a saved network
-before any change and passes a hostile name as data), `rust/src/wifi.rs`'s tests (reports fail closed; a
-switch's states, its hex argument, exit during a switch) and `tests/scenarios/z_wifi_networks.qs` (the sheet
-from the scenario helper, also run in every language and style by make l10n-check). **Not run on a Scribe.**
+current, join, scan, add, delete and disconnect verbs against a fake lipc whose profileData holds passwords:
+none comes out, in text or in hex; a format it does not know and a failed read list no name; join refuses
+anything but a saved network before any change; add sends only the derived PSK on stdin and its profile hash holds
+only that PSK; a WPA3 add sends the passphrase only on stdin, with SAE and PMF required; an EAP add sends the
+username and password only on stdin, offers the SHA-256 AKM with optional PMF (or falls back when the
+supplicant lacks it), and its profile need not be in wifid's list; disconnect keeps the radio on, sets the manager's manual mode first, tries `cmDisconnect` with and without the current profile and then `wpa_cli`, pins the drop and disables the supplicant's network once the link is down, re-enables it and restores auto when it cannot, and its exit names the failed step; hostile names stay data), `rust/src/wifi.rs`'s
+tests (reports fail closed; a switch's states, its hex argument, exit during a switch; add's stdin and delete's
+name; a saved report that brackets the connected profile is shown once and plainly, in its own order; a quiet
+scan keeps order and only adds/removes names; a change cancels a running scan; an Add failure
+is named) and `tests/scenarios/z_wifi_networks.qs` (the sheet from the scenario helper: the automatic scan,
+Rescan, add Open, the row's trash, switch, disconnect, reconnect, scroll to Far away and refuse, and Other...
+with a hidden WPA/WPA2 password; also run in every language and style by make l10n-check). PSK add/delete were checked on the owner's
+Scribe; EAP and WPA3 are not yet checked on a device.
 
-**Probes first** (read only; the maintainer runs them over SSH with the owner's OK; copy this branch's
-`kindle/app/wifi.sh` to `/tmp/wifi.sh`). None prints a password: the masked ones replace every quoted value
-and every other letter or digit.
-
-1. `ls -l /usr/bin/lipc-hash-prop /usr/bin/lipc-probe /usr/bin/lipc-set-prop; busybox awk 'BEGIN{print 1}'`:
-   the tools the helper calls exist (else the sheet says "Saved networks could not be read.").
-2. `lipc-hash-prop 2>&1 | head -n 20; lipc-set-prop 2>&1 | head -n 20`: how a hasharray goes in (the helper
-   pipes `{}` on stdin) and that `-s` sets a string.
-3. `lipc-probe -v com.lab126.wifid 2>&1 | grep -i -e profileData -e currentEssid -e cmState` and
-   `lipc-probe -v com.lab126.cmd 2>&1 | grep -i -e ensureConnection -e wirelessEnable`: the properties exist
-   on this firmware (KOReader's Kindle backend uses all four).
-4. `printf '{}\n' | lipc-hash-prop com.lab126.wifid currentEssid 2>&1 | sed -e 's/"[^"]*"/"v"/g' -e 's/[^][{}()=:,;" ]/x/g' | tr -s x | head -n 20`,
-   then the same with `profileData`: the layout of the answer with no content (every quoted value, key and other
-   character becomes `x`: `[x] = { x = "x", x = "x", x = x }`). The reader expects quoted values (`x = "x"` or
-   `"x": "x"`) and bare numbers; an unquoted value makes it give no name (fails closed).
-5. `sh /tmp/wifi.sh networks`, connected: `current=` and `saved=` lines in hex, then `list=1`. On the Mac,
-   `sed -n 's/^\(current\|saved\)=//p' | xxd -r -p` (one per line) should give your network and every network
-   the Kindle's own Wi-Fi list shows, names with accents or Japanese too. `list=0` means probe 4's layout is not
-   the one the reader knows: send probe 4's output. A name missing from the list (one with a backslash, a quote
-   the tool escapes, or an escaped accent) says how the tool writes such names.
-6. The same with Wi-Fi off (airplane mode): `list=1` or `list=0` says whether wifid lists the saved networks
-   while the radio is off (`list=0`: the sheet asks to turn Wi-Fi on first, then reads them).
+**Probes first** (read only; the maintainer runs them over SSH with the owner's OK). Run
+`sh tools/kindle-wifi-probe.sh > wifi-probe.txt`; it never scans, changes the radio, or creates, changes or
+deletes a profile, and masks every value. Paste the result into the table in `docs/WIFI-PHASE0.md`. It reports
+the firmware and radio, `profileCount`, `scanState`, whether `wpa_passphrase` exists (Grimoire derives its
+own PSK, so add does not need it; the helper's direct passphrase path does), which LIPC properties
+are present, and the masked shape of `currentEssid`, `profileData` and `scanList`. The helper's reader needs
+quoted values and bare numbers (an unquoted value makes it list no name); a `list=0` or a scan that does not
+parse means the reader needs that shape. Also check the same `networks` and `scan` verbs with the radio off:
+`list=1` or `list=0`, and `scan=off`, say whether wifid answers while the radio is off (the sheet asks to
+turn Wi-Fi on first when it does not).
 
 **The owner's checks** (after the probes; English, then Spanish and Japanese for the words):
 
-1. Settings' bottom row reads KOReader, Pair, Wi-Fi, Gestures, Updates, Done, every word whole, upright and
-   sideways, in Gothic and Classic. Gestures and Updates open their sheets as before.
-2. Connected to Wi-Fi, open Settings > Wi-Fi: "Connected to <your network>", and the networks the Kindle has
-   saved, yours first with a check. More than seven: More networks (1 of 2) shows the rest.
-3. Tap another saved network that is in range: "Connecting to <it>..." and then "Connected to <it>" with the
-   check on it, within about 10 seconds. Share's address is the new network's; Live view pairs on it.
-4. Tap a saved network that is out of range: "Could not connect to <it>." within 45 seconds. Note what the
+1. Settings' Wi-Fi row opens the sheet on Nearby; its status, top buttons and rows fit upright and sideways,
+   in Gothic and Classic, in English, Spanish and Japanese, with every word whole. Esc goes back to Settings.
+2. Connected to Wi-Fi, open Settings > Wi-Fi: it scans without a tap, names the network connected to, and
+   lists what is near. Each row's three-bar icon fills for its strength, and secured networks have the small
+   drawn lock (not a missing-glyph box); the connected row is filled black with a white rule inside it and
+   white bars. Rescan replaces the list.
+3. Leave Nearby idle for 20 s or more: the list stays up and does not reload or jump. A network that appears
+   is added at the end, one that leaves disappears, and the changed bars update in place. A failed quiet scan
+   leaves the list as it was; Rescan still clears and scans afresh. While it is refreshing, tap a network:
+   the action must happen at once, not after the scan, and the next refresh waits 20 s after that scan.
+4. Tap an unsaved Open network and an unsaved WPA2-Personal one: Open is added at once, WPA2 opens the masked
+   keyboard over the still-visible Wi-Fi page. A password with a quote, a backslash and a space works; an
+   8-character and a 63-character password work. The network appears in Saved, and the Kindle connects to it.
+   Wrong password: the profile is still added (the Kindle's service refuses the connection), and the sheet
+   says "Could not connect to <it>." within 45 seconds. If the hidden add itself fails, the status says "Could not add the network.", not the generic
+   "Could not read or change Wi-Fi." The `wifi:` log line then names the helper's exit: 18 the passphrase never
+   became a PSK, 19 wifid refused the profile, 20 no read came back. A WPA3-Personal network (hostapd
+   `wpa_key_mgmt=SAE`, `ieee80211w=2`) asks for its password on the masked page and joins; a supplicant that
+   does not list SAE exits 28 and adds nothing.
+4b. On a school WPA2- or WPA3-Enterprise network: choose it (or Other... > WPA2/WPA3-Enterprise), type the
+   username, then the password on the masked keyboard. The helper offers the SHA-256 AKM with PMF optional, so
+   the same profile joins WPA2-Enterprise and WPA3-Enterprise (non-192-bit; hostapd `wpa_key_mgmt=WPA-EAP-SHA256`,
+   `ieee80211w=2`). The network connects and is watched like a switch; the log names no username or password.
+   Without wpa_cli the helper exits 26; a supplicant refusal, 27. The profile appears in Saved; tapping it
+   rejoins it through `wpa_cli`, and its trash button removes both the supplicant network and the marker.
+   WPA3-Enterprise 192-bit is not created: it needs EAP-TLS.
+   For a local test AP, `make wifieap` starts hostapd on a second virtual interface on this computer's
+   current Wi-Fi channel using WPA2/WPA3-Enterprise (`WPA-EAP` and `WPA-EAP-SHA256`, PMF optional),
+   SSID `Grimoire-Test-EAP`, identity `student` and password `test-password`; `WIFI_EAP_WPA3_ONLY=1`
+   makes it WPA3-Enterprise only (`WPA-EAP-SHA256`, PMF required). It needs hostapd, iw and openssl,
+   and keeps the existing connection up when the driver supports AP + managed on one channel.
+5. Saved networks: the profiles in the Kindle's order, each an ordinary row with the trash button at its right;
+   the connected one is named in the status line, not moved or marked in the list. Tap one
+   trash: that profile leaves the Kindle's list at once, with no question; the Kindle's own Wi-Fi menu agrees.
+   If the delete fails, the status says "Could not forget the network." (not the generic read error) and the
+   `wifi:` log line names the helper's exit: 21 the radio, 23 no read came back, 24 no netid could be
+   read, 25 wifid still had the profile after the netid write. The list scrolls by dragging; there is no
+   More networks row.
+6. Tap another saved network that is in range: "Connecting to <it>..." and then "Connected to <it>" with its
+   row filled, within about 10 seconds. Share's address is the new network's; Live view pairs on it.
+7. Tap the filled connected row again: it disconnects with the radio still on and its row no longer filled.
+   Tap it again (or another saved network) to reconnect; SSH, Share and Live view follow the connection.
+8. Tap a saved network that is out of range: "Could not connect to <it>." within 45 seconds. Note what the
    Kindle connects to afterwards on its own (the old network, none?): Grimoire switches nothing back.
-5. Wi-Fi off, open the sheet: "Wi-Fi is off" and the saved networks, or "Turn on Wi-Fi to see the saved
-   networks."; Turn on Wi-Fi connects, and the list appears. Tap a network with Wi-Fi off: the radio comes on
-   and the Kindle connects to that network.
-6. Turn off Wi-Fi from the sheet: "Wi-Fi is off", SSH and Share drop as with the Share card's button.
-7. Leave Grimoire (Exit) right after tapping a network: the Kindle still connects to it; KOReader's network
+9. Wi-Fi off, open the sheet: "Wi-Fi is off", Nearby asks to turn it on, and Saved says it cannot be read.
+   Turn on Wi-Fi connects and starts the scan by itself; the lists appear. Opening the sheet never turns the
+   radio on.
+10. Other...: type a hidden network's name; the Wi-Fi page stays under the keyboard. Choose Open, WPA/WPA2
+   and its masked password, or WPA2-Enterprise and its username then masked password. A hidden WPA2 network
+   joins and appears in Saved; a wrong password is reported as any other failed connection.
+11. Turn off Wi-Fi from the sheet: "Wi-Fi is off", SSH and Share drop as with the Share card's button.
+12. Leave Grimoire (Exit) right after tapping a network: the Kindle still connects to it; KOReader's network
    menu agrees.
-8. From a notebook: the toolbar's cog > Wi-Fi works the same; Done comes back to the notebook.
-9. Afterwards, grimoire.log names no network and holds no password: only lines such as `wifi: switched to a
-   saved network`. The Kindle's own Wi-Fi list is unchanged (nothing added, changed or forgotten).
+13. From a notebook: the toolbar's cog > Wi-Fi works the same; Back comes back to the notebook.
+14. Afterwards, grimoire.log names no network and holds no password: only lines such as `wifi: switched to a
+   saved network`. The Kindle's own Wi-Fi list differs only by the networks added and the one deleted above.
 
 ## 2.1.0-beta.2, last round, lane K: the keyboard's caret, and copy and paste
 
@@ -2563,6 +2599,14 @@ What they cannot show is the Scribe's own storage, so this round ships only once
 9. Only if step 1 said the storage takes symlinks, with Grimoire closed:
    `ln -s /etc/hostname /mnt/us/grimoire/templates/linked.png`, start Grimoire, New notebook, Paper: no
    `linked` among the templates. Remove the link.
+10. **The clipboard, the compaction lists, the shortcut files and the PDF cache** (the same read, since
+    #118). Lasso some ink, Copy, turn the page and Paste: it pastes. Take a notebook of two pages or more
+    that the PDF mirror has written (step 6's, if it has two pages; else change another one and close it
+    once with the mirror on), change one of its pages and close it: its
+    `bg: export of <id>: N pages, D drawn` line has D smaller than N (the other pages were found in the PDF
+    cache). Erase a word on a page, close the notebook and start Grimoire again: the log has no
+    `its list does not read` line. With shortcuts on and a keyboard at hand, a key of `shortcuts.ini` acts
+    as before.
 
 ## Hardening round (2026-11), invariants: the documents and the build's crate rule
 
@@ -2642,7 +2686,8 @@ import commits. The owner's check:
    `no longer holds the file that was read` line, and the scan's line counts `0 that differ from their
    listing`. This step decides whether the three checks suit the Scribe's storage: the first line would mean
    that no import starts there, the second that every PDF waits a minute, the third that an imported PDF
-   stays in `import/` and is read again up to three times.
+   stays in `import/` and is read again twice (three times in all), after which its row in the Import place
+   reads "Couldn't import PDF (see grimoire.log)." although its notebook exists.
 8. **A second start during an import.** Start a long import, close Grimoire while it runs and open it
    again: the notice goes on. Pick another PDF in Files: "Another import is still going. This one starts
    after it.", and it starts once the first has ended.
@@ -2664,6 +2709,160 @@ import commits. The owner's check:
 If step 1's T is long enough to matter, or step 2 shows the pen lagging, see the BACKLOG entry on the import's
 whole-file read ("Hardening round (2026-11), import: what waits"). If step 7 shows any of its three lines, do
 not release: send grimoire.log.
+
+## 2.2 work, the Font sheet in the new Settings menu (#115, #116)
+
+Since the new Settings menu (#115, which the owner checked on a Kindle Scribe), Settings > Font is the Font row
+of Settings' Display category, and its sheet works as Language does: a tap on a font applies it at once and
+saves it (with one Full refresh, as a style change); Back and Esc return to Settings and the X closes all of
+Settings, each keeping the font tapped. That replaces "Done applies, Cancel leaves the font as it was" in the
+sections "2.1.0, Classic fonts", "2.1.0-beta.2, L10 (your own fonts)" (step 8) and "2.1.0-beta.2, fix round,
+F3" (step 3), which describe the 2.1.0 builds.
+
+Automated: tests/scenarios/y_fonts.qs (a tap applies the family and saves it with a Full refresh; Back and Esc
+keep it; the X closes Settings with one ui refresh; Gothic has no Font row), z_fonts_kept.qs (the font y_fonts
+tapped last is there at the next start: y_fonts quits with the storage full after that tap, so the tap saved
+it), y_fonts_unknown.qs (an unknown `font=` line stays while the sheet is left with no tap, and a font tapped
+replaces it at once), y_fonts_own_1_sheet.qs and z_fonts_own_kept.qs (a font of the owner's own applied and
+saved at the tap, kept by Back and by the X, and there at the next start), and rust/tests/test_fontguard.rs
+`terminess_tapped_after_a_strike_takes_the_font_away_at_once` (after a start in Terminess that a crash made,
+Terminess tapped, then Back: no `font=file:` line is left, and the next start does not load the font).
+
+On the Scribe:
+
+1. **A tap applies.** In Classic, Settings, the Display category, Font: tap Atkinson. One full refresh, and the
+   sheet is in Atkinson; Back: Settings is in Atkinson and its row reads "Font: Atkinson"; restart Grimoire:
+   still Atkinson.
+2. **Back keeps the font tapped.** Tap Literata, then Back: Settings stays in Literata. Tap Atkinson, then the
+   X: the Library is in Atkinson.
+3. **Terminess after a crash.** As step 3 of "2.1.0-beta.2, fix round, F3", but tap Terminess and then Back:
+   settings.ini has no `font=file:` line any more, and the next start does not load the font.
+
+## 2.2, Files' storage writes (issue #117): device checks
+
+Automated: the unit tests of `fsview.rs` (the name rules, the trash's names, the record read strictly, what an
+import holds), `bgjob.rs` (the jobs' paths) and `bgwork_copy.rs` (the job's path), and
+`rust/tests/test_fsview_writes.rs` (the allow-list's refusals, no replace, another writer at the name between
+the fallback's check and its rename, a case-only rename, a rename and a trash stopped half way, the busy check,
+trash and restore of a file, a folder and a notebook in both forms, a name taken, refused restores, the copy with
+its floor, a failed write and a source that changes). On the Mac only the fallback rename runs (the new name
+reserved, then `renameat` over the reservation); CI's Linux job (`sandbox`) runs the same file with the kernel's
+`RENAME_NOREPLACE` on its tmpfs. Nothing on screen calls these writes yet, so the Scribe's part is three
+questions about its storage, asked over SSH (Grimoire closed unless a step says otherwise). Their answers decide
+what runs there and whether "File changed. Try again." can come for no reason; they are due before the first
+screen that uses the writes ships (issue #100 tracks the device checks before a release). Write the answers into
+docs/KINDLE.md (How it fits in).
+
+1. **Does the storage take the no-replace rename?** KOReader's LuaJIT can make the call (`382` is
+   `renameat2` on the Scribe's 32-bit ARM kernel, `-100` the current folder, `1` the no-replace flag; if
+   KOReader is installed elsewhere, use its `luajit`):
+
+   ```
+   mkdir /mnt/us/grimoire/.probe && cd /mnt/us/grimoire/.probe && echo a > a && echo b > b
+   /mnt/us/koreader/luajit -e '
+   local ffi = require("ffi")
+   ffi.cdef[[long syscall(long n, ...); char *strerror(int e);]]
+   local function try(from, to)
+     local r = tonumber(ffi.C.syscall(382, ffi.cast("long", -100), from, ffi.cast("long", -100), to, ffi.cast("long", 1)))
+     local e = ffi.errno()
+     print(from .. " -> " .. to .. ": " .. r .. (r ~= 0 and (" " .. ffi.string(ffi.C.strerror(e))) or ""))
+   end
+   try("a", "b") try("a", "B") try("a", "c")'
+   ls; cat b c
+   ```
+
+   The flag works when it prints `a -> b: -1 File exists`, `a -> B: -1 File exists` (on a storage that folds
+   case, `B` is `b`) and `a -> c: 0`, and `ls` shows `b c` with `b` holding `b` and `c` holding `a`: Grimoire's
+   renames are the kernel's own. It prints `Invalid argument` (or `Function not implemented`) for all three, and
+   `a` is still there, when the storage refuses it: Grimoire then takes the fallback (the name reserved first),
+   and its log says so once a session (`files: the storage refused the no-replace rename`). On a storage that
+   keeps case apart, `a -> B: 0` then `a -> c: -1 No such file or directory`, and `ls` shows `B b`: send the
+   output (the case rules matter to the screens). Any other answer (anything replaced, or another error) is not
+   expected: send the output.
+2. **Is a move into the trash one rename, for a file and for a folder?** In the same folder:
+
+   ```
+   dd if=/dev/zero of=big bs=1048576 count=50 && mkdir dir && echo x > dir/f
+   stat -c '%i %s' big dir
+   time mv big ../trash/probe-big; time mv dir ../trash/probe-dir
+   stat -c '%i %s' ../trash/probe-big ../trash/probe-dir
+   rm -rf ../trash/probe-big ../trash/probe-dir
+   ```
+
+   One rename each: the same numbers before and after, and each `mv` well under a second for the 50 MB file.
+   A copy would take seconds and give new numbers: then trash is not instant there, and the screens must say
+   so before a big file goes.
+3. **Do the numbers a check compares stay the same?** "File changed. Try again." compares a file's device,
+   inode, size and time with what its listing saw. In the same folder:
+   `echo keep > keep && stat -c '%d %i %s %Y' keep`, and note the line. Then ask again over SSH
+   (`stat -c '%d %i %s %Y' /mnt/us/grimoire/.probe/keep`) after a restart of the Kindle, and with Grimoire open
+   for a minute (from SSH while it runs). The same line every time: a file left alone never reads as changed. The
+   Scribe connects to a computer over MTP, so its storage stays mounted while a cable is in: a connection is no
+   separate case to ask about. A new device or inode number after the restart matters only to a listing kept
+   across it (none is); one that changes while Grimoire runs would make the screens refuse for no reason: send
+   the lines.
+
+Tidy: `cd /; rm -rf /mnt/us/grimoire/.probe`.
+
+## 2.2, the same PDF again fills its notebook (issue #123): device checks
+
+A PDF whose notebook lacks some of the book's pages (pages deleted since, or a notebook KOReader made, which holds
+only the pages KOReader sent) fills that notebook when it is dropped in `grimoire/import` again: the missing pages
+in book order, with the links that start or end on them and the outline's names for them. The pages it had keep
+their files, their names and their links: a fill adds no link between two of them and names none of them. A
+notebook with every page says "PDF already imported."; a PDF of another page count becomes a notebook of its own.
+The pages go in once the notebook is closed and the Library is in front ("Adding book pages: N of M", taps and keys
+waiting meanwhile); until then the notebook opens as it is, and KOReader's Open this book in Grimoire is not held up.
+Automated: `rust/tests/test_pdf_fill.rs` (a notebook with its file record, one without, one KOReader made with
+KOReader's links a pixel off the import's, and 3 px off, a full one, another page count, the files of the pages it
+had byte for byte, the writer that never writes the notebook, a notebook renamed, moved or deleted while its pages
+were made, what writes the notebook between two ticks of the commit, a job running on the notebook when its pages
+are made, a worker that cannot start, KOReader's job while a fill waits, a stop in the middle, a fill whose PDF goes
+away, a commit cut off after each of its steps and three times, the key checked again, two copies dropped together,
+the water level that keeps a notebook's own links, the state's grammar) and the scenarios
+`tests/scenarios/z_pdf_11_fill_1_book.qs` (KOReader's book of the
+tabs planner, pages 1 and 3), `z_pdf_12_fill_2_drop.qs` (the planner dropped: the two pages added, KOReader's tabs
+not doubled, no name given to KOReader's pages), `z_pdf_13_fill_3_open.qs` (the notebook opened while its fill is
+made, the pages going in back in the Library), `z_pdf_14_fill_4_held.qs` and `z_pdf_15_fill_5_koreader.qs`
+(KOReader's Open this book while a fill of the book's notebook waits: the book opens, the fill goes in after),
+`z_pdf_16_fill_6_book_job.qs` (KOReader's job adds one of the pages a waiting fill made, looking at one page a tick
+by `GRIMOIRE_BOOK_STEP_PAGES`: no commit begins while it runs, and the fill then adds only the page still missing)
+and `z_pdf_17_fill_7_input.qs` (a key and a tap while the commit runs, slowed to a file a tick by
+`GRIMOIRE_FILL_STEP_PAGES`, do nothing).
+
+**Not run on a Scribe.** Two things only the Scribe can say: whether the book key Grimoire computes for a PDF is
+the key KOReader wrote for it (KOReader's own partial MD5 of the file it opened), and whether KOReader's link boxes
+and the import's agree within 2 px (a fill adds no link between the pages KOReader sent, but a later Open this book
+that sends links again would add a second copy of a link to a page the fill added). The owner's check, on a build
+of this branch:
+
+1. **KOReader's notebook.** In KOReader, open a planner PDF with tabs that Grimoire never imported (one of more
+   than ten pages), go to its third page and use Open this book in Grimoire. Write a line on that page. Note the
+   notebook's page count on its card (the pages KOReader sent), and leave Grimoire for KOReader.
+2. **The same file dropped.** Over USB, copy that very file (from where KOReader opened it, unchanged) into
+   `grimoire/import`, and start Grimoire. Within about 10 s the notice counts the missing pages ("Importing: page
+   N of M", M the book's pages less the notebook's), then "Adding book pages: N of M" for a moment, and the end
+   says "Added M book pages."; the Library has no second card. `grimoire.log` has `import: <id>: notebook <nb>
+   lacks M of the book's P page(s): they are added to it`, `the pages for notebook <nb> are made`, then
+   `import: <id>: notebook <nb>: D document link(s) (A added, S already there, ...)` and `import: notebook <nb>
+   filled: M page(s) added`. S is 0 here: the fill adds no link between the pages KOReader sent.
+3. **The pages and the tabs.** Open the notebook: the book's pages in order, the line written in step 1 on its
+   page. With the eye on, every tab of a page KOReader sent is drawn once (a tab drawn twice, slightly offset,
+   is a link added a second time: send `grimoire.log` and the notebook's `doclinks.ini`). A tab on a page KOReader
+   sent that goes to a page the fill added works, and the pages KOReader sent have no name they did not have.
+4. **The key.** If step 2 made a second notebook instead (a second card, and no `lacks` line in the log), the
+   two keys differ: compare the notebook's `source=` line (`grimoire/notebooks/<nb>/notebook.ini`, KOReader's key)
+   with the key of the file, which on a computer is
+   `python3 -c "import hashlib,sys;b=open(sys.argv[1],'rb').read();m=hashlib.md5();[m.update(b[o:o+1024]) for o in [0]+[1024<<(2*i) for i in range(11)] if o<len(b)];print(m.hexdigest())" planner.pdf`,
+   and send both with the log.
+5. **The notebook opens meanwhile.** Delete a few pages of that notebook in the Pages view, drop a copy of the
+   PDF again, and while the notice counts, tap the notebook's card: it opens, as it is. Go back to the Library:
+   "Adding book pages: N of M" shows for a moment, then "Added N book pages."; the card opens it, filled again.
+6. **KOReader while a fill waits.** Delete a few pages again, drop a copy of the PDF, and before its notice ends
+   leave Grimoire for KOReader; there, use Open this book in Grimoire: the book opens on the reader's page at once,
+   with no toast over it. Go back to the Library: the fill's pages go in ("Added N book pages.").
+7. **KOReader again.** Open the PDF in KOReader and use Open this book in Grimoire on a page the fill added: it
+   opens that page, adds no page, and no tab doubles.
 
 ## Hardening round (2026-11), fonts: where a check's result is kept, its hash, and a glyph's draw time
 
@@ -2707,10 +2906,11 @@ steps 1, 5 and 11 answer; and the two floors of free room beside it (`STATE_FREE
    refused), and 2.1.0's `.font` files untouched.
 4. **The next start, and the hash's cost.** Close and start Grimoire: the font draws on the first screen and
    the log has no `bg: font check` line. Read `font: custom font loaded: S KB in T ms` and compare T with
-   2.1.0's from step 1, with the largest font you have (10 MB or more if you can). Tap that font's row in
-   Settings > Font: how long until the sample shows? Write both times down. The whole file is hashed at
-   every load, on the UI's thread: if either wait is longer than you accept, "Hashing a font while it is
-   read" (docs/BACKLOG.md) comes before the release. The bound is yours to set; none is built in.
+   2.1.0's from step 1, with the largest font you have (10 MB or more if you can). In Settings > Font tap a
+   built-in font, then that font's row again (a tap applies a font at once, with that log line for it): how
+   long until the sheet is drawn in it? Write both times down. The whole file is hashed at every load, on
+   the UI's thread: if either wait is longer than you accept, "Hashing a font while it is read"
+   (docs/BACKLOG.md) comes before the release. The bound is yours to set; none is built in.
 5. **After a restart of the Kindle**: as step 4 (the folder survived).
 6. **The glyph figures.** For each font read `slowest glyph T us` and `letters and digits L us` in its pass
    line. Are the numbers fine-grained (not all multiples of 1000 or 10000)? If they are all multiples, the

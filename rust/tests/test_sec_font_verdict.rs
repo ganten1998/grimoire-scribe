@@ -678,7 +678,7 @@ fn the_app_says_once_that_nothing_can_be_kept() {
     std::fs::write(&state, b"a file, not a folder").unwrap();
     put(&r, "Mine.ttf", &ttf(&test_font("Regular", 400)));
     std::fs::write(format!("{r}/settings.ini"), OWN).unwrap();
-    let script = "wait 100\nwaitbg\nwait 300\nexpect font is terminess\nexpect settings.font is file:Mine.ttf\ntap 1535 95\nwait 50\ntap library font\nwait 300\n\
+    let script = "wait 100\nwaitbg\nwait 300\nexpect font is terminess\nexpect settings.font is file:Mine.ttf\ntap 1535 95\nwait 50\ntap library settings.cat.1\nwait 50\ntap library font\nwait 300\n\
 expect library.font.state.Mine.ttf is unreadable\nexpect library.font.checking is 0\ntap library font.cancel\nwait 50\nquit\n";
     let (code, out) = start(&r, script, &[("GRIMOIRE_STATE", &state), ("GRIMOIRE_WORK_EXE", BIN)]);
     check!(code == Some(0));

@@ -93,15 +93,21 @@ wake
 wait 1700
 expect asleep is 0
 expect editor.scale is 1.07
-# The pinned sleep page: page 2 pinned (Display, with the pen), then asleep on page 1
-pentap panel display
+# The pinned sleep page: page 2 pinned (Settings > Sleep & Clock > Sleep settings, opened with the pen), then
+# asleep on page 1
+pentap panel settings
 wait 300
-expect editor.modal is display
-tap 563 1695
+expect editor.modal is settings
+tap library settings.cat.2
+wait 100
+tap library sleep-clock
+wait 300
+expect editor.settings.sheet is display
+tap library display.pin
 expect toast is This page is now the sleep screen
 expect settings.sleep_mode is 1
 wait 300
-tap 1523 2000
+tap library display.done
 wait 300
 expect editor.modal is none
 pentap panel previous
