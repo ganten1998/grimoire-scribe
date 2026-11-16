@@ -102,7 +102,8 @@ your notebooks and settings from `quire/` to `grimoire/` and removes the old Qui
   switches to katakana and **、** holds 、。？！ on its flicks.
 - **Delete held down** deletes one character after another, on every keyboard (names, Find, the page number
   pads, the count pad): a tap deletes one, and a finger or the pen kept on the key deletes the next after about
-  0.4 s, then about 15 a second until it lifts or slides off.
+  0.4 s, then about 15 a second until it lifts or slides off. The count pad's - and + count on the same way,
+  up to its limits.
 - **The caret**: every keyboard but the count pad has **◀** and **▶** at the right end of its text line, which
   move the caret a letter (held, one after another, as delete does); a tap on the text puts the caret there
   and a drag across it selects. Typing and delete act at the caret, and replace or take a selection. The key

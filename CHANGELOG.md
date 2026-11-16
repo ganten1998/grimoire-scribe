@@ -25,7 +25,8 @@
   `grimoire/import` stays where it is, and the import's lock file and its first look at a dropped PDF are
   opened without following links.
 - The toolbar's page chip shows the page alone, at its usual size, where the page and the count do not fit it
-  (a notebook of 1000 pages or more, and in most fonts of 100 or more), where it was cut short (#119).
+  (a notebook of 1000 pages or more, and in most fonts of 100 or more), where it was cut short; and the count
+  pad's - and + count on while held, as a held delete deletes, up to the pad's limits (#119).
 
 ## 2.1.0 (2026-11-13)
 
