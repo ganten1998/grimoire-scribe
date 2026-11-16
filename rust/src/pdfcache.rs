@@ -28,6 +28,8 @@ const PDF_RENDER_VER: u32 = 2;
 const HEAD: usize = 112;
 /// The most a record's stream may be (a page is one image of at most 6000 x 6000 pixels).
 const Z_MAX: usize = 128 << 20;
+/// The most a record file may be, its header and the largest stream: a longer file is never read.
+pub const PDF_RECORD_MAX: usize = HEAD + Z_MAX;
 /// How long a mirror waits for another mirror of the same notebook to finish (the lock) before it goes
 /// on beside it: each writes a temporary file of its own, so the worst then is the older state last.
 const LOCK_WAIT_MS: u32 = 15 * 60 * 1000;
@@ -161,13 +163,6 @@ fn real_dirs(dir: &str) -> bool {
     ok(dir) && (parent.is_empty() || ok(parent))
 }
 
-/// A file of the cache created afresh, never through a link (O_EXCL after any stale one goes).
-fn create_fresh(path: &str) -> std::io::Result<std::fs::File> {
-    use std::os::unix::fs::OpenOptionsExt;
-    let _ = std::fs::remove_file(path);
-    std::fs::OpenOptions::new().write(true).create_new(true).custom_flags(libc::O_NOFOLLOW | libc::O_CLOEXEC).open(path)
-}
-
 fn page_file(nb: &NotebookInfo, pid: u32) -> String {
     let mut dir = String::new();
     store_notebook_dir(nb.id.as_str(), &mut dir, 700);
@@ -244,9 +239,11 @@ impl PdfCache {
         format!("{}/p{}.z", self.dir, pid)
     }
 
-    /// The page's image when a record of it was made from the page as it is now.
+    /// The page's image when a record of it was made from the page as it is now. The record is read only as
+    /// a plain file at its name, of at most PDF_RECORD_MAX bytes (util::read_file_max: a link there is not
+    /// followed, and the open never waits).
     pub fn get(&mut self, nb: &NotebookInfo, pid: u32, stamp: &PdfStamp) -> Option<PageImage> {
-        let data = std::fs::read(self.record_path(pid)).ok()?;
+        let data = read_file_max(&self.record_path(pid), PDF_RECORD_MAX)?;
         let len = data.len() as u64;
         let rec = parse(data)?;
         if rec.stamp != *stamp || rec.pic != self.picture(nb, rec.paper) {
@@ -285,7 +282,8 @@ impl PdfCache {
         let path = self.record_path(pid);
         let tmp = format!("{path}.{}.tmp", std::process::id());
         let ok = (|| -> std::io::Result<()> {
-            let mut f = create_fresh(&tmp)?;
+            // (made afresh: whatever stands at the name goes, the entry itself, and is never opened)
+            let mut f = create_fresh_nofollow(&tmp)?;
             f.write_all(head)?;
             f.write_all(z)?;
             f.flush()
@@ -454,7 +452,7 @@ pub fn pdf_cache_sweep_due() {
     if !due || !std::path::Path::new(&root).is_dir() || !real_dirs(&root) {
         return;
     }
-    if create_fresh(&stamp).is_ok() {
+    if create_fresh_nofollow(&stamp).is_ok() {
         prune_in(&root, None, CAP.load(Ordering::Relaxed));
     }
 }

@@ -173,7 +173,7 @@ fn every_action_by_name() {
         named += 1;
         check!(shortcut_action(name) == a);
     }
-    check!(named == 10 + 8 + 27 + 22 + 4 + 2 - 1 + 3 + 7 + 1 + 5); // (+7: save, back, two-finger-up, new-notebook, new-folder, share and settings, 2.0.0-beta.2's keyboard scheme; +1: select-all; +5: the Graph's graph-view and four pans) (+3: select, select-exact and new-pages, 2.0.0-beta.2) the tools, the first actions, and 2.0.0-beta.5 (the clock corner two, the Index five, the swipe-adds-a-page toggle; Rust only); 2.0.0-rc.8 reads "index" only as another name for the Graph (index-map)
+    check!(named == 10 + 8 + 27 + 22 + 4 + 2 - 1 + 3 + 7 + 1 + 5 + 3); // (+3: size-smaller, size-larger and quick-size, 2.2) (+7: save, back, two-finger-up, new-notebook, new-folder, share and settings, 2.0.0-beta.2's keyboard scheme; +1: select-all; +5: the Graph's graph-view and four pans) (+3: select, select-exact and new-pages, 2.0.0-beta.2) the tools, the first actions, and 2.0.0-beta.5 (the clock corner two, the Index five, the swipe-adds-a-page toggle; Rust only); 2.0.0-rc.8 reads "index" only as another name for the Graph (index-map)
     let path = format!("{}/shortcuts-new.ini", tl_tmp());
     let text = "pad.L2=hold-eraser\npad.R2=eraser-mode\npad.600=clear-page\npad.601=first-page\n\
                 pad.602=last-page\npad.603=new-page\npad.604=fit-page\npad.605=pages\n\
@@ -220,7 +220,7 @@ fn every_action_by_name() {
     );
     check!(
         shortcut_action_name(SHORTCUT_STATUS) == Some("status-toggle")
-            && SHORTCUT_STATUS + 8 == SHORTCUT_STATUS_MODE && SHORTCUT_STATUS_MODE + 31 == SHORTCUT_NEW_PAGES && SHORTCUT_PAN_DOWN == SHORTCUT_LAST
+            && SHORTCUT_STATUS + 8 == SHORTCUT_STATUS_MODE && SHORTCUT_STATUS_MODE + 31 == SHORTCUT_NEW_PAGES && SHORTCUT_QUICK_SIZE == SHORTCUT_LAST
     );
     // The Index's actions: by their names, in the files and the Buttons sheet.
     for (name, id) in [
@@ -237,7 +237,7 @@ fn every_action_by_name() {
             && SHORTCUT_LANDSCAPE_FIT + 1 == SHORTCUT_STATUS_CORNER
             && SHORTCUT_STATUS_CORNER + 1 == SHORTCUT_GESTURE_NEW_PAGE
             && SHORTCUT_GESTURE_NEW_PAGE + 1 == SHORTCUT_STATUS_MODE
-            && SHORTCUT_STATUS_MODE + 1 == SHORTCUT_ZOOM_OUT && SHORTCUT_INDEX_MAP == 81 && SHORTCUT_PEN_PAN == 82 && SHORTCUT_PEN_ZOOM + 21 == SHORTCUT_LAST
+            && SHORTCUT_STATUS_MODE + 1 == SHORTCUT_ZOOM_OUT && SHORTCUT_INDEX_MAP == 81 && SHORTCUT_PEN_PAN == 82 && SHORTCUT_PEN_ZOOM + 24 == SHORTCUT_LAST
     );
     check!(
         shortcut_action("status-mode") == SHORTCUT_STATUS
@@ -557,14 +557,65 @@ fn starter_maps_and_their_upgrade() {
         check!(read_file(&path).as_deref() == Some(text.as_bytes()));
     }
     // The 2.0.0-beta.2 builds' starter before Settings > Shortcuts (its first line naming "Settings > Controller
-    // and keys"), unedited: this build's at the start, as an earlier starter is.
-    let beta2 = k.replacen("Settings > Shortcuts;", "Settings > Controller and keys;", 1);
-    check!(beta2 != k && k.starts_with("# Grimoire shortcuts. Enable in Settings > Shortcuts;"));
+    // and keys", then the lines of 2.1's starter, the fixture), unedited: this build's at the start, as an earlier
+    // starter is.
+    let old21 = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../tests/fixtures/keys-2-1-starter/shortcuts.ini"));
+    let beta2 = old21.replacen("Settings > Shortcuts;", "Settings > Controller and keys;", 1);
+    check!(beta2 != old21 && k.starts_with("# Grimoire shortcuts. Enable in Settings > Shortcuts;"));
     check!(write_file_atomic(&path, beta2.as_bytes()) == 0);
     check!(shortcuts_upgrade_starter(&path));
     check!(read_file(&path).as_deref() == Some(k.as_bytes()));
     unlink(&path);
     check!(!shortcuts_upgrade_starter(&path)); // (no file: nothing)
+}
+
+// The size keys' starter keys (2.2): Shift+[ and Shift+] are size-smaller and size-larger on a page in the starter
+// map, and no other line of it binds those keys anywhere ([ and ] stay the tools'; quick-size has no key). The
+// starter 2.0.0-beta.2 to 2.1 wrote (the fixture, byte for byte), unedited, becomes this build's at the start and so
+// gains them; edited (a line more), it is kept as it is and has none of them, in the file or in memory.
+fn the_size_keys_starter_keys() {
+    const SHIFT: i32 = KEYMOD_SHIFT;
+    let k = shortcuts_starter();
+    check!(k.contains("key.Shift+code26=size-smaller\nkey.Shift+code27=size-larger\n"));
+    check!(!k.contains("=quick-size"));
+    let mut m = Shortcuts::default();
+    shortcuts_load(&mut m, "/nonexistent/grimoire-shortcuts.ini");
+    check!(m.rejected == 0);
+    check!(shortcuts_lookup_at(&m, false, 26, SHIFT, PL_PAGE) == SHORTCUT_SIZE_SMALLER);
+    check!(shortcuts_lookup_at(&m, false, 27, SHIFT, PL_PAGE) == SHORTCUT_SIZE_LARGER);
+    check!(shortcuts_lookup_at(&m, false, 26, 0, PL_PAGE) == SHORTCUT_PREV_TOOL);
+    check!(shortcuts_lookup_at(&m, false, 27, 0, PL_PAGE) == SHORTCUT_NEXT_TOOL);
+    let on_brackets_shifted = m.bindings[..m.count as usize]
+        .iter()
+        .filter(|b| b.src == ActionSrc::Key && (b.code == 26 || b.code == 27) && b.mods == SHIFT)
+        .count();
+    check!(on_brackets_shifted == 2);
+    for place in [PL_LIBRARY, PL_PAGES, PL_GRAPH, PL_PENFEEL] {
+        check!(shortcuts_lookup_at(&m, false, 26, SHIFT, place) == SHORTCUT_NONE);
+        check!(shortcuts_lookup_at(&m, false, 27, SHIFT, place) == SHORTCUT_NONE);
+    }
+    let old21 = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../tests/fixtures/keys-2-1-starter/shortcuts.ini"));
+    check!(old21 != k && old21.starts_with("# Grimoire shortcuts. Enable in Settings > Shortcuts;"));
+    check!(!old21.contains("size-"));
+    check!(shortcuts_is_starter(old21.as_bytes()));
+    let path = format!("{}/shortcuts-size-keys.ini", tl_tmp());
+    let cp = format!("{}/controller-size-keys.ini", tl_tmp());
+    for text in [old21.to_string(), old21.replace('\n', "\r\n")] {
+        check!(write_file_atomic(&path, text.as_bytes()) == 0);
+        check!(shortcuts_upgrade_starter(&path));
+        check!(read_file(&path).as_deref() == Some(k.as_bytes()));
+        shortcuts_load_all(&mut m, &path, &cp);
+        check!(shortcuts_lookup_at(&m, false, 27, SHIFT, PL_PAGE) == SHORTCUT_SIZE_LARGER);
+    }
+    let edited = format!("{old21}key.q=undo\n");
+    check!(write_file_atomic(&path, edited.as_bytes()) == 0);
+    check!(!shortcuts_upgrade_starter(&path));
+    check!(read_file(&path).as_deref() == Some(edited.as_bytes()));
+    shortcuts_load_all(&mut m, &path, &cp);
+    check!(shortcuts_lookup_at(&m, false, 26, SHIFT, PL_PAGE) == SHORTCUT_NONE);
+    check!(shortcuts_lookup_at(&m, false, 27, SHIFT, PL_PAGE) == SHORTCUT_NONE);
+    check!(shortcuts_lookup_at(&m, false, 16, 0, PL_PAGE) == SHORTCUT_UNDO);
+    unlink(&path);
 }
 
 #[test]
@@ -579,5 +630,6 @@ fn test_shortcuts() {
     run!(a_row_held_forgets_its_buttons);
     run!(keys_by_place);
     run!(starter_maps_and_their_upgrade);
+    run!(the_size_keys_starter_keys);
     done();
 }

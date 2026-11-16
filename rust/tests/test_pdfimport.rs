@@ -180,7 +180,7 @@ fn partial_md5_of(done: &str, _e: &Env) -> String {
     let f = std::fs::read_dir(done).unwrap().flatten().next().unwrap().path();
     let fd = std::fs::File::open(f).unwrap();
     use std::os::fd::AsRawFd;
-    grimoire::md5::partial_md5_fd(fd.as_raw_fd())
+    grimoire::md5::partial_md5_fd(fd.as_raw_fd()).expect("the PDF reads")
 }
 
 #[test]
