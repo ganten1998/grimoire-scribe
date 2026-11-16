@@ -7,6 +7,10 @@
 //! `size_min_mm` and `size_max_mm` (settings.ini, the keys every version reads) and nothing else, with no history
 //! step: the max is the chip's width, the min keeps the tool's own thin-to-thick ratio. Its place is the shared popout's (popout.rs, popout_place).
 //!
+//! The size keys (2.2, actions.rs): size-smaller and size-larger set the pen in use's next chip down or up as a tap
+//! on it would (quicksize_step), with a short toast of the size; quick-size opens the card from a key, beside the
+//! pen in use's button or the folded box (the editor's size_step and qs_key).
+//!
 //! Layout (logical px at 300 dpi, scaled with ui_px): 24 px padding; a 64 px header (the tool's name at the
 //! left, its width now at the right); 12 px; the chip row, 170 px tall: five size chips, 160 x 170 each (a white
 //! well 136 x 100 with the sample, the width under it), 16 px apart. The eraser's second row is 110 px tall,

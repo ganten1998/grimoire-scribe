@@ -60,6 +60,12 @@ pub const SHORTCUT_PAN_LEFT: i32 = 101;
 pub const SHORTCUT_PAN_RIGHT: i32 = 102;
 pub const SHORTCUT_PAN_UP: i32 = 103;
 pub const SHORTCUT_PAN_DOWN: i32 = 104;
+/// The size keys (2.2, ids 105 to 107): the pen in use's next quick size down and up (quicksize.rs quicksize_step,
+/// set as a tap on that chip sets it, with a short toast of the size), and its sizes card opened from a key, beside
+/// its button on the toolbar or beside the folded box.
+pub const SHORTCUT_SIZE_SMALLER: i32 = 105;
+pub const SHORTCUT_SIZE_LARGER: i32 = 106;
+pub const SHORTCUT_QUICK_SIZE: i32 = 107;
 
 pub const SRC_KEY: u8 = 1;
 pub const SRC_PAD: u8 = 2;
@@ -412,7 +418,7 @@ pub const ACTION_GROUPS: [ActionGroup; N_GROUPS] = K_GROUPS;
 // ---- action names and metadata ----
 
 /// The old names stay in their original lookup order; new phase 3 names follow the old set.
-pub static K_ACTIONS: [(&str, i32); 78] = [
+pub static K_ACTIONS: [(&str, i32); 81] = [
     ("undo", SHORTCUT_UNDO),
     ("redo", SHORTCUT_REDO),
     ("previous-page", SHORTCUT_PREV_PAGE),
@@ -488,6 +494,9 @@ pub static K_ACTIONS: [(&str, i32); 78] = [
     ("pan-right", SHORTCUT_PAN_RIGHT),
     ("pan-up", SHORTCUT_PAN_UP),
     ("pan-down", SHORTCUT_PAN_DOWN),
+    ("size-smaller", SHORTCUT_SIZE_SMALLER),
+    ("size-larger", SHORTCUT_SIZE_LARGER),
+    ("quick-size", SHORTCUT_QUICK_SIZE),
 ];
 
 const TOOL_NAMES: [(&str, i32); TOOL_COUNT] = [
@@ -503,7 +512,7 @@ const TOOL_NAMES: [(&str, i32); TOOL_COUNT] = [
     ("tool:calligraphy", SHORTCUT_TOOL_BASE + 9),
 ];
 
-static ACTIONS: [ActionInfo; 88] = [
+static ACTIONS: [ActionInfo; 91] = [
     // Tools are action ids too, even though the tool-specific labels retain msgctxt "tool".
     ai(
         SHORTCUT_TOOL_BASE,
@@ -1206,6 +1215,25 @@ static ACTIONS: [ActionInfo; 88] = [
         // down (the map slides the other way).
         SHORTCUT_PAN_DOWN, "pan-down", n_("Move the Graph down"), None, IconKind::Next,
         GROUP_INDEX, SHORTCUT_PAN_UP, ActionKind::Step, SRC_BUTTONS_PEN,
+    ),
+    // The size keys (2.2): on a notebook page, the pen in use's quick sizes (quicksize.rs).
+    ai(
+        // TRANSLATORS: (Gestures and shortcuts lists, about 1100 px at 44 px in bold) the pen in use goes to the next
+        // smaller of its five quick sizes (the widths of the card a pen held on the toolbar opens).
+        SHORTCUT_SIZE_SMALLER, "size-smaller", n_("Smaller size"), None, IconKind::Minus,
+        GROUP_TOOLS, SHORTCUT_SIZE_LARGER, ActionKind::Step, SRC_ALL,
+    ),
+    ai(
+        // TRANSLATORS: (Gestures and shortcuts lists, about 1100 px at 44 px in bold) the pen in use goes to the next
+        // larger of its five quick sizes.
+        SHORTCUT_SIZE_LARGER, "size-larger", n_("Larger size"), None, IconKind::Plus,
+        GROUP_TOOLS, SHORTCUT_SIZE_SMALLER, ActionKind::Step, SRC_ALL,
+    ),
+    ai(
+        // TRANSLATORS: (Gestures and shortcuts lists, about 1100 px at 44 px in bold) opens the card of the pen in
+        // use's quick sizes beside its button on the toolbar, as holding that button does.
+        SHORTCUT_QUICK_SIZE, "quick-size", n_("Sizes of the pen in use"), None, IconKind::Tune,
+        GROUP_TOOLS, 0, ActionKind::Menu, SRC_ALL,
     ),
 ];
 

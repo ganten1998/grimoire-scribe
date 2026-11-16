@@ -45,7 +45,7 @@ fn registry_names_groups_and_labels() {
     ];
     let expected_group_rows = [11usize, 11, 11, 7, 9, 10, 6];
     check!(ACTION_GROUPS.len() == N_GROUPS && N_GROUPS == expected_group_rows.len());
-    check!(SHORTCUT_LAST == SHORTCUT_PAN_DOWN && SHORTCUT_PAN_DOWN == 104 && SHORTCUT_GRAPH_VIEW == 100 && SHORTCUT_SELECT_ALL == 95 && SHORTCUT_SAVE == 87 && SHORTCUT_BACK == 88 && SHORTCUT_TWO_FINGER_UP == 89 && SHORTCUT_NEW_NOTEBOOK == 90 && SHORTCUT_NEW_FOLDER == 91 && SHORTCUT_SHARE == 92 && SHORTCUT_SETTINGS == 93 && SHORTCUT_SELECT == 84 && SHORTCUT_SELECT_EXACT == 85 && SHORTCUT_NEW_PAGES == 86 && SHORTCUT_GESTURE_NEW_PAGE == 54 && SHORTCUT_STATUS_MODE == 55);
+    check!(SHORTCUT_LAST == SHORTCUT_QUICK_SIZE && SHORTCUT_QUICK_SIZE == 107 && SHORTCUT_SIZE_LARGER == 106 && SHORTCUT_SIZE_SMALLER == 105 && SHORTCUT_PAN_DOWN == 104 && SHORTCUT_GRAPH_VIEW == 100 && SHORTCUT_SELECT_ALL == 95 && SHORTCUT_SAVE == 87 && SHORTCUT_BACK == 88 && SHORTCUT_TWO_FINGER_UP == 89 && SHORTCUT_NEW_NOTEBOOK == 90 && SHORTCUT_NEW_FOLDER == 91 && SHORTCUT_SHARE == 92 && SHORTCUT_SETTINGS == 93 && SHORTCUT_SELECT == 84 && SHORTCUT_SELECT_EXACT == 85 && SHORTCUT_NEW_PAGES == 86 && SHORTCUT_GESTURE_NEW_PAGE == 54 && SHORTCUT_STATUS_MODE == 55);
     let mut ids = HashSet::new();
     let mut names = HashSet::new();
     let mut all = Vec::new();
@@ -58,11 +58,11 @@ fn registry_names_groups_and_labels() {
         check!(id >= 1 && id <= SHORTCUT_LAST);
         all.push(id);
     }
-    check!(K_ACTIONS.len() == old_names.len() + 42);
+    check!(K_ACTIONS.len() == old_names.len() + 45);
     for name in old_names {
         check!(action_by_name(name) != SHORTCUT_NONE);
     }
-    check!(all.len() == 88);
+    check!(all.len() == 91);
     check!(i18n_set("en"));
     for id in all.iter().copied() {
         let info = action_info(id);
@@ -78,7 +78,7 @@ fn registry_names_groups_and_labels() {
             check!(other.is_some_and(|p| p.pair == id && p.group == info.group));
         }
     }
-    check!(ids.len() == 88 && names.len() == 88);
+    check!(ids.len() == 91 && names.len() == 91);
     for (g, want) in expected_group_rows.iter().enumerate() {
         check!(
             group_row_count(g) == *want
@@ -152,6 +152,18 @@ fn registry_sources_and_pair_rows() {
     check!(action_info(SHORTCUT_NAME_PAGE).is_some_and(|a| a.group as usize == GROUP_INDEX));
     check!(action_info(SHORTCUT_ZOOM_OUT).is_some_and(|a| a.pair == SHORTCUT_ZOOM_IN));
     check!(action_info(SHORTCUT_LIGHT_DOWN).is_some_and(|a| a.pair == SHORTCUT_LIGHT_UP));
+    // The size keys (2.2): a pair of steps and the sizes card, Tools actions every source can bind, acting on a
+    // notebook page alone, by the names the files keep.
+    for (id, name, pair, kind) in [
+        (SHORTCUT_SIZE_SMALLER, "size-smaller", SHORTCUT_SIZE_LARGER, ActionKind::Step),
+        (SHORTCUT_SIZE_LARGER, "size-larger", SHORTCUT_SIZE_SMALLER, ActionKind::Step),
+        (SHORTCUT_QUICK_SIZE, "quick-size", SHORTCUT_NONE, ActionKind::Menu),
+    ] {
+        let info = action_info(id);
+        check!(info.is_some_and(|a| a.name == name && a.pair == pair && a.kind == kind && a.group as usize == GROUP_TOOLS));
+        check!(action_by_name(name) == id && action_sources(id) == (SRC_KEY | SRC_PAD | SRC_TOUCH | SRC_SHAPE | SRC_PEN));
+        check!(action_places(id) == PL_PAGE);
+    }
 }
 
 fn cached_light_actions_do_not_read_unknown_levels() {

@@ -5,7 +5,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: Grimoire 2.1.0-beta.1\n"
 "Report-Msgid-Bugs-To: https://github.com/ganten1998/grimoire-scribe/issues\n"
-"POT-Creation-Date: 2026-11-15 17:55-0600\n"
+"POT-Creation-Date: 2026-11-15 18:01-0600\n"
 "PO-Revision-Date: 2026-11-10 00:00+0000\n"
 "Last-Translator: nebuff\n"
 "Language-Team: Japanese\n"
@@ -549,6 +549,26 @@ msgstr "グラフを上に移動"
 #: rust/src/actions.rs
 msgid "Move the Graph down"
 msgstr "グラフを下に移動"
+
+#. TRANSLATORS: (Gestures and shortcuts lists, about 1100 px at 44 px in bold) the pen in use goes to the next
+#. smaller of its five quick sizes (the widths of the card a pen held on the toolbar opens).
+#: rust/src/actions.rs
+#, fuzzy
+msgid "Smaller size"
+msgstr "より小さい"
+
+#. TRANSLATORS: (Gestures and shortcuts lists, about 1100 px at 44 px in bold) the pen in use goes to the next
+#. larger of its five quick sizes.
+#: rust/src/actions.rs
+#, fuzzy
+msgid "Larger size"
+msgstr "より大きな"
+
+#. TRANSLATORS: (Gestures and shortcuts lists, about 1100 px at 44 px in bold) opens the card of the pen in
+#. use's quick sizes beside its button on the toolbar, as holding that button does.
+#: rust/src/actions.rs
+msgid "Sizes of the pen in use"
+msgstr ""
 
 #. TRANSLATORS: the name of a notebook that has none (it is saved with it, as a name given).
 #: rust/src/annotate.rs rust/src/pdfimport.rs rust/src/store.rs rust/src/ui.rs
@@ -1698,6 +1718,13 @@ msgstr "ノートブックは %d ページでいっぱいです。"
 #: rust/src/editor.rs
 msgid "Couldn't add pages."
 msgstr "ページを追加できませんでした。"
+
+#. TRANSLATORS: a short toast (about 1700 px at 44 px in bold; up 1.2 s) after a key or a button stepped the pen
+#. in use to the next of its quick sizes; %s is the width as the sizes card writes it ("0.5 mm").
+#: rust/src/editor.rs
+#, fuzzy, c-format
+msgid "Size: %s"
+msgstr "ビュー: %s"
 
 #. TRANSLATORS: the title in New page's count pad (bold, 44 px, about 700 px): how many blank pages to
 #. add at once, typed on the number pad or changed by one with its - and + keys.
