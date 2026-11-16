@@ -31,6 +31,8 @@ expect library.items is 1
 key 24 0
 wait 100
 expect library.sheet is settings
+tap library settings.cat.1
+wait 100
 tap library display
 wait 200
 expect library.sheet is display

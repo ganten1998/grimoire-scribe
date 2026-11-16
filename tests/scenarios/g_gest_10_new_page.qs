@@ -26,17 +26,17 @@ expect editor.page is 3
 pentap panel display
 wait 300
 expect editor.modal is display
-tap 500 1076
+tap panel display.newpage
 wait 300
 expect settings.gesture_new_page is 0
 shot 01-display-row-off
-tap 500 1076
+tap panel display.newpage
 wait 300
 expect settings.gesture_new_page is 1
-tap 500 1076
+tap panel display.newpage
 wait 300
 expect settings.gesture_new_page is 0
-pentap panel display
+pentap panel display.done
 wait 300
 expect editor.modal is none
 # off: nothing is added, and nothing is said (the page stays)

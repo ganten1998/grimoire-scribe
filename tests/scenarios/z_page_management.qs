@@ -101,15 +101,17 @@ pen leave
 expect editor.strokes is 0
 expect editor.screen_composed is 1
 shot 07-settings-over-notebook
+tap library settings.cat.4
 tap library gestures
 expect editor.settings.sheet is gestures
 expect editor.screen_composed is 1
-tap library done
+tap library settings.back
 expect editor.settings.sheet is settings
 tap library shortcuts
 expect editor.settings.sheet is shortcuts
-tap library done
+tap library settings.back
 expect editor.settings.sheet is settings
+tap library settings.cat.1
 tap library display
 expect editor.settings.sheet is display
 # The clock corner belongs to the notebook page: not drawn over Settings' Display sheet.
@@ -117,6 +119,7 @@ expect status.shown is 0
 expect editor.screen_composed is 1
 key 45 0
 expect editor.settings.sheet is settings
+tap library settings.cat.3
 tap library pen-feel
 expect screen is penset
 tap 125 95

@@ -228,24 +228,24 @@ taps them in each). Upright: the Library's top bar has New at 965 95, Folder 115
 Settings 1535 95. Its five buttons widen together for a longer word, up to 220 px each: New is at
 965 only while they are at most 191 px wide, Folder at 1155 up to 198 and Share at 1345 up to 212
 (the same sideways), so a language with wider top-bar words moves them (docs/TRANSLATING.md).
-Hosted by KOReader they move left, as Back to KOReader takes the room it needs. Settings' rows
-are at x 930: Pen sensitivity y 460, Calibrate 620, Display 780, Style 930, Mirror PDFs 1060, the
-pen button's row 1190, Rotation 1320, Pinch 1450 and Language 1580. Upright from the
-Library, the Display sheet's "Sideways, show the whole page" row is 930 608, its sleep screen row 930 1308, and its clock and battery size cell 472 1626 and corner cell 997 1626, beside its Done at 1460 1626 (in a notebook the sheet has the Pin this page row too, so they are 472 1720, 997 1720 and 1460 1720). The Language list
-has Automatic at 930 785, English 930 945, Español 930 1105, 日本語 930 1265 and Cancel 930 1425. Pen feel's tabs
-are at x = 130 + 177 n, y 289, in the order pencil, mechanical pencil, charcoal, ballpoint,
-fineliner, marker, fountain pen, calligraphy pen, highlighter, eraser. Sideways (2480x1860): the
-top bar has New at 1585 95, Share 1965 95 and Settings 2155 95; Settings' rows are at x 1240: Pen
-sensitivity y 260, Calibrate 425, Display 590, Language 1385; the Display sheet's sleep screen row
-is 1240 1099 and its Done 1770 1419; the Language list has 日本語 at 1240 1009 and Cancel
-1240 1169. The first card's menu button is 431 896 (a notebook's or a folder's menu rows are tapped
+Hosted by KOReader they move left, as Back to KOReader takes the room it needs. Settings is one
+page (the new Settings menu, #115): its categories are at x 329, y 286 + 136 n (n from 0: General,
+Display, Sleep & Clock, Pen, Controls, System), the open category's rows at x 1233, y 371 + 134 n,
+and its X at 1735 95; a submenu's Back is at 125 95 and its X at 1735 95. Tap Settings' rows, the
+Display, Sleep settings and Clock settings pages' rows (`display.NAME`) and the choice lists' rows
+by name (`library.ui_at.X.Y` lists the names), never by place. Pen feel's tabs are one strip, its
+segments' centres at x = 138 + 176 n, y 301, in the order pencil, mechanical pencil, charcoal,
+ballpoint, fineliner, marker, fountain pen, calligraphy pen, highlighter, eraser; its Reset tool is
+at the page's foot, left (150 2390 is on it). Sideways (2480x1860): the top bar has New at 1585 95,
+Share 1965 95 and Settings 2155 95; Settings' categories are at x 330, y 286 + 136 n, its rows at x
+1544, y 371 + 134 n, and its X at 2355 95. The first card's menu button is 431 896 (a notebook's or a folder's menu rows are tapped
 by name, `tap library more.delete`, never by place: they move when the menu gains a row), Delete's
 Keep it 1240 845 and Move to's Cancel 1240 1055. Share's
 Done is 2160 1485. In New notebook, Rename is 1950 1424 and the Custom music tile 1800 1115 (its
 sheet's Cancel 598 1693); the keyboard's bottom row is at y 1745: Cancel 221, `-` 517, the
 symbols key 756, the accents key 995 (928 is on it too), space 1360, `'` 1723, `.` 1962 and Done
 2258 (Cancel's 279 is on it too). Pen feel's
-tabs are at x = 161 + 239 n, y 289 (the calligraphy pen's 1834). Calibration's corners are 298 223,
+tabs are at x = 169 + 238 n, y 301 (the calligraphy pen's 1835). Calibration's corners are 298 223,
 2182 223, 2182 1637 and 298 1637, its center 1240 930, touch's skip 1240 1475 and the check's
 Cancel 1240 1675. The editor's tool button is 2388 358.
 
@@ -299,18 +299,23 @@ the provisional `TG_TUNE`. The scenario harness clears both hooks between runs. 
 shapes and `tests/fixtures/touch/synthetic.txt` are regression inputs, not owner evidence.
 The trace contains no pen coordinates: replay cannot measure hover-distance acceptance.
 
-The Settings bottom row is KOReader | Pair | Wi-Fi | Gestures | Updates | Done, in either
-orientation (Pair in Controller's place since 2.0.0-beta.2, Wi-Fi since 2.1.0-beta.2: Gestures moved from
-x = 890, now a gap, to 1000). These interior tap points were checked with `library.ui_at` in English,
-Spanish and Japanese, Gothic and Classic, on the 1860 x 2480 panel (2480 x 1860 sideways):
+Settings' Controls category (since the new Settings menu, #115) lists Shortcuts, Pair and Gestures, and
+General lists Language, Updates and Wi-Fi; a submenu has Back at its top left and X at its top right (in a
+Gestures or Buttons group the Back is `done`, back to the list of groups). These interior tap points were
+checked with `library.ui_at` in English on the 1860 x 2480 panel (2480 x 1860 sideways); the page lays them
+out the same in every language and style (library.rs, `draw_settings`):
 
 | Target | Upright | Sideways |
 |---|---|---|
-| Pair | 580, 1930 | 863, 1695 |
-| Wi-Fi | 770, 1930 | 1070, 1695 |
-| Gestures | 1000, 1930 | 1320, 1695 |
-| Updates | 1200, 1930 | 1560, 1695 |
-| Settings Done | 1550, 1930 | 1820, 1695 |
+| Controls (`settings.cat.4`) | 329, 830 | 330, 830 |
+| Shortcuts | 1233, 371 | 1544, 371 |
+| Pair | 1233, 505 | 1544, 505 |
+| Gestures | 1233, 639 | 1544, 639 |
+| Updates (General, `settings.cat.0`) | 1233, 505 | 1544, 505 |
+| Settings X (`done`) | 1735, 95 | 2355, 95 |
+| A submenu's Back (`settings.back`, a group's `done`) | 125, 95 | 125, 95 |
+| Gestures' groups: Editing, Tools, Pages, Index | 930, 608 / 764 / 920 / 1076 | |
+| A Gestures or Buttons group's row N | 930, 296 + 154 (N - 1) | |
 | Record Use (when enabled) | 430, 1645 | 740, 1335 |
 | Record Try again | 763, 1645 | 1073, 1335 |
 | Record Disable | 1096, 1645 | 1406, 1335 |
@@ -319,12 +324,12 @@ Spanish and Japanese, Gothic and Classic, on the 1860 x 2480 panel (2480 x 1860 
 The three sample slots have interior centres at x = 630 / 930 / 1230, y = 1110 upright,
 and x = 940 / 1240 / 1540, y = 800 sideways. They display samples and have no hit action.
 Use `library.ui_at.X.Y` to check a candidate hit before depending on it. Its
-values include `pair-menu` (Settings' Pair), `gestures`, `updates`, `done`, `gestures.master`,
+values include `pair-menu` (Settings' Pair), `gestures`, `updates`, `done`, `settings.back`, `gestures.master`,
 `gestures.group.NAME`, `gestures.row.N`, `gestures.reset`, `gestures.reset.confirm`,
 `gestures.reset.cancel`, `record.use`, `record.retry`, `record.disable` and `record.cancel`. This is a hit-test
 probe, not a coordinate locator; existing unrelated coordinates above remain as documented.
 
-**Recording a gesture in a scenario.** Open Settings > Gestures and a group; verify each
+**Recording a gesture in a scenario.** Open Settings > Controls > Gestures and a group; verify each
 candidate tap with `library.ui_at.X.Y`. Tap an action, expect `library.gestures.learning`
 to name it and `library.record` to be `wait`. A paired row continues with the second member
 after saving the first. Use `tapn`/`swipe` for a pattern; expect `pattern touch.2.tap` (for example), then tap
@@ -546,7 +551,7 @@ shows what the app holds.
 | `editor.music` | the Custom music layout on the Custom music sheet while it is open, else the page's if its paper is custom, else empty: the systems per page, a colon, then the parts top to bottom (`treble`, `bass`, `alto`, `tenor`, `drums`, `plain`, `tab4` to `tab7`, `lyrics`), e.g. `4: treble tab6 bass` |
 | `editor.music_max` | while the editor's Custom music sheet is open, the most systems its layout fits on the page it is for (that page's height), else empty |
 | `library.sheet` | what is open over the cards: `none`, `new` (New notebook), `settings`, `more` (a notebook's menu), `folder-more` (a folder's menu), `move` (Move to), `delete`, `keyboard`, `display`, `music`, `koreader`, `language` (Settings > Language's list), `shortcuts` (Settings > Shortcuts), `buttons` (its Buttons sheet), `pair-menu` (Settings > Pair, 2.0.0-beta.2), `pair` (its Pair a controller... sheet), `wifi` (Settings > Wi-Fi, 2.1.0-beta.2), `updates`, `gestures`, `about` (What's new, Rust only), `font` (Settings > Font, Classic only: 2.1), `merge` (a folder moved or renamed onto a name that is there: 2.1; hits `merge.into`, `merge.both`, Cancel is `done`) or `exit` (Exit Grimoire?, Esc at the top level: 2.0.0-beta.2) |
-| `library.font.pick` | the Font sheet's highlighted font, by its settings.ini value: a family's id, or `file:<path>` for one of the owner's own (the font in use as the sheet opens; a tap on a row moves it, Done applies it); empty while the sheet is not up (2.1) |
+| `library.font.pick` | the Font sheet's highlighted font, by its settings.ini value: a family's id, or `file:<path>` for one of the owner's own (the font in use as the sheet opens; a tap on a row moves it and applies that font at once); empty while the sheet is not up (2.1) |
 | `library.font.rows`, `library.font.checking` | the Font sheet's own fonts (2.1.0-beta.2): how many files of grimoire/fonts it lists, and how many of them are still being checked |
 | `library.font.state.PATH`, `library.font.note.PATH` | an own font's row by its path under grimoire/fonts: `ready`, `checking`, `unreadable`, `toobig`, `nolatin`, `format`, `slow` or `missing` (empty for a file the sheet does not list), and what the row says under the name ("Unreadable font.", "Some letters come from Terminess.", empty) |
 | `library.font.shown`, `library.font.page` | the own fonts on the page of them shown, by their paths joined with `\|`, and `2/3` |
@@ -571,7 +576,7 @@ shows what the app holds.
 | `library.gestures.learning` | action being recorded, or `0` |
 | `library.record` | `0`, `wait`, `pattern touch.N.KIND`, `shape K` (sample count), `checking` or `ready` |
 | `library.record.line` | record card's progress/refusal line, empty without a card |
-| `library.ui_at.X.Y` | semantic name of the Library hit at screen pixel X,Y, empty for none; see recording workflow. The top bar has five buttons (`exit`, `settings`, `share`, `new-folder`, `new`; beta.2's Graph button was taken out again, the owner's ruling of 2026-11-03). A notebook's menu has `more.open`, `more.rename`, `more.move`, `more.pdf`, `more.graph` (Leave out of the Graph, or Show in the Graph) and `more.delete`; a folder's `fmore.rename`, `fmore.move`, `fmore.graph` and `fmore.remove` (Cancel is `done` in both); Move to `move.top`, `move.to.PATH` (a folder by its path, `move.to.School/Math`), `move.new`, `move.prev` and `move.next`. Settings' top rows are `display`, `pen-feel`, `shortcuts` and `calibrate` (in that order since 2.0.0-beta.2: tap them by name, never by place), its bottom row `ko`, `pair-menu`, `wifi`, `gestures`, `updates` and `done`, and in Classic the Style row's Font chip `font` (the rest of the row is `theme`; 2.1); the Font sheet has `font.terminess`, `font.atkinson`, `font.noto-sans` and `font.literata` (its rows), `font.cancel` and `font.done`; the Shortcuts sheet has `shortcuts.enable`, `shortcuts.device`, `shortcuts.own`, `buttons`, `shortcuts.reload` and `done`, the Pair sheet `bluetooth`, `pair` and `done`, the Wi-Fi sheet `wifi.radio` (Turn on, Turn off or Retry), `wifi.tab.saved` (the Saved networks button; tapped again it returns to Nearby), `wifi.scan` (Rescan), `wifi.other` (Other..., a hidden network), `wifi.other.open` and `wifi.other.wpa` (its security, after the name), `wifi.other.cancel`, `wifi.net.N` (the Nth saved network row in the list, from 1; drag the list to scroll; the connected row disconnects when tapped), `wifi.delete.N` (that row's trash button), `wifi.near.N` (the Nth scan result row, from 1; its connected row disconnects too) and `done` (a greyed-out row has no name) |
+| `library.ui_at.X.Y` | semantic name of the Library hit at screen pixel X,Y, empty for none; see recording workflow. The top bar has five buttons (`exit`, `settings`, `share`, `new-folder`, `new`; beta.2's Graph button was taken out again, the owner's ruling of 2026-11-03). A notebook's menu has `more.open`, `more.rename`, `more.move`, `more.pdf`, `more.graph` (Leave out of the Graph, or Show in the Graph) and `more.delete`; a folder's `fmore.rename`, `fmore.move`, `fmore.graph` and `fmore.remove` (Cancel is `done` in both); Move to `move.top`, `move.to.PATH` (a folder by its path, `move.to.School/Math`), `move.new`, `move.prev` and `move.next`. Settings is one page (the new Settings menu, #115): its categories down the left are `settings.cat.N` (0 General, 1 Display, 2 Sleep & Clock, 3 Pen, 4 Controls, 5 System; the page keeps the one picked until Grimoire starts again, so a script taps the category before a row of it: `tap library settings.cat.4`, then `tap library gestures`), and its X is `done`. General's rows are `language`, `updates` and `wifi`; Display's `display`, `theme` (Style), `dark`, `font` (Classic only), `rotate` and `pinch`; Sleep & Clock's `sleep-clock` (Sleep settings) and `clock-settings`; Pen's `pen-feel`, `pen-button`, `eraser-mode` and `calibrate`; Controls' `shortcuts`, `pair-menu` and `gestures`; System's `ko`, `mirror` and `about-device` (tap them by name, never by place). A submenu's Back is `settings.back` (to the page it was opened from) and its X `settings.close` (the whole of Settings closes); a Gestures or Buttons group's Back is `done` (to the list of groups). The Language list has `language.auto` and `language.CODE` (`language.en`, `language.es`, `language.ja`), the pen button's list `pen-button.N` and the eraser's `eraser-mode.N` (N as settings.ini numbers `side_button` and `eraser_mode`), each with its Back (`language.back`, `pen-button.back`, `eraser-mode.back`); About's Back is `about-device.back`. The Display, Sleep settings and Clock settings pages are the Display sheet's (`display.NAME`: `display.back`, `display.done` for its X, `display.brightness`, `display.warmth`, `display.fit`, `display.newpage`; `display.sleep`, `display.pin`, `display.sleep_after`; `display.time12`, `display.size`, `display.corner`). The Font sheet has `font.terminess`, `font.atkinson`, `font.noto-sans` and `font.literata` (its rows), `font.cancel` (its Back) and `font.done` (its X); the Shortcuts sheet has `shortcuts.enable`, `shortcuts.device`, `shortcuts.own`, `buttons` and `shortcuts.reload`, the Pair sheet `bluetooth` and `pair`, the Wi-Fi sheet `wifi.radio` (Turn on, Turn off or Retry), `wifi.tab.saved` (the Saved networks button; tapped again it returns to Nearby), `wifi.scan` (Rescan), `wifi.other` (Other..., a hidden network), `wifi.other.open` and `wifi.other.wpa` (its security, after the name), `wifi.other.cancel`, `wifi.net.N` (the Nth saved network row in the list, from 1; drag the list to scroll; the connected row disconnects when tapped), `wifi.delete.N` (that row's trash button), `wifi.near.N` (the Nth scan result row, from 1; its connected row disconnects too) and `done` (a greyed-out row has no name) |
 | `library.map`, `library.map.KEY` | the Graph opened from the Library (2.0.0-beta.2: two fingers down over it, or the `index-map` key): `graph` while it shows, else `0`, and every `editor.map.KEY` (below) of it. `library.map.no_notebook` is `1` for it (no notebook open), `library.map.tabs` the tabs drawn (`graph` alone here; `graph list pages` for the editor's). `library.map.picker` is `1` while its notebooks' browser (past the caps) is up, `library.map.keep` `1` while a notebook it opened is in front (Back there comes back to it). `tap library map.NAME` taps its controls (`map.back`, `map.open`, `map.view`), `tap library elsewhere.NAME` its browser's (`elsewhere.folder.PATH`, `elsewhere.book.ID`, `elsewhere.back`), and `tap map-node ID:PID` its nodes |
 | `library.graph.omitted` | the Library's notebooks the Graph of all notebooks leaves out (by their own Leave out of the Graph or a folder's), by id, sorted, space-separated (2.0.0-beta.2) |
 | `library.about.view` | What's new while it is open (else empty): `card` (the card hanging from the bat), `list` (Read all's list of every version's notes) or `note` (a version's notes on the sheet) (2.1.0) |
@@ -758,8 +763,9 @@ page area's GL16 rather than DU strips.
   y_all_screens.qs, shapes, hosted, templates, the Index scenarios, z_wifi and z_wifi_networks. Japanese takes its
   letters from DotGothic16 in every font, so it runs in Gothic and Classic only.
 - tests/l10n/fonts.qs (Rust only), in every language and in Classic with each font, Terminess too:
-  Settings with the Style row's Font chip, then the Font sheet with each family highlighted, sideways
-  then upright, and Cancel (shots in `build/shots/l10n/fonts-<lang>-<style>/`).
+  Settings' Display category with its Font row, then the Font sheet with each family tapped (applied at
+  once: the sheet is drawn in it), sideways then upright, and Back (shots in
+  `build/shots/l10n/fonts-<lang>-<style>/`).
 - In each language, tests/l10n/long_root.qs opens Settings from a data root whose path is longer
   than the sheet is wide (`build/scen/l10n/long-root/a-long-data-root-...<lang>`): its Data line, a
   path, is cut short as names are, and the check must not count it, or make check would fail in a
@@ -776,16 +782,19 @@ Under make check it runs after the scenarios, since both open the share server o
 The scenarios y_language (with `GRIMOIRE_LANG=es`: Automatic is Spanish, a pick applies at once
 and is saved, Cancel changes nothing) and z_language_kept (`# root: y_language`: the pick outlasts
 a restart, and Automatic hands the choice back) check Settings > Language, and tests/test_i18n.c
-what no scenario reaches. Settings > Font (2.1) has y_fonts (the chip opens the sheet on the font in
-use; a tap highlights and changes nothing; Cancel and Esc leave the font; Done applies and saves it;
-Gothic has no chip), z_fonts_kept (`# root: y_fonts`: the font outlasts a restart) and y_fonts_unknown
-(`font=comic-sans`: Terminess draws, the line stays through Cancel and other saves, a pick replaces it).
+what no scenario reaches. Settings > Font (2.1; the Display category's Font row since the new Settings
+menu, #115) has y_fonts (the row opens the sheet on the font in use; a tap applies the family at once and
+saves it, with a Full refresh; Back and Esc keep the font tapped; the X closes Settings with one ui refresh;
+Gothic has no Font row), z_fonts_kept (`# root: y_fonts`: the font outlasts a restart; y_fonts quits with
+the storage full after its last tap, so the tap is what saved it) and y_fonts_unknown (`font=comic-sans`:
+Terminess draws, the line stays through the sheet left with Back or the X and through other saves, a font
+tapped replaces it at once).
 Your own fonts (2.1.0-beta.2) have y_fonts_own_1_sheet (`# copy:` lines put tests/fixtures/fonts/good and
 refused into the data root's fonts/: the rows say "Checking..." under the notice "Checking 9 fonts..." while
 `GRIMOIRE_BG_DELAY_MS` holds the check back, then each shows its preview or why it is refused; the pages of
-them; a tap draws the sample in the font and applies nothing; Done saves `font=file:<path>`, redraws with one
-Full refresh and leaves no guard mark; the sheet over a font of the owner's own; a variable and a CFF font;
-Gothic holds none; a built-in font takes it away), z_fonts_own_kept (`# root: y_fonts_own_1_sheet`: the font is
+them; a tap applies the font at once: saves `font=file:<path>`, redraws with one Full refresh, draws the sample
+in it and leaves no guard mark; Back keeps it and holds no other font file; the sheet over a font of the owner's
+own; a variable and a CFF font; Gothic holds none; a built-in font tapped takes it away), z_fonts_own_kept (`# root: y_fonts_own_1_sheet`: the font is
 there at the first screen of the next start) and y_fonts_own_2_missing (`font=file:Gone.ttf`: Terminess draws,
 the row says "File missing.", the line stays through other saves, a pick replaces it and `font_bold`). A row of
 the owner's fonts is tapped by its path, `tap library font.file:GrimoireTest-Regular.ttf` (only a font that can

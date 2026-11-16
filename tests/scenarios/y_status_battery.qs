@@ -71,23 +71,31 @@ expect status.fill is
 expect status.charging is 0
 expect status.text is Nov 14, 22:13
 shot 08-none
-# The art scales with the size: Display's size cell, small to medium to large.
+# The art scales with the size: Clock settings' size row, small to medium to large.
 battery 50 charging
 wait 300
-tap panel display
+tap panel settings
 wait 400
-tap 472 1950
+tap library settings.cat.2
+wait 100
+tap library clock-settings
+wait 400
+tap library display.size
 wait 300
-tap 1460 1950
+tap library display.done
 wait 400
 expect settings.status_size is 1
 expect status.icon is 302 21 72 36
 shot 09-medium-50-charging
-tap panel display
+tap panel settings
 wait 400
-tap 472 1950
+tap library settings.cat.2
+wait 100
+tap library clock-settings
+wait 400
+tap library display.size
 wait 300
-tap 1460 1950
+tap library display.done
 wait 400
 expect settings.status_size is 2
 expect status.icon is 401 23 108 54

@@ -602,8 +602,8 @@ def l10n(args, hooks):
                      [('GRIMOIRE_LANG', lang), ('GRIMOIRE_CHECK_FIT', '1')], inis[style], 8.0)
             t.copies = copies
     if not args.skip_rust_only:
-        # Settings > Font (2.1) in every language and in each font, Terminess too: its chip, and the sheet
-        # with each family highlighted.
+        # Settings > Font (2.1) in every language and in each font, Terminess too: its Font row, and the sheet
+        # with each family tapped.
         for lang in langs:
             for style in ['classic'] + [f'classic-{f}' for f in CLASSIC_FONTS]:
                 n = f'fonts-{lang}-{style}'
