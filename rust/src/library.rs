@@ -184,7 +184,8 @@ const H_EXIT_NO: i32 = 83;
 const H_PAIR_MENU: i32 = 84;
 const H_SHORTCUT_DEVICE: i32 = 85;
 const H_SHORTCUT_OWN: i32 = 86;
-// 2.1: the Style row's Font chip (Classic only), and the Font sheet's rows (arg: the family), Done and Cancel.
+// 2.1: the Font row (Classic only; a chip on the Style row before #115), and the Font sheet's rows (arg: the
+// family), Done (the page's X since #115) and Cancel (its Back).
 const H_SET_FONT: i32 = 89;
 const H_FONT_PICK: i32 = 90;
 const H_FONT_DONE: i32 = 91;

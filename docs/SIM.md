@@ -550,7 +550,7 @@ shows what the app holds.
 | `editor.music` | the Custom music layout on the Custom music sheet while it is open, else the page's if its paper is custom, else empty: the systems per page, a colon, then the parts top to bottom (`treble`, `bass`, `alto`, `tenor`, `drums`, `plain`, `tab4` to `tab7`, `lyrics`), e.g. `4: treble tab6 bass` |
 | `editor.music_max` | while the editor's Custom music sheet is open, the most systems its layout fits on the page it is for (that page's height), else empty |
 | `library.sheet` | what is open over the cards: `none`, `new` (New notebook), `settings`, `more` (a notebook's menu), `folder-more` (a folder's menu), `move` (Move to), `delete`, `keyboard`, `display`, `music`, `koreader`, `language` (Settings > Language's list), `shortcuts` (Settings > Shortcuts), `buttons` (its Buttons sheet), `pair-menu` (Settings > Pair, 2.0.0-beta.2), `pair` (its Pair a controller... sheet), `wifi` (Settings > Wi-Fi, 2.1.0-beta.2), `updates`, `gestures`, `about` (What's new, Rust only), `font` (Settings > Font, Classic only: 2.1), `merge` (a folder moved or renamed onto a name that is there: 2.1; hits `merge.into`, `merge.both`, Cancel is `done`) or `exit` (Exit Grimoire?, Esc at the top level: 2.0.0-beta.2) |
-| `library.font.pick` | the Font sheet's highlighted font, by its settings.ini value: a family's id, or `file:<path>` for one of the owner's own (the font in use as the sheet opens; a tap on a row moves it, Done applies it); empty while the sheet is not up (2.1) |
+| `library.font.pick` | the Font sheet's highlighted font, by its settings.ini value: a family's id, or `file:<path>` for one of the owner's own (the font in use as the sheet opens; a tap on a row moves it and applies that font at once); empty while the sheet is not up (2.1) |
 | `library.font.rows`, `library.font.checking` | the Font sheet's own fonts (2.1.0-beta.2): how many files of grimoire/fonts it lists, and how many of them are still being checked |
 | `library.font.state.PATH`, `library.font.note.PATH` | an own font's row by its path under grimoire/fonts: `ready`, `checking`, `unreadable`, `toobig`, `nolatin`, `format`, `slow` or `missing` (empty for a file the sheet does not list), and what the row says under the name ("Unreadable font.", "Some letters come from Terminess.", empty) |
 | `library.font.shown`, `library.font.page` | the own fonts on the page of them shown, by their paths joined with `\|`, and `2/3` |
@@ -762,8 +762,9 @@ page area's GL16 rather than DU strips.
   y_all_screens.qs, shapes, hosted, templates, the Index scenarios, z_wifi and z_wifi_networks. Japanese takes its
   letters from DotGothic16 in every font, so it runs in Gothic and Classic only.
 - tests/l10n/fonts.qs (Rust only), in every language and in Classic with each font, Terminess too:
-  Settings with the Style row's Font chip, then the Font sheet with each family highlighted, sideways
-  then upright, and Cancel (shots in `build/shots/l10n/fonts-<lang>-<style>/`).
+  Settings' Display category with its Font row, then the Font sheet with each family tapped (applied at
+  once: the sheet is drawn in it), sideways then upright, and Back (shots in
+  `build/shots/l10n/fonts-<lang>-<style>/`).
 - In each language, tests/l10n/long_root.qs opens Settings from a data root whose path is longer
   than the sheet is wide (`build/scen/l10n/long-root/a-long-data-root-...<lang>`): its Data line, a
   path, is cut short as names are, and the check must not count it, or make check would fail in a
@@ -780,16 +781,19 @@ Under make check it runs after the scenarios, since both open the share server o
 The scenarios y_language (with `GRIMOIRE_LANG=es`: Automatic is Spanish, a pick applies at once
 and is saved, Cancel changes nothing) and z_language_kept (`# root: y_language`: the pick outlasts
 a restart, and Automatic hands the choice back) check Settings > Language, and tests/test_i18n.c
-what no scenario reaches. Settings > Font (2.1) has y_fonts (the chip opens the sheet on the font in
-use; a tap highlights and changes nothing; Cancel and Esc leave the font; Done applies and saves it;
-Gothic has no chip), z_fonts_kept (`# root: y_fonts`: the font outlasts a restart) and y_fonts_unknown
-(`font=comic-sans`: Terminess draws, the line stays through Cancel and other saves, a pick replaces it).
+what no scenario reaches. Settings > Font (2.1; the Display category's Font row since the new Settings
+menu, #115) has y_fonts (the row opens the sheet on the font in use; a tap applies the family at once and
+saves it, with a Full refresh; Back and Esc keep the font tapped; the X closes Settings with one ui refresh;
+Gothic has no Font row), z_fonts_kept (`# root: y_fonts`: the font outlasts a restart; y_fonts quits with
+the storage full after its last tap, so the tap is what saved it) and y_fonts_unknown (`font=comic-sans`:
+Terminess draws, the line stays through the sheet left with Back or the X and through other saves, a font
+tapped replaces it at once).
 Your own fonts (2.1.0-beta.2) have y_fonts_own_1_sheet (`# copy:` lines put tests/fixtures/fonts/good and
 refused into the data root's fonts/: the rows say "Checking..." under the notice "Checking 9 fonts..." while
 `GRIMOIRE_BG_DELAY_MS` holds the check back, then each shows its preview or why it is refused; the pages of
-them; a tap draws the sample in the font and applies nothing; Done saves `font=file:<path>`, redraws with one
-Full refresh and leaves no guard mark; the sheet over a font of the owner's own; a variable and a CFF font;
-Gothic holds none; a built-in font takes it away), z_fonts_own_kept (`# root: y_fonts_own_1_sheet`: the font is
+them; a tap applies the font at once: saves `font=file:<path>`, redraws with one Full refresh, draws the sample
+in it and leaves no guard mark; Back keeps it and holds no other font file; the sheet over a font of the owner's
+own; a variable and a CFF font; Gothic holds none; a built-in font tapped takes it away), z_fonts_own_kept (`# root: y_fonts_own_1_sheet`: the font is
 there at the first screen of the next start) and y_fonts_own_2_missing (`font=file:Gone.ttf`: Terminess draws,
 the row says "File missing.", the line stays through other saves, a pick replaces it and `font_bold`). A row of
 the owner's fonts is tapped by its path, `tap library font.file:GrimoireTest-Regular.ttf` (only a font that can

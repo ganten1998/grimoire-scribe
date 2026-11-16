@@ -7,8 +7,9 @@
 # "Checking 9 fonts..." while the check runs (GRIMOIRE_BG_DELAY_MS holds it back), then "Unreadable font.",
 # "Too big (over 24 MB).", "No Latin letters.", "Use .ttf or .otf.", "File missing." and "Some letters come
 # from Terminess.", upright and sideways (two abreast, the narrowest a row gets), on each page of them; the
-# headings "Built in" and "Your fonts (grimoire/fonts)"; then a font picked (its sample drawn in it) and
-# applied, the chip with its family's name, and the sheet in Terminess over it. (2.1.0-beta.2, Rust only)
+# headings "Built in" and "Your fonts (grimoire/fonts)"; then a font tapped (applied at once, its sample drawn
+# in it), Settings' Font row with its family's name, and the sheet in Terminess over it. (2.1.0-beta.2, Rust
+# only)
 wait 100
 expect settings.theme is classic
 expect font is terminess
