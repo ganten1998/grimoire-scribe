@@ -2596,6 +2596,14 @@ What they cannot show is the Scribe's own storage, so this round ships only once
 9. Only if step 1 said the storage takes symlinks, with Grimoire closed:
    `ln -s /etc/hostname /mnt/us/grimoire/templates/linked.png`, start Grimoire, New notebook, Paper: no
    `linked` among the templates. Remove the link.
+10. **The clipboard, the compaction lists, the shortcut files and the PDF cache** (the same read, since
+    #118). Lasso some ink, Copy, turn the page and Paste: it pastes. Take a notebook of two pages or more
+    that the PDF mirror has written (step 6's, if it has two pages; else change another one and close it
+    once with the mirror on), change one of its pages and close it: its
+    `bg: export of <id>: N pages, D drawn` line has D smaller than N (the other pages were found in the PDF
+    cache). Erase a word on a page, close the notebook and start Grimoire again: the log has no
+    `its list does not read` line. With shortcuts on and a keyboard at hand, a key of `shortcuts.ini` acts
+    as before.
 
 ## Hardening round (2026-11), invariants: the documents and the build's crate rule
 
@@ -2675,7 +2683,8 @@ import commits. The owner's check:
    `no longer holds the file that was read` line, and the scan's line counts `0 that differ from their
    listing`. This step decides whether the three checks suit the Scribe's storage: the first line would mean
    that no import starts there, the second that every PDF waits a minute, the third that an imported PDF
-   stays in `import/` and is read again up to three times.
+   stays in `import/` and is read again twice (three times in all), after which its row in the Import place
+   reads "Couldn't import PDF (see grimoire.log)." although its notebook exists.
 8. **A second start during an import.** Start a long import, close Grimoire while it runs and open it
    again: the notice goes on. Pick another PDF in Files: "Another import is still going. This one starts
    after it.", and it starts once the first has ended.

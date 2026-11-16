@@ -67,19 +67,23 @@ root/.cache/pdf/<id>/                   the notebook PDF's page streams, disposa
 `notebook.ini`, not the numbers. Every file is written atomically (`<file>.tmp`, fsync, rename).
 
 From 2.1.1 on Grimoire reads these files only when the entry at the name is a plain file: `settings.ini`,
-`folders.ini`, `sleep.pgm`, a notebook's `notebook.ini`, page files, `thumb.pgm`, previews and `bg/`, the
-pictures and folders of `templates/`, `photos/` and `import/`, the import marks and `import/.attempts`. A
-link there (to a file, to a folder or to nothing), a folder or anything else reads as a file that is not
-there. A folder on the way to a file may be a link (`root` itself, `notebooks/`): only the last name is
-held to this. Some other files of the listing are still opened by path (docs/BACKLOG.md, "Hardening round
-(2026-11), storage reads: what waits").
+`folders.ini`, `sleep.pgm`, a notebook's `notebook.ini`, page files, `erased.txt`, `thumb.pgm`, previews and
+`bg/`, the pictures and folders of `templates/`, `photos/` and `import/`, the import marks and
+`import/.attempts`, an import's work files `links.part` and `names.part`, `clipboard.qpg`, the shortcut files
+(`shortcuts.ini`, `controller.ini`, `shortcuts/`, `gestures.ini`, `live-keys.ini`) and the PDF cache's
+records. A link there (to a file, to a folder or to nothing), a folder or anything else reads as a file that
+is not there; for the shortcut files it is a file that is there and does not read, as their section says. A
+folder on the way to a file may be a link (`root` itself, `notebooks/`): only the last name is held to this.
+Your own fonts' check results and crash guard are still opened by path, after a look at the entry that does
+not follow a link (docs/BACKLOG.md, "Hardening round (2026-11), storage reads: what waits").
 
-The small text files are read up to a size, and a longer one is not read: `settings.ini`,
-`notebook.ini`, `folders.ini`, `bg/index.ini` and `bg/pages.ini` up to 1 MiB (1,048,576 bytes), an import
-folder's mark up to 4 KiB, `import/.attempts` up to 64 KiB, and a PGM (`thumb.pgm`, `sleep.pgm`, a preview)
-up to 64,000,064 bytes (its largest picture, 8000 x 8000, and a header). Page files and pictures have no
-limit of this kind. A `folders.ini` over its limit reads as an empty list; what the other readers do with a
-file that is not read is in their sections.
+The small text files are read up to a size, and a longer one is not read: `settings.ini`, `notebook.ini`,
+`folders.ini`, `bg/index.ini` and `bg/pages.ini` up to 1 MiB (1,048,576 bytes), an import folder's mark up to
+4 KiB, `import/.attempts` and a notebook's `erased.txt` up to 64 KiB, an import's `links.part` up to 4,194,314
+bytes and its `names.part` up to 406,000 (the most one worker's walk can have the first slice write: "Imports:
+PDFs" below), and a PGM (`thumb.pgm`, `sleep.pgm`, a preview) up to 64,000,064 bytes (its largest picture,
+8000 x 8000, and a header). Page files and pictures have no limit of this kind. A `folders.ini` over its limit
+reads as an empty list; what the other readers do with a file that is not read is in their sections.
 
 ## Pages: `p<id>.qpg`
 
@@ -299,8 +303,12 @@ zip, a `grimoire-pull` copy or an older version.
   later pass or for the version that can: one that does not read, one of another size than its
   notebook's (compacted once the editor writes it at the notebook's size), and one holding data
   1.1 reads past. So does a page it could not write. The list goes once it is empty. A list that
-  is there but does not read (a read error) is never written over: the editor tries again at its
-  next save, and compaction leaves it as it is.
+  is there but does not read (a read error, or from 2.1.1 on one longer than 64 KiB: the longest
+  Grimoire writes is 45,136 bytes, 4096 ids) is never written over: the editor tries again at its
+  next save, and compaction leaves it as it is. From 2.1.1 on an entry at its name that is no plain
+  file (a link, to a file or to nothing, a FIFO, a folder) is no list, as nothing there is: no
+  compaction runs for it, and the editor's next write of the list replaces the entry itself, never
+  the file a link names (a folder there stays, and the page is not listed while it does).
 - Opening the notebook stops its compaction first, whether it waits or runs, and so does Grimoire
   leaving (a notebook it closes as it leaves is not compacted then): a page is never left half
   written (each is its old file or its new one), and the list keeps the pages that are not done.
@@ -734,7 +742,9 @@ just before the move it looks at the name once more. When the name no longer hol
 and inode, with the size and mtime it was opened with: another file was put there meanwhile, or the file
 changed, or it is gone), nothing moves and no `done` mark is written; what is at the name is taken by the next
 scan as the file it is. Such an end leaves its try counted in `import/.attempts` (below), so a name that never
-holds the file read is tried three times with those contents and then waits until the file changes. A path
+holds the file read is tried three times with those contents and then waits until the file changes. Its row in
+the Import place then reads "Couldn't import PDF (see grimoire.log)." and the scan's log line counts it among
+the files that failed, although the PDF was imported and its notebook exists. A path
 that spells Grimoire's folder or `import` in another case lies in `import/` only
 where the storage takes both spellings as one folder (the Scribe's does); on a storage that tells names apart by
 case they are two folders, and the file stays where it is. Names: a name typed in New notebook's sheet (one of
@@ -842,9 +852,13 @@ waits, and within 10 s of the end of a previous run's import):
 - **Links and names (lane L6):** slice 0 also asks the worker for the PDF's links (`LINKS <w> <h>`, after the page
   count), in the pixels of the Scribe page by the same transform that draws the page, and keeps what it sent in
   the work folder as `links.part` (the `L` and `Q` records, then `F`) and `names.part` (the `O` records), in the
-  worker's own record grammar, read back strictly by the last slice. The commit writes `doclinks.ini` (below) and
-  `nav.ini` from them, before `notebook.ini`, and removes the two parts. A worker that dies, stalls or lies in
-  the walk costs the notebook its links and names only (logged); the pages do not depend on it. What is read:
+  worker's own record grammar, read back strictly by the last slice, each only as a plain file of at most its
+  size: `links.part` 4,194,314 bytes (a worker's 4 MiB of records, line for line, and the `F` line the slice
+  writes itself when the walk sent none), `names.part` 406,000 (an `O` line of at most 203 bytes for each of
+  at most 2000 pages); a part that does not read leaves the notebook without links and names. The commit
+  writes `doclinks.ini` (below) and `nav.ini` from them, before `notebook.ini`, and removes the two parts. A
+  worker that dies, stalls or lies in the walk costs the notebook its links and names only (logged); the
+  pages do not depend on it. What is read:
   an annotation `/Subtype /Link`, not hidden (`/F` bit 2) or not viewed (bit 6); its `/A` GoTo (explicit
   destination, or a name or string looked up in the catalog's `/Names /Dests` name tree and its PDF 1.1 `/Dests`
   dictionary, each tried for either type), the four Named actions (`NextPage`, `PrevPage`, `FirstPage`,
@@ -1350,7 +1364,9 @@ earlier ignore it; 1.2.0 and the 2.0 betas read it. A line naming an action a ve
 (2.0.0-beta.5 added fifteen) is refused and counted there, and the other lines still load. From
 2.0.0-beta.5 on, a file that binds none of the D-pad's four directions (`pad.Up`, `Down`, `Left`,
 `Right`: no earlier version read a D-pad, so none wrote them) gets the starter file's D-pad lines in
-memory; the file is not changed.
+memory; the file is not changed. From 2.1.1 on an entry at its name that is no plain file (a link, to a
+file or to nothing, or a FIFO) is a file that is there and does not read, as one over the 64 KiB limit
+is: no mappings come from it. The other shortcut files below are read the same way.
 
 `controller.ini` (2.0.0-beta.5 on), beside it, holds the controller buttons learned in Settings >
 Shortcuts > Buttons (Settings > Controller > Buttons before 2.0.0-beta.2): `# ...` lines, then `pad.<button>=<action>` lines in `shortcuts.ini`'s grammar,
@@ -2025,7 +2041,8 @@ offset  size  field
 112     ...   the zlib stream
 ```
 
-All integers little endian. A record is used only when it reads, its length and CRC-32 are right, its stamp
+All integers little endian. A record is used only when it reads (from 2.1.1 on, a plain file at its name of
+at most 112 bytes and 128 MiB, its header and the largest stream), its length and CRC-32 are right, its stamp
 (bytes 4 to 47, the inode and the notebook's paper) is the page's today, taken before the page was read, and
 its picture's (channels, size, time) is the picture file's today, taken before any page on it was drawn: a
 changed page, a picture made, replaced or gone, another dpi, page size or notebook paper, a newer Grimoire or

@@ -224,7 +224,7 @@ the name rules, the busy check and the copy job (`BgKind::CopyFile`). Nothing on
   steps 1 to 3 say how long a big PDF takes to read whole; steps 7 and 8 say whether the Scribe's storage gives a
   file one identity by its name and by an open file, which the scan's look, the import lock and the move to
   `import/done` all compare (if it did not, every dropped PDF would wait a minute, no import would start, and
-  an imported PDF would stay in `import/` and be read again up to three times). No release holds this round's
+  an imported PDF would stay in `import/` and be read again twice). No release holds this round's
   import commits until those have run.
 - **Confirm Open its notebook with the file record.** In Files, a PDF whose key and size match a notebook's
   record opens that notebook without reading the file whole; compare the whole file in the background before
@@ -266,9 +266,9 @@ the name rules, the busy check and the copy job (`BgKind::CopyFile`). Nothing on
   scan. Give `folder_holds_pdfs` the look's answer for such a folder.
 - **The import's small files and the bounded read.** The marks and an import's state are read through
   `util::read_file`, which since the storage reads takes plain files only; they have limits of their own when
-  parsed (a mark is 4 KiB at most), not when read. Read them with `util::read_file_max`, and the last slice's
-  `links.part` and `names.part` with it too (today `std::fs::read`, then a size check). The storage reads'
-  list below names the marks as well; the lock file's own open could share `util`'s plain-file open.
+  parsed (a mark is 4 KiB at most), not when read. Read them with `util::read_file_max`, as the last slice
+  reads `links.part` and `names.part` since #118. The storage reads' list below names the marks as well; the
+  lock file's own open could share `util`'s plain-file open.
 - **The picker's own test of "under import"** compares names without case; on a storage that tells names
   apart, rows of a folder only spelled like import would show a status.
 - **Picture folders with a line break in their name** are still imported by the picture scan; give
@@ -1397,17 +1397,14 @@ items of Document links. Left:
 
 ## Hardening round (2026-11), storage reads: what waits
 
-- The other reads by path take the plain-file read (`util::open_read_nofollow`): the clipboard, the
-  compaction's list, the shortcut files, one read in the fonts' cache, the PDF cache's records. The
-  compaction's list goes first: it is read at every start, before the first frame
-  (`compact_queue_listed`), and the start is fully under the rule only once it is.
+- The one reader left that opens by path, in your own fonts (`userfonts.rs` `read_small`: a font's verdict
+  and the crash guard, after an `lstat` that refuses a link), takes the plain-file read
+  (`util::open_read_nofollow`) with the change that owns that file (#111).
 - The folders a scan lists (the import folders, the marks) are read through the storage walk, as picked
   folders are.
 - A page file that is there but does not read fails to open rather than opening blank; with it, a size
   limit on page files.
 - `mkdir_p` stays as it is (an existing entry counts as the folder): the data root, a platform's folders
   and the tests' folders may sit behind a link.
-- Tidy-up: the PDF cache's and the share spool's own "made afresh" onto `util::create_fresh_nofollow`;
-  `nav.rs` `read_sidecar` onto `util::open_read_nofollow`.
 - If no other lane has taken them by the merge: the marks in `pdfimport.rs` read with their own limits,
   and the link tests run as root in CI's sandbox job.
