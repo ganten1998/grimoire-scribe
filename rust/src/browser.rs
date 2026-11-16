@@ -29,6 +29,12 @@ const B_CARD_OPEN: i32 = 7;
 const B_CARD_PICTURES: i32 = 8;
 const B_CARD_NOTEBOOK: i32 = 9;
 const B_CARD_CANCEL: i32 = 10;
+// Files (2.2): the path bar's crumbs (arg: the crumb's index in crumb_list), its Sort and Show chips, and a row of
+// the Go to sheet (arg: its index in goto).
+const B_CRUMB: i32 = 11;
+const B_SORT: i32 = 12;
+const B_SHOW: i32 = 13;
+const B_GOTO: i32 = 14;
 
 /// What a task can pick, or Files lists as usable (browser.md 4.3).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -111,6 +117,8 @@ pub enum BrowserResult {
     LookAgain,
     /// the root's "Show Files in Library" row: the host puts the Files card in the Library (files_card=1)
     ShowInLibrary,
+    /// Files' Sort or Show chip changed `prefs`: the host saves them (files_sort, files_show)
+    Prefs,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -123,6 +131,12 @@ pub enum RowKind {
     Look,
     /// the root's last row while the Files card is not in the Library: "Show Files in Library"
     ShowCard,
+    /// Files (2.2): a picture, a font, any other file (Show all), and a link (Show all: "link, not followed", never
+    /// entered or opened)
+    Picture,
+    Font,
+    Other,
+    Link,
 }
 
 /// A root row's place. Pick mode's root has Import, Documents, Downloads and All storage; place mode's has them all
@@ -228,6 +242,8 @@ impl Row {
 struct Card {
     /// the row (an index into rows) it belongs to
     row: usize,
+    /// Files' Go to sheet (2.2) in place of a row's card
+    goto: bool,
     rect: Rect,
     hits: HitList,
     /// the pointer went down inside it
@@ -244,6 +260,17 @@ pub struct Browser {
     kinds: Vec<PickKind>,
     /// the Library's settings for Files, as it opened (and as changed since)
     pub prefs: FilesPrefs,
+    /// the rows were made from the listing (and, once ready, are the rows shown)
+    built: bool,
+    /// Files (2.2): the rows being made ready, stat-ed in slices for Sort by newest or size and then sorted, while
+    /// the rows on screen stay as they are; how far their stats are
+    next: Option<Vec<Row>>,
+    next_from: usize,
+    /// the Go to sheet's rows: label, folder, icon, and whether it is a place of the root
+    goto: Vec<(String, StoragePath, IconKind, bool)>,
+    /// where the path bar was drawn (the Go to sheet hangs from it), and the rows' names as last drawn (a probe's)
+    path_bar: Rect,
+    drawn: Vec<String>,
     /// None: the root's four rows; else the folder shown
     at: Option<StoragePath>,
     /// the folder the way in started at (a root row's), whose Back is the root's rows
@@ -294,6 +321,27 @@ fn root_dir() -> Option<(String, String)> {
 
 fn is_pdf(n: &[u8]) -> bool {
     n.len() > 4 && n[n.len() - 4..].eq_ignore_ascii_case(b".pdf")
+}
+
+fn is_font(n: &[u8]) -> bool {
+    [b".ttf".as_slice(), b".otf"].iter().any(|e| n.len() > e.len() && n[n.len() - e.len()..].eq_ignore_ascii_case(e))
+}
+
+/// Files' order (2.2, browser.md 6.3) of two rows (is a folder, name, stat): folders before files; then by name
+/// (name_cmp: accents folded, digit runs read as numbers), the newest first (sort 1), or the largest first (sort 2;
+/// folders by name); ties by name. A row with no stat (a link, a file gone since its folder was read) comes after
+/// those with one.
+pub fn files_cmp(a: (bool, &str, Option<FsStat>), b: (bool, &str, Option<FsStat>), sort: i32) -> std::cmp::Ordering {
+    use std::cmp::Ordering;
+    if a.0 != b.0 {
+        return if a.0 { Ordering::Less } else { Ordering::Greater };
+    }
+    let key = match sort {
+        1 => b.2.map(|s| s.mtime).cmp(&a.2.map(|s| s.mtime)),
+        2 if !a.0 => b.2.map(|s| s.size).cmp(&a.2.map(|s| s.size)),
+        _ => Ordering::Equal,
+    };
+    key.then_with(|| name_cmp(a.1, b.1))
 }
 
 fn is_picture(n: &[u8]) -> bool {
@@ -439,6 +487,8 @@ impl Browser {
         self.at = None;
         self.place_root = None;
         self.listing = None;
+        self.next = None;
+        self.built = true;
         self.card = None;
         self.screen = 0;
         self.capped = false;
@@ -480,6 +530,8 @@ impl Browser {
                 self.at = Some(p);
                 self.rows = Vec::new();
                 self.ready = false;
+                self.built = false;
+                self.next = None;
                 self.card = None;
                 self.screen = 0;
                 self.capped = false;
@@ -503,6 +555,9 @@ impl Browser {
     /// directory did not say (d_type unknown) is its stat's, within the same budget a tick: thousands of them never
     /// hold the UI past the 20 ms rule.
     fn step_listing(&mut self, budget_ms: u32) {
+        if self.built {
+            return;
+        }
         let Some(l) = self.listing.as_mut() else { return };
         let t0 = real_now_ms();
         if !l.step(budget_ms) {
@@ -523,52 +578,68 @@ impl Browser {
 
     /// The tests': the folder read to its end at once.
     pub fn list_now(&mut self) {
-        while self.listing.is_some() && !self.ready {
+        while self.listing.is_some() && !self.built {
             self.step_listing(FS_SLICE_MS * 50);
+        }
+        while self.next.is_some() {
+            self.sort_step(FS_SLICE_MS * 50);
         }
     }
 
     fn build_rows(&mut self) {
+        let place = self.mode == BrowseMode::Place;
+        let show_all = place && self.prefs.show == 1;
+        let pdfs = self.kinds.contains(&PickKind::Pdf);
         let (Some(l), Some(at)) = (self.listing.as_mut(), self.at.clone()) else { return };
         self.capped = l.capped;
         self.hidden = l.hidden;
         self.too_long = l.too_long;
         // (a kind d_type left unknown was its stat's: step_listing)
         let mut dirs: Vec<Row> = Vec::new();
-        let mut pdfs: Vec<Row> = Vec::new();
+        let mut files: Vec<Row> = Vec::new();
         let mut odd = 0;
         for (ix, e) in l.entries.iter().enumerate() {
             let Ok(name) = std::str::from_utf8(&e.name) else {
                 odd += 1;
                 continue;
             };
-            // (a folder or a PDF whose path an import cannot keep, pdfimport::name_storable, is no row either: counted
-            // with the odd names)
+            // pick mode: folders and PDFs; Files: pictures and fonts too, and with Show all every file and link
+            let kind = match e.kind {
+                FsKind::Dir => RowKind::Dir,
+                FsKind::File if pdfs && is_pdf(&e.name) => RowKind::Pdf,
+                FsKind::File if place && is_picture(&e.name) => RowKind::Picture,
+                FsKind::File if place && is_font(&e.name) => RowKind::Font,
+                FsKind::File if show_all => RowKind::Other,
+                FsKind::Link if show_all => RowKind::Link,
+                _ => continue,
+            };
+            // (a row whose path an import cannot keep, pdfimport::name_storable, is no row either: counted with the
+            // odd names)
             if !crate::pdfimport::name_storable(name) {
-                if e.kind == FsKind::Dir || (e.kind == FsKind::File && self.kinds.contains(&PickKind::Pdf) && is_pdf(&e.name)) {
-                    odd += 1;
-                }
+                odd += 1;
                 continue;
             }
             let Some(path) = at.join(&e.name) else { continue };
-            match e.kind {
-                FsKind::Dir => {
-                    let mut r = Row::new(RowKind::Dir, name, path);
-                    r.ix = ix;
-                    r.stat = e.stat;
-                    dirs.push(r);
+            let mut r = Row::new(kind, name, path);
+            r.ix = ix;
+            r.stat = e.stat;
+            if kind == RowKind::Dir {
+                dirs.push(r);
+            } else {
+                files.push(r);
+            }
+        }
+        // (the links the listing left out, by name: Show all lists them, never entered or opened)
+        if show_all {
+            for n in &l.links {
+                let (Ok(name), Some(path)) = (std::str::from_utf8(n), at.join(n)) else { continue };
+                if crate::pdfimport::name_storable(name) {
+                    files.push(Row::new(RowKind::Link, name, path));
                 }
-                FsKind::File if self.kinds.contains(&PickKind::Pdf) && is_pdf(&e.name) => {
-                    let mut r = Row::new(RowKind::Pdf, name, path);
-                    r.ix = ix;
-                    r.stat = e.stat;
-                    pdfs.push(r);
-                }
-                _ => {}
             }
         }
         dirs.sort_by(|a, b| name_cmp(&a.name, &b.name));
-        pdfs.sort_by(|a, b| name_cmp(&a.name, &b.name));
+        files.sort_by(|a, b| name_cmp(&a.name, &b.name));
         if odd > 0 || l.hidden > 0 {
             qlog!("files: %d names left out (links, refused folders, odd names, long paths: %d, %d of them odd)", (odd + l.hidden) as i32, l.hidden as i32, odd as i32);
         }
@@ -577,13 +648,66 @@ impl Browser {
             // would be too long for Grimoire to hand to its import (one line).
             self.toast = Some(tr("Path too long."));
         }
-        self.rows = dirs;
-        self.rows.extend(pdfs);
-        if self.in_import_place() {
-            self.rows.push(Row::new(RowKind::Look, "Look again", at));
+        dirs.extend(files);
+        self.built = true;
+        if place && self.prefs.sort != 0 && !dirs.is_empty() {
+            // (by newest or size: every row's stat first, in slices; the rows shown stay as they are meanwhile)
+            self.next = Some(dirs);
+            self.next_from = 0;
+        } else {
+            self.set_rows(dirs);
         }
+    }
+
+    /// The rows shown from now on (the Import place's Look again after them), from the first screen.
+    fn set_rows(&mut self, mut rows: Vec<Row>) {
+        if self.in_import_place() {
+            if let Some(at) = self.at.clone() {
+                rows.push(Row::new(RowKind::Look, "Look again", at));
+            }
+        }
+        self.rows = rows;
+        self.screen = 0;
         self.ready = true;
         self.status_due = true;
+    }
+
+    /// One slice of stats for the rows being made ready (Sort by newest or size, at most `budget_ms`); once each has
+    /// its stat they are sorted and become the rows shown. True when they did.
+    fn sort_step(&mut self, budget_ms: u32) -> bool {
+        let t0 = real_now_ms();
+        if let (Some(next), Some(l)) = (self.next.as_mut(), self.listing.as_mut()) {
+            while self.next_from < next.len() {
+                let r = &mut next[self.next_from];
+                if r.ix != usize::MAX && r.stat.is_none() && !r.stat_tried {
+                    if !l.stat(r.ix..r.ix + 1, budget_ms) {
+                        return false; // (out of time: this row's stat at the next tick)
+                    }
+                    r.stat = l.entries.get(r.ix).and_then(|e| e.stat);
+                    r.stat_tried = true;
+                }
+                self.next_from += 1;
+                if real_now_ms().wrapping_sub(t0) >= budget_ms {
+                    return false;
+                }
+            }
+        }
+        let Some(mut rows) = self.next.take() else { return false };
+        let sort = self.prefs.sort;
+        rows.sort_by(|a, b| files_cmp((a.kind == RowKind::Dir, &a.name, a.stat), (b.kind == RowKind::Dir, &b.name, b.stat), sort));
+        qlog!("files: %d rows sorted (%d) in %u ms", rows.len() as i32, sort, real_now_ms().wrapping_sub(t0));
+        self.set_rows(rows);
+        true
+    }
+
+    /// Sort or Show changed: the rows made again from the folder's listing (nothing is read again), and sorted.
+    fn rebuild(&mut self) {
+        if self.at.is_none() || !self.built {
+            return; // (the root has no listing; a listing still being read builds with the new settings)
+        }
+        self.next = None;
+        self.built = false;
+        self.build_rows();
     }
 
     fn in_import_place(&self) -> bool {
@@ -635,8 +759,17 @@ impl Browser {
 
     // ---- what a row says ----
 
+    /// The band under the header: the path line (100 px), in Files the path bar (120 px).
+    fn band_h(&self) -> i32 {
+        if self.mode == BrowseMode::Place {
+            u(120.0)
+        } else {
+            u(100.0)
+        }
+    }
+
     fn per_page(&self, a_h: i32) -> usize {
-        let top = u(190.0) + u(40.0) + u(100.0) + u(10.0);
+        let top = u(190.0) + u(40.0) + self.band_h() + u(10.0);
         let room = a_h - top - u(170.0) - u(20.0);
         (room / u(150.0)).max(1) as usize
     }
@@ -692,12 +825,10 @@ impl Browser {
             },
             RowKind::Look | RowKind::ShowCard => String::new(),
             RowKind::Pdf | RowKind::Dir if self.under_import() && r.status != RowStatus::None => self.status_text(&r.status),
-            RowKind::Pdf => {
-                let Some(s) = r.stat else { return String::new() };
-                let mut day = String::new();
-                format_date_short(s.mtime, &mut day, 64);
-                format!("{}, {}", size_label(s.size), day)
-            }
+            RowKind::Pdf | RowKind::Picture | RowKind::Font | RowKind::Other => self.row_sub_plain(r),
+            // TRANSLATORS: Files with Show all: the second line of a row that is a link, which Grimoire never follows
+            // (34 px, under the link's name).
+            RowKind::Link => tr("link, not followed").to_string(),
             RowKind::Dir => match r.pictures {
                 Some(n) if n > 0 => {
                     // TRANSLATORS: a folder in the file picker that holds pictures; %d is how many (small text under its name).
@@ -737,13 +868,12 @@ impl Browser {
     fn crumb_list(&self) -> Vec<(String, Option<StoragePath>)> {
         let Some(at) = self.at.as_ref() else { return Vec::new() };
         let mut out = vec![(tr("Files").to_string(), None)];
-        // the place: the one of this mode whose folder holds this one, the nearest (All storage holds every one)
-        let (k, base) = self
-            .mode_places()
-            .iter()
-            .filter_map(|&k| self.place_path(k).map(|p| (k, p)))
-            .filter(|(_, p)| path_under(at, p))
-            .max_by_key(|(_, p)| p.as_bytes().len())
+        // the place: the one the way in started at (Back goes up to it), else the one of this mode whose folder holds
+        // this one, the nearest (All storage holds every one)
+        let places: Vec<(PlaceKind, StoragePath)> = self.mode_places().iter().filter_map(|&k| self.place_path(k).map(|p| (k, p))).collect();
+        let started = self.place_root.as_ref().filter(|r| path_under(at, r)).and_then(|r| places.iter().find(|(_, p)| p == r).cloned());
+        let (k, base) = started
+            .or_else(|| places.iter().filter(|(_, p)| path_under(at, p)).max_by_key(|(_, p)| p.as_bytes().len()).cloned())
             .unwrap_or((PlaceKind::All, StoragePath::root()));
         out.push((Self::place_label(k).to_string(), Some(base.clone())));
         let mut p = base;
@@ -773,6 +903,10 @@ impl Browser {
     /// each at most a slice of 20 ms, the rows on screen only. Returns the rows (indices) that changed.
     pub fn work(&mut self, a_h: i32, now: u32) -> Vec<usize> {
         let mut changed = Vec::new();
+        if self.next.is_some() {
+            self.sort_step(FS_SLICE_MS);
+            return changed;
+        }
         if !self.ready {
             self.step_listing(FS_SLICE_MS);
             return changed;
@@ -971,10 +1105,67 @@ impl Browser {
         self.card = Some(Card { row, ..Default::default() });
     }
 
-    /// The card's lines: details, then its rows (hit id, icon, label).
-    fn card_lines(&self, row: usize) -> (String, Vec<(i32, IconKind, String)>) {
+    /// Files' Go to sheet (2.2): every place of the root that is there, then the storage's other top folders, by
+    /// name (each a row that opens it), then Cancel.
+    fn open_goto(&mut self) {
+        let mut rows: Vec<(String, StoragePath, IconKind, bool)> = Vec::new();
+        let pick = self.pick();
+        let Some(st) = self.storage.as_ref() else { return };
+        let mut taken: Vec<Vec<u8>> = Vec::new();
+        for &k in self.mode_places() {
+            let Some(p) = self.place_path(k) else { continue };
+            if let Some(first) = p.components().next() {
+                taken.push(first.to_ascii_lowercase());
+            }
+            let always = matches!(k, PlaceKind::Import | PlaceKind::All);
+            if always || st.stat(&p, pick).is_ok_and(|s| s.mode & libc::S_IFMT as u32 == libc::S_IFDIR as u32) {
+                rows.push((Self::place_label(k).to_string(), p, Self::place_icon(k), true));
+            }
+        }
+        // the storage's top folders that are no place (read at once, names and kinds only, as a folder is)
+        if let Ok(mut l) = FsListing::start(st, &StoragePath::root(), pick) {
+            let t0 = real_now_ms();
+            while !l.step(FS_SLICE_MS) && real_now_ms().wrapping_sub(t0) < 200 {}
+            let n = l.entries.len();
+            l.stat(0..n, 100);
+            let mut tops: Vec<(String, StoragePath)> = l
+                .entries
+                .iter()
+                .filter(|e| e.kind == FsKind::Dir && !taken.contains(&e.name.to_ascii_lowercase()))
+                .filter_map(|e| Some((std::str::from_utf8(&e.name).ok()?.to_string(), StoragePath::new(&e.name)?)))
+                .collect();
+            tops.sort_by(|a, b| name_cmp(&a.0, &b.0));
+            rows.extend(tops.into_iter().map(|(n, p)| (n, p, IconKind::Folder, false)));
+        }
+        self.goto = rows;
+        self.card = Some(Card { goto: true, ..Default::default() });
+    }
+
+    fn place_icon(k: PlaceKind) -> IconKind {
+        match k {
+            PlaceKind::Import | PlaceKind::Downloads => IconKind::Download,
+            PlaceKind::Documents => IconKind::Folder,
+            PlaceKind::Templates => IconKind::Paper,
+            PlaceKind::Photos => IconKind::Image,
+            PlaceKind::Fonts | PlaceKind::KindleFonts => IconKind::Font,
+            PlaceKind::PdfCopies => IconKind::Pdf,
+            PlaceKind::Trash => IconKind::Trash,
+            PlaceKind::All => IconKind::Files,
+        }
+    }
+
+    /// The card's lines: details (the Go to sheet's title), then its rows (hit id, its arg, icon, label).
+    fn card_lines(&self, card: &Card) -> (String, Vec<(i32, i32, IconKind, String)>) {
+        if card.goto {
+            let mut rows: Vec<(i32, i32, IconKind, String)> = self.goto.iter().enumerate().map(|(i, g)| (B_GOTO, i as i32, g.2, g.0.clone())).collect();
+            rows.push((B_CARD_CANCEL, 0, IconKind::Close, tr("Cancel").to_string()));
+            // TRANSLATORS: the title of Files' Go to sheet, which a tap on the folder shown in its path bar opens: its
+            // places and the Kindle's top folders, one a row (34 px, at the sheet's top).
+            return (tr("Go to").to_string(), rows);
+        }
+        let row = card.row;
         let r = &self.rows[row];
-        let mut rows: Vec<(i32, IconKind, String)> = Vec::new();
+        let mut rows: Vec<(i32, i32, IconKind, String)> = Vec::new();
         let details;
         match r.kind {
             RowKind::Pdf => {
@@ -982,27 +1173,27 @@ impl Browser {
                 if r.notebook.is_some() {
                     // TRANSLATORS: a PDF's card in the file picker: a notebook already holds this book, and this opens it
                     // (a row of about 800 px at 44 px).
-                    rows.push((B_CARD_NOTEBOOK, IconKind::Notebook, tr("Open its notebook").to_string()));
+                    rows.push((B_CARD_NOTEBOOK, 0, IconKind::Notebook, tr("Open its notebook").to_string()));
                 }
                 // (with a notebook found by its record's size, both: the import says "PDF already imported." of the
                 // same file, and makes a notebook of another)
                 if r.notebook.is_none() || r.also_import {
                     // TRANSLATORS: a PDF's card in the file picker: this makes a notebook of its pages (a row of about 800 px at 44 px).
-                    rows.push((B_CARD_IMPORT, IconKind::Download, tr("Import as notebook").to_string()));
+                    rows.push((B_CARD_IMPORT, 0, IconKind::Download, tr("Import as notebook").to_string()));
                 }
             }
             _ => {
                 details = r.name.clone();
-                rows.push((B_CARD_OPEN, IconKind::Folder, tr("Open").to_string()));
+                rows.push((B_CARD_OPEN, 0, IconKind::Folder, tr("Open").to_string()));
                 let n = r.pictures.unwrap_or(0);
                 if n > 0 {
                     // TRANSLATORS: a folder's card in the file picker: this makes one notebook of the %d pictures in it,
                     // in their order (a row of about 800 px at 44 px).
-                    rows.push((B_CARD_PICTURES, IconKind::Download, cformat!(ng_("Import %d picture as notebook", "Import %d pictures as notebook", n as i64), n as i32)));
+                    rows.push((B_CARD_PICTURES, 0, IconKind::Download, cformat!(ng_("Import %d picture as notebook", "Import %d pictures as notebook", n as i64), n as i32)));
                 }
             }
         }
-        rows.push((B_CARD_CANCEL, IconKind::Close, tr("Cancel").to_string()));
+        rows.push((B_CARD_CANCEL, 0, IconKind::Close, tr("Cancel").to_string()));
         (details, rows)
     }
 
@@ -1029,6 +1220,7 @@ impl Browser {
     pub fn draw(&mut self, a: &mut App) {
         hits_clear(&mut self.hits);
         self.row_rects.clear();
+        self.drawn.clear();
         let (aw, ah) = (a.w, a.h);
         let per = self.per_page(ah);
         self.screen = self.screen.min(self.rows.len().saturating_sub(1) / per);
@@ -1046,9 +1238,12 @@ impl Browser {
         ui_text(c, FontFace::Title, ui_title_size() * 1.2, ui_small_size(), Rect::new(tx, 0, aw - tx - m, th), title, 2, false, 0);
         ui_rule(c, 0, aw, th, u(4.0), 0);
         ui_frieze(c, 0, aw, th + u(9.0), u(28.0), 0);
-        // the band: Files and the free space at the root, else the path
-        let band = Rect::new(m, th + u(40.0), aw - 2 * m, u(100.0));
-        if self.at.is_none() {
+        // the band: Files and the free space at the root, else the path (in Files the path bar)
+        let band = Rect::new(m, th + u(40.0), aw - 2 * m, self.band_h());
+        self.path_bar = band;
+        if self.at.is_some() && self.mode == BrowseMode::Place {
+            self.draw_path_bar(c, band);
+        } else if self.at.is_none() {
             let free = self.free;
             let low = free.is_some_and(|(f, _)| fsview_nearly_full(f));
             let left = if low {
@@ -1091,6 +1286,7 @@ impl Browser {
             let r = Rect::new(m, y0 + k as i32 * u(150.0), aw - 2 * m, u(150.0) - u(12.0));
             self.draw_row(&mut a.screen, r, i);
             self.row_rects.push((i, r));
+            self.drawn.push(self.rows[i].name.clone());
             hits_add(&mut self.hits, r, B_ROW, i as i32);
             if self.has_card(i) {
                 let mr = Rect::new(r.x + r.w - u(130.0), r.y + u(14.0), u(110.0), r.h - u(28.0));
@@ -1121,6 +1317,111 @@ impl Browser {
         a.toast_floor = 0;
     }
 
+    /// Files' path bar (2.2): the path's parts on the left, each a target the bar's height (a tap on one opens it;
+    /// on the last, the folder shown, the Go to sheet), and the Sort and Show chips on the right. A path too long for
+    /// its room loses the parts after Files first, to one "...", which opens the last of them.
+    fn draw_path_bar(&mut self, c: &mut Canvas, band: Rect) {
+        let fs = ui_text_size();
+        let small = ui_small_size();
+        // the chips, right to left: Show, then Sort
+        let chip = |c: &mut Canvas, x_right: i32, icon: IconKind, label: &str| -> Rect {
+            let iw = u(70.0);
+            let w = (u(30.0) + iw + u(14.0) + font_measure(FontFace::Bold, small, label) + u(30.0)).clamp(u(220.0), band.w / 3);
+            let r = Rect::new(x_right - w, band.y + u(10.0), w, band.h - u(20.0));
+            ui_frame(c, r, u(16.0), 255, true, 0);
+            ui_frame(c, r, u(16.0), 0, false, u(3.0));
+            ui_icon(c, icon, Rect::new(r.x + u(24.0), r.y + (r.h - iw) / 2, iw, iw), 0);
+            let tx = r.x + u(24.0) + iw + u(14.0);
+            font_draw_left_name(c, FontFace::Bold, small, Rect::new(tx, r.y, r.x + r.w - tx - u(20.0), r.h), label, 0);
+            r
+        };
+        let show = chip(c, band.x + band.w, IconKind::Eye, self.show_label());
+        let sort = chip(c, show.x - u(20.0), IconKind::Sort, self.sort_label());
+        hits_add(&mut self.hits, show, B_SHOW, 0);
+        hits_add(&mut self.hits, sort, B_SORT, 0);
+        // the path's parts in the room left
+        let room = Rect::new(band.x, band.y, sort.x - u(30.0) - band.x, band.h);
+        let parts = self.crumb_list();
+        if parts.is_empty() || room.w <= 0 {
+            return;
+        }
+        let sep = " > ";
+        let sep_w = font_measure(FontFace::Regular, fs, sep);
+        let cap = (room.w * 2 / 5).max(u(200.0));
+        let widths: Vec<i32> = parts.iter().map(|p| font_measure(FontFace::Bold, fs, &p.0).min(cap)).collect();
+        let more_w = font_measure(FontFace::Bold, fs, "...");
+        // all of them, else Files, "..." (for the parts from 1 to from - 1: it opens the last of them) and the parts
+        // from `from` on; the folder shown is always there
+        let n = parts.len();
+        let width_of = |from: usize| -> i32 {
+            if from == 0 {
+                widths.iter().sum::<i32>() + sep_w * (n as i32 - 1)
+            } else {
+                widths[0] + more_w + widths[from..].iter().sum::<i32>() + sep_w * (n - from + 1) as i32
+            }
+        };
+        let mut from = 0;
+        while width_of(from) > room.w {
+            let next = if from == 0 { 2 } else { from + 1 };
+            if next > n - 1 {
+                break;
+            }
+            from = next;
+        }
+        let mut shown: Vec<(usize, i32, String)> = Vec::new();
+        if from == 0 {
+            shown.extend(parts.iter().enumerate().map(|(i, p)| (i, widths[i], p.0.clone())));
+        } else {
+            shown.push((0, widths[0], parts[0].0.clone()));
+            shown.push((from - 1, more_w, "...".to_string()));
+            shown.extend(parts.iter().enumerate().skip(from).map(|(i, p)| (i, widths[i], p.0.clone())));
+        }
+        let mut x = room.x;
+        let last = shown.len() - 1;
+        for (k, (i, w, label)) in shown.into_iter().enumerate() {
+            let w = w.min(room.x + room.w - x).max(0);
+            font_draw_left_name(c, FontFace::Bold, fs, Rect::new(x, band.y, w, band.h), &label, 0);
+            // (its target reaches half way into the separators either side, the bar's height)
+            let pad = if k == 0 { 0 } else { sep_w / 2 };
+            let hit_w = w + pad + if k == last { 0 } else { sep_w / 2 };
+            hits_add(&mut self.hits, Rect::new(x - pad, band.y, hit_w, band.h), B_CRUMB, i as i32);
+            x += w;
+            if k != last {
+                font_draw_left(c, FontFace::Regular, fs, Rect::new(x, band.y, sep_w, band.h), sep, 0);
+                x += sep_w;
+            }
+        }
+        if self.capped {
+            let line = cformat!(tr("Showing the first %d."), FS_LIST_MAX as i32);
+            font_draw_left(c, FontFace::Regular, small * 0.8, Rect::new(room.x, band.y + band.h - u(36.0), room.w, u(36.0)), &line, 0);
+        }
+    }
+
+    /// The Sort chip's word: the order in use (a tap takes the next: name, newest, size).
+    fn sort_label(&self) -> &'static str {
+        match self.prefs.sort {
+            // TRANSLATORS: Files' Sort chip on its path bar while the newest files come first (one word of about
+            // 220 px at 34 px in bold; a tap sorts by size, the largest first).
+            1 => tr("Newest"),
+            2 => tr("Size"),
+            // TRANSLATORS: Files' Sort chip on its path bar while the rows go by name (one word of about 220 px at
+            // 34 px in bold; a tap puts the newest first).
+            _ => tr("Name"),
+        }
+    }
+
+    fn show_label(&self) -> &'static str {
+        if self.prefs.show == 1 {
+            // TRANSLATORS: Files' Show chip on its path bar: every file is listed (others greyed, never opened), at
+            // 34 px in bold, about 360 px. A tap shows only the files Grimoire can use.
+            tr("All files")
+        } else {
+            // TRANSLATORS: Files' Show chip on its path bar: only the files Grimoire can use are listed, at 34 px in
+            // bold, about 360 px. A tap lists every file.
+            tr("PDFs, pictures, fonts")
+        }
+    }
+
     fn has_card(&self, i: usize) -> bool {
         self.rows.get(i).is_some_and(|r| matches!(r.kind, RowKind::Pdf | RowKind::Dir))
     }
@@ -1140,11 +1441,17 @@ impl Browser {
             (RowKind::Place, Some(PlaceKind::Trash)) => IconKind::Trash,
             (RowKind::Place, _) => IconKind::Files,
             (RowKind::Dir, _) => IconKind::Folder,
-            (RowKind::Pdf, _) => IconKind::Paper,
+            (RowKind::Pdf, _) => IconKind::Pdf,
             (RowKind::Look, _) => IconKind::Update,
             (RowKind::ShowCard, _) => IconKind::Pin,
+            (RowKind::Picture, _) => IconKind::Image,
+            (RowKind::Font, _) => IconKind::Font,
+            (RowKind::Other, _) => IconKind::FileOther,
+            (RowKind::Link, _) => IconKind::LinkOff,
         };
-        ui_icon(c, icon, Rect::new(r.x + u(20.0), r.y + u(20.0), u(90.0), r.h - u(40.0)), 0);
+        // (a file Grimoire cannot use, and a link, greyed: Show all lists them so the folder is seen whole)
+        let ink = if matches!(row.kind, RowKind::Other | RowKind::Link) { 110 } else { 0 };
+        ui_icon(c, icon, Rect::new(r.x + u(20.0), r.y + u(20.0), u(90.0), r.h - u(40.0)), ink);
         let right = if self.has_card(i) { u(150.0) } else { u(30.0) };
         let tx = r.x + u(140.0);
         let tw = r.w - u(140.0) - right;
@@ -1159,7 +1466,7 @@ impl Browser {
         if matches!(row.kind, RowKind::Place | RowKind::Look | RowKind::ShowCard) {
             font_draw_left(c, FontFace::Bold, ui_text_size(), name_r, &label, 0);
         } else {
-            font_draw_left_name(c, FontFace::Bold, ui_text_size(), name_r, &label, 0);
+            font_draw_left_name(c, FontFace::Bold, ui_text_size(), name_r, &label, ink);
         }
         if !rect_is_empty(sub_r) {
             let mut sw = sub_r.w;
@@ -1175,7 +1482,7 @@ impl Browser {
             if row.kind == RowKind::Place || row.kind == RowKind::Dir {
                 font_draw_left_name(c, FontFace::Regular, ui_small_size(), r2, &sub, 0);
             } else {
-                font_draw_left(c, FontFace::Regular, ui_small_size(), r2, &sub, 0);
+                font_draw_left(c, FontFace::Regular, ui_small_size(), r2, &sub, ink);
             }
         }
         if self.has_card(i) {
@@ -1196,13 +1503,24 @@ impl Browser {
 
     fn draw_card(&mut self, a: &mut App) {
         let Some(card) = self.card.take() else { return };
-        let (details, lines) = self.card_lines(card.row);
+        let (details, mut lines) = self.card_lines(&card);
         let (aw, ah) = (a.w, a.h);
         let cw = (aw - 2 * u(40.0)).min(u(980.0));
         let rh = u(130.0);
         let gap = u(12.0);
+        // (the Go to sheet's rows that do not fit the screen are left out, Cancel kept: All storage reaches them)
+        let fit = ((ah - 2 * u(40.0) - 2 * u(24.0) - u(80.0) + gap) / (rh + gap)).max(2) as usize;
+        if lines.len() > fit {
+            let cancel = lines.pop();
+            lines.truncate(fit - 1);
+            lines.extend(cancel);
+        }
         let ch = u(24.0) * 2 + u(80.0) + lines.len() as i32 * (rh + gap) - gap;
-        let anchor = self.row_rects.iter().find(|(k, _)| *k == card.row).map_or(Rect::new(aw / 4, ah / 3, aw / 2, u(138.0)), |x| x.1);
+        let anchor = if card.goto {
+            Rect::new(self.path_bar.x, self.path_bar.y, self.path_bar.w, self.path_bar.h)
+        } else {
+            self.row_rects.iter().find(|(k, _)| *k == card.row).map_or(Rect::new(aw / 4, ah / 3, aw / 2, u(138.0)), |x| x.1)
+        };
         let rect = popout_place(cw, ch, anchor, Rect::new(0, 0, aw, ah), &[]);
         let c = &mut a.screen;
         ui_frame(c, rect, u(24.0), 255, true, 0);
@@ -1211,14 +1529,14 @@ impl Browser {
         let mut hits = HitList::default();
         font_draw_left_name(c, FontFace::Regular, ui_small_size(), Rect::new(inner.x + u(8.0), inner.y, inner.w - u(16.0), u(80.0)), &details, 0);
         let mut y = inner.y + u(80.0);
-        for (id, icon, label) in &lines {
+        for (id, arg, icon, label) in &lines {
             let r = Rect::new(inner.x, y, inner.w, rh);
-            let primary = *id != B_CARD_CANCEL && *id != B_CARD_OPEN;
+            let primary = matches!(*id, B_CARD_IMPORT | B_CARD_PICTURES | B_CARD_NOTEBOOK);
             ui_frame(c, r, u(16.0), 255, true, 0);
             ui_frame(c, r, u(16.0), 0, false, if primary { u(6.0) } else { u(3.0) });
             ui_icon(c, *icon, Rect::new(r.x + u(20.0), r.y + u(15.0), rh - u(30.0), rh - u(30.0)), 0);
             ui_text(c, FontFace::Bold, ui_text_size(), ui_small_size(), Rect::new(r.x + rh + u(10.0), r.y, r.w - rh - u(30.0), r.h), label, 2, false, 0);
-            hits_add(&mut hits, r, *id, 0);
+            hits_add(&mut hits, r, *id, *arg);
             y += rh + gap;
         }
         self.card = Some(Card { rect, hits, ..card });
@@ -1278,6 +1596,42 @@ impl Browser {
                 self.turn(h.id == B_NEXT, ah);
                 self.redraw(a, RefreshMode::Ui);
             }
+            // the path bar: a part opens its folder (Files, the root), the folder shown the Go to sheet
+            B_CRUMB => {
+                let parts = self.crumb_list();
+                let i = h.arg.max(0) as usize;
+                if i + 1 >= parts.len() {
+                    self.open_goto();
+                    self.show_card(a);
+                    return BrowserResult::None;
+                }
+                match parts[i].1.clone() {
+                    None => {
+                        self.show_root();
+                        self.redraw_full(a);
+                    }
+                    Some(p) => {
+                        if self.enter(p, i == 1, now) {
+                            self.redraw_full(a);
+                        } else {
+                            self.flush_toast(a);
+                        }
+                    }
+                }
+            }
+            B_SORT | B_SHOW => {
+                if h.id == B_SORT {
+                    self.prefs.sort = (self.prefs.sort.clamp(0, 2) + 1) % 3;
+                } else {
+                    self.prefs.show = if self.prefs.show == 1 { 0 } else { 1 };
+                }
+                self.card = None;
+                self.loading_since = now;
+                self.rebuild();
+                // (the chip shows its new word now; rows sorted by newest or size come once their stats are in)
+                self.redraw(a, RefreshMode::Ui);
+                return BrowserResult::Prefs;
+            }
             B_ROW | B_MORE => {
                 let i = h.arg as usize;
                 let Some(row) = self.rows.get(i).cloned() else { return BrowserResult::None };
@@ -1312,6 +1666,7 @@ impl Browser {
                         self.redraw(a, RefreshMode::Ui);
                         return BrowserResult::ShowInLibrary;
                     }
+                    RowKind::Picture | RowKind::Font | RowKind::Other | RowKind::Link => {}
                 }
             }
             _ => {}
@@ -1374,6 +1729,16 @@ impl Browser {
         let row = card.row;
         match h.id {
             B_CARD_CANCEL => self.close_card(a),
+            B_GOTO => {
+                let Some((_, p, _, place)) = self.goto.get(h.arg.max(0) as usize).cloned() else { return self.close_card(a) };
+                self.card = None;
+                if self.enter(p, place, now_ms()) {
+                    self.redraw_full(a);
+                } else {
+                    self.flush_toast(a);
+                }
+                BrowserResult::None
+            }
             B_CARD_OPEN => {
                 let Some(r) = self.rows.get(row).cloned() else { return self.close_card(a) };
                 self.card = None;
@@ -1496,12 +1861,15 @@ impl Browser {
         }
         self.hold_check(a, now);
         let was_ready = self.ready;
+        let was_sorting = self.next.is_some();
         let changed = self.work(a.h, now);
         if self.toast.is_some() {
             self.flush_toast(a);
         }
+        // (busy: a folder being read, or Files' rows being sorted by newest or size)
+        let busy = !self.ready || self.next.is_some();
         // (the Loading notice goes once a folder is read, whichever: Back during a slow listing shows another)
-        if self.ready && self.loading_notice {
+        if !busy && self.loading_notice {
             self.loading_notice = false;
             app_notice_clear(a, NoticeKey::Loading);
         }
@@ -1509,7 +1877,12 @@ impl Browser {
             self.redraw_full(a);
             return;
         }
-        if !self.ready {
+        // (the rows on screen stayed while a new order's stats came in: they change at once now)
+        if was_sorting && !busy {
+            self.redraw(a, RefreshMode::Ui);
+            return;
+        }
+        if busy {
             if now.wrapping_sub(self.loading_since) >= 1000 && !self.loading_notice {
                 self.loading_notice = true;
                 // TRANSLATORS: the staying notice while the file picker reads a big folder (one line, about 600 px at 44 px).
@@ -1554,21 +1927,31 @@ impl Browser {
             "free" => out.push_str(&self.free.map_or(0, |(f, _)| f).to_string()),
             "card" => out.push_str(&match &self.card {
                 None => String::new(),
+                Some(c) if c.goto => "goto".to_string(),
                 Some(c) => match self.rows[c.row].kind {
                     RowKind::Pdf => "pdf".to_string(),
+                    RowKind::Picture => "picture".to_string(),
+                    RowKind::Font => "font".to_string(),
+                    RowKind::Other => "other".to_string(),
                     _ => "folder".to_string(),
                 },
             }),
             "card.details" => {
                 if let Some(c) = &self.card {
-                    out.push_str(&self.card_lines(c.row).0);
+                    out.push_str(&self.card_lines(c).0);
                 }
             }
             "card.rows" => {
                 if let Some(c) = &self.card {
-                    out.push_str(&self.card_lines(c.row).1.iter().map(|l| l.2.clone()).collect::<Vec<_>>().join("|"));
+                    out.push_str(&self.card_lines(c).1.iter().map(|l| l.3.clone()).collect::<Vec<_>>().join("|"));
                 }
             }
+            "sort" => out.push_str(FILES_SORT_NAMES[self.prefs.sort.clamp(0, 2) as usize]),
+            "show" => out.push_str(FILES_SHOW_NAMES[self.prefs.show.clamp(0, 1) as usize]),
+            "sorting" => out.push_str(if self.next.is_some() { "1" } else { "0" }),
+            "order" => out.push_str(&self.rows.iter().map(|r| r.name.as_str()).collect::<Vec<_>>().join("|")),
+            // (the rows as last drawn on the screen, by name: Sort's rows change on screen once, when ready)
+            "drawn" => out.push_str(&self.drawn.join("|")),
             _ => {
                 let Some((what, n)) = key.split_once('.') else { return false };
                 if !matches!(what, "row" | "sub" | "status" | "notes" | "keyed" | "kind" | "item" | "pictures") {
@@ -1589,6 +1972,10 @@ impl Browser {
                         RowKind::Pdf => "pdf",
                         RowKind::Look => "look",
                         RowKind::ShowCard => "show",
+                        RowKind::Picture => "picture",
+                        RowKind::Font => "font",
+                        RowKind::Other => "other",
+                        RowKind::Link => "link",
                     }),
                 }
             }
@@ -1616,16 +2003,26 @@ impl Browser {
             if id != 0 {
                 return c.hits.h.iter().find(|h| h.id == id).map(centre);
             }
+            if let Some(n) = name.strip_prefix("goto.") {
+                let i = n.parse::<i32>().ok()? - 1;
+                return c.hits.h.iter().find(|h| h.id == B_GOTO && h.arg == i).map(centre);
+            }
         }
         let find = |id: i32, arg: i32| self.hits.h.iter().find(|h| h.id == id && h.arg == arg).map(centre);
         match name {
             "back" => find(B_BACK, 0),
             "prev" => find(B_PREV, 0),
             "next" => find(B_NEXT, 0),
+            "sort" => find(B_SORT, 0),
+            "show" => find(B_SHOW, 0),
             _ => {
                 let (what, n) = name.split_once('.')?;
                 // the rows on screen, in order: their B_ROW hits
                 let rows: Vec<&Hit> = self.hits.h.iter().filter(|h| h.id == B_ROW).collect();
+                if what == "crumb" {
+                    // (the Nth part of the path, from 1: Files, the place, then its folders)
+                    return find(B_CRUMB, n.parse::<i32>().ok()? - 1);
+                }
                 let i = match what {
                     "row" | "more" => rows.get(n.parse::<usize>().ok()?.checked_sub(1)?)?.arg,
                     "item" => self.rows.iter().position(|r| r.name == n || r.name == n.replace('_', " "))? as i32,
@@ -1765,6 +2162,103 @@ mod tests {
         assert!(b.open(PickSpec::place(), FilesPrefs { card: true, ..Default::default() }));
         assert!(b.rows.iter().all(|r| r.kind != RowKind::ShowCard));
         assert_eq!(b.rows.last().map(|r| r.name.as_str()), Some("All storage"));
+    }
+
+    // Files' order (2.2): folders first; by name (digit runs as numbers, accents folded), by the newest, by the
+    // largest (folders by name); ties by name; a row with no stat (a link) after those with one.
+    #[test]
+    fn files_sort_by_name_newest_and_size() {
+        let st = |mtime: i64, size: u64| Some(FsStat { mtime, size, ..Default::default() });
+        let items = [
+            (false, "b.pdf", st(900, 3000)),
+            (true, "Sub", st(995, 0)),
+            (false, "a 10.pdf", st(700, 1000)),
+            (false, "a 2.pdf", st(700, 2000)),
+            (false, "\u{c1}caro.png", st(950, 2000)),
+            (false, "link.pdf", None),
+            (true, "Archive", st(100, 0)),
+        ];
+        let order = |sort: i32| -> Vec<&str> {
+            let mut v: Vec<usize> = (0..items.len()).collect();
+            v.sort_by(|&x, &y| files_cmp(items[x], items[y], sort));
+            v.into_iter().map(|i| items[i].1).collect()
+        };
+        assert_eq!(order(0), ["Archive", "Sub", "a 2.pdf", "a 10.pdf", "\u{c1}caro.png", "b.pdf", "link.pdf"]);
+        assert_eq!(order(1), ["Sub", "Archive", "\u{c1}caro.png", "b.pdf", "a 2.pdf", "a 10.pdf", "link.pdf"]);
+        assert_eq!(order(2), ["Archive", "Sub", "b.pdf", "a 2.pdf", "\u{c1}caro.png", "a 10.pdf", "link.pdf"]);
+    }
+
+    // Files (2.2) in a folder: pictures and fonts listed beside PDFs and folders; Sort by newest or size stats every
+    // row first (the rows shown stay until then, and a folder entered so shows no row before); Show all adds the
+    // files Grimoire cannot use and the links, "link, not followed". The path's parts open their folders; the Go to
+    // sheet has the places and the storage's other top folders.
+    #[test]
+    fn files_lists_every_kind_sorts_shows_links_and_goes_to() {
+        let (base, _g) = storage("sorted");
+        let d = format!("{base}/documents/Sorted");
+        std::fs::create_dir_all(format!("{d}/Sub")).unwrap();
+        std::fs::create_dir_all(format!("{base}/audible")).unwrap();
+        let put = |n: &str, size: usize, age: u64| {
+            let p = format!("{d}/{n}");
+            std::fs::write(&p, vec![b'x'; size]).unwrap();
+            let f = std::fs::File::options().write(true).open(&p).unwrap();
+            f.set_modified(std::time::SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(1_790_000_000 - age)).unwrap();
+        };
+        put("a.pdf", 1000, 300);
+        put("b.pdf", 3000, 100);
+        put("c.png", 2000, 50);
+        put("d.ttf", 500, 200);
+        put("e.txt", 4000, 10);
+        std::os::unix::fs::symlink("a.pdf", format!("{d}/f.pdf")).unwrap();
+        i18n_set("en");
+        let kinds = |b: &Browser| -> Vec<RowKind> { b.rows.iter().map(|r| r.kind).collect() };
+        let mut b = Browser::default();
+        assert!(b.open(PickSpec::place(), FilesPrefs { card: true, ..Default::default() }));
+        assert!(b.go(sp("documents/Sorted")));
+        assert_eq!(row_names(&b), ["Sub", "a.pdf", "b.pdf", "c.png", "d.ttf"]);
+        assert_eq!(kinds(&b), [RowKind::Dir, RowKind::Pdf, RowKind::Pdf, RowKind::Picture, RowKind::Font]);
+        b.prefs.sort = 1;
+        b.rebuild();
+        assert!(b.next.is_some() && b.ready, "the rows shown stay while the stats come in");
+        assert_eq!(row_names(&b), ["Sub", "a.pdf", "b.pdf", "c.png", "d.ttf"]);
+        b.list_now();
+        assert_eq!(row_names(&b), ["Sub", "c.png", "b.pdf", "d.ttf", "a.pdf"]);
+        b.prefs.sort = 2;
+        b.rebuild();
+        b.list_now();
+        assert_eq!(row_names(&b), ["Sub", "b.pdf", "c.png", "a.pdf", "d.ttf"]);
+        b.prefs.sort = 0;
+        b.prefs.show = 1;
+        b.rebuild();
+        assert_eq!(row_names(&b), ["Sub", "a.pdf", "b.pdf", "c.png", "d.ttf", "e.txt", "f.pdf"]);
+        assert_eq!(kinds(&b)[5..], [RowKind::Other, RowKind::Link]);
+        assert_eq!(b.row_sub(&b.rows[6]), "link, not followed");
+        // entered by newest: no row shows until every stat is in
+        let mut e = Browser::default();
+        assert!(e.open(PickSpec::place(), FilesPrefs { card: true, sort: 1, show: 0 }));
+        assert!(e.enter(sp("documents/Sorted"), false, now_ms()));
+        while e.next.is_none() && !e.ready {
+            e.step_listing(FS_SLICE_MS);
+        }
+        assert!(!e.ready && e.rows.is_empty());
+        e.list_now();
+        assert_eq!(row_names(&e), ["Sub", "c.png", "b.pdf", "d.ttf", "a.pdf"]);
+        // the path's parts and where each opens
+        assert!(b.go(sp("documents/Sorted/Sub")));
+        let parts: Vec<(String, Option<Vec<u8>>)> = b.crumb_list().into_iter().map(|(l, p)| (l, p.map(|p| p.as_bytes().to_vec()))).collect();
+        assert_eq!(
+            parts,
+            [
+                ("Files".to_string(), None),
+                ("Documents".to_string(), Some(b"documents".to_vec())),
+                ("Sorted".to_string(), Some(b"documents/Sorted".to_vec())),
+                ("Sub".to_string(), Some(b"documents/Sorted/Sub".to_vec())),
+            ]
+        );
+        b.open_goto();
+        let labels: Vec<&str> = b.goto.iter().map(|g| g.0.as_str()).collect();
+        assert_eq!(labels, ["Import", "Documents", "Trash", "All storage", "audible"]);
+        assert!(b.goto[4].1 == sp("audible") && !b.goto[4].3 && b.goto[1].3);
     }
 
     #[test]

@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 # Plants the tree the Files scenarios (tests/scenarios/files_*.qs) browse, in the storage root a "# storage:" scenario
 # runs on: three notebooks (two at the Library's top, one in a folder), Grimoire's places (import, templates, photos,
-# fonts, PDF copies, a trashed notebook), the Kindle's fonts folder, Downloads, and documents/Sorted, whose files have
-# known sizes and times for Sort, one file Grimoire cannot use and a link for Show all, and a folder two levels deep
-# for the path bar. Usage: files_place_tree.py STORAGE_ROOT
+# fonts, PDF copies, a trashed notebook), the Kindle's fonts folder, Downloads, a top folder that is no place (Notes),
+# and documents/Sorted, whose files have known sizes and times for Sort, one file Grimoire cannot use and a link for
+# Show all, and a folder two levels deep for the path bar. Usage: files_place_tree.py STORAGE_ROOT
 import os
 import sys
 
@@ -38,6 +38,7 @@ notebook(9, 'Gone', '', os.path.join(g, 'trash', f'20261101-000000-0009-{T - 500
 put('grimoire/PDFs/School/Gamma.pdf', 2000, 400)
 put('fonts/Kindle Serif.ttf', 700, 900)
 put('Downloads/Daily.pdf', 1200, 800)
+os.makedirs(os.path.join(root, 'Notes'), exist_ok=True)  # a top folder that is no place (Go to lists it)
 # Sort: by name Sub, a.pdf, b.pdf, c.png, d.ttf; by newest c.png, b.pdf, d.ttf, a.pdf; by size b.pdf, c.png,
 # a.pdf, d.ttf (folders first in each). Show all adds e.txt (newest and largest of all) and the link f.pdf.
 put('documents/Sorted/a.pdf', 1000, 300)

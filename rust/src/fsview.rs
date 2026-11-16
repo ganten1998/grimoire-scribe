@@ -434,6 +434,9 @@ pub struct FsListing {
     pub too_long: usize,
     /// stopped at FS_LIST_MAX
     pub capped: bool,
+    /// the names of the links left out (counted in hidden too), not in a refused zone, at most FS_LIST_MAX: Files'
+    /// Show all lists them as "link, not followed" (2.2), never entered or opened
+    pub links: Vec<Vec<u8>>,
     pub done: bool,
     grimoire: Option<StoragePath>,
     pick: bool,
@@ -469,6 +472,7 @@ impl FsListing {
             hidden: 0,
             too_long: 0,
             capped: false,
+            links: Vec::new(),
             done: false,
             grimoire: st.grimoire.clone(),
             pick,
@@ -527,6 +531,9 @@ impl FsListing {
         let refused = joined.is_none_or(|p| zone_of(self.grimoire.as_ref(), &p, self.pick) == FsZone::Refused);
         if kind == FsKind::Link || refused {
             self.hidden += 1;
+            if kind == FsKind::Link && !refused && self.links.len() < FS_LIST_MAX {
+                self.links.push(name);
+            }
             return;
         }
         self.entries.push(FsEntry { name, kind, stat: None });

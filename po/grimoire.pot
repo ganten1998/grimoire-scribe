@@ -5386,3 +5386,39 @@ msgstr ""
 #: rust/src/library.rs
 msgid "Hide from Library"
 msgstr ""
+
+#. TRANSLATORS: the title of Files' Go to sheet, which a tap on the folder shown in its path bar opens: its
+#. places and the Kindle's top folders, one a row (34 px, at the sheet's top).
+#: rust/src/browser.rs
+msgid "Go to"
+msgstr ""
+
+#. TRANSLATORS: Files' Sort chip on its path bar while the rows go by name (one word of about 220 px at
+#. 34 px in bold; a tap puts the newest first).
+#: rust/src/browser.rs
+msgid "Name"
+msgstr ""
+
+#. TRANSLATORS: Files' Sort chip on its path bar while the newest files come first (one word of about
+#. 220 px at 34 px in bold; a tap sorts by size, the largest first).
+#: rust/src/browser.rs
+msgid "Newest"
+msgstr ""
+
+#. TRANSLATORS: Files' Show chip on its path bar: every file is listed (others greyed, never opened), at
+#. 34 px in bold, about 360 px. A tap shows only the files Grimoire can use.
+#: rust/src/browser.rs
+msgid "All files"
+msgstr ""
+
+#. TRANSLATORS: Files' Show chip on its path bar: only the files Grimoire can use are listed, at 34 px in
+#. bold, about 360 px. A tap lists every file.
+#: rust/src/browser.rs
+msgid "PDFs, pictures, fonts"
+msgstr ""
+
+#. TRANSLATORS: Files with Show all: the second line of a row that is a link, which Grimoire never follows
+#. (34 px, under the link's name).
+#: rust/src/browser.rs
+msgid "link, not followed"
+msgstr ""

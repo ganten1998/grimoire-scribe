@@ -7788,6 +7788,13 @@ fn files_result(a: &mut App, r: BrowserResult) {
             files_close(a, true);
             editor_open_notebook(a, &id);
         }
+        // Files' Sort or Show chip: kept for the next time Files opens
+        BrowserResult::Prefs => {
+            let prefs = lib(a).files.prefs;
+            a.settings.files_sort = prefs.sort;
+            a.settings.files_show = prefs.show;
+            settings_save(&a.settings);
+        }
         // "Show Files in Library": the card is the Library's last from now on (the browser drew its root without the row)
         BrowserResult::ShowInLibrary => {
             a.settings.files_card = true;
