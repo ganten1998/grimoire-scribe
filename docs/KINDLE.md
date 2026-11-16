@@ -414,9 +414,9 @@ that flattens and drifts still taps), and
 nothing makes the next tap wait. A key or controller button can do the same: the `status-toggle` action,
 and `status-corner` for the next corner (docs/SHORTCUTS.md, Buttons > Menus); with no page in front they
 change the setting and say so with a toast. Settings > Display, beside Done, has the size (small,
-medium or large) and the corner (top left, top right, bottom right, bottom left, in turn), and its
-rows include "Display time as 12 hour". They are settings.ini `status_on`, `status_size`,
-`status_corner` and `clock_12h` (docs/FORMAT.md).
+medium or large) and the corner (top left, top right, bottom right, bottom left, in turn); the two rows
+name what they set, so neither shows a toast. Its rows include "Display time as 12 hour". They are
+settings.ini `status_on`, `status_size`, `status_corner` and `clock_12h` (docs/FORMAT.md).
 
 It is drawn over the screen for each refresh and never saved into it: it is not in a page, a
 thumbnail, an export or PDF, Live view, or the sleep screen. It refreshes by itself at each minute and
@@ -482,6 +482,9 @@ file name, title, key or hash ever appears in it: ids, page numbers, counts, siz
   key; nothing imported`: the storage failed a read in the last slice; `import: <id>: its file could not be read
   whole to compare with a notebook's record`: it failed one at the start, and the PDF then counts as another
   file than the record's (the line with N KB and T ms is logged only for a file that was read whole).
+  `import: <id>: its book key could not be read (the storage failed a read); nothing imported`: a read of the
+  key's samples failed (one cut short by a signal is tried again), at the start or in the last slice; the
+  try counts.
   `import: <id>: its PDF's name no longer
   holds the file that was read; nothing moves to import/done, and the next scan takes what is at that name`:
   another file was put at the PDF's name while it was imported, or the file changed or was taken away; the
@@ -504,6 +507,25 @@ file name, title, key or hash ever appears in it: ids, page numbers, counts, siz
 - `import: <id>: a copy of this PDF is being imported; this one waits for its notebook`, `import: N pick(s) that
   waited for the lock queued`, `import: PDF import <id> was dropped from the queue; ...`, `import: the import
   from an earlier run has ended`.
+- A fill (2.2: the same PDF again adds the pages its notebook lacks): `import: <id>: notebook <nb> lacks N of the
+  book's M page(s): they are added to it` (slice 0; the slices then count the pages made, `pages A to B of N`),
+  then `import: <id>: the pages for notebook <nb> are made; they go in once the Library is in front` (said once,
+  by the UI, when it takes them: also at the start after the child that finishes the queue made them), then, as
+  the UI puts them in, `import: <id>: notebook <nb>: D document link(s) (A added, S already there, R refused, L
+  left out for room)` (only when a link starts or ends on a page it adds) and `import: notebook <nb> filled: N
+  page(s) added (T now), B blank`. S counts the PDF's links to or from those pages that the notebook had already
+  (the same target, the area within 2 px): for a notebook KOReader made, its links found again, none added twice.
+  `import: <id>: the PDF has N page(s) and the book of notebook <nb> M: it becomes a notebook of its own`: the
+  page counts differ (the PDF's and the one the notebook's pages name). `import: <id>: its notebook <nb> cannot be
+  filled (<why>)`, then `this PDF was imported before`: its pages name no page count or more than one, or its
+  files do not read. `import: <id>: its notebook was renamed, moved or deleted while the pages were made; nothing
+  added to notebook <nb>`: not filled (or the notebook no longer holds the key); the PDF stays in `import/` and the
+  next scan takes it again. `import: <id>: <why>; nothing added to notebook <nb>`: a fill that failed (`the
+  notebook is gone`, `the PDF changed under the import`, `its book key could not be read (the storage failed a
+  read)`, a storage failure), the notebook as it was. `import:
+  <id>: its commit was cut off (K of 3)`: a commit taken up again at a start after Grimoire stopped half way
+  through it; at the third, `its commit stopped 3 times without finishing; notebook <nb> is as its last cut left
+  it`.
 - `import: <id>: page N of M: the worker died of signal S (strike K)` or `... stalled ...` or `... made call C,
   which the sandbox does not allow`; after the second strike `... could not be read ...; it is blank`. On the
   Kindle call 175 (`rt_sigprocmask`) is the worker's own abort (out of memory, or a panic), not a call to add;
@@ -581,6 +603,34 @@ says (never a file's name or a family's: counts, sizes, timings, reasons):
 To get back to Terminess by hand: delete the font's file, or delete the `font=file:...` line of
 `grimoire/settings.ini` while Grimoire is closed. Deleting `grimoire/.font-inuse` forgets a font's strikes;
 deleting `grimoire/fonts/.cache/` has every font checked again.
+
+## Files: rename, trash, restore and copy (2.2, the storage layer)
+
+Grimoire can rename, trash, restore and copy files inside its own `import/`, `templates/`, `photos/` and
+`fonts/` folders (docs/DESIGN.md, Files' storage writes). Nothing on screen uses these yet; once the screens
+come, grimoire.log says (never a file's name: the folder, sizes, timings, reasons):
+
+- `files: an item of <folder> was renamed`, `files: an item of <folder> went to the trash`, `files: an item went
+  back to <folder>`, and `files: notebook <id> came back from the trash`. A deleted item is in
+  `grimoire/trash/files-<date>-<time>-<4 hex>/` with `.grimoire-trash` beside it, which says where it was
+  (docs/FORMAT.md, The trash): to put one back by hand, with Grimoire closed, move it there.
+- `files: the storage refused the no-replace rename (<why>); a rename reserves the name first`: once a session,
+  the first time a rename needs it. This line means the storage does not take the kernel's no-replace rename:
+  each rename then reserves the new name (an empty file or folder made only where nothing is) and renames over
+  its own reservation (docs/DESIGN.md, Files' storage writes). Whether the Scribe's storage takes the flag is
+  what docs/TESTING.md's check finds out.
+- `files: a rename|the trash|the trash's record|a restore|a notebook's restore failed: <why>`: a call the storage
+  refused, with its reason (a name taken, a file that changed or an import holding it are told on screen, not
+  here). `files: a rename through a temporary name could not be undone; the item has the new name numbered, in
+  <folder>`: a case-only rename stopped half way; the file is in that folder under the new name with " 2" (or
+  the next number free), to rename by hand. A crash in the middle of one leaves it the same way.
+- `files: a trash entry that held nothing was removed`: Restore on an entry a trash cut off by a crash left (its
+  record alone, or an empty folder); the item never left its folder.
+- `bg: file copy of <folder> (pid N)`, then `bg: a file copied into <folder>: N KB in T ms` or `bg: a file not
+  copied into <folder>: <why>` (among them: no room: the storage would keep less than 100 MB; it changed since it
+  was listed, or while it was copied; it is no plain file; a link on its way; a system error's own words), and
+  `bg: file copy pid N done` or `FAILED`. A copy cut off leaves `.grimoire-copy-<pid>.part` in the folder, which
+  the next copy into it removes.
 
 ## Touch gestures and the touch trace
 
@@ -753,9 +803,9 @@ checks above. Synthetic tests cannot establish real-hand acceptance or accidenta
   back by hand, with Grimoire closed: rename it to `p<n>.qpg` and add `<n>` to the `pages=` line
   of its `notebook.ini`.
 - **A file of the `grimoire` folder that is no plain file, or too long** (2.1.1): Grimoire reads its
-  settings, notebooks, pages, pictures and import folders only when the entry at the name is a plain file,
-  and the small text files only up to a size (docs/FORMAT.md, Files, names the files; a few others are
-  still opened by path). grimoire.log says what it did:
+  settings, notebooks, pages, pictures, import folders, clipboard, shortcut files and PDF cache only when the
+  entry at the name is a plain file, and the small text files only up to a size (docs/FORMAT.md, Files, names
+  the files). grimoire.log says what it did:
   - `store: <path> is no plain file, set aside; starting blank` (or `could not set aside`): the entry at
     a page's name was a folder, a link or something else. It was renamed `p<n>.qpg.damaged-<t>`, the
     entry itself, and the page opened blank, with the toast of a damaged page. It stays there: Grimoire
@@ -878,6 +928,12 @@ checks above. Synthetic tests cannot establish real-hand acceptance or accidenta
   and each gesture's outcome to `grimoire/touch-trace.txt` (4 MB at most; each start, and each turn
   of the screen, adds a line naming the rotation, the screen and its dpi). It stays in the data folder: no export, share page or raw ZIP
   carries it. Delete `grimoire/touch-trace` to stop, and send the two files when asked.
+- **A slow page, and undo** (#119): when "Loading page..." shows, grimoire.log says `editor: "Loading
+  page..." for page id N: its file is K KB, with no current kept drawing` (or `with changes not written yet`),
+  and when an undo of a page runs, `editor: undo of W on page id N`, W one of `a stroke`, `an erase of N
+  strokes`, `a paper change`, `a page clear (N strokes)`, `a link change (N)`, `a shape snap` and `a lasso step
+  (N strokes off the page, M on)`: ids, sizes and counts, never the ink. Each at most once a frame (a round of
+  the main loop): a second undo in the same round, from keys that came together, adds no line.
 - **The startup log** starts with a diagnostics block. `device:` lines give the model code (the
   first 6 characters of /proc/usid, never the serial), memory, CPU part and hardware. `display:`
   lines give the FBInk device id, platform, pixel format, color panel flag, raw vinfo and finfo,

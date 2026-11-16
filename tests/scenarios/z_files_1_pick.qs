@@ -1,9 +1,10 @@
 # settings: status_mode=1
 # storage: 1
 # copy: tests/fixtures/files .
-# The picker, end to end: Library > New > From a file... opens Files with its four places, Documents lists its
-# folders and PDFs (a text file is not offered), a tap on a PDF opens its card (the second tap imports), and the
-# PDF becomes a notebook in the sheet's folder with the file's own name while the file stays exactly where it was.
+# The picker, end to end: Library > New > From a file... opens Files with its four places (and, 2.2, the way to the
+# Files card), Documents lists its folders and PDFs (a text file is not offered), a tap on a PDF opens its card (the
+# second tap imports), and the PDF becomes a notebook in the sheet's folder with the file's own name while the file
+# stays exactly where it was.
 # rust-only
 wait 300
 tap library new
@@ -14,13 +15,14 @@ wait 300
 shot 01-root
 expect files.open is 1
 expect files.place is root
-expect files.rows is 4
+expect files.rows is 5
 expect files.row.1 is Import
 expect files.sub.1 is grimoire/import
 expect files.row.2 is Documents
 expect files.sub.2 is documents
 expect files.row.3 is Downloads
 expect files.row.4 is All storage
+expect files.row.5 is Show Files in Library
 tap library files.row.2
 wait 300
 shot 02-documents

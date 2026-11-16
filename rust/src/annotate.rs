@@ -1957,7 +1957,9 @@ fn step(j: &mut Job, budget_ms: u32, st: &mut BookStatus) {
         return;
     }
     let t0 = now_ms();
-    while j.next < j.r.sent.len() && now_ms().wrapping_sub(t0) < budget_ms {
+    let (most, mut n) = (book_step_pages(), 0usize);
+    while j.next < j.r.sent.len() && n < most && now_ms().wrapping_sub(t0) < budget_ms {
+        n += 1;
         let mut bad_picture = false;
         let bpage = j.r.sent[j.next];
         let why = add_one(j, bpage, &mut bad_picture);
@@ -1981,6 +1983,16 @@ fn step(j: &mut Job, budget_ms: u32, st: &mut BookStatus) {
         return;
     }
     job_end(j, st);
+}
+
+/// The sent pages a step looks at most: as many as its time allows, or (headless and test builds)
+/// GRIMOIRE_BOOK_STEP_PAGES, so a scenario can see the job run over more than one tick.
+fn book_step_pages() -> usize {
+    #[cfg(not(feature = "kindle"))]
+    if let Some(n) = std::env::var("GRIMOIRE_BOOK_STEP_PAGES").ok().and_then(|v| v.parse::<usize>().ok()).filter(|&n| n > 0) {
+        return n;
+    }
+    usize::MAX
 }
 
 /// Pictures of another size than their notebook's pages (a notebook from the other Scribe size) are

@@ -2,6 +2,17 @@
 
 ## 2.1.1 (unreleased)
 
+- **Size keys.** Shift+[ and Shift+] on a paired keyboard take the pen in use to its next smaller or larger quick
+  size, and a short toast says the size; a controller's buttons and gestures can too (Smaller / larger size, in the
+  Tools group of Buttons and of Gestures). The new `quick-size` action, bound by name in shortcuts.ini or
+  gestures.ini, opens the sizes card from a key or a gesture. An unedited shortcuts.ini gets the two keys at the
+  next start.
+- **Files**: the Kindle's storage as a place to browse. "Show Files in Library", the last row of New notebook >
+  From a file..., puts a Files card at the end of the Library (its menu hides it again). Files lists Grimoire's
+  places (Import, Templates, Photos, Fonts, PDF copies, Trash) and the Kindle's folders, with a path bar whose
+  parts open their folder, Go to, Sort (name, newest, size) and Show (the files Grimoire can use, or all, links
+  greyed and never followed). Every file has a card that says what it is. A Library card held opens its menu,
+  as its "..." does. Two new actions with no default key, `files` and `home`.
 - Hardening: Grimoire reads the files in its own folders only when they are plain files, with size limits
   on the small text files, and makes its temporary files afresh each time. A `settings.ini` it cannot
   read is kept as `settings.ini.unread` rather than written over. A picture or folder in `templates/`,
@@ -24,6 +35,25 @@
   break in a name is left where it is, a file picked from a folder that is only spelled like
   `grimoire/import` stays where it is, and the import's lock file and its first look at a dropped PDF are
   opened without following links.
+- Housekeeping: package-check's size guard is now 13 MB for the Kindle binary and 7 MB for the zip (was 11 MB and
+  6 MB): the new Settings menu brought the binary to 10.96 MB, and 2.2's Files, PDF fills and KOReader's hand-over
+  by path need more.
+- **The same PDF again fills its notebook** (#123). When a PDF's notebook lacks some of the book's pages (pages
+  deleted since, or a notebook KOReader made, which holds only the pages KOReader sent), dropping the PDF in
+  `grimoire/import` again adds those pages in book order, with the tabs that reach them or start on them and the
+  outline's names for them, and says "Added N book pages." Pages already there, their ink, names and links stay
+  as they were (deleting the added pages takes back everything the fill added). A notebook with every page still
+  says "PDF already imported."; a PDF with another page count becomes a notebook of its own. The pages go in
+  once the notebook is closed and the Library is in front, in a moment that says "Adding book pages"; until then
+  the notebook opens as it is, and KOReader's Open this book in Grimoire opens the book as usual.
+
+- The toolbar's page chip shows the page alone, at its usual size, on every page of a notebook where the page
+  and the count would not fit it on some page (every notebook of 1000 pages or more, and many of 100 or more,
+  by the font and the size), where it was cut short; a notebook under 100 pages shows both as before. The count
+  pad's - and + count on while held, as a held delete deletes, up to the pad's limits (#119).
+- The Clock settings page's corner row moves the clock and battery without a toast: the row names the corner, as
+  the size row names the size. The `status-corner` shortcut still names the corner in a toast where no notebook
+  page is in front (#141).
 
 ## 2.1.0 (2026-11-13)
 

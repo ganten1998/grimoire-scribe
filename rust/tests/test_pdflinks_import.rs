@@ -4,6 +4,7 @@
 // (tests/pdffix).
 #![cfg(feature = "sim")]
 mod pdffix;
+mod testlib;
 use grimoire::fsview::StoragePath;
 use grimoire::pdfimport::*;
 use grimoire::pdfwork::*;
@@ -348,6 +349,119 @@ fn an_import_writes_doclinks_and_names_and_the_work_files_go() {
     }
     // the first page's links are seeds the user's own never collide with, and the doc links cap is not links.ini's
     assert!(dl.links.iter().all(|l| l.pid == 1));
+}
+
+impl Env {
+    /// The first slice of an import that takes a page a slice: it keeps the links and names in the work folder
+    /// (links.part, names.part). The notebook's id, the source and the work folder.
+    fn first_slice(&self, name: &str, bytes: &[u8]) -> (String, String, String) {
+        std::env::set_var("GRIMOIRE_PDF_SLICE_PAGES", "1");
+        let src = self.drop(name, bytes);
+        let mut id = String::new();
+        store_make_id(&mut id);
+        assert_eq!(run_slice(&id, &src), SliceEnd::More);
+        let work = format!("{}/notebooks/.import-{id}", self.root);
+        for part in ["links.part", "names.part"] {
+            assert!(std::path::Path::new(&format!("{work}/{part}")).exists(), "{part} is kept");
+        }
+        (id, src, work)
+    }
+    /// The slices after it, to the import's end.
+    fn finish(&self, id: &str, src: &str) {
+        let mut last = SliceEnd::More;
+        for _ in 0..800 {
+            last = run_slice(id, src);
+            if last != SliceEnd::More {
+                break;
+            }
+        }
+        assert!(matches!(last, SliceEnd::Done { .. }), "{last:?}");
+    }
+}
+
+/// What notebook `id` got of the PDF below: its document links, and whether its first page has the outline's name.
+fn links_and_name(id: &str) -> (usize, bool) {
+    let mut nav = Nav::default();
+    nav_init(&mut nav);
+    let named = nav_load(id, &mut nav) == 0 && nav_name(&nav, 1) == "Start";
+    nav_free(&mut nav);
+    (doclinks_load(id).links.len(), named)
+}
+
+fn fifo_at(path: &str) {
+    let c = std::ffi::CString::new(path).unwrap();
+    // SAFETY: mkfifo reads the NUL-terminated path we own.
+    assert_eq!(unsafe { libc::mkfifo(c.as_ptr(), 0o644) }, 0);
+}
+
+/// On a storage of its own (`n`), the import of a PDF with one link and one outline name, its work folder changed by
+/// `between` after the first slice: what the notebook got of them, and whether the slices after it waited on a
+/// FIFO left in the work folder (let go after 30 s).
+fn import_changed(n: u32, between: impl FnOnce(&Env, &str)) -> ((usize, bool), bool) {
+    use std::os::unix::fs::FileTypeExt;
+    let e = setup(&format!("parts-{n}"));
+    let extra = Extra { outline: vec![OutItem::new("Start", 1)], ..Default::default() };
+    let pdf = make_linked(&plain_pages(3), &on(1, 3, vec![Lnk::new(r(0), Act::Page(2))]), &extra);
+    let (id, src, work) = e.first_slice("Doc.pdf", &pdf);
+    between(&e, &work);
+    let fifo = ["links.part", "names.part"]
+        .iter()
+        .map(|p| format!("{work}/{p}"))
+        .find(|p| std::fs::symlink_metadata(p).is_ok_and(|m| m.file_type().is_fifo()));
+    let waited = match fifo {
+        Some(f) => testlib::waits_on(std::path::Path::new(&f), || e.finish(&id, &src)).1,
+        None => {
+            e.finish(&id, &src);
+            false
+        }
+    };
+    (links_and_name(&id), waited)
+}
+
+// The last slice reads the work folder's links.part and names.part back only when the entry at the name is a plain
+// file of at most its limit (LINKS_PART_MAX, NAMES_PART_MAX: the most one worker's walk can have the first slice
+// write). A link there (to a part that would read), a FIFO or a longer file is a part that does not read: the
+// notebook has no links and no names, the file a link names is as it was, and no read waits.
+#[test]
+fn the_work_folders_parts_take_a_plain_file_of_their_size_only() {
+    let mut c = testlib::Checks::default();
+    c.that(import_changed(1, |_, _| {}) == ((1, true), false), "parts of their own are read");
+    let mut n = 1;
+    for (part, max) in [("links.part", LINKS_PART_MAX), ("names.part", NAMES_PART_MAX)] {
+        // a link to the import's own part, moved outside the work folder
+        let mut kept = (String::new(), Vec::new());
+        n += 1;
+        let got = import_changed(n, |e, work| {
+            let at = format!("{work}/{part}");
+            let outside = format!("{}/../outside-{part}", e.root);
+            std::fs::rename(&at, &outside).unwrap();
+            kept = (outside.clone(), std::fs::read(&outside).unwrap());
+            std::os::unix::fs::symlink(&outside, &at).unwrap();
+        });
+        c.that(got == ((0, false), false), &format!("a {part} that is a link is not read"));
+        c.that(std::fs::read(&kept.0).is_ok_and(|b| b == kept.1), &format!("and the file the link at {part} names is as it was"));
+        // a FIFO
+        n += 1;
+        let got = import_changed(n, |_, work| {
+            let at = format!("{work}/{part}");
+            std::fs::remove_file(&at).unwrap();
+            fifo_at(&at);
+        });
+        c.that(got == ((0, false), false), &format!("a {part} that is a FIFO is not read, at once"));
+        // its own text, made `len` bytes long with empty lines (which the read passes over)
+        let padded = |work: &str, len: usize| {
+            let at = format!("{work}/{part}");
+            let mut t = std::fs::read(&at).unwrap();
+            assert!(t.len() < len);
+            t.resize(len, b'\n');
+            std::fs::write(&at, &t).unwrap();
+        };
+        n += 1;
+        c.that(import_changed(n, |_, work| padded(work, max)) == ((1, true), false), &format!("a {part} of exactly {max} bytes is read"));
+        n += 1;
+        c.that(import_changed(n, |_, work| padded(work, max + 1)) == ((0, false), false), &format!("a {part} of {max} bytes and one is not"));
+    }
+    c.done();
 }
 
 #[test]

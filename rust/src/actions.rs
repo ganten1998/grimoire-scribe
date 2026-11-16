@@ -60,6 +60,17 @@ pub const SHORTCUT_PAN_LEFT: i32 = 101;
 pub const SHORTCUT_PAN_RIGHT: i32 = 102;
 pub const SHORTCUT_PAN_UP: i32 = 103;
 pub const SHORTCUT_PAN_DOWN: i32 = 104;
+/// The size keys (2.2, ids 105 to 107): the pen in use's next quick size down and up (quicksize.rs quicksize_step,
+/// set as a tap on that chip sets it, with a short toast of the size), and its sizes card opened from a key, beside
+/// its button on the toolbar or beside the folded box.
+pub const SHORTCUT_SIZE_SMALLER: i32 = 105;
+pub const SHORTCUT_SIZE_LARGER: i32 = 106;
+pub const SHORTCUT_QUICK_SIZE: i32 = 107;
+/// Files (2.2): open Files (place mode) whether or not its card is in the Library, and go home (the Library's top;
+/// a home set by the user comes later). Library actions with no default key, bound by name in
+/// shortcuts.ini or gestures.ini as the Library's other actions are (105 to 107 are the size keys').
+pub const SHORTCUT_FILES: i32 = 108;
+pub const SHORTCUT_HOME: i32 = 109;
 
 pub const SRC_KEY: u8 = 1;
 pub const SRC_PAD: u8 = 2;
@@ -206,7 +217,7 @@ static K_EDITING: [LearnRow; 11] = [
 // rows, about 1100 px at 44 px in bold, with the buttons' names). They go through the pens on the panel.
 // TRANSLATORS: (Buttons sheet) the buttons that move the open tool picker's choice to its previous and
 // next pen (with it closed, they switch tools through all nine), in that order.
-static K_TOOLS: [LearnRow; 11] = [
+static K_TOOLS: [LearnRow; 12] = [
     lr(
         None,
         [SHORTCUT_TOOL_BASE + TOOL_PENCIL.0, 0],
@@ -261,6 +272,15 @@ static K_TOOLS: [LearnRow; 11] = [
         Some(n_("Previous / next in the picker")),
         [SHORTCUT_PICKER_PREV, SHORTCUT_PICKER_NEXT],
         IconKind::Grid,
+    ),
+    // (2.2: the group's twelfth row, GROUP_ROWS_MAX; quick-size has none, it is bound by name)
+    lr(
+        // TRANSLATORS: (Buttons and Gestures sheets, a row as Previous / next tool, about 1100 px at 44 px in bold
+        // with the buttons' names) the buttons or gestures that take the pen in use to the next smaller and the next
+        // larger of its quick sizes, in that order.
+        Some(n_("Smaller / larger size")),
+        [SHORTCUT_SIZE_SMALLER, SHORTCUT_SIZE_LARGER],
+        IconKind::Tune,
     ),
 ];
 
@@ -412,7 +432,7 @@ pub const ACTION_GROUPS: [ActionGroup; N_GROUPS] = K_GROUPS;
 // ---- action names and metadata ----
 
 /// The old names stay in their original lookup order; new phase 3 names follow the old set.
-pub static K_ACTIONS: [(&str, i32); 78] = [
+pub static K_ACTIONS: [(&str, i32); 83] = [
     ("undo", SHORTCUT_UNDO),
     ("redo", SHORTCUT_REDO),
     ("previous-page", SHORTCUT_PREV_PAGE),
@@ -488,6 +508,11 @@ pub static K_ACTIONS: [(&str, i32); 78] = [
     ("pan-right", SHORTCUT_PAN_RIGHT),
     ("pan-up", SHORTCUT_PAN_UP),
     ("pan-down", SHORTCUT_PAN_DOWN),
+    ("size-smaller", SHORTCUT_SIZE_SMALLER),
+    ("size-larger", SHORTCUT_SIZE_LARGER),
+    ("quick-size", SHORTCUT_QUICK_SIZE),
+    ("files", SHORTCUT_FILES),
+    ("home", SHORTCUT_HOME),
 ];
 
 const TOOL_NAMES: [(&str, i32); TOOL_COUNT] = [
@@ -503,7 +528,7 @@ const TOOL_NAMES: [(&str, i32); TOOL_COUNT] = [
     ("tool:calligraphy", SHORTCUT_TOOL_BASE + 9),
 ];
 
-static ACTIONS: [ActionInfo; 88] = [
+static ACTIONS: [ActionInfo; 93] = [
     // Tools are action ids too, even though the tool-specific labels retain msgctxt "tool".
     ai(
         SHORTCUT_TOOL_BASE,
@@ -1207,6 +1232,38 @@ static ACTIONS: [ActionInfo; 88] = [
         SHORTCUT_PAN_DOWN, "pan-down", n_("Move the Graph down"), None, IconKind::Next,
         GROUP_INDEX, SHORTCUT_PAN_UP, ActionKind::Step, SRC_BUTTONS_PEN,
     ),
+    // The size keys (2.2): on a notebook page, the pen in use's quick sizes (quicksize.rs).
+    ai(
+        // TRANSLATORS: (Gestures and shortcuts lists, about 1100 px at 44 px in bold) the pen in use goes to the next
+        // smaller of its five quick sizes (the widths of the card a pen held on the toolbar opens).
+        SHORTCUT_SIZE_SMALLER, "size-smaller", n_("Smaller size"), None, IconKind::Minus,
+        GROUP_TOOLS, SHORTCUT_SIZE_LARGER, ActionKind::Step, SRC_ALL,
+    ),
+    ai(
+        // TRANSLATORS: (Gestures and shortcuts lists, about 1100 px at 44 px in bold) the pen in use goes to the next
+        // larger of its five quick sizes.
+        SHORTCUT_SIZE_LARGER, "size-larger", n_("Larger size"), None, IconKind::Plus,
+        GROUP_TOOLS, SHORTCUT_SIZE_SMALLER, ActionKind::Step, SRC_ALL,
+    ),
+    ai(
+        // TRANSLATORS: (Gestures and shortcuts lists, about 1100 px at 44 px in bold) opens the card of the pen in
+        // use's quick sizes beside its button on the toolbar, as holding that button does.
+        SHORTCUT_QUICK_SIZE, "quick-size", n_("Sizes of the pen in use"), None, IconKind::Tune,
+        GROUP_TOOLS, 0, ActionKind::Menu, SRC_ALL,
+    ),
+    // Files' two (2.2): in no Buttons sheet group (the Library's actions are bound by name, as New notebook's).
+    ai(
+        // TRANSLATORS: (shortcuts and gestures lists, about 1100 px at 44 px in bold) in the Library: opens Files, the
+        // Kindle's storage to browse, whether or not its card is in the Library.
+        SHORTCUT_FILES, "files", n_("Files"), None, IconKind::Files,
+        GROUP_MENUS, 0, ActionKind::Menu, SRC_ALL,
+    ),
+    ai(
+        // TRANSLATORS: (shortcuts and gestures lists, about 1100 px at 44 px in bold) in the Library: back to its top,
+        // out of any folder (and out of Files).
+        SHORTCUT_HOME, "home", n_("Home"), None, IconKind::Home,
+        GROUP_MENUS, 0, ActionKind::OneShot, SRC_ALL,
+    ),
 ];
 
 pub fn action_info(id: i32) -> Option<&'static ActionInfo> {
@@ -1332,6 +1389,8 @@ static K_PLACES: &[(i32, u8)] = &[
     (SHORTCUT_PAN_RIGHT, PL_GRAPH),
     (SHORTCUT_PAN_UP, PL_GRAPH),
     (SHORTCUT_PAN_DOWN, PL_GRAPH),
+    (SHORTCUT_FILES, PL_LIBRARY),
+    (SHORTCUT_HOME, PL_LIBRARY),
 ];
 
 /// The places an action acts in (PL_* bits): K_PLACES's, else a notebook page alone.
@@ -1439,5 +1498,7 @@ mod tests {
         assert_eq!(action_places(SHORTCUT_TOOL_BASE + TOOL_ERASER.0) & PL_PENFEEL, PL_PENFEEL);
         assert_eq!(action_places(SHORTCUT_INVERT), PL_ALL);
         assert_eq!(action_places(SHORTCUT_INDEX_MAP), PL_ALL & !PL_PENFEEL);
+        assert_eq!(action_places(SHORTCUT_FILES), PL_LIBRARY);
+        assert_eq!(action_places(SHORTCUT_HOME), PL_LIBRARY);
     }
 }

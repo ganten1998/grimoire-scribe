@@ -32,6 +32,11 @@ use crate::prelude::*;
 const LIST_NAME: &str = "erased.txt";
 /// ids read from one list (a notebook has at most STORE_MAX_PAGES pages)
 const LIST_MAX: usize = 4096;
+/// The most of a list that is read, in bytes: a longer one is a list that does not read. The longest
+/// list_write makes is its 80-byte header and LIST_MAX ids of at most 10 digits and a newline each,
+/// 45,136 bytes; 64 KiB (as import/.attempts and the shortcut files have) leaves room for comments and
+/// CRLF line ends put in by hand.
+const LIST_FILE_MAX: usize = 64 << 10;
 
 /// Tests only (NULL otherwise): called with the page file's path once the pass has written a page's
 /// new file, just before it checks that the page file still holds what it read and renames the new
@@ -54,41 +59,50 @@ fn list_path(id: &str, buf: &mut String, cap: usize) -> i32 {
     0
 }
 
-// The whole of the list file at `path`: None with *err -1 when there is no such file, -2 when it is
-// there but could not be read to its end (a read error, no memory).
+// The whole of the list file at `path`: None with *err -1 when there is no list, -2 when a plain file is
+// there but could not be read to its end (it did not open, is longer than LIST_FILE_MAX, a read error, no
+// memory). Only a plain file at the name itself is a list (util::open_read_nofollow: a link is not
+// followed, a FIFO never waited on). Nothing there, a link (to a file or to nothing), a FIFO, a folder or
+// anything else is no list: it never holds one Grimoire wrote, so the pass leaves it alone and the editor's
+// next list_write replaces the entry itself (write_file_atomic renames over it, never writing through it),
+// as a link to nothing always was.
 fn list_text(path: &str, err: &mut i32) -> Option<Vec<u8>> {
     use std::io::Read;
-    let mut f = match std::fs::File::open(path) {
-        Ok(f) => f,
+    let (f, md) = match open_read_nofollow(path) {
+        Ok(x) => x,
         Err(e) => {
-            *err = if e.raw_os_error() == Some(libc::ENOENT) { -1 } else { -2 };
+            *err = if e.raw_os_error() == Some(libc::ENOENT) {
+                -1
+            } else {
+                // (the entry itself, by lstat: a plain file that did not open is a list that does not read)
+                match std::fs::symlink_metadata(path) {
+                    Ok(m) if m.is_file() => -2,
+                    Ok(_) => -1,
+                    Err(e) if e.kind() == std::io::ErrorKind::NotFound => -1,
+                    Err(_) => -2,
+                }
+            };
             return None;
         }
     };
+    // (bounded as util::read_file_max bounds a small text file: the size on the open file, then one byte past
+    // the limit asked for, so a list that grew since is told from one that fits; EINTR is tried again. Unlike
+    // read_file_max, a read that fails midway is a list that does not read, never the part that was read: a
+    // list written from that part would forget the pages after it.)
     let mut t: Vec<u8> = Vec::new();
-    let mut chunk = [0u8; 4096];
-    loop {
-        match f.read(&mut chunk) {
-            Ok(0) => break,
-            Ok(r) => {
-                if t.try_reserve(r).is_err() {
-                    *err = -2;
-                    return None;
-                }
-                t.extend_from_slice(&chunk[..r]);
-            }
-            Err(e) if e.kind() == std::io::ErrorKind::Interrupted => continue,
-            Err(_) => {
-                *err = -2;
-                return None;
-            }
-        }
+    if md.len() > LIST_FILE_MAX as u64
+        || t.try_reserve_exact(md.len() as usize).is_err()
+        || f.take(LIST_FILE_MAX as u64 + 1).read_to_end(&mut t).is_err()
+        || t.len() > LIST_FILE_MAX
+    {
+        *err = -2;
+        return None;
     }
     Some(t)
 }
 
 // The page ids notebook `id` lists, each once, in the order listed: 0 (out may be empty); -1 when it
-// has no list (or `id` cannot be a notebook's); -2 when the list is there but could not be read
+// has no list (list_text, or `id` cannot be a notebook's); -2 when the list is there but could not be read
 // whole, so nothing may be written over it. A line that is not a page id is skipped.
 fn list_read(id: &str, out: &mut Vec<u32>) -> i32 {
     out.clear();

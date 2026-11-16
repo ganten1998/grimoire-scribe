@@ -6,10 +6,11 @@
 # env: TZ=UTC
 # rust-only
 # The clock and battery in each corner of the notebook page (settings.ini status_corner: 0 top left, the
-# default, 1 top right, 2 bottom right, 3 bottom left): the Display sheet's corner cell and the status-corner
-# shortcut (the C key and the East button here) step it clockwise; its tap zone, a 14 mm square, follows it; moving
-# it is two small refreshes, the new place and the old, never one across the screen; sideways it is the turned
-# screen's corner. The box reads left to right in every corner: the time, the battery, its percent.
+# default, 1 top right, 2 bottom right, 3 bottom left): the Clock settings page's corner row (with no toast: the row
+# names the corner) and the status-corner shortcut (the C key and the East button here) step it clockwise; its tap
+# zone, a 14 mm square, follows it; moving it is two small refreshes, the new place and the old, never one across
+# the screen; sideways it is the turned screen's corner. The box reads left to right in every corner: the time, the
+# battery, its percent.
 wait 3800
 clock 1700000000
 battery 87
@@ -35,15 +36,23 @@ wait 300
 expect settings.status_on is 1
 expect status.rect is 6 6 331 48
 shot 01-top-left
-# The Display sheet's corner cell, beside the size and Done: top right.
-tap panel display
+# Settings > Sleep & Clock > Clock settings, its corner row: top right, and no toast, though the page is covered
+# (issue #141).
+tap panel settings
 wait 400
-expect editor.modal is display
-tap 997 1950
+expect editor.modal is settings
+tap library settings.cat.2
+wait 100
+tap library clock-settings
+wait 300
+expect editor.settings.sheet is display
+expect toast is
+tap library display.corner
 wait 300
 expect settings.status_corner is 1
+expect toast is
 expect status.zone is 1695 0 165 165
-tap 1460 1950
+tap library display.done
 wait 400
 expect editor.modal is none
 expect status.shown is 1

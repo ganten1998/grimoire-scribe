@@ -2596,6 +2596,14 @@ What they cannot show is the Scribe's own storage, so this round ships only once
 9. Only if step 1 said the storage takes symlinks, with Grimoire closed:
    `ln -s /etc/hostname /mnt/us/grimoire/templates/linked.png`, start Grimoire, New notebook, Paper: no
    `linked` among the templates. Remove the link.
+10. **The clipboard, the compaction lists, the shortcut files and the PDF cache** (the same read, since
+    #118). Lasso some ink, Copy, turn the page and Paste: it pastes. Take a notebook of two pages or more
+    that the PDF mirror has written (step 6's, if it has two pages; else change another one and close it
+    once with the mirror on), change one of its pages and close it: its
+    `bg: export of <id>: N pages, D drawn` line has D smaller than N (the other pages were found in the PDF
+    cache). Erase a word on a page, close the notebook and start Grimoire again: the log has no
+    `its list does not read` line. With shortcuts on and a keyboard at hand, a key of `shortcuts.ini` acts
+    as before.
 
 ## Hardening round (2026-11), invariants: the documents and the build's crate rule
 
@@ -2675,7 +2683,8 @@ import commits. The owner's check:
    `no longer holds the file that was read` line, and the scan's line counts `0 that differ from their
    listing`. This step decides whether the three checks suit the Scribe's storage: the first line would mean
    that no import starts there, the second that every PDF waits a minute, the third that an imported PDF
-   stays in `import/` and is read again up to three times.
+   stays in `import/` and is read again twice (three times in all), after which its row in the Import place
+   reads "Couldn't import PDF (see grimoire.log)." although its notebook exists.
 8. **A second start during an import.** Start a long import, close Grimoire while it runs and open it
    again: the notice goes on. Pick another PDF in Files: "Another import is still going. This one starts
    after it.", and it starts once the first has ended.
@@ -2697,3 +2706,187 @@ import commits. The owner's check:
 If step 1's T is long enough to matter, or step 2 shows the pen lagging, see the BACKLOG entry on the import's
 whole-file read ("Hardening round (2026-11), import: what waits"). If step 7 shows any of its three lines, do
 not release: send grimoire.log.
+
+## 2.2 work, the Font sheet in the new Settings menu (#115, #116)
+
+Since the new Settings menu (#115, which the owner checked on a Kindle Scribe), Settings > Font is the Font row
+of Settings' Display category, and its sheet works as Language does: a tap on a font applies it at once and
+saves it (with one Full refresh, as a style change); Back and Esc return to Settings and the X closes all of
+Settings, each keeping the font tapped. That replaces "Done applies, Cancel leaves the font as it was" in the
+sections "2.1.0, Classic fonts", "2.1.0-beta.2, L10 (your own fonts)" (step 8) and "2.1.0-beta.2, fix round,
+F3" (step 3), which describe the 2.1.0 builds.
+
+Automated: tests/scenarios/y_fonts.qs (a tap applies the family and saves it with a Full refresh; Back and Esc
+keep it; the X closes Settings with one ui refresh; Gothic has no Font row), z_fonts_kept.qs (the font y_fonts
+tapped last is there at the next start: y_fonts quits with the storage full after that tap, so the tap saved
+it), y_fonts_unknown.qs (an unknown `font=` line stays while the sheet is left with no tap, and a font tapped
+replaces it at once), y_fonts_own_1_sheet.qs and z_fonts_own_kept.qs (a font of the owner's own applied and
+saved at the tap, kept by Back and by the X, and there at the next start), and rust/tests/test_fontguard.rs
+`terminess_tapped_after_a_strike_takes_the_font_away_at_once` (after a start in Terminess that a crash made,
+Terminess tapped, then Back: no `font=file:` line is left, and the next start does not load the font).
+
+On the Scribe:
+
+1. **A tap applies.** In Classic, Settings, the Display category, Font: tap Atkinson. One full refresh, and the
+   sheet is in Atkinson; Back: Settings is in Atkinson and its row reads "Font: Atkinson"; restart Grimoire:
+   still Atkinson.
+2. **Back keeps the font tapped.** Tap Literata, then Back: Settings stays in Literata. Tap Atkinson, then the
+   X: the Library is in Atkinson.
+3. **Terminess after a crash.** As step 3 of "2.1.0-beta.2, fix round, F3", but tap Terminess and then Back:
+   settings.ini has no `font=file:` line any more, and the next start does not load the font.
+
+## 2.2, Files' storage writes (issue #117): device checks
+
+Automated: the unit tests of `fsview.rs` (the name rules, the trash's names, the record read strictly, what an
+import holds), `bgjob.rs` (the jobs' paths) and `bgwork_copy.rs` (the job's path), and
+`rust/tests/test_fsview_writes.rs` (the allow-list's refusals, no replace, another writer at the name between
+the fallback's check and its rename, a case-only rename, a rename and a trash stopped half way, the busy check,
+trash and restore of a file, a folder and a notebook in both forms, a name taken, refused restores, the copy with
+its floor, a failed write and a source that changes). On the Mac only the fallback rename runs (the new name
+reserved, then `renameat` over the reservation); CI's Linux job (`sandbox`) runs the same file with the kernel's
+`RENAME_NOREPLACE` on its tmpfs. Nothing on screen calls these writes yet, so the Scribe's part is three
+questions about its storage, asked over SSH (Grimoire closed unless a step says otherwise). Their answers decide
+what runs there and whether "File changed. Try again." can come for no reason; they are due before the first
+screen that uses the writes ships (issue #100 tracks the device checks before a release). Write the answers into
+docs/KINDLE.md (How it fits in).
+
+1. **Does the storage take the no-replace rename?** KOReader's LuaJIT can make the call (`382` is
+   `renameat2` on the Scribe's 32-bit ARM kernel, `-100` the current folder, `1` the no-replace flag; if
+   KOReader is installed elsewhere, use its `luajit`):
+
+   ```
+   mkdir /mnt/us/grimoire/.probe && cd /mnt/us/grimoire/.probe && echo a > a && echo b > b
+   /mnt/us/koreader/luajit -e '
+   local ffi = require("ffi")
+   ffi.cdef[[long syscall(long n, ...); char *strerror(int e);]]
+   local function try(from, to)
+     local r = tonumber(ffi.C.syscall(382, ffi.cast("long", -100), from, ffi.cast("long", -100), to, ffi.cast("long", 1)))
+     local e = ffi.errno()
+     print(from .. " -> " .. to .. ": " .. r .. (r ~= 0 and (" " .. ffi.string(ffi.C.strerror(e))) or ""))
+   end
+   try("a", "b") try("a", "B") try("a", "c")'
+   ls; cat b c
+   ```
+
+   The flag works when it prints `a -> b: -1 File exists`, `a -> B: -1 File exists` (on a storage that folds
+   case, `B` is `b`) and `a -> c: 0`, and `ls` shows `b c` with `b` holding `b` and `c` holding `a`: Grimoire's
+   renames are the kernel's own. It prints `Invalid argument` (or `Function not implemented`) for all three, and
+   `a` is still there, when the storage refuses it: Grimoire then takes the fallback (the name reserved first),
+   and its log says so once a session (`files: the storage refused the no-replace rename`). On a storage that
+   keeps case apart, `a -> B: 0` then `a -> c: -1 No such file or directory`, and `ls` shows `B b`: send the
+   output (the case rules matter to the screens). Any other answer (anything replaced, or another error) is not
+   expected: send the output.
+2. **Is a move into the trash one rename, for a file and for a folder?** In the same folder:
+
+   ```
+   dd if=/dev/zero of=big bs=1048576 count=50 && mkdir dir && echo x > dir/f
+   stat -c '%i %s' big dir
+   time mv big ../trash/probe-big; time mv dir ../trash/probe-dir
+   stat -c '%i %s' ../trash/probe-big ../trash/probe-dir
+   rm -rf ../trash/probe-big ../trash/probe-dir
+   ```
+
+   One rename each: the same numbers before and after, and each `mv` well under a second for the 50 MB file.
+   A copy would take seconds and give new numbers: then trash is not instant there, and the screens must say
+   so before a big file goes.
+3. **Do the numbers a check compares stay the same?** "File changed. Try again." compares a file's device,
+   inode, size and time with what its listing saw. In the same folder:
+   `echo keep > keep && stat -c '%d %i %s %Y' keep`, and note the line. Then ask again over SSH
+   (`stat -c '%d %i %s %Y' /mnt/us/grimoire/.probe/keep`) after a restart of the Kindle, and with Grimoire open
+   for a minute (from SSH while it runs). The same line every time: a file left alone never reads as changed. The
+   Scribe connects to a computer over MTP, so its storage stays mounted while a cable is in: a connection is no
+   separate case to ask about. A new device or inode number after the restart matters only to a listing kept
+   across it (none is); one that changes while Grimoire runs would make the screens refuse for no reason: send
+   the lines.
+
+Tidy: `cd /; rm -rf /mnt/us/grimoire/.probe`.
+
+## 2.2, the same PDF again fills its notebook (issue #123): device checks
+
+A PDF whose notebook lacks some of the book's pages (pages deleted since, or a notebook KOReader made, which holds
+only the pages KOReader sent) fills that notebook when it is dropped in `grimoire/import` again: the missing pages
+in book order, with the links that start or end on them and the outline's names for them. The pages it had keep
+their files, their names and their links: a fill adds no link between two of them and names none of them. A
+notebook with every page says "PDF already imported."; a PDF of another page count becomes a notebook of its own.
+The pages go in once the notebook is closed and the Library is in front ("Adding book pages: N of M", taps and keys
+waiting meanwhile); until then the notebook opens as it is, and KOReader's Open this book in Grimoire is not held up.
+Automated: `rust/tests/test_pdf_fill.rs` (a notebook with its file record, one without, one KOReader made with
+KOReader's links a pixel off the import's, and 3 px off, a full one, another page count, the files of the pages it
+had byte for byte, the writer that never writes the notebook, a notebook renamed, moved or deleted while its pages
+were made, what writes the notebook between two ticks of the commit, a job running on the notebook when its pages
+are made, a worker that cannot start, KOReader's job while a fill waits, a stop in the middle, a fill whose PDF goes
+away, a commit cut off after each of its steps and three times, the key checked again, two copies dropped together,
+the water level that keeps a notebook's own links, the state's grammar) and the scenarios
+`tests/scenarios/z_pdf_11_fill_1_book.qs` (KOReader's book of the
+tabs planner, pages 1 and 3), `z_pdf_12_fill_2_drop.qs` (the planner dropped: the two pages added, KOReader's tabs
+not doubled, no name given to KOReader's pages), `z_pdf_13_fill_3_open.qs` (the notebook opened while its fill is
+made, the pages going in back in the Library), `z_pdf_14_fill_4_held.qs` and `z_pdf_15_fill_5_koreader.qs`
+(KOReader's Open this book while a fill of the book's notebook waits: the book opens, the fill goes in after),
+`z_pdf_16_fill_6_book_job.qs` (KOReader's job adds one of the pages a waiting fill made, looking at one page a tick
+by `GRIMOIRE_BOOK_STEP_PAGES`: no commit begins while it runs, and the fill then adds only the page still missing)
+and `z_pdf_17_fill_7_input.qs` (a key and a tap while the commit runs, slowed to a file a tick by
+`GRIMOIRE_FILL_STEP_PAGES`, do nothing).
+
+**Not run on a Scribe.** Two things only the Scribe can say: whether the book key Grimoire computes for a PDF is
+the key KOReader wrote for it (KOReader's own partial MD5 of the file it opened), and whether KOReader's link boxes
+and the import's agree within 2 px (a fill adds no link between the pages KOReader sent, but a later Open this book
+that sends links again would add a second copy of a link to a page the fill added). The owner's check, on a build
+of this branch:
+
+1. **KOReader's notebook.** In KOReader, open a planner PDF with tabs that Grimoire never imported (one of more
+   than ten pages), go to its third page and use Open this book in Grimoire. Write a line on that page. Note the
+   notebook's page count on its card (the pages KOReader sent), and leave Grimoire for KOReader.
+2. **The same file dropped.** Over USB, copy that very file (from where KOReader opened it, unchanged) into
+   `grimoire/import`, and start Grimoire. Within about 10 s the notice counts the missing pages ("Importing: page
+   N of M", M the book's pages less the notebook's), then "Adding book pages: N of M" for a moment, and the end
+   says "Added M book pages."; the Library has no second card. `grimoire.log` has `import: <id>: notebook <nb>
+   lacks M of the book's P page(s): they are added to it`, `the pages for notebook <nb> are made`, then
+   `import: <id>: notebook <nb>: D document link(s) (A added, S already there, ...)` and `import: notebook <nb>
+   filled: M page(s) added`. S is 0 here: the fill adds no link between the pages KOReader sent.
+3. **The pages and the tabs.** Open the notebook: the book's pages in order, the line written in step 1 on its
+   page. With the eye on, every tab of a page KOReader sent is drawn once (a tab drawn twice, slightly offset,
+   is a link added a second time: send `grimoire.log` and the notebook's `doclinks.ini`). A tab on a page KOReader
+   sent that goes to a page the fill added works, and the pages KOReader sent have no name they did not have.
+4. **The key.** If step 2 made a second notebook instead (a second card, and no `lacks` line in the log), the
+   two keys differ: compare the notebook's `source=` line (`grimoire/notebooks/<nb>/notebook.ini`, KOReader's key)
+   with the key of the file, which on a computer is
+   `python3 -c "import hashlib,sys;b=open(sys.argv[1],'rb').read();m=hashlib.md5();[m.update(b[o:o+1024]) for o in [0]+[1024<<(2*i) for i in range(11)] if o<len(b)];print(m.hexdigest())" planner.pdf`,
+   and send both with the log.
+5. **The notebook opens meanwhile.** Delete a few pages of that notebook in the Pages view, drop a copy of the
+   PDF again, and while the notice counts, tap the notebook's card: it opens, as it is. Go back to the Library:
+   "Adding book pages: N of M" shows for a moment, then "Added N book pages."; the card opens it, filled again.
+6. **KOReader while a fill waits.** Delete a few pages again, drop a copy of the PDF, and before its notice ends
+   leave Grimoire for KOReader; there, use Open this book in Grimoire: the book opens on the reader's page at once,
+   with no toast over it. Go back to the Library: the fill's pages go in ("Added N book pages.").
+7. **KOReader again.** Open the PDF in KOReader and use Open this book in Grimoire on a page the fill added: it
+   opens that page, adds no page, and no tab doubles.
+
+## 2.2, Files (issue #124): device checks
+
+Not run on a Scribe yet. The headless scenarios `files_1_card` to `files_7_keys` cover the logic (the card hidden,
+shown last and hidden again, the root's rows, the path bar's parts and Go to, each Sort on a folder of known
+sizes and times, Show all with a link, a picture's, a font's and another file's card, the trash, a Library card's
+hold, the `files` and `home` actions from keys), and `browser.rs`'s unit tests the order, the root and the cards.
+What only the storage can tell, on the Scribe:
+
+1. **A big `documents/`** (a few thousand files): Files > Documents. Read grimoire.log: `files: listed N entries
+   (M usable) in T ms`, then tap Sort to Newest and to Size and read `files: N rows sorted (S) in T ms` (counts
+   and timings only, never a name). Note each T, whether "Loading..." appears (over 1 s), that the rows on screen
+   do not move until the new order is ready and then change at once, and that the pen and page turns stay quick
+   meanwhile. Then tap the folder shown in the path bar: the Go to sheet reads the storage root for at most a fifth
+   of a second; note whether it comes at once and lists the top folders. Send the lines and the folder's size.
+2. **A folder past 5,000 entries**: "Showing the first 5000." under the path, every Sort finishes, and the order
+   covers the 5,000 listed.
+3. **Planted links** over SSH, in a folder of their own outside `documents/` (which the Kindle's reader indexes):
+   `mkdir /mnt/us/linktest`, copy any PDF into it as `Plain.pdf`, then `ln -s /mnt/us/linktest
+   /mnt/us/linktest/loop`, `ln -s /etc /mnt/us/linktest/etc` and `ln -s Plain.pdf /mnt/us/linktest/Alias.pdf`.
+   Files > All storage > linktest: with Show set to PDFs, pictures, fonts only Plain.pdf is listed; with All files
+   each link is a greyed row "link, not followed", a tap on it does nothing, and Sort by newest or size puts them
+   last. Nothing is entered or opened through one. Then remove the folder and its links: `rm -r /mnt/us/linktest`
+   (rm removes the links themselves, never what they point to).
+4. **The card**: New > From a file... > Show Files in Library; Back to the Library: the Files card is the last card
+   (with many notebooks, on the last screen). Hold it 0.6 s: its menu; Hide from Library takes it away, and the row
+   comes back in the picker's root.
+5. **PDF copies and Trash**: Files > PDF copies lists the mirror PDFs read only, and a mirror PDF's card opens its
+   notebook; Files > Trash lists deleted notebooks by name and date, newest first, and none opens.
+6. **Rotate** the Scribe in Files: the path bar, its chips, the rows and the Go to sheet lay out again.

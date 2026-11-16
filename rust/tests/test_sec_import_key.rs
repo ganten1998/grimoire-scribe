@@ -9,7 +9,7 @@
 // exec of the headless runner), as test_pdfimport.rs. Generated PDFs only: pdffix::shared_key_set.
 #![cfg(feature = "sim")]
 mod pdffix;
-use grimoire::browser::{Browser, PickKind, PickSpec};
+use grimoire::browser::{Browser, PickSpec};
 use grimoire::fsview::StoragePath;
 use grimoire::pdfimport::*;
 use grimoire::prelude::*;
@@ -311,7 +311,7 @@ fn a_notebook_without_a_record_goes_by_its_key() {
 
 fn picker_at(place: &str) -> Browser {
     let mut b = Browser::default();
-    assert!(b.open_pick(PickSpec { kinds: &[PickKind::Pdf, PickKind::PictureFolder] }));
+    assert!(b.open_pick(PickSpec::import()));
     assert!(b.go(StoragePath::new(place.as_bytes()).unwrap()));
     b
 }

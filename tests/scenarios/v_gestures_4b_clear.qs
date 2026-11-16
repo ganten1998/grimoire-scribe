@@ -8,19 +8,22 @@ wait 200
 expect pen.gesture is
 tap 1535 95
 wait 100
-expect library.ui_at.1000.1930 is gestures
-tap 1000 1930
+expect library.ui_at.329.830 is settings.cat.4
+tap 329 830
+wait 100
+expect library.ui_at.1233.639 is gestures
+tap 1233 639
 wait 100
 expect library.sheet is gestures
-expect library.ui_at.930.749 is gestures.group.editing
-tap 930 749
+expect library.ui_at.930.608 is gestures.group.editing
+tap 930 608
 wait 100
 expect library.gestures_group is editing
 expect library.gestures.7 is Clear page: no gesture
 expect gestures.clear-page is
 # Record a hold of the pen's button for it
-expect library.ui_at.930.1320 is gestures.row.7
-tap 930 1320
+expect library.ui_at.930.1220 is gestures.row.7
+tap 930 1220
 wait 100
 expect library.gestures.learning is clear-page
 expect library.record is wait
@@ -38,13 +41,13 @@ expect gestures.clear-page is pen.Button.hold
 expect library.gestures.7 is Clear page: pen button hold
 pen leave
 # Holding the row clears it, and the record card records it again
-touch down 930 1320
+touch down 930 1220
 wait 700
-touch up 930 1320
+touch up 930 1220
 expect gestures.clear-page is
 expect library.gestures.7 is Clear page: no gesture
 expect toast is No gestures for Clear page now.
-tap 930 1320
+tap 930 1220
 wait 100
 expect library.gestures.learning is clear-page
 pen hover 930 1100
@@ -57,14 +60,14 @@ wait 100
 expect library.record is 0
 expect gestures.clear-page is pen.Button.hold
 pen leave
-expect library.ui_at.930.2120 is done
-tap 930 2120
+expect library.ui_at.125.95 is done
+tap 125 95
 wait 100
-expect library.ui_at.930.2030 is done
-tap 930 2030
+expect library.ui_at.125.95 is settings.back
+tap 125 95
 wait 100
-expect library.ui_at.1550.1930 is done
-tap 1550 1930
+expect library.ui_at.1735.95 is done
+tap 1735 95
 wait 100
 expect library.sheet is none
 tap 965 95

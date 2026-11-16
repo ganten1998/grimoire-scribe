@@ -46,9 +46,12 @@ tap panel library
 wait 200
 tap 1535 95
 wait 100
-expect library.ui_at.1000.1930 is gestures
-tap 1000 1930
+expect library.ui_at.329.830 is settings.cat.4
+tap 329 830
 wait 100
-expect library.ui_at.930.420 is gestures.master
-tap 930 420
+expect library.ui_at.1233.639 is gestures
+tap 1233 639
+wait 100
+expect library.ui_at.930.296 is gestures.master
+tap 930 296
 expect settings.gestures is 1

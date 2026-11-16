@@ -859,8 +859,9 @@ pub fn scenario_files() -> Vec<(&'static str, Vec<u8>)> {
         ("refused/WebInside.ttf", woff2()),
         ("refused/Borrowing.ttf", ttf(&cyclic_composite(false))),
     ];
-    // enough fonts for two pages of the sheet
-    for i in 1..=7 {
+    // enough fonts for two pages of the sheet, upright and sideways: twelve and the missing font's row are
+    // thirteen rows, past the eight a page holds upright and the twelve sideways
+    for i in 1..=12 {
         let mut f = test_font("Regular", 400);
         f.family = format!("Grimoire Test {i}");
         let name: &'static str = Box::leak(format!("many/Test{i:02}.ttf").into_boxed_str());
