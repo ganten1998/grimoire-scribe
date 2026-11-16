@@ -3,13 +3,14 @@
 // book's pages gets those pages added, in book order, with the links between pages that both exist and names for
 // pages that have none; the pages it had, their ink, names and links stay as they were. A notebook that has every
 // page says "PDF already imported."; a PDF whose page count is not the one the notebook's pages name becomes a
-// notebook of its own. The fill commits only while the notebook is closed, and a fill that stops, is cut off, or
-// loses its PDF leaves the notebook as it was or filled, never half.
+// notebook of its own. The writer only makes the pages; the UI process puts them in (pdfimport::fill_tick), with no
+// notebook open and nothing else writing it, and a commit cut off is taken to its end, never left half.
 //
 // The writer runs in this process (pdfimport::run_slice, every page through a real worker, a fresh exec of the
 // headless runner), as in test_pdfimport.rs; the tests of the queue drive the jobs as the app does (bg_poll_job,
-// then pdfimport::finished), as test_import_queue.rs does, and wait on no clock. Generated PDFs only (pdffix::tabs:
-// four pages of 465 x 620 points, a tab on each, a link by a name on page 1, an outline naming pages 1 and 3).
+// then pdfimport::finished), as test_import_queue.rs does, and the UI's commit as app.rs's tick does (fill_tick).
+// None waits on a clock. Generated PDFs only (pdffix::tabs: four pages of 465 x 620 points, a tab on each, a link by
+// a name on page 1, an outline naming pages 1 and 3).
 #![cfg(feature = "sim")]
 mod pdffix;
 use grimoire::pdfimport::*;
@@ -26,7 +27,7 @@ fn bin() -> &'static str {
     env!("CARGO_BIN_EXE_grimoire-headless")
 }
 
-const HOOKS: [&str; 10] = [
+const HOOKS: [&str; 11] = [
     "GRIMOIRE_PDF_JOB_CPU_SECS",
     "GRIMOIRE_PDF_SLICE_PAGES",
     "GRIMOIRE_PDF_BANDS",
@@ -37,6 +38,7 @@ const HOOKS: [&str; 10] = [
     "GRIMOIRE_SANDBOX",
     "GRIMOIRE_WORK_FAIL_STEP",
     "GRIMOIRE_BG_DELAY_MS",
+    "GRIMOIRE_FILL_STEP_PAGES",
 ];
 
 struct Env {
@@ -96,11 +98,19 @@ impl Env {
     fn done_files(&self) -> usize {
         std::fs::read_dir(format!("{}/import/done", self.root)).map(|r| r.flatten().count()).unwrap_or(0)
     }
+    fn in_import(&self, name: &str) -> bool {
+        std::path::Path::new(&format!("{}/import/{name}", self.root)).exists()
+    }
     /// The work folders of imports (notebooks/.import-<id>), by name.
     fn work_folders(&self) -> Vec<String> {
         std::fs::read_dir(format!("{}/notebooks", self.root))
             .map(|r| r.flatten().map(|e| e.file_name().to_string_lossy().into_owned()).filter(|n| n.starts_with(".import-")).collect())
             .unwrap_or_default()
+    }
+    /// A fill's state as its work folder holds it.
+    fn fill_state(&self, fid: &str) -> State {
+        let t = std::fs::read(format!("{}/notebooks/.import-{fid}/pdf-fill.ini", self.root)).expect("a fill's state");
+        State::parse(&t).expect("it reads")
     }
     /// Every file of notebook `id` (its folder and bg/), with its bytes.
     fn files(&self, id: &str) -> BTreeMap<String, Vec<u8>> {
@@ -116,6 +126,10 @@ impl Env {
             }
         }
         out
+    }
+    /// The page files in notebook `id`'s folder (listed or not).
+    fn page_files(&self, id: &str) -> usize {
+        self.files(id).keys().filter(|k| k.starts_with('p') && k.ends_with(".qpg")).count()
     }
 }
 
@@ -142,6 +156,37 @@ fn run_on(id: &str, src: &str, most: usize) -> Vec<SliceEnd> {
 
 fn last(ends: &[SliceEnd]) -> &SliceEnd {
     ends.last().unwrap()
+}
+
+/// The UI's ticks (app.rs, the Library in front) until a commit ends, or none begins: what it says.
+fn commit_all() -> Finished {
+    for _ in 0..100_000 {
+        let f = fill_tick(true, DPI);
+        if f != Finished::Nothing || fill_busy().is_none() {
+            return f;
+        }
+    }
+    panic!("the commit never ended");
+}
+
+/// A start of the app as far as the fills go: what the UI remembered is gone, and the scan finds the work folders
+/// (a fill whose pages are made is noted for the UI to put in).
+fn start_again() {
+    ui_reset();
+    grimoire::bgwork_template::import_scan(DPI);
+}
+
+/// The pages a fill made (its work folder `fid`, the slices run in this process) put in by the UI, and its PDF filed
+/// by the slice the commit queues: what the commit said.
+fn put_in() -> Finished {
+    start_again();
+    let f = commit_all();
+    drain();
+    f
+}
+
+fn filled(f: &Finished, n: u32) -> bool {
+    matches!(f, Finished::Filled { added, blank: 0, .. } if *added == n)
 }
 
 /// The book key of these bytes (KOReader's partial MD5), as the import and KOReader compute it.
@@ -281,7 +326,9 @@ fn a_notebook_with_a_record_is_filled_with_the_pages_it_lacks() {
     let files = e.files(&id);
     let record = e.ini(&id, "source.ini").lines().find(|l| l.starts_with("file=")).map(str::to_string).expect("a record");
     let (fid, ends) = import_all(&e.drop("Tabs again.pdf", &bytes));
-    assert_eq!(last(&ends), &SliceEnd::Filled { added: 2, blank: 0 }, "{ends:?}");
+    assert_eq!(last(&ends), &SliceEnd::Ready { blank: 0 }, "{ends:?}");
+    let f = put_in();
+    assert!(filled(&f, 2), "{f:?}");
     assert_eq!(e.notebooks().len(), 1, "no notebook of its own");
     let nb = e.info(&id);
     assert_eq!(book_pages(&id, &nb), [1, 2, 3, 4], "the pages in book order");
@@ -322,7 +369,8 @@ fn a_notebook_without_a_record_is_filled_by_its_key() {
     let thumb = format!("{}/notebooks/{id}/thumb.pgm", e.root);
     let _ = std::fs::remove_file(&thumb);
     let (_, ends) = import_all(&e.drop("Tabs again.pdf", &bytes));
-    assert_eq!(last(&ends), &SliceEnd::Filled { added: 2, blank: 0 }, "{ends:?}");
+    assert_eq!(last(&ends), &SliceEnd::Ready { blank: 0 }, "{ends:?}");
+    assert!(filled(&put_in(), 2));
     let nb = e.info(&id);
     assert_eq!(book_pages(&id, &nb), [1, 2, 3, 4]);
     let text = e.ini(&id, "source.ini");
@@ -399,7 +447,8 @@ fn a_koreader_notebook_is_filled_and_no_link_is_doubled() {
     ink(&id, 1);
     let files = e.files(&id);
     let (_, ends) = import_all(&e.drop("Tabs.pdf", &bytes));
-    assert_eq!(last(&ends), &SliceEnd::Filled { added: 2, blank: 0 }, "{ends:?}");
+    assert_eq!(last(&ends), &SliceEnd::Ready { blank: 0 }, "{ends:?}");
+    assert!(filled(&put_in(), 2));
     let nb = e.info(&id);
     assert_eq!(book_pages(&id, &nb), [1, 2, 3, 4]);
     let links = doc_links(&id, &nb);
@@ -449,73 +498,236 @@ fn a_pdf_of_another_page_count_becomes_a_notebook_of_its_own() {
     assert!(e.ini(&fid, "source.ini").lines().any(|l| l.starts_with("file=sha256:") && l.ends_with(&key)));
 }
 
-// ---- only while the notebook is closed ----
+// ---- the writer makes the pages; the UI puts them in ----
 
-// While a fill of a notebook is under way it does not open (the editor asks fill_pending first, and shows its count);
-// a fill whose notebook is open when its pages are made waits, keeping its work folder, and goes on once it is closed.
+// The writer never writes the notebook: its slices, run to their end here or in another thread (as in the child that
+// finishes the queue after Grimoire closed: another store, queue and record), end with the pages made and the
+// notebook byte for byte as it was, its work folder kept for the UI. Nothing holds the notebook meanwhile. The UI
+// then puts the pages in.
 #[test]
-fn a_notebook_being_filled_does_not_open_and_a_fill_waits_for_its_notebook() {
-    let e = setup("pending");
+fn the_writer_never_writes_the_notebook_and_the_ui_puts_the_pages_in() {
+    let e = setup("ui-commits");
     std::env::set_var("GRIMOIRE_PDF_SLICE_PAGES", "1");
     let (id, bytes) = imported_tabs(&e);
     drop_pages(&id, &[2, 4]);
     let files = e.files(&id);
-    assert_eq!(fill_pending(&id), None);
+    let src = e.drop("Tabs again.pdf", &bytes);
+    let s2 = src.clone();
+    let fid = std::thread::spawn(move || {
+        attach("ui-commits");
+        let mut fid = String::new();
+        store_make_id(&mut fid);
+        let ends = run_on(&fid, &s2, 10);
+        assert_eq!(last(&ends), &SliceEnd::Ready { blank: 0 }, "{ends:?}");
+        // a slice run again (the queue, a start) ends at once, writing nothing
+        assert_eq!(run_slice(&fid, &s2), SliceEnd::Ready { blank: 0 });
+        fid
+    })
+    .join()
+    .unwrap();
+    assert_eq!(e.files(&id), files, "the writer wrote nothing of the notebook");
+    // a fill's state has a name an earlier version never reads, and says the pages are made
+    let work = format!("{}/notebooks/.import-{fid}", e.root);
+    assert!(!std::path::Path::new(&format!("{work}/pdf-import.ini")).exists());
+    let st = e.fill_state(&fid);
+    assert_eq!((st.stage, st.todo.clone(), st.fill.clone()), (STAGE_READY, vec![2, 4], id.clone()));
+    assert!(keep_work_folder(&fid), "the next start goes on with it");
+    assert!(!fill_holds(&id) && fill_busy().is_none(), "nothing holds the notebook");
+    assert!(e.in_import("Tabs again.pdf"), "the PDF is filed once its pages are in");
+    // the UI, as the Library's tick does
+    let f = put_in();
+    assert_eq!(f, Finished::Filled { nb: id.clone(), added: 2, blank: 0, trimmed: 0 });
+    assert_eq!(book_pages(&id, &e.info(&id)), [1, 2, 3, 4]);
+    assert!(e.work_folders().is_empty() && !e.in_import("Tabs again.pdf") && e.done_files() == 2);
+}
+
+/// Pages 2 and 4 of the tabs planner made for its notebook (pages 1 and 3 kept), not yet put in: the notebook, its
+/// fill's work folder and the PDF's name in import/.
+fn made_for(e: &Env, name: &str) -> (String, String, String) {
+    std::env::set_var("GRIMOIRE_PDF_SLICE_PAGES", "4");
+    let (id, bytes) = imported_tabs(e);
+    drop_pages(&id, &[2, 4]);
+    let src = e.drop(name, &bytes);
+    let (fid, ends) = import_all(&src);
+    assert_eq!(last(&ends), &SliceEnd::Ready { blank: 0 }, "{ends:?}");
+    (id, fid, src)
+}
+
+// A notebook renamed, moved or deleted while its fill's pages were made is not filled: nothing of it is written (a
+// rename and a move stay as the user made them; a deleted notebook stays in the trash, whole, and is never made
+// again), the work folder goes, and the PDF stays in import/, where the next scan takes it again as the file it is:
+// here, a fill of the renamed notebook.
+#[test]
+fn a_notebook_renamed_moved_or_deleted_while_its_pages_were_made_is_not_filled() {
+    let e = setup("dropped");
+    // (the PDFs left in import/ are not taken by the scans of the first part)
+    std::env::set_var("GRIMOIRE_IMPORT_STABLE", "hold");
+    for what in ["rename", "move", "delete"] {
+        for nb in e.notebooks() {
+            std::fs::remove_dir_all(format!("{}/notebooks/{}", e.root, nb.id.as_str())).unwrap();
+        }
+        let name = format!("Tabs {what}.pdf");
+        let (id, fid, _) = made_for(&e, &name);
+        let pre = e.files(&id);
+        match what {
+            "rename" => assert_eq!(store_rename(&id, "Renamed by the user"), 0),
+            "move" => assert_eq!(store_set_folder(&id, "School"), 0),
+            _ => assert_eq!(store_delete(&id), 0),
+        }
+        let files = e.files(&id);
+        let f = put_in();
+        assert_eq!(f, Finished::Nothing, "{what}");
+        assert_eq!(e.files(&id), files, "{what}: nothing of the notebook was written");
+        assert!(!std::path::Path::new(&format!("{}/notebooks/.import-{fid}", e.root)).exists(), "{what}");
+        assert!(e.in_import(&name), "{what}: the PDF stays for the next scan");
+        match what {
+            "rename" => assert_eq!(e.info(&id).name.as_str(), "Renamed by the user"),
+            "move" => assert_eq!(e.info(&id).folder.as_str(), "School"),
+            _ => {
+                assert!(!std::path::Path::new(&format!("{}/notebooks/{id}", e.root)).exists(), "a deleted notebook stays deleted");
+                let trash: Vec<String> = std::fs::read_dir(format!("{}/trash", e.root)).unwrap().flatten().map(|d| d.file_name().to_string_lossy().into_owned()).collect();
+                let t = trash.iter().find(|t| t.starts_with(&id)).expect("in the trash");
+                // the notebook in the trash is the one deleted, file for file
+                let held: Vec<String> = std::fs::read_dir(format!("{}/trash/{t}", e.root)).unwrap().flatten().filter(|d| d.file_type().is_ok_and(|f| f.is_file())).map(|d| d.file_name().to_string_lossy().into_owned()).collect();
+                assert_eq!(held.len(), pre.keys().filter(|k| !k.starts_with("bg/")).count(), "{held:?}");
+                assert_eq!(std::fs::read(format!("{}/trash/{t}/notebook.ini", e.root)).ok().as_ref(), pre.get("notebook.ini"));
+            }
+        }
+    }
+    // the renamed notebook's PDF, taken again by the scan: a fill of the notebook as it is now
+    for nb in e.notebooks() {
+        std::fs::remove_dir_all(format!("{}/notebooks/{}", e.root, nb.id.as_str())).unwrap();
+    }
+    for what in ["rename", "move", "delete"] {
+        std::fs::remove_file(format!("{}/import/Tabs {what}.pdf", e.root)).unwrap();
+    }
+    let (id, _, _) = made_for(&e, "Tabs again.pdf");
+    assert_eq!(store_rename(&id, "Renamed by the user"), 0);
+    assert_eq!(put_in(), Finished::Nothing);
+    std::env::set_var("GRIMOIRE_IMPORT_STABLE", "fast");
+    assert_eq!(grimoire::bgwork_template::import_scan(DPI), 1);
+    drain();
+    let f = commit_all();
+    drain();
+    assert!(filled(&f, 2), "{f:?}");
+    let nb = e.info(&id);
+    assert_eq!((nb.name.as_str(), book_pages(&id, &nb)), ("Renamed by the user", vec![1, 2, 3, 4]));
+}
+
+// The UI's commit takes a few ticks (here a file a tick). Nothing in the app can act between them (its input waits,
+// as for KOReader's book job), and no background job on the notebook starts meanwhile; and should anything write the
+// notebook between two ticks, the commit keeps what it wrote: each file is read again and written whole in the tick
+// that writes it. A rename, a move and a page copied in (Copy to notebook) stay; a notebook deleted is never made again.
+#[test]
+fn what_writes_the_notebook_between_two_ticks_of_the_commit_stays() {
+    let e = setup("between");
+    std::env::set_var("GRIMOIRE_FILL_STEP_PAGES", "1");
+    let (id, _, _) = made_for(&e, "Tabs again.pdf");
+    let mut other = NotebookInfo::default();
+    assert_eq!(store_create("Other", "", PAPER_BLANK, &mut other), 0);
+    ink(other.id.as_str(), 0);
+    start_again();
+    assert_eq!(fill_tick(true, DPI), Finished::Nothing);
+    assert_eq!(fill_busy(), Some((0, 2)), "the commit is under way");
+    assert!(fill_holds(&id) && !fill_holds(other.id.as_str()));
+    // a job on the notebook (its PDF mirror) waits for the commit's end
+    let mirror = format!("{}/mirror", e.root);
+    bg_queue(BgKind::MirrorPdf, Some(&id), Some(&mirror), DPI, false);
+    assert_eq!(bg_children(), 0, "no job on the notebook starts while its commit runs");
+    assert_eq!(store_rename(&id, "Renamed by the user"), 0);
+    assert_eq!(fill_tick(true, DPI), Finished::Nothing);
+    assert_eq!(store_set_folder(&id, "School"), 0);
+    let mut dst = e.info(&id);
+    let mut out = Vec::new();
+    assert_eq!(store_copy_pages_to(&other, &[other.page_ids[0]], &mut dst, 0, &mut out), 0);
+    let copied = out[0].to;
+    let f = commit_all();
+    assert!(filled(&f, 2), "{f:?}");
+    assert!(!fill_holds(&id) && fill_busy().is_none());
+    let nb = e.info(&id);
+    assert_eq!((nb.name.as_str(), nb.folder.as_str()), ("Renamed by the user", "School"));
+    assert!(nb.page_ids.contains(&copied), "the page copied in is listed");
+    assert!(std::path::Path::new(&format!("{}/notebooks/{id}/p{copied}.qpg", e.root)).exists());
+    assert_eq!(book_pages(&id, &nb), [0, 1, 2, 3, 4]);
+    drain();
+    // a notebook deleted between two ticks: the commit ends there, and nothing makes it again
+    for nb in e.notebooks() {
+        std::fs::remove_dir_all(format!("{}/notebooks/{}", e.root, nb.id.as_str())).unwrap();
+    }
+    let (id, fid, _) = made_for(&e, "Tabs once more.pdf");
+    std::env::set_var("GRIMOIRE_FILL_STEP_PAGES", "1");
+    start_again();
+    assert_eq!(fill_tick(true, DPI), Finished::Nothing);
+    assert!(fill_busy().is_some());
+    assert_eq!(store_delete(&id), 0);
+    assert_eq!(commit_all(), Finished::Nothing);
+    assert!(!std::path::Path::new(&format!("{}/notebooks/{id}", e.root)).exists(), "a deleted notebook stays deleted");
+    assert!(!e.notebooks().iter().any(|n| n.id.as_str() == id));
+    assert!(!std::path::Path::new(&format!("{}/notebooks/.import-{fid}", e.root)).exists());
+}
+
+// A fill whose worker cannot be started (the sandbox or the exec refused) keeps its work folder for the next start,
+// as an import does, and holds nothing: its notebook opens (nothing but a commit under way holds one). Once a worker
+// can start again the fill goes on and its pages go in.
+#[test]
+fn a_fill_whose_worker_cannot_start_holds_nothing() {
+    let e = setup("no-worker");
+    std::env::set_var("GRIMOIRE_PDF_SLICE_PAGES", "1");
+    let (id, bytes) = imported_tabs(&e);
+    drop_pages(&id, &[2, 4]);
     let src = e.drop("Tabs again.pdf", &bytes);
     let mut fid = String::new();
     store_make_id(&mut fid);
     assert_eq!(run_slice(&fid, &src), SliceEnd::More, "the probe");
-    assert_eq!(fill_pending(&id), Some((1, 2)), "the fill of two pages is under way");
-    assert_eq!(fill_pending(&fid), None, "(only that notebook)");
-    // a fill's state has a name an earlier version never reads
-    let work = format!("{}/notebooks/.import-{fid}", e.root);
-    assert!(std::path::Path::new(&format!("{work}/pdf-fill.ini")).exists() && !std::path::Path::new(&format!("{work}/pdf-import.ini")).exists());
-    // the notebook is open (it was opened before the fill was decided): the pages are made, and the fill waits
-    note_open(&id);
+    std::env::set_var("GRIMOIRE_WORK_EXE", "/nonexistent/grimoire-worker");
+    assert_eq!(run_slice(&fid, &src), SliceEnd::Sandbox);
+    assert_eq!(e.work_folders().len(), 1, "its pages made are kept for the next start");
+    assert!(!fill_holds(&id) && fill_busy().is_none(), "the notebook opens");
+    std::env::set_var("GRIMOIRE_WORK_EXE", bin());
     let ends = run_on(&fid, &src, 10);
-    assert_eq!(last(&ends), &SliceEnd::Waiting, "{ends:?}");
-    assert_eq!(e.files(&id), files, "nothing of the open notebook was written");
-    assert!(std::path::Path::new(&work).exists(), "the work folder waits");
-    assert_eq!(fill_pending(&id), Some((2, 2)));
-    assert!(keep_work_folder(&fid), "the next scan goes on with it");
-    // closed: the fill goes on
-    note_closed(&id);
-    let ends = run_on(&fid, &src, 10);
-    assert_eq!(last(&ends), &SliceEnd::Filled { added: 2, blank: 0 }, "{ends:?}");
-    assert_eq!(fill_pending(&id), None);
+    assert_eq!(last(&ends), &SliceEnd::Ready { blank: 0 }, "{ends:?}");
+    assert!(filled(&put_in(), 2));
     assert_eq!(book_pages(&id, &e.info(&id)), [1, 2, 3, 4]);
 }
 
-// While KOReader's Open this book adds pages to the book's notebook, a fill of it whose pages are made waits (the
-// book's job holds the notebook as the editor does); then the fill adds only what the notebook still lacks: the page
-// KOReader added meanwhile stays KOReader's, and is not added twice.
+// KOReader's "Open this book in Grimoire" while a fill of the book's notebook is under way: KOReader's request wins.
+// Its job adds the page it sent as it does on main (nothing waits for the fill), and the fill waits, with no job
+// queued and no scan made due at every tick; once KOReader's job has ended (and its notebook is closed: the
+// Library in front), the fill adds only what the notebook still lacks, the page KOReader added meanwhile its own.
 #[test]
-fn a_fill_waits_while_koreader_adds_pages_and_adds_only_what_is_still_missing() {
+fn koreaders_request_wins_over_a_fill_and_the_fill_adds_only_what_is_still_missing() {
     let e = setup("koreader-meanwhile");
-    std::env::set_var("GRIMOIRE_PDF_SLICE_PAGES", "1");
+    std::env::set_var("GRIMOIRE_IMPORT_STABLE", "fast");
     let bytes = pdffix::tabs();
     let key = key_of(&bytes);
     let id = koreader_book(&e, &key, 4, &[1, 3], &[]);
-    let src = e.drop("Tabs.pdf", &bytes);
-    let mut fid = String::new();
-    store_make_id(&mut fid);
-    assert_eq!(run_on(&fid, &src, 2), [SliceEnd::More, SliceEnd::More], "the probe and book page 2");
-    // KOReader hands book page 2 over: its job starts, and holds the notebook while it runs
+    e.drop("Tabs.pdf", &bytes);
+    // KOReader hands book page 2 over: its job starts
     let mut st = koreader_request(&e, &key, 4, &[2], &[]);
     assert_eq!(st.state, BookState::Running);
-    assert_eq!(run_slice(&fid, &src), SliceEnd::Waiting, "book page 4 made; the commit waits");
+    // the fill's slices meanwhile: its pages are made, and it waits for the UI, due for nothing
+    assert_eq!(grimoire::bgwork_template::import_scan(DPI), 1);
+    let told = drain();
+    assert_eq!(told, ["Nothing"], "the pages are made");
+    assert!(!scan_due(now_ms(), false), "no scan is due at once");
+    for _ in 0..5 {
+        // (app.rs: no commit begins while a book job runs)
+        assert_eq!(fill_tick(false, DPI), Finished::Nothing);
+        assert!(fill_busy().is_none() && !bg_busy(), "nothing runs or is queued while it waits");
+    }
     for _ in 0..100 {
         if st.state != BookState::Running {
             break;
         }
         book_step(150, &mut st);
     }
-    assert_eq!((st.state, st.added), (BookState::Done, 1));
+    assert_eq!((st.state, st.added), (BookState::Done, 1), "KOReader's job ran as without a fill");
     let nb = e.info(&id);
     assert_eq!(book_pages(&id, &nb), [1, 2, 3]);
     let page2 = nb.page_ids[1];
-    let ends = run_on(&fid, &src, 4);
-    assert_eq!(last(&ends), &SliceEnd::Filled { added: 1, blank: 0 }, "{ends:?}");
+    let f = commit_all();
+    drain();
+    assert!(filled(&f, 1), "{f:?}");
     let nb = e.info(&id);
     assert_eq!(book_pages(&id, &nb), [1, 2, 3, 4]);
     assert_eq!(nb.page_ids[1], page2, "book page 2 is KOReader's");
@@ -545,12 +757,13 @@ fn a_fill_goes_on_after_a_stop_in_the_middle() {
     .join()
     .unwrap();
     assert_eq!(e.work_folders().len(), 1);
-    assert!(fill_pending(&id).is_some());
     std::env::set_var("GRIMOIRE_IMPORT_STABLE", "fast");
     assert_eq!(grimoire::bgwork_template::import_scan(DPI), 1);
     let told = drain();
-    assert_eq!(told.len(), 1, "{told:?}");
-    assert!(told[0].starts_with("Filled") && told[0].contains("added: 3"), "{told:?}");
+    assert_eq!(told, ["Nothing"], "its pages are made");
+    let f = commit_all();
+    drain();
+    assert!(filled(&f, 3), "{f:?}");
     assert_eq!(book_pages(&id, &e.info(&id)), [1, 2, 3, 4]);
     assert!(e.work_folders().is_empty());
 }
@@ -572,12 +785,12 @@ fn a_cancelled_fill_leaves_the_notebook_as_it_was() {
     assert!(matches!(run_slice(&fid, &src), SliceEnd::Failed(..)));
     assert!(e.work_folders().is_empty());
     assert_eq!(e.files(&id), files, "the notebook is as it was");
-    assert_eq!(fill_pending(&id), None, "and it opens");
 }
 
-// A commit cut off after any of its steps (a writer killed there) is taken up again by the next slice and fills the
-// notebook; until its notebook.ini is written (step 5) the notebook lists the pages it had, and none of what it shows
-// has changed. The PDF may even be gone by then: a commit that has begun goes on from the work folder alone.
+// A commit cut off after any of its steps (Grimoire killed there) is taken up again at the next start and fills the
+// notebook, with the page ids it gave the first time (no page file left over); until its notebook.ini is written
+// (step 5) the notebook lists the pages it had, and none of what it shows has changed. The PDF may even be gone by
+// then: a commit that has begun goes on from the work folder alone.
 #[test]
 fn a_commit_cut_off_at_any_step_ends_with_the_notebook_filled() {
     let e = setup("cut");
@@ -593,12 +806,13 @@ fn a_commit_cut_off_at_any_step_ends_with_the_notebook_filled() {
         let pristine = e.files(&id);
         let before = e.info(&id);
         let src = e.drop(&format!("Tabs {step}.pdf"), &bytes);
-        let mut fid = String::new();
-        store_make_id(&mut fid);
+        let (fid, ends) = import_all(&src);
+        assert_eq!(last(&ends), &SliceEnd::Ready { blank: 0 }, "step {step}");
         sim_fill_cut(step);
-        // the probe, then the slice that makes both pages and commits, cut off after its step
-        let ends = run_on(&fid, &src, 2);
-        assert_eq!(ends, [SliceEnd::More, SliceEnd::More], "step {step}");
+        start_again();
+        assert_eq!(commit_all(), Finished::Nothing, "step {step}: cut off");
+        let ids = e.fill_state(&fid).ids;
+        assert_eq!(ids.len(), 2, "step {step}: the ids it gave are kept");
         let nb = e.info(&id);
         if step <= 4 {
             assert_eq!(nb.page_ids, before.page_ids, "step {step}: the notebook lists the pages it had");
@@ -607,7 +821,6 @@ fn a_commit_cut_off_at_any_step_ends_with_the_notebook_filled() {
             for (k, v) in kept(&pristine, &before) {
                 assert_eq!(e.files(&id).get(&k), Some(&v), "step {step}: {k}");
             }
-            assert_eq!(fill_pending(&id), Some((2, 2)), "step {step}: it does not open meanwhile");
         } else {
             assert_eq!(book_pages(&id, &nb), [1, 2, 3, 4], "step {step}");
         }
@@ -615,17 +828,17 @@ fn a_commit_cut_off_at_any_step_ends_with_the_notebook_filled() {
         if step % 2 == 1 {
             std::fs::remove_file(format!("{}/import/Tabs {step}.pdf", e.root)).unwrap();
         }
-        let ends = run_on(&fid, &src, 10);
-        let want = if step <= 4 { SliceEnd::Filled { added: 2, blank: 0 } } else { SliceEnd::Already };
-        assert_eq!(last(&ends), &want, "step {step}: {ends:?}");
+        let f = put_in();
+        assert!(filled(&f, 2), "step {step}: {f:?}");
         let nb = e.info(&id);
         assert_eq!(book_pages(&id, &nb), [1, 2, 3, 4], "step {step}");
+        assert!(ids.iter().all(|x| nb.page_ids.contains(&x.1)), "step {step}: the same ids");
+        assert_eq!(e.page_files(&id), 4, "step {step}: no page file left over");
         let links = doc_links(&id, &nb);
         assert_eq!(links.iter().map(|l| (l.0, l.1)).collect::<Vec<_>>(), [(1, 3), (1, 4), (2, 4), (3, 1), (4, 2)], "step {step}: {links:?}");
         assert!(no_link_twice(&links), "step {step}: {links:?}");
         assert_eq!(names(&id, &nb), ["Cover", "", "Notes", ""], "step {step}");
         assert!(e.work_folders().is_empty(), "step {step}");
-        assert_eq!(fill_pending(&id), None, "step {step}");
         for (k, v) in kept(&pristine, &before) {
             assert_eq!(e.files(&id).get(&k), Some(&v), "step {step}: {k}");
         }
@@ -640,28 +853,23 @@ fn a_commit_cut_off_at_any_step_ends_with_the_notebook_filled() {
     }
 }
 
-// A commit cut off three times (a writer that keeps dying there) ends at the third: its work folder goes, and the
-// notebook is as the cuts left it (here, before its notebook.ini: as it was).
+// A commit cut off three times (Grimoire killed there at each start) ends at the third stop: its work folder goes,
+// and the notebook is as the cuts left it (here, before its notebook.ini: as it was).
 #[test]
 fn a_commit_cut_off_three_times_ends() {
     let e = setup("cut-thrice");
-    let (id, bytes) = imported_tabs(&e);
-    drop_pages(&id, &[2, 4]);
+    let (id, _, _) = made_for(&e, "Tabs again.pdf");
     let before = e.info(&id);
-    let src = e.drop("Tabs again.pdf", &bytes);
-    let mut fid = String::new();
-    store_make_id(&mut fid);
-    sim_fill_cut(2);
-    assert_eq!(run_on(&fid, &src, 2), [SliceEnd::More, SliceEnd::More]);
-    for _ in 0..2 {
+    for _ in 0..3 {
         sim_fill_cut(2);
-        assert_eq!(run_slice(&fid, &src), SliceEnd::More, "cut off again");
+        start_again();
+        assert_eq!(commit_all(), Finished::Nothing, "cut off");
     }
     sim_fill_cut(0);
-    assert!(matches!(run_slice(&fid, &src), SliceEnd::Failed(..)), "the third stop ends it");
+    start_again();
+    assert_eq!(commit_all(), Finished::Failed(FailWhy::Generic), "the third stop ends it");
     assert!(e.work_folders().is_empty());
     assert_eq!(e.info(&id).page_ids, before.page_ids);
-    assert_eq!(fill_pending(&id), None);
 }
 
 // ---- the queue ----
@@ -705,9 +913,15 @@ fn a_pdf_dropped_again_fills_its_notebook_and_a_second_copy_says_already() {
     e.drop("Tabs copy.pdf", &bytes);
     assert_eq!(grimoire::bgwork_template::import_scan(DPI), 2);
     let mut told = drain();
-    assert!(scan_due(now_ms(), false), "the copy that waited is taken again at once");
-    grimoire::bgwork_template::import_scan(DPI);
-    told.extend(drain());
+    for _ in 0..4 {
+        let f = commit_all();
+        if f != Finished::Nothing {
+            told.push(format!("{f:?}"));
+        }
+        told.extend(drain());
+        grimoire::bgwork_template::import_scan(DPI);
+        told.extend(drain());
+    }
     assert_eq!(told.iter().filter(|t| t.starts_with("Filled")).count(), 1, "{told:?}");
     assert!(told.iter().any(|t| t.contains(&format!("nb: \"{id}\"")) && t.contains("added: 2")), "{told:?}");
     assert!(told.iter().any(|t| t == "Already"), "{told:?}");
@@ -761,18 +975,37 @@ fn a_fills_state_reads_back_strictly() {
         todo: vec![2, 4],
         page_w: 600,
         page_h: 800,
+        sig: 0xfeed,
         ..Default::default()
     };
     let t = s.text();
     assert_eq!(State::parse(t.as_bytes()), Some(s.clone()));
-    for (from, to) in [("todo=2,4", "todo=4,2"), ("todo=2,4", "todo=2,5"), ("todo=2,4", "todo="), ("next=2", "next=4"), ("fill=20261115-120000-ab12", "fill=../x")] {
+    for (from, to) in [
+        ("todo=2,4", "todo=4,2"),
+        ("todo=2,4", "todo=2,5"),
+        ("todo=2,4", "todo="),
+        ("next=2", "next=4"),
+        ("fill=20261115-120000-ab12", "fill=../x"),
+        // a page size the store does not take, or one side alone
+        ("page_w=600", "page_w=50"),
+        ("page_h=800", "page_h=60000"),
+        ("page_h=800", "page_h=0"),
+        ("stage=0", "stage=4"),
+        // pages made only once every page of todo is
+        ("stage=0", "stage=1"),
+    ] {
         assert_eq!(State::parse(t.replace(from, to).as_bytes()), None, "{to}");
     }
-    // a commit begun is a state whose pages are all made
-    let done = State { next: 3, pics: vec![0x12, 0x13], committing: true, ..s.clone() };
-    assert_eq!(State::parse(done.text().as_bytes()), Some(done.clone()));
+    // a commit begun: every page made, each page id given once to a page of todo
+    let done = State { next: 3, pics: vec![0x12, 0x13], stage: STAGE_COMMIT, ids: vec![(2, 7), (4, 8)], ..s.clone() };
+    let dt = done.text();
+    assert_eq!(State::parse(dt.as_bytes()), Some(done.clone()));
+    for (from, to) in [("ids=2:7,4:8", "ids=2:7,3:8"), ("ids=2:7,4:8", "ids=2:7,4:7"), ("ids=2:7,4:8", "ids=2:7,2:8"), ("ids=2:7,4:8", "ids=2:0,4:8")] {
+        assert_eq!(State::parse(dt.replace(from, to).as_bytes()), None, "{to}");
+    }
     assert_eq!(State::parse(State { next: 2, pics: vec![0x12], ..done }.text().as_bytes()), None);
     // an import's state has no fill lines
-    let plain = State { fill: String::new(), todo: Vec::new(), page_w: 0, page_h: 0, ..s };
+    let plain = State { fill: String::new(), todo: Vec::new(), page_w: 0, page_h: 0, sig: 0, ..s };
     assert!(!plain.text().contains("fill="));
+    assert_eq!(State::parse(plain.text().as_bytes()), Some(plain.clone()));
 }

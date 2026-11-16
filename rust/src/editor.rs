@@ -3512,44 +3512,31 @@ fn close_notebook(a: &mut App) {
     s.links_dirty = false; // (what a failed flush kept is left for this notebook's next open)
     s.migrate_done = Vec::new();
     s.open = false;
-    crate::pdfimport::note_closed(s.nb.id.as_str()); // (a PDF fill that waited for it may go on)
     store_take_restored_count(); // (page 1, read for the thumbnail above, was drawn as it is now)
     bgimage_forget(None); // the notebook's pictures (up to 3 pages' worth) and its failures
 }
 
 /// loads, switches to SCR_EDITOR
 pub fn editor_open_notebook(a: &mut App, id: &str) {
-    let requested=ed(a).requested_page.take();
-    // A PDF fill of this notebook is under way (2.2: the same PDF again adds the pages it lacks): it does not open
-    // until the fill has put them in place. The record of the open notebook is made first, then the look, so a fill
-    // that decides on this notebook meanwhile finds it open and waits (pdfimport::note_open).
-    let was_open = ed_ref(a).open.then(|| ed_ref(a).nb.id);
-    crate::pdfimport::note_open(id);
-    if let Some((page, pages)) = crate::pdfimport::fill_pending(id) {
-        match was_open {
-            Some(w) => crate::pdfimport::note_open(w.as_str()),
-            None => crate::pdfimport::note_closed(id),
-        }
-        crate::pdfimport::rescan_soon(); // (a fill that waited for this notebook goes on)
+    // A PDF fill's pages going into this notebook now (2.2: the UI's commit, a few ticks with input held, as
+    // KOReader's book job): it opens once they are in. Nothing in the app can ask meanwhile; this says why if it does.
+    if let Some((done, total)) = crate::pdfimport::fill_busy().filter(|_| crate::pdfimport::fill_holds(id)) {
         let mut msg = String::new();
-        // TRANSLATORS: (as the Library's staying notice) a toast when a notebook is opened while a PDF adds its
-        // missing pages to it: how far that import is. The notebook opens once it is done.
-        csnprintf!(&mut msg, 256, tr("Importing: page %d of %d"), page as i32, pages as i32);
+        csnprintf!(&mut msg, 256, tr("Adding book pages: %d of %d"), done as i32, total as i32);
         app_toast(a, &msg, 3000);
         return;
     }
+    let requested=ed(a).requested_page.take();
     ed(a).notebook_back.clear();
     ed(a).from_graph = false;
     backlinks_revalidate(); // (another notebook may have changed its links since: checked on idle ticks)
     libindex_revalidate(); // (and the Graph of all notebooks' index, for any notebook's files)
     close_notebook(a);
-    crate::pdfimport::note_open(id); // (closing the notebook before may have been this one)
     // Every way into a notebook comes here (the Library's card and its menu, a new notebook): its
     // compaction, queued or running, is stopped before anything here reads or writes its pages (a
     // stopped compaction leaves each page file as it was; the list keeps the pages for later).
     bg_cancel_notebook(id);
     if store_load_info(id, &mut ed(a).nb) != 0 {
-        crate::pdfimport::note_closed(id);
         app_toast(a, tr("Couldn't open notebook"), 3000);
         return;
     }
@@ -3565,7 +3552,6 @@ pub fn editor_open_notebook(a: &mut App, id: &str) {
     s.page = s.page_at(s.index);
     if s.page.is_none() {
         s.free_histories();
-        crate::pdfimport::note_closed(id);
         app_toast(a, tr("Couldn't open notebook"), 3000);
         return;
     }

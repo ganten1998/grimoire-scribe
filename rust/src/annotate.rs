@@ -1475,7 +1475,6 @@ fn job_free(j: &mut Job) {
 
 fn job_end(j: &mut Job, st: &mut BookStatus) {
     with(|s| s.book = st.state);
-    crate::pdfimport::note_closed(j.nb.id.as_str()); // (the editor, opening it now, says so again)
     let mut dir = String::new();
     book_dir(&mut dir, 700);
     let gone = empty_folder(&dir);
@@ -1576,8 +1575,6 @@ fn start(j: &mut Job, asked: bool, st: &mut BookStatus) {
     }
     if let Some(at) = find_notebook(&all, j.r.book.as_str()) {
         bg_cancel_notebook(all[at].id.as_str()); // (its page list is about to change, as when it opens)
-        // (and a PDF fill of it waits until the book's pages are in, as for a notebook open in the editor)
-        crate::pdfimport::note_open(all[at].id.as_str());
         if store_load_info(all[at].id.as_str(), &mut j.nb) != 0
             || store_notebook_dir(j.nb.id.as_str(), &mut j.dir, 600) != 0
             || bgimage_dir(j.nb.id.as_str(), &mut j.bgdir, 700) != 0

@@ -695,10 +695,10 @@ pub fn app_init(a: &mut App, w: i32, h: i32, dpi: f32) -> i32 {
     a.prevent_applied = -1;
     app_apply_sleep_policy(a);
     // The owner's pictures (templates.h): the templates and import folders, and the folders of page
-    // pictures copied into import/ since the last run, made into notebooks in the background (the scan of
-    // import/ below, once KOReader's hand-over is taken).
+    // pictures copied into import/ since the last run, made into notebooks in the background.
     templates_init();
     crate::userfonts::userfonts_init();
+    import_scan(dpi);
     let caps = input_caps();
     if a.settings.rotation_lock != 0 {
         app_set_rotation(a, a.settings.rotation_lock - 1);
@@ -714,9 +714,6 @@ pub fn app_init(a: &mut App, w: i32, h: i32, dpi: f32) -> i32 {
     let book = getenv("GRIMOIRE_BOOK");
     book_start(book.as_deref() == Some("1") && !app_host().is_empty(), &mut a.book,
     );
-    // The imports, after what KOReader handed over: a PDF fill that goes on from an earlier run then finds the
-    // book's notebook as KOReader left it, or (a whole book still being added) open, and waits for it.
-    import_scan(dpi);
     // Beta.1 could leave the passcode off after a restart: the launcher says so (GRIMOIRE_PASSCODE), and
     // the log notes it, with no toast (the owner, 2026-11-04). Current standalone sessions leave it
     // enabled and yield to the native keypad on sleep.
@@ -1120,8 +1117,9 @@ fn app_event_screens(a: &mut App, ev: &InEvent) {
         live_capture(&mut captured);
     }
     let ev = &captured;
-    // While a book's pages are being added (a few seconds), nothing may open its notebook.
-    if a.book.state == BookState::Running
+    // While a book's pages are being added (a few seconds), nothing may open its notebook; nor while a PDF fill's
+    // pages go into theirs (2.2), so no Library action and no editor meets that commit.
+    if (a.book.state == BookState::Running || crate::pdfimport::fill_busy().is_some())
         && (app_pointer_phase(ev) >= 0 || ev.type_ == InType::PinchBegin || ev.type_ == InType::Key || ev.type_ == InType::Gesture)
     {
         return;
@@ -1932,10 +1930,9 @@ fn import_made(a: &App, id: &str) -> bool {
 
 // A PDF import ended (pdfimport.rs): what to tell the user. With the Library in front and the new card on it
 // (D20) no toast says "Imported"; elsewhere one does. One that left pages blank says so whatever is in front,
-// as it is news the card does not carry.
-fn pdf_import_done(a: &mut App, id: &str, ok: bool) {
+// as it is news the card does not carry. (`id`: the import's job; a fill's end comes from the UI's own commit.)
+fn pdf_import_told(a: &mut App, id: &str, fin: crate::pdfimport::Finished) {
     use crate::pdfimport::{FailWhy, Finished};
-    let fin = crate::pdfimport::finished(id, ok);
     let mut msg = String::new();
     match fin {
         Finished::Nothing => {}
@@ -1963,9 +1960,9 @@ fn pdf_import_done(a: &mut App, id: &str, ok: bool) {
             csnprintf!(&mut msg, 256, "%s", tr("PDF already imported."));
         }
         Finished::Filled { nb, added, trimmed, .. } => {
-            // The same PDF again filled its notebook's missing pages (2.2): the card may show a new first page, and
-            // the notebook's mirror PDF is made again. The toast is KOReader's route's own for pages added to a
-            // book's notebook (the pages that could not be read are blank, and the log says which).
+            // The same PDF again filled its notebook's missing pages (2.2), the UI's commit just ended: the card may
+            // show a new first page, and the notebook's mirror PDF is made again. The toast is KOReader's route's own
+            // for pages added to a book's notebook (the pages that could not be read are blank, and the log says which).
             if a.scr == ScreenId::Library && !a.asleep {
                 app_redraw_mode(a, RefreshMode::Ui);
             }
@@ -2012,7 +2009,7 @@ fn pdf_import_done(a: &mut App, id: &str, ok: bool) {
 // every 10 s, and again after 5 s while a file waits to hold still. No timer runs while the editor is in front.
 pub fn app_import_rescan(a: &mut App, entering: bool) {
     let now = now_ms();
-    if a.asleep || a.scr != ScreenId::Library || !crate::pdfimport::scan_due(now, entering) {
+    if a.asleep || a.scr != ScreenId::Library || crate::pdfimport::fill_busy().is_some() || !crate::pdfimport::scan_due(now, entering) {
         return;
     }
     crate::pdfimport::scan_noted(now);
@@ -2047,6 +2044,20 @@ fn pdf_import_tick(a: &mut App, now: u32) {
             }
         }
     }
+    // A PDF fill whose pages are made goes into its notebook here, in the UI process (2.2), as KOReader's book
+    // job's pages do: it begins only with the Library in front and at rest (so no notebook is open, and no dialog
+    // is half way) and no book job running, takes a few ticks with input held, and says how far it got in the
+    // book's notice.
+    let free = a.scr == ScreenId::Library && !a.asleep && a.book.state != BookState::Running && crate::library::library_at_rest(a);
+    let fin = crate::pdfimport::fill_tick(free, a.dpi);
+    if let Some((done, total)) = crate::pdfimport::fill_busy() {
+        let mut msg = String::new();
+        csnprintf!(&mut msg, 256, tr("Adding book pages: %d of %d"), done as i32, total as i32);
+        app_notice(a, NoticeKey::Book, &msg);
+    } else if fin != crate::pdfimport::Finished::Nothing {
+        app_notice_clear(a, NoticeKey::Book);
+    }
+    pdf_import_told(a, "", fin);
     if a.scr == ScreenId::Library {
         app_import_rescan(a, false);
     }
@@ -2076,7 +2087,8 @@ fn poll_jobs(a: &mut App) -> i32 {
         editor_picture_made(a); // (the open page may be on that picture: a page KOReader sent)
     }
     if done == BgKind::PdfImport as i32 {
-        pdf_import_done(a, done_id.as_str(), r > 0);
+        let fin = crate::pdfimport::finished(done_id.as_str(), r > 0);
+        pdf_import_told(a, done_id.as_str(), fin);
         return 0;
     }
     if done == BgKind::FontCheck as i32 {

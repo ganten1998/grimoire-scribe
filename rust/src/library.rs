@@ -1753,6 +1753,11 @@ fn finish_recording(a: &mut App) {
     }
 }
 
+/// Whether the Library shows no sheet, dialog or keyboard (a PDF fill's pages go in then: app.rs).
+pub fn library_at_rest(a: &App) -> bool {
+    a.lib.as_deref().is_none_or(|s| s.modal == Modal::None)
+}
+
 /// Whether the Library currently owns the raw gesture recording context.
 pub fn library_record_active(a: &App) -> bool {
     a.lib.as_deref().is_some_and(|s| s.modal == Modal::Gestures && s.record_action != SHORTCUT_NONE)

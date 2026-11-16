@@ -33,13 +33,14 @@
 //!   notebook stays the one KOReader's route finds. A notebook without a record goes by its key. The whole file
 //!   is read in the writer only (once at the commit, and before that only for a file of a record's size).
 //! - A fill (2.2): the same PDF again, while its notebook lacks some of the book's pages, adds those pages to
-//!   that notebook instead of saying "PDF already imported." (`fill_plan`, `commit_fill`). The pages are drawn
-//!   as an import's, in the work folder, at the notebook's own page size; the last slice puts them in place in
-//!   book order, with the links between pages that both exist and names for pages that have none, writing the
-//!   notebook's own notebook.ini last. It commits only while the notebook is closed: the editor refuses to open a
-//!   notebook a fill's work folder names (`fill_pending`), and a fill whose notebook is open in this process
-//!   (`note_open`), or that runs in a previous run's detached child, waits and goes on at the next scan. A PDF
-//!   whose page count is not the one the notebook's pages name becomes a notebook of its own.
+//!   that notebook instead of saying "PDF already imported." (`fill_plan`). The writer draws the pages as an
+//!   import's, in the work folder, at the notebook's own page size, and never writes the notebook: its last slice
+//!   says the pages are made. The UI process puts them in (`fill_tick`), as KOReader's book job does: with the
+//!   Library in front (no notebook open), no book job running and no background job on that notebook, over a few
+//!   ticks with input held, each notebook file read again and written whole in the tick that writes it, with the
+//!   links that start or end on a page it adds and names for those pages only. A notebook renamed, moved or deleted
+//!   while the pages were made is not filled (the PDF is taken again by the next scan). One more slice then files
+//!   the PDF. A PDF whose page count is not the one the notebook's pages name becomes a notebook of its own.
 //! - No file name, title, key or hash reaches grimoire.log: ids, page numbers, counts, sizes, timings and reasons.
 
 use crate::fsview::*;
@@ -143,12 +144,6 @@ struct Progress {
     broken: AtomicU32,
     /// the job `page` and `pages` are for (a hash of its id), stored at the start of every slice
     page_for: AtomicU32,
-    /// the notebook open in the editor of the UI process that made this record (a hash of its id, 0 for none):
-    /// set by the UI before it looks for a fill of the notebook it opens, read by a fill's commit (`note_open`)
-    open_nb: AtomicU32,
-    /// a fill's result: the pages it added, and the notebook (its id's bytes, NUL-padded)
-    added: AtomicU32,
-    filled: [AtomicU32; 8],
 }
 
 // the reasons a job ends with
@@ -162,11 +157,10 @@ const R_STORAGE: u32 = 6;
 const R_DONE: u32 = 7;
 /// a copy of this PDF is being imported: this one waits for that notebook (and then says "already")
 const R_DEFERRED: u32 = 8;
-/// a fill added its pages to a notebook (`added` and `filled` say how many and which)
-const R_FILLED: u32 = 9;
-/// a fill's pages are made and its notebook is open (or the job runs in a detached child): it waits, its work
-/// folder kept, and the next scan goes on with it
-const R_WAIT: u32 = 10;
+/// a fill's pages are made, its work folder kept: the UI puts them into the notebook (`fill_tick`)
+const R_READY: u32 = 9;
+/// a fill the UI put in place: its PDF filed, its work folder gone (the UI said so at its commit)
+const R_FILED: u32 = 10;
 
 thread_local! {
     static PROGRESS: Cell<usize> = const { Cell::new(0) };
@@ -214,56 +208,6 @@ fn set_progress(id: &str, page: u32, pages: u32) {
     p.page.store(page, Ordering::Relaxed);
     p.pages.store(pages, Ordering::Relaxed);
     p.page_for.store(id_hash(id), Ordering::Release);
-}
-
-/// A fill's result: the notebook it filled and how many pages it added (then `set_result` with R_FILLED).
-fn set_filled(nb: &str, added: u32) {
-    let p = progress();
-    let b = nb.as_bytes();
-    for (i, w) in p.filled.iter().enumerate() {
-        let mut q = [0u8; 4];
-        for (k, c) in q.iter_mut().enumerate() {
-            *c = b.get(i * 4 + k).copied().unwrap_or(0);
-        }
-        w.store(u32::from_le_bytes(q), Ordering::Relaxed);
-    }
-    p.added.store(added, Ordering::Relaxed);
-}
-
-/// The notebook a fill's result names (validated as an id the store takes: the writer is a child that may be wrong).
-fn filled_notebook() -> Option<String> {
-    let p = progress();
-    let mut b: Vec<u8> = p.filled.iter().flat_map(|w| w.load(Ordering::Relaxed).to_le_bytes()).collect();
-    b.truncate(b.iter().position(|&c| c == 0).unwrap_or(b.len()));
-    let id = String::from_utf8(b).ok()?;
-    let mut dir = String::new();
-    (!id.is_empty() && id.len() < STORE_ID_LEN && store_notebook_dir(&id, &mut dir, 700) == 0).then_some(id)
-}
-
-/// The UI opens notebook `id` in its editor: recorded before it looks for a fill of that notebook
-/// (`fill_pending`), so a fill whose commit comes while it is open finds it so and waits (the commit runs in a
-/// child that shares this record). Of two ordered steps on each side (the UI records, then looks; a fill writes
-/// its state in its first slice, and reads this record slices later) one always sees the other.
-pub fn note_open(id: &str) {
-    progress().open_nb.store(id_hash(id).max(1), Ordering::SeqCst);
-}
-
-/// The editor closed notebook `id` (or did not open it after all): the record is cleared when it names it.
-pub fn note_closed(id: &str) {
-    let _ = progress().open_nb.compare_exchange(id_hash(id).max(1), 0, Ordering::SeqCst, Ordering::SeqCst);
-}
-
-fn open_in_editor(id: &str) -> bool {
-    progress().open_nb.load(Ordering::SeqCst) == id_hash(id).max(1)
-}
-
-/// Set in a previous run's detached child (bgjob.rs): no UI shares its record, and the next run may have opened
-/// any notebook, so a fill there never commits: it waits for the next scan of the next run.
-static DETACHED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
-
-/// bgjob.rs's detached child, before it runs the jobs left.
-pub fn detached_child_set() {
-    DETACHED.store(true, Ordering::Relaxed);
 }
 
 // ---- paths ----
@@ -732,10 +676,25 @@ pub struct State {
     pub todo: Vec<u32>,
     pub page_w: i32,
     pub page_h: i32,
-    /// a fill's commit has begun (`commit=1`): it is finished from the work folder alone, whatever becomes of
-    /// the PDF, so a commit cut off half way is always taken to its end
-    pub committing: bool,
+    /// a hash of the notebook's name and Library folder as the fill was decided (`nb_sig`): a notebook renamed,
+    /// moved or deleted since is not filled
+    pub sig: u64,
+    /// where a fill is (`STAGE_*`): its pages being made, made (the UI's to put in), being put in by the UI (then
+    /// finished from the work folder alone, so a commit cut off half way is always taken to its end), or in
+    pub stage: u8,
+    /// the page ids the UI's commit gave the pages: (book page, page id), kept so a commit taken up again writes
+    /// the same files, and adds its links and names to those pages only
+    pub ids: Vec<(u32, u32)>,
 }
+
+/// A fill's pages are being made (the writer's slices).
+pub const STAGE_MAKING: u8 = 0;
+/// They are made: the UI puts them in once nothing holds the notebook.
+pub const STAGE_READY: u8 = 1;
+/// The UI's commit has begun.
+pub const STAGE_COMMIT: u8 = 2;
+/// The commit is in: one more slice files the PDF and removes the work folder.
+pub const STAGE_DONE: u8 = 3;
 
 impl State {
     /// How many pages this import makes: the PDF's, or a fill's missing ones.
@@ -775,7 +734,8 @@ impl State {
         let fill = if self.fill.is_empty() {
             String::new()
         } else {
-            format!("fill={}\ntodo={}\npage_w={}\npage_h={}\ncommit={}\n", clean_field(&self.fill), join(&self.todo, false), self.page_w, self.page_h, self.committing as u8)
+            let ids = self.ids.iter().map(|(p, id)| format!("{p}:{id}")).collect::<Vec<_>>().join(",");
+            format!("fill={}\ntodo={}\npage_w={}\npage_h={}\nsig={:x}\nstage={}\nids={ids}\n", clean_field(&self.fill), join(&self.todo, false), self.page_w, self.page_h, self.sig, self.stage)
         };
         format!(
             "# Grimoire: a PDF import in progress (docs/FORMAT.md)\nsrc={}\nsize={}\nmtime={}\nkey={}\npages={}\nnext={}\npics={}\nblank={}\nstrikes={}\ncpu_ms={}\npick={}\nname={}\nfolder={}\nbytes={}\nopen={}\nstops={}\n{fill}",
@@ -863,21 +823,38 @@ impl State {
                     s.fill = v.to_string();
                 }
                 "todo" => s.todo = list(v, 10)?,
-                "page_w" => s.page_w = v.parse().ok().filter(|&n: &i32| (0..=100_000).contains(&n))?,
-                "page_h" => s.page_h = v.parse().ok().filter(|&n: &i32| (0..=100_000).contains(&n))?,
-                "commit" => s.committing = v == "1",
+                "page_w" => s.page_w = v.parse().ok()?,
+                "page_h" => s.page_h = v.parse().ok()?,
+                "sig" => s.sig = u64::from_str_radix(v, 16).ok()?,
+                "stage" => s.stage = v.parse().ok().filter(|&n| n <= STAGE_DONE)?,
+                "ids" => {
+                    if !v.is_empty() {
+                        for e in v.split(',') {
+                            let (p, id) = e.split_once(':')?;
+                            s.ids.push((p.parse().ok()?, id.parse().ok()?));
+                        }
+                    }
+                }
                 _ => {}
             }
         }
-        // a fill's pages: ascending, each once, each a page of the book; none without a fill
-        let todo_ok = if s.fill.is_empty() {
-            s.todo.is_empty() && !s.committing
+        // a fill's pages: ascending, each once, each a page of the book, drawn at a page size the store takes (both
+        // or neither), each page id given once to a page it makes; none of it without a fill
+        let size_ok = |n: i32| (100..=6000).contains(&n);
+        let fill_ok = if s.fill.is_empty() {
+            s.todo.is_empty() && s.stage == STAGE_MAKING && s.ids.is_empty() && s.page_w == 0 && s.page_h == 0
         } else {
-            !s.todo.is_empty() && s.todo.windows(2).all(|w| w[0] < w[1]) && s.todo.iter().all(|&p| p >= 1 && p <= s.pages)
+            !s.todo.is_empty()
+                && s.todo.windows(2).all(|w| w[0] < w[1])
+                && s.todo.iter().all(|&p| p >= 1 && p <= s.pages)
+                && size_ok(s.page_w)
+                && size_ok(s.page_h)
+                && s.ids.len() <= s.todo.len()
+                && s.ids.iter().enumerate().all(|(i, &(p, id))| s.todo.contains(&p) && (1..0x7fff_fffe).contains(&id) && s.ids[..i].iter().all(|x| x.0 != p && x.1 != id))
         };
         let ok = have == 3
-            && todo_ok
-            && (!s.committing || s.next == s.total() + 1)
+            && fill_ok
+            && (s.stage == STAGE_MAKING || s.next == s.total() + 1)
             && s.next >= 1
             && s.next <= s.total() + 1
             && s.pics.len() as u32 == s.next - 1
@@ -896,12 +873,13 @@ fn fill_state_path(id: &str) -> String {
     format!("{}/{}", work_dir(id), FILL_STATE_FILE)
 }
 
-/// An import's state: pdf-import.ini, or a fill's pdf-fill.ini (which names its notebook).
+/// An import's state: pdf-import.ini, or a fill's pdf-fill.ini (which names its notebook). Read up to its cap (the
+/// UI reads a fill's too).
 fn state_read(id: &str) -> Option<State> {
-    if let Some(t) = read_file(&state_path(id)) {
+    if let Some(t) = read_file_max(&state_path(id), STATE_MAX) {
         return State::parse(&t).filter(|s| s.fill.is_empty());
     }
-    State::parse(&read_file(&fill_state_path(id))?).filter(|s| !s.fill.is_empty())
+    State::parse(&read_file_max(&fill_state_path(id), STATE_MAX)?).filter(|s| !s.fill.is_empty())
 }
 
 fn state_write(id: &str, s: &State) -> bool {
@@ -912,30 +890,10 @@ fn state_write(id: &str, s: &State) -> bool {
     write_file_atomic(&path, s.text().as_bytes()) == 0
 }
 
-/// Whether a fill of notebook `nb` is under way: a work folder of `notebooks/` whose state is a fill of it (this
-/// process's, a previous run's detached child's, or one cut off that the next scan goes on with). Then the
-/// notebook does not open (the editor asks this first). The page made and how many the fill makes, for the
-/// notice it shows: the live count when the fill is this process's running import. Small reads: a listing of
-/// `notebooks/` and each work folder's state.
-pub fn fill_pending(nb: &str) -> Option<(u32, u32)> {
-    let rd = std::fs::read_dir(root_path("notebooks")).ok()?;
-    for e in rd.flatten() {
-        let name = e.file_name();
-        let Some(id) = name.to_str().and_then(|n| n.strip_prefix(WORK_PREFIX)) else { continue };
-        let Some(t) = read_file(&fill_state_path(id)) else { continue };
-        let Some(s) = State::parse(&t) else { continue };
-        if s.fill != nb {
-            continue;
-        }
-        if let Some((live, page, n)) = live_progress() {
-            if live == id {
-                return Some((page, n));
-            }
-        }
-        let n = s.total().max(1);
-        return Some((s.next.saturating_sub(1).clamp(1, n), n));
-    }
-    None
+/// What a fill notes of its notebook as it is decided, and finds again before its pages go in: a hash of its name
+/// and its Library folder (a rename, a move, a folder renamed or merged change it; a delete takes the notebook).
+pub fn nb_sig(nb: &NotebookInfo) -> u64 {
+    fnv(fnv(fnv(FNV0, nb.name.as_bytes()), &[0]), nb.folder.as_bytes())
 }
 
 // ---- stability (3.8) ----
@@ -1075,6 +1033,9 @@ struct Ui {
     deferred: Vec<String>,
     /// PDFs that found no room this session, and the bytes free then: taken again once more is free
     room_wait: Vec<(String, u64)>,
+    /// fills whose pages are made, for the UI to put in (`fill_tick`): their work folder's id, their PDF, the
+    /// notebook they fill
+    ready: Vec<(String, String, String)>,
 }
 
 thread_local! {
@@ -1089,16 +1050,17 @@ pub fn pending_count() -> usize {
     ui(|u| u.pending.len())
 }
 
-/// Whether any PDF import (queued or running) belongs to `src`.
+/// Whether any PDF import (queued or running, or a fill whose pages wait for the UI) belongs to `src`.
 pub fn is_queued(src: &str) -> bool {
-    ui(|u| u.queued.iter().any(|q| q == src))
+    ui(|u| u.queued.iter().any(|q| q == src) || u.ready.iter().any(|r| r.1 == src))
 }
 
-/// Resets what the UI side remembers (tests), the shared record with it.
+/// Resets what the UI side remembers (tests: as a new start), the shared record and a fill's commit with it.
 pub fn ui_reset() {
     ui(|u| *u = Ui::default());
+    COMMIT.with(|c| *c.borrow_mut() = None);
     let p = progress();
-    for a in [&p.page, &p.pages, &p.result_for, &p.reason, &p.arg, &p.blank, &p.broken, &p.page_for, &p.open_nb, &p.added].into_iter().chain(p.filled.iter()) {
+    for a in [&p.page, &p.pages, &p.result_for, &p.reason, &p.arg, &p.blank, &p.broken, &p.page_for] {
         a.store(0, Ordering::Relaxed);
     }
 }
@@ -1241,10 +1203,10 @@ pub(crate) fn folder_holds_pdfs(name: &str, attempts: &[crate::bgwork_template::
 }
 
 /// Whether a cut-off work folder can go on: it has a readable state whose source is still there, unchanged; or it
-/// is a fill whose commit has begun, which goes on from the work folder alone.
+/// is a fill whose pages are made, which goes on from the work folder alone.
 pub fn keep_work_folder(id: &str) -> bool {
     let Some(s) = state_read(id) else { return false };
-    if s.committing {
+    if s.stage != STAGE_MAKING {
         return true;
     }
     let Ok(sp) = StoragePath::new(s.src.as_bytes()).ok_or(()) else { return false };
@@ -1297,6 +1259,11 @@ pub fn scan_queue(found: &Found, dpi: f32, lock_busy: bool) -> i32 {
     // the storage the looks open their files through: opened once a scan, when the first steady file needs it
     let mut storage: Option<Option<FsStorage>> = None;
     ui(|u| u.rescan_at = None);
+    // fills whose pages are made wait for the UI, which needs no worker for them: so in a session the sandbox
+    // broke too
+    for id in &found.resumable {
+        note_ready(id);
+    }
     if session_broken() {
         qlog!("import: PDFs are not imported this session (the sandbox refused a step; see the log above)");
         return 0;
@@ -1316,7 +1283,7 @@ pub fn scan_queue(found: &Found, dpi: f32, lock_busy: bool) -> i32 {
             continue;
         }
         let Some(s) = state_read(id) else { continue };
-        if lock_busy || is_queued(&s.src) {
+        if lock_busy || is_queued(&s.src) || matches!(s.stage, STAGE_READY | STAGE_COMMIT) {
             continue;
         }
         ui(|u| {
@@ -1767,12 +1734,6 @@ pub fn detached_poll(now: u32) -> bool {
     true
 }
 
-/// A notebook a fill's work folder names was not opened: the scan is due at the Library's next tick, which goes on
-/// with a fill that waits (its notebook was open when its pages were made, or KOReader's route had it).
-pub fn rescan_soon() {
-    ui(|u| u.rescan_at = Some(now_ms()));
-}
-
 /// A scan begins: a look that was due is being taken now (so one that finds nothing to do, or the lock held
 /// elsewhere, is not due again at every tick).
 pub fn rescan_clear() {
@@ -1872,10 +1833,9 @@ pub fn finished(id: &str, ok: bool) -> Finished {
     if deferred {
         ui(|u| u.deferred.push(src.clone()));
     }
-    if mine && reason == R_WAIT {
-        // A fill whose notebook was open: its work folder waits, and the scan goes on with it as soon as one runs
-        // (the Library in front: the notebook is closed then).
-        ui(|u| u.rescan_at = Some(now_ms()));
+    if mine && reason == R_READY {
+        // A fill whose pages are made: the UI puts them in (`fill_tick`), with no job and no scan meanwhile.
+        note_ready(id);
     }
     lock_release_if_idle();
     if pending_count() == 0 {
@@ -1892,7 +1852,7 @@ pub fn finished(id: &str, ok: bool) -> Finished {
             }
         });
     }
-    if mine && (reason == R_DEFERRED || reason == R_WAIT) {
+    if mine && matches!(reason, R_DEFERRED | R_READY | R_FILED) {
         return Finished::Nothing;
     }
     if !ok {
@@ -1906,13 +1866,6 @@ pub fn finished(id: &str, ok: bool) -> Finished {
     }
     if reason == R_ALREADY {
         return Finished::Already;
-    }
-    if mine && reason == R_FILLED {
-        let added = p.added.load(Ordering::Relaxed);
-        return match filled_notebook() {
-            Some(nb) if added > 0 && added <= PDF_MAX_PAGES => Finished::Filled { nb, added, blank: blank.min(added), trimmed: arg },
-            _ => Finished::Nothing,
-        };
     }
     let mut nb = NotebookInfo::default();
     let pages = if store_load_info(id, &mut nb) == 0 { nb.npages() as u32 } else { 0 };
@@ -1941,11 +1894,10 @@ pub enum SliceEnd {
     Sandbox,
     /// a copy of this PDF is being imported: this one ended, counting nothing, and is taken again later
     Deferred,
-    /// a fill added this many pages to its notebook, of which `blank` could not be read
-    Filled { added: u32, blank: u32 },
-    /// a fill's pages are made but its notebook is open (or the job is a detached child's): it waits, its work
-    /// folder kept, for the next scan
-    Waiting,
+    /// a fill's pages are made (`blank` of them could not be read), its work folder kept: the UI puts them in
+    Ready { blank: u32 },
+    /// a fill the UI put in place: its PDF is filed and its work folder gone
+    Filed,
 }
 
 // what attempts_note records (bgwork_template.rs)
@@ -2246,6 +2198,8 @@ pub struct FillPlan {
     pub ph: i32,
     /// its pages now
     pub have: u32,
+    /// its name and Library folder now (`nb_sig`)
+    pub sig: u64,
 }
 
 /// What notebook `nb` holds of its book: Ok(None) when it holds every page (nothing to fill), Ok(Some) with the
@@ -2283,7 +2237,7 @@ pub fn fill_plan(nb: &str) -> Result<Option<FillPlan>, &'static str> {
     }
     let (mut pw, mut ph) = (0, 0);
     store_notebook_page_size(&info, &mut pw, &mut ph);
-    Ok(Some(FillPlan { nb: nb.to_string(), count: count as u32, todo, pw, ph, have: info.npages() as u32 }))
+    Ok(Some(FillPlan { nb: nb.to_string(), count: count as u32, todo, pw, ph, have: info.npages() as u32, sig: nb_sig(&info) }))
 }
 
 /// SHA-256 of the first `len` bytes of an open file, as hex: pread from 0 in pieces of 256 KiB (a heap buffer),
@@ -2577,12 +2531,11 @@ pub fn run_slice(id: &str, src: &str) -> SliceEnd {
     let mark = mark_read(src);
     let Some(abs) = StoragePath::new(src.as_bytes()).and_then(|sp| abs_of(&sp)) else { return fail(id, R_FAILED, 0) };
     let state = state_read(id);
-    let source = open_source(src);
-    // a fill whose commit has begun is finished whatever became of its PDF (it needs the work folder alone)
-    if let Some(st) = state.as_ref().filter(|s| s.committing) {
-        return commit_fill(id, src, &abs, source.as_ref().ok(), st);
+    // a fill past its pages: the UI's to put in (nothing here writes the notebook), or put in (its PDF is filed now)
+    if let Some(st) = state.as_ref().filter(|s| s.stage != STAGE_MAKING) {
+        return fill_after(id, src, &abs, st);
     }
-    let source = match source {
+    let source = match open_source(src) {
         Ok(s) => s,
         Err(why) => {
             qlog!("import: %s: the PDF cannot be opened (%s)", id, why);
@@ -2800,6 +2753,7 @@ fn first_slice(id: &str, src: &str, abs: &str, source: &Src, mark: Option<&Mark>
         st.todo = p.todo;
         st.page_w = p.pw;
         st.page_h = p.ph;
+        st.sig = p.sig;
     }
     if !state_write(id, &st) {
         qlog!("import: %s: its state could not be written", id);
@@ -3088,7 +3042,7 @@ fn later_slice(id: &str, src: &str, abs: &str, source: &Src, mut state: State) -
         return SliceEnd::More;
     }
     if !state.fill.is_empty() {
-        return commit_fill(id, src, abs, Some(source), &state);
+        return fill_made(id, src, source, &mut state);
     }
     commit(id, src, abs, &state, source, pw, ph)
 }
@@ -3350,16 +3304,72 @@ fn commit(id: &str, src: &str, abs: &str, state: &State, source: &Src, pw: i32, 
     SliceEnd::Done { pages: state.pages, blank }
 }
 
-// ---- a fill's commit ----
+// ---- a fill: the writer's last slices ----
 
-// (tests) A fill's commit stops after step `n` as a writer cut off there would: nothing tidied, the work folder and
-// the notebook as the steps before left them. Set by `sim_fill_cut`; the Kindle's build has neither.
+/// Whether an open PDF has the key the first slice read (its book key, KOReader's partial MD5).
+fn has_key(source: &Src, key: &str) -> bool {
+    partial_md5_fd(std::os::fd::AsRawFd::as_raw_fd(&source.fd)) == key
+}
+
+/// A fill's last slice: its pages are made. The file must be the one the slices read (its name still opens to the
+/// first slice's size and time, and this open file has its key), and one of the pages it lacks at least must have
+/// been read. Then the state says the pages are made, and the UI puts them in (`fill_tick`). The writer never writes
+/// the notebook: not here, nor in a slice cut off, nor in the child that finishes the queue after Grimoire closed.
+fn fill_made(id: &str, src: &str, source: &Src, state: &mut State) -> SliceEnd {
+    let again = open_source(src);
+    let changed = again.as_ref().map_or(true, |s| s.size != state.size || s.mtime != state.mtime) || source.size != state.size || !has_key(source, &state.key);
+    let why = if changed {
+        "the PDF changed under the import"
+    } else if state.blank.len() >= state.todo.len() {
+        "no page of those it lacks could be read"
+    } else {
+        state.stage = STAGE_READY;
+        if state_write(id, state) {
+            let blank = state.blank.len() as u32;
+            set_result(id, R_READY, 0, blank);
+            return SliceEnd::Ready { blank };
+        }
+        "its state could not be written"
+    };
+    qlog!("import: %s: %s; nothing added to notebook %s", id, why, &state.fill);
+    remove_work_folder(id);
+    mark_drop(src);
+    fail(id, R_FAILED, 0)
+}
+
+/// A slice of a fill past its pages. Made, or being put in: the UI's (nothing here writes the notebook), so the job
+/// ends at once. Put in: its PDF goes to import/done when its name still holds the file the pages were made of (any
+/// other file there is left for the next scan, as the file it is), and the work folder goes.
+fn fill_after(id: &str, src: &str, abs: &str, st: &State) -> SliceEnd {
+    if st.stage != STAGE_DONE {
+        let blank = st.blank.len() as u32;
+        set_result(id, R_READY, 0, blank);
+        return SliceEnd::Ready { blank };
+    }
+    match open_source(src) {
+        Ok(s) if s.size == st.size && s.mtime == st.mtime && has_key(&s, &st.key) => {
+            if finish_pdf(abs, src, id, &s) {
+                note_try(src, 0, A_DONE);
+            }
+        }
+        _ => mark_drop(src),
+    }
+    remove_work_folder(id);
+    set_result(id, R_FILED, 0, 0);
+    SliceEnd::Filed
+}
+
+// ---- a fill's commit, in the UI process ----
+
+// (tests) A fill's commit stops after step `n` as a process killed there would: nothing tidied, the work folder and
+// the notebook as the steps before left them, and nothing of it kept in this process. Set by `sim_fill_cut`; the
+// Kindle's build has neither.
 #[cfg(feature = "sim")]
 thread_local! {
     static FILL_CUT: Cell<u32> = const { Cell::new(0) };
 }
 
-/// (tests) The next fill's commit in this thread stops after step `n` (1 to 7), as a writer cut off there.
+/// (tests) The next fill's commit in this thread stops after step `n` (1 to 7), as a process killed there.
 #[cfg(feature = "sim")]
 pub fn sim_fill_cut(n: u32) {
     FILL_CUT.with(|c| c.set(n));
@@ -3377,9 +3387,9 @@ fn cut_after(step: u32) -> bool {
 }
 
 /// The links and names the first slice read, back from the work folder (None when there are none or they do not
-/// read, which the log says).
+/// read, which the log says). Read up to their cap, never through a link.
 fn read_parts(id: &str, work: &str, pages: u32) -> Option<Collected> {
-    let read = |n: &str| std::fs::read(format!("{work}/{n}")).ok().filter(|b| b.len() <= 2 * RECORDS_MAX_BYTES);
+    let read = |n: &str| read_file_max(&format!("{work}/{n}"), 2 * RECORDS_MAX_BYTES);
     let (lt, nt) = (read("links.part")?, read("names.part")?);
     let c = Collected::from_parts(&lt, &nt, pages);
     if c.is_none() {
@@ -3388,8 +3398,8 @@ fn read_parts(id: &str, work: &str, pages: u32) -> Option<Collected> {
     c
 }
 
-/// A fill's links: the PDF's, between pages that both exist in the notebook now (`nb` and `m` as they will be),
-/// put through the same fill as any source's with the notebook's own links counted: a link whose target and area
+/// A fill's links: the PDF's, between pages that both exist in the notebook now (`nb` and `m` as they are), put
+/// through the same fill as any source's with the notebook's own links counted: a link whose target and area
 /// (within 2 px) a link of the page has already is that link, the user's links' seeds are never taken, and the
 /// water level trims only links this fill adds. Idempotent, so a commit taken up again adds nothing twice. Returns
 /// whether doclinks.ini was written, and how many links were left out for room.
@@ -3482,271 +3492,402 @@ fn map_count(m: &AnnotateMap) -> Option<u32> {
     (first >= 1 && m.e.iter().all(|e| e.pages == first)).then_some(first as u32)
 }
 
-/// A fill's last slice. First, with the PDF (`source`): the file must be the one the slices read, and the notebook
-/// must be closed (a fill whose notebook is open in this process's editor, or that runs in a previous run's
-/// detached child, waits: its work folder is kept and the next scan goes on with it). Then the state says the
-/// commit has begun, and from there it is finished from the work folder alone (`source` may then be None: the PDF
-/// went, or changed, after a cut-off commit): the pages the notebook still lacks get page ids (reserved first in
-/// its notebook.ini, its page list as it was), their pictures go into its bg/ (shared by content with the pictures
-/// it has: bg/index.ini first), their page files and bg/pages.ini are written, then source.ini with their page
-/// lines, then its notebook.ini with the pages in book order. Until that write the notebook lists the pages it had
-/// and nothing it shows has changed; a failure before it removes the work folder, and a cut before it is taken
-/// again from the start by the next slice, adding nothing twice. After it come the links (doclinks.ini) and the
-/// names (nav.ini), which a cut-off commit's next slice also takes again. Existing pages, their files and their
-/// ink are not written; their links and names stay, and only links and names they lacked are added.
-fn commit_fill(id: &str, src: &str, abs: &str, source: Option<&Src>, state: &State) -> SliceEnd {
-    let work = work_dir(id);
-    let wbg = format!("{work}/bg");
-    let nbid = state.fill.clone();
-    let (pw, ph) = (state.page_w, state.page_h);
-    let gone = |why: &str, reason: u32| {
-        qlog!("import: %s: %s; nothing added to notebook %s", id, why, &nbid);
-        remove_work_folder(id);
-        mark_drop(src);
-        fail(id, reason, 0)
+/// How long a tick of the UI's commit may take: KOReader's book job's own budget (`book_step(150, ..)`).
+const FILL_STEP_MS: u64 = 150;
+
+/// The files a tick of the commit moves or writes at most: as many as its time allows, or (headless and test
+/// builds) GRIMOIRE_FILL_STEP_PAGES, so a test or a scenario can act between two of its ticks.
+fn fill_step_files() -> usize {
+    #[cfg(not(feature = "kindle"))]
+    if let Some(n) = std::env::var("GRIMOIRE_FILL_STEP_PAGES").ok().and_then(|v| v.parse::<usize>().ok()).filter(|&n| n > 0) {
+        return n;
+    }
+    usize::MAX
+}
+
+/// A fill's commit under way in the UI process (`fill_tick`).
+struct Commit {
+    /// its work folder's id, its PDF, its state (`ids` filled, stage 2)
+    id: String,
+    src: String,
+    st: State,
+    /// the notebook's folder and its bg/, the work folder's bg/
+    dir: String,
+    nbg: String,
+    wbg: String,
+    /// the pages it adds: (book page, the work folder's picture, page id), with each one's paper
+    add: Vec<(u32, u32, u32)>,
+    papers: Vec<PaperKind>,
+    /// the pictures to move in: (the work folder's, the notebook's)
+    of: Vec<(u32, u32)>,
+    /// how many pictures are moved and how many page files written so far
+    moved: usize,
+    written: usize,
+}
+
+thread_local! {
+    static COMMIT: RefCell<Option<Commit>> = const { RefCell::new(None) };
+}
+
+/// A fill whose pages are made (its work folder `id`, made or with its commit begun): noted once, for the UI to put
+/// in (the log says so once).
+fn note_ready(id: &str) {
+    if ui(|u| u.ready.iter().any(|r| r.0 == id)) || COMMIT.with(|c| c.borrow().as_ref().is_some_and(|c| c.id == id)) {
+        return;
+    }
+    let Some(s) = state_read(id).filter(|s| matches!(s.stage, STAGE_READY | STAGE_COMMIT)) else { return };
+    qlog!("import: %s: the pages for notebook %s are made; they go in once the Library is in front", id, &s.fill);
+    ui(|u| u.ready.push((id.to_string(), s.src, s.fill)));
+}
+
+/// The fill whose pages are going into their notebook now: (page files written, of how many). The input waits
+/// meanwhile (app.rs), as it does while KOReader's book job adds pages.
+pub fn fill_busy() -> Option<(u32, u32)> {
+    COMMIT.with(|c| c.borrow().as_ref().map(|c| (c.written as u32, c.add.len() as u32)))
+}
+
+/// Whether notebook `nb` is the one a fill's commit writes now: it does not open (editor.rs), and no background job
+/// on it starts (bgjob.rs), until that commit has ended.
+pub fn fill_holds(nb: &str) -> bool {
+    COMMIT.with(|c| c.borrow().as_ref().is_some_and(|c| c.st.fill == nb))
+}
+
+/// The UI's tick (app.rs): goes on with the fill being put in, or, when `free` (the Library in front, so no notebook
+/// is open in the editor, and no KOReader book job running), begins the first fill whose pages are made and whose
+/// notebook no background job works on. A tick takes at most FILL_STEP_MS; what to tell the user once a commit ends
+/// (Nothing until then, and for a fill that was not put in: the log says why).
+pub fn fill_tick(free: bool, dpi: f32) -> Finished {
+    let t0 = mono_ms_now();
+    let mut c = match COMMIT.with(|c| c.borrow_mut().take()) {
+        Some(c) => c,
+        None => {
+            if !free {
+                return Finished::Nothing;
+            }
+            let Some((id, src)) = ui(|u| u.ready.iter().find(|r| !bg_notebook_busy(&r.2)).map(|r| (r.0.clone(), r.1.clone()))) else {
+                return Finished::Nothing;
+            };
+            ui(|u| u.ready.retain(|r| r.0 != id));
+            match commit_begin(&id, &src) {
+                Ok(c) => c,
+                Err(f) => return f,
+            }
+        }
     };
-    if !state.committing {
-        let Some(source) = source else { return gone("its PDF cannot be opened", R_FAILED) };
-        // (as an import's commit: the name still opens to the first slice's file, and this open file has its key)
-        let again = open_source(src);
-        if again.as_ref().map_or(true, |s| s.size != state.size || s.mtime != state.mtime)
-            || source.size != state.size
-            || partial_md5_fd(std::os::fd::AsRawFd::as_raw_fd(&source.fd)) != state.key
-        {
-            return gone("the PDF changed under the import", R_FAILED);
-        }
-        if state.blank.len() >= state.todo.len() {
-            return gone("no page of those it lacks could be read", R_FAILED);
+    match commit_step(&mut c, t0, dpi) {
+        Some(f) => f,
+        None => {
+            COMMIT.with(|x| *x.borrow_mut() = Some(c));
+            Finished::Nothing
         }
     }
-    // only while the notebook is closed
-    if DETACHED.load(Ordering::Relaxed) {
-        qlog!("import: %s: the pages for notebook %s are made; they are added at Grimoire's next start", id, &nbid);
-        set_result(id, R_WAIT, 0, 0);
-        return SliceEnd::Waiting;
+}
+
+/// A fill that ends without its pages going in (or, past its notebook.ini, without the rest): the log says why once,
+/// the work folder goes, and the PDF stays where it is, for the next scan to take as the file it is.
+fn commit_gone(id: &str, src: &str, nb: &str, why: &str, f: Finished) -> Finished {
+    qlog!("import: %s: %s; nothing added to notebook %s", id, why, nb);
+    remove_work_folder(id);
+    mark_drop(src);
+    if f == Finished::Failed(FailWhy::Storage) {
+        // (no room is not the file's fault: the scan takes it again once more is free)
+        let free = free_bytes().unwrap_or(0);
+        ui(|u| {
+            u.room_wait.retain(|r| r.0 != src);
+            u.room_wait.push((src.to_string(), free));
+        });
     }
-    if open_in_editor(&nbid) {
-        qlog!("import: %s: the pages for notebook %s are made; they are added once it is closed", id, &nbid);
-        set_result(id, R_WAIT, 0, 0);
-        return SliceEnd::Waiting;
-    }
+    f
+}
+
+/// A commit's first tick: the checks, 1. the page ids, 2. the pictures claimed in the notebook's index. Every file
+/// is read in this tick, and written whole.
+fn commit_begin(id: &str, src: &str) -> Result<Commit, Finished> {
+    let Some(mut st) = state_read(id).filter(|s| matches!(s.stage, STAGE_READY | STAGE_COMMIT)) else { return Err(Finished::Nothing) };
+    let nbid = st.fill.clone();
+    let gone = |why: &str, f: Finished| -> Result<Commit, Finished> { Err(commit_gone(id, src, &nbid, why, f)) };
     let mut nb = NotebookInfo::default();
+    let loaded = store_load_info(&nbid, &mut nb) == 0;
+    // A notebook renamed, moved or deleted while the pages were made (or one that no longer holds the PDF's key) is
+    // not filled: the PDF is taken again by the next scan, as the file it is (a fill of the notebook as it is now,
+    // or a notebook of its own). A commit that has begun is finished, whatever became of the notebook's name.
+    if st.stage == STAGE_READY && (!loaded || nb_sig(&nb) != st.sig || key_holders(std::slice::from_ref(&nb), Some(st.key.as_str())).is_empty()) {
+        ui(|u| u.rescan_at = Some(now_ms()));
+        return gone("its notebook was renamed, moved or deleted while the pages were made", Finished::Nothing);
+    }
     let (mut dir, mut nbg) = (String::new(), String::new());
-    if store_load_info(&nbid, &mut nb) != 0 || store_notebook_dir(&nbid, &mut dir, 600) != 0 || bgimage_dir(&nbid, &mut nbg, 700) != 0 {
-        // (gone, or in the trash: the PDF is taken again by a later scan, then as a notebook of its own)
-        if let Some(s) = source {
-            note_try(src, fnv(fnv(FNV0, &s.size.to_ne_bytes()), &s.mtime.to_ne_bytes()), A_UNTRY);
-        }
-        return gone("the notebook is gone", R_FAILED);
+    if !loaded || store_notebook_dir(&nbid, &mut dir, 600) != 0 || bgimage_dir(&nbid, &mut nbg, 700) != 0 {
+        return gone("the notebook is gone", Finished::Nothing);
     }
     let mut m = AnnotateMap::default();
-    if annotate_map_load(&nbid, &mut m) != 0 {
-        return gone("its source.ini does not read", R_FAILED);
+    let counted = annotate_map_load(&nbid, &mut m) == 0 && map_count(&m) == Some(st.pages);
+    let pages = st.pages as i32;
+    // the pages it still lacks (one KOReader's route added since stays as it is, and is not added again), each with
+    // the id an earlier try of this commit gave it
+    let mut add: Vec<(u32, u32, u32)> = st
+        .todo
+        .iter()
+        .zip(&st.pics)
+        .filter(|(&bp, _)| annotate_map_find(&m, &nb, bp as i32, pages) == 0)
+        .map(|(&bp, &pic)| (bp, pic, st.ids.iter().find(|x| x.0 == bp).map_or(0, |x| x.1)))
+        .collect();
+    annotate_map_free(&mut m);
+    if !counted {
+        return gone("its source.ini no longer names the PDF's page count", Finished::Failed(FailWhy::Generic));
     }
-    if map_count(&m) != Some(state.pages) {
-        return gone("its pages no longer name the PDF's page count", R_FAILED);
-    }
-    // The commit begins, or goes on: `open` stays set while it runs, so a commit that finds it set was cut off (a
-    // stop), and one cut off three times ends there, the notebook as the last cut left it (M11's rule).
-    let mut st = state.clone();
-    if st.committing && st.open {
+    // a commit that finds `open` set was cut off (a stop), and the third stop ends it, the notebook as the cuts left it
+    if st.stage == STAGE_COMMIT && st.open {
         st.stops += 1;
         qlog!("import: %s: its commit was cut off (%d of %d)", id, st.stops as i32, STOPS_MAX as i32);
         if st.stops >= STOPS_MAX {
             qlog!("import: %s: its commit stopped %d times without finishing; notebook %s is as its last cut left it", id, st.stops as i32, &nbid);
             remove_work_folder(id);
             mark_drop(src);
-            return fail(id, R_FAILED, 0);
+            return Err(Finished::Failed(FailWhy::Generic));
         }
     }
-    st.committing = true;
-    st.open = true;
-    if !state_write(id, &st) {
-        return gone("its state could not be written", R_STORAGE);
-    }
-    let pages = state.pages as i32;
-    // the pages it still lacks (one KOReader's route added since stays as it is, and this one is not added)
-    let add: Vec<(u32, u32)> = state
-        .todo
-        .iter()
-        .zip(&state.pics)
-        .filter(|(&bp, _)| annotate_map_find(&m, &nb, bp as i32, pages) == 0)
-        .map(|(&bp, &pic)| (bp, pic))
-        .collect();
     if nb.npages() as usize + add.len() > STORE_MAX_PAGES {
-        qlog!("import: %s: %d page(s) to add to the %d of notebook %s, more than a notebook holds; nothing added", id, add.len() as i32, nb.npages(), &nbid);
-        remove_work_folder(id);
-        mark_drop(src);
-        return fail(id, R_TOO_LONG, PDF_MAX_PAGES);
+        return gone("it would have more pages than a notebook holds", Finished::Failed(FailWhy::TooLong(PDF_MAX_PAGES)));
     }
-    let first_before = nb.page_ids.first().copied();
-    let mut ids: Vec<u32> = Vec::new();
-    if !add.is_empty() {
-        // 1. ids for the pages, reserved in notebook.ini (its page list as it was): a cut leaves page files no later
-        // page is given the id of
+    // 1. ids for the pages an earlier try gave none: reserved in notebook.ini (its page list as it is) before
+    // anything is written under them, then kept in the state, so a try taken up again writes the same files
+    if add.iter().any(|a| a.2 == 0) {
         let mut next = nb.next_page_id.max(1);
-        while ids.len() < add.len() {
+        for a in add.iter_mut().filter(|a| a.2 == 0) {
+            while nb.page_ids.contains(&next) || st.ids.iter().any(|x| x.1 == next) || exists(&format!("{dir}/p{next}.qpg")) {
+                next += 1;
+            }
             if next >= 0x7fff_fffe {
-                return gone("no page id is left", R_FAILED);
+                return gone("no page id is left", Finished::Failed(FailWhy::Generic));
             }
-            if !nb.page_ids.contains(&next) && !exists(&format!("{dir}/p{next}.qpg")) {
-                ids.push(next);
-            }
+            a.2 = next;
             next += 1;
         }
-        let mut reserved = nb.clone();
-        reserved.next_page_id = next;
-        if store_write_info_in(&dir, &reserved) != 0 {
-            return gone("its notebook.ini cannot be written", R_STORAGE);
-        }
         nb.next_page_id = next;
-        if cut_after(1) {
-            return SliceEnd::More;
+        if store_write_info_in(&dir, &nb) != 0 {
+            return gone("its notebook.ini cannot be written", Finished::Failed(FailWhy::Storage));
         }
-        // 2. the pictures: claimed in the notebook's index (one it has already of the same content is shared), the
-        // index saved, then each picture it does not hold yet moved in from the work folder
-        let (mut wix, mut nix) = (BgIndex::default(), BgIndex::default());
-        if bgindex_load(&wbg, &mut wix) != 0 || mkdir_p(&nbg) != 0 || bgindex_load(&nbg, &mut nix) != 0 {
-            return gone("a picture index does not read", R_FAILED);
+        for a in &add {
+            if !st.ids.iter().any(|x| x.0 == a.0) {
+                st.ids.push((a.0, a.2));
+            }
         }
-        let mut of: Vec<(u32, u32)> = Vec::new(); // (the work folder's picture, the notebook's)
-        let mut papers: Vec<PaperKind> = Vec::new();
-        for &(_, wpic) in &add {
-            let nid = match of.iter().find(|x| x.0 == wpic) {
-                Some(x) => x.1,
-                None => {
-                    let Some(key) = wix.e.iter().find(|e| e.id == wpic).map(|e| e.key) else {
-                        return gone("a picture of its pages is not in its index", R_FAILED);
-                    };
-                    let (mut nid, mut added) = (0u32, false);
-                    if bgindex_claim(&mut nix, &nbg, key, &mut nid, &mut added) != 0 {
-                        return gone("the notebook's picture index is full", R_FAILED);
-                    }
-                    of.push((wpic, nid));
-                    nid
+    }
+    st.stage = STAGE_COMMIT;
+    st.open = true;
+    if !state_write(id, &st) {
+        return gone("its state cannot be written", Finished::Failed(FailWhy::Storage));
+    }
+    // 2. the pictures: claimed in the notebook's index (one it has already of the same content is shared), the index
+    // saved; their files move in from the next step. (bg/ is made inside the notebook's folder, never that folder.)
+    let wbg = format!("{}/bg", work_dir(id));
+    let _ = std::fs::create_dir(&nbg);
+    let (mut wix, mut nix) = (BgIndex::default(), BgIndex::default());
+    if bgindex_load(&wbg, &mut wix) != 0 || bgindex_load(&nbg, &mut nix) != 0 {
+        return gone("a picture index does not read", Finished::Failed(FailWhy::Generic));
+    }
+    let (mut of, mut papers): (Vec<(u32, u32)>, Vec<PaperKind>) = (Vec::new(), Vec::new());
+    for &(_, wpic, _) in &add {
+        let nid = match of.iter().find(|x| x.0 == wpic) {
+            Some(x) => x.1,
+            None => {
+                let Some(key) = wix.e.iter().find(|e| e.id == wpic).map(|e| e.key) else {
+                    return gone("a picture of its pages is not in its index", Finished::Failed(FailWhy::Generic));
+                };
+                let (mut nid, mut added) = (0u32, false);
+                if bgindex_claim(&mut nix, &nbg, key, &mut nid, &mut added) != 0 {
+                    return gone("the notebook's picture index is full", Finished::Failed(FailWhy::Generic));
                 }
-            };
-            papers.push(paper_image(PAPER_ROLE_DOCUMENT, nid));
-        }
-        if bgindex_save(&nbg, &nix) != 0 {
-            return gone("the notebook's picture index cannot be written", R_STORAGE);
-        }
-        for &(wpic, nid) in &of {
-            let (mut from, mut to) = (String::new(), String::new());
-            bgimage_file(&wbg, wpic, &mut from, 900);
-            bgimage_file(&nbg, nid, &mut to, 900);
-            // (a picture the notebook holds already, or one a cut-off commit moved in, is there)
-            if !exists(&to) && std::fs::rename(&from, &to).is_err() {
-                return gone("a picture cannot be moved into the notebook", R_STORAGE);
+                of.push((wpic, nid));
+                nid
             }
+        };
+        papers.push(paper_image(PAPER_ROLE_DOCUMENT, nid));
+    }
+    if !add.is_empty() && bgindex_save(&nbg, &nix) != 0 {
+        return gone("the notebook's picture index cannot be written", Finished::Failed(FailWhy::Storage));
+    }
+    if cut_after(1) {
+        return Err(Finished::Nothing);
+    }
+    Ok(Commit { id: id.to_string(), src: src.to_string(), st, dir, nbg, wbg, add, papers, of, moved: 0, written: 0 })
+}
+
+/// A commit's next files, as many as the tick allows (2. the pictures moved in, 3. the page files), then its end.
+/// None while more ticks are needed.
+fn commit_step(c: &mut Commit, t0: u64, dpi: f32) -> Option<Finished> {
+    let most = fill_step_files();
+    let mut n = 0usize;
+    let room = |n: usize| n < most && mono_ms_now().saturating_sub(t0) < FILL_STEP_MS;
+    // (a notebook gone meanwhile, which nothing in the app can do while this runs, is never made again)
+    if !is_dir_path(&c.dir) {
+        return Some(commit_gone(&c.id, &c.src, &c.st.fill, "the notebook is gone", Finished::Nothing));
+    }
+    while c.moved < c.of.len() {
+        if !room(n) {
+            return None;
         }
-        if cut_after(2) {
-            return SliceEnd::More;
+        let (wpic, nid) = c.of[c.moved];
+        let (mut from, mut to) = (String::new(), String::new());
+        bgimage_file(&c.wbg, wpic, &mut from, 900);
+        bgimage_file(&c.nbg, nid, &mut to, 900);
+        // (a picture the notebook holds already, or one an earlier try moved in, is there)
+        if !exists(&to) && std::fs::rename(&from, &to).is_err() {
+            return Some(commit_gone(&c.id, &c.src, &c.st.fill, "a picture cannot be moved into the notebook", Finished::Failed(FailWhy::Storage)));
         }
-        // 3. the page files: document pages on those pictures, at the notebook's page size
-        for (k, &pid) in ids.iter().enumerate() {
-            let pg = page_new(pw, ph, papers[k]);
-            let rc = store_write_page_in(&dir, pid, &pg);
-            page_free(pg);
-            if rc != 0 {
-                return gone("a page file cannot be written", R_STORAGE);
+        c.moved += 1;
+        n += 1;
+    }
+    if c.written == 0 && cut_after(2) {
+        return Some(Finished::Nothing);
+    }
+    while c.written < c.add.len() {
+        if !room(n) {
+            return None;
+        }
+        let pg = page_new(c.st.page_w, c.st.page_h, c.papers[c.written]);
+        let rc = store_write_page_in(&c.dir, c.add[c.written].2, &pg);
+        page_free(pg);
+        if rc != 0 {
+            // (the page files written go: no list names them)
+            for a in &c.add[..c.written] {
+                let _ = std::fs::remove_file(format!("{}/p{}.qpg", c.dir, a.2));
             }
+            return Some(commit_gone(&c.id, &c.src, &c.st.fill, "a page file cannot be written", Finished::Failed(FailWhy::Storage)));
         }
-        if store_note_papers_in(&nbg, &ids, &papers) != 0 {
-            return gone("its bg/pages.ini cannot be written", R_STORAGE);
+        c.written += 1;
+        n += 1;
+    }
+    Some(commit_finish(c, dpi))
+}
+
+/// A commit's last tick: bg/pages.ini, then the notebook as it is now, read again here: 4. source.ini with the new
+/// pages' lines, 5. notebook.ini with the pages in book order, then 6. the links and 7. the names. Until notebook.ini
+/// lists the pages the notebook shows nothing new; a try taken up again after it adds nothing twice.
+fn commit_finish(c: &mut Commit, dpi: f32) -> Finished {
+    let (id, src, nbid) = (c.id.clone(), c.src.clone(), c.st.fill.clone());
+    let gone = |why: &str, f: Finished| commit_gone(&id, &src, &nbid, why, f);
+    if !c.add.is_empty() {
+        let ids: Vec<u32> = c.add.iter().map(|a| a.2).collect();
+        if store_note_papers_in(&c.nbg, &ids, &c.papers) != 0 {
+            return gone("its bg/pages.ini cannot be written", Finished::Failed(FailWhy::Storage));
         }
-        crate::bgwork_template::sync_dir_public(&nbg);
-        if cut_after(3) {
-            return SliceEnd::More;
+        crate::bgwork_template::sync_dir_public(&c.nbg);
+    }
+    if cut_after(3) {
+        return Finished::Nothing;
+    }
+    let mut nb = NotebookInfo::default();
+    let mut m = AnnotateMap::default();
+    if store_load_info(&nbid, &mut nb) != 0 || annotate_map_load(&nbid, &mut m) != 0 {
+        annotate_map_free(&mut m);
+        return gone("the notebook is gone", Finished::Nothing);
+    }
+    // each page before the first page that holds a later book page (KOReader's route's rule), the page the
+    // notebook reopens at kept
+    let pages = c.st.pages as i32;
+    let open_pid = nb.page_ids.get(nb.last_page.max(0) as usize).copied();
+    let mut put = 0;
+    for &(bp, _, pid) in &c.add {
+        if annotate_map_find(&m, &nb, bp as i32, pages) != 0 || nb.page_ids.contains(&pid) {
+            continue;
         }
-        // the page list and source.ini's map, in memory: each page before the first page that holds a later book
-        // page (KOReader's route's rule), the page it reopens at kept
-        let open_pid = nb.page_ids.get(nb.last_page.max(0) as usize).copied();
-        for (k, &(bp, _)) in add.iter().enumerate() {
-            let at = annotate_insert_at(&nb, &m, bp as i32, pages);
-            nb.page_ids.insert(at.clamp(0, nb.npages()) as usize, ids[k]);
-            if annotate_map_add(&mut m, bp as i32, pages, ids[k]) != 0 {
-                return gone("out of memory", R_FAILED);
-            }
+        let at = annotate_insert_at(&nb, &m, bp as i32, pages);
+        nb.page_ids.insert(at.clamp(0, nb.npages()) as usize, pid);
+        nb.next_page_id = nb.next_page_id.max(pid + 1);
+        if annotate_map_add(&mut m, bp as i32, pages, pid) != 0 {
+            annotate_map_free(&mut m);
+            return gone("out of memory", Finished::Failed(FailWhy::Generic));
         }
-        if let Some(i) = open_pid.and_then(|p| nb.page_ids.iter().position(|&x| x == p)) {
-            nb.last_page = i as i32;
-        }
-        // 4. source.ini, its new page lines beside the old (its record, or none, kept as it is: a notebook without
-        // one is never given one). Until notebook.ini lists the pages, nothing reads those lines: a page line goes
-        // only with a page of the list.
+        put += 1;
+    }
+    if let Some(i) = open_pid.and_then(|p| nb.page_ids.iter().position(|&x| x == p)) {
+        nb.last_page = i as i32;
+    }
+    let stop = |m: &mut AnnotateMap| {
+        annotate_map_free(m);
+        Finished::Nothing
+    };
+    if put > 0 {
+        // 4. source.ini, its new page lines beside the old (its record, or none, kept as it is: a notebook without one
+        // is never given one); a page line goes only with a page of the list, so nothing reads them before 5.
         let text = annotate_map_text(&m, &nb);
-        if !text.is_some_and(|t| write_file_atomic(&format!("{dir}/source.ini"), &t) == 0) {
-            return gone("its source.ini cannot be written", R_STORAGE);
+        if !text.is_some_and(|t| write_file_atomic(&format!("{}/source.ini", c.dir), &t) == 0) {
+            annotate_map_free(&mut m);
+            return gone("its source.ini cannot be written", Finished::Failed(FailWhy::Storage));
         }
         if cut_after(4) {
-            return SliceEnd::More;
+            return stop(&mut m);
         }
         // 5. notebook.ini: from here the pages are the notebook's
         nb.modified = wall_time();
-        if store_write_info_in(&dir, &nb) != 0 {
-            return gone("its notebook.ini cannot be written", R_STORAGE);
+        if store_write_info_in(&c.dir, &nb) != 0 {
+            annotate_map_free(&mut m);
+            return gone("its notebook.ini cannot be written", Finished::Failed(FailWhy::Storage));
         }
-        crate::bgwork_template::sync_dir_public(&dir);
+        crate::bgwork_template::sync_dir_public(&c.dir);
         if cut_after(5) {
-            return SliceEnd::More;
-        }
-        // the card's thumbnail: a new first page that is the book's page 1 has its own (drawn in the work folder);
-        // any other new first page, the Library draws again
-        if nb.page_ids.first().copied() != first_before {
-            let thumb = format!("{dir}/thumb.pgm");
-            let first_is_p1 = add.iter().position(|a| a.0 == 1).is_some_and(|k| nb.page_ids.first() == Some(&ids[k]));
-            if !(first_is_p1 && std::fs::rename(format!("{work}/thumb.pgm"), &thumb).is_ok()) {
-                let _ = std::fs::remove_file(&thumb);
-            }
+            return stop(&mut m);
         }
     }
-    // 6. the links and 7. the names, for the pages the notebook lists now: a commit cut off after its notebook.ini
-    // goes on here, from the work folder, and adds nothing twice. Either can fail alone, as an import's: the pages
-    // stay, without them.
+    // the pages this fill gave the notebook (a try taken up again after notebook.ini finds them listed)
+    let added: Vec<u32> = c.st.ids.iter().map(|x| x.1).filter(|p| nb.page_ids.contains(p)).collect();
+    // the card's thumbnail, when its first page is one of them: the book's page 1 has its own (drawn in the work
+    // folder), any other the Library draws again
+    let work = work_dir(&id);
+    if let Some(&(bp, _)) = nb.page_ids.first().and_then(|f| c.st.ids.iter().find(|x| x.1 == *f)) {
+        let thumb = format!("{}/thumb.pgm", c.dir);
+        if bp != 1 {
+            let _ = std::fs::remove_file(&thumb);
+        } else if exists(&format!("{work}/thumb.pgm")) {
+            let _ = std::fs::rename(format!("{work}/thumb.pgm"), &thumb);
+        }
+    }
+    // 6. the links and 7. the names: either can fail alone, as an import's (the pages stay, without them)
     let mut trimmed = 0;
-    if let Some(c) = read_parts(id, &work, state.pages) {
-        let (written, left) = fill_links(id, &nbid, &dir, &nb, &m, state.pages, pw, ph, &c);
-        trimmed = if written { left } else { c.links.len() as u32 };
+    if let Some(col) = read_parts(&id, &work, c.st.pages) {
+        let (written, left) = fill_links(&id, &nbid, &c.dir, &nb, &m, c.st.pages, c.st.page_w, c.st.page_h, &col);
+        trimmed = if written { left } else { col.links.len() as u32 };
         if written && !m.links {
             // (source.ini says links=1 once doclinks.ini holds the book's links: KOReader's Open this book then does
             // not send the links of the pages it held again)
             m.links = true;
-            let ok = annotate_map_text(&m, &nb).is_some_and(|t| write_file_atomic(&format!("{dir}/source.ini"), &t) == 0);
+            let ok = annotate_map_text(&m, &nb).is_some_and(|t| write_file_atomic(&format!("{}/source.ini", c.dir), &t) == 0);
             if !ok {
-                qlog!("import: %s: the source.ini of notebook %s could not say its links are there", id, &nbid);
+                qlog!("import: %s: the source.ini of notebook %s could not say its links are there", &id, &nbid);
             }
         }
         if cut_after(6) {
-            return SliceEnd::More;
+            return stop(&mut m);
         }
-        fill_names(id, &nbid, &nb, &m, state.pages, &c);
+        fill_names(&id, &nbid, &nb, &m, c.st.pages, &col);
     }
     annotate_map_free(&mut m);
     if cut_after(7) {
-        return SliceEnd::More;
+        return Finished::Nothing;
     }
-    let blank = add.iter().filter(|a| state.blank.contains(&a.0)).count() as u32;
-    qlog!("import: notebook %s filled: %d page(s) added (%d now), %d blank", &nbid, add.len() as i32, nb.npages(), blank as i32);
-    remove_work_folder(id);
-    // a file of import/ goes to import/done when its name still holds the file read; a commit that went on after a
-    // cut, its PDF gone or changed since, moves nothing
-    match source {
-        Some(s) => {
-            if finish_pdf(abs, src, id, s) {
-                note_try(src, 0, A_DONE);
-            }
-        }
-        None => mark_drop(src),
+    let blank = c.st.ids.iter().filter(|x| added.contains(&x.1) && c.st.blank.contains(&x.0)).count() as u32;
+    qlog!("import: notebook %s filled: %d page(s) added (%d now), %d blank", &nbid, added.len() as i32, nb.npages(), blank as i32);
+    // In: one more slice files the PDF (the writer's, as for every file of import/) and removes the work folder. A
+    // start before it runs finds the folder and queues that slice.
+    c.st.stage = STAGE_DONE;
+    c.st.open = false;
+    if !state_write(&id, &c.st) {
+        // (the PDF stays in import/: the next scan finds every page there, says "already" and files it)
+        remove_work_folder(&id);
+        mark_drop(&src);
+    } else if !matches!(lock_take(), Lock::Busy(_)) {
+        progress(); // (the shared record is made before the fork)
+        ui(|u| {
+            u.pending.push(id.clone());
+            u.queued.push(src.clone());
+        });
+        bg_queue(BgKind::PdfImport, Some(&id), Some(&src), dpi, false);
     }
-    if add.is_empty() {
-        // (a commit taken up again after its notebook.ini was written: the pages were added then)
-        set_result(id, R_ALREADY, 0, 0);
-        return SliceEnd::Already;
+    if added.is_empty() {
+        return Finished::Already;
     }
-    set_filled(&nbid, add.len() as u32);
-    set_result(id, R_FILLED, trimmed, blank);
-    SliceEnd::Filled { added: add.len() as u32, blank }
+    Finished::Filled { nb: nbid, added: added.len() as u32, blank, trimmed }
 }
 
 /// bgjob.h: one slice of a PDF import (BG_PDF_IMPORT), in the child: 0 = done (or nothing to do: imported before,
@@ -3761,14 +3902,7 @@ pub fn bg_pdf_import(id: &str, src: &str) -> i32 {
                 CODE_DONE
             }
         }
-        SliceEnd::Filled { blank, .. } => {
-            if blank > 0 {
-                CODE_BLANKS
-            } else {
-                CODE_DONE
-            }
-        }
-        SliceEnd::Already | SliceEnd::Deferred | SliceEnd::Waiting => CODE_DONE,
+        SliceEnd::Already | SliceEnd::Deferred | SliceEnd::Ready { .. } | SliceEnd::Filed => CODE_DONE,
         SliceEnd::More => CODE_MORE,
         SliceEnd::Failed(..) | SliceEnd::Sandbox => CODE_FAILED,
     }
