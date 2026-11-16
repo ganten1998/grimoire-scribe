@@ -8483,6 +8483,19 @@ pub fn library_tick(a: &mut App, now: u32) {
             redraw(a, RefreshMode::Ui);
         }
     }
+    // A card held still (HOLD_MS, 2.2): its menu, as its "..." opens it; the lift after it does nothing (nothing is
+    // pressed any more, and the menu's drawing took the pressed look away).
+    let on_library = a.scr == ScreenId::Library;
+    let s = lib(a);
+    if on_library
+        && s.modal == Modal::None
+        && s.pressed.is_some_and(|p| p.id == H_CARD)
+        && !s.press.moved
+        && now.wrapping_sub(s.pressed_at) >= HOLD_MS
+    {
+        let arg = s.pressed.take().map_or(0, |p| p.arg);
+        act(a, &Hit { id: H_CARD_MORE, arg, ..Default::default() });
+    }
     if lib(a).modal == Modal::Kb {
         let mut kb = std::mem::take(&mut lib(a).kb);
         app_keyboard_tick(a, &mut kb, now);
@@ -9453,6 +9466,48 @@ mod tests {
         let mut on_disk = Settings::default();
         settings_load(&mut on_disk);
         assert!(!on_disk.files_card);
+        library_free(&mut a);
+        canvas_free(&mut a.screen);
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    // A card held still for HOLD_MS (2.2) opens its menu as its "..." does: a notebook's, a folder's, the Files
+    // card's; a press that moved, or one let go sooner, does not.
+    #[test]
+    fn a_card_held_opens_its_menu() {
+        let root = std::env::temp_dir().join(format!("grimoire-card-hold-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        assert_eq!(store_init(root.to_str().unwrap()), 0);
+        for (name, folder) in [("A", ""), ("B", "School")] {
+            let mut nb = NotebookInfo::default();
+            assert_eq!(store_create(name, folder, PAPER_BLANK, &mut nb), 0);
+        }
+        let mut a = pen_record_app();
+        a.scr = ScreenId::Library;
+        settings_default(&mut a.settings);
+        a.settings.files_card = true;
+        lib(&mut a).modal = Modal::None;
+        reload(&mut a);
+        redraw(&mut a, RefreshMode::Ui);
+        let hold = |a: &mut App, idx: i32, moved: bool, ms: u32| {
+            let s = lib(a);
+            s.pressed = s.hits.h.iter().find(|h| h.id == H_CARD && h.arg == idx).copied();
+            assert!(s.pressed.is_some(), "card {idx} drawn");
+            s.press = Press { moved, ..Default::default() };
+            s.pressed_at = 1000;
+            library_tick(a, 1000 + ms);
+        };
+        for (idx, want) in [(0, Modal::FolderMore), (1, Modal::More), (2, Modal::FilesMore)] {
+            hold(&mut a, idx, false, HOLD_MS - 1);
+            assert_eq!(lib(&mut a).modal, Modal::None, "not yet");
+            hold(&mut a, idx, true, HOLD_MS + 5);
+            assert_eq!(lib(&mut a).modal, Modal::None, "it moved");
+            hold(&mut a, idx, false, HOLD_MS + 5);
+            assert_eq!(lib(&mut a).modal, want, "card {idx}");
+            assert!(lib(&mut a).pressed.is_none() && lib(&mut a).target == idx);
+            lib(&mut a).modal = Modal::None;
+            redraw(&mut a, RefreshMode::Ui);
+        }
         library_free(&mut a);
         canvas_free(&mut a.screen);
         let _ = std::fs::remove_dir_all(&root);
