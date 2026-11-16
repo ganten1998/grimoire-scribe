@@ -176,7 +176,7 @@ why. Newest decisions first within each section.
   steps 1 to 3 say how long a big PDF takes to read whole; steps 7 and 8 say whether the Scribe's storage gives a
   file one identity by its name and by an open file, which the scan's look, the import lock and the move to
   `import/done` all compare (if it did not, every dropped PDF would wait a minute, no import would start, and
-  an imported PDF would stay in `import/` and be read again up to three times). No release holds this round's
+  an imported PDF would stay in `import/` and be read again twice). No release holds this round's
   import commits until those have run.
 - **Confirm Open its notebook with the file record.** In Files, a PDF whose key and size match a notebook's
   record opens that notebook without reading the file whole; compare the whole file in the background before

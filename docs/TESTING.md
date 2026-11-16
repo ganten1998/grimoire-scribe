@@ -2681,7 +2681,8 @@ import commits. The owner's check:
    `no longer holds the file that was read` line, and the scan's line counts `0 that differ from their
    listing`. This step decides whether the three checks suit the Scribe's storage: the first line would mean
    that no import starts there, the second that every PDF waits a minute, the third that an imported PDF
-   stays in `import/` and is read again up to three times.
+   stays in `import/` and is read again twice (three times in all), after which its row in the Import place
+   reads "Couldn't import PDF (see grimoire.log)." although its notebook exists.
 8. **A second start during an import.** Start a long import, close Grimoire while it runs and open it
    again: the notice goes on. Pick another PDF in Files: "Another import is still going. This one starts
    after it.", and it starts once the first has ended.

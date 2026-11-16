@@ -738,7 +738,9 @@ just before the move it looks at the name once more. When the name no longer hol
 and inode, with the size and mtime it was opened with: another file was put there meanwhile, or the file
 changed, or it is gone), nothing moves and no `done` mark is written; what is at the name is taken by the next
 scan as the file it is. Such an end leaves its try counted in `import/.attempts` (below), so a name that never
-holds the file read is tried three times with those contents and then waits until the file changes. A path
+holds the file read is tried three times with those contents and then waits until the file changes. Its row in
+the Import place then reads "Couldn't import PDF (see grimoire.log)." and the scan's log line counts it among
+the files that failed, although the PDF was imported and its notebook exists. A path
 that spells Grimoire's folder or `import` in another case lies in `import/` only
 where the storage takes both spellings as one folder (the Scribe's does); on a storage that tells names apart by
 case they are two folders, and the file stays where it is. Names: a name typed in New notebook's sheet (one of

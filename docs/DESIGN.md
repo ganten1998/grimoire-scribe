@@ -2184,8 +2184,13 @@ same walk as the job and reads only the file it listed (`read_ends`). The job re
 opened, and a file of `import/` is moved to `done/` by its name, so the name is looked at once more just before
 the move (`finish_pdf`): it must still hold the file that was read (the lock's own test of a name against an
 open file, and the size and time the file was opened with), else nothing moves, nothing is marked done, and
-the next scan takes what is at the name; the try stays counted, so this cannot repeat without end. The record a
-notebook keeps of its file takes its key and its hash from the one file the last slice has open.
+the next scan takes what is at the name; the try stays counted, so this cannot repeat without end, as long as the
+scan's listing and the open file agree on the file's size and time (the tries are counted under the size and time
+of the file the import has open, and the scan asks for them under the size and time its listing gives: a storage
+on which the two differ would see the file taken again at every scan). After the third such try the file waits,
+and the Import place's row then reads "Couldn't import PDF (see grimoire.log)." although its notebook exists
+(FORMAT.md, "Imports: PDFs"). The record a notebook keeps of its file takes its key and its hash from the one
+file the last slice has open.
 
 The links and names (lane L6) come out of the same worker. After the page count the writer sends `LINKS <w> <h>`;
 the worker walks the annotations of every page (`pdfwork.rs`, module `links`), resolves each destination to a
