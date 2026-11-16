@@ -431,7 +431,7 @@ What waits for the lanes that use them:
   allow-list, the check before acting, the free-space refusal) came in 2.2's storage layer (issue #117: "Files'
   storage writes (2.2, issue #117): what waits", above); their words ("File changed. Try again.", "Kindle storage
   nearly full.") wait for the screens. The Loading notice over 1 s, and its first readers (the picker, the PDF
-  import; the KOReader hand-over walks its path since #142, under the book's notice).
+  import; the KOReader hand-over walks its path since #142, under the import's notice).
 - `name_cmp`'s readers: the browser, the import order and the font list.
 - The Library listing from libindex's cache plus stamps (browser.md 17), past reading each notebook.ini once.
 

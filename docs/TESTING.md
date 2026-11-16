@@ -3046,8 +3046,8 @@ own import then finds every page there, and the notebook opens at book page 2).
    at page 12 at once, with no toast (`import: <id>: this PDF was imported before; nothing made`, then `book: <nb>:
    0 page(s) added by the PDF import (its notebook), opens at its page 12`).
 8. **The first start after an update.** Delete a few pages of that notebook in the Pages view and leave Grimoire.
-   Over USB, in `grimoire/settings.ini`, change the `whatsnew_seen=` line to an older version
-   (`whatsnew_seen=2.1.0`), so that What's new is due at the next start, as after an update. From KOReader use
+   Over USB, in `grimoire/settings.ini`, change the `whatsnew_seen=` line to a version other than this build's
+   (`whatsnew_seen=2.0.0`), so that What's new is due at the next start, as after an update. From KOReader use
    Open this book in Grimoire on that PDF. Grimoire comes up with What's new over the Library. Wait a minute: the
    sheet is still up, and `grimoire.log` has `the pages for notebook <nb> are made; they go in once the Library is
    in front`. Tap Dismiss: it closes at once, "Adding book pages: N of M" shows for a moment, and the notebook
