@@ -656,6 +656,34 @@ fn the_compaction_list_takes_a_plain_file_only() {
     let _ = std::fs::remove_dir_all(&t);
 }
 
+// A notebook's compaction list is read up to 64 KiB, to the byte (the longest Grimoire writes is 45,136 bytes: its
+// header and 4096 ids of ten digits). A longer one is a plain file that does not read: nothing is written over it.
+#[test]
+fn the_compaction_list_has_a_limit() {
+    let t = top("erased-limit");
+    let root = t.join("root");
+    store_at(&root);
+    let nb = book("Long list", 1, PAPER_BLANK);
+    let id = nb.id.as_str();
+    let pid = nb.page_ids[0];
+    let list = nb_dir(&root, &nb).join("erased.txt");
+    let mut c = Checks::default();
+    // a list of comments only lists nothing, once it reads
+    std::fs::write(&list, padded(b"# a list\n", 65536)).unwrap();
+    c.that(!compact_listed(id), "a list of exactly 64 KiB reads");
+    let text = padded(format!("# a list\n{pid}\n").as_bytes(), 65536);
+    std::fs::write(&list, &text).unwrap();
+    c.that(compact_note_page(id, pid + 1) == 0, "and takes a page");
+    c.that(std::fs::read(&list).is_ok_and(|b| b.ends_with(format!("\n{pid}\n{}\n", pid + 1).as_bytes())), "after the one it listed");
+    std::fs::write(&list, padded(b"# a list\n", 65537)).unwrap();
+    c.that(compact_listed(id), "one byte more is a list that does not read");
+    let text = padded(format!("# a list\n{pid}\n").as_bytes(), 65537);
+    std::fs::write(&list, &text).unwrap();
+    c.that(compact_note_page(id, pid + 1) == -1 && std::fs::read(&list).unwrap() == text, "and nothing is written over it");
+    c.done();
+    let _ = std::fs::remove_dir_all(&t);
+}
+
 /// A lasso group of one stroke, for the clipboard.
 fn group() -> Group {
     Group { w: 600, h: 800, strokes: vec![wave(5, 200.0)], links: Vec::new(), box_: Rect::new(60, 200, 360, 30), src_nb: "nb-clip".into(), src_pid: 1, ink: 1, carried: 0 }

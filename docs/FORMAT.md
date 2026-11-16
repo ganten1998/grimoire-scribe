@@ -79,8 +79,8 @@ crash guard are still opened by path, after a look at the entry that does not fo
 
 The small text files are read up to a size, and a longer one is not read: `settings.ini`,
 `notebook.ini`, `folders.ini`, `bg/index.ini` and `bg/pages.ini` up to 1 MiB (1,048,576 bytes), an import
-folder's mark up to 4 KiB, `import/.attempts` up to 64 KiB, and a PGM (`thumb.pgm`, `sleep.pgm`, a preview)
-up to 64,000,064 bytes (its largest picture, 8000 x 8000, and a header). Page files and pictures have no
+folder's mark up to 4 KiB, `import/.attempts` and a notebook's `erased.txt` up to 64 KiB, and a PGM
+(`thumb.pgm`, `sleep.pgm`, a preview) up to 64,000,064 bytes (its largest picture, 8000 x 8000, and a header). Page files and pictures have no
 limit of this kind. A `folders.ini` over its limit reads as an empty list; what the other readers do with a
 file that is not read is in their sections.
 
@@ -302,7 +302,8 @@ zip, a `grimoire-pull` copy or an older version.
   later pass or for the version that can: one that does not read, one of another size than its
   notebook's (compacted once the editor writes it at the notebook's size), and one holding data
   1.1 reads past. So does a page it could not write. The list goes once it is empty. A list that
-  is there but does not read (a read error) is never written over: the editor tries again at its
+  is there but does not read (a read error, or from 2.1.1 on one longer than 64 KiB: the longest
+  Grimoire writes is 45,136 bytes, 4096 ids) is never written over: the editor tries again at its
   next save, and compaction leaves it as it is. From 2.1.1 on an entry at its name that is no plain
   file (a link, to a file or to nothing, a FIFO, a folder) is no list, as nothing there is: no
   compaction runs for it, and the editor's next write of the list replaces the entry itself, never
