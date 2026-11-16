@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: Grimoire 2.1.0\n"
 "Report-Msgid-Bugs-To: https://github.com/ganten1998/grimoire-scribe/issues\n"
-"POT-Creation-Date: 2026-11-15 19:02-0600\n"
+"POT-Creation-Date: 2026-11-15 23:27-0600\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -399,7 +399,7 @@ msgstr ""
 msgid "Side button"
 msgstr ""
 
-#: rust/src/actions.rs
+#: rust/src/actions.rs rust/src/browser.rs
 msgid "PDF copies"
 msgstr ""
 
@@ -576,6 +576,19 @@ msgstr ""
 #. use's quick sizes beside its button on the toolbar, as holding that button does.
 #: rust/src/actions.rs
 msgid "Sizes of the pen in use"
+msgstr ""
+
+#. TRANSLATORS: (shortcuts and gestures lists, about 1100 px at 44 px in bold) in the Library: opens Files, the
+#. Kindle's storage to browse, whether or not its card is in the Library.
+#. TRANSLATORS: the file picker's name, the first word of its path line (small, in a band of 100 px).
+#: rust/src/actions.rs rust/src/browser.rs rust/src/library.rs
+msgid "Files"
+msgstr ""
+
+#. TRANSLATORS: (shortcuts and gestures lists, about 1100 px at 44 px in bold) in the Library: back to its top,
+#. out of any folder (and out of Files).
+#: rust/src/actions.rs
+msgid "Home"
 msgstr ""
 
 #. TRANSLATORS: the name of a notebook that has none (it is saved with it, as a name given).
@@ -1037,6 +1050,12 @@ msgid ""
 "the done folder. Copy them in over USB, or over SSH while Grimoire runs."
 msgstr ""
 
+#. TRANSLATORS: the title of the file picker opened by New notebook's From a file... (the Library's header,
+#. about 1400 px at 56 px).
+#: rust/src/browser.rs
+msgid "Import a PDF or pictures"
+msgstr ""
+
 #. TRANSLATORS: a file's size in kilobytes, in the file picker's rows and cards (small text).
 #: rust/src/browser.rs
 #, c-format
@@ -1053,6 +1072,12 @@ msgstr ""
 #: rust/src/browser.rs
 #, c-format
 msgid "%.1f GB"
+msgstr ""
+
+#. TRANSLATORS: the file picker's free space line: free of the whole storage ("Free: 9.8 GB of 14.5 GB"), at 44 px, right-aligned.
+#: rust/src/browser.rs
+#, c-format
+msgid "Free: %s of %s"
 msgstr ""
 
 #. TRANSLATORS: a toast in the file picker: the folder tapped could not be opened (gone since it was
@@ -1088,9 +1113,49 @@ msgstr ""
 msgid "All storage"
 msgstr ""
 
+#. TRANSLATORS: the title of the sheet of templates (pictures copied into grimoire/templates, to
+#. write on as paper), which More papers... opens (1560 px at 64 px).
+#: rust/src/browser.rs rust/src/tplsheet.rs
+msgid "Templates"
+msgstr ""
+
+#. TRANSLATORS: the title of the sheet of photos (copied into grimoire/photos), which Photos...
+#. opens (1560 px at 64 px).
+#: rust/src/browser.rs rust/src/tplsheet.rs
+msgid "Photos"
+msgstr ""
+
+#. TRANSLATORS: Files' row for grimoire/fonts, the fonts copied for Classic's text (44 px in a row of 150 px).
+#: rust/src/browser.rs
+msgid "Fonts"
+msgstr ""
+
+#. TRANSLATORS: Files' row for the Kindle's own fonts folder (the fonts its reader uses), which Grimoire
+#. only looks in (44 px in a row of 150 px).
+#: rust/src/browser.rs
+msgid "Kindle fonts"
+msgstr ""
+
+#. TRANSLATORS: Files' row for grimoire/trash, where deleted notebooks and pages go (44 px in a row of 150 px).
+#: rust/src/browser.rs
+msgid "Trash"
+msgstr ""
+
 #. TRANSLATORS: the Import place's last row: it looks in grimoire/import for new files now (44 px in a row).
 #: rust/src/browser.rs
 msgid "Look again"
+msgstr ""
+
+#. TRANSLATORS: the last row of the file picker's first screen (and of Files'): puts a Files card at the end
+#. of the Library, which opens these places to browse (44 px in a row of about 1500 px).
+#: rust/src/browser.rs
+msgid "Show Files in Library"
+msgstr ""
+
+#. TRANSLATORS: Files with Show all: the second line of a row that is a link, which Grimoire never follows
+#. (34 px, under the link's name).
+#: rust/src/browser.rs
+msgid "link, not followed"
 msgstr ""
 
 #. TRANSLATORS: a folder in the file picker that holds pictures; %d is how many (small text under its name).
@@ -1111,9 +1176,18 @@ msgstr ""
 msgid "Imported"
 msgstr ""
 
-#. TRANSLATORS: the file picker's name, the first word of its path line (small, in a band of 100 px).
+#. TRANSLATORS: the sheets' buttons: 348 px at 44 px inside Gothic's carved line (342 for Create,
+#. the main one), or at 34 px, or two lines of that.
+#: rust/src/browser.rs rust/src/calibrate.rs rust/src/editor.rs
+#: rust/src/keyboard.rs rust/src/library.rs rust/src/linkbar.rs
+#: rust/src/musicbuild.rs rust/src/pagesview.rs
+msgid "Cancel"
+msgstr ""
+
+#. TRANSLATORS: the title of Files' Go to sheet, which a tap on the folder shown in its path bar opens: its
+#. places and the Kindle's top folders, one a row (34 px, at the sheet's top).
 #: rust/src/browser.rs
-msgid "Files"
+msgid "Go to"
 msgstr ""
 
 #. TRANSLATORS: a PDF's card in the file picker: a notebook already holds this book, and this opens it
@@ -1141,29 +1215,24 @@ msgid_plural "Import %d pictures as notebook"
 msgstr[0] ""
 msgstr[1] ""
 
-#. TRANSLATORS: the sheets' buttons: 348 px at 44 px inside Gothic's carved line (342 for Create,
-#. the main one), or at 34 px, or two lines of that.
-#: rust/src/browser.rs rust/src/calibrate.rs rust/src/editor.rs
-#: rust/src/keyboard.rs rust/src/library.rs rust/src/linkbar.rs
-#: rust/src/musicbuild.rs rust/src/pagesview.rs
-msgid "Cancel"
+#: rust/src/browser.rs rust/src/httpd.rs
+msgid "Picture"
 msgstr ""
 
-#. TRANSLATORS: the title of the file picker opened by New notebook's From a file... (the Library's header,
-#. about 1400 px at 56 px).
+#. TRANSLATORS: the title of Settings > Font, the list of fonts Classic can be drawn in.
+#: rust/src/browser.rs rust/src/library.rs
+msgid "Font"
+msgstr ""
+
+#. TRANSLATORS: a Files card's first line for a file Grimoire cannot use, before its size and date ("File,
+#. 2 KB, Oct 3"; 34 px).
 #: rust/src/browser.rs
-msgid "Import a PDF or pictures"
+msgid "File"
 msgstr ""
 
 #. TRANSLATORS: the file picker's top line when the Kindle has under 200 MB free (one line, about 800 px at 44 px).
 #: rust/src/browser.rs
 msgid "Kindle storage nearly full."
-msgstr ""
-
-#. TRANSLATORS: the file picker's free space line: free of the whole storage ("Free: 9.8 GB of 14.5 GB"), at 44 px, right-aligned.
-#: rust/src/browser.rs
-#, c-format
-msgid "Free: %s of %s"
 msgstr ""
 
 #. TRANSLATORS: a folder in the file picker held more than it lists; %d is how many it shows (5000), at 34 px, right of the path.
@@ -1182,6 +1251,37 @@ msgstr ""
 #: rust/src/browser.rs rust/src/library.rs rust/src/tplsheet.rs
 #, c-format
 msgid "Page %d of %d"
+msgstr ""
+
+#. TRANSLATORS: Files' Sort chip on its path bar while the newest files come first (one word of about
+#. 220 px at 34 px in bold; a tap sorts by size, the largest first).
+#: rust/src/browser.rs
+msgid "Newest"
+msgstr ""
+
+#. TRANSLATORS: Live view's size control in the browser: Fit (the whole page in the window,
+#. the existing word), the page's width, percentages of the Kindle's own pixels, and smaller
+#. or larger by a step.
+#: rust/src/browser.rs rust/src/httpd.rs
+msgid "Size"
+msgstr ""
+
+#. TRANSLATORS: Files' Sort chip on its path bar while the rows go by name (one word of about 220 px at
+#. 34 px in bold; a tap puts the newest first).
+#: rust/src/browser.rs
+msgid "Name"
+msgstr ""
+
+#. TRANSLATORS: Files' Show chip on its path bar: every file is listed (others greyed, never opened), at
+#. 34 px in bold, about 360 px. A tap shows only the files Grimoire can use.
+#: rust/src/browser.rs
+msgid "All files"
+msgstr ""
+
+#. TRANSLATORS: Files' Show chip on its path bar: only the files Grimoire can use are listed, at 34 px in
+#. bold, about 360 px. A tap lists every file.
+#: rust/src/browser.rs
+msgid "PDFs, pictures, fonts"
 msgstr ""
 
 #. TRANSLATORS: a PDF in the file picker that a notebook already holds (its notes are there); a tag at the
@@ -2455,10 +2555,6 @@ msgstr ""
 msgid "View settings"
 msgstr ""
 
-#: rust/src/httpd.rs
-msgid "Picture"
-msgstr ""
-
 #: rust/src/httpd.rs rust/src/settingsmenu.rs
 msgid "Pen"
 msgstr ""
@@ -2469,13 +2565,6 @@ msgstr ""
 
 #: rust/src/httpd.rs
 msgid "Diagnostics"
-msgstr ""
-
-#. TRANSLATORS: Live view's size control in the browser: Fit (the whole page in the window,
-#. the existing word), the page's width, percentages of the Kindle's own pixels, and smaller
-#. or larger by a step.
-#: rust/src/httpd.rs
-msgid "Size"
 msgstr ""
 
 #: rust/src/httpd.rs
@@ -3535,11 +3624,6 @@ msgstr ""
 msgid "File missing."
 msgstr ""
 
-#. TRANSLATORS: the title of Settings > Font, the list of fonts Classic can be drawn in.
-#: rust/src/library.rs
-msgid "Font"
-msgstr ""
-
 #. TRANSLATORS: the Font sheet's sample sentence, drawn in each font at 44 px, at most two lines of
 #. about 1600 px: a sentence that uses many of your language's letters (English: a pangram; Spanish
 #. could be "La cigüeña tocaba el saxofón detrás del palenque de paja.").
@@ -3744,6 +3828,12 @@ msgstr ""
 
 #: rust/src/library.rs rust/src/pagesview.rs
 msgid "Delete"
+msgstr ""
+
+#. TRANSLATORS: the Files card's menu in the Library (1470 px at 44 px in bold): the card goes; the file
+#. picker's "Show Files in Library" puts it back.
+#: rust/src/library.rs
+msgid "Hide from Library"
 msgstr ""
 
 #: rust/src/library.rs
@@ -5072,18 +5162,6 @@ msgid "Grimoire cannot use %d file there (see %s)."
 msgid_plural "Grimoire cannot use %d files there (see %s)."
 msgstr[0] ""
 msgstr[1] ""
-
-#. TRANSLATORS: the title of the sheet of templates (pictures copied into grimoire/templates, to
-#. write on as paper), which More papers... opens (1560 px at 64 px).
-#: rust/src/tplsheet.rs
-msgid "Templates"
-msgstr ""
-
-#. TRANSLATORS: the title of the sheet of photos (copied into grimoire/photos), which Photos...
-#. opens (1560 px at 64 px).
-#: rust/src/tplsheet.rs
-msgid "Photos"
-msgstr ""
 
 #. TRANSLATORS: grimoire/fonts/README.txt, a plain text file Grimoire writes once (in the language in
 #. use then) for the owner to read on a computer: its title, then its two paragraphs. No room limit.

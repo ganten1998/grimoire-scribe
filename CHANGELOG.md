@@ -12,6 +12,12 @@
   Tools group of Buttons and of Gestures). The new `quick-size` action, bound by name in shortcuts.ini or
   gestures.ini, opens the sizes card from a key or a gesture. An unedited shortcuts.ini gets the two keys at the
   next start.
+- **Files**: the Kindle's storage as a place to browse. "Show Files in Library", the last row of New notebook >
+  From a file..., puts a Files card at the end of the Library (its menu hides it again). Files lists Grimoire's
+  places (Import, Templates, Photos, Fonts, PDF copies, Trash) and the Kindle's folders, with a path bar whose
+  parts open their folder, Go to, Sort (name, newest, size) and Show (the files Grimoire can use, or all, links
+  greyed and never followed). Every file has a card that says what it is. A Library card held opens its menu,
+  as its "..." does. Two new actions with no default key, `files` and `home`.
 - Hardening: Grimoire reads the files in its own folders only when they are plain files, with size limits
   on the small text files, and makes its temporary files afresh each time. A `settings.ini` it cannot
   read is kept as `settings.ini.unread` rather than written over. A picture or folder in `templates/`,
@@ -50,6 +56,16 @@
   and the count would not fit it on some page (every notebook of 1000 pages or more, and many of 100 or more,
   by the font and the size), where it was cut short; a notebook under 100 pages shows both as before. The count
   pad's - and + count on while held, as a held delete deletes, up to the pad's limits (#119).
+- The Clock settings page's corner row moves the clock and battery without a toast: the row names the corner, as
+  the size row names the size. The `status-corner` shortcut still names the corner in a toast where no notebook
+  page is in front (#141).
+
+- **Your own fonts: a stricter background check.** What the check found of a font is now kept on the
+  Kindle itself (`/var/local/grimoire`, a few hundred bytes a font) and tied to the font file by its
+  SHA-256. The check also times each glyph as Grimoire will draw it: a glyph that would take too long is
+  drawn in Terminess, and a font whose letters would is "Took too long to read.". Each font is checked
+  once more after the update, and Grimoire reads in Terminess until the font in use has passed again.
+  Deleting `grimoire/fonts/.cache` still has every font checked again.
 
 ## 2.1.0 (2026-11-13)
 

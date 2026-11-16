@@ -4,6 +4,34 @@ Work that was decided, deferred or found but not done yet. Keep this current: wh
 move it to "Done" with the version; when something is deferred, add it here with who decided and
 why. Newest decisions first within each section.
 
+## Files (2.2, issue #124): what waits
+
+Built: place mode, the Files card (hidden until "Show Files in Library"; the last card of the Library's top
+level), the path bar inside Files only, Go to, Sort, Show, a card for every kind of file, the trash listed read
+only, a Library card's hold, and the `files` and `home` actions (docs/DESIGN.md, "Files: the place"). Waiting,
+each for its own issue:
+
+- **Home**: `home=` in settings.ini (any Library or Kindle folder), Set as home in the Go to sheet and on a
+  folder's card, Reset home to Notebooks, opening at home at each start, "Home folder not found.". Today `home`
+  (the action) goes to the Library's top (`library_home`, where a set home starts).
+- **Rename and Trash on screen** in Grimoire's writable folders (Import, Templates, Photos, Fonts), with the name
+  rules and "Importing now.", on the storage layer's writes (issue #117); **Restore** on the trash's rows
+  (`RowKind::Trashed`) for files and notebooks, never Empty; the trash's size on its row. Pages in the trash are
+  listed by their notebook's name; their Restore is optional.
+- **Previews and the Covers view** (`files_view=covers`, read today as the list and kept), "Making previews...",
+  the cache and its prune; the details a card can only have from the worker (a PDF's pages, a picture's size, a
+  font's sample and coverage).
+- **From a file... tiles** in the Paper sheet's More layouts... and Photos...: Use as template and Use as photo on
+  a picture's card, and Add to fonts on a font's (with the Kindle fonts row of the Font sheet), once a copy job
+  exists. The cards offer only Cancel for those kinds until then.
+- **Not decided here**: the Files card's second line (an earlier idea was "%d to import"; the free space today); the
+  Folder icon greyed in read-only places; Ctrl+N and Ctrl+F in Files; Esc at a home root asking "Exit
+  Grimoire?". The card is the last card of the top level, which in a big Library is the last screen: if that is
+  too far, the other reading (the last card of the first screen) is a change in `reload` alone.
+- **Not timed on the Scribe**: Sort by newest or size stats a whole folder (up to 5,000 entries) in 20 ms slices
+  on the UI thread; the Go to sheet reads the storage root at once on the tap, at most 200 ms in all (a root that
+  takes longer lists the folders read by then). TESTING.md, "2.2, Files (issue #124): device checks".
+
 ## After the release of 2.1.0 (2026-11-13): what waits
 
 - **Issues open at the release**: #78 (the download check can miss the "preparing" state; pull request #81) and
@@ -32,12 +60,12 @@ the name rules, the busy check and the copy job (`BgKind::CopyFile`). Nothing on
     Folder gone." (`FolderGone`), an entry whose record does not read (`BadRecord`), "Restored to %s.", an entry
     a cut-off trash left, removed with nothing put back (`Restored::Nothing`), and "Couldn't copy file. Is the
     storage full?" for any failed copy (the job ends 0 or 1 only). None is a string yet.
-  - The Trash place: `FsListing` over `FsStorage::trash_dir()` in its slices, then `fsview_trash_entries`; a
-    file's row reads `FsStorage::trash_record` for the rows on screen; a notebook's row needs its name from
-    `trash/<entry>/notebook.ini` (no store function reads a notebook there yet). The Trash's size on its row is
-    a walk of its own, not built. FsListing keeps at most 5,000 names in the order the storage gives them, and
-    the trash only grows (every deleted page is an entry), so past 5,000 the place would sort an arbitrary
-    5,000, not the newest: the screens decide what it shows then.
+  - The Trash place (issue #124) lists through `fsview_trash_entries` and reads, for the rows on screen, a
+    file's record (`FsStorage::trash_record`) and a notebook's `trash/<entry>/notebook.ini` (no store function
+    reads a notebook there yet); Restore on its rows waits. The Trash's size on its row is a walk of its own, not
+    built. FsListing keeps at most 5,000 names in the order the storage gives them, and the trash only grows
+    (every deleted page is an entry), so past 5,000 the place would sort an arbitrary 5,000, not the newest: the
+    screens decide what it shows then.
   - After a notebook's restore: the Library's list read again, and `libindex_revalidate()` (or the index's next
     check) brings it back to the Graph; its mirror PDF is made at its next change.
   - A copy's end: `poll_jobs` (app.rs) returns at `BgKind::CopyFile` without a toast; the tile's or the Font
@@ -196,9 +224,6 @@ the name rules, the busy check and the copy job (`BgKind::CopyFile`). Nothing on
 
 ## Hardening round (2026-11), invariants: what waits
 
-- **A `<key>.slow` mark outlives its second try.** A font that passes (or is refused) on its second try
-  keeps the mark beside its verdict until the file changes, so a later check of the same key that runs out
-  of time once is "Took too long to read." without a second try. For the fonts work.
 - **The record cap stays a worker's** (4 MiB of record lines each, `RECORDS_MAX_BYTES`). A total across a
   job's workers was weighed and not built: only a job's first worker comes near the cap, an honest job's
   lines at the caps come to about 3.6 MiB, and a total would need a count kept in `pdf-import.ini`.
@@ -531,6 +556,41 @@ What waits:
 - **Checked fonts for PDFs that name a font they do not embed** (hayro's `font_resolver`, fonts.md 8).
 - **The verdict's `cover=` counts** (Latin-1, Extended-A, Greek, Cyrillic, kana, kanji) are written and not
   shown anywhere yet (2.2's Files details, the Japanese slot's "has kana").
+
+From the hardening round of 2026-11 (the check's verdicts in Grimoire's own folder, tied to the file by its
+SHA-256, and the glyph limit; docs/TESTING.md has the device checks, none of which has run):
+
+- **A design in which the UI never reads a font of the owner's own** (the worker draws the glyph bitmaps the
+  UI needs) waits.
+- **The glyph time limit** (`s1::FONT_GLYPH_CPU_MS`, 20 ms) **and the size it is measured at**
+  (`FONT_TIME_PX`, 160 px) are placeholders until the Scribe's figures are in (TESTING.md); the verdict's number moves with the limit. So
+  are the floors of free room in Grimoire's own folder (`STATE_FREE_FLOOR`, `STATE_FILES_FLOOR` in
+  userfonts.rs) and the folder's place (`STATE_BASE`).
+- **A limit on the summed draw time of a font's letters and digits**: the check logs the sum, no rule yet.
+- **Bold stays overprinted for the session when the Bold file passes its check after the font in use was
+  loaded.** A family's Bold file (or the file `font_bold=` names) is looked for once, when the font is
+  loaded, and fonts are checked in name order. So after an update that checks every font again, a family
+  whose Bold file sorts after the font in use (`Name.ttf` with `NameBold.ttf`, `X-Medium` with `X-SemiBold`)
+  draws bold as the regular overprinted until the next start; the usual `X-Bold` beside `X-Regular` is not
+  affected (Bold sorts first). What it takes: the Bold file looked for again when a check ends well and the
+  font in use has no bold face (`userfonts_job_done`, with a test through the app). docs/TESTING.md's
+  device check asks for a look at it.
+- **After an update that checks every font again, the font in use could be checked first.** It waits for the
+  entry above: the font would then load before its family's Bold file has passed in every family, not only
+  in those whose Bold file sorts later.
+- **Hashing a font while it is read** (one pass, not two), if the load time on the Scribe asks for it.
+- **Removing `/var/local/grimoire` when the package is removed** (today: by hand, KINDLE.md).
+- **A font with a slow glyph ahead of its broken ones** ends as "Took too long to read." (after its second
+  check) where the broken glyphs alone would have made it "Unreadable font.": the check ends at the first
+  count that is too many, and says what it knows then.
+- **Small leftovers in Grimoire's own folder are not removed**: the empty folder of a data root whose
+  removal was cut off between two steps, the folder of a data root that is gone when more than 64 names
+  stand before it, and a second folder for one data folder that was named by two paths. An empty folder
+  with no `root` file cannot be told from one another data root's job is making at that moment, so it is
+  left. What holds in the end is the free-room test before every check.
+- **The parent of Grimoire's own folder is not tested** (`/var/local` on the Kindle): the code holds the
+  folder itself and the two below it to "root's, and no one else can write it", and the parent is the
+  device check's (TESTING.md).
 
 From the whole-release review of 2.1.0-beta.2 (the fix round, lane F3; the review's finding IDs). Fixed there: H8,
 M17, M19, M20, the watchdog timeout that was a verdict for good (a second timeout is the verdict now), the
@@ -964,17 +1024,19 @@ Decided by the lane B3 design (docs/beta2/PIXEL-LASSO.md, 2026-11-03) and its bu
   checks what has NOT happened yet after a wait; the others check what has, which a late wait cannot break.
   A third kind checks a stretch of `display.presents` with `is` that can begin before the launch's second
   repaint (a `ui` of the whole screen 3.5 s after the start, docs/SIM.md): z_pages_find_over did (#93: Done,
-  below), and beginning with `wait 3600` is the cure. Three more do, not fixed yet: with every wait 175 to 275 ms
+  below), and beginning with `wait 3600` is the cure. Two more do, not fixed yet: with every wait 175 to 275 ms
   late (`make scenarios SCEN_ENV=GRIMOIRE_SIM_LATE_MS=225`; at 400, as `make scenarios-late` runs, they pass)
-  z_lasso_22_resize (lines 61 and 65), y_live_toolbar_menus (line 37) and z_pages_drag (line 57) each see
-  `ui 0 0 1860 2480` after what they expect. Eight more begin such a stretch within 3.5 s by the sum of their
-  waits and passed at every lateness tried, 0 to 600 ms: g_gest_1, g_gest_10_forgiving, s_shape_2_fire,
-  t_touch_1_contacts, v_actions_screen, v_gestures_4d_pan, v_gestures_4d_zoom and z_bar_3b_press_taken_over.
-  A fourth kind depends on the machine's clock: y_live_toolbar_menus shows the clock corner (`status_mode=1`)
-  and has no `clock` line to hold it still, so the corner's refresh at a minute's change falls into a checked
-  stretch (`ui 6 6 478 66` after what line 37 expects) whenever the run starts about 2 s before a minute ends:
-  once in a `make check` of 2026-11-14 (started 06:05:57.9), and each time it is started so on purpose, at
-  16d11bca as well. Not fixed yet.
+  z_lasso_22_resize (lines 61 and 65) and z_pages_drag (line 57) each see `ui 0 0 1860 2480` after what they
+  expect. y_live_toolbar_menus did too, and after #115 the stretch it counts at the Display sheet's X wanted the
+  3.5 s repaint as its last refresh, which it is only when the waits end about 20 to 40 ms late: it begins with
+  `wait 3600` since #134 and wants the sheet's own five refreshes. Eight more begin such a stretch within 3.5 s
+  by the sum of their waits and passed at every lateness tried, 0 to 600 ms: g_gest_1, g_gest_10_forgiving,
+  s_shape_2_fire, t_touch_1_contacts, v_actions_screen, v_gestures_4d_pan, v_gestures_4d_zoom and
+  z_bar_3b_press_taken_over.
+  A fourth kind depends on the machine's clock: a scenario that shows the clock corner with no `clock` line to
+  hold it still sees the corner's refresh (`ui 6 6 478 66`) in a checked stretch when a minute ends inside it.
+  y_live_toolbar_menus did (once in a `make check` of 2026-11-14, started 06:05:57.9), and holds the clock
+  since #134.
 
 - **The stroke eraser on very dense pages.** Taking a stroke out of the middle still draws what was
   under it again (undo and redo of it are instant since rc.10). On a 1,090-stroke page that can take
@@ -1477,9 +1539,9 @@ items of Document links. Left:
   each) to show "%d pictures" and to offer Import %d pictures as notebook. On a big `documents/` of big folders over
   FUSE that is unmeasured: TESTING.md has the timing check. A cheaper rule (count only when the card opens) is
   one line in `Browser::work` if the Scribe says so.
-- **Pictures as files, fonts, the path bar, Go to, Sort, Show, View, Covers, item cards on every file, Rename,
-  Trash, Set as home, previews and "Making previews..."** are 2.2 (L11), as the plan has them; `PickKind` and
-  `PickSpec` are ready for Picture and Font.
+- **Pictures as files, fonts, the path bar, Go to, Sort, Show, View and item cards on every file** are built in
+  2.2's Files (issue #124, below). **Rename, Trash, Set as home, Covers, previews and "Making previews..."** wait
+  for the later Files work ("Files (2.2, issue #124): what waits").
 - **A PDF being imported still offers Import as notebook** on its card in the Import place; a second tap while it
   runs is `AlreadyRunning` and says nothing (its row says Waiting or Importing).
 - **A picked folder's import has no progress** (the picture import never had: its row says Waiting until the
@@ -1491,9 +1553,6 @@ items of Document links. Left:
 
 ## Hardening round (2026-11), storage reads: what waits
 
-- The one reader left that opens by path, in your own fonts (`userfonts.rs` `read_small`: a font's verdict
-  and the crash guard, after an `lstat` that refuses a link), takes the plain-file read
-  (`util::open_read_nofollow`) with the change that owns that file (#111).
 - The folders a scan lists (the import folders, the marks) are read through the storage walk, as picked
   folders are.
 - A page file that is there but does not read fails to open rather than opening blank; with it, a size

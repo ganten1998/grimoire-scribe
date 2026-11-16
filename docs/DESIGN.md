@@ -563,7 +563,8 @@ root/notebooks/<id>/p<pageid>.qpg  binary page (see docs/FORMAT.md)
 root/notebooks/<id>/p<pageid>.qpg.damaged-<time>   a page that could not be read, kept
 root/notebooks/<id>/thumb.pgm      binary PGM thumbnail of page 1 (P5)
 root/trash/<id>/               deleted notebooks are moved here, never unlinked
-root/fonts/, fonts/.cache/     the owner's own fonts and what the check found of them (Your own fonts)
+root/fonts/, fonts/.cache/     the owner's own fonts, and the check's previews and marks (Your own fonts)
+/var/local/grimoire/<16 hex digits>/fonts/   the check's verdicts for a data root, outside it (the Kindle; Your own fonts)
 root/.font-inuse               the crash guard of a font of the owner's own (Your own fonts)
 root/PDFs/<folder>/<name>.pdf  the PDF mirror (an export, not data)
 root/.cache/pdf/<id>/          the notebook PDF's page streams (disposable; docs/FORMAT.md)
@@ -601,9 +602,10 @@ real folders and plain files. Temporary files named after the process (`<name>.<
 (`util::create_fresh_nofollow`): what stands at the name is removed, never opened. `mkdir_p` takes an existing
 entry as the folder, a link to one included; code that prunes or empties a folder of Grimoire's checks that
 folder first (`util::no_link_below`, `pdfcache::real_dirs`, the previews' sweep). The mirror's sweep of stale
-temporaries works in the mirror folder the user chose. One reader of your own fonts' files
-(`userfonts::read_small`: a verdict, the crash guard) still opens by path, after an `lstat` that refuses a
-link (docs/BACKLOG.md, "Hardening round (2026-11), storage reads: what waits").
+temporaries works in the mirror folder the user chose. Your own fonts' files are read the same way: the crash
+guard (`grimoire/.font-inuse`, at most 1 KiB) and the check's `.slow` marks and previews by
+`util::read_file_max`, and its verdicts from a descriptor of the folder that keeps them (`userfonts::read_at`,
+never through a link and never waiting).
 
 The page size: a new notebook gets the device's (`store_set_device`), and
 `store_notebook_page_size` is what every reader and writer of its pages asks. A notebook.ini
@@ -2327,11 +2329,25 @@ its bytes.** Four parts keep it (`fontcheck.rs`, `userfonts.rs`, `font.rs`):
   the cmap's groups could name another glyph where groups overlap), at each location the UI uses (the default, and the bold's when the
   font has a weight axis that reaches 100 above its default: 700, or its heaviest), outlining under the caps
   and drawing at both sizes; a glyph that fails is listed and comes from Terminess, and more than one in a
-  hundred is "Unreadable font.". It works in slices of 20 s of its own CPU time (`s1::FONT_SLICE_CPU_SECS`),
-  each a fresh worker that gets the bytes again and goes on from the glyph index the last reached, 10 minutes
-  in all; a worker silent for 30 s is killed and counts as out of time too. A first check that runs out of time
-  writes no verdict: the file is checked once more, a minute or more later (`<key>.slow`), and a second is
-  "Took too long to read.". It settles the
+  hundred is "Unreadable font.". The walk goes through the faces the UI itself will make (`SafeFace`, the
+  regular and the bold by the axis) and by the calls the UI makes at a glyph's first use (the face's lookup,
+  its outline, the rasterizer at 160 px), and times each such draw in the worker's CPU time against a glyph
+  limit (`s1::FONT_GLYPH_CPU_MS`, 20 ms, a placeholder until the Scribe's figures are in; a build that is
+  not the Kindle's takes 5 s). A draw over the limit is measured again, up to three times in all, and the
+  smallest counts; one that came out over four times the limit is not measured again. A glyph over the
+  limit that is no letter or digit is listed with the ones that fail and comes from Terminess; a letter or
+  a digit over it, or more listed glyphs than one in a hundred when the ones that fail are not that many by
+  themselves, makes the font one that takes too long. The glyphs listed can
+  therefore differ between two checks of one file when a glyph's draw is near the limit. The writer counts
+  the listed glyphs across slices. It works in slices of 20 s of its own CPU time
+  (`s1::FONT_SLICE_CPU_SECS`), each a fresh worker that gets the bytes again and goes on from the glyph
+  index the last reached, 10 minutes in all; a worker silent for 30 s is killed and counts as out of time
+  too. A check that runs out of time, or finds the font one that takes too long, rests on a measured time,
+  so it is not taken on one reading: a first such check writes no verdict, the file is checked once more, a
+  minute or more later, and only a check that ends the way an earlier check of the same bytes did is "Took
+  too long to read.". The mark `<key>.slow` says how the earlier checks ended and of which bytes, under the
+  verdict's number: one check out of time and one that found slow glyphs are not two that agree, and a mark
+  of another number (an earlier version's) is no mark. It settles the
   font's scale (capitals as tall as Terminess's, 0.592 of the line, between 0.85 and 1.25, then lowered a
   hundredth at a time until 95 of 100 of Grimoire's strings, in every language, are no wider than Terminess
   draws them, measured as `font.rs` measures: advances only), says which languages need letters the font
@@ -2339,13 +2355,24 @@ its bytes.** Four parts keep it (`fontcheck.rs`, `userfonts.rs`, `font.rs`):
   and the preview's pixels; the writer validates every number.
 - **The writer** (`BgKind::FontCheck`, one job for every unchecked file, each read whole through `fsview`'s
   walk) writes `<key>.checking` before a font and the verdict `<key>.font` with the preview after it
-  (FORMAT.md, "Your own fonts"). A worker that dies on a font leaves `<key>.bad` and the others go on; a job
+  (FORMAT.md, "Your own fonts"). The verdict goes where the build keeps verdicts (`VerdictDir` in
+  `userfonts.rs`; so from the verdicts numbered 2 on): on the Kindle a folder of Grimoire's own outside the data root, `/var/local/grimoire`,
+  with a folder for each data root; in a build that names no such folder (`GRIMOIRE_STATE` unset), the
+  cache, as before. The own folder is walked name by name, by descriptor, from its parent: each name is
+  made by the job with mode 0700 when missing, opened without following a link, and must be a folder of the
+  app's user that no one else can write; verdicts are read and written from that descriptor. When it cannot
+  be used, its file system has too little room, or it takes no write (the job writes and removes a small
+  file there before a font's check), the job ends with status 6 before any worker starts: nothing is
+  marked, and the session checks no more fonts (the ones that have their verdicts go on loading). The previews and the marks stay in the cache, and a verdict counts only with its companion
+  there (a pass with its preview, a refusal with `<key>.no`), so deleting `fonts/.cache` has every font
+  checked again wherever the verdicts are. A worker that dies on a font leaves `<key>.bad` and the others go on; a job
   that itself dies has its `.checking` mark turned into `.bad` by the UI, which queues the rest again. A
   sandbox step that fails, or a worker that cannot start, marks nothing: the job ends with status 4 and the
   session checks no more fonts. A file still being copied (under 5 s old, or changed between two looks 2 s
   apart) waits: status 3, and the Font sheet looks again.
 - **The UI** lists the folder without opening a font (the rows are the check's previews), and loads one only
-  with a passing verdict whose `hash` is the FNV-1a 64 of the bytes it just read; another file under the same
+  with a passing verdict, read from where verdicts are kept and with its preview in the cache, whose `hash`
+  is the SHA-256 (`sha256.rs`) of the bytes it just read; another file under the same
   name, size and time is checked again (`recheck:<key>`). It holds at most 32 MB of font files (the Bold file
   gives way to overprint first), loads none under 100 MB of available memory, and none in Gothic. `font.rs`
   keeps four face slots after the embedded files (the font in use and its bold, the Font sheet's sample and
@@ -2370,7 +2397,9 @@ Tests: `test_fontcheck.rs` (real workers: good TrueType, variable and CFF fonts;
 `rust/tests/fontfix`: truncations, a cmap past the end, composites that include each other, CFF subroutines past the
 format's depth, a symbol cmap, a web font, letters that draw nothing, wild glyphs, a line ten ems tall, random
 byte flips; a killed worker leaves `.bad`; a hung one is slow; slices come to one slice's verdict; a replaced
-file is checked again; the listing; a file still being copied waits; 20,000 glyphs), `test_fontguard.rs` (the
+file is checked again; the listing; a file still being copied waits; 20,000 glyphs; the glyph limit, by a test
+charge and never by a real clock; the mark of a first try), `test_sec_font_verdict.rs` (where verdicts are
+kept, and what a folder that cannot keep them comes to), `test_fontguard.rs` (the
 guard start by start, with the app killed at a custom font's first glyph), `font.rs` (stb's bitmaps byte for
 byte; a custom font draws as the same file embedded; the cache's cap), `fontcheck.rs` and `userfonts.rs` (the
 verdict and guard files read strictly; the strike rules), `test_sandbox_linux.rs` (the check in the real
@@ -2496,6 +2525,68 @@ their own work), so nothing a user sees changed.
   floor and a failed write through `copy_seams`, a source that changes, and leftovers swept). On the Mac only the
   fallback runs; CI's Linux job runs the same file with renameat2's flag, and docs/TESTING.md has the Scribe's
   check of the flag, of one rename into the trash and of inode numbers.
+
+## Files: the place (2.2, issue #124)
+
+`browser.rs` has a second mode beside the picker's. `PickSpec { kinds, title, start, mode }` says what the browser
+was asked for: `PickSpec::import()` is New notebook's From a file... (pick mode, as above), `PickSpec::place()` is
+Files (place mode), opened from the Library's Files card, that card's menu's Open, and the `files` action. It is
+hosted the same way (`LibraryState.files`, `files_open_place`), and closes back to the Library.
+
+- **The root** lists Import, Documents, Downloads, Templates, Photos, Fonts, Kindle fonts (the storage's `fonts/`),
+  PDF copies, Trash and All storage: Import and All storage always, every other place when its folder is there.
+  The free space line stays at the top. Place mode walks with the pick flag off: Grimoire's `PDFs` and `trash` are
+  looked into there (read only), `notebooks` is refused as everywhere. Nothing under `PDFs` or `trash` is offered
+  for import, by a card's rows (the zone a pick would refuse) as by the jobs (which refuse them anyway).
+- **The Files card.** Hidden until settings.ini `files_card` is 1, which the root's last row, "Show Files in
+  Library", sets (in pick mode as in place mode, while the card is hidden). Shown, it is the last card of the
+  Library's top level, after every folder and notebook (`reload` appends it; it is in no folder), so no notebook
+  moves for it; in a big Library that is the last screen of cards. Its `...` (or a hold) opens its menu: Open,
+  Hide from Library, Cancel. Its second line is the free space when it fits the card, read when the Library
+  reloads (one statvfs), not at each draw.
+- **The path bar is Files' alone.** Inside a place, the band under the header is 120 px: the path's parts (Files,
+  the place, each folder) each a target the bar's height that opens it, the folder shown opening the Go to sheet
+  (the places that are there, then the storage's other top folders by name, but a name a row would not take, with a
+  line break; rows that do not fit the screen are left out, All storage reaches them). The tap reads the storage
+  root at once, at most 200 ms in all (`root_listing`: names and kinds, a stat only where the kind is not known); a
+  root that takes longer gives the folders read by then. A path too long for its room keeps Files, one "..." (which
+  opens the last part it stands for) and the last parts. The picker keeps its path line as text, naming a folder by
+  the place that holds it however it was reached (as before Files; the path bar names the place the way in started
+  at, as Back goes), and the Library's own folders are as they were (the owner's narrow reading: the Library's code
+  paths are untouched but for the card, the hold and the hosting seams).
+- **Sort and Show**, two chips on the bar (not in the Trash place, which keeps its own order and lists all it
+  holds), kept in `files_sort` and `files_show`. Sort: by name (`name_cmp`), the newest first or the largest first,
+  folders first each time (by name under Size), ties by name, a row with no stat last (`files_cmp`). Newest and Size
+  need every row's stat: the rows are made from the listing (nothing is read again) into `next`, stat-ed in slices
+  of at most 20 ms a tick, then sorted and shown at once; the rows on screen stay as they are meanwhile, a folder
+  entered so shows no row before, and the Loading notice comes after a second. The listing's cap (5,000) holds.
+  Show: the PDFs, pictures and fonts Grimoire can use (and folders), or every file: the others greyed, and the links
+  by name ("link, not followed"), which fsview's listing keeps in `links` as it leaves them out (within the same
+  5,000 rows, with "Showing the first 5000." when any is left out); a link is never entered, opened or stat-ed
+  through. View is a list (`files_view`; Covers needs previews).
+- **Item cards.** A picture, a font and any other file have cards, as a PDF and a folder do: the details say what
+  the file is, its size and its date, and what is known of it without reading it in the UI process (a font of
+  `grimoire/fonts` whose check passed: its family, from the check's own verdict, `userfont_family`). No user's
+  file is parsed for a card; pages and picture sizes wait for the worker (previews). A PDF offers Import as
+  notebook or Open its notebook as the picker does; a PDF of the PDF copies opens the notebook it was written from
+  (the one whose `export_mirror_path` it is). Pictures, fonts and other files offer nothing else yet. Every act
+  checks the file again first ("File changed. Try again.").
+- **The Trash place** lists `grimoire/trash` read only, through the storage writes' trash listing
+  (`fsview_trash_entries`, read by name alone, no stat: the newest first by the time in each entry's name, a name of
+  no known form last): a file or folder trashed from Grimoire's folders (`files-<stamp>-<4 hex>`) by the last part
+  of where its record says it was (`FsStorage::trash_record`, read for the rows on screen only), a notebook
+  (`<id>-<time>`, a folder) by the name its `notebook.ini` there holds (opened through the walk, as the listing is,
+  and cut as the store cuts a name), a page (`<id>-p<page>-<time>`) by its notebook's name, each with its date; a
+  `files-` entry whose record does not read, and a name of another form, as it is. Entries are not entered and
+  have no card.
+- **A Library card held** `HOLD_MS` opens its menu as its `...` does (a notebook's, a folder's, the Files card's);
+  the lift after it does nothing.
+- **Actions** `files` (108) and `home` (109) act in the Library, with no default key and no Buttons or Gestures
+  row (they are bound by name, as the Library's New notebook and Share are), from a key or a gesture, over the
+  Library and inside Files alike. `home` is the Library's top for now.
+- **Seams left for the later Files work**: `RowKind::Trashed` and the trash rows (Restore), the card's rows per
+  kind in `card_lines` (Rename, Trash, Use as template, Use as photo, Add to fonts), `BrowseMode` and `FilesPrefs`
+  (a home, a View), `library_home` (where a set home starts), `PickSpec.start` (opening at a folder).
 
 ## Shared building blocks (2.1, lane L0)
 
