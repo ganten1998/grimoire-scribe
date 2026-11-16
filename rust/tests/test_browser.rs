@@ -3,7 +3,7 @@
 // UTF-8 (where the file system takes one); a path of 599 bytes and names that would make 600. A link is never
 // listed, entered or opened, Grimoire's notebooks, PDFs and trash are never offered, a long path is counted.
 #![cfg(feature = "sim")]
-use grimoire::browser::{Browser, PickKind, PickSpec};
+use grimoire::browser::{Browser, PickSpec};
 use grimoire::fsview::*;
 use grimoire::prelude::*;
 use std::os::unix::ffi::OsStrExt;
@@ -52,7 +52,7 @@ fn names(b: &Browser) -> Vec<String> {
 
 fn open() -> Browser {
     let mut b = Browser::default();
-    assert!(b.open_pick(PickSpec { kinds: &[PickKind::Pdf, PickKind::PictureFolder] }));
+    assert!(b.open_pick(PickSpec::import()));
     b
 }
 
@@ -63,8 +63,8 @@ fn the_picker_over_a_hostile_tree() {
     i18n_set("en");
     let root = tree("hostile");
     let mut b = open();
-    // the root: Import, Documents, Downloads, All storage
-    assert_eq!(names(&b), ["Import", "Documents", "Downloads", "All storage"]);
+    // the root: Import, Documents, Downloads, All storage, and (2.2) the way to the Files card while it is not shown
+    assert_eq!(names(&b), ["Import", "Documents", "Downloads", "All storage", "Show Files in Library"]);
     // documents: the plain folders and PDFs only, in order (links, the FIFO and the odd name are not listed)
     assert!(b.go(sp("documents")));
     let n = names(&b);

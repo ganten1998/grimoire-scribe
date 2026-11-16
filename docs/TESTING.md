@@ -2860,3 +2860,33 @@ of this branch:
    with no toast over it. Go back to the Library: the fill's pages go in ("Added N book pages.").
 7. **KOReader again.** Open the PDF in KOReader and use Open this book in Grimoire on a page the fill added: it
    opens that page, adds no page, and no tab doubles.
+
+## 2.2, Files (issue #124): device checks
+
+Not run on a Scribe yet. The headless scenarios `files_1_card` to `files_7_keys` cover the logic (the card hidden,
+shown last and hidden again, the root's rows, the path bar's parts and Go to, each Sort on a folder of known
+sizes and times, Show all with a link, a picture's, a font's and another file's card, the trash, a Library card's
+hold, the `files` and `home` actions from keys), and `browser.rs`'s unit tests the order, the root and the cards.
+What only the storage can tell, on the Scribe:
+
+1. **A big `documents/`** (a few thousand files): Files > Documents. Read grimoire.log: `files: listed N entries
+   (M usable) in T ms`, then tap Sort to Newest and to Size and read `files: N rows sorted (S) in T ms` (counts
+   and timings only, never a name). Note each T, whether "Loading..." appears (over 1 s), that the rows on screen
+   do not move until the new order is ready and then change at once, and that the pen and page turns stay quick
+   meanwhile. Then tap the folder shown in the path bar: the Go to sheet reads the storage root for at most a fifth
+   of a second; note whether it comes at once and lists the top folders. Send the lines and the folder's size.
+2. **A folder past 5,000 entries**: "Showing the first 5000." under the path, every Sort finishes, and the order
+   covers the 5,000 listed.
+3. **Planted links** over SSH, in a folder of their own outside `documents/` (which the Kindle's reader indexes):
+   `mkdir /mnt/us/linktest`, copy any PDF into it as `Plain.pdf`, then `ln -s /mnt/us/linktest
+   /mnt/us/linktest/loop`, `ln -s /etc /mnt/us/linktest/etc` and `ln -s Plain.pdf /mnt/us/linktest/Alias.pdf`.
+   Files > All storage > linktest: with Show set to PDFs, pictures, fonts only Plain.pdf is listed; with All files
+   each link is a greyed row "link, not followed", a tap on it does nothing, and Sort by newest or size puts them
+   last. Nothing is entered or opened through one. Then remove the folder and its links: `rm -r /mnt/us/linktest`
+   (rm removes the links themselves, never what they point to).
+4. **The card**: New > From a file... > Show Files in Library; Back to the Library: the Files card is the last card
+   (with many notebooks, on the last screen). Hold it 0.6 s: its menu; Hide from Library takes it away, and the row
+   comes back in the picker's root.
+5. **PDF copies and Trash**: Files > PDF copies lists the mirror PDFs read only, and a mirror PDF's card opens its
+   notebook; Files > Trash lists deleted notebooks by name and date, newest first, and none opens.
+6. **Rotate** the Scribe in Files: the path bar, its chips, the rows and the Go to sheet lay out again.

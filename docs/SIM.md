@@ -356,24 +356,33 @@ session measures and outcomes, intended-fire counts and wrong/negative fires. Ch
 before interpreting a report. `--blocks` supplies names in order. No coordinate or success-rate
 claim from synthetic replay establishes the owner study or the finger-shape freeze gate.
 
-### The file picker (`files.*`, 2.1.0-beta.2)
+### The file picker and Files (`files.*`, 2.1.0-beta.2; Files 2.2)
 
 A scenario with `# storage: 1` runs on a fixture storage root: the run's root is the storage (`GRIMOIRE_STORAGE`),
 Grimoire's data root its folder `grimoire`, and `# copy: DIR DEST` and `# generate:` work on the storage root
-(tests/files_hostile.py plants links, a FIFO and odd names). `tap library new` then `tap library new.file` opens
-the picker. Taps: `tap library files.back`, `files.prev`, `files.next`, `files.row.N` (the Nth row on the screen,
-from 1), `files.more.N` (its `...`), `files.item.NAME` (the row of that name, `_` for a space), and the open
-card's `files.card.import`, `files.card.open`, `files.card.pictures`, `files.card.notebook`, `files.card.cancel`.
+(tests/files_hostile.py plants links, a FIFO and odd names; tests/files_place_tree.py the tree the Files scenarios
+browse, files of known sizes and times among them). `tap library new` then `tap library new.file` opens the picker;
+`tap library files-card` opens Files (place mode) from its card in the Library (`# settings: files_card=1`), and
+`files-card-menu` that card's menu, whose rows are `files-card.open` and `files-card.hide` (Cancel is `done`).
+Taps: `tap library files.back`, `files.prev`, `files.next`, `files.row.N` (the Nth row on the screen, from 1),
+`files.more.N` (its `...`), `files.item.NAME` (the row of that name, `_` for a space; the root's rows by their
+English names: `Import`, `documents`, `Downloads`, `Templates`, `Photos`, `Fonts`, `Kindle_fonts`, `PDF_copies`,
+`Trash`, `All_storage`, `Show_Files_in_Library`), and the open card's `files.card.import`, `files.card.open`,
+`files.card.pictures`, `files.card.notebook`, `files.card.cancel`. In Files: `files.crumb.N` (the Nth part of the
+path bar, from 1: Files, the place, then each folder; the last opens the Go to sheet), `files.sort` and
+`files.show` (its chips), and `files.goto.N` (the Go to sheet's Nth row).
 
 | key | value |
 |---|---|
-| `files.open` | `1` while the picker is up |
-| `files.place` | `root` at its four rows, else the folder's path from the storage root (`documents`, `grimoire/import`; empty for All storage) |
+| `files.open` | `1` while the picker (or Files) is up; `files.mode` `pick` or `place` |
+| `files.place` | `root` at its first rows, else the folder's path from the storage root (`documents`, `grimoire/import`; empty for All storage) |
 | `files.crumbs` | the path line ("Files > Documents > Books"), empty at the root |
 | `files.ready` | `1` once the folder is read; `files.rows` the rows in all, `files.page`, `files.pages`, `files.per_page` |
 | `files.hidden` | entries left out of the folder (links, refused folders, paths too long); `files.capped` `1` at 5,000 entries |
-| `files.row.N`, `files.item.NAME` | a row's name as drawn; `files.sub.N` its second line; `files.kind.N` (`place`, `folder`, `pdf`, `look`); `files.status.N` (`waiting`, `importing`, `failed`, `imported` or empty); `files.notes.N` (`1` with "has notes"); `files.keyed.N` (`1` once the PDF's book key was read, which an idle tick does for the rows on screen: `files.notes.N` is settled then); `files.pictures.N` (a folder's count, empty before it is counted) |
-| `files.card` | the open card: `pdf`, `folder` or empty; `files.card.details` its first line, `files.card.rows` its rows joined by `|` |
+| `files.row.N`, `files.item.NAME` | a row's name as drawn; `files.sub.N` its second line; `files.kind.N` (`place`, `folder`, `pdf`, `look`, `show` for "Show Files in Library", and in Files `picture`, `font`, `other`, `link`, `trashed`); `files.status.N` (`waiting`, `importing`, `failed`, `imported` or empty); `files.notes.N` (`1` with "has notes"); `files.keyed.N` (`1` once the PDF's book key was read, which an idle tick does for the rows on screen: `files.notes.N` is settled then); `files.pictures.N` (a folder's count, empty before it is counted) |
+| `files.card` | the open card: `pdf`, `folder`, in Files `picture`, `font`, `other` or `goto` (the Go to sheet), or empty; `files.card.details` its first line (the Go to sheet's title), `files.card.rows` its rows joined by `|` |
+| `files.sort`, `files.show` | Files' order (`name`, `newest`, `size`) and what it lists (`usable`, `all`), as settings.ini has them; `files.sorting` `1` while a new order's stats come in |
+| `files.order`, `files.drawn` | the rows' names in order, joined by `|`; the rows' names as last drawn on the screen (a new order shows there once, when ready) |
 | `storage.exists.PATH`, `storage.size.PATH`, `storage.names.DIR` | on the storage root: whether a path is there (a link counts as itself), a file's size (-1 without it), a folder's names sorted and joined by `|` |
 
 ### Checks
@@ -550,7 +559,7 @@ shows what the app holds.
 | `editor.hold_eraser` | `1` while a controller's Erase while held is down (from its press to its release), else `0` |
 | `editor.music` | the Custom music layout on the Custom music sheet while it is open, else the page's if its paper is custom, else empty: the systems per page, a colon, then the parts top to bottom (`treble`, `bass`, `alto`, `tenor`, `drums`, `plain`, `tab4` to `tab7`, `lyrics`), e.g. `4: treble tab6 bass` |
 | `editor.music_max` | while the editor's Custom music sheet is open, the most systems its layout fits on the page it is for (that page's height), else empty |
-| `library.sheet` | what is open over the cards: `none`, `new` (New notebook), `settings`, `more` (a notebook's menu), `folder-more` (a folder's menu), `move` (Move to), `delete`, `keyboard`, `display`, `music`, `koreader`, `language` (Settings > Language's list), `shortcuts` (Settings > Shortcuts), `buttons` (its Buttons sheet), `pair-menu` (Settings > Pair, 2.0.0-beta.2), `pair` (its Pair a controller... sheet), `wifi` (Settings > Wi-Fi, 2.1.0-beta.2), `updates`, `gestures`, `about` (What's new, Rust only), `font` (Settings > Font, Classic only: 2.1), `merge` (a folder moved or renamed onto a name that is there: 2.1; hits `merge.into`, `merge.both`, Cancel is `done`) or `exit` (Exit Grimoire?, Esc at the top level: 2.0.0-beta.2) |
+| `library.sheet` | what is open over the cards: `none`, `new` (New notebook), `settings`, `more` (a notebook's menu), `folder-more` (a folder's menu), `move` (Move to), `delete`, `keyboard`, `display`, `music`, `koreader`, `language` (Settings > Language's list), `shortcuts` (Settings > Shortcuts), `buttons` (its Buttons sheet), `pair-menu` (Settings > Pair, 2.0.0-beta.2), `pair` (its Pair a controller... sheet), `wifi` (Settings > Wi-Fi, 2.1.0-beta.2), `updates`, `gestures`, `about` (What's new, Rust only), `font` (Settings > Font, Classic only: 2.1), `merge` (a folder moved or renamed onto a name that is there: 2.1; hits `merge.into`, `merge.both`, Cancel is `done`), `files-more` (the Files card's menu, 2.2) or `exit` (Exit Grimoire?, Esc at the top level: 2.0.0-beta.2) |
 | `library.font.pick` | the Font sheet's highlighted font, by its settings.ini value: a family's id, or `file:<path>` for one of the owner's own (the font in use as the sheet opens; a tap on a row moves it and applies that font at once); empty while the sheet is not up (2.1) |
 | `library.font.rows`, `library.font.checking` | the Font sheet's own fonts (2.1.0-beta.2): how many files of grimoire/fonts it lists, and how many of them are still being checked |
 | `library.font.state.PATH`, `library.font.note.PATH` | an own font's row by its path under grimoire/fonts: `ready`, `checking`, `unreadable`, `toobig`, `nolatin`, `format`, `slow` or `missing` (empty for a file the sheet does not list), and what the row says under the name ("Unreadable font.", "Some letters come from Terminess.", empty) |
@@ -615,7 +624,7 @@ shows what the app holds.
 | `library.folder` | the open folder, empty at the top level |
 | `library.folders` | every folder by its path, as Move to lists them, joined by `, ` (`Archive, Archive/School`); empty with none |
 | `library.mirror` | the mirror PDFs (`PDFs/`) by directory: `.` for the top and each directory in it, sorted, with how many PDFs it holds (`. 0, Archive_School 1`), so a directory left behind shows as `School 0` |
-| `library.items` | the cards in the open folder, on every page of cards: at the top level its folders and the notebooks in no folder |
+| `library.items` | the cards in the open folder, on every page of cards: at the top level its folders and the notebooks in no folder, and the Files card last when it is shown (2.2; `library.card.N` says `files` for it) |
 | `library.page`, `library.pages` | the page of cards (from 1) and how many there are |
 | `library.text` | the keyboard's text while it is open |
 | `library.caret` | the same with its caret drawn in as `\|` and a selection in `[` `]` (`ab\|cd`, `a[bc\|]d`), empty while no keyboard is open (2.1.0-beta.2) |

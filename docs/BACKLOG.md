@@ -4,6 +4,34 @@ Work that was decided, deferred or found but not done yet. Keep this current: wh
 move it to "Done" with the version; when something is deferred, add it here with who decided and
 why. Newest decisions first within each section.
 
+## Files (2.2, issue #124): what waits
+
+Built: place mode, the Files card (hidden until "Show Files in Library"; the last card of the Library's top
+level), the path bar inside Files only, Go to, Sort, Show, a card for every kind of file, the trash listed read
+only, a Library card's hold, and the `files` and `home` actions (docs/DESIGN.md, "Files: the place"). Waiting,
+each for its own issue:
+
+- **Home**: `home=` in settings.ini (any Library or Kindle folder), Set as home in the Go to sheet and on a
+  folder's card, Reset home to Notebooks, opening at home at each start, "Home folder not found.". Today `home`
+  (the action) goes to the Library's top (`library_home`, where a set home starts).
+- **Rename and Trash on screen** in Grimoire's writable folders (Import, Templates, Photos, Fonts), with the name
+  rules and "Importing now.", on the storage layer's writes (issue #117); **Restore** on the trash's rows
+  (`RowKind::Trashed`) for files and notebooks, never Empty; the trash's size on its row. Pages in the trash are
+  listed by their notebook's name; their Restore is optional.
+- **Previews and the Covers view** (`files_view=covers`, read today as the list and kept), "Making previews...",
+  the cache and its prune; the details a card can only have from the worker (a PDF's pages, a picture's size, a
+  font's sample and coverage).
+- **From a file... tiles** in the Paper sheet's More layouts... and Photos...: Use as template and Use as photo on
+  a picture's card, and Add to fonts on a font's (with the Kindle fonts row of the Font sheet), once a copy job
+  exists. The cards offer only Cancel for those kinds until then.
+- **Not decided here**: the Files card's second line (an earlier idea was "%d to import"; the free space today); the
+  Folder icon greyed in read-only places; Ctrl+N and Ctrl+F in Files; Esc at a home root asking "Exit
+  Grimoire?". The card is the last card of the top level, which in a big Library is the last screen: if that is
+  too far, the other reading (the last card of the first screen) is a change in `reload` alone.
+- **Not timed on the Scribe**: Sort by newest or size stats a whole folder (up to 5,000 entries) in 20 ms slices
+  on the UI thread; the Go to sheet reads the storage root at once on the tap, at most 200 ms in all (a root that
+  takes longer lists the folders read by then). TESTING.md, "2.2, Files (issue #124): device checks".
+
 ## After the release of 2.1.0 (2026-11-13): what waits
 
 - **Issues open at the release**: #78 (the download check can miss the "preparing" state; pull request #81) and
@@ -32,12 +60,12 @@ the name rules, the busy check and the copy job (`BgKind::CopyFile`). Nothing on
     Folder gone." (`FolderGone`), an entry whose record does not read (`BadRecord`), "Restored to %s.", an entry
     a cut-off trash left, removed with nothing put back (`Restored::Nothing`), and "Couldn't copy file. Is the
     storage full?" for any failed copy (the job ends 0 or 1 only). None is a string yet.
-  - The Trash place: `FsListing` over `FsStorage::trash_dir()` in its slices, then `fsview_trash_entries`; a
-    file's row reads `FsStorage::trash_record` for the rows on screen; a notebook's row needs its name from
-    `trash/<entry>/notebook.ini` (no store function reads a notebook there yet). The Trash's size on its row is
-    a walk of its own, not built. FsListing keeps at most 5,000 names in the order the storage gives them, and
-    the trash only grows (every deleted page is an entry), so past 5,000 the place would sort an arbitrary
-    5,000, not the newest: the screens decide what it shows then.
+  - The Trash place (issue #124) lists through `fsview_trash_entries` and reads, for the rows on screen, a
+    file's record (`FsStorage::trash_record`) and a notebook's `trash/<entry>/notebook.ini` (no store function
+    reads a notebook there yet); Restore on its rows waits. The Trash's size on its row is a walk of its own, not
+    built. FsListing keeps at most 5,000 names in the order the storage gives them, and the trash only grows
+    (every deleted page is an entry), so past 5,000 the place would sort an arbitrary 5,000, not the newest: the
+    screens decide what it shows then.
   - After a notebook's restore: the Library's list read again, and `libindex_revalidate()` (or the index's next
     check) brings it back to the Graph; its mirror PDF is made at its next change.
   - A copy's end: `poll_jobs` (app.rs) returns at `BgKind::CopyFile` without a toast; the tile's or the Font
@@ -1453,9 +1481,9 @@ items of Document links. Left:
   each) to show "%d pictures" and to offer Import %d pictures as notebook. On a big `documents/` of big folders over
   FUSE that is unmeasured: TESTING.md has the timing check. A cheaper rule (count only when the card opens) is
   one line in `Browser::work` if the Scribe says so.
-- **Pictures as files, fonts, the path bar, Go to, Sort, Show, View, Covers, item cards on every file, Rename,
-  Trash, Set as home, previews and "Making previews..."** are 2.2 (L11), as the plan has them; `PickKind` and
-  `PickSpec` are ready for Picture and Font.
+- **Pictures as files, fonts, the path bar, Go to, Sort, Show, View and item cards on every file** are built in
+  2.2's Files (issue #124, below). **Rename, Trash, Set as home, Covers, previews and "Making previews..."** wait
+  for the later Files work ("Files (2.2, issue #124): what waits").
 - **A PDF being imported still offers Import as notebook** on its card in the Import place; a second tap while it
   runs is `AlreadyRunning` and says nothing (its row says Waiting or Importing).
 - **A picked folder's import has no progress** (the picture import never had: its row says Waiting until the

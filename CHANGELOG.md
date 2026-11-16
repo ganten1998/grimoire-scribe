@@ -7,6 +7,12 @@
   Tools group of Buttons and of Gestures). The new `quick-size` action, bound by name in shortcuts.ini or
   gestures.ini, opens the sizes card from a key or a gesture. An unedited shortcuts.ini gets the two keys at the
   next start.
+- **Files**: the Kindle's storage as a place to browse. "Show Files in Library", the last row of New notebook >
+  From a file..., puts a Files card at the end of the Library (its menu hides it again). Files lists Grimoire's
+  places (Import, Templates, Photos, Fonts, PDF copies, Trash) and the Kindle's folders, with a path bar whose
+  parts open their folder, Go to, Sort (name, newest, size) and Show (the files Grimoire can use, or all, links
+  greyed and never followed). Every file has a card that says what it is. A Library card held opens its menu,
+  as its "..." does. Two new actions with no default key, `files` and `home`.
 - Hardening: Grimoire reads the files in its own folders only when they are plain files, with size limits
   on the small text files, and makes its temporary files afresh each time. A `settings.ini` it cannot
   read is kept as `settings.ini.unread` rather than written over. A picture or folder in `templates/`,
