@@ -24,6 +24,8 @@ const RELEASING: File = ("docs/RELEASING.md", include_str!("../../docs/RELEASING
 const PDFWORK: File = ("rust/src/pdfwork.rs", include_str!("../src/pdfwork.rs"));
 const FONTCHECK: File = ("rust/src/fontcheck.rs", include_str!("../src/fontcheck.rs"));
 const USERFONTS: File = ("rust/src/userfonts.rs", include_str!("../src/userfonts.rs"));
+const FSVIEW: File = ("rust/src/fsview.rs", include_str!("../src/fsview.rs"));
+const BROWSER: File = ("rust/src/browser.rs", include_str!("../src/browser.rs"));
 const SANDBOX: File = ("rust/src/sandbox.rs", include_str!("../src/sandbox.rs"));
 const TEMPLATES: File = ("rust/src/bgwork_template.rs", include_str!("../src/bgwork_template.rs"));
 const SANDBOX_TESTS: File = ("rust/tests/test_sandbox_linux.rs", include_str!("test_sandbox_linux.rs"));
@@ -467,6 +469,42 @@ fn the_one_skrifa_is_the_one_hayro_brings() {
 
 // Sentences that said what the code does not do, each gone from the file that held it, and one file name the
 // code writes that FORMAT.md did not list.
+// Files' rename, delete and restore (issue #144): its public text names no label or file of the private plan, and
+// says what the screens do now.
+#[test]
+fn files_rename_delete_and_restore_are_told_as_they_are() {
+    let mut fails = Vec::new();
+    gone(&mut fails, BACKLOG, "**Not in 2.2** (D31)");
+    gone(&mut fails, BACKLOG, "browser.md 17 has it as an optional extra");
+    gone(&mut fails, FSVIEW, "browser.md D4");
+    // the Trash place has Restore: it is not read only
+    gone(&mut fails, DESIGN, "lists `grimoire/trash` read only, through");
+    // Delete asks first (the Library's question): it is not one tap
+    gone(&mut fails, DESIGN, "**Delete** is one tap on the card");
+    gone(&mut fails, TESTING, "its card > Delete (moves it to grimoire/trash): \"Moved to grimoire/trash\"");
+    // the rename's words: a name taken (a folder's too), a name too long for the keyboard
+    gone(&mut fails, DESIGN, "A file with that name is already here.");
+    gone(&mut fails, BACKLOG, "A file with that name is already here.");
+    gone(&mut fails, TESTING, "A file with that name is already here.");
+    gone(&mut fails, DESIGN, "is not offered to it (\"Couldn't rename file.\")");
+    // after a write the rows follow from the listing held: the folder is not read again at one go
+    gone(&mut fails, DESIGN, "Renamed: the folder is read again, with its rows' page kept.");
+    gone(&mut fails, DESIGN, "\"Moved to grimoire/trash\" and the folder read again.");
+    // which is the folder shown, no more: a font renamed, the font in use and a notebook restored read what DESIGN
+    // lists (userfonts_renamed, userfonts_apply, store_restored and the Library's reload)
+    gone(&mut fails, DESIGN, "After a write nothing is read again.");
+    gone(&mut fails, DESIGN, "no folder is listed and no row stat-ed anew");
+    gone(&mut fails, BROWSER, "the listing held: nothing is read again");
+    // who writes where the font check keeps its results: the job, but for the UI's renames (a .checking mark to
+    // .bad, and what the check found of a font renamed in Files, to its new key)
+    gone(&mut fails, USERFONTS, "but for the UI's rename of a .checking mark to .bad when that job died; deleting it");
+    gone(&mut fails, USERFONTS, "background job alone.");
+    gone(&mut fails, USERFONTS, "the UI never writes there");
+    // the font in use: not deleted, and a rename takes its setting along
+    gone(&mut fails, BACKLOG, "a font in use goes back to Terminess, as it does when its file goes over USB.");
+    none_failed(&fails, "Files' rename, delete and restore");
+}
+
 #[test]
 fn the_docs_no_longer_say_what_the_code_does_not() {
     let mut fails = Vec::new();

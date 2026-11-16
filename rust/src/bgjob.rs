@@ -182,9 +182,19 @@ pub fn bg_kind_running(kind: BgKind) -> bool {
 /// check reads the imports' (a PDF's storage path; a folder of pictures, a storage path when picked in place, else
 /// its path under Grimoire's folder), so what an import holds is never renamed or trashed under it (2.2).
 pub fn bg_job_paths(kinds: &[BgKind]) -> Vec<String> {
+    job_paths(|j| kinds.contains(&j.kind))
+}
+/// The pictures the queued and running jobs still have to copy into a notebook (BgKind::Template with a notebook's
+/// id: a template or a photo picked for a page, by its path under Grimoire's folder). fsview's busy check reads
+/// them too, so the file is not renamed or trashed before its job has read it. The previews job (no notebook: its
+/// path is a whole folder) holds nothing.
+pub fn bg_job_pictures() -> Vec<String> {
+    job_paths(|j| j.kind == BgKind::Template && !j.id.is_empty())
+}
+fn job_paths(want: impl Fn(&Job) -> bool) -> Vec<String> {
     with(|s| {
         let running = [(s.pid > 0).then_some(&s.running), (s.extra_pid > 0).then_some(&s.extra)];
-        running.into_iter().flatten().chain(s.q.iter()).filter(|j| kinds.contains(&j.kind)).map(|j| j.dir.as_str().to_string()).collect()
+        running.into_iter().flatten().chain(s.q.iter()).filter(|j| want(j)).map(|j| j.dir.as_str().to_string()).collect()
     })
 }
 /// The exit status of the job bg_poll_job reported last (a PDF import's: 0 done, 2 done with blank pages).

@@ -89,7 +89,8 @@ documents: `rust/tests/test_sec_invariants.rs` (DESIGN.md, FORMAT.md, KINDLE.md,
 RELEASING.md: sentences about the safe loader and the font check that must not come back, the names
 `RECORDS_MAX_BYTES`, `<key>.slow` and `<key>.no`, the font check's glyph limit with its figure, the number in
 a font verdict's first line and in a `<key>.slow` mark's line, the font check's other placeholders with
-their values, and a few sentences that hold only while another one stands), `mapview.rs` (the Graph's keys)
+their values, a few sentences that hold only while another one stands, and what must not come back about
+Files' rename, delete and restore), `mapview.rs` (the Graph's keys)
 and
 `test_scenarios.rs` with `sim_sdl.rs` (SIM.md). After rewording a sentence they hold, run `make test-sim`
 by hand: otherwise the push to main is the first run to say so.
@@ -2748,8 +2749,9 @@ the fallback's check and its rename, a case-only rename, a rename and a trash st
 trash and restore of a file, a folder and a notebook in both forms, a name taken, refused restores, the copy with
 its floor, a failed write and a source that changes). On the Mac only the fallback rename runs (the new name
 reserved, then `renameat` over the reservation); CI's Linux job (`sandbox`) runs the same file with the kernel's
-`RENAME_NOREPLACE` on its tmpfs. Nothing on screen calls these writes yet, so the Scribe's part is three
-questions about its storage, asked over SSH (Grimoire closed unless a step says otherwise). Their answers decide
+`RENAME_NOREPLACE` on its tmpfs. The Scribe's part here is three questions about its storage, asked over SSH
+(Grimoire closed unless a step says otherwise); Files' screens on these writes have their own section (issue #144,
+below). Their answers decide
 what runs there and whether "File changed. Try again." can come for no reason; they are due before the first
 screen that uses the writes ships (issue #100 tracks the device checks before a release). Write the answers into
 docs/KINDLE.md (How it fits in).
@@ -2899,7 +2901,7 @@ What only the storage can tell, on the Scribe:
    (with many notebooks, on the last screen). Hold it 0.6 s: its menu; Hide from Library takes it away, and the row
    comes back in the picker's root.
 5. **PDF copies and Trash**: Files > PDF copies lists the mirror PDFs read only, and a mirror PDF's card opens its
-   notebook; Files > Trash lists deleted notebooks by name and date, newest first, and none opens.
+   notebook; Files > Trash lists deleted notebooks by name, size and date, newest first, and none opens.
 6. **Rotate** the Scribe in Files: the path bar, its chips, the rows and the Go to sheet lay out again.
 
 ## Hardening round (2026-11), fonts: where a check's result is kept, its hash, and a glyph's draw time
@@ -3106,6 +3108,52 @@ own import then finds every page there, and the notebook opens at book page 2).
     its pages`.
 
 No line of `grimoire.log` or `crash.log` from these steps names a book, its file or its title.
+
+## 2.2, Files' rename, delete and restore (issue #144): device checks
+
+Not run on a Scribe yet. Automated: `browser.rs`'s unit tests, `test_fsview_writes.rs`'s trash sizes and listing,
+`test_sec_font_verdict.rs`'s renamed font and the scenarios `files_8_rename` to `files_18_delete_twice`
+(docs/DESIGN.md, Files: rename, delete and restore). On the
+Mac only the storage writes' fallback rename runs, so what only the Scribe's storage can tell comes after the three
+checks of "2.2, Files' storage writes (issue #117): device checks" above (whether its storage takes the no-replace
+rename, whether a move into the trash is one rename, whether the numbers a check compares stay put). Then, with
+Grimoire open and Files' card shown (New > From a file... > Show Files in Library), on a copy of a picture put in
+`grimoire/templates` over USB first (say `Probe.png`):
+
+1. **Rename**: Files > Templates > Probe.png's card > Rename: the keyboard holds `Probe.png` with the caret before
+   `.png`. Type `:` and Done: "Name can't contain :" and the keyboard stays; delete it, type `2` and Done: the row is
+   `Probe2.png`. Over SSH, `ls /mnt/us/grimoire/templates` shows `Probe2.png` and no `Probe.png`, and grimoire.log has
+   `files: an item of templates was renamed` (no name). Rename it to a template's name already there: "That name
+   is taken.", and that file is unchanged (`stat -c '%i %s %Y'` before and after).
+2. **Delete**: its card > Delete: the question `Delete "Probe2.png"?` comes up as the Library's does for a
+   notebook, and Keep it leaves the file. With the file on the first row of its folder, upright, tap the card's
+   Delete twice quickly at one place: the question is up and the file is where it was (the second tap answered
+   nothing: say if the question went, or the file did). Then its Delete (moves it to grimoire/trash): "Moved to
+   grimoire/trash", the row is gone, and
+   `ls -a /mnt/us/grimoire/trash/files-*` shows `Probe2.png` beside `.grimoire-trash`, whose `from=` line is
+   `grimoire/templates/Probe2.png`. The inode is the one it had in `templates` (one rename, as step 2 of #117's
+   checks found).
+3. **The Trash's size**: Files' root: the Trash row says `grimoire/trash, N` once its walk is through; note how long
+   it took (grimoire.log, `files: the trash holds N entries, N files, N KB (read in T ms)`) and whether the root
+   stayed quick meanwhile. Compare N with `du -sk /mnt/us/grimoire/trash` (the walk counts file sizes, `du` blocks:
+   close, not equal).
+4. **Restore**: Files > Trash: the picture's row (its own name, its size, today's date) > Restore: "Restored to
+   grimoire/templates.", and `Probe2.png` is back in `templates` with the same inode; its `files-...` folder is gone
+   from the trash. Then delete a notebook in the Library and restore it from Files > Trash: it is back in the
+   Library at once, with its pages and links.
+5. **Held by an import**: copy a PDF of several pages into `grimoire/import` over USB, and while its notice says
+   "Importing: page ...", open its card in Files > Import: Rename and Delete each say "Importing now." and the file
+   stays.
+6. **The font in use**: in Classic, with a font of your own picked in Settings > Font, open Files > Fonts and its
+   card. Delete says "Font in use." and the file stays. Rename it (add a letter): the screen stays in the font,
+   `settings.ini` has `font=file:<the new name>`, and grimoire.log has `fonts: a rename in Files: what the check
+   found of 1 font file(s) went with them`, then `font: custom font loaded: ...`, and no `bg: font check` line
+   after them. `ls /var/local/grimoire/*/fonts` shows as many `.font` files as before the rename. Close and start
+   Grimoire: the font draws on the first screen and the log has no `bg: font check` line. (On the Kindle the
+   verdicts are in Grimoire's own folder, where this rename is the one thing the app itself does: say if the log
+   has 0 in place of 1.)
+
+Tidy: delete `Probe2.png` from `templates` over USB (or keep it as a template).
 
 ## 2.2, Files' previews and the Covers view (issue #145): device checks
 

@@ -2484,9 +2484,9 @@ are routed in `library.rs` as the Graph's are, and two fingers down does nothing
 ## Files' storage writes (2.2, issue #117)
 
 `fsview.rs` writes since 2.2, inside Grimoire's folders for the user's files only, and `bgwork_copy.rs` copies
-into them. On screen only the copy is called so far: a picture's Use as template and Use as photo, and the
-Templates and Photos sheets' From a file... tile (issue #146, "From a file... and Use as template" below); rename,
-trash and restore have no screen yet.
+into them. Files' cards rename and delete, and its Trash place restores ("Files: rename, delete and restore (2.2,
+issue #144)", below); the copy is called by a picture's Use as template and Use as photo, and by the Templates and
+Photos sheets' From a file... tile (issue #146, "From a file... and Use as template" below).
 
 - **Where it may write: an allow-list.** Only what is inside `grimoire/import`, `templates`, `photos` and
   `fonts` (`FsStorage::write_zone`), never the folder itself and never `import/done` itself (what is inside it
@@ -2516,7 +2516,9 @@ trash and restore have no screen yet.
   entry's device, inode, size or time differ (`Changed`, "File changed. Try again." on screen), or when an import
   holds it (`Busy`, "Importing now."): a PDF or a folder of pictures a queued or running import works on, what is
   inside it, or the folder a held PDF is in (`FsStorage::busy`, from the job table's paths, `bg_job_paths`, and
-  the PDF import's own list); while a previous run's import still holds the lock, everything in `import/`.
+  the PDF import's own list); while a previous run's import still holds the lock, everything in `import/`. The
+  same holds a template or photo picked for a page until the job that copies its picture into the notebook has
+  ended (issue #144).
 - **Names: one function**, `fsview_name_check(old, new, dir)`, the strictest of vfat and MTP (browser.md 8.8):
   not empty, at most 255 bytes, none of `/ \ : * ? " < > |`, no control character, no leading or trailing space,
   no trailing dot, no leading dot (a hidden name Files never lists), and a file keeps its extension in any case.
@@ -2610,24 +2612,24 @@ hosted the same way (`LibraryState.files`, `files_open_place`), and closes back 
   file is parsed for a card; pages and picture sizes wait for the worker (previews). A PDF offers Import as
   notebook or Open its notebook as the picker does; a PDF of the PDF copies opens the notebook it was written from
   (the one whose `export_mirror_path` it is). A picture offers Use as template and Use as photo (issue #146, below);
-  fonts and other files offer nothing else yet. Every act
-  checks the file again first ("File changed. Try again.").
-- **The Trash place** lists `grimoire/trash` read only, through the storage writes' trash listing
+  fonts and other files offer nothing else yet, but Rename and Delete inside Grimoire's own folders, which a
+  picture has there too (below, issue #144). Every act checks the file or folder again first, by its path and its
+  identity ("File changed. Try again.").
+- **The Trash place** lists `grimoire/trash` through the storage writes' trash listing
   (`fsview_trash_entries`, read by name alone, no stat: the newest first by the time in each entry's name, a name of
   no known form last): a file or folder trashed from Grimoire's folders (`files-<stamp>-<4 hex>`) by the last part
   of where its record says it was (`FsStorage::trash_record`, read for the rows on screen only), a notebook
   (`<id>-<time>`, a folder) by the name its `notebook.ini` there holds (opened through the walk, as the listing is,
   and cut as the store cuts a name), a page (`<id>-p<page>-<time>`) by its notebook's name, each with its date; a
-  `files-` entry whose record does not read, and a name of another form, as it is. Entries are not entered and
-  have no card.
+  `files-` entry whose record does not read, and a name of another form, as it is. Entries are not entered; a
+  file's, folder's or notebook's has a card with Restore (issue #144), a page's none.
 - **A Library card held** `HOLD_MS` opens its menu as its `...` does (a notebook's, a folder's, the Files card's);
   the lift after it does nothing.
 - **Actions** `files` (108) and `home` (109) act in the Library, with no default key and no Buttons or Gestures
   row (they are bound by name, as the Library's New notebook and Share are), from a key or a gesture, over the
   Library and inside Files alike. `home` is the Library's top for now.
-- **Seams left for the later Files work**: `RowKind::Trashed` and the trash rows (Restore), the card's rows per
-  kind in `card_lines` (Rename, Trash, Add to fonts), `BrowseMode` and `FilesPrefs`
-  (a home), `library_home` (where a set home starts), `PickSpec.start` (opening at a folder).
+- **Seams left for the later Files work**: the card's rows per kind in `card_lines` (Add to fonts), `BrowseMode`
+  and `FilesPrefs` (a home), `library_home` (where a set home starts), `PickSpec.start` (opening at a folder).
 
 ## From a file... and Use as template (2.2, issue #146)
 
@@ -2698,6 +2700,142 @@ A picture from anywhere on the Kindle becomes a template or a photo by a copy in
   contact, and `z_tpl_g_from_file_keys` the pick's keys over the page.
 - **Not here**: Add a font... and a font's Add to fonts. They waited for the font check's hardening (#111), which
   is merged now, and are a change of their own; the copy job already refuses a font over the font check's limit.
+
+## Files: rename, delete and restore (2.2, issue #144)
+
+The screens on the storage writes above: Files' cards (`browser.rs`) rename a file or folder and move it to the
+trash, and the Trash place puts an entry back. Pick mode (New notebook's From a file..., and the picture pick of the
+Templates and Photos sheets) offers none of it.
+
+- **Where.** A card offers Rename and Delete only on a file or folder inside Grimoire's folders for the user's files:
+  what `FsStorage::can_write` allows (the allow-list, `write_zone`: what is inside `import`, `templates`, `photos` and
+  `fonts`, never the folder itself nor `import/done` itself). Every other place stays read only, and so do PDF copies
+  and the trash itself. The two rows follow the rows a card has for its kind (a folder's Open and its import, a PDF's
+  import, a picture's Use as template and Use as photo, issue #146) and stand above Cancel: a template's card is Use
+  as photo, Rename, Delete, Cancel.
+- **Check first.** Every act checks the card's item again before it does anything (`unchanged`): by its path and its
+  identity. A file must have the device, inode, size and time it had when its card opened; a folder the same device
+  and inode (not its size and time, which change with what is put in it), so another folder renamed to its name is
+  refused. A card whose stat is not known acts on nothing. Refused: "File changed. Try again." and the folder is read
+  again, in the listing's slices. fsview's writes check again themselves (`FsStat::same`) at the moment they act.
+- **Held by an import.** Rename (before the keyboard opens) and Delete ask `FsStorage::busy` (through the writes):
+  what a queued or running import works on, what is inside it, the folder a held PDF is in, and while a previous run's
+  import holds the lock everything in `import/`; and a template or photo picked for a page, until the job that copies
+  its picture into the notebook has ended (`bg_job_pictures`: renamed or deleted before, the page would draw white).
+  Held: "Importing now." and nothing is done. A picture whose copy into templates or photos waits (Use as template,
+  Use as photo) is not held: renamed or deleted before the copy job has opened it, it is not copied, and the copy's
+  end says "File changed. Try again.".
+- **Rename** opens the keyboard (the Library's, hosted by the browser: `Browser.kb`, drawn over Files, its keys
+  refreshed alone; a hardware keyboard's keys reach it through `library_keyboard_area`, and Esc or Back is its Cancel)
+  with the name, titled Name (or Folder for a folder), the caret before a file's extension, so typing edits the stem
+  and the extension stays in sight. A name the keyboard cannot show exactly as it is is not offered to it, and the
+  toast says why: "Name too long." (96 bytes and more: its end would be cut away) or "Name can't contain %s" with
+  `U+XXXX` (a control character, which the keyboard leaves out of its text), so Done can never rename a file to a name
+  nobody typed. Done with the name as it was renames nothing and checks nothing, and neither does an empty name, as
+  the Library's keyboards do. Else Done checks `fsview_name_check` first and says the rule broken, keeping the
+  keyboard up with the name to put right: "Name can't contain %s" (the character; a control character as `U+XXXX`),
+  "Name can't start or end with a space.", "Name can't start or end with a dot." (a leading dot would hide it), "Keep
+  the extension %s." (the old one, with its dot), "Name too long." (over 255 bytes). Then the allow-list for the new
+  name, with the keyboard kept up too: "Name can't contain .sdr" (an ending the Kindle's reader keeps for a book's own
+  folder, which no listing shows) and "That name is taken." (a name Grimoire keeps for itself there: `done` in
+  `import`). Then `FsStorage::rename`, which never replaces: a name taken says "That name is taken." and keeps the
+  keyboard up (no " 2" is offered), and a path of 600 bytes "Path too long.". Renamed: its row has the new name, where
+  that name belongs in the rows' order.
+- **Delete** asks first, as the Library asks before a notebook goes: the card's Delete (after the check, and not for a
+  held item) turns the card into the Library's question, drawn as its sheet (`sheet_rect`, `ui_sheet`): `Delete "name"?`
+  (a long name cut with "..." so the question mark stays), "Delete (moves it to grimoire/trash)" and "Keep it". Keep it,
+  a tap outside the sheet, Esc and Back move nothing. Only its Delete moves the item: the check again,
+  `FsStorage::trash`, then "Moved to grimoire/trash" and its row gone. Restore undoes it. The trash is cleaned over USB,
+  and a `trash` folder removed whole there is made again as Files opens (as every start makes it; a link at its name is
+  left alone and refused), so Delete does not fail until the next start.
+- **The question is seen before it is answered.** The tap that opens it changes at once what the next tap lands on, and
+  the panel shows the question later (a frame takes about 270 ms to show, docs/INK-PERFORMANCE.md), so the second of two
+  taps at one place on the card's Delete would answer a question nobody saw. Two things keep it from that, wherever the
+  card and the question are drawn. The time: the screen says it drew a question (`app_ask`, as it draws one for the
+  first time or at a new place), `app_flush` notes when the frame that carries it goes to the panel (`App.asked`), and a
+  contact answers only if it came down `PEN_REOPEN_MS` or more after that (450 ms, the time the Graph waits before a
+  pen's second tap on a node counts), by the kernel's time of the contact's frame where the kernel says, else by when it
+  was read (`app_asked_seen`). A contact that came down sooner is let go, down to its lift, wherever it landed: it is
+  not Delete, not Keep it, and outside the sheet it does not close the question. Esc and Back are no contacts, and close
+  it at once. The place: the sheet is in the Library's place for it, but moved down or up by the least that keeps its
+  Delete a tap's slop (`ui_px(30)`) clear of the card row that opened it (`question_dy`: the card's Delete, where the
+  finger is), so a tap where the first one was lands on no Delete even once the question has been shown. The Library's own
+  question for a notebook has the same guard on its Delete row (`library_event_in`); its Keep it answers at once, and
+  moves nothing.
+- **The font in use.** Settings names Classic's own font, and its Bold file, by their paths under `grimoire/fonts`
+  (`font=file:<path>`, `font_bold=file:<path>`), so a file gone from that path would leave the next start in
+  Terminess. The browser is told both names before a card acts (`fonts_named`) and knows the item by identity
+  (`font_part`: device and inode of the file the setting names, or of the folder it is in). Delete of such a file, or
+  of the folder that holds one, says "Font in use." before its question and again at the question's Delete, and moves
+  nothing. Rename takes the setting along in the same step: the names as they will be are worked out first (a path
+  Settings cannot keep, over 200 bytes, is refused with "Name too long." before anything is renamed), then
+  `settings.ini` is saved with them and the font applied from its new path, still drawing (`font_follows`). What the
+  font check found goes with every font file renamed in Files, in use or not, and with the files of a renamed folder
+  (`userfonts_renamed`): the verdict and its companions are renamed from the old path's key to the new one's (a key is
+  path, size and time; the rename changes the path alone), so the file is not checked again. The SHA-256 in the
+  verdict still ties it to the bytes, compared at every load.
+- **After a write the folder shown is not read again.** A rename, a delete and a restore tell the listing Files holds
+  what changed (`entry_changed`: the entry's new name, or the entry gone) and make the rows again from it, as Sort and
+  Show do: the folder shown is not listed and none of its rows stat-ed anew, which for a folder of thousands sorted by
+  newest or size would hold the UI for all of it at one go. The other rows keep what they had read (sizes, names,
+  counts), and the screen of rows stays where it was. Only an act that found the item changed reads the folder again
+  (`reread`), a slice a tick with the Loading notice, as any folder is read. A file put there over USB meanwhile shows
+  the next time the folder is opened. Three writes read something else, each at one go on the UI thread: a font file
+  renamed is stat-ed once, and a folder of fonts renamed is listed and its entries stat-ed, for the keys the check's
+  results go to (`userfonts_renamed`); the font in use, renamed, is read and hashed again as it is applied from its new
+  path (`userfonts_apply`; where Settings names no Bold file and the font has no bold weight of its own, `fonts/` and
+  its folders are listed for one); and a notebook restored has the store read the Library's notebooks once
+  (`store_restored`) and the Library under Files once more (`reload`).
+- **The Trash place** lists the trash as before (fsview's trash listing, newest first by the time in each name), each
+  row with its size and date; the root's Trash row has the trash's size beside its path (an empty trash its path
+  alone, and an entry of no bytes no size: a size label rounds up to "1 KB"). Past 5,000 entries (every deleted page
+  is one, and the trash only grows) its listing, `FsListing::start_trash`, reads on to the folder's end in its slices
+  and keeps the newest 5,000 by the time in each name, where any other folder's stops at the first 5,000 the storage
+  gives: what was deleted last is always listed and can be restored ("Showing the first 5000." is said). The sizes
+  come from `FsStorage::trash_sizes` (`TrashSizes`), a walk of the trash in slices of at most 20 ms a tick, begun when
+  the root or the Trash place first shows in a session and again after each write: regular files at any depth by their
+  size (a `files-...` entry counts its item, not its record), no link followed or counted, nothing on another device
+  or deeper than 16 folders entered; an entry's size shows once it is read to its end, the total once the walk is
+  through. A file's, folder's or notebook's entry has a card: its name, size and date, and Restore alone (no Empty, no
+  delete: the trash is cleaned over USB). A page's entry has none (its place in its notebook was never kept).
+- **Restore** (`FsStorage::restore`, after the check): a file or folder goes back where its record says, " 2" when its
+  name is taken there: "Restored to %s." with its folder. A notebook (the name `store_delete` gives it, so the
+  Library's deletes come back too, or the record form) goes back to `notebooks/<id>`; then `store_restored` gives it "
+  2", " 3"... when another notebook of its Library folder has its name (in any ASCII case: their PDF copies would be
+  one file), keeping its modified time (it goes back to its place in the Library's order), and has the Graph's index
+  look again; "Restored to %s." with its Library folder (Notebooks at the top). The store reads the Library once for
+  the names taken and hands that list to the browser. One whose " 2" could not be written is back under its own name,
+  and the toast names its own folder; one whose `notebook.ini` does not read is back in `notebooks/` unlisted, and no
+  toast names a folder for it (the log has each). The browser answers `BrowserResult::NotebookBack` and the Library
+  reads its notebooks again at once (`reload`), under Files. An entry that held nothing (a trash cut off) is removed
+  and says nothing. Refusals: "Couldn't restore. Name taken." (every name to " 99", or the notebook's id), "Couldn't
+  restore. Folder gone.", "Importing now.", else "Couldn't restore." (a record that does not read, a place Grimoire
+  does not write in). A notebook's mirror PDF is made again at its next change.
+- **Words** (Spanish beside each; Japanese is nebuff's): Restore, Importing now., Name can't contain %s, Name can't
+  start or end with a space., Name can't start or end with a dot., Keep the extension %s., Name too long., That name
+  is taken., Couldn't rename., Couldn't move to trash., Couldn't restore., Couldn't restore. Name taken., Couldn't
+  restore. Folder gone., Restored to %s., Font in use. Reused: Rename, Delete, Delete "%s"?, Delete (moves it to %s),
+  Keep it, Moved to %s, File changed. Try again., Path too long., the keyboard's Name and Folder, Notebooks.
+- **Logs** (no names): the storage writes' own lines, and `files: the trash holds N entries, N files, N KB (read in T
+  ms)` once a walk of the trash is through, and `fonts: a rename in Files: what the check found of N font file(s) went
+  with them` (docs/KINDLE.md).
+- **Tests**: `browser.rs`'s unit tests (a folder card's check by identity, each refusal's words, Rename's rules and
+  places, a name nobody typed never given, the allow-list's words, Delete's question, the question answered only once it
+  has been shown and its Delete never under the row that opened it, Delete then Restore, a notebook the Library deleted
+  coming back as " 2", a trash past the cap keeping its newest, a write changing its row with no folder read again, the
+  font in use, a restore the store could not finish, a trash removed over USB), `test_fsview_writes.rs`'s trash sizes
+  (slices, depth, links, the record left out), its listing past the cap and a picture a page still waits for, and the
+  scenarios `files_8_rename` (every rule, a name taken, a good name, an empty one, Cancel), `files_9_trash` (Delete's
+  question, Keep it, a tap outside it, its Delete, the sizes, Restore, a page with no card), `files_10_restore_notebook`
+  (the Library's Delete, Restore, " 2"), `files_11_busy` (an importing PDF), `files_12_swap` (a folder swapped under its
+  card, through the runner's `storage move`), `files_13_es_fit`, `files_14_es_fit_classic` (Spanish, each text checked
+  for fit, upright and sideways, a picture's four rows with each of its copies' names among them),
+  `files_15_font_in_use` (the font in use and its Bold file: Delete refused, Rename with
+  the setting following and the font still drawing), `files_16_font_kept` (the next start), `files_17_es_font_in_use`
+  and `files_18_delete_twice` (two taps at one place on the card's Delete, on a folder's card and a file's on a first
+  row, upright and sideways: the question up and the item where it was; its Delete once it has been shown).
+  `test_sec_font_verdict.rs` has the renamed font's verdict: no new check, in Grimoire's own folder and in the cache,
+  and at the app's next start.
 
 ## Files: previews and the Covers view (2.2, issue #145)
 

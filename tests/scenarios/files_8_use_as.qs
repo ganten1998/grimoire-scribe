@@ -4,7 +4,8 @@
 # generate: tests/files_place_tree.py
 # Files' picture card (2.2, #146): Use as template and Use as photo copy the picture into grimoire/templates or
 # grimoire/photos by the copy job, and a toast says so once it is in. A name taken there gets " 2"; the copy job
-# leaves nothing else behind. A picture already in grimoire/templates offers Use as photo only.
+# leaves nothing else behind. A picture already in grimoire/templates offers one copy, Use as photo, above the
+# Rename and Delete a file of Grimoire's own folders has (issue #144).
 # rust-only
 wait 300
 tap library files-card
@@ -42,7 +43,7 @@ waitbg
 wait 200
 expect toast is Copied to Templates.
 expect storage.names.grimoire/templates is README.txt|c 2.png|c.png
-# the copy in templates offers the copy into photos only
+# the copy in templates offers the copy into photos alone, then Rename and Delete
 tap library files.crumb.1
 wait 300
 tap library files.item.Templates
@@ -50,7 +51,7 @@ wait 300
 tap library files.item.c.png
 wait 300
 expect files.card is picture
-expect files.card.rows is Use as photo|Cancel
+expect files.card.rows is Use as photo|Rename|Delete|Cancel
 shot 03-in-templates
 tap library files.card.cancel
 wait 200

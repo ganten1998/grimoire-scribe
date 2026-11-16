@@ -644,7 +644,12 @@ Nothing in a notebook ever refers to a font: pages, PDFs and pictures do not cha
 them there: below), each file named by the FNV-1a 64 hash (16 hex digits) of the font's path under the folder,
 its size and its time (`<path>/<size>/<mtime>`), so a file replaced by another is checked afresh. It is a
 cache: deleting it loses nothing, and has every font checked again. The background job writes it; the app
-itself only renames a `.checking` mark to `.bad` when that job died.
+itself only renames a `.checking` mark to `.bad` when that job died, and, when Files renames a font file or a
+folder of them (2.2), renames what is kept under the old path's key to the new path's key, here and where the
+verdicts are (the size and the time are the same, so only the path's part of the key changes): the font is not
+checked again. The SHA-256 in a verdict is what ties it to the file's bytes, compared at every load, so a verdict
+under the key of other bytes loads nothing. A file renamed over USB has no verdict under its new name and is
+checked again.
 
 - `<key>.font`, the verdict, text, at most 8 KiB, read strictly: it is a verdict only when it is, byte for
   byte, a text the check writes (every line below there once and in this order, every number in range and
