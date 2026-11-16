@@ -159,6 +159,14 @@ fn unreadable_files_stay_untouched() {
     check!(nav_save(nb.id.as_str(), &mut n, &nb) != 0);
     check!(std::fs::symlink_metadata(path()).is_ok_and(|m| m.file_type().is_symlink()));
     check!(std::fs::remove_file(path()).is_ok());
+    // a link to a file that reads is not followed either, and the file stays as it was
+    let outside = format!("{}.outside", path());
+    check!(std::fs::write(&outside, b"name.1=Outside\n").is_ok());
+    check!(std::os::unix::fs::symlink(&outside, path()).is_ok());
+    check!(nav_load(nb.id.as_str(), &mut n) != 0 && !n.writable && n.names.is_empty());
+    check!(nav_save(nb.id.as_str(), &mut n, &nb) != 0);
+    check!(std::fs::read(&outside).is_ok_and(|b| b == b"name.1=Outside\n"));
+    check!(std::fs::remove_file(path()).is_ok() && std::fs::remove_file(&outside).is_ok());
     nav_free(&mut n);
 }
 

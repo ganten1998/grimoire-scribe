@@ -24,6 +24,9 @@
   break in a name is left where it is, a file picked from a folder that is only spelled like
   `grimoire/import` stays where it is, and the import's lock file and its first look at a dropped PDF are
   opened without following links.
+- Housekeeping: package-check's size guard is now 13 MB for the Kindle binary and 7 MB for the zip (was 11 MB and
+  6 MB): the new Settings menu brought the binary to 10.96 MB, and 2.2's Files, PDF fills and KOReader's hand-over
+  by path need more.
 - **The same PDF again fills its notebook** (#123). When a PDF's notebook lacks some of the book's pages (pages
   deleted since, or a notebook KOReader made, which holds only the pages KOReader sent), dropping the PDF in
   `grimoire/import` again adds those pages in book order, with the tabs that reach them or start on them and the

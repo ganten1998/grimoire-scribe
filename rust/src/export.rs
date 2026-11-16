@@ -91,7 +91,10 @@ impl FileSink {
             }
         }
     }
-    /// A file to be made and read back (a spool): the caller unlinks it when it likes.
+    /// A file to be made and read back (a spool): the caller unlinks it when it likes. (Kept out of line: made
+    /// small by util::create_fresh_nofollow_as, it was inlined into both of the share server's respond_made
+    /// specializations, 5 KB more of the Kindle binary.)
+    #[inline(never)]
     pub fn create_spool(path: &str) -> Option<FileSink> {
         #[cfg(feature = "sim")]
         if crate::util::SIM_STORAGE_FULL.load(std::sync::atomic::Ordering::Relaxed) {
@@ -99,9 +102,7 @@ impl FileSink {
         }
         // (made afresh, O_EXCL|O_NOFOLLOW, mode 0600: a spool is written as root, and a planted link at its name, which
         // the pid makes easy to guess, must never be truncated and written through; security review 2026-11)
-        use std::os::unix::fs::OpenOptionsExt;
-        let _ = std::fs::remove_file(path);
-        let f = std::fs::OpenOptions::new().read(true).write(true).create_new(true).mode(0o600).custom_flags(libc::O_NOFOLLOW | libc::O_CLOEXEC).open(path).ok()?;
+        let f = create_fresh_nofollow_as(path, true, 0o600).ok()?;
         Some(FileSink { f, len: 0, failed: false })
     }
     /// A write failed (the disk is full): the file is not whole.

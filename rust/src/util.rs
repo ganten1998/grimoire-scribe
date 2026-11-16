@@ -447,8 +447,14 @@ pub fn open_rewrite_nofollow(path: &std::ffi::CStr, mode: u32) -> i32 {
 /// A file made afresh for writing: whatever stands at the name (a stale temporary, or anything else) is
 /// removed first, the entry itself and never what it may point at, and nothing that was there is opened.
 pub fn create_fresh_nofollow(path: &str) -> std::io::Result<std::fs::File> {
+    create_fresh_nofollow_as(path, false, 0o666)
+}
+
+/// create_fresh_nofollow for a file that is read back too (`read`), made with `mode` before the umask: the
+/// share spool's (read and written, 0600).
+pub fn create_fresh_nofollow_as(path: &str, read: bool, mode: u32) -> std::io::Result<std::fs::File> {
     use std::os::unix::fs::OpenOptionsExt;
-    let open = || std::fs::OpenOptions::new().write(true).create_new(true).custom_flags(libc::O_NOFOLLOW | libc::O_CLOEXEC).open(path);
+    let open = || std::fs::OpenOptions::new().read(read).write(true).create_new(true).mode(mode).custom_flags(libc::O_NOFOLLOW | libc::O_CLOEXEC).open(path);
     // (nothing in the way: one call to the storage, as a plain create was)
     let first = match open() {
         Ok(f) => return Ok(f),

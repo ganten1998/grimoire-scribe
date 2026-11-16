@@ -77,6 +77,7 @@ pub mod bgimage;
 pub mod bgjob;
 pub mod bgwork_compact; // compact.h + bg_compact_pages
 pub mod bgwork_template; // templates.h + bg_template, bg_import_folder
+pub mod bgwork_copy; // a file copied into Grimoire's folders for the user's files: BgKind::CopyFile (2.2)
 pub mod brush;
 pub mod compact; // compact.h's surface (bodies in bgwork_compact.rs)
 pub mod export;
@@ -109,7 +110,7 @@ pub mod dispmenu;
 pub mod editor;
 pub mod erasersample; // header only (the bytes are in assets.rs)
 pub mod findsheet; // the Find sheet: go to a page by its number or name (Rust only, the Index's phase 1)
-pub mod fsview; // one storage layer: the walk, zones, listing and stats of the Kindle's storage (2.1, read-only)
+pub mod fsview; // one storage layer: the walk, zones, listing and stats of the Kindle's storage (2.1), and its writes in Grimoire's folders (2.2)
 pub mod httpd;
 pub mod inkmode; // header only
 pub mod keyboard;
