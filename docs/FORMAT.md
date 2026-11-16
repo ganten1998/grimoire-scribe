@@ -835,9 +835,10 @@ waits, and within 10 s of the end of a previous run's import):
   even with no link in it, then `links=1` in `source.ini`; and the names (`nav.ini`): the outline's, for pages
   that have none. A commit cut off after `notebook.ini` takes those two again. A commit runs with `open=1`, so
   one that finds it set was cut off (a stop), and at the third stop it ends, its work folder gone, the notebook
-  as the last cut left it (its pages as they were, or added without some of their links and names). The pages it had, their files,
-  their ink, their names and their links are not written; the card's `thumb.pgm` is the book's page 1 when that
-  page became the first, else it goes (the Library draws it again). The end says "Added %d book pages."
+  as the last cut left it (its pages as they were, or added without some of their links and names). The pages
+  it had keep their files byte for byte (their ink), their names and their links; only names and links they
+  lacked are added. The card's `thumb.pgm` is the book's page 1 when that page became the first, else it goes
+  (the Library draws it again). The end says "Added %d book pages."
   (KOReader's route's toast), with "Some links were left out." when links were. While a fill's work folder
   names a notebook, the notebook does not open: the editor shows the import's count ("Importing: page %d of
   %d") and stays where it was.
