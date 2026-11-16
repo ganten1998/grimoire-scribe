@@ -10,21 +10,23 @@ tap 1535 95
 wait 200
 expect library.sheet is settings
 shot 01-settings-automatic-spanish
-tap 930 1580
+tap library settings.cat.0
+wait 100
+tap library language
 wait 200
 expect library.sheet is language
 shot 02-languages
 # English, the second row: at once, and saved
-tap 930 945
+tap library language.en
 wait 300
 expect library.sheet is settings
 expect language is en
 expect settings.language is en
 shot 03-settings-english
-# Cancel in the list changes nothing
-tap 930 1580
+# Back in the list changes nothing
+tap library language
 wait 200
-tap 930 1425
+tap library language.back
 wait 200
 expect library.sheet is settings
 expect language is en

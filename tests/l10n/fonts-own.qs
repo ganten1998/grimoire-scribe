@@ -7,12 +7,15 @@
 # "Checking 9 fonts..." while the check runs (GRIMOIRE_BG_DELAY_MS holds it back), then "Unreadable font.",
 # "Too big (over 24 MB).", "No Latin letters.", "Use .ttf or .otf.", "File missing." and "Some letters come
 # from Terminess.", upright and sideways (two abreast, the narrowest a row gets), on each page of them; the
-# headings "Built in" and "Your fonts (grimoire/fonts)"; then a font picked (its sample drawn in it) and
-# applied, the chip with its family's name, and the sheet in Terminess over it. (2.1.0-beta.2, Rust only)
+# headings "Built in" and "Your fonts (grimoire/fonts)"; then a font tapped (applied at once, its sample drawn
+# in it), Settings' Font row with its family's name, and the sheet in Terminess over it. (2.1.0-beta.2, Rust
+# only)
 wait 100
 expect settings.theme is classic
 expect font is terminess
 tap 1535 95
+wait 50
+tap library settings.cat.1
 wait 50
 tap library font
 wait 50
@@ -38,8 +41,7 @@ rotate 1
 wait 100
 expect library.sheet is font
 shot 05-page-2-sideways
-tap library font.prev
-wait 50
+# (sideways a page holds twelve rows on the new Settings page, #115: all of them, from the first)
 shot 06-page-1-sideways
 tap library font.file:GrimoireTest-Regular.ttf
 wait 50
@@ -51,6 +53,11 @@ shot 08-picked
 tap library font.done
 wait 100
 expect font is file:GrimoireTest-Regular.ttf
+# (the sheet's X closes Settings: open it again on the Display category)
+tap 1535 95
+wait 50
+tap library settings.cat.1
+wait 50
 shot 09-settings-own
 tap library font
 wait 50
