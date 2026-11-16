@@ -582,6 +582,30 @@ To get back to Terminess by hand: delete the font's file, or delete the `font=fi
 `grimoire/settings.ini` while Grimoire is closed. Deleting `grimoire/.font-inuse` forgets a font's strikes;
 deleting `grimoire/fonts/.cache/` has every font checked again.
 
+## Files: rename, trash, restore and copy (2.2, the storage layer)
+
+Grimoire can rename, trash, restore and copy files inside its own `import/`, `templates/`, `photos/` and
+`fonts/` folders (docs/DESIGN.md, Files' storage writes). Nothing on screen uses these yet; once the screens
+come, grimoire.log says (never a file's name: the folder, sizes, timings, reasons):
+
+- `files: an item of <folder> was renamed`, `files: an item of <folder> went to the trash`, `files: an item went
+  back to <folder>`, and `files: notebook <id> came back from the trash`. A deleted item is in
+  `grimoire/trash/files-<date>-<time>-<4 hex>/` with `.grimoire-trash` beside it, which says where it was
+  (docs/FORMAT.md, The trash): to put one back by hand, with Grimoire closed, move it there.
+- `files: the storage refused the no-replace rename (<why>); a rename looks for the name first`: once a session,
+  the first time a rename needs it. The Kindle's storage does not take the kernel's no-replace rename, so each
+  rename first looks whether the new name is taken (docs/TESTING.md has the check that decides which runs).
+- `files: a rename|the trash|the trash's record|a restore|a notebook's restore failed: <why>`: a call the storage
+  refused, with its reason (a name taken, a file that changed or an import holding it are told on screen, not
+  here). `files: a rename through a temporary name could not be undone; the item is at its temporary name in
+  <folder>`: a case-only rename stopped half way; the file is `.grimoire-rename-<pid>-<4 hex>` in that folder,
+  to rename back by hand.
+- `bg: file copy of <folder> (pid N)`, then `bg: a file copied into <folder>: N KB in T ms` or `bg: a file not
+  copied into <folder>: <why>` (among them: no room: the storage would keep less than 100 MB; it changed since it
+  was listed, or while it was copied; it is no plain file; a link on its way; a system error's own words), and
+  `bg: file copy pid N done` or `FAILED`. A copy cut off leaves `.grimoire-copy-<pid>.part` in the folder, which
+  the next copy into it removes.
+
 ## Touch gestures and the touch trace
 
 Two fingers are gestures on the notebook page (docs/SHORTCUTS.md, gestures.ini by hand): down opens

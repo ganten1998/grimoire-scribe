@@ -19,6 +19,46 @@ why. Newest decisions first within each section.
   pages' drawings kept in memory), #52 (lasso fixes for #50 and #51) and #67 (issue #60), which the owner reported
   checked on 2026-11-13.
 
+## Files' storage writes (2.2, issue #117): what waits
+
+The storage layer writes now (docs/DESIGN.md, Files' storage writes): rename, trash with its record, restore,
+the name rules, the busy check and the copy job (`BgKind::CopyFile`). Nothing on screen calls them yet.
+
+- **The screens' part** (the Files place and its cards, the Trash place, the From a file... tiles, Add a
+  font...):
+  - Their words for each refusal: "File changed. Try again." (`Changed`), "Importing now." (`Busy`), "Name can't
+    contain %s" (`NameRule::Char`) and words for the other rules (empty, too long, a space at either end, a dot at
+    the start or the end, the extension kept), a name taken on rename (`Exists`: offer " 2"), "Couldn't restore.
+    Folder gone." (`FolderGone`), an entry whose record does not read (`BadRecord`), "Restored to %s.", and
+    "Couldn't copy file. Is the storage full?" for any failed copy (the job ends 0 or 1 only). None is a string
+    yet.
+  - The Trash place: `FsListing` over `FsStorage::trash_dir()` in its slices, then `fsview_trash_entries`; a
+    file's row reads `FsStorage::trash_record` for the rows on screen; a notebook's row needs its name from
+    `trash/<entry>/notebook.ini` (no store function reads a notebook there yet). The Trash's size on its row is
+    a walk of its own, not built.
+  - After a notebook's restore: the Library's list read again, and `libindex_revalidate()` (or the index's next
+    check) brings it back to the Graph; its mirror PDF is made at its next change.
+  - A copy's end: `poll_jobs` (app.rs) returns at `BgKind::CopyFile` without a toast; the tile's or the Font
+    sheet's code reads `bg_last_exit()` there, and has the template list or the font check look again.
+  - A held item: its row greyed and its card's Rename and Delete saying "Importing now.", from `FsStorage::busy`.
+- **Not built** (the plan's later parts, or not in this lane): Move (Import to Templates or Photos by kind,
+  between them, to Import) and New folder in Import (N3 decides whether they are 2.2's); Restore for a page (its
+  place in its notebook was never kept); `store_delete` writing the record form for a notebook (2.2 reads that form
+  and writes the old name, `<id>-<time>`). Empty trash never comes (the owner cleans it over USB).
+- **Only imports count as busy.** A template job reads its picture by path when it starts; a rename or trash of
+  that picture just before makes the job fail (it says so), and is not refused. The screens can add it if it
+  shows.
+- **The fallback's moment.** Where the storage refuses the no-replace flag, a rename looks for the name and then
+  renames: another writer could make that name in between. Grimoire is the only writer while it runs (files are
+  copied in with it closed), and the check before acting covers what changed earlier.
+- **A copy's source changed during the read** is caught by the check at the copy's end (size and time, and the
+  bytes read against the size); no test changes a source in the middle of a read (the tests change it before the
+  job reads it).
+- **The Scribe's checks** (docs/TESTING.md, "2.2, Files' storage writes (issue #117): device checks"): whether the
+  storage takes the no-replace rename, whether a move into the trash is one rename for a file and a folder, and
+  whether device and inode numbers stay the same across a restart, a USB connection and a session. Not run yet;
+  due before the first screen that uses the writes ships.
+
 ## nebuff's main and Clear page (2.1.0-beta.2, lane M, 2026-11-11): what waits
 
 - **Bulk erase slowdown (issue #42) is not fixed in the app.** PR #43 ("Fix slowdown") changed the C tree only
@@ -286,9 +326,10 @@ What waits for the lanes that use them:
   (the picker, L8; Previews in 2.2). Their screens' rules are in `notice_pick`; Import shows on the Library only
   until the browser has screens of its own.
 - fsview's writes (delete as a rename into the trash, `renameat2(RENAME_NOREPLACE)` with its fallback, the
-  allow-list, "File changed. Try again.", the free-space refusal and "Kindle storage nearly full."), the
-  Loading notice over 1 s, and its first readers (the picker, the PDF import, the KOReader hand-over's walk in
-  place of `realpath`).
+  allow-list, the check before acting, the free-space refusal) came in 2.2's storage layer (issue #117: "Files'
+  storage writes (2.2, issue #117): what waits", above); their words ("File changed. Try again.", "Kindle storage
+  nearly full.") wait for the screens. The Loading notice over 1 s, and its first readers (the picker, the PDF
+  import, the KOReader hand-over's walk in place of `realpath`).
 - `name_cmp`'s readers: the browser, the import order and the font list.
 - The Library listing from libindex's cache plus stamps (browser.md 17), past reading each notebook.ini once.
 

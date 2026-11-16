@@ -57,7 +57,7 @@ root/fonts/                             font files the owner copies in, for Clas
 root/.font-inuse                        the crash guard of a font of the owner's own (2.1.0-beta.2; Your own fonts)
 root/import/<Name>/                     page pictures to become a notebook at the next start (Imports)
 root/import/.annotate/                  a page KOReader sends to annotate, and its request (Annotated pages)
-root/trash/                             deleted notebooks and pages, moved here, never unlinked
+root/trash/                             deleted notebooks and pages, moved here, never unlinked; from 2.2 also files and folders of import/, templates/, photos/ and fonts/, each with its record (The trash)
 root/PDFs/                              the PDF mirror (an export, not data)
 root/.cache/pdf/<id>/                   the notebook PDF's page streams, disposable (2.1.0-beta.2)
 ```
@@ -1626,6 +1626,53 @@ as a target they do not know (it does nothing there). The released 2.0.0-beta.1 
 targets into the other notebook, as every build since 2.0.0-rc.2 does. Moving pages needs nothing of any
 version: each reads the `pages` order it finds.
 
+## The trash: `root/trash/`
+
+Nothing put here is ever unlinked by Grimoire: there is no Empty (the owner cleans it over USB). Each entry is
+one rename on the same storage, so it is instant at any size. Three kinds of entry, told apart by the name
+alone:
+
+| entry | what it is | written by |
+|---|---|---|
+| `<id>-<time>` | a notebook's folder, as it was in `notebooks/` | every version (Library > Delete) |
+| `<id>-p<page id>-<time>` | a page file (`p<page id>.qpg`) | every version (the Pages view's Delete) |
+| `files-<YYYYMMDD-HHMMSS>-<4 hex>/` | a folder holding one file or folder of `import/`, `templates/`, `photos/` or `fonts/` under its own name, and `.grimoire-trash`, its record | 2.2 on (the storage layer, `fsview.rs`) |
+
+`<time>` is unix seconds; `<YYYYMMDD-HHMMSS>` is the local time and `<4 hex>` four lowercase hex digits
+(random), so two in one second have two folders. A page's place in its notebook is kept nowhere, so a page is
+listed and never restored by Grimoire. A notebook goes back to `notebooks/<id>` (refused while a notebook of
+that id is there): its name, its Library folder and its links are in its own files, and links to it work
+again (Links).
+
+The record, `.grimoire-trash`:
+
+```
+# Grimoire: where this went from, for Restore (docs/FORMAT.md, The trash)
+from=grimoire/templates/Holiday.png
+time=1763200000
+```
+
+`from=` is the path the item had, relative to the storage's root (`/mnt/us` on the Kindle: `grimoire/...`),
+as bytes (a name need not be UTF-8), and `time=` unix seconds. Every line ends with a line feed. It is read
+strictly: a plain file at that name (a link, a folder or a FIFO is no record), at most 4 KiB, lines beginning
+with `#` passed over, `from=` and `time=` each exactly once, `from=` a path under 600 bytes with no empty,
+`.` or `..` part and no leading `/`, `time=` digits only, and no other line (no blank line, no carriage
+return, no key this version does not know). A record that does not read so leaves its item listed and not
+restorable from Grimoire. A path with a line break in it cannot be recorded, so such an item is not trashed.
+
+Restore puts a file or folder back in the folder `from=` names, when that folder is still there and inside
+Grimoire's `import/`, `templates/`, `photos/` or `fonts/` (never the folder itself, never `import/done`); a
+name taken there gets " 2", " 3" and so on up to " 99" (before a file's extension: `Holiday 2.png`). Then the
+record and the emptied `files-...` folder are removed: the only removal the trash ever sees. A record whose
+`from=` is `grimoire/notebooks/<id>` over a folder named `<id>` restores that notebook, as `<id>-<time>` does
+(2.2 writes notebooks in the old form; the record form is read so a later version may write it).
+
+What older versions do with the trash as 2.2 leaves it: none of them reads `trash/` at all (they only rename
+into it), so a `files-...` folder is never looked at, moved or changed by them, and their own deletes go on
+as before beside it. An item restored by hand (moved back with Grimoire closed) is an ordinary file to every
+version. 2.2 reads the entries older versions wrote (`<id>-<time>`, `<id>-p<page id>-<time>`), and lists any
+other name as an entry it does not know (not restorable).
+
 ## Where new data goes
 
 - Data about one page: the stroke's ext bytes, an erase stroke's seed bits, the page's paper
@@ -1726,6 +1773,15 @@ rule for the lines of `source.ini` a version does not know):
 | a notebook of a book's key with no `source=` and no `book=` (the second notebook of a key) | an ordinary notebook of document pages: not the book's notebook for KOReader's Open this book, for the plugin or for the import. If the book's first notebook is deleted, they import the file again (or make a new notebook for the book); this version still finds the second notebook by its record |
 | `src` with a tab or another control character in a mark or in `pdf-import.ini` | read as any other path (their readers take the line as it is): the import goes on with that file. They wrote such a path without those characters; this version reads what they wrote as before, and where the path so written names no file the work folder is not kept and the import starts over from the scan |
 | an import this version began and they finish | the notebook is made with `source=` and `book=` and no record, as they always made it |
+
+What 2.1.0 and the versions before it do with what 2.2's storage layer writes (The trash):
+
+| new data (2.2) | 2.1.0 and before |
+|---|---|
+| `trash/files-<YYYYMMDD-HHMMSS>-<4 hex>/` holding a file or folder and `.grimoire-trash` | never read: no version before 2.2 lists or reads `trash/`. The folder stays as it is, and their own deletes (`<id>-<time>`, `<id>-p<page id>-<time>`) go in beside it |
+| a notebook 2.2 put back from the trash | an ordinary notebook in `notebooks/<id>`, as one moved back by hand always was |
+| a file or folder 2.2 put back, or renamed (" 2" on a name taken) | an ordinary file of `import/`, `templates/`, `photos/` or `fonts/`: imported, listed or used by its new name |
+| `.grimoire-copy-<pid>.part` in `templates/`, `photos/` or `fonts/` (a copy cut off) | a dot-name: no listing of theirs shows it or uses it; 2.2 removes it at the next copy into that folder |
 
 ## Highlighter rendering in 1.2.0
 
