@@ -718,9 +718,15 @@ impl Browser {
                 files.push(r);
             }
         }
-        // (the links the listing left out, by name: Show all lists them, never entered or opened)
+        // (the links the listing left out, by name: Show all lists them, never entered or opened, within the listing's
+        // cap of 5,000 rows; a full list of links may have left more out: "Showing the first 5000." either way)
         if show_all {
+            self.capped |= l.links.len() >= FS_LIST_MAX;
             for n in &l.links {
+                if dirs.len() + files.len() >= FS_LIST_MAX {
+                    self.capped = true;
+                    break;
+                }
                 let (Ok(name), Some(path)) = (std::str::from_utf8(n), at.join(n)) else { continue };
                 if crate::pdfimport::name_storable(name) {
                     files.push(Row::new(RowKind::Link, name, path));
@@ -2770,6 +2776,28 @@ mod tests {
         assert_eq!(labels[1], "N".repeat(STORE_NAME_LEN - 1));
         assert_eq!(labels[2], "files-20261115-120000-1234");
         assert_eq!(b.rows[2].when, 0);
+    }
+
+    // Show all in a folder of 6,000 links (the listing keeps 5,000 of their names): no more than 5,000 rows, and
+    // "Showing the first 5000." is said, as for 5,000 entries. With the usable files shown, the links are not rows
+    // and nothing is said.
+    #[test]
+    fn show_all_past_5000_links_says_so_and_keeps_the_cap() {
+        let (base, _g) = storage("links6000");
+        let d = format!("{base}/documents/Links");
+        std::fs::create_dir_all(&d).unwrap();
+        std::fs::write(format!("{d}/a.pdf"), b"%PDF-1.4\n").unwrap();
+        for i in 0..6000 {
+            std::os::unix::fs::symlink("a.pdf", format!("{d}/l{i}")).unwrap();
+        }
+        let mut b = Browser::default();
+        assert!(b.open(PickSpec::place(), FilesPrefs { card: true, sort: 0, show: 1 }));
+        assert!(b.go(sp("documents/Links")));
+        assert_eq!(b.rows.len(), FS_LIST_MAX);
+        assert!(b.capped, "Showing the first 5000.");
+        b.prefs.show = 0;
+        b.rebuild();
+        assert!(b.rows.len() == 1 && !b.capped);
     }
 
     #[test]

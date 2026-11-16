@@ -2371,7 +2371,8 @@ hosted the same way (`LibraryState.files`, `files_open_place`), and closes back 
   stay as they are meanwhile, a folder entered so shows no row before, and the Loading notice comes after a second.
   The listing's cap (5,000) holds. Show: the PDFs, pictures and fonts Grimoire can use (and folders), or every
   file: the others greyed, and the links by name ("link, not followed"), which fsview's listing keeps in `links`
-  as it leaves them out; a link is never entered, opened or stat-ed through. View is a list (`files_view`; Covers
+  as it leaves them out (within the same 5,000 rows, with "Showing the first 5000." when any is left out); a link
+  is never entered, opened or stat-ed through. View is a list (`files_view`; Covers
   needs previews).
 - **Item cards.** A picture, a font and any other file have cards, as a PDF and a folder do: the details say what
   the file is, its size and its date, and what is known of it without reading it in the UI process (a font of
