@@ -8,10 +8,10 @@
   counting its pages while the Library stays usable, and then opens the page you were reading. If you opened
   something else meanwhile, nothing opens by itself: the book's notebook is a card in the Library (a toast says
   so when the Library is not in front), and it opens at that page. A book you opened before keeps the pages
-  KOReader drew and gets the ones it lacks. A PDF that cannot be
-  imported says why, as one dropped in `grimoire/import` does. DjVu, comics, XPS, a PDF that needs a password and
-  a PDF Grimoire does not take by its path (in a hidden or system folder, over 512 MB, changed since KOReader
-  first opened it) go the older way, as before.
+  KOReader drew and gets the ones it lacks. A PDF that cannot be imported says why, as one dropped in
+  `grimoire/import` does. DjVu, comics, XPS, a PDF that needs a password and a PDF Grimoire does not take by its
+  path (in a hidden or system folder, over 512 MB, changed since KOReader first opened it) go the older way, as
+  before.
 - **Size keys.** Shift+[ and Shift+] on a paired keyboard take the pen in use to its next smaller or larger quick
   size, and a short toast says the size; a controller's buttons and gestures can too (Smaller / larger size, in the
   Tools group of Buttons and of Gestures). The new `quick-size` action, bound by name in shortcuts.ini or
@@ -39,8 +39,8 @@
   becomes a notebook of its own. KOReader's Open this book in Grimoire on a PDF opens the notebook of the very
   file it has open: an edited copy gets its notebook the first time and opens it from then on, and the file it
   was edited from still opens its own. (For DjVu and comics, and with a KOReader plugin from before this
-  version, it opens the book's first notebook, by the key.)
-  Notebooks made before this version, or from KOReader, go by the key as before. In Files, a PDF that a
+  version, it opens the book's first notebook, by the key.) Notebooks made before this version, or from
+  KOReader, go by the key as before. In Files, a PDF that a
   notebook already holds offers Import as notebook beside Open its notebook. A big PDF is read once more at
   the end of its import (the notice stays on its last page meanwhile).
 - The import handles odd names and places more strictly: a file's path is kept exactly as it is while it is
