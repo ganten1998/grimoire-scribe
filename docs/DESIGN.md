@@ -575,7 +575,7 @@ Reads of the data folder take plain files only. What is read there through `util
 scans, the marks, the share zip's raw copies, the clipboard, the compaction lists, the shortcut files, the PDF
 cache's records, a notebook's `nav.ini`, `links.ini` and `doclinks.ini`) is read only when the entry at the
 name itself is a plain file (a link, a folder or anything else there reads as a file that is not there, or,
-for a compaction list and the shortcut files, as one that is there and does not read), and the open never
+for the shortcut files, as one that is there and does not read), and the open never
 waits. Folders on the way to a file may be links (the data root, `notebooks/`, a platform's folders, a test's
 folder): only the last name is held to this. The small text files are read up to a limit
 (`util::read_file_max`: settings.ini, notebook.ini, folders.ini, bg/pages.ini and bg/index.ini 1 MiB; an

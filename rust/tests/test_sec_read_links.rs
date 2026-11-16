@@ -584,9 +584,22 @@ fn the_picture_index_has_a_limit() {
 
 // ---- the readers the round left by path (issue #118) ----
 
+/// Lets every background job end (one a check queued by mistake leaves no child behind).
+fn drain() {
+    let mut ms = 0;
+    while bg_busy() && ms < 60_000 {
+        bg_poll();
+        sleep_ms(10);
+        ms += 10;
+    }
+}
+
 // A notebook's compaction list (erased.txt, read for every notebook at every start) is read when the entry at its
-// name is a plain file. A link there or a FIFO is a list that is there and does not read: it may list pages (the
-// pass is tried, and leaves it as it is) and nothing is written over it. No read of it waits.
+// name is a plain file. Anything else there (a link, to a list or to nothing, a FIFO, a folder) is no list, as
+// nothing at the name is: a start queues no compaction of that notebook, a close finds nothing listed, and the next
+// erase's list replaces the entry itself (the file a link names is never written through; a folder there stays, and
+// the page is not listed while it does). No read of it waits. (A plain list that does not read is never written
+// over: test_inkwire.rs.)
 #[test]
 fn the_compaction_list_takes_a_plain_file_only() {
     let t = top("erased");
@@ -594,25 +607,51 @@ fn the_compaction_list_takes_a_plain_file_only() {
     store_at(&root);
     let nb = book("Erased", 1, PAPER_BLANK);
     let id = nb.id.as_str();
+    let pid = nb.page_ids[0];
     let list = nb_dir(&root, &nb).join("erased.txt");
+    // (a start, as editor_init's, and a close, as close_notebook asks before it queues the pass: true when neither
+    // queues or runs a compaction of the notebook)
+    let start = || {
+        let n = compact_queue_listed(300.0);
+        let queued = bg_pending(BgKind::CompactPages, id);
+        drain();
+        n == 0 && !queued
+    };
+    let close = || !compact_listed(id);
     let mut c = Checks::default();
-    c.that(!compact_listed(id) && compact_note_page(id, 3) == 0 && compact_listed(id) && is_plain(&list), "a list of its own is written and read");
+    c.that(!compact_listed(id) && compact_note_page(id, pid) == 0 && compact_listed(id) && is_plain(&list), "a list of its own is written and read");
+    std::fs::remove_file(&list).unwrap();
     // a link to a list outside
     let outside = t.join("outside.txt");
-    move_out_and_link(&list, &outside);
-    let kept = std::fs::read(&outside).unwrap();
-    c.that(compact_listed(id), "a list that is a link may list pages");
-    c.that(compact_note_page(id, 5) == -1, "a page is not noted in it");
-    c.that(is_link(&list) && std::fs::read(&outside).unwrap() == kept, "the link and the file outside are as they were");
+    let listed = format!("# a list\n{pid}\n");
+    std::fs::write(&outside, &listed).unwrap();
+    symlink(&outside, &list).unwrap();
+    c.that(start(), "a list that is a link is no list: a start compacts nothing");
+    c.that(close(), "and a close finds nothing listed");
+    c.that(compact_note_page(id, pid) == 0 && is_plain(&list), "the next erase's list replaces the link itself");
+    c.that(std::fs::read(&outside).unwrap() == listed.as_bytes(), "the file outside is as it was");
+    c.that(compact_listed(id), "and the new list lists the page");
+    std::fs::remove_file(&list).unwrap();
+    // a link to nothing
+    let nowhere = t.join("nowhere");
+    symlink(&nowhere, &list).unwrap();
+    c.that(start() && close(), "a link to nothing is no list either");
+    c.that(compact_note_page(id, pid) == 0 && is_plain(&list) && !nowhere.exists(), "and is replaced, never written through");
     std::fs::remove_file(&list).unwrap();
     // a FIFO
     fifo_at(&list);
-    let (listed, waited) = waits_on(&list, || compact_listed(id));
-    c.that(!waited && listed, "a list that is a FIFO is one that does not read, at once");
-    let (rc, waited) = waits_on(&list, || compact_note_page(id, 5));
-    c.that(!waited && rc == -1, "and nothing is written over it, at once");
+    let (none, waited) = waits_on(&list, || start() && close());
+    c.that(!waited && none, "a list that is a FIFO is no list, at once");
+    let (rc, waited) = waits_on(&list, || compact_note_page(id, pid));
+    c.that(!waited && rc == 0 && is_plain(&list), "and the next erase's list replaces it, at once");
     std::fs::remove_file(&list).unwrap();
+    // a folder: no list, and it stays (a list is not renamed over a folder)
+    std::fs::create_dir(&list).unwrap();
+    c.that(start() && close(), "a folder at the name is no list");
+    c.that(compact_note_page(id, pid) == -1 && list.is_dir(), "and it stays");
+    std::fs::remove_dir(&list).unwrap();
     c.that(!compact_listed(id), "with nothing at the name nothing is listed");
+    drain();
     c.done();
     let _ = std::fs::remove_dir_all(&t);
 }

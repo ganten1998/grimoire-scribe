@@ -54,15 +54,28 @@ fn list_path(id: &str, buf: &mut String, cap: usize) -> i32 {
     0
 }
 
-// The whole of the list file at `path`: None with *err -1 when nothing is at its name, -2 when something
-// is there but does not open as a plain file (a link, to a file or to nothing, is not followed, and a FIFO
-// is never waited on: util::open_read_nofollow) or could not be read to its end (a read error, no memory).
+// The whole of the list file at `path`: None with *err -1 when there is no list, -2 when a plain file is
+// there but could not be read to its end (it did not open, a read error, no memory). Only a plain file at
+// the name itself is a list (util::open_read_nofollow: a link is not followed, a FIFO never waited on).
+// Nothing there, a link (to a file or to nothing), a FIFO, a folder or anything else is no list: it never
+// holds one Grimoire wrote, so the pass leaves it alone and the editor's next list_write replaces the entry
+// itself (write_file_atomic renames over it, never writing through it), as a link to nothing always was.
 fn list_text(path: &str, err: &mut i32) -> Option<Vec<u8>> {
     use std::io::Read;
     let mut f = match open_read_nofollow(path) {
         Ok((f, _)) => f,
         Err(e) => {
-            *err = if e.raw_os_error() == Some(libc::ENOENT) { -1 } else { -2 };
+            *err = if e.raw_os_error() == Some(libc::ENOENT) {
+                -1
+            } else {
+                // (the entry itself, by lstat: a plain file that did not open is a list that does not read)
+                match std::fs::symlink_metadata(path) {
+                    Ok(m) if m.is_file() => -2,
+                    Ok(_) => -1,
+                    Err(e) if e.kind() == std::io::ErrorKind::NotFound => -1,
+                    Err(_) => -2,
+                }
+            };
             return None;
         }
     };
@@ -89,7 +102,7 @@ fn list_text(path: &str, err: &mut i32) -> Option<Vec<u8>> {
 }
 
 // The page ids notebook `id` lists, each once, in the order listed: 0 (out may be empty); -1 when it
-// has no list (or `id` cannot be a notebook's); -2 when the list is there but could not be read
+// has no list (list_text, or `id` cannot be a notebook's); -2 when the list is there but could not be read
 // whole, so nothing may be written over it. A line that is not a page id is skipped.
 fn list_read(id: &str, out: &mut Vec<u32>) -> i32 {
     out.clear();

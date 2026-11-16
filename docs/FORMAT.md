@@ -71,8 +71,8 @@ From 2.1.1 on Grimoire reads these files only when the entry at the name is a pl
 `bg/`, the pictures and folders of `templates/`, `photos/` and `import/`, the import marks and
 `import/.attempts`, `clipboard.qpg`, the shortcut files (`shortcuts.ini`, `controller.ini`, `shortcuts/`,
 `gestures.ini`, `live-keys.ini`) and the PDF cache's records. A link there (to a file, to a folder or to
-nothing), a folder or anything else reads as a file that is not there; for `erased.txt` and the shortcut files
-it is a file that is there and does not read, as their sections say. A folder on the way to a file may be a
+nothing), a folder or anything else reads as a file that is not there; for the shortcut files it is a file
+that is there and does not read, as their section says. A folder on the way to a file may be a
 link (`root` itself, `notebooks/`): only the last name is held to this. Your own fonts' check results and
 crash guard are still opened by path, after a look at the entry that does not follow a link (docs/BACKLOG.md,
 "Hardening round (2026-11), storage reads: what waits").
@@ -302,9 +302,11 @@ zip, a `grimoire-pull` copy or an older version.
   later pass or for the version that can: one that does not read, one of another size than its
   notebook's (compacted once the editor writes it at the notebook's size), and one holding data
   1.1 reads past. So does a page it could not write. The list goes once it is empty. A list that
-  is there but does not read (a read error, or from 2.1.1 on an entry at its name that is no plain
-  file: a link, to a file or to nothing, or a FIFO) is never written over: the editor tries again at
-  its next save, and compaction leaves it as it is.
+  is there but does not read (a read error) is never written over: the editor tries again at its
+  next save, and compaction leaves it as it is. From 2.1.1 on an entry at its name that is no plain
+  file (a link, to a file or to nothing, a FIFO, a folder) is no list, as nothing there is: no
+  compaction runs for it, and the editor's next write of the list replaces the entry itself, never
+  the file a link names (a folder there stays, and the page is not listed while it does).
 - Opening the notebook stops its compaction first, whether it waits or runs, and so does Grimoire
   leaving (a notebook it closes as it leaves is not compacted then): a page is never left half
   written (each is its old file or its new one), and the list keeps the pages that are not done.
