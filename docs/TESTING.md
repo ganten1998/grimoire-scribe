@@ -2994,8 +2994,8 @@ template), with the floor and a failing write simulated. What only the Scribe ca
 
 Not run on a Scribe yet. The unit tests (`bgwork_previews.rs`: the key, the `.info`, the prune, a preview's time),
 the job tests through a real worker (`rust/tests/test_file_previews.rs`), `test_browser.rs` (only the screen's
-files asked for, a tile that comes back, the tiles drawn together) and the scenarios `files_8_covers` to
-`files_13_covers_import` cover the logic on the Mac, where the simulated panel counts the refreshes
+files asked for, a tile that comes back, the tiles drawn together) and the Covers scenarios `files_8_covers` to
+`files_14_covers_use_as` cover the logic on the Mac, where the simulated panel counts the refreshes
 (`display.presents`); CI's Linux job makes a preview of each kind, and has the filter end a worker, in the real
 sandbox (`test_sandbox_linux.rs`). What only the Scribe can tell (read grimoire.log over SSH; it names no file):
 

@@ -331,15 +331,22 @@ fn covers_asks_for_the_screens_files_only() {
     }
     assert_eq!(probe(&b, "view"), "list");
     assert_eq!(probe(&b, "asked"), "0");
-    // pick mode with Covers set: a list, nothing asked; Files' root neither
-    let mut b = Browser::default();
-    assert!(b.open(PickSpec::import(), card));
-    b.set_view(1);
-    assert!(b.go(sp("documents/Many")));
-    for _ in 0..20 {
-        b.work(2480, now_ms());
+    // pick mode with Covers set: a list, nothing asked (New notebook's picker, and the picture pick a sheet's From a
+    // file... opens, whose rows are the folder's pictures); Files' root neither
+    use grimoire::bgwork_copy::CopyTo;
+    for (spec, rows) in [(PickSpec::import(), "1"), (PickSpec::picture(CopyTo::Templates), "25"), (PickSpec::picture(CopyTo::Photos), "25")] {
+        let mut b = Browser::default();
+        assert!(b.open(spec, card));
+        b.set_view(1);
+        assert!(b.go(sp("documents/Many")));
+        for _ in 0..20 {
+            b.work(2480, now_ms());
+        }
+        assert_eq!(probe(&b, "mode"), "pick");
+        assert_eq!(probe(&b, "rows"), rows);
+        assert_eq!(probe(&b, "asked"), "0");
+        assert_eq!(probe(&b, "tiles"), "", "a picker has no tiles");
     }
-    assert_eq!(probe(&b, "asked"), "0");
     let mut b = Browser::default();
     assert!(b.open(PickSpec::place(), card));
     b.set_view(1);
@@ -699,5 +706,79 @@ fn covers_tiles_under_a_card_and_under_a_press_come_right() {
     assert_eq!(beside(&a), 255, "not left inverted");
     std::env::remove_var("GRIMOIRE_BG_DELAY_MS");
     b.close();
+    canvas_free(&mut a.screen);
+}
+
+// A picture's tile opens the card its row opens, with Use as template and Use as photo (issue #146). A card closed by
+// one of them is closed as by Cancel: the previews that landed under it go out with its rect, when the copy is asked
+// for and when it is refused (here for room), so no tile is left an hourglass on the panel.
+#[test]
+fn covers_a_card_closed_by_its_copy_refreshes_the_tiles_under_it() {
+    use grimoire::bgwork_copy::{copy_seams, CopyTo};
+    use grimoire::browser::BrowserResult;
+    let root = covers_tree("useas", 9);
+    std::fs::create_dir_all(format!("{root}/grimoire/templates")).unwrap();
+    let mut a = covers_app();
+    let at = |b: &Browser, name: &str| b.point(name).unwrap_or_else(|| panic!("{name}"));
+    let tap = |b: &mut Browser, a: &mut App, x: f32, y: f32| {
+        let ev = InEvent { x, y, t_ms: now_ms(), ..Default::default() };
+        b.pointer(a, 0, &ev);
+        b.pointer(a, 2, &ev)
+    };
+    for refused in [false, true] {
+        // (each round makes its previews again, held back so that they land under the card)
+        let _ = std::fs::remove_dir_all(format!("{root}/grimoire/.cache/files"));
+        std::env::set_var("GRIMOIRE_BG_DELAY_MS", "100");
+        let mut b = covers_open();
+        b.open = true;
+        b.list_now();
+        b.draw(&mut a);
+        app_flush(&mut a);
+        assert_eq!(files_probe(&b, "tiles"), "lllllllll");
+        let (x, y) = at(&b, "item.p00.png");
+        tap(&mut b, &mut a, x, y);
+        assert_eq!(files_probe(&b, "card"), "picture");
+        assert_eq!(files_probe(&b, "card.rows"), "Use as template|Use as photo|Cancel");
+        app_flush(&mut a);
+        let real0 = grimoire::util::real_now_ms();
+        let mut t = 10_000u32;
+        while files_probe(&b, "covers") != "ppppppppp" || files_probe(&b, "making") != "0" {
+            bg_poll();
+            t += 5000;
+            b.tick(&mut a, t);
+            assert!(rect_is_empty(a.dirty), "no tile is drawn under a card");
+            assert!(grimoire::util::real_now_ms().wrapping_sub(real0) < 60_000);
+            sleep_ms(5);
+        }
+        std::env::remove_var("GRIMOIRE_BG_DELAY_MS");
+        // Use as template: asked of the copy job, or refused at once with no room
+        copy_seams(refused.then_some(0), None);
+        let card = b.card_rect();
+        let (x, y) = at(&b, "card.template");
+        let said = tap(&mut b, &mut a, x, y);
+        assert_eq!(said, if refused { BrowserResult::None } else { BrowserResult::Copying(CopyTo::Templates) });
+        assert_eq!(files_probe(&b, "card"), "");
+        assert_eq!(files_probe(&b, "tiles"), "ppppppppp");
+        assert!(a.dirty.x <= card.x && a.dirty.y <= card.y, "the card's place is refreshed");
+        for i in 0..9 {
+            let (x, y) = at(&b, &format!("item.p{i:02}.png"));
+            assert!(rect_contains(a.dirty, x as i32, y as i32), "tile {i} is refreshed with the card's close (refused: {refused}): {:?}", a.dirty);
+        }
+        app_flush(&mut a);
+        b.tick(&mut a, t + 10_000);
+        assert!(rect_is_empty(a.dirty) && b.tiles_due(t + 20_000).is_none());
+        // the copy runs out (the one asked for: the refused one queued nothing)
+        assert_eq!(bg_busy(), !refused);
+        while bg_busy() {
+            bg_poll();
+            assert!(grimoire::util::real_now_ms().wrapping_sub(real0) < 60_000, "the copy did not end");
+            sleep_ms(5);
+        }
+        copy_seams(None, None);
+        b.close();
+    }
+    // one copy was made: the one that was not refused
+    let made: Vec<String> = std::fs::read_dir(format!("{root}/grimoire/templates")).unwrap().flatten().map(|e| e.file_name().to_string_lossy().into_owned()).collect();
+    assert_eq!(made, ["p00.png"]);
     canvas_free(&mut a.screen);
 }

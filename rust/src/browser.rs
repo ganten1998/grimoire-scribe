@@ -2395,7 +2395,8 @@ impl Browser {
     /// Use as template, Use as photo (#146): the file card `c` was opened for, checked again, asked of the copy job
     /// into Grimoire's templates or photos (`copy_request`: the walk, the file as listed, its size, the free-space
     /// floor). The card is closed; a refusal is said now (`copy_refusal`: nothing was copied, and no job runs), the
-    /// copy's end by the app's tick when the job ends.
+    /// copy's end by the app's tick when the job ends. The card's rect goes out with the Covers tiles that changed
+    /// while it was open, as when Cancel closes it (`close_card`).
     fn copy_in(&mut self, a: &mut App, c: &Card, to: CopyTo) -> BrowserResult {
         let asked = match (self.storage.as_ref(), c.stat) {
             (Some(st), Some(listed)) => copy_request(st, &c.path, &listed, to),
@@ -2406,7 +2407,7 @@ impl Browser {
                 // (the picture pick ends here: its host closes it; Files stays, the card gone)
                 if !self.pick() {
                     self.draw(a);
-                    app_invalidate(a, c.rect, RefreshMode::Ui);
+                    app_invalidate(a, rect_union(c.rect, self.tiles_stale), RefreshMode::Ui);
                 }
                 BrowserResult::Copying(to)
             }
@@ -2423,7 +2424,7 @@ impl Browser {
                 };
                 qlog!("files: a copy into %s was refused: %s", to.folder(), &why);
                 self.draw(a);
-                app_invalidate(a, c.rect, RefreshMode::Ui);
+                app_invalidate(a, rect_union(c.rect, self.tiles_stale), RefreshMode::Ui);
                 app_toast(a, &copy_refusal(CopyFail::of_request(e), to), 3000);
                 BrowserResult::None
             }

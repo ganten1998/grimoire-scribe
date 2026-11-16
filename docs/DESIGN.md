@@ -2737,7 +2737,8 @@ may cost is held to a few seconds a file, behind every other job.
   it, so no whole-panel flash lands in the middle of a screen that is arriving; the next refresh a tap asks for
   is the Full instead. A screen of previews costs one refresh when they come within 2 s, and one more for every
   2 s they take. Nothing is drawn under an open card: its close (and its opening) refreshes the tiles that
-  changed meanwhile together with the card's rect.
+  changed meanwhile together with the card's rect, whichever row closes it (Cancel, or a picture's Use as
+  template or Use as photo, `copy_in`).
 - **The notice** "Making previews..." (`NoticeKey::Previews`, on the Library's screen that asked) stays while a
   preview the screen asked for is being made, from its first second on, as "Loading..." does; not while the
   screen's jobs only wait behind other work, whose own notice shows.
@@ -2753,10 +2754,12 @@ may cost is held to a few seconds a file, behind every other job.
   preview under the free floor, the queue's order, no worker writing nothing); `test_fontcheck.rs`'s sample and its
   glyph limit; `test_picwork_fallback.rs`'s worker-only pool; `test_browser.rs` (only the screen's files asked for,
   a tile that comes back read from the cache in slices, the tiles that changed drawn together, tiles under a card
-  and under a press); `test_store.rs` (`files_view`); the scenarios `files_8_covers` to `files_13_covers_import`
-  (the view, each way back, a card over arriving previews, the refreshes a screen costs counted from
-  `display.presents`, slow files, the Import place's statuses); and CI's Linux job, a preview of each kind and a
-  filter kill in the real sandbox (`test_sandbox_linux.rs`). docs/TESTING.md has the Scribe's check.
+  closed by Cancel or by its copy, and under a press; the picture pick a list that asks for nothing);
+  `test_store.rs` (`files_view`); the scenarios `files_8_covers` to `files_13_covers_import` (the view, each way
+  back, a card over arriving previews, the refreshes a screen costs counted from `display.presents`, slow files,
+  the Import place's statuses) and `files_14_covers_use_as` (a picture's card closed by Use as template over
+  arriving previews); and CI's Linux job, a preview of each kind and a filter kill in the real sandbox
+  (`test_sandbox_linux.rs`). docs/TESTING.md has the Scribe's check.
 
 ## Shared building blocks (2.1, lane L0)
 
