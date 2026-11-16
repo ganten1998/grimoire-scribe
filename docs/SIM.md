@@ -370,7 +370,8 @@ Taps: `tap library files.back`, `files.prev`, `files.next`, `files.row.N` (the N
 English names: `Import`, `documents`, `Downloads`, `Templates`, `Photos`, `Fonts`, `Kindle_fonts`, `PDF_copies`,
 `Trash`, `All_storage`, `Show_Files_in_Library`), and the open card's `files.card.import`, `files.card.open`,
 `files.card.pictures`, `files.card.notebook`, `files.card.cancel`, and in Files `files.card.rename`,
-`files.card.trash` (Delete) and `files.card.restore` (a trash entry's). The rename keyboard is the Library's: its
+`files.card.trash` (Delete, which asks first), `files.card.delete` (the Delete question's Delete; its Keep it is
+`files.card.cancel`) and `files.card.restore` (a trash entry's). The rename keyboard is the Library's: its
 keys are tapped where they are drawn (as for New folder's), and Esc (keys on) or Back is its Cancel. A Library
 notebook's Delete confirmation is `tap library delete.yes`. In Files: `files.crumb.N` (the Nth part of the
 path bar, from 1: Files, the place, then each folder; the last opens the Go to sheet), `files.sort` and
@@ -384,7 +385,7 @@ path bar, from 1: Files, the place, then each folder; the last opens the Go to s
 | `files.ready` | `1` once the folder is read; `files.rows` the rows in all, `files.page`, `files.pages`, `files.per_page` |
 | `files.hidden` | entries left out of the folder (links, refused folders, paths too long); `files.capped` `1` at 5,000 entries |
 | `files.row.N`, `files.item.NAME` | a row's name as drawn; `files.sub.N` its second line (`files.sub.NAME` the row of that name's: `files.sub.Trash` the root's Trash row, its path and, once the trash's walk is through, its size); `files.kind.N` (`place`, `folder`, `pdf`, `look`, `show` for "Show Files in Library", and in Files `picture`, `font`, `other`, `link`, `trashed`); `files.status.N` (`waiting`, `importing`, `failed`, `imported` or empty); `files.notes.N` (`1` with "has notes"); `files.keyed.N` (`1` once the PDF's book key was read, which an idle tick does for the rows on screen: `files.notes.N` is settled then); `files.pictures.N` (a folder's count, empty before it is counted) |
-| `files.card` | the open card: `pdf`, `folder`, in Files `picture`, `font`, `other`, `trashed` (a trash entry's) or `goto` (the Go to sheet), or empty; `files.card.details` its first line (the Go to sheet's title), `files.card.rows` its rows joined by `|` |
+| `files.card` | the open card: `pdf`, `folder`, in Files `picture`, `font`, `other`, `trashed` (a trash entry's), `delete` (the Delete question a card's Delete opens) or `goto` (the Go to sheet), or empty; `files.card.details` its first line (the Go to sheet's title, the question's `Delete "name"?`), `files.card.rows` its rows joined by `|` |
 | `files.keyboard`, `files.text` | `1` while Files' rename keyboard is up, else `0`; the name it holds (empty when it is not up) |
 | `files.sort`, `files.show` | Files' order (`name`, `newest`, `size`) and what it lists (`usable`, `all`), as settings.ini has them; `files.sorting` `1` while a new order's stats come in |
 | `files.order`, `files.drawn` | the rows' names in order, joined by `|`; the rows' names as last drawn on the screen (a new order shows there once, when ready) |

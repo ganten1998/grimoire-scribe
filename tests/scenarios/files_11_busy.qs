@@ -15,7 +15,7 @@ wait 500
 tap library files.item.2027_Planner.pdf
 wait 300
 expect files.card is pdf
-expect files.card.rows has Rename|Delete (moves it to grimoire/trash)|Cancel
+expect files.card.rows has Rename|Delete|Cancel
 tap library files.card.rename
 wait 200
 expect toast is Importing now.
@@ -27,6 +27,7 @@ wait 300
 tap library files.card.trash
 wait 200
 expect toast is Importing now.
+# (nothing is asked of a held file: no Delete question)
 expect files.card is
 expect storage.names.grimoire/import has 2027 Planner.pdf
 expect storage.names.grimoire/trash is

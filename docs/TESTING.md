@@ -2981,7 +2981,9 @@ Grimoire open and Files' card shown (New > From a file... > Show Files in Librar
    `Probe2.png`. Over SSH, `ls /mnt/us/grimoire/templates` shows `Probe2.png` and no `Probe.png`, and grimoire.log has
    `files: an item of templates was renamed` (no name). Rename it to a template's name already there: "A file with
    that name is already here.", and that file is unchanged (`stat -c '%i %s %Y'` before and after).
-2. **Delete**: its card > Delete (moves it to grimoire/trash): "Moved to grimoire/trash", the row is gone, and
+2. **Delete**: its card > Delete: the question `Delete "Probe2.png"?` comes up as the Library's does for a
+   notebook, and Keep it leaves the file. Delete again, then Delete (moves it to grimoire/trash): "Moved to
+   grimoire/trash", the row is gone, and
    `ls -a /mnt/us/grimoire/trash/files-*` shows `Probe2.png` beside `.grimoire-trash`, whose `from=` line is
    `grimoire/templates/Probe2.png`. The inode is the one it had in `templates` (one rename, as step 2 of #117's
    checks found).

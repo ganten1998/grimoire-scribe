@@ -22,7 +22,7 @@ expect files.order is Grid.png|Lines.png
 tap library files.item.Grid.png
 wait 300
 expect files.card is picture
-expect files.card.rows is Rename|Delete (moves it to grimoire/trash)|Cancel
+expect files.card.rows is Rename|Delete|Cancel
 shot 01-card
 tap library files.card.rename
 wait 300

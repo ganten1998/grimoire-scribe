@@ -38,11 +38,14 @@ const B_CRUMB: i32 = 11;
 const B_SORT: i32 = 12;
 const B_SHOW: i32 = 13;
 const B_GOTO: i32 = 14;
-// Files (2.2, issue #144): a card's Rename and Delete (inside Grimoire's folders for the user's files), and a trash
-// entry's Restore.
-const B_CARD_RENAME: i32 = 15;
-const B_CARD_TRASH: i32 = 16;
-const B_CARD_RESTORE: i32 = 17;
+// Files (2.2, issue #144): a card's Rename and Delete (inside Grimoire's folders for the user's files), a trash
+// entry's Restore, and the Delete question's Delete. They are numbered from a base of their own, away from the ids
+// above: an id added after B_GOTO by another change does not meet them, and they all move by changing B_WRITE.
+const B_WRITE: i32 = 40;
+const B_CARD_RENAME: i32 = B_WRITE;
+const B_CARD_TRASH: i32 = B_WRITE + 1;
+const B_CARD_RESTORE: i32 = B_WRITE + 2;
+const B_DELETE_YES: i32 = B_WRITE + 3;
 
 /// What a task can pick, or Files lists as usable.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -376,6 +379,9 @@ struct Card {
     stat: Option<FsStat>,
     /// Files' Go to sheet (2.2) in place of a row's card
     goto: bool,
+    /// the Delete question in place of the row's card (issue #144): `Delete "name"?`, asked as the Library asks it
+    /// of a notebook, after the card's Delete and before anything is moved
+    confirm: bool,
     rect: Rect,
     hits: HitList,
     /// the pointer went down inside it
@@ -1518,6 +1524,16 @@ impl Browser {
         }
         let Some(r) = self.card_row(card) else { return (String::new(), Vec::new()) };
         let mut rows: Vec<(i32, i32, IconKind, String)> = Vec::new();
+        if card.confirm {
+            // the Delete question, in the Library's own words for a notebook: where it goes, or keep it
+            // TRANSLATORS: in Files too, the answers to the question before a file or folder of Grimoire's own folders
+            // is deleted: into the trash folder on the Kindle's storage (%s), from where Files' Trash can put it back,
+            // or keep it (1470 px at 44 px in bold).
+            rows.push((B_DELETE_YES, 0, IconKind::Trash, cformat!(tr("Delete (moves it to %s)"), self.trash_label().as_str())));
+            rows.push((B_CARD_CANCEL, 0, IconKind::Close, tr("Keep it").to_string()));
+            // TRANSLATORS: in Files too, the title of the question before a file or folder is deleted, with its name.
+            return (cformat!(tr("Delete \"%s\"?"), r.name.as_str()), rows);
+        }
         let details;
         // (Files: no import from Grimoire's PDF copies or trash, as the picker never offers them)
         let importable = self.pick() || self.storage.as_ref().is_some_and(|st| st.zone(&r.path, true) != FsZone::Refused);
@@ -1566,9 +1582,10 @@ impl Browser {
         // inside Grimoire's folders for the user's files (2.2, issue #144): Rename, and Delete into the trash
         if self.writable(r) {
             rows.push((B_CARD_RENAME, 0, IconKind::Rename, tr("Rename").to_string()));
-            // TRANSLATORS: a card's row in Files, for a file or folder of Grimoire's own folders: into the trash folder
-            // on the Kindle's storage (%s), from where Files' Trash can put it back (a row of about 800 px at 44 px).
-            rows.push((B_CARD_TRASH, 0, IconKind::Trash, cformat!(tr("Delete (moves it to %s)"), self.trash_label().as_str())));
+            // (it asks first, as the Library's Delete does: `Delete "name"?`, above)
+            // TRANSLATORS: in Files too, a card's row for a file or folder of Grimoire's own folders: it asks, then
+            // moves it to the trash (a row of about 800 px at 44 px).
+            rows.push((B_CARD_TRASH, 0, IconKind::Trash, tr("Delete").to_string()));
         }
         rows.push((B_CARD_CANCEL, 0, IconKind::Close, tr("Cancel").to_string()));
         (details, rows)
@@ -1713,8 +1730,37 @@ impl Browser {
         st.rename(&rn.path, &rn.stat, new).map_err(|e| refusal(e, Act::Rename, &old, new))
     }
 
-    /// Delete on the open card: the item checked again, then into the trash with its record (fsview's trash, which
-    /// checks the item and the imports again). The toast: where it went.
+    /// Delete on the open card: the item checked again and not held; then the card asks, as the Library asks before a
+    /// notebook goes (`Delete "name"?`, with the Library's two answers). Nothing is moved until its Delete is tapped
+    /// (`trash_card`). Err: what the toast says, and what follows.
+    fn delete_ask(&mut self) -> Result<(), (String, Then)> {
+        let (path, _) = self.card_item()?;
+        let st = self.storage.as_ref().ok_or((tr("Couldn't move to trash.").to_string(), Then::Nothing))?;
+        if st.busy(&path) {
+            return Err((tr("Importing now.").to_string(), Then::Nothing));
+        }
+        if let Some(c) = self.card.as_mut() {
+            c.confirm = true;
+        }
+        Ok(())
+    }
+
+    /// The Delete question's title for a sheet whose title has `w` px: `Delete "name"?`, the name cut with "..."
+    /// until the whole fits in either face a sheet's title is drawn in (a file's name can be 255 bytes).
+    fn delete_title(name: &str, w: i32) -> String {
+        let title = |n: &str| cformat!(tr("Delete \"%s\"?"), n);
+        let wide = |t: &str| font_measure(FontFace::Title, ui_title_size(), t).max(font_measure(FontFace::Bold, ui_title_size(), t));
+        let mut t = title(name);
+        let mut n = name.chars().count();
+        while n > 1 && wide(&t) > w {
+            n -= 1;
+            t = title(&format!("{}...", name.chars().take(n).collect::<String>()));
+        }
+        t
+    }
+
+    /// The Delete question's Delete: the item checked again, then into the trash with its record (fsview's trash,
+    /// which checks the item and the imports again). The toast: where it went.
     fn trash_card(&mut self) -> Result<String, (String, Then)> {
         let (path, stat) = self.card_item()?;
         let st = self.storage.as_ref().ok_or((tr("Couldn't move to trash.").to_string(), Then::Nothing))?;
@@ -2109,6 +2155,25 @@ impl Browser {
         }
         let (details, mut lines) = self.card_lines(&card);
         let (aw, ah) = (a.w, a.h);
+        if card.confirm {
+            // the Delete question, drawn as the Library draws it for a notebook: its sheet, its title, its two rows
+            let (rh, gap) = (u(140.0), u(20.0));
+            let rect = crate::library::sheet_rect(aw, ah, u(120.0) + u(72.0) + lines.len() as i32 * (rh + gap));
+            let name = self.card_row(&card).map_or(String::new(), |r| r.name.clone());
+            let c = &mut a.screen;
+            let inner = ui_sheet(c, rect, &Self::delete_title(&name, rect.w - u(160.0)));
+            let mut hits = HitList::default();
+            for (i, (id, arg, icon, label)) in lines.iter().enumerate() {
+                let r = Rect::new(inner.x, inner.y + i as i32 * (rh + gap), inner.w, rh);
+                ui_frame(c, r, u(16.0), 255, true, 0);
+                ui_frame(c, r, u(16.0), 0, false, if *id == B_DELETE_YES { u(6.0) } else { u(3.0) });
+                ui_icon(c, *icon, Rect::new(r.x + u(20.0), r.y + u(15.0), rh - u(30.0), rh - u(30.0)), 0);
+                font_draw_left(c, FontFace::Bold, ui_text_size(), Rect::new(r.x + rh + u(10.0), r.y, r.w - rh - u(30.0), r.h), label, 0);
+                hits_add(&mut hits, r, *id, *arg);
+            }
+            self.card = Some(Card { rect, hits, ..card });
+            return;
+        }
         let cw = (aw - 2 * u(40.0)).min(u(980.0));
         let rh = u(130.0);
         let gap = u(12.0);
@@ -2412,7 +2477,15 @@ impl Browser {
                 }
                 BrowserResult::None
             }
+            // Delete asks first: the card becomes the question, and only its Delete moves the item
             B_CARD_TRASH => {
+                match self.delete_ask() {
+                    Ok(()) => self.redraw(a, RefreshMode::Ui),
+                    Err((msg, then)) => self.refused(a, &msg, then),
+                }
+                BrowserResult::None
+            }
+            B_DELETE_YES => {
                 match self.trash_card() {
                     Ok(msg) => {
                         self.relist(now_ms());
@@ -2666,6 +2739,7 @@ impl Browser {
             "card" => out.push_str(&match &self.card {
                 None => String::new(),
                 Some(c) if c.goto => "goto".to_string(),
+                Some(c) if c.confirm && self.card_row(c).is_some() => "delete".to_string(),
                 Some(c) => match self.card_row(c).map(|r| r.kind) {
                     None => String::new(),
                     Some(RowKind::Pdf) => "pdf".to_string(),
@@ -2734,7 +2808,8 @@ impl Browser {
     }
 
     /// The point a runner tap on a control named so lands on (docs/SIM.md): back, prev, next, row.N, more.N,
-    /// item.NAME, and the card's import, open, pictures, notebook, rename, trash, restore and cancel.
+    /// item.NAME, and the card's import, open, pictures, notebook, rename, trash, restore and cancel; the Delete
+    /// question's delete (its Keep it is cancel).
     pub fn point(&self, name: &str) -> Option<(f32, f32)> {
         let centre = |h: &Hit| ((h.r.x + h.r.w / 2) as f32, (h.r.y + h.r.h / 2) as f32);
         if let Some(c) = &self.card {
@@ -2746,6 +2821,7 @@ impl Browser {
                 "card.cancel" => B_CARD_CANCEL,
                 "card.rename" => B_CARD_RENAME,
                 "card.trash" => B_CARD_TRASH,
+                "card.delete" => B_DELETE_YES,
                 "card.restore" => B_CARD_RESTORE,
                 _ => 0,
             };
@@ -3476,8 +3552,8 @@ mod tests {
         assert_eq!(card_named(&mut b, "import").1, ["Open", "Cancel"]);
         // a template's card, and a folder's in templates
         assert!(b.go(sp("grimoire/templates")));
-        assert_eq!(card_named(&mut b, "Sub").1, ["Open", "Rename", "Delete (moves it to grimoire/trash)", "Cancel"]);
-        assert_eq!(card_named(&mut b, "Grid.png").1, ["Rename", "Delete (moves it to grimoire/trash)", "Cancel"]);
+        assert_eq!(card_named(&mut b, "Sub").1, ["Open", "Rename", "Delete", "Cancel"]);
+        assert_eq!(card_named(&mut b, "Grid.png").1, ["Rename", "Delete", "Cancel"]);
         assert_eq!(b.rename_begin(), Ok(b"Grid.png".to_vec()));
         for (bad, says) in [
             (&b"Gr:id.png"[..], "Name can't contain :"),
@@ -3510,6 +3586,57 @@ mod tests {
         assert!(p.open(PickSpec::import(), FilesPrefs { card: true, ..Default::default() }));
         assert!(p.go(sp("grimoire/import")));
         assert_eq!(card_named(&mut p, "Book.pdf").1, ["Import as notebook", "Cancel"]);
+    }
+
+    // Delete asks first (issue #144): the card's Delete moves nothing; the card becomes the Library's question for a
+    // notebook (`Delete "name"?`, "Delete (moves it to grimoire/trash)", "Keep it"), drawn as the Library's sheet, and
+    // only its Delete moves the item. Keep it, a tap outside and Back leave the file where it was. A file changed
+    // since its card opened is refused before anything is asked.
+    #[test]
+    fn delete_asks_first_and_only_its_delete_moves_the_item() {
+        let (base, _g) = storage("deleteasks");
+        let ph = format!("{base}/grimoire/photos");
+        std::fs::create_dir_all(&ph).unwrap();
+        std::fs::write(format!("{ph}/beach.jpg"), vec![b'b'; 3000]).unwrap();
+        std::fs::write(format!("{ph}/hill.jpg"), vec![b'h'; 100]).unwrap();
+        i18n_set("en");
+        let mut a = screen_app();
+        let mut b = Browser::default();
+        assert!(b.open(PickSpec::place(), FilesPrefs { card: true, ..Default::default() }));
+        assert!(b.go(sp("grimoire/photos")));
+        assert_eq!(card_named(&mut b, "beach.jpg").1, ["Rename", "Delete", "Cancel"]);
+        b.draw(&mut a);
+        assert!(b.point("card.trash").is_some() && b.point("card.delete").is_none());
+        let card_rect = b.card_rect();
+        assert_eq!(b.delete_ask(), Ok(()));
+        assert!(std::path::Path::new(&format!("{ph}/beach.jpg")).exists(), "asked: nothing moved yet");
+        let c = b.card.clone().expect("the question");
+        let (title, rows) = b.card_lines(&c);
+        assert_eq!(title, "Delete \"beach.jpg\"?");
+        assert_eq!(rows.iter().map(|r| r.3.as_str()).collect::<Vec<_>>(), ["Delete (moves it to grimoire/trash)", "Keep it"]);
+        let mut out = String::new();
+        assert!(b.probe(2480, "card", &mut out) && out == "delete", "{out}");
+        b.draw(&mut a);
+        assert!(b.point("card.delete").is_some() && b.point("card.cancel").is_some() && b.point("card.trash").is_none());
+        assert!(b.card_rect().w > card_rect.w, "a sheet as the Library's, wider than a row's card");
+        // Keep it (the card closed): the photo stays
+        b.card = None;
+        assert!(std::path::Path::new(&format!("{ph}/beach.jpg")).exists());
+        // asked again, and its Delete: into the trash
+        b.open_card(row_of(&b, "beach.jpg"));
+        assert_eq!(b.delete_ask(), Ok(()));
+        assert_eq!(b.trash_card(), Ok("Moved to grimoire/trash".to_string()));
+        assert!(!std::path::Path::new(&format!("{ph}/beach.jpg")).exists());
+        // a file changed since its card opened: refused before the question
+        b.relist(now_ms());
+        b.open_card(row_of(&b, "hill.jpg"));
+        std::fs::write(format!("{ph}/hill.jpg"), b"another hill, longer").unwrap();
+        assert_eq!(b.delete_ask(), Err(("File changed. Try again.".to_string(), Then::Relist)));
+        assert!(b.card.as_ref().is_some_and(|c| !c.confirm));
+        // a name too long for a sheet's title is cut, the question mark kept
+        let long = Browser::delete_title(&"m".repeat(200), 1500);
+        assert!(long.starts_with("Delete \"mmm") && long.ends_with("...\"?") && font_measure(FontFace::Bold, ui_title_size(), &long) <= 1500, "{long}");
+        canvas_free(&mut a.screen);
     }
 
     // Delete on a photo's card, then Restore on its entry in the Trash place (issue #144): the photo goes to the trash

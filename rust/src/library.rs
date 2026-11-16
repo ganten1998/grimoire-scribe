@@ -1057,7 +1057,8 @@ fn draw_base(a: &mut App) {
     );
 }
 
-fn sheet_rect(aw: i32, ah: i32, mut h: i32) -> Rect {
+/// Where a sheet `h` px tall goes on a screen (Files' Delete question is drawn in the same place: browser.rs).
+pub(crate) fn sheet_rect(aw: i32, ah: i32, mut h: i32) -> Rect {
     let m = ui_px(70.0);
     if h > ah - 2 * ui_px(40.0) {
         h = ah - 2 * ui_px(40.0); // landscape: keep it on screen

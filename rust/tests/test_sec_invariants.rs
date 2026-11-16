@@ -478,6 +478,9 @@ fn files_rename_delete_and_restore_are_told_as_they_are() {
     gone(&mut fails, FSVIEW, "browser.md D4");
     // the Trash place has Restore: it is not read only
     gone(&mut fails, DESIGN, "lists `grimoire/trash` read only, through");
+    // Delete asks first (the Library's question): it is not one tap
+    gone(&mut fails, DESIGN, "**Delete** is one tap on the card");
+    gone(&mut fails, TESTING, "its card > Delete (moves it to grimoire/trash): \"Moved to grimoire/trash\"");
     none_failed(&fails, "Files' rename, delete and restore");
 }
 

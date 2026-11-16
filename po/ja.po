@@ -5,7 +5,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: Grimoire 2.1.0-beta.1\n"
 "Report-Msgid-Bugs-To: https://github.com/ganten1998/grimoire-scribe/issues\n"
-"POT-Creation-Date: 2026-11-16 09:42-0600\n"
+"POT-Creation-Date: 2026-11-16 10:02-0600\n"
 "PO-Revision-Date: 2026-11-10 00:00+0000\n"
 "Last-Translator: nebuff\n"
 "Language-Team: Japanese\n"
@@ -1308,6 +1308,25 @@ msgstr "キャンセル"
 msgid "Go to"
 msgstr "ページに移動"
 
+#. TRANSLATORS: in Files too, the answers to the question before a file or folder of Grimoire's own folders
+#. is deleted: into the trash folder on the Kindle's storage (%s), from where Files' Trash can put it back,
+#. or keep it (1470 px at 44 px in bold).
+#: rust/src/browser.rs rust/src/library.rs
+#, c-format
+msgid "Delete (moves it to %s)"
+msgstr "削除（%sに移動）"
+
+#: rust/src/browser.rs rust/src/library.rs
+msgid "Keep it"
+msgstr "残す"
+
+#. TRANSLATORS: in Files too, the title of the question before a file or folder is deleted, with its name.
+#. TRANSLATORS: the title of the question before a notebook is deleted, with its name.
+#: rust/src/browser.rs rust/src/library.rs
+#, c-format
+msgid "Delete \"%s\"?"
+msgstr "「%s」を削除しますか?"
+
 #. TRANSLATORS: a PDF's card in the file picker: a notebook already holds this book, and this opens it
 #. (a row of about 800 px at 44 px).
 #: rust/src/browser.rs
@@ -1345,12 +1364,11 @@ msgstr[0] "%d枚の画像をノートとしてインポート"
 msgid "Rename"
 msgstr "名前を変更"
 
-#. TRANSLATORS: a card's row in Files, for a file or folder of Grimoire's own folders: into the trash folder
-#. on the Kindle's storage (%s), from where Files' Trash can put it back (a row of about 800 px at 44 px).
-#: rust/src/browser.rs rust/src/library.rs
-#, c-format
-msgid "Delete (moves it to %s)"
-msgstr "削除（%sに移動）"
+#. TRANSLATORS: in Files too, a card's row for a file or folder of Grimoire's own folders: it asks, then
+#. moves it to the trash (a row of about 800 px at 44 px).
+#: rust/src/browser.rs rust/src/library.rs rust/src/pagesview.rs
+msgid "Delete"
+msgstr "削除"
 
 #: rust/src/browser.rs rust/src/httpd.rs
 msgid "Picture"
@@ -4019,10 +4037,6 @@ msgstr "今すぐ PDF を %s に保存します"
 msgid "Move to folder"
 msgstr "フォルダに移動"
 
-#: rust/src/library.rs rust/src/pagesview.rs
-msgid "Delete"
-msgstr "削除"
-
 #. TRANSLATORS: the Files card's menu in the Library (1470 px at 44 px in bold): the card goes; the file
 #. picker's "Show Files in Library" puts it back.
 #: rust/src/library.rs
@@ -4097,16 +4111,6 @@ msgstr "いいえ"
 #: rust/src/library.rs
 msgid "Exit Grimoire?"
 msgstr "Grimoireを終了しますか？"
-
-#. TRANSLATORS: the title of the question before a notebook is deleted, with its name.
-#: rust/src/library.rs
-#, c-format
-msgid "Delete \"%s\"?"
-msgstr "「%s」を削除しますか?"
-
-#: rust/src/library.rs
-msgid "Keep it"
-msgstr "残す"
 
 #. TRANSLATORS: the title of the list of what the pen's button does while writing (Settings > Pen).
 #: rust/src/library.rs

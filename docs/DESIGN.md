@@ -2574,7 +2574,7 @@ hosted the same way (`LibraryState.files`, `files_open_place`), and closes back 
 The screens on the storage writes above: Files' cards (`browser.rs`) rename a file or folder and move it to the
 trash, and the Trash place puts an entry back. Pick mode (New notebook's From a file...) offers none of it.
 
-- **Where.** A card offers Rename and "Delete (moves it to grimoire/trash)" only on a file or folder inside
+- **Where.** A card offers Rename and Delete only on a file or folder inside
   Grimoire's folders for the user's files: what `FsStorage::can_write` allows (the allow-list, `write_zone`: what is
   inside `import`, `templates`, `photos` and `fonts`, never the folder itself nor `import/done` itself). Every other
   place stays read only, and so do PDF copies and the trash itself.
@@ -2599,8 +2599,12 @@ trash, and the Trash place puts an entry back. Pick mode (New notebook's From a 
   here." and keeps the keyboard up (no " 2" is offered). An empty name renames nothing, as the Library's keyboards
   do. A name the keyboard cannot hold whole (96 bytes) is not offered to it ("Couldn't rename file."). Renamed: the
   folder is read again, with its rows' page kept.
-- **Delete** is one tap on the card (the card is the confirmation, as for an import, and Restore undoes it):
-  `FsStorage::trash`, then "Moved to grimoire/trash" and the folder read again.
+- **Delete** asks first, as the Library asks before a notebook goes: the card's Delete (after the check, and not
+  for a held item) turns the card into the Library's question, drawn as its sheet in the same place (`sheet_rect`,
+  `ui_sheet`): `Delete "name"?` (a long name cut with "..." so the question mark stays), "Delete (moves it to
+  grimoire/trash)" and "Keep it". Keep it, a tap outside the sheet, Esc and Back move nothing. Only its Delete
+  moves the item: the check again, `FsStorage::trash`, then "Moved to grimoire/trash" and the folder read again.
+  Restore undoes it.
 - **The Trash place** lists the trash as before (fsview's trash listing, newest first by the time in each name),
   each row with its size and date; the root's Trash row has the trash's size beside its path. Past 5,000 entries
   (every deleted page is one, and the trash only grows) its listing, `FsListing::start_trash`, reads on to the
@@ -2627,15 +2631,16 @@ trash, and the Trash place puts an entry back. Pick mode (New notebook's From a 
 - **Words** (Spanish beside each; Japanese is nebuff's): Restore, Importing now., Name can't contain %s, Name can't
   start or end with a space., Name can't start or end with a dot., Keep the extension %s., A file with that name is
   already here., Couldn't rename file., Couldn't move to trash., Couldn't restore., Couldn't restore. Name taken.,
-  Couldn't restore. Folder gone., Restored to %s. Reused: Rename, Delete (moves it to %s), Moved to %s, File
-  changed. Try again., Path too long., the keyboard's Name and Folder, Notebooks.
+  Couldn't restore. Folder gone., Restored to %s. Reused: Rename, Delete, Delete "%s"?, Delete (moves it to %s),
+  Keep it, Moved to %s, File changed. Try again., Path too long., the keyboard's Name and Folder, Notebooks.
 - **Logs** (no names): the storage writes' own lines, and `files: the trash holds N entries, N files, N KB (read in T
   ms)` once a walk of the trash is through (docs/KINDLE.md).
 - **Tests**: `browser.rs`'s unit tests (a folder card's check by identity, each refusal's words, Rename's rules and
   places, Delete then Restore, a notebook the Library deleted coming back as " 2", a trash past the cap keeping
   its newest), `test_fsview_writes.rs`'s trash sizes (slices, depth, links, the record left out), its listing past
   the cap and a picture a page still waits for, and the scenarios `files_8_rename` (every rule, a name taken, a
-  good name, an empty one, Cancel), `files_9_trash` (Delete, the sizes, Restore, a page with no card),
+  good name, an empty one, Cancel), `files_9_trash` (Delete's question, Keep it, a tap outside it, its Delete, the sizes, Restore, a page with no
+  card),
   `files_10_restore_notebook` (the Library's Delete, Restore, " 2"), `files_11_busy` (an importing PDF),
   `files_12_swap` (a folder swapped under its card, through the runner's `storage move`) and `files_13_es_fit`,
   `files_14_es_fit_classic` (Spanish, each text checked for fit, upright and sideways).

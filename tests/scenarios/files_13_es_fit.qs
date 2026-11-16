@@ -7,7 +7,7 @@
 # env: GRIMOIRE_CHECK_FIT=1
 # Files' rename, delete and restore (2.2, issue #144) in Spanish, every text checked for fit (files_14_es_fit_classic
 # runs the same in Classic): a template's card with Renombrar and Borrar, the rename keyboard and a refusal of each
-# kind's words over it, the Trash place's rows with their sizes, an entry's card with Restaurar, and the toasts of
+# kind's words over it, the Delete question, the Trash place's rows with their sizes, an entry's card with Restaurar, and the toasts of
 # each act; upright, then the card and the keyboard sideways (Esc, with the keys on, its Cancel). The taps are
 # files_8_rename's and files_9_trash's.
 # rust-only
@@ -20,7 +20,7 @@ tap library files.item.Templates
 wait 300
 tap library files.item.Grid.png
 wait 300
-expect files.card.rows is Renombrar|Borrar (lo mueve a grimoire/trash)|Cancelar
+expect files.card.rows is Renombrar|Borrar|Cancelar
 shot 02-card
 tap library files.card.rename
 wait 300
@@ -79,6 +79,11 @@ tap library files.item.Grid.png
 wait 300
 tap library files.card.trash
 wait 300
+expect files.card.details is ¿Borrar «Grid.png»?
+expect files.card.rows is Borrar (lo mueve a grimoire/trash)|Conservarlo
+shot 08-asked
+tap library files.card.delete
+wait 300
 expect toast is Movido a grimoire/trash
 shot 08-moved
 tap library files.crumb.1
@@ -115,6 +120,15 @@ tap library files.item.Lines.png
 wait 300
 expect files.card is picture
 shot 13-card-sideways
+tap library files.card.trash
+wait 300
+expect files.card is delete
+shot 13-asked-sideways
+tap library files.card.cancel
+wait 300
+expect files.card is
+tap library files.item.Lines.png
+wait 300
 tap library files.card.rename
 wait 300
 expect files.keyboard is 1
