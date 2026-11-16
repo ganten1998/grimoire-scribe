@@ -1162,9 +1162,13 @@ storage or with a path it cannot send, and for a PDF that needs a password (Grim
 which was given it, draws the pages). It asks a MuPDF document of its own whether a PDF needs a password, never
 the reader's. Annotate this page stays version 1 for every format.
 
-Grimoire reads a version 2 request strictly: a second `file=` line, a path that is not absolute, is not UTF-8 or
-holds a carriage return, or a `picture.<n>` line, and it does not read. At the start the path goes through the
-storage walk as a file picked in Files does (inside the storage root; each folder opened without following a link,
+Grimoire reads a version 2 request strictly. Its version line says exactly `version=2` (a request with that line
+is a version 2 request wherever the line stands; `02` is no version it knows), and each of `version`, `book`,
+`file`, `title`, `pages`, `page`, `kind` and `time` comes once at most. A key said twice, a path that is not
+absolute, is not UTF-8, is 1024 bytes or longer or holds a control character (a byte under 0x20, or 0x7F), or a
+`picture.<n>` line, and it does not read. A key it does not know is passed over, as in version 1.
+
+At the start the path goes through the storage walk as a file picked in Files does (inside the storage root; each folder opened without following a link,
 on the root's device, none of Grimoire's own folders and no hidden or system one; a plain file, never waited on),
 the book key is read from the file, and the PDF goes to the PDF import as a pick (Imports: PDFs, below): read in
 place (one that lies in `import/` itself is filed in `done/`, as any pick there is), named after the request's

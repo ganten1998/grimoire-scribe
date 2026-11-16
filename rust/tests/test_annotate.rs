@@ -966,6 +966,23 @@ fn book_request_parsing() {
         "version=2\nbook=ab12\nfile=/mnt/us/a.pdf\nfile=/mnt/us/b.pdf\npages=3\npage=1\n", // two
         "version=2\nbook=ab12\nfile=/mnt/us/a.pdf\npages=3\npage=1\npicture.1=page-1.png\n", // a picture
         "version=2\nbook=ab12\nfile=/mnt/us/a\rb.pdf\npages=3\npage=1\n",                  // a carriage return in it
+        "version=2\nbook=ab12\nfile=/mnt/us/a\tb.pdf\npages=3\npage=1\n",                  // a tab in it
+        "version=2\nbook=ab12\nfile=/mnt/us/a\x1bb.pdf\npages=3\npage=1\n",               // an escape
+        "version=2\nbook=ab12\nfile=/mnt/us/a\x7fb.pdf\npages=3\npage=1\n",               // a delete
+        // each key once: a second line of any of them, and the version said twice in either order
+        "version=2\nversion=1\nbook=ab12\nfile=/mnt/us/a.pdf\npages=3\npage=1\n",
+        "version=1\nversion=2\nbook=ab12\nfile=/mnt/us/a.pdf\npages=3\npage=1\n",
+        "version=2\nversion=2\nbook=ab12\nfile=/mnt/us/a.pdf\npages=3\npage=1\n",
+        "version=2\nbook=ab12\nbook=cd34\nfile=/mnt/us/a.pdf\npages=3\npage=1\n",
+        "version=2\nbook=ab12\nfile=/mnt/us/a.pdf\ntitle=A\ntitle=B\npages=3\npage=1\n",
+        "version=2\nbook=ab12\nfile=/mnt/us/a.pdf\npages=3\npages=4\npage=1\n",
+        "version=2\nbook=ab12\nfile=/mnt/us/a.pdf\npages=3\npage=1\npage=2\n",
+        "version=2\nbook=ab12\nfile=/mnt/us/a.pdf\npages=3\npage=1\nkind=paged\nkind=paged\n",
+        "version=2\nbook=ab12\nfile=/mnt/us/a.pdf\npages=3\npage=1\ntime=5\ntime=6\n",
+        // the version is said by "2" alone
+        "version=02\nbook=ab12\nfile=/mnt/us/a.pdf\npages=3\npage=1\n",
+        "version=2 \nbook=ab12\nfile=/mnt/us/a.pdf\npages=3\npage=1\n",
+        "version=+2\nbook=ab12\nfile=/mnt/us/a.pdf\npages=3\npage=1\n",
         "version=2\nfile=/mnt/us/a.pdf\npages=3\npage=1\n",                                // no book
         "version=2\nbook=ab12\nfile=/mnt/us/a.pdf\npage=1\n",                              // no page count
         "version=2\nbook=ab12\nfile=/mnt/us/a.pdf\npages=3\npage=4\n",                     // the page past the last
@@ -974,6 +991,10 @@ fn book_request_parsing() {
     .iter()
     .map(|s| s.as_bytes().to_vec())
     .collect();
+    // Version 1 reads a key said twice as it always did (the last line counts), and a version with a leading zero.
+    check!(book_parse(b"version=01\nbook=ab12\nbook=cd34\npages=3\npages=4\npage=1\npage=4\n", &mut r, &mut why) == 0);
+    check!(r.version == 1 && r.book == "cd34" && r.pages == 4 && r.page == 4);
+    book_request_free(&mut r);
     // a path too long to be one, and one that is not UTF-8
     bad2.push(format!("version=2\nbook=ab12\nfile=/{}\npages=3\npage=1\n", "a".repeat(BOOK_FILE_MAX)).into_bytes());
     bad2.push(b"version=2\nbook=ab12\nfile=/mnt/us/caf\xe9.pdf\npages=3\npage=1\n".to_vec());

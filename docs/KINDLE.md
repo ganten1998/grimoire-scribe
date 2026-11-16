@@ -196,8 +196,8 @@ file name, title or key):
   book's notebook opens as it is` (a fill whose notebook changed meanwhile) and `book: the PDF import ended without a
   notebook; nothing opened`.
 - `book: the request does not read (<why>); nothing opened`, for a version 2 request: `no file named`, `a file named
-  twice`, `its file's path is not absolute`, `... is too long`, `... holds a line break`, `... is not UTF-8`, `a
-  version 2 request names a picture`.
+  twice`, `a version 2 request names a key twice`, `its file's path is not absolute`, `... is too long`, `... holds a
+  control character`, `... is not UTF-8`, `a version 2 request names a picture`.
 
 **How it gets into KOReader.** A fresh installation leaves KOReader untouched. Use Library >
 Settings > KOReader > Install / update Grimoire plugin, or manually copy the ZIP's

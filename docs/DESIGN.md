@@ -2282,8 +2282,9 @@ of a notebook of its own.
 KOReader hands a PDF over by its path (2.2, issue #142): to a launcher whose Capabilities line says `pdf`, the
 plugin's Open this book writes `import/.book/request.ini` version 2 naming the PDF it has open (`file=`) and draws
 nothing; the launcher's line is what keeps a newer plugin from sending one to an older Grimoire, whose `book_parse`
-refuses any version but 1. Grimoire never trusts the path: `book_parse` takes one `file=` line whole, absolute,
-UTF-8 and with no carriage return, and the book job's start takes it through the storage walk as the picker does
+refuses any version but 1. Grimoire never trusts the request: `book_parse` reads version 2 strictly (the version
+said by `version=2` alone, every key once at most, one `file=` line taken whole, absolute, UTF-8 and with no
+control character), and the book job's start takes it through the storage walk as the picker does
 (`FsStorage::open_file` with the pick's zones: inside the storage root, no link followed, the root's device, none of
 Grimoire's own folders, a plain file opened without waiting), reads the book key from the file, and gives the PDF to
 `pdf_import_queue` as a pick. From there it is the import's: the same job, sandboxed worker, key, file record and

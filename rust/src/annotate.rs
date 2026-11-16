@@ -1314,9 +1314,12 @@ pub fn book_request_free(r: &mut BookRequest) {
 }
 
 /// Reads a request's text. 0, or -1 and why (never the title or the file). book_request_free frees it either way.
-/// Version 1 names the pictures KOReader drew; version 2 (2.2) names a PDF by its absolute path (`file=`, once, its
-/// line read whole and never cut, no carriage return in it, UTF-8) and no picture. Where the path leads is checked
-/// at the start, through the storage walk (book_start), never here.
+/// Version 1 names the pictures KOReader drew, and is read as it always was (the last line of a key counts, a
+/// number may have leading zeros). Version 2 (2.2) names a PDF by its absolute path and no picture, and is read
+/// strictly: its version line says exactly `2`, each of its keys (`version`, `book`, `file`, `title`, `pages`,
+/// `page`, `kind`, `time`) comes once at most, and its `file=` line, read whole and never cut, is UTF-8 with no
+/// control character in it. A request with a `version=2` line is a version 2 request wherever that line stands.
+/// Where the path leads is checked at the start, through the storage walk (book_start), never here.
 pub fn book_parse(text: &[u8], r: &mut BookRequest, why: &mut &'static str) -> i32 {
     *r = BookRequest::default();
     r.version = 1;
@@ -1325,6 +1328,10 @@ pub fn book_parse(text: &[u8], r: &mut BookRequest, why: &mut &'static str) -> i
     let (mut page, mut pages): (i64, i64) = (-1, -1);
     let mut files = 0;
     let mut file_bad: Option<&'static str> = None;
+    // (version 2: a `version=2` line seen, and a key of the request seen a second time)
+    const KEYS: [&[u8]; 7] = [b"version", b"book", b"title", b"page", b"pages", b"kind", b"time"];
+    let mut seen = [0u32; KEYS.len()];
+    let mut two = false;
     let mut p = 0;
     while p < text.len() {
         let (n, step) = next_line(&text[p..]);
@@ -1345,8 +1352,9 @@ pub fn book_parse(text: &[u8], r: &mut BookRequest, why: &mut &'static str) -> i
             files += 1;
             if v.len() >= BOOK_FILE_MAX {
                 file_bad = Some("its file's path is too long");
-            } else if v.contains(&b'\r') {
-                file_bad = Some("its file's path holds a line break");
+            } else if v.iter().any(|&c| c < 0x20 || c == 0x7f) {
+                // (a carriage return, a tab, an escape: no path the plugin sends holds one, docs/FORMAT.md)
+                file_bad = Some("its file's path holds a control character");
             } else if let Ok(s) = std::str::from_utf8(v) {
                 r.file = s.to_string();
             } else {
@@ -1359,7 +1367,11 @@ pub fn book_parse(text: &[u8], r: &mut BookRequest, why: &mut &'static str) -> i
             continue;
         }
         let (key, v) = (&line[..eq], &line[eq + 1..]);
+        if let Some(i) = KEYS.iter().position(|k| *k == key) {
+            seen[i] += 1;
+        }
         if key == b"version" {
+            two |= v == b"2";
             r.version = number(v, 0, 1000000) as i32;
         } else if key == b"book" {
             if !book_key_ok(v) {
@@ -1396,7 +1408,10 @@ pub fn book_parse(text: &[u8], r: &mut BookRequest, why: &mut &'static str) -> i
             r.sent.push(b as i32);
         } // (a key this version does not know: a newer plugin's, left to it)
     }
-    if r.version != 1 && r.version != 2 {
+    if two {
+        r.version = 2;
+    } else if r.version != 1 {
+        // (also a 2 written another way, "02": version 2 is said by `version=2` alone)
         *why = "a version of request this Grimoire does not know (from a newer plugin)";
         return -1;
     }
@@ -1404,6 +1419,10 @@ pub fn book_parse(text: &[u8], r: &mut BookRequest, why: &mut &'static str) -> i
         // (a version 1 request's file= line is a key it does not know, as before 2.2)
         r.file.clear();
     } else {
+        if seen.iter().any(|&n| n > 1) {
+            *why = "a version 2 request names a key twice";
+            return -1;
+        }
         if let Some(bad) = file_bad.filter(|_| files == 1) {
             *why = bad;
             return -1;
