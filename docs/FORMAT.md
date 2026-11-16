@@ -57,7 +57,7 @@ root/fonts/                             font files the owner copies in, for Clas
 root/.font-inuse                        the crash guard of a font of the owner's own (2.1.0-beta.2; Your own fonts)
 root/import/<Name>/                     page pictures to become a notebook at the next start (Imports)
 root/import/.annotate/                  a page KOReader sends to annotate, and its request (Annotated pages)
-root/trash/                             deleted notebooks and pages, moved here, never unlinked
+root/trash/                             deleted notebooks and pages, moved here, never unlinked; from 2.2 also files and folders of import/, templates/, photos/ and fonts/, each with its record (The trash)
 root/PDFs/                              the PDF mirror (an export, not data)
 root/.cache/pdf/<id>/                   the notebook PDF's page streams, disposable (2.1.0-beta.2)
 ```
@@ -67,19 +67,23 @@ root/.cache/pdf/<id>/                   the notebook PDF's page streams, disposa
 `notebook.ini`, not the numbers. Every file is written atomically (`<file>.tmp`, fsync, rename).
 
 From 2.1.1 on Grimoire reads these files only when the entry at the name is a plain file: `settings.ini`,
-`folders.ini`, `sleep.pgm`, a notebook's `notebook.ini`, page files, `thumb.pgm`, previews and `bg/`, the
-pictures and folders of `templates/`, `photos/` and `import/`, the import marks and `import/.attempts`. A
-link there (to a file, to a folder or to nothing), a folder or anything else reads as a file that is not
-there. A folder on the way to a file may be a link (`root` itself, `notebooks/`): only the last name is
-held to this. Some other files of the listing are still opened by path (docs/BACKLOG.md, "Hardening round
-(2026-11), storage reads: what waits").
+`folders.ini`, `sleep.pgm`, a notebook's `notebook.ini`, page files, `erased.txt`, `thumb.pgm`, previews and
+`bg/`, the pictures and folders of `templates/`, `photos/` and `import/`, the import marks and
+`import/.attempts`, an import's work files `links.part` and `names.part`, `clipboard.qpg`, the shortcut files
+(`shortcuts.ini`, `controller.ini`, `shortcuts/`, `gestures.ini`, `live-keys.ini`) and the PDF cache's
+records. A link there (to a file, to a folder or to nothing), a folder or anything else reads as a file that
+is not there; for the shortcut files it is a file that is there and does not read, as their section says. A
+folder on the way to a file may be a link (`root` itself, `notebooks/`): only the last name is held to this.
+Your own fonts' files are held to the same rule: `.font-inuse` (at most 1 KiB, a longer one is not read) and
+the check's verdicts, marks and previews (Your own fonts).
 
-The small text files are read up to a size, and a longer one is not read: `settings.ini`,
-`notebook.ini`, `folders.ini`, `bg/index.ini` and `bg/pages.ini` up to 1 MiB (1,048,576 bytes), an import
-folder's mark up to 4 KiB, `import/.attempts` up to 64 KiB, and a PGM (`thumb.pgm`, `sleep.pgm`, a preview)
-up to 64,000,064 bytes (its largest picture, 8000 x 8000, and a header). Page files and pictures have no
-limit of this kind. A `folders.ini` over its limit reads as an empty list; what the other readers do with a
-file that is not read is in their sections.
+The small text files are read up to a size, and a longer one is not read: `settings.ini`, `notebook.ini`,
+`folders.ini`, `bg/index.ini` and `bg/pages.ini` up to 1 MiB (1,048,576 bytes), an import folder's mark up to
+4 KiB, `import/.attempts` and a notebook's `erased.txt` up to 64 KiB, an import's `links.part` up to 4,194,314
+bytes and its `names.part` up to 406,000 (the most one worker's walk can have the first slice write: "Imports:
+PDFs" below), and a PGM (`thumb.pgm`, `sleep.pgm`, a preview) up to 64,000,064 bytes (its largest picture,
+8000 x 8000, and a header). Page files and pictures have no limit of this kind. A `folders.ini` over its limit
+reads as an empty list; what the other readers do with a file that is not read is in their sections.
 
 ## Pages: `p<id>.qpg`
 
@@ -299,8 +303,12 @@ zip, a `grimoire-pull` copy or an older version.
   later pass or for the version that can: one that does not read, one of another size than its
   notebook's (compacted once the editor writes it at the notebook's size), and one holding data
   1.1 reads past. So does a page it could not write. The list goes once it is empty. A list that
-  is there but does not read (a read error) is never written over: the editor tries again at its
-  next save, and compaction leaves it as it is.
+  is there but does not read (a read error, or from 2.1.1 on one longer than 64 KiB: the longest
+  Grimoire writes is 45,136 bytes, 4096 ids) is never written over: the editor tries again at its
+  next save, and compaction leaves it as it is. From 2.1.1 on an entry at its name that is no plain
+  file (a link, to a file or to nothing, a FIFO, a folder) is no list, as nothing there is: no
+  compaction runs for it, and the editor's next write of the list replaces the entry itself, never
+  the file a link names (a folder there stays, and the page is not listed while it does).
 - Opening the notebook stops its compaction first, whether it waits or runs, and so does Grimoire
   leaving (a notebook it closes as it leaves is not compacted then): a page is never left half
   written (each is its old file or its new one), and the list keeps the pages that are not done.
@@ -631,36 +639,75 @@ in name order, each at most 24 MB. Files ending in `.woff` or `.woff2` are liste
 control character, is left out. Grimoire makes the folder at startup, with a `README.txt`, if it is missing.
 Nothing in a notebook ever refers to a font: pages, PDFs and pictures do not change with one.
 
-`fonts/.cache/` holds what the background check found, each file named by the FNV-1a 64 hash (16 hex digits) of
-the font's path under the folder, its size and its time (`<path>/<size>/<mtime>`), so a file replaced by
-another is checked afresh. It is a cache: deleting it loses nothing, and only the background job writes it.
+`fonts/.cache/` holds the background check's previews and marks (and its verdicts, in a build that keeps
+them there: below), each file named by the FNV-1a 64 hash (16 hex digits) of the font's path under the folder,
+its size and its time (`<path>/<size>/<mtime>`), so a file replaced by another is checked afresh. It is a
+cache: deleting it loses nothing, and has every font checked again. The background job writes it; the app
+itself only renames a `.checking` mark to `.bad` when that job died.
 
-- `<key>.font`, the verdict, text, at most 8 KiB, read strictly (an unknown line, or a number out of range,
-  makes the file no verdict and the font is checked again):
+- `<key>.font`, the verdict, text, at most 8 KiB, read strictly: it is a verdict only when it is, byte for
+  byte, a text the check writes (every line below there once and in this order, every number in range and
+  written as below, nothing after the last line). Anything else, a text cut short at a line's end among
+  them, is no verdict, and the font is checked again. Where it is kept depends on the build (from the verdicts numbered 2 on; those numbered 1 were always
+  in `fonts/.cache/`).
+  On the Kindle it is outside the storage, in `/var/local/grimoire/<16 hex digits>/fonts/`: the 16 digits
+  are the FNV-1a 64 hash of the data root's path (each data root has its folder there, and the file `root`
+  beside `fonts/` holds the root's path). Grimoire makes these folders for root alone (mode 0700); one
+  that is already there is used only while it is root's and no one else can write it. Nothing under
+  `root/fonts/` decides whether a font is read. A build that names no folder of its own (the simulator
+  without `GRIMOIRE_STATE`, docs/SIM.md) keeps it in `fonts/.cache/`, as before. Either way a verdict counts
+  only with its companion in `fonts/.cache/`: a pass with `<key>.pgm`, a refusal with `<key>.no`.
 
   ```text
-  grimoire-font 1
-  hash=<FNV-1a 64 of the whole file, 16 hex digits>
+  grimoire-font 2
+  hash=<SHA-256 of the whole file, 64 lower-case hex digits: what sha256sum prints>
   size=<the file's size in bytes>
   ok=1                            or  why=unreadable | nolatin | format | slow
   upem=<units per em, 16 to 16384>
   ascent=<units above the baseline>     descent=<units below it, as a magnitude>
   scale=<how much bigger than asked its text is drawn, in thousandths: 850 to 1250>
   weight=<its weight class, 1 to 1000>  italic=<0|1>
-  mapped=<glyphs its cmap maps>
+  mapped=<glyphs its cmap maps, 1 to 65535>
   wght=<least> <default> <most>   bold=<the weight its bold is drawn at>   (a weight axis only)
-  cover=<characters it has of Latin-1, Latin Extended-A, Greek, Cyrillic, kana, kanji>
+  cover=<characters it has of Latin-1, Latin Extended-A, Greek, Cyrillic, kana, kanji: at most 100000 each>
   lacks=<bits: 1 English, 2 Spanish, 4 Japanese: that language's words need letters it lacks>
   family=<its family's name>      style=<its style's name>     (64 characters each at most)
-  skip=<glyph>,<glyph>,...        glyphs that failed the check, in order, at most 656: drawn in Terminess
+  skip=<glyph>,<glyph>,...        glyphs that failed the check or take too long to draw, in order, at most
+                                  656: drawn in Terminess. The last line of a pass, there (empty after
+                                  the `=`) when no glyph is skipped
   ```
 
-  The lines after `size` are there only with `ok=1`. `ascent` and `descent` are the font's own unless they
-  are far from what its letters reach (then what they reach). Grimoire draws a font only when the bytes it
-  reads hash to `hash`; other bytes under the same name, size and time are checked again.
+  A refusal ends with its `why=` line. The lines from `upem` on are there only with `ok=1`, and then all
+  of them are, each on a line of its own (`wght` and `bold` only for a font with a weight axis). `ascent`
+  and `descent` are the font's own unless they are far from what its letters reach (then what they reach).
+  Grimoire draws a font only when the bytes it reads hash to `hash`; other bytes under the same name, size
+  and time are checked again. The first line's
+  number stands for the text and for the check's rules together: 2.1.0 wrote `grimoire-font 1` with a
+  16-digit FNV-1a 64 `hash`, which is no verdict now, so each font is checked once more after the update.
+  On the Kindle a `<key>.font` in `fonts/.cache/` is 2.1.0's: it is not read and not written, and goes when
+  its font file does.
 - `<key>.pgm`, the preview (P5 PGM): the family's name (and its style, unless Regular) drawn in the font,
   black on white, at the text size of the screen the check ran for.
+- `<key>.no`, empty (from the verdicts numbered 2 on): the check refused this file; its verdict says why.
 - `<key>.checking`, empty: a check of this file is under way.
+- `<key>.slow`, one line of text: a check of this file ran out of time, or found glyphs that take too long
+  to draw. No verdict is written then: the file is checked once more, a minute or more later (a timeout
+  right after a wake is the clock's, not the font's), and a check that ends the way an earlier one did
+  writes the verdict `why=slow`. One check out of time and one that found such glyphs are not two that
+  agree: the font is left for one more try. The line is
+
+  ```text
+  grimoire-font 2 slow <time | glyphs | time,glyphs> <SHA-256 of the whole font file, 64 hex digits>
+  ```
+
+  the verdict's number, how the earlier checks ended, and the bytes they were of. A mark that does not read
+  as that is no mark and is removed (an empty file, which is what the mark was while verdicts were numbered
+  1, so a mark left from then never makes one check the second of two); a mark that names other bytes is
+  no earlier check of this file. A mark dated ahead of the clock (the clock was set back since) is written
+  again, so the wait is a minute from then and never longer. The mark goes when a verdict is written,
+  whatever it says; beside a `.bad` it stays until the file changes or goes, when it goes with the key's
+  other entries. Every version that reads `fonts/.cache/` knows the mark by its name and time
+  (2.1.0-beta.2 on); older versions never open the folder.
 - `<key>.bad`, empty: the check's worker died on this file, or the check itself did. The font is not read
   again until the file changes.
 
@@ -669,7 +716,9 @@ another is checked afresh. It is a cache: deleting it loses nothing, and only th
 before its first use in a session and removed once a screen drawn with it is on the panel. An armed line found
 at a start is a strike: that start does not draw the font; with one strike the next start tries it once more;
 with two it is left alone until the file changes (another key). A file that does not read as this is started
-afresh. Deleting it only forgets the strikes.
+afresh. It is read only when the entry at its name is a plain file of at most 1 KiB: a link there is not
+followed, a FIFO is not waited on, and anything else there is no guard file. Deleting it only forgets the
+strikes.
 
 ### Imports: `root/import/<Name>/`
 
@@ -722,15 +771,33 @@ PDFs first, then its pictures as above (a PDF refused, or tried 3 times and unch
 back no longer). Only a file that lies in `import/` (not `import/done/`) ever moves, to
 `import/done/<Name>-<YYYYMMDD-HHMMSS>.pdf` once imported: that is decided by where the file is, never by a mark,
 so a PDF picked anywhere else is read in place and never moved, and one picked in `import/` itself is filed in
-`done/` like a drop. Names: a name typed in New notebook's sheet (one of spaces only is none), else the file's
-name without `.pdf`, numbered (" 2", " 3") when a notebook has it. The rules of the scan (at start, when the
-Library comes in front at most every 10 s, again after 5 s while a file waits, and within 10 s of the end of a
-previous run's import):
+`done/` like a drop. And only the file that was read moves: the import reads through the file it opened, and
+just before the move it looks at the name once more. When the name no longer holds that file (the same device
+and inode, with the size and mtime it was opened with: another file was put there meanwhile, or the file
+changed, or it is gone), nothing moves and no `done` mark is written; what is at the name is taken by the next
+scan as the file it is. Such an end leaves its try counted in `import/.attempts` (below), so a name that never
+holds the file read is tried three times with those contents and then waits until the file changes. Its row in
+the Import place then reads "Couldn't import PDF (see grimoire.log)." and the scan's log line counts it among
+the files that failed, although the PDF was imported and its notebook exists. A path
+that spells Grimoire's folder or `import` in another case lies in `import/` only
+where the storage takes both spellings as one folder (the Scribe's does); on a storage that tells names apart by
+case they are two folders, and the file stays where it is. Names: a name typed in New notebook's sheet (one of
+spaces only is none), else the file's name without `.pdf`, numbered (" 2", " 3") when a notebook has it. The
+rules of the scan (at start, when the Library comes in front at most every 10 s, again after 5 s while a file
+waits, and within 10 s of the end of a previous run's import):
 
 - **A file is taken when it is whole:** its size and mtime held across two looks at least 2 s apart, its mtime
   is at least 5 s old (a stamp ahead of the clock counts as old), `%PDF-` is in its first KiB and `%%EOF` (white
   space after it allowed) in its last; a file without that end that has not changed for a minute is taken as it
-  is. Links, dot-files, names that are not UTF-8 and paths of 600 bytes or more are skipped and counted.
+  is. The look at its two ends opens the file as the import does (no link followed) and reads only the file the
+  scan listed (the same device, inode, size and time): another file at that name waits for the next look, which
+  lists it as itself (unchanged for a minute, it too is taken as it is), and a name that is no longer a plain
+  file is left. Links, dot-files, names that are not UTF-8, names with a line feed or a carriage return in them
+  and paths of 600 bytes or more are skipped and counted. (A mark and an import's state keep a path on one line,
+  so a path with a line break cannot be kept. On a storage that can hold such a name, a PDF so named stays in
+  `import/` and is never imported, until it is renamed; a folder so named has its pictures imported as before,
+  and that import files the whole folder in `import/done/`, a PDF inside it included, never imported. A FAT
+  storage cannot hold a character below U+0020 in a name.)
 - **Pages:** one document page (image paper) per PDF page, the page fitted inside the Scribe page and centred
   on white (the crop box within the media box, turned by `/Rotate`; the scale is the smaller of the two
   ratios; the rendered size and offsets are whole pixels, as KOReader draws a page). At most 2000 pages and
@@ -742,18 +809,111 @@ previous run's import):
   and show their luma. The Scribe draws every page picture as its luma (a page held in memory is the 4.6 MB
   gray canvas, never the 13.8 MB RGB copy), and the share server's page pictures are that gray render; the
   notebook's PDF (the mirror in `PDFs/`, the share server's PDF download, a zip's PDF entry) embeds a page on a
-  colour picture in colour, DeviceRGB (see the notebook PDF below). The KOReader route's pages stay gray.
+  colour picture in colour, DeviceRGB (see the notebook PDF below). The pages KOReader draws (Annotate this
+  page, and Open this book for DjVu, comics, XPS and any book version 1 sends) stay gray; a PDF KOReader hands over
+  by its path (2.2, Whole books) is drawn by this import, in colour.
 - **The book key** is KOReader's partial MD5 of the file (1 KiB samples at 0, 1 KiB, 4 KiB ... 1 GiB), written
   as `source=` in `notebook.ini` and `book=` in `source.ini` (`kind=paged`, a `page.<n>.<count>=<page id>` line
   per page, and `links=1` when the import wrote `doclinks.ini`, so KOReader's Open this book does not ask for
-  the links again), so the KOReader route and the import find the same notebook. The same key again: "PDF
-  already imported." and a file of `import/` moves to `done/`. A copy of a PDF that is being imported waits for
-  that import (its job ends at once, counting nothing) and is then "already imported".
+  the links again), so the KOReader route and the import find the same notebook. A copy of a PDF that is being
+  imported waits for that import (its job ends at once, counting nothing) and is decided once it is taken again.
+- **The file record** (the hardening round of 2026-11). The key reads samples of a file, so two files can have
+  one key. A notebook made from a PDF keeps a record of its file, one line of its `source.ini`:
+  `file=sha256:<the SHA-256 of the whole file, 64 lower-case hex digits>:<its size in bytes>:<the book key, 32
+  lower-case hex digits>`, 130 bytes at most. It is read strictly: another algorithm's name, upper case, a field
+  missing or one too many, a size of 0 or with a leading zero or past 64 bits, anything around it, is no record
+  for this version. The record is of the file as it was read when the notebook was made, and promises no more:
+  its hash and its key are both of the file the last slice has open (the slice reads the key again from that
+  file, and an import whose file has another key by then ends with nothing made and leaves the file where it
+  is).
+  A notebook holds a key by its `source=` line; with no such line, by its `source.ini`'s `book=`; with neither,
+  by the key its record names. A PDF whose key a notebook holds is compared with the records:
+  - the same file again (a record of its size and of its SHA-256, for which the file is read whole) is that
+    notebook's file: "PDF already imported." when the notebook has every page of the book, a fill (below,
+    2.2) when it lacks some; a file of `import/` moves to `done/` either way;
+  - a notebook without a record (one made before this round, or from KOReader, or with a record of a form
+    this version does not read) goes by the key, as before: "PDF already imported.", or from 2.2 a fill when it
+    lacks pages. It is never given a record later, a fill included;
+  - when every notebook that holds the key has a record and none is of this file, the PDF is imported as a
+    notebook of its own.
+  One notebook holds a book's bare key, the first. A notebook made while another holds the key has no `source=`
+  line and no `book=` line: `kind=paged`, its page lines, `links=1` when written, and the record, which names
+  the key. So KOReader's version 1 route (the pages KOReader draws), the plugin and every earlier version, which
+  go by those two lines, keep finding the book's first notebook, and this version's import finds the other by its
+  record: a PDF KOReader hands over by its path (Whole books, version 2) is the import's, and opens the notebook
+  of its own file. The file is read whole
+  only in the import's background job: once in the last slice, and once at the start for a file of a record's
+  size. When it cannot be read whole in the last slice, the notebook is made without a record if no notebook
+  holds its key, and the import fails if one does. In Files, "has notes" goes by a PDF's key and size against
+  the notebooks' keys and records, and reads no file whole (DESIGN.md, the file picker).
+- **A fill (2.2):** the PDF of a notebook (as above: by its record, or by the key for a notebook without one)
+  whose notebook lacks some of the book's pages adds those pages to it, instead of "PDF already imported.".
+  The book's page count is the one the notebook's `source.ini` page lines carry (`page.<n>.<count>`: the
+  import's own count, or the `pages=` of KOReader's request), kept for a page deleted since too; the pages it
+  lacks are the book pages no page of its list holds. Slice 0 decides it before any worker starts, from
+  `notebook.ini` and `source.ini`, then the probe must find that page count: a PDF of another count (a broken
+  PDF two engines count differently, or another file of the key) becomes a notebook of its own, as another
+  file does, and is never a fill. A notebook whose page lines name no count, or more than one, or whose book is
+  not `kind=paged`, cannot say what it lacks: "PDF already imported.", as before 2.2. A notebook with every
+  page: "PDF already imported.". By kind of notebook:
+  - one made by the import (with its record): filled when the PDF is its file (the same SHA-256 and size);
+    another file of the key and the size becomes a notebook of its own;
+  - one without a record (made by 2.1.0 or earlier, or one whose record this version does not read): filled by
+    the key alone, so another file of the key and the page count fills it too (the key cannot tell them apart);
+  - one KOReader made (it holds the pages KOReader sent, its links, `links=1`, no record): filled by the key,
+    with KOReader's links counted as the notebook's own, so a link KOReader sent to a page the fill adds is not
+    added a second time (the same target, its area within 2 px).
+  The writer draws the pages as an import's, at the notebook's own page size, in the work folder, and never
+  writes the notebook. Its state is `pdf-fill.ini` (a name versions before 2.2 never read: they remove the folder
+  as a cut-off import's and the notebook stays as it was): `pdf-import.ini`'s lines plus `fill=<notebook id>`,
+  `todo=<the book pages it makes, ascending>`, `page_w=` and `page_h=` (the notebook's page size, 100 to 6000
+  each), `sig=` (a hash of the notebook's name and Library folder as the fill was decided), `stage=` (0 its pages
+  being made, 1 made, 2 its commit begun, 3 committed) and `ids=` (the page ids the commit gave,
+  `<book page>:<page id>`, comma separated); `next` and `pics` count the pages of `todo`. The last slice checks
+  that the file is the one the slices read (its name still opens to the first slice's size and time, and the open
+  file has its key: a key that does not read, the storage failing a read, is no match) and that one page at least
+  of those it lacks was read, then sets `stage=1`.
+  The UI process puts the pages in (the commit), as KOReader's route adds its pages: it begins only with the
+  Library in front and at rest (no notebook open in the editor, no sheet, dialog or keyboard up), no KOReader
+  book job running and no background job on that notebook, and runs over a few ticks with the input held: pen
+  and touch, keys and controller buttons, and the Live view's keys do nothing meanwhile, and the book's notice
+  says "Adding book pages: %d of %d". What still acts (the power button's sleep and wake, a turn of the device, a
+  keyboard or controller coming or going) writes no notebook; the power button held until Grimoire leaves cuts
+  the commit off, and the next start takes it up (below). No background job on that notebook starts meanwhile.
+  Before it begins, a notebook whose name or Library folder is not the one `sig` noted (a rename, a move, its
+  folder renamed or merged), one that is gone (deleted), or one that no longer holds the PDF's key is not filled:
+  the work folder goes, and the PDF stays in `import/`, where the next scan takes it again as the file it is (a
+  fill of the notebook as it is now, or a notebook of its own). The commit sets `stage=2` and `open=1`; page ids
+  for the pages the notebook still lacks (a page KOReader's route added since stays as it is) are reserved in
+  `notebook.ini` (`next_page_id`, its page list as it is) before anything is written under them, and kept in
+  `ids=`; their pictures are claimed in its `bg/index.ini` (shared by content with the pictures it has) and moved
+  into its `bg/`; then their page files (document pages, no ink) and `bg/pages.ini`; then, read again in the same
+  tick, `source.ini` with their page lines and `notebook.ini` with each page placed before the first page that
+  holds a later book page (KOReader's route's rule), the page it reopens at kept. Until that write the notebook
+  lists the pages it had and shows nothing new. After it come the links (`doclinks.ini`): only the PDF's links
+  that start or end on a page the fill added, through `pdflinks_fill` with the notebook's document links in it
+  and its own links' seeds never taken, the water level trimming only links the fill adds; a link between two
+  pages the notebook had is never added, and `source.ini`'s `links=` stays as it was. Then the names (`nav.ini`):
+  the outline's, for the pages the fill added only. Deleting the pages a fill added takes every page, link and
+  name it wrote. Each of these files is read and written whole in one tick, so nothing written between two ticks
+  is undone. Then `stage=3`, and one more background slice moves the PDF to `import/done/` (while its name still
+  holds the file the pages were made of) and removes the work folder. A commit cut off (Grimoire stopped half
+  way) is taken up again at the next start from the work folder alone, whatever became of the PDF, with the same
+  page ids; one that finds `open=1` was cut off (a stop), and at the third stop it ends, its work folder gone, the
+  notebook as the last cut left it (its pages as they were, or added without some of their links and names). A
+  commit that fails before `notebook.ini` (a page file that cannot be written: the storage full) removes the page
+  files it wrote and its work folder; pictures it already moved into `bg/` stay there, listed by `bg/index.ini`
+  and shown by no page (a later fill of the same PDF shares them). The pages the notebook had keep their files
+  byte for byte (their ink), their names and their links. When the notebook's first page is one the fill added,
+  the card's `thumb.pgm` is the book's page 1 (drawn in the work folder) when that is the page, else it goes (the
+  Library draws it again). The end says "Added %d book pages." (KOReader's route's toast), with "Some links
+  were left out." when links were.
 - **Slices:** the work runs in slices of at most 25 pages or 20 s, each a background job
   (`BgKind::PdfImport` = 7) that exits "more to do" (status 3) until the last, which commits. Slice 0 probes
   (page count, caps), the others render, the last writes `source.ini`, `bg/pages.ini` and last `notebook.ini`,
   renames `notebooks/.import-<id>/` into place and moves the file. The slices' state is
-  `notebooks/.import-<id>/pdf-import.ini` (`src`, `size`, `mtime`, `key`, `pages`, `next`, `pics` (the picture
+  `notebooks/.import-<id>/pdf-import.ini` (`src`, the path as it is, as in the mark; `size`, `mtime`, `key`,
+  `pages`, `next`, `pics` (the picture
   id of each page made, hex), `blank`, `strikes`, `cpu_ms`, `pick`, `name`, `folder` (a pick's, kept here as in
   its mark), `bytes` (what the pages made take), `open` (1 while a slice runs) and `stops`; 2.1.0-beta.2's
   first builds wrote `owner` and `started`, read by nothing), which a start or a scan that finds the file
@@ -770,11 +930,14 @@ previous run's import):
   once without a strike. A PDF that fails before any page (no page tree, a password, the caps, the sandbox)
   fails whole and keeps its file; so does one whose every page could not be read.
 - **Marks:** `import/.marks/<16 hex of the source path>` holds `state` (`making`, `waiting` or `done`), `id`,
-  `src` (the path from the storage root), `pick`, `name`, `folder`, `page`, `pages`, `at`, and for `done` the
+  `src` (the path from the storage root, as it is: no character of it is changed, and a path with a line feed or
+  a carriage return in a name is given no mark and no state, so it is never imported; `id`, `name` and `folder`
+  are written without control characters), `pick`, `name`, `folder`, `page`, `pages`, `at`, and for `done` the
   file's `size` and `mtime` (another file of that name later is a new file); the coarse progress a detached
   import leaves, rewritten at most every 20 s. A mark goes when its import ends, whatever the end; `done` stays
   only for a file of `import/` that could not move. A `waiting` mark (a pick made while another process held
-  the lock) is queued by the first scan that takes the lock afresh. A mark that is lost or does not read is
+  the lock) is queued by the first scan that takes the lock afresh; one whose file name is not the hash of the
+  path it holds is removed instead (an earlier build could leave one). A mark that is lost or does not read is
   made again from `pdf-import.ini`. `import/.attempts` also keys the PDFs of `import/` (a hash of the file's path
   under `import/`, so `A.pdf` and `Work/A.pdf` have a line each; the second hash is of its size and mtime), kept
   for as long as the file is there: three tries, or a refusal, wait until the file changes. No room on the
@@ -790,9 +953,13 @@ previous run's import):
 - **Links and names (lane L6):** slice 0 also asks the worker for the PDF's links (`LINKS <w> <h>`, after the page
   count), in the pixels of the Scribe page by the same transform that draws the page, and keeps what it sent in
   the work folder as `links.part` (the `L` and `Q` records, then `F`) and `names.part` (the `O` records), in the
-  worker's own record grammar, read back strictly by the last slice. The commit writes `doclinks.ini` (below) and
-  `nav.ini` from them, before `notebook.ini`, and removes the two parts. A worker that dies, stalls or lies in
-  the walk costs the notebook its links and names only (logged); the pages do not depend on it. What is read:
+  worker's own record grammar, read back strictly by the last slice, each only as a plain file of at most its
+  size: `links.part` 4,194,314 bytes (a worker's 4 MiB of records, line for line, and the `F` line the slice
+  writes itself when the walk sent none), `names.part` 406,000 (an `O` line of at most 203 bytes for each of
+  at most 2000 pages); a part that does not read leaves the notebook without links and names. The commit
+  writes `doclinks.ini` (below) and `nav.ini` from them, before `notebook.ini`, and removes the two parts. A
+  worker that dies, stalls or lies in the walk costs the notebook its links and names only (logged); the
+  pages do not depend on it. What is read:
   an annotation `/Subtype /Link`, not hidden (`/F` bit 2) or not viewed (bit 6); its `/A` GoTo (explicit
   destination, or a name or string looked up in the catalog's `/Names /Dests` name tree and its PDF 1.1 `/Dests`
   dictionary, each tried for either type), the four Named actions (`NextPage`, `PrevPage`, `FirstPage`,
@@ -806,7 +973,7 @@ previous run's import):
   The areas are the mapped rectangles (floor of the minimum, ceiling of the maximum, clamped to the page, at
   least 1 px), so a notebook exported by Grimoire and imported again gives its links back within 1 px. The
   outline names pages: depth first, the first item that points at a page names it, a page's own name staying
-  (an import makes a new notebook, so none has one); titles are decoded from PDF text strings (UTF-16BE or LE
+  (an import makes a new notebook, so none has one; a fill names only the pages it adds); titles are decoded from PDF text strings (UTF-16BE or LE
   with a BOM, UTF-8 with a BOM, else PDFDocEncoding), controls become spaces, trimmed, cut at 95 bytes between
   characters. The water level trims the densest pages first; when it (or a page's 1,024, or the worker's cap)
   left links out the end says "Imported notebook (%d pages). Some links were left out." (the pages-not-read
@@ -815,7 +982,11 @@ previous run's import):
   held while any is queued or running, through one close-on-exec handle; an import's background child (and the
   child that finishes the queue after Grimoire closes, when it has an import left) keeps that descriptor, and
   every other child closes it. No job opens it or waits for it. An import the job queue drops (a full queue, a
-  fork that fails) is let go of at the next scan and queued again.
+  fork that fails) is let go of at the next scan and queued again. The lock file is opened without following a
+  link and must be a plain file with one name, still the file at its name once it is locked; a missing `import/`
+  is made first. Anything else found at the lock's name is left as it is, and the lock is then not taken. Only
+  a lock another process holds means an import is still going (a pick made then waits, with a `waiting` mark);
+  a pick made while the lock cannot be taken for another reason is refused, with no mark.
 
 ### Annotated pages: `root/import/.annotate/` and `source.ini` (1.1 on)
 
@@ -921,7 +1092,10 @@ the layout: a layout that changed but kept the count opens the page made at the 
 its picture. A paged document's count never changes. A line whose page is no longer in the notebook
 (deleted) is left out of the next write, and that book page is a new page if it is sent again. Lines
 this version does not know are written back as they were: whole lines of up to 255 bytes, 1 KB in
-all.
+all. A notebook made from a PDF may also hold one `file=sha256:...` line, the record of the file it was
+made from (Imports: PDFs, the file record): the code that adds book pages does not read it, and writes
+it back with the lines it does not know, after the page lines. The second notebook of a book's key has
+no `book=` line.
 
 1.0.0-beta and 1.0.0-rc.1 never read or write `source.ini` or `import/.annotate/`: they stay as
 they are (and `source.ini` goes with its notebook to `trash/`). The plugin hands over with
@@ -976,7 +1150,99 @@ read, a file that cannot be written, or more pages than a notebook holds, takes 
 and picture it wrote (the ids stay given up): the notebook stays as it was, and a toast says why.
 The editor then opens on the page to open (else the first page added).
 
-1.0.0-beta to 2.0.0-beta.4 never read `import/.book/`; the plugin never sends to them.
+**A PDF by its path: version 2 (2.2).** To a launcher whose `# Capabilities:` line says `pdf`, the plugin sends
+a PDF by its path instead of drawing it: no picture, no `links.txt`, nothing asked of KOReader but the book's key,
+title and page count. The request has the lines above (`book`, `title`, `kind`, `time`, `pages`, `page`) with
+`version=2`, no `picture.<n>` line, and:
+
+| key | value |
+|---|---|
+| `file` | the PDF's absolute path as KOReader has it open, once: inside the Kindle's storage (`/mnt/us/...`), with no `.`, `..` or empty part and no control character in it. Its line is read whole (under 1024 bytes), never cut as a longer title is |
+
+The plugin sends version 2 only for a PDF Grimoire would take, and version 1 otherwise, KOReader drawing the pages,
+so a book that opened before 2.2 still opens. It keeps version 1 for:
+
+- DjVu, comics and XPS, and any PDF to a launcher without `pdf`;
+- a PDF at a path Grimoire's walk refuses (below), judged by the same rules on the path as written and on the
+  folders as they are: outside the storage; a `.`, `..` or empty part; a hidden name or a `.sdr` folder; one of the
+  storage's system folders (`koreader/` among them) or of Grimoire's own (`app`, `notebooks`, `bluetooth`, `PDFs`,
+  `trash`); a link on the way, or the file itself a link; another device; 600 bytes or more below the storage; a
+  name that is not UTF-8 or holds a control character;
+- a PDF over 512 MiB, which the import refuses ("PDF too big");
+- a PDF whose file no longer has the key KOReader keeps for the book (it changed since KOReader first opened it:
+  its notebook is the one of KOReader's key, which version 1 finds);
+- a PDF that needs a password (Grimoire cannot ask for one; KOReader, which was given it, draws the pages). The
+  plugin asks a MuPDF document of its own, never the reader's, with every call guarded; when the question itself
+  fails, crash.log says so and the PDF goes by its path.
+
+Annotate this page stays version 1 for every format.
+
+Grimoire reads a version 2 request strictly. Its version line says exactly `version=2` (a request with that line
+is a version 2 request wherever the line stands; `02` is no version it knows), and each of `version`, `book`,
+`file`, `title`, `pages`, `page`, `kind` and `time` comes once at most. A key said twice, a path that is not
+absolute, is not UTF-8, is 1024 bytes or longer or holds a control character (a byte under 0x20, or 0x7F), or a
+`picture.<n>` line, and it does not read. A key it does not know is passed over, as in version 1.
+
+At the start the path goes through the storage walk as a file picked in Files does (inside the storage root; each
+folder opened without following a link, on the root's device, none of Grimoire's own folders and no hidden or
+system one; a plain file, never waited on), and the PDF goes to the PDF import as a pick (Imports: PDFs, below):
+read in place (one that lies in `import/` itself is filed in `done/`, as any pick there is), named after the
+request's title (else the file's name), at the top of the Library, keyed and recorded by its file. The request is
+taken once the import is queued; a path the walk refuses ends the book there. The start's look at the file decides
+nothing else: the import opens the file itself, and which notebook is the book's is the import's to say, from that
+open (the request's `book=` is compared with the file's key for the log alone).
+
+Which notebook that is follows the file record (Imports, "The file record"), so Open this book opens the notebook
+of the very file KOReader has open:
+
+- a notebook whose record is of this file (its size and its SHA-256) is its notebook: opened, and filled first when
+  it lacks pages;
+- else a notebook that holds the file's key with no record (one KOReader made through version 1, or one an import
+  before the record made) is the book's notebook, for any file of that key: opened, and filled first when it lacks
+  pages (a fill, as for the same PDF dropped in `import/`);
+- else (no notebook holds the key, or every one that does has a record of another file: an edited copy that kept
+  its key) the PDF becomes a notebook of its own, once: the next hand-over of that same file finds its record and
+  opens it, and the file it was edited from still opens its own.
+
+From there the import runs as a dropped PDF's does, and nothing is held for it: the Library stays usable, the
+import's own notice counts its pages ("Importing: page N of M"), and a sheet that is up (What's new, on the first
+start after an update) closes as it always does. A fill's pages go in by a fill's own rules (the Library in front
+and at rest: Imports, below). Behind another import (one of an earlier run that still holds the import lock, or
+others queued ahead of it in this one) it queues as a picked PDF does, and a toast says so at the start: "Another
+import is still going. This one starts after it.".
+
+The book job only follows the import, however long it takes. Its notebook is the one the import made, the one it
+filled (a notebook KOReader made through version 1 holds only the pages KOReader drew, and the import adds those
+it lacks in book order: its key decides, KOReader's pages stay as they are, and the notebook is not given a
+record), or the one it found holding every page. When the import ends:
+
+- with the user still on the Library (never left for a notebook or another screen since the hand-over) and its
+  cards in front (no sheet, no Files, no Graph), that notebook opens at the page that holds the reader's book
+  page, as version 1's does, with "Added N book pages." for a notebook made or filled ("Imported notebook (N
+  pages). Some pages couldn't be read." for a new one with blank pages) and no toast for one that held every page;
+- otherwise (a notebook open, a sheet, Files or the Graph in front, or the user back on the Library after going
+  elsewhere) nothing opens. The import's own done toast shows, as for a dropped PDF ("Imported notebook (N
+  pages).", "Added N book pages.", "PDF already imported."), here also where the Library is in front with the new
+  card on it. The reader's page is kept as the page the notebook opens at (`last_page` in its `notebook.ini`;
+  nothing else of it changes), so its card opens there. A notebook that is open in the editor then keeps its
+  place.
+
+An end that comes while the Kindle sleeps, or while a fill's pages go in, is taken once that is over. A book page
+under another page count than the request's (two engines may count a broken PDF's pages differently) is found
+under the one count the notebook's pages name.
+
+An import that fails says the import's own toast, whatever is in front, as for the same file dropped in
+`import/`: "PDF needs a password.", "PDF too big: over N MB.", "PDF too long: notebooks hold 2000 pages.",
+"Couldn't import PDF. Is the storage full?", else "Couldn't import PDF (see grimoire.log)." (the import's lines in
+the log say why). A request that ends before any import fails as a book does: one that does not read, or whose
+path the walk refuses, with "Couldn't open book from KOReader (see grimoire.log).", and one whose `pages` is more
+than a notebook holds with "Book too long: notebooks hold 2000 pages.". A book opened in KOReader before 2.2 keeps
+the pages KOReader drew, gray; the pages added through version 2 are the import's, in colour where the PDF has
+colour.
+
+1.0.0-beta to 2.0.0-beta.4 never read `import/.book/`; the plugin never sends to them. 2.0.0-beta.5 to 2.1 read
+version 1 alone: a version 2 request does not read there (the book's failure, the folder emptied), and the plugin
+never sends one to them, as no launcher before 2.2 says `pdf`.
 
 ### Links from KOReader: `import/.book/links.txt` and `source.ini`'s `links=1` (2.1.0-beta.2 on)
 
@@ -1019,8 +1285,9 @@ whose target is not `p<id>`, with its area and outline) are carried, as links.in
 | size | 1.5 MiB | 512 KiB |
 | a page | 1,024 | 64 |
 
-Two producers fill it: KOReader's `links.txt` (above) and the PDF import's own link annotations (Imports: PDFs).
-Both go through `pdflinks.rs`.
+Two producers fill it: KOReader's `links.txt` (above) and the PDF import's own link annotations (Imports: PDFs),
+the second also into a notebook that has links already (a fill, 2.2: only links to or from the pages it adds, and
+its water level trims only those). All go through `pdflinks.rs`.
 
 A file over a cap (a page with more than 1,024 links too), a carried line past its bounds or one that holds a NUL
 does not read: it shows no tabs and is never written over. A link whose area line a later version wrote in a form
@@ -1029,7 +1296,7 @@ page no longer in the notebook is not shown or tapped (it goes from the file at 
 lines included), the densest pages first, each page keeping its first links, so Copy page and later fills have
 room; a Copy page or Copy to notebook that would pass the caps themselves (links, bytes with outline lines
 counted, or the page's 1,024) copies without its document links ("Copied without links: couldn't save them.",
-or "Copied %d page to %s, without its document links."). The writers: the book import's commit (above), Copy page and Copy to notebook. Never a page turn, Clear
+or "Copied %d page to %s, without its document links."). The writers: the book import's commit (above), the PDF import's last slice (a new notebook's), a fill's commit in the UI (2.2: links to or from the pages it adds), Copy page and Copy to notebook. Never a page turn, Clear
 page, a lasso or Select. The seed is a hash of the source page and the annotation index, and never one the page's
 ink or its own links have.
 
@@ -1227,6 +1494,10 @@ owner's to copy back or delete. Older versions ignore it.
 | `shape_corner` | 0 to 100: Smart shapes' Corner roundness, the corners of a snapped rectangle, square, quad or triangle rounded by this percentage of the largest radius the shape holds (one radius for every corner; at 100 the arcs at the ends of its tightest edge meet in its middle, so a square is a circle), 0 (Sharp) by default, clamped to 0..100. The arcs are part of the stroke's points (the stroke is ink); link areas keep sharp corners. Written after `whatsnew_hide`. Since 2.0.0-rc.12, as `gestures` |
 | `font` | Classic's font, Settings > Font: `terminess` (the default, also when the key is missing), `atkinson` (Atkinson Hyperlegible Next), `noto-sans` (Noto Sans) or `literata` (Literata). Every screen's text in Classic, the share pages' too; never a page, a paper label, the clock, a PDF or a picture, and never the icons. Gothic keeps its own faces whatever it says (the line stays). A value this version does not have (a later one's font) draws as Terminess and is written back as it was (below) until a font is picked and applied with Done. Written after `shape_corner`. Since 2.1.0; older versions keep the line as one they do not know. Since 2.1.0-beta.2 also `file:<path>`, a font of the owner's own by its path under `fonts/` (`file:Inter.ttf`, `file:Inter/Inter-Regular.ttf`; Your own fonts): used when the file is there, passed its check and the crash guard lets it in, else Terminess draws and the line stays as it is (the file put back brings the font back); the share pages get Terminess. 2.1.0-beta.1 reads it as a font it does not have |
 | `font_bold` | `file:<path>`: the Bold file to draw a custom `font`'s bold with, for a hand to set. The line is not there unless it was set: without it bold comes from the font's weight axis, else from the Bold file of its family in the same folder (weight 600 or more, upright), else the regular is overprinted. Any other value is not used and is written back as it was. Picking another font in Settings > Font removes it. Written after `font`. Since 2.1.0-beta.2; older versions keep the line as one they do not know |
+| `files_card` | `1`: the Files card is the Library's last card (2.2). The line is not there unless the card is shown: "Show Files in Library" in the file picker's root writes it, the card's Hide from Library takes it away. `0` reads as absent. Any other value is not used (the card is hidden) and is written back as it was. Written after `font_bold`. Since 2.2; older versions keep the line as one they do not know |
+| `files_sort` | Files' order: `newest` (the newest first) or `size` (the largest first); absent, or `name`, by name (the default, not written). Folders come first in each. Read exactly as written: any other value (another case, a later version's) sorts by name and is written back as it was until the order is changed. Written after `files_card`. Since 2.2, as `files_card` |
+| `files_show` | what Files lists: `all` (every file, the ones Grimoire cannot use greyed, links as "link, not followed"); absent, or `usable`, the PDFs, pictures, fonts and folders (the default, not written). Any other value: as for `files_sort`. Written after `files_sort`. Since 2.2, as `files_card` |
+| `files_view` | how Files lists: absent, or `list`, rows (the default, not written). Any other value (a later version's `covers`) shows the list and is written back as it was. Written after `files_show`. Since 2.2, as `files_card` |
 | `status_mode` | Retired status-strip preference. New saves write 1 (corner). Legacy 0 becomes the small enabled top-left corner, 2 becomes an off corner. There is no reserved strip or mode selector. `status-mode` is a compatibility alias for the corner toggle. |
 | `shortcuts_enabled` | 0 or 1: keyboard and controller shortcuts, off by default (`shortcuts.ini`, below). Since 2.0.0-beta.1; 1.1.0-beta.1 and 1.1.0-beta.2 keep the line and have no shortcuts, 1.0.0-beta drops it on its next save |
 | `controller` | 0 or 1: start the Bluetooth helper with Grimoire (Settings > Pair > Bluetooth controller, Settings > Controller before 2.0.0-beta.2; docs/SHORTCUTS.md), off by default; it only starts while shortcuts are on too. Since 2.0.0-beta.5; versions before keep the line (from 1.0.0-beta.2 on) or drop it (1.0.0-beta), and start nothing |
@@ -1291,7 +1562,9 @@ earlier ignore it; 1.2.0 and the 2.0 betas read it. A line naming an action a ve
 (2.0.0-beta.5 added fifteen) is refused and counted there, and the other lines still load. From
 2.0.0-beta.5 on, a file that binds none of the D-pad's four directions (`pad.Up`, `Down`, `Left`,
 `Right`: no earlier version read a D-pad, so none wrote them) gets the starter file's D-pad lines in
-memory; the file is not changed.
+memory; the file is not changed. From 2.1.1 on an entry at its name that is no plain file (a link, to a
+file or to nothing, or a FIFO) is a file that is there and does not read, as one over the 64 KiB limit
+is: no mappings come from it. The other shortcut files below are read the same way.
 
 `controller.ini` (2.0.0-beta.5 on), beside it, holds the controller buttons learned in Settings >
 Shortcuts > Buttons (Settings > Controller > Buttons before 2.0.0-beta.2): `# ...` lines, then `pad.<button>=<action>` lines in `shortcuts.ini`'s grammar,
@@ -1567,6 +1840,59 @@ as a target they do not know (it does nothing there). The released 2.0.0-beta.1 
 targets into the other notebook, as every build since 2.0.0-rc.2 does. Moving pages needs nothing of any
 version: each reads the `pages` order it finds.
 
+## The trash: `root/trash/`
+
+Nothing put here is ever unlinked by Grimoire: there is no Empty (the owner cleans it over USB). Each entry is
+one rename on the same storage, so it is instant at any size. Three kinds of entry, told apart by the name
+alone:
+
+| entry | what it is | written by |
+|---|---|---|
+| `<id>-<time>` | a notebook's folder, as it was in `notebooks/` | every version (Library > Delete) |
+| `<id>-p<page id>-<time>` | a page file (`p<page id>.qpg`) | every version (the Pages view's Delete) |
+| `files-<YYYYMMDD-HHMMSS>-<4 hex>/` | a folder holding one file or folder of `import/`, `templates/`, `photos/` or `fonts/` under its own name, and `.grimoire-trash`, its record | 2.2 on (the storage layer, `fsview.rs`) |
+
+`<time>` is unix seconds; `<YYYYMMDD-HHMMSS>` is the local time and `<4 hex>` four lowercase hex digits
+(random), so two in one second have two folders. A page's place in its notebook is kept nowhere, so a page is
+listed and never restored by Grimoire. A notebook goes back to `notebooks/<id>` (refused while a notebook of
+that id is there): its name, its Library folder and its links are in its own files, and links to it work
+again (Links).
+
+The record, `.grimoire-trash`:
+
+```
+# Grimoire: where this went from, for Restore (docs/FORMAT.md, The trash)
+from=grimoire/templates/Holiday.png
+time=1763200000
+```
+
+`from=` is the path the item had, relative to the storage's root (`/mnt/us` on the Kindle: `grimoire/...`),
+as bytes (a name need not be UTF-8), and `time=` unix seconds. Every line ends with a line feed. It is read
+strictly: a plain file at that name (a link, a folder or a FIFO is no record), at most 4 KiB, lines beginning
+with `#` passed over, `from=` and `time=` each exactly once, `from=` a path under 600 bytes with no empty,
+`.` or `..` part and no leading `/`, `time=` digits only, and no other line (no blank line, no carriage
+return, no key this version does not know). A record that does not read so leaves its item listed and not
+restorable from Grimoire. A path with a line break in it cannot be recorded, so such an item is not trashed.
+
+Restore puts a file or folder back in the folder `from=` names, when that folder is still there, no import
+holds it, and it is inside Grimoire's `import/`, `templates/`, `photos/` or `fonts/` (never the folder itself,
+never `import/done` itself); a name taken there gets " 2", " 3" and so on up to " 99" (before a file's
+extension: `Holiday 2.png`). Then the record and the emptied `files-...` folder are removed: the only removal
+the trash ever sees. Anything put into that folder by hand stays there, in a folder with no record. A record
+whose `from=` is `grimoire/notebooks/<id>` over a folder named `<id>` restores that notebook, as `<id>-<time>`
+does (2.2 writes notebooks in the old form; the record form is read so a later version may write it).
+
+A trash cut off by a crash before its rename leaves a `files-...` folder holding only its record, or nothing,
+while the item is still where it was. Such a folder is listed like any other; Restore removes it (the record,
+then the folder) and puts nothing back. A folder holding anything else and no record that reads is left as it
+is (not restorable from Grimoire).
+
+What older versions do with the trash as 2.2 leaves it: none of them reads `trash/` at all (they only rename
+into it), so a `files-...` folder is never looked at, moved or changed by them, and their own deletes go on
+as before beside it. An item restored by hand (moved back with Grimoire closed) is an ordinary file to every
+version. 2.2 reads the entries older versions wrote (`<id>-<time>`, `<id>-p<page id>-<time>`), and lists any
+other name as an entry it does not know (not restorable).
+
 ## Where new data goes
 
 - Data about one page: the stroke's ext bytes, an erase stroke's seed bits, the page's paper
@@ -1656,6 +1982,52 @@ What 2.0.0 and 2.1.0-beta.1 do with data 2.1.0-beta.2 writes (read in their code
 | a colour page picture (RGB) | drawn as luma by every consumer: the page, its thumbnail, the PDFs and the share pages show it gray. The file is kept |
 | the mirror PDF | a notebook with colour pages is made again there, with those pages gray (the colour comes back when 2.1.0-beta.2 makes it again) |
 | `font=file:<name>` in `settings.ini`, `font_bold=` | kept as they are (2.0.0: unknown keys; 2.1.0-beta.1: a font it does not have, drawn as Terminess, and it logs the value once); the file is never loaded there |
+
+What 2.1 does with what 2.2's Files writes: the `settings.ini` keys `files_card`, `files_sort`, `files_show` and
+`files_view` are lines it does not know, kept as they are on its saves (so turning back and forward keeps them).
+Files writes nothing else: it reads the storage.
+
+What 2.1.0 and the versions before it do with what the hardening round of 2026-11 writes (annotate.rs, which
+reads and writes `source.ini`, is 2.1.0's own, unchanged by the round; for the versions before it, this file's
+rule for the lines of `source.ini` a version does not know):
+
+| new data (the hardening round of 2026-11) | 2.1.0 and before |
+|---|---|
+| the `file=` line in `source.ini` (the record of the file a notebook was made from) | never read. Kept as a line they do not know when they write `source.ini` again (a book page added from KOReader). The key alone decides there: a PDF with the key of a notebook is "PDF already imported." |
+| a notebook of a book's key with no `source=` and no `book=` (the second notebook of a key) | an ordinary notebook of document pages: not the book's notebook for KOReader's Open this book, for the plugin or for the import. If the book's first notebook is deleted, they import the file again (or make a new notebook for the book); this version still finds the second notebook by its record |
+| `src` with a tab or another control character in a mark or in `pdf-import.ini` | read as any other path (their readers take the line as it is): the import goes on with that file. They wrote such a path without those characters; this version reads what they wrote as before, and where the path so written names no file the work folder is not kept and the import starts over from the scan |
+| an import this version began and they finish | the notebook is made with `source=` and `book=` and no record, as they always made it |
+
+What 2.1.0 and the versions before it do with what 2.2's storage layer writes (The trash):
+
+| new data (2.2) | 2.1.0 and before |
+|---|---|
+| `trash/files-<YYYYMMDD-HHMMSS>-<4 hex>/` holding a file or folder and `.grimoire-trash` | never read: no version before 2.2 lists or reads `trash/`. The folder stays as it is, and their own deletes (`<id>-<time>`, `<id>-p<page id>-<time>`) go in beside it |
+| a notebook 2.2 put back from the trash | an ordinary notebook in `notebooks/<id>`, as one moved back by hand always was |
+| a file or folder 2.2 put back, or renamed (" 2" on a name taken) | an ordinary file of `import/`, `templates/`, `photos/` or `fonts/`: imported, listed or used by its new name |
+| `.grimoire-copy-<pid>.part` in `templates/`, `photos/` or `fonts/` (a copy cut off) | a dot-name: no listing of theirs shows it or uses it; 2.2 removes it at the next copy into that folder |
+
+What 2.1.0 and the versions before it do with what a fill (2.2) writes:
+
+| new data (a fill, 2.2) | 2.1.0 and before |
+|---|---|
+| a filled notebook | an ordinary notebook: it opens with every page of its list, the pages a fill added as document pages on their pictures (2.1.0 also with their tabs and names; 2.0 without the tabs, as for any `doclinks.ini`). Its files are the ones they write themselves: page files, `bg/` pictures, `bg/index.ini`, `bg/pages.ini`, `source.ini` page lines, `doclinks.ini`, `nav.ini`, `notebook.ini`. A notebook without a record still has none |
+| a fill's work folder (`notebooks/.import-<id>/` with `pdf-fill.ini`) | no `pdf-import.ini` and no `notebook.ini` in it: removed at their next start as any cut-off import's ("removed what a cut-off import left"); the notebook stays as it was, and the PDF, still in `import/`, is "PDF already imported." there (2.1.0) or never imported (before it) |
+| a fill's commit cut off half way (`stage=2`), then a start of one of them before 2.2 goes on with it | they remove the work folder, so the commit never goes on: the notebook lists the pages it had (cut before `notebook.ini` was written), or all of them without the links and names the fill had yet to add (cut after). Page files a cut left unlisted, and their lines in `bg/pages.ini` and `source.ini`, are never shown; `source.ini`'s go at its next write |
+
+What 2.1.0 does with what a version that numbers its font verdicts 2 writes (read in its code at the tag):
+
+| new data (font verdicts numbered 2) | 2.1.0 |
+|---|---|
+| a font's verdict (`grimoire-font 2`; on the Kindle in `/var/local/grimoire`), `fonts/.cache/<key>.no` | 2.1.0 never looks outside the storage: on the Kindle it keeps and reads its own `fonts/.cache/<key>.font`, which the later version never reads there and leaves alone, so a font 2.1.0 had checked is ready at once. Where the later version keeps its verdicts in `fonts/.cache/`, 2.1.0 takes `grimoire-font 2` as no verdict and checks the font once. `<key>.no` is a name it does not read; it goes with its font file |
+| `fonts/.cache/<key>.slow` with its line of text | 2.1.0 knows the mark by its name and time and never reads what it holds: it takes it as the mark of a first check of its own that ran out of time |
+
+What 2.1.0 and the versions before it do with KOReader's hand-over by path (2.2):
+
+| new data (2.2) | 2.1.0 and before |
+|---|---|
+| `import/.book/request.ini` version 2 | never sent to them: the plugin sends version 2 only to a launcher whose Capabilities line says `pdf`, and no launcher before 2.2 does (a 2.2 plugin sends them version 1, KOReader drawing the pages). One that reaches them anyway does not read (2.0.0-beta.5 to 2.1.0: "a version of request this Grimoire does not know"): nothing opened, "Couldn't open book from KOReader (see grimoire.log).", the folder emptied. 2.0.0-beta.4 and before never read the folder |
+| a notebook made or filled through version 2 | a notebook the PDF import made or filled (the tables above) |
 
 ## Highlighter rendering in 1.2.0
 
@@ -1893,7 +2265,8 @@ offset  size  field
 112     ...   the zlib stream
 ```
 
-All integers little endian. A record is used only when it reads, its length and CRC-32 are right, its stamp
+All integers little endian. A record is used only when it reads (from 2.1.1 on, a plain file at its name of
+at most 112 bytes and 128 MiB, its header and the largest stream), its length and CRC-32 are right, its stamp
 (bytes 4 to 47, the inode and the notebook's paper) is the page's today, taken before the page was read, and
 its picture's (channels, size, time) is the picture file's today, taken before any page on it was drawn: a
 changed page, a picture made, replaced or gone, another dpi, page size or notebook paper, a newer Grimoire or

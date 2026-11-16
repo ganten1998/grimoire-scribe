@@ -411,7 +411,9 @@ jobs:
     # privileges, rlimits and seccomp filter need Linux and root, so rust/tests/test_sandbox_linux.rs runs here,
     # as root, with the sandbox required (GRIMOIRE_SANDBOX=require), and skips itself anywhere else. The
     # worker is the headless runner's binary; the allow-list is x86-64's here and ARM's on the Kindle (the
-    # tests of the filter itself run for both in the unit job).
+    # tests of the filter itself run for both in the unit job). The storage layer's writes run here too
+    # (test_fsview_writes): this is the one job on Linux, where renameat2's no-replace flag is tried; the unit
+    # job on macOS takes the fallback only.
     needs: changes
     if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-24.04
@@ -436,7 +438,7 @@ jobs:
           (cd rust && PATH="$RUST_BIN:$PATH" cargo fetch --locked)
           cd rust
           sudo -E env "PATH=$RUST_BIN:$PATH" "HOME=$HOME" GRIMOIRE_SANDBOX=require \
-            cargo test --locked --features sim --test test_sandbox_linux --test test_sec_spawn_fds --test test_sec_handshake -- --test-threads=1 --nocapture
+            cargo test --locked --features sim --test test_sandbox_linux --test test_sec_spawn_fds --test test_sec_handshake --test test_sec_import_names --test test_sec_import_io --test test_fsview_writes -- --test-threads=1 --nocapture
 
   gate:
     # The one required check: every job of this run passed (a docs-only pull request: the docs job).

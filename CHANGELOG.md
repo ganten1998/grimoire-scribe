@@ -2,12 +2,83 @@
 
 ## 2.1.1 (unreleased)
 
+- **KOReader hands PDFs over by their path** (#142). With the KOReader plugin updated (Settings > KOReader >
+  Install / update Grimoire plugin, then restart KOReader), Open this book in Grimoire on a PDF no longer has
+  KOReader draw every page: Grimoire imports the PDF itself, in colour where the PDF has colour, with the notice
+  counting its pages while the Library stays usable, and then opens the page you were reading. If you opened
+  something else meanwhile, nothing opens by itself: a toast says the import is done, the book's notebook is a
+  card in the Library, and it opens at that page. A book you opened before keeps the pages KOReader drew and gets
+  the ones it lacks. A PDF that cannot be imported says why, as one dropped in `grimoire/import` does. DjVu,
+  comics, XPS, a PDF that needs a password and a PDF Grimoire does not take by its path (in a hidden or system
+  folder, over 512 MB, changed since KOReader first opened it) go the older way, as before.
+- **Size keys.** Shift+[ and Shift+] on a paired keyboard take the pen in use to its next smaller or larger quick
+  size, and a short toast says the size; a controller's buttons and gestures can too (Smaller / larger size, in the
+  Tools group of Buttons and of Gestures). The new `quick-size` action, bound by name in shortcuts.ini or
+  gestures.ini, opens the sizes card from a key or a gesture. An unedited shortcuts.ini gets the two keys at the
+  next start.
+- **Files**: the Kindle's storage as a place to browse. "Show Files in Library", the last row of New notebook >
+  From a file..., puts a Files card at the end of the Library (its menu hides it again). Files lists Grimoire's
+  places (Import, Templates, Photos, Fonts, PDF copies, Trash) and the Kindle's folders, with a path bar whose
+  parts open their folder, Go to, Sort (name, newest, size) and Show (the files Grimoire can use, or all, links
+  greyed and never followed). Every file has a card that says what it is. A Library card held opens its menu,
+  as its "..." does. Two new actions with no default key, `files` and `home`.
+- **Templates and photos from a file.** The Templates and Photos sheets (Paper > More layouts... and Photos...,
+  and New notebook's More layouts...) end with a From a file... tile: pick a picture anywhere on the Kindle and it is
+  copied in, its tile appearing in the sheet once its preview is made, with the notebook's page left as it was. In
+  Files, a picture's card offers Use as template and Use as photo. A copy that would leave less than 100 MB free is
+  refused: "Couldn't copy file. Is the storage full?". A picture over 16 MB, which Grimoire could not use as a
+  template or a photo, is not copied: "Too big (over 16 MB).".
 - Hardening: Grimoire reads the files in its own folders only when they are plain files, with size limits
   on the small text files, and makes its temporary files afresh each time. A `settings.ini` it cannot
   read is kept as `settings.ini.unread` rather than written over. A picture or folder in `templates/`,
   `photos/` or `import/` that is a link is no longer taken: copy the file in.
 - Housekeeping: the separate process that reads PDFs, pictures and fonts is held to a narrower set of
   system calls and is started only with all of its descriptors in place. No change in the app.
+- Housekeeping: the documents of the safe loader and of your own fonts say what the code does (the limit
+  on a worker's record lines, what a build off the Kindle takes of the sandbox, the font check's second
+  try), `licenses/rust-crates.txt` says it lists every crate `Cargo.lock` names, and the crate check
+  refuses by name the one crate that would bring a second font parser into the build. No change in the app.
+- **"PDF already imported." now means that very file.** A notebook made from a PDF keeps the SHA-256 and
+  size of its file (one line in its `source.ini`), and a PDF with the same book key is compared with it. The
+  same file says "PDF already imported." as before; a different file with that key (an edited copy, say)
+  becomes a notebook of its own. KOReader's Open this book in Grimoire on a PDF opens the notebook of the very
+  file it has open: an edited copy gets its notebook the first time and opens it from then on, and the file it
+  was edited from still opens its own. (For DjVu and comics, and with a KOReader plugin from before this
+  version, it opens the book's first notebook, by the key.) Notebooks made before this version, or from
+  KOReader, go by the key as before. In Files, a PDF that a
+  notebook already holds offers Import as notebook beside Open its notebook. A big PDF is read once more at
+  the end of its import (the notice stays on its last page meanwhile).
+- The import handles odd names and places more strictly: a file's path is kept exactly as it is while it is
+  imported (a name with unusual characters goes on correctly after an interruption), a path with a line
+  break in a name is left where it is, a file picked from a folder that is only spelled like
+  `grimoire/import` stays where it is, and the import's lock file and its first look at a dropped PDF are
+  opened without following links.
+- Housekeeping: package-check's size guard is now 13 MB for the Kindle binary and 7 MB for the zip (was 11 MB and
+  6 MB): the new Settings menu brought the binary to 10.96 MB, and 2.2's Files, PDF fills and KOReader's hand-over
+  by path need more.
+- **The same PDF again fills its notebook** (#123). When a PDF's notebook lacks some of the book's pages (pages
+  deleted since, or a notebook KOReader made, which holds only the pages KOReader sent), dropping the PDF in
+  `grimoire/import` again adds those pages in book order, with the tabs that reach them or start on them and the
+  outline's names for them, and says "Added N book pages." Pages already there, their ink, names and links stay
+  as they were (deleting the added pages takes back everything the fill added). A notebook with every page still
+  says "PDF already imported."; a PDF with another page count becomes a notebook of its own. The pages go in
+  once the notebook is closed and the Library is in front, in a moment that says "Adding book pages"; until then
+  the notebook opens as it is, and KOReader's Open this book in Grimoire opens the book as usual.
+
+- The toolbar's page chip shows the page alone, at its usual size, on every page of a notebook where the page
+  and the count would not fit it on some page (every notebook of 1000 pages or more, and many of 100 or more,
+  by the font and the size), where it was cut short; a notebook under 100 pages shows both as before. The count
+  pad's - and + count on while held, as a held delete deletes, up to the pad's limits (#119).
+- The Clock settings page's corner row moves the clock and battery without a toast: the row names the corner, as
+  the size row names the size. The `status-corner` shortcut still names the corner in a toast where no notebook
+  page is in front (#141).
+
+- **Your own fonts: a stricter background check.** What the check found of a font is now kept on the
+  Kindle itself (`/var/local/grimoire`, a few hundred bytes a font) and tied to the font file by its
+  SHA-256. The check also times each glyph as Grimoire will draw it: a glyph that would take too long is
+  drawn in Terminess, and a font whose letters would is "Took too long to read.". Each font is checked
+  once more after the update, and Grimoire reads in Terminess until the font in use has passed again.
+  Deleting `grimoire/fonts/.cache` still has every font checked again.
 
 ## 2.1.0 (2026-11-13)
 
@@ -114,8 +185,8 @@
   lines they do not know (they draw Terminess). The Kindle binary is 10.6 MB and the zip 5.5 MB with it.
 - **Settings > Wi-Fi switches between the Kindle's saved networks** (issue #40). A Wi-Fi button in Settings'
   bottom row, beside Pair, opens a sheet that turns Wi-Fi on or off, says which network the Kindle is connected
-  to, and lists the networks the Kindle has saved, that one first with a check (seven a page; More networks shows
-  the next). Tap one to switch: "Connecting to ...", then "Connected to ...", or "Could not connect to ..." when
+  to, and lists the networks the Kindle has saved in their own order; the status line names the connected network and
+  the list scrolls. Tap one to switch: "Connecting to ...", then "Connected to ...", or "Could not connect to ..." when
   the Kindle refuses it or has not connected in 45 seconds (Grimoire then changes nothing more). Switching drops
   Share, Live view and SSH from the network you leave. Adding a network or a password stays in the Kindle's
   settings and KOReader. No Wi-Fi password reaches the app, its files or its log (its helper keeps only the

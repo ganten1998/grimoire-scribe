@@ -9,6 +9,7 @@
 #   make dev       build a separate "Grimoire (dev)" and copy it over MTP (tools/kindle-dev)
 #   make dev-ssh   build, patch and start a separate "Grimoire (dev)" over SSH (tools/kindle-dev-ssh;
 #                  --release replaces the release launcher instead)
+#   make wifieap   local WPA2/WPA3-Enterprise test AP on this computer (tools/wifieap)
 #   make dist      complete installable bundle       -> dist/Grimoire-VERSION-COMMIT/
 #   make check     make rust-check (tests + scenarios + the languages + share server + exporter +
 #                  ARM build) + the zip, its launchers, the dev launcher's patch, the KPM package
@@ -61,7 +62,7 @@ HDRS := $(wildcard src/*.h) third_party/qrcodegen/qrcodegen.h VERSION Makefile
 SDL_CFLAGS := $(shell pkg-config --cflags sdl3 2>/dev/null)
 SDL_LIBS   := $(shell pkg-config --libs sdl3 2>/dev/null)
 
-.PHONY: all sim headless test tools tablet kindle package dev dev-ssh dev-check scenarios check clean icon logo l10n l10n-check
+.PHONY: all sim headless test tools tablet kindle package dev dev-ssh dev-check wifieap scenarios check clean icon logo l10n l10n-check
 .PHONY: c-headless c-test c-tools c-kindle c-check c-package c-icon c-logo
 all: sim headless test tools kindle dist
 
@@ -174,11 +175,12 @@ SIM_HOOKS := GRIMOIRE_WIFI_SCRIPT GRIMOIRE_HOST GRIMOIRE_PASSCODE GRIMOIRE_SIM_A
              GRIMOIRE_SLEEP_MINUTE_MS GRIMOIRE_SIM_RAWPEN GRIMOIRE_SIM_RAWPEN_MAIN GRIMOIRE_SIM_STALL_MS \
              GRIMOIRE_LIVE_PEN_SOURCE GRIMOIRE_SIM_MAP_NOMEM GRIMOIRE_KEEP_RENDER_MS GRIMOIRE_PAGE_VIEWS GRIMOIRE_SIM_LATE_MS GRIMOIRE_SIM_CLOCK GRIMOIRE_SIM_UPTIME_MS \
              GRIMOIRE_SIM_DENSE_DRAW_MS GRIMOIRE_SIM_CORES GRIMOIRE_SIM_BACKLINKS_STEP_MS GRIMOIRE_CACHE_WINDOW_MS GRIMOIRE_STORAGE \
-             GRIMOIRE_IMPORT_STABLE GRIMOIRE_PDF_SLICE_PAGES GRIMOIRE_PDF_BANDS GRIMOIRE_PDF_NO_MAP GRIMOIRE_PDF_FREE_BYTES GRIMOIRE_PDF_WATCHDOG_MS \
-             GRIMOIRE_PDF_TEST_CRASH_PAGE GRIMOIRE_PDF_TEST_HANG_PAGE GRIMOIRE_PDF_TEST_ALLOC_PAGE GRIMOIRE_PDF_TEST_TRAP_PAGE GRIMOIRE_PDF_TEST_LINKS GRIMOIRE_PDF_TEST_WOKE GRIMOIRE_PDF_JOB_CPU_SECS GRIMOIRE_WORK_FAIL_STEP GRIMOIRE_WORK_EXE GRIMOIRE_SANDBOX \
+             GRIMOIRE_COPY_FREE_BYTES GRIMOIRE_COPY_FAIL_AFTER GRIMOIRE_IMPORT_STABLE GRIMOIRE_PDF_SLICE_PAGES GRIMOIRE_PDF_BANDS GRIMOIRE_PDF_NO_MAP GRIMOIRE_PDF_FREE_BYTES GRIMOIRE_PDF_WATCHDOG_MS \
+             GRIMOIRE_PDF_TEST_CRASH_PAGE GRIMOIRE_PDF_TEST_HANG_PAGE GRIMOIRE_PDF_TEST_ALLOC_PAGE GRIMOIRE_PDF_TEST_TRAP_PAGE GRIMOIRE_PDF_TEST_LINKS GRIMOIRE_PDF_TEST_WOKE GRIMOIRE_PDF_JOB_CPU_SECS GRIMOIRE_FILL_STEP_PAGES GRIMOIRE_BOOK_STEP_PAGES GRIMOIRE_WORK_FAIL_STEP GRIMOIRE_WORK_EXE GRIMOIRE_SANDBOX \
              GRIMOIRE_PIC_WATCHDOG_MS GRIMOIRE_PIC_TEST_CRASH GRIMOIRE_PIC_TEST_HANG GRIMOIRE_PIC_TEST_TRAP \
              GRIMOIRE_FONT_WATCHDOG_MS GRIMOIRE_FONT_SLICE_MS GRIMOIRE_FONT_JOB_MS GRIMOIRE_FONT_TEST_CRASH GRIMOIRE_FONT_TEST_HANG \
              GRIMOIRE_FONT_TEST_TRAP GRIMOIRE_FONT_TEST_DRAW_CRASH GRIMOIRE_FONT_MEM_AVAILABLE \
+             GRIMOIRE_STATE GRIMOIRE_STATE_FREE_BYTES GRIMOIRE_FONT_GLYPH_US GRIMOIRE_FONT_TEST_SLOW \
              GRIMOIRE_CAPS_PROBE GRIMOIRE_CAPS_NO_STATM
 # The scenarios tap by coordinates and check English text: they run in English whatever the
 # caller's LANG says (GRIMOIRE_LANG ranks first), unless a scenario's "# env:" line sets another.
@@ -365,6 +367,14 @@ dev-ssh:
 # (tests/kindle_dev_check.sh).
 dev-check: package
 	tests/kindle_dev_check.sh $(BUILD)/dist/Grimoire.zip
+
+# A local WPA2/WPA3-Enterprise (PEAP/MSCHAPv2) test AP beside the current Wi-Fi connection: a second
+# virtual interface on the same channel, so the existing link stays up when the driver allows
+# AP + managed. It offers both Enterprise AKMs with PMF optional; WIFI_EAP_WPA3_ONLY=1 makes it
+# WPA3-Enterprise only. Test credentials: SSID Grimoire-Test-EAP, identity student, password
+# test-password.
+wifieap:
+	tools/wifieap
 
 # The C tree's: tools/grimoire-export.c, mkicon.c and mklogo.c (the same bytes as the Rust ones).
 c-tools: $(CBUILD)/host/grimoire-export

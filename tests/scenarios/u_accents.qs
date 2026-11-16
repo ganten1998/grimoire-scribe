@@ -94,10 +94,12 @@ expect library.sheet is none
 # Classic: Settings, Style, Done.
 tap 1535 95
 wait 200
-tap 496 937
+tap library settings.cat.1
+wait 100
+tap library theme
 wait 300
 expect settings.theme is classic
-tap 1557 1930
+tap library done
 wait 300
 expect library.sheet is none
 # Rename again: the keyboard opens on the name the Library stored, accents whole. Add a space,

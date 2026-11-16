@@ -107,6 +107,8 @@ pub const KB_REPEAT_BATCH: u32 = 3;
 #[derive(Clone, Copy, Debug, Default)]
 pub struct Keyboard {
     pub open: bool,
+    /// a password: its text is drawn masked, never copied, and wiped when the keyboard closes
+    pub secret: bool,
     pub title: FixedStr<64>,
     pub text: FixedStr<KB_TEXT_MAX>,
     /// the shift key's state (keyboard_open starts every keyboard with it off)
@@ -549,6 +551,9 @@ fn paste(kb: &mut Keyboard) -> bool {
 /// The text with the caret drawn in as `|` and a selection in `[` `]` (`ab|cd`, `a[bc|]d`): the headless
 /// runner's `library.caret` and `editor.caret` (docs/SIM.md).
 pub fn keyboard_caret_probe(kb: &Keyboard) -> String {
+    if kb.secret {
+        return String::new(); // (a password never reaches a probe, a log or a scenario)
+    }
     let b = kb.text.as_bytes();
     let (s, e) = keyboard_selection(kb);
     let c = kb.caret.min(b.len());
@@ -822,17 +827,29 @@ fn backspace(kb: &mut Keyboard) {
     replace_selection(kb, b"");
 }
 
+// The keys that act again while held (keyboard_repeat): delete, ◀ and ▶, and the count pad's - and + (#119).
+fn repeats(code: u32) -> bool {
+    matches!(code, KB_KEY_BKSP | KB_KEY_LEFT | KB_KEY_RIGHT | KB_KEY_DEC | KB_KEY_INC)
+}
+
 // Whether delete, ◀ or ▶ held down has anything more to do: delete a selection or a character before the caret,
-// ◀ a selection or a character before it, ▶ a selection or one after it.
+// ◀ a selection or a character before it, ▶ a selection or one after it. The count pad's - and + have until the
+// count is at the pad's limit: 1 for -, its most for +.
 fn can_repeat(kb: &Keyboard, code: u32) -> bool {
     let len = kb.text.len();
     let caret = kb.caret.min(len);
-    has_selection(kb)
-        || match code {
-            KB_KEY_BKSP | KB_KEY_LEFT => caret > 0,
-            KB_KEY_RIGHT => caret < len,
-            _ => false,
+    match code {
+        KB_KEY_DEC => kb.page == 4 && keyboard_count(kb) > 1,
+        KB_KEY_INC => kb.page == 4 && keyboard_count(kb) < kb.count_max,
+        _ => {
+            has_selection(kb)
+                || match code {
+                    KB_KEY_BKSP | KB_KEY_LEFT => caret > 0,
+                    KB_KEY_RIGHT => caret < len,
+                    _ => false,
+                }
         }
+    }
 }
 
 /// A hardware key on an open on-screen keyboard: the result a tap on the same key would give (Cancel closes it;
@@ -847,7 +864,7 @@ pub fn keyboard_input(kb: &mut Keyboard, input: &KbInput, dirty: &mut Rect) -> K
     let code = match *input {
         KbInput::Cancel if kb.page == 4 => return keyboard_press(kb, KB_KEY_CANCEL, dirty),
         KbInput::Cancel => {
-            kb.open = false;
+            keyboard_close(kb);
             *dirty = kb.area;
             return KbResult::Cancel;
         }
@@ -1086,6 +1103,7 @@ fn layout_page(area: Rect, page: i32, keys: &mut [Key; MAX_KEYS]) -> usize {
 pub fn keyboard_open(kb: &mut Keyboard, title: &str, initial: &[u8]) {
     *kb = Keyboard::default();
     kb.open = true;
+    kb.secret = false;
     kb.pressed_key = -1;
     kb.flick = 0;
     copy_text(&mut kb.title, title.as_bytes());
@@ -1123,8 +1141,20 @@ fn set_count(kb: &mut Keyboard, n: i32) {
 }
 
 pub fn keyboard_close(kb: &mut Keyboard) {
+    if kb.secret {
+        kb.text.clear();
+        kb.caret = 0;
+        kb.anchor = 0;
+    }
+    kb.secret = false;
     kb.open = false;
     kb.repeat_at = 0;
+}
+
+/// A password keyboard: the same keys, with the text masked, and no copy, cut or paste.
+pub fn keyboard_open_secret(kb: &mut Keyboard, title: &str) {
+    keyboard_open(kb, title, b"");
+    kb.secret = true;
 }
 
 // What a key shows: a name for the named keys, else its character as it would type now (in
@@ -1323,16 +1353,23 @@ pub fn keyboard_draw(kb: &mut Keyboard, c: &mut Canvas, screen: Rect) -> Rect {
         font_draw_left(c, FontFace::Bold, ts, Rect { x: f.x + ui_px(24.0), y: f.y, w: tr.x - f.x - ui_px(24.0), h: f.h }, title, 0);
     }
     // The text from kb.scroll, as much as fits: the caret always in view (text_scroll), and with it at the end, as
-    // it is while a name is typed, the text's tail, as it always was.
-    norm(kb);
+    // it is while a name is typed, the text's tail, as it always was. A password is drawn as stars, one for each
+    // character, and its selection and its bytes never reach the screen.
     let room = tr.w - ui_px(20.0);
-    kb.scroll = text_scroll(kb, face, size, room);
-    let text = kb.text.as_str();
-    let at = kb.scroll;
-    let end = shown_end(text, at, face, size, room);
+    let masked;
+    let (text, at, end) = if kb.secret {
+        masked = "*".repeat(kb.text.as_str().chars().count());
+        (masked.as_str(), 0, masked.len())
+    } else {
+        norm(kb);
+        kb.scroll = text_scroll(kb, face, size, room);
+        let text = kb.text.as_str();
+        let at = kb.scroll;
+        (text, at, shown_end(text, at, face, size, room))
+    };
     font_draw_left(c, face, size, tr, &text[at..end], 0);
     let x_of = |off: usize| tr.x + font_measure(face, size, &text[at..off.clamp(at, end)]);
-    let (s0, s1) = keyboard_selection(kb);
+    let (s0, s1) = if kb.secret { (0, 0) } else { keyboard_selection(kb) };
     let (v0, v1) = (s0.clamp(at, end), s1.clamp(at, end));
     if s0 < s1 {
         // A selection: white on a black box, as the line's height the caret takes (no caret beside it).
@@ -1584,10 +1621,10 @@ pub fn keyboard_pointer(kb: &mut Keyboard, phase: i32, x: f32, y: f32, t: u32, d
     if !rect_is_empty(kb.field_dirty) && rect_contains_rect(kb.field_dirty, *dirty) {
         *dirty = RECT_EMPTY;
     }
-    if phase == 0 && matches!(code, KB_KEY_BKSP | KB_KEY_LEFT | KB_KEY_RIGHT) && kb.open && can_repeat(kb, code) {
-        // Held, it deletes (or moves the caret) again (keyboard_repeat): not with nothing left to delete before the
-        // caret, or no further to go, so a hold on an empty field, or on the count pad's opening 1 (which this
-        // delete cleared), or on ◀ at the text's start, does nothing more.
+    if phase == 0 && repeats(code) && kb.open && can_repeat(kb, code) {
+        // Held, it deletes (or moves the caret, or counts) again (keyboard_repeat): not with nothing left to delete
+        // before the caret, or no further to go, so a hold on an empty field, or on the count pad's opening 1 (which
+        // this delete cleared), or on ◀ at the text's start, or on - at 1 or + at the pad's most, does nothing more.
         kb.repeat_at = t.wrapping_add(KB_HOLD_MS).max(1);
         kb.repeat_gen = G_HOLDS.with(|g| g.get());
     }
@@ -1606,6 +1643,15 @@ pub fn keyboard_press(kb: &mut Keyboard, code: u32, dirty: &mut Rect) -> KbResul
     kb.field_dirty = RECT_EMPTY;
     kb.also_dirty = RECT_EMPTY;
     if !kb.open || count_done_off(kb, code) {
+        return KbResult::None;
+    }
+    // A password is typed and deleted; it is never selected, copied, cut or pasted.
+    if kb.secret
+        && matches!(
+            code,
+            KB_KEY_EDIT | KB_KEY_SELECT_ALL | KB_KEY_CUT | KB_KEY_COPY | KB_KEY_PASTE | KB_KEY_START | KB_KEY_END
+        )
+    {
         return KbResult::None;
     }
     if kb.page == 4 && code != KB_KEY_CANCEL && code != KB_KEY_DONE {
@@ -1636,12 +1682,12 @@ pub fn keyboard_press(kb: &mut Keyboard, code: u32, dirty: &mut Rect) -> KbResul
     }
     match code {
         KB_KEY_CANCEL => {
-            kb.open = false;
+            keyboard_close(kb);
             *dirty = kb.area;
             return KbResult::Cancel;
         }
         KB_KEY_DONE => {
-            kb.open = false;
+            kb.open = false; // (the caller takes a secret's text, then wipes it)
             *dirty = kb.area;
             return KbResult::Done;
         }
@@ -1754,7 +1800,8 @@ fn pressed_code(kb: &Keyboard) -> Option<u32> {
     (kb.pressed_key >= 0 && (kb.pressed_key as usize) < n).then(|| keys[kb.pressed_key as usize].code)
 }
 
-/// Delete held down (or ◀ or ▶, the same way), at `now` (a sample of the contact on it, or the screen's tick): once
+/// Delete held down (or ◀ or ▶, or the count pad's - or +, the same way), at `now` (a sample of the contact on it, or
+/// the screen's tick): once
 /// its next repeat is due, the delete a tap makes (the caret's move), with every repeat that came due since up to
 /// KB_REPEAT_BATCH (a tick or a sample late,
 /// or the panel busy); the next is due KB_REPEAT_MS after the last that came due, so the rate holds and those
@@ -1763,8 +1810,8 @@ fn pressed_code(kb: &Keyboard) -> Option<u32> {
 /// is never more than that one refresh behind the text, at the lift too, after which nothing more is deleted.
 /// Changed when it deleted (Moved when it moved the caret), with field_dirty (and on the count pad also_dirty) as
 /// keyboard_press sets them; None otherwise, both empty. The hold ends once nothing is left to delete before the
-/// caret (no further for the caret to go), and when the keyboard has closed, the key pressed is not delete, ◀ or ▶,
-/// or keyboard_holds_end came since it began.
+/// caret (no further for the caret to go, the count at the pad's limit), and when the keyboard has closed, the key
+/// pressed is not one that repeats, or keyboard_holds_end came since it began.
 pub fn keyboard_repeat(kb: &mut Keyboard, now: u32, panel_busy: bool) -> KbResult {
     kb.field_dirty = RECT_EMPTY;
     kb.also_dirty = RECT_EMPTY;
@@ -1774,7 +1821,7 @@ pub fn keyboard_repeat(kb: &mut Keyboard, now: u32, panel_busy: bool) -> KbResul
     let code = pressed_code(kb).unwrap_or(0);
     if !kb.open
         || kb.repeat_gen != G_HOLDS.with(|g| g.get())
-        || !matches!(code, KB_KEY_BKSP | KB_KEY_LEFT | KB_KEY_RIGHT)
+        || !repeats(code)
         || !can_repeat(kb, code)
     {
         kb.repeat_at = 0;
@@ -2152,6 +2199,82 @@ mod tests {
 
     fn label(n: i32) -> String {
         format!("Add {n}")
+    }
+
+    /// The count pad's - and + held (#119) count again as delete held deletes, with its timing (KB_HOLD_MS, then
+    /// every KB_REPEAT_MS): the touch-down's step, one at KB_HOLD_MS and one every KB_REPEAT_MS after, never more
+    /// than that by the clock however late the ticks come (KB_REPEAT_BATCH at most at once, none saved up), and
+    /// never past the pad's limits, where the hold ends: 1 for -, its most for +.
+    #[test]
+    fn the_count_pads_minus_and_plus_repeat_to_its_limits() {
+        let pad = |max: i32| {
+            let mut kb = Keyboard::default();
+            keyboard_open_count(&mut kb, "Pages to add", max, label);
+            kb.area = keyboard_area(&kb, Rect { x: 0, y: 0, w: 1860, h: 2480 });
+            kb
+        };
+        let centre = |kb: &Keyboard, code: u32| {
+            let mut r = RECT_EMPTY;
+            assert!(keyboard_key_rect(kb, code, &mut r));
+            ((r.x + r.w / 2) as f32, (r.y + r.h / 2) as f32)
+        };
+        // + held H ms from the opening 1, a tick every millisecond (or every 30, as the main loop goes round), with
+        // room to spare: 1 and the steps a hold of H ms makes by the clock.
+        for step in [1u32, 30] {
+            for held in [0u32, 100, 399, 400, 401, 464, 465, 1000, 2000] {
+                let mut kb = pad(999);
+                let (x, y) = centre(&kb, KB_KEY_INC);
+                at(&mut kb, 0, x, y, 1000);
+                let mut dt = step;
+                while dt <= held {
+                    keyboard_repeat(&mut kb, 1000 + dt, false);
+                    dt += step;
+                }
+                at(&mut kb, 2, x, y, 1000 + held);
+                let steps = 1 + if held >= KB_HOLD_MS { 1 + (held - KB_HOLD_MS) / KB_REPEAT_MS } else { 0 };
+                let got = keyboard_count(&kb) as u32 - 1;
+                if step == 1 {
+                    assert_eq!(got, steps, "+ held {held} ms, a tick a millisecond");
+                } else {
+                    assert!(got <= steps && got + 1 >= steps, "+ held {held} ms, a tick every 30: {got} of {steps}");
+                }
+                assert_eq!(kb.repeat_at, 0, "the lift ends the hold");
+            }
+        }
+        // A tick found 2 s late: KB_REPEAT_BATCH steps, no more, and the next on the schedule.
+        let mut kb = pad(999);
+        let (x, y) = centre(&kb, KB_KEY_INC);
+        at(&mut kb, 0, x, y, 1000);
+        assert_eq!(keyboard_repeat(&mut kb, 3000, false), KbResult::Changed);
+        assert!(!rect_is_empty(kb.field_dirty) && !rect_is_empty(kb.also_dirty), "the count line and Done");
+        assert_eq!(keyboard_count(&kb), 2 + KB_REPEAT_BATCH as i32);
+        assert!(kb.repeat_at > 3000 && kb.repeat_at <= 3000 + KB_REPEAT_MS);
+        // + held at the pad's most: up to it, and the hold ends there.
+        let mut kb = pad(5);
+        let (x, y) = centre(&kb, KB_KEY_INC);
+        at(&mut kb, 0, x, y, 1000);
+        for t in (1001..=4000).step_by(10) {
+            keyboard_repeat(&mut kb, t, false);
+        }
+        assert_eq!((keyboard_count(&kb), kb.repeat_at), (5, 0));
+        at(&mut kb, 2, x, y, 4000);
+        // - held from 5: down to 1, and the hold ends there; held at 1 it does not start.
+        let (x, y) = centre(&kb, KB_KEY_DEC);
+        at(&mut kb, 0, x, y, 5000);
+        assert_eq!(keyboard_count(&kb), 4);
+        for t in (5001..=8000).step_by(10) {
+            keyboard_repeat(&mut kb, t, false);
+        }
+        assert_eq!((keyboard_count(&kb), kb.repeat_at), (1, 0));
+        at(&mut kb, 2, x, y, 8000);
+        at(&mut kb, 0, x, y, 9000);
+        assert_eq!((keyboard_count(&kb), kb.repeat_at), (1, 0));
+        at(&mut kb, 2, x, y, 9100);
+        // + on a pad of one: the opening 1 is all there is, no hold.
+        let mut kb = pad(1);
+        let (x, y) = centre(&kb, KB_KEY_INC);
+        at(&mut kb, 0, x, y, 1000);
+        assert_eq!((keyboard_count(&kb), kb.repeat_at), (1, 0));
     }
 
     /// New page's count pad (2.0.0-beta.2): digits, del, - and + keep a count from 0 to its most, a count past
@@ -2914,6 +3037,28 @@ mod tests {
         for (code, m) in [(30, 0), (46, shift), (47, ctrl | alt), (103, 0), (108, 0), (1, 0), (28, 0), (14, 0)] {
             assert_eq!(keyboard_key_input(code, m), None, "key {code} mods {m}");
         }
+    }
+
+    /// A password keyboard shows stars, never exposes its text to a probe, and takes no edit or clipboard key; its
+    /// text is wiped when it closes.
+    #[test]
+    fn a_password_is_masked_and_never_copied() {
+        G_CLIP.with(|c| c.borrow_mut().clear());
+        let mut kb = Keyboard::default();
+        keyboard_open_secret(&mut kb, "Password");
+        kb.text.set("hunter2");
+        kb.caret = 7;
+        let mut d = RECT_EMPTY;
+        for code in [KB_KEY_EDIT, KB_KEY_SELECT_ALL, KB_KEY_COPY, KB_KEY_CUT, KB_KEY_PASTE] {
+            assert_eq!(keyboard_press(&mut kb, code, &mut d), KbResult::None, "key {code}");
+        }
+        assert_eq!(keyboard_clipboard(), "");
+        assert_eq!(keyboard_caret_probe(&kb), "");
+        assert_eq!(keyboard_press(&mut kb, KB_KEY_DONE, &mut d), KbResult::Done);
+        assert_eq!(kb.text.as_str(), "hunter2", "the caller takes it before wiping it");
+        keyboard_close(&mut kb);
+        assert!(kb.text.is_empty());
+        assert!(!kb.secret);
     }
 
     /// Every edit key's word, and the text line's icons, fit their keys in English and Spanish, upright and sideways,

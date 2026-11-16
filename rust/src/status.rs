@@ -453,6 +453,34 @@ fn draw(c: &mut Canvas, l: &Layout) {
     }
 }
 
+/// Reads the battery for the Clock settings page's preview: the indicator itself is not on the panel
+/// there, so its own tick never reads one. Called as that page opens (never while drawing).
+pub fn status_preview_prepare() {
+    read_battery();
+}
+
+/// A sample of the indicator on a notebook page in r, at `size` and in `corner`, for Settings' Clock
+/// page: a size, corner or 12-hour change shows there at once. Draws only, from the battery last read
+/// (status_preview_prepare): no refresh and no state.
+pub fn status_preview(c: &mut Canvas, r: Rect, size: i32, corner: i32, twelve: bool) {
+    if r.w <= 0 || r.h <= 0 {
+        return;
+    }
+    let b = with(|s| s.battery);
+    let mut l = layout_of(size, corner, r.w, r.h, sys_wall_clock(), twelve, &b);
+    l.rect.x += r.x;
+    l.rect.y += r.y;
+    l.time_r.x += r.x;
+    l.time_r.y += r.y;
+    l.pct_r.x += r.x;
+    l.pct_r.y += r.y;
+    if let Some(icon) = l.icon.as_mut() {
+        icon.x += r.x;
+        icon.y += r.y;
+    }
+    draw(c, &l);
+}
+
 /// The square a tap finds in the corner the setting names: 14 mm.
 pub fn status_square(a: &App) -> Rect {
     let side = (ZONE_MM * a.dpi / 25.4).round() as i32;
@@ -500,7 +528,7 @@ thread_local! {
 
 /// Whether the panel should hold the indicator now: it is on, and the page is in front.
 fn wanted(a: &App) -> bool {
-    a.settings.status_on && (page_in_front(a) || crate::editor::editor_status_preview(a))
+    a.settings.status_on && page_in_front(a)
 }
 
 // ---- the pen, a finger, the shortcut ----
@@ -524,11 +552,17 @@ pub fn status_tapped() -> bool {
     with(|s| s.tapped)
 }
 
-/// Whether the corner must hold its refreshes back: the pen is near, a stroke or another gesture
-/// is in progress, or the driver is in pen mode.
+/// Whether painting the corner must hold its refreshes back: the pen is near, a stroke or another
+/// gesture is in progress, or the driver is in pen mode.
 fn status_busy(a: &App) -> bool {
-    if crate::editor::editor_status_preview(a) {return a.pen_action_down || editor_busy(a);}
     with(|s| s.pen_near) || editor_busy(a) || display_pen_mode_on()
+}
+
+/// Whether taking the corner down must wait: a stroke or another gesture is in progress, or the driver
+/// is in pen mode. The pen merely being near does not hold the take-down back: a sheet opened under it
+/// must not keep the corner over the sheet.
+fn status_taking_down(a: &App) -> bool {
+    editor_busy(a) || display_pen_mode_on()
 }
 
 /// A finger's events, before the screen sees them (it sees them all as ever; the corner only
@@ -670,7 +704,7 @@ pub fn status_toggle(a: &mut App) {
     }
 }
 
-/// Settings > Display > the size row: the next size, small to medium to large and round.
+/// Settings > Sleep & Clock > Clock settings > the size row: the next size, small to medium to large and round.
 pub fn status_cycle_size(a: &mut App) {
     a.settings.status_size = (a.settings.status_size + 1) % STATUS_SIZES;
     save_later();
@@ -687,12 +721,19 @@ static K_CORNER_TOASTS: [&str; STATUS_CORNERS as usize] = [
     n_("Clock and battery: bottom left corner of page"),
 ];
 
-/// The next corner, clockwise from the top left and round (the status-corner shortcut, the Display sheet's row).
+/// Settings > Sleep & Clock > Clock settings > the corner row: the next corner, clockwise from the top left and
+/// round. No toast: the row names the corner, as the size row names the size (issue #141).
 pub fn status_cycle_corner(a: &mut App) {
     a.settings.status_corner = (a.settings.status_corner + 1) % STATUS_CORNERS;
     save_later();
     qlog!("status: the clock and battery corner moves to corner %d", a.settings.status_corner);
     ask_change(a);
+}
+
+/// The status-corner shortcut: the next corner, as the corner row; with no notebook page in front, where nothing
+/// shows it, a toast says which corner it is now.
+pub fn status_corner_shortcut(a: &mut App) {
+    status_cycle_corner(a);
     if !page_in_front(a) {
         say(a, tr(K_CORNER_TOASTS[clampi(a.settings.status_corner, 0, STATUS_CORNERS - 1) as usize]));
     }
@@ -727,12 +768,13 @@ pub fn status_save_now(a: &App) {
 
 /// From app_tick, awake: reads the battery now and then and asks for a refresh when the minute or
 /// the battery is not what the panel shows, or when the indicator is on the panel and the page no
-/// longer wants it there (a sheet opened, the screen changed: only its own rect is taken down).
+/// longer wants it there (a sheet opened, the screen changed: only its own rect is taken down, even
+/// with the pen near).
 pub fn status_tick(a: &mut App, now: u32) {
     sys_battery_reap(); // (a reading under way ends, or is stopped, even with the corner off or held back)
     let want = wanted(a);
     let drawn = with(|s| s.drawn);
-    if (!want && rect_is_empty(drawn)) || status_busy(a) {
+    if (!want && rect_is_empty(drawn)) || (want && status_busy(a)) || (!want && status_taking_down(a)) {
         return;
     }
     if !want {
@@ -893,10 +935,10 @@ pub fn status_flush(a: &mut App) {
 }
 
 fn flush_corner(a: &mut App) {
-    if with(|s| s.pending.is_empty()) || status_busy(a) {
+    let on = wanted(a);
+    if with(|s| s.pending.is_empty()) || (on && status_busy(a)) || (!on && status_taking_down(a)) {
         return;
     }
-    let on = wanted(a);
     if !on && rect_is_empty(with(|s| s.drawn)) {
         with(|s| s.pending.clear()); // nothing of it is on the panel: nothing to take down
         return;
@@ -1288,6 +1330,41 @@ mod tests {
         }
     }
 
+    // Settings' Clock page's sample: the indicator at the size and in the corner the rows choose.
+    #[test]
+    fn the_preview_draws_the_indicator_in_the_chosen_corner() {
+        utc();
+        up();
+        with(|s| s.battery = Battery { percent: 87, charging: false });
+        let r = Rect { x: 200, y: 300, w: 1200, h: 600 };
+        let ink = |c: &Canvas, x0: i32, y0: i32, x1: i32, y1: i32| {
+            let mut n = 0;
+            for y in y0..y1 {
+                for x in x0..x1 {
+                    if c.px[(y * c.stride + x) as usize] < 128 {
+                        n += 1;
+                    }
+                }
+            }
+            n
+        };
+        let (mx, my) = (r.x + r.w / 2, r.y + r.h / 2);
+
+        let mut c = Canvas::default();
+        assert_eq!(canvas_init(&mut c, 1600, 1200), 0);
+        status_preview(&mut c, r, 1, 0, false);
+        assert!(ink(&c, r.x, r.y, mx, my) > 100, "the clock is in the top left");
+        assert_eq!(ink(&c, mx, my, r.x + r.w, r.y + r.h), 0, "and nowhere else");
+        canvas_free(&mut c);
+
+        let mut c = Canvas::default();
+        assert_eq!(canvas_init(&mut c, 1600, 1200), 0);
+        status_preview(&mut c, r, 1, 2, false);
+        assert!(ink(&c, mx, my, r.x + r.w, r.y + r.h) > 100, "the clock is in the bottom right");
+        assert_eq!(ink(&c, r.x, r.y, mx, my), 0, "and nowhere else");
+        canvas_free(&mut c);
+    }
+
     #[test]
     fn the_band_holds_the_box_of_each_corner() {
         utc();
@@ -1588,6 +1665,33 @@ mod tests {
         // and nothing more is asked while there is nothing on the panel
         status_tick(&mut a, 1000);
         assert!(with(|s| s.pending.is_empty()));
+        status_reset();
+    }
+
+    /// With the page covered (Settings over it), the Clock settings page's corner row moves the corner with no
+    /// toast, and the status-corner shortcut moves it and names the new corner in one (issue #141).
+    #[test]
+    fn the_corner_row_moves_the_corner_without_a_toast_and_the_shortcut_names_it() {
+        up();
+        status_reset();
+        front(false);
+        let mut a = App { w: 600, h: 400, dpi: 300.0, ..Default::default() };
+        a.settings.status_mode = 1;
+        assert_eq!(canvas_init(&mut a.screen, 600, 400), 0);
+        status_cycle_corner(&mut a);
+        assert_eq!((a.settings.status_corner, a.toast_visible, a.toast.as_str()), (1, false, ""));
+        status_corner_shortcut(&mut a);
+        assert_eq!(a.settings.status_corner, 2);
+        assert!(a.toast_visible);
+        assert_eq!(a.toast.as_str(), "Clock and battery: bottom right corner of page");
+        // with the page in front the shortcut shows the corner itself, and no toast
+        front(true);
+        a.toast_visible = false;
+        a.toast.set_cut("");
+        status_corner_shortcut(&mut a);
+        assert_eq!((a.settings.status_corner, a.toast_visible, a.toast.as_str()), (3, false, ""));
+        front(false);
+        with(|s| s.save_due = false);
         status_reset();
     }
 }

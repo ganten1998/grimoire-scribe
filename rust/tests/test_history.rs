@@ -188,9 +188,36 @@ fn drops_and_pushes() {
     page_free(p);
 }
 
+// Each kind of step in the few words grimoire.log's undo line gives it (#119): its kind and counts, nothing else.
+fn steps_in_words() {
+    let mut p = page_new(1000, 1000, PAPER_BLANK);
+    let mut h = fresh();
+    let words = |h: &History| history_step_words(h.undo.last().unwrap());
+    page_add(&mut p, dot(100.0, 100.0));
+    history_push_add(&mut h, 0, &p.strokes[0]);
+    check!(words(&h) == "a stroke");
+    for k in 1..3 {
+        page_add(&mut p, dot(100.0 + 100.0 * k as f32, 100.0));
+    }
+    let gone: Vec<Box<Stroke>> = p.strokes.drain(1..3).collect();
+    history_push_erase(&mut h, &[1, 2], gone);
+    check!(words(&h) == "an erase of 2 strokes");
+    history_push_paper(&mut h, PAPER_BLANK, PAPER_NARROW);
+    check!(words(&h) == "a paper change");
+    history_push_link(&mut h, LinkEdit { pid: 1, records: vec![(None, Some(rec(7, "p2"))), (None, Some(rec(8, "p3")))] });
+    check!(words(&h) == "a link change (2)");
+    page_add(&mut p, dot(500.0, 500.0));
+    let taken = vec![p.strokes.remove(0)];
+    history_push_lasso(&mut h, &p, &[0], taken, 1, None);
+    check!(words(&h) == "a lasso step (1 stroke off the page, 1 on)");
+    history_push_clear(&mut h, &mut p);
+    check!(words(&h) == "a page clear (1 stroke)");
+}
+
 #[test]
 fn test_history() {
     run!(ink_steps_unchanged);
+    run!(steps_in_words);
     run!(link_step_moves);
     run!(interleaved_with_ink);
     run!(group_is_one_step);

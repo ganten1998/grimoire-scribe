@@ -7,6 +7,7 @@
 //! screen), pinch to zoom up to 4x that. a->screen = the viewed page + panel (+ paper sheet).
 //! compose(r) rebuilds a screen rect from those layers; show(page rect) is the page-side entry.
 
+use crate::browser::{Browser, BrowserResult, FilesPrefs, PickSpec};
 use crate::prelude::*;
 use std::cell::Cell;
 #[cfg(feature = "sim")]
@@ -361,6 +362,9 @@ pub struct EditorState {
     page_kept: bool,
     /// how many times "Loading page..." went up before a slow page was drawn (a probe, editor.loading_toasts)
     loading_toasts: u32,
+    /// the frames (App.frames) of grimoire.log's last "Loading page..." line and last undo line: one of each a
+    /// frame at most (#119)
+    said: [Option<u32>; 2],
     /// how many times "Adding N pages..." reached the panel before a batch of new pages was written, or a
     /// batch's Redo wrote them again (a probe, editor.add_notices)
     add_notices: u32,
@@ -581,6 +585,10 @@ pub struct EditorState {
     /// the Pages view (pagesview.h)
     pv: PagesView,
     destination: NotebookPicker,
+    /// The picture pick (2.2, #146) the Templates or Photos sheet's From a file... tile opens over the page, the sheet
+    /// open under it: the editor hosts the file picker here, as the Library does over New notebook, so the notebook
+    /// stays open as it is (page, view, undo) while a picture is picked
+    files: Browser,
     /// the pages Copy to notebook... copies (ids, in notebook order) while its notebook picker is up
     copy_pids: Vec<u32>,
     /// the notebooks a link was followed out of, newest last: Back returns to each one's page and view
@@ -866,7 +874,7 @@ fn map_draw(a: &mut App, r: Rect) {
 // The Graph opens on every notebook (past the Graph of all notebooks' caps, on this one, and says so).
 fn map_show(a: &mut App, around: bool) {
     app_toast(a,"",0);
-    close_sheets(ed(a));
+    close_sheets(a);
     pagesview_close(&mut ed(a).pv);
     link_off(a);
     let pid = ed_ref(a).open_pid();
@@ -1448,14 +1456,12 @@ fn draw_panel(a: &mut App) {
     }
     s.panel_cells.push(rp);
     y += btn_h() + gap();
-    let mut lab = String::new();
     // (a page the Links bar is looking at shows its own number)
-    csnprintf!(&mut lab, 32, "%d / %d", if s.peek.active { s.peek.index } else { s.index } + 1, s.nb.npages());
-    let lr = Rect { x: x - ui_px(6.0), y, w: w + ui_px(12.0), h: label_h() ,
+    let lab = panel_page_label(if s.peek.active { s.peek.index } else { s.index } + 1, s.nb.npages(), g_fit());
+    let lr = Rect { x: x - ui_px(6.0), y, w: panel_chip_w(), h: label_h() ,
     };
     ui_frame(c, lr, ui_px(10.0), 0, false, ui_px(2.0)); // a tappable chip: opens Pages
-    let fit = g_fit();
-    font_draw_centered(c, FontFace::Bold, ui_small_size() * (if fit.scale < 1.0 { fit.scale } else { 1.0 }), lr, &lab, 0,
+    font_draw_centered(c, FontFace::Bold, panel_chip_px(g_fit()), lr, &lab, 0,
     );
     hits_add(&mut s.hits, lr, P_PAGES, 0);
     s.panel_cells.push(lr);
@@ -1551,6 +1557,9 @@ pub fn editor_panel_point(a: &mut App, name: &str) -> Option<(f32, f32)> {
     if a.scr != ScreenId::Editor || !s.open {
         return None;
     }
+    // The picture pick over the page (#146): files.* as the Library's; the sheet's From a file... tile and Back
+    if let Some(n)=name.strip_prefix("files.") {return s.files.open.then(||s.files.point(n)).flatten();}
+    if let Some(n)=name.strip_prefix("templates.") {return (s.ts.open && !s.files.open).then(||tplsheet_point(&s.ts,n)).flatten();}
     if name=="map.current" {return mapview_node_point(&s.map,&s.open_pid().to_string());}
     if let Some(n)=name.strip_prefix("map."){return mapview_control_point(&s.map,n);}
     if name.starts_with("music."){return musicbuild_control_point(&s.mb,name);}
@@ -1778,12 +1787,6 @@ pub fn editor_status_changed(a: &mut App) {
     } else if let Some(s) = a.ed.as_deref_mut() { s.view_w = 0; }
 }
 
-/// A read-only live preview of the corner while adjusting it in Display.
-pub fn editor_status_preview(a:&App)->bool {
-    if crate::library::library_status_preview(a) {return true;}
-    a.scr==ScreenId::Editor && !crate::library::library_settings_active(a)
-        && a.ed.as_deref().is_some_and(|s|s.open && s.dm.open)
-}
 
 // ---- view ----
 
@@ -2434,6 +2437,7 @@ fn areas_toggle(a: &mut App, _button: Rect) {
 // Rebuild a screen rect from the layers.
 fn compose(a: &mut App, r: Rect) {
     if crate::library::library_settings_active(a) {crate::library::library_settings_redraw(a);return;}
+    if ed_ref(a).files.open {with_modal(a,|s|&mut s.files,|b,a|b.draw(a));return;}
     if ed_ref(a).destination.open {with_modal(a,|s|&mut s.destination,|p,a|p.draw(a));return;}
     if ed_ref(a).map.open {
         map_draw(a, r);
@@ -2659,7 +2663,7 @@ fn draw_panel_over(a: &mut App) {
 pub fn editor_live_panel(a: &App) -> Rect {
     if crate::library::library_settings_active(a) {return RECT_EMPTY;}
     match a.ed.as_deref() {
-        Some(s) if s.open && !s.pv.open && !s.map.open && !s.destination.open => s.panel,
+        Some(s) if s.open && !s.pv.open && !s.map.open && !s.destination.open && !s.files.open => s.panel,
         _ => RECT_EMPTY,
     }
 }
@@ -2670,7 +2674,7 @@ pub fn editor_live_panel(a: &App) -> Rect {
 pub fn editor_live_hole(a: &App) -> Rect {
     if crate::library::library_settings_active(a) {return RECT_EMPTY;}
     match a.ed.as_deref() {
-        Some(s) if s.open && !s.pv.open => s.panel,
+        Some(s) if s.open && !s.pv.open && !s.files.open => s.panel,
         _ => RECT_EMPTY,
     }
 }
@@ -2784,6 +2788,16 @@ fn list_erased_pages(s: &mut EditorState) {
         if s.hist[i].to_list && !(s.is_open_page(i) && s.page_dirty) && note_for_compaction(s, pid) {
             s.hist[i].to_list = false;
         }
+    }
+}
+
+// Autosave after a real pause (and never while the pen is down). One that fails (a full store)
+// tries again 2 s later, not at every tick: each try says so with a toast.
+fn idle_save(a: &mut App, now: u32) {
+    let s = ed(a);
+    if s.open && (s.page_dirty || caches_due(s, now))
+        && s.owner == Owner::None && now.wrapping_sub(s.last_up) > 2000 && !autosave(a) {
+        ed(a).last_up = now;
     }
 }
 
@@ -3166,11 +3180,18 @@ const K_LOADING_PAGE: &str = n_("Loading page...");
 /// back says "Loading page..." first, on the panel before the drawing starts, and the toast goes once the page
 /// is drawn. Never for a page that draws quickly.
 fn render_page_open(a: &mut App) {
-    let toast = loading_toast_due(a);
-    if toast {
+    let why = loading_toast_due(a);
+    let toast = why.is_some();
+    if let Some(why) = why {
         app_toast(a, tr(K_LOADING_PAGE), 120_000);
         app_flush(a); // (on the panel now: the drawing holds the main loop)
         ed(a).loading_toasts += 1;
+        // grimoire.log says so (#119), one line a frame at most: the page's id, its file's size and why
+        if say_once(a, 0) {
+            let s = ed_ref(a);
+            let kb = store_page_file_bytes(&s.nb, s.open_pid()).unwrap_or(0).div_ceil(1024);
+            qlog!("editor: \"Loading page...\" for page id %u: its file is %u KB, %s", s.open_pid(), kb as u32, why);
+        }
     }
     render_page_full(a);
     // (another toast that took its place stays)
@@ -3180,15 +3201,45 @@ fn render_page_open(a: &mut App) {
 }
 
 // Whether the open page takes seconds to draw and has no current kept drawing to come up from (page_is_its_file;
-// a pen held on an action holds the panel, so no toast could show before the drawing: none then).
-fn loading_toast_due(a: &App) -> bool {
+// a pen held on an action holds the panel, so no toast could show before the drawing: none then): why, for
+// grimoire.log, or None.
+fn loading_toast_due(a: &App) -> Option<&'static str> {
     let s = ed_ref(a);
     if a.pen_action_down || s.page_ix().is_none() || s.page_canvas.px.is_empty() {
-        return false;
+        return None;
     }
     let pid = s.open_pid();
     let layered = s.open_page().is_some_and(page_layered);
-    !(page_is_its_file(s) && store_page_render_kept(&s.nb, pid, s.pgw, s.pgh, layered)) && store_page_slow(&s.nb, pid)
+    if !store_page_slow(&s.nb, pid) {
+        None
+    } else if !page_is_its_file(s) {
+        Some("with changes not written yet")
+    } else if !store_page_render_kept(&s.nb, pid, s.pgw, s.pgh, layered) {
+        Some("with no current kept drawing")
+    } else {
+        None
+    }
+}
+
+// Whether grimoire.log may have line `which` (0 "Loading page...", 1 an undo) now: once a frame (App.frames).
+fn say_once(a: &mut App, which: usize) -> bool {
+    let frame = a.frames;
+    let said = &mut ed(a).said[which];
+    let first = *said != Some(frame);
+    *said = Some(frame);
+    first
+}
+
+// grimoire.log's line for an undo of the open page (#119), once a frame at most: what it undid in a few words
+// (history_step_words: its kind and how many strokes, never what they are) and the page's id.
+fn say_undo(a: &mut App, ih: usize) {
+    if !say_once(a, 1) {
+        return;
+    }
+    let e = &ed_ref(a).hist[ih];
+    if let Some(step) = e.h.redo.last() {
+        qlog!("editor: undo of %s on page id %u", &history_step_words(step), e.page_id);
+    }
 }
 
 // A page from a newer Grimoire (or one this build cannot fully read) is shown as far as it can
@@ -3440,6 +3491,7 @@ fn closed_record(a: &mut App) {
 fn closed_record(_a: &mut App) {}
 
 fn close_notebook(a: &mut App) {
+    files_drop(a); // (the picture pick goes with its notebook)
     let s = ed(a);
     pb_reset(s);
     if !s.open {
@@ -3522,8 +3574,22 @@ fn close_notebook(a: &mut App) {
     bgimage_forget(None); // the notebook's pictures (up to 3 pages' worth) and its failures
 }
 
+/// Whether notebook `id` is the one the editor has open (in front or behind another screen): its notebook.ini is
+/// the editor's to write then.
+pub fn editor_has_open(a: &App, id: &str) -> bool {
+    a.ed.as_deref().is_some_and(|s| s.open && s.nb.id.as_str() == id)
+}
+
 /// loads, switches to SCR_EDITOR
 pub fn editor_open_notebook(a: &mut App, id: &str) {
+    // A PDF fill's pages going into this notebook now (2.2: the UI's commit, a few ticks with input held): it opens
+    // once they are in. Nothing in the app can ask meanwhile; this says why if it does.
+    if let Some((done, total)) = crate::pdfimport::fill_busy().filter(|_| crate::pdfimport::fill_holds(id)) {
+        let mut msg = String::new();
+        csnprintf!(&mut msg, 256, tr("Adding book pages: %d of %d"), done as i32, total as i32);
+        app_toast(a, &msg, 3000);
+        return;
+    }
     let requested=ed(a).requested_page.take();
     ed(a).notebook_back.clear();
     ed(a).from_graph = false;
@@ -4289,6 +4355,7 @@ const PAGE_CLEARED: &str = n_("Page cleared. Undo brings it back.");
 // or the paper sheet. The pen's button clears no page from under one.
 fn sheet_open(s: &EditorState) -> bool {
     s.destination.open
+        || s.files.open
         || s.map.open
         || s.pv.open
         || s.tools_open
@@ -4592,6 +4659,9 @@ fn undo_redo(a: &mut App, undo: bool) {
     let (hh, page) = hist_page(&mut s.hist, h, ip);
     if !(if undo { history_undo(hh, page, &mut d) } else { history_redo(hh, page, &mut d) }) {
         return;
+    }
+    if undo {
+        say_undo(a, h);
     }
     ed(a).boxes.stale = true;
     // The step's own pixels swapped back where it kept them (history.rs Patch): a copy of what it
@@ -5194,6 +5264,56 @@ fn qs_result(a: &mut App, r: QsResult, d: Rect) {
             app_invalidate(a, r, RefreshMode::Ui);
         }
     }
+}
+
+// ---- the size keys (2.2) ----
+
+// The toolbar button the quick-size key opens pen `t`'s card beside: the one a hold would open it from (the tool
+// button while it shows `t`, `t` pinned, the eraser), else the folded box; none with Select mode on (the pen draws
+// a lasso, which has no size), nor for a pen the toolbar does not show.
+fn qs_key_anchor(s: &EditorState, t: ToolKind) -> Option<Hit> {
+    if s.sel.state != SelState::Off {
+        return None;
+    }
+    if s.collapsed {
+        return Some(Hit { r: s.panel, id: P_EXPAND, arg: 0 });
+    }
+    s.hits.h.iter().find(|&&h| qs_target(s, h) == Some(t)).copied()
+}
+
+// quick-size: the card of the pen in use opens as a hold on its button opens it (its tip's bit set the same), beside
+// that button or the folded box. The card's own key closes it again (editor_shortcut_in), as a menu's does.
+fn qs_key(a: &mut App) {
+    let t = a.settings.current_tool;
+    let s = ed_ref(a);
+    if !qs_allowed(s) {
+        return;
+    }
+    if let Some(h) = qs_key_anchor(s, t) {
+        qs_hold(a, h, t, true);
+    }
+}
+
+// size-smaller and size-larger: the pen in use goes to its next quick size down or up (quicksize_step), set as a tap
+// on that chip of its card sets it (quicksize_apply: a setting, no history step, settings.ini written a pass later),
+// and a short toast says the size as the card writes it (the owner, 2026-11-15), as the light keys' toasts say the
+// level ("Light %d of %d") and the eraser mode's its mode ("Eraser: %s"), since nothing else on the screen shows the
+// size. At the smallest or the largest the size stays and the toast still says it; a step while it shows takes its
+// place. With Select mode on the pen draws a lasso, which has no size: nothing, and no toast.
+fn size_step(a: &mut App, larger: bool) {
+    if ed_ref(a).sel.state != SelState::Off {
+        return;
+    }
+    let t = a.settings.current_tool;
+    let p = &mut a.settings.tools[t.0 as usize];
+    if let Some(i) = quicksize_step(t, p, larger) {
+        quicksize_apply(t, p, i);
+        ed(a).qs_save = 1;
+    }
+    let size = quicksize_mm_label(a.settings.tools[t.0 as usize].size_max_mm);
+    // TRANSLATORS: a short toast (about 1700 px at 44 px in bold; up 1.2 s) after a key or a button stepped the pen
+    // in use to the next of its quick sizes; %s is the width as the sizes card writes it ("0.5 mm").
+    app_toast(a, &cformat!(tr("Size: %s"), &size), 1200);
 }
 
 // ---- the toolbar's count pad (owner, 2026-11-03) ----
@@ -6597,6 +6717,10 @@ fn undo_redo_link(a: &mut App, ih: usize, ip: usize, undo: bool) {
         repaint_panel(a, RefreshMode::Ui);
         return;
     }
+    if undo {
+        say_undo(a, ih);
+    }
+    let s = ed(a);
     s.links_dirty = false;
     s.changed = true; // (the notebook changed: the PDF mirror runs at close)
     if lasso {
@@ -8263,7 +8387,7 @@ fn panel_act(a: &mut App, h: Hit) {
         }
         P_SETTINGS => {
             fs_abort_view(a,FsAbortView::Screen);settle_now(a);
-            if save_page(a){links_flush(a);pb_reset(ed(a));close_sheets(ed(a));crate::library::library_settings_from_notebook(a);}
+            if save_page(a){links_flush(a);pb_reset(ed(a));close_sheets(a);crate::library::library_settings_from_notebook(a);}
         }
         P_LIBRARY => {
             // (no "Saving..." or "Saved" toast: the owner, 2026-11-04; a page that cannot be saved says so)
@@ -8381,7 +8505,7 @@ fn close_front(a: &mut App, draw: bool) {
     if s.mb.open {
         r = rect_union(r, s.mb.rect);
     }
-    close_sheets(s);
+    close_sheets(a);
     if !draw {
         return;
     }
@@ -8493,6 +8617,23 @@ fn editor_shortcut_in(a: &mut App, action: i32, x: f32, y: f32, src: ActionSrc) 
         if action==SHORTCUT_GO_BACK||action==SHORTCUT_CLOSE_MENU||action==SHORTCUT_BACK {s.destination.open=false;s.lt.hidden=false;compose_all(a,RefreshMode::Full);return true;}
         return false;
     }
+    // The picture pick over the page (#146): Esc and Back up a level (at its root back to the sheet), the page keys
+    // its screens, as in the Library's
+    if s.files.open {
+        match action {
+            SHORTCUT_GO_BACK | SHORTCUT_CLOSE_MENU | SHORTCUT_BACK => {
+                if !with_modal(a, |s| &mut s.files, |b, a| b.back(a)) {
+                    files_close(a);
+                }
+                return true;
+            }
+            SHORTCUT_PREV_PAGE | SHORTCUT_NEXT_PAGE => {
+                with_modal(a, |s| &mut s.files, |b, a| b.turn_key(a, action == SHORTCUT_NEXT_PAGE));
+                return true;
+            }
+            _ => return false,
+        }
+    }
     if action == SHORTCUT_HOLD_ERASER {
         s.hold_eraser_key = true;
         s.hold_eraser = true;
@@ -8575,15 +8716,19 @@ fn editor_shortcut_in(a: &mut App, action: i32, x: f32, y: f32, src: ActionSrc) 
         }
         card_close(a);
     }
-    // The quick sizes card: Close menu and Back close it, one layer; another menu's button closes it and goes on;
-    // anything else is refused.
+    // The quick sizes card: Close menu, Back and its own key (quick-size) close it, one layer; another menu's button
+    // closes it and goes on, and so does a size key, a pick as a chip's tap is (the card closes, the toast says the
+    // size); anything else is refused.
     if ed_ref(a).qs.open {
-        let action_closes = action == SHORTCUT_CLOSE_MENU || action == SHORTCUT_GO_BACK || action == SHORTCUT_BACK;
+        let action_closes = action == SHORTCUT_CLOSE_MENU
+            || action == SHORTCUT_GO_BACK
+            || action == SHORTCUT_BACK
+            || action == SHORTCUT_QUICK_SIZE;
         if action_closes {
             qs_close(a);
             return true;
         }
-        if !menu_action(action) {
+        if !menu_action(action) && action != SHORTCUT_SIZE_SMALLER && action != SHORTCUT_SIZE_LARGER {
             return false;
         }
         qs_close(a);
@@ -8785,6 +8930,10 @@ fn editor_shortcut_in(a: &mut App, action: i32, x: f32, y: f32, src: ActionSrc) 
         if to != s.index {
             go_to_page(a, to);
         }
+    } else if action == SHORTCUT_SIZE_SMALLER || action == SHORTCUT_SIZE_LARGER {
+        size_step(a, action == SHORTCUT_SIZE_LARGER);
+    } else if action == SHORTCUT_QUICK_SIZE {
+        qs_key(a);
     } else if action == SHORTCUT_SELECT {
         sel_toggle(a);
     } else if action == SHORTCUT_SELECT_EXACT {
@@ -9088,6 +9237,67 @@ fn apply_photo(a: &mut App, path: &str) {
     }
 }
 
+// ---- the picture pick over the page (2.2, #146) ----
+
+// The Templates or Photos sheet's From a file...: the picture pick over the page, the sheet open under it.
+fn files_open(a: &mut App) {
+    let to = tplsheet_folder(&ed_ref(a).ts);
+    // (a pick reads only whether the Files card is in the Library, for its root's "Show Files in Library" row: Sort,
+    // Show and whatever else Files keeps are the place's own, and stay at their defaults here)
+    let prefs = FilesPrefs { card: a.settings.files_card, ..Default::default() };
+    if !with_modal(a, |s| &mut s.files, |b, _| b.open(PickSpec::picture(to), prefs)) {
+        // (no storage to browse: the sheet stays)
+        app_toast(a, tr("Couldn't open folder."), 3000);
+        return;
+    }
+    compose_all(a, RefreshMode::Full);
+}
+
+// What a contact on the picture pick did: Back at its root comes back to the sheet; a copy asked comes back to it
+// too, its From a file... tile waiting for the copy; "Show Files in Library" puts the Files card in the Library.
+fn files_result(a: &mut App, r: BrowserResult) {
+    match r {
+        BrowserResult::Cancel => files_close(a),
+        BrowserResult::Copying(_) => {
+            tplsheet_copy_asked(&mut ed(a).ts);
+            files_close(a);
+        }
+        BrowserResult::ShowInLibrary => {
+            a.settings.files_card = true;
+            settings_save(&a.settings);
+        }
+        // (nothing else comes from the picture pick: no import, no Files' chips)
+        _ => {}
+    }
+}
+
+// The picture pick closed: the page and the sheet as they were.
+fn files_close(a: &mut App) {
+    files_drop(a);
+    compose_all(a, RefreshMode::Full);
+}
+
+// The picture pick gone, with nothing drawn: by its own Back or a copy asked (files_close), with the sheets
+// (close_sheets), the notebook (close_notebook) or the screen (editor_leave). Its staying notice ("Loading...", up
+// while a slow folder is read) goes with it wherever it closes: its own tick, which would take it down, no longer
+// runs.
+fn files_drop(a: &mut App) {
+    if ed_ref(a).files.open {
+        ed(a).files.close();
+        app_notice_clear(a, NoticeKey::Loading);
+    }
+}
+
+/// The folder of the Templates or Photos sheet in front over the page (the picker not over it), None for none: a copy
+/// into it that ends is shown there, with no toast (app.rs).
+pub fn editor_sheet_folder(a: &App) -> Option<crate::bgwork_copy::CopyTo> {
+    if a.scr != ScreenId::Editor || crate::library::library_settings_active(a) {
+        return None;
+    }
+    let s = a.ed.as_deref().filter(|s| s.open && s.ts.open && !s.files.open)?;
+    Some(tplsheet_folder(&s.ts))
+}
+
 fn modal_act(a: &mut App, h: Hit) {
     let s = ed(a);
     let sheet = s.paper_rect;
@@ -9284,8 +9494,10 @@ pub fn editor_free(a: &mut App) {
 // Every sheet over the page closed: the paper sheet, Display, Custom music, the tool picker (and its
 // Pin mode). A sheet closed here stays open through a turn or a wake (editor_enter), laid out again
 // by compose for the new size, as each of these lays itself out where it is drawn. (The Pages view
-// closes with its notebook, and stays open through those too.)
-fn close_sheets(s: &mut EditorState) {
+// closes with its notebook, and stays open through those too.) The picture pick over a sheet goes with them.
+fn close_sheets(a: &mut App) {
+    files_drop(a);
+    let s = ed(a);
     if s.map.open {
         mapview_close(&mut s.map);
     }
@@ -9368,7 +9580,7 @@ pub fn editor_enter(a: &mut App) {
     // A turn, or the redraw after waking (a->relayout), lays out the same screen again: the sheet
     // that was open stays open. Coming in from another screen, none is.
     if !a.relayout {
-        close_sheets(ed(a));
+        close_sheets(a);
     }
     // (the quick sizes card was placed for the screen it was opened on: a turn or a wake closes it, silently, in
     // this redraw)
@@ -9562,6 +9774,7 @@ pub fn editor_leave(a: &mut App) {
         bar_drop(ed(a));
         find_drop(ed(a));
         lm_drop(ed(a)); // (a link being made is not made, silently)
+        files_drop(a); // (the picture pick goes with the screen, its staying notice too)
     }
     save_page(a);
     links_flush(a);
@@ -9623,6 +9836,7 @@ pub fn editor_page_in_front(a: &App) -> bool {
 /// The sheets that take the corner with them: every one sheet_open names but the card, Link to... and Find PICK.
 fn corner_sheet_open(s: &EditorState) -> bool {
     s.destination.open
+        || s.files.open
         || s.map.open
         || s.pv.open
         || s.tools_open
@@ -10242,6 +10456,15 @@ fn editor_gesture(a: &mut App, ev: &InEvent) {
 }
 
 fn editor_event_in(a: &mut App, ev: &InEvent) {
+    // The picture pick over the page (#146): every contact is its (no gesture does anything there, as in pick mode)
+    if ed_ref(a).files.open {
+        let ph = app_pointer_phase(ev);
+        if ph >= 0 {
+            let r = with_modal(a, |s| &mut s.files, |b, a| b.pointer(a, ph, ev));
+            files_result(a, r);
+        }
+        return;
+    }
     if ed_ref(a).destination.open {
         let ph=app_pointer_phase(ev);
         if ph>=0 {let r=with_modal(a,|s|&mut s.destination,|p,a|p.pointer(a,ph,ev));match r {
@@ -10939,6 +11162,8 @@ fn owner_pointer(a: &mut App, ph: i32, ev: &InEvent, pen: bool) {
                 } else if !path.is_empty() {
                     apply_template(a, &path);
                 }
+            } else if r == TsResult::FromFile {
+                files_open(a);
             } else if r == TsResult::Back {
                 // Back to the Paper sheet, in the same place.
                 compose(a, d);
@@ -10973,7 +11198,7 @@ fn owner_pointer(a: &mut App, ph: i32, ev: &InEvent, pen: bool) {
                     app_invalidate(a, d, RefreshMode::Ui);
                 }
                 app_toast_dismiss(a);
-            } else if r == DmResult::Closed {
+            } else if r == DmResult::Closed || r == DmResult::ClosedAll {
                 compose(a, d);
                 app_invalidate(a, d, RefreshMode::Ui);
             } else if !rect_is_empty(d) {
@@ -11119,6 +11344,13 @@ fn migrate_step(a: &mut App) {
 
 pub fn editor_tick(a: &mut App, now: u32) {
     if crate::library::library_settings_active(a) {crate::library::library_tick(a,now);touch_context(a);return;}
+    // (the picture pick over the page: its listing, rows and hold, and the page's idle save as over any sheet; the
+    // page's other work waits until it closes)
+    if ed_ref(a).files.open {
+        with_modal(a, |s| &mut s.files, |b, a| b.tick(a, now));
+        idle_save(a, now);
+        return;
+    }
     if !a.asleep && !ed_ref(a).pv.open && !ed_ref(a).destination.open && !editor_busy(a)
         && now.wrapping_sub(a.last_input)>1000 && now.wrapping_sub(ed_ref(a).previews_checked)>1000 {
         ed(a).previews_checked=now;
@@ -11292,13 +11524,7 @@ pub fn editor_tick(a: &mut App, now: u32) {
             pb_out(a, out, now);
         }
     }
-    // Autosave after a real pause (and never while the pen is down). One that fails (a full store)
-    // tries again 2 s later, not at every tick: each try says so with a toast.
-    let s = ed(a);
-    if s.open && (s.page_dirty || caches_due(s, now))
-        && s.owner == Owner::None && now.wrapping_sub(s.last_up) > 2000 && !autosave(a) {
-        ed(a).last_up = now;
-    }
+    idle_save(a, now);
     // beta.5's links on pages not visited yet: one page a tick, only while nothing is touching or open
     // over the page. A page not in the session cache is read for it and dropped (memory stays flat),
     // with the pens pumped as it is read. Each page is tried once, whatever happens.
@@ -11447,6 +11673,14 @@ pub fn editor_probe(a: &mut App, key: &str, out: &mut String, cap: usize) -> i32
             csnprintf!(out, cap, "%s", v.as_str());
             return 0;
         }
+    }
+    // The picture pick over the page (#146): the Library's files.* keys, of the editor's picker
+    if let Some(k)=key.strip_prefix("files.") {
+        let h=a.h;
+        let mut text=String::new();
+        if a.ed.as_deref().is_none_or(|s|!s.files.probe(h,k,&mut text)) {return -1;}
+        csnprintf!(out,cap,"%s",&text);
+        return 0;
     }
     if key=="pages.screen" {let pv=&ed_ref(a).pv;csnprintf!(out,cap,"%d",if !pv.open {0} else if pv.index_tab {pv.index_screen+1} else {pv.screen+1});return 0;}
     // Where `tap panel NAME` taps, "X Y" (empty for none): a script holds the toolbar's + there (editor.at.next).
@@ -11654,6 +11888,10 @@ pub fn editor_probe(a: &mut App, key: &str, out: &mut String, cap: usize) -> i32
         csnprintf!(out, cap, "%d", if s.open { s.hist.len() as i32 } else { 0 });
     } else if key == "pages" {
         csnprintf!(out, cap, "%d", if s.open { s.nb.npages() } else { 0 });
+    } else if key == "page_chip" {
+        // The panel's page chip as drawn now (draw_panel), empty with no notebook open.
+        let page = if s.peek.active { s.peek.index } else { s.index } + 1;
+        csnprintf!(out, cap, "%s", &if s.open { panel_page_label(page, s.nb.npages(), g_fit()) } else { String::new() });
     } else if key == "notebook_last_page" {
         // (app_probe's "notebook.last_page": what a reopen lands on, kept apart from the open page)
         csnprintf!(out, cap, "%d", if s.open { s.nb.last_page + 1 } else { 0 });
@@ -11955,7 +12193,7 @@ pub fn editor_probe(a: &mut App, key: &str, out: &mut String, cap: usize) -> i32
         }
     } else if key == "modal" {
         // What is in front (input goes to the first one open, in this order).
-        let m = if crate::library::library_settings_active(a) {"settings"} else if s.map.open {
+        let m = if crate::library::library_settings_active(a) {"settings"} else if s.files.open {"files"} else if s.map.open {
             "map"
         } else if s.add_kb.open {
             "add-pad"
@@ -12575,6 +12813,61 @@ mod tests {
         assert_eq!(qs_target(s, hit(P_EXPAND, 0)), None);
     }
 
+    /// The size keys (2.2). A step sets the pen in use's next chip as a tap on it would (a setting, written a pass
+    /// later) and says the size in a short toast, the card's millimetres; at an end the size stays and the toast
+    /// still says it. The eraser steps through its own chips. With Select mode on (the lasso has no size) nothing
+    /// changes and no toast shows. quick-size's card goes beside the pen in use's button (the tool button while it
+    /// shows that pen, a pinned pen, the eraser) or beside the folded box, and with Select mode on nowhere.
+    #[test]
+    fn the_size_keys_step_the_pen_in_use_and_say_its_size() {
+        let mut a = app(1860, 2480, 1860, 2480);
+        settings_default(&mut a.settings);
+        ed(&mut a).open = true;
+        let max = |a: &App, t: ToolKind| a.settings.tools[t.0 as usize].size_max_mm;
+        a.settings.current_tool = TOOL_PENCIL;
+        quicksize_apply(TOOL_PENCIL, &mut a.settings.tools[TOOL_PENCIL.0 as usize], 1);
+        size_step(&mut a, true);
+        assert_eq!((max(&a, TOOL_PENCIL), a.toast.as_str()), (0.5, "Size: 0.5 mm"));
+        assert_eq!(ed_ref(&a).qs_save, 1);
+        assert!(a.toast_visible && a.toast_until.wrapping_sub(now_ms()) <= 1200);
+        for (want, toast) in [(0.7, "Size: 0.7 mm"), (1.0, "Size: 1 mm"), (1.0, "Size: 1 mm"), (1.0, "Size: 1 mm")] {
+            size_step(&mut a, true);
+            assert_eq!((max(&a, TOOL_PENCIL), a.toast.as_str()), (want, toast));
+        }
+        for _ in 0..6 {
+            size_step(&mut a, false);
+        }
+        assert_eq!((max(&a, TOOL_PENCIL), a.toast.as_str()), (0.25, "Size: 0.25 mm"));
+        a.settings.current_tool = TOOL_ERASER;
+        quicksize_apply(TOOL_ERASER, &mut a.settings.tools[TOOL_ERASER.0 as usize], 3);
+        size_step(&mut a, true);
+        assert_eq!((max(&a, TOOL_ERASER), a.toast.as_str()), (12.0, "Size: 12 mm"));
+        assert_eq!(max(&a, TOOL_PENCIL), 0.25);
+        // Select mode: nothing at all
+        a.settings.current_tool = TOOL_PENCIL;
+        app_toast(&mut a, "before", 3000);
+        ed(&mut a).sel.state = SelState::Armed;
+        size_step(&mut a, true);
+        assert_eq!((max(&a, TOOL_PENCIL), a.toast.as_str()), (0.25, "before"));
+        // quick-size's place
+        let hit = |id: i32, arg: i32, x: i32| Hit { r: Rect { x, y: 400, w: 112, h: 112 }, id, arg };
+        let s = ed(&mut a);
+        s.sel.state = SelState::Off;
+        s.hits.h = vec![hit(P_TOOLPICK, 0, 10), hit(P_TOOL, TOOL_FINELINER.0, 20), hit(P_TOOL, TOOL_ERASER.0, 30), hit(P_UNDO, 0, 40)];
+        s.tool_button_shows = TOOL_PENCIL.0;
+        let x = |s: &EditorState, t: ToolKind| qs_key_anchor(s, t).map(|h| h.r.x);
+        assert_eq!((x(s, TOOL_PENCIL), x(s, TOOL_FINELINER), x(s, TOOL_ERASER), x(s, TOOL_MARKER)), (Some(10), Some(20), Some(30), None));
+        s.tool_button_shows = TB_GRID;
+        assert_eq!(x(s, TOOL_PENCIL), None);
+        s.collapsed = true;
+        s.panel = Rect { x: 1700, y: 900, w: 130, h: 130 };
+        assert_eq!(qs_key_anchor(s, TOOL_MARKER).map(|h| h.r), Some(s.panel));
+        s.sel.state = SelState::Armed;
+        assert_eq!(x(s, TOOL_MARKER), None);
+        s.collapsed = false;
+        assert_eq!(x(s, TOOL_ERASER), None);
+    }
+
     #[test]
     fn the_live_toolbar_layer_stays_where_the_panel_is_under_any_menu() {
         // 2.0.0, issue #16: the layer was empty while any menu was up, so the browser lost the toolbar beside the
@@ -12830,7 +13123,7 @@ mod tests {
         };
         keep(&mut a);
         // The page as its file is comes up from the drawing kept of it, with no "Loading page..."
-        assert!(!loading_toast_due(&a));
+        assert_eq!(loading_toast_due(&a), None);
         render_page_full(&mut a);
         assert!(ed_ref(&a).page_kept && canvas_is_the_page(&a));
         // A change not yet written: drawn from the strokes, and "Loading page..." would go up
@@ -12838,7 +13131,7 @@ mod tests {
         let gone = s.open_page_mut().unwrap().strokes.pop().unwrap();
         stroke_free(gone);
         mark_changed(s);
-        assert!(loading_toast_due(&a));
+        assert_eq!(loading_toast_due(&a), Some("with changes not written yet"));
         render_page_full(&mut a);
         assert!(!ed_ref(&a).page_kept && canvas_is_the_page(&a));
         // A new paper

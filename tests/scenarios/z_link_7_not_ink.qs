@@ -67,10 +67,10 @@ waitbg
 # Live view on, then the same lasso
 tap 1345 95
 wait 300
-tap 318 2100
+tap share live
 wait 300
 expect live.on is 1
-tap 1538 2100
+tap share done
 wait 300
 tap 200 400
 wait 300

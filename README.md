@@ -102,7 +102,8 @@ your notebooks and settings from `quire/` to `grimoire/` and removes the old Qui
   switches to katakana and **、** holds 、。？！ on its flicks.
 - **Delete held down** deletes one character after another, on every keyboard (names, Find, the page number
   pads, the count pad): a tap deletes one, and a finger or the pen kept on the key deletes the next after about
-  0.4 s, then about 15 a second until it lifts or slides off.
+  0.4 s, then about 15 a second until it lifts or slides off. The count pad's - and + count on the same way,
+  up to its limits.
 - **The caret**: every keyboard but the count pad has **◀** and **▶** at the right end of its text line, which
   move the caret a letter (held, one after another, as delete does); a tap on the text puts the caret there
   and a drag across it selects. Typing and delete act at the caret, and replace or take a selection. The key
@@ -186,8 +187,8 @@ your notebooks and settings from `quire/` to `grimoire/` and removes the old Qui
   its card turns it off, and it turns itself off after 10 minutes with nobody watching. Plain HTTP:
   use it on a network you trust.
 - **Wi-Fi networks**: **Settings > Wi-Fi** turns Wi-Fi on or off, says which network the Kindle is
-  connected to, and lists the networks the Kindle has saved, the one connected to first and checked (seven
-  a page; **More networks** shows the next). Tap one to switch to it: "Connecting to ..." until the Kindle
+  connected to, and lists the networks the Kindle has saved in their own order; the list scrolls. The
+  status line names the connected network. Tap one to switch to it: "Connecting to ..." until the Kindle
   is connected to it, or "Could not connect to ..." when it refuses or has not connected in 45 seconds
   (Grimoire changes nothing more: the Kindle's own Wi-Fi service decides what it joins next). Switching disconnects Share, Live view and SSH from
   the network you leave. Add a network or change its password in the Kindle's settings or KOReader:
@@ -223,21 +224,22 @@ your notebooks and settings from `quire/` to `grimoire/` and removes the old Qui
   passcode off for its whole session, and Grimoire opened from KOReader leaves it that way. Start
   Grimoire from the Library when you need the passcode.
 - **Language**: English, Spanish or Japanese, following the Kindle's own language (see Language).
-- **Fonts** (Classic): the Style row in Settings has a **Font** chip at its right end in the Classic style.
-  It opens the Font sheet: **Terminess** (the default), **Atkinson Hyperlegible Next** (made for readers
+- **Fonts** (Classic): Settings' Display category has a **Font** row in the Classic style, naming the font in
+  use. It opens the Font sheet: **Terminess** (the default), **Atkinson Hyperlegible Next** (made for readers
   with low vision: I, l and 1, O and 0 cannot be mistaken), **Noto Sans** and **Literata** (a serif made
-  for reading on screens), each named in itself, with a sample of the one you tap at the top. **Done**
-  applies it to every screen; **Cancel** leaves the font as it was. Your pages, paper labels, the clock,
+  for reading on screens), each named in itself, with a sample of the one in use at the top. A tap on a font
+  applies it to every screen at once and saves it; the sheet's back arrow returns to Settings and its X closes
+  Settings, both keeping the font you tapped (to go back, tap the font you had). Your pages, paper labels, the clock,
   PDFs and pictures never change with the font, and neither do the icons; the share pages in your browser
-  use the same font (a page already open takes it when it loads again). Gothic keeps its own pixel type, so the chip is not there. Greek, Cyrillic and other
+  use the same font (a page already open takes it when it loads again). Gothic keeps its own pixel type, so the Font row is not there. Greek, Cyrillic and other
   letters a font lacks come from Terminess, and Japanese from DotGothic16, as in every style.
 - **Your own fonts** (Classic, since 2.1.0-beta.2): copy `.ttf` or `.otf` files into `grimoire/fonts` over USB
   (a family unzipped into a folder of its own is fine, one folder deep; up to 200 files, 24 MB each), then open
   Settings > Font. Under **Your fonts** each file shows its name drawn in itself once Grimoire has checked it
-  in the background ("Checking 3 fonts..." stays above the buttons meanwhile, and a file still being copied
+  in the background ("Checking 3 fonts..." stays on the sheet meanwhile, and a file still being copied
   waits until it is whole), or its row is greyed and says why not: "Unreadable font." (not a font, damaged, or
   one whose letters draw nothing), "Too big (over 24 MB).", "No Latin letters." (a symbol font), "Use .ttf or
-  .otf." (a web font) or "Took too long to read.". Tap a font to see the sample in it, and **Done** to use it.
+  .otf." (a web font) or "Took too long to read.". Tap a font to use it: it applies at once and is saved.
   Bold comes from the font's own weight axis if it has one, else from the Bold file of the same family beside
   it, else Grimoire thickens the regular. A letter your font lacks comes from Terminess (its row says "Some
   letters come from Terminess." when your language needs some), and kana and kanji from DotGothic16 unless your
@@ -247,8 +249,8 @@ your notebooks and settings from `quire/` to `grimoire/` and removes the old Qui
     labels, the clock, icons, PDFs and pictures never use it, and neither do the share pages (your browser gets
     Terminess): Grimoire never copies your font into a page, a PDF or anywhere else, and never sends it
     anywhere. It stays on this Kindle. Use fonts you have the right to use.
-  - **Back to Terminess.** Pick Terminess in the Font sheet and tap Done (while a font of yours is in use the
-    sheet's own words are in Terminess, so it can always be read; this also takes your font away after a start in
+  - **Back to Terminess.** Tap Terminess in the Font sheet (while a font of yours is in use the sheet's own words
+    are in Terminess, so it can always be read; a tap on Terminess also takes your font away after a start in
     Terminess that a crash made, so the next start does not try it again), or delete the font's file over USB:
     Grimoire is in Terminess from its next start (a running Grimoire keeps the copy it loaded), and the row says
     "File missing." until you pick another font or put the file back, which brings the font back. If a font ever stops Grimoire before its first screen is drawn, the next start
@@ -292,13 +294,17 @@ your notebooks and settings from `quire/` to `grimoire/` and removes the old Qui
   with a message, and the same PDF a second time says "PDF already imported.". A page that cannot be read
   becomes a blank page and the end says so ("Some pages couldn't be read."); a PDF with no page that reads is
   not imported. A PDF that fails waits until you replace it (three tries); one that found the storage full goes
-  once there is room. KOReader's Open this book still works for books and for the pages it draws.
+  once there is room. KOReader's Open this book hands its PDF to this same import (see Open this book in
+  Grimoire), and still draws DjVu and comic books itself.
 - **A file anywhere on the Kindle**: Library > New > **From a file...** opens Files, titled "Import a PDF or
   pictures": Import (`grimoire/import`, with what each file is doing: Waiting, "Importing: page 40 of 365",
   Imported, and a Look again row), Documents, Downloads and All storage (Grimoire's notebooks, PDFs and trash
   are never listed). A tap on a folder opens it; a tap on a PDF opens its card ("14.2 MB, Oct 30" and Import as
   notebook, or Open its notebook when a notebook already holds that book; "has notes" shows on its row), and
-  the second tap imports it. A folder of pictures is imported from its `...` (or a finger held on it) card.
+  the second tap imports it. A notebook made from a PDF remembers its file, so the card of such a PDF offers
+  Import as notebook beside Open its notebook: the very same file says "PDF already imported.", and another
+  file that only looks like the book to KOReader's key (an edited copy, say) becomes a notebook of its own.
+  A folder of pictures is imported from its `...` (or a finger held on it) card.
   The notebook takes the file's name unless you typed one in the New notebook sheet first, and goes in that
   sheet's folder. The file stays exactly where it was: Grimoire only reads outside its own folders, and never
   follows a link (a file picked in Import itself is filed in `import/done/` like one dropped there). A file
@@ -427,11 +433,19 @@ page of its own, add a new page in Pages first.
 **Open this book in Grimoire.** In a PDF, DjVu or comic book, Tools > Grimoire > **Open this book in
 Grimoire** (also a gesture action) puts every page of the book into its Grimoire notebook at once,
 then opens the page you are reading. In KOReader's file browser, long-press such a file and choose
-**Open with... > Grimoire** to do the same without opening it. KOReader draws each page first, about
-a second or two a page on a Scribe, with a message that a tap stops; pages the notebook already has,
-with what you wrote on them, are kept as they are, so opening the same book again only adds what is
-missing. It is the same notebook Annotate this page uses. A PDF's own links come along (a planner's tabs: a
-finger tap on "March" goes to March): see Document links.
+**Open with... > Grimoire** to do the same without opening it. For a DjVu or comic book KOReader draws
+each page first, about a second or two a page on a Scribe, with a message that a tap stops. A PDF goes
+straight to Grimoire instead, which reads it itself as it imports a PDF (in colour where the PDF has colour;
+the notice at the bottom counts its pages, and the Library stays usable meanwhile) and then opens the page you
+were reading. If you opened something else in the meantime, nothing opens by itself: a toast says the import is
+done, the book's notebook is a card in the Library, and it opens at that page when you tap it. Pages the
+notebook already has, with what you wrote on them, are kept as they are, so opening the same book again only
+adds what is missing; a book you opened before this version keeps the gray pages KOReader drew, and the pages
+added now are Grimoire's. It is the same notebook Annotate this page uses. A PDF's own links come along (a
+planner's tabs: a finger tap on "March" goes to March): see Document links. This needs the plugin updated (the
+Library's Install / update Grimoire plugin, then restart KOReader); a PDF that needs a password still goes the
+older way, KOReader drawing it, and so does a PDF where Grimoire does not read (a hidden folder, KOReader's own
+folders) or one over 512 MB.
 
 **Document links.** The tabs of a planner PDF are part of its pages. A tap follows one (a link you drew yourself
 comes first where they overlap); a finger held on one starts Select, as anywhere on the page. Clear page keeps

@@ -10,13 +10,19 @@
 # it, and after the menu closes. Settings over the notebook (and its own Display sheet) leave the frame the whole
 # screen, the panel's edge beside the sheet in the tiles and no layer, as before; the layer is back as it closes.
 # The Kindle's refreshes are what they were: the layer is the stream's alone.
+# (past the two launch repaints, at 1.2 s and 3.5 s, which refresh the whole screen: the stretch counted at the
+# Display sheet's X ended about 3.4 s after the start, so the 3.5 s one fell inside it, before it or after it as
+# the machine's speed had it, and the check wanted it last, issue #134)
+# (the clock corner held still: its minute's refresh would land among the counted ones)
+clock 1700000000
+wait 3600
 wait 300
 tap 1345 95
 wait 300
-tap 318 2100
+tap share live
 wait 300
 expect live.on is 1
-tap 1538 2100
+tap share done
 wait 300
 expect screen is library
 tap 965 95
@@ -34,14 +40,14 @@ tap panel display
 wait 400
 expect editor.modal is display
 # (the Kindle's refreshes as before: the pressed button, then the sheet with the button let go)
-expect display.presents is fast 1718 1624 100 100, ui 180 239 1638 1822
+expect display.presents is fast 1718 1624 100 100, ui 0 0 1860 2480
 expect live.panel is 1704 220 128 1734
 expect live.stale.1704.220.128.1734 is 0
-# The brightness dragged, a box ticked, the colors inverted (the whole screen again) and back: it stays.
+# The brightness dragged, a box ticked: it stays.
 expect light.intensity is 12
-drag touch 900 560 1100 560 3
+drag touch 900 296 1100 296 3
 wait 400
-expect light.intensity is 8
+expect light.intensity is 7
 expect live.panel is 1704 220 128 1734
 expect live.stale.1704.220.128.1734 is 0
 tap panel display.newpage
@@ -49,21 +55,12 @@ wait 400
 expect settings.gesture_new_page is 0
 expect live.panel is 1704 220 128 1734
 expect live.stale.1704.220.128.1734 is 0
-tap panel display.invert
-wait 600
-expect settings.invert is 1
-expect live.panel is 1704 220 128 1734
-expect live.stale.1704.220.128.1734 is 0
-shot 01-display-inverted
-tap panel display.invert
-wait 600
-expect settings.invert is 0
-expect live.stale.1704.220.128.1734 is 0
-expect display.presents not -1
 tap panel display.done
 wait 400
 expect editor.modal is none
-expect display.presents is fast 1280 1881 360 140, ui 180 239 1516 1822
+# (the sheet again after the drag, the New page row pressed and the sheet again, the X pressed and the screen
+# without the sheet)
+expect display.presents is ui 0 0 1860 2480, fast 80 704 1700 120, ui 0 0 1860 2480, fast 1660 20 150 150, ui 0 0 1860 2480
 expect live.panel is 1704 220 128 1734
 expect live.stale.1704.220.128.1734 is 0
 # Another sheet beside it (Paper), and closed again.
@@ -89,7 +86,7 @@ expect editor.modal is display
 expect live.panel is 900 720 128 1734
 expect live.stale.900.720.128.1734 is 0
 shot 02-display-over-the-panel
-drag touch 1100 560 900 560 3
+drag touch 1100 296 900 296 3
 wait 400
 expect light.intensity is 2
 expect live.stale.900.720.128.1734 is 0
@@ -113,6 +110,8 @@ wait 600
 expect editor.modal is settings
 expect live.panel is
 expect live.stale.1704.220.128.1734 is 0
+tap 250 422
+wait 100
 tap library rotate
 wait 600
 expect settings.follow_rotation is 0
@@ -120,20 +119,20 @@ expect live.stale.1704.220.128.1734 is 0
 tap library display
 wait 600
 expect live.stale.1704.220.128.1734 is 0
-drag touch 900 560 1100 560 3
+drag touch 900 296 1100 296 3
 wait 400
-expect light.intensity is 8
+expect light.intensity is 7
 expect live.stale.1704.220.128.1734 is 0
-tap library display.invert
+tap library display.back
+wait 600
+expect editor.modal is settings
+tap library dark
 wait 600
 expect settings.invert is 1
 expect live.stale.1704.220.128.1734 is 0
-tap library display.invert
+tap library dark
 wait 600
 expect settings.invert is 0
-tap library display.done
-wait 600
-expect editor.modal is settings
 tap library rotate
 wait 600
 expect settings.follow_rotation is 1

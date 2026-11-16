@@ -84,6 +84,16 @@ release run is never cancelled. The repository variable `GRIMOIRE_CI_LINUX=true`
 unit, the shards and l10n to Linux runners, which start sooner and of which a free plan runs far more
 at once (macOS: 5); it stays off until a run passes there (docs/BACKLOG.md).
 
+**Tests that read the documents.** A docs-only pull request runs no test, and a few tests read the
+documents: `rust/tests/test_sec_invariants.rs` (DESIGN.md, FORMAT.md, KINDLE.md, TESTING.md, BACKLOG.md and
+RELEASING.md: sentences about the safe loader and the font check that must not come back, the names
+`RECORDS_MAX_BYTES`, `<key>.slow` and `<key>.no`, the font check's glyph limit with its figure, the number in
+a font verdict's first line and in a `<key>.slow` mark's line, the font check's other placeholders with
+their values, and a few sentences that hold only while another one stands), `mapview.rs` (the Graph's keys)
+and
+`test_scenarios.rs` with `sim_sdl.rs` (SIM.md). After rewording a sentence they hold, run `make test-sim`
+by hand: otherwise the push to main is the first run to say so.
+
 **The required check.** Branch protection on `main` must require the `gate` job, and only it (one
 setting, made once on GitHub: Settings, Branches, the rule for `main`, Require status checks, `gate`).
 Before this split the only job was `package`; a rule that still requires `package` lets a pull request
@@ -117,8 +127,8 @@ Checked by the owner on the Kindle Scribe 2024 (firmware 5.20.1.0.2) on the beta
 KPM on 2026-11-04 and 05, the last of them 8e1bd38's (this release's code, with the version before the bump).
 What the owner reported:
 
-- On the first candidate (416686d): toasts "Good for now"; Japanese works (a native speaker's confirmation is
-  awaited); KOReader's menus good, but its battery symbol showed "JS" (fixed since: on 2026-11-05 at 03:48
+- On the first candidate (416686d): toasts "Good for now"; Japanese works; KOReader's menus good, but its
+  battery symbol showed "JS" (fixed since: on 2026-11-05 at 03:48
   KOReader's crash.log names Grimoire's own Terminess for its menus); Pages' drag had to start before the held
   page's card, and the count pad's opening 1 read as a 0 (both changed: the sections below); the keyboard was
   not tried yet.
@@ -1230,7 +1240,7 @@ What only the Scribe and a real browser can show:
    connected" for 1.5 s; tap Done while it is up, and the browser shows it as the card closes. Again, but wait
    for it to go before Done: it does not come back. (That toast comes at most once in 30 s: turn the device
    off and wait between the two.)
-8. **Inverted.** With Invert colors on (Settings > Display), the browser's toast is inverted with the rest of
+8. **Inverted.** With Dark mode on (Settings > Display), the browser's toast is inverted with the rest of
    the picture, as on the Kindle (white with black words), and the browser's Invert colors switch turns it
    with the picture.
 
@@ -1446,11 +1456,12 @@ What only the Scribe and a real browser can show:
 
 1. **Display.** Pair a browser and open a notebook. Tap the toolbar's Display button: the Display sheet opens on
    the Kindle and in the browser, and the toolbar stays beside it in the browser, as on the Kindle. Drag
-   Brightness, tick or untick "Swiping past the last page adds a page", then tap Invert colors twice: the toolbar
+   Brightness, tick or untick "Swiping past the last page adds a page", then close the sheet and tap Dark mode twice in
+   Settings > Display: the toolbar
    stays in the browser the whole time (inverted with the rest while the colors are). Tap Done: the sheet goes
    from both and the toolbar is unchanged.
 2. **Settings.** Tap the toolbar's Settings button: the browser shows the Settings sheet as the Kindle does, over
-   most of the toolbar, and any strip of the toolbar it leaves at its right. Change a row (Turn with the Kindle, say, and back),
+   most of the toolbar, and any strip of the toolbar it leaves at its right. Change a row (Rotation, say, and back),
    open Display from it and drag Brightness, then go back and tap Done: at every step the browser shows what the
    Kindle shows, and after Done the toolbar is in the browser as before.
 3. **Over the toolbar.** Drag the toolbar to the middle of the page and open Display again: the sheet covers the
@@ -1592,7 +1603,7 @@ On the Scribe (a 2022 or 2024 Scribe, with a build of this branch):
    refresh shows text (no grays). (The page draws them a little smaller than the app now does: x1.05, x1.0
    and x1.12 there, x1.10, x1.065 and x1.15 here.) Say if another of its fonts (Inter, Fira Sans, Source
    Serif 4) should take one's place.
-2. **Pick each font.** Settings in Classic: the Style row reads "Style: Classic (tap for Gothic)" with "Font:
+2. **Pick each font.** Settings in Classic: the Style row reads "Style (Classic)" with "Font:
    Terminess" in a chip at its right end; a tap left of the chip still changes the style. Tap the chip: the
    Font sheet, Terminess highlighted and checked. Tap each family: only the sample and the two rows redraw,
    without a flash, and the sample's name, sentence and digits are in that family. Done on Atkinson: one full
@@ -1976,9 +1987,12 @@ refusing a step; the fix round's: `test_import_queue.rs` for the scans, the lock
 (`z_pdf_*.qs`), `tests/import_check.py`, the strings' fit (`test_pdf_strings.rs`), `cargo deny` and
 `tests/package_check.sh` (every crate in `rust-crates.txt`, the size guard). The crate-date check
 (`tools/check-crate-dates.py`) is run by hand for a tag: it needs the network.
-**Not run anywhere yet: the sandbox's real steps** (`rust/tests/test_sandbox_linux.rs` needs Linux and root; the
-CI job `sandbox` is their first run) and everything on a Scribe. The owner's checks on the Scribe (S1's numbers
-replace the placeholders in `sandbox::s1` with one commit):
+The tests of the sandbox's real steps (`rust/tests/test_sandbox_linux.rs`, which needs Linux and root) run in the
+CI job `sandbox`, which the gate requires; they first ran as root on 2026-11-10, in a VM. The test file itself has
+not run on a Scribe; the steps have, as they were in 2.1.0-beta.2 (S1 on 2026-11-09, and the imports of the
+section "2.1.0-beta.2" below), and the narrower system-call rules that came after have a check of their own
+("Hardening round (2026-11), sandbox", below). The owner's checks on the Scribe, as written before those runs
+(S1's numbers are in the header of `sandbox::s1`; the plan's values were kept):
 
 1. Copy a real planner PDF into `grimoire/import/` over USB, open Grimoire: "Importing: page N of M" stays at
    the bottom of the Library and the cards stay usable; at the end the card appears and no toast says so.
@@ -1987,7 +2001,7 @@ replace the placeholders in `sandbox::s1` with one commit):
 2. grimoire.log has `work: sandboxed (uid 62001, chroot, netns, no new privileges, seccomp, selinux ...)` and no
    `the sandbox refused its step`. If a step is refused, send the log (the plan goes back to the owner, D21).
    A line `made call N, which the sandbox does not allow` names a system call the allow-list must gain.
-   (Not 240, 192 or 125: see "Hardening round (2026-11), sandbox" at the end.)
+   (Not 240, 192 or 125: see "Hardening round (2026-11), sandbox", below.)
 3. Sleep the Scribe in the middle of a big import: it must not fail (the watchdog counts monotonic time).
    Quit Grimoire in the middle: the import finishes in the background; start it again and the notice shows the
    coarse progress; the notebook appears once.
@@ -2064,8 +2078,8 @@ a hostile corpus of truncated, enormous and decompression-bomb pictures is refus
 worker that crashes or stalls on a picture fails that picture alone, 70 pictures cross slices, a template whose
 worker dies is marked bad), `test_picwork_fallback.rs` (a forced sandbox failure: pictures decode in the writer
 and the log says so once), and the template, photo and import tests of `test_templates.rs`, unchanged.
-**Not run anywhere yet: a picture in the sandbox's real steps** (`pictures_decode_in_the_real_sandbox` in
-`test_sandbox_linux.rs`, the CI job `sandbox`) and everything on a Scribe. The owner's checks:
+`pictures_decode_in_the_real_sandbox` (in `test_sandbox_linux.rs`) runs in the CI job `sandbox`, as root; what
+has run on a Scribe is in the section "2.1.0-beta.2" below. The owner's checks:
 
 1. Copy a PNG and a JPEG into `grimoire/templates` and a photo into `grimoire/photos` over USB, open New notebook
    > the template list and a page's paper sheet: they appear with their previews, and one of each still goes onto a
@@ -2073,8 +2087,8 @@ and the log says so once), and the template, photo and import tests of `test_tem
 2. grimoire.log has `work: sandboxed (uid 62001, ...)` once a background job that reads pictures (each job is a
    process of its own; for PDFs it is once a session), and no `pictures decode in the writer` (since pictures
    fail closed: no `pictures wait`) and no `made call N, which the sandbox does not allow`. If either shows, send
-   the log (the call is added to the allow-list, but for 240, 192 and 125 (the hardening round's section at the
-   end); the other line means the sandbox refused a step).
+   the log (the call is added to the allow-list, but for 240, 192 and 125 ("Hardening round (2026-11), sandbox",
+   below); the other line means the sandbox refused a step).
 3. Copy a folder of 20 phone photos (12 MP) into `grimoire/import/<Folder>`: it imports as before; time it from the
    log (`import: ... N of M pages`) against 2.0.0, and watch `MemAvailable`: the slices are 32 pictures a worker.
 4. Put a broken `.png` (cut a real one in half) in `grimoire/templates`: it is listed as unusable as in 2.0, and
@@ -2099,9 +2113,9 @@ fonts; a custom font draws each character as the same file embedded; the glyph c
 `fontcheck.rs` and `userfonts.rs` (the verdict and guard files read strictly), the scenarios
 `y_fonts_own_1_sheet`, `y_fonts_own_2_missing` and `z_fonts_own_kept`, and `make l10n-check`'s `fonts-own` and
 `fonts-own-slow` runs (every row note, the headings and the notice in every language, upright and sideways).
-**Not run anywhere yet: a font in the sandbox's real steps** (`a_font_is_checked_in_the_real_sandbox` in
-`test_sandbox_linux.rs`, the CI job `sandbox`), **and everything on a Scribe**: the check's speed there, the
-load's time and memory, the look on e-ink. The owner's checks:
+`a_font_is_checked_in_the_real_sandbox` (in `test_sandbox_linux.rs`) runs in the CI job `sandbox`, as root; what
+has run on a Scribe is in the section "2.1.0-beta.2" below. The check's speed there, the load's time and memory
+and the look on e-ink are the owner's checks:
 
 1. Copy a downloaded `.ttf` (any text font: Inter, EB Garamond) into `grimoire/fonts` over USB, open Grimoire,
    Settings (Classic) > Font. Under "Your fonts (grimoire/fonts)" the file first says "Checking..." with
@@ -2140,7 +2154,7 @@ load's time and memory, the look on e-ink. The owner's checks:
    back and open Grimoire: your font again.
 9. **The sandbox.** grimoire.log has `work: sandboxed (uid 62001, ...)` and no `fonts: no worker for the check`
    and no `made call N, which the sandbox does not allow` (if either shows, send the log: a call is then added
-   to the allow-list, but for 240, 192 and 125 (the hardening round's section at the end), with the spike's
+   to the allow-list, but for 240, 192 and 125 ("Hardening round (2026-11), sandbox", below), with the spike's
    numbers, and until then no font is checked, none is marked).
 10. **The crash guard** cannot be provoked without a font that crashes Grimoire; its marks can be watched:
     while your font's first screen is being drawn `grimoire/.font-inuse` exists, and it is gone a moment after.
@@ -2196,7 +2210,8 @@ temporary file is swept), `test_zip_limit.rs` (a zip past 4 GiB, or with a broke
 `test_picture_jobs.rs` (a picked picture's header goes to the worker; one worker death is tried again and never
 refuses a folder; a template with no preview yet starts no worker on the UI thread), and in the CI job `sandbox`
 two more (`test_sandbox_linux.rs`): a Scribe-sized colour page mirrored under the real cap, and a worker's clean
-end under the filter. **Not run anywhere yet: those two** (Linux as root) and everything on a Scribe.
+end under the filter. Those two run there, as root; what has run on a Scribe is in the section "2.1.0-beta.2"
+below.
 
 1. **A colour notebook's PDF.** Import a PDF with colour pages (a colour planner, a magazine of photos), open the
    notebook, write a stroke, close it: `PDFs/<name>.pdf` is there and its colour pages are in colour, and the log
@@ -2344,54 +2359,89 @@ z_pages_footer_delete and i_display. **Not run on a Scribe.** The owner's check:
 ## 2.1.0-beta.2, Wi-Fi networks (lane W)
 
 Settings > Wi-Fi (issue #40). Automated: `tests/test_wifi_sh.py` (make wifi-check: the helper's networks,
-current and join verbs against a fake lipc whose profileData holds passwords: none comes out, in text or in
-hex; a format it does not know and a failed read list no name; join refuses anything but a saved network
-before any change and passes a hostile name as data), `rust/src/wifi.rs`'s tests (reports fail closed; a
-switch's states, its hex argument, exit during a switch) and `tests/scenarios/z_wifi_networks.qs` (the sheet
-from the scenario helper, also run in every language and style by make l10n-check). **Not run on a Scribe.**
+current, join, scan, add, delete and disconnect verbs against a fake lipc whose profileData holds passwords:
+none comes out, in text or in hex; a format it does not know and a failed read list no name; join refuses
+anything but a saved network before any change; add sends only the derived PSK on stdin and its profile hash holds
+only that PSK; a WPA3 add sends the passphrase only on stdin, with SAE and PMF required; an EAP add sends the
+username and password only on stdin, offers the SHA-256 AKM with optional PMF (or falls back when the
+supplicant lacks it), and its profile need not be in wifid's list; disconnect keeps the radio on, sets the manager's manual mode first, tries `cmDisconnect` with and without the current profile and then `wpa_cli`, pins the drop and disables the supplicant's network once the link is down, re-enables it and restores auto when it cannot, and its exit names the failed step; hostile names stay data), `rust/src/wifi.rs`'s
+tests (reports fail closed; a switch's states, its hex argument, exit during a switch; add's stdin and delete's
+name; a saved report that brackets the connected profile is shown once and plainly, in its own order; a quiet
+scan keeps order and only adds/removes names; a change cancels a running scan; an Add failure
+is named) and `tests/scenarios/z_wifi_networks.qs` (the sheet from the scenario helper: the automatic scan,
+Rescan, add Open, the row's trash, switch, disconnect, reconnect, scroll to Far away and refuse, and Other...
+with a hidden WPA/WPA2 password; also run in every language and style by make l10n-check). PSK add/delete were checked on the owner's
+Scribe; EAP and WPA3 are not yet checked on a device.
 
-**Probes first** (read only; the maintainer runs them over SSH with the owner's OK; copy this branch's
-`kindle/app/wifi.sh` to `/tmp/wifi.sh`). None prints a password: the masked ones replace every quoted value
-and every other letter or digit.
-
-1. `ls -l /usr/bin/lipc-hash-prop /usr/bin/lipc-probe /usr/bin/lipc-set-prop; busybox awk 'BEGIN{print 1}'`:
-   the tools the helper calls exist (else the sheet says "Saved networks could not be read.").
-2. `lipc-hash-prop 2>&1 | head -n 20; lipc-set-prop 2>&1 | head -n 20`: how a hasharray goes in (the helper
-   pipes `{}` on stdin) and that `-s` sets a string.
-3. `lipc-probe -v com.lab126.wifid 2>&1 | grep -i -e profileData -e currentEssid -e cmState` and
-   `lipc-probe -v com.lab126.cmd 2>&1 | grep -i -e ensureConnection -e wirelessEnable`: the properties exist
-   on this firmware (KOReader's Kindle backend uses all four).
-4. `printf '{}\n' | lipc-hash-prop com.lab126.wifid currentEssid 2>&1 | sed -e 's/"[^"]*"/"v"/g' -e 's/[^][{}()=:,;" ]/x/g' | tr -s x | head -n 20`,
-   then the same with `profileData`: the layout of the answer with no content (every quoted value, key and other
-   character becomes `x`: `[x] = { x = "x", x = "x", x = x }`). The reader expects quoted values (`x = "x"` or
-   `"x": "x"`) and bare numbers; an unquoted value makes it give no name (fails closed).
-5. `sh /tmp/wifi.sh networks`, connected: `current=` and `saved=` lines in hex, then `list=1`. On the Mac,
-   `sed -n 's/^\(current\|saved\)=//p' | xxd -r -p` (one per line) should give your network and every network
-   the Kindle's own Wi-Fi list shows, names with accents or Japanese too. `list=0` means probe 4's layout is not
-   the one the reader knows: send probe 4's output. A name missing from the list (one with a backslash, a quote
-   the tool escapes, or an escaped accent) says how the tool writes such names.
-6. The same with Wi-Fi off (airplane mode): `list=1` or `list=0` says whether wifid lists the saved networks
-   while the radio is off (`list=0`: the sheet asks to turn Wi-Fi on first, then reads them).
+**Probes first** (read only; the maintainer runs them over SSH with the owner's OK). Run
+`sh tools/kindle-wifi-probe.sh > wifi-probe.txt`; it never scans, changes the radio, or creates, changes or
+deletes a profile, and masks every value. Paste the result into the table in `docs/WIFI-PHASE0.md`. It reports
+the firmware and radio, `profileCount`, `scanState`, whether `wpa_passphrase` exists (Grimoire derives its
+own PSK, so add does not need it; the helper's direct passphrase path does), which LIPC properties
+are present, and the masked shape of `currentEssid`, `profileData` and `scanList`. The helper's reader needs
+quoted values and bare numbers (an unquoted value makes it list no name); a `list=0` or a scan that does not
+parse means the reader needs that shape. Also check the same `networks` and `scan` verbs with the radio off:
+`list=1` or `list=0`, and `scan=off`, say whether wifid answers while the radio is off (the sheet asks to
+turn Wi-Fi on first when it does not).
 
 **The owner's checks** (after the probes; English, then Spanish and Japanese for the words):
 
-1. Settings' bottom row reads KOReader, Pair, Wi-Fi, Gestures, Updates, Done, every word whole, upright and
-   sideways, in Gothic and Classic. Gestures and Updates open their sheets as before.
-2. Connected to Wi-Fi, open Settings > Wi-Fi: "Connected to <your network>", and the networks the Kindle has
-   saved, yours first with a check. More than seven: More networks (1 of 2) shows the rest.
-3. Tap another saved network that is in range: "Connecting to <it>..." and then "Connected to <it>" with the
-   check on it, within about 10 seconds. Share's address is the new network's; Live view pairs on it.
-4. Tap a saved network that is out of range: "Could not connect to <it>." within 45 seconds. Note what the
+1. Settings' Wi-Fi row opens the sheet on Nearby; its status, top buttons and rows fit upright and sideways,
+   in Gothic and Classic, in English, Spanish and Japanese, with every word whole. Esc goes back to Settings.
+2. Connected to Wi-Fi, open Settings > Wi-Fi: it scans without a tap, names the network connected to, and
+   lists what is near. Each row's three-bar icon fills for its strength, and secured networks have the small
+   drawn lock (not a missing-glyph box); the connected row is filled black with a white rule inside it and
+   white bars. Rescan replaces the list.
+3. Leave Nearby idle for 20 s or more: the list stays up and does not reload or jump. A network that appears
+   is added at the end, one that leaves disappears, and the changed bars update in place. A failed quiet scan
+   leaves the list as it was; Rescan still clears and scans afresh. While it is refreshing, tap a network:
+   the action must happen at once, not after the scan, and the next refresh waits 20 s after that scan.
+4. Tap an unsaved Open network and an unsaved WPA2-Personal one: Open is added at once, WPA2 opens the masked
+   keyboard over the still-visible Wi-Fi page. A password with a quote, a backslash and a space works; an
+   8-character and a 63-character password work. The network appears in Saved, and the Kindle connects to it.
+   Wrong password: the profile is still added (the Kindle's service refuses the connection), and the sheet
+   says "Could not connect to <it>." within 45 seconds. If the hidden add itself fails, the status says "Could not add the network.", not the generic
+   "Could not read or change Wi-Fi." The `wifi:` log line then names the helper's exit: 18 the passphrase never
+   became a PSK, 19 wifid refused the profile, 20 no read came back. A WPA3-Personal network (hostapd
+   `wpa_key_mgmt=SAE`, `ieee80211w=2`) asks for its password on the masked page and joins; a supplicant that
+   does not list SAE exits 28 and adds nothing.
+4b. On a school WPA2- or WPA3-Enterprise network: choose it (or Other... > WPA2/WPA3-Enterprise), type the
+   username, then the password on the masked keyboard. The helper offers the SHA-256 AKM with PMF optional, so
+   the same profile joins WPA2-Enterprise and WPA3-Enterprise (non-192-bit; hostapd `wpa_key_mgmt=WPA-EAP-SHA256`,
+   `ieee80211w=2`). The network connects and is watched like a switch; the log names no username or password.
+   Without wpa_cli the helper exits 26; a supplicant refusal, 27. The profile appears in Saved; tapping it
+   rejoins it through `wpa_cli`, and its trash button removes both the supplicant network and the marker.
+   WPA3-Enterprise 192-bit is not created: it needs EAP-TLS.
+   For a local test AP, `make wifieap` starts hostapd on a second virtual interface on this computer's
+   current Wi-Fi channel using WPA2/WPA3-Enterprise (`WPA-EAP` and `WPA-EAP-SHA256`, PMF optional),
+   SSID `Grimoire-Test-EAP`, identity `student` and password `test-password`; `WIFI_EAP_WPA3_ONLY=1`
+   makes it WPA3-Enterprise only (`WPA-EAP-SHA256`, PMF required). It needs hostapd, iw and openssl,
+   and keeps the existing connection up when the driver supports AP + managed on one channel.
+5. Saved networks: the profiles in the Kindle's order, each an ordinary row with the trash button at its right;
+   the connected one is named in the status line, not moved or marked in the list. Tap one
+   trash: that profile leaves the Kindle's list at once, with no question; the Kindle's own Wi-Fi menu agrees.
+   If the delete fails, the status says "Could not forget the network." (not the generic read error) and the
+   `wifi:` log line names the helper's exit: 21 the radio, 23 no read came back, 24 no netid could be
+   read, 25 wifid still had the profile after the netid write. The list scrolls by dragging; there is no
+   More networks row.
+6. Tap another saved network that is in range: "Connecting to <it>..." and then "Connected to <it>" with its
+   row filled, within about 10 seconds. Share's address is the new network's; Live view pairs on it.
+7. Tap the filled connected row again: it disconnects with the radio still on and its row no longer filled.
+   Tap it again (or another saved network) to reconnect; SSH, Share and Live view follow the connection.
+8. Tap a saved network that is out of range: "Could not connect to <it>." within 45 seconds. Note what the
    Kindle connects to afterwards on its own (the old network, none?): Grimoire switches nothing back.
-5. Wi-Fi off, open the sheet: "Wi-Fi is off" and the saved networks, or "Turn on Wi-Fi to see the saved
-   networks."; Turn on Wi-Fi connects, and the list appears. Tap a network with Wi-Fi off: the radio comes on
-   and the Kindle connects to that network.
-6. Turn off Wi-Fi from the sheet: "Wi-Fi is off", SSH and Share drop as with the Share card's button.
-7. Leave Grimoire (Exit) right after tapping a network: the Kindle still connects to it; KOReader's network
+9. Wi-Fi off, open the sheet: "Wi-Fi is off", Nearby asks to turn it on, and Saved says it cannot be read.
+   Turn on Wi-Fi connects and starts the scan by itself; the lists appear. Opening the sheet never turns the
+   radio on.
+10. Other...: type a hidden network's name; the Wi-Fi page stays under the keyboard. Choose Open, WPA/WPA2
+   and its masked password, or WPA2-Enterprise and its username then masked password. A hidden WPA2 network
+   joins and appears in Saved; a wrong password is reported as any other failed connection.
+11. Turn off Wi-Fi from the sheet: "Wi-Fi is off", SSH and Share drop as with the Share card's button.
+12. Leave Grimoire (Exit) right after tapping a network: the Kindle still connects to it; KOReader's network
    menu agrees.
-8. From a notebook: the toolbar's cog > Wi-Fi works the same; Done comes back to the notebook.
-9. Afterwards, grimoire.log names no network and holds no password: only lines such as `wifi: switched to a
-   saved network`. The Kindle's own Wi-Fi list is unchanged (nothing added, changed or forgotten).
+13. From a notebook: the toolbar's cog > Wi-Fi works the same; Back comes back to the notebook.
+14. Afterwards, grimoire.log names no network and holds no password: only lines such as `wifi: switched to a
+   saved network`. The Kindle's own Wi-Fi list differs only by the networks added and the one deleted above.
 
 ## 2.1.0-beta.2, last round, lane K: the keyboard's caret, and copy and paste
 
@@ -2515,7 +2565,8 @@ table and on CI's kernel run. Use the bundle built with the pinned toolchain (do
 ## Hardening round (2026-11), storage reads and temporaries: device checks
 
 Automated: the unit tests of `util.rs`, `store.rs` and `bgwork_template.rs`, `rust/tests/test_sec_read_links.rs`,
-`test_sec_pid_tmp.rs` and `test_sec_work_links.rs` (links, FIFOs, folders and sizes on the host's file system).
+`test_sec_pid_tmp.rs` and `test_sec_work_links.rs`, and the crash guard's file in `test_fontguard.rs`
+(`the_guard_file_is_read_only_as_a_plain_file`) (links, FIFOs, folders and sizes on the host's file system).
 What they cannot show is the Scribe's own storage, so this round ships only once these are done on a Scribe:
 
 1. **Before installing, over SSH.** Keep a copy of the settings:
@@ -2549,3 +2600,509 @@ What they cannot show is the Scribe's own storage, so this round ships only once
 9. Only if step 1 said the storage takes symlinks, with Grimoire closed:
    `ln -s /etc/hostname /mnt/us/grimoire/templates/linked.png`, start Grimoire, New notebook, Paper: no
    `linked` among the templates. Remove the link.
+10. **The clipboard, the compaction lists, the shortcut files and the PDF cache** (the same read, since
+    #118). Lasso some ink, Copy, turn the page and Paste: it pastes. Take a notebook of two pages or more
+    that the PDF mirror has written (step 6's, if it has two pages; else change another one and close it
+    once with the mirror on), change one of its pages and close it: its
+    `bg: export of <id>: N pages, D drawn` line has D smaller than N (the other pages were found in the PDF
+    cache). Erase a word on a page, close the notebook and start Grimoire again: the log has no
+    `its list does not read` line. With shortcuts on and a keyboard at hand, a key of `shortcuts.ini` acts
+    as before.
+
+## Hardening round (2026-11), invariants: the documents and the build's crate rule
+
+What the documents and comments say of the safe loader was brought in line with the code (the limit on a
+worker's record lines, what a build off the Kindle takes of the sandbox, what the UI reads of a PDF, the
+font check's second try and its mark, who writes `fonts/.cache`, where the sandbox's tests have run), and
+`rust/deny.toml` now bans the one crate that would bring a second skrifa into the build. No code path
+changes: the app behaves as before. Automated: `rust/tests/test_sec_invariants.rs` (the sentences, the
+allow-list's of the sandbox round among them, `Cargo.lock` against `deny.toml`, and the skrifa pin),
+`rust/tests/test_sec_records_cap.rs` (a worker past the cap is ended and the next starts afresh), and
+CI's `deny` job.
+
+No check on a Scribe is needed for this round's invariants. One look, for the owner, at the one shipped
+text that changed:
+
+1. Install the build. Connect the Scribe over USB and open `grimoire/app/licenses/rust-crates.txt` on the
+   computer.
+2. The file begins "From the Rust crates Cargo.lock names for the Grimoire binary." and then says that
+   every crate is listed, the ones not compiled in among them. Of the crates' age it gives the rule for a
+   release (two weeks old on the day of the tag) and where an exception is recorded, and no longer says
+   that each crate was that old.
+3. Search the file for `hayro `: its entry is there, with the version `rust/Cargo.lock` names. Nothing
+   else in the file changed.
+
+## Hardening round (2026-11), import: the file record, names, the import folder, the first look and the lock
+
+"PDF already imported." is said of the very file: a notebook made from a PDF keeps the SHA-256 and the size of
+its file, and a PDF that has a notebook's key is compared with that record. The path of a file being imported
+is kept as it is, and a path with a line break in a name is left where it is. A folder spelled like
+`grimoire/import` in another case counts as the import folder only when it is that folder. The scan's first look
+at a dropped PDF, and the import's lock file, are opened without following a link and checked to be the file at
+their name. Automated: the unit tests of `pdfimport.rs` (the record's grammar, the decision over the notebooks
+that hold a key, the two "same folder" functions, the paths a mark and a state keep);
+`rust/tests/test_sec_import_key.rs` (three PDFs of one book key: the record, the second notebook, a notebook
+without a record, the picker's cards, KOReader's request by the key, and a file that takes a PDF's name while
+that PDF is read, which is left for the next scan); `rust/tests/test_sec_import_io.rs` (a
+folder spelled like import, the look after a link, another file or a FIFO was put at the name, the lock file
+as a link, a FIFO, a folder or a file with a second name, a pick while the lock cannot be taken, and what
+reads as an import still going); `rust/tests/test_sec_import_names.rs`, `rust/tests/test_import_queue.rs`,
+`rust/tests/test_pdfimport.rs` and `rust/tests/test_browser.rs` (names with a line break, a tab or a C1
+character; in `test_import_queue.rs` also the scan that imports a file which took the name of a PDF being
+imported); and the scenario
+`tests/scenarios/z_files_3_imports.qs` (the has-notes card, and Import as notebook on it). CI's `sandbox` job
+also runs `test_sec_import_names.rs` and `test_sec_import_io.rs`, on Linux as root, where the file system tells
+names apart by case; the unit jobs run on a file system that folds case.
+
+**Not run on a Scribe.**
+
+Three things only the Scribe can say: how long a big PDF takes to read whole, and whether its storage gives
+a file one identity by its name and by an open file (the scan's look, the import lock and the move to
+`import/done` all compare the two). Steps 1 to 3, 7 and 8 must pass before a release holds this round's
+import commits. The owner's check:
+
+1. **A big PDF, the first time.** Copy the biggest PDF at hand (300 MB or more if there is one) into
+   `grimoire/import`. It is taken within about 10 s of the copy ending, as before. When the notice reaches
+   its last page ("Importing: page N of N") it stays there while the file is read once more: note for how
+   long. Afterwards `grimoire.log` has `import: <id>: its file read for its record: N KB in T ms`. Write T
+   down (the estimate is 20 to 45 s for 512 MB; it was not measured). No line says `its last slice was cut
+   off`.
+2. **Writing meanwhile.** During that last page, write a line with the pen in another notebook: it feels as
+   usual.
+3. **The same PDF again.** Copy the same file into `grimoire/import` under another name. It says "PDF
+   already imported." and goes to `import/done`; for a big file only after
+   `import: <id>: its file read to compare with a notebook's record: N KB in T ms`. Note the wait.
+4. **The record stays.** `grimoire/notebooks/<id>/source.ini` of step 1's notebook has a line starting
+   `file=sha256:`. Open that PDF in KOReader and use Open this book in Grimoire: it opens that notebook, and
+   the line is still there afterwards.
+5. **A notebook from an earlier version.** Copy in the PDF of a notebook that 2.1.0 or 2.1.0-beta.2
+   imported: "PDF already imported.", as before, and its `source.ini` gets no `file=` line.
+6. **Files.** Library > New > From a file..., to a folder holding a copy of step 1's PDF: its row says "has
+   notes" and its card offers Open its notebook, Import as notebook and Cancel. Open its notebook opens it;
+   Import as notebook says "PDF already imported.". The PDF of step 5 offers Open its notebook and Cancel
+   only.
+7. **A small PDF after a restart.** Start Grimoire and copy a small PDF into `grimoire/import`: it is taken
+   within about 10 s, and once it is a notebook the file is in `import/done`. `grimoire.log` has no
+   `the import lock cannot be taken` line, no `differs from its listing` line and no
+   `no longer holds the file that was read` line, and the scan's line counts `0 that differ from their
+   listing`. This step decides whether the three checks suit the Scribe's storage: the first line would mean
+   that no import starts there, the second that every PDF waits a minute, the third that an imported PDF
+   stays in `import/` and is read again twice (three times in all), after which its row in the Import place
+   reads "Couldn't import PDF (see grimoire.log)." although its notebook exists.
+8. **A second start during an import.** Start a long import, close Grimoire while it runs and open it
+   again: the notice goes on. Pick another PDF in Files: "Another import is still going. This one starts
+   after it.", and it starts once the first has ended.
+9. **A pick in the import folder.** Files > All storage > grimoire > import, pick a PDF there: it becomes a
+   notebook, the file is in `import/done` afterwards, and it is not imported a second time.
+10. **Optional, another spelling.** With Grimoire closed, rename `grimoire/import` to `Import` (in two
+    steps, through another name). Start Grimoire, Files > All storage > grimoire > Import: pick a PDF, then
+    a folder of pictures. One notebook each, both filed in `done`, and none a second time after leaving the
+    Library and coming back. Rename the folder back.
+11. **Optional, an edited copy.** A copy of step 1's PDF, saved again by another program with something
+    appended, can have the book's key and another content (the key reads 1 KiB at a few fixed places: a copy
+    that changed one of them, or grew past the next, has a key of its own). Copy it into `grimoire/import`:
+    it becomes a notebook of its own ("<Name> 2"). The step counts only when `grimoire.log` then has
+    `import: <id>: a notebook holds this PDF's key but was made from another file; this one is imported`:
+    without that line the copy had another key and the step showed nothing. With it, open step 1's PDF (the
+    first file, not the copy) in KOReader and use Open this book in Grimoire: it opens step 1's notebook,
+    not the copy's.
+
+If step 1's T is long enough to matter, or step 2 shows the pen lagging, see the BACKLOG entry on the import's
+whole-file read ("Hardening round (2026-11), import: what waits"). If step 7 shows any of its three lines, do
+not release: send grimoire.log.
+
+## 2.2 work, the Font sheet in the new Settings menu (#115, #116)
+
+Since the new Settings menu (#115, which the owner checked on a Kindle Scribe), Settings > Font is the Font row
+of Settings' Display category, and its sheet works as Language does: a tap on a font applies it at once and
+saves it (with one Full refresh, as a style change); Back and Esc return to Settings and the X closes all of
+Settings, each keeping the font tapped. That replaces "Done applies, Cancel leaves the font as it was" in the
+sections "2.1.0, Classic fonts", "2.1.0-beta.2, L10 (your own fonts)" (step 8) and "2.1.0-beta.2, fix round,
+F3" (step 3), which describe the 2.1.0 builds.
+
+Automated: tests/scenarios/y_fonts.qs (a tap applies the family and saves it with a Full refresh; Back and Esc
+keep it; the X closes Settings with one ui refresh; Gothic has no Font row), z_fonts_kept.qs (the font y_fonts
+tapped last is there at the next start: y_fonts quits with the storage full after that tap, so the tap saved
+it), y_fonts_unknown.qs (an unknown `font=` line stays while the sheet is left with no tap, and a font tapped
+replaces it at once), y_fonts_own_1_sheet.qs and z_fonts_own_kept.qs (a font of the owner's own applied and
+saved at the tap, kept by Back and by the X, and there at the next start), and rust/tests/test_fontguard.rs
+`terminess_tapped_after_a_strike_takes_the_font_away_at_once` (after a start in Terminess that a crash made,
+Terminess tapped, then Back: no `font=file:` line is left, and the next start does not load the font).
+
+On the Scribe:
+
+1. **A tap applies.** In Classic, Settings, the Display category, Font: tap Atkinson. One full refresh, and the
+   sheet is in Atkinson; Back: Settings is in Atkinson and its row reads "Font: Atkinson"; restart Grimoire:
+   still Atkinson.
+2. **Back keeps the font tapped.** Tap Literata, then Back: Settings stays in Literata. Tap Atkinson, then the
+   X: the Library is in Atkinson.
+3. **Terminess after a crash.** As step 3 of "2.1.0-beta.2, fix round, F3", but tap Terminess and then Back:
+   settings.ini has no `font=file:` line any more, and the next start does not load the font.
+
+## 2.2, Files' storage writes (issue #117): device checks
+
+Automated: the unit tests of `fsview.rs` (the name rules, the trash's names, the record read strictly, what an
+import holds), `bgjob.rs` (the jobs' paths) and `bgwork_copy.rs` (the job's path), and
+`rust/tests/test_fsview_writes.rs` (the allow-list's refusals, no replace, another writer at the name between
+the fallback's check and its rename, a case-only rename, a rename and a trash stopped half way, the busy check,
+trash and restore of a file, a folder and a notebook in both forms, a name taken, refused restores, the copy with
+its floor, a failed write and a source that changes). On the Mac only the fallback rename runs (the new name
+reserved, then `renameat` over the reservation); CI's Linux job (`sandbox`) runs the same file with the kernel's
+`RENAME_NOREPLACE` on its tmpfs. Nothing on screen calls these writes yet, so the Scribe's part is three
+questions about its storage, asked over SSH (Grimoire closed unless a step says otherwise). Their answers decide
+what runs there and whether "File changed. Try again." can come for no reason; they are due before the first
+screen that uses the writes ships (issue #100 tracks the device checks before a release). Write the answers into
+docs/KINDLE.md (How it fits in).
+
+1. **Does the storage take the no-replace rename?** KOReader's LuaJIT can make the call (`382` is
+   `renameat2` on the Scribe's 32-bit ARM kernel, `-100` the current folder, `1` the no-replace flag; if
+   KOReader is installed elsewhere, use its `luajit`):
+
+   ```
+   mkdir /mnt/us/grimoire/.probe && cd /mnt/us/grimoire/.probe && echo a > a && echo b > b
+   /mnt/us/koreader/luajit -e '
+   local ffi = require("ffi")
+   ffi.cdef[[long syscall(long n, ...); char *strerror(int e);]]
+   local function try(from, to)
+     local r = tonumber(ffi.C.syscall(382, ffi.cast("long", -100), from, ffi.cast("long", -100), to, ffi.cast("long", 1)))
+     local e = ffi.errno()
+     print(from .. " -> " .. to .. ": " .. r .. (r ~= 0 and (" " .. ffi.string(ffi.C.strerror(e))) or ""))
+   end
+   try("a", "b") try("a", "B") try("a", "c")'
+   ls; cat b c
+   ```
+
+   The flag works when it prints `a -> b: -1 File exists`, `a -> B: -1 File exists` (on a storage that folds
+   case, `B` is `b`) and `a -> c: 0`, and `ls` shows `b c` with `b` holding `b` and `c` holding `a`: Grimoire's
+   renames are the kernel's own. It prints `Invalid argument` (or `Function not implemented`) for all three, and
+   `a` is still there, when the storage refuses it: Grimoire then takes the fallback (the name reserved first),
+   and its log says so once a session (`files: the storage refused the no-replace rename`). On a storage that
+   keeps case apart, `a -> B: 0` then `a -> c: -1 No such file or directory`, and `ls` shows `B b`: send the
+   output (the case rules matter to the screens). Any other answer (anything replaced, or another error) is not
+   expected: send the output.
+2. **Is a move into the trash one rename, for a file and for a folder?** In the same folder:
+
+   ```
+   dd if=/dev/zero of=big bs=1048576 count=50 && mkdir dir && echo x > dir/f
+   stat -c '%i %s' big dir
+   time mv big ../trash/probe-big; time mv dir ../trash/probe-dir
+   stat -c '%i %s' ../trash/probe-big ../trash/probe-dir
+   rm -rf ../trash/probe-big ../trash/probe-dir
+   ```
+
+   One rename each: the same numbers before and after, and each `mv` well under a second for the 50 MB file.
+   A copy would take seconds and give new numbers: then trash is not instant there, and the screens must say
+   so before a big file goes.
+3. **Do the numbers a check compares stay the same?** "File changed. Try again." compares a file's device,
+   inode, size and time with what its listing saw. In the same folder:
+   `echo keep > keep && stat -c '%d %i %s %Y' keep`, and note the line. Then ask again over SSH
+   (`stat -c '%d %i %s %Y' /mnt/us/grimoire/.probe/keep`) after a restart of the Kindle, and with Grimoire open
+   for a minute (from SSH while it runs). The same line every time: a file left alone never reads as changed. The
+   Scribe connects to a computer over MTP, so its storage stays mounted while a cable is in: a connection is no
+   separate case to ask about. A new device or inode number after the restart matters only to a listing kept
+   across it (none is); one that changes while Grimoire runs would make the screens refuse for no reason: send
+   the lines.
+
+Tidy: `cd /; rm -rf /mnt/us/grimoire/.probe`.
+
+## 2.2, the same PDF again fills its notebook (issue #123): device checks
+
+A PDF whose notebook lacks some of the book's pages (pages deleted since, or a notebook KOReader made, which holds
+only the pages KOReader sent) fills that notebook when it is dropped in `grimoire/import` again: the missing pages
+in book order, with the links that start or end on them and the outline's names for them. The pages it had keep
+their files, their names and their links: a fill adds no link between two of them and names none of them. A
+notebook with every page says "PDF already imported."; a PDF of another page count becomes a notebook of its own.
+The pages go in once the notebook is closed and the Library is in front ("Adding book pages: N of M", taps and keys
+waiting meanwhile); until then the notebook opens as it is, and KOReader's Open this book in Grimoire is not held up.
+Automated: `rust/tests/test_pdf_fill.rs` (a notebook with its file record, one without, one KOReader made with
+KOReader's links a pixel off the import's, and 3 px off, a full one, another page count, the files of the pages it
+had byte for byte, the writer that never writes the notebook, a notebook renamed, moved or deleted while its pages
+were made, what writes the notebook between two ticks of the commit, a job running on the notebook when its pages
+are made, a worker that cannot start, KOReader's job while a fill waits, a stop in the middle, a fill whose PDF goes
+away, a commit cut off after each of its steps and three times, the key checked again, two copies dropped together,
+the water level that keeps a notebook's own links, the state's grammar) and the scenarios
+`tests/scenarios/z_pdf_11_fill_1_book.qs` (KOReader's book of the
+tabs planner, pages 1 and 3), `z_pdf_12_fill_2_drop.qs` (the planner dropped: the two pages added, KOReader's tabs
+not doubled, no name given to KOReader's pages), `z_pdf_13_fill_3_open.qs` (the notebook opened while its fill is
+made, the pages going in back in the Library), `z_pdf_14_fill_4_held.qs` and `z_pdf_15_fill_5_koreader.qs`
+(KOReader's Open this book while a fill of the book's notebook waits: the book opens, the fill goes in after),
+`z_pdf_16_fill_6_book_job.qs` (KOReader's job adds one of the pages a waiting fill made, looking at one page a tick
+by `GRIMOIRE_BOOK_STEP_PAGES`: no commit begins while it runs, and the fill then adds only the page still missing)
+and `z_pdf_17_fill_7_input.qs` (a key and a tap while the commit runs, slowed to a file a tick by
+`GRIMOIRE_FILL_STEP_PAGES`, do nothing).
+
+**Not run on a Scribe.** Two things only the Scribe can say: whether the book key Grimoire computes for a PDF is
+the key KOReader wrote for it (KOReader's own partial MD5 of the file it opened), and whether KOReader's link boxes
+and the import's agree within 2 px (a fill adds no link between the pages KOReader sent, but a later Open this book
+that sends links again would add a second copy of a link to a page the fill added). The owner's check, on a build
+of this branch:
+
+1. **KOReader's notebook.** In KOReader, open a planner PDF with tabs that Grimoire never imported (one of more
+   than ten pages), go to its third page and use Annotate this page in Grimoire, then do the same on two or three
+   more of its pages. (KOReader draws these. With this build's plugin, Open this book in Grimoire hands a PDF
+   over by its path and its notebook holds every page at once: the check for issue #142, below.) Write a line on
+   the third page. Note the notebook's page count on its card (the pages KOReader sent), and leave Grimoire for
+   KOReader.
+2. **The same file dropped.** Over USB, copy that very file (from where KOReader opened it, unchanged) into
+   `grimoire/import`, and start Grimoire. Within about 10 s the notice counts the missing pages ("Importing: page
+   N of M", M the book's pages less the notebook's), then "Adding book pages: N of M" for a moment, and the end
+   says "Added M book pages."; the Library has no second card. `grimoire.log` has `import: <id>: notebook <nb>
+   lacks M of the book's P page(s): they are added to it`, `the pages for notebook <nb> are made`, then
+   `import: <id>: notebook <nb>: D document link(s) (A added, S already there, ...)` and `import: notebook <nb>
+   filled: M page(s) added`. S is 0 here: the fill adds no link between the pages KOReader sent.
+3. **The pages and the tabs.** Open the notebook: the book's pages in order, the line written in step 1 on its
+   page. With the eye on, every tab of a page KOReader sent is drawn once (a tab drawn twice, slightly offset,
+   is a link added a second time: send `grimoire.log` and the notebook's `doclinks.ini`). A tab on a page KOReader
+   sent that goes to a page the fill added works, and the pages KOReader sent have no name they did not have.
+4. **The key.** If step 2 made a second notebook instead (a second card, and no `lacks` line in the log), the
+   two keys differ: compare the notebook's `source=` line (`grimoire/notebooks/<nb>/notebook.ini`, KOReader's key)
+   with the key of the file, which on a computer is
+   `python3 -c "import hashlib,sys;b=open(sys.argv[1],'rb').read();m=hashlib.md5();[m.update(b[o:o+1024]) for o in [0]+[1024<<(2*i) for i in range(11)] if o<len(b)];print(m.hexdigest())" planner.pdf`,
+   and send both with the log.
+5. **The notebook opens meanwhile.** Delete a few pages of that notebook in the Pages view, drop a copy of the
+   PDF again, and while the notice counts, tap the notebook's card: it opens, as it is. Go back to the Library:
+   "Adding book pages: N of M" shows for a moment, then "Added N book pages."; the card opens it, filled again.
+6. **KOReader while a fill waits.** Delete a few pages again, drop a copy of the PDF, and before its notice ends
+   leave Grimoire for KOReader; there, use Open this book in Grimoire. With this build's plugin the PDF goes by
+   its path: the Library comes up (saying "Another import is still going. This one starts after it." while the
+   first import still runs), the fill's pages go in ("Added N book pages."), and the notebook then opens on the
+   reader's page, with no page added twice. (With a plugin from before 2.2, which draws the pages itself, the
+   book opens on the reader's page at once, with no toast over it, and the fill's pages go in once the Library is
+   back in front.)
+7. **KOReader again.** Open the PDF in KOReader and use Open this book in Grimoire on a page the fill added: it
+   opens that page, adds no page, and no tab doubles.
+
+## 2.2, Files (issue #124): device checks
+
+Not run on a Scribe yet. The headless scenarios `files_1_card` to `files_7_keys` cover the logic (the card hidden,
+shown last and hidden again, the root's rows, the path bar's parts and Go to, each Sort on a folder of known
+sizes and times, Show all with a link, a picture's, a font's and another file's card, the trash, a Library card's
+hold, the `files` and `home` actions from keys), and `browser.rs`'s unit tests the order, the root and the cards.
+What only the storage can tell, on the Scribe:
+
+1. **A big `documents/`** (a few thousand files): Files > Documents. Read grimoire.log: `files: listed N entries
+   (M usable) in T ms`, then tap Sort to Newest and to Size and read `files: N rows sorted (S) in T ms` (counts
+   and timings only, never a name). Note each T, whether "Loading..." appears (over 1 s), that the rows on screen
+   do not move until the new order is ready and then change at once, and that the pen and page turns stay quick
+   meanwhile. Then tap the folder shown in the path bar: the Go to sheet reads the storage root for at most a fifth
+   of a second; note whether it comes at once and lists the top folders. Send the lines and the folder's size.
+2. **A folder past 5,000 entries**: "Showing the first 5000." under the path, every Sort finishes, and the order
+   covers the 5,000 listed.
+3. **Planted links** over SSH, in a folder of their own outside `documents/` (which the Kindle's reader indexes):
+   `mkdir /mnt/us/linktest`, copy any PDF into it as `Plain.pdf`, then `ln -s /mnt/us/linktest
+   /mnt/us/linktest/loop`, `ln -s /etc /mnt/us/linktest/etc` and `ln -s Plain.pdf /mnt/us/linktest/Alias.pdf`.
+   Files > All storage > linktest: with Show set to PDFs, pictures, fonts only Plain.pdf is listed; with All files
+   each link is a greyed row "link, not followed", a tap on it does nothing, and Sort by newest or size puts them
+   last. Nothing is entered or opened through one. Then remove the folder and its links: `rm -r /mnt/us/linktest`
+   (rm removes the links themselves, never what they point to).
+4. **The card**: New > From a file... > Show Files in Library; Back to the Library: the Files card is the last card
+   (with many notebooks, on the last screen). Hold it 0.6 s: its menu; Hide from Library takes it away, and the row
+   comes back in the picker's root.
+5. **PDF copies and Trash**: Files > PDF copies lists the mirror PDFs read only, and a mirror PDF's card opens its
+   notebook; Files > Trash lists deleted notebooks by name and date, newest first, and none opens.
+6. **Rotate** the Scribe in Files: the path bar, its chips, the rows and the Go to sheet lay out again.
+
+## Hardening round (2026-11), fonts: where a check's result is kept, its hash, and a glyph's draw time
+
+What the background check found of a font (its verdict) is kept on the Kindle itself, in
+`/var/local/grimoire`, and tied to the font file by its SHA-256; and the check times each glyph as Grimoire
+will draw it. Automated: the tests of `rust/src/sha256.rs`, `rust/tests/test_sec_font_verdict.rs`, the
+functions of `rust/tests/test_fontcheck.rs` about the glyph limit and the second try's mark, the unit tests
+of `fontcheck.rs` and `userfonts.rs`, and (Linux, root, CI's `sandbox` job) the font test of
+`rust/tests/test_sandbox_linux.rs`.
+
+**Not run on a Scribe, and it must be before a release.** This change can leave a Kindle with no custom font
+(if Grimoire's own folder cannot be used there), can refuse a font that works today or hand some of its
+glyphs to Terminess (the time limit), and changes what the sandboxed worker does for every glyph. Its
+values that are placeholders, and wait for the answers below: the glyph limit (`s1::FONT_GLYPH_CPU_MS` in
+`sandbox.rs`, 20 ms) and the size a draw is timed at (`FONT_TIME_PX` in `fontcheck.rs`, 160 px), which
+steps 6 to 8 answer; the own folder's place (`STATE_BASE` in `userfonts.rs`, `/var/local/grimoire`), which
+steps 1, 5 and 11 answer; and the two floors of free room beside it (`STATE_FREE_FLOOR`, 4 MB, and
+`STATE_FILES_FLOOR`, 512 files), which step 1 answers.
+
+1. **Before installing, over SSH, with 2.1.0 still on.** `mount | grep /var/local`, `df -k /var/local`,
+   `df -i /var/local`, `ls -ld /var/local`. Write the answers here. /var/local must be a file system of its
+   own that keeps its files across a restart (not the tmpfs at /var) and that keeps owners and modes (ext3
+   or ext4, say; on one without them the test "root's, and no one else can write it" means nothing). It
+   must be root's, with no write bit for group or others (`drwxr-xr-x  root`: Grimoire tests the folders it
+   makes there, never /var/local itself), with well over 4 MB and at least 512 inodes free (a file system
+   that counts no inodes, `df -i` showing 0, is fine). If it is not, stop: the place (`STATE_BASE`) and the
+   floors beside it are set from these numbers before a release. Also keep 2.1.0's grimoire.log lines
+   `fonts: file I of N passed: ... checked in T ms` and `font: custom font loaded: S KB in T ms`.
+2. **The update.** Install, start Grimoire with a font of your own in use. The Library is in Terminess at
+   first; the font comes back by itself with one redraw once its check has passed (how long?). Settings >
+   Font shows "Checking..." rows meanwhile. grimoire.log has one `fonts: file I of N passed: ...` line a
+   font, and no `work: a font's worker made call N`, no `marked unreadable`, no `cannot be kept`. If the font
+   in use has a Bold file whose name sorts after its own (`Name.ttf` with `NameBold.ttf`), look at text
+   Grimoire draws bold once the font is back: it is the regular overprinted until Grimoire is started
+   again, then the Bold file's (docs/BACKLOG.md, "Bold stays overprinted").
+3. **Where it is kept.** `ls -ld /var/local/grimoire /var/local/grimoire/* /var/local/grimoire/*/fonts
+   /var/local/grimoire/*/root` (three folders, `drwx------`, and one file, `-rw-------`, all root's; `cat`
+   of the file gives the data folder's path); `ls -l /var/local/grimoire/*/fonts` (one small `.font` a
+   font); `head -3` of one says `grimoire-font 2` and a 64-digit `hash=`, which is `sha256sum` of
+   the font file. `ls /mnt/us/grimoire/fonts/.cache` has a `.pgm` a font (a `.no` for one the check
+   refused), and 2.1.0's `.font` files untouched.
+4. **The next start, and the hash's cost.** Close and start Grimoire: the font draws on the first screen and
+   the log has no `bg: font check` line. Read `font: custom font loaded: S KB in T ms` and compare T with
+   2.1.0's from step 1, with the largest font you have (10 MB or more if you can). In Settings > Font tap a
+   built-in font, then that font's row again (a tap applies a font at once, with that log line for it): how
+   long until the sheet is drawn in it? Write both times down. The whole file is hashed at every load, on
+   the UI's thread: if either wait is longer than you accept, "Hashing a font while it is read"
+   (docs/BACKLOG.md) comes before the release. The bound is yours to set; none is built in.
+5. **After a restart of the Kindle**: as step 4 (the folder survived).
+6. **The glyph figures.** For each font read `slowest glyph T us` and `letters and digits L us` in its pass
+   line. Are the numbers fine-grained (not all multiples of 1000 or 10000)? If they are all multiples, the
+   clock is too coarse for this limit: say so. Write down the slowest glyph of the fonts you want to keep:
+   the limit (20 ms now) should be at least three times that. (The figure counts the glyphs handed to
+   Terminess as too slow, `W too slow to draw`: with W above 0 it can be over the limit in a font that
+   passed.)
+7. **Steadiness.** Delete `grimoire/fonts/.cache` (Grimoire closed) and start: every font is checked again.
+   Do it three times: just after a restart, after ten minutes of writing, and on the charger. Are a font's
+   `slowest glyph` figures within a factor of two of each other?
+8. **Heavy fonts.** A large CJK variable font and two or three heavy display fonts: `checked in T ms`
+   against 2.1.0's figure from step 1 (how much slower is the check?), any `(W too slow to draw)` with W
+   above 0, any `left for a second try` followed a minute later by a pass or by `take too long to draw
+   again`. A font that ends "Took too long to read." but draws fine: note its figures.
+9. **By hand.** `rm -r /var/local/grimoire` with Grimoire closed: the next start checks every font once and
+   nothing else changes. If you run a second data folder (a development copy): /var/local/grimoire has one
+   folder for each.
+10. **With the other hardening changes of this release in the same build**, run steps 2 and 8 once more:
+    the worker's narrower system calls and this change's walk are in the same process.
+11. When a firmware update next arrives: is /var/local/grimoire still there? (If not, fonts are checked once
+    more: note it in KINDLE.md.)
+
+## 2.2, From a file... and Use as template (issue #146): device checks
+
+Not run on a Scribe yet. The scenarios `files_8_use_as`, `files_9_copy_room`, `files_9_copy_refused`,
+`z_tpl_c_from_file_library`, `z_tpl_d_from_file_full`, `z_tpl_e_from_file_editor`, `z_tpl_f_from_file_press` and
+`z_tpl_g_from_file_keys` cover the logic (docs/DESIGN.md, From a file... and Use as
+template), with the floor and a failing write simulated. What only the Scribe can tell:
+
+1. **A photo from the Kindle**: copy a JPG of a few MB into `documents/` over USB. In a notebook, Paper > Photos... >
+   From a file... > Documents > the photo > Use as photo: the sheet comes back, its last tile an hourglass while
+   the copy runs, then the photo's tile (waiting, then its preview), and a tap makes it the page's paper. Note how
+   long the copy and the preview took (grimoire.log: `bg: a file copied into photos: N KB in T ms`, then the
+   previews job), that the pen and the sheet stay quick meanwhile, and that the page, a stroke written before and
+   Undo are as they were.
+2. **The same over New notebook**: New > More layouts... > From a file... > a PNG > Use as template: the template's
+   tile comes, and Create makes the notebook on it.
+3. **Files**: a picture's card in Documents offers Use as template and Use as photo; each says "Copied to
+   Templates." (or Photos) once it is in, and a second copy of the same picture is "<name> 2" in that folder.
+4. **Nearly full storage** (optional, only with a storage to spare that can be filled and emptied safely): with
+   under 100 MB free plus the picture's size, Use as template says "Couldn't copy file. Is the storage full?" at
+   once, and grimoire.log says `files: a copy into templates was refused: no room: ...`; nothing is left in
+   `grimoire/templates` (no `.grimoire-copy-*.part`).
+5. **Rotate** the Scribe with the picker up over a notebook's page: it lays out again and Back returns to the sheet.
+6. **A picture over 16 MB** (a large scan, or any big file named .png): Use as template in Files says "Too big
+   (over 16 MB)." at once, grimoire.log says `files: a copy into templates was refused: it is over 16 MB`, and
+   nothing is added to `grimoire/templates`. The same from a sheet's From a file..., where the picker stays up.
+
+## 2.2, KOReader hands a PDF over by its path (issue #142): device checks
+
+KOReader's Open this book in Grimoire on a PDF, to a launcher whose Capabilities line says `pdf`, names the PDF by
+its path (`import/.book/request.ini` version 2) and draws nothing. Grimoire takes the path through the storage walk
+to the PDF import, as a file picked in Files: the import draws the pages (in colour where the PDF has colour) and
+finds the links, and fills a notebook KOReader made through version 1 with the pages it lacks. Nothing is held for
+it: the import's notice counts and the Library stays usable. When it ends the page the reader was on opens if the
+user is still on the Library with its cards in front; else nothing opens, the import's toast shows, and the book's
+card opens at that page. DjVu, comics, XPS, a PDF that needs a password, a PDF at a path Grimoire does not take, one
+over 512 MiB, one changed since KOReader first opened it, and any PDF to an older launcher go by version 1, KOReader
+drawing them; Annotate this page stays version 1.
+
+Automated: `rust/tests/test_annotate.rs` (`book_request_parsing`: version 2 read strictly, version 1 unchanged),
+`rust/tests/test_koreader_pdf.rs` (a new notebook at the reader's page with its record, its colour kept, a fill of a
+version 1 notebook keeping KOReader's pages, "already imported" ending on the page, ten paths the walk refuses, a
+PDF the import refuses, the import's end told once and the reader's page kept as the page the notebook opens at, a
+hand-over behind another run's import and behind a queued one, the notebook whose record is of the file for three
+files of one key, a notebook without a record taken for any file of its key, the file the import opened deciding
+when the name changed hands after the start, a fill stopped by a rename, a fill's end kept while its filing slice
+ends), `tests/koplugin_test.lua` (a PDF by its path from the reader and from Open with..., the same PDF to a 2.1
+launcher, a DjVu, Annotate this page, a PDF that needs a password, the question failing and its log line, version 1
+for every path Grimoire's walk refuses (hidden, `.sdr`, system and own folders, a linked folder, a link, 600 bytes,
+not UTF-8) with version 2 beside each, a PDF over 512 MiB, a PDF changed since KOReader first opened it),
+`tests/package_check.sh` (the launcher's `pdf`) and the scenarios `tests/scenarios/y_koreader_pdf_1_new.qs` (the
+hand-over on a storage root: the import's notice, New notebook opening and closing meanwhile, the notebook open at
+book page 3), `y_koreader_pdf_2_fill.qs` (z_pdf_11's notebook of KOReader's pages 1 and 3 filled by the planner's
+path, open at book page 2), `y_koreader_pdf_3_djvu.qs` (a version 1 request, as a DjVu's, taken as before),
+`y_koreader_pdf_4_whatsnew.qs` (the first start after an update is a hand-over that fills a notebook: What's new
+closes, then the pages go in and the notebook opens), `y_koreader_pdf_5_elsewhere.qs` (a notebook of the user's own
+in front at the end: the import's toast, and the book's card opens at book page 3), `y_koreader_pdf_6_sheet.qs` (the
+same with a sheet up), `y_koreader_pdf_7_asleep.qs` (the end taken at the wake), `y_koreader_pdf_8_password.qs` (a
+PDF the import refuses says the import's "PDF needs a password."), `y_koreader_pdf_9_refused.qs` (a path the walk
+refuses says the book's failure), `y_koreader_pdf_10_queued.qs` (behind a dropped PDF's import: the toast that says
+it waits, then both notebooks), `y_koreader_pdf_11_already.qs` (a book whose notebook holds every page: opened at
+the reader's page, nothing made), `y_koreader_pdf_12_pressed.qs` (a finger held on a Library button at the end: the
+notebook opens, and the lift does nothing on the page), `y_koreader_pdf_13_came_back.qs` (back on the Library after
+a visit to a notebook: nothing opens, the import's toast shows, and the card opens at book page 3) and
+`y_koreader_pdf_14_fill_waits.qs` (a fill of the book's notebook from a dropped copy waits: it goes in, the book's
+own import then finds every page there, and the notebook opens at book page 2).
+
+**Not run on a Scribe.** The owner's check, on a build of this branch (a planner PDF with coloured tabs, more than
+20 pages, that Grimoire never saw; a second, long PDF, of a few hundred pages; a DjVu or CBZ book):
+
+1. **The plugin updated.** Install the build. Start Grimoire from the Library once and use Settings > KOReader >
+   Install / update Grimoire plugin, then quit KOReader and start it again from its Library item. The second line
+   of `grimoire/app/grimoire.sh` is `# Capabilities: guard hosted annotate book links pdf`.
+2. **A PDF by its path.** In KOReader, open the planner, go to its page 7 and use Tools > Grimoire > Open this book
+   in Grimoire. KOReader shows "Preparing Grimoire..." alone (no "Preparing page N of M for Grimoire..."), then
+   Grimoire's Library with "Importing: page N of M" at the bottom. Leave the Library alone: the notebook then opens
+   at page 7 (the page chip says 7) with "Added M book pages.". Note the time from the tap in KOReader to the page.
+   `koreader/crash.log` has `Grimoire: a PDF of M pages sent by its path, to open at page 7`; `grimoire.log` has
+   `book: the PDF KOReader named goes to the PDF import (<id>); its page 7 of M opens once that ends`, the import's
+   own lines (`import: <id>: M page(s), ...`, with the worker sandboxed), and `book: <id>: M page(s) added by the
+   PDF import (a new notebook), opens at its page 7`. A line `book: the book key KOReader sent is not its file's`
+   means the two keys differ: send the log.
+3. **Colour and tabs.** A tab on the page works (eye on: each drawn once). Back in the Library (the notebook
+   closed), copy the notebook's PDF from `grimoire/PDFs` to a computer over USB: the planner's coloured pages are in
+   colour there (the Scribe shows them gray).
+4. **Back to KOReader.** Library > Back to KOReader: the same planner at page 7. The PDF is where it was, unmoved.
+5. **The Library stays usable.** In KOReader, open the long PDF, go to its page 30 and use Open this book in
+   Grimoire. While "Importing: page N of M" counts, open New notebook and cancel it, open Settings and close it,
+   then open the planner's notebook and write a line: every tap acts at once, and the pen is as quick as ever. When
+   the import ends the planner's page stays in front, with "Imported notebook (M pages)." over it. Back in the
+   Library the long PDF's card is there; tap it: it opens at page 30.
+6. **A book opened before.** In KOReader, in another PDF Grimoire never saw, use Annotate this page in Grimoire on
+   its page 3 and write a line; back in KOReader, annotate its page 9 too (crash.log: `page 9 of M sent to
+   annotate`: Annotate stays version 1). Then go to its page 5 and use Open this book in Grimoire: the notice
+   counts the pages the notebook lacks (M less 2), "Adding book pages: N of M" shows for a moment as they go in,
+   and the notebook opens at page 5 with "Added M-2 book pages."; pages 3 and 9 are KOReader's (gray, the line on
+   page 3), the rest Grimoire's, and the Library has one card for the book. `grimoire.log` has `import: <id>:
+   notebook <nb> lacks M-2 of the book's M page(s): they are added to it` and `import: notebook <nb> filled`.
+7. **Whole already.** Back in KOReader, Open this book in Grimoire on page 12 of that same PDF: the notebook opens
+   at page 12 at once, with no toast (`import: <id>: this PDF was imported before; nothing made`, then `book: <nb>:
+   0 page(s) added by the PDF import (its notebook), opens at its page 12`).
+8. **The first start after an update.** Delete a few pages of that notebook in the Pages view and leave Grimoire.
+   Over USB, in `grimoire/settings.ini`, change the `whatsnew_seen=` line to a version other than this build's
+   (`whatsnew_seen=2.0.0`), so that What's new is due at the next start, as after an update. From KOReader use
+   Open this book in Grimoire on that PDF. Grimoire comes up with What's new over the Library. Wait a minute: the
+   sheet is still up, and `grimoire.log` has `the pages for notebook <nb> are made; they go in once the Library is
+   in front`. Tap Dismiss: it closes at once, "Adding book pages: N of M" shows for a moment, and the notebook
+   opens at the reader's page with "Added N book pages.".
+9. **Behind another import.** Delete the long PDF's notebook, hand the long PDF over again from KOReader, and
+   while "Importing: page N of M" counts use Library > Back to KOReader (its import goes on by itself). In
+   KOReader, open a PDF Grimoire never saw and use Open this book in Grimoire: the Library says "Another import
+   is still going. This one starts after it." and stays usable; `grimoire.log` has `book: the PDF KOReader named
+   waits for an import of an earlier run`. Stay on the Library: within about 10 s of the first import's end
+   (`import: the import from an earlier run has ended`) the second starts, and its notebook opens at the reader's
+   page.
+10. **An edited copy.** On a computer, add a line to the end of a copy of the planner (`printf '%%edited\n' >>
+    planner.pdf`), check that its key is the planner's (the command of the fill check above, step 4), and put it
+    on the Kindle in the planner's place over USB. In KOReader, Open this book in Grimoire: a second card is made
+    for it (`import: <id>: a notebook holds this PDF's key but was made from another file; this one is
+    imported`). Once more: no third card, the second notebook opens at the reader's page (`this PDF was imported
+    before`). Put the first file back and hand it over: the first notebook opens, with the lines written in it.
+11. **A DjVu still by version 1.** Open the DjVu or CBZ book in KOReader and use Open this book in Grimoire:
+    "Preparing page N of M for Grimoire... Tap to stop." shows as before, and the notebook opens at the reader's
+    page (`book: <id>: N page(s) of M to add, ...` in `grimoire.log`), with taps held for the few seconds its pages
+    take, as before.
+12. **A PDF with a password** (when one is at hand): Open this book in Grimoire draws its pages in KOReader as a
+    DjVu's are, and crash.log has `Grimoire: this PDF needs a password: KOReader draws its pages`. The plugin's
+    question (a MuPDF document of its own, opened and closed) has never run on a device: after steps 2 to 10,
+    search crash.log for `Grimoire: could not ask whether this PDF needs a password`. If the line is there for a
+    PDF that needs none, the question fails on this KOReader (the PDFs still go by their path): send the log.
+13. **A PDF where Grimoire does not read.** Copy the planner into `koreader/` (or into any folder whose name
+    begins with a dot) and open it there in KOReader: Open this book in Grimoire draws its pages in KOReader, as
+    before 2.2, and crash.log has `Grimoire: this PDF is not sent by its path (a system folder): KOReader draws
+    its pages`.
+
+No line of `grimoire.log` or `crash.log` from these steps names a book, its file or its title.

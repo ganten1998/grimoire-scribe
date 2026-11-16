@@ -186,7 +186,25 @@ pub struct Settings {
     /// Memory only, never saved: settings.ini was an existing version 3 file without a gestures key,
     /// so this run is the owner's first with the gestures, and the one-time toasts of what changed show.
     pub upgraded: bool,
+    /// Files in the Library (2.2): the Files card is the Library's last card (settings.ini files_card=1; absent,
+    /// the default: hidden). The file picker's "Show Files in Library" sets it, the card's "Hide from Library"
+    /// clears it.
+    pub files_card: bool,
+    /// Files' order (files_sort, FILES_SORT_NAMES: name, newest, size), what it lists (files_show,
+    /// FILES_SHOW_NAMES: usable files or all) and how (files_view, FILES_VIEW_NAMES: list). Each line is absent
+    /// at its default (the first name), and a value this build does not have is used as the default and
+    /// written back as it was.
+    pub files_sort: i32,
+    pub files_show: i32,
+    pub files_view: i32,
 }
+
+/// settings.ini files_sort's values, by Settings.files_sort (2.2).
+pub const FILES_SORT_NAMES: [&str; 3] = ["name", "newest", "size"];
+/// files_show's: the files Grimoire can use, or every file.
+pub const FILES_SHOW_NAMES: [&str; 2] = ["usable", "all"];
+/// files_view's: a list (Covers, which needs previews, comes later: a later version's value is kept as it was).
+pub const FILES_VIEW_NAMES: [&str; 1] = ["list"];
 
 // ---- state ----
 
@@ -4104,6 +4122,10 @@ pub fn store_page_dense(nb: &NotebookInfo, pid: u32) -> bool {
 pub fn store_page_slow(nb: &NotebookInfo, pid: u32) -> bool {
     page_render_files(nb, pid).is_some_and(|(source, _, _)| page_file_at_least(&source, STORE_SLOW_PAGE_BYTES))
 }
+/// The size of page pid's file in bytes, None where it has none (a blank page never written): for grimoire.log.
+pub fn store_page_file_bytes(nb: &NotebookInfo, pid: u32) -> Option<u64> {
+    page_render_files(nb, pid).and_then(|(source, _, _)| std::fs::metadata(source).ok()).map(|m| m.len())
+}
 // Whether page pid has a kept drawing of its file as it is now, at the notebook's page size, by this
 // renderer, layered or not (that is told only by reading the page): the previews job's guess that the page
 // is quick to make, before it reads the page (store_load_page_render still checks it all). A drawing kept
@@ -4883,6 +4905,11 @@ fn settings_cb(s: &mut Settings, k: &[u8], v: &[u8]) -> bool {
         b"landscape_fit" => s.landscape_fit = keep_bool("landscape_fit", v),
         b"hints" => s.hints = keep_int("hints", v, 0, i32::MAX),
         b"link_areas" => s.link_areas = keep_bool("link_areas", v),
+        // 2.2: Files, read strictly (keep_named)
+        b"files_card" => s.files_card = keep_named("files_card", v, &["0", "1"]) == 1,
+        b"files_sort" => s.files_sort = keep_named("files_sort", v, &FILES_SORT_NAMES),
+        b"files_show" => s.files_show = keep_named("files_show", v, &FILES_SHOW_NAMES),
+        b"files_view" => s.files_view = keep_named("files_view", v, &FILES_VIEW_NAMES),
         b"status_corner" => s.status_corner = keep_int("status_corner", v, 0, 3),
         b"clock_12h" => s.clock_12h = keep_bool("clock_12h", v),
         b"shapes" => s.shapes = keep_bool("shapes", v),
@@ -5114,6 +5141,28 @@ fn put_int(b: &mut Vec<u8>, k: &str, v: i32) {
     put(b, k, &cformat!("%d", v));
 }
 
+/// A line written only when `v` is not the key's default, or when the file's value was kept (keep_value).
+fn put_unless_default(b: &mut Vec<u8>, k: &str, v: &str, default: &str) {
+    if v != default || with(|st| st.g_kept.iter().any(|e| e.key == k)) {
+        put(b, k, v);
+    }
+}
+
+/// A settings.ini value that must be one of `names` exactly (2.2's Files keys): its index, else 0 (the
+/// default) with the value kept to be written back as it was.
+fn keep_named(k: &str, v: &[u8], names: &[&str]) -> i32 {
+    match names.iter().position(|n| n.as_bytes() == v) {
+        Some(i) => {
+            keep_value(k, v, None);
+            i as i32
+        }
+        None => {
+            keep_value(k, v, Some(names[0]));
+            0
+        }
+    }
+}
+
 pub fn settings_save(s: &Settings) -> i32 {
     let path = cformat!("%s/settings.ini", &g_root());
     let mut b: Vec<u8> = Vec::new();
@@ -5246,6 +5295,13 @@ pub fn settings_save(s: &Settings) -> i32 {
     } else if with(|st| st.g_kept.iter().any(|e| e.key == "font_bold")) {
         put(&mut b, "font_bold", "");
     }
+    // 2.2: Files. Each line only away from its default, or when the file's value was one this build does not
+    // have (it goes back as it was).
+    let named = |names: &[&'static str], i: i32| names[clampi(i, 0, names.len() as i32 - 1) as usize];
+    put_unless_default(&mut b, "files_card", if s.files_card { "1" } else { "0" }, "0");
+    put_unless_default(&mut b, "files_sort", named(&FILES_SORT_NAMES, s.files_sort), FILES_SORT_NAMES[0]);
+    put_unless_default(&mut b, "files_show", named(&FILES_SHOW_NAMES, s.files_show), FILES_SHOW_NAMES[0]);
+    put_unless_default(&mut b, "files_view", named(&FILES_VIEW_NAMES, s.files_view), FILES_VIEW_NAMES[0]);
     // Lines this build does not know, as they were; but a pen.panel or touch.panel this build could
     // not read goes once the calibration's panel is recorded (written above in its place).
     let unknown = with(|st| st.g_set_unknown.clone());

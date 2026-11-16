@@ -208,7 +208,7 @@ pub fn light_get(intensity: &mut i32, warmth: &mut i32) {
     if with(|s| s.intensity) < 0 {
         light_refresh(); // never read, or the power service did not answer then
     } else if with(|s| s.auto) > 0 {
-        // Auto brightness moves the level while Grimoire runs; the Display sheet's slider shows
+        // Auto brightness moves the level while Grimoire runs; the Display page's slider shows
         // where the Kindle has it now.
         let live = get_prop("flIntensity");
         if live >= 0 {

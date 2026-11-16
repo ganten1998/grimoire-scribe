@@ -831,6 +831,40 @@ fn font_key() {
     unlink(&path);
 }
 
+// Files' keys (2.2): files_card, files_sort, files_show and files_view are absent by default and written only away
+// from their defaults; they are read strictly, so a value other than this build's own (another case, a later
+// version's) is the default, written back as it was until the setting changes.
+fn files_keys() {
+    let path = format!("{}/settings.ini", store_root());
+    let mut s = Settings::default();
+    let any_files_line = |p: &str| read_file(p).is_some_and(|t| find(&t, "\nfiles_").is_some());
+    check!(write_file_atomic(&path, b"invert=1\n") == 0);
+    check!(settings_load(&mut s) == 0 && !s.files_card && s.files_sort == 0 && s.files_show == 0 && s.files_view == 0);
+    check!(settings_save(&s) == 0 && !any_files_line(&path));
+    check!(write_file_atomic(&path, b"files_card=1\nfiles_sort=newest\nfiles_show=all\nfiles_view=list\n") == 0);
+    check!(settings_load(&mut s) == 0 && s.files_card && s.files_sort == 1 && s.files_show == 1 && s.files_view == 0);
+    check!(settings_save(&s) == 0 && has_pins_line(&path, "files_card=1") && has_pins_line(&path, "files_sort=newest"));
+    check!(has_pins_line(&path, "files_show=all") && !has_pins_line(&path, "files_view=list"));
+    check!(write_file_atomic(&path, b"files_sort=size\nfiles_card=0\n") == 0);
+    check!(settings_load(&mut s) == 0 && s.files_sort == 2 && !s.files_card);
+    check!(settings_save(&s) == 0 && has_pins_line(&path, "files_sort=size") && !has_pins_line(&path, "files_card=0"));
+    // strictly: another case, another word, a later version's view
+    check!(write_file_atomic(&path, b"files_card=yes\nfiles_sort=Newest\nfiles_show=everything\nfiles_view=covers\n") == 0);
+    check!(settings_load(&mut s) == 0 && !s.files_card && s.files_sort == 0 && s.files_show == 0 && s.files_view == 0);
+    check!(settings_kept("files_sort").as_deref() == Some(&b"Newest"[..]));
+    check!(settings_save(&s) == 0 && has_pins_line(&path, "files_card=yes") && has_pins_line(&path, "files_sort=Newest"));
+    check!(has_pins_line(&path, "files_show=everything") && has_pins_line(&path, "files_view=covers"));
+    // changed, each is written as set; set back to its default, its line goes
+    s.files_card = true;
+    s.files_sort = 2;
+    check!(settings_save(&s) == 0 && has_pins_line(&path, "files_card=1") && has_pins_line(&path, "files_sort=size"));
+    check!(has_pins_line(&path, "files_view=covers"));
+    s.files_card = false;
+    s.files_sort = 0;
+    check!(settings_save(&s) == 0 && !has_pins_line(&path, "files_card=0") && !has_pins_line(&path, "files_sort=name"));
+    unlink(&path);
+}
+
 // What's new after every update (the owner's rule of 2026-11-05): due when a file a Grimoire saved
 // names another version's notes as seen, whatever whatsnew_hide says (the 2.0.0 betas' box, read and
 // written back as it was); not due for this version's, nor for a file without settings_version.
@@ -1317,6 +1351,7 @@ fn test_store() {
     run!(shape_preferences_and_retired_bar_migration);
     run!(shape_corner_key);
     run!(font_key);
+    run!(files_keys);
     run!(whatsnew_due_after_every_update);
     run!(gesture_keys);
     run!(rotation_lock_key);

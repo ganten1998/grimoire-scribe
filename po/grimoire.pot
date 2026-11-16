@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: Grimoire 2.1.0\n"
 "Report-Msgid-Bugs-To: https://github.com/ganten1998/grimoire-scribe/issues\n"
-"POT-Creation-Date: 2026-11-13 06:51-0600\n"
+"POT-Creation-Date: 2026-11-16 10:33-0600\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -68,6 +68,13 @@ msgstr ""
 
 #: rust/src/actions.rs
 msgid "Previous / next in the picker"
+msgstr ""
+
+#. TRANSLATORS: (Buttons and Gestures sheets, a row as Previous / next tool, about 1100 px at 44 px in bold
+#. with the buttons' names) the buttons or gestures that take the pen in use to the next smaller and the next
+#. larger of its quick sizes, in that order.
+#: rust/src/actions.rs
+msgid "Smaller / larger size"
 msgstr ""
 
 #: rust/src/actions.rs
@@ -147,7 +154,7 @@ msgstr ""
 msgid "System..."
 msgstr ""
 
-#: rust/src/actions.rs
+#: rust/src/actions.rs rust/src/settingsmenu.rs
 msgid "System"
 msgstr ""
 
@@ -268,7 +275,7 @@ msgstr ""
 msgid "Paper"
 msgstr ""
 
-#: rust/src/actions.rs rust/src/dispmenu.rs rust/src/library.rs
+#: rust/src/actions.rs rust/src/dispmenu.rs rust/src/settingsmenu.rs
 msgid "Display"
 msgstr ""
 
@@ -334,8 +341,6 @@ msgstr ""
 msgid "Clock and battery corner"
 msgstr ""
 
-#. TRANSLATORS: the Display sheet's checkbox row: two fingers swiped left on the last page add a page
-#. (off: it only says it is the last page). About 1000 px at 44 px.
 #: rust/src/actions.rs rust/src/dispmenu.rs
 msgid "Swiping past the last page adds a page"
 msgstr ""
@@ -394,7 +399,7 @@ msgstr ""
 msgid "Side button"
 msgstr ""
 
-#: rust/src/actions.rs
+#: rust/src/actions.rs rust/src/browser.rs
 msgid "PDF copies"
 msgstr ""
 
@@ -406,7 +411,7 @@ msgstr ""
 msgid "Sleep now"
 msgstr ""
 
-#: rust/src/actions.rs rust/src/library.rs
+#: rust/src/actions.rs rust/src/library.rs rust/src/settingsmenu.rs
 msgid "Gestures"
 msgstr ""
 
@@ -423,7 +428,7 @@ msgstr ""
 msgid "Language"
 msgstr ""
 
-#. TRANSLATORS: the Display sheet's sliders, each left of its value ("12", "5 min", "never"):
+#. TRANSLATORS: the sheets' sliders, each left of its value ("12", "5 min", "never"):
 #. about 440 px at 44 px beside a time in Gothic (460 in Classic), 520 beside a number.
 #: rust/src/actions.rs rust/src/dispmenu.rs
 msgid "Sleep after"
@@ -555,6 +560,37 @@ msgstr ""
 msgid "Move the Graph down"
 msgstr ""
 
+#. TRANSLATORS: (Gestures and shortcuts lists, about 1100 px at 44 px in bold) the pen in use goes to the next
+#. smaller of its five quick sizes (the widths of the card a pen held on the toolbar opens).
+#: rust/src/actions.rs
+msgid "Smaller size"
+msgstr ""
+
+#. TRANSLATORS: (Gestures and shortcuts lists, about 1100 px at 44 px in bold) the pen in use goes to the next
+#. larger of its five quick sizes.
+#: rust/src/actions.rs
+msgid "Larger size"
+msgstr ""
+
+#. TRANSLATORS: (Gestures and shortcuts lists, about 1100 px at 44 px in bold) opens the card of the pen in
+#. use's quick sizes beside its button on the toolbar, as holding that button does.
+#: rust/src/actions.rs
+msgid "Sizes of the pen in use"
+msgstr ""
+
+#. TRANSLATORS: (shortcuts and gestures lists, about 1100 px at 44 px in bold) in the Library: opens Files, the
+#. Kindle's storage to browse, whether or not its card is in the Library.
+#. TRANSLATORS: the file picker's name, the first word of its path line (small, in a band of 100 px).
+#: rust/src/actions.rs rust/src/browser.rs rust/src/library.rs
+msgid "Files"
+msgstr ""
+
+#. TRANSLATORS: (shortcuts and gestures lists, about 1100 px at 44 px in bold) in the Library: back to its top,
+#. out of any folder (and out of Files).
+#: rust/src/actions.rs
+msgid "Home"
+msgstr ""
+
 #. TRANSLATORS: the name of a notebook that has none (it is saved with it, as a name given).
 #: rust/src/annotate.rs rust/src/pdfimport.rs rust/src/store.rs rust/src/ui.rs
 msgid "Untitled"
@@ -628,7 +664,7 @@ msgstr ""
 
 #. TRANSLATORS: in a toast while Grimoire puts the pages of a book KOReader sent into its
 #. notebook (a few seconds for a big book): pages done, of how many. One line of about 1700 px.
-#: rust/src/app.rs
+#: rust/src/app.rs rust/src/editor.rs
 #, c-format
 msgid "Adding book pages: %d of %d"
 msgstr ""
@@ -787,6 +823,30 @@ msgstr ""
 msgid "Couldn't import page folder (see %s)."
 msgstr ""
 
+#. TRANSLATORS: the title of the sheet of templates (pictures copied into grimoire/templates, to
+#. write on as paper), which More papers... opens (1560 px at 64 px).
+#: rust/src/app.rs rust/src/browser.rs rust/src/tplsheet.rs
+msgid "Templates"
+msgstr ""
+
+#. TRANSLATORS: the title of the sheet of photos (copied into grimoire/photos), which Photos...
+#. opens (1560 px at 64 px).
+#: rust/src/app.rs rust/src/browser.rs rust/src/tplsheet.rs
+msgid "Photos"
+msgstr ""
+
+#. TRANSLATORS: Files' row for grimoire/fonts, the fonts copied for Classic's text (44 px in a row of 150 px).
+#: rust/src/app.rs rust/src/browser.rs
+msgid "Fonts"
+msgstr ""
+
+#. TRANSLATORS: a toast (about 1700 px at 44 px in bold): a picture was copied into one of Grimoire's folders;
+#. %s is that folder's name as Files shows it (Templates, Photos).
+#: rust/src/app.rs
+#, c-format
+msgid "Copied to %s."
+msgstr ""
+
 #. TRANSLATORS: a PDF saved in the background, and where (the Kindle's folder of them).
 #: rust/src/app.rs
 #, c-format
@@ -868,8 +928,8 @@ msgid "PDF copies off."
 msgstr ""
 
 #. TRANSLATORS: Display sheet sleep screen choices, toast, 1700 px at 44 px, two lines.
-#. TRANSLATORS: the Display sheet's sleep screen row, which a tap moves to the next choice: what
-#. the Kindle shows while it sleeps. About 1280 px at 44 px, upright and sideways.
+#. TRANSLATORS: the Sleep settings page's sleep screen row, which a tap moves to the next choice:
+#. what the Kindle shows while it sleeps. About 1280 px at 44 px, upright and sideways.
 #: rust/src/app.rs rust/src/dispmenu.rs
 msgid "Sleep screen: the page I'm on (tap to change)"
 msgstr ""
@@ -928,11 +988,13 @@ msgstr ""
 msgid "Automatic"
 msgstr ""
 
-#: rust/src/app.rs
+#. TRANSLATORS: Settings > Updates, the branch the switch is on: Preview gets betas and releases,
+#. Stable only releases.
+#: rust/src/app.rs rust/src/library.rs
 msgid "Preview"
 msgstr ""
 
-#: rust/src/app.rs
+#: rust/src/app.rs rust/src/library.rs
 msgid "Stable"
 msgstr ""
 
@@ -940,6 +1002,38 @@ msgstr ""
 #: rust/src/app.rs
 #, c-format
 msgid "Update channel: %s"
+msgstr ""
+
+#. TRANSLATORS: (also) a toast (one line of about 1000 px at 44 px in bold): the picture picked for Use as
+#. template, Use as photo or a sheet's From a file... is bigger than Grimoire takes as a template or a photo,
+#. so it is not copied; %d is 16.
+#. TRANSLATORS: (a row of Your fonts, greyed) the font file is bigger than Grimoire takes; %d is 24.
+#: rust/src/bgwork_copy.rs rust/src/library.rs
+#, c-format
+msgid "Too big (over %d MB)."
+msgstr ""
+
+#. TRANSLATORS: (also) a toast when a copy into Grimoire's templates or photos was not made because the
+#. picture changed, or went, between the moment it was picked and the copy.
+#. TRANSLATORS: a toast in the file picker: the file tapped was changed or replaced since its
+#. folder was listed; the folder is read again. One line of about 1000 px at 44 px.
+#: rust/src/bgwork_copy.rs rust/src/browser.rs
+msgid "File changed. Try again."
+msgstr ""
+
+#. TRANSLATORS: (also) a toast when a picture is not copied into Grimoire's templates or photos because its
+#. path, folders and name together, is longer than Grimoire can hand to the copy.
+#. TRANSLATORS: a toast in the file picker: some names in this folder are left out because their path
+#. would be too long for Grimoire to hand to its import (one line).
+#: rust/src/bgwork_copy.rs rust/src/browser.rs
+msgid "Path too long."
+msgstr ""
+
+#. TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): a picture could not be copied into
+#. Grimoire's templates or photos (Use as template, Use as photo, a sheet's From a file...); the storage keeps
+#. 100 MB free, so the likely cause is that it is nearly full.
+#: rust/src/bgwork_copy.rs
+msgid "Couldn't copy file. Is the storage full?"
 msgstr ""
 
 #: rust/src/bgwork_template.rs
@@ -1012,6 +1106,23 @@ msgid ""
 "the done folder. Copy them in over USB, or over SSH while Grimoire runs."
 msgstr ""
 
+#. TRANSLATORS: the title of the file picker opened by New notebook's From a file... (the Library's header,
+#. about 1400 px at 56 px).
+#: rust/src/browser.rs
+msgid "Import a PDF or pictures"
+msgstr ""
+
+#. TRANSLATORS: (also) the title of the file picker the Templates and Photos sheets' From a file... tile
+#. opens, to pick a picture to copy in (the Library's header, about 1400 px at 56 px).
+#. TRANSLATORS: New notebook's button (348 px at 44 px, or 34 px, or two lines of that): it opens the file picker
+#. to make a notebook of a PDF or a folder of pictures anywhere on the Kindle.
+#. TRANSLATORS: (also) the last tile of the Templates and Photos sheets, under its picture (a tile of about 250
+#. px, on two lines if need be): it opens the file picker to copy a picture from anywhere on the Kindle into
+#. grimoire/templates or grimoire/photos.
+#: rust/src/browser.rs rust/src/library.rs rust/src/tplsheet.rs
+msgid "From a file..."
+msgstr ""
+
 #. TRANSLATORS: a file's size in kilobytes, in the file picker's rows and cards (small text).
 #: rust/src/browser.rs
 #, c-format
@@ -1030,16 +1141,16 @@ msgstr ""
 msgid "%.1f GB"
 msgstr ""
 
-#. TRANSLATORS: a toast in the file picker: the folder tapped could not be opened (gone since it was
-#. listed, or one Grimoire never opens). One line of about 1000 px at 44 px.
-#: rust/src/browser.rs rust/src/library.rs
-msgid "Couldn't open folder."
+#. TRANSLATORS: the file picker's free space line: free of the whole storage ("Free: 9.8 GB of 14.5 GB"), at 44 px, right-aligned.
+#: rust/src/browser.rs
+#, c-format
+msgid "Free: %s of %s"
 msgstr ""
 
-#. TRANSLATORS: a toast in the file picker: some names in this folder are left out because their path
-#. would be too long for Grimoire to hand to its import (one line).
-#: rust/src/browser.rs
-msgid "Path too long."
+#. TRANSLATORS: a toast in the file picker: the folder tapped could not be opened (gone since it was
+#. listed, or one Grimoire never opens). One line of about 1000 px at 44 px.
+#: rust/src/browser.rs rust/src/editor.rs rust/src/library.rs
+msgid "Couldn't open folder."
 msgstr ""
 
 #. TRANSLATORS: the file picker's first row, the folder Grimoire watches (grimoire/import): PDFs and pictures
@@ -1063,9 +1174,32 @@ msgstr ""
 msgid "All storage"
 msgstr ""
 
+#. TRANSLATORS: Files' row for the Kindle's own fonts folder (the fonts its reader uses), which Grimoire
+#. only looks in (44 px in a row of 150 px).
+#: rust/src/browser.rs
+msgid "Kindle fonts"
+msgstr ""
+
+#. TRANSLATORS: Files' row for grimoire/trash, where deleted notebooks and pages go (44 px in a row of 150 px).
+#: rust/src/browser.rs
+msgid "Trash"
+msgstr ""
+
 #. TRANSLATORS: the Import place's last row: it looks in grimoire/import for new files now (44 px in a row).
 #: rust/src/browser.rs
 msgid "Look again"
+msgstr ""
+
+#. TRANSLATORS: the last row of the file picker's first screen (and of Files'): puts a Files card at the end
+#. of the Library, which opens these places to browse (44 px in a row of about 1500 px).
+#: rust/src/browser.rs
+msgid "Show Files in Library"
+msgstr ""
+
+#. TRANSLATORS: Files with Show all: the second line of a row that is a link, which Grimoire never follows
+#. (34 px, under the link's name).
+#: rust/src/browser.rs
+msgid "link, not followed"
 msgstr ""
 
 #. TRANSLATORS: a folder in the file picker that holds pictures; %d is how many (small text under its name).
@@ -1086,9 +1220,32 @@ msgstr ""
 msgid "Imported"
 msgstr ""
 
-#. TRANSLATORS: the file picker's name, the first word of its path line (small, in a band of 100 px).
+#. TRANSLATORS: the sheets' buttons: 348 px at 44 px inside Gothic's carved line (342 for Create,
+#. the main one), or at 34 px, or two lines of that.
+#: rust/src/browser.rs rust/src/calibrate.rs rust/src/editor.rs
+#: rust/src/keyboard.rs rust/src/library.rs rust/src/linkbar.rs
+#: rust/src/musicbuild.rs rust/src/pagesview.rs
+msgid "Cancel"
+msgstr ""
+
+#. TRANSLATORS: the title of Files' Go to sheet, which a tap on the folder shown in its path bar opens: its
+#. places and the Kindle's top folders, one a row (34 px, at the sheet's top).
 #: rust/src/browser.rs
-msgid "Files"
+msgid "Go to"
+msgstr ""
+
+#. TRANSLATORS: a picture's card in Files (and in the picker the Templates sheet's From a
+#. file... opens): this copies it into grimoire/templates, to write on as paper (a row of
+#. about 800 px at 44 px).
+#: rust/src/browser.rs
+msgid "Use as template"
+msgstr ""
+
+#. TRANSLATORS: a picture's card in Files (and in the picker the Photos sheet's From a
+#. file... opens): this copies it into grimoire/photos, to be a page's own picture (a row
+#. of about 800 px at 44 px).
+#: rust/src/browser.rs
+msgid "Use as photo"
 msgstr ""
 
 #. TRANSLATORS: a PDF's card in the file picker: a notebook already holds this book, and this opens it
@@ -1116,29 +1273,24 @@ msgid_plural "Import %d pictures as notebook"
 msgstr[0] ""
 msgstr[1] ""
 
-#. TRANSLATORS: the sheets' buttons: 348 px at 44 px inside Gothic's carved line (342 for Create,
-#. the main one), or at 34 px, or two lines of that.
-#: rust/src/browser.rs rust/src/calibrate.rs rust/src/editor.rs
-#: rust/src/keyboard.rs rust/src/library.rs rust/src/linkbar.rs
-#: rust/src/musicbuild.rs rust/src/pagesview.rs
-msgid "Cancel"
+#: rust/src/browser.rs rust/src/httpd.rs
+msgid "Picture"
 msgstr ""
 
-#. TRANSLATORS: the title of the file picker opened by New notebook's From a file... (the Library's header,
-#. about 1400 px at 56 px).
+#. TRANSLATORS: the title of Settings > Font, the list of fonts Classic can be drawn in.
+#: rust/src/browser.rs rust/src/library.rs
+msgid "Font"
+msgstr ""
+
+#. TRANSLATORS: a Files card's first line for a file Grimoire cannot use, before its size and date ("File,
+#. 2 KB, Oct 3"; 34 px).
 #: rust/src/browser.rs
-msgid "Import a PDF or pictures"
+msgid "File"
 msgstr ""
 
 #. TRANSLATORS: the file picker's top line when the Kindle has under 200 MB free (one line, about 800 px at 44 px).
 #: rust/src/browser.rs
 msgid "Kindle storage nearly full."
-msgstr ""
-
-#. TRANSLATORS: the file picker's free space line: free of the whole storage ("Free: 9.8 GB of 14.5 GB"), at 44 px, right-aligned.
-#: rust/src/browser.rs
-#, c-format
-msgid "Free: %s of %s"
 msgstr ""
 
 #. TRANSLATORS: a folder in the file picker held more than it lists; %d is how many it shows (5000), at 34 px, right of the path.
@@ -1159,16 +1311,41 @@ msgstr ""
 msgid "Page %d of %d"
 msgstr ""
 
+#. TRANSLATORS: Files' Sort chip on its path bar while the newest files come first (one word of about
+#. 220 px at 34 px in bold; a tap sorts by size, the largest first).
+#: rust/src/browser.rs
+msgid "Newest"
+msgstr ""
+
+#. TRANSLATORS: Live view's size control in the browser: Fit (the whole page in the window,
+#. the existing word), the page's width, percentages of the Kindle's own pixels, and smaller
+#. or larger by a step.
+#: rust/src/browser.rs rust/src/httpd.rs
+msgid "Size"
+msgstr ""
+
+#. TRANSLATORS: Files' Sort chip on its path bar while the rows go by name (one word of about 220 px at
+#. 34 px in bold; a tap puts the newest first).
+#: rust/src/browser.rs
+msgid "Name"
+msgstr ""
+
+#. TRANSLATORS: Files' Show chip on its path bar: every file is listed (others greyed, never opened), at
+#. 34 px in bold, about 360 px. A tap shows only the files Grimoire can use.
+#: rust/src/browser.rs
+msgid "All files"
+msgstr ""
+
+#. TRANSLATORS: Files' Show chip on its path bar: only the files Grimoire can use are listed, at 34 px in
+#. bold, about 360 px. A tap lists every file.
+#: rust/src/browser.rs
+msgid "PDFs, pictures, fonts"
+msgstr ""
+
 #. TRANSLATORS: a PDF in the file picker that a notebook already holds (its notes are there); a tag at the
 #. right of the row under its name (about 260 px at 34 px).
 #: rust/src/browser.rs
 msgid "has notes"
-msgstr ""
-
-#. TRANSLATORS: a toast in the file picker: the file tapped was changed or replaced since its
-#. folder was listed; the folder is read again. One line of about 1000 px at 44 px.
-#: rust/src/browser.rs
-msgid "File changed. Try again."
 msgstr ""
 
 #. TRANSLATORS: the staying notice while the file picker reads a big folder (one line, about 600 px at 44 px).
@@ -1236,7 +1413,7 @@ msgstr ""
 msgid "Smoothing"
 msgstr ""
 
-#. TRANSLATORS: calibration's three steps, a title each (1740 px at 77 px).
+#. TRANSLATORS: calibration's three steps, a title each.
 #: rust/src/calibrate.rs
 msgid "Calibrate the pen"
 msgstr ""
@@ -1306,8 +1483,8 @@ msgstr ""
 msgid "Calibration saved"
 msgstr ""
 
-#. TRANSLATORS: the Display sheet's cell beside Done: how large the clock and battery on a notebook page are,
-#. which a tap moves to the next size. Two lines of about 365 px at 34 px.
+#. TRANSLATORS: the Clock settings page's row for how large the clock and battery on a notebook page
+#. are, which a tap moves to the next size. Two lines of about 365 px at 34 px.
 #: rust/src/dispmenu.rs
 msgid "Clock size: small"
 msgstr ""
@@ -1320,8 +1497,9 @@ msgstr ""
 msgid "Clock size: large"
 msgstr ""
 
-#. TRANSLATORS: the Display sheet's cell beside Done and the clock's size: which corner of a notebook page the
-#. clock and battery sit in, which a tap moves to the next (clockwise). Two lines of about 365 px at 34 px.
+#. TRANSLATORS: the Clock settings page's row under the clock's size: which corner of a notebook page
+#. the clock and battery sit in, which a tap moves to the next (clockwise). Two lines of about 365 px
+#. at 34 px.
 #: rust/src/dispmenu.rs
 msgid "Clock corner: top left"
 msgstr ""
@@ -1361,7 +1539,23 @@ msgctxt "sleep after"
 msgid "never"
 msgstr ""
 
-#. TRANSLATORS: in the Display sheet where the sliders would be (1420 px at 44 px).
+#: rust/src/dispmenu.rs
+msgid "Pin this page"
+msgstr ""
+
+#. TRANSLATORS: the row that opens the sleep settings' page: the sleep screen and the
+#. timer.
+#: rust/src/dispmenu.rs rust/src/settingsmenu.rs
+msgid "Sleep settings"
+msgstr ""
+
+#. TRANSLATORS: the row that opens the clock settings' page: the clock and battery on a
+#. notebook page.
+#: rust/src/dispmenu.rs rust/src/settingsmenu.rs
+msgid "Clock settings"
+msgstr ""
+
+#. TRANSLATORS: in the Display page where the sliders would be (1420 px at 44 px).
 #: rust/src/dispmenu.rs
 msgid "Front light controls are not available here."
 msgstr ""
@@ -1371,42 +1565,15 @@ msgid "This Kindle has no warmth control."
 msgstr ""
 
 #: rust/src/dispmenu.rs
-msgid "Invert colors in Grimoire (white on black)"
-msgstr ""
-
-#. TRANSLATORS: the Display sheet's checkbox row: the editor, with the Kindle turned sideways, shows
-#. the whole page (off: the page's width fills the screen, as upright). About 1300 px at 44 px.
-#: rust/src/dispmenu.rs
 msgid "Sideways, show the whole page"
-msgstr ""
-
-#. TRANSLATORS: the Display sheet's checkbox row: the clock on a notebook page shows the time on
-#. the 12-hour clock ("2:32 PM") instead of the 24-hour one ("14:32"). About 850 px at 44 px.
-#: rust/src/dispmenu.rs
-msgid "Display time as 12 hour"
-msgstr ""
-
-#. TRANSLATORS: the heading of the Display sheet's rows about the Kindle's sleep.
-#: rust/src/dispmenu.rs
-msgid "Sleep"
 msgstr ""
 
 #: rust/src/dispmenu.rs
 msgid "Sleep screen: Kindle PIN (native unlock)"
 msgstr ""
 
-#. TRANSLATORS: makes the open page the sleep screen (528 px at 44 px, or 34 px).
 #: rust/src/dispmenu.rs
-msgid "Pin this page"
-msgstr ""
-
-#. TRANSLATORS: closes a sheet: under its check mark here (322 px at 34 px), on Settings 342 px
-#. at 44 px, on the keyboard 334 px at 44 px in bold.
-#. TRANSLATORS: the same button while the pens are being chosen, beside a check mark: it ends
-#. that (116 px at 34 px, as Pin).
-#: rust/src/dispmenu.rs rust/src/editor.rs rust/src/i18n.rs
-#: rust/src/keyboard.rs rust/src/library.rs rust/src/share.rs
-msgid "Done"
+msgid "Display time as 12 hour"
 msgstr ""
 
 #: rust/src/dispmenu.rs
@@ -1478,6 +1645,12 @@ msgstr ""
 #: rust/src/editor.rs
 msgctxt "panel"
 msgid "Pin"
+msgstr ""
+
+#. TRANSLATORS: the same button while the pens are being chosen, beside a check mark: it ends
+#. that (116 px at 34 px, as Pin).
+#: rust/src/editor.rs rust/src/i18n.rs rust/src/keyboard.rs rust/src/library.rs
+msgid "Done"
 msgstr ""
 
 #. TRANSLATORS: the tool picker's button beside Pin that starts Select mode (the lasso that selects
@@ -1677,6 +1850,13 @@ msgstr ""
 msgid "Couldn't add pages."
 msgstr ""
 
+#. TRANSLATORS: a short toast (about 1700 px at 44 px in bold; up 1.2 s) after a key or a button stepped the pen
+#. in use to the next of its quick sizes; %s is the width as the sizes card writes it ("0.5 mm").
+#: rust/src/editor.rs
+#, c-format
+msgid "Size: %s"
+msgstr ""
+
 #. TRANSLATORS: the title in New page's count pad (bold, 44 px, about 700 px): how many blank pages to
 #. add at once, typed on the number pad or changed by one with its - and + keys.
 #: rust/src/editor.rs rust/src/pagesview.rs
@@ -1870,7 +2050,7 @@ msgstr ""
 
 #. TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): a controller's button
 #. changed the eraser to the one named, as Pen feel names it: Whole strokes or Precise.
-#: rust/src/editor.rs
+#: rust/src/editor.rs rust/src/library.rs
 #, c-format
 msgid "Eraser: %s"
 msgstr ""
@@ -2199,9 +2379,8 @@ msgstr ""
 
 #. TRANSLATORS: Live view's name: the Kindle's screen watched in a computer's browser. The
 #. browser page's title, and the pairing card's on the Kindle.
-#. TRANSLATORS: the Share screen's title.
 #. TRANSLATORS: the Share screen's button that turns Live view on (or shows its card while it
-#. is on): 388 px at 44 px, or 34 px under its icon.
+#. is on).
 #: rust/src/httpd.rs rust/src/share.rs
 msgid "Live view"
 msgstr ""
@@ -2428,11 +2607,7 @@ msgstr ""
 msgid "View settings"
 msgstr ""
 
-#: rust/src/httpd.rs
-msgid "Picture"
-msgstr ""
-
-#: rust/src/httpd.rs
+#: rust/src/httpd.rs rust/src/settingsmenu.rs
 msgid "Pen"
 msgstr ""
 
@@ -2442,13 +2617,6 @@ msgstr ""
 
 #: rust/src/httpd.rs
 msgid "Diagnostics"
-msgstr ""
-
-#. TRANSLATORS: Live view's size control in the browser: Fit (the whole page in the window,
-#. the existing word), the page's width, percentages of the Kindle's own pixels, and smaller
-#. or larger by a step.
-#: rust/src/httpd.rs
-msgid "Size"
 msgstr ""
 
 #: rust/src/httpd.rs
@@ -2673,12 +2841,6 @@ msgstr ""
 
 #: rust/src/library.rs
 msgid "Create"
-msgstr ""
-
-#. TRANSLATORS: New notebook's button (348 px at 44 px, or 34 px, or two lines of that): it opens the file picker
-#. to make a notebook of a PDF or a folder of pictures anywhere on the Kindle.
-#: rust/src/library.rs
-msgid "From a file..."
 msgstr ""
 
 #. TRANSLATORS: a notebook's and a folder's menu (rows of 1470 px at 44 px in bold): its pages are not shown
@@ -3093,6 +3255,67 @@ msgstr ""
 msgid "Couldn't forget controller"
 msgstr ""
 
+#: rust/src/library.rs rust/src/settingsmenu.rs
+msgid "Updates"
+msgstr ""
+
+#: rust/src/library.rs
+msgid "Checking for updates..."
+msgstr ""
+
+#: rust/src/library.rs
+msgid "Updates come through KPM, which is not here."
+msgstr ""
+
+#. TRANSLATORS: Settings > Updates' button when the check found a newer Grimoire (%s): a tap
+#. closes Grimoire, KPM installs it, and Grimoire starts again.
+#: rust/src/library.rs
+#, c-format
+msgid "Update to %s"
+msgstr ""
+
+#: rust/src/library.rs
+#, c-format
+msgid "Grimoire %s is the newest."
+msgstr ""
+
+#: rust/src/library.rs
+msgid "Could not check. Is Wi-Fi on?"
+msgstr ""
+
+#: rust/src/library.rs
+msgid "Could not check for updates."
+msgstr ""
+
+#: rust/src/library.rs
+msgid "Check for updates"
+msgstr ""
+
+#. TRANSLATORS: Settings > Updates, the row whose switch picks the branch updates come from.
+#: rust/src/library.rs
+msgid "Update branch"
+msgstr ""
+
+#: rust/src/library.rs
+msgid "Enterprise"
+msgstr ""
+
+#: rust/src/library.rs
+msgid "Enterprise 192-bit"
+msgstr ""
+
+#: rust/src/library.rs
+msgid "Unknown"
+msgstr ""
+
+#: rust/src/library.rs
+msgid "Connected"
+msgstr ""
+
+#: rust/src/library.rs
+msgid "Saved"
+msgstr ""
+
 #. TRANSLATORS: (Settings > Wi-Fi) its status line, 1470 px at 44 px in bold or two lines at 34 px; %s
 #. is a Wi-Fi network's name as the Kindle saved it (shortened if it is long). Connecting: a switch
 #. to that network is under way; Could not connect: it did not connect in 45 seconds, or the Kindle
@@ -3111,8 +3334,24 @@ msgstr ""
 msgid "Checking Wi-Fi…"
 msgstr ""
 
+#. TRANSLATORS: (Settings > Wi-Fi) the toast when a network profile could not be created.
+#: rust/src/library.rs
+msgid "Could not add the network."
+msgstr ""
+
+#. TRANSLATORS: (Settings > Wi-Fi) the status when a saved network's profile could not be deleted.
+#. TRANSLATORS: (Settings > Wi-Fi) the toast when a saved network could not be forgotten.
+#: rust/src/library.rs
+msgid "Could not forget the network."
+msgstr ""
+
 #: rust/src/library.rs rust/src/share.rs
 msgid "Could not read or change Wi-Fi."
+msgstr ""
+
+#. TRANSLATORS: (Settings > Wi-Fi) the toast when the network cannot be disconnected now.
+#: rust/src/library.rs
+msgid "Could not disconnect."
 msgstr ""
 
 #: rust/src/library.rs rust/src/share.rs
@@ -3140,7 +3379,7 @@ msgstr ""
 msgid "Wi-Fi unavailable"
 msgstr ""
 
-#. TRANSLATORS: starts the share server again (388 px at 44 px, or 34 px).
+#. TRANSLATORS: starts the share server again.
 #: rust/src/library.rs rust/src/share.rs
 msgid "Retry"
 msgstr ""
@@ -3153,33 +3392,138 @@ msgstr ""
 msgid "Turn on Wi-Fi"
 msgstr ""
 
-#. TRANSLATORS: (Settings > Wi-Fi) a line in place of the saved networks: they could not be read
-#. (with the radio off, the first: they may be read only while it is on). 1470 px at 44 px in
-#. bold, or two lines at 34 px.
+#. TRANSLATORS: the title of Settings > Wi-Fi.
+#. TRANSLATORS: (Settings) the row that opens the Wi-Fi submenu: the radio and the Kindle's
+#. saved networks.
+#: rust/src/library.rs rust/src/settingsmenu.rs rust/src/share.rs
+msgid "Wi-Fi"
+msgstr ""
+
+#. TRANSLATORS: (Settings > Wi-Fi) the button above the nearby networks that scans again.
+#: rust/src/library.rs
+msgid "Rescan"
+msgstr ""
+
+#. TRANSLATORS: (Settings > Wi-Fi) the button above the networks that adds a hidden network by name.
+#: rust/src/library.rs
+msgid "Other..."
+msgstr ""
+
+#: rust/src/library.rs
+msgid "Saved networks"
+msgstr ""
+
+#. TRANSLATORS: (Settings > Wi-Fi) the nearby list while the radio is off.
+#: rust/src/library.rs
+msgid "Turn on Wi-Fi to see nearby networks."
+msgstr ""
+
+#. TRANSLATORS: (Settings > Wi-Fi) the nearby list while its scan runs.
+#: rust/src/library.rs
+msgid "Scanning for networks…"
+msgstr ""
+
+#. TRANSLATORS: (Settings > Wi-Fi) the nearby list when the last scan could not run or its answer
+#. was not one this reader knows.
+#. TRANSLATORS: (Settings > Wi-Fi) the toast when a scan cannot be asked for now.
+#: rust/src/library.rs
+msgid "Could not scan for networks."
+msgstr ""
+
+#. TRANSLATORS: (Settings > Wi-Fi) the nearby list when no network is near.
+#: rust/src/library.rs
+msgid "No networks found."
+msgstr ""
+
+#. TRANSLATORS: (Settings > Wi-Fi) the nearby list before its first scan has an answer.
+#: rust/src/library.rs
+msgid "Tap Rescan to look for networks."
+msgstr ""
+
+#. TRANSLATORS: (Settings > Wi-Fi) a line in place of the saved networks when they could not be read.
 #: rust/src/library.rs
 msgid "Saved networks could not be read."
 msgstr ""
 
+#. TRANSLATORS: (Settings > Wi-Fi) a line in place of the saved networks while the radio is off.
 #: rust/src/library.rs
 msgid "Turn on Wi-Fi to see the saved networks."
 msgstr ""
 
 #. TRANSLATORS: (Settings > Wi-Fi) the Kindle has no saved Wi-Fi network; Grimoire adds none itself.
 #: rust/src/library.rs
-msgid "No saved networks. Add one in Kindle settings or KOReader."
+msgid "No saved networks. Add one with Other... or in Kindle settings."
 msgstr ""
 
-#. TRANSLATORS: (Settings > Wi-Fi) the row under the saved networks when they take more than
-#. one page: shows the next page (after the last, the first). %d of %d: this page, the pages.
+#. TRANSLATORS: the password keyboard's title for a Wi-Fi network; %s is its name.
+#. TRANSLATORS: the password keyboard's title for a school/enterprise Wi-Fi network;
+#. %s is its name.
 #: rust/src/library.rs
 #, c-format
-msgid "More networks (%d of %d)"
+msgid "Password for %s"
 msgstr ""
 
-#. TRANSLATORS: (Settings) the bottom button that opens the Wi-Fi sheet, about 200 px at 34 px under
-#. its icon; also that sheet's title, and the Share screen's button and card title.
-#: rust/src/library.rs rust/src/share.rs
-msgid "Wi-Fi"
+#. TRANSLATORS: the keyboard's title for a school/enterprise Wi-Fi username; %s is its name.
+#: rust/src/library.rs
+#, c-format
+msgid "Username for %s"
+msgstr ""
+
+#. TRANSLATORS: (Settings > Wi-Fi > Other...) the hidden network whose security is being picked; %s is its name.
+#: rust/src/library.rs
+#, c-format
+msgid "Network: %s"
+msgstr ""
+
+#. TRANSLATORS: (Settings > Wi-Fi > Other...) the choice for a hidden network with no password.
+#: rust/src/library.rs
+msgid "Open network"
+msgstr ""
+
+#. TRANSLATORS: (Settings > Wi-Fi > Other...) the choice for a hidden WPA or WPA2 network.
+#: rust/src/library.rs
+msgid "WPA/WPA2 password"
+msgstr ""
+
+#. TRANSLATORS: (Settings > Wi-Fi > Other...) the choice for a hidden WPA3-Personal network.
+#: rust/src/library.rs
+msgid "WPA3 password"
+msgstr ""
+
+#. TRANSLATORS: (Settings > Wi-Fi > Other...) the choice for a hidden WPA2- or WPA3-Enterprise network.
+#: rust/src/library.rs
+msgid "WPA2/WPA3-Enterprise"
+msgstr ""
+
+#. TRANSLATORS: the title of the page that adds a hidden Wi-Fi network by name.
+#: rust/src/library.rs
+msgid "Other network"
+msgstr ""
+
+#. TRANSLATORS: (Settings > Wi-Fi) the toast while the network connected to is dropped.
+#: rust/src/library.rs
+msgid "Disconnecting…"
+msgstr ""
+
+#. TRANSLATORS: the keyboard's title for a hidden Wi-Fi network's name.
+#: rust/src/library.rs
+msgid "Hidden network name"
+msgstr ""
+
+#. TRANSLATORS: (Settings > Wi-Fi) the toast while a hidden network's profile is being created.
+#. TRANSLATORS: (Settings > Wi-Fi) the toast while an open network's profile is being created.
+#: rust/src/library.rs
+msgid "Adding network…"
+msgstr ""
+
+#. TRANSLATORS: (Settings > Wi-Fi) the toast while a saved network's profile is being deleted.
+#: rust/src/library.rs
+msgid "Forgetting network…"
+msgstr ""
+
+#. TRANSLATORS: (Settings > Wi-Fi) a scanned network Grimoire cannot add yet.
+#: rust/src/library.rs
+msgid "This network's security is not supported yet."
 msgstr ""
 
 #. TRANSLATORS: Gestures row: action and first binding plus +N, about 1300 px with a thumbnail, two lines at 34 px.
@@ -3257,77 +3601,12 @@ msgstr ""
 msgid "Automatic (%s)"
 msgstr ""
 
-#. TRANSLATORS: the rows of Settings: buttons with an icon (1470 px at 44 px in bold), then
-#. lines a tap changes (1530 px at 44 px) and checkboxes (1548 px at 44 px, or two lines at
-#. 34 px). Sideways they are 80 px wider.
-#: rust/src/library.rs
-msgid "Pen sensitivity (pressure + tilt per tool)"
-msgstr ""
-
-#: rust/src/library.rs
-msgid "Display: brightness, warmth, invert"
-msgstr ""
-
-#. TRANSLATORS: (Settings) the row that opens the Shortcuts sheet: a keyboard's keys and a controller's
-#. buttons as shortcuts, each device's own if it has them (1470 px at 44 px in bold, as its neighbours).
-#: rust/src/library.rs
-msgid "Shortcuts: keys and controller buttons"
-msgstr ""
-
-#: rust/src/library.rs
-msgid "Calibrate pen and touch"
-msgstr ""
-
-#. TRANSLATORS: the style Grimoire is drawn in, and the other one a tap changes to (1530 px at 44 px
-#. in Gothic; in Classic the Font chip takes the row's right end, which leaves about 1000 px).
-#: rust/src/library.rs
-msgid "Style: Gothic (tap for Classic)"
-msgstr ""
-
-#: rust/src/library.rs
-msgid "Style: Classic (tap for Gothic)"
-msgstr ""
-
-#. TRANSLATORS: (Settings, Classic only) the chip at the Style row's right end that opens the
-#. Font sheet, with the font in use by its short name, never translated ("Terminess",
-#. "Atkinson", "Noto Sans", "Literata"; one of your own fonts by its family's name, cut short
-#. if it is long): about 450 px at 34 px in bold, beside its icon.
+#. TRANSLATORS: (Settings, Classic only) the row that opens the Font sheet, with the font in use
+#. by its short name, never translated ("Terminess", "Atkinson", "Noto Sans", "Literata"; one of
+#. your own fonts by its family's name, cut short if it is long).
 #: rust/src/library.rs
 #, c-format
 msgid "Font: %s"
-msgstr ""
-
-#: rust/src/library.rs
-#, c-format
-msgid "Mirror PDFs to %s (USB)"
-msgstr ""
-
-#. TRANSLATORS: what holding the pen's button while writing does; a tap moves to the next.
-#: rust/src/library.rs
-msgid "Holding the pen button while writing does nothing (tap to change)"
-msgstr ""
-
-#: rust/src/library.rs
-msgid "Holding the pen button while writing erases (tap to change)"
-msgstr ""
-
-#: rust/src/library.rs
-msgid "Holding the pen button while writing highlights (tap to change)"
-msgstr ""
-
-#. TRANSLATORS: the fourth choice of the same row: while the pen's button is held, the pen
-#. draws white ink (which takes away the ink under it and keeps the paper's lines). 1530 px
-#. at 44 px, sideways 1610, or two lines at 34 px.
-#: rust/src/library.rs
-msgid "Holding the pen button while writing draws white (tap to change)"
-msgstr ""
-
-#: rust/src/library.rs
-msgid "Turn with the Kindle (portrait and landscape)"
-msgstr ""
-
-#: rust/src/library.rs
-msgid "Pinch with two fingers to zoom"
 msgstr ""
 
 #. TRANSLATORS: a row of Settings, with the choice: "Automatic (English)", or a language's name.
@@ -3336,49 +3615,14 @@ msgstr ""
 msgid "Language: %s"
 msgstr ""
 
-#. TRANSLATORS: Settings' last lines (34 px): after the version, the pen Grimoire found (its
-#. device's name, %s) and what it reports; then where Grimoire keeps its data (%s).
 #: rust/src/library.rs
-msgid "pen: none"
+#, c-format
+msgid "Pen button: %s"
 msgstr ""
 
 #: rust/src/library.rs
 #, c-format
-msgid "pen: %s, pressure, tilt"
-msgstr ""
-
-#: rust/src/library.rs
-#, c-format
-msgid "pen: %s, pressure"
-msgstr ""
-
-#: rust/src/library.rs
-#, c-format
-msgid "pen: %s, tilt"
-msgstr ""
-
-#: rust/src/library.rs
-#, c-format
-msgid "pen: %s"
-msgstr ""
-
-#: rust/src/library.rs
-#, c-format
-msgid "Data: %s"
-msgstr ""
-
-#. TRANSLATORS: Settings' bottom buttons, each a word under its icon, about 200 px at 34 px (the
-#. four share about 810 px upright; a longer word takes room from the shorter ones). Pair opens the
-#. Pair sheet (a Bluetooth controller: the helper on or off, pairing one; also that sheet's title),
-#. Wi-Fi the Wi-Fi sheet (the radio and the Kindle's saved networks), Gestures opens gesture
-#. bindings, Updates checks for a newer Grimoire.
-#: rust/src/library.rs
-msgid "Pair"
-msgstr ""
-
-#. TRANSLATORS: the Updates sheet's title (Settings > Updates).
-#: rust/src/library.rs
-msgid "Updates"
+msgid "Mirror PDFs to %s (USB)"
 msgstr ""
 
 #. TRANSLATORS: (Settings > Font, a row of Your fonts) the font file is being checked in the background
@@ -3397,12 +3641,6 @@ msgstr ""
 #. or one whose letters draw nothing.
 #: rust/src/library.rs
 msgid "Unreadable font."
-msgstr ""
-
-#. TRANSLATORS: (a row of Your fonts, greyed) the font file is bigger than Grimoire takes; %d is 24.
-#: rust/src/library.rs
-#, c-format
-msgid "Too big (over %d MB)."
 msgstr ""
 
 #. TRANSLATORS: (a row of Your fonts, greyed) a symbol font, or one without the letters A to Z.
@@ -3424,11 +3662,6 @@ msgstr ""
 #. TRANSLATORS: (a row of Your fonts, greyed) the font Grimoire was set to is no longer in the folder.
 #: rust/src/library.rs
 msgid "File missing."
-msgstr ""
-
-#. TRANSLATORS: the title of Settings > Font, the list of fonts Classic can be drawn in.
-#: rust/src/library.rs
-msgid "Font"
 msgstr ""
 
 #. TRANSLATORS: the Font sheet's sample sentence, drawn in each font at 44 px, at most two lines of
@@ -3459,6 +3692,12 @@ msgstr ""
 msgid "Copy .ttf or .otf files into %s over USB."
 msgstr ""
 
+#. TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): Done on a font of the
+#. owner's own that could not be loaded just now (too little memory free, or its file changed).
+#: rust/src/library.rs
+msgid "Couldn't use that font."
+msgstr ""
+
 #. TRANSLATORS: the notice that stays above the Font sheet's buttons while the fonts copied into
 #. grimoire/fonts are checked in the background, with how many are left. One line of about 1700 px at 44 px
 #. bold.
@@ -3468,60 +3707,6 @@ msgid "Checking %d font..."
 msgid_plural "Checking %d fonts..."
 msgstr[0] ""
 msgstr[1] ""
-
-#: rust/src/library.rs
-msgid "Updates come through KPM, which is not here."
-msgstr ""
-
-#: rust/src/library.rs
-msgid "Checking for updates..."
-msgstr ""
-
-#: rust/src/library.rs
-#, c-format
-msgid "Grimoire %s is available."
-msgstr ""
-
-#: rust/src/library.rs
-#, c-format
-msgid "Grimoire %s is the newest."
-msgstr ""
-
-#: rust/src/library.rs
-msgid "Could not check. Is Wi-Fi on?"
-msgstr ""
-
-#: rust/src/library.rs
-msgid "Could not check for updates."
-msgstr ""
-
-#: rust/src/library.rs
-#, c-format
-msgid "This is Grimoire %s."
-msgstr ""
-
-#: rust/src/library.rs
-msgid "Updates: betas and releases (tap for releases only)"
-msgstr ""
-
-#: rust/src/library.rs
-msgid "Updates: releases only (tap for betas too)"
-msgstr ""
-
-#. TRANSLATORS: (Updates sheet) installs the newer Grimoire (%s): Grimoire closes, KPM
-#. installs it, and Grimoire starts again.
-#: rust/src/library.rs
-#, c-format
-msgid "Update to %s"
-msgstr ""
-
-#: rust/src/library.rs
-msgid "Check for updates"
-msgstr ""
-
-#: rust/src/library.rs
-msgid "Update"
-msgstr ""
 
 #: rust/src/library.rs
 msgid "Searching... Put the controller in pairing mode."
@@ -3642,6 +3827,10 @@ msgstr ""
 msgid "Pair a controller..."
 msgstr ""
 
+#: rust/src/library.rs rust/src/settingsmenu.rs
+msgid "Pair"
+msgstr ""
+
 #: rust/src/library.rs
 msgid "Install / update Grimoire plugin"
 msgstr ""
@@ -3679,6 +3868,12 @@ msgstr ""
 
 #: rust/src/library.rs rust/src/pagesview.rs
 msgid "Delete"
+msgstr ""
+
+#. TRANSLATORS: the Files card's menu in the Library (1470 px at 44 px in bold): the card goes; the file
+#. picker's "Show Files in Library" puts it back.
+#: rust/src/library.rs
+msgid "Hide from Library"
 msgstr ""
 
 #: rust/src/library.rs
@@ -3765,8 +3960,91 @@ msgstr ""
 msgid "Keep it"
 msgstr ""
 
+#. TRANSLATORS: the title of the list of what the pen's button does while writing (Settings > Pen).
+#: rust/src/library.rs
+msgid "Pen button"
+msgstr ""
+
+#. TRANSLATORS: the title of the list of what the eraser does (Settings > Pen).
+#: rust/src/library.rs
+msgid "Eraser"
+msgstr ""
+
+#: rust/src/library.rs
+msgid "Kindle"
+msgstr ""
+
+#. TRANSLATORS: Settings > System > About, the device's name on a computer (the Kindle build names
+#. the Kindle's own model).
+#: rust/src/library.rs
+msgid "This computer"
+msgstr ""
+
+#: rust/src/library.rs
+msgid "Ko-fi"
+msgstr ""
+
+#: rust/src/library.rs
+msgid "Grimoire GitHub"
+msgstr ""
+
+#: rust/src/library.rs
+msgid "Nebuff's GitHub"
+msgstr ""
+
+#: rust/src/library.rs
+msgid "Ganten's GitHub"
+msgstr ""
+
+#: rust/src/library.rs
+msgid "About"
+msgstr ""
+
+#: rust/src/library.rs
+#, c-format
+msgid "Grimoire %s"
+msgstr ""
+
+#: rust/src/library.rs
+#, c-format
+msgid "Storage: %s of %s used"
+msgstr ""
+
+#: rust/src/library.rs
+#, c-format
+msgid "%s free"
+msgstr ""
+
+#. TRANSLATORS: Settings > System > About, where the storage bar would be when the system
+#. cannot tell the storage's size.
+#: rust/src/library.rs
+msgid "Storage: not available"
+msgstr ""
+
+#. TRANSLATORS: Settings > System > About, the heading over its links (Ko-fi, GitHub, ...).
+#: rust/src/library.rs
+msgid "Links"
+msgstr ""
+
+#. TRANSLATORS: Settings > System > About > a link, above the link's QR code.
+#: rust/src/library.rs
+msgid "Scan with a phone's camera"
+msgstr ""
+
 #: rust/src/library.rs
 msgid "Couldn't create notebook (storage full?)"
+msgstr ""
+
+#. TRANSLATORS: (Settings > Wi-Fi > Other...) the hidden network name is empty or longer
+#. than a Wi-Fi name can be.
+#: rust/src/library.rs
+msgid "Use a network name of 1 to 32 characters."
+msgstr ""
+
+#. TRANSLATORS: (Settings > Wi-Fi) the enterprise username is empty, a control
+#. character, or longer than 128 bytes.
+#: rust/src/library.rs
+msgid "Use a username of 1 to 128 characters."
 msgstr ""
 
 #: rust/src/library.rs
@@ -3821,12 +4099,6 @@ msgstr ""
 
 #: rust/src/library.rs
 msgid "Couldn't update KOReader. Patch conflict or storage error?"
-msgstr ""
-
-#. TRANSLATORS: a toast (about 1700 px at 44 px in bold, or two lines): Done on a font of the
-#. owner's own that could not be loaded just now (too little memory free, or its file changed).
-#: rust/src/library.rs
-msgid "Couldn't use that font."
 msgstr ""
 
 #. TRANSLATORS: a toast (about 1700 px at 44 px in bold) after a notebook's or a folder's menu row that
@@ -4593,8 +4865,6 @@ msgstr ""
 msgid "Nib fully follows at"
 msgstr ""
 
-#. TRANSLATORS: the button that wipes Pen feel's test pad (174 px at 44 px, or 34 px).
-#. TRANSLATORS: on the eraser tab, restore the handwritten practice ink (174 px at 34 px).
 #: rust/src/pensettings.rs
 msgid "Reset pad"
 msgstr ""
@@ -4603,16 +4873,15 @@ msgstr ""
 msgid "Clear"
 msgstr ""
 
-#. TRANSLATORS: puts the tool's pen feel back as it came (328 px at 44 px, or 34 px).
-#: rust/src/pensettings.rs
-msgid "Reset tool"
-msgstr ""
-
 #. TRANSLATORS: the title of the screen where each tool's pressure and tilt are tuned, with the
-#. tool's name (1200 px at 70 px).
+#. tool's name.
 #: rust/src/pensettings.rs
 #, c-format
 msgid "Pen feel: %s"
+msgstr ""
+
+#: rust/src/pensettings.rs
+msgid "Reset tool"
 msgstr ""
 
 #. TRANSLATORS: over Pen feel's test pad, which the pen draws on with the tool (1180 px at 34 px).
@@ -4642,27 +4911,126 @@ msgid ""
 "The eraser takes away only what it touches; harder pressure = bigger reach."
 msgstr ""
 
-#. TRANSLATORS: the Share screen's help, under the address: a line each, 1578 px at 34 px
-#. sideways (beside the QR code), 1640 upright.
-#: rust/src/share.rs
-msgid "Pages as PNG, notebooks as PDF or zip, folders and everything as zip."
+#. TRANSLATORS: Settings' Pen category, the row that opens the pen button's choices, with the
+#. choice in use: "Pen button: Nothing".
+#: rust/src/settingsmenu.rs
+msgid "Nothing"
 msgstr ""
 
-#: rust/src/share.rs
-msgid "Effects: transparent, recolored or filtered copies of any page."
+#: rust/src/settingsmenu.rs
+msgid "Erases"
 msgstr ""
 
-#: rust/src/share.rs
-msgid "Same Wi-Fi network only. Keep this screen open while downloading."
+#: rust/src/settingsmenu.rs
+msgid "Highlights"
 msgstr ""
 
-#. TRANSLATORS: how many downloads the Share screen has answered since it opened.
+#: rust/src/settingsmenu.rs
+msgid "Draws white"
+msgstr ""
+
+#. TRANSLATORS: the pen button submenu's four choices, what holding the pen's button while writing does.
+#: rust/src/settingsmenu.rs
+msgid "Nothing while writing"
+msgstr ""
+
+#: rust/src/settingsmenu.rs
+msgid "Erases while writing"
+msgstr ""
+
+#: rust/src/settingsmenu.rs
+msgid "Highlights while writing"
+msgstr ""
+
+#: rust/src/settingsmenu.rs
+msgid "Draws white while writing"
+msgstr ""
+
+#. TRANSLATORS: Settings' Pen category, the row that opens the eraser's choices, with the choice in
+#. use: "Eraser: Whole strokes".
+#: rust/src/settingsmenu.rs
+msgid "Whole strokes"
+msgstr ""
+
+#: rust/src/settingsmenu.rs
+msgid "Precise"
+msgstr ""
+
+#. TRANSLATORS: the eraser submenu's two choices: it takes every stroke it touches away whole, or
+#. only what it touches (as white ink does).
+#: rust/src/settingsmenu.rs
+msgid "Takes away whole strokes"
+msgstr ""
+
+#: rust/src/settingsmenu.rs
+msgid "Takes away only what it touches"
+msgstr ""
+
+#: rust/src/settingsmenu.rs
+msgid "Style (Gothic)"
+msgstr ""
+
+#: rust/src/settingsmenu.rs
+msgid "Style (Classic)"
+msgstr ""
+
+#: rust/src/settingsmenu.rs
+msgid "Display: brightness, warmth"
+msgstr ""
+
+#: rust/src/settingsmenu.rs
+msgid "General"
+msgstr ""
+
+#. TRANSLATORS: the row that turns Grimoire's dark mode (white on black) on or off.
+#: rust/src/settingsmenu.rs
+msgid "Dark mode"
+msgstr ""
+
+#: rust/src/settingsmenu.rs
+msgid "Rotation (portrait and landscape)"
+msgstr ""
+
+#: rust/src/settingsmenu.rs
+msgid "Pinch with two fingers to zoom"
+msgstr ""
+
+#: rust/src/settingsmenu.rs
+msgid "Sleep & Clock"
+msgstr ""
+
+#. TRANSLATORS: the row that opens Tool Settings' sheet: pressure and tilt, per tool.
+#: rust/src/settingsmenu.rs
+msgid "Tool Settings: pressure and tilt per tool"
+msgstr ""
+
+#: rust/src/settingsmenu.rs
+msgid "Calibrate pen and touch"
+msgstr ""
+
+#: rust/src/settingsmenu.rs
+msgid "Controls"
+msgstr ""
+
+#: rust/src/settingsmenu.rs
+msgid "Shortcuts: keys and controller buttons"
+msgstr ""
+
+#: rust/src/settingsmenu.rs
+msgid "KOReader"
+msgstr ""
+
+#. TRANSLATORS: the row that opens About: what this Kindle is, its screen, and the
+#. storage used.
+#: rust/src/settingsmenu.rs
+msgid "About: device and storage"
+msgstr ""
+
 #: rust/src/share.rs
 #, c-format
 msgid "Downloads served: %d"
 msgstr ""
 
-#. TRANSLATORS: Live view's pairing card: how many computers watch the screen now.
 #: rust/src/share.rs
 #, c-format
 msgid "%d computer watching"
@@ -4690,7 +5058,6 @@ msgstr ""
 msgid "On your computer, open this in a browser:"
 msgstr ""
 
-#. TRANSLATORS: another address the Kindle answers at, and its network interface ("usb0").
 #: rust/src/share.rs
 #, c-format
 msgid "Also: %s (%s)"
@@ -4700,12 +5067,6 @@ msgstr ""
 #. upright, 1578 sideways).
 #: rust/src/share.rs
 msgid "Then type this code:"
-msgstr ""
-
-#. TRANSLATORS: the last help line, with the command a computer pulls everything with.
-#: rust/src/share.rs
-#, c-format
-msgid "From a terminal: %s <address above>"
 msgstr ""
 
 #: rust/src/share.rs
@@ -4724,8 +5085,6 @@ msgstr ""
 msgid "Share over Wi-Fi"
 msgstr ""
 
-#. TRANSLATORS: the Share screen without an address (1640 px at 64 px), and what to do (at
-#. 44 px); Retry is the button's name.
 #: rust/src/share.rs
 msgid "No Wi-Fi connection yet"
 msgstr ""
@@ -4750,12 +5109,11 @@ msgstr ""
 msgid "Is another app using the port? Try again."
 msgstr ""
 
-#. TRANSLATORS: Live view's pairing card: turns Live view off (388 px at 44 px, or 34 px).
+#. TRANSLATORS: Live view's pairing card: turns Live view off.
 #: rust/src/share.rs
 msgid "Stop"
 msgstr ""
 
-#. TRANSLATORS: the Share screen as the Kindle's sleep screen.
 #: rust/src/share.rs
 msgid "Asleep"
 msgstr ""
@@ -4844,18 +5202,6 @@ msgid "Grimoire cannot use %d file there (see %s)."
 msgid_plural "Grimoire cannot use %d files there (see %s)."
 msgstr[0] ""
 msgstr[1] ""
-
-#. TRANSLATORS: the title of the sheet of templates (pictures copied into grimoire/templates, to
-#. write on as paper), which More papers... opens (1560 px at 64 px).
-#: rust/src/tplsheet.rs
-msgid "Templates"
-msgstr ""
-
-#. TRANSLATORS: the title of the sheet of photos (copied into grimoire/photos), which Photos...
-#. opens (1560 px at 64 px).
-#: rust/src/tplsheet.rs
-msgid "Photos"
-msgstr ""
 
 #. TRANSLATORS: grimoire/fonts/README.txt, a plain text file Grimoire writes once (in the language in
 #. use then) for the owner to read on a computer: its title, then its two paragraphs. No room limit.

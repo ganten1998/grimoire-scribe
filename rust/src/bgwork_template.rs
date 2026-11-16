@@ -14,8 +14,9 @@ use std::io::Read;
 use std::os::unix::fs::MetadataExt;
 use std::path::Path;
 
-/// a template file bigger than this is not taken
-const TEMPLATE_MAX_BYTES: usize = 16 << 20;
+/// a template file bigger than this is not taken, and neither is a photo (so no copy of one is made into either
+/// folder: bgwork_copy.rs, "Too big (over 16 MB).")
+pub const TEMPLATE_MAX_BYTES: usize = 16 << 20;
 /// files of the templates folder looked at
 const MAX_TEMPLATES: usize = 500;
 /// import folders queued at one start (the job queue holds 16)
@@ -906,10 +907,9 @@ pub fn photo_install(nb: &NotebookInfo, path: &str, kind: &mut PaperKind, why: &
 
 fn install_picture(nb: &NotebookInfo, path: &str, kind: &mut PaperKind, why: &mut &'static str, photo: bool) -> i32 {
     *why = "the file does not read";
-    // On the UI thread: its key, from the hash of its bytes and the page size; the picture is made
-    // in the background. The previews job, which reads every template whole anyway, keeps the hash
-    // and whether the file is a picture Grimoire takes; only a small file it has not seen yet is
-    // read here (whole, once).
+    // On the UI thread: its key, from the hash the previews job keeps beside the preview (it reads every
+    // template whole anyway) and the page size; the picture is made in the background. None of the file's
+    // bytes are read here: one the previews job has not seen yet is not ready (PREVIEW_NOT_MADE).
     if path.len() >= JOB_PATH_MAX {
         *why = "too long a path for a background job";
         return -1;
@@ -1138,7 +1138,7 @@ pub fn bg_template(id: &str, src: &str, dpi: f32) -> i32 {
 // resumes with its pictures gone (H7).
 // (by descriptor, never through a link: util.rs remove_work_dir)
 fn remove_work<P: AsRef<Path>>(work: P) {
-    remove_work_dir(work.as_ref(), &[c"pdf-import.ini"]);
+    remove_work_dir(work.as_ref(), &[c"pdf-import.ini", c"pdf-fill.ini"]);
 }
 
 // The notebook id written in an import folder's mark, or false (none, or "done"). A mark is a line: one
@@ -2070,6 +2070,10 @@ pub fn import_pick_queue(path: &StoragePath, name: Option<&str>, folder: Option<
         }
     }
     let busy = match lock_take() {
+        Lock::Busy(e) if e != libc::EWOULDBLOCK => {
+            qlog!("import: the import lock cannot be taken (%s); a picked folder is refused", &strerror(e));
+            return Queued::Refused("lock");
+        }
         Lock::Busy(_) => true,
         Lock::Fresh => {
             import_leftovers(true, &mut Vec::new());

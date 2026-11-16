@@ -1,7 +1,9 @@
 // test_sandbox_linux.rs: the safe loader's real steps (2.1.0-beta.2, DESIGN.md 3.7 and 4.2; areas/pdf.md 3.1).
 // They need Linux and root (namespaces, chroot, setuid, seccomp), so they run in the CI job `sandbox`
 // (.github/workflows/release.yml: sudo, GRIMOIRE_SANDBOX=require) and are skipped anywhere else, with a line
-// saying so. THEY HAVE NOT BEEN RUN ON THIS MAC OR ON A KINDLE: the first CI run is their first run.
+// saying so. These tests have not run on a Mac (they need Linux) or on a Kindle (they need cargo). The sandbox's
+// steps have run on a Scribe as they were in 2.1.0-beta.2 (sandbox.rs, `s1`); the narrower system-call rules that
+// came after wait for their check there (docs/TESTING.md, "Hardening round (2026-11), sandbox").
 #![cfg(all(target_os = "linux", feature = "sim"))]
 mod fontfix;
 mod pdffix;
@@ -200,7 +202,8 @@ fn the_filter_is_the_one_the_tests_evaluate() {
 }
 
 // Pictures (lane L7): decoded in the real sandbox, a trap ends the worker and refuses the picture (never a
-// fallback to the writer's own decode), and a forced failed step falls back and says so.
+// fallback to the writer's own decode). What a failed step does to pictures is test_picwork_closed.rs's (where
+// the sandbox is required) and test_picwork_fallback.rs's (where it is not).
 #[test]
 fn pictures_decode_in_the_real_sandbox() {
     use grimoire::picwork::*;
@@ -236,7 +239,7 @@ fn a_font_is_checked_in_the_real_sandbox() {
         return;
     }
     let (_g, _f, _len) = setup();
-    for h in ["GRIMOIRE_FONT_TEST_TRAP", "GRIMOIRE_FONT_SLICE_MS"] {
+    for h in ["GRIMOIRE_FONT_TEST_TRAP", "GRIMOIRE_FONT_SLICE_MS", "GRIMOIRE_FONT_GLYPH_US", "GRIMOIRE_FONT_TEST_SLOW"] {
         std::env::remove_var(h);
     }
     let font = fontfix::ttf(&fontfix::test_font_many(3000));
@@ -254,6 +257,24 @@ fn a_font_is_checked_in_the_real_sandbox() {
     assert!(matches!(check_font(&fontfix::otf(&fontfix::test_font("Regular", 400), 2, false), 44), FontOut::Passed { .. }));
     assert!(matches!(check_font(&fontfix::ttf(&fontfix::cyclic_composite(true)), 44), FontOut::Refused(Refuse::Unreadable)));
     assert!(matches!(check_font(&fontfix::woff2(), 44), FontOut::Refused(Refuse::Format)));
+    // a font with a bold location: every glyph is drawn through both faces the UI makes, and timed
+    match check_font(&fontfix::ttf(&fontfix::test_font_variable()), 44) {
+        FontOut::Passed { facts, slow, .. } => assert!(facts.bold_at == 700 && facts.skip.is_empty() && slow == 0),
+        other => panic!("{other:?}"),
+    }
+    // a glyph over the glyph limit comes from Terminess and the font passes (the limit is 100 s of CPU; the
+    // glyph is over it by the test charge alone, never by this runner's clock)
+    std::env::set_var("GRIMOIRE_FONT_GLYPH_US", "100000000");
+    std::env::set_var("GRIMOIRE_FONT_TEST_SLOW", "slow:2000:100000001");
+    match check_font(&font, 44) {
+        FontOut::Passed { facts, slow, slowest_us, .. } => {
+            assert_eq!(facts.skip, vec![2000]);
+            assert!(slow == 1 && slowest_us >= 100_000_001);
+        }
+        other => panic!("{other:?}"),
+    }
+    std::env::remove_var("GRIMOIRE_FONT_GLYPH_US");
+    std::env::remove_var("GRIMOIRE_FONT_TEST_SLOW");
     // a call outside the list: the worker is ended, and the font is not passed
     std::env::set_var("GRIMOIRE_FONT_TEST_TRAP", "40");
     assert!(matches!(check_font(&font, 44), FontOut::Dead(_)));

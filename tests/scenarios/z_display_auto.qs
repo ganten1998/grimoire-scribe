@@ -1,6 +1,6 @@
 # rust-only
 # env: GRIMOIRE_SIM_LIGHT_SENSOR=1 GRIMOIRE_CHECK_FIT=1
-# The Display sheet's Auto brightness row (issue #137): the Kindle's own ambient-light auto
+# The Display page's Auto brightness row (issue #137): the Kindle's own ambient-light auto
 # brightness (com.lab126.powerd flAuto) as a checkbox under Brightness. Only a Kindle with a light
 # sensor has the row; GRIMOIRE_SIM_LIGHT_SENSOR gives the simulator one. The light itself is the
 # power service's, which follows its sensor while the row is ticked.
@@ -23,7 +23,7 @@ tap panel display.auto
 wait 300
 expect light.auto is 0
 # The Brightness slider under it still drags (the row only takes its own tap), and Done closes.
-drag touch 1000 472 1500 472 5
+drag touch 1000 296 1500 296 5
 wait 300
 expect light.intensity not 12
 tap panel display.done

@@ -26,12 +26,14 @@ grimoire/app/licenses/         the licenses of the fonts and code in the app
 grimoire/notebooks/<id>/notebook.ini, p<N>.qpg, thumb.pgm   (the format: docs/FORMAT.md)
 grimoire/notebooks/<id>/doclinks.ini   the links a PDF brought (a planner's tabs), apart from links.ini
 grimoire/import/.book/links.txt   the links of a book's pages, sent by the KOReader plugin with the pages
+grimoire/import/.book/request.ini a book the plugin sent: its pictures (version 1), or a PDF by its path (version 2)
 grimoire/settings.ini, folders.ini, sleep.pgm, grimoire.log
 grimoire/.passcode-paused      legacy beta.1 marker, consumed for its recovery notice
 grimoire/.passcode-left-off    counts the starts told that a restart left the passcode off
 grimoire/.koplugin-installed   the build whose plugin went into KOReader, or "removed"
 grimoire/fonts/                font files you copy in for Classic's text (2.1.0-beta.2), with a README.txt
-grimoire/fonts/.cache/         what the background check found of each: verdict, preview, marks (deletable)
+grimoire/fonts/.cache/         the background check's preview of each, and its marks (deletable: every font is
+                               then checked again)
 grimoire/.font-inuse           the crash guard of a font of yours: there from before its first use in a
                                session until a screen drawn with it is on the panel, and while it has a strike
 grimoire/trash/                deleted notebooks and pages
@@ -165,6 +167,61 @@ planner's tabs), to a launcher whose Capabilities line says `links`: KOReader's 
 draws in this run, and once per book (until the notebook's `source.ini` says `links=1`) for the pages Grimoire
 already holds, so an Open this book costs no page opens it does not need after the first. They arrive as
 `import/.book/links.txt`, and Grimoire builds `doclinks.ini` from them (docs/FORMAT.md, Links from KOReader).
+
+**PDFs by their path (2.2).** To a Grimoire whose `app/grimoire.sh` Capabilities line says `pdf`, Open this book in
+Grimoire on a PDF draws nothing: the plugin names the file in `import/.book/request.ini` (version 2) and hands over at
+once. Grimoire's own PDF import draws the pages (in colour where the PDF has colour) and finds the links, as for a PDF
+dropped in `grimoire/import`: the Library's notice counts the pages ("Importing: page N of M") and the Library stays
+usable. When the import ends the page the reader was on opens, if the user is still on the Library with its cards in
+front; with a notebook, a sheet, Files or the Graph in front, or after a visit to a notebook, nothing opens by itself:
+the import's toast shows, and the book's card opens at that page. A book opened before 2.2 keeps the pages KOReader
+drew, and the pages it lacks come from the import. DjVu, comics, XPS, a PDF that needs a password, a PDF Grimoire does
+not take by its path (outside `/mnt/us`, in a hidden, `.sdr` or system folder such as `koreader/`, in Grimoire's own
+folders, through a link, over 512 MiB) and a PDF changed since KOReader first opened it go as before, KOReader drawing
+them. The plugin must be updated (Library > Settings > KOReader > Install / update Grimoire plugin) and KOReader
+restarted: an older plugin keeps sending version 1, which this Grimoire still takes. crash.log says (no file name,
+title or key):
+
+- `Grimoire: a PDF of N pages sent by its path, to open at page P`;
+- `Grimoire: this PDF needs a password: KOReader draws its pages`;
+- `Grimoire: this PDF is not sent by its path (<why>): KOReader draws its pages`, where why is `outside the Kindle's
+  storage`, `a name a request cannot hold`, `a path too long`, `a path that is not plain`, `a hidden or .sdr
+  folder`, `a system folder`, `one of Grimoire's own folders`, `a link on the way`, `another device` or `a file over
+  512 MiB`;
+- `Grimoire: this PDF changed since KOReader first opened it: KOReader draws its pages` (the key KOReader keeps for
+  the book is not its file's now);
+- `Grimoire: could not ask whether this PDF needs a password; it goes by its path`: the question itself failed on
+  this KOReader (its MuPDF has other names, or could not open the file a second time). The plugin's question has
+  not run on a device yet: send the log if this line shows.
+
+grimoire.log says (no file name, title or key):
+
+- `book: the PDF KOReader named goes to the PDF import (<id>); its page P of N opens once that ends` (or `... is
+  being imported already; ...`, or `... waits for an import of an earlier run; ...`), with `book: other imports go
+  first; this one starts after them` when another import is ahead of it (the toast "Another import is still going.
+  This one starts after it." says so), then the import's own lines
+  (PDF imports, below), then `book: <nb>: N page(s) added by the PDF import (a new notebook|its notebook), opens at
+  its page K`.
+- `book: the PDF KOReader named is not in the Kindle's storage; nothing opened`, `book: the PDF KOReader named
+  is reached through a link|is on another device|lies where Grimoire does not read (a hidden or system folder, or
+  one of its own)|is not there|is no plain file|could not be opened; nothing opened`, `book: the PDF KOReader named
+  could not be read; nothing opened`, and `book: the PDF KOReader named could not go to the PDF import (name|
+  sandbox|own|lock|mark); nothing opened`: the path or the file was refused before any import.
+- `book: the book key KOReader sent is not its file's; the file's is used`: the key KOReader keeps for the book is
+  not the one its file has now (a file changed since KOReader first opened it, say). The notebook is the import's
+  to choose, from the file as it is: the import's lines say which (`this PDF was imported before`, `notebook <nb>
+  lacks ...`, or `a notebook holds this PDF's key but was made from another file; this one is imported` for an
+  edited copy, which becomes a notebook once).
+- `book: the PDF import failed (the lines above say why); nothing opened`, `book: the PDF import found the PDF
+  imported before, but named no notebook that is there; nothing opened`, `book: the PDF import ended without a word;
+  the book's notebook opens as it is` (a fill whose notebook was renamed or moved meanwhile) and `book: the PDF
+  import ended without a notebook; nothing opened`.
+- `book: <nb>: the reader's page could not be kept as the page it opens at`: the import ended with something else
+  in front, and the notebook's `notebook.ini` could not be written (or no longer holds that page); the notebook
+  opens where it would have.
+- `book: the request does not read (<why>); nothing opened`, for a version 2 request: `no file named`, `a file named
+  twice`, `a version 2 request names a key twice`, `its file's path is not absolute`, `... is too long`, `... holds a
+  control character`, `... is not UTF-8`, `a version 2 request names a picture`.
 
 **How it gets into KOReader.** A fresh installation leaves KOReader untouched. Use Library >
 Settings > KOReader > Install / update Grimoire plugin, or manually copy the ZIP's
@@ -414,9 +471,9 @@ that flattens and drifts still taps), and
 nothing makes the next tap wait. A key or controller button can do the same: the `status-toggle` action,
 and `status-corner` for the next corner (docs/SHORTCUTS.md, Buttons > Menus); with no page in front they
 change the setting and say so with a toast. Settings > Display, beside Done, has the size (small,
-medium or large) and the corner (top left, top right, bottom right, bottom left, in turn), and its
-rows include "Display time as 12 hour". They are settings.ini `status_on`, `status_size`,
-`status_corner` and `clock_12h` (docs/FORMAT.md).
+medium or large) and the corner (top left, top right, bottom right, bottom left, in turn); the two rows
+name what they set, so neither shows a toast. Its rows include "Display time as 12 hour". They are
+settings.ini `status_on`, `status_size`, `status_corner` and `clock_12h` (docs/FORMAT.md).
 
 It is drawn over the screen for each refresh and never saved into it: it is not in a page, a
 thumbnail, an export or PDF, Live view, or the sleep screen. It refreshes by itself at each minute and
@@ -437,7 +494,7 @@ drawing over Grimoire.
 
 ## Auto brightness
 
-The Display sheet's Brightness row is followed by **Auto brightness** on a Kindle with an
+The Display page's Brightness row is followed by **Auto brightness** on a Kindle with an
 ambient-light sensor (the Scribe's two sit in its wide bezel): ticked, it turns on the Kindle's own
 auto brightness (`com.lab126.powerd flAuto`) and the power service sets the front light from the
 room's light, as the stock reader does. The Brightness slider still works by hand; while auto is on,
@@ -466,16 +523,48 @@ docs/TESTING.md (Index phase 2).
 ## PDF imports (2.1.0-beta.2)
 
 Copy a PDF into `grimoire/import/` (see README). Device checks are in TESTING.md. What grimoire.log says (no
-file name, title or key ever appears in it: ids, page numbers, counts, timings, reasons):
+file name, title, key or hash ever appears in it: ids, page numbers, counts, sizes, timings, reasons):
 
 - `work: sandboxed (uid 62001, chroot, netns, no new privileges, seccomp, selinux enforcing|permissive|off)`:
   for PDFs once a session, at the first worker; for pictures and fonts once a background job (each job is a
-  process of its own, and says it at its first worker). `work: not sandboxed (...)` anywhere the steps are skipped.
+  process of its own, and says it at its first worker). `work: not sandboxed (...)` wherever the sandbox is not
+  required (never on the Kindle).
 - `import: <id>: N page(s), the PDF is N KB` (the probe), then for each slice `import: <id>: pages A to B of M in
   T ms (MemAvailable K MB, N band(s))` (a page's time is T over the slice's pages), then `import: notebook <id>
   made of N page(s), N picture(s), N blank`.
 - `import: N PDF(s) queued; left as they are: ...`: a scan's counts (not yet steady, tried out, imported,
-  skipped, held elsewhere, waiting for room).
+  skipped, held elsewhere, waiting for room, and at its end `N that differ from their listing, N no longer
+  files`: the scan's look at a steady PDF opens it without following a link and reads only the file it listed;
+  both counts are 0 on a Scribe at rest). `import: a PDF that differs from its listing has not changed for a
+  minute; it is imported as it is`: a PDF whose look kept finding another file than the listing's for a minute
+  (a storage that names one file differently by its name and by an open file would show this for every PDF:
+  send the log).
+- `import: <id>: its file read for its record: N KB in T ms` (the last slice read the whole file once, for the
+  record the notebook keeps of it: FORMAT.md, the file record) and `import: <id>: its file read to compare with
+  a notebook's record: N KB in T ms` (at its start, only for a PDF with the key and the size of a notebook's
+  record). T is the time to note for a big PDF. `import: <id>: a notebook holds this PDF's key but was made from
+  another file; this one is imported`: it becomes a notebook of its own. `import: <id>: its file could not be
+  read whole; the notebook keeps no file record`, or `... could not be read whole and another notebook holds its
+  key; nothing imported`: the storage failed a read in the last slice; `import: <id>: its file could not be read
+  whole to compare with a notebook's record`: it failed one at the start, and the PDF then counts as another
+  file than the record's (the line with N KB and T ms is logged only for a file that was read whole).
+  `import: <id>: its book key could not be read (the storage failed a read); nothing imported`: a read of the
+  key's samples failed (one cut short by a signal is tried again), at the start or in the last slice; the
+  try counts.
+  `import: <id>: its PDF's name no longer
+  holds the file that was read; nothing moves to import/done, and the next scan takes what is at that name`:
+  another file was put at the PDF's name while it was imported, or the file changed or was taken away; the
+  import's own end (its notebook, or "PDF already imported.") stands. On a Scribe at rest this line never
+  shows (a storage that names one file differently by its name and by an open file would show it at every
+  import, three times a file: send the log).
+- `import: a path that holds a line break is never imported; refused`, `import: a picked PDF's path holds a line
+  break; refused` and `import: <id>: its path holds a line break; nothing imported`: a name with a line feed or
+  a carriage return in it (a FAT storage cannot hold one). `import: the import lock cannot be taken (<why>); a
+  picked PDF is refused` (or `a picked folder is refused`, or `the import folders wait for the next scan`): the
+  lock file `grimoire/import/.lock` cannot be opened (`Symbolic link loop`: a link is at its name, and is not
+  followed), or what is at its name is not a plain file of one name (`Invalid argument`), or it stopped being
+  the file at its name twice while it was taken (`Stale file handle`). Nothing is removed for it: look at what
+  is at that name over USB.
 - `import: <id>: its last slice was cut off (K of 3)`, `... the job used more CPU than S s; it stops here (K of 3)
   and goes on later`, `... it stopped 3 times without finishing; nothing imported`: an import that keeps not
   finishing ends after three stops. `... the files of the pages from N are gone; they are made again`: a resume
@@ -484,6 +573,25 @@ file name, title or key ever appears in it: ids, page numbers, counts, timings, 
 - `import: <id>: a copy of this PDF is being imported; this one waits for its notebook`, `import: N pick(s) that
   waited for the lock queued`, `import: PDF import <id> was dropped from the queue; ...`, `import: the import
   from an earlier run has ended`.
+- A fill (2.2: the same PDF again adds the pages its notebook lacks): `import: <id>: notebook <nb> lacks N of the
+  book's M page(s): they are added to it` (slice 0; the slices then count the pages made, `pages A to B of N`),
+  then `import: <id>: the pages for notebook <nb> are made; they go in once the Library is in front` (said once,
+  by the UI, when it takes them: also at the start after the child that finishes the queue made them), then, as
+  the UI puts them in, `import: <id>: notebook <nb>: D document link(s) (A added, S already there, R refused, L
+  left out for room)` (only when a link starts or ends on a page it adds) and `import: notebook <nb> filled: N
+  page(s) added (T now), B blank`. S counts the PDF's links to or from those pages that the notebook had already
+  (the same target, the area within 2 px): for a notebook KOReader made, its links found again, none added twice.
+  `import: <id>: the PDF has N page(s) and the book of notebook <nb> M: it becomes a notebook of its own`: the
+  page counts differ (the PDF's and the one the notebook's pages name). `import: <id>: its notebook <nb> cannot be
+  filled (<why>)`, then `this PDF was imported before`: its pages name no page count or more than one, or its
+  files do not read. `import: <id>: its notebook was renamed, moved or deleted while the pages were made; nothing
+  added to notebook <nb>`: not filled (or the notebook no longer holds the key); the PDF stays in `import/` and the
+  next scan takes it again. `import: <id>: <why>; nothing added to notebook <nb>`: a fill that failed (`the
+  notebook is gone`, `the PDF changed under the import`, `its book key could not be read (the storage failed a
+  read)`, a storage failure), the notebook as it was. `import:
+  <id>: its commit was cut off (K of 3)`: a commit taken up again at a start after Grimoire stopped half way
+  through it; at the third, `its commit stopped 3 times without finishing; notebook <nb> is as its last cut left
+  it`.
 - `import: <id>: page N of M: the worker died of signal S (strike K)` or `... stalled ...` or `... made call C,
   which the sandbox does not allow`; after the second strike `... could not be read ...; it is blank`. On the
   Kindle call 175 (`rt_sigprocmask`) is the worker's own abort (out of memory, or a panic), not a call to add;
@@ -528,12 +636,37 @@ Copy `.ttf` or `.otf` files into `grimoire/fonts/` (see README). Device checks a
 read first by the sandboxed worker (`grimoire --work font ...`, the same loader as PDFs and pictures: its bytes
 come down a pipe, 24 MB at most; its address space is its image, the file and 64 MiB; a slice is 20 s of its
 own CPU time, then a fresh worker goes on from the glyph the last one reached, 10 minutes in all). The UI reads
-a font only once its verdict is there, and only if the bytes it reads hash to the verdict's. What grimoire.log
-says (never a file's name or a family's: counts, sizes, timings, reasons):
+a font only once its verdict is there, and only if the bytes it reads hash to the verdict's (their SHA-256).
+
+What the check found of a font, its verdict, is kept on the Kindle itself and not on the storage (from the
+verdicts numbered 2 on, FORMAT.md; 2.1.0 kept its own in `grimoire/fonts/.cache/`):
+`/var/local/grimoire/<16 hex digits>/fonts/<key>.font`, a few hundred bytes a font (at most 200 files of 8 KiB
+for a data folder), in folders Grimoire makes for root alone (mode 0700; a folder that is already there is used
+only while it is root's and no one else can write it). The 16 digits name the data folder (a second one, a
+development copy, has its own, and the file `root` beside `fonts` says which folder it is of); what was kept for
+a data folder that is gone is removed at the next check. The previews and marks stay in `grimoire/fonts/.cache/`,
+and a verdict counts only with its preview (or, for a font the check refused, its `.no` file) there. So after the
+update each font is checked once more (Grimoire reads in Terminess until the font in use has passed again), and
+after a factory reset, or with the storage moved to another Kindle, once more there. A font whose check's
+worker died (its `.bad` file in `grimoire/fonts/.cache/`) is not checked again by this: it stays out until
+its file changes or the cache is deleted. `/var/local/grimoire` is
+left when Grimoire is removed; `rm -r /var/local/grimoire` over SSH, with Grimoire closed, removes it, at the
+price of one more check of every font. A `.font` file in `grimoire/fonts/.cache/` is 2.1.0's: it is not read,
+and 2.1.0 finds it again if you go back.
+
+What grimoire.log says (never a file's name or a family's: counts, sizes, timings, reasons):
 
 - `bg: font check of a folder (pid N)`, then for each file not checked yet `fonts: file I of N passed: S KB, G
-  glyphs, K from Terminess, checked in T ms`, or `... refused (unreadable|no Latin letters|a web font)`, or `...
-  took too long to read (T ms)`, or `... the check's worker ended (<why>): marked unreadable`, or `... left for
+  glyphs, K from Terminess (W too slow to draw), slowest glyph T us, letters and digits L us, checked in T ms`
+  (the two figures are microseconds of the worker's CPU time for one glyph's draw at the largest size: the
+  dearest glyph of the font, and its letters and digits added up), or `... refused (unreadable|no Latin
+  letters|a web font)`, or `... took too long to read (T ms): left for a second try` (no verdict yet: the file
+  is checked again a minute or more later) and at that try `... took too long to read again (T ms)` (the
+  verdict), or `...: glyphs take too long to draw (a letter or digit, slowest T us | W glyph(s), slowest T
+  us): left for a second try` and, when the check a minute or more later agrees, `...: glyphs take too long to
+  draw again (...)` (the verdict: the row then says "Took too long to read."; a timeout and slow glyphs do
+  not make a verdict together, each is `left for a second try` until one of the two has shown twice), or
+  `... the check's worker ended (<why>): marked unreadable`, or `... left for
   later (out of memory)`; each job checks one font (`fonts: file I of N done; more are left for the next job`),
   and the last one ends with `fonts: in the folder, P passed, R refused, D the worker died on, L left for later, T
   too big or empty (N font file(s) in all)`, the whole folder's tally from the verdicts kept, and `bg: font check
@@ -542,7 +675,15 @@ says (never a file's name or a family's: counts, sizes, timings, reasons):
 - `fonts: no worker for the check (<why>); nothing is marked`, then `fonts: no worker can be had (see the lines
   above): no font is checked until Grimoire starts again`: a sandbox step failed or the worker did not start.
   No font is read, none is marked; the rows of unchecked fonts say "Unreadable font." for this session.
+- `fonts: what the check finds cannot be kept (<why>); nothing is marked`, then `fonts: what the check finds
+  cannot be kept (see the line above): no font is checked until Grimoire starts again`: `/var/local/grimoire`
+  cannot be used (it is not there, it cannot be made, it is not Grimoire's own: a name on the way is a link, is
+  not root's, or can be written by others), its file system has too little room, or it takes no write (a file
+  system that went read-only). No font is read, none is marked; the rows of unchecked fonts say "Unreadable font." for this session, and fonts that have their
+  verdicts go on working. `fonts: N data folder(s) are gone: what was kept for them is removed from Grimoire's
+  own folder`.
 - `fonts: the check ended badly; N file(s) marked unreadable`: the background job itself died on a file.
+  `fonts: what the check found could not be written. Is the storage, or Grimoire's own folder, full?`.
 - `font: custom font loaded: S KB in T ms, bold by its weight axis|a Bold file|overprint, K glyph(s) from
   Terminess, VmRSS R kB`: the font settings.ini names (or the Font sheet's sample) was read and hashed. T and R
   are the load time and the memory to compare in TESTING.md's device checks.
@@ -559,6 +700,45 @@ says (never a file's name or a family's: counts, sizes, timings, reasons):
 To get back to Terminess by hand: delete the font's file, or delete the `font=file:...` line of
 `grimoire/settings.ini` while Grimoire is closed. Deleting `grimoire/.font-inuse` forgets a font's strikes;
 deleting `grimoire/fonts/.cache/` has every font checked again.
+
+## Files: rename, trash, restore and copy (2.2, the storage layer)
+
+Grimoire can rename, trash, restore and copy files inside its own `import/`, `templates/`, `photos/` and
+`fonts/` folders (docs/DESIGN.md, Files' storage writes). On screen so far only the copy is used: a picture's Use
+as template and Use as photo in Files, and the Templates and Photos sheets' From a file... tile (docs/DESIGN.md,
+From a file... and Use as template). grimoire.log says (never a file's name: the folder, sizes, timings, reasons):
+
+- `files: an item of <folder> was renamed`, `files: an item of <folder> went to the trash`, `files: an item went
+  back to <folder>`, and `files: notebook <id> came back from the trash`. A deleted item is in
+  `grimoire/trash/files-<date>-<time>-<4 hex>/` with `.grimoire-trash` beside it, which says where it was
+  (docs/FORMAT.md, The trash): to put one back by hand, with Grimoire closed, move it there.
+- `files: the storage refused the no-replace rename (<why>); a rename reserves the name first`: once a session,
+  the first time a rename needs it. This line means the storage does not take the kernel's no-replace rename:
+  each rename then reserves the new name (an empty file or folder made only where nothing is) and renames over
+  its own reservation (docs/DESIGN.md, Files' storage writes). Whether the Scribe's storage takes the flag is
+  what docs/TESTING.md's check finds out.
+- `files: a rename|the trash|the trash's record|a restore|a notebook's restore failed: <why>`: a call the storage
+  refused, with its reason (a name taken, a file that changed or an import holding it are told on screen, not
+  here). `files: a rename through a temporary name could not be undone; the item has the new name numbered, in
+  <folder>`: a case-only rename stopped half way; the file is in that folder under the new name with " 2" (or
+  the next number free), to rename by hand. A crash in the middle of one leaves it the same way.
+- `files: a trash entry that held nothing was removed`: Restore on an entry a trash cut off by a crash left (its
+  record alone, or an empty folder); the item never left its folder.
+- `bg: file copy of <folder> (pid N)`, then `bg: a file copied into <folder>: N KB in T ms` or `bg: a file not
+  copied into <folder>: <why>` (among them: no room: the storage would keep less than 100 MB; it changed since it
+  was listed, or while it was copied; it is over N MB; a name too long; it is no plain file; a link on its way; a
+  system error's own words), and `bg: file copy pid N done` or `FAILED`. A copy cut off leaves
+  `.grimoire-copy-<pid>.part` in the folder, which the next copy into it removes. On screen a copy that was not
+  made says "Too big (over 16 MB).", "Path too long." or "File changed. Try again." for those causes and "Couldn't
+  copy file. Is the storage full?" for any other, and one that went in "Copied to Templates." (or Photos), unless
+  that folder's sheet is up, which shows the new picture.
+- `files: a copy into <folder> was refused: <why>`: Use as template or Use as photo refused before any job (it is
+  over N MB: a template or a photo is at most 16; its path is too long for a job; no room: the storage would keep
+  less than 100 MB; a place it is not taken from; a system error's own words), with the same sentences on screen. A
+  file changed since it was listed says "File changed. Try again." and logs nothing.
+- `templates: <folder> read again after a copy (N files, one|none new)`: a Templates or Photos sheet whose From a
+  file... tile waited for a copy, once the copy ended; `one new` is the picture copied in (its tile waits for its
+  preview as a picture copied over USB does), `none new` a copy that failed.
 
 ## Touch gestures and the touch trace
 
@@ -731,9 +911,9 @@ checks above. Synthetic tests cannot establish real-hand acceptance or accidenta
   back by hand, with Grimoire closed: rename it to `p<n>.qpg` and add `<n>` to the `pages=` line
   of its `notebook.ini`.
 - **A file of the `grimoire` folder that is no plain file, or too long** (2.1.1): Grimoire reads its
-  settings, notebooks, pages, pictures and import folders only when the entry at the name is a plain file,
-  and the small text files only up to a size (docs/FORMAT.md, Files, names the files; a few others are
-  still opened by path). grimoire.log says what it did:
+  settings, notebooks, pages, pictures, import folders, clipboard, shortcut files and PDF cache only when the
+  entry at the name is a plain file, and the small text files only up to a size (docs/FORMAT.md, Files, names
+  the files). grimoire.log says what it did:
   - `store: <path> is no plain file, set aside; starting blank` (or `could not set aside`): the entry at
     a page's name was a folder, a link or something else. It was renamed `p<n>.qpg.damaged-<t>`, the
     entry itself, and the page opened blank, with the toast of a damaged page. It stays there: Grimoire
@@ -856,6 +1036,12 @@ checks above. Synthetic tests cannot establish real-hand acceptance or accidenta
   and each gesture's outcome to `grimoire/touch-trace.txt` (4 MB at most; each start, and each turn
   of the screen, adds a line naming the rotation, the screen and its dpi). It stays in the data folder: no export, share page or raw ZIP
   carries it. Delete `grimoire/touch-trace` to stop, and send the two files when asked.
+- **A slow page, and undo** (#119): when "Loading page..." shows, grimoire.log says `editor: "Loading
+  page..." for page id N: its file is K KB, with no current kept drawing` (or `with changes not written yet`),
+  and when an undo of a page runs, `editor: undo of W on page id N`, W one of `a stroke`, `an erase of N
+  strokes`, `a paper change`, `a page clear (N strokes)`, `a link change (N)`, `a shape snap` and `a lasso step
+  (N strokes off the page, M on)`: ids, sizes and counts, never the ink. Each at most once a frame (a round of
+  the main loop): a second undo in the same round, from keys that came together, adds no line.
 - **The startup log** starts with a diagnostics block. `device:` lines give the model code (the
   first 6 characters of /proc/usid, never the serial), memory, CPU part and hardware. `display:`
   lines give the FBInk device id, platform, pixel format, color panel flag, raw vinfo and finfo,
@@ -1104,21 +1290,59 @@ Buttons... and Reload shortcuts.ini; Pair holds Bluetooth controller and Pair a 
 Library > Share > Wi-Fi (also on the Live view pairing card) opens the radio controls. Turn on
 Wi-Fi leaves airplane mode and asks the Kindle's existing Wi-Fi service to reconnect to a saved
 network. Radio-on and connected are shown separately; the Share address and QR code appear only
-when the system has an address. Add a new network or change its password in Kindle settings or
-KOReader's normal network menu. Grimoire does not replace or log saved network credentials, and none reaches
-the app (the helper keeps only the networks' names: below).
+when the system has an address. Settings > Wi-Fi can scan for nearby networks, add an Open,
+WPA/WPA2- or WPA3-Personal one with its password, or a WPA2/WPA3-Enterprise (PEAP/MSCHAPv2) one with
+its username and password, and delete a saved profile with its row's trash button. WEP, OWE and
+WPA3-Enterprise 192-bit stay with Kindle settings or KOReader. Grimoire does not replace or log saved
+network credentials, and none reaches the app (the helper keeps only the networks' names: below).
 
-Settings > Wi-Fi (2.1.0-beta.2, issue #40) has the same radio button (Retry when the state is not
-known), a status line ("Connected to <name>", "Connecting to <name>...", "Could not connect to
-<name>.") and the networks the Kindle has saved, the one connected to first and checked, seven a
-page with More networks for the next. A tap on a network asks the Kindle's Wi-Fi service to connect
-to it, turning the radio on first if it is off. The sheet then reads the network connected to every
-2 s, and the switch has worked once a read names that network; it has failed when the helper refuses
-it or after 45 s without it. Grimoire switches nothing back after a failure: the Kindle's own service
-decides what it joins next. The sheet reads only while it is up: the radio, the network and the saved
-networks as it opens (once more when the radio comes on, for a service that lists them only then),
-then the network connected to while a switch is under way, or for 45 s after a tap while the radio is
-on with no connection. Switching away from a network disconnects Wi-Fi SSH, sharing and Live view on it.
+Settings > Wi-Fi (2.1.0-beta.2, issue #40) opens on Nearby. The status line and the radio button (Retry
+when the state is not known) sit over Rescan, Other... and Saved networks; the sheet scans by itself once
+the radio is on. Each network has a three-bar signal icon, filled for its strength, and a small lock when it
+is not Open; the scan's strongest come first, then the names the Kindle knows. A tap connects a saved name or
+adds an unsaved Open, WPA/WPA2-Personal, WPA3-Personal or WPA2/WPA3-Enterprise one. The connected row is
+filled black with a white rule inside its edge and white bars; a tap on it again disconnects without turning
+the radio off. Other... types a hidden network's name and asks Open, WPA/WPA2, WPA3 or WPA2/WPA3-Enterprise;
+a password is typed on the keyboard's masked page and never shown. A WPA2/WPA3-Enterprise add asks for the
+username on the normal keyboard, then the password on the masked one. It uses PEAP with MSCHAPv2 through the
+supplicant's `wpa_cli` control interface, with PMF optional and the SHA-256 AKM offered, so it joins both
+WPA2-Enterprise and WPA3-Enterprise (non-192-bit); both values travel only on stdin, and the profile lives in
+the supplicant rather than wifid's saved list; a persistent no-secret marker makes the helper list it
+under Saved too, and a tap selects or removes it through `wpa_cli`. `save_config` is best effort. There is no CA-certificate
+field yet, so PEAP does not validate the school's server certificate; use it only on a network you trust.
+WPA3-Enterprise 192-bit, EAP-TTLS and EAP-TLS are not created. WPA3-Personal uses SAE through `wpa_cli` with
+PMF required; its passphrase reaches the helper only on stdin (SAE needs it, not the PSK). Both supplicant-owned
+profiles disable the supplicant's background scan, whose learned channel list can otherwise take the link
+off-channel and make it deauthenticate. A bounded `wpa_cli` watcher starts after the completed 4-way, detached in its own session, and appends
+sanitized supplicant events and state snapshots to `.supplicant-events.log` in the app folder. A drop
+shows `CTRL-EVENT-DISCONNECTED` with its numeric reason and whether `CTRL-EVENT-TERMINATING` followed;
+the watcher never records a name, BSSID or credential.
+The keyboard stays over the Wi-Fi page, as it does over the rest of Settings. Saved networks lists the Kindle's
+profiles, the connected one first, eight a page with More; a tap connects (or disconnects, on the connected
+row), and the trash button on a row deletes that profile at once. Disconnect puts wifid's connection manager
+in manual mode (so it does not rejoin the profile at once), asks `cmDisconnect` with the current profile, then  without a name, then asks wpa_supplicant with `wpa_cli … disconnect`; it waits until `cmState` reports the link
+  gone, then pins the drop with `wpa_cli disconnect` and disables that network at the supplicant, the radio stays
+  on, and a failure re-enables the network, restores automatic mode and says "Could not disconnect." Joining,
+adding a wifid-managed profile, or turning the radio on restores automatic mode; an EAP or WPA3 supplicant
+profile leaves the manager manual while it owns the link. A
+quiet scan runs every 20 s while Nearby
+is idle: the list stays as it is, and only names that joined or left change; a Rescan still starts a fresh
+list. A tap on a network or another control cancels a scan already running and acts at once, so scanning
+never makes a join, add, delete or disconnect wait; the next quiet scan waits 20 s after that one's answer.
+The sheet then reads the network connected to every 2 s, and the switch has worked once a read names
+that network; it has failed when the helper refuses it or after 45 s without it. A profile that took is
+watched the same way. A failed hidden-network add
+says "Could not add the network.", not the generic read error; the log names the helper's exit (18 no valid
+PSK, 19 the profile refused, 20 no read back, 26 no wpa_cli or control socket, 27 the supplicant refused the
+network, 28 the supplicant does not list SAE). A delete that fails says "Could not forget
+the network.", its log exit naming the step (21 the radio, 23 no read back, 24 no netid could be read,
+25 wifid still had the profile after the netid write). Grimoire switches nothing back after a
+failure: the Kindle's own service decides what it joins next. The sheet reads only while it is up: the
+radio, the network and the saved networks as it opens (once more when the radio comes on, for a service
+that lists them only then), then the network connected to while a switch is under way, or for 45 s after a
+tap while the radio is on with no connection, and the quiet Nearby scan. Opening the sheet never turns the
+radio on: with it off, the page offers Turn on Wi-Fi. Switching away from a network disconnects Wi-Fi SSH,
+sharing and Live view on it; the radio stays on.
 
 Turn off Wi-Fi disconnects Wi-Fi SSH, sharing and Live view. It leaves notebooks usable locally.
 The app changes radio state or the network only after an explicit button press, preserves that
@@ -1138,8 +1362,12 @@ come from wifid's hasharray properties `currentEssid` (the network connected to,
 cmState is CONNECTED) and `profileData` (the saved networks), read with `lipc-hash-prop` and an empty
 hasharray in, as KOReader reads them; a switch is `lipc-set-prop -s com.lab126.cmd ensureConnection
 "wifi:<essid>"`, as KOReader's network menu does when a network is picked, and the helper refuses any
-name that is not among the saved networks before it changes anything. Nothing creates, changes or
-deletes a profile.
+name that is not among the saved networks before it changes anything. Add and Delete are the only profile
+changes: `add` creates an Open, WPA or WPA2 profile from the PSK on stdin (or a passphrase, for a direct
+call) and asks wifid to connect, a WPA3-Personal SAE profile from its passphrase on stdin through `wpa_cli`,
+or a WPA2/WPA3-Enterprise PEAP/MSCHAPv2 network through `wpa_cli` from the username and password on
+stdin; `delete` removes the named saved profile. OWE, WEP, WPA3-Enterprise 192-bit, EAP-TTLS and EAP-TLS
+profiles are never created.
 
 profileData's answer holds each saved network's password. It goes from lipc-hash-prop straight into
 a small awk reader inside the helper that keeps the essid values and nothing else: no password reaches
@@ -1149,12 +1377,25 @@ numbers, and braces, brackets, commas and words around them); any unquoted value
 them, makes it give no name at all, and the sheet says "Saved networks could not be read." with the
 radio controls still there. A name with a backslash (an escape it cannot undo), a control character or
 more than 32 bytes is left out. Names travel to Grimoire, and back for a switch, in hex, so no byte of
-one can break a line or be taken for code. Grimoire does not log network names (grimoire.log goes to
-public bug reports). The lipc-hash-prop output format, whether wifid lists the saved networks with the
-radio off, and whether ensureConnection switches away from a connected network are device probes and
-checks for 2.1.0-beta.2 (docs/TESTING.md).
+one can break a line or be taken for code. Adding derives the WPA PSK in Grimoire (PBKDF2-HMAC-SHA1 over
+the passphrase and the name, 4096 rounds, 256 bits) and sends its 64 hex digits on the helper's stdin
+(never an argument); the helper also takes a passphrase there for a direct call, through
+`wpa_passphrase` where the firmware has it. WPA3-Personal sends the passphrase itself there instead:
+SAE derives its password element from it, and the PBKDF2 PSK would not do. It pipes the profile hasharray
+to `createProfile`; forgetting is `deleteProfile <essid>` on older firmware, or
+`deleteProfile <netid>` (the profile's integer id, read from profileData) on the Scribe. The app wipes its
+passphrase copy after deriving the PSK, the helper wipes what it receives, and neither is printed, logged or kept.
+An enterprise add's credentials go from Grimoire to the helper on stdin and then to `wpa_cli` on its stdin;
+the helper quotes them for its parser and never prints or logs them. The profile is the supplicant's, not one
+wifid lists in profileData; the helper lists it under Saved and rejoins or removes it through `wpa_cli`
+without exposing its name in a command argument. `save_config` is best effort. There is no
+CA-certificate choice yet, so PEAP's server certificate is not validated; the WPA2-Enterprise path is for a
+trusted school network until that ships.
+Grimoire does not log network names (grimoire.log goes to public bug reports). The lipc-hash-prop output
+format, scanList's answer, and whether `createProfile` and `deleteProfile` behave as expected on this
+firmware are Phase 0 probes (`tools/kindle-wifi-probe.sh`, docs/WIFI-PHASE0.md).
 
-A parent job bounds the helper to 12 seconds and kills only its own helper process group if it
+A parent job bounds the helper to 12 seconds (25 for a scan) and kills only its own helper process group if it
 stalls. Status polling is limited to the visible Wi-Fi dialog or sheet, and stops after connecting,
 switching off or 45 seconds; Retry checks again. Physical airplane-mode transitions remain a device
 acceptance check.
