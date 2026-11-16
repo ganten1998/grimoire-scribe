@@ -2223,27 +2223,35 @@ KOReader's), it asks that notebook what it lacks (`pdfimport::fill_plan`: the bo
 page lines carry, and the book pages no page of its list holds) and, when it lacks pages, goes on as an import of
 those pages alone, drawn at the notebook's own page size by the same writer, worker and per-page isolation. The
 probe is the guard on the key: a PDF whose page count is not the notebook's is a notebook of its own, never a
-fill, and the links are read at the size of the pages they will be on only after that is decided. Nothing of the
-notebook is written before the last slice, which commits only while the notebook is closed. The UI process says
-which notebook its editor has open in the shared progress record (`pdfimport::note_open`, set before it looks for
-a fill of the notebook it opens), and refuses to open a notebook any fill's work folder names
-(`pdfimport::fill_pending`: a listing of `notebooks/` and the work folders' states, so a fill of a previous run's
-detached child, or one cut off, counts too), showing the import's count. A fill whose notebook was already open
-when its pages were made waits (its work folder kept, the next scan goes on with it), and so does any fill the
-child that finishes the queue after Grimoire closes reaches: no UI is there, and the next run may open any
-notebook. The commit takes the page ids first (reserved in `notebook.ini`), then the pictures (shared by content
-with the notebook's, the index saved first), the page files and `bg/pages.ini`, `source.ini`, and `notebook.ini`,
-which lists the pages in book order (`annotate_insert_at`, KOReader's route's rule); before that write the notebook
-shows nothing new. The links and names come after it, through the same fill with the notebook's own counted
-(`pdflinks_fill` with the user's links' seeds as taken, the 2 px rule against its document links, the water
-level trimming only what the fill adds: `pdflinks_water_keeping`), and names for unnamed pages only. The state says
-`commit=1` once the commit begins, and from then on a slice finishes it from the work folder alone, whatever became
-of the PDF, so a commit cut off at any step ends with the notebook filled (three cuts in a row end it, as three stops
-end an import); a fill stopped or failed before it leaves the notebook as it was. KOReader's Open this book holds the
-book's notebook as the editor does while its job adds pages, and at start the scan of `import/` runs after
-KOReader's hand-over is taken, so a fill never commits while KOReader's route writes the same notebook. A copy of
-the PDF dropped meanwhile waits for the first, as any copy does, and then finds every page there. A fill's state is `pdf-fill.ini`, a name earlier versions never read: they remove the
-folder as a cut-off import's, so none of them ever takes a fill for an import of a notebook of its own.
+fill, and the links are read at the size of the pages they will be on only after that is decided. The writer never
+writes the notebook: its last slice checks the file and says the pages are made, and the UI process puts them in
+(`pdfimport::fill_tick`), as KOReader's book job adds its pages, so the commit is one more thing the UI does in
+turn and never meets another writer of that notebook. It begins only with the Library in front and at rest (so no
+notebook is open in the editor and no dialog is half way), no book job running and no background job on that
+notebook (`bg_notebook_busy`), and runs over a few ticks with the input held and the book's notice showing how far
+it got; no background job on that notebook starts until it ends (`pdfimport::fill_holds`, read by `next_job`).
+Each tick reads again what it writes and writes each file whole, so even a write that slipped in between two ticks
+would stay. A notebook renamed, moved or deleted while the pages were made (a hash of its name and folder taken as
+the fill is decided, and the notebook read again), or one that no longer holds the PDF's key, is not filled: the
+PDF stays in `import/` for the next scan, which takes it as the file it is. The child that finishes the queue after
+Grimoire closes runs the same slices, so it never commits either: a fill it finishes waits for the next start. The
+commit takes the page ids first (reserved in `notebook.ini`, then kept in the state), then the pictures (shared by
+content with the notebook's, the index saved first), the page files and `bg/pages.ini`, `source.ini`, and
+`notebook.ini`, which lists the pages in book order (`annotate_insert_at`, KOReader's route's rule); before that
+write the notebook shows nothing new. The links and names come after it, for the pages the fill added only: the
+PDF's links that start or end on one of them, through the same fill with the notebook's own counted
+(`pdflinks_fill` with the user's links' seeds as taken, the 2 px rule against its document links, the water level
+trimming only what the fill adds: `pdflinks_water_keeping`), and the outline's names for them. A link between two
+pages the notebook had is never added (the app cannot remove a document link), so deleting the pages a fill added
+takes everything it wrote. The state says `stage=2` once the commit begins, and from then on the next start
+finishes it from the work folder alone with the same page ids, whatever became of the PDF, so a commit cut off at
+any step ends with the notebook filled (three cuts in a row end it, as three stops end an import's slices); one
+more background slice then files the PDF. A fill stopped or failed before its commit leaves the notebook as it
+was. KOReader's Open this book is never held up by a fill: its job runs and the book opens on the reader's page
+as without one, and the fill goes in after, once the notebook is closed. A copy of the PDF dropped meanwhile waits
+for the first, as any copy does, and then finds every page there. A fill's state is `pdf-fill.ini`, a name earlier
+versions never read: they remove the folder as a cut-off import's, so none of them ever takes a fill for an import
+of a notebook of its own.
 
 ## Your own fonts (2.1.0-beta.2, lane L10)
 
