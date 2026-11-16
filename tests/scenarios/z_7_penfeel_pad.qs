@@ -11,6 +11,8 @@ wait 300
 tap 1535 95
 wait 200
 expect library.sheet is settings
+tap library settings.cat.3
+wait 100
 tap library pen-feel
 wait 400
 expect screen is penset
