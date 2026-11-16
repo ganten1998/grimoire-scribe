@@ -384,8 +384,9 @@ path bar, from 1: Files, the place, then each folder; the last opens the Go to s
 | `files.card` | the open card: `pdf`, `folder`, in Files `picture`, `font`, `other` or `goto` (the Go to sheet), or empty; `files.card.details` its first line (the Go to sheet's title), `files.card.rows` its rows joined by `|` |
 | `files.sort`, `files.show` | Files' order (`name`, `newest`, `size`) and what it lists (`usable`, `all`), as settings.ini has them; `files.sorting` `1` while a new order's stats come in |
 | `files.order`, `files.drawn` | the rows' names in order, joined by `|`; the rows' names as last drawn on the screen (a new order shows there once, when ready) |
-| `files.view`, `files.tiles` | Files' view (`list`, `covers`), as settings.ini has it; in the Covers view what each tile on the screen was last drawn showing, a letter each in order: `p` its preview, `l` the hourglass (its preview being made), `i` its kind's icon (a folder, another file, one the worker refused); empty in the list (2.2) |
-| `files.making`, `files.asked` | `1` while a preview the Covers screen asked for is queued or running ("Making previews..." stays meanwhile, after its first second); how many files were asked for since the folder was entered, a file the cache had included |
+| `files.view`, `files.tiles` | Files' view (`list`, `covers`), as settings.ini has it; in the Covers view what each tile on the screen was last drawn showing, a letter each in order: `p` its preview, `l` the hourglass (its preview to come), `i` its kind's icon (a folder, another file, one the worker refused or gave nothing for); empty in the list (2.2). The tiles that changed are drawn together (at once when the screen's set is complete, else every 2 s at most), so `files.tiles` follows `files.covers` |
+| `files.covers`, `files.says.N` | in the Covers view, what each tile on the screen would show now, drawn yet or not (the same letters); and what the Nth tile on the screen was last drawn saying under its name (the Import place's status, `Importing: page 3 of 12`), empty for none and in the list |
+| `files.making`, `files.asked` | `1` while a preview the Covers screen asked for is queued or running ("Making previews..." stays while one is being made, after its first second); how many files were looked at since the folder was entered, a file the cache had included, one whose queued job was taken back not |
 | `storage.exists.PATH`, `storage.size.PATH`, `storage.names.DIR` | on the storage root: whether a path is there (a link counts as itself), a file's size (-1 without it), a folder's names sorted and joined by `|` |
 
 ### Checks
@@ -952,6 +953,9 @@ Font hooks (same builds): `GRIMOIRE_FONT_WATCHDOG_MS=N` (the font watchdog), `GR
 `GRIMOIRE_FONT_TEST_DRAW_CRASH=1` (the simulator's build only: the app ends at the first glyph a custom font
 draws, as a font that crashed its first screen would). `GRIMOIRE_IMPORT_STABLE=fast` takes a font file at the
 first look too, and `GRIMOIRE_WORK_FAIL_STEP` fails a font worker's step: no font is then checked.
+Files' previews (same builds): `GRIMOIRE_PREVIEW_MS=N` is the time one preview may take, every kind's (in place of
+3 s for a PDF's page and a font's sample, 6 s for a picture), and `GRIMOIRE_PREVIEWS_MAX=<files>,<bytes>` the
+limits its cache is pruned past; the PDF, picture and font hooks above reach a preview's worker too.
 `GRIMOIRE_FONT_GLYPH_US=N` is the CPU time one glyph's draw may take in the check, in microseconds (1 to
 999999999; anything else, or unset, is 5 s, which no real font reaches), and
 `GRIMOIRE_FONT_TEST_SLOW=<slow|once|bold|from>:<glyph>:<us>` is the test charge: the draw of glyph `<glyph>`

@@ -2210,30 +2210,43 @@ zip64: an entry past 4 GiB, an entry that fails midway (its header is already ou
 The previews Files' Covers view shows (docs/DESIGN.md, "Files: previews and the Covers view"), each of one file of
 the Kindle's storage as it was listed. For each, two files named by its key, the FNV-1a 64 hash (16 lowercase hex
 digits) of the file's path from the storage root's bytes followed by `/<size>/<mtime>` (its size in bytes and its
-modification time in seconds, in decimal): a file changed or replaced has another key, and its old entry stays
-until the prune.
+modification time in seconds, in decimal): a file changed or replaced has another key, and its old entry goes with
+the sweep (below).
 
 - `<key>.pgm`: the preview, a P5 PGM with the header `P5\n<w> <h>\n255\n` and w x h gray bytes, at most 300 x
-  400 (a PDF's first page, a picture or a font's sample, each on a 300 x 400 white page). Present only beside a
-  `.info` that says `made`.
-- `<key>.info`: four lines of printable ASCII, each ended by a line break, at most 128 bytes:
+  400 (a PDF's first page, a picture or a font's sample, each on a 300 x 400 white page: 120,015 bytes). Present
+  only beside a `.info` that says `made`.
+- `<key>.info`: five lines of text, each ended by a line break, at most 760 bytes:
 
   ```text
   grimoire-preview 1
   of <size> <mtime>
   kind pdf|picture|font
   made <w> <h>
+  path <the file's path from the storage root>
   ```
 
-  or a last line `none refused|slow|ended` for a file that has no preview (its worker refused it, took too long
-  on it, or ended on it): a mark, kept so the file is not tried again until it changes. Numbers are decimal,
-  without a sign (a time before 1970 has a minus) or a leading zero.
+  The fourth line is `made <w> <h>` (the picture beside it), or `none refused|slow|ended` for a file that has no
+  preview (its worker refused it, took too long on it, or ended on it): a mark, kept so the file is not tried
+  again until it changes; or `once slow|ended`: one try on record, no mark yet (a worker took too long or ended on
+  the file once: the job of another visit tries once more, and a second time in a row writes the mark). Numbers
+  are decimal, without a sign (a time before 1970 has a minus) or a leading zero. The path is UTF-8 without a
+  control character (a file whose name has one is never listed). The first line's number stands for this text and
+  for the rules a mark was made by (the time a preview may take): an entry of another number is no entry.
+
+So the folder holds, for each file a Covers screen showed, that file's path and a small picture of it. An entry
+goes when its file is gone or changed (the sweep), when the folder is past its limits (the prune), or when the
+folder is deleted.
 
 Only the background job writes the folder, each file atomically (`<file>.tmp`, fsync, rename), the picture first
-and then the `.info`; it is made where it is missing, never through a link. The UI reads a `.info` and its picture
-only when each is a plain file within its size (the `.info` 128 bytes, the picture its header and 120,000 bytes),
-the `.info` exactly as above and of the file as listed (its size, time and kind), the picture exactly the size the
-`.info` says: anything else is no preview, and the file is asked for again. After each preview or mark the job
-prunes the folder past 2,000 files or 64 MiB, the oldest entries first (by their files' newest time, both files of
-an entry together), down to 1,500 files and 48 MiB. Deleting `.cache/files/` loses nothing: the previews are made
-again as their files show in Covers. No other version reads it.
+and then the `.info`; it is made where it is missing, and neither read nor written through a link. A `.info` and
+its picture are read only when each is a plain file within its size (the `.info` 760 bytes, the picture its header
+and 120,000 bytes), the `.info` exactly the text above for what it says and of the file as listed (its path, size,
+time and kind), the picture exactly the size the `.info` says: anything else is no preview, and the file is asked
+for again and its entry made again. After a job that wrote, the job tidies the folder. The sweep, once a day (its
+stamp is the file `.swept`: empty, its time the last whole sweep's; or the key a sweep that ran out of its 2 s
+stopped after) and whenever the folder is past a limit, reads each `.info` and removes the entry when the file it
+names is no longer there with that size and time. Past 2,000 files or 64 MiB still, the oldest entries go (by
+their files' newest time, both files of an entry together), down to 1,500 files and 48 MiB. Deleting
+`.cache/files/` loses nothing: the previews are made again as their files show in Covers. No other version reads
+it.

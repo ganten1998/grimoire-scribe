@@ -15,7 +15,8 @@
   as its "..." does. Two new actions with no default key, `files` and `home`.
 - **Files' Covers view**: the View chip on Files' path bar shows a folder as a grid of previews (a PDF's first
   page, a picture, a font's sample), made in the background by the sandboxed reader for the files on screen only,
-  with "Making previews..." while they come. Previews are kept in `grimoire/.cache/files/`, which can be deleted.
+  after any export, import or font check and for a few seconds a file at most, with "Making previews..." while
+  they come. Previews are kept in `grimoire/.cache/files/` (each with its file's path), which can be deleted.
 - Hardening: Grimoire reads the files in its own folders only when they are plain files, with size limits
   on the small text files, and makes its temporary files afresh each time. A `settings.ini` it cannot
   read is kept as `settings.ini.unread` rather than written over. A picture or folder in `templates/`,

@@ -20,12 +20,18 @@ the Covers view (issue #145; "Files: previews and the Covers view"). Waiting, ea
   listed by their notebook's name; their Restore is optional.
 - **After the previews (issue #145)**: the details a card can only have from the worker (a PDF's pages, a
   picture's size, a font's coverage) and a preview on a file's card; Covers as the default for Templates and Photos
-  (browser.md's idea: today one View setting holds for every place); a second child for file previews beside the
-  first (bgjob's `extra_slot` takes page previews only); an old file's preview pruning itself when the file changes
-  (today it stays until the prune); the language fit check of the path bar's three chips (y_all_screens visits the
-  picker's root only, not a place of Files); the font sample's text is fixed Latin ("Aa", "Abc 123"), so a font of
-  kana or kanji alone is refused as the check refuses it. Not timed on the Scribe: docs/TESTING.md, "2.2, Files'
-  previews and the Covers view (issue #145): device checks".
+  (today one View setting holds for every place); a second child for file previews beside the first (bgjob's
+  `extra_slot` takes page previews only), so previews need not wait for a long import; the previews' times (3 s a
+  PDF's page and a font's sample, 6 s a picture) set from the Scribe's own numbers, which docs/TESTING.md asks for;
+  the last screens' previews kept in memory, so that a turn back shows them with the turn's own refresh (today a
+  screen that comes back is read from the cache in a second refresh); the preview of a file Files itself renames
+  or trashes dropped at once (today the daily sweep takes it); the cache's folder held by a descriptor and its
+  entries reached with the `*at` calls (today a link check by path, then the path); a whole session without
+  previews once a worker's sandbox step failed in a previews job (today each file is asked for once a visit, and
+  a step that failed in the app's own process stops them); the language fit check of the path bar's three chips
+  (y_all_screens visits the picker's root only, not a place of Files); the font sample's text is fixed Latin
+  ("Aa", "Abc 123"), so a font of kana or kanji alone is refused as the check refuses it. Not timed on the
+  Scribe: docs/TESTING.md, "2.2, Files' previews and the Covers view (issue #145): device checks".
 - **From a file... tiles** in the Paper sheet's More layouts... and Photos...: Use as template and Use as photo on
   a picture's card, and Add to fonts on a font's (with the Kindle fonts row of the Font sheet), once a copy job
   exists. The cards offer only Cancel for those kinds until then.
