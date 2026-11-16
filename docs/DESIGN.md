@@ -2193,6 +2193,32 @@ answers `L`, `Q`, `O` and `F` records. The writer checks each one (`Collected::t
 coordinates inside bounds, a quad only after its link, one name a page), keeps them in the work folder, and the
 last slice's commit puts them through `pdflinks_fill` and `pdflinks_water` into `doclinks.ini`, and the outline
 into `nav.ini`. A worker that fails in the walk costs the notebook its links, not its pages.
+
+The same PDF again fills its notebook (2.2): where slice 0 would say "PDF already imported." because a notebook is
+the PDF's (by its file record, or by the book key for a notebook that has none: an earlier version's, or
+KOReader's), it asks that notebook what it lacks (`pdfimport::fill_plan`: the book's page count its `source.ini`
+page lines carry, and the book pages no page of its list holds) and, when it lacks pages, goes on as an import of
+those pages alone, drawn at the notebook's own page size by the same writer, worker and per-page isolation. The
+probe is the guard on the key: a PDF whose page count is not the notebook's is a notebook of its own, never a
+fill, and the links are read at the size of the pages they will be on only after that is decided. Nothing of the
+notebook is written before the last slice, which commits only while the notebook is closed. The UI process says
+which notebook its editor has open in the shared progress record (`pdfimport::note_open`, set before it looks for
+a fill of the notebook it opens), and refuses to open a notebook any fill's work folder names
+(`pdfimport::fill_pending`: a listing of `notebooks/` and the work folders' states, so a fill of a previous run's
+detached child, or one cut off, counts too), showing the import's count. A fill whose notebook was already open
+when its pages were made waits (its work folder kept, the next scan goes on with it), and so does any fill the
+child that finishes the queue after Grimoire closes reaches: no UI is there, and the next run may open any
+notebook. The commit takes the page ids first (reserved in `notebook.ini`), then the pictures (shared by content
+with the notebook's, the index saved first), the page files and `bg/pages.ini`, `source.ini`, and `notebook.ini`,
+which lists the pages in book order (`annotate_insert_at`, KOReader's route's rule); before that write the notebook
+shows nothing new. The links and names come after it, through the same fill with the notebook's own counted
+(`pdflinks_fill` with the user's links' seeds as taken, the 2 px rule against its document links, the water
+level trimming only what the fill adds: `pdflinks_water_keeping`), and names for unnamed pages only. The state says
+`commit=1` once the commit begins, and from then on a slice finishes it from the work folder alone, whatever became
+of the PDF, so a commit cut off at any step ends with the notebook filled; a fill stopped or failed before it
+leaves the notebook as it was. A copy of the PDF dropped meanwhile waits for the first, as any copy does, and then
+finds every page there. A fill's state is `pdf-fill.ini`, a name earlier versions never read: they remove the
+folder as a cut-off import's, so none of them ever takes a fill for an import of a notebook of its own.
 Pictures (lane L7) go through the same worker as a second kind (`grimoire --work pic ...`, `picwork.rs`): the
 templates, photos and picture-folder pages come from outside Grimoire, so the writer reads their bytes (it hashes
 them, never parses them) and sends them down fd 5 one picture at a time (`C` a header check, `D` a decode, each a

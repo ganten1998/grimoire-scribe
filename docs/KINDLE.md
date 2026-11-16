@@ -504,6 +504,19 @@ file name, title, key or hash ever appears in it: ids, page numbers, counts, siz
 - `import: <id>: a copy of this PDF is being imported; this one waits for its notebook`, `import: N pick(s) that
   waited for the lock queued`, `import: PDF import <id> was dropped from the queue; ...`, `import: the import
   from an earlier run has ended`.
+- A fill (2.2: the same PDF again adds the pages its notebook lacks): `import: <id>: notebook <nb> lacks N of the
+  book's M page(s): they are added to it` (slice 0; the slices then count the pages made, `pages A to B of N`),
+  then `import: <id>: notebook <nb>: D document link(s) (A added, S already there, R refused, L left out for
+  room)` and `import: notebook <nb> filled: N page(s) added (T now), B blank`. S counts the PDF's links the
+  notebook had already (the same target, the area within 2 px): for a notebook KOReader made, its links found
+  again, none added twice. `import: <id>: the PDF has N page(s) and the book of notebook <nb> M: it becomes a
+  notebook of its own`: the page counts differ (the PDF's and the one the notebook's pages name). `import: <id>:
+  its notebook <nb> cannot be filled (<why>)`, then `this PDF was imported before`: its pages name no page count
+  or more than one, or its files do not read. `import: <id>: the pages for notebook <nb> are made; they are
+  added once it is closed` (or `at Grimoire's next start`, in the child that finishes the queue after Grimoire
+  closes): the fill waits, and the next scan goes on with it. `import: <id>: <why>; nothing added to notebook
+  <nb>`: a fill that failed (`the notebook is gone`: deleted or in the trash meanwhile; a storage failure), the
+  notebook as it was.
 - `import: <id>: page N of M: the worker died of signal S (strike K)` or `... stalled ...` or `... made call C,
   which the sandbox does not allow`; after the second strike `... could not be read ...; it is blank`. On the
   Kindle call 175 (`rt_sigprocmask`) is the worker's own abort (out of memory, or a panic), not a call to add;

@@ -2697,3 +2697,48 @@ import commits. The owner's check:
 If step 1's T is long enough to matter, or step 2 shows the pen lagging, see the BACKLOG entry on the import's
 whole-file read ("Hardening round (2026-11), import: what waits"). If step 7 shows any of its three lines, do
 not release: send grimoire.log.
+
+## 2.2, the same PDF again fills its notebook (issue #123): device checks
+
+A PDF whose notebook lacks some of the book's pages (pages deleted since, or a notebook KOReader made, which holds
+only the pages KOReader sent) fills that notebook when it is dropped in `grimoire/import` again: the missing pages
+in book order, the links between pages that both exist, names for pages that have none; the pages it had, their
+ink, names and links are not written. A notebook with every page says "PDF already imported."; a PDF of another
+page count becomes a notebook of its own. The notebook does not open while a fill is under way. Automated:
+`rust/tests/test_pdf_fill.rs` (a notebook with its file record, one without, one KOReader made with KOReader's
+links a pixel off the import's, a full one, another page count, the files of the pages it had byte for byte, the
+open refused and a fill that waits for its open notebook, a stop in the middle, a fill whose PDF goes away, a
+commit cut off after each of its steps, two copies dropped together, the water level that keeps a notebook's own
+links, the state's grammar) and the scenarios `tests/scenarios/z_pdf_11_fill_1_book.qs` (KOReader's book of the
+tabs planner, pages 1 and 3), `z_pdf_12_fill_2_drop.qs` (the planner dropped: the two pages added, KOReader's
+tabs not doubled, the outline's names) and `z_pdf_13_fill_3_refused.qs` (a tap on the card while the fill runs).
+
+**Not run on a Scribe.** Two things only the Scribe can say: whether the book key Grimoire computes for a PDF is
+the key KOReader wrote for it (KOReader's own partial MD5 of the file it opened), and whether KOReader's link boxes
+and the import's agree within 2 px (otherwise a fill adds a second copy of a link KOReader sent). The owner's check,
+on a build of this branch:
+
+1. **KOReader's notebook.** In KOReader, open a planner PDF with tabs that Grimoire never imported (one of more
+   than ten pages), go to its third page and use Open this book in Grimoire. Write a line on that page. Note the
+   notebook's page count on its card (the pages KOReader sent), and leave Grimoire for KOReader.
+2. **The same file dropped.** Over USB, copy that very file (from where KOReader opened it, unchanged) into
+   `grimoire/import`, and start Grimoire. Within about 10 s the notice counts the missing pages ("Importing: page
+   N of M", M the book's pages less the notebook's) and the end says "Added M book pages."; the Library has no
+   second card. `grimoire.log` has `import: <id>: notebook <nb> lacks M of the book's P page(s): they are added
+   to it`, then `import: <id>: notebook <nb>: D document link(s) (A added, S already there, ...)` and
+   `import: notebook <nb> filled: M page(s) added`. Note S: when KOReader sent tabs between the pages it held, S
+   counts them, found again and not added.
+3. **The pages and the tabs.** Open the notebook: the book's pages in order, the line written in step 1 on its
+   page. With the eye on, every tab of a page KOReader sent is drawn once (a tab drawn twice, slightly offset,
+   is a link added a second time: send `grimoire.log` and the notebook's `doclinks.ini`). A tab on a page KOReader
+   sent that goes to a page the fill added works.
+4. **The key.** If step 2 made a second notebook instead (a second card, and no `lacks` line in the log), the
+   two keys differ: compare the notebook's `source=` line (`grimoire/notebooks/<nb>/notebook.ini`, KOReader's key)
+   with the key of the file, which on a computer is
+   `python3 -c "import hashlib,sys;b=open(sys.argv[1],'rb').read();m=hashlib.md5();[m.update(b[o:o+1024]) for o in [0]+[1024<<(2*i) for i in range(11)] if o<len(b)];print(m.hexdigest())" planner.pdf`,
+   and send both with the log.
+5. **The open refused.** Delete a few pages of that notebook in the Pages view, drop a copy of the PDF again,
+   and while the notice counts, tap the notebook's card: a toast says "Importing: page N of M" and the Library
+   stays; once "Added ... book pages." shows, the card opens it, filled again.
+6. **KOReader again.** Open the PDF in KOReader and use Open this book in Grimoire on a page the fill added: it
+   opens that page, adds no page, and no tab doubles.

@@ -782,11 +782,12 @@ waits, and within 10 s of the end of a previous run's import):
   is).
   A notebook holds a key by its `source=` line; with no such line, by its `source.ini`'s `book=`; with neither,
   by the key its record names. A PDF whose key a notebook holds is compared with the records:
-  - the same file again (a record of its size and of its SHA-256, for which the file is read whole) is "PDF
-    already imported.", and a file of `import/` moves to `done/`;
+  - the same file again (a record of its size and of its SHA-256, for which the file is read whole) is that
+    notebook's file: "PDF already imported." when the notebook has every page of the book, a fill (below,
+    2.2) when it lacks some; a file of `import/` moves to `done/` either way;
   - a notebook without a record (one made before this round, or from KOReader, or with a record of a form
-    this version does not read) goes by the key, as before: "PDF already imported.". It is never given a
-    record later;
+    this version does not read) goes by the key, as before: "PDF already imported.", or from 2.2 a fill when it
+    lacks pages. It is never given a record later, a fill included;
   - when every notebook that holds the key has a record and none is of this file, the PDF is imported as a
     notebook of its own.
   One notebook holds a book's bare key, the first. A notebook made while another holds the key has no `source=`
@@ -797,6 +798,47 @@ waits, and within 10 s of the end of a previous run's import):
   size. When it cannot be read whole in the last slice, the notebook is made without a record if no notebook
   holds its key, and the import fails if one does. In Files, "has notes" goes by a PDF's key and size against
   the notebooks' keys and records, and reads no file whole (DESIGN.md, the file picker).
+- **A fill (2.2):** the PDF of a notebook (as above: by its record, or by the key for a notebook without one)
+  whose notebook lacks some of the book's pages adds those pages to it, instead of "PDF already imported.".
+  The book's page count is the one the notebook's `source.ini` page lines carry (`page.<n>.<count>`: the
+  import's own count, or the `pages=` of KOReader's request), kept for a page deleted since too; the pages it
+  lacks are the book pages no page of its list holds. Slice 0 decides it before any worker starts, from
+  `notebook.ini` and `source.ini`, then the probe must find that page count: a PDF of another count (a broken
+  PDF two engines count differently, or another file of the key) becomes a notebook of its own, as another
+  file does, and is never a fill. A notebook whose page lines name no count, or more than one, or whose book is
+  not `kind=paged`, cannot say what it lacks: "PDF already imported.", as before 2.2. A notebook with every
+  page: "PDF already imported.". By kind of notebook:
+  - one made by the import (with its record): filled when the PDF is its file (the same SHA-256 and size);
+    another file of the key and the size becomes a notebook of its own;
+  - one without a record (made by 2.1.0 or earlier, or one whose record this version does not read): filled by
+    the key alone, so another file of the key and the page count fills it too (the key cannot tell them apart);
+  - one KOReader made (it holds the pages KOReader sent, its links, `links=1`, no record): filled by the key,
+    with KOReader's links counted as the notebook's own, so a link KOReader sent is not added a second time
+    (the same target, its area within 2 px).
+  The pages are drawn as an import's, at the notebook's own page size, in the work folder: its state is
+  `pdf-fill.ini` (a name versions before 2.2 never read: they remove the folder as a cut-off import's and the
+  notebook stays as it was), `pdf-import.ini`'s lines plus `fill=<notebook id>`, `todo=<the book pages it
+  makes, ascending>`, `page_w=`, `page_h=` and `commit=` (1 once the commit has begun); `next` and `pics` count
+  the pages of `todo`. The last slice commits: the file must be the one the slices read, and the notebook must
+  be closed (a fill whose notebook is open in the editor, or that runs in the child that finishes the queue
+  after Grimoire closes, waits with its work folder kept, and the next scan goes on with it). Then `commit=1`,
+  and from there the commit is finished from the work folder alone, whatever becomes of the PDF: page ids for
+  the pages the notebook still lacks (a page KOReader's route added since stays as it is), reserved first in
+  `notebook.ini` (`next_page_id`, its page list as it was); their pictures into its `bg/` (shared by content
+  with the pictures it has; `bg/index.ini` first); their page files (document pages, no ink) and
+  `bg/pages.ini`; `source.ini` with their page lines; then `notebook.ini` with each page placed before the first
+  page that holds a later book page (KOReader's route's rule), the page it reopens at kept. Until that write the
+  notebook lists the pages it had and shows nothing new; a failure before it removes the work folder, and a cut
+  before it is taken again by the next slice, adding nothing twice. After it: the links (`doclinks.ini`): the
+  PDF's links between pages that both exist now, through `pdflinks_fill` with the notebook's document links in
+  it and its own links' seeds never taken, the water level trimming only links the fill adds, the file written
+  even with no link in it, then `links=1` in `source.ini`; and the names (`nav.ini`): the outline's, for pages
+  that have none. A commit cut off after `notebook.ini` takes those two again. The pages it had, their files,
+  their ink, their names and their links are not written; the card's `thumb.pgm` is the book's page 1 when that
+  page became the first, else it goes (the Library draws it again). The end says "Added %d book pages."
+  (KOReader's route's toast), with "Some links were left out." when links were. While a fill's work folder
+  names a notebook, the notebook does not open: the editor shows the import's count ("Importing: page %d of
+  %d") and stays where it was.
 - **Slices:** the work runs in slices of at most 25 pages or 20 s, each a background job
   (`BgKind::PdfImport` = 7) that exits "more to do" (status 3) until the last, which commits. Slice 0 probes
   (page count, caps), the others render, the last writes `source.ini`, `bg/pages.ini` and last `notebook.ini`,
@@ -858,7 +900,7 @@ waits, and within 10 s of the end of a previous run's import):
   The areas are the mapped rectangles (floor of the minimum, ceiling of the maximum, clamped to the page, at
   least 1 px), so a notebook exported by Grimoire and imported again gives its links back within 1 px. The
   outline names pages: depth first, the first item that points at a page names it, a page's own name staying
-  (an import makes a new notebook, so none has one); titles are decoded from PDF text strings (UTF-16BE or LE
+  (an import makes a new notebook, so none has one; a fill names only the pages that have none); titles are decoded from PDF text strings (UTF-16BE or LE
   with a BOM, UTF-8 with a BOM, else PDFDocEncoding), controls become spaces, trimmed, cut at 95 bytes between
   characters. The water level trims the densest pages first; when it (or a page's 1,024, or the worker's cap)
   left links out the end says "Imported notebook (%d pages). Some links were left out." (the pages-not-read
@@ -1078,8 +1120,9 @@ whose target is not `p<id>`, with its area and outline) are carried, as links.in
 | size | 1.5 MiB | 512 KiB |
 | a page | 1,024 | 64 |
 
-Two producers fill it: KOReader's `links.txt` (above) and the PDF import's own link annotations (Imports: PDFs).
-Both go through `pdflinks.rs`.
+Two producers fill it: KOReader's `links.txt` (above) and the PDF import's own link annotations (Imports: PDFs),
+the second also into a notebook that has links already (a fill, 2.2: its water level trims only the links it
+adds). All go through `pdflinks.rs`.
 
 A file over a cap (a page with more than 1,024 links too), a carried line past its bounds or one that holds a NUL
 does not read: it shows no tabs and is never written over. A link whose area line a later version wrote in a form
@@ -1088,7 +1131,7 @@ page no longer in the notebook is not shown or tapped (it goes from the file at 
 lines included), the densest pages first, each page keeping its first links, so Copy page and later fills have
 room; a Copy page or Copy to notebook that would pass the caps themselves (links, bytes with outline lines
 counted, or the page's 1,024) copies without its document links ("Copied without links: couldn't save them.",
-or "Copied %d page to %s, without its document links."). The writers: the book import's commit (above), Copy page and Copy to notebook. Never a page turn, Clear
+or "Copied %d page to %s, without its document links."). The writers: the book import's commit (above), the PDF import's last slice (a new notebook's, and from 2.2 a fill's), Copy page and Copy to notebook. Never a page turn, Clear
 page, a lasso or Select. The seed is a hash of the source page and the annotation index, and never one the page's
 ink or its own links have.
 
@@ -1726,6 +1769,14 @@ rule for the lines of `source.ini` a version does not know):
 | a notebook of a book's key with no `source=` and no `book=` (the second notebook of a key) | an ordinary notebook of document pages: not the book's notebook for KOReader's Open this book, for the plugin or for the import. If the book's first notebook is deleted, they import the file again (or make a new notebook for the book); this version still finds the second notebook by its record |
 | `src` with a tab or another control character in a mark or in `pdf-import.ini` | read as any other path (their readers take the line as it is): the import goes on with that file. They wrote such a path without those characters; this version reads what they wrote as before, and where the path so written names no file the work folder is not kept and the import starts over from the scan |
 | an import this version began and they finish | the notebook is made with `source=` and `book=` and no record, as they always made it |
+
+What 2.1.0 and the versions before it do with what a fill (2.2) writes:
+
+| new data (a fill, 2.2) | 2.1.0 and before |
+|---|---|
+| a filled notebook | an ordinary notebook: it opens with every page of its list, the pages a fill added as document pages on their pictures (2.1.0 also with their tabs and names; 2.0 without the tabs, as for any `doclinks.ini`). Its files are the ones they write themselves: page files, `bg/` pictures, `bg/index.ini`, `bg/pages.ini`, `source.ini` page lines, `doclinks.ini`, `nav.ini`, `notebook.ini`. A notebook without a record still has none |
+| a fill's work folder (`notebooks/.import-<id>/` with `pdf-fill.ini`) | no `pdf-import.ini` and no `notebook.ini` in it: removed at their next start as any cut-off import's ("removed what a cut-off import left"); the notebook stays as it was, and the PDF, still in `import/`, is "PDF already imported." there (2.1.0) or never imported (before it) |
+| a fill's commit cut off half way (`commit=1`), then a start of one of them before 2.2 goes on with it | they remove the work folder, so the commit never goes on: the notebook lists the pages it had (cut before `notebook.ini` was written), or all of them without the links and names the fill had yet to add (cut after). Page files a cut left unlisted, and their lines in `bg/pages.ini` and `source.ini`, are never shown; `source.ini`'s go at its next write |
 
 ## Highlighter rendering in 1.2.0
 
