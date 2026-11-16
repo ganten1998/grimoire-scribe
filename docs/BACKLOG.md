@@ -19,8 +19,8 @@ folders and notebooks (docs/DESIGN.md, "Files: rename, delete and restore"). Wai
   the plan's "offer Name 2" is not built (Restore does give " 2").
 - **Names the keyboard cannot hold** (96 bytes and more) are not offered to it: "Couldn't rename file.". Rename them
   over USB.
-- **The trash past 5,000 entries**: the Trash place lists the 5,000 names fsview's listing keeps, in the order the
-  storage gives them, then sorted, so not the newest 5,000 (as before); the size walk counts every entry.
+- **The trash past 5,000 entries**: the Trash place lists the newest 5,000 (its listing reads the whole folder, a
+  slice at a time, and lets the oldest go); the older ones are reached over USB. The size walk counts every entry.
 - **The size walk** runs once a session (from Files' root or its Trash place) and again after each delete or restore;
   a trash changed over USB while Files is open is measured again only then. Not timed on the Scribe (TESTING.md, "2.2,
   Files' rename, delete and restore (issue #144): device checks").
@@ -81,8 +81,8 @@ trash and restore since issue #144 (its own section, above); the copy waits for 
     ends 0 or 1 only).
   - The Trash place's Restore, its sizes, and the Library read again after a notebook's restore (with
     `libindex_revalidate()` in `store_restored`) came with issue #144; a restored notebook's mirror PDF is made at
-    its next change. FsListing keeps at most 5,000 names in the order the storage gives them, and the trash only
-    grows (every deleted page is an entry), so past 5,000 the place sorts an arbitrary 5,000, not the newest.
+    its next change. The trash only grows (every deleted page is an entry): past 5,000 entries its listing
+    (`FsListing::start_trash`) keeps the newest 5,000, so what was deleted last is always listed.
   - A copy's end: `poll_jobs` (app.rs) returns at `BgKind::CopyFile` without a toast; the tile's or the Font
     sheet's code reads `bg_last_exit()` there, and has the template list or the font check look again.
 - **Not built** (the plan's later parts, or not in this lane): Move (Import to Templates or Photos by kind,

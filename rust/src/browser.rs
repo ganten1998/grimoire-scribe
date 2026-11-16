@@ -709,7 +709,9 @@ impl Browser {
     fn enter(&mut self, p: StoragePath, from_root: bool, now: u32) -> bool {
         let pick = self.pick();
         let Some(st) = self.storage.as_ref() else { return false };
-        match FsListing::start(st, &p, pick) {
+        // (the Trash place: its listing keeps the newest entries past the cap, so what was just deleted is listed)
+        let trash = !pick && self.place_path(PlaceKind::Trash).is_some_and(|t| t == p);
+        match if trash { FsListing::start_trash(st) } else { FsListing::start(st, &p, pick) } {
             Ok(l) => {
                 if from_root {
                     self.place_root = Some(p.clone());
@@ -3337,6 +3339,37 @@ mod tests {
         assert!(b.point("sort").is_none() && b.point("show").is_none());
         assert!(b.point("crumb.2").is_some(), "the path's parts are there");
         canvas_free(&mut a.screen);
+    }
+
+    // A trash past the listing's cap (every deleted page is an entry, and the trash only grows): the Trash place lists
+    // the newest 5,000 by the time in each name, never the first 5,000 the storage gives, so the photo deleted a moment
+    // ago is its first row and can be restored; the entries let go are the oldest, and "Showing the first 5000." is
+    // said.
+    #[test]
+    fn the_trash_place_keeps_the_newest_past_the_cap() {
+        let (base, _g) = storage("trashcap");
+        let (t, ph) = (format!("{base}/grimoire/trash"), format!("{base}/grimoire/photos"));
+        std::fs::create_dir_all(&ph).unwrap();
+        std::fs::write(format!("{ph}/beach.jpg"), b"a photo").unwrap();
+        let old = FS_LIST_MAX + 200;
+        for i in 0..old {
+            std::fs::write(format!("{t}/20261101-000000-0001-p{}-{}", i + 1, 1_700_000_000 + i), b"").unwrap();
+        }
+        i18n_set("en");
+        let mut b = Browser::default();
+        assert!(b.open(PickSpec::place(), FilesPrefs { card: true, ..Default::default() }));
+        assert!(b.go(sp("grimoire/photos")));
+        b.open_card(row_of(&b, "beach.jpg"));
+        assert!(b.trash_card().is_ok());
+        assert!(b.go(sp("grimoire/trash")));
+        assert_eq!(b.rows.len(), FS_LIST_MAX);
+        assert!(b.capped, "Showing the first 5000.");
+        assert!(b.rows[0].name.starts_with("files-") && b.has_card(0), "the photo just deleted is the first row: {}", b.rows[0].name);
+        let oldest_kept = b.rows.iter().map(|r| r.when).min().unwrap();
+        assert_eq!(oldest_kept, 1_700_000_000 + 201, "the 201 oldest entries are the ones let go");
+        b.open_card(0);
+        assert_eq!(b.restore_card(), Ok((Some("Restored to grimoire/photos.".to_string()), None)));
+        assert!(std::path::Path::new(&format!("{ph}/beach.jpg")).exists());
     }
 
     // The card a row opens, in the tests: its details and the labels of its rows.

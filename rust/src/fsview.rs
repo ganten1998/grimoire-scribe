@@ -454,6 +454,11 @@ pub struct FsListing {
     grimoire: Option<StoragePath>,
     pick: bool,
     spent_ms: u32,
+    /// the trash's own listing (`start_trash`): an order key for each entry, as `fsview_trash_entries` orders them
+    /// (a name of no known form after the others, then the newest first), and how many entries were let go past
+    /// the cap
+    keys: Option<Vec<(bool, std::cmp::Reverse<i64>)>>,
+    over: usize,
 }
 
 impl Drop for FsListing {
@@ -490,7 +495,19 @@ impl FsListing {
             grimoire: st.grimoire.clone(),
             pick,
             spent_ms: 0,
+            keys: None,
+            over: 0,
         })
+    }
+
+    /// Opens Grimoire's trash to be listed (Files' Trash place). The trash only grows (every deleted page is an
+    /// entry), so past FS_LIST_MAX entries this listing reads on to the folder's end and keeps the newest by the
+    /// time in each name, never just the first the storage gives: what was deleted last is always listed, and can
+    /// be restored. `capped` says entries were let go.
+    pub fn start_trash(st: &FsStorage) -> Result<FsListing, FsErr> {
+        let mut l = FsListing::start(st, &st.trash_dir().ok_or(FsErr::NotFound)?, false)?;
+        l.keys = Some(Vec::new());
+        Ok(l)
     }
 
     /// Reads entries for at most `budget_ms` (FS_SLICE_MS a tick); true once the folder is read.
@@ -505,14 +522,21 @@ impl FsListing {
         }
         let t0 = clock();
         loop {
-            if self.entries.len() >= FS_LIST_MAX {
+            if self.entries.len() >= FS_LIST_MAX && self.keys.is_none() {
                 self.capped = true;
                 self.finish();
                 break;
             }
+            // (the trash: twice the cap read, the older half is let go, and the reading goes on)
+            if self.entries.len() >= 2 * FS_LIST_MAX {
+                self.keep_newest();
+            }
             // SAFETY: dir is open; readdir's entry is read before the next call.
             let e = unsafe { libc::readdir(self.dir) };
             if e.is_null() {
+                if self.entries.len() > FS_LIST_MAX {
+                    self.keep_newest();
+                }
                 self.finish();
                 break;
             }
@@ -549,13 +573,40 @@ impl FsListing {
             }
             return;
         }
+        if let Some(keys) = self.keys.as_mut() {
+            let t = trash_parse(&name);
+            keys.push((t.kind == TrashKind::Other, std::cmp::Reverse(t.time)));
+        }
         self.entries.push(FsEntry { name, kind, stat: None });
+    }
+
+    /// The trash's listing past its cap: the FS_LIST_MAX entries that `fsview_trash_entries` puts first stay (the
+    /// newest by the time in each name, names in byte order where times are equal, a name of no known form last),
+    /// in the order they were read; the others are let go.
+    fn keep_newest(&mut self) {
+        let Some(keys) = self.keys.as_mut() else { return };
+        let n = self.entries.len();
+        if n <= FS_LIST_MAX {
+            return;
+        }
+        let mut ix: Vec<usize> = (0..n).collect();
+        ix.sort_unstable_by(|&a, &b| keys[a].cmp(&keys[b]).then_with(|| self.entries[a].name.cmp(&self.entries[b].name)));
+        let mut keep = vec![false; n];
+        for &i in &ix[..FS_LIST_MAX] {
+            keep[i] = true;
+        }
+        let mut at = keep.iter();
+        self.entries.retain(|_| *at.next().unwrap_or(&false));
+        let mut at = keep.iter();
+        keys.retain(|_| *at.next().unwrap_or(&false));
+        self.over += n - FS_LIST_MAX;
+        self.capped = true;
     }
 
     fn finish(&mut self) {
         self.done = true;
         // (counts and timings only: never a name)
-        qlog!("files: listed %d entries (%d usable) in %u ms", (self.entries.len() + self.hidden) as i32, self.entries.len() as i32, self.spent_ms);
+        qlog!("files: listed %d entries (%d usable) in %u ms", (self.entries.len() + self.hidden + self.over) as i32, self.entries.len() as i32, self.spent_ms);
     }
 
     /// Stats the entries in `range` that have none yet (fstatat on the open folder, no link followed), for at

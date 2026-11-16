@@ -3,7 +3,8 @@
 // test seam so a run anywhere takes it too), a rename that changes only the case, the trash with its record and
 // restore for a file, a folder and a notebook (both the name store_delete gives and the record form), a name taken
 // on restore, the record read strictly, the busy check (an import's files, and a picture a page still waits for),
-// and the copy job with the floor, a write that fails, and a source that changes. Every refusal of the allow-list. The trash's sizes, read a slice at a time (issue #144).
+// and the copy job with the floor, a write that fails, and a source that changes. Every refusal of the allow-list.
+// The trash's sizes, read a slice at a time, and its listing past the cap (issue #144).
 #![cfg(feature = "sim")]
 mod testlib;
 use grimoire::bgwork_copy::*;
@@ -733,6 +734,47 @@ fn the_trash_sizes() {
     check!(s.done && s.step(FS_SLICE_MS));
 }
 
+// The trash's own listing past the cap (issue #144): read to the folder's end a slice at a time, it keeps the 5,000
+// entries fsview_trash_entries puts first (the newest by the time in each name; a name of no known form goes before
+// any other), and says it is capped. A plain listing of the same folder stops at the first 5,000 the storage gives.
+fn the_trash_lists_its_newest_past_the_cap() {
+    let (root, g) = tree();
+    let t = format!("{g}/trash");
+    let n = 2 * FS_LIST_MAX + 300;
+    for i in 0..n {
+        std::fs::write(format!("{t}/20261101-000000-0001-p{}-{}", i + 1, 1_700_000_000 + i), b"").unwrap();
+    }
+    for odd in ["notes", "zzz", "a b"] {
+        std::fs::write(format!("{t}/{odd}"), b"").unwrap();
+    }
+    let st = open(&root, &g);
+    let mut l = FsListing::start_trash(&st).unwrap();
+    let mut now = 0u32;
+    let mut clock = || {
+        now += 1;
+        now
+    };
+    let mut steps = 0;
+    while !l.step_clocked(20, &mut clock) {
+        steps += 1;
+        check!(l.entries.len() <= 2 * FS_LIST_MAX);
+        check!(steps < 100_000);
+    }
+    check!(steps > 3);
+    check!(l.capped && l.entries.len() == FS_LIST_MAX);
+    let kept = fsview_trash_entries(&l.entries);
+    check!(kept.iter().all(|e| e.kind == TrashKind::Page));
+    check!(kept[0].time == 1_700_000_000 + n as i64 - 1);
+    check!(kept[FS_LIST_MAX - 1].time == 1_700_000_000 + (n - FS_LIST_MAX) as i64);
+    // (a trash under the cap is listed whole, the names of no known form too)
+    for i in 0..n - 10 {
+        std::fs::remove_file(format!("{t}/20261101-000000-0001-p{}-{}", i + 1, 1_700_000_000 + i)).unwrap();
+    }
+    let mut l = FsListing::start_trash(&st).unwrap();
+    while !l.step(FS_SLICE_MS) {}
+    check!(!l.capped && l.entries.len() == 13);
+}
+
 #[test]
 fn test_fsview_writes() {
     run!(writes_stay_in_grimoires_folders);
@@ -750,6 +792,7 @@ fn test_fsview_writes() {
     run!(the_copy_request);
     run!(the_copy_job);
     run!(the_trash_sizes);
+    run!(the_trash_lists_its_newest_past_the_cap);
     std::env::remove_var("GRIMOIRE_STORAGE");
     let _ = std::fs::remove_dir_all(format!("{}/fsw-storage", tl_tmp()));
     let _ = std::fs::remove_dir_all(format!("{}/fsw-outside", tl_tmp()));

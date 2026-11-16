@@ -2602,7 +2602,11 @@ trash, and the Trash place puts an entry back. Pick mode (New notebook's From a 
 - **Delete** is one tap on the card (the card is the confirmation, as for an import, and Restore undoes it):
   `FsStorage::trash`, then "Moved to grimoire/trash" and the folder read again.
 - **The Trash place** lists the trash as before (fsview's trash listing, newest first by the time in each name),
-  each row with its size and date; the root's Trash row has the trash's size beside its path. The sizes come from
+  each row with its size and date; the root's Trash row has the trash's size beside its path. Past 5,000 entries
+  (every deleted page is one, and the trash only grows) its listing, `FsListing::start_trash`, reads on to the
+  folder's end in its slices and keeps the newest 5,000 by the time in each name, where any other folder's stops
+  at the first 5,000 the storage gives: what was deleted last is always listed and can be restored ("Showing the
+  first 5000." is said). The sizes come from
   `FsStorage::trash_sizes` (`TrashSizes`), a walk of the trash in slices of at most 20 ms a tick, begun when the
   root or the Trash place first shows in a session and again after each write: regular files at any depth by their
   size (a `files-...` entry counts its item, not its record), no link followed or counted, nothing on another device
@@ -2628,8 +2632,9 @@ trash, and the Trash place puts an entry back. Pick mode (New notebook's From a 
 - **Logs** (no names): the storage writes' own lines, and `files: the trash holds N entries, N files, N KB (read in T
   ms)` once a walk of the trash is through (docs/KINDLE.md).
 - **Tests**: `browser.rs`'s unit tests (a folder card's check by identity, each refusal's words, Rename's rules and
-  places, Delete then Restore, a notebook the Library deleted coming back as " 2"), `test_fsview_writes.rs`'s trash
-  sizes (slices, depth, links, the record left out), and the scenarios `files_8_rename` (every rule, a name taken, a
+  places, Delete then Restore, a notebook the Library deleted coming back as " 2", a trash past the cap keeping
+  its newest), `test_fsview_writes.rs`'s trash sizes (slices, depth, links, the record left out), its listing past
+  the cap and a picture a page still waits for, and the scenarios `files_8_rename` (every rule, a name taken, a
   good name, an empty one, Cancel), `files_9_trash` (Delete, the sizes, Restore, a page with no card),
   `files_10_restore_notebook` (the Library's Delete, Restore, " 2"), `files_11_busy` (an importing PDF),
   `files_12_swap` (a folder swapped under its card, through the runner's `storage move`) and `files_13_es_fit`,
